@@ -123,6 +123,7 @@ docker compose -f deploy/compose.yaml logs hub     # lần đầu in mật khẩ
 
 - [`Dockerfile`](Dockerfile): image chỉ gồm hub (core, mcp, web và UI đã build), không có mã desktop. Chạy bằng user `node`, dữ liệu ở `/data`, có `HEALTHCHECK` gọi `/api/health`.
 - [`deploy/compose.yaml`](deploy/compose.yaml): hub + Caddy (HTTPS tự động, cần DNS trỏ về máy và mở cổng 80/443). Không muốn dùng Caddy thì bỏ service `caddy`, publish cổng `7788` và đặt proxy của bạn phía trước, giữ nguyên Host header.
+- [`deploy/compose.tunnel.yaml`](deploy/compose.tunnel.yaml): máy đã có `cloudflared` (Cloudflare Tunnel) thì bỏ Caddy, hub chỉ nghe `127.0.0.1:7788`: `HIVE_HOSTNAME=hive.example.com docker compose -p xdev-hive -f deploy/compose.yaml -f deploy/compose.tunnel.yaml up -d --build hub`, rồi thêm Public Hostname trỏ về `http://localhost:7788` trên dashboard Cloudflare.
 - **Chỉ chạy 1 container cho mỗi database.** SQLite không chia sẻ file giữa nhiều replica. Muốn chịu tải lớn hơn thì chuyển sang Postgres (xem *Việc tiếp theo*).
 
 Không dùng Docker:

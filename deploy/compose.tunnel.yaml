@@ -1,0 +1,10 @@
+# Hub behind a Cloudflare Tunnel whose cloudflared runs on the host: no Caddy, and the hub listens
+# on loopback only, so nothing is exposed on the LAN. From the repo root:
+#   HIVE_HOSTNAME=hive.example.com docker compose -p xdev-hive -f deploy/compose.yaml -f deploy/compose.tunnel.yaml up -d --build hub
+# Then in Cloudflare Zero Trust → Networks → Tunnels → <tunnel> → Public Hostname:
+#   hive.example.com → Service HTTP, URL localhost:7788
+# The tunnel terminates TLS and sends X-Forwarded-Proto/-For, which HIVE_TRUST_PROXY=1 (compose.yaml) trusts.
+services:
+  hub:
+    ports:
+      - "127.0.0.1:${HIVE_LOCAL_PORT:-7788}:7788"
