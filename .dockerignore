@@ -1,0 +1,14 @@
+**/node_modules
+**/dist
+**/out
+**/release
+**/data
+*.db
+*.db-shm
+*.db-wal
+.git
+.claude
+.DS_Store
+# Only the desktop manifest is needed (for npm ci against the lockfile).
+apps/desktop/*
+!apps/desktop/package.json

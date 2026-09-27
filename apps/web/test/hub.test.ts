@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
 import type { AddressInfo } from "node:net";
+import os from "node:os";
+import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -137,5 +140,27 @@ describe("hub as a backend", () => {
     const res = await client.callTool({ name: "task_list", arguments: { project: "app" } });
     assert.equal(res.isError, undefined);
     await client.close();
+  });
+});
+
+describe("hub UI", () => {
+  it("serves the SPA from an install path with a dot directory (~/.local, .claude/worktrees…)", async () => {
+    const dir = path.join(mkdtempSync(path.join(os.tmpdir(), "hive-ui-")), ".local", "client");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "index.html"), "<!doctype html><title>xDev Hive</title>");
+    const hive = new SqliteHive(":memory:");
+    const server = createHubApp({ hive, tokens: new TokenStore(hive.db), ui: { dir } }).listen(0, "127.0.0.1");
+    await new Promise((r) => server.once("listening", r));
+    try {
+      const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      for (const route of ["/", "/docs"]) {
+        const res = await fetch(`${url}${route}`);
+        assert.equal(res.status, 200, route);
+        assert.match(await res.text(), /<title>xDev Hive<\/title>/);
+      }
+    } finally {
+      server.close();
+      hive.close();
+    }
   });
 });
