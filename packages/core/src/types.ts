@@ -1,3 +1,5 @@
+import type { AgentProfile } from "./agents.ts";
+
 export type Role = "viewer" | "agent" | "admin";
 export type DocScope = "org" | "project";
 
@@ -76,6 +78,90 @@ export interface Task {
   leaseUntil: string | null;
   note: string | null;
   updatedAt: string;
+}
+
+/** installed: nothing to do · missing: the app can install it · outdated: installed for another build · manual: needs a hand edit. */
+export type SetupState = "installed" | "missing" | "outdated" | "manual";
+
+/** Something the desktop checks on this machine or in a repo, and the fix it can apply. */
+export interface SetupItem {
+  /** cli:<kind> · shim · <project>:agents · <project>:codegraph-mcp · <project>:codegraph-index · <project>:superpowers */
+  id: string;
+  label: string;
+  state: SetupState;
+  /** Version and path when installed, otherwise what is missing. */
+  detail: string;
+  /** Install button label, when the app can fix it itself. */
+  action: string | null;
+}
+
+export interface SetupReport {
+  machine: SetupItem[];
+  projects: Array<{ project: string; repo: string; items: SetupItem[] }>;
+}
+
+/** A subscription profile as a machine reports it to the hub: no command line, no env. */
+export interface ReportedProfile {
+  id: string;
+  label: string;
+  kind: string;
+  enabled: boolean;
+  account: string | null;
+  /** The profile's CLI is on that machine's PATH. */
+  installed: boolean;
+  cooldownUntil: string | null;
+  runs: number;
+  rateLimited: number;
+}
+
+export const POLICY_CLIS = ["claude", "codex", "gemini"] as const;
+export const POLICY_REPO_PARTS = ["agents", "codegraph-mcp", "codegraph-index", "superpowers"] as const;
+export type PolicyRepoPart = (typeof POLICY_REPO_PARTS)[number];
+
+/** What the team expects on every machine, set by an admin on the hub. */
+export interface TeamPolicy {
+  requiredClis: Array<(typeof POLICY_CLIS)[number]>;
+  requireShim: boolean;
+  /** Project key → repo setup parts every machine that has the project should have. */
+  projects: Record<string, PolicyRepoPart[]>;
+  /** Profiles the team recommends; desktops add them in one click (each machine fills in its own env). */
+  profileTemplates: AgentProfile[];
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+export const COMMAND_STATUSES = ["pending", "running", "done", "failed", "rejected", "cancelled", "expired"] as const;
+export type CommandStatus = (typeof COMMAND_STATUSES)[number];
+
+/** An install an admin asked a machine to run. The machine's user approves it first. */
+export interface MachineCommand {
+  id: number;
+  machineId: string;
+  /** A SetupItem id the machine reported as installable. */
+  itemId: string;
+  label: string;
+  status: CommandStatus;
+  requestedBy: string;
+  requestedAt: string;
+  updatedAt: string;
+  output: string | null;
+}
+
+/** Admin view of a machine: the heartbeat plus what it reported about its setup. */
+export interface MachineDetail extends Machine {
+  setup: SetupReport | null;
+  setupAt: string | null;
+  profiles: ReportedProfile[];
+  commands: MachineCommand[];
+}
+
+export interface AuditEntry {
+  id: number;
+  at: string;
+  actor: string;
+  action: string;
+  target: string;
+  detail: string;
 }
 
 /** A queued or running agent run, as a desktop runner reports it to the hub. */

@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { HiveError } from "./errors.ts";
 import { parseDocKey, titleFromSlug } from "./keys.ts";
+import { EMPTY_POLICY } from "./policy.ts";
 import {
   authorize,
   parseInput,
@@ -14,7 +15,25 @@ import {
 } from "./methods.ts";
 import { assertNoSecret } from "./secrets.ts";
 import { SEED_DOCS } from "./seed.ts";
-import type { Actor, Doc, DocSummary, DocVersion, Machine, MachineRun, Memory, Proposal, QuotaCooldown, Task } from "./types.ts";
+import type {
+  Actor,
+  AuditEntry,
+  CommandStatus,
+  Doc,
+  DocSummary,
+  DocVersion,
+  Machine,
+  MachineCommand,
+  MachineDetail,
+  MachineRun,
+  Memory,
+  Proposal,
+  QuotaCooldown,
+  ReportedProfile,
+  SetupReport,
+  Task,
+  TeamPolicy,
+} from "./types.ts";
 
 const MIGRATIONS: string[] = [
   `
@@ -60,6 +79,21 @@ const MIGRATIONS: string[] = [
     account TEXT PRIMARY KEY, until TEXT NOT NULL, reason TEXT NOT NULL,
     reported_by TEXT NOT NULL, updated_at TEXT NOT NULL);
   `,
+  `
+  ALTER TABLE machines ADD COLUMN setup TEXT;
+  ALTER TABLE machines ADD COLUMN setup_at TEXT;
+  ALTER TABLE machines ADD COLUMN profiles TEXT NOT NULL DEFAULT '[]';
+  CREATE TABLE machine_commands(
+    id INTEGER PRIMARY KEY, machine_id TEXT NOT NULL, item_id TEXT NOT NULL, label TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending', requested_by TEXT NOT NULL, requested_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL, output TEXT);
+  CREATE INDEX machine_commands_machine ON machine_commands(machine_id, status);
+  CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE audit(
+    id INTEGER PRIMARY KEY, at TEXT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL,
+    target TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '');
+  CREATE INDEX audit_at ON audit(at);
+  `,
 ];
 
 /** A machine is online if it sent a heartbeat this recently (runners send one every 30 s). */
@@ -68,6 +102,42 @@ const ONLINE_MINUTES = 2;
 const DUPLICATE_MINUTES = 5;
 /** Machines silent for this long are dropped. */
 const MACHINE_TTL_DAYS = 14;
+/** A command nobody approved on the machine within this time is dropped. */
+const COMMAND_TTL_HOURS = 24;
+/** Commands kept per machine in the admin view. */
+const COMMAND_HISTORY = 20;
+
+/** Allowed status moves for a machine reporting on a command. */
+const COMMAND_MOVES: Record<CommandStatus, CommandStatus[]> = {
+  pending: ["running", "rejected", "done", "failed"],
+  running: ["done", "failed"],
+  done: [],
+  failed: [],
+  rejected: [],
+  cancelled: [],
+  expired: [],
+};
+
+const clipDetail = (s: string) => (s.length > 300 ? `${s.slice(0, 299)}…` : s);
+
+/** Admin actions written to the audit log: method → what it acted on. Reads are never logged. */
+const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: string; detail?: string }>> = {
+  "docs.save": (i, o) => ({ target: i.key, detail: `v${o.version}${i.note ? ` · ${i.note}` : ""}` }),
+  "proposals.approve": (i, o) => ({ target: o.docKey, detail: `đề xuất #${i.id}` }),
+  "proposals.reject": (i, o) => ({ target: o.docKey, detail: `đề xuất #${i.id}${i.note ? ` · ${i.note}` : ""}` }),
+  "memory.approve": (i, o) => ({ target: `${o.project} #${i.id}` }),
+  "memory.remove": (i) => ({ target: `memory #${i.id}` }),
+  "tasks.create": (i) => ({ target: i.id, detail: i.title }),
+  "machines.remove": (i) => ({ target: i.id }),
+  "cooldowns.clear": (i) => ({ target: i.account }),
+  "policy.set": (_i, o: TeamPolicy) => ({
+    target: "policy",
+    detail: `CLI: ${o.requiredClis.join(", ") || "—"} · shim: ${o.requireShim ? "có" : "không"} · ${Object.keys(o.projects).length} dự án · ${o.profileTemplates.length} mẫu profile`,
+  }),
+  "admin.commandCreate": (i, o: MachineCommand) => ({ target: i.machineId, detail: `yêu cầu ${o.label} (${i.itemId}, #${o.id})` }),
+  "admin.commandCancel": (i, o: MachineCommand) => ({ target: o.machineId, detail: `huỷ #${i.id} ${o.itemId}` }),
+  "machines.commandResult": (i, o: MachineCommand) => ({ target: o.machineId, detail: `#${i.id} ${o.itemId} → ${i.status}` }),
+};
 
 type Row = Record<string, unknown>;
 const str = (v: unknown) => v as string;
@@ -133,6 +203,25 @@ const toCooldown = (r: Row): QuotaCooldown => ({
   reportedBy: str(r.reported_by),
   updatedAt: str(r.updated_at),
 });
+const toCommand = (r: Row): MachineCommand => ({
+  id: num(r.id),
+  machineId: str(r.machine_id),
+  itemId: str(r.item_id),
+  label: str(r.label),
+  status: str(r.status) as CommandStatus,
+  requestedBy: str(r.requested_by),
+  requestedAt: str(r.requested_at),
+  updatedAt: str(r.updated_at),
+  output: strOrNull(r.output),
+});
+const toAudit = (r: Row): AuditEntry => ({
+  id: num(r.id),
+  at: str(r.at),
+  actor: str(r.actor),
+  action: str(r.action),
+  target: str(r.target),
+  detail: str(r.detail),
+});
 
 /** FTS5 query from free text: every word becomes a quoted prefix term, OR-ed together. */
 function ftsQuery(text: string): string | null {
@@ -170,7 +259,20 @@ export class SqliteHive implements HiveBackend {
     authorize(method, actor);
     const parsed = parseInput(method, input);
     const handler = this.#handlers[method] as (i: ParsedInput<M>, a: Actor) => MethodOutput[M];
-    return handler(parsed, actor);
+    const output = handler(parsed, actor);
+    const audited = AUDITED[method];
+    if (audited) {
+      const { target, detail } = audited(parsed, output);
+      this.audit(actor, method, target, detail);
+    }
+    return output;
+  }
+
+  /** Records an admin action (also used by the hub for token changes, which live outside the method table). */
+  audit(actor: Actor, action: string, target: string, detail = ""): void {
+    this.db
+      .prepare("INSERT INTO audit(at, actor, action, target, detail) VALUES (?, ?, ?, ?, ?)")
+      .run(this.#now(), actor.name, action, target, clipDetail(detail));
   }
 
   /** Creates the default org docs on an empty database. Safe to call on every start. */
@@ -269,6 +371,24 @@ export class SqliteHive implements HiveBackend {
     const now = this.#now();
     this.db.prepare("DELETE FROM quota_cooldowns WHERE until <= ?").run(now);
     return (this.db.prepare("SELECT * FROM quota_cooldowns ORDER BY until").all() as Row[]).map(toCooldown);
+  }
+
+  #policy(): TeamPolicy {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'policy'").get() as Row | undefined;
+    return row ? { ...EMPTY_POLICY, ...(JSON.parse(str(row.value)) as TeamPolicy) } : EMPTY_POLICY;
+  }
+
+  /** Pending commands nobody approved in time become expired. */
+  #expireCommands(): void {
+    this.db
+      .prepare("UPDATE machine_commands SET status = 'expired', updated_at = ?1 WHERE status = 'pending' AND requested_at < ?2")
+      .run(this.#now(), this.#now(-COMMAND_TTL_HOURS * 60));
+  }
+
+  #command(id: number): MachineCommand {
+    const row = this.db.prepare("SELECT * FROM machine_commands WHERE id = ?").get(id) as Row | undefined;
+    if (!row) throw new HiveError("not_found", `Command #${id} not found.`);
+    return toCommand(row);
   }
 
   #toMachine(r: Row): Machine {
@@ -483,7 +603,7 @@ export class SqliteHive implements HiveBackend {
         }),
 
       // Keyed by the hub actor (`runner.<machine>@<token>`): the same key as the leases that machine takes.
-      "machines.heartbeat": ({ machine, instance, version, runs }, actor) =>
+      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles }, actor) =>
         this.#tx(() => {
           const now = this.#now();
           const row = db.prepare("SELECT instance, prev_instance, last_seen, duplicate_at FROM machines WHERE id = ?").get(actor.name) as
@@ -503,10 +623,18 @@ export class SqliteHive implements HiveBackend {
                prev_instance = excluded.prev_instance, version = excluded.version, runs = excluded.runs,
                last_seen = excluded.last_seen, duplicate_at = excluded.duplicate_at`,
           ).run(actor.name, machine, instance, prev, version, JSON.stringify(runs), now, duplicateAt);
+          if (setup) db.prepare("UPDATE machines SET setup = ?, setup_at = ? WHERE id = ?").run(JSON.stringify(setup.report), setup.checkedAt, actor.name);
+          if (profiles) db.prepare("UPDATE machines SET profiles = ? WHERE id = ?").run(JSON.stringify(profiles), actor.name);
           db.prepare("DELETE FROM machines WHERE last_seen < ?").run(this.#now(-MACHINE_TTL_DAYS * 24 * 60));
+          this.#expireCommands();
+          const commands = (
+            db.prepare("SELECT * FROM machine_commands WHERE machine_id = ? AND status = 'pending' ORDER BY id").all(actor.name) as Row[]
+          ).map(toCommand);
           return {
             duplicate: duplicateAt !== null && duplicateAt > this.#now(-DUPLICATE_MINUTES),
             cooldowns: this.#cooldowns(),
+            policy: this.#policy(),
+            commands,
           };
         }),
 
@@ -537,6 +665,79 @@ export class SqliteHive implements HiveBackend {
       "cooldowns.clear": ({ account }) => ({
         cleared: num(db.prepare("DELETE FROM quota_cooldowns WHERE account = ?").run(account).changes) === 1,
       }),
+
+      "machines.commandResult": ({ id, status, output }, actor) =>
+        this.#tx(() => {
+          const cmd = this.#command(id);
+          if (cmd.machineId !== actor.name) throw new HiveError("forbidden", `Command #${id} is for ${cmd.machineId}, not ${actor.name}.`);
+          if (!COMMAND_MOVES[cmd.status].includes(status)) throw new HiveError("conflict", `Command #${id} is ${cmd.status}, cannot become ${status}.`);
+          db.prepare("UPDATE machine_commands SET status = ?, output = COALESCE(?, output), updated_at = ? WHERE id = ?").run(
+            status,
+            output ?? null,
+            this.#now(),
+            id,
+          );
+          return this.#command(id);
+        }),
+
+      "policy.get": () => this.#policy(),
+
+      "policy.set": (input, actor) => {
+        const policy: TeamPolicy = { ...input, updatedAt: this.#now(), updatedBy: actor.name };
+        assertNoSecret(JSON.stringify(policy), "Policy");
+        db.prepare("INSERT INTO settings(key, value) VALUES ('policy', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(
+          JSON.stringify(policy),
+        );
+        return this.#policy();
+      },
+
+      "admin.machines": () => {
+        this.#expireCommands();
+        return (db.prepare("SELECT * FROM machines ORDER BY last_seen DESC").all() as Row[]).map(
+          (r): MachineDetail => ({
+            ...this.#toMachine(r),
+            setup: r.setup == null ? null : (JSON.parse(str(r.setup)) as SetupReport),
+            setupAt: strOrNull(r.setup_at),
+            profiles: JSON.parse(str(r.profiles ?? "[]")) as ReportedProfile[],
+            commands: (
+              db.prepare("SELECT * FROM machine_commands WHERE machine_id = ? ORDER BY id DESC LIMIT ?").all(str(r.id), COMMAND_HISTORY) as Row[]
+            ).map(toCommand),
+          }),
+        );
+      },
+
+      // Only an install the machine itself reported as possible: the hub never sends a free-form command.
+      "admin.commandCreate": ({ machineId, itemId }, actor) =>
+        this.#tx(() => {
+          const row = db.prepare("SELECT setup FROM machines WHERE id = ?").get(machineId) as Row | undefined;
+          if (!row) throw new HiveError("not_found", `No machine ${machineId}.`);
+          const report = row.setup == null ? null : (JSON.parse(str(row.setup)) as SetupReport);
+          const item = report ? [...report.machine, ...report.projects.flatMap((p) => p.items)].find((i) => i.id === itemId) : undefined;
+          if (!item) throw new HiveError("bad_request", `${machineId} has not reported ${itemId}.`);
+          if (!item.action) throw new HiveError("bad_request", `${itemId} is ${item.state} on ${machineId}: nothing the app can install.`);
+          const open = db
+            .prepare("SELECT id FROM machine_commands WHERE machine_id = ? AND item_id = ? AND status IN ('pending', 'running')")
+            .get(machineId, itemId) as Row | undefined;
+          if (open) throw new HiveError("conflict", `Command #${num(open.id)} for ${itemId} is still open.`);
+          const now = this.#now();
+          const res = db
+            .prepare("INSERT INTO machine_commands(machine_id, item_id, label, requested_by, requested_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+            .run(machineId, itemId, `${item.action}: ${item.label}`, actor.name, now, now);
+          return this.#command(num(res.lastInsertRowid));
+        }),
+
+      "admin.commandCancel": ({ id }) =>
+        this.#tx(() => {
+          const cmd = this.#command(id);
+          if (cmd.status !== "pending") throw new HiveError("conflict", `Command #${id} is ${cmd.status}; only pending commands can be cancelled.`);
+          db.prepare("UPDATE machine_commands SET status = 'cancelled', updated_at = ? WHERE id = ?").run(this.#now(), id);
+          return this.#command(id);
+        }),
+
+      "admin.audit": ({ limit, action }) =>
+        (
+          db.prepare("SELECT * FROM audit WHERE (?1 IS NULL OR action = ?1) ORDER BY id DESC LIMIT ?2").all(action ?? null, limit) as Row[]
+        ).map(toAudit),
     };
   }
 }

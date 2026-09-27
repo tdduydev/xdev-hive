@@ -20,8 +20,13 @@ import {
   type AgentProfileStatus,
   type AgentRun,
   type DesktopProject,
+  type CommandStatus,
   type HiveBackend,
+  type MachineCommand,
   type QuotaCooldown,
+  type ReportedProfile,
+  type SetupReport,
+  type TeamPolicy,
   type RunnerSettings,
   type RunStatus,
   type StartRunRequest,
@@ -43,6 +48,16 @@ export interface RunnerHost {
   machine(): string;
   /** Base env for agent processes (login-shell PATH etc.). */
   env(): NodeJS.ProcessEnv;
+  /** What the heartbeat tells the hub besides runs: the last setup check and this machine's profiles. */
+  report?(): { setup?: { checkedAt: string; report: SetupReport }; profiles?: ReportedProfile[] };
+}
+
+/** What the hub sent back on the last heartbeat. */
+export interface HubUpdate {
+  duplicate: boolean;
+  policy: TeamPolicy;
+  /** Install requests from an admin waiting for this machine's user. */
+  commands: MachineCommand[];
 }
 
 export type RunnerEvent =
@@ -68,6 +83,8 @@ export interface RunnerOptions {
    * Returned fields are saved on the run. Errors are recorded on the run, never fail it.
    */
   afterFinish?: (run: AgentRun) => Promise<Partial<AgentRun> | void>;
+  /** Called after every successful heartbeat. */
+  onHub?: (update: HubUpdate) => void;
 }
 
 interface Live {
@@ -110,7 +127,7 @@ function killTree(child: ChildProcess): void {
 export class Runner {
   readonly store: RunStore;
   readonly #host: RunnerHost;
-  readonly #opts: Required<Omit<RunnerOptions, "onEvent" | "afterFinish">> & Pick<RunnerOptions, "onEvent" | "afterFinish">;
+  readonly #opts: Required<Omit<RunnerOptions, "onEvent" | "afterFinish" | "onHub">> & Pick<RunnerOptions, "onEvent" | "afterFinish" | "onHub">;
   readonly #live = new Map<string, Live>();
   readonly #inflight = new Set<Promise<void>>();
   readonly #waiting = new Map<string, string>();
@@ -286,7 +303,7 @@ export class Runner {
   }
 
   /** Reports queued and running runs to the hub and refreshes the shared quota cooldowns. No-op in local mode. */
-  async heartbeat(): Promise<{ duplicate: boolean } | null> {
+  async heartbeat(): Promise<HubUpdate | null> {
     if (this.#host.mode() !== "hub") {
       this.#shared.clear();
       return null;
@@ -303,7 +320,11 @@ export class Runner {
     }));
     const res = await this.#host
       .backend()
-      .call("machines.heartbeat", { machine: this.#host.machine(), instance: this.#instance, version: this.#opts.version, runs }, this.#runnerActor());
+      .call(
+        "machines.heartbeat",
+        { machine: this.#host.machine(), instance: this.#instance, version: this.#opts.version, runs, ...this.#host.report?.() },
+        this.#runnerActor(),
+      );
     const next = new Map(res.cooldowns.map((c) => [c.account, c]));
     // Cleared on the hub before it ended (someone pressed "Hết nghỉ"): end the local rest it came from too.
     const now = this.#iso();
@@ -315,7 +336,16 @@ export class Runner {
       }
     }
     this.#shared = next;
-    return { duplicate: res.duplicate };
+    const update: HubUpdate = { duplicate: res.duplicate, policy: res.policy, commands: res.commands };
+    this.#opts.onHub?.(update);
+    return update;
+  }
+
+  /** Reports progress on an admin's install request back to the hub, under this machine's heartbeat name. */
+  reportCommand(id: number, status: Exclude<CommandStatus, "pending" | "cancelled" | "expired">, output?: string): Promise<MachineCommand> {
+    return this.#host
+      .backend()
+      .call("machines.commandResult", { id, status: status as "running" | "done" | "failed" | "rejected", output: output?.slice(-8000) }, this.#runnerActor());
   }
 
   async tick(): Promise<void> {
