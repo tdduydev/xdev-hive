@@ -56,18 +56,21 @@ const mcpEntry = (agent: string, project: string) => ({
 
 const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : null);
 
-function writeIfChanged(file: string, content: string, label: string, mode?: number): FileAction {
+/** apply=false plans the change without touching disk (used by the setup status check). */
+function writeIfChanged(file: string, content: string, label: string, mode?: number, apply = true): FileAction {
   const before = read(file);
   if (before === content) return { file: label, action: "unchanged" };
-  mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, content);
-  if (mode) chmodSync(file, mode);
+  if (apply) {
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, content);
+    if (mode) chmodSync(file, mode);
+  }
   return { file: label, action: before === null ? "created" : "updated" };
 }
 
 type Json = Record<string, any>;
 
-function mergeJson(file: string, label: string, update: (json: Json) => Json): FileAction {
+function mergeJson(file: string, label: string, update: (json: Json) => Json, apply = true): FileAction {
   const before = read(file);
   let json: Json = {};
   if (before !== null) {
@@ -77,7 +80,10 @@ function mergeJson(file: string, label: string, update: (json: Json) => Json): F
       return { file: label, action: "skipped", note: "JSON không hợp lệ, sửa tay trước" };
     }
   }
-  return writeIfChanged(file, `${JSON.stringify(update(json), null, 2)}\n`, label);
+  const next = update(json);
+  // Same data in another layout is not a change: keep the user's formatting.
+  if (before !== null && JSON.stringify(next) === JSON.stringify(json)) return { file: label, action: "unchanged" };
+  return writeIfChanged(file, `${JSON.stringify(next, null, 2)}\n`, label, undefined, apply);
 }
 
 function withGuardHook(settings: Json): Json {
@@ -91,16 +97,16 @@ function withGuardHook(settings: Json): Json {
   return { ...settings, hooks: { ...hooks, PreToolUse: [...pre, guard] } };
 }
 
-function installPreCommit(repo: string): FileAction {
+function installPreCommit(repo: string, apply: boolean): FileAction {
   const file = path.join(repo, ".githooks", "pre-commit");
   const existing = read(file);
   if (existing !== null && !existing.includes(MARK)) {
     return { file: ".githooks/pre-commit", action: "skipped", note: "đã có hook khác, thêm kiểm tra của Hive bằng tay" };
   }
-  return writeIfChanged(file, PRE_COMMIT, ".githooks/pre-commit", 0o755);
+  return writeIfChanged(file, PRE_COMMIT, ".githooks/pre-commit", 0o755, apply);
 }
 
-function configureHooksPath(repo: string): FileAction {
+function configureHooksPath(repo: string, apply: boolean): FileAction {
   const label = "git config core.hooksPath";
   if (!isGitRepo(repo)) return { file: label, action: "skipped", note: "không phải git repo" };
   let current = "";
@@ -111,11 +117,11 @@ function configureHooksPath(repo: string): FileAction {
   }
   if (current === ".githooks") return { file: label, action: "unchanged" };
   if (current) return { file: label, action: "skipped", note: `đang là ${current}, chép .githooks/pre-commit vào đó` };
-  git(repo, ["config", "core.hooksPath", ".githooks"]);
+  if (apply) git(repo, ["config", "core.hooksPath", ".githooks"]);
   return { file: label, action: "updated", note: ".githooks" };
 }
 
-export function installCodexConfig(file: string): FileAction {
+export function installCodexConfig(file: string, apply = true): FileAction {
   const label = "~/.codex/config.toml";
   const before = read(file) ?? "";
   const start = before.indexOf(CODEX_START);
@@ -128,43 +134,109 @@ export function installCodexConfig(file: string): FileAction {
   } else {
     next = `${before}${before && !before.endsWith("\n") ? "\n" : ""}${before ? "\n" : ""}${CODEX_BLOCK}\n`;
   }
-  return writeIfChanged(file, next, label);
+  return writeIfChanged(file, next, label, undefined, apply);
 }
 
-/** Registers Hive's MCP server with Claude Code, Gemini CLI and Codex, and installs the doc guards. */
-export function installAgents(repo: string, project: string, opts: { home?: string } = {}): FileAction[] {
+/** Registers Hive's MCP server with Claude Code, Gemini CLI and Codex, and installs the doc guards. dryRun lists what would change. */
+export function installAgents(repo: string, project: string, opts: { home?: string; dryRun?: boolean } = {}): FileAction[] {
   const home = opts.home ?? os.homedir();
+  const apply = !opts.dryRun;
   return [
-    mergeJson(path.join(repo, ".mcp.json"), ".mcp.json", (j) => ({
-      ...j,
-      mcpServers: { ...j.mcpServers, [MCP_NAME]: mcpEntry("claude", project) },
-    })),
-    mergeJson(path.join(repo, ".gemini", "settings.json"), ".gemini/settings.json", (j) => {
-      const names = new Set<string>([j.contextFileName ?? []].flat());
-      names.add("AGENTS.md");
-      return { ...j, contextFileName: [...names], mcpServers: { ...j.mcpServers, [MCP_NAME]: mcpEntry("gemini", project) } };
-    }),
-    mergeJson(path.join(repo, ".claude", "settings.json"), ".claude/settings.json", withGuardHook),
-    writeIfChanged(path.join(repo, ".xdev-hive", "guard-docs.sh"), GUARD_SCRIPT, ".xdev-hive/guard-docs.sh", 0o755),
-    installPreCommit(repo),
-    configureHooksPath(repo),
-    installCodexConfig(path.join(home, ".codex", "config.toml")),
+    mergeJson(
+      path.join(repo, ".mcp.json"),
+      ".mcp.json",
+      (j) => ({ ...j, mcpServers: { ...j.mcpServers, [MCP_NAME]: mcpEntry("claude", project) } }),
+      apply,
+    ),
+    mergeJson(
+      path.join(repo, ".gemini", "settings.json"),
+      ".gemini/settings.json",
+      (j) => {
+        const names = new Set<string>([j.contextFileName ?? []].flat());
+        names.add("AGENTS.md");
+        return { ...j, contextFileName: [...names], mcpServers: { ...j.mcpServers, [MCP_NAME]: mcpEntry("gemini", project) } };
+      },
+      apply,
+    ),
+    mergeJson(path.join(repo, ".claude", "settings.json"), ".claude/settings.json", withGuardHook, apply),
+    writeIfChanged(path.join(repo, ".xdev-hive", "guard-docs.sh"), GUARD_SCRIPT, ".xdev-hive/guard-docs.sh", 0o755, apply),
+    installPreCommit(repo, apply),
+    configureHooksPath(repo, apply),
+    installCodexConfig(path.join(home, ".codex", "config.toml"), apply),
   ];
 }
 
+// ── codegraph and superpowers (optional, per repo) ─────────────────────────────
+
+export const CODEGRAPH_PACKAGE = "@colbymchenry/codegraph@1.6.0";
+export const SUPERPOWERS_PLUGIN = "superpowers@claude-plugins-official";
+
+/** Same entry as this repo's .mcp.json: pinned version, no telemetry, no update check. */
+export const CODEGRAPH_MCP = {
+  type: "stdio",
+  command: "npx",
+  args: ["-y", CODEGRAPH_PACKAGE, "serve", "--mcp"],
+  env: { CODEGRAPH_TELEMETRY: "0", CODEGRAPH_NO_UPDATE_CHECK: "1" },
+};
+
+/** Adds the codegraph MCP server to the repo's .mcp.json, unless one is already configured there. */
+export function installCodegraphMcp(repo: string, opts: { dryRun?: boolean } = {}): FileAction {
+  return mergeJson(
+    path.join(repo, ".mcp.json"),
+    ".mcp.json",
+    (j) => (j.mcpServers?.codegraph ? j : { ...j, mcpServers: { ...j.mcpServers, codegraph: CODEGRAPH_MCP } }),
+    !opts.dryRun,
+  );
+}
+
+/** Enables superpowers in the repo's Claude Code settings (keeps hooks and other plugins). */
+export function enableSuperpowers(repo: string, opts: { dryRun?: boolean } = {}): FileAction {
+  return mergeJson(
+    path.join(repo, ".claude", "settings.json"),
+    ".claude/settings.json",
+    (j) => (j.enabledPlugins?.[SUPERPOWERS_PLUGIN] === true ? j : { ...j, enabledPlugins: { ...j.enabledPlugins, [SUPERPOWERS_PLUGIN]: true } }),
+    !opts.dryRun,
+  );
+}
+
+// ── hive-mcp shim ──────────────────────────────────────────────────────────────
+
 const shq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 
-/** Installs `hive-mcp`, which runs the bundled MCP server with the app's own Electron binary as Node. */
-export function installShim(opts: { electronPath: string; entry: string; binDir?: string }): ShimReport {
+export interface ShimOptions {
+  electronPath: string;
+  entry: string;
+  binDir?: string;
+}
+
+function shimFile(opts: ShimOptions): { binDir: string; target: string; script: string } {
   const windows = process.platform === "win32";
   const binDir = opts.binDir ?? (windows ? path.join(os.homedir(), ".xdev-hive", "bin") : path.join(os.homedir(), ".local", "bin"));
   const target = path.join(binDir, windows ? `${SHIM_NAME}.cmd` : SHIM_NAME);
   const script = windows
     ? `@echo off\r\nrem ${MARK}: MCP launcher installed by xDev Hive\r\nset ELECTRON_RUN_AS_NODE=1\r\n"${opts.electronPath}" "${opts.entry}" %*\r\n`
     : `#!/bin/sh\n# ${MARK}: MCP launcher installed by xDev Hive\nELECTRON_RUN_AS_NODE=1 exec ${shq(opts.electronPath)} ${shq(opts.entry)} "$@"\n`;
+  return { binDir, target, script };
+}
+
+/** Installs `hive-mcp`, which runs the bundled MCP server with the app's own Electron binary as Node. */
+export function installShim(opts: ShimOptions, pathEnv = process.env.PATH ?? ""): ShimReport {
+  const { binDir, target, script } = shimFile(opts);
   mkdirSync(binDir, { recursive: true });
   writeFileSync(target, script);
-  if (!windows) chmodSync(target, 0o755);
-  const onPath = (process.env.PATH ?? "").split(path.delimiter).includes(binDir);
-  return { path: target, onPath };
+  if (process.platform !== "win32") chmodSync(target, 0o755);
+  return { path: target, onPath: pathEnv.split(path.delimiter).includes(binDir) };
+}
+
+/**
+ * installed: points at this app · outdated: a hive-mcp from another build (e.g. dev vs packaged) ·
+ * missing: none, or a file of the same name that Hive did not write.
+ */
+export function shimStatus(opts: ShimOptions, pathEnv: string): ShimReport & { state: "installed" | "outdated" | "missing"; foreign: boolean } {
+  const { binDir, target, script } = shimFile(opts);
+  const current = read(target);
+  const onPath = pathEnv.split(path.delimiter).includes(binDir);
+  if (current === null) return { path: target, onPath, state: "missing", foreign: false };
+  if (current === script) return { path: target, onPath, state: "installed", foreign: false };
+  return { path: target, onPath, state: current.includes(MARK) ? "outdated" : "missing", foreign: !current.includes(MARK) };
 }

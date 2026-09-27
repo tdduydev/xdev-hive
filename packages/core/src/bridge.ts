@@ -1,6 +1,7 @@
 // Contracts between the shared UI and its hosts (web hub, desktop main process). Types only.
 import type { AgentKind, AgentProfile, AgentRole, RunnerSettings, RunStatus } from "./agents.ts";
 import type { MrSettings, MrState } from "./gitlab.ts";
+import type { TransferReport } from "./transfer.ts";
 import type { Role } from "./types.ts";
 
 export interface Me {
@@ -79,6 +80,33 @@ export interface GitLabCheck {
   message: string;
 }
 
+/** installed: nothing to do · missing: the app can install it · outdated: installed for another build · manual: needs a hand edit. */
+export type SetupState = "installed" | "missing" | "outdated" | "manual";
+
+/** Something the desktop checks on this machine or in a repo, and the fix it can apply. */
+export interface SetupItem {
+  /** cli:<kind> · shim · <project>:agents · <project>:codegraph-mcp · <project>:codegraph-index · <project>:superpowers */
+  id: string;
+  label: string;
+  state: SetupState;
+  /** Version and path when installed, otherwise what is missing. */
+  detail: string;
+  /** Install button label, when the app can fix it itself. */
+  action: string | null;
+}
+
+export interface SetupReport {
+  machine: SetupItem[];
+  projects: Array<{ project: string; repo: string; items: SetupItem[] }>;
+}
+
+export interface SetupInstallResult {
+  /** The item as re-checked after installing. */
+  item: SetupItem;
+  /** Tail of the installer output (npm, codegraph…) or the files written. */
+  output: string;
+}
+
 export interface AgentProfileStatus extends AgentProfile {
   running: number;
   /** Set while the subscription is resting after a rate limit (or a missing CLI). */
@@ -86,6 +114,8 @@ export interface AgentProfileStatus extends AgentProfile {
   cooldownReason: string | null;
   /** Hub actor of the machine that reported the rest, when it came from the hub (shared account). */
   cooldownFrom: string | null;
+  /** Where the profile's CLI resolves on the login-shell PATH; null = not installed. */
+  cliPath: string | null;
   lastUsedAt: string | null;
   stats: { runs: number; succeeded: number; failed: number; rateLimited: number };
 }
@@ -173,4 +203,11 @@ export interface DesktopBridge {
   checkGitLab(): Promise<GitLabCheck>;
   /** Push the task branch and open/update its MR now (ignores the automatic rules). */
   createMergeRequest(runId: string): Promise<AgentRun>;
+
+  /** What is installed on this machine and in each project repo. */
+  setupStatus(): Promise<SetupReport>;
+  /** Installs one SetupItem (by id) and re-checks it. */
+  installSetup(id: string): Promise<SetupInstallResult>;
+  /** push: this machine's local database → hub · pull: hub → local database. Needs the hub URL and token. */
+  transferHub(direction: "push" | "pull"): Promise<TransferReport>;
 }
