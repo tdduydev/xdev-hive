@@ -1,6 +1,7 @@
 # Hub behind Caddy (automatic HTTPS). From the repo root:
 #   HIVE_HOSTNAME=hive.example.com docker compose -f deploy/compose.yaml up -d --build
-#   docker compose -f deploy/compose.yaml logs hub    # first start prints the admin token
+#   docker compose -f deploy/compose.yaml logs hub    # first start prints the admin's temporary password
+# Behind a Cloudflare Tunnel instead of Caddy: see compose.tunnel.yaml.
 # DNS for HIVE_HOSTNAME must point here and ports 80/443 must be reachable for the certificate.
 services:
   hub:
