@@ -5,8 +5,9 @@ import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@xdev-hive/ui/components/ui/toggle-group";
 import { Diff } from "../components/Diff.tsx";
-import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
+import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
 import { formatTime, useAction, useHive, useQuery } from "../hooks.ts";
+import { docOwner, inScope, scopeLabel } from "../lib/scope.ts";
 
 const STATUS_LABEL: Record<Proposal["status"], string> = {
   pending: "Chờ duyệt",
@@ -18,12 +19,15 @@ const STATUS_LABEL: Record<Proposal["status"], string> = {
 const SEGMENT = "data-[state=on]:bg-brand-soft data-[state=on]:font-semibold data-[state=on]:text-brand-soft-foreground";
 
 export function ProposalsPage() {
-  const { client } = useHive();
+  const { client, scope } = useHive();
   const [onlyPending, setOnlyPending] = useState(true);
   const list = useQuery(
     () => client.call("proposals.list", onlyPending ? { status: "pending" } : {}),
     [client, onlyPending],
   );
+  // Shared-doc proposals show in every project's scope (see lib/scope.ts).
+  const proposals = list.data?.filter((p) => inScope(scope, docOwner(p.docKey)));
+  const where = scope.kind === "all" ? "" : ` trong phạm vi “${scopeLabel(scope)}”`;
 
   return (
     <Page>
@@ -50,9 +54,11 @@ export function ProposalsPage() {
         }
       />
       <ErrorNote error={list.error} />
-      {list.data?.length === 0 ? <Empty>{onlyPending ? "Không có đề xuất nào đang chờ." : "Chưa có đề xuất nào."}</Empty> : null}
+      {proposals?.length === 0 ? (
+        <Empty>{onlyPending ? `Không có đề xuất nào đang chờ${where}.` : `Chưa có đề xuất nào${where}.`}</Empty>
+      ) : null}
       <div className="flex flex-col gap-4">
-        {list.data?.map((p) => <ProposalCard key={p.id} proposal={p} onChanged={list.reload} />)}
+        {proposals?.map((p) => <ProposalCard key={p.id} proposal={p} onChanged={list.reload} />)}
       </div>
     </Page>
   );
@@ -85,7 +91,8 @@ function ProposalCard({ proposal: p, onChanged }: { proposal: Proposal; onChange
             <div className="flex min-w-0 flex-1 flex-col gap-1.5">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone={STATUS_TONE[p.status]}>{STATUS_LABEL[p.status]}</Badge>
-                <span className="font-mono text-xs break-all">{p.docKey}</span>
+                <OwnerBadge owner={docOwner(p.docKey)} />
+                <span className="min-w-0 font-mono text-xs break-all">{p.docKey}</span>
                 <span className="text-xs text-muted-foreground">
                   #{p.id} · dựa trên v{p.baseVersion}
                 </span>

@@ -57,7 +57,8 @@ export type MemoryStatus = (typeof MEMORY_STATUSES)[number];
 
 export interface Memory {
   id: number;
-  project: string;
+  /** null: shared by the whole team, seen from every project. */
+  project: string | null;
   kind: MemoryKind;
   content: string;
   author: string;

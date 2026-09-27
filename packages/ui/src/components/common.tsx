@@ -29,6 +29,19 @@ export function ErrorNote({ error }: { error: string | null | undefined }) {
   );
 }
 
+/** Who an item belongs to: "Chung" (every project, owner null) or the project key. */
+export function OwnerBadge({ owner, className }: { owner: string | null; className?: string }) {
+  return owner === null ? (
+    <Badge tone="accent" className={className}>
+      Chung
+    </Badge>
+  ) : (
+    <UiBadge variant="outline" className={cn("font-mono font-normal text-muted-foreground", className)}>
+      {owner}
+    </UiBadge>
+  );
+}
+
 const NOTICE = {
   ok: { icon: CircleCheck, className: "border-success/30 bg-success/8 text-success" },
   warn: { icon: TriangleAlert, className: "border-warning/35 bg-warning/10 text-warning" },

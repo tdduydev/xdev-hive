@@ -96,28 +96,32 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     {
       title: "Search team memory",
       description:
-        "Search decisions, conventions, gotchas and context recorded by any agent on this project. Empty query returns the latest entries.",
+        'Search decisions, conventions, gotchas and context recorded by any agent on this project, plus team-wide entries (project: null means shared by every project). Empty query returns the latest entries.',
       inputSchema: { project, query: z.string().optional(), limit: z.number().int().min(1).max(50).optional() },
       annotations: readOnly,
     },
-    withProject(async ({ project: p, query, limit }) => run("memory.search", { project: p, query, limit })),
+    withProject(async ({ project: p, query, limit }) => run("memory.search", { project: p, query, limit, includeShared: true })),
   );
 
   server.registerTool(
     "memory_write",
     {
       title: "Record team memory",
-      description: "Record one durable fact for every other agent: a decision, convention, gotcha or context. Keep it short. No secrets.",
+      description:
+        "Record one durable fact for every other agent: a decision, convention, gotcha or context. Keep it short. No secrets. " +
+        "shared: true only for something true in every project of the team (e.g. an org-wide convention); otherwise it belongs to this project.",
       inputSchema: {
         project,
+        shared: z.boolean().optional().describe("Team-wide entry seen from every project (no project then)"),
         kind: z.enum(MEMORY_KINDS),
         content: z.string(),
         taskId: z.string().optional(),
       },
     },
-    withProject(async ({ project: p, kind, content, taskId }) =>
-      run("memory.write", { project: p, kind, content, taskId }),
-    ),
+    async ({ project: p, shared, kind, content, taskId }) => {
+      if (shared) return run("memory.write", { shared: true, kind, content, taskId });
+      return withProject(async ({ project: q }: { project: string }) => run("memory.write", { project: q, kind, content, taskId }))({ project: p });
+    },
   );
 
   server.registerTool(
