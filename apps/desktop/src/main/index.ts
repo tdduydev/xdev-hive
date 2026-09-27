@@ -28,6 +28,7 @@ import {
   gitlabSettingsSchema,
   loadConfig,
   localDbPath,
+  pinMachine,
   resolveBackend,
   runnerSettingsSchema,
   saveConfig,
@@ -60,6 +61,11 @@ const actor = (): Actor =>
 
 function reload(): void {
   config = loadConfig();
+  try {
+    pinMachine(config);
+  } catch (err) {
+    console.warn("[xdev-hive] could not pin the machine name in config.json:", toErrorPayload(err).message);
+  }
   backend = resolveBackend(config);
 }
 
@@ -67,10 +73,13 @@ const resource = (...p: string[]) =>
   app.isPackaged ? path.join(process.resourcesPath, ...p) : path.join(app.getAppPath(), ...p);
 const mcpEntry = () => (app.isPackaged ? resource("mcp", "hive-mcp.mjs") : resource("out", "mcp", "hive-mcp.mjs"));
 const trayIcon = () => (app.isPackaged ? resource("icons", "trayTemplate.png") : resource("resources", "trayTemplate.png"));
+/** Window icon on Windows/Linux and the Dock icon in dev; packaged macOS builds use build/icon.icns. */
+const appIcon = () => (app.isPackaged ? resource("icons", "icon.png") : resource("resources", "icon.png"));
 
 function settings(): DesktopSettings {
   return {
     mode: config.mode,
+    machine: config.machine,
     hubUrl: config.hub.url,
     hasHubToken: config.hub.token.length > 0,
     projects: config.projects,
@@ -285,7 +294,7 @@ function registerIpc(): void {
   handle("desktop:profiles", () => runner.profileStatuses());
   handle("desktop:saveProfile", saveProfile);
   handle("desktop:removeProfile", removeProfile);
-  handle("desktop:resetCooldown", (id: string) => (runner.resetCooldown(id), runner.profileStatuses()));
+  handle("desktop:resetCooldown", async (id: string) => (await runner.resetCooldown(id), runner.profileStatuses()));
   handle("desktop:checkProfile", checkProfile);
   handle("desktop:startRun", (req: StartRunRequest) => runner.enqueue(req));
   handle("desktop:runs", (filter?: { project?: string; limit?: number }) => runner.list(filter));
@@ -308,6 +317,7 @@ function createWindow(): void {
     show: false,
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: { x: 14, y: 14 },
+    ...(process.platform === "darwin" ? {} : { icon: appIcon() }),
     webPreferences: {
       preload: path.join(import.meta.dirname, "../preload/index.cjs"),
       contextIsolation: true,
@@ -434,11 +444,18 @@ if (!app.requestSingleInstanceLock()) {
         settings: () => config.runner,
         projects: () => config.projects,
         mode: () => config.mode,
+        machine: () => config.machine,
         env: agentEnv,
       },
-      { dataDir: path.dirname(configPath()), onEvent: onRunnerEvent, afterFinish: (run) => mergeRequester.afterFinish(run) },
+      {
+        dataDir: path.dirname(configPath()),
+        version: app.getVersion(),
+        onEvent: onRunnerEvent,
+        afterFinish: (run) => mergeRequester.afterFinish(run),
+      },
     );
     runner.start();
+    if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(appIcon());
     registerIpc();
     createWindow();
     if (!smokeShot) createTray();

@@ -8,6 +8,7 @@
     "build": "vite build",
     "start": "NODE_ENV=production node src/server.ts",
     "token": "node src/cli.ts",
+    "backup": "node src/cli.ts backup",
     "typecheck": "tsc -p tsconfig.json && tsc -p client/tsconfig.json"
   },
   "dependencies": {

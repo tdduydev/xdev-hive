@@ -5,13 +5,14 @@ import { HiveContext, useQuery } from "./hooks.ts";
 import { AgentsPage } from "./pages/Agents.tsx";
 import { BoardPage } from "./pages/Board.tsx";
 import { DocsPage } from "./pages/Docs.tsx";
+import { MachinesPage } from "./pages/Machines.tsx";
 import { MemoryPage } from "./pages/Memory.tsx";
 import { ProjectsPage } from "./pages/Projects.tsx";
 import { ProposalsPage } from "./pages/Proposals.tsx";
 import { TasksPage } from "./pages/Tasks.tsx";
 import { TokensPage } from "./pages/Tokens.tsx";
 
-type PageId = "board" | "docs" | "proposals" | "memory" | "tasks" | "agents" | "tokens" | "projects";
+type PageId = "board" | "docs" | "proposals" | "memory" | "tasks" | "agents" | "machines" | "tokens" | "projects";
 
 const PAGES: Record<PageId, { label: string; render: () => ReactNode }> = {
   board: { label: "Board", render: () => <BoardPage /> },
@@ -20,6 +21,7 @@ const PAGES: Record<PageId, { label: string; render: () => ReactNode }> = {
   proposals: { label: "Đề xuất", render: () => <ProposalsPage /> },
   memory: { label: "Memory", render: () => <MemoryPage /> },
   tasks: { label: "Task", render: () => <TasksPage /> },
+  machines: { label: "Máy & run", render: () => <MachinesPage /> },
   tokens: { label: "Token", render: () => <TokensPage /> },
   projects: { label: "Dự án & cài đặt", render: () => <ProjectsPage /> },
 };
@@ -45,10 +47,12 @@ export function HiveApp({ client, onSignOut }: { client: HiveClient; onSignOut?:
 
   const nav = useMemo(() => {
     const ids: PageId[] = client.desktop ? ["board", "docs", "proposals", "memory", "tasks", "agents"] : ["docs", "proposals", "memory", "tasks"];
+    // Machines only report to a hub; a local database never has any.
+    if (me.data?.mode === "hub") ids.push("machines");
     if (client.tokens && me.data?.role === "admin") ids.push("tokens");
     if (client.desktop) ids.push("projects");
     return ids;
-  }, [client, me.data?.role]);
+  }, [client, me.data?.role, me.data?.mode]);
 
   if (me.error) {
     return (

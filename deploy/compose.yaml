@@ -1,0 +1,38 @@
+# Hub behind Caddy (automatic HTTPS). From the repo root:
+#   HIVE_HOSTNAME=hive.example.com docker compose -f deploy/compose.yaml up -d --build
+#   docker compose -f deploy/compose.yaml logs hub    # first start prints the admin token
+# DNS for HIVE_HOSTNAME must point here and ports 80/443 must be reachable for the certificate.
+services:
+  hub:
+    build: ..
+    restart: unless-stopped
+    environment:
+      HIVE_ALLOWED_HOSTS: ${HIVE_HOSTNAME:?set HIVE_HOSTNAME, e.g. hive.example.com}
+      HIVE_BOOTSTRAP_TOKEN: ${HIVE_BOOTSTRAP_TOKEN:-}
+      HIVE_MEMORY_APPROVAL: ${HIVE_MEMORY_APPROVAL:-on}
+      HIVE_BACKUP_HOURS: ${HIVE_BACKUP_HOURS:-24}
+      HIVE_BACKUP_KEEP: ${HIVE_BACKUP_KEEP:-7}
+    volumes:
+      - hive-data:/data
+      # Snapshots on a different disk than the database survive losing it. Default: same volume.
+      - ${HIVE_BACKUP_PATH:-hive-backups}:/data/backups
+    expose:
+      - "7788"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [hub]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      HIVE_HOSTNAME: ${HIVE_HOSTNAME}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+
+volumes:
+  hive-data:
+  hive-backups:
+  caddy-data:

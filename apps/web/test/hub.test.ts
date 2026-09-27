@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
 import type { AddressInfo } from "node:net";
+import os from "node:os";
+import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -63,6 +66,20 @@ describe("hub REST", () => {
     assert.deepEqual(body.result, { name: "codex@duy-macbook", role: "agent", mode: "hub" });
   });
 
+  it("keeps the machine part of long agent labels, so two machines on one token get different leases", async () => {
+    const label = `${"p".repeat(40)}.${"m".repeat(24)}`;
+    const res = await fetch(`${base}/api/me`, { headers: { authorization: `Bearer ${tok.agent}`, "x-hive-agent": label } });
+    assert.equal(((await res.json()) as { result: { name: string } }).result.name, `${label}@duy-macbook`);
+  });
+
+  it("keys machine heartbeats by runner label and token, readable by viewers", async () => {
+    const beat = { machine: "duy-mbp", instance: "0123abcd", version: "0.1.0" };
+    assert.equal((await rpc(tok.viewer, "machines.heartbeat", beat, "runner.pm")).status, 403);
+    assert.equal((await rpc(tok.agent, "machines.heartbeat", beat, "runner.duy-mbp")).status, 200);
+    const list = await rpc(tok.viewer, "machines.list", {});
+    assert.deepEqual(list.body.result.map((m: { id: string; online: boolean }) => [m.id, m.online]), [["runner.duy-mbp@duy-macbook", true]]);
+  });
+
   it("applies roles: viewer reads, agent proposes, admin approves", async () => {
     assert.equal((await rpc(tok.viewer, "docs.list")).status, 200);
     assert.equal((await rpc(tok.viewer, "memory.write", { project: "app", kind: "gotcha", content: "x" })).status, 403);
@@ -123,5 +140,27 @@ describe("hub as a backend", () => {
     const res = await client.callTool({ name: "task_list", arguments: { project: "app" } });
     assert.equal(res.isError, undefined);
     await client.close();
+  });
+});
+
+describe("hub UI", () => {
+  it("serves the SPA from an install path with a dot directory (~/.local, .claude/worktrees…)", async () => {
+    const dir = path.join(mkdtempSync(path.join(os.tmpdir(), "hive-ui-")), ".local", "client");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "index.html"), "<!doctype html><title>xDev Hive</title>");
+    const hive = new SqliteHive(":memory:");
+    const server = createHubApp({ hive, tokens: new TokenStore(hive.db), ui: { dir } }).listen(0, "127.0.0.1");
+    await new Promise((r) => server.once("listening", r));
+    try {
+      const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      for (const route of ["/", "/docs"]) {
+        const res = await fetch(`${url}${route}`);
+        assert.equal(res.status, 200, route);
+        assert.match(await res.text(), /<title>xDev Hive<\/title>/);
+      }
+    } finally {
+      server.close();
+      hive.close();
+    }
   });
 });

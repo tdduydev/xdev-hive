@@ -77,3 +77,38 @@ export interface Task {
   note: string | null;
   updatedAt: string;
 }
+
+/** A queued or running agent run, as a desktop runner reports it to the hub. */
+export interface MachineRun {
+  runId: string;
+  project: string;
+  taskId: string;
+  taskTitle: string;
+  role: "plan" | "implement" | "review";
+  status: "queued" | "running";
+  profileId: string | null;
+  since: string;
+}
+
+/** A desktop runner as the hub last heard from it. */
+export interface Machine {
+  /** Hub actor of the heartbeat: `runner.<machine>@<token>`. */
+  id: string;
+  machine: string;
+  version: string;
+  lastSeen: string;
+  /** Heard from in the last 2 minutes. */
+  online: boolean;
+  /** Two app instances heartbeat under this id: same machine name and token, so they share task leases. */
+  duplicate: boolean;
+  runs: MachineRun[];
+}
+
+/** A subscription account resting after a rate limit, shared by every machine logged into it. */
+export interface QuotaCooldown {
+  account: string;
+  until: string;
+  reason: string;
+  reportedBy: string;
+  updatedAt: string;
+}

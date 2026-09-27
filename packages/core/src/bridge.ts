@@ -48,6 +48,8 @@ export interface DesktopProject {
 
 export interface DesktopSettings {
   mode: "local" | "hub";
+  /** Name of this machine in hub leases (config.json `machine`). */
+  machine: string;
   hubUrl: string;
   hasHubToken: boolean;
   projects: DesktopProject[];
@@ -82,6 +84,8 @@ export interface AgentProfileStatus extends AgentProfile {
   /** Set while the subscription is resting after a rate limit (or a missing CLI). */
   cooldownUntil: string | null;
   cooldownReason: string | null;
+  /** Hub actor of the machine that reported the rest, when it came from the hub (shared account). */
+  cooldownFrom: string | null;
   lastUsedAt: string | null;
   stats: { runs: number; succeeded: number; failed: number; rateLimited: number };
 }
