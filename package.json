@@ -16,7 +16,8 @@
     "dev:desktop": "npm run dev -w @xdev-hive/desktop",
     "build": "npm run build -w @xdev-hive/web && npm run build -w @xdev-hive/desktop",
     "test": "node --test \"packages/*/test/*.test.ts\" \"apps/*/test/*.test.ts\"",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "codegraph:init": "npx -y @colbymchenry/codegraph@1.6.0 telemetry off && npx -y @colbymchenry/codegraph@1.6.0 init"
   },
   "devDependencies": {
     "@types/node": "^24.9.0",
