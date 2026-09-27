@@ -5,6 +5,7 @@ export type * from "./bridge.ts";
 export * from "./errors.ts";
 export * from "./keys.ts";
 export * from "./methods.ts";
+export * from "./policy.ts";
 export * from "./secrets.ts";
 export * from "./sync.ts";
 export * from "./transfer.ts";

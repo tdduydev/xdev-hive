@@ -29,6 +29,8 @@ export function AgentsPage() {
   const [tick, setTick] = useState(0);
   const profiles = useQuery(() => desktop.profiles(), [desktop, tick]);
   const settings = useQuery(() => desktop.settings(), [desktop]);
+  const requests = useQuery(() => desktop.hubRequests(), [desktop]);
+  const templates = requests.data?.policy?.profileTemplates ?? [];
   const [editing, setEditing] = useState<{ profile: AgentProfile; previousId?: string } | null>(null);
   const refresh = () => setTick((t) => t + 1);
 
@@ -55,6 +57,25 @@ export function AgentsPage() {
           </button>
         ))}
       </div>
+      {templates.length ? (
+        <div className="row gap-s wrap">
+          <span className="muted small">Mẫu của team (từ hub):</span>
+          {templates.map((t) => {
+            const exists = (profiles.data ?? []).some((p) => p.id === t.id);
+            return (
+              <button
+                key={t.id}
+                className="btn btn-small"
+                disabled={exists}
+                title={exists ? "Máy này đã có profile cùng id" : "Mở form với mẫu này; thêm env (thư mục đăng nhập) của máy bạn rồi lưu"}
+                onClick={() => setEditing({ profile: { ...t, env: {} } })}
+              >
+                + {t.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
       {editing ? (
         <ProfileForm
           key={editing.previousId ?? editing.profile.id}

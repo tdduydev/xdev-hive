@@ -7,7 +7,7 @@ import { describe, it } from "node:test";
 import { AGENT_TEMPLATES, type Actor, type AgentProfile, type HiveBackend, type RunnerSettings } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { parseResetTime, detectRateLimit } from "../src/main/runner/rate-limit.ts";
-import { Runner, type RunnerHost } from "../src/main/runner/runner.ts";
+import { Runner, type HubUpdate, type RunnerHost } from "../src/main/runner/runner.ts";
 import { pickProfile, type ProfileLoad } from "../src/main/runner/schedule.ts";
 
 const FAKE = path.join(import.meta.dirname, "fixtures", "fake-agent.mjs");
@@ -34,7 +34,7 @@ async function setup(
   settings: Partial<RunnerSettings> = {},
   mode: "local" | "hub" = "local",
   /** Pass another setup's hive to simulate a second machine on the same hub. */
-  machine: { name?: string; hive?: SqliteHive } = {},
+  machine: { name?: string; hive?: SqliteHive; report?: RunnerHost["report"] } = {},
 ) {
   const repo = tmp("repo");
   git(repo, "init", "-q", "-b", "main");
@@ -55,14 +55,16 @@ async function setup(
     mode: () => mode,
     machine: () => machine.name ?? "duy-mbp",
     env: () => ({ ...process.env }),
+    report: machine.report,
   };
   const dataDir = tmp("data");
-  const runner = new Runner(host, { dataDir, user: "duy", tickMs: 60_000 });
+  const hubUpdates: HubUpdate[] = [];
+  const runner = new Runner(host, { dataDir, user: "duy", tickMs: 60_000, onHub: (u) => hubUpdates.push(u) });
   if (!machine.hive) await hive.call("tasks.create", { id: "T-1", project: "demo", title: "Thêm trang cài đặt" }, admin);
   const calls = () =>
     existsSync(record) ? readFileSync(record, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { agent: string; prompt: string; cwd: string }) : [];
   const task = async () => (await hive.call("tasks.list", { project: "demo" }, admin)).find((t) => t.id === "T-1")!;
-  return { repo, hive, runner, dataDir, calls, task };
+  return { repo, hive, runner, dataDir, calls, task, hubUpdates };
 }
 
 async function until(check: () => boolean, ms = 10_000) {
@@ -256,7 +258,7 @@ describe("Runner", () => {
     const a = await setup([profile("claude-1", "claude", 10, "sleep")], {}, "hub", { name: "duy-mbp" });
     const run = await a.runner.enqueue({ project: "demo", taskId: "T-1" });
     await until(() => a.runner.log(run.id).includes("thinking"));
-    assert.deepEqual(await a.runner.heartbeat(), { duplicate: false });
+    assert.equal((await a.runner.heartbeat())?.duplicate, false);
     const [m] = await a.hive.call("machines.list", {}, admin);
     assert.equal(m!.id, "runner.duy-mbp@duy-macbook");
     assert.deepEqual(m!.runs.map((r) => [r.taskId, r.status, r.profileId]), [["T-1", "running", "claude-1"]]);
@@ -268,6 +270,32 @@ describe("Runner", () => {
 
     const local = await setup([profile("claude-1", "claude", 10, "ok")]);
     assert.equal(await local.runner.heartbeat(), null, "local mode has no hub to report to");
+  });
+
+  it("carries the setup report to the hub, gets an admin's request back, and reports how it went", async () => {
+    const report = {
+      machine: [{ id: "cli:codex", label: "Codex CLI", state: "missing" as const, detail: "Chưa cài", action: "Cài bằng npm" }],
+      projects: [],
+    };
+    const a = await setup([profile("claude-1", "claude", 10, "ok", { account: "claude-max-duy" })], {}, "hub", {
+      name: "duy-mbp",
+      report: () => ({ setup: { checkedAt: "2026-09-27T08:00:00.000Z", report }, profiles: [] }),
+    });
+    await a.runner.heartbeat();
+    const machineId = "runner.duy-mbp@duy-macbook";
+    const [m] = await a.hive.call("admin.machines", {}, admin);
+    assert.equal(m!.id, machineId);
+    assert.deepEqual(m!.setup, report);
+
+    const cmd = await a.hive.call("admin.commandCreate", { machineId, itemId: "cli:codex" }, admin);
+    const update = await a.runner.heartbeat();
+    assert.deepEqual(update?.commands.map((c) => c.id), [cmd.id]);
+    assert.equal(a.hubUpdates.at(-1)?.commands[0]?.label, "Cài bằng npm: Codex CLI");
+
+    await a.runner.reportCommand(cmd.id, "running");
+    const done = await a.runner.reportCommand(cmd.id, "done", "added 1 package");
+    assert.equal(done.status, "done");
+    assert.deepEqual((await a.runner.heartbeat())?.commands, []);
   });
 
   it("shares a quota cooldown with every machine on the same account, and ends it everywhere", async () => {

@@ -19,8 +19,11 @@ import {
   type DesktopSettingsPatch,
   type GitLabCheck,
   type HiveBackend,
+  type MachineCommand,
   type Me,
   type ProfileCheck,
+  type ReportedProfile,
+  type SetupReport,
   type StartRunRequest,
   type TransferReport,
   type TransferSide,
@@ -42,7 +45,7 @@ import { GitLabClient } from "./gitlab/client.ts";
 import { MergeRequester } from "./gitlab/mr.ts";
 import { installAgents, installShim } from "./installer.ts";
 import { expandEnv, expandHome, resolveBin } from "./runner/command.ts";
-import { Runner, type RunnerEvent } from "./runner/runner.ts";
+import { Runner, type HubUpdate, type RunnerEvent } from "./runner/runner.ts";
 import { agentPath } from "./runner/shell-path.ts";
 import { Setup } from "./setup.ts";
 import { syncProject } from "./sync.ts";
@@ -58,6 +61,11 @@ let tray: Tray | null = null;
 let runner: Runner;
 let mergeRequester: MergeRequester;
 let setup: Setup;
+/** Last setup check, sent to the hub with every heartbeat. */
+let setupCache: { checkedAt: string; report: SetupReport } | null = null;
+/** What the hub sent on the last heartbeat (hub mode only). */
+let hubState: HubUpdate | null = null;
+const notifiedCommands = new Set<number>();
 // Electron's network stack: honours system proxy settings and the macOS keychain's certificates.
 const gitlabFetch = (url: string, init: RequestInit) => net.fetch(url, init);
 let quitting = false;
@@ -248,6 +256,63 @@ async function transferHub(direction: unknown): Promise<TransferReport> {
   }
 }
 
+// ── setup status for the hub, and install requests from an admin ─────────────
+
+/** Re-checks this machine's setup; the next heartbeat carries it to the hub. */
+async function refreshSetup(): Promise<SetupReport> {
+  const report = await setup.status();
+  setupCache = { checkedAt: new Date().toISOString(), report };
+  return report;
+}
+
+/** Profiles without command line or env: the hub only needs to know what exists and whether it runs. */
+const reportedProfiles = (): ReportedProfile[] =>
+  runner.profileStatuses().map((p) => ({
+    id: p.id,
+    label: p.label,
+    kind: p.kind,
+    enabled: p.enabled,
+    account: p.account ?? null,
+    installed: p.cliPath !== null,
+    cooldownUntil: p.cooldownUntil,
+    runs: p.stats.runs,
+    rateLimited: p.stats.rateLimited,
+  }));
+
+function onHub(update: HubUpdate): void {
+  hubState = update;
+  for (const cmd of update.commands) {
+    if (notifiedCommands.has(cmd.id) || !Notification.isSupported()) continue;
+    notifiedCommands.add(cmd.id);
+    const n = new Notification({
+      title: "Yêu cầu cài đặt từ admin",
+      body: `${cmd.requestedBy}: ${cmd.label}. Mở Cài đặt máy để đồng ý hoặc từ chối.`,
+    });
+    n.on("click", () => {
+      showWindow();
+      win?.webContents.executeJavaScript('location.hash = "#/setup"').catch(() => undefined);
+    });
+    n.show();
+  }
+}
+
+/** Nothing an admin asks for runs until this machine's user approves it here. */
+async function answerCommand(id: unknown, approve: unknown): Promise<MachineCommand> {
+  const cmd = hubState?.commands.find((c) => c.id === id);
+  if (!cmd || !hubState) throw new HiveError("not_found", `Không có yêu cầu #${String(id)} đang chờ trên máy này.`);
+  hubState = { ...hubState, commands: hubState.commands.filter((c) => c.id !== cmd.id) };
+  if (approve !== true) return runner.reportCommand(cmd.id, "rejected");
+  await runner.reportCommand(cmd.id, "running");
+  try {
+    const result = await setup.install(cmd.itemId);
+    await refreshSetup().catch(() => undefined);
+    const status = result.item.state === "installed" ? "done" : "failed";
+    return await runner.reportCommand(cmd.id, status, `${result.item.state}: ${result.item.detail}\n\n${result.output}`);
+  } catch (err) {
+    return runner.reportCommand(cmd.id, "failed", toErrorPayload(err).message);
+  }
+}
+
 function knownPath(p: string): boolean {
   return config.projects.some((x) => x.repo === p) || runner.store.list({ limit: 500 }).some((r) => r.worktree === p);
 }
@@ -315,8 +380,17 @@ function registerIpc(): void {
   handle("desktop:syncProject", (name: string) => syncProject(backend, actor(), project(name), { autoCommit: config.sync.autoCommit }));
   handle("desktop:installAgents", (name: string) => installAgents(project(name).repo, name));
   handle("desktop:installShim", () => installShim({ electronPath: process.execPath, entry: mcpEntry() }, agentPath()));
-  handle("desktop:setupStatus", () => setup.status());
-  handle("desktop:installSetup", (id: unknown) => setup.install(String(id)));
+  handle("desktop:setupStatus", refreshSetup);
+  handle("desktop:installSetup", async (id: unknown) => {
+    const result = await setup.install(String(id));
+    await refreshSetup().catch(() => undefined);
+    return result;
+  });
+  handle("desktop:hubRequests", () => ({
+    policy: config.mode === "hub" ? (hubState?.policy ?? null) : null,
+    commands: config.mode === "hub" ? (hubState?.commands ?? []) : [],
+  }));
+  handle("desktop:answerCommand", answerCommand);
   handle("desktop:transferHub", transferHub);
   handle("desktop:showInFolder", async (p: string) => {
     if (!knownPath(p)) throw new HiveError("forbidden", "Chỉ mở được thư mục dự án hoặc worktree của run.");
@@ -478,12 +552,14 @@ if (!app.requestSingleInstanceLock()) {
         mode: () => config.mode,
         machine: () => config.machine,
         env: agentEnv,
+        report: () => ({ setup: setupCache ?? undefined, profiles: reportedProfiles() }),
       },
       {
         dataDir: path.dirname(configPath()),
         version: app.getVersion(),
         onEvent: onRunnerEvent,
         afterFinish: (run) => mergeRequester.afterFinish(run),
+        onHub,
       },
     );
     setup = new Setup({
@@ -493,6 +569,9 @@ if (!app.requestSingleInstanceLock()) {
       shim: { electronPath: process.execPath, entry: mcpEntry() },
     });
     runner.start();
+    // The hub's admin view shows each machine's setup: check at start, then every 10 minutes.
+    void refreshSetup().catch(() => undefined);
+    setInterval(() => void refreshSetup().catch(() => undefined), 10 * 60_000).unref();
     if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(appIcon());
     registerIpc();
     createWindow();

@@ -13,6 +13,13 @@ export function TokensPage() {
   const { client } = useHive();
   const tokens = client.tokens!;
   const list = useQuery(() => tokens.list(), [tokens]);
+  // Machines report as runner.<machine>@<token name>: group them under their token.
+  const machines = useQuery(() => client.call("admin.machines", {}), [client]);
+  const byToken = new Map<string, Array<{ machine: string; online: boolean }>>();
+  for (const m of machines.data ?? []) {
+    const name = m.id.slice(m.id.lastIndexOf("@") + 1);
+    byToken.set(name, [...(byToken.get(name) ?? []), { machine: m.machine, online: m.online }]);
+  }
   const [name, setName] = useState("");
   const [role, setRole] = useState<Role>("agent");
   const [created, setCreated] = useState<{ name: string; token: string } | null>(null);
@@ -84,6 +91,7 @@ export function TokensPage() {
               <tr>
                 <th>Tên</th>
                 <th>Vai trò</th>
+                <th>Máy</th>
                 <th>Tạo lúc</th>
                 <th>Dùng gần nhất</th>
                 <th />
@@ -95,6 +103,14 @@ export function TokensPage() {
                   <td>{t.name}</td>
                   <td>
                     <Badge tone={STATUS_TONE[t.role]}>{t.role}</Badge>
+                  </td>
+                  <td className="small">
+                    {(byToken.get(t.name) ?? []).map((m) => (
+                      <div key={m.machine}>
+                        <span className={`dot dot-${m.online ? "ok" : "neutral"}`} /> <span className="mono">{m.machine}</span>
+                      </div>
+                    ))}
+                    {byToken.get(t.name)?.length ? null : <span className="muted">—</span>}
                   </td>
                   <td className="small muted">{formatTime(t.createdAt)}</td>
                   <td className="small muted">{formatTime(t.lastUsedAt)}</td>
