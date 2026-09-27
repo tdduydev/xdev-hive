@@ -138,6 +138,17 @@ Agent không có app desktop (CI, cloud) gọi thẳng MCP qua HTTP: `POST https
 - `~/.xdev-hive/config.json` có quyền `0600` vì có thể chứa token hub.
 - Web lưu token trong `localStorage`. Khi đưa ra ngoài mạng nội bộ nên thay bằng đăng nhập GitLab OAuth.
 
+## Làm việc trên repo này với Claude Code
+
+Repo có sẵn cấu hình cho hai công cụ. Cả hai đều cần mỗi người **đồng ý một lần trên máy của mình** khi Claude Code hỏi lúc mở repo.
+
+- **[codegraph](https://github.com/colbymchenry/codegraph)** (MCP, khai báo trong `.mcp.json`): đồ thị symbol của code, lưu trong SQLite ngay trên máy, không cần API key. Tool chính là `codegraph_explore`, trả về mã nguồn liên quan kèm đường gọi hàm trong một lần gọi. Chạy qua `npx` với phiên bản ghim `1.6.0`. Lần đầu, npm tải gói cho đúng nền tảng (bản macOS arm64 khoảng 290 MB sau khi giải nén, vì có kèm runtime Node riêng).
+  - Tạo index một lần trên mỗi máy: `npm run codegraph:init`. Index nằm ở `.codegraph/` (đã gitignore). Sau đó MCP server (có một daemon nền cho mỗi project) tự cập nhật khi file đổi. Chưa có index thì tool chỉ trả về hướng dẫn, không báo lỗi.
+  - Codegraph mặc định gửi thống kê sử dụng ẩn danh ([TELEMETRY.md](https://github.com/colbymchenry/codegraph/blob/main/TELEMETRY.md)). Vì vậy `codegraph:init` chạy `codegraph telemetry off` trên máy trước (bật lại bằng `telemetry on`), và `.mcp.json` đặt `CODEGRAPH_TELEMETRY=0` cùng `CODEGRAPH_NO_UPDATE_CHECK=1`. Phiên bản đã ghim nên không cần kiểm tra bản mới.
+- **[superpowers](https://github.com/obra/superpowers)** (plugin, khai báo trong `.claude/settings.json` → `enabledPlugins`): bộ skill cho TDD, debug, lập kế hoạch… cùng hook lúc bắt đầu phiên. Plugin lấy từ marketplace chính thức `claude-plugins-official`. Nếu Claude Code báo plugin đã bật nhưng chưa cài, chạy `/plugin install superpowers@claude-plugins-official`.
+
+Cấu hình này chỉ áp dụng cho Claude Code. Codex và Gemini dùng được codegraph qua `codegraph install` (lệnh này ghi vào cấu hình toàn cục của từng agent trên máy).
+
 ## Việc tiếp theo
 
 - Đăng nhập GitLab OAuth cho hub, thay cho token dán tay.

@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "codegraph": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@colbymchenry/codegraph@1.6.0", "serve", "--mcp"],
+      "env": {
+        "CODEGRAPH_TELEMETRY": "0",
+        "CODEGRAPH_NO_UPDATE_CHECK": "1"
+      }
+    }
+  }
+}
