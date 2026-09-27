@@ -1,0 +1,444 @@
+import { DatabaseSync } from "node:sqlite";
+import { mkdirSync } from "node:fs";
+import path from "node:path";
+import { HiveError } from "./errors.ts";
+import { parseDocKey, titleFromSlug } from "./keys.ts";
+import {
+  authorize,
+  parseInput,
+  type HiveBackend,
+  type Method,
+  type MethodInput,
+  type MethodOutput,
+  type ParsedInput,
+} from "./methods.ts";
+import { assertNoSecret } from "./secrets.ts";
+import { SEED_DOCS } from "./seed.ts";
+import type { Actor, Doc, DocSummary, DocVersion, Memory, Proposal, Task } from "./types.ts";
+
+const MIGRATIONS: string[] = [
+  `
+  CREATE TABLE docs(
+    key TEXT PRIMARY KEY, scope TEXT NOT NULL, project TEXT, title TEXT NOT NULL,
+    content TEXT NOT NULL, version INTEGER NOT NULL, include_in_agents INTEGER NOT NULL DEFAULT 0,
+    updated_by TEXT NOT NULL, updated_at TEXT NOT NULL);
+  CREATE INDEX docs_project ON docs(project);
+  CREATE TABLE doc_versions(
+    key TEXT NOT NULL, version INTEGER NOT NULL, content TEXT NOT NULL, author TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, PRIMARY KEY(key, version));
+  CREATE TABLE proposals(
+    id INTEGER PRIMARY KEY, doc_key TEXT NOT NULL, base_version INTEGER NOT NULL, content TEXT NOT NULL,
+    reason TEXT NOT NULL, author TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+    reviewer TEXT, review_note TEXT, decided_at TEXT, created_at TEXT NOT NULL);
+  CREATE INDEX proposals_status ON proposals(status);
+  CREATE TABLE memory(
+    id INTEGER PRIMARY KEY, project TEXT NOT NULL, kind TEXT NOT NULL, content TEXT NOT NULL,
+    author TEXT NOT NULL, task_id TEXT, status TEXT NOT NULL, created_at TEXT NOT NULL);
+  CREATE INDEX memory_project ON memory(project, status);
+  CREATE VIRTUAL TABLE memory_fts USING fts5(
+    content, content='memory', content_rowid='id', tokenize='unicode61 remove_diacritics 2');
+  CREATE TRIGGER memory_ai AFTER INSERT ON memory BEGIN
+    INSERT INTO memory_fts(rowid, content) VALUES (new.id, new.content);
+  END;
+  CREATE TRIGGER memory_ad AFTER DELETE ON memory BEGIN
+    INSERT INTO memory_fts(memory_fts, rowid, content) VALUES ('delete', old.id, old.content);
+  END;
+  CREATE TRIGGER memory_au AFTER UPDATE OF content ON memory BEGIN
+    INSERT INTO memory_fts(memory_fts, rowid, content) VALUES ('delete', old.id, old.content);
+    INSERT INTO memory_fts(rowid, content) VALUES (new.id, new.content);
+  END;
+  CREATE TABLE tasks(
+    id TEXT PRIMARY KEY, project TEXT NOT NULL, title TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'todo',
+    owner TEXT, lease_until TEXT, note TEXT, updated_at TEXT NOT NULL);
+  CREATE INDEX tasks_project ON tasks(project, status);
+  `,
+];
+
+type Row = Record<string, unknown>;
+const str = (v: unknown) => v as string;
+const strOrNull = (v: unknown) => (v == null ? null : String(v));
+const num = (v: unknown) => Number(v);
+
+const toSummary = (r: Row): DocSummary => ({
+  key: str(r.key),
+  scope: str(r.scope) as DocSummary["scope"],
+  project: strOrNull(r.project),
+  title: str(r.title),
+  version: num(r.version),
+  includeInAgents: num(r.include_in_agents) === 1,
+  updatedBy: str(r.updated_by),
+  updatedAt: str(r.updated_at),
+});
+const toDoc = (r: Row): Doc => ({ ...toSummary(r), content: str(r.content) });
+const toVersion = (r: Row): DocVersion => ({
+  key: str(r.key),
+  version: num(r.version),
+  content: str(r.content),
+  author: str(r.author),
+  note: str(r.note),
+  createdAt: str(r.created_at),
+});
+const toProposal = (r: Row): Proposal => ({
+  id: num(r.id),
+  docKey: str(r.doc_key),
+  baseVersion: num(r.base_version),
+  content: str(r.content),
+  reason: str(r.reason),
+  author: str(r.author),
+  status: str(r.status) as Proposal["status"],
+  reviewer: strOrNull(r.reviewer),
+  reviewNote: strOrNull(r.review_note),
+  decidedAt: strOrNull(r.decided_at),
+  createdAt: str(r.created_at),
+});
+const toMemory = (r: Row): Memory => ({
+  id: num(r.id),
+  project: str(r.project),
+  kind: str(r.kind) as Memory["kind"],
+  content: str(r.content),
+  author: str(r.author),
+  taskId: strOrNull(r.task_id),
+  status: str(r.status) as Memory["status"],
+  createdAt: str(r.created_at),
+});
+const toTask = (r: Row): Task => ({
+  id: str(r.id),
+  project: str(r.project),
+  title: str(r.title),
+  status: str(r.status) as Task["status"],
+  owner: strOrNull(r.owner),
+  leaseUntil: strOrNull(r.lease_until),
+  note: strOrNull(r.note),
+  updatedAt: str(r.updated_at),
+});
+
+/** FTS5 query from free text: every word becomes a quoted prefix term, OR-ed together. */
+function ftsQuery(text: string): string | null {
+  const words = text.match(/[\p{L}\p{N}_]+/gu);
+  if (!words?.length) return null;
+  return words.map((w) => `"${w}"*`).join(" OR ");
+}
+
+export interface SqliteHiveOptions {
+  /** When true, memory written by non-admins stays `pending` (hidden from search) until an admin approves it. */
+  memoryRequiresApproval?: boolean;
+  /** Injectable clock for tests. */
+  now?: () => Date;
+}
+
+type Handlers = { [M in Method]: (input: ParsedInput<M>, actor: Actor) => MethodOutput[M] };
+
+export class SqliteHive implements HiveBackend {
+  readonly db: DatabaseSync;
+  readonly #opts: Required<SqliteHiveOptions>;
+  readonly #handlers: Handlers;
+
+  constructor(dbOrPath: DatabaseSync | string, opts: SqliteHiveOptions = {}) {
+    if (typeof dbOrPath === "string" && dbOrPath !== ":memory:") {
+      mkdirSync(path.dirname(dbOrPath), { recursive: true });
+    }
+    this.db = typeof dbOrPath === "string" ? new DatabaseSync(dbOrPath) : dbOrPath;
+    this.#opts = { memoryRequiresApproval: false, now: () => new Date(), ...opts };
+    this.db.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;");
+    this.#migrate();
+    this.#handlers = this.#buildHandlers();
+  }
+
+  async call<M extends Method>(method: M, input: MethodInput<M>, actor: Actor): Promise<MethodOutput[M]> {
+    authorize(method, actor);
+    const parsed = parseInput(method, input);
+    const handler = this.#handlers[method] as (i: ParsedInput<M>, a: Actor) => MethodOutput[M];
+    return handler(parsed, actor);
+  }
+
+  /** Creates the default org docs on an empty database. Safe to call on every start. */
+  seed(author = "xdev-hive"): void {
+    const count = num((this.db.prepare("SELECT COUNT(*) AS n FROM docs").get() as Row).n);
+    if (count > 0) return;
+    this.#tx(() => {
+      for (const d of SEED_DOCS) {
+        this.#writeDoc(d.key, d.content, { title: d.title, includeInAgents: d.includeInAgents, note: "Seed" }, author);
+      }
+    });
+  }
+
+  close(): void {
+    this.db.close();
+  }
+
+  #now(offsetMinutes = 0): string {
+    return new Date(this.#opts.now().getTime() + offsetMinutes * 60_000).toISOString();
+  }
+
+  #migrate(): void {
+    const current = num((this.db.prepare("PRAGMA user_version").get() as Row).user_version);
+    for (let v = current; v < MIGRATIONS.length; v++) {
+      this.#tx(() => {
+        this.db.exec(MIGRATIONS[v]!);
+        this.db.exec(`PRAGMA user_version = ${v + 1}`);
+      });
+    }
+  }
+
+  #tx<T>(fn: () => T): T {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const result = fn();
+      this.db.exec("COMMIT");
+      return result;
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+  }
+
+  #getDoc(key: string): Doc | null {
+    const row = this.db.prepare("SELECT * FROM docs WHERE key = ?").get(key) as Row | undefined;
+    return row ? toDoc(row) : null;
+  }
+
+  #writeDoc(
+    key: string,
+    content: string,
+    meta: { title?: string; includeInAgents?: boolean; note?: string },
+    author: string,
+  ): Doc {
+    const parsed = parseDocKey(key);
+    assertNoSecret(content, "Document content");
+    const existing = this.#getDoc(key);
+    const version = (existing?.version ?? 0) + 1;
+    const now = this.#now();
+    const title = meta.title ?? existing?.title ?? titleFromSlug(parsed.slug);
+    const include = meta.includeInAgents ?? existing?.includeInAgents ?? parsed.scope === "org";
+    this.db
+      .prepare(
+        `INSERT INTO docs(key, scope, project, title, content, version, include_in_agents, updated_by, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET title = excluded.title, content = excluded.content,
+           version = excluded.version, include_in_agents = excluded.include_in_agents,
+           updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+      )
+      .run(key, parsed.scope, parsed.project, title, content, version, include ? 1 : 0, author, now);
+    this.db
+      .prepare("INSERT INTO doc_versions(key, version, content, author, note, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(key, version, content, author, meta.note ?? "", now);
+    return this.#getDoc(key)!;
+  }
+
+  #getProposal(id: number): Proposal {
+    const row = this.db.prepare("SELECT * FROM proposals WHERE id = ?").get(id) as Row | undefined;
+    if (!row) throw new HiveError("not_found", `Proposal #${id} not found.`);
+    return toProposal(row);
+  }
+
+  #getMemory(id: number): Memory {
+    const row = this.db.prepare("SELECT * FROM memory WHERE id = ?").get(id) as Row | undefined;
+    if (!row) throw new HiveError("not_found", `Memory #${id} not found.`);
+    return toMemory(row);
+  }
+
+  #getTask(id: string): Task | null {
+    const row = this.db.prepare("SELECT * FROM tasks WHERE id = ?").get(id) as Row | undefined;
+    return row ? toTask(row) : null;
+  }
+
+  #buildHandlers(): Handlers {
+    const db = this.db;
+    return {
+      "docs.list": ({ project, scope }) => {
+        const rows = db
+          .prepare(
+            `SELECT key, scope, project, title, version, include_in_agents, updated_by, updated_at FROM docs
+             WHERE (?1 IS NULL OR scope = ?1) AND (?2 IS NULL OR scope = 'org' OR project = ?2)
+             ORDER BY scope, project, key`,
+          )
+          .all(scope ?? null, project ?? null) as Row[];
+        return rows.map(toSummary);
+      },
+
+      "docs.get": ({ key }) => this.#getDoc(key),
+
+      "docs.history": ({ key }) =>
+        (db.prepare("SELECT * FROM doc_versions WHERE key = ? ORDER BY version DESC").all(key) as Row[]).map(toVersion),
+
+      "docs.save": (input, actor) =>
+        this.#tx(() => {
+          const current = this.#getDoc(input.key)?.version ?? 0;
+          if (input.baseVersion !== undefined && input.baseVersion !== current) {
+            throw new HiveError(
+              "conflict",
+              `${input.key} is at v${current} but you edited v${input.baseVersion}. Reload and re-apply your changes.`,
+            );
+          }
+          return this.#writeDoc(input.key, input.content, input, actor.name);
+        }),
+
+      "proposals.list": ({ status, docKey }) =>
+        (
+          db
+            .prepare(
+              `SELECT * FROM proposals WHERE (?1 IS NULL OR status = ?1) AND (?2 IS NULL OR doc_key = ?2)
+               ORDER BY id DESC LIMIT 200`,
+            )
+            .all(status ?? null, docKey ?? null) as Row[]
+        ).map(toProposal),
+
+      "proposals.create": (input, actor) => {
+        parseDocKey(input.docKey);
+        assertNoSecret(input.content, "Proposed content");
+        assertNoSecret(input.reason, "Reason");
+        const doc = this.#getDoc(input.docKey);
+        const current = doc?.version ?? 0;
+        if (input.baseVersion !== current) {
+          throw new HiveError(
+            "conflict",
+            `${input.docKey} is at v${current}, you based your change on v${input.baseVersion}. Call doc_get again and re-propose.`,
+          );
+        }
+        if (doc && doc.content === input.content) {
+          throw new HiveError("bad_request", "Proposed content is identical to the current version.");
+        }
+        const res = db
+          .prepare(
+            `INSERT INTO proposals(doc_key, base_version, content, reason, author, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+          )
+          .run(input.docKey, input.baseVersion, input.content, input.reason, actor.name, this.#now());
+        return this.#getProposal(num(res.lastInsertRowid));
+      },
+
+      "proposals.approve": ({ id }, actor) =>
+        this.#tx(() => {
+          const p = this.#getProposal(id);
+          if (p.status !== "pending") throw new HiveError("bad_request", `Proposal #${id} is already ${p.status}.`);
+          const current = this.#getDoc(p.docKey)?.version ?? 0;
+          const decide = (status: Proposal["status"], note: string | null) =>
+            db
+              .prepare("UPDATE proposals SET status = ?, reviewer = ?, review_note = ?, decided_at = ? WHERE id = ?")
+              .run(status, actor.name, note, this.#now(), id);
+          if (current !== p.baseVersion) {
+            decide("conflict", `Doc moved from v${p.baseVersion} to v${current} before approval.`);
+          } else {
+            this.#writeDoc(p.docKey, p.content, { note: `#${id}: ${p.reason}` }, `${p.author} (approved by ${actor.name})`);
+            decide("approved", null);
+          }
+          return this.#getProposal(id);
+        }),
+
+      "proposals.reject": ({ id, note }, actor) => {
+        const p = this.#getProposal(id);
+        if (p.status !== "pending") throw new HiveError("bad_request", `Proposal #${id} is already ${p.status}.`);
+        db.prepare("UPDATE proposals SET status = 'rejected', reviewer = ?, review_note = ?, decided_at = ? WHERE id = ?").run(
+          actor.name,
+          note ?? null,
+          this.#now(),
+          id,
+        );
+        return this.#getProposal(id);
+      },
+
+      "memory.search": ({ project, query, limit }) => {
+        const match = ftsQuery(query);
+        const rows = match
+          ? db
+              .prepare(
+                `SELECT m.* FROM memory_fts f JOIN memory m ON m.id = f.rowid
+                 WHERE memory_fts MATCH ? AND m.project = ? AND m.status = 'approved'
+                 ORDER BY bm25(memory_fts) LIMIT ?`,
+              )
+              .all(match, project, limit)
+          : db
+              .prepare("SELECT * FROM memory WHERE project = ? AND status = 'approved' ORDER BY id DESC LIMIT ?")
+              .all(project, limit);
+        return (rows as Row[]).map(toMemory);
+      },
+
+      "memory.list": ({ project, status, limit }) =>
+        (
+          db
+            .prepare(
+              `SELECT * FROM memory WHERE (?1 IS NULL OR project = ?1) AND (?2 IS NULL OR status = ?2)
+               ORDER BY id DESC LIMIT ?3`,
+            )
+            .all(project ?? null, status ?? null, limit) as Row[]
+        ).map(toMemory),
+
+      "memory.write": (input, actor) => {
+        assertNoSecret(input.content, "Memory content");
+        const status = this.#opts.memoryRequiresApproval && actor.role !== "admin" ? "pending" : "approved";
+        const res = db
+          .prepare(
+            "INSERT INTO memory(project, kind, content, author, task_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          )
+          .run(input.project, input.kind, input.content, actor.name, input.taskId ?? null, status, this.#now());
+        return this.#getMemory(num(res.lastInsertRowid));
+      },
+
+      "memory.approve": ({ id }) => {
+        this.#getMemory(id);
+        db.prepare("UPDATE memory SET status = 'approved' WHERE id = ?").run(id);
+        return this.#getMemory(id);
+      },
+
+      "memory.remove": ({ id }) => ({ removed: num(db.prepare("DELETE FROM memory WHERE id = ?").run(id).changes) === 1 }),
+
+      "tasks.list": ({ project, status }) =>
+        (
+          db
+            .prepare(
+              `SELECT * FROM tasks WHERE (?1 IS NULL OR project = ?1) AND (?2 IS NULL OR status = ?2)
+               ORDER BY updated_at DESC LIMIT 500`,
+            )
+            .all(project ?? null, status ?? null) as Row[]
+        ).map(toTask),
+
+      "tasks.create": (input) => {
+        if (this.#getTask(input.id)) throw new HiveError("conflict", `Task ${input.id} already exists.`);
+        db.prepare("INSERT INTO tasks(id, project, title, updated_at) VALUES (?, ?, ?, ?)").run(
+          input.id,
+          input.project,
+          input.title,
+          this.#now(),
+        );
+        return this.#getTask(input.id)!;
+      },
+
+      "tasks.claim": ({ id, leaseMinutes }, actor) => {
+        if (!this.#getTask(id)) throw new HiveError("not_found", `Task ${id} not found.`);
+        const now = this.#now();
+        const res = db
+          .prepare(
+            `UPDATE tasks SET owner = ?1, status = 'doing', lease_until = ?2, updated_at = ?3
+             WHERE id = ?4 AND status != 'done'
+               AND (owner IS NULL OR owner = ?1 OR lease_until IS NULL OR lease_until < ?3)`,
+          )
+          .run(actor.name, this.#now(leaseMinutes), now, id);
+        return { claimed: num(res.changes) === 1, task: this.#getTask(id) };
+      },
+
+      "tasks.update": ({ id, status, note }, actor) =>
+        this.#tx(() => {
+          const task = this.#getTask(id);
+          if (!task) throw new HiveError("not_found", `Task ${id} not found.`);
+          const now = this.#now();
+          const heldByOther =
+            task.owner !== null && task.owner !== actor.name && task.leaseUntil !== null && task.leaseUntil > now;
+          if (heldByOther && actor.role !== "admin") {
+            throw new HiveError("forbidden", `Task ${id} is held by ${task.owner} until ${task.leaseUntil}.`);
+          }
+          const doing = status === "doing";
+          db.prepare(
+            "UPDATE tasks SET status = ?, owner = ?, lease_until = ?, note = COALESCE(?, note), updated_at = ? WHERE id = ?",
+          ).run(
+            status,
+            doing ? actor.name : null,
+            doing ? (task.owner === actor.name ? task.leaseUntil : this.#now(120)) : null,
+            note ?? null,
+            now,
+            id,
+          );
+          return this.#getTask(id)!;
+        }),
+    };
+  }
+}

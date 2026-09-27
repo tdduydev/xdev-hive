@@ -1,0 +1,32 @@
+{
+  "name": "@xdev-hive/desktop",
+  "productName": "xDev Hive",
+  "version": "0.1.0",
+  "private": true,
+  "description": "xDev Hive desktop admin",
+  "author": "xDev",
+  "type": "module",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "npm run build:mcp && electron-vite dev",
+    "build": "electron-vite build && npm run build:mcp",
+    "build:mcp": "esbuild ../../packages/mcp/src/stdio.ts --bundle --platform=node --format=esm --target=node22 --outfile=out/mcp/hive-mcp.mjs --banner:js=\"import{createRequire as __cr}from'node:module';const require=__cr(import.meta.url);\"",
+    "smoke": "node scripts/smoke.mjs",
+    "dist": "npm run build && electron-builder",
+    "dist:dir": "npm run build && electron-builder --dir",
+    "typecheck": "tsc -p tsconfig.json && tsc -p src/renderer/tsconfig.json"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.2.0",
+    "@xdev-hive/core": "*",
+    "@xdev-hive/ui": "*",
+    "@xdev-hive/mcp": "*",
+    "electron": "44.4.5",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "esbuild": "^0.28.2",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "vite": "^7.3.6"
+  }
+}

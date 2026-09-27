@@ -1,0 +1,25 @@
+{
+  "name": "xdev-hive",
+  "version": "0.1.0",
+  "private": true,
+  "description": "xDev Hive — shared docs, memory and task coordination for multiple coding agents",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev:web": "npm run dev -w @xdev-hive/web",
+    "dev:desktop": "npm run dev -w @xdev-hive/desktop",
+    "build": "npm run build -w @xdev-hive/web && npm run build -w @xdev-hive/desktop",
+    "test": "node --test \"packages/*/test/*.test.ts\" \"apps/*/test/*.test.ts\"",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.0",
+    "typescript": "^7.0.2"
+  }
+}

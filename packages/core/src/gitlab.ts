@@ -1,0 +1,28 @@
+// GitLab integration settings. Browser-safe: the UI edits them with the same schema.
+import { z } from "zod";
+
+export const MR_STATES = ["created", "updated", "skipped", "failed"] as const;
+export type MrState = (typeof MR_STATES)[number];
+
+export const mrSettingsSchema = z.object({
+  /** Open/update a merge request automatically when a task's work is ready. */
+  enabled: z.boolean().default(false),
+  /** after_review: when the cross-review finishes. after_success: when the implementing run succeeds without a review. */
+  when: z.enum(["after_review", "after_success"]).default("after_review"),
+  /** What to do when the review asks for changes (or its verdict is unclear). */
+  onChangesRequested: z.enum(["draft", "skip"]).default("draft"),
+  labels: z.array(z.string().min(1).max(50)).max(10).default(["ai", "xdev-hive"]),
+  removeSourceBranch: z.boolean().default(true),
+  /** Git remote to push ai/<task> branches to. */
+  remote: z.string().regex(/^[\w.-]{1,50}$/).default("origin"),
+});
+export type MrSettings = z.output<typeof mrSettingsSchema>;
+
+export const gitlabSettingsSchema = z.object({
+  /** e.g. https://gitlab.example.com */
+  url: z.string().default(""),
+  /** Personal/project access token with `api` scope (and `write_repository` when pushing over HTTPS). */
+  token: z.string().default(""),
+  mr: mrSettingsSchema.default(mrSettingsSchema.parse({})),
+});
+export type GitLabSettings = z.output<typeof gitlabSettingsSchema>;
