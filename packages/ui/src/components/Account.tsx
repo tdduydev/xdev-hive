@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronsUpDown, KeyRound, LogOut } from "lucide-react";
-import { LEVEL_LABEL, type Me, type Role } from "@xdev-hive/core";
+import type { Me } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@xdev-hive/ui/components/ui/dialog";
@@ -17,12 +17,12 @@ import { Label } from "@xdev-hive/ui/components/ui/label";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@xdev-hive/ui/components/ui/sidebar";
 import type { HiveClient } from "../client.ts";
 import { useAction } from "../hooks.ts";
+import { useT } from "../i18n/index.tsx";
 import { useSystemTheme } from "../lib/theme.ts";
 import { Badge, ErrorNote, HiveLogo, Notice, STATUS_TONE } from "./common.tsx";
+import { LanguageMenu } from "./Language.tsx";
 
 export const MIN_PASSWORD = 10;
-
-export const ROLE_LABEL: Record<Role, string> = { viewer: "chỉ xem", agent: "agent", member: "thành viên", admin: "admin" };
 
 /** Current + new password (twice). The hub checks the rules again. */
 export function PasswordForm({ onSubmit, submitLabel }: { onSubmit: (current: string, next: string) => Promise<unknown>; submitLabel: string }) {
@@ -30,11 +30,12 @@ export function PasswordForm({ onSubmit, submitLabel }: { onSubmit: (current: st
   const [next, setNext] = useState("");
   const [again, setAgain] = useState("");
   const action = useAction();
+  const t = useT();
   const problem =
     next && next.length < MIN_PASSWORD
-      ? `Mật khẩu mới cần ít nhất ${MIN_PASSWORD} ký tự.`
+      ? t("password.tooShort", { min: MIN_PASSWORD })
       : again && next !== again
-        ? "Hai lần nhập mật khẩu mới chưa khớp."
+        ? t("password.mismatch")
         : null;
   return (
     <form
@@ -46,21 +47,21 @@ export function PasswordForm({ onSubmit, submitLabel }: { onSubmit: (current: st
       }}
     >
       <div className="flex flex-col gap-2">
-        <Label htmlFor="pw-current">Mật khẩu hiện tại</Label>
+        <Label htmlFor="pw-current">{t("password.current")}</Label>
         <Input id="pw-current" type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} autoFocus />
       </div>
       <div className="flex flex-col gap-2">
-        <Label htmlFor="pw-next">Mật khẩu mới</Label>
+        <Label htmlFor="pw-next">{t("password.next")}</Label>
         <Input id="pw-next" type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
       </div>
       <div className="flex flex-col gap-2">
-        <Label htmlFor="pw-again">Nhập lại mật khẩu mới</Label>
+        <Label htmlFor="pw-again">{t("password.again")}</Label>
         <Input id="pw-again" type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} />
       </div>
-      <p className="text-xs text-muted-foreground">Ít nhất {MIN_PASSWORD} ký tự, không chứa tên đăng nhập. Đổi xong, các trình duyệt khác đang đăng nhập sẽ bị đăng xuất.</p>
+      <p className="text-xs text-muted-foreground">{t("password.rules", { min: MIN_PASSWORD })}</p>
       <ErrorNote error={problem ?? action.error} />
       <Button type="submit" disabled={Boolean(problem) || !current || !next || next !== again || action.busy}>
-        {action.busy ? "Đang lưu…" : submitLabel}
+        {action.busy ? t("password.saving") : submitLabel}
       </Button>
     </form>
   );
@@ -69,21 +70,22 @@ export function PasswordForm({ onSubmit, submitLabel }: { onSubmit: (current: st
 /** First sign-in with a temporary password: nothing else is reachable until it is changed. */
 export function ChangePasswordScreen({ client, me, onDone, onSignOut }: { client: HiveClient; me: Me; onDone: () => void; onSignOut?: () => void }) {
   useSystemTheme();
+  const t = useT();
   return (
     <div className="flex min-h-svh items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-xl">
             <HiveLogo size={26} />
-            Đặt mật khẩu mới
+            {t("password.firstTitle")}
           </CardTitle>
           <CardDescription>
-            Chào {me.user?.displayName ?? me.name}. Bạn đang dùng mật khẩu tạm do admin cấp: đặt mật khẩu của riêng bạn để tiếp tục.
+            {t("password.firstBody", { name: me.user?.displayName ?? me.name })}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <PasswordForm
-            submitLabel="Lưu và vào hub"
+            submitLabel={t("password.firstSubmit")}
             onSubmit={async (current, next) => {
               await client.account!.changePassword(current, next);
               onDone();
@@ -91,7 +93,7 @@ export function ChangePasswordScreen({ client, me, onDone, onSignOut }: { client
           />
           {onSignOut ? (
             <Button variant="ghost" size="sm" onClick={onSignOut}>
-              Đăng xuất
+              {t("account.signOut")}
             </Button>
           ) : null}
         </CardContent>
@@ -104,8 +106,10 @@ export function ChangePasswordScreen({ client, me, onDone, onSignOut }: { client
 export function AccountMenu({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOut?: () => void }) {
   const [changing, setChanging] = useState(false);
   const [changed, setChanged] = useState(false);
+  const t = useT();
   const grants = Object.entries(me.access?.projects ?? {});
-  const where = me.mode === "hub" ? "Hub dùng chung" : "Cục bộ trên máy này";
+  const where = me.mode === "hub" ? t("account.hub") : t("account.local");
+  const role = t(`role.${me.role}`);
   return (
     <>
       <SidebarMenu>
@@ -119,7 +123,7 @@ export function AccountMenu({ client, me, onSignOut }: { client: HiveClient; me:
                 <span className="flex min-w-0 flex-1 flex-col text-left leading-tight">
                   <span className="truncate font-medium">{me.user?.displayName ?? me.name}</span>
                   <span className="truncate text-xs text-muted-foreground">
-                    {me.user ? `@${me.user.username}` : where} · {ROLE_LABEL[me.role]}
+                    {me.user ? `@${me.user.username}` : where} · {role}
                   </span>
                 </span>
                 <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
@@ -129,7 +133,7 @@ export function AccountMenu({ client, me, onSignOut }: { client: HiveClient; me:
               <DropdownMenuLabel className="flex flex-col gap-1.5 font-normal">
                 <span className="flex items-center gap-2">
                   <span className="min-w-0 flex-1 truncate font-medium">{me.user?.displayName ?? me.name}</span>
-                  <Badge tone={STATUS_TONE[me.role]}>{ROLE_LABEL[me.role]}</Badge>
+                  <Badge tone={STATUS_TONE[me.role]}>{role}</Badge>
                 </span>
                 <span className="text-xs text-muted-foreground">{where}</span>
                 {me.access ? (
@@ -137,28 +141,29 @@ export function AccountMenu({ client, me, onSignOut }: { client: HiveClient; me:
                     {grants.length ? (
                       grants.map(([p, l]) => (
                         <Badge key={p} tone="neutral" className="font-mono text-[11px]">
-                          {p} · {LEVEL_LABEL[l]}
+                          {p} · {t(`level.${l}`)}
                         </Badge>
                       ))
                     ) : (
-                      <span className="text-xs text-muted-foreground">Chưa được cấp dự án nào: chỉ thấy dữ liệu Chung.</span>
+                      <span className="text-xs text-muted-foreground">{t("account.noGrants")}</span>
                     )}
                   </span>
                 ) : me.mode === "hub" && me.role === "admin" ? (
-                  <span className="text-xs text-muted-foreground">Admin: thấy và quản trị mọi dự án.</span>
+                  <span className="text-xs text-muted-foreground">{t("account.adminAll")}</span>
                 ) : null}
               </DropdownMenuLabel>
-              {client.account || onSignOut ? <DropdownMenuSeparator /> : null}
+              <DropdownMenuSeparator />
+              <LanguageMenu />
               {client.account ? (
                 <DropdownMenuItem onSelect={() => setChanging(true)}>
                   <KeyRound />
-                  Đổi mật khẩu
+                  {t("password.change")}
                 </DropdownMenuItem>
               ) : null}
               {onSignOut ? (
                 <DropdownMenuItem onSelect={onSignOut}>
                   <LogOut />
-                  Đăng xuất
+                  {t("account.signOut")}
                 </DropdownMenuItem>
               ) : null}
             </DropdownMenuContent>
@@ -174,14 +179,14 @@ export function AccountMenu({ client, me, onSignOut }: { client: HiveClient; me:
       >
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Đổi mật khẩu</DialogTitle>
-            <DialogDescription>Tài khoản {me.user?.username}</DialogDescription>
+            <DialogTitle>{t("password.change")}</DialogTitle>
+            <DialogDescription>{t("password.changeFor", { username: me.user?.username ?? "" })}</DialogDescription>
           </DialogHeader>
           {changed ? (
-            <Notice tone="ok" title="Đã đổi mật khẩu." />
+            <Notice tone="ok" title={t("password.changed")} />
           ) : (
             <PasswordForm
-              submitLabel="Đổi mật khẩu"
+              submitLabel={t("password.change")}
               onSubmit={async (current, next) => {
                 await client.account!.changePassword(current, next);
                 setChanged(true);

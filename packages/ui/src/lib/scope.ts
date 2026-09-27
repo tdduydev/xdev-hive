@@ -1,5 +1,6 @@
 // What the whole app is looking at: every project, only the team-wide (shared) data, or one project.
 // Chosen once in the sidebar; every page filters by it and new items default to it.
+import { translate } from "../i18n/translate.ts";
 
 export type Scope = { kind: "all" } | { kind: "shared" } | { kind: "project"; project: string };
 
@@ -11,7 +12,7 @@ const STORAGE = "xdev-hive.scope";
 const SHARED_KEY = "@shared";
 
 export function scopeLabel(s: Scope): string {
-  return s.kind === "all" ? "Tất cả dự án" : s.kind === "shared" ? "Chung (cả team)" : s.project;
+  return s.kind === "all" ? translate("common.allProjects") : s.kind === "shared" ? translate("common.sharedTeam") : s.project;
 }
 
 /** The project of a scope, or null for all / shared. */
