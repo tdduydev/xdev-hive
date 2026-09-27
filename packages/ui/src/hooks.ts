@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import type { Me } from "@xdev-hive/core";
+import { can, type Level, type Me } from "@xdev-hive/core";
 import type { HiveClient } from "./client.ts";
 import type { Scope } from "./lib/scope.ts";
 
@@ -83,6 +83,15 @@ export function useAction() {
     }
   }, []);
   return { busy, error, setError, run };
+}
+
+/**
+ * What the signed-in person may do with a project's data (null = the shared data), by the rules the hub
+ * enforces. Used to hide controls; the hub still checks every call.
+ */
+export function useCan(): (owner: string | null, need: Level) => boolean {
+  const { me } = useHive();
+  return useCallback((owner: string | null, need: Level) => can(me, owner, need), [me]);
 }
 
 /** Project keys seen anywhere (loaded once by the shell). */

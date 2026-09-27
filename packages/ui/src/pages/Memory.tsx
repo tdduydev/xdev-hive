@@ -8,7 +8,7 @@ import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Badge, Empty, ErrorNote, OwnerBadge, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
 import type { HiveClient } from "../client.ts";
-import { formatTime, useAction, useHive, useQuery } from "../hooks.ts";
+import { formatTime, useAction, useCan, useHive, useQuery } from "../hooks.ts";
 import { scopeProject, type Scope } from "../lib/scope.ts";
 
 const KIND_LABEL: Record<MemoryKind, string> = {
@@ -36,7 +36,8 @@ function loadMemory(client: HiveClient, scope: Scope, query: string, pendingOnly
 }
 
 export function MemoryPage() {
-  const { client, me, scope, projects } = useHive();
+  const { client, scope, projects } = useHive();
+  const allow = useCan();
   const scoped = scopeProject(scope);
   const [query, setQuery] = useState("");
   const [submitted, setSubmitted] = useState("");
@@ -87,7 +88,7 @@ export function MemoryPage() {
           Chỉ mục chờ duyệt
         </label>
       </div>
-      {me.role === "admin" ? (
+      {allow(null, "contribute") || projects.some((p) => allow(p, "contribute")) ? (
         <AddMemory key={scoped === null ? scope.kind : `project:${scoped}`} defaultOwner={defaultOwner} projects={projects} onAdded={list.reload} />
       ) : null}
       <ErrorNote error={list.error} />
@@ -113,7 +114,8 @@ export function MemoryPage() {
 }
 
 function MemoryRow({ memory: m, onChanged }: { memory: Memory; onChanged: () => void }) {
-  const { client, me } = useHive();
+  const { client } = useHive();
+  const allow = useCan();
   const action = useAction();
   return (
     <article>
@@ -127,7 +129,7 @@ function MemoryRow({ memory: m, onChanged }: { memory: Memory; onChanged: () => 
             <span className="min-w-0 flex-1 text-xs text-muted-foreground">
               {m.author} · {formatTime(m.createdAt)}
             </span>
-            {me.role === "admin" ? (
+            {allow(m.project, "manage") ? (
               <>
                 {m.status === "pending" ? (
                   <Button
@@ -165,10 +167,14 @@ function MemoryRow({ memory: m, onChanged }: { memory: Memory; onChanged: () => 
 
 function AddMemory({ defaultOwner, projects, onAdded }: { defaultOwner: string | null; projects: string[]; onAdded: () => void }) {
   const { client } = useHive();
+  const allow = useCan();
+  const sharedOk = allow(null, "contribute");
   // undefined: not picked yet, so it follows the scope's default (the project list may still be loading).
   const [picked, setPicked] = useState<string | null>();
-  const owner = picked === undefined ? defaultOwner : picked;
-  const options = owner !== null && !projects.includes(owner) ? [owner, ...projects] : projects;
+  const writable = projects.filter((p) => allow(p, "contribute"));
+  const fallback = defaultOwner !== null && !allow(defaultOwner, "contribute") ? (sharedOk ? null : (writable[0] ?? null)) : defaultOwner;
+  const owner = picked === undefined ? fallback : picked;
+  const options = owner !== null && !writable.includes(owner) ? [owner, ...writable] : writable;
   const [kind, setKind] = useState<MemoryKind>("decision");
   const [content, setContent] = useState("");
   const action = useAction();
@@ -196,7 +202,7 @@ function AddMemory({ defaultOwner, projects, onAdded }: { defaultOwner: string |
               value={owner ?? SHARED_OPTION}
               onChange={(e) => setPicked(e.target.value === SHARED_OPTION ? null : e.target.value)}
             >
-              <NativeSelectOption value={SHARED_OPTION}>Chung (cả team — áp dụng cho mọi dự án)</NativeSelectOption>
+              {sharedOk ? <NativeSelectOption value={SHARED_OPTION}>Chung (cả team — áp dụng cho mọi dự án)</NativeSelectOption> : null}
               {options.map((p) => (
                 <NativeSelectOption key={p} value={p}>
                   {p}

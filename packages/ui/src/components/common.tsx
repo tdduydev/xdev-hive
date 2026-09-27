@@ -121,6 +121,7 @@ export const STATUS_TONE: Record<string, string> = {
   rate_limited: "warn",
   cancelled: "neutral",
   admin: "accent",
+  member: "ok",
   agent: "info",
   viewer: "neutral",
 };
