@@ -125,7 +125,7 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
   "docs.save": (i, o) => ({ target: i.key, detail: `v${o.version}${i.note ? ` · ${i.note}` : ""}` }),
   "proposals.approve": (i, o) => ({ target: o.docKey, detail: `đề xuất #${i.id}` }),
   "proposals.reject": (i, o) => ({ target: o.docKey, detail: `đề xuất #${i.id}${i.note ? ` · ${i.note}` : ""}` }),
-  "memory.approve": (i, o) => ({ target: `${o.project} #${i.id}` }),
+  "memory.approve": (i, o) => ({ target: `${o.project ?? "chung"} #${i.id}` }),
   "memory.remove": (i) => ({ target: `memory #${i.id}` }),
   "tasks.create": (i) => ({ target: i.id, detail: i.title }),
   "machines.remove": (i) => ({ target: i.id }),
@@ -176,9 +176,11 @@ const toProposal = (r: Row): Proposal => ({
   decidedAt: strOrNull(r.decided_at),
   createdAt: str(r.created_at),
 });
+/** Shared (team-wide) memory is stored with an empty project: no project key can be empty. */
+const SHARED = "";
 const toMemory = (r: Row): Memory => ({
   id: num(r.id),
-  project: str(r.project),
+  project: str(r.project) === SHARED ? null : str(r.project),
   kind: str(r.kind) as Memory["kind"],
   content: str(r.content),
   author: str(r.author),
@@ -499,30 +501,35 @@ export class SqliteHive implements HiveBackend {
         return this.#getProposal(id);
       },
 
-      "memory.search": ({ project, query, limit }) => {
+      "memory.search": ({ project, query, limit, includeShared, anyProject }) => {
         const match = ftsQuery(query);
+        // ?2 = the project (or shared when none), ?3 = also shared entries, ?5 = every project.
+        const scope = `(?5 = 1 OR m.project = ?2 OR (?3 = 1 AND m.project = ''))`;
+        const own = project ?? SHARED;
+        const shared = includeShared ? 1 : 0;
         const rows = match
           ? db
               .prepare(
                 `SELECT m.* FROM memory_fts f JOIN memory m ON m.id = f.rowid
-                 WHERE memory_fts MATCH ? AND m.project = ? AND m.status = 'approved'
-                 ORDER BY bm25(memory_fts) LIMIT ?`,
+                 WHERE memory_fts MATCH ?1 AND ${scope} AND m.status = 'approved'
+                 ORDER BY bm25(memory_fts) LIMIT ?4`,
               )
-              .all(match, project, limit)
+              .all(match, own, shared, limit, anyProject ? 1 : 0)
           : db
-              .prepare("SELECT * FROM memory WHERE project = ? AND status = 'approved' ORDER BY id DESC LIMIT ?")
-              .all(project, limit);
+              .prepare(`SELECT m.* FROM memory m WHERE ${scope} AND m.status = 'approved' ORDER BY m.id DESC LIMIT ?4`)
+              .all(null, own, shared, limit, anyProject ? 1 : 0);
         return (rows as Row[]).map(toMemory);
       },
 
-      "memory.list": ({ project, status, limit }) =>
+      "memory.list": ({ project, includeShared, status, limit }) =>
         (
           db
             .prepare(
-              `SELECT * FROM memory WHERE (?1 IS NULL OR project = ?1) AND (?2 IS NULL OR status = ?2)
-               ORDER BY id DESC LIMIT ?3`,
+              `SELECT * FROM memory
+               WHERE (?1 IS NULL OR project = ?1 OR (?2 = 1 AND project = '')) AND (?3 IS NULL OR status = ?3)
+               ORDER BY id DESC LIMIT ?4`,
             )
-            .all(project ?? null, status ?? null, limit) as Row[]
+            .all(project === undefined ? null : (project ?? SHARED), includeShared ? 1 : 0, status ?? null, limit) as Row[]
         ).map(toMemory),
 
       "memory.write": (input, actor) => {
@@ -532,7 +539,7 @@ export class SqliteHive implements HiveBackend {
           .prepare(
             "INSERT INTO memory(project, kind, content, author, task_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
           )
-          .run(input.project, input.kind, input.content, actor.name, input.taskId ?? null, status, this.#now());
+          .run(input.shared ? SHARED : input.project!, input.kind, input.content, actor.name, input.taskId ?? null, status, this.#now());
         return this.#getMemory(num(res.lastInsertRowid));
       },
 

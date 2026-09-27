@@ -1,12 +1,18 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { Me } from "@xdev-hive/core";
 import type { HiveClient } from "./client.ts";
+import type { Scope } from "./lib/scope.ts";
 
 export interface HiveContextValue {
   client: HiveClient;
   me: Me;
-  /** Ask the shell to refresh counters (pending proposals badge). */
+  /** Ask the shell to refresh counters (pending proposals badge) and the project list. */
   bump: () => void;
+  /** The project scope picked in the sidebar (see lib/scope.ts). */
+  scope: Scope;
+  setScope: (scope: Scope) => void;
+  /** Project keys seen anywhere: docs, tasks, memory, this machine's repos. */
+  projects: string[];
 }
 
 export const HiveContext = createContext<HiveContextValue | null>(null);
@@ -79,21 +85,27 @@ export function useAction() {
   return { busy, error, setError, run };
 }
 
-/** Project keys seen anywhere: docs, tasks, desktop settings. */
+/** Project keys seen anywhere (loaded once by the shell). */
 export function useProjects(): string[] {
-  const { client } = useHive();
+  return useHive().projects;
+}
+
+/** Loads the project list for the shell: docs, tasks, memory and this machine's repos. */
+export function useProjectList(client: HiveClient, tick: number): string[] {
   const { data } = useQuery(async () => {
-    const [docs, tasks, settings] = await Promise.all([
+    const [docs, tasks, memory, settings] = await Promise.all([
       client.call("docs.list", {}),
       client.call("tasks.list", {}),
+      client.call("memory.list", { limit: 500 }),
       client.desktop?.settings(),
     ]);
     const names = new Set<string>();
     for (const d of docs) if (d.project) names.add(d.project);
     for (const t of tasks) names.add(t.project);
+    for (const m of memory) if (m.project) names.add(m.project);
     for (const p of settings?.projects ?? []) names.add(p.name);
     return [...names].sort();
-  }, [client]);
+  }, [client, tick]);
   return data ?? [];
 }
 

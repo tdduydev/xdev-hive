@@ -93,22 +93,31 @@ export const schemas = {
   "proposals.approve": z.object({ id }),
   "proposals.reject": z.object({ id, note: z.string().max(500).optional() }),
 
+  /** A project's memory plus the team-wide (shared) entries; no project: shared entries only; anyProject: everything. */
   "memory.search": z.object({
-    project,
+    project: project.optional(),
     query: z.string().max(500).default(""),
     limit: z.number().int().min(1).max(50).default(10),
+    includeShared: z.boolean().default(true),
+    anyProject: z.boolean().default(false),
   }),
+  /** project: that project (plus shared with includeShared) · null: shared only · omitted: everything. */
   "memory.list": z.object({
-    project: project.optional(),
+    project: project.nullable().optional(),
+    includeShared: z.boolean().default(false),
     status: z.enum(MEMORY_STATUSES).optional(),
     limit: z.number().int().min(1).max(500).default(200),
   }),
-  "memory.write": z.object({
-    project,
-    kind: z.enum(MEMORY_KINDS),
-    content: z.string().min(1).max(4000),
-    taskId: taskId.optional(),
-  }),
+  /** shared: true records a team-wide entry that every project sees (no project then). */
+  "memory.write": z
+    .object({
+      project: project.optional(),
+      shared: z.boolean().default(false),
+      kind: z.enum(MEMORY_KINDS),
+      content: z.string().min(1).max(4000),
+      taskId: taskId.optional(),
+    })
+    .refine((m) => (m.shared ? m.project === undefined : m.project !== undefined), "memory needs a project, or shared: true without one"),
   "memory.approve": z.object({ id }),
   "memory.remove": z.object({ id }),
 

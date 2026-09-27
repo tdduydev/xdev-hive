@@ -20,6 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE, StatusDot } from "../components/common.tsx";
 import { formatTime, useAction, useHive, useProjects, useQuery } from "../hooks.ts";
+import { projectScope, scopeProject } from "../lib/scope.ts";
 
 const COLUMN_LABEL: Record<TaskStatus, string> = {
   todo: "Chưa làm",
@@ -61,13 +62,21 @@ function duration(run: AgentRun): string {
 }
 
 export function BoardPage() {
-  const { client } = useHive();
+  const { client, scope, setScope } = useHive();
   const desktop = client.desktop!;
   const projects = useProjects();
   const settings = useQuery(() => desktop.settings(), [desktop]);
   const localProjects = settings.data?.projects.map((p) => p.name) ?? [];
+  const options = [...new Set([...localProjects, ...projects])];
+  // Follow the sidebar scope when it is a project with a repo on this machine; otherwise (all, shared,
+  // a project not cloned here) keep the project shown last, or the first one.
+  const scoped = scopeProject(scope);
+  const scopeLocal = scoped !== null && localProjects.includes(scoped) ? scoped : null;
   const [project, setProject] = useState("");
-  const current = project || localProjects[0] || projects[0] || "";
+  useEffect(() => {
+    if (scopeLocal) setProject(scopeLocal);
+  }, [scopeLocal]);
+  const current = scopeLocal || (options.includes(project) ? project : "") || localProjects[0] || projects[0] || "";
 
   const [tick, setTick] = useState(0);
   const runs = useQuery(() => desktop.runs({ project: current || undefined, limit: 60 }), [desktop, current, tick]);
@@ -112,8 +121,15 @@ export function BoardPage() {
         }
       />
       <div className="flex flex-wrap items-center gap-3">
-        <NativeSelect value={current} onChange={(e) => setProject(e.target.value)} aria-label="Dự án">
-          {[...new Set([...localProjects, ...projects])].map((p) => (
+        <NativeSelect
+          value={current}
+          onChange={(e) => {
+            setProject(e.target.value);
+            setScope(projectScope(e.target.value));
+          }}
+          aria-label="Dự án"
+        >
+          {options.map((p) => (
             <NativeSelectOption key={p} value={p}>
               {p}
               {localProjects.includes(p) ? "" : " (chưa nối repo trên máy này)"}
@@ -122,7 +138,13 @@ export function BoardPage() {
         </NativeSelect>
         <ProfileStrip profiles={profiles.data ?? []} />
       </div>
-      {!current ? <Empty>Thêm dự án ở trang Dự án &amp; cài đặt trước.</Empty> : null}
+      {!current && !settings.loading ? <Empty>Thêm dự án ở trang Dự án &amp; cài đặt trước.</Empty> : null}
+      {current && scoped !== null && scoped !== current && !settings.loading ? (
+        <Notice tone="info">
+          Dự án <span className="font-mono">{scoped}</span> đang chọn ở thanh bên chưa có repo trên máy này, nên Board đang hiện{" "}
+          <span className="font-mono">{current}</span>.
+        </Notice>
+      ) : null}
       {current && !isLocalProject ? (
         <Notice tone="warn">Dự án này chưa có repo trên máy này nên không chạy agent được. Thêm repo ở trang Dự án &amp; cài đặt.</Notice>
       ) : null}

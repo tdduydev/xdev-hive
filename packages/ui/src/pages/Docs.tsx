@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { FolderGit2, Users } from "lucide-react";
 import { cn } from "cn";
 import { parseDocKey, type Doc, type DocSummary, type DocVersion } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
@@ -6,11 +7,13 @@ import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
+import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@xdev-hive/ui/components/ui/tabs";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Diff } from "../components/Diff.tsx";
-import { Badge, Empty, ErrorNote, Notice, Page, PageHeader } from "../components/common.tsx";
+import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader } from "../components/common.tsx";
 import { errorMessage, formatTime, useAction, useHive, useQuery } from "../hooks.ts";
+import { docOwner, inScope, projectScope, scopeLabel, scopeProject, type Scope } from "../lib/scope.ts";
 
 interface Draft {
   title: string;
@@ -28,36 +31,95 @@ const emptyDraft = (key: string): Draft => ({
   note: "",
 });
 
+/** Same shape as the slug part of a doc key in core (keys.ts). */
+const SLUG = /^[a-z0-9][a-z0-9-]{0,79}$/;
+
+interface DocGroup {
+  id: string;
+  /** null = shared by every project (org/*). */
+  owner: string | null;
+  label: string;
+  docs: DocSummary[];
+}
+
+/** The doc list for a scope, shared vs project kept in separate, clearly labelled groups. */
+function groupDocs(all: DocSummary[], scope: Scope): DocGroup[] {
+  const shared = all.filter((d) => docOwner(d.key) === null);
+  if (scope.kind === "shared") return [{ id: "shared", owner: null, label: "Chung (cả team)", docs: shared }];
+  if (scope.kind === "project") {
+    const p = scope.project;
+    return [
+      { id: `project:${p}`, owner: p, label: `Riêng · ${p}`, docs: all.filter((d) => docOwner(d.key) === p) },
+      { id: "shared", owner: null, label: "Chung · áp dụng cho mọi dự án", docs: shared },
+    ];
+  }
+  const byProject = new Map<string, DocSummary[]>();
+  for (const d of all) {
+    const owner = docOwner(d.key);
+    if (owner !== null) byProject.set(owner, [...(byProject.get(owner) ?? []), d]);
+  }
+  return [
+    { id: "shared", owner: null, label: "Chung (cả team)", docs: shared },
+    ...[...byProject.keys()].sort().map((p) => ({ id: `project:${p}`, owner: p, label: p, docs: byProject.get(p)! })),
+  ];
+}
+
 export function DocsPage() {
-  const { client, me } = useHive();
+  const { client, me, scope, setScope, projects } = useHive();
   const canEdit = me.role === "admin";
   const list = useQuery(() => client.call("docs.list", {}), [client]);
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
-  const [newKey, setNewKey] = useState("");
+  // "" = Chung (org/…); otherwise the project the new doc belongs to.
+  const [newOwner, setNewOwner] = useState(() => scopeProject(scope) ?? "");
+  const [newSlug, setNewSlug] = useState("");
   const [newKeyError, setNewKeyError] = useState<string | null>(null);
+
+  // Every doc in scope, in display order (ignores the text filter).
+  const scoped = useMemo(() => groupDocs(list.data ?? [], scope), [list.data, scope]);
+  const firstInScope = scoped.flatMap((g) => g.docs)[0]?.key ?? null;
 
   const groups = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    const docs = (list.data ?? []).filter((d) => !q || d.key.includes(q) || d.title.toLowerCase().includes(q));
-    const map = new Map<string, DocSummary[]>();
-    for (const d of docs) {
-      const group = d.scope === "org" ? "Dùng chung (org)" : `Dự án: ${d.project}`;
-      map.set(group, [...(map.get(group) ?? []), d]);
-    }
-    return [...map.entries()];
-  }, [list.data, filter]);
+    return scoped
+      .map((g) => ({ ...g, docs: g.docs.filter((d) => !q || d.key.includes(q) || d.title.toLowerCase().includes(q)) }))
+      .filter((g) => g.docs.length > 0 || (!q && scope.kind === "project" && g.owner !== null));
+  }, [scoped, filter, scope.kind]);
+  const visibleCount = groups.reduce((n, g) => n + g.docs.length, 0);
 
+  // Keep the selection inside the scope: pick the first doc in scope (or none) when it falls out.
   useEffect(() => {
-    if (!selected && list.data?.[0]) setSelected(list.data[0].key);
-  }, [list.data, selected]);
+    if (!list.data) return;
+    if (selected && inScope(scope, docOwner(selected))) return;
+    setSelected(firstInScope);
+  }, [list.data, scope, selected, firstInScope]);
+
+  // New docs default to the project being looked at (Chung for all / shared).
+  useEffect(() => {
+    setNewOwner(scopeProject(scope) ?? "");
+  }, [scope]);
+
+  const ownerOptions = useMemo(
+    () => [...new Set([...projects, ...(newOwner ? [newOwner] : [])])].sort(),
+    [projects, newOwner],
+  );
+  const keyPrefix = newOwner ? `project/${newOwner}/` : "org/";
+  const newKey = keyPrefix + newSlug.trim();
 
   const createDoc = () => {
+    const slug = newSlug.trim();
+    if (!SLUG.test(slug)) {
+      setNewKeyError('Tên không hợp lệ: chỉ dùng chữ thường, số và dấu "-", bắt đầu bằng chữ hoặc số.');
+      return;
+    }
     try {
-      parseDocKey(newKey.trim());
+      parseDocKey(newKey);
       setNewKeyError(null);
-      setSelected(newKey.trim());
-      setNewKey("");
+      // A doc for another project than the one in view: follow it there so it stays selected.
+      const owner = newOwner || null;
+      if (owner !== null && !inScope(scope, owner)) setScope(projectScope(owner));
+      setSelected(newKey);
+      setNewSlug("");
     } catch (err) {
       setNewKeyError(errorMessage(err));
     }
@@ -75,10 +137,28 @@ export function DocsPage() {
             <nav className="flex flex-col gap-3" aria-label="Danh sách tài liệu">
               <Input placeholder="Lọc tài liệu…" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Lọc tài liệu" />
               <ErrorNote error={list.error} />
-              {groups.map(([group, docs]) => (
-                <div key={group} className="flex flex-col gap-0.5">
-                  <div className="px-2 py-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">{group}</div>
-                  {docs.map((d) => (
+              {visibleCount > 0 ? groups.map((g) => (
+                <div key={g.id} role="group" aria-label={g.label} className="flex flex-col gap-0.5">
+                  <div
+                    className={cn(
+                      "flex min-w-0 items-center gap-1.5 px-2 py-1 text-xs font-semibold",
+                      g.owner === null ? "text-brand-soft-foreground" : "text-muted-foreground",
+                    )}
+                  >
+                    {g.owner === null ? (
+                      <Users className="size-3.5 shrink-0" aria-hidden="true" />
+                    ) : (
+                      <FolderGit2 className="size-3.5 shrink-0" aria-hidden="true" />
+                    )}
+                    <span className={cn("min-w-0 flex-1 truncate", scope.kind === "all" && g.owner !== null && "font-mono")}>
+                      {g.label}
+                    </span>
+                    <span className="font-normal text-muted-foreground tabular-nums">{g.docs.length}</span>
+                  </div>
+                  {g.docs.length === 0 ? (
+                    <p className="px-2 pb-1 text-xs text-muted-foreground">Chưa có tài liệu riêng cho dự án này.</p>
+                  ) : null}
+                  {g.docs.map((d) => (
                     <button
                       key={d.key}
                       className={cn(
@@ -94,26 +174,65 @@ export function DocsPage() {
                     </button>
                   ))}
                 </div>
-              ))}
-              {!list.loading && groups.length === 0 ? <Empty>Chưa có tài liệu.</Empty> : null}
+              )) : null}
+              {!list.loading && visibleCount === 0 ? (
+                <Empty>
+                  {filter.trim()
+                    ? "Không có tài liệu nào khớp bộ lọc."
+                    : scope.kind === "all"
+                      ? "Chưa có tài liệu."
+                      : `Chưa có tài liệu trong phạm vi “${scopeLabel(scope)}”.`}
+                </Empty>
+              ) : null}
               {canEdit ? (
                 <div className="flex flex-col gap-2 border-t pt-3">
-                  <Label htmlFor="new-doc-key" className="text-xs text-muted-foreground">
-                    Tài liệu mới
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="new-doc-key"
-                      className="flex-1 font-mono text-xs md:text-xs"
-                      placeholder="org/security hoặc project/app/agents"
-                      value={newKey}
-                      onChange={(e) => setNewKey(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && createDoc()}
-                    />
-                    <Button variant="outline" onClick={createDoc} disabled={!newKey.trim()}>
-                      Tạo
-                    </Button>
+                  <div className="text-xs font-semibold text-muted-foreground">Tài liệu mới</div>
+                  <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2">
+                    <Label htmlFor="new-doc-owner" className="text-xs text-muted-foreground">
+                      Thuộc
+                    </Label>
+                    <div className="min-w-0 *:data-[slot=native-select-wrapper]:w-full">
+                      <NativeSelect
+                        id="new-doc-owner"
+                        size="sm"
+                        value={newOwner}
+                        onChange={(e) => {
+                          setNewOwner(e.target.value);
+                          setNewKeyError(null);
+                        }}
+                      >
+                        <NativeSelectOption value="">Chung (cả team)</NativeSelectOption>
+                        {ownerOptions.map((p) => (
+                          <NativeSelectOption key={p} value={p}>
+                            {p}
+                          </NativeSelectOption>
+                        ))}
+                      </NativeSelect>
+                    </div>
+                    <Label htmlFor="new-doc-slug" className="text-xs text-muted-foreground">
+                      Tên
+                    </Label>
+                    <div className="flex min-w-0 gap-2">
+                      <Input
+                        id="new-doc-slug"
+                        className="h-8 min-w-0 flex-1 font-mono text-xs md:text-xs"
+                        placeholder="vd: security"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        value={newSlug}
+                        aria-describedby="new-doc-key-hint"
+                        aria-invalid={newKeyError ? true : undefined}
+                        onChange={(e) => setNewSlug(e.target.value.toLowerCase())}
+                        onKeyDown={(e) => e.key === "Enter" && createDoc()}
+                      />
+                      <Button size="sm" variant="outline" onClick={createDoc} disabled={!newSlug.trim()}>
+                        Tạo
+                      </Button>
+                    </div>
                   </div>
+                  <p id="new-doc-key-hint" className="font-mono text-xs break-all text-muted-foreground">
+                    {newSlug.trim() ? newKey : `${keyPrefix}<tên>`}
+                  </p>
                   <ErrorNote error={newKeyError} />
                 </div>
               ) : null}
@@ -143,6 +262,7 @@ function DocEditor({ docKey, canEdit, onSaved }: { docKey: string; canEdit: bool
   const [tab, setTab] = useState<EditorTab>("edit");
   const [saved, setSaved] = useState<string | null>(null);
   const action = useAction();
+  const owner = docOwner(docKey);
   const scope = docKey.startsWith("org/") ? "org" : "project";
 
   useEffect(() => {
@@ -179,8 +299,21 @@ function DocEditor({ docKey, canEdit, onSaved }: { docKey: string; canEdit: bool
     <Tabs value={tab} onValueChange={(v) => setTab(v as EditorTab)} className="gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0 space-y-1">
-          <div className="font-mono text-xs break-all text-muted-foreground">{docKey}</div>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <OwnerBadge owner={owner} />
+            <span className="min-w-0 font-mono text-xs break-all text-muted-foreground">{docKey}</span>
+          </div>
           <h2 className="text-lg font-semibold break-words">{current?.title ?? "Tài liệu mới"}</h2>
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            {owner === null ? (
+              <Users className="size-3.5 shrink-0 text-brand" aria-hidden="true" />
+            ) : (
+              <FolderGit2 className="size-3.5 shrink-0" aria-hidden="true" />
+            )}
+            <span className="min-w-0 break-words">
+              {owner === null ? "Tài liệu chung: áp dụng cho mọi dự án" : `Chỉ dùng cho dự án ${owner}`}
+            </span>
+          </p>
           <div className="text-xs text-muted-foreground">
             {current ? (
               <>
