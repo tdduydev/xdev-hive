@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "electron-vite";
 
@@ -20,6 +21,7 @@ export default defineConfig({
     root: resolve(import.meta.dirname, "src/renderer"),
     plugins: [
       react(),
+      tailwindcss(),
       {
         name: "xdev-hive-csp",
         // Production only: Vite's dev server needs inline scripts for HMR.

@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { requiredItemIds, type MachineCommand, type SetupItem, type SetupReport, type SetupState } from "@xdev-hive/core";
-import { Badge, Empty, ErrorNote, PageHeader } from "../components/ui.tsx";
+import { Button } from "@xdev-hive/ui/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
+import { Badge, Empty, ErrorNote, Notice, Page, PageHeader } from "../components/common.tsx";
 import { formatTime, useAction, useHive, useQuery } from "../hooks.ts";
 
 const STATE: Record<SetupState, { label: string; tone: string }> = {
@@ -33,21 +36,22 @@ export function SetupPage() {
   const missing = shown ? [...shown.machine, ...shown.projects.flatMap((p) => p.items)].filter((i) => i.state !== "installed").length : 0;
 
   return (
-    <div className="page">
+    <Page>
       <PageHeader
         title="Cài đặt máy"
         subtitle="App kiểm tra những gì đã có trên máy này và trong từng repo. Mỗi nút chỉ làm đúng việc ghi ở dòng đó."
         actions={
-          <button
-            className="btn"
+          <Button
+            variant="outline"
             disabled={status.loading}
             onClick={() => {
               setReport(null);
               status.reload();
             }}
           >
+            <RefreshCw className={status.loading ? "animate-spin" : undefined} />
             {status.loading ? "Đang kiểm tra…" : "Kiểm tra lại"}
-          </button>
+          </Button>
         }
       />
       <ErrorNote error={status.error} />
@@ -61,34 +65,44 @@ export function SetupPage() {
           }}
         />
       ) : null}
-      {!shown && status.loading ? <div className="muted">Đang kiểm tra CLI, lệnh hive-mcp và các repo…</div> : null}
+      {!shown && status.loading ? <p className="text-sm text-muted-foreground">Đang kiểm tra CLI, lệnh hive-mcp và các repo…</p> : null}
       {shown ? (
         <>
-          <div className={`note ${missing ? "note-warn" : "note-ok"}`}>
+          <Notice tone={missing ? "warn" : "ok"}>
             {missing ? `${missing} mục chưa sẵn sàng.` : "Mọi thứ đã sẵn sàng."}
             {policy && required.size ? ` Chính sách team yêu cầu ${required.size} mục (nhãn "bắt buộc").` : ""}
-          </div>
-          <section className="card">
-            <h2>Máy này</h2>
-            <SetupList items={shown.machine} required={required} onChanged={replace} />
-          </section>
+          </Notice>
+          <Card>
+            <CardHeader>
+              <CardTitle>Máy này</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <SetupList items={shown.machine} required={required} onChanged={replace} />
+            </CardContent>
+          </Card>
           {shown.projects.length === 0 ? (
             <Empty>
-              Chưa có dự án. Thêm repo ở <a href="#/projects">Dự án &amp; cài đặt</a> để kiểm tra cấu hình agent, codegraph và superpowers trong repo.
+              Chưa có dự án. Thêm repo ở{" "}
+              <a href="#/projects" className="font-medium text-primary underline underline-offset-2">
+                Dự án &amp; cài đặt
+              </a>{" "}
+              để kiểm tra cấu hình agent, codegraph và superpowers trong repo.
             </Empty>
           ) : null}
           {shown.projects.map((p) => (
-            <section key={p.project} className="card">
-              <h2>
-                <span className="mono">{p.project}</span>
-              </h2>
-              <div className="muted small mono">{p.repo}</div>
-              <SetupList items={p.items} required={required} onChanged={replace} />
-            </section>
+            <Card key={p.project}>
+              <CardHeader>
+                <CardTitle className="font-mono break-all">{p.project}</CardTitle>
+                <CardDescription className="font-mono text-xs break-all">{p.repo}</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                <SetupList items={p.items} required={required} onChanged={replace} />
+              </CardContent>
+            </Card>
           ))}
         </>
       ) : null}
-    </div>
+    </Page>
   );
 }
 
@@ -102,40 +116,44 @@ function RequestsCard({ commands, onAnswered }: { commands: MachineCommand[]; on
       onAnswered();
     });
   return (
-    <section className="card">
-      <h2>Yêu cầu từ admin</h2>
-      <p className="muted small">Admin trên hub muốn máy này cài các mục dưới đây. App chỉ chạy đúng việc của mục đó, và chỉ khi bạn đồng ý.</p>
-      <div className="stack">
-        {commands.map((c) => (
-          <div key={c.id} className="setup-row">
-            <div className="row gap-s wrap">
-              <b className="grow">{c.label}</b>
-              <button className="btn btn-small btn-primary" disabled={action.busy} onClick={() => answer(c, true)}>
-                {action.busy ? "Đang cài…" : "Đồng ý và cài"}
-              </button>
-              <button className="btn btn-small btn-ghost" disabled={action.busy} onClick={() => answer(c, false)}>
-                Từ chối
-              </button>
+    <Card>
+      <CardHeader>
+        <CardTitle>Yêu cầu từ admin</CardTitle>
+        <CardDescription>Admin trên hub muốn máy này cài các mục dưới đây. App chỉ chạy đúng việc của mục đó, và chỉ khi bạn đồng ý.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
+          {commands.map((c) => (
+            <div key={c.id} className="flex flex-col gap-2 rounded-lg border p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="min-w-0 flex-1 font-medium break-words">{c.label}</span>
+                <Button size="sm" variant="outline" disabled={action.busy} onClick={() => answer(c, true)}>
+                  {action.busy ? "Đang cài…" : "Đồng ý và cài"}
+                </Button>
+                <Button size="sm" variant="ghost" disabled={action.busy} onClick={() => answer(c, false)}>
+                  Từ chối
+                </Button>
+              </div>
+              <div className="text-xs break-words text-muted-foreground">
+                #{c.id} · {c.requestedBy} · {formatTime(c.requestedAt)} · <span className="font-mono break-all">{c.itemId}</span>
+              </div>
             </div>
-            <div className="muted small">
-              #{c.id} · {c.requestedBy} · {formatTime(c.requestedAt)} · <span className="mono">{c.itemId}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-      <ErrorNote error={action.error} />
-      {done ? (
-        <div className={`note ${done.status === "done" ? "note-ok" : done.status === "rejected" ? "" : "note-error"}`}>
-          #{done.id} {done.label}: {done.status === "done" ? "đã cài xong" : done.status === "rejected" ? "đã từ chối" : "cài lỗi"}. Hub đã nhận kết quả.
+          ))}
         </div>
-      ) : null}
-    </section>
+        <ErrorNote error={action.error} />
+        {done ? (
+          <Notice tone={done.status === "done" ? "ok" : done.status === "rejected" ? "info" : "error"}>
+            #{done.id} {done.label}: {done.status === "done" ? "đã cài xong" : done.status === "rejected" ? "đã từ chối" : "cài lỗi"}. Hub đã nhận kết quả.
+          </Notice>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
 
 function SetupList({ items, required, onChanged }: { items: SetupItem[]; required: Set<string>; onChanged: (item: SetupItem) => void }) {
   return (
-    <div className="stack">
+    <div className="flex flex-col gap-2">
       {items.map((item) => (
         <SetupRow key={item.id} item={item} required={required.has(item.id)} onChanged={onChanged} />
       ))}
@@ -149,15 +167,16 @@ function SetupRow({ item, required, onChanged }: { item: SetupItem; required: bo
   const [output, setOutput] = useState<string | null>(null);
   const state = STATE[item.state];
   return (
-    <div className="setup-row">
-      <div className="row gap-s">
+    <div className="flex flex-col gap-2 rounded-lg border p-3">
+      <div className="flex flex-wrap items-center gap-2">
         <Badge tone={state.tone}>{state.label}</Badge>
-        <b>{item.label}</b>
+        <span className="min-w-0 font-medium break-words">{item.label}</span>
         {required ? <Badge tone="accent">bắt buộc</Badge> : null}
-        <span className="grow" />
         {item.action ? (
-          <button
-            className="btn btn-small btn-primary"
+          <Button
+            size="sm"
+            variant="outline"
+            className="ml-auto"
             disabled={action.busy}
             onClick={() =>
               void action.run(async () => {
@@ -168,15 +187,15 @@ function SetupRow({ item, required, onChanged }: { item: SetupItem; required: bo
             }
           >
             {action.busy ? "Đang cài…" : item.action}
-          </button>
+          </Button>
         ) : null}
       </div>
-      <div className="muted small setup-detail">{item.detail}</div>
+      <div className="text-xs break-words text-muted-foreground">{item.detail}</div>
       <ErrorNote error={action.error} />
       {output ? (
         <details>
-          <summary className="small">Kết quả</summary>
-          <pre className="log log-diff">{output}</pre>
+          <summary className="cursor-pointer text-xs text-muted-foreground select-none hover:text-foreground">Kết quả</summary>
+          <pre className="mt-2 max-h-80 overflow-auto rounded-md border bg-muted/50 p-3 font-mono text-xs">{output}</pre>
         </details>
       ) : null}
     </div>

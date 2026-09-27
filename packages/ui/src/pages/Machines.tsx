@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import type { Machine, QuotaCooldown } from "@xdev-hive/core";
-import { Badge, Empty, ErrorNote, PageHeader, STATUS_TONE } from "../components/ui.tsx";
+import { Button } from "@xdev-hive/ui/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
+import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
 import { formatTime, useAction, useHive, useQuery } from "../hooks.ts";
 
 const ROLE_LABEL: Record<Machine["runs"][number]["role"], string> = { plan: "lập kế hoạch", implement: "làm task", review: "review" };
 const REFRESH_MS = 15_000;
+
+const CODE = "rounded bg-muted px-1 py-0.5 font-mono text-xs";
 
 export function MachinesPage() {
   const { client } = useHive();
@@ -18,67 +22,73 @@ export function MachinesPage() {
   const reload = () => setTick((n) => n + 1);
 
   return (
-    <div className="page">
+    <Page>
       <PageHeader
         title="Máy & run"
         subtitle="App desktop ở chế độ hub báo lên mỗi 30 giây: run đang chạy hoặc đang chờ, và gói sub đang nghỉ vì hết quota."
       />
 
-      <h2>Máy</h2>
-      <ErrorNote error={machines.error} />
-      {machines.data?.length === 0 ? <Empty>Chưa có máy nào báo lên. Mở app desktop ở chế độ Hub dùng chung.</Empty> : null}
-      {machines.data?.some((m) => m.duplicate) ? (
-        <div className="note note-warn">
-          Có hai app đang báo lên cùng tên máy và cùng token, nên chúng giữ chung lease task và có thể nhận trùng. Đổi <code>machine</code>{" "}
-          trong <code>~/.xdev-hive/config.json</code> trên một máy, hoặc cấp cho mỗi máy một token riêng.
-        </div>
-      ) : null}
-      {machines.data?.length ? (
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Máy</th>
-                <th>Trạng thái</th>
-                <th>Run</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {machines.data.map((m) => (
-                <MachineRow key={m.id} machine={m} onChanged={reload} />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold tracking-tight">Máy</h2>
+        <ErrorNote error={machines.error} />
+        {machines.data?.length === 0 ? <Empty>Chưa có máy nào báo lên. Mở app desktop ở chế độ Hub dùng chung.</Empty> : null}
+        {machines.data?.some((m) => m.duplicate) ? (
+          <Notice tone="warn">
+            <p>
+              Có hai app đang báo lên cùng tên máy và cùng token, nên chúng giữ chung lease task và có thể nhận trùng. Đổi <code className={CODE}>machine</code>{" "}
+              trong <code className={`${CODE} break-all`}>~/.xdev-hive/config.json</code> trên một máy, hoặc cấp cho mỗi máy một token riêng.
+            </p>
+          </Notice>
+        ) : null}
+        {machines.data?.length ? (
+          <div className="overflow-x-auto rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Máy</TableHead>
+                  <TableHead>Trạng thái</TableHead>
+                  <TableHead>Run</TableHead>
+                  <TableHead />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {machines.data.map((m) => (
+                  <MachineRow key={m.id} machine={m} onChanged={reload} />
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : null}
+      </section>
 
-      <h2>Quota đang nghỉ</h2>
-      <ErrorNote error={cooldowns.error} />
-      {cooldowns.data?.length === 0 ? (
-        <Empty>Không có tài khoản nào đang nghỉ. Chỉ profile có điền "Tài khoản" mới chia sẻ quota qua hub.</Empty>
-      ) : null}
-      {cooldowns.data?.length ? (
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Tài khoản</th>
-                <th>Nghỉ đến</th>
-                <th>Lý do</th>
-                <th>Báo từ</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {cooldowns.data.map((c) => (
-                <CooldownRow key={c.account} cooldown={c} onChanged={reload} />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-    </div>
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold tracking-tight">Quota đang nghỉ</h2>
+        <ErrorNote error={cooldowns.error} />
+        {cooldowns.data?.length === 0 ? (
+          <Empty>Không có tài khoản nào đang nghỉ. Chỉ profile có điền "Tài khoản" mới chia sẻ quota qua hub.</Empty>
+        ) : null}
+        {cooldowns.data?.length ? (
+          <div className="overflow-x-auto rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Tài khoản</TableHead>
+                  <TableHead>Nghỉ đến</TableHead>
+                  <TableHead>Lý do</TableHead>
+                  <TableHead>Báo từ</TableHead>
+                  <TableHead />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {cooldowns.data.map((c) => (
+                  <CooldownRow key={c.account} cooldown={c} onChanged={reload} />
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : null}
+      </section>
+    </Page>
   );
 }
 
@@ -88,38 +98,47 @@ function MachineRow({ machine: m, onChanged }: { machine: Machine; onChanged: ()
   const running = m.runs.filter((r) => r.status === "running");
   const queued = m.runs.length - running.length;
   return (
-    <tr>
-      <td>
-        <b className="mono">{m.machine}</b>
-        <div className="muted small mono">{m.id}</div>
-        {m.version ? <div className="muted small">v{m.version}</div> : null}
-      </td>
-      <td className="small">
-        <div className="row gap-s">
+    <TableRow>
+      <TableCell className="align-top whitespace-normal">
+        <div className="flex min-w-40 flex-col gap-0.5">
+          <span className="font-mono font-semibold break-all">{m.machine}</span>
+          <span className="font-mono text-xs break-all text-muted-foreground">{m.id}</span>
+          {m.version ? <span className="text-xs text-muted-foreground">v{m.version}</span> : null}
+        </div>
+      </TableCell>
+      <TableCell className="align-top">
+        <div className="flex flex-col items-start gap-1">
           <Badge tone={m.duplicate ? "danger" : m.online ? "ok" : "neutral"}>
             {m.duplicate ? "Trùng tên máy" : m.online ? "Đang hoạt động" : "Mất kết nối"}
           </Badge>
+          <span className="text-xs text-muted-foreground">lần cuối {formatTime(m.lastSeen)}</span>
         </div>
-        <div className="muted small">lần cuối {formatTime(m.lastSeen)}</div>
-      </td>
-      <td className="small">
-        {running.length === 0 && queued === 0 ? <span className="muted">Rảnh</span> : null}
-        {running.map((r) => (
-          <div key={r.runId}>
-            <Badge tone={STATUS_TONE[r.status]}>đang chạy</Badge> <span className="mono">{r.taskId}</span> {r.taskTitle}
-            <div className="muted small">
-              {r.project} · {r.profileId ?? "?"} · {ROLE_LABEL[r.role]} · từ {formatTime(r.since)}
+      </TableCell>
+      <TableCell className="align-top whitespace-normal">
+        <div className="flex min-w-56 flex-col gap-2">
+          {running.length === 0 && queued === 0 ? <span className="text-muted-foreground">Rảnh</span> : null}
+          {running.map((r) => (
+            <div key={r.runId} className="flex flex-col gap-0.5">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <Badge tone={STATUS_TONE[r.status]}>đang chạy</Badge>
+                <span className="font-mono text-xs">{r.taskId}</span>
+                <span className="min-w-0 break-words">{r.taskTitle}</span>
+              </div>
+              <div className="text-xs break-words text-muted-foreground">
+                {r.project} · {r.profileId ?? "?"} · {ROLE_LABEL[r.role]} · từ {formatTime(r.since)}
+              </div>
             </div>
-          </div>
-        ))}
-        {queued > 0 ? <div className="muted">+ {queued} run đang chờ</div> : null}
-        {!m.online && m.runs.length > 0 ? <div className="muted small">Số liệu từ lần báo cuối, có thể đã cũ.</div> : null}
-        <ErrorNote error={action.error} />
-      </td>
-      <td className="right">
+          ))}
+          {queued > 0 ? <div className="text-muted-foreground">+ {queued} run đang chờ</div> : null}
+          {!m.online && m.runs.length > 0 ? <div className="text-xs text-muted-foreground">Số liệu từ lần báo cuối, có thể đã cũ.</div> : null}
+          <ErrorNote error={action.error} />
+        </div>
+      </TableCell>
+      <TableCell className="text-right align-top">
         {me.role === "admin" && !m.online ? (
-          <button
-            className="btn btn-small btn-ghost"
+          <Button
+            size="sm"
+            variant="ghost"
             disabled={action.busy}
             onClick={() =>
               void action.run(async () => {
@@ -129,10 +148,10 @@ function MachineRow({ machine: m, onChanged }: { machine: Machine; onChanged: ()
             }
           >
             Xoá
-          </button>
+          </Button>
         ) : null}
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -140,18 +159,21 @@ function CooldownRow({ cooldown: c, onChanged }: { cooldown: QuotaCooldown; onCh
   const { client, me } = useHive();
   const action = useAction();
   return (
-    <tr>
-      <td className="mono">{c.account}</td>
-      <td className="small">{formatTime(c.until)}</td>
-      <td className="small note-cell">
-        {c.reason || <span className="muted">—</span>}
-        <ErrorNote error={action.error} />
-      </td>
-      <td className="small mono muted">{c.reportedBy}</td>
-      <td className="right">
+    <TableRow>
+      <TableCell className="align-top font-mono text-xs">{c.account}</TableCell>
+      <TableCell className="align-top text-muted-foreground">{formatTime(c.until)}</TableCell>
+      <TableCell className="align-top whitespace-normal">
+        <div className="flex max-w-80 min-w-48 flex-col gap-2">
+          <span className="whitespace-pre-wrap wrap-anywhere">{c.reason || <span className="text-muted-foreground">—</span>}</span>
+          <ErrorNote error={action.error} />
+        </div>
+      </TableCell>
+      <TableCell className="align-top font-mono text-xs text-muted-foreground">{c.reportedBy}</TableCell>
+      <TableCell className="text-right align-top">
         {me.role !== "viewer" ? (
-          <button
-            className="btn btn-small"
+          <Button
+            size="sm"
+            variant="outline"
             disabled={action.busy}
             title="Mọi máy dùng tài khoản này sẽ thử lại ở lần heartbeat kế tiếp"
             onClick={() =>
@@ -162,9 +184,9 @@ function CooldownRow({ cooldown: c, onChanged }: { cooldown: QuotaCooldown; onCh
             }
           >
             Hết nghỉ
-          </button>
+          </Button>
         ) : null}
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 }

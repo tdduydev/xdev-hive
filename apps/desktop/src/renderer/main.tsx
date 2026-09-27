@@ -1,8 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { HiveApp, type HiveClient } from "@xdev-hive/ui";
-import "@xdev-hive/ui/styles.css";
-import "./desktop.css";
+import "@xdev-hive/ui/globals.css";
 
 declare global {
   interface Window {
