@@ -5,8 +5,9 @@ import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
-import { Badge, Empty, ErrorNote, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
-import { formatTime, useAction, useHive, useProjects, useQuery } from "../hooks.ts";
+import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
+import { formatTime, useAction, useHive, useQuery } from "../hooks.ts";
+import { scopeProject } from "../lib/scope.ts";
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
   todo: "Chưa làm",
@@ -25,13 +26,13 @@ const TONE_TEXT: Record<string, string> = {
 };
 
 export function TasksPage() {
-  const { client, me } = useHive();
-  const projects = useProjects();
-  const [project, setProject] = useState("");
+  const { client, me, scope, projects } = useHive();
+  // Tasks always belong to one project: the shared scope has none of its own, so it shows every project's.
+  const scoped = scopeProject(scope);
   const [status, setStatus] = useState<TaskStatus | "">("");
   const list = useQuery(
-    () => client.call("tasks.list", { project: project || undefined, status: status || undefined }),
-    [client, project, status],
+    () => client.call("tasks.list", { project: scoped ?? undefined, status: status || undefined }),
+    [client, scoped, status],
   );
 
   return (
@@ -41,14 +42,6 @@ export function TasksPage() {
         subtitle="Agent nhận task bằng task_claim (có hạn giữ), xong thì task_update sang Chờ review kèm ghi chú bàn giao."
       />
       <div className="flex flex-wrap items-center gap-2">
-        <NativeSelect value={project} onChange={(e) => setProject(e.target.value)} aria-label="Dự án">
-          <NativeSelectOption value="">Tất cả dự án</NativeSelectOption>
-          {projects.map((p) => (
-            <NativeSelectOption key={p} value={p}>
-              {p}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
         <NativeSelect value={status} onChange={(e) => setStatus(e.target.value as TaskStatus | "")} aria-label="Trạng thái">
           <NativeSelectOption value="">Mọi trạng thái</NativeSelectOption>
           {TASK_STATUSES.map((s) => (
@@ -58,7 +51,8 @@ export function TasksPage() {
           ))}
         </NativeSelect>
       </div>
-      {me.role === "admin" ? <CreateTask defaultProject={project} projects={projects} onCreated={list.reload} /> : null}
+      {scope.kind === "shared" ? <Notice tone="info">Task luôn thuộc một dự án — đang hiện task của mọi dự án.</Notice> : null}
+      {me.role === "admin" ? <CreateTask key={scoped ?? ""} defaultProject={scoped ?? ""} projects={projects} onCreated={list.reload} /> : null}
       <ErrorNote error={list.error} />
       {list.data?.length === 0 ? <Empty>Chưa có task.</Empty> : null}
       {list.data?.length ? (
@@ -68,7 +62,7 @@ export function TasksPage() {
               <TableRow>
                 <TableHead>ID</TableHead>
                 <TableHead>Tiêu đề</TableHead>
-                <TableHead>Dự án</TableHead>
+                {scoped === null ? <TableHead>Dự án</TableHead> : null}
                 <TableHead>Trạng thái</TableHead>
                 <TableHead>Người giữ</TableHead>
                 <TableHead>Ghi chú bàn giao</TableHead>
@@ -77,7 +71,7 @@ export function TasksPage() {
             </TableHeader>
             <TableBody>
               {list.data.map((t) => (
-                <TaskRow key={t.id} task={t} onChanged={list.reload} />
+                <TaskRow key={t.id} task={t} showProject={scoped === null} onChanged={list.reload} />
               ))}
             </TableBody>
           </Table>
@@ -87,7 +81,7 @@ export function TasksPage() {
   );
 }
 
-function TaskRow({ task: t, onChanged }: { task: Task; onChanged: () => void }) {
+function TaskRow({ task: t, showProject, onChanged }: { task: Task; showProject: boolean; onChanged: () => void }) {
   const { client, me } = useHive();
   const action = useAction();
   return (
@@ -97,7 +91,11 @@ function TaskRow({ task: t, onChanged }: { task: Task; onChanged: () => void }) 
         {t.title}
         <ErrorNote error={action.error} />
       </TableCell>
-      <TableCell className="font-mono text-xs">{t.project}</TableCell>
+      {showProject ? (
+        <TableCell>
+          <OwnerBadge owner={t.project} />
+        </TableCell>
+      ) : null}
       <TableCell>
         {me.role === "viewer" ? (
           <Badge tone={STATUS_TONE[t.status]}>{STATUS_LABEL[t.status]}</Badge>
@@ -144,10 +142,11 @@ function CreateTask({
 }) {
   const { client } = useHive();
   const [id, setId] = useState("");
-  const [project, setProject] = useState(defaultProject);
+  // undefined: not typed yet, so it shows the scope's project (prefilled in a project scope).
+  const [project, setProject] = useState<string>();
   const [title, setTitle] = useState("");
   const action = useAction();
-  const effectiveProject = project || defaultProject;
+  const effectiveProject = project ?? defaultProject;
   return (
     <Card className="py-4">
       <CardContent className="flex flex-col gap-2 px-4">
