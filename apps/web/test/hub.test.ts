@@ -113,6 +113,9 @@ describe("hub REST", () => {
     assert.equal((await rpc(created.body.result.token, "docs.list")).status, 200);
     await rpc(tok.admin, "tokens.revoke", { id: created.body.result.info.id });
     assert.equal((await rpc(created.body.result.token, "docs.list")).status, 401);
+    const log = (await rpc(tok.admin, "admin.audit", { action: "tokens.revoke" })).body.result as Array<{ actor: string; target: string; detail: string }>;
+    assert.deepEqual(log.map((e) => [e.actor, e.target, e.detail]), [["duy", "ci-gitlab", "agent"]], "token changes are in the audit log");
+    assert.equal((await rpc(tok.agent, "admin.audit", {})).status, 403);
   });
 });
 

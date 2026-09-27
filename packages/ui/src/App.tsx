@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import type { HiveClient } from "./client.ts";
 import { Badge, ErrorNote, HiveLogo, STATUS_TONE } from "./components/ui.tsx";
 import { HiveContext, useQuery } from "./hooks.ts";
+import { AdminPage } from "./pages/Admin.tsx";
 import { AgentsPage } from "./pages/Agents.tsx";
 import { BoardPage } from "./pages/Board.tsx";
 import { DocsPage } from "./pages/Docs.tsx";
@@ -13,7 +14,7 @@ import { SetupPage } from "./pages/Setup.tsx";
 import { TasksPage } from "./pages/Tasks.tsx";
 import { TokensPage } from "./pages/Tokens.tsx";
 
-type PageId = "board" | "docs" | "proposals" | "memory" | "tasks" | "agents" | "machines" | "tokens" | "setup" | "projects";
+type PageId = "board" | "docs" | "proposals" | "memory" | "tasks" | "agents" | "machines" | "admin" | "tokens" | "setup" | "projects";
 
 const PAGES: Record<PageId, { label: string; render: () => ReactNode }> = {
   board: { label: "Board", render: () => <BoardPage /> },
@@ -23,6 +24,7 @@ const PAGES: Record<PageId, { label: string; render: () => ReactNode }> = {
   memory: { label: "Memory", render: () => <MemoryPage /> },
   tasks: { label: "Task", render: () => <TasksPage /> },
   machines: { label: "Máy & run", render: () => <MachinesPage /> },
+  admin: { label: "Quản trị", render: () => <AdminPage /> },
   tokens: { label: "Token", render: () => <TokensPage /> },
   setup: { label: "Cài đặt máy", render: () => <SetupPage /> },
   projects: { label: "Dự án & cài đặt", render: () => <ProjectsPage /> },
@@ -53,6 +55,8 @@ export function HiveApp({ client, onSignOut }: { client: HiveClient; onSignOut?:
     const ids: PageId[] = client.desktop ? ["board", "docs", "proposals", "memory", "tasks", "agents"] : ["docs", "proposals", "memory", "tasks"];
     // Machines only report to a hub; a local database never has any.
     if (me.data?.mode === "hub") ids.push("machines");
+    // The admin portal reads what every machine reported to the hub: hub admins only.
+    if (me.data?.mode === "hub" && me.data.role === "admin") ids.push("admin");
     if (client.tokens && me.data?.role === "admin") ids.push("tokens");
     if (client.desktop) ids.push("setup", "projects");
     return ids;
