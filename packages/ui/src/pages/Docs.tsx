@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@xdev-hive/ui/componen
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Diff } from "../components/Diff.tsx";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader } from "../components/common.tsx";
-import { errorMessage, formatTime, useAction, useHive, useQuery } from "../hooks.ts";
+import { errorMessage, formatTime, useAction, useCan, useHive, useQuery } from "../hooks.ts";
 import { docOwner, inScope, projectScope, scopeLabel, scopeProject, type Scope } from "../lib/scope.ts";
 
 interface Draft {
@@ -65,8 +65,8 @@ function groupDocs(all: DocSummary[], scope: Scope): DocGroup[] {
 }
 
 export function DocsPage() {
-  const { client, me, scope, setScope, projects } = useHive();
-  const canEdit = me.role === "admin";
+  const { client, scope, setScope, projects } = useHive();
+  const allow = useCan();
   const list = useQuery(() => client.call("docs.list", {}), [client]);
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
@@ -99,10 +99,16 @@ export function DocsPage() {
     setNewOwner(scopeProject(scope) ?? "");
   }, [scope]);
 
+  // New docs go where this person may write: Chung, then the projects they manage.
   const ownerOptions = useMemo(
-    () => [...new Set([...projects, ...(newOwner ? [newOwner] : [])])].sort(),
-    [projects, newOwner],
+    () => [...new Set([...projects, ...(newOwner ? [newOwner] : [])])].sort().filter((p) => allow(p, "manage")),
+    [projects, newOwner, allow],
   );
+  const sharedOk = allow(null, "manage");
+  const canCreate = sharedOk || ownerOptions.length > 0;
+  useEffect(() => {
+    if (!newOwner && !sharedOk && ownerOptions[0]) setNewOwner(ownerOptions[0]);
+  }, [newOwner, sharedOk, ownerOptions]);
   const keyPrefix = newOwner ? `project/${newOwner}/` : "org/";
   const newKey = keyPrefix + newSlug.trim();
 
@@ -129,7 +135,7 @@ export function DocsPage() {
     <Page>
       <PageHeader
         title="Tài liệu"
-        subtitle="Bản gốc của AGENTS.md, quy chuẩn chung và nhật ký quyết định. Agent chỉ được đề xuất sửa, admin duyệt."
+        subtitle="Bản gốc của AGENTS.md, quy chuẩn chung và nhật ký quyết định. Agent chỉ được đề xuất sửa; người quản trị dự án (hoặc admin) duyệt."
       />
       <div className="grid items-start gap-4 lg:grid-cols-[280px_1fr]">
         <Card className="min-w-0 py-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
@@ -184,7 +190,7 @@ export function DocsPage() {
                       : `Chưa có tài liệu trong phạm vi “${scopeLabel(scope)}”.`}
                 </Empty>
               ) : null}
-              {canEdit ? (
+              {canCreate ? (
                 <div className="flex flex-col gap-2 border-t pt-3">
                   <div className="text-xs font-semibold text-muted-foreground">Tài liệu mới</div>
                   <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2">
@@ -201,7 +207,7 @@ export function DocsPage() {
                           setNewKeyError(null);
                         }}
                       >
-                        <NativeSelectOption value="">Chung (cả team)</NativeSelectOption>
+                        {sharedOk ? <NativeSelectOption value="">Chung (cả team)</NativeSelectOption> : null}
                         {ownerOptions.map((p) => (
                           <NativeSelectOption key={p} value={p}>
                             {p}
@@ -243,7 +249,13 @@ export function DocsPage() {
           <Card className="py-4">
             <CardContent className="px-4">
               {selected ? (
-                <DocEditor key={selected} docKey={selected} canEdit={canEdit} onSaved={list.reload} />
+                <DocEditor
+                  key={selected}
+                  docKey={selected}
+                  canEdit={allow(docOwner(selected), "manage")}
+                  canPropose={allow(docOwner(selected), "contribute")}
+                  onSaved={list.reload}
+                />
               ) : (
                 <Empty>Chọn một tài liệu.</Empty>
               )}
@@ -255,7 +267,7 @@ export function DocsPage() {
   );
 }
 
-function DocEditor({ docKey, canEdit, onSaved }: { docKey: string; canEdit: boolean; onSaved: () => void }) {
+function DocEditor({ docKey, canEdit, canPropose, onSaved }: { docKey: string; canEdit: boolean; canPropose: boolean; onSaved: () => void }) {
   const { client } = useHive();
   const doc = useQuery(() => client.call("docs.get", { key: docKey }), [client, docKey]);
   const [draft, setDraft] = useState<Draft>(emptyDraft(docKey));
@@ -293,6 +305,19 @@ function DocEditor({ docKey, canEdit, onSaved }: { docKey: string; canEdit: bool
       setSaved(`Đã lưu v${result.version}`);
       doc.reload();
       onSaved();
+    });
+
+  // Contributors send the change as a proposal for someone who manages the project to approve.
+  const propose = () =>
+    action.run(async () => {
+      await client.call("proposals.create", {
+        docKey,
+        baseVersion: current?.version ?? 0,
+        content: draft.content,
+        reason: draft.note.trim() || "Sửa từ web",
+      });
+      setSaved("Đã gửi đề xuất, chờ người quản trị dự án duyệt.");
+      setDraft({ ...draft, content: current?.content ?? "", note: "" });
     });
 
   return (
@@ -367,7 +392,7 @@ function DocEditor({ docKey, canEdit, onSaved }: { docKey: string; canEdit: bool
         <Textarea
           className="min-h-80 resize-y font-mono text-sm leading-relaxed field-sizing-fixed md:text-sm"
           value={draft.content}
-          readOnly={!canEdit}
+          readOnly={!canEdit && !canPropose}
           spellCheck={false}
           aria-label="Nội dung (Markdown)"
           placeholder="Nội dung Markdown…"
@@ -382,21 +407,27 @@ function DocEditor({ docKey, canEdit, onSaved }: { docKey: string; canEdit: bool
         <History docKey={docKey} version={current?.version ?? 0} />
       </TabsContent>
 
-      {canEdit ? (
+      {canEdit || canPropose ? (
         <div className="flex flex-wrap gap-2">
           <Input
             className="min-w-48 flex-1"
-            placeholder="Ghi chú thay đổi (tuỳ chọn)"
+            placeholder={canEdit ? "Ghi chú thay đổi (tuỳ chọn)" : "Lý do đề xuất"}
             value={draft.note}
             onChange={(e) => setDraft({ ...draft, note: e.target.value })}
             aria-label="Ghi chú thay đổi"
           />
-          <Button onClick={save} disabled={!dirty || action.busy}>
-            {action.busy ? "Đang lưu…" : `Lưu v${(current?.version ?? 0) + 1}`}
-          </Button>
+          {canEdit ? (
+            <Button onClick={save} disabled={!dirty || action.busy}>
+              {action.busy ? "Đang lưu…" : `Lưu v${(current?.version ?? 0) + 1}`}
+            </Button>
+          ) : (
+            <Button onClick={propose} disabled={!dirty || action.busy}>
+              {action.busy ? "Đang gửi…" : "Gửi đề xuất"}
+            </Button>
+          )}
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">Bạn chỉ có quyền xem. Agent đề xuất thay đổi qua tool doc_propose.</p>
+        <p className="text-sm text-muted-foreground">Bạn chỉ có quyền xem tài liệu này.</p>
       )}
       <ErrorNote error={action.error} />
       {saved && !dirty ? <Notice tone="ok" title={saved} /> : null}

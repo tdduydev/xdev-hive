@@ -1,4 +1,5 @@
 // Contracts between the shared UI and its hosts (web hub, desktop main process). Types only.
+import type { Access, Level } from "./access.ts";
 import type { AgentKind, AgentProfile, AgentRole, RunnerSettings, RunStatus } from "./agents.ts";
 import type { MrSettings, MrState } from "./gitlab.ts";
 import type { TransferReport } from "./transfer.ts";
@@ -8,14 +9,34 @@ export interface Me {
   name: string;
   role: Role;
   mode: "local" | "hub";
+  /** Hub account behind the session or token (absent for tokens of no account, and in local mode). */
+  user?: { id: string; username: string; displayName: string; admin: boolean; mustChangePassword: boolean };
+  /** Per-project grants of a restricted account (see access.ts); absent = unrestricted. */
+  access?: Access;
 }
 
 export interface TokenInfo {
   id: string;
   name: string;
   role: Role;
+  /** Account the token belongs to; null for tokens of no account (they keep the role-only rules). */
+  ownerId: string | null;
   createdAt: string;
   lastUsedAt: string | null;
+}
+
+/** A person's hub account, as admins manage it. */
+export interface HubUser {
+  id: string;
+  username: string;
+  displayName: string;
+  admin: boolean;
+  disabled: boolean;
+  mustChangePassword: boolean;
+  createdAt: string;
+  lastLoginAt: string | null;
+  /** Project → level; admins see every project whatever this says. */
+  grants: Record<string, Level>;
 }
 
 export interface FileAction {
@@ -158,6 +179,8 @@ export interface ProfileCheck {
 export interface DesktopBridge {
   settings(): Promise<DesktopSettings>;
   updateSettings(patch: DesktopSettingsPatch): Promise<DesktopSettings>;
+  /** Hub mode with a hub account: the hub issues this machine a token that belongs to the account. */
+  hubSignIn(input: { hubUrl: string; username: string; password: string }): Promise<DesktopSettings>;
   addProject(project: DesktopProject): Promise<DesktopSettings>;
   removeProject(name: string): Promise<DesktopSettings>;
   pickFolder(): Promise<string | null>;

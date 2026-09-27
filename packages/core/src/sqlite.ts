@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
+import { can, levelOn, type Level } from "./access.ts";
 import { HiveError } from "./errors.ts";
 import { parseDocKey, titleFromSlug } from "./keys.ts";
 import { EMPTY_POLICY } from "./policy.ts";
@@ -261,13 +262,100 @@ export class SqliteHive implements HiveBackend {
     authorize(method, actor);
     const parsed = parseInput(method, input);
     const handler = this.#handlers[method] as (i: ParsedInput<M>, a: Actor) => MethodOutput[M];
-    const output = handler(parsed, actor);
+    this.#check(method, parsed as ParsedInput<Method>, actor);
+    const output = this.#filter(method, handler(parsed, actor), actor);
     const audited = AUDITED[method];
     if (audited) {
       const { target, detail } = audited(parsed, output);
       this.audit(actor, method, target, detail);
     }
     return output;
+  }
+
+  // ── per-project access (access.ts) ─────────────────────────────────────────
+
+  /** Owner project of a doc key: null for org/* (shared). */
+  static #docOwner(key: string): string | null {
+    return parseDocKey(key).project;
+  }
+
+  /**
+   * Refuses a call on something the actor may not touch. Invisible projects answer not_found, so an
+   * account cannot learn what exists in projects it was not given; visible but too low a level is forbidden.
+   */
+  #need(actor: Actor, owner: string | null, level: Level, what: string): void {
+    if (can(actor, owner, level)) return;
+    if (levelOn(actor, owner) === null) throw new HiveError("not_found", `${what} not found.`);
+    const where = owner === null ? "the shared (team-wide) data" : `project ${owner}`;
+    throw new HiveError("forbidden", `${what}: needs "${level}" on ${where}.`);
+  }
+
+  #check(method: Method, input: ParsedInput<Method>, actor: Actor): void {
+    const i = input as Record<string, any>;
+    const owner = SqliteHive.#docOwner;
+    switch (method) {
+      case "docs.get":
+      case "docs.history":
+        return this.#need(actor, owner(i.key), "view", `Doc ${i.key}`);
+      case "docs.save":
+        return this.#need(actor, owner(i.key), "manage", `Doc ${i.key}`);
+      case "proposals.create":
+        return this.#need(actor, owner(i.docKey), "contribute", `Doc ${i.docKey}`);
+      case "proposals.approve":
+      case "proposals.reject": {
+        const row = this.db.prepare("SELECT doc_key FROM proposals WHERE id = ?").get(i.id) as Row | undefined;
+        if (row) this.#need(actor, owner(str(row.doc_key)), "manage", `Proposal #${i.id}`);
+        return;
+      }
+      case "memory.search":
+        if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
+        return;
+      case "memory.write":
+        return this.#need(actor, i.shared ? null : i.project, "contribute", i.shared ? "Shared memory" : `Project ${i.project}`);
+      case "memory.approve":
+      case "memory.remove": {
+        const row = this.db.prepare("SELECT project FROM memory WHERE id = ?").get(i.id) as Row | undefined;
+        if (row) this.#need(actor, str(row.project) === SHARED ? null : str(row.project), "manage", `Memory #${i.id}`);
+        return;
+      }
+      case "tasks.create":
+        return this.#need(actor, i.project, "manage", `Project ${i.project}`);
+      case "tasks.claim":
+      case "tasks.update": {
+        const task = this.#getTask(i.id);
+        if (task) this.#need(actor, task.project, "contribute", `Task ${i.id}`);
+        return;
+      }
+      default:
+        return;
+    }
+  }
+
+  /** Lists only show what the actor can see (shared items are visible to every account). */
+  #filter<M extends Method>(method: M, output: MethodOutput[M], actor: Actor): MethodOutput[M] {
+    if (!actor.access) return output;
+    const sees = (owner: string | null) => levelOn(actor, owner) !== null;
+    const out = output as unknown;
+    switch (method as Method) {
+      case "docs.list":
+        return (out as DocSummary[]).filter((d) => sees(d.project)) as MethodOutput[M];
+      case "proposals.list":
+        return (out as Proposal[]).filter((p) => sees(SqliteHive.#docOwner(p.docKey))) as MethodOutput[M];
+      case "memory.search":
+      case "memory.list":
+        return (out as Memory[]).filter((m) => sees(m.project)) as MethodOutput[M];
+      case "tasks.list":
+        return (out as Task[]).filter((t) => sees(t.project)) as MethodOutput[M];
+      // Machines are the team's, but what they are running shows the project: hide runs of hidden projects.
+      case "machines.list":
+        return (out as Machine[]).map((m) => ({ ...m, runs: m.runs.filter((r) => sees(r.project)) })) as MethodOutput[M];
+      case "policy.get": {
+        const policy = out as TeamPolicy;
+        return { ...policy, projects: Object.fromEntries(Object.entries(policy.projects).filter(([p]) => sees(p))) } as MethodOutput[M];
+      }
+      default:
+        return output;
+    }
   }
 
   /** Records an admin action (also used by the hub for token changes, which live outside the method table). */
@@ -534,7 +622,8 @@ export class SqliteHive implements HiveBackend {
 
       "memory.write": (input, actor) => {
         assertNoSecret(input.content, "Memory content");
-        const status = this.#opts.memoryRequiresApproval && actor.role !== "admin" ? "pending" : "approved";
+        const owner = input.shared ? null : input.project!;
+        const status = this.#opts.memoryRequiresApproval && !can(actor, owner, "manage") ? "pending" : "approved";
         const res = db
           .prepare(
             "INSERT INTO memory(project, kind, content, author, task_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",

@@ -236,23 +236,27 @@ export interface MethodOutput {
   "admin.audit": AuditEntry[];
 }
 
-/** Minimum role per method. viewer < agent < admin. */
+/**
+ * Minimum role per method (viewer < agent = member < admin). Writes on a project also need a level on
+ * that project (see access.ts and SqliteHive): docs.save, approvals, memory removal and task creation
+ * need "manage", which unrestricted actors only have as admin — the old rule.
+ */
 export const METHOD_ROLES: Record<Method, Role> = {
   "docs.list": "viewer",
   "docs.get": "viewer",
   "docs.history": "viewer",
-  "docs.save": "admin",
+  "docs.save": "agent",
   "proposals.list": "viewer",
   "proposals.create": "agent",
-  "proposals.approve": "admin",
-  "proposals.reject": "admin",
+  "proposals.approve": "agent",
+  "proposals.reject": "agent",
   "memory.search": "viewer",
   "memory.list": "viewer",
   "memory.write": "agent",
-  "memory.approve": "admin",
-  "memory.remove": "admin",
+  "memory.approve": "agent",
+  "memory.remove": "agent",
   "tasks.list": "viewer",
-  "tasks.create": "admin",
+  "tasks.create": "agent",
   "tasks.claim": "agent",
   "tasks.update": "agent",
   "machines.heartbeat": "agent",
@@ -270,8 +274,10 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "admin.audit": "admin",
 };
 
-export const ROLE_RANK: Record<Role, number> = { viewer: 0, agent: 1, admin: 2 };
+export const ROLE_RANK: Record<Role, number> = { viewer: 0, agent: 1, member: 1, admin: 2 };
 export const ROLES = Object.keys(ROLE_RANK) as Role[];
+/** Roles a token can have. member: a machine token from a person's desktop sign-in (their own rights). */
+export const TOKEN_ROLES: Role[] = ["viewer", "agent", "member", "admin"];
 
 export function isMethod(value: unknown): value is Method {
   return typeof value === "string" && Object.hasOwn(schemas, value);
