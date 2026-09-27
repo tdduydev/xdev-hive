@@ -6,6 +6,7 @@ import {
   GitPullRequestArrow,
   KeyRound,
   LayoutDashboard,
+  LayoutGrid,
   ListTodo,
   LogOut,
   Server,
@@ -35,7 +36,9 @@ import { cn } from "cn";
 import { TooltipProvider } from "@xdev-hive/ui/components/ui/tooltip";
 import type { HiveClient } from "./client.ts";
 import { Badge, ErrorNote, HiveLogo, STATUS_TONE } from "./components/common.tsx";
-import { HiveContext, useQuery } from "./hooks.ts";
+import { ScopeSwitcher } from "./components/ScopeSwitcher.tsx";
+import { HiveContext, useProjectList, useQuery } from "./hooks.ts";
+import { readScope, writeScope, type Scope } from "./lib/scope.ts";
 import { useSystemTheme } from "./lib/theme.ts";
 import { AdminPage } from "./pages/Admin.tsx";
 import { AgentsPage } from "./pages/Agents.tsx";
@@ -43,16 +46,18 @@ import { BoardPage } from "./pages/Board.tsx";
 import { DocsPage } from "./pages/Docs.tsx";
 import { MachinesPage } from "./pages/Machines.tsx";
 import { MemoryPage } from "./pages/Memory.tsx";
+import { OverviewPage } from "./pages/Overview.tsx";
 import { ProjectsPage } from "./pages/Projects.tsx";
 import { ProposalsPage } from "./pages/Proposals.tsx";
 import { SetupPage } from "./pages/Setup.tsx";
 import { TasksPage } from "./pages/Tasks.tsx";
 import { TokensPage } from "./pages/Tokens.tsx";
 
-type PageId = "board" | "docs" | "proposals" | "memory" | "tasks" | "agents" | "machines" | "admin" | "tokens" | "setup" | "projects";
+type PageId = "overview" | "board" | "docs" | "proposals" | "memory" | "tasks" | "agents" | "machines" | "admin" | "tokens" | "setup" | "projects";
 type Icon = ComponentType<{ className?: string }>;
 
 const PAGES: Record<PageId, { label: string; icon: Icon; render: () => ReactNode }> = {
+  overview: { label: "Tổng quan", icon: LayoutGrid, render: () => <OverviewPage /> },
   board: { label: "Board", icon: LayoutDashboard, render: () => <BoardPage /> },
   docs: { label: "Tài liệu", icon: FileText, render: () => <DocsPage /> },
   proposals: { label: "Đề xuất", icon: GitPullRequestArrow, render: () => <ProposalsPage /> },
@@ -67,7 +72,7 @@ const PAGES: Record<PageId, { label: string; icon: Icon; render: () => ReactNode
 };
 
 const GROUPS: Array<{ label: string; ids: PageId[] }> = [
-  { label: "Làm việc", ids: ["board", "docs", "proposals", "memory", "tasks"] },
+  { label: "Làm việc", ids: ["overview", "board", "docs", "proposals", "memory", "tasks"] },
   { label: "Agent & máy", ids: ["agents", "machines", "setup"] },
   { label: "Quản trị", ids: ["admin", "tokens", "projects"] },
 ];
@@ -103,10 +108,16 @@ function Centered({ children }: { children: ReactNode }) {
 export function HiveApp({ client, onSignOut }: { client: HiveClient; onSignOut?: () => void }) {
   useSystemTheme();
   const me = useQuery(() => client.me(), [client]);
-  const home: PageId = client.desktop ? "board" : "docs";
+  const home: PageId = "overview";
   const [page, setPage] = useState<PageId>(() => readHash() ?? home);
   const [tick, setTick] = useState(0);
   const bump = useCallback(() => setTick((t) => t + 1), []);
+  const projects = useProjectList(client, tick);
+  const [scope, setScopeState] = useState<Scope>(readScope);
+  const setScope = useCallback((next: Scope) => {
+    writeScope(next);
+    setScopeState(next);
+  }, []);
   const pending = useQuery(() => client.call("proposals.list", { status: "pending" }), [client, tick, page]);
   // Checked when the app opens (and after leaving the setup page), so the sidebar shows what is missing.
   const setup = useQuery(async () => (client.desktop ? client.desktop.setupStatus() : null), [client, page === "setup"]);
@@ -118,7 +129,7 @@ export function HiveApp({ client, onSignOut }: { client: HiveClient; onSignOut?:
   }, [home]);
 
   const visible = useMemo(() => {
-    const ids = new Set<PageId>(["docs", "proposals", "memory", "tasks"]);
+    const ids = new Set<PageId>(["overview", "docs", "proposals", "memory", "tasks"]);
     if (client.desktop) for (const id of ["board", "agents", "setup", "projects"] as const) ids.add(id);
     // Machines only report to a hub; a local database never has any.
     if (me.data?.mode === "hub") ids.add("machines");
@@ -151,7 +162,7 @@ export function HiveApp({ client, onSignOut }: { client: HiveClient; onSignOut?:
   const desktop = Boolean(client.desktop);
 
   return (
-    <HiveContext.Provider value={{ client, me: me.data, bump }}>
+    <HiveContext.Provider value={{ client, me: me.data, bump, scope, setScope, projects }}>
       <TooltipProvider>
         <SidebarProvider>
           {/* Icon-only collapse would sit under the macOS traffic lights; the desktop hides the sidebar instead. */}
@@ -160,6 +171,9 @@ export function HiveApp({ client, onSignOut }: { client: HiveClient; onSignOut?:
               <div className="flex items-center gap-2 px-2 py-1.5 font-semibold group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
                 <HiveLogo className="shrink-0" />
                 <span className="truncate group-data-[collapsible=icon]:hidden">xDev Hive</span>
+              </div>
+              <div className="[-webkit-app-region:no-drag]">
+                <ScopeSwitcher />
               </div>
             </SidebarHeader>
             <SidebarContent>

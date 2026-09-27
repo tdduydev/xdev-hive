@@ -97,8 +97,8 @@ export async function transferHive(from: TransferSide, to: TransferSide, opts: T
 
   // Memory: approved entries only, so copying never skips a review. Same project + kind + content = already there.
   const memories = await src("memory.list", { status: "approved", limit: MEMORY_PAGE });
-  const existing = new Map<string, Set<string>>();
-  const seen = async (project: string) => {
+  const existing = new Map<string | null, Set<string>>();
+  const seen = async (project: string | null) => {
     if (!existing.has(project)) {
       const list: Memory[] = await dst("memory.list", { project, limit: MEMORY_PAGE });
       existing.set(project, new Set(list.map((m) => `${m.kind}\n${m.content}`)));
@@ -106,10 +106,11 @@ export async function transferHive(from: TransferSide, to: TransferSide, opts: T
     return existing.get(project)!;
   };
   for (const m of memories) {
-    await track("memory", `${m.project} #${m.id}`, async () => {
+    await track("memory", `${m.project ?? "chung"} #${m.id}`, async () => {
       const set = await seen(m.project);
       if (set.has(`${m.kind}\n${m.content}`)) return { result: "unchanged" };
-      const written = await dst("memory.write", { project: m.project, kind: m.kind, content: m.content, taskId: m.taskId ?? undefined });
+      const where = m.project === null ? { shared: true } : { project: m.project };
+      const written = await dst("memory.write", { ...where, kind: m.kind, content: m.content, taskId: m.taskId ?? undefined });
       set.add(`${m.kind}\n${m.content}`);
       return { result: "added", note: written.status === "pending" ? "chờ admin duyệt ở đích" : undefined };
     });

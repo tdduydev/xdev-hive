@@ -42,6 +42,20 @@ describe("mcp tools", () => {
     assert.equal(hits[0].author, "claude@duy");
   });
 
+  it("records team-wide memory with shared: true, and every project's search finds it", async () => {
+    const hive = new SqliteHive(":memory:");
+    const inApp = await connect(hive, "claude@duy");
+    await inApp.callTool({ name: "memory_write", arguments: { shared: true, kind: "convention", content: "Commit theo Conventional Commits" } });
+    await inApp.callTool({ name: "memory_write", arguments: { kind: "gotcha", content: "app: chạy migrate trước khi test" } });
+    const server = createHiveMcpServer(hive, { name: "codex@duy", role: "agent" }, { defaultProject: "web" });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await server.connect(a);
+    const inWeb = new Client({ name: "test", version: "0" });
+    await inWeb.connect(b);
+    const hits = JSON.parse(text(await inWeb.callTool({ name: "memory_search", arguments: {} }))) as Array<{ project: string | null; content: string }>;
+    assert.deepEqual(hits.map((h) => [h.project, h.content]), [[null, "Commit theo Conventional Commits"]], "web sees the shared entry, not app's");
+  });
+
   it("lets agents propose but not overwrite docs", async () => {
     const hive = new SqliteHive(":memory:");
     hive.seed();

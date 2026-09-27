@@ -13,7 +13,8 @@ Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, 
 
 - **Tài liệu**: bản gốc của `AGENTS.md`, quy chuẩn chung (`org/*`), nhật ký quyết định. Có version, lịch sử và diff.
 - **Đề xuất**: agent không sửa tài liệu trực tiếp mà gọi `doc_propose`, admin duyệt. Nếu tài liệu đã đổi sau khi agent đọc, đề xuất bị đánh dấu xung đột, không ghi đè.
-- **Memory**: `memory_write` / `memory_search`, tìm kiếm FTS5 có dấu hoặc không dấu đều được. Trên hub, memory do agent ghi cần admin duyệt mới hiện cho agent khác.
+- **Memory**: `memory_write` / `memory_search`, tìm kiếm FTS5 có dấu hoặc không dấu đều được. Trên hub, memory do agent ghi cần admin duyệt mới hiện cho agent khác. Memory *chung* (`memory_write` với `shared: true`) áp dụng cho mọi dự án, và `memory_search` của dự án nào cũng thấy (có `project: null`).
+- **Chung và riêng từng dự án**: tài liệu `org/*` và memory chung dùng cho cả team; tài liệu `project/<dự án>/*`, memory riêng và task thuộc về một dự án. Ở đầu sidebar có ô chọn phạm vi: *Tất cả dự án*, *Chung (cả team)*, hoặc một dự án. Mọi trang lọc theo phạm vi đó (ở một dự án thì thấy dữ liệu riêng của dự án cộng với dữ liệu chung, có nhãn "Chung"), và mục tạo mới mặc định thuộc phạm vi đang chọn. Trang *Tổng quan* tóm tắt từng dự án và phần dữ liệu chung.
 - **Task**: `task_claim` giữ task theo lease, hai agent không nhận trùng. `task_update` kèm ghi chú bàn giao.
 - **Đồng bộ vào repo**: render `AGENTS.md` (khối chung + phần riêng của dự án), `CLAUDE.md` (`@AGENTS.md`), `docs/decisions.md`. Chỉ commit các file này, không push.
 - **Chặn sửa tay**: hook `PreToolUse` của Claude Code và `pre-commit` của git (áp dụng cho mọi agent).
