@@ -10,14 +10,16 @@ import {
 } from "@xdev-hive/ui/components/ui/dropdown-menu";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@xdev-hive/ui/components/ui/sidebar";
 import { useHive } from "../hooks.ts";
+import { useT, type MessageKey } from "../i18n/index.tsx";
 import { ALL, projectScope, SHARED, sameScope, scopeLabel, type Scope } from "../lib/scope.ts";
 
 const ICON = { all: Layers, shared: Users, project: FolderGit2 } as const;
-const HINT = { all: "Mọi dự án và dữ liệu chung", shared: "Chỉ dữ liệu dùng cho mọi dự án", project: "Dữ liệu riêng + dữ liệu chung" } as const;
+const HINT: Record<Scope["kind"], MessageKey> = { all: "scope.allHint", shared: "scope.sharedHint", project: "scope.projectHint" };
 
 /** Picks the scope every page filters by: all projects, the team-wide data, or one project. */
 export function ScopeSwitcher() {
   const { scope, setScope, projects } = useHive();
+  const t = useT();
   const Icon = ICON[scope.kind];
   const item = (s: Scope, label: string, hint?: string) => {
     const I = ICON[s.kind];
@@ -43,17 +45,17 @@ export function ScopeSwitcher() {
               </div>
               <div className="grid min-w-0 flex-1 text-left leading-tight">
                 <span className="truncate text-sm font-medium">{scopeLabel(scope)}</span>
-                <span className="truncate text-xs text-muted-foreground">{HINT[scope.kind]}</span>
+                <span className="truncate text-xs text-muted-foreground">{t(HINT[scope.kind])}</span>
               </div>
               <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-(--radix-dropdown-menu-trigger-width) min-w-64" align="start">
-            {item(ALL, "Tất cả dự án", HINT.all)}
-            {item(SHARED, "Chung (cả team)", HINT.shared)}
+            {item(ALL, t("common.allProjects"), t(HINT.all))}
+            {item(SHARED, t("common.sharedTeam"), t(HINT.shared))}
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-xs text-muted-foreground">Dự án</DropdownMenuLabel>
-            {projects.length === 0 ? <div className="px-2 py-1.5 text-xs text-muted-foreground">Chưa có dự án nào.</div> : null}
+            <DropdownMenuLabel className="text-xs text-muted-foreground">{t("scope.projects")}</DropdownMenuLabel>
+            {projects.length === 0 ? <div className="px-2 py-1.5 text-xs text-muted-foreground">{t("scope.noProjects")}</div> : null}
             {projects.map((p) => item(projectScope(p), p))}
           </DropdownMenuContent>
         </DropdownMenu>

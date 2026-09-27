@@ -4,7 +4,9 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { ErrorNote, HiveLogo } from "./components/common.tsx";
+import { LanguageSelect } from "./components/Language.tsx";
 import { errorMessage } from "./hooks.ts";
+import { useT } from "./i18n/index.tsx";
 import { useSystemTheme } from "./lib/theme.ts";
 
 /** Hub sign-in: username + password for people; an API token still works (CI, recovery). */
@@ -18,6 +20,7 @@ export function Login({
   error?: string | null;
 }) {
   useSystemTheme();
+  const t = useT();
   const [useToken, setUseToken] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -53,12 +56,12 @@ export function Login({
               <HiveLogo size={26} />
               xDev Hive
             </CardTitle>
-            <CardDescription>Tài liệu, memory và task dùng chung cho các coding agent của team.</CardDescription>
+            <CardDescription>{t("login.tagline")}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {useToken ? (
               <div className="flex flex-col gap-2">
-                <Label htmlFor="token">Token truy cập</Label>
+                <Label htmlFor="token">{t("login.token")}</Label>
                 <Input
                   id="token"
                   className="font-mono"
@@ -73,7 +76,7 @@ export function Login({
             ) : (
               <>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="username">Tên đăng nhập</Label>
+                  <Label htmlFor="username">{t("login.username")}</Label>
                   <Input
                     id="username"
                     autoComplete="username"
@@ -85,7 +88,7 @@ export function Login({
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="password">Mật khẩu</Label>
+                  <Label htmlFor="password">{t("login.password")}</Label>
                   <Input id="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
                 </div>
               </>
@@ -94,7 +97,7 @@ export function Login({
           </CardContent>
           <CardFooter className="flex flex-col items-stretch gap-3">
             <Button type="submit" disabled={!ready || busy}>
-              {busy ? "Đang đăng nhập…" : "Đăng nhập"}
+              {busy ? t("login.submitting") : t("login.submit")}
             </Button>
             <Button
               type="button"
@@ -106,11 +109,10 @@ export function Login({
                 setFailure(null);
               }}
             >
-              {useToken ? "Đăng nhập bằng tài khoản" : "Dùng token truy cập thay cho tài khoản"}
+              {useToken ? t("login.useAccount") : t("login.useToken")}
             </Button>
-            <p className="text-xs text-muted-foreground">
-              Tài khoản do admin tạo, kèm mật khẩu tạm; lần đăng nhập đầu sẽ yêu cầu đổi. Quên mật khẩu: nhờ admin đặt lại.
-            </p>
+            <p className="text-xs text-muted-foreground">{t("login.help")}</p>
+            <LanguageSelect />
           </CardFooter>
         </form>
       </Card>
