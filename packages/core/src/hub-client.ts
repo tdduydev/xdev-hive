@@ -12,6 +12,32 @@ const CODES: Record<number, HiveErrorCode> = {
 };
 
 /**
+ * Signs in once with a hub account (username + password) and gets a token for this machine. The token
+ * belongs to that account: agents on the machine see the projects the account is granted, no more.
+ */
+export async function requestDeviceToken(
+  url: string,
+  input: { username: string; password: string; machine: string },
+): Promise<{ token: string; user: NonNullable<Me["user"]> }> {
+  const res = await fetch(`${url.replace(/\/+$/, "")}/api/device-token`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      username: input.username,
+      password: input.password,
+      name: input.machine.replace(/[^\w.-]/g, "-").slice(0, 60) || "desktop",
+    }),
+  });
+  const body = (await res.json().catch(() => null)) as
+    | { result?: { token: string; user: NonNullable<Me["user"]> }; error?: { code?: string; message?: string } }
+    | null;
+  if (!res.ok || !body?.result) {
+    throw new HiveError((body?.error?.code as HiveErrorCode) ?? CODES[res.status] ?? "bad_request", body?.error?.message ?? `Hub responded ${res.status}`);
+  }
+  return body.result;
+}
+
+/**
  * Talks to a Hive hub over `POST /api/rpc`. The hub decides the role from the token;
  * `actor.name` is only sent as a label (`x-hive-agent`) so writes show which agent made them.
  */

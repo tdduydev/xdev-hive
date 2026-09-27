@@ -6,7 +6,7 @@ import { Input } from "@xdev-hive/ui/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@xdev-hive/ui/components/ui/toggle-group";
 import { Diff } from "../components/Diff.tsx";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
-import { formatTime, useAction, useHive, useQuery } from "../hooks.ts";
+import { formatTime, useAction, useCan, useHive, useQuery } from "../hooks.ts";
 import { docOwner, inScope, scopeLabel } from "../lib/scope.ts";
 
 const STATUS_LABEL: Record<Proposal["status"], string> = {
@@ -65,7 +65,8 @@ export function ProposalsPage() {
 }
 
 function ProposalCard({ proposal: p, onChanged }: { proposal: Proposal; onChanged: () => void }) {
-  const { client, me, bump } = useHive();
+  const { client, bump } = useHive();
+  const allow = useCan();
   const [open, setOpen] = useState(p.status === "pending");
   const [note, setNote] = useState("");
   const current = useQuery(
@@ -119,7 +120,7 @@ function ProposalCard({ proposal: p, onChanged }: { proposal: Proposal; onChange
               {current.loading ? <Empty>Đang tải…</Empty> : <Diff before={current.data?.content ?? ""} after={p.content} />}
             </>
           ) : null}
-          {p.status === "pending" && me.role === "admin" ? (
+          {p.status === "pending" && allow(docOwner(p.docKey), "manage") ? (
             <div className="flex flex-wrap items-center gap-2">
               <Input
                 className="min-w-48 flex-1"

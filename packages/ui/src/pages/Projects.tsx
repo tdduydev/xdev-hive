@@ -59,10 +59,16 @@ export function ProjectsPage() {
 }
 
 function ModeCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: () => void }) {
-  const { client } = useHive();
+  const { client, me, bump } = useHive();
   const [mode, setMode] = useState(settings.mode);
   const [hubUrl, setHubUrl] = useState(settings.hubUrl);
   const [hubToken, setHubToken] = useState("");
+  // People sign in with their hub account (the hub issues this machine a token); a pasted token still works.
+  const [auth, setAuth] = useState<"account" | "token">("account");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const signIn = useAction();
+  const [signedIn, setSignedIn] = useState<string | null>(null);
   const [approval, setApproval] = useState(settings.memoryRequiresApproval);
   const [autoCommit, setAutoCommit] = useState(settings.autoCommit);
   const action = useAction();
@@ -107,16 +113,92 @@ function ModeCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: (
           <div className={FORM_GRID}>
             <Label htmlFor="hub-url">URL hub</Label>
             <Input id="hub-url" className="font-mono" placeholder="https://hive.example.com" value={hubUrl} onChange={(e) => setHubUrl(e.target.value)} />
-            <Label htmlFor="hub-token">Token</Label>
-            <Input
-              id="hub-token"
-              className="font-mono"
-              type="password"
-              autoComplete="off"
-              placeholder={settings.hasHubToken ? "Đã lưu. Để trống để giữ nguyên" : "hive_…"}
-              value={hubToken}
-              onChange={(e) => setHubToken(e.target.value)}
-            />
+            <span className="text-sm leading-none font-medium">Đăng nhập</span>
+            <div className="flex min-w-0 flex-col gap-3">
+              {settings.mode === "hub" && settings.hasHubToken ? (
+                <p className="text-sm text-muted-foreground">
+                  {me.user ? (
+                    <>
+                      Máy này đang dùng tài khoản <b className="text-foreground">@{me.user.username}</b>: agent trên máy thấy đúng các dự án của tài khoản đó.
+                    </>
+                  ) : (
+                    <>Máy này đang dùng một token không thuộc tài khoản nào ({me.name}).</>
+                  )}
+                </p>
+              ) : null}
+              <ToggleGroup
+                type="single"
+                variant="outline"
+                size="sm"
+                className="w-fit"
+                value={auth}
+                onValueChange={(v) => v && setAuth(v as "account" | "token")}
+                aria-label="Cách đăng nhập hub"
+              >
+                <ToggleGroupItem value="account" className="px-3 data-[state=on]:bg-brand-soft data-[state=on]:text-brand-soft-foreground">
+                  Tài khoản
+                </ToggleGroupItem>
+                <ToggleGroupItem value="token" className="px-3 data-[state=on]:bg-brand-soft data-[state=on]:text-brand-soft-foreground">
+                  Dán token
+                </ToggleGroupItem>
+              </ToggleGroup>
+              {auth === "account" ? (
+                <form
+                  className="flex flex-wrap items-center gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void signIn.run(async () => {
+                      await client.desktop!.hubSignIn({ hubUrl, username: username.trim(), password });
+                      setSignedIn(username.trim().toLowerCase());
+                      setPassword("");
+                      setMode("hub");
+                      onSaved();
+                      bump();
+                    });
+                  }}
+                >
+                  <Input
+                    className="min-w-36 flex-1"
+                    placeholder="Tên đăng nhập"
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    aria-label="Tên đăng nhập hub"
+                  />
+                  <Input
+                    className="min-w-36 flex-1"
+                    type="password"
+                    placeholder="Mật khẩu"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    aria-label="Mật khẩu hub"
+                  />
+                  <Button type="submit" variant="outline" disabled={!hubUrl.trim() || !username.trim() || !password || signIn.busy}>
+                    {signIn.busy ? "Đang đăng nhập…" : "Đăng nhập & kết nối"}
+                  </Button>
+                  <p className="w-full text-xs text-muted-foreground">
+                    Mật khẩu không lưu trên máy: hub cấp cho máy <code className={CODE}>{settings.machine}</code> một token thuộc tài khoản của bạn. Đăng nhập lại thì token cũ của máy
+                    này bị thay. Tài khoản mới: đăng nhập hub trên trình duyệt một lần để đổi mật khẩu tạm trước.
+                  </p>
+                  <ErrorNote error={signIn.error} />
+                  {signedIn && !signIn.error ? <Notice tone="ok">Đã kết nối hub bằng tài khoản @{signedIn}.</Notice> : null}
+                </form>
+              ) : (
+                <Input
+                  id="hub-token"
+                  className="font-mono"
+                  type="password"
+                  autoComplete="off"
+                  placeholder={settings.hasHubToken ? "Đã lưu. Để trống để giữ nguyên" : "hive_…"}
+                  value={hubToken}
+                  onChange={(e) => setHubToken(e.target.value)}
+                  aria-label="Token hub"
+                />
+              )}
+            </div>
             <span className="text-sm leading-none font-medium">Tên máy</span>
             <p className="text-sm break-words text-muted-foreground">
               <code className={CODE}>{settings.machine}</code>. Agent trên máy này giữ task với tên <code className={CODE}>&lt;gói&gt;.{settings.machine}</code>. Hai

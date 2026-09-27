@@ -4,11 +4,28 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { ErrorNote, HiveLogo } from "./components/common.tsx";
+import { errorMessage } from "./hooks.ts";
 import { useSystemTheme } from "./lib/theme.ts";
 
-export function Login({ onSubmit, error }: { onSubmit: (token: string) => void; error?: string | null }) {
+/** Hub sign-in: username + password for people; an API token still works (CI, recovery). */
+export function Login({
+  onPassword,
+  onToken,
+  error,
+}: {
+  onPassword: (username: string, password: string) => Promise<void>;
+  onToken: (token: string) => void;
+  error?: string | null;
+}) {
   useSystemTheme();
+  const [useToken, setUseToken] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [token, setToken] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const ready = useToken ? Boolean(token.trim()) : Boolean(username.trim() && password);
+
   return (
     <div className="flex min-h-svh items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-sm">
@@ -16,7 +33,19 @@ export function Login({ onSubmit, error }: { onSubmit: (token: string) => void; 
           className="flex flex-col gap-6"
           onSubmit={(e) => {
             e.preventDefault();
-            if (token.trim()) onSubmit(token.trim());
+            if (!ready || busy) return;
+            if (useToken) {
+              onToken(token.trim());
+              return;
+            }
+            setBusy(true);
+            setFailure(null);
+            onPassword(username.trim(), password)
+              .catch((err: unknown) => {
+                setFailure(errorMessage(err));
+                setPassword("");
+              })
+              .finally(() => setBusy(false));
           }}
         >
           <CardHeader>
@@ -24,27 +53,64 @@ export function Login({ onSubmit, error }: { onSubmit: (token: string) => void; 
               <HiveLogo size={26} />
               xDev Hive
             </CardTitle>
-            <CardDescription>Quản trị tài liệu, memory và task dùng chung cho các coding agent.</CardDescription>
+            <CardDescription>Tài liệu, memory và task dùng chung cho các coding agent của team.</CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            <Label htmlFor="token">Token truy cập</Label>
-            <Input
-              id="token"
-              className="font-mono"
-              type="password"
-              autoComplete="off"
-              placeholder="hive_…"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              autoFocus
-            />
-            <ErrorNote error={error} />
+          <CardContent className="flex flex-col gap-4">
+            {useToken ? (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="token">Token truy cập</Label>
+                <Input
+                  id="token"
+                  className="font-mono"
+                  type="password"
+                  autoComplete="off"
+                  placeholder="hive_…"
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  autoFocus
+                />
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="username">Tên đăng nhập</Label>
+                  <Input
+                    id="username"
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="password">Mật khẩu</Label>
+                  <Input id="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                </div>
+              </>
+            )}
+            <ErrorNote error={failure ?? error} />
           </CardContent>
           <CardFooter className="flex flex-col items-stretch gap-3">
-            <Button type="submit" disabled={!token.trim()}>
-              Vào
+            <Button type="submit" disabled={!ready || busy}>
+              {busy ? "Đang đăng nhập…" : "Đăng nhập"}
             </Button>
-            <p className="text-xs text-muted-foreground">Lần chạy đầu, hub in token admin ra console. Admin tạo thêm token ở trang Token.</p>
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto self-center p-0 text-xs text-muted-foreground"
+              onClick={() => {
+                setUseToken(!useToken);
+                setFailure(null);
+              }}
+            >
+              {useToken ? "Đăng nhập bằng tài khoản" : "Dùng token truy cập thay cho tài khoản"}
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Tài khoản do admin tạo, kèm mật khẩu tạm; lần đăng nhập đầu sẽ yêu cầu đổi. Quên mật khẩu: nhờ admin đặt lại.
+            </p>
           </CardFooter>
         </form>
       </Card>

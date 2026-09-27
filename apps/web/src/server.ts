@@ -3,6 +3,8 @@
 //   HIVE_ALLOWED_HOSTS=hive.example.com   (required behind a reverse proxy / public hostname)
 //   HIVE_MEMORY_APPROVAL=off            (memory from agents is visible without admin approval)
 //   HIVE_BOOTSTRAP_TOKEN=...            (fixed admin token for automated deploys)
+//   HIVE_ADMIN_USER=admin              (name of the first admin account, created with a temporary password)
+//   HIVE_TRUST_PROXY=1                 (behind a TLS proxy: Secure cookies, client address from X-Forwarded-For)
 //   HIVE_BACKUP_DIR=/data/backups       (snapshot on start and every HIVE_BACKUP_HOURS=24, keep HIVE_BACKUP_KEEP=7)
 import { createServer } from "node:http";
 import { existsSync } from "node:fs";
@@ -11,6 +13,7 @@ import { SqliteHive } from "@xdev-hive/core/node";
 import { allowedHostsFor, createHubApp, type HubAppOptions } from "./app.ts";
 import { backupDatabase, backupFile, backupSettings, type BackupResult } from "./backup.ts";
 import { TokenStore } from "./tokens.ts";
+import { UserStore } from "./users.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
 const port = Number(process.env.HIVE_PORT ?? 7788);
@@ -33,10 +36,13 @@ if (backup) logBackup("start", () => backupFile(dbPath, backup));
 const hive = new SqliteHive(dbPath, { memoryRequiresApproval: process.env.HIVE_MEMORY_APPROVAL !== "off" });
 hive.seed("hub");
 const tokens = new TokenStore(hive.db);
+const users = new UserStore(hive.db);
 if (process.env.HIVE_BOOTSTRAP_TOKEN) tokens.ensure(process.env.HIVE_BOOTSTRAP_TOKEN, "bootstrap", "admin");
-if (tokens.count() === 0) {
-  const { token } = tokens.create("admin", "admin");
-  console.log(`\n  First run: admin token (shown once, store it safely)\n\n  ${token}\n`);
+// No account yet (first run, or a hub from before accounts): an admin with a temporary password.
+if (users.count() === 0) {
+  const username = (process.env.HIVE_ADMIN_USER ?? "admin").trim().toLowerCase();
+  const { password } = users.create({ username, displayName: "Admin", admin: true });
+  console.log(`\n  First admin account: ${username}\n  Temporary password (shown once; the first sign-in asks for a new one):\n\n  ${password}\n`);
 }
 
 const allowedHosts = allowedHostsFor(process.env.HIVE_ALLOWED_HOSTS, host);
@@ -61,7 +67,7 @@ if (production) {
   closeVite = () => vite.close();
 }
 
-httpServer.on("request", createHubApp({ hive, tokens, allowedHosts, ui }));
+httpServer.on("request", createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy: process.env.HIVE_TRUST_PROXY === "1" }));
 httpServer.listen(port, host, () => {
   console.log(`[xdev-hive] hub on http://${host}:${port} (${production ? "production" : "dev"}), db ${dbPath}`);
   if (!allowedHosts) console.warn("[xdev-hive] HIVE_ALLOWED_HOSTS not set: Host header is not validated.");

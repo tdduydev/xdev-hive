@@ -7,9 +7,10 @@
     "dev": "node --watch-path=src --watch-path=../../packages/core/src --watch-path=../../packages/mcp/src src/server.ts",
     "build": "vite build",
     "start": "NODE_ENV=production node src/server.ts",
-    "token": "node src/cli.ts",
+    "token": "node src/cli.ts token",
     "backup": "node src/cli.ts backup",
-    "typecheck": "tsc -p tsconfig.json && tsc -p client/tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json && tsc -p client/tsconfig.json",
+    "user": "node src/cli.ts user"
   },
   "dependencies": {
     "@xdev-hive/core": "*",
