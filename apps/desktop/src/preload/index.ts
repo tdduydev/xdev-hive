@@ -39,5 +39,7 @@ contextBridge.exposeInMainWorld("hive", {
     setupStatus: () => invoke("desktop:setupStatus"),
     installSetup: (id: string) => invoke("desktop:installSetup", id),
     transferHub: (direction: "push" | "pull") => invoke("desktop:transferHub", direction),
+    hubRequests: () => invoke("desktop:hubRequests"),
+    answerCommand: (id: number, approve: boolean) => invoke("desktop:answerCommand", id, approve),
   },
 });

@@ -99,12 +99,17 @@ export function createHubApp({ hive, tokens, allowedHosts, ui }: HubAppOptions):
       if (method === "tokens.create") {
         requireRole(res, "admin");
         const { name, role } = (input ?? {}) as { name?: string; role?: Role };
-        res.json({ result: tokens.create(String(name ?? ""), role ?? "agent") });
+        const created = tokens.create(String(name ?? ""), role ?? "agent");
+        hive.audit(actorOf(res), "tokens.create", created.info.name, created.info.role);
+        res.json({ result: created });
         return;
       }
       if (method === "tokens.revoke") {
         requireRole(res, "admin");
-        tokens.revoke(String((input as { id?: string } | undefined)?.id ?? ""));
+        const id = String((input as { id?: string } | undefined)?.id ?? "");
+        const info = tokens.list().find((t) => t.id === id);
+        tokens.revoke(id);
+        hive.audit(actorOf(res), "tokens.revoke", info?.name ?? id, info?.role ?? "");
         res.json({ result: { revoked: true } });
         return;
       }

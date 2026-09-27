@@ -1,22 +1,28 @@
 import { z } from "zod";
 import { HiveError } from "./errors.ts";
-import { ACCOUNT_ID, AGENT_ROLES } from "./agents.ts";
+import { ACCOUNT_ID, AGENT_ROLES, agentProfileSchema } from "./agents.ts";
 import { MACHINE_ID, PROJECT_NAME } from "./keys.ts";
 import {
   MEMORY_KINDS,
   MEMORY_STATUSES,
+  POLICY_CLIS,
+  POLICY_REPO_PARTS,
   PROPOSAL_STATUSES,
   TASK_STATUSES,
   type Actor,
+  type AuditEntry,
   type Doc,
   type DocSummary,
   type DocVersion,
   type Machine,
+  type MachineCommand,
+  type MachineDetail,
   type Memory,
   type Proposal,
   type QuotaCooldown,
   type Role,
   type Task,
+  type TeamPolicy,
 } from "./types.ts";
 
 const docKey = z.string().min(1).max(200);
@@ -25,6 +31,36 @@ const id = z.number().int().positive();
 const taskId = z.string().regex(/^[A-Za-z0-9._-]{1,100}$/, "task id: letters, digits, . _ -");
 const content = z.string().max(200_000);
 const account = z.string().regex(ACCOUNT_ID, "account: letters, digits, . _ @ : + -");
+const machineRef = z.string().min(1).max(200);
+/** cli:<kind> · shim · <project>:<part> — ids of the desktop's setup items. */
+const setupItemId = z.string().regex(/^(cli:[a-z]+|shim|[a-z0-9][a-z0-9._-]{0,99}:(agents|codegraph-mcp|codegraph-index|superpowers))$/, "unknown setup item");
+
+const setupItem = z.object({
+  id: z.string().max(200),
+  label: z.string().max(100),
+  state: z.enum(["installed", "missing", "outdated", "manual"]),
+  detail: z.string().max(1000),
+  action: z.string().max(60).nullable(),
+});
+const setupReport = z.object({
+  machine: z.array(setupItem).max(20),
+  projects: z.array(z.object({ project, repo: z.string().max(500), items: z.array(setupItem).max(10) })).max(50),
+});
+const reportedProfile = z.object({
+  id: z.string().max(40),
+  label: z.string().max(80),
+  kind: z.string().max(20),
+  enabled: z.boolean(),
+  account: z.string().max(100).nullable(),
+  installed: z.boolean(),
+  cooldownUntil: z.string().max(40).nullable(),
+  runs: z.number().int().min(0),
+  rateLimited: z.number().int().min(0),
+});
+/** Team profile templates never carry env: login dirs and keys belong to each machine. */
+const profileTemplate = agentProfileSchema.extend({
+  env: z.record(z.string(), z.string()).default({}).refine((env) => Object.keys(env).length === 0, "profile templates cannot carry env"),
+});
 
 /** Every operation the Hive backend supports. Web RPC, desktop IPC and MCP tools all go through this table. */
 export const schemas = {
@@ -97,6 +133,9 @@ export const schemas = {
     /** Random per app start, to tell two live instances apart from a restart. */
     instance: z.string().regex(/^[a-f0-9]{8,64}$/),
     version: z.string().max(40).default(""),
+    /** The machine's Setup page result; sent after each check, kept by the hub until the next one. */
+    setup: z.object({ checkedAt: z.iso.datetime(), report: setupReport }).optional(),
+    profiles: z.array(reportedProfile).max(50).optional(),
     runs: z
       .array(
         z.object({
@@ -119,6 +158,33 @@ export const schemas = {
   "cooldowns.list": z.object({}),
   "cooldowns.set": z.object({ account, until: z.iso.datetime(), reason: z.string().max(300) }),
   "cooldowns.clear": z.object({ account }),
+
+  /** A machine reports progress on a command it was sent (only for commands addressed to itself). */
+  "machines.commandResult": z.object({
+    id,
+    status: z.enum(["running", "done", "failed", "rejected"]),
+    output: z.string().max(8000).optional(),
+  }),
+
+  "policy.get": z.object({}),
+  "policy.set": z.object({
+    requiredClis: z.array(z.enum(POLICY_CLIS)).max(POLICY_CLIS.length).default([]),
+    requireShim: z.boolean().default(false),
+    projects: z.record(project, z.array(z.enum(POLICY_REPO_PARTS)).max(POLICY_REPO_PARTS.length)).default({}),
+    profileTemplates: z
+      .array(profileTemplate)
+      .max(20)
+      .default([])
+      .refine((list) => new Set(list.map((p) => p.id)).size === list.length, "template ids must be unique"),
+  }),
+
+  "admin.machines": z.object({}),
+  "admin.commandCreate": z.object({ machineId: machineRef, itemId: setupItemId }),
+  "admin.commandCancel": z.object({ id }),
+  "admin.audit": z.object({
+    limit: z.number().int().min(1).max(1000).default(200),
+    action: z.string().max(60).optional(),
+  }),
 } as const;
 
 export type Method = keyof typeof schemas;
@@ -145,13 +211,20 @@ export interface MethodOutput {
   "tasks.create": Task;
   "tasks.claim": { claimed: boolean; task: Task | null };
   "tasks.update": Task;
-  "machines.heartbeat": { duplicate: boolean; cooldowns: QuotaCooldown[] };
+  "machines.heartbeat": { duplicate: boolean; cooldowns: QuotaCooldown[]; policy: TeamPolicy; commands: MachineCommand[] };
   "machines.list": Machine[];
   "machines.remove": { removed: boolean };
   "cooldowns.list": QuotaCooldown[];
   /** null when `until` is already past (nothing to rest). */
   "cooldowns.set": QuotaCooldown | null;
   "cooldowns.clear": { cleared: boolean };
+  "machines.commandResult": MachineCommand;
+  "policy.get": TeamPolicy;
+  "policy.set": TeamPolicy;
+  "admin.machines": MachineDetail[];
+  "admin.commandCreate": MachineCommand;
+  "admin.commandCancel": MachineCommand;
+  "admin.audit": AuditEntry[];
 }
 
 /** Minimum role per method. viewer < agent < admin. */
@@ -179,6 +252,13 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "cooldowns.list": "viewer",
   "cooldowns.set": "agent",
   "cooldowns.clear": "agent",
+  "machines.commandResult": "agent",
+  "policy.get": "viewer",
+  "policy.set": "admin",
+  "admin.machines": "admin",
+  "admin.commandCreate": "admin",
+  "admin.commandCancel": "admin",
+  "admin.audit": "admin",
 };
 
 export const ROLE_RANK: Record<Role, number> = { viewer: 0, agent: 1, admin: 2 };

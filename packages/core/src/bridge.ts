@@ -2,7 +2,7 @@
 import type { AgentKind, AgentProfile, AgentRole, RunnerSettings, RunStatus } from "./agents.ts";
 import type { MrSettings, MrState } from "./gitlab.ts";
 import type { TransferReport } from "./transfer.ts";
-import type { Role } from "./types.ts";
+import type { MachineCommand, Role, SetupItem, SetupReport, TeamPolicy } from "./types.ts";
 
 export interface Me {
   name: string;
@@ -78,26 +78,6 @@ export interface GitLabCheck {
   ok: boolean;
   user: string | null;
   message: string;
-}
-
-/** installed: nothing to do · missing: the app can install it · outdated: installed for another build · manual: needs a hand edit. */
-export type SetupState = "installed" | "missing" | "outdated" | "manual";
-
-/** Something the desktop checks on this machine or in a repo, and the fix it can apply. */
-export interface SetupItem {
-  /** cli:<kind> · shim · <project>:agents · <project>:codegraph-mcp · <project>:codegraph-index · <project>:superpowers */
-  id: string;
-  label: string;
-  state: SetupState;
-  /** Version and path when installed, otherwise what is missing. */
-  detail: string;
-  /** Install button label, when the app can fix it itself. */
-  action: string | null;
-}
-
-export interface SetupReport {
-  machine: SetupItem[];
-  projects: Array<{ project: string; repo: string; items: SetupItem[] }>;
 }
 
 export interface SetupInstallResult {
@@ -210,4 +190,9 @@ export interface DesktopBridge {
   installSetup(id: string): Promise<SetupInstallResult>;
   /** push: this machine's local database → hub · pull: hub → local database. Needs the hub URL and token. */
   transferHub(direction: "push" | "pull"): Promise<TransferReport>;
+
+  /** From the last heartbeat: the team policy (null in local mode) and install requests waiting for this machine. */
+  hubRequests(): Promise<{ policy: TeamPolicy | null; commands: MachineCommand[] }>;
+  /** Runs (approve) or declines an admin's install request, and reports the result to the hub. */
+  answerCommand(id: number, approve: boolean): Promise<MachineCommand>;
 }
