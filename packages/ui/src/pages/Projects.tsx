@@ -11,7 +11,14 @@ import {
   type TransferReport,
   type TransferResult,
 } from "@xdev-hive/core";
-import { Badge, Empty, ErrorNote, PageHeader } from "../components/ui.tsx";
+import { Button } from "@xdev-hive/ui/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
+import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
+import { Input } from "@xdev-hive/ui/components/ui/input";
+import { Label } from "@xdev-hive/ui/components/ui/label";
+import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
+import { ToggleGroup, ToggleGroupItem } from "@xdev-hive/ui/components/ui/toggle-group";
+import { Badge, Empty, ErrorNote, Notice, Page, PageHeader } from "../components/common.tsx";
 import { useAction, useHive, useQuery } from "../hooks.ts";
 
 const ACTION_TONE: Record<FileAction["action"], string> = {
@@ -21,13 +28,19 @@ const ACTION_TONE: Record<FileAction["action"], string> = {
   skipped: "warn",
 };
 
+/** Inline code (paths, keys) inside explanatory text. */
+const CODE = "rounded bg-muted px-1 py-0.5 font-mono text-xs break-all";
+/** Label/field grid; collapses to one column on narrow screens. */
+const FORM_GRID = "grid items-center gap-3 sm:grid-cols-[180px_1fr]";
+const LINK = "font-medium text-primary underline underline-offset-2";
+
 export function ProjectsPage() {
   const { client } = useHive();
   const desktop = client.desktop!;
   const settings = useQuery(() => desktop.settings(), [desktop]);
 
   return (
-    <div className="page">
+    <Page>
       <PageHeader
         title="Dự án & cài đặt"
         subtitle="Nguồn dữ liệu, GitLab và các repo trên máy này. Kiểm tra và cài CLI, hive-mcp, cấu hình agent ở Cài đặt máy."
@@ -41,7 +54,7 @@ export function ProjectsPage() {
           <ProjectsCard settings={settings.data} onChanged={settings.reload} />
         </>
       ) : null}
-    </div>
+    </Page>
   );
 }
 
@@ -58,73 +71,87 @@ function ModeCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: (
   useEffect(() => setSaved(false), [mode, hubUrl, hubToken, approval, autoCommit]);
 
   return (
-    <section className="card">
-      <h2>Nguồn dữ liệu</h2>
-      <div className="segmented" role="group" aria-label="Chế độ">
-        <button className={mode === "local" ? "active" : ""} onClick={() => setMode("local")}>
-          Cục bộ (một máy)
-        </button>
-        <button className={mode === "hub" ? "active" : ""} onClick={() => setMode("hub")}>
-          Hub dùng chung (team)
-        </button>
-      </div>
-      {mode === "local" ? (
-        <p className="muted small">
-          Dữ liệu nằm trong <code>{settings.dbPath}</code>. Mọi agent trên máy này đọc chung file đó.
-        </p>
-      ) : (
-        <div className="form-grid">
-          <label className="label" htmlFor="hub-url">
-            URL hub
-          </label>
-          <input id="hub-url" className="input mono" placeholder="https://hive.xdev.asia" value={hubUrl} onChange={(e) => setHubUrl(e.target.value)} />
-          <label className="label" htmlFor="hub-token">
-            Token
-          </label>
-          <input
-            id="hub-token"
-            className="input mono"
-            type="password"
-            autoComplete="off"
-            placeholder={settings.hasHubToken ? "Đã lưu. Để trống để giữ nguyên" : "hive_…"}
-            value={hubToken}
-            onChange={(e) => setHubToken(e.target.value)}
-          />
-          <span className="label">Tên máy</span>
-          <span className="muted small">
-            <code>{settings.machine}</code>. Agent trên máy này giữ task với tên <code>&lt;gói&gt;.{settings.machine}</code>. Hai máy dùng chung
-            token phải khác tên máy (sửa <code>machine</code> trong <code>{settings.configPath}</code>).
-          </span>
-        </div>
-      )}
-      <label className="check">
-        <input type="checkbox" checked={approval} onChange={(e) => setApproval(e.target.checked)} disabled={mode === "hub"} />
-        Memory do agent ghi phải được duyệt mới hiện cho agent khác {mode === "hub" ? "(hub tự cấu hình)" : ""}
-      </label>
-      <label className="check">
-        <input type="checkbox" checked={autoCommit} onChange={(e) => setAutoCommit(e.target.checked)} />
-        Tự commit khi đồng bộ tài liệu vào repo (chỉ commit các file tài liệu, không push)
-      </label>
-      <div className="row gap-s">
-        <button
-          className="btn btn-primary"
-          disabled={action.busy}
-          onClick={() =>
-            void action.run(async () => {
-              await client.desktop!.updateSettings({ mode, hubUrl, hubToken, memoryRequiresApproval: approval, autoCommit });
-              setHubToken("");
-              setSaved(true);
-              onSaved();
-            })
-          }
+    <Card>
+      <CardHeader>
+        <CardTitle>Nguồn dữ liệu</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          className="max-w-full"
+          value={mode}
+          onValueChange={(v) => {
+            if (v) setMode(v as DesktopSettings["mode"]);
+          }}
+          aria-label="Chế độ"
         >
-          Lưu cài đặt
-        </button>
-        <span className="muted small mono">{settings.configPath}</span>
-      </div>
-      <ErrorNote error={action.error} />
-      {saved ? <div className="note note-ok">Đã lưu. Agent sẽ dùng cấu hình mới từ phiên kế tiếp.</div> : null}
-    </section>
+          <ToggleGroupItem
+            value="local"
+            className="h-auto min-h-9 shrink py-1.5 whitespace-normal data-[state=on]:bg-brand-soft data-[state=on]:text-brand-soft-foreground"
+          >
+            Cục bộ (một máy)
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            value="hub"
+            className="h-auto min-h-9 shrink py-1.5 whitespace-normal data-[state=on]:bg-brand-soft data-[state=on]:text-brand-soft-foreground"
+          >
+            Hub dùng chung (team)
+          </ToggleGroupItem>
+        </ToggleGroup>
+        {mode === "local" ? (
+          <p className="text-sm break-words text-muted-foreground">
+            Dữ liệu nằm trong <code className={CODE}>{settings.dbPath}</code>. Mọi agent trên máy này đọc chung file đó.
+          </p>
+        ) : (
+          <div className={FORM_GRID}>
+            <Label htmlFor="hub-url">URL hub</Label>
+            <Input id="hub-url" className="font-mono" placeholder="https://hive.xdev.asia" value={hubUrl} onChange={(e) => setHubUrl(e.target.value)} />
+            <Label htmlFor="hub-token">Token</Label>
+            <Input
+              id="hub-token"
+              className="font-mono"
+              type="password"
+              autoComplete="off"
+              placeholder={settings.hasHubToken ? "Đã lưu. Để trống để giữ nguyên" : "hive_…"}
+              value={hubToken}
+              onChange={(e) => setHubToken(e.target.value)}
+            />
+            <span className="text-sm leading-none font-medium">Tên máy</span>
+            <p className="text-sm break-words text-muted-foreground">
+              <code className={CODE}>{settings.machine}</code>. Agent trên máy này giữ task với tên <code className={CODE}>&lt;gói&gt;.{settings.machine}</code>. Hai
+              máy dùng chung token phải khác tên máy (sửa <code className={CODE}>machine</code> trong <code className={CODE}>{settings.configPath}</code>).
+            </p>
+          </div>
+        )}
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox checked={approval} onCheckedChange={(v) => setApproval(v === true)} disabled={mode === "hub"} />
+          Memory do agent ghi phải được duyệt mới hiện cho agent khác {mode === "hub" ? "(hub tự cấu hình)" : ""}
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox checked={autoCommit} onCheckedChange={(v) => setAutoCommit(v === true)} />
+          Tự commit khi đồng bộ tài liệu vào repo (chỉ commit các file tài liệu, không push)
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            disabled={action.busy}
+            onClick={() =>
+              void action.run(async () => {
+                await client.desktop!.updateSettings({ mode, hubUrl, hubToken, memoryRequiresApproval: approval, autoCommit });
+                setHubToken("");
+                setSaved(true);
+                onSaved();
+              })
+            }
+          >
+            Lưu cài đặt
+          </Button>
+          <span className="min-w-0 font-mono text-xs break-all text-muted-foreground">{settings.configPath}</span>
+        </div>
+        <ErrorNote error={action.error} />
+        {saved ? <Notice tone="ok">Đã lưu. Agent sẽ dùng cấu hình mới từ phiên kế tiếp.</Notice> : null}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -155,83 +182,91 @@ function TransferCard({ settings }: { settings: DesktopSettings }) {
   const rows = report ? report.items.filter((i) => showAll || i.result !== "unchanged") : [];
 
   return (
-    <section className="card">
-      <h2>Dữ liệu dùng chung với hub</h2>
-      <p className="muted small">
-        Ở chế độ <b>Hub dùng chung</b>, app và agent đọc, ghi thẳng lên hub nên không cần đồng bộ. Hai nút dưới đây chép <b>một lần</b> giữa
-        database trên máy (<code>{settings.dbPath}</code>) và hub: tài liệu (bản mới nhất), memory đã duyệt, task.
-      </p>
-      <ul className="muted small">
-        <li>
-          <b>Đẩy lên hub</b>: mục chưa có trên hub thì thêm. Tài liệu khác bản trên hub thành đề xuất chờ admin duyệt, không ghi đè.
-        </li>
-        <li>
-          <b>Tải về máy</b>: mục chưa có trên máy thì thêm. Tài liệu khác thì ghi thành version mới, bản cũ vẫn trong lịch sử.
-        </li>
-        <li>Không chuyển: lịch sử version, đề xuất, memory chưa duyệt, người đang giữ task (task đang làm thành Chưa làm).</li>
-      </ul>
-      <div className="row gap-s wrap">
-        <button
-          className="btn btn-primary"
-          disabled={!ready || action.busy}
-          onClick={() => run("push", `Đẩy tài liệu, memory và task trên máy này lên ${settings.hubUrl}? Tài liệu khác bản trên hub sẽ thành đề xuất.`)}
-        >
-          Đẩy dữ liệu máy lên hub
-        </button>
-        <button
-          className="btn"
-          disabled={!ready || action.busy}
-          onClick={() => run("pull", `Tải tài liệu, memory và task từ ${settings.hubUrl} về database trên máy này?`)}
-        >
-          Tải dữ liệu hub về máy
-        </button>
-        {action.busy ? <span className="muted small">Đang chuyển…</span> : null}
-      </div>
-      {!ready ? <div className="muted small">Điền URL và token hub ở Nguồn dữ liệu rồi bấm Lưu cài đặt.</div> : null}
-      <ErrorNote error={action.error} />
-      {report ? (
-        <div className="report">
-          <div className="row gap-s wrap">
-            <b>
-              {report.from} → {report.to}
-            </b>
-            {TRANSFER_RESULTS.filter((r) => report.counts[r] > 0).map((r) => (
-              <Badge key={r} tone={RESULT[r].tone}>
-                {report.counts[r]} {RESULT[r].label}
-              </Badge>
-            ))}
-            <span className="grow" />
-            {report.counts.unchanged > 0 ? (
-              <button className="btn btn-small btn-ghost" onClick={() => setShowAll(!showAll)}>
-                {showAll ? "Ẩn mục không đổi" : "Hiện cả mục không đổi"}
-              </button>
-            ) : null}
-            <button className="btn btn-small btn-ghost" onClick={() => setReport(null)}>
-              Đóng
-            </button>
-          </div>
-          {rows.length ? (
-            <ul>
-              {rows.map((i) => (
-                <li key={`${i.kind}:${i.key}`}>
-                  <Badge tone={RESULT[i.result].tone}>{RESULT[i.result].label}</Badge> <span className="small">{KIND[i.kind]}</span>{" "}
-                  <span className="mono small">{i.key}</span>
-                  {i.note ? <span className="muted small"> · {i.note}</span> : null}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="muted small">Không có gì mới để chuyển.</div>
-          )}
-          {report.counts.proposed > 0 ? (
-            <div className="muted small">
-              Đề xuất nằm ở trang <a href="#/proposals">Đề xuất</a>
-              {report.to === "hub" ? " trên hub" : ""}, cần admin duyệt.
-            </div>
-          ) : null}
+    <Card>
+      <CardHeader>
+        <CardTitle>Dữ liệu dùng chung với hub</CardTitle>
+        <CardDescription className="break-words">
+          Ở chế độ <b>Hub dùng chung</b>, app và agent đọc, ghi thẳng lên hub nên không cần đồng bộ. Hai nút dưới đây chép <b>một lần</b> giữa
+          database trên máy (<code className={CODE}>{settings.dbPath}</code>) và hub: tài liệu (bản mới nhất), memory đã duyệt, task.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+          <li>
+            <b>Đẩy lên hub</b>: mục chưa có trên hub thì thêm. Tài liệu khác bản trên hub thành đề xuất chờ admin duyệt, không ghi đè.
+          </li>
+          <li>
+            <b>Tải về máy</b>: mục chưa có trên máy thì thêm. Tài liệu khác thì ghi thành version mới, bản cũ vẫn trong lịch sử.
+          </li>
+          <li>Không chuyển: lịch sử version, đề xuất, memory chưa duyệt, người đang giữ task (task đang làm thành Chưa làm).</li>
+        </ul>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            disabled={!ready || action.busy}
+            onClick={() => run("push", `Đẩy tài liệu, memory và task trên máy này lên ${settings.hubUrl}? Tài liệu khác bản trên hub sẽ thành đề xuất.`)}
+          >
+            Đẩy dữ liệu máy lên hub
+          </Button>
+          <Button
+            variant="outline"
+            disabled={!ready || action.busy}
+            onClick={() => run("pull", `Tải tài liệu, memory và task từ ${settings.hubUrl} về database trên máy này?`)}
+          >
+            Tải dữ liệu hub về máy
+          </Button>
+          {action.busy ? <span className="text-sm text-muted-foreground">Đang chuyển…</span> : null}
         </div>
-      ) : null}
-    </section>
+        {!ready ? <p className="text-sm text-muted-foreground">Điền URL và token hub ở Nguồn dữ liệu rồi bấm Lưu cài đặt.</p> : null}
+        <ErrorNote error={action.error} />
+        {report ? (
+          <div className="flex flex-col gap-3 rounded-lg bg-muted/50 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium break-all">
+                {report.from} → {report.to}
+              </span>
+              {TRANSFER_RESULTS.filter((r) => report.counts[r] > 0).map((r) => (
+                <Badge key={r} tone={RESULT[r].tone}>
+                  {report.counts[r]} {RESULT[r].label}
+                </Badge>
+              ))}
+              <div className="ml-auto flex flex-wrap items-center gap-1">
+                {report.counts.unchanged > 0 ? (
+                  <Button size="sm" variant="ghost" onClick={() => setShowAll(!showAll)}>
+                    {showAll ? "Ẩn mục không đổi" : "Hiện cả mục không đổi"}
+                  </Button>
+                ) : null}
+                <Button size="sm" variant="ghost" onClick={() => setReport(null)}>
+                  Đóng
+                </Button>
+              </div>
+            </div>
+            {rows.length ? (
+              <ul className="flex flex-col gap-1">
+                {rows.map((i) => (
+                  <li key={`${i.kind}:${i.key}`} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <Badge tone={RESULT[i.result].tone}>{RESULT[i.result].label}</Badge>
+                    <span className="text-xs">{KIND[i.kind]}</span>
+                    <span className="min-w-0 font-mono text-xs break-all">{i.key}</span>
+                    {i.note ? <span className="min-w-0 text-xs break-words text-muted-foreground">· {i.note}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-muted-foreground">Không có gì mới để chuyển.</p>
+            )}
+            {report.counts.proposed > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Đề xuất nằm ở trang{" "}
+                <a href="#/proposals" className={LINK}>
+                  Đề xuất
+                </a>
+                {report.to === "hub" ? " trên hub" : ""}, cần admin duyệt.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -261,67 +296,78 @@ function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; onSaved:
     });
 
   return (
-    <section className="card">
-      <h2>GitLab merge request</h2>
-      <p className="muted small">
-        Khi task xong, app push branch <code>ai/&lt;task&gt;</code> lên remote rồi tạo hoặc cập nhật MR. Output của agent được bọc trong code block nên
-        không kích hoạt quick action (<code>/merge</code>…) hay mention.
-      </p>
-      <div className="form-grid">
-        <label className="label" htmlFor="gl-url">URL GitLab</label>
-        <input id="gl-url" className="input mono" placeholder="https://gitlab.fis.vn" value={url} onChange={(e) => (setSaved(false), setUrl(e.target.value))} />
-        <label className="label" htmlFor="gl-token">Access token</label>
-        <input
-          id="gl-token"
-          className="input mono"
-          type="password"
-          autoComplete="off"
-          placeholder={g.hasToken ? "Đã lưu. Để trống để giữ nguyên" : "glpat-… (scope api, write_repository)"}
-          value={token}
-          onChange={(e) => (setSaved(false), setToken(e.target.value))}
-        />
-      </div>
-      <label className="check">
-        <input type="checkbox" checked={mr.enabled} onChange={(e) => set("enabled", e.target.checked)} />
-        Tự tạo MR
-      </label>
-      <div className="form-grid">
-        <label className="label" htmlFor="gl-when">Khi nào</label>
-        <select id="gl-when" className="input" value={mr.when} onChange={(e) => set("when", e.target.value as MrSettings["when"])}>
-          <option value="after_review">Sau khi review chéo xong</option>
-          <option value="after_success">Ngay khi agent làm xong (nếu không có review)</option>
-        </select>
-        <label className="label" htmlFor="gl-changes">Review yêu cầu sửa</label>
-        <select
-          id="gl-changes"
-          className="input"
-          value={mr.onChangesRequested}
-          onChange={(e) => set("onChangesRequested", e.target.value as MrSettings["onChangesRequested"])}
-        >
-          <option value="draft">Vẫn tạo, để ở dạng Draft</option>
-          <option value="skip">Chưa tạo MR</option>
-        </select>
-        <label className="label" htmlFor="gl-labels">Label</label>
-        <input id="gl-labels" className="input" value={labels} onChange={(e) => (setSaved(false), setLabels(e.target.value))} />
-        <label className="label" htmlFor="gl-remote">Remote</label>
-        <input id="gl-remote" className="input mono" value={mr.remote} onChange={(e) => set("remote", e.target.value)} />
-      </div>
-      <label className="check">
-        <input type="checkbox" checked={mr.removeSourceBranch} onChange={(e) => set("removeSourceBranch", e.target.checked)} />
-        Xoá branch nguồn khi merge
-      </label>
-      <div className="row gap-s">
-        <button className="btn btn-primary" onClick={() => void save()} disabled={action.busy}>
-          Lưu
-        </button>
-        <button className="btn" disabled={action.busy || (!g.hasToken && !token)} onClick={() => void action.run(async () => setCheck(await client.desktop!.checkGitLab()))}>
-          Kiểm tra kết nối
-        </button>
-        {saved ? <span className="tone-ok small">Đã lưu</span> : null}
-      </div>
-      {check ? <div className={`note ${check.ok ? "note-ok" : "note-error"}`}>{check.message}</div> : null}
-      <ErrorNote error={action.error} />
-    </section>
+    <Card>
+      <CardHeader>
+        <CardTitle>GitLab merge request</CardTitle>
+        <CardDescription className="break-words">
+          Khi task xong, app push branch <code className={CODE}>ai/&lt;task&gt;</code> lên remote rồi tạo hoặc cập nhật MR. Output của agent được bọc trong code
+          block nên không kích hoạt quick action (<code className={CODE}>/merge</code>…) hay mention.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className={FORM_GRID}>
+          <Label htmlFor="gl-url">URL GitLab</Label>
+          <Input id="gl-url" className="font-mono" placeholder="https://gitlab.fis.vn" value={url} onChange={(e) => (setSaved(false), setUrl(e.target.value))} />
+          <Label htmlFor="gl-token">Access token</Label>
+          <Input
+            id="gl-token"
+            className="font-mono"
+            type="password"
+            autoComplete="off"
+            placeholder={g.hasToken ? "Đã lưu. Để trống để giữ nguyên" : "glpat-… (scope api, write_repository)"}
+            value={token}
+            onChange={(e) => (setSaved(false), setToken(e.target.value))}
+          />
+        </div>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox checked={mr.enabled} onCheckedChange={(v) => set("enabled", v === true)} />
+          Tự tạo MR
+        </label>
+        <div className={FORM_GRID}>
+          <Label htmlFor="gl-when">Khi nào</Label>
+          <NativeSelect id="gl-when" value={mr.when} onChange={(e) => set("when", e.target.value as MrSettings["when"])}>
+            <NativeSelectOption value="after_review">Sau khi review chéo xong</NativeSelectOption>
+            <NativeSelectOption value="after_success">Ngay khi agent làm xong (nếu không có review)</NativeSelectOption>
+          </NativeSelect>
+          <Label htmlFor="gl-changes">Review yêu cầu sửa</Label>
+          <NativeSelect
+            id="gl-changes"
+            value={mr.onChangesRequested}
+            onChange={(e) => set("onChangesRequested", e.target.value as MrSettings["onChangesRequested"])}
+          >
+            <NativeSelectOption value="draft">Vẫn tạo, để ở dạng Draft</NativeSelectOption>
+            <NativeSelectOption value="skip">Chưa tạo MR</NativeSelectOption>
+          </NativeSelect>
+          <Label htmlFor="gl-labels">Label</Label>
+          <Input id="gl-labels" value={labels} onChange={(e) => (setSaved(false), setLabels(e.target.value))} />
+          <Label htmlFor="gl-remote">Remote</Label>
+          <Input id="gl-remote" className="font-mono" value={mr.remote} onChange={(e) => set("remote", e.target.value)} />
+        </div>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox checked={mr.removeSourceBranch} onCheckedChange={(v) => set("removeSourceBranch", v === true)} />
+          Xoá branch nguồn khi merge
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => void save()} disabled={action.busy}>
+            Lưu
+          </Button>
+          <Button
+            variant="outline"
+            disabled={action.busy || (!g.hasToken && !token)}
+            onClick={() => void action.run(async () => setCheck(await client.desktop!.checkGitLab()))}
+          >
+            Kiểm tra kết nối
+          </Button>
+          {saved ? <span className="text-sm text-success">Đã lưu</span> : null}
+        </div>
+        {check ? (
+          <Notice tone={check.ok ? "ok" : "error"} className="whitespace-pre-wrap">
+            {check.message}
+          </Notice>
+        ) : null}
+        <ErrorNote error={action.error} />
+      </CardContent>
+    </Card>
   );
 }
 
@@ -332,7 +378,7 @@ function ProjectGitLab({ project, onSaved }: { project: DesktopProject; onSaved:
   const action = useAction();
   return (
     <form
-      className="row gap-s wrap project-gitlab"
+      className="flex flex-wrap items-center gap-2 border-t border-dashed pt-3"
       onSubmit={(e) => {
         e.preventDefault();
         void action.run(async () => {
@@ -341,24 +387,23 @@ function ProjectGitLab({ project, onSaved }: { project: DesktopProject; onSaved:
         });
       }}
     >
-      <input
-        className="input mono grow"
+      <Input
+        className="min-w-48 flex-[2] font-mono"
         placeholder="GitLab project: tự đọc từ remote (hoặc group/project)"
         value={gitlabProject}
         onChange={(e) => setGitlabProject(e.target.value)}
         aria-label={`GitLab project của ${project.name}`}
       />
-      <input
-        className="input mono"
-        style={{ width: 200 }}
+      <Input
+        className="min-w-40 flex-1 font-mono sm:max-w-52"
         placeholder="target: default branch"
         value={targetBranch}
         onChange={(e) => setTargetBranch(e.target.value)}
         aria-label={`Target branch của ${project.name}`}
       />
-      <button className="btn btn-small" type="submit" disabled={action.busy}>
+      <Button size="sm" variant="outline" type="submit" disabled={action.busy}>
         Lưu
-      </button>
+      </Button>
       <ErrorNote error={action.error} />
     </form>
   );
@@ -389,124 +434,142 @@ function ProjectsCard({ settings, onChanged }: { settings: DesktopSettings; onCh
     });
 
   return (
-    <section className="card">
-      <h2>Dự án trên máy này</h2>
-      {settings.projects.length === 0 ? <Empty>Chưa có dự án. Thêm repo bên dưới.</Empty> : null}
-      <div className="stack">
-        {settings.projects.map((p) => (
-          <div key={p.name} className="project-row">
-            <div className="grow">
-              <div className="mono">{p.name}</div>
-              <div className="muted small mono">{p.repo}</div>
-            </div>
-            <button
-              className="btn btn-small"
-              disabled={action.busy}
-              onClick={() =>
-                void action.run(async () => {
-                  showSync(await desktop.syncProject(p.name));
-                  bump();
-                })
-              }
-            >
-              Đồng bộ tài liệu
-            </button>
-            <a className="btn btn-small" href="#/setup">
-              Cài đặt
-            </a>
-            <button className="btn btn-small btn-ghost" onClick={() => setGitlabOpen(gitlabOpen === p.name ? null : p.name)} aria-expanded={gitlabOpen === p.name}>
-              GitLab
-            </button>
-            <button className="btn btn-small btn-ghost" onClick={() => void desktop.showInFolder(p.repo)}>
-              Mở
-            </button>
-            <button
-              className="btn btn-small btn-ghost"
-              onClick={() => {
-                if (window.confirm(`Bỏ ${p.name} khỏi danh sách? Repo và tài liệu trong Hive không bị xoá.`)) {
-                  void action.run(async () => {
-                    await desktop.removeProject(p.name);
-                    onChanged();
-                  });
-                }
-              }}
-            >
-              Bỏ
-            </button>
-            {gitlabOpen === p.name ? (
-              <ProjectGitLab
-                project={p}
-                onSaved={() => {
-                  setGitlabOpen(null);
-                  onChanged();
-                }}
-              />
-            ) : null}
-          </div>
-        ))}
-      </div>
-      <form
-        className="row gap-s wrap add-project"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void action.run(async () => {
-            await desktop.addProject({ name, repo });
-            setName("");
-            setRepo("");
-            onChanged();
-          });
-        }}
-      >
-        <input
-          className="input mono"
-          style={{ width: 180 }}
-          placeholder="project key"
-          value={name}
-          onChange={(e) => setName(e.target.value.toLowerCase())}
-          aria-label="Project key"
-          aria-invalid={name.length > 0 && !nameValid}
-        />
-        <input className="input mono grow" placeholder="/đường/dẫn/tới/repo" value={repo} onChange={(e) => setRepo(e.target.value)} aria-label="Thư mục repo" />
-        <button
-          type="button"
-          className="btn"
-          onClick={() =>
-            void action.run(async () => {
-              const folder = await desktop.pickFolder();
-              if (folder) {
-                setRepo(folder);
-                if (!name) setName((folder.split(/[\\/]/).pop() ?? "").toLowerCase().replace(/[^a-z0-9._-]/g, "-"));
-              }
-            })
-          }
-        >
-          Chọn thư mục…
-        </button>
-        <button className="btn btn-primary" type="submit" disabled={!nameValid || !repo || action.busy}>
-          Thêm dự án
-        </button>
-      </form>
-      <ErrorNote error={action.error} />
-      {result ? (
-        <div className="report">
-          <div className="row gap-s">
-            <b>{result.title}</b>
-            <span className="mono small">{result.project}</span>
-            <button className="btn btn-small btn-ghost" onClick={() => setResult(null)}>
-              Đóng
-            </button>
-          </div>
-          <ul>
-            {result.files.map((f) => (
-              <li key={f.file}>
-                <Badge tone={ACTION_TONE[f.action]}>{f.action}</Badge> <span className="mono small">{f.file}</span>
-                {f.note ? <span className="muted small"> · {f.note}</span> : null}
-              </li>
+    <Card>
+      <CardHeader>
+        <CardTitle>Dự án trên máy này</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {settings.projects.length === 0 ? <Empty>Chưa có dự án. Thêm repo bên dưới.</Empty> : null}
+        {settings.projects.length ? (
+          <div className="flex flex-col gap-2">
+            {settings.projects.map((p) => (
+              <div key={p.name} className="flex flex-col gap-2 rounded-lg border p-3">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <div className="min-w-0 flex-1 basis-48">
+                    <div className="font-mono text-sm break-all">{p.name}</div>
+                    <div className="font-mono text-xs break-all text-muted-foreground">{p.repo}</div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={action.busy}
+                      onClick={() =>
+                        void action.run(async () => {
+                          showSync(await desktop.syncProject(p.name));
+                          bump();
+                        })
+                      }
+                    >
+                      Đồng bộ tài liệu
+                    </Button>
+                    <Button asChild size="sm" variant="outline">
+                      <a href="#/setup">Cài đặt</a>
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setGitlabOpen(gitlabOpen === p.name ? null : p.name)} aria-expanded={gitlabOpen === p.name}>
+                      GitLab
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => void desktop.showInFolder(p.repo)}>
+                      Mở
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        if (window.confirm(`Bỏ ${p.name} khỏi danh sách? Repo và tài liệu trong Hive không bị xoá.`)) {
+                          void action.run(async () => {
+                            await desktop.removeProject(p.name);
+                            onChanged();
+                          });
+                        }
+                      }}
+                    >
+                      Bỏ
+                    </Button>
+                  </div>
+                </div>
+                {gitlabOpen === p.name ? (
+                  <ProjectGitLab
+                    project={p}
+                    onSaved={() => {
+                      setGitlabOpen(null);
+                      onChanged();
+                    }}
+                  />
+                ) : null}
+              </div>
             ))}
-          </ul>
-          {result.extra ? <div className="muted small">{result.extra}</div> : null}
-        </div>
-      ) : null}
-    </section>
+          </div>
+        ) : null}
+        <form
+          className="flex flex-wrap items-center gap-2 border-t pt-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void action.run(async () => {
+              await desktop.addProject({ name, repo });
+              setName("");
+              setRepo("");
+              onChanged();
+            });
+          }}
+        >
+          <Input
+            className="min-w-32 flex-1 font-mono sm:max-w-44"
+            placeholder="project key"
+            value={name}
+            onChange={(e) => setName(e.target.value.toLowerCase())}
+            aria-label="Project key"
+            aria-invalid={name.length > 0 && !nameValid}
+          />
+          <Input
+            className="min-w-48 flex-[3] font-mono"
+            placeholder="/đường/dẫn/tới/repo"
+            value={repo}
+            onChange={(e) => setRepo(e.target.value)}
+            aria-label="Thư mục repo"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() =>
+              void action.run(async () => {
+                const folder = await desktop.pickFolder();
+                if (folder) {
+                  setRepo(folder);
+                  if (!name) setName((folder.split(/[\\/]/).pop() ?? "").toLowerCase().replace(/[^a-z0-9._-]/g, "-"));
+                }
+              })
+            }
+          >
+            Chọn thư mục…
+          </Button>
+          <Button type="submit" disabled={!nameValid || !repo || action.busy}>
+            Thêm dự án
+          </Button>
+        </form>
+        <ErrorNote error={action.error} />
+        {result ? (
+          <div className="flex flex-col gap-3 rounded-lg bg-muted/50 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium">{result.title}</span>
+              <span className="min-w-0 font-mono text-xs break-all">{result.project}</span>
+              <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setResult(null)}>
+                Đóng
+              </Button>
+            </div>
+            <ul className="flex flex-col gap-1">
+              {result.files.map((f) => (
+                <li key={f.file} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <Badge tone={ACTION_TONE[f.action]}>{f.action}</Badge>
+                  <span className="min-w-0 font-mono text-xs break-all">{f.file}</span>
+                  {f.note ? <span className="min-w-0 text-xs break-words text-muted-foreground">· {f.note}</span> : null}
+                </li>
+              ))}
+            </ul>
+            {result.extra ? <p className="text-xs break-words text-muted-foreground">{result.extra}</p> : null}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }

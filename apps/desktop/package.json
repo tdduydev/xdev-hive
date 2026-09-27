@@ -18,10 +18,11 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p src/renderer/tsconfig.json"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^5.2.0",
     "@xdev-hive/core": "*",
-    "@xdev-hive/ui": "*",
     "@xdev-hive/mcp": "*",
+    "@xdev-hive/ui": "*",
     "electron": "44.4.5",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
