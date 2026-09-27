@@ -1,0 +1,4 @@
+{$HIVE_HOSTNAME} {
+	# Host header passes through unchanged, so the hub checks it against HIVE_ALLOWED_HOSTS.
+	reverse_proxy hub:7788
+}

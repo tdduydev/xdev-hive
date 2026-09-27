@@ -5,12 +5,17 @@ import { z } from "zod";
 import { agentProfileSchema, DEFAULT_AGENT_PROFILES, runnerSettingsSchema } from "./agents.ts";
 import { gitlabSettingsSchema } from "./gitlab.ts";
 import { HubBackend } from "./hub-client.ts";
-import { PROJECT_NAME } from "./keys.ts";
+import { MACHINE_ID, machineIdFrom, PROJECT_NAME } from "./keys.ts";
 import type { HiveBackend } from "./methods.ts";
 import { SqliteHive } from "./sqlite.ts";
 
 export const configSchema = z.object({
   mode: z.enum(["local", "hub"]).default("local"),
+  /** Part of every hub lease this machine takes (see agentActorName). Defaults to the hostname, then pinned by the desktop app. */
+  machine: z
+    .string()
+    .regex(MACHINE_ID, "machine: chữ thường, số, dấu - (tối đa 24)")
+    .default(() => machineIdFrom(os.hostname())),
   /** Local SQLite file. Defaults to `local.db` next to config.json. */
   dbPath: z.string().nullable().default(null),
   hub: z.object({ url: z.string().default(""), token: z.string().default("") }).default({ url: "", token: "" }),
@@ -55,6 +60,16 @@ export function saveConfig(config: HiveConfig, file = configPath()): HiveConfig 
   writeFileSync(file, `${JSON.stringify(valid, null, 2)}\n`, { mode: 0o600 });
   chmodSync(file, 0o600);
   return valid;
+}
+
+/**
+ * Writes the machine name into an existing config.json that only has the hostname default,
+ * so leases survive the hostname changing (macOS may take it from DHCP).
+ */
+export function pinMachine(config: HiveConfig, file = configPath()): void {
+  if (!existsSync(file)) return;
+  const raw = JSON.parse(readFileSync(file, "utf8")) as { machine?: unknown };
+  if (raw.machine === undefined) saveConfig(config, file);
 }
 
 export function localDbPath(config: HiveConfig, file = configPath()): string {

@@ -24,6 +24,29 @@ export function parseDocKey(key: string): ParsedDocKey {
   );
 }
 
+/** Short name of one machine: lowercase letters, digits, "-" (max 24). */
+export const MACHINE_ID = /^[a-z0-9][a-z0-9-]{0,23}$/;
+
+/** `Duys-MacBook-Pro.local` → `duys-macbook-pro`. */
+export function machineIdFrom(hostname: string): string {
+  const id = (hostname.split(".")[0] ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+/, "")
+    .slice(0, 24)
+    .replace(/-+$/, "");
+  return id || "host";
+}
+
+/**
+ * Name an agent writes under, and so the owner of the leases it takes. A hub appends the token name
+ * (`claude-1.duy-mbp@duy`); the machine part keeps two machines on one token from sharing a lease.
+ * Local mode has one database per machine, so the OS user is enough.
+ */
+export function agentActorName(agent: string, mode: "local" | "hub", machine: string, user: string): string {
+  return mode === "hub" ? `${agent}.${machine}` : `${agent}@${user}`;
+}
+
 export const agentsDocKey = (project: string) => `project/${project}/agents`;
 export const decisionsDocKey = (project: string) => `project/${project}/decisions`;
 

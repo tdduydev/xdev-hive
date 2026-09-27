@@ -65,6 +65,7 @@ async function setup(reviewMode: string, mr: Partial<MrSettings> = {}, token = T
       settings: () => ({ worktreeRoot: null, maxParallel: 2, maxAttempts: 3 }),
       projects: () => projects,
       mode: () => "local",
+      machine: () => "duy-mbp",
       env: () => ({ ...process.env }),
     },
     { dataDir: tmp("data"), user: "duy", tickMs: 60_000, afterFinish: (run) => requester.afterFinish(run) },

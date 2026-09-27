@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { HiveError } from "./errors.ts";
-import { PROJECT_NAME } from "./keys.ts";
+import { ACCOUNT_ID, AGENT_ROLES } from "./agents.ts";
+import { MACHINE_ID, PROJECT_NAME } from "./keys.ts";
 import {
   MEMORY_KINDS,
   MEMORY_STATUSES,
@@ -10,8 +11,10 @@ import {
   type Doc,
   type DocSummary,
   type DocVersion,
+  type Machine,
   type Memory,
   type Proposal,
+  type QuotaCooldown,
   type Role,
   type Task,
 } from "./types.ts";
@@ -21,6 +24,7 @@ const project = z.string().regex(PROJECT_NAME, "project must be lowercase letter
 const id = z.number().int().positive();
 const taskId = z.string().regex(/^[A-Za-z0-9._-]{1,100}$/, "task id: letters, digits, . _ -");
 const content = z.string().max(200_000);
+const account = z.string().regex(ACCOUNT_ID, "account: letters, digits, . _ @ : + -");
 
 /** Every operation the Hive backend supports. Web RPC, desktop IPC and MCP tools all go through this table. */
 export const schemas = {
@@ -86,6 +90,35 @@ export const schemas = {
     status: z.enum(TASK_STATUSES),
     note: z.string().max(2000).optional(),
   }),
+
+  /** Desktop runners report every ~30 s; the reply carries the shared quota cooldowns. */
+  "machines.heartbeat": z.object({
+    machine: z.string().regex(MACHINE_ID),
+    /** Random per app start, to tell two live instances apart from a restart. */
+    instance: z.string().regex(/^[a-f0-9]{8,64}$/),
+    version: z.string().max(40).default(""),
+    runs: z
+      .array(
+        z.object({
+          runId: z.string().max(40),
+          project,
+          taskId,
+          taskTitle: z.string().max(300),
+          role: z.enum(AGENT_ROLES),
+          status: z.enum(["queued", "running"]),
+          profileId: z.string().max(40).nullable(),
+          since: z.string().max(40),
+        }),
+      )
+      .max(100)
+      .default([]),
+  }),
+  "machines.list": z.object({}),
+  "machines.remove": z.object({ id: z.string().min(1).max(200) }),
+
+  "cooldowns.list": z.object({}),
+  "cooldowns.set": z.object({ account, until: z.iso.datetime(), reason: z.string().max(300) }),
+  "cooldowns.clear": z.object({ account }),
 } as const;
 
 export type Method = keyof typeof schemas;
@@ -112,6 +145,13 @@ export interface MethodOutput {
   "tasks.create": Task;
   "tasks.claim": { claimed: boolean; task: Task | null };
   "tasks.update": Task;
+  "machines.heartbeat": { duplicate: boolean; cooldowns: QuotaCooldown[] };
+  "machines.list": Machine[];
+  "machines.remove": { removed: boolean };
+  "cooldowns.list": QuotaCooldown[];
+  /** null when `until` is already past (nothing to rest). */
+  "cooldowns.set": QuotaCooldown | null;
+  "cooldowns.clear": { cleared: boolean };
 }
 
 /** Minimum role per method. viewer < agent < admin. */
@@ -133,6 +173,12 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "tasks.create": "admin",
   "tasks.claim": "agent",
   "tasks.update": "agent",
+  "machines.heartbeat": "agent",
+  "machines.list": "viewer",
+  "machines.remove": "admin",
+  "cooldowns.list": "viewer",
+  "cooldowns.set": "agent",
+  "cooldowns.clear": "agent",
 };
 
 export const ROLE_RANK: Record<Role, number> = { viewer: 0, agent: 1, admin: 2 };

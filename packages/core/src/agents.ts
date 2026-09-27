@@ -12,12 +12,19 @@ export const RUN_STATUSES = ["queued", "running", "succeeded", "failed", "rate_l
 export type RunStatus = (typeof RUN_STATUSES)[number];
 
 export const PROFILE_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
+/** Subscription account name shared across machines, e.g. `claude-max-duy`. */
+export const ACCOUNT_ID = /^[A-Za-z0-9][\w.@:+-]{0,99}$/;
 
 export const agentProfileSchema = z.object({
   /** Also the agent's name in Hive (HIVE_AGENT), so memory/tasks show which subscription did the work. */
   id: z.string().regex(PROFILE_ID, "id: chữ thường, số, dấu - (tối đa 40)"),
   label: z.string().min(1).max(80),
   kind: z.enum(AGENT_KINDS),
+  /**
+   * Subscription account behind this profile. Profiles with the same account on any machine share
+   * rate-limit cooldowns through the hub. Unset: the cooldown stays on this machine.
+   */
+  account: z.string().regex(ACCOUNT_ID, "account: chữ, số, . _ @ : + - (tối đa 100)").optional(),
   /** Command name on PATH or absolute path. */
   bin: z.string().min(1).max(500),
   /**

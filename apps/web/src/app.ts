@@ -1,4 +1,3 @@
-import path from "node:path";
 import express, { type NextFunction, type Request, type RequestHandler, type Response } from "express";
 import { hostHeaderValidation } from "@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -26,6 +25,19 @@ const CSP = [
   "base-uri 'none'",
   "form-action 'self'",
 ].join("; ");
+
+const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
+
+/**
+ * Host header allow-list from HIVE_ALLOWED_HOSTS. Loopback names are always accepted, so container health
+ * checks and a proxy on the same host work: DNS rebinding sends the attacker's hostname, never these.
+ * Undefined (no check) only when nothing is configured and the hub listens beyond loopback.
+ */
+export function allowedHostsFor(configured: string | undefined, bindHost: string): string[] | undefined {
+  const list = configured?.split(",").map((h) => h.trim()).filter(Boolean) ?? [];
+  if (list.length) return [...new Set([...list, ...LOOPBACK_HOSTS])];
+  return ["127.0.0.1", "localhost", "::1"].includes(bindHost) ? LOOPBACK_HOSTS : undefined;
+}
 
 function sendError(res: Response, err: unknown): void {
   if (err instanceof HiveError) {
@@ -63,7 +75,7 @@ export function createHubApp({ hive, tokens, allowedHosts, ui }: HubAppOptions):
       res.status(401).json({ error: { code: "unauthorized", message: "Missing or invalid token." } });
       return;
     }
-    const label = (req.get("x-hive-agent") ?? "").replace(/[^\w.-]/g, "").slice(0, 40);
+    const label = (req.get("x-hive-agent") ?? "").replace(/[^\w.-]/g, "").slice(0, 80);
     res.locals.actor = { name: label ? `${label}@${who.name}` : who.name, role: who.role } satisfies Actor;
     next();
   };
@@ -129,7 +141,8 @@ export function createHubApp({ hive, tokens, allowedHosts, ui }: HubAppOptions):
 
   if (ui && "dir" in ui) {
     app.use(express.static(ui.dir, { index: false, maxAge: "1h" }));
-    app.get(/^\/(?!api\/|mcp$).*/, (_req, res) => res.sendFile(path.join(ui.dir, "index.html")));
+    // `root` keeps send's dotfile check off the install path itself (e.g. an app under ~/.local).
+    app.get(/^\/(?!api\/|mcp$).*/, (_req, res) => res.sendFile("index.html", { root: ui.dir }));
   } else if (ui) {
     app.use(ui.middleware);
   }
