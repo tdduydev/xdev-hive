@@ -2,6 +2,8 @@ import {
   HiveError,
   type DesktopBridge,
   type HiveErrorCode,
+  type HubUser,
+  type Level,
   type Me,
   type Method,
   type MethodInput,
@@ -20,29 +22,62 @@ export interface HiveClient {
     create(name: string, role: Role): Promise<{ token: string; info: TokenInfo }>;
     revoke(id: string): Promise<void>;
   };
+  /** Hub, signed in with an account: the person's own password. */
+  account?: {
+    changePassword(current: string, next: string): Promise<Me>;
+  };
+  /** Hub only, for hub admins: accounts and their per-project grants. */
+  users?: {
+    list(): Promise<HubUser[]>;
+    create(input: { username: string; displayName?: string; admin?: boolean }): Promise<{ user: HubUser; password: string }>;
+    update(id: string, patch: { displayName?: string; admin?: boolean; disabled?: boolean }): Promise<HubUser>;
+    setGrants(id: string, grants: Record<string, Level>): Promise<HubUser>;
+    resetPassword(id: string): Promise<string>;
+  };
   /** Desktop only: local projects, sync and agent installers. */
   desktop?: DesktopBridge;
 }
 
 export interface HttpClientOptions {
   baseUrl?: string;
-  token: string;
+  /** API token (machines, CI, old sign-ins). Without it the browser's session cookie is used. */
+  token?: string;
   onUnauthorized?: () => void;
 }
 
-export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpClientOptions): HiveClient {
+/** One JSON call to the hub. Cookie calls carry the header a cross-site page cannot send. */
+async function hubRequest<T>(baseUrl: string, path: string, body: unknown, token?: string): Promise<{ status: number; result: T }> {
+  const res = await fetch(`${baseUrl}${path}`, {
+    method: body === undefined ? "GET" : "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : { "x-hive-csrf": "1" }) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const json = (await res.json().catch(() => null)) as { result?: T; error?: { code?: string; message?: string } } | null;
+  if (!res.ok || !json || json.error) {
+    const err = new HiveError((json?.error?.code as HiveErrorCode) ?? "bad_request", json?.error?.message ?? `HTTP ${res.status}`);
+    throw Object.assign(err, { status: res.status });
+  }
+  return { status: res.status, result: json.result as T };
+}
+
+/** Username + password sign-in: the hub sets an HttpOnly session cookie. */
+export async function signIn(username: string, password: string, baseUrl = ""): Promise<Me> {
+  return (await hubRequest<Me>(baseUrl, "/api/login", { username, password })).result;
+}
+
+export async function signOut(baseUrl = ""): Promise<void> {
+  await hubRequest(baseUrl, "/api/logout", {}).catch(() => undefined);
+}
+
+export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpClientOptions = {}): HiveClient {
   async function request<T>(path: string, body?: unknown): Promise<T> {
-    const res = await fetch(`${baseUrl}${path}`, {
-      method: body === undefined ? "GET" : "POST",
-      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    const json = (await res.json().catch(() => null)) as { result?: T; error?: { code?: string; message?: string } } | null;
-    if (res.status === 401) onUnauthorized?.();
-    if (!res.ok || !json || json.error) {
-      throw new HiveError((json?.error?.code as HiveErrorCode) ?? "bad_request", json?.error?.message ?? `HTTP ${res.status}`);
+    try {
+      return (await hubRequest<T>(baseUrl, path, body, token)).result;
+    } catch (err) {
+      if ((err as { status?: number }).status === 401) onUnauthorized?.();
+      throw err;
     }
-    return json.result as T;
   }
   const rpc = <T>(method: string, input?: unknown) => request<T>("/api/rpc", { method, input });
 
@@ -55,6 +90,20 @@ export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpCl
       revoke: async (id) => {
         await rpc("tokens.revoke", { id });
       },
+    },
+    ...(token
+      ? {}
+      : {
+          account: {
+            changePassword: (current: string, next: string) => request<Me>("/api/password", { current, next }),
+          },
+        }),
+    users: {
+      list: () => rpc<HubUser[]>("users.list"),
+      create: (input) => rpc<{ user: HubUser; password: string }>("users.create", input),
+      update: (id, patch) => rpc<HubUser>("users.update", { id, ...patch }),
+      setGrants: (id, grants) => rpc<HubUser>("users.setGrants", { id, grants }),
+      resetPassword: async (id) => (await rpc<{ password: string }>("users.resetPassword", { id })).password,
     },
   };
 }

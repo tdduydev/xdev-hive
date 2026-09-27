@@ -7,6 +7,7 @@ import {
   agentProfileSchema,
   HiveError,
   HubBackend,
+  requestDeviceToken,
   isMethod,
   PROJECT_NAME,
   toErrorPayload,
@@ -153,6 +154,22 @@ async function updateSettings(patch: DesktopSettingsPatch): Promise<DesktopSetti
     }
   }
   return persist(next);
+}
+
+async function hubSignIn(input: { hubUrl?: unknown; username?: unknown; password?: unknown }): Promise<DesktopSettings> {
+  const hubUrl = String(input?.hubUrl ?? "").trim().replace(/\/+$/, "");
+  if (!/^https?:\/\//.test(hubUrl)) throw new HiveError("bad_request", "URL hub phải bắt đầu bằng http(s)://");
+  const username = String(input?.username ?? "").trim();
+  const password = String(input?.password ?? "");
+  if (!username || !password) throw new HiveError("bad_request", "Nhập tên đăng nhập và mật khẩu.");
+  let token: string;
+  try {
+    ({ token } = await requestDeviceToken(hubUrl, { username, password, machine: config.machine }));
+  } catch (err) {
+    const { code, message } = toErrorPayload(err);
+    throw new HiveError(code === "unauthorized" || code === "forbidden" ? code : "bad_request", `Hub từ chối đăng nhập: ${message}`);
+  }
+  return updateSettings({ mode: "hub", hubUrl, hubToken: token });
 }
 
 function addProject(p: DesktopProject): DesktopSettings {
@@ -369,6 +386,7 @@ function registerIpc(): void {
   handle("hive:me", me);
   handle("desktop:settings", settings);
   handle("desktop:updateSettings", updateSettings);
+  handle("desktop:hubSignIn", hubSignIn);
   handle("desktop:addProject", addProject);
   handle("desktop:removeProject", (name: string) =>
     persist({ ...config, projects: config.projects.filter((p) => p.name !== name) }),

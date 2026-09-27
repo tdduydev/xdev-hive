@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Copy } from "lucide-react";
-import { ROLES, type Role } from "@xdev-hive/core";
+import { TOKEN_ROLES, type Role } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Input } from "@xdev-hive/ui/components/ui/input";
@@ -12,15 +12,21 @@ import { formatTime, useAction, useHive, useQuery } from "../hooks.ts";
 const ROLE_HINT: Record<Role, string> = {
   viewer: "Chỉ xem",
   agent: "Agent: đọc, đề xuất, ghi memory, nhận task",
+  member: "Thành viên: như tài khoản (máy của người đó)",
   admin: "Admin: sửa và duyệt tài liệu, quản lý token",
 };
 
 export function TokensPage() {
-  const { client } = useHive();
+  const { client, me } = useHive();
   const tokens = client.tokens!;
+  const hubAdmin = me.role === "admin" && !me.access;
+  // A person creates agent/viewer tokens for their own CI and scripts; machines get theirs at desktop sign-in.
+  const roles: Role[] = hubAdmin ? TOKEN_ROLES : ["agent", "viewer"];
   const list = useQuery(() => tokens.list(), [tokens]);
+  const owners = useQuery(async () => (hubAdmin && client.users ? await client.users.list() : []), [client, hubAdmin]);
+  const ownerName = new Map((owners.data ?? []).map((u) => [u.id, u.username]));
   // Machines report as runner.<machine>@<token name>: group them under their token.
-  const machines = useQuery(() => client.call("admin.machines", {}), [client]);
+  const machines = useQuery(() => (hubAdmin ? client.call("admin.machines", {}) : client.call("machines.list", {})), [client, hubAdmin]);
   const byToken = new Map<string, Array<{ machine: string; online: boolean }>>();
   for (const m of machines.data ?? []) {
     const name = m.id.slice(m.id.lastIndexOf("@") + 1);
@@ -35,7 +41,11 @@ export function TokensPage() {
     <Page>
       <PageHeader
         title="Token truy cập"
-        subtitle="Mỗi người hoặc mỗi máy một token. Agent dùng token vai trò agent. Token chỉ hiện một lần lúc tạo."
+        subtitle={
+          hubAdmin
+            ? "Token cho máy, agent và CI. Token của một tài khoản chỉ thấy các dự án của người đó; token agent tối đa ở mức Đóng góp. Token chỉ hiện một lần lúc tạo."
+            : "Token của bạn cho CI và script: thấy đúng các dự án bạn được cấp (token agent tối đa Đóng góp). App desktop tự lấy token khi bạn đăng nhập trong app."
+        }
       />
       <Card className="py-4">
         <CardContent className="px-4">
@@ -59,7 +69,7 @@ export function TokensPage() {
               aria-label="Tên token"
             />
             <NativeSelect value={role} onChange={(e) => setRole(e.target.value as Role)} aria-label="Vai trò">
-              {ROLES.map((r) => (
+              {roles.map((r) => (
                 <NativeSelectOption key={r} value={r}>
                   {ROLE_HINT[r]}
                 </NativeSelectOption>
@@ -85,7 +95,7 @@ export function TokensPage() {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Dán vào app desktop (Dự án &amp; cài đặt → Hub) hoặc dùng trực tiếp cho MCP qua HTTP: <code className="font-mono">POST /mcp</code>, header{" "}
+            Dùng cho MCP qua HTTP: <code className="font-mono">POST /mcp</code>, header{" "}
             <code className="font-mono">Authorization: Bearer …</code>
           </p>
         </Notice>
@@ -99,6 +109,7 @@ export function TokensPage() {
               <TableRow>
                 <TableHead>Tên</TableHead>
                 <TableHead>Vai trò</TableHead>
+                {hubAdmin ? <TableHead>Tài khoản</TableHead> : null}
                 <TableHead>Máy</TableHead>
                 <TableHead>Tạo lúc</TableHead>
                 <TableHead>Dùng gần nhất</TableHead>
@@ -112,6 +123,11 @@ export function TokensPage() {
                   <TableCell>
                     <Badge tone={STATUS_TONE[t.role]}>{t.role}</Badge>
                   </TableCell>
+                  {hubAdmin ? (
+                    <TableCell className="font-mono text-xs">
+                      {t.ownerId ? `@${ownerName.get(t.ownerId) ?? t.ownerId}` : <span className="text-muted-foreground">— (không thuộc ai)</span>}
+                    </TableCell>
+                  ) : null}
                   <TableCell>
                     <div className="flex flex-col gap-1">
                       {(byToken.get(t.name) ?? []).map((m) => (

@@ -8,10 +8,10 @@ import {
   LayoutDashboard,
   LayoutGrid,
   ListTodo,
-  LogOut,
   Server,
   ShieldCheck,
   Sparkles,
+  UsersRound,
   Wrench,
 } from "lucide-react";
 import { Button } from "@xdev-hive/ui/components/ui/button";
@@ -34,8 +34,10 @@ import {
 } from "@xdev-hive/ui/components/ui/sidebar";
 import { cn } from "cn";
 import { TooltipProvider } from "@xdev-hive/ui/components/ui/tooltip";
+import type { Me } from "@xdev-hive/core";
 import type { HiveClient } from "./client.ts";
-import { Badge, ErrorNote, HiveLogo, STATUS_TONE } from "./components/common.tsx";
+import { AccountMenu, ChangePasswordScreen } from "./components/Account.tsx";
+import { ErrorNote, HiveLogo } from "./components/common.tsx";
 import { ScopeSwitcher } from "./components/ScopeSwitcher.tsx";
 import { HiveContext, useProjectList, useQuery } from "./hooks.ts";
 import { readScope, writeScope, type Scope } from "./lib/scope.ts";
@@ -52,8 +54,22 @@ import { ProposalsPage } from "./pages/Proposals.tsx";
 import { SetupPage } from "./pages/Setup.tsx";
 import { TasksPage } from "./pages/Tasks.tsx";
 import { TokensPage } from "./pages/Tokens.tsx";
+import { UsersPage } from "./pages/Users.tsx";
 
-type PageId = "overview" | "board" | "docs" | "proposals" | "memory" | "tasks" | "agents" | "machines" | "admin" | "tokens" | "setup" | "projects";
+type PageId =
+  | "overview"
+  | "board"
+  | "docs"
+  | "proposals"
+  | "memory"
+  | "tasks"
+  | "agents"
+  | "machines"
+  | "admin"
+  | "users"
+  | "tokens"
+  | "setup"
+  | "projects";
 type Icon = ComponentType<{ className?: string }>;
 
 const PAGES: Record<PageId, { label: string; icon: Icon; render: () => ReactNode }> = {
@@ -67,6 +83,7 @@ const PAGES: Record<PageId, { label: string; icon: Icon; render: () => ReactNode
   machines: { label: "Máy & run", icon: Server, render: () => <MachinesPage /> },
   setup: { label: "Cài đặt máy", icon: Wrench, render: () => <SetupPage /> },
   admin: { label: "Quản trị", icon: ShieldCheck, render: () => <AdminPage /> },
+  users: { label: "Người dùng & quyền", icon: UsersRound, render: () => <UsersPage /> },
   tokens: { label: "Token", icon: KeyRound, render: () => <TokensPage /> },
   projects: { label: "Dự án & cài đặt", icon: FolderGit2, render: () => <ProjectsPage /> },
 };
@@ -74,7 +91,7 @@ const PAGES: Record<PageId, { label: string; icon: Icon; render: () => ReactNode
 const GROUPS: Array<{ label: string; ids: PageId[] }> = [
   { label: "Làm việc", ids: ["overview", "board", "docs", "proposals", "memory", "tasks"] },
   { label: "Agent & máy", ids: ["agents", "machines", "setup"] },
-  { label: "Quản trị", ids: ["admin", "tokens", "projects"] },
+  { label: "Quản trị", ids: ["admin", "users", "tokens", "projects"] },
 ];
 
 function readHash(): PageId | null {
@@ -108,11 +125,37 @@ function Centered({ children }: { children: ReactNode }) {
 export function HiveApp({ client, onSignOut }: { client: HiveClient; onSignOut?: () => void }) {
   useSystemTheme();
   const me = useQuery(() => client.me(), [client]);
+  if (me.error) {
+    return (
+      <Centered>
+        <ErrorNote error={me.error} />
+        {onSignOut ? (
+          <Button variant="outline" onClick={onSignOut}>
+            Đăng nhập lại
+          </Button>
+        ) : null}
+      </Centered>
+    );
+  }
+  if (!me.data) return <Centered>Đang kết nối…</Centered>;
+  if (me.data.user?.mustChangePassword && client.account) {
+    return <ChangePasswordScreen client={client} me={me.data} onSignOut={onSignOut} onDone={me.reload} />;
+  }
+  return <Shell client={client} me={me.data} onSignOut={onSignOut} />;
+}
+
+/** The signed-in app: nothing here loads until the hub accepted the session (and its password is not temporary). */
+function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOut?: () => void }) {
   const home: PageId = "overview";
   const [page, setPage] = useState<PageId>(() => readHash() ?? home);
   const [tick, setTick] = useState(0);
   const bump = useCallback(() => setTick((t) => t + 1), []);
-  const projects = useProjectList(client, tick);
+  const seen = useProjectList(client, tick);
+  // Granted projects show in the switcher even before they have any data.
+  const projects = useMemo(
+    () => [...new Set([...seen, ...Object.keys(me.access?.projects ?? {})])].sort(),
+    [seen, me.access],
+  );
   const [scope, setScopeState] = useState<Scope>(readScope);
   const setScope = useCallback((next: Scope) => {
     writeScope(next);
@@ -132,26 +175,15 @@ export function HiveApp({ client, onSignOut }: { client: HiveClient; onSignOut?:
     const ids = new Set<PageId>(["overview", "docs", "proposals", "memory", "tasks"]);
     if (client.desktop) for (const id of ["board", "agents", "setup", "projects"] as const) ids.add(id);
     // Machines only report to a hub; a local database never has any.
-    if (me.data?.mode === "hub") ids.add("machines");
+    if (me.mode === "hub") ids.add("machines");
     // The admin portal reads what every machine reported to the hub: hub admins only.
-    if (me.data?.mode === "hub" && me.data.role === "admin") ids.add("admin");
-    if (client.tokens && me.data?.role === "admin") ids.add("tokens");
+    const hubAdmin = me.mode === "hub" && me.role === "admin" && !me.access;
+    if (hubAdmin) ids.add("admin");
+    if (hubAdmin && client.users) ids.add("users");
+    // Everyone with an account manages their own tokens (machines, CI); admins see all.
+    if (client.tokens && (hubAdmin || me.user)) ids.add("tokens");
     return ids;
-  }, [client, me.data?.role, me.data?.mode]);
-
-  if (me.error) {
-    return (
-      <Centered>
-        <ErrorNote error={me.error} />
-        {onSignOut ? (
-          <Button variant="outline" onClick={onSignOut}>
-            Đăng nhập lại
-          </Button>
-        ) : null}
-      </Centered>
-    );
-  }
-  if (!me.data) return <Centered>Đang kết nối…</Centered>;
+  }, [client, me]);
 
   const current = visible.has(page) ? page : home;
   const counts: Partial<Record<PageId, number>> = {
@@ -162,7 +194,7 @@ export function HiveApp({ client, onSignOut }: { client: HiveClient; onSignOut?:
   const desktop = Boolean(client.desktop);
 
   return (
-    <HiveContext.Provider value={{ client, me: me.data, bump, scope, setScope, projects }}>
+    <HiveContext.Provider value={{ client, me: me, bump, scope, setScope, projects }}>
       <TooltipProvider>
         <SidebarProvider>
           {/* Icon-only collapse would sit under the macOS traffic lights; the desktop hides the sidebar instead. */}
@@ -207,23 +239,7 @@ export function HiveApp({ client, onSignOut }: { client: HiveClient; onSignOut?:
               })}
             </SidebarContent>
             <SidebarFooter>
-              <div className="flex flex-col gap-1 rounded-md px-2 py-1.5 text-sm group-data-[collapsible=icon]:hidden">
-                <div className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate font-medium">{me.data.name}</span>
-                  <Badge tone={STATUS_TONE[me.data.role]}>{me.data.role}</Badge>
-                </div>
-                <span className="text-xs text-muted-foreground">{me.data.mode === "hub" ? "Hub dùng chung" : "Cục bộ trên máy này"}</span>
-              </div>
-              {onSignOut ? (
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton onClick={onSignOut} tooltip="Đăng xuất">
-                      <LogOut />
-                      <span>Đăng xuất</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              ) : null}
+              <AccountMenu client={client} me={me} onSignOut={onSignOut} />
             </SidebarFooter>
           </Sidebar>
           <SidebarInset className="min-w-0">

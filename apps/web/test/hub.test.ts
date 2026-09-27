@@ -11,6 +11,7 @@ import { HiveError, HubBackend, transferHive } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { createHubApp } from "../src/app.ts";
 import { TokenStore } from "../src/tokens.ts";
+import { UserStore } from "../src/users.ts";
 
 let base = "";
 let close: () => void;
@@ -23,7 +24,7 @@ before(async () => {
   tok.admin = tokens.create("duy", "admin").token;
   tok.agent = tokens.create("duy-macbook", "agent").token;
   tok.viewer = tokens.create("pm", "viewer").token;
-  const app = createHubApp({ hive, tokens, allowedHosts: ["127.0.0.1", "localhost"] });
+  const app = createHubApp({ hive, tokens, users: new UserStore(hive.db), allowedHosts: ["127.0.0.1", "localhost"] });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -169,7 +170,7 @@ describe("hub UI", () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(dir, "index.html"), "<!doctype html><title>xDev Hive</title>");
     const hive = new SqliteHive(":memory:");
-    const server = createHubApp({ hive, tokens: new TokenStore(hive.db), ui: { dir } }).listen(0, "127.0.0.1");
+    const server = createHubApp({ hive, tokens: new TokenStore(hive.db), users: new UserStore(hive.db), ui: { dir } }).listen(0, "127.0.0.1");
     await new Promise((r) => server.once("listening", r));
     try {
       const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;

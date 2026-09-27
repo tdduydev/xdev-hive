@@ -4,10 +4,10 @@ Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, 
 
 ```
 ┌─ xDev Hive.app (Electron, menu bar) ─┐        ┌─ Hub web (Express) ─────────────────┐
-│ Tài liệu · Đề xuất · Memory · Task   │  HTTP  │ /api/rpc   UI quản trị (token)      │
+│ Tài liệu · Đề xuất · Memory · Task   │  HTTP  │ /api/rpc   UI + tài khoản, quyền    │
 │ Dự án & cài đặt: sync, cài agents    │ ─────▶ │ /mcp       MCP Streamable HTTP      │
 └──────────────┬───────────────────────┘        │ SQLite: docs, proposals, memory,    │
-               │ local.db hoặc hub              │ tasks, tokens                       │
+               │ local.db hoặc hub              │ tasks, users, tokens                │
       hive-mcp (stdio) ◀── Claude Code · Codex · Gemini (mỗi agent = 1 gói sub)
 ```
 
@@ -47,7 +47,7 @@ Hub (dev, có HMR):
 npm run dev:web
 ```
 
-Lần chạy đầu in **token admin** ra console. Mở http://localhost:7788 và dán token vào. Muốn reset thì xoá `apps/web/data/`.
+Lần chạy đầu tạo tài khoản `admin` và in **mật khẩu tạm** ra console (chỉ một lần). Mở http://localhost:7788, đăng nhập, rồi đặt mật khẩu mới. Muốn reset thì xoá `apps/web/data/`.
 
 App desktop:
 
@@ -118,7 +118,7 @@ implement (không review, chế độ "ngay khi làm xong") ──────�
 
 ```bash
 HIVE_HOSTNAME=hive.example.com docker compose -f deploy/compose.yaml up -d --build
-docker compose -f deploy/compose.yaml logs hub     # lần đầu in token admin
+docker compose -f deploy/compose.yaml logs hub     # lần đầu in mật khẩu tạm của tài khoản admin
 ```
 
 - [`Dockerfile`](Dockerfile): image chỉ gồm hub (core, mcp, web và UI đã build), không có mã desktop. Chạy bằng user `node`, dữ liệu ở `/data`, có `HEALTHCHECK` gọi `/api/health`.
@@ -138,15 +138,37 @@ HIVE_HOST=0.0.0.0 HIVE_ALLOWED_HOSTS=hive.example.com HIVE_DB=/data/hub.db HIVE_
 | `HIVE_ALLOWED_HOSTS` | localhost | Danh sách Host header hợp lệ (chống DNS rebinding). Bắt buộc khi có hostname công khai hoặc đặt sau reverse proxy. `localhost`/`127.0.0.1` luôn được chấp nhận (health check) |
 | `HIVE_DB` | `apps/web/data/hub.db` | File SQLite (image: `/data/hub.db`) |
 | `HIVE_MEMORY_APPROVAL` | bật | `off`: memory của agent hiện ngay, không cần duyệt |
+| `HIVE_ADMIN_USER` | `admin` | Tên tài khoản admin đầu tiên (tạo khi hub chưa có tài khoản nào) |
+| `HIVE_TRUST_PROXY` | tắt (compose: `1`) | Hub đứng sau proxy TLS: cookie phiên có `Secure`, giới hạn đăng nhập sai theo IP thật từ `X-Forwarded-For`. Chỉ bật khi mọi request đi qua proxy |
 | `HIVE_BOOTSTRAP_TOKEN` | – | Token admin cố định (≥ 32 ký tự) cho deploy tự động |
 | `HIVE_BACKUP_DIR` | tắt (image: `/data/backups`) | Bật backup: một bản khi khởi động (trước khi migrate schema) và định kỳ |
 | `HIVE_BACKUP_HOURS` / `HIVE_BACKUP_KEEP` | `24` / `7` | Chu kỳ backup và số bản giữ lại |
 
-Mất token admin thì tạo lại trên server (Docker: `docker compose -f deploy/compose.yaml exec hub npm run token -w @xdev-hive/web -- create duy admin`):
+Không ai đăng nhập được (quên mật khẩu admin…) thì làm trên server (Docker: thêm `docker compose -f deploy/compose.yaml exec hub` phía trước):
 
 ```bash
-npm run token -w @xdev-hive/web -- create duy admin
+npm run user -w @xdev-hive/web -- reset admin          # mật khẩu tạm mới, đăng xuất mọi nơi
+npm run user -w @xdev-hive/web -- create duy admin     # thêm một admin
+npm run user -w @xdev-hive/web -- list
+npm run token -w @xdev-hive/web -- create ci-gitlab agent   # token không thuộc tài khoản nào
 ```
+
+### Tài khoản và quyền theo dự án
+
+- **Người** đăng nhập hub bằng tên đăng nhập + mật khẩu. Admin tạo tài khoản ở *Quản trị → Người dùng & quyền*; hub sinh mật khẩu tạm, chỉ hiện một lần. Lần đăng nhập đầu phải đổi mật khẩu (≥ 10 ký tự, không chứa tên đăng nhập) mới dùng được hub. Quên mật khẩu: admin bấm *Đặt lại mật khẩu*.
+- **Quyền theo dự án**: admin cấp cho mỗi người từng dự án ở một mức. Dự án không được cấp thì người đó không thấy gì của dự án đó: không trong danh sách, không qua agent, không qua MCP (hub trả *không tìm thấy*, nên cũng không lộ tên tài liệu).
+
+  | Mức | Được làm |
+  |---|---|
+  | Xem | đọc tài liệu, memory, task, đề xuất của dự án |
+  | Đóng góp | + đề xuất sửa tài liệu, ghi memory, nhận và cập nhật task |
+  | Quản trị | + sửa và duyệt tài liệu, duyệt/xoá memory, tạo task |
+
+- **Dữ liệu Chung** (tài liệu `org/*`, memory chung): ai đăng nhập cũng xem được. Người có mức Đóng góp ở ít nhất một dự án được đề xuất tài liệu Chung và ghi memory Chung (chờ admin duyệt). Sửa và duyệt dữ liệu Chung là việc của admin.
+- **Admin** thấy và quản trị mọi dự án, quản lý tài khoản, trang Quản trị và mọi token.
+- **Máy và agent** dùng token *thuộc tài khoản* của người đó, nên chỉ thấy đúng các dự án người đó được cấp. App desktop: *Dự án & cài đặt → Nguồn dữ liệu → Hub dùng chung → Tài khoản*, nhập tên đăng nhập + mật khẩu một lần. Hub cấp cho máy một token (mật khẩu không lưu trên máy); đăng nhập lại từ cùng máy thì token cũ bị thay. Token vai trò `agent` (CI, script) mỗi người tự tạo ở trang *Token*, tối đa mức Đóng góp dù người đó có quyền Quản trị.
+- Khoá tài khoản thì phiên đăng nhập và mọi token của người đó ngừng hoạt động ngay. Bỏ hay đổi quyền có hiệu lực từ request kế tiếp.
+- Token tạo trước khi có tài khoản (không thuộc ai) vẫn chạy như cũ theo vai trò của nó.
 
 ### Backup, khôi phục, nâng cấp
 
@@ -156,7 +178,7 @@ npm run token -w @xdev-hive/web -- create duy admin
 - **Khôi phục**: dừng hub, chép bản backup đè lên `hub.db`, xoá `hub.db-wal` và `hub.db-shm` nếu có, rồi khởi động lại.
 - **Nâng cấp**: `git pull && docker compose -f deploy/compose.yaml up -d --build`. Hub tự backup trước khi chạy migration mới.
 
-Máy của từng người: app desktop → chế độ **Hub dùng chung** → URL + token (vai trò `agent` hoặc `admin`). Shim `hive-mcp` tự chuyển tiếp lên hub, nên config MCP trong repo giống nhau cho mọi người và không chứa token.
+Máy của từng người: app desktop → chế độ **Hub dùng chung** → URL + đăng nhập bằng tài khoản (hoặc dán token). Shim `hive-mcp` tự chuyển tiếp lên hub, nên config MCP trong repo giống nhau cho mọi người và không chứa token.
 
 ### Chuyển dữ liệu giữa máy và hub
 
@@ -182,23 +204,26 @@ Trên hub, agent giữ task với tên `<gói>.<máy>@<token>`, ví dụ `claude
 
 ### Trang Quản trị (admin portal)
 
-Trang này có trên hub web và trên app desktop ở chế độ hub, chỉ hiện với token `admin`:
+Trang này có trên hub web và trên app desktop ở chế độ hub, chỉ hiện với admin (tài khoản admin, hoặc token `admin` không thuộc tài khoản nào):
 
 - **Máy**: mọi máy trong team, cùng kết quả *Cài đặt máy* mà máy gửi kèm heartbeat. App kiểm tra lúc mở, sau mỗi lần cài, và 10 phút một lần. Trang hiện CLI và phiên bản, hive-mcp, cấu hình từng repo, gói sub (không gửi lệnh chạy hay `env`), mục thiếu so với chính sách, và lịch sử yêu cầu cài.
 - **Yêu cầu cài từ xa**: nút *Yêu cầu cài* chỉ có ở mục mà chính máy đó báo là app cài được: CLI qua npm, hive-mcp, cấu hình repo, codegraph, superpowers. Hub không bao giờ gửi lệnh shell tuỳ ý. Máy nhận yêu cầu ở heartbeat kế tiếp và hiện thông báo; ở trang *Cài đặt máy* người dùng phải bấm *Đồng ý và cài* thì app mới chạy, rồi kết quả được gửi lại hub. Yêu cầu chưa ai trả lời sẽ hết hạn sau 24 giờ; admin huỷ được yêu cầu đang chờ.
 - **Chính sách**: CLI và hive-mcp bắt buộc trên mọi máy, các phần bắt buộc theo dự án (cấu hình agent, codegraph, index, superpowers), và profile mẫu cho team. Profile mẫu không được có `env`, vì thư mục đăng nhập và key là của từng máy. Máy nhận chính sách qua heartbeat: trang *Cài đặt máy* gắn nhãn "bắt buộc", trang *Gói sub & agent* có nút thêm từ mẫu.
-- **Nhật ký**: mọi thao tác thay đổi dữ liệu của admin (sửa tài liệu, duyệt/từ chối, memory, task, token, chính sách, yêu cầu cài) và kết quả máy báo về. Không ghi lượt đọc.
-- Trang **Token** có thêm cột *Máy*: các máy đang dùng từng token.
+- **Nhật ký**: mọi thao tác thay đổi dữ liệu của admin (sửa tài liệu, duyệt/từ chối, memory, task, token, chính sách, yêu cầu cài), đăng nhập, tạo/sửa/khoá tài khoản, đổi quyền, đặt lại mật khẩu, và kết quả máy báo về. Không ghi lượt đọc.
+- **Người dùng & quyền**: tạo tài khoản, cấp quyền theo dự án, cấp/bỏ admin, đặt lại mật khẩu, khoá.
+- Trang **Token** có thêm cột *Tài khoản* và *Máy*: token thuộc ai, các máy đang dùng từng token.
 
 Agent không có app desktop (CI, cloud) gọi thẳng MCP qua HTTP: `POST https://<hub>/mcp`, header `Authorization: Bearer <token agent>`, tuỳ chọn `x-hive-agent: <tên>`.
 
 ## Bảo mật
 
-- Token chỉ lưu SHA-256, plaintext hiện một lần. Không thu hồi được token admin cuối cùng.
+- Mật khẩu băm bằng scrypt (salt riêng); so sánh thời gian cố định, kể cả khi tên đăng nhập không tồn tại. Sai 5 lần thì cặp IP + tên đăng nhập bị khoá 15 phút.
+- Phiên web: cookie `HttpOnly`, `SameSite=Strict` (thêm `Secure` sau proxy TLS), hết hạn sau 14 ngày; hub chỉ lưu SHA-256 của phiên. Request ghi bằng cookie phải có header `x-hive-csrf` và Origin trùng host. Đổi hoặc đặt lại mật khẩu thì các phiên khác bị đăng xuất.
+- Token chỉ lưu SHA-256, plaintext hiện một lần. Không thu hồi được token admin cuối cùng không thuộc tài khoản nào (đường vào khi mất hết mật khẩu). MCP qua HTTP chỉ nhận token, không nhận cookie.
 - Memory và tài liệu bị từ chối nếu chứa chuỗi giống secret (AWS, GitHub, GitLab, Slack, `sk-…`, JWT, private key, token Hive).
 - Desktop: `contextIsolation`, `sandbox`, preload chỉ lộ đúng các hàm cần. IPC kiểm tra nguồn gọi. CSP trong bản build.
 - `~/.xdev-hive/config.json` có quyền `0600` vì có thể chứa token hub.
-- Web lưu token trong `localStorage`. Khi đưa ra ngoài mạng nội bộ nên thay bằng đăng nhập GitLab OAuth.
+- Web chỉ lưu token trong `localStorage` khi đăng nhập bằng token (tuỳ chọn cho CI, khôi phục); đăng nhập bằng tài khoản thì dùng cookie phiên.
 
 ## Làm việc trên repo này với Claude Code
 
@@ -214,7 +239,7 @@ Cấu hình này chỉ áp dụng cho Claude Code. Codex và Gemini dùng đư�
 
 ## Việc tiếp theo
 
-- Đăng nhập GitLab OAuth cho hub, thay cho token dán tay.
+- Đăng nhập GitLab OAuth (SSO) bên cạnh mật khẩu.
 - Postgres (+ pgvector) khi team lớn hoặc cần tìm kiếm theo ngữ nghĩa.
 - Đọc quota còn lại chủ động (nếu CLI có lệnh báo usage) thay vì chỉ phản ứng khi đã hết.
 - Theo dõi trạng thái MR (pipeline, merged) để tự chuyển task sang *Xong*.

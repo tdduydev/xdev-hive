@@ -6,7 +6,7 @@ import { Input } from "@xdev-hive/ui/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
-import { formatTime, useAction, useHive, useQuery } from "../hooks.ts";
+import { formatTime, useAction, useCan, useHive, useQuery } from "../hooks.ts";
 import { scopeProject } from "../lib/scope.ts";
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
@@ -26,7 +26,9 @@ const TONE_TEXT: Record<string, string> = {
 };
 
 export function TasksPage() {
-  const { client, me, scope, projects } = useHive();
+  const { client, scope, projects } = useHive();
+  const allow = useCan();
+  const managed = projects.filter((p) => allow(p, "manage"));
   // Tasks always belong to one project: the shared scope has none of its own, so it shows every project's.
   const scoped = scopeProject(scope);
   const [status, setStatus] = useState<TaskStatus | "">("");
@@ -52,7 +54,14 @@ export function TasksPage() {
         </NativeSelect>
       </div>
       {scope.kind === "shared" ? <Notice tone="info">Task luôn thuộc một dự án — đang hiện task của mọi dự án.</Notice> : null}
-      {me.role === "admin" ? <CreateTask key={scoped ?? ""} defaultProject={scoped ?? ""} projects={projects} onCreated={list.reload} /> : null}
+      {managed.length || allow(null, "manage") ? (
+        <CreateTask
+          key={scoped ?? ""}
+          defaultProject={scoped && managed.includes(scoped) ? scoped : ""}
+          projects={allow(null, "manage") ? projects : managed}
+          onCreated={list.reload}
+        />
+      ) : null}
       <ErrorNote error={list.error} />
       {list.data?.length === 0 ? <Empty>Chưa có task.</Empty> : null}
       {list.data?.length ? (
@@ -82,7 +91,8 @@ export function TasksPage() {
 }
 
 function TaskRow({ task: t, showProject, onChanged }: { task: Task; showProject: boolean; onChanged: () => void }) {
-  const { client, me } = useHive();
+  const { client } = useHive();
+  const allow = useCan();
   const action = useAction();
   return (
     <TableRow>
@@ -97,7 +107,7 @@ function TaskRow({ task: t, showProject, onChanged }: { task: Task; showProject:
         </TableCell>
       ) : null}
       <TableCell>
-        {me.role === "viewer" ? (
+        {!allow(t.project, "contribute") ? (
           <Badge tone={STATUS_TONE[t.status]}>{STATUS_LABEL[t.status]}</Badge>
         ) : (
           <NativeSelect

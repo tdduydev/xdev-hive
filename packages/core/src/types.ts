@@ -1,12 +1,16 @@
+import type { Access } from "./access.ts";
 import type { AgentProfile } from "./agents.ts";
 
-export type Role = "viewer" | "agent" | "admin";
+/** member: a person's hub account (what it may do comes from its per-project grants). */
+export type Role = "viewer" | "agent" | "member" | "admin";
 export type DocScope = "org" | "project";
 
 export interface Actor {
   /** Who is acting, e.g. `claude@duy` or `duy`. Recorded on every write. */
   name: string;
   role: Role;
+  /** Per-project grants of a hub account; absent = unrestricted (local mode, hub admins, tokens of no account). */
+  access?: Access;
 }
 
 export interface DocSummary {

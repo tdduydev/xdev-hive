@@ -183,6 +183,18 @@ function AllOverview() {
 }
 
 function NoProjects({ desktop }: { desktop: boolean }) {
+  const { me } = useHive();
+  // A hub account sees only the projects an admin granted it.
+  if (me.access) {
+    return (
+      <Empty>
+        <div className="flex flex-col items-center gap-2">
+          <p className="font-medium text-foreground">Bạn chưa được cấp dự án nào.</p>
+          <p className="max-w-md">Hiện bạn chỉ thấy dữ liệu Chung của team. Nhờ admin cấp quyền các dự án bạn cần.</p>
+        </div>
+      </Empty>
+    );
+  }
   return (
     <Empty>
       <div className="flex flex-col items-center gap-3">
