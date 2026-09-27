@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { cn } from "cn";
 import {
   AGENT_KINDS,
   AGENT_ROLES,
@@ -11,7 +12,14 @@ import {
   type ProfileCheck,
   type RunnerSettings,
 } from "@xdev-hive/core";
-import { Badge, Empty, ErrorNote, PageHeader } from "../components/ui.tsx";
+import { Button } from "@xdev-hive/ui/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
+import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
+import { Input } from "@xdev-hive/ui/components/ui/input";
+import { Label } from "@xdev-hive/ui/components/ui/label";
+import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
+import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
+import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, StatusDot } from "../components/common.tsx";
 import { errorMessage, formatTime, useAction, useHive, useQuery } from "../hooks.ts";
 import { ROLE_LABEL } from "./Board.tsx";
 
@@ -22,6 +30,9 @@ const ACCOUNT_ENV_HINT: Partial<Record<AgentKind, string>> = {
   claude: "CLAUDE_CONFIG_DIR=~/.claude-2",
   codex: "CODEX_HOME=~/.codex-2",
 };
+
+const CODE = "rounded bg-muted px-1 py-0.5 font-mono text-xs";
+const HINT = "text-xs text-muted-foreground sm:col-start-2";
 
 export function AgentsPage() {
   const { client } = useHive();
@@ -43,35 +54,36 @@ export function AgentsPage() {
   };
 
   return (
-    <div className="page">
+    <Page>
       <PageHeader
         title="Gói sub & agent"
         subtitle="Mỗi profile là một gói sub (một tài khoản CLI). Runner chọn theo ưu tiên, xoay vòng các gói cùng mức, và cho gói nghỉ đến giờ reset khi hết quota."
       />
       {settings.data ? <RunnerCard runner={settings.data.runner} /> : null}
-      <div className="row gap-s wrap">
-        <span className="muted small">Thêm profile:</span>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-muted-foreground">Thêm profile:</span>
         {AGENT_KINDS.map((k) => (
-          <button key={k} className="btn btn-small" onClick={() => newProfile(k)}>
+          <Button key={k} size="sm" variant="outline" onClick={() => newProfile(k)}>
             + {KIND_LABEL[k]}
-          </button>
+          </Button>
         ))}
       </div>
       {templates.length ? (
-        <div className="row gap-s wrap">
-          <span className="muted small">Mẫu của team (từ hub):</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-muted-foreground">Mẫu của team (từ hub):</span>
           {templates.map((t) => {
             const exists = (profiles.data ?? []).some((p) => p.id === t.id);
             return (
-              <button
+              <Button
                 key={t.id}
-                className="btn btn-small"
+                size="sm"
+                variant="outline"
                 disabled={exists}
                 title={exists ? "Máy này đã có profile cùng id" : "Mở form với mẫu này; thêm env (thư mục đăng nhập) của máy bạn rồi lưu"}
                 onClick={() => setEditing({ profile: { ...t, env: {} } })}
               >
                 + {t.label}
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -90,12 +102,12 @@ export function AgentsPage() {
       ) : null}
       <ErrorNote error={profiles.error} />
       {profiles.data?.length === 0 ? <Empty>Chưa có profile nào.</Empty> : null}
-      <div className="profile-grid">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {profiles.data?.map((p) => (
           <ProfileCard key={p.id} profile={p} onEdit={() => setEditing({ profile: p, previousId: p.id })} onChanged={refresh} />
         ))}
       </div>
-    </div>
+    </Page>
   );
 }
 
@@ -109,90 +121,104 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
   const noCli = p.enabled && p.cliPath === null;
 
   return (
-    <article className={`card profile-card ${p.enabled ? "" : "disabled"}`}>
-      <div className="row gap-s">
-        <span className={`dot dot-${!p.enabled ? "neutral" : noCli ? "danger" : resting ? "warn" : p.running ? "info" : "ok"}`} />
-        <b className="grow ellipsis">{p.label}</b>
-        <Badge tone="accent">{KIND_LABEL[p.kind]}</Badge>
-      </div>
-      <div className="mono small muted">
-        {p.id} · ưu tiên {p.priority} · tối đa {p.maxConcurrent} song song
-        {p.account ? ` · tài khoản ${p.account}` : ""}
-      </div>
-      <div className="small">
-        {!p.enabled ? (
-          <span className="muted">Đang tắt</span>
-        ) : noCli ? (
-          <span className="tone-danger">
-            Chưa có lệnh <code>{p.bin}</code> trên máy này. Cài ở <a href="#/setup">Cài đặt máy</a>, runner sẽ bỏ qua gói này khi chưa có.
-          </span>
-        ) : resting ? (
-          <span className="tone-warn">
-            Nghỉ đến {formatTime(p.cooldownUntil)}
-            {p.cooldownFrom ? ` · báo từ ${p.cooldownFrom}` : ""}
-            {p.cooldownReason ? ` · ${p.cooldownReason}` : ""}
-          </span>
-        ) : p.running ? (
-          <span className="tone-info">Đang chạy {p.running} run</span>
-        ) : (
-          <span className="tone-ok">Sẵn sàng</span>
-        )}
-      </div>
-      <div className="row gap-s wrap small muted">
-        <span>{p.stats.runs} lượt</span>
-        <span>· {p.stats.succeeded} xong</span>
-        <span>· {p.stats.rateLimited} hết quota</span>
-        <span>· {p.stats.failed} lỗi</span>
-        {p.lastUsedAt ? <span>· dùng {formatTime(p.lastUsedAt)}</span> : null}
-      </div>
-      <div className="row gap-s wrap">
-        {p.roles.map((r) => (
-          <Badge key={r}>{ROLE_LABEL[r]}</Badge>
-        ))}
-      </div>
-      <code className="mono small cmdline">
-        {Object.entries(p.env)
-          .map(([k, v]) => `${k}=${v} `)
-          .join("")}
-        {p.bin} {p.args.join(" ")}
-      </code>
-      <div className="row gap-s wrap">
-        <button
-          className="btn btn-small"
-          disabled={action.busy}
-          onClick={() => void action.run(async () => (await desktop.saveProfile({ ...plain, enabled: !p.enabled }, p.id), onChanged()))}
-        >
-          {p.enabled ? "Tắt" : "Bật"}
-        </button>
-        <button className="btn btn-small" disabled={action.busy} onClick={() => void action.run(async () => setCheck(await desktop.checkProfile(p.id)))}>
-          Kiểm tra CLI
-        </button>
-        {resting ? (
-          <button className="btn btn-small" disabled={action.busy} onClick={() => void action.run(async () => (await desktop.resetCooldown(p.id), onChanged()))}>
-            Hết nghỉ
-          </button>
-        ) : null}
-        <button className="btn btn-small btn-ghost" onClick={onEdit}>
-          Sửa
-        </button>
-        <button
-          className="btn btn-small btn-ghost btn-danger"
-          disabled={action.busy}
-          onClick={() => {
-            if (window.confirm(`Xoá profile ${p.id}? Lịch sử run vẫn giữ.`)) void action.run(async () => (await desktop.removeProfile(p.id), onChanged()));
-          }}
-        >
-          Xoá
-        </button>
-      </div>
-      {check ? (
-        <div className={`note ${check.ok ? "note-ok" : "note-error"}`}>
-          {check.path ? <div className="mono small">{check.path}</div> : null}
-          <div className="mono small pre">{check.output || (check.ok ? "OK" : "Lỗi")}</div>
+    <Card className={cn("min-w-0 gap-3 py-4", p.enabled ? "" : "opacity-65")}>
+      <CardContent className="flex flex-col gap-3 px-4">
+        <div className="flex items-center gap-2">
+          <StatusDot tone={!p.enabled ? "neutral" : noCli ? "danger" : resting ? "warn" : p.running ? "info" : "ok"} />
+          <b className="min-w-0 flex-1 truncate font-semibold">{p.label}</b>
+          <Badge tone="accent">{KIND_LABEL[p.kind]}</Badge>
         </div>
-      ) : null}
-      <ErrorNote error={action.error} />
-    </article>
+        <div className="font-mono text-xs wrap-anywhere text-muted-foreground">
+          {p.id} · ưu tiên {p.priority} · tối đa {p.maxConcurrent} song song
+          {p.account ? ` · tài khoản ${p.account}` : ""}
+        </div>
+        <div className="text-sm">
+          {!p.enabled ? (
+            <span className="text-muted-foreground">Đang tắt</span>
+          ) : noCli ? (
+            <span className="text-destructive">
+              Chưa có lệnh <code className={CODE}>{p.bin}</code> trên máy này. Cài ở{" "}
+              <a href="#/setup" className="underline underline-offset-2">
+                Cài đặt máy
+              </a>
+              , runner sẽ bỏ qua gói này khi chưa có.
+            </span>
+          ) : resting ? (
+            <span className="text-warning">
+              Nghỉ đến {formatTime(p.cooldownUntil)}
+              {p.cooldownFrom ? ` · báo từ ${p.cooldownFrom}` : ""}
+              {p.cooldownReason ? ` · ${p.cooldownReason}` : ""}
+            </span>
+          ) : p.running ? (
+            <span className="text-info">Đang chạy {p.running} run</span>
+          ) : (
+            <span className="text-success">Sẵn sàng</span>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+          <span>{p.stats.runs} lượt</span>
+          <span>· {p.stats.succeeded} xong</span>
+          <span>· {p.stats.rateLimited} hết quota</span>
+          <span>· {p.stats.failed} lỗi</span>
+          {p.lastUsedAt ? <span>· dùng {formatTime(p.lastUsedAt)}</span> : null}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {p.roles.map((r) => (
+            <Badge key={r}>{ROLE_LABEL[r]}</Badge>
+          ))}
+        </div>
+        <code className="block overflow-x-auto rounded-md bg-muted px-2 py-1.5 font-mono text-xs whitespace-nowrap">
+          {Object.entries(p.env)
+            .map(([k, v]) => `${k}=${v} `)
+            .join("")}
+          {p.bin} {p.args.join(" ")}
+        </code>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={action.busy}
+            onClick={() => void action.run(async () => (await desktop.saveProfile({ ...plain, enabled: !p.enabled }, p.id), onChanged()))}
+          >
+            {p.enabled ? "Tắt" : "Bật"}
+          </Button>
+          <Button size="sm" variant="outline" disabled={action.busy} onClick={() => void action.run(async () => setCheck(await desktop.checkProfile(p.id)))}>
+            Kiểm tra CLI
+          </Button>
+          {resting ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={action.busy}
+              onClick={() => void action.run(async () => (await desktop.resetCooldown(p.id), onChanged()))}
+            >
+              Hết nghỉ
+            </Button>
+          ) : null}
+          <Button size="sm" variant="ghost" onClick={onEdit}>
+            Sửa
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+            disabled={action.busy}
+            onClick={() => {
+              if (window.confirm(`Xoá profile ${p.id}? Lịch sử run vẫn giữ.`)) void action.run(async () => (await desktop.removeProfile(p.id), onChanged()));
+            }}
+          >
+            Xoá
+          </Button>
+        </div>
+        {check ? (
+          <Notice tone={check.ok ? "ok" : "error"}>
+            {check.path ? <div className="max-w-full font-mono text-xs break-all">{check.path}</div> : null}
+            <div className="max-w-full font-mono text-xs whitespace-pre-wrap wrap-anywhere">{check.output || (check.ok ? "OK" : "Lỗi")}</div>
+          </Notice>
+        ) : null}
+        <ErrorNote error={action.error} />
+      </CardContent>
+    </Card>
   );
 }
 
@@ -248,101 +274,141 @@ function ProfileForm({
 
   return (
     <form
-      className="card profile-form"
       onSubmit={(e) => {
         e.preventDefault();
         submit();
       }}
     >
-      <h2>{previousId ? `Sửa ${previousId}` : "Profile mới"}</h2>
-      <div className="form-grid">
-        <label className="label" htmlFor="pf-id">Id</label>
-        <input id="pf-id" className="input mono" value={p.id} onChange={(e) => set("id", e.target.value)} />
-        <label className="label" htmlFor="pf-label">Tên</label>
-        <input id="pf-label" className="input" value={p.label} onChange={(e) => set("label", e.target.value)} />
-        <label className="label" htmlFor="pf-kind">Loại</label>
-        <select id="pf-kind" className="input" value={p.kind} onChange={(e) => set("kind", e.target.value as AgentKind)}>
-          {AGENT_KINDS.map((k) => (
-            <option key={k} value={k}>
-              {KIND_LABEL[k]}
-            </option>
-          ))}
-        </select>
-        <label className="label" htmlFor="pf-bin">Lệnh</label>
-        <input id="pf-bin" className="input mono" placeholder="claude hoặc /đường/dẫn/tuyệt/đối" value={p.bin} onChange={(e) => set("bin", e.target.value)} />
-        <label className="label" htmlFor="pf-args">Tham số (mỗi dòng một)</label>
-        <textarea id="pf-args" className="textarea textarea-small mono" value={argsText} onChange={(e) => setArgsText(e.target.value)} />
-        <span />
-        <span className="muted small">
-          <code>{"{prompt}"}</code> được thay bằng prompt của task (không có thì prompt đi qua stdin). Có thêm <code>{"{worktree}"}</code>,{" "}
-          <code>{"{task}"}</code>, <code>{"{project}"}</code>, <code>{"{branch}"}</code>. Cờ CLI đổi theo phiên bản: kiểm tra bằng <code>--help</code>.
-        </span>
-        <label className="label" htmlFor="pf-env">Biến môi trường</label>
-        <textarea
-          id="pf-env"
-          className="textarea textarea-small mono"
-          placeholder={ACCOUNT_ENV_HINT[p.kind] ?? "KEY=value"}
-          value={envText}
-          onChange={(e) => setEnvText(e.target.value)}
-        />
-        <span />
-        <span className="muted small">
-          Gói thứ hai của cùng vendor: trỏ CLI sang thư mục đăng nhập khác
-          {ACCOUNT_ENV_HINT[p.kind] ? (
-            <>
-              , ví dụ <code>{ACCOUNT_ENV_HINT[p.kind]}</code>
-            </>
-          ) : null}
-          , rồi đăng nhập một lần trong terminal với biến đó.
-        </span>
-        <label className="label" htmlFor="pf-account">Tài khoản (dùng chung quota)</label>
-        <input
-          id="pf-account"
-          className="input mono"
-          placeholder="claude-max-duy"
-          value={p.account ?? ""}
-          onChange={(e) => set("account", e.target.value.trim() || undefined)}
-        />
-        <span />
-        <span className="muted small">
-          Ở chế độ hub: mọi máy có profile cùng tài khoản sẽ cùng nghỉ khi một máy báo hết quota. Để trống nếu gói này chỉ đăng nhập trên máy này.
-        </span>
-        <label className="label">Vai trò</label>
-        <div className="row gap-s wrap">
-          {AGENT_ROLES.map((r) => (
-            <label key={r} className="check small">
-              <input
-                type="checkbox"
-                checked={p.roles.includes(r)}
-                onChange={(e) => set("roles", e.target.checked ? [...p.roles, r] : p.roles.filter((x: AgentRole) => x !== r))}
-              />
-              {ROLE_LABEL[r]}
-            </label>
-          ))}
-        </div>
-        <label className="label" htmlFor="pf-priority">Ưu tiên</label>
-        <input id="pf-priority" className="input" type="number" min={0} max={100} value={p.priority} onChange={(e) => set("priority", num(e.target.value, p.priority))} />
-        <label className="label" htmlFor="pf-conc">Song song tối đa</label>
-        <input id="pf-conc" className="input" type="number" min={1} max={8} value={p.maxConcurrent} onChange={(e) => set("maxConcurrent", num(e.target.value, p.maxConcurrent))} />
-        <label className="label" htmlFor="pf-cool">Nghỉ mặc định (phút)</label>
-        <input id="pf-cool" className="input" type="number" min={1} value={p.cooldownMinutes} onChange={(e) => set("cooldownMinutes", num(e.target.value, p.cooldownMinutes))} />
-        <label className="label" htmlFor="pf-timeout">Giới hạn mỗi run (phút)</label>
-        <input id="pf-timeout" className="input" type="number" min={1} value={p.timeoutMinutes} onChange={(e) => set("timeoutMinutes", num(e.target.value, p.timeoutMinutes))} />
-      </div>
-      <label className="check">
-        <input type="checkbox" checked={p.enabled} onChange={(e) => set("enabled", e.target.checked)} />
-        Bật
-      </label>
-      {error ? <div className="note note-error">{error}</div> : null}
-      <ErrorNote error={action.error} />
-      <div className="row gap-s">
-        <button className="btn btn-primary" type="submit" disabled={action.busy}>
-          Lưu profile
-        </button>
-        <button className="btn btn-ghost" type="button" onClick={onCancel}>
-          Huỷ
-        </button>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <h2>{previousId ? `Sửa ${previousId}` : "Profile mới"}</h2>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="grid items-center gap-3 sm:grid-cols-[180px_1fr]">
+            <Label htmlFor="pf-id">Id</Label>
+            <Input id="pf-id" className="font-mono" value={p.id} onChange={(e) => set("id", e.target.value)} />
+            <Label htmlFor="pf-label">Tên</Label>
+            <Input id="pf-label" value={p.label} onChange={(e) => set("label", e.target.value)} />
+            <Label htmlFor="pf-kind">Loại</Label>
+            <NativeSelect id="pf-kind" value={p.kind} onChange={(e) => set("kind", e.target.value as AgentKind)}>
+              {AGENT_KINDS.map((k) => (
+                <NativeSelectOption key={k} value={k}>
+                  {KIND_LABEL[k]}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+            <Label htmlFor="pf-bin">Lệnh</Label>
+            <Input id="pf-bin" className="font-mono" placeholder="claude hoặc /đường/dẫn/tuyệt/đối" value={p.bin} onChange={(e) => set("bin", e.target.value)} />
+            <Label htmlFor="pf-args" className="leading-snug sm:self-start sm:pt-2.5">
+              Tham số (mỗi dòng một)
+            </Label>
+            <Textarea id="pf-args" className="font-mono" value={argsText} onChange={(e) => setArgsText(e.target.value)} />
+            <span className={HINT}>
+              <code className={CODE}>{"{prompt}"}</code> được thay bằng prompt của task (không có thì prompt đi qua stdin). Có thêm{" "}
+              <code className={CODE}>{"{worktree}"}</code>, <code className={CODE}>{"{task}"}</code>, <code className={CODE}>{"{project}"}</code>,{" "}
+              <code className={CODE}>{"{branch}"}</code>. Cờ CLI đổi theo phiên bản: kiểm tra bằng <code className={CODE}>--help</code>.
+            </span>
+            <Label htmlFor="pf-env" className="leading-snug sm:self-start sm:pt-2.5">
+              Biến môi trường
+            </Label>
+            <Textarea
+              id="pf-env"
+              className="font-mono"
+              placeholder={ACCOUNT_ENV_HINT[p.kind] ?? "KEY=value"}
+              value={envText}
+              onChange={(e) => setEnvText(e.target.value)}
+            />
+            <span className={HINT}>
+              Gói thứ hai của cùng vendor: trỏ CLI sang thư mục đăng nhập khác
+              {ACCOUNT_ENV_HINT[p.kind] ? (
+                <>
+                  , ví dụ <code className={CODE}>{ACCOUNT_ENV_HINT[p.kind]}</code>
+                </>
+              ) : null}
+              , rồi đăng nhập một lần trong terminal với biến đó.
+            </span>
+            <Label htmlFor="pf-account" className="leading-snug">
+              Tài khoản (dùng chung quota)
+            </Label>
+            <Input
+              id="pf-account"
+              className="font-mono"
+              placeholder="claude-max-duy"
+              value={p.account ?? ""}
+              onChange={(e) => set("account", e.target.value.trim() || undefined)}
+            />
+            <span className={HINT}>
+              Ở chế độ hub: mọi máy có profile cùng tài khoản sẽ cùng nghỉ khi một máy báo hết quota. Để trống nếu gói này chỉ đăng nhập trên máy này.
+            </span>
+            <Label>Vai trò</Label>
+            <div className="flex flex-wrap items-center gap-4">
+              {AGENT_ROLES.map((r) => (
+                <label key={r} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={p.roles.includes(r)}
+                    onCheckedChange={(v) => set("roles", v === true ? [...p.roles, r] : p.roles.filter((x: AgentRole) => x !== r))}
+                  />
+                  {ROLE_LABEL[r]}
+                </label>
+              ))}
+            </div>
+            <Label htmlFor="pf-priority">Ưu tiên</Label>
+            <Input
+              id="pf-priority"
+              className="sm:max-w-40"
+              type="number"
+              min={0}
+              max={100}
+              value={p.priority}
+              onChange={(e) => set("priority", num(e.target.value, p.priority))}
+            />
+            <Label htmlFor="pf-conc">Song song tối đa</Label>
+            <Input
+              id="pf-conc"
+              className="sm:max-w-40"
+              type="number"
+              min={1}
+              max={8}
+              value={p.maxConcurrent}
+              onChange={(e) => set("maxConcurrent", num(e.target.value, p.maxConcurrent))}
+            />
+            <Label htmlFor="pf-cool">Nghỉ mặc định (phút)</Label>
+            <Input
+              id="pf-cool"
+              className="sm:max-w-40"
+              type="number"
+              min={1}
+              value={p.cooldownMinutes}
+              onChange={(e) => set("cooldownMinutes", num(e.target.value, p.cooldownMinutes))}
+            />
+            <Label htmlFor="pf-timeout">Giới hạn mỗi run (phút)</Label>
+            <Input
+              id="pf-timeout"
+              className="sm:max-w-40"
+              type="number"
+              min={1}
+              value={p.timeoutMinutes}
+              onChange={(e) => set("timeoutMinutes", num(e.target.value, p.timeoutMinutes))}
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox checked={p.enabled} onCheckedChange={(v) => set("enabled", v === true)} />
+            Bật
+          </label>
+          <ErrorNote error={error} />
+          <ErrorNote error={action.error} />
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" disabled={action.busy}>
+              Lưu profile
+            </Button>
+            <Button variant="ghost" type="button" onClick={onCancel}>
+              Huỷ
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </form>
   );
 }
@@ -355,41 +421,55 @@ function RunnerCard({ runner }: { runner: RunnerSettings }) {
   const action = useAction();
   const [saved, setSaved] = useState(false);
   return (
-    <section className="card">
-      <h2>Runner</h2>
-      <div className="row gap-s wrap">
-        <label className="label" htmlFor="rn-par">Agent chạy song song</label>
-        <input id="rn-par" className="input input-num" type="number" min={1} max={8} value={maxParallel} onChange={(e) => setMaxParallel(e.target.value)} />
-        <label className="label" htmlFor="rn-att">Số lần thử mỗi task (tính cả xoay vòng)</label>
-        <input id="rn-att" className="input input-num" type="number" min={1} max={6} value={maxAttempts} onChange={(e) => setMaxAttempts(e.target.value)} />
-      </div>
-      <div className="form-grid">
-        <label className="label" htmlFor="rn-root">Thư mục worktree</label>
-        <input id="rn-root" className="input mono" placeholder="~/.xdev-hive/worktrees (mặc định)" value={root} onChange={(e) => setRoot(e.target.value)} />
-      </div>
-      <div className="row gap-s">
-        <button
-          className="btn"
-          disabled={action.busy}
-          onClick={() =>
-            void action.run(async () => {
-              try {
-                await client.desktop!.updateSettings({
-                  runner: { maxParallel: Number(maxParallel), maxAttempts: Number(maxAttempts), worktreeRoot: root.trim() || null },
-                });
-                setSaved(true);
-              } catch (err) {
-                setSaved(false);
-                throw new Error(errorMessage(err));
-              }
-            })
-          }
-        >
-          Lưu
-        </button>
-        {saved ? <span className="tone-ok small">Đã lưu</span> : null}
-      </div>
-      <ErrorNote error={action.error} />
-    </section>
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          <h2>Runner</h2>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="rn-par" className="leading-snug">
+              Agent chạy song song
+            </Label>
+            <Input id="rn-par" className="w-20" type="number" min={1} max={8} value={maxParallel} onChange={(e) => setMaxParallel(e.target.value)} />
+          </div>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="rn-att" className="leading-snug">
+              Số lần thử mỗi task (tính cả xoay vòng)
+            </Label>
+            <Input id="rn-att" className="w-20" type="number" min={1} max={6} value={maxAttempts} onChange={(e) => setMaxAttempts(e.target.value)} />
+          </div>
+        </div>
+        <div className="grid items-center gap-3 sm:grid-cols-[180px_1fr]">
+          <Label htmlFor="rn-root">Thư mục worktree</Label>
+          <Input id="rn-root" className="font-mono" placeholder="~/.xdev-hive/worktrees (mặc định)" value={root} onChange={(e) => setRoot(e.target.value)} />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            disabled={action.busy}
+            onClick={() =>
+              void action.run(async () => {
+                try {
+                  await client.desktop!.updateSettings({
+                    runner: { maxParallel: Number(maxParallel), maxAttempts: Number(maxAttempts), worktreeRoot: root.trim() || null },
+                  });
+                  setSaved(true);
+                } catch (err) {
+                  setSaved(false);
+                  throw new Error(errorMessage(err));
+                }
+              })
+            }
+          >
+            Lưu
+          </Button>
+          {saved ? <span className="text-sm text-success">Đã lưu</span> : null}
+        </div>
+        <ErrorNote error={action.error} />
+      </CardContent>
+    </Card>
   );
 }

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { ChevronRight, Plus } from "lucide-react";
+import { cn } from "cn";
 import {
   AGENT_TEMPLATES,
   POLICY_CLIS,
@@ -14,7 +16,15 @@ import {
   type SetupState,
   type TeamPolicy,
 } from "@xdev-hive/core";
-import { Badge, Empty, ErrorNote, PageHeader } from "../components/ui.tsx";
+import { Button } from "@xdev-hive/ui/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
+import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@xdev-hive/ui/components/ui/collapsible";
+import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@xdev-hive/ui/components/ui/tabs";
+import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
+import { Badge, Empty, ErrorNote, Page, PageHeader, StatusDot } from "../components/common.tsx";
 import { formatTime, useAction, useHive, useProjects, useQuery } from "../hooks.ts";
 
 type Tab = "machines" | "policy" | "audit";
@@ -59,20 +69,33 @@ const ACTION_LABEL: Record<string, string> = {
   "tokens.revoke": "Thu hồi token",
 };
 
+/** Small uppercase heading for a group inside a card. */
+const GROUP_TITLE = "text-xs font-semibold tracking-wide text-muted-foreground uppercase";
+
 export function AdminPage() {
   const [tab, setTab] = useState<Tab>("machines");
   return (
-    <div className="page page-wide">
+    <Page wide>
       <PageHeader title="Quản trị" subtitle="Tình trạng cài đặt của mọi máy trong team, chính sách chung và nhật ký thao tác admin." />
-      <div className="tabs" role="tablist">
-        {(Object.keys(TABS) as Tab[]).map((id) => (
-          <button key={id} role="tab" aria-selected={tab === id} className={`tab ${tab === id ? "active" : ""}`} onClick={() => setTab(id)}>
-            {TABS[id]}
-          </button>
-        ))}
-      </div>
-      {tab === "machines" ? <FleetTab /> : tab === "policy" ? <PolicyTab /> : <AuditTab />}
-    </div>
+      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="gap-4">
+        <TabsList>
+          {(Object.keys(TABS) as Tab[]).map((id) => (
+            <TabsTrigger key={id} value={id} className="px-3">
+              {TABS[id]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        <TabsContent value="machines" className="flex flex-col gap-4">
+          <FleetTab />
+        </TabsContent>
+        <TabsContent value="policy" className="flex flex-col gap-4">
+          <PolicyTab />
+        </TabsContent>
+        <TabsContent value="audit" className="flex flex-col gap-4">
+          <AuditTab />
+        </TabsContent>
+      </Tabs>
+    </Page>
   );
 }
 
@@ -95,7 +118,7 @@ function FleetTab() {
   return (
     <>
       <ErrorNote error={machines.error ?? policy.error} />
-      <div className="stat-grid">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Máy" value={list.length} />
         <Stat label="Đang hoạt động" value={list.filter((m) => m.online).length} />
         <Stat label="Thiếu mục bắt buộc" value={lacking} tone={lacking ? "warn" : undefined} />
@@ -111,10 +134,12 @@ function FleetTab() {
 
 function Stat({ label, value, tone }: { label: string; value: number; tone?: string }) {
   return (
-    <div className={`stat ${tone ? `stat-${tone}` : ""}`}>
-      <div className="muted small">{label}</div>
-      <div className="stat-value">{value}</div>
-    </div>
+    <Card className={cn("gap-1 py-4", tone === "warn" && "border-warning/35")}>
+      <CardContent className="flex flex-col gap-1 px-4">
+        <div className="text-xs text-muted-foreground">{label}</div>
+        <div className={cn("text-2xl font-semibold tabular-nums", tone === "warn" && "text-warning")}>{value}</div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -125,57 +150,60 @@ function MachineCard({ machine: m, policy, onChanged }: { machine: MachineDetail
   const open = new Map(m.commands.filter((c) => c.status === "pending" || c.status === "running").map((c) => [c.itemId, c]));
 
   return (
-    <section className="card">
-      <div className="row gap-s wrap">
-        <b className="mono">{m.machine}</b>
-        <Badge tone={m.duplicate ? "danger" : m.online ? "ok" : "neutral"}>{m.duplicate ? "Trùng tên máy" : m.online ? "Đang hoạt động" : "Mất kết nối"}</Badge>
-        {missing.length ? <Badge tone="warn">thiếu {missing.length} mục bắt buộc</Badge> : policy && m.setup ? <Badge tone="ok">đủ theo chính sách</Badge> : null}
-        <span className="grow" />
-        <span className="muted small">
-          {m.version ? `v${m.version} · ` : ""}heartbeat {formatTime(m.lastSeen)}
-          {m.setupAt ? ` · kiểm tra cài đặt ${formatTime(m.setupAt)}` : ""}
-        </span>
-      </div>
-      <div className="muted small mono">{m.id}</div>
-      {!m.setup ? (
-        <div className="muted small">Máy chưa gửi kết quả kiểm tra cài đặt (bản app cũ, hoặc vừa mở).</div>
-      ) : (
-        <div className="stack">
-          <ItemTable title="Máy này" items={m.setup.machine} required={required} machineId={m.id} open={open} online={m.online} onChanged={onChanged} />
-          {m.setup.projects.map((p) => (
-            <ItemTable
-              key={p.project}
-              title={p.project}
-              subtitle={p.repo}
-              items={p.items}
-              required={required}
-              machineId={m.id}
-              open={open}
-              online={m.online}
-              onChanged={onChanged}
-            />
-          ))}
+    <Card className="gap-4">
+      <CardHeader className="gap-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <CardTitle className="min-w-0 font-mono text-sm break-all">{m.machine}</CardTitle>
+          <Badge tone={m.duplicate ? "danger" : m.online ? "ok" : "neutral"}>{m.duplicate ? "Trùng tên máy" : m.online ? "Đang hoạt động" : "Mất kết nối"}</Badge>
+          {missing.length ? <Badge tone="warn">thiếu {missing.length} mục bắt buộc</Badge> : policy && m.setup ? <Badge tone="ok">đủ theo chính sách</Badge> : null}
+          <span className="text-xs text-muted-foreground sm:ml-auto">
+            {m.version ? `v${m.version} · ` : ""}heartbeat {formatTime(m.lastSeen)}
+            {m.setupAt ? ` · kiểm tra cài đặt ${formatTime(m.setupAt)}` : ""}
+          </span>
         </div>
-      )}
-      {m.profiles.length ? (
-        <div>
-          <div className="list-group-title">Gói sub</div>
-          <div className="row gap-s wrap">
-            {m.profiles.map((p) => (
-              <span key={p.id} className="profile-chip">
-                <span className={`dot dot-${!p.enabled ? "neutral" : !p.installed ? "danger" : p.cooldownUntil ? "warn" : "ok"}`} />
-                <span className="mono small">{p.id}</span>
-                <span className="muted small">
-                  {!p.enabled ? "tắt" : !p.installed ? "chưa có CLI" : p.cooldownUntil ? `nghỉ đến ${formatTime(p.cooldownUntil)}` : "sẵn sàng"}
-                  {p.account ? ` · ${p.account}` : ""} · {p.runs} lượt
-                </span>
-              </span>
+        <CardDescription className="font-mono text-xs break-all">{m.id}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {!m.setup ? (
+          <p className="text-sm text-muted-foreground">Máy chưa gửi kết quả kiểm tra cài đặt (bản app cũ, hoặc vừa mở).</p>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <ItemTable title="Máy này" items={m.setup.machine} required={required} machineId={m.id} open={open} online={m.online} onChanged={onChanged} />
+            {m.setup.projects.map((p) => (
+              <ItemTable
+                key={p.project}
+                title={p.project}
+                subtitle={p.repo}
+                items={p.items}
+                required={required}
+                machineId={m.id}
+                open={open}
+                online={m.online}
+                onChanged={onChanged}
+              />
             ))}
           </div>
-        </div>
-      ) : null}
-      {m.commands.length ? <CommandList commands={m.commands} onChanged={onChanged} /> : null}
-    </section>
+        )}
+        {m.profiles.length ? (
+          <div className="flex flex-col gap-2">
+            <div className={GROUP_TITLE}>Gói sub</div>
+            <div className="flex flex-wrap gap-x-4 gap-y-2">
+              {m.profiles.map((p) => (
+                <span key={p.id} className="inline-flex min-w-0 flex-wrap items-center gap-1.5">
+                  <StatusDot tone={!p.enabled ? "neutral" : !p.installed ? "danger" : p.cooldownUntil ? "warn" : "ok"} />
+                  <span className="font-mono text-xs break-all">{p.id}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {!p.enabled ? "tắt" : !p.installed ? "chưa có CLI" : p.cooldownUntil ? `nghỉ đến ${formatTime(p.cooldownUntil)}` : "sẵn sàng"}
+                    {p.account ? ` · ${p.account}` : ""} · {p.runs} lượt
+                  </span>
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {m.commands.length ? <CommandList commands={m.commands} onChanged={onChanged} /> : null}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -192,26 +220,29 @@ function ItemTable(props: {
   const { client } = useHive();
   const action = useAction();
   return (
-    <div>
-      <div className="row gap-s wrap">
-        <span className="list-group-title">{props.title}</span>
-        {props.subtitle ? <span className="muted small mono">{props.subtitle}</span> : null}
+    <div className="flex flex-col gap-2">
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+        <span className={GROUP_TITLE}>{props.title}</span>
+        {props.subtitle ? <span className="min-w-0 font-mono text-xs break-all text-muted-foreground">{props.subtitle}</span> : null}
       </div>
-      <div className="stack">
+      <div className="flex flex-col gap-2">
         {props.items.map((i) => {
           const pending = props.open.get(i.id);
           return (
-            <div key={i.id} className="setup-row">
-              <div className="row gap-s wrap">
+            <div key={i.id} className="flex flex-col gap-1 rounded-md border p-3">
+              <div className="flex flex-wrap items-center gap-2">
                 <Badge tone={STATE[i.state].tone}>{STATE[i.state].label}</Badge>
-                <span>{i.label}</span>
+                <span className="min-w-0 text-sm break-words">{i.label}</span>
                 {props.required.has(i.id) ? <Badge tone="accent">bắt buộc</Badge> : null}
-                <span className="grow" />
                 {pending ? (
-                  <Badge tone={COMMAND[pending.status].tone}>{COMMAND[pending.status].label}</Badge>
+                  <Badge tone={COMMAND[pending.status].tone} className="ml-auto">
+                    {COMMAND[pending.status].label}
+                  </Badge>
                 ) : i.action && i.state !== "installed" ? (
-                  <button
-                    className="btn btn-small"
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="ml-auto"
                     disabled={action.busy}
                     title={props.online ? "Máy sẽ hỏi người dùng trước khi cài" : "Máy đang mất kết nối: yêu cầu chờ tới khi máy mở lại (hết hạn sau 24 giờ)"}
                     onClick={() =>
@@ -222,10 +253,10 @@ function ItemTable(props: {
                     }
                   >
                     Yêu cầu cài
-                  </button>
+                  </Button>
                 ) : null}
               </div>
-              <div className="small muted setup-detail">{i.detail}</div>
+              <div className="text-xs wrap-anywhere text-muted-foreground">{i.detail}</div>
             </div>
           );
         })}
@@ -239,41 +270,47 @@ function CommandList({ commands, onChanged }: { commands: MachineCommand[]; onCh
   const { client } = useHive();
   const action = useAction();
   return (
-    <details>
-      <summary className="small">Yêu cầu cài đặt ({commands.length})</summary>
-      <ul className="history">
-        {commands.map((c) => (
-          <li key={c.id} className="history-row">
-            <div className="row gap-s wrap">
-              <Badge tone={COMMAND[c.status].tone}>{COMMAND[c.status].label}</Badge>
-              <span className="small">
-                #{c.id} {c.label}
-              </span>
-              <span className="muted small">
-                {c.requestedBy} · {formatTime(c.requestedAt)}
-                {c.updatedAt !== c.requestedAt ? ` → ${formatTime(c.updatedAt)}` : ""}
-              </span>
-              {c.status === "pending" ? (
-                <button
-                  className="btn btn-small btn-ghost"
-                  disabled={action.busy}
-                  onClick={() =>
-                    void action.run(async () => {
-                      await client.call("admin.commandCancel", { id: c.id });
-                      onChanged();
-                    })
-                  }
-                >
-                  Huỷ
-                </button>
-              ) : null}
-            </div>
-            {c.output ? <pre className="log log-diff">{c.output}</pre> : null}
-          </li>
-        ))}
-      </ul>
-      <ErrorNote error={action.error} />
-    </details>
+    <Collapsible className="flex flex-col gap-2">
+      <CollapsibleTrigger className="group flex w-fit items-center gap-1 rounded-md text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50">
+        <ChevronRight className="size-4 transition-transform group-data-[state=open]:rotate-90" aria-hidden="true" />
+        Yêu cầu cài đặt ({commands.length})
+      </CollapsibleTrigger>
+      <CollapsibleContent className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-2">
+          {commands.map((c) => (
+            <li key={c.id} className="flex flex-col gap-2 rounded-md bg-muted/50 px-3 py-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={COMMAND[c.status].tone}>{COMMAND[c.status].label}</Badge>
+                <span className="min-w-0 text-sm break-words">
+                  #{c.id} {c.label}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {c.requestedBy} · {formatTime(c.requestedAt)}
+                  {c.updatedAt !== c.requestedAt ? ` → ${formatTime(c.updatedAt)}` : ""}
+                </span>
+                {c.status === "pending" ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={action.busy}
+                    onClick={() =>
+                      void action.run(async () => {
+                        await client.call("admin.commandCancel", { id: c.id });
+                        onChanged();
+                      })
+                    }
+                  >
+                    Huỷ
+                  </Button>
+                ) : null}
+              </div>
+              {c.output ? <pre className="max-h-80 overflow-auto rounded-md border bg-muted/50 p-3 font-mono text-xs">{c.output}</pre> : null}
+            </li>
+          ))}
+        </ul>
+        <ErrorNote error={action.error} />
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -324,90 +361,104 @@ function PolicyTab() {
 
   return (
     <>
-      <section className="card">
-        <h2>Bắt buộc trên mọi máy</h2>
-        <p className="muted small">Máy nào thiếu sẽ thấy nhãn "bắt buộc" ở trang Cài đặt máy, và tab Máy đánh dấu máy đó.</p>
-        <div className="row gap-s wrap">
-          {POLICY_CLIS.map((cli) => (
-            <label key={cli} className="check">
-              <input type="checkbox" checked={draft.requiredClis.includes(cli)} onChange={(e) => change({ requiredClis: toggle(draft.requiredClis, cli, e.target.checked) })} />
-              {CLI_LABEL[cli]}
+      <Card>
+        <CardHeader>
+          <CardTitle>Bắt buộc trên mọi máy</CardTitle>
+          <CardDescription>Máy nào thiếu sẽ thấy nhãn "bắt buộc" ở trang Cài đặt máy, và tab Máy đánh dấu máy đó.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-wrap gap-x-6 gap-y-3">
+            {POLICY_CLIS.map((cli) => (
+              <label key={cli} className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={draft.requiredClis.includes(cli)}
+                  onCheckedChange={(v) => change({ requiredClis: toggle(draft.requiredClis, cli, v === true) })}
+                />
+                {CLI_LABEL[cli]}
+              </label>
+            ))}
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={draft.requireShim} onCheckedChange={(v) => change({ requireShim: v === true })} />
+              Lệnh hive-mcp
             </label>
-          ))}
-          <label className="check">
-            <input type="checkbox" checked={draft.requireShim} onChange={(e) => change({ requireShim: e.target.checked })} />
-            Lệnh hive-mcp
-          </label>
-        </div>
-      </section>
+          </div>
+        </CardContent>
+      </Card>
 
-      <section className="card">
-        <h2>Theo dự án</h2>
-        <p className="muted small">Áp dụng cho máy nào đã thêm dự án đó vào app desktop.</p>
-        {projects.length === 0 ? <Empty>Chưa thấy dự án nào (từ tài liệu, task hoặc máy báo lên).</Empty> : null}
-        <div className="table-wrap">
-          <table className="table">
-            <tbody>
-              {projects.map((p) => (
-                <tr key={p}>
-                  <td className="mono" style={{ width: 200 }}>
-                    {p}
-                  </td>
-                  <td>
-                    <div className="row gap-s wrap">
-                      {POLICY_REPO_PARTS.map((part) => (
-                        <label key={part} className="check small">
-                          <input
-                            type="checkbox"
-                            checked={(draft.projects[p] ?? []).includes(part)}
-                            onChange={(e) => {
-                              const parts = toggle(draft.projects[p] ?? [], part, e.target.checked);
-                              const next = { ...draft.projects, [p]: parts };
-                              if (!parts.length) delete next[p];
-                              change({ projects: next });
-                            }}
-                          />
-                          {PART_LABEL[part]}
-                        </label>
-                      ))}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle>Theo dự án</CardTitle>
+          <CardDescription>Áp dụng cho máy nào đã thêm dự án đó vào app desktop.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {projects.length === 0 ? <Empty>Chưa thấy dự án nào (từ tài liệu, task hoặc máy báo lên).</Empty> : null}
+          {projects.length ? (
+            <div className="overflow-x-auto rounded-lg border">
+              <Table>
+                <TableBody>
+                  {projects.map((p) => (
+                    <TableRow key={p}>
+                      <TableCell className="font-mono text-xs">{p}</TableCell>
+                      <TableCell className="whitespace-normal">
+                        <div className="flex min-w-56 flex-wrap gap-x-4 gap-y-2">
+                          {POLICY_REPO_PARTS.map((part) => (
+                            <label key={part} className="flex items-center gap-2 text-sm">
+                              <Checkbox
+                                checked={(draft.projects[p] ?? []).includes(part)}
+                                onCheckedChange={(v) => {
+                                  const parts = toggle(draft.projects[p] ?? [], part, v === true);
+                                  const next = { ...draft.projects, [p]: parts };
+                                  if (!parts.length) delete next[p];
+                                  change({ projects: next });
+                                }}
+                              />
+                              {PART_LABEL[part]}
+                            </label>
+                          ))}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
 
-      <section className="card">
-        <h2>Profile mẫu cho team</h2>
-        <p className="muted small">
-          App desktop hiện các mẫu này ở trang Gói sub &amp; agent để thêm bằng một nút. Mẫu không được có <code>env</code>: thư mục đăng nhập và key là
-          của từng máy.
-        </p>
-        <div className="row gap-s wrap">
-          <span className="muted small">Thêm mẫu:</span>
-          {(Object.keys(AGENT_TEMPLATES) as Array<keyof typeof AGENT_TEMPLATES>).map((k) => (
-            <button key={k} className="btn btn-small" onClick={() => addTemplate(k)}>
-              + {AGENT_TEMPLATES[k].label}
-            </button>
-          ))}
-        </div>
-        <textarea
-          className="textarea mono"
-          rows={12}
-          value={templates}
-          onChange={(e) => {
-            setSaved(false);
-            setTemplates(e.target.value);
-          }}
-          aria-label="Profile mẫu (JSON)"
-        />
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle>Profile mẫu cho team</CardTitle>
+          <CardDescription>
+            App desktop hiện các mẫu này ở trang Gói sub &amp; agent để thêm bằng một nút. Mẫu không được có{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">env</code>: thư mục đăng nhập và key là của từng máy.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground">Thêm mẫu:</span>
+            {(Object.keys(AGENT_TEMPLATES) as Array<keyof typeof AGENT_TEMPLATES>).map((k) => (
+              <Button key={k} size="sm" variant="outline" onClick={() => addTemplate(k)}>
+                <Plus />
+                {AGENT_TEMPLATES[k].label}
+              </Button>
+            ))}
+          </div>
+          <Textarea
+            className="max-h-[32rem] min-h-64 font-mono text-xs md:text-xs"
+            rows={12}
+            value={templates}
+            onChange={(e) => {
+              setSaved(false);
+              setTemplates(e.target.value);
+            }}
+            aria-label="Profile mẫu (JSON)"
+          />
+        </CardContent>
+      </Card>
 
-      <div className="row gap-s">
-        <button
-          className="btn btn-primary"
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <Button
           disabled={action.busy}
           onClick={() =>
             void action.run(async () => {
@@ -430,10 +481,10 @@ function PolicyTab() {
           }
         >
           Lưu chính sách
-        </button>
-        {saved ? <span className="tone-ok small">Đã lưu. Máy nhận ở heartbeat kế tiếp.</span> : null}
+        </Button>
+        {saved ? <span className="text-sm text-success">Đã lưu. Máy nhận ở heartbeat kế tiếp.</span> : null}
         {draft.updatedAt ? (
-          <span className="muted small">
+          <span className="text-sm text-muted-foreground">
             Sửa lần cuối {formatTime(draft.updatedAt)} bởi {draft.updatedBy}
           </span>
         ) : null}
@@ -451,43 +502,45 @@ function AuditTab() {
   const log = useQuery(() => client.call("admin.audit", { limit: 300, action: filter || undefined }), [client, filter]);
   return (
     <>
-      <div className="toolbar">
-        <select className="input" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Loại thao tác">
-          <option value="">Mọi thao tác</option>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <NativeSelect value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Loại thao tác">
+          <NativeSelectOption value="">Mọi thao tác</NativeSelectOption>
           {Object.entries(ACTION_LABEL).map(([k, v]) => (
-            <option key={k} value={k}>
+            <NativeSelectOption key={k} value={k}>
               {v}
-            </option>
+            </NativeSelectOption>
           ))}
-        </select>
-        <span className="muted small">300 mục mới nhất. Chỉ ghi thao tác thay đổi dữ liệu, không ghi lượt đọc.</span>
+        </NativeSelect>
+        <span className="text-sm text-muted-foreground">300 mục mới nhất. Chỉ ghi thao tác thay đổi dữ liệu, không ghi lượt đọc.</span>
       </div>
       <ErrorNote error={log.error} />
       {log.data?.length === 0 ? <Empty>Chưa có thao tác nào.</Empty> : null}
       {log.data?.length ? (
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Lúc</th>
-                <th>Ai</th>
-                <th>Thao tác</th>
-                <th>Đối tượng</th>
-                <th>Chi tiết</th>
-              </tr>
-            </thead>
-            <tbody>
+        <div className="overflow-x-auto rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Lúc</TableHead>
+                <TableHead>Ai</TableHead>
+                <TableHead>Thao tác</TableHead>
+                <TableHead>Đối tượng</TableHead>
+                <TableHead>Chi tiết</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {log.data.map((e: AuditEntry) => (
-                <tr key={e.id}>
-                  <td className="small muted nowrap">{formatTime(e.at)}</td>
-                  <td className="small mono">{e.actor}</td>
-                  <td className="small">{ACTION_LABEL[e.action] ?? e.action}</td>
-                  <td className="small mono">{e.target}</td>
-                  <td className="small note-cell">{e.detail}</td>
-                </tr>
+                <TableRow key={e.id}>
+                  <TableCell className="align-top text-muted-foreground">{formatTime(e.at)}</TableCell>
+                  <TableCell className="align-top font-mono text-xs">{e.actor}</TableCell>
+                  <TableCell className="align-top">{ACTION_LABEL[e.action] ?? e.action}</TableCell>
+                  <TableCell className="align-top font-mono text-xs">{e.target}</TableCell>
+                  <TableCell className="align-top whitespace-normal">
+                    <div className="max-w-80 min-w-48 text-xs whitespace-pre-wrap wrap-anywhere">{e.detail}</div>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       ) : null}
     </>
