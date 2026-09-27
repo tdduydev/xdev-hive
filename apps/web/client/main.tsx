@@ -1,7 +1,7 @@
 import { StrictMode, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createHttpClient, HiveApp, Login } from "@xdev-hive/ui";
-import "@xdev-hive/ui/styles.css";
+import "@xdev-hive/ui/globals.css";
 
 const KEY = "xdev-hive.token";
 const readToken = () => {

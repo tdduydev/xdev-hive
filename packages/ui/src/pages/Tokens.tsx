@@ -1,6 +1,12 @@
 import { useState } from "react";
+import { Copy } from "lucide-react";
 import { ROLES, type Role } from "@xdev-hive/core";
-import { Badge, Empty, ErrorNote, PageHeader, STATUS_TONE } from "../components/ui.tsx";
+import { Button } from "@xdev-hive/ui/components/ui/button";
+import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
+import { Input } from "@xdev-hive/ui/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
+import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE, StatusDot } from "../components/common.tsx";
 import { formatTime, useAction, useHive, useQuery } from "../hooks.ts";
 
 const ROLE_HINT: Record<Role, string> = {
@@ -26,97 +32,104 @@ export function TokensPage() {
   const action = useAction();
 
   return (
-    <div className="page">
+    <Page>
       <PageHeader
         title="Token truy cập"
         subtitle="Mỗi người hoặc mỗi máy một token. Agent dùng token vai trò agent. Token chỉ hiện một lần lúc tạo."
       />
-      <form
-        className="card card-compact row gap-s wrap"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void action.run(async () => {
-            const res = await tokens.create(name.trim(), role);
-            setCreated({ name: res.info.name, token: res.token });
-            setName("");
-            list.reload();
-          });
-        }}
-      >
-        <input
-          className="input grow"
-          placeholder="Tên, ví dụ duy-macbook hoặc ci-gitlab"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          aria-label="Tên token"
-        />
-        <select className="input" value={role} onChange={(e) => setRole(e.target.value as Role)} aria-label="Vai trò">
-          {ROLES.map((r) => (
-            <option key={r} value={r}>
-              {ROLE_HINT[r]}
-            </option>
-          ))}
-        </select>
-        <button className="btn btn-primary" type="submit" disabled={!name.trim() || action.busy}>
-          Tạo token
-        </button>
-      </form>
+      <Card className="py-4">
+        <CardContent className="px-4">
+          <form
+            className="flex flex-wrap items-center gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void action.run(async () => {
+                const res = await tokens.create(name.trim(), role);
+                setCreated({ name: res.info.name, token: res.token });
+                setName("");
+                list.reload();
+              });
+            }}
+          >
+            <Input
+              className="min-w-48 flex-1"
+              placeholder="Tên, ví dụ duy-macbook hoặc ci-gitlab"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              aria-label="Tên token"
+            />
+            <NativeSelect value={role} onChange={(e) => setRole(e.target.value as Role)} aria-label="Vai trò">
+              {ROLES.map((r) => (
+                <NativeSelectOption key={r} value={r}>
+                  {ROLE_HINT[r]}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+            <Button type="submit" disabled={!name.trim() || action.busy}>
+              Tạo token
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
       <ErrorNote error={action.error} />
       {created ? (
-        <div className="note note-ok token-reveal">
-          <div>
-            Token <b>{created.name}</b>. Sao chép ngay, sẽ không hiện lại:
-          </div>
-          <div className="row gap-s">
-            <code className="mono grow token-value">{created.token}</code>
-            <button className="btn btn-small" onClick={() => void navigator.clipboard?.writeText(created.token)}>
+        <Notice tone="ok" title={`Token ${created.name}: sao chép ngay, sẽ không hiện lại`}>
+          <div className="flex w-full flex-wrap items-center gap-2 pt-1">
+            <code className="min-w-0 flex-1 break-all rounded-md bg-muted px-2 py-1 font-mono text-xs text-foreground">{created.token}</code>
+            <Button size="sm" variant="outline" onClick={() => void navigator.clipboard?.writeText(created.token)}>
+              <Copy />
               Sao chép
-            </button>
-            <button className="btn btn-small btn-ghost" onClick={() => setCreated(null)}>
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setCreated(null)}>
               Đóng
-            </button>
+            </Button>
           </div>
-          <div className="muted small">
-            Dán vào app desktop (Dự án &amp; cài đặt → Hub) hoặc dùng trực tiếp cho MCP qua HTTP: <code>POST /mcp</code>, header{" "}
-            <code>Authorization: Bearer …</code>
-          </div>
-        </div>
+          <p className="text-xs text-muted-foreground">
+            Dán vào app desktop (Dự án &amp; cài đặt → Hub) hoặc dùng trực tiếp cho MCP qua HTTP: <code className="font-mono">POST /mcp</code>, header{" "}
+            <code className="font-mono">Authorization: Bearer …</code>
+          </p>
+        </Notice>
       ) : null}
       <ErrorNote error={list.error} />
       {list.data?.length === 0 ? <Empty>Chưa có token.</Empty> : null}
       {list.data?.length ? (
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Tên</th>
-                <th>Vai trò</th>
-                <th>Máy</th>
-                <th>Tạo lúc</th>
-                <th>Dùng gần nhất</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
+        <div className="overflow-x-auto rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Tên</TableHead>
+                <TableHead>Vai trò</TableHead>
+                <TableHead>Máy</TableHead>
+                <TableHead>Tạo lúc</TableHead>
+                <TableHead>Dùng gần nhất</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {list.data.map((t) => (
-                <tr key={t.id}>
-                  <td>{t.name}</td>
-                  <td>
+                <TableRow key={t.id}>
+                  <TableCell className="font-medium">{t.name}</TableCell>
+                  <TableCell>
                     <Badge tone={STATUS_TONE[t.role]}>{t.role}</Badge>
-                  </td>
-                  <td className="small">
-                    {(byToken.get(t.name) ?? []).map((m) => (
-                      <div key={m.machine}>
-                        <span className={`dot dot-${m.online ? "ok" : "neutral"}`} /> <span className="mono">{m.machine}</span>
-                      </div>
-                    ))}
-                    {byToken.get(t.name)?.length ? null : <span className="muted">—</span>}
-                  </td>
-                  <td className="small muted">{formatTime(t.createdAt)}</td>
-                  <td className="small muted">{formatTime(t.lastUsedAt)}</td>
-                  <td className="right">
-                    <button
-                      className="btn btn-small btn-danger"
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-col gap-1">
+                      {(byToken.get(t.name) ?? []).map((m) => (
+                        <span key={m.machine} className="flex items-center gap-2 font-mono text-xs">
+                          <StatusDot tone={m.online ? "ok" : "neutral"} />
+                          {m.machine}
+                        </span>
+                      ))}
+                      {byToken.get(t.name)?.length ? null : <span className="text-muted-foreground">—</span>}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{formatTime(t.createdAt)}</TableCell>
+                  <TableCell className="text-muted-foreground">{formatTime(t.lastUsedAt)}</TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                       onClick={() => {
                         if (window.confirm(`Thu hồi token "${t.name}"? Máy/agent đang dùng sẽ mất quyền truy cập ngay.`)) {
                           void action.run(async () => {
@@ -127,14 +140,14 @@ export function TokensPage() {
                       }}
                     >
                       Thu hồi
-                    </button>
-                  </td>
-                </tr>
+                    </Button>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       ) : null}
-    </div>
+    </Page>
   );
 }
