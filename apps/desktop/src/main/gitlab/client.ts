@@ -1,0 +1,100 @@
+// Minimal GitLab REST v4 client for merge requests.
+import { HiveError, type HiveErrorCode } from "@xdev-hive/core";
+
+export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
+
+export interface GitLabProject {
+  id: number;
+  path_with_namespace: string;
+  default_branch: string | null;
+  web_url: string;
+}
+
+export interface GitLabMr {
+  iid: number;
+  web_url: string;
+  title: string;
+  draft?: boolean;
+  source_branch: string;
+  target_branch: string;
+}
+
+export interface MrBody {
+  source_branch?: string;
+  target_branch: string;
+  title: string;
+  description: string;
+  labels?: string;
+  remove_source_branch?: boolean;
+}
+
+const CODES: Record<number, HiveErrorCode> = { 400: "bad_request", 401: "unauthorized", 403: "forbidden", 404: "not_found", 409: "conflict" };
+
+function messageOf(json: unknown, fallback: string): string {
+  const m = (json as { message?: unknown; error?: unknown } | null)?.message ?? (json as { error?: unknown } | null)?.error;
+  if (!m) return fallback;
+  return typeof m === "string" ? m : JSON.stringify(m);
+}
+
+export class GitLabClient {
+  readonly baseUrl: string;
+  readonly #token: string;
+  readonly #fetch: FetchLike;
+
+  constructor(url: string, token: string, fetchImpl: FetchLike = fetch) {
+    if (!/^https?:\/\//.test(url)) throw new HiveError("bad_request", "GitLab URL phải bắt đầu bằng http:// hoặc https://");
+    if (!token) throw new HiveError("bad_request", "Chưa có GitLab token.");
+    this.baseUrl = url.replace(/\/+$/, "");
+    this.#token = token;
+    this.#fetch = fetchImpl;
+  }
+
+  get host(): string {
+    return new URL(this.baseUrl).hostname.toLowerCase();
+  }
+
+  async #request<T>(method: string, path: string, body?: unknown): Promise<T> {
+    let res: Response;
+    try {
+      res = await this.#fetch(`${this.baseUrl}/api/v4${path}`, {
+        method,
+        headers: { "PRIVATE-TOKEN": this.#token, accept: "application/json", ...(body ? { "content-type": "application/json" } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(20_000),
+      });
+    } catch (err) {
+      throw new HiveError("bad_request", `Không kết nối được GitLab ${this.baseUrl}: ${(err as Error).message}`);
+    }
+    const text = await res.text();
+    let json: unknown = null;
+    try {
+      json = text ? JSON.parse(text) : null;
+    } catch {
+      // not JSON (proxy error page etc.)
+    }
+    if (!res.ok) {
+      throw new HiveError(CODES[res.status] ?? "bad_request", `GitLab ${res.status}: ${messageOf(json, text.slice(0, 200) || res.statusText)}`);
+    }
+    return json as T;
+  }
+
+  user(): Promise<{ username: string; name: string }> {
+    return this.#request("GET", "/user");
+  }
+
+  project(pathOrId: string | number): Promise<GitLabProject> {
+    return this.#request("GET", `/projects/${encodeURIComponent(String(pathOrId))}`);
+  }
+
+  openMergeRequests(projectId: number, sourceBranch: string): Promise<GitLabMr[]> {
+    return this.#request("GET", `/projects/${projectId}/merge_requests?state=opened&source_branch=${encodeURIComponent(sourceBranch)}`);
+  }
+
+  createMergeRequest(projectId: number, body: MrBody): Promise<GitLabMr> {
+    return this.#request("POST", `/projects/${projectId}/merge_requests`, body);
+  }
+
+  updateMergeRequest(projectId: number, iid: number, body: Partial<MrBody>): Promise<GitLabMr> {
+    return this.#request("PUT", `/projects/${projectId}/merge_requests/${iid}`, body);
+  }
+}

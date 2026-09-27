@@ -1,0 +1,25 @@
+{
+  "name": "@xdev-hive/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch-path=src --watch-path=../../packages/core/src --watch-path=../../packages/mcp/src src/server.ts",
+    "build": "vite build",
+    "start": "NODE_ENV=production node src/server.ts",
+    "token": "node src/cli.ts",
+    "typecheck": "tsc -p tsconfig.json && tsc -p client/tsconfig.json"
+  },
+  "dependencies": {
+    "@xdev-hive/core": "*",
+    "@xdev-hive/mcp": "*",
+    "@xdev-hive/ui": "*",
+    "express": "^5.2.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@vitejs/plugin-react": "^5.2.0",
+    "vite": "^7.3.6"
+  }
+}

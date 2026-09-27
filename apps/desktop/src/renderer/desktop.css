@@ -1,0 +1,4 @@
+/* Leave room for the macOS traffic lights (hiddenInset title bar). */
+.sidebar {
+  padding-top: 44px;
+}
