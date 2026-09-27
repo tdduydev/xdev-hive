@@ -187,18 +187,28 @@ describe("Runner", () => {
     assert.match(t.note ?? "", /Implemented T-1[\s\S]*Review \(Run R-\w+ · codex-a\):\nVerdict: approve/);
   });
 
-  it("treats a missing CLI as unavailable and moves on", async () => {
+  it("skips a profile whose CLI is not installed, and says so when none is", async () => {
     const { runner } = await setup([
       profile("gemini-a", "gemini", 1, "ok", { bin: "/nonexistent/gemini" }),
       profile("claude-a", "claude", 10, "ok"),
     ]);
+    const statuses = runner.profileStatuses();
+    assert.equal(statuses.find((p) => p.id === "gemini-a")!.cliPath, null);
+    assert.equal(statuses.find((p) => p.id === "claude-a")!.cliPath, process.execPath);
+
     const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
     await runner.settle();
-    const failed = runner.store.get(run.id)!;
-    assert.equal(failed.status, "failed");
-    assert.match(failed.error ?? "", /Không tìm thấy lệnh/);
-    assert.ok(runner.profileStatuses().find((p) => p.id === "gemini-a")!.cooldownUntil);
-    assert.equal(runner.list().find((r) => r.parentRunId === run.id)?.status, "succeeded");
+    const done = runner.store.get(run.id)!;
+    assert.equal(done.status, "succeeded");
+    assert.equal(done.profileId, "claude-a", "gemini-a has a better priority but no CLI");
+    assert.equal(runner.profileStatuses().find((p) => p.id === "gemini-a")!.cooldownUntil, null);
+
+    const none = await setup([profile("gemini-a", "gemini", 1, "ok", { bin: "/nonexistent/gemini" })]);
+    const waiting = await none.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await none.runner.settle();
+    assert.equal(none.runner.store.get(waiting.id)!.status, "queued");
+    assert.match(none.runner.list()[0]!.error ?? "", /chưa cài CLI cho gói phù hợp \(\/nonexistent\/gemini\)/);
+    none.runner.cancel(waiting.id);
   });
 
   it("cancels a running agent and gives the task back", async () => {

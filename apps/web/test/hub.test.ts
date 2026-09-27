@@ -7,7 +7,7 @@ import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { HiveError, HubBackend } from "@xdev-hive/core";
+import { HiveError, HubBackend, transferHive } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { createHubApp } from "../src/app.ts";
 import { TokenStore } from "../src/tokens.ts";
@@ -127,6 +127,23 @@ describe("hub as a backend", () => {
       hub.call("docs.save", { key: "org/z", content: "x" }, me),
       (e: unknown) => e instanceof HiveError && e.code === "forbidden",
     );
+  });
+
+  it("pushes a machine's local data to the hub over HTTP and pulls it onto another machine", async () => {
+    const local = new SqliteHive(":memory:");
+    const me = { name: "duy", role: "admin" as const };
+    await local.call("docs.save", { key: "project/transfer/agents", content: "Dùng pnpm" }, me);
+    await local.call("tasks.create", { id: "TR-1", project: "transfer", title: "Chuyển dữ liệu" }, me);
+    const hub = { backend: new HubBackend(base, tok.admin), actor: { name: "hive-transfer", role: "admin" as const }, label: "hub" };
+    const push = await transferHive({ backend: local, actor: me, label: "máy A" }, hub);
+    assert.equal(push.counts.failed, 0, JSON.stringify(push.items));
+    assert.equal(push.items.find((i) => i.key === "project/transfer/agents")?.result, "added");
+    assert.equal((await rpc(tok.viewer, "docs.get", { key: "project/transfer/agents" })).body.result.updatedBy, "hive-transfer@duy", "written under the transfer label");
+
+    const other = new SqliteHive(":memory:");
+    const pull = await transferHive(hub, { backend: other, actor: me, label: "máy B" }, { newVersions: true });
+    assert.equal(pull.counts.failed, 0, JSON.stringify(pull.items));
+    assert.equal((await other.call("tasks.list", { project: "transfer" }, me))[0]?.title, "Chuyển dữ liệu");
   });
 
   it("speaks MCP over Streamable HTTP", async () => {

@@ -7,5 +7,6 @@ export * from "./keys.ts";
 export * from "./methods.ts";
 export * from "./secrets.ts";
 export * from "./sync.ts";
+export * from "./transfer.ts";
 export * from "./types.ts";
 export { HubBackend } from "./hub-client.ts";

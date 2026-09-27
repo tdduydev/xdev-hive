@@ -1118,3 +1118,22 @@ a.btn {
     grid-template-columns: 1fr;
   }
 }
+
+.setup-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.setup-detail {
+  overflow-wrap: anywhere;
+}
+
+/* Inline links in page content (buttons and nav items style their own). */
+.main a:not(.btn) {
+  color: var(--accent-strong);
+  text-underline-offset: 2px;
+}
