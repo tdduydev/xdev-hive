@@ -7,3 +7,7 @@ data/
 *.db-shm
 *.db-wal
 .DS_Store
+# codegraph index (codegraph init), rebuilt per machine
+.codegraph/
+# git worktrees made by Claude Code sessions
+.claude/worktrees/
