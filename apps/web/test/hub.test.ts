@@ -63,6 +63,12 @@ describe("hub REST", () => {
     assert.deepEqual(body.result, { name: "codex@duy-macbook", role: "agent", mode: "hub" });
   });
 
+  it("keeps the machine part of long agent labels, so two machines on one token get different leases", async () => {
+    const label = `${"p".repeat(40)}.${"m".repeat(24)}`;
+    const res = await fetch(`${base}/api/me`, { headers: { authorization: `Bearer ${tok.agent}`, "x-hive-agent": label } });
+    assert.equal(((await res.json()) as { result: { name: string } }).result.name, `${label}@duy-macbook`);
+  });
+
   it("applies roles: viewer reads, agent proposes, admin approves", async () => {
     assert.equal((await rpc(tok.viewer, "docs.list")).status, 200);
     assert.equal((await rpc(tok.viewer, "memory.write", { project: "app", kind: "gotcha", content: "x" })).status, 403);

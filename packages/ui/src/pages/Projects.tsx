@@ -79,6 +79,11 @@ function ModeCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: (
             value={hubToken}
             onChange={(e) => setHubToken(e.target.value)}
           />
+          <span className="label">Tên máy</span>
+          <span className="muted small">
+            <code>{settings.machine}</code>. Agent trên máy này giữ task với tên <code>&lt;gói&gt;.{settings.machine}</code>. Hai máy dùng chung
+            token phải khác tên máy (sửa <code>machine</code> trong <code>{settings.configPath}</code>).
+          </span>
         </div>
       )}
       <label className="check">

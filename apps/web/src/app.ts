@@ -63,7 +63,7 @@ export function createHubApp({ hive, tokens, allowedHosts, ui }: HubAppOptions):
       res.status(401).json({ error: { code: "unauthorized", message: "Missing or invalid token." } });
       return;
     }
-    const label = (req.get("x-hive-agent") ?? "").replace(/[^\w.-]/g, "").slice(0, 40);
+    const label = (req.get("x-hive-agent") ?? "").replace(/[^\w.-]/g, "").slice(0, 80);
     res.locals.actor = { name: label ? `${label}@${who.name}` : who.name, role: who.role } satisfies Actor;
     next();
   };

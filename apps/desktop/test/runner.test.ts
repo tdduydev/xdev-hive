@@ -29,7 +29,13 @@ function profile(id: string, kind: AgentProfile["kind"], priority: number, mode:
   };
 }
 
-async function setup(profiles: AgentProfile[], settings: Partial<RunnerSettings> = {}, mode: "local" | "hub" = "local") {
+async function setup(
+  profiles: AgentProfile[],
+  settings: Partial<RunnerSettings> = {},
+  mode: "local" | "hub" = "local",
+  /** Pass another setup's hive to simulate a second machine on the same hub. */
+  machine: { name?: string; hive?: SqliteHive } = {},
+) {
   const repo = tmp("repo");
   git(repo, "init", "-q", "-b", "main");
   git(repo, "config", "user.email", "t@example.com");
@@ -37,7 +43,7 @@ async function setup(profiles: AgentProfile[], settings: Partial<RunnerSettings>
   writeFileSync(path.join(repo, "README.md"), "# demo\n");
   git(repo, "add", ".");
   git(repo, "commit", "-qm", "init");
-  const hive = new SqliteHive(":memory:");
+  const hive = machine.hive ?? new SqliteHive(":memory:");
   const record = path.join(tmp("rec"), "calls.jsonl");
   // A hub names actors "<label>@<token name>"; mimic that to test hub mode without a server.
   const hubLike: HiveBackend = { call: (m, i, a) => hive.call(m, i, { ...a, name: `${a.name}@duy-macbook` }) };
@@ -47,11 +53,12 @@ async function setup(profiles: AgentProfile[], settings: Partial<RunnerSettings>
     settings: () => ({ worktreeRoot: null, maxParallel: 2, maxAttempts: 3, ...settings }),
     projects: () => [{ name: "demo", repo }],
     mode: () => mode,
+    machine: () => machine.name ?? "duy-mbp",
     env: () => ({ ...process.env }),
   };
   const dataDir = tmp("data");
   const runner = new Runner(host, { dataDir, user: "duy", tickMs: 60_000 });
-  await hive.call("tasks.create", { id: "T-1", project: "demo", title: "Thêm trang cài đặt" }, admin);
+  if (!machine.hive) await hive.call("tasks.create", { id: "T-1", project: "demo", title: "Thêm trang cài đặt" }, admin);
   const calls = () =>
     existsSync(record) ? readFileSync(record, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { agent: string; prompt: string; cwd: string }) : [];
   const task = async () => (await hive.call("tasks.list", { project: "demo" }, admin)).find((t) => t.id === "T-1")!;
@@ -214,6 +221,25 @@ describe("Runner", () => {
     const t = await task();
     assert.equal(t.status, "review");
     assert.match(t.note ?? "", /Implemented T-1/);
+  });
+
+  it("keeps two machines on one hub token from taking the same task", async () => {
+    const a = await setup([profile("claude-1", "claude", 10, "sleep")], {}, "hub", { name: "duy-mbp" });
+    const b = await setup([profile("claude-1", "claude", 10, "ok")], {}, "hub", { name: "duy-imac", hive: a.hive });
+    const first = await a.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await until(() => a.runner.log(first.id).includes("thinking"));
+    assert.equal((await a.task()).owner, "claude-1.duy-mbp@duy-macbook");
+
+    const second = await b.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await b.runner.settle();
+    const blocked = b.runner.store.get(second.id)!;
+    assert.equal(blocked.status, "failed");
+    assert.match(blocked.error ?? "", /claude-1\.duy-mbp@duy-macbook/);
+    assert.equal(b.calls().length, 0, "the second machine never starts the agent");
+
+    a.runner.cancel(first.id);
+    await a.runner.settle();
+    assert.equal((await a.task()).owner, null);
   });
 
   it("explains why a run waits and refuses duplicates", async () => {

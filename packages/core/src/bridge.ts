@@ -48,6 +48,8 @@ export interface DesktopProject {
 
 export interface DesktopSettings {
   mode: "local" | "hub";
+  /** Name of this machine in hub leases (config.json `machine`). */
+  machine: string;
   hubUrl: string;
   hasHubToken: boolean;
   projects: DesktopProject[];

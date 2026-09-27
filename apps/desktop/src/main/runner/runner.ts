@@ -12,6 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   AGENT_ROLES,
+  agentActorName,
   HiveError,
   type Actor,
   type AgentProfile,
@@ -36,6 +37,8 @@ export interface RunnerHost {
   settings(): RunnerSettings;
   projects(): DesktopProject[];
   mode(): "local" | "hub";
+  /** This machine's name in hub leases (config.machine). */
+  machine(): string;
   /** Base env for agent processes (login-shell PATH etc.). */
   env(): NodeJS.ProcessEnv;
 }
@@ -105,7 +108,7 @@ export class Runner {
   readonly #live = new Map<string, Live>();
   readonly #inflight = new Set<Promise<void>>();
   readonly #waiting = new Map<string, string>();
-  /** Lease holder name as the backend recorded it (a hub appends the token name: claude-1@duy-macbook). */
+  /** Lease holder name as the backend recorded it (a hub appends the token name: claude-1.duy-mbp@duy). */
   readonly #owners = new Map<string, string>();
   #ticking = false;
   #again = false;
@@ -303,7 +306,7 @@ export class Runner {
 
   #actor(profile: AgentProfile): Actor {
     // Same naming as the hive-mcp shim, so the agent's own task_claim/task_update match the runner's lease.
-    return { name: this.#host.mode() === "hub" ? profile.id : `${profile.id}@${this.#opts.user}`, role: "agent" };
+    return { name: agentActorName(profile.id, this.#host.mode(), this.#host.machine(), this.#opts.user), role: "agent" };
   }
 
   #loads(): ProfileLoad[] {

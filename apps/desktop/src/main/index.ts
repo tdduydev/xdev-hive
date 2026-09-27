@@ -28,6 +28,7 @@ import {
   gitlabSettingsSchema,
   loadConfig,
   localDbPath,
+  pinMachine,
   resolveBackend,
   runnerSettingsSchema,
   saveConfig,
@@ -60,6 +61,11 @@ const actor = (): Actor =>
 
 function reload(): void {
   config = loadConfig();
+  try {
+    pinMachine(config);
+  } catch (err) {
+    console.warn("[xdev-hive] could not pin the machine name in config.json:", toErrorPayload(err).message);
+  }
   backend = resolveBackend(config);
 }
 
@@ -71,6 +77,7 @@ const trayIcon = () => (app.isPackaged ? resource("icons", "trayTemplate.png") :
 function settings(): DesktopSettings {
   return {
     mode: config.mode,
+    machine: config.machine,
     hubUrl: config.hub.url,
     hasHubToken: config.hub.token.length > 0,
     projects: config.projects,
@@ -434,6 +441,7 @@ if (!app.requestSingleInstanceLock()) {
         settings: () => config.runner,
         projects: () => config.projects,
         mode: () => config.mode,
+        machine: () => config.machine,
         env: agentEnv,
       },
       { dataDir: path.dirname(configPath()), onEvent: onRunnerEvent, afterFinish: (run) => mergeRequester.afterFinish(run) },
