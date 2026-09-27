@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { can, type Level, type Me } from "@xdev-hive/core";
+import { activeIntl } from "./i18n/translate.ts";
 import type { HiveClient } from "./client.ts";
 import type { Scope } from "./lib/scope.ts";
 
@@ -121,5 +122,5 @@ export function useProjectList(client: HiveClient, tick: number): string[] {
 export function formatTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
-  return d.toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" });
+  return d.toLocaleString(activeIntl(), { dateStyle: "short", timeStyle: "short" });
 }
