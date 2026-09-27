@@ -7,6 +7,7 @@
 //
 // No Electron imports: the desktop main process provides a RunnerHost, tests provide a fake one.
 import { spawn, type ChildProcess } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { closeSync, createWriteStream, existsSync, mkdirSync, openSync, readSync, statSync, type WriteStream } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -20,6 +21,7 @@ import {
   type AgentRun,
   type DesktopProject,
   type HiveBackend,
+  type QuotaCooldown,
   type RunnerSettings,
   type RunStatus,
   type StartRunRequest,
@@ -55,6 +57,10 @@ export interface RunnerOptions {
   now?: () => Date;
   onEvent?: (event: RunnerEvent) => void;
   tickMs?: number;
+  /** Hub mode: how often to report runs and refresh shared quota cooldowns. */
+  heartbeatMs?: number;
+  /** App version shown on the hub's machine list. */
+  version?: string;
   /** Rest for a profile whose CLI is missing, so rotation skips it for a while. */
   unavailableCooldownMinutes?: number;
   /**
@@ -110,9 +116,14 @@ export class Runner {
   readonly #waiting = new Map<string, string>();
   /** Lease holder name as the backend recorded it (a hub appends the token name: claude-1.duy-mbp@duy). */
   readonly #owners = new Map<string, string>();
+  /** Hub cooldowns by account, refreshed by every heartbeat. */
+  #shared = new Map<string, QuotaCooldown>();
+  /** Tells the hub this app apart from another one running under the same machine name. */
+  readonly #instance = randomBytes(8).toString("hex");
   #ticking = false;
   #again = false;
   #interval: NodeJS.Timeout | undefined;
+  #heartbeatTimer: NodeJS.Timeout | undefined;
 
   constructor(host: RunnerHost, opts: RunnerOptions) {
     this.#host = host;
@@ -120,6 +131,8 @@ export class Runner {
       user: os.userInfo().username,
       now: () => new Date(),
       tickMs: 5000,
+      heartbeatMs: 30_000,
+      version: "",
       unavailableCooldownMinutes: 10,
       ...opts,
     };
@@ -131,12 +144,18 @@ export class Runner {
     this.store.failInterrupted(this.#iso());
     this.#interval = setInterval(() => void this.tick(), this.#opts.tickMs);
     this.#interval.unref();
+    // A hub that is down shows up on every other call too; the heartbeat just tries again next time.
+    const beat = () => void this.heartbeat().catch(() => undefined);
+    this.#heartbeatTimer = setInterval(beat, this.#opts.heartbeatMs);
+    this.#heartbeatTimer.unref();
+    beat();
     void this.tick();
   }
 
   /** Cancels running agents and waits for their bookkeeping (commit, Hive update) to finish. */
   async stop(): Promise<void> {
     clearInterval(this.#interval);
+    clearInterval(this.#heartbeatTimer);
     for (const id of this.#live.keys()) this.cancel(id);
     await Promise.allSettled([...this.#inflight]);
   }
@@ -239,7 +258,7 @@ export class Runner {
     const now = this.#opts.now();
     return this.#host.profiles().map((profile) => {
       const s = this.store.profileStats(profile.id);
-      const cd = this.store.cooldown(profile.id);
+      const cd = this.#cooldownOf(profile);
       const resting = cd && new Date(cd.until) > now ? cd : null;
       return {
         ...profile,
@@ -248,13 +267,53 @@ export class Runner {
         stats: s.stats,
         cooldownUntil: resting?.until ?? null,
         cooldownReason: resting?.reason ?? null,
+        cooldownFrom: resting?.from ?? null,
       };
     });
   }
 
-  resetCooldown(profileId: string): void {
+  /** Ends the rest on this machine and, for a shared account, on the hub for every machine. */
+  async resetCooldown(profileId: string): Promise<void> {
     this.store.clearCooldown(profileId);
+    const account = this.#host.profiles().find((p) => p.id === profileId)?.account;
+    if (account && this.#host.mode() === "hub") {
+      this.#shared.delete(account);
+      await this.#host.backend().call("cooldowns.clear", { account }, this.#runnerActor());
+    }
     void this.tick();
+  }
+
+  /** Reports queued and running runs to the hub and refreshes the shared quota cooldowns. No-op in local mode. */
+  async heartbeat(): Promise<{ duplicate: boolean } | null> {
+    if (this.#host.mode() !== "hub") {
+      this.#shared.clear();
+      return null;
+    }
+    const runs = this.store.active().map((r) => ({
+      runId: r.id,
+      project: r.project,
+      taskId: r.taskId,
+      taskTitle: r.taskTitle,
+      role: r.role,
+      status: r.status as "queued" | "running",
+      profileId: r.profileId,
+      since: r.startedAt ?? r.createdAt,
+    }));
+    const res = await this.#host
+      .backend()
+      .call("machines.heartbeat", { machine: this.#host.machine(), instance: this.#instance, version: this.#opts.version, runs }, this.#runnerActor());
+    const next = new Map(res.cooldowns.map((c) => [c.account, c]));
+    // Cleared on the hub before it ended (someone pressed "Hết nghỉ"): end the local rest it came from too.
+    const now = this.#iso();
+    for (const [account, old] of this.#shared) {
+      if (next.has(account) || old.until <= now) continue;
+      for (const p of this.#host.profiles()) {
+        const local = p.account === account ? this.store.cooldown(p.id) : null;
+        if (local && local.until <= old.until) this.store.clearCooldown(p.id);
+      }
+    }
+    this.#shared = next;
+    return { duplicate: res.duplicate };
   }
 
   async tick(): Promise<void> {
@@ -309,10 +368,36 @@ export class Runner {
     return { name: agentActorName(profile.id, this.#host.mode(), this.#host.machine(), this.#opts.user), role: "agent" };
   }
 
+  #runnerActor(): Actor {
+    return { name: agentActorName("runner", this.#host.mode(), this.#host.machine(), this.#opts.user), role: "agent" };
+  }
+
+  /** The later of this machine's cooldown and the hub's one for the profile's account (`from` = who reported it). */
+  #cooldownOf(profile: AgentProfile): { until: string; reason: string; from: string | null } | null {
+    const local = this.store.cooldown(profile.id);
+    const shared = profile.account && this.#host.mode() === "hub" ? this.#shared.get(profile.account) : undefined;
+    if (shared && (!local || shared.until > local.until)) return { until: shared.until, reason: shared.reason, from: shared.reportedBy };
+    return local ? { ...local, from: null } : null;
+  }
+
+  /** Tells the hub the profile's account is resting, so other machines skip it. Returns an error note, if any. */
+  async #shareCooldown(profile: AgentProfile, until: string, reason: string): Promise<string | null> {
+    if (!profile.account || this.#host.mode() !== "hub") return null;
+    try {
+      const c = await this.#host
+        .backend()
+        .call("cooldowns.set", { account: profile.account, until, reason: reason.slice(0, 300) }, this.#runnerActor());
+      if (c) this.#shared.set(c.account, c);
+      return null;
+    } catch (err) {
+      return `không báo được quota lên hub: ${(err as Error).message}`;
+    }
+  }
+
   #loads(): ProfileLoad[] {
     return this.#host.profiles().map((profile) => {
       const s = this.store.profileStats(profile.id);
-      return { profile, running: s.running, lastUsedAt: s.lastUsedAt, cooldownUntil: this.store.cooldown(profile.id)?.until ?? null };
+      return { profile, running: s.running, lastUsedAt: s.lastUsedAt, cooldownUntil: this.#cooldownOf(profile)?.until ?? null };
     });
   }
 
@@ -475,6 +560,8 @@ export class Runner {
         error = hit.reason;
         const until = hit.resetAt && hit.resetAt > now ? hit.resetAt.toISOString() : this.#iso(profile.cooldownMinutes);
         this.store.setCooldown(profile.id, until, hit.reason);
+        const shareError = await this.#shareCooldown(profile, until, hit.reason);
+        if (shareError) error = `${error} · ${shareError}`;
       } else {
         const lastErr = outcome.all.trim().split("\n").at(-1) ?? "";
         error = `Thoát với mã ${outcome.code ?? "?"}${lastErr ? `: ${clip(lastErr, 200)}` : ""}`;

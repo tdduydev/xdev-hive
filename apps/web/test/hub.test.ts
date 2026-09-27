@@ -69,6 +69,14 @@ describe("hub REST", () => {
     assert.equal(((await res.json()) as { result: { name: string } }).result.name, `${label}@duy-macbook`);
   });
 
+  it("keys machine heartbeats by runner label and token, readable by viewers", async () => {
+    const beat = { machine: "duy-mbp", instance: "0123abcd", version: "0.1.0" };
+    assert.equal((await rpc(tok.viewer, "machines.heartbeat", beat, "runner.pm")).status, 403);
+    assert.equal((await rpc(tok.agent, "machines.heartbeat", beat, "runner.duy-mbp")).status, 200);
+    const list = await rpc(tok.viewer, "machines.list", {});
+    assert.deepEqual(list.body.result.map((m: { id: string; online: boolean }) => [m.id, m.online]), [["runner.duy-mbp@duy-macbook", true]]);
+  });
+
   it("applies roles: viewer reads, agent proposes, admin approves", async () => {
     assert.equal((await rpc(tok.viewer, "docs.list")).status, 200);
     assert.equal((await rpc(tok.viewer, "memory.write", { project: "app", kind: "gotcha", content: "x" })).status, 403);

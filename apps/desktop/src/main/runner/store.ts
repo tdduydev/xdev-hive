@@ -143,6 +143,13 @@ export class RunStore {
     return (this.db.prepare("SELECT * FROM runs WHERE status = 'queued' ORDER BY created_at, rowid").all() as Row[]).map(toRun);
   }
 
+  /** Queued and running runs, oldest first (what a heartbeat reports). */
+  active(limit = 100): AgentRun[] {
+    return (
+      this.db.prepare("SELECT * FROM runs WHERE status IN ('queued', 'running') ORDER BY created_at, rowid LIMIT ?").all(limit) as Row[]
+    ).map(toRun);
+  }
+
   activeForTask(project: string, taskId: string): AgentRun | null {
     const row = this.db
       .prepare("SELECT * FROM runs WHERE project = ? AND task_id = ? AND status IN ('queued', 'running') LIMIT 1")

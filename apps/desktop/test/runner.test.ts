@@ -242,6 +242,58 @@ describe("Runner", () => {
     assert.equal((await a.task()).owner, null);
   });
 
+  it("reports queued and running runs to the hub in its heartbeat", async () => {
+    const a = await setup([profile("claude-1", "claude", 10, "sleep")], {}, "hub", { name: "duy-mbp" });
+    const run = await a.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await until(() => a.runner.log(run.id).includes("thinking"));
+    assert.deepEqual(await a.runner.heartbeat(), { duplicate: false });
+    const [m] = await a.hive.call("machines.list", {}, admin);
+    assert.equal(m!.id, "runner.duy-mbp@duy-macbook");
+    assert.deepEqual(m!.runs.map((r) => [r.taskId, r.status, r.profileId]), [["T-1", "running", "claude-1"]]);
+
+    a.runner.cancel(run.id);
+    await a.runner.settle();
+    await a.runner.heartbeat();
+    assert.deepEqual((await a.hive.call("machines.list", {}, admin))[0]!.runs, []);
+
+    const local = await setup([profile("claude-1", "claude", 10, "ok")]);
+    assert.equal(await local.runner.heartbeat(), null, "local mode has no hub to report to");
+  });
+
+  it("shares a quota cooldown with every machine on the same account, and ends it everywhere", async () => {
+    const account = { account: "claude-max-duy" };
+    const a = await setup([profile("claude-1", "claude", 10, "limit", account), profile("codex-1", "codex", 20, "ok")], {}, "hub", { name: "duy-mbp" });
+    const b = await setup([profile("claude-2", "claude", 10, "ok", account), profile("codex-2", "codex", 20, "ok")], {}, "hub", {
+      name: "duy-imac",
+      hive: a.hive,
+    });
+    await a.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await a.runner.settle();
+    const shared = await a.hive.call("cooldowns.list", {}, admin);
+    assert.deepEqual(shared.map((c) => [c.account, c.reportedBy]), [["claude-max-duy", "runner.duy-mbp@duy-macbook"]]);
+
+    await b.hive.call("tasks.create", { id: "T-2", project: "demo", title: "Sửa lỗi đăng nhập" }, admin);
+    await b.runner.heartbeat();
+    assert.equal(b.runner.profileStatuses().find((p) => p.id === "claude-2")!.cooldownFrom, "runner.duy-mbp@duy-macbook");
+    const run = await b.runner.enqueue({ project: "demo", taskId: "T-2" });
+    await b.runner.settle();
+    assert.equal(b.runner.store.get(run.id)!.profileId, "codex-2", "machine B skips the account that ran out on machine A");
+
+    await b.runner.resetCooldown("claude-2");
+    assert.deepEqual(await a.hive.call("cooldowns.list", {}, admin), []);
+    assert.ok(a.runner.profileStatuses().find((p) => p.id === "claude-1")!.cooldownUntil, "A rests until it hears from the hub");
+    await a.runner.heartbeat();
+    assert.equal(a.runner.profileStatuses().find((p) => p.id === "claude-1")!.cooldownUntil, null);
+  });
+
+  it("keeps a cooldown on this machine when the profile has no account", async () => {
+    const a = await setup([profile("claude-1", "claude", 10, "limit"), profile("codex-1", "codex", 20, "ok")], {}, "hub");
+    await a.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await a.runner.settle();
+    assert.ok(a.runner.profileStatuses().find((p) => p.id === "claude-1")!.cooldownUntil);
+    assert.deepEqual(await a.hive.call("cooldowns.list", {}, admin), []);
+  });
+
   it("explains why a run waits and refuses duplicates", async () => {
     const { runner } = await setup([profile("claude-a", "claude", 10, "ok")]);
     runner.store.setCooldown("claude-a", "2099-01-01T00:00:00.000Z", "usage limit");

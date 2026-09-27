@@ -14,7 +14,7 @@ import {
 } from "./methods.ts";
 import { assertNoSecret } from "./secrets.ts";
 import { SEED_DOCS } from "./seed.ts";
-import type { Actor, Doc, DocSummary, DocVersion, Memory, Proposal, Task } from "./types.ts";
+import type { Actor, Doc, DocSummary, DocVersion, Machine, MachineRun, Memory, Proposal, QuotaCooldown, Task } from "./types.ts";
 
 const MIGRATIONS: string[] = [
   `
@@ -52,7 +52,22 @@ const MIGRATIONS: string[] = [
     owner TEXT, lease_until TEXT, note TEXT, updated_at TEXT NOT NULL);
   CREATE INDEX tasks_project ON tasks(project, status);
   `,
+  `
+  CREATE TABLE machines(
+    id TEXT PRIMARY KEY, machine TEXT NOT NULL, instance TEXT NOT NULL, prev_instance TEXT,
+    version TEXT NOT NULL DEFAULT '', runs TEXT NOT NULL DEFAULT '[]', last_seen TEXT NOT NULL, duplicate_at TEXT);
+  CREATE TABLE quota_cooldowns(
+    account TEXT PRIMARY KEY, until TEXT NOT NULL, reason TEXT NOT NULL,
+    reported_by TEXT NOT NULL, updated_at TEXT NOT NULL);
+  `,
 ];
+
+/** A machine is online if it sent a heartbeat this recently (runners send one every 30 s). */
+const ONLINE_MINUTES = 2;
+/** Instances seen alternating within this window count as two apps under one machine name. */
+const DUPLICATE_MINUTES = 5;
+/** Machines silent for this long are dropped. */
+const MACHINE_TTL_DAYS = 14;
 
 type Row = Record<string, unknown>;
 const str = (v: unknown) => v as string;
@@ -109,6 +124,13 @@ const toTask = (r: Row): Task => ({
   owner: strOrNull(r.owner),
   leaseUntil: strOrNull(r.lease_until),
   note: strOrNull(r.note),
+  updatedAt: str(r.updated_at),
+});
+const toCooldown = (r: Row): QuotaCooldown => ({
+  account: str(r.account),
+  until: str(r.until),
+  reason: str(r.reason),
+  reportedBy: str(r.reported_by),
   updatedAt: str(r.updated_at),
 });
 
@@ -240,6 +262,26 @@ export class SqliteHive implements HiveBackend {
   #getTask(id: string): Task | null {
     const row = this.db.prepare("SELECT * FROM tasks WHERE id = ?").get(id) as Row | undefined;
     return row ? toTask(row) : null;
+  }
+
+  /** Cooldowns still in force; expired ones are dropped on the way. */
+  #cooldowns(): QuotaCooldown[] {
+    const now = this.#now();
+    this.db.prepare("DELETE FROM quota_cooldowns WHERE until <= ?").run(now);
+    return (this.db.prepare("SELECT * FROM quota_cooldowns ORDER BY until").all() as Row[]).map(toCooldown);
+  }
+
+  #toMachine(r: Row): Machine {
+    const dup = strOrNull(r.duplicate_at);
+    return {
+      id: str(r.id),
+      machine: str(r.machine),
+      version: str(r.version),
+      lastSeen: str(r.last_seen),
+      online: str(r.last_seen) > this.#now(-ONLINE_MINUTES),
+      duplicate: dup !== null && dup > this.#now(-DUPLICATE_MINUTES),
+      runs: JSON.parse(str(r.runs)) as MachineRun[],
+    };
   }
 
   #buildHandlers(): Handlers {
@@ -439,6 +481,62 @@ export class SqliteHive implements HiveBackend {
           );
           return this.#getTask(id)!;
         }),
+
+      // Keyed by the hub actor (`runner.<machine>@<token>`): the same key as the leases that machine takes.
+      "machines.heartbeat": ({ machine, instance, version, runs }, actor) =>
+        this.#tx(() => {
+          const now = this.#now();
+          const row = db.prepare("SELECT instance, prev_instance, last_seen, duplicate_at FROM machines WHERE id = ?").get(actor.name) as
+            | Row
+            | undefined;
+          let prev = strOrNull(row?.prev_instance);
+          let duplicateAt = strOrNull(row?.duplicate_at);
+          if (row && str(row.instance) !== instance) {
+            // A restart switches instance once; two live apps keep alternating (A, B, A…).
+            if (prev === instance && str(row.last_seen) > this.#now(-DUPLICATE_MINUTES)) duplicateAt = now;
+            prev = str(row.instance);
+          }
+          db.prepare(
+            `INSERT INTO machines(id, machine, instance, prev_instance, version, runs, last_seen, duplicate_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET machine = excluded.machine, instance = excluded.instance,
+               prev_instance = excluded.prev_instance, version = excluded.version, runs = excluded.runs,
+               last_seen = excluded.last_seen, duplicate_at = excluded.duplicate_at`,
+          ).run(actor.name, machine, instance, prev, version, JSON.stringify(runs), now, duplicateAt);
+          db.prepare("DELETE FROM machines WHERE last_seen < ?").run(this.#now(-MACHINE_TTL_DAYS * 24 * 60));
+          return {
+            duplicate: duplicateAt !== null && duplicateAt > this.#now(-DUPLICATE_MINUTES),
+            cooldowns: this.#cooldowns(),
+          };
+        }),
+
+      "machines.list": () =>
+        (db.prepare("SELECT * FROM machines ORDER BY last_seen DESC").all() as Row[]).map((r) => this.#toMachine(r)),
+
+      "machines.remove": ({ id }) => ({ removed: num(db.prepare("DELETE FROM machines WHERE id = ?").run(id).changes) === 1 }),
+
+      "cooldowns.list": () => this.#cooldowns(),
+
+      // Last report wins: the newest rate-limit message has the best reset time.
+      "cooldowns.set": ({ account, until, reason }, actor) => {
+        assertNoSecret(reason, "Cooldown reason");
+        const iso = new Date(until).toISOString();
+        const now = this.#now();
+        if (iso <= now) {
+          db.prepare("DELETE FROM quota_cooldowns WHERE account = ?").run(account);
+          return null;
+        }
+        db.prepare(
+          `INSERT INTO quota_cooldowns(account, until, reason, reported_by, updated_at) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(account) DO UPDATE SET until = excluded.until, reason = excluded.reason,
+             reported_by = excluded.reported_by, updated_at = excluded.updated_at`,
+        ).run(account, iso, reason, actor.name, now);
+        return toCooldown(db.prepare("SELECT * FROM quota_cooldowns WHERE account = ?").get(account) as Row);
+      },
+
+      "cooldowns.clear": ({ account }) => ({
+        cleared: num(db.prepare("DELETE FROM quota_cooldowns WHERE account = ?").run(account).changes) === 1,
+      }),
     };
   }
 }
