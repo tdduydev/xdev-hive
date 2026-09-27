@@ -84,7 +84,7 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
   const action = useAction();
   const [check, setCheck] = useState<ProfileCheck | null>(null);
   const resting = p.cooldownUntil !== null;
-  const { cooldownUntil: _c, cooldownReason: _r, running: _n, lastUsedAt: _l, stats: _s, ...plain } = p;
+  const { cooldownUntil: _c, cooldownReason: _r, cooldownFrom: _f, running: _n, lastUsedAt: _l, stats: _s, ...plain } = p;
 
   return (
     <article className={`card profile-card ${p.enabled ? "" : "disabled"}`}>
@@ -95,6 +95,7 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
       </div>
       <div className="mono small muted">
         {p.id} · ưu tiên {p.priority} · tối đa {p.maxConcurrent} song song
+        {p.account ? ` · tài khoản ${p.account}` : ""}
       </div>
       <div className="small">
         {!p.enabled ? (
@@ -102,6 +103,7 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
         ) : resting ? (
           <span className="tone-warn">
             Nghỉ đến {formatTime(p.cooldownUntil)}
+            {p.cooldownFrom ? ` · báo từ ${p.cooldownFrom}` : ""}
             {p.cooldownReason ? ` · ${p.cooldownReason}` : ""}
           </span>
         ) : p.running ? (
@@ -266,6 +268,18 @@ function ProfileForm({
             </>
           ) : null}
           , rồi đăng nhập một lần trong terminal với biến đó.
+        </span>
+        <label className="label" htmlFor="pf-account">Tài khoản (dùng chung quota)</label>
+        <input
+          id="pf-account"
+          className="input mono"
+          placeholder="claude-max-duy"
+          value={p.account ?? ""}
+          onChange={(e) => set("account", e.target.value.trim() || undefined)}
+        />
+        <span />
+        <span className="muted small">
+          Ở chế độ hub: mọi máy có profile cùng tài khoản sẽ cùng nghỉ khi một máy báo hết quota. Để trống nếu gói này chỉ đăng nhập trên máy này.
         </span>
         <label className="label">Vai trò</label>
         <div className="row gap-s wrap">

@@ -292,7 +292,7 @@ function registerIpc(): void {
   handle("desktop:profiles", () => runner.profileStatuses());
   handle("desktop:saveProfile", saveProfile);
   handle("desktop:removeProfile", removeProfile);
-  handle("desktop:resetCooldown", (id: string) => (runner.resetCooldown(id), runner.profileStatuses()));
+  handle("desktop:resetCooldown", async (id: string) => (await runner.resetCooldown(id), runner.profileStatuses()));
   handle("desktop:checkProfile", checkProfile);
   handle("desktop:startRun", (req: StartRunRequest) => runner.enqueue(req));
   handle("desktop:runs", (filter?: { project?: string; limit?: number }) => runner.list(filter));
@@ -444,7 +444,12 @@ if (!app.requestSingleInstanceLock()) {
         machine: () => config.machine,
         env: agentEnv,
       },
-      { dataDir: path.dirname(configPath()), onEvent: onRunnerEvent, afterFinish: (run) => mergeRequester.afterFinish(run) },
+      {
+        dataDir: path.dirname(configPath()),
+        version: app.getVersion(),
+        onEvent: onRunnerEvent,
+        afterFinish: (run) => mergeRequester.afterFinish(run),
+      },
     );
     runner.start();
     registerIpc();
