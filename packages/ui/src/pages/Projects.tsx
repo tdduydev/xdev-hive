@@ -1,5 +1,16 @@
 import { useEffect, useState } from "react";
-import { PROJECT_NAME, type DesktopProject, type DesktopSettings, type FileAction, type GitLabCheck, type MrSettings, type SyncReport } from "@xdev-hive/core";
+import {
+  PROJECT_NAME,
+  TRANSFER_RESULTS,
+  type DesktopProject,
+  type DesktopSettings,
+  type FileAction,
+  type GitLabCheck,
+  type MrSettings,
+  type SyncReport,
+  type TransferReport,
+  type TransferResult,
+} from "@xdev-hive/core";
 import { Badge, Empty, ErrorNote, PageHeader } from "../components/ui.tsx";
 import { useAction, useHive, useQuery } from "../hooks.ts";
 
@@ -19,14 +30,14 @@ export function ProjectsPage() {
     <div className="page">
       <PageHeader
         title="Dự án & cài đặt"
-        subtitle="Nối repo trên máy này với Hive: đồng bộ tài liệu vào repo, cài MCP cho Claude Code, Codex, Gemini."
+        subtitle="Nguồn dữ liệu, GitLab và các repo trên máy này. Kiểm tra và cài CLI, hive-mcp, cấu hình agent ở Cài đặt máy."
       />
       <ErrorNote error={settings.error} />
       {settings.data ? (
         <>
           <ModeCard settings={settings.data} onSaved={settings.reload} />
+          <TransferCard settings={settings.data} />
           <GitLabCard settings={settings.data} onSaved={settings.reload} />
-          <ShimCard />
           <ProjectsCard settings={settings.data} onChanged={settings.reload} />
         </>
       ) : null}
@@ -113,6 +124,113 @@ function ModeCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: (
       </div>
       <ErrorNote error={action.error} />
       {saved ? <div className="note note-ok">Đã lưu. Agent sẽ dùng cấu hình mới từ phiên kế tiếp.</div> : null}
+    </section>
+  );
+}
+
+const RESULT: Record<TransferResult, { label: string; tone: string }> = {
+  added: { label: "thêm", tone: "ok" },
+  updated: { label: "version mới", tone: "info" },
+  proposed: { label: "đề xuất", tone: "warn" },
+  unchanged: { label: "không đổi", tone: "neutral" },
+  skipped: { label: "bỏ qua", tone: "neutral" },
+  failed: { label: "lỗi", tone: "danger" },
+};
+const KIND = { doc: "Tài liệu", memory: "Memory", task: "Task" } as const;
+
+function TransferCard({ settings }: { settings: DesktopSettings }) {
+  const { client, bump } = useHive();
+  const action = useAction();
+  const [report, setReport] = useState<TransferReport | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const ready = Boolean(settings.hubUrl && settings.hasHubToken);
+  const run = (direction: "push" | "pull", question: string) => {
+    if (!window.confirm(question)) return;
+    void action.run(async () => {
+      setReport(await client.desktop!.transferHub(direction));
+      setShowAll(false);
+      bump();
+    });
+  };
+  const rows = report ? report.items.filter((i) => showAll || i.result !== "unchanged") : [];
+
+  return (
+    <section className="card">
+      <h2>Dữ liệu dùng chung với hub</h2>
+      <p className="muted small">
+        Ở chế độ <b>Hub dùng chung</b>, app và agent đọc, ghi thẳng lên hub nên không cần đồng bộ. Hai nút dưới đây chép <b>một lần</b> giữa
+        database trên máy (<code>{settings.dbPath}</code>) và hub: tài liệu (bản mới nhất), memory đã duyệt, task.
+      </p>
+      <ul className="muted small">
+        <li>
+          <b>Đẩy lên hub</b>: mục chưa có trên hub thì thêm. Tài liệu khác bản trên hub thành đề xuất chờ admin duyệt, không ghi đè.
+        </li>
+        <li>
+          <b>Tải về máy</b>: mục chưa có trên máy thì thêm. Tài liệu khác thì ghi thành version mới, bản cũ vẫn trong lịch sử.
+        </li>
+        <li>Không chuyển: lịch sử version, đề xuất, memory chưa duyệt, người đang giữ task (task đang làm thành Chưa làm).</li>
+      </ul>
+      <div className="row gap-s wrap">
+        <button
+          className="btn btn-primary"
+          disabled={!ready || action.busy}
+          onClick={() => run("push", `Đẩy tài liệu, memory và task trên máy này lên ${settings.hubUrl}? Tài liệu khác bản trên hub sẽ thành đề xuất.`)}
+        >
+          Đẩy dữ liệu máy lên hub
+        </button>
+        <button
+          className="btn"
+          disabled={!ready || action.busy}
+          onClick={() => run("pull", `Tải tài liệu, memory và task từ ${settings.hubUrl} về database trên máy này?`)}
+        >
+          Tải dữ liệu hub về máy
+        </button>
+        {action.busy ? <span className="muted small">Đang chuyển…</span> : null}
+      </div>
+      {!ready ? <div className="muted small">Điền URL và token hub ở Nguồn dữ liệu rồi bấm Lưu cài đặt.</div> : null}
+      <ErrorNote error={action.error} />
+      {report ? (
+        <div className="report">
+          <div className="row gap-s wrap">
+            <b>
+              {report.from} → {report.to}
+            </b>
+            {TRANSFER_RESULTS.filter((r) => report.counts[r] > 0).map((r) => (
+              <Badge key={r} tone={RESULT[r].tone}>
+                {report.counts[r]} {RESULT[r].label}
+              </Badge>
+            ))}
+            <span className="grow" />
+            {report.counts.unchanged > 0 ? (
+              <button className="btn btn-small btn-ghost" onClick={() => setShowAll(!showAll)}>
+                {showAll ? "Ẩn mục không đổi" : "Hiện cả mục không đổi"}
+              </button>
+            ) : null}
+            <button className="btn btn-small btn-ghost" onClick={() => setReport(null)}>
+              Đóng
+            </button>
+          </div>
+          {rows.length ? (
+            <ul>
+              {rows.map((i) => (
+                <li key={`${i.kind}:${i.key}`}>
+                  <Badge tone={RESULT[i.result].tone}>{RESULT[i.result].label}</Badge> <span className="small">{KIND[i.kind]}</span>{" "}
+                  <span className="mono small">{i.key}</span>
+                  {i.note ? <span className="muted small"> · {i.note}</span> : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="muted small">Không có gì mới để chuyển.</div>
+          )}
+          {report.counts.proposed > 0 ? (
+            <div className="muted small">
+              Đề xuất nằm ở trang <a href="#/proposals">Đề xuất</a>
+              {report.to === "hub" ? " trên hub" : ""}, cần admin duyệt.
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -246,32 +364,6 @@ function ProjectGitLab({ project, onSaved }: { project: DesktopProject; onSaved:
   );
 }
 
-function ShimCard() {
-  const { client } = useHive();
-  const action = useAction();
-  const [report, setReport] = useState<{ path: string; onPath: boolean } | null>(null);
-  return (
-    <section className="card">
-      <h2>Lệnh hive-mcp</h2>
-      <p className="muted small">
-        Agent gọi lệnh <code>hive-mcp</code> để nói chuyện với Hive qua MCP. Lệnh này chạy bằng chính app, máy không cần cài Node.
-      </p>
-      <button className="btn" disabled={action.busy} onClick={() => void action.run(async () => setReport(await client.desktop!.installShim()))}>
-        Cài / cập nhật lệnh hive-mcp
-      </button>
-      <ErrorNote error={action.error} />
-      {report ? (
-        <div className={`note ${report.onPath ? "note-ok" : "note-warn"}`}>
-          Đã cài vào <code>{report.path}</code>.
-          {report.onPath
-            ? null
-            : " Thư mục này chưa có trong PATH của app. Kiểm tra lại PATH của shell (ví dụ thêm export PATH=\"$HOME/.local/bin:$PATH\" vào ~/.zshrc)."}
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
 function ProjectsCard({ settings, onChanged }: { settings: DesktopSettings; onChanged: () => void }) {
   const { client, bump } = useHive();
   const desktop = client.desktop!;
@@ -319,17 +411,9 @@ function ProjectsCard({ settings, onChanged }: { settings: DesktopSettings; onCh
             >
               Đồng bộ tài liệu
             </button>
-            <button
-              className="btn btn-small"
-              disabled={action.busy}
-              onClick={() =>
-                void action.run(async () =>
-                  setResult({ project: p.name, title: "Cài vào agents", files: await desktop.installAgents(p.name) }),
-                )
-              }
-            >
-              Cài vào agents
-            </button>
+            <a className="btn btn-small" href="#/setup">
+              Cài đặt
+            </a>
             <button className="btn btn-small btn-ghost" onClick={() => setGitlabOpen(gitlabOpen === p.name ? null : p.name)} aria-expanded={gitlabOpen === p.name}>
               GitLab
             </button>

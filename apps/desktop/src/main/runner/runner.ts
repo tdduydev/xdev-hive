@@ -27,7 +27,7 @@ import {
   type StartRunRequest,
   type Task,
 } from "@xdev-hive/core";
-import { buildCommand, buildPrompt, describeCommand, expandEnv, resolveBin } from "./command.ts";
+import { buildCommand, buildPrompt, describeCommand, expandEnv, expandHome, resolveBin } from "./command.ts";
 import { detectRateLimit } from "./rate-limit.ts";
 import { pickProfile, waitingReason, type ProfileLoad, type RunNeeds } from "./schedule.ts";
 import { RunStore } from "./store.ts";
@@ -256,6 +256,7 @@ export class Runner {
 
   profileStatuses(): AgentProfileStatus[] {
     const now = this.#opts.now();
+    const pathEnv = this.#host.env().PATH ?? "";
     return this.#host.profiles().map((profile) => {
       const s = this.store.profileStats(profile.id);
       const cd = this.#cooldownOf(profile);
@@ -268,6 +269,7 @@ export class Runner {
         cooldownUntil: resting?.until ?? null,
         cooldownReason: resting?.reason ?? null,
         cooldownFrom: resting?.from ?? null,
+        cliPath: resolveBin(expandHome(profile.bin), pathEnv),
       };
     });
   }
@@ -395,9 +397,16 @@ export class Runner {
   }
 
   #loads(): ProfileLoad[] {
+    const pathEnv = this.#host.env().PATH ?? "";
     return this.#host.profiles().map((profile) => {
       const s = this.store.profileStats(profile.id);
-      return { profile, running: s.running, lastUsedAt: s.lastUsedAt, cooldownUntil: this.#cooldownOf(profile)?.until ?? null };
+      return {
+        profile,
+        running: s.running,
+        lastUsedAt: s.lastUsedAt,
+        cooldownUntil: this.#cooldownOf(profile)?.until ?? null,
+        installed: resolveBin(expandHome(profile.bin), pathEnv) !== null,
+      };
     });
   }
 

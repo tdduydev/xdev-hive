@@ -6,8 +6,9 @@ import path from "node:path";
 
 let cached: string | null = null;
 
-export function agentPath(): string {
-  if (cached !== null) return cached;
+/** refresh: ask the shell again (after installing Node or a CLI that changed PATH). */
+export function agentPath(refresh = false): string {
+  if (cached !== null && !refresh) return cached;
   const parts = [path.join(os.homedir(), ".local", "bin"), loginShellPath(), process.env.PATH]
     .filter((p): p is string => !!p)
     .flatMap((p) => p.split(path.delimiter));

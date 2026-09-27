@@ -9,10 +9,11 @@ import { MachinesPage } from "./pages/Machines.tsx";
 import { MemoryPage } from "./pages/Memory.tsx";
 import { ProjectsPage } from "./pages/Projects.tsx";
 import { ProposalsPage } from "./pages/Proposals.tsx";
+import { SetupPage } from "./pages/Setup.tsx";
 import { TasksPage } from "./pages/Tasks.tsx";
 import { TokensPage } from "./pages/Tokens.tsx";
 
-type PageId = "board" | "docs" | "proposals" | "memory" | "tasks" | "agents" | "machines" | "tokens" | "projects";
+type PageId = "board" | "docs" | "proposals" | "memory" | "tasks" | "agents" | "machines" | "tokens" | "setup" | "projects";
 
 const PAGES: Record<PageId, { label: string; render: () => ReactNode }> = {
   board: { label: "Board", render: () => <BoardPage /> },
@@ -23,6 +24,7 @@ const PAGES: Record<PageId, { label: string; render: () => ReactNode }> = {
   tasks: { label: "Task", render: () => <TasksPage /> },
   machines: { label: "Máy & run", render: () => <MachinesPage /> },
   tokens: { label: "Token", render: () => <TokensPage /> },
+  setup: { label: "Cài đặt máy", render: () => <SetupPage /> },
   projects: { label: "Dự án & cài đặt", render: () => <ProjectsPage /> },
 };
 
@@ -38,6 +40,8 @@ export function HiveApp({ client, onSignOut }: { client: HiveClient; onSignOut?:
   const [tick, setTick] = useState(0);
   const bump = useCallback(() => setTick((t) => t + 1), []);
   const pending = useQuery(() => client.call("proposals.list", { status: "pending" }), [client, tick, page]);
+  // Checked when the app opens (and after leaving the setup page), so the sidebar shows what is missing.
+  const setup = useQuery(async () => (client.desktop ? client.desktop.setupStatus() : null), [client, page === "setup"]);
 
   useEffect(() => {
     const onHash = () => setPage(readHash() ?? home);
@@ -50,7 +54,7 @@ export function HiveApp({ client, onSignOut }: { client: HiveClient; onSignOut?:
     // Machines only report to a hub; a local database never has any.
     if (me.data?.mode === "hub") ids.push("machines");
     if (client.tokens && me.data?.role === "admin") ids.push("tokens");
-    if (client.desktop) ids.push("projects");
+    if (client.desktop) ids.push("setup", "projects");
     return ids;
   }, [client, me.data?.role, me.data?.mode]);
 
@@ -70,6 +74,7 @@ export function HiveApp({ client, onSignOut }: { client: HiveClient; onSignOut?:
 
   const current = nav.includes(page) ? page : home;
   const pendingCount = pending.data?.length ?? 0;
+  const setupCount = setup.data ? [...setup.data.machine, ...setup.data.projects.flatMap((p) => p.items)].filter((i) => i.state !== "installed").length : 0;
 
   return (
     <HiveContext.Provider value={{ client, me: me.data, bump }}>
@@ -89,6 +94,7 @@ export function HiveApp({ client, onSignOut }: { client: HiveClient; onSignOut?:
               >
                 <span className="grow">{PAGES[id].label}</span>
                 {id === "proposals" && pendingCount > 0 ? <span className="count">{pendingCount}</span> : null}
+                {id === "setup" && setupCount > 0 ? <span className="count">{setupCount}</span> : null}
               </a>
             ))}
           </nav>

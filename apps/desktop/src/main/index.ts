@@ -10,6 +10,7 @@ import {
   isMethod,
   PROJECT_NAME,
   toErrorPayload,
+  transferHive,
   type Actor,
   type AgentProfile,
   type AgentRun,
@@ -21,6 +22,8 @@ import {
   type Me,
   type ProfileCheck,
   type StartRunRequest,
+  type TransferReport,
+  type TransferSide,
 } from "@xdev-hive/core";
 import {
   configPath,
@@ -32,6 +35,7 @@ import {
   resolveBackend,
   runnerSettingsSchema,
   saveConfig,
+  SqliteHive,
   type HiveConfig,
 } from "@xdev-hive/core/node";
 import { GitLabClient } from "./gitlab/client.ts";
@@ -40,6 +44,7 @@ import { installAgents, installShim } from "./installer.ts";
 import { expandEnv, expandHome, resolveBin } from "./runner/command.ts";
 import { Runner, type RunnerEvent } from "./runner/runner.ts";
 import { agentPath } from "./runner/shell-path.ts";
+import { Setup } from "./setup.ts";
 import { syncProject } from "./sync.ts";
 
 app.setName("xDev Hive");
@@ -52,6 +57,7 @@ let win: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let runner: Runner;
 let mergeRequester: MergeRequester;
+let setup: Setup;
 // Electron's network stack: honours system proxy settings and the macOS keychain's certificates.
 const gitlabFetch = (url: string, init: RequestInit) => net.fetch(url, init);
 let quitting = false;
@@ -219,6 +225,29 @@ async function createMergeRequest(runId: string): Promise<AgentRun> {
   }
 }
 
+// ── shared data between this machine and the hub ────────────────────────────
+
+/** push: local database → hub (a differing doc becomes a proposal) · pull: hub → local database (a new version). */
+async function transferHub(direction: unknown): Promise<TransferReport> {
+  if (direction !== "push" && direction !== "pull") throw new HiveError("bad_request", "direction: push | pull");
+  if (!config.hub.url || !config.hub.token) throw new HiveError("bad_request", "Chưa có URL và token hub: điền ở Nguồn dữ liệu rồi bấm Lưu.");
+  const hub = backend instanceof HubBackend ? backend : new HubBackend(config.hub.url, config.hub.token);
+  try {
+    await hub.me("hive-transfer");
+  } catch (err) {
+    throw new HiveError("bad_request", `Không kết nối được hub: ${toErrorPayload(err).message}`);
+  }
+  const local = backend instanceof SqliteHive ? backend : new SqliteHive(localDbPath(config), { memoryRequiresApproval: config.memoryRequiresApproval });
+  try {
+    const localSide: TransferSide = { backend: local, actor: { name: `hive-transfer@${os.userInfo().username}`, role: "admin" }, label: `máy ${config.machine}` };
+    // The hub decides the role from the token; the name is only the label on what gets written.
+    const hubSide: TransferSide = { backend: hub, actor: { name: "hive-transfer", role: "admin" }, label: "hub" };
+    return direction === "push" ? await transferHive(localSide, hubSide) : await transferHive(hubSide, localSide, { newVersions: true });
+  } finally {
+    if (local !== backend) local.close();
+  }
+}
+
 function knownPath(p: string): boolean {
   return config.projects.some((x) => x.repo === p) || runner.store.list({ limit: 500 }).some((r) => r.worktree === p);
 }
@@ -285,7 +314,10 @@ function registerIpc(): void {
   });
   handle("desktop:syncProject", (name: string) => syncProject(backend, actor(), project(name), { autoCommit: config.sync.autoCommit }));
   handle("desktop:installAgents", (name: string) => installAgents(project(name).repo, name));
-  handle("desktop:installShim", () => installShim({ electronPath: process.execPath, entry: mcpEntry() }));
+  handle("desktop:installShim", () => installShim({ electronPath: process.execPath, entry: mcpEntry() }, agentPath()));
+  handle("desktop:setupStatus", () => setup.status());
+  handle("desktop:installSetup", (id: unknown) => setup.install(String(id)));
+  handle("desktop:transferHub", transferHub);
   handle("desktop:showInFolder", async (p: string) => {
     if (!knownPath(p)) throw new HiveError("forbidden", "Chỉ mở được thư mục dự án hoặc worktree của run.");
     await shell.openPath(p);
@@ -454,6 +486,12 @@ if (!app.requestSingleInstanceLock()) {
         afterFinish: (run) => mergeRequester.afterFinish(run),
       },
     );
+    setup = new Setup({
+      pathEnv: (refresh) => agentPath(refresh),
+      env: agentEnv,
+      projects: () => config.projects,
+      shim: { electronPath: process.execPath, entry: mcpEntry() },
+    });
     runner.start();
     if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(appIcon());
     registerIpc();

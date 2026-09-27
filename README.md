@@ -36,7 +36,7 @@ Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ v�
 
 ```bash
 nvm use && npm install
-npm test            # 74 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
+npm test            # 86 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
 npm run typecheck
 ```
 
@@ -61,14 +61,17 @@ Icon: `npm run icons -w @xdev-hive/desktop` (chỉ chạy trên macOS, vì dùng
 ## Nối một repo với Hive (trên app desktop)
 
 1. **Dự án & cài đặt** → thêm repo (project key, ví dụ `xdev-ai-studio`).
-2. **Cài lệnh hive-mcp**: tạo `~/.local/bin/hive-mcp` (chạy MCP bằng chính binary của app). `~/.local/bin` phải nằm trong `PATH` của shell.
-3. **Cài vào agents** ghi các file sau (merge, không ghi đè cấu hình sẵn có):
+2. **Cài đặt máy**: trang này tự kiểm tra khi mở app, và sidebar hiện số mục chưa sẵn sàng. Mục nào còn thiếu thì có nút cài riêng:
+   - **CLI của agent** (Claude Code, Codex, Gemini): tìm theo `PATH` của login shell và hiện phiên bản. Nút *Cài bằng npm* chạy `npm install -g @anthropic-ai/claude-code` / `@openai/codex` / `@google/gemini-cli`, nên máy cần có Node.js. Profile nào chưa có CLI thì hiện "Chưa có lệnh …", và runner bỏ qua gói đó thay vì chạy thử rồi lỗi.
+   - **Lệnh hive-mcp**: `~/.local/bin/hive-mcp` chạy MCP bằng chính binary của app. App báo *Cần cập nhật* nếu lệnh đang trỏ tới bản app khác (ví dụ bản dev), và báo *Cần sửa tay* nếu `~/.local/bin` chưa nằm trong `PATH` hoặc đã có file trùng tên không do Hive tạo.
+   - **Theo từng repo**: cấu hình agent của Hive (bước 3), codegraph trong `.mcp.json`, index codegraph (`.codegraph/`, lệnh này tắt telemetry trước khi tạo index), và superpowers trong `.claude/settings.json`.
+3. **Cấu hình agent** ghi các file sau (merge, không ghi đè cấu hình sẵn có; nếu dữ liệu giống nhau thì giữ nguyên định dạng file):
    - `.mcp.json` (Claude Code), `.gemini/settings.json` (Gemini: `contextFileName: ["AGENTS.md"]`), `~/.codex/config.toml` (block có marker)
    - `.claude/settings.json` + `.xdev-hive/guard-docs.sh` (hook chặn sửa tài liệu)
    - `.githooks/pre-commit` + `git config core.hooksPath .githooks`
 4. **Đồng bộ tài liệu**: lần đầu nhập `AGENTS.md` / `docs/decisions.md` sẵn có vào Hive, sau đó render lại và commit.
 
-`core.hooksPath` là cấu hình local của git: mỗi người clone repo cần bấm "Cài vào agents" một lần, hoặc chạy `git config core.hooksPath .githooks`.
+`core.hooksPath` là cấu hình local của git: mỗi người clone repo cần bấm cài *Cấu hình agent* một lần trong *Cài đặt máy*, hoặc chạy `git config core.hooksPath .githooks`.
 
 ## Board: chạy agent và xoay vòng quota
 
@@ -153,6 +156,19 @@ npm run token -w @xdev-hive/web -- create duy admin
 - **Nâng cấp**: `git pull && docker compose -f deploy/compose.yaml up -d --build`. Hub tự backup trước khi chạy migration mới.
 
 Máy của từng người: app desktop → chế độ **Hub dùng chung** → URL + token (vai trò `agent` hoặc `admin`). Shim `hive-mcp` tự chuyển tiếp lên hub, nên config MCP trong repo giống nhau cho mọi người và không chứa token.
+
+### Chuyển dữ liệu giữa máy và hub
+
+Ở chế độ hub, app và agent đọc, ghi thẳng lên hub nên không cần đồng bộ. Dữ liệu đã có trong `~/.xdev-hive/local.db` (từ lúc dùng chế độ cục bộ) thì chuyển bằng hai nút ở *Dự án & cài đặt* → **Dữ liệu dùng chung với hub**. Hai nút này cần URL và token hub đã lưu, dù app đang ở chế độ nào:
+
+| | Đẩy dữ liệu máy lên hub | Tải dữ liệu hub về máy |
+|---|---|---|
+| Tài liệu chưa có ở đích | thêm (token `agent`: thành đề xuất) | thêm |
+| Tài liệu khác nhau | **đề xuất** chờ admin duyệt, không ghi đè | ghi thành **version mới**, bản cũ vẫn trong lịch sử |
+| Memory | chỉ memory đã duyệt; trùng project + loại + nội dung thì bỏ qua | như bên trái |
+| Task | chỉ id chưa có (cần token `admin`); task đang làm thành *Chưa làm*, không kèm lease | như bên trái |
+
+Không chuyển: lịch sử version, đề xuất, memory chưa duyệt, và tài liệu mặc định (`org/*` lúc tạo database) chưa ai sửa. Chạy lại nhiều lần cũng không tạo bản trùng. Mỗi lần chạy có báo cáo cho từng mục.
 
 Trên hub, agent giữ task với tên `<gói>.<máy>@<token>`, ví dụ `claude-1.duy-mbp@duy`. Nhờ vậy hai máy dùng chung một token không nhận trùng task. Tên máy (`machine` trong `config.json`) lấy theo hostname, và app desktop ghi cố định vào file ở lần mở đầu tiên. Nếu hai máy trùng hostname thì phải sửa tay để chúng khác nhau.
 

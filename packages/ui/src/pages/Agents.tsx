@@ -84,12 +84,13 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
   const action = useAction();
   const [check, setCheck] = useState<ProfileCheck | null>(null);
   const resting = p.cooldownUntil !== null;
-  const { cooldownUntil: _c, cooldownReason: _r, cooldownFrom: _f, running: _n, lastUsedAt: _l, stats: _s, ...plain } = p;
+  const { cooldownUntil: _c, cooldownReason: _r, cooldownFrom: _f, cliPath: _p, running: _n, lastUsedAt: _l, stats: _s, ...plain } = p;
+  const noCli = p.enabled && p.cliPath === null;
 
   return (
     <article className={`card profile-card ${p.enabled ? "" : "disabled"}`}>
       <div className="row gap-s">
-        <span className={`dot dot-${!p.enabled ? "neutral" : resting ? "warn" : p.running ? "info" : "ok"}`} />
+        <span className={`dot dot-${!p.enabled ? "neutral" : noCli ? "danger" : resting ? "warn" : p.running ? "info" : "ok"}`} />
         <b className="grow ellipsis">{p.label}</b>
         <Badge tone="accent">{KIND_LABEL[p.kind]}</Badge>
       </div>
@@ -100,6 +101,10 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
       <div className="small">
         {!p.enabled ? (
           <span className="muted">Đang tắt</span>
+        ) : noCli ? (
+          <span className="tone-danger">
+            Chưa có lệnh <code>{p.bin}</code> trên máy này. Cài ở <a href="#/setup">Cài đặt máy</a>, runner sẽ bỏ qua gói này khi chưa có.
+          </span>
         ) : resting ? (
           <span className="tone-warn">
             Nghỉ đến {formatTime(p.cooldownUntil)}

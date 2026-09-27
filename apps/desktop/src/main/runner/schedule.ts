@@ -6,6 +6,8 @@ export interface ProfileLoad {
   running: number;
   cooldownUntil: string | null;
   lastUsedAt: string | null;
+  /** false when the profile's CLI is not on this machine's PATH (default true). */
+  installed?: boolean;
 }
 
 export interface RunNeeds {
@@ -18,6 +20,7 @@ export interface RunNeeds {
 export function isAvailable(p: ProfileLoad, now: Date): boolean {
   return (
     p.profile.enabled &&
+    p.installed !== false &&
     p.running < p.profile.maxConcurrent &&
     (p.cooldownUntil === null || new Date(p.cooldownUntil) <= now)
   );
@@ -26,7 +29,7 @@ export function isAvailable(p: ProfileLoad, now: Date): boolean {
 /**
  * Rules, in order:
  * 1. A pinned profile waits for that profile only.
- * 2. Skip disabled, busy, cooling-down, excluded (already failed this run) and role-mismatched profiles.
+ * 2. Skip disabled, not installed, busy, cooling-down, excluded (already failed this run) and role-mismatched profiles.
  * 3. Prefer kinds not in avoidKinds (cross-review uses a different vendor than the implementer).
  * 4. Lower priority number first, then least recently used, which rotates equal-priority subscriptions.
  */
@@ -59,8 +62,12 @@ export function waitingReason(loads: ProfileLoad[], needs: RunNeeds, now: Date):
       !needs.excludedProfiles.includes(l.profile.id),
   );
   if (!eligible.length) return "Không có profile nào phù hợp (đã tắt, sai vai trò hoặc đã thử hết)";
-  const resting = eligible.filter((l) => l.cooldownUntil && new Date(l.cooldownUntil) > now);
-  if (resting.length === eligible.length) {
+  const installed = eligible.filter((l) => l.installed !== false);
+  if (!installed.length) {
+    return `Máy này chưa cài CLI cho gói phù hợp (${eligible.map((l) => l.profile.bin).join(", ")}): cài ở Cài đặt máy`;
+  }
+  const resting = installed.filter((l) => l.cooldownUntil && new Date(l.cooldownUntil) > now);
+  if (resting.length === installed.length) {
     const next = resting.map((l) => l.cooldownUntil!).sort()[0]!;
     return `Mọi gói đang nghỉ vì quota, sớm nhất ${next}`;
   }
