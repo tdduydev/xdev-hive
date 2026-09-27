@@ -40,6 +40,7 @@ import { AccountMenu, ChangePasswordScreen } from "./components/Account.tsx";
 import { ErrorNote, HiveLogo } from "./components/common.tsx";
 import { ScopeSwitcher } from "./components/ScopeSwitcher.tsx";
 import { HiveContext, useProjectList, useQuery } from "./hooks.ts";
+import { useT, type MessageKey } from "./i18n/index.tsx";
 import { readScope, writeScope, type Scope } from "./lib/scope.ts";
 import { useSystemTheme } from "./lib/theme.ts";
 import { AdminPage } from "./pages/Admin.tsx";
@@ -72,26 +73,26 @@ type PageId =
   | "projects";
 type Icon = ComponentType<{ className?: string }>;
 
-const PAGES: Record<PageId, { label: string; icon: Icon; render: () => ReactNode }> = {
-  overview: { label: "Tổng quan", icon: LayoutGrid, render: () => <OverviewPage /> },
-  board: { label: "Board", icon: LayoutDashboard, render: () => <BoardPage /> },
-  docs: { label: "Tài liệu", icon: FileText, render: () => <DocsPage /> },
-  proposals: { label: "Đề xuất", icon: GitPullRequestArrow, render: () => <ProposalsPage /> },
-  memory: { label: "Memory", icon: Sparkles, render: () => <MemoryPage /> },
-  tasks: { label: "Task", icon: ListTodo, render: () => <TasksPage /> },
-  agents: { label: "Gói sub & agent", icon: Bot, render: () => <AgentsPage /> },
-  machines: { label: "Máy & run", icon: Server, render: () => <MachinesPage /> },
-  setup: { label: "Cài đặt máy", icon: Wrench, render: () => <SetupPage /> },
-  admin: { label: "Quản trị", icon: ShieldCheck, render: () => <AdminPage /> },
-  users: { label: "Người dùng & quyền", icon: UsersRound, render: () => <UsersPage /> },
-  tokens: { label: "Token", icon: KeyRound, render: () => <TokensPage /> },
-  projects: { label: "Dự án & cài đặt", icon: FolderGit2, render: () => <ProjectsPage /> },
+const PAGES: Record<PageId, { label: MessageKey; icon: Icon; render: () => ReactNode }> = {
+  overview: { label: "nav.overview", icon: LayoutGrid, render: () => <OverviewPage /> },
+  board: { label: "nav.board", icon: LayoutDashboard, render: () => <BoardPage /> },
+  docs: { label: "nav.docs", icon: FileText, render: () => <DocsPage /> },
+  proposals: { label: "nav.proposals", icon: GitPullRequestArrow, render: () => <ProposalsPage /> },
+  memory: { label: "nav.memory", icon: Sparkles, render: () => <MemoryPage /> },
+  tasks: { label: "nav.tasks", icon: ListTodo, render: () => <TasksPage /> },
+  agents: { label: "nav.agents", icon: Bot, render: () => <AgentsPage /> },
+  machines: { label: "nav.machines", icon: Server, render: () => <MachinesPage /> },
+  setup: { label: "nav.setup", icon: Wrench, render: () => <SetupPage /> },
+  admin: { label: "nav.admin", icon: ShieldCheck, render: () => <AdminPage /> },
+  users: { label: "nav.users", icon: UsersRound, render: () => <UsersPage /> },
+  tokens: { label: "nav.tokens", icon: KeyRound, render: () => <TokensPage /> },
+  projects: { label: "nav.projects", icon: FolderGit2, render: () => <ProjectsPage /> },
 };
 
-const GROUPS: Array<{ label: string; ids: PageId[] }> = [
-  { label: "Làm việc", ids: ["overview", "board", "docs", "proposals", "memory", "tasks"] },
-  { label: "Agent & máy", ids: ["agents", "machines", "setup"] },
-  { label: "Quản trị", ids: ["admin", "users", "tokens", "projects"] },
+const GROUPS: Array<{ label: MessageKey; ids: PageId[] }> = [
+  { label: "nav.groupWork", ids: ["overview", "board", "docs", "proposals", "memory", "tasks"] },
+  { label: "nav.groupAgents", ids: ["agents", "machines", "setup"] },
+  { label: "nav.groupAdmin", ids: ["admin", "users", "tokens", "projects"] },
 ];
 
 function readHash(): PageId | null {
@@ -124,6 +125,7 @@ function Centered({ children }: { children: ReactNode }) {
 
 export function HiveApp({ client, onSignOut }: { client: HiveClient; onSignOut?: () => void }) {
   useSystemTheme();
+  const t = useT();
   const me = useQuery(() => client.me(), [client]);
   if (me.error) {
     return (
@@ -131,13 +133,13 @@ export function HiveApp({ client, onSignOut }: { client: HiveClient; onSignOut?:
         <ErrorNote error={me.error} />
         {onSignOut ? (
           <Button variant="outline" onClick={onSignOut}>
-            Đăng nhập lại
+            {t("app.signInAgain")}
           </Button>
         ) : null}
       </Centered>
     );
   }
-  if (!me.data) return <Centered>Đang kết nối…</Centered>;
+  if (!me.data) return <Centered>{t("app.connecting")}</Centered>;
   if (me.data.user?.mustChangePassword && client.account) {
     return <ChangePasswordScreen client={client} me={me.data} onSignOut={onSignOut} onDone={me.reload} />;
   }
@@ -146,6 +148,7 @@ export function HiveApp({ client, onSignOut }: { client: HiveClient; onSignOut?:
 
 /** The signed-in app: nothing here loads until the hub accepted the session (and its password is not temporary). */
 function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOut?: () => void }) {
+  const t = useT();
   const home: PageId = "overview";
   const [page, setPage] = useState<PageId>(() => readHash() ?? home);
   const [tick, setTick] = useState(0);
@@ -214,11 +217,12 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
                 if (!ids.length) return null;
                 return (
                   <SidebarGroup key={g.label}>
-                    <SidebarGroupLabel>{g.label}</SidebarGroupLabel>
+                    <SidebarGroupLabel>{t(g.label)}</SidebarGroupLabel>
                     <SidebarGroupContent>
                       <SidebarMenu>
                         {ids.map((id) => {
-                          const { label, icon: Icon } = PAGES[id];
+                          const { icon: Icon } = PAGES[id];
+                          const label = t(PAGES[id].label);
                           const count = counts[id] ?? 0;
                           return (
                             <SidebarMenuItem key={id}>
@@ -243,7 +247,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
             </SidebarFooter>
           </Sidebar>
           <SidebarInset className="min-w-0">
-            <TopBar title={PAGES[current].label} desktop={desktop} />
+            <TopBar title={t(PAGES[current].label)} desktop={desktop} />
             <main className="min-w-0 flex-1">{PAGES[current].render()}</main>
           </SidebarInset>
         </SidebarProvider>

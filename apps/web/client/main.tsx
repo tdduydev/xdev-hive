@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { createHttpClient, HiveApp, Login, signIn, signOut } from "@xdev-hive/ui";
+import { createHttpClient, HiveApp, I18nProvider, Login, signIn, signOut, useT, type MessageKey } from "@xdev-hive/ui";
 import "@xdev-hive/ui/globals.css";
 
 // People sign in with username + password (HttpOnly session cookie). An API token pasted at sign-in
@@ -22,9 +22,11 @@ const writeToken = (token: string | null) => {
   }
 };
 
-type Session = { kind: "checking" } | { kind: "out"; error?: string } | { kind: "cookie" } | { kind: "token"; token: string };
+// Errors are kept as message keys so they follow a language change on the sign-in page.
+type Session = { kind: "checking" } | { kind: "out"; error?: MessageKey } | { kind: "cookie" } | { kind: "token"; token: string };
 
 function Root() {
+  const t = useT();
   const [session, setSession] = useState<Session>(() => {
     const token = readToken();
     return token ? { kind: "token", token } : { kind: "checking" };
@@ -48,7 +50,7 @@ function Root() {
   const client = useMemo(() => {
     if (session.kind === "cookie") {
       return createHttpClient({
-        onUnauthorized: () => setSession({ kind: "out", error: "Phiên đăng nhập đã hết hạn hoặc tài khoản đã bị khoá." }),
+        onUnauthorized: () => setSession({ kind: "out", error: "login.sessionExpired" }),
       });
     }
     if (session.kind === "token") {
@@ -56,7 +58,7 @@ function Root() {
         token: session.token,
         onUnauthorized: () => {
           writeToken(null);
-          setSession({ kind: "out", error: "Token không hợp lệ hoặc đã bị thu hồi." });
+          setSession({ kind: "out", error: "login.tokenInvalid" });
         },
       });
     }
@@ -67,7 +69,7 @@ function Root() {
   if (!client) {
     return (
       <Login
-        error={session.kind === "out" ? session.error : null}
+        error={session.kind === "out" && session.error ? t(session.error) : null}
         onPassword={async (username, password) => {
           await signIn(username, password);
           setSession({ kind: "cookie" });
@@ -94,6 +96,8 @@ function Root() {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <Root />
+    <I18nProvider>
+      <Root />
+    </I18nProvider>
   </StrictMode>,
 );

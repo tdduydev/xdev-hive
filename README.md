@@ -238,7 +238,20 @@ Repo có sẵn cấu hình cho ba công cụ. Mỗi công cụ cần mỗi ngư�
 
 Cấu hình này chỉ áp dụng cho Claude Code. Codex và Gemini dùng được codegraph qua `codegraph install` (lệnh này ghi vào cấu hình toàn cục của từng agent trên máy).
 
+## Ngôn ngữ giao diện
+
+Web hub và app desktop có tiếng Việt (mặc định) và tiếng Anh. Chọn ở trang đăng nhập hoặc menu tài khoản → *Ngôn ngữ*; lựa chọn lưu trên trình duyệt/máy đó.
+
+Chuỗi giao diện nằm ở [`packages/ui/src/i18n`](packages/ui/src/i18n): `locales/vi.ts` là nguồn (mọi key), các ngôn ngữ khác phải dịch đủ key (TypeScript báo thiếu, `npm test` kiểm thêm placeholder). Thêm một ngôn ngữ:
+
+1. Chép `locales/en.ts` thành `locales/<mã>.ts` và dịch.
+2. Thêm một dòng vào `LOCALES` trong `translate.ts` (tên hiển thị, mã `Intl`, file dịch).
+
+Chuỗi số nhiều viết `{ one: "…", other: "…" }` (thêm `zero`/`two`/`few`/`many` nếu ngôn ngữ cần). Trong component: `const t = useT(); t("nav.docs")`, `t("password.tooShort", { min: 10 })`. Các trang còn lại đang được chuyển dần (xem [docs/roadmap.md](docs/roadmap.md)).
+
 ## Việc tiếp theo
+
+Danh sách chi tiết và tiến độ: [docs/roadmap.md](docs/roadmap.md).
 
 - Đăng nhập GitLab OAuth (SSO) bên cạnh mật khẩu.
 - Postgres (+ pgvector) khi team lớn hoặc cần tìm kiếm theo ngữ nghĩa.

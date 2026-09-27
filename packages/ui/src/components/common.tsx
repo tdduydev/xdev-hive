@@ -4,6 +4,7 @@ import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
 import { Alert, AlertDescription, AlertTitle } from "@xdev-hive/ui/components/ui/alert";
 import { Badge as UiBadge } from "@xdev-hive/ui/components/ui/badge";
+import { useT } from "../i18n/index.tsx";
 
 /** Status colours: tinted backgrounds with the matching text, readable in light and dark. */
 const TONE: Record<string, string> = {
@@ -31,9 +32,10 @@ export function ErrorNote({ error }: { error: string | null | undefined }) {
 
 /** Who an item belongs to: "Chung" (every project, owner null) or the project key. */
 export function OwnerBadge({ owner, className }: { owner: string | null; className?: string }) {
+  const t = useT();
   return owner === null ? (
     <Badge tone="accent" className={className}>
-      Chung
+      {t("common.shared")}
     </Badge>
   ) : (
     <UiBadge variant="outline" className={cn("font-mono font-normal text-muted-foreground", className)}>
