@@ -73,6 +73,8 @@ const resource = (...p: string[]) =>
   app.isPackaged ? path.join(process.resourcesPath, ...p) : path.join(app.getAppPath(), ...p);
 const mcpEntry = () => (app.isPackaged ? resource("mcp", "hive-mcp.mjs") : resource("out", "mcp", "hive-mcp.mjs"));
 const trayIcon = () => (app.isPackaged ? resource("icons", "trayTemplate.png") : resource("resources", "trayTemplate.png"));
+/** Window icon on Windows/Linux and the Dock icon in dev; packaged macOS builds use build/icon.icns. */
+const appIcon = () => (app.isPackaged ? resource("icons", "icon.png") : resource("resources", "icon.png"));
 
 function settings(): DesktopSettings {
   return {
@@ -315,6 +317,7 @@ function createWindow(): void {
     show: false,
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: { x: 14, y: 14 },
+    ...(process.platform === "darwin" ? {} : { icon: appIcon() }),
     webPreferences: {
       preload: path.join(import.meta.dirname, "../preload/index.cjs"),
       contextIsolation: true,
@@ -452,6 +455,7 @@ if (!app.requestSingleInstanceLock()) {
       },
     );
     runner.start();
+    if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(appIcon());
     registerIpc();
     createWindow();
     if (!smokeShot) createTray();

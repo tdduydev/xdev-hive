@@ -56,6 +56,8 @@ npm run smoke -w @xdev-hive/desktop              # app + config tạm + agent gi
 npm run dist -w @xdev-hive/desktop               # .dmg/.zip (macOS), cần ký để phân phối
 ```
 
+Icon: `npm run icons -w @xdev-hive/desktop` (chỉ chạy trên macOS, vì dùng `swift` và `iconutil`) sinh toàn bộ icon từ cùng một hình học với `HiveLogo`. Kết quả gồm `build/icon.icns` / `icon.ico` / `icon.png` cho electron-builder, `resources/icon.png` (icon cửa sổ Windows/Linux và Dock khi chạy dev), `favicon.svg` và `apple-touch-icon.png` cho hub. Các file này được commit sẵn. Muốn đổi hình hay màu thì sửa `scripts/icons.mjs` rồi chạy lại.
+
 ## Nối một repo với Hive (trên app desktop)
 
 1. **Dự án & cài đặt** → thêm repo (project key, ví dụ `xdev-ai-studio`).
@@ -177,4 +179,4 @@ Agent không có app desktop (CI, cloud) gọi thẳng MCP qua HTTP: `POST https
 - Postgres (+ pgvector) khi team lớn hoặc cần tìm kiếm theo ngữ nghĩa.
 - Đọc quota còn lại chủ động (nếu CLI có lệnh báo usage) thay vì chỉ phản ứng khi đã hết.
 - Theo dõi trạng thái MR (pipeline, merged) để tự chuyển task sang *Xong*.
-- Icon app, ký và notarize bản macOS.
+- Ký và notarize bản macOS (cần chứng chỉ Developer ID).
