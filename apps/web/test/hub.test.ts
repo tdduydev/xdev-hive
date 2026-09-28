@@ -150,6 +150,31 @@ describe("hub as a backend", () => {
     assert.equal((await other.call("tasks.list", { project: "transfer" }, me))[0]?.title, "Chuyển dữ liệu");
   });
 
+  it("records where each write came from, and decides the channel itself", async () => {
+    const source = { via: "mcp" as const, machine: "duy-mbp", run: "R-1fa9e2", task: "T-9" };
+    const hub = new HubBackend(base, tok.agent);
+    const m = await hub.call("memory.write", { project: "app", kind: "gotcha", content: "Seed data lives in db/seed" }, { name: "claude-1.duy-mbp", role: "agent", source });
+    assert.deepEqual(m.source, source);
+    assert.equal(m.taskId, "T-9");
+
+    const res = await fetch(`${base}/api/rpc`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${tok.agent}`, "x-hive-source": JSON.stringify({ via: "web", machine: "duy-mbp" }) },
+      body: JSON.stringify({ method: "memory.write", input: { project: "app", kind: "context", content: "Claims to be the web page" } }),
+    });
+    assert.deepEqual(((await res.json()) as { result: { source: unknown } }).result.source, { via: "api", machine: "duy-mbp" });
+
+    const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`), {
+      requestInit: { headers: { authorization: `Bearer ${tok.agent}`, "x-hive-agent": "cursor", "x-hive-source": JSON.stringify({ via: "desktop", machine: "lan-pc" }) } },
+    });
+    const client = new Client({ name: "test", version: "0" });
+    await client.connect(transport);
+    const out = await client.callTool({ name: "memory_write", arguments: { project: "app", kind: "context", content: "Written over MCP HTTP" } });
+    await client.close();
+    const written = JSON.parse((out.content as Array<{ text: string }>)[0]!.text) as { source: unknown };
+    assert.deepEqual(written.source, { via: "mcp", machine: "lan-pc" });
+  });
+
   it("speaks MCP over Streamable HTTP", async () => {
     const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`), {
       requestInit: { headers: { authorization: `Bearer ${tok.agent}`, "x-hive-agent": "cursor" } },

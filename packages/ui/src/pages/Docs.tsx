@@ -13,7 +13,7 @@ import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Diff } from "../components/Diff.tsx";
 import { HiddenChars } from "../components/HiddenChars.tsx";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader } from "../components/common.tsx";
-import { errorMessage, formatTime, useAction, useCan, useHive, useQuery } from "../hooks.ts";
+import { errorMessage, formatTime, sourceText, useAction, useCan, useHive, useQuery } from "../hooks.ts";
 import { useT, type TFunction } from "../i18n/index.tsx";
 import { docOwner, inScope, projectScope, scopeLabel, scopeProject, type Scope } from "../lib/scope.ts";
 
@@ -474,6 +474,7 @@ function History({ docKey, version }: { docKey: string; version: number }) {
               <span className="min-w-0 flex-1 break-words">{v.note || <span className="text-muted-foreground">{t("docs.noNote")}</span>}</span>
               <span className="text-xs text-muted-foreground">
                 {v.author} · {formatTime(v.createdAt)}
+                {sourceText(v.source)}
               </span>
             </button>
             {open === v.version ? <Diff before={prev?.content ?? ""} after={v.content} /> : null}

@@ -73,7 +73,7 @@ export interface BuiltCommand {
 
 export function buildCommand(
   profile: AgentProfile,
-  vars: { prompt: string; worktree: string; task: string; project: string; branch: string },
+  vars: { prompt: string; worktree: string; task: string; project: string; branch: string; run?: string },
   features: RepoFeatures = NO_FEATURES,
 ): BuiltCommand {
   const usesPrompt = profile.args.some((a) => a.includes("{prompt}"));
@@ -85,7 +85,7 @@ export function buildCommand(
       .replaceAll("{project}", vars.project)
       .replaceAll("{branch}", vars.branch);
   const args = profile.args.map(fill);
-  if (profile.kind === "claude") args.push(...claudeRunArgs(profile.id, vars.project, features));
+  if (profile.kind === "claude") args.push(...claudeRunArgs(profile.id, vars, features));
   return { bin: expandHome(profile.bin), args, stdin: usesPrompt ? null : vars.prompt };
 }
 
@@ -94,7 +94,7 @@ export function buildCommand(
  * a hook one run commits would execute on the next. Runs load only the user's own settings, run no
  * hooks and get the MCP servers the app lists. Appended last because --mcp-config takes several values.
  */
-export function claudeRunArgs(agent: string, project: string, features: RepoFeatures): string[] {
+export function claudeRunArgs(agent: string, run: { project: string; task: string; run?: string }, features: RepoFeatures): string[] {
   const settings = { disableAllHooks: true, ...(features.superpowers ? { enabledPlugins: { [SUPERPOWERS_PLUGIN]: true } } : {}) };
   return [
     "--settings",
@@ -103,7 +103,7 @@ export function claudeRunArgs(agent: string, project: string, features: RepoFeat
     "user",
     "--strict-mcp-config",
     "--mcp-config",
-    JSON.stringify({ mcpServers: runMcpServers(agent, project, features) }),
+    JSON.stringify({ mcpServers: runMcpServers(agent, run.project, features, { task: run.task, id: run.run }) }),
   ];
 }
 

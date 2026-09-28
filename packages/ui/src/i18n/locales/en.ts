@@ -95,6 +95,11 @@ export const en: Catalog = {
     rejected: "Rejected",
     conflict: "Conflict",
   },
+  source: {
+    via: { web: "via web", desktop: "via desktop app", mcp: "via MCP", api: "via API" },
+    run: "run {id}",
+    task: "task {id}",
+  },
   memoryKind: {
     decision: "Decision",
     convention: "Convention",

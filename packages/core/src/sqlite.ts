@@ -16,6 +16,7 @@ import {
 } from "./methods.ts";
 import { assertNoHidden } from "./hidden.ts";
 import { assertNoSecret } from "./secrets.ts";
+import { parseSource, type WriteSource } from "./source.ts";
 import { SEED_DOCS } from "./seed.ts";
 import type {
   Actor,
@@ -100,6 +101,11 @@ const MIGRATIONS: string[] = [
   ALTER TABLE audit ADD COLUMN detail_key TEXT;
   ALTER TABLE audit ADD COLUMN detail_vars TEXT;
   `,
+  `
+  ALTER TABLE doc_versions ADD COLUMN source TEXT;
+  ALTER TABLE proposals ADD COLUMN source TEXT;
+  ALTER TABLE memory ADD COLUMN source TEXT;
+  `,
 ];
 
 /** A machine is online if it sent a heartbeat this recently (runners send one every 30 s). */
@@ -167,6 +173,8 @@ type Row = Record<string, unknown>;
 const str = (v: unknown) => v as string;
 const strOrNull = (v: unknown) => (v == null ? null : String(v));
 const num = (v: unknown) => Number(v);
+const sourceOf = (v: unknown): WriteSource | null => (v ? parseSource(JSON.parse(str(v))) : null);
+const sourceJson = (s: WriteSource | null | undefined) => (s ? JSON.stringify(s) : null);
 
 const toSummary = (r: Row): DocSummary => ({
   key: str(r.key),
@@ -185,6 +193,7 @@ const toVersion = (r: Row): DocVersion => ({
   content: str(r.content),
   author: str(r.author),
   note: str(r.note),
+  source: sourceOf(r.source),
   createdAt: str(r.created_at),
 });
 const toProposal = (r: Row): Proposal => ({
@@ -198,6 +207,7 @@ const toProposal = (r: Row): Proposal => ({
   reviewer: strOrNull(r.reviewer),
   reviewNote: strOrNull(r.review_note),
   decidedAt: strOrNull(r.decided_at),
+  source: sourceOf(r.source),
   createdAt: str(r.created_at),
 });
 /** Shared (team-wide) memory is stored with an empty project: no project key can be empty. */
@@ -210,6 +220,7 @@ const toMemory = (r: Row): Memory => ({
   author: str(r.author),
   taskId: strOrNull(r.task_id),
   status: str(r.status) as Memory["status"],
+  source: sourceOf(r.source),
   createdAt: str(r.created_at),
 });
 const toTask = (r: Row): Task => ({
@@ -443,6 +454,7 @@ export class SqliteHive implements HiveBackend {
     content: string,
     meta: { title?: string; includeInAgents?: boolean; note?: string },
     author: string,
+    source: WriteSource | null = null,
   ): Doc {
     const parsed = parseDocKey(key);
     assertNoSecret(content, "Document content");
@@ -464,8 +476,8 @@ export class SqliteHive implements HiveBackend {
       )
       .run(key, parsed.scope, parsed.project, title, content, version, include ? 1 : 0, author, now);
     this.db
-      .prepare("INSERT INTO doc_versions(key, version, content, author, note, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(key, version, content, author, meta.note ?? "", now);
+      .prepare("INSERT INTO doc_versions(key, version, content, author, note, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(key, version, content, author, meta.note ?? "", sourceJson(source), now);
     return this.#getDoc(key)!;
   }
 
@@ -553,7 +565,7 @@ export class SqliteHive implements HiveBackend {
               { key: "errors.docConflict", vars: { key: input.key, current, base: input.baseVersion } },
             );
           }
-          return this.#writeDoc(input.key, input.content, input, actor.name);
+          return this.#writeDoc(input.key, input.content, input, actor.name, actor.source);
         }),
 
       "proposals.list": ({ status, docKey }) =>
@@ -586,10 +598,10 @@ export class SqliteHive implements HiveBackend {
         }
         const res = db
           .prepare(
-            `INSERT INTO proposals(doc_key, base_version, content, reason, author, created_at)
-             VALUES (?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO proposals(doc_key, base_version, content, reason, author, source, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
           )
-          .run(input.docKey, input.baseVersion, input.content, input.reason, actor.name, this.#now());
+          .run(input.docKey, input.baseVersion, input.content, input.reason, actor.name, sourceJson(actor.source), this.#now());
         return this.#getProposal(num(res.lastInsertRowid));
       },
 
@@ -605,7 +617,8 @@ export class SqliteHive implements HiveBackend {
           if (current !== p.baseVersion) {
             decide("conflict", `Doc moved from v${p.baseVersion} to v${current} before approval.`);
           } else {
-            this.#writeDoc(p.docKey, p.content, { note: `#${id}: ${p.reason}` }, `${p.author} (approved by ${actor.name})`);
+            // The version keeps where the proposed text came from; the audit log has who approved it.
+            this.#writeDoc(p.docKey, p.content, { note: `#${id}: ${p.reason}` }, `${p.author} (approved by ${actor.name})`, p.source);
             decide("approved", null);
           }
           return this.#getProposal(id);
@@ -661,9 +674,18 @@ export class SqliteHive implements HiveBackend {
         const status = this.#opts.memoryRequiresApproval && !can(actor, owner, "manage") ? "pending" : "approved";
         const res = db
           .prepare(
-            "INSERT INTO memory(project, kind, content, author, task_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO memory(project, kind, content, author, task_id, status, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
           )
-          .run(input.shared ? SHARED : input.project!, input.kind, input.content, actor.name, input.taskId ?? null, status, this.#now());
+          .run(
+            input.shared ? SHARED : input.project!,
+            input.kind,
+            input.content,
+            actor.name,
+            input.taskId ?? actor.source?.task ?? null,
+            status,
+            sourceJson(actor.source),
+            this.#now(),
+          );
         return this.#getMemory(num(res.lastInsertRowid));
       },
 

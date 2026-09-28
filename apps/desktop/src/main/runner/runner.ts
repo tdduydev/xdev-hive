@@ -495,7 +495,7 @@ export class Runner {
         attempt: run.attempt,
         previous: parent?.role === run.role && parent.profileId ? { profileId: parent.profileId, reason: parent.error ?? parent.status } : null,
       });
-      const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch };
+      const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id };
       const cmd = buildCommand(profile, vars, repoFeatures(project.repo));
       const base = this.#host.env();
       const bin = resolveBin(cmd.bin, base.PATH ?? "");
