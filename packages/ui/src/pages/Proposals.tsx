@@ -7,19 +7,14 @@ import { ToggleGroup, ToggleGroupItem } from "@xdev-hive/ui/components/ui/toggle
 import { Diff } from "../components/Diff.tsx";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
 import { formatTime, useAction, useCan, useHive, useQuery } from "../hooks.ts";
+import { useT } from "../i18n/index.tsx";
 import { docOwner, inScope, scopeLabel } from "../lib/scope.ts";
-
-const STATUS_LABEL: Record<Proposal["status"], string> = {
-  pending: "Chờ duyệt",
-  approved: "Đã duyệt",
-  rejected: "Từ chối",
-  conflict: "Xung đột",
-};
 
 const SEGMENT = "data-[state=on]:bg-brand-soft data-[state=on]:font-semibold data-[state=on]:text-brand-soft-foreground";
 
 export function ProposalsPage() {
   const { client, scope } = useHive();
+  const t = useT();
   const [onlyPending, setOnlyPending] = useState(true);
   const list = useQuery(
     () => client.call("proposals.list", onlyPending ? { status: "pending" } : {}),
@@ -27,13 +22,12 @@ export function ProposalsPage() {
   );
   // Shared-doc proposals show in every project's scope (see lib/scope.ts).
   const proposals = list.data?.filter((p) => inScope(scope, docOwner(p.docKey)));
-  const where = scope.kind === "all" ? "" : ` trong phạm vi “${scopeLabel(scope)}”`;
 
   return (
     <Page>
       <PageHeader
-        title="Đề xuất sửa tài liệu"
-        subtitle="Agent gửi qua doc_propose. Duyệt thì tạo phiên bản mới. Nếu tài liệu đã đổi sau khi agent đọc, đề xuất sẽ bị đánh dấu xung đột."
+        title={t("proposals.title")}
+        subtitle={t("proposals.subtitle")}
         actions={
           <ToggleGroup
             type="single"
@@ -42,20 +36,24 @@ export function ProposalsPage() {
             onValueChange={(v) => {
               if (v) setOnlyPending(v === "pending");
             }}
-            aria-label="Lọc trạng thái"
+            aria-label={t("proposals.filter")}
           >
             <ToggleGroupItem value="pending" className={SEGMENT}>
-              Chờ duyệt
+              {t("proposalStatus.pending")}
             </ToggleGroupItem>
             <ToggleGroupItem value="all" className={SEGMENT}>
-              Tất cả
+              {t("proposals.all")}
             </ToggleGroupItem>
           </ToggleGroup>
         }
       />
       <ErrorNote error={list.error} />
       {proposals?.length === 0 ? (
-        <Empty>{onlyPending ? `Không có đề xuất nào đang chờ${where}.` : `Chưa có đề xuất nào${where}.`}</Empty>
+        <Empty>
+          {scope.kind === "all"
+            ? t(onlyPending ? "proposals.noPending" : "proposals.none")
+            : t(onlyPending ? "proposals.noPendingIn" : "proposals.noneIn", { scope: scopeLabel(scope) })}
+        </Empty>
       ) : null}
       <div className="flex flex-col gap-4">
         {proposals?.map((p) => <ProposalCard key={p.id} proposal={p} onChanged={list.reload} />)}
@@ -66,6 +64,7 @@ export function ProposalsPage() {
 
 function ProposalCard({ proposal: p, onChanged }: { proposal: Proposal; onChanged: () => void }) {
   const { client, bump } = useHive();
+  const t = useT();
   const allow = useCan();
   const [open, setOpen] = useState(p.status === "pending");
   const [note, setNote] = useState("");
@@ -91,43 +90,43 @@ function ProposalCard({ proposal: p, onChanged }: { proposal: Proposal; onChange
           <div className="flex flex-wrap items-start gap-3">
             <div className="flex min-w-0 flex-1 flex-col gap-1.5">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge tone={STATUS_TONE[p.status]}>{STATUS_LABEL[p.status]}</Badge>
+                <Badge tone={STATUS_TONE[p.status]}>{t(`proposalStatus.${p.status}`)}</Badge>
                 <OwnerBadge owner={docOwner(p.docKey)} />
                 <span className="min-w-0 font-mono text-xs break-all">{p.docKey}</span>
                 <span className="text-xs text-muted-foreground">
-                  #{p.id} · dựa trên v{p.baseVersion}
+                  {t("proposals.basedOn", { id: p.id, version: p.baseVersion })}
                 </span>
               </div>
               <p className="font-semibold break-words">{p.reason}</p>
               <div className="text-xs text-muted-foreground">
                 {p.author} · {formatTime(p.createdAt)}
-                {p.reviewer ? ` · ${STATUS_LABEL[p.status].toLowerCase()} bởi ${p.reviewer} ${formatTime(p.decidedAt)}` : ""}
+                {p.reviewer && p.status !== "pending" ? ` · ${t(`proposals.decided.${p.status}`, { who: p.reviewer, time: formatTime(p.decidedAt) })}` : ""}
               </div>
               {p.reviewNote ? <Notice tone="info">{p.reviewNote}</Notice> : null}
             </div>
             <Button variant="ghost" onClick={() => setOpen(!open)} aria-expanded={open}>
-              {open ? "Ẩn thay đổi" : "Xem thay đổi"}
+              {open ? t("proposals.hideChanges") : t("proposals.showChanges")}
             </Button>
           </div>
           {open ? (
             <>
               {stale && p.status === "pending" ? (
                 <Notice tone="warn">
-                  Tài liệu đã lên v{current.data?.version ?? 0}. Duyệt lúc này sẽ bị đánh dấu xung đột. Agent cần đọc lại và đề xuất lại.
+                  {t("proposals.stale", { version: current.data?.version ?? 0 })}
                 </Notice>
               ) : null}
               <ErrorNote error={current.error} />
-              {current.loading ? <Empty>Đang tải…</Empty> : <Diff before={current.data?.content ?? ""} after={p.content} />}
+              {current.loading ? <Empty>{t("common.loading")}</Empty> : <Diff before={current.data?.content ?? ""} after={p.content} />}
             </>
           ) : null}
           {p.status === "pending" && allow(docOwner(p.docKey), "manage") ? (
             <div className="flex flex-wrap items-center gap-2">
               <Input
                 className="min-w-48 flex-1"
-                placeholder="Lý do từ chối (tuỳ chọn)"
+                placeholder={t("proposals.rejectReason")}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                aria-label="Lý do từ chối"
+                aria-label={t("proposals.rejectReasonLabel")}
               />
               <Button
                 variant="ghost"
@@ -135,10 +134,10 @@ function ProposalCard({ proposal: p, onChanged }: { proposal: Proposal; onChange
                 onClick={() => decide("reject")}
                 disabled={action.busy}
               >
-                Từ chối
+                {t("proposals.reject")}
               </Button>
               <Button onClick={() => decide("approve")} disabled={action.busy}>
-                Duyệt
+                {t("proposals.approve")}
               </Button>
             </div>
           ) : null}
