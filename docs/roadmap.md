@@ -17,7 +17,9 @@ Làm lần lượt, mỗi lượt một mục (mỗi mục một PR). Mục có 
 ## Tính năng
 
 - [x] **1. runner-hardening**: run Claude Code thêm `--settings '{"disableAllHooks":true}' --setting-sources user --strict-mcp-config --mcp-config` do app sinh (xdev-hive, codegraph và superpowers nếu checkout chính bật); commit của runner không chạy git hook và không đưa tài liệu render vào; prompt bảo agent đọc `AGENTS.md` trước. Codex giữ sandbox `workspace-write`.
-- [ ] **2. content-safety**: chặn ký tự ẩn (bidi, zero-width) khi ghi docs, memory, proposal. Lưu nguồn mỗi lần ghi (máy, run, task). Token chỉ-đọc cho agent.
+- [x] **2a. hidden-chars**: hub từ chối docs, đề xuất, memory có ký tự ẩn (bidi, tag, bộ chọn biến thể, độ rộng 0; emoji vẫn được), lỗi báo mã ký tự + dòng + cột; trang Tài liệu và Memory cảnh báo trước khi lưu, có nút xoá. Dữ liệu trên .52 không có ký tự ẩn nào.
+- [ ] **2b. write-provenance**: lưu nguồn mỗi lần ghi docs, memory, đề xuất (máy, run, task).
+- [ ] **2c. read-only-agent-token**: token chỉ-đọc cho agent.
 - [ ] **3. cost-tracking**: `total_cost_usd` theo run, profile, dự án. Hiện trên Board và Máy & run. Hạn mức theo dự án.
 - [ ] **4. memory-freshness**: `lastUsedAt`, hết hạn khi lâu không dùng, trích dẫn file để kiểm lại, liên kết supersedes/contradicts thay vì xoá.
 - [ ] **5. webhooks**: Slack/Teams cho đề xuất chờ duyệt, run lỗi, MR mới, yêu cầu cài.

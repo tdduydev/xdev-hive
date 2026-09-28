@@ -14,6 +14,7 @@ import {
   type MethodOutput,
   type ParsedInput,
 } from "./methods.ts";
+import { assertNoHidden } from "./hidden.ts";
 import { assertNoSecret } from "./secrets.ts";
 import { SEED_DOCS } from "./seed.ts";
 import type {
@@ -445,6 +446,9 @@ export class SqliteHive implements HiveBackend {
   ): Doc {
     const parsed = parseDocKey(key);
     assertNoSecret(content, "Document content");
+    assertNoHidden(content, "Document content");
+    if (meta.title) assertNoHidden(meta.title, "Title");
+    if (meta.note) assertNoHidden(meta.note, "Note");
     const existing = this.#getDoc(key);
     const version = (existing?.version ?? 0) + 1;
     const now = this.#now();
@@ -566,6 +570,8 @@ export class SqliteHive implements HiveBackend {
         parseDocKey(input.docKey);
         assertNoSecret(input.content, "Proposed content");
         assertNoSecret(input.reason, "Reason");
+        assertNoHidden(input.content, "Proposed content");
+        assertNoHidden(input.reason, "Reason");
         const doc = this.#getDoc(input.docKey);
         const current = doc?.version ?? 0;
         if (input.baseVersion !== current) {
@@ -650,6 +656,7 @@ export class SqliteHive implements HiveBackend {
 
       "memory.write": (input, actor) => {
         assertNoSecret(input.content, "Memory content");
+        assertNoHidden(input.content, "Memory content");
         const owner = input.shared ? null : input.project!;
         const status = this.#opts.memoryRequiresApproval && !can(actor, owner, "manage") ? "pending" : "approved";
         const res = db
