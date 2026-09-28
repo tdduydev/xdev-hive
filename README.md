@@ -250,6 +250,8 @@ Chuỗi giao diện nằm ở [`packages/ui/src/i18n`](packages/ui/src/i18n): `l
 1. Chép `locales/en.ts` thành `locales/<mã>.ts` và dịch.
 2. Thêm một dòng vào `LOCALES` trong `translate.ts` (tên hiển thị, mã `Intl`, file dịch).
 
+Lỗi từ hub và core mang `key` (vd `errors.taskHeld`) cùng `vars`: giao diện dịch theo catalog, còn agent qua MCP vẫn nhận message gốc. Thêm lỗi mới cho người dùng thì truyền `{ key: "errors.…" }` vào `HiveError` và thêm chuỗi vào catalog (`npm test` báo key thiếu).
+
 Chuỗi số nhiều viết `{ one: "…", other: "…" }` (thêm `zero`/`two`/`few`/`many` nếu ngôn ngữ cần). Trong component: `const t = useT(); t("nav.docs")`, `t("password.tooShort", { min: 10 })`. Các trang còn lại đang được chuyển dần (xem [docs/roadmap.md](docs/roadmap.md)).
 
 ## Việc tiếp theo

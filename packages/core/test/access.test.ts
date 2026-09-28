@@ -55,6 +55,11 @@ describe("per-project access in the hub", () => {
     await assert.rejects(hive.call("tasks.claim", { id: "billing-1" }, lanAgent), code("not_found"));
     await assert.rejects(hive.call("tasks.update", { id: "app-1", status: "doing" }, lan), code("forbidden"), "view only on app");
     await assert.rejects(hive.call("docs.save", { key: "project/app/agents", content: "x" }, lan), code("forbidden"));
+    // The interface shows these in the person's language: the key and its placeholders travel with the error.
+    await assert.rejects(hive.call("docs.save", { key: "project/app/agents", content: "x" }, lan), (e: unknown) => {
+      const err = e as HiveError;
+      return err.key === "errors.need.manage" && err.vars?.project === "app";
+    });
     await assert.rejects(hive.call("docs.save", { key: "org/style", content: "x" }, lan), code("forbidden"), "shared docs: hub admins only");
     await assert.rejects(hive.call("tasks.create", { id: "web-2", project: "web", title: "x" }, lanAgent), code("forbidden"), "agent tokens cannot create tasks");
   });

@@ -64,7 +64,9 @@ async function signedIn(username: string, password: string) {
 describe("accounts", () => {
   it("signs in with a temporary password that must be changed before anything else", async () => {
     const b = browser();
-    assert.equal((await b.send("/api/login", { username: "lan", password: "wrong-password" })).status, 401);
+    const wrong = await b.send("/api/login", { username: "lan", password: "wrong-password" });
+    assert.equal(wrong.status, 401);
+    assert.equal((wrong.body.error as { key?: string }).key, "errors.badCredentials", "the interface translates it");
     const login = await b.send("/api/login", { username: "Lan", password: temp.lan });
     assert.equal(login.status, 200);
     assert.match(login.set ?? "", /hive_session=hs_[\w-]+; Path=\/; HttpOnly; SameSite=Strict/);
@@ -85,7 +87,10 @@ describe("accounts", () => {
     const keys = (await b.rpc("docs.list")).body.result.map((d: { key: string }) => d.key);
     assert.ok(keys.includes("project/app/agents") && keys.includes("org/agent-protocol"));
     assert.ok(!keys.includes("project/billing/agents"));
-    assert.equal((await b.rpc("docs.get", { key: "project/billing/agents" })).status, 404);
+    const hidden = await b.rpc("docs.get", { key: "project/billing/agents" });
+    assert.deepEqual([hidden.status, (hidden.body.error as { key?: string }).key], [404, "errors.notFound"]);
+    const low = await b.rpc("docs.save", { key: "project/app/agents", content: "x" });
+    assert.equal(low.status, 200, "manage on app");
     assert.equal((await b.rpc("tasks.create", { id: "app-2", project: "app", title: "Mới" })).status, 200, "manage on app");
 
     const forged = await fetch(`${base}/api/rpc`, {
