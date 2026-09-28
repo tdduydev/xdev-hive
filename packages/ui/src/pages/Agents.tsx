@@ -145,7 +145,7 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
           {p.readOnly ? <Badge tone="neutral">{t("agents.readOnlyBadge")}</Badge> : null}
           {p.container ? (
             <span title={p.container.image}>
-              <Badge tone="info">{t("agents.containerBadge")}</Badge>
+              <Badge tone="info">{p.container.network === "open" ? t("agents.containerBadge") : t("agents.containerLimitedBadge")}</Badge>
             </span>
           ) : null}
           <Badge tone="accent">{t(`agentKind.${p.kind}`)}</Badge>
@@ -348,13 +348,20 @@ function ProfileForm({
   const [p, setP] = useState(initial);
   const [argsText, setArgsText] = useState(initial.args.join("\n"));
   const [envText, setEnvText] = useState(envToText(initial.env));
+  const [allowText, setAllowText] = useState((initial.container?.allow ?? []).join("\n"));
   const [error, setError] = useState<string | null>(null);
   const action = useAction();
   const set = <K extends keyof AgentProfile>(key: K, value: AgentProfile[K]) => setP({ ...p, [key]: value });
   const num = (v: string, fallback: number) => (Number.isFinite(Number(v)) && v !== "" ? Number(v) : fallback);
 
   const submit = () => {
-    const candidate = { ...p, args: argsText.split("\n").filter((a) => a.length > 0), env: textToEnv(envText) };
+    const allow = allowText.split(/[\s,]+/).map((h) => h.trim().toLowerCase()).filter(Boolean);
+    const candidate = {
+      ...p,
+      args: argsText.split("\n").filter((a) => a.length > 0),
+      env: textToEnv(envText),
+      container: p.container ? { ...p.container, allow } : null,
+    };
     const parsed = agentProfileSchema.safeParse(candidate);
     if (!parsed.success) {
       setError(parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("\n"));
@@ -525,18 +532,44 @@ function ProfileForm({
             <label className="flex items-center gap-2 text-sm">
               <Checkbox
                 checked={p.container !== null}
-                onCheckedChange={(v) => set("container", v === true ? { image: p.container?.image ?? "xdev-hive-agent" } : null)}
+                onCheckedChange={(v) =>
+                  set("container", v === true ? (p.container ?? { image: "xdev-hive-agent", network: "restricted", allow: [] }) : null)
+                }
               />
               {t("agents.container")}
             </label>
             {p.container ? (
-              <Input
-                className="max-w-80 font-mono text-xs md:text-xs"
-                value={p.container.image}
-                onChange={(e) => set("container", { image: e.target.value.trim() })}
-                aria-label={t("agents.containerImage")}
-                placeholder="xdev-hive-agent"
-              />
+              <div className="flex flex-col gap-2 pl-6">
+                <Input
+                  className="max-w-80 font-mono text-xs md:text-xs"
+                  value={p.container.image}
+                  onChange={(e) => set("container", { ...p.container!, image: e.target.value.trim() })}
+                  aria-label={t("agents.containerImage")}
+                  placeholder="xdev-hive-agent"
+                />
+                <NativeSelect
+                  className="max-w-80"
+                  value={p.container.network}
+                  onChange={(e) => set("container", { ...p.container!, network: e.target.value as "restricted" | "open" })}
+                  aria-label={t("agents.network")}
+                >
+                  <NativeSelectOption value="restricted">{t("agents.networkRestricted")}</NativeSelectOption>
+                  <NativeSelectOption value="open">{t("agents.networkOpen")}</NativeSelectOption>
+                </NativeSelect>
+                {p.container.network === "restricted" ? (
+                  <>
+                    <Textarea
+                      className="max-w-80 font-mono text-xs md:text-xs"
+                      rows={3}
+                      value={allowText}
+                      onChange={(e) => setAllowText(e.target.value)}
+                      placeholder={"registry.example.com\n.corp.example.com\nhost:8443"}
+                      aria-label={t("agents.networkAllow")}
+                    />
+                    <span className={HINT}>{t("agents.networkHint")}</span>
+                  </>
+                ) : null}
+              </div>
             ) : null}
             <span className={HINT}>{t("agents.containerHint")}</span>
           </div>

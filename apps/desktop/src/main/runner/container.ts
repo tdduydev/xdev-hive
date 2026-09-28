@@ -38,6 +38,8 @@ export interface ContainerRun {
   env: Record<string, string>;
   /** More files of the machine the container reads (mounted read-only), e.g. the MCP config. */
   readOnly?: string[];
+  /** A restricted network (egress.ts): its docker arguments and the proxy variables. */
+  network?: { args: string[]; env: Record<string, string> };
   home?: string;
   /** uid:gid to run as (files written keep the person's owner); null on Windows. */
   user?: { uid: number; gid: number } | null;
@@ -65,6 +67,7 @@ export function containerCommand(run: ContainerRun): ContainerCommand {
   const bin = run.profile.kind === "custom" ? path.basename(run.profile.bin) : run.profile.kind;
   const env: Record<string, string> = {
     ...run.env,
+    ...run.network?.env,
     HOME: home,
     // The mounted repo belongs to the person, not to the container's user as git sees it.
     GIT_CONFIG_COUNT: "1",
@@ -87,6 +90,7 @@ export function containerCommand(run: ContainerRun): ContainerCommand {
     `${home}:rw,exec${user ? `,uid=${user.uid},gid=${user.gid}` : ""}`,
     ...mounts.flatMap((p) => ["-v", `${p}:${p}${p.endsWith(".gitconfig") ? ":ro" : ""}`]),
     ...(run.readOnly ?? []).flatMap((p) => ["-v", `${p}:${p}:ro`]),
+    ...(run.network?.args ?? []),
     "--workdir",
     run.worktree,
     ...Object.keys(env)
