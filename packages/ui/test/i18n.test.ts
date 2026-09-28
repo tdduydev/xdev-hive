@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { isValidElement } from "react";
+import { rich } from "../src/i18n/rich.ts";
 import { LOCALES, translate, type MessageKey } from "../src/i18n/translate.ts";
 
 /** Every leaf path of a catalogue, plural forms counted as one leaf. */
@@ -27,6 +29,14 @@ describe("i18n", () => {
     assert.equal(translate("diff.gap", { count: 1 }, "en"), "… 1 unchanged line");
     assert.equal(translate("diff.gap", { count: 4 }, "en"), "… 4 unchanged lines");
     assert.equal(translate("diff.gap", { count: 4 }, "vi"), "… 4 dòng không đổi");
+  });
+
+  it("puts nodes into a sentence and leaves unknown placeholders", () => {
+    const parts = rich("Đổi {field} trong {file}, không phải {other}.", { field: "machine", file: "config.json" });
+    assert.deepEqual(
+      parts.map((p) => (isValidElement(p) ? `<${(p.props as { children: string }).children}>` : p)),
+      ["Đổi ", "<machine>", " trong ", "<config.json>", ", không phải ", "{other}", "."],
+    );
   });
 
   it("falls back to the key when a string is missing", () => {

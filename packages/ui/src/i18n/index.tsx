@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { Vars } from "./types.ts";
 import { activeLocale, readLocale, setActiveLocale, translate, writeLocale, type Locale, type MessageKey } from "./translate.ts";
 
+export { rich } from "./rich.ts";
 export { LOCALES, activeIntl, isLocale, translate, type Locale, type MessageKey } from "./translate.ts";
 
 export type TFunction = (key: MessageKey, vars?: Vars) => string;

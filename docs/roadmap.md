@@ -6,9 +6,9 @@ Làm lần lượt, mỗi lượt một mục (mỗi mục một PR). Mục có 
 
 - [x] **0a. i18n-core**: bộ dịch `packages/ui/src/i18n` (vi là nguồn key, TypeScript bắt các ngôn ngữ khác dịch đủ), chọn ngôn ngữ ở trang đăng nhập và menu tài khoản, ngày giờ theo ngôn ngữ; đã dịch khung app, đăng nhập, đổi mật khẩu, menu tài khoản, bộ chọn phạm vi, diff.
 - [x] **0b. i18n-pages-1**: Tổng quan, Tài liệu, Đề xuất, Memory, Task; thêm nhóm chuỗi dùng chung (trạng thái task/đề xuất/run, loại memory, vai trò agent, phần cài đặt) để các trang sau dùng lại.
-- [ ] **0c. i18n-pages-2**: Board, Gói sub & agent, Máy & run, Cài đặt máy, Dự án & cài đặt.
+- [x] **0c. i18n-pages-2**: Board, Gói sub & agent, Máy & run, Cài đặt máy, Dự án & cài đặt; `rich()` chèn thẻ (code, link) vào câu đã dịch; smoke chụp được giao diện tiếng Anh (`HIVE_SMOKE_LOCALE=en`) và không còn thoát im lặng khi app thật đang mở.
 - [ ] **0d. i18n-pages-3**: Quản trị, Người dùng & quyền, Token.
-- [ ] **0e. i18n-server**: thông báo lỗi của hub/core theo ngôn ngữ người dùng; menu tray và thông báo của app desktop.
+- [ ] **0e. i18n-server**: thông báo lỗi của hub/core theo ngôn ngữ người dùng; menu tray, thông báo và nhãn các mục ở Cài đặt máy (tạo trong tiến trình chính của app desktop).
 
 ## Tính năng
 
