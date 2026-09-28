@@ -9,7 +9,9 @@ Làm lần lượt, mỗi lượt một mục (mỗi mục một PR). Mục có 
 - [x] **0c. i18n-pages-2**: Board, Gói sub & agent, Máy & run, Cài đặt máy, Dự án & cài đặt; `rich()` chèn thẻ (code, link) vào câu đã dịch; smoke chụp được giao diện tiếng Anh (`HIVE_SMOKE_LOCALE=en`) và không còn thoát im lặng khi app thật đang mở.
 - [x] **0d. i18n-pages-3**: Quản trị, Người dùng & quyền, Token; nhật ký hiện tên thao tác cho cả đăng nhập, tài khoản, phân quyền và lần nhập từ Forge. Toàn bộ chuỗi giao diện trong `packages/ui` giờ nằm trong catalog.
 - [x] **0e1. i18n-errors**: lỗi của hub và core mang `key` + `vars` (`HiveError`, JSON lỗi của hub, IPC desktop, `HubBackend`), giao diện dịch theo catalog `errors.*`; agent/MCP vẫn nhận message cũ. Test quét mã nguồn để chắc mọi key lỗi có trong catalog.
-- [ ] **0e2. i18n-desktop**: tiến trình chính của app desktop theo ngôn ngữ đã chọn: menu tray, thông báo, hộp thoại, nhãn các mục ở Cài đặt máy, lỗi runner/GitLab/cài đặt; chi tiết nhật ký do hub ghi; nhãn mẫu profile mặc định trong core.
+- [x] **0e2a. i18n-desktop-shell**: tiến trình chính desktop biết ngôn ngữ giao diện (renderer báo qua IPC, lưu `locale` trong config.json): menu tray, tooltip, thông báo (run, đề xuất, yêu cầu cài), hộp thoại lỗi cấu hình, lỗi của `index.ts` mang key.
+- [ ] **0e2b. i18n-desktop-setup**: nhãn, mô tả và nút ở Cài đặt máy (`setup.ts`, `installer.ts`); lỗi và ghi chú của runner, worktree, GitLab, đồng bộ tài liệu hiện trên Board.
+- [ ] **0e2c. i18n-core-texts**: chi tiết nhật ký do hub ghi, nhãn mẫu profile mặc định (`AGENT_TEMPLATES`).
 
 ## Tính năng
 

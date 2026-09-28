@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld("hive", {
     settings: () => invoke("desktop:settings"),
     updateSettings: (patch: unknown) => invoke("desktop:updateSettings", patch),
     hubSignIn: (input: unknown) => invoke("desktop:hubSignIn", input),
+    setLocale: (locale: string) => invoke("desktop:setLocale", locale),
     addProject: (project: unknown) => invoke("desktop:addProject", project),
     removeProject: (name: string) => invoke("desktop:removeProject", name),
     pickFolder: () => invoke("desktop:pickFolder"),

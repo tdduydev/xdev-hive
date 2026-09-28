@@ -9,9 +9,12 @@ declare global {
   }
 }
 
+// The main process shows the tray, notifications and dialogs in the same language.
+const setMainLocale = (locale: string) => void window.hive.desktop?.setLocale(locale).catch(() => undefined);
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <I18nProvider>
+    <I18nProvider onChange={setMainLocale}>
       <HiveApp client={window.hive} />
     </I18nProvider>
   </StrictMode>,
