@@ -197,6 +197,19 @@ export interface MachineCommand {
   output: string | null;
 }
 
+/** Chat services a hub webhook can post to, and the events it can post. */
+export const WEBHOOK_KINDS = ["teams", "slack"] as const;
+export type WebhookKind = (typeof WEBHOOK_KINDS)[number];
+export const WEBHOOK_EVENTS = ["proposal.created", "memory.pending", "command.requested", "command.finished"] as const;
+export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
+
+/** Something a person may want to hear about, emitted after the change is stored (see SqliteHiveOptions.onEvent). */
+export type HiveEvent =
+  | { type: "proposal.created"; project: string | null; proposal: Proposal }
+  | { type: "memory.pending"; project: string | null; memory: Memory }
+  | { type: "command.requested"; project: null; command: MachineCommand }
+  | { type: "command.finished"; project: null; command: MachineCommand };
+
 /** Admin view of a machine: the heartbeat plus what it reported about its setup. */
 export interface MachineDetail extends Machine {
   setup: SetupReport | null;

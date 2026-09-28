@@ -27,9 +27,10 @@ import { Badge, Empty, ErrorNote, Page, PageHeader } from "../components/common.
 import { ProfileStates } from "../components/ProfileStates.tsx";
 import { formatTime, useAction, useHive, useProjects, useQuery } from "../hooks.ts";
 import { hasKey, rich, useT, type MessageKey } from "../i18n/index.tsx";
+import { WebhooksTab } from "./Webhooks.tsx";
 
-type Tab = "machines" | "policy" | "audit";
-const TABS: Record<Tab, MessageKey> = { machines: "admin.tabMachines", policy: "admin.tabPolicy", audit: "admin.tabAudit" };
+type Tab = "machines" | "policy" | "audit" | "webhooks";
+const TABS: Record<Tab, MessageKey> = { machines: "admin.tabMachines", policy: "admin.tabPolicy", audit: "admin.tabAudit", webhooks: "admin.tabWebhooks" };
 
 const STATE_TONE: Record<SetupState, string> = { installed: "ok", missing: "warn", outdated: "info", manual: "danger" };
 const COMMAND_TONE: Record<CommandStatus, string> = {
@@ -65,6 +66,8 @@ const ACTION_LABEL: Record<string, MessageKey> = {
   "users.resetPassword": "auditAction.usersResetPassword",
   "users.password": "auditAction.usersPassword",
   "import.forge": "auditAction.importForge",
+  "webhooks.save": "auditAction.webhooksSave",
+  "webhooks.remove": "auditAction.webhooksRemove",
 };
 
 /** Small uppercase heading for a group inside a card. */
@@ -72,13 +75,16 @@ const GROUP_TITLE = "text-xs font-semibold tracking-wide text-muted-foreground u
 
 export function AdminPage() {
   const t = useT();
+  const { client } = useHive();
   const [tab, setTab] = useState<Tab>("machines");
+  // Webhooks live on the hub only (the desktop app has no hub admin).
+  const tabs = (Object.keys(TABS) as Tab[]).filter((id) => id !== "webhooks" || client.webhooks);
   return (
     <Page wide>
       <PageHeader title={t("nav.admin")} subtitle={t("admin.subtitle")} />
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="gap-4">
         <TabsList>
-          {(Object.keys(TABS) as Tab[]).map((id) => (
+          {tabs.map((id) => (
             <TabsTrigger key={id} value={id} className="px-3">
               {t(TABS[id])}
             </TabsTrigger>
@@ -93,6 +99,11 @@ export function AdminPage() {
         <TabsContent value="audit" className="flex flex-col gap-4">
           <AuditTab />
         </TabsContent>
+        {client.webhooks ? (
+          <TabsContent value="webhooks" className="flex flex-col gap-4">
+            <WebhooksTab />
+          </TabsContent>
+        ) : null}
       </Tabs>
     </Page>
   );

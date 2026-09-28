@@ -1,11 +1,23 @@
 import express, { type NextFunction, type Request, type RequestHandler, type Response } from "express";
 import { hostHeaderValidation } from "@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { HiveError, HTTP_STATUS, isMethod, readSourceHeader, toErrorPayload, TOKEN_ROLES, type Actor, type Me, type Role } from "@xdev-hive/core";
+import {
+  HiveError,
+  HTTP_STATUS,
+  isMethod,
+  readSourceHeader,
+  toErrorPayload,
+  TOKEN_ROLES,
+  type Actor,
+  type Me,
+  type Role,
+  type WebhookInput,
+} from "@xdev-hive/core";
 import type { SqliteHive } from "@xdev-hive/core/node";
 import { createHiveMcpServer } from "@xdev-hive/mcp";
 import type { TokenStore } from "./tokens.ts";
 import { LoginThrottle, type UserInfo, type UserStore } from "./users.ts";
+import type { WebhookDispatcher, WebhookStore } from "./webhooks.ts";
 
 export interface HubAppOptions {
   hive: SqliteHive;
@@ -18,6 +30,8 @@ export interface HubAppOptions {
   /** Behind a TLS proxy: trust X-Forwarded-Proto/-For (Secure cookies, sign-in throttling per client). */
   trustProxy?: boolean;
   throttle?: LoginThrottle;
+  /** Chat webhooks for hub events (hub admins manage them). */
+  webhooks?: { store: WebhookStore; dispatcher: WebhookDispatcher };
 }
 
 const CSP = [
@@ -77,7 +91,7 @@ function publicUser(u: UserInfo): NonNullable<Me["user"]> {
   return { id: u.id, username: u.username, displayName: u.displayName, admin: u.admin, mustChangePassword: u.mustChangePassword };
 }
 
-export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy = false, throttle = new LoginThrottle() }: HubAppOptions): express.Express {
+export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy = false, throttle = new LoginThrottle(), webhooks }: HubAppOptions): express.Express {
   const app = express();
   app.disable("x-powered-by");
   if (allowedHosts?.length) app.use(hostHeaderValidation(allowedHosts));
@@ -295,6 +309,29 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
         tokens.revoke(info.id);
         hive.audit(actor, "tokens.revoke", info.name, info.role, { key: `role.${info.role}` });
         res.json({ result: { revoked: true } });
+        return;
+      }
+
+      // Chat webhooks: hub admins only. The stored URL never goes back out.
+      if (typeof method === "string" && method.startsWith("webhooks.")) {
+        requireHubAdmin(res);
+        if (!webhooks) throw new HiveError("bad_request", `Unknown method ${method}`);
+        if (method === "webhooks.list") {
+          res.json({ result: webhooks.store.list() });
+        } else if (method === "webhooks.save") {
+          const saved = webhooks.store.save(i as unknown as WebhookInput);
+          hive.audit(actor, "webhooks.save", saved.name, `${saved.kind} · ${saved.events.join(", ")}`);
+          res.json({ result: saved });
+        } else if (method === "webhooks.remove") {
+          const target = webhooks.store.get(Number(i.id));
+          const removed = webhooks.store.remove(Number(i.id));
+          if (target && removed) hive.audit(actor, "webhooks.remove", target.name, target.kind);
+          res.json({ result: { removed } });
+        } else if (method === "webhooks.test") {
+          res.json({ result: await webhooks.dispatcher.test(Number(i.id)) });
+        } else {
+          throw new HiveError("bad_request", `Unknown method ${method}`);
+        }
         return;
       }
 
