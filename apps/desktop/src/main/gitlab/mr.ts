@@ -88,6 +88,10 @@ interface MrPlan {
   commits: string[];
 }
 
+/** "PR #7" for a GitHub pull request link, "MR !7" for a GitLab merge request. */
+export const mrLabel = (run: Pick<AgentRun, "mrUrl" | "mrIid">): string =>
+  /\/pull\/\d+$/.test(run.mrUrl ?? "") ? `PR #${run.mrIid ?? "?"}` : `MR !${run.mrIid ?? "?"}`;
+
 /** Who writes MR links and merges on tasks. */
 export const mrActor = (host: MrHost): Actor => ({ name: host.mode() === "hub" ? "hive-mr" : `hive-mr@${host.user ?? "local"}`, role: "agent" });
 

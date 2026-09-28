@@ -1,5 +1,5 @@
 // Minimal GitHub REST (and one GraphQL call) client for pull requests. github.com or GitHub Enterprise Server.
-import { GITHUB_URL, HiveError, type HiveErrorCode } from "@xdev-hive/core";
+import { GITHUB_URL, HiveError, type HiveErrorCode, type PipelineStatus } from "@xdev-hive/core";
 import type { FetchLike } from "../gitlab/client.ts";
 
 export interface GitHubRepo {
@@ -20,6 +20,27 @@ export interface GitHubPull {
   base: { ref: string };
 }
 
+export interface GitHubPullDetail extends GitHubPull {
+  state: "open" | "closed";
+  merged: boolean;
+  head: { ref: string; sha: string };
+}
+
+/** A check run (GitHub Actions and other apps). */
+export interface GitHubCheckRun {
+  name: string;
+  status: string;
+  conclusion: string | null;
+  html_url: string;
+}
+
+/** A commit status (the older API some CI services still use). */
+export interface GitHubStatus {
+  context: string;
+  state: string;
+  target_url: string | null;
+}
+
 export interface PullBody {
   title: string;
   body: string;
@@ -36,6 +57,36 @@ function messageOf(json: unknown, fallback: string): string {
   const details = (j?.errors ?? []).map((e) => e.message ?? e.code).filter(Boolean).join("; ");
   const m = typeof j?.message === "string" ? j.message : null;
   return [m, details].filter(Boolean).join(": ") || fallback;
+}
+
+/** Repository and number of a pull request web URL on `baseUrl`; null for any other URL. */
+export function pullRef(baseUrl: string, url: string): { repo: string; number: number } | null {
+  const base = baseUrl.replace(/\/+$/, "");
+  if (!url.startsWith(`${base}/`)) return null;
+  const m = /^([\w.-]+\/[\w.-]+)\/pull\/(\d+)$/.exec(url.slice(base.length + 1));
+  return m ? { repo: m[1]!, number: Number(m[2]) } : null;
+}
+
+const FAILED = ["failure", "timed_out", "action_required", "startup_failure"];
+
+/**
+ * The checks of a commit as one GitLab-style pipeline status: running while any check runs, then failed if
+ * one failed. null when the commit has no check at all (no CI).
+ */
+export function checksStatus(runs: Pick<GitHubCheckRun, "status" | "conclusion">[], statuses: Pick<GitHubStatus, "state">[]): PipelineStatus | null {
+  const each: PipelineStatus[] = [
+    ...runs.map((r): PipelineStatus => {
+      if (r.status !== "completed") return r.status === "in_progress" ? "running" : "pending";
+      if (FAILED.includes(r.conclusion ?? "")) return "failed";
+      if (r.conclusion === "cancelled") return "canceled";
+      if (r.conclusion === "skipped" || r.conclusion === "stale") return "skipped";
+      return "success";
+    }),
+    ...statuses.map((s): PipelineStatus => (s.state === "success" ? "success" : s.state === "pending" ? "pending" : "failed")),
+  ];
+  if (!each.length) return null;
+  for (const status of ["running", "pending", "failed", "canceled", "success"] as const) if (each.includes(status)) return status;
+  return "skipped";
 }
 
 /** REST and GraphQL endpoints: api.github.com for github.com, <url>/api/v3 and <url>/api/graphql for Enterprise Server. */
@@ -109,6 +160,19 @@ export class GitHubClient {
   /** Open pull requests from `branch` of the same repository. */
   openPulls(repo: string, owner: string, branch: string): Promise<GitHubPull[]> {
     return this.#rest("GET", `/repos/${repo}/pulls?state=open&head=${encodeURIComponent(`${owner}:${branch}`)}`);
+  }
+
+  pull(repo: string, number: number): Promise<GitHubPullDetail> {
+    return this.#rest("GET", `/repos/${repo}/pulls/${number}`);
+  }
+
+  async checkRuns(repo: string, sha: string): Promise<GitHubCheckRun[]> {
+    return (await this.#rest<{ check_runs: GitHubCheckRun[] }>("GET", `/repos/${repo}/commits/${sha}/check-runs?per_page=100`)).check_runs ?? [];
+  }
+
+  /** The latest status of each context on the commit. */
+  async statuses(repo: string, sha: string): Promise<GitHubStatus[]> {
+    return (await this.#rest<{ statuses: GitHubStatus[] }>("GET", `/repos/${repo}/commits/${sha}/status`)).statuses ?? [];
   }
 
   createPull(repo: string, body: PullBody): Promise<GitHubPull> {
