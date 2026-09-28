@@ -19,6 +19,11 @@ Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, 
   - Mục không được dùng, ghi hay giữ lại trong 90 ngày (`HIVE_MEMORY_STALE_DAYS`) thành *cũ*: `memory_search` của agent bỏ qua nó. Nó không bị xoá.
   - Trang Memory có lọc *Chỉ mục cũ*, nhãn *Cũ*, và nút *Giữ lại* (quyền quản trị dự án) để mục đó tính lại từ hôm nay.
   - Một mục đã cũ không tự trẻ lại nhờ agent, vì agent không còn tìm thấy nó; phải có người xem và giữ lại.
+- **Memory trích dẫn file**: `memory_write` nhận `files` (tối đa 10 đường dẫn tính từ gốc repo; không có `/` đầu, `\`, hay `..`).
+  - App desktop so các file đó với nhánh của dự án mỗi 30 phút (nhánh đích MR nếu có, không thì `HEAD`; nhánh local, không có thì `origin/…`). Nó dùng `git cat-file` nên chỉ đọc bản đã commit, không đọc thay đổi chưa commit.
+  - Lần đầu thấy một file thì lấy bản đó làm mốc. File chưa có trên nhánh (vừa tạo trong task) thì chờ, không bị báo mất.
+  - Về sau file khác mốc thì mục bị đánh dấu *Cần xem lại* (file đã đổi / không còn); file quay về như mốc thì hết đánh dấu. Không tìm thấy nhánh thì không kiểm gì, để khỏi báo mọi file đều mất.
+  - Agent vẫn thấy mục cần xem lại, kèm trường `review`. Trang Memory hiện các file và nút *Vẫn đúng*: lấy file hiện tại làm mốc mới.
 - **Chung và riêng từng dự án**: tài liệu `org/*` và memory chung dùng cho cả team; tài liệu `project/<dự án>/*`, memory riêng và task thuộc về một dự án. Ở đầu sidebar có ô chọn phạm vi: *Tất cả dự án*, *Chung (cả team)*, hoặc một dự án. Mọi trang lọc theo phạm vi đó (ở một dự án thì thấy dữ liệu riêng của dự án cộng với dữ liệu chung, có nhãn "Chung"), và mục tạo mới mặc định thuộc phạm vi đang chọn. Trang *Tổng quan* tóm tắt từng dự án và phần dữ liệu chung.
 - **Task**: `task_claim` giữ task theo lease, hai agent không nhận trùng. `task_update` kèm ghi chú bàn giao.
 - **Đồng bộ vào repo**: render `AGENTS.md` (khối chung + phần riêng của dự án), `CLAUDE.md` (`@AGENTS.md`), `docs/decisions.md`. Chỉ commit các file này, không push.

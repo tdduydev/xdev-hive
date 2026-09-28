@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { cn } from "cn";
 import { MEMORY_KINDS, stripHidden, type Memory, type MemoryKind } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
@@ -142,6 +143,11 @@ function MemoryRow({ memory: m, onChanged }: { memory: Memory; onChanged: () => 
                 <Badge tone="warn">{t("memory.stale")}</Badge>
               </span>
             ) : null}
+            {m.review ? (
+              <span title={t("memory.reviewHint")}>
+                <Badge tone="danger">{t("memory.review")}</Badge>
+              </span>
+            ) : null}
             {m.taskId ? <span className="font-mono text-xs text-muted-foreground">{m.taskId}</span> : null}
             <span className="min-w-0 flex-1 text-xs text-muted-foreground">
               {m.author} · {formatTime(m.createdAt)}
@@ -161,14 +167,14 @@ function MemoryRow({ memory: m, onChanged }: { memory: Memory; onChanged: () => 
                     {t("memory.approve")}
                   </Button>
                 ) : null}
-                {m.stale ? (
+                {m.stale || m.review ? (
                   <Button
                     size="sm"
                     variant="outline"
                     disabled={action.busy}
                     onClick={() => action.run(async () => (await client.call("memory.keep", { id: m.id }), onChanged()))}
                   >
-                    {t("memory.keep")}
+                    {m.review ? t("memory.stillTrue") : t("memory.keep")}
                   </Button>
                 ) : null}
                 <Button
@@ -188,6 +194,34 @@ function MemoryRow({ memory: m, onChanged }: { memory: Memory; onChanged: () => 
             ) : null}
           </div>
           <p className="text-sm break-words whitespace-pre-wrap">{m.content}</p>
+          {m.files.length ? (
+            <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+              <span>{t("memory.files")}:</span>
+              {m.files.map((f) => (
+                <code
+                  key={f.path}
+                  className={cn(
+                    "rounded bg-muted px-1 py-0.5 font-mono break-all",
+                    m.review?.changed.includes(f.path) && "text-warning",
+                    m.review?.missing.includes(f.path) && "text-destructive line-through",
+                  )}
+                >
+                  {f.path}
+                </code>
+              ))}
+            </div>
+          ) : null}
+          {m.review ? (
+            <p className="text-xs text-muted-foreground">
+              {[
+                m.review.changed.length ? t("memory.filesChanged", { files: m.review.changed.join(", ") }) : null,
+                m.review.missing.length ? t("memory.filesMissing", { files: m.review.missing.join(", ") }) : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+              {` · ${formatTime(m.review.at)}`}
+            </p>
+          ) : null}
           <ErrorNote error={action.error} />
         </CardContent>
       </Card>
