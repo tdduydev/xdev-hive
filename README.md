@@ -116,7 +116,11 @@ queued ─chọn gói─▶ running ─exit 0──────▶ succeeded ─
   - Codex và Gemini chưa có số liệu.
   - **Trên hub**: ở chế độ hub, mỗi heartbeat gửi chi phí các run đã xong mà hub chưa nhận (tối đa 100 run mỗi lần). Máy chỉ đánh dấu đã gửi khi hub trả lời, nên máy offline lâu vẫn gửi bù được. Hub giữ bản báo đầu tiên của mỗi run và xoá run cũ hơn 90 ngày.
   - Trang *Máy & run* có mục *Chi phí ước tính*: tổng 24 giờ, 7 ngày, 30 ngày, và bảng theo dự án, theo gói (máy · tài khoản). Người xem chỉ thấy các dự án mình có quyền.
-- **Quota trên máy**: app không đọc được quota còn lại, vì các CLI không có lệnh in ra. App chỉ biết một gói hết quota khi một run gặp lỗi giới hạn; gói đó nghỉ đến giờ reset và thẻ profile hiện giờ đó.
+- **Mức dùng của gói sub** (Claude Code): cùng lúc với lượt kiểm đăng nhập, app chạy `claude -p /usage` cho từng profile đã đăng nhập.
+  - Cách chạy: env của profile, không hook, không server MCP, chỉ cài đặt của user. Lệnh trả lời tại máy, không gọi model và không tốn quota.
+  - Hiển thị: % đã dùng của phiên (khoảng 5 giờ) và của tuần, kèm giờ reset. Thẻ Gói sub, dải gói trên Board và trang *Máy & run* đều có; từ 80% thì tô màu cảnh báo.
+  - Ngưỡng dừng: mỗi profile có *Dừng khi phiên đạt* (mặc định 95%) và *Dừng khi tuần đạt* (mặc định 90%). Tới một trong hai ngưỡng thì runner không bắt đầu run mới trên gói đó mà chuyển sang gói khác; run đang chạy vẫn chạy xong. Đặt 100 nếu chỉ muốn dừng khi CLI tự báo hết quota.
+  - Codex và Gemini chưa có số liệu. Mọi CLI vẫn có cách cũ: run gặp lỗi hết quota thì gói nghỉ đến giờ reset.
 - **Trên hub**: heartbeat báo trạng thái đăng nhập, cài CLI và giờ nghỉ của từng gói. Trang *Máy & run* (mọi người) và *Quản trị* (admin) hiện gói nào tắt, chưa có CLI, chưa đăng nhập, đang nghỉ đến giờ nào, hoặc sẵn sàng.
 
 Hai gói của cùng một vendor: tạo 2 profile, profile thứ hai trỏ CLI sang thư mục đăng nhập riêng, rồi đăng nhập một lần trong terminal với biến đó, ví dụ `CLAUDE_CONFIG_DIR=~/.claude-2` (Claude Code) hoặc `CODEX_HOME=~/.codex-2` (Codex). Tên biến và cờ headless mặc định lấy theo tài liệu CLI mình biết; hãy kiểm tra bằng `--help` của bản bạn đang cài.

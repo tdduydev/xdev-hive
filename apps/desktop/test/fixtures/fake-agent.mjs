@@ -10,6 +10,16 @@ if ((first === "auth" || first === "login") && second === "status") {
   process.exit(out && first === "login" ? 1 : 0);
 }
 
+// Claude Code's /usage (plan usage). FAKE_USAGE="<session>,<week>" percentages; unset: an API key, no limits.
+if (first === "-p" && second === "/usage") {
+  const [session, week] = (process.env.FAKE_USAGE ?? "").split(",");
+  const result = process.env.FAKE_USAGE
+    ? `You are currently using your subscription to power your Claude Code usage\n\nCurrent session: ${session}% used · resets 6:20pm (Asia/Saigon)\nCurrent week (all models): ${week}% used · resets Oct 1 at 6pm (Asia/Saigon)\n`
+    : "You are currently using an API key.";
+  console.log(JSON.stringify({ type: "result", subtype: "success", is_error: false, num_turns: 0, result, total_cost_usd: 0 }));
+  process.exit(0);
+}
+
 const prompt = process.argv[2] ?? "";
 if (process.env.FAKE_RECORD) {
   appendFileSync(

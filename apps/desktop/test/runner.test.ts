@@ -7,8 +7,9 @@ import { describe, it } from "node:test";
 import { AGENT_TEMPLATES, type Actor, type AgentProfile, type HiveBackend, type RunnerSettings } from "@xdev-hive/core";
 import { CODEGRAPH_MCP, SUPERPOWERS_PLUGIN } from "../src/main/installer.ts";
 import { buildCommand } from "../src/main/runner/command.ts";
-import { outputFormat, parseClaudeResult } from "../src/main/runner/usage.ts";
-import { checkLogin, LoginMonitor, loginCommand, parseLogin } from "../src/main/runner/login.ts";
+import { outputFormat, parseClaudeResult, parsePlanUsage } from "../src/main/runner/usage.ts";
+import { usageStop, type PlanUsage } from "@xdev-hive/core";
+import { checkLogin, checkUsage, LoginMonitor, loginCommand, parseLogin, USAGE_ARGS } from "../src/main/runner/login.ts";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { parseResetTime, detectRateLimit } from "../src/main/runner/rate-limit.ts";
 import { Runner, type HubUpdate, type RunnerHost } from "../src/main/runner/runner.ts";
@@ -39,7 +40,7 @@ async function setup(
   settings: Partial<RunnerSettings> = {},
   mode: "local" | "hub" = "local",
   /** Pass another setup's hive to simulate a second machine on the same hub. */
-  machine: { name?: string; hive?: SqliteHive; report?: RunnerHost["report"]; login?: RunnerHost["login"] } = {},
+  machine: { name?: string; hive?: SqliteHive; report?: RunnerHost["report"]; login?: RunnerHost["login"]; usage?: RunnerHost["usage"] } = {},
 ) {
   const repo = tmp("repo");
   git(repo, "init", "-q", "-b", "main");
@@ -62,6 +63,7 @@ async function setup(
     env: () => ({ ...process.env }),
     report: machine.report,
     login: machine.login,
+    usage: machine.usage,
   };
   const dataDir = tmp("data");
   const hubUpdates: HubUpdate[] = [];
@@ -195,6 +197,67 @@ describe("sign-in checks", () => {
     assert.equal((await checkLogin({ ...p, bin: "/nonexistent/claude" }, env, now, run)).loggedIn, null);
     assert.equal((await checkLogin({ ...AGENT_TEMPLATES.gemini, bin: process.execPath }, env, now, run)).loggedIn, null);
     assert.equal(seen.length, 1);
+  });
+});
+
+describe("plan usage", () => {
+  const now = new Date("2026-09-28T06:00:00Z");
+  const text = [
+    "You are currently using your subscription to power your Claude Code usage",
+    "",
+    "Current session: 3% used · resets Sep 28 at 6:19pm (Asia/Saigon)",
+    "Current week (all models): 47% used · resets Oct 1 at 5:59pm (Asia/Saigon)",
+    "Current week (Fable): 0% used · resets Oct 1 at 6pm (Asia/Saigon)",
+    "",
+    "What's contributing to your limits usage?",
+    "  94% of your usage was at >150k context",
+  ].join("\n");
+
+  it("reads the session and weekly shares Claude Code's /usage prints", () => {
+    assert.deepEqual(parsePlanUsage(text, now), {
+      session: { percent: 3, resets: "Sep 28 at 6:19pm (Asia/Saigon)" },
+      week: { percent: 47, resets: "Oct 1 at 5:59pm (Asia/Saigon)" },
+      others: [{ label: "Fable", percent: 0, resets: "Oct 1 at 6pm (Asia/Saigon)" }],
+      checkedAt: now.toISOString(),
+    });
+    assert.equal(parsePlanUsage("Current week: 12.5% used", now)?.week?.percent, 12.5, "an unlabelled week counts as all models");
+    assert.equal(parsePlanUsage("You are currently using an API key.", now), null);
+  });
+
+  it("stops new runs at the profile's session or weekly threshold", () => {
+    const usage = (session: number, week: number): PlanUsage => ({ session: { percent: session, resets: null }, week: { percent: week, resets: null }, others: [], checkedAt: "" });
+    const p = { stopAtSession: 95, stopAtWeek: 90 };
+    assert.equal(usageStop(p, usage(94, 89)), null);
+    assert.equal(usageStop(p, usage(95, 10)), "session");
+    assert.equal(usageStop(p, usage(10, 90)), "week");
+    assert.equal(usageStop(p, null), null);
+  });
+
+  it("asks /usage with the profile's env, no hooks and no MCP servers, and only for Claude Code", async () => {
+    const seen: Array<{ args: string[]; dir: string | undefined }> = [];
+    const run = async (_bin: string, args: string[], env: NodeJS.ProcessEnv) => {
+      seen.push({ args, dir: env.CLAUDE_CONFIG_DIR });
+      return { code: 0, output: JSON.stringify({ type: "result", result: text }) };
+    };
+    const env = { PATH: path.dirname(process.execPath) };
+    const p = { ...AGENT_TEMPLATES.claude, bin: process.execPath, env: { CLAUDE_CONFIG_DIR: "/tmp/claude-2" } };
+    assert.equal((await checkUsage(p, env, now, run))?.week?.percent, 47);
+    assert.deepEqual(seen, [{ args: USAGE_ARGS, dir: "/tmp/claude-2" }]);
+    assert.ok(USAGE_ARGS.includes("--strict-mcp-config") && USAGE_ARGS.includes("--setting-sources"));
+    assert.equal(await checkUsage({ ...AGENT_TEMPLATES.codex, bin: process.execPath }, env, now, run), null);
+    assert.equal(seen.length, 1);
+  });
+
+  it("keeps usage only for signed-in profiles", async () => {
+    let signedIn = true;
+    const run = async (_bin: string, args: string[]) =>
+      args[0] === "auth" ? { code: 0, output: JSON.stringify({ loggedIn: signedIn }) } : { code: 0, output: JSON.stringify({ type: "result", result: text }) };
+    const logins = new LoginMonitor(() => [{ ...AGENT_TEMPLATES.claude, bin: process.execPath }], () => ({ PATH: path.dirname(process.execPath) }), run);
+    await logins.refresh();
+    assert.equal(logins.usage("claude-1")?.session?.percent, 3);
+    signedIn = false;
+    await logins.refresh();
+    assert.equal(logins.usage("claude-1"), undefined);
   });
 });
 
@@ -350,6 +413,22 @@ describe("Runner", () => {
     await none.runner.settle();
     assert.equal(none.runner.store.get(waiting.id)!.status, "queued");
     assert.match(none.runner.list()[0]!.error ?? "", /Chưa gói phù hợp nào đăng nhập CLI \(claude-a\)/);
+    none.runner.cancel(waiting.id);
+  });
+
+  it("skips a subscription over its plan threshold, and says why a run waits when all are", async () => {
+    const high: PlanUsage = { session: { percent: 97, resets: "6:20pm" }, week: { percent: 40, resets: null }, others: [], checkedAt: "" };
+    const usage = (id: string) => (id === "claude-a" ? high : undefined);
+    const { runner } = await setup([profile("claude-a", "claude", 1, "ok"), profile("claude-b", "claude", 10, "ok")], {}, "local", { usage });
+    assert.deepEqual(runner.profileStatuses().find((p) => p.id === "claude-a")!.usage, high);
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    assert.equal(runner.store.get(run.id)!.profileId, "claude-b", "claude-a has used 97% of its session (threshold 95%)");
+
+    const none = await setup([profile("claude-a", "claude", 1, "ok")], {}, "local", { usage });
+    const waiting = await none.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await none.runner.settle();
+    assert.match(none.runner.list()[0]!.error ?? "", /chạm ngưỡng dùng của gói sub \(claude-a\)/);
     none.runner.cancel(waiting.id);
   });
 

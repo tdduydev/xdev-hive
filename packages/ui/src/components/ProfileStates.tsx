@@ -17,7 +17,9 @@ export function ProfileStates({ profiles, details = false }: { profiles: Reporte
             ? ["danger", t("admin.noCli")]
             : p.loggedIn === false
               ? ["danger", t("board.profileSignedOut")]
-              : resting
+              : p.overLimit
+                ? ["warn", t("board.profileOverLimit")]
+                : resting
                 ? ["warn", t("board.profileResting", { time: formatTime(p.cooldownUntil) })]
                 : ["ok", t("board.profileReady")];
         return (
@@ -26,6 +28,9 @@ export function ProfileStates({ profiles, details = false }: { profiles: Reporte
             <span className="font-mono text-xs break-all">{p.id}</span>
             <span className="text-xs text-muted-foreground">
               {state}
+              {p.sessionPercent != null || p.weekPercent != null
+                ? ` · ${t("board.profileUsage", { session: p.sessionPercent != null ? `${p.sessionPercent}%` : "?", week: p.weekPercent != null ? `${p.weekPercent}%` : "?" })}`
+                : ""}
               {details && p.account ? ` · ${p.account}` : ""}
               {details ? ` · ${t("agents.statRuns", { count: p.runs })}` : ""}
             </span>
