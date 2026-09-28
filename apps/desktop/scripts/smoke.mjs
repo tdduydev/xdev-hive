@@ -1,6 +1,7 @@
 // Launches the built app with a throwaway config and data dir, screenshots a few pages, then exits.
 // Seeds a task and a queued run whose first subscription "runs out of quota", so the Board shows a real rotation,
 // then a cross-review and a merge request on a mock GitLab (through Electron's net.fetch) with a bare repo as origin.
+// Last, the MR's pipeline fails on GitLab and the Board shows it again (board-ci.png).
 //   npm run smoke -w @xdev-hive/desktop [-- <output dir>]      (HIVE_SMOKE_LOCALE=en for the English interface)
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -73,8 +74,8 @@ new RunStore(path.join(work, "runs.db")).insert(
   new Date().toISOString(),
 );
 
-for (const [page, delay] of [["board", 6000], ["agents", 1500], ["setup", 4000], ["projects", 1500], ["docs", 1500]]) {
-  const shot = path.join(out, `${page}.png`);
+async function shoot(name, page, delay) {
+  const shot = path.join(out, `${name}.png`);
   // Async spawn: the mock GitLab in this process must keep answering while the app runs.
   const child = spawn(electron, ["."], {
     cwd: appDir,
@@ -91,15 +92,24 @@ for (const [page, delay] of [["board", 6000], ["agents", 1500], ["setup", 4000],
   const code = await new Promise((resolve) => child.once("exit", resolve));
   clearTimeout(timer);
   if (code !== 0 || !existsSync(shot)) {
-    console.error(`smoke failed on ${page}`, code, existsSync(shot) ? "" : "(no screenshot)");
+    console.error(`smoke failed on ${name}`, code, existsSync(shot) ? "" : "(no screenshot)");
     process.exit(1);
   }
 }
 
+for (const [page, delay] of [["board", 6000], ["agents", 1500], ["setup", 4000], ["projects", 1500], ["docs", 1500]]) await shoot(page, page, delay);
+// The app checks open MRs as it starts (right away in smoke mode).
+for (const mr of gitlab.mrs) mr.head_pipeline = { id: 7, status: "failed", web_url: `${gitlab.base}/group/demo/-/pipelines/7` };
+await shoot("board-ci", "board", 2500);
+
 const runs = new RunStore(path.join(work, "runs.db")).list({ project: "demo" });
 console.log(
   runs
-    .map((r) => `${r.id} ${r.role} ${r.profileId} ${r.status} attempt ${r.attempt}${r.error ? ` (${r.error})` : ""}${r.mrState ? ` · MR ${r.mrState} ${r.mrUrl ?? r.mrNote}` : ""}`)
+    .map(
+      (r) =>
+        `${r.id} ${r.role} ${r.profileId} ${r.status} attempt ${r.attempt}${r.error ? ` (${r.error})` : ""}` +
+        `${r.mrState ? ` · MR ${r.mrState} ${r.mrUrl ?? r.mrNote}` : ""}${r.mrStatus ? ` · GitLab ${r.mrStatus}, CI ${r.pipelineStatus ?? "-"}` : ""}`,
+    )
     .join("\n"),
 );
 console.log(`mock GitLab MRs: ${gitlab.mrs.map((m) => `!${m.iid} "${m.title}" ${m.source_branch}→${m.target_branch}`).join(", ") || "none"}`);

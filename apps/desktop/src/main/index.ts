@@ -45,7 +45,8 @@ import {
 } from "@xdev-hive/core/node";
 import { GitLabClient } from "./gitlab/client.ts";
 import { setMainLocale, tr } from "./i18n.ts";
-import { MergeRequester } from "./gitlab/mr.ts";
+import { MergeRequester, type MrHost } from "./gitlab/mr.ts";
+import { MrWatcher, type MrChange } from "./gitlab/watch.ts";
 import { installAgents, installShim } from "./installer.ts";
 import { expandEnv, expandHome, resolveBin } from "./runner/command.ts";
 import { LoginMonitor, loginParts } from "./runner/login.ts";
@@ -72,6 +73,7 @@ let logins: LoginMonitor;
 /** The first sign-in check after start; the profile list waits for it (briefly) so it opens with the answer. */
 let firstLoginCheck: Promise<void> = Promise.resolve();
 let mergeRequester: MergeRequester;
+let mrWatcher: MrWatcher;
 let setup: Setup;
 /** Last setup check, sent to the hub with every heartbeat. */
 let setupCache: { checkedAt: string; report: SetupReport } | null = null;
@@ -429,6 +431,31 @@ function onRunnerEvent(event: RunnerEvent): void {
   n.show();
 }
 
+/** Tells about MRs that were merged or closed, and pipelines that failed. */
+function onMrChanges(changes: MrChange[]): void {
+  if (!Notification.isSupported()) return;
+  for (const c of changes) {
+    const iid = c.run.mrIid ?? "";
+    const body =
+      c.status.to === "merged" && c.status.from !== "merged"
+        ? c.taskError
+          ? tr("desktop.mrMergedTaskFailed", { iid, reason: c.taskError })
+          : tr(c.taskDone ? "desktop.mrMerged" : "desktop.mrMergedOnly", { iid })
+        : c.status.to === "closed" && c.status.from !== "closed"
+          ? tr("desktop.mrClosed", { iid })
+          : c.pipeline.to === "failed"
+            ? tr("desktop.pipelineFailed", { iid })
+            : null;
+    if (!body) continue;
+    const n = new Notification({ title: `${c.run.taskId} · MR !${iid}`, body });
+    n.on("click", () => {
+      showWindow();
+      win?.webContents.executeJavaScript('location.hash = "#/board"').catch(() => undefined);
+    });
+    n.show();
+  }
+}
+
 async function me(): Promise<Me> {
   if (backend instanceof HubBackend) return backend.me("desktop");
   return { ...actor(), mode: "local" };
@@ -655,7 +682,7 @@ if (!app.requestSingleInstanceLock()) {
       config = configSchema.parse({});
       backend = resolveBackend(config);
     }
-    mergeRequester = new MergeRequester({
+    const mrHost: MrHost = {
       gitlab: () => config.gitlab,
       projects: () => config.projects,
       backend: () => backend,
@@ -663,7 +690,9 @@ if (!app.requestSingleInstanceLock()) {
       store: () => runner.store,
       fetch: gitlabFetch,
       user: os.userInfo().username,
-    });
+    };
+    mergeRequester = new MergeRequester(mrHost);
+    mrWatcher = new MrWatcher(mrHost);
     logins = new LoginMonitor(() => config.agents, agentEnv);
     runner = new Runner(
       {
@@ -704,6 +733,10 @@ if (!app.requestSingleInstanceLock()) {
     const citations = () => void checkAllCitations().catch(() => undefined);
     setTimeout(citations, 60_000).unref();
     setInterval(citations, 30 * 60_000).unref();
+    // Open MRs (state and pipeline on GitLab): shortly after start, then every 2 minutes.
+    const watchMrs = () => void mrWatcher.check().then(onMrChanges, () => undefined);
+    setTimeout(watchMrs, smokeShot ? 0 : 30_000).unref();
+    setInterval(watchMrs, 2 * 60_000).unref();
     if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(appIcon());
     registerIpc();
     createWindow();
