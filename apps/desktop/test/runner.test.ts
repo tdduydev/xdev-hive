@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 import { AGENT_TEMPLATES, type Actor, type AgentProfile, type HiveBackend, type RunnerSettings } from "@xdev-hive/core";
 import { CODEGRAPH_MCP, SUPERPOWERS_PLUGIN } from "../src/main/installer.ts";
 import { buildCommand } from "../src/main/runner/command.ts";
+import { outputFormat, parseClaudeResult } from "../src/main/runner/usage.ts";
 import { checkLogin, LoginMonitor, loginCommand, parseLogin } from "../src/main/runner/login.ts";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { parseResetTime, detectRateLimit } from "../src/main/runner/rate-limit.ts";
@@ -197,6 +198,27 @@ describe("sign-in checks", () => {
   });
 });
 
+describe("run usage", () => {
+  it("reads Claude Code's JSON result: final message, cost and tokens", () => {
+    const line = JSON.stringify({ type: "result", result: "Done.", total_cost_usd: 0.31, usage: { input_tokens: 10, cache_read_input_tokens: 90, output_tokens: 42 } });
+    assert.deepEqual(parseClaudeResult(`warming up\n${line}\n`), { text: "Done.", costUsd: 0.31, inputTokens: 100, outputTokens: 42 });
+    assert.deepEqual(parseClaudeResult(JSON.stringify({ type: "result", result: "x" })), { text: "x", costUsd: null, inputTokens: null, outputTokens: null });
+    assert.equal(parseClaudeResult('{"type":"system"}\nplain text'), null);
+    assert.equal(parseClaudeResult('{"type":"result", cut off'), null);
+  });
+
+  it("asks Claude Code for JSON unless the profile picked a format", () => {
+    const vars = { prompt: "Do T-1", worktree: "/wt", task: "T-1", project: "demo", branch: "ai/T-1" };
+    const json = buildCommand(AGENT_TEMPLATES.claude, vars);
+    assert.equal(json.claudeJson, true);
+    assert.deepEqual(json.args.slice(4, 6), ["--output-format", "json"], "before the MCP flags, which take several values");
+    const text = buildCommand({ ...AGENT_TEMPLATES.claude, args: [...AGENT_TEMPLATES.claude.args, "--output-format=text"] }, vars);
+    assert.equal(text.claudeJson, undefined);
+    assert.equal(outputFormat(text.args), "text");
+    assert.equal(buildCommand(AGENT_TEMPLATES.codex, vars).claudeJson, undefined);
+  });
+});
+
 describe("buildCommand", () => {
   const vars = { prompt: "Do T-1", worktree: "/wt", task: "T-1", project: "demo", branch: "ai/T-1" };
   const flag = (args: string[], name: string) => args[args.indexOf(name) + 1]!;
@@ -206,6 +228,10 @@ describe("buildCommand", () => {
     assert.deepEqual(args.slice(0, 4), ["-p", "Do T-1", "--permission-mode", "acceptEdits"]);
     assert.deepEqual(JSON.parse(flag(args, "--settings")), { disableAllHooks: true });
     assert.equal(flag(args, "--setting-sources"), "user");
+    // Project settings stay off, but the worktree's CLAUDE.md (and @AGENTS.md) still loads.
+    assert.equal(flag(args, "--add-dir"), "/wt");
+    assert.deepEqual(buildCommand(AGENT_TEMPLATES.claude, vars).env, { CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1" });
+    assert.equal(buildCommand(AGENT_TEMPLATES.codex, vars).env, undefined);
     assert.ok(args.includes("--strict-mcp-config"));
     assert.equal(args.at(-2), "--mcp-config", "last, since it takes several values");
     assert.deepEqual(JSON.parse(args.at(-1)!), {
@@ -256,7 +282,11 @@ describe("Runner", () => {
     assert.equal(t.owner, null);
     assert.match(t.note ?? "", /Implemented T-1/);
     assert.match(t.note ?? "", /Branch ai\/T-1, 1 commit/);
-    assert.match(runner.log(run.id), /## Prompt[\s\S]*## Output\nImplemented T-1/);
+    // Claude Code runs print one JSON result; the log adds its message and the cost after it.
+    assert.match(runner.log(run.id), /## Prompt[\s\S]*## Output\n\{"type":"result"[\s\S]*## Result\nImplemented T-1\. Tests pass\.\n# cost \$0\.0425 · tokens in 6000 out 850/);
+    assert.equal(done.summary, "Implemented T-1. Tests pass.", "the final message, not the raw JSON");
+    assert.deepEqual([done.costUsd, done.inputTokens, done.outputTokens], [0.0425, 6000, 850]);
+    assert.equal(runner.profileStatuses()[0]!.stats.costUsd, 0.0425);
   });
 
   it("gives Claude Code the app's MCP entries for what the repo set up, whatever the working copy says", async () => {
