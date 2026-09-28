@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { FolderGit2, Users } from "lucide-react";
 import { cn } from "cn";
-import { parseDocKey, type Doc, type DocSummary, type DocVersion } from "@xdev-hive/core";
+import { parseDocKey, stripHidden, type Doc, type DocSummary, type DocVersion } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
@@ -11,6 +11,7 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@xdev-hive/ui/components/ui/tabs";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Diff } from "../components/Diff.tsx";
+import { HiddenChars } from "../components/HiddenChars.tsx";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader } from "../components/common.tsx";
 import { errorMessage, formatTime, useAction, useCan, useHive, useQuery } from "../hooks.ts";
 import { useT, type TFunction } from "../i18n/index.tsx";
@@ -410,6 +411,18 @@ function DocEditor({ docKey, canEdit, canPropose, onSaved }: { docKey: string; c
         <History docKey={docKey} version={current?.version ?? 0} />
       </TabsContent>
 
+      {canEdit || canPropose ? (
+        <HiddenChars
+          fields={[
+            { label: t("docs.docTitle"), text: draft.title },
+            { label: t("docs.content"), text: draft.content },
+            { label: t("docs.note"), text: draft.note },
+          ]}
+          onStrip={() =>
+            setDraft({ ...draft, title: stripHidden(draft.title), content: stripHidden(draft.content), note: stripHidden(draft.note) })
+          }
+        />
+      ) : null}
       {canEdit || canPropose ? (
         <div className="flex flex-wrap gap-2">
           <Input
