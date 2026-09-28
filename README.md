@@ -24,6 +24,10 @@ Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, 
   - Lần đầu thấy một file thì lấy bản đó làm mốc. File chưa có trên nhánh (vừa tạo trong task) thì chờ, không bị báo mất.
   - Về sau file khác mốc thì mục bị đánh dấu *Cần xem lại* (file đã đổi / không còn); file quay về như mốc thì hết đánh dấu. Không tìm thấy nhánh thì không kiểm gì, để khỏi báo mọi file đều mất.
   - Agent vẫn thấy mục cần xem lại, kèm trường `review`. Trang Memory hiện các file và nút *Vẫn đúng*: lấy file hiện tại làm mốc mới.
+- **Thay thế và mâu thuẫn** thay vì xoá:
+  - Thay thế: `memory_write` với `supersedes: <id>` ghi mục mới thay cho mục cũ cùng dự án (hoặc cùng là memory chung). Khi mục mới được duyệt, `memory_search` của agent bỏ mục cũ, nên cả chuỗi chỉ còn mục mới nhất. Muốn thay thì thay mục mới nhất; xoá mục thay thì mục trước nó hiện lại.
+  - Mâu thuẫn: `contradicts: <id>` đánh dấu hai mục nói khác nhau. Agent thấy cả hai, kèm `conflictsWith`, cho tới khi người quản trị dự án chọn trên trang Memory: *Giữ mục này*, *Giữ #…* (mục kia bị thay), hoặc *Không mâu thuẫn* (`memory.resolve`).
+  - Trang Memory hiện số `#id` của từng mục, *Thay cho #…* và *Đã được thay bằng #…*; mục đã thay bị gạch.
 - **Chung và riêng từng dự án**: tài liệu `org/*` và memory chung dùng cho cả team; tài liệu `project/<dự án>/*`, memory riêng và task thuộc về một dự án. Ở đầu sidebar có ô chọn phạm vi: *Tất cả dự án*, *Chung (cả team)*, hoặc một dự án. Mọi trang lọc theo phạm vi đó (ở một dự án thì thấy dữ liệu riêng của dự án cộng với dữ liệu chung, có nhãn "Chung"), và mục tạo mới mặc định thuộc phạm vi đang chọn. Trang *Tổng quan* tóm tắt từng dự án và phần dữ liệu chung.
 - **Task**: `task_claim` giữ task theo lease, hai agent không nhận trùng. `task_update` kèm ghi chú bàn giao.
 - **Đồng bộ vào repo**: render `AGENTS.md` (khối chung + phần riêng của dự án), `CLAUDE.md` (`@AGENTS.md`), `docs/decisions.md`. Chỉ commit các file này, không push.

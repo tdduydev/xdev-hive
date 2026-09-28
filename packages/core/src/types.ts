@@ -86,6 +86,12 @@ export interface Memory {
   files: MemoryFile[];
   /** A cited file changed or disappeared since; keeping the entry accepts the files as they are now. */
   review: MemoryReview | null;
+  /** The older entry this one replaces. */
+  supersedes: number | null;
+  /** The newer entry that replaces this one; agents stop seeing it once that one is approved. */
+  supersededBy: number | null;
+  /** Entries this one disagrees with, until someone decides which is right. */
+  conflictsWith: number[];
 }
 
 export interface MemoryFile {

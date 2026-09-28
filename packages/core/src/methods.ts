@@ -148,9 +148,15 @@ export const schemas = {
       taskId: taskId.optional(),
       /** Files the fact is about; the entry is flagged for review when they change. */
       files: z.array(repoPath).max(10).default([]),
+      /** An older entry of the same project this one replaces (the fact changed). */
+      supersedes: id.optional(),
+      /** An entry this one disagrees with; a person decides which is right. */
+      contradicts: id.optional(),
     })
     .refine((m) => (m.shared ? m.project === undefined : m.project !== undefined), "memory needs a project, or shared: true without one"),
   "memory.approve": z.object({ id }),
+  /** Settles a conflict: keep this entry (the other is replaced by it), the other, or both (no conflict after all). */
+  "memory.resolve": z.object({ id, other: id, keep: z.enum(["this", "other", "both"]) }),
   /** Still true: counts as used now, so it is no longer stale, and the cited files as they are now become the baseline. */
   "memory.keep": z.object({ id }),
   /** What the project's cited files are now (null: gone), from a machine that has the repo. */
@@ -257,6 +263,7 @@ export interface MethodOutput {
   "memory.list": Memory[];
   "memory.write": Memory;
   "memory.approve": Memory;
+  "memory.resolve": Memory;
   "memory.keep": Memory;
   "memory.checkFiles": { flagged: number; baselined: number };
   "memory.remove": { removed: boolean };
@@ -299,6 +306,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "memory.list": "viewer",
   "memory.write": "agent",
   "memory.approve": "agent",
+  "memory.resolve": "agent",
   "memory.keep": "agent",
   "memory.checkFiles": "agent",
   "memory.remove": "agent",
