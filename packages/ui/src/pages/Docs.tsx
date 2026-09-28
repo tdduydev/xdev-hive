@@ -13,6 +13,7 @@ import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Diff } from "../components/Diff.tsx";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader } from "../components/common.tsx";
 import { errorMessage, formatTime, useAction, useCan, useHive, useQuery } from "../hooks.ts";
+import { useT, type TFunction } from "../i18n/index.tsx";
 import { docOwner, inScope, projectScope, scopeLabel, scopeProject, type Scope } from "../lib/scope.ts";
 
 interface Draft {
@@ -43,14 +44,14 @@ interface DocGroup {
 }
 
 /** The doc list for a scope, shared vs project kept in separate, clearly labelled groups. */
-function groupDocs(all: DocSummary[], scope: Scope): DocGroup[] {
+function groupDocs(all: DocSummary[], scope: Scope, t: TFunction): DocGroup[] {
   const shared = all.filter((d) => docOwner(d.key) === null);
-  if (scope.kind === "shared") return [{ id: "shared", owner: null, label: "Chung (cả team)", docs: shared }];
+  if (scope.kind === "shared") return [{ id: "shared", owner: null, label: t("common.sharedTeam"), docs: shared }];
   if (scope.kind === "project") {
     const p = scope.project;
     return [
-      { id: `project:${p}`, owner: p, label: `Riêng · ${p}`, docs: all.filter((d) => docOwner(d.key) === p) },
-      { id: "shared", owner: null, label: "Chung · áp dụng cho mọi dự án", docs: shared },
+      { id: `project:${p}`, owner: p, label: t("docs.ownGroup", { project: p }), docs: all.filter((d) => docOwner(d.key) === p) },
+      { id: "shared", owner: null, label: t("docs.sharedGroup"), docs: shared },
     ];
   }
   const byProject = new Map<string, DocSummary[]>();
@@ -59,13 +60,14 @@ function groupDocs(all: DocSummary[], scope: Scope): DocGroup[] {
     if (owner !== null) byProject.set(owner, [...(byProject.get(owner) ?? []), d]);
   }
   return [
-    { id: "shared", owner: null, label: "Chung (cả team)", docs: shared },
+    { id: "shared", owner: null, label: t("common.sharedTeam"), docs: shared },
     ...[...byProject.keys()].sort().map((p) => ({ id: `project:${p}`, owner: p, label: p, docs: byProject.get(p)! })),
   ];
 }
 
 export function DocsPage() {
   const { client, scope, setScope, projects } = useHive();
+  const t = useT();
   const allow = useCan();
   const list = useQuery(() => client.call("docs.list", {}), [client]);
   const [filter, setFilter] = useState("");
@@ -76,7 +78,7 @@ export function DocsPage() {
   const [newKeyError, setNewKeyError] = useState<string | null>(null);
 
   // Every doc in scope, in display order (ignores the text filter).
-  const scoped = useMemo(() => groupDocs(list.data ?? [], scope), [list.data, scope]);
+  const scoped = useMemo(() => groupDocs(list.data ?? [], scope, t), [list.data, scope, t]);
   const firstInScope = scoped.flatMap((g) => g.docs)[0]?.key ?? null;
 
   const groups = useMemo(() => {
@@ -115,7 +117,7 @@ export function DocsPage() {
   const createDoc = () => {
     const slug = newSlug.trim();
     if (!SLUG.test(slug)) {
-      setNewKeyError('Tên không hợp lệ: chỉ dùng chữ thường, số và dấu "-", bắt đầu bằng chữ hoặc số.');
+      setNewKeyError(t("docs.badSlug"));
       return;
     }
     try {
@@ -134,14 +136,14 @@ export function DocsPage() {
   return (
     <Page>
       <PageHeader
-        title="Tài liệu"
-        subtitle="Bản gốc của AGENTS.md, quy chuẩn chung và nhật ký quyết định. Agent chỉ được đề xuất sửa; người quản trị dự án (hoặc admin) duyệt."
+        title={t("docs.title")}
+        subtitle={t("docs.subtitle")}
       />
       <div className="grid items-start gap-4 lg:grid-cols-[280px_1fr]">
         <Card className="min-w-0 py-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
           <CardContent className="px-3">
-            <nav className="flex flex-col gap-3" aria-label="Danh sách tài liệu">
-              <Input placeholder="Lọc tài liệu…" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Lọc tài liệu" />
+            <nav className="flex flex-col gap-3" aria-label={t("docs.list")}>
+              <Input placeholder={t("docs.filterPlaceholder")} value={filter} onChange={(e) => setFilter(e.target.value)} aria-label={t("docs.filter")} />
               <ErrorNote error={list.error} />
               {visibleCount > 0 ? groups.map((g) => (
                 <div key={g.id} role="group" aria-label={g.label} className="flex flex-col gap-0.5">
@@ -162,7 +164,7 @@ export function DocsPage() {
                     <span className="font-normal text-muted-foreground tabular-nums">{g.docs.length}</span>
                   </div>
                   {g.docs.length === 0 ? (
-                    <p className="px-2 pb-1 text-xs text-muted-foreground">Chưa có tài liệu riêng cho dự án này.</p>
+                    <p className="px-2 pb-1 text-xs text-muted-foreground">{t("docs.noOwnDocs")}</p>
                   ) : null}
                   {g.docs.map((d) => (
                     <button
@@ -184,18 +186,18 @@ export function DocsPage() {
               {!list.loading && visibleCount === 0 ? (
                 <Empty>
                   {filter.trim()
-                    ? "Không có tài liệu nào khớp bộ lọc."
+                    ? t("docs.noMatch")
                     : scope.kind === "all"
-                      ? "Chưa có tài liệu."
-                      : `Chưa có tài liệu trong phạm vi “${scopeLabel(scope)}”.`}
+                      ? t("docs.none")
+                      : t("docs.noneIn", { scope: scopeLabel(scope) })}
                 </Empty>
               ) : null}
               {canCreate ? (
                 <div className="flex flex-col gap-2 border-t pt-3">
-                  <div className="text-xs font-semibold text-muted-foreground">Tài liệu mới</div>
+                  <div className="text-xs font-semibold text-muted-foreground">{t("docs.newDoc")}</div>
                   <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2">
                     <Label htmlFor="new-doc-owner" className="text-xs text-muted-foreground">
-                      Thuộc
+                      {t("docs.owner")}
                     </Label>
                     <div className="min-w-0 *:data-[slot=native-select-wrapper]:w-full">
                       <NativeSelect
@@ -207,7 +209,7 @@ export function DocsPage() {
                           setNewKeyError(null);
                         }}
                       >
-                        {sharedOk ? <NativeSelectOption value="">Chung (cả team)</NativeSelectOption> : null}
+                        {sharedOk ? <NativeSelectOption value="">{t("common.sharedTeam")}</NativeSelectOption> : null}
                         {ownerOptions.map((p) => (
                           <NativeSelectOption key={p} value={p}>
                             {p}
@@ -216,7 +218,7 @@ export function DocsPage() {
                       </NativeSelect>
                     </div>
                     <Label htmlFor="new-doc-slug" className="text-xs text-muted-foreground">
-                      Tên
+                      {t("docs.slug")}
                     </Label>
                     <div className="flex min-w-0 gap-2">
                       <Input
@@ -232,12 +234,12 @@ export function DocsPage() {
                         onKeyDown={(e) => e.key === "Enter" && createDoc()}
                       />
                       <Button size="sm" variant="outline" onClick={createDoc} disabled={!newSlug.trim()}>
-                        Tạo
+                        {t("docs.create")}
                       </Button>
                     </div>
                   </div>
                   <p id="new-doc-key-hint" className="font-mono text-xs break-all text-muted-foreground">
-                    {newSlug.trim() ? newKey : `${keyPrefix}<tên>`}
+                    {newSlug.trim() ? newKey : `${keyPrefix}<${t("docs.slugPlaceholder")}>`}
                   </p>
                   <ErrorNote error={newKeyError} />
                 </div>
@@ -257,7 +259,7 @@ export function DocsPage() {
                   onSaved={list.reload}
                 />
               ) : (
-                <Empty>Chọn một tài liệu.</Empty>
+                <Empty>{t("docs.pick")}</Empty>
               )}
             </CardContent>
           </Card>
@@ -269,6 +271,7 @@ export function DocsPage() {
 
 function DocEditor({ docKey, canEdit, canPropose, onSaved }: { docKey: string; canEdit: boolean; canPropose: boolean; onSaved: () => void }) {
   const { client } = useHive();
+  const t = useT();
   const doc = useQuery(() => client.call("docs.get", { key: docKey }), [client, docKey]);
   const [draft, setDraft] = useState<Draft>(emptyDraft(docKey));
   const [tab, setTab] = useState<EditorTab>("edit");
@@ -302,7 +305,7 @@ function DocEditor({ docKey, canEdit, canPropose, onSaved }: { docKey: string; c
         note: draft.note.trim() || undefined,
         baseVersion: current?.version ?? 0,
       });
-      setSaved(`Đã lưu v${result.version}`);
+      setSaved(t("docs.saved", { version: result.version }));
       doc.reload();
       onSaved();
     });
@@ -314,9 +317,9 @@ function DocEditor({ docKey, canEdit, canPropose, onSaved }: { docKey: string; c
         docKey,
         baseVersion: current?.version ?? 0,
         content: draft.content,
-        reason: draft.note.trim() || "Sửa từ web",
+        reason: draft.note.trim() || t("docs.proposeDefaultReason"),
       });
-      setSaved("Đã gửi đề xuất, chờ người quản trị dự án duyệt.");
+      setSaved(t("docs.proposed"));
       setDraft({ ...draft, content: current?.content ?? "", note: "" });
     });
 
@@ -328,7 +331,7 @@ function DocEditor({ docKey, canEdit, canPropose, onSaved }: { docKey: string; c
             <OwnerBadge owner={owner} />
             <span className="min-w-0 font-mono text-xs break-all text-muted-foreground">{docKey}</span>
           </div>
-          <h2 className="text-lg font-semibold break-words">{current?.title ?? "Tài liệu mới"}</h2>
+          <h2 className="text-lg font-semibold break-words">{current?.title ?? t("docs.newDoc")}</h2>
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
             {owner === null ? (
               <Users className="size-3.5 shrink-0 text-brand" aria-hidden="true" />
@@ -336,7 +339,7 @@ function DocEditor({ docKey, canEdit, canPropose, onSaved }: { docKey: string; c
               <FolderGit2 className="size-3.5 shrink-0" aria-hidden="true" />
             )}
             <span className="min-w-0 break-words">
-              {owner === null ? "Tài liệu chung: áp dụng cho mọi dự án" : `Chỉ dùng cho dự án ${owner}`}
+              {owner === null ? t("docs.sharedDoc") : t("docs.projectDoc", { project: owner })}
             </span>
           </p>
           <div className="text-xs text-muted-foreground">
@@ -345,20 +348,20 @@ function DocEditor({ docKey, canEdit, canPropose, onSaved }: { docKey: string; c
                 v{current.version} · {current.updatedBy} · {formatTime(current.updatedAt)}
               </>
             ) : (
-              "Chưa lưu"
+              t("docs.unsaved")
             )}
           </div>
         </div>
         <TabsList>
           {(
             [
-              ["edit", "Soạn"],
-              ["preview-diff", "Thay đổi"],
-              ["history", "Lịch sử"],
+              ["edit", "docs.tabEdit"],
+              ["preview-diff", "docs.tabChanges"],
+              ["history", "docs.tabHistory"],
             ] as const
           ).map(([id, label]) => (
             <TabsTrigger key={id} value={id}>
-              {label}
+              {t(label)}
               {id === "preview-diff" && dirty ? " •" : ""}
             </TabsTrigger>
           ))}
@@ -370,7 +373,7 @@ function DocEditor({ docKey, canEdit, canPropose, onSaved }: { docKey: string; c
       <TabsContent value="edit" className="flex flex-col gap-4">
         <div className="grid gap-2 sm:grid-cols-[110px_1fr] sm:items-center sm:gap-x-3">
           <Label htmlFor="doc-title" className="text-xs text-muted-foreground">
-            Tiêu đề
+            {t("docs.docTitle")}
           </Label>
           <Input
             id="doc-title"
@@ -386,7 +389,7 @@ function DocEditor({ docKey, canEdit, canPropose, onSaved }: { docKey: string; c
               disabled={!canEdit}
               onCheckedChange={(v) => setDraft({ ...draft, includeInAgents: v === true })}
             />
-            Đưa vào AGENTS.md của mọi dự án khi đồng bộ
+            {t("docs.includeInAgents")}
           </label>
         ) : null}
         <Textarea
@@ -394,8 +397,8 @@ function DocEditor({ docKey, canEdit, canPropose, onSaved }: { docKey: string; c
           value={draft.content}
           readOnly={!canEdit && !canPropose}
           spellCheck={false}
-          aria-label="Nội dung (Markdown)"
-          placeholder="Nội dung Markdown…"
+          aria-label={t("docs.content")}
+          placeholder={t("docs.contentPlaceholder")}
           onChange={(e) => setDraft({ ...draft, content: e.target.value })}
         />
       </TabsContent>
@@ -411,23 +414,23 @@ function DocEditor({ docKey, canEdit, canPropose, onSaved }: { docKey: string; c
         <div className="flex flex-wrap gap-2">
           <Input
             className="min-w-48 flex-1"
-            placeholder={canEdit ? "Ghi chú thay đổi (tuỳ chọn)" : "Lý do đề xuất"}
+            placeholder={canEdit ? t("docs.notePlaceholder") : t("docs.reasonPlaceholder")}
             value={draft.note}
             onChange={(e) => setDraft({ ...draft, note: e.target.value })}
-            aria-label="Ghi chú thay đổi"
+            aria-label={t("docs.note")}
           />
           {canEdit ? (
             <Button onClick={save} disabled={!dirty || action.busy}>
-              {action.busy ? "Đang lưu…" : `Lưu v${(current?.version ?? 0) + 1}`}
+              {action.busy ? t("docs.saving") : t("docs.save", { version: (current?.version ?? 0) + 1 })}
             </Button>
           ) : (
             <Button onClick={propose} disabled={!dirty || action.busy}>
-              {action.busy ? "Đang gửi…" : "Gửi đề xuất"}
+              {action.busy ? t("docs.sending") : t("docs.propose")}
             </Button>
           )}
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">Bạn chỉ có quyền xem tài liệu này.</p>
+        <p className="text-sm text-muted-foreground">{t("docs.viewOnly")}</p>
       )}
       <ErrorNote error={action.error} />
       {saved && !dirty ? <Notice tone="ok" title={saved} /> : null}
@@ -437,11 +440,12 @@ function DocEditor({ docKey, canEdit, canPropose, onSaved }: { docKey: string; c
 
 function History({ docKey, version }: { docKey: string; version: number }) {
   const { client } = useHive();
+  const t = useT();
   const history = useQuery(() => client.call("docs.history", { key: docKey }), [client, docKey, version]);
   const [open, setOpen] = useState<number | null>(null);
   const versions: DocVersion[] = history.data ?? [];
-  if (history.loading && !history.data) return <Empty>Đang tải…</Empty>;
-  if (!versions.length) return <Empty>Chưa có phiên bản nào.</Empty>;
+  if (history.loading && !history.data) return <Empty>{t("common.loading")}</Empty>;
+  if (!versions.length) return <Empty>{t("docs.noVersions")}</Empty>;
   return (
     <ol className="flex flex-col gap-2">
       {versions.map((v, i) => {
@@ -454,7 +458,7 @@ function History({ docKey, version }: { docKey: string; version: number }) {
               aria-expanded={open === v.version}
             >
               <Badge tone={i === 0 ? "accent" : "neutral"}>v{v.version}</Badge>
-              <span className="min-w-0 flex-1 break-words">{v.note || <span className="text-muted-foreground">Không có ghi chú</span>}</span>
+              <span className="min-w-0 flex-1 break-words">{v.note || <span className="text-muted-foreground">{t("docs.noNote")}</span>}</span>
               <span className="text-xs text-muted-foreground">
                 {v.author} · {formatTime(v.createdAt)}
               </span>

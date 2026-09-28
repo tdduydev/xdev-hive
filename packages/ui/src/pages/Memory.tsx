@@ -9,14 +9,8 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { Badge, Empty, ErrorNote, OwnerBadge, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
 import type { HiveClient } from "../client.ts";
 import { formatTime, useAction, useCan, useHive, useQuery } from "../hooks.ts";
+import { useT, type MessageKey } from "../i18n/index.tsx";
 import { scopeProject, type Scope } from "../lib/scope.ts";
-
-const KIND_LABEL: Record<MemoryKind, string> = {
-  decision: "Quyết định",
-  convention: "Quy ước",
-  gotcha: "Lưu ý",
-  context: "Bối cảnh",
-};
 
 /** Value of the "Chung" option in the owner select (project keys are never empty). */
 const SHARED_OPTION = "";
@@ -37,6 +31,7 @@ function loadMemory(client: HiveClient, scope: Scope, query: string, pendingOnly
 
 export function MemoryPage() {
   const { client, scope, projects } = useHive();
+  const t = useT();
   const allow = useCan();
   const scoped = scopeProject(scope);
   const [query, setQuery] = useState("");
@@ -47,11 +42,11 @@ export function MemoryPage() {
 
   // In a project, its own entries come first, then the team-wide ones it also sees.
   const rows = list.data ?? [];
-  const groups: Array<{ owner: string | null; title: string | null; items: Memory[] }> =
+  const groups: Array<{ owner: string | null; title: MessageKey | null; items: Memory[] }> =
     scope.kind === "project"
       ? [
-          { owner: scope.project, title: "Riêng của dự án", items: rows.filter((m) => m.project !== null) },
-          { owner: null, title: "Chung — áp dụng cho mọi dự án", items: rows.filter((m) => m.project === null) },
+          { owner: scope.project, title: "memory.ownGroup", items: rows.filter((m) => m.project !== null) },
+          { owner: null, title: "memory.sharedGroup", items: rows.filter((m) => m.project === null) },
         ]
       : [{ owner: null, title: null, items: rows }];
 
@@ -61,8 +56,8 @@ export function MemoryPage() {
   return (
     <Page>
       <PageHeader
-        title="Memory"
-        subtitle="Memory chung áp dụng cho mọi dự án, còn memory riêng chỉ áp dụng cho một dự án. Mọi agent ghi bằng memory_write và đọc bằng memory_search. Admin dọn các mục sai để chúng không lan sang agent khác."
+        title={t("memory.title")}
+        subtitle={t("memory.subtitle")}
       />
       <div className="flex flex-wrap items-center gap-2">
         <form
@@ -74,33 +69,33 @@ export function MemoryPage() {
         >
           <Input
             className="flex-1"
-            placeholder="Tìm (có dấu hay không dấu đều được)…"
+            placeholder={t("memory.searchPlaceholder")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            aria-label="Tìm memory"
+            aria-label={t("memory.searchLabel")}
           />
           <Button variant="outline" type="submit">
-            Tìm
+            {t("memory.search")}
           </Button>
         </form>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox checked={pendingOnly} onCheckedChange={(v) => setPendingOnly(v === true)} />
-          Chỉ mục chờ duyệt
+          {t("memory.pendingOnly")}
         </label>
       </div>
       {allow(null, "contribute") || projects.some((p) => allow(p, "contribute")) ? (
         <AddMemory key={scoped === null ? scope.kind : `project:${scoped}`} defaultOwner={defaultOwner} projects={projects} onAdded={list.reload} />
       ) : null}
       <ErrorNote error={list.error} />
-      {list.data?.length === 0 ? <Empty>Không có mục nào.</Empty> : null}
+      {list.data?.length === 0 ? <Empty>{t("memory.none")}</Empty> : null}
       {groups
         .filter((g) => g.items.length > 0)
         .map((g) => (
-          <section key={g.title ?? "all"} className="flex flex-col gap-3" aria-label={g.title ?? undefined}>
+          <section key={g.title ?? "all"} className="flex flex-col gap-3" aria-label={g.title ? t(g.title) : undefined}>
             {g.title ? (
               <h2 className="flex flex-wrap items-center gap-2 text-sm font-semibold text-muted-foreground">
                 <OwnerBadge owner={g.owner} />
-                <span>{g.title}</span>
+                <span>{t(g.title)}</span>
                 <Badge tone="neutral">{g.items.length}</Badge>
               </h2>
             ) : null}
@@ -115,6 +110,7 @@ export function MemoryPage() {
 
 function MemoryRow({ memory: m, onChanged }: { memory: Memory; onChanged: () => void }) {
   const { client } = useHive();
+  const t = useT();
   const allow = useCan();
   const action = useAction();
   return (
@@ -123,8 +119,8 @@ function MemoryRow({ memory: m, onChanged }: { memory: Memory; onChanged: () => 
         <CardContent className="flex flex-col gap-2 px-4">
           <div className="flex flex-wrap items-center gap-2">
             <OwnerBadge owner={m.project} />
-            <Badge tone="accent">{KIND_LABEL[m.kind]}</Badge>
-            {m.status === "pending" ? <Badge tone={STATUS_TONE.pending}>Chờ duyệt</Badge> : null}
+            <Badge tone="accent">{t(`memoryKind.${m.kind}`)}</Badge>
+            {m.status === "pending" ? <Badge tone={STATUS_TONE.pending}>{t("memory.pending")}</Badge> : null}
             {m.taskId ? <span className="font-mono text-xs text-muted-foreground">{m.taskId}</span> : null}
             <span className="min-w-0 flex-1 text-xs text-muted-foreground">
               {m.author} · {formatTime(m.createdAt)}
@@ -138,7 +134,7 @@ function MemoryRow({ memory: m, onChanged }: { memory: Memory; onChanged: () => 
                     disabled={action.busy}
                     onClick={() => action.run(async () => (await client.call("memory.approve", { id: m.id }), onChanged()))}
                   >
-                    Duyệt
+                    {t("memory.approve")}
                   </Button>
                 ) : null}
                 <Button
@@ -147,12 +143,12 @@ function MemoryRow({ memory: m, onChanged }: { memory: Memory; onChanged: () => 
                   className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                   disabled={action.busy}
                   onClick={() => {
-                    if (window.confirm("Xoá mục memory này? Mọi agent sẽ không còn thấy nó.")) {
+                    if (window.confirm(t("memory.confirmRemove"))) {
                       void action.run(async () => (await client.call("memory.remove", { id: m.id }), onChanged()));
                     }
                   }}
                 >
-                  Xoá
+                  {t("memory.remove")}
                 </Button>
               </>
             ) : null}
@@ -167,6 +163,7 @@ function MemoryRow({ memory: m, onChanged }: { memory: Memory; onChanged: () => 
 
 function AddMemory({ defaultOwner, projects, onAdded }: { defaultOwner: string | null; projects: string[]; onAdded: () => void }) {
   const { client } = useHive();
+  const t = useT();
   const allow = useCan();
   const sharedOk = allow(null, "contribute");
   // undefined: not picked yet, so it follows the scope's default (the project list may still be loading).
@@ -195,14 +192,14 @@ function AddMemory({ defaultOwner, projects, onAdded }: { defaultOwner: string |
         >
           <div className="flex max-w-full min-w-0 items-center gap-2">
             <Label htmlFor="memory-owner" className="shrink-0">
-              Thuộc
+              {t("memory.owner")}
             </Label>
             <NativeSelect
               id="memory-owner"
               value={owner ?? SHARED_OPTION}
               onChange={(e) => setPicked(e.target.value === SHARED_OPTION ? null : e.target.value)}
             >
-              {sharedOk ? <NativeSelectOption value={SHARED_OPTION}>Chung (cả team — áp dụng cho mọi dự án)</NativeSelectOption> : null}
+              {sharedOk ? <NativeSelectOption value={SHARED_OPTION}>{t("memory.sharedOption")}</NativeSelectOption> : null}
               {options.map((p) => (
                 <NativeSelectOption key={p} value={p}>
                   {p}
@@ -210,22 +207,22 @@ function AddMemory({ defaultOwner, projects, onAdded }: { defaultOwner: string |
               ))}
             </NativeSelect>
           </div>
-          <NativeSelect value={kind} onChange={(e) => setKind(e.target.value as MemoryKind)} aria-label="Loại">
+          <NativeSelect value={kind} onChange={(e) => setKind(e.target.value as MemoryKind)} aria-label={t("memory.kind")}>
             {MEMORY_KINDS.map((k) => (
               <NativeSelectOption key={k} value={k}>
-                {KIND_LABEL[k]}
+                {t(`memoryKind.${k}`)}
               </NativeSelectOption>
             ))}
           </NativeSelect>
           <Input
             className="min-w-48 flex-1"
-            placeholder={owner === null ? "Thêm memory chung cho cả team…" : `Thêm memory cho ${owner}…`}
+            placeholder={owner === null ? t("memory.addShared") : t("memory.addFor", { project: owner })}
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            aria-label="Nội dung memory"
+            aria-label={t("memory.content")}
           />
           <Button variant="outline" type="submit" disabled={!content.trim() || action.busy}>
-            Thêm
+            {t("memory.add")}
           </Button>
         </form>
         <ErrorNote error={action.error} />
