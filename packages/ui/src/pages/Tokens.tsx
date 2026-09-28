@@ -8,16 +8,11 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE, StatusDot } from "../components/common.tsx";
 import { formatTime, useAction, useHive, useQuery } from "../hooks.ts";
-
-const ROLE_HINT: Record<Role, string> = {
-  viewer: "Chỉ xem",
-  agent: "Agent: đọc, đề xuất, ghi memory, nhận task",
-  member: "Thành viên: như tài khoản (máy của người đó)",
-  admin: "Admin: sửa và duyệt tài liệu, quản lý token",
-};
+import { rich, useT } from "../i18n/index.tsx";
 
 export function TokensPage() {
   const { client, me } = useHive();
+  const t = useT();
   const tokens = client.tokens!;
   const hubAdmin = me.role === "admin" && !me.access;
   // A person creates agent/viewer tokens for their own CI and scripts; machines get theirs at desktop sign-in.
@@ -40,12 +35,8 @@ export function TokensPage() {
   return (
     <Page>
       <PageHeader
-        title="Token truy cập"
-        subtitle={
-          hubAdmin
-            ? "Token cho máy, agent và CI. Token của một tài khoản chỉ thấy các dự án của người đó; token agent tối đa ở mức Đóng góp. Token chỉ hiện một lần lúc tạo."
-            : "Token của bạn cho CI và script: thấy đúng các dự án bạn được cấp (token agent tối đa Đóng góp). App desktop tự lấy token khi bạn đăng nhập trong app."
-        }
+        title={t("tokens.title")}
+        subtitle={hubAdmin ? t("tokens.subtitleAdmin") : t("tokens.subtitleMember")}
       />
       <Card className="py-4">
         <CardContent className="px-4">
@@ -63,99 +54,101 @@ export function TokensPage() {
           >
             <Input
               className="min-w-48 flex-1"
-              placeholder="Tên, ví dụ duy-macbook hoặc ci-gitlab"
+              placeholder={t("tokens.namePlaceholder")}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              aria-label="Tên token"
+              aria-label={t("tokens.name")}
             />
-            <NativeSelect value={role} onChange={(e) => setRole(e.target.value as Role)} aria-label="Vai trò">
+            <NativeSelect value={role} onChange={(e) => setRole(e.target.value as Role)} aria-label={t("tokens.role")}>
               {roles.map((r) => (
                 <NativeSelectOption key={r} value={r}>
-                  {ROLE_HINT[r]}
+                  {t(`tokenRole.${r}`)}
                 </NativeSelectOption>
               ))}
             </NativeSelect>
             <Button type="submit" disabled={!name.trim() || action.busy}>
-              Tạo token
+              {t("tokens.create")}
             </Button>
           </form>
         </CardContent>
       </Card>
       <ErrorNote error={action.error} />
       {created ? (
-        <Notice tone="ok" title={`Token ${created.name}: sao chép ngay, sẽ không hiện lại`}>
+        <Notice tone="ok" title={t("tokens.created", { name: created.name })}>
           <div className="flex w-full flex-wrap items-center gap-2 pt-1">
             <code className="min-w-0 flex-1 break-all rounded-md bg-muted px-2 py-1 font-mono text-xs text-foreground">{created.token}</code>
             <Button size="sm" variant="outline" onClick={() => void navigator.clipboard?.writeText(created.token)}>
               <Copy />
-              Sao chép
+              {t("common.copy")}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setCreated(null)}>
-              Đóng
+              {t("common.close")}
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Dùng cho MCP qua HTTP: <code className="font-mono">POST /mcp</code>, header{" "}
-            <code className="font-mono">Authorization: Bearer …</code>
+            {rich(t("tokens.mcpHint"), {
+              endpoint: <code className="font-mono">POST /mcp</code>,
+              header: <code className="font-mono">Authorization: Bearer …</code>,
+            })}
           </p>
         </Notice>
       ) : null}
       <ErrorNote error={list.error} />
-      {list.data?.length === 0 ? <Empty>Chưa có token.</Empty> : null}
+      {list.data?.length === 0 ? <Empty>{t("tokens.none")}</Empty> : null}
       {list.data?.length ? (
         <div className="overflow-x-auto rounded-lg border">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Tên</TableHead>
-                <TableHead>Vai trò</TableHead>
-                {hubAdmin ? <TableHead>Tài khoản</TableHead> : null}
-                <TableHead>Máy</TableHead>
-                <TableHead>Tạo lúc</TableHead>
-                <TableHead>Dùng gần nhất</TableHead>
+                <TableHead>{t("tokens.name")}</TableHead>
+                <TableHead>{t("tokens.role")}</TableHead>
+                {hubAdmin ? <TableHead>{t("tokens.owner")}</TableHead> : null}
+                <TableHead>{t("tokens.machines")}</TableHead>
+                <TableHead>{t("tokens.createdAt")}</TableHead>
+                <TableHead>{t("tokens.lastUsed")}</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {list.data.map((t) => (
-                <TableRow key={t.id}>
-                  <TableCell className="font-medium">{t.name}</TableCell>
+              {list.data.map((tok) => (
+                <TableRow key={tok.id}>
+                  <TableCell className="font-medium">{tok.name}</TableCell>
                   <TableCell>
-                    <Badge tone={STATUS_TONE[t.role]}>{t.role}</Badge>
+                    <Badge tone={STATUS_TONE[tok.role]}>{t(`role.${tok.role}`)}</Badge>
                   </TableCell>
                   {hubAdmin ? (
                     <TableCell className="font-mono text-xs">
-                      {t.ownerId ? `@${ownerName.get(t.ownerId) ?? t.ownerId}` : <span className="text-muted-foreground">— (không thuộc ai)</span>}
+                      {tok.ownerId ? `@${ownerName.get(tok.ownerId) ?? tok.ownerId}` : <span className="text-muted-foreground">{t("tokens.noOwner")}</span>}
                     </TableCell>
                   ) : null}
                   <TableCell>
                     <div className="flex flex-col gap-1">
-                      {(byToken.get(t.name) ?? []).map((m) => (
+                      {(byToken.get(tok.name) ?? []).map((m) => (
                         <span key={m.machine} className="flex items-center gap-2 font-mono text-xs">
                           <StatusDot tone={m.online ? "ok" : "neutral"} />
                           {m.machine}
                         </span>
                       ))}
-                      {byToken.get(t.name)?.length ? null : <span className="text-muted-foreground">—</span>}
+                      {byToken.get(tok.name)?.length ? null : <span className="text-muted-foreground">—</span>}
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{formatTime(t.createdAt)}</TableCell>
-                  <TableCell className="text-muted-foreground">{formatTime(t.lastUsedAt)}</TableCell>
+                  <TableCell className="text-muted-foreground">{formatTime(tok.createdAt)}</TableCell>
+                  <TableCell className="text-muted-foreground">{formatTime(tok.lastUsedAt)}</TableCell>
                   <TableCell className="text-right">
                     <Button
                       size="sm"
                       variant="ghost"
                       className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                       onClick={() => {
-                        if (window.confirm(`Thu hồi token "${t.name}"? Máy/agent đang dùng sẽ mất quyền truy cập ngay.`)) {
+                        if (window.confirm(t("tokens.confirmRevoke", { name: tok.name }))) {
                           void action.run(async () => {
-                            await tokens.revoke(t.id);
+                            await tokens.revoke(tok.id);
                             list.reload();
                           });
                         }
                       }}
                     >
-                      Thu hồi
+                      {t("tokens.revoke")}
                     </Button>
                   </TableCell>
                 </TableRow>
