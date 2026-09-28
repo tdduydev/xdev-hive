@@ -3,6 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { HiveError } from "@xdev-hive/core";
 import { git, gitErrorText, isGitRepo } from "../git.ts";
+import { tr } from "../i18n.ts";
 
 /** Agent config that may exist in the repo but not be committed yet; copied into new worktrees. */
 export const AGENT_CONFIG_FILES = [".mcp.json", ".gemini/settings.json", ".claude/settings.json", ".xdev-hive/guard-docs.sh"];
@@ -35,7 +36,7 @@ function tryGit(repo: string, args: string[]): string | null {
 }
 
 export function ensureWorktree(repo: string, dir: string, taskId: string, knownBase: string | null): Worktree {
-  if (!isGitRepo(repo)) throw new HiveError("bad_request", `${repo} không phải git repo`);
+  if (!isGitRepo(repo)) throw new HiveError("bad_request", `${repo} không phải git repo`, { key: "errors.notGitRepo", vars: { path: repo } });
   const branch = branchFor(taskId);
   git(repo, ["worktree", "prune"]);
   const registered = git(repo, ["worktree", "list", "--porcelain"])
@@ -45,13 +46,14 @@ export function ensureWorktree(repo: string, dir: string, taskId: string, knownB
 
   let created = false;
   if (!registered) {
-    if (existsSync(dir)) throw new HiveError("conflict", `${dir} đã tồn tại nhưng không phải worktree của repo này`);
+    if (existsSync(dir)) throw new HiveError("conflict", `${dir} đã tồn tại nhưng không phải worktree của repo này`, { key: "errors.worktreeTaken", vars: { path: dir } });
     mkdirSync(path.dirname(dir), { recursive: true });
     const branchExists = tryGit(repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]) !== null;
     try {
       git(repo, branchExists ? ["worktree", "add", dir, branch] : ["worktree", "add", "-b", branch, dir, "HEAD"]);
     } catch (err) {
-      throw new HiveError("bad_request", `Không tạo được worktree: ${gitErrorText(err)}`);
+      const reason = gitErrorText(err);
+      throw new HiveError("bad_request", `Không tạo được worktree: ${reason}`, { key: "errors.worktreeCreate", vars: { reason } });
     }
     created = true;
   }
@@ -89,17 +91,18 @@ export function branchState(dir: string, baseSha: string): { commits: number; he
 }
 
 export function describeBranch(dir: string, baseSha: string): string {
-  if (!existsSync(dir)) return "Worktree đã bị xoá.";
-  const log = tryGit(dir, ["log", "--oneline", "--no-decorate", `${baseSha}..HEAD`]) || "(chưa có commit)";
-  const stat = tryGit(dir, ["diff", "--stat", `${baseSha}...HEAD`]) || "(không có thay đổi)";
+  if (!existsSync(dir)) return tr("runNote.worktreeGone");
+  const log = tryGit(dir, ["log", "--oneline", "--no-decorate", `${baseSha}..HEAD`]) || tr("runNote.noCommits");
+  const stat = tryGit(dir, ["diff", "--stat", `${baseSha}...HEAD`]) || tr("runNote.noChanges");
   const dirty = tryGit(dir, ["status", "--short"]);
-  return [`Commits:\n${log}`, `Thay đổi so với base:\n${stat}`, dirty ? `Chưa commit:\n${dirty}` : ""].filter(Boolean).join("\n\n");
+  return [`Commits:\n${log}`, `${tr("runNote.changesFromBase")}\n${stat}`, dirty ? `${tr("runNote.uncommitted")}\n${dirty}` : ""].filter(Boolean).join("\n\n");
 }
 
 export function removeWorktree(repo: string, dir: string): void {
   try {
     git(repo, ["worktree", "remove", dir]);
   } catch (err) {
-    throw new HiveError("bad_request", `Không xoá được worktree: ${gitErrorText(err)}`);
+    const reason = gitErrorText(err);
+    throw new HiveError("bad_request", `Không xoá được worktree: ${reason}`, { key: "errors.worktreeRemove", vars: { reason } });
   }
 }

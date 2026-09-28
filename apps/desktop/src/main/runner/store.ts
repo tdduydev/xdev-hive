@@ -4,6 +4,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { AgentKind, AgentRole, AgentRun, MrState, RunStatus } from "@xdev-hive/core";
+import { tr } from "../i18n.ts";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS runs(
@@ -221,8 +222,8 @@ export class RunStore {
   /** Runs left `running` by a previous app session (crash / force quit). */
   failInterrupted(now: string): number {
     const res = this.db
-      .prepare("UPDATE runs SET status = 'failed', error = 'App đã đóng khi run đang chạy', finished_at = ? WHERE status = 'running'")
-      .run(now);
+      .prepare("UPDATE runs SET status = 'failed', error = ?, finished_at = ? WHERE status = 'running'")
+      .run(tr("runNote.appClosed"), now);
     return Number(res.changes);
   }
 }

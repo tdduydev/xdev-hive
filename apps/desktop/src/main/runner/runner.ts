@@ -32,6 +32,7 @@ import {
   type StartRunRequest,
   type Task,
 } from "@xdev-hive/core";
+import { tr } from "../i18n.ts";
 import { buildCommand, buildPrompt, describeCommand, expandEnv, expandHome, resolveBin } from "./command.ts";
 import { detectRateLimit } from "./rate-limit.ts";
 import { pickProfile, waitingReason, type ProfileLoad, type RunNeeds } from "./schedule.ts";
@@ -188,20 +189,20 @@ export class Runner {
 
   async enqueue(req: StartRunRequest): Promise<AgentRun> {
     const project = this.#host.projects().find((p) => p.name === req.project);
-    if (!project) throw new HiveError("not_found", `Dự án ${req.project} chưa được thêm vào app.`);
-    if (!/^[A-Za-z0-9._-]{1,100}$/.test(req.taskId)) throw new HiveError("bad_request", "Task id không hợp lệ.");
+    if (!project) throw new HiveError("not_found", `Dự án ${req.project} chưa được thêm vào app.`, { key: "errors.projectNotAdded", vars: { project: req.project } });
+    if (!/^[A-Za-z0-9._-]{1,100}$/.test(req.taskId)) throw new HiveError("bad_request", "Task id không hợp lệ.", { key: "errors.badTaskId" });
     const role = req.role ?? "implement";
-    if (!AGENT_ROLES.includes(role)) throw new HiveError("bad_request", `Vai trò không hợp lệ: ${role}`);
+    if (!AGENT_ROLES.includes(role)) throw new HiveError("bad_request", `Vai trò không hợp lệ: ${role}`, { key: "errors.badRole", vars: { role } });
     if (req.profileId && !this.#host.profiles().some((p) => p.id === req.profileId)) {
-      throw new HiveError("not_found", `Không có profile ${req.profileId}.`);
+      throw new HiveError("not_found", `Không có profile ${req.profileId}.`, { key: "errors.profileNotFound", vars: { id: req.profileId } });
     }
     const probe = this.#host.profiles().find((p) => p.id === req.profileId) ?? this.#host.profiles()[0];
     const actor: Actor = probe ? this.#actor(probe) : { name: "desktop", role: "agent" };
     const task = (await this.#host.backend().call("tasks.list", { project: req.project }, actor)).find((t) => t.id === req.taskId);
-    if (!task) throw new HiveError("not_found", `Không có task ${req.taskId} trong dự án ${req.project}.`);
-    if (task.status === "done") throw new HiveError("bad_request", `Task ${req.taskId} đã xong.`);
+    if (!task) throw new HiveError("not_found", `Không có task ${req.taskId} trong dự án ${req.project}.`, { key: "errors.taskNotInProject", vars: { id: req.taskId, project: req.project } });
+    if (task.status === "done") throw new HiveError("bad_request", `Task ${req.taskId} đã xong.`, { key: "errors.taskDone", vars: { id: req.taskId } });
     const active = this.store.activeForTask(req.project, req.taskId);
-    if (active) throw new HiveError("conflict", `Task ${req.taskId} đang có run ${active.id} (${active.status}).`);
+    if (active) throw new HiveError("conflict", `Task ${req.taskId} đang có run ${active.id} (${active.status}).`, { key: "errors.taskHasRun", vars: { id: req.taskId, run: active.id } });
     const previous = this.store.lastWithWorktree(req.project, req.taskId);
     const run = this.store.insert(
       {
@@ -224,10 +225,10 @@ export class Runner {
 
   cancel(id: string): AgentRun {
     const run = this.store.get(id);
-    if (!run) throw new HiveError("not_found", `Không có run ${id}.`);
+    if (!run) throw new HiveError("not_found", `Không có run ${id}.`, { key: "errors.runNotFound", vars: { id } });
     if (run.status === "queued") {
       this.#waiting.delete(id);
-      return this.store.update(id, { status: "cancelled", finishedAt: this.#iso(), error: "Huỷ trước khi chạy" });
+      return this.store.update(id, { status: "cancelled", finishedAt: this.#iso(), error: tr("runNote.cancelledQueued") });
     }
     const live = this.#live.get(id);
     if (live) {
@@ -253,19 +254,19 @@ export class Runner {
     } finally {
       closeSync(fd);
     }
-    return (start > 0 ? "…(đã cắt phần đầu)\n" : "") + buf.toString("utf8");
+    return (start > 0 ? `${tr("runNote.logClipped")}\n` : "") + buf.toString("utf8");
   }
 
   diff(id: string): string {
     const run = this.store.get(id);
-    if (!run?.worktree || !run.baseSha) return "Run chưa có worktree.";
+    if (!run?.worktree || !run.baseSha) return tr("runNote.noWorktree");
     return describeBranch(run.worktree, run.baseSha);
   }
 
   removeWorktree(id: string): AgentRun {
     const run = this.store.get(id);
-    if (!run?.worktree) throw new HiveError("not_found", "Run không có worktree.");
-    if (this.store.activeForTask(run.project, run.taskId)) throw new HiveError("conflict", "Task đang có run hoạt động.");
+    if (!run?.worktree) throw new HiveError("not_found", "Run không có worktree.", { key: "errors.runNoWorktree" });
+    if (this.store.activeForTask(run.project, run.taskId)) throw new HiveError("conflict", "Task đang có run hoạt động.", { key: "errors.taskActiveRun" });
     const project = this.#project(run.project);
     if (existsSync(run.worktree)) removeWorktree(project.repo, run.worktree);
     return run;
@@ -360,7 +361,7 @@ export class Runner {
         const now = this.#opts.now();
         for (const run of this.store.queued()) {
           if (this.store.running() >= this.#host.settings().maxParallel) {
-            this.#waiting.set(run.id, "Đang chờ slot trống (đã đạt số agent chạy song song)");
+            this.#waiting.set(run.id, tr("runNote.waitingParallel"));
             continue;
           }
           const loads = this.#loads();
@@ -391,7 +392,7 @@ export class Runner {
 
   #project(name: string): DesktopProject {
     const p = this.#host.projects().find((x) => x.name === name);
-    if (!p) throw new HiveError("not_found", `Dự án ${name} chưa được thêm vào app.`);
+    if (!p) throw new HiveError("not_found", `Dự án ${name} chưa được thêm vào app.`, { key: "errors.projectNotAdded", vars: { project: name } });
     return p;
   }
 
@@ -422,7 +423,7 @@ export class Runner {
       if (c) this.#shared.set(c.account, c);
       return null;
     } catch (err) {
-      return `không báo được quota lên hub: ${(err as Error).message}`;
+      return tr("runNote.quotaNotShared", { reason: (err as Error).message });
     }
   }
 
@@ -451,7 +452,7 @@ export class Runner {
 
   async #task(backend: HiveBackend, actor: Actor, run: AgentRun): Promise<Task> {
     const task = (await backend.call("tasks.list", { project: run.project }, actor)).find((t) => t.id === run.taskId);
-    if (!task) throw new HiveError("not_found", `Không có task ${run.taskId} trong dự án ${run.project}.`);
+    if (!task) throw new HiveError("not_found", `Không có task ${run.taskId} trong dự án ${run.project}.`, { key: "errors.taskNotInProject", vars: { id: run.taskId, project: run.project } });
     return task;
   }
 
@@ -497,7 +498,7 @@ export class Runner {
       const base = this.#host.env();
       const bin = resolveBin(cmd.bin, base.PATH ?? "");
       if (!bin) {
-        await this.#complete(run, profile, wt, { kind: "unavailable", reason: `Không tìm thấy lệnh "${cmd.bin}" trong PATH` });
+        await this.#complete(run, profile, wt, { kind: "unavailable", reason: tr("runNote.binNotFound", { bin: cmd.bin }) });
         return;
       }
 
@@ -505,7 +506,9 @@ export class Runner {
         const lease = Math.min(profile.timeoutMinutes + 15, 24 * 60);
         const claim = await backend.call("tasks.claim", { id: run.taskId, leaseMinutes: lease }, actor);
         if (!claim.claimed) {
-          throw new HiveError("conflict", `Task đang do ${claim.task?.owner ?? "người khác"} giữ đến ${claim.task?.leaseUntil ?? "?"}.`);
+          const owner = claim.task?.owner ?? "?";
+          const until = claim.task?.leaseUntil ?? "?";
+          throw new HiveError("conflict", tr("runNote.taskHeld", { owner, until }), { key: "runNote.taskHeld", vars: { owner, until } });
         }
         if (claim.task?.owner) this.#owners.set(run.id, claim.task.owner);
       }
@@ -551,7 +554,7 @@ export class Runner {
       });
 
       const outcome = await new Promise<Outcome>((resolve) => {
-        child.once("error", (err) => resolve({ kind: "error", reason: `Không chạy được ${cmd.bin}: ${err.message}` }));
+        child.once("error", (err) => resolve({ kind: "error", reason: tr("runNote.spawnFailed", { bin: cmd.bin, reason: err.message }) }));
         child.once("close", (code) =>
           resolve({ kind: "exit", code, stdout, all, cancelled: live.cancelled, timedOut: live.timedOut }),
         );
@@ -588,9 +591,9 @@ export class Runner {
       const hit = outcome.code !== 0 && !outcome.cancelled ? detectRateLimit(outcome.all, now) : null;
       if (outcome.cancelled) {
         status = "cancelled";
-        error = "Admin huỷ";
+        error = tr("runNote.cancelled");
       } else if (outcome.timedOut) {
-        error = `Quá thời gian ${profile.timeoutMinutes} phút`;
+        error = tr("runNote.timedOut", { minutes: profile.timeoutMinutes });
       } else if (outcome.code === 0) {
         status = "succeeded";
       } else if (hit) {
@@ -603,7 +606,7 @@ export class Runner {
         if (shareError) error = `${error} · ${shareError}`;
       } else {
         const lastErr = outcome.all.trim().split("\n").at(-1) ?? "";
-        error = `Thoát với mã ${outcome.code ?? "?"}${lastErr ? `: ${clip(lastErr, 200)}` : ""}`;
+        error = `${tr("runNote.exited", { code: outcome.code ?? "?" })}${lastErr ? `: ${clip(lastErr, 200)}` : ""}`;
       }
     }
 
