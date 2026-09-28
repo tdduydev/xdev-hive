@@ -29,6 +29,9 @@ const ADDED_COLUMNS: Array<[name: string, ddl: string]> = [
   ["mr_state", "TEXT"],
   ["mr_draft", "INTEGER NOT NULL DEFAULT 0"],
   ["mr_note", "TEXT"],
+  ["cost_usd", "REAL"],
+  ["input_tokens", "INTEGER"],
+  ["output_tokens", "INTEGER"],
 ];
 
 type Row = Record<string, unknown>;
@@ -67,6 +70,9 @@ function toRun(r: Row): AgentRun {
     finishedAt: s(r.finished_at),
     mrUrl: s(r.mr_url),
     mrIid: r.mr_iid == null ? null : Number(r.mr_iid),
+    costUsd: r.cost_usd == null ? null : Number(r.cost_usd),
+    inputTokens: r.input_tokens == null ? null : Number(r.input_tokens),
+    outputTokens: r.output_tokens == null ? null : Number(r.output_tokens),
     mrState: s(r.mr_state) as MrState | null,
     mrDraft: Number(r.mr_draft) === 1,
     mrNote: s(r.mr_note),
@@ -185,7 +191,7 @@ export class RunStore {
 
   profileStats(profileId: string) {
     const rows = this.db
-      .prepare("SELECT status, COUNT(*) AS n, MAX(started_at) AS last FROM runs WHERE profile_id = ? GROUP BY status")
+      .prepare("SELECT status, COUNT(*) AS n, MAX(started_at) AS last, SUM(cost_usd) AS cost FROM runs WHERE profile_id = ? GROUP BY status")
       .all(profileId) as Row[];
     const by = (s: RunStatus) => Number(rows.find((r) => r.status === s)?.n ?? 0);
     const last = rows.map((r) => (r.last == null ? "" : String(r.last))).sort().at(-1) || null;
@@ -197,6 +203,7 @@ export class RunStore {
         succeeded: by("succeeded"),
         failed: by("failed"),
         rateLimited: by("rate_limited"),
+        costUsd: rows.reduce((n, r) => n + Number(r.cost ?? 0), 0),
       },
     };
   }

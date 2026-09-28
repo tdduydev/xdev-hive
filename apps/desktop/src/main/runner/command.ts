@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AgentProfile, AgentRole } from "@xdev-hive/core";
 import { NO_FEATURES, runMcpServers, SUPERPOWERS_PLUGIN, type RepoFeatures } from "../installer.ts";
+import { outputFormat } from "./usage.ts";
 
 export interface PromptContext {
   project: string;
@@ -85,6 +86,10 @@ export interface BuiltCommand {
   args: string[];
   /** Sent on stdin when the profile's args have no {prompt}. */
   stdin: string | null;
+  /** stdout ends with Claude Code's JSON result (cost, tokens, final message). */
+  claudeJson?: boolean;
+  /** Extra env the CLI needs for these args. */
+  env?: Record<string, string>;
 }
 
 export function buildCommand(
@@ -101,9 +106,29 @@ export function buildCommand(
       .replaceAll("{project}", vars.project)
       .replaceAll("{branch}", vars.branch);
   const args = profile.args.map(fill);
-  if (profile.kind === "claude") args.push(...claudeRunArgs(profile.id, { ...vars, readOnly: profile.readOnly }, features));
-  return { bin: expandHome(profile.bin), args, stdin: usesPrompt ? null : vars.prompt };
+  let claudeJson = false;
+  if (profile.kind === "claude") {
+    // The JSON result carries the cost and token counts; a profile that picks another format keeps it.
+    const format = outputFormat(args);
+    if (format === null) args.push("--output-format", "json");
+    claudeJson = format === null || format === "json";
+    args.push(...claudeRunArgs(profile.id, { ...vars, readOnly: profile.readOnly }, features));
+  }
+  return {
+    bin: expandHome(profile.bin),
+    args,
+    stdin: usesPrompt ? null : vars.prompt,
+    ...(claudeJson ? { claudeJson } : {}),
+    ...(profile.kind === "claude" ? { env: CLAUDE_RUN_ENV } : {}),
+  };
 }
+
+/**
+ * With --setting-sources user, Claude Code skips the project's CLAUDE.md too. It reads the CLAUDE.md
+ * (and its @imports, such as @AGENTS.md) of an --add-dir directory when this is set; checked with
+ * Claude Code 2.1.283. Hooks and project settings stay off.
+ */
+export const CLAUDE_RUN_ENV = { CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1" };
 
 /**
  * Claude Code loads hooks, MCP servers and settings from the working copy, which the agent can edit:
@@ -112,11 +137,13 @@ export function buildCommand(
  */
 export function claudeRunArgs(
   agent: string,
-  run: { project: string; task: string; run?: string; readOnly?: boolean },
+  run: { project: string; task: string; run?: string; readOnly?: boolean; worktree: string },
   features: RepoFeatures,
 ): string[] {
   const settings = { disableAllHooks: true, ...(features.superpowers ? { enabledPlugins: { [SUPERPOWERS_PLUGIN]: true } } : {}) };
   return [
+    "--add-dir",
+    run.worktree,
     "--settings",
     JSON.stringify(settings),
     "--setting-sources",

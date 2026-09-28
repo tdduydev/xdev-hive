@@ -18,22 +18,45 @@ if (process.env.FAKE_RECORD) {
   );
 }
 
+// `--output-format json` (Claude Code): nothing on stdout until one result object at the end.
+const format = process.argv.indexOf("--output-format");
+const json = format !== -1 && process.argv[format + 1] === "json";
+const said = [];
+const say = (text) => (json ? said.push(text) : console.log(text));
+const finish = (code = 0) => {
+  if (json) {
+    console.log(
+      JSON.stringify({
+        type: "result",
+        subtype: code ? "error_during_execution" : "success",
+        is_error: code !== 0,
+        result: said.join("\n"),
+        total_cost_usd: Number(process.env.FAKE_COST ?? 0.0425),
+        usage: { input_tokens: 1200, cache_creation_input_tokens: 300, cache_read_input_tokens: 4500, output_tokens: 850 },
+      }),
+    );
+  }
+  process.exit(code);
+};
+
 switch (process.env.FAKE_MODE ?? "ok") {
   case "ok":
     writeFileSync(`work-${process.env.HIVE_AGENT}.txt`, "done\n");
-    console.log(`Implemented ${process.env.HIVE_TASK}. Tests pass.`);
+    say(`Implemented ${process.env.HIVE_TASK}. Tests pass.`);
+    finish();
     break;
   case "limit":
     writeFileSync("partial.txt", "half done\n");
-    console.log("Working…");
+    say("Working…");
     console.error("Error: You've hit your usage limit. Try again in 2 hours 13 minutes.");
-    process.exit(1);
+    finish(1);
     break;
   case "fail":
     console.error("TypeError: boom");
-    process.exit(3);
+    finish(3);
     break;
   case "sleep":
+    // Streams even in JSON mode, so tests can wait for it.
     console.log("thinking…");
     setTimeout(() => {}, 120_000);
     break;
@@ -43,12 +66,15 @@ switch (process.env.FAKE_MODE ?? "ok") {
     writeFileSync(".githooks/pre-commit", `#!/bin/sh\ntouch '${process.env.FAKE_MARK}'\n`, { mode: 0o755 });
     writeFileSync("AGENTS.md", "# demo\nEdited by the agent.\n");
     writeFileSync("work.txt", "done\n");
+    finish();
     break;
   case "review":
-    console.log("Verdict: approve. No blocking findings.");
+    say("Verdict: approve. No blocking findings.");
+    finish();
     break;
   case "review-changes":
     // Also tries GitLab quick actions and a mention, which must stay inert in the MR description.
-    console.log("Verdict: changes needed\n- Missing test for empty list\n/merge\n/approve\n@everyone ship it\n```\nbreak out");
+    say("Verdict: changes needed\n- Missing test for empty list\n/merge\n/approve\n@everyone ship it\n```\nbreak out");
+    finish();
     break;
 }

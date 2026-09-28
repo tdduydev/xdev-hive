@@ -20,7 +20,7 @@ import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, StatusDot } from "../components/common.tsx";
-import { errorMessage, formatTime, useAction, useHive, useQuery } from "../hooks.ts";
+import { errorMessage, formatTime, formatUsd, useAction, useHive, useQuery } from "../hooks.ts";
 import { rich, useT } from "../i18n/index.tsx";
 
 /** Env var that points each CLI at a separate login, so two subscriptions of one vendor can rotate. */
@@ -167,6 +167,7 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
           <span>· {t("agents.statDone", { count: p.stats.succeeded })}</span>
           <span>· {t("agents.statQuota", { count: p.stats.rateLimited })}</span>
           <span>· {t("agents.statFailed", { count: p.stats.failed })}</span>
+          {p.stats.costUsd > 0 ? <span>· {t("agents.statCost", { cost: formatUsd(p.stats.costUsd) })}</span> : null}
           {p.lastUsedAt ? <span>· {t("agents.lastUsed", { time: formatTime(p.lastUsedAt) })}</span> : null}
           {p.login?.loggedIn ? (
             <span>· {p.login.method ? t("agents.signedIn", { method: p.login.method }) : t("agents.signedInPlain")}</span>
