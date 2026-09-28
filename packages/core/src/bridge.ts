@@ -131,7 +131,8 @@ export interface AgentProfileStatus extends AgentProfile {
   /** Last sign-in check; null before the first one. */
   login: LoginStatus | null;
   lastUsedAt: string | null;
-  stats: { runs: number; succeeded: number; failed: number; rateLimited: number };
+  /** costUsd: sum of the runs' API-price estimates (Claude Code runs only). */
+  stats: { runs: number; succeeded: number; failed: number; rateLimited: number; costUsd: number };
 }
 
 export interface AgentRun {
@@ -170,6 +171,11 @@ export interface AgentRun {
   mrState: MrState | null;
   mrDraft: boolean;
   mrNote: string | null;
+  /** From the CLI's JSON result (Claude Code): estimated at API prices, which a subscription does not bill. */
+  costUsd: number | null;
+  /** Input tokens including cache reads and writes. */
+  inputTokens: number | null;
+  outputTokens: number | null;
 }
 
 export interface StartRunRequest {

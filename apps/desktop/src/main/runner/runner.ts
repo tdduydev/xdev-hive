@@ -37,6 +37,7 @@ import { tr } from "../i18n.ts";
 import { repoFeatures } from "../installer.ts";
 import { buildCommand, buildPrompt, describeCommand, expandEnv, expandHome, resolveBin } from "./command.ts";
 import { detectRateLimit } from "./rate-limit.ts";
+import { parseClaudeResult, type RunUsage } from "./usage.ts";
 import { pickProfile, waitingReason, type ProfileLoad, type RunNeeds } from "./schedule.ts";
 import { RunStore } from "./store.ts";
 import { branchState, commitAll, describeBranch, ensureWorktree, removeWorktree, type Worktree } from "./worktree.ts";
@@ -99,12 +100,14 @@ interface Live {
 }
 
 type Outcome =
-  | { kind: "exit"; code: number | null; stdout: string; all: string; cancelled: boolean; timedOut: boolean }
+  | { kind: "exit"; code: number | null; stdout: string; all: string; cancelled: boolean; timedOut: boolean; usage?: RunUsage | null }
   | { kind: "unavailable"; reason: string }
   | { kind: "error"; reason: string };
 
 const TAIL_BYTES = 20_000;
-const keepTail = (s: string) => (s.length > TAIL_BYTES ? s.slice(-TAIL_BYTES) : s);
+/** Claude Code's JSON result is one line holding the whole final message: keep more of it. */
+const JSON_BYTES = 2_000_000;
+const keepTail = (s: string, max = TAIL_BYTES) => (s.length > max ? s.slice(-max) : s);
 const clip = (s: string, n: number) => (s.length > n ? `…${s.slice(-(n - 1))}` : s);
 const TERMINAL: RunStatus[] = ["succeeded", "failed", "rate_limited", "cancelled"];
 
@@ -533,6 +536,7 @@ export class Runner {
         HIVE_TASK: run.taskId,
         HIVE_RUN: run.id,
         ...(profile.readOnly ? { HIVE_READONLY: "1" } : {}),
+        ...cmd.env,
       };
       const child = spawn(bin, cmd.args, {
         cwd: wt.path,
@@ -554,7 +558,7 @@ export class Runner {
       const out = log;
       child.stdout?.on("data", (b: Buffer) => {
         out.write(b);
-        stdout = keepTail(stdout + b.toString("utf8"));
+        stdout = keepTail(stdout + b.toString("utf8"), cmd.claudeJson ? JSON_BYTES : TAIL_BYTES);
         all = keepTail(all + b.toString("utf8"));
       });
       child.stderr?.on("data", (b: Buffer) => {
@@ -570,6 +574,14 @@ export class Runner {
       });
       clearTimeout(timer);
       this.#live.delete(run.id);
+      if (outcome.kind === "exit" && cmd.claudeJson) {
+        outcome.usage = parseClaudeResult(outcome.stdout);
+        const u = outcome.usage;
+        if (u?.text) out.write(`\n\n## Result\n${u.text}\n`);
+        if (u && (u.costUsd !== null || u.outputTokens !== null)) {
+          out.write(`# cost ${u.costUsd === null ? "?" : `$${u.costUsd.toFixed(4)}`} · tokens in ${u.inputTokens ?? "?"} out ${u.outputTokens ?? "?"}\n`);
+        }
+      }
       out.write(`\n# exit ${outcome.kind === "exit" ? outcome.code : outcome.kind}\n`);
       await new Promise<void>((r) => out.end(r));
       log = null;
@@ -587,6 +599,7 @@ export class Runner {
     let rotate = false;
     let exitCode: number | null = null;
     let summary: string | null = null;
+    let usage: Partial<Pick<AgentRun, "costUsd" | "inputTokens" | "outputTokens">> = {};
 
     if (outcome.kind === "unavailable") {
       error = outcome.reason;
@@ -596,7 +609,11 @@ export class Runner {
       error = outcome.reason;
     } else {
       exitCode = outcome.code;
-      summary = outcome.stdout.trim() ? clip(outcome.stdout.trim(), 1500) : null;
+      const text = (outcome.usage?.text ?? outcome.stdout).trim();
+      summary = text ? clip(text, 1500) : null;
+      if (outcome.usage) {
+        usage = { costUsd: outcome.usage.costUsd, inputTokens: outcome.usage.inputTokens, outputTokens: outcome.usage.outputTokens };
+      }
       const hit = outcome.code !== 0 && !outcome.cancelled ? detectRateLimit(outcome.all, now) : null;
       if (outcome.cancelled) {
         status = "cancelled";
@@ -614,7 +631,7 @@ export class Runner {
         const shareError = await this.#shareCooldown(profile, until, hit.reason);
         if (shareError) error = `${error} · ${shareError}`;
       } else {
-        const lastErr = outcome.all.trim().split("\n").at(-1) ?? "";
+        const lastErr = (outcome.usage?.text ?? outcome.all).trim().split("\n").at(-1) ?? "";
         error = `${tr("runNote.exited", { code: outcome.code ?? "?" })}${lastErr ? `: ${clip(lastErr, 200)}` : ""}`;
       }
     }
@@ -628,7 +645,7 @@ export class Runner {
       ({ commits, headSha } = branchState(wt.path, wt.baseSha));
     }
 
-    const done = this.store.update(run.id, { status, error, exitCode, summary, commits, headSha, finishedAt: now.toISOString() });
+    const done = this.store.update(run.id, { status, error, exitCode, summary, commits, headSha, ...usage, finishedAt: now.toISOString() });
     await this.#report(done, profile).catch((err: unknown) => {
       this.store.update(run.id, { error: [done.error, `Hive: ${(err as Error).message}`].filter(Boolean).join(" · ") });
     });
