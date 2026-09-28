@@ -16,18 +16,25 @@ import { scopeProject, type Scope } from "../lib/scope.ts";
 /** Value of the "Chung" option in the owner select (project keys are never empty). */
 const SHARED_OPTION = "";
 
-/** memory.list / memory.search input for the scope: all → everything, shared → team-wide only, project → its entries + shared. */
-function loadMemory(client: HiveClient, scope: Scope, query: string, pendingOnly: boolean) {
-  const status = pendingOnly ? ("pending" as const) : undefined;
+/**
+ * memory.list / memory.search input for the scope: all → everything, shared → team-wide only, project → its entries + shared.
+ * People see stale entries too (agents' searches skip them), so they can keep or remove them.
+ */
+function loadMemory(client: HiveClient, scope: Scope, query: string, filter: { pendingOnly: boolean; staleOnly: boolean }) {
+  const status = filter.pendingOnly ? ("pending" as const) : undefined;
+  const stale = filter.staleOnly || undefined;
+  const search = query && !filter.pendingOnly && !filter.staleOnly;
   if (scope.kind === "project") {
-    return !pendingOnly && query
-      ? client.call("memory.search", { project: scope.project, query, limit: 50 })
-      : client.call("memory.list", { project: scope.project, includeShared: true, status });
+    return search
+      ? client.call("memory.search", { project: scope.project, query, limit: 50, includeStale: true })
+      : client.call("memory.list", { project: scope.project, includeShared: true, status, stale });
   }
   if (scope.kind === "shared") {
-    return !pendingOnly && query ? client.call("memory.search", { query, limit: 50 }) : client.call("memory.list", { project: null, status });
+    return search ? client.call("memory.search", { query, limit: 50, includeStale: true }) : client.call("memory.list", { project: null, status, stale });
   }
-  return !pendingOnly && query ? client.call("memory.search", { anyProject: true, query, limit: 50 }) : client.call("memory.list", { status });
+  return search
+    ? client.call("memory.search", { anyProject: true, query, limit: 50, includeStale: true })
+    : client.call("memory.list", { status, stale });
 }
 
 export function MemoryPage() {
@@ -38,8 +45,12 @@ export function MemoryPage() {
   const [query, setQuery] = useState("");
   const [submitted, setSubmitted] = useState("");
   const [pendingOnly, setPendingOnly] = useState(false);
+  const [staleOnly, setStaleOnly] = useState(false);
 
-  const list = useQuery(() => loadMemory(client, scope, submitted, pendingOnly), [client, scope.kind, scoped, submitted, pendingOnly]);
+  const list = useQuery(
+    () => loadMemory(client, scope, submitted, { pendingOnly, staleOnly }),
+    [client, scope.kind, scoped, submitted, pendingOnly, staleOnly],
+  );
 
   // In a project, its own entries come first, then the team-wide ones it also sees.
   const rows = list.data ?? [];
@@ -83,6 +94,10 @@ export function MemoryPage() {
           <Checkbox checked={pendingOnly} onCheckedChange={(v) => setPendingOnly(v === true)} />
           {t("memory.pendingOnly")}
         </label>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox checked={staleOnly} onCheckedChange={(v) => setStaleOnly(v === true)} />
+          {t("memory.staleOnly")}
+        </label>
       </div>
       {allow(null, "contribute") || projects.some((p) => allow(p, "contribute")) ? (
         <AddMemory key={scoped === null ? scope.kind : `project:${scoped}`} defaultOwner={defaultOwner} projects={projects} onAdded={list.reload} />
@@ -122,10 +137,17 @@ function MemoryRow({ memory: m, onChanged }: { memory: Memory; onChanged: () => 
             <OwnerBadge owner={m.project} />
             <Badge tone="accent">{t(`memoryKind.${m.kind}`)}</Badge>
             {m.status === "pending" ? <Badge tone={STATUS_TONE.pending}>{t("memory.pending")}</Badge> : null}
+            {m.stale ? (
+              <span title={t("memory.staleHint")}>
+                <Badge tone="warn">{t("memory.stale")}</Badge>
+              </span>
+            ) : null}
             {m.taskId ? <span className="font-mono text-xs text-muted-foreground">{m.taskId}</span> : null}
             <span className="min-w-0 flex-1 text-xs text-muted-foreground">
               {m.author} · {formatTime(m.createdAt)}
               {sourceText(m.source, m.taskId)}
+              {" · "}
+              {m.useCount ? t("memory.used", { count: m.useCount, time: formatTime(m.lastUsedAt) }) : t("memory.neverUsed")}
             </span>
             {allow(m.project, "manage") ? (
               <>
@@ -137,6 +159,16 @@ function MemoryRow({ memory: m, onChanged }: { memory: Memory; onChanged: () => 
                     onClick={() => action.run(async () => (await client.call("memory.approve", { id: m.id }), onChanged()))}
                   >
                     {t("memory.approve")}
+                  </Button>
+                ) : null}
+                {m.stale ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={action.busy}
+                    onClick={() => action.run(async () => (await client.call("memory.keep", { id: m.id }), onChanged()))}
+                  >
+                    {t("memory.keep")}
                   </Button>
                 ) : null}
                 <Button
