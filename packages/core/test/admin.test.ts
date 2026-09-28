@@ -43,7 +43,11 @@ describe("admin portal", () => {
     const [m] = await hive.call("admin.machines", {}, admin);
     assert.equal(m!.setupAt, "2026-09-27T07:59:00.000Z");
     assert.equal(m!.setup?.machine[1]!.id, "cli:codex");
-    assert.deepEqual(m!.profiles, [{ ...profile, loggedIn: null }], "an older app does not send loggedIn");
+    assert.deepEqual(
+      m!.profiles,
+      [{ ...profile, loggedIn: null, sessionPercent: null, weekPercent: null, weekResets: null, overLimit: false }],
+      "an older app sends neither sign-in nor plan usage",
+    );
     await assert.rejects(hive.call("admin.machines", {}, viewer), code("forbidden"));
     await assert.rejects(hive.call("admin.machines", {}, mbp), code("forbidden"));
   });

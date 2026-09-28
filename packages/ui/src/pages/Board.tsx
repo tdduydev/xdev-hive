@@ -4,6 +4,7 @@ import { cn } from "cn";
 import {
   AGENT_ROLES,
   TASK_STATUSES,
+  usageStop,
   type AgentProfileStatus,
   type AgentRole,
   type AgentRun,
@@ -178,12 +179,15 @@ function ProfileStrip({ profiles }: { profiles: AgentProfileStatus[] }) {
       {profiles.map((p) => {
         const resting = p.cooldownUntil !== null;
         const signedOut = p.login?.loggedIn === false;
-        const tone = !p.enabled ? "neutral" : signedOut ? "danger" : resting ? "warn" : p.running ? "info" : "ok";
+        const overLimit = usageStop(p, p.usage) !== null;
+        const tone = !p.enabled ? "neutral" : signedOut ? "danger" : resting || overLimit ? "warn" : p.running ? "info" : "ok";
         const text = !p.enabled
           ? t("board.profileOff")
           : signedOut
             ? t("board.profileSignedOut")
-            : resting
+            : overLimit
+              ? t("board.profileOverLimit")
+              : resting
             ? t("board.profileResting", { time: formatTime(p.cooldownUntil) })
             : p.running
               ? t("board.profileRunning", { running: p.running, max: p.maxConcurrent })
