@@ -1,8 +1,9 @@
-// Hub accounts: username + password, per-project grants, browser sessions.
+// Hub accounts: username + password (or an OpenID Connect identity), per-project grants, browser sessions.
 // Passwords: scrypt with a random salt. Sessions: random token in an HttpOnly cookie, only its SHA-256 is stored.
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { HiveError, LEVELS, PROJECT_NAME, type Access, type HubUser, type Level } from "@xdev-hive/core";
+import type { OidcIdentity } from "./oidc.ts";
 
 export const USERNAME = /^[a-z0-9][a-z0-9._-]{1,39}$/;
 export const MIN_PASSWORD = 10;
@@ -56,7 +57,11 @@ export class UserStore {
     CREATE TABLE IF NOT EXISTS hub_grants(
       user_id TEXT NOT NULL, project TEXT NOT NULL, level TEXT NOT NULL, PRIMARY KEY(user_id, project));
     CREATE TABLE IF NOT EXISTS hub_sessions(
-      hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL);`);
+      hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS hub_identities(
+      issuer TEXT NOT NULL, subject TEXT NOT NULL, user_id TEXT NOT NULL, email TEXT, created_at TEXT NOT NULL,
+      PRIMARY KEY(issuer, subject));
+    CREATE INDEX IF NOT EXISTS hub_identities_user ON hub_identities(user_id);`);
   }
 
   count(): number {
@@ -75,7 +80,59 @@ export class UserStore {
       createdAt: String(r.created_at),
       lastLoginAt: r.last_login_at == null ? null : String(r.last_login_at),
       grants: Object.fromEntries(grants.map((g) => [String(g.project), String(g.level) as Level])),
+      sso: this.#db.prepare("SELECT 1 FROM hub_identities WHERE user_id = ?").get(String(r.id)) !== undefined,
     };
+  }
+
+  // ── OpenID Connect identities ─────────────────────────────────────────────
+
+  /** The account an identity signs in to, whatever its state (the caller checks disabled). */
+  byIdentity(id: Pick<OidcIdentity, "issuer" | "subject">): UserInfo | null {
+    const row = this.#db.prepare("SELECT user_id FROM hub_identities WHERE issuer = ? AND subject = ?").get(id.issuer, id.subject) as Row | undefined;
+    return row ? this.get(String(row.user_id)) : null;
+  }
+
+  /** Links an identity to an account (replacing the account's earlier one from the same provider). */
+  linkIdentity(userId: string, id: OidcIdentity): UserInfo {
+    this.#require(userId);
+    const owner = this.byIdentity(id);
+    if (owner && owner.id !== userId) {
+      throw new HiveError("conflict", "Tài khoản này của nhà cung cấp đã gắn với một tài khoản hub khác.", { key: "errors.ssoLinkedElsewhere" });
+    }
+    this.#db.prepare("DELETE FROM hub_identities WHERE user_id = ? AND issuer = ?").run(userId, id.issuer);
+    this.#db
+      .prepare("INSERT INTO hub_identities(issuer, subject, user_id, email, created_at) VALUES (?, ?, ?, ?, ?)")
+      .run(id.issuer, id.subject, userId, id.email, new Date().toISOString());
+    return this.get(userId)!;
+  }
+
+  /**
+   * A new account for someone signing in through the provider the first time: not admin, no project,
+   * and a password nobody knows (an admin can reset it when the person needs one, e.g. for the desktop app).
+   */
+  createFromIdentity(id: OidcIdentity): UserInfo {
+    const base =
+      (id.username ?? id.email?.split("@")[0] ?? "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/đ/g, "d")
+        .replace(/[^a-z0-9._-]+/g, "-")
+        .replace(/^[^a-z0-9]+/, "")
+        .slice(0, 36) || "user";
+    const padded = base.length < 2 ? `${base}-user` : base;
+    let username = padded;
+    for (let n = 2; this.#db.prepare("SELECT 1 FROM hub_users WHERE username = ?").get(username); n++) username = `${padded}-${n}`;
+    const userId = randomBytes(6).toString("hex");
+    this.#db
+      .prepare("INSERT INTO hub_users(id, username, display_name, password_hash, admin, must_change, created_at) VALUES (?, ?, ?, ?, 0, 0, ?)")
+      .run(userId, username, (id.name ?? username).slice(0, 80), hashPassword(randomBytes(24).toString("base64")), new Date().toISOString());
+    return this.linkIdentity(userId, id);
+  }
+
+  /** Records a sign-in that did not go through verify() (SSO). */
+  touchLogin(userId: string): void {
+    this.#db.prepare("UPDATE hub_users SET last_login_at = ? WHERE id = ?").run(new Date().toISOString(), userId);
   }
 
   get(id: string): UserInfo | null {

@@ -75,7 +75,7 @@ Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ v�
 
 ```bash
 nvm use && npm install
-npm test            # 218 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
+npm test            # 227 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
 npm run typecheck
 ```
 
@@ -232,6 +232,8 @@ HIVE_HOST=0.0.0.0 HIVE_ALLOWED_HOSTS=hive.example.com HIVE_DB=/data/hub.db HIVE_
 | `HIVE_EMBED_URL` | tắt | Endpoint `/embeddings` kiểu OpenAI để `memory_search` tìm cả theo nghĩa, vd. `http://ollama:11434/v1` (xem dưới) |
 | `HIVE_EMBED_MODEL` / `HIVE_EMBED_KEY` | `bge-m3` / – | Model embedding; key Bearer khi dùng API ngoài (Ollama không cần) |
 | `HIVE_EMBED_MIN_SCORE` | `0.5` | Độ giống (cosine) tối thiểu để một mục tính là tìm thấy theo nghĩa |
+| `HIVE_OIDC_ISSUER` / `HIVE_OIDC_CLIENT_ID` / `HIVE_OIDC_CLIENT_SECRET` | tắt | Đăng nhập qua nhà cung cấp OpenID Connect (xem *Đăng nhập SSO*). Cần đủ cả ba |
+| `HIVE_OIDC_NAME` / `HIVE_OIDC_SCOPES` | `SSO` / `openid profile email` | Tên trên nút đăng nhập; scope xin nhà cung cấp |
 
 ### Tìm memory theo nghĩa (tuỳ chọn)
 
@@ -278,6 +280,31 @@ npm run token -w @xdev-hive/web -- create ci-gitlab agent   # token không thu�
 - **Máy và agent** dùng token *thuộc tài khoản* của người đó, nên chỉ thấy đúng các dự án người đó được cấp. App desktop: *Dự án & cài đặt → Nguồn dữ liệu → Hub dùng chung → Tài khoản*, nhập tên đăng nhập + mật khẩu một lần. Hub cấp cho máy một token (mật khẩu không lưu trên máy); đăng nhập lại từ cùng máy thì token cũ bị thay. Token vai trò `agent` (CI, script) mỗi người tự tạo ở trang *Token*, tối đa mức Đóng góp dù người đó có quyền Quản trị.
 - Khoá tài khoản thì phiên đăng nhập và mọi token của người đó ngừng hoạt động ngay. Bỏ hay đổi quyền có hiệu lực từ request kế tiếp.
 - Token tạo trước khi có tài khoản (không thuộc ai) vẫn chạy như cũ theo vai trò của nó.
+
+### Đăng nhập SSO (OpenID Connect)
+
+Hub nhận mọi nhà cung cấp OpenID Connect: GitLab, Microsoft Entra, Google… Trang đăng nhập có thêm nút *Đăng nhập bằng …*, mật khẩu vẫn dùng được.
+
+1. Tạo ứng dụng OAuth ở nhà cung cấp, với redirect URI `https://<hub>/api/auth/oidc/callback` (hub in URI này khi khởi động).
+   - GitLab: *Admin → Applications* hoặc *User settings → Applications*. Chọn *Confidential*, scope `openid profile email`.
+2. Thêm vào `deploy/.env` (issuer là địa chỉ gốc của nhà cung cấp, vd. `https://gitlab.example.com`; Entra: `https://login.microsoftonline.com/<tenant>/v2.0`; Google: `https://accounts.google.com`), rồi chạy `deploy/update.sh`:
+
+   ```
+   HIVE_OIDC_ISSUER=https://gitlab.example.com
+   HIVE_OIDC_CLIENT_ID=…
+   HIVE_OIDC_CLIENT_SECRET=…
+   HIVE_OIDC_NAME=GitLab
+   ```
+
+- **Người đăng nhập SSO lần đầu** được tạo tài khoản mới (hỏi ngày 28/9): không phải admin, chưa được cấp dự án nào nên chỉ thấy dữ liệu Chung. Admin cấp quyền sau ở *Người dùng & quyền*, nơi tài khoản có nhãn *SSO*.
+  - Tên đăng nhập lấy từ username bên nhà cung cấp (hoặc phần trước `@` của email, bỏ dấu). Trùng tên thì thêm `-2`, `-3`…
+  - Hub **không bao giờ** gộp vào tài khoản có sẵn theo tên hay email, để không ai chiếm được tài khoản người khác.
+- **Đã có tài khoản mật khẩu**: đăng nhập như cũ, rồi chọn *Liên kết …* ở menu tài khoản. Từ đó đăng nhập cách nào cũng vào cùng tài khoản. Một tài khoản bên nhà cung cấp chỉ gắn được với một tài khoản hub.
+- **Luồng đăng nhập**: authorization code + PKCE (S256), `state` gắn với trình duyệt qua cookie `hive_oidc` (SameSite=Lax, 10 phút, dùng một lần), `nonce`.
+  - `id_token` lấy thẳng từ token endpoint qua TLS. Hub kiểm issuer (phải khớp issuer đã cấu hình và tài liệu discovery), audience, `azp`, hạn dùng, `nonce`.
+  - Issuer phải là `https://`.
+- Tài khoản bị khoá thì không đăng nhập SSO được. Mỗi lần đăng nhập, tạo tài khoản và liên kết đều ghi vào nhật ký.
+- **App desktop** vẫn đăng nhập hub bằng tên + mật khẩu. Tài khoản chỉ có SSO thì nhờ admin *Đặt lại mật khẩu* để có mật khẩu dùng cho app (mục 10b sẽ cho đăng nhập app qua trình duyệt).
 
 ### Backup, khôi phục, nâng cấp
 
@@ -385,7 +412,6 @@ Chuỗi số nhiều viết `{ one: "…", other: "…" }` (thêm `zero`/`two`/`
 
 Danh sách chi tiết và tiến độ: [docs/roadmap.md](docs/roadmap.md).
 
-- Đăng nhập GitLab OAuth (SSO) bên cạnh mật khẩu.
 - Postgres (+ pgvector) khi team lớn.
 - Đọc quota còn lại chủ động (nếu CLI có lệnh báo usage) thay vì chỉ phản ứng khi đã hết.
 - Ký và notarize bản macOS (cần chứng chỉ Developer ID).

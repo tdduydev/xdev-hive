@@ -163,6 +163,11 @@ export function UsersPage() {
                       ) : (
                         <Badge tone="ok">{t("users.active")}</Badge>
                       )}
+                      {u.sso ? (
+                        <Badge tone="info" className="ml-1">
+                          {t("users.sso")}
+                        </Badge>
+                      ) : null}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{formatTime(u.lastLoginAt)}</TableCell>
                     <TableCell className="text-right whitespace-nowrap">
