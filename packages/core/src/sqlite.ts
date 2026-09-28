@@ -25,6 +25,7 @@ import type {
   CostTotals,
   Doc,
   DocSummary,
+  HiveEvent,
   DocVersion,
   Machine,
   MachineCommand,
@@ -195,6 +196,28 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
   "machines.commandResult": (i, o: MachineCommand) => ({ target: o.machineId, detail: `#${i.id} ${o.itemId} → ${i.status}` }),
 };
 
+/** The event a successful call is worth telling people about, if any. */
+function eventOf(method: Method, output: unknown): HiveEvent | null {
+  switch (method) {
+    case "proposals.create": {
+      const proposal = output as Proposal;
+      return { type: "proposal.created", project: parseDocKey(proposal.docKey).project, proposal };
+    }
+    case "memory.write": {
+      const memory = output as Memory;
+      return memory.status === "pending" ? { type: "memory.pending", project: memory.project, memory } : null;
+    }
+    case "admin.commandCreate":
+      return { type: "command.requested", project: null, command: output as MachineCommand };
+    case "machines.commandResult": {
+      const command = output as MachineCommand;
+      return ["done", "failed", "rejected"].includes(command.status) ? { type: "command.finished", project: null, command } : null;
+    }
+    default:
+      return null;
+  }
+}
+
 type Row = Record<string, unknown>;
 const str = (v: unknown) => v as string;
 const strOrNull = (v: unknown) => (v == null ? null : String(v));
@@ -308,6 +331,8 @@ export interface SqliteHiveOptions {
   memoryRequiresApproval?: boolean;
   /** Memory no agent searched up (nor anyone wrote or kept) for this many days is stale. 0: never. Default 90. */
   memoryStaleDays?: number;
+  /** Called after a change people may want to hear about (the hub sends webhooks); errors are ignored. */
+  onEvent?: (event: HiveEvent) => void;
   /** Injectable clock for tests. */
   now?: () => Date;
 }
@@ -324,7 +349,7 @@ export class SqliteHive implements HiveBackend {
       mkdirSync(path.dirname(dbOrPath), { recursive: true });
     }
     this.db = typeof dbOrPath === "string" ? new DatabaseSync(dbOrPath) : dbOrPath;
-    this.#opts = { memoryRequiresApproval: false, memoryStaleDays: 90, now: () => new Date(), ...opts };
+    this.#opts = { memoryRequiresApproval: false, memoryStaleDays: 90, now: () => new Date(), onEvent: () => undefined, ...opts };
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;");
     this.#migrate();
     this.#handlers = this.#buildHandlers();
@@ -340,6 +365,14 @@ export class SqliteHive implements HiveBackend {
     if (audited) {
       const { target, detail, text } = audited(parsed, output);
       this.audit(actor, method, target, detail, text);
+    }
+    const event = eventOf(method, output);
+    if (event) {
+      try {
+        this.#opts.onEvent(event);
+      } catch {
+        // a listener must never fail the call
+      }
     }
     return output;
   }
