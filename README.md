@@ -75,7 +75,7 @@ Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ v�
 
 ```bash
 nvm use && npm install
-npm test            # 239 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
+npm test            # 246 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
 npm run typecheck
 ```
 
@@ -163,7 +163,33 @@ queued ─chọn gói─▶ running ─exit 0──────▶ succeeded ─
 
 Hai gói của cùng một vendor: tạo 2 profile, profile thứ hai trỏ CLI sang thư mục đăng nhập riêng, rồi đăng nhập một lần trong terminal với biến đó, ví dụ `CLAUDE_CONFIG_DIR=~/.claude-2` (Claude Code) hoặc `CODEX_HOME=~/.codex-2` (Codex). Tên biến và cờ headless mặc định lấy theo tài liệu CLI mình biết; hãy kiểm tra bằng `--help` của bản bạn đang cài.
 
-Cờ mặc định là mức "cho sửa file" (`--permission-mode acceptEdits`, `--full-auto`, `--approval-mode auto_edit`). Muốn agent tự chạy test hay lệnh shell thì mở rộng tham số của profile, và cân nhắc rủi ro vì lệnh chạy trên máy thật (worktree không phải sandbox).
+Cờ mặc định là mức "cho sửa file" (`--permission-mode acceptEdits`, `--full-auto`, `--approval-mode auto_edit`). Muốn agent tự chạy test hay lệnh shell thì mở rộng tham số của profile, và cân nhắc rủi ro vì lệnh chạy trên máy thật (worktree không phải sandbox), hoặc cho profile chạy trong container.
+
+### Chạy trong container (Docker)
+
+Profile có ô *Chạy trong container (Docker)* (hỏi ngày 28/9: bật theo từng profile, mặc định tắt). Khi bật, runner gọi `docker run` thay vì chạy CLI thẳng trên máy.
+
+1. Build image một lần trên máy (có sẵn Claude Code, Codex, Gemini CLI, git):
+
+   ```bash
+   docker build -t xdev-hive-agent https://github.com/tdduydev/xdev-hive.git#main:docker/agent
+   ```
+
+2. Bật ô trong profile. Image mặc định `xdev-hive-agent`, đổi được.
+
+- **Container thấy gì**:
+  - worktree của task và `.git` của repo, gắn đúng đường dẫn như trên máy (nên đường dẫn trong prompt và liên kết worktree của git vẫn đúng);
+  - thư mục đăng nhập của CLI: `~/.claude` và `~/.claude.json`, `~/.codex` (hoặc `CODEX_HOME`), `~/.gemini`;
+  - `~/.gitconfig` (chỉ đọc).
+  Phần còn lại của home là tmpfs rỗng.
+- Container chạy bằng uid:gid của bạn, nên file tạo ra vẫn thuộc về bạn. `--rm`, `--init`, tên `hive-<run>`. Huỷ run hay hết giờ thì runner gọi thêm `docker kill`.
+- **Biến môi trường**: chỉ `HIVE_*`, `env` của profile và biến cần cho lệnh; biến khác của máy không vào container. Docker nhận **tên** biến (`-e NAME`), giá trị lấy từ môi trường của chính docker, nên không hiện trong danh sách tiến trình.
+- **Công cụ Hive (MCP)**: Claude Code ở chế độ hub dùng MCP HTTP của hub, với token của máy trong một file cấu hình quyền 0600. File đó gắn chỉ đọc và bị xoá khi run xong. Header `x-hive-project`/`x-hive-readonly` chỉ thu hẹp quyền của token.
+  - Chế độ cục bộ, và Codex/Gemini trong container: chưa có công cụ Hive, nhưng runner vẫn nhận và cập nhật task như thường.
+- Máy không có `docker` thì run coi như gói không chạy được và chuyển sang gói khác.
+- **Chưa làm** (mục 11b, 11c):
+  - Claude Code trên macOS lưu đăng nhập trong Keychain, container không đọc được, nên cần token dài hạn (`claude setup-token`). Trên Linux đăng nhập nằm trong `~/.claude` nên dùng được luôn.
+  - Mạng của container chưa bị giới hạn.
 
 ## Merge request trên GitLab
 

@@ -142,6 +142,11 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
           <StatusDot tone={!p.enabled ? "neutral" : noCli || signedOut ? "danger" : resting || stop ? "warn" : p.running ? "info" : "ok"} />
           <b className="min-w-0 flex-1 truncate font-semibold">{p.label}</b>
           {p.readOnly ? <Badge tone="neutral">{t("agents.readOnlyBadge")}</Badge> : null}
+          {p.container ? (
+            <span title={p.container.image}>
+              <Badge tone="info">{t("agents.containerBadge")}</Badge>
+            </span>
+          ) : null}
           <Badge tone="accent">{t(`agentKind.${p.kind}`)}</Badge>
         </div>
         <div className="font-mono text-xs wrap-anywhere text-muted-foreground">
@@ -470,6 +475,25 @@ function ProfileForm({
               {t("agents.readOnly")}
             </label>
             <span className={HINT}>{t("agents.readOnlyHint")}</span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={p.container !== null}
+                onCheckedChange={(v) => set("container", v === true ? { image: p.container?.image ?? "xdev-hive-agent" } : null)}
+              />
+              {t("agents.container")}
+            </label>
+            {p.container ? (
+              <Input
+                className="max-w-80 font-mono text-xs md:text-xs"
+                value={p.container.image}
+                onChange={(e) => set("container", { image: e.target.value.trim() })}
+                aria-label={t("agents.containerImage")}
+                placeholder="xdev-hive-agent"
+              />
+            ) : null}
+            <span className={HINT}>{t("agents.containerHint")}</span>
           </div>
           <ErrorNote error={error} />
           <ErrorNote error={action.error} />

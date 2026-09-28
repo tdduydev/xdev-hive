@@ -5,6 +5,7 @@ import {
   HiveError,
   HTTP_STATUS,
   isMethod,
+  PROJECT_NAME,
   readSourceHeader,
   toErrorPayload,
   TOKEN_ROLES,
@@ -524,7 +525,16 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
   // MCP over Streamable HTTP, stateless: one server per request, same tools as the stdio `hive-mcp`. Tokens only.
   app.post("/mcp", json, authenticate({ cookie: false }), async (req, res) => {
     const actor = actorOf(res);
-    const server = createHiveMcpServer(hive, { ...actor, source: { ...actor.source, via: "mcp" } });
+    // Headers can only narrow what the token may do: a default project, and read-only.
+    const project = req.get("x-hive-project");
+    const server = createHiveMcpServer(
+      hive,
+      { ...actor, source: { ...actor.source, via: "mcp" } },
+      {
+        ...(project && PROJECT_NAME.test(project) ? { defaultProject: project } : {}),
+        ...(req.get("x-hive-readonly") === "1" ? { readOnly: true } : {}),
+      },
+    );
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close();

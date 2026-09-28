@@ -24,7 +24,7 @@ const prompt = process.argv[2] ?? "";
 if (process.env.FAKE_RECORD) {
   appendFileSync(
     process.env.FAKE_RECORD,
-    `${JSON.stringify({ agent: process.env.HIVE_AGENT, task: process.env.HIVE_TASK, project: process.env.HIVE_PROJECT, cwd: process.cwd(), prompt, args: process.argv.slice(3), readOnly: process.env.HIVE_READONLY ?? null })}\n`,
+    `${JSON.stringify({ agent: process.env.HIVE_AGENT, task: process.env.HIVE_TASK, project: process.env.HIVE_PROJECT, cwd: process.cwd(), prompt, args: process.argv.slice(3), readOnly: process.env.HIVE_READONLY ?? null, hostOnly: process.env.HIVE_TEST_HOST_ONLY ?? null })}\n`,
   );
 }
 
