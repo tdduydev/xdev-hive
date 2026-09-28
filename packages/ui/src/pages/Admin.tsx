@@ -23,7 +23,8 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@xdev-hive/ui/components/ui/tabs";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
-import { Badge, Empty, ErrorNote, Page, PageHeader, StatusDot } from "../components/common.tsx";
+import { Badge, Empty, ErrorNote, Page, PageHeader } from "../components/common.tsx";
+import { ProfileStates } from "../components/ProfileStates.tsx";
 import { formatTime, useAction, useHive, useProjects, useQuery } from "../hooks.ts";
 import { hasKey, rich, useT, type MessageKey } from "../i18n/index.tsx";
 
@@ -192,24 +193,7 @@ function MachineCard({ machine: m, policy, onChanged }: { machine: MachineDetail
         {m.profiles.length ? (
           <div className="flex flex-col gap-2">
             <div className={GROUP_TITLE}>{t("board.profiles")}</div>
-            <div className="flex flex-wrap gap-x-4 gap-y-2">
-              {m.profiles.map((p) => (
-                <span key={p.id} className="inline-flex min-w-0 flex-wrap items-center gap-1.5">
-                  <StatusDot tone={!p.enabled ? "neutral" : !p.installed ? "danger" : p.cooldownUntil ? "warn" : "ok"} />
-                  <span className="font-mono text-xs break-all">{p.id}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {!p.enabled
-                      ? t("board.profileOff")
-                      : !p.installed
-                        ? t("admin.noCli")
-                        : p.cooldownUntil
-                          ? t("board.profileResting", { time: formatTime(p.cooldownUntil) })
-                          : t("board.profileReady")}
-                    {p.account ? ` · ${p.account}` : ""} · {t("agents.statRuns", { count: p.runs })}
-                  </span>
-                </span>
-              ))}
-            </div>
+            <ProfileStates profiles={m.profiles} details />
           </div>
         ) : null}
         {m.commands.length ? <CommandList commands={m.commands} onChanged={onChanged} /> : null}

@@ -99,6 +99,13 @@ queued ─chọn gói─▶ running ─exit 0──────▶ succeeded ─
 - **Hive**: runner `task_claim` trước khi chạy với cùng tên agent như `hive-mcp` (`HIVE_AGENT` = id profile). Xong thì chuyển task sang *Chờ review* kèm tóm tắt, trừ khi agent đã tự làm qua MCP. Review chéo được nối vào ghi chú task.
 - Lịch sử run và log nằm ở `~/.xdev-hive/runs.db` và `~/.xdev-hive/runs/<id>.log`. Log có prompt và output, **không** ghi biến môi trường.
 - App mở từ Finder có `PATH` ngắn, nên runner lấy `PATH` từ login shell (`$SHELL -ilc`) cộng `~/.local/bin`. Dùng nút *Kiểm tra CLI* để xem lệnh có tìm thấy không.
+- **Đăng nhập CLI**: app tự hỏi CLI của từng profile đã đăng nhập chưa.
+  - Lệnh dùng: `claude auth status --json` và `codex login status`, chạy với env của profile (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`), nên gói thứ hai được kiểm riêng.
+  - Khi nào kiểm: lúc mở app, mỗi 10 phút, khi sửa profile và khi bấm *Kiểm tra CLI*.
+  - Gói chưa đăng nhập bị runner bỏ qua. Thẻ profile hiện lệnh đăng nhập kèm thư mục đăng nhập, không kèm env khác. Run đang chờ vì mọi gói đều chưa đăng nhập thì Board ghi rõ lý do.
+  - Gemini và CLI tuỳ chỉnh không có lệnh xem trạng thái, nên để "chưa rõ" và runner vẫn dùng.
+- **Quota trên máy**: app không đọc được quota còn lại, vì các CLI không có lệnh in ra. App chỉ biết một gói hết quota khi một run gặp lỗi giới hạn; gói đó nghỉ đến giờ reset và thẻ profile hiện giờ đó.
+- **Trên hub**: heartbeat báo trạng thái đăng nhập, cài CLI và giờ nghỉ của từng gói. Trang *Máy & run* (mọi người) và *Quản trị* (admin) hiện gói nào tắt, chưa có CLI, chưa đăng nhập, đang nghỉ đến giờ nào, hoặc sẵn sàng.
 
 Hai gói của cùng một vendor: tạo 2 profile, profile thứ hai trỏ CLI sang thư mục đăng nhập riêng, rồi đăng nhập một lần trong terminal với biến đó, ví dụ `CLAUDE_CONFIG_DIR=~/.claude-2` (Claude Code) hoặc `CODEX_HOME=~/.codex-2` (Codex). Tên biến và cờ headless mặc định lấy theo tài liệu CLI mình biết; hãy kiểm tra bằng `--help` của bản bạn đang cài.
 

@@ -119,12 +119,13 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
   const resting = p.cooldownUntil !== null;
   const { cooldownUntil: _c, cooldownReason: _r, cooldownFrom: _f, cliPath: _p, running: _n, lastUsedAt: _l, stats: _s, ...plain } = p;
   const noCli = p.enabled && p.cliPath === null;
+  const signedOut = p.enabled && !noCli && p.login?.loggedIn === false;
 
   return (
     <Card className={cn("min-w-0 gap-3 py-4", p.enabled ? "" : "opacity-65")}>
       <CardContent className="flex flex-col gap-3 px-4">
         <div className="flex items-center gap-2">
-          <StatusDot tone={!p.enabled ? "neutral" : noCli ? "danger" : resting ? "warn" : p.running ? "info" : "ok"} />
+          <StatusDot tone={!p.enabled ? "neutral" : noCli || signedOut ? "danger" : resting ? "warn" : p.running ? "info" : "ok"} />
           <b className="min-w-0 flex-1 truncate font-semibold">{p.label}</b>
           {p.readOnly ? <Badge tone="neutral">{t("agents.readOnlyBadge")}</Badge> : null}
           <Badge tone="accent">{t(`agentKind.${p.kind}`)}</Badge>
@@ -147,6 +148,8 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
                 ),
               })}
             </span>
+          ) : signedOut ? (
+            <span className="text-destructive">{rich(t("agents.signedOut"), { cmd: <code className={CODE}>{p.login?.loginCommand ?? p.bin}</code> })}</span>
           ) : resting ? (
             <span className="text-warning">
               {t("agents.restingUntil", { time: formatTime(p.cooldownUntil) })}
@@ -165,6 +168,9 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
           <span>· {t("agents.statQuota", { count: p.stats.rateLimited })}</span>
           <span>· {t("agents.statFailed", { count: p.stats.failed })}</span>
           {p.lastUsedAt ? <span>· {t("agents.lastUsed", { time: formatTime(p.lastUsedAt) })}</span> : null}
+          {p.login?.loggedIn ? (
+            <span>· {p.login.method ? t("agents.signedIn", { method: p.login.method }) : t("agents.signedInPlain")}</span>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
           {p.roles.map((r) => (

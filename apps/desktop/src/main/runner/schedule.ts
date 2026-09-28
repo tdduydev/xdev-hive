@@ -9,6 +9,8 @@ export interface ProfileLoad {
   lastUsedAt: string | null;
   /** false when the profile's CLI is not on this machine's PATH (default true). */
   installed?: boolean;
+  /** false when the CLI says it is signed out; unknown counts as signed in. */
+  loggedIn?: boolean;
 }
 
 export interface RunNeeds {
@@ -22,6 +24,7 @@ export function isAvailable(p: ProfileLoad, now: Date): boolean {
   return (
     p.profile.enabled &&
     p.installed !== false &&
+    p.loggedIn !== false &&
     p.running < p.profile.maxConcurrent &&
     (p.cooldownUntil === null || new Date(p.cooldownUntil) <= now)
   );
@@ -30,7 +33,7 @@ export function isAvailable(p: ProfileLoad, now: Date): boolean {
 /**
  * Rules, in order:
  * 1. A pinned profile waits for that profile only.
- * 2. Skip disabled, not installed, busy, cooling-down, excluded (already failed this run) and role-mismatched profiles.
+ * 2. Skip disabled, not installed, signed-out, busy, cooling-down, excluded (already failed this run) and role-mismatched profiles.
  * 3. Prefer kinds not in avoidKinds (cross-review uses a different vendor than the implementer).
  * 4. Lower priority number first, then least recently used, which rotates equal-priority subscriptions.
  */
@@ -67,8 +70,10 @@ export function waitingReason(loads: ProfileLoad[], needs: RunNeeds, now: Date):
   if (!installed.length) {
     return tr("runNote.noCli", { bins: eligible.map((l) => l.profile.bin).join(", ") });
   }
-  const resting = installed.filter((l) => l.cooldownUntil && new Date(l.cooldownUntil) > now);
-  if (resting.length === installed.length) {
+  const signedIn = installed.filter((l) => l.loggedIn !== false);
+  if (!signedIn.length) return tr("runNote.notSignedIn", { profiles: installed.map((l) => l.profile.id).join(", ") });
+  const resting = signedIn.filter((l) => l.cooldownUntil && new Date(l.cooldownUntil) > now);
+  if (resting.length === signedIn.length) {
     const next = resting.map((l) => l.cooldownUntil!).sort()[0]!;
     return tr("runNote.allResting", { time: next });
   }
