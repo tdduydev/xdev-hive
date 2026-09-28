@@ -214,6 +214,14 @@ export class Runner {
     const task = (await this.#host.backend().call("tasks.list", { project: req.project }, actor)).find((t) => t.id === req.taskId);
     if (!task) throw new HiveError("not_found", `Không có task ${req.taskId} trong dự án ${req.project}.`, { key: "errors.taskNotInProject", vars: { id: req.taskId, project: req.project } });
     if (task.status === "done") throw new HiveError("bad_request", `Task ${req.taskId} đã xong.`, { key: "errors.taskDone", vars: { id: req.taskId } });
+    // An older hub has no dependencies.
+    const waiting = task.waitingOn ?? [];
+    if (waiting.length) {
+      throw new HiveError("conflict", `Task ${req.taskId} đang chờ ${waiting.join(", ")} xong.`, {
+        key: "errors.taskWaiting",
+        vars: { id: req.taskId, tasks: waiting.join(", ") },
+      });
+    }
     const active = this.store.activeForTask(req.project, req.taskId);
     if (active) throw new HiveError("conflict", `Task ${req.taskId} đang có run ${active.id} (${active.status}).`, { key: "errors.taskHasRun", vars: { id: req.taskId, run: active.id } });
     const previous = this.store.lastWithWorktree(req.project, req.taskId);

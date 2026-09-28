@@ -19,12 +19,12 @@ export interface HiveMcpOptions {
 }
 
 const INSTRUCTIONS = `xDev Hive is the shared memory, docs and task board for every coding agent on this team.
-Start of session: memory_search for your topic. Before working: task_claim. Record decisions/conventions/gotchas with memory_write.
+Start of session: memory_search for your topic. Before working: task_claim (task_next suggests a ready task). Record decisions/conventions/gotchas with memory_write.
 Never edit AGENTS.md, CLAUDE.md or docs/decisions.md directly: doc_get, then doc_propose with the baseVersion you read.
 End of session: task_update to "review" with a note (done / not done / how to verify / risks). Never store secrets.`;
 
 const READ_ONLY_INSTRUCTIONS = `xDev Hive is the shared memory, docs and task board for every coding agent on this team.
-This connection is read-only: memory_search, doc_list, doc_get and task_list. Search memory for your topic before working.
+This connection is read-only: memory_search, doc_list, doc_get, task_list and task_next. Search memory for your topic before working.
 Put anything worth sharing (decisions, gotchas, the handoff) in your final message instead of writing it to Hive.`;
 
 const project = z.string().optional().describe('Hive project key (see "Hive project key" in AGENTS.md)');
@@ -149,11 +149,24 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     "task_list",
     {
       title: "List tasks",
-      description: "List tasks on the shared board for a project, optionally filtered by status.",
+      description:
+        "List tasks on the shared board for a project, optionally filtered by status. dependsOn: tasks that must be done first; waitingOn: those still open.",
       inputSchema: { project, status: z.enum(TASK_STATUSES).optional() },
       annotations: readOnly,
     },
     withProject(async ({ project: p, status }) => run("tasks.list", { project: p, status })),
+  );
+
+  server.registerTool(
+    "task_next",
+    {
+      title: "Next ready tasks",
+      description:
+        "Tasks ready to start in a project: to do, nothing they depend on is open, nobody holds them. The ones that unlock the most other tasks come first.",
+      inputSchema: { project, limit: z.number().int().min(1).max(20).optional() },
+      annotations: readOnly,
+    },
+    withProject(async ({ project: p, limit }) => run("tasks.next", { project: p, limit })),
   );
 
   if (writes) {
@@ -162,7 +175,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       {
         title: "Claim a task",
         description:
-          "Take a lease on a task before working on it. Returns claimed=false if another agent holds a live lease.",
+          "Take a lease on a task before working on it. Returns claimed=false if another agent holds a live lease. Fails while a task it depends on is not done.",
         inputSchema: { id: z.string(), leaseMinutes: z.number().int().min(5).max(1440).optional() },
       },
       async ({ id, leaseMinutes }) => run("tasks.claim", { id, leaseMinutes }),

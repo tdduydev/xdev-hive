@@ -179,7 +179,7 @@ describe("hub as a backend", () => {
     const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { requestInit: { headers: { authorization: `Bearer ${tok.viewer}` } } });
     const client = new Client({ name: "test", version: "0" });
     await client.connect(transport);
-    assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), ["doc_get", "doc_list", "memory_search", "task_list"]);
+    assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), ["doc_get", "doc_list", "memory_search", "task_list", "task_next"]);
     await client.close();
   });
 
