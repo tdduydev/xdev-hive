@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { AGENT_TEMPLATES, type Actor, type AgentProfile, type HiveBackend, type RunnerSettings } from "@xdev-hive/core";
+import { CODEGRAPH_MCP, SUPERPOWERS_PLUGIN } from "../src/main/installer.ts";
+import { buildCommand } from "../src/main/runner/command.ts";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { parseResetTime, detectRateLimit } from "../src/main/runner/rate-limit.ts";
 import { Runner, type HubUpdate, type RunnerHost } from "../src/main/runner/runner.ts";
@@ -63,7 +65,9 @@ async function setup(
   const runner = new Runner(host, { dataDir, user: "duy", tickMs: 60_000, onHub: (u) => hubUpdates.push(u) });
   if (!machine.hive) await hive.call("tasks.create", { id: "T-1", project: "demo", title: "Thêm trang cài đặt" }, admin);
   const calls = () =>
-    existsSync(record) ? readFileSync(record, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { agent: string; prompt: string; cwd: string }) : [];
+    existsSync(record)
+      ? readFileSync(record, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { agent: string; prompt: string; cwd: string; args: string[] })
+      : [];
   const task = async () => (await hive.call("tasks.list", { project: "demo" }, admin)).find((t) => t.id === "T-1")!;
   return { repo, hive, runner, dataDir, calls, task, hubUpdates };
 }
@@ -138,6 +142,34 @@ describe("pickProfile", () => {
   });
 });
 
+describe("buildCommand", () => {
+  const vars = { prompt: "Do T-1", worktree: "/wt", task: "T-1", project: "demo", branch: "ai/T-1" };
+  const flag = (args: string[], name: string) => args[args.indexOf(name) + 1]!;
+
+  it("starts Claude Code with the user's settings only, no hooks, and the app's MCP servers", () => {
+    const { args } = buildCommand(AGENT_TEMPLATES.claude, vars);
+    assert.deepEqual(args.slice(0, 4), ["-p", "Do T-1", "--permission-mode", "acceptEdits"]);
+    assert.deepEqual(JSON.parse(flag(args, "--settings")), { disableAllHooks: true });
+    assert.equal(flag(args, "--setting-sources"), "user");
+    assert.ok(args.includes("--strict-mcp-config"));
+    assert.equal(args.at(-2), "--mcp-config", "last, since it takes several values");
+    assert.deepEqual(JSON.parse(args.at(-1)!), {
+      mcpServers: { "xdev-hive": { command: "hive-mcp", args: [], env: { HIVE_AGENT: "claude-1", HIVE_PROJECT: "demo" } } },
+    });
+  });
+
+  it("adds codegraph and superpowers only when setup turned them on for the repo", () => {
+    const { args } = buildCommand(AGENT_TEMPLATES.claude, vars, { codegraph: true, superpowers: true });
+    assert.deepEqual(JSON.parse(args.at(-1)!).mcpServers.codegraph, CODEGRAPH_MCP);
+    assert.deepEqual(JSON.parse(flag(args, "--settings")), { disableAllHooks: true, enabledPlugins: { [SUPERPOWERS_PLUGIN]: true } });
+  });
+
+  it("leaves other CLIs' arguments as the profile has them", () => {
+    assert.deepEqual(buildCommand(AGENT_TEMPLATES.codex, vars).args, ["exec", "--full-auto", "Do T-1"]);
+    assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.claude, kind: "custom" }, vars).args, ["-p", "Do T-1", "--permission-mode", "acceptEdits"]);
+  });
+});
+
 describe("Runner", () => {
   it("runs an agent in its own worktree, commits leftovers and moves the task to review", async () => {
     const { repo, runner, calls, task, dataDir } = await setup([profile("claude-a", "claude", 10, "ok")]);
@@ -164,6 +196,38 @@ describe("Runner", () => {
     assert.match(t.note ?? "", /Implemented T-1/);
     assert.match(t.note ?? "", /Branch ai\/T-1, 1 commit/);
     assert.match(runner.log(run.id), /## Prompt[\s\S]*## Output\nImplemented T-1/);
+  });
+
+  it("gives Claude Code the app's MCP entries for what the repo set up, whatever the working copy says", async () => {
+    const { repo, runner, calls } = await setup([profile("claude-a", "claude", 10, "ok")]);
+    mkdirSync(path.join(repo, ".claude"));
+    writeFileSync(path.join(repo, ".mcp.json"), JSON.stringify({ mcpServers: { codegraph: { command: "evil" }, other: { command: "evil" } } }));
+    writeFileSync(path.join(repo, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { [SUPERPOWERS_PLUGIN]: true } }));
+    await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const { args } = calls()[0]!;
+    assert.deepEqual(Object.keys(JSON.parse(args.at(-1)!).mcpServers), ["xdev-hive", "codegraph"]);
+    assert.deepEqual(JSON.parse(args.at(-1)!).mcpServers.codegraph, CODEGRAPH_MCP);
+    assert.equal(JSON.parse(args.at(-1)!).mcpServers["xdev-hive"].env.HIVE_AGENT, "claude-a");
+    assert.match(calls()[0]!.prompt, /Read AGENTS\.md in the working copy first/);
+  });
+
+  it("runs no git hook the agent left in the working copy, and keeps rendered docs out of its commit", async () => {
+    const mark = path.join(tmp("mark"), "hook-ran");
+    const { repo, runner, dataDir } = await setup([profile("codex-a", "codex", 10, "plant", { env: { FAKE_MODE: "plant", FAKE_MARK: mark } })]);
+    writeFileSync(path.join(repo, "AGENTS.md"), "# demo\n");
+    git(repo, "add", "AGENTS.md");
+    git(repo, "commit", "-qm", "docs");
+    git(repo, "config", "core.hooksPath", ".githooks");
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+
+    const done = runner.store.get(run.id)!;
+    assert.equal(done.status, "succeeded", done.error ?? "");
+    assert.equal(done.error, null);
+    assert.equal(existsSync(mark), false, "the planted pre-commit hook must not run");
+    assert.deepEqual(git(repo, "show", "--name-only", "--format=", "ai/T-1").split("\n").sort(), [".githooks/pre-commit", "work.txt"]);
+    assert.equal(git(path.join(dataDir, "worktrees", "demo", "T-1"), "status", "--porcelain"), "M AGENTS.md");
   });
 
   it("rotates to the next subscription when one hits its quota, continuing on the same branch", async () => {

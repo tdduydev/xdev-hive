@@ -33,6 +33,7 @@ import {
   type Task,
 } from "@xdev-hive/core";
 import { tr } from "../i18n.ts";
+import { repoFeatures } from "../installer.ts";
 import { buildCommand, buildPrompt, describeCommand, expandEnv, expandHome, resolveBin } from "./command.ts";
 import { detectRateLimit } from "./rate-limit.ts";
 import { pickProfile, waitingReason, type ProfileLoad, type RunNeeds } from "./schedule.ts";
@@ -494,7 +495,8 @@ export class Runner {
         attempt: run.attempt,
         previous: parent?.role === run.role && parent.profileId ? { profileId: parent.profileId, reason: parent.error ?? parent.status } : null,
       });
-      const cmd = buildCommand(profile, { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch });
+      const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch };
+      const cmd = buildCommand(profile, vars, repoFeatures(project.repo));
       const base = this.#host.env();
       const bin = resolveBin(cmd.bin, base.PATH ?? "");
       if (!bin) {
