@@ -72,6 +72,7 @@ function ModeCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: (
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const signIn = useAction();
+  const browserSignIn = useAction();
   const [signedIn, setSignedIn] = useState<string | null>(null);
   const [approval, setApproval] = useState(settings.memoryRequiresApproval);
   const [autoCommit, setAutoCommit] = useState(settings.autoCommit);
@@ -186,6 +187,34 @@ function ModeCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: (
                   </p>
                   <ErrorNote error={signIn.error} />
                   {signedIn && !signIn.error ? <Notice tone="ok">{t("projects.connected", { account: signedIn })}</Notice> : null}
+                  <div className="flex w-full flex-wrap items-center gap-2 border-t pt-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!hubUrl.trim() || browserSignIn.busy || signIn.busy}
+                      onClick={() =>
+                        void browserSignIn.run(async () => {
+                          await client.desktop!.hubSignInBrowser({ hubUrl });
+                          setSignedIn(null);
+                          setMode("hub");
+                          onSaved();
+                          bump();
+                        })
+                      }
+                    >
+                      {t("projects.signInBrowser")}
+                    </Button>
+                    {browserSignIn.busy ? (
+                      <>
+                        <span className="text-sm text-muted-foreground">{t("projects.signInBrowserWaiting")}</span>
+                        <Button type="button" size="sm" variant="ghost" onClick={() => void client.desktop!.hubSignInCancel()}>
+                          {t("common.cancel")}
+                        </Button>
+                      </>
+                    ) : null}
+                    <p className="w-full text-xs text-muted-foreground">{t("projects.signInBrowserHint")}</p>
+                    <ErrorNote error={browserSignIn.error} />
+                  </div>
                 </form>
               ) : (
                 <Input

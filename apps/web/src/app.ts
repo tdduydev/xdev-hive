@@ -15,6 +15,7 @@ import {
 } from "@xdev-hive/core";
 import type { SqliteHive } from "@xdev-hive/core/node";
 import { createHiveMcpServer } from "@xdev-hive/mcp";
+import { DEVICE_CHALLENGE, DEVICE_STATE, DeviceGrants, loopbackCallback } from "./device.ts";
 import { SSO_ERRORS, type OidcClient } from "./oidc.ts";
 import type { TokenStore } from "./tokens.ts";
 import { LoginThrottle, type UserInfo, type UserStore } from "./users.ts";
@@ -261,6 +262,18 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
     }
   });
 
+  /** A token for one machine of the account; signing in again from the same machine replaces the old one. */
+  const machineToken = (user: UserInfo, rawName: unknown) => {
+    const name = String(rawName ?? "").trim();
+    const created = tokens.create(name, user.admin ? "admin" : "member", user.id);
+    for (const old of tokens.list(user.id)) if (old.name === created.info.name && old.id !== created.info.id) tokens.revoke(old.id);
+    hive.audit({ name: user.username, role: user.admin ? "admin" : "member" }, "tokens.create", created.info.name, `${created.info.role} · máy`, {
+      key: "audit.machineToken",
+      vars: { role: created.info.role },
+    });
+    return { token: created.token, info: created.info, user: publicUser(user) };
+  };
+
   /** The desktop app signs in with username + password once and keeps a token for this machine. */
   app.post("/api/device-token", json, (req, res) => {
     try {
@@ -268,14 +281,40 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
       if (user.mustChangePassword) throw new HiveError("forbidden", "Tài khoản đang dùng mật khẩu tạm: đăng nhập hub trên trình duyệt để đổi mật khẩu trước.", {
           key: "errors.temporaryPassword",
         });
-      const name = String((req.body as { name?: unknown }).name ?? "").trim();
-      const created = tokens.create(name, user.admin ? "admin" : "member", user.id);
-      for (const old of tokens.list(user.id)) if (old.name === created.info.name && old.id !== created.info.id) tokens.revoke(old.id);
-      hive.audit({ name: user.username, role: user.admin ? "admin" : "member" }, "tokens.create", created.info.name, `${created.info.role} · máy`, {
-        key: "audit.machineToken",
-        vars: { role: created.info.role },
-      });
-      res.json({ result: { token: created.token, info: created.info, user: publicUser(user) } });
+      res.json({ result: machineToken(user, (req.body as { name?: unknown }).name) });
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
+  // ── the desktop app signing in through the browser (device.ts) ─────────────
+  const grants = new DeviceGrants();
+
+  /** The person, signed in on the hub's page, allows the app waiting on their machine: its address gets a one-time code. */
+  app.post("/api/device/authorize", json, auth, (req, res) => {
+    try {
+      const user = userOf(res);
+      if (!user) throw new HiveError("bad_request", "Token không có tài khoản để đăng nhập máy.", { key: "errors.tokenNoAccount" });
+      const { port, state, challenge, name } = (req.body ?? {}) as Record<string, unknown>;
+      if (!Number.isInteger(port) || (port as number) < 1024 || (port as number) > 65535 || typeof state !== "string" || !DEVICE_STATE.test(state) || typeof challenge !== "string" || !DEVICE_CHALLENGE.test(challenge)) {
+        throw new HiveError("bad_request", "Liên kết đăng nhập của app không hợp lệ.", { key: "errors.deviceRequest" });
+      }
+      const machine = String(name ?? "").replace(/[^\w.-]/g, "-").slice(0, 60) || "desktop";
+      const code = grants.issue({ userId: user.id, challenge, name: machine });
+      res.json({ result: { url: loopbackCallback(port as number, { code, state }) } });
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
+  /** The app trades the code and its PKCE verifier for a machine token of the account that allowed it. */
+  app.post("/api/device-token/exchange", json, (req, res) => {
+    try {
+      const { code, verifier } = (req.body ?? {}) as Record<string, unknown>;
+      const grant = typeof code === "string" && typeof verifier === "string" ? grants.redeem(code, verifier) : null;
+      const user = grant ? users.get(grant.userId) : null;
+      if (!grant || !user || user.disabled) throw new HiveError("unauthorized", "Mã đăng nhập hết hạn hoặc không hợp lệ: thử lại từ app.", { key: "errors.deviceCode" });
+      res.json({ result: machineToken(user, grant.name) });
     } catch (err) {
       sendError(res, err);
     }
@@ -301,7 +340,7 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
   app.get(`${OIDC_PATH}/start`, async (req, res) => {
     if (!oidc) return void res.status(404).json({ error: { code: "not_found", message: "SSO is not set up on this hub.", key: "errors.ssoNotSetUp" } });
     try {
-      const { url, state } = await oidc.start();
+      const { url, state } = await oidc.start({ returnTo: typeof req.query.return === "string" ? req.query.return : undefined });
       setOidcState(req, res, state);
       res.redirect(302, url);
     } catch (err) {
@@ -334,7 +373,7 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
       if (typeof req.query.error === "string") throw new HiveError("unauthorized", `Provider said: ${req.query.error}`, { key: "errors.ssoProvider" });
       // Same browser that started: a link forwarded to someone else cannot sign them in to this attempt.
       if (!state || !code || cookie !== state) throw new HiveError("unauthorized", "Sign-in attempt does not match this browser", { key: "errors.ssoState" });
-      const { identity, linkUserId } = await oidc.finish(state, code);
+      const { identity, linkUserId, returnTo } = await oidc.finish(state, code);
       if (linkUserId) {
         const target = users.get(linkUserId);
         if (!target || target.disabled) throw new HiveError("forbidden", "Account disabled", { key: "errors.ssoDisabled" });
@@ -355,7 +394,7 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
       const session = users.startSession(user.id);
       setSession(req, res, session.token, session.maxAge);
       hive.audit({ name: user.username, role: user.admin ? "admin" : "member" }, "auth.login", user.username, `${clientIp(req)} · SSO`);
-      res.redirect(302, "/");
+      res.redirect(302, returnTo);
     } catch (err) {
       ssoBack(res, err);
     }
