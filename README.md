@@ -75,7 +75,7 @@ Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ v�
 
 ```bash
 nvm use && npm install
-npm test            # 227 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
+npm test            # 239 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
 npm run typecheck
 ```
 
@@ -304,7 +304,13 @@ Hub nhận mọi nhà cung cấp OpenID Connect: GitLab, Microsoft Entra, Google
   - `id_token` lấy thẳng từ token endpoint qua TLS. Hub kiểm issuer (phải khớp issuer đã cấu hình và tài liệu discovery), audience, `azp`, hạn dùng, `nonce`.
   - Issuer phải là `https://`.
 - Tài khoản bị khoá thì không đăng nhập SSO được. Mỗi lần đăng nhập, tạo tài khoản và liên kết đều ghi vào nhật ký.
-- **App desktop** vẫn đăng nhập hub bằng tên + mật khẩu. Tài khoản chỉ có SSO thì nhờ admin *Đặt lại mật khẩu* để có mật khẩu dùng cho app (mục 10b sẽ cho đăng nhập app qua trình duyệt).
+- **App desktop**: nút *Đăng nhập qua trình duyệt* ở *Dự án & cài đặt → Nguồn dữ liệu → Tài khoản*. Dùng được cho tài khoản chỉ có SSO; tài khoản có mật khẩu cũng dùng được.
+  1. App mở một cổng trên `127.0.0.1` rồi mở trang hub `#/device` trên trình duyệt.
+  2. Người dùng đăng nhập ở đó (SSO hay mật khẩu). Trang hỏi *App trên máy … muốn dùng tài khoản @… của bạn*, bấm *Cho phép*.
+  3. Hub gửi mã dùng một lần (2 phút) về đúng địa chỉ `127.0.0.1` đó. App đổi mã kèm PKCE verifier lấy token của máy, giống đăng nhập bằng mật khẩu.
+  - Đây là cách loopback của RFC 8252. Chỉ app đã bắt đầu mới có verifier, và mã chỉ đi tới `127.0.0.1`, nên chuyển link này cho người khác cũng không lấy được token.
+  - App chờ tối đa 5 phút, có nút *Huỷ*. Bấm *Không* thì app báo bị từ chối.
+  - Đăng nhập SSO từ trang này xong thì quay lại đúng trang đó.
 
 ### Backup, khôi phục, nâng cấp
 
