@@ -14,6 +14,7 @@ import {
   type MethodOutput,
   type ParsedInput,
 } from "./methods.ts";
+import { fuseRanks, similarity, type Embedder } from "./embed.ts";
 import { assertNoHidden, stripHidden } from "./hidden.ts";
 import { assertNoSecret, findSecret } from "./secrets.ts";
 import { parseSource, type WriteSource } from "./source.ts";
@@ -34,6 +35,7 @@ import type {
   Memory,
   MemoryFile,
   MemoryReview,
+  MemorySearchInfo,
   Proposal,
   QuotaCooldown,
   ReportedProfile,
@@ -138,7 +140,22 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE docs ADD COLUMN paths TEXT NOT NULL DEFAULT '[]';
   `,
+  `
+  CREATE TABLE memory_vectors(
+    memory_id INTEGER PRIMARY KEY REFERENCES memory(id) ON DELETE CASCADE, model TEXT NOT NULL, vector BLOB NOT NULL);
+  CREATE TRIGGER memory_vectors_au AFTER UPDATE OF content ON memory BEGIN
+    DELETE FROM memory_vectors WHERE memory_id = new.id;
+  END;
+  `,
 ];
+
+/** Entries embedded per request while indexing. */
+const EMBED_BATCH = 16;
+/** A search waits this long for the query's vector, then answers from words alone. */
+const QUERY_EMBED_MS = 5000;
+/** Vectors as stored: float32, little-endian like every platform the hub runs on. */
+const toBlob = (v: Float32Array) => new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
+const fromBlob = (b: Uint8Array) => new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
 
 /** Run costs older than this are dropped; the summary only looks back 30 days. */
 const COST_DAYS = 90;
@@ -348,11 +365,15 @@ export interface SqliteHiveOptions {
   memoryStaleDays?: number;
   /** Called after a change people may want to hear about (the hub sends webhooks); errors are ignored. */
   onEvent?: (event: HiveEvent) => void;
+  /** Embeddings for memory search (the hub: Ollama or an API). Without one, search matches words only. */
+  embedder?: Embedder | null;
+  /** Entries less similar than this to the query (cosine) do not count as found by meaning. */
+  embedMinScore?: number;
   /** Injectable clock for tests. */
   now?: () => Date;
 }
 
-type Handlers = { [M in Method]: (input: ParsedInput<M>, actor: Actor) => MethodOutput[M] };
+type Handlers = { [M in Method]: (input: ParsedInput<M>, actor: Actor) => MethodOutput[M] | Promise<MethodOutput[M]> };
 
 export class SqliteHive implements HiveBackend {
   readonly db: DatabaseSync;
@@ -364,7 +385,15 @@ export class SqliteHive implements HiveBackend {
       mkdirSync(path.dirname(dbOrPath), { recursive: true });
     }
     this.db = typeof dbOrPath === "string" ? new DatabaseSync(dbOrPath) : dbOrPath;
-    this.#opts = { memoryRequiresApproval: false, memoryStaleDays: 90, now: () => new Date(), onEvent: () => undefined, ...opts };
+    this.#opts = {
+      memoryRequiresApproval: false,
+      memoryStaleDays: 90,
+      now: () => new Date(),
+      onEvent: () => undefined,
+      embedder: null,
+      embedMinScore: 0.5,
+      ...opts,
+    };
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;");
     this.#migrate();
     this.#handlers = this.#buildHandlers();
@@ -373,9 +402,9 @@ export class SqliteHive implements HiveBackend {
   async call<M extends Method>(method: M, input: MethodInput<M>, actor: Actor): Promise<MethodOutput[M]> {
     authorize(method, actor);
     const parsed = parseInput(method, input);
-    const handler = this.#handlers[method] as (i: ParsedInput<M>, a: Actor) => MethodOutput[M];
+    const handler = this.#handlers[method] as (i: ParsedInput<M>, a: Actor) => MethodOutput[M] | Promise<MethodOutput[M]>;
     this.#check(method, parsed as ParsedInput<Method>, actor);
-    const output = this.#filter(method, handler(parsed, actor), actor);
+    const output = this.#filter(method, await handler(parsed, actor), actor);
     const audited = AUDITED[method];
     if (audited) {
       const { target, detail, text } = audited(parsed, output);
@@ -489,6 +518,70 @@ export class SqliteHive implements HiveBackend {
       }
       default:
         return output;
+    }
+  }
+
+  #embedError: string | null = null;
+  #indexedAt: string | null = null;
+  #indexing = false;
+
+  /**
+   * Embeds approved memory that has no vector for the current model yet, up to `max` entries.
+   * Returns how many got one; the hub calls it until that is 0. An error stops the round and shows in memory.searchInfo.
+   */
+  async indexMemory(max = 64): Promise<number> {
+    const embedder = this.#opts.embedder;
+    if (!embedder || this.#indexing) return 0;
+    this.#indexing = true;
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT m.id, m.content FROM memory m LEFT JOIN memory_vectors v ON v.memory_id = m.id AND v.model = ?
+           WHERE m.status = 'approved' AND v.memory_id IS NULL ORDER BY m.id LIMIT ?`,
+        )
+        .all(embedder.model, max) as Row[];
+      const still = this.db.prepare("SELECT 1 FROM memory WHERE id = ? AND status = 'approved' AND content = ?");
+      const put = this.db.prepare("INSERT OR REPLACE INTO memory_vectors(memory_id, model, vector) VALUES (?, ?, ?)");
+      let done = 0;
+      for (let i = 0; i < rows.length; i += EMBED_BATCH) {
+        const batch = rows.slice(i, i + EMBED_BATCH);
+        let vectors: Float32Array[];
+        try {
+          vectors = await embedder.embed(batch.map((r) => str(r.content)));
+          this.#embedError = null;
+        } catch (err) {
+          this.#embedError = (err as Error).message;
+          break;
+        }
+        // An entry removed or edited while its vector was being made gets one next round.
+        batch.forEach((r, j) => {
+          if (still.get(num(r.id), str(r.content))) put.run(num(r.id), embedder.model, toBlob(vectors[j]!));
+        });
+        done += batch.length;
+      }
+      if (done) this.#indexedAt = this.#now();
+      return done;
+    } finally {
+      this.#indexing = false;
+    }
+  }
+
+  async #queryVector(query: string): Promise<Float32Array | null> {
+    const embedder = this.#opts.embedder;
+    if (!embedder || !query.trim()) return null;
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const late = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("timeout")), QUERY_EMBED_MS);
+      });
+      const [v] = await Promise.race([embedder.embed([query]), late]);
+      this.#embedError = null;
+      return v ?? null;
+    } catch (err) {
+      this.#embedError = (err as Error).message;
+      return null;
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -799,7 +892,9 @@ export class SqliteHive implements HiveBackend {
         return this.#getProposal(id);
       },
 
-      "memory.search": ({ project, query, limit, includeShared, anyProject, includeStale }, actor) => {
+      "memory.search": async ({ project, query, limit, includeShared, anyProject, includeStale }, actor) => {
+        // Before any read: the handler waits here, and what it reads must be current when it answers.
+        const vector = await this.#queryVector(query);
         const match = ftsQuery(query);
         // ?2 = the project (or shared when none), ?3 = also shared entries, ?5 = every project, ?6 = the stale cutoff ('' keeps all).
         // Replaced entries drop out once their replacement is approved, so a chain shows only its newest entry.
@@ -809,7 +904,9 @@ export class SqliteHive implements HiveBackend {
         const shared = includeShared ? 1 : 0;
         const staleBefore = this.#staleBefore();
         const cutoff = includeStale || staleBefore === null ? "" : staleBefore;
-        const rows = (
+        // With a query vector each side brings more candidates, then rank fusion keeps the best of both.
+        const pool = vector ? limit * 2 : limit;
+        const words = (
           match
             ? db
                 .prepare(
@@ -817,11 +914,32 @@ export class SqliteHive implements HiveBackend {
                    WHERE memory_fts MATCH ?1 AND ${scope} AND m.status = 'approved'
                    ORDER BY bm25(memory_fts) LIMIT ?4`,
                 )
-                .all(match, own, shared, limit, anyProject ? 1 : 0, cutoff)
-            : db
-                .prepare(`SELECT m.* FROM memory m WHERE ${scope} AND m.status = 'approved' ORDER BY m.id DESC LIMIT ?4`)
-                .all(null, own, shared, limit, anyProject ? 1 : 0, cutoff)
+                .all(match, own, shared, pool, anyProject ? 1 : 0, cutoff)
+            : vector
+              ? []
+              : db
+                  .prepare(`SELECT m.* FROM memory m WHERE ${scope} AND m.status = 'approved' ORDER BY m.id DESC LIMIT ?4`)
+                  .all(null, own, shared, limit, anyProject ? 1 : 0, cutoff)
         ) as Row[];
+        let rows = words;
+        if (vector) {
+          const candidates = db
+            .prepare(
+              `SELECT m.*, v.vector FROM memory m JOIN memory_vectors v ON v.memory_id = m.id AND v.model = ?7
+               WHERE ${scope} AND m.status = 'approved'`,
+            )
+            .all(null, own, shared, null, anyProject ? 1 : 0, cutoff, this.#opts.embedder!.model) as Row[];
+          const meaning = candidates
+            .map((r) => ({ r, score: similarity(vector, fromBlob(r.vector as Uint8Array)) }))
+            .filter((c) => c.score >= this.#opts.embedMinScore)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, pool)
+            .map((c) => c.r);
+          const byId = new Map([...words, ...meaning].map((r) => [num(r.id), r]));
+          rows = fuseRanks([words.map((r) => num(r.id)), meaning.map((r) => num(r.id))])
+            .slice(0, limit)
+            .map((id) => byId.get(id)!);
+        }
         // What an agent was given counts as used; people browsing the page do not.
         if (actor.role === "agent" && rows.length) {
           const now = this.#now();
@@ -833,6 +951,21 @@ export class SqliteHive implements HiveBackend {
           }
         }
         return rows.map((r) => toMemory(r, staleBefore));
+      },
+
+      "memory.searchInfo": () => {
+        const model = this.#opts.embedder?.model ?? null;
+        const count = (sql: string, ...args: string[]) => num((db.prepare(sql).get(...args) as Row).n);
+        return {
+          mode: model ? "hybrid" : "keyword",
+          model,
+          indexed: model
+            ? count("SELECT COUNT(*) AS n FROM memory m JOIN memory_vectors v ON v.memory_id = m.id AND v.model = ? WHERE m.status = 'approved'", model)
+            : 0,
+          total: count("SELECT COUNT(*) AS n FROM memory WHERE status = 'approved'"),
+          lastError: this.#embedError,
+          lastIndexedAt: this.#indexedAt,
+        } satisfies MemorySearchInfo;
       },
 
       "memory.list": ({ project, includeShared, status, stale, limit }) => {

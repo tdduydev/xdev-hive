@@ -284,6 +284,8 @@ export const en: Catalog = {
     subtitle: "Shared memory applies to every project; a project's own memory applies to that project only. Agents write with memory_write and read with memory_search. Admins remove wrong entries so they do not spread to other agents.",
     searchPlaceholder: "Search (with or without diacritics)…",
     searchLabel: "Search memory",
+    searchHybrid: "Searching by words and by meaning ({model}, {indexed}/{total} entries have a vector)",
+    searchEmbedError: "Vectors could not be made ({error}): searching by words only for now.",
     search: "Search",
     pendingOnly: "Pending only",
     staleOnly: "Stale only",

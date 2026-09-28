@@ -284,6 +284,8 @@ export const vi = {
     title: "Memory",
     subtitle: "Memory chung áp dụng cho mọi dự án, còn memory riêng chỉ áp dụng cho một dự án. Mọi agent ghi bằng memory_write và đọc bằng memory_search. Admin dọn các mục sai để chúng không lan sang agent khác.",
     searchPlaceholder: "Tìm (có dấu hay không dấu đều được)…",
+    searchHybrid: "Tìm theo từ và theo nghĩa ({model}, {indexed}/{total} mục đã có vector)",
+    searchEmbedError: "Chưa tạo được vector ({error}): tạm chỉ tìm theo từ.",
     searchLabel: "Tìm memory",
     search: "Tìm",
     pendingOnly: "Chỉ mục chờ duyệt",

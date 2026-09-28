@@ -12,10 +12,29 @@ echo "code: $(git log --oneline -1)"
 
 files=(-f deploy/compose.yaml)
 if [ "${HIVE_TUNNEL:-}" = "1" ]; then files+=(-f deploy/compose.tunnel.yaml); fi
-# The hub backs up its database on start, before any schema migration of the new version.
-docker compose -p "${HIVE_PROJECT:-xdev-hive}" "${files[@]}" up -d --build hub
+compose=(docker compose -p "${HIVE_PROJECT:-xdev-hive}" "${files[@]}")
 
-container="$(docker compose -p "${HIVE_PROJECT:-xdev-hive}" "${files[@]}" ps -q hub)"
+# Embeddings for memory search (COMPOSE_PROFILES=embed in deploy/.env): Ollama next to the hub, model pulled first.
+# Never in the way of the hub update: without the model, memory search matches words only.
+if "${compose[@]}" config --services | grep -qx ollama; then
+  model="${HIVE_EMBED_MODEL:-$(sed -n 's/^HIVE_EMBED_MODEL=//p' deploy/.env 2>/dev/null | tail -n 1)}"
+  model="${model:-bge-m3}"
+  if "${compose[@]}" up -d ollama; then
+    for _ in $(seq 1 30); do "${compose[@]}" exec -T ollama ollama list >/dev/null 2>&1 && break; sleep 1; done
+    # Quick when the model is there already.
+    if "${compose[@]}" exec -T ollama ollama pull "$model" >/dev/null; then
+      echo "embeddings: $model ready"
+    else
+      echo "embeddings: could not pull $model; memory search matches words only until it is there" >&2
+    fi
+  else
+    echo "embeddings: Ollama did not start; memory search matches words only" >&2
+  fi
+fi
+# The hub backs up its database on start, before any schema migration of the new version.
+"${compose[@]}" up -d --build hub
+
+container="$("${compose[@]}" ps -q hub)"
 for _ in $(seq 1 60); do
   if [ "$(docker inspect -f '{{.State.Health.Status}}' "$container")" = "healthy" ]; then
     echo "hub healthy"
