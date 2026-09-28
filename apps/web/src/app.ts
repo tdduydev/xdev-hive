@@ -15,6 +15,7 @@ import {
 } from "@xdev-hive/core";
 import type { SqliteHive } from "@xdev-hive/core/node";
 import { createHiveMcpServer } from "@xdev-hive/mcp";
+import { SSO_ERRORS, type OidcClient } from "./oidc.ts";
 import type { TokenStore } from "./tokens.ts";
 import { LoginThrottle, type UserInfo, type UserStore } from "./users.ts";
 import type { WebhookDispatcher, WebhookStore } from "./webhooks.ts";
@@ -32,6 +33,8 @@ export interface HubAppOptions {
   throttle?: LoginThrottle;
   /** Chat webhooks for hub events (hub admins manage them). */
   webhooks?: { store: WebhookStore; dispatcher: WebhookDispatcher };
+  /** Sign-in through an OpenID Connect provider (HIVE_OIDC_*). */
+  oidc?: OidcClient | null;
 }
 
 const CSP = [
@@ -47,6 +50,9 @@ const CSP = [
 
 const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
 const SESSION_COOKIE = "hive_session";
+/** Carries the sign-in attempt to the provider and back. Lax: the way back is a cross-site navigation. */
+const OIDC_COOKIE = "hive_oidc";
+const OIDC_PATH = "/api/auth/oidc";
 /** Header the web client adds to every cookie-authenticated write: a cross-site form or image cannot. */
 const CSRF_HEADER = "x-hive-csrf";
 
@@ -91,7 +97,7 @@ function publicUser(u: UserInfo): NonNullable<Me["user"]> {
   return { id: u.id, username: u.username, displayName: u.displayName, admin: u.admin, mustChangePassword: u.mustChangePassword };
 }
 
-export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy = false, throttle = new LoginThrottle(), webhooks }: HubAppOptions): express.Express {
+export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy = false, throttle = new LoginThrottle(), webhooks, oidc = null }: HubAppOptions): express.Express {
   const app = express();
   app.disable("x-powered-by");
   if (allowedHosts?.length) app.use(hostHeaderValidation(allowedHosts));
@@ -108,9 +114,14 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
   const clientIp = (req: Request) => (trustProxy ? (req.get("x-forwarded-for") ?? "").split(",")[0]!.trim() : "") || req.socket.remoteAddress || "?";
 
   const setSession = (req: Request, res: Response, token: string, maxAge: number) =>
-    res.setHeader(
+    res.append(
       "set-cookie",
       `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure(req) ? "; Secure" : ""}`,
+    );
+  const setOidcState = (req: Request, res: Response, state: string | null) =>
+    res.append(
+      "set-cookie",
+      `${OIDC_COOKIE}=${state ?? ""}; Path=${OIDC_PATH}; HttpOnly; SameSite=Lax; Max-Age=${state ? 600 : 0}${secure(req) ? "; Secure" : ""}`,
     );
   const clearSession = (req: Request, res: Response) =>
     res.setHeader("set-cookie", `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${secure(req) ? "; Secure" : ""}`);
@@ -181,7 +192,8 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
   const me = (res: Response): Me => {
     const { name, role, access } = actorOf(res);
     const user = userOf(res);
-    return { name, role, mode: "hub", ...(access ? { access } : {}), ...(user ? { user: publicUser(user) } : {}) };
+    const sso = user && oidc ? { sso: { name: oidc.settings.name, linked: user.sso } } : {};
+    return { name, role, mode: "hub", ...(access ? { access } : {}), ...(user ? { user: publicUser(user) } : {}), ...sso };
   };
 
   /** Checks a username/password pair with throttling per client address and username. */
@@ -271,6 +283,82 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
 
   app.get("/api/me", authenticate({ cookie: true, allowPasswordChange: true }), (_req, res) => {
     res.json({ result: me(res) });
+  });
+
+  // ── OpenID Connect ──────────────────────────────────────────────────────────
+
+  /** What the sign-in page offers besides username + password. */
+  app.get("/api/auth/providers", (_req, res) => {
+    res.json({ result: { oidc: oidc ? { name: oidc.settings.name } : null } });
+  });
+
+  const ssoBack = (res: Response, err: unknown) => {
+    const key = err instanceof HiveError && (SSO_ERRORS as readonly string[]).includes(err.key ?? "") ? err.key! : "errors.ssoProvider";
+    if (!(err instanceof HiveError)) console.error("[xdev-hive] SSO", err);
+    res.redirect(302, `/?sso_error=${encodeURIComponent(key)}`);
+  };
+
+  app.get(`${OIDC_PATH}/start`, async (req, res) => {
+    if (!oidc) return void res.status(404).json({ error: { code: "not_found", message: "SSO is not set up on this hub.", key: "errors.ssoNotSetUp" } });
+    try {
+      const { url, state } = await oidc.start();
+      setOidcState(req, res, state);
+      res.redirect(302, url);
+    } catch (err) {
+      ssoBack(res, err);
+    }
+  });
+
+  /** A signed-in person adds the provider account to theirs; after that either way signs in. */
+  app.post(`${OIDC_PATH}/link`, auth, async (req, res) => {
+    try {
+      const user = userOf(res);
+      if (!oidc) throw new HiveError("not_found", "SSO is not set up on this hub.", { key: "errors.ssoNotSetUp" });
+      if (!user) throw new HiveError("bad_request", "Token không có tài khoản để liên kết.", { key: "errors.tokenNoAccount" });
+      const { url, state } = await oidc.start({ linkUserId: user.id });
+      setOidcState(req, res, state);
+      res.json({ result: { url } });
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
+  app.get(`${OIDC_PATH}/callback`, async (req, res) => {
+    if (!oidc) return void res.status(404).json({ error: { code: "not_found", message: "SSO is not set up on this hub.", key: "errors.ssoNotSetUp" } });
+    const state = typeof req.query.state === "string" ? req.query.state : "";
+    const code = typeof req.query.code === "string" ? req.query.code : "";
+    const cookie = readCookie(req, OIDC_COOKIE);
+    setOidcState(req, res, null);
+    try {
+      // The provider sends people back with error=access_denied when they cancel.
+      if (typeof req.query.error === "string") throw new HiveError("unauthorized", `Provider said: ${req.query.error}`, { key: "errors.ssoProvider" });
+      // Same browser that started: a link forwarded to someone else cannot sign them in to this attempt.
+      if (!state || !code || cookie !== state) throw new HiveError("unauthorized", "Sign-in attempt does not match this browser", { key: "errors.ssoState" });
+      const { identity, linkUserId } = await oidc.finish(state, code);
+      if (linkUserId) {
+        const target = users.get(linkUserId);
+        if (!target || target.disabled) throw new HiveError("forbidden", "Account disabled", { key: "errors.ssoDisabled" });
+        users.linkIdentity(target.id, identity);
+        hive.audit({ name: target.username, role: target.admin ? "admin" : "member" }, "users.ssoLink", target.username, oidc.settings.name);
+        return void res.redirect(302, "/");
+      }
+      let user = users.byIdentity(identity);
+      if (!user) {
+        user = users.createFromIdentity(identity);
+        hive.audit({ name: user.username, role: "member" }, "users.create", user.username, `SSO ${oidc.settings.name}`, {
+          key: "audit.ssoCreated",
+          vars: { provider: oidc.settings.name },
+        });
+      }
+      if (user.disabled) throw new HiveError("forbidden", "Account disabled", { key: "errors.ssoDisabled" });
+      users.touchLogin(user.id);
+      const session = users.startSession(user.id);
+      setSession(req, res, session.token, session.maxAge);
+      hive.audit({ name: user.username, role: user.admin ? "admin" : "member" }, "auth.login", user.username, `${clientIp(req)} · SSO`);
+      res.redirect(302, "/");
+    } catch (err) {
+      ssoBack(res, err);
+    }
   });
 
   app.post("/api/rpc", json, auth, async (req, res) => {

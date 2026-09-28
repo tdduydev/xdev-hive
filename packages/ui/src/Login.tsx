@@ -14,10 +14,13 @@ export function Login({
   onPassword,
   onToken,
   error,
+  sso,
 }: {
   onPassword: (username: string, password: string) => Promise<void>;
   onToken: (token: string) => void;
   error?: string | null;
+  /** The hub's OpenID Connect provider: a plain link, the hub redirects to the provider. */
+  sso?: { name: string; href: string } | null;
 }) {
   useSystemTheme();
   const t = useT();
@@ -59,6 +62,18 @@ export function Login({
             <CardDescription>{t("login.tagline")}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
+            {sso && !useToken ? (
+              <>
+                <Button asChild variant="outline">
+                  <a href={sso.href}>{t("login.sso", { name: sso.name })}</a>
+                </Button>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <span className="h-px flex-1 bg-border" />
+                  {t("login.or")}
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+              </>
+            ) : null}
             {useToken ? (
               <div className="flex flex-col gap-2">
                 <Label htmlFor="token">{t("login.token")}</Label>

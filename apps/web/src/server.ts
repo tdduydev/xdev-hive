@@ -8,6 +8,8 @@
 //   HIVE_ADMIN_USER=admin              (name of the first admin account, created with a temporary password)
 //   HIVE_TRUST_PROXY=1                 (behind a TLS proxy: Secure cookies, client address from X-Forwarded-For)
 //   HIVE_BACKUP_DIR=/data/backups       (snapshot on start and every HIVE_BACKUP_HOURS=24, keep HIVE_BACKUP_KEEP=7)
+//   HIVE_OIDC_ISSUER=https://gitlab.fis.vn HIVE_OIDC_CLIENT_ID=… HIVE_OIDC_CLIENT_SECRET=… HIVE_OIDC_NAME=GitLab
+//     (sign-in through an OpenID Connect provider; redirect URI: <HIVE_PUBLIC_URL>/api/auth/oidc/callback)
 //   HIVE_EMBED_URL=http://ollama:11434/v1 (memory search by meaning too: an OpenAI-compatible /embeddings endpoint;
 //     HIVE_EMBED_MODEL=bge-m3, HIVE_EMBED_KEY for an API, HIVE_EMBED_MIN_SCORE=0.5 cosine for a match by meaning)
 import { createServer } from "node:http";
@@ -17,6 +19,7 @@ import { openAiEmbedder, type HiveEvent } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { allowedHostsFor, createHubApp, type HubAppOptions } from "./app.ts";
 import { backupDatabase, backupFile, backupSettings, type BackupResult } from "./backup.ts";
+import { OidcClient, oidcSettings } from "./oidc.ts";
 import { TokenStore } from "./tokens.ts";
 import { UserStore } from "./users.ts";
 import { WebhookDispatcher, WebhookStore } from "./webhooks.ts";
@@ -67,8 +70,13 @@ if (users.count() === 0) {
 const allowedHosts = allowedHostsFor(process.env.HIVE_ALLOWED_HOSTS, host);
 
 const publicHost = allowedHosts?.find((h) => !["localhost", "127.0.0.1", "::1", "[::1]"].includes(h));
+// || : compose passes an unset variable as "".
+const publicUrl = process.env.HIVE_PUBLIC_URL || (publicHost ? `https://${publicHost}` : null);
 const webhookStore = new WebhookStore(hive.db);
-const dispatcher = new WebhookDispatcher(webhookStore, { publicUrl: process.env.HIVE_PUBLIC_URL ?? (publicHost ? `https://${publicHost}` : null) });
+const dispatcher = new WebhookDispatcher(webhookStore, { publicUrl });
+const sso = oidcSettings(process.env, publicUrl);
+const oidc = sso ? new OidcClient(sso) : null;
+if (sso) console.log(`[xdev-hive] SSO: ${sso.name} (${sso.issuer}), redirect URI ${sso.redirectUri}`);
 onEvent = (event) => void dispatcher.notify(event);
 
 if (backup) setInterval(() => logBackup("scheduled", () => backupDatabase(hive.db, backup)), backup.hours * 3_600_000).unref();
@@ -108,7 +116,7 @@ if (production) {
 
 httpServer.on(
   "request",
-  createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy: process.env.HIVE_TRUST_PROXY === "1", webhooks: { store: webhookStore, dispatcher } }),
+  createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy: process.env.HIVE_TRUST_PROXY === "1", webhooks: { store: webhookStore, dispatcher }, oidc }),
 );
 httpServer.listen(port, host, () => {
   console.log(`[xdev-hive] hub on http://${host}:${port} (${production ? "production" : "dev"}), db ${dbPath}`);
