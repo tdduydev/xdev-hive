@@ -14,6 +14,7 @@ import {
   shimStatus,
   type ShimOptions,
 } from "./installer.ts";
+import { tr } from "./i18n.ts";
 import { resolveBin } from "./runner/command.ts";
 
 export interface RunResult {
@@ -45,7 +46,7 @@ export const AGENT_CLIS: Array<{ kind: Exclude<AgentKind, "custom">; bin: string
 const OUTPUT_TAIL = 6000;
 const tail = (s: string) => (s.length > OUTPUT_TAIL ? `…${s.slice(-OUTPUT_TAIL)}` : s);
 const firstLine = (s: string) => s.trim().split("\n")[0]?.trim() ?? "";
-const NO_NPM = "Máy chưa có npm: cài Node.js (https://nodejs.org) rồi bấm Kiểm tra lại";
+const noNpm = () => tr("setupItem.noNpm");
 
 export const defaultRun: Run = (bin, args, { cwd, env, timeoutMs }) =>
   new Promise((resolve) => {
@@ -83,7 +84,7 @@ export class Setup {
     if (cli) return this.#cli(cli, pathEnv);
     const { project, part } = this.#split(id);
     const item = this.#projectItems(project, pathEnv).find((i) => i.id === `${project.name}:${part}`);
-    if (!item) throw new HiveError("not_found", `Không có mục ${id}.`);
+    if (!item) throw new HiveError("not_found", `Không có mục ${id}.`, { key: "errors.setupItemNotFound", vars: { id } });
     return item;
   }
 
@@ -94,20 +95,23 @@ export class Setup {
     const cli = AGENT_CLIS.find((c) => id === `cli:${c.kind}`);
     if (cli) {
       const npm = resolveBin("npm", pathEnv);
-      if (!npm) throw new HiveError("bad_request", NO_NPM);
+      if (!npm) throw new HiveError("bad_request", noNpm(), { key: "setupItem.noNpm" });
       const r = await this.#run(npm, ["install", "-g", cli.pkg], { env, timeoutMs: 15 * 60_000 });
-      if (!r.ok) throw new HiveError("bad_request", `npm install -g ${cli.pkg} lỗi:\n${tail(r.output)}`);
+      if (!r.ok) {
+        const output = tail(r.output);
+        throw new HiveError("bad_request", `npm install -g ${cli.pkg} lỗi:\n${output}`, { key: "errors.commandFailed", vars: { command: `npm install -g ${cli.pkg}`, output } });
+      }
       output = tail(r.output);
     } else if (id === "shim") {
       const r = installShim(this.#host.shim, pathEnv);
-      output = `Đã cài ${r.path}`;
+      output = tr("setupItem.installedAt", { path: r.path });
     } else {
       const { project, part } = this.#split(id);
       if (part === "agents") output = describeFiles(installAgents(project.repo, project.name, { home: this.#host.home }));
       else if (part === "codegraph-mcp") output = describeFiles([installCodegraphMcp(project.repo)]);
       else if (part === "superpowers") output = describeFiles([enableSuperpowers(project.repo)]);
       else if (part === "codegraph-index") output = await this.#codegraphIndex(project, pathEnv, env);
-      else throw new HiveError("not_found", `Không có mục ${id}.`);
+      else throw new HiveError("not_found", `Không có mục ${id}.`, { key: "errors.setupItemNotFound", vars: { id } });
     }
     return { item: await this.item(id), output };
   }
@@ -122,98 +126,101 @@ export class Setup {
       return {
         ...base,
         state: "missing",
-        detail: npm ? `Chưa cài. Nút Cài chạy: npm install -g ${cli.pkg}` : `Chưa cài. ${NO_NPM}`,
-        action: npm ? "Cài bằng npm" : null,
+        detail: npm ? tr("setupItem.cliMissing", { pkg: cli.pkg }) : `${tr("setupItem.notInstalled")} ${noNpm()}`,
+        action: npm ? tr("setupItem.installNpm") : null,
       };
     }
     const v = await this.#run(bin, ["--version"], { env: { ...this.#host.env(), PATH: pathEnv }, timeoutMs: 15_000 });
     return {
       ...base,
       state: "installed",
-      detail: v.ok ? `${firstLine(v.output) || "?"} · ${bin}` : `${bin} · --version lỗi: ${firstLine(v.output)}`,
+      detail: v.ok ? `${firstLine(v.output) || "?"} · ${bin}` : tr("setupItem.versionFailed", { bin, output: firstLine(v.output) }),
       action: null,
     };
   }
 
   #shim(pathEnv: string): SetupItem {
     const s = shimStatus(this.#host.shim, pathEnv);
-    const base = { id: "shim", label: "Lệnh hive-mcp" };
+    const base = { id: "shim", label: tr("setupItem.shim") };
     const dir = path.dirname(s.path);
-    if (s.foreign) return { ...base, state: "manual", detail: `${s.path} là file khác, không do Hive cài. Đổi tên hoặc xoá nó rồi cài lại.`, action: null };
-    if (s.state === "missing") return { ...base, state: "missing", detail: "Chưa cài. Agent cần lệnh này để gọi Hive qua MCP.", action: "Cài" };
-    if (s.state === "outdated") return { ...base, state: "outdated", detail: `${s.path} đang trỏ tới bản app khác.`, action: "Cài lại cho bản này" };
+    if (s.foreign) return { ...base, state: "manual", detail: tr("setupItem.shimForeign", { path: s.path }), action: null };
+    if (s.state === "missing") return { ...base, state: "missing", detail: tr("setupItem.shimMissing"), action: tr("setupItem.install") };
+    if (s.state === "outdated") return { ...base, state: "outdated", detail: tr("setupItem.shimOutdated", { path: s.path }), action: tr("setupItem.reinstall") };
     if (!s.onPath) {
-      return { ...base, state: "manual", detail: `${s.path}, nhưng ${dir} chưa có trong PATH của shell. Thêm export PATH="${dir}:$PATH" vào ~/.zshrc.`, action: null };
+      return { ...base, state: "manual", detail: tr("setupItem.shimNotOnPath", { path: s.path, dir }), action: null };
     }
     return { ...base, state: "installed", detail: s.path, action: null };
   }
 
   #projectItems(project: DesktopProject, pathEnv: string): SetupItem[] {
     const id = (part: string) => `${project.name}:${part}`;
+    const agentsLabel = tr("setupPart.agents");
     if (!existsSync(project.repo)) {
-      return [{ id: id("agents"), label: "Cấu hình agent", state: "manual", detail: `Không thấy thư mục ${project.repo}`, action: null }];
+      return [{ id: id("agents"), label: agentsLabel, state: "manual", detail: tr("errors.noFolder", { path: project.repo }), action: null }];
     }
     const plan = installAgents(project.repo, project.name, { home: this.#host.home, dryRun: true });
     const changes = plan.filter((f) => f.action === "created" || f.action === "updated");
     const manual = plan.filter((f) => f.action === "skipped");
     const agents: SetupItem = changes.length
-      ? { id: id("agents"), label: "Cấu hình agent", state: "missing", detail: `Cần ghi: ${changes.map((f) => f.file).join(", ")}`, action: "Cài vào agents" }
+      ? { id: id("agents"), label: agentsLabel, state: "missing", detail: tr("setupItem.agentsWrites", { files: changes.map((f) => f.file).join(", ") }), action: tr("setupItem.installAgents") }
       : manual.length
-        ? { id: id("agents"), label: "Cấu hình agent", state: "manual", detail: manual.map((f) => `${f.file}: ${f.note}`).join(" · "), action: null }
-        : { id: id("agents"), label: "Cấu hình agent", state: "installed", detail: "MCP xdev-hive cho Claude Code, Gemini, Codex · hook chặn sửa tài liệu · pre-commit", action: null };
+        ? { id: id("agents"), label: agentsLabel, state: "manual", detail: manual.map((f) => `${f.file}: ${f.note}`).join(" · "), action: null }
+        : { id: id("agents"), label: agentsLabel, state: "installed", detail: tr("setupItem.agentsOk"), action: null };
 
     const mcp = installCodegraphMcp(project.repo, { dryRun: true });
+    const mcpLabel = tr("setupPart.codegraph-mcp");
     const codegraphMcp: SetupItem =
       mcp.action === "unchanged"
-        ? { id: id("codegraph-mcp"), label: "codegraph (MCP)", state: "installed", detail: "Có trong .mcp.json", action: null }
+        ? { id: id("codegraph-mcp"), label: mcpLabel, state: "installed", detail: tr("setupItem.mcpOk"), action: null }
         : mcp.action === "skipped"
-          ? { id: id("codegraph-mcp"), label: "codegraph (MCP)", state: "manual", detail: `.mcp.json: ${mcp.note}`, action: null }
-          : { id: id("codegraph-mcp"), label: "codegraph (MCP)", state: "missing", detail: `Chưa có trong .mcp.json (${CODEGRAPH_PACKAGE}, tắt telemetry)`, action: "Thêm vào .mcp.json" };
+          ? { id: id("codegraph-mcp"), label: mcpLabel, state: "manual", detail: `.mcp.json: ${mcp.note}`, action: null }
+          : { id: id("codegraph-mcp"), label: mcpLabel, state: "missing", detail: tr("setupItem.mcpMissing", { pkg: CODEGRAPH_PACKAGE }), action: tr("setupItem.addToMcp") };
 
     const db = path.join(project.repo, ".codegraph", "codegraph.db");
     const npx = resolveBin("npx", pathEnv);
     const index: SetupItem = existsSync(db)
       ? {
           id: id("codegraph-index"),
-          label: "Index codegraph",
+          label: tr("setupPart.codegraph-index"),
           state: "installed",
-          detail: `.codegraph/ · ${(statSync(db).size / 1_048_576).toFixed(1)} MB, tự cập nhật khi MCP server chạy`,
+          detail: tr("setupItem.indexOk", { size: (statSync(db).size / 1_048_576).toFixed(1) }),
           action: null,
         }
       : {
           id: id("codegraph-index"),
-          label: "Index codegraph",
+          label: tr("setupPart.codegraph-index"),
           state: "missing",
-          detail: npx ? "Chưa tạo. Lần đầu npm tải gói codegraph cho nền tảng (~290 MB trên macOS arm64)." : `Chưa tạo. ${NO_NPM}`,
-          action: npx ? "Tạo index" : null,
+          detail: npx ? tr("setupItem.indexMissing") : `${tr("setupItem.notCreated")} ${noNpm()}`,
+          action: npx ? tr("setupItem.createIndex") : null,
         };
 
     const sp = enableSuperpowers(project.repo, { dryRun: true });
+    const spLabel = tr("setupItem.superpowers");
     const superpowers: SetupItem =
       sp.action === "unchanged"
-        ? { id: id("superpowers"), label: "superpowers (plugin)", state: "installed", detail: "Bật trong .claude/settings.json", action: null }
+        ? { id: id("superpowers"), label: spLabel, state: "installed", detail: tr("setupItem.superpowersOk"), action: null }
         : sp.action === "skipped"
-          ? { id: id("superpowers"), label: "superpowers (plugin)", state: "manual", detail: `.claude/settings.json: ${sp.note}`, action: null }
-          : {
-              id: id("superpowers"),
-              label: "superpowers (plugin)",
-              state: "missing",
-              detail: "Chưa bật. Sau khi bật, Claude Code hỏi cài plugin ở lần mở repo kế tiếp.",
-              action: "Bật",
-            };
+          ? { id: id("superpowers"), label: spLabel, state: "manual", detail: `.claude/settings.json: ${sp.note}`, action: null }
+          : { id: id("superpowers"), label: spLabel, state: "missing", detail: tr("setupItem.superpowersOff"), action: tr("setupItem.enable") };
 
     return [agents, codegraphMcp, index, superpowers];
   }
 
   async #codegraphIndex(project: DesktopProject, pathEnv: string, env: NodeJS.ProcessEnv): Promise<string> {
     const npx = resolveBin("npx", pathEnv);
-    if (!npx) throw new HiveError("bad_request", NO_NPM);
+    if (!npx) throw new HiveError("bad_request", noNpm(), { key: "setupItem.noNpm" });
     const opts = { cwd: project.repo, env: { ...env, CODEGRAPH_TELEMETRY: "0" }, timeoutMs: 20 * 60_000 };
     // Opt this machine out first: codegraph sends anonymous usage stats by default.
     const off = await this.#run(npx, ["-y", CODEGRAPH_PACKAGE, "telemetry", "off"], opts);
-    if (!off.ok) throw new HiveError("bad_request", `codegraph telemetry off lỗi:\n${tail(off.output)}`);
+    if (!off.ok) {
+      const output = tail(off.output);
+      throw new HiveError("bad_request", `codegraph telemetry off lỗi:\n${output}`, { key: "errors.commandFailed", vars: { command: "codegraph telemetry off", output } });
+    }
     const init = await this.#run(npx, ["-y", CODEGRAPH_PACKAGE, "init"], opts);
-    if (!init.ok) throw new HiveError("bad_request", `codegraph init lỗi:\n${tail(init.output)}`);
+    if (!init.ok) {
+      const output = tail(init.output);
+      throw new HiveError("bad_request", `codegraph init lỗi:\n${output}`, { key: "errors.commandFailed", vars: { command: "codegraph init", output } });
+    }
     return tail(`${off.output}\n${init.output}`.trim());
   }
 
@@ -221,7 +228,7 @@ export class Setup {
     const at = id.lastIndexOf(":");
     const name = id.slice(0, at);
     const project = this.#host.projects().find((p) => p.name === name);
-    if (at < 1 || !project) throw new HiveError("not_found", `Không có mục ${id}.`);
+    if (at < 1 || !project) throw new HiveError("not_found", `Không có mục ${id}.`, { key: "errors.setupItemNotFound", vars: { id } });
     return { project, part: id.slice(at + 1) };
   }
 }

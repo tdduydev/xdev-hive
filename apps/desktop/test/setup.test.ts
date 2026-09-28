@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import type { DesktopProject, SetupReport } from "@xdev-hive/core";
+import { setMainLocale } from "../src/main/i18n.ts";
 import { CODEGRAPH_PACKAGE } from "../src/main/installer.ts";
 import { Setup } from "../src/main/setup.ts";
 
@@ -68,6 +69,17 @@ describe("Setup: this machine", () => {
     assert.equal(find(r, "cli:gemini").action, null);
     assert.match(find(r, "cli:gemini").detail, /Máy chưa có npm: cài Node\.js/);
     await assert.rejects(machine({ npm: false }).setup.install("cli:gemini"), /Máy chưa có npm/);
+  });
+
+  it("writes its items in the interface language", async () => {
+    setMainLocale("en");
+    try {
+      const r = await machine({ npm: false }).setup.status();
+      assert.equal(find(r, "shim").label, "hive-mcp command");
+      assert.match(find(r, "cli:gemini").detail, /^Not installed\. npm is missing on this machine/);
+    } finally {
+      setMainLocale("vi");
+    }
   });
 
   it("tells a shim for this build from one for another build, and leaves a foreign file alone", async () => {

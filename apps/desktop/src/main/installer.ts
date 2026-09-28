@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import type { FileAction, ShimReport } from "@xdev-hive/core";
 import { git, isGitRepo } from "./git.ts";
+import { tr } from "./i18n.ts";
 
 export const MCP_NAME = "xdev-hive";
 export const SHIM_NAME = "hive-mcp";
@@ -77,7 +78,7 @@ function mergeJson(file: string, label: string, update: (json: Json) => Json, ap
     try {
       json = JSON.parse(before) as Json;
     } catch {
-      return { file: label, action: "skipped", note: "JSON không hợp lệ, sửa tay trước" };
+      return { file: label, action: "skipped", note: tr("fileNote.badJson") };
     }
   }
   const next = update(json);
@@ -101,14 +102,14 @@ function installPreCommit(repo: string, apply: boolean): FileAction {
   const file = path.join(repo, ".githooks", "pre-commit");
   const existing = read(file);
   if (existing !== null && !existing.includes(MARK)) {
-    return { file: ".githooks/pre-commit", action: "skipped", note: "đã có hook khác, thêm kiểm tra của Hive bằng tay" };
+    return { file: ".githooks/pre-commit", action: "skipped", note: tr("fileNote.otherHook") };
   }
   return writeIfChanged(file, PRE_COMMIT, ".githooks/pre-commit", 0o755, apply);
 }
 
 function configureHooksPath(repo: string, apply: boolean): FileAction {
   const label = "git config core.hooksPath";
-  if (!isGitRepo(repo)) return { file: label, action: "skipped", note: "không phải git repo" };
+  if (!isGitRepo(repo)) return { file: label, action: "skipped", note: tr("fileNote.notGitRepo") };
   let current = "";
   try {
     current = git(repo, ["config", "--get", "core.hooksPath"]);
@@ -116,7 +117,7 @@ function configureHooksPath(repo: string, apply: boolean): FileAction {
     // not set
   }
   if (current === ".githooks") return { file: label, action: "unchanged" };
-  if (current) return { file: label, action: "skipped", note: `đang là ${current}, chép .githooks/pre-commit vào đó` };
+  if (current) return { file: label, action: "skipped", note: tr("fileNote.hooksPathSet", { current }) };
   if (apply) git(repo, ["config", "core.hooksPath", ".githooks"]);
   return { file: label, action: "updated", note: ".githooks" };
 }
@@ -130,7 +131,7 @@ export function installCodexConfig(file: string, apply = true): FileAction {
   if (start !== -1 && end > start) {
     next = before.slice(0, start) + CODEX_BLOCK + before.slice(end + CODEX_END.length);
   } else if (new RegExp(`^\\[mcp_servers\\.${MCP_NAME}\\]`, "m").test(before)) {
-    return { file: label, action: "skipped", note: `đã có [mcp_servers.${MCP_NAME}] do bạn tự thêm` };
+    return { file: label, action: "skipped", note: tr("fileNote.codexOwnEntry", { name: MCP_NAME }) };
   } else {
     next = `${before}${before && !before.endsWith("\n") ? "\n" : ""}${before ? "\n" : ""}${CODEX_BLOCK}\n`;
   }
