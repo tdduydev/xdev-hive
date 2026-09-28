@@ -6,9 +6,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-git fetch -q origin main
-git merge -q --ff-only origin/main
-echo "code: $(git log --oneline -1)"
+# Bash goes on reading the file it started with: once the pull brings a new version of this script,
+# run that one for the rest (the Ollama step came in this way and only ran on the second deploy).
+if [ -z "${HIVE_UPDATE_PULLED:-}" ]; then
+  git fetch -q origin main
+  git merge -q --ff-only origin/main
+  echo "code: $(git log --oneline -1)"
+  HIVE_UPDATE_PULLED=1 exec bash deploy/update.sh "$@"
+fi
 
 files=(-f deploy/compose.yaml)
 if [ "${HIVE_TUNNEL:-}" = "1" ]; then files+=(-f deploy/compose.tunnel.yaml); fi
