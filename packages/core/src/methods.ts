@@ -30,6 +30,12 @@ import {
 const docKey = z.string().min(1).max(200);
 const project = z.string().regex(PROJECT_NAME, "project must be lowercase letters, digits, . _ -");
 const id = z.number().int().positive();
+// Repo-relative glob, e.g. apps/web/** or src/**/*.{ts,tsx}. No leading "/", no "..", no spaces.
+const pathGlob = z
+  .string()
+  .min(1)
+  .max(200)
+  .regex(/^(?!\/)(?!(?:.*\/)?\.\.(?:\/|$))[\w.*?\/{}\[\],@+-]+$/, "path glob: repo-relative, e.g. apps/web/** or **/*.test.ts");
 const taskId = z.string().regex(/^[A-Za-z0-9._-]{1,100}$/, "task id: letters, digits, . _ -");
 const content = z.string().max(200_000);
 /** A path from the repo root: no leading slash, no backslash, no empty or ".." segment. */
@@ -102,6 +108,8 @@ export const schemas = {
     content,
     title: z.string().min(1).max(200).optional(),
     includeInAgents: z.boolean().optional(),
+    /** Globs the doc applies to (replaces the current ones); [] makes it a doc for the whole repo again. */
+    paths: z.array(pathGlob).max(20).optional(),
     note: z.string().max(500).optional(),
     /** Optimistic lock: the version the editor loaded (0 = creating a new doc). */
     baseVersion: z.number().int().min(0).optional(),

@@ -64,7 +64,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     "doc_list",
     {
       title: "List shared docs",
-      description: "List org-wide docs and this project's docs (key, title, version). Use doc_get to read one.",
+      description: "List org-wide docs and this project's docs (key, title, version, paths: the globs a doc applies to, [] = whole repo). Use doc_get to read one.",
       inputSchema: { project },
       annotations: readOnly,
     },

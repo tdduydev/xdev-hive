@@ -1,5 +1,6 @@
-// Renders Hive docs into a repo (AGENTS.md, CLAUDE.md, docs/decisions.md) and commits only those files.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+// Renders Hive docs into a repo (AGENTS.md, CLAUDE.md, docs/decisions.md, and the docs for some paths:
+// nested AGENTS.md, .claude/rules/xdev-hive/) and commits only those files.
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   agentsDocKey,
@@ -8,7 +9,9 @@ import {
   HiveError,
   MANAGED_START,
   planProjectSync,
+  RULES_DIR,
   stripManaged,
+  withManagedBlock,
   type Actor,
   type DesktopProject,
   type Doc,
@@ -20,6 +23,28 @@ import { git, gitErrorText, isGitRepo } from "./git.ts";
 import { tr } from "./i18n.ts";
 
 const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : null);
+
+/** AGENTS.md longer than this gets a note: move parts of it into docs for some paths. */
+const LONG_AGENTS_LINES = 200;
+
+/** Files a sync wrote for docs of some paths: nested AGENTS.md with a managed block, and our rules. */
+function managedFiles(repo: string, gitRepo: boolean): string[] {
+  const out: string[] = [];
+  if (gitRepo) {
+    // Tracked or not yet (sync without auto-commit), but never ignored ones such as node_modules.
+    const listed = git(repo, ["ls-files", "-co", "--exclude-standard", "--", ":(glob)**/AGENTS.md"]).split("\n").filter(Boolean);
+    for (const f of listed) if (f !== "AGENTS.md" && read(path.join(repo, f))?.includes(MANAGED_START)) out.push(f);
+  }
+  const walk = (dir: string) => {
+    for (const e of readdirSync(path.join(repo, dir), { withFileTypes: true })) {
+      const rel = `${dir}/${e.name}`;
+      if (e.isDirectory()) walk(rel);
+      else if (e.name.endsWith(".md")) out.push(rel);
+    }
+  };
+  if (existsSync(path.join(repo, RULES_DIR))) walk(RULES_DIR);
+  return out;
+}
 
 const defaultAgentsDoc = (project: string) => `# ${project}
 
@@ -62,10 +87,20 @@ export async function syncProject(
     (d): d is Doc => d !== null,
   );
   const hasAgentsDoc = docs.some((d) => d.key === agentsDocKey(name));
-  const files = [
-    ...planProjectSync(name, docs),
+  const planned = planProjectSync(name, docs).map((f) => (f.block ? { ...f, content: withManagedBlock(read(path.join(repo, f.path)), f.content) } : f));
+  const files: Array<{ path: string; content: string | null }> = [
+    ...planned,
     { path: "CLAUDE.md", content: ensureClaudeImport(read(path.join(repo, "CLAUDE.md"))) },
   ];
+  // A doc whose paths changed or went away: take our block out of the file (the rest stays), or remove the file.
+  const wanted = new Set(files.map((f) => f.path));
+  for (const f of managedFiles(repo, gitRepo)) {
+    if (wanted.has(f)) continue;
+    const rest = f.startsWith(`${RULES_DIR}/`) ? "" : stripManaged(read(path.join(repo, f)) ?? "").trim();
+    files.push({ path: f, content: rest ? `${rest}\n` : null });
+  }
+  const agentsLines = planned[0]!.content.split("\n").length;
+  if (agentsLines > LONG_AGENTS_LINES) notes.push(tr("syncNote.longAgents", { lines: agentsLines, max: LONG_AGENTS_LINES }));
 
   const actions: FileAction[] = [];
   const changed: string[] = [];
@@ -83,6 +118,13 @@ export async function syncProject(
     // With auto-commit, every earlier sync was committed, so a dirty file means someone edited it by hand.
     if (opts.autoCommit && gitRepo && before !== null && /^(.M|M)/.test(git(repo, ["status", "--porcelain", "--", f.path]))) {
       actions.push({ file: f.path, action: "skipped", note: tr("fileNote.uncommitted") });
+      continue;
+    }
+    if (f.content === null) {
+      // Only a tracked file's removal can be committed; an untracked one just goes.
+      if (gitRepo && git(repo, ["ls-files", "--", f.path])) changed.push(f.path);
+      rmSync(abs, { force: true });
+      actions.push({ file: f.path, action: "removed" });
       continue;
     }
     mkdirSync(path.dirname(abs), { recursive: true });

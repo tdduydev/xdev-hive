@@ -7,9 +7,14 @@ export const MANAGED_END = "<!-- xdev-hive:end -->";
 /** Files in a repo that are rendered from Hive docs. Agents must propose changes instead of editing them. */
 export const PROTECTED_PATHS = ["AGENTS.md", "CLAUDE.md", "docs/decisions.md"] as const;
 
+// Where docs for paths without a folder (e.g. **/*.test.ts) go: Claude Code's path-scoped rules.
+export const RULES_DIR = ".claude/rules/xdev-hive";
+
 export interface SyncFile {
   path: string;
   content: string;
+  /** content is only the managed block: whatever the file has outside it stays (nested AGENTS.md). */
+  block?: boolean;
 }
 
 export function stripManaged(md: string): string {
@@ -19,28 +24,98 @@ export function stripManaged(md: string): string {
   return (md.slice(0, start) + md.slice(end + MANAGED_END.length)).replace(/^\s+/, "");
 }
 
-/** AGENTS.md = managed block (project key + org docs flagged includeInAgents) followed by the project's own doc. */
+// The folder of a glob before its first wildcard: "apps/web/**" → "apps/web", "**/*.ts" → "", "src/main.ts" → "src".
+export function globDir(glob: string): string {
+  const parts = glob.split("/");
+  const dir: string[] = [];
+  for (let i = 0; i < parts.length - 1 && !/[*?[\]{}]/.test(parts[i]!); i++) dir.push(parts[i]!);
+  return dir.join("/");
+}
+
+/** Docs limited to paths that this project's repo gets: its own, and org docs meant for AGENTS.md. */
+export function scopedDocs(project: string, docs: Doc[]): Doc[] {
+  return docs
+    .filter((d) => d.paths?.length && (d.scope === "org" ? d.includeInAgents : d.project === project))
+    .sort((a, b) => a.key.localeCompare(b.key));
+}
+
+const ruleFile = (d: Doc) => `${RULES_DIR}/${d.scope === "org" ? "org-" : ""}${d.key.split("/").at(-1)}.md`;
+const docHeader = (d: Doc, globs: string[]) => [`<!-- ${d.key} v${d.version} -->`, `> Applies to ${globs.map((g) => `\`${g}\``).join(", ")}.`, ""];
+
+/** Where each scoped doc goes: a nested AGENTS.md per glob folder, a rules file for globs without one. */
+function placements(docs: Doc[]): Array<{ doc: Doc; file: string; globs: string[]; nested: boolean }> {
+  const out: Array<{ doc: Doc; file: string; globs: string[]; nested: boolean }> = [];
+  for (const doc of docs) {
+    const byDir = new Map<string, string[]>();
+    for (const g of doc.paths) byDir.set(globDir(g), [...(byDir.get(globDir(g)) ?? []), g]);
+    for (const [dir, globs] of [...byDir].sort(([a], [b]) => a.localeCompare(b))) {
+      out.push(dir ? { doc, file: `${dir}/AGENTS.md`, globs, nested: true } : { doc, file: ruleFile(doc), globs, nested: false });
+    }
+  }
+  return out;
+}
+
+/**
+ * AGENTS.md = managed block (project key, org docs flagged includeInAgents, and a list of the docs for
+ * some paths, which stay out of this file) followed by the project's own doc.
+ */
 export function renderAgentsMd(project: string, projectDoc: Doc | null, orgDocs: Doc[]): string {
   const shared = orgDocs
-    .filter((d) => d.scope === "org" && d.includeInAgents)
+    .filter((d) => d.scope === "org" && d.includeInAgents && !d.paths?.length)
     .sort((a, b) => a.key.localeCompare(b.key));
+  const scoped = placements(scopedDocs(project, orgDocs));
+  const index = scoped.length
+    ? [
+        "## Docs for some paths",
+        "",
+        "Kept out of this file. Before changing files that match, read the doc listed for them:",
+        "",
+        ...scoped.map((p) => `- ${p.globs.map((g) => `\`${g}\``).join(", ")}: \`${p.file}\` (${p.doc.title})`),
+        "",
+      ]
+    : [];
   const block = [
     MANAGED_START,
     `> Hive project key: \`${project}\``,
     "",
     ...shared.flatMap((d) => [`<!-- ${d.key} v${d.version} -->`, d.content.trim(), ""]),
+    ...index,
     MANAGED_END,
   ].join("\n");
   const body = (projectDoc?.content ?? `# ${project}\n`).trim();
   return `${block}\n\n${body}\n`;
 }
 
+/**
+ * The repo files rendered from Hive docs. Docs for some paths go to a nested AGENTS.md (read by Codex,
+ * and by Claude Code when it opens files there) or, for globs without a folder, to a Claude Code rule
+ * with the same globs, which other agents find through the list in AGENTS.md.
+ */
 export function planProjectSync(project: string, docs: Doc[]): SyncFile[] {
   const agents = docs.find((d) => d.key === agentsDocKey(project)) ?? null;
   const decisions = docs.find((d) => d.key === decisionsDocKey(project));
   const files: SyncFile[] = [{ path: "AGENTS.md", content: renderAgentsMd(project, agents, docs) }];
   if (decisions) files.push({ path: "docs/decisions.md", content: `${decisions.content.trim()}\n` });
+
+  const nested = new Map<string, string[]>();
+  for (const p of placements(scopedDocs(project, docs))) {
+    if (p.nested) {
+      nested.set(p.file, [...(nested.get(p.file) ?? []), ...docHeader(p.doc, p.globs), p.doc.content.trim(), ""]);
+      continue;
+    }
+    const front = ["---", "paths:", ...p.globs.map((g) => `  - "${g}"`), "---"];
+    files.push({ path: p.file, content: [...front, MANAGED_START, ...docHeader(p.doc, p.globs), p.doc.content.trim(), MANAGED_END, ""].join("\n") });
+  }
+  for (const [file, lines] of [...nested].sort(([a], [b]) => a.localeCompare(b))) {
+    files.push({ path: file, content: [MANAGED_START, ...lines, MANAGED_END].join("\n"), block: true });
+  }
   return files;
+}
+
+/** A managed block in front of what the file already has outside it. */
+export function withManagedBlock(existing: string | null, block: string): string {
+  const rest = existing ? stripManaged(existing).trim() : "";
+  return rest ? `${block}\n\n${rest}\n` : `${block}\n`;
 }
 
 /** Claude Code reads CLAUDE.md, so it imports AGENTS.md. Other content in CLAUDE.md is kept. */

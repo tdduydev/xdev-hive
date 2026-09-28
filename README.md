@@ -12,6 +12,15 @@ Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, 
 ```
 
 - **Tài liệu**: bản gốc của `AGENTS.md`, quy chuẩn chung (`org/*`), nhật ký quyết định. Có version, lịch sử và diff.
+- **Tài liệu theo đường dẫn**: tài liệu có ô *Áp dụng cho* (glob, vd. `apps/web/**`, `**/*.test.ts`) không nằm trong `AGENTS.md` chính, để file này ngắn.
+  - Glob có thư mục: ghi vào `AGENTS.md` lồng trong thư mục đó (vd. `apps/web/AGENTS.md`), trong một block có marker. Phần repo tự viết ngoài block vẫn giữ.
+    - Codex đọc `AGENTS.md` lồng. Claude Code (từ 2.1.277) đọc nó khi mở file trong thư mục đó.
+  - Glob không có thư mục: ghi vào `.claude/rules/xdev-hive/<tên>.md` với frontmatter `paths:` (rule theo đường dẫn của Claude Code).
+  - `AGENTS.md` chính chỉ có danh sách: glob nào thì đọc file nào, nên agent khác vẫn tìm được.
+  - Đổi hay xoá đường dẫn thì lần đồng bộ sau gỡ block hoặc xoá file cũ.
+  - `AGENTS.md` quá 200 dòng thì báo đồng bộ nhắc chuyển bớt.
+  - Hook Claude, pre-commit và commit của runner cũng chặn các file này như `AGENTS.md`. `AGENTS.md` lồng mà không có block của Hive là của team, không bị chặn.
+  - Tài liệu `agents` và `decisions` của dự án là cho cả repo, không đặt đường dẫn được. Tài liệu `org/*` có đường dẫn chỉ vào repo khi bật *Đưa vào AGENTS.md*.
 - **Đề xuất**: agent không sửa tài liệu trực tiếp mà gọi `doc_propose`, admin duyệt. Nếu tài liệu đã đổi sau khi agent đọc, đề xuất bị đánh dấu xung đột, không ghi đè.
 - **Memory**: `memory_write` / `memory_search`, tìm kiếm FTS5 có dấu hoặc không dấu đều được. Trên hub, memory do agent ghi cần admin duyệt mới hiện cho agent khác. Memory *chung* (`memory_write` với `shared: true`) áp dụng cho mọi dự án, và `memory_search` của dự án nào cũng thấy (có `project: null`).
 - **Memory còn dùng không**:
@@ -66,7 +75,7 @@ Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ v�
 
 ```bash
 nvm use && npm install
-npm test            # 202 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
+npm test            # 211 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
 npm run typecheck
 ```
 

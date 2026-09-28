@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, statSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { MANAGED_START, type Actor } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { installAgents, installCodexConfig, installShim } from "../src/main/installer.ts";
+import { commitAll } from "../src/main/runner/worktree.ts";
 import { syncProject } from "../src/main/sync.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
@@ -146,5 +147,110 @@ describe("syncProject", () => {
     assert.equal(report.files[0]!.action, "skipped");
     assert.equal(readFileSync(path.join(repo, "AGENTS.md"), "utf8"), "local edit\n");
     assert.ok(!existsSync(path.join(repo, "docs/decisions.md")));
+  });
+});
+
+describe("docs for some paths in the repo", () => {
+  it("writes nested AGENTS.md and rules, keeps the repo's own text, and cleans up when paths change", async () => {
+    const repo = gitRepo();
+    mkdirSync(path.join(repo, "apps/web"), { recursive: true });
+    writeFileSync(path.join(repo, "apps/web/AGENTS.md"), "# Web\nOwn notes.\n");
+    sh(repo, "git", ["add", "."]);
+    sh(repo, "git", ["commit", "-qm", "web notes"]);
+    const hive = new SqliteHive(":memory:");
+    hive.seed();
+    await hive.call("docs.save", { key: "project/demo/web", title: "Web", content: "Use shadcn/ui.", paths: ["apps/web/**"] }, admin);
+    await hive.call("docs.save", { key: "project/demo/testing", title: "Testing", content: "Use node:test.", paths: ["**/*.test.ts"] }, admin);
+
+    const first = await syncProject(hive, admin, { name: "demo", repo }, { autoCommit: true });
+    assert.deepEqual(
+      first.files.map((f) => [f.file, f.action]),
+      [
+        ["AGENTS.md", "created"],
+        [".claude/rules/xdev-hive/testing.md", "created"],
+        ["apps/web/AGENTS.md", "updated"],
+        ["CLAUDE.md", "created"],
+      ],
+    );
+    const web = readFileSync(path.join(repo, "apps/web/AGENTS.md"), "utf8");
+    assert.ok(web.startsWith(MANAGED_START));
+    assert.match(web, /Use shadcn\/ui\.[\s\S]*# Web\nOwn notes\.\n$/, "the block goes first, the repo's own text stays");
+    assert.match(readFileSync(path.join(repo, ".claude/rules/xdev-hive/testing.md"), "utf8"), /^---\npaths:\n {2}- "\*\*\/\*\.test\.ts"\n---\n/);
+    assert.match(readFileSync(path.join(repo, "AGENTS.md"), "utf8"), /`apps\/web\/\*\*`: `apps\/web\/AGENTS\.md`/);
+    const committed = sh(repo, "git", ["show", "--name-only", "--format=", "HEAD"]).trim().split("\n").sort();
+    assert.deepEqual(committed, [".claude/rules/xdev-hive/testing.md", "AGENTS.md", "CLAUDE.md", "apps/web/AGENTS.md"]);
+
+    // The web doc moves to the API folder and the testing doc covers the whole repo again.
+    await hive.call("docs.save", { key: "project/demo/web", content: "Use shadcn/ui.", paths: ["apps/api/**"] }, admin);
+    await hive.call("docs.save", { key: "project/demo/testing", content: "Use node:test.", paths: [] }, admin);
+    const second = await syncProject(hive, admin, { name: "demo", repo }, { autoCommit: true });
+    const actions = Object.fromEntries(second.files.map((f) => [f.file, f.action]));
+    assert.equal(actions["apps/api/AGENTS.md"], "created");
+    assert.equal(actions["apps/web/AGENTS.md"], "updated");
+    assert.equal(actions[".claude/rules/xdev-hive/testing.md"], "removed");
+    assert.equal(readFileSync(path.join(repo, "apps/web/AGENTS.md"), "utf8"), "# Web\nOwn notes.\n", "only our block went");
+    assert.ok(!existsSync(path.join(repo, ".claude/rules/xdev-hive/testing.md")));
+    assert.equal(sh(repo, "git", ["status", "--porcelain"]), "", "all committed, removal too");
+
+    await hive.call("docs.save", { key: "project/demo/web", content: "Use shadcn/ui.", paths: [] }, admin);
+    const third = await syncProject(hive, admin, { name: "demo", repo }, { autoCommit: true });
+    assert.equal(third.files.find((f) => f.file === "apps/api/AGENTS.md")?.action, "removed", "a file that only had our block goes");
+    assert.ok(!existsSync(path.join(repo, "apps/api/AGENTS.md")));
+  });
+
+  it("says when AGENTS.md gets long", async () => {
+    const repo = gitRepo();
+    const hive = new SqliteHive(":memory:");
+    await hive.call("docs.save", { key: "project/demo/agents", content: Array.from({ length: 250 }, (_, i) => `- rule ${i}`).join("\n") }, admin);
+    const report = await syncProject(hive, admin, { name: "demo", repo }, { autoCommit: false });
+    assert.match(report.note ?? "", /AGENTS\.md dài \d+ dòng/);
+  });
+
+  it("keeps agents off Hive's nested AGENTS.md and rules, but not off their own", () => {
+    const repo = gitRepo();
+    installAgents(repo, "demo", { home: tmp("home") });
+    mkdirSync(path.join(repo, "apps/web"), { recursive: true });
+    mkdirSync(path.join(repo, "apps/api"), { recursive: true });
+    mkdirSync(path.join(repo, ".claude/rules/xdev-hive"), { recursive: true });
+    writeFileSync(path.join(repo, "apps/web/AGENTS.md"), `${MANAGED_START}\nHive part\n<!-- xdev-hive:end -->\n`);
+    writeFileSync(path.join(repo, "apps/api/AGENTS.md"), "# API\nTeam notes.\n");
+    writeFileSync(path.join(repo, ".claude/rules/xdev-hive/testing.md"), "rule\n");
+    sh(repo, "git", ["add", "."]);
+    sh(repo, "git", ["commit", "-qm", "via hive"], { HIVE_ADMIN: "1" });
+
+    const guard = path.join(repo, ".xdev-hive/guard-docs.sh");
+    const run = (file: string) => {
+      try {
+        execFileSync(guard, [], { input: JSON.stringify({ tool_name: "Edit", tool_input: { file_path: file } }), env: { ...process.env, CLAUDE_PROJECT_DIR: repo }, stdio: ["pipe", "pipe", "pipe"] });
+        return 0;
+      } catch (e) {
+        return (e as { status: number }).status;
+      }
+    };
+    assert.equal(run(path.join(repo, "apps/web/AGENTS.md")), 2);
+    assert.equal(run(path.join(repo, ".claude/rules/xdev-hive/testing.md")), 2);
+    assert.equal(run(path.join(repo, "apps/api/AGENTS.md")), 0, "a nested AGENTS.md without the block is the team's");
+    assert.equal(run(path.join(repo, ".claude/rules/own.md")), 0);
+
+    // Taking the block out does not get the change past the commit hook either.
+    writeFileSync(path.join(repo, "apps/web/AGENTS.md"), "hand edit\n");
+    sh(repo, "git", ["add", "apps/web/AGENTS.md"]);
+    assert.throws(() => sh(repo, "git", ["commit", "-qm", "sneaky"]), /apps\/web\/AGENTS\.md/);
+    sh(repo, "git", ["reset", "-q", "--hard"]);
+    writeFileSync(path.join(repo, ".claude/rules/xdev-hive/testing.md"), "changed\n");
+    sh(repo, "git", ["add", "."]);
+    assert.throws(() => sh(repo, "git", ["commit", "-qm", "sneaky"]), /xdev-hive\/testing\.md/);
+    sh(repo, "git", ["reset", "-q", "--hard"]);
+    writeFileSync(path.join(repo, "apps/api/AGENTS.md"), "# API\nMore team notes.\n");
+    sh(repo, "git", ["add", "."]);
+    sh(repo, "git", ["commit", "-qm", "team notes"]);
+
+    // The runner's own commit leaves them out as well.
+    writeFileSync(path.join(repo, "apps/web/AGENTS.md"), "agent edit\n");
+    writeFileSync(path.join(repo, ".claude/rules/xdev-hive/testing.md"), "agent edit\n");
+    writeFileSync(path.join(repo, "work.txt"), "done\n");
+    const c = commitAll(repo, "ai(T-1): work", []);
+    assert.equal(c.error, null);
+    assert.deepEqual(sh(repo, "git", ["show", "--name-only", "--format=", "HEAD"]).trim().split("\n"), ["work.txt"]);
   });
 });
