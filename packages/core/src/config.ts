@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import { agentProfileSchema, DEFAULT_AGENT_PROFILES, runnerSettingsSchema } from "./agents.ts";
+import { githubSettingsSchema } from "./github.ts";
 import { gitlabSettingsSchema } from "./gitlab.ts";
 import { HubBackend } from "./hub-client.ts";
 import { MACHINE_ID, machineIdFrom, PROJECT_NAME } from "./keys.ts";
@@ -26,6 +27,8 @@ export const configSchema = z.object({
         repo: z.string().min(1),
         /** GitLab project path (group/sub/project) when it cannot be read from the git remote. */
         gitlabProject: z.string().max(300).optional(),
+        /** GitHub repository (owner/repo): the project's MRs are GitHub pull requests. Read from the remote when it is on GitHub. */
+        githubRepo: z.string().max(200).optional(),
         /** MR target branch; default is the GitLab project's default branch. */
         targetBranch: z.string().max(200).optional(),
       }),
@@ -46,6 +49,7 @@ export const configSchema = z.object({
    */
   agentTokens: z.record(z.string(), z.string().max(4000)).default({}),
   gitlab: gitlabSettingsSchema.default(gitlabSettingsSchema.parse({})),
+  github: githubSettingsSchema.default(githubSettingsSchema.parse({})),
 });
 
 export type HiveConfig = z.output<typeof configSchema>;

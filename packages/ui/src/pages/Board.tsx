@@ -90,7 +90,8 @@ export function BoardPage() {
   };
   const refresh = () => setTick((t) => t + 1);
   const isLocalProject = localProjects.includes(current);
-  const gitlabReady = !!settings.data?.gitlab.url && !!settings.data?.gitlab.hasToken;
+  // GitLab MRs or GitHub PRs (the main process picks by the project's remote).
+  const gitlabReady = (!!settings.data?.gitlab.url && !!settings.data?.gitlab.hasToken) || !!settings.data?.github?.hasToken;
 
   return (
     <Page wide>
@@ -466,12 +467,14 @@ const PIPELINE_TONE: Record<string, string> = { success: "ok", failed: "danger",
 function MrLink({ run }: { run: AgentRun }) {
   const t = useT();
   if (!run.mrUrl) return null;
+  // A GitHub pull request (…/pull/7) reads "PR #7", a GitLab merge request "MR !7".
+  const pr = /\/pull\/\d+$/.test(run.mrUrl);
   const tone = run.mrStatus === "merged" ? "ok" : run.mrStatus === "closed" ? "neutral" : run.mrDraft ? "warn" : "accent";
   return (
     <>
       <a className="inline-flex no-underline" href={run.mrUrl} target="_blank" rel="noreferrer" title={run.mrNote ?? run.mrUrl}>
         <Badge tone={tone}>
-          MR !{run.mrIid}
+          {pr ? `PR #${run.mrIid}` : `MR !${run.mrIid}`}
           {run.mrDraft && run.mrStatus !== "merged" ? " draft" : ""}
           {run.mrStatus && run.mrStatus !== "opened" ? ` · ${t(`mrStatus.${run.mrStatus}`)}` : ""}
         </Badge>
