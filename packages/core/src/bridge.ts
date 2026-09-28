@@ -167,6 +167,8 @@ export interface AgentProfileStatus extends AgentProfile {
   login: LoginStatus | null;
   /** Plan usage from the CLI (Claude Code, signed in with a subscription); null when unknown. */
   usage: PlanUsage | null;
+  /** A long-lived token is saved for container runs (the token itself stays in the main process). */
+  hasToken: boolean;
   lastUsedAt: string | null;
   /** costUsd: sum of the runs' API-price estimates (Claude Code runs only). */
   stats: { runs: number; succeeded: number; failed: number; rateLimited: number; costUsd: number };
@@ -278,6 +280,10 @@ export interface DesktopBridge {
   openLogin(id: string): Promise<{ opened: boolean }>;
   /** Checks the signed-out profiles again (after the user signed in elsewhere). */
   recheckLogins(): Promise<AgentProfileStatus[]>;
+  /** Saves (or with "" removes) the profile's long-lived token for container runs. */
+  setProfileToken(id: string, token: string): Promise<AgentProfileStatus[]>;
+  /** Opens a terminal running `claude setup-token` with the profile's login folder. */
+  openSetupToken(id: string): Promise<{ opened: boolean }>;
 
   startRun(request: StartRunRequest): Promise<AgentRun>;
   runs(filter?: { project?: string; limit?: number }): Promise<AgentRun[]>;
