@@ -15,8 +15,9 @@ import {
   type MrSettings,
 } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
-import { githubApi } from "../src/main/github/client.ts";
-import { forgeOf, MergeRequester, pushEnv } from "../src/main/gitlab/mr.ts";
+import { checksStatus, githubApi, pullRef } from "../src/main/github/client.ts";
+import { forgeOf, MergeRequester, mrLabel, pushEnv } from "../src/main/gitlab/mr.ts";
+import { MrWatcher } from "../src/main/gitlab/watch.ts";
 import { parseRemoteUrl } from "../src/main/gitlab/remote.ts";
 import { Runner } from "../src/main/runner/runner.ts";
 import { startMockGitHub, type MockGitHub } from "./fixtures/mock-github.ts";
@@ -86,7 +87,8 @@ async function setup(reviewMode: string, mr: Partial<MrSettings> = {}, token = T
     await runner.settle();
     return { run: runner.store.get(run.id)!, review: runner.list().find((r) => r.parentRunId === run.id)! };
   };
-  return { origin, repo, hive, runner, requester, task, reviewed };
+  const watcher = new MrWatcher({ gitlab: () => gitlab, github: () => github, projects: () => projects, backend: () => hive, mode: () => "local", store: () => runner.store, user: "duy" });
+  return { origin, repo, hive, runner, requester, task, reviewed, watcher };
 }
 
 describe("GitHub pull requests", () => {
@@ -179,5 +181,100 @@ describe("GitHub pull requests", () => {
     const { requester, reviewed } = await setup("review", { enabled: false }, TOKEN, { githubRepo: undefined });
     const { review } = await reviewed();
     await assert.rejects(requester.open(review, { manual: true }), /Chưa cấu hình GitLab/, "a local remote is not on GitHub: the project stays on GitLab");
+  });
+});
+
+describe("GitHub pull request watch", () => {
+  it("reads repository and number from PR links on the configured GitHub only", () => {
+    assert.deepEqual(pullRef("https://github.com", "https://github.com/duy/demo/pull/12"), { repo: "duy/demo", number: 12 });
+    assert.deepEqual(pullRef("https://github.example.com/", "https://github.example.com/team/app.web/pull/3"), { repo: "team/app.web", number: 3 });
+    assert.equal(pullRef("https://github.com", "https://github.com.evil.io/duy/demo/pull/1"), null);
+    assert.equal(pullRef("https://github.com", "https://github.com/duy/demo/issues/1"), null);
+    assert.equal(pullRef("https://github.com", "https://gitlab.example.com/g/p/-/merge_requests/1"), null);
+    assert.equal(mrLabel({ mrUrl: "https://github.com/duy/demo/pull/12", mrIid: 12 }), "PR #12");
+    assert.equal(mrLabel({ mrUrl: "https://gitlab.example.com/g/p/-/merge_requests/3", mrIid: 3 }), "MR !3");
+  });
+
+  it("reads a commit's checks as one CI status", () => {
+    const run = (status: string, conclusion: string | null = null) => ({ status, conclusion });
+    assert.equal(checksStatus([], []), null, "no CI");
+    assert.equal(checksStatus([run("completed", "success"), run("completed", "skipped")], []), "success");
+    assert.equal(checksStatus([run("completed", "failure"), run("in_progress")], []), "running", "wait until every check ended");
+    assert.equal(checksStatus([run("completed", "success"), run("queued")], []), "pending");
+    assert.equal(checksStatus([run("completed", "timed_out"), run("completed", "cancelled")], []), "failed");
+    assert.equal(checksStatus([run("completed", "cancelled")], []), "canceled");
+    assert.equal(checksStatus([run("completed", "neutral")], [{ state: "error" }]), "failed", "an old-style status counts too");
+    assert.equal(checksStatus([], [{ state: "success" }]), "success");
+    assert.equal(checksStatus([run("completed", "skipped")], []), "skipped");
+  });
+
+  it("follows the checks and moves the task to done when the PR is merged", async () => {
+    const { runner, task, reviewed, watcher } = await setup("review");
+    const { run, review } = await reviewed();
+    assert.equal(watcher.watching(), true, "GitHub alone is enough to watch");
+
+    gh.checks.c0ffee = [{ name: "test", status: "in_progress", conclusion: null }];
+    let changes = await watcher.check();
+    assert.equal(changes.length, 1);
+    assert.deepEqual(changes[0]!.pipeline, { from: null, to: "running" });
+    assert.equal(changes[0]!.fix, null, "fixing failed checks is not done for GitHub yet");
+    const r = runner.store.get(review.id)!;
+    assert.deepEqual([r.mrStatus, r.pipelineStatus], ["opened", "running"]);
+    assert.equal(r.pipelineUrl, `${gh.base}/duy/demo/pull/1/checks?sha=c0ffee`);
+    assert.equal(runner.store.get(run.id)!.mrStatus, null, "the implement run has no PR of its own");
+    assert.deepEqual(await watcher.check(), [], "nothing new");
+
+    gh.checks.c0ffee = [{ name: "test", status: "completed", conclusion: "failure" }];
+    changes = await watcher.check();
+    assert.deepEqual(changes[0]!.pipeline, { from: "running", to: "failed" });
+
+    // A new push whose checks fail again is news too.
+    gh.pulls[0]!.sha = "beef01";
+    gh.checks.beef01 = [{ name: "test", status: "completed", conclusion: "failure" }];
+    changes = await watcher.check();
+    assert.equal(changes.length, 1);
+    assert.deepEqual(changes[0]!.pipeline, { from: "failed", to: "failed" });
+
+    gh.pulls[0]!.state = "closed";
+    gh.pulls[0]!.merged = true;
+    gh.calls = [];
+    const [merged] = await watcher.check();
+    assert.deepEqual(merged!.status, { from: "opened", to: "merged" });
+    assert.equal(merged!.taskDone, true);
+    assert.equal(runner.store.get(review.id)!.pipelineStatus, "failed", "a merged PR keeps its last checks");
+    assert.ok(!gh.calls.some((c) => c.path.includes("check-runs")), "no checks asked for a merged PR");
+    const t = await task();
+    assert.equal(t.status, "done");
+    assert.match(t.note ?? "", /PR #1: http[^\n]+\n\nPR #1 merged\.$/);
+
+    gh.calls = [];
+    assert.equal(watcher.watching(), false);
+    assert.deepEqual(await watcher.check(), []);
+    assert.equal(gh.calls.length, 0, "a merged PR is not asked about again");
+  });
+
+  it("records a PR closed without merging and leaves the task alone", async () => {
+    const { runner, task, reviewed, watcher } = await setup("review");
+    const { review } = await reviewed();
+    gh.pulls[0]!.state = "closed";
+    const [c] = await watcher.check();
+    assert.deepEqual(c!.status, { from: null, to: "closed" });
+    assert.equal(c!.taskDone, false);
+    assert.equal((await task()).status, "review");
+    assert.equal(runner.store.get(review.id)!.mrStatus, "closed");
+  });
+
+  it("skips a PR GitHub cannot answer, and watches nothing without a token", async () => {
+    const { runner, reviewed, watcher } = await setup("review");
+    const { review } = await reviewed();
+    const pr = gh.pulls.pop()!;
+    assert.deepEqual(await watcher.check(), []);
+    assert.equal(runner.store.get(review.id)!.mrStatus, null);
+    gh.pulls.push(pr);
+    assert.equal((await watcher.check()).length, 1);
+
+    const none = await setup("review", {}, "");
+    assert.equal(none.watcher.watching(), false);
+    assert.deepEqual(await none.watcher.check(), []);
   });
 });
