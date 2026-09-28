@@ -80,7 +80,11 @@ switch (process.env.FAKE_MODE ?? "ok") {
     finish();
     break;
   case "review":
-    say("Verdict: approve. No blocking findings.");
+    // Asked to judge best-of-n candidates: keeps FAKE_PICK (default c2); FAKE_PICK=none names no winner.
+    if (prompt.includes("Judge the candidates")) {
+      const pick = process.env.FAKE_PICK ?? "2";
+      say(pick === "none" ? "Both look fine." : `c${pick} has the tests.\n\n**Winner:** c${pick}\n**Reason:** it tests the empty list.`);
+    } else say("Verdict: approve. No blocking findings.");
     finish();
     break;
   case "review-changes":

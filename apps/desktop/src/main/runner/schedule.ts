@@ -20,6 +20,8 @@ export interface RunNeeds {
   preferredProfile: string | null;
   avoidKinds: AgentKind[];
   excludedProfiles: string[];
+  /** Profiles to avoid when another will do: those the other best-of-n candidates run on. */
+  avoidProfiles?: string[];
 }
 
 export function isAvailable(p: ProfileLoad, now: Date): boolean {
@@ -38,7 +40,8 @@ export function isAvailable(p: ProfileLoad, now: Date): boolean {
  * 1. A pinned profile waits for that profile only.
  * 2. Skip disabled, not installed, signed-out, over their plan threshold, busy, cooling-down, excluded (already failed this run)
  *    and role-mismatched profiles.
- * 3. Prefer kinds not in avoidKinds (cross-review uses a different vendor than the implementer).
+ * 3. Prefer profiles not in avoidProfiles (each best-of-n candidate on its own subscription), then kinds not
+ *    in avoidKinds (cross-review uses a different vendor than the implementer).
  * 4. Lower priority number first, then least recently used, which rotates equal-priority subscriptions.
  */
 export function pickProfile(loads: ProfileLoad[], needs: RunNeeds, now: Date): ProfileLoad | null {
@@ -52,8 +55,10 @@ export function pickProfile(loads: ProfileLoad[], needs: RunNeeds, now: Date): P
       l.profile.roles.includes(needs.role) &&
       !needs.excludedProfiles.includes(l.profile.id),
   );
+  const avoid = needs.avoidProfiles ?? [];
   candidates.sort(
     (a, b) =>
+      Number(avoid.includes(a.profile.id)) - Number(avoid.includes(b.profile.id)) ||
       Number(needs.avoidKinds.includes(a.profile.kind)) - Number(needs.avoidKinds.includes(b.profile.kind)) ||
       a.profile.priority - b.profile.priority ||
       (a.lastUsedAt ?? "").localeCompare(b.lastUsedAt ?? ""),
