@@ -15,6 +15,7 @@ import {
   type Task,
 } from "@xdev-hive/core";
 import { git, gitAsync, gitErrorText } from "../git.ts";
+import { tr } from "../i18n.ts";
 import type { RunStore } from "../runner/store.ts";
 import { GitLabClient, type FetchLike, type GitLabMr } from "./client.ts";
 import { mrDescription, mrTitle, parseVerdict, type Verdict } from "./describe.ts";
@@ -50,10 +51,10 @@ export class MergeRequester {
 
   async open(run: AgentRun, { manual }: { manual: boolean }): Promise<Partial<AgentRun>> {
     const s = this.#host.gitlab();
-    if (!s.url || !s.token) throw new HiveError("bad_request", "Chưa cấu hình GitLab (URL + token) ở trang Dự án & cài đặt.");
-    if (run.role === "plan") throw new HiveError("bad_request", "Run lập kế hoạch không tạo MR.");
+    if (!s.url || !s.token) throw new HiveError("bad_request", "Chưa cấu hình GitLab (URL + token) ở trang Dự án & cài đặt.", { key: "errors.gitlabNotSet" });
+    if (run.role === "plan") throw new HiveError("bad_request", "Run lập kế hoạch không tạo MR.", { key: "errors.planNoMr" });
     const project = this.#host.projects().find((p) => p.name === run.project);
-    if (!project) throw new HiveError("not_found", `Dự án ${run.project} chưa được thêm vào app.`);
+    if (!project) throw new HiveError("not_found", `Dự án ${run.project} chưa được thêm vào app.`, { key: "errors.projectNotAdded", vars: { project: run.project } });
 
     const store = this.#host.store();
     const review =
@@ -66,27 +67,28 @@ export class MergeRequester {
 
     const verdict: Verdict = review ? parseVerdict(review.summary) : "none";
     if (!manual && review && verdict !== "approve" && s.mr.onChangesRequested === "skip") {
-      return { mrState: "skipped", mrNote: verdict === "changes" ? "Review yêu cầu sửa, chưa tạo MR" : "Review không rõ kết luận, chưa tạo MR" };
+      return { mrState: "skipped", mrNote: verdict === "changes" ? tr("mrNote.changesSkipped") : tr("mrNote.unclearSkipped") };
     }
     const draft = review !== null && verdict !== "approve";
 
     const branch = run.branch ?? `ai/${run.taskId}`;
     const base = run.baseSha ?? implement?.baseSha;
-    if (!base) throw new HiveError("bad_request", "Run chưa có base commit (worktree chưa được tạo).");
+    if (!base) throw new HiveError("bad_request", "Run chưa có base commit (worktree chưa được tạo).", { key: "errors.noBaseCommit" });
     let commits: string[];
     try {
       commits = git(project.repo, ["log", "--format=%h %s", `${base}..refs/heads/${branch}`]).split("\n").filter(Boolean);
     } catch (err) {
-      throw new HiveError("bad_request", `Không đọc được branch ${branch}: ${gitErrorText(err)}`);
+      const reason = gitErrorText(err);
+      throw new HiveError("bad_request", `Không đọc được branch ${branch}: ${reason}`, { key: "errors.branchUnreadable", vars: { branch, reason } });
     }
-    if (!commits.length) return { mrState: "skipped", mrNote: "Branch không có commit mới so với base" };
+    if (!commits.length) return { mrState: "skipped", mrNote: tr("mrNote.noCommits") };
 
     const client = new GitLabClient(s.url, s.token, this.#host.fetch);
     let remoteUrl: string;
     try {
       remoteUrl = git(project.repo, ["remote", "get-url", s.mr.remote]);
     } catch {
-      throw new HiveError("bad_request", `Repo ${project.name} không có remote "${s.mr.remote}".`);
+      throw new HiveError("bad_request", `Repo ${project.name} không có remote "${s.mr.remote}".`, { key: "errors.noRemote", vars: { project: project.name, remote: s.mr.remote } });
     }
     const remote = parseRemoteUrl(remoteUrl);
     const projectPath = project.gitlabProject || (remote && remote.host === client.host ? remote.path : null);
@@ -94,6 +96,7 @@ export class MergeRequester {
       throw new HiveError(
         "bad_request",
         `Remote "${s.mr.remote}" không trỏ tới ${client.host}. Điền GitLab project (group/project) cho dự án ${project.name}.`,
+        { key: "errors.remoteElsewhere", vars: { remote: s.mr.remote, host: client.host, project: project.name } },
       );
     }
 
@@ -101,7 +104,12 @@ export class MergeRequester {
 
     const gp = await client.project(projectPath);
     const target = project.targetBranch || gp.default_branch;
-    if (!target) throw new HiveError("bad_request", `GitLab project ${gp.path_with_namespace} chưa có default branch. Điền target branch cho dự án.`);
+    if (!target) {
+      throw new HiveError("bad_request", `GitLab project ${gp.path_with_namespace} chưa có default branch. Điền target branch cho dự án.`, {
+        key: "errors.noDefaultBranch",
+        vars: { project: gp.path_with_namespace },
+      });
+    }
 
     const backend = this.#host.backend();
     const actor = this.#actor();
@@ -130,11 +138,11 @@ export class MergeRequester {
           remove_source_branch: s.mr.removeSourceBranch,
         });
 
-    let note: string | null = draft ? (verdict === "changes" ? "Draft vì review yêu cầu sửa" : "Draft vì review không rõ kết luận") : null;
+    let note: string | null = draft ? (verdict === "changes" ? tr("mrNote.draftChanges") : tr("mrNote.draftUnclear")) : null;
     try {
       await this.#noteOnTask(backend, actor, task, mr, draft);
     } catch (err) {
-      note = [note, `Không ghi được link MR vào task: ${(err as Error).message}`].filter(Boolean).join(" · ");
+      note = [note, tr("mrNote.taskLinkFailed", { reason: (err as Error).message })].filter(Boolean).join(" · ");
     }
     return { mrUrl: mr.web_url, mrIid: mr.iid, mrState: existing ? "updated" : "created", mrDraft: draft, mrNote: note };
   }
@@ -163,7 +171,7 @@ export class MergeRequester {
       await gitAsync(repo, ["push", s.mr.remote, `refs/heads/${branch}:refs/heads/${branch}`], env, 120_000);
     } catch (err) {
       const text = gitErrorText(err).replaceAll(s.token, "***");
-      throw new HiveError("bad_request", `git push ${s.mr.remote} ${branch} thất bại: ${text}`);
+      throw new HiveError("bad_request", `git push ${s.mr.remote} ${branch} thất bại: ${text}`, { key: "errors.pushFailed", vars: { remote: s.mr.remote, branch, reason: text } });
     }
   }
 
