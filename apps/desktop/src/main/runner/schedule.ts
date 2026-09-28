@@ -1,5 +1,6 @@
 // Chooses which subscription runs next. Pure so the rotation rules are easy to test.
 import type { AgentKind, AgentProfile, AgentRole } from "@xdev-hive/core";
+import { tr } from "../i18n.ts";
 
 export interface ProfileLoad {
   profile: AgentProfile;
@@ -61,15 +62,15 @@ export function waitingReason(loads: ProfileLoad[], needs: RunNeeds, now: Date):
       (needs.preferredProfile ? l.profile.id === needs.preferredProfile : l.profile.roles.includes(needs.role)) &&
       !needs.excludedProfiles.includes(l.profile.id),
   );
-  if (!eligible.length) return "Không có profile nào phù hợp (đã tắt, sai vai trò hoặc đã thử hết)";
+  if (!eligible.length) return tr("runNote.noProfile");
   const installed = eligible.filter((l) => l.installed !== false);
   if (!installed.length) {
-    return `Máy này chưa cài CLI cho gói phù hợp (${eligible.map((l) => l.profile.bin).join(", ")}): cài ở Cài đặt máy`;
+    return tr("runNote.noCli", { bins: eligible.map((l) => l.profile.bin).join(", ") });
   }
   const resting = installed.filter((l) => l.cooldownUntil && new Date(l.cooldownUntil) > now);
   if (resting.length === installed.length) {
     const next = resting.map((l) => l.cooldownUntil!).sort()[0]!;
-    return `Mọi gói đang nghỉ vì quota, sớm nhất ${next}`;
+    return tr("runNote.allResting", { time: next });
   }
-  return "Đang chờ slot trống";
+  return tr("runNote.waitingSlot");
 }

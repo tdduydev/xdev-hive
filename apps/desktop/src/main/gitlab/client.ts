@@ -42,8 +42,8 @@ export class GitLabClient {
   readonly #fetch: FetchLike;
 
   constructor(url: string, token: string, fetchImpl: FetchLike = fetch) {
-    if (!/^https?:\/\//.test(url)) throw new HiveError("bad_request", "GitLab URL phải bắt đầu bằng http:// hoặc https://");
-    if (!token) throw new HiveError("bad_request", "Chưa có GitLab token.");
+    if (!/^https?:\/\//.test(url)) throw new HiveError("bad_request", "GitLab URL phải bắt đầu bằng http:// hoặc https://", { key: "errors.gitlabUrl" });
+    if (!token) throw new HiveError("bad_request", "Chưa có GitLab token.", { key: "errors.gitlabNoToken" });
     this.baseUrl = url.replace(/\/+$/, "");
     this.#token = token;
     this.#fetch = fetchImpl;
@@ -63,7 +63,8 @@ export class GitLabClient {
         signal: AbortSignal.timeout(20_000),
       });
     } catch (err) {
-      throw new HiveError("bad_request", `Không kết nối được GitLab ${this.baseUrl}: ${(err as Error).message}`);
+      const reason = (err as Error).message;
+      throw new HiveError("bad_request", `Không kết nối được GitLab ${this.baseUrl}: ${reason}`, { key: "errors.gitlabUnreachable", vars: { url: this.baseUrl, reason } });
     }
     const text = await res.text();
     let json: unknown = null;
