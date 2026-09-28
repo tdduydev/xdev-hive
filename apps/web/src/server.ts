@@ -2,6 +2,7 @@
 //   HIVE_PORT=7788 HIVE_HOST=127.0.0.1 HIVE_DB=./data/hub.db
 //   HIVE_ALLOWED_HOSTS=hive.xdev.asia   (required behind a reverse proxy / public hostname)
 //   HIVE_MEMORY_APPROVAL=off            (memory from agents is visible without admin approval)
+//   HIVE_MEMORY_STALE_DAYS=90           (memory no agent used for this long is left out of agents' searches; 0 = never)
 //   HIVE_BOOTSTRAP_TOKEN=...            (fixed admin token for automated deploys)
 //   HIVE_ADMIN_USER=admin              (name of the first admin account, created with a temporary password)
 //   HIVE_TRUST_PROXY=1                 (behind a TLS proxy: Secure cookies, client address from X-Forwarded-For)
@@ -33,7 +34,11 @@ const logBackup = (when: string, take: () => BackupResult | null) => {
 // Before opening the hub: the snapshot predates any schema migration this version runs.
 if (backup) logBackup("start", () => backupFile(dbPath, backup));
 
-const hive = new SqliteHive(dbPath, { memoryRequiresApproval: process.env.HIVE_MEMORY_APPROVAL !== "off" });
+const staleDays = Number(process.env.HIVE_MEMORY_STALE_DAYS ?? 90);
+const hive = new SqliteHive(dbPath, {
+  memoryRequiresApproval: process.env.HIVE_MEMORY_APPROVAL !== "off",
+  memoryStaleDays: Number.isFinite(staleDays) && staleDays >= 0 ? staleDays : 90,
+});
 hive.seed("hub");
 const tokens = new TokenStore(hive.db);
 const users = new UserStore(hive.db);

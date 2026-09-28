@@ -13,6 +13,7 @@ services:
       # Caddy terminates TLS: Secure session cookies, client address for sign-in throttling.
       HIVE_TRUST_PROXY: "1"
       HIVE_MEMORY_APPROVAL: ${HIVE_MEMORY_APPROVAL:-on}
+      HIVE_MEMORY_STALE_DAYS: ${HIVE_MEMORY_STALE_DAYS:-90}
       HIVE_BACKUP_HOURS: ${HIVE_BACKUP_HOURS:-24}
       HIVE_BACKUP_KEEP: ${HIVE_BACKUP_KEEP:-7}
     volumes:
