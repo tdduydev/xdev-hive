@@ -52,6 +52,8 @@ export function MemoryPage() {
     () => loadMemory(client, scope, submitted, { pendingOnly, staleOnly }),
     [client, scope.kind, scoped, submitted, pendingOnly, staleOnly],
   );
+  // A hub from before this has no such method: the line just does not show.
+  const search = useQuery(() => client.call("memory.searchInfo", {}), [client, list.data]);
 
   // In a project, its own entries come first, then the team-wide ones it also sees.
   const rows = list.data ?? [];
@@ -100,6 +102,13 @@ export function MemoryPage() {
           {t("memory.staleOnly")}
         </label>
       </div>
+      {search.data?.mode === "hybrid" ? (
+        <p className={cn("-mt-3 text-xs", search.data.lastError ? "text-warning" : "text-muted-foreground")}>
+          {search.data.lastError
+            ? t("memory.searchEmbedError", { error: search.data.lastError })
+            : t("memory.searchHybrid", { model: search.data.model ?? "", indexed: search.data.indexed, total: search.data.total })}
+        </p>
+      ) : null}
       {allow(null, "contribute") || projects.some((p) => allow(p, "contribute")) ? (
         <AddMemory key={scoped === null ? scope.kind : `project:${scoped}`} defaultOwner={defaultOwner} projects={projects} onAdded={list.reload} />
       ) : null}

@@ -8,10 +8,12 @@
 //   HIVE_ADMIN_USER=admin              (name of the first admin account, created with a temporary password)
 //   HIVE_TRUST_PROXY=1                 (behind a TLS proxy: Secure cookies, client address from X-Forwarded-For)
 //   HIVE_BACKUP_DIR=/data/backups       (snapshot on start and every HIVE_BACKUP_HOURS=24, keep HIVE_BACKUP_KEEP=7)
+//   HIVE_EMBED_URL=http://ollama:11434/v1 (memory search by meaning too: an OpenAI-compatible /embeddings endpoint;
+//     HIVE_EMBED_MODEL=bge-m3, HIVE_EMBED_KEY for an API, HIVE_EMBED_MIN_SCORE=0.5 cosine for a match by meaning)
 import { createServer } from "node:http";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import type { HiveEvent } from "@xdev-hive/core";
+import { openAiEmbedder, type HiveEvent } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { allowedHostsFor, createHubApp, type HubAppOptions } from "./app.ts";
 import { backupDatabase, backupFile, backupSettings, type BackupResult } from "./backup.ts";
@@ -38,12 +40,18 @@ const logBackup = (when: string, take: () => BackupResult | null) => {
 if (backup) logBackup("start", () => backupFile(dbPath, backup));
 
 const staleDays = Number(process.env.HIVE_MEMORY_STALE_DAYS ?? 90);
+const embedder = process.env.HIVE_EMBED_URL
+  ? openAiEmbedder({ url: process.env.HIVE_EMBED_URL, model: process.env.HIVE_EMBED_MODEL || "bge-m3", key: process.env.HIVE_EMBED_KEY || undefined })
+  : null;
+const minScore = Number(process.env.HIVE_EMBED_MIN_SCORE ?? 0.5);
 // Set once the webhook store exists (it lives in the hub's database).
 let onEvent: (event: HiveEvent) => void = () => undefined;
 const hive = new SqliteHive(dbPath, {
   memoryRequiresApproval: process.env.HIVE_MEMORY_APPROVAL !== "off",
   memoryStaleDays: Number.isFinite(staleDays) && staleDays >= 0 ? staleDays : 90,
   onEvent: (event) => onEvent(event),
+  embedder,
+  embedMinScore: Number.isFinite(minScore) ? minScore : 0.5,
 });
 hive.seed("hub");
 const tokens = new TokenStore(hive.db);
@@ -64,6 +72,21 @@ const dispatcher = new WebhookDispatcher(webhookStore, { publicUrl: process.env.
 onEvent = (event) => void dispatcher.notify(event);
 
 if (backup) setInterval(() => logBackup("scheduled", () => backupDatabase(hive.db, backup)), backup.hours * 3_600_000).unref();
+
+// Vectors for memory approved since the last round: right after start, then every 20 s. An error is logged when it changes.
+if (embedder) {
+  let reported: string | null = null;
+  const index = async () => {
+    let total = 0;
+    for (let n = await hive.indexMemory(); n > 0; n = await hive.indexMemory()) total += n;
+    const { lastError } = await hive.call("memory.searchInfo", {}, { name: "hub", role: "admin" });
+    if (lastError !== reported) console.error(lastError ? `[xdev-hive] embeddings (${embedder.model}): ${lastError}` : `[xdev-hive] embeddings (${embedder.model}) working again`);
+    reported = lastError;
+    if (total) console.log(`[xdev-hive] embeddings (${embedder.model}): ${total} memory entries indexed`);
+  };
+  void index().catch(() => undefined);
+  setInterval(() => void index().catch(() => undefined), 20_000).unref();
+}
 
 const httpServer = createServer();
 let ui: HubAppOptions["ui"];

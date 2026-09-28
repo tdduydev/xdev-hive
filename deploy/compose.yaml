@@ -3,6 +3,9 @@
 #   docker compose -f deploy/compose.yaml logs hub    # first start prints the admin's temporary password
 # Behind a Cloudflare Tunnel instead of Caddy: see compose.tunnel.yaml.
 # DNS for HIVE_HOSTNAME must point here and ports 80/443 must be reachable for the certificate.
+# Memory search by meaning: COMPOSE_PROFILES=embed and HIVE_EMBED_URL=http://ollama:11434/v1 in deploy/.env
+# start Ollama below (deploy/update.sh pulls HIVE_EMBED_MODEL, default bge-m3). Any OpenAI-compatible
+# /embeddings endpoint works too: HIVE_EMBED_URL + HIVE_EMBED_MODEL (+ HIVE_EMBED_KEY), without the profile.
 services:
   hub:
     build: ..
@@ -16,12 +19,29 @@ services:
       HIVE_MEMORY_STALE_DAYS: ${HIVE_MEMORY_STALE_DAYS:-90}
       HIVE_BACKUP_HOURS: ${HIVE_BACKUP_HOURS:-24}
       HIVE_BACKUP_KEEP: ${HIVE_BACKUP_KEEP:-7}
+      HIVE_EMBED_URL: ${HIVE_EMBED_URL:-}
+      HIVE_EMBED_MODEL: ${HIVE_EMBED_MODEL:-bge-m3}
+      HIVE_EMBED_KEY: ${HIVE_EMBED_KEY:-}
+      HIVE_EMBED_MIN_SCORE: ${HIVE_EMBED_MIN_SCORE:-0.5}
     volumes:
       - hive-data:/data
       # Snapshots on a different disk than the database survive losing it. Default: same volume.
       - ${HIVE_BACKUP_PATH:-hive-backups}:/data/backups
     expose:
       - "7788"
+
+  # Embeddings on this machine (profile "embed"): only the hub reaches it, nothing is published.
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    profiles: [embed]
+    environment:
+      # Keep the model loaded between searches (Ollama's default unloads it after 5 minutes).
+      OLLAMA_KEEP_ALIVE: 30m
+    volumes:
+      - ollama-data:/root/.ollama
+    expose:
+      - "11434"
 
   caddy:
     image: caddy:2
@@ -40,3 +60,4 @@ volumes:
   hive-data:
   hive-backups:
   caddy-data:
+  ollama-data:
