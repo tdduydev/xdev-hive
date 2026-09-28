@@ -51,7 +51,7 @@ export type AgentProfileInput = z.input<typeof agentProfileSchema>;
 export const AGENT_TEMPLATES: Record<Exclude<AgentKind, "custom">, AgentProfile> = {
   claude: {
     id: "claude-1",
-    label: "Claude Code (gói 1)",
+    label: "Claude Code",
     kind: "claude",
     bin: "claude",
     args: ["-p", "{prompt}", "--permission-mode", "acceptEdits"],
