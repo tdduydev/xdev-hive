@@ -94,6 +94,7 @@ queued ─chọn gói─▶ running ─exit 0──────▶ succeeded ─
   - Server MCP do app liệt kê: `xdev-hive` (`HIVE_AGENT` = id profile); thêm codegraph bản ghim nếu `.mcp.json` ở checkout chính có codegraph.
   - Superpowers được bật nếu `.claude/settings.json` ở checkout chính bật, nhưng hook của plugin vẫn tắt.
   - Cài đặt của bạn trong `~/.claude/settings.json` vẫn được dùng, trừ hook.
+  - `--setting-sources user` cũng làm Claude Code bỏ qua CLAUDE.md của dự án. Runner nạp lại nó bằng `--add-dir <worktree>` và `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1`; các file CLAUDE.md import (như `@AGENTS.md`) cũng được nạp. Đã kiểm với Claude Code 2.1.283.
   - Cần hook của repo thì tạo profile loại *Tuỳ chỉnh*: runner để nguyên tham số của loại này.
   - Codex giữ sandbox `workspace-write` (`--full-auto`).
 - **Hive**: runner `task_claim` trước khi chạy với cùng tên agent như `hive-mcp` (`HIVE_AGENT` = id profile). Xong thì chuyển task sang *Chờ review* kèm tóm tắt, trừ khi agent đã tự làm qua MCP. Review chéo được nối vào ghi chú task.
@@ -104,6 +105,12 @@ queued ─chọn gói─▶ running ─exit 0──────▶ succeeded ─
   - Khi nào kiểm: lúc mở app, mỗi 10 phút, khi sửa profile và khi bấm *Kiểm tra CLI*.
   - Gói chưa đăng nhập bị runner bỏ qua. Thẻ profile hiện lệnh đăng nhập kèm thư mục đăng nhập, không kèm env khác. Run đang chờ vì mọi gói đều chưa đăng nhập thì Board ghi rõ lý do.
   - Gemini và CLI tuỳ chỉnh không có lệnh xem trạng thái, nên để "chưa rõ" và runner vẫn dùng.
+- **Chi phí run** (Claude Code): runner thêm `--output-format json`, trừ khi profile đã tự chọn định dạng.
+  - Lấy từ kết quả JSON: câu trả lời cuối làm tóm tắt run, `total_cost_usd`, token vào (tính cả cache) và token ra.
+  - Log run có thêm mục `## Result` và dòng `# cost`.
+  - Board hiện chi phí từng run; thẻ Gói sub hiện tổng theo gói.
+  - Đây là ước tính theo giá API: gói sub (Pro/Max) không bị tính khoản này, nhưng nó cho biết run nào tốn nhiều.
+  - Codex và Gemini chưa có số liệu.
 - **Quota trên máy**: app không đọc được quota còn lại, vì các CLI không có lệnh in ra. App chỉ biết một gói hết quota khi một run gặp lỗi giới hạn; gói đó nghỉ đến giờ reset và thẻ profile hiện giờ đó.
 - **Trên hub**: heartbeat báo trạng thái đăng nhập, cài CLI và giờ nghỉ của từng gói. Trang *Máy & run* (mọi người) và *Quản trị* (admin) hiện gói nào tắt, chưa có CLI, chưa đăng nhập, đang nghỉ đến giờ nào, hoặc sẵn sàng.
 

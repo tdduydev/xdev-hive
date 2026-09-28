@@ -17,7 +17,7 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE, StatusDot } from "../components/common.tsx";
-import { formatTime, useAction, useHive, useProjects, useQuery } from "../hooks.ts";
+import { formatCount, formatTime, formatUsd, useAction, useHive, useProjects, useQuery } from "../hooks.ts";
 import { rich, useT } from "../i18n/index.tsx";
 import { projectScope, scopeProject } from "../lib/scope.ts";
 
@@ -177,10 +177,13 @@ function ProfileStrip({ profiles }: { profiles: AgentProfileStatus[] }) {
     <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5" aria-label={t("board.profileStatus")}>
       {profiles.map((p) => {
         const resting = p.cooldownUntil !== null;
-        const tone = !p.enabled ? "neutral" : resting ? "warn" : p.running ? "info" : "ok";
+        const signedOut = p.login?.loggedIn === false;
+        const tone = !p.enabled ? "neutral" : signedOut ? "danger" : resting ? "warn" : p.running ? "info" : "ok";
         const text = !p.enabled
           ? t("board.profileOff")
-          : resting
+          : signedOut
+            ? t("board.profileSignedOut")
+            : resting
             ? t("board.profileResting", { time: formatTime(p.cooldownUntil) })
             : p.running
               ? t("board.profileRunning", { running: p.running, max: p.maxConcurrent })
@@ -375,6 +378,7 @@ function RunsPanel({
                     <TableCell className="text-xs text-muted-foreground">
                       {formatTime(r.createdAt)}
                       <div>{duration(r)}</div>
+                      {r.costUsd !== null ? <div>{t("board.cost", { cost: formatUsd(r.costUsd) })}</div> : null}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -435,6 +439,15 @@ function RunDetail({ run, onClose, onChanged, gitlabReady }: { run: AgentRun; on
             <div className="font-mono text-xs break-all text-muted-foreground">
               {run.branch} · {t("board.commits", { count: run.commits })}
               {run.headSha ? ` · ${run.headSha}` : ""}
+            </div>
+          ) : null}
+          {run.costUsd !== null ? (
+            <div className="text-xs text-muted-foreground">
+              {t("board.costDetail", {
+                cost: formatUsd(run.costUsd),
+                input: run.inputTokens === null ? "?" : formatCount(run.inputTokens),
+                output: run.outputTokens === null ? "?" : formatCount(run.outputTokens),
+              })}
             </div>
           ) : null}
           {run.error ? (

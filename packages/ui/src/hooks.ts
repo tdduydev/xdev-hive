@@ -124,6 +124,15 @@ export function useProjectList(client: HiveClient, tick: number): string[] {
   return data ?? [];
 }
 
+/** An API-price estimate in US dollars: cents for small amounts, whole cents above a dollar. */
+export function formatUsd(value: number): string {
+  return new Intl.NumberFormat(activeIntl(), { style: "currency", currency: "USD", maximumFractionDigits: value < 1 ? 3 : 2 }).format(value);
+}
+
+export function formatCount(value: number): string {
+  return new Intl.NumberFormat(activeIntl()).format(value);
+}
+
 export function formatTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
