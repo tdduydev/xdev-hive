@@ -23,6 +23,11 @@ export interface DocSummary {
   title: string;
   version: number;
   includeInAgents: boolean;
+  /**
+   * Repo-relative globs the doc applies to. Such a doc is not put in AGENTS.md: it goes to a nested
+   * AGENTS.md (glob with a folder) or to .claude/rules/xdev-hive/ (glob without one), and AGENTS.md lists it.
+   */
+  paths: string[];
   updatedBy: string;
   updatedAt: string;
 }
