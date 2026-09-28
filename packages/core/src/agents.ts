@@ -40,6 +40,14 @@ export const agentProfileSchema = z.object({
    * or task updates. Stops mistaken or prompt-injected writes; the agent can still read this machine's token.
    */
   readOnly: z.boolean().default(false),
+  /**
+   * Run the CLI inside a Docker container of this image (the machine needs Docker): it sees the task's
+   * worktree, the repo's .git and the CLI's login folder, not the rest of the machine. null: run it here.
+   */
+  container: z
+    .object({ image: z.string().regex(/^[a-z0-9][a-z0-9._/:@-]{0,199}$/, "image: tên image Docker, vd. xdev-hive-agent") })
+    .nullable()
+    .default(null),
   /** Lower runs first. Equal priority rotates least-recently-used. */
   priority: z.number().int().min(0).max(100).default(10),
   roles: z.array(z.enum(AGENT_ROLES)).min(1).default(["plan", "implement", "review"]),
@@ -94,6 +102,7 @@ export const AGENT_TEMPLATES: Record<Exclude<AgentKind, "custom">, AgentProfile>
     env: {},
     enabled: true,
     readOnly: false,
+    container: null,
     priority: 10,
     roles: ["plan", "implement", "review"],
     maxConcurrent: 1,
@@ -111,6 +120,7 @@ export const AGENT_TEMPLATES: Record<Exclude<AgentKind, "custom">, AgentProfile>
     env: {},
     enabled: true,
     readOnly: false,
+    container: null,
     priority: 20,
     roles: ["implement", "review"],
     maxConcurrent: 1,
@@ -128,6 +138,7 @@ export const AGENT_TEMPLATES: Record<Exclude<AgentKind, "custom">, AgentProfile>
     env: {},
     enabled: true,
     readOnly: false,
+    container: null,
     priority: 30,
     roles: ["plan", "implement", "review"],
     maxConcurrent: 1,

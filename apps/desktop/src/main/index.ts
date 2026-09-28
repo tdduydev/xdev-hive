@@ -740,6 +740,7 @@ if (!app.requestSingleInstanceLock()) {
         report: () => ({ setup: setupCache ?? undefined, profiles: reportedProfiles() }),
         login: (id) => logins.get(id),
         usage: (id) => logins.usage(id),
+        hub: () => (config.mode === "hub" && config.hub.url && config.hub.token ? { url: config.hub.url, token: config.hub.token } : null),
       },
       {
         dataDir: path.dirname(configPath()),
