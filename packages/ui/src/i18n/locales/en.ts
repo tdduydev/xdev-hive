@@ -719,6 +719,12 @@ export const en: Catalog = {
     wrongPassword: "The current password is wrong.",
     samePassword: "The new password must differ from the old one.",
     secret: "The content seems to contain a {kind}. Secrets must never be stored in xDev Hive.",
+    hidden: {
+      bidi: "The text has a bidirectional control character {code} at line {line}, column {column}. It makes what people see differ from what an agent reads. Remove it and save again.",
+      tag: "The text has a hidden tag character {code} at line {line}, column {column}. An agent reads the text hidden in it; people cannot see it. Remove it and save again.",
+      selector: "The text has a hidden variation selector {code} at line {line}, column {column}. It can hide text for an agent to read. Remove it and save again.",
+      zeroWidth: "The text has a zero-width character {code} at line {line}, column {column}. People cannot see it. Remove it and save again.",
+    },
     badDocKey: "Invalid doc key \"{key}\". Use org/<name> or project/<project>/<name> (lowercase, digits, \"-\").",
     roleTooLow: "Your account or token is not allowed to do this.",
     notFound: "Not found.",
@@ -899,6 +905,15 @@ export const en: Catalog = {
     renamed: "renamed",
     grants: "{grants}",
     noGrants: "no projects",
+  },
+  hidden: {
+    title: { one: "{count} hidden character", other: "{count} hidden characters" },
+    first: {
+      one: "People cannot see it, but an agent still reads it. It is {code} in {field}, line {line}, column {column}.",
+      other: "People cannot see them, but an agent still reads them. The first is {code} in {field}, line {line}, column {column}.",
+    },
+    hint: "The hub does not save text with hidden characters. Removing them leaves emoji alone.",
+    strip: "Remove hidden characters",
   },
   role: {
     viewer: "viewer",

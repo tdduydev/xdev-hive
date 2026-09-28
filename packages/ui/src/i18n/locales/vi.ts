@@ -720,6 +720,12 @@ export const vi = {
     wrongPassword: "Mật khẩu hiện tại không đúng.",
     samePassword: "Mật khẩu mới phải khác mật khẩu cũ.",
     secret: "Nội dung có vẻ chứa {kind}. Không bao giờ lưu secret vào xDev Hive.",
+    hidden: {
+      bidi: "Nội dung có ký tự điều khiển hướng chữ {code} ở dòng {line}, cột {column}. Ký tự này khiến chữ người xem thấy khác chữ agent đọc. Xoá nó rồi lưu lại.",
+      tag: "Nội dung có ký tự tag ẩn {code} ở dòng {line}, cột {column}. Agent đọc được chữ giấu trong đó, người thì không thấy. Xoá nó rồi lưu lại.",
+      selector: "Nội dung có ký tự chọn biến thể ẩn {code} ở dòng {line}, cột {column}. Ký tự này có thể giấu chữ cho agent đọc. Xoá nó rồi lưu lại.",
+      zeroWidth: "Nội dung có ký tự độ rộng 0 {code} ở dòng {line}, cột {column}. Người xem không thấy nó. Xoá nó rồi lưu lại.",
+    },
     badDocKey: "Key tài liệu không hợp lệ: \"{key}\". Dùng org/<tên> hoặc project/<dự án>/<tên> (chữ thường, số, \"-\").",
     roleTooLow: "Tài khoản hoặc token của bạn không đủ quyền cho thao tác này.",
     notFound: "Không tìm thấy.",
@@ -900,6 +906,12 @@ export const vi = {
     renamed: "sửa tên",
     grants: "{grants}",
     noGrants: "không dự án nào",
+  },
+  hidden: {
+    title: { other: "{count} ký tự ẩn" },
+    first: { other: "Người xem không thấy nhưng agent vẫn đọc được. Ký tự đầu tiên là {code} ở {field}, dòng {line}, cột {column}." },
+    hint: "Hub không lưu nội dung còn ký tự ẩn. Xoá không đụng tới emoji.",
+    strip: "Xoá ký tự ẩn",
   },
   role: {
     viewer: "chỉ xem",

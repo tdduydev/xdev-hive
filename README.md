@@ -231,6 +231,13 @@ Agent không có app desktop (CI, cloud) gọi thẳng MCP qua HTTP: `POST https
 - Phiên web: cookie `HttpOnly`, `SameSite=Strict` (thêm `Secure` sau proxy TLS), hết hạn sau 14 ngày; hub chỉ lưu SHA-256 của phiên. Request ghi bằng cookie phải có header `x-hive-csrf` và Origin trùng host. Đổi hoặc đặt lại mật khẩu thì các phiên khác bị đăng xuất.
 - Token chỉ lưu SHA-256, plaintext hiện một lần. Không thu hồi được token admin cuối cùng không thuộc tài khoản nào (đường vào khi mất hết mật khẩu). MCP qua HTTP chỉ nhận token, không nhận cookie.
 - Memory và tài liệu bị từ chối nếu chứa chuỗi giống secret (AWS, GitHub, GitLab, Slack, `sk-…`, JWT, private key, token Hive).
+- Tài liệu (nội dung, tiêu đề, ghi chú), đề xuất (nội dung, lý do) và memory bị từ chối nếu có ký tự ẩn. Những ký tự này làm chữ người xem thấy khác chữ agent đọc:
+  - ký tự điều khiển hướng chữ (U+202A–202E, U+2066–2069, U+200E/200F, U+061C);
+  - ký tự tag (U+E0000–E007F), dùng để giấu lệnh cho model;
+  - bộ chọn biến thể bổ sung (U+E0100–E01EF);
+  - ký tự độ rộng 0 (U+200B–200D, U+2060–2064, U+FEFF, U+180E).
+
+  Emoji vẫn dùng được, kể cả emoji ghép bằng ZWJ và cờ vùng dùng ký tự tag. Lỗi báo mã ký tự, dòng và cột. Trang Tài liệu và Memory cảnh báo trước khi lưu và có nút *Xoá ký tự ẩn*.
 - Desktop: `contextIsolation`, `sandbox`, preload chỉ lộ đúng các hàm cần. IPC kiểm tra nguồn gọi. CSP trong bản build.
 - `~/.xdev-hive/config.json` có quyền `0600` vì có thể chứa token hub.
 - Web chỉ lưu token trong `localStorage` khi đăng nhập bằng token (tuỳ chọn cho CI, khôi phục); đăng nhập bằng tài khoản thì dùng cookie phiên.
