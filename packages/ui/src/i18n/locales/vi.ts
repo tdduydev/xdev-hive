@@ -421,6 +421,9 @@ export const vi = {
     cooldown: "Nghỉ mặc định (phút)",
     timeout: "Giới hạn mỗi run (phút)",
     enabled: "Bật",
+    readOnly: "Chỉ đọc Hive",
+    readOnlyHint: "Run của gói này chỉ có tool đọc (memory_search, doc_get, doc_list, task_list): không ghi memory, không đề xuất tài liệu, không cập nhật task; runner vẫn chuyển task và ghi tóm tắt. Dùng cho review hoặc CLI bạn ít tin. Chặn ghi nhầm hay ghi do prompt injection, không phải ranh giới bảo mật: agent vẫn đọc được token của máy.",
+    readOnlyBadge: "Chỉ đọc",
     save: "Lưu profile",
     runnerParallel: "Agent chạy song song",
     runnerAttempts: "Số lần thử mỗi task (tính cả xoay vòng)",
@@ -552,7 +555,7 @@ export const vi = {
     add: "Thêm dự án",
   },
   tokenRole: {
-    viewer: "Chỉ xem",
+    viewer: "Chỉ đọc: người xem, hoặc agent chỉ đọc (MCP chỉ có tool đọc)",
     agent: "Agent: đọc, đề xuất, ghi memory, nhận task",
     member: "Thành viên: như tài khoản (máy của người đó)",
     admin: "Admin: sửa và duyệt tài liệu, quản lý token",
@@ -919,7 +922,7 @@ export const vi = {
     strip: "Xoá ký tự ẩn",
   },
   role: {
-    viewer: "chỉ xem",
+    viewer: "chỉ đọc",
     agent: "agent",
     member: "thành viên",
     admin: "admin",

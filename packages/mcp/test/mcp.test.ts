@@ -5,8 +5,8 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { createHiveMcpServer } from "../src/index.ts";
 
-async function connect(hive: SqliteHive, name = "claude@duy") {
-  const server = createHiveMcpServer(hive, { name, role: "agent" }, { defaultProject: "app" });
+async function connect(hive: SqliteHive, name = "claude@duy", opts: { role?: "agent" | "viewer"; readOnly?: boolean } = {}) {
+  const server = createHiveMcpServer(hive, { name, role: opts.role ?? "agent" }, { defaultProject: "app", readOnly: opts.readOnly });
   const [a, b] = InMemoryTransport.createLinkedPair();
   await server.connect(a);
   const client = new Client({ name: "test", version: "0" });
@@ -30,6 +30,17 @@ describe("mcp tools", () => {
       "task_list",
       "task_update",
     ]);
+  });
+
+  it("gives read-only agents and viewer tokens the read tools only", async () => {
+    const hive = new SqliteHive(":memory:");
+    for (const client of [await connect(hive, "claude@duy", { readOnly: true }), await connect(hive, "ci", { role: "viewer" })]) {
+      assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), ["doc_get", "doc_list", "memory_search", "task_list"]);
+      assert.match(client.getInstructions() ?? "", /read-only/);
+      const called = await client.callTool({ name: "memory_write", arguments: { kind: "decision", content: "x" } }).catch((e: Error) => e);
+      assert.ok(called instanceof Error || (called as { isError?: boolean }).isError, "a hidden tool cannot be called either");
+    }
+    assert.equal((await hive.call("memory.list", {}, { name: "duy", role: "admin" })).length, 0);
   });
 
   it("shares memory between two agents", async () => {

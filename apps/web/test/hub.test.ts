@@ -175,6 +175,14 @@ describe("hub as a backend", () => {
     assert.deepEqual(written.source, { via: "mcp", machine: "lan-pc" });
   });
 
+  it("gives a viewer token the read-only MCP tools", async () => {
+    const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { requestInit: { headers: { authorization: `Bearer ${tok.viewer}` } } });
+    const client = new Client({ name: "test", version: "0" });
+    await client.connect(transport);
+    assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), ["doc_get", "doc_list", "memory_search", "task_list"]);
+    await client.close();
+  });
+
   it("speaks MCP over Streamable HTTP", async () => {
     const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`), {
       requestInit: { headers: { authorization: `Bearer ${tok.agent}`, "x-hive-agent": "cursor" } },

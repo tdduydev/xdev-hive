@@ -66,7 +66,10 @@ async function setup(
   if (!machine.hive) await hive.call("tasks.create", { id: "T-1", project: "demo", title: "Thêm trang cài đặt" }, admin);
   const calls = () =>
     existsSync(record)
-      ? readFileSync(record, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { agent: string; prompt: string; cwd: string; args: string[] })
+      ? readFileSync(record, "utf8")
+          .trim()
+          .split("\n")
+          .map((l) => JSON.parse(l) as { agent: string; prompt: string; cwd: string; args: string[]; readOnly: string | null })
       : [];
   const task = async () => (await hive.call("tasks.list", { project: "demo" }, admin)).find((t) => t.id === "T-1")!;
   return { repo, hive, runner, dataDir, calls, task, hubUpdates };
@@ -164,6 +167,12 @@ describe("buildCommand", () => {
     assert.deepEqual(JSON.parse(flag(args, "--settings")), { disableAllHooks: true, enabledPlugins: { [SUPERPOWERS_PLUGIN]: true } });
   });
 
+  it("tells a read-only profile's MCP server so, and drops the write steps from the prompt", () => {
+    const { args } = buildCommand({ ...AGENT_TEMPLATES.claude, readOnly: true }, vars);
+    assert.equal(JSON.parse(args.at(-1)!).mcpServers["xdev-hive"].env.HIVE_READONLY, "1");
+    assert.equal(JSON.parse(buildCommand(AGENT_TEMPLATES.claude, vars).args.at(-1)!).mcpServers["xdev-hive"].env.HIVE_READONLY, undefined);
+  });
+
   it("leaves other CLIs' arguments as the profile has them", () => {
     assert.deepEqual(buildCommand(AGENT_TEMPLATES.codex, vars).args, ["exec", "--full-auto", "Do T-1"]);
     assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.claude, kind: "custom" }, vars).args, ["-p", "Do T-1", "--permission-mode", "acceptEdits"]);
@@ -230,6 +239,19 @@ describe("Runner", () => {
     assert.equal(existsSync(mark), false, "the planted pre-commit hook must not run");
     assert.deepEqual(git(repo, "show", "--name-only", "--format=", "ai/T-1").split("\n").sort(), [".githooks/pre-commit", "work.txt"]);
     assert.equal(git(path.join(dataDir, "worktrees", "demo", "T-1"), "status", "--porcelain"), "M AGENTS.md");
+  });
+
+  it("runs a read-only profile with HIVE_READONLY and a prompt without Hive writes, then reports for it", async () => {
+    const { runner, calls, task } = await setup([profile("codex-a", "codex", 10, "ok", { readOnly: true })]);
+    await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const [call] = calls();
+    assert.equal(call!.readOnly, "1");
+    assert.match(call!.prompt, /xDev Hive is read-only for this run/);
+    assert.doesNotMatch(call!.prompt, /memory_write|task_update|doc_propose/);
+    const t = await task();
+    assert.equal(t.status, "review", "the runner still moves the task");
+    assert.match(t.note ?? "", /Implemented T-1/);
   });
 
   it("rotates to the next subscription when one hits its quota, continuing on the same branch", async () => {
