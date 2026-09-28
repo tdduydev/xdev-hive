@@ -127,8 +127,8 @@ export class WebhookStore {
   }
 }
 
-/** The message for an event, and the hub page it links to. */
-export function eventMessage(event: HiveEvent, locale: string): { text: string; page: string } {
+/** The message for an event, and the hub page it links to (or, for a merge request, the MR itself). */
+export function eventMessage(event: HiveEvent, locale: string): { text: string; page: string; url?: string } {
   const lang = isLocale(locale) ? locale : "vi";
   const tr = (key: MessageKey, vars?: Record<string, string | number>) => translate(key, vars, lang);
   const clip = (s: string, n = 300) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -155,6 +155,21 @@ export function eventMessage(event: HiveEvent, locale: string): { text: string; 
         }),
         page: "#/admin",
       };
+    case "run.failed": {
+      const r = event.run;
+      return {
+        text: tr("webhook.runFailed", { run: r.runId, project: r.project, task: r.taskId, title: clip(r.taskTitle, 120), machine: r.machine, error: r.error ?? "?" }),
+        page: "#/machines",
+      };
+    }
+    case "mr.created": {
+      const r = event.run;
+      return {
+        text: tr("webhook.mrCreated", { iid: r.mrIid ?? "?", project: r.project, task: r.taskId, title: clip(r.taskTitle, 120), run: r.runId }),
+        page: "#/machines",
+        ...(r.mrUrl ? { url: r.mrUrl } : {}),
+      };
+    }
   }
 }
 
@@ -202,8 +217,8 @@ export class WebhookDispatcher {
       .filter((w) => w.enabled && w.events.includes(event.type) && (w.projects.length === 0 || (event.project !== null && w.projects.includes(event.project))));
     await Promise.all(
       targets.map((w) => {
-        const { text, page } = eventMessage(event, w.locale);
-        return this.#send(w, text, page);
+        const { text, page, url } = eventMessage(event, w.locale);
+        return this.#send(w, text, page, url);
       }),
     );
   }
@@ -216,9 +231,13 @@ export class WebhookDispatcher {
     return { ok: error === null, error };
   }
 
-  async #send(w: Stored, text: string, page: string): Promise<string | null> {
+  async #send(w: Stored, text: string, page: string, url?: string): Promise<string | null> {
     const lang = isLocale(w.locale) ? w.locale : "vi";
-    const link = this.#opts.publicUrl ? { title: translate("webhook.open", undefined, lang), url: `${this.#opts.publicUrl.replace(/\/+$/, "")}/${page}` } : null;
+    const link = url
+      ? { title: translate("webhook.openMr", undefined, lang), url }
+      : this.#opts.publicUrl
+        ? { title: translate("webhook.open", undefined, lang), url: `${this.#opts.publicUrl.replace(/\/+$/, "")}/${page}` }
+        : null;
     let error: string | null = null;
     try {
       const res = await this.#opts.fetch(w.url, {

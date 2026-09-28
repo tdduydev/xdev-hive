@@ -115,6 +115,26 @@ describe("webhook dispatch", () => {
     assert.equal(JSON.stringify(store.list()).includes("secret-path"), false);
   });
 
+  it("posts failed runs and new merge requests, the MR linking to itself", async () => {
+    const { hive, store, settle } = setup();
+    received.length = 0;
+    status = 200;
+    store.save({ name: "Runs", kind: "teams", url: `${receiver}/runs`, events: ["run.failed", "mr.created"], projects: ["app"], locale: "en", enabled: true });
+    const runner: Actor = { name: "runner.duy-mbp@duy", role: "agent" };
+    const base = { project: "app", taskId: "T-1", taskTitle: "Login page", runId: "R-1fa9e2", profileId: "claude-1", role: "implement" as const };
+    await hive.call("runs.report", { kind: "failed", ...base, error: "TypeError: boom" }, runner);
+    await hive.call("runs.report", { kind: "mr", ...base, mrUrl: "https://gitlab.example.com/g/app/-/merge_requests/7", mrIid: 7 }, runner);
+    await hive.call("runs.report", { kind: "failed", ...base, project: "billing" }, runner); // another project: not this webhook
+    await settle();
+    const cards = received.map((r) => r.body.attachments[0].content);
+    assert.deepEqual(
+      cards.map((c) => c.body[0].text),
+      ["Run R-1fa9e2 failed (app · T-1: Login page) on runner.duy-mbp@duy: TypeError: boom", "New merge request !7 (app · T-1: Login page) from run R-1fa9e2."],
+    );
+    assert.deepEqual(cards[0].actions[0], { type: "Action.OpenUrl", title: "Open in the hub", url: "https://hive.example.com/#/machines" });
+    assert.deepEqual(cards[1].actions[0], { type: "Action.OpenUrl", title: "Open the merge request", url: "https://gitlab.example.com/g/app/-/merge_requests/7" });
+  });
+
   it("tells about install requests and how they end", async () => {
     const { hive, store, settle } = setup();
     received.length = 0;

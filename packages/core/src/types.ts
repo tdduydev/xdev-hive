@@ -200,7 +200,7 @@ export interface MachineCommand {
 /** Chat services a hub webhook can post to, and the events it can post. */
 export const WEBHOOK_KINDS = ["teams", "slack"] as const;
 export type WebhookKind = (typeof WEBHOOK_KINDS)[number];
-export const WEBHOOK_EVENTS = ["proposal.created", "memory.pending", "command.requested", "command.finished"] as const;
+export const WEBHOOK_EVENTS = ["proposal.created", "memory.pending", "command.requested", "command.finished", "run.failed", "mr.created"] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 
 /** Something a person may want to hear about, emitted after the change is stored (see SqliteHiveOptions.onEvent). */
@@ -208,7 +208,26 @@ export type HiveEvent =
   | { type: "proposal.created"; project: string | null; proposal: Proposal }
   | { type: "memory.pending"; project: string | null; memory: Memory }
   | { type: "command.requested"; project: null; command: MachineCommand }
-  | { type: "command.finished"; project: null; command: MachineCommand };
+  | { type: "command.finished"; project: null; command: MachineCommand }
+  | { type: "run.failed"; project: string; run: RunNotice }
+  | { type: "mr.created"; project: string; run: RunNotice };
+
+/** A run a machine tells the hub about: it failed for good, or it opened a merge request. Not stored. */
+export interface RunNotice {
+  kind: "failed" | "mr";
+  project: string;
+  taskId: string;
+  taskTitle: string;
+  runId: string;
+  profileId: string | null;
+  role: string;
+  /** Last line of the failure, cleaned: hidden characters removed, withheld when it looks like a secret. */
+  error: string | null;
+  mrUrl: string | null;
+  mrIid: number | null;
+  /** The reporting machine (its hub actor). */
+  machine: string;
+}
 
 /** Admin view of a machine: the heartbeat plus what it reported about its setup. */
 export interface MachineDetail extends Machine {

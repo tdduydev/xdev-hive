@@ -717,7 +717,20 @@ export class Runner {
       this.#opts.onEvent?.({ type: "follow-up", run: done, next });
     }
     if (!next) this.#opts.onEvent?.({ type: "finished", run: this.store.get(run.id)! });
+    // A hub that does not know runs.report yet (older version) just misses these notices.
+    this.#track(this.#notifyHub(this.store.get(run.id)!, next).catch(() => undefined));
     void this.tick();
+  }
+
+  /** Tells the hub, for its webhooks, about a run that failed with no attempt left, and a merge request it opened. */
+  async #notifyHub(run: AgentRun, next: AgentRun | null): Promise<void> {
+    if (this.#host.mode() !== "hub") return;
+    const base = { project: run.project, taskId: run.taskId, taskTitle: run.taskTitle, runId: run.id, profileId: run.profileId, role: run.role };
+    const notices = [
+      ...(!next && (run.status === "failed" || run.status === "rate_limited") ? [{ kind: "failed" as const, ...base, error: run.error }] : []),
+      ...(run.mrState === "created" && run.mrUrl ? [{ kind: "mr" as const, ...base, mrUrl: run.mrUrl, mrIid: run.mrIid }] : []),
+    ];
+    for (const notice of notices) await this.#host.backend().call("runs.report", notice, this.#runnerActor());
   }
 
   /** Moves the Hive task on, unless the agent already did it through MCP. */
