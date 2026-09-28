@@ -75,7 +75,7 @@ Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ v�
 
 ```bash
 nvm use && npm install
-npm test            # 211 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
+npm test            # 218 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
 npm run typecheck
 ```
 
@@ -229,6 +229,29 @@ HIVE_HOST=0.0.0.0 HIVE_ALLOWED_HOSTS=hive.example.com HIVE_DB=/data/hub.db HIVE_
 | `HIVE_BOOTSTRAP_TOKEN` | – | Token admin cố định (≥ 32 ký tự) cho deploy tự động |
 | `HIVE_BACKUP_DIR` | tắt (image: `/data/backups`) | Bật backup: một bản khi khởi động (trước khi migrate schema) và định kỳ |
 | `HIVE_BACKUP_HOURS` / `HIVE_BACKUP_KEEP` | `24` / `7` | Chu kỳ backup và số bản giữ lại |
+| `HIVE_EMBED_URL` | tắt | Endpoint `/embeddings` kiểu OpenAI để `memory_search` tìm cả theo nghĩa, vd. `http://ollama:11434/v1` (xem dưới) |
+| `HIVE_EMBED_MODEL` / `HIVE_EMBED_KEY` | `bge-m3` / – | Model embedding; key Bearer khi dùng API ngoài (Ollama không cần) |
+| `HIVE_EMBED_MIN_SCORE` | `0.5` | Độ giống (cosine) tối thiểu để một mục tính là tìm thấy theo nghĩa |
+
+### Tìm memory theo nghĩa (tuỳ chọn)
+
+Mặc định `memory_search` tìm theo từ (FTS5, có dấu hay không dấu đều được). Có model embedding thì tìm cả theo nghĩa: hỏi "triển khai thế nào" vẫn ra mục "Deploy with update.sh".
+
+- Chạy Ollama cạnh hub, không gửi dữ liệu ra ngoài. Thêm vào `deploy/.env`:
+
+  ```
+  COMPOSE_PROFILES=embed
+  HIVE_EMBED_URL=http://ollama:11434/v1
+  HIVE_EMBED_MODEL=bge-m3
+  ```
+
+  Sau đó chạy `deploy/update.sh`: script bật service `ollama` (không publish cổng nào), kéo model (bge-m3 khoảng 1,2 GB, đa ngôn ngữ, có tiếng Việt), rồi cập nhật hub. Kéo model lỗi thì hub vẫn cập nhật, chỉ tìm theo từ.
+- Hub tạo vector cho memory đã duyệt: ngay khi khởi động, rồi mỗi 20 giây. Mục đang chờ duyệt thì chưa tạo. Đổi model thì hub tạo lại vector cho mọi mục.
+- Kết quả là hợp của hai cách tìm, xếp bằng *reciprocal rank fusion*. Mục chỉ khớp theo nghĩa phải có độ giống từ `HIVE_EMBED_MIN_SCORE` trở lên.
+- Không lấy được vector cho câu hỏi trong 5 giây, hoặc endpoint lỗi, thì chỉ tìm theo từ. Trang Memory ghi lỗi (chỉ `HTTP 500`, `timeout`…, không chép chữ của endpoint).
+- Trang Memory hiện chế độ tìm và số mục đã có vector (`memory.searchInfo`).
+- Endpoint khác cũng được (API ngoài): `HIVE_EMBED_URL` + `HIVE_EMBED_MODEL` + `HIVE_EMBED_KEY`, không cần profile `embed`. Khi đó nội dung memory được gửi tới nhà cung cấp đó.
+- Chế độ cục bộ của app desktop vẫn chỉ tìm theo từ.
 
 Không ai đăng nhập được (quên mật khẩu admin…) thì làm trên server (Docker: thêm `docker compose -f deploy/compose.yaml exec hub` phía trước):
 
@@ -363,6 +386,6 @@ Chuỗi số nhiều viết `{ one: "…", other: "…" }` (thêm `zero`/`two`/`
 Danh sách chi tiết và tiến độ: [docs/roadmap.md](docs/roadmap.md).
 
 - Đăng nhập GitLab OAuth (SSO) bên cạnh mật khẩu.
-- Postgres (+ pgvector) khi team lớn hoặc cần tìm kiếm theo ngữ nghĩa.
+- Postgres (+ pgvector) khi team lớn.
 - Đọc quota còn lại chủ động (nếu CLI có lệnh báo usage) thay vì chỉ phản ứng khi đã hết.
 - Ký và notarize bản macOS (cần chứng chỉ Developer ID).
