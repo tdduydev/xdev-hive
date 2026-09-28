@@ -1,5 +1,7 @@
 appId: asia.xdev.hive
 productName: xDev Hive
+# Plain file names for GitHub release assets (it turns spaces into dots): xdev-hive-0.2.0-mac-arm64.dmg
+artifactName: xdev-hive-${version}-${os}-${arch}.${ext}
 directories:
   output: release
   buildResources: build
@@ -17,11 +19,17 @@ asar: true
 npmRebuild: false
 mac:
   category: public.app-category.developer-tools
+  # Ad-hoc signature until there is a Developer ID: Apple Silicon refuses an app whose bundle seal is broken.
+  identity: "-"
   target:
     - dmg
     - zip
 win:
   target: nsis
+nsis:
+  artifactName: xdev-hive-${version}-win-${arch}-setup.${ext}
 linux:
+  # The default comes from the package name (@xdev-hive/desktop), which is not a valid file name.
+  executableName: xdev-hive
   target: AppImage
   category: Development
