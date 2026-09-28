@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { isValidElement } from "react";
-import { LEVELS } from "@xdev-hive/core";
+import { HIDDEN_KINDS, LEVELS } from "@xdev-hive/core";
 import { rich } from "../src/i18n/rich.ts";
 import { hasKey, LOCALES, translate, type MessageKey } from "../src/i18n/translate.ts";
 
@@ -52,6 +52,8 @@ describe("i18n", () => {
     const keys = new Set(files.flatMap((f) => [...readFileSync(f, "utf8").matchAll(/key: "((?:errors|audit)\.[\w.]+)"/g)].map((m) => m[1]!)));
     // Built from the level: errors.need.<level>, errors.needShared.<level>.
     for (const level of LEVELS) keys.add(`errors.need.${level}`).add(`errors.needShared.${level}`);
+    // Built from the kind: errors.hidden.<kind>.
+    for (const kind of HIDDEN_KINDS) keys.add(`errors.hidden.${kind}`);
     assert.ok(keys.size > 30, `found ${keys.size} keys`);
     assert.deepEqual([...keys].filter((k) => !hasKey(k)), []);
   });

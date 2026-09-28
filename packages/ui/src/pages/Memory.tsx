@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MEMORY_KINDS, type Memory, type MemoryKind } from "@xdev-hive/core";
+import { MEMORY_KINDS, stripHidden, type Memory, type MemoryKind } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
@@ -7,6 +7,7 @@ import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Badge, Empty, ErrorNote, OwnerBadge, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
+import { HiddenChars } from "../components/HiddenChars.tsx";
 import type { HiveClient } from "../client.ts";
 import { formatTime, useAction, useCan, useHive, useQuery } from "../hooks.ts";
 import { useT, type MessageKey } from "../i18n/index.tsx";
@@ -225,6 +226,7 @@ function AddMemory({ defaultOwner, projects, onAdded }: { defaultOwner: string |
             {t("memory.add")}
           </Button>
         </form>
+        <HiddenChars fields={[{ label: t("memory.content"), text: content }]} onStrip={() => setContent(stripHidden(content))} />
         <ErrorNote error={action.error} />
       </CardContent>
     </Card>
