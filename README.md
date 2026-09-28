@@ -75,7 +75,7 @@ Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ v�
 
 ```bash
 nvm use && npm install
-npm test            # 250 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
+npm test            # 259 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
 npm run typecheck
 ```
 
@@ -194,7 +194,15 @@ Profile có ô *Chạy trong container (Docker)* (hỏi ngày 28/9: bật theo t
   - App lưu token trong config (quyền 0600), không gửi lại giao diện, và chỉ run trong container nhận nó qua `CLAUDE_CODE_OAUTH_TOKEN`. Đổi id profile thì token đi theo; xoá profile thì token bị xoá.
   - Trên Linux, đăng nhập nằm trong `~/.claude` nên không cần token.
 - Máy không có `docker` thì run coi như gói không chạy được và chuyển sang gói khác.
-- **Chưa làm** (mục 11c): giới hạn mạng của container.
+- **Mạng giới hạn** (mặc định, hỏi ngày 28/9): mỗi run có một Docker network riêng `--internal`, không có đường ra ngoài, và một container proxy (cùng image, `docker/agent/egress.mjs`).
+  - Proxy nằm cả trên network đó lẫn bridge của Docker. Nó chỉ cho qua các host được phép: HTTPS qua `CONNECT` (proxy không đọc được bên trong), HTTP thì chuyển tiếp.
+  - Agent nhận `HTTPS_PROXY`/`HTTP_PROXY` (kèm `NODE_USE_ENV_PROXY=1` cho `fetch` của Node). Chương trình nào bỏ qua proxy thì không ra được mạng.
+  - Luôn được phép: hub, GitLab của team, API và đăng nhập của Anthropic, OpenAI, Google, npm, PyPI, GitHub.
+  - Thêm host trong profile (*Cho phép thêm*): `host`, `.domain` (gồm cả subdomain), `host:port` cho cổng khác 80/443.
+  - Host bị chặn được ghi ở phần `## Network` của log run. Run lỗi thì lỗi nêu tên các host đó.
+  - Network và proxy bị xoá khi run xong, kể cả khi run lỗi giữa chừng.
+  - Chọn *Mở* nếu profile cần mạng thường của Docker.
+  - Image cũ cần build lại để có proxy.
 
 ## Merge request trên GitLab
 
