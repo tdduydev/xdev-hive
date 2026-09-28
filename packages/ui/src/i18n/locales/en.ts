@@ -420,6 +420,9 @@ export const en: Catalog = {
     cooldown: "Default rest (minutes)",
     timeout: "Limit per run (minutes)",
     enabled: "Enabled",
+    readOnly: "Read-only Hive",
+    readOnlyHint: "Runs of this subscription only get the read tools (memory_search, doc_get, doc_list, task_list): no memory writes, doc proposals or task updates; the runner still moves the task and records the summary. For reviews, or a CLI you trust less. It stops mistaken or prompt-injected writes; it is not a security boundary, since the agent can still read this machine's token.",
+    readOnlyBadge: "Read-only",
     save: "Save profile",
     runnerParallel: "Agents in parallel",
     runnerAttempts: "Attempts per task (rotation included)",
@@ -551,7 +554,7 @@ export const en: Catalog = {
     add: "Add project",
   },
   tokenRole: {
-    viewer: "View only",
+    viewer: "Read-only: a viewer, or a read-only agent (MCP has the read tools only)",
     agent: "Agent: read, propose, write memory, claim tasks",
     member: "Member: same as the account (that person's machines)",
     admin: "Admin: edit and approve docs, manage tokens",
@@ -921,7 +924,7 @@ export const en: Catalog = {
     strip: "Remove hidden characters",
   },
   role: {
-    viewer: "viewer",
+    viewer: "read-only",
     agent: "agent",
     member: "member",
     admin: "admin",

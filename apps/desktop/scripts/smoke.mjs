@@ -33,9 +33,10 @@ const token = "mock-gitlab-smoke-token";
 const gitlab = await startMockGitLab(token);
 
 const fake = path.join(appDir, "test", "fixtures", "fake-agent.mjs");
-const agent = (id, kind, priority, mode, label) => ({
+const agent = (id, kind, priority, mode, label, extra = {}) => ({
   id, label, kind, bin: process.execPath, args: [fake, "{prompt}"], env: { FAKE_MODE: mode },
   enabled: true, priority, roles: ["plan", "implement", "review"], maxConcurrent: 1, cooldownMinutes: 60, timeoutMinutes: 5,
+  ...extra,
 });
 writeFileSync(
   path.join(work, "config.json"),
@@ -48,7 +49,8 @@ writeFileSync(
     agents: [
       agent("claude-max-1", "claude", 10, "limit", "Claude Max (gói 1)"),
       agent("codex-plus", "codex", 20, "ok", "Codex (ChatGPT Plus)"),
-      agent("gemini-pro", "gemini", 30, "review", "Gemini Pro"),
+      // The reviewer only reads Hive (roadmap 2c).
+      agent("gemini-pro", "gemini", 30, "review", "Gemini Pro", { readOnly: true }),
     ],
   }, null, 2),
 );

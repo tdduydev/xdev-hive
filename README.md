@@ -225,6 +225,14 @@ Trang này có trên hub web và trên app desktop ở chế độ hub, chỉ hi
 
 Agent không có app desktop (CI, cloud) gọi thẳng MCP qua HTTP: `POST https://<hub>/mcp`, header `Authorization: Bearer <token agent>`, tuỳ chọn `x-hive-agent: <tên>`.
 
+**Agent chỉ đọc**: tạo token vai trò `viewer` cho agent chỉ cần tra cứu, ví dụ bot review hoặc CI đọc quy chuẩn. Với token này, MCP chỉ có `memory_search`, `doc_list`, `doc_get`, `task_list`. Tool ghi không có trong danh sách, và hub cũng từ chối lệnh ghi.
+
+Trên app desktop, profile có tuỳ chọn *Chỉ đọc Hive*:
+- Runner đặt `HIVE_READONLY=1` cho run của profile đó; `hive-mcp` thấy biến này thì chỉ mở tool đọc.
+- Prompt bỏ các bước ghi memory, đề xuất và cập nhật task; agent ghi ghi chú bàn giao vào câu trả lời cuối, runner chuyển task và lưu tóm tắt như thường.
+- Claude Code luôn nhận biến này qua cấu hình MCP do app sinh. Codex và Gemini chỉ nhận nếu CLI chuyển biến môi trường cho server MCP.
+- Đây là rào chắn chống ghi nhầm hoặc ghi do prompt injection, không phải ranh giới bảo mật: agent chạy cùng user hệ điều hành vẫn đọc được token của máy.
+
 ## Bảo mật
 
 - Mật khẩu băm bằng scrypt (salt riêng); so sánh thời gian cố định, kể cả khi tên đăng nhập không tồn tại. Sai 5 lần thì cặp IP + tên đăng nhập bị khoá 15 phút.
