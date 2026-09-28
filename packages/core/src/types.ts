@@ -123,6 +123,12 @@ export interface ReportedProfile {
   installed: boolean;
   /** The CLI says it is signed in; null: unknown (no status command, not checked yet, older app). */
   loggedIn?: boolean | null;
+  /** Plan usage in percent (Claude Code subscriptions); null when unknown. */
+  sessionPercent?: number | null;
+  weekPercent?: number | null;
+  weekResets?: string | null;
+  /** The profile's stop threshold is reached: the machine starts no new run on it. */
+  overLimit?: boolean;
   cooldownUntil: string | null;
   runs: number;
   rateLimited: number;
