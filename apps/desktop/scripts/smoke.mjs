@@ -58,6 +58,8 @@ writeFileSync(
       agent("codex-plus", "codex", 20, "ok", "Codex (ChatGPT Plus)"),
       // The reviewer only reads Hive (roadmap 2c).
       agent("gemini-pro", "gemini", 30, "review", "Gemini Pro", { readOnly: true }),
+      // Runs in Docker (roadmap 11a): last in line and a Codex, which the review avoids, so the smoke never picks it.
+      agent("codex-box", "codex", 99, "ok", "Codex (container)", { container: { image: "xdev-hive-agent" } }),
     ],
   }, null, 2),
 );

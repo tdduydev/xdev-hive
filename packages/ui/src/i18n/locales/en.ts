@@ -519,6 +519,10 @@ export const en: Catalog = {
     readOnly: "Read-only Hive",
     readOnlyHint: "Runs of this subscription only get the read tools (memory_search, doc_get, doc_list, task_list): no memory writes, doc proposals or task updates; the runner still moves the task and records the summary. For reviews, or a CLI you trust less. It stops mistaken or prompt-injected writes; it is not a security boundary, since the agent can still read this machine's token.",
     readOnlyBadge: "Read-only",
+    container: "Run in a container (Docker)",
+    containerImage: "Docker image",
+    containerBadge: "Container",
+    containerHint: "The CLI runs in this image instead of straight on the machine: it sees only the task's worktree, the repo's .git and the CLI's login folder. The machine needs Docker and the image (see README: docker build … docker/agent). Hive's tools in a container are there for Claude Code in hub mode only.",
     save: "Save profile",
     runnerParallel: "Agents in parallel",
     runnerAttempts: "Attempts per task (rotation included)",
@@ -1033,6 +1037,7 @@ export const en: Catalog = {
     longAgents: "AGENTS.md has {lines} lines (better under {max}): move what only one folder or kind of file needs into docs with paths",
   },
   runNote: {
+    dockerNotFound: "The profile runs in a container, but this machine has no docker command on its PATH (install Docker and check again).",
     cancelledQueued: "Cancelled before it ran",
     cancelled: "Cancelled by an admin",
     timedOut: "Timed out after {minutes} minutes",
