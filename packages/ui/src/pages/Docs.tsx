@@ -21,8 +21,14 @@ interface Draft {
   title: string;
   content: string;
   includeInAgents: boolean;
+  /** Globs as typed: comma- or line-separated. */
+  paths: string;
   note: string;
 }
+
+const parsePaths = (text: string) => [...new Set(text.split(/[\s,]+/).filter(Boolean))];
+/** The project's AGENTS.md and decisions doc are for the whole repo. */
+const wholeRepo = (key: string) => /^project\/[^/]+\/(agents|decisions)$/.test(key);
 
 type EditorTab = "edit" | "preview-diff" | "history";
 
@@ -30,6 +36,7 @@ const emptyDraft = (key: string): Draft => ({
   title: "",
   content: "",
   includeInAgents: key.startsWith("org/"),
+  paths: "",
   note: "",
 });
 
@@ -180,6 +187,11 @@ export function DocsPage() {
                       <span className="w-full font-mono text-xs break-all text-muted-foreground">
                         {d.key} · v{d.version}
                       </span>
+                      {d.paths?.length ? (
+                        <span title={d.paths.join(", ")}>
+                          <Badge tone="info">{t("docs.pathsBadge", { count: d.paths.length })}</Badge>
+                        </span>
+                      ) : null}
                     </button>
                   ))}
                 </div>
@@ -283,7 +295,7 @@ function DocEditor({ docKey, canEdit, canPropose, onSaved }: { docKey: string; c
 
   useEffect(() => {
     if (doc.data) {
-      setDraft({ title: doc.data.title, content: doc.data.content, includeInAgents: doc.data.includeInAgents, note: "" });
+      setDraft({ title: doc.data.title, content: doc.data.content, includeInAgents: doc.data.includeInAgents, paths: (doc.data.paths ?? []).join(", "), note: "" });
     } else if (!doc.loading) {
       setDraft(emptyDraft(docKey));
     }
@@ -294,6 +306,7 @@ function DocEditor({ docKey, canEdit, canPropose, onSaved }: { docKey: string; c
     (current?.content ?? "") !== draft.content ||
     (!!current && current.title !== draft.title) ||
     (!!current && current.includeInAgents !== draft.includeInAgents) ||
+    (current?.paths ?? []).join(",") !== parsePaths(draft.paths).join(",") ||
     (!current && draft.content.length > 0);
 
   const save = () =>
@@ -303,6 +316,7 @@ function DocEditor({ docKey, canEdit, canPropose, onSaved }: { docKey: string; c
         content: draft.content,
         title: draft.title.trim() || undefined,
         includeInAgents: scope === "org" ? draft.includeInAgents : undefined,
+        paths: wholeRepo(docKey) ? undefined : parsePaths(draft.paths),
         note: draft.note.trim() || undefined,
         baseVersion: current?.version ?? 0,
       });
@@ -383,6 +397,24 @@ function DocEditor({ docKey, canEdit, canPropose, onSaved }: { docKey: string; c
             onChange={(e) => setDraft({ ...draft, title: e.target.value })}
           />
         </div>
+        {wholeRepo(docKey) ? null : (
+          <div className="grid gap-2 sm:grid-cols-[110px_1fr] sm:items-start sm:gap-x-3">
+            <Label htmlFor="doc-paths" className="text-xs text-muted-foreground sm:pt-2">
+              {t("docs.paths")}
+            </Label>
+            <div className="flex min-w-0 flex-col gap-1">
+              <Input
+                id="doc-paths"
+                className="font-mono text-xs md:text-xs"
+                placeholder={t("docs.pathsPlaceholder")}
+                value={draft.paths}
+                readOnly={!canEdit}
+                onChange={(e) => setDraft({ ...draft, paths: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">{t("docs.pathsHint")}</p>
+            </div>
+          </div>
+        )}
         {scope === "org" ? (
           <label className="flex items-center gap-2 text-sm">
             <Checkbox

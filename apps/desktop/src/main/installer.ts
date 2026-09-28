@@ -19,10 +19,15 @@ export const GUARD_SCRIPT = String.raw`#!/bin/sh
 root=$CLAUDE_PROJECT_DIR
 [ -n "$root" ] || root=$(pwd)
 file=$(sed -n 's/.*"file_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+block() {
+  echo "xDev Hive: $file is generated from Hive. Use doc_get + doc_propose instead of editing it." >&2
+  exit 2
+}
 case "$file" in
-  "$root/AGENTS.md"|"$root/CLAUDE.md"|"$root/docs/decisions.md"|AGENTS.md|CLAUDE.md|docs/decisions.md)
-    echo "xDev Hive: $file is generated from Hive. Use doc_get + doc_propose instead of editing it." >&2
-    exit 2 ;;
+  "$root/AGENTS.md"|"$root/CLAUDE.md"|"$root/docs/decisions.md"|AGENTS.md|CLAUDE.md|docs/decisions.md) block ;;
+  "$root/.claude/rules/xdev-hive/"*|.claude/rules/xdev-hive/*) block ;;
+  # A nested AGENTS.md is Hive's when it has the managed block (docs for some paths).
+  */AGENTS.md) grep -q 'xdev-hive:start' "$file" 2>/dev/null && block ;;
 esac
 exit 0
 `;
@@ -31,7 +36,12 @@ exit 0
 export const PRE_COMMIT = String.raw`#!/bin/sh
 # xdev-hive: docs rendered from xDev Hive can only be committed by the Hive app.
 [ "$HIVE_ADMIN" = "1" ] && exit 0
-blocked=$(git diff --cached --name-only | grep -E '^(AGENTS\.md|CLAUDE\.md|docs/decisions\.md)$')
+blocked=$(git diff --cached --name-only | grep -E '^(AGENTS\.md|CLAUDE\.md|docs/decisions\.md|\.claude/rules/xdev-hive/.*)$')
+# A nested AGENTS.md is Hive's when it has the managed block, in the commit or before it.
+nested=$(git diff --cached --name-only | grep -E '/AGENTS\.md$' | while IFS= read -r f; do
+  { git show ":$f" 2>/dev/null; git show "HEAD:$f" 2>/dev/null; } | grep -q 'xdev-hive:start' && printf '%s\n' "$f"
+done)
+blocked=$(printf '%s\n%s\n' "$blocked" "$nested" | sed '/^$/d')
 if [ -n "$blocked" ]; then
   echo "xDev Hive: các file sau được quản lý trong Hive, không commit trực tiếp:" >&2
   echo "$blocked" | sed 's/^/  /' >&2

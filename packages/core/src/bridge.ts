@@ -72,7 +72,7 @@ export interface HubUser {
 
 export interface FileAction {
   file: string;
-  action: "created" | "updated" | "unchanged" | "skipped";
+  action: "created" | "updated" | "unchanged" | "skipped" | "removed";
   note?: string;
 }
 
