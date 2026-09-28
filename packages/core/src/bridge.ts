@@ -1,7 +1,7 @@
 // Contracts between the shared UI and its hosts (web hub, desktop main process). Types only.
 import type { Access, Level } from "./access.ts";
 import type { AgentKind, AgentProfile, AgentRole, PlanUsage, RunnerSettings, RunStatus } from "./agents.ts";
-import type { MrSettings, MrState } from "./gitlab.ts";
+import type { MrSettings, MrState, MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { TransferReport } from "./transfer.ts";
 import type { MachineCommand, Role, SetupItem, SetupReport, TeamPolicy, WebhookEvent, WebhookKind } from "./types.ts";
 
@@ -204,6 +204,11 @@ export interface AgentRun {
   mrState: MrState | null;
   mrDraft: boolean;
   mrNote: string | null;
+  /** What the app last saw of the MR on GitLab (it checks open ones every few minutes). */
+  mrStatus: MrStatus | null;
+  pipelineStatus: PipelineStatus | null;
+  pipelineUrl: string | null;
+  mrCheckedAt: string | null;
   /** From the CLI's JSON result (Claude Code): estimated at API prices, which a subscription does not bill. */
   costUsd: number | null;
   /** Input tokens including cache reads and writes. */

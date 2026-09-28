@@ -12,6 +12,9 @@ export interface MockMr {
   labels?: string;
   add_labels?: string;
   remove_source_branch?: boolean;
+  /** Set by tests: what GET .../merge_requests/:iid answers ("opened" when unset). */
+  state?: "opened" | "closed" | "locked" | "merged";
+  head_pipeline?: { id: number; status: string; web_url: string } | null;
 }
 
 export interface MockGitLab {
@@ -64,6 +67,12 @@ export async function startMockGitLab(token: string): Promise<MockGitLab> {
       const mr = { ...body, iid, web_url: `${gl.base}/group/demo/-/merge_requests/${iid}` };
       gl.mrs.push(mr);
       return send(201, mr);
+    }
+    const one = /^\/api\/v4\/projects\/(?:42|group%2Fdemo)\/merge_requests\/(\d+)$/.exec(p);
+    if (one && req.method === "GET") {
+      const mr = gl.mrs.find((m) => m.iid === Number(one[1]));
+      if (!mr) return send(404, { message: "404 Not Found" });
+      return send(200, { state: "opened", head_pipeline: null, ...mr });
     }
     const put = /^\/api\/v4\/projects\/42\/merge_requests\/(\d+)$/.exec(p);
     if (put && req.method === "PUT") {

@@ -31,7 +31,10 @@ export interface MrHost {
   user?: string;
 }
 
-const clipTail = (s: string, n: number) => (s.length > n ? `…${s.slice(-(n - 1))}` : s);
+export const clipTail = (s: string, n: number) => (s.length > n ? `…${s.slice(-(n - 1))}` : s);
+
+/** Who writes MR links and merges on tasks. */
+export const mrActor = (host: MrHost): Actor => ({ name: host.mode() === "hub" ? "hive-mr" : `hive-mr@${host.user ?? "local"}`, role: "agent" });
 
 export class MergeRequester {
   readonly #host: MrHost;
@@ -112,7 +115,7 @@ export class MergeRequester {
     }
 
     const backend = this.#host.backend();
-    const actor = this.#actor();
+    const actor = mrActor(this.#host);
     const task = (await backend.call("tasks.list", { project: run.project }, actor)).find((t) => t.id === run.taskId) ?? null;
     const title = mrTitle({ taskId: run.taskId, taskTitle: task?.title ?? run.taskTitle }, draft);
     const description = mrDescription({
@@ -145,10 +148,6 @@ export class MergeRequester {
       note = [note, tr("mrNote.taskLinkFailed", { reason: (err as Error).message })].filter(Boolean).join(" · ");
     }
     return { mrUrl: mr.web_url, mrIid: mr.iid, mrState: existing ? "updated" : "created", mrDraft: draft, mrNote: note };
-  }
-
-  #actor(): Actor {
-    return { name: this.#host.mode() === "hub" ? "hive-mr" : `hive-mr@${this.#host.user ?? "local"}`, role: "agent" };
   }
 
   async #push(repo: string, branch: string, s: GitLabSettings, remoteUrl: string, remote: RemoteInfo | null, host: string): Promise<void> {

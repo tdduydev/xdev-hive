@@ -19,6 +19,19 @@ export interface GitLabMr {
   target_branch: string;
 }
 
+export interface GitLabPipeline {
+  id: number;
+  status: string;
+  web_url: string;
+}
+
+export interface GitLabMrDetail extends GitLabMr {
+  state: "opened" | "closed" | "locked" | "merged";
+  merged_at?: string | null;
+  /** The pipeline of the MR's latest commit; null before one ran (or without CI). */
+  head_pipeline?: GitLabPipeline | null;
+}
+
 export interface MrBody {
   source_branch?: string;
   target_branch: string;
@@ -89,6 +102,11 @@ export class GitLabClient {
 
   openMergeRequests(projectId: number, sourceBranch: string): Promise<GitLabMr[]> {
     return this.#request("GET", `/projects/${projectId}/merge_requests?state=opened&source_branch=${encodeURIComponent(sourceBranch)}`);
+  }
+
+  /** `project` is the numeric id or the path (group/project). */
+  mergeRequest(project: string | number, iid: number): Promise<GitLabMrDetail> {
+    return this.#request("GET", `/projects/${encodeURIComponent(String(project))}/merge_requests/${iid}`);
   }
 
   createMergeRequest(projectId: number, body: MrBody): Promise<GitLabMr> {

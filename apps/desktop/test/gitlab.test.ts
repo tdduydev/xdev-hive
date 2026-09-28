@@ -9,6 +9,7 @@ import { SqliteHive } from "@xdev-hive/core/node";
 import { fence, mrDescription, parseVerdict } from "../src/main/gitlab/describe.ts";
 import { MergeRequester } from "../src/main/gitlab/mr.ts";
 import { parseRemoteUrl } from "../src/main/gitlab/remote.ts";
+import { MrWatcher, mrRef } from "../src/main/gitlab/watch.ts";
 import { Runner } from "../src/main/runner/runner.ts";
 import { startMockGitLab, type MockGitLab } from "./fixtures/mock-gitlab.ts";
 
@@ -71,7 +72,7 @@ async function setup(reviewMode: string, mr: Partial<MrSettings> = {}, token = T
     { dataDir: tmp("data"), user: "duy", tickMs: 60_000, afterFinish: (run) => requester.afterFinish(run) },
   );
   const task = async () => (await hive.call("tasks.list", { project: "demo" }, admin)).find((t) => t.id === "T-1")!;
-  return { origin, repo, runner, requester, task };
+  return { origin, repo, hive, runner, requester, task };
 }
 
 describe("remote & verdict parsing", () => {
@@ -175,5 +176,111 @@ describe("merge requests", () => {
     assert.equal(review.status, "succeeded");
     assert.equal(review.mrState, "failed");
     assert.match(review.mrNote ?? "", /GitLab 401/);
+  });
+});
+
+describe("merge request watch", () => {
+  it("reads project path and iid from MR links on the configured GitLab only", () => {
+    assert.deepEqual(mrRef("https://gitlab.fis.vn", "https://gitlab.fis.vn/group/sub/proj/-/merge_requests/12"), { project: "group/sub/proj", iid: 12 });
+    assert.deepEqual(mrRef("https://git.example.com/gitlab/", "https://git.example.com/gitlab/g/p/-/merge_requests/3"), { project: "g/p", iid: 3 });
+    assert.equal(mrRef("https://gitlab.fis.vn", "https://gitlab.fis.vn.evil.io/g/p/-/merge_requests/1"), null);
+    assert.equal(mrRef("https://gitlab.fis.vn", "https://other.host/g/p/-/merge_requests/1"), null);
+    assert.equal(mrRef("https://gitlab.fis.vn", "https://gitlab.fis.vn/g/p/-/issues/1"), null);
+  });
+
+  async function opened(mr: Partial<MrSettings> = {}) {
+    const s = await setup("review", mr);
+    const run = await s.runner.enqueue({ project: "demo", taskId: "T-1", reviewAfter: true });
+    await s.runner.settle();
+    const review = s.runner.list().find((r) => r.parentRunId === run.id)!;
+    assert.equal(review.mrState, "created", review.mrNote ?? "");
+    const watcher = new MrWatcher({
+      gitlab: () => gitlabSettingsSchema.parse({ url: gl.base, token: TOKEN, mr: { enabled: true, ...mr } }),
+      projects: () => [],
+      backend: () => s.hive,
+      mode: () => "local",
+      store: () => s.runner.store,
+      user: "duy",
+    });
+    return { ...s, run, review, watcher };
+  }
+
+  it("follows the pipeline and moves the task to done when the MR is merged", async () => {
+    const { runner, run, review, watcher, task } = await opened();
+    assert.equal(watcher.watching(), true);
+
+    gl.mrs[0]!.head_pipeline = { id: 7, status: "running", web_url: `${gl.base}/group/demo/-/pipelines/7` };
+    let changes = await watcher.check();
+    assert.equal(changes.length, 1);
+    assert.deepEqual(changes[0]!.pipeline, { from: null, to: "running" });
+    assert.equal(changes[0]!.taskDone, false);
+    const r = runner.store.get(review.id)!;
+    assert.equal(r.mrStatus, "opened");
+    assert.equal(r.pipelineStatus, "running");
+    assert.equal(r.pipelineUrl, `${gl.base}/group/demo/-/pipelines/7`);
+    assert.ok(r.mrCheckedAt);
+    assert.equal(runner.store.get(run.id)!.mrStatus, null, "the implement run has no MR of its own");
+    assert.deepEqual(await watcher.check(), [], "nothing new");
+
+    gl.mrs[0]!.head_pipeline!.status = "failed";
+    changes = await watcher.check();
+    assert.deepEqual(changes[0]!.pipeline, { from: "running", to: "failed" });
+    assert.equal((await task()).status, "review");
+
+    gl.mrs[0]!.state = "merged";
+    gl.mrs[0]!.head_pipeline!.status = "success";
+    changes = await watcher.check();
+    assert.deepEqual(changes[0]!.status, { from: "opened", to: "merged" });
+    assert.equal(changes[0]!.taskDone, true);
+    const t = await task();
+    assert.equal(t.status, "done");
+    assert.match(t.note ?? "", /MR !1: http[^\n]+\n\nMR !1 merged\.$/);
+
+    // A merged MR is not asked about again.
+    gl.calls = [];
+    assert.equal(watcher.watching(), false);
+    assert.deepEqual(await watcher.check(), []);
+    assert.equal(gl.calls.length, 0);
+  });
+
+  it("leaves the task alone when turned off, and records a closed MR", async () => {
+    const off = await opened({ doneOnMerge: false });
+    gl.mrs[0]!.state = "merged";
+    const [merged] = await off.watcher.check();
+    assert.equal(merged!.status.to, "merged");
+    assert.equal(merged!.taskDone, false);
+    assert.equal((await off.task()).status, "review");
+
+    const closed = await opened();
+    gl.mrs[0]!.state = "closed";
+    const [c] = await closed.watcher.check();
+    assert.deepEqual(c!.status, { from: null, to: "closed" });
+    assert.equal(c!.taskDone, false);
+    assert.equal((await closed.task()).status, "review");
+    assert.equal(closed.runner.store.get(closed.review.id)!.mrStatus, "closed");
+  });
+
+  it("asks once per MR and saves the answer on every run that points at it", async () => {
+    const { watcher, review, runner } = await opened();
+    const later = runner.store.insert(
+      { project: "demo", taskId: "T-1", taskTitle: "x", role: "implement", attempt: 1, maxAttempts: 1 },
+      new Date(Date.now() + 1000).toISOString(),
+    );
+    runner.store.update(later.id, { status: "succeeded", mrUrl: review.mrUrl, mrIid: review.mrIid, mrState: "updated" });
+    assert.deepEqual(runner.store.openMrs("2000-01-01T00:00:00.000Z").map((r) => r.id), [later.id]);
+    gl.calls = [];
+    await watcher.check();
+    assert.equal(gl.calls.filter((c) => c.method === "GET").length, 1);
+    assert.equal(runner.store.get(review.id)!.mrStatus, "opened");
+    assert.equal(runner.store.get(later.id)!.mrStatus, "opened");
+  });
+
+  it("skips an MR GitLab cannot answer and tries it again next time", async () => {
+    const { watcher, review, runner } = await opened();
+    const mr = gl.mrs.pop()!;
+    assert.deepEqual(await watcher.check(), []);
+    assert.equal(runner.store.get(review.id)!.mrStatus, null);
+    gl.mrs.push(mr);
+    assert.equal((await watcher.check()).length, 1);
   });
 });
