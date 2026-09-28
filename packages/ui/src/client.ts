@@ -10,6 +10,8 @@ import {
   type MethodOutput,
   type Role,
   type TokenInfo,
+  type WebhookInfo,
+  type WebhookInput,
 } from "@xdev-hive/core";
 
 /** What the UI needs from its host. The web hub implements it over HTTP, the desktop app over IPC. */
@@ -33,6 +35,13 @@ export interface HiveClient {
     update(id: string, patch: { displayName?: string; admin?: boolean; disabled?: boolean }): Promise<HubUser>;
     setGrants(id: string, grants: Record<string, Level>): Promise<HubUser>;
     resetPassword(id: string): Promise<string>;
+  };
+  /** Hub only, for hub admins: chat webhooks for hub events. */
+  webhooks?: {
+    list(): Promise<WebhookInfo[]>;
+    save(input: WebhookInput): Promise<WebhookInfo>;
+    remove(id: number): Promise<void>;
+    test(id: number): Promise<{ ok: boolean; error: string | null }>;
   };
   /** Desktop only: local projects, sync and agent installers. */
   desktop?: DesktopBridge;
@@ -108,6 +117,14 @@ export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpCl
       update: (id, patch) => rpc<HubUser>("users.update", { id, ...patch }),
       setGrants: (id, grants) => rpc<HubUser>("users.setGrants", { id, grants }),
       resetPassword: async (id) => (await rpc<{ password: string }>("users.resetPassword", { id })).password,
+    },
+    webhooks: {
+      list: () => rpc<WebhookInfo[]>("webhooks.list"),
+      save: (input) => rpc<WebhookInfo>("webhooks.save", input),
+      remove: async (id) => {
+        await rpc("webhooks.remove", { id });
+      },
+      test: (id) => rpc<{ ok: boolean; error: string | null }>("webhooks.test", { id }),
     },
   };
 }

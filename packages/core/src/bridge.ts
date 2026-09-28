@@ -3,7 +3,7 @@ import type { Access, Level } from "./access.ts";
 import type { AgentKind, AgentProfile, AgentRole, PlanUsage, RunnerSettings, RunStatus } from "./agents.ts";
 import type { MrSettings, MrState } from "./gitlab.ts";
 import type { TransferReport } from "./transfer.ts";
-import type { MachineCommand, Role, SetupItem, SetupReport, TeamPolicy } from "./types.ts";
+import type { MachineCommand, Role, SetupItem, SetupReport, TeamPolicy, WebhookEvent, WebhookKind } from "./types.ts";
 
 export interface Me {
   name: string;
@@ -23,6 +23,37 @@ export interface TokenInfo {
   ownerId: string | null;
   createdAt: string;
   lastUsedAt: string | null;
+}
+
+/** A chat webhook as hub admins see it: the URL is a secret, so only a hint of it comes back. */
+export interface WebhookInfo {
+  id: number;
+  name: string;
+  kind: WebhookKind;
+  /** e.g. "https://hooks.slack.com/…/x9Qa" */
+  urlHint: string;
+  events: WebhookEvent[];
+  /** Only these projects' events; empty: every project and the shared data. */
+  projects: string[];
+  /** Language of the messages. */
+  locale: string;
+  enabled: boolean;
+  createdAt: string;
+  lastSentAt: string | null;
+  /** The last send's error; null after a success. */
+  lastError: string | null;
+}
+
+export interface WebhookInput {
+  id?: number;
+  name: string;
+  kind: WebhookKind;
+  /** Required for a new webhook; omit on an update to keep the stored one. */
+  url?: string;
+  events: WebhookEvent[];
+  projects: string[];
+  locale: string;
+  enabled: boolean;
 }
 
 /** A person's hub account, as admins manage it. */

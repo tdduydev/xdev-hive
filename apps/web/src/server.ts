@@ -3,6 +3,7 @@
 //   HIVE_ALLOWED_HOSTS=hive.xdev.asia   (required behind a reverse proxy / public hostname)
 //   HIVE_MEMORY_APPROVAL=off            (memory from agents is visible without admin approval)
 //   HIVE_MEMORY_STALE_DAYS=90           (memory no agent used for this long is left out of agents' searches; 0 = never)
+//   HIVE_PUBLIC_URL=https://hive.xdev.asia (links in webhook messages; default: https:// + the first allowed host)
 //   HIVE_BOOTSTRAP_TOKEN=...            (fixed admin token for automated deploys)
 //   HIVE_ADMIN_USER=admin              (name of the first admin account, created with a temporary password)
 //   HIVE_TRUST_PROXY=1                 (behind a TLS proxy: Secure cookies, client address from X-Forwarded-For)
@@ -10,11 +11,13 @@
 import { createServer } from "node:http";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import type { HiveEvent } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { allowedHostsFor, createHubApp, type HubAppOptions } from "./app.ts";
 import { backupDatabase, backupFile, backupSettings, type BackupResult } from "./backup.ts";
 import { TokenStore } from "./tokens.ts";
 import { UserStore } from "./users.ts";
+import { WebhookDispatcher, WebhookStore } from "./webhooks.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
 const port = Number(process.env.HIVE_PORT ?? 7788);
@@ -35,9 +38,12 @@ const logBackup = (when: string, take: () => BackupResult | null) => {
 if (backup) logBackup("start", () => backupFile(dbPath, backup));
 
 const staleDays = Number(process.env.HIVE_MEMORY_STALE_DAYS ?? 90);
+// Set once the webhook store exists (it lives in the hub's database).
+let onEvent: (event: HiveEvent) => void = () => undefined;
 const hive = new SqliteHive(dbPath, {
   memoryRequiresApproval: process.env.HIVE_MEMORY_APPROVAL !== "off",
   memoryStaleDays: Number.isFinite(staleDays) && staleDays >= 0 ? staleDays : 90,
+  onEvent: (event) => onEvent(event),
 });
 hive.seed("hub");
 const tokens = new TokenStore(hive.db);
@@ -51,6 +57,11 @@ if (users.count() === 0) {
 }
 
 const allowedHosts = allowedHostsFor(process.env.HIVE_ALLOWED_HOSTS, host);
+
+const publicHost = allowedHosts?.find((h) => !["localhost", "127.0.0.1", "::1", "[::1]"].includes(h));
+const webhookStore = new WebhookStore(hive.db);
+const dispatcher = new WebhookDispatcher(webhookStore, { publicUrl: process.env.HIVE_PUBLIC_URL ?? (publicHost ? `https://${publicHost}` : null) });
+onEvent = (event) => void dispatcher.notify(event);
 
 if (backup) setInterval(() => logBackup("scheduled", () => backupDatabase(hive.db, backup)), backup.hours * 3_600_000).unref();
 
@@ -72,7 +83,10 @@ if (production) {
   closeVite = () => vite.close();
 }
 
-httpServer.on("request", createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy: process.env.HIVE_TRUST_PROXY === "1" }));
+httpServer.on(
+  "request",
+  createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy: process.env.HIVE_TRUST_PROXY === "1", webhooks: { store: webhookStore, dispatcher } }),
+);
 httpServer.listen(port, host, () => {
   console.log(`[xdev-hive] hub on http://${host}:${port} (${production ? "production" : "dev"}), db ${dbPath}`);
   if (!allowedHosts) console.warn("[xdev-hive] HIVE_ALLOWED_HOSTS not set: Host header is not validated.");

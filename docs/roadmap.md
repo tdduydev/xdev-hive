@@ -28,7 +28,8 @@ Làm lần lượt, mỗi lượt một mục (mỗi mục một PR). Mục có 
 - [x] **4a. memory-last-used**: hub đếm số lần và lần cuối `memory_search` của agent trả về mỗi mục (migration 7); mục không dùng/ghi/giữ lại 90 ngày (`HIVE_MEMORY_STALE_DAYS`) thành *cũ*, agent không thấy nữa nhưng không bị xoá; trang Memory có lọc *Chỉ mục cũ*, nhãn *Cũ* và nút *Giữ lại* (`memory.keep`).
 - [x] **4b. memory-citations**: `memory_write` nhận `files` (đường dẫn trong repo); app desktop mỗi 30 phút gửi mã object git của các file đó trên nhánh dự án (`memory.checkFiles`, migration 8): lần đầu làm mốc, đổi hay mất thì mục *Cần xem lại*, quay về thì hết; trang Memory hiện file và nút *Vẫn đúng* (lấy bản hiện tại làm mốc).
 - [x] **4c. memory-links**: `memory_write` nhận `supersedes` / `contradicts` (cùng chủ, migration 9); agent chỉ thấy mục mới nhất của chuỗi (mục thay còn chờ duyệt thì mục cũ vẫn hiện), mục mâu thuẫn hiện cả hai kèm `conflictsWith` tới khi người quản trị chọn (`memory.resolve`: giữ mục này / mục kia / cả hai); xoá mục thay thì mục cũ hiện lại.
-- [ ] **5. webhooks**: Slack/Teams cho đề xuất chờ duyệt, run lỗi, MR mới, yêu cầu cài.
+- [x] **5a. webhooks-hub** (hỏi 28/9: cả Teams và Slack, cấu hình trên trang Quản trị): tab *Webhook* cho admin hub (thêm/sửa/xoá/gửi thử; URL là bí mật, chỉ hiện dạng che); `SqliteHive` phát sự kiện (`onEvent`), hub gửi Adaptive Card (Teams Workflows) hoặc tin Slack cho đề xuất chờ duyệt, memory chờ duyệt, yêu cầu cài và kết quả; lọc theo sự kiện, dự án, ngôn ngữ.
+- [ ] **5b. webhooks-runs**: app desktop báo run lỗi và MR mới lên hub, hub gửi qua cùng các webhook.
 - [ ] **6. gitlab-ci-loop**: đọc pipeline của MR, gửi lỗi cho agent sửa, MR merge thì task chuyển sang Xong.
 - [ ] **7. task-deps**: task phụ thuộc, tự mở khoá, gợi ý "task sẵn sàng tiếp theo".
 - [ ] **8. scoped-docs**: tài liệu theo glob đường dẫn, sinh `.claude/rules` hoặc `AGENTS.md` lồng nhau, giữ `AGENTS.md` ngắn.

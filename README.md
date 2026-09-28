@@ -24,6 +24,12 @@ Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, 
   - Lần đầu thấy một file thì lấy bản đó làm mốc. File chưa có trên nhánh (vừa tạo trong task) thì chờ, không bị báo mất.
   - Về sau file khác mốc thì mục bị đánh dấu *Cần xem lại* (file đã đổi / không còn); file quay về như mốc thì hết đánh dấu. Không tìm thấy nhánh thì không kiểm gì, để khỏi báo mọi file đều mất.
   - Agent vẫn thấy mục cần xem lại, kèm trường `review`. Trang Memory hiện các file và nút *Vẫn đúng*: lấy file hiện tại làm mốc mới.
+- **Webhook Teams / Slack**: tab *Webhook* trong trang *Quản trị* (chỉ admin của hub) để thêm webhook gửi tin vào kênh.
+  - Teams dùng luồng Workflows "Post to a channel when a webhook request is received", tin dạng Adaptive Card. Slack dùng Incoming Webhook.
+  - Sự kiện chọn được: đề xuất chờ duyệt, memory chờ duyệt, yêu cầu cài trên máy và kết quả của nó.
+  - Mỗi webhook chọn sự kiện, lọc theo dự án (để trống là tất cả, kể cả dữ liệu chung và yêu cầu cài) và ngôn ngữ tin. Tin có nút mở đúng trang trên hub.
+  - URL webhook là bí mật: chỉ nhận `https`, lưu trên hub, trang chỉ hiện dạng che (`https://hooks.slack.com/…x9Qa`). Sửa mà để trống URL thì giữ URL cũ. Lỗi gửi chỉ ghi `HTTP 500`, `timeout` hay `network error`, không ghi URL.
+  - Nút *Gửi thử* gửi một tin thử. Lần gửi cuối và lỗi (nếu có) hiện trên thẻ webhook.
 - **Thay thế và mâu thuẫn** thay vì xoá:
   - Thay thế: `memory_write` với `supersedes: <id>` ghi mục mới thay cho mục cũ cùng dự án (hoặc cùng là memory chung). Khi mục mới được duyệt, `memory_search` của agent bỏ mục cũ, nên cả chuỗi chỉ còn mục mới nhất. Muốn thay thì thay mục mới nhất; xoá mục thay thì mục trước nó hiện lại.
   - Mâu thuẫn: `contradicts: <id>` đánh dấu hai mục nói khác nhau. Agent thấy cả hai, kèm `conflictsWith`, cho tới khi người quản trị dự án chọn trên trang Memory: *Giữ mục này*, *Giữ #…* (mục kia bị thay), hoặc *Không mâu thuẫn* (`memory.resolve`).
@@ -186,6 +192,7 @@ HIVE_HOST=0.0.0.0 HIVE_ALLOWED_HOSTS=hive.example.com HIVE_DB=/data/hub.db HIVE_
 | `HIVE_DB` | `apps/web/data/hub.db` | File SQLite (image: `/data/hub.db`) |
 | `HIVE_MEMORY_APPROVAL` | bật | `off`: memory của agent hiện ngay, không cần duyệt |
 | `HIVE_MEMORY_STALE_DAYS` | `90` | Memory không agent nào dùng (và không ai ghi hay giữ lại) trong ngần này ngày bị coi là cũ: `memory_search` của agent bỏ qua, trang Memory vẫn hiện để xem lại. `0`: không bao giờ cũ |
+| `HIVE_PUBLIC_URL` | `https://` + host đầu tiên của `HIVE_ALLOWED_HOSTS` | Địa chỉ hub dùng cho link trong tin webhook |
 | `HIVE_ADMIN_USER` | `admin` | Tên tài khoản admin đầu tiên (tạo khi hub chưa có tài khoản nào) |
 | `HIVE_TRUST_PROXY` | tắt (compose: `1`) | Hub đứng sau proxy TLS: cookie phiên có `Secure`, giới hạn đăng nhập sai theo IP thật từ `X-Forwarded-For`. Chỉ bật khi mọi request đi qua proxy |
 | `HIVE_BOOTSTRAP_TOKEN` | – | Token admin cố định (≥ 32 ký tự) cho deploy tự động |
