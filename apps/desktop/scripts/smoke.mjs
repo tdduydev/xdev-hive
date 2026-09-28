@@ -41,6 +41,8 @@ writeFileSync(
   path.join(work, "config.json"),
   JSON.stringify({
     mode: "local",
+    // The main process starts in the language the screenshots use (tray, notifications, setup items).
+    locale: process.env.HIVE_SMOKE_LOCALE ?? "vi",
     projects: [{ name: "demo", repo, gitlabProject: "group/demo" }],
     gitlab: { url: gitlab.base, token, mr: { enabled: true } },
     agents: [

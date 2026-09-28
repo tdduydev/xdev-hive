@@ -17,6 +17,7 @@ import {
   type SyncReport,
 } from "@xdev-hive/core";
 import { git, gitErrorText, isGitRepo } from "./git.ts";
+import { tr } from "./i18n.ts";
 
 const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : null);
 
@@ -32,7 +33,7 @@ export async function syncProject(
   opts: { autoCommit: boolean },
 ): Promise<SyncReport> {
   const { name, repo } = project;
-  if (!existsSync(repo)) throw new HiveError("not_found", `Không thấy thư mục repo: ${repo}`);
+  if (!existsSync(repo)) throw new HiveError("not_found", `Không thấy thư mục repo: ${repo}`, { key: "errors.noFolder", vars: { path: repo } });
   const gitRepo = isGitRepo(repo);
   const notes: string[] = [];
   const imported: string[] = [];
@@ -52,7 +53,7 @@ export async function syncProject(
       imported.push(key);
     } catch (err) {
       if (!(err instanceof HiveError && err.code === "forbidden")) throw err;
-      notes.push(`Cần token admin để tạo ${key}`);
+      notes.push(tr("syncNote.needAdmin", { key }));
     }
   }
 
@@ -76,12 +77,12 @@ export async function syncProject(
       continue;
     }
     if (f.path === "AGENTS.md" && !hasAgentsDoc && before && !before.includes(MANAGED_START)) {
-      actions.push({ file: f.path, action: "skipped", note: "chưa có bản trong Hive, không ghi đè bản trong repo" });
+      actions.push({ file: f.path, action: "skipped", note: tr("fileNote.notInHive") });
       continue;
     }
     // With auto-commit, every earlier sync was committed, so a dirty file means someone edited it by hand.
     if (opts.autoCommit && gitRepo && before !== null && /^(.M|M)/.test(git(repo, ["status", "--porcelain", "--", f.path]))) {
-      actions.push({ file: f.path, action: "skipped", note: "có thay đổi chưa commit, xử lý trước khi đồng bộ" });
+      actions.push({ file: f.path, action: "skipped", note: tr("fileNote.uncommitted") });
       continue;
     }
     mkdirSync(path.dirname(abs), { recursive: true });
@@ -93,14 +94,14 @@ export async function syncProject(
   let commit: string | null = null;
   if (changed.length && opts.autoCommit) {
     if (!gitRepo) {
-      notes.push("Không phải git repo nên không commit");
+      notes.push(tr("syncNote.notGitRepo"));
     } else {
       try {
         git(repo, ["add", "--", ...changed]);
         git(repo, ["commit", "-m", "docs(xdev-hive): sync shared docs", "--", ...changed], { HIVE_ADMIN: "1" });
         commit = git(repo, ["rev-parse", "--short", "HEAD"]);
       } catch (err) {
-        notes.push(`Commit thất bại: ${gitErrorText(err)}`);
+        notes.push(tr("syncNote.commitFailed", { reason: gitErrorText(err) }));
       }
     }
   }
