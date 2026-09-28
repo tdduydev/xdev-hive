@@ -19,6 +19,11 @@ describe("machine name", () => {
     assert.equal(agentActorName("claude-1", "local", "duy-mbp", "admin"), "claude-1@admin");
   });
 
+  it("keeps the interface language, Vietnamese until the app says otherwise", () => {
+    assert.equal(configSchema.parse({}).locale, "vi");
+    assert.equal(configSchema.parse({ locale: "en" }).locale, "en");
+  });
+
   it("rejects an invalid machine in config.json", () => {
     assert.throws(() => configSchema.parse({ machine: "Duy MBP" }), /machine/);
   });

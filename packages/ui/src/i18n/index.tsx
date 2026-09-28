@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Vars } from "./types.ts";
-import { activeLocale, readLocale, setActiveLocale, translate, writeLocale, type Locale, type MessageKey } from "./translate.ts";
+import { readLocale, writeLocale } from "./storage.ts";
+import { activeLocale, setActiveLocale, translate, type Locale, type MessageKey } from "./translate.ts";
 
 export { rich } from "./rich.ts";
 export { LOCALES, activeIntl, isLocale, translate, type Locale, type MessageKey } from "./translate.ts";
@@ -9,8 +10,11 @@ export type TFunction = (key: MessageKey, vars?: Vars) => string;
 
 const I18nContext = createContext<{ locale: Locale; setLocale: (locale: Locale) => void } | null>(null);
 
-/** Holds the interface language for everything under it (web root, desktop root). */
-export function I18nProvider({ children }: { children: ReactNode }) {
+/**
+ * Holds the interface language for everything under it (web root, desktop root). `onChange` hears the
+ * language at start and on every change (the desktop app tells its main process: tray, notifications).
+ */
+export function I18nProvider({ children, onChange }: { children: ReactNode; onChange?: (locale: Locale) => void }) {
   const [locale, setLocaleState] = useState<Locale>(() => {
     const initial = readLocale();
     setActiveLocale(initial);
@@ -23,7 +27,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   }, []);
   useEffect(() => {
     document.documentElement.lang = locale;
-  }, [locale]);
+    onChange?.(locale);
+  }, [locale, onChange]);
   const value = useMemo(() => ({ locale, setLocale }), [locale, setLocale]);
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
