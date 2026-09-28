@@ -24,6 +24,7 @@ export function assertNoSecret(text: string, field: string): void {
     throw new HiveError(
       "bad_request",
       `${field} looks like it contains a ${hit}. Secrets must never be stored in xDev Hive.`,
+      { key: "errors.secret", vars: { kind: hit } },
     );
   }
 }

@@ -1,7 +1,7 @@
 import express, { type NextFunction, type Request, type RequestHandler, type Response } from "express";
 import { hostHeaderValidation } from "@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { HiveError, HTTP_STATUS, isMethod, TOKEN_ROLES, type Actor, type Me, type Role } from "@xdev-hive/core";
+import { HiveError, HTTP_STATUS, isMethod, toErrorPayload, TOKEN_ROLES, type Actor, type Me, type Role } from "@xdev-hive/core";
 import type { SqliteHive } from "@xdev-hive/core/node";
 import { createHiveMcpServer } from "@xdev-hive/mcp";
 import type { TokenStore } from "./tokens.ts";
@@ -49,7 +49,7 @@ export function allowedHostsFor(configured: string | undefined, bindHost: string
 
 function sendError(res: Response, err: unknown): void {
   if (err instanceof HiveError) {
-    res.status(HTTP_STATUS[err.code]).json({ error: { code: err.code, message: err.message } });
+    res.status(HTTP_STATUS[err.code]).json({ error: toErrorPayload(err) });
     return;
   }
   console.error("[xdev-hive]", err);
@@ -62,7 +62,7 @@ const userOf = (res: Response) => res.locals.user as UserInfo | undefined;
 /** Hub admins: an admin account, or an admin token of no account (the bootstrap / pre-account tokens). */
 function requireHubAdmin(res: Response): void {
   const actor = actorOf(res);
-  if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Chỉ admin của hub.");
+  if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Chỉ admin của hub.", { key: "errors.hubAdminOnly" });
 }
 
 function readCookie(req: Request, name: string): string | null {
@@ -135,7 +135,7 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
       if (bearer) {
         const actor = tokenActor(req, res, bearer[1]!);
         if (!actor) {
-          res.status(401).json({ error: { code: "unauthorized", message: "Missing or invalid token." } });
+          res.status(401).json({ error: { code: "unauthorized", message: "Missing or invalid token.", key: "errors.invalidToken" } });
           return;
         }
         res.locals.actor = actor;
@@ -145,15 +145,15 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
       const session = opts.cookie ? readCookie(req, SESSION_COOKIE) : null;
       const user = session ? users.sessionUser(session) : null;
       if (!user) {
-        res.status(401).json({ error: { code: "unauthorized", message: "Chưa đăng nhập hoặc phiên đã hết hạn." } });
+        res.status(401).json({ error: { code: "unauthorized", message: "Chưa đăng nhập hoặc phiên đã hết hạn.", key: "errors.notSignedIn" } });
         return;
       }
       if (req.method !== "GET" && !sameSite(req)) {
-        res.status(403).json({ error: { code: "forbidden", message: "Yêu cầu không đến từ trang của hub." } });
+        res.status(403).json({ error: { code: "forbidden", message: "Yêu cầu không đến từ trang của hub.", key: "errors.crossSite" } });
         return;
       }
       if (user.mustChangePassword && !opts.allowPasswordChange) {
-        res.status(403).json({ error: { code: "forbidden", message: "Đổi mật khẩu tạm trước khi dùng hub." } });
+        res.status(403).json({ error: { code: "forbidden", message: "Đổi mật khẩu tạm trước khi dùng hub.", key: "errors.changePasswordFirst" } });
         return;
       }
       res.locals.user = user;
@@ -173,15 +173,18 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
   const signIn = (req: Request): UserInfo => {
     const { username, password } = (req.body ?? {}) as { username?: unknown; password?: unknown };
     if (typeof username !== "string" || typeof password !== "string" || !username || !password) {
-      throw new HiveError("bad_request", "Nhập tên đăng nhập và mật khẩu.");
+      throw new HiveError("bad_request", "Nhập tên đăng nhập và mật khẩu.", { key: "errors.credentialsRequired" });
     }
     const key = `${clientIp(req)}|${username.trim().toLowerCase()}`;
     const wait = throttle.blockedFor(key);
-    if (wait) throw new HiveError("forbidden", `Sai quá nhiều lần. Thử lại sau ${Math.ceil(wait / 60_000)} phút.`);
+    if (wait) {
+      const minutes = Math.ceil(wait / 60_000);
+      throw new HiveError("forbidden", `Sai quá nhiều lần. Thử lại sau ${minutes} phút.`, { key: "errors.tooManyAttempts", vars: { minutes } });
+    }
     const user = users.verify(username, password);
     if (!user) {
       throttle.fail(key);
-      throw new HiveError("unauthorized", "Sai tên đăng nhập hoặc mật khẩu.");
+      throw new HiveError("unauthorized", "Sai tên đăng nhập hoặc mật khẩu.", { key: "errors.badCredentials" });
     }
     throttle.reset(key);
     return user;
@@ -193,7 +196,7 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
 
   app.post("/api/login", json, (req, res) => {
     try {
-      if (!sameSite(req)) throw new HiveError("forbidden", "Yêu cầu không đến từ trang của hub.");
+      if (!sameSite(req)) throw new HiveError("forbidden", "Yêu cầu không đến từ trang của hub.", { key: "errors.crossSite" });
       const user = signIn(req);
       const session = users.startSession(user.id);
       setSession(req, res, session.token, session.maxAge);
@@ -216,7 +219,7 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
   app.post("/api/password", json, authenticate({ cookie: true, allowPasswordChange: true }), (req, res) => {
     try {
       const user = userOf(res);
-      if (!user) throw new HiveError("bad_request", "Token không có tài khoản để đổi mật khẩu.");
+      if (!user) throw new HiveError("bad_request", "Token không có tài khoản để đổi mật khẩu.", { key: "errors.tokenNoAccount" });
       const { current, next } = (req.body ?? {}) as { current?: unknown; next?: unknown };
       const updated = users.changePassword(user.id, String(current ?? ""), String(next ?? ""));
       // Other browsers signed in with the old password are signed out; this one gets a fresh session.
@@ -235,7 +238,9 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
   app.post("/api/device-token", json, (req, res) => {
     try {
       const user = signIn(req);
-      if (user.mustChangePassword) throw new HiveError("forbidden", "Tài khoản đang dùng mật khẩu tạm: đăng nhập hub trên trình duyệt để đổi mật khẩu trước.");
+      if (user.mustChangePassword) throw new HiveError("forbidden", "Tài khoản đang dùng mật khẩu tạm: đăng nhập hub trên trình duyệt để đổi mật khẩu trước.", {
+          key: "errors.temporaryPassword",
+        });
       const name = String((req.body as { name?: unknown }).name ?? "").trim();
       const created = tokens.create(name, user.admin ? "admin" : "member", user.id);
       for (const old of tokens.list(user.id)) if (old.name === created.info.name && old.id !== created.info.id) tokens.revoke(old.id);
@@ -263,7 +268,7 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
           res.json({ result: tokens.list() });
           return;
         }
-        if (!user) throw new HiveError("forbidden", "Token không thuộc tài khoản nào.");
+        if (!user) throw new HiveError("forbidden", "Token không thuộc tài khoản nào.", { key: "errors.tokenNoAccount" });
         res.json({ result: tokens.list(user.id) });
         return;
       }
@@ -271,8 +276,8 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
         const role = (i.role as Role | undefined) ?? "agent";
         const hubAdmin = actor.role === "admin" && !actor.access;
         const allowed: Role[] = hubAdmin ? TOKEN_ROLES : ["viewer", "agent"];
-        if (!allowed.includes(role)) throw new HiveError("forbidden", `Bạn chỉ tạo được token vai trò ${allowed.join(", ")}.`);
-        if (!hubAdmin && !user) throw new HiveError("forbidden", "Token không thuộc tài khoản nào.");
+        if (!allowed.includes(role)) throw new HiveError("forbidden", `Bạn chỉ tạo được token vai trò ${allowed.join(", ")}.`, { key: "errors.tokenRoleNotAllowed", vars: { roles: allowed.join(", ") } });
+        if (!hubAdmin && !user) throw new HiveError("forbidden", "Token không thuộc tài khoản nào.", { key: "errors.tokenNoAccount" });
         const created = tokens.create(String(i.name ?? ""), role, user?.id ?? null);
         hive.audit(actor, "tokens.create", created.info.name, created.info.role);
         res.json({ result: created });
@@ -280,9 +285,9 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
       }
       if (method === "tokens.revoke") {
         const info = tokens.get(String(i.id ?? ""));
-        if (!info) throw new HiveError("not_found", "Token not found.");
+        if (!info) throw new HiveError("not_found", "Token not found.", { key: "errors.tokenNotFound" });
         const hubAdmin = actor.role === "admin" && !actor.access;
-        if (!hubAdmin && (!user || info.ownerId !== user.id)) throw new HiveError("forbidden", "Chỉ thu hồi được token của bạn.");
+        if (!hubAdmin && (!user || info.ownerId !== user.id)) throw new HiveError("forbidden", "Chỉ thu hồi được token của bạn.", { key: "errors.revokeOwnOnly" });
         tokens.revoke(info.id);
         hive.audit(actor, "tokens.revoke", info.name, info.role);
         res.json({ result: { revoked: true } });
@@ -301,7 +306,7 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
           hive.audit(actor, "users.create", created.user.username, created.user.admin ? "admin" : "member");
           res.json({ result: created });
         } else if (method === "users.update") {
-          if (!target) throw new HiveError("not_found", "Không có tài khoản này.");
+          if (!target) throw new HiveError("not_found", "Không có tài khoản này.", { key: "errors.userNotFound" });
           const updated = users.update(id, {
             displayName: typeof i.displayName === "string" ? i.displayName : undefined,
             admin: typeof i.admin === "boolean" ? i.admin : undefined,
@@ -314,13 +319,13 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
           hive.audit(actor, "users.update", updated.username, changes.join(", ") || "sửa tên");
           res.json({ result: updated });
         } else if (method === "users.setGrants") {
-          if (!target) throw new HiveError("not_found", "Không có tài khoản này.");
+          if (!target) throw new HiveError("not_found", "Không có tài khoản này.", { key: "errors.userNotFound" });
           const updated = users.setGrants(id, (i.grants ?? {}) as Record<string, string>);
           const summary = Object.entries(updated.grants).map(([p, l]) => `${p}: ${l}`).join(", ");
           hive.audit(actor, "users.setGrants", updated.username, summary || "không dự án nào");
           res.json({ result: updated });
         } else if (method === "users.resetPassword") {
-          if (!target) throw new HiveError("not_found", "Không có tài khoản này.");
+          if (!target) throw new HiveError("not_found", "Không có tài khoản này.", { key: "errors.userNotFound" });
           const password = users.resetPassword(id);
           hive.audit(actor, "users.resetPassword", target.username);
           res.json({ result: { password } });

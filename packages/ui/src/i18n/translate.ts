@@ -34,6 +34,9 @@ function lookup(messages: Catalog, key: string): Leaf | undefined {
   return typeof node === "string" || (typeof node === "object" && node !== null && "other" in node) ? (node as Leaf) : undefined;
 }
 
+/** Is this a key of the catalogue? For keys that come from elsewhere (error answers of the hub). */
+export const hasKey = (key: string): boolean => lookup(vi, key) !== undefined;
+
 /** The text for a key in a locale (default: the active one); falls back to vi, then to the key itself. */
 export function translate(key: MessageKey, vars?: Vars, locale: Locale = active): string {
   const leaf = lookup(LOCALES[locale].messages, key) ?? lookup(vi, key);
