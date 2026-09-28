@@ -11,6 +11,7 @@ import {
   TASK_STATUSES,
   type Actor,
   type AuditEntry,
+  type CostSummary,
   type Doc,
   type DocSummary,
   type DocVersion,
@@ -58,6 +59,19 @@ const reportedProfile = z.object({
   runs: z.number().int().min(0),
   rateLimited: z.number().int().min(0),
 });
+/** A finished run's cost estimate, sent once by the machine that ran it. */
+const runCost = z.object({
+  runId: z.string().regex(/^[\w.-]{1,40}$/),
+  project,
+  taskId,
+  profileId: z.string().max(40),
+  account: account.nullable(),
+  costUsd: z.number().min(0).max(10_000),
+  inputTokens: z.number().int().min(0).nullable(),
+  outputTokens: z.number().int().min(0).nullable(),
+  finishedAt: z.iso.datetime(),
+});
+
 /** Team profile templates never carry env: login dirs and keys belong to each machine. */
 const profileTemplate = agentProfileSchema.extend({
   env: z.record(z.string(), z.string()).default({}).refine((env) => Object.keys(env).length === 0, "profile templates cannot carry env"),
@@ -161,8 +175,11 @@ export const schemas = {
       )
       .max(100)
       .default([]),
+    /** Finished runs not reported yet; the hub keeps the first report of each run. */
+    costs: z.array(runCost).max(100).default([]),
   }),
   "machines.list": z.object({}),
+  "costs.summary": z.object({}),
   "machines.remove": z.object({ id: z.string().min(1).max(200) }),
 
   "cooldowns.list": z.object({}),
@@ -223,6 +240,7 @@ export interface MethodOutput {
   "tasks.update": Task;
   "machines.heartbeat": { duplicate: boolean; cooldowns: QuotaCooldown[]; policy: TeamPolicy; commands: MachineCommand[] };
   "machines.list": Machine[];
+  "costs.summary": CostSummary;
   "machines.remove": { removed: boolean };
   "cooldowns.list": QuotaCooldown[];
   /** null when `until` is already past (nothing to rest). */
@@ -262,6 +280,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "tasks.update": "agent",
   "machines.heartbeat": "agent",
   "machines.list": "viewer",
+  "costs.summary": "viewer",
   "machines.remove": "admin",
   "cooldowns.list": "viewer",
   "cooldowns.set": "agent",

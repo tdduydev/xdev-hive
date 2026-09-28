@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import type { Machine, QuotaCooldown } from "@xdev-hive/core";
+import type { CostSummary, CostTotals, Machine, QuotaCooldown } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
 import { ProfileStates } from "../components/ProfileStates.tsx";
-import { formatTime, useAction, useHive, useQuery } from "../hooks.ts";
+import { formatCount, formatTime, formatUsd, useAction, useHive, useQuery } from "../hooks.ts";
 import { rich, useT } from "../i18n/index.tsx";
 
 const REFRESH_MS = 15_000;
@@ -21,6 +21,7 @@ export function MachinesPage() {
   }, []);
   const machines = useQuery(() => client.call("machines.list", {}), [client, tick]);
   const cooldowns = useQuery(() => client.call("cooldowns.list", {}), [client, tick]);
+  const costs = useQuery(() => client.call("costs.summary", {}), [client, tick]);
   const reload = () => setTick((n) => n + 1);
 
   return (
@@ -87,7 +88,88 @@ export function MachinesPage() {
           </div>
         ) : null}
       </section>
+
+      <section className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-lg font-semibold tracking-tight">{t("machines.costs")}</h2>
+          <p className="text-sm text-muted-foreground">{t("machines.costsHint")}</p>
+        </div>
+        <ErrorNote error={costs.error} />
+        {costs.data ? <Costs summary={costs.data} /> : null}
+      </section>
     </Page>
+  );
+}
+
+function Costs({ summary: s }: { summary: CostSummary }) {
+  const t = useT();
+  if (s.total.runs30 === 0) return <Empty>{t("machines.noCosts")}</Empty>;
+  const cells = (c: CostTotals) => (
+    <>
+      <TableCell className="text-right tabular-nums">{formatUsd(c.usd1)}</TableCell>
+      <TableCell className="text-right tabular-nums">{formatUsd(c.usd7)}</TableCell>
+      <TableCell className="text-right tabular-nums">{formatUsd(c.usd30)}</TableCell>
+      <TableCell className="text-right tabular-nums text-muted-foreground">{formatCount(c.runs30)}</TableCell>
+    </>
+  );
+  const heads = (
+    <>
+      <TableHead className="text-right">{t("machines.col24h")}</TableHead>
+      <TableHead className="text-right">{t("machines.col7d")}</TableHead>
+      <TableHead className="text-right">{t("machines.col30d")}</TableHead>
+      <TableHead className="text-right">{t("machines.colRunCount")}</TableHead>
+    </>
+  );
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm font-medium">
+        {t("machines.costTotal", { day: formatUsd(s.total.usd1), week: formatUsd(s.total.usd7), month: formatUsd(s.total.usd30), runs: formatCount(s.total.runs30) })}
+      </p>
+      <div className="grid gap-3 xl:grid-cols-2">
+        <div className="overflow-x-auto rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("machines.colProject")}</TableHead>
+                {heads}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {s.projects.map((p) => (
+                <TableRow key={p.project}>
+                  <TableCell className="font-mono text-xs">{p.project}</TableCell>
+                  {cells(p)}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        <div className="overflow-x-auto rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("machines.colProfile")}</TableHead>
+                {heads}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {s.profiles.map((p) => (
+                <TableRow key={`${p.machine}/${p.profileId}/${p.account ?? ""}`}>
+                  <TableCell className="whitespace-normal">
+                    <div className="font-mono text-xs">{p.profileId}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {p.machine}
+                      {p.account ? ` · ${p.account}` : ""}
+                    </div>
+                  </TableCell>
+                  {cells(p)}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+    </div>
   );
 }
 
