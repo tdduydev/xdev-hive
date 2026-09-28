@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { isValidElement } from "react";
-import { HIDDEN_KINDS, LEVELS } from "@xdev-hive/core";
+import { HIDDEN_KINDS, LEVELS, WEBHOOK_EVENTS, WEBHOOK_KINDS } from "@xdev-hive/core";
 import { rich } from "../src/i18n/rich.ts";
 import { hasKey, LOCALES, translate, type MessageKey } from "../src/i18n/translate.ts";
 
@@ -56,6 +56,11 @@ describe("i18n", () => {
     for (const kind of HIDDEN_KINDS) keys.add(`errors.hidden.${kind}`);
     assert.ok(keys.size > 30, `found ${keys.size} keys`);
     assert.deepEqual([...keys].filter((k) => !hasKey(k)), []);
+  });
+
+  it("names every webhook event and kind (event names have dots, so the catalogue nests them)", () => {
+    const keys = [...WEBHOOK_EVENTS.map((e) => `webhooks.event.${e}`), ...WEBHOOK_KINDS.map((k) => `webhooks.kind.${k}`)];
+    assert.deepEqual(keys.filter((k) => !hasKey(k)), []);
   });
 
   it("falls back to the key when a string is missing", () => {
