@@ -124,6 +124,11 @@ const MIGRATIONS: string[] = [
   ALTER TABLE memory ADD COLUMN files TEXT NOT NULL DEFAULT '[]';
   ALTER TABLE memory ADD COLUMN review TEXT;
   `,
+  `
+  ALTER TABLE memory ADD COLUMN supersedes INTEGER;
+  ALTER TABLE memory ADD COLUMN superseded_by INTEGER;
+  ALTER TABLE memory ADD COLUMN conflicts TEXT NOT NULL DEFAULT '[]';
+  `,
 ];
 
 /** Run costs older than this are dropped; the summary only looks back 30 days. */
@@ -249,6 +254,9 @@ const toMemory = (r: Row, staleBefore: string | null): Memory => ({
   stale: staleBefore !== null && (strOrNull(r.last_used_at) ?? str(r.created_at)) < staleBefore,
   files: JSON.parse(str(r.files ?? "[]")) as MemoryFile[],
   review: r.review ? (JSON.parse(str(r.review)) as MemoryReview) : null,
+  supersedes: r.supersedes == null ? null : num(r.supersedes),
+  supersededBy: r.superseded_by == null ? null : num(r.superseded_by),
+  conflictsWith: JSON.parse(str(r.conflicts ?? "[]")) as number[],
 });
 const toTask = (r: Row): Task => ({
   id: str(r.id),
@@ -382,6 +390,7 @@ export class SqliteHive implements HiveBackend {
       case "memory.checkFiles":
         return this.#need(actor, i.project, "contribute", `Project ${i.project}`);
       case "memory.approve":
+      case "memory.resolve":
       case "memory.keep":
       case "memory.remove": {
         const row = this.db.prepare("SELECT project FROM memory WHERE id = ?").get(i.id) as Row | undefined;
@@ -523,6 +532,10 @@ export class SqliteHive implements HiveBackend {
     const row = this.db.prepare("SELECT * FROM memory WHERE id = ?").get(id) as Row | undefined;
     if (!row) throw new HiveError("not_found", `Memory #${id} not found.`, { key: "errors.memoryNotFound", vars: { id } });
     return toMemory(row, this.#staleBefore());
+  }
+
+  #setConflicts(id: number, ids: number[]): void {
+    this.db.prepare("UPDATE memory SET conflicts = ? WHERE id = ?").run(JSON.stringify([...new Set(ids)].sort((x, y) => x - y)), id);
   }
 
   #staleBefore(): string | null {
@@ -676,7 +689,9 @@ export class SqliteHive implements HiveBackend {
       "memory.search": ({ project, query, limit, includeShared, anyProject, includeStale }, actor) => {
         const match = ftsQuery(query);
         // ?2 = the project (or shared when none), ?3 = also shared entries, ?5 = every project, ?6 = the stale cutoff ('' keeps all).
-        const scope = `(?5 = 1 OR m.project = ?2 OR (?3 = 1 AND m.project = '')) AND COALESCE(m.last_used_at, m.created_at) >= ?6`;
+        // Replaced entries drop out once their replacement is approved, so a chain shows only its newest entry.
+        const scope = `(?5 = 1 OR m.project = ?2 OR (?3 = 1 AND m.project = '')) AND COALESCE(m.last_used_at, m.created_at) >= ?6
+          AND NOT EXISTS (SELECT 1 FROM memory s WHERE s.id = m.superseded_by AND s.status = 'approved')`;
         const own = project ?? SHARED;
         const shared = includeShared ? 1 : 0;
         const staleBefore = this.#staleBefore();
@@ -723,28 +738,78 @@ export class SqliteHive implements HiveBackend {
         ).map((r) => toMemory(r, staleBefore));
       },
 
-      "memory.write": (input, actor) => {
-        assertNoSecret(input.content, "Memory content");
-        assertNoHidden(input.content, "Memory content");
-        const owner = input.shared ? null : input.project!;
-        const status = this.#opts.memoryRequiresApproval && !can(actor, owner, "manage") ? "pending" : "approved";
-        const res = db
-          .prepare(
-            "INSERT INTO memory(project, kind, content, author, task_id, status, source, files, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          )
-          .run(
-            input.shared ? SHARED : input.project!,
-            input.kind,
-            input.content,
-            actor.name,
-            input.taskId ?? actor.source?.task ?? null,
-            status,
-            sourceJson(actor.source),
-            JSON.stringify([...new Set(input.files)].map((path): MemoryFile => ({ path, sha: null }))),
-            this.#now(),
-          );
-        return this.#getMemory(num(res.lastInsertRowid));
-      },
+      "memory.write": (input, actor) =>
+        this.#tx(() => {
+          assertNoSecret(input.content, "Memory content");
+          assertNoHidden(input.content, "Memory content");
+          const owner = input.shared ? null : input.project!;
+          const stored = input.shared ? SHARED : input.project!;
+          if (input.supersedes !== undefined && input.supersedes === input.contradicts) {
+            throw new HiveError("bad_request", "An entry cannot both replace and contradict the same entry.", { key: "errors.memoryLinkBoth" });
+          }
+          const target = (id: number | undefined) => {
+            if (id === undefined) return null;
+            const t = this.#getMemory(id);
+            if ((t.project ?? SHARED) !== stored) {
+              throw new HiveError("bad_request", `Memory #${id} belongs to ${t.project ?? "the shared memory"}: link entries of the same owner only.`, {
+                key: "errors.memoryLinkOwner",
+                vars: { id },
+              });
+            }
+            return t;
+          };
+          const old = target(input.supersedes);
+          if (old?.supersededBy != null) {
+            throw new HiveError("conflict", `Memory #${old.id} is already replaced by #${old.supersededBy}; replace that one instead.`, {
+              key: "errors.memorySuperseded",
+              vars: { id: old.id, by: old.supersededBy },
+            });
+          }
+          const other = target(input.contradicts);
+          const status = this.#opts.memoryRequiresApproval && !can(actor, owner, "manage") ? "pending" : "approved";
+          const res = db
+            .prepare(
+              "INSERT INTO memory(project, kind, content, author, task_id, status, source, files, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .run(
+              input.shared ? SHARED : input.project!,
+              input.kind,
+              input.content,
+              actor.name,
+              input.taskId ?? actor.source?.task ?? null,
+              status,
+              sourceJson(actor.source),
+              JSON.stringify([...new Set(input.files)].map((path): MemoryFile => ({ path, sha: null }))),
+              this.#now(),
+            );
+          const created = num(res.lastInsertRowid);
+          if (old) {
+            db.prepare("UPDATE memory SET supersedes = ? WHERE id = ?").run(old.id, created);
+            db.prepare("UPDATE memory SET superseded_by = ? WHERE id = ?").run(created, old.id);
+          }
+          if (other) {
+            this.#setConflicts(created, [other.id]);
+            this.#setConflicts(other.id, [...other.conflictsWith, created]);
+          }
+          return this.#getMemory(created);
+        }),
+
+      "memory.resolve": ({ id, other, keep }) =>
+        this.#tx(() => {
+          const a = this.#getMemory(id);
+          const b = this.#getMemory(other);
+          if (!a.conflictsWith.includes(other)) {
+            throw new HiveError("bad_request", `Memory #${id} is not marked as contradicting #${other}.`, { key: "errors.memoryNoConflict", vars: { id, other } });
+          }
+          this.#setConflicts(a.id, a.conflictsWith.filter((x) => x !== b.id));
+          this.#setConflicts(b.id, b.conflictsWith.filter((x) => x !== a.id));
+          const [winner, loser] = keep === "this" ? [a, b] : keep === "other" ? [b, a] : [null, null];
+          if (winner && loser) {
+            db.prepare("UPDATE memory SET superseded_by = ? WHERE id = ?").run(winner.id, loser.id);
+            db.prepare("UPDATE memory SET supersedes = COALESCE(supersedes, ?) WHERE id = ?").run(loser.id, winner.id);
+          }
+          return this.#getMemory(id);
+        }),
 
       "memory.approve": ({ id }) => {
         this.#getMemory(id);
@@ -805,7 +870,21 @@ export class SqliteHive implements HiveBackend {
           return { flagged, baselined };
         }),
 
-      "memory.remove": ({ id }) => ({ removed: num(db.prepare("DELETE FROM memory WHERE id = ?").run(id).changes) === 1 }),
+      // A removed replacement brings the entry it replaced back; conflicts with it are dropped.
+      "memory.remove": ({ id }) =>
+        this.#tx(() => {
+          const removed = num(db.prepare("DELETE FROM memory WHERE id = ?").run(id).changes) === 1;
+          if (removed) {
+            db.prepare("UPDATE memory SET superseded_by = NULL WHERE superseded_by = ?").run(id);
+            db.prepare("UPDATE memory SET supersedes = NULL WHERE supersedes = ?").run(id);
+            const linked = db.prepare("SELECT id, conflicts FROM memory WHERE conflicts != '[]'").all() as Row[];
+            for (const r of linked) {
+              const ids = JSON.parse(str(r.conflicts)) as number[];
+              if (ids.includes(id)) this.#setConflicts(num(r.id), ids.filter((x) => x !== id));
+            }
+          }
+          return { removed };
+        }),
 
       "tasks.list": ({ project, status }) =>
         (

@@ -148,9 +148,19 @@ function MemoryRow({ memory: m, onChanged }: { memory: Memory; onChanged: () => 
                 <Badge tone="danger">{t("memory.review")}</Badge>
               </span>
             ) : null}
+            {m.supersededBy !== null ? (
+              <span title={t("memory.replacedHint")}>
+                <Badge tone="neutral">{t("memory.replaced")}</Badge>
+              </span>
+            ) : null}
+            {m.conflictsWith.length ? (
+              <span title={t("memory.conflictHint")}>
+                <Badge tone="danger">{t("memory.conflict")}</Badge>
+              </span>
+            ) : null}
             {m.taskId ? <span className="font-mono text-xs text-muted-foreground">{m.taskId}</span> : null}
             <span className="min-w-0 flex-1 text-xs text-muted-foreground">
-              {m.author} · {formatTime(m.createdAt)}
+              #{m.id} · {m.author} · {formatTime(m.createdAt)}
               {sourceText(m.source, m.taskId)}
               {" · "}
               {m.useCount ? t("memory.used", { count: m.useCount, time: formatTime(m.lastUsedAt) }) : t("memory.neverUsed")}
@@ -193,7 +203,40 @@ function MemoryRow({ memory: m, onChanged }: { memory: Memory; onChanged: () => 
               </>
             ) : null}
           </div>
-          <p className="text-sm break-words whitespace-pre-wrap">{m.content}</p>
+          <p className={cn("text-sm break-words whitespace-pre-wrap", m.supersededBy !== null && "text-muted-foreground line-through")}>{m.content}</p>
+          {m.supersedes !== null || m.supersededBy !== null ? (
+            <p className="text-xs text-muted-foreground">
+              {[m.supersedes !== null ? t("memory.replaces", { id: m.supersedes }) : null, m.supersededBy !== null ? t("memory.replacedBy", { id: m.supersededBy }) : null]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          ) : null}
+          {m.conflictsWith.map((other) => (
+            <div key={other} className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-destructive">{t("memory.conflictWith", { id: other })}</span>
+              {allow(m.project, "manage") ? (
+                <>
+                  {(
+                    [
+                      ["this", t("memory.keepThis")],
+                      ["other", t("memory.keepOther", { id: other })],
+                      ["both", t("memory.keepBoth")],
+                    ] as const
+                  ).map(([keep, label]) => (
+                    <Button
+                      key={keep}
+                      size="sm"
+                      variant="outline"
+                      disabled={action.busy}
+                      onClick={() => action.run(async () => (await client.call("memory.resolve", { id: m.id, other, keep }), onChanged()))}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </>
+              ) : null}
+            </div>
+          ))}
           {m.files.length ? (
             <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
               <span>{t("memory.files")}:</span>
