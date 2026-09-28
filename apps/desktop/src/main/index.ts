@@ -240,7 +240,7 @@ function saveProfile(input: AgentProfile, previousId?: string) {
   }
   const exists = config.agents.some((a) => a.id === replacing);
   const agents = exists ? config.agents.map((a) => (a.id === replacing ? profile : a)) : [...config.agents, profile];
-  persist({ ...config, agents });
+  persist({ ...config, agents, agentTokens: moveToken(config.agentTokens, replacing, profile.id) });
   void logins.refresh([profile.id]).catch(() => undefined);
   void runner.tick();
   return runner.profileStatuses();
@@ -248,8 +248,40 @@ function saveProfile(input: AgentProfile, previousId?: string) {
 
 function removeProfile(id: string) {
   if (runner.store.running(id)) throw new HiveError("conflict", `Profile ${id} đang chạy.`, { key: "errors.profileRunning", vars: { id } });
-  persist({ ...config, agents: config.agents.filter((a) => a.id !== id) });
+  persist({ ...config, agents: config.agents.filter((a) => a.id !== id), agentTokens: moveToken(config.agentTokens, id, null) });
   return runner.profileStatuses();
+}
+
+/** A profile's token follows it when it is renamed, and goes with it when it is removed. */
+function moveToken(tokens: Record<string, string>, from: string, to: string | null): Record<string, string> {
+  const { [from]: token, ...rest } = tokens;
+  return token && to ? { ...rest, [to]: token } : rest;
+}
+
+function setProfileToken(id: string, token: string) {
+  if (!config.agents.some((a) => a.id === id)) throw new HiveError("not_found", `Không có profile ${id}.`, { key: "errors.profileNotFound", vars: { id } });
+  const value = String(token ?? "").trim();
+  if (value.length > 4000 || /\s/.test(value)) throw new HiveError("bad_request", "Token không hợp lệ.", { key: "errors.badProfileToken" });
+  const { [id]: _old, ...rest } = config.agentTokens;
+  persist({ ...config, agentTokens: value ? { ...rest, [id]: value } : rest });
+  return runner.profileStatuses();
+}
+
+/** A terminal running `claude setup-token` with the profile's login folder: the person copies the token into the app. */
+function openSetupToken(id: string): { opened: boolean } {
+  const profile = config.agents.find((a) => a.id === id);
+  if (!profile) throw new HiveError("not_found", `Không có profile ${id}.`, { key: "errors.profileNotFound", vars: { id } });
+  if (profile.kind !== "claude") throw new HiveError("bad_request", "Chỉ Claude Code có token dài hạn.", { key: "errors.setupTokenClaudeOnly" });
+  const pathEnv = agentEnv().PATH ?? "";
+  const bin = resolveBin(expandHome(profile.bin), pathEnv);
+  if (!bin) throw new HiveError("not_found", tr("desktop.cliNotFound", { bin: profile.bin }), { key: "desktop.cliNotFound", vars: { bin: profile.bin } });
+  const env = loginParts(profile)?.env ?? {};
+  const file = openInTerminal(
+    { title: `xDev Hive: ${tr("desktop.setupTokenTitle", { profile: profile.id })}`, bin, args: ["setup-token"], env, done: tr("desktop.setupTokenDone") },
+    { dir: path.join(path.dirname(configPath()), "login", profile.id), which: (b) => resolveBin(b, pathEnv) },
+  );
+  if (!file) throw new HiveError("not_found", tr("desktop.noTerminal"), { key: "desktop.noTerminal" });
+  return { opened: true };
 }
 
 /** One project at a time; a project whose check fails (no repo, no access) does not stop the others. */
@@ -559,6 +591,8 @@ function registerIpc(): void {
   handle("desktop:checkProfile", checkProfile);
   handle("desktop:openLogin", openLogin);
   handle("desktop:recheckLogins", recheckLogins);
+  handle("desktop:setProfileToken", setProfileToken);
+  handle("desktop:openSetupToken", openSetupToken);
   handle("desktop:startRun", (req: StartRunRequest) => runner.enqueue(req));
   handle("desktop:runs", (filter?: { project?: string; limit?: number }) => runner.list(filter));
   handle("desktop:runLog", (id: string) => runner.log(id));
@@ -741,6 +775,7 @@ if (!app.requestSingleInstanceLock()) {
         login: (id) => logins.get(id),
         usage: (id) => logins.usage(id),
         hub: () => (config.mode === "hub" && config.hub.url && config.hub.token ? { url: config.hub.url, token: config.hub.token } : null),
+        token: (id) => config.agentTokens[id],
       },
       {
         dataDir: path.dirname(configPath()),

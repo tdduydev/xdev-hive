@@ -14,7 +14,6 @@ import path from "node:path";
 import {
   AGENT_ROLES,
   agentActorName,
-  agentSource,
   HiveError,
   usageStop,
   type Actor,
@@ -41,6 +40,7 @@ import { tr } from "../i18n.ts";
 import { git } from "../git.ts";
 import { NO_FEATURES, repoFeatures } from "../installer.ts";
 import { containerCommand } from "./container.ts";
+import { claudeMcpServers, codexMcpArgs, hubMcpEnv, type McpRun } from "./container-mcp.ts";
 import { buildCommand, buildPrompt, describeCommand, expandEnv, expandHome, resolveBin } from "./command.ts";
 import { detectRateLimit } from "./rate-limit.ts";
 import { parseClaudeResult, type RunUsage } from "./usage.ts";
@@ -66,6 +66,8 @@ export interface RunnerHost {
   usage?(profileId: string): PlanUsage | undefined;
   /** Hub mode: where a container run's agent reaches Hive (the hub's HTTP MCP) and with which token. */
   hub?(): { url: string; token: string } | null;
+  /** The profile's long-lived token for container runs (Claude Code), if one is saved. */
+  token?(profileId: string): string | undefined;
 }
 
 /** What the hub sent back on the last heartbeat. */
@@ -326,6 +328,7 @@ export class Runner {
         cliPath: resolveBin(expandHome(profile.bin), pathEnv),
         login: this.#host.login?.(profile.id) ?? null,
         usage: this.#host.usage?.(profile.id) ?? null,
+        hasToken: Boolean(this.#host.token?.(profile.id)),
       };
     });
   }
@@ -591,15 +594,23 @@ export class Runner {
         ...cmd.env,
       };
       // In a container the agent gets only its own variables; docker itself keeps the machine's (PATH, DOCKER_HOST).
+      const hub = this.#containerHub();
+      const token = profile.kind === "claude" ? this.#host.token?.(profile.id) : undefined;
       const box = profile.container
         ? containerCommand({
             profile,
-            args: cmd.args,
+            // Codex takes the hub's MCP as config overrides before its subcommand.
+            args: profile.kind === "codex" ? [...codexMcpArgs(hub, this.#mcpRun(profile, run)), ...cmd.args] : cmd.args,
             stdin: cmd.stdin,
             runId: run.id,
             worktree: wt.path,
             gitDir: git(wt.path, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
-            env: agentEnv,
+            env: {
+              ...agentEnv,
+              ...hubMcpEnv(hub, this.#mcpRun(profile, run), profile.kind),
+              // The macOS Keychain stays outside: a saved long-lived token signs Claude Code in.
+              ...(token ? { CLAUDE_CODE_OAUTH_TOKEN: token } : {}),
+            },
             readOnly: mcpFile ? [mcpFile] : [],
           })
         : null;
@@ -665,23 +676,26 @@ export class Runner {
     }
   }
 
-  /** Hive for an agent in a container: the hub's HTTP MCP with this machine's token (hub mode only). */
-  #containerMcp(profile: AgentProfile, run: AgentRun): Record<string, unknown> {
+  /** Where an agent in a container reaches Hive: the hub (hub mode only; see container-mcp.ts). */
+  #containerHub(): { url: string; token: string } | null {
     const hub = this.#host.mode() === "hub" ? this.#host.hub?.() : null;
-    if (!hub?.url || !hub.token) return {};
+    return hub?.url && hub.token ? hub : null;
+  }
+
+  #mcpRun(profile: AgentProfile, run: AgentRun): McpRun {
     return {
-      "xdev-hive": {
-        type: "http",
-        url: `${hub.url.replace(/\/+$/, "")}/mcp`,
-        headers: {
-          authorization: `Bearer ${hub.token}`,
-          "x-hive-agent": agentActorName(profile.id, "hub", this.#host.machine(), this.#opts.user),
-          "x-hive-project": run.project,
-          "x-hive-source": JSON.stringify(agentSource(this.#host.machine(), { HIVE_TASK: run.taskId, HIVE_RUN: run.id })),
-          ...(profile.readOnly ? { "x-hive-readonly": "1" } : {}),
-        },
-      },
+      agent: agentActorName(profile.id, "hub", this.#host.machine(), this.#opts.user),
+      machine: this.#host.machine(),
+      project: run.project,
+      task: run.taskId,
+      run: run.id,
+      readOnly: profile.readOnly,
     };
+  }
+
+  /** Claude Code's MCP servers for a container run (the file the runner writes). */
+  #containerMcp(profile: AgentProfile, run: AgentRun): Record<string, unknown> {
+    return claudeMcpServers(this.#containerHub(), this.#mcpRun(profile, run));
   }
 
   async #complete(run: AgentRun, profile: AgentProfile, wt: Worktree | null, outcome: Outcome): Promise<void> {

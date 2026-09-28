@@ -51,6 +51,8 @@ writeFileSync(
     projects: [{ name: "demo", repo, gitlabProject: "group/demo" }],
     gitlab: { url: gitlab.base, token, mr: { enabled: true } },
     agents: [
+      // Claude in a container (roadmap 11b): first so the Agents shot shows its token box; off, so no run picks it.
+      agent("claude-box", "claude", 98, "ok", "Claude (container)", { container: { image: "xdev-hive-agent" }, enabled: false }),
       // Plan usage (roadmap 3c): the week is high but under the 90% threshold, so the runner still uses it.
       agent("claude-max-1", "claude", 10, "limit", "Claude Max (gói 1)", { env: { FAKE_MODE: "limit", FAKE_USAGE: "41,83" } }),
       // Signed out (roadmap 2d): shown on its card, never picked. Lowest priority so it cannot win the first tick.
