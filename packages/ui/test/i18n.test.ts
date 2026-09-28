@@ -49,7 +49,7 @@ describe("i18n", () => {
         .filter((f) => f.endsWith(".ts"))
         .map((f) => path.join(repo, dir, f)),
     );
-    const keys = new Set(files.flatMap((f) => [...readFileSync(f, "utf8").matchAll(/key: "(errors\.[\w.]+)"/g)].map((m) => m[1]!)));
+    const keys = new Set(files.flatMap((f) => [...readFileSync(f, "utf8").matchAll(/key: "((?:errors|audit)\.[\w.]+)"/g)].map((m) => m[1]!)));
     // Built from the level: errors.need.<level>, errors.needShared.<level>.
     for (const level of LEVELS) keys.add(`errors.need.${level}`).add(`errors.needShared.${level}`);
     assert.ok(keys.size > 30, `found ${keys.size} keys`);

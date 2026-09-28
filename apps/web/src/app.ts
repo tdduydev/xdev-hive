@@ -244,7 +244,10 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
       const name = String((req.body as { name?: unknown }).name ?? "").trim();
       const created = tokens.create(name, user.admin ? "admin" : "member", user.id);
       for (const old of tokens.list(user.id)) if (old.name === created.info.name && old.id !== created.info.id) tokens.revoke(old.id);
-      hive.audit({ name: user.username, role: user.admin ? "admin" : "member" }, "tokens.create", created.info.name, `${created.info.role} · máy`);
+      hive.audit({ name: user.username, role: user.admin ? "admin" : "member" }, "tokens.create", created.info.name, `${created.info.role} · máy`, {
+        key: "audit.machineToken",
+        vars: { role: created.info.role },
+      });
       res.json({ result: { token: created.token, info: created.info, user: publicUser(user) } });
     } catch (err) {
       sendError(res, err);
@@ -279,7 +282,7 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
         if (!allowed.includes(role)) throw new HiveError("forbidden", `Bạn chỉ tạo được token vai trò ${allowed.join(", ")}.`, { key: "errors.tokenRoleNotAllowed", vars: { roles: allowed.join(", ") } });
         if (!hubAdmin && !user) throw new HiveError("forbidden", "Token không thuộc tài khoản nào.", { key: "errors.tokenNoAccount" });
         const created = tokens.create(String(i.name ?? ""), role, user?.id ?? null);
-        hive.audit(actor, "tokens.create", created.info.name, created.info.role);
+        hive.audit(actor, "tokens.create", created.info.name, created.info.role, { key: `role.${created.info.role}` });
         res.json({ result: created });
         return;
       }
@@ -289,7 +292,7 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
         const hubAdmin = actor.role === "admin" && !actor.access;
         if (!hubAdmin && (!user || info.ownerId !== user.id)) throw new HiveError("forbidden", "Chỉ thu hồi được token của bạn.", { key: "errors.revokeOwnOnly" });
         tokens.revoke(info.id);
-        hive.audit(actor, "tokens.revoke", info.name, info.role);
+        hive.audit(actor, "tokens.revoke", info.name, info.role, { key: `role.${info.role}` });
         res.json({ result: { revoked: true } });
         return;
       }
@@ -303,7 +306,7 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
           res.json({ result: users.list() });
         } else if (method === "users.create") {
           const created = users.create({ username: String(i.username ?? ""), displayName: String(i.displayName ?? ""), admin: i.admin === true });
-          hive.audit(actor, "users.create", created.user.username, created.user.admin ? "admin" : "member");
+          hive.audit(actor, "users.create", created.user.username, created.user.admin ? "admin" : "member", { key: created.user.admin ? "role.admin" : "role.member" });
           res.json({ result: created });
         } else if (method === "users.update") {
           if (!target) throw new HiveError("not_found", "Không có tài khoản này.", { key: "errors.userNotFound" });
@@ -316,13 +319,24 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
             updated.admin !== target.admin ? (updated.admin ? "cấp admin" : "bỏ admin") : "",
             updated.disabled !== target.disabled ? (updated.disabled ? "khoá" : "mở khoá") : "",
           ].filter(Boolean);
-          hive.audit(actor, "users.update", updated.username, changes.join(", ") || "sửa tên");
+          // The admin page changes one thing at a time; the key names the first change.
+          const key =
+            updated.admin !== target.admin
+              ? updated.admin
+                ? "audit.adminGranted"
+                : "audit.adminRevoked"
+              : updated.disabled !== target.disabled
+                ? updated.disabled
+                  ? "audit.disabled"
+                  : "audit.enabled"
+                : "audit.renamed";
+          hive.audit(actor, "users.update", updated.username, changes.join(", ") || "sửa tên", { key });
           res.json({ result: updated });
         } else if (method === "users.setGrants") {
           if (!target) throw new HiveError("not_found", "Không có tài khoản này.", { key: "errors.userNotFound" });
           const updated = users.setGrants(id, (i.grants ?? {}) as Record<string, string>);
           const summary = Object.entries(updated.grants).map(([p, l]) => `${p}: ${l}`).join(", ");
-          hive.audit(actor, "users.setGrants", updated.username, summary || "không dự án nào");
+          hive.audit(actor, "users.setGrants", updated.username, summary || "không dự án nào", summary ? { key: "audit.grants", vars: { grants: summary } } : { key: "audit.noGrants" });
           res.json({ result: updated });
         } else if (method === "users.resetPassword") {
           if (!target) throw new HiveError("not_found", "Không có tài khoản này.", { key: "errors.userNotFound" });

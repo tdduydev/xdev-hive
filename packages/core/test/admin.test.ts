@@ -129,6 +129,11 @@ describe("admin portal", () => {
       ],
     );
     assert.equal(log.at(-1)!.detail, "v1 · khởi tạo");
+    // Details with a message key read in each admin's language; the stored text stays for older clients.
+    const request = log.find((e) => e.action === "admin.commandCreate")!;
+    assert.equal(request.detailKey, "audit.commandCreate");
+    assert.deepEqual(request.detailVars, { label: cmd.label, item: "cli:codex", id: cmd.id });
+    assert.equal(log.at(-1)!.detailKey, undefined);
     assert.deepEqual((await hive.call("admin.audit", { action: "tasks.create" }, admin)).map((e) => e.target), ["T-1"]);
     await assert.rejects(hive.call("admin.audit", {}, viewer), code("forbidden"));
   });

@@ -4,7 +4,7 @@ import { readLocale, writeLocale } from "./storage.ts";
 import { activeLocale, setActiveLocale, translate, type Locale, type MessageKey } from "./translate.ts";
 
 export { rich } from "./rich.ts";
-export { LOCALES, activeIntl, isLocale, translate, type Locale, type MessageKey } from "./translate.ts";
+export { LOCALES, activeIntl, hasKey, isLocale, translate, type Locale, type MessageKey } from "./translate.ts";
 
 export type TFunction = (key: MessageKey, vars?: Vars) => string;
 
