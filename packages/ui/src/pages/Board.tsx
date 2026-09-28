@@ -7,9 +7,7 @@ import {
   type AgentProfileStatus,
   type AgentRole,
   type AgentRun,
-  type RunStatus,
   type Task,
-  type TaskStatus,
 } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
@@ -20,26 +18,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE, StatusDot } from "../components/common.tsx";
 import { formatTime, useAction, useHive, useProjects, useQuery } from "../hooks.ts";
+import { rich, useT } from "../i18n/index.tsx";
 import { projectScope, scopeProject } from "../lib/scope.ts";
-
-const COLUMN_LABEL: Record<TaskStatus, string> = {
-  todo: "Chưa làm",
-  doing: "Đang làm",
-  review: "Chờ review",
-  done: "Xong",
-  blocked: "Bị chặn",
-};
-
-export const RUN_LABEL: Record<RunStatus, string> = {
-  queued: "Chờ",
-  running: "Đang chạy",
-  succeeded: "Xong",
-  failed: "Lỗi",
-  rate_limited: "Hết quota",
-  cancelled: "Đã huỷ",
-};
-
-export const ROLE_LABEL: Record<AgentRole, string> = { plan: "Lập kế hoạch", implement: "Làm task", review: "Review" };
 
 const DANGER_GHOST = "text-destructive hover:bg-destructive/10 hover:text-destructive";
 
@@ -63,6 +43,7 @@ function duration(run: AgentRun): string {
 
 export function BoardPage() {
   const { client, scope, setScope } = useHive();
+  const t = useT();
   const desktop = client.desktop!;
   const projects = useProjects();
   const settings = useQuery(() => desktop.settings(), [desktop]);
@@ -108,14 +89,14 @@ export function BoardPage() {
   return (
     <Page wide>
       <PageHeader
-        title="Board"
-        subtitle="Giao task cho agent. Mỗi task chạy trong worktree riêng (branch ai/<task>). Hết quota thì tự chuyển sang gói sub khác."
+        title={t("nav.board")}
+        subtitle={t("board.subtitle")}
         actions={
           <>
-            <Badge tone="info">{counts.running} đang chạy</Badge>
-            <Badge tone="neutral">{counts.queued} chờ</Badge>
+            <Badge tone="info">{t("board.running", { count: counts.running })}</Badge>
+            <Badge tone="neutral">{t("board.queued", { count: counts.queued })}</Badge>
             <Button asChild size="sm" variant="outline">
-              <a href="#/agents">Gói sub</a>
+              <a href="#/agents">{t("board.profiles")}</a>
             </Button>
           </>
         }
@@ -127,47 +108,49 @@ export function BoardPage() {
             setProject(e.target.value);
             setScope(projectScope(e.target.value));
           }}
-          aria-label="Dự án"
+          aria-label={t("tasks.colProject")}
         >
           {options.map((p) => (
             <NativeSelectOption key={p} value={p}>
               {p}
-              {localProjects.includes(p) ? "" : " (chưa nối repo trên máy này)"}
+              {localProjects.includes(p) ? "" : ` (${t("board.noRepoHere")})`}
             </NativeSelectOption>
           ))}
         </NativeSelect>
         <ProfileStrip profiles={profiles.data ?? []} />
       </div>
-      {!current && !settings.loading ? <Empty>Thêm dự án ở trang Dự án &amp; cài đặt trước.</Empty> : null}
+      {!current && !settings.loading ? <Empty>{t("board.addProjectFirst")}</Empty> : null}
       {current && scoped !== null && scoped !== current && !settings.loading ? (
         <Notice tone="info">
-          Dự án <span className="font-mono">{scoped}</span> đang chọn ở thanh bên chưa có repo trên máy này, nên Board đang hiện{" "}
-          <span className="font-mono">{current}</span>.
+          {rich(t("board.scopeNotLocal"), {
+            scoped: <span className="font-mono">{scoped}</span>,
+            current: <span className="font-mono">{current}</span>,
+          })}
         </Notice>
       ) : null}
       {current && !isLocalProject ? (
-        <Notice tone="warn">Dự án này chưa có repo trên máy này nên không chạy agent được. Thêm repo ở trang Dự án &amp; cài đặt.</Notice>
+        <Notice tone="warn">{t("board.cannotRun")}</Notice>
       ) : null}
       <ErrorNote error={tasks.error ?? runs.error} />
 
       <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
         {TASK_STATUSES.map((status) => {
-          const column = (tasks.data ?? []).filter((t) => t.status === status);
+          const column = (tasks.data ?? []).filter((task) => task.status === status);
           return (
             <section
               key={status}
               className="flex min-h-32 min-w-0 flex-col gap-2 rounded-lg border bg-muted/30 p-2"
-              aria-label={COLUMN_LABEL[status]}
+              aria-label={t(`taskStatus.${status}`)}
             >
               <header className="flex items-center justify-between gap-2 px-1 py-0.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                <span>{COLUMN_LABEL[status]}</span>
+                <span>{t(`taskStatus.${status}`)}</span>
                 <Badge tone="neutral">{column.length}</Badge>
               </header>
-              {column.map((t) => (
+              {column.map((task) => (
                 <TaskCard
-                  key={t.id}
-                  task={t}
-                  run={latestRun.get(t.id) ?? null}
+                  key={task.id}
+                  task={task}
+                  run={latestRun.get(task.id) ?? null}
                   profiles={profiles.data ?? []}
                   canRun={isLocalProject}
                   onStarted={(r) => {
@@ -188,13 +171,20 @@ export function BoardPage() {
 }
 
 function ProfileStrip({ profiles }: { profiles: AgentProfileStatus[] }) {
+  const t = useT();
   if (!profiles.length) return null;
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5" aria-label="Trạng thái gói sub">
+    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5" aria-label={t("board.profileStatus")}>
       {profiles.map((p) => {
         const resting = p.cooldownUntil !== null;
         const tone = !p.enabled ? "neutral" : resting ? "warn" : p.running ? "info" : "ok";
-        const text = !p.enabled ? "tắt" : resting ? `nghỉ đến ${formatTime(p.cooldownUntil)}` : p.running ? `chạy ${p.running}/${p.maxConcurrent}` : "sẵn sàng";
+        const text = !p.enabled
+          ? t("board.profileOff")
+          : resting
+            ? t("board.profileResting", { time: formatTime(p.cooldownUntil) })
+            : p.running
+              ? t("board.profileRunning", { running: p.running, max: p.maxConcurrent })
+              : t("board.profileReady");
         return (
           <span key={p.id} className="inline-flex min-w-0 items-center gap-1.5" title={p.cooldownReason ?? p.label}>
             <StatusDot tone={tone} />
@@ -223,6 +213,7 @@ function TaskCard({
   onOpenRun: (id: string) => void;
 }) {
   const { client, me } = useHive();
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [role, setRole] = useState<AgentRole>(task.status === "review" ? "review" : "implement");
   const [profileId, setProfileId] = useState("");
@@ -244,7 +235,7 @@ function TaskCard({
               title={run.error ?? ""}
             >
               <Badge tone={STATUS_TONE[run.status] ?? "neutral"}>
-                {RUN_LABEL[run.status]}
+                {t(`runStatus.${run.status}`)}
                 {run.profileId ? ` · ${run.profileId}` : ""}
               </Badge>
             </button>
@@ -252,10 +243,10 @@ function TaskCard({
           {run ? <MrLink run={run} /> : null}
         </div>
         <div className="text-sm font-medium wrap-anywhere">{task.title}</div>
-        {task.owner ? <div className="text-xs text-muted-foreground">Giữ bởi {task.owner}</div> : null}
+        {task.owner ? <div className="text-xs text-muted-foreground">{t("board.claimedBy", { owner: task.owner })}</div> : null}
         {allowed && !busy && !open ? (
           <Button size="sm" variant="outline" className="self-start" onClick={() => setOpen(true)}>
-            Chạy agent…
+            {t("board.runAgent")}
           </Button>
         ) : null}
         {open ? (
@@ -278,44 +269,44 @@ function TaskCard({
               });
             }}
           >
-            <Label htmlFor={`role-${task.id}`}>Việc</Label>
+            <Label htmlFor={`role-${task.id}`}>{t("board.role")}</Label>
             <NativeSelect id={`role-${task.id}`} size="sm" value={role} onChange={(e) => setRole(e.target.value as AgentRole)}>
               {AGENT_ROLES.map((r) => (
                 <NativeSelectOption key={r} value={r}>
-                  {ROLE_LABEL[r]}
+                  {t(`agentRole.${r}`)}
                 </NativeSelectOption>
               ))}
             </NativeSelect>
-            <Label htmlFor={`profile-${task.id}`}>Gói sub</Label>
+            <Label htmlFor={`profile-${task.id}`}>{t("board.profile")}</Label>
             <NativeSelect id={`profile-${task.id}`} size="sm" value={profileId} onChange={(e) => setProfileId(e.target.value)}>
-              <NativeSelectOption value="">Tự xoay vòng theo quota</NativeSelectOption>
+              <NativeSelectOption value="">{t("board.rotate")}</NativeSelectOption>
               {profiles
                 .filter((p) => p.enabled && p.roles.includes(role))
                 .map((p) => (
                   <NativeSelectOption key={p.id} value={p.id}>
                     {p.label}
-                    {p.cooldownUntil ? " (đang nghỉ)" : ""}
+                    {p.cooldownUntil ? ` (${t("board.resting")})` : ""}
                   </NativeSelectOption>
                 ))}
             </NativeSelect>
             <Textarea
-              placeholder="Chỉ dẫn thêm cho agent (tuỳ chọn)"
+              placeholder={t("board.instructionsPlaceholder")}
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
-              aria-label="Chỉ dẫn thêm"
+              aria-label={t("board.instructions")}
             />
             {role !== "review" ? (
               <label className="flex items-center gap-2 text-sm">
                 <Checkbox checked={reviewAfter} onCheckedChange={(v) => setReviewAfter(v === true)} />
-                Xong thì review chéo bằng vendor khác
+                {t("board.reviewAfter")}
               </label>
             ) : null}
             <div className="flex flex-wrap gap-2">
               <Button size="sm" type="submit" disabled={action.busy}>
-                Chạy
+                {t("board.run")}
               </Button>
               <Button size="sm" variant="ghost" type="button" onClick={() => setOpen(false)}>
-                Thôi
+                {t("common.cancel")}
               </Button>
             </div>
             <ErrorNote error={action.error} />
@@ -339,23 +330,24 @@ function RunsPanel({
   onChanged: () => void;
   gitlabReady: boolean;
 }) {
+  const t = useT();
   const run = runs.find((r) => r.id === selected) ?? null;
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-lg font-semibold tracking-tight">Lượt chạy</h2>
-      {runs.length === 0 ? <Empty>Chưa có lượt chạy nào.</Empty> : null}
+      <h2 className="text-lg font-semibold tracking-tight">{t("board.runs")}</h2>
+      {runs.length === 0 ? <Empty>{t("board.noRuns")}</Empty> : null}
       <div className={cn("grid grid-cols-1 items-start gap-4", run ? "lg:grid-cols-2" : "")}>
         {runs.length ? (
           <div className="min-w-0 overflow-x-auto rounded-lg border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Run</TableHead>
-                  <TableHead>Task</TableHead>
-                  <TableHead>Việc</TableHead>
-                  <TableHead>Gói sub</TableHead>
-                  <TableHead>Trạng thái</TableHead>
-                  <TableHead>Thời gian</TableHead>
+                  <TableHead>{t("board.colRun")}</TableHead>
+                  <TableHead>{t("board.colTask")}</TableHead>
+                  <TableHead>{t("board.role")}</TableHead>
+                  <TableHead>{t("board.profile")}</TableHead>
+                  <TableHead>{t("tasks.status")}</TableHead>
+                  <TableHead>{t("board.colTime")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -368,16 +360,16 @@ function RunsPanel({
                   >
                     <TableCell className="font-mono text-xs">
                       {r.id}
-                      {r.attempt > 1 ? <span className="text-muted-foreground"> · lần {r.attempt}</span> : null}
+                      {r.attempt > 1 ? <span className="text-muted-foreground"> · {t("board.attempt", { n: r.attempt })}</span> : null}
                     </TableCell>
                     <TableCell>
                       <div className="font-mono text-xs">{r.taskId}</div>
                       <div className="max-w-56 truncate text-xs">{r.taskTitle}</div>
                     </TableCell>
-                    <TableCell className="text-xs">{ROLE_LABEL[r.role]}</TableCell>
-                    <TableCell className="font-mono text-xs">{r.profileId ?? r.preferredProfile ?? "tự chọn"}</TableCell>
+                    <TableCell className="text-xs">{t(`agentRole.${r.role}`)}</TableCell>
+                    <TableCell className="font-mono text-xs">{r.profileId ?? r.preferredProfile ?? t("board.auto")}</TableCell>
                     <TableCell>
-                      <Badge tone={STATUS_TONE[r.status] ?? "neutral"}>{RUN_LABEL[r.status]}</Badge>
+                      <Badge tone={STATUS_TONE[r.status] ?? "neutral"}>{t(`runStatus.${r.status}`)}</Badge>
                       {r.error ? <div className="max-w-64 truncate text-xs text-muted-foreground">{r.error}</div> : null}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
@@ -410,6 +402,7 @@ function MrLink({ run }: { run: AgentRun }) {
 
 function RunDetail({ run, onClose, onChanged, gitlabReady }: { run: AgentRun; onClose: () => void; onChanged: () => void; gitlabReady: boolean }) {
   const { client } = useHive();
+  const t = useT();
   const desktop = client.desktop!;
   const live = run.status === "running" || run.status === "queued";
   const pulse = usePulse(live, 1500);
@@ -429,17 +422,19 @@ function RunDetail({ run, onClose, onChanged, gitlabReady }: { run: AgentRun; on
         <CardContent className="flex flex-col gap-3 px-4">
           <div className="flex flex-wrap items-center gap-2">
             <b className="font-mono text-sm">{run.id}</b>
-            <Badge tone={STATUS_TONE[run.status] ?? "neutral"}>{RUN_LABEL[run.status]}</Badge>
+            <Badge tone={STATUS_TONE[run.status] ?? "neutral"}>{t(`runStatus.${run.status}`)}</Badge>
             <span className="min-w-0 flex-1 text-xs text-muted-foreground wrap-anywhere">
-              {run.taskId} · {ROLE_LABEL[run.role]} · {run.profileId ?? "chờ chọn gói"} · lần {run.attempt}/{run.maxAttempts}
+              {run.taskId} · {t(`agentRole.${run.role}`)} · {run.profileId ?? t("board.waitingProfile")} ·{" "}
+              {t("board.attemptOf", { n: run.attempt, max: run.maxAttempts })}
             </span>
-            <Button size="icon-sm" variant="ghost" onClick={onClose} aria-label="Đóng">
+            <Button size="icon-sm" variant="ghost" onClick={onClose} aria-label={t("common.close")}>
               <X />
             </Button>
           </div>
           {run.branch ? (
             <div className="font-mono text-xs break-all text-muted-foreground">
-              {run.branch} · {run.commits} commit{run.headSha ? ` · ${run.headSha}` : ""}
+              {run.branch} · {t("board.commits", { count: run.commits })}
+              {run.headSha ? ` · ${run.headSha}` : ""}
             </div>
           ) : null}
           {run.error ? (
@@ -465,7 +460,7 @@ function RunDetail({ run, onClose, onChanged, gitlabReady }: { run: AgentRun; on
                 disabled={action.busy}
                 onClick={() => void action.run(async () => (await desktop.cancelRun(run.id), onChanged()))}
               >
-                Huỷ
+                {t("board.cancelRun")}
               </Button>
             ) : null}
             {gitlabReady && run.status === "succeeded" && run.role !== "plan" && run.commits > 0 ? (
@@ -475,28 +470,28 @@ function RunDetail({ run, onClose, onChanged, gitlabReady }: { run: AgentRun; on
                 disabled={action.busy}
                 onClick={() => void action.run(async () => (await desktop.createMergeRequest(run.id), onChanged()))}
               >
-                {run.mrUrl ? "Cập nhật MR" : "Tạo MR"}
+                {run.mrUrl ? t("board.updateMr") : t("board.createMr")}
               </Button>
             ) : null}
             {run.worktree ? (
               <>
                 <Button size="sm" variant="outline" onClick={() => void action.run(async () => setDiff(await desktop.runDiff(run.id)))}>
-                  Xem thay đổi
+                  {t("proposals.showChanges")}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => void action.run(() => desktop.showInFolder(run.worktree!))}>
-                  Mở worktree
+                  {t("board.openWorktree")}
                 </Button>
                 {!live ? (
                   <Button
                     size="sm"
                     variant="ghost"
                     onClick={() => {
-                      if (window.confirm("Xoá worktree? Branch và commit vẫn giữ nguyên trong repo.")) {
+                      if (window.confirm(t("board.confirmRemoveWorktree"))) {
                         void action.run(async () => (await desktop.removeWorktree(run.id), onChanged()));
                       }
                     }}
                   >
-                    Xoá worktree
+                    {t("board.removeWorktree")}
                   </Button>
                 ) : null}
               </>
@@ -511,7 +506,7 @@ function RunDetail({ run, onClose, onChanged, gitlabReady }: { run: AgentRun; on
             ref={pre}
             aria-label="Log"
           >
-            {log.data || (live ? "Đang chờ output…" : "(không có log)")}
+            {log.data || (live ? t("board.waitingOutput") : t("board.noLog"))}
           </pre>
         </CardContent>
       </Card>

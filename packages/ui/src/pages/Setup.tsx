@@ -5,23 +5,20 @@ import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader } from "../components/common.tsx";
 import { formatTime, useAction, useHive, useQuery } from "../hooks.ts";
+import { rich, useT } from "../i18n/index.tsx";
 
-const STATE: Record<SetupState, { label: string; tone: string }> = {
-  installed: { label: "Đã cài", tone: "ok" },
-  missing: { label: "Chưa cài", tone: "warn" },
-  outdated: { label: "Cần cập nhật", tone: "info" },
-  manual: { label: "Cần sửa tay", tone: "danger" },
-};
+const TONE: Record<SetupState, string> = { installed: "ok", missing: "warn", outdated: "info", manual: "danger" };
 
 export function SetupPage() {
   const { client } = useHive();
+  const t = useT();
   const desktop = client.desktop!;
   const status = useQuery(() => desktop.setupStatus(), [desktop]);
   const [report, setReport] = useState<SetupReport | null>(null);
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setTick((n) => n + 1), 15_000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setTick((n) => n + 1), 15_000);
+    return () => clearInterval(timer);
   }, []);
   const requests = useQuery(() => desktop.hubRequests(), [desktop, tick]);
   const shown = report ?? status.data;
@@ -38,8 +35,8 @@ export function SetupPage() {
   return (
     <Page>
       <PageHeader
-        title="Cài đặt máy"
-        subtitle="App kiểm tra những gì đã có trên máy này và trong từng repo. Mỗi nút chỉ làm đúng việc ghi ở dòng đó."
+        title={t("nav.setup")}
+        subtitle={t("setup.subtitle")}
         actions={
           <Button
             variant="outline"
@@ -50,7 +47,7 @@ export function SetupPage() {
             }}
           >
             <RefreshCw className={status.loading ? "animate-spin" : undefined} />
-            {status.loading ? "Đang kiểm tra…" : "Kiểm tra lại"}
+            {status.loading ? t("setup.checking") : t("setup.recheck")}
           </Button>
         }
       />
@@ -65,16 +62,16 @@ export function SetupPage() {
           }}
         />
       ) : null}
-      {!shown && status.loading ? <p className="text-sm text-muted-foreground">Đang kiểm tra CLI, lệnh hive-mcp và các repo…</p> : null}
+      {!shown && status.loading ? <p className="text-sm text-muted-foreground">{t("setup.checkingAll")}</p> : null}
       {shown ? (
         <>
           <Notice tone={missing ? "warn" : "ok"}>
-            {missing ? `${missing} mục chưa sẵn sàng.` : "Mọi thứ đã sẵn sàng."}
-            {policy && required.size ? ` Chính sách team yêu cầu ${required.size} mục (nhãn "bắt buộc").` : ""}
+            {missing ? t("setup.notReady", { count: missing }) : t("setup.allReady")}
+            {policy && required.size ? ` ${t("setup.policyRequires", { count: required.size })}` : ""}
           </Notice>
           <Card>
             <CardHeader>
-              <CardTitle>Máy này</CardTitle>
+              <CardTitle>{t("setup.thisMachine")}</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <SetupList items={shown.machine} required={required} onChanged={replace} />
@@ -82,11 +79,13 @@ export function SetupPage() {
           </Card>
           {shown.projects.length === 0 ? (
             <Empty>
-              Chưa có dự án. Thêm repo ở{" "}
-              <a href="#/projects" className="font-medium text-primary underline underline-offset-2">
-                Dự án &amp; cài đặt
-              </a>{" "}
-              để kiểm tra cấu hình agent, codegraph và superpowers trong repo.
+              {rich(t("setup.noProjects"), {
+                link: (
+                  <a href="#/projects" className="font-medium text-primary underline underline-offset-2">
+                    {t("nav.projects")}
+                  </a>
+                ),
+              })}
             </Empty>
           ) : null}
           {shown.projects.map((p) => (
@@ -108,6 +107,7 @@ export function SetupPage() {
 
 function RequestsCard({ commands, onAnswered }: { commands: MachineCommand[]; onAnswered: () => void }) {
   const { client } = useHive();
+  const t = useT();
   const action = useAction();
   const [done, setDone] = useState<MachineCommand | null>(null);
   const answer = (c: MachineCommand, approve: boolean) =>
@@ -118,8 +118,8 @@ function RequestsCard({ commands, onAnswered }: { commands: MachineCommand[]; on
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Yêu cầu từ admin</CardTitle>
-        <CardDescription>Admin trên hub muốn máy này cài các mục dưới đây. App chỉ chạy đúng việc của mục đó, và chỉ khi bạn đồng ý.</CardDescription>
+        <CardTitle>{t("setup.requests")}</CardTitle>
+        <CardDescription>{t("setup.requestsHint")}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
@@ -128,10 +128,10 @@ function RequestsCard({ commands, onAnswered }: { commands: MachineCommand[]; on
               <div className="flex flex-wrap items-center gap-2">
                 <span className="min-w-0 flex-1 font-medium break-words">{c.label}</span>
                 <Button size="sm" variant="outline" disabled={action.busy} onClick={() => answer(c, true)}>
-                  {action.busy ? "Đang cài…" : "Đồng ý và cài"}
+                  {action.busy ? t("setup.installing") : t("setup.approve")}
                 </Button>
                 <Button size="sm" variant="ghost" disabled={action.busy} onClick={() => answer(c, false)}>
-                  Từ chối
+                  {t("setup.decline")}
                 </Button>
               </div>
               <div className="text-xs break-words text-muted-foreground">
@@ -143,7 +143,11 @@ function RequestsCard({ commands, onAnswered }: { commands: MachineCommand[]; on
         <ErrorNote error={action.error} />
         {done ? (
           <Notice tone={done.status === "done" ? "ok" : done.status === "rejected" ? "info" : "error"}>
-            #{done.id} {done.label}: {done.status === "done" ? "đã cài xong" : done.status === "rejected" ? "đã từ chối" : "cài lỗi"}. Hub đã nhận kết quả.
+            {t("setup.answered", {
+              id: done.id,
+              label: done.label,
+              result: done.status === "done" ? t("setup.resultDone") : done.status === "rejected" ? t("setup.resultDeclined") : t("setup.resultFailed"),
+            })}
           </Notice>
         ) : null}
       </CardContent>
@@ -163,15 +167,15 @@ function SetupList({ items, required, onChanged }: { items: SetupItem[]; require
 
 function SetupRow({ item, required, onChanged }: { item: SetupItem; required: boolean; onChanged: (item: SetupItem) => void }) {
   const { client } = useHive();
+  const t = useT();
   const action = useAction();
   const [output, setOutput] = useState<string | null>(null);
-  const state = STATE[item.state];
   return (
     <div className="flex flex-col gap-2 rounded-lg border p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge tone={state.tone}>{state.label}</Badge>
+        <Badge tone={TONE[item.state]}>{t(`setupState.${item.state}`)}</Badge>
         <span className="min-w-0 font-medium break-words">{item.label}</span>
-        {required ? <Badge tone="accent">bắt buộc</Badge> : null}
+        {required ? <Badge tone="accent">{t("setup.required")}</Badge> : null}
         {item.action ? (
           <Button
             size="sm"
@@ -186,7 +190,7 @@ function SetupRow({ item, required, onChanged }: { item: SetupItem; required: bo
               })
             }
           >
-            {action.busy ? "Đang cài…" : item.action}
+            {action.busy ? t("setup.installing") : item.action}
           </Button>
         ) : null}
       </div>
@@ -194,7 +198,7 @@ function SetupRow({ item, required, onChanged }: { item: SetupItem; required: bo
       <ErrorNote error={action.error} />
       {output ? (
         <details>
-          <summary className="cursor-pointer text-xs text-muted-foreground select-none hover:text-foreground">Kết quả</summary>
+          <summary className="cursor-pointer text-xs text-muted-foreground select-none hover:text-foreground">{t("setup.output")}</summary>
           <pre className="mt-2 max-h-80 overflow-auto rounded-md border bg-muted/50 p-3 font-mono text-xs">{output}</pre>
         </details>
       ) : null}

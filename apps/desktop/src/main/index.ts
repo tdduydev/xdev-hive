@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, shell, Tray, type IpcMainInvokeEvent } from "electron";
@@ -53,6 +53,9 @@ import { syncProject } from "./sync.ts";
 
 app.setName("xDev Hive");
 const smokeShot = process.env.HIVE_SMOKE_SCREENSHOT;
+// A screenshot run gets its own profile dir: the single-instance lock (and localStorage) live there,
+// so it neither quits because the real app is open nor touches the real app's state.
+if (smokeShot) app.setPath("userData", mkdtempSync(path.join(os.tmpdir(), "hive-smoke-ui-")));
 const devUrl = process.env.ELECTRON_RENDERER_URL;
 
 let config: HiveConfig;
@@ -471,7 +474,7 @@ function createWindow(): void {
   else void win.loadFile(path.join(import.meta.dirname, "../renderer/index.html"), hash ? { hash } : undefined);
 
   if (smokeShot) {
-    win.webContents.once("did-finish-load", () => {
+    const capture = () => {
       const delay = Number(process.env.HIVE_SMOKE_DELAY_MS ?? 1500);
       setTimeout(async () => {
         const image = await win!.webContents.capturePage();
@@ -479,6 +482,15 @@ function createWindow(): void {
         console.log(`[xdev-hive] smoke screenshot ${smokeShot}`);
         app.exit(0);
       }, delay);
+    };
+    // HIVE_SMOKE_LOCALE=en: the interface language lives in the renderer's localStorage, so set it and reload first.
+    const locale = process.env.HIVE_SMOKE_LOCALE;
+    win.webContents.once("did-finish-load", () => {
+      if (!locale) return capture();
+      void win!.webContents.executeJavaScript(`localStorage.setItem("xdev-hive.locale", ${JSON.stringify(locale)})`).then(() => {
+        win!.webContents.once("did-finish-load", capture);
+        win!.webContents.reload();
+      });
     });
   }
 }

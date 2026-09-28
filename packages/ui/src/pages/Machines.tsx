@@ -4,18 +4,19 @@ import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
 import { formatTime, useAction, useHive, useQuery } from "../hooks.ts";
+import { rich, useT } from "../i18n/index.tsx";
 
-const ROLE_LABEL: Record<Machine["runs"][number]["role"], string> = { plan: "lập kế hoạch", implement: "làm task", review: "review" };
 const REFRESH_MS = 15_000;
 
 const CODE = "rounded bg-muted px-1 py-0.5 font-mono text-xs";
 
 export function MachinesPage() {
   const { client } = useHive();
+  const t = useT();
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setTick((n) => n + 1), REFRESH_MS);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setTick((n) => n + 1), REFRESH_MS);
+    return () => clearInterval(timer);
   }, []);
   const machines = useQuery(() => client.call("machines.list", {}), [client, tick]);
   const cooldowns = useQuery(() => client.call("cooldowns.list", {}), [client, tick]);
@@ -23,20 +24,19 @@ export function MachinesPage() {
 
   return (
     <Page>
-      <PageHeader
-        title="Máy & run"
-        subtitle="App desktop ở chế độ hub báo lên mỗi 30 giây: run đang chạy hoặc đang chờ, và gói sub đang nghỉ vì hết quota."
-      />
+      <PageHeader title={t("nav.machines")} subtitle={t("machines.subtitle")} />
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold tracking-tight">Máy</h2>
+        <h2 className="text-lg font-semibold tracking-tight">{t("machines.machines")}</h2>
         <ErrorNote error={machines.error} />
-        {machines.data?.length === 0 ? <Empty>Chưa có máy nào báo lên. Mở app desktop ở chế độ Hub dùng chung.</Empty> : null}
+        {machines.data?.length === 0 ? <Empty>{t("machines.none")}</Empty> : null}
         {machines.data?.some((m) => m.duplicate) ? (
           <Notice tone="warn">
             <p>
-              Có hai app đang báo lên cùng tên máy và cùng token, nên chúng giữ chung lease task và có thể nhận trùng. Đổi <code className={CODE}>machine</code>{" "}
-              trong <code className={`${CODE} break-all`}>~/.xdev-hive/config.json</code> trên một máy, hoặc cấp cho mỗi máy một token riêng.
+              {rich(t("machines.duplicateHint"), {
+                field: <code className={CODE}>machine</code>,
+                file: <code className={`${CODE} break-all`}>~/.xdev-hive/config.json</code>,
+              })}
             </p>
           </Notice>
         ) : null}
@@ -45,9 +45,9 @@ export function MachinesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Máy</TableHead>
-                  <TableHead>Trạng thái</TableHead>
-                  <TableHead>Run</TableHead>
+                  <TableHead>{t("machines.colMachine")}</TableHead>
+                  <TableHead>{t("machines.colStatus")}</TableHead>
+                  <TableHead>{t("machines.colRuns")}</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -62,20 +62,18 @@ export function MachinesPage() {
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold tracking-tight">Quota đang nghỉ</h2>
+        <h2 className="text-lg font-semibold tracking-tight">{t("machines.cooldowns")}</h2>
         <ErrorNote error={cooldowns.error} />
-        {cooldowns.data?.length === 0 ? (
-          <Empty>Không có tài khoản nào đang nghỉ. Chỉ profile có điền "Tài khoản" mới chia sẻ quota qua hub.</Empty>
-        ) : null}
+        {cooldowns.data?.length === 0 ? <Empty>{t("machines.noCooldowns")}</Empty> : null}
         {cooldowns.data?.length ? (
           <div className="overflow-x-auto rounded-lg border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Tài khoản</TableHead>
-                  <TableHead>Nghỉ đến</TableHead>
-                  <TableHead>Lý do</TableHead>
-                  <TableHead>Báo từ</TableHead>
+                  <TableHead>{t("machines.colAccount")}</TableHead>
+                  <TableHead>{t("machines.colUntil")}</TableHead>
+                  <TableHead>{t("machines.colReason")}</TableHead>
+                  <TableHead>{t("machines.colReportedBy")}</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -94,6 +92,7 @@ export function MachinesPage() {
 
 function MachineRow({ machine: m, onChanged }: { machine: Machine; onChanged: () => void }) {
   const { client, me } = useHive();
+  const t = useT();
   const action = useAction();
   const running = m.runs.filter((r) => r.status === "running");
   const queued = m.runs.length - running.length;
@@ -109,28 +108,28 @@ function MachineRow({ machine: m, onChanged }: { machine: Machine; onChanged: ()
       <TableCell className="align-top">
         <div className="flex flex-col items-start gap-1">
           <Badge tone={m.duplicate ? "danger" : m.online ? "ok" : "neutral"}>
-            {m.duplicate ? "Trùng tên máy" : m.online ? "Đang hoạt động" : "Mất kết nối"}
+            {m.duplicate ? t("machineState.duplicate") : m.online ? t("machineState.online") : t("machineState.offline")}
           </Badge>
-          <span className="text-xs text-muted-foreground">lần cuối {formatTime(m.lastSeen)}</span>
+          <span className="text-xs text-muted-foreground">{t("machines.lastSeen", { time: formatTime(m.lastSeen) })}</span>
         </div>
       </TableCell>
       <TableCell className="align-top whitespace-normal">
         <div className="flex min-w-56 flex-col gap-2">
-          {running.length === 0 && queued === 0 ? <span className="text-muted-foreground">Rảnh</span> : null}
+          {running.length === 0 && queued === 0 ? <span className="text-muted-foreground">{t("machines.idle")}</span> : null}
           {running.map((r) => (
             <div key={r.runId} className="flex flex-col gap-0.5">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <Badge tone={STATUS_TONE[r.status]}>đang chạy</Badge>
+                <Badge tone={STATUS_TONE[r.status]}>{t("runStatus.running").toLocaleLowerCase()}</Badge>
                 <span className="font-mono text-xs">{r.taskId}</span>
                 <span className="min-w-0 break-words">{r.taskTitle}</span>
               </div>
               <div className="text-xs break-words text-muted-foreground">
-                {r.project} · {r.profileId ?? "?"} · {ROLE_LABEL[r.role]} · từ {formatTime(r.since)}
+                {r.project} · {r.profileId ?? "?"} · {t(`agentRole.${r.role}`).toLocaleLowerCase()} · {t("machines.since", { time: formatTime(r.since) })}
               </div>
             </div>
           ))}
-          {queued > 0 ? <div className="text-muted-foreground">+ {queued} run đang chờ</div> : null}
-          {!m.online && m.runs.length > 0 ? <div className="text-xs text-muted-foreground">Số liệu từ lần báo cuối, có thể đã cũ.</div> : null}
+          {queued > 0 ? <div className="text-muted-foreground">{t("machines.queued", { count: queued })}</div> : null}
+          {!m.online && m.runs.length > 0 ? <div className="text-xs text-muted-foreground">{t("machines.stale")}</div> : null}
           <ErrorNote error={action.error} />
         </div>
       </TableCell>
@@ -147,7 +146,7 @@ function MachineRow({ machine: m, onChanged }: { machine: Machine; onChanged: ()
               })
             }
           >
-            Xoá
+            {t("machines.remove")}
           </Button>
         ) : null}
       </TableCell>
@@ -157,6 +156,7 @@ function MachineRow({ machine: m, onChanged }: { machine: Machine; onChanged: ()
 
 function CooldownRow({ cooldown: c, onChanged }: { cooldown: QuotaCooldown; onChanged: () => void }) {
   const { client, me } = useHive();
+  const t = useT();
   const action = useAction();
   return (
     <TableRow>
@@ -175,7 +175,7 @@ function CooldownRow({ cooldown: c, onChanged }: { cooldown: QuotaCooldown; onCh
             size="sm"
             variant="outline"
             disabled={action.busy}
-            title="Mọi máy dùng tài khoản này sẽ thử lại ở lần heartbeat kế tiếp"
+            title={t("machines.clearHint")}
             onClick={() =>
               void action.run(async () => {
                 await client.call("cooldowns.clear", { account: c.account });
@@ -183,7 +183,7 @@ function CooldownRow({ cooldown: c, onChanged }: { cooldown: QuotaCooldown; onCh
               })
             }
           >
-            Hết nghỉ
+            {t("machines.clear")}
           </Button>
         ) : null}
       </TableCell>
