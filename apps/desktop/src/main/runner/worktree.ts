@@ -1,9 +1,11 @@
 // One git worktree + branch per task (ai/<task-id>), so agents never share a working copy.
 import { copyFileSync, existsSync, mkdirSync, realpathSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { HiveError } from "@xdev-hive/core";
 import { git, gitErrorText, isGitRepo } from "../git.ts";
 import { tr } from "../i18n.ts";
+import { RENDERED_FILES } from "../installer.ts";
 
 /** Agent config that may exist in the repo but not be committed yet; copied into new worktrees. */
 export const AGENT_CONFIG_FILES = [".mcp.json", ".gemini/settings.json", ".claude/settings.json", ".xdev-hive/guard-docs.sh"];
@@ -72,13 +74,17 @@ export function ensureWorktree(repo: string, dir: string, taskId: string, knownB
   return { path: dir, branch, baseSha, created, copied };
 }
 
-/** Commits whatever the agent left uncommitted. The repo's own hooks still run. */
+/**
+ * Commits whatever the agent left uncommitted. No git hook runs: the agent could have written one into
+ * the working copy (.githooks), and the app is not sandboxed. Docs rendered from Hive stay out, as the
+ * pre-commit guard would have kept them; they show up as uncommitted in the run's summary.
+ */
 export function commitAll(dir: string, message: string, exclude: string[]): { sha: string | null; error: string | null } {
   try {
     if (!git(dir, ["status", "--porcelain"])) return { sha: null, error: null };
-    git(dir, ["add", "-A", "--", ".", ...exclude.map((f) => `:(exclude)${f}`)]);
+    git(dir, ["add", "-A", "--", ".", ...[...exclude, ...RENDERED_FILES].map((f) => `:(exclude)${f}`)]);
     if (!git(dir, ["diff", "--cached", "--name-only"])) return { sha: null, error: null };
-    git(dir, ["commit", "-m", message]);
+    git(dir, ["-c", `core.hooksPath=${os.devNull}`, "commit", "-m", message]);
     return { sha: git(dir, ["rev-parse", "--short", "HEAD"]), error: null };
   } catch (err) {
     return { sha: null, error: gitErrorText(err) };

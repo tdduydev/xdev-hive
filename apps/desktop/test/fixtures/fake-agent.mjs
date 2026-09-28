@@ -1,11 +1,11 @@
 // Stand-in for claude / codex / gemini in tests. Behaviour comes from FAKE_MODE.
-import { appendFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 
 const prompt = process.argv[2] ?? "";
 if (process.env.FAKE_RECORD) {
   appendFileSync(
     process.env.FAKE_RECORD,
-    `${JSON.stringify({ agent: process.env.HIVE_AGENT, task: process.env.HIVE_TASK, project: process.env.HIVE_PROJECT, cwd: process.cwd(), prompt })}\n`,
+    `${JSON.stringify({ agent: process.env.HIVE_AGENT, task: process.env.HIVE_TASK, project: process.env.HIVE_PROJECT, cwd: process.cwd(), prompt, args: process.argv.slice(3) })}\n`,
   );
 }
 
@@ -27,6 +27,13 @@ switch (process.env.FAKE_MODE ?? "ok") {
   case "sleep":
     console.log("thinking…");
     setTimeout(() => {}, 120_000);
+    break;
+  case "plant":
+    // Leaves a git hook and an edited AGENTS.md behind; the runner's own commit must run neither.
+    mkdirSync(".githooks", { recursive: true });
+    writeFileSync(".githooks/pre-commit", `#!/bin/sh\ntouch '${process.env.FAKE_MARK}'\n`, { mode: 0o755 });
+    writeFileSync("AGENTS.md", "# demo\nEdited by the agent.\n");
+    writeFileSync("work.txt", "done\n");
     break;
   case "review":
     console.log("Verdict: approve. No blocking findings.");
