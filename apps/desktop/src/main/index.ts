@@ -47,7 +47,7 @@ import {
 import { GitHubClient } from "./github/client.ts";
 import { GitLabClient } from "./gitlab/client.ts";
 import { setMainLocale, tr } from "./i18n.ts";
-import { MergeRequester, type MrHost } from "./gitlab/mr.ts";
+import { MergeRequester, mrLabel, type MrHost } from "./gitlab/mr.ts";
 import { MrWatcher, type MrChange } from "./gitlab/watch.ts";
 import { CiFixer } from "./gitlab/ci-fix.ts";
 import { installAgents, installShim } from "./installer.ts";
@@ -529,25 +529,25 @@ function onRunnerEvent(event: RunnerEvent): void {
 function onMrChanges(changes: MrChange[]): void {
   if (!Notification.isSupported()) return;
   for (const c of changes) {
-    const iid = c.run.mrIid ?? "";
+    const mr = mrLabel(c.run);
     const body =
       c.status.to === "merged" && c.status.from !== "merged"
         ? c.taskError
-          ? tr("desktop.mrMergedTaskFailed", { iid, reason: c.taskError })
-          : tr(c.taskDone ? "desktop.mrMerged" : "desktop.mrMergedOnly", { iid })
+          ? tr("desktop.mrMergedTaskFailed", { mr, reason: c.taskError })
+          : tr(c.taskDone ? "desktop.mrMerged" : "desktop.mrMergedOnly", { mr })
         : c.status.to === "closed" && c.status.from !== "closed"
-          ? tr("desktop.mrClosed", { iid })
+          ? tr("desktop.mrClosed", { mr })
           : c.fix?.kind === "queued"
-            ? tr("desktop.ciFixQueued", { iid, run: c.fix.run.id, n: c.fix.n, max: c.fix.max })
+            ? tr("desktop.ciFixQueued", { mr, run: c.fix.run.id, n: c.fix.n, max: c.fix.max })
             : c.fix?.kind === "limit"
-              ? tr("desktop.ciFixLimit", { iid, max: c.fix.max })
+              ? tr("desktop.ciFixLimit", { mr, max: c.fix.max })
               : c.fix?.kind === "error"
-                ? tr("desktop.ciFixFailed", { iid, reason: c.fix.reason })
+                ? tr("desktop.ciFixFailed", { mr, reason: c.fix.reason })
                 : c.pipeline.to === "failed"
-                  ? tr("desktop.pipelineFailed", { iid })
+                  ? tr("desktop.pipelineFailed", { mr })
                   : null;
     if (!body) continue;
-    const n = new Notification({ title: `${c.run.taskId} · MR !${iid}`, body });
+    const n = new Notification({ title: `${c.run.taskId} · ${mr}`, body });
     n.on("click", () => {
       showWindow();
       win?.webContents.executeJavaScript('location.hash = "#/board"').catch(() => undefined);
@@ -851,7 +851,7 @@ if (!app.requestSingleInstanceLock()) {
     const citations = () => void checkAllCitations().catch(() => undefined);
     setTimeout(citations, 60_000).unref();
     setInterval(citations, 30 * 60_000).unref();
-    // Open MRs (state and pipeline on GitLab): shortly after start, then every 2 minutes.
+    // Open MRs and PRs (state and pipeline on GitLab, checks on GitHub): shortly after start, then every 2 minutes.
     const watchMrs = () => void mrWatcher.check().then(onMrChanges, () => undefined);
     setTimeout(watchMrs, smokeShot ? 0 : 30_000).unref();
     setInterval(watchMrs, 2 * 60_000).unref();
