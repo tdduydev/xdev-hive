@@ -108,6 +108,17 @@ export interface SetupInstallResult {
   output: string;
 }
 
+/** Whether a profile's CLI is signed in, from the CLI's own status command run with the profile's env. */
+export interface LoginStatus {
+  /** null: the CLI has no status command (Gemini, custom), is missing, or gave an answer we could not read. */
+  loggedIn: boolean | null;
+  /** How it is signed in, as the CLI puts it (e.g. "claude.ai", "ChatGPT"). */
+  method: string | null;
+  /** What to run in a terminal to sign in, with the profile's login dir (never its other env). */
+  loginCommand: string | null;
+  checkedAt: string;
+}
+
 export interface AgentProfileStatus extends AgentProfile {
   running: number;
   /** Set while the subscription is resting after a rate limit (or a missing CLI). */
@@ -117,6 +128,8 @@ export interface AgentProfileStatus extends AgentProfile {
   cooldownFrom: string | null;
   /** Where the profile's CLI resolves on the login-shell PATH; null = not installed. */
   cliPath: string | null;
+  /** Last sign-in check; null before the first one. */
+  login: LoginStatus | null;
   lastUsedAt: string | null;
   stats: { runs: number; succeeded: number; failed: number; rateLimited: number };
 }

@@ -3,6 +3,7 @@ import type { Machine, QuotaCooldown } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
+import { ProfileStates } from "../components/ProfileStates.tsx";
 import { formatTime, useAction, useHive, useQuery } from "../hooks.ts";
 import { rich, useT } from "../i18n/index.tsx";
 
@@ -103,6 +104,12 @@ function MachineRow({ machine: m, onChanged }: { machine: Machine; onChanged: ()
           <span className="font-mono font-semibold break-all">{m.machine}</span>
           <span className="font-mono text-xs break-all text-muted-foreground">{m.id}</span>
           {m.version ? <span className="text-xs text-muted-foreground">v{m.version}</span> : null}
+          {m.profiles?.length ? (
+            <div className="mt-1.5 flex flex-col gap-1">
+              <span className="text-xs font-medium text-muted-foreground">{t("machines.profiles")}</span>
+              <ProfileStates profiles={m.profiles} />
+            </div>
+          ) : null}
         </div>
       </TableCell>
       <TableCell className="align-top">

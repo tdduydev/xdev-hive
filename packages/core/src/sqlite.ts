@@ -533,6 +533,7 @@ export class SqliteHive implements HiveBackend {
       online: str(r.last_seen) > this.#now(-ONLINE_MINUTES),
       duplicate: dup !== null && dup > this.#now(-DUPLICATE_MINUTES),
       runs: JSON.parse(str(r.runs)) as MachineRun[],
+      profiles: JSON.parse(str(r.profiles ?? "[]")) as ReportedProfile[],
     };
   }
 
@@ -854,7 +855,6 @@ export class SqliteHive implements HiveBackend {
             ...this.#toMachine(r),
             setup: r.setup == null ? null : (JSON.parse(str(r.setup)) as SetupReport),
             setupAt: strOrNull(r.setup_at),
-            profiles: JSON.parse(str(r.profiles ?? "[]")) as ReportedProfile[],
             commands: (
               db.prepare("SELECT * FROM machine_commands WHERE machine_id = ? ORDER BY id DESC LIMIT ?").all(str(r.id), COMMAND_HISTORY) as Row[]
             ).map(toCommand),
