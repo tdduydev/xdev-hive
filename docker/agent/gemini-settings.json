@@ -1,0 +1,15 @@
+{
+  "security": { "folderTrust": { "enabled": false } },
+  "mcpServers": {
+    "xdev-hive": {
+      "httpUrl": "${HIVE_HUB_URL}/mcp",
+      "headers": {
+        "Authorization": "Bearer ${HIVE_HUB_TOKEN}",
+        "x-hive-agent": "${HIVE_MCP_AGENT}",
+        "x-hive-project": "${HIVE_PROJECT}",
+        "x-hive-source": "${HIVE_MCP_SOURCE}",
+        "x-hive-readonly": "${HIVE_MCP_READONLY}"
+      }
+    }
+  }
+}

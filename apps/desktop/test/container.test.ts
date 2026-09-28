@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 import { AGENT_TEMPLATES, type Actor, type AgentProfile, type HiveBackend } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { containerCommand, containerName } from "../src/main/runner/container.ts";
+import { claudeMcpServers, codexMcpArgs, hubMcpEnv } from "../src/main/runner/container-mcp.ts";
 import { Runner, type RunnerHost } from "../src/main/runner/runner.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
@@ -85,7 +86,7 @@ function repo(): string {
   return dir;
 }
 
-async function setup(profiles: AgentProfile[], opts: { docker?: boolean; mode?: "local" | "hub" } = {}) {
+async function setup(profiles: AgentProfile[], opts: { docker?: boolean; mode?: "local" | "hub"; tokens?: Record<string, string> } = {}) {
   const dir = repo();
   const hive = new SqliteHive(":memory:");
   await hive.call("tasks.create", { id: "T-1", project: "demo", title: "Container run" }, admin);
@@ -108,6 +109,7 @@ async function setup(profiles: AgentProfile[], opts: { docker?: boolean; mode?: 
     // A variable only the machine has: it must not reach an agent in a container.
     env: () => ({ ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`, FAKE_DOCKER_RECORD: dockerRecord, HIVE_TEST_HOST_ONLY: "leaked" }),
     hub: () => ({ url: "https://hive.example.test", token: "hive_test_machine_token" }),
+    token: (id) => opts.tokens?.[id],
   };
   const runner = new Runner(host, { dataDir, user: "duy", tickMs: 60_000 });
   const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : []);
@@ -181,5 +183,72 @@ describe("runs in a container", () => {
     assert.equal(runner.store.get(run.id)!.status, "cancelled");
     for (let i = 0; i < 100 && docker().length < 2; i++) await new Promise((r) => setTimeout(r, 50));
     assert.deepEqual(docker()[1], ["kill", `hive-${run.id}`]);
+  });
+});
+
+describe("Hive and sign-in for CLIs in a container", () => {
+  const hub = { url: "https://hive.example.test/", token: "hive_machine" };
+  const r = { agent: "codex-1.duy-mbp", machine: "duy-mbp", project: "demo", task: "T-1", run: "R-1", readOnly: true };
+
+  it("turns the shim off for Codex and points it at the hub, with the token left in the environment", () => {
+    assert.deepEqual(codexMcpArgs(null, r), ["-c", "mcp_servers.xdev-hive.enabled=false"]);
+    const args = codexMcpArgs(hub, r);
+    assert.deepEqual(args.slice(0, 6), [
+      "-c", "mcp_servers.xdev-hive.enabled=false",
+      "-c", 'mcp_servers.hive.url="https://hive.example.test/mcp"',
+      "-c", 'mcp_servers.hive.bearer_token_env_var="HIVE_HUB_TOKEN"',
+    ]);
+    const source = JSON.stringify(JSON.stringify({ via: "mcp", machine: "duy-mbp", run: "R-1", task: "T-1" }));
+    assert.equal(args[7], `mcp_servers.hive.http_headers={"x-hive-agent"="codex-1.duy-mbp","x-hive-project"="demo","x-hive-source"=${source},"x-hive-readonly"="1"}`);
+    assert.ok(!args.join(" ").includes("hive_machine"));
+    assert.deepEqual(hubMcpEnv(hub, r, "codex"), { HIVE_HUB_TOKEN: "hive_machine" });
+  });
+
+  it("gives Gemini the variables its image settings read, and Claude a server with the token in its file", () => {
+    assert.deepEqual(hubMcpEnv(hub, r, "gemini"), {
+      HIVE_HUB_TOKEN: "hive_machine",
+      HIVE_HUB_URL: "https://hive.example.test",
+      HIVE_MCP_AGENT: "codex-1.duy-mbp",
+      HIVE_MCP_SOURCE: '{"via":"mcp","machine":"duy-mbp","run":"R-1","task":"T-1"}',
+      HIVE_MCP_READONLY: "1",
+    });
+    assert.deepEqual(hubMcpEnv(null, r, "gemini"), {});
+    assert.deepEqual(hubMcpEnv(hub, r, "claude"), {}, "Claude reads its file instead");
+    const servers = claudeMcpServers(hub, r) as Record<string, { url: string; headers: Record<string, string> }>;
+    assert.equal(servers["xdev-hive"]!.url, "https://hive.example.test/mcp");
+    assert.equal(servers["xdev-hive"]!.headers.authorization, "Bearer hive_machine");
+    assert.deepEqual(claudeMcpServers(null, r), {});
+  });
+
+  it("hands Codex the hub by name in a hub-mode container run", async () => {
+    const { runner, docker, calls } = await setup([boxed("codex-box")], { mode: "hub" });
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    assert.equal(runner.store.get(run.id)!.status, "succeeded", runner.store.get(run.id)!.error ?? "");
+    const args = docker()[0]!;
+    const image = args.indexOf("xdev-hive-agent");
+    assert.deepEqual(args.slice(image + 1, image + 4), ["codex", "-c", "mcp_servers.xdev-hive.enabled=false"], "overrides before the subcommand");
+    assert.ok(args.includes("HIVE_HUB_TOKEN"));
+    assert.ok(!args.some((a) => a.includes("hive_test_machine_token")));
+    assert.equal(calls()[0].hubToken, "set");
+  });
+
+  it("signs Claude in with the saved token inside a container only", async () => {
+    const claude = boxed("claude-box", "ok", { kind: "claude", bin: "claude", args: ["{prompt}"] });
+    const withToken = await setup([claude], { tokens: { "claude-box": "sk-ant-oat01-test" } });
+    const run = await withToken.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await withToken.runner.settle();
+    assert.equal(withToken.runner.store.get(run.id)!.status, "succeeded", withToken.runner.store.get(run.id)!.error ?? "");
+    assert.ok(withToken.docker()[0]!.includes("CLAUDE_CODE_OAUTH_TOKEN"));
+    assert.ok(!withToken.docker()[0]!.some((a) => a.includes("sk-ant-oat01-test")), "by name only");
+    assert.equal(withToken.calls()[0].oauth, "set");
+    assert.equal(withToken.runner.profileStatuses()[0]!.hasToken, true);
+
+    const without = await setup([claude]);
+    const next = await without.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await without.runner.settle();
+    assert.ok(!without.docker()[0]!.includes("CLAUDE_CODE_OAUTH_TOKEN"));
+    assert.equal(without.runner.profileStatuses()[0]!.hasToken, false);
+    assert.equal(without.runner.store.get(next.id)!.status, "succeeded");
   });
 });

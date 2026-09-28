@@ -75,7 +75,7 @@ Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ v�
 
 ```bash
 nvm use && npm install
-npm test            # 246 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
+npm test            # 250 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
 npm run typecheck
 ```
 
@@ -184,12 +184,17 @@ Profile có ô *Chạy trong container (Docker)* (hỏi ngày 28/9: bật theo t
   Phần còn lại của home là tmpfs rỗng.
 - Container chạy bằng uid:gid của bạn, nên file tạo ra vẫn thuộc về bạn. `--rm`, `--init`, tên `hive-<run>`. Huỷ run hay hết giờ thì runner gọi thêm `docker kill`.
 - **Biến môi trường**: chỉ `HIVE_*`, `env` của profile và biến cần cho lệnh; biến khác của máy không vào container. Docker nhận **tên** biến (`-e NAME`), giá trị lấy từ môi trường của chính docker, nên không hiện trong danh sách tiến trình.
-- **Công cụ Hive (MCP)**: Claude Code ở chế độ hub dùng MCP HTTP của hub, với token của máy trong một file cấu hình quyền 0600. File đó gắn chỉ đọc và bị xoá khi run xong. Header `x-hive-project`/`x-hive-readonly` chỉ thu hẹp quyền của token.
-  - Chế độ cục bộ, và Codex/Gemini trong container: chưa có công cụ Hive, nhưng runner vẫn nhận và cập nhật task như thường.
+- **Công cụ Hive (MCP)** ở chế độ hub: agent trong container nói chuyện với MCP HTTP của hub bằng token của máy. Header `x-hive-project`/`x-hive-readonly` chỉ thu hẹp quyền của token.
+  - Claude Code: `--mcp-config` trỏ tới một file quyền 0600, gắn chỉ đọc, xoá khi run xong.
+  - Codex: `-c` tắt server `xdev-hive` (shim của máy, container không có) và thêm server HTTP `hive`. Token đọc từ biến `HIVE_HUB_TOKEN`.
+  - Gemini CLI: image có sẵn `/etc/gemini-cli/settings.json`, thay cho server `xdev-hive` trong `.gemini/settings.json` của repo. File này lấy giá trị từ `HIVE_HUB_URL`, `HIVE_HUB_TOKEN`… (tắt folder trust vì container chỉ thấy worktree). Image cũ cần build lại.
+  - Chế độ cục bộ: container chưa có công cụ Hive, nhưng runner vẫn nhận và cập nhật task như thường.
+- **Claude Code trên macOS**: đăng nhập nằm trong Keychain, container không đọc được.
+  - Tạo token dài hạn một lần: nút *Tạo token trong terminal* trên thẻ profile chạy `claude setup-token` (cần gói Pro/Max/Team). Dán token vào ô *Token container* rồi bấm *Lưu token*.
+  - App lưu token trong config (quyền 0600), không gửi lại giao diện, và chỉ run trong container nhận nó qua `CLAUDE_CODE_OAUTH_TOKEN`. Đổi id profile thì token đi theo; xoá profile thì token bị xoá.
+  - Trên Linux, đăng nhập nằm trong `~/.claude` nên không cần token.
 - Máy không có `docker` thì run coi như gói không chạy được và chuyển sang gói khác.
-- **Chưa làm** (mục 11b, 11c):
-  - Claude Code trên macOS lưu đăng nhập trong Keychain, container không đọc được, nên cần token dài hạn (`claude setup-token`). Trên Linux đăng nhập nằm trong `~/.claude` nên dùng được luôn.
-  - Mạng của container chưa bị giới hạn.
+- **Chưa làm** (mục 11c): giới hạn mạng của container.
 
 ## Merge request trên GitLab
 
