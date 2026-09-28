@@ -75,8 +75,10 @@ const notifiedCommands = new Set<number>();
 const gitlabFetch = (url: string, init: RequestInit) => net.fetch(url, init);
 let quitting = false;
 
-const actor = (): Actor =>
-  config.mode === "hub" ? { name: "desktop", role: "admin" } : { name: os.userInfo().username, role: "admin" };
+const actor = (): Actor => {
+  const source = { via: "desktop" as const, machine: config.machine };
+  return config.mode === "hub" ? { name: "desktop", role: "admin", source } : { name: os.userInfo().username, role: "admin", source };
+};
 
 function reload(): void {
   config = loadConfig();

@@ -154,7 +154,7 @@ describe("buildCommand", () => {
     assert.ok(args.includes("--strict-mcp-config"));
     assert.equal(args.at(-2), "--mcp-config", "last, since it takes several values");
     assert.deepEqual(JSON.parse(args.at(-1)!), {
-      mcpServers: { "xdev-hive": { command: "hive-mcp", args: [], env: { HIVE_AGENT: "claude-1", HIVE_PROJECT: "demo" } } },
+      mcpServers: { "xdev-hive": { command: "hive-mcp", args: [], env: { HIVE_AGENT: "claude-1", HIVE_PROJECT: "demo", HIVE_TASK: "T-1" } } },
     });
   });
 
@@ -208,7 +208,9 @@ describe("Runner", () => {
     const { args } = calls()[0]!;
     assert.deepEqual(Object.keys(JSON.parse(args.at(-1)!).mcpServers), ["xdev-hive", "codegraph"]);
     assert.deepEqual(JSON.parse(args.at(-1)!).mcpServers.codegraph, CODEGRAPH_MCP);
-    assert.equal(JSON.parse(args.at(-1)!).mcpServers["xdev-hive"].env.HIVE_AGENT, "claude-a");
+    const env = JSON.parse(args.at(-1)!).mcpServers["xdev-hive"].env;
+    assert.equal(env.HIVE_AGENT, "claude-a");
+    assert.deepEqual([env.HIVE_TASK, env.HIVE_RUN], ["T-1", runner.list()[0]!.id], "so the agent's writes carry its task and run");
     assert.match(calls()[0]!.prompt, /Read AGENTS\.md in the working copy first/);
   });
 
