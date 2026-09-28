@@ -171,7 +171,11 @@ export const schemas = {
     project: project.optional(),
     status: z.enum(TASK_STATUSES).optional(),
   }),
-  "tasks.create": z.object({ id: taskId, project, title: z.string().min(1).max(300) }),
+  "tasks.create": z.object({ id: taskId, project, title: z.string().min(1).max(300), dependsOn: z.array(taskId).max(20).default([]) }),
+  /** Replaces what the task depends on (tasks of the same project, no cycles). */
+  "tasks.setDeps": z.object({ id: taskId, dependsOn: z.array(taskId).max(20) }),
+  /** Tasks ready to start: to do, nothing they depend on is open, nobody holds them. Those that unlock the most come first. */
+  "tasks.next": z.object({ project: project.optional(), limit: z.number().int().min(1).max(20).default(5) }),
   "tasks.claim": z.object({
     id: taskId,
     leaseMinutes: z.number().int().min(5).max(24 * 60).default(120),
@@ -283,6 +287,8 @@ export interface MethodOutput {
   "memory.remove": { removed: boolean };
   "tasks.list": Task[];
   "tasks.create": Task;
+  "tasks.setDeps": Task;
+  "tasks.next": Task[];
   "tasks.claim": { claimed: boolean; task: Task | null };
   "tasks.update": Task;
   "machines.heartbeat": { duplicate: boolean; cooldowns: QuotaCooldown[]; policy: TeamPolicy; commands: MachineCommand[] };
@@ -327,6 +333,8 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "memory.remove": "agent",
   "tasks.list": "viewer",
   "tasks.create": "agent",
+  "tasks.setDeps": "agent",
+  "tasks.next": "viewer",
   "tasks.claim": "agent",
   "tasks.update": "agent",
   "machines.heartbeat": "agent",

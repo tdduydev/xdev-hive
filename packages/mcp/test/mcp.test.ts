@@ -28,6 +28,7 @@ describe("mcp tools", () => {
       "memory_write",
       "task_claim",
       "task_list",
+      "task_next",
       "task_update",
     ]);
   });
@@ -35,12 +36,27 @@ describe("mcp tools", () => {
   it("gives read-only agents and viewer tokens the read tools only", async () => {
     const hive = new SqliteHive(":memory:");
     for (const client of [await connect(hive, "claude@duy", { readOnly: true }), await connect(hive, "ci", { role: "viewer" })]) {
-      assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), ["doc_get", "doc_list", "memory_search", "task_list"]);
+      assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), ["doc_get", "doc_list", "memory_search", "task_list", "task_next"]);
       assert.match(client.getInstructions() ?? "", /read-only/);
       const called = await client.callTool({ name: "memory_write", arguments: { kind: "decision", content: "x" } }).catch((e: Error) => e);
       assert.ok(called instanceof Error || (called as { isError?: boolean }).isError, "a hidden tool cannot be called either");
     }
     assert.equal((await hive.call("memory.list", {}, { name: "duy", role: "admin" })).length, 0);
+  });
+
+  it("suggests the next ready task and refuses to claim one that waits", async () => {
+    const hive = new SqliteHive(":memory:");
+    const admin = { name: "duy", role: "admin" as const };
+    await hive.call("tasks.create", { id: "T-1", project: "app", title: "API" }, admin);
+    await hive.call("tasks.create", { id: "T-2", project: "app", title: "UI", dependsOn: ["T-1"] }, admin);
+    const claude = await connect(hive, "claude@duy");
+    const next = JSON.parse(text(await claude.callTool({ name: "task_next", arguments: {} })));
+    assert.deepEqual(next.map((t: { id: string }) => t.id), ["T-1"]);
+    const listed = JSON.parse(text(await claude.callTool({ name: "task_list", arguments: {} })));
+    assert.deepEqual(listed.find((t: { id: string }) => t.id === "T-2").waitingOn, ["T-1"]);
+    const claim = await claude.callTool({ name: "task_claim", arguments: { id: "T-2" } });
+    assert.equal(claim.isError, true);
+    assert.match(text(claim), /waits on T-1/);
   });
 
   it("shares memory between two agents", async () => {
