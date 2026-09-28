@@ -1,10 +1,12 @@
-// Follows the merge requests the app opened: their state and pipeline on GitLab. A merged MR moves its
-// task to done (unless turned off); a failed pipeline on an open one goes to the CI fixer.
-// Only MRs on the configured GitLab, so the token goes nowhere else. No Electron imports.
+// Follows the merge requests the app opened: their state and pipeline on GitLab, and the same for GitHub pull
+// requests (state and checks). A merged one moves its task to done (unless turned off); a failed pipeline on
+// an open GitLab MR goes to the CI fixer. Only links on the configured GitLab / GitHub, so each token goes
+// nowhere else. No Electron imports.
 import { PIPELINE_STATUSES, type AgentRun, type MrStatus, type PipelineStatus } from "@xdev-hive/core";
+import { checksStatus, GitHubClient, pullRef } from "../github/client.ts";
 import type { CiFixer, CiFixOutcome } from "./ci-fix.ts";
 import { GitLabClient } from "./client.ts";
-import { clipTail, mrActor, type MrHost } from "./mr.ts";
+import { clipTail, mrActor, mrLabel, type MrHost } from "./mr.ts";
 
 /** MRs of runs older than this are left alone. */
 const WATCH_DAYS = 30;
@@ -42,40 +44,66 @@ export class MrWatcher {
     this.#fixer = fixer;
   }
 
-  /** Whether there is anything to follow (GitLab set up and an open MR). */
+  /** Whether there is anything to follow (GitLab or GitHub set up, and an open MR or PR). */
   watching(): boolean {
-    const s = this.#host.gitlab();
-    return Boolean(s.url && s.token) && this.#host.store().openMrs(this.#since()).length > 0;
+    return (this.#gitlab() !== null || this.#github() !== null) && this.#host.store().openMrs(this.#since()).length > 0;
   }
 
-  /** Checks every open MR once. A failing MR is skipped until the next check. */
+  #gitlab(): GitLabClient | null {
+    const s = this.#host.gitlab();
+    return s.url && s.token ? new GitLabClient(s.url, s.token, this.#host.fetch) : null;
+  }
+
+  #github(): GitHubClient | null {
+    const g = this.#host.github?.();
+    return g?.url && g.token ? new GitHubClient(g.url, g.token, this.#host.fetch) : null;
+  }
+
+  /** Checks every open MR and PR once. One that fails to answer is skipped until the next check. */
   async check(): Promise<MrChange[]> {
     const s = this.#host.gitlab();
-    if (!s.url || !s.token || this.#busy) return [];
+    const gl = this.#gitlab();
+    const gh = this.#github();
+    if ((!gl && !gh) || this.#busy) return [];
     this.#busy = true;
     try {
-      const client = new GitLabClient(s.url, s.token, this.#host.fetch);
       const store = this.#host.store();
       const changes: MrChange[] = [];
       for (const run of store.openMrs(this.#since())) {
-        const ref = mrRef(client.baseUrl, run.mrUrl!);
-        if (!ref) continue;
-        let mr;
+        const ref = gl ? mrRef(gl.baseUrl, run.mrUrl!) : null;
+        const pull = !ref && gh ? pullRef(gh.baseUrl, run.mrUrl!) : null;
+        if (!ref && !pull) continue;
+        let seen: { status: MrStatus; pipeline: PipelineStatus | null; pipelineUrl: string | null; failed: { id: number } | null };
         try {
-          mr = await client.mergeRequest(ref.project, ref.iid);
+          if (ref) {
+            const mr = await gl!.mergeRequest(ref.project, ref.iid);
+            seen = {
+              status: mr.state === "merged" ? "merged" : mr.state === "closed" ? "closed" : "opened",
+              pipeline: pipelineOf(mr.head_pipeline?.status),
+              pipelineUrl: mr.head_pipeline?.web_url ?? null,
+              failed: mr.head_pipeline ?? null,
+            };
+          } else {
+            const pr = await gh!.pull(pull!.repo, pull!.number);
+            const status: MrStatus = pr.merged ? "merged" : pr.state === "closed" ? "closed" : "opened";
+            // Checks only matter while it is open: a merged or closed PR keeps what was seen last.
+            const open = status === "opened";
+            const pipeline = open ? checksStatus(await gh!.checkRuns(pull!.repo, pr.head.sha), await gh!.statuses(pull!.repo, pr.head.sha)) : run.pipelineStatus;
+            // Per commit, so a new push whose checks fail again counts as a change.
+            const pipelineUrl = !open ? run.pipelineUrl : pipeline ? `${pr.html_url}/checks?sha=${pr.head.sha}` : null;
+            seen = { status, pipeline, pipelineUrl, failed: null };
+          }
         } catch {
           continue;
         }
-        const status: MrStatus = mr.state === "merged" ? "merged" : mr.state === "closed" ? "closed" : "opened";
-        const pipeline = pipelineOf(mr.head_pipeline?.status);
-        const pipelineUrl = mr.head_pipeline?.web_url ?? null;
+        const { status, pipeline, pipelineUrl } = seen;
         store.updateMr(run.mrUrl!, { mrStatus: status, pipelineStatus: pipeline, pipelineUrl, mrCheckedAt: this.#now().toISOString() });
         // A new pipeline that failed like the last one counts as a change (its URL differs).
         const changed = status !== run.mrStatus || pipeline !== run.pipelineStatus || pipelineUrl !== run.pipelineUrl;
         // Asked on every check, not only on a change: a fix waits while the task has a run going.
         const fix =
-          this.#fixer && status === "opened" && pipeline === "failed" && mr.head_pipeline
-            ? await this.#fixer.handle(run, { id: mr.head_pipeline.id, url: pipelineUrl }, client, ref.project)
+          this.#fixer && ref && status === "opened" && pipeline === "failed" && seen.failed
+            ? await this.#fixer.handle(run, { id: seen.failed.id, url: pipelineUrl }, gl!, ref.project)
             : null;
         if (!changed && fix?.kind !== "queued") continue;
         const change: MrChange = {
@@ -88,7 +116,7 @@ export class MrWatcher {
         };
         if (status === "merged" && s.mr.doneOnMerge) {
           try {
-            change.taskDone = await this.#done(run, mr.iid);
+            change.taskDone = await this.#done(run);
           } catch (err) {
             change.taskError = (err as Error).message;
           }
@@ -101,12 +129,12 @@ export class MrWatcher {
     }
   }
 
-  async #done(run: AgentRun, iid: number): Promise<boolean> {
+  async #done(run: AgentRun): Promise<boolean> {
     const backend = this.#host.backend();
     const actor = mrActor(this.#host);
     const task = (await backend.call("tasks.list", { project: run.project }, actor)).find((t) => t.id === run.taskId);
     if (!task || task.status === "done") return false;
-    const line = `MR !${iid} merged.`;
+    const line = `${mrLabel(run)} merged.`;
     const note = task.note ? `${task.note}\n\n${line}` : line;
     await backend.call("tasks.update", { id: task.id, status: "done", note: clipTail(note, 2000) }, actor);
     return true;

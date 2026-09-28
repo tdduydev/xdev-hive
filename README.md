@@ -75,7 +75,7 @@ Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ v�
 
 ```bash
 nvm use && npm install
-npm test            # 277 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR, GitHub PR)
+npm test            # 282 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR, GitHub PR)
 npm run typecheck
 ```
 
@@ -263,7 +263,11 @@ Cấu hình ở *Dự án & cài đặt* → **GitHub pull request** (hỏi ngà
 - **Push qua HTTPS** tới host GitHub dùng token như GitLab: header trong `GIT_CONFIG_*` của env (user `x-access-token`), không ghi vào `.git/config`. Remote SSH dùng key sẵn có.
 - **PR đã có** (cùng branch, đang mở): chỉ cập nhật tiêu đề và mô tả rồi thêm label, không đổi base. Mô tả giống MR, output của agent nằm trong code block.
 - Link `PR #n` được ghi vào ghi chú task và hiện trên Board. Lỗi GitHub (`GitHub 401: Bad credentials`…) được ghi ở run, không làm run thất bại.
-- Chưa làm: theo dõi PR (merge thì task sang *Xong*) và tự sửa khi check CI lỗi (roadmap 13b, 13c).
+- **Theo dõi PR**: cùng lượt với MR GitLab (30 giây sau khi mở app, rồi mỗi 2 phút; PR của run trong 30 ngày gần nhất), app hỏi GitHub trạng thái PR và check của commit mới nhất.
+  - Các check (GitHub Actions và app khác, cả commit status kiểu cũ) được gộp thành một trạng thái CI trên Board: *đang chạy* khi còn check chưa xong, rồi *lỗi* nếu có check lỗi, hết giờ hay cần xử lý. Bấm để mở trang checks của commit đó.
+  - PR merge thì task sang *Xong*, ghi chú thêm `PR #n merged.` (cùng ô *MR merge thì chuyển task sang Xong*). Có thông báo khi PR merge, bị đóng, hoặc CI lỗi, kể cả khi lần push sau lại lỗi.
+  - PR đã merge hay đóng thì thôi hỏi. Chỉ hỏi PR trên đúng GitHub đã cấu hình, nên token không đi nơi khác.
+- Chưa làm: tự sửa khi check CI của PR lỗi (roadmap 13c).
 - Token fine-grained (`github_pat_…`) cũng bị chặn khi ghi vào memory hay tài liệu, như các loại token khác.
 
 ## Hub cho team

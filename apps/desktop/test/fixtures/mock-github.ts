@@ -12,6 +12,16 @@ export interface MockPull {
   head: { ref: string };
   base: { ref: string };
   labels: string[];
+  /** Set by tests: what GET .../pulls/:n answers ("open", not merged, sha "c0ffee" when unset). */
+  state?: "open" | "closed";
+  merged?: boolean;
+  sha?: string;
+}
+
+export interface MockCheck {
+  name: string;
+  status: string;
+  conclusion: string | null;
 }
 
 export interface MockGitHub {
@@ -19,6 +29,9 @@ export interface MockGitHub {
   pulls: MockPull[];
   /** Plays a plan without draft pull requests (private repositories on GitHub Free). */
   noDrafts: boolean;
+  /** Check runs and commit statuses by commit sha. */
+  checks: Record<string, MockCheck[]>;
+  statuses: Record<string, Array<{ context: string; state: string }>>;
   calls: Array<{ method: string; path: string; body: any }>;
   reset(): void;
   close(): Promise<void>;
@@ -37,10 +50,14 @@ export async function startMockGitHub(token: string): Promise<MockGitHub> {
     base: "",
     pulls: [],
     noDrafts: false,
+    checks: {},
+    statuses: {},
     calls: [],
     reset() {
       gh.pulls = [];
       gh.noDrafts = false;
+      gh.checks = {};
+      gh.statuses = {};
       gh.calls = [];
     },
     close: () => new Promise((r) => server.close(() => r())),
@@ -84,6 +101,22 @@ export async function startMockGitHub(token: string): Promise<MockGitHub> {
       return send(201, pr);
     }
     const one = /^\/api\/v3\/repos\/duy\/demo\/pulls\/(\d+)$/.exec(p);
+    if (one && req.method === "GET") {
+      const pr = gh.pulls.find((x) => x.number === Number(one[1]));
+      if (!pr) return send(404, { message: "Not Found" });
+      const { sha = "c0ffee", ...rest } = pr;
+      return send(200, { state: "open", merged: false, ...rest, head: { ...pr.head, sha } });
+    }
+    const runs = /^\/api\/v3\/repos\/duy\/demo\/commits\/(\w+)\/check-runs$/.exec(p);
+    if (runs && req.method === "GET") {
+      const list = gh.checks[runs[1]!] ?? [];
+      return send(200, { total_count: list.length, check_runs: list.map((c, i) => ({ ...c, html_url: `${gh.base}/duy/demo/runs/${i + 1}` })) });
+    }
+    const status = /^\/api\/v3\/repos\/duy\/demo\/commits\/(\w+)\/status$/.exec(p);
+    if (status && req.method === "GET") {
+      const list = gh.statuses[status[1]!] ?? [];
+      return send(200, { state: "pending", total_count: list.length, statuses: list.map((s) => ({ ...s, target_url: null })) });
+    }
     if (one && req.method === "PATCH") {
       const pr = gh.pulls.find((x) => x.number === Number(one[1]));
       if (!pr) return send(404, { message: "Not Found" });
