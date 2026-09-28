@@ -16,7 +16,7 @@ const tmp = (p: string) => mkdtempSync(path.join(os.tmpdir(), `hive-${p}-`));
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 
 describe("container command", () => {
-  const profile = (over: Partial<AgentProfile> = {}): AgentProfile => ({ ...AGENT_TEMPLATES.claude, container: { image: "xdev-hive-agent" }, ...over });
+  const profile = (over: Partial<AgentProfile> = {}): AgentProfile => ({ ...AGENT_TEMPLATES.claude, container: { image: "xdev-hive-agent", network: "open", allow: [] }, ...over });
 
   it("mounts the worktree, the repo's .git and the CLI's login, and passes variables by name", () => {
     const home = "/home/duy";
@@ -86,7 +86,7 @@ function repo(): string {
   return dir;
 }
 
-async function setup(profiles: AgentProfile[], opts: { docker?: boolean; mode?: "local" | "hub"; tokens?: Record<string, string> } = {}) {
+async function setup(profiles: AgentProfile[], opts: { docker?: boolean; mode?: "local" | "hub"; tokens?: Record<string, string>; dockerEnv?: Record<string, string> } = {}) {
   const dir = repo();
   const hive = new SqliteHive(":memory:");
   await hive.call("tasks.create", { id: "T-1", project: "demo", title: "Container run" }, admin);
@@ -107,7 +107,7 @@ async function setup(profiles: AgentProfile[], opts: { docker?: boolean; mode?: 
     mode: () => opts.mode ?? "local",
     machine: () => "duy-mbp",
     // A variable only the machine has: it must not reach an agent in a container.
-    env: () => ({ ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`, FAKE_DOCKER_RECORD: dockerRecord, HIVE_TEST_HOST_ONLY: "leaked" }),
+    env: () => ({ ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`, FAKE_DOCKER_RECORD: dockerRecord, HIVE_TEST_HOST_ONLY: "leaked", ...opts.dockerEnv }),
     hub: () => ({ url: "https://hive.example.test", token: "hive_test_machine_token" }),
     token: (id) => opts.tokens?.[id],
   };
@@ -122,7 +122,7 @@ const boxed = (id: string, mode = "ok", over: Partial<AgentProfile> = {}): Agent
   label: id,
   args: ["{prompt}"],
   env: { FAKE_MODE: mode },
-  container: { image: "xdev-hive-agent" },
+  container: { image: "xdev-hive-agent", network: "open", allow: [] },
   ...over,
 });
 
@@ -250,5 +250,46 @@ describe("Hive and sign-in for CLIs in a container", () => {
     assert.ok(!without.docker()[0]!.includes("CLAUDE_CODE_OAUTH_TOKEN"));
     assert.equal(without.runner.profileStatuses()[0]!.hasToken, false);
     assert.equal(without.runner.store.get(next.id)!.status, "succeeded");
+  });
+});
+
+describe("a container run with a limited network", () => {
+  const limited = (id: string, mode = "ok"): AgentProfile => ({ ...boxed(id, mode), container: { image: "xdev-hive-agent", network: "restricted", allow: ["corp.example"] } });
+
+  it("sets up its network and proxy, runs the agent behind it, and takes them down", async () => {
+    const { runner, docker, calls } = await setup([limited("codex-net")]);
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    assert.equal(runner.store.get(run.id)!.status, "succeeded", runner.store.get(run.id)!.error ?? "");
+    const net = `hive-${run.id}-net`;
+    const proxy = `hive-${run.id}-egress`;
+    const steps = docker();
+    assert.deepEqual(steps.map((a) => a.slice(0, 2)), [["network", "create"], ["run", "-d"], ["network", "connect"], ["run", "--rm"], ["logs", proxy], ["rm", "-f"], ["network", "rm"]]);
+    const agent = steps[3]!;
+    assert.ok(agent.includes("--network") && agent[agent.indexOf("--network") + 1] === net);
+    assert.ok(agent.includes("HTTPS_PROXY"));
+    assert.equal(calls()[0].proxy, "http://egress:3128");
+    assert.match(runner.log(run.id), /network limited \([^)]*corp\.example/);
+  });
+
+  it("names what it blocked when the run fails", async () => {
+    const { runner } = await setup([limited("codex-net", "fail")], { dockerEnv: { FAKE_DOCKER_LOGS: "egress proxy on 3128\ndenied evil.example:443\ndenied evil.example:443\n" } });
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const done = runner.store.get(run.id)!;
+    assert.equal(done.status, "failed");
+    assert.match(done.error ?? "", /evil\.example:443/);
+    assert.match(runner.log(run.id), /## Network\ndenied evil\.example:443 ×2/);
+  });
+
+  it("stops before the agent when the network cannot be set up, and cleans up", async () => {
+    const { runner, docker } = await setup([limited("codex-net")], { dockerEnv: { FAKE_DOCKER_FAIL: "network" } });
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const done = runner.store.get(run.id)!;
+    assert.equal(done.status, "failed");
+    assert.match(done.error ?? "", /fake network failure/);
+    assert.ok(!docker().some((a) => a[0] === "run" && a[1] === "--rm"), "the agent never started");
+    assert.ok(docker().some((a) => a[0] === "rm" && a[1] === "-f"), "teardown tried");
   });
 });

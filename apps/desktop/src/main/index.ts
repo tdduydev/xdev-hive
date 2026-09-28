@@ -776,6 +776,7 @@ if (!app.requestSingleInstanceLock()) {
         usage: (id) => logins.usage(id),
         hub: () => (config.mode === "hub" && config.hub.url && config.hub.token ? { url: config.hub.url, token: config.hub.token } : null),
         token: (id) => config.agentTokens[id],
+        gitlab: () => config.gitlab.url || null,
       },
       {
         dataDir: path.dirname(configPath()),
