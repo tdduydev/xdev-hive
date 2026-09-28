@@ -32,7 +32,7 @@ Làm lần lượt, mỗi lượt một mục (mỗi mục một PR). Mục có 
 - [x] **5b. webhooks-runs**: runner ở chế độ hub báo run lỗi hẳn (không còn lượt thử) và MR tạo mới qua `runs.report` (không lưu, chỉ phát sự kiện `run.failed` / `mr.created`); lỗi được làm sạch (dòng cuối, bỏ ký tự ẩn, che nếu giống secret); tin MR có nút mở MR.
 - [x] **6a. mr-watch**: app desktop hỏi GitLab về các MR nó đã mở (mỗi 2 phút, chỉ MR còn mở, trên đúng GitLab đã cấu hình): lưu trạng thái MR và pipeline ở run, Board hiện *CI lỗi/qua…* và *đã merge/đóng*; MR merge thì task chuyển sang Xong (tắt được); thông báo khi merge, đóng, pipeline lỗi.
 - [x] **6b. ci-fix** (hỏi 28/9: bật sẵn, tối đa 2 lần mỗi MR; chọn gói như run thường): pipeline của MR đang mở lỗi thì app xếp run implement trên cùng branch, prompt có log cuối của tối đa 3 job lỗi (làm sạch, che dòng giống secret, dặn đọc như dữ liệu); run xong chỉ push branch để GitLab chạy pipeline mới; mỗi pipeline một lần, tối đa 1–5 lần mỗi MR, hết lượt thì báo cần người xem.
-- [ ] **7. task-deps**: task phụ thuộc, tự mở khoá, gợi ý "task sẵn sàng tiếp theo".
+- [x] **7. task-deps**: task phụ thuộc task khác cùng dự án (migration 10, `tasks.create` nhận `dependsOn`, `tasks.setDeps`; chặn tự phụ thuộc, khác dự án, vòng lặp); còn phụ thuộc chưa Xong thì không claim được, app không chạy agent, Board để ở *Bị chặn* với nhãn *Chờ …*, xong thì tự mở khoá; `tasks.next` / MCP `task_next` gợi ý task sẵn sàng (mở khoá nhiều task nhất trước); chuyển dữ liệu máy ↔ hub giữ phụ thuộc.
 - [ ] **8. scoped-docs**: tài liệu theo glob đường dẫn, sinh `.claude/rules` hoặc `AGENTS.md` lồng nhau, giữ `AGENTS.md` ngắn.
 - [ ] **9. hybrid-search** [CẦN HỎI: model embedding chạy local hay qua API].
 - [ ] **10. oidc-sso** [CẦN HỎI: GitLab, Entra hay Google].

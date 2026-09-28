@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { AGENT_TEMPLATES, type Actor, type AgentProfile, type HiveBackend, type RunnerSettings } from "@xdev-hive/core";
+import { AGENT_TEMPLATES, HiveError, type Actor, type AgentProfile, type HiveBackend, type RunnerSettings } from "@xdev-hive/core";
 import { CODEGRAPH_MCP, SUPERPOWERS_PLUGIN } from "../src/main/installer.ts";
 import { buildCommand } from "../src/main/runner/command.ts";
 import { outputFormat, parseClaudeResult, parsePlanUsage } from "../src/main/runner/usage.ts";
@@ -669,5 +669,15 @@ describe("Runner", () => {
     await assert.rejects(runner.enqueue({ project: "demo", taskId: "T-1" }), /đang có run/);
     runner.cancel(run.id);
     assert.equal(runner.store.get(run.id)!.status, "cancelled");
+  });
+
+  it("does not start a task that waits on another one", async () => {
+    const { runner, hive } = await setup([profile("claude-a", "claude", 10, "ok")]);
+    await hive.call("tasks.create", { id: "T-2", project: "demo", title: "Trang cài đặt nâng cao", dependsOn: ["T-1"] }, admin);
+    await assert.rejects(runner.enqueue({ project: "demo", taskId: "T-2" }), (e: unknown) => e instanceof HiveError && e.key === "errors.taskWaiting");
+    await hive.call("tasks.update", { id: "T-1", status: "done" }, admin);
+    const run = await runner.enqueue({ project: "demo", taskId: "T-2" });
+    await runner.settle();
+    assert.equal(runner.store.get(run.id)!.status, "succeeded");
   });
 });

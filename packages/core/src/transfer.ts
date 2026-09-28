@@ -121,7 +121,9 @@ export async function transferHive(from: TransferSide, to: TransferSide, opts: T
 
   // Tasks: new ids only. A task being worked on at the source arrives as "todo", with no lease.
   const targetTasks = new Map((await dst("tasks.list", {})).map((t: Task) => [t.id, t]));
-  for (const t of await src("tasks.list", {})) {
+  const sourceTasks: Task[] = await src("tasks.list", {});
+  const added: Task[] = [];
+  for (const t of sourceTasks) {
     await track("task", t.id, async () => {
       const there = targetTasks.get(t.id);
       if (there) {
@@ -130,11 +132,24 @@ export async function transferHive(from: TransferSide, to: TransferSide, opts: T
           : { result: "skipped", note: `id đã có ở ${to.label} với nội dung khác (${there.project}: ${there.title})` };
       }
       await dst("tasks.create", { id: t.id, project: t.project, title: t.title });
+      added.push(t);
       const status = t.status === "doing" ? "todo" : t.status;
       const note = [t.note, t.status === "doing" ? `(Đang làm ở ${from.label} bởi ${t.owner ?? "?"} khi chuyển)` : ""].filter(Boolean).join("\n\n");
       if (status !== "todo" || note) await dst("tasks.update", { id: t.id, status, note: note ? note.slice(0, 2000) : undefined });
       return { result: "added", note: t.status === "doing" ? "đang làm ở nguồn, chuyển sang Chưa làm" : undefined };
     });
+  }
+  // Dependencies once every task is there. A source from before them has none; one that is not at the target is left out.
+  const there = new Set([...targetTasks.keys(), ...added.map((t) => t.id)]);
+  for (const t of added) {
+    const deps = (t.dependsOn ?? []).filter((d) => there.has(d));
+    if (!deps.length) continue;
+    try {
+      await dst("tasks.setDeps", { id: t.id, dependsOn: deps });
+    } catch (err) {
+      const item = items.find((i) => i.kind === "task" && i.key === t.id);
+      if (item) item.note = [item.note, `không chép được phụ thuộc: ${(err as Error).message}`].filter(Boolean).join(" · ");
+    }
   }
 
   const counts = Object.fromEntries(TRANSFER_RESULTS.map((r) => [r, 0])) as Record<TransferResult, number>;

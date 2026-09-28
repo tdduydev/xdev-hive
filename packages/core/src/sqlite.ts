@@ -131,6 +131,10 @@ const MIGRATIONS: string[] = [
   ALTER TABLE memory ADD COLUMN superseded_by INTEGER;
   ALTER TABLE memory ADD COLUMN conflicts TEXT NOT NULL DEFAULT '[]';
   `,
+  `
+  CREATE TABLE task_deps(task_id TEXT NOT NULL, depends_on TEXT NOT NULL, PRIMARY KEY(task_id, depends_on));
+  CREATE INDEX task_deps_on ON task_deps(depends_on);
+  `,
 ];
 
 /** Run costs older than this are dropped; the summary only looks back 30 days. */
@@ -173,7 +177,8 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
   },
   "memory.approve": (i, o) => ({ target: `${o.project ?? "org"} #${i.id}` }),
   "memory.remove": (i) => ({ target: `memory #${i.id}` }),
-  "tasks.create": (i) => ({ target: i.id, detail: i.title }),
+  "tasks.create": (i) => ({ target: i.id, detail: i.dependsOn?.length ? `${i.title} · ← ${i.dependsOn.join(", ")}` : i.title }),
+  "tasks.setDeps": (i) => ({ target: i.id, detail: i.dependsOn.length ? `← ${i.dependsOn.join(", ")}` : "—" }),
   "machines.remove": (i) => ({ target: i.id }),
   "cooldowns.clear": (i) => ({ target: i.account }),
   "policy.set": (_i, o: TeamPolicy) => ({
@@ -286,7 +291,7 @@ const toMemory = (r: Row, staleBefore: string | null): Memory => ({
   supersededBy: r.superseded_by == null ? null : num(r.superseded_by),
   conflictsWith: JSON.parse(str(r.conflicts ?? "[]")) as number[],
 });
-const toTask = (r: Row): Task => ({
+const toTask = (r: Row, deps: Pick<Task, "dependsOn" | "waitingOn"> = { dependsOn: [], waitingOn: [] }): Task => ({
   id: str(r.id),
   project: str(r.project),
   title: str(r.title),
@@ -295,6 +300,7 @@ const toTask = (r: Row): Task => ({
   leaseUntil: strOrNull(r.lease_until),
   note: strOrNull(r.note),
   updatedAt: str(r.updated_at),
+  ...deps,
 });
 const toCooldown = (r: Row): QuotaCooldown => ({
   account: str(r.account),
@@ -438,6 +444,11 @@ export class SqliteHive implements HiveBackend {
       }
       case "tasks.create":
         return this.#need(actor, i.project, "manage", `Project ${i.project}`);
+      case "tasks.setDeps": {
+        const task = this.#getTask(i.id);
+        if (task) this.#need(actor, task.project, "manage", `Task ${i.id}`);
+        return;
+      }
       case "tasks.claim":
       case "tasks.update": {
         const task = this.#getTask(i.id);
@@ -463,6 +474,7 @@ export class SqliteHive implements HiveBackend {
       case "memory.list":
         return (out as Memory[]).filter((m) => sees(m.project)) as MethodOutput[M];
       case "tasks.list":
+      case "tasks.next":
         return (out as Task[]).filter((t) => sees(t.project)) as MethodOutput[M];
       // Machines are the team's, but what they are running shows the project: hide runs of hidden projects.
       case "machines.list":
@@ -583,7 +595,60 @@ export class SqliteHive implements HiveBackend {
 
   #getTask(id: string): Task | null {
     const row = this.db.prepare("SELECT * FROM tasks WHERE id = ?").get(id) as Row | undefined;
-    return row ? toTask(row) : null;
+    return row ? this.#tasks([row])[0]! : null;
+  }
+
+  /** Task rows with what they depend on, in one query. */
+  #tasks(rows: Row[]): Task[] {
+    if (!rows.length) return [];
+    const deps = this.db
+      .prepare(
+        `SELECT d.task_id, d.depends_on, t.status FROM task_deps d LEFT JOIN tasks t ON t.id = d.depends_on
+         WHERE d.task_id IN (SELECT value FROM json_each(?)) ORDER BY d.depends_on`,
+      )
+      .all(JSON.stringify(rows.map((r) => str(r.id)))) as Row[];
+    const by = new Map<string, Pick<Task, "dependsOn" | "waitingOn">>();
+    for (const d of deps) {
+      const entry = by.get(str(d.task_id)) ?? { dependsOn: [], waitingOn: [] };
+      entry.dependsOn.push(str(d.depends_on));
+      if (strOrNull(d.status) !== "done") entry.waitingOn.push(str(d.depends_on));
+      by.set(str(d.task_id), entry);
+    }
+    return rows.map((r) => toTask(r, by.get(str(r.id))));
+  }
+
+  /** Dependencies must be other tasks of the same project, and must not lead back to the task. */
+  #checkDeps(id: string, project: string, dependsOn: string[]): string[] {
+    const deps = [...new Set(dependsOn)];
+    for (const dep of deps) {
+      if (dep === id) throw new HiveError("bad_request", `Task ${id} cannot depend on itself.`, { key: "errors.taskDepSelf", vars: { id } });
+      const task = this.#getTask(dep);
+      if (!task) throw new HiveError("not_found", `Task ${dep} not found.`, { key: "errors.taskNotFound", vars: { id: dep } });
+      if (task.project !== project) {
+        throw new HiveError("bad_request", `Task ${dep} belongs to project ${task.project}, not ${project}.`, {
+          key: "errors.taskDepProject",
+          vars: { id: dep, project: task.project, other: project },
+        });
+      }
+    }
+    // Walk what the new dependencies depend on: reaching the task again would make a cycle.
+    const next = this.db.prepare("SELECT depends_on FROM task_deps WHERE task_id = ?");
+    const seen = new Set<string>();
+    const queue = [...deps];
+    while (queue.length) {
+      const cur = queue.shift()!;
+      if (cur === id) throw new HiveError("bad_request", `Task ${id} would end up depending on itself.`, { key: "errors.taskDepCycle", vars: { id } });
+      if (seen.has(cur)) continue;
+      seen.add(cur);
+      for (const r of next.all(cur) as Row[]) queue.push(str(r.depends_on));
+    }
+    return deps;
+  }
+
+  #setDeps(id: string, deps: string[]): void {
+    this.db.prepare("DELETE FROM task_deps WHERE task_id = ?").run(id);
+    const add = this.db.prepare("INSERT INTO task_deps(task_id, depends_on) VALUES (?, ?)");
+    for (const dep of deps) add.run(id, dep);
   }
 
   /** Cooldowns still in force; expired ones are dropped on the way. */
@@ -926,28 +991,63 @@ export class SqliteHive implements HiveBackend {
         }),
 
       "tasks.list": ({ project, status }) =>
-        (
+        this.#tasks(
           db
             .prepare(
               `SELECT * FROM tasks WHERE (?1 IS NULL OR project = ?1) AND (?2 IS NULL OR status = ?2)
                ORDER BY updated_at DESC LIMIT 500`,
             )
-            .all(project ?? null, status ?? null) as Row[]
-        ).map(toTask),
+            .all(project ?? null, status ?? null) as Row[],
+        ),
 
-      "tasks.create": (input) => {
-        if (this.#getTask(input.id)) throw new HiveError("conflict", `Task ${input.id} already exists.`, { key: "errors.taskExists", vars: { id: input.id } });
-        db.prepare("INSERT INTO tasks(id, project, title, updated_at) VALUES (?, ?, ?, ?)").run(
-          input.id,
-          input.project,
-          input.title,
-          this.#now(),
-        );
-        return this.#getTask(input.id)!;
-      },
+      "tasks.create": (input) =>
+        this.#tx(() => {
+          if (this.#getTask(input.id)) throw new HiveError("conflict", `Task ${input.id} already exists.`, { key: "errors.taskExists", vars: { id: input.id } });
+          const deps = this.#checkDeps(input.id, input.project, input.dependsOn);
+          db.prepare("INSERT INTO tasks(id, project, title, updated_at) VALUES (?, ?, ?, ?)").run(
+            input.id,
+            input.project,
+            input.title,
+            this.#now(),
+          );
+          this.#setDeps(input.id, deps);
+          return this.#getTask(input.id)!;
+        }),
+
+      "tasks.setDeps": ({ id, dependsOn }) =>
+        this.#tx(() => {
+          const task = this.#getTask(id);
+          if (!task) throw new HiveError("not_found", `Task ${id} not found.`, { key: "errors.taskNotFound", vars: { id } });
+          this.#setDeps(id, this.#checkDeps(id, task.project, dependsOn));
+          db.prepare("UPDATE tasks SET updated_at = ? WHERE id = ?").run(this.#now(), id);
+          return this.#getTask(id)!;
+        }),
+
+      "tasks.next": ({ project, limit }) =>
+        this.#tasks(
+          db
+            .prepare(
+              `SELECT t.*, (SELECT COUNT(*) FROM task_deps d JOIN tasks o ON o.id = d.task_id WHERE d.depends_on = t.id AND o.status != 'done') AS unlocks
+               FROM tasks t
+               WHERE t.status = 'todo' AND (?1 IS NULL OR t.project = ?1)
+                 AND (t.owner IS NULL OR t.lease_until IS NULL OR t.lease_until < ?2)
+                 AND NOT EXISTS (SELECT 1 FROM task_deps d JOIN tasks p ON p.id = d.depends_on WHERE d.task_id = t.id AND p.status != 'done')
+               ORDER BY unlocks DESC, t.rowid
+               LIMIT ?3`,
+            )
+            .all(project ?? null, this.#now(), limit) as Row[],
+        ),
 
       "tasks.claim": ({ id, leaseMinutes }, actor) => {
-        if (!this.#getTask(id)) throw new HiveError("not_found", `Task ${id} not found.`, { key: "errors.taskNotFound", vars: { id } });
+        const task = this.#getTask(id);
+        if (!task) throw new HiveError("not_found", `Task ${id} not found.`, { key: "errors.taskNotFound", vars: { id } });
+        // Whoever holds it already may renew; nobody starts it while what it depends on is open.
+        if (task.waitingOn.length && task.owner !== actor.name) {
+          throw new HiveError("conflict", `Task ${id} waits on ${task.waitingOn.join(", ")}, which are not done yet.`, {
+            key: "errors.taskWaiting",
+            vars: { id, tasks: task.waitingOn.join(", ") },
+          });
+        }
         const now = this.#now();
         const res = db
           .prepare(
