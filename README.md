@@ -53,7 +53,7 @@ App desktop:
 
 ```bash
 npm run dev:desktop                              # dev
-npm run smoke -w @xdev-hive/desktop              # app + config tạm + agent giả + GitLab giả: hết quota → xoay gói → review chéo → MR
+npm run smoke -w @xdev-hive/desktop              # app + config tạm + agent giả + GitLab giả: hết quota → xoay gói → review chéo → MR (HIVE_SMOKE_LOCALE=en: chụp giao diện tiếng Anh)
 npm run dist -w @xdev-hive/desktop               # bản cài cho máy đang dùng
 npm run release -w @xdev-hive/desktop            # build mọi nền tảng + đăng GitHub Release v<version>
 ```

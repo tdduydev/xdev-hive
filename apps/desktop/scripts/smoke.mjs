@@ -1,9 +1,9 @@
 // Launches the built app with a throwaway config and data dir, screenshots a few pages, then exits.
 // Seeds a task and a queued run whose first subscription "runs out of quota", so the Board shows a real rotation,
 // then a cross-review and a merge request on a mock GitLab (through Electron's net.fetch) with a bare repo as origin.
-//   npm run smoke -w @xdev-hive/desktop [-- <output dir>]
+//   npm run smoke -w @xdev-hive/desktop [-- <output dir>]      (HIVE_SMOKE_LOCALE=en for the English interface)
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import electron from "electron";
@@ -63,7 +63,7 @@ new RunStore(path.join(work, "runs.db")).insert(
   new Date().toISOString(),
 );
 
-for (const [page, delay] of [["board", 6000], ["agents", 1500], ["docs", 1500]]) {
+for (const [page, delay] of [["board", 6000], ["agents", 1500], ["setup", 4000], ["projects", 1500], ["docs", 1500]]) {
   const shot = path.join(out, `${page}.png`);
   // Async spawn: the mock GitLab in this process must keep answering while the app runs.
   const child = spawn(electron, ["."], {
@@ -80,8 +80,8 @@ for (const [page, delay] of [["board", 6000], ["agents", 1500], ["docs", 1500]])
   const timer = setTimeout(() => child.kill("SIGKILL"), 60_000);
   const code = await new Promise((resolve) => child.once("exit", resolve));
   clearTimeout(timer);
-  if (code !== 0) {
-    console.error(`smoke failed on ${page}`, code);
+  if (code !== 0 || !existsSync(shot)) {
+    console.error(`smoke failed on ${page}`, code, existsSync(shot) ? "" : "(no screenshot)");
     process.exit(1);
   }
 }

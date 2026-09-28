@@ -20,6 +20,7 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { ToggleGroup, ToggleGroupItem } from "@xdev-hive/ui/components/ui/toggle-group";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader } from "../components/common.tsx";
 import { useAction, useHive, useQuery } from "../hooks.ts";
+import { rich, useT } from "../i18n/index.tsx";
 
 const ACTION_TONE: Record<FileAction["action"], string> = {
   created: "ok",
@@ -36,14 +37,15 @@ const LINK = "font-medium text-primary underline underline-offset-2";
 
 export function ProjectsPage() {
   const { client } = useHive();
+  const t = useT();
   const desktop = client.desktop!;
   const settings = useQuery(() => desktop.settings(), [desktop]);
 
   return (
     <Page>
       <PageHeader
-        title="Dự án & cài đặt"
-        subtitle="Nguồn dữ liệu, GitLab và các repo trên máy này. Kiểm tra và cài CLI, hive-mcp, cấu hình agent ở Cài đặt máy."
+        title={t("nav.projects")}
+        subtitle={t("projects.subtitle")}
       />
       <ErrorNote error={settings.error} />
       {settings.data ? (
@@ -60,6 +62,7 @@ export function ProjectsPage() {
 
 function ModeCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: () => void }) {
   const { client, me, bump } = useHive();
+  const t = useT();
   const [mode, setMode] = useState(settings.mode);
   const [hubUrl, setHubUrl] = useState(settings.hubUrl);
   const [hubToken, setHubToken] = useState("");
@@ -79,7 +82,7 @@ function ModeCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: (
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Nguồn dữ liệu</CardTitle>
+        <CardTitle>{t("projects.source")}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <ToggleGroup
@@ -90,39 +93,37 @@ function ModeCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: (
           onValueChange={(v) => {
             if (v) setMode(v as DesktopSettings["mode"]);
           }}
-          aria-label="Chế độ"
+          aria-label={t("projects.mode")}
         >
           <ToggleGroupItem
             value="local"
             className="h-auto min-h-9 shrink py-1.5 whitespace-normal data-[state=on]:bg-brand-soft data-[state=on]:text-brand-soft-foreground"
           >
-            Cục bộ (một máy)
+            {t("projects.modeLocal")}
           </ToggleGroupItem>
           <ToggleGroupItem
             value="hub"
             className="h-auto min-h-9 shrink py-1.5 whitespace-normal data-[state=on]:bg-brand-soft data-[state=on]:text-brand-soft-foreground"
           >
-            Hub dùng chung (team)
+            {t("projects.modeHub")}
           </ToggleGroupItem>
         </ToggleGroup>
         {mode === "local" ? (
           <p className="text-sm break-words text-muted-foreground">
-            Dữ liệu nằm trong <code className={CODE}>{settings.dbPath}</code>. Mọi agent trên máy này đọc chung file đó.
+            {rich(t("projects.localHint"), { path: <code className={CODE}>{settings.dbPath}</code> })}
           </p>
         ) : (
           <div className={FORM_GRID}>
-            <Label htmlFor="hub-url">URL hub</Label>
+            <Label htmlFor="hub-url">{t("projects.hubUrl")}</Label>
             <Input id="hub-url" className="font-mono" placeholder="https://hive.xdev.asia" value={hubUrl} onChange={(e) => setHubUrl(e.target.value)} />
-            <span className="text-sm leading-none font-medium">Đăng nhập</span>
+            <span className="text-sm leading-none font-medium">{t("projects.signIn")}</span>
             <div className="flex min-w-0 flex-col gap-3">
               {settings.mode === "hub" && settings.hasHubToken ? (
                 <p className="text-sm text-muted-foreground">
                   {me.user ? (
-                    <>
-                      Máy này đang dùng tài khoản <b className="text-foreground">@{me.user.username}</b>: agent trên máy thấy đúng các dự án của tài khoản đó.
-                    </>
+                    rich(t("projects.usingAccount"), { account: <b className="text-foreground">@{me.user.username}</b> })
                   ) : (
-                    <>Máy này đang dùng một token không thuộc tài khoản nào ({me.name}).</>
+                    t("projects.usingToken", { name: me.name })
                   )}
                 </p>
               ) : null}
@@ -133,13 +134,13 @@ function ModeCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: (
                 className="w-fit"
                 value={auth}
                 onValueChange={(v) => v && setAuth(v as "account" | "token")}
-                aria-label="Cách đăng nhập hub"
+                aria-label={t("projects.signInMethod")}
               >
                 <ToggleGroupItem value="account" className="px-3 data-[state=on]:bg-brand-soft data-[state=on]:text-brand-soft-foreground">
-                  Tài khoản
+                  {t("projects.account")}
                 </ToggleGroupItem>
                 <ToggleGroupItem value="token" className="px-3 data-[state=on]:bg-brand-soft data-[state=on]:text-brand-soft-foreground">
-                  Dán token
+                  {t("projects.pasteToken")}
                 </ToggleGroupItem>
               </ToggleGroup>
               {auth === "account" ? (
@@ -159,32 +160,31 @@ function ModeCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: (
                 >
                   <Input
                     className="min-w-36 flex-1"
-                    placeholder="Tên đăng nhập"
+                    placeholder={t("login.username")}
                     autoComplete="username"
                     autoCapitalize="none"
                     spellCheck={false}
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    aria-label="Tên đăng nhập hub"
+                    aria-label={t("projects.hubUsername")}
                   />
                   <Input
                     className="min-w-36 flex-1"
                     type="password"
-                    placeholder="Mật khẩu"
+                    placeholder={t("login.password")}
                     autoComplete="current-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    aria-label="Mật khẩu hub"
+                    aria-label={t("projects.hubPassword")}
                   />
                   <Button type="submit" variant="outline" disabled={!hubUrl.trim() || !username.trim() || !password || signIn.busy}>
-                    {signIn.busy ? "Đang đăng nhập…" : "Đăng nhập & kết nối"}
+                    {signIn.busy ? t("login.submitting") : t("projects.signInConnect")}
                   </Button>
                   <p className="w-full text-xs text-muted-foreground">
-                    Mật khẩu không lưu trên máy: hub cấp cho máy <code className={CODE}>{settings.machine}</code> một token thuộc tài khoản của bạn. Đăng nhập lại thì token cũ của máy
-                    này bị thay. Tài khoản mới: đăng nhập hub trên trình duyệt một lần để đổi mật khẩu tạm trước.
+                    {rich(t("projects.signInHint"), { machine: <code className={CODE}>{settings.machine}</code> })}
                   </p>
                   <ErrorNote error={signIn.error} />
-                  {signedIn && !signIn.error ? <Notice tone="ok">Đã kết nối hub bằng tài khoản @{signedIn}.</Notice> : null}
+                  {signedIn && !signIn.error ? <Notice tone="ok">{t("projects.connected", { account: signedIn })}</Notice> : null}
                 </form>
               ) : (
                 <Input
@@ -192,27 +192,31 @@ function ModeCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: (
                   className="font-mono"
                   type="password"
                   autoComplete="off"
-                  placeholder={settings.hasHubToken ? "Đã lưu. Để trống để giữ nguyên" : "hive_…"}
+                  placeholder={settings.hasHubToken ? t("projects.savedKeep") : "hive_…"}
                   value={hubToken}
                   onChange={(e) => setHubToken(e.target.value)}
-                  aria-label="Token hub"
+                  aria-label={t("projects.hubToken")}
                 />
               )}
             </div>
-            <span className="text-sm leading-none font-medium">Tên máy</span>
+            <span className="text-sm leading-none font-medium">{t("projects.machineName")}</span>
             <p className="text-sm break-words text-muted-foreground">
-              <code className={CODE}>{settings.machine}</code>. Agent trên máy này giữ task với tên <code className={CODE}>&lt;gói&gt;.{settings.machine}</code>. Hai
-              máy dùng chung token phải khác tên máy (sửa <code className={CODE}>machine</code> trong <code className={CODE}>{settings.configPath}</code>).
+              {rich(t("projects.machineHint"), {
+                machine: <code className={CODE}>{settings.machine}</code>,
+                lease: <code className={CODE}>&lt;{t("projects.profile")}&gt;.{settings.machine}</code>,
+                field: <code className={CODE}>machine</code>,
+                file: <code className={CODE}>{settings.configPath}</code>,
+              })}
             </p>
           </div>
         )}
         <label className="flex items-center gap-2 text-sm">
           <Checkbox checked={approval} onCheckedChange={(v) => setApproval(v === true)} disabled={mode === "hub"} />
-          Memory do agent ghi phải được duyệt mới hiện cho agent khác {mode === "hub" ? "(hub tự cấu hình)" : ""}
+          {t("projects.approval")} {mode === "hub" ? t("projects.approvalHub") : ""}
         </label>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox checked={autoCommit} onCheckedChange={(v) => setAutoCommit(v === true)} />
-          Tự commit khi đồng bộ tài liệu vào repo (chỉ commit các file tài liệu, không push)
+          {t("projects.autoCommit")}
         </label>
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -226,29 +230,23 @@ function ModeCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: (
               })
             }
           >
-            Lưu cài đặt
+            {t("projects.saveSettings")}
           </Button>
           <span className="min-w-0 font-mono text-xs break-all text-muted-foreground">{settings.configPath}</span>
         </div>
         <ErrorNote error={action.error} />
-        {saved ? <Notice tone="ok">Đã lưu. Agent sẽ dùng cấu hình mới từ phiên kế tiếp.</Notice> : null}
+        {saved ? <Notice tone="ok">{t("projects.savedNotice")}</Notice> : null}
       </CardContent>
     </Card>
   );
 }
 
-const RESULT: Record<TransferResult, { label: string; tone: string }> = {
-  added: { label: "thêm", tone: "ok" },
-  updated: { label: "version mới", tone: "info" },
-  proposed: { label: "đề xuất", tone: "warn" },
-  unchanged: { label: "không đổi", tone: "neutral" },
-  skipped: { label: "bỏ qua", tone: "neutral" },
-  failed: { label: "lỗi", tone: "danger" },
-};
-const KIND = { doc: "Tài liệu", memory: "Memory", task: "Task" } as const;
+const RESULT_TONE: Record<TransferResult, string> = { added: "ok", updated: "info", proposed: "warn", unchanged: "neutral", skipped: "neutral", failed: "danger" };
+const KIND = { doc: "nav.docs", memory: "nav.memory", task: "nav.tasks" } as const;
 
 function TransferCard({ settings }: { settings: DesktopSettings }) {
   const { client, bump } = useHive();
+  const t = useT();
   const action = useAction();
   const [report, setReport] = useState<TransferReport | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -266,39 +264,38 @@ function TransferCard({ settings }: { settings: DesktopSettings }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Dữ liệu dùng chung với hub</CardTitle>
+        <CardTitle>{t("projects.transfer")}</CardTitle>
         <CardDescription className="break-words">
-          Ở chế độ <b>Hub dùng chung</b>, app và agent đọc, ghi thẳng lên hub nên không cần đồng bộ. Hai nút dưới đây chép <b>một lần</b> giữa
-          database trên máy (<code className={CODE}>{settings.dbPath}</code>) và hub: tài liệu (bản mới nhất), memory đã duyệt, task.
+          {rich(t("projects.transferHint"), {
+            hub: <b>{t("projects.modeHub")}</b>,
+            once: <b>{t("projects.once")}</b>,
+            path: <code className={CODE}>{settings.dbPath}</code>,
+          })}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-          <li>
-            <b>Đẩy lên hub</b>: mục chưa có trên hub thì thêm. Tài liệu khác bản trên hub thành đề xuất chờ admin duyệt, không ghi đè.
-          </li>
-          <li>
-            <b>Tải về máy</b>: mục chưa có trên máy thì thêm. Tài liệu khác thì ghi thành version mới, bản cũ vẫn trong lịch sử.
-          </li>
-          <li>Không chuyển: lịch sử version, đề xuất, memory chưa duyệt, người đang giữ task (task đang làm thành Chưa làm).</li>
+          <li>{rich(t("projects.pushRule"), { push: <b>{t("projects.pushShort")}</b> })}</li>
+          <li>{rich(t("projects.pullRule"), { pull: <b>{t("projects.pullShort")}</b> })}</li>
+          <li>{t("projects.notTransferred")}</li>
         </ul>
         <div className="flex flex-wrap items-center gap-2">
           <Button
             disabled={!ready || action.busy}
-            onClick={() => run("push", `Đẩy tài liệu, memory và task trên máy này lên ${settings.hubUrl}? Tài liệu khác bản trên hub sẽ thành đề xuất.`)}
+            onClick={() => run("push", t("projects.confirmPush", { hub: settings.hubUrl }))}
           >
-            Đẩy dữ liệu máy lên hub
+            {t("projects.push")}
           </Button>
           <Button
             variant="outline"
             disabled={!ready || action.busy}
-            onClick={() => run("pull", `Tải tài liệu, memory và task từ ${settings.hubUrl} về database trên máy này?`)}
+            onClick={() => run("pull", t("projects.confirmPull", { hub: settings.hubUrl }))}
           >
-            Tải dữ liệu hub về máy
+            {t("projects.pull")}
           </Button>
-          {action.busy ? <span className="text-sm text-muted-foreground">Đang chuyển…</span> : null}
+          {action.busy ? <span className="text-sm text-muted-foreground">{t("projects.transferring")}</span> : null}
         </div>
-        {!ready ? <p className="text-sm text-muted-foreground">Điền URL và token hub ở Nguồn dữ liệu rồi bấm Lưu cài đặt.</p> : null}
+        {!ready ? <p className="text-sm text-muted-foreground">{t("projects.transferNotReady")}</p> : null}
         <ErrorNote error={action.error} />
         {report ? (
           <div className="flex flex-col gap-3 rounded-lg bg-muted/50 p-3">
@@ -307,18 +304,18 @@ function TransferCard({ settings }: { settings: DesktopSettings }) {
                 {report.from} → {report.to}
               </span>
               {TRANSFER_RESULTS.filter((r) => report.counts[r] > 0).map((r) => (
-                <Badge key={r} tone={RESULT[r].tone}>
-                  {report.counts[r]} {RESULT[r].label}
+                <Badge key={r} tone={RESULT_TONE[r]}>
+                  {report.counts[r]} {t(`transferResult.${r}`)}
                 </Badge>
               ))}
               <div className="ml-auto flex flex-wrap items-center gap-1">
                 {report.counts.unchanged > 0 ? (
                   <Button size="sm" variant="ghost" onClick={() => setShowAll(!showAll)}>
-                    {showAll ? "Ẩn mục không đổi" : "Hiện cả mục không đổi"}
+                    {showAll ? t("projects.hideUnchanged") : t("projects.showUnchanged")}
                   </Button>
                 ) : null}
                 <Button size="sm" variant="ghost" onClick={() => setReport(null)}>
-                  Đóng
+                  {t("common.close")}
                 </Button>
               </div>
             </div>
@@ -326,23 +323,25 @@ function TransferCard({ settings }: { settings: DesktopSettings }) {
               <ul className="flex flex-col gap-1">
                 {rows.map((i) => (
                   <li key={`${i.kind}:${i.key}`} className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <Badge tone={RESULT[i.result].tone}>{RESULT[i.result].label}</Badge>
-                    <span className="text-xs">{KIND[i.kind]}</span>
+                    <Badge tone={RESULT_TONE[i.result]}>{t(`transferResult.${i.result}`)}</Badge>
+                    <span className="text-xs">{t(KIND[i.kind])}</span>
                     <span className="min-w-0 font-mono text-xs break-all">{i.key}</span>
                     {i.note ? <span className="min-w-0 text-xs break-words text-muted-foreground">· {i.note}</span> : null}
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-xs text-muted-foreground">Không có gì mới để chuyển.</p>
+              <p className="text-xs text-muted-foreground">{t("projects.nothingNew")}</p>
             )}
             {report.counts.proposed > 0 ? (
               <p className="text-xs text-muted-foreground">
-                Đề xuất nằm ở trang{" "}
-                <a href="#/proposals" className={LINK}>
-                  Đề xuất
-                </a>
-                {report.to === "hub" ? " trên hub" : ""}, cần admin duyệt.
+                {rich(t(report.to === "hub" ? "projects.proposedOnHub" : "projects.proposedHere"), {
+                  link: (
+                    <a href="#/proposals" className={LINK}>
+                      {t("nav.proposals")}
+                    </a>
+                  ),
+                })}
               </p>
             ) : null}
           </div>
@@ -354,6 +353,7 @@ function TransferCard({ settings }: { settings: DesktopSettings }) {
 
 function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: () => void }) {
   const { client } = useHive();
+  const t = useT();
   const g = settings.gitlab;
   const [url, setUrl] = useState(g.url);
   const [token, setToken] = useState("");
@@ -382,13 +382,15 @@ function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; onSaved:
       <CardHeader>
         <CardTitle>GitLab merge request</CardTitle>
         <CardDescription className="break-words">
-          Khi task xong, app push branch <code className={CODE}>ai/&lt;task&gt;</code> lên remote rồi tạo hoặc cập nhật MR. Output của agent được bọc trong code
-          block nên không kích hoạt quick action (<code className={CODE}>/merge</code>…) hay mention.
+          {rich(t("projects.gitlabHint"), {
+            branch: <code className={CODE}>ai/&lt;task&gt;</code>,
+            merge: <code className={CODE}>/merge</code>,
+          })}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className={FORM_GRID}>
-          <Label htmlFor="gl-url">URL GitLab</Label>
+          <Label htmlFor="gl-url">{t("projects.gitlabUrl")}</Label>
           <Input id="gl-url" className="font-mono" placeholder="https://gitlab.fis.vn" value={url} onChange={(e) => (setSaved(false), setUrl(e.target.value))} />
           <Label htmlFor="gl-token">Access token</Label>
           <Input
@@ -396,29 +398,29 @@ function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; onSaved:
             className="font-mono"
             type="password"
             autoComplete="off"
-            placeholder={g.hasToken ? "Đã lưu. Để trống để giữ nguyên" : "glpat-… (scope api, write_repository)"}
+            placeholder={g.hasToken ? t("projects.savedKeep") : "glpat-… (scope api, write_repository)"}
             value={token}
             onChange={(e) => (setSaved(false), setToken(e.target.value))}
           />
         </div>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox checked={mr.enabled} onCheckedChange={(v) => set("enabled", v === true)} />
-          Tự tạo MR
+          {t("projects.autoMr")}
         </label>
         <div className={FORM_GRID}>
-          <Label htmlFor="gl-when">Khi nào</Label>
+          <Label htmlFor="gl-when">{t("projects.mrWhen")}</Label>
           <NativeSelect id="gl-when" value={mr.when} onChange={(e) => set("when", e.target.value as MrSettings["when"])}>
-            <NativeSelectOption value="after_review">Sau khi review chéo xong</NativeSelectOption>
-            <NativeSelectOption value="after_success">Ngay khi agent làm xong (nếu không có review)</NativeSelectOption>
+            <NativeSelectOption value="after_review">{t("projects.mrAfterReview")}</NativeSelectOption>
+            <NativeSelectOption value="after_success">{t("projects.mrAfterSuccess")}</NativeSelectOption>
           </NativeSelect>
-          <Label htmlFor="gl-changes">Review yêu cầu sửa</Label>
+          <Label htmlFor="gl-changes">{t("projects.mrChanges")}</Label>
           <NativeSelect
             id="gl-changes"
             value={mr.onChangesRequested}
             onChange={(e) => set("onChangesRequested", e.target.value as MrSettings["onChangesRequested"])}
           >
-            <NativeSelectOption value="draft">Vẫn tạo, để ở dạng Draft</NativeSelectOption>
-            <NativeSelectOption value="skip">Chưa tạo MR</NativeSelectOption>
+            <NativeSelectOption value="draft">{t("projects.mrDraft")}</NativeSelectOption>
+            <NativeSelectOption value="skip">{t("projects.mrSkip")}</NativeSelectOption>
           </NativeSelect>
           <Label htmlFor="gl-labels">Label</Label>
           <Input id="gl-labels" value={labels} onChange={(e) => (setSaved(false), setLabels(e.target.value))} />
@@ -427,20 +429,20 @@ function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; onSaved:
         </div>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox checked={mr.removeSourceBranch} onCheckedChange={(v) => set("removeSourceBranch", v === true)} />
-          Xoá branch nguồn khi merge
+          {t("projects.removeBranch")}
         </label>
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={() => void save()} disabled={action.busy}>
-            Lưu
+            {t("projects.save")}
           </Button>
           <Button
             variant="outline"
             disabled={action.busy || (!g.hasToken && !token)}
             onClick={() => void action.run(async () => setCheck(await client.desktop!.checkGitLab()))}
           >
-            Kiểm tra kết nối
+            {t("projects.checkConnection")}
           </Button>
-          {saved ? <span className="text-sm text-success">Đã lưu</span> : null}
+          {saved ? <span className="text-sm text-success">{t("agents.saved")}</span> : null}
         </div>
         {check ? (
           <Notice tone={check.ok ? "ok" : "error"} className="whitespace-pre-wrap">
@@ -455,6 +457,7 @@ function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; onSaved:
 
 function ProjectGitLab({ project, onSaved }: { project: DesktopProject; onSaved: () => void }) {
   const { client } = useHive();
+  const t = useT();
   const [gitlabProject, setGitlabProject] = useState(project.gitlabProject ?? "");
   const [targetBranch, setTargetBranch] = useState(project.targetBranch ?? "");
   const action = useAction();
@@ -471,20 +474,20 @@ function ProjectGitLab({ project, onSaved }: { project: DesktopProject; onSaved:
     >
       <Input
         className="min-w-48 flex-[2] font-mono"
-        placeholder="GitLab project: tự đọc từ remote (hoặc group/project)"
+        placeholder={t("projects.gitlabProjectPlaceholder")}
         value={gitlabProject}
         onChange={(e) => setGitlabProject(e.target.value)}
-        aria-label={`GitLab project của ${project.name}`}
+        aria-label={t("projects.gitlabProjectOf", { project: project.name })}
       />
       <Input
         className="min-w-40 flex-1 font-mono sm:max-w-52"
-        placeholder="target: default branch"
+        placeholder={t("projects.targetPlaceholder")}
         value={targetBranch}
         onChange={(e) => setTargetBranch(e.target.value)}
-        aria-label={`Target branch của ${project.name}`}
+        aria-label={t("projects.targetOf", { project: project.name })}
       />
       <Button size="sm" variant="outline" type="submit" disabled={action.busy}>
-        Lưu
+        {t("projects.save")}
       </Button>
       <ErrorNote error={action.error} />
     </form>
@@ -493,6 +496,7 @@ function ProjectGitLab({ project, onSaved }: { project: DesktopProject; onSaved:
 
 function ProjectsCard({ settings, onChanged }: { settings: DesktopSettings; onChanged: () => void }) {
   const { client, bump } = useHive();
+  const t = useT();
   const desktop = client.desktop!;
   const [name, setName] = useState("");
   const [repo, setRepo] = useState("");
@@ -504,11 +508,11 @@ function ProjectsCard({ settings, onChanged }: { settings: DesktopSettings; onCh
   const showSync = (r: SyncReport) =>
     setResult({
       project: r.project,
-      title: "Đồng bộ tài liệu",
+      title: t("projects.sync"),
       files: r.files,
       extra: [
-        r.imported.length ? `Đã nhập vào Hive: ${r.imported.join(", ")}` : "",
-        r.commit ? `Commit ${r.commit}` : "",
+        r.imported.length ? t("projects.imported", { keys: r.imported.join(", ") }) : "",
+        r.commit ? t("projects.commit", { sha: r.commit }) : "",
         r.note ?? "",
       ]
         .filter(Boolean)
@@ -518,10 +522,10 @@ function ProjectsCard({ settings, onChanged }: { settings: DesktopSettings; onCh
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Dự án trên máy này</CardTitle>
+        <CardTitle>{t("projects.local")}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {settings.projects.length === 0 ? <Empty>Chưa có dự án. Thêm repo bên dưới.</Empty> : null}
+        {settings.projects.length === 0 ? <Empty>{t("projects.noneLocal")}</Empty> : null}
         {settings.projects.length ? (
           <div className="flex flex-col gap-2">
             {settings.projects.map((p) => (
@@ -543,22 +547,22 @@ function ProjectsCard({ settings, onChanged }: { settings: DesktopSettings; onCh
                         })
                       }
                     >
-                      Đồng bộ tài liệu
+                      {t("projects.sync")}
                     </Button>
                     <Button asChild size="sm" variant="outline">
-                      <a href="#/setup">Cài đặt</a>
+                      <a href="#/setup">{t("overview.settings")}</a>
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setGitlabOpen(gitlabOpen === p.name ? null : p.name)} aria-expanded={gitlabOpen === p.name}>
                       GitLab
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => void desktop.showInFolder(p.repo)}>
-                      Mở
+                      {t("projects.open")}
                     </Button>
                     <Button
                       size="sm"
                       variant="ghost"
                       onClick={() => {
-                        if (window.confirm(`Bỏ ${p.name} khỏi danh sách? Repo và tài liệu trong Hive không bị xoá.`)) {
+                        if (window.confirm(t("projects.confirmRemove", { project: p.name }))) {
                           void action.run(async () => {
                             await desktop.removeProject(p.name);
                             onChanged();
@@ -566,7 +570,7 @@ function ProjectsCard({ settings, onChanged }: { settings: DesktopSettings; onCh
                         }
                       }}
                     >
-                      Bỏ
+                      {t("projects.remove")}
                     </Button>
                   </div>
                 </div>
@@ -605,10 +609,10 @@ function ProjectsCard({ settings, onChanged }: { settings: DesktopSettings; onCh
           />
           <Input
             className="min-w-48 flex-[3] font-mono"
-            placeholder="/đường/dẫn/tới/repo"
+            placeholder={t("projects.repoPlaceholder")}
             value={repo}
             onChange={(e) => setRepo(e.target.value)}
-            aria-label="Thư mục repo"
+            aria-label={t("projects.repo")}
           />
           <Button
             type="button"
@@ -623,10 +627,10 @@ function ProjectsCard({ settings, onChanged }: { settings: DesktopSettings; onCh
               })
             }
           >
-            Chọn thư mục…
+            {t("projects.pickFolder")}
           </Button>
           <Button type="submit" disabled={!nameValid || !repo || action.busy}>
-            Thêm dự án
+            {t("projects.add")}
           </Button>
         </form>
         <ErrorNote error={action.error} />
@@ -636,13 +640,13 @@ function ProjectsCard({ settings, onChanged }: { settings: DesktopSettings; onCh
               <span className="font-medium">{result.title}</span>
               <span className="min-w-0 font-mono text-xs break-all">{result.project}</span>
               <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setResult(null)}>
-                Đóng
+                {t("common.close")}
               </Button>
             </div>
             <ul className="flex flex-col gap-1">
               {result.files.map((f) => (
                 <li key={f.file} className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <Badge tone={ACTION_TONE[f.action]}>{f.action}</Badge>
+                  <Badge tone={ACTION_TONE[f.action]}>{t(`fileAction.${f.action}`)}</Badge>
                   <span className="min-w-0 font-mono text-xs break-all">{f.file}</span>
                   {f.note ? <span className="min-w-0 text-xs break-words text-muted-foreground">· {f.note}</span> : null}
                 </li>
