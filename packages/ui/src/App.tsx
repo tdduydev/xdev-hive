@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ComponentType, type Rea
 import {
   Bot,
   FileText,
+  Laptop,
   FolderGit2,
   GitPullRequestArrow,
   KeyRound,
@@ -46,6 +47,7 @@ import { useSystemTheme } from "./lib/theme.ts";
 import { AdminPage } from "./pages/Admin.tsx";
 import { AgentsPage } from "./pages/Agents.tsx";
 import { BoardPage } from "./pages/Board.tsx";
+import { DevicePage } from "./pages/Device.tsx";
 import { DocsPage } from "./pages/Docs.tsx";
 import { MachinesPage } from "./pages/Machines.tsx";
 import { MemoryPage } from "./pages/Memory.tsx";
@@ -70,7 +72,8 @@ type PageId =
   | "users"
   | "tokens"
   | "setup"
-  | "projects";
+  | "projects"
+  | "device";
 type Icon = ComponentType<{ className?: string }>;
 
 const PAGES: Record<PageId, { label: MessageKey; icon: Icon; render: () => ReactNode }> = {
@@ -87,6 +90,8 @@ const PAGES: Record<PageId, { label: MessageKey; icon: Icon; render: () => React
   users: { label: "nav.users", icon: UsersRound, render: () => <UsersPage /> },
   tokens: { label: "nav.tokens", icon: KeyRound, render: () => <TokensPage /> },
   projects: { label: "nav.projects", icon: FolderGit2, render: () => <ProjectsPage /> },
+  // Not in the sidebar: the desktop app opens it (#/device?port=…).
+  device: { label: "nav.device", icon: Laptop, render: () => <DevicePage /> },
 };
 
 const GROUPS: Array<{ label: MessageKey; ids: PageId[] }> = [
@@ -96,7 +101,7 @@ const GROUPS: Array<{ label: MessageKey; ids: PageId[] }> = [
 ];
 
 function readHash(): PageId | null {
-  const id = window.location.hash.replace(/^#\/?/, "");
+  const id = window.location.hash.replace(/^#\/?/, "").split("?")[0]!;
   return id in PAGES ? (id as PageId) : null;
 }
 
@@ -185,6 +190,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     if (hubAdmin && client.users) ids.add("users");
     // Everyone with an account manages their own tokens (machines, CI); admins see all.
     if (client.tokens && (hubAdmin || me.user)) ids.add("tokens");
+    if (client.device && me.user) ids.add("device");
     return ids;
   }, [client, me]);
 

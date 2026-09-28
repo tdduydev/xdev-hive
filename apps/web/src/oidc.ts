@@ -66,8 +66,14 @@ interface Pending {
   verifier: string;
   /** Linking the provider account to this signed-in user instead of signing in. */
   linkUserId: string | null;
+  /** Hub path to land on afterwards (the desktop's sign-in page). */
+  returnTo: string;
   expires: number;
 }
+
+/** Only a path on the hub itself: "/…" but not "//host" or "/\\host". */
+export const safeReturn = (v: unknown): string =>
+  typeof v === "string" && v.length <= 1000 && /^\/(?![/\\])/.test(v) && !/[\u0000-\u001f]/.test(v) ? v : "/";
 
 const b64url = (buf: Buffer) => buf.toString("base64url");
 /** A sign-in has this long between leaving for the provider and coming back. */
@@ -110,7 +116,7 @@ export class OidcClient {
   }
 
   /** Where to send the browser, and the state its cookie must carry back. */
-  async start(opts: { linkUserId?: string } = {}): Promise<{ url: string; state: string }> {
+  async start(opts: { linkUserId?: string; returnTo?: string } = {}): Promise<{ url: string; state: string }> {
     const d = await this.#discover();
     const now = this.#now();
     for (const [k, p] of this.#pending) if (p.expires < now) this.#pending.delete(k);
@@ -118,7 +124,7 @@ export class OidcClient {
     const state = b64url(randomBytes(24));
     const nonce = b64url(randomBytes(24));
     const verifier = b64url(randomBytes(32));
-    this.#pending.set(state, { nonce, verifier, linkUserId: opts.linkUserId ?? null, expires: now + PENDING_MS });
+    this.#pending.set(state, { nonce, verifier, linkUserId: opts.linkUserId ?? null, returnTo: safeReturn(opts.returnTo), expires: now + PENDING_MS });
     const url = new URL(d.authorization_endpoint);
     url.search = new URLSearchParams({
       response_type: "code",
@@ -134,7 +140,7 @@ export class OidcClient {
   }
 
   /** Exchanges the code; each state works once. */
-  async finish(state: string, code: string): Promise<{ identity: OidcIdentity; linkUserId: string | null }> {
+  async finish(state: string, code: string): Promise<{ identity: OidcIdentity; linkUserId: string | null; returnTo: string }> {
     const pending = this.#pending.get(state);
     this.#pending.delete(state);
     if (!pending || pending.expires < this.#now()) throw fail("errors.ssoState", "Unknown or expired sign-in attempt");
@@ -159,7 +165,7 @@ export class OidcClient {
       throw fail("errors.ssoToken", `Token exchange failed: ${(err as Error).message}`);
     }
     if (typeof tokens.id_token !== "string") throw fail("errors.ssoToken", "The provider sent no ID token (is the openid scope allowed?)");
-    return { identity: this.#claims(tokens.id_token, d.issuer, pending.nonce), linkUserId: pending.linkUserId };
+    return { identity: this.#claims(tokens.id_token, d.issuer, pending.nonce), linkUserId: pending.linkUserId, returnTo: pending.returnTo };
   }
 
   #claims(idToken: string, issuer: string, nonce: string): OidcIdentity {

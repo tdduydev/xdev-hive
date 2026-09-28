@@ -258,6 +258,9 @@ export interface DesktopBridge {
   setLocale(locale: string): Promise<void>;
   /** Hub mode with a hub account: the hub issues this machine a token that belongs to the account. */
   hubSignIn(input: { hubUrl: string; username: string; password: string }): Promise<DesktopSettings>;
+  /** The same through the browser (SSO or password on the hub's page); waits until allowed, denied or cancelled. */
+  hubSignInBrowser(input: { hubUrl: string }): Promise<DesktopSettings>;
+  hubSignInCancel(): Promise<void>;
   addProject(project: DesktopProject): Promise<DesktopSettings>;
   removeProject(name: string): Promise<DesktopSettings>;
   pickFolder(): Promise<string | null>;
