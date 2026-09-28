@@ -40,6 +40,11 @@ Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, 
   - Trang Memory hiện số `#id` của từng mục, *Thay cho #…* và *Đã được thay bằng #…*; mục đã thay bị gạch.
 - **Chung và riêng từng dự án**: tài liệu `org/*` và memory chung dùng cho cả team; tài liệu `project/<dự án>/*`, memory riêng và task thuộc về một dự án. Ở đầu sidebar có ô chọn phạm vi: *Tất cả dự án*, *Chung (cả team)*, hoặc một dự án. Mọi trang lọc theo phạm vi đó (ở một dự án thì thấy dữ liệu riêng của dự án cộng với dữ liệu chung, có nhãn "Chung"), và mục tạo mới mặc định thuộc phạm vi đang chọn. Trang *Tổng quan* tóm tắt từng dự án và phần dữ liệu chung.
 - **Task**: `task_claim` giữ task theo lease, hai agent không nhận trùng. `task_update` kèm ghi chú bàn giao.
+  - **Phụ thuộc**: task có thể phụ thuộc task khác cùng dự án. Đặt khi tạo, hoặc bấm *Sửa* ở cột *Phụ thuộc* trang Task (`tasks.setDeps`). Hive từ chối task tự phụ thuộc chính nó, task của dự án khác và vòng lặp.
+    - Còn task phụ thuộc chưa *Xong* thì không `task_claim` được và app không chạy agent cho nó. Board để nó ở cột *Bị chặn* với nhãn *Chờ T-1*.
+    - Các task đó xong thì task tự mở khoá, không cần ai chuyển trạng thái.
+  - **Task sẵn sàng tiếp theo** (`task_next` / `tasks.next`): task *Chưa làm*, không chờ task nào, không ai giữ. Task mở khoá được nhiều task khác nhất xếp đầu.
+    - Trang Task hiện 3 task đầu, Board gắn nhãn *Tiếp theo*.
 - **Đồng bộ vào repo**: render `AGENTS.md` (khối chung + phần riêng của dự án), `CLAUDE.md` (`@AGENTS.md`), `docs/decisions.md`. Chỉ commit các file này, không push.
 - **Chặn sửa tay**: hook `PreToolUse` của Claude Code và `pre-commit` của git (áp dụng cho mọi agent). Run của runner không chạy hook nào; runner tự để các file này ngoài commit.
 - **Board + runner** (desktop): giao task cho agent chạy headless (`claude -p`, `codex exec`, `gemini -p`…). Mỗi task có worktree riêng. Hết quota thì tự chuyển gói sub, xong thì review chéo bằng vendor khác.
@@ -61,7 +66,7 @@ Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ v�
 
 ```bash
 nvm use && npm install
-npm test            # 195 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
+npm test            # 202 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
 npm run typecheck
 ```
 
@@ -287,7 +292,7 @@ Trang này có trên hub web và trên app desktop ở chế độ hub, chỉ hi
 
 Agent không có app desktop (CI, cloud) gọi thẳng MCP qua HTTP: `POST https://<hub>/mcp`, header `Authorization: Bearer <token agent>`, tuỳ chọn `x-hive-agent: <tên>`.
 
-**Agent chỉ đọc**: tạo token vai trò `viewer` cho agent chỉ cần tra cứu, ví dụ bot review hoặc CI đọc quy chuẩn. Với token này, MCP chỉ có `memory_search`, `doc_list`, `doc_get`, `task_list`. Tool ghi không có trong danh sách, và hub cũng từ chối lệnh ghi.
+**Agent chỉ đọc**: tạo token vai trò `viewer` cho agent chỉ cần tra cứu, ví dụ bot review hoặc CI đọc quy chuẩn. Với token này, MCP chỉ có `memory_search`, `doc_list`, `doc_get`, `task_list`, `task_next`. Tool ghi không có trong danh sách, và hub cũng từ chối lệnh ghi.
 
 Trên app desktop, profile có tuỳ chọn *Chỉ đọc Hive*:
 - Runner đặt `HIVE_READONLY=1` cho run của profile đó; `hive-mcp` thấy biến này thì chỉ mở tool đọc.

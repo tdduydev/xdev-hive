@@ -51,6 +51,7 @@ const ACTION_LABEL: Record<string, MessageKey> = {
   "memory.approve": "auditAction.memoryApprove",
   "memory.remove": "auditAction.memoryRemove",
   "tasks.create": "auditAction.tasksCreate",
+  "tasks.setDeps": "auditAction.tasksSetDeps",
   "machines.remove": "auditAction.machinesRemove",
   "cooldowns.clear": "auditAction.cooldownsClear",
   "policy.set": "auditAction.policySet",

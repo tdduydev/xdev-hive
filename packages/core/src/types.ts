@@ -120,6 +120,10 @@ export interface Task {
   leaseUntil: string | null;
   note: string | null;
   updatedAt: string;
+  /** Tasks of the same project that have to be done first. */
+  dependsOn: string[];
+  /** Those of them not done yet: while any is left the task cannot be claimed. */
+  waitingOn: string[];
 }
 
 /** installed: nothing to do · missing: the app can install it · outdated: installed for another build · manual: needs a hand edit. */

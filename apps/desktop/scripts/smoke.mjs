@@ -67,7 +67,8 @@ hive.seed();
 const admin = { name: "smoke", role: "admin" };
 await hive.call("tasks.create", { id: "T-001", project: "demo", title: "Thêm trang cài đặt workspace" }, admin);
 await hive.call("tasks.create", { id: "T-002", project: "demo", title: "Sửa lỗi phân trang danh sách" }, admin);
-await hive.call("tasks.create", { id: "T-003", project: "demo", title: "Viết test cho API đăng nhập" }, admin);
+// Waits on T-002 (roadmap 7): shown as blocked, and T-002 is the next ready task.
+await hive.call("tasks.create", { id: "T-003", project: "demo", title: "Viết test cho API đăng nhập", dependsOn: ["T-002"] }, admin);
 hive.close();
 new RunStore(path.join(work, "runs.db")).insert(
   { project: "demo", taskId: "T-001", taskTitle: "Thêm trang cài đặt workspace", role: "implement", attempt: 1, maxAttempts: 3, reviewAfter: true },

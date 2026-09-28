@@ -70,6 +70,11 @@ export function BoardPage() {
     () => (current ? client.call("tasks.list", { project: current }) : Promise.resolve([] as Task[])),
     [client, current, tick],
   );
+  const next = useQuery(
+    () => (current ? client.call("tasks.next", { project: current, limit: 1 }) : Promise.resolve([] as Task[])),
+    [client, current, tasks.data],
+  );
+  const nextId = next.data?.[0]?.id ?? null;
   const profiles = useQuery(() => desktop.profiles(), [desktop, tick]);
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -136,7 +141,8 @@ export function BoardPage() {
 
       <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
         {TASK_STATUSES.map((status) => {
-          const column = (tasks.data ?? []).filter((task) => task.status === status);
+          // A task waiting on others shows as blocked until they are done; it is still "to do" underneath.
+          const column = (tasks.data ?? []).filter((task) => (task.status === "todo" && task.waitingOn?.length ? "blocked" : task.status) === status);
           return (
             <section
               key={status}
@@ -154,6 +160,7 @@ export function BoardPage() {
                   run={latestRun.get(task.id) ?? null}
                   profiles={profiles.data ?? []}
                   canRun={isLocalProject}
+                  isNext={task.id === nextId}
                   onStarted={(r) => {
                     setSelected(r.id);
                     refresh();
@@ -209,6 +216,7 @@ function TaskCard({
   run,
   profiles,
   canRun,
+  isNext,
   onStarted,
   onOpenRun,
 }: {
@@ -216,6 +224,7 @@ function TaskCard({
   run: AgentRun | null;
   profiles: AgentProfileStatus[];
   canRun: boolean;
+  isNext: boolean;
   onStarted: (run: AgentRun) => void;
   onOpenRun: (id: string) => void;
 }) {
@@ -228,7 +237,8 @@ function TaskCard({
   const [reviewAfter, setReviewAfter] = useState(true);
   const action = useAction();
   const busy = run?.status === "queued" || run?.status === "running";
-  const allowed = me.role !== "viewer" && canRun && task.status !== "done";
+  const waiting = task.waitingOn ?? [];
+  const allowed = me.role !== "viewer" && canRun && task.status !== "done" && !waiting.length;
 
   return (
     <Card className="gap-2 py-3">
@@ -248,6 +258,12 @@ function TaskCard({
             </button>
           ) : null}
           {run ? <MrLink run={run} /> : null}
+          {isNext ? (
+            <span title={t("board.nextTaskHint")}>
+              <Badge tone="accent">{t("board.nextTask")}</Badge>
+            </span>
+          ) : null}
+          {waiting.length ? <Badge tone="warn">{t("board.waitingOn", { tasks: waiting.join(", ") })}</Badge> : null}
         </div>
         <div className="text-sm font-medium wrap-anywhere">{task.title}</div>
         {task.owner ? <div className="text-xs text-muted-foreground">{t("board.claimedBy", { owner: task.owner })}</div> : null}
