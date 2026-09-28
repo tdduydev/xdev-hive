@@ -107,7 +107,8 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       title: "Search team memory",
       description:
         'Search decisions, conventions, gotchas and context recorded by any agent on this project, plus team-wide entries (project: null means shared by every project). Empty query returns the latest entries. ' +
-        "Entries no agent used for a long time are left out until a person keeps them. An entry with review set cites files that changed since: check them before relying on it.",
+        "Entries no agent used for a long time are left out until a person keeps them. An entry with review set cites files that changed since: check them before relying on it. " +
+        "conflictsWith lists entries that disagree with it until a person decides; replaced entries are left out.",
       inputSchema: { project, query: z.string().optional(), limit: z.number().int().min(1).max(50).optional() },
       annotations: readOnly,
     },
@@ -122,7 +123,9 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
         description:
           "Record one durable fact for every other agent: a decision, convention, gotcha or context. Keep it short. No secrets. " +
           "shared: true only for something true in every project of the team (e.g. an org-wide convention); otherwise it belongs to this project. " +
-          "files: the repo files the fact is about, so it gets flagged for review when they change.",
+          "files: the repo files the fact is about, so it gets flagged for review when they change. " +
+          "When a fact changed, write the new one with supersedes (the old id) instead of leaving both; " +
+          "when you find an entry that looks wrong but are not sure, write yours with contradicts (its id) and a person decides.",
         inputSchema: {
           project,
           shared: z.boolean().optional().describe("Team-wide entry seen from every project (no project then)"),
@@ -130,11 +133,14 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
           content: z.string(),
           taskId: z.string().optional(),
           files: z.array(z.string()).max(10).optional().describe("Paths from the repo root, e.g. src/db/pool.ts"),
+          supersedes: z.number().int().positive().optional().describe("Id of an older entry this one replaces"),
+          contradicts: z.number().int().positive().optional().describe("Id of an entry this one disagrees with"),
         },
       },
-      async ({ project: p, shared, kind, content, taskId, files }) => {
-        if (shared) return run("memory.write", { shared: true, kind, content, taskId, files });
-        return withProject(async ({ project: q }: { project: string }) => run("memory.write", { project: q, kind, content, taskId, files }))({ project: p });
+      async ({ project: p, shared, kind, content, taskId, files, supersedes, contradicts }) => {
+        const links = { taskId, files, supersedes, contradicts };
+        if (shared) return run("memory.write", { shared: true, kind, content, ...links });
+        return withProject(async ({ project: q }: { project: string }) => run("memory.write", { project: q, kind, content, ...links }))({ project: p });
       },
     );
   }
