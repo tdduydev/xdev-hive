@@ -209,11 +209,25 @@ export interface AgentRun {
   pipelineStatus: PipelineStatus | null;
   pipelineUrl: string | null;
   mrCheckedAt: string | null;
+  ciFix: CiFix | null;
   /** From the CLI's JSON result (Claude Code): estimated at API prices, which a subscription does not bill. */
   costUsd: number | null;
   /** Input tokens including cache reads and writes. */
   inputTokens: number | null;
   outputTokens: number | null;
+}
+
+/** A run queued because the pipeline of a merge request failed. */
+export interface CiFix {
+  mrUrl: string;
+  mrIid: number | null;
+  pipelineId: number;
+  pipelineUrl: string | null;
+  /** This is fix n of max for the MR. */
+  n: number;
+  max: number;
+  /** Failed jobs (at most 3), each with the cleaned end of its log. */
+  jobs: Array<{ name: string; stage: string; url: string; log: string }>;
 }
 
 export interface StartRunRequest {

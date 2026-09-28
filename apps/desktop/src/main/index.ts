@@ -47,6 +47,7 @@ import { GitLabClient } from "./gitlab/client.ts";
 import { setMainLocale, tr } from "./i18n.ts";
 import { MergeRequester, type MrHost } from "./gitlab/mr.ts";
 import { MrWatcher, type MrChange } from "./gitlab/watch.ts";
+import { CiFixer } from "./gitlab/ci-fix.ts";
 import { installAgents, installShim } from "./installer.ts";
 import { expandEnv, expandHome, resolveBin } from "./runner/command.ts";
 import { LoginMonitor, loginParts } from "./runner/login.ts";
@@ -443,9 +444,15 @@ function onMrChanges(changes: MrChange[]): void {
           : tr(c.taskDone ? "desktop.mrMerged" : "desktop.mrMergedOnly", { iid })
         : c.status.to === "closed" && c.status.from !== "closed"
           ? tr("desktop.mrClosed", { iid })
-          : c.pipeline.to === "failed"
-            ? tr("desktop.pipelineFailed", { iid })
-            : null;
+          : c.fix?.kind === "queued"
+            ? tr("desktop.ciFixQueued", { iid, run: c.fix.run.id, n: c.fix.n, max: c.fix.max })
+            : c.fix?.kind === "limit"
+              ? tr("desktop.ciFixLimit", { iid, max: c.fix.max })
+              : c.fix?.kind === "error"
+                ? tr("desktop.ciFixFailed", { iid, reason: c.fix.reason })
+                : c.pipeline.to === "failed"
+                  ? tr("desktop.pipelineFailed", { iid })
+                  : null;
     if (!body) continue;
     const n = new Notification({ title: `${c.run.taskId} · MR !${iid}`, body });
     n.on("click", () => {
@@ -692,7 +699,7 @@ if (!app.requestSingleInstanceLock()) {
       user: os.userInfo().username,
     };
     mergeRequester = new MergeRequester(mrHost);
-    mrWatcher = new MrWatcher(mrHost);
+    mrWatcher = new MrWatcher(mrHost, new CiFixer({ ...mrHost, enqueue: (req, extra) => runner.enqueue(req, extra) }));
     logins = new LoginMonitor(() => config.agents, agentEnv);
     runner = new Runner(
       {

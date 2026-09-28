@@ -1,7 +1,7 @@
 // Launches the built app with a throwaway config and data dir, screenshots a few pages, then exits.
 // Seeds a task and a queued run whose first subscription "runs out of quota", so the Board shows a real rotation,
 // then a cross-review and a merge request on a mock GitLab (through Electron's net.fetch) with a bare repo as origin.
-// Last, the MR's pipeline fails on GitLab and the Board shows it again (board-ci.png).
+// Last, the MR's pipeline fails on GitLab: the app queues a fix run with the job's log (board-ci.png).
 //   npm run smoke -w @xdev-hive/desktop [-- <output dir>]      (HIVE_SMOKE_LOCALE=en for the English interface)
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -98,9 +98,10 @@ async function shoot(name, page, delay) {
 }
 
 for (const [page, delay] of [["board", 6000], ["agents", 1500], ["setup", 4000], ["projects", 1500], ["docs", 1500]]) await shoot(page, page, delay);
-// The app checks open MRs as it starts (right away in smoke mode).
+// The app checks open MRs as it starts (right away in smoke mode): the failed job goes to a fix run.
+gitlab.jobs[7] = [{ id: 71, name: "test", stage: "test", status: "failed", trace: "not ok 2 - settings page renders\n" }];
 for (const mr of gitlab.mrs) mr.head_pipeline = { id: 7, status: "failed", web_url: `${gitlab.base}/group/demo/-/pipelines/7` };
-await shoot("board-ci", "board", 2500);
+await shoot("board-ci", "board", 5000);
 
 const runs = new RunStore(path.join(work, "runs.db")).list({ project: "demo" });
 console.log(
@@ -108,7 +109,7 @@ console.log(
     .map(
       (r) =>
         `${r.id} ${r.role} ${r.profileId} ${r.status} attempt ${r.attempt}${r.error ? ` (${r.error})` : ""}` +
-        `${r.mrState ? ` · MR ${r.mrState} ${r.mrUrl ?? r.mrNote}` : ""}${r.mrStatus ? ` · GitLab ${r.mrStatus}, CI ${r.pipelineStatus ?? "-"}` : ""}`,
+        `${r.mrState ? ` · MR ${r.mrState} ${r.mrUrl ?? r.mrNote}` : ""}${r.mrStatus ? ` · GitLab ${r.mrStatus}, CI ${r.pipelineStatus ?? "-"}` : ""}${r.ciFix ? ` · CI fix ${r.ciFix.n}/${r.ciFix.max} (${r.ciFix.jobs.map((j) => j.name).join(", ")})` : ""}`,
     )
     .join("\n"),
 );

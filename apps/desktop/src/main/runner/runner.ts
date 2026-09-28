@@ -20,6 +20,7 @@ import {
   type AgentProfile,
   type AgentProfileStatus,
   type AgentRun,
+  type CiFix,
   type DesktopProject,
   type CommandStatus,
   type HiveBackend,
@@ -198,7 +199,8 @@ export class Runner {
     }
   }
 
-  async enqueue(req: StartRunRequest): Promise<AgentRun> {
+  /** `extra.ciFix`: the run fixes a failed MR pipeline (queued by the MR watcher, not by the interface). */
+  async enqueue(req: StartRunRequest, extra: { ciFix?: CiFix } = {}): Promise<AgentRun> {
     const project = this.#host.projects().find((p) => p.name === req.project);
     if (!project) throw new HiveError("not_found", `Dự án ${req.project} chưa được thêm vào app.`, { key: "errors.projectNotAdded", vars: { project: req.project } });
     if (!/^[A-Za-z0-9._-]{1,100}$/.test(req.taskId)) throw new HiveError("bad_request", "Task id không hợp lệ.", { key: "errors.badTaskId" });
@@ -227,6 +229,7 @@ export class Runner {
         instructions: (req.instructions ?? "").slice(0, 4000),
         reviewAfter: req.reviewAfter ?? false,
         baseSha: previous?.baseSha ?? null,
+        ciFix: extra.ciFix ?? null,
       },
       this.#iso(),
     );
@@ -524,6 +527,7 @@ export class Runner {
         attempt: run.attempt,
         previous: parent?.role === run.role && parent.profileId ? { profileId: parent.profileId, reason: parent.error ?? parent.status } : null,
         readOnly: profile.readOnly,
+        ciFix: run.ciFix,
       });
       const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id };
       const cmd = buildCommand(profile, vars, repoFeatures(project.repo));
@@ -695,6 +699,7 @@ export class Runner {
           instructions: run.instructions,
           reviewAfter: run.reviewAfter,
           baseSha: done.baseSha,
+          ciFix: run.ciFix,
         },
         this.#iso(),
       );

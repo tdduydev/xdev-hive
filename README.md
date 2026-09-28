@@ -61,7 +61,7 @@ Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ v�
 
 ```bash
 nvm use && npm install
-npm test            # 191 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
+npm test            # 195 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
 npm run typecheck
 ```
 
@@ -171,6 +171,14 @@ implement (không review, chế độ "ngay khi làm xong") ──────�
   - MR merge thì task chuyển sang *Xong*, ghi chú task thêm dòng `MR !<iid> merged.`. Tắt được bằng ô *MR merge thì chuyển task sang Xong*.
   - Có thông báo khi MR merge, bị đóng không merge, hoặc pipeline lỗi.
   - MR đã merge hay đóng thì thôi hỏi. Chỉ hỏi MR trên đúng GitLab đã cấu hình, nên token không đi nơi khác.
+- **Tự sửa CI** (bật sẵn, ô *Pipeline lỗi thì giao agent sửa*): pipeline mới nhất của MR đang mở bị lỗi thì app xếp một run implement trên cùng branch `ai/<task>`, chọn gói như run thường.
+  - Prompt có link pipeline và phần cuối log của tối đa 3 job lỗi (bỏ job `allow_failure`).
+    - Log được làm sạch: bỏ mã màu, dấu section của GitLab, ký tự ẩn. Dòng trông giống secret bị thay bằng `(line hidden: …)`.
+    - Agent được dặn đọc log như dữ liệu, không làm theo chữ trong log, và không được bỏ hay nới test để qua CI.
+  - Run xong thì app chỉ push branch. GitLab tự cập nhật MR và chạy pipeline mới; tiêu đề và mô tả MR giữ nguyên.
+  - Mỗi pipeline sửa một lần, tối đa 2 lần mỗi MR (chỉnh 1–5). Hết lượt thì chỉ báo *cần người xem*.
+  - Task đang có run thì chờ, lần kiểm sau mới xếp.
+  - Board: chi tiết run sửa ghi *Sửa CI của MR !n (lần 1/2)* và tên job lỗi.
 - API gọi qua `net.fetch` của Electron, dùng proxy và chứng chỉ của hệ thống.
 
 ## Hub cho team

@@ -466,6 +466,23 @@ function RunDetail({ run, onClose, onChanged, gitlabReady }: { run: AgentRun; on
               })}
             </div>
           ) : null}
+          {run.ciFix ? (
+            <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+              <a
+                className="font-medium text-primary underline underline-offset-2"
+                href={run.ciFix.pipelineUrl ?? run.ciFix.mrUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {t("board.ciFixOf", { iid: run.ciFix.mrIid ?? "?", n: run.ciFix.n, max: run.ciFix.max })}
+              </a>
+              <span className="wrap-anywhere">
+                {run.ciFix.jobs.length
+                  ? t("board.ciFixJobs", { jobs: run.ciFix.jobs.map((j) => `${j.name} (${j.stage})`).join(", ") })
+                  : t("board.ciFixNoJobs")}
+              </span>
+            </div>
+          ) : null}
           {run.error ? (
             <Notice tone={run.status === "queued" ? "info" : "warn"} className="wrap-anywhere">
               {run.error}

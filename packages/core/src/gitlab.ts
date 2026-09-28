@@ -37,6 +37,10 @@ export const mrSettingsSchema = z.object({
   remote: z.string().regex(/^[\w.-]{1,50}$/).default("origin"),
   /** The app follows the MRs it opened; a merged one moves its task to done. */
   doneOnMerge: z.boolean().default(true),
+  /** A failed pipeline on an open MR queues a run that fixes it, with the failed jobs' logs. */
+  fixCi: z.boolean().default(true),
+  /** Automatic fixes per MR; after that a failed pipeline is only reported. */
+  maxCiFixes: z.number().int().min(1).max(5).default(2),
 });
 export type MrSettings = z.output<typeof mrSettingsSchema>;
 
