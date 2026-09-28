@@ -31,6 +31,13 @@ const project = z.string().regex(PROJECT_NAME, "project must be lowercase letter
 const id = z.number().int().positive();
 const taskId = z.string().regex(/^[A-Za-z0-9._-]{1,100}$/, "task id: letters, digits, . _ -");
 const content = z.string().max(200_000);
+/** A path from the repo root: no leading slash, no backslash, no empty or ".." segment. */
+const repoPath = z
+  .string()
+  .min(1)
+  .max(300)
+  .refine((p) => !p.startsWith("/") && !p.includes("\\") && !p.split("/").some((s) => s === "" || s === ".."), "path from the repo root, like src/app.ts");
+const objectId = z.string().regex(/^[0-9a-f]{40,64}$/);
 const account = z.string().regex(ACCOUNT_ID, "account: letters, digits, . _ @ : + -");
 const machineRef = z.string().min(1).max(200);
 /** cli:<kind> · shim · <project>:<part> — ids of the desktop's setup items. */
@@ -139,11 +146,18 @@ export const schemas = {
       kind: z.enum(MEMORY_KINDS),
       content: z.string().min(1).max(4000),
       taskId: taskId.optional(),
+      /** Files the fact is about; the entry is flagged for review when they change. */
+      files: z.array(repoPath).max(10).default([]),
     })
     .refine((m) => (m.shared ? m.project === undefined : m.project !== undefined), "memory needs a project, or shared: true without one"),
   "memory.approve": z.object({ id }),
-  /** Still true: counts as used now, so it is no longer stale. */
+  /** Still true: counts as used now, so it is no longer stale, and the cited files as they are now become the baseline. */
   "memory.keep": z.object({ id }),
+  /** What the project's cited files are now (null: gone), from a machine that has the repo. */
+  "memory.checkFiles": z.object({
+    project,
+    files: z.array(z.object({ path: repoPath, sha: objectId.nullable() })).max(2000),
+  }),
   "memory.remove": z.object({ id }),
 
   "tasks.list": z.object({
@@ -244,6 +258,7 @@ export interface MethodOutput {
   "memory.write": Memory;
   "memory.approve": Memory;
   "memory.keep": Memory;
+  "memory.checkFiles": { flagged: number; baselined: number };
   "memory.remove": { removed: boolean };
   "tasks.list": Task[];
   "tasks.create": Task;
@@ -285,6 +300,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "memory.write": "agent",
   "memory.approve": "agent",
   "memory.keep": "agent",
+  "memory.checkFiles": "agent",
   "memory.remove": "agent",
   "tasks.list": "viewer",
   "tasks.create": "agent",

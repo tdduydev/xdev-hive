@@ -31,6 +31,8 @@ import type {
   MachineDetail,
   MachineRun,
   Memory,
+  MemoryFile,
+  MemoryReview,
   Proposal,
   QuotaCooldown,
   ReportedProfile,
@@ -117,6 +119,10 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE memory ADD COLUMN last_used_at TEXT;
   ALTER TABLE memory ADD COLUMN use_count INTEGER NOT NULL DEFAULT 0;
+  `,
+  `
+  ALTER TABLE memory ADD COLUMN files TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE memory ADD COLUMN review TEXT;
   `,
 ];
 
@@ -241,6 +247,8 @@ const toMemory = (r: Row, staleBefore: string | null): Memory => ({
   lastUsedAt: strOrNull(r.last_used_at),
   useCount: num(r.use_count ?? 0),
   stale: staleBefore !== null && (strOrNull(r.last_used_at) ?? str(r.created_at)) < staleBefore,
+  files: JSON.parse(str(r.files ?? "[]")) as MemoryFile[],
+  review: r.review ? (JSON.parse(str(r.review)) as MemoryReview) : null,
 });
 const toTask = (r: Row): Task => ({
   id: str(r.id),
@@ -371,6 +379,8 @@ export class SqliteHive implements HiveBackend {
         return;
       case "memory.write":
         return this.#need(actor, i.shared ? null : i.project, "contribute", i.shared ? "Shared memory" : `Project ${i.project}`);
+      case "memory.checkFiles":
+        return this.#need(actor, i.project, "contribute", `Project ${i.project}`);
       case "memory.approve":
       case "memory.keep":
       case "memory.remove": {
@@ -720,7 +730,7 @@ export class SqliteHive implements HiveBackend {
         const status = this.#opts.memoryRequiresApproval && !can(actor, owner, "manage") ? "pending" : "approved";
         const res = db
           .prepare(
-            "INSERT INTO memory(project, kind, content, author, task_id, status, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO memory(project, kind, content, author, task_id, status, source, files, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
           )
           .run(
             input.shared ? SHARED : input.project!,
@@ -730,6 +740,7 @@ export class SqliteHive implements HiveBackend {
             input.taskId ?? actor.source?.task ?? null,
             status,
             sourceJson(actor.source),
+            JSON.stringify([...new Set(input.files)].map((path): MemoryFile => ({ path, sha: null }))),
             this.#now(),
           );
         return this.#getMemory(num(res.lastInsertRowid));
@@ -742,10 +753,57 @@ export class SqliteHive implements HiveBackend {
       },
 
       "memory.keep": ({ id }) => {
-        this.#getMemory(id);
-        db.prepare("UPDATE memory SET last_used_at = ? WHERE id = ?").run(this.#now(), id);
+        const m = this.#getMemory(id);
+        const files = m.review ? m.files.map((f) => ({ path: f.path, sha: f.path in m.review!.current ? m.review!.current[f.path]! : f.sha })) : m.files;
+        db.prepare("UPDATE memory SET last_used_at = ?, files = ?, review = NULL WHERE id = ?").run(this.#now(), JSON.stringify(files), id);
         return this.#getMemory(id);
       },
+
+      // First sight of a cited file sets its baseline; later a different object id or a missing file flags the entry.
+      // A file not on the branch yet (written in a task branch) waits for its baseline instead of being flagged.
+      "memory.checkFiles": ({ project, files }) =>
+        this.#tx(() => {
+          const now = new Map(files.map((f) => [f.path, f.sha]));
+          const rows = db.prepare("SELECT id, files, review FROM memory WHERE project = ? AND files != '[]'").all(project) as Row[];
+          const save = db.prepare("UPDATE memory SET files = ?, review = ? WHERE id = ?");
+          let flagged = 0;
+          let baselined = 0;
+          for (const r of rows) {
+            const cited = JSON.parse(str(r.files)) as MemoryFile[];
+            const before = r.review ? (JSON.parse(str(r.review)) as MemoryReview) : null;
+            const changed = new Set(before?.changed);
+            const missing = new Set(before?.missing);
+            const current = { ...before?.current };
+            let dirty = false;
+            const next = cited.map((f) => {
+              if (!now.has(f.path)) return f;
+              const sha = now.get(f.path)!;
+              if (f.sha === null) {
+                if (sha === null) return f;
+                baselined += 1;
+                dirty = true;
+                return { ...f, sha };
+              }
+              if (sha === f.sha) {
+                // Back to the baseline: nothing to review for this file any more.
+                if (changed.delete(f.path) || missing.delete(f.path)) dirty = true;
+                delete current[f.path];
+                return f;
+              }
+              if (current[f.path] !== sha || !(sha === null ? missing : changed).has(f.path)) dirty = true;
+              current[f.path] = sha;
+              (sha === null ? missing : changed).add(f.path);
+              (sha === null ? changed : missing).delete(f.path);
+              return f;
+            });
+            if (!dirty) continue;
+            const review: MemoryReview | null =
+              changed.size || missing.size ? { at: before && (before.changed.length || before.missing.length) ? before.at : this.#now(), changed: [...changed], missing: [...missing], current } : null;
+            if (review && !before) flagged += 1;
+            save.run(JSON.stringify(next), review ? JSON.stringify(review) : null, num(r.id));
+          }
+          return { flagged, baselined };
+        }),
 
       "memory.remove": ({ id }) => ({ removed: num(db.prepare("DELETE FROM memory WHERE id = ?").run(id).changes) === 1 }),
 
