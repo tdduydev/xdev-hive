@@ -100,6 +100,8 @@ export interface DesktopProject {
   name: string;
   repo: string;
   gitlabProject?: string;
+  /** owner/repo on GitHub; set, or read from a GitHub remote, the project gets pull requests instead of GitLab MRs. */
+  githubRepo?: string;
   targetBranch?: string;
 }
 
@@ -116,6 +118,8 @@ export interface DesktopSettings {
   dbPath: string;
   runner: RunnerSettings;
   gitlab: { url: string; hasToken: boolean; mr: MrSettings };
+  /** Pull requests on GitHub; they follow the MR options in `gitlab.mr`. */
+  github: { url: string; hasToken: boolean };
 }
 
 export interface DesktopSettingsPatch {
@@ -128,6 +132,8 @@ export interface DesktopSettingsPatch {
   runner?: Partial<RunnerSettings>;
   /** Empty token keeps the saved one. */
   gitlab?: { url?: string; token?: string; mr?: Partial<MrSettings> };
+  /** Empty token keeps the saved one. */
+  github?: { url?: string; token?: string };
 }
 
 export interface GitLabCheck {
@@ -315,9 +321,11 @@ export interface DesktopBridge {
   /** Keeps this candidate when the judge could not choose (best-of-n). */
   pickCandidate(id: string): Promise<AgentRun>;
 
-  updateProject(name: string, patch: { gitlabProject?: string | null; targetBranch?: string | null }): Promise<DesktopSettings>;
+  updateProject(name: string, patch: { gitlabProject?: string | null; githubRepo?: string | null; targetBranch?: string | null }): Promise<DesktopSettings>;
   checkGitLab(): Promise<GitLabCheck>;
-  /** Push the task branch and open/update its MR now (ignores the automatic rules). */
+  /** Who the GitHub token belongs to (same shape as the GitLab check). */
+  checkGitHub(): Promise<GitLabCheck>;
+  /** Push the task branch and open/update its MR (or GitHub PR) now (ignores the automatic rules). */
   createMergeRequest(runId: string): Promise<AgentRun>;
 
   /** What is installed on this machine and in each project repo. */

@@ -4,6 +4,7 @@ const PATTERNS: Array<[label: string, pattern: RegExp]> = [
   ["private key", /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
   ["AWS access key", /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/],
   ["GitHub token", /\bgh[pousr]_[A-Za-z0-9]{36,}\b/],
+  ["GitHub token", /\bgithub_pat_[A-Za-z0-9_]{50,}\b/],
   ["GitLab token", /\bglpat-[A-Za-z0-9_-]{20,}\b/],
   ["Slack token", /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/],
   ["API key", /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}\b/],

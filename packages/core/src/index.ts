@@ -2,6 +2,7 @@
 export * from "./access.ts";
 export * from "./agents.ts";
 export * from "./gitlab.ts";
+export * from "./github.ts";
 export type * from "./bridge.ts";
 export * from "./embed.ts";
 export * from "./errors.ts";
