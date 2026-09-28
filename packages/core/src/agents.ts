@@ -45,7 +45,13 @@ export const agentProfileSchema = z.object({
    * worktree, the repo's .git and the CLI's login folder, not the rest of the machine. null: run it here.
    */
   container: z
-    .object({ image: z.string().regex(/^[a-z0-9][a-z0-9._/:@-]{0,199}$/, "image: tên image Docker, vd. xdev-hive-agent") })
+    .object({
+      image: z.string().regex(/^[a-z0-9][a-z0-9._/:@-]{0,199}$/, "image: tên image Docker, vd. xdev-hive-agent"),
+      /** restricted: out only through a proxy to the allowed hosts (the default, asked 28/9); open: Docker's usual network. */
+      network: z.enum(["restricted", "open"]).default("restricted"),
+      /** More hosts a restricted container may reach: host, .domain (with subdomains) or host:port. */
+      allow: z.array(z.string().regex(/^\.?[a-z0-9-]+(\.[a-z0-9-]+)*(:\d{1,5})?$/, "host, .domain hoặc host:port")).max(50).default([]),
+    })
     .nullable()
     .default(null),
   /** Lower runs first. Equal priority rotates least-recently-used. */

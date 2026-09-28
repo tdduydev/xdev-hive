@@ -6,7 +6,7 @@
 //                               │ └─ other ────────▶ failed / cancelled
 //
 // No Electron imports: the desktop main process provides a RunnerHost, tests provide a fake one.
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { closeSync, createWriteStream, existsSync, mkdirSync, openSync, readSync, rmSync, statSync, writeFileSync, type WriteStream } from "node:fs";
 import os from "node:os";
@@ -41,6 +41,7 @@ import { git } from "../git.ts";
 import { NO_FEATURES, repoFeatures } from "../installer.ts";
 import { containerCommand } from "./container.ts";
 import { claudeMcpServers, codexMcpArgs, hubMcpEnv, type McpRun } from "./container-mcp.ts";
+import { deniedHosts, egressAllow, egressPlan, type Egress } from "./egress.ts";
 import { buildCommand, buildPrompt, describeCommand, expandEnv, expandHome, resolveBin } from "./command.ts";
 import { detectRateLimit } from "./rate-limit.ts";
 import { parseClaudeResult, type RunUsage } from "./usage.ts";
@@ -68,6 +69,8 @@ export interface RunnerHost {
   hub?(): { url: string; token: string } | null;
   /** The profile's long-lived token for container runs (Claude Code), if one is saved. */
   token?(profileId: string): string | undefined;
+  /** The team's GitLab (its URL), which a restricted container may reach. */
+  gitlab?(): string | null;
 }
 
 /** What the hub sent back on the last heartbeat. */
@@ -113,6 +116,16 @@ interface Live {
   container?: { docker: string; name: string; env: NodeJS.ProcessEnv };
 }
 
+/** One docker command; rejects with the last line it wrote to stderr. */
+function dockerRun(docker: string, args: string[], env: NodeJS.ProcessEnv): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(docker, args, { env, timeout: 60_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
+      if (err) reject(new Error(String(stderr).trim().split("\n").at(-1) || err.message));
+      else resolve(`${stdout}${stderr}`);
+    });
+  });
+}
+
 /** Stops a run's process, and its container when it has one. */
 function stopLive(live: Live): void {
   killTree(live.child);
@@ -121,7 +134,17 @@ function stopLive(live: Live): void {
 }
 
 type Outcome =
-  | { kind: "exit"; code: number | null; stdout: string; all: string; cancelled: boolean; timedOut: boolean; usage?: RunUsage | null }
+  | {
+      kind: "exit";
+      code: number | null;
+      stdout: string;
+      all: string;
+      cancelled: boolean;
+      timedOut: boolean;
+      usage?: RunUsage | null;
+      /** Hosts the restricted network refused (from the proxy's log). */
+      blocked?: string[];
+    }
   | { kind: "unavailable"; reason: string }
   | { kind: "error"; reason: string };
 
@@ -529,6 +552,7 @@ export class Runner {
   async #execute(run: AgentRun, profile: AgentProfile): Promise<void> {
     let wt: Worktree | null = null;
     let mcpFile: string | null = null;
+    let egress: { plan: Egress; docker: string; env: NodeJS.ProcessEnv } | null = null;
     let log: WriteStream | null = null;
     try {
       const project = this.#project(run.project);
@@ -593,6 +617,19 @@ export class Runner {
         ...(profile.readOnly ? { HIVE_READONLY: "1" } : {}),
         ...cmd.env,
       };
+      // A restricted container: its own network and proxy, set up before the agent starts.
+      if (profile.container && profile.container.network !== "open") {
+        const allow = egressAllow(profile, { hub: this.#host.hub?.()?.url, gitlab: this.#host.gitlab?.() });
+        egress = { plan: egressPlan(run.id, profile.container.image, allow), docker: bin, env: { ...hostEnv, HIVE_EGRESS_ALLOW: allow.join(",") } };
+        try {
+          for (const step of egress.plan.setup) await dockerRun(egress.docker, step, egress.env);
+        } catch (err) {
+          throw new HiveError("bad_request", tr("runNote.egressFailed", { reason: (err as Error).message }), {
+            key: "runNote.egressFailed",
+            vars: { reason: (err as Error).message },
+          });
+        }
+      }
       // In a container the agent gets only its own variables; docker itself keeps the machine's (PATH, DOCKER_HOST).
       const hub = this.#containerHub();
       const token = profile.kind === "claude" ? this.#host.token?.(profile.id) : undefined;
@@ -612,10 +649,11 @@ export class Runner {
               ...(token ? { CLAUDE_CODE_OAUTH_TOKEN: token } : {}),
             },
             readOnly: mcpFile ? [mcpFile] : [],
+            ...(egress ? { network: { args: egress.plan.runArgs, env: egress.plan.env } } : {}),
           })
         : null;
       log.write(
-        `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image}\n` : ""}# cwd ${wt.path}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n\n## Prompt\n${prompt}\n\n## Output\n`,
+        `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image} · ${egress ? `network limited (${egress.env.HIVE_EGRESS_ALLOW})` : "network open"}\n` : ""}# cwd ${wt.path}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n\n## Prompt\n${prompt}\n\n## Output\n`,
       );
 
       const env: NodeJS.ProcessEnv = box ? { ...hostEnv, ...box.env } : { ...hostEnv, ...agentEnv };
@@ -663,6 +701,14 @@ export class Runner {
           out.write(`# cost ${u.costUsd === null ? "?" : `$${u.costUsd.toFixed(4)}`} · tokens in ${u.inputTokens ?? "?"} out ${u.outputTokens ?? "?"}\n`);
         }
       }
+      if (egress) {
+        // What the proxy refused: the run's log says so, and a failed run names the hosts.
+        const denied = deniedHosts(await dockerRun(egress.docker, ["logs", egress.plan.proxy], egress.env).catch(() => ""));
+        if (denied.length) {
+          out.write(`\n## Network\n${denied.map((d) => `denied ${d.host} ×${d.count}`).join("\n")}\n`);
+          if (outcome.kind === "exit") outcome.blocked = denied.map((d) => d.host);
+        }
+      }
       out.write(`\n# exit ${outcome.kind === "exit" ? outcome.code : outcome.kind}\n`);
       await new Promise<void>((r) => out.end(r));
       log = null;
@@ -673,6 +719,8 @@ export class Runner {
     } finally {
       // It carries the hub token: gone with the run.
       if (mcpFile) rmSync(mcpFile, { force: true });
+      // A step can fail when setup stopped half-way: try them all.
+      if (egress) for (const step of egress.plan.teardown) await dockerRun(egress.docker, step, egress.env).catch(() => undefined);
     }
   }
 
@@ -739,6 +787,9 @@ export class Runner {
       } else {
         const lastErr = (outcome.usage?.text ?? outcome.all).trim().split("\n").at(-1) ?? "";
         error = `${tr("runNote.exited", { code: outcome.code ?? "?" })}${lastErr ? `: ${clip(lastErr, 200)}` : ""}`;
+      }
+      if (status !== "succeeded" && outcome.blocked?.length) {
+        error = [error, tr("runNote.networkBlocked", { hosts: outcome.blocked.slice(0, 5).join(", ") })].filter(Boolean).join(" · ");
       }
     }
 

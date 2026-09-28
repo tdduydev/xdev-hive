@@ -19,8 +19,12 @@ RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE}" "@openai/codex@${C
 # system settings win over the repo's .gemini/settings.json, which points at the machine's hive-mcp shim.
 # Folder trust is off: the container only ever sees the task's worktree.
 # Root-owned and not writable by others, or Gemini skips it (the folder too, and it must be listable).
-RUN mkdir -p /etc/gemini-cli && chmod 755 /etc/gemini-cli
+# (COPY --chmod would give a new folder the file's mode, and a folder needs x to be entered.)
+RUN mkdir -p /etc/gemini-cli /opt/xdev-hive && chmod 755 /etc/gemini-cli /opt/xdev-hive
 COPY --chmod=644 gemini-settings.json /etc/gemini-cli/settings.json
+
+# A run with a limited network goes out through this proxy (a second container of this image).
+COPY --chmod=644 egress.mjs /opt/xdev-hive/egress.mjs
 
 # The app passes the command (claude, codex or gemini) and its arguments.
 CMD ["bash"]
