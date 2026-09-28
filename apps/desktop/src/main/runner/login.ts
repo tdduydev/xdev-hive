@@ -1,8 +1,10 @@
 // Whether each profile's CLI is signed in, asked from the CLI itself with the profile's env, so a
 // second login dir (CLAUDE_CONFIG_DIR, CODEX_HOME) is checked on its own. No Electron imports.
 import { execFile } from "node:child_process";
-import type { AgentKind, AgentProfile, LoginStatus } from "@xdev-hive/core";
+import os from "node:os";
+import type { AgentKind, AgentProfile, LoginStatus, PlanUsage } from "@xdev-hive/core";
 import { expandEnv, expandHome, resolveBin } from "./command.ts";
+import { parseClaudeResult, parsePlanUsage } from "./usage.ts";
 
 /** Status and sign-in subcommands of the CLIs that have them. Gemini and custom CLIs have none. */
 const COMMANDS: Partial<Record<AgentKind, { status: string[]; login: string[] }>> = {
@@ -55,9 +57,10 @@ export function loginCommand(profile: AgentProfile): string | null {
 
 export type RunCli = (bin: string, args: string[], env: NodeJS.ProcessEnv) => Promise<{ code: number | null; output: string }>;
 
+/** Out of any repo: the checks must not pick up a project's settings. */
 const runCli: RunCli = (bin, args, env) =>
   new Promise((resolve) => {
-    execFile(bin, args, { env, timeout: 15_000, windowsHide: true }, (err, stdout, stderr) => {
+    execFile(bin, args, { env, cwd: os.tmpdir(), timeout: 30_000, windowsHide: true }, (err, stdout, stderr) => {
       const code = err ? (typeof (err as { code?: unknown }).code === "number" ? (err as { code: number }).code : null) : 0;
       resolve({ code, output: `${stdout}${stderr}` });
     });
@@ -72,9 +75,37 @@ export async function checkLogin(profile: AgentProfile, baseEnv: NodeJS.ProcessE
   return { ...parseLogin(profile.kind, res.code, res.output), ...base };
 }
 
+/**
+ * Claude Code's /usage slash command answers locally (no model turn, no quota): the plan's session and
+ * weekly shares. No hooks, no MCP servers, user settings only, so a check starts nothing else.
+ */
+export const USAGE_ARGS = [
+  "-p",
+  "/usage",
+  "--output-format",
+  "json",
+  "--settings",
+  JSON.stringify({ disableAllHooks: true }),
+  "--setting-sources",
+  "user",
+  "--strict-mcp-config",
+  "--mcp-config",
+  JSON.stringify({ mcpServers: {} }),
+];
+
+export async function checkUsage(profile: AgentProfile, baseEnv: NodeJS.ProcessEnv, now: Date, run: RunCli = runCli): Promise<PlanUsage | null> {
+  if (profile.kind !== "claude") return null;
+  const bin = resolveBin(expandHome(profile.bin), baseEnv.PATH ?? "");
+  if (!bin) return null;
+  const res = await run(bin, USAGE_ARGS, { ...baseEnv, ...expandEnv(profile.env) });
+  const text = parseClaudeResult(res.output)?.text;
+  return text ? parsePlanUsage(text, now) : null;
+}
+
 /** The last sign-in check of every enabled profile. The runner skips profiles known to be signed out. */
 export class LoginMonitor {
   readonly #checks = new Map<string, LoginStatus>();
+  readonly #usage = new Map<string, PlanUsage>();
   readonly #profiles: () => AgentProfile[];
   readonly #env: () => NodeJS.ProcessEnv;
   readonly #run: RunCli;
@@ -89,6 +120,11 @@ export class LoginMonitor {
     return this.#checks.get(profileId);
   }
 
+  /** Plan usage of a signed-in Claude Code profile, from the same check. */
+  usage(profileId: string): PlanUsage | undefined {
+    return this.#usage.get(profileId);
+  }
+
   /** Profiles last seen signed out: the ones worth checking again when the user comes back to the app. */
   signedOut(): string[] {
     return [...this.#checks].filter(([, s]) => s.loggedIn === false).map(([id]) => id);
@@ -98,8 +134,16 @@ export class LoginMonitor {
   async refresh(ids?: string[]): Promise<void> {
     const profiles = this.#profiles();
     for (const p of profiles.filter((x) => x.enabled && (!ids || ids.includes(x.id)))) {
-      this.#checks.set(p.id, await checkLogin(p, this.#env(), new Date(), this.#run));
+      const login = await checkLogin(p, this.#env(), new Date(), this.#run);
+      this.#checks.set(p.id, login);
+      const usage = login.loggedIn ? await checkUsage(p, this.#env(), new Date(), this.#run) : null;
+      if (usage) this.#usage.set(p.id, usage);
+      else this.#usage.delete(p.id);
     }
-    for (const id of [...this.#checks.keys()]) if (!profiles.some((p) => p.id === id && p.enabled)) this.#checks.delete(id);
+    for (const id of [...this.#checks.keys()]) {
+      if (profiles.some((p) => p.id === id && p.enabled)) continue;
+      this.#checks.delete(id);
+      this.#usage.delete(id);
+    }
   }
 }

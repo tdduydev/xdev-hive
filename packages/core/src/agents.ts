@@ -47,9 +47,40 @@ export const agentProfileSchema = z.object({
   /** Used when a rate-limit message has no reset time. */
   cooldownMinutes: z.number().int().min(1).max(24 * 60).default(60),
   timeoutMinutes: z.number().int().min(1).max(12 * 60).default(60),
+  /**
+   * The runner starts no new run on this subscription once its plan usage reaches these shares
+   * (Claude Code reports them through /usage), keeping the rest for people working by hand.
+   */
+  stopAtSession: z.number().int().min(1).max(100).default(95),
+  stopAtWeek: z.number().int().min(1).max(100).default(90),
 });
 
 export type AgentProfile = z.output<typeof agentProfileSchema>;
+
+/** A plan limit as the CLI reports it: share used, and when it resets (the CLI's own words). */
+export interface PlanLimit {
+  percent: number;
+  resets: string | null;
+}
+
+/** How much of a subscription plan's limits is used, from Claude Code's /usage. */
+export interface PlanUsage {
+  /** The rolling session (about five hours). */
+  session: PlanLimit | null;
+  /** The weekly limit for all models. */
+  week: PlanLimit | null;
+  /** Other weekly limits the plan has, e.g. per model. */
+  others: Array<PlanLimit & { label: string }>;
+  checkedAt: string;
+}
+
+/** The limit that stops new runs on the profile, if one is reached. */
+export function usageStop(profile: Pick<AgentProfile, "stopAtSession" | "stopAtWeek">, usage: PlanUsage | null | undefined): "session" | "week" | null {
+  if (!usage) return null;
+  if (usage.session && usage.session.percent >= profile.stopAtSession) return "session";
+  if (usage.week && usage.week.percent >= profile.stopAtWeek) return "week";
+  return null;
+}
 export type AgentProfileInput = z.input<typeof agentProfileSchema>;
 
 /** Starting points. CLI flags differ between versions: check them with `<cli> --help` and edit the profile. */
@@ -68,6 +99,8 @@ export const AGENT_TEMPLATES: Record<Exclude<AgentKind, "custom">, AgentProfile>
     maxConcurrent: 1,
     cooldownMinutes: 60,
     timeoutMinutes: 60,
+    stopAtSession: 95,
+    stopAtWeek: 90,
   },
   codex: {
     id: "codex-1",
@@ -83,6 +116,8 @@ export const AGENT_TEMPLATES: Record<Exclude<AgentKind, "custom">, AgentProfile>
     maxConcurrent: 1,
     cooldownMinutes: 60,
     timeoutMinutes: 60,
+    stopAtSession: 95,
+    stopAtWeek: 90,
   },
   gemini: {
     id: "gemini-1",
@@ -98,6 +133,8 @@ export const AGENT_TEMPLATES: Record<Exclude<AgentKind, "custom">, AgentProfile>
     maxConcurrent: 1,
     cooldownMinutes: 60,
     timeoutMinutes: 60,
+    stopAtSession: 95,
+    stopAtWeek: 90,
   },
 };
 

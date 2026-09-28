@@ -5,6 +5,7 @@ import {
   AGENT_ROLES,
   AGENT_TEMPLATES,
   agentProfileSchema,
+  usageStop,
   type AgentKind,
   type AgentProfile,
   type AgentProfileStatus,
@@ -130,12 +131,15 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
   const { cooldownUntil: _c, cooldownReason: _r, cooldownFrom: _f, cliPath: _p, running: _n, lastUsedAt: _l, stats: _s, ...plain } = p;
   const noCli = p.enabled && p.cliPath === null;
   const signedOut = p.enabled && !noCli && p.login?.loggedIn === false;
+  const stop = p.enabled && !noCli && !signedOut ? usageStop(p, p.usage) : null;
+  const pct = (limit: { percent: number } | null | undefined) => (limit ? `${limit.percent}%` : "?");
+  const usageHigh = [p.usage?.session, p.usage?.week].some((l) => l && l.percent >= 80);
 
   return (
     <Card className={cn("min-w-0 gap-3 py-4", p.enabled ? "" : "opacity-65")}>
       <CardContent className="flex flex-col gap-3 px-4">
         <div className="flex items-center gap-2">
-          <StatusDot tone={!p.enabled ? "neutral" : noCli || signedOut ? "danger" : resting ? "warn" : p.running ? "info" : "ok"} />
+          <StatusDot tone={!p.enabled ? "neutral" : noCli || signedOut ? "danger" : resting || stop ? "warn" : p.running ? "info" : "ok"} />
           <b className="min-w-0 flex-1 truncate font-semibold">{p.label}</b>
           {p.readOnly ? <Badge tone="neutral">{t("agents.readOnlyBadge")}</Badge> : null}
           <Badge tone="accent">{t(`agentKind.${p.kind}`)}</Badge>
@@ -156,6 +160,14 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
                     {t("nav.setup")}
                   </a>
                 ),
+              })}
+            </span>
+          ) : stop ? (
+            <span className="text-warning">
+              {t(stop === "session" ? "agents.overLimitSession" : "agents.overLimitWeek", {
+                percent: (stop === "session" ? p.usage?.session : p.usage?.week)?.percent ?? "?",
+                stop: stop === "session" ? p.stopAtSession : p.stopAtWeek,
+                resets: (stop === "session" ? p.usage?.session : p.usage?.week)?.resets ?? "?",
               })}
             </span>
           ) : signedOut ? (
@@ -181,6 +193,11 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
           {p.lastUsedAt ? <span>· {t("agents.lastUsed", { time: formatTime(p.lastUsedAt) })}</span> : null}
           {p.login?.loggedIn ? (
             <span>· {p.login.method ? t("agents.signedIn", { method: p.login.method }) : t("agents.signedInPlain")}</span>
+          ) : null}
+          {p.usage ? (
+            <span className={usageHigh ? "text-warning" : undefined} title={p.usage.week?.resets ?? undefined}>
+              · {t("agents.usage", { session: pct(p.usage.session), week: pct(p.usage.week) })}
+            </span>
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
@@ -421,6 +438,27 @@ function ProfileForm({
               value={p.timeoutMinutes}
               onChange={(e) => set("timeoutMinutes", num(e.target.value, p.timeoutMinutes))}
             />
+            <Label htmlFor="pf-stop-session">{t("agents.stopAtSession")}</Label>
+            <Input
+              id="pf-stop-session"
+              className="sm:max-w-40"
+              type="number"
+              min={1}
+              max={100}
+              value={p.stopAtSession}
+              onChange={(e) => set("stopAtSession", num(e.target.value, p.stopAtSession))}
+            />
+            <Label htmlFor="pf-stop-week">{t("agents.stopAtWeek")}</Label>
+            <Input
+              id="pf-stop-week"
+              className="sm:max-w-40"
+              type="number"
+              min={1}
+              max={100}
+              value={p.stopAtWeek}
+              onChange={(e) => set("stopAtWeek", num(e.target.value, p.stopAtWeek))}
+            />
+            <span className={HINT}>{t("agents.stopHint")}</span>
           </div>
           <label className="flex items-center gap-2 text-sm">
             <Checkbox checked={p.enabled} onCheckedChange={(v) => set("enabled", v === true)} />

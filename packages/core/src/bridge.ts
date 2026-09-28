@@ -1,6 +1,6 @@
 // Contracts between the shared UI and its hosts (web hub, desktop main process). Types only.
 import type { Access, Level } from "./access.ts";
-import type { AgentKind, AgentProfile, AgentRole, RunnerSettings, RunStatus } from "./agents.ts";
+import type { AgentKind, AgentProfile, AgentRole, PlanUsage, RunnerSettings, RunStatus } from "./agents.ts";
 import type { MrSettings, MrState } from "./gitlab.ts";
 import type { TransferReport } from "./transfer.ts";
 import type { MachineCommand, Role, SetupItem, SetupReport, TeamPolicy } from "./types.ts";
@@ -130,6 +130,8 @@ export interface AgentProfileStatus extends AgentProfile {
   cliPath: string | null;
   /** Last sign-in check; null before the first one. */
   login: LoginStatus | null;
+  /** Plan usage from the CLI (Claude Code, signed in with a subscription); null when unknown. */
+  usage: PlanUsage | null;
   lastUsedAt: string | null;
   /** costUsd: sum of the runs' API-price estimates (Claude Code runs only). */
   stats: { runs: number; succeeded: number; failed: number; rateLimited: number; costUsd: number };

@@ -15,6 +15,7 @@ import {
   AGENT_ROLES,
   agentActorName,
   HiveError,
+  usageStop,
   type Actor,
   type AgentProfile,
   type AgentProfileStatus,
@@ -23,6 +24,7 @@ import {
   type CommandStatus,
   type HiveBackend,
   type LoginStatus,
+  type PlanUsage,
   type MachineCommand,
   type QuotaCooldown,
   type ReportedProfile,
@@ -56,6 +58,8 @@ export interface RunnerHost {
   report?(): { setup?: { checkedAt: string; report: SetupReport }; profiles?: ReportedProfile[] };
   /** The last sign-in check of a profile's CLI (see login.ts). */
   login?(profileId: string): LoginStatus | undefined;
+  /** The profile's plan usage from the same check. */
+  usage?(profileId: string): PlanUsage | undefined;
 }
 
 /** What the hub sent back on the last heartbeat. */
@@ -296,6 +300,7 @@ export class Runner {
         cooldownFrom: resting?.from ?? null,
         cliPath: resolveBin(expandHome(profile.bin), pathEnv),
         login: this.#host.login?.(profile.id) ?? null,
+        usage: this.#host.usage?.(profile.id) ?? null,
       };
     });
   }
@@ -461,6 +466,7 @@ export class Runner {
         cooldownUntil: this.#cooldownOf(profile)?.until ?? null,
         installed: resolveBin(expandHome(profile.bin), pathEnv) !== null,
         loggedIn: this.#host.login?.(profile.id)?.loggedIn !== false,
+        overLimit: usageStop(profile, this.#host.usage?.(profile.id)) !== null,
       };
     });
   }
