@@ -14,8 +14,8 @@ import {
   type MethodOutput,
   type ParsedInput,
 } from "./methods.ts";
-import { assertNoHidden } from "./hidden.ts";
-import { assertNoSecret } from "./secrets.ts";
+import { assertNoHidden, stripHidden } from "./hidden.ts";
+import { assertNoSecret, findSecret } from "./secrets.ts";
 import { parseSource, type WriteSource } from "./source.ts";
 import { SEED_DOCS } from "./seed.ts";
 import type {
@@ -37,6 +37,7 @@ import type {
   Proposal,
   QuotaCooldown,
   ReportedProfile,
+  RunNotice,
   SetupReport,
   Task,
   TeamPolicy,
@@ -212,6 +213,10 @@ function eventOf(method: Method, output: unknown): HiveEvent | null {
     case "machines.commandResult": {
       const command = output as MachineCommand;
       return ["done", "failed", "rejected"].includes(command.status) ? { type: "command.finished", project: null, command } : null;
+    }
+    case "runs.report": {
+      const run = output as RunNotice;
+      return { type: run.kind === "failed" ? "run.failed" : "mr.created", project: run.project, run };
     }
     default:
       return null;
@@ -421,6 +426,7 @@ export class SqliteHive implements HiveBackend {
       case "memory.write":
         return this.#need(actor, i.shared ? null : i.project, "contribute", i.shared ? "Shared memory" : `Project ${i.project}`);
       case "memory.checkFiles":
+      case "runs.report":
         return this.#need(actor, i.project, "contribute", `Project ${i.project}`);
       case "memory.approve":
       case "memory.resolve":
@@ -1024,6 +1030,13 @@ export class SqliteHive implements HiveBackend {
             commands,
           };
         }),
+
+      // Nothing is stored: the notice only feeds the hub's webhooks. The error goes to a chat channel, so it is cleaned first.
+      "runs.report": (input, actor) => {
+        const line = input.error === null ? null : stripHidden(input.error).trim().split("\n").at(-1)!.slice(0, 300);
+        const error = line && findSecret(line) ? "(hidden: it looked like a secret)" : line;
+        return { ...input, error, machine: actor.name };
+      },
 
       "costs.summary": (_input, actor) => {
         const since = (days: number) => this.#now(-days * 24 * 60);
