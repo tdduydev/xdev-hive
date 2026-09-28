@@ -27,6 +27,8 @@ export interface HiveClient {
   /** Hub, signed in with an account: the person's own password. */
   account?: {
     changePassword(current: string, next: string): Promise<Me>;
+    /** Where to send the browser to link the hub's SSO provider to this account. */
+    linkSso(): Promise<{ url: string }>;
   };
   /** Hub only, for hub admins: accounts and their per-project grants. */
   users?: {
@@ -79,6 +81,11 @@ export async function signIn(username: string, password: string, baseUrl = ""): 
   return (await hubRequest<Me>(baseUrl, "/api/login", { username, password })).result;
 }
 
+/** What the sign-in page offers besides a password: the hub's OpenID Connect provider, if any. */
+export async function signInProviders(baseUrl = ""): Promise<{ oidc: { name: string } | null }> {
+  return (await hubRequest<{ oidc: { name: string } | null }>(baseUrl, "/api/auth/providers", undefined)).result;
+}
+
 export async function signOut(baseUrl = ""): Promise<void> {
   await hubRequest(baseUrl, "/api/logout", {}).catch(() => undefined);
 }
@@ -109,6 +116,7 @@ export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpCl
       : {
           account: {
             changePassword: (current: string, next: string) => request<Me>("/api/password", { current, next }),
+            linkSso: () => request<{ url: string }>("/api/auth/oidc/link", {}),
           },
         }),
     users: {

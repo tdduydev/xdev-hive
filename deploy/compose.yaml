@@ -23,6 +23,13 @@ services:
       HIVE_EMBED_MODEL: ${HIVE_EMBED_MODEL:-bge-m3}
       HIVE_EMBED_KEY: ${HIVE_EMBED_KEY:-}
       HIVE_EMBED_MIN_SCORE: ${HIVE_EMBED_MIN_SCORE:-0.5}
+      # Sign-in through an OpenID Connect provider (see README): all three of issuer, id and secret, or none.
+      HIVE_PUBLIC_URL: ${HIVE_PUBLIC_URL:-}
+      HIVE_OIDC_ISSUER: ${HIVE_OIDC_ISSUER:-}
+      HIVE_OIDC_CLIENT_ID: ${HIVE_OIDC_CLIENT_ID:-}
+      HIVE_OIDC_CLIENT_SECRET: ${HIVE_OIDC_CLIENT_SECRET:-}
+      HIVE_OIDC_NAME: ${HIVE_OIDC_NAME:-}
+      HIVE_OIDC_SCOPES: ${HIVE_OIDC_SCOPES:-}
     volumes:
       - hive-data:/data
       # Snapshots on a different disk than the database survive losing it. Default: same volume.
