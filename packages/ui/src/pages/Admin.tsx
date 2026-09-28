@@ -25,7 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@xdev-hive/ui/componen
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Page, PageHeader, StatusDot } from "../components/common.tsx";
 import { formatTime, useAction, useHive, useProjects, useQuery } from "../hooks.ts";
-import { rich, useT, type MessageKey } from "../i18n/index.tsx";
+import { hasKey, rich, useT, type MessageKey } from "../i18n/index.tsx";
 
 type Tab = "machines" | "policy" | "audit";
 const TABS: Record<Tab, MessageKey> = { machines: "admin.tabMachines", policy: "admin.tabPolicy", audit: "admin.tabAudit" };
@@ -549,7 +549,9 @@ function AuditTab() {
                   <TableCell className="align-top">{ACTION_LABEL[e.action] ? t(ACTION_LABEL[e.action]!) : e.action}</TableCell>
                   <TableCell className="align-top font-mono text-xs">{e.target}</TableCell>
                   <TableCell className="align-top whitespace-normal">
-                    <div className="max-w-80 min-w-48 text-xs whitespace-pre-wrap wrap-anywhere">{e.detail}</div>
+                    <div className="max-w-80 min-w-48 text-xs whitespace-pre-wrap wrap-anywhere">
+                      {e.detailKey && hasKey(e.detailKey) ? t(e.detailKey as MessageKey, e.detailVars) : e.detail}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
