@@ -126,6 +126,7 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
         <div className="flex items-center gap-2">
           <StatusDot tone={!p.enabled ? "neutral" : noCli ? "danger" : resting ? "warn" : p.running ? "info" : "ok"} />
           <b className="min-w-0 flex-1 truncate font-semibold">{p.label}</b>
+          {p.readOnly ? <Badge tone="neutral">{t("agents.readOnlyBadge")}</Badge> : null}
           <Badge tone="accent">{t(`agentKind.${p.kind}`)}</Badge>
         </div>
         <div className="font-mono text-xs wrap-anywhere text-muted-foreground">
@@ -402,6 +403,13 @@ function ProfileForm({
             <Checkbox checked={p.enabled} onCheckedChange={(v) => set("enabled", v === true)} />
             {t("agents.enabled")}
           </label>
+          <div className="flex flex-col gap-1">
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={p.readOnly} onCheckedChange={(v) => set("readOnly", v === true)} />
+              {t("agents.readOnly")}
+            </label>
+            <span className={HINT}>{t("agents.readOnlyHint")}</span>
+          </div>
           <ErrorNote error={error} />
           <ErrorNote error={action.error} />
           <div className="flex flex-wrap gap-2">

@@ -12,6 +12,8 @@ const agent = (process.env.HIVE_AGENT ?? "agent").replace(/[^\w.-]/g, "").slice(
 const name = agentActorName(agent, config.mode, config.machine, os.userInfo().username);
 
 const source = agentSource(config.machine, process.env);
-const server = createHiveMcpServer(backend, { name, role: "agent", source }, { defaultProject: process.env.HIVE_PROJECT });
+// HIVE_READONLY=1: set by the runner for profiles marked read-only.
+const readOnly = process.env.HIVE_READONLY === "1";
+const server = createHiveMcpServer(backend, { name, role: "agent", source }, { defaultProject: process.env.HIVE_PROJECT, readOnly });
 await server.connect(new StdioServerTransport());
 console.error(`[xdev-hive] MCP ready (${config.mode} mode) as ${name}`);

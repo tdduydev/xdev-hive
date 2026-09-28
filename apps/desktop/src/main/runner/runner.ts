@@ -494,6 +494,7 @@ export class Runner {
         baseSha: wt.baseSha,
         attempt: run.attempt,
         previous: parent?.role === run.role && parent.profileId ? { profileId: parent.profileId, reason: parent.error ?? parent.status } : null,
+        readOnly: profile.readOnly,
       });
       const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id };
       const cmd = buildCommand(profile, vars, repoFeatures(project.repo));
@@ -526,6 +527,7 @@ export class Runner {
         HIVE_PROJECT: run.project,
         HIVE_TASK: run.taskId,
         HIVE_RUN: run.id,
+        ...(profile.readOnly ? { HIVE_READONLY: "1" } : {}),
       };
       const child = spawn(bin, cmd.args, {
         cwd: wt.path,
