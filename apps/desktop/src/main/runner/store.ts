@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { AgentKind, AgentRole, AgentRun, MrState, RunStatus } from "@xdev-hive/core";
+import type { AgentKind, AgentRole, AgentRun, MrState, MrStatus, PipelineStatus, RunStatus } from "@xdev-hive/core";
 import { tr } from "../i18n.ts";
 
 const SCHEMA = `
@@ -34,6 +34,11 @@ const ADDED_COLUMNS: Array<[name: string, ddl: string]> = [
   ["output_tokens", "INTEGER"],
   /** 1 once the hub has the run's cost (hub mode). */
   ["cost_reported", "INTEGER NOT NULL DEFAULT 0"],
+  /** The MR on GitLab, as the watcher last saw it. */
+  ["mr_status", "TEXT"],
+  ["pipeline_status", "TEXT"],
+  ["pipeline_url", "TEXT"],
+  ["mr_checked_at", "TEXT"],
 ];
 
 type Row = Record<string, unknown>;
@@ -78,6 +83,10 @@ function toRun(r: Row): AgentRun {
     mrState: s(r.mr_state) as MrState | null,
     mrDraft: Number(r.mr_draft) === 1,
     mrNote: s(r.mr_note),
+    mrStatus: s(r.mr_status) as MrStatus | null,
+    pipelineStatus: s(r.pipeline_status) as PipelineStatus | null,
+    pipelineUrl: s(r.pipeline_url),
+    mrCheckedAt: s(r.mr_checked_at),
   };
 }
 
@@ -133,6 +142,25 @@ export class RunStore {
         .run(...fields.map((f) => encode(f, (patch as Row)[f]) as string | number | null), id);
     }
     return this.get(id)!;
+  }
+
+  /** The latest run of each merge request that is open (or not checked yet), finished since `since`. */
+  openMrs(since: string): AgentRun[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM runs r WHERE mr_url IS NOT NULL AND (mr_status IS NULL OR mr_status = 'opened') AND created_at >= ?
+           AND NOT EXISTS (SELECT 1 FROM runs n WHERE n.mr_url = r.mr_url AND n.created_at > r.created_at)
+         ORDER BY created_at`,
+      )
+      .all(since) as Row[];
+    return rows.map(toRun);
+  }
+
+  /** Saves what GitLab says about a merge request on every run that points at it. */
+  updateMr(url: string, patch: Pick<AgentRun, "mrStatus" | "pipelineStatus" | "pipelineUrl" | "mrCheckedAt">): void {
+    this.db
+      .prepare("UPDATE runs SET mr_status = ?, pipeline_status = ?, pipeline_url = ?, mr_checked_at = ? WHERE mr_url = ?")
+      .run(patch.mrStatus, patch.pipelineStatus, patch.pipelineUrl, patch.mrCheckedAt, url);
   }
 
   get(id: string): AgentRun | null {

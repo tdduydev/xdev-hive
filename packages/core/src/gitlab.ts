@@ -4,6 +4,26 @@ import { z } from "zod";
 export const MR_STATES = ["created", "updated", "skipped", "failed"] as const;
 export type MrState = (typeof MR_STATES)[number];
 
+/** The merge request's own state on GitLab ("locked" counts as opened). */
+export const MR_STATUSES = ["opened", "merged", "closed"] as const;
+export type MrStatus = (typeof MR_STATUSES)[number];
+
+/** GitLab's pipeline statuses. */
+export const PIPELINE_STATUSES = [
+  "created",
+  "waiting_for_resource",
+  "preparing",
+  "pending",
+  "running",
+  "success",
+  "failed",
+  "canceled",
+  "skipped",
+  "manual",
+  "scheduled",
+] as const;
+export type PipelineStatus = (typeof PIPELINE_STATUSES)[number];
+
 export const mrSettingsSchema = z.object({
   /** Open/update a merge request automatically when a task's work is ready. */
   enabled: z.boolean().default(false),
@@ -15,6 +35,8 @@ export const mrSettingsSchema = z.object({
   removeSourceBranch: z.boolean().default(true),
   /** Git remote to push ai/<task> branches to. */
   remote: z.string().regex(/^[\w.-]{1,50}$/).default("origin"),
+  /** The app follows the MRs it opened; a merged one moves its task to done. */
+  doneOnMerge: z.boolean().default(true),
 });
 export type MrSettings = z.output<typeof mrSettingsSchema>;
 

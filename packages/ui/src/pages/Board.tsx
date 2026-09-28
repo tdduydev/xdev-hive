@@ -396,15 +396,27 @@ function RunsPanel({
   );
 }
 
+const PIPELINE_TONE: Record<string, string> = { success: "ok", failed: "danger", running: "info", pending: "info", canceled: "neutral", skipped: "neutral" };
+
 function MrLink({ run }: { run: AgentRun }) {
+  const t = useT();
   if (!run.mrUrl) return null;
+  const tone = run.mrStatus === "merged" ? "ok" : run.mrStatus === "closed" ? "neutral" : run.mrDraft ? "warn" : "accent";
   return (
-    <a className="inline-flex no-underline" href={run.mrUrl} target="_blank" rel="noreferrer" title={run.mrNote ?? run.mrUrl}>
-      <Badge tone={run.mrDraft ? "warn" : "accent"}>
-        MR !{run.mrIid}
-        {run.mrDraft ? " draft" : ""}
-      </Badge>
-    </a>
+    <>
+      <a className="inline-flex no-underline" href={run.mrUrl} target="_blank" rel="noreferrer" title={run.mrNote ?? run.mrUrl}>
+        <Badge tone={tone}>
+          MR !{run.mrIid}
+          {run.mrDraft && run.mrStatus !== "merged" ? " draft" : ""}
+          {run.mrStatus && run.mrStatus !== "opened" ? ` · ${t(`mrStatus.${run.mrStatus}`)}` : ""}
+        </Badge>
+      </a>
+      {run.pipelineStatus && run.mrStatus !== "merged" ? (
+        <a className="inline-flex no-underline" href={run.pipelineUrl ?? run.mrUrl} target="_blank" rel="noreferrer">
+          <Badge tone={PIPELINE_TONE[run.pipelineStatus] ?? "neutral"}>{t("board.pipeline", { status: t(`pipelineStatus.${run.pipelineStatus}`) })}</Badge>
+        </a>
+      ) : null}
+    </>
   );
 }
 
@@ -463,6 +475,11 @@ function RunDetail({ run, onClose, onChanged, gitlabReady }: { run: AgentRun; on
             <div className="flex flex-wrap items-center gap-2">
               <MrLink run={run} />
               {run.mrState ? <span className="text-xs text-muted-foreground">MR {run.mrState}</span> : null}
+              {run.mrStatus && run.mrCheckedAt ? (
+                <span className="text-xs text-muted-foreground">
+                  {t("board.mrOnGitLab", { status: t(`mrStatus.${run.mrStatus}`), time: formatTime(run.mrCheckedAt) })}
+                </span>
+              ) : null}
               {run.mrNote ? (
                 <span className={cn("text-xs wrap-anywhere", run.mrState === "failed" ? "text-destructive" : "text-muted-foreground")}>{run.mrNote}</span>
               ) : null}

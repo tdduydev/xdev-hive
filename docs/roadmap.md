@@ -30,7 +30,8 @@ Làm lần lượt, mỗi lượt một mục (mỗi mục một PR). Mục có 
 - [x] **4c. memory-links**: `memory_write` nhận `supersedes` / `contradicts` (cùng chủ, migration 9); agent chỉ thấy mục mới nhất của chuỗi (mục thay còn chờ duyệt thì mục cũ vẫn hiện), mục mâu thuẫn hiện cả hai kèm `conflictsWith` tới khi người quản trị chọn (`memory.resolve`: giữ mục này / mục kia / cả hai); xoá mục thay thì mục cũ hiện lại.
 - [x] **5a. webhooks-hub** (hỏi 28/9: cả Teams và Slack, cấu hình trên trang Quản trị): tab *Webhook* cho admin hub (thêm/sửa/xoá/gửi thử; URL là bí mật, chỉ hiện dạng che); `SqliteHive` phát sự kiện (`onEvent`), hub gửi Adaptive Card (Teams Workflows) hoặc tin Slack cho đề xuất chờ duyệt, memory chờ duyệt, yêu cầu cài và kết quả; lọc theo sự kiện, dự án, ngôn ngữ.
 - [x] **5b. webhooks-runs**: runner ở chế độ hub báo run lỗi hẳn (không còn lượt thử) và MR tạo mới qua `runs.report` (không lưu, chỉ phát sự kiện `run.failed` / `mr.created`); lỗi được làm sạch (dòng cuối, bỏ ký tự ẩn, che nếu giống secret); tin MR có nút mở MR.
-- [ ] **6. gitlab-ci-loop**: đọc pipeline của MR, gửi lỗi cho agent sửa, MR merge thì task chuyển sang Xong.
+- [x] **6a. mr-watch**: app desktop hỏi GitLab về các MR nó đã mở (mỗi 2 phút, chỉ MR còn mở, trên đúng GitLab đã cấu hình): lưu trạng thái MR và pipeline ở run, Board hiện *CI lỗi/qua…* và *đã merge/đóng*; MR merge thì task chuyển sang Xong (tắt được); thông báo khi merge, đóng, pipeline lỗi.
+- [ ] **6b. ci-fix**: pipeline của MR lỗi thì lấy log job lỗi, xếp run sửa cho agent trên cùng branch (có giới hạn số lần), push lại cập nhật MR.
 - [ ] **7. task-deps**: task phụ thuộc, tự mở khoá, gợi ý "task sẵn sàng tiếp theo".
 - [ ] **8. scoped-docs**: tài liệu theo glob đường dẫn, sinh `.claude/rules` hoặc `AGENTS.md` lồng nhau, giữ `AGENTS.md` ngắn.
 - [ ] **9. hybrid-search** [CẦN HỎI: model embedding chạy local hay qua API].

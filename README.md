@@ -61,7 +61,7 @@ Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ v�
 
 ```bash
 nvm use && npm install
-npm test            # 122 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
+npm test            # 191 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
 npm run typecheck
 ```
 
@@ -166,6 +166,11 @@ implement (không review, chế độ "ngay khi làm xong") ──────�
 - **MR đã có** (cùng source branch, đang mở): chỉ cập nhật tiêu đề, mô tả và *thêm* label, không đổi target hay label người khác đã sửa trên GitLab.
 - **Mô tả MR** gồm task, tóm tắt của agent làm, kết quả review, danh sách commit. Output của agent nằm trong code block (dài hơn mọi chuỗi backtick trong output), nên GitLab không chạy quick action (`/merge`, `/approve`…) hay mention từ đó.
 - Link MR được ghi vào ghi chú task trong Hive và hiện trên Board. Lỗi GitLab/push được ghi ở run (không làm run thất bại). Có nút *Tạo MR / Cập nhật MR* để chạy tay.
+- **Theo dõi MR**: app hỏi GitLab về các MR nó đã mở (30 giây sau khi mở app, rồi mỗi 2 phút; MR của run trong 30 ngày gần nhất).
+  - Board hiện trạng thái pipeline (*CI lỗi*, *CI qua*…, bấm để mở pipeline) và MR đã merge hay đóng.
+  - MR merge thì task chuyển sang *Xong*, ghi chú task thêm dòng `MR !<iid> merged.`. Tắt được bằng ô *MR merge thì chuyển task sang Xong*.
+  - Có thông báo khi MR merge, bị đóng không merge, hoặc pipeline lỗi.
+  - MR đã merge hay đóng thì thôi hỏi. Chỉ hỏi MR trên đúng GitLab đã cấu hình, nên token không đi nơi khác.
 - API gọi qua `net.fetch` của Electron, dùng proxy và chứng chỉ của hệ thống.
 
 ## Hub cho team
@@ -338,5 +343,4 @@ Danh sách chi tiết và tiến độ: [docs/roadmap.md](docs/roadmap.md).
 - Đăng nhập GitLab OAuth (SSO) bên cạnh mật khẩu.
 - Postgres (+ pgvector) khi team lớn hoặc cần tìm kiếm theo ngữ nghĩa.
 - Đọc quota còn lại chủ động (nếu CLI có lệnh báo usage) thay vì chỉ phản ứng khi đã hết.
-- Theo dõi trạng thái MR (pipeline, merged) để tự chuyển task sang *Xong*.
 - Ký và notarize bản macOS (cần chứng chỉ Developer ID).

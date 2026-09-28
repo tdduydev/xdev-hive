@@ -431,6 +431,10 @@ function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; onSaved:
           <Checkbox checked={mr.removeSourceBranch} onCheckedChange={(v) => set("removeSourceBranch", v === true)} />
           {t("projects.removeBranch")}
         </label>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox checked={mr.doneOnMerge} onCheckedChange={(v) => set("doneOnMerge", v === true)} />
+          {t("projects.doneOnMerge")}
+        </label>
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={() => void save()} disabled={action.busy}>
             {t("projects.save")}
