@@ -215,6 +215,10 @@ export interface DesktopBridge {
   removeProfile(id: string): Promise<AgentProfileStatus[]>;
   resetCooldown(id: string): Promise<AgentProfileStatus[]>;
   checkProfile(id: string): Promise<ProfileCheck>;
+  /** Opens a terminal running the profile's sign-in command (Claude Code, Codex). */
+  openLogin(id: string): Promise<{ opened: boolean }>;
+  /** Checks the signed-out profiles again (after the user signed in elsewhere). */
+  recheckLogins(): Promise<AgentProfileStatus[]>;
 
   startRun(request: StartRunRequest): Promise<AgentRun>;
   runs(filter?: { project?: string; limit?: number }): Promise<AgentRun[]>;

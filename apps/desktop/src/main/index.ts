@@ -47,11 +47,12 @@ import { setMainLocale, tr } from "./i18n.ts";
 import { MergeRequester } from "./gitlab/mr.ts";
 import { installAgents, installShim } from "./installer.ts";
 import { expandEnv, expandHome, resolveBin } from "./runner/command.ts";
-import { LoginMonitor } from "./runner/login.ts";
+import { LoginMonitor, loginParts } from "./runner/login.ts";
 import { Runner, type HubUpdate, type RunnerEvent } from "./runner/runner.ts";
 import { agentPath } from "./runner/shell-path.ts";
 import { Setup } from "./setup.ts";
 import { syncProject } from "./sync.ts";
+import { openInTerminal } from "./terminal.ts";
 
 app.setName("xDev Hive");
 const smokeShot = process.env.HIVE_SMOKE_SCREENSHOT;
@@ -218,6 +219,32 @@ function saveProfile(input: AgentProfile, previousId?: string) {
 function removeProfile(id: string) {
   if (runner.store.running(id)) throw new HiveError("conflict", `Profile ${id} đang chạy.`, { key: "errors.profileRunning", vars: { id } });
   persist({ ...config, agents: config.agents.filter((a) => a.id !== id) });
+  return runner.profileStatuses();
+}
+
+/** A terminal with the profile's sign-in command; the app checks again when its window gets focus. */
+function openLogin(id: string): { opened: boolean } {
+  const profile = config.agents.find((a) => a.id === id);
+  if (!profile) throw new HiveError("not_found", `Không có profile ${id}.`, { key: "errors.profileNotFound", vars: { id } });
+  const parts = loginParts(profile);
+  if (!parts) throw new HiveError("bad_request", `${profile.kind} không có lệnh đăng nhập.`, { key: "errors.noLoginCommand", vars: { kind: profile.kind } });
+  const pathEnv = agentEnv().PATH ?? "";
+  const bin = resolveBin(expandHome(profile.bin), pathEnv);
+  if (!bin) throw new HiveError("not_found", tr("desktop.cliNotFound", { bin: profile.bin }), { key: "desktop.cliNotFound", vars: { bin: profile.bin } });
+  const file = openInTerminal(
+    { title: `xDev Hive: ${tr("desktop.loginTitle", { profile: profile.id })}`, bin, ...parts, done: tr("desktop.loginDone") },
+    { dir: path.join(path.dirname(configPath()), "login", profile.id), which: (b) => resolveBin(b, pathEnv) },
+  );
+  if (!file) throw new HiveError("not_found", tr("desktop.noTerminal"), { key: "desktop.noTerminal" });
+  return { opened: true };
+}
+
+async function recheckLogins() {
+  const ids = logins.signedOut();
+  if (ids.length) {
+    await logins.refresh(ids);
+    void runner.tick();
+  }
   return runner.profileStatuses();
 }
 
@@ -456,6 +483,8 @@ function registerIpc(): void {
   handle("desktop:removeProfile", removeProfile);
   handle("desktop:resetCooldown", async (id: string) => (await runner.resetCooldown(id), runner.profileStatuses()));
   handle("desktop:checkProfile", checkProfile);
+  handle("desktop:openLogin", openLogin);
+  handle("desktop:recheckLogins", recheckLogins);
   handle("desktop:startRun", (req: StartRunRequest) => runner.enqueue(req));
   handle("desktop:runs", (filter?: { project?: string; limit?: number }) => runner.list(filter));
   handle("desktop:runLog", (id: string) => runner.log(id));

@@ -35,6 +35,14 @@ export function parseLogin(kind: AgentKind, code: number | null, output: string)
   return UNKNOWN;
 }
 
+/** Sign-in args and the login-dir env (expanded) of a profile, for a terminal to run; null when the CLI has none. */
+export function loginParts(profile: AgentProfile): { args: string[]; env: Record<string, string> } | null {
+  const commands = COMMANDS[profile.kind];
+  if (!commands) return null;
+  const env = expandEnv(Object.fromEntries(Object.entries(profile.env).filter(([k]) => LOGIN_DIRS.includes(k))));
+  return { args: commands.login, env };
+}
+
 export function loginCommand(profile: AgentProfile): string | null {
   const commands = COMMANDS[profile.kind];
   if (!commands) return null;
@@ -79,6 +87,11 @@ export class LoginMonitor {
 
   get(profileId: string): LoginStatus | undefined {
     return this.#checks.get(profileId);
+  }
+
+  /** Profiles last seen signed out: the ones worth checking again when the user comes back to the app. */
+  signedOut(): string[] {
+    return [...this.#checks].filter(([, s]) => s.loggedIn === false).map(([id]) => id);
   }
 
   /** Checks the given profiles (default: every enabled one), one at a time. */
