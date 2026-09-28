@@ -31,6 +31,13 @@ export interface MrHost {
   user?: string;
 }
 
+/**
+ * What the watcher last saw of an MR, for the next run that points at it: without it the watcher would
+ * report the old pipeline again as if it were new.
+ */
+const watched = (run: AgentRun | null): Partial<AgentRun> =>
+  run ? { mrStatus: run.mrStatus, pipelineStatus: run.pipelineStatus, pipelineUrl: run.pipelineUrl, mrCheckedAt: run.mrCheckedAt } : {};
+
 export const clipTail = (s: string, n: number) => (s.length > n ? `…${s.slice(-(n - 1))}` : s);
 
 /** Who writes MR links and merges on tasks. */
@@ -46,18 +53,49 @@ export class MergeRequester {
   /** Runner hook: opens/updates an MR when a finished run makes the task ready. */
   async afterFinish(run: AgentRun): Promise<Partial<AgentRun> | void> {
     const s = this.#host.gitlab();
-    if (!s.mr.enabled || !s.url || !s.token || run.status !== "succeeded") return;
+    if (!s.url || !s.token || run.status !== "succeeded") return;
+    if (run.ciFix) return this.pushFix(run);
+    if (!s.mr.enabled) return;
     if (run.role === "plan") return;
     if (run.role === "implement" && (run.reviewAfter || s.mr.when !== "after_success")) return;
     return this.open(run, { manual: false });
+  }
+
+  /**
+   * A run that fixed a failed pipeline: push the branch, GitLab updates the MR and starts a pipeline.
+   * Title and description stay as they are (they describe the task and its review).
+   */
+  async pushFix(run: AgentRun): Promise<Partial<AgentRun>> {
+    const s = this.#host.gitlab();
+    const fix = run.ciFix!;
+    const project = this.#project(run);
+    const client = new GitLabClient(s.url, s.token, this.#host.fetch);
+    const { remoteUrl, remote } = this.#remote(project, s, client);
+    await this.#push(project.repo, run.branch ?? `ai/${run.taskId}`, s, remoteUrl, remote, client.host);
+    const last = this.#host.store().lastOfMr(fix.mrUrl);
+    return { mrUrl: fix.mrUrl, mrIid: fix.mrIid, mrState: "updated", mrDraft: last?.mrDraft ?? false, mrNote: tr("mrNote.ciFixPushed"), ...watched(last) };
+  }
+
+  #project(run: AgentRun): DesktopProject {
+    const project = this.#host.projects().find((p) => p.name === run.project);
+    if (!project) throw new HiveError("not_found", `Dự án ${run.project} chưa được thêm vào app.`, { key: "errors.projectNotAdded", vars: { project: run.project } });
+    return project;
+  }
+
+  #remote(project: DesktopProject, s: GitLabSettings, client: GitLabClient): { remoteUrl: string; remote: RemoteInfo | null } {
+    try {
+      const remoteUrl = git(project.repo, ["remote", "get-url", s.mr.remote]);
+      return { remoteUrl, remote: parseRemoteUrl(remoteUrl) };
+    } catch {
+      throw new HiveError("bad_request", `Repo ${project.name} không có remote "${s.mr.remote}".`, { key: "errors.noRemote", vars: { project: project.name, remote: s.mr.remote } });
+    }
   }
 
   async open(run: AgentRun, { manual }: { manual: boolean }): Promise<Partial<AgentRun>> {
     const s = this.#host.gitlab();
     if (!s.url || !s.token) throw new HiveError("bad_request", "Chưa cấu hình GitLab (URL + token) ở trang Dự án & cài đặt.", { key: "errors.gitlabNotSet" });
     if (run.role === "plan") throw new HiveError("bad_request", "Run lập kế hoạch không tạo MR.", { key: "errors.planNoMr" });
-    const project = this.#host.projects().find((p) => p.name === run.project);
-    if (!project) throw new HiveError("not_found", `Dự án ${run.project} chưa được thêm vào app.`, { key: "errors.projectNotAdded", vars: { project: run.project } });
+    const project = this.#project(run);
 
     const store = this.#host.store();
     const review =
@@ -87,13 +125,7 @@ export class MergeRequester {
     if (!commits.length) return { mrState: "skipped", mrNote: tr("mrNote.noCommits") };
 
     const client = new GitLabClient(s.url, s.token, this.#host.fetch);
-    let remoteUrl: string;
-    try {
-      remoteUrl = git(project.repo, ["remote", "get-url", s.mr.remote]);
-    } catch {
-      throw new HiveError("bad_request", `Repo ${project.name} không có remote "${s.mr.remote}".`, { key: "errors.noRemote", vars: { project: project.name, remote: s.mr.remote } });
-    }
-    const remote = parseRemoteUrl(remoteUrl);
+    const { remoteUrl, remote } = this.#remote(project, s, client);
     const projectPath = project.gitlabProject || (remote && remote.host === client.host ? remote.path : null);
     if (!projectPath) {
       throw new HiveError(
@@ -147,7 +179,8 @@ export class MergeRequester {
     } catch (err) {
       note = [note, tr("mrNote.taskLinkFailed", { reason: (err as Error).message })].filter(Boolean).join(" · ");
     }
-    return { mrUrl: mr.web_url, mrIid: mr.iid, mrState: existing ? "updated" : "created", mrDraft: draft, mrNote: note };
+    const seen = existing ? watched(this.#host.store().lastOfMr(mr.web_url)) : {};
+    return { mrUrl: mr.web_url, mrIid: mr.iid, mrState: existing ? "updated" : "created", mrDraft: draft, mrNote: note, ...seen };
   }
 
   async #push(repo: string, branch: string, s: GitLabSettings, remoteUrl: string, remote: RemoteInfo | null, host: string): Promise<void> {

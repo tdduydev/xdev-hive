@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { AgentKind, AgentRole, AgentRun, MrState, MrStatus, PipelineStatus, RunStatus } from "@xdev-hive/core";
+import type { AgentKind, AgentRole, AgentRun, CiFix, MrState, MrStatus, PipelineStatus, RunStatus } from "@xdev-hive/core";
 import { tr } from "../i18n.ts";
 
 const SCHEMA = `
@@ -39,10 +39,12 @@ const ADDED_COLUMNS: Array<[name: string, ddl: string]> = [
   ["pipeline_status", "TEXT"],
   ["pipeline_url", "TEXT"],
   ["mr_checked_at", "TEXT"],
+  /** JSON: the failed pipeline this run was queued to fix. */
+  ["ci_fix", "TEXT"],
 ];
 
 type Row = Record<string, unknown>;
-const JSON_FIELDS = new Set(["avoidKinds", "excludedProfiles"]);
+const JSON_FIELDS = new Set(["avoidKinds", "excludedProfiles", "ciFix"]);
 const BOOL_FIELDS = new Set(["reviewAfter", "mrDraft"]);
 const column = (field: string) => field.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 
@@ -87,6 +89,7 @@ function toRun(r: Row): AgentRun {
     pipelineStatus: s(r.pipeline_status) as PipelineStatus | null,
     pipelineUrl: s(r.pipeline_url),
     mrCheckedAt: s(r.mr_checked_at),
+    ciFix: r.ci_fix == null ? null : (JSON.parse(String(r.ci_fix)) as CiFix | null),
   };
 }
 
@@ -94,7 +97,7 @@ const encode = (field: string, value: unknown) =>
   JSON_FIELDS.has(field) ? JSON.stringify(value) : BOOL_FIELDS.has(field) ? (value ? 1 : 0) : (value ?? null);
 
 export type NewRun = Pick<AgentRun, "project" | "taskId" | "taskTitle" | "role" | "attempt" | "maxAttempts"> &
-  Partial<Pick<AgentRun, "preferredProfile" | "avoidKinds" | "excludedProfiles" | "parentRunId" | "worktree" | "branch" | "baseSha" | "instructions" | "reviewAfter">>;
+  Partial<Pick<AgentRun, "preferredProfile" | "avoidKinds" | "excludedProfiles" | "parentRunId" | "worktree" | "branch" | "baseSha" | "instructions" | "reviewAfter" | "ciFix">>;
 
 export const ACTIVE: RunStatus[] = ["queued", "running"];
 
@@ -154,6 +157,20 @@ export class RunStore {
       )
       .all(since) as Row[];
     return rows.map(toRun);
+  }
+
+  /** The latest run that points at a merge request. */
+  lastOfMr(url: string): AgentRun | null {
+    const row = this.db.prepare("SELECT * FROM runs WHERE mr_url = ? ORDER BY created_at DESC, rowid DESC LIMIT 1").get(url) as Row | undefined;
+    return row ? toRun(row) : null;
+  }
+
+  /** Pipelines of a merge request that already got a fix run (rotations of one fix count once). */
+  ciFixedPipelines(mrUrl: string): number[] {
+    const rows = this.db
+      .prepare("SELECT DISTINCT json_extract(ci_fix, '$.pipelineId') AS p FROM runs WHERE json_extract(ci_fix, '$.mrUrl') = ?")
+      .all(mrUrl) as Row[];
+    return rows.map((r) => Number(r.p));
   }
 
   /** Saves what GitLab says about a merge request on every run that points at it. */
