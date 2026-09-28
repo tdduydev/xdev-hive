@@ -42,8 +42,8 @@ import {
   SqliteHive,
   type HiveConfig,
 } from "@xdev-hive/core/node";
-import { DEFAULT_LOCALE, isLocale, translate, type MessageKey } from "@xdev-hive/ui/i18n";
 import { GitLabClient } from "./gitlab/client.ts";
+import { setMainLocale, tr } from "./i18n.ts";
 import { MergeRequester } from "./gitlab/mr.ts";
 import { installAgents, installShim } from "./installer.ts";
 import { expandEnv, expandHome, resolveBin } from "./runner/command.ts";
@@ -78,12 +78,9 @@ let quitting = false;
 const actor = (): Actor =>
   config.mode === "hub" ? { name: "desktop", role: "admin" } : { name: os.userInfo().username, role: "admin" };
 
-/** What the main process shows itself (tray, notifications, dialogs), in the language the interface uses. */
-const tr = (key: MessageKey, vars?: Record<string, string | number>) =>
-  translate(key, vars, isLocale(config?.locale) ? config.locale : DEFAULT_LOCALE);
-
 function reload(): void {
   config = loadConfig();
+  setMainLocale(config.locale);
   try {
     pinMachine(config);
   } catch (err) {
@@ -549,11 +546,13 @@ function buildTrayMenu(): void {
 
 /** The renderer tells the language it shows; the tray and notifications follow it (kept in config.json). */
 function setLocale(locale: unknown): void {
-  if (!isLocale(locale) || config.locale === locale) return;
+  if (!setMainLocale(locale)) return;
   config = { ...config, locale };
   saveConfig(config);
   buildTrayMenu();
   void refreshTray();
+  // Machine setup items carry their labels: check again so they come back in the new language.
+  void refreshSetup().catch(() => undefined);
 }
 
 function createTray(): void {
