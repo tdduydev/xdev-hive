@@ -57,7 +57,7 @@ Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, 
 - **Đồng bộ vào repo**: render `AGENTS.md` (khối chung + phần riêng của dự án), `CLAUDE.md` (`@AGENTS.md`), `docs/decisions.md`. Chỉ commit các file này, không push.
 - **Chặn sửa tay**: hook `PreToolUse` của Claude Code và `pre-commit` của git (áp dụng cho mọi agent). Run của runner không chạy hook nào; runner tự để các file này ngoài commit.
 - **Board + runner** (desktop): giao task cho agent chạy headless (`claude -p`, `codex exec`, `gemini -p`…). Mỗi task có worktree riêng. Hết quota thì tự chuyển gói sub, xong thì review chéo bằng vendor khác. Task khó thì chạy 2–4 bản trên các gói khác nhau, một giám khảo vendor khác giữ bản tốt nhất.
-- **GitLab MR**: review chéo đạt thì push `ai/<task>` và tạo MR (review yêu cầu sửa thì tạo Draft). Chạy lại thì cập nhật MR cũ.
+- **GitLab MR / GitHub PR**: review chéo đạt thì push `ai/<task>` và tạo MR (review yêu cầu sửa thì tạo Draft). Chạy lại thì cập nhật MR cũ. Dự án trên GitHub thì tạo pull request theo cùng luật.
 
 ## Cấu trúc
 
@@ -75,7 +75,7 @@ Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ v�
 
 ```bash
 nvm use && npm install
-npm test            # 270 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
+npm test            # 277 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR, GitHub PR)
 npm run typecheck
 ```
 
@@ -252,6 +252,19 @@ implement (không review, chế độ "ngay khi làm xong") ──────�
   - Task đang có run thì chờ, lần kiểm sau mới xếp.
   - Board: chi tiết run sửa ghi *Sửa CI của MR !n (lần 1/2)* và tên job lỗi.
 - API gọi qua `net.fetch` của Electron, dùng proxy và chứng chỉ của hệ thống.
+
+### Pull request trên GitHub
+
+Cấu hình ở *Dự án & cài đặt* → **GitHub pull request** (hỏi ngày 28/9: team dùng GitHub, giống GitLab; đăng nhập bằng fine-grained personal access token): URL (mặc định `https://github.com`, hoặc URL GitHub Enterprise Server) và token. Token cần quyền *Contents* và *Pull requests* (đọc và ghi) trên các repo của team. Nút *Kiểm tra kết nối* cho biết token thuộc tài khoản nào.
+
+- **Dự án nào là GitHub**: remote push (`origin` hoặc remote trong tuỳ chọn MR) nằm trên host GitHub đã cấu hình, hoặc dự án có ô *GitHub: owner/repo* (nút *GitLab / GitHub* của dự án). Các dự án khác vẫn tạo MR trên GitLab, nên một máy dùng được cả hai.
+- **Luật tạo** giống MR, lấy từ thẻ GitLab: *Tự tạo MR*, *Khi nào*, *Review yêu cầu sửa* (Draft hoặc không tạo), label, remote. Base mặc định là default branch của repo, hoặc *target branch* của dự án.
+- **Draft**: review yêu cầu sửa hoặc không rõ thì PR là draft. Chạy lại khi review đã đạt thì PR được chuyển sang *Ready for review* (qua GraphQL, vì REST không đổi được). Repo không có PR draft (repo riêng trên GitHub Free) thì tạo PR thường với tiêu đề bắt đầu bằng `Draft:`, và run ghi chú điều đó.
+- **Push qua HTTPS** tới host GitHub dùng token như GitLab: header trong `GIT_CONFIG_*` của env (user `x-access-token`), không ghi vào `.git/config`. Remote SSH dùng key sẵn có.
+- **PR đã có** (cùng branch, đang mở): chỉ cập nhật tiêu đề và mô tả rồi thêm label, không đổi base. Mô tả giống MR, output của agent nằm trong code block.
+- Link `PR #n` được ghi vào ghi chú task và hiện trên Board. Lỗi GitHub (`GitHub 401: Bad credentials`…) được ghi ở run, không làm run thất bại.
+- Chưa làm: theo dõi PR (merge thì task sang *Xong*) và tự sửa khi check CI lỗi (roadmap 13b, 13c).
+- Token fine-grained (`github_pat_…`) cũng bị chặn khi ghi vào memory hay tài liệu, như các loại token khác.
 
 ## Hub cho team
 

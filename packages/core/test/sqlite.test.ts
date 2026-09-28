@@ -48,6 +48,8 @@ describe("docs", () => {
       hive.call("docs.save", { key: "org/x", content: `token ${"glpat-"}${"a".repeat(20)}` }, admin),
       "bad_request",
     );
+    // A fine-grained GitHub token (the kind the app asks for).
+    await rejects(hive.call("docs.save", { key: "org/x", content: `${"github_pat_"}${"A1".repeat(40)}` }, admin), "bad_request");
   });
 
   it("seeds the agent protocol once", async () => {
