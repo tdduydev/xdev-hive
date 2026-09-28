@@ -3,6 +3,7 @@ import { accessSync, constants, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AgentProfile, AgentRole } from "@xdev-hive/core";
+import { NO_FEATURES, runMcpServers, SUPERPOWERS_PLUGIN, type RepoFeatures } from "../installer.ts";
 
 export interface PromptContext {
   project: string;
@@ -26,6 +27,7 @@ export function buildPrompt(c: PromptContext): string {
       "",
       `Working copy: ${c.worktree} (branch ${c.branch}). See the change with: git diff ${c.baseSha}...HEAD`,
       "",
+      "Read AGENTS.md in the working copy first for the project's conventions.",
       "Look for bugs, regressions, missing tests and risky changes. Do not rewrite the feature;",
       "fix only small, obvious mistakes. End with a short report: verdict (approve / changes needed), then findings.",
       'Record reusable lessons with memory_write (xdev-hive MCP). Do not change the task status.',
@@ -42,7 +44,7 @@ export function buildPrompt(c: PromptContext): string {
     }
     lines.push(
       "",
-      "Follow the Agent protocol in AGENTS.md, using the xdev-hive MCP tools with project key " + `"${c.project}":`,
+      "Read AGENTS.md in the working copy first and follow its Agent protocol, using the xdev-hive MCP tools with project key " + `"${c.project}":`,
       "1. memory_search for context before changing code.",
       "2. memory_write for decisions, conventions and gotchas worth sharing with other agents.",
       "3. Never edit AGENTS.md, CLAUDE.md or docs/decisions.md; use doc_get + doc_propose.",
@@ -72,6 +74,7 @@ export interface BuiltCommand {
 export function buildCommand(
   profile: AgentProfile,
   vars: { prompt: string; worktree: string; task: string; project: string; branch: string },
+  features: RepoFeatures = NO_FEATURES,
 ): BuiltCommand {
   const usesPrompt = profile.args.some((a) => a.includes("{prompt}"));
   const fill = (a: string) =>
@@ -81,7 +84,27 @@ export function buildCommand(
       .replaceAll("{task}", vars.task)
       .replaceAll("{project}", vars.project)
       .replaceAll("{branch}", vars.branch);
-  return { bin: expandHome(profile.bin), args: profile.args.map(fill), stdin: usesPrompt ? null : vars.prompt };
+  const args = profile.args.map(fill);
+  if (profile.kind === "claude") args.push(...claudeRunArgs(profile.id, vars.project, features));
+  return { bin: expandHome(profile.bin), args, stdin: usesPrompt ? null : vars.prompt };
+}
+
+/**
+ * Claude Code loads hooks, MCP servers and settings from the working copy, which the agent can edit:
+ * a hook one run commits would execute on the next. Runs load only the user's own settings, run no
+ * hooks and get the MCP servers the app lists. Appended last because --mcp-config takes several values.
+ */
+export function claudeRunArgs(agent: string, project: string, features: RepoFeatures): string[] {
+  const settings = { disableAllHooks: true, ...(features.superpowers ? { enabledPlugins: { [SUPERPOWERS_PLUGIN]: true } } : {}) };
+  return [
+    "--settings",
+    JSON.stringify(settings),
+    "--setting-sources",
+    "user",
+    "--strict-mcp-config",
+    "--mcp-config",
+    JSON.stringify({ mcpServers: runMcpServers(agent, project, features) }),
+  ];
 }
 
 export function expandHome(value: string): string {

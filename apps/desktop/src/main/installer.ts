@@ -10,6 +10,9 @@ export const MCP_NAME = "xdev-hive";
 export const SHIM_NAME = "hive-mcp";
 const MARK = "xdev-hive";
 
+/** Files rendered from Hive docs. Only the Hive app commits them. */
+export const RENDERED_FILES = ["AGENTS.md", "CLAUDE.md", "docs/decisions.md"];
+
 /** Claude Code PreToolUse hook: exit 2 blocks the edit and stderr is shown to Claude. */
 export const GUARD_SCRIPT = String.raw`#!/bin/sh
 # xdev-hive: block direct edits of docs rendered from xDev Hive (Claude Code PreToolUse hook).
@@ -188,6 +191,36 @@ export function installCodegraphMcp(repo: string, opts: { dryRun?: boolean } = {
     (j) => (j.mcpServers?.codegraph ? j : { ...j, mcpServers: { ...j.mcpServers, codegraph: CODEGRAPH_MCP } }),
     !opts.dryRun,
   );
+}
+
+export interface RepoFeatures {
+  /** The repo's .mcp.json lists codegraph. */
+  codegraph: boolean;
+  /** The repo's .claude/settings.json enables superpowers. */
+  superpowers: boolean;
+}
+
+export const NO_FEATURES: RepoFeatures = { codegraph: false, superpowers: false };
+
+const readJson = (file: string): Json => {
+  try {
+    return JSON.parse(read(file) ?? "{}") as Json;
+  } catch {
+    return {};
+  }
+};
+
+/** What setup turned on for a repo, read from its main checkout. Runs get the app's own entries for these. */
+export function repoFeatures(repo: string): RepoFeatures {
+  return {
+    codegraph: Boolean(readJson(path.join(repo, ".mcp.json")).mcpServers?.codegraph),
+    superpowers: readJson(path.join(repo, ".claude", "settings.json")).enabledPlugins?.[SUPERPOWERS_PLUGIN] === true,
+  };
+}
+
+/** MCP servers for one agent run, listed by the app instead of read from the working copy. */
+export function runMcpServers(agent: string, project: string, features: RepoFeatures): Json {
+  return { [MCP_NAME]: mcpEntry(agent, project), ...(features.codegraph ? { codegraph: CODEGRAPH_MCP } : {}) };
 }
 
 /** Enables superpowers in the repo's Claude Code settings (keeps hooks and other plugins). */

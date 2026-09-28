@@ -16,7 +16,7 @@ Làm lần lượt, mỗi lượt một mục (mỗi mục một PR). Mục có 
 
 ## Tính năng
 
-- [ ] **1. runner-hardening**: `claude -p` không chạy hook và `.mcp.json` của repo: `--settings '{"disableAllHooks":true}'`, `--setting-sources user`, `--mcp-config` do app sinh (hive-mcp, codegraph). Codex giữ sandbox `workspace-write`.
+- [x] **1. runner-hardening**: run Claude Code thêm `--settings '{"disableAllHooks":true}' --setting-sources user --strict-mcp-config --mcp-config` do app sinh (xdev-hive, codegraph và superpowers nếu checkout chính bật); commit của runner không chạy git hook và không đưa tài liệu render vào; prompt bảo agent đọc `AGENTS.md` trước. Codex giữ sandbox `workspace-write`.
 - [ ] **2. content-safety**: chặn ký tự ẩn (bidi, zero-width) khi ghi docs, memory, proposal. Lưu nguồn mỗi lần ghi (máy, run, task). Token chỉ-đọc cho agent.
 - [ ] **3. cost-tracking**: `total_cost_usd` theo run, profile, dự án. Hiện trên Board và Máy & run. Hạn mức theo dự án.
 - [ ] **4. memory-freshness**: `lastUsedAt`, hết hạn khi lâu không dùng, trích dẫn file để kiểm lại, liên kết supersedes/contradicts thay vì xoá.
