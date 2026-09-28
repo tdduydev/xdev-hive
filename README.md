@@ -104,6 +104,9 @@ queued ─chọn gói─▶ running ─exit 0──────▶ succeeded ─
   - Lệnh dùng: `claude auth status --json` và `codex login status`, chạy với env của profile (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`), nên gói thứ hai được kiểm riêng.
   - Khi nào kiểm: lúc mở app, mỗi 10 phút, khi sửa profile và khi bấm *Kiểm tra CLI*.
   - Gói chưa đăng nhập bị runner bỏ qua. Thẻ profile hiện lệnh đăng nhập kèm thư mục đăng nhập, không kèm env khác. Run đang chờ vì mọi gói đều chưa đăng nhập thì Board ghi rõ lý do.
+  - Nút *Đăng nhập* (Claude Code, Codex) mở một cửa sổ terminal chạy sẵn lệnh đó: Terminal trên macOS, `cmd` trên Windows, hoặc terminal đầu tiên tìm thấy trên Linux (`x-terminal-emulator`, `gnome-terminal`, `konsole`, `xfce4-terminal`, `xterm`).
+  - Lệnh nằm trong một script ở `~/.xdev-hive/login/<profile>/`, quyền `0700`. Script chỉ chứa biến thư mục đăng nhập (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`), không chứa key hay token.
+  - Quay lại cửa sổ app thì app kiểm lại các gói chưa đăng nhập.
   - Gemini và CLI tuỳ chỉnh không có lệnh xem trạng thái, nên để "chưa rõ" và runner vẫn dùng.
 - **Chi phí run** (Claude Code): runner thêm `--output-format json`, trừ khi profile đã tự chọn định dạng.
   - Lấy từ kết quả JSON: câu trả lời cuối làm tóm tắt run, `total_cost_usd`, token vào (tính cả cache) và token ra.
