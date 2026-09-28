@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld("hive", {
     removeProfile: (id: string) => invoke("desktop:removeProfile", id),
     resetCooldown: (id: string) => invoke("desktop:resetCooldown", id),
     checkProfile: (id: string) => invoke("desktop:checkProfile", id),
+    openLogin: (id: string) => invoke("desktop:openLogin", id),
+    recheckLogins: () => invoke("desktop:recheckLogins"),
     startRun: (request: unknown) => invoke("desktop:startRun", request),
     runs: (filter?: unknown) => invoke("desktop:runs", filter),
     runLog: (id: string) => invoke("desktop:runLog", id),
