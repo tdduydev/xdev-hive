@@ -22,6 +22,7 @@ import {
   type DesktopProject,
   type CommandStatus,
   type HiveBackend,
+  type LoginStatus,
   type MachineCommand,
   type QuotaCooldown,
   type ReportedProfile,
@@ -52,6 +53,8 @@ export interface RunnerHost {
   env(): NodeJS.ProcessEnv;
   /** What the heartbeat tells the hub besides runs: the last setup check and this machine's profiles. */
   report?(): { setup?: { checkedAt: string; report: SetupReport }; profiles?: ReportedProfile[] };
+  /** The last sign-in check of a profile's CLI (see login.ts). */
+  login?(profileId: string): LoginStatus | undefined;
 }
 
 /** What the hub sent back on the last heartbeat. */
@@ -289,6 +292,7 @@ export class Runner {
         cooldownReason: resting?.reason ?? null,
         cooldownFrom: resting?.from ?? null,
         cliPath: resolveBin(expandHome(profile.bin), pathEnv),
+        login: this.#host.login?.(profile.id) ?? null,
       };
     });
   }
@@ -438,6 +442,7 @@ export class Runner {
         lastUsedAt: s.lastUsedAt,
         cooldownUntil: this.#cooldownOf(profile)?.until ?? null,
         installed: resolveBin(expandHome(profile.bin), pathEnv) !== null,
+        loggedIn: this.#host.login?.(profile.id)?.loggedIn !== false,
       };
     });
   }

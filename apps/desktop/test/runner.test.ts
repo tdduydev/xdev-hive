@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 import { AGENT_TEMPLATES, type Actor, type AgentProfile, type HiveBackend, type RunnerSettings } from "@xdev-hive/core";
 import { CODEGRAPH_MCP, SUPERPOWERS_PLUGIN } from "../src/main/installer.ts";
 import { buildCommand } from "../src/main/runner/command.ts";
+import { checkLogin, LoginMonitor, loginCommand, parseLogin } from "../src/main/runner/login.ts";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { parseResetTime, detectRateLimit } from "../src/main/runner/rate-limit.ts";
 import { Runner, type HubUpdate, type RunnerHost } from "../src/main/runner/runner.ts";
@@ -37,7 +38,7 @@ async function setup(
   settings: Partial<RunnerSettings> = {},
   mode: "local" | "hub" = "local",
   /** Pass another setup's hive to simulate a second machine on the same hub. */
-  machine: { name?: string; hive?: SqliteHive; report?: RunnerHost["report"] } = {},
+  machine: { name?: string; hive?: SqliteHive; report?: RunnerHost["report"]; login?: RunnerHost["login"] } = {},
 ) {
   const repo = tmp("repo");
   git(repo, "init", "-q", "-b", "main");
@@ -59,6 +60,7 @@ async function setup(
     machine: () => machine.name ?? "duy-mbp",
     env: () => ({ ...process.env }),
     report: machine.report,
+    login: machine.login,
   };
   const dataDir = tmp("data");
   const hubUpdates: HubUpdate[] = [];
@@ -142,6 +144,56 @@ describe("pickProfile", () => {
     const planOnly = { ...c, roles: ["plan" as const] };
     assert.equal(pickProfile([load(planOnly)], needs, now), null);
     assert.equal(pickProfile([load(a), load(b)], { ...needs, excludedProfiles: ["claude-a"] }, now)?.profile.id, "claude-b");
+  });
+});
+
+describe("sign-in checks", () => {
+  const now = new Date("2026-09-28T04:00:00Z");
+
+  it("reads what Claude Code and Codex say, and never guesses", () => {
+    assert.deepEqual(parseLogin("claude", 0, '{"loggedIn":true,"authMethod":"claude.ai","subscriptionType":"max"}'), { loggedIn: true, method: "claude.ai · max" });
+    assert.deepEqual(parseLogin("claude", 0, '{"loggedIn":false,"authMethod":"none"}'), { loggedIn: false, method: null });
+    assert.deepEqual(parseLogin("claude", 1, "error: unknown command 'auth'"), { loggedIn: null, method: null }, "an older CLI");
+    assert.deepEqual(parseLogin("codex", 0, "Logged in using ChatGPT\n"), { loggedIn: true, method: "ChatGPT" });
+    assert.deepEqual(parseLogin("codex", 1, "Not logged in"), { loggedIn: false, method: null });
+    assert.deepEqual(parseLogin("codex", 2, "error: unexpected argument"), { loggedIn: null, method: null });
+    assert.deepEqual(parseLogin("gemini", 0, "anything"), { loggedIn: null, method: null });
+  });
+
+  it("gives the sign-in command with the profile's login dir only", () => {
+    const second = { ...AGENT_TEMPLATES.claude, env: { CLAUDE_CONFIG_DIR: "~/.claude-2", ANTHROPIC_API_KEY: "never-shown" } };
+    assert.equal(loginCommand(second), "CLAUDE_CONFIG_DIR=~/.claude-2 claude auth login");
+    assert.equal(loginCommand({ ...AGENT_TEMPLATES.codex, env: { CODEX_HOME: "~/.codex-2" } }), "CODEX_HOME=~/.codex-2 codex login");
+    assert.equal(loginCommand(AGENT_TEMPLATES.gemini), null);
+  });
+
+  it("keeps the last check of each enabled profile and forgets removed ones", async () => {
+    let profiles = [
+      { ...AGENT_TEMPLATES.codex, bin: process.execPath },
+      { ...AGENT_TEMPLATES.claude, id: "claude-off", bin: process.execPath, enabled: false },
+    ];
+    const run = async () => ({ code: 0, output: "Logged in using ChatGPT" });
+    const logins = new LoginMonitor(() => profiles, () => ({ PATH: path.dirname(process.execPath) }), run);
+    await logins.refresh();
+    assert.deepEqual([logins.get("codex-1")?.loggedIn, logins.get("claude-off")], [true, undefined]);
+    profiles = [];
+    await logins.refresh();
+    assert.equal(logins.get("codex-1"), undefined);
+  });
+
+  it("asks the CLI with the profile's env, and skips CLIs that are missing or have no status command", async () => {
+    const seen: Array<{ args: string[]; dir: string | undefined }> = [];
+    const run = async (_bin: string, args: string[], env: NodeJS.ProcessEnv) => {
+      seen.push({ args, dir: env.CLAUDE_CONFIG_DIR });
+      return { code: 0, output: '{"loggedIn":false}' };
+    };
+    const env = { PATH: path.dirname(process.execPath) };
+    const p = { ...AGENT_TEMPLATES.claude, bin: process.execPath, env: { CLAUDE_CONFIG_DIR: "/tmp/claude-2" } };
+    assert.equal((await checkLogin(p, env, now, run)).loggedIn, false);
+    assert.deepEqual(seen, [{ args: ["auth", "status", "--json"], dir: "/tmp/claude-2" }]);
+    assert.equal((await checkLogin({ ...p, bin: "/nonexistent/claude" }, env, now, run)).loggedIn, null);
+    assert.equal((await checkLogin({ ...AGENT_TEMPLATES.gemini, bin: process.execPath }, env, now, run)).loggedIn, null);
+    assert.equal(seen.length, 1);
   });
 });
 
@@ -252,6 +304,23 @@ describe("Runner", () => {
     const t = await task();
     assert.equal(t.status, "review", "the runner still moves the task");
     assert.match(t.note ?? "", /Implemented T-1/);
+  });
+
+  it("skips a signed-out subscription, shows it, and says why a run waits when none is signed in", async () => {
+    const signedOut = { loggedIn: false, method: null, loginCommand: "claude auth login", checkedAt: "2026-09-28T04:00:00.000Z" };
+    const login = (id: string) => (id === "claude-a" ? signedOut : undefined);
+    const { runner } = await setup([profile("claude-a", "claude", 1, "ok"), profile("claude-b", "claude", 10, "ok")], {}, "local", { login });
+    assert.deepEqual(runner.profileStatuses().find((p) => p.id === "claude-a")!.login, signedOut);
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    assert.equal(runner.store.get(run.id)!.profileId, "claude-b", "claude-a has the better priority but is signed out");
+
+    const none = await setup([profile("claude-a", "claude", 1, "ok")], {}, "local", { login });
+    const waiting = await none.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await none.runner.settle();
+    assert.equal(none.runner.store.get(waiting.id)!.status, "queued");
+    assert.match(none.runner.list()[0]!.error ?? "", /Chưa gói phù hợp nào đăng nhập CLI \(claude-a\)/);
+    none.runner.cancel(waiting.id);
   });
 
   it("rotates to the next subscription when one hits its quota, continuing on the same branch", async () => {

@@ -33,8 +33,11 @@ const token = "mock-gitlab-smoke-token";
 const gitlab = await startMockGitLab(token);
 
 const fake = path.join(appDir, "test", "fixtures", "fake-agent.mjs");
+// A wrapper as the CLI, so sign-in checks (`<bin> auth status --json`) reach the fake agent as well.
+const cli = path.join(work, "fake-cli");
+writeFileSync(cli, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(fake)} "$@"\n`, { mode: 0o755 });
 const agent = (id, kind, priority, mode, label, extra = {}) => ({
-  id, label, kind, bin: process.execPath, args: [fake, "{prompt}"], env: { FAKE_MODE: mode },
+  id, label, kind, bin: cli, args: ["{prompt}"], env: { FAKE_MODE: mode },
   enabled: true, priority, roles: ["plan", "implement", "review"], maxConcurrent: 1, cooldownMinutes: 60, timeoutMinutes: 5,
   ...extra,
 });
@@ -48,6 +51,8 @@ writeFileSync(
     gitlab: { url: gitlab.base, token, mr: { enabled: true } },
     agents: [
       agent("claude-max-1", "claude", 10, "limit", "Claude Max (gói 1)"),
+      // Signed out (roadmap 2d): shown on its card, never picked. Lowest priority so it cannot win the first tick.
+      agent("claude-max-2", "claude", 40, "ok", "Claude Max (gói 2)", { env: { FAKE_MODE: "ok", FAKE_LOGIN: "out", CLAUDE_CONFIG_DIR: "~/.claude-2" } }),
       agent("codex-plus", "codex", 20, "ok", "Codex (ChatGPT Plus)"),
       // The reviewer only reads Hive (roadmap 2c).
       agent("gemini-pro", "gemini", 30, "review", "Gemini Pro", { readOnly: true }),

@@ -1,6 +1,15 @@
 // Stand-in for claude / codex / gemini in tests. Behaviour comes from FAKE_MODE.
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 
+// Sign-in checks (claude auth status, codex login status). FAKE_LOGIN=out plays a signed-out CLI.
+const [first, second] = process.argv.slice(2);
+if ((first === "auth" || first === "login") && second === "status") {
+  const out = process.env.FAKE_LOGIN === "out";
+  if (first === "auth") console.log(JSON.stringify({ loggedIn: !out, authMethod: out ? "none" : "claude.ai", subscriptionType: out ? undefined : "max" }));
+  else console.log(out ? "Not logged in" : "Logged in using ChatGPT");
+  process.exit(out && first === "login" ? 1 : 0);
+}
+
 const prompt = process.argv[2] ?? "";
 if (process.env.FAKE_RECORD) {
   appendFileSync(

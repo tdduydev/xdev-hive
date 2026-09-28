@@ -121,6 +121,8 @@ export interface ReportedProfile {
   account: string | null;
   /** The profile's CLI is on that machine's PATH. */
   installed: boolean;
+  /** The CLI says it is signed in; null: unknown (no status command, not checked yet, older app). */
+  loggedIn?: boolean | null;
   cooldownUntil: string | null;
   runs: number;
   rateLimited: number;
@@ -163,7 +165,6 @@ export interface MachineCommand {
 export interface MachineDetail extends Machine {
   setup: SetupReport | null;
   setupAt: string | null;
-  profiles: ReportedProfile[];
   commands: MachineCommand[];
 }
 
@@ -203,6 +204,8 @@ export interface Machine {
   /** Two app instances heartbeat under this id: same machine name and token, so they share task leases. */
   duplicate: boolean;
   runs: MachineRun[];
+  /** The machine's subscription profiles as it last reported them (installed, signed in, resting). */
+  profiles: ReportedProfile[];
 }
 
 /** A subscription account resting after a rate limit, shared by every machine logged into it. */

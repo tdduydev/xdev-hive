@@ -47,6 +47,7 @@ import { setMainLocale, tr } from "./i18n.ts";
 import { MergeRequester } from "./gitlab/mr.ts";
 import { installAgents, installShim } from "./installer.ts";
 import { expandEnv, expandHome, resolveBin } from "./runner/command.ts";
+import { LoginMonitor } from "./runner/login.ts";
 import { Runner, type HubUpdate, type RunnerEvent } from "./runner/runner.ts";
 import { agentPath } from "./runner/shell-path.ts";
 import { Setup } from "./setup.ts";
@@ -64,6 +65,9 @@ let backend: HiveBackend;
 let win: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let runner: Runner;
+let logins: LoginMonitor;
+/** The first sign-in check after start; the profile list waits for it (briefly) so it opens with the answer. */
+let firstLoginCheck: Promise<void> = Promise.resolve();
 let mergeRequester: MergeRequester;
 let setup: Setup;
 /** Last setup check, sent to the hub with every heartbeat. */
@@ -206,6 +210,7 @@ function saveProfile(input: AgentProfile, previousId?: string) {
   const exists = config.agents.some((a) => a.id === replacing);
   const agents = exists ? config.agents.map((a) => (a.id === replacing ? profile : a)) : [...config.agents, profile];
   persist({ ...config, agents });
+  void logins.refresh([profile.id]).catch(() => undefined);
   void runner.tick();
   return runner.profileStatuses();
 }
@@ -216,18 +221,30 @@ function removeProfile(id: string) {
   return runner.profileStatuses();
 }
 
-function checkProfile(id: string): Promise<ProfileCheck> {
+/** `--version`, then the sign-in check (which the runner and the hub see too). */
+async function checkProfile(id: string): Promise<ProfileCheck> {
   const profile = config.agents.find((a) => a.id === id);
   if (!profile) throw new HiveError("not_found", `Không có profile ${id}.`, { key: "errors.profileNotFound", vars: { id } });
   const env = agentEnv();
   const bin = resolveBin(expandHome(profile.bin), env.PATH ?? "");
-  if (!bin) return Promise.resolve({ ok: false, path: null, output: `${tr("desktop.cliNotFound", { bin: profile.bin })}\n${env.PATH}` });
-  return new Promise((resolve) => {
+  if (!bin) return { ok: false, path: null, output: `${tr("desktop.cliNotFound", { bin: profile.bin })}\n${env.PATH}` };
+  const version = await new Promise<{ ok: boolean; output: string }>((resolve) => {
     execFile(bin, ["--version"], { env: { ...env, ...expandEnv(profile.env) }, timeout: 15_000 }, (err, stdout, stderr) => {
-      const output = `${stdout}${stderr}`.trim() || (err ? err.message : "");
-      resolve({ ok: !err, path: bin, output });
+      resolve({ ok: !err, output: `${stdout}${stderr}`.trim() || (err ? err.message : "") });
     });
   });
+  await logins.refresh([id]);
+  const login = logins.get(id);
+  const signIn =
+    login?.loggedIn === true
+      ? login.method
+        ? tr("desktop.loginYesVia", { method: login.method })
+        : tr("desktop.loginYes")
+      : login?.loggedIn === false
+        ? tr("desktop.loginNo", { cmd: login.loginCommand ?? profile.bin })
+        : tr("desktop.loginUnknown");
+  void runner.tick();
+  return { ok: version.ok && login?.loggedIn !== false, path: bin, output: `${version.output}\n${signIn}` };
 }
 
 function updateProject(name: string, patch: { gitlabProject?: string | null; targetBranch?: string | null }) {
@@ -301,6 +318,7 @@ const reportedProfiles = (): ReportedProfile[] =>
     enabled: p.enabled,
     account: p.account ?? null,
     installed: p.cliPath !== null,
+    loggedIn: p.login?.loggedIn ?? null,
     cooldownUntil: p.cooldownUntil,
     runs: p.stats.runs,
     rateLimited: p.stats.rateLimited,
@@ -430,7 +448,10 @@ function registerIpc(): void {
     await shell.openPath(p);
   });
 
-  handle("desktop:profiles", () => runner.profileStatuses());
+  handle("desktop:profiles", async () => {
+    await Promise.race([firstLoginCheck, new Promise((r) => setTimeout(r, 5_000))]);
+    return runner.profileStatuses();
+  });
   handle("desktop:saveProfile", saveProfile);
   handle("desktop:removeProfile", removeProfile);
   handle("desktop:resetCooldown", async (id: string) => (await runner.resetCooldown(id), runner.profileStatuses()));
@@ -601,6 +622,7 @@ if (!app.requestSingleInstanceLock()) {
       fetch: gitlabFetch,
       user: os.userInfo().username,
     });
+    logins = new LoginMonitor(() => config.agents, agentEnv);
     runner = new Runner(
       {
         backend: () => backend,
@@ -611,6 +633,7 @@ if (!app.requestSingleInstanceLock()) {
         machine: () => config.machine,
         env: agentEnv,
         report: () => ({ setup: setupCache ?? undefined, profiles: reportedProfiles() }),
+        login: (id) => logins.get(id),
       },
       {
         dataDir: path.dirname(configPath()),
@@ -627,6 +650,10 @@ if (!app.requestSingleInstanceLock()) {
       shim: { electronPath: process.execPath, entry: mcpEntry() },
     });
     runner.start();
+    // Sign-ins change outside the app (a terminal login, an expired session): check at start, then every 10 minutes.
+    const checkLogins = () => logins.refresh().then(() => runner.tick(), () => undefined);
+    firstLoginCheck = checkLogins();
+    setInterval(() => void checkLogins(), 10 * 60_000).unref();
     // The hub's admin view shows each machine's setup: check at start, then every 10 minutes.
     void refreshSetup().catch(() => undefined);
     setInterval(() => void refreshSetup().catch(() => undefined), 10 * 60_000).unref();
