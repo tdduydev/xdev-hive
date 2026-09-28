@@ -183,6 +183,22 @@ describe("hub as a backend", () => {
     await client.close();
   });
 
+  it("lets a client narrow MCP to read-only and give a default project (container runs)", async () => {
+    const connect = async (headers: Record<string, string>) => {
+      const client = new Client({ name: "test", version: "0" });
+      await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { requestInit: { headers: { authorization: `Bearer ${tok.agent}`, ...headers } } }));
+      return client;
+    };
+    const ro = await connect({ "x-hive-readonly": "1", "x-hive-project": "app" });
+    assert.deepEqual((await ro.listTools()).tools.map((t) => t.name).sort(), ["doc_get", "doc_list", "memory_search", "task_list", "task_next"]);
+    const listed = await ro.callTool({ name: "task_list", arguments: {} });
+    assert.equal(listed.isError, undefined, "the default project stands in for the missing argument");
+    await ro.close();
+    const bad = await connect({ "x-hive-project": "../x", "x-hive-readonly": "0" });
+    assert.ok((await bad.listTools()).tools.some((t) => t.name === "memory_write"), "0 or another value does not widen or narrow anything");
+    await bad.close();
+  });
+
   it("speaks MCP over Streamable HTTP", async () => {
     const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`), {
       requestInit: { headers: { authorization: `Bearer ${tok.agent}`, "x-hive-agent": "cursor" } },

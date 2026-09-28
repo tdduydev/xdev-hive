@@ -520,6 +520,10 @@ export const vi = {
     readOnly: "Chỉ đọc Hive",
     readOnlyHint: "Run của gói này chỉ có tool đọc (memory_search, doc_get, doc_list, task_list): không ghi memory, không đề xuất tài liệu, không cập nhật task; runner vẫn chuyển task và ghi tóm tắt. Dùng cho review hoặc CLI bạn ít tin. Chặn ghi nhầm hay ghi do prompt injection, không phải ranh giới bảo mật: agent vẫn đọc được token của máy.",
     readOnlyBadge: "Chỉ đọc",
+    container: "Chạy trong container (Docker)",
+    containerImage: "Image Docker",
+    containerBadge: "Container",
+    containerHint: "CLI chạy trong image này thay vì thẳng trên máy: chỉ thấy worktree của task, .git của repo và thư mục đăng nhập của CLI. Máy cần Docker và image (xem README: docker build … docker/agent). Công cụ Hive trong container chỉ có cho Claude Code ở chế độ hub.",
     save: "Lưu profile",
     runnerParallel: "Agent chạy song song",
     runnerAttempts: "Số lần thử mỗi task (tính cả xoay vòng)",
@@ -1034,6 +1038,7 @@ export const vi = {
     longAgents: "AGENTS.md dài {lines} dòng (nên dưới {max}): chuyển bớt phần chỉ dùng cho một thư mục hay loại file sang tài liệu có đường dẫn",
   },
   runNote: {
+    dockerNotFound: "Profile chạy trong container nhưng máy không có lệnh docker trên PATH (cài Docker rồi kiểm tra lại).",
     cancelledQueued: "Huỷ trước khi chạy",
     cancelled: "Admin huỷ",
     timedOut: "Quá thời gian {minutes} phút",

@@ -116,6 +116,8 @@ export function buildCommand(
   profile: AgentProfile,
   vars: { prompt: string; worktree: string; task: string; project: string; branch: string; run?: string },
   features: RepoFeatures = NO_FEATURES,
+  /** Claude's MCP servers from this file instead (a container run: see runner). */
+  mcpConfigFile?: string,
 ): BuiltCommand {
   const usesPrompt = profile.args.some((a) => a.includes("{prompt}"));
   const fill = (a: string) =>
@@ -132,7 +134,7 @@ export function buildCommand(
     const format = outputFormat(args);
     if (format === null) args.push("--output-format", "json");
     claudeJson = format === null || format === "json";
-    args.push(...claudeRunArgs(profile.id, { ...vars, readOnly: profile.readOnly }, features));
+    args.push(...claudeRunArgs(profile.id, { ...vars, readOnly: profile.readOnly }, features, mcpConfigFile));
   }
   return {
     bin: expandHome(profile.bin),
@@ -159,6 +161,7 @@ export function claudeRunArgs(
   agent: string,
   run: { project: string; task: string; run?: string; readOnly?: boolean; worktree: string },
   features: RepoFeatures,
+  mcpConfigFile?: string,
 ): string[] {
   const settings = { disableAllHooks: true, ...(features.superpowers ? { enabledPlugins: { [SUPERPOWERS_PLUGIN]: true } } : {}) };
   return [
@@ -170,7 +173,7 @@ export function claudeRunArgs(
     "user",
     "--strict-mcp-config",
     "--mcp-config",
-    JSON.stringify({ mcpServers: runMcpServers(agent, run.project, features, { task: run.task, id: run.run, readOnly: run.readOnly }) }),
+    mcpConfigFile ?? JSON.stringify({ mcpServers: runMcpServers(agent, run.project, features, { task: run.task, id: run.run, readOnly: run.readOnly }) }),
   ];
 }
 

@@ -8,12 +8,13 @@
 // No Electron imports: the desktop main process provides a RunnerHost, tests provide a fake one.
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { closeSync, createWriteStream, existsSync, mkdirSync, openSync, readSync, statSync, type WriteStream } from "node:fs";
+import { closeSync, createWriteStream, existsSync, mkdirSync, openSync, readSync, rmSync, statSync, writeFileSync, type WriteStream } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
   AGENT_ROLES,
   agentActorName,
+  agentSource,
   HiveError,
   usageStop,
   type Actor,
@@ -37,7 +38,9 @@ import {
   type Task,
 } from "@xdev-hive/core";
 import { tr } from "../i18n.ts";
-import { repoFeatures } from "../installer.ts";
+import { git } from "../git.ts";
+import { NO_FEATURES, repoFeatures } from "../installer.ts";
+import { containerCommand } from "./container.ts";
 import { buildCommand, buildPrompt, describeCommand, expandEnv, expandHome, resolveBin } from "./command.ts";
 import { detectRateLimit } from "./rate-limit.ts";
 import { parseClaudeResult, type RunUsage } from "./usage.ts";
@@ -61,6 +64,8 @@ export interface RunnerHost {
   login?(profileId: string): LoginStatus | undefined;
   /** The profile's plan usage from the same check. */
   usage?(profileId: string): PlanUsage | undefined;
+  /** Hub mode: where a container run's agent reaches Hive (the hub's HTTP MCP) and with which token. */
+  hub?(): { url: string; token: string } | null;
 }
 
 /** What the hub sent back on the last heartbeat. */
@@ -102,6 +107,15 @@ interface Live {
   child: ChildProcess;
   cancelled: boolean;
   timedOut: boolean;
+  /** A container run: killing the docker client does not stop the container. */
+  container?: { docker: string; name: string; env: NodeJS.ProcessEnv };
+}
+
+/** Stops a run's process, and its container when it has one. */
+function stopLive(live: Live): void {
+  killTree(live.child);
+  // Same environment as the run's docker (DOCKER_HOST, contexts…).
+  if (live.container) spawn(live.container.docker, ["kill", live.container.name], { env: live.container.env, stdio: "ignore", windowsHide: true }).on("error", () => undefined);
 }
 
 type Outcome =
@@ -255,7 +269,7 @@ export class Runner {
     const live = this.#live.get(id);
     if (live) {
       live.cancelled = true;
-      killTree(live.child);
+      stopLive(live);
     }
     return run;
   }
@@ -511,6 +525,7 @@ export class Runner {
 
   async #execute(run: AgentRun, profile: AgentProfile): Promise<void> {
     let wt: Worktree | null = null;
+    let mcpFile: string | null = null;
     let log: WriteStream | null = null;
     try {
       const project = this.#project(run.project);
@@ -538,11 +553,17 @@ export class Runner {
         ciFix: run.ciFix,
       });
       const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id };
-      const cmd = buildCommand(profile, vars, repoFeatures(project.repo));
+      // A container has neither the hive-mcp shim nor this machine's codegraph: Claude gets the hub's MCP through a file.
+      if (profile.container) {
+        mcpFile = path.join(this.#opts.dataDir, "runs", `${run.id}.mcp.json`);
+        writeFileSync(mcpFile, JSON.stringify({ mcpServers: this.#containerMcp(profile, run) }), { mode: 0o600 });
+      }
+      const cmd = buildCommand(profile, vars, profile.container ? NO_FEATURES : repoFeatures(project.repo), mcpFile ?? undefined);
       const base = this.#host.env();
-      const bin = resolveBin(cmd.bin, base.PATH ?? "");
+      const bin = resolveBin(profile.container ? "docker" : cmd.bin, base.PATH ?? "");
       if (!bin) {
-        await this.#complete(run, profile, wt, { kind: "unavailable", reason: tr("runNote.binNotFound", { bin: cmd.bin }) });
+        const reason = profile.container ? tr("runNote.dockerNotFound") : tr("runNote.binNotFound", { bin: cmd.bin });
+        await this.#complete(run, profile, wt, { kind: "unavailable", reason });
         return;
       }
 
@@ -559,10 +580,8 @@ export class Runner {
 
       log = createWriteStream(this.#logPath(run.id), { flags: "a" });
       log.on("error", () => undefined); // a failing log file must not take the app down
-      log.write(`$ ${describeCommand(cmd)}\n# cwd ${wt.path}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n\n## Prompt\n${prompt}\n\n## Output\n`);
-
-      const env: NodeJS.ProcessEnv = {
-        ...Object.fromEntries(Object.entries(base).filter(([k]) => !k.startsWith("ELECTRON_"))),
+      const hostEnv = Object.fromEntries(Object.entries(base).filter(([k]) => !k.startsWith("ELECTRON_")));
+      const agentEnv: Record<string, string> = {
         ...expandEnv(profile.env),
         HIVE_AGENT: profile.id,
         HIVE_PROJECT: run.project,
@@ -571,18 +590,36 @@ export class Runner {
         ...(profile.readOnly ? { HIVE_READONLY: "1" } : {}),
         ...cmd.env,
       };
-      const child = spawn(bin, cmd.args, {
+      // In a container the agent gets only its own variables; docker itself keeps the machine's (PATH, DOCKER_HOST).
+      const box = profile.container
+        ? containerCommand({
+            profile,
+            args: cmd.args,
+            stdin: cmd.stdin,
+            runId: run.id,
+            worktree: wt.path,
+            gitDir: git(wt.path, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
+            env: agentEnv,
+            readOnly: mcpFile ? [mcpFile] : [],
+          })
+        : null;
+      log.write(
+        `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image}\n` : ""}# cwd ${wt.path}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n\n## Prompt\n${prompt}\n\n## Output\n`,
+      );
+
+      const env: NodeJS.ProcessEnv = box ? { ...hostEnv, ...box.env } : { ...hostEnv, ...agentEnv };
+      const child = spawn(bin, box ? box.args : cmd.args, {
         cwd: wt.path,
         env,
         detached: process.platform !== "win32",
         stdio: [cmd.stdin === null ? "ignore" : "pipe", "pipe", "pipe"],
         windowsHide: true,
       });
-      const live: Live = { child, cancelled: false, timedOut: false };
+      const live: Live = { child, cancelled: false, timedOut: false, ...(box ? { container: { docker: bin, name: box.name, env } } : {}) };
       this.#live.set(run.id, live);
       const timer = setTimeout(() => {
         live.timedOut = true;
-        killTree(child);
+        stopLive(live);
       }, profile.timeoutMinutes * 60_000);
       if (cmd.stdin !== null) child.stdin?.end(cmd.stdin);
 
@@ -622,7 +659,29 @@ export class Runner {
     } catch (err) {
       log?.end();
       await this.#complete(run, profile, wt, { kind: "error", reason: (err as Error).message ?? String(err) });
+    } finally {
+      // It carries the hub token: gone with the run.
+      if (mcpFile) rmSync(mcpFile, { force: true });
     }
+  }
+
+  /** Hive for an agent in a container: the hub's HTTP MCP with this machine's token (hub mode only). */
+  #containerMcp(profile: AgentProfile, run: AgentRun): Record<string, unknown> {
+    const hub = this.#host.mode() === "hub" ? this.#host.hub?.() : null;
+    if (!hub?.url || !hub.token) return {};
+    return {
+      "xdev-hive": {
+        type: "http",
+        url: `${hub.url.replace(/\/+$/, "")}/mcp`,
+        headers: {
+          authorization: `Bearer ${hub.token}`,
+          "x-hive-agent": agentActorName(profile.id, "hub", this.#host.machine(), this.#opts.user),
+          "x-hive-project": run.project,
+          "x-hive-source": JSON.stringify(agentSource(this.#host.machine(), { HIVE_TASK: run.taskId, HIVE_RUN: run.id })),
+          ...(profile.readOnly ? { "x-hive-readonly": "1" } : {}),
+        },
+      },
+    };
   }
 
   async #complete(run: AgentRun, profile: AgentProfile, wt: Worktree | null, outcome: Outcome): Promise<void> {
