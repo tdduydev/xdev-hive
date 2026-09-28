@@ -31,6 +31,8 @@ export const configSchema = z.object({
       }),
     )
     .default([]),
+  /** Interface language the desktop app last used (tray, notifications); the renderer sets it. */
+  locale: z.string().max(16).default("vi"),
   memoryRequiresApproval: z.boolean().default(false),
   sync: z.object({ autoCommit: z.boolean().default(true) }).default({ autoCommit: true }),
   agents: z

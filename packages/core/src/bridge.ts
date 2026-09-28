@@ -179,6 +179,8 @@ export interface ProfileCheck {
 export interface DesktopBridge {
   settings(): Promise<DesktopSettings>;
   updateSettings(patch: DesktopSettingsPatch): Promise<DesktopSettings>;
+  /** The interface language, for what the main process shows itself (tray, notifications, dialogs). */
+  setLocale(locale: string): Promise<void>;
   /** Hub mode with a hub account: the hub issues this machine a token that belongs to the account. */
   hubSignIn(input: { hubUrl: string; username: string; password: string }): Promise<DesktopSettings>;
   addProject(project: DesktopProject): Promise<DesktopSettings>;

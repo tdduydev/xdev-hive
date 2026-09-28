@@ -42,6 +42,7 @@ import {
   SqliteHive,
   type HiveConfig,
 } from "@xdev-hive/core/node";
+import { DEFAULT_LOCALE, isLocale, translate, type MessageKey } from "@xdev-hive/ui/i18n";
 import { GitLabClient } from "./gitlab/client.ts";
 import { MergeRequester } from "./gitlab/mr.ts";
 import { installAgents, installShim } from "./installer.ts";
@@ -76,6 +77,10 @@ let quitting = false;
 
 const actor = (): Actor =>
   config.mode === "hub" ? { name: "desktop", role: "admin" } : { name: os.userInfo().username, role: "admin" };
+
+/** What the main process shows itself (tray, notifications, dialogs), in the language the interface uses. */
+const tr = (key: MessageKey, vars?: Record<string, string | number>) =>
+  translate(key, vars, isLocale(config?.locale) ? config.locale : DEFAULT_LOCALE);
 
 function reload(): void {
   config = loadConfig();
@@ -112,7 +117,7 @@ function settings(): DesktopSettings {
 
 function project(name: unknown): DesktopProject {
   const p = config.projects.find((x) => x.name === name);
-  if (!p) throw new HiveError("not_found", `Dự án ${String(name)} chưa được thêm.`);
+  if (!p) throw new HiveError("not_found", `Dự án ${String(name)} chưa được thêm.`, { key: "errors.projectNotAdded", vars: { project: String(name) } });
   return p;
 }
 
@@ -144,16 +149,17 @@ async function updateSettings(patch: DesktopSettingsPatch): Promise<DesktopSetti
       token: typeof g.token === "string" && g.token.trim() ? g.token.trim() : next.gitlab.token,
       mr: { ...next.gitlab.mr, ...g.mr },
     });
-    if (next.gitlab.url && !/^https?:\/\//.test(next.gitlab.url)) throw new HiveError("bad_request", "GitLab URL phải bắt đầu bằng http(s)://");
+    if (next.gitlab.url && !/^https?:\/\//.test(next.gitlab.url)) throw new HiveError("bad_request", "GitLab URL phải bắt đầu bằng http(s)://", { key: "errors.gitlabUrl" });
   }
   if (next.mode === "hub") {
     if (!/^https?:\/\//.test(next.hub.url) || !next.hub.token) {
-      throw new HiveError("bad_request", "Chế độ hub cần URL (http/https) và token.");
+      throw new HiveError("bad_request", "Chế độ hub cần URL (http/https) và token.", { key: "errors.hubNeedsUrlToken" });
     }
     try {
       await new HubBackend(next.hub.url, next.hub.token).me("desktop");
     } catch (err) {
-      throw new HiveError("bad_request", `Không kết nối được hub: ${toErrorPayload(err).message}`);
+      const reason = toErrorPayload(err).message;
+      throw new HiveError("bad_request", `Không kết nối được hub: ${reason}`, { key: "errors.hubUnreachable", vars: { reason } });
     }
   }
   return persist(next);
@@ -161,16 +167,17 @@ async function updateSettings(patch: DesktopSettingsPatch): Promise<DesktopSetti
 
 async function hubSignIn(input: { hubUrl?: unknown; username?: unknown; password?: unknown }): Promise<DesktopSettings> {
   const hubUrl = String(input?.hubUrl ?? "").trim().replace(/\/+$/, "");
-  if (!/^https?:\/\//.test(hubUrl)) throw new HiveError("bad_request", "URL hub phải bắt đầu bằng http(s)://");
+  if (!/^https?:\/\//.test(hubUrl)) throw new HiveError("bad_request", "URL hub phải bắt đầu bằng http(s)://", { key: "errors.hubUrl" });
   const username = String(input?.username ?? "").trim();
   const password = String(input?.password ?? "");
-  if (!username || !password) throw new HiveError("bad_request", "Nhập tên đăng nhập và mật khẩu.");
+  if (!username || !password) throw new HiveError("bad_request", "Nhập tên đăng nhập và mật khẩu.", { key: "errors.credentialsRequired" });
   let token: string;
   try {
     ({ token } = await requestDeviceToken(hubUrl, { username, password, machine: config.machine }));
   } catch (err) {
-    const { code, message } = toErrorPayload(err);
-    throw new HiveError(code === "unauthorized" || code === "forbidden" ? code : "bad_request", `Hub từ chối đăng nhập: ${message}`);
+    const { code, message, key, vars } = toErrorPayload(err);
+    // The hub's own reason (wrong password, temporary password…) when it sent one.
+    throw new HiveError(code === "unauthorized" || code === "forbidden" ? code : "bad_request", `Hub từ chối đăng nhập: ${message}`, key ? { key, vars } : { key: "errors.hubRefused", vars: { reason: message } });
   }
   return updateSettings({ mode: "hub", hubUrl, hubToken: token });
 }
@@ -178,9 +185,9 @@ async function hubSignIn(input: { hubUrl?: unknown; username?: unknown; password
 function addProject(p: DesktopProject): DesktopSettings {
   const name = String(p?.name ?? "");
   const repo = path.resolve(String(p?.repo ?? ""));
-  if (!PROJECT_NAME.test(name)) throw new HiveError("bad_request", "Project key: chữ thường, số, . _ -");
-  if (!existsSync(repo) || !statSync(repo).isDirectory()) throw new HiveError("bad_request", `Không thấy thư mục ${repo}`);
-  if (config.projects.some((x) => x.name === name)) throw new HiveError("conflict", `Đã có dự án ${name}.`);
+  if (!PROJECT_NAME.test(name)) throw new HiveError("bad_request", "Project key: chữ thường, số, . _ -", { key: "errors.badProjectKey" });
+  if (!existsSync(repo) || !statSync(repo).isDirectory()) throw new HiveError("bad_request", `Không thấy thư mục ${repo}`, { key: "errors.noFolder", vars: { path: repo } });
+  if (config.projects.some((x) => x.name === name)) throw new HiveError("conflict", `Đã có dự án ${name}.`, { key: "errors.projectExists", vars: { project: name } });
   return persist({ ...config, projects: [...config.projects, { name, repo }] });
 }
 
@@ -192,10 +199,10 @@ function saveProfile(input: AgentProfile, previousId?: string) {
   const profile = agentProfileSchema.parse(input);
   const replacing = previousId ?? profile.id;
   if (previousId && previousId !== profile.id && runner.store.running(previousId)) {
-    throw new HiveError("conflict", `Profile ${previousId} đang chạy, không đổi id được.`);
+    throw new HiveError("conflict", `Profile ${previousId} đang chạy, không đổi id được.`, { key: "errors.profileRunningRename", vars: { id: previousId } });
   }
   if (profile.id !== replacing && config.agents.some((a) => a.id === profile.id)) {
-    throw new HiveError("conflict", `Đã có profile ${profile.id}.`);
+    throw new HiveError("conflict", `Đã có profile ${profile.id}.`, { key: "errors.profileExists", vars: { id: profile.id } });
   }
   const exists = config.agents.some((a) => a.id === replacing);
   const agents = exists ? config.agents.map((a) => (a.id === replacing ? profile : a)) : [...config.agents, profile];
@@ -205,17 +212,17 @@ function saveProfile(input: AgentProfile, previousId?: string) {
 }
 
 function removeProfile(id: string) {
-  if (runner.store.running(id)) throw new HiveError("conflict", `Profile ${id} đang chạy.`);
+  if (runner.store.running(id)) throw new HiveError("conflict", `Profile ${id} đang chạy.`, { key: "errors.profileRunning", vars: { id } });
   persist({ ...config, agents: config.agents.filter((a) => a.id !== id) });
   return runner.profileStatuses();
 }
 
 function checkProfile(id: string): Promise<ProfileCheck> {
   const profile = config.agents.find((a) => a.id === id);
-  if (!profile) throw new HiveError("not_found", `Không có profile ${id}.`);
+  if (!profile) throw new HiveError("not_found", `Không có profile ${id}.`, { key: "errors.profileNotFound", vars: { id } });
   const env = agentEnv();
   const bin = resolveBin(expandHome(profile.bin), env.PATH ?? "");
-  if (!bin) return Promise.resolve({ ok: false, path: null, output: `Không tìm thấy "${profile.bin}" trong PATH:\n${env.PATH}` });
+  if (!bin) return Promise.resolve({ ok: false, path: null, output: `${tr("desktop.cliNotFound", { bin: profile.bin })}\n${env.PATH}` });
   return new Promise((resolve) => {
     execFile(bin, ["--version"], { env: { ...env, ...expandEnv(profile.env) }, timeout: 15_000 }, (err, stdout, stderr) => {
       const output = `${stdout}${stderr}`.trim() || (err ? err.message : "");
@@ -235,7 +242,7 @@ function updateProject(name: string, patch: { gitlabProject?: string | null; tar
 async function checkGitLab(): Promise<GitLabCheck> {
   try {
     const user = await new GitLabClient(config.gitlab.url, config.gitlab.token, gitlabFetch).user();
-    return { ok: true, user: user.username, message: `Đăng nhập GitLab với tài khoản ${user.name} (@${user.username})` };
+    return { ok: true, user: user.username, message: tr("desktop.gitlabSignedIn", { name: user.name, username: user.username }) };
   } catch (err) {
     return { ok: false, user: null, message: toErrorPayload(err).message };
   }
@@ -243,8 +250,8 @@ async function checkGitLab(): Promise<GitLabCheck> {
 
 async function createMergeRequest(runId: string): Promise<AgentRun> {
   const run = runner.store.get(runId);
-  if (!run) throw new HiveError("not_found", `Không có run ${runId}.`);
-  if (run.status !== "succeeded") throw new HiveError("bad_request", "Chỉ tạo MR từ run đã xong.");
+  if (!run) throw new HiveError("not_found", `Không có run ${runId}.`, { key: "errors.runNotFound", vars: { id: runId } });
+  if (run.status !== "succeeded") throw new HiveError("bad_request", "Chỉ tạo MR từ run đã xong.", { key: "errors.mrNeedsSucceeded" });
   try {
     return runner.store.update(run.id, await mergeRequester.open(run, { manual: true }));
   } catch (err) {
@@ -258,16 +265,17 @@ async function createMergeRequest(runId: string): Promise<AgentRun> {
 /** push: local database → hub (a differing doc becomes a proposal) · pull: hub → local database (a new version). */
 async function transferHub(direction: unknown): Promise<TransferReport> {
   if (direction !== "push" && direction !== "pull") throw new HiveError("bad_request", "direction: push | pull");
-  if (!config.hub.url || !config.hub.token) throw new HiveError("bad_request", "Chưa có URL và token hub: điền ở Nguồn dữ liệu rồi bấm Lưu.");
+  if (!config.hub.url || !config.hub.token) throw new HiveError("bad_request", "Chưa có URL và token hub: điền ở Nguồn dữ liệu rồi bấm Lưu.", { key: "errors.transferNotReady" });
   const hub = backend instanceof HubBackend ? backend : new HubBackend(config.hub.url, config.hub.token);
   try {
     await hub.me("hive-transfer");
   } catch (err) {
-    throw new HiveError("bad_request", `Không kết nối được hub: ${toErrorPayload(err).message}`);
+    const reason = toErrorPayload(err).message;
+    throw new HiveError("bad_request", `Không kết nối được hub: ${reason}`, { key: "errors.hubUnreachable", vars: { reason } });
   }
   const local = backend instanceof SqliteHive ? backend : new SqliteHive(localDbPath(config), { memoryRequiresApproval: config.memoryRequiresApproval });
   try {
-    const localSide: TransferSide = { backend: local, actor: { name: `hive-transfer@${os.userInfo().username}`, role: "admin" }, label: `máy ${config.machine}` };
+    const localSide: TransferSide = { backend: local, actor: { name: `hive-transfer@${os.userInfo().username}`, role: "admin" }, label: tr("desktop.thisMachineLabel", { machine: config.machine }) };
     // The hub decides the role from the token; the name is only the label on what gets written.
     const hubSide: TransferSide = { backend: hub, actor: { name: "hive-transfer", role: "admin" }, label: "hub" };
     return direction === "push" ? await transferHive(localSide, hubSide) : await transferHive(hubSide, localSide, { newVersions: true });
@@ -305,8 +313,8 @@ function onHub(update: HubUpdate): void {
     if (notifiedCommands.has(cmd.id) || !Notification.isSupported()) continue;
     notifiedCommands.add(cmd.id);
     const n = new Notification({
-      title: "Yêu cầu cài đặt từ admin",
-      body: `${cmd.requestedBy}: ${cmd.label}. Mở Cài đặt máy để đồng ý hoặc từ chối.`,
+      title: tr("desktop.installRequestTitle"),
+      body: tr("desktop.installRequestBody", { who: cmd.requestedBy, label: cmd.label }),
     });
     n.on("click", () => {
       showWindow();
@@ -319,7 +327,7 @@ function onHub(update: HubUpdate): void {
 /** Nothing an admin asks for runs until this machine's user approves it here. */
 async function answerCommand(id: unknown, approve: unknown): Promise<MachineCommand> {
   const cmd = hubState?.commands.find((c) => c.id === id);
-  if (!cmd || !hubState) throw new HiveError("not_found", `Không có yêu cầu #${String(id)} đang chờ trên máy này.`);
+  if (!cmd || !hubState) throw new HiveError("not_found", `Không có yêu cầu #${String(id)} đang chờ trên máy này.`, { key: "errors.noPendingRequest", vars: { id: String(id) } });
   hubState = { ...hubState, commands: hubState.commands.filter((c) => c.id !== cmd.id) };
   if (approve !== true) return runner.reportCommand(cmd.id, "rejected");
   await runner.reportCommand(cmd.id, "running");
@@ -341,17 +349,21 @@ function onRunnerEvent(event: RunnerEvent): void {
   if (!Notification.isSupported()) return;
   const r = event.run;
   const title = `${r.taskId} · ${r.profileId ?? ""}`;
-  const mr = r.mrUrl ? ` MR !${r.mrIid}${r.mrDraft ? " (draft)" : ""} ${r.mrState === "updated" ? "đã cập nhật" : "đã tạo"}.` : r.mrState === "failed" ? ` Tạo MR lỗi: ${r.mrNote}` : "";
+  const mr = r.mrUrl
+    ? ` ${tr(r.mrState === "updated" ? "desktop.mrUpdated" : "desktop.mrCreated", { iid: r.mrIid ?? "", draft: r.mrDraft ? " (draft)" : "" })}`
+    : r.mrState === "failed"
+      ? ` ${tr("desktop.mrFailed", { note: r.mrNote ?? "" })}`
+      : "";
   const body =
     event.type === "rotated"
-      ? `${r.profileId} hết quota hoặc không chạy được. Chuyển sang gói khác (lần ${event.next.attempt}).`
+      ? tr("desktop.runRotated", { profile: r.profileId ?? "", attempt: event.next.attempt })
       : event.type === "follow-up"
-        ? "Xong. Đã xếp lịch review chéo."
+        ? tr("desktop.runFollowUp")
         : r.status === "succeeded"
           ? r.role === "review"
-            ? "Review xong."
-            : `Xong, ${r.commits} commit. Task chuyển sang Chờ review.`
-          : `${r.status}: ${r.error ?? ""}`;
+            ? tr("desktop.reviewDone")
+            : tr("desktop.runDone", { count: r.commits })
+          : `${tr(`runStatus.${r.status}`)}: ${r.error ?? ""}`;
   const n = new Notification({ title, body: body + mr });
   n.on("click", () => {
     showWindow();
@@ -390,6 +402,7 @@ function registerIpc(): void {
   handle("desktop:settings", settings);
   handle("desktop:updateSettings", updateSettings);
   handle("desktop:hubSignIn", hubSignIn);
+  handle("desktop:setLocale", setLocale);
   handle("desktop:addProject", addProject);
   handle("desktop:removeProject", (name: string) =>
     persist({ ...config, projects: config.projects.filter((p) => p.name !== name) }),
@@ -414,7 +427,7 @@ function registerIpc(): void {
   handle("desktop:answerCommand", answerCommand);
   handle("desktop:transferHub", transferHub);
   handle("desktop:showInFolder", async (p: string) => {
-    if (!knownPath(p)) throw new HiveError("forbidden", "Chỉ mở được thư mục dự án hoặc worktree của run.");
+    if (!knownPath(p)) throw new HiveError("forbidden", "Chỉ mở được thư mục dự án hoặc worktree của run.", { key: "errors.openOnlyKnown" });
     await shell.openPath(p);
   });
 
@@ -507,9 +520,9 @@ async function refreshTray(): Promise<void> {
   try {
     const pending = (await backend.call("proposals.list", { status: "pending" }, actor())).length;
     tray.setTitle(pending ? ` ${pending}` : "");
-    tray.setToolTip(pending ? `xDev Hive: ${pending} đề xuất chờ duyệt` : "xDev Hive");
+    tray.setToolTip(pending ? `xDev Hive: ${tr("desktop.pendingProposals", { count: pending })}` : "xDev Hive");
     if (pending > lastPending && Notification.isSupported()) {
-      const n = new Notification({ title: "xDev Hive", body: `${pending} đề xuất sửa tài liệu đang chờ duyệt` });
+      const n = new Notification({ title: "xDev Hive", body: tr("desktop.pendingProposalsBody", { count: pending }) });
       n.on("click", () => {
         showWindow();
         win?.webContents.executeJavaScript('location.hash = "#/proposals"').catch(() => undefined);
@@ -518,8 +531,29 @@ async function refreshTray(): Promise<void> {
     }
     lastPending = pending;
   } catch {
-    tray.setToolTip("xDev Hive: không kết nối được nguồn dữ liệu");
+    tray.setToolTip(`xDev Hive: ${tr("desktop.sourceUnreachable")}`);
   }
+}
+
+/** Built again when the interface language changes. */
+function buildTrayMenu(): void {
+  tray?.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: tr("desktop.trayOpen"), click: showWindow },
+      { label: tr("desktop.trayProposals"), click: () => (showWindow(), win?.webContents.executeJavaScript('location.hash = "#/proposals"')) },
+      { type: "separator" },
+      { label: tr("desktop.trayQuit"), role: "quit" },
+    ]),
+  );
+}
+
+/** The renderer tells the language it shows; the tray and notifications follow it (kept in config.json). */
+function setLocale(locale: unknown): void {
+  if (!isLocale(locale) || config.locale === locale) return;
+  config = { ...config, locale };
+  saveConfig(config);
+  buildTrayMenu();
+  void refreshTray();
 }
 
 function createTray(): void {
@@ -527,14 +561,7 @@ function createTray(): void {
   icon.setTemplateImage(true);
   tray = new Tray(icon);
   tray.setToolTip("xDev Hive");
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: "Mở xDev Hive", click: showWindow },
-      { label: "Đề xuất chờ duyệt", click: () => (showWindow(), win?.webContents.executeJavaScript('location.hash = "#/proposals"')) },
-      { type: "separator" },
-      { label: "Thoát", role: "quit" },
-    ]),
-  );
+  buildTrayMenu();
   void refreshTray();
   setInterval(() => void refreshTray(), 20_000).unref();
 }
@@ -560,7 +587,7 @@ if (!app.requestSingleInstanceLock()) {
     try {
       reload();
     } catch (err) {
-      dialog.showErrorBox("xDev Hive", `Không dùng được cấu hình ${configPath()}:\n${toErrorPayload(err).message}\n\nTạm chạy chế độ cục bộ.`);
+      dialog.showErrorBox("xDev Hive", tr("desktop.badConfig", { path: configPath(), reason: toErrorPayload(err).message }));
       config = configSchema.parse({});
       backend = resolveBackend(config);
     }

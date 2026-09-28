@@ -16,7 +16,6 @@ export const LOCALES = {
 
 export type Locale = keyof typeof LOCALES;
 export const DEFAULT_LOCALE: Locale = "vi";
-const STORAGE = "xdev-hive.locale";
 
 export const isLocale = (v: unknown): v is Locale => typeof v === "string" && Object.hasOwn(LOCALES, v);
 
@@ -46,23 +45,4 @@ export function translate(key: MessageKey, vars?: Vars, locale: Locale = active)
       ? leaf
       : ((leaf as Plural)[new Intl.PluralRules(LOCALES[locale].intl).select(Number(vars?.count ?? 0))] ?? leaf.other);
   return vars ? text.replace(/\{(\w+)\}/g, (match, name: string) => (Object.hasOwn(vars, name) ? String(vars[name]) : match)) : text;
-}
-
-/** Saved choice; otherwise Vietnamese (the team's language) until someone picks another. */
-export function readLocale(): Locale {
-  try {
-    const saved = localStorage.getItem(STORAGE);
-    if (isLocale(saved)) return saved;
-  } catch {
-    // Storage blocked (private window).
-  }
-  return DEFAULT_LOCALE;
-}
-
-export function writeLocale(locale: Locale): void {
-  try {
-    localStorage.setItem(STORAGE, locale);
-  } catch {
-    // Storage blocked: the choice lasts for this session only.
-  }
 }
