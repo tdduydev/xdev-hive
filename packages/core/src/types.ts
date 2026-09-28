@@ -99,6 +99,19 @@ export interface Memory {
   conflictsWith: number[];
 }
 
+/** How memory_search finds entries: words only, or words plus meaning (embeddings). */
+export interface MemorySearchInfo {
+  mode: "keyword" | "hybrid";
+  /** Embedding model, when there is one. */
+  model: string | null;
+  /** Approved entries with a vector for the model, out of all approved entries. */
+  indexed: number;
+  total: number;
+  /** The last embedding error ("HTTP 500", "timeout"…), cleared by the next success. */
+  lastError: string | null;
+  lastIndexedAt: string | null;
+}
+
 export interface MemoryFile {
   path: string;
   /** Git object id of the file on the project's branch when first checked; null until then. */

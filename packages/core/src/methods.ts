@@ -20,6 +20,7 @@ import {
   type MachineCommand,
   type MachineDetail,
   type Memory,
+  type MemorySearchInfo,
   type Proposal,
   type QuotaCooldown,
   type Role,
@@ -168,6 +169,7 @@ export const schemas = {
   "memory.resolve": z.object({ id, other: id, keep: z.enum(["this", "other", "both"]) }),
   /** Still true: counts as used now, so it is no longer stale, and the cited files as they are now become the baseline. */
   "memory.keep": z.object({ id }),
+  "memory.searchInfo": z.object({}),
   /** What the project's cited files are now (null: gone), from a machine that has the repo. */
   "memory.checkFiles": z.object({
     project,
@@ -291,6 +293,7 @@ export interface MethodOutput {
   "memory.approve": Memory;
   "memory.resolve": Memory;
   "memory.keep": Memory;
+  "memory.searchInfo": MemorySearchInfo;
   "memory.checkFiles": { flagged: number; baselined: number };
   "memory.remove": { removed: boolean };
   "tasks.list": Task[];
@@ -337,6 +340,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "memory.approve": "agent",
   "memory.resolve": "agent",
   "memory.keep": "agent",
+  "memory.searchInfo": "viewer",
   "memory.checkFiles": "agent",
   "memory.remove": "agent",
   "tasks.list": "viewer",

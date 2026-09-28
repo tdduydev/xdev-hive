@@ -107,6 +107,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       title: "Search team memory",
       description:
         'Search decisions, conventions, gotchas and context recorded by any agent on this project, plus team-wide entries (project: null means shared by every project). Empty query returns the latest entries. ' +
+        "On a hub with embeddings it also finds entries by meaning (other words, other language), so a short question works. " +
         "Entries no agent used for a long time are left out until a person keeps them. An entry with review set cites files that changed since: check them before relying on it. " +
         "conflictsWith lists entries that disagree with it until a person decides; replaced entries are left out.",
       inputSchema: { project, query: z.string().optional(), limit: z.number().int().min(1).max(50).optional() },
