@@ -40,6 +40,11 @@ export const configSchema = z.object({
     .default(DEFAULT_AGENT_PROFILES)
     .refine((list) => new Set(list.map((a) => a.id)).size === list.length, "agent ids must be unique"),
   runner: runnerSettingsSchema.default(runnerSettingsSchema.parse({})),
+  /**
+   * Claude Code long-lived tokens (claude setup-token) for profiles that run in a container, by profile id.
+   * A container cannot read the macOS Keychain. Never sent to the interface; runs get it as CLAUDE_CODE_OAUTH_TOKEN.
+   */
+  agentTokens: z.record(z.string(), z.string().max(4000)).default({}),
   gitlab: gitlabSettingsSchema.default(gitlabSettingsSchema.parse({})),
 });
 

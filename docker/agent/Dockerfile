@@ -15,5 +15,12 @@ ARG GEMINI_CLI=latest
 RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE}" "@openai/codex@${CODEX}" "@google/gemini-cli@${GEMINI_CLI}" \
   && npm cache clean --force
 
+# Gemini CLI reaches Hive through the hub's MCP, from variables the app sets (HIVE_HUB_URL, HIVE_HUB_TOKEN…):
+# system settings win over the repo's .gemini/settings.json, which points at the machine's hive-mcp shim.
+# Folder trust is off: the container only ever sees the task's worktree.
+# Root-owned and not writable by others, or Gemini skips it (the folder too, and it must be listable).
+RUN mkdir -p /etc/gemini-cli && chmod 755 /etc/gemini-cli
+COPY --chmod=644 gemini-settings.json /etc/gemini-cli/settings.json
+
 # The app passes the command (claude, codex or gemini) and its arguments.
 CMD ["bash"]

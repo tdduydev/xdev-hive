@@ -127,6 +127,7 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
   const action = useAction();
   const [check, setCheck] = useState<ProfileCheck | null>(null);
   const [loginOpened, setLoginOpened] = useState(false);
+  const [token, setToken] = useState("");
   const resting = p.cooldownUntil !== null;
   const { cooldownUntil: _c, cooldownReason: _r, cooldownFrom: _f, cliPath: _p, running: _n, lastUsedAt: _l, stats: _s, ...plain } = p;
   const noCli = p.enabled && p.cliPath === null;
@@ -259,6 +260,50 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
           </Button>
         </div>
         {loginOpened && signedOut ? <Notice tone="info">{t("agents.loginOpened")}</Notice> : null}
+        {p.kind === "claude" && p.container ? (
+          <form
+            className="flex flex-col gap-2 rounded-md border p-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void action.run(async () => (await desktop.setProfileToken(p.id, token), setToken(""), onChanged()));
+            }}
+          >
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="font-medium">{t("agents.token")}</span>
+              <Badge tone={p.hasToken ? "ok" : "warn"}>{p.hasToken ? t("agents.tokenSaved") : t("agents.tokenMissing")}</Badge>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Input
+                className="min-w-48 flex-1 font-mono text-xs md:text-xs"
+                type="password"
+                autoComplete="off"
+                placeholder={t("agents.tokenPlaceholder")}
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                aria-label={t("agents.token")}
+              />
+              <Button size="sm" type="submit" variant="outline" disabled={action.busy || !token.trim()}>
+                {t("agents.tokenSave")}
+              </Button>
+              {p.hasToken ? (
+                <Button
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  disabled={action.busy}
+                  onClick={() => void action.run(async () => (await desktop.setProfileToken(p.id, ""), onChanged()))}
+                >
+                  {t("agents.tokenRemove")}
+                </Button>
+              ) : null}
+              <Button size="sm" type="button" variant="ghost" disabled={action.busy} onClick={() => void action.run(() => desktop.openSetupToken(p.id))}>
+                {t("agents.tokenCreate")}
+              </Button>
+            </div>
+            <span className="text-xs text-muted-foreground">{t("agents.tokenHint")}</span>
+          </form>
+        ) : null}
         {check ? (
           <Notice tone={check.ok ? "ok" : "error"}>
             {check.path ? <div className="max-w-full font-mono text-xs break-all">{check.path}</div> : null}
