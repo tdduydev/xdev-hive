@@ -51,7 +51,8 @@ const finish = (code = 0) => {
 
 switch (process.env.FAKE_MODE ?? "ok") {
   case "ok":
-    writeFileSync(`work-${process.env.HIVE_AGENT}.txt`, "done\n");
+    // Appends, so a second run on the same branch (a CI fix) has something to commit too.
+    appendFileSync(`work-${process.env.HIVE_AGENT}.txt`, "done\n");
     say(`Implemented ${process.env.HIVE_TASK}. Tests pass.`);
     finish();
     break;
