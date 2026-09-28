@@ -1,7 +1,8 @@
 // Follows the merge requests the app opened: their state and pipeline on GitLab. A merged MR moves its
-// task to done (unless turned off). Only MRs on the configured GitLab, so the token goes nowhere else.
-// No Electron imports.
+// task to done (unless turned off); a failed pipeline on an open one goes to the CI fixer.
+// Only MRs on the configured GitLab, so the token goes nowhere else. No Electron imports.
 import { PIPELINE_STATUSES, type AgentRun, type MrStatus, type PipelineStatus } from "@xdev-hive/core";
+import type { CiFixer, CiFixOutcome } from "./ci-fix.ts";
 import { GitLabClient } from "./client.ts";
 import { clipTail, mrActor, type MrHost } from "./mr.ts";
 
@@ -12,6 +13,8 @@ export interface MrChange {
   run: AgentRun;
   status: { from: MrStatus | null; to: MrStatus };
   pipeline: { from: PipelineStatus | null; to: PipelineStatus | null };
+  /** What the CI fixer did about a failed pipeline. */
+  fix: CiFixOutcome | null;
   /** The task moved to done because the MR was merged. */
   taskDone: boolean;
   /** Why the task could not be moved, if it could not. */
@@ -31,10 +34,12 @@ const pipelineOf = (status: string | undefined): PipelineStatus | null =>
 
 export class MrWatcher {
   readonly #host: MrHost & { now?: () => Date };
+  readonly #fixer: CiFixer | null;
   #busy = false;
 
-  constructor(host: MrHost & { now?: () => Date }) {
+  constructor(host: MrHost & { now?: () => Date }, fixer: CiFixer | null = null) {
     this.#host = host;
+    this.#fixer = fixer;
   }
 
   /** Whether there is anything to follow (GitLab set up and an open MR). */
@@ -63,17 +68,21 @@ export class MrWatcher {
         }
         const status: MrStatus = mr.state === "merged" ? "merged" : mr.state === "closed" ? "closed" : "opened";
         const pipeline = pipelineOf(mr.head_pipeline?.status);
-        store.updateMr(run.mrUrl!, {
-          mrStatus: status,
-          pipelineStatus: pipeline,
-          pipelineUrl: mr.head_pipeline?.web_url ?? null,
-          mrCheckedAt: this.#now().toISOString(),
-        });
-        if (status === run.mrStatus && pipeline === run.pipelineStatus) continue;
+        const pipelineUrl = mr.head_pipeline?.web_url ?? null;
+        store.updateMr(run.mrUrl!, { mrStatus: status, pipelineStatus: pipeline, pipelineUrl, mrCheckedAt: this.#now().toISOString() });
+        // A new pipeline that failed like the last one counts as a change (its URL differs).
+        const changed = status !== run.mrStatus || pipeline !== run.pipelineStatus || pipelineUrl !== run.pipelineUrl;
+        // Asked on every check, not only on a change: a fix waits while the task has a run going.
+        const fix =
+          this.#fixer && status === "opened" && pipeline === "failed" && mr.head_pipeline
+            ? await this.#fixer.handle(run, { id: mr.head_pipeline.id, url: pipelineUrl }, client, ref.project)
+            : null;
+        if (!changed && fix?.kind !== "queued") continue;
         const change: MrChange = {
           run: store.get(run.id)!,
           status: { from: run.mrStatus, to: status },
           pipeline: { from: run.pipelineStatus, to: pipeline },
+          fix,
           taskDone: false,
           taskError: null,
         };

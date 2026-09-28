@@ -435,6 +435,22 @@ function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; onSaved:
           <Checkbox checked={mr.doneOnMerge} onCheckedChange={(v) => set("doneOnMerge", v === true)} />
           {t("projects.doneOnMerge")}
         </label>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox checked={mr.fixCi} onCheckedChange={(v) => set("fixCi", v === true)} />
+          {t("projects.fixCi")}
+        </label>
+        {mr.fixCi ? (
+          <div className={FORM_GRID}>
+            <Label htmlFor="gl-fixes">{t("projects.maxCiFixes")}</Label>
+            <NativeSelect id="gl-fixes" value={String(mr.maxCiFixes)} onChange={(e) => set("maxCiFixes", Number(e.target.value))}>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <NativeSelectOption key={n} value={String(n)}>
+                  {n}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={() => void save()} disabled={action.busy}>
             {t("projects.save")}

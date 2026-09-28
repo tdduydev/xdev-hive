@@ -17,9 +17,20 @@ export interface MockMr {
   head_pipeline?: { id: number; status: string; web_url: string } | null;
 }
 
+export interface MockJob {
+  id: number;
+  name: string;
+  stage: string;
+  status: string;
+  allow_failure?: boolean;
+  trace: string;
+}
+
 export interface MockGitLab {
   base: string;
   mrs: MockMr[];
+  /** Jobs by pipeline id. */
+  jobs: Record<number, MockJob[]>;
   calls: Array<{ method: string; path: string; body: any }>;
   reset(): void;
   close(): Promise<void>;
@@ -37,9 +48,11 @@ export async function startMockGitLab(token: string): Promise<MockGitLab> {
   const gl: MockGitLab = {
     base: "",
     mrs: [],
+    jobs: {},
     calls: [],
     reset() {
       gl.mrs = [];
+      gl.jobs = {};
       gl.calls = [];
     },
     close: () => new Promise((r) => server.close(() => r())),
@@ -73,6 +86,19 @@ export async function startMockGitLab(token: string): Promise<MockGitLab> {
       const mr = gl.mrs.find((m) => m.iid === Number(one[1]));
       if (!mr) return send(404, { message: "404 Not Found" });
       return send(200, { state: "opened", head_pipeline: null, ...mr });
+    }
+    const jobs = /^\/api\/v4\/projects\/(?:42|group%2Fdemo)\/pipelines\/(\d+)\/jobs$/.exec(p);
+    if (jobs && req.method === "GET") {
+      const scope = url.searchParams.getAll("scope[]");
+      const list = (gl.jobs[Number(jobs[1])] ?? []).filter((j) => !scope.length || scope.includes(j.status));
+      return send(200, list.map(({ trace: _trace, ...j }) => ({ ...j, web_url: `${gl.base}/group/demo/-/jobs/${j.id}` })));
+    }
+    const trace = /^\/api\/v4\/projects\/(?:42|group%2Fdemo)\/jobs\/(\d+)\/trace$/.exec(p);
+    if (trace && req.method === "GET") {
+      const job = Object.values(gl.jobs).flat().find((j) => j.id === Number(trace[1]));
+      if (!job) return send(404, { message: "404 Not Found" });
+      res.writeHead(200, { "content-type": "text/plain" });
+      return res.end(job.trace);
     }
     const put = /^\/api\/v4\/projects\/42\/merge_requests\/(\d+)$/.exec(p);
     if (put && req.method === "PUT") {

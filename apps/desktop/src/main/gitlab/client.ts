@@ -32,6 +32,15 @@ export interface GitLabMrDetail extends GitLabMr {
   head_pipeline?: GitLabPipeline | null;
 }
 
+export interface GitLabJob {
+  id: number;
+  name: string;
+  stage: string;
+  status: string;
+  web_url: string;
+  allow_failure?: boolean;
+}
+
 export interface MrBody {
   source_branch?: string;
   target_branch: string;
@@ -66,12 +75,12 @@ export class GitLabClient {
     return new URL(this.baseUrl).hostname.toLowerCase();
   }
 
-  async #request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  async #request<T>(method: string, path: string, body?: unknown, raw = false): Promise<T> {
     let res: Response;
     try {
       res = await this.#fetch(`${this.baseUrl}/api/v4${path}`, {
         method,
-        headers: { "PRIVATE-TOKEN": this.#token, accept: "application/json", ...(body ? { "content-type": "application/json" } : {}) },
+        headers: { "PRIVATE-TOKEN": this.#token, accept: raw ? "text/plain" : "application/json", ...(body ? { "content-type": "application/json" } : {}) },
         body: body ? JSON.stringify(body) : undefined,
         signal: AbortSignal.timeout(20_000),
       });
@@ -80,6 +89,7 @@ export class GitLabClient {
       throw new HiveError("bad_request", `Không kết nối được GitLab ${this.baseUrl}: ${reason}`, { key: "errors.gitlabUnreachable", vars: { url: this.baseUrl, reason } });
     }
     const text = await res.text();
+    if (raw && res.ok) return text as T;
     let json: unknown = null;
     try {
       json = text ? JSON.parse(text) : null;
@@ -107,6 +117,15 @@ export class GitLabClient {
   /** `project` is the numeric id or the path (group/project). */
   mergeRequest(project: string | number, iid: number): Promise<GitLabMrDetail> {
     return this.#request("GET", `/projects/${encodeURIComponent(String(project))}/merge_requests/${iid}`);
+  }
+
+  failedJobs(project: string | number, pipelineId: number): Promise<GitLabJob[]> {
+    return this.#request("GET", `/projects/${encodeURIComponent(String(project))}/pipelines/${pipelineId}/jobs?scope[]=failed&per_page=50`);
+  }
+
+  /** The job's log as plain text. */
+  jobTrace(project: string | number, jobId: number): Promise<string> {
+    return this.#request("GET", `/projects/${encodeURIComponent(String(project))}/jobs/${jobId}/trace`, undefined, true);
   }
 
   createMergeRequest(projectId: number, body: MrBody): Promise<GitLabMr> {
