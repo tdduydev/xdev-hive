@@ -53,6 +53,7 @@ const reportedProfile = z.object({
   enabled: z.boolean(),
   account: z.string().max(100).nullable(),
   installed: z.boolean(),
+  loggedIn: z.boolean().nullable().default(null),
   cooldownUntil: z.string().max(40).nullable(),
   runs: z.number().int().min(0),
   rateLimited: z.number().int().min(0),

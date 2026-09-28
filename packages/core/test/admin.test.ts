@@ -43,9 +43,23 @@ describe("admin portal", () => {
     const [m] = await hive.call("admin.machines", {}, admin);
     assert.equal(m!.setupAt, "2026-09-27T07:59:00.000Z");
     assert.equal(m!.setup?.machine[1]!.id, "cli:codex");
-    assert.deepEqual(m!.profiles, [profile]);
+    assert.deepEqual(m!.profiles, [{ ...profile, loggedIn: null }], "an older app does not send loggedIn");
     await assert.rejects(hive.call("admin.machines", {}, viewer), code("forbidden"));
     await assert.rejects(hive.call("admin.machines", {}, mbp), code("forbidden"));
+  });
+
+  it("shows everyone which machine has a subscription signed out or resting", async () => {
+    const hive = new SqliteHive(":memory:");
+    const signedOut = { ...profile, id: "claude-2", loggedIn: false };
+    await beat(hive, mbp, { profiles: [{ ...profile, loggedIn: true }, signedOut] });
+    const [m] = await hive.call("machines.list", {}, viewer);
+    assert.deepEqual(
+      m!.profiles.map((p) => [p.id, p.loggedIn]),
+      [
+        ["claude-1", true],
+        ["claude-2", false],
+      ],
+    );
   });
 
   it("sends an admin's install request to that machine only, and tracks it to the end", async () => {
