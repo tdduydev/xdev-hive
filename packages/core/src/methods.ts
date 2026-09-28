@@ -12,6 +12,7 @@ import {
   type Actor,
   type AuditEntry,
   type CostSummary,
+  type RunNotice,
   type Doc,
   type DocSummary,
   type DocVersion,
@@ -209,6 +210,19 @@ export const schemas = {
     costs: z.array(runCost).max(100).default([]),
   }),
   "machines.list": z.object({}),
+  /** A machine reports a run that failed for good or opened a merge request (for the hub's webhooks). */
+  "runs.report": z.object({
+    kind: z.enum(["failed", "mr"]),
+    project,
+    taskId,
+    taskTitle: z.string().max(300),
+    runId: z.string().regex(/^[\w.-]{1,40}$/),
+    profileId: z.string().max(40).nullable(),
+    role: z.enum(AGENT_ROLES),
+    error: z.string().max(2000).nullable().default(null),
+    mrUrl: z.url({ protocol: /^https?$/ }).max(500).nullable().default(null),
+    mrIid: z.number().int().positive().nullable().default(null),
+  }),
   "costs.summary": z.object({}),
   "machines.remove": z.object({ id: z.string().min(1).max(200) }),
 
@@ -274,6 +288,7 @@ export interface MethodOutput {
   "machines.heartbeat": { duplicate: boolean; cooldowns: QuotaCooldown[]; policy: TeamPolicy; commands: MachineCommand[] };
   "machines.list": Machine[];
   "costs.summary": CostSummary;
+  "runs.report": RunNotice;
   "machines.remove": { removed: boolean };
   "cooldowns.list": QuotaCooldown[];
   /** null when `until` is already past (nothing to rest). */
@@ -317,6 +332,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "machines.heartbeat": "agent",
   "machines.list": "viewer",
   "costs.summary": "viewer",
+  "runs.report": "agent",
   "machines.remove": "admin",
   "cooldowns.list": "viewer",
   "cooldowns.set": "agent",

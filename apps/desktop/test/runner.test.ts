@@ -8,11 +8,11 @@ import { AGENT_TEMPLATES, type Actor, type AgentProfile, type HiveBackend, type 
 import { CODEGRAPH_MCP, SUPERPOWERS_PLUGIN } from "../src/main/installer.ts";
 import { buildCommand } from "../src/main/runner/command.ts";
 import { outputFormat, parseClaudeResult, parsePlanUsage } from "../src/main/runner/usage.ts";
-import { usageStop, type PlanUsage } from "@xdev-hive/core";
+import { usageStop, type HiveEvent, type PlanUsage } from "@xdev-hive/core";
 import { checkLogin, checkUsage, LoginMonitor, loginCommand, parseLogin, USAGE_ARGS } from "../src/main/runner/login.ts";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { parseResetTime, detectRateLimit } from "../src/main/runner/rate-limit.ts";
-import { Runner, type HubUpdate, type RunnerHost } from "../src/main/runner/runner.ts";
+import { Runner, type HubUpdate, type RunnerHost, type RunnerOptions } from "../src/main/runner/runner.ts";
 import { setMainLocale } from "../src/main/i18n.ts";
 import { pickProfile, waitingReason, type ProfileLoad } from "../src/main/runner/schedule.ts";
 
@@ -40,7 +40,14 @@ async function setup(
   settings: Partial<RunnerSettings> = {},
   mode: "local" | "hub" = "local",
   /** Pass another setup's hive to simulate a second machine on the same hub. */
-  machine: { name?: string; hive?: SqliteHive; report?: RunnerHost["report"]; login?: RunnerHost["login"]; usage?: RunnerHost["usage"] } = {},
+  machine: {
+    name?: string;
+    hive?: SqliteHive;
+    report?: RunnerHost["report"];
+    login?: RunnerHost["login"];
+    usage?: RunnerHost["usage"];
+    afterFinish?: RunnerOptions["afterFinish"];
+  } = {},
 ) {
   const repo = tmp("repo");
   git(repo, "init", "-q", "-b", "main");
@@ -67,7 +74,7 @@ async function setup(
   };
   const dataDir = tmp("data");
   const hubUpdates: HubUpdate[] = [];
-  const runner = new Runner(host, { dataDir, user: "duy", tickMs: 60_000, onHub: (u) => hubUpdates.push(u) });
+  const runner = new Runner(host, { dataDir, user: "duy", tickMs: 60_000, onHub: (u) => hubUpdates.push(u), afterFinish: machine.afterFinish });
   if (!machine.hive) await hive.call("tasks.create", { id: "T-1", project: "demo", title: "Thêm trang cài đặt" }, admin);
   const calls = () =>
     existsSync(record)
@@ -430,6 +437,35 @@ describe("Runner", () => {
     await none.runner.settle();
     assert.match(none.runner.list()[0]!.error ?? "", /chạm ngưỡng dùng của gói sub \(claude-a\)/);
     none.runner.cancel(waiting.id);
+  });
+
+  it("tells the hub about a run that failed for good, not about one that rotated to another subscription", async () => {
+    const events: HiveEvent[] = [];
+    const hive = new SqliteHive(":memory:", { onEvent: (e) => events.push(e) });
+    await hive.call("tasks.create", { id: "T-1", project: "demo", title: "Thêm trang cài đặt" }, admin);
+    const { runner } = await setup([profile("claude-a", "claude", 1, "limit"), profile("claude-b", "claude", 2, "fail")], {}, "hub", { hive });
+    await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const failed = events.filter((e) => e.type === "run.failed");
+    assert.equal(failed.length, 1, "the rate-limited first attempt rotated, so only the last one counts");
+    const notice = (failed[0] as Extract<HiveEvent, { type: "run.failed" }>).run;
+    assert.deepEqual([notice.project, notice.taskId, notice.profileId, notice.machine], ["demo", "T-1", "claude-b", "runner.duy-mbp@duy-macbook"]);
+    assert.match(notice.error ?? "", /3/);
+  });
+
+  it("tells the hub about a merge request it opened", async () => {
+    const events: HiveEvent[] = [];
+    const hive = new SqliteHive(":memory:", { onEvent: (e) => events.push(e) });
+    await hive.call("tasks.create", { id: "T-1", project: "demo", title: "Thêm trang cài đặt" }, admin);
+    const afterFinish = async () => ({ mrState: "created" as const, mrUrl: "https://gitlab.example.com/g/demo/-/merge_requests/7", mrIid: 7 });
+    const { runner } = await setup([profile("claude-a", "claude", 1, "ok")], {}, "hub", { hive, afterFinish });
+    await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    assert.deepEqual(
+      events.filter((e) => e.type === "mr.created").map((e) => [(e as Extract<HiveEvent, { type: "mr.created" }>).run.mrIid, (e as Extract<HiveEvent, { type: "mr.created" }>).run.mrUrl]),
+      [[7, "https://gitlab.example.com/g/demo/-/merge_requests/7"]],
+    );
+    assert.equal(events.filter((e) => e.type === "run.failed").length, 0);
   });
 
   it("rotates to the next subscription when one hits its quota, continuing on the same branch", async () => {

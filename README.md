@@ -26,7 +26,11 @@ Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, 
   - Agent vẫn thấy mục cần xem lại, kèm trường `review`. Trang Memory hiện các file và nút *Vẫn đúng*: lấy file hiện tại làm mốc mới.
 - **Webhook Teams / Slack**: tab *Webhook* trong trang *Quản trị* (chỉ admin của hub) để thêm webhook gửi tin vào kênh.
   - Teams dùng luồng Workflows "Post to a channel when a webhook request is received", tin dạng Adaptive Card. Slack dùng Incoming Webhook.
-  - Sự kiện chọn được: đề xuất chờ duyệt, memory chờ duyệt, yêu cầu cài trên máy và kết quả của nó.
+  - Sự kiện chọn được: đề xuất chờ duyệt, memory chờ duyệt, yêu cầu cài trên máy và kết quả của nó, run lỗi, MR mới.
+  - Run lỗi và MR mới do app desktop ở chế độ hub báo lên (`runs.report`).
+    - Chỉ báo run lỗi hẳn: một lần hết quota rồi chuyển gói khác thì chưa tính. Chỉ báo MR tạo mới, không báo MR được cập nhật.
+    - Lỗi gửi đi là dòng cuối, bỏ ký tự ẩn; nếu trông giống secret thì bị thay bằng `(hidden: …)`.
+    - Tin MR mới có nút mở thẳng MR trên GitLab.
   - Mỗi webhook chọn sự kiện, lọc theo dự án (để trống là tất cả, kể cả dữ liệu chung và yêu cầu cài) và ngôn ngữ tin. Tin có nút mở đúng trang trên hub.
   - URL webhook là bí mật: chỉ nhận `https`, lưu trên hub, trang chỉ hiện dạng che (`https://hooks.slack.com/…x9Qa`). Sửa mà để trống URL thì giữ URL cũ. Lỗi gửi chỉ ghi `HTTP 500`, `timeout` hay `network error`, không ghi URL.
   - Nút *Gửi thử* gửi một tin thử. Lần gửi cuối và lỗi (nếu có) hiện trên thẻ webhook.
