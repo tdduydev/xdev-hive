@@ -54,8 +54,11 @@ App desktop:
 ```bash
 npm run dev:desktop                              # dev
 npm run smoke -w @xdev-hive/desktop              # app + config tạm + agent giả + GitLab giả: hết quota → xoay gói → review chéo → MR
-npm run dist -w @xdev-hive/desktop               # .dmg/.zip (macOS), cần ký để phân phối
+npm run dist -w @xdev-hive/desktop               # bản cài cho máy đang dùng
+npm run release -w @xdev-hive/desktop            # build mọi nền tảng + đăng GitHub Release v<version>
 ```
+
+**Phát hành** (không có CI, chạy trên Mac): tăng `version` trong `apps/desktop/package.json` ở PR, merge, rồi trên checkout sạch của `origin/main` chạy `npm run release -w @xdev-hive/desktop`. Script build macOS (arm64, x64: `.dmg` + `.zip`), Windows (x64, arm64: bộ cài NSIS) và Linux (x64, arm64: AppImage), tạo `SHA256SUMS.txt`, rồi tạo release `v<version>` kèm ghi chú thay đổi. `-- --dry` chỉ build, không đăng. Mac Apple Silicon cần Rosetta 2 (`softwareupdate --install-rosetta --agree-to-license`), vì công cụ đóng gói NSIS và AppImage chỉ có bản Intel. Chưa có chứng chỉ Developer ID: bản macOS ký ad-hoc, người dùng mở lần đầu qua *Privacy & Security → Open Anyway*.
 
 Icon: `npm run icons -w @xdev-hive/desktop` (chỉ chạy trên macOS, vì dùng `swift` và `iconutil`) sinh toàn bộ icon từ cùng một hình học với `HiveLogo`. Kết quả gồm `build/icon.icns` / `icon.ico` / `icon.png` cho electron-builder, `resources/icon.png` (icon cửa sổ Windows/Linux và Dock khi chạy dev), `favicon.svg` và `apple-touch-icon.png` cho hub. Các file này được commit sẵn. Muốn đổi hình hay màu thì sửa `scripts/icons.mjs` rồi chạy lại.
 
@@ -177,7 +180,7 @@ npm run token -w @xdev-hive/web -- create ci-gitlab agent   # token không thu�
 - Backup ngay (ví dụ trước khi làm việc rủi ro): `npm run backup -w @xdev-hive/web -- [thư mục] [số bản giữ]`. Lệnh này chỉ đọc file, không migrate.
 - Mặc định, compose để backup trên volume `hive-backups`, cùng đĩa với database. Để backup còn nguyên khi mất đĩa, trỏ `HIVE_BACKUP_PATH=/mnt/backup/hive` sang đĩa khác (thư mục phải cho uid 1000 ghi), hoặc đồng bộ thư mục backup ra ngoài.
 - **Khôi phục**: dừng hub, chép bản backup đè lên `hub.db`, xoá `hub.db-wal` và `hub.db-shm` nếu có, rồi khởi động lại.
-- **Nâng cấp**: `git pull && docker compose -f deploy/compose.yaml up -d --build`. Hub tự backup trước khi chạy migration mới.
+- **Nâng cấp**: trên server chạy `bash deploy/update.sh` (sau Cloudflare Tunnel: `HIVE_TUNNEL=1 bash deploy/update.sh`): lấy `origin/main`, build lại, chờ hub healthy. Hub tự backup trước khi chạy migration mới.
 
 Máy của từng người: app desktop → chế độ **Hub dùng chung** → URL + đăng nhập bằng tài khoản (hoặc dán token). Shim `hive-mcp` tự chuyển tiếp lên hub, nên config MCP trong repo giống nhau cho mọi người và không chứa token.
 
