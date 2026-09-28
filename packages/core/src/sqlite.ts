@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { can, levelOn, type Level } from "./access.ts";
 import { HiveError, type ErrorText } from "./errors.ts";
-import { parseDocKey, titleFromSlug } from "./keys.ts";
+import { agentsDocKey, decisionsDocKey, parseDocKey, titleFromSlug } from "./keys.ts";
 import { EMPTY_POLICY } from "./policy.ts";
 import {
   authorize,
@@ -135,6 +135,9 @@ const MIGRATIONS: string[] = [
   CREATE TABLE task_deps(task_id TEXT NOT NULL, depends_on TEXT NOT NULL, PRIMARY KEY(task_id, depends_on));
   CREATE INDEX task_deps_on ON task_deps(depends_on);
   `,
+  `
+  ALTER TABLE docs ADD COLUMN paths TEXT NOT NULL DEFAULT '[]';
+  `,
 ];
 
 /** Run costs older than this are dropped; the summary only looks back 30 days. */
@@ -242,6 +245,7 @@ const toSummary = (r: Row): DocSummary => ({
   title: str(r.title),
   version: num(r.version),
   includeInAgents: num(r.include_in_agents) === 1,
+  paths: JSON.parse(str(r.paths ?? "[]")) as string[],
   updatedBy: str(r.updated_by),
   updatedAt: str(r.updated_at),
 });
@@ -544,11 +548,16 @@ export class SqliteHive implements HiveBackend {
   #writeDoc(
     key: string,
     content: string,
-    meta: { title?: string; includeInAgents?: boolean; note?: string },
+    meta: { title?: string; includeInAgents?: boolean; paths?: string[]; note?: string },
     author: string,
     source: WriteSource | null = null,
   ): Doc {
     const parsed = parseDocKey(key);
+    const paths = [...new Set(meta.paths ?? this.#getDoc(key)?.paths ?? [])];
+    // AGENTS.md and docs/decisions.md are the repo-wide docs themselves.
+    if (paths.length && parsed.project && (key === agentsDocKey(parsed.project) || key === decisionsDocKey(parsed.project))) {
+      throw new HiveError("bad_request", `${key} is for the whole repo and cannot be limited to paths.`, { key: "errors.docPathsWholeRepo", vars: { key } });
+    }
     assertNoSecret(content, "Document content");
     assertNoHidden(content, "Document content");
     if (meta.title) assertNoHidden(meta.title, "Title");
@@ -560,13 +569,13 @@ export class SqliteHive implements HiveBackend {
     const include = meta.includeInAgents ?? existing?.includeInAgents ?? parsed.scope === "org";
     this.db
       .prepare(
-        `INSERT INTO docs(key, scope, project, title, content, version, include_in_agents, updated_by, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO docs(key, scope, project, title, content, version, include_in_agents, paths, updated_by, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(key) DO UPDATE SET title = excluded.title, content = excluded.content,
-           version = excluded.version, include_in_agents = excluded.include_in_agents,
+           version = excluded.version, include_in_agents = excluded.include_in_agents, paths = excluded.paths,
            updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
       )
-      .run(key, parsed.scope, parsed.project, title, content, version, include ? 1 : 0, author, now);
+      .run(key, parsed.scope, parsed.project, title, content, version, include ? 1 : 0, JSON.stringify(paths), author, now);
     this.db
       .prepare("INSERT INTO doc_versions(key, version, content, author, note, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
       .run(key, version, content, author, meta.note ?? "", sourceJson(source), now);
@@ -696,7 +705,7 @@ export class SqliteHive implements HiveBackend {
       "docs.list": ({ project, scope }) => {
         const rows = db
           .prepare(
-            `SELECT key, scope, project, title, version, include_in_agents, updated_by, updated_at FROM docs
+            `SELECT key, scope, project, title, version, include_in_agents, paths, updated_by, updated_at FROM docs
              WHERE (?1 IS NULL OR scope = ?1) AND (?2 IS NULL OR scope = 'org' OR project = ?2)
              ORDER BY scope, project, key`,
           )

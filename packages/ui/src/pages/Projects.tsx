@@ -27,6 +27,7 @@ const ACTION_TONE: Record<FileAction["action"], string> = {
   updated: "info",
   unchanged: "neutral",
   skipped: "warn",
+  removed: "neutral",
 };
 
 /** Inline code (paths, keys) inside explanatory text. */

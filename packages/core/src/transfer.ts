@@ -76,6 +76,8 @@ export async function transferHive(from: TransferSide, to: TransferSide, opts: T
             content: doc.content,
             title: doc.title,
             includeInAgents: doc.includeInAgents,
+            // A source from before paths has none.
+            ...(doc.paths?.length ? { paths: doc.paths } : {}),
             baseVersion: target?.version ?? 0,
             note: `Chuyển từ ${from.label}`,
           });

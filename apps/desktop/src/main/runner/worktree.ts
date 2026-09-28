@@ -2,7 +2,7 @@
 import { copyFileSync, existsSync, mkdirSync, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { HiveError } from "@xdev-hive/core";
+import { HiveError, RULES_DIR } from "@xdev-hive/core";
 import { git, gitErrorText, isGitRepo } from "../git.ts";
 import { tr } from "../i18n.ts";
 import { RENDERED_FILES } from "../installer.ts";
@@ -82,7 +82,13 @@ export function ensureWorktree(repo: string, dir: string, taskId: string, knownB
 export function commitAll(dir: string, message: string, exclude: string[]): { sha: string | null; error: string | null } {
   try {
     if (!git(dir, ["status", "--porcelain"])) return { sha: null, error: null };
-    git(dir, ["add", "-A", "--", ".", ...[...exclude, ...RENDERED_FILES].map((f) => `:(exclude)${f}`)]);
+    // Nested AGENTS.md with Hive's block, as the branch had them (the agent may have taken the block out).
+    const nested = (tryGit(dir, ["grep", "-l", "--fixed-strings", "xdev-hive:start", "HEAD", "--", ":(glob)**/AGENTS.md"]) ?? "")
+      .split("\n")
+      .map((l) => l.replace(/^HEAD:/, ""))
+      .filter((f) => f && f !== "AGENTS.md");
+    const keepOut = [...exclude, ...RENDERED_FILES, RULES_DIR, ...nested];
+    git(dir, ["add", "-A", "--", ".", ...keepOut.map((f) => `:(exclude)${f}`)]);
     if (!git(dir, ["diff", "--cached", "--name-only"])) return { sha: null, error: null };
     git(dir, ["-c", `core.hooksPath=${os.devNull}`, "commit", "-m", message]);
     return { sha: git(dir, ["rev-parse", "--short", "HEAD"]), error: null };
