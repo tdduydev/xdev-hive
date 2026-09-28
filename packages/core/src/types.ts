@@ -76,6 +76,12 @@ export interface Memory {
   status: MemoryStatus;
   source: WriteSource | null;
   createdAt: string;
+  /** Last time memory_search gave it to an agent; null: never. */
+  lastUsedAt: string | null;
+  /** How many agent searches returned it. */
+  useCount: number;
+  /** Neither used nor written within the stale period: agents' searches leave it out until someone keeps it. */
+  stale: boolean;
 }
 
 export const TASK_STATUSES = ["todo", "doing", "review", "done", "blocked"] as const;

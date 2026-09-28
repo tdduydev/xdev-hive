@@ -106,7 +106,8 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     {
       title: "Search team memory",
       description:
-        'Search decisions, conventions, gotchas and context recorded by any agent on this project, plus team-wide entries (project: null means shared by every project). Empty query returns the latest entries.',
+        'Search decisions, conventions, gotchas and context recorded by any agent on this project, plus team-wide entries (project: null means shared by every project). Empty query returns the latest entries. ' +
+        "Entries no agent used for a long time are left out until a person keeps them.",
       inputSchema: { project, query: z.string().optional(), limit: z.number().int().min(1).max(50).optional() },
       annotations: readOnly,
     },

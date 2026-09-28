@@ -114,6 +114,10 @@ const MIGRATIONS: string[] = [
     finished_at TEXT NOT NULL, PRIMARY KEY(machine_id, run_id));
   CREATE INDEX run_costs_at ON run_costs(finished_at);
   `,
+  `
+  ALTER TABLE memory ADD COLUMN last_used_at TEXT;
+  ALTER TABLE memory ADD COLUMN use_count INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 /** Run costs older than this are dropped; the summary only looks back 30 days. */
@@ -223,7 +227,8 @@ const toProposal = (r: Row): Proposal => ({
 });
 /** Shared (team-wide) memory is stored with an empty project: no project key can be empty. */
 const SHARED = "";
-const toMemory = (r: Row): Memory => ({
+/** staleBefore: entries neither used nor written since then are stale; null turns staleness off. */
+const toMemory = (r: Row, staleBefore: string | null): Memory => ({
   id: num(r.id),
   project: str(r.project) === SHARED ? null : str(r.project),
   kind: str(r.kind) as Memory["kind"],
@@ -233,6 +238,9 @@ const toMemory = (r: Row): Memory => ({
   status: str(r.status) as Memory["status"],
   source: sourceOf(r.source),
   createdAt: str(r.created_at),
+  lastUsedAt: strOrNull(r.last_used_at),
+  useCount: num(r.use_count ?? 0),
+  stale: staleBefore !== null && (strOrNull(r.last_used_at) ?? str(r.created_at)) < staleBefore,
 });
 const toTask = (r: Row): Task => ({
   id: str(r.id),
@@ -282,6 +290,8 @@ function ftsQuery(text: string): string | null {
 export interface SqliteHiveOptions {
   /** When true, memory written by non-admins stays `pending` (hidden from search) until an admin approves it. */
   memoryRequiresApproval?: boolean;
+  /** Memory no agent searched up (nor anyone wrote or kept) for this many days is stale. 0: never. Default 90. */
+  memoryStaleDays?: number;
   /** Injectable clock for tests. */
   now?: () => Date;
 }
@@ -298,7 +308,7 @@ export class SqliteHive implements HiveBackend {
       mkdirSync(path.dirname(dbOrPath), { recursive: true });
     }
     this.db = typeof dbOrPath === "string" ? new DatabaseSync(dbOrPath) : dbOrPath;
-    this.#opts = { memoryRequiresApproval: false, now: () => new Date(), ...opts };
+    this.#opts = { memoryRequiresApproval: false, memoryStaleDays: 90, now: () => new Date(), ...opts };
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;");
     this.#migrate();
     this.#handlers = this.#buildHandlers();
@@ -362,6 +372,7 @@ export class SqliteHive implements HiveBackend {
       case "memory.write":
         return this.#need(actor, i.shared ? null : i.project, "contribute", i.shared ? "Shared memory" : `Project ${i.project}`);
       case "memory.approve":
+      case "memory.keep":
       case "memory.remove": {
         const row = this.db.prepare("SELECT project FROM memory WHERE id = ?").get(i.id) as Row | undefined;
         if (row) this.#need(actor, str(row.project) === SHARED ? null : str(row.project), "manage", `Memory #${i.id}`);
@@ -501,7 +512,11 @@ export class SqliteHive implements HiveBackend {
   #getMemory(id: number): Memory {
     const row = this.db.prepare("SELECT * FROM memory WHERE id = ?").get(id) as Row | undefined;
     if (!row) throw new HiveError("not_found", `Memory #${id} not found.`, { key: "errors.memoryNotFound", vars: { id } });
-    return toMemory(row);
+    return toMemory(row, this.#staleBefore());
+  }
+
+  #staleBefore(): string | null {
+    return this.#opts.memoryStaleDays > 0 ? this.#now(-this.#opts.memoryStaleDays * 24 * 60) : null;
   }
 
   #getTask(id: string): Task | null {
@@ -648,36 +663,55 @@ export class SqliteHive implements HiveBackend {
         return this.#getProposal(id);
       },
 
-      "memory.search": ({ project, query, limit, includeShared, anyProject }) => {
+      "memory.search": ({ project, query, limit, includeShared, anyProject, includeStale }, actor) => {
         const match = ftsQuery(query);
-        // ?2 = the project (or shared when none), ?3 = also shared entries, ?5 = every project.
-        const scope = `(?5 = 1 OR m.project = ?2 OR (?3 = 1 AND m.project = ''))`;
+        // ?2 = the project (or shared when none), ?3 = also shared entries, ?5 = every project, ?6 = the stale cutoff ('' keeps all).
+        const scope = `(?5 = 1 OR m.project = ?2 OR (?3 = 1 AND m.project = '')) AND COALESCE(m.last_used_at, m.created_at) >= ?6`;
         const own = project ?? SHARED;
         const shared = includeShared ? 1 : 0;
-        const rows = match
-          ? db
-              .prepare(
-                `SELECT m.* FROM memory_fts f JOIN memory m ON m.id = f.rowid
-                 WHERE memory_fts MATCH ?1 AND ${scope} AND m.status = 'approved'
-                 ORDER BY bm25(memory_fts) LIMIT ?4`,
-              )
-              .all(match, own, shared, limit, anyProject ? 1 : 0)
-          : db
-              .prepare(`SELECT m.* FROM memory m WHERE ${scope} AND m.status = 'approved' ORDER BY m.id DESC LIMIT ?4`)
-              .all(null, own, shared, limit, anyProject ? 1 : 0);
-        return (rows as Row[]).map(toMemory);
+        const staleBefore = this.#staleBefore();
+        const cutoff = includeStale || staleBefore === null ? "" : staleBefore;
+        const rows = (
+          match
+            ? db
+                .prepare(
+                  `SELECT m.* FROM memory_fts f JOIN memory m ON m.id = f.rowid
+                   WHERE memory_fts MATCH ?1 AND ${scope} AND m.status = 'approved'
+                   ORDER BY bm25(memory_fts) LIMIT ?4`,
+                )
+                .all(match, own, shared, limit, anyProject ? 1 : 0, cutoff)
+            : db
+                .prepare(`SELECT m.* FROM memory m WHERE ${scope} AND m.status = 'approved' ORDER BY m.id DESC LIMIT ?4`)
+                .all(null, own, shared, limit, anyProject ? 1 : 0, cutoff)
+        ) as Row[];
+        // What an agent was given counts as used; people browsing the page do not.
+        if (actor.role === "agent" && rows.length) {
+          const now = this.#now();
+          const touch = db.prepare("UPDATE memory SET last_used_at = ?, use_count = use_count + 1 WHERE id = ?");
+          for (const r of rows) {
+            touch.run(now, num(r.id));
+            r.last_used_at = now;
+            r.use_count = num(r.use_count ?? 0) + 1;
+          }
+        }
+        return rows.map((r) => toMemory(r, staleBefore));
       },
 
-      "memory.list": ({ project, includeShared, status, limit }) =>
-        (
+      "memory.list": ({ project, includeShared, status, stale, limit }) => {
+        const staleBefore = this.#staleBefore();
+        // ?5: only entries older than this cutoff ('' matches nothing, so staleness off lists none).
+        const onlyStale = stale ? (staleBefore ?? "") : null;
+        return (
           db
             .prepare(
               `SELECT * FROM memory
                WHERE (?1 IS NULL OR project = ?1 OR (?2 = 1 AND project = '')) AND (?3 IS NULL OR status = ?3)
+                 AND (?5 IS NULL OR COALESCE(last_used_at, created_at) < ?5)
                ORDER BY id DESC LIMIT ?4`,
             )
-            .all(project === undefined ? null : (project ?? SHARED), includeShared ? 1 : 0, status ?? null, limit) as Row[]
-        ).map(toMemory),
+            .all(project === undefined ? null : (project ?? SHARED), includeShared ? 1 : 0, status ?? null, limit, onlyStale) as Row[]
+        ).map((r) => toMemory(r, staleBefore));
+      },
 
       "memory.write": (input, actor) => {
         assertNoSecret(input.content, "Memory content");
@@ -704,6 +738,12 @@ export class SqliteHive implements HiveBackend {
       "memory.approve": ({ id }) => {
         this.#getMemory(id);
         db.prepare("UPDATE memory SET status = 'approved' WHERE id = ?").run(id);
+        return this.#getMemory(id);
+      },
+
+      "memory.keep": ({ id }) => {
+        this.#getMemory(id);
+        db.prepare("UPDATE memory SET last_used_at = ? WHERE id = ?").run(this.#now(), id);
         return this.#getMemory(id);
       },
 
