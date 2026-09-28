@@ -33,6 +33,7 @@ import {
 import {
   configPath,
   configSchema,
+  githubSettingsSchema,
   gitlabSettingsSchema,
   loadConfig,
   localDbPath,
@@ -43,6 +44,7 @@ import {
   SqliteHive,
   type HiveConfig,
 } from "@xdev-hive/core/node";
+import { GitHubClient } from "./github/client.ts";
 import { GitLabClient } from "./gitlab/client.ts";
 import { setMainLocale, tr } from "./i18n.ts";
 import { MergeRequester, type MrHost } from "./gitlab/mr.ts";
@@ -122,6 +124,7 @@ function settings(): DesktopSettings {
     dbPath: localDbPath(config),
     runner: config.runner,
     gitlab: { url: config.gitlab.url, hasToken: config.gitlab.token.length > 0, mr: config.gitlab.mr },
+    github: { url: config.github.url, hasToken: config.github.token.length > 0 },
   };
 }
 
@@ -160,6 +163,14 @@ async function updateSettings(patch: DesktopSettingsPatch): Promise<DesktopSetti
       mr: { ...next.gitlab.mr, ...g.mr },
     });
     if (next.gitlab.url && !/^https?:\/\//.test(next.gitlab.url)) throw new HiveError("bad_request", "GitLab URL phải bắt đầu bằng http(s)://", { key: "errors.gitlabUrl" });
+  }
+  if (patch.github) {
+    const g = patch.github;
+    next.github = githubSettingsSchema.parse({
+      url: typeof g.url === "string" && g.url.trim() ? g.url.trim().replace(/\/+$/, "") : next.github.url,
+      token: typeof g.token === "string" && g.token.trim() ? g.token.trim() : next.github.token,
+    });
+    if (!/^https?:\/\//.test(next.github.url)) throw new HiveError("bad_request", "GitHub URL phải bắt đầu bằng http(s)://", { key: "errors.githubUrl" });
   }
   if (next.mode === "hub") {
     if (!/^https?:\/\//.test(next.hub.url) || !next.hub.token) {
@@ -343,11 +354,20 @@ async function checkProfile(id: string): Promise<ProfileCheck> {
   return { ok: version.ok && login?.loggedIn !== false, path: bin, output: `${version.output}\n${signIn}` };
 }
 
-function updateProject(name: string, patch: { gitlabProject?: string | null; targetBranch?: string | null }) {
+function updateProject(name: string, patch: { gitlabProject?: string | null; githubRepo?: string | null; targetBranch?: string | null }) {
   const current = project(name);
   const clean = (v: string | null | undefined, keep: string | undefined) =>
     v === undefined ? keep : v === null || !v.trim() ? undefined : v.trim();
-  const next = { ...current, gitlabProject: clean(patch?.gitlabProject, current.gitlabProject), targetBranch: clean(patch?.targetBranch, current.targetBranch) };
+  const githubRepo = clean(patch?.githubRepo, current.githubRepo);
+  if (githubRepo && !/^[\w.-]+\/[\w.-]+$/.test(githubRepo)) {
+    throw new HiveError("bad_request", "GitHub repo có dạng owner/repo.", { key: "errors.githubRepoFormat" });
+  }
+  const next = {
+    ...current,
+    gitlabProject: clean(patch?.gitlabProject, current.gitlabProject),
+    githubRepo,
+    targetBranch: clean(patch?.targetBranch, current.targetBranch),
+  };
   return persist({ ...config, projects: config.projects.map((p) => (p.name === name ? next : p)) });
 }
 
@@ -355,6 +375,15 @@ async function checkGitLab(): Promise<GitLabCheck> {
   try {
     const user = await new GitLabClient(config.gitlab.url, config.gitlab.token, gitlabFetch).user();
     return { ok: true, user: user.username, message: tr("desktop.gitlabSignedIn", { name: user.name, username: user.username }) };
+  } catch (err) {
+    return { ok: false, user: null, message: toErrorPayload(err).message };
+  }
+}
+
+async function checkGitHub(): Promise<GitLabCheck> {
+  try {
+    const user = await new GitHubClient(config.github.url, config.github.token, gitlabFetch).user();
+    return { ok: true, user: user.login, message: tr("desktop.githubSignedIn", { name: user.name ?? user.login, username: user.login }) };
   } catch (err) {
     return { ok: false, user: null, message: toErrorPayload(err).message };
   }
@@ -466,8 +495,9 @@ function onRunnerEvent(event: RunnerEvent): void {
   if (!Notification.isSupported()) return;
   const r = event.run;
   const title = `${r.taskId} · ${r.profileId ?? ""}`;
+  const pr = /\/pull\/\d+$/.test(r.mrUrl ?? "");
   const mr = r.mrUrl
-    ? ` ${tr(r.mrState === "updated" ? "desktop.mrUpdated" : "desktop.mrCreated", { iid: r.mrIid ?? "", draft: r.mrDraft ? " (draft)" : "" })}`
+    ? ` ${tr(r.mrState === "updated" ? (pr ? "desktop.prUpdated" : "desktop.mrUpdated") : pr ? "desktop.prCreated" : "desktop.mrCreated", { iid: r.mrIid ?? "", draft: r.mrDraft ? " (draft)" : "" })}`
     : r.mrState === "failed"
       ? ` ${tr("desktop.mrFailed", { note: r.mrNote ?? "" })}`
       : "";
@@ -608,6 +638,7 @@ function registerIpc(): void {
   handle("desktop:pickCandidate", (id: string) => runner.pick(id));
   handle("desktop:updateProject", updateProject);
   handle("desktop:checkGitLab", checkGitLab);
+  handle("desktop:checkGitHub", checkGitHub);
   handle("desktop:createMergeRequest", createMergeRequest);
 }
 
@@ -767,6 +798,7 @@ if (!app.requestSingleInstanceLock()) {
     }
     const mrHost: MrHost = {
       gitlab: () => config.gitlab,
+      github: () => config.github,
       projects: () => config.projects,
       backend: () => backend,
       mode: () => config.mode,

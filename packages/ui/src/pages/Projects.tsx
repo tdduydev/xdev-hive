@@ -54,6 +54,7 @@ export function ProjectsPage() {
           <ModeCard settings={settings.data} onSaved={settings.reload} />
           <TransferCard settings={settings.data} />
           <GitLabCard settings={settings.data} onSaved={settings.reload} />
+          <GitHubCard settings={settings.data} onSaved={settings.reload} />
           <ProjectsCard settings={settings.data} onChanged={settings.reload} />
         </>
       ) : null}
@@ -505,10 +506,76 @@ function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; onSaved:
   );
 }
 
+function GitHubCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: () => void }) {
+  const { client } = useHive();
+  const t = useT();
+  const g = settings.github;
+  const [url, setUrl] = useState(g.url);
+  const [token, setToken] = useState("");
+  const [check, setCheck] = useState<GitLabCheck | null>(null);
+  const [saved, setSaved] = useState(false);
+  const action = useAction();
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>GitHub pull request</CardTitle>
+        <CardDescription className="break-words">{t("projects.githubHint")}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className={FORM_GRID}>
+          <Label htmlFor="gh-url">{t("projects.githubUrl")}</Label>
+          <Input id="gh-url" className="font-mono" placeholder="https://github.com" value={url} onChange={(e) => (setSaved(false), setUrl(e.target.value))} />
+          <Label htmlFor="gh-token">Access token</Label>
+          <Input
+            id="gh-token"
+            className="font-mono"
+            type="password"
+            autoComplete="off"
+            placeholder={g.hasToken ? t("projects.savedKeep") : "github_pat_… (fine-grained)"}
+            value={token}
+            onChange={(e) => (setSaved(false), setToken(e.target.value))}
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            onClick={() =>
+              void action.run(async () => {
+                await client.desktop!.updateSettings({ github: { url, token } });
+                setToken("");
+                setSaved(true);
+                onSaved();
+              })
+            }
+            disabled={action.busy}
+          >
+            {t("projects.save")}
+          </Button>
+          <Button
+            variant="outline"
+            disabled={action.busy || (!g.hasToken && !token)}
+            onClick={() => void action.run(async () => setCheck(await client.desktop!.checkGitHub()))}
+          >
+            {t("projects.checkConnection")}
+          </Button>
+          {saved ? <span className="text-sm text-success">{t("agents.saved")}</span> : null}
+        </div>
+        {check ? (
+          <Notice tone={check.ok ? "ok" : "error"} className="whitespace-pre-wrap">
+            {check.message}
+          </Notice>
+        ) : null}
+        <ErrorNote error={action.error} />
+      </CardContent>
+    </Card>
+  );
+}
+
 function ProjectGitLab({ project, onSaved }: { project: DesktopProject; onSaved: () => void }) {
   const { client } = useHive();
   const t = useT();
   const [gitlabProject, setGitlabProject] = useState(project.gitlabProject ?? "");
+  const [githubRepo, setGithubRepo] = useState(project.githubRepo ?? "");
   const [targetBranch, setTargetBranch] = useState(project.targetBranch ?? "");
   const action = useAction();
   return (
@@ -517,7 +584,11 @@ function ProjectGitLab({ project, onSaved }: { project: DesktopProject; onSaved:
       onSubmit={(e) => {
         e.preventDefault();
         void action.run(async () => {
-          await client.desktop!.updateProject(project.name, { gitlabProject: gitlabProject || null, targetBranch: targetBranch || null });
+          await client.desktop!.updateProject(project.name, {
+            gitlabProject: gitlabProject || null,
+            githubRepo: githubRepo || null,
+            targetBranch: targetBranch || null,
+          });
           onSaved();
         });
       }}
@@ -528,6 +599,13 @@ function ProjectGitLab({ project, onSaved }: { project: DesktopProject; onSaved:
         value={gitlabProject}
         onChange={(e) => setGitlabProject(e.target.value)}
         aria-label={t("projects.gitlabProjectOf", { project: project.name })}
+      />
+      <Input
+        className="min-w-48 flex-[2] font-mono"
+        placeholder={t("projects.githubRepoPlaceholder")}
+        value={githubRepo}
+        onChange={(e) => setGithubRepo(e.target.value)}
+        aria-label={t("projects.githubRepoOf", { project: project.name })}
       />
       <Input
         className="min-w-40 flex-1 font-mono sm:max-w-52"
@@ -603,7 +681,7 @@ function ProjectsCard({ settings, onChanged }: { settings: DesktopSettings; onCh
                       <a href="#/setup">{t("overview.settings")}</a>
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setGitlabOpen(gitlabOpen === p.name ? null : p.name)} aria-expanded={gitlabOpen === p.name}>
-                      GitLab
+                      {t("projects.forgeOf")}
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => void desktop.showInFolder(p.repo)}>
                       {t("projects.open")}
