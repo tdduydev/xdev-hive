@@ -35,7 +35,7 @@ if (cmd === "backup") {
   try {
     if (cmd === "user" && sub === "create" && arg) {
       const { user, password } = users.create({ username: arg, admin: extra === "admin" });
-      hive.audit(cli, "users.create", user.username, user.admin ? "admin" : "member");
+      hive.audit(cli, "users.create", user.username, user.admin ? "admin" : "member", { key: user.admin ? "role.admin" : "role.member" });
       console.log(`${user.username}${user.admin ? " (admin)" : ""}: temporary password\n${password}`);
     } else if (cmd === "user" && sub === "reset" && arg) {
       const user = users.list().find((u) => u.username === arg.toLowerCase());

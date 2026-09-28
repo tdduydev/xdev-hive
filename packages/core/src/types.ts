@@ -167,6 +167,9 @@ export interface AuditEntry {
   action: string;
   target: string;
   detail: string;
+  /** The detail as a message key of the UI catalogue (entries from before keys existed have none). */
+  detailKey?: string;
+  detailVars?: Record<string, string | number>;
 }
 
 /** A queued or running agent run, as a desktop runner reports it to the hub. */

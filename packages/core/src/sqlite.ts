@@ -2,7 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { can, levelOn, type Level } from "./access.ts";
-import { HiveError } from "./errors.ts";
+import { HiveError, type ErrorText } from "./errors.ts";
 import { parseDocKey, titleFromSlug } from "./keys.ts";
 import { EMPTY_POLICY } from "./policy.ts";
 import {
@@ -95,6 +95,10 @@ const MIGRATIONS: string[] = [
     target TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '');
   CREATE INDEX audit_at ON audit(at);
   `,
+  `
+  ALTER TABLE audit ADD COLUMN detail_key TEXT;
+  ALTER TABLE audit ADD COLUMN detail_vars TEXT;
+  `,
 ];
 
 /** A machine is online if it sent a heartbeat this recently (runners send one every 30 s). */
@@ -121,12 +125,18 @@ const COMMAND_MOVES: Record<CommandStatus, CommandStatus[]> = {
 
 const clipDetail = (s: string) => (s.length > 300 ? `${s.slice(0, 299)}…` : s);
 
-/** Admin actions written to the audit log: method → what it acted on. Reads are never logged. */
-const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: string; detail?: string }>> = {
+/**
+ * Admin actions written to the audit log: method → what it acted on. Reads are never logged.
+ * `text` is the detail as a message key of the UI catalogue, so the log reads in each admin's language.
+ */
+const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: string; detail?: string; text?: ErrorText }>> = {
   "docs.save": (i, o) => ({ target: i.key, detail: `v${o.version}${i.note ? ` · ${i.note}` : ""}` }),
-  "proposals.approve": (i, o) => ({ target: o.docKey, detail: `đề xuất #${i.id}` }),
-  "proposals.reject": (i, o) => ({ target: o.docKey, detail: `đề xuất #${i.id}${i.note ? ` · ${i.note}` : ""}` }),
-  "memory.approve": (i, o) => ({ target: `${o.project ?? "chung"} #${i.id}` }),
+  "proposals.approve": (i, o) => ({ target: o.docKey, detail: `đề xuất #${i.id}`, text: { key: "audit.proposal", vars: { id: i.id } } }),
+  "proposals.reject": (i, o) => {
+    const text: ErrorText = i.note ? { key: "audit.proposalNote", vars: { id: i.id, note: i.note } } : { key: "audit.proposal", vars: { id: i.id } };
+    return { target: o.docKey, detail: `đề xuất #${i.id}${i.note ? ` · ${i.note}` : ""}`, text };
+  },
+  "memory.approve": (i, o) => ({ target: `${o.project ?? "org"} #${i.id}` }),
   "memory.remove": (i) => ({ target: `memory #${i.id}` }),
   "tasks.create": (i) => ({ target: i.id, detail: i.title }),
   "machines.remove": (i) => ({ target: i.id }),
@@ -134,9 +144,21 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
   "policy.set": (_i, o: TeamPolicy) => ({
     target: "policy",
     detail: `CLI: ${o.requiredClis.join(", ") || "—"} · shim: ${o.requireShim ? "có" : "không"} · ${Object.keys(o.projects).length} dự án · ${o.profileTemplates.length} mẫu profile`,
+    text: {
+      key: o.requireShim ? "audit.policyShim" : "audit.policy",
+      vars: { clis: o.requiredClis.join(", ") || "—", projects: Object.keys(o.projects).length, templates: o.profileTemplates.length },
+    },
   }),
-  "admin.commandCreate": (i, o: MachineCommand) => ({ target: i.machineId, detail: `yêu cầu ${o.label} (${i.itemId}, #${o.id})` }),
-  "admin.commandCancel": (i, o: MachineCommand) => ({ target: o.machineId, detail: `huỷ #${i.id} ${o.itemId}` }),
+  "admin.commandCreate": (i, o: MachineCommand) => ({
+    target: i.machineId,
+    detail: `yêu cầu ${o.label} (${i.itemId}, #${o.id})`,
+    text: { key: "audit.commandCreate", vars: { label: o.label, item: i.itemId, id: o.id } },
+  }),
+  "admin.commandCancel": (i, o: MachineCommand) => ({
+    target: o.machineId,
+    detail: `huỷ #${i.id} ${o.itemId}`,
+    text: { key: "audit.commandCancel", vars: { id: i.id, item: o.itemId } },
+  }),
   "machines.commandResult": (i, o: MachineCommand) => ({ target: o.machineId, detail: `#${i.id} ${o.itemId} → ${i.status}` }),
 };
 
@@ -224,6 +246,7 @@ const toAudit = (r: Row): AuditEntry => ({
   action: str(r.action),
   target: str(r.target),
   detail: str(r.detail),
+  ...(r.detail_key ? { detailKey: str(r.detail_key), detailVars: r.detail_vars ? (JSON.parse(str(r.detail_vars)) as AuditEntry["detailVars"]) : undefined } : {}),
 });
 
 /** FTS5 query from free text: every word becomes a quoted prefix term, OR-ed together. */
@@ -266,8 +289,8 @@ export class SqliteHive implements HiveBackend {
     const output = this.#filter(method, handler(parsed, actor), actor);
     const audited = AUDITED[method];
     if (audited) {
-      const { target, detail } = audited(parsed, output);
-      this.audit(actor, method, target, detail);
+      const { target, detail, text } = audited(parsed, output);
+      this.audit(actor, method, target, detail, text);
     }
     return output;
   }
@@ -362,10 +385,10 @@ export class SqliteHive implements HiveBackend {
   }
 
   /** Records an admin action (also used by the hub for token changes, which live outside the method table). */
-  audit(actor: Actor, action: string, target: string, detail = ""): void {
+  audit(actor: Actor, action: string, target: string, detail = "", text?: ErrorText): void {
     this.db
-      .prepare("INSERT INTO audit(at, actor, action, target, detail) VALUES (?, ?, ?, ?, ?)")
-      .run(this.#now(), actor.name, action, target, clipDetail(detail));
+      .prepare("INSERT INTO audit(at, actor, action, target, detail, detail_key, detail_vars) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(this.#now(), actor.name, action, target, clipDetail(detail), text?.key ?? null, text?.vars ? JSON.stringify(text.vars) : null);
   }
 
   /** Creates the default org docs on an empty database. Safe to call on every start. */

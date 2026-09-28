@@ -12,7 +12,7 @@ Làm lần lượt, mỗi lượt một mục (mỗi mục một PR). Mục có 
 - [x] **0e2a. i18n-desktop-shell**: tiến trình chính desktop biết ngôn ngữ giao diện (renderer báo qua IPC, lưu `locale` trong config.json): menu tray, tooltip, thông báo (run, đề xuất, yêu cầu cài), hộp thoại lỗi cấu hình, lỗi của `index.ts` mang key.
 - [x] **0e2b. i18n-desktop-setup**: nhãn, mô tả và nút ở Cài đặt máy (`setup.ts`), ghi chú cài cấu hình agent (`installer.ts`) và đồng bộ tài liệu (`sync.ts`) theo ngôn ngữ giao diện; đổi ngôn ngữ thì kiểm tra lại để nhãn đổi theo. `main/i18n.ts` dùng chung cho tiến trình chính.
 - [x] **0e2b2. i18n-desktop-runner**: lỗi và ghi chú của runner, lịch chạy, worktree, GitLab trên Board theo ngôn ngữ giao diện (lỗi ném ra mang key, ghi chú lưu vào run dùng `tr()`); giữ nguyên ghi chú bàn giao task và mô tả MR vì là dữ liệu của team.
-- [ ] **0e2c. i18n-core-texts**: chi tiết nhật ký do hub ghi, nhãn mẫu profile mặc định (`AGENT_TEMPLATES`).
+- [x] **0e2c. i18n-core-texts**: nhật ký lưu thêm `detail_key` + `detail_vars` (migration), trang Quản trị hiện chi tiết theo ngôn ngữ người xem (mục cũ vẫn hiện chữ đã lưu); nhãn mẫu profile mặc định không còn gắn tiếng Việt.
 
 ## Tính năng
 
