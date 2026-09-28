@@ -119,12 +119,16 @@ export const schemas = {
     limit: z.number().int().min(1).max(50).default(10),
     includeShared: z.boolean().default(true),
     anyProject: z.boolean().default(false),
+    /** Entries nobody used for the stale period are left out unless asked for. */
+    includeStale: z.boolean().default(false),
   }),
   /** project: that project (plus shared with includeShared) · null: shared only · omitted: everything. */
   "memory.list": z.object({
     project: project.nullable().optional(),
     includeShared: z.boolean().default(false),
     status: z.enum(MEMORY_STATUSES).optional(),
+    /** true: only the stale entries, to review them. */
+    stale: z.boolean().optional(),
     limit: z.number().int().min(1).max(500).default(200),
   }),
   /** shared: true records a team-wide entry that every project sees (no project then). */
@@ -138,6 +142,8 @@ export const schemas = {
     })
     .refine((m) => (m.shared ? m.project === undefined : m.project !== undefined), "memory needs a project, or shared: true without one"),
   "memory.approve": z.object({ id }),
+  /** Still true: counts as used now, so it is no longer stale. */
+  "memory.keep": z.object({ id }),
   "memory.remove": z.object({ id }),
 
   "tasks.list": z.object({
@@ -237,6 +243,7 @@ export interface MethodOutput {
   "memory.list": Memory[];
   "memory.write": Memory;
   "memory.approve": Memory;
+  "memory.keep": Memory;
   "memory.remove": { removed: boolean };
   "tasks.list": Task[];
   "tasks.create": Task;
@@ -277,6 +284,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "memory.list": "viewer",
   "memory.write": "agent",
   "memory.approve": "agent",
+  "memory.keep": "agent",
   "memory.remove": "agent",
   "tasks.list": "viewer",
   "tasks.create": "agent",
