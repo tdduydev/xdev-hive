@@ -74,10 +74,10 @@ export class TokenStore {
 
   revoke(id: string): void {
     const row = this.#db.prepare("SELECT role, owner_id FROM hub_tokens WHERE id = ?").get(id) as Row | undefined;
-    if (!row) throw new HiveError("not_found", "Token not found.");
+    if (!row) throw new HiveError("not_found", "Token not found.", { key: "errors.tokenNotFound" });
     // Unowned admin tokens are the way back in when no account can sign in: keep the last one.
     const admins = Number((this.#db.prepare("SELECT COUNT(*) AS n FROM hub_tokens WHERE role = 'admin'").get() as Row).n);
-    if (row.role === "admin" && admins <= 1 && row.owner_id == null) throw new HiveError("bad_request", "Cannot revoke the last admin token.");
+    if (row.role === "admin" && admins <= 1 && row.owner_id == null) throw new HiveError("bad_request", "Cannot revoke the last admin token.", { key: "errors.lastAdminToken" });
     this.#db.prepare("DELETE FROM hub_tokens WHERE id = ?").run(id);
   }
 
@@ -87,7 +87,7 @@ export class TokenStore {
   }
 
   #insert(token: string, name: string, role: Role, ownerId: string | null): TokenInfo {
-    if (!NAME.test(name)) throw new HiveError("bad_request", "Token name: 1-60 chars of letters, digits, . _ @ -");
+    if (!NAME.test(name)) throw new HiveError("bad_request", "Token name: 1-60 chars of letters, digits, . _ @ -", { key: "errors.badTokenName" });
     if (!TOKEN_ROLES.includes(role)) throw new HiveError("bad_request", `Role must be one of ${TOKEN_ROLES.join(", ")}`);
     const id = randomBytes(6).toString("hex");
     this.#db

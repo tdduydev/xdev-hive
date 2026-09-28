@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { isValidElement } from "react";
+import { LEVELS } from "@xdev-hive/core";
 import { rich } from "../src/i18n/rich.ts";
-import { LOCALES, translate, type MessageKey } from "../src/i18n/translate.ts";
+import { hasKey, LOCALES, translate, type MessageKey } from "../src/i18n/translate.ts";
 
 /** Every leaf path of a catalogue, plural forms counted as one leaf. */
 function leaves(node: unknown, prefix = ""): string[] {
@@ -37,6 +40,20 @@ describe("i18n", () => {
       parts.map((p) => (isValidElement(p) ? `<${(p.props as { children: string }).children}>` : p)),
       ["Đổi ", "<machine>", " trong ", "<config.json>", ", không phải ", "{other}", "."],
     );
+  });
+
+  it("has every error key the hub, core and desktop send", () => {
+    const repo = path.resolve(import.meta.dirname, "../../..");
+    const files = ["packages/core/src", "apps/web/src", "apps/desktop/src/main"].flatMap((dir) =>
+      readdirSync(path.join(repo, dir), { recursive: true, encoding: "utf8" })
+        .filter((f) => f.endsWith(".ts"))
+        .map((f) => path.join(repo, dir, f)),
+    );
+    const keys = new Set(files.flatMap((f) => [...readFileSync(f, "utf8").matchAll(/key: "(errors\.[\w.]+)"/g)].map((m) => m[1]!)));
+    // Built from the level: errors.need.<level>, errors.needShared.<level>.
+    for (const level of LEVELS) keys.add(`errors.need.${level}`).add(`errors.needShared.${level}`);
+    assert.ok(keys.size > 30, `found ${keys.size} keys`);
+    assert.deepEqual([...keys].filter((k) => !hasKey(k)), []);
   });
 
   it("falls back to the key when a string is missing", () => {

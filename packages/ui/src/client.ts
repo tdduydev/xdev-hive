@@ -53,9 +53,13 @@ async function hubRequest<T>(baseUrl: string, path: string, body: unknown, token
     headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : { "x-hive-csrf": "1" }) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const json = (await res.json().catch(() => null)) as { result?: T; error?: { code?: string; message?: string } } | null;
+  const json = (await res.json().catch(() => null)) as {
+    result?: T;
+    error?: { code?: string; message?: string; key?: string; vars?: Record<string, string | number> };
+  } | null;
   if (!res.ok || !json || json.error) {
-    const err = new HiveError((json?.error?.code as HiveErrorCode) ?? "bad_request", json?.error?.message ?? `HTTP ${res.status}`);
+    const e = json?.error;
+    const err = new HiveError((e?.code as HiveErrorCode) ?? "bad_request", e?.message ?? `HTTP ${res.status}`, e?.key ? { key: e.key, vars: e.vars } : undefined);
     throw Object.assign(err, { status: res.status });
   }
   return { status: res.status, result: json.result as T };
