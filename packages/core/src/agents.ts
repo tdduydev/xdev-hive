@@ -35,6 +35,11 @@ export const agentProfileSchema = z.object({
   /** Extra env, e.g. CLAUDE_CONFIG_DIR=~/.claude-account-2 to use a second login. `~` is expanded. */
   env: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string().max(2000)).default({}),
   enabled: z.boolean().default(true),
+  /**
+   * Runs get only Hive's read tools (search memory, read docs and tasks): no memory writes, proposals
+   * or task updates. Stops mistaken or prompt-injected writes; the agent can still read this machine's token.
+   */
+  readOnly: z.boolean().default(false),
   /** Lower runs first. Equal priority rotates least-recently-used. */
   priority: z.number().int().min(0).max(100).default(10),
   roles: z.array(z.enum(AGENT_ROLES)).min(1).default(["plan", "implement", "review"]),
@@ -57,6 +62,7 @@ export const AGENT_TEMPLATES: Record<Exclude<AgentKind, "custom">, AgentProfile>
     args: ["-p", "{prompt}", "--permission-mode", "acceptEdits"],
     env: {},
     enabled: true,
+    readOnly: false,
     priority: 10,
     roles: ["plan", "implement", "review"],
     maxConcurrent: 1,
@@ -71,6 +77,7 @@ export const AGENT_TEMPLATES: Record<Exclude<AgentKind, "custom">, AgentProfile>
     args: ["exec", "--full-auto", "{prompt}"],
     env: {},
     enabled: true,
+    readOnly: false,
     priority: 20,
     roles: ["implement", "review"],
     maxConcurrent: 1,
@@ -85,6 +92,7 @@ export const AGENT_TEMPLATES: Record<Exclude<AgentKind, "custom">, AgentProfile>
     args: ["-p", "{prompt}", "--approval-mode", "auto_edit"],
     env: {},
     enabled: true,
+    readOnly: false,
     priority: 30,
     roles: ["plan", "implement", "review"],
     maxConcurrent: 1,

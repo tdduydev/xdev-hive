@@ -14,6 +14,8 @@ import { z } from "zod";
 export interface HiveMcpOptions {
   /** Used when a tool call omits `project` (e.g. from HIVE_PROJECT). */
   defaultProject?: string;
+  /** Only the read tools. Default: read-only for viewer tokens. */
+  readOnly?: boolean;
 }
 
 const INSTRUCTIONS = `xDev Hive is the shared memory, docs and task board for every coding agent on this team.
@@ -21,10 +23,16 @@ Start of session: memory_search for your topic. Before working: task_claim. Reco
 Never edit AGENTS.md, CLAUDE.md or docs/decisions.md directly: doc_get, then doc_propose with the baseVersion you read.
 End of session: task_update to "review" with a note (done / not done / how to verify / risks). Never store secrets.`;
 
+const READ_ONLY_INSTRUCTIONS = `xDev Hive is the shared memory, docs and task board for every coding agent on this team.
+This connection is read-only: memory_search, doc_list, doc_get and task_list. Search memory for your topic before working.
+Put anything worth sharing (decisions, gotchas, the handoff) in your final message instead of writing it to Hive.`;
+
 const project = z.string().optional().describe('Hive project key (see "Hive project key" in AGENTS.md)');
 
 export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: HiveMcpOptions = {}): McpServer {
-  const server = new McpServer({ name: "xdev-hive", version: "0.1.0" }, { instructions: INSTRUCTIONS });
+  // Write tools are not registered at all, so a read-only agent never sees them.
+  const writes = !(opts.readOnly ?? actor.role === "viewer");
+  const server = new McpServer({ name: "xdev-hive", version: "0.1.0" }, { instructions: writes ? INSTRUCTIONS : READ_ONLY_INSTRUCTIONS });
 
   const run = async <M extends Method>(method: M, input: MethodInput<M>): Promise<CallToolResult> => {
     try {
@@ -74,22 +82,24 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     async ({ key }) => run("docs.get", { key }),
   );
 
-  server.registerTool(
-    "doc_propose",
-    {
-      title: "Propose a doc change",
-      description:
-        "Propose new full content for a protected doc. A human admin reviews it. baseVersion must be the version you read with doc_get (0 for a new doc).",
-      inputSchema: {
-        key: z.string(),
-        baseVersion: z.number().int().min(0),
-        content: z.string().describe("The complete new document, not a diff"),
-        reason: z.string().describe("One line: why this change"),
+  if (writes) {
+    server.registerTool(
+      "doc_propose",
+      {
+        title: "Propose a doc change",
+        description:
+          "Propose new full content for a protected doc. A human admin reviews it. baseVersion must be the version you read with doc_get (0 for a new doc).",
+        inputSchema: {
+          key: z.string(),
+          baseVersion: z.number().int().min(0),
+          content: z.string().describe("The complete new document, not a diff"),
+          reason: z.string().describe("One line: why this change"),
+        },
       },
-    },
-    async ({ key, baseVersion, content, reason }) =>
-      run("proposals.create", { docKey: key, baseVersion, content, reason }),
-  );
+      async ({ key, baseVersion, content, reason }) =>
+        run("proposals.create", { docKey: key, baseVersion, content, reason }),
+    );
+  }
 
   server.registerTool(
     "memory_search",
@@ -103,26 +113,28 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     withProject(async ({ project: p, query, limit }) => run("memory.search", { project: p, query, limit, includeShared: true })),
   );
 
-  server.registerTool(
-    "memory_write",
-    {
-      title: "Record team memory",
-      description:
-        "Record one durable fact for every other agent: a decision, convention, gotcha or context. Keep it short. No secrets. " +
-        "shared: true only for something true in every project of the team (e.g. an org-wide convention); otherwise it belongs to this project.",
-      inputSchema: {
-        project,
-        shared: z.boolean().optional().describe("Team-wide entry seen from every project (no project then)"),
-        kind: z.enum(MEMORY_KINDS),
-        content: z.string(),
-        taskId: z.string().optional(),
+  if (writes) {
+    server.registerTool(
+      "memory_write",
+      {
+        title: "Record team memory",
+        description:
+          "Record one durable fact for every other agent: a decision, convention, gotcha or context. Keep it short. No secrets. " +
+          "shared: true only for something true in every project of the team (e.g. an org-wide convention); otherwise it belongs to this project.",
+        inputSchema: {
+          project,
+          shared: z.boolean().optional().describe("Team-wide entry seen from every project (no project then)"),
+          kind: z.enum(MEMORY_KINDS),
+          content: z.string(),
+          taskId: z.string().optional(),
+        },
       },
-    },
-    async ({ project: p, shared, kind, content, taskId }) => {
-      if (shared) return run("memory.write", { shared: true, kind, content, taskId });
-      return withProject(async ({ project: q }: { project: string }) => run("memory.write", { project: q, kind, content, taskId }))({ project: p });
-    },
-  );
+      async ({ project: p, shared, kind, content, taskId }) => {
+        if (shared) return run("memory.write", { shared: true, kind, content, taskId });
+        return withProject(async ({ project: q }: { project: string }) => run("memory.write", { project: q, kind, content, taskId }))({ project: p });
+      },
+    );
+  }
 
   server.registerTool(
     "task_list",
@@ -135,27 +147,31 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     withProject(async ({ project: p, status }) => run("tasks.list", { project: p, status })),
   );
 
-  server.registerTool(
-    "task_claim",
-    {
-      title: "Claim a task",
-      description:
-        "Take a lease on a task before working on it. Returns claimed=false if another agent holds a live lease.",
-      inputSchema: { id: z.string(), leaseMinutes: z.number().int().min(5).max(1440).optional() },
-    },
-    async ({ id, leaseMinutes }) => run("tasks.claim", { id, leaseMinutes }),
-  );
+  if (writes) {
+    server.registerTool(
+      "task_claim",
+      {
+        title: "Claim a task",
+        description:
+          "Take a lease on a task before working on it. Returns claimed=false if another agent holds a live lease.",
+        inputSchema: { id: z.string(), leaseMinutes: z.number().int().min(5).max(1440).optional() },
+      },
+      async ({ id, leaseMinutes }) => run("tasks.claim", { id, leaseMinutes }),
+    );
+  }
 
-  server.registerTool(
-    "task_update",
-    {
-      title: "Update a task",
-      description:
-        'Move a task to another status. Use "review" when done, with a note: done / not done / how to verify / risks.',
-      inputSchema: { id: z.string(), status: z.enum(TASK_STATUSES), note: z.string().optional() },
-    },
-    async ({ id, status, note }) => run("tasks.update", { id, status, note }),
-  );
+  if (writes) {
+    server.registerTool(
+      "task_update",
+      {
+        title: "Update a task",
+        description:
+          'Move a task to another status. Use "review" when done, with a note: done / not done / how to verify / risks.',
+        inputSchema: { id: z.string(), status: z.enum(TASK_STATUSES), note: z.string().optional() },
+      },
+      async ({ id, status, note }) => run("tasks.update", { id, status, note }),
+    );
+  }
 
   return server;
 }

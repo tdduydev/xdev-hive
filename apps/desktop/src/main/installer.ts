@@ -219,10 +219,11 @@ export function repoFeatures(repo: string): RepoFeatures {
 }
 
 /** MCP servers for one agent run, listed by the app instead of read from the working copy. Task and run go with every write. */
-export function runMcpServers(agent: string, project: string, features: RepoFeatures, run: { task: string; id?: string }): Json {
+export function runMcpServers(agent: string, project: string, features: RepoFeatures, run: { task: string; id?: string; readOnly?: boolean }): Json {
   const hive = mcpEntry(agent, project);
+  const env = { ...hive.env, HIVE_TASK: run.task, ...(run.id ? { HIVE_RUN: run.id } : {}), ...(run.readOnly ? { HIVE_READONLY: "1" } : {}) };
   return {
-    [MCP_NAME]: { ...hive, env: { ...hive.env, HIVE_TASK: run.task, ...(run.id ? { HIVE_RUN: run.id } : {}) } },
+    [MCP_NAME]: { ...hive, env },
     ...(features.codegraph ? { codegraph: CODEGRAPH_MCP } : {}),
   };
 }

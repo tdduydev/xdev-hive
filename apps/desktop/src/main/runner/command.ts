@@ -17,6 +17,8 @@ export interface PromptContext {
   baseSha: string;
   attempt: number;
   previous: { profileId: string; reason: string } | null;
+  /** The profile is read-only: the agent has Hive's read tools only. */
+  readOnly?: boolean;
 }
 
 export function buildPrompt(c: PromptContext): string {
@@ -30,7 +32,9 @@ export function buildPrompt(c: PromptContext): string {
       "Read AGENTS.md in the working copy first for the project's conventions.",
       "Look for bugs, regressions, missing tests and risky changes. Do not rewrite the feature;",
       "fix only small, obvious mistakes. End with a short report: verdict (approve / changes needed), then findings.",
-      'Record reusable lessons with memory_write (xdev-hive MCP). Do not change the task status.',
+      c.readOnly
+        ? "xDev Hive is read-only for this run: put reusable lessons in your report. Do not change the task status."
+        : "Record reusable lessons with memory_write (xdev-hive MCP). Do not change the task status.",
     );
   } else {
     lines.push(
@@ -42,15 +46,27 @@ export function buildPrompt(c: PromptContext): string {
     if (c.role === "plan") {
       lines.push("", "This is a planning run: write the plan to docs/plans/" + c.taskId + ".md. Do not implement yet.");
     }
-    lines.push(
-      "",
-      "Read AGENTS.md in the working copy first and follow its Agent protocol, using the xdev-hive MCP tools with project key " + `"${c.project}":`,
-      "1. memory_search for context before changing code.",
-      "2. memory_write for decisions, conventions and gotchas worth sharing with other agents.",
-      "3. Never edit AGENTS.md, CLAUDE.md or docs/decisions.md; use doc_get + doc_propose.",
-      `4. When done, task_update ${c.taskId} to "review" with a note: what changed, what is left, how to verify, risks.`,
-      "Do not push. Uncommitted changes are committed to this branch for you when you exit.",
-    );
+    if (c.readOnly) {
+      lines.push(
+        "",
+        "Read AGENTS.md in the working copy first and follow its conventions. xDev Hive is read-only for this run " + `(project key "${c.project}"):`,
+        "1. memory_search and doc_get for context before changing code.",
+        "2. You cannot write memory, propose doc changes or update the task. End with a note for the task instead:",
+        "   what changed, what is left, how to verify, risks, and any decision or gotcha worth sharing.",
+        "3. Never edit AGENTS.md, CLAUDE.md or docs/decisions.md.",
+        "Do not push. Uncommitted changes are committed to this branch for you when you exit.",
+      );
+    } else {
+      lines.push(
+        "",
+        "Read AGENTS.md in the working copy first and follow its Agent protocol, using the xdev-hive MCP tools with project key " + `"${c.project}":`,
+        "1. memory_search for context before changing code.",
+        "2. memory_write for decisions, conventions and gotchas worth sharing with other agents.",
+        "3. Never edit AGENTS.md, CLAUDE.md or docs/decisions.md; use doc_get + doc_propose.",
+        `4. When done, task_update ${c.taskId} to "review" with a note: what changed, what is left, how to verify, risks.`,
+        "Do not push. Uncommitted changes are committed to this branch for you when you exit.",
+      );
+    }
   }
   if (c.note) lines.push("", "Latest note on the task:", c.note);
   if (c.previous) {
@@ -85,7 +101,7 @@ export function buildCommand(
       .replaceAll("{project}", vars.project)
       .replaceAll("{branch}", vars.branch);
   const args = profile.args.map(fill);
-  if (profile.kind === "claude") args.push(...claudeRunArgs(profile.id, vars, features));
+  if (profile.kind === "claude") args.push(...claudeRunArgs(profile.id, { ...vars, readOnly: profile.readOnly }, features));
   return { bin: expandHome(profile.bin), args, stdin: usesPrompt ? null : vars.prompt };
 }
 
@@ -94,7 +110,11 @@ export function buildCommand(
  * a hook one run commits would execute on the next. Runs load only the user's own settings, run no
  * hooks and get the MCP servers the app lists. Appended last because --mcp-config takes several values.
  */
-export function claudeRunArgs(agent: string, run: { project: string; task: string; run?: string }, features: RepoFeatures): string[] {
+export function claudeRunArgs(
+  agent: string,
+  run: { project: string; task: string; run?: string; readOnly?: boolean },
+  features: RepoFeatures,
+): string[] {
   const settings = { disableAllHooks: true, ...(features.superpowers ? { enabledPlugins: { [SUPERPOWERS_PLUGIN]: true } } : {}) };
   return [
     "--settings",
@@ -103,7 +123,7 @@ export function claudeRunArgs(agent: string, run: { project: string; task: strin
     "user",
     "--strict-mcp-config",
     "--mcp-config",
-    JSON.stringify({ mcpServers: runMcpServers(agent, run.project, features, { task: run.task, id: run.run }) }),
+    JSON.stringify({ mcpServers: runMcpServers(agent, run.project, features, { task: run.task, id: run.run, readOnly: run.readOnly }) }),
   ];
 }
 
