@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "cn";
 import {
   AGENT_KINDS,
@@ -43,6 +43,15 @@ export function AgentsPage() {
   const templates = requests.data?.policy?.profileTemplates ?? [];
   const [editing, setEditing] = useState<{ profile: AgentProfile; previousId?: string } | null>(null);
   const refresh = () => setTick((t) => t + 1);
+
+  // Back from a terminal sign-in: check the signed-out profiles again.
+  const anySignedOut = (profiles.data ?? []).some((p) => p.login?.loggedIn === false);
+  useEffect(() => {
+    if (!anySignedOut) return;
+    const onFocus = () => void desktop.recheckLogins().then(refresh, () => undefined);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [desktop, anySignedOut]);
 
   const newProfile = (kind: AgentKind) => {
     const base = kind === "custom" ? { ...AGENT_TEMPLATES.claude, kind, label: t("agents.customLabel"), bin: "", args: ["{prompt}"] } : AGENT_TEMPLATES[kind];
@@ -116,6 +125,7 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
   const desktop = client.desktop!;
   const action = useAction();
   const [check, setCheck] = useState<ProfileCheck | null>(null);
+  const [loginOpened, setLoginOpened] = useState(false);
   const resting = p.cooldownUntil !== null;
   const { cooldownUntil: _c, cooldownReason: _r, cooldownFrom: _f, cliPath: _p, running: _n, lastUsedAt: _l, stats: _s, ...plain } = p;
   const noCli = p.enabled && p.cliPath === null;
@@ -193,6 +203,11 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
           >
             {p.enabled ? t("agents.disable") : t("agents.enable")}
           </Button>
+          {signedOut && p.login?.loginCommand ? (
+            <Button size="sm" disabled={action.busy} onClick={() => void action.run(async () => (await desktop.openLogin(p.id), setLoginOpened(true)))}>
+              {t("agents.login")}
+            </Button>
+          ) : null}
           <Button size="sm" variant="outline" disabled={action.busy} onClick={() => void action.run(async () => setCheck(await desktop.checkProfile(p.id)))}>
             {t("agents.checkCli")}
           </Button>
@@ -221,6 +236,7 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
             {t("agents.remove")}
           </Button>
         </div>
+        {loginOpened && signedOut ? <Notice tone="info">{t("agents.loginOpened")}</Notice> : null}
         {check ? (
           <Notice tone={check.ok ? "ok" : "error"}>
             {check.path ? <div className="max-w-full font-mono text-xs break-all">{check.path}</div> : null}
