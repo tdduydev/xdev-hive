@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { AgentKind, AgentRole, AgentRun, CiFix, MrState, MrStatus, PipelineStatus, RunStatus } from "@xdev-hive/core";
+import type { AgentKind, AgentRole, AgentRun, BestOf, CiFix, MrState, MrStatus, PipelineStatus, RunStatus } from "@xdev-hive/core";
 import { tr } from "../i18n.ts";
 
 const SCHEMA = `
@@ -41,10 +41,12 @@ const ADDED_COLUMNS: Array<[name: string, ddl: string]> = [
   ["mr_checked_at", "TEXT"],
   /** JSON: the failed pipeline this run was queued to fix. */
   ["ci_fix", "TEXT"],
+  /** JSON: the best-of-n group this run is a candidate or the judge of. */
+  ["best_of", "TEXT"],
 ];
 
 type Row = Record<string, unknown>;
-const JSON_FIELDS = new Set(["avoidKinds", "excludedProfiles", "ciFix"]);
+const JSON_FIELDS = new Set(["avoidKinds", "excludedProfiles", "ciFix", "bestOf"]);
 const BOOL_FIELDS = new Set(["reviewAfter", "mrDraft"]);
 const column = (field: string) => field.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 
@@ -90,6 +92,7 @@ function toRun(r: Row): AgentRun {
     pipelineUrl: s(r.pipeline_url),
     mrCheckedAt: s(r.mr_checked_at),
     ciFix: r.ci_fix == null ? null : (JSON.parse(String(r.ci_fix)) as CiFix | null),
+    bestOf: r.best_of == null ? null : (JSON.parse(String(r.best_of)) as BestOf | null),
   };
 }
 
@@ -97,7 +100,7 @@ const encode = (field: string, value: unknown) =>
   JSON_FIELDS.has(field) ? JSON.stringify(value) : BOOL_FIELDS.has(field) ? (value ? 1 : 0) : (value ?? null);
 
 export type NewRun = Pick<AgentRun, "project" | "taskId" | "taskTitle" | "role" | "attempt" | "maxAttempts"> &
-  Partial<Pick<AgentRun, "preferredProfile" | "avoidKinds" | "excludedProfiles" | "parentRunId" | "worktree" | "branch" | "baseSha" | "instructions" | "reviewAfter" | "ciFix">>;
+  Partial<Pick<AgentRun, "preferredProfile" | "avoidKinds" | "excludedProfiles" | "parentRunId" | "worktree" | "branch" | "baseSha" | "instructions" | "reviewAfter" | "ciFix" | "bestOf">>;
 
 export const ACTIVE: RunStatus[] = ["queued", "running"];
 
@@ -180,6 +183,20 @@ export class RunStore {
       .run(patch.mrStatus, patch.pipelineStatus, patch.pipelineUrl, patch.mrCheckedAt, url);
   }
 
+  /** Every run of a best-of-n group (candidates, their new attempts and the judge), oldest first. */
+  group(id: string): AgentRun[] {
+    return (
+      this.db.prepare("SELECT * FROM runs WHERE json_extract(best_of, '$.group') = ? ORDER BY created_at, rowid").all(id) as Row[]
+    ).map(toRun);
+  }
+
+  /** Records the kept candidate on every run of the group. */
+  setPick(group: string, pick: number, reason: string): void {
+    this.db
+      .prepare("UPDATE runs SET best_of = json_set(best_of, '$.pick', ?, '$.reason', ?) WHERE json_extract(best_of, '$.group') = ?")
+      .run(pick, reason.slice(0, 500), group);
+  }
+
   get(id: string): AgentRun | null {
     const row = this.db.prepare("SELECT * FROM runs WHERE id = ?").get(id) as Row | undefined;
     return row ? toRun(row) : null;
@@ -223,6 +240,13 @@ export class RunStore {
       .prepare("SELECT * FROM runs WHERE project = ? AND task_id = ? AND status IN ('queued', 'running') LIMIT 1")
       .get(project, taskId) as Row | undefined;
     return row ? toRun(row) : null;
+  }
+
+  /** Runs of a task created after `since`. */
+  newerRuns(project: string, taskId: string, since: string): AgentRun[] {
+    return (
+      this.db.prepare("SELECT * FROM runs WHERE project = ? AND task_id = ? AND created_at > ? ORDER BY created_at, rowid").all(project, taskId, since) as Row[]
+    ).map(toRun);
   }
 
   /** Most recent succeeded run of a task with the given role. */

@@ -20,6 +20,8 @@ export interface Worktree {
 }
 
 export const branchFor = (taskId: string) => `ai/${taskId}`;
+/** A best-of-n candidate's branch and folder name: "+" never appears in a task id, so it cannot collide with one. */
+export const candidateName = (taskId: string, n: number) => `${taskId}+c${n}`;
 
 const real = (p: string) => {
   try {
@@ -37,9 +39,19 @@ function tryGit(repo: string, args: string[]): string | null {
   }
 }
 
-export function ensureWorktree(repo: string, dir: string, taskId: string, knownBase: string | null): Worktree {
+/**
+ * `opts.branch` + `opts.from`: a best-of-n candidate's branch, (re)started at `from` whenever its worktree is
+ * created, so a new group never builds on an older group's candidate.
+ */
+export function ensureWorktree(
+  repo: string,
+  dir: string,
+  taskId: string,
+  knownBase: string | null,
+  opts: { branch?: string; from?: string } = {},
+): Worktree {
   if (!isGitRepo(repo)) throw new HiveError("bad_request", `${repo} không phải git repo`, { key: "errors.notGitRepo", vars: { path: repo } });
-  const branch = branchFor(taskId);
+  const branch = opts.branch ?? branchFor(taskId);
   git(repo, ["worktree", "prune"]);
   const registered = git(repo, ["worktree", "list", "--porcelain"])
     .split("\n")
@@ -52,7 +64,14 @@ export function ensureWorktree(repo: string, dir: string, taskId: string, knownB
     mkdirSync(path.dirname(dir), { recursive: true });
     const branchExists = tryGit(repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]) !== null;
     try {
-      git(repo, branchExists ? ["worktree", "add", dir, branch] : ["worktree", "add", "-b", branch, dir, "HEAD"]);
+      git(
+        repo,
+        opts.from
+          ? ["worktree", "add", "-B", branch, dir, opts.from]
+          : branchExists
+            ? ["worktree", "add", dir, branch]
+            : ["worktree", "add", "-b", branch, dir, "HEAD"],
+      );
     } catch (err) {
       const reason = gitErrorText(err);
       throw new HiveError("bad_request", `Không tạo được worktree: ${reason}`, { key: "errors.worktreeCreate", vars: { reason } });
@@ -97,22 +116,38 @@ export function commitAll(dir: string, message: string, exclude: string[]): { sh
   }
 }
 
+/**
+ * Checks out `branch` at `ref` (the kept candidate) in a worktree, dropping what the working copy held: the judge
+ * may have left changes or another checkout behind. Ignored files (dependencies, builds) stay.
+ */
+export function resetTo(dir: string, branch: string, ref: string): void {
+  try {
+    git(dir, ["checkout", "-q", "-f", "-B", branch, ref]);
+    git(dir, ["clean", "-q", "-fd"]);
+  } catch (err) {
+    const reason = gitErrorText(err);
+    throw new HiveError("bad_request", `Không chuyển được branch sang bản đã chọn: ${reason}`, { key: "errors.pickReset", vars: { reason } });
+  }
+}
+
 export function branchState(dir: string, baseSha: string): { commits: number; headSha: string | null } {
   const count = tryGit(dir, ["rev-list", "--count", `${baseSha}..HEAD`]);
   return { commits: count ? Number(count) : 0, headSha: tryGit(dir, ["rev-parse", "--short", "HEAD"]) };
 }
 
-export function describeBranch(dir: string, baseSha: string): string {
+/** `ref`: another branch than the one checked out (a candidate whose worktree is gone), with no working copy to show. */
+export function describeBranch(dir: string, baseSha: string, ref = "HEAD"): string {
   if (!existsSync(dir)) return tr("runNote.worktreeGone");
-  const log = tryGit(dir, ["log", "--oneline", "--no-decorate", `${baseSha}..HEAD`]) || tr("runNote.noCommits");
-  const stat = tryGit(dir, ["diff", "--stat", `${baseSha}...HEAD`]) || tr("runNote.noChanges");
-  const dirty = tryGit(dir, ["status", "--short"]);
+  const log = tryGit(dir, ["log", "--oneline", "--no-decorate", `${baseSha}..${ref}`]) || tr("runNote.noCommits");
+  const stat = tryGit(dir, ["diff", "--stat", `${baseSha}...${ref}`]) || tr("runNote.noChanges");
+  const dirty = ref === "HEAD" ? tryGit(dir, ["status", "--short"]) : null;
   return [`Commits:\n${log}`, `${tr("runNote.changesFromBase")}\n${stat}`, dirty ? `${tr("runNote.uncommitted")}\n${dirty}` : ""].filter(Boolean).join("\n\n");
 }
 
-export function removeWorktree(repo: string, dir: string): void {
+/** `force`: also with untracked files (a candidate's: everything it made is committed on its branch). */
+export function removeWorktree(repo: string, dir: string, force = false): void {
   try {
-    git(repo, ["worktree", "remove", dir]);
+    git(repo, ["worktree", "remove", ...(force ? ["--force"] : []), dir]);
   } catch (err) {
     const reason = gitErrorText(err);
     throw new HiveError("bad_request", `Không xoá được worktree: ${reason}`, { key: "errors.worktreeRemove", vars: { reason } });
