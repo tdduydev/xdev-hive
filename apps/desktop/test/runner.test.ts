@@ -8,7 +8,8 @@ import { AGENT_TEMPLATES, type Actor, type AgentProfile, type HiveBackend, type 
 import { SqliteHive } from "@xdev-hive/core/node";
 import { parseResetTime, detectRateLimit } from "../src/main/runner/rate-limit.ts";
 import { Runner, type HubUpdate, type RunnerHost } from "../src/main/runner/runner.ts";
-import { pickProfile, type ProfileLoad } from "../src/main/runner/schedule.ts";
+import { setMainLocale } from "../src/main/i18n.ts";
+import { pickProfile, waitingReason, type ProfileLoad } from "../src/main/runner/schedule.ts";
 
 const FAKE = path.join(import.meta.dirname, "fixtures", "fake-agent.mjs");
 const admin: Actor = { name: "duy", role: "admin" };
@@ -101,6 +102,18 @@ describe("pickProfile", () => {
   const load = (p: AgentProfile, extra: Partial<ProfileLoad> = {}): ProfileLoad => ({ profile: p, running: 0, cooldownUntil: null, lastUsedAt: null, ...extra });
   const needs = { role: "implement" as const, preferredProfile: null, avoidKinds: [], excludedProfiles: [] };
   const a = profile("claude-a", "claude", 10, "ok");
+
+  it("says why a run waits in the interface language", () => {
+    const resting = [load(a, { cooldownUntil: "2026-09-27T09:00:00Z" })];
+    assert.match(waitingReason(resting, needs, now), /^Mọi gói đang nghỉ vì quota/);
+    setMainLocale("en");
+    try {
+      assert.match(waitingReason(resting, needs, now), /^Every subscription is resting/);
+      assert.match(waitingReason([load(a, { installed: false })], needs, now), /^This machine lacks the CLI/);
+    } finally {
+      setMainLocale("vi");
+    }
+  });
   const b = profile("claude-b", "claude", 10, "ok");
   const c = profile("codex-a", "codex", 20, "ok");
 
