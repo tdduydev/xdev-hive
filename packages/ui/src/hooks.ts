@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { can, type Level, type Me } from "@xdev-hive/core";
-import { activeIntl } from "./i18n/translate.ts";
+import { activeIntl, hasKey, translate, type MessageKey } from "./i18n/translate.ts";
 import type { HiveClient } from "./client.ts";
 import type { Scope } from "./lib/scope.ts";
 
@@ -24,7 +24,12 @@ export function useHive(): HiveContextValue {
   return ctx;
 }
 
-export const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err));
+/** An error in the interface language when it carries a known message key (hub, desktop), else its own message. */
+export function errorMessage(err: unknown): string {
+  const { key, vars } = (err ?? {}) as { key?: unknown; vars?: Record<string, string | number> };
+  if (typeof key === "string" && hasKey(key)) return translate(key as MessageKey, vars);
+  return err instanceof Error ? err.message : String(err);
+}
 
 export interface QueryState<T> {
   data: T | undefined;

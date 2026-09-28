@@ -1,10 +1,11 @@
 import { contextBridge, ipcRenderer } from "electron";
 
-type Result = { ok: true; value: unknown } | { ok: false; error: { code: string; message: string } };
+type Result = { ok: true; value: unknown } | { ok: false; error: { code: string; message: string; key?: string; vars?: unknown } };
 
 async function invoke(channel: string, ...args: unknown[]): Promise<any> {
   const res = (await ipcRenderer.invoke(channel, ...args)) as Result;
-  if (!res.ok) throw Object.assign(new Error(res.error.message), { code: res.error.code });
+  // key/vars let the interface show the error in the chosen language (see packages/ui/src/i18n).
+  if (!res.ok) throw Object.assign(new Error(res.error.message), { code: res.error.code, key: res.error.key, vars: res.error.vars });
   return res.value;
 }
 

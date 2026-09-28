@@ -1,7 +1,11 @@
-import { HiveError, type HiveErrorCode } from "./errors.ts";
+import { HiveError, type ErrorText, type HiveErrorCode } from "./errors.ts";
 import type { Me } from "./bridge.ts";
 import type { HiveBackend, Method, MethodInput, MethodOutput } from "./methods.ts";
 import type { Actor } from "./types.ts";
+
+/** The message key of a hub error answer, if it has one. */
+const textOf = (error: { key?: unknown; vars?: unknown } | undefined): ErrorText | undefined =>
+  typeof error?.key === "string" ? { key: error.key, vars: error.vars as ErrorText["vars"] } : undefined;
 
 const CODES: Record<number, HiveErrorCode> = {
   400: "bad_request",
@@ -29,10 +33,10 @@ export async function requestDeviceToken(
     }),
   });
   const body = (await res.json().catch(() => null)) as
-    | { result?: { token: string; user: NonNullable<Me["user"]> }; error?: { code?: string; message?: string } }
+    | { result?: { token: string; user: NonNullable<Me["user"]> }; error?: { code?: string; message?: string; key?: string; vars?: unknown } }
     | null;
   if (!res.ok || !body?.result) {
-    throw new HiveError((body?.error?.code as HiveErrorCode) ?? CODES[res.status] ?? "bad_request", body?.error?.message ?? `Hub responded ${res.status}`);
+    throw new HiveError((body?.error?.code as HiveErrorCode) ?? CODES[res.status] ?? "bad_request", body?.error?.message ?? `Hub responded ${res.status}`, textOf(body?.error));
   }
   return body.result;
 }
@@ -55,9 +59,9 @@ export class HubBackend implements HiveBackend {
     const res = await fetch(`${this.url}/api/me`, {
       headers: { authorization: `Bearer ${this.#token}`, "x-hive-agent": label },
     });
-    const body = (await res.json().catch(() => null)) as { result?: Me; error?: { code?: string; message?: string } } | null;
+    const body = (await res.json().catch(() => null)) as { result?: Me; error?: { code?: string; message?: string; key?: string; vars?: unknown } } | null;
     if (!res.ok || !body?.result) {
-      throw new HiveError((body?.error?.code as HiveErrorCode) ?? CODES[res.status] ?? "bad_request", body?.error?.message ?? `Hub responded ${res.status}`);
+      throw new HiveError((body?.error?.code as HiveErrorCode) ?? CODES[res.status] ?? "bad_request", body?.error?.message ?? `Hub responded ${res.status}`, textOf(body?.error));
     }
     return body.result;
   }
@@ -73,11 +77,11 @@ export class HubBackend implements HiveBackend {
       body: JSON.stringify({ method, input }),
     });
     const body = (await res.json().catch(() => null)) as
-      | { result?: MethodOutput[M]; error?: { code?: string; message?: string } }
+      | { result?: MethodOutput[M]; error?: { code?: string; message?: string; key?: string; vars?: unknown } }
       | null;
     if (!res.ok || !body || body.error) {
       const code = (body?.error?.code as HiveErrorCode | undefined) ?? CODES[res.status] ?? "bad_request";
-      throw new HiveError(code, body?.error?.message ?? `Hub responded ${res.status}`);
+      throw new HiveError(code, body?.error?.message ?? `Hub responded ${res.status}`, textOf(body?.error));
     }
     return body.result as MethodOutput[M];
   }

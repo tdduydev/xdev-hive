@@ -40,8 +40,8 @@ export function temporaryPassword(): string {
 }
 
 export function checkNewPassword(password: string, username: string): void {
-  if (password.length < MIN_PASSWORD) throw new HiveError("bad_request", `Mật khẩu cần ít nhất ${MIN_PASSWORD} ký tự.`);
-  if (password.toLowerCase().includes(username.toLowerCase())) throw new HiveError("bad_request", "Mật khẩu không được chứa tên đăng nhập.");
+  if (password.length < MIN_PASSWORD) throw new HiveError("bad_request", `Mật khẩu cần ít nhất ${MIN_PASSWORD} ký tự.`, { key: "errors.passwordTooShort", vars: { min: MIN_PASSWORD } });
+  if (password.toLowerCase().includes(username.toLowerCase())) throw new HiveError("bad_request", "Mật khẩu không được chứa tên đăng nhập.", { key: "errors.passwordHasUsername" });
 }
 
 export class UserStore {
@@ -95,8 +95,8 @@ export class UserStore {
   /** New account with a temporary password the user must change at first sign-in. */
   create(input: { username: string; displayName?: string; admin?: boolean; password?: string }): { user: UserInfo; password: string } {
     const username = input.username.trim().toLowerCase();
-    if (!USERNAME.test(username)) throw new HiveError("bad_request", "Tên đăng nhập: 2-40 ký tự chữ thường, số, . _ -");
-    if (this.#db.prepare("SELECT 1 FROM hub_users WHERE username = ?").get(username)) throw new HiveError("conflict", `Đã có tài khoản ${username}.`);
+    if (!USERNAME.test(username)) throw new HiveError("bad_request", "Tên đăng nhập: 2-40 ký tự chữ thường, số, . _ -", { key: "errors.badUsername" });
+    if (this.#db.prepare("SELECT 1 FROM hub_users WHERE username = ?").get(username)) throw new HiveError("conflict", `Đã có tài khoản ${username}.`, { key: "errors.usernameTaken", vars: { username } });
     const password = input.password ?? temporaryPassword();
     const id = randomBytes(6).toString("hex");
     this.#db
@@ -109,7 +109,7 @@ export class UserStore {
     const user = this.#require(id);
     const admin = patch.admin ?? user.admin;
     const disabled = patch.disabled ?? user.disabled;
-    if (user.admin && (!admin || disabled) && this.#activeAdmins() <= 1) throw new HiveError("bad_request", "Phải còn ít nhất một admin đang hoạt động.");
+    if (user.admin && (!admin || disabled) && this.#activeAdmins() <= 1) throw new HiveError("bad_request", "Phải còn ít nhất một admin đang hoạt động.", { key: "errors.lastAdmin" });
     this.#db
       .prepare("UPDATE hub_users SET display_name = ?, admin = ?, disabled = ? WHERE id = ?")
       .run((patch.displayName ?? user.displayName).trim().slice(0, 80) || user.username, admin ? 1 : 0, disabled ? 1 : 0, id);
@@ -120,8 +120,8 @@ export class UserStore {
   setGrants(id: string, grants: Record<string, string>): UserInfo {
     this.#require(id);
     for (const [project, level] of Object.entries(grants)) {
-      if (!PROJECT_NAME.test(project)) throw new HiveError("bad_request", `Dự án không hợp lệ: ${project}`);
-      if (!(LEVELS as readonly string[]).includes(level)) throw new HiveError("bad_request", `Mức quyền không hợp lệ: ${level}`);
+      if (!PROJECT_NAME.test(project)) throw new HiveError("bad_request", `Dự án không hợp lệ: ${project}`, { key: "errors.badProject", vars: { project } });
+      if (!(LEVELS as readonly string[]).includes(level)) throw new HiveError("bad_request", `Mức quyền không hợp lệ: ${level}`, { key: "errors.badLevel", vars: { level } });
     }
     this.#db.exec("BEGIN IMMEDIATE");
     try {
@@ -156,9 +156,9 @@ export class UserStore {
 
   changePassword(id: string, current: string, next: string): UserInfo {
     const row = this.#db.prepare("SELECT * FROM hub_users WHERE id = ?").get(id) as Row | undefined;
-    if (!row || !checkPassword(current, String(row.password_hash))) throw new HiveError("forbidden", "Mật khẩu hiện tại không đúng.");
+    if (!row || !checkPassword(current, String(row.password_hash))) throw new HiveError("forbidden", "Mật khẩu hiện tại không đúng.", { key: "errors.wrongPassword" });
     checkNewPassword(next, String(row.username));
-    if (current === next) throw new HiveError("bad_request", "Mật khẩu mới phải khác mật khẩu cũ.");
+    if (current === next) throw new HiveError("bad_request", "Mật khẩu mới phải khác mật khẩu cũ.", { key: "errors.samePassword" });
     this.#db.prepare("UPDATE hub_users SET password_hash = ?, must_change = 0 WHERE id = ?").run(hashPassword(next), id);
     return this.get(id)!;
   }
@@ -193,7 +193,7 @@ export class UserStore {
 
   #require(id: string): UserInfo {
     const user = this.get(id);
-    if (!user) throw new HiveError("not_found", "Không có tài khoản này.");
+    if (!user) throw new HiveError("not_found", "Không có tài khoản này.", { key: "errors.userNotFound" });
     return user;
   }
 

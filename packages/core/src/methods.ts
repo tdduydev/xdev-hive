@@ -286,7 +286,7 @@ export function isMethod(value: unknown): value is Method {
 export function authorize(method: Method, actor: Actor): void {
   const needed = METHOD_ROLES[method];
   if (ROLE_RANK[actor.role] < ROLE_RANK[needed]) {
-    throw new HiveError("forbidden", `${method} requires role "${needed}", you are "${actor.role}".`);
+    throw new HiveError("forbidden", `${method} requires role "${needed}", you are "${actor.role}".`, { key: "errors.roleTooLow" });
   }
 }
 

@@ -21,6 +21,7 @@ export function parseDocKey(key: string): ParsedDocKey {
   throw new HiveError(
     "bad_request",
     `Invalid doc key "${key}". Use org/<slug> or project/<project>/<slug> (lowercase, digits, "-").`,
+    { key: "errors.badDocKey", vars: { key } },
   );
 }
 

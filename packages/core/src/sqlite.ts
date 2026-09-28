@@ -285,9 +285,12 @@ export class SqliteHive implements HiveBackend {
    */
   #need(actor: Actor, owner: string | null, level: Level, what: string): void {
     if (can(actor, owner, level)) return;
-    if (levelOn(actor, owner) === null) throw new HiveError("not_found", `${what} not found.`);
+    if (levelOn(actor, owner) === null) throw new HiveError("not_found", `${what} not found.`, { key: "errors.notFound" });
     const where = owner === null ? "the shared (team-wide) data" : `project ${owner}`;
-    throw new HiveError("forbidden", `${what}: needs "${level}" on ${where}.`);
+    throw new HiveError("forbidden", `${what}: needs "${level}" on ${where}.`, {
+      key: owner === null ? `errors.needShared.${level}` : `errors.need.${level}`,
+      vars: { project: owner ?? "" },
+    });
   }
 
   #check(method: Method, input: ParsedInput<Method>, actor: Actor): void {
@@ -441,13 +444,13 @@ export class SqliteHive implements HiveBackend {
 
   #getProposal(id: number): Proposal {
     const row = this.db.prepare("SELECT * FROM proposals WHERE id = ?").get(id) as Row | undefined;
-    if (!row) throw new HiveError("not_found", `Proposal #${id} not found.`);
+    if (!row) throw new HiveError("not_found", `Proposal #${id} not found.`, { key: "errors.proposalNotFound", vars: { id } });
     return toProposal(row);
   }
 
   #getMemory(id: number): Memory {
     const row = this.db.prepare("SELECT * FROM memory WHERE id = ?").get(id) as Row | undefined;
-    if (!row) throw new HiveError("not_found", `Memory #${id} not found.`);
+    if (!row) throw new HiveError("not_found", `Memory #${id} not found.`, { key: "errors.memoryNotFound", vars: { id } });
     return toMemory(row);
   }
 
@@ -477,7 +480,7 @@ export class SqliteHive implements HiveBackend {
 
   #command(id: number): MachineCommand {
     const row = this.db.prepare("SELECT * FROM machine_commands WHERE id = ?").get(id) as Row | undefined;
-    if (!row) throw new HiveError("not_found", `Command #${id} not found.`);
+    if (!row) throw new HiveError("not_found", `Command #${id} not found.`, { key: "errors.commandNotFound", vars: { id } });
     return toCommand(row);
   }
 
@@ -520,6 +523,7 @@ export class SqliteHive implements HiveBackend {
             throw new HiveError(
               "conflict",
               `${input.key} is at v${current} but you edited v${input.baseVersion}. Reload and re-apply your changes.`,
+              { key: "errors.docConflict", vars: { key: input.key, current, base: input.baseVersion } },
             );
           }
           return this.#writeDoc(input.key, input.content, input, actor.name);
@@ -545,10 +549,11 @@ export class SqliteHive implements HiveBackend {
           throw new HiveError(
             "conflict",
             `${input.docKey} is at v${current}, you based your change on v${input.baseVersion}. Call doc_get again and re-propose.`,
+            { key: "errors.proposalStale", vars: { key: input.docKey, current, base: input.baseVersion } },
           );
         }
         if (doc && doc.content === input.content) {
-          throw new HiveError("bad_request", "Proposed content is identical to the current version.");
+          throw new HiveError("bad_request", "Proposed content is identical to the current version.", { key: "errors.proposalSame" });
         }
         const res = db
           .prepare(
@@ -562,7 +567,7 @@ export class SqliteHive implements HiveBackend {
       "proposals.approve": ({ id }, actor) =>
         this.#tx(() => {
           const p = this.#getProposal(id);
-          if (p.status !== "pending") throw new HiveError("bad_request", `Proposal #${id} is already ${p.status}.`);
+          if (p.status !== "pending") throw new HiveError("bad_request", `Proposal #${id} is already ${p.status}.`, { key: "errors.proposalDecided", vars: { id } });
           const current = this.#getDoc(p.docKey)?.version ?? 0;
           const decide = (status: Proposal["status"], note: string | null) =>
             db
@@ -579,7 +584,7 @@ export class SqliteHive implements HiveBackend {
 
       "proposals.reject": ({ id, note }, actor) => {
         const p = this.#getProposal(id);
-        if (p.status !== "pending") throw new HiveError("bad_request", `Proposal #${id} is already ${p.status}.`);
+        if (p.status !== "pending") throw new HiveError("bad_request", `Proposal #${id} is already ${p.status}.`, { key: "errors.proposalDecided", vars: { id } });
         db.prepare("UPDATE proposals SET status = 'rejected', reviewer = ?, review_note = ?, decided_at = ? WHERE id = ?").run(
           actor.name,
           note ?? null,
@@ -651,7 +656,7 @@ export class SqliteHive implements HiveBackend {
         ).map(toTask),
 
       "tasks.create": (input) => {
-        if (this.#getTask(input.id)) throw new HiveError("conflict", `Task ${input.id} already exists.`);
+        if (this.#getTask(input.id)) throw new HiveError("conflict", `Task ${input.id} already exists.`, { key: "errors.taskExists", vars: { id: input.id } });
         db.prepare("INSERT INTO tasks(id, project, title, updated_at) VALUES (?, ?, ?, ?)").run(
           input.id,
           input.project,
@@ -662,7 +667,7 @@ export class SqliteHive implements HiveBackend {
       },
 
       "tasks.claim": ({ id, leaseMinutes }, actor) => {
-        if (!this.#getTask(id)) throw new HiveError("not_found", `Task ${id} not found.`);
+        if (!this.#getTask(id)) throw new HiveError("not_found", `Task ${id} not found.`, { key: "errors.taskNotFound", vars: { id } });
         const now = this.#now();
         const res = db
           .prepare(
@@ -677,12 +682,15 @@ export class SqliteHive implements HiveBackend {
       "tasks.update": ({ id, status, note }, actor) =>
         this.#tx(() => {
           const task = this.#getTask(id);
-          if (!task) throw new HiveError("not_found", `Task ${id} not found.`);
+          if (!task) throw new HiveError("not_found", `Task ${id} not found.`, { key: "errors.taskNotFound", vars: { id } });
           const now = this.#now();
           const heldByOther =
             task.owner !== null && task.owner !== actor.name && task.leaseUntil !== null && task.leaseUntil > now;
           if (heldByOther && actor.role !== "admin") {
-            throw new HiveError("forbidden", `Task ${id} is held by ${task.owner} until ${task.leaseUntil}.`);
+            throw new HiveError("forbidden", `Task ${id} is held by ${task.owner} until ${task.leaseUntil}.`, {
+              key: "errors.taskHeld",
+              vars: { id, owner: task.owner ?? "", until: task.leaseUntil ?? "" },
+            });
           }
           const doing = status === "doing";
           db.prepare(
@@ -806,15 +814,18 @@ export class SqliteHive implements HiveBackend {
       "admin.commandCreate": ({ machineId, itemId }, actor) =>
         this.#tx(() => {
           const row = db.prepare("SELECT setup FROM machines WHERE id = ?").get(machineId) as Row | undefined;
-          if (!row) throw new HiveError("not_found", `No machine ${machineId}.`);
+          if (!row) throw new HiveError("not_found", `No machine ${machineId}.`, { key: "errors.machineNotFound", vars: { machine: machineId } });
           const report = row.setup == null ? null : (JSON.parse(str(row.setup)) as SetupReport);
           const item = report ? [...report.machine, ...report.projects.flatMap((p) => p.items)].find((i) => i.id === itemId) : undefined;
-          if (!item) throw new HiveError("bad_request", `${machineId} has not reported ${itemId}.`);
-          if (!item.action) throw new HiveError("bad_request", `${itemId} is ${item.state} on ${machineId}: nothing the app can install.`);
+          if (!item) throw new HiveError("bad_request", `${machineId} has not reported ${itemId}.`, { key: "errors.itemNotReported", vars: { machine: machineId, item: itemId } });
+          if (!item.action) throw new HiveError("bad_request", `${itemId} is ${item.state} on ${machineId}: nothing the app can install.`, {
+              key: "errors.nothingToInstall",
+              vars: { machine: machineId, item: itemId },
+            });
           const open = db
             .prepare("SELECT id FROM machine_commands WHERE machine_id = ? AND item_id = ? AND status IN ('pending', 'running')")
             .get(machineId, itemId) as Row | undefined;
-          if (open) throw new HiveError("conflict", `Command #${num(open.id)} for ${itemId} is still open.`);
+          if (open) throw new HiveError("conflict", `Command #${num(open.id)} for ${itemId} is still open.`, { key: "errors.commandOpen", vars: { id: num(open.id), item: itemId } });
           const now = this.#now();
           const res = db
             .prepare("INSERT INTO machine_commands(machine_id, item_id, label, requested_by, requested_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
@@ -825,7 +836,7 @@ export class SqliteHive implements HiveBackend {
       "admin.commandCancel": ({ id }) =>
         this.#tx(() => {
           const cmd = this.#command(id);
-          if (cmd.status !== "pending") throw new HiveError("conflict", `Command #${id} is ${cmd.status}; only pending commands can be cancelled.`);
+          if (cmd.status !== "pending") throw new HiveError("conflict", `Command #${id} is ${cmd.status}; only pending commands can be cancelled.`, { key: "errors.commandNotPending", vars: { id } });
           db.prepare("UPDATE machine_commands SET status = 'cancelled', updated_at = ? WHERE id = ?").run(this.#now(), id);
           return this.#command(id);
         }),
