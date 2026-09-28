@@ -5,6 +5,9 @@
 //                               │ ├─ CLI missing ──▶ failed ─────────▶ short cooldown, new attempt elsewhere
 //                               │ └─ other ────────▶ failed / cancelled
 //
+// Best-of-n: 2–4 candidates (each on its own subscription and branch ai/<task>+c<n>) ──all done──▶ judge on
+// another vendor ──"Winner: c<n>"──▶ that branch becomes ai/<task> ──▶ review / MR as after one implement run.
+//
 // No Electron imports: the desktop main process provides a RunnerHost, tests provide a fake one.
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -20,6 +23,7 @@ import {
   type AgentProfile,
   type AgentProfileStatus,
   type AgentRun,
+  type BestOf,
   type CiFix,
   type DesktopProject,
   type CommandStatus,
@@ -37,17 +41,17 @@ import {
   type Task,
 } from "@xdev-hive/core";
 import { tr } from "../i18n.ts";
-import { git } from "../git.ts";
+import { git, isGitRepo } from "../git.ts";
 import { NO_FEATURES, repoFeatures } from "../installer.ts";
 import { containerCommand } from "./container.ts";
 import { claudeMcpServers, codexMcpArgs, hubMcpEnv, type McpRun } from "./container-mcp.ts";
 import { deniedHosts, egressAllow, egressPlan, type Egress } from "./egress.ts";
-import { buildCommand, buildPrompt, describeCommand, expandEnv, expandHome, resolveBin } from "./command.ts";
+import { buildCommand, buildPrompt, describeCommand, expandEnv, expandHome, parsePick, resolveBin, type JudgeCandidate } from "./command.ts";
 import { detectRateLimit } from "./rate-limit.ts";
 import { parseClaudeResult, type RunUsage } from "./usage.ts";
 import { pickProfile, waitingReason, type ProfileLoad, type RunNeeds } from "./schedule.ts";
-import { RunStore } from "./store.ts";
-import { branchState, commitAll, describeBranch, ensureWorktree, removeWorktree, type Worktree } from "./worktree.ts";
+import { ACTIVE, RunStore } from "./store.ts";
+import { branchFor, branchState, candidateName, commitAll, describeBranch, ensureWorktree, removeWorktree, resetTo, type Worktree } from "./worktree.ts";
 
 export interface RunnerHost {
   backend(): HiveBackend;
@@ -84,7 +88,13 @@ export interface HubUpdate {
 export type RunnerEvent =
   | { type: "finished"; run: AgentRun }
   | { type: "rotated"; run: AgentRun; next: AgentRun }
-  | { type: "follow-up"; run: AgentRun; next: AgentRun };
+  | { type: "follow-up"; run: AgentRun; next: AgentRun }
+  /** Best-of-n: every candidate is done and a judge is queued. */
+  | { type: "judging"; run: AgentRun; next: AgentRun }
+  /** Best-of-n: `run` is the kept candidate (now on ai/<task>); `next` its review, if any. */
+  | { type: "picked"; run: AgentRun; next: AgentRun | null }
+  /** Best-of-n: the judge chose nothing usable; someone picks a candidate in the app. */
+  | { type: "undecided"; run: AgentRun };
 
 export interface RunnerOptions {
   /** Holds runs.db, run logs and (by default) worktrees. */
@@ -154,6 +164,22 @@ const JSON_BYTES = 2_000_000;
 const keepTail = (s: string, max = TAIL_BYTES) => (s.length > max ? s.slice(-max) : s);
 const clip = (s: string, n: number) => (s.length > n ? `…${s.slice(-(n - 1))}` : s);
 const TERMINAL: RunStatus[] = ["succeeded", "failed", "rate_limited", "cancelled"];
+export const MAX_CANDIDATES = 4;
+
+/** The latest attempt of each candidate of a group (a rotation adds a run), in candidate order. */
+function latestCandidates(group: AgentRun[]): AgentRun[] {
+  const by = new Map<number, AgentRun>();
+  for (const r of group) if (r.bestOf && r.bestOf.n > 0) by.set(r.bestOf.n, r);
+  return [...by.values()].sort((a, b) => a.bestOf!.n - b.bestOf!.n);
+}
+
+function tryGit(cwd: string, args: string[]): string | null {
+  try {
+    return git(cwd, args);
+  } catch {
+    return null;
+  }
+}
 
 function killTree(child: ChildProcess): void {
   if (!child.pid) return;
@@ -210,7 +236,10 @@ export class Runner {
   }
 
   start(): void {
+    // A group whose running candidate was lost with the app would otherwise wait forever.
+    const stalled = new Map(this.store.active().filter((r) => r.status === "running" && r.bestOf).map((r) => [r.bestOf!.group, r.id]));
     this.store.failInterrupted(this.#iso());
+    for (const id of stalled.values()) this.#track(this.#bestOfNext(this.store.get(id)!).catch(() => undefined));
     this.#interval = setInterval(() => void this.tick(), this.#opts.tickMs);
     this.#interval.unref();
     // A hub that is down shows up on every other call too; the heartbeat just tries again next time.
@@ -248,6 +277,12 @@ export class Runner {
     if (req.profileId && !this.#host.profiles().some((p) => p.id === req.profileId)) {
       throw new HiveError("not_found", `Không có profile ${req.profileId}.`, { key: "errors.profileNotFound", vars: { id: req.profileId } });
     }
+    const count = req.candidates ?? 1;
+    if (!Number.isInteger(count) || count < 1 || count > MAX_CANDIDATES) {
+      throw new HiveError("bad_request", `Số bản phải từ 1 đến ${MAX_CANDIDATES}.`, { key: "errors.badCandidates", vars: { max: MAX_CANDIDATES } });
+    }
+    if (count > 1 && role !== "implement") throw new HiveError("bad_request", "Chỉ việc Làm mới chạy nhiều bản.", { key: "errors.candidatesImplementOnly" });
+    if (count > 1 && req.profileId) throw new HiveError("bad_request", "Nhiều bản cần tự xoay gói sub, không ghim một gói.", { key: "errors.candidatesPinned" });
     const probe = this.#host.profiles().find((p) => p.id === req.profileId) ?? this.#host.profiles()[0];
     const actor: Actor = probe ? this.#actor(probe) : { name: "desktop", role: "agent" };
     const task = (await this.#host.backend().call("tasks.list", { project: req.project }, actor)).find((t) => t.id === req.taskId);
@@ -264,6 +299,7 @@ export class Runner {
     const active = this.store.activeForTask(req.project, req.taskId);
     if (active) throw new HiveError("conflict", `Task ${req.taskId} đang có run ${active.id} (${active.status}).`, { key: "errors.taskHasRun", vars: { id: req.taskId, run: active.id } });
     const previous = this.store.lastWithWorktree(req.project, req.taskId);
+    if (count > 1) return this.#enqueueCandidates(req, project, task, count, previous);
     const run = this.store.insert(
       {
         project: req.project,
@@ -284,12 +320,45 @@ export class Runner {
     return run;
   }
 
+  /** Candidates start together from the task branch (or HEAD), each on its own branch and worktree. */
+  #enqueueCandidates(req: StartRunRequest, project: DesktopProject, task: Task, count: number, previous: AgentRun | null): AgentRun {
+    if (!isGitRepo(project.repo)) throw new HiveError("bad_request", `${project.repo} không phải git repo`, { key: "errors.notGitRepo", vars: { path: project.repo } });
+    const branch = branchFor(req.taskId);
+    const tip = tryGit(project.repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]);
+    const from = tip ?? git(project.repo, ["rev-parse", "HEAD"]);
+    const baseSha = tip ? (previous?.baseSha ?? git(project.repo, ["merge-base", "HEAD", branch])) : from;
+    const group = `B-${randomBytes(3).toString("hex")}`;
+    const now = this.#iso();
+    const runs = Array.from({ length: count }, (_, i) =>
+      this.store.insert(
+        {
+          project: req.project,
+          taskId: req.taskId,
+          taskTitle: task.title,
+          role: "implement",
+          attempt: 1,
+          maxAttempts: this.#host.settings().maxAttempts,
+          instructions: (req.instructions ?? "").slice(0, 4000),
+          reviewAfter: req.reviewAfter ?? false,
+          baseSha,
+          bestOf: { group, n: i + 1, of: count, from, pick: null, reason: null },
+        },
+        now,
+      ),
+    );
+    void this.tick();
+    return runs[0]!;
+  }
+
   cancel(id: string): AgentRun {
     const run = this.store.get(id);
     if (!run) throw new HiveError("not_found", `Không có run ${id}.`, { key: "errors.runNotFound", vars: { id } });
     if (run.status === "queued") {
       this.#waiting.delete(id);
-      return this.store.update(id, { status: "cancelled", finishedAt: this.#iso(), error: tr("runNote.cancelledQueued") });
+      const done = this.store.update(id, { status: "cancelled", finishedAt: this.#iso(), error: tr("runNote.cancelledQueued") });
+      // It may have been the last one its group waited for.
+      if (done.bestOf) this.#track(this.#bestOfNext(done).catch(() => undefined));
+      return done;
     }
     const live = this.#live.get(id);
     if (live) {
@@ -320,8 +389,27 @@ export class Runner {
 
   diff(id: string): string {
     const run = this.store.get(id);
-    if (!run?.worktree || !run.baseSha) return tr("runNote.noWorktree");
-    return describeBranch(run.worktree, run.baseSha);
+    if (!run?.baseSha) return tr("runNote.noWorktree");
+    if (run.worktree) return describeBranch(run.worktree, run.baseSha);
+    // A candidate after the choice: its worktree is gone, its branch stays in the repo.
+    const repo = run.bestOf && run.branch ? this.#host.projects().find((p) => p.name === run.project)?.repo : undefined;
+    return repo ? describeBranch(repo, run.baseSha, `refs/heads/${run.branch}`) : tr("runNote.noWorktree");
+  }
+
+  /** Keeps a candidate by hand, when the judge chose none (or the group stopped without a judge). */
+  async pick(id: string): Promise<AgentRun> {
+    const run = this.store.get(id);
+    if (!run) throw new HiveError("not_found", `Không có run ${id}.`, { key: "errors.runNotFound", vars: { id } });
+    const b = run.bestOf;
+    if (!b || b.n === 0 || run.status !== "succeeded") throw new HiveError("bad_request", "Chỉ chọn được một bản đã chạy xong.", { key: "errors.notCandidate" });
+    if (b.pick !== null) throw new HiveError("conflict", `Đã giữ bản c${b.pick}.`, { key: "errors.alreadyPicked", vars: { n: b.pick } });
+    const group = this.store.group(b.group);
+    if (group.some((r) => ACTIVE.includes(r.status))) throw new HiveError("conflict", "Nhóm còn run đang chạy hoặc chờ.", { key: "errors.groupActive" });
+    // The task went on without the group: keeping a candidate now would drop that work from ai/<task>.
+    if (this.store.newerRuns(run.project, run.taskId, group.at(-1)!.createdAt).some((r) => r.bestOf?.group !== b.group)) {
+      throw new HiveError("conflict", "Task đã có run mới sau nhóm này.", { key: "errors.taskMovedOn" });
+    }
+    return this.#keep(run, tr("bestOf.byHand", { user: this.#opts.user }), null);
   }
 
   removeWorktree(id: string): AgentRun {
@@ -523,11 +611,32 @@ export class Runner {
   }
 
   #needs(run: AgentRun): RunNeeds {
-    return {
+    const needs: RunNeeds = {
       role: run.role,
       preferredProfile: run.preferredProfile,
       avoidKinds: run.avoidKinds,
       excludedProfiles: run.excludedProfiles,
+    };
+    const b = run.bestOf;
+    if (!b || b.n === 0) return needs;
+    // Each candidate on its own subscription, and vendor, while there are enough; one of theirs again otherwise.
+    const others = new Set(this.store.group(b.group).flatMap((r) => (r.bestOf!.n > 0 && r.bestOf!.n !== b.n && r.profileId ? [r.profileId] : [])));
+    const kinds = this.#host.profiles().flatMap((p) => (others.has(p.id) ? [p.kind] : []));
+    return { ...needs, avoidProfiles: [...others], avoidKinds: [...new Set([...run.avoidKinds, ...kinds])] };
+  }
+
+  /** What the judge compares: the candidates that finished. */
+  #judgeInput(b: BestOf): { from: string; candidates: JudgeCandidate[] } {
+    const done = latestCandidates(this.store.group(b.group)).filter((c) => c.status === "succeeded");
+    return {
+      from: b.from,
+      candidates: done.map((c) => ({
+        n: c.bestOf!.n,
+        profileId: c.profileId,
+        branch: c.branch ?? branchFor(candidateName(c.taskId, c.bestOf!.n)),
+        commits: c.commits,
+        summary: c.summary,
+      })),
     };
   }
 
@@ -557,7 +666,16 @@ export class Runner {
     try {
       const project = this.#project(run.project);
       const root = this.#host.settings().worktreeRoot ?? path.join(this.#opts.dataDir, "worktrees");
-      wt = ensureWorktree(project.repo, path.join(root, project.name, run.taskId), run.taskId, run.baseSha);
+      // A candidate has its own; the judge reads the candidates' branches from the task's.
+      const candidate = run.bestOf && run.bestOf.n > 0 ? run.bestOf : null;
+      const name = candidate ? candidateName(run.taskId, candidate.n) : run.taskId;
+      wt = ensureWorktree(
+        project.repo,
+        path.join(root, project.name, name),
+        run.taskId,
+        run.baseSha,
+        candidate ? { branch: branchFor(name), from: candidate.from } : {},
+      );
       const backend = this.#host.backend();
       const actor = this.#actor(profile);
       const task = await this.#task(backend, actor, run);
@@ -578,6 +696,8 @@ export class Runner {
         previous: parent?.role === run.role && parent.profileId ? { profileId: parent.profileId, reason: parent.error ?? parent.status } : null,
         readOnly: profile.readOnly,
         ciFix: run.ciFix,
+        candidate: candidate ? { n: candidate.n, of: candidate.of } : null,
+        judge: run.bestOf?.n === 0 ? this.#judgeInput(run.bestOf) : null,
       });
       const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id };
       // A container has neither the hive-mcp shim nor this machine's codegraph: Claude gets the hub's MCP through a file.
@@ -595,14 +715,16 @@ export class Runner {
       }
 
       if (run.role !== "review") {
-        const lease = Math.min(profile.timeoutMinutes + 15, 24 * 60);
-        const claim = await backend.call("tasks.claim", { id: run.taskId, leaseMinutes: lease }, actor);
+        // Candidates share one lease, which the runner holds for the group (long enough for the slowest profile).
+        const minutes = candidate ? Math.max(...this.#host.profiles().map((p) => p.timeoutMinutes)) : profile.timeoutMinutes;
+        const lease = Math.min(minutes + 15, 24 * 60);
+        const claim = await backend.call("tasks.claim", { id: run.taskId, leaseMinutes: lease }, candidate ? this.#runnerActor() : actor);
         if (!claim.claimed) {
           const owner = claim.task?.owner ?? "?";
           const until = claim.task?.leaseUntil ?? "?";
           throw new HiveError("conflict", tr("runNote.taskHeld", { owner, until }), { key: "runNote.taskHeld", vars: { owner, until } });
         }
-        if (claim.task?.owner) this.#owners.set(run.id, claim.task.owner);
+        if (claim.task?.owner) this.#owners.set(candidate?.group ?? run.id, claim.task.owner);
       }
 
       log = createWriteStream(this.#logPath(run.id), { flags: "a" });
@@ -795,7 +917,8 @@ export class Runner {
 
     let commits = run.commits;
     let headSha = run.headSha;
-    if (wt && existsSync(wt.path)) {
+    // The judge changes nothing: what it left is dropped when the kept candidate replaces the branch.
+    if (wt && existsSync(wt.path) && run.bestOf?.n !== 0) {
       const label = run.role === "review" ? "review" : status === "succeeded" ? "work" : "wip";
       const c = commitAll(wt.path, `ai(${run.taskId}): ${label} by ${profile.id}\n\nRun ${run.id}, attempt ${run.attempt}, status ${status}`, wt.copied);
       if (c.error) error = [error, `commit: ${c.error}`].filter(Boolean).join(" · ");
@@ -807,7 +930,8 @@ export class Runner {
       this.store.update(run.id, { error: [done.error, `Hive: ${(err as Error).message}`].filter(Boolean).join(" · ") });
     });
 
-    if (this.#opts.afterFinish) {
+    // A candidate's branch is not the task's yet: its MR waits for the choice (#keep).
+    if (this.#opts.afterFinish && !run.bestOf) {
       const extra = await this.#opts.afterFinish(this.store.get(run.id)!).catch((err: unknown) => ({
         mrState: "failed" as const,
         mrNote: (err as Error).message ?? String(err),
@@ -832,10 +956,19 @@ export class Runner {
           reviewAfter: run.reviewAfter,
           baseSha: done.baseSha,
           ciFix: run.ciFix,
+          bestOf: run.bestOf,
         },
         this.#iso(),
       );
       this.#opts.onEvent?.({ type: "rotated", run: done, next });
+    } else if (run.bestOf) {
+      // The group decides what comes next, once every candidate is done.
+      await this.#bestOfNext(this.store.get(run.id)!).catch((err: unknown) => {
+        const now = this.store.get(run.id)!;
+        this.store.update(run.id, { error: [now.error, `best-of-n: ${(err as Error).message}`].filter(Boolean).join(" · ") });
+      });
+      void this.tick();
+      return;
     } else if (status === "succeeded" && run.reviewAfter && run.role !== "review") {
       next = this.store.insert(
         {
@@ -859,6 +992,168 @@ export class Runner {
     void this.tick();
   }
 
+  /**
+   * After a candidate or the judge ended for good: once nothing of the group is left to run, asks a judge
+   * (two or more candidates finished), keeps the only one that did, or gives the task back.
+   */
+  async #bestOfNext(run: AgentRun): Promise<void> {
+    const b = run.bestOf!;
+    const group = this.store.group(b.group);
+    if (group.some((r) => r.bestOf!.pick !== null) || group.some((r) => ACTIVE.includes(r.status))) return;
+    const finals = latestCandidates(group);
+    const done = finals.filter((c) => c.status === "succeeded");
+    const judge = group.filter((r) => r.bestOf!.n === 0).at(-1) ?? null;
+    if (judge) {
+      const pick = judge.status === "succeeded" ? parsePick(judge.summary, b.of) : null;
+      const kept = pick ? done.find((c) => c.bestOf!.n === pick.n) : undefined;
+      if (kept) {
+        await this.#keep(kept, pick!.reason || tr("bestOf.noReason"), judge);
+        return;
+      }
+      const why = pick ? tr("bestOf.pickedUnfinished", { n: pick.n }) : judge.status === "succeeded" ? tr("bestOf.noWinner") : (judge.error ?? judge.status);
+      await this.#undecided(judge, done, why);
+      return;
+    }
+    if (done.length === 1) {
+      await this.#keep(done[0]!, tr("bestOf.onlyOne"), null);
+      return;
+    }
+    if (!done.length) {
+      await this.#groupFailed(finals);
+      return;
+    }
+    // Another vendor than the candidates', when there is one.
+    const kinds = this.#host.profiles().flatMap((p) => (done.some((c) => c.profileId === p.id) ? [p.kind] : []));
+    const last = finals.at(-1)!;
+    const next = this.store.insert(
+      {
+        project: last.project,
+        taskId: last.taskId,
+        taskTitle: last.taskTitle,
+        role: "review",
+        attempt: 1,
+        maxAttempts: last.maxAttempts,
+        avoidKinds: [...new Set(kinds)],
+        instructions: last.instructions,
+        reviewAfter: last.reviewAfter,
+        baseSha: last.baseSha,
+        bestOf: { ...b, n: 0 },
+      },
+      this.#iso(),
+    );
+    this.#opts.onEvent?.({ type: "judging", run, next });
+  }
+
+  /**
+   * Keeps a candidate: its branch becomes ai/<task> (in the task's worktree), the candidates' worktrees go,
+   * and the task goes on as after one implement run (review, or the MR).
+   */
+  async #keep(chosen: AgentRun, reason: string, judge: AgentRun | null): Promise<AgentRun> {
+    const b = chosen.bestOf!;
+    const project = this.#project(chosen.project);
+    const root = this.#host.settings().worktreeRoot ?? path.join(this.#opts.dataDir, "worktrees");
+    const from = chosen.branch ?? branchFor(candidateName(chosen.taskId, b.n));
+    const wt = ensureWorktree(project.repo, path.join(root, project.name, chosen.taskId), chosen.taskId, chosen.baseSha);
+    resetTo(wt.path, wt.branch, `refs/heads/${from}`);
+    this.store.setPick(b.group, b.n, reason);
+    // Their branches stay, for a look at what was not kept (Board → show changes).
+    const notes: string[] = [];
+    for (const c of this.store.group(b.group)) {
+      if (!c.worktree || c.bestOf!.n === 0) continue;
+      try {
+        if (existsSync(c.worktree)) removeWorktree(project.repo, c.worktree, true);
+      } catch (err) {
+        notes.push((err as Error).message);
+      }
+      this.store.update(c.id, { worktree: null });
+    }
+    let kept = this.store.update(chosen.id, {
+      branch: wt.branch,
+      worktree: wt.path,
+      ...branchState(wt.path, wt.baseSha),
+      ...(notes.length ? { error: notes.join(" · ") } : {}),
+    });
+    const task = await this.#groupTask(kept, b.group);
+    if (task) {
+      const by = judge ? `, giám khảo ${judge.profileId ?? "?"} (run ${judge.id})` : "";
+      const note =
+        `${kept.summary ?? "Agent kết thúc không để lại tóm tắt."}\n\n` +
+        `Best-of-${b.of}: giữ bản c${b.n} (run ${kept.id} · ${kept.profileId ?? "?"})${by}. ${reason}\n` +
+        `Branch ${kept.branch}, ${kept.commits} commit${kept.headSha ? ` (${kept.headSha})` : ""}.`;
+      await this.#host.backend().call("tasks.update", { id: kept.taskId, status: "review", note: clip(note, 2000) }, this.#runnerActor());
+    }
+    this.#owners.delete(b.group);
+    let next: AgentRun | null = null;
+    if (kept.reviewAfter) {
+      const kind = this.#host.profiles().find((p) => p.id === kept.profileId)?.kind;
+      next = this.store.insert(
+        {
+          project: kept.project,
+          taskId: kept.taskId,
+          taskTitle: kept.taskTitle,
+          role: "review",
+          attempt: 1,
+          maxAttempts: kept.maxAttempts,
+          parentRunId: kept.id,
+          avoidKinds: kind ? [kind] : [],
+          baseSha: kept.baseSha,
+        },
+        this.#iso(),
+      );
+    } else if (this.#opts.afterFinish) {
+      const extra = await this.#opts.afterFinish(kept).catch((err: unknown) => ({
+        mrState: "failed" as const,
+        mrNote: (err as Error).message ?? String(err),
+      }));
+      if (extra) kept = this.store.update(kept.id, extra);
+    }
+    this.#opts.onEvent?.({ type: "picked", run: kept, next });
+    this.#track(this.#notifyHub(kept, next).catch(() => undefined));
+    void this.tick();
+    return kept;
+  }
+
+  /** The judge ran but chose nothing usable: the candidates wait for someone to pick one. */
+  async #undecided(judge: AgentRun, done: AgentRun[], why: string): Promise<void> {
+    const b = judge.bestOf!;
+    const task = await this.#groupTask(judge, b.group);
+    if (task) {
+      const list = done.map((c) => `c${c.bestOf!.n} (${c.profileId ?? "?"}, ${c.branch ?? "?"})`).join(", ");
+      const note = `Best-of-${b.of}: giám khảo ${judge.profileId ?? "?"} (run ${judge.id}) chưa chọn được bản nào: ${why}. Chọn tay một bản ở Board: ${list}.`;
+      await this.#host.backend().call("tasks.update", { id: judge.taskId, status: "review", note: clip(note, 2000) }, this.#runnerActor());
+    }
+    this.#owners.delete(b.group);
+    this.#opts.onEvent?.({ type: "undecided", run: judge });
+  }
+
+  /** No candidate finished: the task goes back to todo with what each one hit. */
+  async #groupFailed(finals: AgentRun[]): Promise<void> {
+    const last = [...finals].sort((a, b) => (a.finishedAt ?? "").localeCompare(b.finishedAt ?? "")).at(-1)!;
+    const b = last.bestOf!;
+    // Decided before the first await: two candidates that end together must not both give the task back.
+    this.store.setPick(b.group, 0, "");
+    const task = await this.#groupTask(last, b.group);
+    if (task) {
+      const lines = finals.map((c) => `c${c.bestOf!.n} (${c.profileId ?? "?"}) ${c.status}: ${c.error ?? ""}`);
+      const note = `Best-of-${b.of}: không bản nào chạy xong.\n${lines.join("\n")}`;
+      await this.#host.backend().call("tasks.update", { id: last.taskId, status: "todo", note: clip(note, 2000) }, this.#runnerActor());
+    }
+    this.#owners.delete(b.group);
+    this.#opts.onEvent?.({ type: "finished", run: last });
+    this.#track(this.#notifyHub(last, null).catch(() => undefined));
+  }
+
+  /** The task a group may move: not done, and not held by anyone but the group's runner. */
+  async #groupTask(run: AgentRun, group: string): Promise<Task | null> {
+    const task = (await this.#host.backend().call("tasks.list", { project: run.project }, this.#runnerActor())).find((t) => t.id === run.taskId);
+    if (!task || task.status === "done") return null;
+    if (!task.owner) return task;
+    const owner = this.#owners.get(group);
+    const me = this.#runnerActor().name;
+    // After a restart the lease holder is unknown: a hub appends its token name to the runner's.
+    return (owner ? task.owner === owner : task.owner === me || task.owner.startsWith(`${me}@`)) ? task : null;
+  }
+
   /** Tells the hub, for its webhooks, about a run that failed with no attempt left, and a merge request it opened. */
   async #notifyHub(run: AgentRun, next: AgentRun | null): Promise<void> {
     if (this.#host.mode() !== "hub") return;
@@ -872,7 +1167,8 @@ export class Runner {
 
   /** Moves the Hive task on, unless the agent already did it through MCP. */
   async #report(run: AgentRun, profile: AgentProfile): Promise<void> {
-    if (!TERMINAL.includes(run.status)) return;
+    // A best-of-n group reports once, for the kept candidate (#keep) or for all of them.
+    if (!TERMINAL.includes(run.status) || run.bestOf) return;
     const backend = this.#host.backend();
     const actor = this.#actor(profile);
     const task = (await backend.call("tasks.list", { project: run.project }, actor)).find((t) => t.id === run.taskId);
