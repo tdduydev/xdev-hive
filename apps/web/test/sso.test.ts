@@ -82,14 +82,14 @@ const cookieOf = (res: Response, name: string) =>
     ?.slice(name.length + 1) ?? null;
 
 /** Leaves for the provider (start or link), "signs in" there with these claims, comes back. */
-async function roundTrip(claims: (p: { nonce: string }) => Record<string, unknown>, opts: { session?: string; cookie?: string | null } = {}) {
+async function roundTrip(claims: (p: { nonce: string }) => Record<string, unknown>, opts: { session?: string; cookie?: string | null; returnTo?: string } = {}) {
   const start = opts.session
     ? await fetch(`${base}/api/auth/oidc/link`, {
         method: "POST",
         headers: { cookie: `hive_session=${opts.session}`, "x-hive-csrf": "1", "content-type": "application/json" },
         body: "{}",
       })
-    : await fetch(`${base}/api/auth/oidc/start`, { redirect: "manual" });
+    : await fetch(`${base}/api/auth/oidc/start${opts.returnTo ? `?return=${encodeURIComponent(opts.returnTo)}` : ""}`, { redirect: "manual" });
   const to = new URL(opts.session ? ((await start.clone().json()) as { result: { url: string } }).result.url : start.headers.get("location")!);
   const state = cookieOf(start, "hive_oidc")!;
   assert.equal(to.searchParams.get("state"), state);
@@ -185,6 +185,12 @@ describe("SSO (OpenID Connect)", () => {
     const denied = await fetch(`${base}/api/auth/oidc/callback?error=access_denied&state=x`, { redirect: "manual" });
     assert.equal(denied.headers.get("location"), "/?sso_error=errors.ssoProvider");
     assert.equal(users.list().some((u) => u.username === "u-x"), false);
+  });
+
+  it("comes back to the page it left from, on the hub only", async () => {
+    const device = "/#/device?port=53123&state=abcdefabcdefabcdef";
+    assert.equal((await roundTrip(good("u-back"), { returnTo: device })).location, device);
+    assert.equal((await roundTrip(good("u-back"), { returnTo: "//evil.example/x" })).location, "/");
   });
 
   it("keeps a disabled account out", async () => {

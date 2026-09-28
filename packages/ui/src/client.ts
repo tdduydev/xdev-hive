@@ -30,6 +30,10 @@ export interface HiveClient {
     /** Where to send the browser to link the hub's SSO provider to this account. */
     linkSso(): Promise<{ url: string }>;
   };
+  /** Hub, signed in with an account: let the desktop app waiting on this machine have a token (pages/Device.tsx). */
+  device?: {
+    authorize(input: { port: number; state: string; challenge: string; name: string }): Promise<{ url: string }>;
+  };
   /** Hub only, for hub admins: accounts and their per-project grants. */
   users?: {
     list(): Promise<HubUser[]>;
@@ -117,6 +121,9 @@ export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpCl
           account: {
             changePassword: (current: string, next: string) => request<Me>("/api/password", { current, next }),
             linkSso: () => request<{ url: string }>("/api/auth/oidc/link", {}),
+          },
+          device: {
+            authorize: (input: { port: number; state: string; challenge: string; name: string }) => request<{ url: string }>("/api/device/authorize", input),
           },
         }),
     users: {

@@ -102,7 +102,8 @@ function Root() {
   if (!client) {
     return (
       <Login
-        sso={sso ? { name: sso.name, href: "/api/auth/oidc/start" } : null}
+        // Back to the same page after the provider (e.g. the desktop app's sign-in page).
+        sso={sso ? { name: sso.name, href: `/api/auth/oidc/start?return=${encodeURIComponent(`/${window.location.hash}`)}` } : null}
         error={session.kind === "out" && session.error ? t(session.error) : null}
         onPassword={async (username, password) => {
           await signIn(username, password);

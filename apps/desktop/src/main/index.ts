@@ -53,6 +53,7 @@ import { expandEnv, expandHome, resolveBin } from "./runner/command.ts";
 import { LoginMonitor, loginParts } from "./runner/login.ts";
 import { Runner, type HubUpdate, type RunnerEvent } from "./runner/runner.ts";
 import { agentPath } from "./runner/shell-path.ts";
+import { landingPage, signInThroughBrowser } from "./hub-browser.ts";
 import { Setup } from "./setup.ts";
 import { checkCitations } from "./citations.ts";
 import { syncProject } from "./sync.ts";
@@ -189,6 +190,30 @@ async function hubSignIn(input: { hubUrl?: unknown; username?: unknown; password
     throw new HiveError(code === "unauthorized" || code === "forbidden" ? code : "bad_request", `Hub từ chối đăng nhập: ${message}`, key ? { key, vars } : { key: "errors.hubRefused", vars: { reason: message } });
   }
   return updateSettings({ mode: "hub", hubUrl, hubToken: token });
+}
+
+let browserSignIn: AbortController | null = null;
+
+/** Signs in through the hub's page in the browser (SSO accounts have no password for the form above). */
+async function hubSignInBrowser(input: { hubUrl?: unknown }): Promise<DesktopSettings> {
+  const hubUrl = String(input?.hubUrl ?? "").trim().replace(/\/+$/, "");
+  if (!/^https?:\/\//.test(hubUrl)) throw new HiveError("bad_request", "URL hub phải bắt đầu bằng http(s)://", { key: "errors.hubUrl" });
+  browserSignIn?.abort();
+  const controller = new AbortController();
+  browserSignIn = controller;
+  try {
+    const { token } = await signInThroughBrowser({
+      hubUrl,
+      machine: config.machine,
+      open: (url) => shell.openExternal(url),
+      page: (outcome) =>
+        landingPage("xDev Hive", tr(outcome === "done" ? "desktop.browserSignInDone" : "desktop.browserSignInDenied")),
+      signal: controller.signal,
+    });
+    return await updateSettings({ mode: "hub", hubUrl, hubToken: token });
+  } finally {
+    if (browserSignIn === controller) browserSignIn = null;
+  }
 }
 
 function addProject(p: DesktopProject): DesktopSettings {
@@ -493,6 +518,8 @@ function registerIpc(): void {
   handle("desktop:settings", settings);
   handle("desktop:updateSettings", updateSettings);
   handle("desktop:hubSignIn", hubSignIn);
+  handle("desktop:hubSignInBrowser", hubSignInBrowser);
+  handle("desktop:hubSignInCancel", () => browserSignIn?.abort());
   handle("desktop:setLocale", setLocale);
   handle("desktop:addProject", addProject);
   handle("desktop:removeProject", (name: string) =>
