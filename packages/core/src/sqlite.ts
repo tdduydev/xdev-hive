@@ -22,6 +22,7 @@ import type {
   Actor,
   AuditEntry,
   CommandStatus,
+  CostTotals,
   Doc,
   DocSummary,
   DocVersion,
@@ -106,7 +107,17 @@ const MIGRATIONS: string[] = [
   ALTER TABLE proposals ADD COLUMN source TEXT;
   ALTER TABLE memory ADD COLUMN source TEXT;
   `,
+  `
+  CREATE TABLE run_costs(
+    machine_id TEXT NOT NULL, run_id TEXT NOT NULL, machine TEXT NOT NULL, project TEXT NOT NULL, task_id TEXT NOT NULL,
+    profile_id TEXT NOT NULL, account TEXT, cost_usd REAL NOT NULL, input_tokens INTEGER, output_tokens INTEGER,
+    finished_at TEXT NOT NULL, PRIMARY KEY(machine_id, run_id));
+  CREATE INDEX run_costs_at ON run_costs(finished_at);
+  `,
 ];
+
+/** Run costs older than this are dropped; the summary only looks back 30 days. */
+const COST_DAYS = 90;
 
 /** A machine is online if it sent a heartbeat this recently (runners send one every 30 s). */
 const ONLINE_MINUTES = 2;
@@ -760,7 +771,7 @@ export class SqliteHive implements HiveBackend {
         }),
 
       // Keyed by the hub actor (`runner.<machine>@<token>`): the same key as the leases that machine takes.
-      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles }, actor) =>
+      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, costs }, actor) =>
         this.#tx(() => {
           const now = this.#now();
           const row = db.prepare("SELECT instance, prev_instance, last_seen, duplicate_at FROM machines WHERE id = ?").get(actor.name) as
@@ -782,6 +793,15 @@ export class SqliteHive implements HiveBackend {
           ).run(actor.name, machine, instance, prev, version, JSON.stringify(runs), now, duplicateAt);
           if (setup) db.prepare("UPDATE machines SET setup = ?, setup_at = ? WHERE id = ?").run(JSON.stringify(setup.report), setup.checkedAt, actor.name);
           if (profiles) db.prepare("UPDATE machines SET profiles = ? WHERE id = ?").run(JSON.stringify(profiles), actor.name);
+          // A machine resends until the hub answers, so a run is kept as first reported.
+          const cost = db.prepare(
+            `INSERT OR IGNORE INTO run_costs(machine_id, run_id, machine, project, task_id, profile_id, account, cost_usd, input_tokens, output_tokens, finished_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          );
+          for (const c of costs) {
+            cost.run(actor.name, c.runId, machine, c.project, c.taskId, c.profileId, c.account, c.costUsd, c.inputTokens, c.outputTokens, c.finishedAt);
+          }
+          db.prepare("DELETE FROM run_costs WHERE finished_at < ?").run(this.#now(-COST_DAYS * 24 * 60));
           db.prepare("DELETE FROM machines WHERE last_seen < ?").run(this.#now(-MACHINE_TTL_DAYS * 24 * 60));
           this.#expireCommands();
           const commands = (
@@ -794,6 +814,42 @@ export class SqliteHive implements HiveBackend {
             commands,
           };
         }),
+
+      "costs.summary": (_input, actor) => {
+        const since = (days: number) => this.#now(-days * 24 * 60);
+        const rows = db
+          .prepare(
+            `SELECT project, machine, profile_id, account,
+               SUM(CASE WHEN finished_at >= ?1 THEN cost_usd ELSE 0 END) AS usd1,
+               SUM(CASE WHEN finished_at >= ?2 THEN cost_usd ELSE 0 END) AS usd7,
+               SUM(cost_usd) AS usd30, COUNT(*) AS runs30
+             FROM run_costs WHERE finished_at >= ?3 GROUP BY project, machine, profile_id, account`,
+          )
+          .all(since(1), since(7), since(30)) as Row[];
+        const visible = rows.filter((r) => levelOn(actor, str(r.project)) !== null);
+        const zero = (): CostTotals => ({ usd1: 0, usd7: 0, usd30: 0, runs30: 0 });
+        const add = (t: CostTotals, r: Row) => {
+          t.usd1 += Number(r.usd1);
+          t.usd7 += Number(r.usd7);
+          t.usd30 += Number(r.usd30);
+          t.runs30 += Number(r.runs30);
+          return t;
+        };
+        const group = <K extends string>(key: (r: Row) => K) => {
+          const out = new Map<K, CostTotals>();
+          for (const r of visible) out.set(key(r), add(out.get(key(r)) ?? zero(), r));
+          return [...out].sort((a, b) => b[1].usd30 - a[1].usd30);
+        };
+        const sep = "\u0000";
+        return {
+          total: visible.reduce(add, zero()),
+          projects: group((r) => str(r.project)).map(([project, t]) => ({ project, ...t })),
+          profiles: group((r) => [str(r.machine), str(r.profile_id), strOrNull(r.account) ?? ""].join(sep)).map(([k, t]) => {
+            const [machine, profileId, account] = k.split(sep) as [string, string, string];
+            return { machine, profileId, account: account || null, ...t };
+          }),
+        };
+      },
 
       "machines.list": () =>
         (db.prepare("SELECT * FROM machines ORDER BY last_seen DESC").all() as Row[]).map((r) => this.#toMachine(r)),

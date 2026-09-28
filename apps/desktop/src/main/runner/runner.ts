@@ -327,13 +327,28 @@ export class Runner {
       profileId: r.profileId,
       since: r.startedAt ?? r.createdAt,
     }));
+    const accounts = new Map(this.#host.profiles().map((p) => [p.id, p.account ?? null]));
+    const finished = this.store.unreportedCosts();
+    const costs = finished.map((r) => ({
+      runId: r.id,
+      project: r.project,
+      taskId: r.taskId,
+      profileId: r.profileId ?? "?",
+      account: accounts.get(r.profileId ?? "") ?? null,
+      costUsd: r.costUsd!,
+      inputTokens: r.inputTokens,
+      outputTokens: r.outputTokens,
+      finishedAt: r.finishedAt!,
+    }));
     const res = await this.#host
       .backend()
       .call(
         "machines.heartbeat",
-        { machine: this.#host.machine(), instance: this.#instance, version: this.#opts.version, runs, ...this.#host.report?.() },
+        { machine: this.#host.machine(), instance: this.#instance, version: this.#opts.version, runs, costs, ...this.#host.report?.() },
         this.#runnerActor(),
       );
+    // Only after the hub answered: a failed heartbeat sends the same costs next time.
+    this.store.markCostsReported(finished.map((r) => r.id));
     const next = new Map(res.cooldowns.map((c) => [c.account, c]));
     // Cleared on the hub before it ended (someone pressed "Hết nghỉ"): end the local rest it came from too.
     const now = this.#iso();

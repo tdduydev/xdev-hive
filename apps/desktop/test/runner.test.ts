@@ -454,6 +454,19 @@ describe("Runner", () => {
     assert.equal((await a.task()).owner, null);
   });
 
+  it("sends each finished run's cost to the hub once, after the hub answered", async () => {
+    const { runner, hive } = await setup([profile("claude-a", "claude", 10, "ok", { account: "claude-max-duy" })], {}, "hub");
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    assert.equal(runner.store.unreportedCosts().map((r) => r.id).join(), run.id);
+    await runner.heartbeat();
+    assert.deepEqual(runner.store.unreportedCosts(), []);
+    await runner.heartbeat();
+    const s = await hive.call("costs.summary", {}, admin);
+    assert.deepEqual(s.total, { usd1: 0.0425, usd7: 0.0425, usd30: 0.0425, runs30: 1 });
+    assert.deepEqual(s.profiles.map((p) => [p.machine, p.profileId, p.account]), [["duy-mbp", "claude-a", "claude-max-duy"]]);
+  });
+
   it("reports queued and running runs to the hub in its heartbeat", async () => {
     const a = await setup([profile("claude-1", "claude", 10, "sleep")], {}, "hub", { name: "duy-mbp" });
     const run = await a.runner.enqueue({ project: "demo", taskId: "T-1" });
