@@ -208,6 +208,22 @@ export interface Machine {
   profiles: ReportedProfile[];
 }
 
+/** API-price cost estimates over rolling windows: the last 24 hours, 7 days and 30 days. */
+export interface CostTotals {
+  usd1: number;
+  usd7: number;
+  usd30: number;
+  /** Runs with a cost in the last 30 days. */
+  runs30: number;
+}
+
+/** What finished runs cost, as the machines reported it (Claude Code runs only), for the projects the reader sees. */
+export interface CostSummary {
+  total: CostTotals;
+  projects: Array<CostTotals & { project: string }>;
+  profiles: Array<CostTotals & { machine: string; profileId: string; account: string | null }>;
+}
+
 /** A subscription account resting after a rate limit, shared by every machine logged into it. */
 export interface QuotaCooldown {
   account: string;
