@@ -216,6 +216,8 @@ export interface AgentRun {
   pipelineUrl: string | null;
   mrCheckedAt: string | null;
   ciFix: CiFix | null;
+  /** One of several candidates for the task, or the judge that compares them (see BestOf). */
+  bestOf: BestOf | null;
   /** From the CLI's JSON result (Claude Code): estimated at API prices, which a subscription does not bill. */
   costUsd: number | null;
   /** Input tokens including cache reads and writes. */
@@ -236,6 +238,23 @@ export interface CiFix {
   jobs: Array<{ name: string; stage: string; url: string; log: string }>;
 }
 
+/**
+ * Best-of-n: 2–4 agents implement the same task, each on its own branch (ai/<task>+c<n>), then a judge
+ * on another vendor compares the branches and keeps one, which moves to ai/<task> and goes on as usual.
+ */
+export interface BestOf {
+  /** Shared by the candidates and their judge. */
+  group: string;
+  /** 1..of for a candidate; 0 for the judge. */
+  n: number;
+  of: number;
+  /** Commit the candidates start from. */
+  from: string;
+  /** Once decided: the candidate kept (0 = none finished), and why. */
+  pick: number | null;
+  reason: string | null;
+}
+
 export interface StartRunRequest {
   project: string;
   taskId: string;
@@ -245,6 +264,8 @@ export interface StartRunRequest {
   instructions?: string;
   /** After success, queue a review on a different agent kind. */
   reviewAfter?: boolean;
+  /** Implement 2–4 times on different subscriptions and keep the best (judged by another vendor); default 1. */
+  candidates?: number;
 }
 
 export interface ProfileCheck {
@@ -291,6 +312,8 @@ export interface DesktopBridge {
   runDiff(id: string): Promise<string>;
   cancelRun(id: string): Promise<AgentRun>;
   removeWorktree(id: string): Promise<AgentRun>;
+  /** Keeps this candidate when the judge could not choose (best-of-n). */
+  pickCandidate(id: string): Promise<AgentRun>;
 
   updateProject(name: string, patch: { gitlabProject?: string | null; targetBranch?: string | null }): Promise<DesktopSettings>;
   checkGitLab(): Promise<GitLabCheck>;

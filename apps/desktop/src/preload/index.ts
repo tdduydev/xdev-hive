@@ -42,6 +42,7 @@ contextBridge.exposeInMainWorld("hive", {
     runDiff: (id: string) => invoke("desktop:runDiff", id),
     cancelRun: (id: string) => invoke("desktop:cancelRun", id),
     removeWorktree: (id: string) => invoke("desktop:removeWorktree", id),
+    pickCandidate: (id: string) => invoke("desktop:pickCandidate", id),
     updateProject: (name: string, patch: unknown) => invoke("desktop:updateProject", name, patch),
     checkGitLab: () => invoke("desktop:checkGitLab"),
     createMergeRequest: (runId: string) => invoke("desktop:createMergeRequest", runId),

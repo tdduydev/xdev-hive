@@ -56,7 +56,7 @@ Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, 
     - Trang Task hiện 3 task đầu, Board gắn nhãn *Tiếp theo*.
 - **Đồng bộ vào repo**: render `AGENTS.md` (khối chung + phần riêng của dự án), `CLAUDE.md` (`@AGENTS.md`), `docs/decisions.md`. Chỉ commit các file này, không push.
 - **Chặn sửa tay**: hook `PreToolUse` của Claude Code và `pre-commit` của git (áp dụng cho mọi agent). Run của runner không chạy hook nào; runner tự để các file này ngoài commit.
-- **Board + runner** (desktop): giao task cho agent chạy headless (`claude -p`, `codex exec`, `gemini -p`…). Mỗi task có worktree riêng. Hết quota thì tự chuyển gói sub, xong thì review chéo bằng vendor khác.
+- **Board + runner** (desktop): giao task cho agent chạy headless (`claude -p`, `codex exec`, `gemini -p`…). Mỗi task có worktree riêng. Hết quota thì tự chuyển gói sub, xong thì review chéo bằng vendor khác. Task khó thì chạy 2–4 bản trên các gói khác nhau, một giám khảo vendor khác giữ bản tốt nhất.
 - **GitLab MR**: review chéo đạt thì push `ai/<task>` và tạo MR (review yêu cầu sửa thì tạo Draft). Chạy lại thì cập nhật MR cũ.
 
 ## Cấu trúc
@@ -75,7 +75,7 @@ Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ v�
 
 ```bash
 nvm use && npm install
-npm test            # 259 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
+npm test            # 270 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR)
 npm run typecheck
 ```
 
@@ -91,7 +91,7 @@ App desktop:
 
 ```bash
 npm run dev:desktop                              # dev
-npm run smoke -w @xdev-hive/desktop              # app + config tạm + agent giả + GitLab giả: hết quota → xoay gói → review chéo → MR (HIVE_SMOKE_LOCALE=en: chụp giao diện tiếng Anh)
+npm run smoke -w @xdev-hive/desktop              # app + config tạm + agent giả + GitLab giả: hết quota → xoay gói → review chéo → MR → CI lỗi → run sửa → 2 bản + giám khảo (HIVE_SMOKE_LOCALE=en: chụp giao diện tiếng Anh)
 npm run dist -w @xdev-hive/desktop               # bản cài cho máy đang dùng
 npm run release -w @xdev-hive/desktop            # build mọi nền tảng + đăng GitHub Release v<version>
 ```
@@ -164,6 +164,25 @@ queued ─chọn gói─▶ running ─exit 0──────▶ succeeded ─
 Hai gói của cùng một vendor: tạo 2 profile, profile thứ hai trỏ CLI sang thư mục đăng nhập riêng, rồi đăng nhập một lần trong terminal với biến đó, ví dụ `CLAUDE_CONFIG_DIR=~/.claude-2` (Claude Code) hoặc `CODEX_HOME=~/.codex-2` (Codex). Tên biến và cờ headless mặc định lấy theo tài liệu CLI mình biết; hãy kiểm tra bằng `--help` của bản bạn đang cài.
 
 Cờ mặc định là mức "cho sửa file" (`--permission-mode acceptEdits`, `--full-auto`, `--approval-mode auto_edit`). Muốn agent tự chạy test hay lệnh shell thì mở rộng tham số của profile, và cân nhắc rủi ro vì lệnh chạy trên máy thật (worktree không phải sandbox), hoặc cho profile chạy trong container.
+
+### Chạy nhiều bản, giữ bản tốt nhất (best-of-n)
+
+Ô *Số bản* khi chạy agent với việc *Làm* và *Tự xoay vòng theo quota* (hỏi ngày 28/9: giám khảo là agent so sánh các bản; mỗi bản một gói sub khác nhau).
+
+```
+bản c1 (gói A) ─┐
+bản c2 (gói B) ─┼─ xong hết ─▶ giám khảo (vendor khác) ─"Winner: c2"─▶ ai/<task> = bản c2 ─▶ review chéo / MR như thường
+bản c3 (gói C) ─┘
+```
+
+- **Mỗi bản** chạy trong worktree `…/<dự án>/<task>+c<n>` trên branch `ai/<task>+c<n>`, bắt đầu từ `ai/<task>` (hoặc `HEAD` nếu task chưa có branch). Nhóm mới luôn bắt đầu lại từ đó, không nối tiếp bản của nhóm cũ.
+- **Chọn gói**: mỗi bản ưu tiên gói chưa bản nào dùng, rồi vendor chưa bản nào dùng. Thiếu gói thì dùng lại gói của bản khác, chạy lần lượt theo số chạy song song của gói. Bản nào hết quota thì xoay sang gói khác như run thường, trên cùng branch của bản đó.
+- **Task trên Hive**: runner giữ lease cho cả nhóm. Prompt dặn từng bản không gọi `task_update`. Task chỉ được cập nhật một lần, khi nhóm đã chọn xong.
+- **Giám khảo**: một run review chạy trong worktree `ai/<task>`, ưu tiên vendor khác các bản. Prompt liệt kê branch, lệnh `git diff` và báo cáo của từng bản (bọc lại như dữ liệu), dặn không sửa file, và bắt kết thúc bằng hai dòng `Winner: c<n>` và `Reason: …`. Runner không commit gì của giám khảo.
+- **Khi chọn xong**: `ai/<task>` chuyển sang commit của bản được giữ (thứ giám khảo để lại trong worktree bị bỏ). Worktree của các bản bị xoá, branch `ai/<task>+c<n>` vẫn giữ để xem lại (nút *Xem thay đổi* trên Board). Task chuyển sang *Chờ review* với tóm tắt của bản được giữ và lý do chọn, rồi đi tiếp như sau một run làm task: review chéo tránh vendor của bản được giữ, hoặc tạo MR.
+- **Chỉ một bản xong** thì giữ luôn bản đó, không cần giám khảo. **Không bản nào xong** thì task về *Chưa làm*, ghi chú nêu lỗi của từng bản.
+- **Giám khảo không chọn được** (lỗi, bị huỷ, không có dòng `Winner`, hoặc chọn bản chưa xong): task chuyển sang *Chờ review* với ghi chú, các bản giữ nguyên worktree, và mỗi bản đã xong có nút *Giữ bản này* trên Board. Nút bị từ chối nếu task đã có run mới sau nhóm, để không ghi đè việc đó.
+- Board ghi `bản n/N` hoặc `giám khảo` cạnh run, và `được giữ` / `không giữ` sau khi chọn. Thông báo của app chỉ báo lúc giám khảo bắt đầu, lúc giữ một bản, hoặc lúc cần chọn tay, không báo từng bản.
 
 ### Chạy trong container (Docker)
 

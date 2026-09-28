@@ -476,11 +476,17 @@ function onRunnerEvent(event: RunnerEvent): void {
       ? tr("desktop.runRotated", { profile: r.profileId ?? "", attempt: event.next.attempt })
       : event.type === "follow-up"
         ? tr("desktop.runFollowUp")
-        : r.status === "succeeded"
-          ? r.role === "review"
-            ? tr("desktop.reviewDone")
-            : tr("desktop.runDone", { count: r.commits })
-          : `${tr(`runStatus.${r.status}`)}: ${r.error ?? ""}`;
+        : event.type === "judging"
+          ? tr("desktop.judging")
+          : event.type === "picked"
+            ? tr(event.next ? "desktop.pickedReview" : "desktop.picked", { n: r.bestOf?.n ?? "?" })
+            : event.type === "undecided"
+              ? tr("desktop.undecided")
+              : r.status === "succeeded"
+                ? r.role === "review"
+                  ? tr("desktop.reviewDone")
+                  : tr("desktop.runDone", { count: r.commits })
+                : `${tr(`runStatus.${r.status}`)}: ${r.error ?? ""}`;
   const n = new Notification({ title, body: body + mr });
   n.on("click", () => {
     showWindow();
@@ -599,6 +605,7 @@ function registerIpc(): void {
   handle("desktop:runDiff", (id: string) => runner.diff(id));
   handle("desktop:cancelRun", (id: string): AgentRun => runner.cancel(id));
   handle("desktop:removeWorktree", (id: string) => runner.removeWorktree(id));
+  handle("desktop:pickCandidate", (id: string) => runner.pick(id));
   handle("desktop:updateProject", updateProject);
   handle("desktop:checkGitLab", checkGitLab);
   handle("desktop:createMergeRequest", createMergeRequest);
@@ -647,6 +654,14 @@ function createWindow(): void {
     const capture = () => {
       const delay = Number(process.env.HIVE_SMOKE_DELAY_MS ?? 1500);
       setTimeout(async () => {
+        // HIVE_SMOKE_CLICK / HIVE_SMOKE_SCROLL: CSS selectors to click, then to scroll to, before the shot.
+        const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+        const click = process.env.HIVE_SMOKE_CLICK;
+        const scroll = process.env.HIVE_SMOKE_SCROLL;
+        if (click) await win!.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(click)})?.click()`).then(() => pause(700));
+        if (scroll) {
+          await win!.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(scroll)})?.scrollIntoView({ block: "start" })`).then(() => pause(300));
+        }
         const image = await win!.webContents.capturePage();
         writeFileSync(smokeShot, image.toPNG());
         console.log(`[xdev-hive] smoke screenshot ${smokeShot}`);

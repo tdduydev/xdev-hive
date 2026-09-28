@@ -178,6 +178,13 @@ export function BoardPage() {
   );
 }
 
+/** "c2/3" for a best-of-n candidate, "judge" for the run that compares them. */
+function bestOfLabel(run: AgentRun, t: ReturnType<typeof useT>): string | null {
+  const b = run.bestOf;
+  if (!b) return null;
+  return b.n === 0 ? t("board.judge") : t("board.candidateOf", { n: b.n, of: b.of });
+}
+
 function ProfileStrip({ profiles }: { profiles: AgentProfileStatus[] }) {
   const t = useT();
   if (!profiles.length) return null;
@@ -235,7 +242,9 @@ function TaskCard({
   const [profileId, setProfileId] = useState("");
   const [instructions, setInstructions] = useState("");
   const [reviewAfter, setReviewAfter] = useState(true);
+  const [candidates, setCandidates] = useState(1);
   const action = useAction();
+  const several = role === "implement" && !profileId;
   const busy = run?.status === "queued" || run?.status === "running";
   const waiting = task.waitingOn ?? [];
   const allowed = me.role !== "viewer" && canRun && task.status !== "done" && !waiting.length;
@@ -254,6 +263,7 @@ function TaskCard({
               <Badge tone={STATUS_TONE[run.status] ?? "neutral"}>
                 {t(`runStatus.${run.status}`)}
                 {run.profileId ? ` · ${run.profileId}` : ""}
+                {run.bestOf ? ` · ${bestOfLabel(run, t)}` : ""}
               </Badge>
             </button>
           ) : null}
@@ -285,6 +295,7 @@ function TaskCard({
                   profileId: profileId || null,
                   instructions,
                   reviewAfter: role !== "review" && reviewAfter,
+                  ...(several && candidates > 1 ? { candidates } : {}),
                 });
                 setOpen(false);
                 setInstructions("");
@@ -312,6 +323,25 @@ function TaskCard({
                   </NativeSelectOption>
                 ))}
             </NativeSelect>
+            {several ? (
+              <>
+                <Label htmlFor={`candidates-${task.id}`}>{t("board.candidates")}</Label>
+                <NativeSelect
+                  id={`candidates-${task.id}`}
+                  size="sm"
+                  value={String(candidates)}
+                  onChange={(e) => setCandidates(Number(e.target.value))}
+                  title={t("board.candidatesHint")}
+                >
+                  {[1, 2, 3, 4].map((n) => (
+                    <NativeSelectOption key={n} value={String(n)}>
+                      {n === 1 ? t("board.candidatesOne") : t("board.candidatesMany", { n })}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+                {candidates > 1 ? <p className="text-xs text-muted-foreground">{t("board.candidatesHint")}</p> : null}
+              </>
+            ) : null}
             <Textarea
               placeholder={t("board.instructionsPlaceholder")}
               value={instructions}
@@ -384,6 +414,16 @@ function RunsPanel({
                     <TableCell className="font-mono text-xs">
                       {r.id}
                       {r.attempt > 1 ? <span className="text-muted-foreground"> · {t("board.attempt", { n: r.attempt })}</span> : null}
+                      {r.bestOf ? (
+                        <div className="flex flex-wrap gap-1 pt-0.5 font-sans">
+                          <Badge tone={r.bestOf.n === 0 ? "accent" : "neutral"}>{bestOfLabel(r, t)}</Badge>
+                          {r.bestOf.n > 0 && r.bestOf.pick !== null ? (
+                            <Badge tone={r.bestOf.pick === r.bestOf.n ? "ok" : "neutral"}>
+                              {r.bestOf.pick === r.bestOf.n ? t("board.kept") : t("board.notKept")}
+                            </Badge>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </TableCell>
                     <TableCell>
                       <div className="font-mono text-xs">{r.taskId}</div>
@@ -406,7 +446,16 @@ function RunsPanel({
             </Table>
           </div>
         ) : null}
-        {run ? <RunDetail key={run.id} run={run} onClose={() => onSelect(null)} onChanged={onChanged} gitlabReady={gitlabReady} /> : null}
+        {run ? (
+          <RunDetail
+            key={run.id}
+            run={run}
+            group={run.bestOf ? runs.filter((r) => r.bestOf?.group === run.bestOf!.group) : []}
+            onClose={() => onSelect(null)}
+            onChanged={onChanged}
+            gitlabReady={gitlabReady}
+          />
+        ) : null}
       </div>
     </section>
   );
@@ -436,7 +485,20 @@ function MrLink({ run }: { run: AgentRun }) {
   );
 }
 
-function RunDetail({ run, onClose, onChanged, gitlabReady }: { run: AgentRun; onClose: () => void; onChanged: () => void; gitlabReady: boolean }) {
+function RunDetail({
+  run,
+  group,
+  onClose,
+  onChanged,
+  gitlabReady,
+}: {
+  run: AgentRun;
+  /** The other runs of its best-of-n group, as far as the list shows them. */
+  group: AgentRun[];
+  onClose: () => void;
+  onChanged: () => void;
+  gitlabReady: boolean;
+}) {
   const { client } = useHive();
   const t = useT();
   const desktop = client.desktop!;
@@ -446,6 +508,13 @@ function RunDetail({ run, onClose, onChanged, gitlabReady }: { run: AgentRun; on
   const [diff, setDiff] = useState<string | null>(null);
   const action = useAction();
   const pre = useRef<HTMLPreElement>(null);
+  const b = run.bestOf;
+  // Nothing of the group left to run and nothing kept: the judge chose none, so a person keeps one.
+  const undecided =
+    b !== null &&
+    b.pick === null &&
+    group.some((r) => r.bestOf!.n > 0 && r.status === "succeeded") &&
+    !group.some((r) => r.status === "queued" || r.status === "running");
 
   useEffect(() => {
     const el = pre.current;
@@ -480,6 +549,15 @@ function RunDetail({ run, onClose, onChanged, gitlabReady }: { run: AgentRun; on
                 input: run.inputTokens === null ? "?" : formatCount(run.inputTokens),
                 output: run.outputTokens === null ? "?" : formatCount(run.outputTokens),
               })}
+            </div>
+          ) : null}
+          {b ? (
+            <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">
+                {b.n === 0 ? t("board.judgeDetail", { of: b.of }) : t("board.bestOfDetail", { n: b.n, of: b.of })}
+              </span>
+              {b.pick ? <span className="wrap-anywhere">{t("board.keptReason", { n: b.pick, reason: b.reason ?? "" })}</span> : null}
+              {undecided ? <span>{t("board.undecided")}</span> : null}
             </div>
           ) : null}
           {run.ciFix ? (
@@ -530,7 +608,20 @@ function RunDetail({ run, onClose, onChanged, gitlabReady }: { run: AgentRun; on
                 {t("board.cancelRun")}
               </Button>
             ) : null}
-            {gitlabReady && run.status === "succeeded" && run.role !== "plan" && run.commits > 0 ? (
+            {undecided && b!.n > 0 && run.status === "succeeded" ? (
+              <Button
+                size="sm"
+                disabled={action.busy}
+                onClick={() => {
+                  if (window.confirm(t("board.confirmPick", { n: b!.n, task: run.taskId }))) {
+                    void action.run(async () => (await desktop.pickCandidate(run.id), onChanged()));
+                  }
+                }}
+              >
+                {t("board.pickThis")}
+              </Button>
+            ) : null}
+            {gitlabReady && run.status === "succeeded" && run.role !== "plan" && run.commits > 0 && (!b || b.pick === b.n) ? (
               <Button
                 size="sm"
                 variant="outline"
@@ -538,6 +629,11 @@ function RunDetail({ run, onClose, onChanged, gitlabReady }: { run: AgentRun; on
                 onClick={() => void action.run(async () => (await desktop.createMergeRequest(run.id), onChanged()))}
               >
                 {run.mrUrl ? t("board.updateMr") : t("board.createMr")}
+              </Button>
+            ) : null}
+            {!run.worktree && b && run.branch ? (
+              <Button size="sm" variant="outline" onClick={() => void action.run(async () => setDiff(await desktop.runDiff(run.id)))}>
+                {t("proposals.showChanges")}
               </Button>
             ) : null}
             {run.worktree ? (
