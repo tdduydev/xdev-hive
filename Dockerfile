@@ -36,6 +36,8 @@ RUN npm ci --omit=dev --workspace @xdev-hive/web --include-workspace-root --no-a
 # The server runs TypeScript directly (Node type stripping), so sources ship as they are.
 COPY packages/core/src packages/core/src
 COPY packages/mcp/src packages/mcp/src
+# Webhook messages use the interface's translations (no React in there).
+COPY packages/ui/src/i18n packages/ui/src/i18n
 COPY apps/web/src apps/web/src
 COPY --from=build /app/apps/web/dist apps/web/dist
 # Both exist in the image so new named volumes start out owned by `node` (uid 1000).
