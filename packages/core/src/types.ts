@@ -82,6 +82,24 @@ export interface Memory {
   useCount: number;
   /** Neither used nor written within the stale period: agents' searches leave it out until someone keeps it. */
   stale: boolean;
+  /** Repo files the fact is about (paths from the repo root), with the blob last checked against. */
+  files: MemoryFile[];
+  /** A cited file changed or disappeared since; keeping the entry accepts the files as they are now. */
+  review: MemoryReview | null;
+}
+
+export interface MemoryFile {
+  path: string;
+  /** Git object id of the file on the project's branch when first checked; null until then. */
+  sha: string | null;
+}
+
+export interface MemoryReview {
+  at: string;
+  changed: string[];
+  missing: string[];
+  /** What the files are now, adopted as the new baseline when the entry is kept. */
+  current: Record<string, string | null>;
 }
 
 export const TASK_STATUSES = ["todo", "doing", "review", "done", "blocked"] as const;

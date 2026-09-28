@@ -52,6 +52,7 @@ import { LoginMonitor, loginParts } from "./runner/login.ts";
 import { Runner, type HubUpdate, type RunnerEvent } from "./runner/runner.ts";
 import { agentPath } from "./runner/shell-path.ts";
 import { Setup } from "./setup.ts";
+import { checkCitations } from "./citations.ts";
 import { syncProject } from "./sync.ts";
 import { openInTerminal } from "./terminal.ts";
 
@@ -221,6 +222,13 @@ function removeProfile(id: string) {
   if (runner.store.running(id)) throw new HiveError("conflict", `Profile ${id} đang chạy.`, { key: "errors.profileRunning", vars: { id } });
   persist({ ...config, agents: config.agents.filter((a) => a.id !== id) });
   return runner.profileStatuses();
+}
+
+/** One project at a time; a project whose check fails (no repo, no access) does not stop the others. */
+async function checkAllCitations(): Promise<void> {
+  for (const project of config.projects) {
+    await checkCitations(backend, actor(), project).catch(() => undefined);
+  }
 }
 
 /** A terminal with the profile's sign-in command; the app checks again when its window gets focus. */
@@ -692,6 +700,10 @@ if (!app.requestSingleInstanceLock()) {
     // The hub's admin view shows each machine's setup: check at start, then every 10 minutes.
     void refreshSetup().catch(() => undefined);
     setInterval(() => void refreshSetup().catch(() => undefined), 10 * 60_000).unref();
+    // Memory that cites files: compare them with each project's branch shortly after start, then every 30 minutes.
+    const citations = () => void checkAllCitations().catch(() => undefined);
+    setTimeout(citations, 60_000).unref();
+    setInterval(citations, 30 * 60_000).unref();
     if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(appIcon());
     registerIpc();
     createWindow();
