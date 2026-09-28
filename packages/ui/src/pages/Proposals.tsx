@@ -6,7 +6,7 @@ import { Input } from "@xdev-hive/ui/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@xdev-hive/ui/components/ui/toggle-group";
 import { Diff } from "../components/Diff.tsx";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
-import { formatTime, useAction, useCan, useHive, useQuery } from "../hooks.ts";
+import { formatTime, sourceText, useAction, useCan, useHive, useQuery } from "../hooks.ts";
 import { useT } from "../i18n/index.tsx";
 import { docOwner, inScope, scopeLabel } from "../lib/scope.ts";
 
@@ -100,6 +100,7 @@ function ProposalCard({ proposal: p, onChanged }: { proposal: Proposal; onChange
               <p className="font-semibold break-words">{p.reason}</p>
               <div className="text-xs text-muted-foreground">
                 {p.author} · {formatTime(p.createdAt)}
+                {sourceText(p.source)}
                 {p.reviewer && p.status !== "pending" ? ` · ${t(`proposals.decided.${p.status}`, { who: p.reviewer, time: formatTime(p.decidedAt) })}` : ""}
               </div>
               {p.reviewNote ? <Notice tone="info">{p.reviewNote}</Notice> : null}

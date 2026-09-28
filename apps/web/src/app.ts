@@ -1,7 +1,7 @@
 import express, { type NextFunction, type Request, type RequestHandler, type Response } from "express";
 import { hostHeaderValidation } from "@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { HiveError, HTTP_STATUS, isMethod, toErrorPayload, TOKEN_ROLES, type Actor, type Me, type Role } from "@xdev-hive/core";
+import { HiveError, HTTP_STATUS, isMethod, readSourceHeader, toErrorPayload, TOKEN_ROLES, type Actor, type Me, type Role } from "@xdev-hive/core";
 import type { SqliteHive } from "@xdev-hive/core/node";
 import { createHiveMcpServer } from "@xdev-hive/mcp";
 import type { TokenStore } from "./tokens.ts";
@@ -118,13 +118,14 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
     if (!who) return null;
     const label = (req.get("x-hive-agent") ?? "").replace(/[^\w.-]/g, "").slice(0, 80);
     const name = label ? `${label}@${who.name}` : who.name;
-    if (!who.ownerId) return { name, role: who.role };
+    const source = readSourceHeader(req.get("x-hive-source"));
+    if (!who.ownerId) return { name, role: who.role, source };
     const user = users.get(who.ownerId);
     if (!user || user.disabled) return null;
     res.locals.user = user;
     // An account that lost admin keeps its old admin tokens only as a member.
     const role: Role = who.role === "admin" && !user.admin ? "member" : who.role;
-    return { name, role, access: users.access(user) };
+    return { name, role, access: users.access(user), source };
   };
 
   /** Bearer token (agents, machines, CI) or the session cookie (people in the web hub). */
@@ -158,7 +159,7 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
       }
       res.locals.user = user;
       res.locals.session = session;
-      res.locals.actor = { name: user.username, role: user.admin ? "admin" : "member", access: users.access(user) } satisfies Actor;
+      res.locals.actor = { name: user.username, role: user.admin ? "admin" : "member", access: users.access(user), source: { via: "web" } } satisfies Actor;
       next();
     };
   const auth = authenticate({ cookie: true });
@@ -202,7 +203,7 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
       setSession(req, res, session.token, session.maxAge);
       hive.audit({ name: user.username, role: user.admin ? "admin" : "member" }, "auth.login", user.username, clientIp(req));
       res.locals.user = user;
-      res.locals.actor = { name: user.username, role: user.admin ? "admin" : "member", access: users.access(user) } satisfies Actor;
+      res.locals.actor = { name: user.username, role: user.admin ? "admin" : "member", access: users.access(user), source: { via: "web" } } satisfies Actor;
       res.json({ result: me(res) });
     } catch (err) {
       sendError(res, err);
@@ -358,7 +359,8 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
 
   // MCP over Streamable HTTP, stateless: one server per request, same tools as the stdio `hive-mcp`. Tokens only.
   app.post("/mcp", json, authenticate({ cookie: false }), async (req, res) => {
-    const server = createHiveMcpServer(hive, actorOf(res));
+    const actor = actorOf(res);
+    const server = createHiveMcpServer(hive, { ...actor, source: { ...actor.source, via: "mcp" } });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close();

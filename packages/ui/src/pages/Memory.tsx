@@ -9,7 +9,7 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { Badge, Empty, ErrorNote, OwnerBadge, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
 import { HiddenChars } from "../components/HiddenChars.tsx";
 import type { HiveClient } from "../client.ts";
-import { formatTime, useAction, useCan, useHive, useQuery } from "../hooks.ts";
+import { formatTime, sourceText, useAction, useCan, useHive, useQuery } from "../hooks.ts";
 import { useT, type MessageKey } from "../i18n/index.tsx";
 import { scopeProject, type Scope } from "../lib/scope.ts";
 
@@ -125,6 +125,7 @@ function MemoryRow({ memory: m, onChanged }: { memory: Memory; onChanged: () => 
             {m.taskId ? <span className="font-mono text-xs text-muted-foreground">{m.taskId}</span> : null}
             <span className="min-w-0 flex-1 text-xs text-muted-foreground">
               {m.author} · {formatTime(m.createdAt)}
+              {sourceText(m.source, m.taskId)}
             </span>
             {allow(m.project, "manage") ? (
               <>

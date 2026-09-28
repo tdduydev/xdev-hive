@@ -238,6 +238,13 @@ Agent không có app desktop (CI, cloud) gọi thẳng MCP qua HTTP: `POST https
   - ký tự độ rộng 0 (U+200B–200D, U+2060–2064, U+FEFF, U+180E).
 
   Emoji vẫn dùng được, kể cả emoji ghép bằng ZWJ và cờ vùng dùng ký tự tag. Lỗi báo mã ký tự, dòng và cột. Trang Tài liệu và Memory cảnh báo trước khi lưu và có nút *Xoá ký tự ẩn*.
+- **Nguồn ghi**: mỗi phiên bản tài liệu, đề xuất và memory lưu thêm nguồn.
+  - Lưu gì: kênh ghi (`web`, `desktop`, `mcp`, `api`); với agent thì thêm máy, run và task.
+  - Hiện ở đâu: cạnh tên người ghi trong lịch sử tài liệu, trang Đề xuất và Memory, ví dụ `qua MCP · duy-mbp · run R-1fa9e2 · task T-7`.
+  - Ai quyết định kênh: hub, không phải client. Cookie là `web`, `/mcp` là `mcp`. Token không tự xưng `web` được, thiếu hoặc sai thì ghi `api`.
+  - Máy, run, task: client tự báo qua header `x-hive-source` (hoặc `HIVE_RUN`/`HIVE_TASK` của `hive-mcp`). Hub chỉ kiểm định dạng.
+  - Run của Claude Code luôn có run và task, vì app đưa chúng vào cấu hình MCP. Với CLI khác thì tuỳ CLI có chuyển biến môi trường cho server MCP hay không.
+  - Phiên bản tạo khi duyệt đề xuất giữ nguồn của đề xuất; người duyệt nằm trong nhật ký. Memory không ghi `taskId` thì lấy task của run.
 - Desktop: `contextIsolation`, `sandbox`, preload chỉ lộ đúng các hàm cần. IPC kiểm tra nguồn gọi. CSP trong bản build.
 - `~/.xdev-hive/config.json` có quyền `0600` vì có thể chứa token hub.
 - Web chỉ lưu token trong `localStorage` khi đăng nhập bằng token (tuỳ chọn cho CI, khôi phục); đăng nhập bằng tài khoản thì dùng cookie phiên.

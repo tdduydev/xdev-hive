@@ -18,7 +18,7 @@ Làm lần lượt, mỗi lượt một mục (mỗi mục một PR). Mục có 
 
 - [x] **1. runner-hardening**: run Claude Code thêm `--settings '{"disableAllHooks":true}' --setting-sources user --strict-mcp-config --mcp-config` do app sinh (xdev-hive, codegraph và superpowers nếu checkout chính bật); commit của runner không chạy git hook và không đưa tài liệu render vào; prompt bảo agent đọc `AGENTS.md` trước. Codex giữ sandbox `workspace-write`.
 - [x] **2a. hidden-chars**: hub từ chối docs, đề xuất, memory có ký tự ẩn (bidi, tag, bộ chọn biến thể, độ rộng 0; emoji vẫn được), lỗi báo mã ký tự + dòng + cột; trang Tài liệu và Memory cảnh báo trước khi lưu, có nút xoá. Dữ liệu trên .52 không có ký tự ẩn nào.
-- [ ] **2b. write-provenance**: lưu nguồn mỗi lần ghi docs, memory, đề xuất (máy, run, task).
+- [x] **2b. write-provenance**: phiên bản tài liệu, đề xuất và memory lưu nguồn ghi (kênh do hub quyết: web/desktop/mcp/api; máy, run, task do client báo, `hive-mcp` đọc `HIVE_RUN`/`HIVE_TASK`, run Claude Code luôn có), hiện cạnh người ghi; memory không ghi task thì lấy task của run.
 - [ ] **2c. read-only-agent-token**: token chỉ-đọc cho agent.
 - [ ] **3. cost-tracking**: `total_cost_usd` theo run, profile, dự án. Hiện trên Board và Máy & run. Hạn mức theo dự án.
 - [ ] **4. memory-freshness**: `lastUsedAt`, hết hạn khi lâu không dùng, trích dẫn file để kiểm lại, liên kết supersedes/contradicts thay vì xoá.
