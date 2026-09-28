@@ -218,9 +218,13 @@ export function repoFeatures(repo: string): RepoFeatures {
   };
 }
 
-/** MCP servers for one agent run, listed by the app instead of read from the working copy. */
-export function runMcpServers(agent: string, project: string, features: RepoFeatures): Json {
-  return { [MCP_NAME]: mcpEntry(agent, project), ...(features.codegraph ? { codegraph: CODEGRAPH_MCP } : {}) };
+/** MCP servers for one agent run, listed by the app instead of read from the working copy. Task and run go with every write. */
+export function runMcpServers(agent: string, project: string, features: RepoFeatures, run: { task: string; id?: string }): Json {
+  const hive = mcpEntry(agent, project);
+  return {
+    [MCP_NAME]: { ...hive, env: { ...hive.env, HIVE_TASK: run.task, ...(run.id ? { HIVE_RUN: run.id } : {}) } },
+    ...(features.codegraph ? { codegraph: CODEGRAPH_MCP } : {}),
+  };
 }
 
 /** Enables superpowers in the repo's Claude Code settings (keeps hooks and other plugins). */

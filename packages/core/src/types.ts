@@ -1,5 +1,6 @@
 import type { Access } from "./access.ts";
 import type { AgentProfile } from "./agents.ts";
+import type { WriteSource } from "./source.ts";
 
 /** member: a person's hub account (what it may do comes from its per-project grants). */
 export type Role = "viewer" | "agent" | "member" | "admin";
@@ -11,6 +12,8 @@ export interface Actor {
   role: Role;
   /** Per-project grants of a hub account; absent = unrestricted (local mode, hub admins, tokens of no account). */
   access?: Access;
+  /** Where this request came from; stored with docs versions, proposals and memory it writes. */
+  source?: WriteSource;
 }
 
 export interface DocSummary {
@@ -34,6 +37,8 @@ export interface DocVersion {
   content: string;
   author: string;
   note: string;
+  /** null: written before sources were recorded, or by the hub itself (seed). */
+  source: WriteSource | null;
   createdAt: string;
 }
 
@@ -51,6 +56,7 @@ export interface Proposal {
   reviewer: string | null;
   reviewNote: string | null;
   decidedAt: string | null;
+  source: WriteSource | null;
   createdAt: string;
 }
 
@@ -68,6 +74,7 @@ export interface Memory {
   author: string;
   taskId: string | null;
   status: MemoryStatus;
+  source: WriteSource | null;
   createdAt: string;
 }
 

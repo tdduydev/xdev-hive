@@ -78,6 +78,8 @@ describe("accounts", () => {
     assert.equal(changed.status, 200, JSON.stringify(changed.body));
     assert.equal(changed.body.result.user.mustChangePassword, false);
     assert.equal((await b.rpc("docs.list")).status, 200);
+    const saved = await b.rpc("memory.write", { project: "app", kind: "context", content: "From the web page" });
+    assert.deepEqual(saved.body.result?.source ?? saved.body.error, { via: "web" });
   });
 
   it("shows a member only the projects granted, and refuses cookie calls without the CSRF header", async () => {

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { can, type Level, type Me } from "@xdev-hive/core";
+import { can, type Level, type Me, type WriteSource } from "@xdev-hive/core";
 import { activeIntl, hasKey, translate, type MessageKey } from "./i18n/translate.ts";
 import type { HiveClient } from "./client.ts";
 import type { Scope } from "./lib/scope.ts";
@@ -128,4 +128,16 @@ export function formatTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
   return d.toLocaleString(activeIntl(), { dateStyle: "short", timeStyle: "short" });
+}
+
+/** " · via MCP · duy-mbp · run R-1fa9 · task T-7", or "" when the write has no source. `shownTask` is not repeated. */
+export function sourceText(source: WriteSource | null | undefined, shownTask?: string | null): string {
+  if (!source) return "";
+  const parts = [
+    translate(`source.via.${source.via}`),
+    source.machine,
+    source.run ? translate("source.run", { id: source.run }) : null,
+    source.task && source.task !== shownTask ? translate("source.task", { id: source.task }) : null,
+  ];
+  return parts.filter(Boolean).map((p) => ` · ${p}`).join("");
 }

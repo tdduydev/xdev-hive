@@ -1,6 +1,7 @@
 import { HiveError, type ErrorText, type HiveErrorCode } from "./errors.ts";
 import type { Me } from "./bridge.ts";
 import type { HiveBackend, Method, MethodInput, MethodOutput } from "./methods.ts";
+import { sourceHeader } from "./source.ts";
 import type { Actor } from "./types.ts";
 
 /** The message key of a hub error answer, if it has one. */
@@ -73,6 +74,7 @@ export class HubBackend implements HiveBackend {
         "content-type": "application/json",
         authorization: `Bearer ${this.#token}`,
         "x-hive-agent": actor.name,
+        ...(actor.source ? { "x-hive-source": sourceHeader(actor.source) } : {}),
       },
       body: JSON.stringify({ method, input }),
     });

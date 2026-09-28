@@ -96,6 +96,11 @@ export const vi = {
     rejected: "Từ chối",
     conflict: "Xung đột",
   },
+  source: {
+    via: { web: "qua web", desktop: "qua app desktop", mcp: "qua MCP", api: "qua API" },
+    run: "run {id}",
+    task: "task {id}",
+  },
   memoryKind: {
     decision: "Quyết định",
     convention: "Quy ước",
