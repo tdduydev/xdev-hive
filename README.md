@@ -114,6 +114,8 @@ queued ─chọn gói─▶ running ─exit 0──────▶ succeeded ─
   - Board hiện chi phí từng run; thẻ Gói sub hiện tổng theo gói.
   - Đây là ước tính theo giá API: gói sub (Pro/Max) không bị tính khoản này, nhưng nó cho biết run nào tốn nhiều.
   - Codex và Gemini chưa có số liệu.
+  - **Trên hub**: ở chế độ hub, mỗi heartbeat gửi chi phí các run đã xong mà hub chưa nhận (tối đa 100 run mỗi lần). Máy chỉ đánh dấu đã gửi khi hub trả lời, nên máy offline lâu vẫn gửi bù được. Hub giữ bản báo đầu tiên của mỗi run và xoá run cũ hơn 90 ngày.
+  - Trang *Máy & run* có mục *Chi phí ước tính*: tổng 24 giờ, 7 ngày, 30 ngày, và bảng theo dự án, theo gói (máy · tài khoản). Người xem chỉ thấy các dự án mình có quyền.
 - **Quota trên máy**: app không đọc được quota còn lại, vì các CLI không có lệnh in ra. App chỉ biết một gói hết quota khi một run gặp lỗi giới hạn; gói đó nghỉ đến giờ reset và thẻ profile hiện giờ đó.
 - **Trên hub**: heartbeat báo trạng thái đăng nhập, cài CLI và giờ nghỉ của từng gói. Trang *Máy & run* (mọi người) và *Quản trị* (admin) hiện gói nào tắt, chưa có CLI, chưa đăng nhập, đang nghỉ đến giờ nào, hoặc sẵn sàng.
 

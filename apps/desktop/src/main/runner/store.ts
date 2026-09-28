@@ -32,6 +32,8 @@ const ADDED_COLUMNS: Array<[name: string, ddl: string]> = [
   ["cost_usd", "REAL"],
   ["input_tokens", "INTEGER"],
   ["output_tokens", "INTEGER"],
+  /** 1 once the hub has the run's cost (hub mode). */
+  ["cost_reported", "INTEGER NOT NULL DEFAULT 0"],
 ];
 
 type Row = Record<string, unknown>;
@@ -155,6 +157,20 @@ export class RunStore {
     return (
       this.db.prepare("SELECT * FROM runs WHERE status IN ('queued', 'running') ORDER BY created_at, rowid LIMIT ?").all(limit) as Row[]
     ).map(toRun);
+  }
+
+  /** Finished runs with a cost the hub has not received yet, oldest first. */
+  unreportedCosts(limit = 100): AgentRun[] {
+    return (
+      this.db
+        .prepare("SELECT * FROM runs WHERE cost_usd IS NOT NULL AND cost_reported = 0 AND finished_at IS NOT NULL ORDER BY finished_at, rowid LIMIT ?")
+        .all(limit) as Row[]
+    ).map(toRun);
+  }
+
+  markCostsReported(ids: string[]): void {
+    const mark = this.db.prepare("UPDATE runs SET cost_reported = 1 WHERE id = ?");
+    for (const id of ids) mark.run(id);
   }
 
   activeForTask(project: string, taskId: string): AgentRun | null {
