@@ -13,6 +13,8 @@ export interface Me {
   user?: { id: string; username: string; displayName: string; admin: boolean; mustChangePassword: boolean };
   /** Per-project grants of a restricted account (see access.ts); absent = unrestricted. */
   access?: Access;
+  /** The hub signs people in through an OpenID Connect provider too (session of an account only). */
+  sso?: { name: string; linked: boolean };
 }
 
 export interface TokenInfo {
@@ -68,6 +70,8 @@ export interface HubUser {
   lastLoginAt: string | null;
   /** Project → level; admins see every project whatever this says. */
   grants: Record<string, Level>;
+  /** Signs in through the hub's OpenID Connect provider (linked, or created by it). */
+  sso: boolean;
 }
 
 export interface FileAction {

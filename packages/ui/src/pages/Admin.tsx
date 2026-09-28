@@ -69,6 +69,7 @@ const ACTION_LABEL: Record<string, MessageKey> = {
   "import.forge": "auditAction.importForge",
   "webhooks.save": "auditAction.webhooksSave",
   "webhooks.remove": "auditAction.webhooksRemove",
+  "users.ssoLink": "auditAction.usersSsoLink",
 };
 
 /** Small uppercase heading for a group inside a card. */

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronsUpDown, KeyRound, LogOut } from "lucide-react";
+import { ChevronsUpDown, KeyRound, Link2, LogOut } from "lucide-react";
 import type { Me } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
@@ -151,9 +151,18 @@ export function AccountMenu({ client, me, onSignOut }: { client: HiveClient; me:
                 ) : me.mode === "hub" && me.role === "admin" ? (
                   <span className="text-xs text-muted-foreground">{t("account.adminAll")}</span>
                 ) : null}
+                {me.sso?.linked ? <span className="text-xs text-muted-foreground">{t("account.ssoLinked", { name: me.sso.name })}</span> : null}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <LanguageMenu />
+              {client.account && me.sso && !me.sso.linked ? (
+                <DropdownMenuItem
+                  onSelect={() => void client.account!.linkSso().then(({ url }) => window.location.assign(url), () => undefined)}
+                >
+                  <Link2 />
+                  {t("account.linkSso", { name: me.sso.name })}
+                </DropdownMenuItem>
+              ) : null}
               {client.account ? (
                 <DropdownMenuItem onSelect={() => setChanging(true)}>
                   <KeyRound />
