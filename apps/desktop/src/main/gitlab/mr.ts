@@ -121,9 +121,13 @@ export class MergeRequester {
     const s = this.#host.gitlab();
     const fix = run.ciFix!;
     const project = this.#project(run);
-    const client = new GitLabClient(s.url, s.token, this.#host.fetch);
     const { remoteUrl, remote } = this.#remote(project, s.mr.remote);
-    await this.#push(project.repo, run.branch ?? `ai/${run.taskId}`, s.mr.remote, pushEnv(remoteUrl, remote, client.host, { user: "oauth2", token: s.token }), s.token);
+    // The pull request of a GitHub project, the merge request otherwise: each with its own token.
+    const gh = this.#forge(project) === "github" ? this.#host.github?.() : undefined;
+    const auth = gh
+      ? { host: new GitHubClient(gh.url, gh.token, this.#host.fetch).host, user: "x-access-token", token: gh.token }
+      : { host: new GitLabClient(s.url, s.token, this.#host.fetch).host, user: "oauth2", token: s.token };
+    await this.#push(project.repo, run.branch ?? `ai/${run.taskId}`, s.mr.remote, pushEnv(remoteUrl, remote, auth.host, auth), auth.token);
     const last = this.#host.store().lastOfMr(fix.mrUrl);
     return { mrUrl: fix.mrUrl, mrIid: fix.mrIid, mrState: "updated", mrDraft: last?.mrDraft ?? false, mrNote: tr("mrNote.ciFixPushed"), ...watched(last) };
   }

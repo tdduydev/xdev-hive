@@ -75,7 +75,7 @@ Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ v�
 
 ```bash
 nvm use && npm install
-npm test            # 283 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR, GitHub PR)
+npm test            # 288 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR, GitHub PR)
 npm run typecheck
 ```
 
@@ -255,7 +255,7 @@ implement (không review, chế độ "ngay khi làm xong") ──────�
 
 ### Pull request trên GitHub
 
-Cấu hình ở *Dự án & cài đặt* → **GitHub pull request** (hỏi ngày 28/9: team dùng GitHub, giống GitLab; đăng nhập bằng fine-grained personal access token): URL (mặc định `https://github.com`, hoặc URL GitHub Enterprise Server) và token. Token cần quyền *Contents* và *Pull requests* (đọc và ghi) trên các repo của team. Nút *Kiểm tra kết nối* cho biết token thuộc tài khoản nào.
+Cấu hình ở *Dự án & cài đặt* → **GitHub pull request** (hỏi ngày 28/9: team dùng GitHub, giống GitLab; đăng nhập bằng fine-grained personal access token): URL (mặc định `https://github.com`, hoặc URL GitHub Enterprise Server) và token. Token cần quyền *Contents* và *Pull requests* (đọc và ghi) trên các repo của team, cộng *Checks*, *Commit statuses* và *Actions* (đọc) để theo dõi và tự sửa CI. Nút *Kiểm tra kết nối* cho biết token thuộc tài khoản nào.
 
 - **Dự án nào là GitHub**: remote push (`origin` hoặc remote trong tuỳ chọn MR) nằm trên host GitHub đã cấu hình, hoặc dự án có ô *GitHub: owner/repo* (nút *GitLab / GitHub* của dự án). Các dự án khác vẫn tạo MR trên GitLab, nên một máy dùng được cả hai.
 - **Luật tạo** giống MR, lấy từ thẻ GitLab: *Tự tạo MR*, *Khi nào*, *Review yêu cầu sửa* (Draft hoặc không tạo), label, remote. Base mặc định là default branch của repo, hoặc *target branch* của dự án.
@@ -267,7 +267,10 @@ Cấu hình ở *Dự án & cài đặt* → **GitHub pull request** (hỏi ngà
   - Các check (GitHub Actions và app khác, cả commit status kiểu cũ) được gộp thành một trạng thái CI trên Board: *đang chạy* khi còn check chưa xong, rồi *lỗi* nếu có check lỗi, hết giờ hay cần xử lý. Bấm để mở trang checks của commit đó.
   - PR merge thì task sang *Xong*, ghi chú thêm `PR #n merged.` (cùng ô *MR merge thì chuyển task sang Xong*). Có thông báo khi PR merge, bị đóng, hoặc CI lỗi, kể cả khi lần push sau lại lỗi.
   - PR đã merge hay đóng thì thôi hỏi. Chỉ hỏi PR trên đúng GitHub đã cấu hình, nên token không đi nơi khác.
-- Chưa làm: tự sửa khi check CI của PR lỗi (roadmap 13c).
+- **Tự sửa CI** (cùng ô *Pipeline lỗi thì giao agent sửa* và *Số lần tự sửa mỗi MR*): check của commit mới nhất trên PR đang mở bị lỗi thì app xếp một run implement trên branch `ai/<task>`, như với GitLab.
+  - Prompt có link trang checks và phần cuối log của tối đa 3 check lỗi: job GitHub Actions lấy log qua API (bỏ mốc giờ và dòng `##[group]`, giữ tên bước và `##[error]`), check của app khác lấy tiêu đề và tóm tắt nó báo, commit status lấy mô tả. Log được làm sạch như GitLab (mã màu, ký tự ẩn, dòng giống secret).
+  - Mỗi lần lỗi sửa một lần (theo id nhỏ nhất của các check lỗi: commit mới hay chạy lại đều là lần mới), tối đa theo *Số lần tự sửa mỗi MR*. Run xong thì app chỉ push branch; tiêu đề và mô tả PR giữ nguyên.
+  - Token thiếu quyền đọc check vẫn theo dõi được trạng thái PR, chỉ không có trạng thái CI.
 - Token fine-grained (`github_pat_…`) cũng bị chặn khi ghi vào memory hay tài liệu, như các loại token khác.
 
 ## Hub cho team

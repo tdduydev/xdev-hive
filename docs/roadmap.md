@@ -44,7 +44,7 @@ Làm lần lượt, mỗi lượt một mục (mỗi mục một PR). Mục có 
 - **13. github-pr** (hỏi 28/9: team dùng GitHub, làm giống GitLab; đăng nhập bằng fine-grained PAT). Tách:
   - [x] **13a. github-pr-open**: thẻ *GitHub pull request* (URL, fine-grained PAT, kiểm tra kết nối) và ô *GitHub: owner/repo* của dự án; dự án có remote trên host GitHub (hoặc owner/repo) thì push `ai/<task>` rồi mở/cập nhật PR theo cùng luật MR (draft khi review cần sửa, chuyển Ready qua GraphQL, repo không có draft thì tiêu đề `Draft:`), thêm label, ghi `PR #n` vào task; Board hiện `PR #n`.
   - [x] **13b. github-pr-watch**: theo dõi PR đã mở (trạng thái, check CI trên Board), merge thì task sang Xong, báo khi đóng/CI lỗi. Watcher MR hỏi cả PR trên GitHub đã cấu hình: check-runs và commit status của commit mới nhất gộp thành một trạng thái CI (chạy → lỗi/qua), link trang checks theo commit; PR merge thì task sang Xong (`PR #n merged.`); thông báo ghi `PR #n` hay `MR !n` đúng loại.
-  - [ ] **13c. github-ci-fix**: check CI của PR lỗi thì xếp run sửa kèm log job lỗi (GitHub Actions), push lại branch, tối đa như GitLab.
+  - [x] **13c. github-ci-fix**: check CI của PR lỗi thì xếp run sửa kèm log job lỗi (GitHub Actions), push lại branch, tối đa như GitLab. `CiFixer` nhận nguồn job chung (`FailedJobs`: job GitLab hoặc check GitHub); job Actions lấy log qua `/actions/jobs/:id/logs` (bỏ mốc giờ, `##[group]`), check app khác lấy output, commit status lấy mô tả; mỗi lần lỗi (id check lỗi nhỏ nhất) sửa một lần; `pushFix` push bằng token GitHub; prompt nói *checks of pull request #n*; đọc check lỗi quyền thì vẫn theo dõi PR.
 
 ## Sửa lỗi
 
