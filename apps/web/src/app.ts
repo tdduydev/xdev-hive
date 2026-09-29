@@ -18,6 +18,7 @@ import type { SqliteHive } from "@xdev-hive/core/node";
 import { createHiveMcpServer } from "@xdev-hive/mcp";
 import { DEVICE_CHALLENGE, DEVICE_STATE, DeviceGrants, loopbackCallback } from "./device.ts";
 import { SSO_ERRORS, type OidcClient } from "./oidc.ts";
+import { ChatGrants } from "./grants.ts";
 import type { TokenStore } from "./tokens.ts";
 import { LoginThrottle, type UserInfo, type UserStore } from "./users.ts";
 import type { WebhookDispatcher, WebhookStore } from "./webhooks.ts";
@@ -37,6 +38,8 @@ export interface HubAppOptions {
   webhooks?: { store: WebhookStore; dispatcher: WebhookDispatcher };
   /** Sign-in through an OpenID Connect provider (HIVE_OIDC_*). */
   oidc?: OidcClient | null;
+  /** Tokens for a chat reply's MCP calls; by default kept in the hub's database. */
+  chatGrants?: ChatGrants;
 }
 
 const CSP = [
@@ -99,7 +102,18 @@ function publicUser(u: UserInfo): NonNullable<Me["user"]> {
   return { id: u.id, username: u.username, displayName: u.displayName, admin: u.admin, mustChangePassword: u.mustChangePassword };
 }
 
-export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy = false, throttle = new LoginThrottle(), webhooks, oidc = null }: HubAppOptions): express.Express {
+export function createHubApp({
+  hive,
+  tokens,
+  users,
+  allowedHosts,
+  ui,
+  trustProxy = false,
+  throttle = new LoginThrottle(),
+  webhooks,
+  oidc = null,
+  chatGrants = new ChatGrants(hive.db),
+}: HubAppOptions): express.Express {
   const app = express();
   app.disable("x-powered-by");
   if (allowedHosts?.length) app.use(hostHeaderValidation(allowedHosts));
@@ -141,11 +155,15 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
   };
 
   const tokenActor = (req: Request, res: Response, raw: string): Actor | null => {
-    const who = tokens.verify(raw);
-    if (!who) return null;
     const label = (req.get("x-hive-agent") ?? "").replace(/[^\w.-]/g, "").slice(0, 80);
-    const name = label ? `${label}@${who.name}` : who.name;
     const source = readSourceHeader(req.get("x-hive-source"));
+    const who = tokens.verify(raw);
+    if (!who) {
+      // A chat reply's leader: the rights cut when the machine got the request (see ChatGrants).
+      const grant = chatGrants.verify(raw);
+      return grant ? { name: label ? `${label}@${grant.name}` : grant.name, role: grant.role, ...(grant.access ? { access: grant.access } : {}), source } : null;
+    }
+    const name = label ? `${label}@${who.name}` : who.name;
     if (!who.ownerId) return { name, role: who.role, source };
     const user = users.get(who.ownerId);
     if (!user || user.disabled) return null;
@@ -516,6 +534,13 @@ export function createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy
       }
 
       if (!isMethod(method)) throw new HiveError("bad_request", `Unknown method ${String(method)}`);
+      if (method === "machines.heartbeat") {
+        // Each chat request gets its MCP token here; the sender's rights stay on the hub.
+        const out = await hive.call(method, input as never, actor);
+        const chatRequests = out.chatRequests.map(({ sender, ...r }) => ({ ...r, ...(sender ? { grant: chatGrants.issue(r.replyId, sender, actor) } : {}) }));
+        res.json({ result: { ...out, chatRequests } });
+        return;
+      }
       res.json({ result: await hive.call(method, input as never, actor) });
     } catch (err) {
       sendError(res, err);
