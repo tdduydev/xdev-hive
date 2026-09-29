@@ -1077,6 +1077,7 @@ export const vi = {
     chatReplyEnded: "Câu trả lời #{id} đã kết thúc.",
     chatNotTaken: "Không máy nào nhận tin nhắn kịp.",
     chatSilent: "Máy ngừng báo tiến độ.",
+    chatNoGrant: "Hub chưa cấp token cho leader: cập nhật hub rồi gửi lại.",
     runNoWorktree: "Run không có worktree.",
     taskActiveRun: "Task đang có run hoạt động.",
     notGitRepo: "{path} không phải git repo",

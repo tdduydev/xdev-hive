@@ -1076,6 +1076,7 @@ export const en: Catalog = {
     chatReplyEnded: "Reply #{id} has ended.",
     chatNotTaken: "No machine took the message in time.",
     chatSilent: "The machine stopped reporting.",
+    chatNoGrant: "The hub gave the leader no token: update the hub and send again.",
     runNoWorktree: "The run has no worktree.",
     taskActiveRun: "The task has an active run.",
     notGitRepo: "{path} is not a git repo",

@@ -55,6 +55,8 @@ import { claudeMcpServers, codexMcpArgs, hubMcpEnv, type McpRun } from "./contai
 import { deniedHosts, egressAllow, egressPlan, type Egress } from "./egress.ts";
 import { buildCommand, buildPrompt, describeCommand, expandEnv, expandHome, parsePick, resolveBin, type JudgeCandidate } from "./command.ts";
 import { detectRateLimit } from "./rate-limit.ts";
+import { ChatWorker } from "./chat.ts";
+import { killTree } from "./kill.ts";
 import { ClaudeStream } from "./stream.ts";
 import { parseClaudeResult, type RunUsage } from "./usage.ts";
 import { pickProfile, waitingReason, type ProfileLoad, type RunNeeds } from "./schedule.ts";
@@ -129,6 +131,10 @@ export interface RunnerOptions {
   heartbeatMs?: number;
   /** Hub mode: how often to push runs that changed (status, current step, the end of the log) for the web. */
   pushMs?: number;
+  /** Hub mode, taking runs from the hub: how often to ask for chat replies to write (0: only at heartbeats). */
+  chatPollMs?: number;
+  /** How often a chat reply being written is reported to the hub. */
+  chatProgressMs?: number;
   /** App version shown on the hub's machine list. */
   version?: string;
   /** Rest for a profile whose CLI is missing, so rotation skips it for a while. */
@@ -204,26 +210,6 @@ function tryGit(cwd: string, args: string[]): string | null {
   }
 }
 
-function killTree(child: ChildProcess): void {
-  if (!child.pid) return;
-  if (process.platform === "win32") {
-    spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true });
-    return;
-  }
-  const pid = child.pid;
-  try {
-    process.kill(-pid, "SIGTERM");
-  } catch {
-    child.kill("SIGTERM");
-  }
-  setTimeout(() => {
-    try {
-      process.kill(-pid, "SIGKILL");
-    } catch {
-      // already gone
-    }
-  }, 5000).unref();
-}
 
 export class Runner {
   readonly store: RunStore;
@@ -247,6 +233,11 @@ export class Runner {
   #interval: NodeJS.Timeout | undefined;
   #heartbeatTimer: NodeJS.Timeout | undefined;
   #pushTimer: NodeJS.Timeout | undefined;
+  #chatTimer: NodeJS.Timeout | undefined;
+  /** Writes the web chat's replies (see chat.ts). */
+  readonly #chats: ChatWorker;
+  /** The hub does not know chat.poll yet: heartbeats bring the chat replies instead. */
+  #chatPollOff = false;
   /** What the hub last got of each run (see pushRuns). */
   readonly #pushed = new Map<string, string>();
   #pushing = false;
@@ -265,11 +256,31 @@ export class Runner {
       tickMs: 5000,
       heartbeatMs: 30_000,
       pushMs: 5000,
+      chatPollMs: 3000,
+      chatProgressMs: 2000,
       version: "",
       unavailableCooldownMinutes: 10,
       ...opts,
     };
     this.store = new RunStore(path.join(opts.dataDir, "runs.db"));
+    this.#chats = new ChatWorker(
+      {
+        backend: () => this.#host.backend(),
+        actor: () => this.#runnerActor(),
+        profiles: () => this.#host.profiles(),
+        projects: () => this.#host.projects(),
+        machine: () => this.#host.machine(),
+        env: () => this.#host.env(),
+        hubUrl: () => this.#host.hub?.()?.url ?? null,
+        // As the Board would see it: signed out, resting (here or on the hub), or at its plan's stop threshold.
+        unavailable: (id) => {
+          const p = this.profileStatuses().find((x) => x.id === id);
+          const profile = this.#host.profiles().find((x) => x.id === id);
+          return !p || p.login?.loggedIn === false || (p.cooldownUntil !== null && p.cooldownUntil > this.#iso()) || (!!profile && usageStop(profile, p.usage) !== null);
+        },
+      },
+      { dataDir: opts.dataDir, progressMs: this.#opts.chatProgressMs },
+    );
     mkdirSync(path.join(opts.dataDir, "runs"), { recursive: true });
   }
 
@@ -286,6 +297,10 @@ export class Runner {
     this.#heartbeatTimer.unref();
     this.#pushTimer = setInterval(() => void this.pushRuns().catch(() => undefined), this.#opts.pushMs);
     this.#pushTimer.unref();
+    if (this.#opts.chatPollMs > 0) {
+      this.#chatTimer = setInterval(() => void this.pollChats().catch(() => undefined), this.#opts.chatPollMs);
+      this.#chatTimer.unref();
+    }
     beat();
     void this.tick();
   }
@@ -295,8 +310,10 @@ export class Runner {
     clearInterval(this.#interval);
     clearInterval(this.#heartbeatTimer);
     clearInterval(this.#pushTimer);
+    clearInterval(this.#chatTimer);
     for (const id of this.#live.keys()) this.cancel(id);
-    await Promise.allSettled([...this.#inflight]);
+    this.#chats.stop();
+    await Promise.allSettled([...this.#inflight, this.#chats.settle()]);
   }
 
   /** Resolves once nothing is running and no queued run can start. For tests and graceful quit. */
@@ -565,7 +582,29 @@ export class Runner {
     this.#opts.onHub?.(update);
     // A hub older than runs.dispatch sends none.
     await this.#takeRequests(res.runRequests ?? []);
+    if (this.#host.settings().acceptHubRuns) this.#chats.take(res.chatRequests ?? []);
     return update;
+  }
+
+  /**
+   * Hub mode, taking runs from the hub: asks for chat replies to write between heartbeats, so the web chat answers
+   * within seconds. A hub without chat.poll gets asked no more (its heartbeats carry the replies).
+   */
+  async pollChats(): Promise<number> {
+    if (this.#host.mode() !== "hub" || !this.#host.settings().acceptHubRuns || this.#chatPollOff) return 0;
+    try {
+      const requests = await this.#host.backend().call("chat.poll", {}, this.#runnerActor());
+      this.#chats.take(requests);
+      return requests.length;
+    } catch (err) {
+      if (err instanceof HiveError && err.code === "bad_request" && /unknown method/i.test(err.message)) this.#chatPollOff = true;
+      throw err;
+    }
+  }
+
+  /** Resolves once the chat replies started so far have ended. For tests. */
+  settleChats(): Promise<void> {
+    return this.#chats.settle();
   }
 
   /**

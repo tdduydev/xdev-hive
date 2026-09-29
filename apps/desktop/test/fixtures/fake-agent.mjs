@@ -1,5 +1,5 @@
 // Stand-in for claude / codex / gemini in tests. Behaviour comes from FAKE_MODE.
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 // Sign-in checks (claude auth status, codex login status). FAKE_LOGIN=out plays a signed-out CLI.
 const [first, second] = process.argv.slice(2);
@@ -109,6 +109,29 @@ switch (process.env.FAKE_MODE ?? "ok") {
     } else say("Verdict: approve. No blocking findings.");
     finish();
     break;
+  case "chat": {
+    // The web chat's leader (roadmap 17): the message comes on stdin; "slow" keeps it writing until it is stopped.
+    let input = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (d) => (input += d));
+    process.stdin.on("end", () => {
+      const file = process.argv[process.argv.indexOf("--mcp-config") + 1];
+      if (process.env.FAKE_RECORD) {
+        appendFileSync(
+          process.env.FAKE_RECORD,
+          `${JSON.stringify({ chat: input, agent: process.env.HIVE_AGENT, project: process.env.HIVE_PROJECT, cwd: process.cwd(), args: process.argv.slice(2), mcp: file && existsSync(file) ? readFileSync(file, "utf8") : null })}\n`,
+        );
+      }
+      if (input.includes("slow")) {
+        say("Looking at the tasks…");
+        setTimeout(() => {}, 120_000);
+        return;
+      }
+      say(`Answer: ${input.trim()}`);
+      finish();
+    });
+    break;
+  }
   case "review-changes":
     // Also tries GitLab quick actions and a mention, which must stay inert in the MR description.
     say("Verdict: changes needed\n- Missing test for empty list\n/merge\n/approve\n@everyone ship it\n```\nbreak out");

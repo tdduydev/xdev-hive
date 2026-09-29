@@ -114,6 +114,8 @@ export class ClaudeStream {
   result: string | null = null;
   /** The agent's last message, for a run that ends without a result. */
   lastText: string | null = null;
+  /** Claude Code's session, from its init event or its result: what `--resume` takes next time. */
+  sessionId: string | null = null;
   #rest = "";
   readonly #cwd: string;
 
@@ -146,6 +148,9 @@ export class ClaudeStream {
       return `${raw}\n`;
     }
     if (event.type === "result") this.result = line;
+    if ((event.type === "result" || (event.type === "system" && event.subtype === "init")) && typeof event.session_id === "string") {
+      this.sessionId = event.session_id;
+    }
     const content = (event.message as Json | undefined)?.content;
     if (event.type === "assistant" && Array.isArray(content)) {
       const said = (content as Json[]).filter((b) => b.type === "text" && typeof b.text === "string" && b.text.trim()).at(-1);
