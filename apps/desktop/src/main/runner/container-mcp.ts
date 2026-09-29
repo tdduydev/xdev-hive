@@ -58,6 +58,9 @@ export function codexMcpArgs(hub: HubMcp | null, r: McpRun): string[] {
     'mcp_servers.hive.bearer_token_env_var="HIVE_HUB_TOKEN"',
     "-c",
     `mcp_servers.hive.http_headers={${headers}}`,
+    // Headless: Hive's tools run without asking (see codexArgs).
+    "-c",
+    'mcp_servers.hive.default_tools_approval_mode="approve"',
   ];
 }
 

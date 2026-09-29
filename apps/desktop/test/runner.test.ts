@@ -338,13 +338,16 @@ describe("buildCommand", () => {
   });
 
   it("leaves other CLIs' arguments as the profile has them, but a Codex --full-auto that newer versions refuse", () => {
-    assert.deepEqual(buildCommand(AGENT_TEMPLATES.codex, vars).args, ["exec", "--sandbox", "workspace-write", "Do T-1"]);
-    assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.codex, args: ["exec", "--full-auto", "{prompt}"] }, vars).args, ["exec", "--sandbox", "workspace-write", "Do T-1"]);
+    // Codex asks before an MCP write, and a headless run has nobody to answer: Hive's own tools are approved.
+    const approve = ["-c", 'mcp_servers.xdev-hive.default_tools_approval_mode="approve"'];
+    assert.deepEqual(buildCommand(AGENT_TEMPLATES.codex, vars).args, ["exec", ...approve, "--sandbox", "workspace-write", "Do T-1"]);
+    assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.codex, args: ["exec", "--full-auto", "{prompt}"] }, vars).args, ["exec", ...approve, "--sandbox", "workspace-write", "Do T-1"]);
     assert.deepEqual(
       buildCommand({ ...AGENT_TEMPLATES.codex, args: ["exec", "--full-auto", "-s", "read-only", "{prompt}"] }, vars).args,
-      ["exec", "-s", "read-only", "Do T-1"],
+      ["exec", ...approve, "-s", "read-only", "Do T-1"],
       "a sandbox the profile chose stays",
     );
+    assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.codex, args: ["/opt/wrap.sh", "{prompt}"] }, vars).args, ["/opt/wrap.sh", "Do T-1"], "an unknown command line stays as it is");
     assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.claude, kind: "custom" }, vars).args, ["-p", "Do T-1", "--permission-mode", "acceptEdits"]);
   });
 });
