@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   LayoutGrid,
   ListTodo,
+  MessagesSquare,
   Server,
   ShieldCheck,
   Sparkles,
@@ -49,6 +50,7 @@ import { useSystemTheme } from "./lib/theme.ts";
 import { AdminPage } from "./pages/Admin.tsx";
 import { AgentsPage } from "./pages/Agents.tsx";
 import { BoardPage } from "./pages/Board.tsx";
+import { ChatPage } from "./pages/Chat.tsx";
 import { DevicePage } from "./pages/Device.tsx";
 import { DocsPage } from "./pages/Docs.tsx";
 import { MachinesPage } from "./pages/Machines.tsx";
@@ -65,6 +67,7 @@ import { UsersPage } from "./pages/Users.tsx";
 
 type PageId =
   | "overview"
+  | "chat"
   | "board"
   | "runs"
   | "docs"
@@ -84,6 +87,7 @@ type Icon = ComponentType<{ className?: string }>;
 
 const PAGES: Record<PageId, { label: MessageKey; icon: Icon; render: () => ReactNode }> = {
   overview: { label: "nav.overview", icon: LayoutGrid, render: () => <OverviewPage /> },
+  chat: { label: "nav.chat", icon: MessagesSquare, render: () => <ChatPage /> },
   board: { label: "nav.board", icon: LayoutDashboard, render: () => <BoardPage /> },
   runs: { label: "nav.runs", icon: Activity, render: () => <RunsPage /> },
   docs: { label: "nav.docs", icon: FileText, render: () => <DocsPage /> },
@@ -103,7 +107,7 @@ const PAGES: Record<PageId, { label: MessageKey; icon: Icon; render: () => React
 };
 
 const GROUPS: Array<{ label: MessageKey; ids: PageId[] }> = [
-  { label: "nav.groupWork", ids: ["overview", "board", "runs", "docs", "skills", "proposals", "memory", "tasks"] },
+  { label: "nav.groupWork", ids: ["overview", "chat", "board", "runs", "docs", "skills", "proposals", "memory", "tasks"] },
   { label: "nav.groupAgents", ids: ["agents", "machines", "setup"] },
   { label: "nav.groupAdmin", ids: ["admin", "users", "tokens", "projects"] },
 ];
@@ -190,8 +194,9 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   const visible = useMemo(() => {
     const ids = new Set<PageId>(["overview", "docs", "skills", "proposals", "memory", "tasks"]);
     if (client.desktop) for (const id of ["board", "agents", "setup", "projects"] as const) ids.add(id);
-    // Machines only report to a hub (and push their runs to it); a local database never has any.
-    if (me.mode === "hub") for (const id of ["machines", "runs"] as const) ids.add(id);
+    // Machines only report to a hub (and push their runs to it); a local database never has any. The leader chat
+    // runs on a machine the hub hands it to.
+    if (me.mode === "hub") for (const id of ["machines", "runs", "chat"] as const) ids.add(id);
     // The admin portal reads what every machine reported to the hub: hub admins only.
     const hubAdmin = me.mode === "hub" && me.role === "admin" && !me.access;
     if (hubAdmin) ids.add("admin");

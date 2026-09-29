@@ -9,7 +9,7 @@ import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
-import { formatTime, formatUsd, useHive, useQuery } from "../hooks.ts";
+import { formatTime, formatUsd, useHashParam, useHive, useQuery } from "../hooks.ts";
 import { useT } from "../i18n/index.tsx";
 import { isLive, runDuration, runLabel } from "../lib/runs.ts";
 import { scopeProject } from "../lib/scope.ts";
@@ -38,6 +38,12 @@ export function RunsPage() {
   useEffect(() => setActive((runs.data ?? []).some(isLive)), [runs.data]);
   const [selected, setSelected] = useState<{ machineId: string; runId: string } | null>(null);
   const run = runs.data?.find((r) => r.machineId === selected?.machineId && r.runId === selected?.runId) ?? null;
+  // A link from another page (a task's request, a chat reply) opens that run once its machine has reported it.
+  const [linked, clearLinked] = useHashParam("run");
+  useEffect(() => {
+    const found = linked ? runs.data?.find((r) => r.runId === linked) : undefined;
+    if (found) setSelected({ machineId: found.machineId, runId: found.runId }), clearLinked();
+  }, [linked, runs.data, clearLinked]);
 
   return (
     <Page wide>

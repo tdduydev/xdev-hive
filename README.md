@@ -457,7 +457,13 @@ Trên hub, agent giữ task với tên `<gói>.<máy>@<token>`, ví dụ `claude
   - Trên trang *Task* (web, hoặc app ở chế độ hub), bấm một task để mở panel chi tiết. Mục *Chạy trên máy* chỉ hiện với người quản trị dự án, và chỉ liệt kê máy đang online, đã bật ô và có repo của dự án. Chọn máy, việc (mặc định *Review* nếu task đang chờ review), gói hoặc tự xoay, số bản, review chéo, chỉ dẫn, rồi bấm *Gửi cho máy*.
   - Panel hiện các yêu cầu của task: chờ máy nhận (huỷ được), máy đã nhận (mã run, xem ở *Lượt chạy*), máy từ chối (lý do theo ngôn ngữ người xem), đã huỷ, hết hạn. Khi còn yêu cầu đang chờ, trang tự làm mới mỗi 3 giây, và hàng của task trong bảng ghi máy đang được chờ.
   - Trang *Máy & run* ghi máy nào nhận run từ hub và có repo của dự án nào.
-- **Chat với leader của dự án** (hỏi ngày 29/9: làm trong Hive; người quản trị dự án chat được; leader chạy trên gói Claude của một máy bật *Được nhận run từ hub*). Hub (roadmap 17a-1) và máy trả lời (17a-2) đã xong; trang *Chat* trên web là 17b.
+- **Chat với leader của dự án** (hỏi ngày 29/9: làm trong Hive; người quản trị dự án chat được; leader chạy trên gói Claude của một máy bật *Được nhận run từ hub*). Roadmap 17a-1 (hub), 17a-2 (máy trả lời), 17b (trang *Chat*).
+  - **Trang *Chat*** (web, và app ở chế độ hub; nhóm *Làm việc*): các thread của dự án đang chọn ở thanh bên (*Tất cả dự án* thì mọi dự án bạn xem được), mới nhất trước. Thread đang có câu trả lời có chấm xanh.
+    - *Chat mới* (người quản trị dự án): chọn dự án, máy, gói Claude hoặc để máy tự chọn, rồi viết tin đầu. Chỉ hiện máy đang online, bật nhận run từ hub, có repo của dự án và có gói Claude đã đăng nhập.
+    - Câu trả lời hiện dần khi máy viết (trang hỏi hub mỗi 2 giây), kèm việc agent đang làm và các bước (`▶` công cụ). *Dừng* huỷ câu trả lời và giữ phần đã viết. Thread đang chờ câu trả lời thì chưa gửi được tin tiếp.
+    - Trong câu trả lời, mã task của dự án và mã run (`R-…`) là link: sang *Task* (mở panel của task) hoặc *Lượt chạy* (mở run đó). Trang hiện `code`, **đậm**, *nghiêng*, khối ``` và link web; phần còn lại giữ nguyên chữ.
+    - `#/chat?thread=<số>` mở thẳng một thread; quay lại trang thì thread vẫn mở. Người chỉ có quyền xem đọc được nhưng không gửi được. Link *run …* ở yêu cầu chạy của trang *Task* cũng mở thẳng run đó.
+    - Leader làm việc với quyền của token câu trả lời. Máy dùng token role *agent* thì leader chỉ tới mức đóng góp: không tạo task, không xếp run (xem roadmap 17c).
   - Hub lưu các cuộc trò chuyện (thread) theo dự án cùng tin nhắn của chúng (migration 15).
   - Gửi tin nhắn bằng `chat.send`. Thread mới cần chọn máy, có thể ghim một gói Claude; tin tiếp theo đi đúng máy và phiên của thread đó.
   - Hub kiểm máy như khi xếp run: đang online, đã bật ô nhận run từ hub, có repo của dự án, có gói Claude đang bật và đã đăng nhập. Thread đang chờ câu trả lời thì chưa nhận tin mới.
