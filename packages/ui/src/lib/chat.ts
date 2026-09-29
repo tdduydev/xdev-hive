@@ -1,6 +1,6 @@
 // Small helpers of the Chat page: which machines can hold a thread, following a reply being written, and a
 // leader's reply turned into text with links to the tasks and runs it names.
-import type { ChatMessage, Machine, ReportedProfile } from "@xdev-hive/core";
+import type { ChatAction, ChatMessage, Machine, ReportedProfile } from "@xdev-hive/core";
 
 /** A Claude profile that can write a reply now: the hub asks the same (chat.send). */
 export const chatProfile = (p: ReportedProfile): boolean => p.kind === "claude" && p.enabled && p.loggedIn !== false;
@@ -16,12 +16,15 @@ export const isLiveReply = (m: Pick<ChatMessage, "status">): boolean => m.status
 /** Badge tone of a reply's status. */
 export const REPLY_TONE: Record<string, string> = { pending: "neutral", running: "info", done: "ok", failed: "danger", cancelled: "neutral", expired: "warn" };
 
+/** A reply that can still change: being written, or with an action nobody decided yet (another manager may). */
+const changing = (m: ChatMessage): boolean => isLiveReply(m) || m.actions.some((a) => a.status === "proposed");
+
 /**
- * Where to read a thread from on the next poll (chat.get `after`): a reply being written changes in place, so from
- * just before the first one still live; otherwise only what came after the last message.
+ * Where to read a thread from on the next poll (chat.get `after`): a reply that can still change does so in place, so
+ * from just before the first one; otherwise only what came after the last message.
  */
 export function pollAfter(messages: ChatMessage[]): number {
-  const live = messages.find(isLiveReply);
+  const live = messages.find(changing);
   if (live) return live.id - 1;
   return messages.length ? messages[messages.length - 1]!.id : 0;
 }
@@ -33,6 +36,20 @@ export function mergeMessages(known: ChatMessage[], fresh: ChatMessage[]): ChatM
   for (const m of fresh) byId.set(m.id, m);
   return [...byId.values()].sort((a, b) => a.id - b.id);
 }
+
+/** The messages with one action replaced by its newer version (after deciding it). */
+export function withAction(messages: ChatMessage[], action: ChatAction): ChatMessage[] {
+  return messages.map((m) => (m.id === action.replyId ? { ...m, actions: m.actions.map((a) => (a.id === action.id ? action : a)) } : m));
+}
+
+/** A machine's name from its hub id: `runner.duy-mbp@duy-mbp` → duy-mbp. */
+export const machineName = (id: string): string => id.replace(/^runner\./, "").split("@")[0]!;
+
+/** The task a leader's action is about. */
+export const actionTask = (a: Pick<ChatAction, "kind" | "input">): string => String(a.kind === "run.dispatch" ? a.input.taskId : a.input.id);
+
+/** Badge tone of an action's status. */
+export const ACTION_TONE: Record<string, string> = { proposed: "warn", done: "ok", failed: "danger", dismissed: "neutral" };
 
 /** The tool calls in a reply's steps (the ▶ lines of the run log). */
 export const stepCount = (steps: string): number => steps.split("\n").filter((l) => l.startsWith("▶")).length;

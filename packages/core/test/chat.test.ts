@@ -177,3 +177,85 @@ describe("chat with a project's leader", () => {
     assert.match(done.text, /^The key:\n.*\nend$/);
   });
 });
+
+describe("what a chat leader proposes", () => {
+  /** A thread on duy-mbp with a reply being written, and the leader as the hub's reply token makes it (agent, capped). */
+  async function leading() {
+    const { hive, beat, later } = await hub();
+    await beat(mbp);
+    await beat(mini);
+    await hive.call("tasks.create", { id: "T-1", project: "app", title: "Sign in" }, admin);
+    await hive.call("tasks.create", { id: "S-1", project: "site", title: "Landing" }, admin);
+    const sent = await hive.call("chat.send", { project: "app", machineId: mbp.name, text: "Plan the reset page" }, lead);
+    await hive.call("chat.progress", { replyId: sent.reply.id, text: "Looking" }, mbp);
+    const leader: Actor = { name: "claude-1.duy-mbp@chat-lan", role: "agent", access: { projects: { app: "contribute" } }, chatReply: sent.reply.id };
+    return { hive, later, sent, leader };
+  }
+
+  it("does nothing until a project manager confirms, then runs it as that manager", async () => {
+    const { hive, sent, leader } = await leading();
+    assert.equal(await refusal(hive.call("tasks.create", { id: "T-2", project: "app", title: "Reset" }, leader)), "errors.need.manage", "it cannot itself");
+
+    const create = await hive.call("chat.propose", { action: { kind: "task.create", id: "T-2", title: "Reset page", dependsOn: ["T-1"] }, reason: "Asked for in the chat" }, leader);
+    assert.deepEqual([create.status, create.project, create.replyId, create.input], ["proposed", "app", sent.reply.id, { id: "T-2", project: "app", title: "Reset page", dependsOn: ["T-1"] }]);
+    const run = await hive.call("chat.propose", { action: { kind: "run.dispatch", taskId: "T-1", role: "review" }, reason: "Check the sign-in" }, leader);
+    assert.equal(run.input.machineId, mbp.name, "the chat's own machine unless it names another");
+    const other = await hive.call("chat.propose", { action: { kind: "run.dispatch", taskId: "T-1", machine: "lan-mini" }, reason: "Faster machine" }, leader);
+    assert.equal(other.input.machineId, mini.name, "a machine by its name");
+    const move = await hive.call("chat.propose", { action: { kind: "task.update", id: "T-1", status: "blocked", note: "Waits for the mail server" }, reason: "Blocked" }, leader);
+    assert.equal((await hive.call("tasks.list", { project: "app" }, admin)).length, 1, "nothing made yet");
+
+    // The reply shows them, for the chat page.
+    const [, reply] = (await hive.call("chat.get", { threadId: sent.thread.id }, lead))!.messages;
+    assert.deepEqual(reply!.actions.map((a) => [a.kind, a.status]), [["task.create", "proposed"], ["run.dispatch", "proposed"], ["run.dispatch", "proposed"], ["task.update", "proposed"]]);
+
+    // A contributor cannot confirm; a manager can, once.
+    assert.equal(await refusal(hive.call("chat.decide", { actionId: create.id, accept: true }, dev)), "errors.need.manage");
+    const done = await hive.call("chat.decide", { actionId: create.id, accept: true }, lead);
+    assert.deepEqual([done.status, done.result, done.decidedBy], ["done", { taskId: "T-2" }, "lan"]);
+    assert.deepEqual((await hive.call("tasks.list", { project: "app" }, admin)).find((t) => t.id === "T-2")?.dependsOn, ["T-1"]);
+    assert.equal(await refusal(hive.call("chat.decide", { actionId: create.id, accept: true }, admin)), "errors.chatActionDecided");
+
+    const queued = await hive.call("chat.decide", { actionId: run.id, accept: true }, lead);
+    const [request] = await hive.call("runs.requests", { project: "app" }, admin);
+    assert.deepEqual([queued.status, queued.result, request!.requestedBy, request!.role, request!.machineId], ["done", { requestId: request!.id }, "lan", "review", mbp.name]);
+
+    const dismissed = await hive.call("chat.decide", { actionId: move.id, accept: false }, lead);
+    assert.equal(dismissed.status, "dismissed");
+    assert.equal((await hive.call("tasks.list", { project: "app" }, admin)).find((t) => t.id === "T-1")?.status, "todo", "set aside: nothing ran");
+  });
+
+  it("keeps why a confirmed action failed, as the manager's own call would", async () => {
+    const { hive, leader } = await leading();
+    // The second run request of a task while the first waits for its machine.
+    const first = await hive.call("chat.propose", { action: { kind: "run.dispatch", taskId: "T-1" }, reason: "Go" }, leader);
+    const second = await hive.call("chat.propose", { action: { kind: "run.dispatch", taskId: "T-1", machine: "lan-mini" }, reason: "Again" }, leader);
+    await hive.call("chat.decide", { actionId: first.id, accept: true }, lead);
+    const failed = await hive.call("chat.decide", { actionId: second.id, accept: true }, lead);
+    assert.equal(failed.status, "failed");
+    assert.ok(failed.error?.key, "a key the page translates");
+    assert.equal((await hive.call("runs.requests", { project: "app" }, admin)).length, 1);
+  });
+
+  it("takes proposals only from the leader writing the reply, in the thread's project, while it writes", async () => {
+    const { hive, sent, leader } = await leading();
+    const action = { kind: "task.create" as const, id: "T-9", title: "x" };
+    assert.equal(await refusal(hive.call("chat.propose", { action, reason: "r" }, lead)), "errors.chatProposeOnly", "a person creates tasks directly");
+    assert.equal(await refusal(hive.call("chat.propose", { action, reason: "r" }, mbp)), "errors.chatProposeOnly", "so does the machine's own token");
+    // Another project's task, a task it lacks, one that exists already, a machine the hub does not know.
+    assert.equal(await refusal(hive.call("chat.propose", { action: { kind: "task.update", id: "S-1", status: "done" }, reason: "r" }, leader)), "errors.chatTaskNotFound");
+    assert.equal(await refusal(hive.call("chat.propose", { action: { kind: "run.dispatch", taskId: "T-404" }, reason: "r" }, leader)), "errors.chatTaskNotFound");
+    assert.equal(await refusal(hive.call("chat.propose", { action: { kind: "task.create", id: "T-1", title: "again" }, reason: "r" }, leader)), "errors.taskExists");
+    assert.equal(await refusal(hive.call("chat.propose", { action: { kind: "run.dispatch", taskId: "T-1", machine: "ghost" }, reason: "r" }, leader)), "errors.machineNotFound");
+    assert.equal(await refusal(hive.call("chat.propose", { action, reason: "Use​ this" }, leader)), "errors.hidden.zeroWidth", "a person reads it before confirming");
+
+    for (let i = 0; i < 20; i++) await hive.call("chat.propose", { action: { ...action, id: `N-${i}` }, reason: "r" }, leader);
+    assert.equal(await refusal(hive.call("chat.propose", { action, reason: "r" }, leader)), "errors.chatTooManyActions");
+
+    await hive.call("chat.finish", { replyId: sent.reply.id, status: "done", text: "Proposed." }, mbp);
+    assert.equal(await refusal(hive.call("chat.propose", { action: { ...action, id: "L-1" }, reason: "r" }, leader)), "errors.chatReplyEnded");
+    // What it proposed stays to be decided after the reply ended.
+    const [, reply] = (await hive.call("chat.get", { threadId: sent.thread.id }, lead))!.messages;
+    assert.equal((await hive.call("chat.decide", { actionId: reply!.actions[0]!.id, accept: true }, lead)).status, "done");
+  });
+});

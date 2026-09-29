@@ -2,9 +2,9 @@
 // whose Claude plan writes the replies in the same Claude Code session. A reply shows as the machine writes it,
 // with the agent's steps; project managers send messages and stop a reply.
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Bot, MessageSquarePlus, SendHorizontal, Square } from "lucide-react";
+import { ArrowLeft, Bot, Check, MessageSquarePlus, SendHorizontal, Square, X } from "lucide-react";
 import { cn } from "cn";
-import type { ChatMessage, ChatThread } from "@xdev-hive/core";
+import type { ChatAction, ChatMessage, ChatThread } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card } from "@xdev-hive/ui/components/ui/card";
 import { Label } from "@xdev-hive/ui/components/ui/label";
@@ -13,8 +13,23 @@ import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, StatusDot } from "../components/common.tsx";
 import { errorMessage, formatTime, formatUsd, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "../hooks.ts";
 import { useT } from "../i18n/index.tsx";
-import { chatMachines, chatProfile, inline, isLiveReply, mergeMessages, pollAfter, REPLY_TONE, replyBlocks, stepCount, type Inline } from "../lib/chat.ts";
-import { requestErrorText } from "../lib/runs.ts";
+import {
+  ACTION_TONE,
+  actionTask,
+  chatMachines,
+  chatProfile,
+  inline,
+  isLiveReply,
+  machineName,
+  mergeMessages,
+  pollAfter,
+  REPLY_TONE,
+  replyBlocks,
+  stepCount,
+  withAction,
+  type Inline,
+} from "../lib/chat.ts";
+import { requestErrorText, runLabel } from "../lib/runs.ts";
 import { scopeProject } from "../lib/scope.ts";
 
 /** Machines report a reply being written every 2 s: followed that closely; otherwise a slow check for news. */
@@ -256,8 +271,8 @@ function Conversation({ threadId, onBack, onChanged }: { threadId: number; onBac
       alive = false;
     };
   }, [client, threadId, tick, bump]);
-  // A reply that ended may have made tasks: their ids become links.
-  const ended = messages.filter((m) => m.status === "done").length;
+  // A reply that ended, or an action confirmed, may have made tasks: their ids become links.
+  const ended = messages.filter((m) => m.status === "done").length + messages.flatMap((m) => m.actions).filter((a) => a.status === "done").length;
   const tasks = useQuery(async () => (thread ? client.call("tasks.list", { project: thread.project }) : []), [client, thread?.project, ended]);
   const taskIds = (tasks.data ?? []).map((task) => task.id);
   const machines = useQuery(() => client.call("machines.list", {}), [client, live ? 0 : tick]);
@@ -317,7 +332,15 @@ function Conversation({ threadId, onBack, onChanged }: { threadId: number; onBac
             m.role === "user" ? (
               <UserMessage key={m.id} message={m} />
             ) : (
-              <Reply key={m.id} message={m} machine={thread?.machine ?? ""} taskIds={taskIds} canStop={manage} onStopped={refresh} />
+              <Reply
+                key={m.id}
+                message={m}
+                machine={thread?.machine ?? ""}
+                taskIds={taskIds}
+                manage={manage}
+                onStopped={refresh}
+                onDecided={(a) => setMessages((ms) => withAction(ms, a))}
+              />
             ),
           )}
         </ol>
@@ -341,7 +364,21 @@ function UserMessage({ message: m }: { message: ChatMessage }) {
   );
 }
 
-function Reply({ message: m, machine, taskIds, canStop, onStopped }: { message: ChatMessage; machine: string; taskIds: string[]; canStop: boolean; onStopped: () => void }) {
+function Reply({
+  message: m,
+  machine,
+  taskIds,
+  manage,
+  onStopped,
+  onDecided,
+}: {
+  message: ChatMessage;
+  machine: string;
+  taskIds: string[];
+  manage: boolean;
+  onStopped: () => void;
+  onDecided: (action: ChatAction) => void;
+}) {
   const { client } = useHive();
   const t = useT();
   const action = useAction();
@@ -369,8 +406,18 @@ function Reply({ message: m, machine, taskIds, canStop, onStopped }: { message: 
             <pre className="mt-1 max-h-64 overflow-auto rounded-md border bg-muted/50 p-2 font-mono whitespace-pre-wrap wrap-anywhere">{m.steps}</pre>
           </details>
         ) : null}
+        {m.actions.length ? (
+          <section className="flex flex-col gap-2" aria-label={t("chat.actions")}>
+            <h3 className="text-xs font-medium text-muted-foreground">{t("chat.actions")}</h3>
+            <ul className="flex flex-col gap-2">
+              {m.actions.map((a) => (
+                <ActionItem key={a.id} action={a} taskIds={taskIds} manage={manage} onDecided={onDecided} />
+              ))}
+            </ul>
+          </section>
+        ) : null}
         {m.error ? <div className="text-xs text-destructive wrap-anywhere">{requestErrorText(m.error)}</div> : null}
-        {live && canStop ? (
+        {live && manage ? (
           <div>
             <Button
               size="sm"
@@ -392,6 +439,85 @@ function Reply({ message: m, machine, taskIds, canStop, onStopped }: { message: 
         <ErrorNote error={action.error} />
       </div>
       <span className="text-xs text-muted-foreground">{formatTime(m.finishedAt ?? m.createdAt)}</span>
+    </li>
+  );
+}
+
+/** One thing the leader asked to do: what, why, and for a project manager Confirm (runs with their rights) or Set aside. */
+function ActionItem({ action: a, taskIds, manage, onDecided }: { action: ChatAction; taskIds: string[]; manage: boolean; onDecided: (action: ChatAction) => void }) {
+  const { client } = useHive();
+  const t = useT();
+  const act = useAction();
+  const task = actionTask(a);
+  const input = a.input as Record<string, string | number | boolean | string[] | null | undefined>;
+  const decide = (accept: boolean) =>
+    void act.run(async () => {
+      onDecided(await client.call("chat.decide", { actionId: a.id, accept }));
+    });
+  const detail: string[] = [];
+  if (a.kind === "task.create" && Array.isArray(input.dependsOn) && input.dependsOn.length) detail.push(t("chat.actionDeps", { ids: input.dependsOn.join(", ") }));
+  if (a.kind === "run.dispatch") {
+    detail.push(input.profileId ? t("chat.actionPlan", { plan: String(input.profileId) }) : t("board.rotate"));
+    if (Number(input.candidates) > 1) detail.push(t("board.candidatesMany", { n: Number(input.candidates) }));
+    if (input.reviewAfter) detail.push(t("board.reviewAfter"));
+  }
+  const text = a.kind === "task.update" ? input.note : a.kind === "run.dispatch" ? input.instructions : null;
+  const taskLink = (
+    <a className={cn(LINK, "font-mono text-[0.9em]")} href={`#/tasks?task=${encodeURIComponent(task)}`}>
+      {task}
+    </a>
+  );
+  return (
+    <li className="flex flex-col gap-1.5 rounded-lg border bg-muted/30 p-2.5 text-xs">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <Badge tone={ACTION_TONE[a.status] ?? "neutral"}>{t(`actionStatus.${a.status}`)}</Badge>
+        <span className="min-w-0 text-sm wrap-anywhere">
+          {a.kind === "task.create" ? (
+            <>
+              {t("chat.actionCreate")} {a.status === "done" || taskIds.includes(task) ? taskLink : <span className="font-mono text-[0.9em]">{task}</span>}: {String(input.title ?? "")}
+            </>
+          ) : a.kind === "task.update" ? (
+            <>
+              {t("chat.actionMove")} {taskLink} → {t(`taskStatus.${String(input.status)}` as never)}
+            </>
+          ) : (
+            <>
+              {t("chat.actionRun", { role: runLabel("agentRole", String(input.role ?? "implement")) })} {taskLink} · <span className="font-mono">{machineName(String(input.machineId ?? ""))}</span>
+            </>
+          )}
+        </span>
+      </div>
+      {detail.length ? <div className="text-muted-foreground">{detail.join(" · ")}</div> : null}
+      {text ? <div className="rounded-md bg-background/60 p-2 whitespace-pre-wrap wrap-anywhere">{String(text)}</div> : null}
+      <div className="text-muted-foreground wrap-anywhere">{t("chat.actionReason", { reason: a.reason })}</div>
+      {a.status === "proposed" && manage ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" className="h-7" disabled={act.busy} onClick={() => decide(true)}>
+            <Check />
+            {t("chat.confirm")}
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7" disabled={act.busy} onClick={() => decide(false)}>
+            <X />
+            {t("chat.dismiss")}
+          </Button>
+          <span className="text-muted-foreground">{t("chat.confirmHint")}</span>
+        </div>
+      ) : null}
+      {a.decidedBy && a.status !== "proposed" ? (
+        <div className="text-muted-foreground">
+          {t(a.status === "dismissed" ? "chat.actionDismissedBy" : "chat.actionConfirmedBy", { who: a.decidedBy, time: formatTime(a.decidedAt) })}
+          {a.result?.requestId ? (
+            <>
+              {" · "}
+              <a className={LINK} href={`#/tasks?task=${encodeURIComponent(task)}`}>
+                {t("chat.actionRequest", { id: a.result.requestId })}
+              </a>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+      {a.error ? <div className="text-destructive wrap-anywhere">{requestErrorText(a.error)}</div> : null}
+      <ErrorNote error={act.error} />
     </li>
   );
 }

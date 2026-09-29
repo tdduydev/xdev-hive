@@ -24,6 +24,9 @@ import { SEED_DOCS } from "./seed.ts";
 import type {
   Actor,
   AuditEntry,
+  ChatAction,
+  ChatActionKind,
+  ChatActionStatus,
   ChatMessage,
   ChatReplyStatus,
   ChatRequest,
@@ -191,7 +194,18 @@ const MIGRATIONS: string[] = [
   CREATE INDEX chat_messages_thread ON chat_messages(thread_id, id);
   CREATE INDEX chat_messages_status ON chat_messages(status);
   `,
+  `
+  CREATE TABLE chat_actions(
+    id INTEGER PRIMARY KEY, reply_id INTEGER NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+    thread_id INTEGER NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE, project TEXT NOT NULL, kind TEXT NOT NULL,
+    input TEXT NOT NULL, reason TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'proposed', result TEXT, error TEXT,
+    decided_by TEXT, decided_at TEXT, created_at TEXT NOT NULL);
+  CREATE INDEX chat_actions_thread ON chat_actions(thread_id, reply_id);
+  `,
 ];
+
+/** A leader's reply asks for at most this many actions. */
+const CHAT_ACTIONS_PER_REPLY = 20;
 
 /** Run records (runs.push) are kept this long after their last update. */
 const RUN_RECORD_DAYS = 30;
@@ -481,6 +495,22 @@ const toChatMessage = (r: Row): ChatMessage => ({
   createdAt: str(r.created_at),
   updatedAt: str(r.updated_at),
   finishedAt: strOrNull(r.finished_at),
+  actions: [],
+});
+const toChatAction = (r: Row): ChatAction => ({
+  id: num(r.id),
+  replyId: num(r.reply_id),
+  threadId: num(r.thread_id),
+  project: str(r.project),
+  kind: str(r.kind) as ChatActionKind,
+  input: JSON.parse(str(r.input)) as Record<string, unknown>,
+  reason: str(r.reason),
+  status: str(r.status) as ChatActionStatus,
+  result: r.result == null ? null : (JSON.parse(str(r.result)) as ChatAction["result"]),
+  error: r.error == null ? null : (JSON.parse(str(r.error)) as RunRequestError),
+  decidedBy: strOrNull(r.decided_by),
+  decidedAt: strOrNull(r.decided_at),
+  createdAt: str(r.created_at),
 });
 /** A thread row with whether a reply is waiting or being written. */
 const THREAD_SELECT =
@@ -618,6 +648,19 @@ export class SqliteHive implements HiveBackend {
       case "chat.get": {
         const row = this.db.prepare("SELECT project FROM chat_threads WHERE id = ?").get(i.threadId) as Row | undefined;
         if (row) this.#need(actor, str(row.project), "view", `Chat #${i.threadId}`);
+        return;
+      }
+      case "chat.propose": {
+        // The reply's own token only: the leader has at most what the sender and the machine both have.
+        const row = actor.chatReply
+          ? (this.db.prepare("SELECT t.project FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id WHERE m.id = ?").get(actor.chatReply) as Row | undefined)
+          : undefined;
+        if (row) this.#need(actor, str(row.project), "contribute", `Chat reply #${actor.chatReply}`);
+        return;
+      }
+      case "chat.decide": {
+        const row = this.db.prepare("SELECT project FROM chat_actions WHERE id = ?").get(i.actionId) as Row | undefined;
+        if (row) this.#need(actor, str(row.project), "manage", `Chat action #${i.actionId}`);
         return;
       }
       case "chat.cancel": {
@@ -999,7 +1042,27 @@ export class SqliteHive implements HiveBackend {
   }
 
   #chatMessage(id: number): ChatMessage {
-    return toChatMessage(this.db.prepare("SELECT * FROM chat_messages WHERE id = ?").get(id) as Row);
+    const message = toChatMessage(this.db.prepare("SELECT * FROM chat_messages WHERE id = ?").get(id) as Row);
+    return { ...message, actions: (this.db.prepare("SELECT * FROM chat_actions WHERE reply_id = ? ORDER BY id").all(id) as Row[]).map(toChatAction) };
+  }
+
+  /** A thread's messages after `after`, each reply with the actions its leader asked for. */
+  #chatMessages(threadId: number, after: number): ChatMessage[] {
+    const actions = new Map<number, ChatAction[]>();
+    for (const r of this.db.prepare("SELECT * FROM chat_actions WHERE thread_id = ? AND reply_id > ? ORDER BY id").all(threadId, after) as Row[]) {
+      const a = toChatAction(r);
+      actions.set(a.replyId, [...(actions.get(a.replyId) ?? []), a]);
+    }
+    return (this.db.prepare("SELECT * FROM chat_messages WHERE thread_id = ? AND id > ? ORDER BY id").all(threadId, after) as Row[]).map((r) => {
+      const m = toChatMessage(r);
+      return { ...m, actions: actions.get(m.id) ?? [] };
+    });
+  }
+
+  #chatAction(id: number): ChatAction {
+    const row = this.db.prepare("SELECT * FROM chat_actions WHERE id = ?").get(id) as Row | undefined;
+    if (!row) throw new HiveError("not_found", `Chat action #${id} not found.`, { key: "errors.chatActionNotFound", vars: { id } });
+    return toChatAction(row);
   }
 
   /** The replies a machine should write: pending ones of its threads, with the message and the session to resume. */
@@ -1805,7 +1868,7 @@ export class SqliteHive implements HiveBackend {
         this.#expireChats();
         const row = db.prepare(`${THREAD_SELECT} WHERE t.id = ?`).get(threadId) as Row | undefined;
         if (!row) return null;
-        const messages = (db.prepare("SELECT * FROM chat_messages WHERE thread_id = ? AND id > ? ORDER BY id").all(threadId, after) as Row[]).map(toChatMessage);
+        const messages = this.#chatMessages(threadId, after);
         return { thread: toChatThread(row), messages };
       },
 
@@ -1814,6 +1877,97 @@ export class SqliteHive implements HiveBackend {
         this.#expireChats();
         const row = db.prepare("SELECT accepts_runs FROM machines WHERE id = ?").get(actor.name) as Row | undefined;
         return row && num(row.accepts_runs) === 1 ? this.#chatRequests(actor.name) : [];
+      },
+
+      // Only the leader writing a reply, through that reply's token; nothing runs until a project manager confirms it.
+      "chat.propose": ({ action, reason }, actor) =>
+        this.#tx(() => {
+          if (!actor.chatReply) {
+            throw new HiveError("forbidden", "Only a chat leader proposes actions, with the token of the reply it writes.", { key: "errors.chatProposeOnly" });
+          }
+          const reply = db
+            .prepare("SELECT m.status, m.thread_id, t.project, t.machine_id FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id WHERE m.id = ? AND m.role = 'assistant'")
+            .get(actor.chatReply) as Row | undefined;
+          const replyId = actor.chatReply;
+          if (!reply) throw new HiveError("not_found", `Chat reply #${replyId} not found.`, { key: "errors.chatReplyNotFound", vars: { id: replyId } });
+          if (str(reply.status) !== "pending" && str(reply.status) !== "running") {
+            throw new HiveError("conflict", `Chat reply #${replyId} has ended.`, { key: "errors.chatReplyEnded", vars: { id: replyId } });
+          }
+          const count = num((db.prepare("SELECT COUNT(*) AS n FROM chat_actions WHERE reply_id = ?").get(replyId) as Row).n);
+          if (count >= CHAT_ACTIONS_PER_REPLY) {
+            throw new HiveError("bad_request", `A reply proposes at most ${CHAT_ACTIONS_PER_REPLY} actions.`, { key: "errors.chatTooManyActions", vars: { max: CHAT_ACTIONS_PER_REPLY } });
+          }
+          const project = str(reply.project);
+          // A person reads it before confirming, and an agent may read it as its prompt.
+          const texts: Array<[string, string | undefined]> = [["Reason", reason]];
+          if (action.kind === "task.create") texts.push(["Title", action.title]);
+          if (action.kind === "task.update") texts.push(["Note", action.note]);
+          if (action.kind === "run.dispatch") texts.push(["Instructions", action.instructions]);
+          for (const [what, text] of texts) {
+            if (!text) continue;
+            assertNoHidden(text, what);
+            assertNoSecret(text, what);
+          }
+          const task = (id: string) => db.prepare("SELECT project FROM tasks WHERE id = ?").get(id) as Row | undefined;
+          const missing = (id: string) =>
+            new HiveError("not_found", `Task ${id} not found in ${project}.`, { key: "errors.chatTaskNotFound", vars: { id, project } });
+          let input: Record<string, unknown>;
+          if (action.kind === "task.create") {
+            if (task(action.id)) throw new HiveError("conflict", `Task ${action.id} already exists.`, { key: "errors.taskExists", vars: { id: action.id } });
+            input = { id: action.id, project, title: action.title, dependsOn: action.dependsOn };
+          } else if (action.kind === "task.update") {
+            if (str(task(action.id)?.project ?? "") !== project) throw missing(action.id);
+            input = { id: action.id, status: action.status, ...(action.note === undefined ? {} : { note: action.note }) };
+          } else {
+            if (str(task(action.taskId)?.project ?? "") !== project) throw missing(action.taskId);
+            // The chat's own machine unless the leader names another (by hub id or machine name).
+            const wanted = action.machine ?? str(reply.machine_id);
+            const m = db.prepare("SELECT id FROM machines WHERE id = ? OR machine = ? ORDER BY last_seen DESC LIMIT 1").get(wanted, wanted) as Row | undefined;
+            if (!m) throw new HiveError("not_found", `No machine ${wanted}.`, { key: "errors.machineNotFound", vars: { machine: wanted } });
+            input = {
+              machineId: str(m.id),
+              project,
+              taskId: action.taskId,
+              role: action.role,
+              profileId: action.profileId,
+              reviewAfter: action.reviewAfter,
+              candidates: action.candidates,
+              instructions: action.instructions,
+            };
+          }
+          const id = num(
+            db
+              .prepare("INSERT INTO chat_actions(reply_id, thread_id, project, kind, input, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+              .run(replyId, num(reply.thread_id), project, action.kind, JSON.stringify(input), reason, this.#now()).lastInsertRowid,
+          );
+          return this.#chatAction(id);
+        }),
+
+      // Confirmed, the action is the manager's own call, checked and recorded like any other; set aside, nothing runs.
+      "chat.decide": async ({ actionId, accept }, actor) => {
+        const action = this.#chatAction(actionId);
+        const decided = () => new HiveError("conflict", `Chat action #${actionId} was already decided.`, { key: "errors.chatActionDecided", vars: { id: actionId } });
+        if (action.status !== "proposed") throw decided();
+        // Taken first, so a second click or another manager does not run it twice.
+        const taken = db
+          .prepare("UPDATE chat_actions SET status = ?, decided_by = ?, decided_at = ? WHERE id = ? AND status = 'proposed'")
+          .run(accept ? "done" : "dismissed", actor.name, this.#now(), actionId);
+        if (Number(taken.changes) === 0) throw decided();
+        if (!accept) return this.#chatAction(actionId);
+        try {
+          const result =
+            action.kind === "run.dispatch"
+              ? { requestId: (await this.call("runs.dispatch", action.input as MethodInput<"runs.dispatch">, actor)).id }
+              : action.kind === "task.create"
+                ? { taskId: (await this.call("tasks.create", action.input as MethodInput<"tasks.create">, actor)).id }
+                : { taskId: (await this.call("tasks.update", action.input as MethodInput<"tasks.update">, actor)).id };
+          db.prepare("UPDATE chat_actions SET result = ? WHERE id = ?").run(JSON.stringify(result), actionId);
+        } catch (err) {
+          const why: RunRequestError =
+            err instanceof HiveError && err.key ? { message: err.message, key: err.key, ...(err.vars ? { vars: err.vars } : {}) } : { message: String((err as Error).message ?? err) };
+          db.prepare("UPDATE chat_actions SET status = 'failed', error = ? WHERE id = ?").run(JSON.stringify(why), actionId);
+        }
+        return this.#chatAction(actionId);
       },
 
       "chat.cancel": ({ replyId }) =>

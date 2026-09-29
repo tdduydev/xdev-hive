@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { ChatMessage, Machine, ReportedProfile } from "@xdev-hive/core";
-import { chatMachines, inline, isLiveReply, mergeMessages, pollAfter, replyBlocks, stepCount } from "../src/lib/chat.ts";
+import type { ChatAction, ChatMessage, Machine, ReportedProfile } from "@xdev-hive/core";
+import { actionTask, chatMachines, inline, isLiveReply, machineName, mergeMessages, pollAfter, replyBlocks, stepCount, withAction } from "../src/lib/chat.ts";
 
 const profile = (over: Partial<ReportedProfile> = {}): ReportedProfile => ({
   id: "claude-1",
@@ -45,6 +45,24 @@ const message = (id: number, over: Partial<ChatMessage> = {}): ChatMessage => ({
   createdAt: "2026-09-29T10:00:00Z",
   updatedAt: "2026-09-29T10:00:00Z",
   finishedAt: null,
+  actions: [],
+  ...over,
+});
+
+const action = (id: number, over: Partial<ChatAction> = {}): ChatAction => ({
+  id,
+  replyId: 2,
+  threadId: 1,
+  project: "app",
+  kind: "task.create",
+  input: { id: "T-5", project: "app", title: "Reset", dependsOn: [] },
+  reason: "Asked for",
+  status: "proposed",
+  result: null,
+  error: null,
+  decidedBy: null,
+  decidedAt: null,
+  createdAt: "2026-09-29T10:00:00Z",
   ...over,
 });
 
@@ -68,6 +86,9 @@ describe("chat helpers", () => {
     assert.equal(pollAfter([]), 0);
     assert.equal(pollAfter([message(1, { role: "user", status: null }), message(2)]), 2);
     assert.equal(pollAfter([message(1, { role: "user", status: null }), message(2, { status: "running" }), message(3, { status: "pending" })]), 1);
+    // An action nobody decided may be decided by another manager: that reply is read again too.
+    assert.equal(pollAfter([message(1, { role: "user", status: null }), message(2, { actions: [action(7)] }), message(3)]), 1);
+    assert.equal(pollAfter([message(1, { role: "user", status: null }), message(2, { actions: [action(7, { status: "done" })] })]), 2);
     assert.deepEqual(["pending", "running", "done", "failed", "cancelled", "expired", null].filter((status) => isLiveReply({ status: status as never })), ["pending", "running"]);
   });
 
@@ -76,6 +97,17 @@ describe("chat helpers", () => {
     const merged = mergeMessages(known, [message(2, { status: "done", text: "Looked." }), message(4, { text: "later" })]);
     assert.deepEqual(merged.map((m) => [m.id, m.text]), [[1, "hi"], [2, "Looked."], [4, "later"]]);
     assert.equal(mergeMessages(known, []), known, "nothing new: the same list, no re-render");
+  });
+
+  it("swaps in a decided action, and names what an action is about", () => {
+    const known = [message(1, { role: "user", status: null }), message(2, { actions: [action(7), action(8)] })];
+    const next = withAction(known, action(8, { status: "done", result: { taskId: "T-5" } }));
+    assert.deepEqual(next[1]!.actions.map((a) => a.status), ["proposed", "done"]);
+    assert.equal(next[0], known[0], "other messages untouched");
+    assert.equal(actionTask(action(1)), "T-5");
+    assert.equal(actionTask(action(1, { kind: "run.dispatch", input: { taskId: "T-2", machineId: "runner.team-mbp@team-mbp" } })), "T-2");
+    assert.equal(machineName("runner.team-mbp@team-mbp"), "team-mbp");
+    assert.equal(machineName("mini"), "mini");
   });
 
   it("counts the tool calls among the steps", () => {

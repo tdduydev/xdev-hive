@@ -16,6 +16,7 @@ import {
   type RunNotice,
   type RunRecord,
   type RunRequest,
+  type ChatAction,
   type ChatMessage,
   type ChatRequest,
   type ChatThread,
@@ -109,6 +110,23 @@ const profileTemplate = agentProfileSchema.extend({
 });
 
 /** Every operation the Hive backend supports. Web RPC, desktop IPC and MCP tools all go through this table. */
+/** What a chat leader may ask for (chat.propose): the input of the call a project manager then confirms, project left out. */
+const chatAction = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("task.create"), id: taskId, title: z.string().min(1).max(300), dependsOn: z.array(taskId).max(20).default([]) }),
+  z.object({ kind: z.literal("task.update"), id: taskId, status: z.enum(TASK_STATUSES), note: z.string().max(2000).optional() }),
+  z.object({
+    kind: z.literal("run.dispatch"),
+    taskId,
+    role: z.enum(AGENT_ROLES).default("implement"),
+    /** A machine's hub id or name; the chat's own machine when left out. */
+    machine: machineRef.optional(),
+    profileId: z.string().max(40).nullable().default(null),
+    reviewAfter: z.boolean().default(false),
+    candidates: z.number().int().min(1).max(MAX_CANDIDATES).default(1),
+    instructions: z.string().max(4000).default(""),
+  }),
+]);
+
 export const schemas = {
   "docs.list": z.object({
     project: project.optional(),
@@ -330,6 +348,13 @@ export const schemas = {
   "chat.get": z.object({ threadId: id, after: z.number().int().min(0).default(0) }),
   /** A machine asks for the replies it should write, between heartbeats (every few seconds while it takes runs). */
   "chat.poll": z.object({}),
+  /**
+   * A chat leader asks for a task to be created or moved, or a run queued: only with the token of the reply it writes.
+   * Nothing happens until a manager of the project confirms it (chat.decide).
+   */
+  "chat.propose": z.object({ action: chatAction, reason: z.string().min(1).max(500) }),
+  /** A project manager confirms a leader's action, which then runs with their own rights, or sets it aside. */
+  "chat.decide": z.object({ actionId: id, accept: z.boolean() }),
   /** Stops a reply that is waiting or being written; the machine hears it at its next progress report. */
   "chat.cancel": z.object({ replyId: id }),
   /** The machine writing a reply says how far it got; the answer tells it whether someone cancelled it. */
@@ -439,6 +464,8 @@ export interface MethodOutput {
   "chat.threads": ChatThread[];
   "chat.get": { thread: ChatThread; messages: ChatMessage[] } | null;
   "chat.poll": ChatRequest[];
+  "chat.propose": ChatAction;
+  "chat.decide": ChatAction;
   "chat.cancel": ChatMessage;
   "chat.progress": { cancelled: boolean };
   "chat.finish": ChatMessage;
@@ -503,6 +530,8 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "chat.threads": "viewer",
   "chat.get": "viewer",
   "chat.poll": "agent",
+  "chat.propose": "agent",
+  "chat.decide": "agent",
   "chat.cancel": "agent",
   // Only the machine the thread is on.
   "chat.progress": "agent",

@@ -56,13 +56,18 @@ export class ChatGrants {
     return token;
   }
 
-  /** The rights of a grant, or null once it expired or its reply is no longer waiting or being written. */
-  verify(token: string, now = new Date()): { name: string; role: Role; access?: Access } | null {
+  /** The rights of a grant and its reply, or null once it expired or its reply is no longer waiting or being written. */
+  verify(token: string, now = new Date()): { name: string; role: Role; access?: Access; replyId: number } | null {
     if (!token.startsWith("hivechat_")) return null;
     const row = this.#db.prepare("SELECT * FROM hub_chat_grants WHERE hash = ?").get(sha256(token)) as Row | undefined;
     if (!row || String(row.expires_at) <= now.toISOString()) return null;
     const reply = this.#db.prepare("SELECT status FROM chat_messages WHERE id = ?").get(Number(row.reply_id)) as Row | undefined;
     if (!reply || (reply.status !== "pending" && reply.status !== "running")) return null;
-    return { name: String(row.name), role: row.role as Role, ...(row.access == null ? {} : { access: JSON.parse(String(row.access)) as Access }) };
+    return {
+      name: String(row.name),
+      role: row.role as Role,
+      ...(row.access == null ? {} : { access: JSON.parse(String(row.access)) as Access }),
+      replyId: Number(row.reply_id),
+    };
   }
 }
