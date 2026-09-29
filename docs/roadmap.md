@@ -45,3 +45,7 @@ Làm lần lượt, mỗi lượt một mục (mỗi mục một PR). Mục có 
   - [x] **13a. github-pr-open**: thẻ *GitHub pull request* (URL, fine-grained PAT, kiểm tra kết nối) và ô *GitHub: owner/repo* của dự án; dự án có remote trên host GitHub (hoặc owner/repo) thì push `ai/<task>` rồi mở/cập nhật PR theo cùng luật MR (draft khi review cần sửa, chuyển Ready qua GraphQL, repo không có draft thì tiêu đề `Draft:`), thêm label, ghi `PR #n` vào task; Board hiện `PR #n`.
   - [x] **13b. github-pr-watch**: theo dõi PR đã mở (trạng thái, check CI trên Board), merge thì task sang Xong, báo khi đóng/CI lỗi. Watcher MR hỏi cả PR trên GitHub đã cấu hình: check-runs và commit status của commit mới nhất gộp thành một trạng thái CI (chạy → lỗi/qua), link trang checks theo commit; PR merge thì task sang Xong (`PR #n merged.`); thông báo ghi `PR #n` hay `MR !n` đúng loại.
   - [ ] **13c. github-ci-fix**: check CI của PR lỗi thì xếp run sửa kèm log job lỗi (GitHub Actions), push lại branch, tối đa như GitLab.
+
+## Sửa lỗi
+
+- [x] **board-refresh**: Board ngừng làm mới ngay khi hết run chờ/chạy, trước lúc run vừa xong được ghi MR (push + mở MR/PR chạy sau khi lưu trạng thái), nên thẻ task thiếu badge MR. Runner giờ đánh dấu run `finishing` (trong `list()`) tới khi xong ghi chú Hive, MR và run tiếp theo; Board coi đó là còn hoạt động.

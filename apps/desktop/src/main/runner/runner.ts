@@ -209,6 +209,8 @@ export class Runner {
   readonly #live = new Map<string, Live>();
   readonly #inflight = new Set<Promise<void>>();
   readonly #waiting = new Map<string, string>();
+  /** Runs between their end and the last of their bookkeeping (see AgentRun.finishing). */
+  readonly #finishing = new Set<string>();
   /** Lease holder name as the backend recorded it (a hub appends the token name: claude-1.duy-mbp@duy). */
   readonly #owners = new Map<string, string>();
   /** Hub cooldowns by account, refreshed by every heartbeat. */
@@ -369,7 +371,11 @@ export class Runner {
   }
 
   list(filter: { project?: string; limit?: number } = {}): AgentRun[] {
-    return this.store.list(filter).map((r) => (r.status === "queued" ? { ...r, error: this.#waiting.get(r.id) ?? r.error } : r));
+    return this.store
+      .list(filter)
+      .map((r) =>
+        r.status === "queued" ? { ...r, error: this.#waiting.get(r.id) ?? r.error } : this.#finishing.has(r.id) ? { ...r, finishing: true } : r,
+      );
   }
 
   log(id: string, maxBytes = 200_000): string {
@@ -868,7 +874,17 @@ export class Runner {
     return claudeMcpServers(this.#containerHub(), this.#mcpRun(profile, run));
   }
 
+  /** The run's status is saved first; the MR and the Hive note come after, so list() says it is still finishing. */
   async #complete(run: AgentRun, profile: AgentProfile, wt: Worktree | null, outcome: Outcome): Promise<void> {
+    this.#finishing.add(run.id);
+    try {
+      await this.#finish(run, profile, wt, outcome);
+    } finally {
+      this.#finishing.delete(run.id);
+    }
+  }
+
+  async #finish(run: AgentRun, profile: AgentProfile, wt: Worktree | null, outcome: Outcome): Promise<void> {
     const now = this.#opts.now();
     let status: RunStatus = "failed";
     let error: string | null = null;

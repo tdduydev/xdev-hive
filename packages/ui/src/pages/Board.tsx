@@ -62,7 +62,8 @@ export function BoardPage() {
 
   const [tick, setTick] = useState(0);
   const runs = useQuery(() => desktop.runs({ project: current || undefined, limit: 60 }), [desktop, current, tick]);
-  const active = (runs.data ?? []).some((r) => r.status === "queued" || r.status === "running");
+  // A run that just ended may still get its MR or its task note: keep refreshing until it has.
+  const active = (runs.data ?? []).some((r) => r.status === "queued" || r.status === "running" || r.finishing);
   const pulse = usePulse(active);
   useEffect(() => setTick((t) => t + 1), [pulse]);
 
