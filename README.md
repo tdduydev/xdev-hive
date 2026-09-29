@@ -26,6 +26,10 @@ Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, 
   - Skill là tài liệu có key `org/skills/<tên>` (cả team) hoặc `project/<dự án>/skills/<tên>`. Nội dung là một `SKILL.md` của Claude Code: front matter có `name` (trùng `<tên>`: chữ thường, số, `-`, tối đa 64) và `description` (việc skill làm và khi nào dùng, tối đa 1024 ký tự), rồi đến các bước. Hub từ chối skill thiếu hoặc sai hai trường đó, và cũng chặn secret như với tài liệu.
   - Skill không bao giờ vào `AGENTS.md` và không giới hạn theo đường dẫn.
   - Agent dùng MCP: `skill_list` (tên và mô tả; skill của dự án thay skill chung cùng tên), `skill_get` (của dự án trước, không có thì của team), `skill_propose` (SKILL.md đầy đủ; `shared: true` cho cả team). Đề xuất đi qua trang *Đề xuất* như tài liệu.
+  - MCP cũng có ba tool chỉ đọc, dùng ở chế độ hub:
+    - `run_list`: lượt chạy máy đã báo lên hub, gồm task, việc, máy, gói, trạng thái, tóm tắt kết quả và MR.
+    - `run_get`: một run kèm phần cuối log, secret đã ẩn.
+    - `machine_list`: máy nào online, có nhận run từ hub không, có repo của dự án nào, và trạng thái các gói.
   - Trang *Skill* (web và app, nhóm Làm việc):
     - Danh sách skill theo phạm vi đang chọn ở thanh bên. Khi chọn một dự án, trang hiện đúng bộ skill agent của dự án đó nhận: skill riêng có nhãn *thay skill chung*, skill chung cùng tên bị làm mờ với nhãn *không dùng ở dự án này*.
     - Soạn skill bằng ô tên, ô mô tả (đếm tới 1024 ký tự) và phần hướng dẫn; front matter được ghép tự động, giữ nguyên các khoá khác như `allowed-tools`. Nút *Thay đổi* hiện diff trước khi lưu.
@@ -470,6 +474,10 @@ Trên hub, agent giữ task với tên `<gói>.<máy>@<token>`, ví dụ `claude
     - Hub kiểm ngay khi leader đề xuất: task phải thuộc dự án của chat (với tạo mới thì chưa có), máy phải có trên hub, chữ không có ký tự ẩn hay secret.
     - Trên trang *Chat*, đề xuất hiện dưới câu trả lời. Người quản trị dự án bấm *Xác nhận* thì việc chạy như chính họ gọi (`chat.decide`): hub kiểm quyền của họ và ghi tên họ. Bấm *Bỏ qua* thì không có gì chạy.
     - Mỗi đề xuất chỉ được quyết định một lần. Lỗi khi chạy được giữ lại kèm lý do. Kết quả có link: task vừa tạo, hoặc yêu cầu chạy (mở panel của task). Đề xuất vẫn chờ quyết định sau khi câu trả lời đã xong.
+  - **Hướng dẫn cho leader** (roadmap 17c-2).
+    - Hub có sẵn skill chung `hive-leader`. Skill này nói leader cần: tìm hiểu bằng task, lượt chạy (kể cả kết quả review) và máy; đề xuất thay vì tự làm; không merge; hỏi lại kèm vài lựa chọn khi cần quyết định; ghi đúng mã task và mã run để trang *Chat* làm link.
+    - Nhóm sửa skill này trên trang *Skill* như mọi skill khác, hoặc tạo skill riêng cùng tên cho một dự án. Hub đang chạy nhận skill này một lần khi cập nhật; xoá đi thì hub không tạo lại. Cơ sở dữ liệu local của máy không có skill này.
+    - Máy dặn leader đọc `skill_get hive-leader` trước khi trả lời, và nhắc lại: chỉ đề xuất, không merge, hỏi khi cần quyết định.
   - Hub lưu các cuộc trò chuyện (thread) theo dự án cùng tin nhắn của chúng (migration 15).
   - Gửi tin nhắn bằng `chat.send`. Thread mới cần chọn máy, có thể ghim một gói Claude; tin tiếp theo đi đúng máy và phiên của thread đó.
   - Hub kiểm máy như khi xếp run: đang online, đã bật ô nhận run từ hub, có repo của dự án, có gói Claude đang bật và đã đăng nhập. Thread đang chờ câu trả lời thì chưa nhận tin mới.
@@ -500,7 +508,7 @@ Trang này có trên hub web và trên app desktop ở chế độ hub, chỉ hi
 
 Agent không có app desktop (CI, cloud) gọi thẳng MCP qua HTTP: `POST https://<hub>/mcp`, header `Authorization: Bearer <token agent>`, tuỳ chọn `x-hive-agent: <tên>`.
 
-**Agent chỉ đọc**: tạo token vai trò `viewer` cho agent chỉ cần tra cứu, ví dụ bot review hoặc CI đọc quy chuẩn. Với token này, MCP chỉ có `memory_search`, `doc_list`, `doc_get`, `task_list`, `task_next`. Tool ghi không có trong danh sách, và hub cũng từ chối lệnh ghi.
+**Agent chỉ đọc**: tạo token vai trò `viewer` cho agent chỉ cần tra cứu, ví dụ bot review hoặc CI đọc quy chuẩn. Với token này, MCP chỉ có các tool đọc: `memory_search`, `doc_list`, `doc_get`, `skill_list`, `skill_get`, `task_list`, `task_next`, `run_list`, `run_get`, `machine_list`. Tool ghi không có trong danh sách, và hub cũng từ chối lệnh ghi.
 
 Trên app desktop, profile có tuỳ chọn *Chỉ đọc Hive*:
 - Runner đặt `HIVE_READONLY=1` cho run của profile đó; `hive-mcp` thấy biến này thì chỉ mở tool đọc.

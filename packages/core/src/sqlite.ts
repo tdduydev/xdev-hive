@@ -20,7 +20,7 @@ import { fuseRanks, similarity, type Embedder } from "./embed.ts";
 import { assertNoHidden, stripHidden } from "./hidden.ts";
 import { assertNoSecret, findSecret, redactLines } from "./secrets.ts";
 import { parseSource, type WriteSource } from "./source.ts";
-import { SEED_DOCS } from "./seed.ts";
+import { SEED_DOCS, SEED_VERSION } from "./seed.ts";
 import type {
   Actor,
   AuditEntry,
@@ -201,6 +201,9 @@ const MIGRATIONS: string[] = [
     input TEXT NOT NULL, reason TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'proposed', result TEXT, error TEXT,
     decided_by TEXT, decided_at TEXT, created_at TEXT NOT NULL);
   CREATE INDEX chat_actions_thread ON chat_actions(thread_id, reply_id);
+  `,
+  `
+  CREATE TABLE hive_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `,
 ];
 
@@ -817,13 +820,23 @@ export class SqliteHive implements HiveBackend {
   }
 
   /** Creates the default org docs on an empty database. Safe to call on every start. */
-  seed(author = "xdev-hive"): void {
+  /**
+   * The default docs: all of them in a new database; in one seeded before, only those a later seed version added
+   * (once: a doc someone removed stays removed). `hub`: also those only a hub needs.
+   */
+  seed(author = "xdev-hive", opts: { hub?: boolean } = {}): void {
     const count = num((this.db.prepare("SELECT COUNT(*) AS n FROM docs").get() as Row).n);
-    if (count > 0) return;
+    const stored = this.db.prepare("SELECT value FROM hive_meta WHERE key = 'seed_version'").get() as Row | undefined;
+    // Databases seeded before the version was kept have had the first seed.
+    const had = stored ? num(Number(stored.value)) : count > 0 ? 1 : 0;
+    if (had >= SEED_VERSION) return;
     this.#tx(() => {
       for (const d of SEED_DOCS) {
+        if ((d.since ?? 1) <= had || (d.hubOnly && !opts.hub)) continue;
+        if (this.db.prepare("SELECT 1 FROM docs WHERE key = ?").get(d.key)) continue;
         this.#writeDoc(d.key, d.content, { title: d.title, includeInAgents: d.includeInAgents, note: "Seed" }, author);
       }
+      this.db.prepare("INSERT INTO hive_meta(key, value) VALUES ('seed_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(SEED_VERSION));
     });
   }
 

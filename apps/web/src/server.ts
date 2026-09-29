@@ -56,7 +56,7 @@ const hive = new SqliteHive(dbPath, {
   embedder,
   embedMinScore: Number.isFinite(minScore) ? minScore : 0.5,
 });
-hive.seed("hub");
+hive.seed("hub", { hub: true });
 const tokens = new TokenStore(hive.db);
 const users = new UserStore(hive.db);
 if (process.env.HIVE_BOOTSTRAP_TOKEN) tokens.ensure(process.env.HIVE_BOOTSTRAP_TOKEN, "bootstrap", "admin");
