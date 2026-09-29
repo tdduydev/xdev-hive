@@ -1002,6 +1002,33 @@ export class SqliteHive implements HiveBackend {
     return toChatMessage(this.db.prepare("SELECT * FROM chat_messages WHERE id = ?").get(id) as Row);
   }
 
+  /** The replies a machine should write: pending ones of its threads, with the message and the session to resume. */
+  #chatRequests(machineId: string): ChatRequest[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT m.id, m.thread_id, m.sender, m.created_at, t.project, t.profile_id, t.session_id,
+             (SELECT u.text FROM chat_messages u WHERE u.thread_id = m.thread_id AND u.role = 'user' AND u.id < m.id ORDER BY u.id DESC LIMIT 1) AS text,
+             (SELECT u.author FROM chat_messages u WHERE u.thread_id = m.thread_id AND u.role = 'user' AND u.id < m.id ORDER BY u.id DESC LIMIT 1) AS requested_by
+           FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id
+           WHERE t.machine_id = ? AND m.status = 'pending' ORDER BY m.id`,
+        )
+        .all(machineId) as Row[]
+    ).map(
+      (r): ChatRequest => ({
+        replyId: num(r.id),
+        threadId: num(r.thread_id),
+        project: str(r.project),
+        profileId: strOrNull(r.profile_id),
+        sessionId: strOrNull(r.session_id),
+        text: str(r.text ?? ""),
+        requestedBy: str(r.requested_by ?? ""),
+        createdAt: str(r.created_at),
+        ...(r.sender == null ? {} : { sender: JSON.parse(str(r.sender)) as ChatSender }),
+      }),
+    );
+  }
+
   /** A reply as the machine writing it may touch it: only the machine its thread is on. */
   #replyFor(replyId: number, actor: Actor): Row {
     const row = this.db
@@ -1569,31 +1596,7 @@ export class SqliteHive implements HiveBackend {
             ? (db.prepare("SELECT * FROM run_requests WHERE machine_id = ? AND status = 'pending' ORDER BY id").all(actor.name) as Row[]).map(toRunRequest)
             : [];
           // Sent again at every heartbeat until the machine reports progress on it.
-          const chatRequests = accepts
-            ? (
-                db
-                  .prepare(
-                    `SELECT m.id, m.thread_id, m.sender, m.created_at, t.project, t.profile_id, t.session_id,
-                       (SELECT u.text FROM chat_messages u WHERE u.thread_id = m.thread_id AND u.role = 'user' AND u.id < m.id ORDER BY u.id DESC LIMIT 1) AS text,
-                       (SELECT u.author FROM chat_messages u WHERE u.thread_id = m.thread_id AND u.role = 'user' AND u.id < m.id ORDER BY u.id DESC LIMIT 1) AS requested_by
-                     FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id
-                     WHERE t.machine_id = ? AND m.status = 'pending' ORDER BY m.id`,
-                  )
-                  .all(actor.name) as Row[]
-              ).map(
-                (r): ChatRequest => ({
-                  replyId: num(r.id),
-                  threadId: num(r.thread_id),
-                  project: str(r.project),
-                  profileId: strOrNull(r.profile_id),
-                  sessionId: strOrNull(r.session_id),
-                  text: str(r.text ?? ""),
-                  requestedBy: str(r.requested_by ?? ""),
-                  createdAt: str(r.created_at),
-                  ...(r.sender == null ? {} : { sender: JSON.parse(str(r.sender)) as ChatSender }),
-                }),
-              )
-            : [];
+          const chatRequests = accepts ? this.#chatRequests(actor.name) : [];
           return {
             duplicate: duplicateAt !== null && duplicateAt > this.#now(-DUPLICATE_MINUTES),
             cooldowns: this.#cooldowns(),
@@ -1804,6 +1807,13 @@ export class SqliteHive implements HiveBackend {
         if (!row) return null;
         const messages = (db.prepare("SELECT * FROM chat_messages WHERE thread_id = ? AND id > ? ORDER BY id").all(threadId, after) as Row[]).map(toChatMessage);
         return { thread: toChatThread(row), messages };
+      },
+
+      // Only for a machine that heartbeats and takes runs from the hub; cheap enough to ask every few seconds.
+      "chat.poll": (_input, actor) => {
+        this.#expireChats();
+        const row = db.prepare("SELECT accepts_runs FROM machines WHERE id = ?").get(actor.name) as Row | undefined;
+        return row && num(row.accepts_runs) === 1 ? this.#chatRequests(actor.name) : [];
       },
 
       "chat.cancel": ({ replyId }) =>

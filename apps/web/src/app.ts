@@ -13,6 +13,7 @@ import {
   type Me,
   type Role,
   type WebhookInput,
+  type ChatRequest,
 } from "@xdev-hive/core";
 import type { SqliteHive } from "@xdev-hive/core/node";
 import { createHiveMcpServer } from "@xdev-hive/mcp";
@@ -534,11 +535,16 @@ export function createHubApp({
       }
 
       if (!isMethod(method)) throw new HiveError("bad_request", `Unknown method ${String(method)}`);
+      // Each chat request gets its MCP token here; the sender's rights stay on the hub.
+      const withGrants = (requests: ChatRequest[]) =>
+        requests.map(({ sender, ...r }) => ({ ...r, ...(sender ? { grant: chatGrants.issue(r.replyId, sender, actor) } : {}) }));
       if (method === "machines.heartbeat") {
-        // Each chat request gets its MCP token here; the sender's rights stay on the hub.
         const out = await hive.call(method, input as never, actor);
-        const chatRequests = out.chatRequests.map(({ sender, ...r }) => ({ ...r, ...(sender ? { grant: chatGrants.issue(r.replyId, sender, actor) } : {}) }));
-        res.json({ result: { ...out, chatRequests } });
+        res.json({ result: { ...out, chatRequests: withGrants(out.chatRequests) } });
+        return;
+      }
+      if (method === "chat.poll") {
+        res.json({ result: withGrants(await hive.call(method, input as never, actor)) });
         return;
       }
       res.json({ result: await hive.call(method, input as never, actor) });
