@@ -98,6 +98,11 @@ async function setup(profiles: AgentProfile[], opts: { docker?: boolean; mode?: 
     chmodSync(path.join(bin, "docker"), 0o755);
   }
   const hubLike: HiveBackend = { call: (m, i, a) => hive.call(m, i, { ...a, name: `${a.name}@duy-macbook` }) };
+  // "No docker" means none at all: the machine running the tests may have a real one (colima, Docker Desktop).
+  const hostPath = (process.env.PATH ?? "")
+    .split(path.delimiter)
+    .filter((d) => opts.docker !== false || !existsSync(path.join(d, "docker")))
+    .join(path.delimiter);
   const dataDir = tmp("data");
   const host: RunnerHost = {
     backend: () => (opts.mode === "hub" ? hubLike : hive),
@@ -107,7 +112,7 @@ async function setup(profiles: AgentProfile[], opts: { docker?: boolean; mode?: 
     mode: () => opts.mode ?? "local",
     machine: () => "duy-mbp",
     // A variable only the machine has: it must not reach an agent in a container.
-    env: () => ({ ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`, FAKE_DOCKER_RECORD: dockerRecord, HIVE_TEST_HOST_ONLY: "leaked", ...opts.dockerEnv }),
+    env: () => ({ ...process.env, PATH: `${bin}${path.delimiter}${hostPath}`, FAKE_DOCKER_RECORD: dockerRecord, HIVE_TEST_HOST_ONLY: "leaked", ...opts.dockerEnv }),
     hub: () => ({ url: "https://hive.example.test", token: "hive_test_machine_token" }),
     token: (id) => opts.tokens?.[id],
   };

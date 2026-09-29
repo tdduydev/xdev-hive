@@ -24,6 +24,11 @@ import { SEED_DOCS } from "./seed.ts";
 import type {
   Actor,
   AuditEntry,
+  ChatMessage,
+  ChatReplyStatus,
+  ChatRequest,
+  ChatSender,
+  ChatThread,
   CommandStatus,
   CostTotals,
   Doc,
@@ -174,6 +179,18 @@ const MIGRATIONS: string[] = [
   CREATE INDEX run_requests_machine ON run_requests(machine_id, status);
   CREATE INDEX run_requests_project ON run_requests(project, id);
   `,
+  `
+  CREATE TABLE chat_threads(
+    id INTEGER PRIMARY KEY, project TEXT NOT NULL, title TEXT NOT NULL, machine_id TEXT NOT NULL, machine TEXT NOT NULL,
+    profile_id TEXT, session_id TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+  CREATE INDEX chat_threads_project ON chat_threads(project, updated_at);
+  CREATE TABLE chat_messages(
+    id INTEGER PRIMARY KEY, thread_id INTEGER NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE, role TEXT NOT NULL,
+    author TEXT NOT NULL, text TEXT NOT NULL DEFAULT '', status TEXT, activity TEXT, steps TEXT NOT NULL DEFAULT '', error TEXT,
+    cost_usd REAL, sender TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, finished_at TEXT);
+  CREATE INDEX chat_messages_thread ON chat_messages(thread_id, id);
+  CREATE INDEX chat_messages_status ON chat_messages(status);
+  `,
 ];
 
 /** Run records (runs.push) are kept this long after their last update. */
@@ -234,6 +251,10 @@ const COMMAND_HISTORY = 20;
 const RUN_REQUEST_TTL_MINUTES = 15;
 /** Answered run requests are kept this long. */
 const RUN_REQUEST_DAYS = 30;
+/** A chat reply no machine started within this time expires; one that stops reporting for as long has failed. */
+const CHAT_WAIT_MINUTES = 15;
+/** Threads nobody wrote in for this long are dropped with their messages. */
+const CHAT_DAYS = 90;
 
 /** Allowed status moves for a machine reporting on a command. */
 const COMMAND_MOVES: Record<CommandStatus, CommandStatus[]> = {
@@ -434,6 +455,36 @@ const toRunRequest = (r: Row): RunRequest => ({
   requestedAt: str(r.requested_at),
   updatedAt: str(r.updated_at),
 });
+const toChatThread = (r: Row): ChatThread => ({
+  id: num(r.id),
+  project: str(r.project),
+  title: str(r.title),
+  machineId: str(r.machine_id),
+  machine: str(r.machine),
+  profileId: strOrNull(r.profile_id),
+  createdBy: str(r.created_by),
+  createdAt: str(r.created_at),
+  updatedAt: str(r.updated_at),
+  busy: num(r.busy ?? 0) === 1,
+});
+const toChatMessage = (r: Row): ChatMessage => ({
+  id: num(r.id),
+  threadId: num(r.thread_id),
+  role: str(r.role) as ChatMessage["role"],
+  author: str(r.author),
+  text: str(r.text),
+  status: strOrNull(r.status) as ChatReplyStatus | null,
+  activity: strOrNull(r.activity),
+  steps: str(r.steps),
+  error: r.error == null ? null : (JSON.parse(str(r.error)) as RunRequestError),
+  costUsd: r.cost_usd == null ? null : num(r.cost_usd),
+  createdAt: str(r.created_at),
+  updatedAt: str(r.updated_at),
+  finishedAt: strOrNull(r.finished_at),
+});
+/** A thread row with whether a reply is waiting or being written. */
+const THREAD_SELECT =
+  "SELECT t.*, EXISTS(SELECT 1 FROM chat_messages m WHERE m.thread_id = t.id AND m.status IN ('pending', 'running')) AS busy FROM chat_threads t";
 const toAudit = (r: Row): AuditEntry => ({
   id: num(r.id),
   at: str(r.at),
@@ -559,7 +610,23 @@ export class SqliteHive implements HiveBackend {
         if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
         return;
       case "runs.dispatch":
+      case "chat.send":
         return this.#need(actor, i.project, "manage", `Project ${i.project}`);
+      case "chat.threads":
+        if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
+        return;
+      case "chat.get": {
+        const row = this.db.prepare("SELECT project FROM chat_threads WHERE id = ?").get(i.threadId) as Row | undefined;
+        if (row) this.#need(actor, str(row.project), "view", `Chat #${i.threadId}`);
+        return;
+      }
+      case "chat.cancel": {
+        const row = this.db
+          .prepare("SELECT t.project FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id WHERE m.id = ?")
+          .get(i.replyId) as Row | undefined;
+        if (row) this.#need(actor, str(row.project), "manage", `Chat reply #${i.replyId}`);
+        return;
+      }
       case "runs.cancelRequest": {
         const row = this.db.prepare("SELECT project FROM run_requests WHERE id = ?").get(i.id) as Row | undefined;
         if (row) this.#need(actor, str(row.project), "manage", `Run request #${i.id}`);
@@ -613,6 +680,8 @@ export class SqliteHive implements HiveBackend {
         return (out as RunRecord[]).filter((r) => sees(r.project)) as MethodOutput[M];
       case "runs.requests":
         return (out as RunRequest[]).filter((r) => sees(r.project)) as MethodOutput[M];
+      case "chat.threads":
+        return (out as ChatThread[]).filter((t) => sees(t.project)) as MethodOutput[M];
       case "proposals.list":
         return (out as Proposal[]).filter((p) => sees(SqliteHive.#docOwner(p.docKey))) as MethodOutput[M];
       case "memory.search":
@@ -906,6 +975,41 @@ export class SqliteHive implements HiveBackend {
       .prepare("UPDATE run_requests SET status = 'expired', updated_at = ?1 WHERE status = 'pending' AND requested_at < ?2")
       .run(this.#now(), this.#now(-RUN_REQUEST_TTL_MINUTES));
     this.db.prepare("DELETE FROM run_requests WHERE status <> 'pending' AND updated_at < ?").run(this.#now(-RUN_REQUEST_DAYS * 24 * 60));
+  }
+
+  /** Chat replies nobody started in time expire; one gone silent has failed; old threads are dropped. */
+  #expireChats(): void {
+    const now = this.#now();
+    const since = this.#now(-CHAT_WAIT_MINUTES);
+    const expired: RunRequestError = { message: "No machine took the message in time.", key: "errors.chatNotTaken" };
+    const silent: RunRequestError = { message: "The machine stopped reporting.", key: "errors.chatSilent" };
+    this.db
+      .prepare("UPDATE chat_messages SET status = 'expired', error = ?, updated_at = ?, finished_at = ? WHERE status = 'pending' AND created_at < ?")
+      .run(JSON.stringify(expired), now, now, since);
+    this.db
+      .prepare("UPDATE chat_messages SET status = 'failed', error = ?, updated_at = ?, finished_at = ? WHERE status = 'running' AND updated_at < ?")
+      .run(JSON.stringify(silent), now, now, since);
+    this.db.prepare("DELETE FROM chat_threads WHERE updated_at < ?").run(this.#now(-CHAT_DAYS * 24 * 60));
+  }
+
+  #chatThread(id: number): ChatThread {
+    const row = this.db.prepare(`${THREAD_SELECT} WHERE t.id = ?`).get(id) as Row | undefined;
+    if (!row) throw new HiveError("not_found", `Chat #${id} not found.`, { key: "errors.chatNotFound", vars: { id } });
+    return toChatThread(row);
+  }
+
+  #chatMessage(id: number): ChatMessage {
+    return toChatMessage(this.db.prepare("SELECT * FROM chat_messages WHERE id = ?").get(id) as Row);
+  }
+
+  /** A reply as the machine writing it may touch it: only the machine its thread is on. */
+  #replyFor(replyId: number, actor: Actor): Row {
+    const row = this.db
+      .prepare("SELECT m.*, t.machine_id FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id WHERE m.id = ? AND m.role = 'assistant'")
+      .get(replyId) as Row | undefined;
+    if (!row) throw new HiveError("not_found", `Chat reply #${replyId} not found.`, { key: "errors.chatReplyNotFound", vars: { id: replyId } });
+    if (str(row.machine_id) !== actor.name) throw new HiveError("forbidden", `Chat reply #${replyId} is for ${str(row.machine_id)}, not ${actor.name}.`);
+    return row;
   }
 
   #runRequest(id: number): RunRequest {
@@ -1448,6 +1552,7 @@ export class SqliteHive implements HiveBackend {
           this.#expireRequests();
           const accepts = num((db.prepare("SELECT accepts_runs FROM machines WHERE id = ?").get(actor.name) as Row).accepts_runs) === 1;
           // The user turned it off after a manager queued something: say so on the web instead of letting it expire.
+          this.#expireChats();
           if (!accepts) {
             const error: RunRequestError = { message: `${machine} does not take runs from the hub.`, key: "errors.machineNoHubRuns", vars: { machine } };
             db.prepare("UPDATE run_requests SET status = 'rejected', error = ?, updated_at = ? WHERE machine_id = ? AND status = 'pending'").run(
@@ -1455,9 +1560,39 @@ export class SqliteHive implements HiveBackend {
               now,
               actor.name,
             );
+            db.prepare(
+              `UPDATE chat_messages SET status = 'failed', error = ?, updated_at = ?, finished_at = ?
+               WHERE status = 'pending' AND thread_id IN (SELECT id FROM chat_threads WHERE machine_id = ?)`,
+            ).run(JSON.stringify(error), now, now, actor.name);
           }
           const runRequests = accepts
             ? (db.prepare("SELECT * FROM run_requests WHERE machine_id = ? AND status = 'pending' ORDER BY id").all(actor.name) as Row[]).map(toRunRequest)
+            : [];
+          // Sent again at every heartbeat until the machine reports progress on it.
+          const chatRequests = accepts
+            ? (
+                db
+                  .prepare(
+                    `SELECT m.id, m.thread_id, m.sender, m.created_at, t.project, t.profile_id, t.session_id,
+                       (SELECT u.text FROM chat_messages u WHERE u.thread_id = m.thread_id AND u.role = 'user' AND u.id < m.id ORDER BY u.id DESC LIMIT 1) AS text,
+                       (SELECT u.author FROM chat_messages u WHERE u.thread_id = m.thread_id AND u.role = 'user' AND u.id < m.id ORDER BY u.id DESC LIMIT 1) AS requested_by
+                     FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id
+                     WHERE t.machine_id = ? AND m.status = 'pending' ORDER BY m.id`,
+                  )
+                  .all(actor.name) as Row[]
+              ).map(
+                (r): ChatRequest => ({
+                  replyId: num(r.id),
+                  threadId: num(r.thread_id),
+                  project: str(r.project),
+                  profileId: strOrNull(r.profile_id),
+                  sessionId: strOrNull(r.session_id),
+                  text: str(r.text ?? ""),
+                  requestedBy: str(r.requested_by ?? ""),
+                  createdAt: str(r.created_at),
+                  ...(r.sender == null ? {} : { sender: JSON.parse(str(r.sender)) as ChatSender }),
+                }),
+              )
             : [];
           return {
             duplicate: duplicateAt !== null && duplicateAt > this.#now(-DUPLICATE_MINUTES),
@@ -1465,6 +1600,7 @@ export class SqliteHive implements HiveBackend {
             policy: this.#policy(),
             commands,
             runRequests,
+            chatRequests,
           };
         }),
 
@@ -1599,6 +1735,126 @@ export class SqliteHive implements HiveBackend {
             id,
           );
           return this.#runRequest(id);
+        }),
+
+      // The machine is checked the way runs.dispatch checks it, and must have a Claude profile that can write the reply.
+      "chat.send": ({ project, threadId, machineId, profileId, title, text }, actor) =>
+        this.#tx(() => {
+          this.#expireChats();
+          const thread = threadId === undefined ? null : (db.prepare(`${THREAD_SELECT} WHERE t.id = ?`).get(threadId) as Row | undefined);
+          if (thread === undefined || (thread && str(thread.project) !== project)) {
+            throw new HiveError("not_found", `Chat #${threadId} not found in ${project}.`, { key: "errors.chatNotFound", vars: { id: threadId ?? 0 } });
+          }
+          if (thread && num(thread.busy) === 1) {
+            throw new HiveError("conflict", `Chat #${threadId} still waits for its reply.`, { key: "errors.chatBusy", vars: { id: threadId! } });
+          }
+          const target = thread ? str(thread.machine_id) : machineId;
+          if (!target) throw new HiveError("bad_request", "Pick the machine that runs the chat.", { key: "errors.chatMachine" });
+          const row = db.prepare("SELECT * FROM machines WHERE id = ?").get(target) as Row | undefined;
+          if (!row) throw new HiveError("not_found", `No machine ${target}.`, { key: "errors.machineNotFound", vars: { machine: target } });
+          const m = this.#toMachine(row);
+          const name = { machine: m.machine };
+          if (!m.online) throw new HiveError("conflict", `${m.machine} is offline.`, { key: "errors.machineOffline", vars: name });
+          if (!m.acceptsRuns) throw new HiveError("bad_request", `${m.machine} does not take runs from the hub.`, { key: "errors.machineNoHubRuns", vars: name });
+          if (!m.projects.includes(project)) {
+            throw new HiveError("bad_request", `${m.machine} has no repo for ${project}.`, { key: "errors.machineNoRepo", vars: { ...name, project } });
+          }
+          const pinned = thread ? strOrNull(thread.profile_id) : profileId;
+          const claude = m.profiles.filter((p) => p.kind === "claude" && p.enabled && p.loggedIn !== false && (!pinned || p.id === pinned));
+          if (!claude.length) {
+            throw new HiveError("bad_request", `${m.machine} has no enabled, signed-in Claude profile${pinned ? ` ${pinned}` : ""}.`, {
+              key: "errors.chatNoClaude",
+              vars: { ...name, id: pinned ?? "claude" },
+            });
+          }
+          // The agent reads it as its prompt.
+          assertNoHidden(text, "Message");
+          assertNoSecret(text, "Message");
+          if (title) assertNoHidden(title, "Title");
+          const now = this.#now();
+          const id = thread
+            ? num(thread.id)
+            : num(
+                db
+                  .prepare(
+                    "INSERT INTO chat_threads(project, title, machine_id, machine, profile_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                  )
+                  .run(project, (title?.trim() || text.trim().split("\n")[0]!).slice(0, 120), target, m.machine, pinned, actor.name, now, now).lastInsertRowid,
+              );
+          const put = db.prepare(
+            "INSERT INTO chat_messages(thread_id, role, author, text, status, sender, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          );
+          const message = num(put.run(id, "user", actor.name, text, null, null, now, now).lastInsertRowid);
+          const sender: ChatSender = { name: actor.name, role: actor.role, ...(actor.access ? { access: actor.access } : {}) };
+          const reply = num(put.run(id, "assistant", `${pinned ?? "claude"}@${m.machine}`, "", "pending", JSON.stringify(sender), now, now).lastInsertRowid);
+          db.prepare("UPDATE chat_threads SET updated_at = ? WHERE id = ?").run(now, id);
+          return { thread: this.#chatThread(id), message: this.#chatMessage(message), reply: this.#chatMessage(reply) };
+        }),
+
+      "chat.threads": ({ project, limit }) => {
+        this.#expireChats();
+        return (db.prepare(`${THREAD_SELECT} WHERE (?1 IS NULL OR t.project = ?1) ORDER BY t.updated_at DESC, t.id DESC LIMIT ?2`).all(project ?? null, limit) as Row[]).map(
+          toChatThread,
+        );
+      },
+
+      "chat.get": ({ threadId, after }) => {
+        this.#expireChats();
+        const row = db.prepare(`${THREAD_SELECT} WHERE t.id = ?`).get(threadId) as Row | undefined;
+        if (!row) return null;
+        const messages = (db.prepare("SELECT * FROM chat_messages WHERE thread_id = ? AND id > ? ORDER BY id").all(threadId, after) as Row[]).map(toChatMessage);
+        return { thread: toChatThread(row), messages };
+      },
+
+      "chat.cancel": ({ replyId }) =>
+        this.#tx(() => {
+          this.#expireChats();
+          const row = db.prepare("SELECT status FROM chat_messages WHERE id = ? AND role = 'assistant'").get(replyId) as Row | undefined;
+          if (!row) throw new HiveError("not_found", `Chat reply #${replyId} not found.`, { key: "errors.chatReplyNotFound", vars: { id: replyId } });
+          if (str(row.status) !== "pending" && str(row.status) !== "running") {
+            throw new HiveError("conflict", `Chat reply #${replyId} has ended.`, { key: "errors.chatReplyEnded", vars: { id: replyId } });
+          }
+          const now = this.#now();
+          db.prepare("UPDATE chat_messages SET status = 'cancelled', updated_at = ?, finished_at = ? WHERE id = ?").run(now, now, replyId);
+          return this.#chatMessage(replyId);
+        }),
+
+      // Shown on the web as it comes: no hidden characters, no line that looks like a secret.
+      "chat.progress": ({ replyId, text, steps, activity }, actor) =>
+        this.#tx(() => {
+          const row = this.#replyFor(replyId, actor);
+          const status = str(row.status);
+          if (status === "cancelled") return { cancelled: true };
+          if (status !== "pending" && status !== "running") {
+            throw new HiveError("conflict", `Chat reply #${replyId} has ended.`, { key: "errors.chatReplyEnded", vars: { id: replyId } });
+          }
+          db.prepare("UPDATE chat_messages SET status = 'running', text = ?, steps = ?, activity = ?, updated_at = ? WHERE id = ?").run(
+            clean(text)!,
+            clean(steps)!,
+            clean(activity),
+            this.#now(),
+            replyId,
+          );
+          return { cancelled: false };
+        }),
+
+      // A cancelled reply keeps what the machine wrote until it stopped, and stays cancelled.
+      "chat.finish": ({ replyId, status, text, steps, sessionId, costUsd, error }, actor) =>
+        this.#tx(() => {
+          const row = this.#replyFor(replyId, actor);
+          const was = str(row.status);
+          if (was !== "pending" && was !== "running" && was !== "cancelled") {
+            throw new HiveError("conflict", `Chat reply #${replyId} has ended.`, { key: "errors.chatReplyEnded", vars: { id: replyId } });
+          }
+          const now = this.#now();
+          const why = error ? { ...error, message: clean(error.message)! } : null;
+          db.prepare(
+            "UPDATE chat_messages SET status = ?, text = ?, steps = ?, activity = NULL, error = ?, cost_usd = ?, updated_at = ?, finished_at = ? WHERE id = ?",
+          ).run(was === "cancelled" ? "cancelled" : status, clean(text)!, clean(steps)!, why ? JSON.stringify(why) : null, costUsd, now, now, replyId);
+          const thread = num(row.thread_id);
+          if (sessionId) db.prepare("UPDATE chat_threads SET session_id = ?, updated_at = ? WHERE id = ?").run(sessionId, now, thread);
+          else db.prepare("UPDATE chat_threads SET updated_at = ? WHERE id = ?").run(now, thread);
+          return this.#chatMessage(replyId);
         }),
 
       // Nothing is stored: the notice only feeds the hub's webhooks. The error goes to a chat channel, so it is cleaned first.
