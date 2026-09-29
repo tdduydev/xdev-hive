@@ -162,7 +162,9 @@ export function createHubApp({
     if (!who) {
       // A chat reply's leader: the rights cut when the machine got the request (see ChatGrants).
       const grant = chatGrants.verify(raw);
-      return grant ? { name: label ? `${label}@${grant.name}` : grant.name, role: grant.role, ...(grant.access ? { access: grant.access } : {}), source } : null;
+      return grant
+        ? { name: label ? `${label}@${grant.name}` : grant.name, role: grant.role, ...(grant.access ? { access: grant.access } : {}), source, chatReply: grant.replyId }
+        : null;
     }
     const name = label ? `${label}@${who.name}` : who.name;
     if (!who.ownerId) return { name, role: who.role, source };
