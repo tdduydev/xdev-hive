@@ -174,6 +174,8 @@ export interface BuiltCommand {
   stdin: string | null;
   /** stdout ends with Claude Code's JSON result (cost, tokens, final message). */
   claudeJson?: boolean;
+  /** stdout is Claude Code's stream of events (stream-json): the runner turns it into a live log. */
+  claudeStream?: boolean;
   /** Extra env the CLI needs for these args. */
   env?: Record<string, string>;
 }
@@ -193,20 +195,25 @@ export function buildCommand(
       .replaceAll("{task}", vars.task)
       .replaceAll("{project}", vars.project)
       .replaceAll("{branch}", vars.branch);
-  const args = profile.args.map(fill);
+  let args = profile.args.map(fill);
   let claudeJson = false;
+  let claudeStream = false;
   if (profile.kind === "claude") {
-    // The JSON result carries the cost and token counts; a profile that picks another format keeps it.
+    // Events while it works, then the result with the cost and token counts; a profile that picks another
+    // format keeps it (json: only the result at the end).
     const format = outputFormat(args);
-    if (format === null) args.push("--output-format", "json");
-    claudeJson = format === null || format === "json";
+    if (format === null) args.push("--output-format", "stream-json", "--verbose");
+    claudeStream = format === null || format === "stream-json";
+    claudeJson = format === "json";
     args.push(...claudeRunArgs(profile.id, { ...vars, readOnly: profile.readOnly }, features, mcpConfigFile));
   }
+  if (profile.kind === "codex") args = codexArgs(args);
   return {
     bin: expandHome(profile.bin),
     args,
     stdin: usesPrompt ? null : vars.prompt,
     ...(claudeJson ? { claudeJson } : {}),
+    ...(claudeStream ? { claudeStream } : {}),
     ...(profile.kind === "claude" ? { env: CLAUDE_RUN_ENV } : {}),
   };
 }
@@ -223,13 +230,29 @@ export const CLAUDE_RUN_ENV = { CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1
  * a hook one run commits would execute on the next. Runs load only the user's own settings, run no
  * hooks and get the MCP servers the app lists. Appended last because --mcp-config takes several values.
  */
+/**
+ * Codex 0.15x dropped --full-auto: a profile saved with it gets --sandbox workspace-write, which it meant
+ * (edits and commands inside the working copy) and which older versions take too.
+ */
+export function codexArgs(args: string[]): string[] {
+  if (!args.includes("--full-auto")) return args;
+  const sandbox = args.some((a) => a === "--sandbox" || a === "-s" || a.startsWith("--sandbox="));
+  return args.flatMap((a) => (a === "--full-auto" ? (sandbox ? [] : ["--sandbox", "workspace-write"]) : [a]));
+}
+
 export function claudeRunArgs(
   agent: string,
   run: { project: string; task: string; run?: string; readOnly?: boolean; worktree: string },
   features: RepoFeatures,
   mcpConfigFile?: string,
 ): string[] {
-  const settings = { disableAllHooks: true, ...(features.superpowers ? { enabledPlugins: { [SUPERPOWERS_PLUGIN]: true } } : {}) };
+  // Headless, a tool nobody allowed is refused: the run's own MCP servers are allowed here, whatever the user's settings say.
+  const allow = ["mcp__xdev-hive", ...(features.codegraph ? ["mcp__codegraph"] : [])];
+  const settings = {
+    disableAllHooks: true,
+    permissions: { allow },
+    ...(features.superpowers ? { enabledPlugins: { [SUPERPOWERS_PLUGIN]: true } } : {}),
+  };
   return [
     "--add-dir",
     run.worktree,

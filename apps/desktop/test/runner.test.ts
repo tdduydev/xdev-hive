@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 import { AGENT_TEMPLATES, HiveError, type Actor, type AgentProfile, type HiveBackend, type RunnerSettings } from "@xdev-hive/core";
 import { CODEGRAPH_MCP, SUPERPOWERS_PLUGIN } from "../src/main/installer.ts";
 import { buildCommand, buildPrompt, parsePick } from "../src/main/runner/command.ts";
+import { ClaudeStream, toolLine } from "../src/main/runner/stream.ts";
 import { outputFormat, parseClaudeResult, parsePlanUsage } from "../src/main/runner/usage.ts";
 import { usageStop, type HiveEvent, type PlanUsage } from "@xdev-hive/core";
 import { checkLogin, checkUsage, LoginMonitor, loginCommand, parseLogin, USAGE_ARGS } from "../src/main/runner/login.ts";
@@ -285,15 +286,18 @@ describe("run usage", () => {
     assert.equal(parseClaudeResult('{"type":"result", cut off'), null);
   });
 
-  it("asks Claude Code for JSON unless the profile picked a format", () => {
+  it("asks Claude Code for its event stream unless the profile picked a format", () => {
     const vars = { prompt: "Do T-1", worktree: "/wt", task: "T-1", project: "demo", branch: "ai/T-1" };
-    const json = buildCommand(AGENT_TEMPLATES.claude, vars);
-    assert.equal(json.claudeJson, true);
-    assert.deepEqual(json.args.slice(4, 6), ["--output-format", "json"], "before the MCP flags, which take several values");
+    const live = buildCommand(AGENT_TEMPLATES.claude, vars);
+    assert.equal(live.claudeStream, true);
+    assert.equal(live.claudeJson, undefined);
+    assert.deepEqual(live.args.slice(4, 7), ["--output-format", "stream-json", "--verbose"], "before the MCP flags, which take several values");
+    const json = buildCommand({ ...AGENT_TEMPLATES.claude, args: [...AGENT_TEMPLATES.claude.args, "--output-format", "json"] }, vars);
+    assert.deepEqual([json.claudeJson, json.claudeStream], [true, undefined], "a profile that asks for json gets the result at the end");
     const text = buildCommand({ ...AGENT_TEMPLATES.claude, args: [...AGENT_TEMPLATES.claude.args, "--output-format=text"] }, vars);
-    assert.equal(text.claudeJson, undefined);
+    assert.deepEqual([text.claudeJson, text.claudeStream], [undefined, undefined]);
     assert.equal(outputFormat(text.args), "text");
-    assert.equal(buildCommand(AGENT_TEMPLATES.codex, vars).claudeJson, undefined);
+    assert.equal(buildCommand(AGENT_TEMPLATES.codex, vars).claudeStream, undefined);
   });
 });
 
@@ -304,7 +308,7 @@ describe("buildCommand", () => {
   it("starts Claude Code with the user's settings only, no hooks, and the app's MCP servers", () => {
     const { args } = buildCommand(AGENT_TEMPLATES.claude, vars);
     assert.deepEqual(args.slice(0, 4), ["-p", "Do T-1", "--permission-mode", "acceptEdits"]);
-    assert.deepEqual(JSON.parse(flag(args, "--settings")), { disableAllHooks: true });
+    assert.deepEqual(JSON.parse(flag(args, "--settings")), { disableAllHooks: true, permissions: { allow: ["mcp__xdev-hive"] } }, "headless, Hive's tools need allowing");
     assert.equal(flag(args, "--setting-sources"), "user");
     // Project settings stay off, but the worktree's CLAUDE.md (and @AGENTS.md) still loads.
     assert.equal(flag(args, "--add-dir"), "/wt");
@@ -320,7 +324,11 @@ describe("buildCommand", () => {
   it("adds codegraph and superpowers only when setup turned them on for the repo", () => {
     const { args } = buildCommand(AGENT_TEMPLATES.claude, vars, { codegraph: true, superpowers: true });
     assert.deepEqual(JSON.parse(args.at(-1)!).mcpServers.codegraph, CODEGRAPH_MCP);
-    assert.deepEqual(JSON.parse(flag(args, "--settings")), { disableAllHooks: true, enabledPlugins: { [SUPERPOWERS_PLUGIN]: true } });
+    assert.deepEqual(JSON.parse(flag(args, "--settings")), {
+      disableAllHooks: true,
+      permissions: { allow: ["mcp__xdev-hive", "mcp__codegraph"] },
+      enabledPlugins: { [SUPERPOWERS_PLUGIN]: true },
+    });
   });
 
   it("tells a read-only profile's MCP server so, and drops the write steps from the prompt", () => {
@@ -329,8 +337,14 @@ describe("buildCommand", () => {
     assert.equal(JSON.parse(buildCommand(AGENT_TEMPLATES.claude, vars).args.at(-1)!).mcpServers["xdev-hive"].env.HIVE_READONLY, undefined);
   });
 
-  it("leaves other CLIs' arguments as the profile has them", () => {
-    assert.deepEqual(buildCommand(AGENT_TEMPLATES.codex, vars).args, ["exec", "--full-auto", "Do T-1"]);
+  it("leaves other CLIs' arguments as the profile has them, but a Codex --full-auto that newer versions refuse", () => {
+    assert.deepEqual(buildCommand(AGENT_TEMPLATES.codex, vars).args, ["exec", "--sandbox", "workspace-write", "Do T-1"]);
+    assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.codex, args: ["exec", "--full-auto", "{prompt}"] }, vars).args, ["exec", "--sandbox", "workspace-write", "Do T-1"]);
+    assert.deepEqual(
+      buildCommand({ ...AGENT_TEMPLATES.codex, args: ["exec", "--full-auto", "-s", "read-only", "{prompt}"] }, vars).args,
+      ["exec", "-s", "read-only", "Do T-1"],
+      "a sandbox the profile chose stays",
+    );
     assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.claude, kind: "custom" }, vars).args, ["-p", "Do T-1", "--permission-mode", "acceptEdits"]);
   });
 });
@@ -360,8 +374,11 @@ describe("Runner", () => {
     assert.equal(t.owner, null);
     assert.match(t.note ?? "", /Implemented T-1/);
     assert.match(t.note ?? "", /Branch ai\/T-1, 1 commit/);
-    // Claude Code runs print one JSON result; the log adds its message and the cost after it.
-    assert.match(runner.log(run.id), /## Prompt[\s\S]*## Output\n\{"type":"result"[\s\S]*## Result\nImplemented T-1\. Tests pass\.\n# cost \$0\.0425 · tokens in 6000 out 850/);
+    // Claude Code streams its events: the log shows its steps as they come, then its message and the cost.
+    const log = runner.log(run.id);
+    assert.match(log, /## Output\n# session fake-session · model fake-model · Claude Code 2\.1\.0\n▶ Bash: npm test\n  ✓ ok 1 - adds \(\+1 lines\)\nImplemented T-1\. Tests pass\.\n/);
+    assert.match(log, /## Result\nImplemented T-1\. Tests pass\.\n# cost \$0\.0425 · tokens in 6000 out 850/);
+    assert.doesNotMatch(log, /"type":"result"/, "no raw events in the log");
     assert.equal(done.summary, "Implemented T-1. Tests pass.", "the final message, not the raw JSON");
     assert.deepEqual([done.costUsd, done.inputTokens, done.outputTokens], [0.0425, 6000, 850]);
     assert.equal(runner.profileStatuses()[0]!.stats.costUsd, 0.0425);
@@ -916,5 +933,72 @@ describe("best-of-n", () => {
     const single = await runner.enqueue({ project: "demo", taskId: "T-1", candidates: 1 });
     assert.equal(single.bestOf, null);
     runner.cancel(single.id);
+  });
+});
+
+describe("live log", () => {
+  const ev = (e: object) => `${JSON.stringify(e)}\n`;
+
+  it("turns Claude Code's events into lines a person can follow, split anywhere", () => {
+    const stream = new ClaudeStream("/wt");
+    const events = [
+      ev({ type: "system", subtype: "init", session_id: "s1", model: "claude-x", claude_code_version: "2.1.3" }),
+      ev({ type: "rate_limit_event", rate_limit_info: { status: "allowed" } }),
+      ev({ type: "system", subtype: "task_summary", detail: "Reading the schema" }),
+      ev({ type: "assistant", message: { content: [{ type: "thinking", thinking: "hmm" }, { type: "text", text: "Checking the migration." }, { type: "tool_use", name: "Edit", input: { file_path: "/wt/src/main/resources/db/migration/V1__init.sql" } }] } }),
+      ev({ type: "user", message: { content: [{ type: "tool_result", content: [{ type: "text", text: "patched" }], is_error: false }] } }),
+      ev({ type: "assistant", message: { content: [{ type: "tool_use", name: "mcp__xdev-hive__memory_search", input: { query: "flyway" } }] } }),
+      ev({ type: "user", message: { content: [{ type: "tool_result", content: "permission denied\nmore", is_error: true }] } }),
+      "WARN something from the CLI\n",
+      ev({ type: "result", result: "Done.", total_cost_usd: 0.5 }),
+      ev({ type: "system", subtype: "task_summary", detail: "Wrapping up" }),
+    ].join("");
+    // Chunks cut inside lines and inside a multi-byte-free JSON string.
+    let log = "";
+    for (let i = 0; i < events.length; i += 37) log += stream.push(events.slice(i, i + 37));
+    log += stream.end();
+    assert.equal(
+      log,
+      [
+        "# session s1 · model claude-x · Claude Code 2.1.3",
+        "Checking the migration.",
+        "▶ Edit src/main/resources/db/migration/V1__init.sql",
+        "  ✓ patched",
+        '▶ memory_search {"query":"flyway"}',
+        "  ✗ permission denied (+1 lines)",
+        "WARN something from the CLI",
+        "",
+      ].join("\n"),
+    );
+    assert.equal(stream.state.activity, "Wrapping up", "its own summary of the step, when it gives one");
+    assert.match(stream.result ?? "", /"result":"Done\."/);
+    assert.equal(stream.lastText, "Checking the migration.");
+  });
+
+  it("names tool calls briefly", () => {
+    assert.equal(toolLine("Bash", { command: "mvn -B verify\n&& echo ok" }, "/wt"), "Bash: mvn -B verify && echo ok");
+    assert.equal(toolLine("Read", { file_path: "/elsewhere/x.md" }, "/wt"), "Read /elsewhere/x.md");
+    assert.equal(toolLine("Grep", { pattern: "TODO", path: "/wt/src" }, "/wt"), "Grep: TODO in src");
+    assert.equal(toolLine("mcp__claude_ai_Gmail__search", {}, "/wt"), "search");
+  });
+
+  it("shows what a running agent is doing, and forgets it when it stops", async () => {
+    const { runner } = await setup([profile("claude-a", "claude", 1, "sleep"), profile("codex-b", "codex", 2, "sleep")], {}, "local");
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    void runner.tick();
+    await until(() => runner.list()[0]?.activity !== undefined);
+    assert.equal(runner.list()[0]!.activity, "Bash: npm test", "from Claude Code's events");
+    assert.match(runner.log(run.id), /▶ Bash: npm test\n  ✓ ok 1 - adds \(\+1 lines\)\nthinking…/);
+    runner.cancel(run.id);
+    await runner.settle();
+    assert.equal(runner.list()[0]!.activity, undefined);
+
+    const other = await setup([profile("codex-b", "codex", 1, "sleep")], {}, "local");
+    const codex = await other.runner.enqueue({ project: "demo", taskId: "T-1" });
+    void other.runner.tick();
+    await until(() => other.runner.list()[0]?.activity !== undefined);
+    assert.equal(other.runner.list()[0]!.activity, "thinking…", "another CLI: the last line it printed");
+    other.runner.cancel(codex.id);
+    await other.runner.settle();
   });
 });

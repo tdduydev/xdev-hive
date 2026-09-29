@@ -122,7 +122,8 @@ export const AGENT_TEMPLATES: Record<Exclude<AgentKind, "custom">, AgentProfile>
     label: "Codex CLI (ChatGPT)",
     kind: "codex",
     bin: "codex",
-    args: ["exec", "--full-auto", "{prompt}"],
+    // --sandbox workspace-write: edits and commands inside the working copy (Codex 0.15x has no --full-auto).
+    args: ["exec", "--sandbox", "workspace-write", "{prompt}"],
     env: {},
     enabled: true,
     readOnly: false,
