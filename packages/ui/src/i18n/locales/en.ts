@@ -595,6 +595,13 @@ export const en: Catalog = {
     cancelHint: "The machine stops the agent at its next heartbeat (about 30 seconds).",
     cancelRequested: "{who} asked to cancel it at {time}; the machine stops the agent at its next heartbeat (about 30 seconds).",
     cancelling: "Waiting for the machine to cancel it",
+    verdict: { approve: "Review: approved", changes: "Review: changes needed" },
+    fixTitle: "Queue a fix",
+    fixHint: "Runs {task} again on {machine}, on the task's branch, with this review's report as the instructions. Plans rotate as on the Board.",
+    fixInstructions: "Instructions for the agent",
+    fixSend: "Queue a fix",
+    fixSent: "Sent request #{id} to {machine}; it takes it at its next heartbeat.",
+    fixOpenTask: "Open {task}",
   },
   agents: {
     subtitle: "Each profile is one subscription (one CLI account). The runner picks by priority, rotates between profiles of the same priority, and rests a profile until its quota resets.",
