@@ -94,6 +94,13 @@ switch (process.env.FAKE_MODE ?? "ok") {
     writeFileSync("work.txt", "done\n");
     finish();
     break;
+  case "leak":
+    // Prints something that looks like a token: the log on this machine keeps it, what goes to the hub must not.
+    appendFileSync(`work-${process.env.HIVE_AGENT}.txt`, "done\n");
+    say(`Deploying with GITLAB_TOKEN=glpat-${"x".repeat(24)}`);
+    say(`Implemented ${process.env.HIVE_TASK}.`);
+    finish();
+    break;
   case "review":
     // Asked to judge best-of-n candidates: keeps FAKE_PICK (default c2); FAKE_PICK=none names no winner.
     if (prompt.includes("Judge the candidates")) {

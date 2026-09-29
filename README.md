@@ -85,7 +85,7 @@ Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ v�
 
 ```bash
 nvm use && npm install
-npm test            # 302 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR, GitHub PR)
+npm test            # 308 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR, GitHub PR)
 npm run typecheck
 ```
 
@@ -433,6 +433,11 @@ Trên hub, agent giữ task với tên `<gói>.<máy>@<token>`, ví dụ `claude
 ### Nhiều máy trên một hub
 
 - **Heartbeat**: mỗi 30 giây, runner báo lên hub các run đang chạy và đang chờ (`machines.heartbeat`). Hub lưu theo tên `runner.<máy>@<token>`, cùng khoá với lease task của máy đó.
+- **Run lên hub** (hỏi ngày 29/9: log dạng đọc được, đã lọc secret; hub giữ 30 ngày; ai xem được dự án thì xem được): mỗi 5 giây runner gửi các run vừa đổi (`runs.push`): run đang chạy hay chờ, và run đã xong trong 24 giờ.
+  - Mỗi run có trạng thái, gói, việc agent đang làm, tóm tắt, lỗi, branch, số commit, MR/PR, chi phí, và khoảng 200 dòng cuối của log dạng đọc được (`▶` lệnh, `✓ ✗` kết quả). Run xong thì gửi ngay, không chờ lượt 5 giây.
+  - Trước khi gửi, máy bỏ mã màu và ký tự ẩn, thay dòng giống secret bằng `(line hidden: …)`. Hub kiểm lại lần nữa trước khi lưu. Log đầy đủ vẫn chỉ nằm trên máy chạy.
+  - Hub lưu theo máy và mã run (`run_records`, migration 13), xoá run không cập nhật quá 30 ngày. Đọc bằng `runs.list` (không có log) và `runs.get` (có log); người không có quyền xem dự án thì không thấy run của dự án đó.
+  - Trang web để xem các run này là roadmap 16b.
 - **Trang *Máy & run*** (web và desktop, chỉ hiện ở chế độ hub): danh sách máy (đang hoạt động / mất kết nối sau 2 phút), run đang chạy, số run đang chờ, và quota đang nghỉ. Admin xoá được máy đã mất kết nối. Máy im lặng quá 14 ngày thì hub tự xoá.
 - **Phát hiện trùng tên máy**: nếu hai app chạy cùng lúc với cùng tên máy và cùng token, heartbeat của chúng xen kẽ nhau và hub đánh dấu *Trùng tên máy* (trong 5 phút gần nhất). Khởi động lại app chỉ đổi instance một lần nên không bị tính là trùng.
 - **Quota dùng chung theo tài khoản**: điền *Tài khoản* cho profile (ví dụ `claude-max-duy`). Khi một máy gặp hết quota, nó báo lên hub (`cooldowns.set`). Máy khác có profile cùng tài khoản sẽ bỏ qua gói đó từ lần heartbeat kế tiếp, và thẻ profile hiện "báo từ …". Bấm *Hết nghỉ* (trên thẻ profile hoặc trên trang *Máy & run*) thì mọi máy thử lại gói đó. Profile không điền tài khoản thì chỉ nghỉ trên máy của nó, như trước. Tên tài khoản dùng chung cho mọi token, nên nên đặt tên kèm người sở hữu.

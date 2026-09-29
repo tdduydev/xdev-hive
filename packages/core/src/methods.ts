@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { HiveError } from "./errors.ts";
-import { ACCOUNT_ID, AGENT_ROLES, agentProfileSchema } from "./agents.ts";
+import { ACCOUNT_ID, AGENT_ROLES, agentProfileSchema, RUN_STATUSES } from "./agents.ts";
 import { MACHINE_ID, PROJECT_NAME } from "./keys.ts";
 import type { SkillSummary } from "./skills.ts";
 import {
@@ -14,6 +14,7 @@ import {
   type AuditEntry,
   type CostSummary,
   type RunNotice,
+  type RunRecord,
   type Doc,
   type DocSummary,
   type DocVersion,
@@ -241,6 +242,38 @@ export const schemas = {
     mrUrl: z.url({ protocol: /^https?$/ }).max(500).nullable().default(null),
     mrIid: z.number().int().positive().nullable().default(null),
   }),
+  /** A machine's runs as they are now (changed ones only): status, current step, the end of the log. Hub mode. */
+  "runs.push": z.object({
+    machine: z.string().regex(MACHINE_ID),
+    runs: z
+      .array(
+        z.object({
+          runId: z.string().regex(/^[\w.-]{1,40}$/),
+          project,
+          taskId,
+          taskTitle: z.string().max(300),
+          role: z.enum(AGENT_ROLES),
+          status: z.enum(RUN_STATUSES),
+          profileId: z.string().max(40).nullable(),
+          activity: z.string().max(300).nullable().default(null),
+          summary: z.string().max(4000).nullable().default(null),
+          error: z.string().max(2000).nullable().default(null),
+          branch: z.string().max(200).nullable().default(null),
+          commits: z.number().int().min(0).default(0),
+          mrUrl: z.url({ protocol: /^https?$/ }).max(500).nullable().default(null),
+          costUsd: z.number().min(0).nullable().default(null),
+          log: z.string().max(60_000).default(""),
+          createdAt: z.iso.datetime(),
+          startedAt: z.iso.datetime().nullable().default(null),
+          finishedAt: z.iso.datetime().nullable().default(null),
+        }),
+      )
+      .max(20),
+  }),
+  /** Runs the hub was told about, the newest runs first (no log); a project's, or every project the caller sees. */
+  "runs.list": z.object({ project: project.optional(), limit: z.number().int().min(1).max(200).default(50) }),
+  /** One run with the end of its log. */
+  "runs.get": z.object({ machineId: z.string().min(1).max(200), runId: z.string().regex(/^[\w.-]{1,40}$/) }),
   "costs.summary": z.object({}),
   "machines.remove": z.object({ id: z.string().min(1).max(200) }),
 
@@ -311,6 +344,9 @@ export interface MethodOutput {
   "machines.list": Machine[];
   "costs.summary": CostSummary;
   "runs.report": RunNotice;
+  "runs.push": { stored: number };
+  "runs.list": RunRecord[];
+  "runs.get": RunRecord | null;
   "machines.remove": { removed: boolean };
   "cooldowns.list": QuotaCooldown[];
   /** null when `until` is already past (nothing to rest). */
@@ -359,6 +395,9 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "machines.list": "viewer",
   "costs.summary": "viewer",
   "runs.report": "agent",
+  "runs.push": "agent",
+  "runs.list": "viewer",
+  "runs.get": "viewer",
   "machines.remove": "admin",
   "cooldowns.list": "viewer",
   "cooldowns.set": "agent",
