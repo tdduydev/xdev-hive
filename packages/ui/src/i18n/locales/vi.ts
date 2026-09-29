@@ -469,6 +469,10 @@ export const vi = {
     confirmRemoveWorktree: "Xoá worktree? Branch và commit vẫn giữ nguyên trong repo.",
     removeWorktree: "Xoá worktree",
     waitingOutput: "Đang chờ output…",
+    activity: "Đang: {activity}",
+    log: "Log (việc agent làm: ▶ lệnh / công cụ, ✓ ✗ kết quả)",
+    logTaller: "Mở rộng",
+    logShorter: "Thu gọn",
     noLog: "(không có log)",
   },
   agents: {

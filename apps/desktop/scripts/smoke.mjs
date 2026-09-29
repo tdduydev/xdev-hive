@@ -138,6 +138,8 @@ for (const n of [1, 2]) {
 store.db.close();
 // The kept candidate is the second row (the judge is newest): its details, next to the runs table.
 await shoot("board-best", "board", 6000, { HIVE_SMOKE_CLICK: "tbody tr:nth-child(2)", HIVE_SMOKE_SCROLL: "table" });
+// The first run (Claude, out of quota) is the last row: its log follows Claude Code's steps (stream-json).
+await shoot("board-log", "board", 3000, { HIVE_SMOKE_CLICK: "tbody tr:last-child", HIVE_SMOKE_SCROLL: "table" });
 
 const runs = new RunStore(path.join(work, "runs.db")).list({ project: "demo" });
 console.log(

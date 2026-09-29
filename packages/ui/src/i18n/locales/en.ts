@@ -468,6 +468,10 @@ export const en: Catalog = {
     confirmRemoveWorktree: "Remove the worktree? The branch and its commits stay in the repo.",
     removeWorktree: "Remove worktree",
     waitingOutput: "Waiting for output…",
+    activity: "Now: {activity}",
+    log: "Log (what the agent does: ▶ command / tool, ✓ ✗ result)",
+    logTaller: "Taller",
+    logShorter: "Shorter",
     noLog: "(no log)",
   },
   agents: {

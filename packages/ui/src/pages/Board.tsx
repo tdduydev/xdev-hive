@@ -260,7 +260,7 @@ function TaskCard({
             <button
               className="cursor-pointer rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
               onClick={() => onOpenRun(run.id)}
-              title={run.error ?? ""}
+              title={run.activity ?? run.error ?? ""}
             >
               <Badge tone={STATUS_TONE[run.status] ?? "neutral"}>
                 {t(`runStatus.${run.status}`)}
@@ -435,7 +435,13 @@ function RunsPanel({
                     <TableCell className="font-mono text-xs">{r.profileId ?? r.preferredProfile ?? t("board.auto")}</TableCell>
                     <TableCell>
                       <Badge tone={STATUS_TONE[r.status] ?? "neutral"}>{t(`runStatus.${r.status}`)}</Badge>
-                      {r.error ? <div className="max-w-64 truncate text-xs text-muted-foreground">{r.error}</div> : null}
+                      {r.activity ? (
+                        <div className="max-w-64 truncate text-xs text-info" title={r.activity}>
+                          {r.activity}
+                        </div>
+                      ) : r.error ? (
+                        <div className="max-w-64 truncate text-xs text-muted-foreground">{r.error}</div>
+                      ) : null}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {formatTime(r.createdAt)}
@@ -510,6 +516,7 @@ function RunDetail({
   const pulse = usePulse(live, 1500);
   const log = useQuery(() => desktop.runLog(run.id), [desktop, run.id, pulse, run.status]);
   const [diff, setDiff] = useState<string | null>(null);
+  const [tall, setTall] = useState(false);
   const action = useAction();
   const pre = useRef<HTMLPreElement>(null);
   const b = run.bestOf;
@@ -520,9 +527,13 @@ function RunDetail({
     group.some((r) => r.bestOf!.n > 0 && r.status === "succeeded") &&
     !group.some((r) => r.status === "queued" || r.status === "running");
 
+  // The end is where the agent's steps and result are: shown first, then followed while the run goes on.
+  const opened = useRef(false);
   useEffect(() => {
     const el = pre.current;
-    if (el && live) el.scrollTop = el.scrollHeight;
+    if (!el || !log.data) return;
+    if (live || !opened.current) el.scrollTop = el.scrollHeight;
+    opened.current = true;
   }, [log.data, live]);
 
   return (
@@ -583,6 +594,12 @@ function RunDetail({
                   ? t("board.ciFixJobs", { jobs: run.ciFix.jobs.map((j) => `${j.name} (${j.stage})`).join(", ") })
                   : t("board.ciFixNoJobs")}
               </span>
+            </div>
+          ) : null}
+          {run.activity ? (
+            <div className="flex items-center gap-2 text-xs text-info" aria-live="polite">
+              <span className="size-2 shrink-0 animate-pulse rounded-full bg-info" aria-hidden />
+              <span className="wrap-anywhere">{t("board.activity", { activity: run.activity })}</span>
             </div>
           ) : null}
           {run.error ? (
@@ -672,8 +689,17 @@ function RunDetail({
           {diff !== null ? (
             <pre className="max-h-60 overflow-auto rounded-md border bg-muted/50 p-3 font-mono text-xs whitespace-pre-wrap wrap-anywhere">{diff}</pre>
           ) : null}
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-muted-foreground">{t("board.log")}</span>
+            <Button size="sm" variant="ghost" onClick={() => setTall((v) => !v)} aria-expanded={tall}>
+              {tall ? t("board.logShorter") : t("board.logTaller")}
+            </Button>
+          </div>
           <pre
-            className="max-h-96 overflow-auto rounded-md border bg-muted/50 p-3 font-mono text-xs whitespace-pre-wrap wrap-anywhere"
+            className={cn(
+              "overflow-auto rounded-md border bg-muted/50 p-3 font-mono text-xs whitespace-pre-wrap wrap-anywhere",
+              tall ? "max-h-[75vh]" : "max-h-96",
+            )}
             ref={pre}
             aria-label="Log"
           >

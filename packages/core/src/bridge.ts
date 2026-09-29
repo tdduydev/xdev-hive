@@ -229,6 +229,8 @@ export interface AgentRun {
    * Set by the runner's list only, so the interface keeps refreshing until those land on the run.
    */
   finishing?: boolean;
+  /** A running agent's current step (Claude Code's own summary, its last tool call, or the last line it printed); list only. */
+  activity?: string;
   /** From the CLI's JSON result (Claude Code): estimated at API prices, which a subscription does not bill. */
   costUsd: number | null;
   /** Input tokens including cache reads and writes. */

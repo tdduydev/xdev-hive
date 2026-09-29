@@ -81,7 +81,7 @@ Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ v�
 
 ```bash
 nvm use && npm install
-npm test            # 295 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR, GitHub PR)
+npm test            # 298 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR, GitHub PR)
 npm run typecheck
 ```
 
@@ -136,11 +136,12 @@ queued ─chọn gói─▶ running ─exit 0──────▶ succeeded ─
 - **Worktree**: `~/.xdev-hive/worktrees/<dự án>/<task>` trên branch `ai/<task>`, không đụng checkout chính. Runner commit phần agent để lại và không push. Lúc commit, runner không chạy git hook nào, vì agent có thể đã ghi hook vào `.githooks` của worktree. `AGENTS.md`, `CLAUDE.md`, `docs/decisions.md` không được đưa vào commit này và hiện ở mục chưa commit trong tóm tắt run. File config agent chưa commit được chép vào worktree nhưng không đưa vào branch.
 - **Không chạy cấu hình trong repo** (profile loại Claude Code): runner thêm `--settings '{"disableAllHooks":true}' --setting-sources user --strict-mcp-config --mcp-config <…>` vào cuối tham số. Agent sửa được hook, `.mcp.json` và `.claude/settings.json` trong worktree, và run sau sẽ chạy những thứ đó, nên run không đọc chúng.
   - Server MCP do app liệt kê: `xdev-hive` (`HIVE_AGENT` = id profile); thêm codegraph bản ghim nếu `.mcp.json` ở checkout chính có codegraph.
+  - Các tool của những server đó được cho phép sẵn (`permissions.allow` trong `--settings`): chạy headless, Claude Code từ chối mọi tool chưa được cho phép, và agent sẽ không claim task hay ghi memory được.
   - Superpowers được bật nếu `.claude/settings.json` ở checkout chính bật, nhưng hook của plugin vẫn tắt.
   - Cài đặt của bạn trong `~/.claude/settings.json` vẫn được dùng, trừ hook.
   - `--setting-sources user` cũng làm Claude Code bỏ qua CLAUDE.md của dự án. Runner nạp lại nó bằng `--add-dir <worktree>` và `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1`; các file CLAUDE.md import (như `@AGENTS.md`) cũng được nạp. Đã kiểm với Claude Code 2.1.283.
   - Cần hook của repo thì tạo profile loại *Tuỳ chỉnh*: runner để nguyên tham số của loại này.
-  - Codex giữ sandbox `workspace-write` (`--full-auto`).
+  - Codex giữ sandbox `workspace-write` (`--sandbox workspace-write`). Codex 0.15x bỏ cờ `--full-auto`: profile cũ còn cờ đó được đổi sang `--sandbox workspace-write` lúc chạy (bản Codex cũ cũng nhận cờ này).
 - **Hive**: runner `task_claim` trước khi chạy với cùng tên agent như `hive-mcp` (`HIVE_AGENT` = id profile). Xong thì chuyển task sang *Chờ review* kèm tóm tắt, trừ khi agent đã tự làm qua MCP. Review chéo được nối vào ghi chú task.
 - Lịch sử run và log nằm ở `~/.xdev-hive/runs.db` và `~/.xdev-hive/runs/<id>.log`. Log có prompt và output, **không** ghi biến môi trường.
 - App mở từ Finder có `PATH` ngắn, nên runner lấy `PATH` từ login shell (`$SHELL -ilc`) cộng `~/.local/bin`. Dùng nút *Kiểm tra CLI* để xem lệnh có tìm thấy không.
@@ -152,8 +153,11 @@ queued ─chọn gói─▶ running ─exit 0──────▶ succeeded ─
   - Lệnh nằm trong một script ở `~/.xdev-hive/login/<profile>/`, quyền `0700`. Script chỉ chứa biến thư mục đăng nhập (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`), không chứa key hay token.
   - Quay lại cửa sổ app thì app kiểm lại các gói chưa đăng nhập.
   - Gemini và CLI tuỳ chỉnh không có lệnh xem trạng thái, nên để "chưa rõ" và runner vẫn dùng.
-- **Chi phí run** (Claude Code): runner thêm `--output-format json`, trừ khi profile đã tự chọn định dạng.
-  - Lấy từ kết quả JSON: câu trả lời cuối làm tóm tắt run, `total_cost_usd`, token vào (tính cả cache) và token ra.
+- **Log trực tiếp** (Claude Code): runner thêm `--output-format stream-json --verbose`, trừ khi profile đã tự chọn định dạng (`json`: chỉ có kết quả lúc xong).
+  - Log run ghi từng bước ngay khi agent làm: lời agent nói, `▶` lệnh hay tool nó gọi (`Bash: mvn -B verify`, `Edit src/…`, `memory_search …`), `✓` / `✗` và dòng đầu của kết quả. Không ghi sự kiện JSON thô.
+  - Board hiện việc agent đang làm dưới trạng thái run (bảng Lượt chạy, chi tiết run, tooltip trên thẻ task): tóm tắt của Claude Code, không có thì tool nó vừa gọi. CLI khác (Codex, Gemini) thì là dòng cuối nó in ra.
+  - Khung log trong chi tiết run mở ở cuối (các bước và kết quả), tự theo khi run đang chạy, có nút *Mở rộng* cho khung cao hơn.
+- **Chi phí run** (Claude Code): lấy từ sự kiện kết quả của stream: câu trả lời cuối làm tóm tắt run, `total_cost_usd`, token vào (tính cả cache) và token ra.
   - Log run có thêm mục `## Result` và dòng `# cost`.
   - Board hiện chi phí từng run; thẻ Gói sub hiện tổng theo gói.
   - Đây là ước tính theo giá API: gói sub (Pro/Max) không bị tính khoản này, nhưng nó cho biết run nào tốn nhiều.
@@ -169,7 +173,7 @@ queued ─chọn gói─▶ running ─exit 0──────▶ succeeded ─
 
 Hai gói của cùng một vendor: tạo 2 profile, profile thứ hai trỏ CLI sang thư mục đăng nhập riêng, rồi đăng nhập một lần trong terminal với biến đó, ví dụ `CLAUDE_CONFIG_DIR=~/.claude-2` (Claude Code) hoặc `CODEX_HOME=~/.codex-2` (Codex). Tên biến và cờ headless mặc định lấy theo tài liệu CLI mình biết; hãy kiểm tra bằng `--help` của bản bạn đang cài.
 
-Cờ mặc định là mức "cho sửa file" (`--permission-mode acceptEdits`, `--full-auto`, `--approval-mode auto_edit`). Muốn agent tự chạy test hay lệnh shell thì mở rộng tham số của profile, và cân nhắc rủi ro vì lệnh chạy trên máy thật (worktree không phải sandbox), hoặc cho profile chạy trong container.
+Cờ mặc định là mức "cho sửa file" (`--permission-mode acceptEdits`, `--sandbox workspace-write`, `--approval-mode auto_edit`). Muốn agent tự chạy test hay lệnh shell thì mở rộng tham số của profile, và cân nhắc rủi ro vì lệnh chạy trên máy thật (worktree không phải sandbox), hoặc cho profile chạy trong container.
 
 ### Chạy nhiều bản, giữ bản tốt nhất (best-of-n)
 
