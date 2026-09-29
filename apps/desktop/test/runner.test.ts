@@ -868,6 +868,29 @@ describe("Runner", () => {
     });
   });
 
+  it("stops the runs a project manager cancels on the web, at its next heartbeat, and says who did", async () => {
+    const a = await setup([profile("claude-1", "claude", 10, "sleep")], { acceptHubRuns: true, maxParallel: 1 }, "hub");
+    await a.hive.call("tasks.create", { id: "T-2", project: "demo", title: "Trang đăng xuất" }, admin);
+    await a.runner.heartbeat();
+    const running = await a.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await until(() => a.runner.store.get(running.id)!.status === "running");
+    const waiting = await a.runner.enqueue({ project: "demo", taskId: "T-2" });
+    await a.runner.pushRuns();
+    const machineId = "runner.duy-mbp@duy-macbook";
+    for (const run of [running, waiting]) await a.hive.call("runs.cancel", { machineId, runId: run.id }, admin);
+
+    await a.runner.heartbeat();
+    await a.runner.settle();
+    for (const run of [running, waiting]) {
+      const done = a.runner.store.get(run.id)!;
+      assert.deepEqual([done.status, done.error], ["cancelled", "duy huỷ trên web"]);
+    }
+    // Reported ended: the hub asks no more.
+    await a.runner.pushRuns();
+    assert.deepEqual((await a.hive.call("runs.list", { project: "demo" }, admin)).map((r) => r.status), ["cancelled", "cancelled"]);
+    assert.deepEqual((await a.hive.call("machines.heartbeat", { machine: "duy-macbook", instance: "a1b2c3d4", acceptsRuns: true }, { name: machineId, role: "agent" })).cancelRuns, []);
+  });
+
   it("takes no run from the hub until the user allows it", async () => {
     const a = await setup([profile("claude-1", "claude", 10, "ok")], {}, "hub");
     await a.runner.heartbeat();

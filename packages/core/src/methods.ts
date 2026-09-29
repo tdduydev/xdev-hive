@@ -14,6 +14,7 @@ import {
   type AuditEntry,
   type CostSummary,
   type RunNotice,
+  type RunCancel,
   type RunRecord,
   type RunRequest,
   type ChatAction,
@@ -304,6 +305,11 @@ export const schemas = {
   }),
   /** Runs the hub was told about, the newest runs first (no log); a project's, or every project the caller sees. */
   "runs.list": z.object({ project: project.optional(), limit: z.number().int().min(1).max(200).default(50) }),
+  /**
+   * A project manager stops a run that waits or runs on a machine taking runs from the hub: the machine hears it at
+   * its next heartbeat, stops the agent and reports the run as cancelled.
+   */
+  "runs.cancel": z.object({ machineId: z.string().min(1).max(200), runId: z.string().regex(/^[\w.-]{1,40}$/) }),
   /** One run with the end of its log. */
   "runs.get": z.object({ machineId: z.string().min(1).max(200), runId: z.string().regex(/^[\w.-]{1,40}$/) }),
   /**
@@ -449,6 +455,8 @@ export interface MethodOutput {
     runRequests: RunRequest[];
     /** Chat replies this machine is asked to write; same condition. */
     chatRequests: ChatRequest[];
+    /** Its runs a project manager asked to stop; same condition. */
+    cancelRuns: RunCancel[];
   };
   "machines.list": Machine[];
   "costs.summary": CostSummary;
@@ -456,6 +464,7 @@ export interface MethodOutput {
   "runs.push": { stored: number };
   "runs.list": RunRecord[];
   "runs.get": RunRecord | null;
+  "runs.cancel": RunRecord;
   "runs.dispatch": RunRequest;
   "runs.requests": RunRequest[];
   "runs.cancelRequest": RunRequest;
@@ -520,6 +529,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "runs.push": "agent",
   "runs.list": "viewer",
   "runs.get": "viewer",
+  "runs.cancel": "agent",
   // Also "manage" on the project: a project manager, never an agent token.
   "runs.dispatch": "agent",
   "runs.requests": "viewer",
