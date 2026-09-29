@@ -19,8 +19,10 @@ import {
   AGENT_ROLES,
   agentActorName,
   HiveError,
+  MAX_CANDIDATES,
   redactLines,
   stripHidden,
+  toErrorPayload,
   usageStop,
   type Actor,
   type AgentProfile,
@@ -36,6 +38,8 @@ import {
   type MachineCommand,
   type QuotaCooldown,
   type ReportedProfile,
+  type RunRequest,
+  type RunRequestError,
   type SetupReport,
   type TeamPolicy,
   type RunnerSettings,
@@ -98,7 +102,9 @@ export type RunnerEvent =
   /** Best-of-n: `run` is the kept candidate (now on ai/<task>); `next` its review, if any. */
   | { type: "picked"; run: AgentRun; next: AgentRun | null }
   /** Best-of-n: the judge chose nothing usable; someone picks a candidate in the app. */
-  | { type: "undecided"; run: AgentRun };
+  | { type: "undecided"; run: AgentRun }
+  /** A project manager queued this run for this machine on the web (runs.dispatch). */
+  | { type: "dispatched"; run: AgentRun; by: string };
 
 export interface RunnerOptions {
   /** Holds runs.db, run logs and (by default) worktrees. */
@@ -170,7 +176,6 @@ const JSON_BYTES = 2_000_000;
 const keepTail = (s: string, max = TAIL_BYTES) => (s.length > max ? s.slice(-max) : s);
 const clip = (s: string, n: number) => (s.length > n ? `…${s.slice(-(n - 1))}` : s);
 const TERMINAL: RunStatus[] = ["succeeded", "failed", "rate_limited", "cancelled"];
-export const MAX_CANDIDATES = 4;
 
 /** The latest attempt of each candidate of a group (a rotation adds a run), in candidate order. */
 function latestCandidates(group: AgentRun[]): AgentRun[] {
@@ -233,6 +238,10 @@ export class Runner {
   /** What the hub last got of each run (see pushRuns). */
   readonly #pushed = new Map<string, string>();
   #pushing = false;
+  /** Run requests from the hub this machine answered but could not tell the hub yet: sent again, never queued twice. */
+  readonly #answers = new Map<number, { status: "accepted" | "rejected"; runId: string | null; error: RunRequestError | null }>();
+  /** Requests being answered now: a heartbeat that comes meanwhile leaves them alone. */
+  readonly #taking = new Set<number>();
 
   constructor(host: RunnerHost, opts: RunnerOptions) {
     this.#host = host;
@@ -511,7 +520,16 @@ export class Runner {
       .backend()
       .call(
         "machines.heartbeat",
-        { machine: this.#host.machine(), instance: this.#instance, version: this.#opts.version, runs, costs, ...this.#host.report?.() },
+        {
+          machine: this.#host.machine(),
+          instance: this.#instance,
+          version: this.#opts.version,
+          runs,
+          costs,
+          projects: this.#host.projects().map((p) => p.name),
+          acceptsRuns: this.#host.settings().acceptHubRuns,
+          ...this.#host.report?.(),
+        },
         this.#runnerActor(),
       );
     // Only after the hub answered: a failed heartbeat sends the same costs next time.
@@ -529,7 +547,66 @@ export class Runner {
     this.#shared = next;
     const update: HubUpdate = { duplicate: res.duplicate, policy: res.policy, commands: res.commands };
     this.#opts.onHub?.(update);
+    // A hub older than runs.dispatch sends none.
+    await this.#takeRequests(res.runRequests ?? []);
     return update;
+  }
+
+  /**
+   * Queues the runs a project manager asked this machine for on the web, with the checks of the Board's Run agent,
+   * while the user allows it (Accept runs from the hub), and tells the hub which it took and why it refused the others.
+   */
+  async #takeRequests(requests: RunRequest[]): Promise<void> {
+    for (const req of requests) {
+      if (this.#taking.has(req.id)) continue;
+      this.#taking.add(req.id);
+      try {
+        let answer = this.#answers.get(req.id);
+        if (!answer) {
+          answer = await this.#take(req);
+          this.#answers.set(req.id, answer);
+        }
+        await this.#host.backend().call("runs.requestResult", { id: req.id, ...answer }, this.#runnerActor());
+        this.#answers.delete(req.id);
+      } catch (err) {
+        // Cancelled or expired meanwhile: nothing left to tell. Otherwise the next heartbeat tries again.
+        if (err instanceof HiveError && (err.code === "conflict" || err.code === "not_found")) this.#answers.delete(req.id);
+      } finally {
+        this.#taking.delete(req.id);
+      }
+    }
+  }
+
+  async #take(req: RunRequest): Promise<{ status: "accepted" | "rejected"; runId: string | null; error: RunRequestError | null }> {
+    if (!this.#host.settings().acceptHubRuns) {
+      const machine = this.#host.machine();
+      return { status: "rejected", runId: null, error: { message: `${machine} does not take runs from the hub.`, key: "errors.machineNoHubRuns", vars: { machine } } };
+    }
+    try {
+      const run = await this.enqueue({
+        project: req.project,
+        taskId: req.taskId,
+        role: req.role,
+        profileId: req.profileId,
+        reviewAfter: req.reviewAfter,
+        candidates: req.candidates,
+        instructions: req.instructions,
+      });
+      this.#opts.onEvent?.({ type: "dispatched", run, by: req.requestedBy });
+      return { status: "accepted", runId: run.id, error: null };
+    } catch (err) {
+      const { message, key, vars } = toErrorPayload(err);
+      const short = (v: string | number) => (typeof v === "string" ? v.slice(0, 300) : v);
+      return {
+        status: "rejected",
+        runId: null,
+        error: {
+          message: message.slice(0, 2000),
+          ...(key && key.length <= 80 ? { key } : {}),
+          ...(vars ? { vars: Object.fromEntries(Object.entries(vars).map(([k, v]) => [k.slice(0, 40), short(v)])) } : {}),
+        },
+      };
+    }
   }
 
   /**

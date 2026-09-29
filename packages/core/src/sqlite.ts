@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { can, levelOn, type Level } from "./access.ts";
+import type { AgentRole } from "./agents.ts";
 import { HiveError, type ErrorText } from "./errors.ts";
 import { agentsDocKey, decisionsDocKey, parseDocKey, titleFromSlug, type ParsedDocKey } from "./keys.ts";
 import { parseSkill, type SkillSummary } from "./skills.ts";
@@ -42,6 +43,9 @@ import type {
   ReportedProfile,
   RunNotice,
   RunRecord,
+  RunRequest,
+  RunRequestError,
+  RunRequestStatus,
   SetupReport,
   Task,
   TeamPolicy,
@@ -159,6 +163,17 @@ const MIGRATIONS: string[] = [
   CREATE INDEX run_records_project ON run_records(project, updated_at);
   CREATE INDEX run_records_at ON run_records(updated_at);
   `,
+  `
+  ALTER TABLE machines ADD COLUMN projects TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE machines ADD COLUMN accepts_runs INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE run_requests(
+    id INTEGER PRIMARY KEY, machine_id TEXT NOT NULL, machine TEXT NOT NULL, project TEXT NOT NULL, task_id TEXT NOT NULL,
+    task_title TEXT NOT NULL, role TEXT NOT NULL, profile_id TEXT, review_after INTEGER NOT NULL DEFAULT 0,
+    candidates INTEGER NOT NULL DEFAULT 1, instructions TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending',
+    run_id TEXT, error TEXT, requested_by TEXT NOT NULL, requested_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+  CREATE INDEX run_requests_machine ON run_requests(machine_id, status);
+  CREATE INDEX run_requests_project ON run_requests(project, id);
+  `,
 ];
 
 /** Run records (runs.push) are kept this long after their last update. */
@@ -215,6 +230,10 @@ const MACHINE_TTL_DAYS = 14;
 const COMMAND_TTL_HOURS = 24;
 /** Commands kept per machine in the admin view. */
 const COMMAND_HISTORY = 20;
+/** A run request no machine took within this time expires: machines ask every 30 s, so that one is gone. */
+const RUN_REQUEST_TTL_MINUTES = 15;
+/** Answered run requests are kept this long. */
+const RUN_REQUEST_DAYS = 30;
 
 /** Allowed status moves for a machine reporting on a command. */
 const COMMAND_MOVES: Record<CommandStatus, CommandStatus[]> = {
@@ -265,6 +284,16 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
     text: { key: "audit.commandCancel", vars: { id: i.id, item: o.itemId } },
   }),
   "machines.commandResult": (i, o: MachineCommand) => ({ target: o.machineId, detail: `#${i.id} ${o.itemId} → ${i.status}` }),
+  "runs.dispatch": (_i, o: RunRequest) => ({
+    target: `${o.project}/${o.taskId}`,
+    detail: `run ${o.role} trên ${o.machine} (#${o.id})`,
+    text: { key: "audit.runDispatch", vars: { role: o.role, machine: o.machine, id: o.id } },
+  }),
+  "runs.cancelRequest": (i, o: RunRequest) => ({
+    target: `${o.project}/${o.taskId}`,
+    detail: `huỷ yêu cầu run #${i.id}`,
+    text: { key: "audit.runRequestCancel", vars: { id: i.id } },
+  }),
 };
 
 /** The event a successful call is worth telling people about, if any. */
@@ -385,6 +414,25 @@ const toCommand = (r: Row): MachineCommand => ({
   requestedAt: str(r.requested_at),
   updatedAt: str(r.updated_at),
   output: strOrNull(r.output),
+});
+const toRunRequest = (r: Row): RunRequest => ({
+  id: num(r.id),
+  machineId: str(r.machine_id),
+  machine: str(r.machine),
+  project: str(r.project),
+  taskId: str(r.task_id),
+  taskTitle: str(r.task_title),
+  role: str(r.role) as AgentRole,
+  profileId: strOrNull(r.profile_id),
+  reviewAfter: num(r.review_after) === 1,
+  candidates: num(r.candidates),
+  instructions: str(r.instructions),
+  status: str(r.status) as RunRequestStatus,
+  runId: strOrNull(r.run_id),
+  error: r.error == null ? null : (JSON.parse(str(r.error)) as RunRequestError),
+  requestedBy: str(r.requested_by),
+  requestedAt: str(r.requested_at),
+  updatedAt: str(r.updated_at),
 });
 const toAudit = (r: Row): AuditEntry => ({
   id: num(r.id),
@@ -507,8 +555,16 @@ export class SqliteHive implements HiveBackend {
       case "memory.search":
       case "skills.list":
       case "runs.list":
+      case "runs.requests":
         if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
         return;
+      case "runs.dispatch":
+        return this.#need(actor, i.project, "manage", `Project ${i.project}`);
+      case "runs.cancelRequest": {
+        const row = this.db.prepare("SELECT project FROM run_requests WHERE id = ?").get(i.id) as Row | undefined;
+        if (row) this.#need(actor, str(row.project), "manage", `Run request #${i.id}`);
+        return;
+      }
       case "runs.push":
         for (const r of i.runs as Array<{ project: string }>) this.#need(actor, r.project, "contribute", `Project ${r.project}`);
         return;
@@ -555,6 +611,8 @@ export class SqliteHive implements HiveBackend {
         return (out as SkillSummary[]).filter((s) => sees(s.project)) as MethodOutput[M];
       case "runs.list":
         return (out as RunRecord[]).filter((r) => sees(r.project)) as MethodOutput[M];
+      case "runs.requests":
+        return (out as RunRequest[]).filter((r) => sees(r.project)) as MethodOutput[M];
       case "proposals.list":
         return (out as Proposal[]).filter((p) => sees(SqliteHive.#docOwner(p.docKey))) as MethodOutput[M];
       case "memory.search":
@@ -563,9 +621,9 @@ export class SqliteHive implements HiveBackend {
       case "tasks.list":
       case "tasks.next":
         return (out as Task[]).filter((t) => sees(t.project)) as MethodOutput[M];
-      // Machines are the team's, but what they are running shows the project: hide runs of hidden projects.
+      // Machines are the team's, but what they run and which repos they have shows the project: hide hidden projects.
       case "machines.list":
-        return (out as Machine[]).map((m) => ({ ...m, runs: m.runs.filter((r) => sees(r.project)) })) as MethodOutput[M];
+        return (out as Machine[]).map((m) => ({ ...m, runs: m.runs.filter((r) => sees(r.project)), projects: m.projects.filter((p) => sees(p)) })) as MethodOutput[M];
       case "policy.get": {
         const policy = out as TeamPolicy;
         return { ...policy, projects: Object.fromEntries(Object.entries(policy.projects).filter(([p]) => sees(p))) } as MethodOutput[M];
@@ -842,6 +900,20 @@ export class SqliteHive implements HiveBackend {
       .run(this.#now(), this.#now(-COMMAND_TTL_HOURS * 60));
   }
 
+  /** Run requests no machine took in time expire; answered ones are dropped after a month. */
+  #expireRequests(): void {
+    this.db
+      .prepare("UPDATE run_requests SET status = 'expired', updated_at = ?1 WHERE status = 'pending' AND requested_at < ?2")
+      .run(this.#now(), this.#now(-RUN_REQUEST_TTL_MINUTES));
+    this.db.prepare("DELETE FROM run_requests WHERE status <> 'pending' AND updated_at < ?").run(this.#now(-RUN_REQUEST_DAYS * 24 * 60));
+  }
+
+  #runRequest(id: number): RunRequest {
+    const row = this.db.prepare("SELECT * FROM run_requests WHERE id = ?").get(id) as Row | undefined;
+    if (!row) throw new HiveError("not_found", `Run request #${id} not found.`, { key: "errors.runRequestNotFound", vars: { id } });
+    return toRunRequest(row);
+  }
+
   #command(id: number): MachineCommand {
     const row = this.db.prepare("SELECT * FROM machine_commands WHERE id = ?").get(id) as Row | undefined;
     if (!row) throw new HiveError("not_found", `Command #${id} not found.`, { key: "errors.commandNotFound", vars: { id } });
@@ -859,6 +931,8 @@ export class SqliteHive implements HiveBackend {
       duplicate: dup !== null && dup > this.#now(-DUPLICATE_MINUTES),
       runs: JSON.parse(str(r.runs)) as MachineRun[],
       profiles: JSON.parse(str(r.profiles ?? "[]")) as ReportedProfile[],
+      projects: JSON.parse(str(r.projects ?? "[]")) as string[],
+      acceptsRuns: num(r.accepts_runs ?? 0) === 1,
     };
   }
 
@@ -1333,7 +1407,7 @@ export class SqliteHive implements HiveBackend {
         }),
 
       // Keyed by the hub actor (`runner.<machine>@<token>`): the same key as the leases that machine takes.
-      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, costs }, actor) =>
+      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, projects, acceptsRuns, costs }, actor) =>
         this.#tx(() => {
           const now = this.#now();
           const row = db.prepare("SELECT instance, prev_instance, last_seen, duplicate_at FROM machines WHERE id = ?").get(actor.name) as
@@ -1355,6 +1429,8 @@ export class SqliteHive implements HiveBackend {
           ).run(actor.name, machine, instance, prev, version, JSON.stringify(runs), now, duplicateAt);
           if (setup) db.prepare("UPDATE machines SET setup = ?, setup_at = ? WHERE id = ?").run(JSON.stringify(setup.report), setup.checkedAt, actor.name);
           if (profiles) db.prepare("UPDATE machines SET profiles = ? WHERE id = ?").run(JSON.stringify(profiles), actor.name);
+          if (projects) db.prepare("UPDATE machines SET projects = ? WHERE id = ?").run(JSON.stringify(projects), actor.name);
+          if (acceptsRuns !== undefined) db.prepare("UPDATE machines SET accepts_runs = ? WHERE id = ?").run(acceptsRuns ? 1 : 0, actor.name);
           // A machine resends until the hub answers, so a run is kept as first reported.
           const cost = db.prepare(
             `INSERT OR IGNORE INTO run_costs(machine_id, run_id, machine, project, task_id, profile_id, account, cost_usd, input_tokens, output_tokens, finished_at)
@@ -1369,11 +1445,26 @@ export class SqliteHive implements HiveBackend {
           const commands = (
             db.prepare("SELECT * FROM machine_commands WHERE machine_id = ? AND status = 'pending' ORDER BY id").all(actor.name) as Row[]
           ).map(toCommand);
+          this.#expireRequests();
+          const accepts = num((db.prepare("SELECT accepts_runs FROM machines WHERE id = ?").get(actor.name) as Row).accepts_runs) === 1;
+          // The user turned it off after a manager queued something: say so on the web instead of letting it expire.
+          if (!accepts) {
+            const error: RunRequestError = { message: `${machine} does not take runs from the hub.`, key: "errors.machineNoHubRuns", vars: { machine } };
+            db.prepare("UPDATE run_requests SET status = 'rejected', error = ?, updated_at = ? WHERE machine_id = ? AND status = 'pending'").run(
+              JSON.stringify(error),
+              now,
+              actor.name,
+            );
+          }
+          const runRequests = accepts
+            ? (db.prepare("SELECT * FROM run_requests WHERE machine_id = ? AND status = 'pending' ORDER BY id").all(actor.name) as Row[]).map(toRunRequest)
+            : [];
           return {
             duplicate: duplicateAt !== null && duplicateAt > this.#now(-DUPLICATE_MINUTES),
             cooldowns: this.#cooldowns(),
             policy: this.#policy(),
             commands,
+            runRequests,
           };
         }),
 
@@ -1415,6 +1506,100 @@ export class SqliteHive implements HiveBackend {
         // A run of a project the caller does not see answers like a missing one.
         return row && levelOn(actor, str(row.project)) !== null ? toRunRecord(row, true) : null;
       },
+
+      // What the machine's Board would check first, so a manager hears at once instead of after a heartbeat.
+      "runs.dispatch": ({ machineId, project, taskId, role, profileId, reviewAfter, candidates, instructions }, actor) =>
+        this.#tx(() => {
+          this.#expireRequests();
+          const row = db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row | undefined;
+          if (!row) throw new HiveError("not_found", `No machine ${machineId}.`, { key: "errors.machineNotFound", vars: { machine: machineId } });
+          const m = this.#toMachine(row);
+          const name = { machine: m.machine };
+          if (!m.online) throw new HiveError("conflict", `${m.machine} is offline.`, { key: "errors.machineOffline", vars: name });
+          if (!m.acceptsRuns) throw new HiveError("bad_request", `${m.machine} does not take runs from the hub.`, { key: "errors.machineNoHubRuns", vars: name });
+          if (!m.projects.includes(project)) {
+            throw new HiveError("bad_request", `${m.machine} has no repo for ${project}.`, { key: "errors.machineNoRepo", vars: { ...name, project } });
+          }
+          const task = this.#getTask(taskId);
+          if (!task || task.project !== project) {
+            throw new HiveError("not_found", `No task ${taskId} in ${project}.`, { key: "errors.taskNotInProject", vars: { id: taskId, project } });
+          }
+          if (task.status === "done") throw new HiveError("bad_request", `Task ${taskId} is done.`, { key: "errors.taskDone", vars: { id: taskId } });
+          if (task.waitingOn.length) {
+            throw new HiveError("conflict", `Task ${taskId} waits for ${task.waitingOn.join(", ")}.`, {
+              key: "errors.taskWaiting",
+              vars: { id: taskId, tasks: task.waitingOn.join(", ") },
+            });
+          }
+          if (profileId && !m.profiles.some((p) => p.id === profileId && p.enabled)) {
+            throw new HiveError("bad_request", `${m.machine} has no enabled profile ${profileId}.`, { key: "errors.profileNotOnMachine", vars: { ...name, id: profileId } });
+          }
+          if (candidates > 1 && role !== "implement") throw new HiveError("bad_request", "Only implement runs have candidates.", { key: "errors.candidatesImplementOnly" });
+          if (candidates > 1 && profileId) throw new HiveError("bad_request", "Candidates rotate profiles; do not pin one.", { key: "errors.candidatesPinned" });
+          // One request at a time per task, and none while a machine runs it.
+          const open = db.prepare("SELECT id, machine FROM run_requests WHERE project = ? AND task_id = ? AND status = 'pending'").get(project, taskId) as
+            | Row
+            | undefined;
+          if (open) {
+            throw new HiveError("conflict", `Run request #${num(open.id)} for ${taskId} still waits for ${str(open.machine)}.`, {
+              key: "errors.runRequestOpen",
+              vars: { id: taskId, request: num(open.id), machine: str(open.machine) },
+            });
+          }
+          for (const other of (db.prepare("SELECT * FROM machines").all() as Row[]).map((r) => this.#toMachine(r))) {
+            const busy = other.online ? other.runs.find((r) => r.project === project && r.taskId === taskId) : undefined;
+            if (busy) {
+              throw new HiveError("conflict", `Task ${taskId} has run ${busy.runId} on ${other.machine}.`, {
+                key: "errors.taskRunning",
+                vars: { id: taskId, run: busy.runId, machine: other.machine },
+              });
+            }
+          }
+          // The machine hands them to an agent as its prompt.
+          assertNoHidden(instructions, "Instructions");
+          assertNoSecret(instructions, "Instructions");
+          const now = this.#now();
+          const res = db
+            .prepare(
+              `INSERT INTO run_requests(machine_id, machine, project, task_id, task_title, role, profile_id, review_after, candidates,
+                 instructions, requested_by, requested_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .run(machineId, m.machine, project, taskId, task.title, role, profileId, reviewAfter ? 1 : 0, candidates, instructions, actor.name, now, now);
+          return this.#runRequest(num(res.lastInsertRowid));
+        }),
+
+      "runs.requests": ({ project, limit }) => {
+        this.#expireRequests();
+        return (
+          db.prepare("SELECT * FROM run_requests WHERE (?1 IS NULL OR project = ?1) ORDER BY id DESC LIMIT ?2").all(project ?? null, limit) as Row[]
+        ).map(toRunRequest);
+      },
+
+      "runs.cancelRequest": ({ id }) =>
+        this.#tx(() => {
+          this.#expireRequests();
+          const req = this.#runRequest(id);
+          if (req.status !== "pending") throw new HiveError("conflict", `Run request #${id} is ${req.status}.`, { key: "errors.runRequestNotPending", vars: { id } });
+          db.prepare("UPDATE run_requests SET status = 'cancelled', updated_at = ? WHERE id = ?").run(this.#now(), id);
+          return this.#runRequest(id);
+        }),
+
+      "runs.requestResult": ({ id, status, runId, error }, actor) =>
+        this.#tx(() => {
+          const req = this.#runRequest(id);
+          if (req.machineId !== actor.name) throw new HiveError("forbidden", `Run request #${id} is for ${req.machineId}, not ${actor.name}.`);
+          if (req.status !== "pending") throw new HiveError("conflict", `Run request #${id} is ${req.status}.`, { key: "errors.runRequestNotPending", vars: { id } });
+          // The reason shows on the web: no hidden characters, no line that looks like a secret.
+          const why = error ? { ...error, message: clean(error.message)! } : null;
+          db.prepare("UPDATE run_requests SET status = ?, run_id = ?, error = ?, updated_at = ? WHERE id = ?").run(
+            status,
+            status === "accepted" ? runId : null,
+            why ? JSON.stringify(why) : null,
+            this.#now(),
+            id,
+          );
+          return this.#runRequest(id);
+        }),
 
       // Nothing is stored: the notice only feeds the hub's webhooks. The error goes to a chat channel, so it is cleaned first.
       "runs.report": (input, actor) => {
