@@ -254,3 +254,73 @@ describe("docs for some paths in the repo", () => {
     assert.deepEqual(sh(repo, "git", ["show", "--name-only", "--format=", "HEAD"]).trim().split("\n"), ["work.txt"]);
   });
 });
+
+describe("skills in the repo", () => {
+  const skill = (name: string, description: string, body = `Steps for ${name}.`) => `---\nname: ${name}\ndescription: ${description}\n---\n\n${body}\n`;
+
+  it("writes Hive's skills into .claude/skills, keeps the repo's own, and removes one that left Hive", async () => {
+    const repo = gitRepo();
+    mkdirSync(path.join(repo, ".claude/skills/deploy"), { recursive: true });
+    writeFileSync(path.join(repo, ".claude/skills/deploy/SKILL.md"), skill("deploy", "The repo's own deploy steps."));
+    sh(repo, "git", ["add", "."]);
+    sh(repo, "git", ["commit", "-qm", "own skill"]);
+    const hive = new SqliteHive(":memory:");
+    await hive.call("docs.save", { key: "org/skills/review-pr", content: skill("review-pr", "Team review.") }, admin);
+    await hive.call("docs.save", { key: "project/demo/skills/deploy", content: skill("deploy", "Hive's deploy.") }, admin);
+    await hive.call("docs.save", { key: "project/demo/skills/release", content: skill("release", "Cut a release.") }, admin);
+
+    const first = await syncProject(hive, admin, { name: "demo", repo }, { autoCommit: true });
+    const actions = Object.fromEntries(first.files.map((f) => [f.file, [f.action, f.note ?? ""]]));
+    assert.deepEqual(actions[".claude/skills/review-pr/SKILL.md"], ["created", ""]);
+    assert.deepEqual(actions[".claude/skills/release/SKILL.md"], ["created", ""]);
+    assert.deepEqual(actions[".claude/skills/deploy/SKILL.md"], ["skipped", "repo đã có skill cùng tên của riêng nó, giữ nguyên"]);
+    assert.match(readFileSync(path.join(repo, ".claude/skills/deploy/SKILL.md"), "utf8"), /The repo's own deploy steps/);
+    const release = readFileSync(path.join(repo, ".claude/skills/release/SKILL.md"), "utf8");
+    assert.ok(release.startsWith("---\nname: release\n"), "front matter first, as Claude Code reads it");
+    assert.match(readFileSync(path.join(repo, "AGENTS.md"), "utf8"), /## Skills[\s\S]*- `release`: Cut a release\.\n- `review-pr`: Team review\./);
+    const committed = sh(repo, "git", ["show", "--name-only", "--format=", "HEAD"]).trim().split("\n").sort();
+    assert.deepEqual(committed, [".claude/skills/release/SKILL.md", ".claude/skills/review-pr/SKILL.md", "AGENTS.md", "CLAUDE.md"]);
+
+    // The release skill leaves Hive: its file and folder go, the repo's own deploy skill stays.
+    hive.db.prepare("DELETE FROM docs WHERE key = ?").run("project/demo/skills/release");
+    const second = await syncProject(hive, admin, { name: "demo", repo }, { autoCommit: true });
+    assert.equal(second.files.find((f) => f.file === ".claude/skills/release/SKILL.md")?.action, "removed");
+    assert.ok(!existsSync(path.join(repo, ".claude/skills/release")), "the folder too");
+    assert.ok(existsSync(path.join(repo, ".claude/skills/deploy/SKILL.md")));
+    assert.equal(sh(repo, "git", ["status", "--porcelain"]), "", "the removal is committed");
+  });
+
+  it("keeps agents off Hive's skills, but not off the repo's own", () => {
+    const repo = gitRepo();
+    installAgents(repo, "demo", { home: tmp("home") });
+    mkdirSync(path.join(repo, ".claude/skills/review-pr"), { recursive: true });
+    mkdirSync(path.join(repo, ".claude/skills/own"), { recursive: true });
+    writeFileSync(path.join(repo, ".claude/skills/review-pr/SKILL.md"), `---\nname: review-pr\ndescription: x\n---\n${MANAGED_START}\nHive steps\n<!-- xdev-hive:end -->\n`);
+    writeFileSync(path.join(repo, ".claude/skills/own/SKILL.md"), skill("own", "Team's own."));
+    sh(repo, "git", ["add", "."]);
+    sh(repo, "git", ["commit", "-qm", "via hive"], { HIVE_ADMIN: "1" });
+
+    const guard = path.join(repo, ".xdev-hive/guard-docs.sh");
+    const run = (file: string) => {
+      try {
+        execFileSync(guard, [], { input: JSON.stringify({ tool_name: "Edit", tool_input: { file_path: file } }), env: { ...process.env, CLAUDE_PROJECT_DIR: repo }, stdio: ["pipe", "pipe", "pipe"] });
+        return 0;
+      } catch (e) {
+        return (e as { status: number }).status;
+      }
+    };
+    assert.equal(run(path.join(repo, ".claude/skills/review-pr/SKILL.md")), 2);
+    assert.equal(run(path.join(repo, ".claude/skills/own/SKILL.md")), 0, "a skill without the block is the team's");
+
+    writeFileSync(path.join(repo, ".claude/skills/review-pr/SKILL.md"), "hand edit\n");
+    sh(repo, "git", ["add", "."]);
+    assert.throws(() => sh(repo, "git", ["commit", "-qm", "sneaky"]), /\.claude\/skills\/review-pr\/SKILL\.md/);
+    sh(repo, "git", ["reset", "-q", "--hard"]);
+
+    writeFileSync(path.join(repo, ".claude/skills/review-pr/SKILL.md"), "agent edit\n");
+    writeFileSync(path.join(repo, ".claude/skills/own/SKILL.md"), skill("own", "Team's own, better."));
+    const c = commitAll(repo, "ai(T-1): work", []);
+    assert.equal(c.error, null);
+    assert.deepEqual(sh(repo, "git", ["show", "--name-only", "--format=", "HEAD"]).trim().split("\n"), [".claude/skills/own/SKILL.md"], "the runner commits the team's skill, not Hive's");
+  });
+});
