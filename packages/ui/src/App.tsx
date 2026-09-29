@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ComponentType, type Rea
 import {
   Activity,
   Bot,
+  BookMarked,
   FileText,
   Laptop,
   FolderGit2,
@@ -57,6 +58,7 @@ import { ProjectsPage } from "./pages/Projects.tsx";
 import { ProposalsPage } from "./pages/Proposals.tsx";
 import { RunsPage } from "./pages/Runs.tsx";
 import { SetupPage } from "./pages/Setup.tsx";
+import { SkillsPage } from "./pages/Skills.tsx";
 import { TasksPage } from "./pages/Tasks.tsx";
 import { TokensPage } from "./pages/Tokens.tsx";
 import { UsersPage } from "./pages/Users.tsx";
@@ -66,6 +68,7 @@ type PageId =
   | "board"
   | "runs"
   | "docs"
+  | "skills"
   | "proposals"
   | "memory"
   | "tasks"
@@ -84,6 +87,7 @@ const PAGES: Record<PageId, { label: MessageKey; icon: Icon; render: () => React
   board: { label: "nav.board", icon: LayoutDashboard, render: () => <BoardPage /> },
   runs: { label: "nav.runs", icon: Activity, render: () => <RunsPage /> },
   docs: { label: "nav.docs", icon: FileText, render: () => <DocsPage /> },
+  skills: { label: "nav.skills", icon: BookMarked, render: () => <SkillsPage /> },
   proposals: { label: "nav.proposals", icon: GitPullRequestArrow, render: () => <ProposalsPage /> },
   memory: { label: "nav.memory", icon: Sparkles, render: () => <MemoryPage /> },
   tasks: { label: "nav.tasks", icon: ListTodo, render: () => <TasksPage /> },
@@ -99,7 +103,7 @@ const PAGES: Record<PageId, { label: MessageKey; icon: Icon; render: () => React
 };
 
 const GROUPS: Array<{ label: MessageKey; ids: PageId[] }> = [
-  { label: "nav.groupWork", ids: ["overview", "board", "runs", "docs", "proposals", "memory", "tasks"] },
+  { label: "nav.groupWork", ids: ["overview", "board", "runs", "docs", "skills", "proposals", "memory", "tasks"] },
   { label: "nav.groupAgents", ids: ["agents", "machines", "setup"] },
   { label: "nav.groupAdmin", ids: ["admin", "users", "tokens", "projects"] },
 ];
@@ -184,7 +188,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   }, [home]);
 
   const visible = useMemo(() => {
-    const ids = new Set<PageId>(["overview", "docs", "proposals", "memory", "tasks"]);
+    const ids = new Set<PageId>(["overview", "docs", "skills", "proposals", "memory", "tasks"]);
     if (client.desktop) for (const id of ["board", "agents", "setup", "projects"] as const) ids.add(id);
     // Machines only report to a hub (and push their runs to it); a local database never has any.
     if (me.mode === "hub") for (const id of ["machines", "runs"] as const) ids.add(id);
