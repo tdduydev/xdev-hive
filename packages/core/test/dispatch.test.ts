@@ -209,3 +209,56 @@ describe("run requests from the web", () => {
     assert.deepEqual((await hive.call("runs.requests", { project: "site" }, outsider)).map((r) => [r.taskId, r.role]), [["S-1", "plan"]]);
   });
 });
+
+describe("cancelling a run from the web", () => {
+  const push = (hive: SqliteHive, actor: Actor, runId: string, status: string, project = "app") =>
+    hive.call(
+      "runs.push",
+      {
+        machine: actor.name.split("@")[1]!,
+        runs: [{ runId, project, taskId: "T-1", taskTitle: "Login page", role: "implement", status: status as never, profileId: "claude-1", createdAt: "2026-09-29T08:00:00.000Z" }],
+      },
+      actor,
+    );
+
+  it("asks the machine at its heartbeats until it reports the run ended", async () => {
+    const { hive, beat } = await hub();
+    await beat(mbp);
+    await push(hive, mbp, "R-aaaaaa", "running");
+    await push(hive, mbp, "R-bbbbbb", "queued");
+    assert.deepEqual((await beat(mbp)).cancelRuns, []);
+
+    const asked = await hive.call("runs.cancel", { machineId: mbp.name, runId: "R-aaaaaa" }, lead);
+    assert.deepEqual([asked.status, asked.cancelRequestedBy], ["running", "lan"], "the run goes on until the machine stops it");
+    await hive.call("runs.cancel", { machineId: mbp.name, runId: "R-bbbbbb" }, admin);
+    // A second click keeps who asked first.
+    assert.equal((await hive.call("runs.cancel", { machineId: mbp.name, runId: "R-aaaaaa" }, admin)).cancelRequestedBy, "lan");
+    assert.deepEqual((await beat(mbp)).cancelRuns, [
+      { runId: "R-aaaaaa", requestedBy: "lan" },
+      { runId: "R-bbbbbb", requestedBy: "duy" },
+    ]);
+    assert.deepEqual((await beat(mini)).cancelRuns, [], "only that machine's runs");
+
+    // The machine stopped it and pushed it: asked no more, and what was asked stays on the record.
+    await push(hive, mbp, "R-aaaaaa", "cancelled");
+    assert.deepEqual((await beat(mbp)).cancelRuns, [{ runId: "R-bbbbbb", requestedBy: "duy" }]);
+    const [record] = (await hive.call("runs.list", { project: "app" }, admin)).filter((r) => r.runId === "R-aaaaaa");
+    assert.deepEqual([record!.status, record!.cancelRequestedBy], ["cancelled", "lan"]);
+    assert.equal(await refusal(hive.call("runs.cancel", { machineId: mbp.name, runId: "R-aaaaaa" }, lead)), "errors.runEnded");
+    // Nothing while it takes no runs from the hub: its user did not let the web drive it.
+    assert.deepEqual((await beat(mbp, { acceptsRuns: false })).cancelRuns, []);
+  });
+
+  it("only lets a project manager cancel, on a machine that takes runs from the hub", async () => {
+    const { hive, beat } = await hub();
+    await beat(mbp);
+    await beat(mini, { acceptsRuns: false });
+    await push(hive, mbp, "R-aaaaaa", "running");
+    await push(hive, mini, "R-cccccc", "running");
+    await push(hive, mbp, "R-dddddd", "running", "site");
+    assert.equal(await refusal(hive.call("runs.cancel", { machineId: mbp.name, runId: "R-aaaaaa" }, dev)), "errors.need.manage");
+    assert.equal(await refusal(hive.call("runs.cancel", { machineId: mbp.name, runId: "R-dddddd" }, lead)), "errors.notFound", "a project it cannot see");
+    assert.equal(await refusal(hive.call("runs.cancel", { machineId: mini.name, runId: "R-cccccc" }, admin)), "errors.machineNoHubRuns");
+    assert.equal(await refusal(hive.call("runs.cancel", { machineId: mbp.name, runId: "R-ffffff" }, admin)), "errors.runNotFound");
+  });
+});
