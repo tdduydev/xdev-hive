@@ -1,6 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
+  AGENT_ROLES,
+  MAX_CANDIDATES,
   MEMORY_KINDS,
   skillDocKey,
   TASK_STATUSES,
@@ -29,12 +31,22 @@ const READ_ONLY_INSTRUCTIONS = `xDev Hive is the shared memory, docs and task bo
 This connection is read-only: memory_search, doc_list, doc_get, skill_list, skill_get, task_list and task_next. Search memory for your topic before working.
 Put anything worth sharing (decisions, gotchas, the handoff) in your final message instead of writing it to Hive.`;
 
+// A chat leader (the hub's token for one reply) changes nothing on the board itself: it proposes, a project manager confirms.
+const LEADER_INSTRUCTIONS = `
+You are the project's leader in the Hive chat. You cannot create or move tasks or queue runs yourself: propose them with
+propose_task, propose_task_status and propose_run, and say in your reply what you proposed. A project manager confirms or
+sets aside each one in the chat, and it runs with their rights.`;
+
 const project = z.string().optional().describe('Hive project key (see "Hive project key" in AGENTS.md)');
+const reason = z.string().min(1).max(500).describe("One line for the person confirming it: why");
 
 export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: HiveMcpOptions = {}): McpServer {
   // Write tools are not registered at all, so a read-only agent never sees them.
   const writes = !(opts.readOnly ?? actor.role === "viewer");
-  const server = new McpServer({ name: "xdev-hive", version: "0.1.0" }, { instructions: writes ? INSTRUCTIONS : READ_ONLY_INSTRUCTIONS });
+  // A chat leader works on no task of its own: no claim or status change, proposals instead.
+  const leader = writes && actor.chatReply !== undefined;
+  const instructions = !writes ? READ_ONLY_INSTRUCTIONS : leader ? INSTRUCTIONS + LEADER_INSTRUCTIONS : INSTRUCTIONS;
+  const server = new McpServer({ name: "xdev-hive", version: "0.1.0" }, { instructions });
 
   const run = async <M extends Method>(method: M, input: MethodInput<M>): Promise<CallToolResult> => {
     try {
@@ -230,7 +242,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     withProject(async ({ project: p, limit }) => run("tasks.next", { project: p, limit })),
   );
 
-  if (writes) {
+  if (writes && !leader) {
     server.registerTool(
       "task_claim",
       {
@@ -243,7 +255,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     );
   }
 
-  if (writes) {
+  if (writes && !leader) {
     server.registerTool(
       "task_update",
       {
@@ -253,6 +265,53 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
         inputSchema: { id: z.string(), status: z.enum(TASK_STATUSES), note: z.string().optional() },
       },
       async ({ id, status, note }) => run("tasks.update", { id, status, note }),
+    );
+  }
+
+  if (leader) {
+    const confirm = " Nothing happens until a manager of the project confirms it in the chat; it then runs with their rights.";
+    server.registerTool(
+      "propose_task",
+      {
+        title: "Propose a task",
+        description: "Propose a new task on the chat's project board (id like the project's others, e.g. T-12; dependsOn: tasks to be done first)." + confirm,
+        inputSchema: { id: z.string(), title: z.string(), dependsOn: z.array(z.string()).max(20).optional(), reason },
+      },
+      async ({ id, title, dependsOn, reason: why }) => run("chat.propose", { action: { kind: "task.create", id, title, dependsOn: dependsOn ?? [] }, reason: why }),
+    );
+    server.registerTool(
+      "propose_task_status",
+      {
+        title: "Propose a task status",
+        description: "Propose moving a task of the chat's project to another status, with a note." + confirm,
+        inputSchema: { id: z.string(), status: z.enum(TASK_STATUSES), note: z.string().optional(), reason },
+      },
+      async ({ id, status, note, reason: why }) => run("chat.propose", { action: { kind: "task.update", id, status, note }, reason: why }),
+    );
+    server.registerTool(
+      "propose_run",
+      {
+        title: "Propose a run",
+        description:
+          "Propose an agent run of a task on a team machine (the chat's machine unless machine names another): role implement or review, " +
+          "profileId to pin a plan (else the machine rotates), candidates for several attempts, reviewAfter to review when done, instructions for the agent." +
+          confirm,
+        inputSchema: {
+          taskId: z.string(),
+          role: z.enum(AGENT_ROLES).optional(),
+          machine: z.string().optional(),
+          profileId: z.string().optional(),
+          candidates: z.number().int().min(1).max(MAX_CANDIDATES).optional(),
+          reviewAfter: z.boolean().optional(),
+          instructions: z.string().optional(),
+          reason,
+        },
+      },
+      async ({ taskId, role, machine, profileId, candidates, reviewAfter, instructions, reason: why }) =>
+        run("chat.propose", {
+          action: { kind: "run.dispatch", taskId, role, machine, profileId: profileId ?? null, candidates, reviewAfter, instructions },
+          reason: why,
+        } as MethodInput<"chat.propose">),
     );
   }
 

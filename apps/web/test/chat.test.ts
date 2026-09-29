@@ -106,7 +106,17 @@ describe("chat replies on the hub", () => {
     await client.connect(transport);
     const doc = await client.callTool({ name: "doc_get", arguments: { key: "project/app/agents" } });
     assert.notEqual(doc.isError, true);
+    // What it may not do itself, it proposes; Lan confirms it in the chat and it runs with Lan's rights.
+    const tools = (await client.listTools()).tools.map((t) => t.name);
+    assert.ok(tools.includes("propose_task") && tools.includes("propose_run") && tools.includes("propose_task_status"), tools.join());
+    assert.ok(!tools.includes("task_update") && !tools.includes("task_claim"), "a leader works on no task of its own");
+    const proposed = await client.callTool({ name: "propose_task", arguments: { id: "app-2", title: "New", reason: "Asked for in the chat" } });
+    assert.notEqual(proposed.isError, true, JSON.stringify(proposed.content));
+    const actionId = JSON.parse((proposed.content as Array<{ text: string }>)[0]!.text).id as number;
     await client.close();
+    assert.equal((await rpc(machineToken, "chat.propose", { action: { kind: "task.create", id: "app-3", title: "x" }, reason: "r" })).body.error?.key, "errors.chatProposeOnly", "not with the machine's own token");
+    const decided = await lan("chat.decide", { actionId, accept: true });
+    assert.deepEqual([decided.body.result?.status, decided.body.result?.result], ["done", { taskId: "app-2" }], JSON.stringify(decided.body));
 
     // The update is recorded under the leader's name.
     const updated = (await lan("tasks.list", { project: "app" })).body.result.find((t: { id: string }) => t.id === "app-1");

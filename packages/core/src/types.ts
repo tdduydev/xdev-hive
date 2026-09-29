@@ -14,6 +14,8 @@ export interface Actor {
   access?: Access;
   /** Where this request came from; stored with docs versions, proposals and memory it writes. */
   source?: WriteSource;
+  /** Set by the hub for a chat leader's short-lived token: the reply it writes, the only one it may propose actions for. */
+  chatReply?: number;
 }
 
 export interface DocSummary {
@@ -340,6 +342,36 @@ export interface ChatMessage {
   createdAt: string;
   updatedAt: string;
   finishedAt: string | null;
+  /** What the leader asked to do while writing this reply (replies only). */
+  actions: ChatAction[];
+}
+
+export const CHAT_ACTION_KINDS = ["task.create", "task.update", "run.dispatch"] as const;
+export type ChatActionKind = (typeof CHAT_ACTION_KINDS)[number];
+export const CHAT_ACTION_STATUSES = ["proposed", "done", "failed", "dismissed"] as const;
+export type ChatActionStatus = (typeof CHAT_ACTION_STATUSES)[number];
+
+/**
+ * Something a chat leader asks to do: a task to create or move, a run to queue on a machine. It does nothing until a
+ * manager of the project confirms it in the chat; then it runs as that person's own call (roadmap 17c, asked 29/9).
+ */
+export interface ChatAction {
+  id: number;
+  replyId: number;
+  threadId: number;
+  project: string;
+  kind: ChatActionKind;
+  /** The input of the call it becomes (tasks.create, tasks.update, runs.dispatch), project included. */
+  input: Record<string, unknown>;
+  /** The leader's one line on why. */
+  reason: string;
+  status: ChatActionStatus;
+  /** What confirming it made: the task, or the run request sent to the machine. */
+  result: { taskId?: string; requestId?: number } | null;
+  error: RunRequestError | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  createdAt: string;
 }
 
 /** The rights of whoever wrote a chat message, kept for the hub to cut the reply's MCP token (see ChatRequest.grant). */
