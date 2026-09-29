@@ -2,6 +2,7 @@ import { z } from "zod";
 import { HiveError } from "./errors.ts";
 import { ACCOUNT_ID, AGENT_ROLES, agentProfileSchema } from "./agents.ts";
 import { MACHINE_ID, PROJECT_NAME } from "./keys.ts";
+import type { SkillSummary } from "./skills.ts";
 import {
   MEMORY_KINDS,
   MEMORY_STATUSES,
@@ -115,6 +116,9 @@ export const schemas = {
     /** Optimistic lock: the version the editor loaded (0 = creating a new doc). */
     baseVersion: z.number().int().min(0).optional(),
   }),
+
+  /** With a project: the skills its agents get (the project's own replace the team's of the same name). Without: every skill. */
+  "skills.list": z.object({ project: project.optional() }),
 
   "proposals.list": z.object({
     status: z.enum(PROPOSAL_STATUSES).optional(),
@@ -283,6 +287,7 @@ export interface MethodOutput {
   "docs.get": Doc | null;
   "docs.history": DocVersion[];
   "docs.save": Doc;
+  "skills.list": SkillSummary[];
   "proposals.list": Proposal[];
   "proposals.create": Proposal;
   "proposals.approve": Proposal;
@@ -330,6 +335,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "docs.get": "viewer",
   "docs.history": "viewer",
   "docs.save": "agent",
+  "skills.list": "viewer",
   "proposals.list": "viewer",
   "proposals.create": "agent",
   "proposals.approve": "agent",
