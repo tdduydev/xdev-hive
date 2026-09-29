@@ -11,7 +11,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
-import { formatTime, useAction, useCan, useHive, usePoll, useQuery } from "../hooks.ts";
+import { formatTime, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "../hooks.ts";
 import { useT } from "../i18n/index.tsx";
 import { REQUEST_TONE, requestErrorText, runLabel } from "../lib/runs.ts";
 import { scopeProject } from "../lib/scope.ts";
@@ -51,6 +51,11 @@ export function TasksPage() {
   );
   useEffect(() => setPending((requests.data ?? []).some((r) => r.status === "pending")), [requests.data]);
   const [openId, setOpenId] = useState<string | null>(null);
+  // A link from another page (a chat reply naming a task) opens that task.
+  const [linked, clearLinked] = useHashParam("task");
+  useEffect(() => {
+    if (linked) setOpenId(linked), clearLinked();
+  }, [linked, clearLinked]);
   const open = list.data?.find((task) => task.id === openId) ?? null;
   const reload = () => (list.reload(), requests.reload());
 
@@ -466,7 +471,7 @@ function RequestItem({ request: r, onChanged }: { request: RunRequest; onChanged
       </div>
       <div className="text-muted-foreground">{t("tasks.requestBy", { who: r.requestedBy, time: formatTime(r.requestedAt) })}</div>
       {r.runId ? (
-        <a className="font-medium text-primary underline underline-offset-2" href="#/runs">
+        <a className="font-medium text-primary underline underline-offset-2" href={`#/runs?run=${encodeURIComponent(r.runId)}`}>
           {t("tasks.requestRun", { run: r.runId })}
         </a>
       ) : null}
