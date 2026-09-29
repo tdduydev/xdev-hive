@@ -1,5 +1,5 @@
 import type { Access } from "./access.ts";
-import type { AgentProfile } from "./agents.ts";
+import type { AgentProfile, AgentRole } from "./agents.ts";
 import type { WriteSource } from "./source.ts";
 
 /** member: a person's hub account (what it may do comes from its per-project grants). */
@@ -265,6 +265,43 @@ export interface RunRecord {
   log?: string;
 }
 
+export const RUN_REQUEST_STATUSES = ["pending", "accepted", "rejected", "cancelled", "expired"] as const;
+export type RunRequestStatus = (typeof RUN_REQUEST_STATUSES)[number];
+
+/** Why a machine refused a run request: the message, and its key in the UI catalogue when there is one. */
+export interface RunRequestError {
+  message: string;
+  key?: string;
+  vars?: Record<string, string | number>;
+}
+
+/**
+ * A run a project manager asked one machine to start (runs.dispatch). The machine gets it in the answer to its next
+ * heartbeat, queues it like a run started on its Board, and says whether it took it (runs.requestResult).
+ */
+export interface RunRequest {
+  id: number;
+  /** The machine's hub actor. */
+  machineId: string;
+  machine: string;
+  project: string;
+  taskId: string;
+  taskTitle: string;
+  role: AgentRole;
+  /** Pinned profile; null: the machine rotates its profiles. */
+  profileId: string | null;
+  reviewAfter: boolean;
+  candidates: number;
+  instructions: string;
+  status: RunRequestStatus;
+  /** The machine's run, once it took the request (the first candidate's for best-of-n). */
+  runId: string | null;
+  error: RunRequestError | null;
+  requestedBy: string;
+  requestedAt: string;
+  updatedAt: string;
+}
+
 /** A run a machine tells the hub about: it failed for good, or it opened a merge request. Not stored. */
 export interface RunNotice {
   kind: "failed" | "mr";
@@ -327,6 +364,10 @@ export interface Machine {
   runs: MachineRun[];
   /** The machine's subscription profiles as it last reported them (installed, signed in, resting). */
   profiles: ReportedProfile[];
+  /** Projects the app on that machine has a repo for (empty for an app older than 0.46). */
+  projects: string[];
+  /** Its user lets project managers queue runs on it from the web (runs.dispatch). */
+  acceptsRuns: boolean;
 }
 
 /** API-price cost estimates over rolling windows: the last 24 hours, 7 days and 30 days. */

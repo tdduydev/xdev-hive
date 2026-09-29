@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { HiveError } from "./errors.ts";
-import { ACCOUNT_ID, AGENT_ROLES, agentProfileSchema, RUN_STATUSES } from "./agents.ts";
+import { ACCOUNT_ID, AGENT_ROLES, agentProfileSchema, MAX_CANDIDATES, RUN_STATUSES } from "./agents.ts";
 import { MACHINE_ID, PROJECT_NAME } from "./keys.ts";
 import type { SkillSummary } from "./skills.ts";
 import {
@@ -15,6 +15,7 @@ import {
   type CostSummary,
   type RunNotice,
   type RunRecord,
+  type RunRequest,
   type Doc,
   type DocSummary,
   type DocVersion,
@@ -210,6 +211,10 @@ export const schemas = {
     /** The machine's Setup page result; sent after each check, kept by the hub until the next one. */
     setup: z.object({ checkedAt: z.iso.datetime(), report: setupReport }).optional(),
     profiles: z.array(reportedProfile).max(50).optional(),
+    /** Projects the app has a repo for: the web offers only these machines for a project's runs. */
+    projects: z.array(project).max(200).optional(),
+    /** The user lets project managers queue runs on this machine from the web. */
+    acceptsRuns: z.boolean().optional(),
     runs: z
       .array(
         z.object({
@@ -274,6 +279,39 @@ export const schemas = {
   "runs.list": z.object({ project: project.optional(), limit: z.number().int().min(1).max(200).default(50) }),
   /** One run with the end of its log. */
   "runs.get": z.object({ machineId: z.string().min(1).max(200), runId: z.string().regex(/^[\w.-]{1,40}$/) }),
+  /**
+   * A project manager asks one machine to start a run, as its Board would: the machine gets it with its next
+   * heartbeat. Only a machine that is online, accepts runs from the hub and has the project's repo.
+   */
+  "runs.dispatch": z.object({
+    machineId: machineRef,
+    project,
+    taskId,
+    role: z.enum(AGENT_ROLES).default("implement"),
+    /** A profile of that machine; null rotates. */
+    profileId: z.string().max(40).nullable().default(null),
+    reviewAfter: z.boolean().default(false),
+    candidates: z.number().int().min(1).max(MAX_CANDIDATES).default(1),
+    instructions: z.string().max(4000).default(""),
+  }),
+  /** Run requests, the newest first: a project's, or every project the caller sees. */
+  "runs.requests": z.object({ project: project.optional(), limit: z.number().int().min(1).max(200).default(50) }),
+  /** Withdraws a request no machine took yet. */
+  "runs.cancelRequest": z.object({ id }),
+  /** The machine a request is for says whether it queued the run (only for requests addressed to itself). */
+  "runs.requestResult": z.object({
+    id,
+    status: z.enum(["accepted", "rejected"]),
+    runId: z.string().regex(/^[\w.-]{1,40}$/).nullable().default(null),
+    error: z
+      .object({
+        message: z.string().max(2000),
+        key: z.string().max(80).optional(),
+        vars: z.record(z.string().max(40), z.union([z.string().max(300), z.number()])).optional(),
+      })
+      .nullable()
+      .default(null),
+  }),
   "costs.summary": z.object({}),
   "machines.remove": z.object({ id: z.string().min(1).max(200) }),
 
@@ -340,13 +378,24 @@ export interface MethodOutput {
   "tasks.next": Task[];
   "tasks.claim": { claimed: boolean; task: Task | null };
   "tasks.update": Task;
-  "machines.heartbeat": { duplicate: boolean; cooldowns: QuotaCooldown[]; policy: TeamPolicy; commands: MachineCommand[] };
+  "machines.heartbeat": {
+    duplicate: boolean;
+    cooldowns: QuotaCooldown[];
+    policy: TeamPolicy;
+    commands: MachineCommand[];
+    /** Pending run requests for this machine; only while it accepts runs from the hub. */
+    runRequests: RunRequest[];
+  };
   "machines.list": Machine[];
   "costs.summary": CostSummary;
   "runs.report": RunNotice;
   "runs.push": { stored: number };
   "runs.list": RunRecord[];
   "runs.get": RunRecord | null;
+  "runs.dispatch": RunRequest;
+  "runs.requests": RunRequest[];
+  "runs.cancelRequest": RunRequest;
+  "runs.requestResult": RunRequest;
   "machines.remove": { removed: boolean };
   "cooldowns.list": QuotaCooldown[];
   /** null when `until` is already past (nothing to rest). */
@@ -398,6 +447,11 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "runs.push": "agent",
   "runs.list": "viewer",
   "runs.get": "viewer",
+  // Also "manage" on the project: a project manager, never an agent token.
+  "runs.dispatch": "agent",
+  "runs.requests": "viewer",
+  "runs.cancelRequest": "agent",
+  "runs.requestResult": "agent",
   "machines.remove": "admin",
   "cooldowns.list": "viewer",
   "cooldowns.set": "agent",
