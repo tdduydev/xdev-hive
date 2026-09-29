@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { HiveError, type Actor } from "../src/index.ts";
+import { HiveError, parseSkill, type Actor } from "../src/index.ts";
 import { SqliteHive } from "../src/node.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
@@ -58,6 +58,34 @@ describe("docs", () => {
     hive.seed();
     const docs = await hive.call("docs.list", {}, viewer);
     assert.deepEqual(docs.map((d) => [d.key, d.version]), [["org/agent-protocol", 1]]);
+  });
+
+  it("gives a hub the chat leader's skill; a hub seeded before gets it once, and one removed stays removed", async () => {
+    const hub = new SqliteHive(":memory:");
+    hub.seed("hub", { hub: true });
+    const [leader] = await hub.call("skills.list", {}, viewer);
+    assert.equal(leader?.name, "hive-leader");
+    assert.equal(leader?.scope, "org", "a team skill, edited on the Skills page like the others");
+    const doc = (await hub.call("docs.get", { key: "org/skills/hive-leader" }, viewer))!;
+    assert.equal(parseSkill(doc.content).name, "hive-leader");
+    assert.match(doc.content, /propose_run/);
+
+    // A hub from before seed versions were kept: its docs are there, the leader's skill is not.
+    const old = new SqliteHive(":memory:");
+    old.seed("hub");
+    old.db.exec("DELETE FROM hive_meta");
+    await old.call("docs.save", { key: "org/agent-protocol", content: "Ours now" }, admin);
+    old.seed("hub", { hub: true });
+    assert.deepEqual((await old.call("skills.list", {}, viewer)).map((s) => s.name), ["hive-leader"]);
+    assert.equal((await old.call("docs.get", { key: "org/agent-protocol" }, viewer))!.content, "Ours now", "the first seed is not written again");
+    old.db.exec("DELETE FROM docs WHERE key = 'org/skills/hive-leader'");
+    old.seed("hub", { hub: true });
+    assert.deepEqual(await old.call("skills.list", {}, viewer), [], "removed by the team: not brought back");
+
+    // A machine's own database has no chat.
+    const local = new SqliteHive(":memory:");
+    local.seed();
+    assert.deepEqual(await local.call("skills.list", {}, viewer), []);
   });
 });
 
