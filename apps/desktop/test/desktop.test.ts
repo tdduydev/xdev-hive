@@ -325,3 +325,45 @@ describe("skills in the repo", () => {
     assert.deepEqual(sh(repo, "git", ["show", "--name-only", "--format=", "HEAD"]).trim().split("\n"), [".claude/skills/own/SKILL.md"], "the runner commits the team's skill, not Hive's");
   });
 });
+
+describe("agent CLI config in a task worktree", () => {
+  // What Codex wrote into the AUTH-5 worktree of the xdev-auth pilot (29/9), from the repo's Claude Code setup.
+  const writeCliConfig = (repo: string) => {
+    mkdirSync(path.join(repo, ".codex"), { recursive: true });
+    mkdirSync(path.join(repo, ".agents/skills/x"), { recursive: true });
+    writeFileSync(path.join(repo, ".codex/config.toml"), '[mcp_servers.xdev-hive]\ncommand = "hive-mcp"\n');
+    writeFileSync(path.join(repo, ".codex/hooks.json"), '{"hooks":{}}\n');
+    writeFileSync(path.join(repo, ".agents/skills/x/SKILL.md"), "---\nname: x\ndescription: x\n---\nSteps.\n");
+  };
+  const committed = (repo: string) => sh(repo, "git", ["show", "--name-only", "--format=", "HEAD"]).trim().split("\n").sort();
+
+  it("leaves out the .codex and .agents folders a CLI wrote, and commits the agent's work", () => {
+    const repo = gitRepo();
+    writeCliConfig(repo);
+    writeFileSync(path.join(repo, "work.txt"), "done\n");
+    const c = commitAll(repo, "ai(T-1): work", []);
+    assert.equal(c.error, null);
+    assert.deepEqual(committed(repo), ["work.txt"]);
+    assert.match(sh(repo, "git", ["status", "--porcelain", "--untracked-files=all"]), /\?\? \.codex\/config\.toml/, "still on disk, just not committed");
+
+    // Nothing but those files left: no empty commit.
+    const before = sh(repo, "git", ["rev-parse", "HEAD"]).trim();
+    assert.deepEqual(commitAll(repo, "ai(T-1): again", []), { sha: null, error: null });
+    assert.equal(sh(repo, "git", ["rev-parse", "HEAD"]).trim(), before);
+  });
+
+  it("commits them as usual in a project that tracks those folders", () => {
+    const repo = gitRepo();
+    mkdirSync(path.join(repo, ".codex"), { recursive: true });
+    mkdirSync(path.join(repo, ".agents/skills/own"), { recursive: true });
+    writeFileSync(path.join(repo, ".codex/config.toml"), 'model = "gpt-5"\n');
+    writeFileSync(path.join(repo, ".agents/skills/own/SKILL.md"), "---\nname: own\ndescription: own\n---\nOwn steps.\n");
+    sh(repo, "git", ["add", "."]);
+    sh(repo, "git", ["commit", "-qm", "team's Codex setup"]);
+
+    writeCliConfig(repo);
+    const c = commitAll(repo, "ai(T-1): work", []);
+    assert.equal(c.error, null);
+    assert.deepEqual(committed(repo), [".agents/skills/x/SKILL.md", ".codex/config.toml", ".codex/hooks.json"]);
+  });
+});
