@@ -1,17 +1,9 @@
 // Review verdicts and merge request text.
 
-export type Verdict = "approve" | "changes" | "unknown" | "none";
+import { parseVerdict, type Verdict } from "@xdev-hive/core";
 
-/** Reads the verdict the review prompt asks for ("verdict (approve / changes needed)"). */
-export function parseVerdict(summary: string | null | undefined): Verdict {
-  if (!summary?.trim()) return "unknown";
-  const line = /verdict\s*[:：\-–—]?\s*\**\s*([^\n]{0,60})/i.exec(summary)?.[1] ?? "";
-  if (/^(changes?\s+(needed|requested|required)|request(ed)?\s+changes|reject|not\s+approved)/i.test(line)) return "changes";
-  if (/^(approve[ds]?|lgtm|ship\s*it|ok\b)/i.test(line)) return "approve";
-  if (/(?<!\bno\s)\bchanges?\s+(needed|requested|required)\b|\brequest(ed)?\s+changes\b/i.test(summary)) return "changes";
-  if (/\b(approved?|lgtm)\b/i.test(summary)) return "approve";
-  return "unknown";
-}
+// The web reads review verdicts too (roadmap 18b): the parser lives in core.
+export { parseVerdict, type Verdict };
 
 /**
  * Agent output goes into a fenced block: GitLab does not run quick actions (/merge, /approve…) or

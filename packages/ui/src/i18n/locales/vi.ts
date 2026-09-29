@@ -596,6 +596,13 @@ export const vi = {
     cancelHint: "Máy dừng agent ở heartbeat sau (khoảng 30 giây).",
     cancelRequested: "{who} yêu cầu huỷ lúc {time}; máy dừng agent ở heartbeat sau (khoảng 30 giây).",
     cancelling: "Đang chờ máy huỷ",
+    verdict: { approve: "Review: đạt", changes: "Review: cần sửa" },
+    fixTitle: "Xếp lượt sửa",
+    fixHint: "Chạy lại {task} trên {machine}, trên branch của task, với kết quả review này làm chỉ dẫn. Gói tự xoay như Board.",
+    fixInstructions: "Chỉ dẫn gửi agent",
+    fixSend: "Xếp lượt sửa",
+    fixSent: "Đã gửi yêu cầu #{id} cho {machine}; máy nhận ở heartbeat sau.",
+    fixOpenTask: "Xem {task}",
   },
   agents: {
     subtitle: "Mỗi profile là một gói sub (một tài khoản CLI). Runner chọn theo ưu tiên, xoay vòng các gói cùng mức, và cho gói nghỉ đến giờ reset khi hết quota.",
