@@ -1175,6 +1175,9 @@ export const vi = {
     noChanges: "(không có thay đổi)",
     changesFromBase: "Thay đổi so với base:",
     uncommitted: "Chưa commit:",
+    startRemote: "Bắt đầu từ {ref} ({sha}), vừa lấy về từ remote.",
+    startNoRemote: "Repo không có remote: bắt đầu từ HEAD của repo ({sha}).",
+    startFetchFailed: "Không lấy được bản mới từ {remote} ({reason}): bắt đầu từ HEAD của repo ({sha}), có thể thiếu code vừa merge.",
   },
   bestOf: {
     onlyOne: "Chỉ bản này chạy xong.",
