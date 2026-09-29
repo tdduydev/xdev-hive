@@ -1,6 +1,6 @@
-// Renders Hive docs into a repo (AGENTS.md, CLAUDE.md, docs/decisions.md, and the docs for some paths:
-// nested AGENTS.md, .claude/rules/xdev-hive/) and commits only those files.
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+// Renders Hive docs into a repo (AGENTS.md, CLAUDE.md, docs/decisions.md, the docs for some paths:
+// nested AGENTS.md, .claude/rules/xdev-hive/, and skills: .claude/skills/<name>/SKILL.md) and commits only those files.
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   agentsDocKey,
@@ -10,6 +10,7 @@ import {
   MANAGED_START,
   planProjectSync,
   RULES_DIR,
+  SKILLS_DIR,
   stripManaged,
   withManagedBlock,
   type Actor,
@@ -27,7 +28,7 @@ const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : 
 /** AGENTS.md longer than this gets a note: move parts of it into docs for some paths. */
 const LONG_AGENTS_LINES = 200;
 
-/** Files a sync wrote for docs of some paths: nested AGENTS.md with a managed block, and our rules. */
+/** Files a sync wrote for docs of some paths (nested AGENTS.md with a managed block, our rules) and for skills. */
 function managedFiles(repo: string, gitRepo: boolean): string[] {
   const out: string[] = [];
   if (gitRepo) {
@@ -43,8 +44,17 @@ function managedFiles(repo: string, gitRepo: boolean): string[] {
     }
   };
   if (existsSync(path.join(repo, RULES_DIR))) walk(RULES_DIR);
+  // A skill folder is Hive's when its SKILL.md has the managed block; the repo's own skills stay.
+  if (existsSync(path.join(repo, SKILLS_DIR))) {
+    for (const e of readdirSync(path.join(repo, SKILLS_DIR), { withFileTypes: true })) {
+      const file = `${SKILLS_DIR}/${e.name}/SKILL.md`;
+      if (e.isDirectory() && read(path.join(repo, file))?.includes(MANAGED_START)) out.push(file);
+    }
+  }
   return out;
 }
+
+const isSkillFile = (f: string) => f.startsWith(`${SKILLS_DIR}/`);
 
 const defaultAgentsDoc = (project: string) => `# ${project}
 
@@ -96,7 +106,7 @@ export async function syncProject(
   const wanted = new Set(files.map((f) => f.path));
   for (const f of managedFiles(repo, gitRepo)) {
     if (wanted.has(f)) continue;
-    const rest = f.startsWith(`${RULES_DIR}/`) ? "" : stripManaged(read(path.join(repo, f)) ?? "").trim();
+    const rest = f.startsWith(`${RULES_DIR}/`) || isSkillFile(f) ? "" : stripManaged(read(path.join(repo, f)) ?? "").trim();
     files.push({ path: f, content: rest ? `${rest}\n` : null });
   }
   const agentsLines = planned[0]!.content.split("\n").length;
@@ -115,6 +125,11 @@ export async function syncProject(
       actions.push({ file: f.path, action: "skipped", note: tr("fileNote.notInHive") });
       continue;
     }
+    // The repo has its own skill of that name: it stays, and Hive's does not go in.
+    if (isSkillFile(f.path) && before !== null && !before.includes(MANAGED_START)) {
+      actions.push({ file: f.path, action: "skipped", note: tr("fileNote.ownSkill") });
+      continue;
+    }
     // With auto-commit, every earlier sync was committed, so a dirty file means someone edited it by hand.
     if (opts.autoCommit && gitRepo && before !== null && /^(.M|M)/.test(git(repo, ["status", "--porcelain", "--", f.path]))) {
       actions.push({ file: f.path, action: "skipped", note: tr("fileNote.uncommitted") });
@@ -124,6 +139,14 @@ export async function syncProject(
       // Only a tracked file's removal can be committed; an untracked one just goes.
       if (gitRepo && git(repo, ["ls-files", "--", f.path])) changed.push(f.path);
       rmSync(abs, { force: true });
+      // The skill's folder too, when nothing else is in it.
+      if (isSkillFile(f.path)) {
+        try {
+          rmdirSync(path.dirname(abs));
+        } catch {
+          // not empty: the repo keeps what else it had there
+        }
+      }
       actions.push({ file: f.path, action: "removed" });
       continue;
     }

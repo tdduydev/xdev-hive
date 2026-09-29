@@ -1096,6 +1096,7 @@ export const vi = {
     hooksPathSet: "đang là {current}, chép .githooks/pre-commit vào đó",
     codexOwnEntry: "đã có [mcp_servers.{name}] do bạn tự thêm",
     notInHive: "chưa có bản trong Hive, không ghi đè bản trong repo",
+    ownSkill: "repo đã có skill cùng tên của riêng nó, giữ nguyên",
     uncommitted: "có thay đổi chưa commit, xử lý trước khi đồng bộ",
   },
   syncNote: {

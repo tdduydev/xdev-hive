@@ -1095,6 +1095,7 @@ export const en: Catalog = {
     hooksPathSet: "set to {current}; copy .githooks/pre-commit there",
     codexOwnEntry: "[mcp_servers.{name}] was added by you",
     notInHive: "no version in Hive yet; the repo's file is not overwritten",
+    ownSkill: "the repo has its own skill of that name: it stays",
     uncommitted: "has uncommitted changes; deal with them before syncing",
   },
   syncNote: {
