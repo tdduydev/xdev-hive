@@ -1119,6 +1119,7 @@ export const vi = {
     quotaNotShared: "không báo được quota lên hub: {reason}",
     waitingParallel: "Đang chờ slot trống (đã đạt số agent chạy song song)",
     waitingSlot: "Đang chờ slot trống",
+    waitingVendor: "Đang chờ gói của vendor khác rảnh để review chéo",
     noProfile: "Không có profile nào phù hợp (đã tắt, sai vai trò hoặc đã thử hết)",
     noCli: "Máy này chưa cài CLI cho gói phù hợp ({bins}): cài ở Cài đặt máy",
     notSignedIn: "Chưa gói phù hợp nào đăng nhập CLI ({profiles}): đăng nhập trong terminal, rồi bấm Kiểm tra CLI ở Gói sub & agent",

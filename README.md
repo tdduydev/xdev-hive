@@ -85,7 +85,7 @@ Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ v�
 
 ```bash
 nvm use && npm install
-npm test            # 308 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR, GitHub PR)
+npm test            # 310 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR, GitHub PR)
 npm run typecheck
 ```
 
@@ -135,7 +135,9 @@ queued ─chọn gói─▶ running ─exit 0──────▶ succeeded ─
 ```
 
 - **Profile = một gói sub** (trang *Gói sub & agent*): lệnh, tham số, biến môi trường, vai trò (lập kế hoạch / làm task / review), ưu tiên, số chạy song song, thời gian nghỉ mặc định, giới hạn mỗi run.
-- **Chọn gói**: gói được ghim > bỏ qua gói tắt/đang bận/đang nghỉ/sai vai trò/đã thử ở run này > review ưu tiên vendor khác người làm > ưu tiên thấp chạy trước > cùng ưu tiên thì gói lâu chưa dùng chạy trước.
+- **Chọn gói**: gói được ghim > bỏ qua gói tắt/đang bận/đang nghỉ/sai vai trò/đã thử ở run này > review dùng vendor khác người làm > ưu tiên thấp chạy trước > cùng ưu tiên thì gói lâu chưa dùng chạy trước.
+  - Review chéo **chờ** gói của vendor khác khi gói đó chỉ đang bận (Board ghi lý do). Chỉ khi mọi gói vendor khác đều tắt, đang nghỉ vì quota hay chạm ngưỡng thì mới review bằng cùng vendor, để không bị kẹt hàng giờ.
+  - Agent review được dặn không gọi `task_claim` / `task_update`: task vẫn thuộc run làm task.
 - **Hết quota**: nhận diện từ cuối output khi CLI thoát lỗi (`usage limit`, `429`, `RESOURCE_EXHAUSTED`…). Đọc giờ reset nếu có (`|<epoch>`, `try again in 2 hours 13 minutes`, `resets 3pm`, ISO), không có thì dùng thời gian nghỉ mặc định. Phần làm dở được commit `wip`, lần sau chạy tiếp trên cùng branch với prompt "tiếp tục từ lần trước".
 - **Worktree**: `~/.xdev-hive/worktrees/<dự án>/<task>` trên branch `ai/<task>`, không đụng checkout chính. Runner commit phần agent để lại và không push. Lúc commit, runner không chạy git hook nào, vì agent có thể đã ghi hook vào `.githooks` của worktree. `AGENTS.md`, `CLAUDE.md`, `docs/decisions.md` không được đưa vào commit này và hiện ở mục chưa commit trong tóm tắt run. File config agent chưa commit được chép vào worktree nhưng không đưa vào branch.
 - **Không chạy cấu hình trong repo** (profile loại Claude Code): runner thêm `--settings '{"disableAllHooks":true}' --setting-sources user --strict-mcp-config --mcp-config <…>` vào cuối tham số. Agent sửa được hook, `.mcp.json` và `.claude/settings.json` trong worktree, và run sau sẽ chạy những thứ đó, nên run không đọc chúng.
@@ -147,6 +149,7 @@ queued ─chọn gói─▶ running ─exit 0──────▶ succeeded ─
   - Cần hook của repo thì tạo profile loại *Tuỳ chỉnh*: runner để nguyên tham số của loại này.
   - Codex giữ sandbox `workspace-write` (`--sandbox workspace-write`). Codex 0.15x bỏ cờ `--full-auto`: profile cũ còn cờ đó được đổi sang `--sandbox workspace-write` lúc chạy (bản Codex cũ cũng nhận cờ này).
   - Codex 0.15x hỏi trước mỗi lần gọi tool MCP có ghi (`task_claim`, `memory_write`…), mà run headless không có ai trả lời nên bị từ chối. Run `codex exec …` của Hive thêm `-c mcp_servers.xdev-hive.default_tools_approval_mode="approve"` (container: server `hive`), và block Hive trong `~/.codex/config.toml` cũng có dòng đó; chỉ tool của Hive được cho qua.
+  - Run Codex cũng đặt `-c mcp_servers.xdev-hive.env={HIVE_AGENT="<id profile>",HIVE_PROJECT=…,HIVE_TASK=…,HIVE_RUN=…}` như Claude Code: `~/.codex/config.toml` chỉ ghi `codex`, nên agent claim task dưới tên khác runner và giữ lease 2 giờ, chặn run sau của task.
 - **Hive**: runner `task_claim` trước khi chạy với cùng tên agent như `hive-mcp` (`HIVE_AGENT` = id profile). Xong thì chuyển task sang *Chờ review* kèm tóm tắt, trừ khi agent đã tự làm qua MCP. Review chéo được nối vào ghi chú task.
 - Lịch sử run và log nằm ở `~/.xdev-hive/runs.db` và `~/.xdev-hive/runs/<id>.log`. Log có prompt và output, **không** ghi biến môi trường.
 - App mở từ Finder có `PATH` ngắn, nên runner lấy `PATH` từ login shell (`$SHELL -ilc`) cộng `~/.local/bin`. Dùng nút *Kiểm tra CLI* để xem lệnh có tìm thấy không.
