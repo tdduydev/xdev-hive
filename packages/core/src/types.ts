@@ -263,8 +263,17 @@ export interface RunRecord {
   startedAt: string | null;
   finishedAt: string | null;
   updatedAt: string;
+  /** A project manager asked on the web to stop it (runs.cancel): the machine stops it at its next heartbeat. */
+  cancelRequestedBy: string | null;
+  cancelRequestedAt: string | null;
   /** The end of the run's readable log, lines that looked like secrets hidden: runs.get only. */
   log?: string;
+}
+
+/** A run a machine is asked to stop (heartbeat), and who asked. */
+export interface RunCancel {
+  runId: string;
+  requestedBy: string;
 }
 
 export const RUN_REQUEST_STATUSES = ["pending", "accepted", "rejected", "cancelled", "expired"] as const;

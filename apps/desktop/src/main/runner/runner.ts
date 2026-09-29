@@ -38,6 +38,7 @@ import {
   type MachineCommand,
   type QuotaCooldown,
   type ReportedProfile,
+  type RunCancel,
   type RunRequest,
   type RunRequestError,
   type SetupReport,
@@ -220,6 +221,8 @@ export class Runner {
   readonly #waiting = new Map<string, string>();
   /** Runs between their end and the last of their bookkeeping (see AgentRun.finishing). */
   readonly #finishing = new Set<string>();
+  /** Why a run was stopped, when not from the Board here (a project manager on the web). */
+  readonly #cancelNotes = new Map<string, string>();
   /** What each running agent is doing now (see AgentRun.activity). */
   readonly #activity = new Map<string, string>();
   /** Lease holder name as the backend recorded it (a hub appends the token name: claude-1.duy-mbp@duy). */
@@ -410,12 +413,15 @@ export class Runner {
     return runs[0]!;
   }
 
-  cancel(id: string): AgentRun {
+  /** Stops a run: one waiting ends now, a running agent is stopped. `note`: why, instead of the Board's own note. */
+  cancel(id: string, note?: string): AgentRun {
     const run = this.store.get(id);
     if (!run) throw new HiveError("not_found", `Không có run ${id}.`, { key: "errors.runNotFound", vars: { id } });
+    if (note) this.#cancelNotes.set(id, note);
     if (run.status === "queued") {
       this.#waiting.delete(id);
-      const done = this.store.update(id, { status: "cancelled", finishedAt: this.#iso(), error: tr("runNote.cancelledQueued") });
+      const done = this.store.update(id, { status: "cancelled", finishedAt: this.#iso(), error: note ?? tr("runNote.cancelledQueued") });
+      this.#cancelNotes.delete(id);
       // It may have been the last one its group waited for.
       if (done.bestOf) this.#track(this.#bestOfNext(done).catch(() => undefined));
       return done;
@@ -582,8 +588,18 @@ export class Runner {
     this.#opts.onHub?.(update);
     // A hub older than runs.dispatch sends none.
     await this.#takeRequests(res.runRequests ?? []);
+    if (this.#host.settings().acceptHubRuns) this.#cancelFromHub(res.cancelRuns ?? []);
     if (this.#host.settings().acceptHubRuns) this.#chats.take(res.chatRequests ?? []);
     return update;
+  }
+
+  /** Runs a project manager stopped on the web: asked again at each heartbeat until the hub hears they ended. */
+  #cancelFromHub(cancels: RunCancel[]): void {
+    for (const { runId, requestedBy } of cancels) {
+      const run = this.store.get(runId);
+      if (!run || (run.status !== "queued" && run.status !== "running")) continue;
+      this.cancel(runId, tr("runNote.cancelledWeb", { who: requestedBy }));
+    }
   }
 
   /**
@@ -1154,7 +1170,8 @@ export class Runner {
       const hit = outcome.code !== 0 && !outcome.cancelled ? detectRateLimit(outcome.all, now) : null;
       if (outcome.cancelled) {
         status = "cancelled";
-        error = tr("runNote.cancelled");
+        error = this.#cancelNotes.get(run.id) ?? tr("runNote.cancelled");
+        this.#cancelNotes.delete(run.id);
       } else if (outcome.timedOut) {
         error = tr("runNote.timedOut", { minutes: profile.timeoutMinutes });
       } else if (outcome.code === 0) {

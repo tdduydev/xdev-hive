@@ -2,14 +2,14 @@
 // viewer sees, what a running agent does now, and the end of each run's log. Hub mode only; the Board shows this
 // machine's own runs with the full log.
 import { useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { Square, X } from "lucide-react";
 import { cn } from "cn";
 import type { RunRecord } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
-import { formatTime, formatUsd, useHashParam, useHive, useQuery } from "../hooks.ts";
+import { formatTime, formatUsd, useAction, useCan, useHashParam, useHive, useQuery } from "../hooks.ts";
 import { useT } from "../i18n/index.tsx";
 import { isLive, runDuration, runLabel } from "../lib/runs.ts";
 import { scopeProject } from "../lib/scope.ts";
@@ -89,7 +89,9 @@ export function RunsPage() {
                       </TableCell>
                       <TableCell>
                         <Badge tone={STATUS_TONE[r.status] ?? "neutral"}>{runLabel("runStatus", r.status)}</Badge>
-                        {r.activity ? (
+                        {r.cancelRequestedBy && isLive(r) ? (
+                          <div className="max-w-64 truncate text-xs text-warning">{t("runs.cancelling")}</div>
+                        ) : r.activity ? (
                           <div className="max-w-64 truncate text-xs text-info" title={r.activity}>
                             {r.activity}
                           </div>
@@ -111,15 +113,17 @@ export function RunsPage() {
             </Table>
           </div>
         ) : null}
-        {run ? <RunRecordDetail key={`${run.machineId}/${run.runId}`} run={run} onClose={() => setSelected(null)} /> : null}
+        {run ? <RunRecordDetail key={`${run.machineId}/${run.runId}`} run={run} onClose={() => setSelected(null)} onChanged={runs.reload} /> : null}
       </div>
     </Page>
   );
 }
 
-function RunRecordDetail({ run, onClose }: { run: RunRecord; onClose: () => void }) {
+function RunRecordDetail({ run, onClose, onChanged }: { run: RunRecord; onClose: () => void; onChanged: () => void }) {
   const { client } = useHive();
   const t = useT();
+  const allow = useCan();
+  const action = useAction();
   const live = isLive(run);
   const tick = useRefresh(live);
   const full = useQuery(() => client.call("runs.get", { machineId: run.machineId, runId: run.runId }), [client, run.machineId, run.runId, tick]);
@@ -165,6 +169,31 @@ function RunRecordDetail({ run, onClose }: { run: RunRecord; onClose: () => void
               <span className="wrap-anywhere">{t("board.activity", { activity: run.activity })}</span>
             </div>
           ) : null}
+          {live && run.cancelRequestedBy ? (
+            <Notice tone="warn" className="wrap-anywhere">
+              {t("runs.cancelRequested", { who: run.cancelRequestedBy, time: formatTime(run.cancelRequestedAt) })}
+            </Notice>
+          ) : live && allow(run.project, "manage") ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-destructive"
+                disabled={action.busy}
+                onClick={() =>
+                  void action.run(async () => {
+                    await client.call("runs.cancel", { machineId: run.machineId, runId: run.runId });
+                    onChanged();
+                  })
+                }
+              >
+                <Square />
+                {t("runs.cancel")}
+              </Button>
+              <span className="text-xs text-muted-foreground">{t("runs.cancelHint")}</span>
+            </div>
+          ) : null}
+          <ErrorNote error={action.error} />
           {run.error ? (
             <Notice tone={run.status === "queued" ? "info" : "warn"} className="wrap-anywhere">
               {run.error}
