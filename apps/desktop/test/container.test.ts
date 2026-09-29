@@ -200,6 +200,7 @@ describe("Hive and sign-in for CLIs in a container", () => {
     ]);
     const source = JSON.stringify(JSON.stringify({ via: "mcp", machine: "duy-mbp", run: "R-1", task: "T-1" }));
     assert.equal(args[7], `mcp_servers.hive.http_headers={"x-hive-agent"="codex-1.duy-mbp","x-hive-project"="demo","x-hive-source"=${source},"x-hive-readonly"="1"}`);
+    assert.deepEqual(args.slice(8), ["-c", 'mcp_servers.hive.default_tools_approval_mode="approve"'], "headless: Hive's tools run without asking");
     assert.ok(!args.join(" ").includes("hive_machine"));
     assert.deepEqual(hubMcpEnv(hub, r, "codex"), { HIVE_HUB_TOKEN: "hive_machine" });
   });
