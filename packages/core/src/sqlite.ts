@@ -17,7 +17,7 @@ import {
 } from "./methods.ts";
 import { fuseRanks, similarity, type Embedder } from "./embed.ts";
 import { assertNoHidden, stripHidden } from "./hidden.ts";
-import { assertNoSecret, findSecret } from "./secrets.ts";
+import { assertNoSecret, findSecret, redactLines } from "./secrets.ts";
 import { parseSource, type WriteSource } from "./source.ts";
 import { SEED_DOCS } from "./seed.ts";
 import type {
@@ -41,6 +41,7 @@ import type {
   QuotaCooldown,
   ReportedProfile,
   RunNotice,
+  RunRecord,
   SetupReport,
   Task,
   TeamPolicy,
@@ -148,7 +149,50 @@ const MIGRATIONS: string[] = [
     DELETE FROM memory_vectors WHERE memory_id = new.id;
   END;
   `,
+  `
+  CREATE TABLE run_records(
+    machine_id TEXT NOT NULL, run_id TEXT NOT NULL, machine TEXT NOT NULL, project TEXT NOT NULL, task_id TEXT NOT NULL,
+    task_title TEXT NOT NULL, role TEXT NOT NULL, status TEXT NOT NULL, profile_id TEXT, activity TEXT, summary TEXT,
+    error TEXT, branch TEXT, commits INTEGER NOT NULL DEFAULT 0, mr_url TEXT, cost_usd REAL, log TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT, updated_at TEXT NOT NULL,
+    PRIMARY KEY(machine_id, run_id));
+  CREATE INDEX run_records_project ON run_records(project, updated_at);
+  CREATE INDEX run_records_at ON run_records(updated_at);
+  `,
 ];
+
+/** Run records (runs.push) are kept this long after their last update. */
+const RUN_RECORD_DAYS = 30;
+
+/** A pushed text as the team may see it: no hidden characters, no line that looks like a secret. */
+const clean = (text: string | null) => (text === null ? null : redactLines(stripHidden(text)));
+
+function toRunRecord(r: Row, withLog: boolean): RunRecord {
+  const s = (v: unknown) => (v == null ? null : String(v));
+  return {
+    machineId: str(r.machine_id),
+    machine: str(r.machine),
+    runId: str(r.run_id),
+    project: str(r.project),
+    taskId: str(r.task_id),
+    taskTitle: str(r.task_title),
+    role: str(r.role),
+    status: str(r.status),
+    profileId: s(r.profile_id),
+    activity: s(r.activity),
+    summary: s(r.summary),
+    error: s(r.error),
+    branch: s(r.branch),
+    commits: num(r.commits),
+    mrUrl: s(r.mr_url),
+    costUsd: r.cost_usd == null ? null : Number(r.cost_usd),
+    createdAt: str(r.created_at),
+    startedAt: s(r.started_at),
+    finishedAt: s(r.finished_at),
+    updatedAt: str(r.updated_at),
+    ...(withLog ? { log: str(r.log) } : {}),
+  };
+}
 
 /** Entries embedded per request while indexing. */
 const EMBED_BATCH = 16;
@@ -462,7 +506,11 @@ export class SqliteHive implements HiveBackend {
       }
       case "memory.search":
       case "skills.list":
+      case "runs.list":
         if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
+        return;
+      case "runs.push":
+        for (const r of i.runs as Array<{ project: string }>) this.#need(actor, r.project, "contribute", `Project ${r.project}`);
         return;
       case "memory.write":
         return this.#need(actor, i.shared ? null : i.project, "contribute", i.shared ? "Shared memory" : `Project ${i.project}`);
@@ -505,6 +553,8 @@ export class SqliteHive implements HiveBackend {
         return (out as DocSummary[]).filter((d) => sees(d.project)) as MethodOutput[M];
       case "skills.list":
         return (out as SkillSummary[]).filter((s) => sees(s.project)) as MethodOutput[M];
+      case "runs.list":
+        return (out as RunRecord[]).filter((r) => sees(r.project)) as MethodOutput[M];
       case "proposals.list":
         return (out as Proposal[]).filter((p) => sees(SqliteHive.#docOwner(p.docKey))) as MethodOutput[M];
       case "memory.search":
@@ -1326,6 +1376,45 @@ export class SqliteHive implements HiveBackend {
             commands,
           };
         }),
+
+      // Keyed by the hub actor, like the heartbeat: two machines may number their runs alike.
+      "runs.push": ({ machine, runs }, actor) =>
+        this.#tx(() => {
+          const now = this.#now();
+          const put = db.prepare(
+            `INSERT INTO run_records(machine_id, run_id, machine, project, task_id, task_title, role, status, profile_id, activity,
+               summary, error, branch, commits, mr_url, cost_usd, log, created_at, started_at, finished_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(machine_id, run_id) DO UPDATE SET machine = excluded.machine, project = excluded.project,
+               task_id = excluded.task_id, task_title = excluded.task_title, role = excluded.role, status = excluded.status,
+               profile_id = excluded.profile_id, activity = excluded.activity, summary = excluded.summary, error = excluded.error,
+               branch = excluded.branch, commits = excluded.commits, mr_url = excluded.mr_url, cost_usd = excluded.cost_usd,
+               log = excluded.log, started_at = excluded.started_at, finished_at = excluded.finished_at, updated_at = excluded.updated_at`,
+          );
+          for (const r of runs) {
+            // The machine already hid secret-looking lines; this is the hub's own check of what it keeps.
+            put.run(
+              actor.name, r.runId, machine, r.project, r.taskId, stripHidden(r.taskTitle), r.role, r.status, r.profileId,
+              clean(r.activity), clean(r.summary), clean(r.error), r.branch, r.commits, r.mrUrl, r.costUsd, clean(r.log) ?? "",
+              r.createdAt, r.startedAt, r.finishedAt, now,
+            );
+          }
+          db.prepare("DELETE FROM run_records WHERE updated_at < ?").run(this.#now(-RUN_RECORD_DAYS * 24 * 60));
+          return { stored: runs.length };
+        }),
+
+      "runs.list": ({ project, limit }) =>
+        (
+          db
+            .prepare("SELECT * FROM run_records WHERE (?1 IS NULL OR project = ?1) ORDER BY created_at DESC, run_id DESC LIMIT ?2")
+            .all(project ?? null, limit) as Row[]
+        ).map((r) => toRunRecord(r, false)),
+
+      "runs.get": ({ machineId, runId }, actor) => {
+        const row = db.prepare("SELECT * FROM run_records WHERE machine_id = ? AND run_id = ?").get(machineId, runId) as Row | undefined;
+        // A run of a project the caller does not see answers like a missing one.
+        return row && levelOn(actor, str(row.project)) !== null ? toRunRecord(row, true) : null;
+      },
 
       // Nothing is stored: the notice only feeds the hub's webhooks. The error goes to a chat channel, so it is cleaned first.
       "runs.report": (input, actor) => {

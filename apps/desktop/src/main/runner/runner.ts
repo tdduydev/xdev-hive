@@ -19,6 +19,8 @@ import {
   AGENT_ROLES,
   agentActorName,
   HiveError,
+  redactLines,
+  stripHidden,
   usageStop,
   type Actor,
   type AgentProfile,
@@ -107,6 +109,8 @@ export interface RunnerOptions {
   tickMs?: number;
   /** Hub mode: how often to report runs and refresh shared quota cooldowns. */
   heartbeatMs?: number;
+  /** Hub mode: how often to push runs that changed (status, current step, the end of the log) for the web. */
+  pushMs?: number;
   /** App version shown on the hub's machine list. */
   version?: string;
   /** Rest for a profile whose CLI is missing, so rotation skips it for a while. */
@@ -225,6 +229,10 @@ export class Runner {
   #again = false;
   #interval: NodeJS.Timeout | undefined;
   #heartbeatTimer: NodeJS.Timeout | undefined;
+  #pushTimer: NodeJS.Timeout | undefined;
+  /** What the hub last got of each run (see pushRuns). */
+  readonly #pushed = new Map<string, string>();
+  #pushing = false;
 
   constructor(host: RunnerHost, opts: RunnerOptions) {
     this.#host = host;
@@ -233,6 +241,7 @@ export class Runner {
       now: () => new Date(),
       tickMs: 5000,
       heartbeatMs: 30_000,
+      pushMs: 5000,
       version: "",
       unavailableCooldownMinutes: 10,
       ...opts,
@@ -252,6 +261,8 @@ export class Runner {
     const beat = () => void this.heartbeat().catch(() => undefined);
     this.#heartbeatTimer = setInterval(beat, this.#opts.heartbeatMs);
     this.#heartbeatTimer.unref();
+    this.#pushTimer = setInterval(() => void this.pushRuns().catch(() => undefined), this.#opts.pushMs);
+    this.#pushTimer.unref();
     beat();
     void this.tick();
   }
@@ -260,6 +271,7 @@ export class Runner {
   async stop(): Promise<void> {
     clearInterval(this.#interval);
     clearInterval(this.#heartbeatTimer);
+    clearInterval(this.#pushTimer);
     for (const id of this.#live.keys()) this.cancel(id);
     await Promise.allSettled([...this.#inflight]);
   }
@@ -518,6 +530,69 @@ export class Runner {
     const update: HubUpdate = { duplicate: res.duplicate, policy: res.policy, commands: res.commands };
     this.#opts.onHub?.(update);
     return update;
+  }
+
+  /**
+   * Hub mode: sends the runs that changed since the last push (the active ones and those that ended in the last day),
+   * each with its current step and the end of its readable log, lines that look like secrets hidden. The web shows
+   * them. Returns how many went; a hub that does not know runs.push yet just gets nothing.
+   */
+  async pushRuns(): Promise<number> {
+    if (this.#host.mode() !== "hub" || this.#pushing) return 0;
+    this.#pushing = true;
+    try {
+      const since = this.#iso(-24 * 60);
+      const recent = this.list({ limit: 60 }).filter((r) => r.status === "queued" || r.status === "running" || (r.finishedAt ?? "") >= since);
+      const changed: Array<{ run: AgentRun; key: string; log: string }> = [];
+      for (const r of recent) {
+        const log = this.#logTail(r.id);
+        const key = JSON.stringify([r.status, r.activity ?? null, r.finishing ?? false, r.mrUrl, r.commits, log.length, log.slice(-200)]);
+        if (this.#pushed.get(r.id) !== key) changed.push({ run: r, key, log });
+        if (changed.length === 20) break;
+      }
+      if (!changed.length) return 0;
+      const clip = (s: string | null, n: number) => (s === null ? null : s.length > n ? `${s.slice(0, n - 1)}…` : s);
+      await this.#host.backend().call(
+        "runs.push",
+        {
+          machine: this.#host.machine(),
+          runs: changed.map(({ run: r, log }) => ({
+            runId: r.id,
+            project: r.project,
+            taskId: r.taskId,
+            taskTitle: r.taskTitle,
+            role: r.role,
+            status: r.status,
+            profileId: r.profileId,
+            activity: clip(r.activity ?? null, 300),
+            summary: clip(r.summary, 4000),
+            // A queued run's note is why it waits.
+            error: clip(r.error, 2000),
+            branch: r.branch,
+            commits: r.commits,
+            mrUrl: r.mrUrl,
+            costUsd: r.costUsd,
+            log,
+            createdAt: r.createdAt,
+            startedAt: r.startedAt,
+            finishedAt: r.finishedAt,
+          })),
+        },
+        this.#runnerActor(),
+      );
+      for (const c of changed) this.#pushed.set(c.run.id, c.key);
+      return changed.length;
+    } finally {
+      this.#pushing = false;
+    }
+  }
+
+  /** The last lines of a run's log for the hub: no colour codes or hidden characters, secret-looking lines replaced. */
+  #logTail(id: string, lines = 200, bytes = 48_000): string {
+    const text = this.log(id, bytes)
+      .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")
+      .split("\n");
+    return redactLines(stripHidden(text.slice(-lines).join("\n"))).slice(-58_000);
   }
 
   /** Reports progress on an admin's install request back to the hub, under this machine's heartbeat name. */
@@ -907,6 +982,11 @@ export class Runner {
       await this.#finish(run, profile, wt, outcome);
     } finally {
       this.#finishing.delete(run.id);
+      // The web sees the end (summary, commits, MR) now rather than at the next push.
+      this.#track(this.pushRuns().then(
+        () => undefined,
+        () => undefined,
+      ));
     }
   }
 
