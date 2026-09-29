@@ -65,7 +65,7 @@ async function setup(reviewMode: string, mr: Partial<MrSettings> = {}, token = T
     {
       backend: () => hive,
       profiles: () => profiles,
-      settings: () => ({ worktreeRoot: null, maxParallel: 2, maxAttempts: 3 }),
+      settings: () => ({ worktreeRoot: null, maxParallel: 2, maxAttempts: 3, acceptHubRuns: false }),
       projects: () => projects,
       mode: () => "local",
       machine: () => "duy-mbp",

@@ -102,7 +102,7 @@ async function setup(profiles: AgentProfile[], opts: { docker?: boolean; mode?: 
   const host: RunnerHost = {
     backend: () => (opts.mode === "hub" ? hubLike : hive),
     profiles: () => profiles.map((p) => ({ ...p, env: { ...p.env, FAKE_RECORD: record } })),
-    settings: () => ({ worktreeRoot: null, maxParallel: 2, maxAttempts: 3 }),
+    settings: () => ({ worktreeRoot: null, maxParallel: 2, maxAttempts: 3, acceptHubRuns: false }),
     projects: () => [{ name: "demo", repo: dir }],
     mode: () => opts.mode ?? "local",
     machine: () => "duy-mbp",

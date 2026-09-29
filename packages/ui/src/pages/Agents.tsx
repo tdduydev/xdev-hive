@@ -595,6 +595,7 @@ function RunnerCard({ runner }: { runner: RunnerSettings }) {
   const [maxParallel, setMaxParallel] = useState(String(runner.maxParallel));
   const [maxAttempts, setMaxAttempts] = useState(String(runner.maxAttempts));
   const [root, setRoot] = useState(runner.worktreeRoot ?? "");
+  const [hubRuns, setHubRuns] = useState(runner.acceptHubRuns);
   const action = useAction();
   const [saved, setSaved] = useState(false);
   return (
@@ -623,6 +624,13 @@ function RunnerCard({ runner }: { runner: RunnerSettings }) {
           <Label htmlFor="rn-root">{t("agents.runnerRoot")}</Label>
           <Input id="rn-root" className="font-mono" placeholder={t("agents.runnerRootPlaceholder")} value={root} onChange={(e) => setRoot(e.target.value)} />
         </div>
+        <div className="flex flex-col gap-1">
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox checked={hubRuns} onCheckedChange={(v) => setHubRuns(v === true)} />
+            {t("agents.runnerHubRuns")}
+          </label>
+          <span className={HINT}>{t("agents.runnerHubRunsHint")}</span>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
@@ -631,7 +639,7 @@ function RunnerCard({ runner }: { runner: RunnerSettings }) {
               void action.run(async () => {
                 try {
                   await client.desktop!.updateSettings({
-                    runner: { maxParallel: Number(maxParallel), maxAttempts: Number(maxAttempts), worktreeRoot: root.trim() || null },
+                    runner: { maxParallel: Number(maxParallel), maxAttempts: Number(maxAttempts), worktreeRoot: root.trim() || null, acceptHubRuns: hubRuns },
                   });
                   setSaved(true);
                 } catch (err) {

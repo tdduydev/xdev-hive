@@ -494,6 +494,15 @@ function knownPath(p: string): boolean {
 function onRunnerEvent(event: RunnerEvent): void {
   if (!Notification.isSupported()) return;
   const r = event.run;
+  if (event.type === "dispatched") {
+    const n = new Notification({ title: tr("desktop.hubRunTitle"), body: tr("desktop.hubRunBody", { who: event.by, task: r.taskId, role: tr(`agentRole.${r.role}`) }) });
+    n.on("click", () => {
+      showWindow();
+      win?.webContents.executeJavaScript('location.hash = "#/board"').catch(() => undefined);
+    });
+    n.show();
+    return;
+  }
   const title = `${r.taskId} · ${r.profileId ?? ""}`;
   const pr = /\/pull\/\d+$/.test(r.mrUrl ?? "");
   const mr = r.mrUrl
