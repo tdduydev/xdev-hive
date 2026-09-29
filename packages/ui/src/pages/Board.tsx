@@ -572,7 +572,11 @@ function RunDetail({
                 target="_blank"
                 rel="noreferrer"
               >
-                {t("board.ciFixOf", { iid: run.ciFix.mrIid ?? "?", n: run.ciFix.n, max: run.ciFix.max })}
+                {t("board.ciFixOf", {
+                  mr: /\/pull\/\d+$/.test(run.ciFix.mrUrl) ? `PR #${run.ciFix.mrIid ?? "?"}` : `MR !${run.ciFix.mrIid ?? "?"}`,
+                  n: run.ciFix.n,
+                  max: run.ciFix.max,
+                })}
               </a>
               <span className="wrap-anywhere">
                 {run.ciFix.jobs.length
