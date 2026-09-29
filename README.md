@@ -463,7 +463,13 @@ Trên hub, agent giữ task với tên `<gói>.<máy>@<token>`, ví dụ `claude
     - Câu trả lời hiện dần khi máy viết (trang hỏi hub mỗi 2 giây), kèm việc agent đang làm và các bước (`▶` công cụ). *Dừng* huỷ câu trả lời và giữ phần đã viết. Thread đang chờ câu trả lời thì chưa gửi được tin tiếp.
     - Trong câu trả lời, mã task của dự án và mã run (`R-…`) là link: sang *Task* (mở panel của task) hoặc *Lượt chạy* (mở run đó). Trang hiện `code`, **đậm**, *nghiêng*, khối ``` và link web; phần còn lại giữ nguyên chữ.
     - `#/chat?thread=<số>` mở thẳng một thread; quay lại trang thì thread vẫn mở. Người chỉ có quyền xem đọc được nhưng không gửi được. Link *run …* ở yêu cầu chạy của trang *Task* cũng mở thẳng run đó.
-    - Leader làm việc với quyền của token câu trả lời. Máy dùng token role *agent* thì leader chỉ tới mức đóng góp: không tạo task, không xếp run (xem roadmap 17c).
+    - Leader làm việc với quyền của token câu trả lời. Máy dùng token role *agent* thì leader chỉ tới mức đóng góp, nên nó không tự tạo task hay xếp run. Nó đề xuất các việc đó (dưới đây).
+  - **Leader đề xuất, người quản trị xác nhận** (hỏi ngày 29/9; roadmap 17c-1).
+    - Qua MCP của hub, leader có `propose_task` (tạo task, có thể kèm phụ thuộc), `propose_task_status` (chuyển trạng thái kèm ghi chú) và `propose_run` (chạy task trên máy của chat hoặc máy khác, với vai trò, gói, số bản, review sau, chỉ dẫn). Mỗi đề xuất kèm một dòng lý do.
+    - Leader không có `task_claim` và `task_update`: nó không tự nhận hay chuyển task. Chỉ token của câu trả lời đang viết mới đề xuất được, tối đa 20 việc mỗi câu trả lời.
+    - Hub kiểm ngay khi leader đề xuất: task phải thuộc dự án của chat (với tạo mới thì chưa có), máy phải có trên hub, chữ không có ký tự ẩn hay secret.
+    - Trên trang *Chat*, đề xuất hiện dưới câu trả lời. Người quản trị dự án bấm *Xác nhận* thì việc chạy như chính họ gọi (`chat.decide`): hub kiểm quyền của họ và ghi tên họ. Bấm *Bỏ qua* thì không có gì chạy.
+    - Mỗi đề xuất chỉ được quyết định một lần. Lỗi khi chạy được giữ lại kèm lý do. Kết quả có link: task vừa tạo, hoặc yêu cầu chạy (mở panel của task). Đề xuất vẫn chờ quyết định sau khi câu trả lời đã xong.
   - Hub lưu các cuộc trò chuyện (thread) theo dự án cùng tin nhắn của chúng (migration 15).
   - Gửi tin nhắn bằng `chat.send`. Thread mới cần chọn máy, có thể ghim một gói Claude; tin tiếp theo đi đúng máy và phiên của thread đó.
   - Hub kiểm máy như khi xếp run: đang online, đã bật ô nhận run từ hub, có repo của dự án, có gói Claude đang bật và đã đăng nhập. Thread đang chờ câu trả lời thì chưa nhận tin mới.
