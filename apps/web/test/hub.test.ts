@@ -179,7 +179,18 @@ describe("hub as a backend", () => {
     const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { requestInit: { headers: { authorization: `Bearer ${tok.viewer}` } } });
     const client = new Client({ name: "test", version: "0" });
     await client.connect(transport);
-    assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), ["doc_get", "doc_list", "memory_search", "skill_get", "skill_list", "task_list", "task_next"]);
+    assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), [
+      "doc_get",
+      "doc_list",
+      "machine_list",
+      "memory_search",
+      "run_get",
+      "run_list",
+      "skill_get",
+      "skill_list",
+      "task_list",
+      "task_next",
+    ]);
     await client.close();
   });
 
@@ -190,7 +201,18 @@ describe("hub as a backend", () => {
       return client;
     };
     const ro = await connect({ "x-hive-readonly": "1", "x-hive-project": "app" });
-    assert.deepEqual((await ro.listTools()).tools.map((t) => t.name).sort(), ["doc_get", "doc_list", "memory_search", "skill_get", "skill_list", "task_list", "task_next"]);
+    assert.deepEqual((await ro.listTools()).tools.map((t) => t.name).sort(), [
+      "doc_get",
+      "doc_list",
+      "machine_list",
+      "memory_search",
+      "run_get",
+      "run_list",
+      "skill_get",
+      "skill_list",
+      "task_list",
+      "task_next",
+    ]);
     const listed = await ro.callTool({ name: "task_list", arguments: {} });
     assert.equal(listed.isError, undefined, "the default project stands in for the missing argument");
     await ro.close();

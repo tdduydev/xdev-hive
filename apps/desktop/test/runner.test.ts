@@ -821,6 +821,9 @@ describe("Runner", () => {
       assert.ok(!call!.args.includes("--resume"), "a new thread starts a session");
       const settings = JSON.parse(call!.args[call!.args.indexOf("--settings") + 1]);
       assert.deepEqual(settings.permissions.deny, ["Bash", "Edit", "Write", "MultiEdit", "NotebookEdit"], "reads the repo, changes nothing");
+      const brief = call!.args[call!.args.indexOf("--append-system-prompt") + 1]!;
+      assert.match(brief, /skill_get, name hive-leader/, "reads the team's guide first");
+      assert.match(brief, /propose_task.*a project manager confirms/, "proposes instead of changing the board");
       const mcp = JSON.parse(call!.mcp)["mcpServers"]["xdev-hive"];
       assert.equal(mcp.url, "https://hive.example.test/mcp");
       assert.equal(mcp.headers.authorization, "Bearer hivechat_test", "the reply's token, not the machine's");

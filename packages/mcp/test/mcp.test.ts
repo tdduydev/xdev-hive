@@ -24,8 +24,11 @@ describe("mcp tools", () => {
       "doc_get",
       "doc_list",
       "doc_propose",
+      "machine_list",
       "memory_search",
       "memory_write",
+      "run_get",
+      "run_list",
       "skill_get",
       "skill_list",
       "skill_propose",
@@ -39,7 +42,18 @@ describe("mcp tools", () => {
   it("gives read-only agents and viewer tokens the read tools only", async () => {
     const hive = new SqliteHive(":memory:");
     for (const client of [await connect(hive, "claude@duy", { readOnly: true }), await connect(hive, "ci", { role: "viewer" })]) {
-      assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), ["doc_get", "doc_list", "memory_search", "skill_get", "skill_list", "task_list", "task_next"]);
+      assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), [
+        "doc_get",
+        "doc_list",
+        "machine_list",
+        "memory_search",
+        "run_get",
+        "run_list",
+        "skill_get",
+        "skill_list",
+        "task_list",
+        "task_next",
+      ]);
       assert.match(client.getInstructions() ?? "", /read-only/);
       const called = await client.callTool({ name: "memory_write", arguments: { kind: "decision", content: "x" } }).catch((e: Error) => e);
       assert.ok(called instanceof Error || (called as { isError?: boolean }).isError, "a hidden tool cannot be called either");
@@ -135,5 +149,27 @@ describe("mcp tools", () => {
     });
     assert.equal(stale.isError, true);
     assert.match(text(stale), /^conflict:/);
+  });
+
+  it("reads the runs and machines the hub heard about", async () => {
+    const hive = new SqliteHive(":memory:");
+    const mbp = { name: "runner.duy-mbp@duy-mbp", role: "agent" as const };
+    await hive.call("machines.heartbeat", { machine: "duy-mbp", instance: "a1b2c3d4", projects: ["app"], acceptsRuns: true }, mbp);
+    const at = "2026-09-29T10:00:00.000Z";
+    await hive.call(
+      "runs.push",
+      {
+        machine: "duy-mbp",
+        runs: [{ runId: "R-1fa9c0", project: "app", taskId: "T-2", taskTitle: "Lockout", role: "review", status: "succeeded", profileId: "claude-1", summary: "Needs fixes: reset the counter.", log: "▶ Read lockout.ts\n✓ read", createdAt: at }],
+      },
+      mbp,
+    );
+    const claude = await connect(hive, "claude-1.duy-mbp@chat-lan");
+    const [listed] = JSON.parse(text(await claude.callTool({ name: "run_list", arguments: {} })));
+    assert.deepEqual([listed.runId, listed.role, listed.summary, listed.machineId], ["R-1fa9c0", "review", "Needs fixes: reset the counter.", mbp.name]);
+    const read = JSON.parse(text(await claude.callTool({ name: "run_get", arguments: { machineId: mbp.name, runId: "R-1fa9c0" } })));
+    assert.match(read.log, /Read lockout\.ts/);
+    const [machine] = JSON.parse(text(await claude.callTool({ name: "machine_list", arguments: {} })));
+    assert.deepEqual([machine.machine, machine.acceptsRuns, machine.projects], ["duy-mbp", true, ["app"]]);
   });
 });
