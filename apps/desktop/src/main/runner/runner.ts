@@ -702,6 +702,8 @@ export class Runner {
       preferredProfile: run.preferredProfile,
       avoidKinds: run.avoidKinds,
       excludedProfiles: run.excludedProfiles,
+      // A review is only a cross-review on another vendor: it waits for one that is busy.
+      strictKinds: run.role === "review",
     };
     const b = run.bestOf;
     if (!b || b.n === 0) return needs;
