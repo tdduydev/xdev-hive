@@ -235,9 +235,12 @@ export const CLAUDE_RUN_ENV = { CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1
  * (edits and commands inside the working copy) and which older versions take too.
  */
 export function codexArgs(args: string[]): string[] {
-  if (!args.includes("--full-auto")) return args;
   const sandbox = args.some((a) => a === "--sandbox" || a === "-s" || a.startsWith("--sandbox="));
-  return args.flatMap((a) => (a === "--full-auto" ? (sandbox ? [] : ["--sandbox", "workspace-write"]) : [a]));
+  const fixed = args.flatMap((a) => (a === "--full-auto" ? (sandbox ? [] : ["--sandbox", "workspace-write"]) : [a]));
+  // Codex 0.15x refuses MCP writes (task_claim, memory_write) it cannot ask about: Hive's own tools go through.
+  // Only for `codex exec …`, whose options are known; older versions ignore the unknown key.
+  if (fixed[0] !== "exec") return fixed;
+  return ["exec", "-c", 'mcp_servers.xdev-hive.default_tools_approval_mode="approve"', ...fixed.slice(1)];
 }
 
 export function claudeRunArgs(
