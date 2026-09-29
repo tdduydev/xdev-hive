@@ -28,12 +28,12 @@ Team skills (how the team does recurring work): skill_list, then skill_get the o
 End of session: task_update to "review" with a note (done / not done / how to verify / risks). Never store secrets.`;
 
 const READ_ONLY_INSTRUCTIONS = `xDev Hive is the shared memory, docs and task board for every coding agent on this team.
-This connection is read-only: memory_search, doc_list, doc_get, skill_list, skill_get, task_list and task_next. Search memory for your topic before working.
+This connection is read-only: memory_search, doc_list, doc_get, skill_list, skill_get, task_list, task_next, run_list, run_get and machine_list. Search memory for your topic before working.
 Put anything worth sharing (decisions, gotchas, the handoff) in your final message instead of writing it to Hive.`;
 
 // A chat leader (the hub's token for one reply) changes nothing on the board itself: it proposes, a project manager confirms.
 const LEADER_INSTRUCTIONS = `
-You are the project's leader in the Hive chat. You cannot create or move tasks or queue runs yourself: propose them with
+You are the project's leader in the Hive chat: read skill_get hive-leader first. You cannot create or move tasks or queue runs yourself: propose them with
 propose_task, propose_task_status and propose_run, and say in your reply what you proposed. A project manager confirms or
 sets aside each one in the chat, and it runs with their rights.`;
 
@@ -240,6 +240,44 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       annotations: readOnly,
     },
     withProject(async ({ project: p, limit }) => run("tasks.next", { project: p, limit })),
+  );
+
+  // Hub mode: what machines pushed (runs.push) and reported (heartbeats); a local database has none.
+  server.registerTool(
+    "run_list",
+    {
+      title: "List agent runs",
+      description:
+        "Agent runs the team's machines reported to the hub, newest first: task, role (implement, review), machine, plan, status, " +
+        "activity, the result summary (a review's verdict), error, branch, MR. run_get reads one with the end of its log.",
+      inputSchema: { project, limit: z.number().int().min(1).max(100).optional() },
+      annotations: readOnly,
+    },
+    withProject(async ({ project: p, limit }) => run("runs.list", { project: p, limit: limit ?? 30 })),
+  );
+
+  server.registerTool(
+    "run_get",
+    {
+      title: "Read an agent run",
+      description: "One run from run_list (machineId and runId as listed) with the end of its log: the agent's steps and result, secrets hidden.",
+      inputSchema: { machineId: z.string(), runId: z.string() },
+      annotations: readOnly,
+    },
+    async ({ machineId, runId }) => run("runs.get", { machineId, runId }),
+  );
+
+  server.registerTool(
+    "machine_list",
+    {
+      title: "List team machines",
+      description:
+        "The team's machines as the hub last heard from them: online, whether they take runs from the hub, the projects they have a repo for, " +
+        "their plans (signed in, resting, over their limit) and what they run now.",
+      inputSchema: {},
+      annotations: readOnly,
+    },
+    async () => run("machines.list", {}),
   );
 
   if (writes && !leader) {
