@@ -461,6 +461,26 @@ describe("Runner", () => {
     assert.match(notice.error ?? "", /3/);
   });
 
+  it("says a run that ended is still finishing until its merge request step is done", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const afterFinish = async () => {
+      await gate;
+      return { mrState: "created" as const, mrUrl: "https://gitlab.example.com/g/demo/-/merge_requests/7", mrIid: 7 };
+    };
+    const { runner } = await setup([profile("claude-a", "claude", 1, "ok")], {}, "local", { afterFinish });
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    void runner.tick();
+    await until(() => runner.store.get(run.id)!.status === "succeeded");
+    const ended = runner.list()[0]!;
+    assert.deepEqual([ended.status, ended.finishing, ended.mrUrl], ["succeeded", true, null], "the interface keeps refreshing");
+    release();
+    await runner.settle();
+    const done = runner.list()[0]!;
+    assert.equal(done.finishing, undefined);
+    assert.equal(done.mrIid, 7, "the MR is on the run by the time it stops finishing");
+  });
+
   it("tells the hub about a merge request it opened", async () => {
     const events: HiveEvent[] = [];
     const hive = new SqliteHive(":memory:", { onEvent: (e) => events.push(e) });
