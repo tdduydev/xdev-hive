@@ -49,6 +49,7 @@ Làm lần lượt, mỗi lượt một mục (mỗi mục một PR). Mục có 
   - [x] **14a. skills-store**: skill là tài liệu `org/skills/<tên>` / `project/<dự án>/skills/<tên>` với nội dung SKILL.md; hub kiểm front matter (`name` trùng tên, `description` ≤ 1024), không cho `paths`, không đưa vào AGENTS.md; method `skills.list` (skill dự án thay skill chung cùng tên, lọc theo quyền); MCP `skill_list`, `skill_get`, `skill_propose`; trang Tài liệu tạo được `skills/<tên>`.
   - [ ] **14b. skills-sync**: đồng bộ ghi `.claude/skills/<tên>/SKILL.md` (khối quản lý, hook chặn sửa tay, không vào commit của runner, có trong worktree của run), gỡ skill đã xoá; AGENTS.md liệt kê skill (tên, mô tả, đọc bằng `skill_get`) cho Codex/Gemini.
   - [ ] **14c. skills-ui**: trang Skill (web và desktop): danh sách theo phạm vi, soạn với ô tên và mô tả, xem bản đang có hiệu lực cho từng dự án, đề xuất chờ duyệt.
+- [x] **15. run-live-log** (pilot xdev-auth ngày 29/9): Claude Code chạy `--output-format stream-json --verbose`; runner đọc từng sự kiện thành log dễ theo (`▶` tool/lệnh, `✓ ✗` kết quả, lời agent) và giữ việc agent đang làm (`activity`: tóm tắt của Claude Code, tool vừa gọi, hoặc dòng cuối của CLI khác) cho Board; khung log mở ở cuối, nút *Mở rộng*. Sửa kèm hai lỗi pilot tìm ra: run Claude cho phép sẵn tool của `mcp__xdev-hive` (headless thì tool chưa cho phép bị từ chối, agent không claim/ghi memory được); Codex 0.15x bỏ `--full-auto` → mẫu và profile cũ dùng `--sandbox workspace-write`.
 
 ## Sửa lỗi
 

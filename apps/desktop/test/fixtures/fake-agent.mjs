@@ -29,12 +29,25 @@ if (process.env.FAKE_RECORD) {
 }
 
 // `--output-format json` (Claude Code): nothing on stdout until one result object at the end.
+// `--output-format stream-json` (with --verbose): one event per line while it works, as Claude Code 2.1 prints them.
 const format = process.argv.indexOf("--output-format");
 const json = format !== -1 && process.argv[format + 1] === "json";
+const stream = format !== -1 && process.argv[format + 1] === "stream-json";
+const event = (e) => console.log(JSON.stringify(e));
+if (stream) {
+  event({ type: "system", subtype: "init", session_id: "fake-session", model: "fake-model", claude_code_version: "2.1.0", tools: ["Bash"] });
+  event({ type: "system", subtype: "task_summary", detail: "Running the tests", session_id: "fake-session" });
+  event({ type: "assistant", message: { content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "npm test", description: "Run tests" } }] } });
+  event({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", content: "ok 1 - adds\nok 2 - subtracts", is_error: false }] } });
+}
 const said = [];
-const say = (text) => (json ? said.push(text) : console.log(text));
+const say = (text) => {
+  if (stream) event({ type: "assistant", message: { content: [{ type: "text", text }] } });
+  if (json || stream) said.push(text);
+  else console.log(text);
+};
 const finish = (code = 0) => {
-  if (json) {
+  if (json || stream) {
     console.log(
       JSON.stringify({
         type: "result",
@@ -46,6 +59,8 @@ const finish = (code = 0) => {
       }),
     );
   }
+  // Claude Code prints more events after the result.
+  if (stream) event({ type: "system", subtype: "task_summary", detail: "Done", session_id: "fake-session" });
   process.exit(code);
 };
 
