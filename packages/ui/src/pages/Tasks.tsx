@@ -1,15 +1,21 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "cn";
-import { TASK_STATUSES, type Task, type TaskStatus } from "@xdev-hive/core";
+import { AGENT_ROLES, MAX_CANDIDATES, TASK_STATUSES, type AgentRole, type Machine, type RunRequest, type Task, type TaskStatus } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
+import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Input } from "@xdev-hive/ui/components/ui/input";
+import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@xdev-hive/ui/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
+import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
-import { formatTime, useAction, useCan, useHive, useQuery } from "../hooks.ts";
+import { formatTime, useAction, useCan, useHive, usePoll, useQuery } from "../hooks.ts";
 import { useT } from "../i18n/index.tsx";
+import { REQUEST_TONE, requestErrorText, runLabel } from "../lib/runs.ts";
 import { scopeProject } from "../lib/scope.ts";
+import { ownerLabel } from "../lib/tasks.ts";
 
 /** Text colour of the status select, keyed by STATUS_TONE. */
 const TONE_TEXT: Record<string, string> = {
@@ -19,8 +25,11 @@ const TONE_TEXT: Record<string, string> = {
   danger: "text-destructive",
 };
 
+/** Machines take a request at their next heartbeat (30 s): follow it closely until one does. */
+const PENDING_MS = 3000;
+
 export function TasksPage() {
-  const { client, scope, projects } = useHive();
+  const { client, scope, projects, me } = useHive();
   const t = useT();
   const allow = useCan();
   const managed = projects.filter((p) => allow(p, "manage"));
@@ -32,6 +41,18 @@ export function TasksPage() {
     [client, scoped, status],
   );
   const next = useQuery(() => client.call("tasks.next", { project: scoped ?? undefined, limit: 3 }), [client, scoped, list.data]);
+  // Runs queued on a machine from here (hub only): which machine a task waits for, and what became of it.
+  const hub = me.mode === "hub";
+  const [pending, setPending] = useState(false);
+  const poll = usePoll(pending ? PENDING_MS : null);
+  const requests = useQuery(
+    async () => (hub ? client.call("runs.requests", { project: scoped ?? undefined, limit: 200 }) : []),
+    [client, hub, scoped, poll],
+  );
+  useEffect(() => setPending((requests.data ?? []).some((r) => r.status === "pending")), [requests.data]);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const open = list.data?.find((task) => task.id === openId) ?? null;
+  const reload = () => (list.reload(), requests.reload());
 
   return (
     <Page>
@@ -75,83 +96,401 @@ export function TasksPage() {
       {list.data?.length === 0 ? <Empty>{t("tasks.none")}</Empty> : null}
       {list.data?.length ? (
         <div className="overflow-x-auto rounded-lg border">
-          <Table>
+          {/* Fixed columns: a long title or note wraps in its own cell instead of pushing the others out of view. */}
+          {/* On a phone: task and status only; the rest is in the task's panel. */}
+          <Table className={cn("table-fixed", scoped === null ? "md:min-w-[56rem]" : "md:min-w-[48rem]")}>
+            <colgroup>
+              <col />
+              {scoped === null ? <col className="w-28" /> : null}
+              <col className="w-36" />
+              <col className="hidden w-32 md:table-column" />
+              <col className="hidden w-40 md:table-column" />
+              <col className="hidden w-28 md:table-column" />
+            </colgroup>
             <TableHeader>
               <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>{t("tasks.colTitle")}</TableHead>
+                <TableHead>{t("tasks.colTask")}</TableHead>
                 {scoped === null ? <TableHead>{t("tasks.colProject")}</TableHead> : null}
                 <TableHead>{t("tasks.status")}</TableHead>
-                <TableHead>{t("tasks.colDeps")}</TableHead>
-                <TableHead>{t("tasks.colOwner")}</TableHead>
-                <TableHead>{t("tasks.colNote")}</TableHead>
-                <TableHead>{t("tasks.colUpdated")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("tasks.colDeps")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("tasks.colOwner")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("tasks.colUpdated")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {list.data.map((task) => (
-                <TaskRow key={task.id} task={task} showProject={scoped === null} onChanged={list.reload} />
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  waiting={requests.data?.find((r) => r.taskId === task.id && r.project === task.project && r.status === "pending") ?? null}
+                  showProject={scoped === null}
+                  selected={task.id === openId}
+                  onOpen={() => setOpenId(task.id)}
+                  onChanged={reload}
+                />
               ))}
             </TableBody>
           </Table>
         </div>
       ) : null}
+      <Sheet open={open !== null} onOpenChange={(v) => (v ? null : setOpenId(null))}>
+        {open ? (
+          <TaskDetail
+            task={open}
+            requests={(requests.data ?? []).filter((r) => r.taskId === open.id && r.project === open.project)}
+            hub={hub}
+            onChanged={reload}
+          />
+        ) : null}
+      </Sheet>
     </Page>
   );
 }
 
-function TaskRow({ task, showProject, onChanged }: { task: Task; showProject: boolean; onChanged: () => void }) {
+function TaskRow({
+  task,
+  waiting,
+  showProject,
+  selected,
+  onOpen,
+  onChanged,
+}: {
+  task: Task;
+  waiting: RunRequest | null;
+  showProject: boolean;
+  selected: boolean;
+  onOpen: () => void;
+  onChanged: () => void;
+}) {
+  const t = useT();
+  // The controls in a row do their own thing; a click anywhere else opens the task.
+  const keep = (e: { stopPropagation(): void }) => e.stopPropagation();
+  return (
+    <TableRow data-state={selected ? "selected" : undefined} className="cursor-pointer data-[state=selected]:bg-brand-soft/60" onClick={onOpen}>
+      <TableCell className="align-top whitespace-normal">
+        <button type="button" className="flex w-full min-w-0 flex-col items-start gap-0.5 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" onClick={onOpen}>
+          <span className="flex max-w-full items-baseline gap-2">
+            <span className="shrink-0 font-mono text-xs text-muted-foreground">{task.id}</span>
+            <span className="min-w-0 font-medium wrap-anywhere">{task.title}</span>
+          </span>
+          {task.note ? <span className="line-clamp-2 max-w-full text-xs text-muted-foreground wrap-anywhere">{task.note}</span> : null}
+        </button>
+      </TableCell>
+      {showProject ? (
+        <TableCell className="align-top">
+          <OwnerBadge owner={task.project} className="max-w-full truncate" />
+        </TableCell>
+      ) : null}
+      <TableCell className="align-top whitespace-normal" onClick={keep}>
+        <StatusSelect task={task} onChanged={onChanged} />
+        {waiting ? <div className="mt-1 text-xs wrap-anywhere text-info">{t("tasks.waitingMachine", { machine: waiting.machine })}</div> : null}
+      </TableCell>
+      <TableCell className="hidden align-top text-xs whitespace-normal md:table-cell" onClick={keep}>
+        <Deps task={task} onChanged={onChanged} />
+      </TableCell>
+      <TableCell className="hidden align-top text-xs whitespace-normal md:table-cell">
+        <Owner task={task} />
+      </TableCell>
+      <TableCell className="hidden align-top text-xs whitespace-normal text-muted-foreground md:table-cell">{formatTime(task.updatedAt)}</TableCell>
+    </TableRow>
+  );
+}
+
+function Owner({ task }: { task: Task }) {
+  const t = useT();
+  if (!task.owner) return <span className="text-muted-foreground">—</span>;
+  const { who, machine } = ownerLabel(task.owner);
+  return (
+    <div className="flex min-w-0 flex-col" title={task.owner}>
+      <span className="font-mono wrap-anywhere">{who}</span>
+      {machine ? <span className="font-mono wrap-anywhere text-muted-foreground">{machine}</span> : null}
+      {task.leaseUntil ? <span className="text-muted-foreground">{t("tasks.leaseUntil", { time: formatTime(task.leaseUntil) })}</span> : null}
+    </div>
+  );
+}
+
+function StatusSelect({ task, onChanged }: { task: Task; onChanged: () => void }) {
+  const { client } = useHive();
+  const t = useT();
+  const allow = useCan();
+  const action = useAction();
+  if (!allow(task.project, "contribute")) return <Badge tone={STATUS_TONE[task.status]}>{t(`taskStatus.${task.status}`)}</Badge>;
+  return (
+    <div className="flex flex-col gap-1">
+      <NativeSelect
+        size="sm"
+        className={cn("w-full", TONE_TEXT[STATUS_TONE[task.status] ?? ""])}
+        value={task.status}
+        disabled={action.busy}
+        aria-label={t("tasks.statusOf", { id: task.id })}
+        onChange={(e) =>
+          void action.run(async () => {
+            await client.call("tasks.update", { id: task.id, status: e.target.value as TaskStatus });
+            onChanged();
+          })
+        }
+      >
+        {TASK_STATUSES.map((s) => (
+          <NativeSelectOption key={s} value={s}>
+            {t(`taskStatus.${s}`)}
+          </NativeSelectOption>
+        ))}
+      </NativeSelect>
+      <ErrorNote error={action.error} />
+    </div>
+  );
+}
+
+/** Everything about one task: its full note, what it depends on, and (hub) running it on a team machine. */
+function TaskDetail({ task, requests, hub, onChanged }: { task: Task; requests: RunRequest[]; hub: boolean; onChanged: () => void }) {
+  const t = useT();
+  const allow = useCan();
+  return (
+    <SheetContent className="w-full gap-0 sm:max-w-xl">
+      <SheetHeader className="border-b pr-10">
+        <SheetTitle className="flex flex-col gap-1">
+          <span className="font-mono text-xs font-normal text-muted-foreground">
+            {task.project} · {task.id}
+          </span>
+          <span className="wrap-anywhere">{task.title}</span>
+        </SheetTitle>
+        <SheetDescription asChild>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={STATUS_TONE[task.status]}>{t(`taskStatus.${task.status}`)}</Badge>
+            <span className="text-xs">{t("tasks.updatedAt", { time: formatTime(task.updatedAt) })}</span>
+          </div>
+        </SheetDescription>
+      </SheetHeader>
+      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
+        <section className="grid grid-cols-[auto_1fr] items-start gap-x-4 gap-y-3 text-sm">
+          <span className="text-xs font-medium text-muted-foreground">{t("tasks.status")}</span>
+          <div className="max-w-48">
+            <StatusSelect task={task} onChanged={onChanged} />
+          </div>
+          <span className="text-xs font-medium text-muted-foreground">{t("tasks.colDeps")}</span>
+          <div className="text-xs">
+            <Deps task={task} onChanged={onChanged} />
+          </div>
+          <span className="text-xs font-medium text-muted-foreground">{t("tasks.colOwner")}</span>
+          <div className="text-xs">
+            <Owner task={task} />
+          </div>
+        </section>
+        {hub && allow(task.project, "manage") && task.status !== "done" ? <DispatchForm task={task} requests={requests} onSent={onChanged} /> : null}
+        {hub && requests.length ? <RequestList requests={requests} onChanged={onChanged} /> : null}
+        <section className="flex flex-col gap-1.5">
+          <h3 className="text-xs font-medium text-muted-foreground">{t("tasks.colNote")}</h3>
+          {task.note ? (
+            <div className="rounded-md border bg-muted/40 p-3 text-xs leading-relaxed whitespace-pre-wrap wrap-anywhere">{task.note}</div>
+          ) : (
+            <p className="text-xs text-muted-foreground">{t("tasks.noNote")}</p>
+          )}
+        </section>
+      </div>
+    </SheetContent>
+  );
+}
+
+/** Machines that can take this task's run now: online, taking runs from the hub, with the project's repo. */
+const fits = (m: Machine, project: string) => m.online && m.acceptsRuns && m.projects.includes(project);
+
+function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunRequest[]; onSent: () => void }) {
+  const { client } = useHive();
+  const t = useT();
+  const machines = useQuery(() => client.call("machines.list", {}), [client]);
+  const fit = (machines.data ?? []).filter((m) => fits(m, task.project));
+  const [machineId, setMachineId] = useState("");
+  const machine = fit.find((m) => m.id === machineId) ?? fit[0] ?? null;
+  const [role, setRole] = useState<AgentRole>(task.status === "review" ? "review" : "implement");
+  const [profileId, setProfileId] = useState("");
+  const [instructions, setInstructions] = useState("");
+  const [reviewAfter, setReviewAfter] = useState(true);
+  const [candidates, setCandidates] = useState(1);
+  const action = useAction();
+  const several = role === "implement" && !profileId;
+  const waiting = task.waitingOn ?? [];
+  const pending = requests.find((r) => r.status === "pending");
+  const profiles = machine?.profiles.filter((p) => p.enabled) ?? [];
+  const now = new Date().toISOString();
+
+  return (
+    <section className="flex flex-col gap-3 rounded-lg border p-3">
+      <div className="flex flex-col gap-0.5">
+        <h3 className="text-sm font-medium">{t("tasks.dispatchTitle")}</h3>
+        <p className="text-xs text-muted-foreground">{t("tasks.dispatchHint")}</p>
+      </div>
+      <ErrorNote error={machines.error} />
+      {machines.data && !fit.length ? <Notice tone="info">{t("tasks.dispatchNoMachine", { project: task.project })}</Notice> : null}
+      {waiting.length ? <Notice tone="warn">{t("board.waitingOn", { tasks: waiting.join(", ") })}</Notice> : null}
+      {pending ? <Notice tone="info">{t("tasks.waitingMachine", { machine: pending.machine })}</Notice> : null}
+      {machine && !waiting.length && !pending ? (
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void action.run(async () => {
+              await client.call("runs.dispatch", {
+                machineId: machine.id,
+                project: task.project,
+                taskId: task.id,
+                role,
+                profileId: profileId || null,
+                reviewAfter: role !== "review" && reviewAfter,
+                candidates: several ? candidates : 1,
+                instructions,
+              });
+              setInstructions("");
+              onSent();
+            });
+          }}
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={`machine-${task.id}`}>{t("tasks.dispatchMachine")}</Label>
+              <NativeSelect
+                id={`machine-${task.id}`}
+                size="sm"
+                className="w-full"
+                value={machine.id}
+                onChange={(e) => (setMachineId(e.target.value), setProfileId(""))}
+              >
+                {fit.map((m) => (
+                  <NativeSelectOption key={m.id} value={m.id}>
+                    {m.machine}
+                    {m.runs.length ? ` · ${t("board.running", { count: m.runs.filter((r) => r.status === "running").length })}` : ""}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={`role-${task.id}`}>{t("board.role")}</Label>
+              <NativeSelect id={`role-${task.id}`} size="sm" className="w-full" value={role} onChange={(e) => setRole(e.target.value as AgentRole)}>
+                {AGENT_ROLES.map((r) => (
+                  <NativeSelectOption key={r} value={r}>
+                    {t(`agentRole.${r}`)}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={`profile-${task.id}`}>{t("board.profile")}</Label>
+              <NativeSelect id={`profile-${task.id}`} size="sm" className="w-full" value={profileId} onChange={(e) => setProfileId(e.target.value)}>
+                <NativeSelectOption value="">{t("board.rotate")}</NativeSelectOption>
+                {profiles.map((p) => (
+                  <NativeSelectOption key={p.id} value={p.id}>
+                    {p.label}
+                    {p.loggedIn === false
+                      ? ` (${t("board.profileSignedOut")})`
+                      : p.overLimit
+                        ? ` (${t("board.profileOverLimit")})`
+                        : p.cooldownUntil && p.cooldownUntil > now
+                          ? ` (${t("board.resting")})`
+                          : ""}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </div>
+            {several ? (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor={`candidates-${task.id}`}>{t("board.candidates")}</Label>
+                <NativeSelect
+                  id={`candidates-${task.id}`}
+                  size="sm"
+                  className="w-full"
+                  value={String(candidates)}
+                  onChange={(e) => setCandidates(Number(e.target.value))}
+                  title={t("board.candidatesHint")}
+                >
+                  {Array.from({ length: MAX_CANDIDATES }, (_, i) => i + 1).map((n) => (
+                    <NativeSelectOption key={n} value={String(n)}>
+                      {n === 1 ? t("board.candidatesOne") : t("board.candidatesMany", { n })}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </div>
+            ) : null}
+          </div>
+          {several && candidates > 1 ? <p className="text-xs text-muted-foreground">{t("board.candidatesHint")}</p> : null}
+          <Textarea
+            placeholder={t("board.instructionsPlaceholder")}
+            value={instructions}
+            onChange={(e) => setInstructions(e.target.value)}
+            aria-label={t("board.instructions")}
+          />
+          {role !== "review" ? (
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={reviewAfter} onCheckedChange={(v) => setReviewAfter(v === true)} />
+              {t("board.reviewAfter")}
+            </label>
+          ) : null}
+          <div>
+            <Button size="sm" type="submit" disabled={action.busy}>
+              {t("tasks.dispatchSend")}
+            </Button>
+          </div>
+          <ErrorNote error={action.error} />
+        </form>
+      ) : null}
+    </section>
+  );
+}
+
+function RequestList({ requests, onChanged }: { requests: RunRequest[]; onChanged: () => void }) {
+  const t = useT();
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className="text-xs font-medium text-muted-foreground">{t("tasks.requests")}</h3>
+      <ul className="flex flex-col gap-2">
+        {requests.slice(0, 5).map((r) => (
+          <RequestItem key={r.id} request={r} onChanged={onChanged} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function RequestItem({ request: r, onChanged }: { request: RunRequest; onChanged: () => void }) {
   const { client } = useHive();
   const t = useT();
   const allow = useCan();
   const action = useAction();
   return (
-    <TableRow>
-      <TableCell className="font-mono text-xs">{task.id}</TableCell>
-      <TableCell className="min-w-48 font-medium break-words whitespace-normal">
-        {task.title}
-        <ErrorNote error={action.error} />
-      </TableCell>
-      {showProject ? (
-        <TableCell>
-          <OwnerBadge owner={task.project} />
-        </TableCell>
+    <li className="flex flex-col gap-1 rounded-md border p-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone={REQUEST_TONE[r.status] ?? "neutral"}>{t(`requestStatus.${r.status}`)}</Badge>
+        <span className="font-mono">{r.machine}</span>
+        <span className="text-muted-foreground">
+          {runLabel("agentRole", r.role)} · {r.profileId ?? t("board.auto")}
+          {r.candidates > 1 ? ` · ${t("board.candidatesMany", { n: r.candidates })}` : ""}
+        </span>
+      </div>
+      <div className="text-muted-foreground">{t("tasks.requestBy", { who: r.requestedBy, time: formatTime(r.requestedAt) })}</div>
+      {r.runId ? (
+        <a className="font-medium text-primary underline underline-offset-2" href="#/runs">
+          {t("tasks.requestRun", { run: r.runId })}
+        </a>
       ) : null}
-      <TableCell>
-        {!allow(task.project, "contribute") ? (
-          <Badge tone={STATUS_TONE[task.status]}>{t(`taskStatus.${task.status}`)}</Badge>
-        ) : (
-          <NativeSelect
+      {r.error ? <div className="text-destructive wrap-anywhere">{requestErrorText(r.error)}</div> : null}
+      {r.status === "pending" && allow(r.project, "manage") ? (
+        <div>
+          <Button
             size="sm"
-            className={cn("min-w-32", TONE_TEXT[STATUS_TONE[task.status] ?? ""])}
-            value={task.status}
+            variant="ghost"
+            className="h-6 px-1.5 text-xs"
             disabled={action.busy}
-            aria-label={t("tasks.statusOf", { id: task.id })}
-            onChange={(e) =>
+            onClick={() =>
               void action.run(async () => {
-                await client.call("tasks.update", { id: task.id, status: e.target.value as TaskStatus });
+                await client.call("runs.cancelRequest", { id: r.id });
                 onChanged();
               })
             }
           >
-            {TASK_STATUSES.map((s) => (
-              <NativeSelectOption key={s} value={s}>
-                {t(`taskStatus.${s}`)}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-        )}
-      </TableCell>
-      <TableCell className="min-w-28 text-xs">
-        <Deps task={task} onChanged={onChanged} />
-      </TableCell>
-      <TableCell className="text-xs">
-        {task.owner ?? <span className="text-muted-foreground">—</span>}
-        {task.leaseUntil ? <div className="text-xs text-muted-foreground">{t("tasks.leaseUntil", { time: formatTime(task.leaseUntil) })}</div> : null}
-      </TableCell>
-      <TableCell className="max-w-80 min-w-48 text-xs break-words whitespace-pre-wrap">{task.note ?? <span className="text-muted-foreground">—</span>}</TableCell>
-      <TableCell className="text-xs text-muted-foreground">{formatTime(task.updatedAt)}</TableCell>
-    </TableRow>
+            {t("tasks.cancelRequest")}
+          </Button>
+        </div>
+      ) : null}
+      <ErrorNote error={action.error} />
+    </li>
   );
 }
 
@@ -179,8 +518,8 @@ function Deps({ task, onChanged }: { task: Task; onChanged: () => void }) {
           });
         }}
       >
-        <Input className="h-7 w-36 font-mono text-xs md:text-xs" placeholder="T-1, T-2" value={text} onChange={(e) => setText(e.target.value)} aria-label={t("tasks.depsOf", { id: task.id })} />
-        <div className="flex gap-1">
+        <Input className="h-7 w-full max-w-40 font-mono text-xs md:text-xs" placeholder="T-1, T-2" value={text} onChange={(e) => setText(e.target.value)} aria-label={t("tasks.depsOf", { id: task.id })} />
+        <div className="flex flex-wrap gap-1">
           <Button size="sm" variant="outline" type="submit" disabled={action.busy}>
             {t("tasks.saveDeps")}
           </Button>

@@ -22,3 +22,11 @@ export function runLabel(kind: "runStatus" | "agentRole", value: string): string
   const key = `${kind}.${value}`;
   return hasKey(key) ? translate(key as MessageKey) : value;
 }
+
+/** Badge tone of a run request's status. */
+export const REQUEST_TONE: Record<string, string> = { pending: "info", accepted: "ok", rejected: "danger", cancelled: "neutral", expired: "warn" };
+
+/** Why a machine refused a run request, in the viewer's language when the machine sent a key this page knows. */
+export function requestErrorText(error: { message: string; key?: string; vars?: Record<string, string | number> }): string {
+  return error.key && hasKey(error.key) ? translate(error.key as MessageKey, error.vars) : error.message;
+}
