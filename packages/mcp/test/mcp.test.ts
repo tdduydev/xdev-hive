@@ -26,6 +26,9 @@ describe("mcp tools", () => {
       "doc_propose",
       "memory_search",
       "memory_write",
+      "skill_get",
+      "skill_list",
+      "skill_propose",
       "task_claim",
       "task_list",
       "task_next",
@@ -36,12 +39,43 @@ describe("mcp tools", () => {
   it("gives read-only agents and viewer tokens the read tools only", async () => {
     const hive = new SqliteHive(":memory:");
     for (const client of [await connect(hive, "claude@duy", { readOnly: true }), await connect(hive, "ci", { role: "viewer" })]) {
-      assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), ["doc_get", "doc_list", "memory_search", "task_list", "task_next"]);
+      assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), ["doc_get", "doc_list", "memory_search", "skill_get", "skill_list", "task_list", "task_next"]);
       assert.match(client.getInstructions() ?? "", /read-only/);
       const called = await client.callTool({ name: "memory_write", arguments: { kind: "decision", content: "x" } }).catch((e: Error) => e);
       assert.ok(called instanceof Error || (called as { isError?: boolean }).isError, "a hidden tool cannot be called either");
     }
     assert.equal((await hive.call("memory.list", {}, { name: "duy", role: "admin" })).length, 0);
+  });
+
+  it("lists and reads skills, the project's first, and takes new ones as proposals", async () => {
+    const hive = new SqliteHive(":memory:");
+    const admin = { name: "duy", role: "admin" as const };
+    const skill = (name: string, description: string) => `---\nname: ${name}\ndescription: ${description}\n---\nSteps.\n`;
+    await hive.call("docs.save", { key: "org/skills/release", content: skill("release", "Team release.") }, admin);
+    await hive.call("docs.save", { key: "org/skills/review-pr", content: skill("review-pr", "Team review.") }, admin);
+    await hive.call("docs.save", { key: "project/app/skills/release", content: skill("release", "App release.") }, admin);
+    const claude = await connect(hive, "claude@duy");
+    assert.match(claude.getInstructions() ?? "", /skill_list/);
+
+    const listed = JSON.parse(text(await claude.callTool({ name: "skill_list", arguments: {} })));
+    assert.deepEqual(listed.map((s: { name: string; description: string }) => [s.name, s.description]), [["release", "App release."], ["review-pr", "Team review."]]);
+    const own = JSON.parse(text(await claude.callTool({ name: "skill_get", arguments: { name: "release" } })));
+    assert.equal(own.key, "project/app/skills/release");
+    const team = JSON.parse(text(await claude.callTool({ name: "skill_get", arguments: { name: "review-pr" } })));
+    assert.equal(team.key, "org/skills/review-pr", "the team's when the project has none");
+    const missing = await claude.callTool({ name: "skill_get", arguments: { name: "nope" } });
+    assert.equal(missing.isError, true);
+    assert.match(text(missing), /no skill nope/);
+
+    const bad = await claude.callTool({ name: "skill_propose", arguments: { name: "deploy", content: "no front matter", reason: "x", baseVersion: 0 } });
+    assert.equal(bad.isError, true);
+    assert.match(text(bad), /front matter/);
+    const shared = JSON.parse(
+      text(await claude.callTool({ name: "skill_propose", arguments: { name: "deploy", content: skill("deploy", "Deploy."), reason: "every project does it", baseVersion: 0, shared: true } })),
+    );
+    assert.equal(shared.docKey, "org/skills/deploy");
+    const mine = JSON.parse(text(await claude.callTool({ name: "skill_propose", arguments: { name: "deploy", content: skill("deploy", "App deploy."), reason: "app only", baseVersion: 0 } })));
+    assert.equal(mine.docKey, "project/app/skills/deploy");
   });
 
   it("suggests the next ready task and refuses to claim one that waits", async () => {

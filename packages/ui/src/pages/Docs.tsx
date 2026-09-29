@@ -40,8 +40,8 @@ const emptyDraft = (key: string): Draft => ({
   note: "",
 });
 
-/** Same shape as the slug part of a doc key in core (keys.ts). */
-const SLUG = /^[a-z0-9][a-z0-9-]{0,79}$/;
+/** Same shape as the slug part of a doc key in core (keys.ts); skills/<name> makes a skill (its content is a SKILL.md). */
+const SLUG = /^(skills\/)?[a-z0-9][a-z0-9-]{0,79}$/;
 
 interface DocGroup {
   id: string;
