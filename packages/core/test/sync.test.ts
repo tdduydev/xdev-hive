@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { ensureClaudeImport, globDir, MANAGED_END, MANAGED_START, planProjectSync, stripManaged, withManagedBlock, type Doc } from "../src/index.ts";
+import { ensureClaudeImport, globDir, MANAGED_END, MANAGED_START, planProjectSync, projectSkills, stripManaged, withManagedBlock, type Doc } from "../src/index.ts";
 
 const doc = (key: string, content: string, extra: Partial<Doc> = {}): Doc => ({
   key,
@@ -91,5 +91,34 @@ describe("docs for some paths", () => {
     assert.equal(withManagedBlock(null, block), `${block}\n`);
     assert.equal(withManagedBlock("# Web\nOwn notes.\n", block), `${block}\n\n# Web\nOwn notes.\n`);
     assert.equal(withManagedBlock(`${MANAGED_START}\nold\n${MANAGED_END}\n\n# Web\n`, block), `${block}\n\n# Web\n`);
+  });
+});
+
+describe("skills in the repo", () => {
+  const skill = (name: string, description: string) => `---\nname: ${name}\ndescription: ${description}\n---\n\nSteps for ${name}.\n`;
+
+  it("writes each skill as a SKILL.md with its front matter first, and lists them in AGENTS.md", () => {
+    const files = planProjectSync("app", [
+      doc("project/app/agents", "# App"),
+      // includeInAgents is forced off for skills by the hive; even set, a skill is never pasted into AGENTS.md.
+      doc("org/skills/review-pr", skill("review-pr", "Team review.")),
+      doc("org/skills/release", skill("release", "Team release.")),
+      doc("project/app/skills/release", skill("release", "App release.")),
+      doc("project/web/skills/storybook", skill("storybook", "Web only.")),
+    ]);
+    assert.deepEqual(files.map((f) => f.path), ["AGENTS.md", ".claude/skills/release/SKILL.md", ".claude/skills/review-pr/SKILL.md"]);
+    const release = files[1]!.content;
+    assert.ok(release.startsWith(`---\nname: release\ndescription: App release.\n---\n${MANAGED_START}\n`), "the project's own replaces the team's");
+    assert.match(release, /<!-- project\/app\/skills\/release v3 -->\n\nSteps for release\.\n<!-- xdev-hive:end -->\n$/);
+    const agents = files[0]!.content;
+    assert.match(agents, /## Skills\n\n[^\n]*`skill_get`[^\n]*\n\n- `release`: App release\.\n- `review-pr`: Team review\.\n/);
+    assert.doesNotMatch(agents, /Steps for/, "the steps stay in the skill files");
+    assert.ok(agents.indexOf("## Skills") < agents.indexOf(MANAGED_END), "inside the managed block");
+  });
+
+  it("picks the skills of one project", () => {
+    const docs = [doc("org/skills/a", skill("a", "x")), doc("project/app/skills/b", skill("b", "y")), doc("project/web/skills/c", skill("c", "z")), doc("org/security", "not a skill")];
+    assert.deepEqual(projectSkills("app", docs).map((d) => d.key), ["org/skills/a", "project/app/skills/b"]);
+    assert.equal(planProjectSync("web", [doc("project/web/agents", "# Web")])[0]!.content.includes("## Skills"), false, "no skills, no section");
   });
 });

@@ -101,8 +101,10 @@ export function ensureWorktree(
 export function commitAll(dir: string, message: string, exclude: string[]): { sha: string | null; error: string | null } {
   try {
     if (!git(dir, ["status", "--porcelain"])) return { sha: null, error: null };
-    // Nested AGENTS.md with Hive's block, as the branch had them (the agent may have taken the block out).
-    const nested = (tryGit(dir, ["grep", "-l", "--fixed-strings", "xdev-hive:start", "HEAD", "--", ":(glob)**/AGENTS.md"]) ?? "")
+    // Nested AGENTS.md and skills with Hive's block, as the branch had them (the agent may have taken the block out).
+    const nested = (
+      tryGit(dir, ["grep", "-l", "--fixed-strings", "xdev-hive:start", "HEAD", "--", ":(glob)**/AGENTS.md", ":(glob).claude/skills/*/SKILL.md"]) ?? ""
+    )
       .split("\n")
       .map((l) => l.replace(/^HEAD:/, ""))
       .filter((f) => f && f !== "AGENTS.md");

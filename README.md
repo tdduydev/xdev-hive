@@ -27,7 +27,11 @@ Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, 
   - Skill không bao giờ vào `AGENTS.md` và không giới hạn theo đường dẫn.
   - Agent dùng MCP: `skill_list` (tên và mô tả; skill của dự án thay skill chung cùng tên), `skill_get` (của dự án trước, không có thì của team), `skill_propose` (SKILL.md đầy đủ; `shared: true` cho cả team). Đề xuất đi qua trang *Đề xuất* như tài liệu.
   - Admin tạo và sửa skill ở trang *Tài liệu* (tên `skills/<tên>`).
-  - Chưa làm: ghi skill vào `.claude/skills/` của repo khi đồng bộ, danh sách skill trong `AGENTS.md` (roadmap 14b), trang Skill riêng (14c).
+  - **Trong repo**: *Đồng bộ tài liệu* ghi mỗi skill của dự án (skill chung + skill riêng, riêng thay chung cùng tên) vào `.claude/skills/<tên>/SKILL.md`, nên Claude Code tự nạp skill như skill của nó. Front matter nằm đầu file như Claude Code cần, phần còn lại trong khối quản lý của Hive. Worktree của run lấy skill theo branch như `AGENTS.md`.
+  - `AGENTS.md` có mục *Skills* trong khối của Hive: tên và mô tả từng skill, để Codex, Gemini và agent khác gọi `skill_get` khi mô tả khớp việc.
+  - Skill bị xoá hay đổi tên trong Hive thì lần đồng bộ sau gỡ file và thư mục của nó. Repo tự có skill cùng tên (không có khối của Hive) thì giữ nguyên, báo *đã bỏ qua*.
+  - Hook của Claude, pre-commit và commit của runner chặn sửa skill của Hive như `AGENTS.md`; skill riêng của repo thì agent vẫn sửa và commit được. Repo đã cài từ bản trước cần bấm cài lại *Cấu hình agent* ở *Cài đặt máy* để hook biết skill.
+  - Chưa làm: trang Skill riêng (roadmap 14c).
 - **Memory**: `memory_write` / `memory_search`, tìm kiếm FTS5 có dấu hoặc không dấu đều được. Trên hub, memory do agent ghi cần admin duyệt mới hiện cho agent khác. Memory *chung* (`memory_write` với `shared: true`) áp dụng cho mọi dự án, và `memory_search` của dự án nào cũng thấy (có `project: null`).
 - **Memory còn dùng không**:
   - Hub đếm mỗi lần `memory_search` của agent trả về một mục, và ghi lần cuối. Người xem trên trang Memory không làm tăng số này.
@@ -81,7 +85,7 @@ Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ v�
 
 ```bash
 nvm use && npm install
-npm test            # 298 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR, GitHub PR)
+npm test            # 302 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR, GitHub PR)
 npm run typecheck
 ```
 
