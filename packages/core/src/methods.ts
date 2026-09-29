@@ -328,6 +328,8 @@ export const schemas = {
   "chat.threads": z.object({ project: project.optional(), limit: z.number().int().min(1).max(200).default(50) }),
   /** A thread with its messages; `after` a message id returns only the newer ones (for polling). */
   "chat.get": z.object({ threadId: id, after: z.number().int().min(0).default(0) }),
+  /** A machine asks for the replies it should write, between heartbeats (every few seconds while it takes runs). */
+  "chat.poll": z.object({}),
   /** Stops a reply that is waiting or being written; the machine hears it at its next progress report. */
   "chat.cancel": z.object({ replyId: id }),
   /** The machine writing a reply says how far it got; the answer tells it whether someone cancelled it. */
@@ -436,6 +438,7 @@ export interface MethodOutput {
   "chat.send": { thread: ChatThread; message: ChatMessage; reply: ChatMessage };
   "chat.threads": ChatThread[];
   "chat.get": { thread: ChatThread; messages: ChatMessage[] } | null;
+  "chat.poll": ChatRequest[];
   "chat.cancel": ChatMessage;
   "chat.progress": { cancelled: boolean };
   "chat.finish": ChatMessage;
@@ -499,6 +502,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "chat.send": "agent",
   "chat.threads": "viewer",
   "chat.get": "viewer",
+  "chat.poll": "agent",
   "chat.cancel": "agent",
   // Only the machine the thread is on.
   "chat.progress": "agent",

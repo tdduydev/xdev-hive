@@ -66,6 +66,9 @@ describe("chat with a project's leader", () => {
     assert.deepEqual([first.reply.role, first.reply.status, first.reply.author], ["assistant", "pending", "claude@duy-mbp"]);
 
     assert.deepEqual((await beat(mini)).chatRequests, [], "only the thread's machine");
+    // Between heartbeats the machine asks for the same, every few seconds.
+    assert.deepEqual((await hive.call("chat.poll", {}, mbp)).map((r) => r.replyId), [first.reply.id]);
+    assert.deepEqual(await hive.call("chat.poll", {}, mini), []);
     const [sent] = (await beat(mbp)).chatRequests;
     assert.deepEqual(
       [sent!.replyId, sent!.threadId, sent!.project, sent!.sessionId, sent!.text, sent!.requestedBy],
@@ -152,6 +155,7 @@ describe("chat with a project's leader", () => {
 
     const third = await hive.call("chat.send", { project: "app", threadId: first.thread.id, text: "three" }, lead);
     assert.deepEqual((await beat(mbp, { acceptsRuns: false })).chatRequests, []);
+    assert.deepEqual(await hive.call("chat.poll", {}, mbp), [], "nothing while it does not take runs from the hub");
     assert.deepEqual(await status(third.reply.id), ["failed", "errors.machineNoHubRuns"]);
   });
 

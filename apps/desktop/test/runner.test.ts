@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
@@ -51,6 +51,7 @@ async function setup(
     onEvent?: RunnerOptions["onEvent"];
     /** Wraps the hub as this machine reaches it (to make some calls fail). */
     wrap?: (backend: HiveBackend) => HiveBackend;
+    hub?: RunnerHost["hub"];
   } = {},
 ) {
   const repo = tmp("repo");
@@ -75,6 +76,7 @@ async function setup(
     report: machine.report,
     login: machine.login,
     usage: machine.usage,
+    hub: machine.hub,
   };
   const dataDir = tmp("data");
   const hubUpdates: HubUpdate[] = [];
@@ -85,6 +87,9 @@ async function setup(
     onHub: (u) => hubUpdates.push(u),
     afterFinish: machine.afterFinish,
     onEvent: machine.onEvent,
+    // Chat replies are asked for by hand (pollChats) and reported quickly.
+    chatPollMs: 0,
+    chatProgressMs: 50,
   });
   if (!machine.hive) await hive.call("tasks.create", { id: "T-1", project: "demo", title: "Thêm trang cài đặt" }, admin);
   const calls = () =>
@@ -95,7 +100,7 @@ async function setup(
           .map((l) => JSON.parse(l) as { agent: string; prompt: string; cwd: string; args: string[]; readOnly: string | null })
       : [];
   const task = async () => (await hive.call("tasks.list", { project: "demo" }, admin)).find((t) => t.id === "T-1")!;
-  return { repo, hive, runner, dataDir, calls, task, hubUpdates };
+  return { repo, hive, runner, dataDir, calls, task, hubUpdates, record };
 }
 
 async function until(check: () => boolean, ms = 10_000) {
@@ -763,6 +768,101 @@ describe("Runner", () => {
     assert.deepEqual([taken!.id, taken!.status], [req.id, "accepted"]);
     assert.deepEqual(a.runner.store.list({ limit: 10 }).map((r) => r.id), [taken!.runId], "one run, told twice");
     await a.runner.settle();
+  });
+
+  describe("the web chat's leader", () => {
+    // The hub web cuts a token for each reply; here the machine gets a stand-in, as a web hub would send it.
+    const withGrant = (b: HiveBackend): HiveBackend => ({
+      call: (async (method: string, input: unknown, actor: Actor) => {
+        const out = (await b.call(method as never, input as never, actor)) as any;
+        const cut = (list: Array<Record<string, unknown>>) => list.map(({ sender: _sender, ...r }) => ({ ...r, grant: "hivechat_test" }));
+        if (method === "machines.heartbeat") return { ...out, chatRequests: cut(out.chatRequests) };
+        return method === "chat.poll" ? cut(out) : out;
+      }) as HiveBackend["call"],
+    });
+    const claudeReport = () => ({
+      profiles: [{ id: "claude-1", label: "claude-1", kind: "claude", enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0 }],
+    });
+    /** A `claude` on this machine that is the fake agent. */
+    const fakeClaude = () => {
+      const file = path.join(tmp("bin"), "claude");
+      writeFileSync(file, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(FAKE)} "$@"\n`, { mode: 0o755 });
+      return file;
+    };
+    const leader = async () => {
+      const a = await setup([profile("claude-1", "claude", 10, "chat", { bin: fakeClaude() })], { acceptHubRuns: true }, "hub", {
+        report: claudeReport,
+        hub: () => ({ url: "https://hive.example.test", token: "hive_machine_token" }),
+        wrap: withGrant,
+      });
+      await a.runner.heartbeat();
+      const chats = () =>
+        existsSync(a.record)
+          ? readFileSync(a.record, "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, any>).filter((r) => typeof r.chat === "string")
+          : [];
+      return { ...a, machineId: "runner.duy-mbp@duy-macbook", chats };
+    };
+    const replyOf = async (hive: SqliteHive, threadId: number) => (await hive.call("chat.get", { threadId }, admin))!.messages.at(-1)!;
+
+    it("writes the reply with Claude in the project's repo, through the hub's MCP with the reply's token, and resumes the session", async () => {
+      const a = await leader();
+      const sent = await a.hive.call("chat.send", { project: "demo", machineId: a.machineId, text: "- what is left on T-1?" }, admin);
+      assert.equal(await a.runner.pollChats(), 1);
+      await a.runner.settleChats();
+      const reply = await replyOf(a.hive, sent.thread.id);
+      assert.deepEqual([reply.status, reply.text, reply.costUsd], ["done", "Answer: - what is left on T-1?", 0.0425], reply.error?.message);
+      assert.match(reply.steps, /▶ .*npm test/, "the agent's steps, as the run log shows them");
+
+      const [call] = a.chats();
+      assert.equal(call!.chat, "- what is left on T-1?", "on stdin: a message starting with - is not an option");
+      assert.equal(call!.cwd, realpathSync(a.repo));
+      assert.deepEqual([call!.agent, call!.project], ["claude-1", "demo"]);
+      assert.ok(call!.args.includes("--strict-mcp-config"));
+      assert.ok(!call!.args.includes("--resume"), "a new thread starts a session");
+      const settings = JSON.parse(call!.args[call!.args.indexOf("--settings") + 1]);
+      assert.deepEqual(settings.permissions.deny, ["Bash", "Edit", "Write", "MultiEdit", "NotebookEdit"], "reads the repo, changes nothing");
+      const mcp = JSON.parse(call!.mcp)["mcpServers"]["xdev-hive"];
+      assert.equal(mcp.url, "https://hive.example.test/mcp");
+      assert.equal(mcp.headers.authorization, "Bearer hivechat_test", "the reply's token, not the machine's");
+      assert.equal(mcp.headers["x-hive-agent"], "claude-1.duy-mbp");
+      assert.deepEqual(readdirSync(path.join(a.dataDir, "runs")).filter((f) => f.startsWith("chat-")), [], "the token file is gone");
+
+      await a.hive.call("chat.send", { project: "demo", threadId: sent.thread.id, text: "And T-2?" }, admin);
+      await a.runner.pollChats();
+      await a.runner.settleChats();
+      const second = a.chats()[1]!;
+      assert.equal(second.args[second.args.indexOf("--resume") + 1], "fake-session");
+      assert.equal((await replyOf(a.hive, sent.thread.id)).text, "Answer: And T-2?");
+    });
+
+    it("stops writing when the reply is cancelled on the web, and keeps what it wrote", async () => {
+      const a = await leader();
+      const sent = await a.hive.call("chat.send", { project: "demo", machineId: a.machineId, text: "a slow question" }, admin);
+      await a.runner.pollChats();
+      await until(() => a.chats().length === 1);
+      for (let i = 0; i < 100 && (await replyOf(a.hive, sent.thread.id)).text === ""; i++) await new Promise((r) => setTimeout(r, 50));
+      assert.equal((await replyOf(a.hive, sent.thread.id)).status, "running");
+      await a.hive.call("chat.cancel", { replyId: sent.reply.id }, admin);
+      await a.runner.settleChats();
+      const reply = await replyOf(a.hive, sent.thread.id);
+      assert.deepEqual([reply.status, reply.text], ["cancelled", "Looking at the tasks…"]);
+    });
+
+    it("says why it cannot write a reply, and asks for none while it does not take runs from the hub", async () => {
+      const noToken = await setup([profile("claude-1", "claude", 10, "chat", { bin: fakeClaude() })], { acceptHubRuns: true }, "hub", {
+        report: claudeReport,
+        hub: () => ({ url: "https://hive.example.test", token: "hive_machine_token" }),
+      });
+      await noToken.runner.heartbeat();
+      const sent = await noToken.hive.call("chat.send", { project: "demo", machineId: "runner.duy-mbp@duy-macbook", text: "hi" }, admin);
+      await noToken.runner.pollChats();
+      await noToken.runner.settleChats();
+      const reply = await replyOf(noToken.hive, sent.thread.id);
+      assert.deepEqual([reply.status, reply.error?.key], ["failed", "errors.chatNoGrant"], "an older hub sends no token: the leader never gets the machine's");
+
+      const off = await setup([profile("claude-1", "claude", 10, "chat")], {}, "hub", { report: claudeReport });
+      assert.equal(await off.runner.pollChats(), 0);
+    });
   });
 
   it("takes no run from the hub until the user allows it", async () => {
