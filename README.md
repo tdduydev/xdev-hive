@@ -26,7 +26,12 @@ Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, 
   - Skill là tài liệu có key `org/skills/<tên>` (cả team) hoặc `project/<dự án>/skills/<tên>`. Nội dung là một `SKILL.md` của Claude Code: front matter có `name` (trùng `<tên>`: chữ thường, số, `-`, tối đa 64) và `description` (việc skill làm và khi nào dùng, tối đa 1024 ký tự), rồi đến các bước. Hub từ chối skill thiếu hoặc sai hai trường đó, và cũng chặn secret như với tài liệu.
   - Skill không bao giờ vào `AGENTS.md` và không giới hạn theo đường dẫn.
   - Agent dùng MCP: `skill_list` (tên và mô tả; skill của dự án thay skill chung cùng tên), `skill_get` (của dự án trước, không có thì của team), `skill_propose` (SKILL.md đầy đủ; `shared: true` cho cả team). Đề xuất đi qua trang *Đề xuất* như tài liệu.
-  - Admin tạo và sửa skill ở trang *Tài liệu* (tên `skills/<tên>`).
+  - Trang *Skill* (web và app, nhóm Làm việc):
+    - Danh sách skill theo phạm vi đang chọn ở thanh bên. Khi chọn một dự án, trang hiện đúng bộ skill agent của dự án đó nhận: skill riêng có nhãn *thay skill chung*, skill chung cùng tên bị làm mờ với nhãn *không dùng ở dự án này*.
+    - Soạn skill bằng ô tên, ô mô tả (đếm tới 1024 ký tự) và phần hướng dẫn; front matter được ghép tự động, giữ nguyên các khoá khác như `allowed-tools`. Nút *Thay đổi* hiện diff trước khi lưu.
+    - Người quản trị (dự án hoặc Chung) lưu thẳng và tạo skill mới. Người đóng góp gửi đề xuất, admin duyệt ở trang *Đề xuất*.
+    - Mỗi skill hiện số đề xuất đang chờ duyệt, kể cả đề xuất agent gửi bằng `skill_propose`.
+  - Trang *Tài liệu* vẫn tạo và sửa được skill (tên `skills/<tên>`), kèm lịch sử phiên bản.
   - **Trong repo**: *Đồng bộ tài liệu* ghi mỗi skill của dự án (skill chung + skill riêng, riêng thay chung cùng tên) vào `.claude/skills/<tên>/SKILL.md`, nên Claude Code tự nạp skill như skill của nó. Front matter nằm đầu file như Claude Code cần, phần còn lại trong khối quản lý của Hive. Worktree của run lấy skill theo branch như `AGENTS.md`.
   - `AGENTS.md` có mục *Skills* trong khối của Hive: tên và mô tả từng skill, để Codex, Gemini và agent khác gọi `skill_get` khi mô tả khớp việc.
   - Skill bị xoá hay đổi tên trong Hive thì lần đồng bộ sau gỡ file và thư mục của nó. Repo tự có skill cùng tên (không có khối của Hive) thì giữ nguyên, báo *đã bỏ qua*.

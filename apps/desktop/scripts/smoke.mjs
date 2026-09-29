@@ -76,6 +76,10 @@ await hive.call("tasks.create", { id: "T-001", project: "demo", title: "Thêm tr
 await hive.call("tasks.create", { id: "T-002", project: "demo", title: "Sửa lỗi phân trang danh sách" }, admin);
 // Waits on T-002 (roadmap 7): shown as blocked, and T-002 is the next ready task.
 await hive.call("tasks.create", { id: "T-003", project: "demo", title: "Viết test cho API đăng nhập", dependsOn: ["T-002"] }, admin);
+// A team skill and the project's own of the same name (roadmap 14c): the Skills page marks which one demo uses.
+const skill = (name, description, body) => `---\nname: ${name}\ndescription: ${description}\n---\n\n${body}\n`;
+await hive.call("docs.save", { key: "org/skills/review-pr", content: skill("review-pr", "Review a pull request: run the tests, read the diff, report a verdict.", "1. Run the tests.\n2. Read the diff."), baseVersion: 0 }, admin);
+await hive.call("docs.save", { key: "project/demo/skills/review-pr", content: skill("review-pr", "Review a demo PR: also check the settings page screenshots.", "1. Run npm test.\n2. Compare the screenshots."), baseVersion: 0 }, admin);
 hive.close();
 new RunStore(path.join(work, "runs.db")).insert(
   { project: "demo", taskId: "T-001", taskTitle: "Thêm trang cài đặt workspace", role: "implement", attempt: 1, maxAttempts: 3, reviewAfter: true },
@@ -106,7 +110,7 @@ async function shoot(name, page, delay, extra = {}) {
   }
 }
 
-for (const [page, delay] of [["board", 6000], ["agents", 1500], ["setup", 4000], ["projects", 1500], ["docs", 1500]]) await shoot(page, page, delay);
+for (const [page, delay] of [["board", 6000], ["agents", 1500], ["setup", 4000], ["projects", 1500], ["docs", 1500], ["skills", 1500]]) await shoot(page, page, delay);
 // The GitHub card and the project's GitLab / GitHub fields (roadmap 13a).
 await shoot("projects-github", "projects", 1500, { HIVE_SMOKE_CLICK: "main button[aria-expanded]", HIVE_SMOKE_SCROLL: "#gh-url" });
 // The app checks open MRs as it starts (right away in smoke mode): the failed job goes to a fix run.
