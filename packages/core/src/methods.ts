@@ -16,6 +16,9 @@ import {
   type RunNotice,
   type RunRecord,
   type RunRequest,
+  type ChatMessage,
+  type ChatRequest,
+  type ChatThread,
   type Doc,
   type DocSummary,
   type DocVersion,
@@ -51,6 +54,12 @@ const repoPath = z
 const objectId = z.string().regex(/^[0-9a-f]{40,64}$/);
 const account = z.string().regex(ACCOUNT_ID, "account: letters, digits, . _ @ : + -");
 const machineRef = z.string().min(1).max(200);
+/** Why a machine could not do what the hub asked: the message, and its key in the UI catalogue when there is one. */
+const machineError = z.object({
+  message: z.string().max(2000),
+  key: z.string().max(80).optional(),
+  vars: z.record(z.string().max(40), z.union([z.string().max(300), z.number()])).optional(),
+});
 /** cli:<kind> · shim · <project>:<part> — ids of the desktop's setup items. */
 const setupItemId = z.string().regex(/^(cli:[a-z]+|shim|[a-z0-9][a-z0-9._-]{0,99}:(agents|codegraph-mcp|codegraph-index|superpowers))$/, "unknown setup item");
 
@@ -303,14 +312,40 @@ export const schemas = {
     id,
     status: z.enum(["accepted", "rejected"]),
     runId: z.string().regex(/^[\w.-]{1,40}$/).nullable().default(null),
-    error: z
-      .object({
-        message: z.string().max(2000),
-        key: z.string().max(80).optional(),
-        vars: z.record(z.string().max(40), z.union([z.string().max(300), z.number()])).optional(),
-      })
-      .nullable()
-      .default(null),
+    error: machineError.nullable().default(null),
+  }),
+  /** A message to a project's leader: the first of a new thread (machineId required) or the next of one. */
+  "chat.send": z.object({
+    project,
+    threadId: id.optional(),
+    machineId: machineRef.optional(),
+    /** A Claude profile of that machine; null lets it pick. Kept for the thread. */
+    profileId: z.string().max(40).nullable().default(null),
+    title: z.string().max(120).optional(),
+    text: z.string().min(1).max(8000),
+  }),
+  /** Threads, the most recently active first: a project's, or every project the caller sees. */
+  "chat.threads": z.object({ project: project.optional(), limit: z.number().int().min(1).max(200).default(50) }),
+  /** A thread with its messages; `after` a message id returns only the newer ones (for polling). */
+  "chat.get": z.object({ threadId: id, after: z.number().int().min(0).default(0) }),
+  /** Stops a reply that is waiting or being written; the machine hears it at its next progress report. */
+  "chat.cancel": z.object({ replyId: id }),
+  /** The machine writing a reply says how far it got; the answer tells it whether someone cancelled it. */
+  "chat.progress": z.object({
+    replyId: id,
+    text: z.string().max(40_000).default(""),
+    steps: z.string().max(40_000).default(""),
+    activity: z.string().max(300).nullable().default(null),
+  }),
+  "chat.finish": z.object({
+    replyId: id,
+    status: z.enum(["done", "failed"]),
+    text: z.string().max(40_000).default(""),
+    steps: z.string().max(40_000).default(""),
+    /** The Claude Code session the next reply of the thread resumes. */
+    sessionId: z.string().regex(/^[\w-]{1,100}$/).nullable().default(null),
+    costUsd: z.number().min(0).nullable().default(null),
+    error: machineError.nullable().default(null),
   }),
   "costs.summary": z.object({}),
   "machines.remove": z.object({ id: z.string().min(1).max(200) }),
@@ -385,6 +420,8 @@ export interface MethodOutput {
     commands: MachineCommand[];
     /** Pending run requests for this machine; only while it accepts runs from the hub. */
     runRequests: RunRequest[];
+    /** Chat replies this machine is asked to write; same condition. */
+    chatRequests: ChatRequest[];
   };
   "machines.list": Machine[];
   "costs.summary": CostSummary;
@@ -396,6 +433,12 @@ export interface MethodOutput {
   "runs.requests": RunRequest[];
   "runs.cancelRequest": RunRequest;
   "runs.requestResult": RunRequest;
+  "chat.send": { thread: ChatThread; message: ChatMessage; reply: ChatMessage };
+  "chat.threads": ChatThread[];
+  "chat.get": { thread: ChatThread; messages: ChatMessage[] } | null;
+  "chat.cancel": ChatMessage;
+  "chat.progress": { cancelled: boolean };
+  "chat.finish": ChatMessage;
   "machines.remove": { removed: boolean };
   "cooldowns.list": QuotaCooldown[];
   /** null when `until` is already past (nothing to rest). */
@@ -452,6 +495,14 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "runs.requests": "viewer",
   "runs.cancelRequest": "agent",
   "runs.requestResult": "agent",
+  // Also "manage" on the project, like runs.dispatch.
+  "chat.send": "agent",
+  "chat.threads": "viewer",
+  "chat.get": "viewer",
+  "chat.cancel": "agent",
+  // Only the machine the thread is on.
+  "chat.progress": "agent",
+  "chat.finish": "agent",
   "machines.remove": "admin",
   "cooldowns.list": "viewer",
   "cooldowns.set": "agent",
