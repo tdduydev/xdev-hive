@@ -94,9 +94,17 @@ export function ensureWorktree(
 }
 
 /**
+ * Config that agent CLIs write into a working copy on their own, not the agent's work. Codex 0.157 can copy a repo's
+ * Claude Code setup there (`.mcp.json` → `.codex/config.toml`, hooks → `.codex/hooks.json`, skills →
+ * `.agents/skills/`) when its external agent import sync is on; that setting cannot be turned off for one run.
+ */
+export const AGENT_CLI_DIRS = [".codex", ".agents"];
+
+/**
  * Commits whatever the agent left uncommitted. No git hook runs: the agent could have written one into
  * the working copy (.githooks), and the app is not sandboxed. Docs rendered from Hive stay out, as the
- * pre-commit guard would have kept them; they show up as uncommitted in the run's summary.
+ * pre-commit guard would have kept them; they show up as uncommitted in the run's summary. So do the agent CLIs'
+ * folders (AGENT_CLI_DIRS), unless the branch already tracks something in one: then the project keeps it on purpose.
  */
 export function commitAll(dir: string, message: string, exclude: string[]): { sha: string | null; error: string | null } {
   try {
@@ -108,7 +116,8 @@ export function commitAll(dir: string, message: string, exclude: string[]): { sh
       .split("\n")
       .map((l) => l.replace(/^HEAD:/, ""))
       .filter((f) => f && f !== "AGENTS.md");
-    const keepOut = [...exclude, ...RENDERED_FILES, RULES_DIR, ...nested];
+    const cliDirs = AGENT_CLI_DIRS.filter((d) => !tryGit(dir, ["ls-tree", "-r", "--name-only", "HEAD", "--", d]));
+    const keepOut = [...exclude, ...RENDERED_FILES, RULES_DIR, ...nested, ...cliDirs];
     git(dir, ["add", "-A", "--", ".", ...keepOut.map((f) => `:(exclude)${f}`)]);
     if (!git(dir, ["diff", "--cached", "--name-only"])) return { sha: null, error: null };
     git(dir, ["-c", `core.hooksPath=${os.devNull}`, "commit", "-m", message]);
