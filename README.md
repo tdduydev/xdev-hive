@@ -146,6 +146,7 @@ queued ─chọn gói─▶ running ─exit 0──────▶ succeeded ─
   - `--setting-sources user` cũng làm Claude Code bỏ qua CLAUDE.md của dự án. Runner nạp lại nó bằng `--add-dir <worktree>` và `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1`; các file CLAUDE.md import (như `@AGENTS.md`) cũng được nạp. Đã kiểm với Claude Code 2.1.283.
   - Cần hook của repo thì tạo profile loại *Tuỳ chỉnh*: runner để nguyên tham số của loại này.
   - Codex giữ sandbox `workspace-write` (`--sandbox workspace-write`). Codex 0.15x bỏ cờ `--full-auto`: profile cũ còn cờ đó được đổi sang `--sandbox workspace-write` lúc chạy (bản Codex cũ cũng nhận cờ này).
+  - Codex 0.15x hỏi trước mỗi lần gọi tool MCP có ghi (`task_claim`, `memory_write`…), mà run headless không có ai trả lời nên bị từ chối. Run `codex exec …` của Hive thêm `-c mcp_servers.xdev-hive.default_tools_approval_mode="approve"` (container: server `hive`), và block Hive trong `~/.codex/config.toml` cũng có dòng đó; chỉ tool của Hive được cho qua.
 - **Hive**: runner `task_claim` trước khi chạy với cùng tên agent như `hive-mcp` (`HIVE_AGENT` = id profile). Xong thì chuyển task sang *Chờ review* kèm tóm tắt, trừ khi agent đã tự làm qua MCP. Review chéo được nối vào ghi chú task.
 - Lịch sử run và log nằm ở `~/.xdev-hive/runs.db` và `~/.xdev-hive/runs/<id>.log`. Log có prompt và output, **không** ghi biến môi trường.
 - App mở từ Finder có `PATH` ngắn, nên runner lấy `PATH` từ login shell (`$SHELL -ilc`) cộng `~/.local/bin`. Dùng nút *Kiểm tra CLI* để xem lệnh có tìm thấy không.

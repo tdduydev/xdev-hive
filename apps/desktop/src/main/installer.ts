@@ -59,6 +59,8 @@ const CODEX_BLOCK = [
   `command = "${SHIM_NAME}"`,
   "args = []",
   'env = { HIVE_AGENT = "codex" }',
+  // Codex 0.15x asks before every MCP write (task_claim, memory_write); a headless run has nobody to ask.
+  'default_tools_approval_mode = "approve"',
   CODEX_END,
 ].join("\n");
 
