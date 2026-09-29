@@ -11,6 +11,7 @@
 // No Electron imports: the desktop main process provides a RunnerHost, tests provide a fake one.
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { StringDecoder } from "node:string_decoder";
 import { closeSync, createWriteStream, existsSync, mkdirSync, openSync, readSync, rmSync, statSync, writeFileSync, type WriteStream } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -48,6 +49,7 @@ import { claudeMcpServers, codexMcpArgs, hubMcpEnv, type McpRun } from "./contai
 import { deniedHosts, egressAllow, egressPlan, type Egress } from "./egress.ts";
 import { buildCommand, buildPrompt, describeCommand, expandEnv, expandHome, parsePick, resolveBin, type JudgeCandidate } from "./command.ts";
 import { detectRateLimit } from "./rate-limit.ts";
+import { ClaudeStream } from "./stream.ts";
 import { parseClaudeResult, type RunUsage } from "./usage.ts";
 import { pickProfile, waitingReason, type ProfileLoad, type RunNeeds } from "./schedule.ts";
 import { ACTIVE, RunStore } from "./store.ts";
@@ -211,6 +213,8 @@ export class Runner {
   readonly #waiting = new Map<string, string>();
   /** Runs between their end and the last of their bookkeeping (see AgentRun.finishing). */
   readonly #finishing = new Set<string>();
+  /** What each running agent is doing now (see AgentRun.activity). */
+  readonly #activity = new Map<string, string>();
   /** Lease holder name as the backend recorded it (a hub appends the token name: claude-1.duy-mbp@duy). */
   readonly #owners = new Map<string, string>();
   /** Hub cooldowns by account, refreshed by every heartbeat. */
@@ -371,11 +375,12 @@ export class Runner {
   }
 
   list(filter: { project?: string; limit?: number } = {}): AgentRun[] {
-    return this.store
-      .list(filter)
-      .map((r) =>
-        r.status === "queued" ? { ...r, error: this.#waiting.get(r.id) ?? r.error } : this.#finishing.has(r.id) ? { ...r, finishing: true } : r,
-      );
+    return this.store.list(filter).map((r) => {
+      if (r.status === "queued") return { ...r, error: this.#waiting.get(r.id) ?? r.error };
+      if (this.#finishing.has(r.id)) return { ...r, finishing: true };
+      const activity = r.status === "running" ? this.#activity.get(r.id) : undefined;
+      return activity ? { ...r, activity } : r;
+    });
   }
 
   log(id: string, maxBytes = 200_000): string {
@@ -803,14 +808,31 @@ export class Runner {
       let stdout = "";
       let all = "";
       const out = log;
+      // Claude Code's events become a log to follow while it runs; other CLIs write text as they go, and
+      // their last line is what they are doing now.
+      const stream = cmd.claudeStream ? new ClaudeStream(wt.path) : null;
+      const decode = { out: new StringDecoder("utf8"), err: new StringDecoder("utf8") };
+      const lastLine = (text: string) => {
+        const line = text.split("\n").map((l) => l.trim()).filter(Boolean).at(-1);
+        if (line) this.#activity.set(run.id, line.length > 160 ? `${line.slice(0, 159)}…` : line);
+      };
       child.stdout?.on("data", (b: Buffer) => {
-        out.write(b);
-        stdout = keepTail(stdout + b.toString("utf8"), cmd.claudeJson ? JSON_BYTES : TAIL_BYTES);
-        all = keepTail(all + b.toString("utf8"));
+        const text = decode.out.write(b);
+        if (stream) {
+          out.write(stream.push(text));
+          if (stream.state.activity) this.#activity.set(run.id, stream.state.activity);
+        } else {
+          out.write(text);
+          lastLine(text);
+        }
+        stdout = keepTail(stdout + text, cmd.claudeJson || stream ? JSON_BYTES : TAIL_BYTES);
+        all = keepTail(all + text);
       });
       child.stderr?.on("data", (b: Buffer) => {
-        out.write(b);
-        all = keepTail(all + b.toString("utf8"));
+        const text = decode.err.write(b);
+        out.write(text);
+        if (!stream) lastLine(text);
+        all = keepTail(all + text);
       });
 
       const outcome = await new Promise<Outcome>((resolve) => {
@@ -821,8 +843,12 @@ export class Runner {
       });
       clearTimeout(timer);
       this.#live.delete(run.id);
-      if (outcome.kind === "exit" && cmd.claudeJson) {
-        outcome.usage = parseClaudeResult(outcome.stdout);
+      this.#activity.delete(run.id);
+      if (stream) out.write(stream.end());
+      if (outcome.kind === "exit" && (cmd.claudeJson || stream)) {
+        outcome.usage = parseClaudeResult(stream?.result ?? outcome.stdout);
+        // No result (killed, crashed): the summary is its last message, not the raw events.
+        if (stream && !outcome.usage) outcome.stdout = stream.lastText ?? "";
         const u = outcome.usage;
         if (u?.text) out.write(`\n\n## Result\n${u.text}\n`);
         if (u && (u.costUsd !== null || u.outputTokens !== null)) {
