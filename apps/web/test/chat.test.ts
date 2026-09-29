@@ -78,8 +78,14 @@ describe("chat replies on the hub", () => {
     const sent = await lan("chat.send", { project: "app", machineId: "runner.hoa-mbp@hoa-mbp", text: "Tidy up the app tasks" });
     assert.equal(sent.status, 200, JSON.stringify(sent.body));
 
+    // Asked for between heartbeats too, with a token of its own each time.
+    const [polled] = (await rpc(machineToken, "chat.poll", {})).body.result;
+    assert.equal(polled.sender, undefined);
+    assert.match(polled.grant, /^hivechat_/);
+
     const beat = await heartbeat();
     const [request] = beat.body.result.chatRequests;
+    assert.equal((await rpc(polled.grant, "tasks.list", {}, "claude-1.hoa-mbp")).status, 401, "a newer token replaces the one handed out before");
     assert.equal(request.replyId, sent.body.result.reply.id);
     assert.equal(request.sender, undefined, "the sender's rights stay on the hub");
     assert.match(request.grant, /^hivechat_/);
