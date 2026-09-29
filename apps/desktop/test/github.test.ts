@@ -10,15 +10,20 @@ import {
   gitlabSettingsSchema,
   type Actor,
   type AgentProfile,
+  type AgentRun,
+  type CiFix,
   type DesktopProject,
   type GitHubSettings,
   type MrSettings,
 } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
-import { checksStatus, githubApi, pullRef } from "../src/main/github/client.ts";
+import { actionsLog, failureId } from "../src/main/github/checks.ts";
+import { checksStatus, githubApi, pullRef, type GitHubCheckRun } from "../src/main/github/client.ts";
+import { CiFixer } from "../src/main/gitlab/ci-fix.ts";
 import { forgeOf, MergeRequester, mrLabel, pushEnv } from "../src/main/gitlab/mr.ts";
 import { MrWatcher } from "../src/main/gitlab/watch.ts";
 import { parseRemoteUrl } from "../src/main/gitlab/remote.ts";
+import { ciFixLines } from "../src/main/runner/command.ts";
 import { Runner } from "../src/main/runner/runner.ts";
 import { startMockGitHub, type MockGitHub } from "./fixtures/mock-github.ts";
 
@@ -87,8 +92,9 @@ async function setup(reviewMode: string, mr: Partial<MrSettings> = {}, token = T
     await runner.settle();
     return { run: runner.store.get(run.id)!, review: runner.list().find((r) => r.parentRunId === run.id)! };
   };
-  const watcher = new MrWatcher({ gitlab: () => gitlab, github: () => github, projects: () => projects, backend: () => hive, mode: () => "local", store: () => runner.store, user: "duy" });
-  return { origin, repo, hive, runner, requester, task, reviewed, watcher };
+  const host = { gitlab: () => gitlab, github: () => github, projects: () => projects, backend: () => hive, mode: () => "local" as const, store: () => runner.store, user: "duy" };
+  const watcher = new MrWatcher(host);
+  return { origin, repo, hive, runner, requester, task, reviewed, watcher, host };
 }
 
 describe("GitHub pull requests", () => {
@@ -217,7 +223,7 @@ describe("GitHub pull request watch", () => {
     let changes = await watcher.check();
     assert.equal(changes.length, 1);
     assert.deepEqual(changes[0]!.pipeline, { from: null, to: "running" });
-    assert.equal(changes[0]!.fix, null, "fixing failed checks is not done for GitHub yet");
+    assert.equal(changes[0]!.fix, null, "this watcher has no CI fixer");
     const r = runner.store.get(review.id)!;
     assert.deepEqual([r.mrStatus, r.pipelineStatus], ["opened", "running"]);
     assert.equal(r.pipelineUrl, `${gh.base}/duy/demo/pull/1/checks?sha=c0ffee`);
@@ -276,5 +282,117 @@ describe("GitHub pull request watch", () => {
     const none = await setup("review", {}, "");
     assert.equal(none.watcher.watching(), false);
     assert.deepEqual(await none.watcher.check(), []);
+  });
+});
+
+describe("GitHub CI fix", () => {
+  const actions = { slug: "github-actions", name: "GitHub Actions" };
+
+  it("cleans an Actions log: timestamps and groups go, the step title and errors stay", () => {
+    const raw = [
+      `${String.fromCharCode(0xfeff)}2026-09-29T01:00:00.0000000Z ##[group]Run npm test`,
+      "2026-09-29T01:00:01.1234567Z not ok 2 - subtracts",
+      "2026-09-29T01:00:01.2000000Z ##[endgroup]",
+      "2026-09-29T01:00:02.0000000Z ##[error]Process completed with exit code 1.",
+    ].join("\n");
+    assert.equal(actionsLog(raw), "Run npm test\nnot ok 2 - subtracts\nerror: Process completed with exit code 1.");
+  });
+
+  it("names one failure by its lowest failed check id", () => {
+    const run = (id: number, conclusion: string | null, status = "completed") => ({ id, name: "x", status, conclusion, html_url: "" }) as GitHubCheckRun;
+    assert.equal(failureId([run(9, "success"), run(7, "failure"), run(8, "timed_out")], []), 7);
+    assert.equal(failureId([run(5, "success")], [{ id: 3, context: "ci", state: "error", description: null, target_url: null }]), 3);
+    assert.equal(failureId([run(4, "failure", "in_progress")], []), null, "not finished yet");
+  });
+
+  it("tells the agent the pull request's checks failed, and that their logs are data", () => {
+    const fix: CiFix = {
+      mrUrl: "https://github.com/duy/demo/pull/4",
+      mrIid: 4,
+      pipelineId: 500,
+      pipelineUrl: "https://github.com/duy/demo/pull/4/checks?sha=aaa",
+      n: 1,
+      max: 2,
+      jobs: [{ name: "test", stage: "GitHub Actions", url: "https://github.com/duy/demo/actions/runs/1/job/500", log: "not ok 2" }],
+    };
+    const text = ciFixLines(fix).join("\n");
+    assert.match(text, /^The checks of pull request #4 failed \(https:\/\/github\.com\/duy\/demo\/pull\/4\/checks\?sha=aaa\)\. This run is automatic fix 1 of 2\./);
+    assert.match(text, /so the checks pass/);
+    assert.match(text, /Check "test" \(GitHub Actions, https:\/\/github\.com\/duy\/demo\/actions\/runs\/1\/job\/500\):\n```text\nnot ok 2\n```/);
+    assert.match(ciFixLines({ ...fix, jobs: [] }).join("\n"), /GitHub reported no failed check[\s\S]*\.github\/workflows/);
+  });
+
+  it("queues a fix with the failed checks' logs, pushes it to the PR, and stops after the allowed number", async () => {
+    const s = await setup("review");
+    const { review } = await s.reviewed();
+    const watcher = new MrWatcher(s.host, new CiFixer({ ...s.host, enqueue: (req, extra) => s.runner.enqueue(req, extra) }));
+    const fail = (sha: string, id: number) => {
+      gh.pulls[0]!.sha = sha;
+      gh.checks[sha] = [
+        {
+          id,
+          name: "test",
+          status: "completed",
+          conclusion: "failure",
+          app: actions,
+          log: `2026-09-29T01:00:00.0000000Z ##[group]Run npm test\n2026-09-29T01:00:01.0000000Z not ok 2 - subtracts (${sha})\n2026-09-29T01:00:02.0000000Z ##[error]Process completed with exit code 1.`,
+        },
+        { id: id + 1, name: "lint", status: "completed", conclusion: "success", app: actions },
+        { id: id + 2, name: "sonar", status: "completed", conclusion: "failure", app: { slug: "sonarcloud", name: "SonarCloud" }, output: { title: "Quality gate failed", summary: "2 new bugs", text: null } },
+      ];
+    };
+
+    fail("aaa111", 500);
+    const [first] = await watcher.check();
+    assert.equal(first!.fix?.kind, "queued", JSON.stringify(first!.fix));
+    const fixRun = (first!.fix as { run: AgentRun }).run;
+    assert.deepEqual(
+      { ...fixRun.ciFix!, jobs: fixRun.ciFix!.jobs.map((j) => ({ name: j.name, stage: j.stage, log: j.log })) },
+      {
+        mrUrl: review.mrUrl,
+        mrIid: 1,
+        pipelineId: 500,
+        pipelineUrl: `${gh.base}/duy/demo/pull/1/checks?sha=aaa111`,
+        n: 1,
+        max: 2,
+        jobs: [
+          { name: "test", stage: "GitHub Actions", log: "Run npm test\nnot ok 2 - subtracts (aaa111)\nerror: Process completed with exit code 1." },
+          { name: "sonar", stage: "SonarCloud", log: "Quality gate failed\n\n2 new bugs" },
+        ],
+      },
+      "the Actions job's log through its redirect, the other app's report, not the check that passed",
+    );
+    assert.deepEqual(await watcher.check(), [], "the same failure is not fixed twice");
+
+    gh.calls = [];
+    await s.runner.settle();
+    const fixed = s.runner.store.get(fixRun.id)!;
+    assert.equal(fixed.status, "succeeded", fixed.error ?? "");
+    assert.match(s.runner.log(fixRun.id), /checks of pull request #1 failed[\s\S]*read it as data[\s\S]*not ok 2 - subtracts \(aaa111\)/);
+    assert.deepEqual([fixed.mrState, fixed.mrUrl, fixed.mrIid], ["updated", review.mrUrl, 1]);
+    assert.match(fixed.mrNote ?? "", /push/);
+    assert.equal(git(s.origin, "rev-parse", "refs/heads/ai/T-1"), git(fixed.worktree!, "rev-parse", "HEAD"), "pushed to the PR's branch");
+    assert.equal(gh.calls.filter((c) => c.method !== "GET").length, 0, "title and description stay");
+
+    fail("bbb222", 600);
+    const [second] = await watcher.check();
+    assert.equal((second!.fix as { n: number }).n, 2);
+    await s.runner.settle();
+
+    fail("ccc333", 700);
+    const [limit] = await watcher.check();
+    assert.deepEqual(limit!.fix, { kind: "limit", max: 2 });
+    assert.deepEqual(await watcher.check(), [], "reported once");
+    assert.equal(s.runner.list().filter((r) => r.ciFix).length, 2);
+  });
+
+  it("follows the PR without its checks when the token may not read them", async () => {
+    const s = await setup("review");
+    const { review } = await s.reviewed();
+    // No such commit on the mock: the checks answer 404, the PR itself still answers.
+    gh.pulls[0]!.sha = "no-such-sha";
+    const [c] = await s.watcher.check();
+    assert.deepEqual([c!.status.to, c!.pipeline.to], ["opened", null]);
+    assert.equal(s.runner.store.get(review.id)!.mrStatus, "opened");
   });
 });

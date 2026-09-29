@@ -19,9 +19,14 @@ export interface MockPull {
 }
 
 export interface MockCheck {
+  id?: number;
   name: string;
   status: string;
   conclusion: string | null;
+  app?: { slug: string; name: string };
+  output?: { title: string | null; summary: string | null; text: string | null };
+  /** An Actions job's log, served through a redirect like GitHub's. */
+  log?: string;
 }
 
 export interface MockGitHub {
@@ -31,7 +36,7 @@ export interface MockGitHub {
   noDrafts: boolean;
   /** Check runs and commit statuses by commit sha. */
   checks: Record<string, MockCheck[]>;
-  statuses: Record<string, Array<{ context: string; state: string }>>;
+  statuses: Record<string, Array<{ id?: number; context: string; state: string; description?: string }>>;
   calls: Array<{ method: string; path: string; body: any }>;
   reset(): void;
   close(): Promise<void>;
@@ -71,6 +76,13 @@ export async function startMockGitHub(token: string): Promise<MockGitHub> {
       res.writeHead(status, { "content-type": "application/json" });
       res.end(JSON.stringify(json));
     };
+    // Where a job log redirects to: a short-lived download that needs no token.
+    const blob = /^\/logs\/(\d+)$/.exec(url.pathname);
+    if (blob) {
+      const check = Object.values(gh.checks).flat().find((c) => c.id === Number(blob[1]));
+      res.writeHead(check?.log === undefined ? 404 : 200, { "content-type": "text/plain" });
+      return res.end(check?.log ?? "");
+    }
     if (req.headers.authorization !== `Bearer ${token}`) return send(401, { message: "Bad credentials" });
     const p = url.pathname;
     if (req.method === "GET" && p === "/api/v3/user") return send(200, { login: "duy", name: "Duy" });
@@ -115,7 +127,12 @@ export async function startMockGitHub(token: string): Promise<MockGitHub> {
     const status = /^\/api\/v3\/repos\/duy\/demo\/commits\/(\w+)\/status$/.exec(p);
     if (status && req.method === "GET") {
       const list = gh.statuses[status[1]!] ?? [];
-      return send(200, { state: "pending", total_count: list.length, statuses: list.map((s) => ({ ...s, target_url: null })) });
+      return send(200, { state: "pending", total_count: list.length, statuses: list.map((s) => ({ description: null, ...s, target_url: null })) });
+    }
+    const jobLog = /^\/api\/v3\/repos\/duy\/demo\/actions\/jobs\/(\d+)\/logs$/.exec(p);
+    if (jobLog && req.method === "GET") {
+      res.writeHead(302, { location: `${gh.base}/logs/${jobLog[1]}` });
+      return res.end();
     }
     if (one && req.method === "PATCH") {
       const pr = gh.pulls.find((x) => x.number === Number(one[1]));

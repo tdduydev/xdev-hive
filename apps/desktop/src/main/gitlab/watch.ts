@@ -1,10 +1,11 @@
 // Follows the merge requests the app opened: their state and pipeline on GitLab, and the same for GitHub pull
-// requests (state and checks). A merged one moves its task to done (unless turned off); a failed pipeline on
-// an open GitLab MR goes to the CI fixer. Only links on the configured GitLab / GitHub, so each token goes
-// nowhere else. No Electron imports.
+// requests (state and checks). A merged one moves its task to done (unless turned off); a failed pipeline, or
+// failed checks, on an open one goes to the CI fixer. Only links on the configured GitLab / GitHub, so each
+// token goes nowhere else. No Electron imports.
 import { PIPELINE_STATUSES, type AgentRun, type MrStatus, type PipelineStatus } from "@xdev-hive/core";
+import { failureId, githubJobs } from "../github/checks.ts";
 import { checksStatus, GitHubClient, pullRef } from "../github/client.ts";
-import type { CiFixer, CiFixOutcome } from "./ci-fix.ts";
+import { gitlabJobs, type CiFixer, type CiFixOutcome, type FailedJobs } from "./ci-fix.ts";
 import { GitLabClient } from "./client.ts";
 import { clipTail, mrActor, mrLabel, type MrHost } from "./mr.ts";
 
@@ -73,7 +74,7 @@ export class MrWatcher {
         const ref = gl ? mrRef(gl.baseUrl, run.mrUrl!) : null;
         const pull = !ref && gh ? pullRef(gh.baseUrl, run.mrUrl!) : null;
         if (!ref && !pull) continue;
-        let seen: { status: MrStatus; pipeline: PipelineStatus | null; pipelineUrl: string | null; failed: { id: number } | null };
+        let seen: { status: MrStatus; pipeline: PipelineStatus | null; pipelineUrl: string | null; failed: { id: number; jobs: FailedJobs } | null };
         try {
           if (ref) {
             const mr = await gl!.mergeRequest(ref.project, ref.iid);
@@ -81,17 +82,22 @@ export class MrWatcher {
               status: mr.state === "merged" ? "merged" : mr.state === "closed" ? "closed" : "opened",
               pipeline: pipelineOf(mr.head_pipeline?.status),
               pipelineUrl: mr.head_pipeline?.web_url ?? null,
-              failed: mr.head_pipeline ?? null,
+              failed: mr.head_pipeline ? { id: mr.head_pipeline.id, jobs: gitlabJobs(gl!, ref.project, mr.head_pipeline.id) } : null,
             };
           } else {
             const pr = await gh!.pull(pull!.repo, pull!.number);
             const status: MrStatus = pr.merged ? "merged" : pr.state === "closed" ? "closed" : "opened";
             // Checks only matter while it is open: a merged or closed PR keeps what was seen last.
             const open = status === "opened";
-            const pipeline = open ? checksStatus(await gh!.checkRuns(pull!.repo, pr.head.sha), await gh!.statuses(pull!.repo, pr.head.sha)) : run.pipelineStatus;
+            // A token without the Checks or Commit statuses permission still follows the PR itself.
+            const [runs, statuses] = open
+              ? await Promise.all([gh!.checkRuns(pull!.repo, pr.head.sha).catch(() => null), gh!.statuses(pull!.repo, pr.head.sha).catch(() => null)])
+              : [null, null];
+            const pipeline = runs === null && statuses === null ? run.pipelineStatus : checksStatus(runs ?? [], statuses ?? []);
             // Per commit, so a new push whose checks fail again counts as a change.
             const pipelineUrl = !open ? run.pipelineUrl : pipeline ? `${pr.html_url}/checks?sha=${pr.head.sha}` : null;
-            seen = { status, pipeline, pipelineUrl, failed: null };
+            const id = pipeline === "failed" ? failureId(runs ?? [], statuses ?? []) : null;
+            seen = { status, pipeline, pipelineUrl, failed: id === null ? null : { id, jobs: githubJobs(gh!, pull!.repo, runs ?? [], statuses ?? []) } };
           }
         } catch {
           continue;
@@ -102,8 +108,8 @@ export class MrWatcher {
         const changed = status !== run.mrStatus || pipeline !== run.pipelineStatus || pipelineUrl !== run.pipelineUrl;
         // Asked on every check, not only on a change: a fix waits while the task has a run going.
         const fix =
-          this.#fixer && ref && status === "opened" && pipeline === "failed" && seen.failed
-            ? await this.#fixer.handle(run, { id: seen.failed.id, url: pipelineUrl }, gl!, ref.project)
+          this.#fixer && status === "opened" && pipeline === "failed" && seen.failed
+            ? await this.#fixer.handle(run, { id: seen.failed.id, url: pipelineUrl }, seen.failed.jobs)
             : null;
         if (!changed && fix?.kind !== "queued") continue;
         const change: MrChange = {
