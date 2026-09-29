@@ -49,6 +49,26 @@ export function usePoll(ms: number | null): number {
   return tick;
 }
 
+const hashParam = (name: string) => new URLSearchParams(window.location.hash.split("?")[1] ?? "").get(name);
+
+/**
+ * A parameter of the page's address (#/tasks?task=T-1), for a link from another page to one item. `clear` takes it
+ * out of the address once the page showed the item, so closing it and following the same link again works.
+ */
+export function useHashParam(name: string): [string | null, () => void] {
+  const [value, setValue] = useState(() => hashParam(name));
+  useEffect(() => {
+    const onHash = () => setValue(hashParam(name));
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, [name]);
+  const clear = useCallback(() => {
+    window.history.replaceState(null, "", window.location.hash.split("?")[0] || "#/");
+    setValue(null);
+  }, []);
+  return [value, clear];
+}
+
 export function useQuery<T>(fn: () => Promise<T>, deps: unknown[]): QueryState<T> {
   const [data, setData] = useState<T>();
   const [error, setError] = useState<string | null>(null);
