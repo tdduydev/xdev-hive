@@ -186,6 +186,12 @@ function MachineRow({ machine: m, onChanged }: { machine: Machine; onChanged: ()
           <span className="font-mono font-semibold break-all">{m.machine}</span>
           <span className="font-mono text-xs break-all text-muted-foreground">{m.id}</span>
           {m.version ? <span className="text-xs text-muted-foreground">v{m.version}</span> : null}
+          {m.projects?.length ? <span className="text-xs wrap-anywhere text-muted-foreground">{t("machines.repos", { projects: m.projects.join(", ") })}</span> : null}
+          {m.acceptsRuns ? (
+            <span className="mt-0.5">
+              <Badge tone="accent">{t("machines.acceptsRuns")}</Badge>
+            </span>
+          ) : null}
           {m.profiles?.length ? (
             <div className="mt-1.5 flex flex-col gap-1">
               <span className="text-xs font-medium text-muted-foreground">{t("machines.profiles")}</span>

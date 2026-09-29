@@ -38,6 +38,17 @@ export interface QueryState<T> {
   reload: () => void;
 }
 
+/** A counter that goes up every `ms` while `ms` is set: put it in a query's deps to refresh the query. */
+export function usePoll(ms: number | null): number {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (ms === null) return;
+    const timer = setInterval(() => setTick((n) => n + 1), ms);
+    return () => clearInterval(timer);
+  }, [ms]);
+  return tick;
+}
+
 export function useQuery<T>(fn: () => Promise<T>, deps: unknown[]): QueryState<T> {
   const [data, setData] = useState<T>();
   const [error, setError] = useState<string | null>(null);
