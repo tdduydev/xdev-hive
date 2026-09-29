@@ -3,7 +3,8 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { can, levelOn, type Level } from "./access.ts";
 import { HiveError, type ErrorText } from "./errors.ts";
-import { agentsDocKey, decisionsDocKey, parseDocKey, titleFromSlug } from "./keys.ts";
+import { agentsDocKey, decisionsDocKey, parseDocKey, titleFromSlug, type ParsedDocKey } from "./keys.ts";
+import { parseSkill, type SkillSummary } from "./skills.ts";
 import { EMPTY_POLICY } from "./policy.ts";
 import {
   authorize,
@@ -460,6 +461,7 @@ export class SqliteHive implements HiveBackend {
         return;
       }
       case "memory.search":
+      case "skills.list":
         if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
         return;
       case "memory.write":
@@ -501,6 +503,8 @@ export class SqliteHive implements HiveBackend {
     switch (method as Method) {
       case "docs.list":
         return (out as DocSummary[]).filter((d) => sees(d.project)) as MethodOutput[M];
+      case "skills.list":
+        return (out as SkillSummary[]).filter((s) => sees(s.project)) as MethodOutput[M];
       case "proposals.list":
         return (out as Proposal[]).filter((p) => sees(SqliteHive.#docOwner(p.docKey))) as MethodOutput[M];
       case "memory.search":
@@ -647,6 +651,10 @@ export class SqliteHive implements HiveBackend {
   ): Doc {
     const parsed = parseDocKey(key);
     const paths = [...new Set(meta.paths ?? this.#getDoc(key)?.paths ?? [])];
+    if (parsed.skill) {
+      SqliteHive.#checkSkill(parsed, content);
+      if (paths.length) throw new HiveError("bad_request", `${key} is a skill: skills are not limited to paths.`, { key: "errors.skillPaths", vars: { key } });
+    }
     // AGENTS.md and docs/decisions.md are the repo-wide docs themselves.
     if (paths.length && parsed.project && (key === agentsDocKey(parsed.project) || key === decisionsDocKey(parsed.project))) {
       throw new HiveError("bad_request", `${key} is for the whole repo and cannot be limited to paths.`, { key: "errors.docPathsWholeRepo", vars: { key } });
@@ -659,7 +667,8 @@ export class SqliteHive implements HiveBackend {
     const version = (existing?.version ?? 0) + 1;
     const now = this.#now();
     const title = meta.title ?? existing?.title ?? titleFromSlug(parsed.slug);
-    const include = meta.includeInAgents ?? existing?.includeInAgents ?? parsed.scope === "org";
+    // A skill goes to .claude/skills, never into AGENTS.md.
+    const include = !parsed.skill && (meta.includeInAgents ?? existing?.includeInAgents ?? parsed.scope === "org");
     this.db
       .prepare(
         `INSERT INTO docs(key, scope, project, title, content, version, include_in_agents, paths, updated_by, updated_at)
@@ -673,6 +682,17 @@ export class SqliteHive implements HiveBackend {
       .prepare("INSERT INTO doc_versions(key, version, content, author, note, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
       .run(key, version, content, author, meta.note ?? "", sourceJson(source), now);
     return this.#getDoc(key)!;
+  }
+
+  /** A skill's SKILL.md must name the folder it is loaded from: the key's last part. */
+  static #checkSkill(parsed: ParsedDocKey, content: string): void {
+    const meta = parseSkill(content);
+    if (meta.name !== parsed.slug) {
+      throw new HiveError("bad_request", `The skill says name: ${meta.name}, but its key ends in ${parsed.slug}. Use the same name.`, {
+        key: "errors.skillNameMismatch",
+        vars: { name: meta.name, slug: parsed.slug },
+      });
+    }
   }
 
   #getProposal(id: number): Proposal {
@@ -808,6 +828,39 @@ export class SqliteHive implements HiveBackend {
 
       "docs.get": ({ key }) => this.#getDoc(key),
 
+      "skills.list": ({ project }) => {
+        const rows = db
+          .prepare(
+            `SELECT key, scope, project, content, version, updated_by, updated_at FROM docs
+             WHERE key LIKE '%/skills/%' AND (?1 IS NULL OR scope = 'org' OR project = ?1)
+             ORDER BY scope, project, key`,
+          )
+          .all(project ?? null) as Row[];
+        const all = rows.map((r): SkillSummary => {
+          const parsed = parseDocKey(str(r.key));
+          let description = "";
+          try {
+            description = parseSkill(str(r.content)).description;
+          } catch {
+            // saved before it was checked: listed without a description
+          }
+          return {
+            key: str(r.key),
+            name: parsed.slug,
+            description,
+            scope: parsed.scope,
+            project: parsed.project,
+            version: num(r.version),
+            updatedBy: str(r.updated_by),
+            updatedAt: str(r.updated_at),
+          };
+        });
+        if (!project) return all;
+        // The project's own skill replaces the team's of the same name.
+        const own = new Set(all.filter((s) => s.project === project).map((s) => s.name));
+        return all.filter((s) => s.project === project || !own.has(s.name)).sort((a, b) => a.name.localeCompare(b.name));
+      },
+
       "docs.history": ({ key }) =>
         (db.prepare("SELECT * FROM doc_versions WHERE key = ? ORDER BY version DESC").all(key) as Row[]).map(toVersion),
 
@@ -835,7 +888,8 @@ export class SqliteHive implements HiveBackend {
         ).map(toProposal),
 
       "proposals.create": (input, actor) => {
-        parseDocKey(input.docKey);
+        const parsed = parseDocKey(input.docKey);
+        if (parsed.skill) SqliteHive.#checkSkill(parsed, input.content);
         assertNoSecret(input.content, "Proposed content");
         assertNoSecret(input.reason, "Reason");
         assertNoHidden(input.content, "Proposed content");

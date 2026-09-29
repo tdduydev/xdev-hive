@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   MEMORY_KINDS,
+  skillDocKey,
   TASK_STATUSES,
   toErrorPayload,
   type Actor,
@@ -21,10 +22,11 @@ export interface HiveMcpOptions {
 const INSTRUCTIONS = `xDev Hive is the shared memory, docs and task board for every coding agent on this team.
 Start of session: memory_search for your topic. Before working: task_claim (task_next suggests a ready task). Record decisions/conventions/gotchas with memory_write.
 Never edit AGENTS.md, CLAUDE.md or docs/decisions.md directly: doc_get, then doc_propose with the baseVersion you read.
+Team skills (how the team does recurring work): skill_list, then skill_get the ones that fit. A new or better skill: skill_propose.
 End of session: task_update to "review" with a note (done / not done / how to verify / risks). Never store secrets.`;
 
 const READ_ONLY_INSTRUCTIONS = `xDev Hive is the shared memory, docs and task board for every coding agent on this team.
-This connection is read-only: memory_search, doc_list, doc_get, task_list and task_next. Search memory for your topic before working.
+This connection is read-only: memory_search, doc_list, doc_get, skill_list, skill_get, task_list and task_next. Search memory for your topic before working.
 Put anything worth sharing (decisions, gotchas, the handoff) in your final message instead of writing it to Hive.`;
 
 const project = z.string().optional().describe('Hive project key (see "Hive project key" in AGENTS.md)');
@@ -98,6 +100,64 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       },
       async ({ key, baseVersion, content, reason }) =>
         run("proposals.create", { docKey: key, baseVersion, content, reason }),
+    );
+  }
+
+  server.registerTool(
+    "skill_list",
+    {
+      title: "List team skills",
+      description:
+        "List the skills this project's agents get: name and description (when to use it). The project's own skill replaces the team's skill of the same name. Read one with skill_get.",
+      inputSchema: { project },
+      annotations: readOnly,
+    },
+    async ({ project: p }) => run("skills.list", { project: p ?? opts.defaultProject }),
+  );
+
+  server.registerTool(
+    "skill_get",
+    {
+      title: "Read a skill",
+      description: "Read a skill's SKILL.md (front matter with name and description, then the instructions) and its version: the project's own first, else the team's.",
+      inputSchema: { name: z.string(), project },
+      annotations: readOnly,
+    },
+    async ({ name, project: p }) => {
+      const scope = p ?? opts.defaultProject;
+      try {
+        const own = scope ? await backend.call("docs.get", { key: skillDocKey(name, scope) }, actor) : null;
+        const doc = own ?? (await backend.call("docs.get", { key: skillDocKey(name) }, actor));
+        if (!doc) return { isError: true, content: [{ type: "text", text: `not_found: no skill ${name} (see skill_list)` }] };
+        return { content: [{ type: "text", text: JSON.stringify(doc, null, 2) }] };
+      } catch (err) {
+        const { code, message } = toErrorPayload(err);
+        return { isError: true, content: [{ type: "text", text: `${code}: ${message}` }] };
+      }
+    },
+  );
+
+  if (writes) {
+    server.registerTool(
+      "skill_propose",
+      {
+        title: "Propose a skill",
+        description:
+          "Propose a new skill, or new full content for one. A human admin reviews it. content is the complete SKILL.md: front matter (---, name: <the same name>, " +
+          "description: what it does and when to use it, ---) then the steps. shared: true for the whole team, otherwise this project only. " +
+          "baseVersion is the version you read with skill_get (0 for a new skill).",
+        inputSchema: {
+          name: z.string().describe("lowercase letters, digits and -"),
+          content: z.string().describe("The complete SKILL.md, not a diff"),
+          reason: z.string().describe("One line: why this skill or change"),
+          baseVersion: z.number().int().min(0),
+          shared: z.boolean().optional(),
+          project,
+        },
+      },
+      withProject(async ({ name, content, reason, baseVersion, shared, project: p }) =>
+        run("proposals.create", { docKey: skillDocKey(name, shared ? null : p), baseVersion, content, reason }),
+      ),
     );
   }
 
