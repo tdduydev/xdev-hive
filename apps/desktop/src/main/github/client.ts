@@ -26,18 +26,24 @@ export interface GitHubPullDetail extends GitHubPull {
   head: { ref: string; sha: string };
 }
 
-/** A check run (GitHub Actions and other apps). */
+/** A check run (GitHub Actions and other apps). For GitHub Actions its id is the job's id. */
 export interface GitHubCheckRun {
+  id: number;
   name: string;
   status: string;
   conclusion: string | null;
   html_url: string;
+  app?: { slug: string; name: string } | null;
+  /** What the app reported, for checks whose log GitHub does not keep. */
+  output?: { title: string | null; summary: string | null; text: string | null } | null;
 }
 
 /** A commit status (the older API some CI services still use). */
 export interface GitHubStatus {
+  id: number;
   context: string;
   state: string;
+  description: string | null;
   target_url: string | null;
 }
 
@@ -67,7 +73,8 @@ export function pullRef(baseUrl: string, url: string): { repo: string; number: n
   return m ? { repo: m[1]!, number: Number(m[2]) } : null;
 }
 
-const FAILED = ["failure", "timed_out", "action_required", "startup_failure"];
+/** Check conclusions that fail the checks (the rest pass, skip or cancel). */
+export const FAILED_CONCLUSIONS = ["failure", "timed_out", "action_required", "startup_failure"];
 
 /**
  * The checks of a commit as one GitLab-style pipeline status: running while any check runs, then failed if
@@ -77,7 +84,7 @@ export function checksStatus(runs: Pick<GitHubCheckRun, "status" | "conclusion">
   const each: PipelineStatus[] = [
     ...runs.map((r): PipelineStatus => {
       if (r.status !== "completed") return r.status === "in_progress" ? "running" : "pending";
-      if (FAILED.includes(r.conclusion ?? "")) return "failed";
+      if (FAILED_CONCLUSIONS.includes(r.conclusion ?? "")) return "failed";
       if (r.conclusion === "cancelled") return "canceled";
       if (r.conclusion === "skipped" || r.conclusion === "stale") return "skipped";
       return "success";
@@ -115,14 +122,15 @@ export class GitHubClient {
     return new URL(this.baseUrl).hostname.toLowerCase();
   }
 
-  async #call<T>(method: string, url: string, body?: unknown): Promise<T> {
+  /** `raw`: the body as text (a job log). */
+  async #call<T>(method: string, url: string, body?: unknown, raw = false): Promise<T> {
     let res: Response;
     try {
       res = await this.#fetch(url, {
         method,
         headers: {
           authorization: `Bearer ${this.#token}`,
-          accept: "application/vnd.github+json",
+          accept: raw ? "text/plain" : "application/vnd.github+json",
           "x-github-api-version": "2022-11-28",
           ...(body ? { "content-type": "application/json" } : {}),
         },
@@ -134,6 +142,7 @@ export class GitHubClient {
       throw new HiveError("bad_request", `Không kết nối được GitHub ${this.baseUrl}: ${reason}`, { key: "errors.githubUnreachable", vars: { url: this.baseUrl, reason } });
     }
     const text = await res.text();
+    if (raw && res.ok) return text as T;
     let json: unknown = null;
     try {
       json = text ? JSON.parse(text) : null;
@@ -173,6 +182,11 @@ export class GitHubClient {
   /** The latest status of each context on the commit. */
   async statuses(repo: string, sha: string): Promise<GitHubStatus[]> {
     return (await this.#rest<{ statuses: GitHubStatus[] }>("GET", `/repos/${repo}/commits/${sha}/status`)).statuses ?? [];
+  }
+
+  /** A GitHub Actions job's log as plain text (GitHub answers with a redirect to a short-lived download). */
+  jobLog(repo: string, jobId: number): Promise<string> {
+    return this.#call("GET", `${this.#api.rest}/repos/${repo}/actions/jobs/${jobId}/logs`, undefined, true);
   }
 
   createPull(repo: string, body: PullBody): Promise<GitHubPull> {
