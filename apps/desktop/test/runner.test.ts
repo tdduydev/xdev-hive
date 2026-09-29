@@ -49,6 +49,8 @@ async function setup(
     usage?: RunnerHost["usage"];
     afterFinish?: RunnerOptions["afterFinish"];
     onEvent?: RunnerOptions["onEvent"];
+    /** Wraps the hub as this machine reaches it (to make some calls fail). */
+    wrap?: (backend: HiveBackend) => HiveBackend;
   } = {},
 ) {
   const repo = tmp("repo");
@@ -63,9 +65,9 @@ async function setup(
   // A hub names actors "<label>@<token name>"; mimic that to test hub mode without a server.
   const hubLike: HiveBackend = { call: (m, i, a) => hive.call(m, i, { ...a, name: `${a.name}@duy-macbook` }) };
   const host: RunnerHost = {
-    backend: () => (mode === "hub" ? hubLike : hive),
+    backend: () => (mode === "hub" ? (machine.wrap?.(hubLike) ?? hubLike) : hive),
     profiles: () => profiles.map((p) => ({ ...p, env: { ...p.env, FAKE_RECORD: record } })),
-    settings: () => ({ worktreeRoot: null, maxParallel: 2, maxAttempts: 3, ...settings }),
+    settings: () => ({ worktreeRoot: null, maxParallel: 2, maxAttempts: 3, acceptHubRuns: false, ...settings }),
     projects: () => [{ name: "demo", repo }],
     mode: () => mode,
     machine: () => machine.name ?? "duy-mbp",
@@ -680,6 +682,72 @@ describe("Runner", () => {
     const done = await a.runner.reportCommand(cmd.id, "done", "added 1 package");
     assert.equal(done.status, "done");
     assert.deepEqual((await a.runner.heartbeat())?.commands, []);
+  });
+
+  it("takes a manager's run request from the hub while the user allows it, as if started on the Board", async () => {
+    const events: RunnerEvent[] = [];
+    const a = await setup([profile("claude-1", "claude", 10, "ok")], { acceptHubRuns: true }, "hub", { onEvent: (e) => events.push(e) });
+    await a.runner.heartbeat();
+    const machineId = "runner.duy-mbp@duy-macbook";
+    const [m] = await a.hive.call("machines.list", {}, admin);
+    assert.deepEqual([m!.id, m!.projects, m!.acceptsRuns], [machineId, ["demo"], true]);
+
+    await a.hive.call("runs.dispatch", { machineId, project: "demo", taskId: "T-1", reviewAfter: true, instructions: "Keep it small." }, admin);
+    await a.runner.heartbeat();
+    const [taken] = await a.hive.call("runs.requests", {}, admin);
+    assert.equal(taken!.status, "accepted");
+    const run = a.runner.store.get(taken!.runId!)!;
+    assert.deepEqual([run.taskId, run.role, run.reviewAfter, run.instructions], ["T-1", "implement", true, "Keep it small."]);
+    assert.deepEqual(
+      events.flatMap((e) => (e.type === "dispatched" ? [[e.run.id, e.by]] : [])),
+      [[run.id, "duy"]],
+    );
+    await a.runner.settle();
+  });
+
+  it("refuses a run request its Board would refuse, and says why", async () => {
+    const a = await setup([profile("claude-1", "claude", 10, "sleep")], { acceptHubRuns: true }, "hub");
+    await a.runner.heartbeat();
+    // Started here a moment ago; the hub hears about it only at the next heartbeat.
+    const local = await a.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await a.hive.call("runs.dispatch", { machineId: "runner.duy-mbp@duy-macbook", project: "demo", taskId: "T-1" }, admin);
+    await a.runner.heartbeat();
+    const [refused] = await a.hive.call("runs.requests", {}, admin);
+    assert.deepEqual([refused!.status, refused!.runId, refused!.error?.key, refused!.error?.vars], ["rejected", null, "errors.taskHasRun", { id: "T-1", run: local.id }]);
+    assert.equal(a.runner.store.list({ limit: 10 }).length, 1, "nothing else was queued");
+    a.runner.cancel(local.id);
+    await a.runner.settle();
+  });
+
+  it("queues a run request once, even when the hub missed its answer", async () => {
+    let drop = 1;
+    const a = await setup([profile("claude-1", "claude", 10, "ok")], { acceptHubRuns: true }, "hub", {
+      wrap: (b) => ({
+        call: (method, input, actor) => (method === "runs.requestResult" && drop-- > 0 ? Promise.reject(new Error("fetch failed")) : b.call(method, input, actor)),
+      }),
+    });
+    await a.runner.heartbeat();
+    const req = await a.hive.call("runs.dispatch", { machineId: "runner.duy-mbp@duy-macbook", project: "demo", taskId: "T-1" }, admin);
+    await a.runner.heartbeat();
+    assert.equal((await a.hive.call("runs.requests", {}, admin))[0]!.status, "pending", "the hub never heard back");
+    await a.runner.heartbeat();
+    const [taken] = await a.hive.call("runs.requests", {}, admin);
+    assert.deepEqual([taken!.id, taken!.status], [req.id, "accepted"]);
+    assert.deepEqual(a.runner.store.list({ limit: 10 }).map((r) => r.id), [taken!.runId], "one run, told twice");
+    await a.runner.settle();
+  });
+
+  it("takes no run from the hub until the user allows it", async () => {
+    const a = await setup([profile("claude-1", "claude", 10, "ok")], {}, "hub");
+    await a.runner.heartbeat();
+    assert.equal(
+      await a.hive.call("runs.dispatch", { machineId: "runner.duy-mbp@duy-macbook", project: "demo", taskId: "T-1" }, admin).then(
+        () => "sent",
+        (err: HiveError) => err.key,
+      ),
+      "errors.machineNoHubRuns",
+    );
+    assert.deepEqual(a.runner.store.list({ limit: 10 }), []);
   });
 
   it("shares a quota cooldown with every machine on the same account, and ends it everywhere", async () => {

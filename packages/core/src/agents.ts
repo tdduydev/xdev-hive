@@ -8,6 +8,9 @@ export type AgentKind = (typeof AGENT_KINDS)[number];
 export const AGENT_ROLES = ["plan", "implement", "review"] as const;
 export type AgentRole = (typeof AGENT_ROLES)[number];
 
+/** Best-of-n: at most this many candidates of one implement run. */
+export const MAX_CANDIDATES = 4;
+
 export const RUN_STATUSES = ["queued", "running", "succeeded", "failed", "rate_limited", "cancelled"] as const;
 export type RunStatus = (typeof RUN_STATUSES)[number];
 
@@ -165,6 +168,8 @@ export const runnerSettingsSchema = z.object({
   maxParallel: z.number().int().min(1).max(8).default(2),
   /** Attempts per run including rotations after rate limits. */
   maxAttempts: z.number().int().min(1).max(6).default(3),
+  /** Hub mode: start the runs a project manager queues for this machine on the web (runs.dispatch). Off until the user turns it on. */
+  acceptHubRuns: z.boolean().default(false),
 });
 
 export type RunnerSettings = z.output<typeof runnerSettingsSchema>;
