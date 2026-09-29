@@ -35,6 +35,7 @@ export const en: Catalog = {
     proposals: "Proposals",
     memory: "Memory",
     tasks: "Tasks",
+    runs: "Runs",
     agents: "Subscriptions & agents",
     machines: "Machines & runs",
     setup: "Machine setup",
@@ -473,6 +474,13 @@ export const en: Catalog = {
     logTaller: "Taller",
     logShorter: "Shorter",
     noLog: "(no log)",
+  },
+  runs: {
+    subtitle: "Agent runs on every machine connected to the hub, in the projects you can see: what they are doing, on which machine and plan, cost, MR. Pick a run to read its log (secrets hidden); a running run refreshes by itself.",
+    none: "No machine has reported a run to the hub yet.",
+    machine: "Machine · plan",
+    summary: "Result",
+    logNote: "End of the log the machine sent · updated {time}",
   },
   agents: {
     subtitle: "Each profile is one subscription (one CLI account). The runner picks by priority, rotates between profiles of the same priority, and rests a profile until its quota resets.",
