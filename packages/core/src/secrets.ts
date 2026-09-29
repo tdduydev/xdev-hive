@@ -13,6 +13,17 @@ const PATTERNS: Array<[label: string, pattern: RegExp]> = [
   ["JWT", /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/],
 ];
 
+/** Every line that looks like it holds a secret is replaced by a note saying so (logs, run output). */
+export function redactLines(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => {
+      const hit = findSecret(line);
+      return hit ? `(line hidden: it looked like a ${hit})` : line;
+    })
+    .join("\n");
+}
+
 export function findSecret(text: string): string | null {
   for (const [label, pattern] of PATTERNS) if (pattern.test(text)) return label;
   return null;

@@ -234,6 +234,37 @@ export type HiveEvent =
   | { type: "run.failed"; project: string; run: RunNotice }
   | { type: "mr.created"; project: string; run: RunNotice };
 
+/**
+ * A run as the machine that runs it last pushed it to the hub (runs.push): what the team sees on the web.
+ * Kept 30 days after its last update.
+ */
+export interface RunRecord {
+  /** The machine's hub actor, which with runId names the run. */
+  machineId: string;
+  machine: string;
+  runId: string;
+  project: string;
+  taskId: string;
+  taskTitle: string;
+  role: string;
+  status: string;
+  profileId: string | null;
+  /** What the agent is doing now, while it runs. */
+  activity: string | null;
+  summary: string | null;
+  error: string | null;
+  branch: string | null;
+  commits: number;
+  mrUrl: string | null;
+  costUsd: number | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  updatedAt: string;
+  /** The end of the run's readable log, lines that looked like secrets hidden: runs.get only. */
+  log?: string;
+}
+
 /** A run a machine tells the hub about: it failed for good, or it opened a merge request. Not stored. */
 export interface RunNotice {
   kind: "failed" | "mr";
