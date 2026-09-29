@@ -86,7 +86,7 @@ export function buildPrompt(c: PromptContext): string {
       "fix only small, obvious mistakes. End with a short report: verdict (approve / changes needed), then findings.",
       c.readOnly
         ? "xDev Hive is read-only for this run: put reusable lessons in your report. Do not change the task status."
-        : "Record reusable lessons with memory_write (xdev-hive MCP). Do not change the task status.",
+        : "Record reusable lessons with memory_write (xdev-hive MCP). Do not call task_claim or task_update: the task is not yours, the implementer's run keeps it.",
     );
   } else {
     lines.push(
@@ -207,7 +207,7 @@ export function buildCommand(
     claudeJson = format === "json";
     args.push(...claudeRunArgs(profile.id, { ...vars, readOnly: profile.readOnly }, features, mcpConfigFile));
   }
-  if (profile.kind === "codex") args = codexArgs(args);
+  if (profile.kind === "codex") args = codexArgs(args, { agent: profile.id, project: vars.project, task: vars.task, run: vars.run, readOnly: profile.readOnly });
   return {
     bin: expandHome(profile.bin),
     args,
@@ -234,13 +234,29 @@ export const CLAUDE_RUN_ENV = { CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1
  * Codex 0.15x dropped --full-auto: a profile saved with it gets --sandbox workspace-write, which it meant
  * (edits and commands inside the working copy) and which older versions take too.
  */
-export function codexArgs(args: string[]): string[] {
+export function codexArgs(
+  args: string[],
+  run?: { agent: string; project: string; task: string; run?: string; readOnly?: boolean },
+): string[] {
   const sandbox = args.some((a) => a === "--sandbox" || a === "-s" || a.startsWith("--sandbox="));
   const fixed = args.flatMap((a) => (a === "--full-auto" ? (sandbox ? [] : ["--sandbox", "workspace-write"]) : [a]));
-  // Codex 0.15x refuses MCP writes (task_claim, memory_write) it cannot ask about: Hive's own tools go through.
-  // Only for `codex exec …`, whose options are known; older versions ignore the unknown key.
+  // Only for `codex exec …`, whose options are known; older versions ignore unknown keys.
   if (fixed[0] !== "exec") return fixed;
-  return ["exec", "-c", 'mcp_servers.xdev-hive.default_tools_approval_mode="approve"', ...fixed.slice(1)];
+  // Codex 0.15x refuses MCP writes (task_claim, memory_write) it cannot ask about: Hive's own tools go through.
+  const overrides = ["-c", 'mcp_servers.xdev-hive.default_tools_approval_mode="approve"'];
+  if (run) {
+    // The shim's identity is the profile's, as for Claude Code: ~/.codex/config.toml says "codex", which would claim
+    // the task as someone else than the runner, and hold it against the next run.
+    const env = {
+      HIVE_AGENT: run.agent,
+      HIVE_PROJECT: run.project,
+      HIVE_TASK: run.task,
+      ...(run.run ? { HIVE_RUN: run.run } : {}),
+      ...(run.readOnly ? { HIVE_READONLY: "1" } : {}),
+    };
+    overrides.push("-c", `mcp_servers.xdev-hive.env={${Object.entries(env).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(",")}}`);
+  }
+  return ["exec", ...overrides, ...fixed.slice(1)];
 }
 
 export function claudeRunArgs(

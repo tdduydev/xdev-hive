@@ -57,6 +57,8 @@ Làm lần lượt, mỗi lượt một mục (mỗi mục một PR). Mục có 
 
 ## Sửa lỗi
 
+- [x] **codex-identity** (pilot xdev-auth ngày 29/9): agent Codex dùng tên `codex` của `~/.codex/config.toml` cho MCP, khác tên profile mà runner giữ lease, nên `task_claim` của nó bị từ chối (run sửa AUTH-3 không làm gì) hoặc giữ task 2 giờ (review Codex tự claim, chặn run sau). Run `codex exec` đặt env của server xdev-hive như Claude (`HIVE_AGENT` = id profile, project, task, run); prompt review dặn không gọi `task_claim`/`task_update`; review chéo chờ gói vendor khác đang bận thay vì review bằng cùng vendor (chỉ dùng cùng vendor khi vendor khác tắt, đang nghỉ hay chạm ngưỡng).
+
 - [x] **codex-mcp-approve** (pilot xdev-auth ngày 29/9): Codex 0.157 từ chối mọi tool MCP có ghi khi chạy headless ("MCP tool call requires approval, but approval policy is never"), nên agent Codex không claim task hay ghi memory được và AUTH-4 dừng ngay. Run `codex exec` của Hive thêm `-c mcp_servers.xdev-hive.default_tools_approval_mode="approve"` (container: `hive`), block Hive trong `~/.codex/config.toml` có dòng đó; đã thử trên hive tạm: có khoá thì ghi được, không có thì bị chặn.
 
 - [x] **board-refresh**: Board ngừng làm mới ngay khi hết run chờ/chạy, trước lúc run vừa xong được ghi MR (push + mở MR/PR chạy sau khi lưu trạng thái), nên thẻ task thiếu badge MR. Runner giờ đánh dấu run `finishing` (trong `list()`) tới khi xong ghi chú Hive, MR và run tiếp theo; Board coi đó là còn hoạt động.

@@ -339,7 +339,13 @@ describe("buildCommand", () => {
 
   it("leaves other CLIs' arguments as the profile has them, but a Codex --full-auto that newer versions refuse", () => {
     // Codex asks before an MCP write, and a headless run has nobody to answer: Hive's own tools are approved.
-    const approve = ["-c", 'mcp_servers.xdev-hive.default_tools_approval_mode="approve"'];
+    // The shim gets the profile's name (the runner's lease is under it) and the run's project and task.
+    const approve = [
+      "-c",
+      'mcp_servers.xdev-hive.default_tools_approval_mode="approve"',
+      "-c",
+      'mcp_servers.xdev-hive.env={HIVE_AGENT="codex-1",HIVE_PROJECT="demo",HIVE_TASK="T-1"}',
+    ];
     assert.deepEqual(buildCommand(AGENT_TEMPLATES.codex, vars).args, ["exec", ...approve, "--sandbox", "workspace-write", "Do T-1"]);
     assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.codex, args: ["exec", "--full-auto", "{prompt}"] }, vars).args, ["exec", ...approve, "--sandbox", "workspace-write", "Do T-1"]);
     assert.deepEqual(
@@ -348,6 +354,8 @@ describe("buildCommand", () => {
       "a sandbox the profile chose stays",
     );
     assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.codex, args: ["/opt/wrap.sh", "{prompt}"] }, vars).args, ["/opt/wrap.sh", "Do T-1"], "an unknown command line stays as it is");
+    const ro = buildCommand({ ...AGENT_TEMPLATES.codex, id: "codex-ro", readOnly: true }, { ...vars, run: "R-1" }).args;
+    assert.equal(ro[4], 'mcp_servers.xdev-hive.env={HIVE_AGENT="codex-ro",HIVE_PROJECT="demo",HIVE_TASK="T-1",HIVE_RUN="R-1",HIVE_READONLY="1"}');
     assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.claude, kind: "custom" }, vars).args, ["-p", "Do T-1", "--permission-mode", "acceptEdits"]);
   });
 });
@@ -1040,5 +1048,28 @@ describe("runs on the hub", () => {
     await local.runner.settle();
     assert.equal(await local.runner.pushRuns(), 0);
     assert.deepEqual(await local.hive.call("runs.list", {}, admin), []);
+  });
+});
+
+describe("cross-review on another vendor", () => {
+  const now = new Date("2026-09-29T05:00:00.000Z");
+  const load = (p: AgentProfile, extra: Partial<ProfileLoad> = {}): ProfileLoad => ({ profile: p, running: 0, cooldownUntil: null, lastUsedAt: null, ...extra });
+  const review = { role: "review" as const, preferredProfile: null, avoidKinds: ["claude" as const], excludedProfiles: [], strictKinds: true };
+
+  it("waits for a busy profile of another vendor instead of reviewing on the same one", () => {
+    const claude = profile("claude-a", "claude", 1, "ok");
+    const codex = profile("codex-a", "codex", 2, "ok");
+    assert.equal(pickProfile([load(claude), load(codex, { running: 1 })], review, now), null, "codex is only busy: wait for it");
+    assert.match(waitingReason([load(claude), load(codex, { running: 1 })], review, now), /vendor khác/);
+    assert.equal(pickProfile([load(claude), load(codex)], review, now)!.profile.id, "codex-a");
+    const resting = load(codex, { cooldownUntil: "2026-09-29T09:00:00.000Z" });
+    assert.equal(pickProfile([load(claude), resting], review, now)!.profile.id, "claude-a", "codex rests for hours: same vendor rather than no review");
+    assert.equal(pickProfile([load(claude)], review, now)!.profile.id, "claude-a", "no other vendor at all");
+    assert.equal(pickProfile([load(claude), load(codex, { running: 1 })], { ...review, strictKinds: false }, now)!.profile.id, "claude-a", "an implement run does not wait");
+  });
+
+  it("tells a reviewer to leave the task alone", () => {
+    const text = buildPrompt({ project: "demo", taskId: "T-1", title: "x", note: null, role: "review", instructions: "", worktree: "/w", branch: "ai/T-1", baseSha: "abc", attempt: 1, previous: null });
+    assert.match(text, /Do not call task_claim or task_update/);
   });
 });

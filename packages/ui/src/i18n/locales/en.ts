@@ -1118,6 +1118,7 @@ export const en: Catalog = {
     quotaNotShared: "could not report the quota to the hub: {reason}",
     waitingParallel: "Waiting for a free slot (parallel agent limit reached)",
     waitingSlot: "Waiting for a free slot",
+    waitingVendor: "Waiting for another vendor's subscription to be free for the cross-review",
     noProfile: "No suitable profile (disabled, wrong role, or all tried)",
     noCli: "This machine lacks the CLI for a suitable subscription ({bins}): install it in Machine setup",
     notSignedIn: "No suitable subscription is signed in to its CLI ({profiles}): sign in from a terminal, then press Check CLI in Subscriptions & agents",
