@@ -2,16 +2,17 @@
 // viewer sees, what a running agent does now, and the end of each run's log. Hub mode only; the Board shows this
 // machine's own runs with the full log.
 import { useEffect, useRef, useState } from "react";
-import { Square, X } from "lucide-react";
+import { Square, Wrench, X } from "lucide-react";
 import { cn } from "cn";
-import type { RunRecord } from "@xdev-hive/core";
+import { parseVerdict, type RunRecord, type RunRequest } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
+import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
 import { formatTime, formatUsd, useAction, useCan, useHashParam, useHive, useQuery } from "../hooks.ts";
 import { useT } from "../i18n/index.tsx";
-import { isLive, runDuration, runLabel } from "../lib/runs.ts";
+import { fixInstructions, isLive, latestReviews, runDuration, runLabel } from "../lib/runs.ts";
 import { scopeProject } from "../lib/scope.ts";
 
 /** Machines push every 5 s while something runs; nothing to follow, a slow check for new runs. */
@@ -38,6 +39,7 @@ export function RunsPage() {
   useEffect(() => setActive((runs.data ?? []).some(isLive)), [runs.data]);
   const [selected, setSelected] = useState<{ machineId: string; runId: string } | null>(null);
   const run = runs.data?.find((r) => r.machineId === selected?.machineId && r.runId === selected?.runId) ?? null;
+  const latest = latestReviews(runs.data ?? []);
   // A link from another page (a task's request, a chat reply) opens that run once its machine has reported it.
   const [linked, clearLinked] = useHashParam("run");
   useEffect(() => {
@@ -113,18 +115,28 @@ export function RunsPage() {
             </Table>
           </div>
         ) : null}
-        {run ? <RunRecordDetail key={`${run.machineId}/${run.runId}`} run={run} onClose={() => setSelected(null)} onChanged={runs.reload} /> : null}
+        {run ? (
+          <RunRecordDetail
+            key={`${run.machineId}/${run.runId}`}
+            run={run}
+            latestReview={latest.has(`${run.machineId}/${run.runId}`)}
+            onClose={() => setSelected(null)}
+            onChanged={runs.reload}
+          />
+        ) : null}
       </div>
     </Page>
   );
 }
 
-function RunRecordDetail({ run, onClose, onChanged }: { run: RunRecord; onClose: () => void; onChanged: () => void }) {
+function RunRecordDetail({ run, latestReview, onClose, onChanged }: { run: RunRecord; latestReview: boolean; onClose: () => void; onChanged: () => void }) {
   const { client } = useHive();
   const t = useT();
   const allow = useCan();
   const action = useAction();
   const live = isLive(run);
+  // What a finished review concluded, as its report says (the same reading as the MR a machine opens).
+  const verdict = run.role === "review" && run.status === "succeeded" ? parseVerdict(run.summary) : "none";
   const tick = useRefresh(live);
   const full = useQuery(() => client.call("runs.get", { machineId: run.machineId, runId: run.runId }), [client, run.machineId, run.runId, tick]);
   const pre = useRef<HTMLPreElement>(null);
@@ -145,6 +157,7 @@ function RunRecordDetail({ run, onClose, onChanged }: { run: RunRecord; onClose:
           <div className="flex flex-wrap items-center gap-2">
             <b className="font-mono text-sm">{run.runId}</b>
             <Badge tone={STATUS_TONE[run.status] ?? "neutral"}>{runLabel("runStatus", run.status)}</Badge>
+            {verdict === "approve" || verdict === "changes" ? <Badge tone={verdict === "approve" ? "ok" : "warn"}>{t(`runs.verdict.${verdict}`)}</Badge> : null}
             <span className="min-w-0 flex-1 text-xs text-muted-foreground wrap-anywhere">
               {run.project} · {run.taskId} · {runLabel("agentRole", run.role)} · {run.machine} · {run.profileId ?? t("board.waitingProfile")}
             </span>
@@ -205,6 +218,7 @@ function RunRecordDetail({ run, onClose, onChanged }: { run: RunRecord; onClose:
               <p className="text-sm whitespace-pre-wrap wrap-anywhere">{run.summary}</p>
             </div>
           ) : null}
+          {verdict === "changes" && latestReview && allow(run.project, "manage") ? <FixRun run={run} /> : null}
           <ErrorNote error={full.error} />
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <span className="text-xs font-medium text-muted-foreground">{t("board.log")}</span>
@@ -220,5 +234,70 @@ function RunRecordDetail({ run, onClose, onChanged }: { run: RunRecord; onClose:
         </CardContent>
       </Card>
     </aside>
+  );
+}
+
+/**
+ * A review that asks for changes: one click queues the fix on the same machine, like runs.dispatch from the Tasks page.
+ * The task's branch keeps its work, and the review's report goes in as the instructions.
+ */
+function FixRun({ run }: { run: RunRecord }) {
+  const { client } = useHive();
+  const t = useT();
+  const action = useAction();
+  const [reviewAfter, setReviewAfter] = useState(true);
+  const [sent, setSent] = useState<RunRequest | null>(null);
+  const instructions = fixInstructions(run);
+  if (sent) {
+    return (
+      <Notice tone="ok">
+        {t("runs.fixSent", { id: sent.id, machine: sent.machine })}{" "}
+        <a className="font-medium underline underline-offset-2" href={`#/tasks?task=${encodeURIComponent(run.taskId)}`}>
+          {t("runs.fixOpenTask", { task: run.taskId })}
+        </a>
+      </Notice>
+    );
+  }
+  return (
+    <section className="flex flex-col gap-2 rounded-lg border p-3">
+      <div className="flex flex-col gap-0.5">
+        <h3 className="text-sm font-medium">{t("runs.fixTitle")}</h3>
+        <p className="text-xs text-muted-foreground">{t("runs.fixHint", { task: run.taskId, machine: run.machine })}</p>
+      </div>
+      <details className="text-xs">
+        <summary className="cursor-pointer text-muted-foreground select-none">{t("runs.fixInstructions")}</summary>
+        <pre className="mt-1 max-h-48 overflow-auto rounded-md border bg-muted/50 p-2 font-mono whitespace-pre-wrap wrap-anywhere">{instructions}</pre>
+      </details>
+      <label className="flex items-center gap-2 text-sm">
+        <Checkbox checked={reviewAfter} onCheckedChange={(v) => setReviewAfter(v === true)} />
+        {t("board.reviewAfter")}
+      </label>
+      <div>
+        <Button
+          size="sm"
+          disabled={action.busy}
+          onClick={() =>
+            void action.run(async () => {
+              setSent(
+                await client.call("runs.dispatch", {
+                  machineId: run.machineId,
+                  project: run.project,
+                  taskId: run.taskId,
+                  role: "implement",
+                  profileId: null,
+                  reviewAfter,
+                  candidates: 1,
+                  instructions,
+                }),
+              );
+            })
+          }
+        >
+          <Wrench />
+          {t("runs.fixSend")}
+        </Button>
+      </div>
+      <ErrorNote error={action.error} />
+    </section>
   );
 }

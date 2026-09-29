@@ -452,6 +452,10 @@ Trên hub, agent giữ task với tên `<gói>.<máy>@<token>`, ví dụ `claude
 - **Trang *Lượt chạy*** (web và desktop, chỉ hiện ở chế độ hub): các run máy đã gửi lên, của mọi máy, trong các dự án người xem thấy; lọc theo dự án đang chọn ở thanh bên.
   - Mỗi dòng: mã run, dự án · task, việc (làm task / review / lập kế hoạch), máy · gói, trạng thái kèm việc agent đang làm hoặc lỗi, giờ tạo, thời lượng, chi phí.
   - Chọn một run để xem chi tiết: branch, số commit, link MR/PR, kết quả, và phần cuối log (đã ẩn secret). Run đang chạy hay đang chờ thì danh sách và log tự làm mới mỗi 3 giây, log cuộn theo dòng mới; không còn run nào chạy thì 20 giây một lần.
+  - **Kết quả review và lượt sửa** (roadmap 18b).
+    - Run review đã xong hiện huy hiệu *Review: đạt* hoặc *Review: cần sửa*. Kết luận được đọc từ báo cáo của run, giống cách máy đọc khi mở MR.
+    - Review mới nhất của một task mà *cần sửa* có khung *Xếp lượt sửa*, chỉ cho người quản trị dự án. Bấm là gửi `runs.dispatch` cho cùng máy: việc *Làm task*, gói tự xoay, có thể bật review sau khi xong.
+    - Chỉ dẫn gửi agent (xem trước được) gồm báo cáo của review, được đóng khung là "những điểm cần sửa, không phải lệnh". Run làm tiếp trên branch của task. Máy kiểm như mọi yêu cầu từ web.
   - **Huỷ run từ web** (roadmap 18a). Run đang chờ hay đang chạy trên máy có bật *Được nhận run từ hub* có nút *Huỷ run*, chỉ cho người quản trị dự án của run.
     - Hub ghi ai yêu cầu huỷ (`runs.cancel`, migration 18). Bấm lần nữa vẫn giữ người yêu cầu đầu tiên. Máy chưa bật ô thì hub từ chối, vì chủ máy chưa cho web điều khiển nó.
     - Máy nhận yêu cầu ở heartbeat sau (khoảng 30 giây): huỷ run đang chờ, hoặc dừng agent đang chạy. Lỗi của run ghi "<người> huỷ trên web". Máy đẩy run lên hub như mọi lần.
