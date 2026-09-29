@@ -302,6 +302,70 @@ export interface RunRequest {
   updatedAt: string;
 }
 
+export const CHAT_REPLY_STATUSES = ["pending", "running", "done", "failed", "cancelled", "expired"] as const;
+export type ChatReplyStatus = (typeof CHAT_REPLY_STATUSES)[number];
+
+/** A conversation with a project's leader agent, held on one machine whose Claude Code session each reply resumes. */
+export interface ChatThread {
+  id: number;
+  project: string;
+  title: string;
+  /** The machine's hub actor: every reply of the thread is written there, in the same session. */
+  machineId: string;
+  machine: string;
+  /** A Claude profile of that machine; null: the machine picks one. */
+  profileId: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  /** A reply is waiting or being written: the thread takes no new message until it ends. */
+  busy: boolean;
+}
+
+export interface ChatMessage {
+  id: number;
+  threadId: number;
+  role: "user" | "assistant";
+  /** A person, or for a reply the profile and machine that wrote it. */
+  author: string;
+  /** What was written; for a reply being written, the text so far. */
+  text: string;
+  /** Replies only. */
+  status: ChatReplyStatus | null;
+  activity: string | null;
+  /** The agent's steps as the run log shows them (▶ tool, ✓ ✗ result), replies only. */
+  steps: string;
+  error: RunRequestError | null;
+  costUsd: number | null;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt: string | null;
+}
+
+/** The rights of whoever wrote a chat message, kept for the hub to cut the reply's MCP token (see ChatRequest.grant). */
+export interface ChatSender {
+  name: string;
+  role: Role;
+  access?: Access;
+}
+
+/** A reply a machine is asked to write (heartbeat): the person's message and the session to resume. */
+export interface ChatRequest {
+  replyId: number;
+  threadId: number;
+  project: string;
+  profileId: string | null;
+  /** The thread's Claude Code session; null for its first reply. */
+  sessionId: string | null;
+  text: string;
+  requestedBy: string;
+  createdAt: string;
+  /** Kept by the hub to cut `grant`; the web hub never sends it to machines. */
+  sender?: ChatSender;
+  /** Hub token for the leader's MCP calls while it writes this reply: the sender's rights, never more than the machine's. */
+  grant?: string;
+}
+
 /** A run a machine tells the hub about: it failed for good, or it opened a merge request. Not stored. */
 export interface RunNotice {
   kind: "failed" | "mr";
