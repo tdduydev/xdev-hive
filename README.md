@@ -452,6 +452,10 @@ Trên hub, agent giữ task với tên `<gói>.<máy>@<token>`, ví dụ `claude
 - **Trang *Lượt chạy*** (web và desktop, chỉ hiện ở chế độ hub): các run máy đã gửi lên, của mọi máy, trong các dự án người xem thấy; lọc theo dự án đang chọn ở thanh bên.
   - Mỗi dòng: mã run, dự án · task, việc (làm task / review / lập kế hoạch), máy · gói, trạng thái kèm việc agent đang làm hoặc lỗi, giờ tạo, thời lượng, chi phí.
   - Chọn một run để xem chi tiết: branch, số commit, link MR/PR, kết quả, và phần cuối log (đã ẩn secret). Run đang chạy hay đang chờ thì danh sách và log tự làm mới mỗi 3 giây, log cuộn theo dòng mới; không còn run nào chạy thì 20 giây một lần.
+  - **Huỷ run từ web** (roadmap 18a). Run đang chờ hay đang chạy trên máy có bật *Được nhận run từ hub* có nút *Huỷ run*, chỉ cho người quản trị dự án của run.
+    - Hub ghi ai yêu cầu huỷ (`runs.cancel`, migration 18). Bấm lần nữa vẫn giữ người yêu cầu đầu tiên. Máy chưa bật ô thì hub từ chối, vì chủ máy chưa cho web điều khiển nó.
+    - Máy nhận yêu cầu ở heartbeat sau (khoảng 30 giây): huỷ run đang chờ, hoặc dừng agent đang chạy. Lỗi của run ghi "<người> huỷ trên web". Máy đẩy run lên hub như mọi lần.
+    - Trong lúc chờ, trang hiện ai yêu cầu và lúc nào, và dòng của run ghi *Đang chờ máy huỷ*. Hub gửi lại yêu cầu ở mỗi heartbeat cho tới khi máy báo run đã kết thúc.
   - Board vẫn là nơi xem run của chính máy mình với log đầy đủ.
 - **Xếp run từ web** (hỏi ngày 29/9: web xếp run cho một máy; chỉ người quản trị dự án; máy phải cho phép):
   - Máy chỉ nhận khi người dùng bật *Được nhận run từ hub* (trang *Gói sub & agent*, thẻ Runner; tắt sẵn). Heartbeat báo hub máy có repo của những dự án nào và có bật ô này không.

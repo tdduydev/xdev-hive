@@ -205,6 +205,10 @@ const MIGRATIONS: string[] = [
   `
   CREATE TABLE hive_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `,
+  `
+  ALTER TABLE run_records ADD COLUMN cancel_by TEXT;
+  ALTER TABLE run_records ADD COLUMN cancel_at TEXT;
+  `,
 ];
 
 /** A leader's reply asks for at most this many actions. */
@@ -239,6 +243,8 @@ function toRunRecord(r: Row, withLog: boolean): RunRecord {
     startedAt: s(r.started_at),
     finishedAt: s(r.finished_at),
     updatedAt: str(r.updated_at),
+    cancelRequestedBy: s(r.cancel_by),
+    cancelRequestedAt: s(r.cancel_at),
     ...(withLog ? { log: str(r.log) } : {}),
   };
 }
@@ -671,6 +677,11 @@ export class SqliteHive implements HiveBackend {
           .prepare("SELECT t.project FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id WHERE m.id = ?")
           .get(i.replyId) as Row | undefined;
         if (row) this.#need(actor, str(row.project), "manage", `Chat reply #${i.replyId}`);
+        return;
+      }
+      case "runs.cancel": {
+        const row = this.db.prepare("SELECT project FROM run_records WHERE machine_id = ? AND run_id = ?").get(i.machineId, i.runId) as Row | undefined;
+        if (row) this.#need(actor, str(row.project), "manage", `Run ${i.runId}`);
         return;
       }
       case "runs.cancelRequest": {
@@ -1673,6 +1684,14 @@ export class SqliteHive implements HiveBackend {
             : [];
           // Sent again at every heartbeat until the machine reports progress on it.
           const chatRequests = accepts ? this.#chatRequests(actor.name) : [];
+          // Until the machine pushes the run as ended.
+          const cancelRuns = accepts
+            ? (
+                db
+                  .prepare("SELECT run_id, cancel_by FROM run_records WHERE machine_id = ? AND cancel_by IS NOT NULL AND status IN ('queued', 'running') ORDER BY cancel_at")
+                  .all(actor.name) as Row[]
+              ).map((r) => ({ runId: str(r.run_id), requestedBy: str(r.cancel_by) }))
+            : [];
           return {
             duplicate: duplicateAt !== null && duplicateAt > this.#now(-DUPLICATE_MINUTES),
             cooldowns: this.#cooldowns(),
@@ -1680,6 +1699,7 @@ export class SqliteHive implements HiveBackend {
             commands,
             runRequests,
             chatRequests,
+            cancelRuns,
           };
         }),
 
@@ -1721,6 +1741,24 @@ export class SqliteHive implements HiveBackend {
         // A run of a project the caller does not see answers like a missing one.
         return row && levelOn(actor, str(row.project)) !== null ? toRunRecord(row, true) : null;
       },
+
+      // Only a machine that takes runs from the hub obeys it: its user let project managers drive it from the web.
+      "runs.cancel": ({ machineId, runId }, actor) =>
+        this.#tx(() => {
+          const row = db.prepare("SELECT * FROM run_records WHERE machine_id = ? AND run_id = ?").get(machineId, runId) as Row | undefined;
+          if (!row) throw new HiveError("not_found", `No run ${runId}.`, { key: "errors.runNotFound", vars: { id: runId } });
+          const status = str(row.status);
+          if (status !== "queued" && status !== "running") {
+            throw new HiveError("conflict", `Run ${runId} has ended (${status}).`, { key: "errors.runEnded", vars: { id: runId } });
+          }
+          const machine = db.prepare("SELECT accepts_runs FROM machines WHERE id = ?").get(machineId) as Row | undefined;
+          if (!machine || num(machine.accepts_runs) !== 1) {
+            throw new HiveError("bad_request", `${str(row.machine)} does not take runs from the hub.`, { key: "errors.machineNoHubRuns", vars: { machine: str(row.machine) } });
+          }
+          // Asked once: a second click keeps who asked first.
+          db.prepare("UPDATE run_records SET cancel_by = ?, cancel_at = ? WHERE machine_id = ? AND run_id = ? AND cancel_by IS NULL").run(actor.name, this.#now(), machineId, runId);
+          return toRunRecord(db.prepare("SELECT * FROM run_records WHERE machine_id = ? AND run_id = ?").get(machineId, runId) as Row, false);
+        }),
 
       // What the machine's Board would check first, so a manager hears at once instead of after a heartbeat.
       "runs.dispatch": ({ machineId, project, taskId, role, profileId, reviewAfter, candidates, instructions }, actor) =>
