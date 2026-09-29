@@ -20,6 +20,7 @@ import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE, StatusDot } from "../components/common.tsx";
 import { formatCount, formatTime, formatUsd, useAction, useHive, useProjects, useQuery } from "../hooks.ts";
 import { rich, useT } from "../i18n/index.tsx";
+import { runDuration } from "../lib/runs.ts";
 import { projectScope, scopeProject } from "../lib/scope.ts";
 
 const DANGER_GHOST = "text-destructive hover:bg-destructive/10 hover:text-destructive";
@@ -33,13 +34,6 @@ function usePulse(active: boolean, ms = 2000): number {
     return () => clearInterval(t);
   }, [active, ms]);
   return n;
-}
-
-function duration(run: AgentRun): string {
-  if (!run.startedAt) return "";
-  const end = run.finishedAt ? new Date(run.finishedAt) : new Date();
-  const s = Math.max(0, Math.round((end.getTime() - new Date(run.startedAt).getTime()) / 1000));
-  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}`;
 }
 
 export function BoardPage() {
@@ -445,7 +439,7 @@ function RunsPanel({
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {formatTime(r.createdAt)}
-                      <div>{duration(r)}</div>
+                      <div>{runDuration(r)}</div>
                       {r.costUsd !== null ? <div>{t("board.cost", { cost: formatUsd(r.costUsd) })}</div> : null}
                     </TableCell>
                   </TableRow>

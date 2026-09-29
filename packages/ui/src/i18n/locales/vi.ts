@@ -36,6 +36,7 @@ export const vi = {
     proposals: "Đề xuất",
     memory: "Memory",
     tasks: "Task",
+    runs: "Lượt chạy",
     agents: "Gói sub & agent",
     machines: "Máy & run",
     setup: "Cài đặt máy",
@@ -474,6 +475,13 @@ export const vi = {
     logTaller: "Mở rộng",
     logShorter: "Thu gọn",
     noLog: "(không có log)",
+  },
+  runs: {
+    subtitle: "Run của agent trên mọi máy nối hub, trong các dự án bạn thấy: đang làm gì, trên máy và gói nào, chi phí, MR. Chọn một run để xem log (secret đã được ẩn); run đang chạy tự làm mới.",
+    none: "Chưa máy nào báo run lên hub.",
+    machine: "Máy · gói",
+    summary: "Kết quả",
+    logNote: "Phần cuối log máy gửi lên · cập nhật {time}",
   },
   agents: {
     subtitle: "Mỗi profile là một gói sub (một tài khoản CLI). Runner chọn theo ưu tiên, xoay vòng các gói cùng mức, và cho gói nghỉ đến giờ reset khi hết quota.",
