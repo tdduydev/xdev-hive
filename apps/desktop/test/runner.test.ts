@@ -1005,3 +1005,40 @@ describe("live log", () => {
     await other.runner.settle();
   });
 });
+
+describe("runs on the hub", () => {
+  it("pushes what changed for the web, with the end of the log and secret-looking lines hidden", async () => {
+    const { runner, hive } = await setup([profile("claude-a", "claude", 1, "leak")], {}, "hub");
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    // The run's end was pushed as it finished.
+    const [record] = await hive.call("runs.list", { project: "demo" }, admin);
+    assert.deepEqual([record!.runId, record!.status, record!.machine, record!.profileId, record!.commits], [run.id, "succeeded", "duy-mbp", "claude-a", 1]);
+    assert.match(record!.summary ?? "", /Implemented T-1\./);
+    const full = (await hive.call("runs.get", { machineId: record!.machineId, runId: run.id }, admin))!;
+    assert.match(full.log ?? "", /▶ Bash: npm test\n  ✓ ok 1 - adds/);
+    assert.match(full.log ?? "", /\(line hidden: it looked like a GitLab token\)/);
+    assert.doesNotMatch(full.log ?? "", /glpat-/, "the token never left the machine");
+    assert.match(runner.log(run.id), /glpat-/, "this machine's own log keeps everything");
+    assert.equal(await runner.pushRuns(), 0, "nothing changed since");
+  });
+
+  it("pushes a running agent's current step, and nothing in local mode", async () => {
+    const { runner, hive } = await setup([profile("claude-a", "claude", 1, "sleep")], {}, "hub");
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    void runner.tick();
+    await until(() => runner.list()[0]?.activity !== undefined);
+    assert.equal(await runner.pushRuns(), 1);
+    const [record] = await hive.call("runs.list", {}, admin);
+    assert.deepEqual([record!.status, record!.activity], ["running", "Bash: npm test"]);
+    runner.cancel(run.id);
+    await runner.settle();
+    assert.equal((await hive.call("runs.list", {}, admin))[0]!.status, "cancelled");
+
+    const local = await setup([profile("claude-a", "claude", 1, "ok")]);
+    await local.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await local.runner.settle();
+    assert.equal(await local.runner.pushRuns(), 0);
+    assert.deepEqual(await local.hive.call("runs.list", {}, admin), []);
+  });
+});
