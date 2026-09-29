@@ -599,6 +599,34 @@ describe("Runner", () => {
     assert.equal(t.owner, null);
   });
 
+  it("starts a new task from the remote's latest target branch, and says so in the log", async () => {
+    const { repo, runner } = await setup([profile("claude-1", "claude", 10, "ok")]);
+    const origin = tmp("origin");
+    git(origin, "init", "-q", "--bare", "-b", "main");
+    git(repo, "remote", "add", "origin", origin);
+    git(repo, "push", "-q", "origin", "main");
+    // Someone merges the task this one depends on; this machine's checkout has not pulled it.
+    const team = tmp("team");
+    git(team, "clone", "-q", origin, ".");
+    git(team, "config", "user.email", "t@example.com");
+    git(team, "config", "user.name", "Test");
+    writeFileSync(path.join(team, "merged.txt"), "T-0\n");
+    git(team, "add", ".");
+    git(team, "commit", "-qm", "T-0 merged");
+    git(team, "push", "-q", "origin", "main");
+    const merged = git(team, "rev-parse", "HEAD");
+    const local = git(repo, "rev-parse", "HEAD");
+
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const done = runner.store.get(run.id)!;
+    assert.equal(done.status, "succeeded");
+    assert.equal(done.baseSha, merged);
+    assert.ok(existsSync(path.join(done.worktree!, "merged.txt")));
+    assert.match(runner.log(run.id), new RegExp(`# .*origin/main \\(${merged.slice(0, 7)}`));
+    assert.equal(git(repo, "rev-parse", "HEAD"), local, "the user's checkout was not moved");
+  });
+
   it("reports back to a hub that renames actors", async () => {
     const { runner, task } = await setup([profile("claude-a", "claude", 10, "ok")], {}, "hub");
     await runner.enqueue({ project: "demo", taskId: "T-1" });

@@ -59,7 +59,19 @@ import { ClaudeStream } from "./stream.ts";
 import { parseClaudeResult, type RunUsage } from "./usage.ts";
 import { pickProfile, waitingReason, type ProfileLoad, type RunNeeds } from "./schedule.ts";
 import { ACTIVE, RunStore } from "./store.ts";
-import { branchFor, branchState, candidateName, commitAll, describeBranch, ensureWorktree, removeWorktree, resetTo, type Worktree } from "./worktree.ts";
+import {
+  branchFor,
+  branchState,
+  candidateName,
+  commitAll,
+  describeBranch,
+  ensureWorktree,
+  hasBranch,
+  remoteStart,
+  removeWorktree,
+  resetTo,
+  type Worktree,
+} from "./worktree.ts";
 
 export interface RunnerHost {
   backend(): HiveBackend;
@@ -240,6 +252,8 @@ export class Runner {
   #pushing = false;
   /** Run requests from the hub this machine answered but could not tell the hub yet: sent again, never queued twice. */
   readonly #answers = new Map<number, { status: "accepted" | "rejected"; runId: string | null; error: RunRequestError | null }>();
+  /** Where a queued best-of-n candidate's branch came from (see remoteStart), for its log. */
+  readonly #startNotes = new Map<string, string>();
   /** Requests being answered now: a heartbeat that comes meanwhile leaves them alone. */
   readonly #taking = new Set<number>();
 
@@ -326,7 +340,7 @@ export class Runner {
     const active = this.store.activeForTask(req.project, req.taskId);
     if (active) throw new HiveError("conflict", `Task ${req.taskId} đang có run ${active.id} (${active.status}).`, { key: "errors.taskHasRun", vars: { id: req.taskId, run: active.id } });
     const previous = this.store.lastWithWorktree(req.project, req.taskId);
-    if (count > 1) return this.#enqueueCandidates(req, project, task, count, previous);
+    if (count > 1) return await this.#enqueueCandidates(req, project, task, count, previous);
     const run = this.store.insert(
       {
         project: req.project,
@@ -348,11 +362,13 @@ export class Runner {
   }
 
   /** Candidates start together from the task branch (or HEAD), each on its own branch and worktree. */
-  #enqueueCandidates(req: StartRunRequest, project: DesktopProject, task: Task, count: number, previous: AgentRun | null): AgentRun {
+  async #enqueueCandidates(req: StartRunRequest, project: DesktopProject, task: Task, count: number, previous: AgentRun | null): Promise<AgentRun> {
     if (!isGitRepo(project.repo)) throw new HiveError("bad_request", `${project.repo} không phải git repo`, { key: "errors.notGitRepo", vars: { path: project.repo } });
     const branch = branchFor(req.taskId);
     const tip = tryGit(project.repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]);
-    const from = tip ?? git(project.repo, ["rev-parse", "HEAD"]);
+    // No task branch yet: the candidates start from the target branch as the remote has it now.
+    const start = tip ? null : await remoteStart(project.repo, project.targetBranch);
+    const from = tip ?? git(project.repo, ["rev-parse", start?.ref ?? "HEAD"]);
     const baseSha = tip ? (previous?.baseSha ?? git(project.repo, ["merge-base", "HEAD", branch])) : from;
     const group = `B-${randomBytes(3).toString("hex")}`;
     const now = this.#iso();
@@ -834,12 +850,17 @@ export class Runner {
       // A candidate has its own; the judge reads the candidates' branches from the task's.
       const candidate = run.bestOf && run.bestOf.n > 0 ? run.bestOf : null;
       const name = candidate ? candidateName(run.taskId, candidate.n) : run.taskId;
+      // A task without its branch yet starts from the target branch as the remote has it now; an existing branch
+      // (a follow-up, a review, the kept candidate) goes on from its own history.
+      const fresh = !candidate && !hasBranch(project.repo, branchFor(run.taskId)) ? await remoteStart(project.repo, project.targetBranch) : null;
+      const startNote = fresh?.note ?? this.#startNotes.get(run.id) ?? null;
+      this.#startNotes.delete(run.id);
       wt = ensureWorktree(
         project.repo,
         path.join(root, project.name, name),
         run.taskId,
         run.baseSha,
-        candidate ? { branch: branchFor(name), from: candidate.from } : {},
+        candidate ? { branch: branchFor(name), from: candidate.from } : { start: fresh?.ref ?? undefined },
       );
       const backend = this.#host.backend();
       const actor = this.#actor(profile);
@@ -940,7 +961,7 @@ export class Runner {
           })
         : null;
       log.write(
-        `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image} · ${egress ? `network limited (${egress.env.HIVE_EGRESS_ALLOW})` : "network open"}\n` : ""}# cwd ${wt.path}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n\n## Prompt\n${prompt}\n\n## Output\n`,
+        `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image} · ${egress ? `network limited (${egress.env.HIVE_EGRESS_ALLOW})` : "network open"}\n` : ""}${startNote ? `# ${startNote}\n` : ""}# cwd ${wt.path}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n\n## Prompt\n${prompt}\n\n## Output\n`,
       );
 
       const env: NodeJS.ProcessEnv = box ? { ...hostEnv, ...box.env } : { ...hostEnv, ...agentEnv };

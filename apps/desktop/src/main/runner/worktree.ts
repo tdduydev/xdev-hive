@@ -3,7 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { HiveError, RULES_DIR } from "@xdev-hive/core";
-import { git, gitErrorText, isGitRepo } from "../git.ts";
+import { git, gitAsync, gitErrorText, isGitRepo } from "../git.ts";
 import { tr } from "../i18n.ts";
 import { RENDERED_FILES } from "../installer.ts";
 
@@ -39,16 +39,51 @@ function tryGit(repo: string, args: string[]): string | null {
   }
 }
 
+export const hasBranch = (repo: string, branch: string) => tryGit(repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]) !== null;
+
+/**
+ * Where a new task branch starts: the target branch as the remote has it now (`targetBranch`, else the remote's
+ * default), so a task queued right after the one it depends on was merged on GitHub or GitLab gets that code.
+ * Only fetches: the user's checkout (its branch, its files) stays as it is. No remote, or a fetch that fails:
+ * `ref` is null and the branch starts at the checkout's HEAD, as before. `note` goes to the run's log either way.
+ */
+export async function remoteStart(repo: string, target: string | undefined, timeoutMs = 30_000): Promise<{ ref: string | null; note: string }> {
+  const head = tryGit(repo, ["rev-parse", "--short", "HEAD"]) ?? "?";
+  const remotes = (tryGit(repo, ["remote"]) ?? "").split("\n").filter(Boolean);
+  if (!remotes.length) return { ref: null, note: tr("runNote.startNoRemote", { sha: head }) };
+  const remote = remotes.includes("origin") ? "origin" : remotes[0]!;
+  // Never wait on a password prompt: the app has no terminal to show it in.
+  const env = { GIT_TERMINAL_PROMPT: "0" };
+  try {
+    let branch = target;
+    if (!branch) {
+      // The clone's record of the remote's default branch, else the remote itself.
+      const known = tryGit(repo, ["symbolic-ref", "--quiet", "--short", `refs/remotes/${remote}/HEAD`]);
+      branch = known?.startsWith(`${remote}/`)
+        ? known.slice(remote.length + 1)
+        : (await gitAsync(repo, ["ls-remote", "--symref", remote, "HEAD"], env, timeoutMs)).match(/^ref: refs\/heads\/(\S+)\s+HEAD$/m)?.[1];
+      if (!branch) throw new Error(`${remote} names no default branch`);
+    }
+    const ref = `refs/remotes/${remote}/${branch}`;
+    await gitAsync(repo, ["fetch", "--quiet", "--no-tags", remote, `+refs/heads/${branch}:${ref}`], env, timeoutMs);
+    return { ref, note: tr("runNote.startRemote", { ref: `${remote}/${branch}`, sha: git(repo, ["rev-parse", "--short", `${ref}^{commit}`]) }) };
+  } catch (err) {
+    return { ref: null, note: tr("runNote.startFetchFailed", { remote, reason: gitErrorText(err), sha: head }) };
+  }
+}
+
 /**
  * `opts.branch` + `opts.from`: a best-of-n candidate's branch, (re)started at `from` whenever its worktree is
  * created, so a new group never builds on an older group's candidate.
+ * `opts.start`: where the task's branch starts if it does not exist yet (see remoteStart); default the checkout's HEAD.
+ * An existing branch keeps its own history and base.
  */
 export function ensureWorktree(
   repo: string,
   dir: string,
   taskId: string,
   knownBase: string | null,
-  opts: { branch?: string; from?: string } = {},
+  opts: { branch?: string; from?: string; start?: string } = {},
 ): Worktree {
   if (!isGitRepo(repo)) throw new HiveError("bad_request", `${repo} không phải git repo`, { key: "errors.notGitRepo", vars: { path: repo } });
   const branch = opts.branch ?? branchFor(taskId);
@@ -59,10 +94,12 @@ export function ensureWorktree(
     .some((l) => real(l.slice(9)) === real(dir));
 
   let created = false;
+  let started: string | null = null;
   if (!registered) {
     if (existsSync(dir)) throw new HiveError("conflict", `${dir} đã tồn tại nhưng không phải worktree của repo này`, { key: "errors.worktreeTaken", vars: { path: dir } });
     mkdirSync(path.dirname(dir), { recursive: true });
-    const branchExists = tryGit(repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]) !== null;
+    const branchExists = hasBranch(repo, branch);
+    if (!opts.from && !branchExists) started = opts.start ?? "HEAD";
     try {
       git(
         repo,
@@ -70,7 +107,7 @@ export function ensureWorktree(
           ? ["worktree", "add", "-B", branch, dir, opts.from]
           : branchExists
             ? ["worktree", "add", dir, branch]
-            : ["worktree", "add", "-b", branch, dir, "HEAD"],
+            : ["worktree", "add", "-b", branch, dir, started!],
       );
     } catch (err) {
       const reason = gitErrorText(err);
@@ -79,7 +116,9 @@ export function ensureWorktree(
     created = true;
   }
 
-  const baseSha = knownBase ?? git(repo, ["merge-base", "HEAD", branch]);
+  // A new branch's base is where it started, whatever an earlier run of the task (whose branch is gone) recorded:
+  // the checkout's HEAD may be behind the remote it came from.
+  const baseSha = started ? git(repo, ["rev-parse", `${started}^{commit}`]) : (knownBase ?? git(repo, ["merge-base", "HEAD", branch]));
   for (const file of AGENT_CONFIG_FILES) {
     const from = path.join(repo, file);
     const to = path.join(dir, file);

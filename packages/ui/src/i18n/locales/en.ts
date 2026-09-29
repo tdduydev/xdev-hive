@@ -1174,6 +1174,9 @@ export const en: Catalog = {
     noChanges: "(no changes)",
     changesFromBase: "Changes since base:",
     uncommitted: "Not committed:",
+    startRemote: "Starting from {ref} ({sha}), just fetched from the remote.",
+    startNoRemote: "The repo has no remote: starting from its HEAD ({sha}).",
+    startFetchFailed: "Could not fetch from {remote} ({reason}): starting from the repo's HEAD ({sha}), which may lack code merged just now.",
   },
   bestOf: {
     onlyOne: "The only candidate that finished.",

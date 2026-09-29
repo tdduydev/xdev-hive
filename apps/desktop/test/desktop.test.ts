@@ -7,7 +7,7 @@ import { describe, it } from "node:test";
 import { MANAGED_START, type Actor } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { installAgents, installCodexConfig, installShim } from "../src/main/installer.ts";
-import { commitAll } from "../src/main/runner/worktree.ts";
+import { commitAll, ensureWorktree, remoteStart } from "../src/main/runner/worktree.ts";
 import { syncProject } from "../src/main/sync.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
@@ -365,5 +365,83 @@ describe("agent CLI config in a task worktree", () => {
     const c = commitAll(repo, "ai(T-1): work", []);
     assert.equal(c.error, null);
     assert.deepEqual(committed(repo), [".agents/skills/x/SKILL.md", ".codex/config.toml", ".codex/hooks.json"]);
+  });
+});
+
+describe("where a new task branch starts", () => {
+  const head = (dir: string) => sh(dir, "git", ["rev-parse", "HEAD"]).trim();
+  const commit = (dir: string, file: string, message: string) => {
+    writeFileSync(path.join(dir, file), `${message}\n`);
+    sh(dir, "git", ["add", "."]);
+    sh(dir, "git", ["commit", "-qm", message]);
+  };
+
+  /** A bare repo as the team's remote, the user's clone of it, and a merge the clone has not pulled yet (AUTH-5, 29/9). */
+  function cloneBehind() {
+    const origin = tmp("origin");
+    sh(origin, "git", ["init", "-q", "--bare", "-b", "main"]);
+    const team = gitRepo();
+    sh(team, "git", ["remote", "add", "origin", origin]);
+    sh(team, "git", ["push", "-q", "origin", "main"]);
+    const repo = tmp("clone");
+    sh(repo, "git", ["clone", "-q", origin, "."]);
+    sh(repo, "git", ["config", "user.email", "test@example.com"]);
+    sh(repo, "git", ["config", "user.name", "Test"]);
+    commit(team, "merged.txt", "merged on the remote");
+    sh(team, "git", ["push", "-q", "origin", "main"]);
+    return { team, repo, merged: head(team), local: head(repo) };
+  }
+
+  it("starts from the target branch as the remote has it now, and leaves the checkout alone", async () => {
+    const { repo, merged, local } = cloneBehind();
+    writeFileSync(path.join(repo, "wip.txt"), "the user's own work\n");
+    const start = await remoteStart(repo, undefined);
+    assert.equal(start.ref, "refs/remotes/origin/main");
+    assert.match(start.note, new RegExp(merged.slice(0, 7)));
+
+    // An earlier run of the task recorded a base; its branch is gone, so the new branch's own start wins.
+    const wt = ensureWorktree(repo, path.join(tmp("wt"), "T-1"), "T-1", local, { start: start.ref! });
+    assert.equal(head(wt.path), merged);
+    assert.equal(wt.baseSha, merged);
+    assert.ok(existsSync(path.join(wt.path, "merged.txt")));
+    // The user's checkout: same commit, same branch, their file untouched.
+    assert.equal(head(repo), local);
+    assert.equal(sh(repo, "git", ["branch", "--show-current"]).trim(), "main");
+    assert.match(sh(repo, "git", ["status", "--porcelain"]), /\?\? wip\.txt/);
+  });
+
+  it("fetches the target branch the project names", async () => {
+    const { team, repo } = cloneBehind();
+    sh(team, "git", ["checkout", "-q", "-b", "develop"]);
+    commit(team, "develop.txt", "on develop");
+    sh(team, "git", ["push", "-q", "origin", "develop"]);
+    const start = await remoteStart(repo, "develop");
+    assert.equal(start.ref, "refs/remotes/origin/develop");
+    assert.equal(sh(repo, "git", ["rev-parse", start.ref!]).trim(), head(team));
+  });
+
+  it("keeps an existing task branch where it is", async () => {
+    const { repo, local } = cloneBehind();
+    sh(repo, "git", ["branch", "ai/T-2", "HEAD"]);
+    const start = await remoteStart(repo, undefined);
+    const wt = ensureWorktree(repo, path.join(tmp("wt"), "T-2"), "T-2", local, { start: start.ref! });
+    assert.equal(head(wt.path), local, "a follow-up or review goes on from the task's own branch");
+    assert.equal(wt.baseSha, local);
+  });
+
+  it("starts from the checkout's HEAD without a remote, or when the fetch fails", async () => {
+    const repo = gitRepo();
+    const local = head(repo);
+    const none = await remoteStart(repo, undefined);
+    assert.equal(none.ref, null);
+    assert.match(none.note, new RegExp(local.slice(0, 7)));
+    const wt = ensureWorktree(repo, path.join(tmp("wt"), "T-3"), "T-3", null, { start: none.ref ?? undefined });
+    assert.equal(head(wt.path), local);
+
+    sh(repo, "git", ["remote", "add", "origin", path.join(tmp("gone"), "missing.git")]);
+    const failed = await remoteStart(repo, "main");
+    assert.equal(failed.ref, null);
+    assert.notEqual(failed.note, none.note, "says the fetch failed, not that there is no remote");
+    assert.match(failed.note, /origin/);
   });
 });
