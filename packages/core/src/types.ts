@@ -343,6 +343,8 @@ export interface RunRecord {
   cancelRequestedAt: string | null;
   /** The end of the run's readable log, lines that looked like secrets hidden: runs.get only. */
   log?: string;
+  /** What it changed (git diff from its base), as its machine last sent it; null: not sent (yet). runs.get only. */
+  patch?: string | null;
 }
 
 /** A run a machine is asked to stop (heartbeat), and who asked. */

@@ -60,7 +60,7 @@ import { detectRateLimit } from "./rate-limit.ts";
 import { AssistWorker } from "./assist.ts";
 import { ChatWorker } from "./chat.ts";
 import { killTree } from "./kill.ts";
-import { ClaudeStream } from "./stream.ts";
+import { ClaudeStream, lineStamper } from "./stream.ts";
 import { parseClaudeResult, type RunUsage } from "./usage.ts";
 import { pickProfile, waitingReason, type ProfileLoad, type RunNeeds } from "./schedule.ts";
 import { ACTIVE, RunStore } from "./store.ts";
@@ -69,7 +69,7 @@ import {
   branchState,
   candidateName,
   commitAll,
-  describeBranch,
+  branchPatch,
   ensureWorktree,
   hasBranch,
   remoteStart,
@@ -259,6 +259,8 @@ export class Runner {
     code: null,
     error: null,
   };
+  /** When each run's patch last went to the hub, and in which state (see #patchFor). */
+  readonly #patched = new Map<string, { key: string; at: number }>();
   /** What the hub last got of each run (see pushRuns). */
   readonly #pushed = new Map<string, string>();
   #pushing = false;
@@ -518,13 +520,31 @@ export class Runner {
     return (start > 0 ? `${tr("runNote.logClipped")}\n` : "") + buf.toString("utf8");
   }
 
+  /** What the run changed, as a unified diff from its base ("" when nothing, or its worktree and branch are gone). */
   diff(id: string): string {
     const run = this.store.get(id);
-    if (!run?.baseSha) return tr("runNote.noWorktree");
-    if (run.worktree) return describeBranch(run.worktree, run.baseSha);
-    // A candidate after the choice: its worktree is gone, its branch stays in the repo.
-    const repo = run.bestOf && run.branch ? this.#host.projects().find((p) => p.name === run.project)?.repo : undefined;
-    return repo ? describeBranch(repo, run.baseSha, `refs/heads/${run.branch}`) : tr("runNote.noWorktree");
+    if (!run?.baseSha) return "";
+    if (run.worktree && existsSync(run.worktree)) return branchPatch(run.worktree, run.baseSha);
+    // A candidate after the choice, or a run whose worktree was removed: its branch stays in the repo.
+    const repo = run.branch ? this.#host.projects().find((p) => p.name === run.project)?.repo : undefined;
+    return repo && hasBranch(repo, run.branch!) ? branchPatch(repo, run.baseSha, `refs/heads/${run.branch}`) : "";
+  }
+
+  /** The patch the hub gets with a run: when the run ended (once), and while it runs at most once a minute. */
+  #patchFor(r: AgentRun): string | undefined {
+    const done = r.status !== "queued" && r.status !== "running";
+    const last = this.#patched.get(r.id);
+    const key = `${r.status}:${r.commits}`;
+    if (done ? last?.key === key : last && Date.now() - last.at < 60_000) return undefined;
+    if (r.status === "queued") return undefined;
+    let text: string;
+    try {
+      text = redactLines(stripHidden(this.diff(r.id)));
+    } catch {
+      return undefined;
+    }
+    this.#patched.set(r.id, { key, at: Date.now() });
+    return text;
   }
 
   /** Keeps a candidate by hand, when the judge chose none (or the group stopped without a judge). */
@@ -765,11 +785,15 @@ export class Runner {
     try {
       const since = this.#iso(-24 * 60);
       const recent = this.list({ limit: 60 }).filter((r) => r.status === "queued" || r.status === "running" || (r.finishedAt ?? "") >= since);
-      const changed: Array<{ run: AgentRun; key: string; log: string }> = [];
+      const changed: Array<{ run: AgentRun; key: string; log: string; patch?: string }> = [];
+      let patches = 0;
       for (const r of recent) {
         const log = this.#logTail(r.id);
+        // A few patches per push keep the request small; the others go with the next ones.
+        const patch = patches < 3 ? this.#patchFor(r) : undefined;
+        if (patch !== undefined) patches++;
         const key = JSON.stringify([r.status, r.activity ?? null, r.finishing ?? false, r.mrUrl, r.commits, log.length, log.slice(-200)]);
-        if (this.#pushed.get(r.id) !== key) changed.push({ run: r, key, log });
+        if (this.#pushed.get(r.id) !== key || patch !== undefined) changed.push({ run: r, key, log, ...(patch !== undefined ? { patch } : {}) });
         if (changed.length === 20) break;
       }
       if (!changed.length) return 0;
@@ -778,7 +802,7 @@ export class Runner {
         "runs.push",
         {
           machine: this.#host.machine(),
-          runs: changed.map(({ run: r, log }) => ({
+          runs: changed.map(({ run: r, log, patch }) => ({
             runId: r.id,
             project: r.project,
             taskId: r.taskId,
@@ -795,6 +819,7 @@ export class Runner {
             mrUrl: r.mrUrl,
             costUsd: r.costUsd,
             log,
+            ...(patch !== undefined ? { patch } : {}),
             createdAt: r.createdAt,
             startedAt: r.startedAt,
             finishedAt: r.finishedAt,
@@ -1112,6 +1137,8 @@ export class Runner {
       let stdout = "";
       let all = "";
       const out = log;
+      // What the agent writes carries the time of each line; the header above and the result below do not.
+      const stamp = lineStamper(this.#opts.now);
       // Claude Code's events become a log to follow while it runs; other CLIs write text as they go, and
       // their last line is what they are doing now.
       const stream = cmd.claudeStream ? new ClaudeStream(wt.path) : null;
@@ -1123,10 +1150,10 @@ export class Runner {
       child.stdout?.on("data", (b: Buffer) => {
         const text = decode.out.write(b);
         if (stream) {
-          out.write(stream.push(text));
+          out.write(stamp(stream.push(text)));
           if (stream.state.activity) this.#activity.set(run.id, stream.state.activity);
         } else {
-          out.write(text);
+          out.write(stamp(text));
           lastLine(text);
         }
         stdout = keepTail(stdout + text, cmd.claudeJson || stream ? JSON_BYTES : TAIL_BYTES);
@@ -1134,7 +1161,7 @@ export class Runner {
       });
       child.stderr?.on("data", (b: Buffer) => {
         const text = decode.err.write(b);
-        out.write(text);
+        out.write(stamp(text));
         if (!stream) lastLine(text);
         all = keepTail(all + text);
       });
@@ -1148,7 +1175,7 @@ export class Runner {
       clearTimeout(timer);
       this.#live.delete(run.id);
       this.#activity.delete(run.id);
-      if (stream) out.write(stream.end());
+      if (stream) out.write(stamp(stream.end()));
       if (outcome.kind === "exit" && (cmd.claudeJson || stream)) {
         outcome.usage = parseClaudeResult(stream?.result ?? outcome.stdout);
         // No result (killed, crashed): the summary is its last message, not the raw events.

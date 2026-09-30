@@ -1,4 +1,5 @@
 // One git worktree + branch per task (ai/<task-id>), so agents never share a working copy.
+import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -192,6 +193,36 @@ export function describeBranch(dir: string, baseSha: string, ref = "HEAD"): stri
   const stat = tryGit(dir, ["diff", "--stat", `${baseSha}...${ref}`]) || tr("runNote.noChanges");
   const dirty = ref === "HEAD" ? tryGit(dir, ["status", "--short"]) : null;
   return [`Commits:\n${log}`, `${tr("runNote.changesFromBase")}\n${stat}`, dirty ? `${tr("runNote.uncommitted")}\n${dirty}` : ""].filter(Boolean).join("\n\n");
+}
+
+/** A patch is cut at about this size (the hub keeps what the web shows). */
+export const PATCH_MAX = 380_000;
+
+/**
+ * What a run changed as a unified diff (roadmap 22l): from its base to the worktree as it is now (commits, edits not
+ * committed yet, and new files), or to a branch (a kept candidate). "" when nothing changed or it is gone.
+ */
+export function branchPatch(dir: string, baseSha: string, ref = "HEAD"): string {
+  if (!existsSync(dir)) return "";
+  const args = ["-c", "core.quotepath=off", "diff", "--no-color", "--no-ext-diff", "--find-renames"];
+  let out = ref === "HEAD" ? (tryGit(dir, [...args, baseSha]) ?? "") : (tryGit(dir, [...args, `${baseSha}...${ref}`]) ?? "");
+  if (ref === "HEAD") {
+    // New files the agent has not added yet: git diff leaves them out.
+    const untracked = (tryGit(dir, ["ls-files", "--others", "--exclude-standard"]) ?? "").split("\n").filter(Boolean).slice(0, 30);
+    for (const f of untracked) {
+      if (out.length > PATCH_MAX) break;
+      try {
+        execFileSync("git", [...args, "--no-index", "--", "/dev/null", f], { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 8 * 1024 * 1024 });
+      } catch (err) {
+        // --no-index exits 1 when the files differ, which a new file always does.
+        const text = (err as { stdout?: string }).stdout ?? "";
+        if (text) out += `${out && !out.endsWith("\n") ? "\n" : ""}${text.trimEnd()}`;
+      }
+    }
+  }
+  if (out.length <= PATCH_MAX) return out;
+  const cut = out.lastIndexOf("\n", PATCH_MAX);
+  return `${out.slice(0, cut > 0 ? cut : PATCH_MAX)}\n${tr("runNote.patchClipped")}`;
 }
 
 /** `force`: also with untracked files (a candidate's: everything it made is committed on its branch). */
