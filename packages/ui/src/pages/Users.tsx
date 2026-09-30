@@ -19,7 +19,7 @@ import { Badge, Empty, ErrorNote, Notice, Page, PageHeader } from "../components
 import { formatTime, useAction, useHive, useQuery } from "../hooks.ts";
 import { useT } from "../i18n/index.tsx";
 
-const SEGMENT = "px-2.5 text-xs data-[state=on]:bg-brand-soft data-[state=on]:font-semibold data-[state=on]:text-brand-soft-foreground";
+const SEGMENT = "px-2.5 text-xs";
 const NONE = "none";
 
 const LEVEL_TONE: Record<Level, string> = { view: "neutral", contribute: "info", manage: "accent" };

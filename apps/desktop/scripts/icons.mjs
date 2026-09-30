@@ -1,7 +1,7 @@
-// Generates the app icons from one geometry (the HiveLogo hexagons in packages/ui) — macOS only:
-// SVG → PNG through AppKit (swift), .icns through iconutil, .ico packed here.
+// Generates the app icons from the xDev X (docs/design/2026-09-redesign: below 24 px the wordmark becomes the X alone)
+// on the brand navy — macOS only: SVG → PNG through AppKit (swift), .icns through iconutil, .ico packed here.
 //   npm run icons -w @xdev-hive/desktop
-// Outputs are committed; rerun after changing the shapes or colours below.
+// Outputs are committed; rerun after changing the geometry or colours below.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -12,20 +12,23 @@ const build = path.join(desktop, "build");
 const resources = path.join(desktop, "resources");
 const webPublic = path.resolve(desktop, "..", "web", "client", "public");
 
-const COLORS = { top: "#F0A53A", bottom: "#B86B05", mark: "#FFF7E8" };
+/** Navy tile (--brand-navy) and the X's gradient for dark backgrounds, as in assets/hive-dark.svg. */
+const COLORS = { tile: "#142745", stops: ["#B8F1FF", "#3FA9FF", "#1C58FF"] };
 
-/** Pointy-top regular hexagon, as in HiveLogo (outer radius 9.5, inner 3.8 on a 24 grid). */
-function hexagon(cx, cy, r) {
-  const dx = (r * Math.sqrt(3)) / 2;
-  const pts = [
-    [cx, cy - r],
-    [cx + dx, cy - r / 2],
-    [cx + dx, cy + r / 2],
-    [cx, cy + r],
-    [cx - dx, cy + r / 2],
-    [cx - dx, cy - r / 2],
-  ];
-  return pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+/**
+ * The "X" of Space Grotesk 600 (the font the wordmark sets its X in), as an outline so the icon needs no font:
+ * 1000-unit em, baseline at y = 0, ink box x 24–618, y −700–0. The wordmark stretches it 1.1× horizontally.
+ */
+const X_PATH = "M162 0L24 0L235-353L27-700L164-700L313-438L330-438L478-700L616-700L408-353L618 0L481 0L330-268L313-268L162 0Z";
+const X_BOX = { x: 24, y: -700, w: 594, h: 700, stretch: 1.1 };
+
+/** The X centred in a box of `size` px at (x, y), `height` px tall. */
+function xMark(x, y, size, height, fill) {
+  const k = height / X_BOX.h;
+  const w = X_BOX.w * X_BOX.stretch * k;
+  const tx = x + (size - w) / 2 - X_BOX.x * X_BOX.stretch * k;
+  const ty = y + (size - height) / 2 - X_BOX.y * k;
+  return `<path d="${X_PATH}" transform="translate(${tx.toFixed(2)} ${ty.toFixed(2)}) scale(${(k * X_BOX.stretch).toFixed(5)} ${k.toFixed(5)})" fill="${fill}"/>`;
 }
 
 /**
@@ -34,18 +37,25 @@ function hexagon(cx, cy, r) {
  */
 function iconSvg({ margin, radius }) {
   const size = 1024 - 2 * margin;
-  const scale = size / 824; // mark proportions are set on the macOS tile
-  const c = 512;
+  const [a, b, c] = COLORS.stops;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="${COLORS.top}"/>
-      <stop offset="1" stop-color="${COLORS.bottom}"/>
-    </linearGradient>
+    <radialGradient id="x" cx="50%" cy="50%" r="80%">
+      <stop offset="0" stop-color="${a}"/>
+      <stop offset="0.4" stop-color="${b}"/>
+      <stop offset="0.9" stop-color="${c}"/>
+    </radialGradient>
   </defs>
-  <rect x="${margin}" y="${margin}" width="${size}" height="${size}" rx="${radius}" fill="url(#bg)"/>
-  <polygon points="${hexagon(c, c, 232 * scale)}" fill="none" stroke="${COLORS.mark}" stroke-width="${(58 * scale).toFixed(1)}" stroke-linejoin="round"/>
-  <polygon points="${hexagon(c, c, 96 * scale)}" fill="${COLORS.mark}" stroke="${COLORS.mark}" stroke-width="${(16 * scale).toFixed(1)}" stroke-linejoin="round"/>
+  <rect x="${margin}" y="${margin}" width="${size}" height="${size}" rx="${radius}" fill="${COLORS.tile}"/>
+  ${xMark(margin, margin, size, size * 0.5, "url(#x)")}
+</svg>
+`;
+}
+
+/** macOS menu-bar template: black X on transparent (the system tints it), a little inset like other tray icons. */
+function traySvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  ${xMark(0, 0, 64, 50, "#000000")}
 </svg>
 `;
 }
@@ -96,10 +106,12 @@ try {
     mac: path.join(build, "icon.svg"),
     square: path.join(build, "icon-square.svg"),
     touch: path.join(tmp, "touch.svg"),
+    tray: path.join(tmp, "tray.svg"),
   };
   writeFileSync(svgs.mac, iconSvg({ margin: 100, radius: 185 }));
   writeFileSync(svgs.square, iconSvg({ margin: 24, radius: 216 }));
   writeFileSync(svgs.touch, iconSvg({ margin: 0, radius: 0 }));
+  writeFileSync(svgs.tray, traySvg());
   writeFileSync(path.join(webPublic, "favicon.svg"), readFileSync(svgs.square));
 
   const iconset = path.join(tmp, "icon.iconset");
@@ -114,6 +126,8 @@ try {
   jobs.push([svgs.square, 1024, path.join(build, "icon.png")]);
   jobs.push([svgs.square, 512, path.join(resources, "icon.png")]);
   jobs.push([svgs.touch, 180, path.join(webPublic, "apple-touch-icon.png")]);
+  jobs.push([svgs.tray, 16, path.join(resources, "trayTemplate.png")]);
+  jobs.push([svgs.tray, 32, path.join(resources, "trayTemplate@2x.png")]);
 
   const swiftFile = path.join(tmp, "rasterize.swift");
   writeFileSync(swiftFile, RASTERIZE);
@@ -123,7 +137,7 @@ try {
     path.join(build, "icon.ico"),
     packIco(icoSizes.map((size) => ({ size, data: readFileSync(path.join(tmp, `ico-${size}.png`)) }))),
   );
-  console.log(`icons written to ${path.relative(process.cwd(), build)}, resources/icon.png and web/client/public`);
+  console.log(`icons written to ${path.relative(process.cwd(), build)}, resources/ (icon, tray) and web/client/public`);
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

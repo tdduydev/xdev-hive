@@ -21,8 +21,9 @@ import { ownerLabel } from "../lib/tasks.ts";
 const TONE_TEXT: Record<string, string> = {
   ok: "text-success",
   info: "text-info",
+  running: "text-running",
   warn: "text-warning",
-  danger: "text-destructive",
+  danger: "text-danger",
 };
 
 /** Machines take a request at their next heartbeat (30 s): follow it closely until one does. */

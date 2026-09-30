@@ -104,13 +104,13 @@ function ModeCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: (
         >
           <ToggleGroupItem
             value="local"
-            className="h-auto min-h-9 shrink py-1.5 whitespace-normal data-[state=on]:bg-brand-soft data-[state=on]:text-brand-soft-foreground"
+            className="h-auto min-h-9 shrink py-1.5 whitespace-normal"
           >
             {t("projects.modeLocal")}
           </ToggleGroupItem>
           <ToggleGroupItem
             value="hub"
-            className="h-auto min-h-9 shrink py-1.5 whitespace-normal data-[state=on]:bg-brand-soft data-[state=on]:text-brand-soft-foreground"
+            className="h-auto min-h-9 shrink py-1.5 whitespace-normal"
           >
             {t("projects.modeHub")}
           </ToggleGroupItem>
@@ -143,10 +143,10 @@ function ModeCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: (
                 onValueChange={(v) => v && setAuth(v as "account" | "token")}
                 aria-label={t("projects.signInMethod")}
               >
-                <ToggleGroupItem value="account" className="px-3 data-[state=on]:bg-brand-soft data-[state=on]:text-brand-soft-foreground">
+                <ToggleGroupItem value="account" className="px-3">
                   {t("projects.account")}
                 </ToggleGroupItem>
-                <ToggleGroupItem value="token" className="px-3 data-[state=on]:bg-brand-soft data-[state=on]:text-brand-soft-foreground">
+                <ToggleGroupItem value="token" className="px-3">
                   {t("projects.pasteToken")}
                 </ToggleGroupItem>
               </ToggleGroup>

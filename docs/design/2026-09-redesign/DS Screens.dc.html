@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="styles.css">
+<style>
+html,body{margin:0;padding:0;background:var(--bg-canvas)}
+a{color:var(--text-link)}a:hover{color:var(--text-link-hover)}
+</style>
+</helmet>
+<div data-theme="{{ theme }}" style="min-height:100vh;background:var(--bg-canvas);color:var(--text-primary);font:var(--type-body-md)">
+
+<header style="position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:16px;min-height:60px;padding:0 24px;border-bottom:1px solid var(--border-subtle);background:var(--bg-canvas);flex-wrap:wrap">
+  <a href="DS%20Foundations.dc.html" style="display:flex;align-items:center;gap:12px;text-decoration:none">
+    <sc-if value="{{ light }}" hint-placeholder-val="{{ true }}"><img src="assets/hive-light.svg" alt="xDev Hive · Dev Hub" style="height:36px;width:auto;display:block"></sc-if>
+    <sc-if value="{{ dark }}" hint-placeholder-val="{{ false }}"><img src="assets/hive-dark.svg" alt="xDev Hive · Dev Hub" style="height:36px;width:auto;display:block"></sc-if>
+    <span style="font:var(--type-caption);color:var(--text-muted);padding:2px 8px;border:1px solid var(--border-default);border-radius:var(--radius-full)">Design System 1.0</span>
+  </a>
+  <nav aria-label="Tài liệu" style="display:flex;gap:4px;flex-wrap:wrap">
+    <a href="DS%20Foundations.dc.html" style="padding:6px 12px;border-radius:var(--radius-md);text-decoration:none;font:var(--type-label);color:var(--text-secondary)" style-hover="background:var(--state-hover);color:var(--text-strong)">Nền tảng</a>
+    <a href="DS%20Components.dc.html" style="padding:6px 12px;border-radius:var(--radius-md);text-decoration:none;font:var(--type-label);color:var(--text-secondary)" style-hover="background:var(--state-hover);color:var(--text-strong)">Component</a>
+    <a href="DS%20Developer%20Components.dc.html" style="padding:6px 12px;border-radius:var(--radius-md);text-decoration:none;font:var(--type-label);color:var(--text-secondary)" style-hover="background:var(--state-hover);color:var(--text-strong)">Developer</a>
+    <a href="DS%20Screens.dc.html" aria-current="page" style="padding:6px 12px;border-radius:var(--radius-md);text-decoration:none;font:var(--type-label);color:var(--state-selected-fg);background:var(--state-selected-bg)">Màn hình mẫu</a>
+  </nav>
+</header>
+
+<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:12px 24px;border-bottom:1px solid var(--border-subtle);background:var(--bg-subtle)">
+  <div role="tablist" aria-label="Màn hình" style="display:flex;gap:2px;flex-wrap:wrap">
+    <sc-for list="{{ screenTabs }}" as="t" hint-placeholder-count="8"><button role="tab" aria-selected="{{ t.on }}" onClick="{{ t.go }}" style="display:flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:0;border-radius:var(--radius-sm);background:{{ t.bg }};color:var({{ t.fg }});font:var(--type-label);font-weight:{{ t.fw }};cursor:pointer" style-hover="background:var(--state-hover)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ t.icon }}"></path></svg>{{ t.label }}</button></sc-for>
+  </div>
+  <div style="margin-left:auto;display:flex;gap:10px;flex-wrap:wrap">
+    <div role="radiogroup" aria-label="Chế độ màu" style="display:flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--bg-sunken);border:1px solid var(--border-subtle)"><sc-for list="{{ modeOpts }}" as="o" hint-placeholder-count="3"><button role="radio" aria-checked="{{ o.on }}" onClick="{{ o.go }}" style="height:26px;padding:0 10px;border:0;border-radius:var(--radius-sm);background:{{ o.bg }};box-shadow:{{ o.sh }};color:var(--text-primary);font:var(--type-caption);cursor:pointer">{{ o.label }}</button></sc-for></div>
+    <div role="radiogroup" aria-label="Kích thước" style="display:flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--bg-sunken);border:1px solid var(--border-subtle)"><sc-for list="{{ sizeOpts }}" as="o" hint-placeholder-count="3"><button role="radio" aria-checked="{{ o.on }}" onClick="{{ o.go }}" style="display:flex;align-items:center;gap:5px;height:26px;padding:0 10px;border:0;border-radius:var(--radius-sm);background:{{ o.bg }};box-shadow:{{ o.sh }};color:var(--text-primary);font:var(--type-caption);cursor:pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ o.icon }}"></path></svg>{{ o.label }}</button></sc-for></div>
+  </div>
+</div>
+
+<div data-stage="1" style="padding:24px;display:flex;flex-wrap:{{ stageWrap }};gap:24px;justify-content:center;align-items:flex-start">
+  <sc-for list="{{ frames }}" as="f" hint-placeholder-count="1">
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <span style="font:var(--type-caption);color:var(--text-muted)">{{ f.caption }}</span>
+      <div style="position:relative;flex-shrink:0;width:{{ f.sw }}px;height:{{ f.sh }}px"><div data-theme="{{ f.theme }}" data-density="{{ density }}" data-screen-label="{{ f.caption }}" style="position:absolute;top:0;left:0;transform:scale({{ f.zoom }});transform-origin:0 0;width:{{ f.w }}px;height:{{ f.h }}px;display:flex;flex-direction:{{ f.dir }};overflow:hidden;border-radius:{{ f.r }};border:1px solid var(--border-default);background:var(--bg-canvas);color:var(--text-primary);font:var(--type-body-md);box-shadow:var(--shadow-3)">
+
+        <sc-if value="{{ f.full }}" hint-placeholder-val="{{ true }}">
+          <nav aria-label="Điều hướng chính" style="flex:0 0 240px;display:flex;flex-direction:column;background:var(--bg-subtle);border-right:1px solid var(--border-subtle)">
+            <div style="padding:16px 16px 12px"><sc-if value="{{ f.lightLogo }}" hint-placeholder-val="{{ true }}"><img src="assets/hive-light.svg" alt="xDev Hive · Dev Hub" style="height:32px;display:block"></sc-if><sc-if value="{{ f.darkLogo }}" hint-placeholder-val="{{ false }}"><img src="assets/hive-dark.svg" alt="xDev Hive · Dev Hub" style="height:32px;display:block"></sc-if></div>
+            <button style="margin:0 12px 8px;display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border-radius:var(--radius-md);border:1px solid var(--border-default);background:var(--bg-surface);cursor:pointer;text-align:left;color:var(--text-primary)"><span style="width:20px;height:20px;border-radius:var(--radius-xs);background:var(--status-info-bg);color:var(--status-info-fg);display:grid;place-items:center;font:700 11px/1 var(--font-sans)">P</span><span style="flex:1;font:var(--type-code-sm);font-weight:500">payment-gateway</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--text-muted)"><path d="{{ ic.chevronsUpDown }}"></path></svg></button>
+            <div style="flex:1;overflow:auto;padding:4px 8px;display:flex;flex-direction:column;gap:1px">
+              <sc-for list="{{ nav }}" as="n" hint-placeholder-count="10">
+                <sc-if value="{{ n.head }}" hint-placeholder-val="{{ false }}"><span style="padding:12px 8px 4px;font:var(--type-overline);letter-spacing:var(--tracking-wide);text-transform:uppercase;color:var(--text-muted)">{{ n.label }}</span></sc-if>
+                <sc-if value="{{ n.item }}" hint-placeholder-val="{{ true }}"><button onClick="{{ n.go }}" aria-current="{{ n.cur }}" style="display:flex;align-items:center;gap:10px;height:34px;flex-shrink:0;padding:0 8px;border:0;border-radius:var(--radius-sm);background:{{ n.bg }};color:var({{ n.fg }});font:var(--type-body-sm);font-weight:{{ n.fw }};cursor:pointer;text-align:left" style-hover="background:var(--state-hover);color:var(--text-strong)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var({{ n.ic }})"><path d="{{ n.icon }}"></path></svg><span style="flex:1">{{ n.label }}</span><span style="font:var(--type-caption);color:var(--text-muted)">{{ n.count }}</span></button></sc-if>
+              </sc-for>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding:12px;border-top:1px solid var(--border-subtle)"><span style="width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--action-primary-bg);color:var(--action-primary-fg);font:600 11px/1 var(--font-sans)">DT</span><span style="display:flex;flex-direction:column;flex:1;min-width:0"><span style="font:var(--type-label);color:var(--text-strong)">Duy Trần</span><span style="font:var(--type-caption);color:var(--text-muted)">Admin · FIS</span></span></div>
+          </nav>
+        </sc-if>
+        <sc-if value="{{ f.rail }}" hint-placeholder-val="{{ false }}">
+          <nav aria-label="Điều hướng chính" style="flex:0 0 64px;display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 0;background:var(--bg-subtle);border-right:1px solid var(--border-subtle)">
+            <img src="assets/x-mark.svg" alt="xDev Hive" width="28" height="28" style="margin-bottom:12px">
+            <sc-for list="{{ navItems }}" as="n" hint-placeholder-count="8"><button onClick="{{ n.go }}" aria-label="{{ n.label }}" title="{{ n.label }}" aria-current="{{ n.cur }}" style="width:40px;height:40px;display:grid;place-items:center;border:0;border-radius:var(--radius-md);background:{{ n.bg }};color:var({{ n.ic }});cursor:pointer" style-hover="background:var(--state-hover)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ n.icon }}"></path></svg></button></sc-for>
+          </nav>
+        </sc-if>
+
+        <div style="flex:1;min-width:0;min-height:0;display:flex;flex-direction:column">
+          <sc-if value="{{ f.mobile }}" hint-placeholder-val="{{ false }}">
+            <div style="flex-shrink:0;display:flex;align-items:center;gap:8px;height:56px;padding:0 8px;border-bottom:1px solid var(--border-subtle);background:var(--bg-canvas)">
+              <button aria-label="Mở menu" style="width:44px;height:44px;display:grid;place-items:center;border:0;border-radius:var(--radius-md);background:transparent;color:var(--text-primary)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.menu }}"></path></svg></button>
+              <img src="assets/x-mark.svg" alt="" width="22" height="22"><span style="flex:1;font:var(--type-heading-md);color:var(--text-strong)">{{ scr.title }}</span>
+              <button aria-label="Tìm kiếm" style="width:44px;height:44px;display:grid;place-items:center;border:0;border-radius:var(--radius-md);background:transparent;color:var(--text-primary)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.search }}"></path></svg></button>
+            </div>
+          </sc-if>
+          <sc-if value="{{ f.notMobile }}" hint-placeholder-val="{{ true }}">
+            <div style="flex-shrink:0;display:flex;align-items:center;gap:12px;height:56px;padding:0 20px;border-bottom:1px solid var(--border-subtle);background:var(--bg-canvas)">
+              <nav aria-label="Breadcrumb" style="display:flex;align-items:center;gap:6px;font:var(--type-body-sm);min-width:0"><span style="font:var(--type-code-sm);color:var(--text-muted)">payment-gateway</span><span style="color:var(--text-disabled)">/</span><span style="color:var(--text-strong);font-weight:500">{{ scr.title }}</span></nav>
+              <button style="margin-left:auto;display:flex;align-items:center;gap:8px;height:32px;width:{{ f.searchW }};padding:0 8px 0 10px;border-radius:var(--radius-md);border:1px solid var(--border-default);background:var(--bg-surface);color:var(--text-muted);font:var(--type-body-sm);cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.search }}"></path></svg><span style="flex:1;text-align:left;white-space:nowrap;overflow:hidden">Tìm hoặc chạy lệnh…</span><kbd style="height:20px;padding:0 5px;display:inline-grid;place-items:center;border-radius:var(--radius-xs);border:1px solid var(--border-default);font:500 11px/1 var(--font-mono)">⌘K</kbd></button>
+              <button aria-label="Thông báo, 3 mới" style="position:relative;width:32px;height:32px;display:grid;place-items:center;border:0;border-radius:var(--radius-md);background:transparent;color:var(--text-secondary);cursor:pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.bell }}"></path></svg><span style="position:absolute;top:4px;right:4px;min-width:14px;height:14px;padding:0 3px;border-radius:7px;background:var(--status-danger-solid);color:#fff;font:700 9px/14px var(--font-sans)">3</span></button>
+              <sc-if value="{{ f.rail }}" hint-placeholder-val="{{ false }}"><span style="width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--action-primary-bg);color:var(--action-primary-fg);font:600 11px/1 var(--font-sans)">DT</span></sc-if>
+            </div>
+          </sc-if>
+
+          <main style="flex:1;min-height:0;overflow:auto">
+            <div style="max-width:var(--content-max);margin:0 auto;padding:{{ f.pad }};display:flex;flex-direction:column;gap:20px">
+              <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
+                <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:220px"><h1 style="margin:0;font:{{ f.h1 }};letter-spacing:var(--tracking-tight);color:var(--text-strong)">{{ scr.title }}</h1><p style="margin:0;font:var(--type-body-sm);color:var(--text-secondary)">{{ scr.sub }}</p></div>
+                <sc-if value="{{ scr.hasSecondary }}" hint-placeholder-val="{{ false }}"><button style="height:32px;padding:0 12px;border-radius:var(--radius-md);border:1px solid var(--action-secondary-border);background:var(--action-secondary-bg);color:var(--action-secondary-fg);font:var(--type-label);font-weight:600;cursor:pointer">{{ scr.secondary }}</button></sc-if>
+                <sc-if value="{{ scr.hasPrimary }}" hint-placeholder-val="{{ true }}"><button style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:var(--radius-md);border:{{ scr.pBd }};background:{{ scr.pBg }};color:var({{ scr.pFg }});font:var(--type-label);font-weight:600;cursor:pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ scr.pIcon }}"></path></svg>{{ scr.primary }}</button></sc-if>
+              </div>
+
+              <sc-if value="{{ is.dashboard }}" hint-placeholder-val="{{ true }}">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">
+                  <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4"><div style="display:flex;flex-direction:column;gap:4px;padding:16px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)"><span style="font:var(--type-caption);color:var(--text-muted)">{{ k.label }}</span><span style="font:var(--type-numeric-lg);color:var(--text-strong)">{{ k.value }}</span><span style="display:inline-flex;align-items:center;gap:4px;font:var(--type-caption);color:var({{ k.fg }})"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ k.icon }}"></path></svg>{{ k.note }}</span></div></sc-for>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px">
+                  <div style="display:flex;flex-direction:column;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+                    <div style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border-subtle)"><span style="font:var(--type-heading-sm);color:var(--text-strong)">Run đang chạy</span><span style="margin-left:auto;font:var(--type-caption);color:var(--text-muted)">3 trên 6 agent</span></div>
+                    <sc-for list="{{ liveRuns }}" as="r" hint-placeholder-count="3"><div style="display:grid;grid-template-columns:18px minmax(0,1fr) 80px 44px;gap:10px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border-subtle)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="color:var(--status-running-fg);animation:xd-spin 1.2s linear infinite"><path d="{{ ic.loaderCircle }}"></path></svg><span style="display:flex;flex-direction:column;min-width:0"><span style="font:var(--type-label);color:var(--text-strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.title }}</span><span style="font:var(--type-caption);color:var(--text-muted)">{{ r.meta }}</span></span><span style="height:4px;border-radius:2px;background:var(--bg-sunken);overflow:hidden"><span style="display:block;height:100%;width:{{ r.w }};background:var(--brand-gradient-h)"></span></span><span style="font:var(--type-code-sm);color:var(--text-muted);text-align:right">{{ r.w }}</span></div></sc-for>
+                  </div>
+                  <div style="display:flex;flex-direction:column;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+                    <div style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border-subtle)"><span style="font:var(--type-heading-sm);color:var(--text-strong)">Cần bạn xử lý</span><span style="margin-left:8px;min-width:20px;height:20px;padding:0 6px;display:inline-grid;place-items:center;border-radius:var(--radius-full);background:var(--action-primary-bg);color:var(--action-primary-fg);font:600 11px/1 var(--font-sans)">4</span></div>
+                    <sc-for list="{{ inbox }}" as="i" hint-placeholder-count="4"><div style="display:flex;gap:10px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border-subtle)"><span style="width:28px;height:28px;flex-shrink:0;border-radius:var(--radius-sm);display:grid;place-items:center;background:var(--status-{{ i.k }}-bg);color:var(--status-{{ i.k }}-fg)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ i.icon }}"></path></svg></span><span style="display:flex;flex-direction:column;flex:1;min-width:0"><span style="font:var(--type-label);color:var(--text-strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ i.title }}</span><span style="font:var(--type-caption);color:var(--text-muted)">{{ i.meta }}</span></span><button style="height:28px;padding:0 10px;border-radius:var(--radius-sm);border:1px solid var(--action-secondary-border);background:var(--action-secondary-bg);color:var(--action-secondary-fg);font:var(--type-caption);font-weight:600;cursor:pointer">{{ i.cta }}</button></div></sc-for>
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+                  <div style="padding:12px 16px;border-bottom:1px solid var(--border-subtle);font:var(--type-heading-sm);color:var(--text-strong)">Hoạt động gần đây</div>
+                  <sc-for list="{{ activity }}" as="a" hint-placeholder-count="4"><div style="display:flex;gap:10px;align-items:center;padding:9px 16px;border-bottom:1px solid var(--border-subtle);font:var(--type-body-sm)"><span style="width:22px;height:22px;border-radius:{{ a.shape }};display:grid;place-items:center;background:var(--bg-sunken);color:var(--text-secondary);font:600 10px/1 var(--font-sans)">{{ a.av }}</span><span style="flex:1;min-width:0;color:var(--text-secondary)"><b style="color:var(--text-strong);font-weight:600">{{ a.who }}</b> {{ a.what }}</span><span style="font:var(--type-caption);color:var(--text-muted);white-space:nowrap">{{ a.at }}</span></div></sc-for>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ is.projects }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span style="display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;flex:1;min-width:200px;max-width:320px;border-radius:var(--radius-md);border:1px solid var(--border-control);background:var(--bg-surface);color:var(--text-muted);font:var(--type-body-sm)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.search }}"></path></svg>Tìm dự án</span><div style="display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--bg-sunken);border:1px solid var(--border-subtle)"><span style="height:28px;padding:0 10px;display:grid;place-items:center;border-radius:var(--radius-sm);background:var(--bg-surface);box-shadow:var(--shadow-1);font:var(--type-caption);color:var(--text-strong)">Đang hoạt động 6</span><span style="height:28px;padding:0 10px;display:grid;place-items:center;font:var(--type-caption);color:var(--text-secondary)">Lưu trữ 3</span></div></div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px">
+                  <sc-for list="{{ projects }}" as="p" hint-placeholder-count="6">
+                    <div style="display:flex;flex-direction:column;gap:10px;padding:16px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface);cursor:pointer" style-hover="border-color:var(--border-strong);box-shadow:var(--shadow-1)">
+                      <div style="display:flex;align-items:center;gap:10px"><span style="width:32px;height:32px;border-radius:var(--radius-md);display:grid;place-items:center;background:var(--status-info-bg);color:var(--status-info-fg);font:700 13px/1 var(--font-display)">{{ p.init }}</span><span style="display:flex;flex-direction:column;min-width:0;flex:1"><span style="font:600 13px/20px var(--font-mono);color:var(--text-strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.name }}</span><span style="font:var(--type-caption);color:var(--text-muted)">{{ p.repo }}</span></span></div>
+                      <span style="font:var(--type-body-sm);color:var(--text-secondary);min-height:40px;text-wrap:pretty">{{ p.desc }}</span>
+                      <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:var(--radius-full);background:var(--status-{{ p.k }}-bg);color:var(--status-{{ p.k }}-fg);font:var(--type-caption)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ p.icon }}"></path></svg>{{ p.status }}</span></div>
+                      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding-top:10px;border-top:1px solid var(--border-subtle)"><sc-for list="{{ p.stats }}" as="st" hint-placeholder-count="3"><span style="display:flex;flex-direction:column"><span style="font:600 15px/22px var(--font-display);color:var(--text-strong)">{{ st.v }}</span><span style="font:var(--type-caption);color:var(--text-muted)">{{ st.k }}</span></span></sc-for></div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ is.agents }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ agentFilters }}" as="c" hint-placeholder-count="5"><span style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:var(--radius-full);border:1px solid {{ c.bd }};background:{{ c.bg }};color:var({{ c.fg }});font:var(--type-caption)">{{ c.label }}<span style="font-family:var(--font-mono)">{{ c.n }}</span></span></sc-for></div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px">
+                  <sc-for list="{{ agents }}" as="a" hint-placeholder-count="6">
+                    <div style="display:flex;flex-direction:column;gap:12px;padding:14px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+                      <div style="display:flex;align-items:center;gap:10px"><span style="position:relative;width:40px;height:40px;flex-shrink:0;display:grid;place-items:center"><sc-if value="{{ a.live }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" style="position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,#7BD4FF,#1E90FF,#004CFF,#7BD4FF);animation:xd-ring 2.4s linear infinite"></span></sc-if><sc-if value="{{ a.still }}" hint-placeholder-val="{{ true }}"><span aria-hidden="true" style="position:absolute;inset:0;border-radius:50%;border:2px {{ a.rs }} var({{ a.ring }})"></span></sc-if><span style="position:relative;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--bg-surface);box-shadow:inset 0 0 0 1px var(--border-subtle);font:600 13px/1 var(--font-display);color:var(--text-strong)">{{ a.av }}</span></span><div style="display:flex;flex-direction:column;min-width:0;flex:1"><span style="font:var(--type-heading-sm);color:var(--text-strong)">{{ a.name }}</span><span style="font:var(--type-code-sm);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.model }} · {{ a.host }}</span></div></div>
+                      <span style="align-self:flex-start;display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:var(--radius-full);background:var(--status-{{ a.k }}-bg);color:var(--status-{{ a.k }}-fg);font:var(--type-caption)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ a.icon }}"></path></svg>{{ a.state }}</span>
+                      <span style="font:var(--type-body-sm);color:var(--text-secondary)">{{ a.task }}</span>
+                      <div style="display:flex;flex-direction:column;gap:4px"><div style="display:flex;font:var(--type-caption);color:var(--text-muted)"><span>Quota tuần</span><span style="margin-left:auto;font-family:var(--font-mono);color:var(--text-primary)">{{ a.q }}%</span></div><div style="height:6px;border-radius:3px;background:var(--bg-sunken);overflow:hidden"><span style="display:block;height:100%;width:{{ a.qw }};background:var({{ a.qBar }})"></span></div></div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ is.tasks }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><div style="display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--bg-sunken);border:1px solid var(--border-subtle)"><span style="height:28px;padding:0 10px;display:grid;place-items:center;border-radius:var(--radius-sm);background:var(--bg-surface);box-shadow:var(--shadow-1);font:var(--type-caption);color:var(--text-strong)">Board</span><span style="height:28px;padding:0 10px;display:grid;place-items:center;font:var(--type-caption);color:var(--text-secondary)">Danh sách</span></div><span style="display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 10px;border-radius:var(--radius-full);background:var(--state-selected-bg);color:var(--state-selected-fg);font:var(--type-caption)">Sprint 14</span><span style="display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 10px;border-radius:var(--radius-full);border:1px dashed var(--border-control);color:var(--text-secondary);font:var(--type-caption)">+ Nhãn</span><span style="display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 10px;border-radius:var(--radius-full);border:1px dashed var(--border-control);color:var(--text-secondary);font:var(--type-caption)">+ Agent</span></div>
+                <div style="overflow:auto;margin:0 -4px;padding:0 4px 4px"><div style="display:grid;grid-template-columns:repeat(4,minmax(230px,1fr));gap:12px;min-width:960px">
+                  <sc-for list="{{ board }}" as="col" hint-placeholder-count="4">
+                    <div style="display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:var(--radius-lg);background:var(--bg-sunken);min-height:360px">
+                      <div style="display:flex;align-items:center;gap:8px;padding:2px 4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var({{ col.ic }})"><path d="{{ col.icon }}"></path></svg><span style="font:var(--type-heading-sm);color:var(--text-strong)">{{ col.label }}</span><span style="font:var(--type-caption);color:var(--text-muted)">{{ col.n }}</span></div>
+                      <sc-for list="{{ col.cards }}" as="t" hint-placeholder-count="2"><div style="display:flex;flex-direction:column;gap:8px;padding:10px 12px;border-radius:var(--radius-md);background:var(--bg-surface);border:1px solid var(--border-default)"><div style="display:flex;align-items:center;gap:6px"><span style="font:var(--type-code-sm);color:var(--text-muted)">{{ t.id }}</span><span style="display:inline-flex;align-items:center;gap:3px;font:var(--type-caption);color:var({{ t.pfg }})"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ t.picon }}"></path></svg>{{ t.plabel }}</span></div><span style="font:var(--type-label);color:var(--text-strong)">{{ t.title }}</span><div style="display:flex;gap:6px;align-items:center"><span style="height:18px;padding:0 6px;display:inline-flex;align-items:center;border-radius:var(--radius-xs);background:var(--bg-sunken);font:var(--type-caption);font-size:11px;color:var(--text-secondary)">{{ t.label }}</span><span style="margin-left:auto;width:22px;height:22px;border-radius:{{ t.shape }};display:grid;place-items:center;background:var(--state-selected-bg);color:var(--state-selected-fg);font:600 10px/1 var(--font-sans)">{{ t.av }}</span></div></div></sc-for>
+                    </div>
+                  </sc-for>
+                </div></div>
+              </sc-if>
+
+              <sc-if value="{{ is.documents }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface);overflow:hidden;min-height:560px">
+                  <sc-if value="{{ f.notMobile }}" hint-placeholder-val="{{ true }}">
+                    <div style="flex:0 0 230px;border-right:1px solid var(--border-subtle);background:var(--bg-subtle);padding:10px 8px;display:flex;flex-direction:column;gap:1px">
+                      <span style="display:flex;align-items:center;gap:6px;height:30px;padding:0 8px;margin-bottom:6px;border-radius:var(--radius-sm);border:1px solid var(--border-control);background:var(--bg-surface);color:var(--text-muted);font:var(--type-body-sm)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.search }}"></path></svg>Tìm trang</span>
+                      <sc-for list="{{ docTree }}" as="d" hint-placeholder-count="9"><span style="display:flex;align-items:center;gap:6px;height:30px;padding:0 8px 0 {{ d.pad }};border-radius:var(--radius-sm);background:{{ d.bg }};color:var({{ d.fg }});font:var(--type-body-sm);font-weight:{{ d.fw }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var({{ d.ic }})"><path d="{{ d.icon }}"></path></svg>{{ d.label }}</span></sc-for>
+                    </div>
+                  </sc-if>
+                  <article style="flex:1;min-width:0;padding:24px clamp(16px,3vw,40px);display:flex;flex-direction:column;gap:14px">
+                    <div style="max-width:var(--reading-max);display:flex;flex-direction:column;gap:14px">
+                      <nav style="font:var(--type-caption);color:var(--text-muted)">Kiến trúc / Luồng xử lý chính</nav>
+                      <h2 style="margin:0;font:var(--type-display-md);letter-spacing:var(--tracking-tight);color:var(--text-strong)">Luồng xử lý chính</h2>
+                      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span style="height:20px;padding:0 6px;display:inline-flex;align-items:center;border-radius:var(--radius-xs);background:var(--bg-sunken);font:500 11px/1 var(--font-mono);color:var(--text-secondary)">v12</span><span style="height:20px;padding:0 8px;display:inline-flex;align-items:center;border-radius:var(--radius-full);background:var(--status-info-bg);color:var(--status-info-fg);font:var(--type-caption)">Trong AGENTS.md</span><span style="font:var(--type-caption);color:var(--text-muted)">Sửa 2 giờ trước bởi Duy Trần</span></div>
+                      <p style="margin:0;font:var(--type-body-lg);color:var(--text-primary);text-wrap:pretty">Yêu cầu thanh toán đi qua API gateway, được ghi vào hàng đợi và xử lý bởi worker. Mỗi bước ghi kèm <a href="#documents">idempotency key</a> để chạy lại an toàn.</p>
+                      <h3 style="margin:8px 0 0;font:var(--type-heading-lg);color:var(--text-strong)">Retry khi đối tác lỗi</h3>
+                      <pre style="margin:0;padding:12px 14px;border-radius:var(--radius-md);background:var(--code-bg);border:1px solid var(--border-subtle);font:var(--type-code-sm);color:var(--code-fg);overflow:auto"><span style="color:var(--syntax-keyword)">return</span> <span style="color:var(--syntax-function)">retry</span>(() =&gt; <span style="color:var(--syntax-function)">post</span>(url, body), { attempts: <span style="color:var(--syntax-number)">3</span> })</pre>
+                      <div style="display:flex;gap:10px;padding:12px 14px;border-radius:var(--radius-md);background:var(--status-info-bg);color:var(--text-primary);font:var(--type-body-sm)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;color:var(--status-info-fg);margin-top:2px"><path d="{{ ic.info }}"></path></svg><span>Agent đọc trang này qua doc_get khi cần bối cảnh.</span></div>
+                    </div>
+                  </article>
+                  <sc-if value="{{ f.xl }}" hint-placeholder-val="{{ true }}">
+                    <aside style="flex:0 0 240px;border-left:1px solid var(--border-subtle);padding:16px;display:flex;flex-direction:column;gap:8px">
+                      <span style="font:var(--type-overline);letter-spacing:var(--tracking-wide);text-transform:uppercase;color:var(--text-muted)">Được liên kết từ</span>
+                      <sc-for list="{{ backlinks }}" as="b" hint-placeholder-count="3"><span style="display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:var(--radius-md);border:1px solid var(--border-subtle);background:var(--bg-canvas)"><span style="font:var(--type-label);color:var(--text-strong)">{{ b.t }}</span><span style="font:var(--type-caption);color:var(--text-muted)">{{ b.m }}</span></span></sc-for>
+                    </aside>
+                  </sc-if>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ is.skills }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;gap:12px;align-items:flex-start">
+                  <div style="flex:1;min-width:0;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface);overflow:hidden">
+                    <sc-for list="{{ skills }}" as="k" hint-placeholder-count="6"><div style="display:flex;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border-subtle);background:{{ k.bg }}"><span style="width:32px;height:32px;flex-shrink:0;border-radius:var(--radius-md);display:grid;place-items:center;background:var(--bg-sunken);color:var(--text-brand)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.wandSparkles }}"></path></svg></span><span style="display:flex;flex-direction:column;flex:1;min-width:0"><span style="font:600 13px/20px var(--font-mono);color:var(--text-strong)">{{ k.name }}</span><span style="font:var(--type-body-sm);color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ k.desc }}</span></span><span style="height:20px;padding:0 8px;display:inline-flex;align-items:center;border-radius:var(--radius-full);background:var(--bg-sunken);font:var(--type-caption);color:var(--text-secondary);white-space:nowrap">{{ k.scope }}</span><span style="font:var(--type-caption);color:var(--text-muted);white-space:nowrap;min-width:72px;text-align:right">{{ k.used }}</span></div></sc-for>
+                  </div>
+                  <sc-if value="{{ f.xl }}" hint-placeholder-val="{{ true }}">
+                    <div style="flex:0 0 380px;display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+                      <div style="display:flex;align-items:center;gap:8px"><span style="font:600 14px/20px var(--font-mono);color:var(--text-strong)">release-desktop</span><span style="height:20px;padding:0 6px;display:inline-flex;align-items:center;border-radius:var(--radius-xs);background:var(--bg-sunken);font:500 11px/1 var(--font-mono);color:var(--text-secondary)">v4</span></div>
+                      <span style="font:var(--type-body-sm);color:var(--text-secondary)">Các bước phát hành bản desktop: tăng version, build, ký, tạo release và cập nhật kênh tự cập nhật.</span>
+                      <div style="padding:12px;border-radius:var(--radius-md);background:var(--code-bg);border:1px solid var(--border-subtle);font:var(--type-code-sm);color:var(--code-fg);display:flex;flex-direction:column"><span style="color:var(--syntax-comment)">---</span><span><span style="color:var(--syntax-type)">name</span>: release-desktop</span><span><span style="color:var(--syntax-type)">description</span>: <span style="color:var(--syntax-string)">Phát hành bản desktop</span></span><span style="color:var(--syntax-comment)">---</span><span>1. npm version minor</span><span>2. npm run build:desktop</span><span>3. gh release create</span></div>
+                      <span style="font:var(--type-caption);color:var(--text-muted)">Ghi vào .claude/skills/release-desktop/SKILL.md khi đồng bộ</span>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ is.memory }}" hint-placeholder-val="{{ false }}">
+                <span style="display:flex;align-items:center;gap:10px;height:44px;padding:0 14px;border-radius:var(--radius-lg);border:1px solid var(--border-control);background:var(--bg-surface);color:var(--text-muted);font:var(--type-body-md)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.search }}"></path></svg>Tìm theo nghĩa: “vì sao không retry lỗi 4xx”</span>
+                <div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ memTags }}" as="t" hint-placeholder-count="5"><span style="height:26px;padding:0 10px;display:inline-flex;align-items:center;border-radius:var(--radius-full);border:1px solid {{ t.bd }};background:{{ t.bg }};color:var({{ t.fg }});font:var(--type-caption)">{{ t.label }}</span></sc-for></div>
+                <div style="display:flex;flex-direction:column;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+                  <sc-for list="{{ memories }}" as="m" hint-placeholder-count="5">
+                    <div style="display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border-subtle)">
+                      <span style="font:var(--type-code-sm);color:var(--text-muted);min-width:40px">{{ m.id }}</span>
+                      <div style="display:flex;flex-direction:column;gap:6px;flex:1;min-width:0">
+                        <span style="font:var(--type-body-md);color:var(--text-primary);text-wrap:pretty">{{ m.text }}</span>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><sc-for list="{{ m.tags }}" as="g" hint-placeholder-count="2"><span style="height:18px;padding:0 6px;display:inline-flex;align-items:center;border-radius:var(--radius-xs);background:var(--bg-sunken);font:var(--type-caption);font-size:11px;color:var(--text-secondary)">{{ g }}</span></sc-for><span style="font:var(--type-caption);color:var(--text-muted)">· {{ m.src }} · {{ m.age }}</span></div>
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:4px;width:84px;flex-shrink:0"><span style="font:var(--type-caption);color:var(--text-muted);text-align:right">Tin cậy {{ m.conf }}%</span><span style="height:4px;border-radius:2px;background:var(--bg-sunken);overflow:hidden"><span style="display:block;height:100%;width:{{ m.cw }};background:var({{ m.cbar }})"></span></span></div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ is.settings }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
+                  <nav aria-label="Cài đặt" style="flex:0 0 200px;display:flex;flex-direction:column;gap:1px"><sc-for list="{{ setNav }}" as="n" hint-placeholder-count="6"><span style="display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border-radius:var(--radius-sm);background:{{ n.bg }};color:var({{ n.fg }});font:var(--type-body-sm);font-weight:{{ n.fw }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ n.icon }}"></path></svg>{{ n.label }}</span></sc-for></nav>
+                  <div style="flex:1;min-width:280px;display:flex;flex-direction:column;gap:16px">
+                    <section style="display:flex;flex-direction:column;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+                      <div style="padding:14px 20px;border-bottom:1px solid var(--border-subtle)"><h2 style="margin:0;font:var(--type-heading-md);color:var(--text-strong)">Workspace</h2><p style="margin:2px 0 0;font:var(--type-body-sm);color:var(--text-secondary)">Tên và khu vực hiển thị cho mọi thành viên.</p></div>
+                      <div style="padding:16px 20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px">
+                        <label style="display:flex;flex-direction:column;gap:6px"><span style="font:var(--type-label);color:var(--text-strong)">Tên workspace</span><span style="display:flex;align-items:center;height:40px;padding:0 12px;border-radius:var(--radius-md);border:1px solid var(--border-control);background:var(--bg-surface);font:var(--type-body-md);color:var(--text-primary)">FIS · Nhóm nền tảng</span></label>
+                        <label style="display:flex;flex-direction:column;gap:6px"><span style="font:var(--type-label);color:var(--text-strong)">Múi giờ</span><span style="display:flex;align-items:center;height:40px;padding:0 12px;border-radius:var(--radius-md);border:1px solid var(--border-control);background:var(--bg-surface);font:var(--type-body-md);color:var(--text-primary)"><span style="flex:1">(GMT+7) Hà Nội</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--text-muted)"><path d="{{ ic.chevronsUpDown }}"></path></svg></span></label>
+                      </div>
+                    </section>
+                    <section style="display:flex;flex-direction:column;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+                      <div style="padding:14px 20px;border-bottom:1px solid var(--border-subtle)"><h2 style="margin:0;font:var(--type-heading-md);color:var(--text-strong)">Agent</h2></div>
+                      <sc-for list="{{ setSwitches }}" as="w" hint-placeholder-count="3"><div style="display:flex;gap:12px;align-items:center;padding:12px 20px;border-bottom:1px solid var(--border-subtle)"><span style="display:flex;flex-direction:column;flex:1"><span style="font:var(--type-label);color:var(--text-strong)">{{ w.label }}</span><span style="font:var(--type-caption);color:var(--text-muted)">{{ w.sub }}</span></span><span style="font:var(--type-caption);color:var(--text-muted)">{{ w.state }}</span><span role="switch" aria-checked="{{ w.aria }}" style="position:relative;width:36px;height:20px;flex-shrink:0;border-radius:var(--radius-full);border:1px solid var({{ w.bd }});background:var({{ w.bg }})"><span style="position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var({{ w.knob }});transform:translateX({{ w.x }})"></span></span></div></sc-for>
+                    </section>
+                    <section style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:16px 20px;border:1px solid var(--status-danger-border);border-radius:var(--radius-lg);background:var(--bg-surface)"><span style="display:flex;flex-direction:column;flex:1;min-width:200px"><span style="font:var(--type-heading-sm);color:var(--status-danger-fg)">Xoá workspace</span><span style="font:var(--type-body-sm);color:var(--text-secondary)">Xoá toàn bộ dự án, task, tài liệu và lịch sử run. Không thể hoàn tác.</span></span><button style="height:32px;padding:0 12px;border-radius:var(--radius-md);border:0;background:var(--action-danger-bg);color:var(--action-danger-fg);font:var(--type-label);font-weight:600;cursor:pointer">Xoá workspace</button></section>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+          </main>
+
+          <sc-if value="{{ f.mobile }}" hint-placeholder-val="{{ false }}">
+            <nav aria-label="Điều hướng nhanh" style="flex-shrink:0;display:grid;grid-template-columns:repeat(5,1fr);height:64px;padding-bottom:4px;border-top:1px solid var(--border-subtle);background:var(--bg-subtle)">
+              <sc-for list="{{ tabBar }}" as="n" hint-placeholder-count="5"><button onClick="{{ n.go }}" aria-current="{{ n.cur }}" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:0;background:transparent;color:var({{ n.fg }});font:500 11px/14px var(--font-sans);cursor:pointer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ n.icon }}"></path></svg>{{ n.label }}</button></sc-for>
+            </nav>
+          </sc-if>
+        </div>
+      </div></div>
+    </div>
+  </sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;defaultScreen&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dashboard&quot;,&quot;projects&quot;,&quot;agents&quot;,&quot;tasks&quot;,&quot;documents&quot;,&quot;skills&quot;,&quot;memory&quot;,&quot;settings&quot;],&quot;default&quot;:&quot;dashboard&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;density&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;comfortable&quot;,&quot;compact&quot;],&quot;default&quot;:&quot;comfortable&quot;,&quot;tsType&quot;:&quot;'comfortable' | 'compact'&quot;}}">
+let ICONS = {};
+const loadIcons = () => window.__xdIcons ? Promise.resolve(ICONS = window.__xdIcons) : fetch('assets/icons.json').then(r => r.json()).then(j => { window.__xdIcons = ICONS = j; });
+const I = n => ICONS[n] || '';
+const icMap = () => { const o = {}; for (const k in ICONS) o[k.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase())] = ICONS[k]; return o; };
+const SCREENS = [
+  ['dashboard', 'Dashboard', 'layout-dashboard', 'Tổng quan', 'Agent, run và việc cần bạn xử lý hôm nay.', 'Chạy agent', 'play', 'brand', 'Xuất báo cáo', ''],
+  ['projects', 'Projects', 'folder-kanban', 'Dự án', '6 dự án đang hoạt động trong workspace FIS.', 'Tạo dự án', 'plus', 'primary', '', ''],
+  ['agents', 'Agents', 'bot', 'Agent', '6 agent trên 4 máy · 3 đang chạy.', 'Kết nối agent', 'plus', 'primary', 'Quota', '6'],
+  ['tasks', 'Tasks', 'list-todo', 'Task', 'Sprint 14 · 42 task mở.', 'Tạo task', 'plus', 'primary', '', '48'],
+  ['documents', 'Documents', 'file-text', 'Tài liệu', 'Bản gốc của AGENTS.md, quy chuẩn và quyết định kiến trúc.', 'Tạo trang', 'plus', 'primary', '', ''],
+  ['skills', 'Skills', 'wand-sparkles', 'Skill', 'Quy trình chuẩn agent dùng lại, đồng bộ vào .claude/skills.', 'Tạo skill', 'plus', 'primary', '', '14'],
+  ['memory', 'Memory', 'brain', 'Memory', 'Điều agent đã học từ các run, tìm theo nghĩa.', '', '', '', 'Hàng duyệt', '427'],
+  ['settings', 'Settings', 'settings', 'Cài đặt', 'Workspace, thành viên, agent, token và webhook.', 'Lưu thay đổi', 'check', 'primary', '', ''],
+];
+const SIZES = { desktop: [1440, 900, 'Desktop 1440', 'monitor'], tablet: [834, 1112, 'Tablet 834', 'tablet'], mobile: [390, 844, 'Mobile 390', 'smartphone'] };
+class Component extends DCLogic {
+  state = { theme: (() => { try { return localStorage.getItem('xdh-ds-theme') === 'dark' ? 'dark' : 'light'; } catch (e) { return 'light'; } })(), screen: this.props.defaultScreen || 'dashboard', mode: 'single', size: 'desktop', avail: 1200 };
+  stageRef = React.createRef();
+  componentDidMount() {
+    loadIcons().then(() => this.forceUpdate());
+    const el = document.querySelector('[data-stage]'); if (el) this.setState({ avail: el.clientWidth - 48 }); if (el && window.ResizeObserver) { this.ro = new ResizeObserver(() => { const w = el.clientWidth - 48; if (Math.abs(w - this.state.avail) > 4) this.setState({ avail: w }); }); this.ro.observe(el); }
+  }
+  componentWillUnmount() { this.ro && this.ro.disconnect(); }
+  renderVals() {
+    const s = this.state, light = s.theme !== 'dark', sc = SCREENS.find(x => x[0] === s.screen) || SCREENS[0];
+    const [W, H, cap] = SIZES[s.size];
+    const themes = s.mode === 'compare' ? ['light', 'dark'] : [s.theme];
+    const stacked = s.mode === 'compare' && s.size === 'desktop';
+    const perRow = stacked ? 1 : themes.length;
+    const zoom = Math.min(1, (s.avail - (perRow - 1) * 24) / (W * perRow + 2));
+    const full = W >= 1024, rail = W >= 768 && W < 1024, mobile = W < 768;
+    const frames = themes.map(th => ({ theme: th, w: W, h: H, zoom: zoom.toFixed(3), sw: Math.floor(W * zoom), sh: Math.floor(H * zoom), caption: cap + ' · ' + (th === 'dark' ? 'Tối' : 'Sáng'), full, rail, mobile, notMobile: !mobile, xl: W >= 1280, lightLogo: th !== 'dark', darkLogo: th === 'dark', dir: 'row', r: mobile ? '28px' : 'var(--radius-lg)', pad: mobile ? '16px 16px 24px' : '24px 28px 40px', h1: mobile ? 'var(--type-display-md)' : 'var(--type-display-lg)', searchW: rail ? '220px' : '300px' }));
+    const go = k => () => this.setState({ screen: k });
+    const navItems = SCREENS.map(([k, label, icon, , , , , , , count]) => { const cur = k === s.screen; return { label, icon: I(icon), count, go: go(k), cur: cur ? 'page' : 'false', bg: cur ? 'var(--state-selected-bg)' : 'transparent', fg: cur ? '--state-selected-fg' : '--text-secondary', ic: cur ? '--text-brand' : '--text-muted', fw: cur ? 600 : 400 }; });
+    const nav = [{ head: true, item: false, label: 'Làm việc' }, ...navItems.slice(0, 4).map(n => ({ ...n, head: false, item: true })), { head: true, item: false, label: 'Kiến thức' }, ...navItems.slice(4, 7).map(n => ({ ...n, head: false, item: true })), { head: true, item: false, label: 'Hệ thống' }, { ...navItems[7], head: false, item: true }];
+    const pKind = sc[7];
+    const scr = { title: sc[3], sub: sc[4], primary: sc[5], hasPrimary: !!sc[5], pIcon: I(sc[6]), secondary: sc[8], hasSecondary: !!sc[8] && !mobile,
+      pBg: pKind === 'brand' ? 'linear-gradient(var(--bg-surface),var(--bg-surface)) padding-box,var(--brand-gradient) border-box' : 'var(--action-primary-bg)', pFg: pKind === 'brand' ? '--text-brand' : '--action-primary-fg', pBd: pKind === 'brand' ? '1.5px solid transparent' : '0' };
+    const AG = [['claude-code', 'C', 'claude-sonnet-4.5', 'build-03', 'running', 'Đang chạy', 'loader-circle', 'T-142 · Retry webhook Teams', 68], ['codex', 'O', 'gpt-5-codex', 'build-01', 'info', 'Chờ duyệt', 'git-pull-request', 'PR #479 chờ review', 41], ['gemini-cli', 'G', 'gemini-2.5-pro', 'mac-mini', 'neutral', 'Rảnh', 'circle-pause', 'Sẵn sàng nhận task', 22], ['aider', 'A', 'claude-haiku-4.5', 'build-02', 'warning', 'Hết quota', 'hourglass', 'Làm mới 00:00 ngày 1/10', 100], ['qwen-coder', 'Q', 'qwen3-coder', 'gpu-01', 'danger', 'Lỗi', 'circle-x', 'Mất kết nối model sau 3 lần thử', 57], ['claude-code', 'C', 'claude-opus-4.1', 'laptop-lan', 'neutral', 'Offline', 'circle-dot', 'Thấy lần cuối 2 giờ trước', 9]];
+    const PR = { u: ['Khẩn', 'arrow-up', '--status-danger-fg'], h: ['Cao', 'arrow-up', '--status-warning-fg'], m: ['Vừa', 'minus', '--text-muted'], l: ['Thấp', 'arrow-down', '--text-muted'] };
+    const card = (id, title, label, p, av, agent) => ({ id, title, label, plabel: PR[p][0], picon: I(PR[p][1]), pfg: PR[p][2], av, shape: agent ? '6px' : '50%' });
+    return {
+      ic: icMap(), theme: s.theme, light, dark: !light, density: this.props.density === 'compact' ? 'compact' : 'comfortable',
+      screenTabs: SCREENS.map(([k, label, icon]) => { const on = k === s.screen; return { label, icon: I(icon), go: go(k), on: on ? 'true' : 'false', bg: on ? 'var(--bg-surface)' : 'transparent', fg: on ? '--text-strong' : '--text-secondary', fw: on ? 600 : 500 }; }),
+      modeOpts: [['light', 'Sáng'], ['dark', 'Tối'], ['compare', 'So sánh']].map(([k, label]) => { const on = k === 'compare' ? s.mode === 'compare' : s.mode === 'single' && s.theme === k; return { label, on: on ? 'true' : 'false', bg: on ? 'var(--bg-surface)' : 'transparent', sh: on ? 'var(--shadow-1)' : 'none', go: () => { if (k === 'compare') this.setState({ mode: 'compare' }); else { this.setState({ mode: 'single', theme: k }); try { localStorage.setItem('xdh-ds-theme', k); } catch (e) {} } } }; }),
+      sizeOpts: Object.entries(SIZES).map(([k, v]) => { const on = k === s.size; return { label: v[2], icon: I(v[3]), on: on ? 'true' : 'false', bg: on ? 'var(--bg-surface)' : 'transparent', sh: on ? 'var(--shadow-1)' : 'none', go: () => this.setState({ size: k }) }; }),
+      stageWrap: stacked ? 'wrap' : 'nowrap', frames, nav, navItems, scr, is: { [s.screen]: true },
+      tabBar: [0, 3, 2, 4, 7].map(i => { const n = navItems[i]; return { label: n.label, icon: n.icon, go: n.go, cur: n.cur, fg: n.cur === 'page' ? '--text-brand' : '--text-muted' }; }),
+      kpis: [['Agent đang chạy', '3 / 6', '1 hết quota', '--status-warning-fg', 'triangle-alert'], ['Run hôm nay', '48', '97,2% thành công', '--status-success-fg', 'circle-check'], ['Task mở', '42', '+5 so với hôm qua', '--text-muted', 'arrow-up'], ['Chi phí tuần', '$86,40', 'còn 57% ngân sách', '--text-muted', 'gauge']].map(([label, value, note, fg, icon]) => ({ label, value, note, fg, icon: I(icon) })),
+      liveRuns: [['Retry webhook Teams', 'claude-code · build-03 · Viết code', '62%'], ['Idempotency key cho API v2', 'codex · build-01 · Chạy test', '81%'], ['Chuẩn hoá log JSON', 'gemini-cli · mac-mini · Đọc context', '14%']].map(([title, meta, w]) => ({ title, meta, w })),
+      inbox: [['info', 'git-pull-request', 'PR #482 · Retry webhook Teams', 'claude-code tạo 3 phút trước', 'Review'], ['warning', 'brain', '3 memory mới chờ duyệt', 'Từ run_01J8Z4', 'Duyệt'], ['warning', 'hourglass', 'Gói Codex còn 8% quota', 'Làm mới sau 2 ngày', 'Xem'], ['danger', 'circle-x', 'Run #1284 thất bại', 'Test apps/web lỗi 3 case', 'Mở log']].map(([k, icon, title, meta, cta]) => ({ k, icon: I(icon), title, meta, cta })),
+      activity: [['C', true, 'claude-code', 'mở PR #482 cho T-142', '3 phút'], ['DT', false, 'Duy Trần', 'duyệt đề xuất sửa “Quy ước cho agent”', '18 phút'], ['O', true, 'codex', 'chuyển T-139 sang Chờ review', '41 phút'], ['LH', false, 'Lan Hồ', 'thêm skill db-migration v2', '2 giờ']].map(([av, agent, who, what, at]) => ({ av, shape: agent ? '5px' : '50%', who, what, at })),
+      projects: [['payment-gateway', 'fis/payment-gateway', 'Cổng thanh toán cho app ví điện tử và đối tác.', 'running', 'loader-circle', '3 đang chạy', 42, 318, 12], ['xdev-hive', 'tdduydev/xdev-hive', 'Hub điều phối agent và tài liệu dùng chung.', 'running', 'loader-circle', '1 đang chạy', 27, 204, 31], ['mobile-wallet', 'fis/mobile-wallet', 'App ví điện tử React Native.', 'neutral', 'circle-pause', 'Rảnh', 18, 96, 8], ['core-banking-api', 'fis/core-banking-api', 'API lõi ngân hàng, tích hợp đối tác.', 'warning', 'triangle-alert', 'Hết quota', 55, 412, 20], ['report-service', 'fis/report-service', 'Báo cáo đối soát hằng ngày.', 'success', 'circle-check', 'Ổn định', 6, 88, 5], ['design-system', 'fis/design-system', 'Token và component dùng chung.', 'neutral', 'circle-pause', 'Rảnh', 9, 37, 14]]
+        .map(([name, repo, desc, k, icon, status, t, r, d]) => ({ name, init: name[0].toUpperCase(), repo, desc, k, icon: I(icon), status, stats: [{ k: 'Task mở', v: t }, { k: 'Run', v: r }, { k: 'Tài liệu', v: d }] })),
+      agentFilters: [['Tất cả', 6, true], ['Đang chạy', 1], ['Chờ duyệt', 1], ['Rảnh', 1], ['Hết quota', 1], ['Lỗi', 1], ['Offline', 1]].map(([label, n, on]) => ({ label, n, bd: on ? 'var(--border-selected)' : 'var(--border-default)', bg: on ? 'var(--state-selected-bg)' : 'var(--bg-surface)', fg: on ? '--state-selected-fg' : '--text-secondary' })),
+      agents: AG.map(([name, av, model, host, k, state, icon, task, q], i) => ({ name, av, model, host, k, state, icon: I(icon), task, q, qw: q + '%', live: k === 'running', still: k !== 'running', ring: i === 5 ? '--border-control' : '--status-' + k + '-border', rs: i === 5 ? 'dashed' : 'solid', qBar: q >= 85 ? '--status-warning-solid' : '--action-primary-bg' })),
+      board: [['Cần làm', 'circle', '--text-muted', [card('T-151', 'Thêm trang lịch sử quota', 'web', 'm', '–', false), card('T-149', 'Chuẩn hoá log JSON một dòng', 'hub', 'l', 'DT', false)]], ['Đang làm', 'loader-circle', '--status-running-fg', [card('T-142', 'Retry webhook Teams', 'webhook', 'h', 'C', true), card('T-139', 'Idempotency key cho API v2', 'api', 'u', 'O', true)]], ['Chờ review', 'git-pull-request', '--status-warning-fg', [card('T-137', 'Sửa lỗi múi giờ báo cáo', 'report', 'm', 'G', true), card('T-133', 'Tài liệu ADR-014', 'docs', 'l', 'LH', false)]], ['Xong', 'circle-check', '--status-success-fg', [card('T-128', 'Backup bằng VACUUM INTO', 'ops', 'm', 'C', true)]]]
+        .map(([label, icon, ic, cards]) => ({ label, icon: I(icon), ic, cards, n: cards.length })),
+      docTree: [['Tổng quan dự án', 0, 'file-text'], ['Quy ước cho agent', 0, 'file-text'], ['Kiến trúc', 0, 'folder-open', true], ['Sơ đồ hệ thống', 1, 'file-text'], ['Luồng xử lý chính', 1, 'file-text', false, true], ['Cơ sở dữ liệu', 1, 'file-text'], ['Vận hành', 0, 'folder'], ['Quyết định (ADR)', 0, 'folder'], ['Skill riêng', 0, 'folder']]
+        .map(([label, d, icon, folder, on]) => ({ label, pad: (8 + d * 16) + 'px', icon: I(icon), ic: folder || icon === 'folder' ? '--text-brand' : '--text-muted', bg: on ? 'var(--state-selected-bg)' : 'transparent', fg: on ? '--state-selected-fg' : '--text-secondary', fw: on ? 600 : 400 })),
+      backlinks: [['Tổng quan dự án', 'Mục Thành phần'], ['ADR-014 · Idempotency key', 'Phần Hệ quả'], ['T-142 · Retry webhook Teams', 'Ghi chú bàn giao']].map(([t, m]) => ({ t, m })),
+      skills: [['release-desktop', 'Phát hành bản desktop: version, build, ký, release.', 'Chung', '6 agent', true], ['db-migration', 'Tạo và chạy migration an toàn, có rollback.', 'payment-gateway', '4 agent'], ['adaptive-card', 'Soạn Adaptive Card cho webhook Teams.', 'Chung', '3 agent'], ['write-tests', 'Viết test theo quy chuẩn dự án trước khi sửa.', 'Chung', '6 agent'], ['incident-report', 'Viết báo cáo sự cố theo mẫu.', 'Chung', '2 agent'], ['api-v2-endpoint', 'Thêm endpoint API v2 kèm idempotency key.', 'core-banking-api', '2 agent']]
+        .map(([name, desc, scope, used, on]) => ({ name, desc, scope, used, bg: on && W >= 1280 ? 'var(--state-selected-bg)' : 'transparent' })),
+      memTags: [['Tất cả', true], ['webhook'], ['deploy'], ['test'], ['quota'], ['db']].map(([label, on]) => ({ label, bd: on ? 'var(--border-selected)' : 'var(--border-default)', bg: on ? 'var(--state-selected-bg)' : 'var(--bg-surface)', fg: on ? '--state-selected-fg' : '--text-secondary' })),
+      memories: [['#214', 'Không chạy docker compose up trực tiếp trên máy build: bỏ qua bước kéo model embedding. Dùng deploy/update.sh.', ['deploy', 'ops'], 'run_01J7Q2', '3 ngày', 92], ['#188', 'Webhook Teams: retry với backoff 2^n × 250 ms, tối đa 3 lần; không retry lỗi 4xx.', ['webhook'], 'claude-code', '1 tuần', 88], ['#230', 'Test apps/web cần TZ=Asia/Ho_Chi_Minh, nếu không báo cáo lệch ngày.', ['test'], 'gemini-cli', '2 ngày', 74], ['#201', 'Gói Codex Team làm mới 00:00 ngày 1 hằng tháng; chuyển task dài sang Claude khi dưới 10%.', ['quota'], 'Duy Trần', '2 tuần', 95], ['#176', 'Migration lớn chạy ngoài giờ, luôn có script rollback.', ['db'], 'codex', '1 tháng', 61]]
+        .map(([id, text, tags, src, age, conf]) => ({ id, text, tags, src, age, conf, cw: conf + '%', cbar: conf >= 80 ? '--status-success-solid' : conf >= 70 ? '--action-primary-bg' : '--status-warning-solid' })),
+      setNav: [['settings', 'Chung', true], ['users', 'Thành viên'], ['bot', 'Agent và quota'], ['key-round', 'Token API'], ['webhook', 'Webhook'], ['palette', 'Giao diện']].map(([icon, label, on]) => ({ icon: I(icon), label, bg: on ? 'var(--state-selected-bg)' : 'transparent', fg: on ? '--state-selected-fg' : '--text-secondary', fw: on ? 600 : 400 })),
+      setSwitches: [['Tự tạo PR khi xong task', 'Agent mở PR nháp và gắn reviewer', true], ['Cho agent đọc memory', 'Tìm memory liên quan trước khi làm', true], ['Mạng không giới hạn trong container', 'Mặc định chỉ cho phép registry và API model', false]].map(([label, sub, on]) => ({ label, sub, aria: on ? 'true' : 'false', state: on ? 'Bật' : 'Tắt', bd: on ? '--action-primary-bg' : '--border-control', bg: on ? '--action-primary-bg' : '--bg-surface', knob: on ? '--action-primary-fg' : '--border-control', x: on ? '16px' : '0' })),
+    };
+  }
+}
+</script>
+</body>
+</html>

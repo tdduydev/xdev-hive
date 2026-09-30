@@ -1,0 +1,50 @@
+/* Semantic colors. Light = :root / [data-theme="light"], Dark = [data-theme="dark"]. Nested scopes re-theme a subtree. */
+:root,[data-theme="light"]{
+--bg-canvas:#F7F9FC;--bg-subtle:#F0F3F9;--bg-surface:#FFFFFF;--bg-raised:#FFFFFF;--bg-sunken:#F0F3F9;--bg-inverse:#142745;--bg-scrim:rgba(12,26,51,0.48);
+--text-strong:#22314F;--text-primary:#344568;--text-secondary:#4A5773;--text-muted:#5B6885;--text-disabled:#9AA5BD;--text-inverse:#E8ECF8;--text-link:#004CFF;--text-link-hover:#0038C2;--text-on-accent:#FFFFFF;--text-brand:#004CFF;
+--border-subtle:#E6EBF4;--border-default:#D5DCE9;--border-strong:#B8C2D6;--border-control:#7C89A5;--border-selected:#004CFF;
+--action-primary-bg:#004CFF;--action-primary-hover:#0038C2;--action-primary-active:#002A8F;--action-primary-fg:#FFFFFF;
+--action-secondary-bg:#FFFFFF;--action-secondary-hover:#F0F3F9;--action-secondary-active:#E6EBF4;--action-secondary-fg:#22314F;--action-secondary-border:#D5DCE9;
+--action-ghost-hover:rgba(52,69,104,0.06);--action-ghost-active:rgba(52,69,104,0.12);
+--action-danger-bg:#C62828;--action-danger-hover:#A51F1F;--action-danger-fg:#FFFFFF;
+--state-hover:rgba(52,69,104,0.06);--state-pressed:rgba(52,69,104,0.12);--state-selected-bg:#EAF1FF;--state-selected-fg:#0038C2;--state-selected-border:#9DBBFF;--state-disabled-bg:#EEF1F6;--state-disabled-fg:#9AA5BD;--state-disabled-border:#DDE3EC;
+--status-success-fg:#0F7A4A;--status-success-bg:#E6F6EE;--status-success-border:#9ED9BC;--status-success-solid:#1FA46A;
+--status-warning-fg:#9A5B00;--status-warning-bg:#FFF4DB;--status-warning-border:#F5C86B;--status-warning-solid:#F2A516;
+--status-danger-fg:#C62828;--status-danger-bg:#FDECEC;--status-danger-border:#F3B4B4;--status-danger-solid:#D93636;
+--status-info-fg:#0B5FD9;--status-info-bg:#EAF3FF;--status-info-border:#A9CCFF;--status-info-solid:#1E90FF;
+--status-running-fg:#004CFF;--status-running-bg:#EAF1FF;--status-running-border:#9DBBFF;
+--status-neutral-fg:#4A5773;--status-neutral-bg:#EEF1F6;--status-neutral-border:#D5DCE9;--status-neutral-solid:#8B97B1;
+--focus-color:#004CFF;
+--code-bg:#F3F6FB;--code-fg:#344568;--code-gutter:#5B6885;--code-line-hl:#E4EDFF;--code-selection:#CFE0FF;
+--syntax-keyword:#8A2BB0;--syntax-string:#0F7A4A;--syntax-number:#9A5B00;--syntax-function:#0B5FD9;--syntax-type:#0B7285;--syntax-comment:#5B6885;--syntax-punct:#4A5773;--syntax-variable:#344568;
+--diff-add-bg:#E6F6EE;--diff-add-word:#B7E6CD;--diff-add-gutter:#D2EEDF;--diff-del-bg:#FDECEC;--diff-del-word:#F7C5C5;--diff-del-gutter:#F8DADA;--diff-hunk-bg:#EEF3FB;--diff-hunk-fg:#4A5773;
+--chart-1:#1E90FF;--chart-2:#0F9D8E;--chart-3:#F2A516;--chart-4:#7B61FF;--chart-5:#E0567A;--chart-6:#7BD4FF;
+--shadow-0:none;--shadow-1:0 1px 2px rgba(20,39,69,0.06),0 1px 1px rgba(20,39,69,0.04);--shadow-2:0 4px 12px -2px rgba(20,39,69,0.10),0 2px 4px rgba(20,39,69,0.05);--shadow-3:0 12px 32px -8px rgba(20,39,69,0.18),0 4px 8px rgba(20,39,69,0.06);--shadow-4:0 24px 56px -12px rgba(20,39,69,0.28),0 8px 16px rgba(20,39,69,0.08);
+color-scheme:light;
+--brand-gradient:linear-gradient(135deg,#7BD4FF 0%,#1E90FF 45%,#004CFF 100%);--brand-gradient-h:linear-gradient(90deg,#7BD4FF 0%,#1E90FF 45%,#004CFF 100%);--brand-gradient-radial:radial-gradient(80% 80% at 50% 50%,#7BD4FF 0%,#1E90FF 40%,#004CFF 90%);
+--focus-ring:0 0 0 2px var(--bg-canvas),0 0 0 4px var(--focus-color);
+}
+[data-theme="dark"]{
+--bg-canvas:#142745;--bg-subtle:#0F203C;--bg-surface:#1A2F52;--bg-raised:#213762;--bg-sunken:#0F203C;--bg-inverse:#E8ECF8;--bg-scrim:rgba(5,12,26,0.64);
+--text-strong:#F4F6FC;--text-primary:#E8ECF8;--text-secondary:#B9C3DB;--text-muted:#9DAAC7;--text-disabled:#5F6F92;--text-inverse:#142745;--text-link:#7BD4FF;--text-link-hover:#A8E3FF;--text-on-accent:#FFFFFF;--text-brand:#7BD4FF;
+--border-subtle:#213762;--border-default:#2B4170;--border-strong:#3A5285;--border-control:#6E80A8;--border-selected:#4AAEFF;
+--action-primary-bg:#1463FF;--action-primary-hover:#0F57EE;--action-primary-active:#0A48CC;--action-primary-fg:#FFFFFF;
+--action-secondary-bg:#1A2F52;--action-secondary-hover:#213762;--action-secondary-active:#2B4170;--action-secondary-fg:#E8ECF8;--action-secondary-border:#3A5285;
+--action-ghost-hover:rgba(232,236,248,0.07);--action-ghost-active:rgba(232,236,248,0.12);
+--action-danger-bg:#D93636;--action-danger-hover:#C62828;--action-danger-fg:#FFFFFF;
+--state-hover:rgba(232,236,248,0.07);--state-pressed:rgba(232,236,248,0.12);--state-selected-bg:#1D3E78;--state-selected-fg:#A8E3FF;--state-selected-border:#4AAEFF;--state-disabled-bg:#1A2C4C;--state-disabled-fg:#5F6F92;--state-disabled-border:#26395F;
+--status-success-fg:#4ADE9B;--status-success-bg:#133D3A;--status-success-border:#1F6B55;--status-success-solid:#34C47F;
+--status-warning-fg:#FFC35C;--status-warning-bg:#3D3423;--status-warning-border:#7A5D22;--status-warning-solid:#F2A516;
+--status-danger-fg:#FF8A8A;--status-danger-bg:#45233A;--status-danger-border:#8A3A4A;--status-danger-solid:#FF5F5F;
+--status-info-fg:#7BD4FF;--status-info-bg:#173A66;--status-info-border:#2F5E99;--status-info-solid:#4AAEFF;
+--status-running-fg:#7BD4FF;--status-running-bg:#17336A;--status-running-border:#2F5BB3;
+--status-neutral-fg:#B9C3DB;--status-neutral-bg:#213762;--status-neutral-border:#3A5285;--status-neutral-solid:#6E80A8;
+--focus-color:#7BD4FF;
+--code-bg:#0F203C;--code-fg:#E8ECF8;--code-gutter:#8595B8;--code-line-hl:#1A3563;--code-selection:#24498A;
+--syntax-keyword:#D9A6FF;--syntax-string:#7EE2A8;--syntax-number:#FFC35C;--syntax-function:#7BD4FF;--syntax-type:#6FE3E0;--syntax-comment:#8A98B8;--syntax-punct:#B9C3DB;--syntax-variable:#E8ECF8;
+--diff-add-bg:#123A38;--diff-add-word:#1B5B4B;--diff-add-gutter:#15443F;--diff-del-bg:#3E2238;--diff-del-word:#6A2F45;--diff-del-gutter:#48273F;--diff-hunk-bg:#17305A;--diff-hunk-fg:#B9C3DB;
+--chart-1:#4AAEFF;--chart-2:#3CCFBE;--chart-3:#FFC35C;--chart-4:#A594FF;--chart-5:#FF7FA0;--chart-6:#7BD4FF;
+--shadow-0:none;--shadow-1:0 1px 2px rgba(0,0,0,0.35);--shadow-2:0 6px 16px -4px rgba(0,0,0,0.45),0 0 0 1px rgba(123,212,255,0.04);--shadow-3:0 16px 40px -8px rgba(0,0,0,0.55),0 0 0 1px rgba(123,212,255,0.06);--shadow-4:0 28px 64px -12px rgba(0,0,0,0.65),0 0 0 1px rgba(123,212,255,0.08);
+color-scheme:dark;
+--focus-ring:0 0 0 2px var(--bg-canvas),0 0 0 4px var(--focus-color);
+}
