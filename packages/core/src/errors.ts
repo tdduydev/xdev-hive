@@ -1,4 +1,5 @@
-export type HiveErrorCode = "bad_request" | "unauthorized" | "forbidden" | "not_found" | "conflict";
+/** unavailable: the hub could not be reached at all (network, DNS, hub down); set by the client, never sent by a hub. */
+export type HiveErrorCode = "bad_request" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "unavailable";
 
 /**
  * A message key of the UI catalogue ("errors.…", see packages/ui/src/i18n) with its placeholders.
@@ -32,6 +33,7 @@ export const HTTP_STATUS: Record<HiveErrorCode, number> = {
   forbidden: 403,
   not_found: 404,
   conflict: 409,
+  unavailable: 503,
 };
 
 export interface ErrorPayload extends Partial<ErrorText> {

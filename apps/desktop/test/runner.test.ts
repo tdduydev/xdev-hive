@@ -676,6 +676,31 @@ describe("Runner", () => {
     assert.deepEqual(s.profiles.map((p) => [p.machine, p.profileId, p.account]), [["duy-mbp", "claude-a", "claude-max-duy"]]);
   });
 
+  it("records whether the hub answered its heartbeat, for the lost-connection banner", async () => {
+    let down = false;
+    const unreachable = new HiveError("unavailable", "Cannot reach the hub", { key: "errors.hubUnreachable", vars: { reason: "ECONNREFUSED" } });
+    const a = await setup([profile("claude-1", "claude", 10, "ok")], {}, "hub", {
+      wrap: (b) => ({ call: (m, i, actor) => (down ? Promise.reject(unreachable) : b.call(m, i, actor)) }),
+    });
+    assert.equal(a.runner.hubState().ok, null, "nothing known before the first heartbeat");
+    await a.runner.beat();
+    const up = a.runner.hubState();
+    assert.equal(up.ok, true);
+    down = true;
+    await a.runner.beat();
+    const lost = a.runner.hubState();
+    assert.equal(lost.ok, false);
+    assert.equal(lost.code, "unavailable");
+    assert.equal(lost.lastOkAt, up.lastOkAt, "keeps when the hub last answered");
+    down = false;
+    await a.runner.beat();
+    assert.equal(a.runner.hubState().ok, true);
+
+    const local = await setup([profile("claude-1", "claude", 10, "ok")]);
+    await local.runner.beat();
+    assert.equal(local.runner.hubState().ok, null, "local mode has no hub");
+  });
+
   it("reports queued and running runs to the hub in its heartbeat", async () => {
     const a = await setup([profile("claude-1", "claude", 10, "sleep")], {}, "hub", { name: "duy-mbp" });
     const run = await a.runner.enqueue({ project: "demo", taskId: "T-1" });

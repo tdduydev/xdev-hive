@@ -287,9 +287,24 @@ export interface ProfileCheck {
   output: string;
 }
 
+/** Whether this machine's last heartbeat reached the hub (hub mode); ok null before the first one or in local mode. */
+export interface HubConnection {
+  mode: "local" | "hub";
+  url: string;
+  ok: boolean | null;
+  checkedAt: string | null;
+  lastOkAt: string | null;
+  /** The last failure: "unavailable" when the hub could not be reached at all. */
+  code: string | null;
+  error: string | null;
+}
+
 export interface DesktopBridge {
   /** The app's own version and the OS it runs on (sidebar footer, status bar, macOS window chrome). */
   appInfo(): Promise<{ version: string; platform: string }>;
+  /** The hub connection as the last heartbeat found it; hubRetry sends a heartbeat now. */
+  hubStatus(): Promise<HubConnection>;
+  hubRetry(): Promise<HubConnection>;
   settings(): Promise<DesktopSettings>;
   updateSettings(patch: DesktopSettingsPatch): Promise<DesktopSettings>;
   /** The interface language, for what the main process shows itself (tray, notifications, dialogs). */

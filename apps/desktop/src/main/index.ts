@@ -635,6 +635,11 @@ function registerIpc(): void {
   });
   handle("hive:me", me);
   handle("desktop:appInfo", () => ({ version: app.getVersion(), platform: process.platform }));
+  handle("desktop:hubStatus", () => ({ mode: config.mode, url: config.hub.url, ...runner.hubState() }));
+  handle("desktop:hubRetry", async () => {
+    await runner.beat();
+    return { mode: config.mode, url: config.hub.url, ...runner.hubState() };
+  });
   handle("desktop:settings", settings);
   handle("desktop:updateSettings", updateSettings);
   handle("desktop:hubSignIn", hubSignIn);

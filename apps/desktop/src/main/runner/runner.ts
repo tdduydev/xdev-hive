@@ -243,6 +243,13 @@ export class Runner {
   readonly #chats: ChatWorker;
   /** The hub does not know chat.poll yet: heartbeats bring the chat replies instead. */
   #chatPollOff = false;
+  #hubState: { ok: boolean | null; checkedAt: string | null; lastOkAt: string | null; code: string | null; error: string | null } = {
+    ok: null,
+    checkedAt: null,
+    lastOkAt: null,
+    code: null,
+    error: null,
+  };
   /** What the hub last got of each run (see pushRuns). */
   readonly #pushed = new Map<string, string>();
   #pushing = false;
@@ -298,7 +305,7 @@ export class Runner {
     this.#interval = setInterval(() => void this.tick(), this.#opts.tickMs);
     this.#interval.unref();
     // A hub that is down shows up on every other call too; the heartbeat just tries again next time.
-    const beat = () => void this.heartbeat().catch(() => undefined);
+    const beat = () => void this.beat();
     this.#heartbeatTimer = setInterval(beat, this.#opts.heartbeatMs);
     this.#heartbeatTimer.unref();
     this.#pushTimer = setInterval(() => void this.pushRuns().catch(() => undefined), this.#opts.pushMs);
@@ -309,6 +316,24 @@ export class Runner {
     }
     beat();
     void this.tick();
+  }
+
+  /** How the last heartbeat went (hub mode): the interface shows a lost connection from it. */
+  hubState(): { ok: boolean | null; checkedAt: string | null; lastOkAt: string | null; code: string | null; error: string | null } {
+    return this.#host.mode() === "hub" ? { ...this.#hubState } : { ok: null, checkedAt: null, lastOkAt: null, code: null, error: null };
+  }
+
+  /** One heartbeat, recording whether the hub answered. */
+  async beat(): Promise<void> {
+    if (this.#host.mode() !== "hub") return;
+    const at = this.#iso();
+    try {
+      await this.heartbeat();
+      this.#hubState = { ok: true, checkedAt: at, lastOkAt: at, code: null, error: null };
+    } catch (err) {
+      const { code, message } = toErrorPayload(err);
+      this.#hubState = { ...this.#hubState, ok: false, checkedAt: at, code, error: message.slice(0, 300) };
+    }
   }
 
   /** Cancels running agents and waits for their bookkeeping (commit, Hive update) to finish. */
