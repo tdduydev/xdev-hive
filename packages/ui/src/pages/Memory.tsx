@@ -87,7 +87,7 @@ export function MemoryPage() {
   const canAdd = allow(null, "contribute") || projects.some((p) => allow(p, "contribute"));
 
   return (
-    <div className="flex h-full min-h-0 bg-surface">
+    <div className="flex h-full min-h-0 w-full bg-surface">
       <ListPane
         label={t("nav.memory")}
         head={

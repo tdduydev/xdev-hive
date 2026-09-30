@@ -242,7 +242,7 @@ export function TodayPage() {
   const seen = (item: InboxItem) => finish(item, t("inbox.seenNote"), true);
 
   return (
-    <div className="flex h-full min-h-0 bg-surface">
+    <div className="flex h-full min-h-0 w-full bg-surface">
       <div className="flex min-w-[280px] shrink basis-[360px] flex-col border-r border-line-subtle">
         <div className="flex shrink-0 items-center gap-2 border-b border-line-subtle px-3 py-[9px]">
           <div role="tablist" className="flex gap-0.5 rounded-[7px] bg-sunken p-0.5">

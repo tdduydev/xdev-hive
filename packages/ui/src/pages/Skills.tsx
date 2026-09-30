@@ -60,7 +60,7 @@ export function SkillsPage() {
   const shown = skills.filter((s) => !needle || fold(`${s.name} ${s.description}`).includes(needle));
 
   return (
-    <div className="flex h-full min-h-0 bg-surface">
+    <div className="flex h-full min-h-0 w-full bg-surface">
       <ListPane
         label={t("nav.skills")}
         head={

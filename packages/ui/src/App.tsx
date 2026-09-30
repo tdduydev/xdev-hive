@@ -1,39 +1,48 @@
 import { useCallback, useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import {
   Activity,
+  BookOpen,
   Bot,
-  BookMarked,
   Boxes,
   Brain,
+  DollarSign,
   FileText,
   FolderGit2,
   FolderKanban,
+  Gauge,
   GitPullRequestArrow,
   Inbox,
   KeyRound,
-  LayoutGrid,
   Laptop,
+  Layers,
+  LayoutDashboard,
+  LayoutGrid,
+  ListOrdered,
   ListTodo,
   MessageSquare,
+  ScrollText,
+  Send,
   Server,
   ShieldCheck,
+  SquareCheck,
   Terminal,
   UsersRound,
   WandSparkles,
 } from "lucide-react";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { TooltipProvider } from "@xdev-hive/ui/components/ui/tooltip";
-import type { Me } from "@xdev-hive/core";
+import { missingRequired, type Me } from "@xdev-hive/core";
 import type { HiveClient } from "./client.ts";
 import { ChangePasswordScreen } from "./components/Account.tsx";
 import { ErrorNote } from "./components/common.tsx";
-import { HiveContext, useProjectList, useQuery } from "./hooks.ts";
+import { HiveContext, useProjectList, useQuery, usePoll } from "./hooks.ts";
 import { activeIntl, useT, type MessageKey } from "./i18n/index.tsx";
-import { readScope, resolveScope, writeScope, type Scope } from "./lib/scope.ts";
+import { ALL, readScope, resolveScope, writeScope, type Scope } from "./lib/scope.ts";
 import { useSystemTheme } from "./lib/theme.ts";
+import { AdminShell, type AdminNavGroup } from "./shell/AdminShell.tsx";
 import { ClientShell, type NavEntry, type NavGroup } from "./shell/ClientShell.tsx";
 import { InboxProvider, useInboxState } from "./shell/inbox.tsx";
-import { AdminPage } from "./pages/Admin.tsx";
+import { AdminPage, PolicyTab } from "./pages/Admin.tsx";
 import { AgentsPage } from "./pages/Agents.tsx";
 import { BoardPage } from "./pages/Board.tsx";
 import { ChatPage } from "./pages/Chat.tsx";
@@ -52,6 +61,8 @@ import { TasksPage } from "./pages/Tasks.tsx";
 import { TodayPage } from "./pages/Today.tsx";
 import { TokensPage } from "./pages/Tokens.tsx";
 import { UsersPage } from "./pages/Users.tsx";
+import { WebhooksTab } from "./pages/Webhooks.tsx";
+import { OpsAudit, OpsCosts, OpsFleet, OpsOverview, OpsQueue, OpsQuota, OpsRuns } from "./pages/admin/Ops.tsx";
 
 type PageId =
   | "today"
@@ -110,9 +121,40 @@ const SHORTCUTS: Partial<Record<PageId, string>> = { today: "1", chat: "2", boar
 /** Not in the sidebar, still in the command palette. */
 const PALETTE_ONLY: PageId[] = ["overview"];
 
-function readHash(): PageId | null {
+// ── The Web Admin (hub admins on the web) ──
+
+type AdminId = "overview" | "runs" | "queue" | "fleet" | "quota" | "costs" | "review" | "docs" | "memory" | "skills" | "users" | "projects" | "policy" | "tokens" | "webhooks" | "audit";
+type AdminGroup = "ops" | "watch" | "knowledge" | "admin";
+
+const ADMIN: Record<AdminId, { group: AdminGroup; icon: Icon; render: () => ReactNode; fill?: boolean }> = {
+  overview: { group: "ops", icon: LayoutDashboard, render: () => <OpsOverview /> },
+  runs: { group: "ops", icon: Activity, render: () => <OpsRuns /> },
+  queue: { group: "ops", icon: ListOrdered, render: () => <OpsQueue /> },
+  fleet: { group: "watch", icon: Server, render: () => <OpsFleet /> },
+  quota: { group: "watch", icon: Gauge, render: () => <OpsQuota /> },
+  costs: { group: "watch", icon: DollarSign, render: () => <OpsCosts /> },
+  review: { group: "knowledge", icon: SquareCheck, render: () => <ProposalsPage /> },
+  docs: { group: "knowledge", icon: BookOpen, render: () => <DocsPage />, fill: true },
+  memory: { group: "knowledge", icon: Brain, render: () => <MemoryPage />, fill: true },
+  skills: { group: "knowledge", icon: WandSparkles, render: () => <SkillsPage />, fill: true },
+  users: { group: "admin", icon: UsersRound, render: () => <UsersPage /> },
+  projects: { group: "admin", icon: Layers, render: () => <SystemsPage /> },
+  policy: { group: "admin", icon: ShieldCheck, render: () => <PolicyTab /> },
+  tokens: { group: "admin", icon: KeyRound, render: () => <TokensPage /> },
+  webhooks: { group: "admin", icon: Send, render: () => <WebhooksTab /> },
+  audit: { group: "admin", icon: ScrollText, render: () => <OpsAudit /> },
+};
+const ADMIN_GROUPS: AdminGroup[] = ["ops", "watch", "knowledge", "admin"];
+
+type Route = { kind: "client"; id: PageId } | { kind: "admin"; id: AdminId };
+
+function readHash(): Route | null {
   const id = window.location.hash.replace(/^#\/?/, "").split("?")[0]!;
-  return id in PAGES ? (id as PageId) : null;
+  if (id.startsWith("admin/")) {
+    const a = id.slice("admin/".length);
+    return a in ADMIN ? { kind: "admin", id: a as AdminId } : { kind: "admin", id: "overview" };
+  }
+  return id in PAGES ? { kind: "client", id: id as PageId } : null;
 }
 
 /** Full-window message (connecting, or a failed sign-in). */
@@ -146,8 +188,11 @@ export function HiveApp({ client, onSignOut }: { client: HiveClient; onSignOut?:
 /** The signed-in app: nothing here loads until the hub accepted the session (and its password is not temporary). */
 function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOut?: () => void }) {
   const t = useT();
-  const home: PageId = "today";
-  const [page, setPage] = useState<PageId>(() => readHash() ?? home);
+  // The admin portal reads what every machine reported to the hub: hub admins only. On the web it has its own frame.
+  const hubAdmin = me.mode === "hub" && me.role === "admin" && !me.access;
+  const webAdmin = hubAdmin && !client.desktop;
+  const home: Route = webAdmin ? { kind: "admin", id: "overview" } : { kind: "client", id: "today" };
+  const [route, setRoute] = useState<Route>(() => readHash() ?? home);
   const [tick, setTick] = useState(0);
   const bump = useCallback(() => setTick((t) => t + 1), []);
   const seen = useProjectList(client, tick);
@@ -166,15 +211,17 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     writeScope(next);
     setScopeState(next);
   }, []);
-  const pending = useQuery(() => client.call("proposals.list", { status: "pending" }), [client, tick, page]);
+  const page = route.kind === "client" ? route.id : null;
+  const pending = useQuery(() => client.call("proposals.list", { status: "pending" }), [client, tick, route]);
   // Checked when the app opens (and after leaving the setup page), so the sidebar shows what is missing.
   const setup = useQuery(async () => (client.desktop ? client.desktop.setupStatus() : null), [client, page === "setup"]);
 
   useEffect(() => {
-    const onHash = () => setPage(readHash() ?? home);
+    const onHash = () => setRoute(readHash() ?? home);
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
-  }, [home]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [webAdmin]);
 
   const visible = useMemo(() => {
     const ids = new Set<PageId>(["today", "overview", "docs", "skills", "proposals", "memory", "tasks", "systems"]);
@@ -184,62 +231,109 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     if (me.mode === "hub") for (const id of ["machines", "runs", "chat"] as const) ids.add(id);
     // The desktop's own runs (local mode too) are on Lượt chạy.
     if (client.desktop) ids.add("runs");
-    // The admin portal reads what every machine reported to the hub: hub admins only.
-    const hubAdmin = me.mode === "hub" && me.role === "admin" && !me.access;
     if (hubAdmin) ids.add("admin");
     if (hubAdmin && client.users) ids.add("users");
     // Everyone with an account manages their own tokens (machines, CI); admins see all.
     if (client.tokens && (hubAdmin || me.user)) ids.add("tokens");
     if (client.device && me.user) ids.add("device");
     return ids;
-  }, [client, me]);
+  }, [client, me, hubAdmin]);
 
-  const current = visible.has(page) ? page : home;
-  const counts: Partial<Record<PageId, number>> = {
-    proposals: pending.data?.length ?? 0,
-    setup: setup.data ? [...setup.data.machine, ...setup.data.projects.flatMap((p) => p.items)].filter((i) => i.state !== "installed").length : 0,
-  };
+  const inbox = useInboxState(client, me, scope, tick);
   // The machine's name in the subtitles of Lượt chạy and Agent (desktop).
   const machine = useQuery(async () => (client.desktop ? (await client.desktop.settings()).machine : null), [client]).data;
 
-  const inbox = useInboxState(client, me, scope, tick);
-  counts.today = inbox.items.length;
+  // What the admin sidebar counts, and the health pill: only loaded for the Web Admin.
+  const inAdmin = webAdmin && route.kind === "admin";
+  const poll = usePoll(inAdmin ? 30_000 : null);
+  const adminRuns = useQuery(async () => (inAdmin ? client.call("runs.list", { limit: 200 }) : []), [client, inAdmin, poll]);
+  const adminRequests = useQuery(async () => (inAdmin ? client.call("runs.requests", { limit: 200 }) : []), [client, inAdmin, poll]);
+  const adminMachines = useQuery(async () => (inAdmin ? client.call("admin.machines", {}) : []), [client, inAdmin, poll]);
+  const adminPolicy = useQuery(async () => (inAdmin ? client.call("policy.get", {}) : null), [client, inAdmin]);
+  const adminMemory = useQuery(async () => (inAdmin ? client.call("memory.list", { limit: 500 }) : []), [client, inAdmin, poll, tick]);
 
-  const groups: NavGroup[] = GROUPS.map((g) => ({
-    label: g.label ? t(g.label) : null,
-    items: g.ids
-      .filter((id) => visible.has(id))
-      .map((id) => ({
-        id,
-        label: t(PAGES[id].label),
-        icon: PAGES[id].icon,
-        shortcut: SHORTCUTS[id],
-        badge: counts[id] ? { count: counts[id]!, strong: id === "today" } : undefined,
-      })),
-  })).filter((g) => g.items.length > 0);
-  const extraPages: NavEntry[] = PALETTE_ONLY.filter((id) => visible.has(id)).map((id) => ({ id, label: t(PAGES[id].label), icon: PAGES[id].icon }));
-  const today = new Date().toLocaleDateString(activeIntl(), { weekday: "long", day: "numeric", month: "long" });
-  const subtitle = current === "today" ? t("inbox.subtitle", { date: today.charAt(0).toUpperCase() + today.slice(1) }) :
-    machine && current === "runs" ? t("navSub.runsOn", { machine }) : machine && current === "agents" ? t("navSub.agentsOn", { machine }) : t(PAGES[current].sub);
+  let frame: ReactNode;
+  if (webAdmin && route.kind === "admin") {
+    const lacking = adminPolicy.data ? (adminMachines.data ?? []).filter((m) => m.setup && missingRequired(adminPolicy.data!, m.setup).length > 0).length : 0;
+    const health = lacking + (adminMachines.data ?? []).filter((m) => m.duplicate).length;
+    const memoryOpen = (adminMemory.data ?? []).filter((m) => m.status === "pending" || m.conflictsWith.length || m.review).length;
+    const counts: Partial<Record<AdminId, { value: number; tone?: "danger" | "accent" }>> = {
+      runs: { value: (adminRuns.data ?? []).filter((r) => r.status === "running").length },
+      queue: { value: (adminRequests.data ?? []).filter((r) => r.status === "pending").length },
+      fleet: { value: lacking },
+      review: { value: pending.data?.length ?? 0, tone: "accent" },
+      memory: { value: memoryOpen },
+    };
+    const groups: AdminNavGroup[] = ADMIN_GROUPS.map((g) => ({
+      label: t(`ops.group.${g}`),
+      items: (Object.keys(ADMIN) as AdminId[])
+        .filter((id) => ADMIN[id].group === g && (id !== "users" || client.users) && (id !== "tokens" || client.tokens) && (id !== "webhooks" || client.webhooks))
+        .map((id) => ({ id: `admin/${id}`, label: t(`ops.nav.${id}`), icon: ADMIN[id].icon, count: counts[id] })),
+    }));
+    const a = ADMIN[route.id];
+    frame = (
+      <AdminShell
+        client={client}
+        me={me}
+        onSignOut={onSignOut}
+        groups={groups}
+        current={`admin/${route.id}`}
+        group={t(`ops.group.${a.group}`)}
+        title={t(`ops.nav.${route.id}`)}
+        hint={t(`ops.hint.${route.id}`)}
+        health={health}
+        fill={a.fill}
+      >
+        {a.render()}
+      </AdminShell>
+    );
+  } else {
+    const current: PageId = route.kind === "client" && visible.has(route.id) ? route.id : "today";
+    const counts: Partial<Record<PageId, number>> = {
+      today: inbox.items.length,
+      proposals: pending.data?.length ?? 0,
+      setup: setup.data ? [...setup.data.machine, ...setup.data.projects.flatMap((p) => p.items)].filter((i) => i.state !== "installed").length : 0,
+    };
+    const groups: NavGroup[] = GROUPS.map((g) => ({
+      label: g.label ? t(g.label) : null,
+      // On the web, a hub admin's admin pages are in the Web Admin: one entry leads there.
+      items:
+        webAdmin && g.label === "nav.groupAdmin"
+          ? [{ id: "admin/overview", label: t("nav.admin"), icon: ShieldCheck }]
+          : g.ids
+              .filter((id) => visible.has(id))
+              .map((id) => ({
+                id,
+                label: t(PAGES[id].label),
+                icon: PAGES[id].icon,
+                shortcut: SHORTCUTS[id],
+                badge: counts[id] ? { count: counts[id]!, strong: id === "today" } : undefined,
+              })),
+    })).filter((g) => g.items.length > 0);
+    const extraPages: NavEntry[] = PALETTE_ONLY.filter((id) => visible.has(id)).map((id) => ({ id, label: t(PAGES[id].label), icon: PAGES[id].icon }));
+    const today = new Date().toLocaleDateString(activeIntl(), { weekday: "long", day: "numeric", month: "long" });
+    const subtitle =
+      current === "today"
+        ? t("inbox.subtitle", { date: today.charAt(0).toUpperCase() + today.slice(1) })
+        : machine && current === "runs"
+          ? t("navSub.runsOn", { machine })
+          : machine && current === "agents"
+            ? t("navSub.agentsOn", { machine })
+            : t(PAGES[current].sub);
+    frame = (
+      <InboxProvider value={inbox}>
+        <ClientShell client={client} me={me} onSignOut={onSignOut} groups={groups} extraPages={extraPages} current={current} title={t(PAGES[current].label)} subtitle={subtitle}>
+          {PAGES[current].render()}
+        </ClientShell>
+      </InboxProvider>
+    );
+  }
 
+  // The Web Admin looks at every project: its pages get the "all projects" scope, whatever the workspace picked.
+  const adminScope = webAdmin && route.kind === "admin";
   return (
-    <HiveContext.Provider value={{ client, me: me, bump, scope, setScope, projects, systems }}>
-      <TooltipProvider>
-        <InboxProvider value={inbox}>
-          <ClientShell
-            client={client}
-            me={me}
-            onSignOut={onSignOut}
-            groups={groups}
-            extraPages={extraPages}
-            current={current}
-            title={t(PAGES[current].label)}
-            subtitle={subtitle}
-          >
-            {PAGES[current].render()}
-          </ClientShell>
-        </InboxProvider>
-      </TooltipProvider>
+    <HiveContext.Provider value={{ client, me: me, bump, scope: adminScope ? ALL : scope, setScope, projects, systems }}>
+      <TooltipProvider>{frame}</TooltipProvider>
     </HiveContext.Provider>
   );
 }
