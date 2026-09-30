@@ -101,7 +101,7 @@ export function MachinesPage() {
   );
 }
 
-function Costs({ summary: s }: { summary: CostSummary }) {
+export function Costs({ summary: s }: { summary: CostSummary }) {
   const t = useT();
   if (s.total.runs30 === 0) return <Empty>{t("machines.noCosts")}</Empty>;
   const cells = (c: CostTotals) => (

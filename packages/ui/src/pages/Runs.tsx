@@ -111,7 +111,7 @@ export function RunsPage() {
     ) : null;
 
   return (
-    <div className="flex h-full min-h-0 bg-surface">
+    <div className="flex h-full min-h-0 w-full bg-surface">
       <div className="flex min-w-[240px] shrink basis-[300px] flex-col overflow-y-auto border-r border-line-subtle p-1.5">
         <ErrorNote error={local.error ?? hub.error} />
         {desktop ? (
@@ -510,7 +510,7 @@ function LocalDetail({ run, machine, gitlabReady, group, onChanged }: { run: Age
 }
 
 /** A run another machine pushed to the hub: the end of its log, stop, and a fix run for a review that asks for one. */
-function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; latestReview: boolean; onChanged: () => void }) {
+export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; latestReview: boolean; onChanged: () => void }) {
   const { client } = useHive();
   const t = useT();
   const allow = useCan();

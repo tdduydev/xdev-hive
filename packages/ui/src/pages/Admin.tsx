@@ -44,7 +44,7 @@ const COMMAND_TONE: Record<CommandStatus, string> = {
 };
 const CLI_LABEL: Record<(typeof POLICY_CLIS)[number], string> = { claude: "Claude Code", codex: "Codex CLI", gemini: "Gemini CLI" };
 /** Audit actions by the name the hub records (keys of the catalogue cannot contain dots). */
-const ACTION_LABEL: Record<string, MessageKey> = {
+export const ACTION_LABEL: Record<string, MessageKey> = {
   "docs.save": "auditAction.docsSave",
   "proposals.approve": "auditAction.proposalsApprove",
   "proposals.reject": "auditAction.proposalsReject",
@@ -158,7 +158,7 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: str
   );
 }
 
-function MachineCard({ machine: m, policy, onChanged }: { machine: MachineDetail; policy: TeamPolicy | null; onChanged: () => void }) {
+export function MachineCard({ machine: m, policy, onChanged }: { machine: MachineDetail; policy: TeamPolicy | null; onChanged: () => void }) {
   const t = useT();
   const projects = m.setup?.projects.map((p) => p.project) ?? [];
   const required = policy ? requiredItemIds(policy, projects) : new Set<string>();
@@ -328,7 +328,7 @@ function CommandList({ commands, onChanged }: { commands: MachineCommand[]; onCh
 
 // ── policy ─────────────────────────────────────────────────────────────────
 
-function PolicyTab() {
+export function PolicyTab() {
   const { client } = useHive();
   const t = useT();
   const current = useQuery(() => client.call("policy.get", {}), [client]);
