@@ -15,7 +15,7 @@ import { HiddenChars } from "../components/HiddenChars.tsx";
 import { ErrorNote, Notice } from "../components/common.tsx";
 import { errorMessage, formatTime, sourceText, useAction, useCan, useHashParam, useHive, useQuery } from "../hooks.ts";
 import { useT, type TFunction } from "../i18n/index.tsx";
-import { insertMd, parsePaths, readDrafts, writeDrafts, type DocDraft } from "../lib/docdraft.ts";
+import { DRAFTS_EVENT, insertMd, isUnreachable, parsePaths, readDrafts, writeDrafts, type DocDraft } from "../lib/docdraft.ts";
 import { fold } from "../lib/text.ts";
 import { docOwner, inScope, projectScope, SHARED, type Scope } from "../lib/scope.ts";
 import { useToast } from "../shell/toast.tsx";
@@ -101,6 +101,12 @@ export function DocsPage() {
   const [newSlug, setNewSlug] = useState("");
   const [newError, setNewError] = useState<string | null>(null);
   const [drafts, setDraftsState] = useState<Record<string, DocDraft>>(readDrafts);
+  // The outbox sends queued saves when the hub is back: show what it left.
+  useEffect(() => {
+    const on = () => setDraftsState(readDrafts());
+    window.addEventListener(DRAFTS_EVENT, on);
+    return () => window.removeEventListener(DRAFTS_EVENT, on);
+  }, []);
   const setDraft = useCallback((key: string, draft: DocDraft | null) => {
     setDraftsState((cur) => {
       const next = { ...cur };
@@ -376,6 +382,17 @@ function DocView({
 
   const save = () =>
     action.run(async () => {
+      try {
+        await send();
+      } catch (err) {
+        // No hub: the draft stays on the device and the outbox sends it when the hub answers again.
+        if (!isUnreachable(err)) throw err;
+        setDraft({ ...work, queued: { mode: canEdit ? "save" : "propose", at: new Date().toISOString() } });
+        toast(t("docs.queuedToast", { doc: work.title || docKey }));
+      }
+    });
+  const send = async () => {
+    {
       if (canEdit) {
         const result = await client.call("docs.save", {
           key: docKey,
@@ -397,7 +414,8 @@ function DocView({
       setMode("view");
       doc.reload();
       onSaved();
-    });
+    }
+  };
 
   // ⌘S saves (or proposes) the draft.
   useEffect(() => {
@@ -521,6 +539,11 @@ function DocView({
         {current ? <span className="inline-flex h-5 items-center rounded-xs bg-sunken px-1.5 font-mono text-[11px]/none font-medium text-fg-secondary">v{current.version}</span> : null}
         {current?.includeInAgents ? (
           <span className="inline-flex h-5 items-center rounded-xs bg-info-soft px-[7px] text-[11px]/none font-semibold whitespace-nowrap text-info">{t("docs.inAgents")}</span>
+        ) : null}
+        {draft?.queued ? (
+          <span title={t("docs.queuedHint")} className="inline-flex h-5 items-center rounded-xs bg-warning-soft px-[7px] text-[11px]/none font-semibold whitespace-nowrap text-warning">
+            {t("docs.queued")}
+          </span>
         ) : null}
         {current?.paths?.length ? (
           <span title={current.paths.join(", ")} className="inline-flex h-5 items-center rounded-xs bg-info-soft px-[7px] text-[11px]/none font-semibold whitespace-nowrap text-info">

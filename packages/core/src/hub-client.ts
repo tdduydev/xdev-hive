@@ -57,7 +57,7 @@ export class HubBackend implements HiveBackend {
 
   /** Who the hub thinks we are (name and role come from the token). */
   async me(label: string): Promise<Me> {
-    const res = await fetch(`${this.url}/api/me`, {
+    const res = await reach(this.url, `${this.url}/api/me`, {
       headers: { authorization: `Bearer ${this.#token}`, "x-hive-agent": label },
     });
     const body = (await res.json().catch(() => null)) as { result?: Me; error?: { code?: string; message?: string; key?: string; vars?: unknown } } | null;
@@ -68,7 +68,7 @@ export class HubBackend implements HiveBackend {
   }
 
   async call<M extends Method>(method: M, input: MethodInput<M>, actor: Actor): Promise<MethodOutput[M]> {
-    const res = await fetch(`${this.url}/api/rpc`, {
+    const res = await reach(this.url, `${this.url}/api/rpc`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -86,5 +86,19 @@ export class HubBackend implements HiveBackend {
       throw new HiveError(code, body?.error?.message ?? `Hub responded ${res.status}`, textOf(body?.error));
     }
     return body.result as MethodOutput[M];
+  }
+}
+
+/**
+ * fetch, with a hub that cannot be reached (refused, DNS, offline, TLS) as HiveError "unavailable": the desktop
+ * shows it as a lost connection and keeps drafts to send later, instead of as a failed request.
+ */
+async function reach(hub: string, url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    const cause = (err as { cause?: { code?: string; message?: string } }).cause;
+    const reason = cause?.code ?? cause?.message ?? (err instanceof Error ? err.message : String(err));
+    throw new HiveError("unavailable", `Cannot reach the hub ${hub}: ${reason}`, { key: "errors.hubUnreachable", vars: { reason } });
   }
 }

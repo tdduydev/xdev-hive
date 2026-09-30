@@ -15,6 +15,7 @@ import { toggleTheme, useTheme } from "../lib/theme.ts";
 import { CommandPalette, type PaletteCommand } from "./CommandPalette.tsx";
 import { NewTaskDialog } from "./NewTaskDialog.tsx";
 import { InShellContext } from "./frame.ts";
+import { useDocOutbox, useHubConnection } from "./connection.tsx";
 import { ToastProvider } from "./toast.tsx";
 
 type Icon = ComponentType<{ className?: string }>;
@@ -72,7 +73,15 @@ const hostOf = (url: string) => {
   }
 };
 
-export function ClientShell({
+export function ClientShell(props: Parameters<typeof ClientFrame>[0]) {
+  return (
+    <ToastProvider>
+      <ClientFrame {...props} />
+    </ToastProvider>
+  );
+}
+
+function ClientFrame({
   client,
   me,
   onSignOut,
@@ -126,11 +135,11 @@ export function ClientShell({
   const tick = usePoll(running.length ? 1000 : null);
   const now = useMemo(() => Date.now(), [tick, runs.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Is the hub answering? A light call every 30 s (the web app is served by the hub, the desktop may be local).
+  // Is the hub answering (the web app is served by the hub, the desktop may be local), and the saves made without it.
   const hubMode = me.mode === "hub";
-  const ping = usePoll(hubMode ? 30_000 : null);
-  const hub = useQuery(async () => (hubMode ? (await client.me(), true) : null), [client, hubMode, ping]);
-  const hubHost = desktop ? hostOf(settings.data?.hubUrl ?? "") : window.location.host;
+  const link = useHubConnection(client, me);
+  useDocOutbox(client, !hubMode || link.state === "ok");
+  const hubHost = link.host || (desktop ? hostOf(settings.data?.hubUrl ?? "") : window.location.host);
 
   const quota = useMemo(() => {
     let top: { id: string; percent: number; week: boolean } | null = null;
@@ -313,7 +322,7 @@ export function ClientShell({
   };
 
   return (
-    <ToastProvider>
+    <>
       <div className="fixed inset-0 flex flex-col bg-surface text-fg-primary">
         <div className="flex min-h-0 flex-1">
           {sidebar ? nav : null}
@@ -363,6 +372,25 @@ export function ClientShell({
                 {t("shell.newTask")}
               </button>
             </header>
+            {link.state === "offline" || link.state === "refused" ? (
+              <div role="status" className="flex shrink-0 items-center gap-2 border-b border-warning-line bg-warning-soft px-3.5 py-1.5 text-xs/4 font-medium text-fg-strong">
+                <span className="min-w-0 flex-1">
+                  {link.state === "refused"
+                    ? t("shell.hubRefused", { host: hubHost, error: link.error ?? "" })
+                    : desktop
+                      ? t("shell.offlineBanner", { host: hubHost })
+                      : t("shell.offlineBannerWeb", { host: hubHost })}
+                </span>
+                <button
+                  type="button"
+                  disabled={link.retrying}
+                  onClick={link.retry}
+                  className="h-6 shrink-0 cursor-pointer rounded-[5px] border border-warning-line bg-surface px-2.5 text-xs/none font-semibold text-fg-strong outline-none focus-visible:focus-ring disabled:opacity-70"
+                >
+                  {link.retrying ? t("shell.retrying") : t("shell.retry")}
+                </button>
+              </div>
+            ) : null}
             <main className="min-h-0 flex-1 overflow-y-auto bg-canvas">
               <InShellContext.Provider value={true}>{children}</InShellContext.Provider>
             </main>
@@ -370,9 +398,12 @@ export function ClientShell({
         </div>
         <footer className="flex h-[26px] shrink-0 items-center gap-0.5 border-t border-line-subtle bg-subtle px-2">
           {hubMode
-            ? statusItem("hub", hub.error ? t("shell.hubOffline") : hubHost, hub.error ? "bg-warning-solid" : "bg-success-solid", {
-                title: t("shell.hubTip", { host: hubHost }),
-              })
+            ? statusItem(
+                "hub",
+                link.state === "offline" || link.state === "refused" ? t("shell.hubOffline") : hubHost,
+                link.state === "ok" ? "bg-success-solid" : link.state === "unknown" ? "bg-neutral-solid" : "bg-warning-solid",
+                { title: link.error ?? t("shell.hubTip", { host: hubHost }) },
+              )
             : statusItem("hub", t("shell.local"), "bg-neutral-solid")}
           {desktop
             ? statusItem("runs", t("shell.runsHereShort", { count: running.length }), running.length ? "bg-info-solid" : "bg-neutral-solid", {
@@ -394,6 +425,6 @@ export function ClientShell({
       </div>
       <CommandPalette open={palette} onOpenChange={setPalette} commands={commands} pages={pages} />
       <NewTaskDialog open={newTask} onOpenChange={setNewTask} />
-    </ToastProvider>
+    </>
   );
 }
