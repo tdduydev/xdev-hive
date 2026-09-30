@@ -361,6 +361,8 @@ export const schemas = {
   "chat.propose": z.object({ action: chatAction, reason: z.string().min(1).max(500) }),
   /** A project manager confirms a leader's action, which then runs with their own rights, or sets it aside. */
   "chat.decide": z.object({ actionId: id, accept: z.boolean() }),
+  /** Every action of a reply still waiting, confirmed in the order they build on each other, or all set aside. */
+  "chat.decideAll": z.object({ replyId: id, accept: z.boolean() }),
   /** Stops a reply that is waiting or being written; the machine hears it at its next progress report. */
   "chat.cancel": z.object({ replyId: id }),
   /** The machine writing a reply says how far it got; the answer tells it whether someone cancelled it. */
@@ -475,6 +477,7 @@ export interface MethodOutput {
   "chat.poll": ChatRequest[];
   "chat.propose": ChatAction;
   "chat.decide": ChatAction;
+  "chat.decideAll": ChatAction[];
   "chat.cancel": ChatMessage;
   "chat.progress": { cancelled: boolean };
   "chat.finish": ChatMessage;
@@ -542,6 +545,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "chat.poll": "agent",
   "chat.propose": "agent",
   "chat.decide": "agent",
+  "chat.decideAll": "agent",
   "chat.cancel": "agent",
   // Only the machine the thread is on.
   "chat.progress": "agent",
