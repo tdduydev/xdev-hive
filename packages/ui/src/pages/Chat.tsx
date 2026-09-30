@@ -12,6 +12,7 @@ import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, StatusDot } from "../components/common.tsx";
+import { AttachButton, AttachmentBar, MessageFiles, useAttachments } from "../components/ChatFiles.tsx";
 import { CopyButton, ReplyMarkdown } from "../components/ReplyMarkdown.tsx";
 import { errorMessage, formatTime, formatUsd, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "../hooks.ts";
 import { useT } from "../i18n/index.tsx";
@@ -174,10 +175,12 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
   const [profileId, setProfileId] = useState("");
   const [text, setText] = useState("");
   const action = useAction();
+  const att = useAttachments(project);
   const send = () => {
-    if (!machine || !text.trim() || action.busy) return;
+    if (!machine || !text.trim() || action.busy || att.uploading) return;
     void action.run(async () => {
-      const sent = await client.call("chat.send", { project, machineId: machine.id, profileId: profileId || null, text });
+      const sent = await client.call("chat.send", { project, machineId: machine.id, profileId: profileId || null, text, files: att.ids });
+      att.clear();
       onStarted(sent.thread.id);
     });
   };
@@ -195,6 +198,8 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
       </div>
       <form
         className="flex flex-col gap-3"
+        onDragOver={(e) => att.enabled && e.preventDefault()}
+        onDrop={att.onDrop}
         onSubmit={(e) => {
           e.preventDefault();
           send();
@@ -243,14 +248,19 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
           aria-label={t("chat.message")}
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onPaste={att.onPaste}
           onKeyDown={(e) => {
             // Enter sends, Shift+Enter starts a new line; not while an input method is still composing a word.
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) e.preventDefault(), send();
           }}
         />
+        <AttachmentBar att={att} />
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs text-muted-foreground">{t("chat.sendHint")}</span>
-          <Button size="sm" type="submit" disabled={!machine || !text.trim() || action.busy}>
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            <AttachButton att={att} />
+            {t("chat.sendHint")}
+          </span>
+          <Button size="sm" type="submit" disabled={!machine || !text.trim() || action.busy || att.uploading}>
             <SendHorizontal />
             {t("chat.start")}
           </Button>
@@ -447,6 +457,7 @@ function ThreadTitle({ thread, onRenamed, onDeleted }: { thread: ChatThread; onR
 function UserMessage({ message: m }: { message: ChatMessage }) {
   return (
     <li className="flex flex-col items-end gap-1">
+      <MessageFiles files={m.files} />
       <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-brand-soft px-3 py-2 text-sm whitespace-pre-wrap text-brand-soft-foreground wrap-anywhere">{m.text}</div>
       <span className="text-xs text-muted-foreground">
         {m.author} · {formatTime(m.createdAt)}
@@ -679,17 +690,21 @@ function Composer({ thread, onSent }: { thread: ChatThread; onSent: () => void }
   const t = useT();
   const [text, setText] = useState("");
   const action = useAction();
+  const att = useAttachments(thread.project);
   const send = () => {
-    if (!text.trim() || thread.busy || action.busy) return;
+    if (!text.trim() || thread.busy || action.busy || att.uploading) return;
     void action.run(async () => {
-      await client.call("chat.send", { project: thread.project, threadId: thread.id, text });
+      await client.call("chat.send", { project: thread.project, threadId: thread.id, text, files: att.ids });
       setText("");
+      att.clear();
       onSent();
     });
   };
   return (
     <form
       className="flex flex-col gap-2"
+      onDragOver={(e) => att.enabled && e.preventDefault()}
+      onDrop={att.onDrop}
       onSubmit={(e) => {
         e.preventDefault();
         send();
@@ -703,14 +718,19 @@ function Composer({ thread, onSent }: { thread: ChatThread; onSent: () => void }
         aria-label={t("chat.message")}
         value={text}
         onChange={(e) => setText(e.target.value)}
+        onPaste={att.onPaste}
         onKeyDown={(e) => {
           // Enter sends, Shift+Enter starts a new line; not while an input method is still composing a word.
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) e.preventDefault(), send();
         }}
       />
+      <AttachmentBar att={att} />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-xs text-muted-foreground">{thread.busy ? t("chat.busy") : t("chat.sendHint")}</span>
-        <Button size="sm" type="submit" disabled={!text.trim() || thread.busy || action.busy}>
+        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+          <AttachButton att={att} />
+          {thread.busy ? t("chat.busy") : t("chat.sendHint")}
+        </span>
+        <Button size="sm" type="submit" disabled={!text.trim() || thread.busy || action.busy || att.uploading}>
           <SendHorizontal />
           {t("chat.send")}
         </Button>

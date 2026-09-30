@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { HiveError } from "./errors.ts";
 import { ACCOUNT_ID, AGENT_ROLES, agentProfileSchema, MAX_CANDIDATES, RUN_STATUSES } from "./agents.ts";
+import { CHAT_FILES_PER_MESSAGE } from "./chatfiles.ts";
 import { MACHINE_ID, PROJECT_NAME } from "./keys.ts";
 import type { SkillSummary } from "./skills.ts";
 import {
@@ -347,6 +348,8 @@ export const schemas = {
     profileId: z.string().max(40).nullable().default(null),
     title: z.string().max(120).optional(),
     text: z.string().min(1).max(8000),
+    /** Files the sender uploaded for this message (POST /api/chat/files) and has not sent yet. */
+    files: z.array(id).max(CHAT_FILES_PER_MESSAGE).default([]),
   }),
   /** Threads, the most recently active first: a project's, or every project the caller sees. */
   "chat.threads": z.object({

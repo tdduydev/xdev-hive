@@ -353,6 +353,18 @@ export interface ChatMessage {
   finishedAt: string | null;
   /** What the leader asked to do while writing this reply (replies only). */
   actions: ChatAction[];
+  /** Images and files the person attached (their messages only). */
+  files: ChatFile[];
+}
+
+/** A file attached to a chat message (roadmap 17g): its bytes are read from the hub by id. */
+export interface ChatFile {
+  id: number;
+  name: string;
+  /** What the hub read from its bytes (see sniffChatFile). */
+  type: string;
+  size: number;
+  createdAt: string;
 }
 
 export const CHAT_ACTION_KINDS = ["task.create", "task.update", "run.dispatch"] as const;
