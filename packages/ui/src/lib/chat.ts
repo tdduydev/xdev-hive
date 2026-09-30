@@ -51,6 +51,13 @@ export const actionTask = (a: Pick<ChatAction, "kind" | "input">): string => Str
 /** Badge tone of an action's status. */
 export const ACTION_TONE: Record<string, string> = { proposed: "warn", done: "ok", failed: "danger", dismissed: "neutral" };
 
+/** A file's size for people: 820 B, 12 KB, 1.4 MB. */
+export function fileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
 /** The tool calls in a reply's steps (the ▶ lines of the run log). */
 export const stepCount = (steps: string): number => steps.split("\n").filter((l) => l.startsWith("▶")).length;
 

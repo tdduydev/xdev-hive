@@ -1,5 +1,6 @@
 import {
   HiveError,
+  type ChatFile,
   type DesktopBridge,
   type HiveErrorCode,
   type HubUser,
@@ -51,6 +52,13 @@ export interface HiveClient {
   };
   /** Desktop only: local projects, sync and agent installers. */
   desktop?: DesktopBridge;
+  /** Web hub, signed in with an account: files attached to chat messages (roadmap 17g). */
+  chatFiles?: {
+    /** Uploads a file for the project's chat; chat.send attaches it by id. */
+    upload(project: string, file: File): Promise<ChatFile>;
+    /** Where the browser reads it with its session (an <img> or a download link). */
+    href(id: number): string;
+  };
 }
 
 export interface HttpClientOptions {
@@ -68,6 +76,11 @@ async function hubRequest<T>(baseUrl: string, path: string, body: unknown, token
     headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : { "x-hive-csrf": "1" }) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+  return hubResult<T>(res);
+}
+
+/** The hub's answer, or its error with the key the UI translates. */
+async function hubResult<T>(res: Response): Promise<{ status: number; result: T }> {
   const json = (await res.json().catch(() => null)) as {
     result?: T;
     error?: { code?: string; message?: string; key?: string; vars?: Record<string, string | number> };
@@ -141,5 +154,28 @@ export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpCl
       },
       test: (id) => rpc<{ ok: boolean; error: string | null }>("webhooks.test", { id }),
     },
+    // An <img> cannot send a token: only with the session cookie.
+    ...(token
+      ? {}
+      : {
+          chatFiles: {
+            upload: async (project: string, file: File) => {
+              const query = `project=${encodeURIComponent(project)}&name=${encodeURIComponent(file.name)}`;
+              const res = await fetch(`${baseUrl}/api/chat/files?${query}`, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: { "content-type": file.type || "application/octet-stream", "x-hive-csrf": "1" },
+                body: file,
+              });
+              try {
+                return (await hubResult<ChatFile>(res)).result;
+              } catch (err) {
+                if (res.status === 401) onUnauthorized?.();
+                throw err;
+              }
+            },
+            href: (id: number) => `${baseUrl}/api/chat/files/${id}`,
+          },
+        }),
   };
 }

@@ -137,4 +137,35 @@ describe("chat replies on the hub", () => {
     assert.deepEqual(narrowest(admin, agentToken), { role: "agent" }, "an agent token never manages");
     assert.deepEqual(narrowest(member, agentToken), { role: "agent", access: member.access });
   });
+
+  it("takes a chat file over HTTP from the session, and serves it so it can never run as a hub page", async () => {
+    const login = await fetch(`${base}/api/login`, { method: "POST", headers: { "content-type": "application/json", "x-hive-csrf": "1" }, body: JSON.stringify({ username: "lan", password }) });
+    const cookie = login.headers.get("set-cookie")!.split(";")[0]!;
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    const upload = (body: Uint8Array, query: string, headers: Record<string, string> = { "x-hive-csrf": "1" }) =>
+      fetch(`${base}/api/chat/files?${query}`, { method: "POST", headers: { cookie, "content-type": "application/octet-stream", ...headers }, body });
+
+    assert.equal((await upload(png, "project=app&name=a.png", {})).status, 403, "a cross-site form cannot post a file");
+    assert.equal((await upload(png, "project=site&name=a.png")).status, 404, "Lan has no site");
+    assert.equal((await upload(new Uint8Array(5 * 1024 * 1024 + 10), "project=app&name=big.png")).status, 413);
+    const up = await upload(png, `project=app&name=${encodeURIComponent("lỗi đăng nhập.png")}`);
+    assert.equal(up.status, 200);
+    const file = ((await up.json()) as { result: { id: number; name: string; type: string } }).result;
+    assert.deepEqual([file.name, file.type], ["lỗi đăng nhập.png", "image/png"]);
+
+    const text = await upload(new TextEncoder().encode("<script>alert(1)</script>"), "project=app&name=notes.txt");
+    const note = ((await text.json()) as { result: { id: number } }).result;
+    const read = await fetch(`${base}/api/chat/files/${note.id}`, { headers: { cookie } });
+    assert.equal(read.status, 200);
+    assert.equal(read.headers.get("content-type"), "text/plain; charset=utf-8", "text is never served as a page");
+    assert.equal(read.headers.get("x-content-type-options"), "nosniff");
+    assert.match(read.headers.get("content-security-policy") ?? "", /sandbox/);
+    assert.match(read.headers.get("content-disposition") ?? "", /^attachment; filename\*=UTF-8''notes\.txt$/);
+    const image = await fetch(`${base}/api/chat/files/${file.id}`, { headers: { cookie } });
+    assert.equal(image.headers.get("content-type"), "image/png");
+    assert.match(image.headers.get("content-disposition") ?? "", /^inline;/);
+    assert.deepEqual([...new Uint8Array(await image.arrayBuffer())], [...png]);
+    assert.equal((await fetch(`${base}/api/chat/files/${file.id}`)).status, 401, "not without a session or token");
+    assert.equal((await fetch(`${base}/api/chat/files/abc`, { headers: { cookie } })).status, 404);
+  });
 });
