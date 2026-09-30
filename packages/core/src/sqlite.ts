@@ -28,6 +28,8 @@ import type {
   ChatAction,
   ChatActionKind,
   ChatActionStatus,
+  ChatDefaults,
+  ChatEffort,
   ChatFile,
   ChatMessage,
   ChatReplyStatus,
@@ -217,6 +219,12 @@ const MIGRATIONS: string[] = [
     message_id INTEGER REFERENCES chat_messages(id) ON DELETE CASCADE, name TEXT NOT NULL, type TEXT NOT NULL,
     size INTEGER NOT NULL, data BLOB NOT NULL, uploaded_by TEXT NOT NULL, created_at TEXT NOT NULL);
   CREATE INDEX chat_files_thread ON chat_files(thread_id, message_id);
+  `,
+  `
+  ALTER TABLE chat_threads ADD COLUMN model TEXT;
+  ALTER TABLE chat_threads ADD COLUMN effort TEXT;
+  CREATE TABLE chat_defaults(
+    project TEXT PRIMARY KEY, machine_id TEXT, profile_id TEXT, model TEXT, effort TEXT, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL);
   `,
 ];
 
@@ -494,6 +502,8 @@ const toChatThread = (r: Row): ChatThread => ({
   machineId: str(r.machine_id),
   machine: str(r.machine),
   profileId: strOrNull(r.profile_id),
+  model: strOrNull(r.model),
+  effort: strOrNull(r.effort) as ChatEffort | null,
   createdBy: str(r.created_by),
   createdAt: str(r.created_at),
   updatedAt: str(r.updated_at),
@@ -694,6 +704,11 @@ export class SqliteHive implements HiveBackend {
         if (row) this.#need(actor, str(row.project), "manage", `Chat action #${i.actionId}`);
         return;
       }
+      case "chat.defaults":
+        return this.#need(actor, i.project, "view", `Project ${i.project}`);
+      case "chat.setDefaults":
+        return this.#need(actor, i.project, "manage", `Project ${i.project}`);
+      case "chat.configure":
       case "chat.rename":
       case "chat.delete": {
         const row = this.db.prepare("SELECT project FROM chat_threads WHERE id = ?").get(i.threadId) as Row | undefined;
@@ -1115,6 +1130,20 @@ export class SqliteHive implements HiveBackend {
     this.db.prepare("DELETE FROM chat_files WHERE message_id IS NULL AND created_at < ?").run(this.#now(-24 * 60));
   }
 
+  /** What the project set for its new chats; all null when it set nothing. */
+  #chatDefaults(project: string): ChatDefaults {
+    const r = this.db.prepare("SELECT * FROM chat_defaults WHERE project = ?").get(project) as Row | undefined;
+    return {
+      project,
+      machineId: r ? strOrNull(r.machine_id) : null,
+      profileId: r ? strOrNull(r.profile_id) : null,
+      model: r ? strOrNull(r.model) : null,
+      effort: r ? (strOrNull(r.effort) as ChatEffort | null) : null,
+      updatedBy: r ? strOrNull(r.updated_by) : null,
+      updatedAt: r ? strOrNull(r.updated_at) : null,
+    };
+  }
+
   #chatThread(id: number): ChatThread {
     const row = this.db.prepare(`${THREAD_SELECT} WHERE t.id = ?`).get(id) as Row | undefined;
     if (!row) throw new HiveError("not_found", `Chat #${id} not found.`, { key: "errors.chatNotFound", vars: { id } });
@@ -1158,7 +1187,7 @@ export class SqliteHive implements HiveBackend {
     return (
       this.db
         .prepare(
-          `SELECT m.id, m.thread_id, m.sender, m.created_at, t.project, t.profile_id, t.session_id,
+          `SELECT m.id, m.thread_id, m.sender, m.created_at, t.project, t.profile_id, t.session_id, t.model, t.effort,
              (SELECT u.text FROM chat_messages u WHERE u.thread_id = m.thread_id AND u.role = 'user' AND u.id < m.id ORDER BY u.id DESC LIMIT 1) AS text,
              (SELECT u.author FROM chat_messages u WHERE u.thread_id = m.thread_id AND u.role = 'user' AND u.id < m.id ORDER BY u.id DESC LIMIT 1) AS requested_by,
              (SELECT u.id FROM chat_messages u WHERE u.thread_id = m.thread_id AND u.role = 'user' AND u.id < m.id ORDER BY u.id DESC LIMIT 1) AS message_id
@@ -1173,6 +1202,8 @@ export class SqliteHive implements HiveBackend {
         project: str(r.project),
         profileId: strOrNull(r.profile_id),
         sessionId: strOrNull(r.session_id),
+        model: strOrNull(r.model),
+        effort: strOrNull(r.effort) as ChatEffort | null,
         text: str(r.text ?? ""),
         requestedBy: str(r.requested_by ?? ""),
         createdAt: str(r.created_at),
@@ -1921,7 +1952,7 @@ export class SqliteHive implements HiveBackend {
         }),
 
       // The machine is checked the way runs.dispatch checks it, and must have a Claude profile that can write the reply.
-      "chat.send": ({ project, threadId, machineId, profileId, title, text, files }, actor) =>
+      "chat.send": ({ project, threadId, machineId, profileId, model, effort, title, text, files }, actor) =>
         this.#tx(() => {
           this.#expireChats();
           const thread = threadId === undefined ? null : (db.prepare(`${THREAD_SELECT} WHERE t.id = ?`).get(threadId) as Row | undefined);
@@ -1931,7 +1962,9 @@ export class SqliteHive implements HiveBackend {
           if (thread && num(thread.busy) === 1) {
             throw new HiveError("conflict", `Chat #${threadId} still waits for its reply.`, { key: "errors.chatBusy", vars: { id: threadId! } });
           }
-          const target = thread ? str(thread.machine_id) : machineId;
+          // A new thread takes what the project set for its chats, where the person picked nothing.
+          const defaults = thread ? null : this.#chatDefaults(project);
+          const target = thread ? str(thread.machine_id) : (machineId ?? defaults?.machineId ?? undefined);
           if (!target) throw new HiveError("bad_request", "Pick the machine that runs the chat.", { key: "errors.chatMachine" });
           const row = db.prepare("SELECT * FROM machines WHERE id = ?").get(target) as Row | undefined;
           if (!row) throw new HiveError("not_found", `No machine ${target}.`, { key: "errors.machineNotFound", vars: { machine: target } });
@@ -1942,7 +1975,7 @@ export class SqliteHive implements HiveBackend {
           if (!m.projects.includes(project)) {
             throw new HiveError("bad_request", `${m.machine} has no repo for ${project}.`, { key: "errors.machineNoRepo", vars: { ...name, project } });
           }
-          const pinned = thread ? strOrNull(thread.profile_id) : profileId;
+          const pinned = thread ? strOrNull(thread.profile_id) : profileId === undefined ? (defaults?.profileId ?? null) : profileId;
           const claude = m.profiles.filter((p) => p.kind === "claude" && p.enabled && p.loggedIn !== false && (!pinned || p.id === pinned));
           if (!claude.length) {
             throw new HiveError("bad_request", `${m.machine} has no enabled, signed-in Claude profile${pinned ? ` ${pinned}` : ""}.`, {
@@ -1960,9 +1993,20 @@ export class SqliteHive implements HiveBackend {
             : num(
                 db
                   .prepare(
-                    "INSERT INTO chat_threads(project, title, machine_id, machine, profile_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO chat_threads(project, title, machine_id, machine, profile_id, model, effort, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                   )
-                  .run(project, (title?.trim() || text.trim().split("\n")[0]!).slice(0, 120), target, m.machine, pinned, actor.name, now, now).lastInsertRowid,
+                  .run(
+                    project,
+                    (title?.trim() || text.trim().split("\n")[0]!).slice(0, 120),
+                    target,
+                    m.machine,
+                    pinned,
+                    model === undefined ? (defaults?.model ?? null) : model,
+                    effort === undefined ? (defaults?.effort ?? null) : effort,
+                    actor.name,
+                    now,
+                    now,
+                  ).lastInsertRowid,
               );
           const put = db.prepare(
             "INSERT INTO chat_messages(thread_id, role, author, text, status, sender, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1998,6 +2042,29 @@ export class SqliteHive implements HiveBackend {
             .all(project ?? null, limit, like) as Row[]
         ).map(toChatThread);
       },
+
+      "chat.defaults": ({ project }) => this.#chatDefaults(project),
+
+      "chat.setDefaults": ({ project, machineId, profileId, model, effort }, actor) =>
+        this.#tx(() => {
+          if (machineId && !db.prepare("SELECT 1 FROM machines WHERE id = ?").get(machineId)) {
+            throw new HiveError("not_found", `No machine ${machineId}.`, { key: "errors.machineNotFound", vars: { machine: machineId } });
+          }
+          db.prepare(
+            `INSERT INTO chat_defaults(project, machine_id, profile_id, model, effort, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(project) DO UPDATE SET machine_id = excluded.machine_id, profile_id = excluded.profile_id, model = excluded.model,
+               effort = excluded.effort, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+          ).run(project, machineId, profileId, model, effort, actor.name, this.#now());
+          return this.#chatDefaults(project);
+        }),
+
+      // The next replies of the thread use them; the one being written goes on as it started.
+      "chat.configure": ({ threadId, model, effort }) =>
+        this.#tx(() => {
+          this.#chatThread(threadId);
+          db.prepare("UPDATE chat_threads SET model = ?, effort = ? WHERE id = ?").run(model, effort, threadId);
+          return this.#chatThread(threadId);
+        }),
 
       "chat.rename": ({ threadId, title }) =>
         this.#tx(() => {
