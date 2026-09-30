@@ -99,6 +99,22 @@ Làm lần lượt, mỗi lượt một mục (mỗi mục một PR). Mục có 
   - [ ] **21b. mr-cleanup**: MR merge xong thì xoá worktree của task, và branch `ai/<task>` ở máy nếu đầu branch đúng là commit đã merge; tắt được.
   - [ ] **21c. mr-poll**: chỉnh chu kỳ hỏi GitLab/GitHub về MR (1–60 phút, mặc định 2) thay cho 2 phút cố định.
 
+- **22. redesign** (hỏi 30/9: làm theo bản thiết kế Claude Design trong `docs/design/2026-09-redesign` (DS, app Client, Web Admin); làm hết, cả phần cần backend; tách khung app desktop và Web Admin như thiết kế). Tách:
+  - [x] **22a. ds-foundation**: token màu, chữ, khoảng cách, bóng, chuyển động của DS (`packages/ui/src/tokens`, sáng/tối theo `data-theme`), font tự host (Be Vietnam Pro, Space Grotesk, JetBrains Mono), logo X + HIVE / DEV HUB và chữ X, icon app và tray từ chữ X trên nền navy, component shadcn theo DS (nút, ô nhập, chọn, badge, tab, segmented, card, hộp thoại, drawer, bảng, tooltip, menu, sidebar), chọn Sáng / Tối / Theo hệ thống.
+  - [ ] **22b. client-shell**: khung app desktop (và web cho người không phải admin): nhóm menu Hôm nay · Chat · Công việc · Kiến thức · Máy này, ô phạm vi, khung run trên máy, chân thanh bên (người dùng, máy, phiên bản, đổi sáng/tối), topbar tiêu đề + phụ đề, bảng lệnh ⌘K, *Task mới*, thanh trạng thái, toast có hoàn tác, phím tắt ⌘1–6 / ⌘B / ⌘N.
+  - [ ] **22c. today-inbox**: trang *Hôm nay*: CI lỗi, đề xuất tài liệu, task chờ review, memory chờ duyệt và mâu thuẫn, cảnh báo của máy; khung chi tiết với nút hành động; J/K/E/↵.
+  - [ ] **22d. work-views**: *Board* 5 cột kéo thả + panel chi tiết task; *Lượt chạy* gộp máy này / máy khác / gần đây, log theo mức, tab *Thay đổi*.
+  - [ ] **22e. knowledge-views**: *Tài liệu* (không gian, Xem / Sửa / Chia đôi, thanh Markdown, bản xem trước, lịch sử); *Skill* và *Memory* dạng danh sách + chi tiết, chip lọc.
+  - [ ] **22f. machine-views**: *Agent và quota* (thanh phiên / tuần, ngưỡng dừng, nhận việc, số việc cùng lúc); *Công cụ và dự án*.
+  - [ ] **22g. admin-shell**: khung Web Admin (Vận hành · Theo dõi · Kiến thức · Quản trị), DataTable, các trang đã có dữ liệu.
+  - [ ] **22h. hub-connection**: trạng thái kết nối hub, dải báo mất mạng, hàng đợi gửi lại tài liệu và kết quả run.
+  - [ ] **22i. auto-update**: app tự tải bản mới từ GitHub Releases và nút khởi động lại; trang *Phiên bản app*.
+  - [ ] **22j. doc-tree**: thư mục và trang con cho tài liệu, ảnh và tệp đính kèm, liên kết giữa trang, trang đọc.
+  - [ ] **22k. doc-assistant**: trợ lý viết tài liệu từ nguồn đã chọn (trang, memory, code), trả về diff để áp vào nháp.
+  - [ ] **22l. run-steps**: các bước của run, giờ từng dòng log, diff của run chạy trên máy khác.
+  - [ ] **22m. alerts**: luật cảnh báo, sự cố, luồng sự kiện trên *Tổng quan* của admin.
+  - [ ] **22n. hub-ops**: trang *Hub* (phiên bản, DB, uptime, backup ngay), lý do trong hàng đợi, *Context agent* (xem AGENTS.md ghép).
+
 ## Sửa lỗi
 
 - [x] **fresh-base** (pilot xdev-auth ngày 29/9): AUTH-6 được xếp ngay sau khi PR của AUTH-5 merge trên GitHub, nhưng worktree bắt đầu từ `efe19ac` (main trước AUTH-5), vì branch task mới luôn tách từ HEAD của checkout, và runner hay MR watcher đều không fetch. Giờ runner fetch branch đích (`targetBranch`, hoặc nhánh mặc định của remote) trước khi tạo branch `ai/<task>` mới và bắt đầu từ `origin/<đích>`. Base của branch là chỗ nó bắt đầu. Branch đã có thì giữ nguyên; không remote hoặc fetch lỗi thì dùng HEAD như trước. Log run ghi branch bắt đầu từ đâu. Checkout của người dùng không bị đụng.

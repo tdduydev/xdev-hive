@@ -90,7 +90,7 @@ Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, 
 |---|---|
 | `packages/core` | Schema zod, phân quyền, `SqliteHive` (node:sqlite + FTS5), `HubBackend`, render sync, config |
 | `packages/mcp` | 8 tool MCP, entry stdio `hive-mcp` |
-| `packages/ui` | React UI dùng chung cho web và desktop: shadcn/ui + Tailwind v4 (`src/components/ui/`, theme ở `src/globals.css`: nền neutral của shadcn, màu chính amber, dark mode theo hệ thống) |
+| `packages/ui` | React UI dùng chung cho web và desktop: shadcn/ui + Tailwind v4 (`src/components/ui/`, design system xDev Hive ở `src/tokens/` + `src/globals.css` (bản thiết kế: `docs/design/2026-09-redesign`), sáng / tối / theo hệ thống) |
 | `apps/web` | Hub: REST RPC, MCP qua HTTP, token, phục vụ UI |
 | `apps/desktop` | Electron: tray, IPC, sync repo, cài MCP vào Claude/Codex/Gemini, shim `hive-mcp`, runner (`src/main/runner`) |
 

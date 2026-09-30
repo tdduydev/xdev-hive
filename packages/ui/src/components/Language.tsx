@@ -1,4 +1,4 @@
-import { Languages } from "lucide-react";
+import { Languages, Monitor, Moon, Sun } from "lucide-react";
 import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -8,6 +8,7 @@ import {
 } from "@xdev-hive/ui/components/ui/dropdown-menu";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { isLocale, LOCALES, useI18n, useT } from "../i18n/index.tsx";
+import { THEME_PREFS, useTheme, type ThemePref } from "../lib/theme.ts";
 
 const entries = Object.entries(LOCALES) as Array<[keyof typeof LOCALES, (typeof LOCALES)[keyof typeof LOCALES]]>;
 
@@ -45,6 +46,33 @@ export function LanguageMenu() {
           {entries.map(([code, l]) => (
             <DropdownMenuRadioItem key={code} value={code}>
               {l.name}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  );
+}
+
+const THEME_ICON = { system: Monitor, light: Sun, dark: Moon } as const;
+
+/** "Appearance" submenu of the account menu: light, dark or the OS setting, saved on this device. */
+export function ThemeMenu() {
+  const { pref, setPref } = useTheme();
+  const t = useT();
+  const Icon = THEME_ICON[pref];
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger>
+        <Icon />
+        {t("theme.label")}
+        <span className="ml-auto pl-3 text-xs text-fg-muted">{t(`theme.${pref}`)}</span>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent>
+        <DropdownMenuRadioGroup value={pref} onValueChange={(v) => setPref(v as ThemePref)}>
+          {THEME_PREFS.map((p) => (
+            <DropdownMenuRadioItem key={p} value={p}>
+              {t(`theme.${p}`)}
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>

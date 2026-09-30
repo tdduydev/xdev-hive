@@ -1,96 +1,70 @@
-/* shadcn/ui theme for xDev Hive: shadcn's neutral base with the amber brand as primary.
-   Light primary is the darker amber (white text 5.2:1); the brighter amber is the focus ring.
-   Dark mode follows the OS (useSystemTheme toggles .dark on <html>). */
+/* xDev Hive design system (docs/design/2026-09-redesign) on shadcn/ui + Tailwind v4.
+   The design's semantic tokens live in ./tokens; shadcn's variables alias them so the ui/ components and the
+   pages pick up the new look. Light is :root, dark is [data-theme="dark"] on <html> (lib/theme.ts sets it);
+   a subtree can re-theme itself with data-theme, which is why the aliases are declared on [data-theme] too. */
 @import "tailwindcss";
 @import "tw-animate-css";
+
+@import "@fontsource/be-vietnam-pro/400.css";
+@import "@fontsource/be-vietnam-pro/400-italic.css";
+@import "@fontsource/be-vietnam-pro/500.css";
+@import "@fontsource/be-vietnam-pro/600.css";
+@import "@fontsource/be-vietnam-pro/700.css";
+@import "@fontsource-variable/space-grotesk/wght.css";
+@import "@fontsource-variable/jetbrains-mono/wght.css";
+
+@import "./tokens/primitives.css";
+@import "./tokens/colors.css";
+@import "./tokens/typography.css";
+@import "./tokens/spacing.css";
+@import "./tokens/motion.css";
+/* In the base layer so a component's own focus style (outline-none + ring) still wins over the global outline. */
+@import "./tokens/base.css" layer(base);
 
 /* Components live in this package; the apps only import this file. */
 @source "./";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-:root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.539 0.117 67.7);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.644 0.139 67.5);
-  --brand: oklch(0.644 0.139 67.5);
-  --brand-soft: oklch(0.956 0.032 82.8);
-  --brand-soft-foreground: oklch(0.47 0.1 67.7);
-  --success: oklch(0.527 0.137 150);
-  --warning: oklch(0.56 0.12 78);
-  --info: oklch(0.5 0.13 250);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.539 0.117 67.7);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.956 0.032 82.8);
-  --sidebar-accent-foreground: oklch(0.47 0.1 67.7);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.644 0.139 67.5);
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.777 0.146 71.5);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.777 0.146 71.5);
-  --brand: oklch(0.777 0.146 71.5);
-  --brand-soft: oklch(0.3 0.045 75);
-  --brand-soft-foreground: oklch(0.85 0.12 75);
-  --success: oklch(0.78 0.14 150);
-  --warning: oklch(0.83 0.13 85);
-  --info: oklch(0.76 0.1 250);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.777 0.146 71.5);
-  --sidebar-primary-foreground: oklch(0.205 0 0);
-  --sidebar-accent: oklch(0.3 0.045 75);
-  --sidebar-accent-foreground: oklch(0.85 0.12 75);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.777 0.146 71.5);
+:root,
+[data-theme] {
+  --radius: 8px;
+  --background: var(--bg-canvas);
+  --foreground: var(--text-primary);
+  --card: var(--bg-surface);
+  --card-foreground: var(--text-primary);
+  --popover: var(--bg-raised);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--action-primary-bg);
+  --primary-foreground: var(--action-primary-fg);
+  --secondary: var(--bg-sunken);
+  --secondary-foreground: var(--text-strong);
+  --muted: var(--bg-sunken);
+  --muted-foreground: var(--text-muted);
+  --accent: var(--state-hover);
+  --accent-foreground: var(--text-strong);
+  --destructive: var(--status-danger-fg);
+  --border: var(--border-default);
+  --input: var(--border-control);
+  --ring: var(--focus-color);
+  --brand: var(--text-brand);
+  --brand-soft: var(--state-selected-bg);
+  --brand-soft-foreground: var(--state-selected-fg);
+  --success: var(--status-success-fg);
+  --warning: var(--status-warning-fg);
+  --info: var(--status-info-fg);
+  --sidebar: var(--bg-subtle);
+  --sidebar-foreground: var(--text-primary);
+  --sidebar-primary: var(--action-primary-bg);
+  --sidebar-primary-foreground: var(--action-primary-fg);
+  --sidebar-accent: var(--state-selected-bg);
+  --sidebar-accent-foreground: var(--state-selected-fg);
+  --sidebar-border: var(--border-subtle);
+  --sidebar-ring: var(--focus-color);
 }
 
 @theme inline {
+  /* shadcn names */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -120,6 +94,7 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -128,19 +103,240 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* Design tokens without a shadcn name. Surfaces: bg-canvas, bg-subtle, bg-surface, bg-raised, bg-sunken… */
+  --color-canvas: var(--bg-canvas);
+  --color-subtle: var(--bg-subtle);
+  --color-surface: var(--bg-surface);
+  --color-raised: var(--bg-raised);
+  --color-sunken: var(--bg-sunken);
+  --color-inverse: var(--bg-inverse);
+  --color-scrim: var(--bg-scrim);
+  /* Text: text-fg-strong, text-fg-secondary… */
+  --color-fg-strong: var(--text-strong);
+  --color-fg-primary: var(--text-primary);
+  --color-fg-secondary: var(--text-secondary);
+  --color-fg-muted: var(--text-muted);
+  --color-fg-disabled: var(--text-disabled);
+  --color-fg-inverse: var(--text-inverse);
+  --color-fg-link: var(--text-link);
+  --color-fg-link-hover: var(--text-link-hover);
+  --color-fg-brand: var(--text-brand);
+  --color-fg-on-accent: var(--text-on-accent);
+  /* Borders: border-line-subtle, border-line-strong… */
+  --color-line-subtle: var(--border-subtle);
+  --color-line-default: var(--border-default);
+  --color-line-strong: var(--border-strong);
+  --color-line-control: var(--border-control);
+  --color-line-selected: var(--border-selected);
+  /* Actions */
+  --color-primary-hover: var(--action-primary-hover);
+  --color-primary-active: var(--action-primary-active);
+  --color-action-secondary: var(--action-secondary-bg);
+  --color-action-secondary-hover: var(--action-secondary-hover);
+  --color-action-secondary-active: var(--action-secondary-active);
+  --color-action-secondary-fg: var(--action-secondary-fg);
+  --color-action-secondary-line: var(--action-secondary-border);
+  --color-ghost-hover: var(--action-ghost-hover);
+  --color-ghost-active: var(--action-ghost-active);
+  --color-action-danger: var(--action-danger-bg);
+  --color-action-danger-hover: var(--action-danger-hover);
+  --color-action-danger-fg: var(--action-danger-fg);
+  /* Interaction states */
+  --color-hover: var(--state-hover);
+  --color-pressed: var(--state-pressed);
+  --color-selected: var(--state-selected-bg);
+  --color-selected-fg: var(--state-selected-fg);
+  --color-selected-line: var(--state-selected-border);
+  --color-disabled: var(--state-disabled-bg);
+  --color-disabled-fg: var(--state-disabled-fg);
+  --color-disabled-line: var(--state-disabled-border);
+  /* Status: text-danger, bg-danger-soft, border-danger-line, bg-danger-solid (same for success, warning, info, neutral; running has no solid) */
+  --color-danger: var(--status-danger-fg);
+  --color-danger-soft: var(--status-danger-bg);
+  --color-danger-line: var(--status-danger-border);
+  --color-danger-solid: var(--status-danger-solid);
+  --color-success-soft: var(--status-success-bg);
+  --color-success-line: var(--status-success-border);
+  --color-success-solid: var(--status-success-solid);
+  --color-warning-soft: var(--status-warning-bg);
+  --color-warning-line: var(--status-warning-border);
+  --color-warning-solid: var(--status-warning-solid);
+  --color-info-soft: var(--status-info-bg);
+  --color-info-line: var(--status-info-border);
+  --color-info-solid: var(--status-info-solid);
+  --color-running: var(--status-running-fg);
+  --color-running-soft: var(--status-running-bg);
+  --color-running-line: var(--status-running-border);
+  --color-neutral: var(--status-neutral-fg);
+  --color-neutral-soft: var(--status-neutral-bg);
+  --color-neutral-line: var(--status-neutral-border);
+  --color-neutral-solid: var(--status-neutral-solid);
+  /* Code, syntax, diff */
+  --color-code: var(--code-bg);
+  --color-code-fg: var(--code-fg);
+  --color-code-gutter: var(--code-gutter);
+  --color-code-line: var(--code-line-hl);
+  --color-code-selection: var(--code-selection);
+  --color-syntax-keyword: var(--syntax-keyword);
+  --color-syntax-string: var(--syntax-string);
+  --color-syntax-number: var(--syntax-number);
+  --color-syntax-function: var(--syntax-function);
+  --color-syntax-type: var(--syntax-type);
+  --color-syntax-comment: var(--syntax-comment);
+  --color-syntax-punct: var(--syntax-punct);
+  --color-syntax-variable: var(--syntax-variable);
+  --color-diff-add: var(--diff-add-bg);
+  --color-diff-add-word: var(--diff-add-word);
+  --color-diff-add-gutter: var(--diff-add-gutter);
+  --color-diff-del: var(--diff-del-bg);
+  --color-diff-del-word: var(--diff-del-word);
+  --color-diff-del-gutter: var(--diff-del-gutter);
+  --color-diff-hunk: var(--diff-hunk-bg);
+  --color-diff-hunk-fg: var(--diff-hunk-fg);
+
+  /* Elevation: shadow-e1 (card hover) · e2 (menus) · e3 (dialog, drawer, palette) · e4 (toast) */
+  --shadow-e1: var(--shadow-1);
+  --shadow-e2: var(--shadow-2);
+  --shadow-e3: var(--shadow-3);
+  --shadow-e4: var(--shadow-4);
+}
+
+@theme {
+  --font-sans: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-display: "Space Grotesk Variable", "Space Grotesk", "Be Vietnam Pro", system-ui, sans-serif;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-enter: cubic-bezier(0, 0, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
+  --animate-xd-spin: xd-spin 0.9s linear infinite;
+  --animate-xd-pulse: xd-pulse 1.6s var(--ease-standard) infinite;
+  --animate-xd-shimmer: xd-shimmer 1.4s linear infinite;
+  --animate-xd-in: xd-in 240ms var(--ease-enter);
+}
+
+/* Type scale as utilities: type-body-md, type-heading-sm, type-code-sm… (tokens/typography.css holds the same
+   scale as `font` shorthands). Longhands, so font-mono / font-semibold / text-xs on the same element still win. */
+@utility type-display-lg {
+  font-family: var(--font-display);
+  font-size: 32px;
+  line-height: 40px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+}
+@utility type-display-md {
+  font-family: var(--font-display);
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+}
+@utility type-numeric-lg {
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+@utility type-heading-lg {
+  font-family: var(--font-sans);
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+}
+@utility type-heading-md {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+}
+@utility type-heading-sm {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+@utility type-body-lg {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 400;
+}
+@utility type-body-md {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
+}
+@utility type-body-sm {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 400;
+}
+@utility type-label {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+}
+@utility type-caption {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+}
+@utility type-overline {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+}
+@utility type-code-md {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 400;
+}
+@utility type-code-sm {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 400;
+}
+/* The brand gradient is only for the logo X, a running run's bar, an active agent's ring and one Brand button. */
+@utility bg-brand-gradient {
+  background-image: var(--brand-gradient);
+}
+@utility bg-brand-gradient-h {
+  background-image: var(--brand-gradient-h);
+}
+@utility focus-ring {
+  box-shadow: var(--focus-ring);
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
+  }
+  html {
+    background: var(--bg-canvas);
   }
   body {
-    @apply bg-background text-foreground antialiased;
+    background: var(--bg-canvas);
+    color: var(--text-primary);
+    font: var(--type-body-md);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  ::placeholder {
+    color: var(--text-muted);
   }
 }

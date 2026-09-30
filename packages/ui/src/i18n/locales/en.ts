@@ -13,6 +13,13 @@ export const en: Catalog = {
   language: {
     label: "Language",
   },
+  theme: {
+    label: "Appearance",
+    system: "Match system",
+    light: "Light",
+    dark: "Dark",
+    toggle: "Switch light and dark",
+  },
   diff: {
     label: "Differences",
     gap: { one: "… {count} unchanged line", other: "… {count} unchanged lines" },

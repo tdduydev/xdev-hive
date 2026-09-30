@@ -42,7 +42,8 @@ import { TooltipProvider } from "@xdev-hive/ui/components/ui/tooltip";
 import type { Me } from "@xdev-hive/core";
 import type { HiveClient } from "./client.ts";
 import { AccountMenu, ChangePasswordScreen } from "./components/Account.tsx";
-import { ErrorNote, HiveLogo } from "./components/common.tsx";
+import { HiveWordmark, XMark } from "./components/Brand.tsx";
+import { ErrorNote } from "./components/common.tsx";
 import { ScopeSwitcher } from "./components/ScopeSwitcher.tsx";
 import { HiveContext, useProjectList, useQuery } from "./hooks.ts";
 import { useT, type MessageKey } from "./i18n/index.tsx";
@@ -232,8 +233,8 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
           <Sidebar collapsible={desktop ? "offcanvas" : "icon"}>
             <SidebarHeader className={desktop ? "pt-10 [-webkit-app-region:drag]" : undefined}>
               <div className="flex items-center gap-2 px-2 py-1.5 font-semibold group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
-                <HiveLogo className="shrink-0" />
-                <span className="truncate group-data-[collapsible=icon]:hidden">xDev Hive</span>
+                <HiveWordmark height={30} className="group-data-[collapsible=icon]:hidden" />
+                <XMark size={24} className="hidden group-data-[collapsible=icon]:block" />
               </div>
               <div className="[-webkit-app-region:no-drag]">
                 <ScopeSwitcher />
