@@ -11,6 +11,7 @@ import { HiveWordmark } from "../components/Brand.tsx";
 import { useT } from "../i18n/index.tsx";
 import { toggleTheme, useTheme } from "../lib/theme.ts";
 import { InShellContext } from "./frame.ts";
+import { useDocOutbox, useHubConnection } from "./connection.tsx";
 import { ToastProvider } from "./toast.tsx";
 
 type Icon = ComponentType<{ className?: string }>;
@@ -62,7 +63,15 @@ function Clock() {
 
 const count = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1).replace(".", ",")}k` : String(n));
 
-export function AdminShell({
+export function AdminShell(props: Parameters<typeof AdminFrame>[0]) {
+  return (
+    <ToastProvider>
+      <AdminFrame {...props} />
+    </ToastProvider>
+  );
+}
+
+function AdminFrame({
   client,
   me,
   onSignOut,
@@ -110,9 +119,11 @@ export function AdminShell({
     }
   };
   const items = groups.flatMap((g) => g.items);
+  const link = useHubConnection(client, me);
+  useDocOutbox(client, link.state === "ok");
 
   return (
-    <ToastProvider>
+    <>
       <AdminContext.Provider value={{ range }}>
         <div className="fixed inset-0 flex flex-col bg-canvas text-fg-primary">
           <header className="flex h-[52px] shrink-0 items-center gap-3 border-b border-line-subtle bg-subtle px-4">
@@ -165,6 +176,19 @@ export function AdminShell({
               <AccountMenu client={client} me={me} onSignOut={onSignOut} />
             </div>
           </header>
+          {link.state === "offline" || link.state === "refused" ? (
+            <div role="status" className="flex shrink-0 items-center gap-2 border-b border-warning-line bg-warning-soft px-4 py-1.5 text-xs/4 font-medium text-fg-strong">
+              <span className="min-w-0 flex-1">{link.state === "refused" ? t("shell.hubRefused", { host: link.host, error: link.error ?? "" }) : t("shell.offlineBannerWeb", { host: link.host })}</span>
+              <button
+                type="button"
+                disabled={link.retrying}
+                onClick={link.retry}
+                className="h-6 shrink-0 cursor-pointer rounded-[5px] border border-warning-line bg-surface px-2.5 text-xs/none font-semibold text-fg-strong outline-none focus-visible:focus-ring"
+              >
+                {link.retrying ? t("shell.retrying") : t("shell.retry")}
+              </button>
+            </div>
+          ) : null}
           {narrow ? (
             <nav aria-label={t("shell.nav")} className="flex shrink-0 gap-1 overflow-x-auto border-b border-line-subtle bg-subtle px-3 py-2">
               {items.map((i) => (
@@ -234,6 +258,6 @@ export function AdminShell({
           </div>
         </div>
       </AdminContext.Provider>
-    </ToastProvider>
+    </>
   );
 }
