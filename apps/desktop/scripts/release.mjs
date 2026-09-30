@@ -7,7 +7,7 @@
 // With HIVE_RELEASE_HUB (https://hive.example) and HIVE_RELEASE_TOKEN (a hub admin's token) the builds also go to the
 // hub, which hands them to machines as updates (roadmap 22i; admins pick the version on Phiên bản app).
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { createReadStream, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
@@ -70,13 +70,33 @@ async function toHub(notes) {
     return;
   }
   const headers = { authorization: `Bearer ${token}` };
+  // A proxy in front of the hub may refuse big bodies (Cloudflare: 100 MB): bigger builds go in parts, which only a
+  // hub that says how big a part may be takes (an older one would keep the first part as the whole build).
+  const listed = await fetch(`${hub}/api/rpc`, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ method: "releases.list" }) });
+  if (!listed.ok) throw new Error(`hub releases.list: HTTP ${listed.status} ${await listed.text()}`);
+  const partBytes = (await listed.json()).result?.uploadPart ?? null;
+  const send = async (q, body, what) => {
+    const res = await fetch(`${hub}/api/releases/upload?${q}`, { method: "POST", headers: { ...headers, "content-type": "application/octet-stream" }, body, duplex: "half" });
+    if (!res.ok) throw new Error(`hub upload ${what}: HTTP ${res.status} ${(await res.text()).slice(0, 300)}`);
+  };
   for (const file of assets) {
     const name = path.basename(file);
     const d = describe(name);
     if (!d) continue;
-    const q = new URLSearchParams({ version, channel: "stable", name, ...d });
-    const res = await fetch(`${hub}/api/releases/upload?${q}`, { method: "POST", headers: { ...headers, "content-type": "application/octet-stream" }, body: createReadStream(file), duplex: "half" });
-    if (!res.ok) throw new Error(`hub upload ${name}: HTTP ${res.status} ${await res.text()}`);
+    const size = statSync(file).size;
+    const sha256 = createHash("sha256").update(readFileSync(file)).digest("hex");
+    const q = { version, channel: "stable", name, sha256, ...d };
+    if (!partBytes || size <= partBytes) {
+      await send(new URLSearchParams(q), createReadStream(file), name);
+    } else {
+      const parts = Math.ceil(size / partBytes);
+      const upload = randomBytes(16).toString("hex");
+      for (let part = 0; part < parts; part++) {
+        const start = part * partBytes;
+        const body = createReadStream(file, { start, end: Math.min(size, start + partBytes) - 1 });
+        await send(new URLSearchParams({ ...q, upload, part: String(part), parts: String(parts) }), body, `${name} part ${part + 1}/${parts}`);
+      }
+    }
     console.log(`hub ← ${name}`);
   }
   const res = await fetch(`${hub}/api/rpc`, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ method: "releases.notes", input: { version, notes } }) });
@@ -84,7 +104,8 @@ async function toHub(notes) {
   console.log(`hub has ${version}: pick it on Phiên bản app to roll it out.`);
 }
 
-const previous = out("git", ["tag", "--list", "v*", "--sort=-v:refname"]).split("\n").filter(Boolean)[0];
+// The tag before this one (a --hub-only run comes after this version's tag exists).
+const previous = out("git", ["tag", "--list", "v*", "--sort=-v:refname"]).split("\n").filter((t) => t && t !== tag)[0];
 const changes = out("git", ["log", "--first-parent", "--format=- %s", previous ? `${previous}..HEAD` : "HEAD", "--", "."])
   .split("\n")
   .filter((l) => l && !l.startsWith("- Merge branch"))
