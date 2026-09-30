@@ -94,7 +94,7 @@ Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ v�
 
 ```bash
 nvm use && npm install
-npm test            # 310 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR, GitHub PR)
+npm test            # 389 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR, GitHub PR)
 npm run typecheck
 ```
 
@@ -279,6 +279,16 @@ implement (không review, chế độ "ngay khi làm xong") ──────�
   - Task đang có run thì chờ, lần kiểm sau mới xếp.
   - Board: chi tiết run sửa ghi *Sửa CI của MR !n (lần 1/2)* và tên job lỗi.
 - API gọi qua `net.fetch` của Electron, dùng proxy và chứng chỉ của hệ thống.
+
+### Nhập cả group GitLab
+
+Hợp cho microservice: mỗi service một repo, cả hệ thống nằm trong một group. Thẻ **Nhập từ group GitLab** ở *Dự án & cài đặt* hiện khi máy đã có URL và token GitLab.
+
+- Điền group (`company/team`, sẵn group của dự án đầu tiên) và thư mục gốc (sẵn thư mục chứa dự án đó), chọn clone qua SSH hay HTTPS, bấm *Liệt kê repo*. Danh sách lấy mọi repo của group và group con, bỏ repo đã archive.
+- Mỗi repo có project key (tên repo, trùng thì thêm group, vẫn trùng thì thêm số; sửa được) và thư mục `<thư mục gốc>/<tên repo>` (hai repo cùng tên thì repo sau dùng project key làm tên thư mục).
+- Trạng thái: *sẽ clone*, *dùng thư mục có sẵn* (thư mục đã có thì không clone lại), *đã là dự án* (dự án có cùng GitLab project, không chọn được).
+- *Nhập N repo* chạy lần lượt: clone, thêm dự án, gắn GitLab project để MR vào đúng chỗ. Repo lỗi (không clone được, key trùng) được báo riêng, các repo khác vẫn nhập.
+- Clone không chờ nhập mật khẩu hay xác nhận host key. Qua HTTPS tới host GitLab, token đi bằng header trong env như lúc push, không ghi vào `.git/config`. Địa chỉ clone lấy lại từ GitLab lúc nhập, không lấy từ trang.
 
 ### Pull request trên GitHub
 

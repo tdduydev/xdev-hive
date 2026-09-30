@@ -6,6 +6,8 @@ import {
   type DesktopSettings,
   type FileAction,
   type GitLabCheck,
+  type GitLabImportCandidate,
+  type GitLabImportResult,
   type MrSettings,
   type SyncReport,
   type TransferReport,
@@ -56,6 +58,7 @@ export function ProjectsPage() {
           <GitLabCard settings={settings.data} onSaved={settings.reload} />
           <GitHubCard settings={settings.data} onSaved={settings.reload} />
           <ProjectsCard settings={settings.data} onChanged={settings.reload} />
+          {settings.data.gitlab.url && settings.data.gitlab.hasToken ? <GitLabImportCard settings={settings.data} onChanged={settings.reload} /> : null}
         </>
       ) : null}
     </Page>
@@ -782,6 +785,185 @@ function ProjectsCard({ settings, onChanged }: { settings: DesktopSettings; onCh
             </ul>
             {result.extra ? <p className="text-xs break-words text-muted-foreground">{result.extra}</p> : null}
           </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** The folder a path is in, for / and \\ alike. */
+const parentDir = (p: string) => p.replace(/[\\/]+$/, "").replace(/[\\/][^\\/]*$/, "") || p;
+
+const IMPORT_TONE: Record<GitLabImportCandidate["state"], string> = { added: "neutral", folder: "info", new: "ok" };
+
+/**
+ * A whole GitLab group at once (roadmap 19a): the repositories of the group and its subgroups, each with the project
+ * key and folder it would get; the chosen ones are cloned (or their folder used) and added, with their GitLab path.
+ */
+function GitLabImportCard({ settings, onChanged }: { settings: DesktopSettings; onChanged: () => void }) {
+  const { client, bump } = useHive();
+  const t = useT();
+  const desktop = client.desktop!;
+  // Where the projects so far are: their group and the folder they sit in, most likely where the rest go too.
+  const first = settings.projects.find((p) => p.gitlabProject?.includes("/"));
+  const [group, setGroup] = useState(first ? first.gitlabProject!.split("/").slice(0, -1).join("/") : "");
+  const [baseDir, setBaseDir] = useState(first ? parentDir(first.repo) : "~/Work");
+  const [protocol, setProtocol] = useState<"ssh" | "https">("ssh");
+  const [listed, setListed] = useState<{ group: string; candidates: GitLabImportCandidate[] } | null>(null);
+  const [picked, setPicked] = useState<Record<string, boolean>>({});
+  const [keys, setKeys] = useState<Record<string, string>>({});
+  const [results, setResults] = useState<GitLabImportResult[] | null>(null);
+  const listing = useAction();
+  const importing = useAction();
+  const chosen = (listed?.candidates ?? []).filter((c) => c.state !== "added" && picked[c.repo.pathWithNamespace]);
+  const keyOf = (c: GitLabImportCandidate) => keys[c.repo.pathWithNamespace] ?? c.key;
+  const bad = chosen.filter((c) => !PROJECT_NAME.test(keyOf(c)));
+  const dupes = new Set(chosen.map(keyOf).filter((k, i, all) => all.indexOf(k) !== i));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("projects.importTitle")}</CardTitle>
+        <CardDescription>{t("projects.importHint")}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <form
+          className="grid gap-3 sm:grid-cols-[1fr_2fr_auto_auto] sm:items-end"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void listing.run(async () => {
+              const candidates = await desktop.gitlabGroup({ group, baseDir });
+              setListed({ group, candidates });
+              setPicked(Object.fromEntries(candidates.filter((c) => c.state !== "added").map((c) => [c.repo.pathWithNamespace, true])));
+              setKeys({});
+              setResults(null);
+            });
+          }}
+        >
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="import-group">{t("projects.importGroup")}</Label>
+            <Input id="import-group" className="font-mono" placeholder="company/team" value={group} onChange={(e) => setGroup(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="import-base">{t("projects.importBase")}</Label>
+            <div className="flex gap-1">
+              <Input id="import-base" className="min-w-0 font-mono" value={baseDir} onChange={(e) => setBaseDir(e.target.value)} />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  void listing.run(async () => {
+                    const folder = await desktop.pickFolder();
+                    if (folder) setBaseDir(folder);
+                  })
+                }
+              >
+                {t("projects.pickFolder")}
+              </Button>
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="import-protocol">{t("projects.importProtocol")}</Label>
+            <NativeSelect id="import-protocol" value={protocol} onChange={(e) => setProtocol(e.target.value as "ssh" | "https")}>
+              <NativeSelectOption value="ssh">SSH</NativeSelectOption>
+              <NativeSelectOption value="https">HTTPS</NativeSelectOption>
+            </NativeSelect>
+          </div>
+          <Button id="import-list" type="submit" disabled={!group.trim() || !baseDir.trim() || listing.busy}>
+            {t("projects.importList")}
+          </Button>
+        </form>
+        <ErrorNote error={listing.error} />
+        {listed && !listed.candidates.length ? <Empty>{t("projects.importNone", { group: listed.group })}</Empty> : null}
+        {listed?.candidates.length ? (
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-xs text-muted-foreground">
+                <tr>
+                  <th className="w-8 p-2" />
+                  <th className="p-2 text-left font-medium">{t("projects.importRepo")}</th>
+                  <th className="p-2 text-left font-medium">Project key</th>
+                  <th className="p-2 text-left font-medium">{t("projects.importFolder")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {listed.candidates.map((c) => {
+                  const id = c.repo.pathWithNamespace;
+                  const key = keyOf(c);
+                  const added = c.state === "added";
+                  return (
+                    <tr key={id} className="border-t align-top">
+                      <td className="p-2">
+                        <Checkbox
+                          checked={!added && Boolean(picked[id])}
+                          disabled={added}
+                          aria-label={id}
+                          onCheckedChange={(v) => setPicked((p) => ({ ...p, [id]: v === true }))}
+                        />
+                      </td>
+                      <td className="p-2">
+                        <div className="font-mono text-xs break-all">{id}</div>
+                        <Badge tone={IMPORT_TONE[c.state]} className="mt-1">
+                          {t(`projects.import_${c.state}`)}
+                        </Badge>
+                      </td>
+                      <td className="p-2">
+                        {added ? (
+                          <span className="font-mono text-xs">{c.key}</span>
+                        ) : (
+                          <Input
+                            className="h-8 w-40 font-mono text-xs md:text-xs"
+                            value={key}
+                            aria-label={`Project key ${id}`}
+                            aria-invalid={!PROJECT_NAME.test(key) || dupes.has(key)}
+                            onChange={(e) => setKeys((k) => ({ ...k, [id]: e.target.value.toLowerCase() }))}
+                          />
+                        )}
+                      </td>
+                      <td className="p-2 font-mono text-xs break-all text-muted-foreground">{c.dir}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+        {listed?.candidates.length ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              disabled={!chosen.length || bad.length > 0 || dupes.size > 0 || importing.busy}
+              onClick={() =>
+                void importing.run(async () => {
+                  const out = await desktop.importGitlab({
+                    group: listed.group,
+                    protocol,
+                    items: chosen.map((c) => ({ key: keyOf(c), pathWithNamespace: c.repo.pathWithNamespace, dir: c.dir })),
+                  });
+                  setResults(out.results);
+                  bump();
+                  onChanged();
+                  // What was added is listed as added now.
+                  setListed({ group: listed.group, candidates: await desktop.gitlabGroup({ group: listed.group, baseDir }) });
+                })
+              }
+            >
+              {importing.busy ? t("projects.importRunning") : t("projects.importRun", { count: chosen.length })}
+            </Button>
+            {bad.length || dupes.size ? <span className="text-xs text-destructive">{t("projects.importBadKeys")}</span> : null}
+          </div>
+        ) : null}
+        <ErrorNote error={importing.error} />
+        {results ? (
+          <ul className="flex flex-col gap-1 rounded-lg bg-muted/50 p-3 text-sm">
+            {results.map((r) => (
+              <li key={r.pathWithNamespace} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <Badge tone={r.ok ? "ok" : "danger"}>{r.ok ? (r.cloned ? t("projects.importCloned") : t("projects.importUsed")) : t("projects.importFailed")}</Badge>
+                <span className="font-mono text-xs">{r.key}</span>
+                <span className="font-mono text-xs break-all text-muted-foreground">{r.pathWithNamespace}</span>
+                {r.error ? <span className="min-w-0 text-xs break-words text-destructive">{r.error}</span> : null}
+              </li>
+            ))}
+          </ul>
         ) : null}
       </CardContent>
     </Card>

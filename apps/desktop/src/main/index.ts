@@ -20,6 +20,8 @@ import {
   type DesktopSettings,
   type DesktopSettingsPatch,
   type GitLabCheck,
+  type GitLabImportCandidate,
+  type GitLabImportResult,
   type HiveBackend,
   type MachineCommand,
   type Me,
@@ -46,6 +48,7 @@ import {
 } from "@xdev-hive/core/node";
 import { GitHubClient } from "./github/client.ts";
 import { GitLabClient } from "./gitlab/client.ts";
+import { gitClone, importRepos, planImport } from "./gitlab/import.ts";
 import { setMainLocale, tr } from "./i18n.ts";
 import { MergeRequester, mrLabel, type MrHost } from "./gitlab/mr.ts";
 import { MrWatcher, type MrChange } from "./gitlab/watch.ts";
@@ -225,6 +228,45 @@ async function hubSignInBrowser(input: { hubUrl?: unknown }): Promise<DesktopSet
   } finally {
     if (browserSignIn === controller) browserSignIn = null;
   }
+}
+
+/** The machine's GitLab, for the import: its URL and token must be set on this page first. */
+function importClient(): GitLabClient {
+  if (!config.gitlab.url || !config.gitlab.token) throw new HiveError("bad_request", "Set the GitLab URL and token first.", { key: "errors.gitlabNoToken" });
+  return new GitLabClient(config.gitlab.url, config.gitlab.token, gitlabFetch);
+}
+
+async function gitlabGroup(input: { group: string; baseDir: string }): Promise<GitLabImportCandidate[]> {
+  const group = String(input?.group ?? "").trim().replace(/^\/+|\/+$/g, "");
+  if (!/^[\w.-]+(\/[\w.-]+)*$/.test(group)) throw new HiveError("bad_request", "A group path like company/team.", { key: "errors.gitlabGroup" });
+  const baseDir = path.resolve(expandHome(String(input?.baseDir ?? "")));
+  return planImport(await importClient().groupProjects(group), baseDir, config.projects);
+}
+
+async function importGitlab(input: {
+  items: Array<{ key: string; pathWithNamespace: string; dir: string }>;
+  protocol: "ssh" | "https";
+  group: string;
+}): Promise<{ results: GitLabImportResult[]; settings: DesktopSettings }> {
+  const client = importClient();
+  // The clone URLs come from GitLab again, not from the page.
+  const repos = new Map((await client.groupProjects(String(input.group))).map((r) => [r.pathWithNamespace, r]));
+  const items = (input.items ?? []).flatMap((i) => {
+    const repo = repos.get(i.pathWithNamespace);
+    return repo ? [{ key: i.key, pathWithNamespace: i.pathWithNamespace, dir: path.resolve(expandHome(i.dir)), url: input.protocol === "https" ? repo.httpUrl : repo.sshUrl }] : [];
+  });
+  const results = await importRepos(items, {
+    check: (key) => {
+      if (!PROJECT_NAME.test(key)) throw new HiveError("bad_request", "Project key: chữ thường, số, . _ -", { key: "errors.badProjectKey" });
+      if (config.projects.some((x) => x.name === key)) throw new HiveError("conflict", `Đã có dự án ${key}.`, { key: "errors.projectExists", vars: { project: key } });
+    },
+    clone: gitClone(client, config.gitlab.token),
+    add: (p) => {
+      addProject({ name: p.name, repo: p.repo });
+      updateProject(p.name, { gitlabProject: p.gitlabProject ?? null });
+    },
+  });
+  return { results, settings: settings() };
 }
 
 function addProject(p: DesktopProject): DesktopSettings {
@@ -599,6 +641,8 @@ function registerIpc(): void {
   handle("desktop:hubSignInCancel", () => browserSignIn?.abort());
   handle("desktop:setLocale", setLocale);
   handle("desktop:addProject", addProject);
+  handle("desktop:gitlabGroup", gitlabGroup);
+  handle("desktop:importGitlab", importGitlab);
   handle("desktop:removeProject", (name: string) =>
     persist({ ...config, projects: config.projects.filter((p) => p.name !== name) }),
   );

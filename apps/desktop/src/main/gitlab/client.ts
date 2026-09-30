@@ -1,5 +1,5 @@
 // Minimal GitLab REST v4 client for merge requests.
-import { HiveError, type HiveErrorCode } from "@xdev-hive/core";
+import { HiveError, type GitLabGroupRepo, type HiveErrorCode } from "@xdev-hive/core";
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
@@ -8,6 +8,16 @@ export interface GitLabProject {
   path_with_namespace: string;
   default_branch: string | null;
   web_url: string;
+}
+
+/** A project in a group listing (`simple=true`). */
+interface RawGroupProject {
+  id: number;
+  name: string;
+  path_with_namespace: string;
+  default_branch?: string | null;
+  ssh_url_to_repo: string;
+  http_url_to_repo: string;
 }
 
 export interface GitLabMr {
@@ -104,6 +114,29 @@ export class GitLabClient {
 
   user(): Promise<{ username: string; name: string }> {
     return this.#request("GET", "/user");
+  }
+
+  /** Every repository of a group and of its subgroups, archived ones left out: 100 a page, as many pages as it has. */
+  async groupProjects(group: string): Promise<GitLabGroupRepo[]> {
+    const out: GitLabGroupRepo[] = [];
+    for (let page = 1; page <= 50; page++) {
+      const batch = await this.#request<RawGroupProject[]>(
+        "GET",
+        `/groups/${encodeURIComponent(group)}/projects?include_subgroups=true&archived=false&simple=true&order_by=path&sort=asc&per_page=100&page=${page}`,
+      );
+      for (const p of batch) {
+        out.push({
+          id: p.id,
+          name: p.name,
+          pathWithNamespace: p.path_with_namespace,
+          defaultBranch: p.default_branch ?? null,
+          sshUrl: p.ssh_url_to_repo,
+          httpUrl: p.http_url_to_repo,
+        });
+      }
+      if (batch.length < 100) break;
+    }
+    return out;
   }
 
   project(pathOrId: string | number): Promise<GitLabProject> {

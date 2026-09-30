@@ -1,7 +1,7 @@
 // Contracts between the shared UI and its hosts (web hub, desktop main process). Types only.
 import type { Access, Level } from "./access.ts";
 import type { AgentKind, AgentProfile, AgentRole, PlanUsage, RunnerSettings, RunStatus } from "./agents.ts";
-import type { MrSettings, MrState, MrStatus, PipelineStatus } from "./gitlab.ts";
+import type { GitLabImportCandidate, GitLabImportResult, MrSettings, MrState, MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { TransferReport } from "./transfer.ts";
 import type { MachineCommand, Role, SetupItem, SetupReport, TeamPolicy, WebhookEvent, WebhookKind } from "./types.ts";
 
@@ -298,6 +298,13 @@ export interface DesktopBridge {
   hubSignInBrowser(input: { hubUrl: string }): Promise<DesktopSettings>;
   hubSignInCancel(): Promise<void>;
   addProject(project: DesktopProject): Promise<DesktopSettings>;
+  /** The repositories of a GitLab group (and its subgroups) with the key and folder each would get (roadmap 19a). */
+  gitlabGroup(input: { group: string; baseDir: string }): Promise<GitLabImportCandidate[]>;
+  /** Clones the chosen ones (ssh or https) and adds them as projects; one failing does not stop the rest. */
+  importGitlab(input: { items: Array<{ key: string; pathWithNamespace: string; dir: string }>; protocol: "ssh" | "https"; group: string }): Promise<{
+    results: GitLabImportResult[];
+    settings: DesktopSettings;
+  }>;
   removeProject(name: string): Promise<DesktopSettings>;
   pickFolder(): Promise<string | null>;
   syncProject(name: string): Promise<SyncReport>;
