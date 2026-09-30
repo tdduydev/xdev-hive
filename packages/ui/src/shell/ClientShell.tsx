@@ -77,6 +77,7 @@ export function ClientShell({
   me,
   onSignOut,
   groups,
+  extraPages = [],
   current,
   title,
   subtitle,
@@ -86,6 +87,8 @@ export function ClientShell({
   me: Me;
   onSignOut?: () => void;
   groups: NavGroup[];
+  /** Pages the palette can open that the sidebar does not list. */
+  extraPages?: NavEntry[];
   current: string;
   title: string;
   subtitle: string;
@@ -187,8 +190,9 @@ export function ClientShell({
     [t, theme],
   );
   const pages = useMemo<PaletteCommand[]>(
-    () => items.map((i) => ({ id: i.id, label: t("palette.goToPage", { page: i.label }), icon: i.icon, hint: i.shortcut ? `⌘${i.shortcut}` : undefined, run: () => go(i.id) })),
-    [items, t, go],
+    () =>
+      [...items, ...extraPages].map((i) => ({ id: i.id, label: t("palette.goToPage", { page: i.label }), icon: i.icon, hint: i.shortcut ? `⌘${i.shortcut}` : undefined, run: () => go(i.id) })),
+    [items, extraPages, t, go],
   );
 
   const drag = mac ? "[-webkit-app-region:drag]" : "";
@@ -259,7 +263,7 @@ export function ClientShell({
           {running.slice(0, 4).map((r) => (
             <a
               key={r.id}
-              href="#/board"
+              href={`#/board?run=${encodeURIComponent(r.id)}`}
               title={r.activity ?? r.taskTitle}
               className="grid h-6 grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-1.5 rounded-xs px-1 text-xs/none text-fg-secondary hover:bg-hover"
             >

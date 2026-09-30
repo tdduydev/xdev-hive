@@ -120,6 +120,8 @@ await shoot("projects-import", "projects", 1500, { HIVE_SMOKE_CLICK: "#import-li
 gitlab.jobs[7] = [{ id: 71, name: "test", stage: "test", status: "failed", trace: "not ok 2 - settings page renders\n" }];
 for (const mr of gitlab.mrs) mr.head_pipeline = { id: 7, status: "failed", web_url: `${gitlab.base}/group/demo/-/pipelines/7` };
 await shoot("board-ci", "board", 5000);
+// Hôm nay (roadmap 22c): the failed pipeline, T-001 waiting for review and this machine's setup gaps.
+await shoot("today", "today", 4000);
 
 // The run form of the next task (T-002), with its number of candidates (roadmap 12).
 await shoot("board-run", "board", 3000, { HIVE_SMOKE_CLICK: 'section[aria-label="Chưa làm"] button.self-start' });
