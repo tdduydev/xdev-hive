@@ -2,6 +2,7 @@
 export * from "./access.ts";
 export * from "./agents.ts";
 export * from "./chatfiles.ts";
+export * from "./doclinks.ts";
 export * from "./gitlab.ts";
 export * from "./github.ts";
 export * from "./skills.ts";

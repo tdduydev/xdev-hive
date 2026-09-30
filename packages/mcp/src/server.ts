@@ -89,11 +89,39 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     "doc_get",
     {
       title: "Read a doc",
-      description: "Read the current content and version of a doc, e.g. org/agent-protocol or project/<project>/agents.",
+      description:
+        "Read the current content and version of a doc, e.g. org/agent-protocol or project/<project>/agents. [[slug]] links to another doc of the same space (or the team's), [[org/<slug>]] by key; images and files show as assets/<slug>/<name>: read them with doc_asset.",
       inputSchema: { key: z.string() },
       annotations: readOnly,
     },
     async ({ key }) => run("docs.get", { key }),
+  );
+
+  server.registerTool(
+    "doc_asset",
+    {
+      title: "Read a file attached to a doc",
+      description:
+        "Read an image or file a doc shows as assets/<slug>/<name>: key is the doc of that slug (org/<slug> or project/<project>/<slug>), name the file name. Images come back as images; text files as text. Without name: the doc's files.",
+      inputSchema: { key: z.string(), name: z.string().optional() },
+      annotations: readOnly,
+    },
+    async ({ key, name }) => {
+      if (!name) return run("docs.assets", { key });
+      try {
+        const got = await backend.call("docs.assetGet", { key, name }, actor);
+        if (!got) return { isError: true, content: [{ type: "text", text: `not_found: ${key} has no file ${name} (doc_asset without name lists them)` }] };
+        const { type } = got.asset;
+        if (type.startsWith("image/")) return { content: [{ type: "image", data: got.data, mimeType: type }] };
+        if (type === "application/pdf") {
+          return { content: [{ type: "resource", resource: { uri: `hive://docs/${key}/assets/${encodeURIComponent(name)}`, mimeType: type, blob: got.data } }] };
+        }
+        return { content: [{ type: "text", text: Buffer.from(got.data, "base64").toString("utf8") }] };
+      } catch (err) {
+        const { code, message } = toErrorPayload(err);
+        return { isError: true, content: [{ type: "text", text: `${code}: ${message}` }] };
+      }
+    },
   );
 
   if (writes) {

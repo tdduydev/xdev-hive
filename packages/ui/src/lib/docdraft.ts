@@ -12,6 +12,8 @@ export interface DocDraft {
   savedAt: string;
   /** Saved (or proposed) while the hub could not be reached: sent when it answers again. */
   queued?: { mode: "save" | "propose"; at: string };
+  /** A page not saved yet: where it goes in the tree (roadmap 22j). */
+  parent?: string | null;
 }
 
 const KEY = "hive-doc-drafts";

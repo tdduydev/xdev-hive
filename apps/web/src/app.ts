@@ -141,6 +141,8 @@ export function createHubApp({
   });
 
   const json = express.json({ limit: "1mb" });
+  // RPC carries a doc's attached file in base64 (docs.assetPut, roadmap 22j): parsed only once the caller is known.
+  const rpcJson = express.json({ limit: "8mb" });
   const secure = (req: Request) => req.secure || (trustProxy && req.get("x-forwarded-proto") === "https");
   const clientIp = (req: Request) => (trustProxy ? (req.get("x-forwarded-for") ?? "").split(",")[0]!.trim() : "") || req.socket.remoteAddress || "?";
 
@@ -436,7 +438,7 @@ export function createHubApp({
     }
   });
 
-  app.post("/api/rpc", json, auth, async (req, res) => {
+  app.post("/api/rpc", auth, rpcJson, async (req, res) => {
     try {
       const { method, input } = (req.body ?? {}) as { method?: unknown; input?: unknown };
       const i = (input ?? {}) as Record<string, unknown>;

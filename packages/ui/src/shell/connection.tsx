@@ -113,6 +113,8 @@ export function useDocOutbox(client: HiveClient, online: boolean): void {
               paths: /^project\/[^/]+\/(agents|decisions)$/.test(key) ? undefined : parsePaths(d.paths),
               note: d.note.trim() || undefined,
               baseVersion: d.baseVersion,
+              // A new page goes where it was made.
+              ...(d.baseVersion === 0 && d.parent ? { parent: d.parent } : {}),
             });
           } else {
             await client.call("proposals.create", { docKey: key, baseVersion: d.baseVersion, content: d.content, reason: d.note.trim() || t("docs.proposeDefaultReason") });
