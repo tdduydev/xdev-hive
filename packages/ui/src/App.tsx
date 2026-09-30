@@ -9,6 +9,7 @@ import {
   FolderGit2,
   FolderKanban,
   GitPullRequestArrow,
+  Inbox,
   KeyRound,
   LayoutGrid,
   Laptop,
@@ -27,10 +28,11 @@ import type { HiveClient } from "./client.ts";
 import { ChangePasswordScreen } from "./components/Account.tsx";
 import { ErrorNote } from "./components/common.tsx";
 import { HiveContext, useProjectList, useQuery } from "./hooks.ts";
-import { useT, type MessageKey } from "./i18n/index.tsx";
+import { activeIntl, useT, type MessageKey } from "./i18n/index.tsx";
 import { readScope, resolveScope, writeScope, type Scope } from "./lib/scope.ts";
 import { useSystemTheme } from "./lib/theme.ts";
-import { ClientShell, type NavGroup } from "./shell/ClientShell.tsx";
+import { ClientShell, type NavEntry, type NavGroup } from "./shell/ClientShell.tsx";
+import { InboxProvider, useInboxState } from "./shell/inbox.tsx";
 import { AdminPage } from "./pages/Admin.tsx";
 import { AgentsPage } from "./pages/Agents.tsx";
 import { BoardPage } from "./pages/Board.tsx";
@@ -47,10 +49,12 @@ import { SetupPage } from "./pages/Setup.tsx";
 import { SkillsPage } from "./pages/Skills.tsx";
 import { SystemsPage } from "./pages/Systems.tsx";
 import { TasksPage } from "./pages/Tasks.tsx";
+import { TodayPage } from "./pages/Today.tsx";
 import { TokensPage } from "./pages/Tokens.tsx";
 import { UsersPage } from "./pages/Users.tsx";
 
 type PageId =
+  | "today"
   | "overview"
   | "chat"
   | "board"
@@ -72,6 +76,7 @@ type PageId =
 type Icon = ComponentType<{ className?: string }>;
 
 const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; render: () => ReactNode }> = {
+  today: { label: "nav.today", sub: "navSub.today", icon: Inbox, render: () => <TodayPage /> },
   overview: { label: "nav.overview", sub: "navSub.overview", icon: LayoutGrid, render: () => <OverviewPage /> },
   chat: { label: "nav.chat", sub: "navSub.chat", icon: MessageSquare, render: () => <ChatPage /> },
   board: { label: "nav.board", sub: "navSub.board", icon: FolderKanban, render: () => <BoardPage /> },
@@ -93,15 +98,17 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
   device: { label: "nav.device", sub: "navSub.device", icon: Laptop, render: () => <DevicePage /> },
 };
 
-/** The design's groups; ⌘1–6 go to Tổng quan, Chat, Board, Lượt chạy, Tài liệu, Agent (those that are shown). */
+/** The design's groups; ⌘1–6 go to Hôm nay, Chat, Board, Lượt chạy, Tài liệu, Agent (those that are shown). */
 const GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
-  { label: null, ids: ["overview", "chat"] },
+  { label: null, ids: ["today", "chat"] },
   { label: "nav.groupWork", ids: ["board", "runs", "tasks"] },
   { label: "nav.groupKnowledge", ids: ["docs", "skills", "memory", "proposals"] },
   { label: "nav.groupAgents", ids: ["agents", "setup", "projects"] },
   { label: "nav.groupAdmin", ids: ["admin", "machines", "users", "tokens", "systems"] },
 ];
-const SHORTCUTS: Partial<Record<PageId, string>> = { overview: "1", chat: "2", board: "3", runs: "4", docs: "5", agents: "6" };
+const SHORTCUTS: Partial<Record<PageId, string>> = { today: "1", chat: "2", board: "3", runs: "4", docs: "5", agents: "6" };
+/** Not in the sidebar, still in the command palette. */
+const PALETTE_ONLY: PageId[] = ["overview"];
 
 function readHash(): PageId | null {
   const id = window.location.hash.replace(/^#\/?/, "").split("?")[0]!;
@@ -139,7 +146,7 @@ export function HiveApp({ client, onSignOut }: { client: HiveClient; onSignOut?:
 /** The signed-in app: nothing here loads until the hub accepted the session (and its password is not temporary). */
 function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOut?: () => void }) {
   const t = useT();
-  const home: PageId = "overview";
+  const home: PageId = "today";
   const [page, setPage] = useState<PageId>(() => readHash() ?? home);
   const [tick, setTick] = useState(0);
   const bump = useCallback(() => setTick((t) => t + 1), []);
@@ -170,7 +177,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   }, [home]);
 
   const visible = useMemo(() => {
-    const ids = new Set<PageId>(["overview", "docs", "skills", "proposals", "memory", "tasks", "systems"]);
+    const ids = new Set<PageId>(["today", "overview", "docs", "skills", "proposals", "memory", "tasks", "systems"]);
     if (client.desktop) for (const id of ["board", "agents", "setup", "projects"] as const) ids.add(id);
     // Machines only report to a hub (and push their runs to it); a local database never has any. The leader chat
     // runs on a machine the hub hands it to.
@@ -193,6 +200,9 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   // The machine's name in the subtitles of Lượt chạy and Agent (desktop).
   const machine = useQuery(async () => (client.desktop ? (await client.desktop.settings()).machine : null), [client]).data;
 
+  const inbox = useInboxState(client, me, scope, tick);
+  counts.today = inbox.items.length;
+
   const groups: NavGroup[] = GROUPS.map((g) => ({
     label: g.label ? t(g.label) : null,
     items: g.ids
@@ -202,18 +212,31 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
         label: t(PAGES[id].label),
         icon: PAGES[id].icon,
         shortcut: SHORTCUTS[id],
-        badge: counts[id] ? { count: counts[id]!, strong: id === "proposals" } : undefined,
+        badge: counts[id] ? { count: counts[id]!, strong: id === "today" } : undefined,
       })),
   })).filter((g) => g.items.length > 0);
-  const subtitle =
+  const extraPages: NavEntry[] = PALETTE_ONLY.filter((id) => visible.has(id)).map((id) => ({ id, label: t(PAGES[id].label), icon: PAGES[id].icon }));
+  const today = new Date().toLocaleDateString(activeIntl(), { weekday: "long", day: "numeric", month: "long" });
+  const subtitle = current === "today" ? t("inbox.subtitle", { date: today.charAt(0).toUpperCase() + today.slice(1) }) :
     machine && current === "runs" ? t("navSub.runsOn", { machine }) : machine && current === "agents" ? t("navSub.agentsOn", { machine }) : t(PAGES[current].sub);
 
   return (
     <HiveContext.Provider value={{ client, me: me, bump, scope, setScope, projects, systems }}>
       <TooltipProvider>
-        <ClientShell client={client} me={me} onSignOut={onSignOut} groups={groups} current={current} title={t(PAGES[current].label)} subtitle={subtitle}>
-          {PAGES[current].render()}
-        </ClientShell>
+        <InboxProvider value={inbox}>
+          <ClientShell
+            client={client}
+            me={me}
+            onSignOut={onSignOut}
+            groups={groups}
+            extraPages={extraPages}
+            current={current}
+            title={t(PAGES[current].label)}
+            subtitle={subtitle}
+          >
+            {PAGES[current].render()}
+          </ClientShell>
+        </InboxProvider>
       </TooltipProvider>
     </HiveContext.Provider>
   );
