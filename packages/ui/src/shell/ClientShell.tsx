@@ -2,7 +2,7 @@
 // grouped pages, this machine's running agents, account), a 52px top bar (title, ⌘K search, Task mới) and a 26px
 // status bar (hub, runs, quota, version). Used by the desktop app and by people who are not hub admins on the web.
 import { useCallback, useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
-import { Moon, PanelLeft, Plus, Search, Sun } from "lucide-react";
+import { Download, Moon, PanelLeft, Plus, Search, Sun } from "lucide-react";
 import { cn } from "cn";
 import type { AgentRun, Me } from "@xdev-hive/core";
 import type { HiveClient } from "../client.ts";
@@ -140,6 +140,17 @@ function ClientFrame({
   const link = useHubConnection(client, me);
   useDocOutbox(client, !hubMode || link.state === "ok");
   const hubHost = link.host || (desktop ? hostOf(settings.data?.hubUrl ?? "") : window.location.host);
+
+  // The app's own update (roadmap 22i): the hub offers a build, the main process downloads it.
+  const updateTick = usePoll(desktop ? 5000 : null);
+  const update = useQuery(async () => (desktop ? desktop.updateStatus().catch(() => null) : null), [desktop, updateTick]);
+  const up = update.data?.supported ? update.data : null;
+  const [installing, setInstalling] = useState(false);
+  const install = () => {
+    if (!desktop) return;
+    setInstalling(true);
+    void desktop.installUpdate().catch(() => setInstalling(false));
+  };
 
   const quota = useMemo(() => {
     let top: { id: string; percent: number; week: boolean } | null = null;
@@ -359,6 +370,21 @@ function ClientFrame({
                 <kbd className="rounded-xs border border-line-default bg-surface px-[5px] py-[3px] font-mono text-[10px]/none font-medium text-fg-secondary">⌘K</kbd>
               </button>
               <span className="flex-1" />
+              {up?.state === "ready" && up.version ? (
+                <button
+                  type="button"
+                  onClick={install}
+                  disabled={installing}
+                  title={up.notes ?? undefined}
+                  className={cn(
+                    "mr-1.5 flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-success-line bg-success-soft px-2.5 text-xs/none font-semibold whitespace-nowrap text-success outline-none focus-visible:focus-ring disabled:opacity-70",
+                    noDrag,
+                  )}
+                >
+                  <Download className="size-3.5" />
+                  {installing ? t("shell.updateInstalling", { version: up.version }) : t("shell.updateReady", { version: up.version })}
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => setNewTask(true)}
@@ -420,7 +446,15 @@ function ClientFrame({
                 { href: "#/agents", title: t("shell.openAgents"), mono: true },
               )
             : null}
-          {version ? statusItem("version", `v${version}`, null, { title: t("shell.version"), mono: true }) : null}
+          {up?.state === "downloading" && up.version
+            ? statusItem("version", t("shell.updateDownloading", { version: up.version, percent: up.percent ?? 0 }), null, { title: t("shell.version"), mono: true })
+            : up?.state === "ready" && up.version
+              ? statusItem("version", t("shell.updateReadyShort", { version: up.version }), "bg-success-solid", { title: up.notes ?? t("shell.version"), mono: true })
+              : up?.state === "failed"
+                ? statusItem("version", `v${version ?? "?"} · ${t("shell.updateFailed")}`, "bg-danger-solid", { title: up.error ?? undefined, mono: true })
+                : version
+                  ? statusItem("version", `v${version}`, null, { title: t("shell.version"), mono: true })
+                  : null}
         </footer>
       </div>
       <CommandPalette open={palette} onOpenChange={setPalette} commands={commands} pages={pages} />

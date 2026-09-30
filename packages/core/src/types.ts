@@ -560,3 +560,96 @@ export interface QuotaCooldown {
   reportedBy: string;
   updatedAt: string;
 }
+
+// ── App updates (roadmap 22i): the hub hands out the desktop builds it was given by the release script ──
+
+export const RELEASE_CHANNELS = ["stable", "beta"] as const;
+export type ReleaseChannel = (typeof RELEASE_CHANNELS)[number];
+export const INSTALL_WHEN = ["ask", "quit", "idle"] as const;
+/** ask: the person restarts from the app · quit: installs when the app quits · idle: installs as soon as no run is going. */
+export type InstallWhen = (typeof INSTALL_WHEN)[number];
+export type ReleasePlatform = "mac" | "win" | "linux";
+export type ReleaseArch = "arm64" | "x64";
+export type ReleaseKind = "zip" | "dmg" | "exe" | "AppImage";
+
+export interface AppReleaseFile {
+  id: number;
+  version: string;
+  platform: ReleasePlatform;
+  arch: ReleaseArch;
+  kind: ReleaseKind;
+  name: string;
+  size: number;
+  sha256: string;
+}
+
+export interface AppRelease {
+  version: string;
+  channel: ReleaseChannel;
+  notes: string;
+  createdAt: string;
+  files: AppReleaseFile[];
+}
+
+/** Which build machines should run, and how they move to it. */
+export interface AppRollout {
+  /** The version machines update to; null: no update is offered. */
+  target: string | null;
+  /** Share of machines (by a stable hash of their id) that get the target, 0–100. */
+  percent: number;
+  paused: boolean;
+  autoDownload: boolean;
+  installWhen: InstallWhen;
+  /** Machines older than this get no runs from the hub. */
+  minVersion: string | null;
+  updatedBy: string | null;
+  updatedAt: string | null;
+}
+
+/** What a machine hears in its heartbeat reply when it should update. */
+export interface UpdateOffer {
+  version: string;
+  file: AppReleaseFile;
+  /** Path on the hub to download the file with the machine's token. */
+  url: string;
+  autoDownload: boolean;
+  installWhen: InstallWhen;
+  notes: string;
+}
+
+export const UPDATE_STATES = ["idle", "downloading", "ready", "installing", "failed"] as const;
+export type UpdateState = (typeof UPDATE_STATES)[number];
+
+/** How a machine's update goes, as its heartbeat reports it. */
+export interface UpdateReport {
+  state: UpdateState;
+  version: string | null;
+  /** Download progress, 0–100. */
+  percent: number | null;
+  error: string | null;
+}
+
+export interface MachineUpdate extends UpdateReport {
+  machineId: string;
+  machine: string;
+  current: string;
+  updatedAt: string;
+}
+
+/** Compares dotted versions (0.9.10 > 0.9.2); a pre-release suffix sorts before its release. */
+export function compareVersions(a: string, b: string): number {
+  const parse = (v: string) => {
+    const [core = "", pre = ""] = v.trim().replace(/^v/, "").split("-", 2);
+    return { parts: core.split(".").map((n) => Number.parseInt(n, 10) || 0), pre };
+  };
+  const x = parse(a);
+  const y = parse(b);
+  for (let i = 0; i < Math.max(x.parts.length, y.parts.length); i++) {
+    const d = (x.parts[i] ?? 0) - (y.parts[i] ?? 0);
+    if (d) return d < 0 ? -1 : 1;
+  }
+  if (x.pre === y.pre) return 0;
+  if (!x.pre) return 1;
+  if (!y.pre) return -1;
+  return x.pre < y.pre ? -1 : 1;
+}

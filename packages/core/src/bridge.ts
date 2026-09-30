@@ -287,6 +287,17 @@ export interface ProfileCheck {
   output: string;
 }
 
+/** The app's own update (roadmap 22i): what the hub offered and how far it got. */
+export interface AppUpdateStatus {
+  state: "idle" | "downloading" | "ready" | "installing" | "failed";
+  version: string | null;
+  percent: number | null;
+  error: string | null;
+  installWhen: "ask" | "quit" | "idle" | null;
+  notes: string | null;
+  supported: boolean;
+}
+
 /** Whether this machine's last heartbeat reached the hub (hub mode); ok null before the first one or in local mode. */
 export interface HubConnection {
   mode: "local" | "hub";
@@ -305,6 +316,9 @@ export interface DesktopBridge {
   /** The hub connection as the last heartbeat found it; hubRetry sends a heartbeat now. */
   hubStatus(): Promise<HubConnection>;
   hubRetry(): Promise<HubConnection>;
+  /** The update the hub offered this machine; installUpdate restarts into it. */
+  updateStatus(): Promise<AppUpdateStatus>;
+  installUpdate(): Promise<void>;
   settings(): Promise<DesktopSettings>;
   updateSettings(patch: DesktopSettingsPatch): Promise<DesktopSettings>;
   /** The interface language, for what the main process shows itself (tray, notifications, dialogs). */

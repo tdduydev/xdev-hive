@@ -20,6 +20,7 @@ import {
   ListOrdered,
   ListTodo,
   MessageSquare,
+  Package,
   ScrollText,
   Send,
   Server,
@@ -63,6 +64,7 @@ import { TokensPage } from "./pages/Tokens.tsx";
 import { UsersPage } from "./pages/Users.tsx";
 import { WebhooksTab } from "./pages/Webhooks.tsx";
 import { OpsAudit, OpsCosts, OpsFleet, OpsOverview, OpsQueue, OpsQuota, OpsRuns } from "./pages/admin/Ops.tsx";
+import { OpsVersions } from "./pages/admin/Versions.tsx";
 
 type PageId =
   | "today"
@@ -123,7 +125,7 @@ const PALETTE_ONLY: PageId[] = ["overview"];
 
 // ── The Web Admin (hub admins on the web) ──
 
-type AdminId = "overview" | "runs" | "queue" | "fleet" | "quota" | "costs" | "review" | "docs" | "memory" | "skills" | "users" | "projects" | "policy" | "tokens" | "webhooks" | "audit";
+type AdminId = "overview" | "runs" | "queue" | "fleet" | "quota" | "costs" | "review" | "docs" | "memory" | "skills" | "users" | "projects" | "policy" | "versions" | "tokens" | "webhooks" | "audit";
 type AdminGroup = "ops" | "watch" | "knowledge" | "admin";
 
 const ADMIN: Record<AdminId, { group: AdminGroup; icon: Icon; render: () => ReactNode; fill?: boolean }> = {
@@ -140,6 +142,7 @@ const ADMIN: Record<AdminId, { group: AdminGroup; icon: Icon; render: () => Reac
   users: { group: "admin", icon: UsersRound, render: () => <UsersPage /> },
   projects: { group: "admin", icon: Layers, render: () => <SystemsPage /> },
   policy: { group: "admin", icon: ShieldCheck, render: () => <PolicyTab /> },
+  versions: { group: "admin", icon: Package, render: () => <OpsVersions /> },
   tokens: { group: "admin", icon: KeyRound, render: () => <TokensPage /> },
   webhooks: { group: "admin", icon: Send, render: () => <WebhooksTab /> },
   audit: { group: "admin", icon: ScrollText, render: () => <OpsAudit /> },
@@ -267,7 +270,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     const groups: AdminNavGroup[] = ADMIN_GROUPS.map((g) => ({
       label: t(`ops.group.${g}`),
       items: (Object.keys(ADMIN) as AdminId[])
-        .filter((id) => ADMIN[id].group === g && (id !== "users" || client.users) && (id !== "tokens" || client.tokens) && (id !== "webhooks" || client.webhooks))
+        .filter((id) => ADMIN[id].group === g && (id !== "users" || client.users) && (id !== "tokens" || client.tokens) && (id !== "webhooks" || client.webhooks) && (id !== "versions" || client.releases))
         .map((id) => ({ id: `admin/${id}`, label: t(`ops.nav.${id}`), icon: ADMIN[id].icon, count: counts[id] })),
     }));
     const a = ADMIN[route.id];
