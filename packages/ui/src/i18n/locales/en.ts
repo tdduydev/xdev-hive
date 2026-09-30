@@ -1745,6 +1745,8 @@ export const en: Catalog = {
     assistSilent: "The machine writing it stopped reporting.",
     alertRule: "There is no alert rule {rule}.",
     backupOff: "Backups are off: set HIVE_BACKUP_DIR.",
+    releasePart: "Part {part} came while the hub waited for part {expected}: send the whole file again.",
+    releaseChecksum: "{name} reached the hub with another SHA-256 than it was sent with: send it again.",
     docParentSelf: "{key} cannot go under itself.",
     docParentSkill: "Skills stay in the skills folder: they do not go under pages, and pages do not go under them.",
     docParentSpace: "{parent} is in another space than {key}.",
