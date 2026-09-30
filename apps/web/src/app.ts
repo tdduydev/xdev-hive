@@ -515,9 +515,9 @@ export function createHubApp({
         if (!hub) throw new HiveError("bad_request", `Unknown method ${method}`);
         if (method === "hub.info") res.json({ result: await hub.info() });
         else {
-          const r = hub.backup();
+          const r = await hub.backup();
           hive.audit(actor, "hub.backup", path.basename(r.file), r.removed.length ? `− ${r.removed.length}` : "");
-          res.json({ result: { file: path.basename(r.file), removed: r.removed.length } });
+          res.json({ result: { file: path.basename(r.file), removed: r.removed.length, files: r.files?.copied ?? null } });
         }
         return;
       }
