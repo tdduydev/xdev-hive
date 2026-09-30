@@ -78,6 +78,7 @@ export async function transferHive(from: TransferSide, to: TransferSide, opts: T
             includeInAgents: doc.includeInAgents,
             // A source from before paths has none.
             ...(doc.paths?.length ? { paths: doc.paths } : {}),
+            ...(doc.folder ? { folder: true } : {}),
             baseVersion: target?.version ?? 0,
             note: `Chuyển từ ${from.label}`,
           });
@@ -95,6 +96,27 @@ export async function transferHive(from: TransferSide, to: TransferSide, opts: T
       });
       return { result: "proposed", note: target ? `khác v${target.version}, chờ admin duyệt` : "chờ admin duyệt" };
     });
+  }
+
+  // Where pages sit and the files they carry (roadmap 22j), once every page is there. Best effort: a hub older than 22j
+  // has neither, and a token that cannot write docs left them as proposals above.
+  const onTarget = new Map((await dst("docs.list", {})).map((d) => [d.key, d]));
+  for (const d of await src("docs.list", {})) {
+    const t = onTarget.get(d.key);
+    if (!t) continue;
+    try {
+      if (d.parent && (t.parent ?? null) !== d.parent && onTarget.has(d.parent)) await dst("docs.move", { key: d.key, parent: d.parent });
+      const files = await src("docs.assets", { key: d.key });
+      if (!files.length) continue;
+      const have = new Set((await dst("docs.assets", { key: d.key })).map((a) => a.name));
+      for (const f of files) {
+        if (have.has(f.name)) continue;
+        const got = await src("docs.assetGet", { key: d.key, name: f.name });
+        if (got) await dst("docs.assetPut", { key: d.key, name: f.name, data: got.data });
+      }
+    } catch {
+      // the page itself is copied; its place or files wait for a hub that has them
+    }
   }
 
   // Memory: approved entries only, so copying never skips a review. Same project + kind + content = already there.

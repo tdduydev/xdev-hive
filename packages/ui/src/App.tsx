@@ -65,6 +65,7 @@ import { UsersPage } from "./pages/Users.tsx";
 import { WebhooksTab } from "./pages/Webhooks.tsx";
 import { OpsAudit, OpsCosts, OpsFleet, OpsOverview, OpsQueue, OpsQuota, OpsRuns } from "./pages/admin/Ops.tsx";
 import { OpsVersions } from "./pages/admin/Versions.tsx";
+import { DocReaderPage } from "./pages/DocReader.tsx";
 
 type PageId =
   | "today"
@@ -73,6 +74,7 @@ type PageId =
   | "board"
   | "runs"
   | "docs"
+  | "read"
   | "skills"
   | "proposals"
   | "memory"
@@ -95,6 +97,8 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
   board: { label: "nav.board", sub: "navSub.board", icon: FolderKanban, render: () => <BoardPage /> },
   runs: { label: "nav.runs", sub: "navSub.runs", icon: Activity, render: () => <RunsPage /> },
   docs: { label: "nav.docs", sub: "navSub.docs", icon: FileText, render: () => <DocsPage /> },
+  // Not in the sidebar: a doc's reading view (#/read?doc=…), under Tài liệu.
+  read: { label: "nav.read", sub: "navSub.read", icon: BookOpen, render: () => <DocReaderPage /> },
   skills: { label: "nav.skills", sub: "navSub.skills", icon: WandSparkles, render: () => <SkillsPage /> },
   proposals: { label: "nav.proposals", sub: "navSub.proposals", icon: GitPullRequestArrow, render: () => <ProposalsPage /> },
   memory: { label: "nav.memory", sub: "navSub.memory", icon: Brain, render: () => <MemoryPage /> },
@@ -125,7 +129,7 @@ const PALETTE_ONLY: PageId[] = ["overview"];
 
 // ── The Web Admin (hub admins on the web) ──
 
-type AdminId = "overview" | "runs" | "queue" | "fleet" | "quota" | "costs" | "review" | "docs" | "memory" | "skills" | "users" | "projects" | "policy" | "versions" | "tokens" | "webhooks" | "audit";
+type AdminId = "overview" | "runs" | "queue" | "fleet" | "quota" | "costs" | "review" | "docs" | "read" | "memory" | "skills" | "users" | "projects" | "policy" | "versions" | "tokens" | "webhooks" | "audit";
 type AdminGroup = "ops" | "watch" | "knowledge" | "admin";
 
 const ADMIN: Record<AdminId, { group: AdminGroup; icon: Icon; render: () => ReactNode; fill?: boolean }> = {
@@ -137,6 +141,7 @@ const ADMIN: Record<AdminId, { group: AdminGroup; icon: Icon; render: () => Reac
   costs: { group: "watch", icon: DollarSign, render: () => <OpsCosts /> },
   review: { group: "knowledge", icon: SquareCheck, render: () => <ProposalsPage /> },
   docs: { group: "knowledge", icon: BookOpen, render: () => <DocsPage />, fill: true },
+  read: { group: "knowledge", icon: BookOpen, render: () => <DocReaderPage />, fill: true },
   memory: { group: "knowledge", icon: Brain, render: () => <MemoryPage />, fill: true },
   skills: { group: "knowledge", icon: WandSparkles, render: () => <SkillsPage />, fill: true },
   users: { group: "admin", icon: UsersRound, render: () => <UsersPage /> },
@@ -227,7 +232,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   }, [webAdmin]);
 
   const visible = useMemo(() => {
-    const ids = new Set<PageId>(["today", "overview", "docs", "skills", "proposals", "memory", "tasks", "systems"]);
+    const ids = new Set<PageId>(["today", "overview", "docs", "read", "skills", "proposals", "memory", "tasks", "systems"]);
     if (client.desktop) for (const id of ["board", "agents", "setup", "projects"] as const) ids.add(id);
     // Machines only report to a hub (and push their runs to it); a local database never has any. The leader chat
     // runs on a machine the hub hands it to.
@@ -270,7 +275,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     const groups: AdminNavGroup[] = ADMIN_GROUPS.map((g) => ({
       label: t(`ops.group.${g}`),
       items: (Object.keys(ADMIN) as AdminId[])
-        .filter((id) => ADMIN[id].group === g && (id !== "users" || client.users) && (id !== "tokens" || client.tokens) && (id !== "webhooks" || client.webhooks) && (id !== "versions" || client.releases))
+        .filter((id) => ADMIN[id].group === g && id !== "read" && (id !== "users" || client.users) && (id !== "tokens" || client.tokens) && (id !== "webhooks" || client.webhooks) && (id !== "versions" || client.releases))
         .map((id) => ({ id: `admin/${id}`, label: t(`ops.nav.${id}`), icon: ADMIN[id].icon, count: counts[id] })),
     }));
     const a = ADMIN[route.id];
@@ -280,7 +285,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
         me={me}
         onSignOut={onSignOut}
         groups={groups}
-        current={`admin/${route.id}`}
+        current={`admin/${route.id === "read" ? "docs" : route.id}`}
         group={t(`ops.group.${a.group}`)}
         title={t(`ops.nav.${route.id}`)}
         hint={t(`ops.hint.${route.id}`)}
@@ -325,7 +330,16 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
             : t(PAGES[current].sub);
     frame = (
       <InboxProvider value={inbox}>
-        <ClientShell client={client} me={me} onSignOut={onSignOut} groups={groups} extraPages={extraPages} current={current} title={t(PAGES[current].label)} subtitle={subtitle}>
+        <ClientShell
+          client={client}
+          me={me}
+          onSignOut={onSignOut}
+          groups={groups}
+          extraPages={extraPages}
+          current={current === "read" ? "docs" : current}
+          title={t(PAGES[current].label)}
+          subtitle={subtitle}
+        >
           {PAGES[current].render()}
         </ClientShell>
       </InboxProvider>

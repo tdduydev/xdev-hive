@@ -21,6 +21,7 @@ describe("mcp tools", () => {
     const client = await connect(new SqliteHive(":memory:"));
     const names = (await client.listTools()).tools.map((t) => t.name).sort();
     assert.deepEqual(names, [
+      "doc_asset",
       "doc_get",
       "doc_list",
       "doc_propose",
@@ -43,6 +44,7 @@ describe("mcp tools", () => {
     const hive = new SqliteHive(":memory:");
     for (const client of [await connect(hive, "claude@duy", { readOnly: true }), await connect(hive, "ci", { role: "viewer" })]) {
       assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), [
+        "doc_asset",
         "doc_get",
         "doc_list",
         "machine_list",
@@ -129,6 +131,22 @@ describe("mcp tools", () => {
     await inWeb.connect(b);
     const hits = JSON.parse(text(await inWeb.callTool({ name: "memory_search", arguments: {} }))) as Array<{ project: string | null; content: string }>;
     assert.deepEqual(hits.map((h) => [h.project, h.content]), [[null, "Commit theo Conventional Commits"]], "web sees the shared entry, not app's");
+  });
+
+  it("shows agents a doc's images as images and its text files as text", async () => {
+    const hive = new SqliteHive(":memory:");
+    const admin = { name: "duy", role: "admin" } as const;
+    await hive.call("docs.save", { key: "org/arch", content: "![Sơ đồ](assets/arch/overview.png)" }, admin);
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 7]).toString("base64");
+    await hive.call("docs.assetPut", { key: "org/arch", name: "overview.png", data: png }, admin);
+    await hive.call("docs.assetPut", { key: "org/arch", name: "notes.md", data: Buffer.from("# Ghi chú").toString("base64") }, admin);
+    const client = await connect(hive);
+    const img = await client.callTool({ name: "doc_asset", arguments: { key: "org/arch", name: "overview.png" } });
+    assert.deepEqual(img.content, [{ type: "image", data: png, mimeType: "image/png" }]);
+    assert.equal(text(await client.callTool({ name: "doc_asset", arguments: { key: "org/arch", name: "notes.md" } })), "# Ghi chú");
+    const list = JSON.parse(text(await client.callTool({ name: "doc_asset", arguments: { key: "org/arch" } }))) as Array<{ name: string }>;
+    assert.deepEqual(list.map((a) => a.name), ["notes.md", "overview.png"]);
+    assert.equal((await client.callTool({ name: "doc_asset", arguments: { key: "org/arch", name: "x.png" } })).isError, true);
   });
 
   it("lets agents propose but not overwrite docs", async () => {

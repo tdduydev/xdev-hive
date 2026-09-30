@@ -2,6 +2,7 @@ import { z } from "zod";
 import { HiveError } from "./errors.ts";
 import { ACCOUNT_ID, AGENT_ROLES, agentProfileSchema, MAX_CANDIDATES, RUN_STATUSES } from "./agents.ts";
 import { CHAT_FILES_PER_MESSAGE } from "./chatfiles.ts";
+import { DOC_ASSET_MAX_BYTES } from "./doclinks.ts";
 import { MACHINE_ID, PROJECT_NAME } from "./keys.ts";
 import type { SkillSummary } from "./skills.ts";
 import {
@@ -27,6 +28,8 @@ import {
   type ChatRequest,
   type ChatThread,
   type Doc,
+  type DocAsset,
+  type DocLinks,
   type DocSummary,
   type DocVersion,
   type HiveSystem,
@@ -157,7 +160,18 @@ export const schemas = {
     note: z.string().max(500).optional(),
     /** Optimistic lock: the version the editor loaded (0 = creating a new doc). */
     baseVersion: z.number().int().min(0).optional(),
+    /** The page it goes under (same space; null = the top). Left out: where it is. */
+    parent: docKey.nullable().optional(),
+    folder: z.boolean().optional(),
   }),
+  /** Puts a page under another (or at the top) without a new version. */
+  "docs.move": z.object({ key: docKey, parent: docKey.nullable() }),
+  "docs.links": z.object({ key: docKey }),
+  "docs.assets": z.object({ key: docKey }),
+  "docs.assetGet": z.object({ key: docKey, name: z.string().min(1).max(200) }),
+  /** The file's bytes in base64; a file of the same name on the page is replaced. */
+  "docs.assetPut": z.object({ key: docKey, name: z.string().min(1).max(200), data: z.string().min(1).max(Math.ceil((DOC_ASSET_MAX_BYTES * 4) / 3) + 8) }),
+  "docs.assetRemove": z.object({ key: docKey, name: z.string().min(1).max(200) }),
 
   /** With a project: the skills its agents get (the project's own replace the team's of the same name). Without: every skill. */
   "skills.list": z.object({ project: project.optional() }),
@@ -480,6 +494,12 @@ export interface MethodOutput {
   "docs.get": Doc | null;
   "docs.history": DocVersion[];
   "docs.save": Doc;
+  "docs.move": DocSummary;
+  "docs.links": DocLinks;
+  "docs.assets": DocAsset[];
+  "docs.assetGet": { asset: DocAsset; data: string } | null;
+  "docs.assetPut": DocAsset;
+  "docs.assetRemove": { removed: boolean };
   "skills.list": SkillSummary[];
   "proposals.list": Proposal[];
   "proposals.create": Proposal;
@@ -566,6 +586,12 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "docs.get": "viewer",
   "docs.history": "viewer",
   "docs.save": "agent",
+  "docs.move": "agent",
+  "docs.links": "viewer",
+  "docs.assets": "viewer",
+  "docs.assetGet": "viewer",
+  "docs.assetPut": "agent",
+  "docs.assetRemove": "agent",
   "skills.list": "viewer",
   "proposals.list": "viewer",
   "proposals.create": "agent",
