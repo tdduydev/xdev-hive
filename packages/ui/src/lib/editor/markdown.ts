@@ -2,6 +2,7 @@
 // uses (agents read it, a sync writes it into AGENTS.md), so a page edited in the rich editor stays a Markdown page.
 // Browser-safe and DOM-free: the same extensions parse and serialize in tests.
 import { Mark, mergeAttributes, type AnyExtension, type JSONContent } from "@tiptap/core";
+import CodeBlock from "@tiptap/extension-code-block";
 import Image from "@tiptap/extension-image";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { TableKit, renderTableToMarkdown } from "@tiptap/extension-table";
@@ -96,7 +97,9 @@ const Table = TableKit.configure({ table: { resizable: false } }).extend({
 /** The nodes and marks a page is made of, for the editor and for the Markdown in and out. */
 export function docExtensions(extra: AnyExtension[] = []): AnyExtension[] {
   return [
-    StarterKit.configure({ link: { openOnClick: false, autolink: true } }),
+    // The code block on its own: the editor gives it a view (its language, a Mermaid diagram under it).
+    StarterKit.configure({ codeBlock: false, link: { openOnClick: false, autolink: true } }),
+    CodeBlock,
     Table,
     TaskList,
     TaskItem.configure({ nested: true }),

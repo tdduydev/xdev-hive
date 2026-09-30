@@ -29,6 +29,10 @@ export default defineConfig({
           ctx.server ? html : html.replace("<head>", `<head>\n    <meta http-equiv="Content-Security-Policy" content="${CSP}" />`),
       },
     ],
-    build: { rollupOptions: { input: resolve(import.meta.dirname, "src/renderer/index.html") } },
+    build: {
+      rollupOptions: { input: resolve(import.meta.dirname, "src/renderer/index.html") },
+      // Fonts stay files: the CSP above (font-src from default-src 'self') refuses data: fonts.
+      assetsInlineLimit: (file) => (/\.woff2?$/.test(file) ? false : undefined),
+    },
   },
 });

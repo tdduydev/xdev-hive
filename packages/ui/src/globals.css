@@ -442,6 +442,12 @@
     color: var(--code-fg);
     white-space: pre-wrap;
   }
+  /* The editor's code block: the frame is the block's (with its language above and a diagram below). */
+  .hive-prose .code-block pre {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
   .hive-prose pre code {
     border: 0;
     background: transparent;
