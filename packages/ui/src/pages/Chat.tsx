@@ -2,7 +2,7 @@
 // whose Claude plan writes the replies in the same Claude Code session. A reply shows as the machine writes it,
 // with the agent's steps; project managers send messages and stop a reply.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Bot, Check, MessageSquarePlus, RotateCcw, SendHorizontal, Square, X } from "lucide-react";
+import { ArrowLeft, Bot, Check, CheckCheck, MessageSquarePlus, RotateCcw, SendHorizontal, Square, X } from "lucide-react";
 import { cn } from "cn";
 import type { ChatAction, ChatMessage, ChatThread } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
@@ -345,6 +345,7 @@ function Conversation({ threadId, onBack, onChanged }: { threadId: number; onBac
                 manage={manage}
                 onStopped={refresh}
                 onDecided={(a) => setMessages((ms) => withAction(ms, a))}
+                onDecidedAll={(replyId, actions) => setMessages((ms) => ms.map((x) => (x.id === replyId ? { ...x, actions } : x)))}
                 onResend={m.id === last?.id ? resend : undefined}
               />
             ),
@@ -377,6 +378,7 @@ function Reply({
   manage,
   onStopped,
   onDecided,
+  onDecidedAll,
   onResend,
 }: {
   message: ChatMessage;
@@ -385,6 +387,7 @@ function Reply({
   manage: boolean;
   onStopped: () => void;
   onDecided: (action: ChatAction) => void;
+  onDecidedAll: (replyId: number, actions: ChatAction[]) => void;
   /** Sends the message this reply answered again (the last reply, when it did not come through). */
   onResend?: () => Promise<unknown>;
 }) {
@@ -416,16 +419,7 @@ function Reply({
             <pre className="mt-1 max-h-64 overflow-auto rounded-md border bg-muted/50 p-2 font-mono whitespace-pre-wrap wrap-anywhere">{m.steps}</pre>
           </details>
         ) : null}
-        {m.actions.length ? (
-          <section className="flex flex-col gap-2" aria-label={t("chat.actions")}>
-            <h3 className="text-xs font-medium text-muted-foreground">{t("chat.actions")}</h3>
-            <ul className="flex flex-col gap-2">
-              {m.actions.map((a) => (
-                <ActionItem key={a.id} action={a} taskIds={taskIds} manage={manage} onDecided={onDecided} />
-              ))}
-            </ul>
-          </section>
-        ) : null}
+        {m.actions.length ? <ActionList reply={m} taskIds={taskIds} manage={manage} onDecided={onDecided} onDecidedAll={onDecidedAll} /> : null}
         {m.error ? <div className="text-xs text-destructive wrap-anywhere">{requestErrorText(m.error)}</div> : null}
         {onResend ? (
           <div>
@@ -458,6 +452,60 @@ function Reply({
       </div>
       <span className="text-xs text-muted-foreground">{formatTime(m.finishedAt ?? m.createdAt)}</span>
     </li>
+  );
+}
+
+/** What the leader asked to do in one reply; with several waiting, a manager decides them all at once. */
+function ActionList({
+  reply,
+  taskIds,
+  manage,
+  onDecided,
+  onDecidedAll,
+}: {
+  reply: ChatMessage;
+  taskIds: string[];
+  manage: boolean;
+  onDecided: (action: ChatAction) => void;
+  onDecidedAll: (replyId: number, actions: ChatAction[]) => void;
+}) {
+  const { client } = useHive();
+  const t = useT();
+  const act = useAction();
+  const [stopped, setStopped] = useState(false);
+  const waiting = reply.actions.filter((a) => a.status === "proposed").length;
+  const decideAll = (accept: boolean) =>
+    void act.run(async () => {
+      const actions = await client.call("chat.decideAll", { replyId: reply.id, accept });
+      // The hub stopped at one that failed: the rest still wait.
+      setStopped(accept && actions.some((a) => a.status === "proposed"));
+      onDecidedAll(reply.id, actions);
+    });
+  return (
+    <section className="flex flex-col gap-2" aria-label={t("chat.actions")}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-xs font-medium text-muted-foreground">{t("chat.actions")}</h3>
+        {manage && waiting >= 2 ? (
+          <div className="flex flex-wrap items-center gap-1">
+            <Button size="sm" className="h-7" disabled={act.busy} title={t("chat.confirmAllHint")} onClick={() => decideAll(true)}>
+              <CheckCheck />
+              {t("chat.confirmAll", { count: waiting })}
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7" disabled={act.busy} onClick={() => decideAll(false)}>
+              <X />
+              {t("chat.dismissAll")}
+            </Button>
+          </div>
+        ) : null}
+      </div>
+      <ul className="flex flex-col gap-2">
+        {reply.actions.map((a) => (
+          <ActionItem key={a.id} action={a} taskIds={taskIds} manage={manage} onDecided={onDecided} />
+        ))}
+      </ul>
+      {stopped && waiting ? <Notice tone="warn">{t("chat.stoppedAll")}</Notice> : null}
+      <ErrorNote error={act.error} />
+    </section>
   );
 }
 

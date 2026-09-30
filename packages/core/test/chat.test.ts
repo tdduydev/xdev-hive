@@ -237,6 +237,45 @@ describe("what a chat leader proposes", () => {
     assert.equal((await hive.call("runs.requests", { project: "app" }, admin)).length, 1);
   });
 
+  it("confirms all of a reply in the order they build on each other, and stops at the first that fails", async () => {
+    const { hive, sent, leader } = await leading();
+    // A run for a task the same reply creates: proposed after it, confirmed after it.
+    const move = await hive.call("chat.propose", { action: { kind: "task.update", id: "T-1", status: "doing" }, reason: "Start" }, leader);
+    const create = await hive.call("chat.propose", { action: { kind: "task.create", id: "T-5", title: "Reset page" }, reason: "New" }, leader);
+    const run = await hive.call("chat.propose", { action: { kind: "run.dispatch", taskId: "T-5" }, reason: "Go" }, leader);
+    assert.equal(await refusal(hive.call("chat.propose", { action: { kind: "task.create", id: "T-5", title: "Again" }, reason: "r" }, leader)), "errors.taskExists");
+    assert.equal(await refusal(hive.call("chat.decideAll", { replyId: sent.reply.id, accept: true }, dev)), "errors.need.manage");
+
+    const done = await hive.call("chat.decideAll", { replyId: sent.reply.id, accept: true }, lead);
+    // The run went through: T-5 existed by then, made first although proposed second.
+    assert.deepEqual(done.map((a) => [a.id, a.status]), [[move.id, "done"], [create.id, "done"], [run.id, "done"]]);
+    assert.deepEqual((await hive.call("runs.requests", { project: "app" }, admin)).map((r) => [r.taskId, r.requestedBy]), [["T-5", "lan"]]);
+  });
+
+  it("moves a task before running it, whatever order the leader proposed them in", async () => {
+    const { hive, sent, leader } = await leading();
+    await hive.call("tasks.update", { id: "T-1", status: "done" }, admin);
+    // Proposed the other way round: a run of a done task would be refused.
+    const run = await hive.call("chat.propose", { action: { kind: "run.dispatch", taskId: "T-1" }, reason: "Again" }, leader);
+    const reopen = await hive.call("chat.propose", { action: { kind: "task.update", id: "T-1", status: "todo", note: "Reopened" }, reason: "Found a bug" }, leader);
+    const done = await hive.call("chat.decideAll", { replyId: sent.reply.id, accept: true }, lead);
+    assert.deepEqual(done.map((a) => [a.id, a.status]), [[run.id, "done"], [reopen.id, "done"]]);
+  });
+
+  it("stops at the first action that fails, leaving the rest to decide; sets all aside at once", async () => {
+    const { hive, sent, leader } = await leading();
+    const bad = await hive.call("chat.propose", { action: { kind: "task.create", id: "T-6", title: "x", dependsOn: ["T-404"] }, reason: "r" }, leader);
+    const later = await hive.call("chat.propose", { action: { kind: "task.update", id: "T-1", status: "blocked" }, reason: "r" }, leader);
+    const after = await hive.call("chat.decideAll", { replyId: sent.reply.id, accept: true }, lead);
+    assert.deepEqual(after.map((a) => [a.id, a.status]), [[bad.id, "failed"], [later.id, "proposed"]]);
+    assert.ok(after[0]!.error?.key, "why, for the page to show");
+
+    const aside = await hive.call("chat.decideAll", { replyId: sent.reply.id, accept: false }, lead);
+    assert.deepEqual(aside.map((a) => a.status), ["failed", "dismissed"]);
+    assert.equal((await hive.call("tasks.list", { project: "app" }, admin)).find((t) => t.id === "T-1")?.status, "todo");
+    assert.equal(await refusal(hive.call("chat.decideAll", { replyId: 9999, accept: true }, admin)), "errors.chatReplyNotFound");
+  });
+
   it("takes proposals only from the leader writing the reply, in the thread's project, while it writes", async () => {
     const { hive, sent, leader } = await leading();
     const action = { kind: "task.create" as const, id: "T-9", title: "x" };

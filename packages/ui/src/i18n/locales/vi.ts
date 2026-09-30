@@ -575,6 +575,10 @@ export const vi = {
     confirm: "Xác nhận",
     dismiss: "Bỏ qua",
     confirmHint: "Chạy bằng quyền của bạn.",
+    confirmAll: "Xác nhận tất cả ({count})",
+    confirmAllHint: "Chạy lần lượt: tạo task trước, rồi chuyển trạng thái, rồi xếp run; việc nào lỗi thì dừng lại.",
+    dismissAll: "Bỏ qua tất cả",
+    stoppedAll: "Đã dừng ở việc bị lỗi; các việc sau vẫn chờ bạn quyết định.",
   },
   actionStatus: {
     proposed: "Chờ xác nhận",

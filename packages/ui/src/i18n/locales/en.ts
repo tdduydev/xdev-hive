@@ -574,6 +574,10 @@ export const en: Catalog = {
     confirm: "Confirm",
     dismiss: "Set aside",
     confirmHint: "Runs with your rights.",
+    confirmAll: "Confirm all ({count})",
+    confirmAllHint: "One after another: tasks are created first, then moved, then runs are queued; it stops at one that fails.",
+    dismissAll: "Set all aside",
+    stoppedAll: "Stopped at the one that failed; the rest wait for you to decide.",
   },
   actionStatus: {
     proposed: "To confirm",

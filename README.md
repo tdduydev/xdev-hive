@@ -487,6 +487,9 @@ Trên hub, agent giữ task với tên `<gói>.<máy>@<token>`, ví dụ `claude
     - Hub kiểm ngay khi leader đề xuất: task phải thuộc dự án của chat (với tạo mới thì chưa có), máy phải có trên hub, chữ không có ký tự ẩn hay secret.
     - Trên trang *Chat*, đề xuất hiện dưới câu trả lời. Người quản trị dự án bấm *Xác nhận* thì việc chạy như chính họ gọi (`chat.decide`): hub kiểm quyền của họ và ghi tên họ. Bấm *Bỏ qua* thì không có gì chạy.
     - Mỗi đề xuất chỉ được quyết định một lần. Lỗi khi chạy được giữ lại kèm lý do. Kết quả có link: task vừa tạo, hoặc yêu cầu chạy (mở panel của task). Đề xuất vẫn chờ quyết định sau khi câu trả lời đã xong.
+    - Câu trả lời có từ hai đề xuất đang chờ thì có *Xác nhận tất cả* và *Bỏ qua tất cả* (`chat.decideAll`, roadmap 17e).
+      - Hub chạy lần lượt: tạo task trước, rồi chuyển trạng thái, rồi xếp run; mỗi nhóm theo thứ tự leader đề xuất. Nhờ vậy leader đề xuất được run hay đổi trạng thái cho task mà chính câu trả lời đó tạo.
+      - Việc nào lỗi thì dừng ở đó; các việc sau vẫn chờ để người quản trị xem. Việc người khác đã quyết định trong lúc đó thì giữ nguyên.
   - **Hướng dẫn cho leader** (roadmap 17c-2).
     - Hub có sẵn skill chung `hive-leader`. Skill này nói leader cần: tìm hiểu bằng task, lượt chạy (kể cả kết quả review) và máy; đề xuất thay vì tự làm; không merge; hỏi lại kèm vài lựa chọn khi cần quyết định; ghi đúng mã task và mã run để trang *Chat* làm link.
     - Nhóm sửa skill này trên trang *Skill* như mọi skill khác, hoặc tạo skill riêng cùng tên cho một dự án. Hub đang chạy nhận skill này một lần khi cập nhật; xoá đi thì hub không tạo lại. Cơ sở dữ liệu local của máy không có skill này.
