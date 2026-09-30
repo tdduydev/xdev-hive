@@ -2,8 +2,10 @@ import express, { type NextFunction, type Request, type RequestHandler, type Res
 import { hostHeaderValidation } from "@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
+  CHAT_FILE_MAX_BYTES,
   HiveError,
   HTTP_STATUS,
+  isImage,
   isMethod,
   PROJECT_NAME,
   readSourceHeader,
@@ -47,7 +49,8 @@ const CSP = [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
+  // blob: the page's own previews of images picked for a chat message, before they are uploaded.
+  "img-src 'self' data: blob:",
   "connect-src 'self'",
   "frame-ancestors 'none'",
   "base-uri 'none'",
@@ -553,6 +556,43 @@ export function createHubApp({
     } catch (err) {
       sendError(res, err);
     }
+  });
+
+  // Chat attachments (roadmap 17g): the bytes go over plain HTTP, not JSON-RPC. A file is uploaded first, then sent
+  // with chat.send; whoever sees the project's chats reads it (people by their session, machines by their token).
+  const fileBody = express.raw({ type: () => true, limit: CHAT_FILE_MAX_BYTES + 1 });
+  app.post("/api/chat/files", auth, fileBody, (req, res) => {
+    try {
+      const project = String(req.query.project ?? "");
+      if (!PROJECT_NAME.test(project)) throw new HiveError("bad_request", "Pick the chat's project.", { key: "errors.chatFileProject" });
+      const bytes = Buffer.isBuffer(req.body) ? new Uint8Array(req.body) : new Uint8Array();
+      res.json({ result: hive.putChatFile({ project, name: String(req.query.name ?? "file"), bytes }, actorOf(res)) });
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+  // Over the size the body parser takes: the same answer the hub gives for a big file it has read.
+  app.use("/api/chat/files", (err: { type?: string }, _req: Request, res: Response, next: NextFunction) => {
+    if (err?.type !== "entity.too.large") return next(err);
+    const mb = CHAT_FILE_MAX_BYTES / 1024 / 1024;
+    res.status(413).json({ error: { code: "bad_request", message: `Files are at most ${mb} MB.`, key: "errors.chatFileTooBig", vars: { name: "", mb } } });
+  });
+  app.get("/api/chat/files/:id", auth, (req, res) => {
+    const id = String(req.params.id ?? "");
+    const file = /^\d+$/.test(id) ? hive.chatFile(Number(id), actorOf(res)) : null;
+    if (!file) {
+      res.status(404).json({ error: { code: "not_found", message: "No such file.", key: "errors.notFound" } });
+      return;
+    }
+    // Never run as a page of the hub: text is served as plain text, and a sandbox forbids scripts anyway.
+    res.set({
+      "content-type": isImage(file.type) || file.type === "application/pdf" ? file.type : "text/plain; charset=utf-8",
+      "content-disposition": `${isImage(file.type) ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+      "x-content-type-options": "nosniff",
+      "content-security-policy": "sandbox; default-src 'none'; img-src 'self'",
+      "cache-control": "private, max-age=3600",
+    });
+    res.send(Buffer.from(file.bytes));
   });
 
   // MCP over Streamable HTTP, stateless: one server per request, same tools as the stdio `hive-mcp`. Tokens only.
