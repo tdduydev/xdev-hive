@@ -10,6 +10,8 @@ export interface DocDraft {
   /** The version the draft started from: a newer saved version means someone else changed the doc meanwhile. */
   baseVersion: number;
   savedAt: string;
+  /** Saved (or proposed) while the hub could not be reached: sent when it answers again. */
+  queued?: { mode: "save" | "propose"; at: string };
 }
 
 const KEY = "hive-doc-drafts";
@@ -23,12 +25,21 @@ export function readDrafts(): Record<string, DocDraft> {
   }
 }
 
+/** Tells open views (the Docs page, the outbox) that the drafts changed. */
+export const DRAFTS_EVENT = "hive-doc-drafts";
+
 export function writeDrafts(drafts: Record<string, DocDraft>): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(drafts));
   } catch {
     // Storage blocked or full: the draft lasts for this session only.
   }
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(DRAFTS_EVENT));
+}
+
+/** A call that failed because the hub could not be reached at all (desktop: HiveError "unavailable"; web: fetch). */
+export function isUnreachable(err: unknown): boolean {
+  return (err as { code?: unknown } | null)?.code === "unavailable" || err instanceof TypeError;
 }
 
 /**
