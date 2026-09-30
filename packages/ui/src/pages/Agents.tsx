@@ -19,10 +19,13 @@ import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
+import { Switch } from "@xdev-hive/ui/components/ui/switch";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
-import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, StatusDot } from "../components/common.tsx";
+import { Badge, Empty, ErrorNote, Notice, StatusDot } from "../components/common.tsx";
+import { Chip, type ChipKind } from "../components/panes.tsx";
+import { useToast } from "../shell/toast.tsx";
 import { errorMessage, formatTime, formatUsd, useAction, useHive, useQuery } from "../hooks.ts";
-import { rich, useT } from "../i18n/index.tsx";
+import { activeIntl, rich, useT } from "../i18n/index.tsx";
 
 /** Env var that points each CLI at a separate login, so two subscriptions of one vendor can rotate. */
 const ACCOUNT_ENV_HINT: Partial<Record<AgentKind, string>> = {
@@ -63,12 +66,13 @@ export function AgentsPage() {
   };
 
   return (
-    <Page>
-      <PageHeader
-        title={t("nav.agents")}
-        subtitle={t("agents.subtitle")}
-      />
-      {settings.data ? <RunnerCard runner={settings.data.runner} /> : null}
+    <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 px-6 pt-5 pb-8">
+      <h1 className="sr-only">{t("nav.agents")}</h1>
+      {settings.data ? <IntakeCard runner={settings.data.runner} hub={settings.data.mode === "hub"} onSaved={settings.reload} /> : null}
+      <QuotaTable profiles={profiles.data ?? []} />
+      <p className="m-0 text-xs/[18px] text-fg-muted">{t("agents.thresholdsNote")}</p>
+      <h2 className="m-0 mt-2 text-[13px]/[18px] font-semibold text-fg-strong">{t("agents.manage")}</h2>
+      <p className="m-0 -mt-2 max-w-3xl text-xs/[18px] text-fg-muted">{t("agents.subtitle")}</p>
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm text-muted-foreground">{t("agents.add")}</span>
         {AGENT_KINDS.map((k) => (
@@ -116,7 +120,8 @@ export function AgentsPage() {
           <ProfileCard key={p.id} profile={p} onEdit={() => setEditing({ profile: p, previousId: p.id })} onChanged={refresh} />
         ))}
       </div>
-    </Page>
+      {settings.data ? <RunnerCard runner={settings.data.runner} /> : null}
+    </div>
   );
 }
 
@@ -589,47 +594,31 @@ function ProfileForm({
   );
 }
 
+/** The runner's less frequent settings: attempts per task and where worktrees go. */
 function RunnerCard({ runner }: { runner: RunnerSettings }) {
   const { client } = useHive();
   const t = useT();
-  const [maxParallel, setMaxParallel] = useState(String(runner.maxParallel));
+  const toast = useToast();
   const [maxAttempts, setMaxAttempts] = useState(String(runner.maxAttempts));
   const [root, setRoot] = useState(runner.worktreeRoot ?? "");
-  const [hubRuns, setHubRuns] = useState(runner.acceptHubRuns);
   const action = useAction();
-  const [saved, setSaved] = useState(false);
   return (
     <Card>
       <CardHeader>
         <CardTitle>
-          <h2>Runner</h2>
+          <h2 className="m-0">{t("agents.advanced")}</h2>
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-          <div className="flex items-center gap-2">
-            <Label htmlFor="rn-par" className="leading-snug">
-              {t("agents.runnerParallel")}
-            </Label>
-            <Input id="rn-par" className="w-20" type="number" min={1} max={8} value={maxParallel} onChange={(e) => setMaxParallel(e.target.value)} />
-          </div>
-          <div className="flex items-center gap-2">
-            <Label htmlFor="rn-att" className="leading-snug">
-              {t("agents.runnerAttempts")}
-            </Label>
-            <Input id="rn-att" className="w-20" type="number" min={1} max={6} value={maxAttempts} onChange={(e) => setMaxAttempts(e.target.value)} />
-          </div>
+        <div className="flex items-center gap-2">
+          <Label htmlFor="rn-att" className="leading-snug">
+            {t("agents.runnerAttempts")}
+          </Label>
+          <Input id="rn-att" className="w-20" type="number" min={1} max={6} value={maxAttempts} onChange={(e) => setMaxAttempts(e.target.value)} />
         </div>
         <div className="grid items-center gap-3 sm:grid-cols-[180px_1fr]">
           <Label htmlFor="rn-root">{t("agents.runnerRoot")}</Label>
           <Input id="rn-root" className="font-mono" placeholder={t("agents.runnerRootPlaceholder")} value={root} onChange={(e) => setRoot(e.target.value)} />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox checked={hubRuns} onCheckedChange={(v) => setHubRuns(v === true)} />
-            {t("agents.runnerHubRuns")}
-          </label>
-          <span className={HINT}>{t("agents.runnerHubRunsHint")}</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -638,12 +627,9 @@ function RunnerCard({ runner }: { runner: RunnerSettings }) {
             onClick={() =>
               void action.run(async () => {
                 try {
-                  await client.desktop!.updateSettings({
-                    runner: { maxParallel: Number(maxParallel), maxAttempts: Number(maxAttempts), worktreeRoot: root.trim() || null, acceptHubRuns: hubRuns },
-                  });
-                  setSaved(true);
+                  await client.desktop!.updateSettings({ runner: { maxAttempts: Number(maxAttempts), worktreeRoot: root.trim() || null } });
+                  toast(t("agents.savedToast"));
                 } catch (err) {
-                  setSaved(false);
                   throw new Error(errorMessage(err));
                 }
               })
@@ -651,10 +637,146 @@ function RunnerCard({ runner }: { runner: RunnerSettings }) {
           >
             {t("agents.runnerSave")}
           </Button>
-          {saved ? <span className="text-sm text-success">{t("agents.saved")}</span> : null}
         </div>
         <ErrorNote error={action.error} />
       </CardContent>
     </Card>
+  );
+}
+
+/** "Nhận việc trên máy này": take runs from the hub (hub mode), and how many agents at once. Saved right away. */
+function IntakeCard({ runner, hub, onSaved }: { runner: RunnerSettings; hub: boolean; onSaved: () => void }) {
+  const { client } = useHive();
+  const t = useT();
+  const toast = useToast();
+  const action = useAction();
+  const save = (patch: Partial<RunnerSettings>) =>
+    void action.run(async () => {
+      await client.desktop!.updateSettings({ runner: patch });
+      toast(t("agents.savedToast"));
+      onSaved();
+    });
+  const options = [...new Set([1, 2, 3, 4, runner.maxParallel])].sort((a, b) => a - b);
+  return (
+    <div className="flex flex-col gap-2 rounded-[10px] border border-line-default bg-surface px-4 py-3.5">
+      <div className="flex flex-wrap items-center gap-4">
+        <span className="flex min-w-[240px] flex-1 flex-col gap-0.5">
+          <span className="text-sm/5 font-semibold text-fg-strong">{t("agents.recvTitle")}</span>
+          <span className="text-xs/4 text-fg-muted">{hub ? (runner.acceptHubRuns ? t("agents.recvHubOn") : t("agents.recvHubOff")) : t("agents.recvLocal")}</span>
+        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs/none text-fg-muted">{t("agents.maxAtOnce")}</span>
+          <div role="radiogroup" aria-label={t("agents.maxAtOnce")} className="flex gap-0.5 rounded-[7px] bg-sunken p-0.5">
+            {options.map((n) => (
+              <button
+                key={n}
+                type="button"
+                role="radio"
+                aria-checked={runner.maxParallel === n}
+                disabled={action.busy}
+                onClick={() => runner.maxParallel !== n && save({ maxParallel: n })}
+                className={cn(
+                  "h-6 w-7 cursor-pointer rounded-[5px] font-mono text-xs/none font-semibold text-fg-strong outline-none focus-visible:focus-ring",
+                  runner.maxParallel === n ? "bg-surface shadow-e1" : "hover:bg-hover",
+                )}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+        {hub ? <Switch checked={runner.acceptHubRuns} disabled={action.busy} onCheckedChange={(v) => save({ acceptHubRuns: v })} aria-label={t("agents.runnerHubRuns")} /> : null}
+      </div>
+      <ErrorNote error={action.error} />
+    </div>
+  );
+}
+
+/** The state a subscription is in, as one chip. */
+function stateChip(p: AgentProfileStatus): { key: "running" | "ready" | "off" | "noCli" | "signedOut" | "overLimit" | "resting" | "near"; kind: ChipKind } {
+  if (!p.enabled) return { key: "off", kind: "neutral" };
+  if (p.cliPath === null) return { key: "noCli", kind: "danger" };
+  if (p.login?.loggedIn === false) return { key: "signedOut", kind: "danger" };
+  if (p.running) return { key: "running", kind: "running" };
+  if (usageStop(p, p.usage)) return { key: "overLimit", kind: "warning" };
+  if (p.cooldownUntil) return { key: "resting", kind: "warning" };
+  const top = Math.max(p.usage?.session?.percent ?? 0, p.usage?.week?.percent ?? 0);
+  if (top >= 85) return { key: "near", kind: "warning" };
+  return { key: "ready", kind: "success" };
+}
+
+function Meter({ percent, resets, stop }: { percent: number; resets: string | null; stop: number }) {
+  const t = useT();
+  const pct = Math.max(0, Math.min(100, Math.round(percent)));
+  return (
+    <span className="flex flex-col gap-[5px]">
+      <span className="flex text-[11px]/none text-fg-muted">
+        <span className="font-mono text-xs/none font-semibold text-fg-strong">{pct}%</span>
+        {/* Claude Code prints the reset as text ("Oct 3, 9am"), not a timestamp: shown as it came. */}
+        {resets ? (
+          <span className="ml-auto truncate pl-2" title={resets}>
+            {t("agents.resets", { time: Number.isNaN(Date.parse(resets)) ? resets : formatTime(resets) })}
+          </span>
+        ) : null}
+      </span>
+      <span role="meter" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} className="relative h-1.5 rounded-[3px] bg-sunken">
+        <span className={cn("absolute inset-y-0 left-0 rounded-[3px]", pct >= 85 ? "bg-warning-solid" : "bg-primary")} style={{ width: `${pct}%` }} />
+        <span title={t("agents.stopMark", { percent: stop })} className="absolute -top-[3px] -bottom-[3px] w-0.5 bg-fg-muted" style={{ left: `${Math.min(100, stop)}%` }} />
+      </span>
+    </span>
+  );
+}
+
+const QUOTA_COLS = "grid-cols-[minmax(150px,1.2fr)_150px_minmax(150px,1fr)_minmax(150px,1fr)_110px]";
+
+/** Every subscription on this machine with its session and week use, the stop thresholds and its cost. */
+function QuotaTable({ profiles }: { profiles: AgentProfileStatus[] }) {
+  const t = useT();
+  if (!profiles.length) return null;
+  return (
+    <div className="overflow-x-auto rounded-[10px] border border-line-default bg-surface">
+      <div className="min-w-[760px]">
+        <div className={cn("grid h-[34px] items-center gap-3.5 border-b border-line-subtle bg-subtle px-4 text-[11px]/none font-semibold text-fg-muted", QUOTA_COLS)}>
+          <span>{t("agents.colProfile")}</span>
+          <span>{t("agents.colState")}</span>
+          <span>{t("agents.colSession")}</span>
+          <span>{t("agents.colWeek")}</span>
+          <span title={t("agents.costHint")}>{t("agents.colCost")}</span>
+        </div>
+        {profiles.map((p) => {
+          const st = stateChip(p);
+          const s = p.usage?.session;
+          const w = p.usage?.week;
+          return (
+            <div key={p.id} className={cn("grid items-center gap-3.5 border-b border-line-subtle px-4 py-3 last:border-b-0", QUOTA_COLS)}>
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="truncate font-mono text-[13px]/[18px] font-semibold text-fg-strong">{p.id}</span>
+                <span className="truncate text-xs/4 text-fg-muted">
+                  {t(`agentKind.${p.kind}`)} · {p.roles.map((r) => t(`agentRole.${r}`)).join(", ")}
+                </span>
+              </span>
+              <span title={p.cooldownReason ?? undefined}>
+                <Chip kind={st.kind} title={p.cooldownUntil ? formatTime(p.cooldownUntil) : undefined}>
+                  {st.key === "resting" && p.cooldownUntil
+                    ? `${t("agents.state.resting")} · ${new Date(p.cooldownUntil).toLocaleTimeString(activeIntl(), { hour: "2-digit", minute: "2-digit" })}`
+                    : t(`agents.state.${st.key}`)}
+                </Chip>
+              </span>
+              {s || w ? (
+                <>
+                  {s ? <Meter percent={s.percent} resets={s.resets} stop={p.stopAtSession} /> : <span className="text-xs text-fg-muted">—</span>}
+                  {w ? <Meter percent={w.percent} resets={w.resets} stop={p.stopAtWeek} /> : <span className="text-xs text-fg-muted">—</span>}
+                </>
+              ) : (
+                <span className="col-span-2 text-xs/[17px] text-fg-muted">{t("agents.noUsage")}</span>
+              )}
+              <span className="font-mono text-xs/none text-fg-secondary" title={t("agents.costHint")}>
+                {p.stats.costUsd ? `~${formatUsd(p.stats.costUsd)}` : "—"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
