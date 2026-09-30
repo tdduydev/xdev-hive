@@ -6,6 +6,7 @@ import type { AgentRole } from "./agents.ts";
 import { HiveError, type ErrorText } from "./errors.ts";
 import { agentsDocKey, decisionsDocKey, parseDocKey, titleFromSlug, type ParsedDocKey } from "./keys.ts";
 import { parseSkill, type SkillSummary } from "./skills.ts";
+import { chatFileName, checkChatFile, isImage } from "./chatfiles.ts";
 import { EMPTY_POLICY } from "./policy.ts";
 import {
   authorize,
@@ -27,6 +28,7 @@ import type {
   ChatAction,
   ChatActionKind,
   ChatActionStatus,
+  ChatFile,
   ChatMessage,
   ChatReplyStatus,
   ChatRequest,
@@ -208,6 +210,13 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE run_records ADD COLUMN cancel_by TEXT;
   ALTER TABLE run_records ADD COLUMN cancel_at TEXT;
+  `,
+  `
+  CREATE TABLE chat_files(
+    id INTEGER PRIMARY KEY, project TEXT NOT NULL, thread_id INTEGER REFERENCES chat_threads(id) ON DELETE CASCADE,
+    message_id INTEGER REFERENCES chat_messages(id) ON DELETE CASCADE, name TEXT NOT NULL, type TEXT NOT NULL,
+    size INTEGER NOT NULL, data BLOB NOT NULL, uploaded_by TEXT NOT NULL, created_at TEXT NOT NULL);
+  CREATE INDEX chat_files_thread ON chat_files(thread_id, message_id);
   `,
 ];
 
@@ -505,7 +514,11 @@ const toChatMessage = (r: Row): ChatMessage => ({
   updatedAt: str(r.updated_at),
   finishedAt: strOrNull(r.finished_at),
   actions: [],
+  files: [],
 });
+const toChatFile = (r: Row): ChatFile => ({ id: num(r.id), name: str(r.name), type: str(r.type), size: num(r.size), createdAt: str(r.created_at) });
+/** Everything about a file but its bytes. */
+const FILE_FIELDS = "id, name, type, size, created_at, message_id";
 const toChatAction = (r: Row): ChatAction => ({
   id: num(r.id),
   replyId: num(r.reply_id),
@@ -866,6 +879,32 @@ export class SqliteHive implements HiveBackend {
     });
   }
 
+  /**
+   * Keeps a file someone is about to send in a project's chat (roadmap 17g), for chat.send to attach: only a manager of
+   * the project, who alone can send there. Images and PDF are checked by their bytes; text must be UTF-8 with no secret.
+   */
+  putChatFile(input: { project: string; name: string; bytes: Uint8Array }, actor: Actor): ChatFile {
+    this.#need(actor, input.project, "manage", `Project ${input.project}`);
+    const name = chatFileName(input.name);
+    const type = checkChatFile(name, input.bytes);
+    if (!isImage(type) && type !== "application/pdf") assertNoSecret(new TextDecoder().decode(input.bytes), name);
+    this.#expireChats();
+    const id = num(
+      this.db
+        .prepare("INSERT INTO chat_files(project, name, type, size, data, uploaded_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .run(input.project, name, type, input.bytes.length, input.bytes, actor.name, this.#now()).lastInsertRowid,
+    );
+    return toChatFile(this.db.prepare(`SELECT ${FILE_FIELDS} FROM chat_files WHERE id = ?`).get(id) as Row);
+  }
+
+  /** A file with its bytes, for whoever sees its project's chats; one not sent yet only for whoever uploaded it. */
+  chatFile(id: number, actor: Actor): (ChatFile & { bytes: Uint8Array }) | null {
+    const row = this.db.prepare("SELECT * FROM chat_files WHERE id = ?").get(id) as Row | undefined;
+    if (!row || levelOn(actor, str(row.project)) === null) return null;
+    if (row.message_id == null && str(row.uploaded_by) !== actor.name) return null;
+    return { ...toChatFile(row), bytes: row.data as Uint8Array };
+  }
+
   close(): void {
     this.db.close();
   }
@@ -1072,6 +1111,8 @@ export class SqliteHive implements HiveBackend {
       .prepare("UPDATE chat_messages SET status = 'failed', error = ?, updated_at = ?, finished_at = ? WHERE status = 'running' AND updated_at < ?")
       .run(JSON.stringify(silent), now, now, since);
     this.db.prepare("DELETE FROM chat_threads WHERE updated_at < ?").run(this.#now(-CHAT_DAYS * 24 * 60));
+    // Uploaded and never sent.
+    this.db.prepare("DELETE FROM chat_files WHERE message_id IS NULL AND created_at < ?").run(this.#now(-24 * 60));
   }
 
   #chatThread(id: number): ChatThread {
@@ -1082,7 +1123,11 @@ export class SqliteHive implements HiveBackend {
 
   #chatMessage(id: number): ChatMessage {
     const message = toChatMessage(this.db.prepare("SELECT * FROM chat_messages WHERE id = ?").get(id) as Row);
-    return { ...message, actions: (this.db.prepare("SELECT * FROM chat_actions WHERE reply_id = ? ORDER BY id").all(id) as Row[]).map(toChatAction) };
+    return {
+      ...message,
+      actions: (this.db.prepare("SELECT * FROM chat_actions WHERE reply_id = ? ORDER BY id").all(id) as Row[]).map(toChatAction),
+      files: (this.db.prepare(`SELECT ${FILE_FIELDS} FROM chat_files WHERE message_id = ? ORDER BY id`).all(id) as Row[]).map(toChatFile),
+    };
   }
 
   /** A thread's messages after `after`, each reply with the actions its leader asked for. */
@@ -1092,9 +1137,13 @@ export class SqliteHive implements HiveBackend {
       const a = toChatAction(r);
       actions.set(a.replyId, [...(actions.get(a.replyId) ?? []), a]);
     }
+    const files = new Map<number, ChatFile[]>();
+    for (const r of this.db.prepare(`SELECT ${FILE_FIELDS} FROM chat_files WHERE thread_id = ? AND message_id > ? ORDER BY id`).all(threadId, after) as Row[]) {
+      files.set(num(r.message_id), [...(files.get(num(r.message_id)) ?? []), toChatFile(r)]);
+    }
     return (this.db.prepare("SELECT * FROM chat_messages WHERE thread_id = ? AND id > ? ORDER BY id").all(threadId, after) as Row[]).map((r) => {
       const m = toChatMessage(r);
-      return { ...m, actions: actions.get(m.id) ?? [] };
+      return { ...m, actions: actions.get(m.id) ?? [], files: files.get(m.id) ?? [] };
     });
   }
 
@@ -1870,7 +1919,7 @@ export class SqliteHive implements HiveBackend {
         }),
 
       // The machine is checked the way runs.dispatch checks it, and must have a Claude profile that can write the reply.
-      "chat.send": ({ project, threadId, machineId, profileId, title, text }, actor) =>
+      "chat.send": ({ project, threadId, machineId, profileId, title, text, files }, actor) =>
         this.#tx(() => {
           this.#expireChats();
           const thread = threadId === undefined ? null : (db.prepare(`${THREAD_SELECT} WHERE t.id = ?`).get(threadId) as Row | undefined);
@@ -1917,6 +1966,14 @@ export class SqliteHive implements HiveBackend {
             "INSERT INTO chat_messages(thread_id, role, author, text, status, sender, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
           );
           const message = num(put.run(id, "user", actor.name, text, null, null, now, now).lastInsertRowid);
+          // Only the sender's own uploads for this project, not sent with another message.
+          for (const fileId of files) {
+            const f = db.prepare("SELECT project, uploaded_by, message_id FROM chat_files WHERE id = ?").get(fileId) as Row | undefined;
+            if (!f || str(f.uploaded_by) !== actor.name || str(f.project) !== project || f.message_id != null) {
+              throw new HiveError("not_found", `No file #${fileId} to send.`, { key: "errors.chatFileNotFound", vars: { id: fileId } });
+            }
+            db.prepare("UPDATE chat_files SET thread_id = ?, message_id = ? WHERE id = ?").run(id, message, fileId);
+          }
           const sender: ChatSender = { name: actor.name, role: actor.role, ...(actor.access ? { access: actor.access } : {}) };
           const reply = num(put.run(id, "assistant", `${pinned ?? "claude"}@${m.machine}`, "", "pending", JSON.stringify(sender), now, now).lastInsertRowid);
           db.prepare("UPDATE chat_threads SET updated_at = ? WHERE id = ?").run(now, id);

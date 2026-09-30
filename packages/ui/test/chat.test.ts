@@ -50,6 +50,7 @@ const message = (id: number, over: Partial<ChatMessage> = {}): ChatMessage => ({
   updatedAt: "2026-09-29T10:00:00Z",
   finishedAt: null,
   actions: [],
+  files: [],
   ...over,
 });
 
