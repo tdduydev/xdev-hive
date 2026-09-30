@@ -1,22 +1,24 @@
-// Skills: the team's (org/skills/<name>) and each project's (project/<p>/skills/<name>). Sync writes them into
-// .claude/skills of the repos; Codex and Gemini find them through AGENTS.md and skill_get. Edited here as a form:
-// name, description and instructions, the SKILL.md front matter built from them.
+// Skills (docs/design/2026-09-redesign, xDev Hive Client): the team's (org/skills/<name>) and each project's
+// (project/<p>/skills/<name>). Sync writes them into .claude/skills of the repos; Codex and Gemini find them through
+// AGENTS.md and skill_get. A list on the left; the skill's SKILL.md on the right, edited as a form (name, description,
+// instructions) that builds the front matter.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { cn } from "cn";
 import { parseDocKey, parseSkill, SKILL_DESCRIPTION_MAX, SKILL_NAME, skillDocKey, stripHidden, type Proposal } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
-import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Diff } from "../components/Diff.tsx";
 import { HiddenChars } from "../components/HiddenChars.tsx";
-import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader } from "../components/common.tsx";
+import { ErrorNote, Notice } from "../components/common.tsx";
+import { Chip, DetailBody, DetailFooter, DetailHeader, KvRows, ListItem, ListPane } from "../components/panes.tsx";
 import { errorMessage, formatTime, useAction, useCan, useHive, useQuery } from "../hooks.ts";
 import { useT } from "../i18n/index.tsx";
 import { docOwner, inScope, scopeProject } from "../lib/scope.ts";
 import { buildSkill, skillsFor, splitSkill, type ListedSkill, type SkillParts } from "../lib/skills.ts";
+import { fold } from "../lib/text.ts";
+import { useToast } from "../shell/toast.tsx";
 
 const NEW = "new";
 
@@ -53,45 +55,69 @@ export function SkillsPage() {
   }, [list.data, selected, current, skills]);
   const reload = () => setTick((n) => n + 1);
 
+  const [q, setQ] = useState("");
+  const needle = fold(q.trim());
+  const shown = skills.filter((s) => !needle || fold(`${s.name} ${s.description}`).includes(needle));
+
   return (
-    <Page wide>
-      <PageHeader
-        title={t("nav.skills")}
-        subtitle={t("skills.subtitle")}
-        actions={
-          owners.length ? (
-            <Button variant="outline" onClick={() => setSelected(NEW)}>
-              {t("skills.new")}
-            </Button>
-          ) : null
+    <div className="flex h-full min-h-0 bg-surface">
+      <ListPane
+        label={t("nav.skills")}
+        head={
+          <div className="flex gap-1.5">
+            <Input className="h-7 min-w-0 flex-1 text-xs" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("skills.search")} aria-label={t("skills.search")} />
+            {owners.length ? (
+              <Button size="sm" variant="outline" onClick={() => setSelected(NEW)}>
+                {t("skills.new")}
+              </Button>
+            ) : null}
+          </div>
         }
-      />
-      {project ? <Notice tone="info">{t("skills.effectiveFor", { project })}</Notice> : null}
-      {proposals.length ? (
-        <Notice tone="warn">
-          {t("skills.pendingNotice", { count: proposals.length })}{" "}
-          <a className="font-medium underline underline-offset-2" href="#/proposals">
-            {t("skills.openProposals")}
+      >
+        <ErrorNote error={list.error} />
+        {project ? <p className="m-0 px-2 pt-1 pb-2 text-[11px]/4 text-fg-muted">{t("skills.effectiveFor", { project })}</p> : null}
+        {proposals.length ? (
+          <a className="mx-1 mb-1 rounded-sm bg-warning-soft px-2 py-1.5 text-xs text-fg-strong no-underline hover:underline" href="#/proposals">
+            {t("skills.pendingNotice", { count: proposals.length })} {t("skills.openProposals")}
           </a>
-        </Notice>
-      ) : null}
-      <ErrorNote error={list.error} />
-      {list.data && !skills.length && selected !== NEW ? <Empty>{t("skills.none")}</Empty> : null}
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
-        {skills.length ? (
-          <ul className="flex flex-col gap-2" aria-label={t("nav.skills")}>
-            {skills.map((s) => (
-              <li key={s.key}>
-                <SkillItem
-                  skill={s}
-                  selected={s.key === selected}
-                  pending={proposals.filter((p) => p.docKey === s.key).length}
-                  onSelect={() => setSelected(s.key)}
-                />
-              </li>
-            ))}
-          </ul>
         ) : null}
+        {shown.map((s) => {
+          const pending = proposals.filter((p) => p.docKey === s.key).length;
+          return (
+            <ListItem
+              key={s.key}
+              mono
+              selected={s.key === selected}
+              onClick={() => setSelected(s.key)}
+              title={s.name}
+              dim={s.overridden}
+              chip={
+                pending ? (
+                  <Chip kind="warning" small>
+                    {t("skills.pendingCount", { count: pending })}
+                  </Chip>
+                ) : s.overrides ? (
+                  <Chip kind="info" small>
+                    {t("skills.overrides")}
+                  </Chip>
+                ) : s.overridden ? (
+                  <Chip kind="neutral" small>
+                    {t("skills.overridden")}
+                  </Chip>
+                ) : s.project ? (
+                  <Chip kind="info" small>
+                    {t("skills.projectChip")}
+                  </Chip>
+                ) : null
+              }
+              sub={s.description || t("skills.noDescription")}
+              meta={s.project ?? t("inbox.shared")}
+            />
+          );
+        })}
+        {list.data && !shown.length ? <p className="m-0 px-3 py-8 text-center text-xs text-fg-muted">{t("skills.none")}</p> : null}
+      </ListPane>
+      <div className="flex min-w-0 flex-1 flex-col">
         {selected === NEW ? (
           <NewSkill
             owners={owners}
@@ -106,34 +132,11 @@ export function SkillsPage() {
           />
         ) : current ? (
           <SkillEditor key={current.key} skill={current} proposals={proposals.filter((p) => p.docKey === current.key)} onSaved={reload} />
-        ) : null}
+        ) : (
+          <div className="grid flex-1 place-items-center p-6 text-[13px] text-fg-muted">{list.data ? t("skills.pick") : null}</div>
+        )}
       </div>
-    </Page>
-  );
-}
-
-function SkillItem({ skill: s, selected, pending, onSelect }: { skill: ListedSkill; selected: boolean; pending: number; onSelect: () => void }) {
-  const t = useT();
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-current={selected ? "true" : undefined}
-      className={cn(
-        "flex w-full flex-col items-start gap-1.5 rounded-lg border p-3 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
-        selected ? "border-brand/50 bg-brand-soft/50" : "hover:bg-muted/50",
-        s.overridden && "opacity-70",
-      )}
-    >
-      <span className="flex max-w-full flex-wrap items-center gap-1.5">
-        <span className="font-mono text-sm font-medium break-all">{s.name}</span>
-        <OwnerBadge owner={s.project} />
-        {s.overrides ? <Badge tone="accent">{t("skills.overrides")}</Badge> : null}
-        {s.overridden ? <Badge tone="neutral">{t("skills.overridden")}</Badge> : null}
-        {pending ? <Badge tone="warn">{t("skills.pendingCount", { count: pending })}</Badge> : null}
-      </span>
-      <span className="line-clamp-2 max-w-full text-xs text-muted-foreground wrap-anywhere">{s.description || t("skills.noDescription")}</span>
-    </button>
+    </div>
   );
 }
 
@@ -210,11 +213,12 @@ function SkillEditor({ skill, proposals, onSaved }: { skill: ListedSkill; propos
   const { client, bump } = useHive();
   const t = useT();
   const allow = useCan();
+  const toast = useToast();
   const doc = useQuery(() => client.call("docs.get", { key: skill.key }), [client, skill.key]);
   const stored = doc.data?.content ?? "";
   const [parts, setParts] = useState<SkillParts>(() => splitSkill(""));
   const [note, setNote] = useState("");
-  const [done, setDone] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
   const action = useAction();
   useEffect(() => {
@@ -226,6 +230,10 @@ function SkillEditor({ skill, proposals, onSaved }: { skill: ListedSkill; propos
   // Compared as the form writes it, so a stored file with other spacing is not "changed" just by opening it.
   const dirty = Boolean(doc.data) && content !== buildSkill(splitSkill(stored));
   const unchecked = Boolean(doc.data) && !/^---\r?\n/.test(stored);
+  const desktop = client.desktop;
+  const settings = useQuery(async () => (desktop ? desktop.settings() : null), [desktop]);
+  // Where "write to the repos" goes: the skill's project, or every repo here for a team skill.
+  const repos = (settings.data?.projects ?? []).map((p) => p.name).filter((p) => skill.project === null || p === skill.project);
 
   const send = (kind: "save" | "propose") =>
     action.run(async () => {
@@ -236,59 +244,63 @@ function SkillEditor({ skill, proposals, onSaved }: { skill: ListedSkill; propos
       }
       if (kind === "save") {
         const saved = await client.call("docs.save", { key: skill.key, content, note: note.trim() || undefined, baseVersion: doc.data?.version ?? 0 });
-        setDone(t("docs.saved", { version: saved.version }));
+        toast(t("skills.savedToast", { name: skill.name, version: saved.version }));
         doc.reload();
       } else {
         await client.call("proposals.create", { docKey: skill.key, baseVersion: doc.data?.version ?? 0, content, reason: note.trim() || t("skills.proposeDefaultReason") });
-        setDone(t("docs.proposed"));
+        toast(t("skills.proposedToast", { name: skill.name }));
         setParts(splitSkill(stored));
         bump();
       }
       setNote("");
+      setEditing(false);
       onSaved();
     });
 
+  const writeRepos = () =>
+    void action.run(async () => {
+      for (const p of repos) await desktop!.syncProject(p);
+      toast(t("skills.wroteRepo", { name: skill.name, projects: repos.join(", ") }));
+    });
+
   return (
-    <Card className="py-4">
-      <CardContent className="flex flex-col gap-4 px-4">
-        <div className="flex flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <OwnerBadge owner={skill.project} />
-            <span className="min-w-0 font-mono text-xs break-all text-muted-foreground">{skill.key}</span>
-          </div>
-          <h2 className="font-mono text-lg font-semibold break-all">{skill.name}</h2>
-          <p className="text-xs text-muted-foreground">
-            {doc.data ? `v${doc.data.version} · ${doc.data.updatedBy} · ${formatTime(doc.data.updatedAt)}` : t("common.loading")}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {skill.project ? t("skills.syncProject", { name: skill.name, project: skill.project }) : t("skills.syncShared", { name: skill.name })}
-          </p>
-        </div>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <DetailHeader
+        mono
+        chips={
+          <>
+            <Chip kind={skill.project ? "info" : "neutral"}>{skill.project ? t("skills.project", { project: skill.project }) : t("inbox.shared")}</Chip>
+            {skill.overrides ? <Chip kind="info">{t("skills.overrides")}</Chip> : null}
+            {skill.overridden ? <Chip kind="neutral">{t("skills.overridden")}</Chip> : null}
+          </>
+        }
+        when={doc.data ? `v${doc.data.version} · ${doc.data.updatedBy} · ${formatTime(doc.data.updatedAt)}` : undefined}
+        title={skill.name}
+      />
+      <DetailBody>
         {skill.overrides ? <Notice tone="info">{t("skills.overridesHint")}</Notice> : null}
         {skill.overridden ? <Notice tone="info">{t("skills.overriddenHint")}</Notice> : null}
         {unchecked ? <Notice tone="warn">{t("skills.noFrontMatter")}</Notice> : null}
         {proposals.length ? (
-          <div className="flex flex-col gap-1.5 rounded-lg border border-warning/35 bg-warning/5 p-3">
-            <span className="text-xs font-medium">{t("skills.pendingTitle")}</span>
+          <div className="flex flex-col gap-1.5 rounded-md border border-warning-line bg-warning-soft p-3">
+            <span className="text-xs font-semibold text-fg-strong">{t("skills.pendingTitle")}</span>
             {proposals.map((p) => (
-              <a key={p.id} href="#/proposals" className="text-xs wrap-anywhere hover:underline">
+              <a key={p.id} href="#/proposals" className="text-xs text-fg-strong [overflow-wrap:anywhere] hover:underline">
                 #{p.id} · {p.reason} · {p.author} · {formatTime(p.createdAt)}
               </a>
             ))}
           </div>
         ) : null}
         <ErrorNote error={doc.error} />
-        <SkillFields parts={parts} onChange={setParts} readOnly={!canEdit && !canPropose} nameLocked idPrefix={`skill-${skill.key}`} />
-        {dirty ? (
-          <div className="flex flex-col gap-2">
-            <Button variant="ghost" size="sm" className="self-start" onClick={() => setShowDiff(!showDiff)} aria-expanded={showDiff}>
-              {t("docs.tabChanges")}
-            </Button>
-            {showDiff ? <Diff before={stored} after={content} /> : null}
-          </div>
-        ) : null}
-        {canEdit || canPropose ? (
+        {editing ? (
           <>
+            <SkillFields parts={parts} onChange={setParts} readOnly={!canEdit && !canPropose} nameLocked idPrefix={`skill-${skill.key}`} />
+            <Input
+              placeholder={canEdit ? t("docs.notePlaceholder") : t("docs.reasonPlaceholder")}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              aria-label={t("docs.note")}
+            />
             <HiddenChars
               fields={[
                 { label: t("skills.description"), text: parts.description },
@@ -297,26 +309,62 @@ function SkillEditor({ skill, proposals, onSaved }: { skill: ListedSkill; propos
               ]}
               onStrip={() => (setParts({ ...parts, description: stripHidden(parts.description), body: stripHidden(parts.body) }), setNote(stripHidden(note)))}
             />
-            <div className="flex flex-wrap gap-2">
-              <Input
-                className="min-w-48 flex-1"
-                placeholder={canEdit ? t("docs.notePlaceholder") : t("docs.reasonPlaceholder")}
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                aria-label={t("docs.note")}
-              />
-              <Button onClick={() => void send(canEdit ? "save" : "propose")} disabled={!dirty || action.busy}>
-                {action.busy ? (canEdit ? t("docs.saving") : t("docs.sending")) : canEdit ? t("docs.save", { version: (doc.data?.version ?? 0) + 1 }) : t("docs.propose")}
-              </Button>
-            </div>
+            {dirty && showDiff ? <Diff before={stored} after={content} /> : null}
           </>
         ) : (
-          <p className="text-sm text-muted-foreground">{t("skills.viewOnly")}</p>
+          <>
+            <p className="m-0 text-sm/[22px] text-pretty text-fg-primary">{parts.description || t("skills.noDescription")}</p>
+            <KvRows
+              rows={[
+                [t("skills.writeTo"), `.claude/skills/${skill.name}/SKILL.md`, true],
+                [t("skills.scopeLabel"), skill.project ? t("skills.syncProject", { name: skill.name, project: skill.project }) : t("skills.syncShared", { name: skill.name })],
+              ]}
+            />
+            <div className="overflow-hidden rounded-md border border-line-subtle bg-code">
+              <div className="flex h-7 items-center border-b border-line-subtle px-3 font-mono text-[11px]/none font-medium text-fg-muted">SKILL.md</div>
+              <pre className="m-0 max-h-[60vh] overflow-auto px-3 py-2.5 font-mono text-xs/[19px] whitespace-pre-wrap text-code-fg [overflow-wrap:anywhere]">{stored || "—"}</pre>
+            </div>
+          </>
         )}
         <ErrorNote error={action.error} />
-        {done && !dirty ? <Notice tone="ok" title={done} /> : null}
-      </CardContent>
-    </Card>
+      </DetailBody>
+      <DetailFooter foot={!canEdit && !canPropose ? t("skills.viewOnly") : undefined}>
+        {canEdit || canPropose ? (
+          editing ? (
+            <>
+              <Button size="sm" onClick={() => void send(canEdit ? "save" : "propose")} disabled={!dirty || action.busy}>
+                {action.busy ? (canEdit ? t("docs.saving") : t("docs.sending")) : canEdit ? t("docs.saveAs", { version: (doc.data?.version ?? 0) + 1 }) : t("docs.propose")}
+              </Button>
+              {dirty ? (
+                <Button size="sm" variant="ghost" onClick={() => setShowDiff((v) => !v)} aria-pressed={showDiff}>
+                  {showDiff ? t("docs.hideChanges") : t("docs.showChanges")}
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setParts(splitSkill(stored));
+                  setNote("");
+                  setEditing(false);
+                }}
+              >
+                {t("common.cancel")}
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" onClick={() => setEditing(true)} disabled={!doc.data}>
+              {t("skills.edit")}
+            </Button>
+          )
+        ) : null}
+        {desktop && !editing ? (
+          <Button size="sm" variant="outline" disabled={action.busy || !repos.length} title={repos.length ? repos.join(", ") : t("skills.writeRepoNone")} onClick={writeRepos}>
+            {t("skills.writeRepo")}
+          </Button>
+        ) : null}
+      </DetailFooter>
+    </div>
   );
 }
 
@@ -342,14 +390,14 @@ function NewSkill({
   const problem = !parts.name ? null : !key ? t("skills.nameHint") : taken.has(key) ? t("skills.exists", { key }) : null;
 
   return (
-    <Card className="py-4">
-      <CardContent className="flex flex-col gap-4 px-4">
-        <h2 className="text-lg font-semibold">{t("skills.newTitle")}</h2>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <DetailHeader title={t("skills.newTitle")} />
+      <DetailBody>
         <div className="grid gap-2 sm:grid-cols-[110px_1fr] sm:items-center sm:gap-x-3">
           <Label htmlFor="new-skill-owner" className="text-xs text-muted-foreground">
             {t("skills.owner")}
           </Label>
-          <NativeSelect id="new-skill-owner" className="w-full" value={owner} onChange={(e) => setOwner(e.target.value)}>
+          <NativeSelect id="new-skill-owner" wrapperClassName="w-full" value={owner} onChange={(e) => setOwner(e.target.value)}>
             {owners.map((o) => (
               <NativeSelectOption key={o || "shared"} value={o}>
                 {o || t("common.sharedTeam")}
@@ -358,7 +406,7 @@ function NewSkill({
           </NativeSelect>
         </div>
         <SkillFields parts={parts} onChange={setParts} readOnly={false} nameLocked={false} idPrefix="new-skill" />
-        {problem ? <p className="text-xs text-destructive">{problem}</p> : null}
+        {problem ? <p className="m-0 text-xs text-danger">{problem}</p> : null}
         <HiddenChars
           fields={[
             { label: t("skills.description"), text: parts.description },
@@ -366,8 +414,11 @@ function NewSkill({
           ]}
           onStrip={() => setParts({ ...parts, description: stripHidden(parts.description), body: stripHidden(parts.body) })}
         />
-        <div className="flex flex-wrap gap-2">
+        <ErrorNote error={action.error} />
+      </DetailBody>
+      <DetailFooter>
           <Button
+            size="sm"
             disabled={!key || Boolean(problem) || !parts.description.trim() || action.busy}
             onClick={() =>
               void action.run(async () => {
@@ -384,12 +435,10 @@ function NewSkill({
           >
             {action.busy ? t("docs.saving") : t("skills.create")}
           </Button>
-          <Button variant="ghost" onClick={onCancel}>
+          <Button size="sm" variant="ghost" onClick={onCancel}>
             {t("common.cancel")}
           </Button>
-        </div>
-        <ErrorNote error={action.error} />
-      </CardContent>
-    </Card>
+      </DetailFooter>
+    </div>
   );
 }
