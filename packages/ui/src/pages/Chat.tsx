@@ -1,8 +1,8 @@
 // Talking with a project's leader agent (hub only, roadmap 17): threads by project, each held on one team machine
 // whose Claude plan writes the replies in the same Claude Code session. A reply shows as the machine writes it,
 // with the agent's steps; project managers send messages and stop a reply.
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Bot, Check, MessageSquarePlus, SendHorizontal, Square, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowLeft, Bot, Check, MessageSquarePlus, RotateCcw, SendHorizontal, Square, X } from "lucide-react";
 import { cn } from "cn";
 import type { ChatAction, ChatMessage, ChatThread } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
@@ -11,6 +11,7 @@ import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, StatusDot } from "../components/common.tsx";
+import { CopyButton, ReplyMarkdown } from "../components/ReplyMarkdown.tsx";
 import { errorMessage, formatTime, formatUsd, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "../hooks.ts";
 import { useT } from "../i18n/index.tsx";
 import {
@@ -18,16 +19,13 @@ import {
   actionTask,
   chatMachines,
   chatProfile,
-  inline,
   isLiveReply,
   machineName,
   mergeMessages,
   pollAfter,
   REPLY_TONE,
-  replyBlocks,
   stepCount,
   withAction,
-  type Inline,
 } from "../lib/chat.ts";
 import { requestErrorText, runLabel } from "../lib/runs.ts";
 import { scopeProject } from "../lib/scope.ts";
@@ -225,7 +223,8 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) e.preventDefault(), send();
+            // Enter sends, Shift+Enter starts a new line; not while an input method is still composing a word.
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) e.preventDefault(), send();
           }}
         />
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -284,6 +283,12 @@ function Conversation({ threadId, onBack, onChanged }: { threadId: number; onBac
   const list = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const last = messages.at(-1);
+  // A last reply that did not come through can be asked again, with the message it answered.
+  const retry =
+    thread && manage && !thread.busy && last?.role === "assistant" && ["failed", "expired", "cancelled"].includes(last.status ?? "")
+      ? messages.findLast((m) => m.role === "user" && m.id < last.id)
+      : undefined;
+  const resend = retry && thread ? async () => (await client.call("chat.send", { project: thread.project, threadId: thread.id, text: retry.text }), refresh()) : undefined;
   useEffect(() => {
     const el = list.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
@@ -340,6 +345,7 @@ function Conversation({ threadId, onBack, onChanged }: { threadId: number; onBac
                 manage={manage}
                 onStopped={refresh}
                 onDecided={(a) => setMessages((ms) => withAction(ms, a))}
+                onResend={m.id === last?.id ? resend : undefined}
               />
             ),
           )}
@@ -371,6 +377,7 @@ function Reply({
   manage,
   onStopped,
   onDecided,
+  onResend,
 }: {
   message: ChatMessage;
   machine: string;
@@ -378,6 +385,8 @@ function Reply({
   manage: boolean;
   onStopped: () => void;
   onDecided: (action: ChatAction) => void;
+  /** Sends the message this reply answered again (the last reply, when it did not come through). */
+  onResend?: () => Promise<unknown>;
 }) {
   const { client } = useHive();
   const t = useT();
@@ -392,8 +401,9 @@ function Reply({
           <span className="font-mono">{m.author}</span>
           {m.status ? <Badge tone={REPLY_TONE[m.status] ?? "neutral"}>{t(`replyStatus.${m.status}`)}</Badge> : null}
           {m.costUsd !== null ? <span>{t("board.cost", { cost: formatUsd(m.costUsd) })}</span> : null}
+          {m.text && !live ? <CopyButton text={m.text} label={t("chat.copy")} className="ml-auto" /> : null}
         </div>
-        {m.text ? <ReplyText text={m.text} taskIds={taskIds} /> : live ? <p className="text-muted-foreground">{m.status === "pending" ? t("chat.waitingMachine", { machine }) : t("chat.writing")}</p> : null}
+        {m.text ? <ReplyMarkdown text={m.text} taskIds={taskIds} /> : live ? <p className="text-muted-foreground">{m.status === "pending" ? t("chat.waitingMachine", { machine }) : t("chat.writing")}</p> : null}
         {live && m.activity ? (
           <div className="flex items-center gap-2 text-xs text-info">
             <span className="size-2 shrink-0 animate-pulse rounded-full bg-info" aria-hidden />
@@ -417,6 +427,14 @@ function Reply({
           </section>
         ) : null}
         {m.error ? <div className="text-xs text-destructive wrap-anywhere">{requestErrorText(m.error)}</div> : null}
+        {onResend ? (
+          <div>
+            <Button size="sm" variant="outline" className="h-7" disabled={action.busy} onClick={() => void action.run(onResend)}>
+              <RotateCcw />
+              {t("chat.resend")}
+            </Button>
+          </div>
+        ) : null}
         {live && manage ? (
           <div>
             <Button
@@ -524,59 +542,6 @@ function ActionItem({ action: a, taskIds, manage, onDecided }: { action: ChatAct
 
 const LINK = "font-medium text-primary underline underline-offset-2";
 
-function ReplyText({ text, taskIds }: { text: string; taskIds: string[] }) {
-  return (
-    <div className="flex flex-col gap-2">
-      {replyBlocks(text, taskIds).map((b, i) =>
-        b.kind === "code" ? (
-          <pre key={i} className="overflow-x-auto rounded-md bg-muted p-2 font-mono text-xs">
-            {b.text}
-          </pre>
-        ) : (
-          <p key={i} className="whitespace-pre-wrap wrap-anywhere">
-            {b.parts.map((p, j) => (
-              <Fragment key={j}>{part(p, taskIds)}</Fragment>
-            ))}
-          </p>
-        ),
-      )}
-    </div>
-  );
-}
-
-function part(p: Inline, taskIds: string[]) {
-  // Links and ids inside emphasis stay links.
-  const inner = () => inline(p.text, taskIds).map((q, i) => <Fragment key={i}>{q.kind === "bold" || q.kind === "em" ? q.text : part(q, taskIds)}</Fragment>);
-  switch (p.kind) {
-    case "code":
-      return <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]">{p.text}</code>;
-    case "bold":
-      return <strong className="font-semibold">{inner()}</strong>;
-    case "em":
-      return <em>{inner()}</em>;
-    case "url":
-      return (
-        <a className={cn(LINK, "break-all")} href={p.text} target="_blank" rel="noreferrer noopener">
-          {p.text}
-        </a>
-      );
-    case "task":
-      return (
-        <a className={cn(LINK, "font-mono text-[0.9em]")} href={`#/tasks?task=${encodeURIComponent(p.text)}`}>
-          {p.text}
-        </a>
-      );
-    case "run":
-      return (
-        <a className={cn(LINK, "font-mono text-[0.9em]")} href={`#/runs?run=${encodeURIComponent(p.text)}`}>
-          {p.text}
-        </a>
-      );
-    default:
-      return p.text;
-  }
-}
-
 function Composer({ thread, onSent }: { thread: ChatThread; onSent: () => void }) {
   const { client } = useHive();
   const t = useT();
@@ -607,7 +572,8 @@ function Composer({ thread, onSent }: { thread: ChatThread; onSent: () => void }
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) e.preventDefault(), send();
+          // Enter sends, Shift+Enter starts a new line; not while an input method is still composing a word.
+          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) e.preventDefault(), send();
         }}
       />
       <div className="flex flex-wrap items-center justify-between gap-2">

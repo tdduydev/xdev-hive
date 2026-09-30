@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { ChatAction, ChatMessage, Machine, ReportedProfile } from "@xdev-hive/core";
-import { actionTask, chatMachines, inline, isLiveReply, machineName, mergeMessages, pollAfter, replyBlocks, stepCount, withAction } from "../src/lib/chat.ts";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { actionTask, chatMachines, isLiveReply, linkIds, machineName, mergeMessages, pollAfter, remarkHiveLinks, REPLY_MARKDOWN, stepCount, withAction } from "../src/lib/chat.ts";
 
 const profile = (over: Partial<ReportedProfile> = {}): ReportedProfile => ({
   id: "claude-1",
@@ -117,45 +121,74 @@ describe("chat helpers", () => {
 
   it("links the project's tasks and runs a reply names, and nothing that only looks like them", () => {
     const ids = ["T-1", "T-12", "AUTH-1", "AUTH-12", "v1.2"];
-    const parts = inline("Made T-12 and AUTH-12 (after AUTH-1). T-1. Queued R-1fa9c0 for v1.2; not T-123, XT-1 or T-1a.", ids);
+    const text = "Made T-12 and AUTH-12 (after AUTH-1). T-1. Queued R-1fa9c0 for v1.2; not T-123, XT-1 or T-1a.";
+    const parts = linkIds(text, ids);
     assert.deepEqual(
       parts.filter((p) => p.kind !== "text").map((p) => `${p.kind}:${p.text}`),
       ["task:T-12", "task:AUTH-12", "task:AUTH-1", "task:T-1", "run:R-1fa9c0", "task:v1.2"],
     );
-    assert.equal(parts.map((p) => p.text).join(""), "Made T-12 and AUTH-12 (after AUTH-1). T-1. Queued R-1fa9c0 for v1.2; not T-123, XT-1 or T-1a.", "no text lost");
-    assert.deepEqual(inline("T-1 is done", []), [{ kind: "text", text: "T-1 is done" }], "a task the project does not have is plain text");
+    assert.equal(parts.map((p) => p.text).join(""), text, "no text lost");
+    assert.deepEqual(linkIds("T-1 is done", []), [{ kind: "text", text: "T-1 is done" }], "a task the project does not have is plain text");
   });
 
-  it("picks out code, bold and web links; a link's closing punctuation stays text", () => {
-    assert.deepEqual(inline("Run `npm test` on **T-1**, see https://github.com/x/y/pull/3.", ["T-1"]), [
-      { kind: "text", text: "Run " },
-      { kind: "code", text: "npm test" },
-      { kind: "text", text: " on " },
-      { kind: "bold", text: "T-1" },
-      { kind: "text", text: ", see " },
-      { kind: "url", text: "https://github.com/x/y/pull/3" },
-      { kind: "text", text: "." },
+  it("turns ids in the reply's text into links, leaving code and existing links alone", () => {
+    const tree = {
+      type: "root",
+      children: [
+        {
+          type: "paragraph",
+          children: [
+            { type: "text", value: "See T-1 and R-1fa9c0." },
+            { type: "inlineCode", value: "T-1" },
+            { type: "link", url: "https://x.test", children: [{ type: "text", value: "T-1" }] },
+            { type: "strong", children: [{ type: "text", value: "T-1" }] },
+          ],
+        },
+        { type: "code", value: "T-1" },
+      ],
+    };
+    remarkHiveLinks({ taskIds: ["T-1"] })(tree);
+    const [paragraph, code] = tree.children as Array<{ type: string; children?: unknown[]; value?: string }>;
+    assert.deepEqual(paragraph!.children, [
+      { type: "text", value: "See " },
+      { type: "link", url: "#/tasks?task=T-1", children: [{ type: "text", value: "T-1" }] },
+      { type: "text", value: " and " },
+      { type: "link", url: "#/runs?run=R-1fa9c0", children: [{ type: "text", value: "R-1fa9c0" }] },
+      { type: "text", value: "." },
+      { type: "inlineCode", value: "T-1" },
+      { type: "link", url: "https://x.test", children: [{ type: "text", value: "T-1" }] },
+      { type: "strong", children: [{ type: "link", url: "#/tasks?task=T-1", children: [{ type: "text", value: "T-1" }] }] },
     ]);
-    assert.deepEqual(inline("`T-1` stays code", ["T-1"]), [{ kind: "code", text: "T-1" }, { kind: "text", text: " stays code" }]);
+    assert.deepEqual(code, { type: "code", value: "T-1" });
   });
 
-  it("reads *emphasis*, but not the stars of a sum or a list", () => {
-    assert.deepEqual(inline("the review says *needs fixes*: see T-1", ["T-1"]).map((p) => p.kind), ["text", "em", "text", "task"]);
-    for (const plain of ["2 * 3 * 4", "a*b*c", "* item\n* item", "**", "* x *"]) {
-      assert.ok(inline(plain).every((p) => p.kind === "text"), plain);
-    }
-    // The page reads what is inside emphasis again, so an id in **T-1** is still a link.
-    assert.deepEqual(inline("T-1", ["T-1"]), [{ kind: "task", text: "T-1" }]);
-  });
-
-  it("keeps fenced code as it is, including a fence still being written", () => {
-    const blocks = replyBlocks("Steps:\n```sh\nnpm test\nnpm run build\n```\nThen T-1.\n\n```ts\nconst a = 1;", ["T-1"]);
-    assert.deepEqual(blocks, [
-      { kind: "text", parts: [{ kind: "text", text: "Steps:" }] },
-      { kind: "code", text: "npm test\nnpm run build" },
-      { kind: "text", parts: [{ kind: "text", text: "Then " }, { kind: "task", text: "T-1" }, { kind: "text", text: "." }] },
-      { kind: "code", text: "const a = 1;" },
-    ]);
-    assert.deepEqual(replyBlocks(""), []);
+  it("renders a reply as GitHub Markdown, without its HTML or images", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        Markdown,
+        { ...REPLY_MARKDOWN, remarkPlugins: [remarkGfm, [remarkHiveLinks, { taskIds: ["T-2"] }]] },
+        [
+          "## Plan",
+          "- [x] T-2 done",
+          "",
+          "| Task | State |",
+          "| --- | --- |",
+          "| T-2 | review |",
+          "",
+          "```sh",
+          "npm test",
+          "```",
+          "<script>alert(1)</script> <b>bold</b>",
+          "",
+          "![tracker](https://evil.test/p.png) see https://github.com/x/y/pull/3",
+        ].join("\n"),
+      ),
+    );
+    assert.match(html, /<h2>Plan<\/h2>/);
+    assert.match(html, /<table>[\s\S]*<td><a href="#\/tasks\?task=T-2">T-2<\/a><\/td>/);
+    assert.match(html, /<pre><code class="language-sh">npm test\n<\/code><\/pre>/);
+    assert.match(html, /<a href="https:\/\/github.com\/x\/y\/pull\/3">/, "a bare web link becomes a link");
+    assert.doesNotMatch(html, /<script|<b>|alert\(1\)<\/script>/, "raw HTML is not rendered");
+    assert.doesNotMatch(html, /<img|evil\.test/, "no image from wherever the text points");
   });
 });
