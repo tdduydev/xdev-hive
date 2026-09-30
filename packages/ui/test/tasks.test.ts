@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { setActiveLocale } from "../src/i18n/translate.ts";
-import { REQUEST_TONE, requestErrorText } from "../src/lib/runs.ts";
-import { ownerLabel } from "../src/lib/tasks.ts";
+import { setActiveLocale } from "#ui/i18n/translate.ts";
+import { REQUEST_TONE, requestErrorText } from "#ui/lib/runs.ts";
+import { ownerLabel } from "#ui/lib/tasks.ts";
 
 describe("task helpers", () => {
   it("splits an agent's lease into its profile and machine, and leaves a person's name alone", () => {

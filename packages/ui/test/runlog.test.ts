@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parseLog, parsePatch, runSteps } from "../src/lib/runlog.ts";
+import { parseLog, parsePatch, runSteps } from "#ui/lib/runlog.ts";
 
 describe("run log and diff", () => {
   it("labels the runner's readable log", () => {
@@ -50,7 +50,7 @@ describe("run log and diff", () => {
   });
 });
 
-import { insertMd, parsePaths } from "../src/lib/docdraft.ts";
+import { insertMd, parsePaths } from "#ui/lib/docdraft.ts";
 
 describe("doc editor helpers", () => {
   it("wraps the selection, or starts the line, for the Markdown toolbar", () => {

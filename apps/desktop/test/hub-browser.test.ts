@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, describe, it } from "node:test";
 import { HiveError } from "@xdev-hive/core";
-import { landingPage, signInThroughBrowser } from "../src/main/hub-browser.ts";
+import { landingPage, signInThroughBrowser } from "#desktop/main/hub-browser.ts";
 
 // A hub that only knows the exchange: the code it gave out and the challenge the app sent with it.
 const issued = new Map<string, string>();

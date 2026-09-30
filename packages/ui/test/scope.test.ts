@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { HiveSystem } from "@xdev-hive/core";
-import { ALL, inScope, projectScope, readScope, resolveScope, sameScope, scopeFilter, scopeKey, scopeProjects, SHARED, systemScope, writeScope } from "../src/lib/scope.ts";
+import { ALL, inScope, projectScope, readScope, resolveScope, sameScope, scopeFilter, scopeKey, scopeProjects, SHARED, systemScope, writeScope } from "#ui/lib/scope.ts";
 
 const shop: HiveSystem = { name: "shop", projects: ["api", "web"], updatedAt: "2026-09-30T08:00:00.000Z", updatedBy: "duy" };
 

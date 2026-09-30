@@ -6,9 +6,9 @@ import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
-import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE, StatusDot } from "../components/common.tsx";
-import { formatTime, useAction, useHive, useQuery } from "../hooks.ts";
-import { rich, useT } from "../i18n/index.tsx";
+import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE, StatusDot } from "#ui/components/common.tsx";
+import { formatTime, useAction, useHive, useQuery } from "#ui/hooks.ts";
+import { rich, useT } from "#ui/i18n/index.tsx";
 
 export function TokensPage() {
   const { client, me } = useHive();

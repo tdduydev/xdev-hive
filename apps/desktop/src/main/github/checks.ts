@@ -1,6 +1,6 @@
 // The failed checks of a pull request's head commit, for the CI fixer: GitHub Actions jobs with their log,
 // other apps' check runs with what they reported, and failing commit statuses. No Electron imports.
-import type { FailedJobs } from "../gitlab/ci-fix.ts";
+import type { FailedJobs } from "#desktop/main/gitlab/ci-fix.ts";
 import { FAILED_CONCLUSIONS as FAILED, type GitHubCheckRun, type GitHubClient, type GitHubStatus } from "./client.ts";
 
 /** Actions logs: a timestamp on every line and ##[group] markers (the step's title stays); errors keep their text. */

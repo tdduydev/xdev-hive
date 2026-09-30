@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { ensureClaudeImport, globDir, MANAGED_END, MANAGED_START, planProjectSync, projectSkills, stripManaged, withManagedBlock, type Doc } from "../src/index.ts";
+import { ensureClaudeImport, globDir, MANAGED_END, MANAGED_START, planProjectSync, projectSkills, stripManaged, withManagedBlock, type Doc } from "#core/index.ts";
 
 const doc = (key: string, content: string, extra: Partial<Doc> = {}): Doc => ({
   key,

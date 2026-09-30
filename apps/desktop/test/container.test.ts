@@ -6,9 +6,9 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { AGENT_TEMPLATES, type Actor, type AgentProfile, type HiveBackend } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
-import { containerCommand, containerName } from "../src/main/runner/container.ts";
-import { claudeMcpServers, codexMcpArgs, hubMcpEnv } from "../src/main/runner/container-mcp.ts";
-import { Runner, type RunnerHost } from "../src/main/runner/runner.ts";
+import { containerCommand, containerName } from "#desktop/main/runner/container.ts";
+import { claudeMcpServers, codexMcpArgs, hubMcpEnv } from "#desktop/main/runner/container-mcp.ts";
+import { Runner, type RunnerHost } from "#desktop/main/runner/runner.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
 const FIXTURES = path.join(import.meta.dirname, "fixtures");

@@ -4,7 +4,7 @@ import { connect, createServer as createTcp, type AddressInfo } from "node:net";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { AGENT_TEMPLATES, type AgentProfile } from "@xdev-hive/core";
-import { deniedHosts, egressAllow, egressPlan } from "../src/main/runner/egress.ts";
+import { deniedHosts, egressAllow, egressPlan } from "#desktop/main/runner/egress.ts";
 
 const profile = (allow: string[] = []): AgentProfile => ({ ...AGENT_TEMPLATES.codex, container: { image: "xdev-hive-agent", network: "restricted", allow } });
 

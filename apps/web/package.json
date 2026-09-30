@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "imports": {
+    "#web/*": "./src/*"
+  },
   "scripts": {
     "dev": "node --watch-path=src --watch-path=../../packages/core/src --watch-path=../../packages/mcp/src src/server.ts",
     "build": "vite build",

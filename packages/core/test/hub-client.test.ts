@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:net";
 import { describe, it } from "node:test";
-import { HiveError, HubBackend } from "../src/index.ts";
+import { HiveError, HubBackend } from "#core/index.ts";
 
 /** A port nothing listens on: bind one, then close it. */
 async function closedPort(): Promise<number> {

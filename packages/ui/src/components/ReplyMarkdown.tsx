@@ -5,8 +5,8 @@ import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Check, Copy } from "lucide-react";
 import { cn } from "cn";
-import { useT } from "../i18n/index.tsx";
-import { remarkHiveLinks, REPLY_MARKDOWN } from "../lib/chat.ts";
+import { useT } from "#ui/i18n/index.tsx";
+import { remarkHiveLinks, REPLY_MARKDOWN } from "#ui/lib/chat.ts";
 
 const LINK = "font-medium text-primary underline underline-offset-2";
 

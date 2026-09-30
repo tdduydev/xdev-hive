@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { parseSkill, type SkillSummary } from "@xdev-hive/core";
-import { buildSkill, leaderGuide, skillsFor, splitSkill } from "../src/lib/skills.ts";
+import { buildSkill, leaderGuide, skillsFor, splitSkill } from "#ui/lib/skills.ts";
 
 const summary = (name: string, project: string | null): SkillSummary => ({
   key: project ? `project/${project}/skills/${name}` : `org/skills/${name}`,

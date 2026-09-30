@@ -1,7 +1,7 @@
 // A machine's subscription profiles as it reported them: off, no CLI, not signed in, resting, ready.
 import type { ReportedProfile } from "@xdev-hive/core";
-import { formatTime } from "../hooks.ts";
-import { useT } from "../i18n/index.tsx";
+import { formatTime } from "#ui/hooks.ts";
+import { useT } from "#ui/i18n/index.tsx";
 import { StatusDot } from "./common.tsx";
 
 export function ProfileStates({ profiles, details = false }: { profiles: ReportedProfile[]; details?: boolean }) {

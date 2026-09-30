@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { docAssetPath, docAssetRef, docLinkRefs, HiveError, replaceDocLinks, resolveDocLink, transferHive, type Actor } from "../src/index.ts";
-import { SqliteHive } from "../src/node.ts";
+import { docAssetPath, docAssetRef, docLinkRefs, HiveError, replaceDocLinks, resolveDocLink, transferHive, type Actor } from "#core/index.ts";
+import { SqliteHive } from "#core/node.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
 /** Manages web, contributes to app. */

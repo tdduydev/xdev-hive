@@ -15,9 +15,9 @@ import {
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@xdev-hive/ui/components/ui/toggle-group";
-import { Badge, Empty, ErrorNote, Notice, Page, PageHeader } from "../components/common.tsx";
-import { formatTime, useAction, useHive, useQuery } from "../hooks.ts";
-import { useT } from "../i18n/index.tsx";
+import { Badge, Empty, ErrorNote, Notice, Page, PageHeader } from "#ui/components/common.tsx";
+import { formatTime, useAction, useHive, useQuery } from "#ui/hooks.ts";
+import { useT } from "#ui/i18n/index.tsx";
 
 const SEGMENT = "px-2.5 text-xs";
 const NONE = "none";

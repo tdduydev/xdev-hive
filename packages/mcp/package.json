@@ -6,6 +6,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "imports": {
+    "#mcp/*": "./src/*"
+  },
   "bin": {
     "hive-mcp": "./src/stdio.ts"
   },

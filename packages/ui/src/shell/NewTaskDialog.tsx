@@ -5,11 +5,11 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
-import { ErrorNote } from "../components/common.tsx";
-import { useAction, useCan, useHive, useQuery } from "../hooks.ts";
-import { useT } from "../i18n/index.tsx";
-import { scopeProject } from "../lib/scope.ts";
-import { nextTaskId } from "../lib/tasks.ts";
+import { ErrorNote } from "#ui/components/common.tsx";
+import { useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
+import { useT } from "#ui/i18n/index.tsx";
+import { scopeProject } from "#ui/lib/scope.ts";
+import { nextTaskId } from "#ui/lib/tasks.ts";
 import { useToast } from "./toast.tsx";
 
 export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {

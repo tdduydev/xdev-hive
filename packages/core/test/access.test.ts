@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { can, HiveError, levelOn, type Actor } from "../src/index.ts";
-import { SqliteHive } from "../src/node.ts";
+import { can, HiveError, levelOn, type Actor } from "#core/index.ts";
+import { SqliteHive } from "#core/node.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
 /** A person with view on app, manage on web, nothing on billing. */

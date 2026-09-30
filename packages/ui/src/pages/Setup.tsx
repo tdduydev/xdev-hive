@@ -6,10 +6,10 @@ import { cn } from "cn";
 import { requiredItemIds, type MachineCommand, type SetupItem, type SetupReport, type SetupState } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
-import { Empty, ErrorNote, Notice } from "../components/common.tsx";
-import { Chip, type ChipKind } from "../components/panes.tsx";
-import { formatTime, useAction, useHive, useQuery } from "../hooks.ts";
-import { rich, useT } from "../i18n/index.tsx";
+import { Empty, ErrorNote, Notice } from "#ui/components/common.tsx";
+import { Chip, type ChipKind } from "#ui/components/panes.tsx";
+import { formatTime, useAction, useHive, useQuery } from "#ui/hooks.ts";
+import { rich, useT } from "#ui/i18n/index.tsx";
 
 const TONE: Record<SetupState, ChipKind> = { installed: "success", missing: "warning", outdated: "info", manual: "danger" };
 

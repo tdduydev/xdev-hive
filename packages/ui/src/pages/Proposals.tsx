@@ -4,11 +4,11 @@ import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@xdev-hive/ui/components/ui/toggle-group";
-import { Diff } from "../components/Diff.tsx";
-import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
-import { formatTime, sourceText, useAction, useCan, useHive, useQuery } from "../hooks.ts";
-import { useT } from "../i18n/index.tsx";
-import { docOwner, inScope, scopeLabel } from "../lib/scope.ts";
+import { Diff } from "#ui/components/Diff.tsx";
+import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "#ui/components/common.tsx";
+import { formatTime, sourceText, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
+import { useT } from "#ui/i18n/index.tsx";
+import { docOwner, inScope, scopeLabel } from "#ui/lib/scope.ts";
 
 const SEGMENT = "";
 

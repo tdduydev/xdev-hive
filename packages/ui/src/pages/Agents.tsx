@@ -21,11 +21,11 @@ import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Switch } from "@xdev-hive/ui/components/ui/switch";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
-import { Badge, Empty, ErrorNote, Notice, StatusDot } from "../components/common.tsx";
-import { Chip, type ChipKind } from "../components/panes.tsx";
-import { useToast } from "../shell/toast.tsx";
-import { errorMessage, formatTime, formatUsd, useAction, useHive, useQuery } from "../hooks.ts";
-import { activeIntl, rich, useT } from "../i18n/index.tsx";
+import { Badge, Empty, ErrorNote, Notice, StatusDot } from "#ui/components/common.tsx";
+import { Chip, type ChipKind } from "#ui/components/panes.tsx";
+import { useToast } from "#ui/shell/toast.tsx";
+import { errorMessage, formatTime, formatUsd, useAction, useHive, useQuery } from "#ui/hooks.ts";
+import { activeIntl, rich, useT } from "#ui/i18n/index.tsx";
 
 /** Env var that points each CLI at a separate login, so two subscriptions of one vendor can rotate. */
 const ACCOUNT_ENV_HINT: Partial<Record<AgentKind, string>> = {

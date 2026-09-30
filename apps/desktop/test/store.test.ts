@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { RunStore } from "../src/main/runner/store.ts";
+import { RunStore } from "#desktop/main/runner/store.ts";
 
 describe("the run store", () => {
   it("lists one project's runs, a system's, or every one", () => {

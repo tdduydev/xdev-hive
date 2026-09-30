@@ -3,8 +3,8 @@
 // failed checks, on an open one goes to the CI fixer. Only links on the configured GitLab / GitHub, so each
 // token goes nowhere else. No Electron imports.
 import { PIPELINE_STATUSES, type AgentRun, type MrStatus, type PipelineStatus } from "@xdev-hive/core";
-import { failureId, githubJobs } from "../github/checks.ts";
-import { checksStatus, GitHubClient, pullRef } from "../github/client.ts";
+import { failureId, githubJobs } from "#desktop/main/github/checks.ts";
+import { checksStatus, GitHubClient, pullRef } from "#desktop/main/github/client.ts";
 import { gitlabJobs, type CiFixer, type CiFixOutcome, type FailedJobs } from "./ci-fix.ts";
 import { GitLabClient } from "./client.ts";
 import { clipTail, mrActor, mrLabel, type MrHost } from "./mr.ts";
