@@ -486,6 +486,9 @@ Trên hub, agent giữ task với tên `<gói>.<máy>@<token>`, ví dụ `claude
       - Leader đọc được file đính kèm (roadmap 17g-2). Yêu cầu trả lời mang theo danh sách file của tin. Máy tải từng file bằng token của câu trả lời (không dùng token của máy) vào một thư mục riêng của câu trả lời, ngoài repo.
       - Máy làm sạch tên file thêm một lần và đặt tên khác cho file trùng tên. Claude được đọc thư mục đó qua `--add-dir`, và tin gửi leader kèm đường dẫn từng file để nó đọc bằng Read (đọc được cả ảnh và PDF).
       - File không tải được thì được ghi chú trong tin, câu trả lời vẫn tiếp tục. Thư mục bị xoá khi câu trả lời xong.
+    - **Hướng dẫn leader** (roadmap 17i-1): người quản trị dự án bấm *Hướng dẫn leader* trên trang *Chat* để sửa hướng dẫn cho leader của dự án.
+      - Khung sửa mở bản đang dùng: bản riêng của dự án nếu có, không thì bản chung của nhóm (skill `hive-leader`).
+      - Lưu thì tạo hoặc cập nhật skill `project/<dự án>/skills/hive-leader`, có lịch sử phiên bản như mọi skill. Leader đọc bản riêng này trước (`skill_get`); các dự án khác vẫn dùng bản chung.
     - **Model, mức nỗ lực và mặc định của dự án** (roadmap 17h).
       - *Chat mới* có ô chọn model (bí danh của Claude Code: fable, opus, sonnet, haiku; hoặc để model của gói) và mức nỗ lực (low đến max, hoặc để mặc định). Máy chạy `claude` với `--model` và `--effort` tương ứng.
       - Người quản trị dự án bấm *Lưu làm mặc định*: chat mới của dự án sẽ bắt đầu với máy, gói, model và mức nỗ lực đó (`chat.setDefaults`, migration 20). Form tự điền theo mặc định. Qua API, chat mới không nêu máy hay gói cũng dùng mặc định.
