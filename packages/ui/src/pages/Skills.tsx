@@ -30,8 +30,11 @@ export function SkillsPage() {
   const pending = useQuery(() => client.call("proposals.list", { status: "pending" }), [client, tick]);
   const skills = useMemo(() => {
     const all = list.data ?? [];
-    return scope.kind === "shared" ? skillsFor(all.filter((s) => s.project === null), null) : skillsFor(all, project);
-  }, [list.data, scope.kind, project]);
+    if (scope.kind === "shared") return skillsFor(all.filter((s) => s.project === null), null);
+    // A system: the team's skills and those of its projects.
+    if (scope.kind === "system") return skillsFor(all.filter((s) => s.project === null || scope.projects.includes(s.project)), null);
+    return skillsFor(all, project);
+  }, [list.data, scope, project]);
   // Proposals on skills in view: agents send them with skill_propose, people from this page.
   const proposals = useMemo(
     () => (pending.data ?? []).filter((p) => parseDocKey(p.docKey).skill && inScope(scope, docOwner(p.docKey))),

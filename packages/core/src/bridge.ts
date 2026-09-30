@@ -327,7 +327,7 @@ export interface DesktopBridge {
   openSetupToken(id: string): Promise<{ opened: boolean }>;
 
   startRun(request: StartRunRequest): Promise<AgentRun>;
-  runs(filter?: { project?: string; limit?: number }): Promise<AgentRun[]>;
+  runs(filter?: { project?: string; projects?: string[]; limit?: number }): Promise<AgentRun[]>;
   runLog(id: string): Promise<string>;
   runDiff(id: string): Promise<string>;
   cancelRun(id: string): Promise<AgentRun>;

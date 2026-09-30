@@ -62,6 +62,13 @@ function groupDocs(all: DocSummary[], scope: Scope, t: TFunction): DocGroup[] {
       { id: "shared", owner: null, label: t("docs.sharedGroup"), docs: shared },
     ];
   }
+  // A system: its projects, each with its own docs.
+  if (scope.kind === "system") {
+    return [
+      { id: "shared", owner: null, label: t("common.sharedTeam"), docs: shared },
+      ...[...scope.projects].sort().map((p) => ({ id: `project:${p}`, owner: p, label: p, docs: all.filter((d) => docOwner(d.key) === p) })),
+    ];
+  }
   const byProject = new Map<string, DocSummary[]>();
   for (const d of all) {
     const owner = docOwner(d.key);
@@ -166,7 +173,7 @@ export function DocsPage() {
                     ) : (
                       <FolderGit2 className="size-3.5 shrink-0" aria-hidden="true" />
                     )}
-                    <span className={cn("min-w-0 flex-1 truncate", scope.kind === "all" && g.owner !== null && "font-mono")}>
+                    <span className={cn("min-w-0 flex-1 truncate", (scope.kind === "all" || scope.kind === "system") && g.owner !== null && "font-mono")}>
                       {g.label}
                     </span>
                     <span className="font-normal text-muted-foreground tabular-nums">{g.docs.length}</span>

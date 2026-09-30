@@ -29,6 +29,7 @@ import {
   type Doc,
   type DocSummary,
   type DocVersion,
+  type HiveSystem,
   type Machine,
   type MachineCommand,
   type MachineDetail,
@@ -43,6 +44,9 @@ import {
 
 const docKey = z.string().min(1).max(200);
 const project = z.string().regex(PROJECT_NAME, "project must be lowercase letters, digits, . _ -");
+/** Only these projects (a system's, roadmap 19b); none listed: nothing. With `project` too, both must hold. */
+const projectList = z.array(project).max(200).optional();
+const systemName = z.string().regex(PROJECT_NAME, "system name must be lowercase letters, digits, . _ -");
 const id = z.number().int().positive();
 // Repo-relative glob, e.g. apps/web/** or src/**/*.{ts,tsx}. No leading "/", no "..", no spaces.
 const pathGlob = z
@@ -174,6 +178,7 @@ export const schemas = {
   /** A project's memory plus the team-wide (shared) entries; no project: shared entries only; anyProject: everything. */
   "memory.search": z.object({
     project: project.optional(),
+    projects: projectList,
     query: z.string().max(500).default(""),
     limit: z.number().int().min(1).max(50).default(10),
     includeShared: z.boolean().default(true),
@@ -184,6 +189,7 @@ export const schemas = {
   /** project: that project (plus shared with includeShared) · null: shared only · omitted: everything. */
   "memory.list": z.object({
     project: project.nullable().optional(),
+    projects: projectList,
     includeShared: z.boolean().default(false),
     status: z.enum(MEMORY_STATUSES).optional(),
     /** true: only the stale entries, to review them. */
@@ -221,13 +227,14 @@ export const schemas = {
 
   "tasks.list": z.object({
     project: project.optional(),
+    projects: projectList,
     status: z.enum(TASK_STATUSES).optional(),
   }),
   "tasks.create": z.object({ id: taskId, project, title: z.string().min(1).max(300), dependsOn: z.array(taskId).max(20).default([]) }),
   /** Replaces what the task depends on (tasks of the same project, no cycles). */
   "tasks.setDeps": z.object({ id: taskId, dependsOn: z.array(taskId).max(20) }),
   /** Tasks ready to start: to do, nothing they depend on is open, nobody holds them. Those that unlock the most come first. */
-  "tasks.next": z.object({ project: project.optional(), limit: z.number().int().min(1).max(20).default(5) }),
+  "tasks.next": z.object({ project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(20).default(5) }),
   "tasks.claim": z.object({
     id: taskId,
     leaseMinutes: z.number().int().min(5).max(24 * 60).default(120),
@@ -312,7 +319,7 @@ export const schemas = {
       .max(20),
   }),
   /** Runs the hub was told about, the newest runs first (no log); a project's, or every project the caller sees. */
-  "runs.list": z.object({ project: project.optional(), limit: z.number().int().min(1).max(200).default(50) }),
+  "runs.list": z.object({ project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(200).default(50) }),
   /**
    * A project manager stops a run that waits or runs on a machine taking runs from the hub: the machine hears it at
    * its next heartbeat, stops the agent and reports the run as cancelled.
@@ -336,7 +343,7 @@ export const schemas = {
     instructions: z.string().max(4000).default(""),
   }),
   /** Run requests, the newest first: a project's, or every project the caller sees. */
-  "runs.requests": z.object({ project: project.optional(), limit: z.number().int().min(1).max(200).default(50) }),
+  "runs.requests": z.object({ project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(200).default(50) }),
   /** Withdraws a request no machine took yet. */
   "runs.cancelRequest": z.object({ id }),
   /** The machine a request is for says whether it queued the run (only for requests addressed to itself). */
@@ -364,6 +371,7 @@ export const schemas = {
   /** Threads, the most recently active first: a project's, or every project the caller sees. */
   "chat.threads": z.object({
     project: project.optional(),
+    projects: projectList,
     /** Words in the title or any message, in any case. */
     query: z.string().max(200).optional(),
     limit: z.number().int().min(1).max(200).default(50),
@@ -445,6 +453,12 @@ export const schemas = {
       .default([])
       .refine((list) => new Set(list.map((p) => p.id)).size === list.length, "template ids must be unique"),
   }),
+
+  /** Systems (roadmap 19b), by name. */
+  "systems.list": z.object({}),
+  /** Creates a system or replaces its projects: needs "manage" on every project it had and gets. */
+  "systems.save": z.object({ name: systemName, projects: z.array(project).min(1).max(200) }),
+  "systems.remove": z.object({ name: systemName }),
 
   "admin.machines": z.object({}),
   "admin.commandCreate": z.object({ machineId: machineRef, itemId: setupItemId }),
@@ -533,6 +547,9 @@ export interface MethodOutput {
   "machines.commandResult": MachineCommand;
   "policy.get": TeamPolicy;
   "policy.set": TeamPolicy;
+  "systems.list": HiveSystem[];
+  "systems.save": HiveSystem;
+  "systems.remove": { removed: boolean };
   "admin.machines": MachineDetail[];
   "admin.commandCreate": MachineCommand;
   "admin.commandCancel": MachineCommand;
@@ -607,6 +624,10 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "machines.commandResult": "agent",
   "policy.get": "viewer",
   "policy.set": "admin",
+  "systems.list": "viewer",
+  // Also "manage" on each project of the system: a project manager, never an agent token.
+  "systems.save": "agent",
+  "systems.remove": "agent",
   "admin.machines": "admin",
   "admin.commandCreate": "admin",
   "admin.commandCancel": "admin",
