@@ -1,0 +1,287 @@
+// Trang Hub and Context agent (docs/design/2026-09-redesign, xDev Hive Web Admin; roadmap 22n): what the hub is and how
+// it is doing (a backup on request), and what a project's agents get from Hive (the AGENTS.md a sync writes).
+import { useEffect, useState, type ReactNode } from "react";
+import { cn } from "cn";
+import { Button } from "@xdev-hive/ui/components/ui/button";
+import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
+import { ErrorNote } from "#ui/components/common.tsx";
+import { errorMessage, formatTime, useHive, useQuery } from "#ui/hooks.ts";
+import { useT } from "#ui/i18n/index.tsx";
+import { fileSize } from "#ui/lib/chat.ts";
+import { useToast } from "#ui/shell/toast.tsx";
+
+type Tone = "ok" | "warn" | "run" | "neutral";
+const STATE: Record<Tone, string> = {
+  ok: "bg-success-soft text-success",
+  warn: "bg-warning-soft text-warning",
+  run: "bg-running-soft text-running",
+  neutral: "bg-sunken text-fg-secondary",
+};
+
+function HubCard({
+  title,
+  state,
+  tone,
+  value,
+  detail,
+  action,
+}: {
+  title: string;
+  state: string;
+  tone: Tone;
+  value: ReactNode;
+  detail: ReactNode;
+  action?: ReactNode;
+}) {
+  return (
+    <section className="flex min-w-0 flex-col gap-1.5 rounded-[14px] border border-line-default bg-surface p-4">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-fg-muted">{title}</span>
+        <span className={cn("ml-auto rounded-xs px-1.5 py-0.5 text-[11px] font-semibold", STATE[tone])}>{state}</span>
+      </div>
+      <span className="truncate font-mono text-lg font-semibold text-fg-strong">{value}</span>
+      <span className="text-xs/[18px] text-fg-muted [overflow-wrap:anywhere]">{detail}</span>
+      {action ? <div className="mt-1">{action}</div> : null}
+    </section>
+  );
+}
+
+const uptime = (s: number) => {
+  const d = Math.floor(s / 86400);
+  const h = String(Math.floor((s % 86400) / 3600)).padStart(2, "0");
+  const m = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
+  return `${d ? `${d}d ` : ""}${h}:${m}`;
+};
+
+/** Trang Hub: version, database, backup (Backup ngay), meaning search, SSO, hosts. */
+export function OpsHub() {
+  const { client } = useHive();
+  const t = useT();
+  const toast = useToast();
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const info = useQuery(async () => (client.hub ? client.hub.info() : null), [client, tick]);
+  const [busy, setBusy] = useState(false);
+  if (!client.hub) return null;
+  const h = info.data;
+  const backupLate = h?.backup?.last ? Date.now() - Date.parse(h.backup.last) > (h.backup.hours + 2) * 3_600_000 : Boolean(h?.backup);
+  const backupNow = () => {
+    setBusy(true);
+    void client
+      .hub!.backup()
+      .then(
+        (r) => (toast(t("hub.backedUp", { file: r.file })), setTick((n) => n + 1)),
+        (err: unknown) => toast(errorMessage(err), { tone: "error" }),
+      )
+      .finally(() => setBusy(false));
+  };
+  return (
+    <div className="flex flex-col gap-3">
+      <ErrorNote error={info.error} />
+      {h ? (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,300px),1fr))] gap-2.5">
+          <HubCard
+            title={t("hub.version")}
+            state={t("hub.ok")}
+            tone="ok"
+            value={`hub ${h.version}${h.commit ? ` · ${h.commit}` : ""}`}
+            detail={t("hub.versionDetail", {
+              where: h.container ? t("hub.container") : t("hub.process"),
+              node: h.node,
+              uptime: uptime(h.uptimeSeconds),
+              since: formatTime(h.startedAt),
+            })}
+          />
+          <HubCard
+            title={t("hub.database")}
+            state={t("hub.ok")}
+            tone="ok"
+            value={`${h.db.path.split("/").pop()} · ${fileSize(h.db.bytes + h.db.walBytes)}`}
+            detail={t("hub.dbDetail", { path: h.db.path, ...h.db.counts })}
+          />
+          <HubCard
+            title={t("hub.backup")}
+            state={h.backup ? (backupLate ? t("hub.late") : t("hub.ok")) : t("hub.off")}
+            tone={h.backup ? (backupLate ? "warn" : "ok") : "neutral"}
+            value={h.backup ? (h.backup.last ? formatTime(h.backup.last) : t("hub.noBackupYet")) : t("hub.off")}
+            detail={
+              h.backup
+                ? t("hub.backupDetail", { hours: h.backup.hours, keep: h.backup.keep, dir: h.backup.dir, count: h.backup.count })
+                : t("hub.backupOffHint")
+            }
+            action={
+              h.backup ? (
+                <Button size="sm" variant="outline" disabled={busy} onClick={backupNow}>
+                  {busy ? t("hub.backingUp") : t("hub.backupNow")}
+                </Button>
+              ) : undefined
+            }
+          />
+          <HubCard
+            title={t("hub.search")}
+            state={
+              h.search.mode === "keyword"
+                ? t("hub.keywordOnly")
+                : h.search.lastError
+                  ? t("hub.error")
+                  : h.search.indexed < h.search.total
+                    ? t("hub.indexing")
+                    : t("hub.ok")
+            }
+            tone={h.search.mode === "keyword" ? "neutral" : h.search.lastError ? "warn" : h.search.indexed < h.search.total ? "run" : "ok"}
+            value={h.search.model ? `${h.search.model} · ${h.search.indexed}/${h.search.total}` : t("hub.keywordOnly")}
+            detail={
+              h.search.mode === "keyword"
+                ? t("hub.searchOffHint")
+                : [h.search.url, h.search.lastError, t("hub.waitingVectors", { count: h.search.total - h.search.indexed })].filter(Boolean).join(" · ")
+            }
+          />
+          <HubCard
+            title={t("hub.sso")}
+            state={h.sso ? t("hub.on") : t("hub.off")}
+            tone={h.sso ? "ok" : "neutral"}
+            value={h.sso?.name ?? t("hub.passwordOnly")}
+            detail={h.sso ? t("hub.ssoDetail", { issuer: h.sso.issuer, count: h.sso.linked }) : t("hub.ssoOffHint")}
+          />
+          <HubCard
+            title={t("hub.hosts")}
+            state={t("hub.config")}
+            tone="neutral"
+            value={h.hosts.allowed?.join(", ") ?? t("hub.anyHost")}
+            detail={[h.hosts.publicUrl, h.hosts.trustProxy ? "HIVE_TRUST_PROXY=1" : null].filter(Boolean).join(" · ") || "—"}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Context agent: a project's AGENTS.md as a sync writes it, what it is made of, the files, the memory. */
+export function OpsContext() {
+  const { client, projects } = useHive();
+  const t = useT();
+  const [picked, setPicked] = useState<string | null>(null);
+  const project = picked ?? projects[0] ?? null;
+  const ctx = useQuery(async () => (project ? client.call("docs.context", { project }) : null), [client, project]);
+  const [full, setFull] = useState(false);
+  const c = ctx.data;
+  const over = c ? c.lines > c.limit : false;
+  const card = "flex min-w-0 flex-col gap-2.5 rounded-[14px] border border-line-default bg-surface p-4";
+  return (
+    <div className="flex flex-col gap-3">
+      <label className="flex h-9 items-center gap-2 self-start rounded-[9px] border border-line-default bg-surface pr-1.5 pl-3 text-xs text-fg-muted">
+        {t("context.project")}
+        <NativeSelect
+          size="sm"
+          className="border-0 font-mono"
+          value={project ?? ""}
+          onChange={(e) => (setPicked(e.target.value), setFull(false))}
+          aria-label={t("context.project")}
+        >
+          {projects.map((p) => (
+            <NativeSelectOption key={p} value={p}>
+              {p}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+      </label>
+      <ErrorNote error={ctx.error} />
+      {!projects.length ? <p className="m-0 text-[13px] text-fg-muted">{t("context.noProjects")}</p> : null}
+      {c ? (
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,420px),1fr))] items-start gap-3">
+          <section className={card}>
+            <div className="flex items-baseline gap-2">
+              <h2 className="m-0 text-sm font-semibold text-fg-strong">AGENTS.md</h2>
+              <span className={cn("ml-auto font-mono text-xs", over ? "text-warning" : "text-fg-muted")}>
+                {t("context.lines", { lines: c.lines, limit: c.limit })}
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-sunken">
+              <div
+                className={cn("h-full rounded-full", over ? "bg-warning-solid" : "bg-success-solid")}
+                style={{ width: `${Math.min(100, (c.lines / c.limit) * 100)}%` }}
+              />
+            </div>
+            <span className="text-xs text-fg-muted">{over ? t("context.over") : t("context.under")}</span>
+            {c.blocks.map((b) => (
+              <div key={b.kind} className="flex flex-col gap-1">
+                <span className="pt-1 type-caption text-fg-muted">{t(`context.block.${b.kind}`)}</span>
+                {b.items.length === 0 ? <span className="text-xs text-fg-muted">{t("context.none")}</span> : null}
+                {b.items.map((i, n) => (
+                  <div key={i.key ?? n} className="flex items-center gap-2 border-b border-line-subtle py-1.5 text-[13px] last:border-b-0">
+                    <span className="min-w-0 flex-1 truncate font-mono text-xs text-fg-strong" title={i.key ?? undefined}>
+                      {b.kind === "paths"
+                        ? t("context.pathsCount", { count: Number(i.title) })
+                        : b.kind === "skills"
+                          ? t("context.skillsCount", { count: Number(i.title) })
+                          : (i.key ?? i.title)}
+                    </span>
+                    {i.version ? (
+                      <span className="font-mono text-[11px] text-fg-muted">v{i.version}</span>
+                    ) : b.kind === "project" ? (
+                      <span className="text-[11px] text-warning">{t("context.noProjectDoc")}</span>
+                    ) : null}
+                    <span className="w-16 text-right font-mono text-[11px] text-fg-muted">{t("context.lineCount", { count: i.lines })}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+            <div className="flex gap-2 pt-1">
+              <Button size="sm" variant="outline" onClick={() => setFull((v) => !v)} aria-expanded={full}>
+                {full ? t("context.hideFull") : t("context.showFull")}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => void navigator.clipboard?.writeText(c.agentsMd)}>
+                {t("context.copy")}
+              </Button>
+            </div>
+            {full ? (
+              <pre className="m-0 max-h-[480px] overflow-auto rounded-md border border-line-subtle bg-code p-3 font-mono text-[11px]/[17px] whitespace-pre-wrap text-code-fg">
+                {c.agentsMd}
+              </pre>
+            ) : null}
+          </section>
+          <div className="flex flex-col gap-3">
+            <section className={card}>
+              <h2 className="m-0 text-sm font-semibold text-fg-strong">{t("context.paths")}</h2>
+              {!c.paths.length ? <span className="text-xs text-fg-muted">{t("context.noPaths")}</span> : null}
+              {c.paths.map((p) => (
+                <div key={`${p.key}-${p.file}`} className="flex flex-col gap-0.5 border-b border-line-subtle py-1.5 last:border-b-0">
+                  <span className="flex flex-wrap items-center gap-1.5 font-mono text-xs">
+                    <span className="text-fg-brand">{p.globs.join(", ")}</span>
+                    <span className="text-fg-muted">→</span>
+                    <span className="text-fg-strong">{p.file}</span>
+                  </span>
+                  <span className="text-[11px] text-fg-muted">
+                    {p.title} · {t(p.nested ? "context.readNested" : "context.readRule")}
+                  </span>
+                </div>
+              ))}
+            </section>
+            <section className={card}>
+              <h2 className="m-0 text-sm font-semibold text-fg-strong">{t("context.files")}</h2>
+              <div className="flex flex-wrap gap-1.5">
+                {c.files.map((f) => (
+                  <span
+                    key={f.path}
+                    title={t("context.lineCount", { count: f.lines })}
+                    className="rounded-xs border border-line-subtle bg-sunken px-1.5 py-0.5 font-mono text-[11px] text-fg-secondary"
+                  >
+                    {f.path === "CLAUDE.md" ? "CLAUDE.md → @AGENTS.md" : f.path}
+                    {f.block ? ` (${t("context.blockOnly")})` : ""}
+                  </span>
+                ))}
+              </div>
+              <span className="text-xs text-fg-muted">
+                {t("context.memory", { project: c.memory.project, shared: c.memory.shared, stale: c.memory.stale, pending: c.memory.pending })}
+              </span>
+              <span className="text-[11px] text-fg-muted">{t("context.syncHint")}</span>
+            </section>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}

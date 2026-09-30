@@ -94,6 +94,40 @@ export interface DocAssistJob extends DocAssist {
   code: string[];
 }
 
+/** The hub itself (hub.info, roadmap 22n): what runs, its database and backups, search, sign-in, hosts. */
+export interface HubInfo {
+  /** The xDev Hive version the hub was built from (the app's version), and its commit when the deploy said. */
+  version: string;
+  commit: string | null;
+  node: string;
+  container: boolean;
+  startedAt: string;
+  uptimeSeconds: number;
+  db: { path: string; bytes: number; walBytes: number; counts: Record<"docs" | "memory" | "tasks" | "runs" | "machines" | "users", number> };
+  /** null: HIVE_BACKUP_DIR is not set. */
+  backup: { dir: string; hours: number; keep: number; last: string | null; count: number } | null;
+  search: { mode: "keyword" | "hybrid"; model: string | null; url: string | null; indexed: number; total: number; lastError: string | null };
+  sso: { name: string; issuer: string; linked: number } | null;
+  hosts: { allowed: string[] | null; publicUrl: string | null; trustProxy: boolean };
+}
+
+/** What an agent of a project gets from Hive (docs.context, roadmap 22n): the AGENTS.md a sync writes, and more. */
+export interface AgentContext {
+  project: string;
+  agentsMd: string;
+  lines: number;
+  /** Past this many lines the sync suggests moving parts into docs for some paths. */
+  limit: number;
+  /** What AGENTS.md is made of, in order: the team's docs, the project's own, the list of docs for some paths, skills. */
+  blocks: Array<{ kind: "shared" | "project" | "paths" | "skills"; items: Array<{ key: string | null; title: string; version: number | null; lines: number }> }>;
+  /** Docs for some paths and the file each goes to (nested: an AGENTS.md in the folder, read by Codex and Claude Code). */
+  paths: Array<{ key: string; title: string; globs: string[]; file: string; nested: boolean }>;
+  /** Every file the sync writes in the repo. */
+  files: Array<{ path: string; lines: number; block: boolean }>;
+  /** Memory agents find with memory_search: the project's and the team's (approved, current), and what they skip. */
+  memory: { project: number; shared: number; stale: number; pending: number };
+}
+
 /** A page's links (docs.links): the pages it links to, those that link to it, and memory that names it. */
 export interface DocLinks {
   /** exists false: a broken link (the page was never made, or has another key). */
