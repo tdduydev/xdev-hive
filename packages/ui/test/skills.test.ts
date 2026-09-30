@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { parseSkill, type SkillSummary } from "@xdev-hive/core";
-import { buildSkill, skillsFor, splitSkill } from "../src/lib/skills.ts";
+import { buildSkill, leaderGuide, skillsFor, splitSkill } from "../src/lib/skills.ts";
 
 const summary = (name: string, project: string | null): SkillSummary => ({
   key: project ? `project/${project}/skills/${name}` : `org/skills/${name}`,
@@ -56,5 +56,17 @@ describe("skills per project", () => {
       ["lint", "app", false, false],
       ["review-pr", null, false, false],
     ]);
+  });
+
+  it("edits the project's own leader guide, starting from the team's until it has one", () => {
+    const team = { content: "---\nname: hive-leader\ndescription: Team guide\nallowed-tools: Read\n---\n\nPropose, never merge.\n" };
+    const fromTeam = leaderGuide(null, team);
+    assert.deepEqual([fromTeam.from, fromTeam.baseVersion, fromTeam.parts.description, fromTeam.parts.body.trim(), fromTeam.parts.extra], ["team", 0, "Team guide", "Propose, never merge.", ["allowed-tools: Read"]]);
+    const own = leaderGuide({ content: "---\nname: hive-leader\ndescription: App guide\n---\n\nAsk before big changes.\n", version: 3 }, team);
+    assert.deepEqual([own.from, own.baseVersion, own.parts.description], ["project", 3, "App guide"]);
+    const none = leaderGuide(null, null);
+    assert.deepEqual([none.from, none.parts.name, none.parts.body], ["none", "hive-leader", ""]);
+    // Whatever the source said, the saved guide is the leader's.
+    assert.equal(parseSkill(buildSkill({ ...leaderGuide({ content: "no front matter", version: 1 }, null).parts, description: "x" })).name, "hive-leader");
   });
 });
