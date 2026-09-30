@@ -72,6 +72,8 @@ describe("chat attachments", () => {
     assert.deepEqual(message!.files.map((f) => [f.id, f.type]), [[shot.id, "image/png"], [log.id, "text/plain"]]);
     assert.deepEqual([...hive.chatFile(shot.id, reader)!.bytes], [...PNG], "a viewer of the project reads it");
     assert.ok(hive.chatFile(log.id, mbp), "the machine that writes the reply reads it");
+    const [request] = await hive.call("chat.poll", {}, mbp);
+    assert.deepEqual(request!.files?.map((f) => [f.id, f.name]), [[shot.id, "login error.png"], [log.id, "run.log"]], "the machine hears which files to fetch");
     assert.equal(hive.chatFile(shot.id, outsider), null, "not outside the project");
 
     // Sent once only, and gone with its thread.

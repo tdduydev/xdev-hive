@@ -417,6 +417,8 @@ export interface ChatRequest {
   sender?: ChatSender;
   /** Hub token for the leader's MCP calls while it writes this reply: the sender's rights, never more than the machine's. */
   grant?: string;
+  /** What the message came with (GET /api/chat/files/<id> with the grant); none from a hub older than 17g. */
+  files?: ChatFile[];
 }
 
 /** A run a machine tells the hub about: it failed for good, or it opened a merge request. Not stored. */
