@@ -11,6 +11,8 @@ const doc = (key: string, content: string, extra: Partial<Doc> = {}): Doc => ({
   version: 3,
   includeInAgents: true,
   paths: [],
+  parent: null,
+  folder: false,
   updatedBy: "duy",
   updatedAt: "2026-09-27T00:00:00Z",
   ...extra,
