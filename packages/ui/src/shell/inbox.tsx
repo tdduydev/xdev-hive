@@ -1,10 +1,10 @@
 // Loads what "Hôm nay" lists, once for the whole app: the sidebar shows the count, the page the items.
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { Me } from "@xdev-hive/core";
-import type { HiveClient } from "../client.ts";
-import { usePoll, useQuery } from "../hooks.ts";
-import { buildInbox, inboxProject, readDone, readRead, writeDone, writeRead, type InboxDone, type InboxItem } from "../lib/inbox.ts";
-import { inScope, scopeFilter, scopeKey, type Scope } from "../lib/scope.ts";
+import type { HiveClient } from "#ui/client.ts";
+import { usePoll, useQuery } from "#ui/hooks.ts";
+import { buildInbox, inboxProject, readDone, readRead, writeDone, writeRead, type InboxDone, type InboxItem } from "#ui/lib/inbox.ts";
+import { inScope, scopeFilter, scopeKey, type Scope } from "#ui/lib/scope.ts";
 
 export interface InboxState {
   /** Open items in the scope, newest first. */

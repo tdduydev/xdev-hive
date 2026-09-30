@@ -2,9 +2,9 @@ import { useState } from "react";
 import { Laptop } from "lucide-react";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
-import { ErrorNote, Notice, Page } from "../components/common.tsx";
-import { useAction, useHive } from "../hooks.ts";
-import { rich, useT } from "../i18n/index.tsx";
+import { ErrorNote, Notice, Page } from "#ui/components/common.tsx";
+import { useAction, useHive } from "#ui/hooks.ts";
+import { rich, useT } from "#ui/i18n/index.tsx";
 
 /** What the desktop app put in the link: where it listens on this machine and its PKCE challenge. */
 function readRequest(): { port: number; state: string; challenge: string; name: string } | null {

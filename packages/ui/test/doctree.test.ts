@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { DocSummary } from "@xdev-hive/core";
-import { buildTree, docHeadings, flatten, freeSlug, parentChoices, slugify, trail } from "../src/lib/doctree.ts";
+import { buildTree, docHeadings, flatten, freeSlug, parentChoices, slugify, trail } from "#ui/lib/doctree.ts";
 
 const doc = (key: string, title: string, extra: Partial<DocSummary> = {}): DocSummary => ({
   key,

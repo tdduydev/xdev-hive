@@ -4,8 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { AGENT_TEMPLATES } from "@xdev-hive/core";
-import { LoginMonitor, loginParts } from "../src/main/runner/login.ts";
-import { openInTerminal, terminalScript, type TerminalCommand } from "../src/main/terminal.ts";
+import { LoginMonitor, loginParts } from "#desktop/main/runner/login.ts";
+import { openInTerminal, terminalScript, type TerminalCommand } from "#desktop/main/terminal.ts";
 
 const tmp = () => mkdtempSync(path.join(os.tmpdir(), "hive-term-"));
 const command: TerminalCommand = {

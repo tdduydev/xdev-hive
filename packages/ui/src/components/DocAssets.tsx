@@ -5,11 +5,11 @@ import { Download, ImageIcon, Paperclip, Trash2, Upload } from "lucide-react";
 import { cn } from "cn";
 import { CHAT_FILE_ACCEPT, DOC_ASSET_MAX_BYTES, docAssetPath, isImage, type DocAsset } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
-import type { HiveClient } from "../client.ts";
-import { errorMessage, formatTime, useHive, useQuery } from "../hooks.ts";
-import { useT } from "../i18n/index.tsx";
-import { fileSize } from "../lib/chat.ts";
-import { useToast } from "../shell/toast.tsx";
+import type { HiveClient } from "#ui/client.ts";
+import { errorMessage, formatTime, useHive, useQuery } from "#ui/hooks.ts";
+import { useT } from "#ui/i18n/index.tsx";
+import { fileSize } from "#ui/lib/chat.ts";
+import { useToast } from "#ui/shell/toast.tsx";
 
 /** Tells shown images and lists that a page's files changed. */
 export const ASSETS_EVENT = "hive-doc-assets";

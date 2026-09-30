@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { HiveError, type Actor, type HiveEvent } from "../src/index.ts";
-import { SqliteHive } from "../src/node.ts";
+import { HiveError, type Actor, type HiveEvent } from "#core/index.ts";
+import { SqliteHive } from "#core/node.ts";
 
 const runner: Actor = { name: "runner.duy-mbp@duy", role: "agent" };
 const pm: Actor = { name: "pm", role: "viewer" };

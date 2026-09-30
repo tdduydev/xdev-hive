@@ -7,14 +7,14 @@ import { cn } from "cn";
 import { parseVerdict, type AgentRun, type RunRecord, type RunRequest } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
-import { ErrorNote, Notice } from "../components/common.tsx";
-import { errorMessage, formatCount, formatTime, formatUsd, useAction, useCan, useHashParam, useHive, useQuery } from "../hooks.ts";
-import { useT, type TFunction } from "../i18n/index.tsx";
-import { fixInstructions, isLive, latestReviews, runDuration, runLabel } from "../lib/runs.ts";
-import { parseLog, parsePatch, runSteps, type DiffFile, type LogLevel } from "../lib/runlog.ts";
-import { activeIntl } from "../i18n/translate.ts";
-import { scopeFilter, scopeKey } from "../lib/scope.ts";
-import { useToast } from "../shell/toast.tsx";
+import { ErrorNote, Notice } from "#ui/components/common.tsx";
+import { errorMessage, formatCount, formatTime, formatUsd, useAction, useCan, useHashParam, useHive, useQuery } from "#ui/hooks.ts";
+import { useT, type TFunction } from "#ui/i18n/index.tsx";
+import { fixInstructions, isLive, latestReviews, runDuration, runLabel } from "#ui/lib/runs.ts";
+import { parseLog, parsePatch, runSteps, type DiffFile, type LogLevel } from "#ui/lib/runlog.ts";
+import { activeIntl } from "#ui/i18n/translate.ts";
+import { scopeFilter, scopeKey } from "#ui/lib/scope.ts";
+import { useToast } from "#ui/shell/toast.tsx";
 
 /** Machines push every 5 s while something runs; nothing to follow, a slow check for new runs. */
 const LIVE_MS = 3000;

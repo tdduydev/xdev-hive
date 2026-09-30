@@ -11,12 +11,12 @@ import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
-import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, StatusDot } from "../components/common.tsx";
-import { AttachButton, AttachmentBar, MessageFiles, useAttachments } from "../components/ChatFiles.tsx";
-import { LeaderGuideSheet } from "../components/LeaderGuide.tsx";
-import { CopyButton, ReplyMarkdown } from "../components/ReplyMarkdown.tsx";
-import { errorMessage, formatTime, formatUsd, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "../hooks.ts";
-import { useT } from "../i18n/index.tsx";
+import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, StatusDot } from "#ui/components/common.tsx";
+import { AttachButton, AttachmentBar, MessageFiles, useAttachments } from "#ui/components/ChatFiles.tsx";
+import { LeaderGuideSheet } from "#ui/components/LeaderGuide.tsx";
+import { CopyButton, ReplyMarkdown } from "#ui/components/ReplyMarkdown.tsx";
+import { errorMessage, formatTime, formatUsd, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "#ui/hooks.ts";
+import { useT } from "#ui/i18n/index.tsx";
 import {
   ACTION_TONE,
   actionTask,
@@ -29,9 +29,9 @@ import {
   REPLY_TONE,
   stepCount,
   withAction,
-} from "../lib/chat.ts";
-import { requestErrorText, runLabel } from "../lib/runs.ts";
-import { scopeFilter, scopeId, scopeKey, scopeProject } from "../lib/scope.ts";
+} from "#ui/lib/chat.ts";
+import { requestErrorText, runLabel } from "#ui/lib/runs.ts";
+import { scopeFilter, scopeId, scopeKey, scopeProject } from "#ui/lib/scope.ts";
 
 /** Machines report a reply being written every 2 s: followed that closely; otherwise a slow check for news. */
 const LIVE_MS = 2000;

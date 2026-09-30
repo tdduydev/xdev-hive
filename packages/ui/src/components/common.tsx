@@ -4,8 +4,8 @@ import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
 import { Alert, AlertDescription, AlertTitle } from "@xdev-hive/ui/components/ui/alert";
 import { Badge as UiBadge } from "@xdev-hive/ui/components/ui/badge";
-import { useT } from "../i18n/index.tsx";
-import { useInShell } from "../shell/frame.ts";
+import { useT } from "#ui/i18n/index.tsx";
+import { useInShell } from "#ui/shell/frame.ts";
 
 /** Status colours: tinted backgrounds with the matching text, readable in light and dark. */
 const TONE: Record<string, string> = {

@@ -1,7 +1,7 @@
 // What the whole app is looking at: every project, only the team-wide (shared) data, one project, or a system.
 // Chosen once in the sidebar; every page filters by it and new items default to it.
 import type { HiveSystem } from "@xdev-hive/core";
-import { translate } from "../i18n/translate.ts";
+import { translate } from "#ui/i18n/translate.ts";
 
 export type Scope =
   | { kind: "all" }

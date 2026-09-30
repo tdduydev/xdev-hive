@@ -10,6 +10,9 @@
     "./lib/*": "./src/lib/*.ts",
     "./i18n": "./src/i18n/translate.ts"
   },
+  "imports": {
+    "#ui/*": "./src/*"
+  },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json && tsc -p test/tsconfig.json"
   },

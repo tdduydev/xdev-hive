@@ -6,6 +6,9 @@
   "description": "xDev Hive desktop admin",
   "author": "xDev",
   "type": "module",
+  "imports": {
+    "#desktop/*": "./src/*"
+  },
   "main": "out/main/index.js",
   "scripts": {
     "dev": "npm run build:mcp && electron-vite dev",

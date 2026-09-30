@@ -5,8 +5,8 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import type { Actor } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
-import { allowedHostsFor } from "../src/app.ts";
-import { backupDatabase, backupFile, backupName, backupSettings } from "../src/backup.ts";
+import { allowedHostsFor } from "#web/app.ts";
+import { backupDatabase, backupFile, backupName, backupSettings } from "#web/backup.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
 const tmp = () => mkdtempSync(path.join(os.tmpdir(), "hive-backup-"));

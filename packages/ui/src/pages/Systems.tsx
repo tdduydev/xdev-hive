@@ -8,10 +8,10 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
-import { Badge, Empty, ErrorNote, Page, PageHeader } from "../components/common.tsx";
-import { formatTime, useAction, useCan, useHive } from "../hooks.ts";
-import { useT } from "../i18n/index.tsx";
-import { systemScope } from "../lib/scope.ts";
+import { Badge, Empty, ErrorNote, Page, PageHeader } from "#ui/components/common.tsx";
+import { formatTime, useAction, useCan, useHive } from "#ui/hooks.ts";
+import { useT } from "#ui/i18n/index.tsx";
+import { systemScope } from "#ui/lib/scope.ts";
 
 export function SystemsPage() {
   const { systems, setScope } = useHive();

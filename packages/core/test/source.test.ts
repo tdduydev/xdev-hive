@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { agentSource, parseSource, readSourceHeader, type Actor } from "../src/index.ts";
-import { SqliteHive } from "../src/node.ts";
+import { agentSource, parseSource, readSourceHeader, type Actor } from "#core/index.ts";
+import { SqliteHive } from "#core/node.ts";
 
 const run = { via: "mcp", machine: "duy-mbp", run: "R-1fa9e2", task: "T-7" } as const;
 const agent: Actor = { name: "claude-1.duy-mbp@duy", role: "agent", source: run };

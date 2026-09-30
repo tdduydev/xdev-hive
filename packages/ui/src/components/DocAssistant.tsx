@@ -9,10 +9,10 @@ import { keyPrefix, type DocAssist, type DocAssistKind, type Memory } from "@xde
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Diff } from "./Diff.tsx";
-import { errorMessage, formatTime, useHive, useQuery } from "../hooks.ts";
-import { useT } from "../i18n/index.tsx";
-import { fold } from "../lib/text.ts";
-import { useToast } from "../shell/toast.tsx";
+import { errorMessage, formatTime, useHive, useQuery } from "#ui/hooks.ts";
+import { useT } from "#ui/i18n/index.tsx";
+import { fold } from "#ui/lib/text.ts";
+import { useToast } from "#ui/shell/toast.tsx";
 
 interface Source {
   id: string;

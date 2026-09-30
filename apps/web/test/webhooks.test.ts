@@ -4,10 +4,10 @@ import type { AddressInfo } from "node:net";
 import { after, before, describe, it } from "node:test";
 import { HiveError, type Actor, type HiveEvent } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
-import { createHubApp } from "../src/app.ts";
-import { TokenStore } from "../src/tokens.ts";
-import { UserStore } from "../src/users.ts";
-import { eventMessage, urlHint, WebhookDispatcher, WebhookStore, webhookPayload } from "../src/webhooks.ts";
+import { createHubApp } from "#web/app.ts";
+import { TokenStore } from "#web/tokens.ts";
+import { UserStore } from "#web/users.ts";
+import { eventMessage, urlHint, WebhookDispatcher, WebhookStore, webhookPayload } from "#web/webhooks.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
 const claude: Actor = { name: "claude@duy", role: "agent" };

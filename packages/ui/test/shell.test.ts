@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { nextTaskId } from "../src/lib/tasks.ts";
-import { fold } from "../src/lib/text.ts";
+import { nextTaskId } from "#ui/lib/tasks.ts";
+import { fold } from "#ui/lib/text.ts";
 
 describe("shell helpers", () => {
   it("suggests the next task id from the prefix most tasks of the project use", () => {
@@ -19,7 +19,7 @@ describe("shell helpers", () => {
   });
 });
 
-import { pagesToShow } from "../src/lib/table.ts";
+import { pagesToShow } from "#ui/lib/table.ts";
 
 describe("data table pages", () => {
   it("shows at most seven page buttons, with gaps", () => {

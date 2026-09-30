@@ -5,11 +5,11 @@ import { createContext, useContext, useEffect, useState, type ComponentType, typ
 import { LayoutGrid, Moon, Sun } from "lucide-react";
 import { cn } from "cn";
 import type { Me } from "@xdev-hive/core";
-import type { HiveClient } from "../client.ts";
-import { AccountMenu } from "../components/Account.tsx";
-import { HiveWordmark } from "../components/Brand.tsx";
-import { useT } from "../i18n/index.tsx";
-import { toggleTheme, useTheme } from "../lib/theme.ts";
+import type { HiveClient } from "#ui/client.ts";
+import { AccountMenu } from "#ui/components/Account.tsx";
+import { HiveWordmark } from "#ui/components/Brand.tsx";
+import { useT } from "#ui/i18n/index.tsx";
+import { toggleTheme, useTheme } from "#ui/lib/theme.ts";
 import { InShellContext } from "./frame.ts";
 import { useDocOutbox, useHubConnection } from "./connection.tsx";
 import { ToastProvider } from "./toast.tsx";

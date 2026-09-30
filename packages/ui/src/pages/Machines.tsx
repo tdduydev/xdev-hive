@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import type { CostSummary, CostTotals, Machine, QuotaCooldown } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
-import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
-import { ProfileStates } from "../components/ProfileStates.tsx";
-import { formatCount, formatTime, formatUsd, useAction, useHive, useQuery } from "../hooks.ts";
-import { rich, useT } from "../i18n/index.tsx";
+import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE } from "#ui/components/common.tsx";
+import { ProfileStates } from "#ui/components/ProfileStates.tsx";
+import { formatCount, formatTime, formatUsd, useAction, useHive, useQuery } from "#ui/hooks.ts";
+import { rich, useT } from "#ui/i18n/index.tsx";
 
 const REFRESH_MS = 15_000;
 

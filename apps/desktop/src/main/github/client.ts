@@ -1,6 +1,6 @@
 // Minimal GitHub REST (and one GraphQL call) client for pull requests. github.com or GitHub Enterprise Server.
 import { GITHUB_URL, HiveError, type HiveErrorCode, type PipelineStatus } from "@xdev-hive/core";
-import type { FetchLike } from "../gitlab/client.ts";
+import type { FetchLike } from "#desktop/main/gitlab/client.ts";
 
 export interface GitHubRepo {
   full_name: string;
