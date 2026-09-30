@@ -2,7 +2,7 @@
 // of it, edited here by the project's managers. It is saved as the project's skill, so the Skills page shows it too,
 // and the leader reads it with skill_get before it answers.
 import { useState } from "react";
-import { skillDocKey } from "@xdev-hive/core";
+import { LEADER_COMMAND, MAX_LEADER_COMMANDS, skillDocKey } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
@@ -48,6 +48,7 @@ export function LeaderGuideSheet({
             </div>
           ) : null}
           {project ? <GuideEditor key={project} project={project} /> : null}
+          {project ? <CommandsEditor key={`commands-${project}`} project={project} /> : null}
         </div>
       </SheetContent>
     </Sheet>
@@ -145,6 +146,61 @@ function GuideForm({
           {t("chat.guideSave", { project })}
         </Button>
         {saved ? <span className="text-xs text-success">{t("chat.guideSaved", { project })}</span> : null}
+      </div>
+      <ErrorNote error={action.error} />
+    </form>
+  );
+}
+
+/**
+ * The commands the project's leader may run (roadmap 17i-2), one per line: Claude Code Bash prefixes, so each with any
+ * arguments; anything else, a chained command included, stays refused. An empty list runs none.
+ */
+function CommandsEditor({ project }: { project: string }) {
+  const { client } = useHive();
+  const t = useT();
+  const action = useAction();
+  const defaults = useQuery(() => client.call("chat.defaults", { project }), [client, project]);
+  const [text, setText] = useState<string>();
+  const [saved, setSaved] = useState(false);
+  if (defaults.error) return <ErrorNote error={defaults.error} />;
+  if (!defaults.data) return null;
+  const value = text ?? defaults.data.commands.join("\n");
+  const lines = value.split("\n").map((l) => l.trim()).filter(Boolean);
+  const bad = lines.filter((l) => !LEADER_COMMAND.test(l) || l.length > 60);
+  const tooMany = lines.length > MAX_LEADER_COMMANDS;
+  return (
+    <form
+      className="flex flex-col gap-2 border-t pt-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void action.run(async () => {
+          const next = await client.call("chat.setCommands", { project, commands: lines });
+          setText(next.commands.join("\n"));
+          setSaved(true);
+        });
+      }}
+    >
+      <div className="flex flex-col gap-0.5">
+        <Label htmlFor="guide-commands">{t("chat.commandsTitle")}</Label>
+        <p className="text-xs text-muted-foreground">{t("chat.commandsHint", { max: MAX_LEADER_COMMANDS })}</p>
+      </div>
+      <Textarea
+        id="guide-commands"
+        rows={5}
+        className="font-mono text-xs"
+        placeholder={"git status\ngit log"}
+        value={value}
+        onChange={(e) => (setText(e.target.value), setSaved(false))}
+      />
+      {bad.length ? <p className="text-xs text-destructive wrap-anywhere">{t("chat.commandsBad", { commands: bad.join(", ") })}</p> : null}
+      {tooMany ? <p className="text-xs text-destructive">{t("chat.commandsTooMany", { max: MAX_LEADER_COMMANDS })}</p> : null}
+      <Notice tone="warn">{t("chat.commandsWarn")}</Notice>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" type="submit" disabled={action.busy || bad.length > 0 || tooMany}>
+          {t("chat.commandsSave", { project })}
+        </Button>
+        {saved ? <span className="text-xs text-success">{lines.length ? t("chat.commandsSaved", { project }) : t("chat.commandsNone", { project })}</span> : null}
       </div>
       <ErrorNote error={action.error} />
     </form>
