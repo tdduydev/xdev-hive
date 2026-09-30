@@ -1747,6 +1747,8 @@ export const vi = {
     assistSilent: "Máy đang viết đã ngừng báo về.",
     alertRule: "Không có luật cảnh báo {rule}.",
     backupOff: "Backup đang tắt: đặt HIVE_BACKUP_DIR.",
+    releasePart: "Phần {part} tới trước phần {expected} hub đang chờ: gửi lại cả file.",
+    releaseChecksum: "{name} tới hub với SHA-256 khác lúc gửi: gửi lại.",
     docParentSelf: "Trang {key} không nằm trong chính nó được.",
     docParentSkill: "Skill ở trong thư mục Skill: không đặt dưới trang khác, và trang không đặt dưới skill.",
     docParentSpace: "{parent} ở không gian khác với {key}.",
