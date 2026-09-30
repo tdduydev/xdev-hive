@@ -149,6 +149,7 @@ export const vi = {
     createdAssigned: "Đã tạo {id}, giao {profile}",
   },
   ops: {
+    queue: { onMachines: "Chờ trên máy · {count}", noneQueued: "Không run nào đang chờ trên máy.", waiting: "chờ {time}", reasonSlot: "Chờ tới lượt: máy đang chạy đủ số run cùng lúc", requests: "Yêu cầu chạy từ web", reasonGone: "Không còn máy {machine}", reasonOffline: "Máy {machine} offline từ {time}", reasonNoAccept: "{machine} không nhận việc từ hub (tắt ở Cài đặt của app)", reasonNext: "Chờ {machine} nhận ở heartbeat tiếp theo", order: "Thứ tự chọn gói: gói được ghim; bỏ gói tắt, chưa cài, chưa đăng nhập, quá ngưỡng, bận, đang nghỉ hoặc sai vai trò; review dùng vendor khác bên làm; ưu tiên số nhỏ trước, rồi gói lâu chưa dùng trước." },
     versions: {
       rollout: "Đang phát hành",
       channel: "kênh {channel}",
@@ -188,6 +189,8 @@ export const vi = {
     rangeLabel: "Khoảng thời gian",
     group: { ops: "Vận hành", watch: "Theo dõi", knowledge: "Kiến thức", admin: "Quản trị" },
     nav: {
+      hub: "Hub",
+      context: "Context agent",
       alerts: "Cảnh báo",
       versions: "Phiên bản app",
       overview: "Tổng quan",
@@ -209,6 +212,8 @@ export const vi = {
       audit: "Nhật ký",
     },
     hint: {
+      hub: "Phiên bản, database, backup, tìm theo nghĩa, đăng nhập",
+      context: "AGENTS.md và những gì agent của dự án nhận",
       alerts: "Sự cố đang mở và luật gửi cảnh báo",
       versions: "Bản build hub phát cho máy",
       overview: "Tự làm mới mỗi 15 giây",
@@ -259,6 +264,7 @@ export const vi = {
     fleet: "Đội máy",
     noUsage: "chưa có số liệu",
     col: {
+      reason: "Vì sao chờ",
       status: "Trạng thái",
       task: "Task",
       work: "Việc",
@@ -1740,6 +1746,7 @@ export const vi = {
     assistNotTaken: "Không máy nào nhận yêu cầu trong 15 phút: cần một máy mở app, có dự án và bật nhận việc từ hub.",
     assistSilent: "Máy đang viết đã ngừng báo về.",
     alertRule: "Không có luật cảnh báo {rule}.",
+    backupOff: "Backup đang tắt: đặt HIVE_BACKUP_DIR.",
     docParentSelf: "Trang {key} không nằm trong chính nó được.",
     docParentSkill: "Skill ở trong thư mục Skill: không đặt dưới trang khác, và trang không đặt dưới skill.",
     docParentSpace: "{parent} ở không gian khác với {key}.",
@@ -2028,6 +2035,8 @@ export const vi = {
     hint: "Hub không lưu nội dung còn ký tự ẩn. Xoá không đụng tới emoji.",
     strip: "Xoá ký tự ẩn",
   },
+  hub: { version: "Phiên bản", database: "Database", backup: "Backup", search: "Tìm memory theo nghĩa", sso: "Đăng nhập SSO", hosts: "Host được phép", ok: "Ổn", late: "Quá hạn", off: "Tắt", on: "Bật", error: "Lỗi", indexing: "Đang tạo vector", config: "Cấu hình", keywordOnly: "Chỉ theo từ", container: "container", process: "tiến trình", versionDetail: "{where} · Node {node} · uptime {uptime} · chạy từ {since}", dbDetail: "SQLite WAL · {path} · {docs} tài liệu · {memory} memory · {tasks} task · {runs} run · {machines} máy · {users} tài khoản", backupDetail: "mỗi {hours} giờ · giữ {keep} bản · {count} bản trong {dir}", noBackupYet: "chưa có bản nào", backupOffHint: "Đặt HIVE_BACKUP_DIR để hub tự backup (xem README).", backupNow: "Backup ngay", backingUp: "Đang backup…", backedUp: "Đã backup: {file}", searchOffHint: "Đặt HIVE_EMBED_URL để tìm memory theo nghĩa (xem README).", waitingVectors: "{count} mục chờ vector", passwordOnly: "Chỉ mật khẩu", ssoDetail: "{issuer} · {count} tài khoản đã gắn", ssoOffHint: "Đặt HIVE_OIDC_ISSUER, HIVE_OIDC_CLIENT_ID, HIVE_OIDC_CLIENT_SECRET để đăng nhập SSO.", anyHost: "mọi host" },
+  context: { project: "Dự án", noProjects: "Chưa có dự án nào.", lines: "{lines}/{limit} dòng", over: "Quá giới hạn: đồng bộ sẽ nhắc chuyển bớt sang tài liệu theo đường dẫn.", under: "Dưới giới hạn dòng: agent đọc hết mỗi lần làm task.", block: { shared: "Khối chung", project: "Phần riêng", paths: "Danh sách tài liệu theo đường dẫn", skills: "Mục Skills" }, none: "Không có.", pathsCount: "{count} mục", skillsCount: "{count} skill", noProjectDoc: "chưa có trang", lineCount: "{count} dòng", showFull: "Xem AGENTS.md đầy đủ", hideFull: "Ẩn AGENTS.md", copy: "Sao chép", paths: "Tài liệu theo đường dẫn", noPaths: "Dự án chưa có tài liệu nào giới hạn theo đường dẫn.", readNested: "đọc bởi: Codex, Claude Code", readRule: "đọc bởi: Claude Code (agent khác thấy qua danh sách trong AGENTS.md)", files: "File Hive ghi vào repo", blockOnly: "chỉ khối Hive", memory: "Memory agent tìm thấy: {project} riêng + {shared} chung · {stale} cũ bị bỏ qua · {pending} chờ duyệt", syncHint: "Máy ghi các file này khi đồng bộ dự án (Dự án & cài đặt → Đồng bộ trên app desktop)." },
   alerts: { severity: { high: "Cao", medium: "Vừa", low: "Thấp" }, title: { run_fail_streak: "{task} lỗi {count} lần liền", ci_fix_exhausted: "CI vẫn lỗi · MR !{mr}", machine_offline: "Máy {machine} offline", webhook_failed: "Webhook \"{name}\" lỗi", quota_near: "{profile} gần ngưỡng", vendor_resting: "Mọi gói {vendor} đang nghỉ", backup_overdue: "Backup quá hạn" }, detail: { run_fail_streak: "{project} · {title} · trong 1 giờ", ci_fix_exhausted: "{project} · {task} · hết lượt tự sửa trên {machine}", machine_offline: "không heartbeat {minutes} phút", webhook_failed: "{kind} · {error}", quota_near: "{machine} · phiên {session}% · tuần {week}%", vendor_resting: "{count} gói · sớm nhất rảnh lúc {until}; run và review chéo phải chờ", backup_overdue: "không có bản mới {hours} giờ · {dir}" }, rule: { run_fail_streak: { label: "Run lỗi liên tiếp", cond: "3 run lỗi của cùng task trong 1 giờ" }, ci_fix_exhausted: { label: "CI lỗi sau khi tự sửa", cond: "hết lượt tự sửa mà pipeline vẫn lỗi" }, machine_offline: { label: "Máy offline", cond: "không heartbeat quá 60 phút" }, webhook_failed: { label: "Webhook lỗi", cond: "lần gửi cuối trả HTTP 4xx/5xx hoặc timeout" }, quota_near: { label: "Gói gần ngưỡng", cond: "phiên hoặc tuần từ 80%" }, vendor_resting: { label: "Mọi gói một vendor đang nghỉ", cond: "review chéo sẽ phải chờ" }, backup_overdue: { label: "Backup quá hạn", cond: "không có bản mới sau chu kỳ backup cộng 2 giờ" } }, incidents: "Sự cố", rules: "Luật cảnh báo", rulesHint: "Cảnh báo mở hiện ở Tổng quan, Hôm nay của admin, và gửi tới webhook có bật sự kiện Cảnh báo.", open: "Cảnh báo đang mở", all: "Tất cả", none: "Không có cảnh báo nào đang mở.", noneRecent: "Chưa có sự cố nào trong 7 ngày.", ack: "Đã biết", stateOpen: "Đang mở", stateAcked: "Đã biết · {who}", stateAuto: "Đã tự hết", stateBy: "Đã xử lý bởi {who}", on: "Bật", off: "Tắt", since: "từ {time}", ended: "hết lúc {time}", healthOk: "Mọi thứ ổn định", healthIncidents: "{high} sự cố · {rest} cảnh báo", healthWarnings: "{count} cảnh báo", acked: "Đã đánh dấu đã biết", ruleSaved: "Đã {state} luật {rule}" },
   feed: { runStarted: "bắt đầu {task} · {profile}", run: { succeeded: "xong {task} · {profile}", failed: "lỗi {task} · {profile}", cancelled: "dừng {task}", rate_limited: "hết quota ở {task} · {profile}", running: "đang chạy {task}", queued: "xếp hàng {task}" }, mr: "mở MR cho {task}", alertOpened: "cảnh báo: {title}", alertResolved: "hết cảnh báo: {title}", audit: "{action} · {target}", proposal: "đề xuất sửa {doc}", title: "Luồng sự kiện", hint: "trực tiếp từ máy và hub", none: "Chưa có gì trong 24 giờ qua." },
   webhooks: {
