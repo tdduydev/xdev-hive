@@ -2,7 +2,7 @@
 // whose Claude plan writes the replies in the same Claude Code session. A reply shows as the machine writes it,
 // with the agent's steps; project managers send messages and stop a reply.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Bot, Check, CheckCheck, MessageSquarePlus, Pencil, RotateCcw, Search, SendHorizontal, Settings2, Square, Trash2, X } from "lucide-react";
+import { ArrowLeft, BookMarked, Bot, Check, CheckCheck, MessageSquarePlus, Pencil, RotateCcw, Search, SendHorizontal, Settings2, Square, Trash2, X } from "lucide-react";
 import { cn } from "cn";
 import { CHAT_EFFORTS, CHAT_MODEL_ALIASES, type ChatAction, type ChatEffort, type ChatMessage, type ChatThread } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
@@ -13,6 +13,7 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, StatusDot } from "../components/common.tsx";
 import { AttachButton, AttachmentBar, MessageFiles, useAttachments } from "../components/ChatFiles.tsx";
+import { LeaderGuideSheet } from "../components/LeaderGuide.tsx";
 import { CopyButton, ReplyMarkdown } from "../components/ReplyMarkdown.tsx";
 import { errorMessage, formatTime, formatUsd, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "../hooks.ts";
 import { useT } from "../i18n/index.tsx";
@@ -78,6 +79,7 @@ export function ChatPage() {
     if (shownProject.current !== project) (shownProject.current = project), setOpen(null);
   }, [project, setOpen]);
   const managed = (project ? [project] : projects).filter((p) => allow(p, "manage"));
+  const [guideOpen, setGuideOpen] = useState(false);
 
   return (
     <Page wide>
@@ -86,13 +88,20 @@ export function ChatPage() {
         subtitle={t("chat.subtitle")}
         actions={
           managed.length ? (
-            <Button size="sm" onClick={() => setOpen({ kind: "new" })}>
+            <>
+              <Button size="sm" variant="outline" onClick={() => setGuideOpen(true)}>
+                <BookMarked />
+                {t("chat.guideOpen")}
+              </Button>
+              <Button size="sm" onClick={() => setOpen({ kind: "new" })}>
               <MessageSquarePlus />
               {t("chat.new")}
             </Button>
+            </>
           ) : null
         }
       />
+      {managed.length ? <LeaderGuideSheet key={project ?? ""} projects={managed} defaultProject={project} open={guideOpen} onOpenChange={setGuideOpen} /> : null}
       <ErrorNote error={threads.error} />
       <div className="grid items-start gap-4 lg:grid-cols-[19rem_minmax(0,1fr)]">
         {/* On a phone the list and the open chat take turns. */}
