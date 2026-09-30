@@ -30,7 +30,9 @@ export function Diff({ before, after }: { before: string; after: string }) {
   const t = useT();
   const lines = useMemo(() => {
     const raw: Line[] = [];
-    for (const part of diffLines(before, after)) {
+    // The last line with or without a newline is the same line.
+    const nl = (s: string) => (s && !s.endsWith("\n") ? `${s}\n` : s);
+    for (const part of diffLines(nl(before), nl(after))) {
       const kind = part.added ? "add" : part.removed ? "del" : "same";
       const texts = part.value.replace(/\n$/, "").split("\n");
       for (const text of texts) raw.push({ kind, text });

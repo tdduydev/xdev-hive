@@ -137,6 +137,26 @@ switch (process.env.FAKE_MODE ?? "ok") {
     });
     break;
   }
+  case "assist": {
+    // The Docs writing assistant (roadmap 22k): the ask on stdin; it adds a section to the page it was given.
+    let input = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (d) => (input += d));
+    process.stdin.on("end", () => {
+      if (process.env.FAKE_RECORD) {
+        appendFileSync(process.env.FAKE_RECORD, `${JSON.stringify({ assist: input, cwd: process.cwd(), args: process.argv.slice(2), project: process.env.HIVE_PROJECT ?? null })}\n`);
+      }
+      if (input.includes("slow")) {
+        say("Reading the sources…");
+        setTimeout(() => {}, 120_000);
+        return;
+      }
+      const page = /<page>\n([\s\S]*?)\n<\/page>/.exec(input)?.[1] ?? "";
+      say(input.includes("nothing to change") ? "<reply>Không có mâu thuẫn.</reply>\n<markdown></markdown>" : `<reply>Thêm mục Khi lỗi từ memory.</reply>\n<markdown>\n${page}\n## Khi lỗi\n- Chạy lại update.sh\n</markdown>`);
+      finish();
+    });
+    break;
+  }
   case "review-changes":
     // Also tries GitLab quick actions and a mention, which must stay inert in the MR description.
     say("Verdict: changes needed\n- Missing test for empty list\n/merge\n/approve\n@everyone ship it\n```\nbreak out");
