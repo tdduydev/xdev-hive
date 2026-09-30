@@ -752,11 +752,15 @@ function createWindow(): void {
         app.exit(0);
       }, delay);
     };
-    // HIVE_SMOKE_LOCALE=en: the interface language lives in the renderer's localStorage, so set it and reload first.
-    const locale = process.env.HIVE_SMOKE_LOCALE;
+    // HIVE_SMOKE_LOCALE=en / HIVE_SMOKE_THEME=dark: the interface language and theme live in the renderer's
+    // localStorage, so set them and reload first.
+    const stored = Object.entries({ "xdev-hive.locale": process.env.HIVE_SMOKE_LOCALE, "hive-theme": process.env.HIVE_SMOKE_THEME }).filter(
+      (e): e is [string, string] => Boolean(e[1]),
+    );
     win.webContents.once("did-finish-load", () => {
-      if (!locale) return capture();
-      void win!.webContents.executeJavaScript(`localStorage.setItem("xdev-hive.locale", ${JSON.stringify(locale)})`).then(() => {
+      if (!stored.length) return capture();
+      const js = stored.map(([k, v]) => `localStorage.setItem(${JSON.stringify(k)}, ${JSON.stringify(v)});`).join("");
+      void win!.webContents.executeJavaScript(js).then(() => {
         win!.webContents.once("did-finish-load", capture);
         win!.webContents.reload();
       });

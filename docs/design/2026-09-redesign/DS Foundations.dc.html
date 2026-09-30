@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="styles.css">
+<style>
+html,body{margin:0;padding:0;background:var(--bg-canvas)}
+a{color:var(--text-link)}a:hover{color:var(--text-link-hover)}
+</style>
+</helmet>
+<div data-theme="{{ theme }}" style="min-height:100vh;background:var(--bg-canvas);color:var(--text-primary);font:var(--type-body-md)">
+
+<header style="position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:16px;min-height:60px;padding:0 24px;border-bottom:1px solid var(--border-subtle);background:var(--bg-canvas);flex-wrap:wrap">
+  <a href="DS%20Foundations.dc.html" style="display:flex;align-items:center;gap:12px;text-decoration:none">
+    <sc-if value="{{ light }}" hint-placeholder-val="{{ true }}"><img src="assets/hive-light.svg" alt="xDev Hive · Dev Hub" style="height:36px;width:auto;display:block"></sc-if>
+    <sc-if value="{{ dark }}" hint-placeholder-val="{{ false }}"><img src="assets/hive-dark.svg" alt="xDev Hive · Dev Hub" style="height:36px;width:auto;display:block"></sc-if>
+    <span style="font:var(--type-caption);color:var(--text-muted);padding:2px 8px;border:1px solid var(--border-default);border-radius:var(--radius-full)">Design System 1.0</span>
+  </a>
+  <nav aria-label="Tài liệu" style="display:flex;gap:4px;flex-wrap:wrap">
+    <a href="DS%20Foundations.dc.html" aria-current="page" style="padding:6px 12px;border-radius:var(--radius-md);text-decoration:none;font:var(--type-label);color:var(--state-selected-fg);background:var(--state-selected-bg)">Nền tảng</a>
+    <a href="DS%20Components.dc.html" style="padding:6px 12px;border-radius:var(--radius-md);text-decoration:none;font:var(--type-label);color:var(--text-secondary)" style-hover="background:var(--state-hover);color:var(--text-strong)">Component</a>
+    <a href="DS%20Developer%20Components.dc.html" style="padding:6px 12px;border-radius:var(--radius-md);text-decoration:none;font:var(--type-label);color:var(--text-secondary)" style-hover="background:var(--state-hover);color:var(--text-strong)">Developer</a>
+    <a href="DS%20Screens.dc.html" style="padding:6px 12px;border-radius:var(--radius-md);text-decoration:none;font:var(--type-label);color:var(--text-secondary)" style-hover="background:var(--state-hover);color:var(--text-strong)">Màn hình mẫu</a>
+  </nav>
+  <div role="group" aria-label="Giao diện" style="margin-left:auto;display:flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--bg-sunken);border:1px solid var(--border-subtle)">
+    <button onClick="{{ setLight }}" aria-pressed="{{ light }}" style="display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:0;border-radius:var(--radius-sm);cursor:pointer;font:var(--type-label);background:{{ lightBg }};color:var(--text-primary);box-shadow:{{ lightSh }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.sun }}"></path></svg>Sáng</button>
+    <button onClick="{{ setDark }}" aria-pressed="{{ dark }}" style="display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:0;border-radius:var(--radius-sm);cursor:pointer;font:var(--type-label);background:{{ darkBg }};color:var(--text-primary);box-shadow:{{ darkSh }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.moon }}"></path></svg>Tối</button>
+  </div>
+</header>
+
+<div style="display:flex;gap:40px;max-width:1320px;margin:0 auto;padding:0 24px">
+  <aside style="flex:0 0 200px;position:sticky;top:60px;align-self:flex-start;max-height:calc(100vh - 60px);overflow:auto;padding:32px 0;display:flex;flex-direction:column;gap:2px">
+    <span style="font:var(--type-overline);letter-spacing:var(--tracking-wide);text-transform:uppercase;color:var(--text-muted);padding:0 10px 8px">Nền tảng</span>
+    <sc-for list="{{ toc }}" as="t" hint-placeholder-count="12"><a href="{{ t.href }}" style="padding:6px 10px;border-radius:var(--radius-sm);text-decoration:none;font:var(--type-body-sm);color:var(--text-secondary)" style-hover="background:var(--state-hover);color:var(--text-strong)">{{ t.label }}</a></sc-for>
+  </aside>
+
+  <main style="flex:1;min-width:0;padding-bottom:80px">
+
+    <section id="nguyen-tac" style="padding:48px 0 40px;display:flex;flex-direction:column;gap:24px">
+      <div style="display:flex;flex-direction:column;gap:12px;max-width:760px">
+        <span style="font:var(--type-overline);letter-spacing:var(--tracking-wide);text-transform:uppercase;color:var(--text-brand)">xDev Hive · Dev Hub</span>
+        <h1 style="margin:0;font:600 40px/48px var(--font-display);letter-spacing:var(--tracking-tight);color:var(--text-strong);text-wrap:pretty">Hệ thống thiết kế cho nơi developer và AI agent làm việc cùng nhau</h1>
+        <p style="margin:0;font:var(--type-body-lg);color:var(--text-secondary);text-wrap:pretty">Token, component và quy tắc dùng chung cho mọi màn hình của xDev Hive: quản lý dự án, điều phối agent, chia sẻ tài liệu, skill, memory và task. Mọi giá trị ở đây lấy trực tiếp từ <code style="font:var(--type-code-md)">styles.css</code>.</p>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+        <sc-for list="{{ principles }}" as="p" hint-placeholder-count="4">
+          <div style="display:flex;flex-direction:column;gap:8px;padding:20px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--text-brand)"><path d="{{ p.icon }}"></path></svg>
+            <span style="font:var(--type-heading-md);color:var(--text-strong)">{{ p.title }}</span>
+            <span style="font:var(--type-body-sm);color:var(--text-secondary);text-wrap:pretty">{{ p.body }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <section id="thuong-hieu" style="padding:40px 0;border-top:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;flex-direction:column;gap:6px"><h2 style="margin:0;font:var(--type-display-md);letter-spacing:var(--tracking-tight);color:var(--text-strong)">Thương hiệu</h2><p style="margin:0;color:var(--text-secondary);max-width:680px;text-wrap:pretty">Logo X + HIVE / DEV HUB giữ nguyên hình dáng, tỷ lệ và gradient. Dùng bản sáng trên nền sáng, bản tối trên nền tối; dùng X đứng riêng khi chỗ quá nhỏ để đọc được chữ.</p></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px">
+        <div style="display:flex;flex-direction:column;border:1px solid var(--border-default);border-radius:var(--radius-lg);overflow:hidden">
+          <div style="height:180px;display:grid;place-items:center;background:#F7F9FC"><div style="padding:14px;outline:1px dashed #9DBBFF"><img src="assets/hive-light.svg" alt="xDev Hive · Dev Hub, bản nền sáng" style="height:72px;display:block"></div></div>
+          <div style="padding:12px 16px;display:flex;justify-content:space-between;gap:8px;background:var(--bg-surface);font:var(--type-caption);color:var(--text-muted)"><span>Nền sáng · #F7F9FC</span><span style="font-family:var(--font-mono)">hive-light.svg</span></div>
+        </div>
+        <div style="display:flex;flex-direction:column;border:1px solid var(--border-default);border-radius:var(--radius-lg);overflow:hidden">
+          <div style="height:180px;display:grid;place-items:center;background:#142745"><div style="padding:14px;outline:1px dashed #2F5BB3"><img src="assets/hive-dark.svg" alt="xDev Hive · Dev Hub, bản nền tối" style="height:72px;display:block"></div></div>
+          <div style="padding:12px 16px;display:flex;justify-content:space-between;gap:8px;background:var(--bg-surface);font:var(--type-caption);color:var(--text-muted)"><span>Nền tối · #142745</span><span style="font-family:var(--font-mono)">hive-dark.svg</span></div>
+        </div>
+        <div style="display:flex;flex-direction:column;border:1px solid var(--border-default);border-radius:var(--radius-lg);overflow:hidden">
+          <div style="height:180px;display:flex;align-items:center;justify-content:center;gap:24px;background:var(--bg-surface)">
+            <img src="assets/x-mark.svg" alt="" width="16" height="16"><img src="assets/x-mark.svg" alt="" width="24" height="24"><img src="assets/x-mark.svg" alt="" width="32" height="32"><img src="assets/x-mark.svg" alt="X đứng riêng" width="56" height="56">
+          </div>
+          <div style="padding:12px 16px;display:flex;justify-content:space-between;gap:8px;background:var(--bg-surface);border-top:1px solid var(--border-subtle);font:var(--type-caption);color:var(--text-muted)"><span>X đứng riêng · 16 / 24 / 32 / 56 px</span><span style="font-family:var(--font-mono)">x-mark.svg</span></div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px">
+        <div style="display:flex;flex-direction:column;gap:10px;padding:20px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+          <span style="font:var(--type-heading-sm);color:var(--text-strong)">Gradient thương hiệu</span>
+          <div style="height:48px;border-radius:var(--radius-md);background:var(--brand-gradient-h)"></div>
+          <div style="display:flex;justify-content:space-between;font:var(--type-code-sm);color:var(--text-muted)"><span>#7BD4FF</span><span>#1E90FF</span><span>#004CFF</span></div>
+          <span style="font:var(--type-body-sm);color:var(--text-secondary)"><code style="font:var(--type-code-sm)">--brand-gradient</code> (135°), <code style="font:var(--type-code-sm)">--brand-gradient-h</code> (90°), <code style="font:var(--type-code-sm)">--brand-gradient-radial</code> (chỉ cho X).</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;padding:20px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+          <span style="display:flex;align-items:center;gap:6px;font:var(--type-heading-sm);color:var(--status-success-fg)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.circleCheck }}"></path></svg>Dùng gradient cho</span>
+          <sc-for list="{{ gradDo }}" as="g" hint-placeholder-count="4"><span style="font:var(--type-body-sm);color:var(--text-secondary)">• {{ g }}</span></sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;padding:20px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+          <span style="display:flex;align-items:center;gap:6px;font:var(--type-heading-sm);color:var(--status-danger-fg)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.ban }}"></path></svg>Không dùng gradient cho</span>
+          <sc-for list="{{ gradDont }}" as="g" hint-placeholder-count="4"><span style="font:var(--type-body-sm);color:var(--text-secondary)">• {{ g }}</span></sc-for>
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <sc-for list="{{ logoRules }}" as="r" hint-placeholder-count="5"><span style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:var(--radius-full);background:var(--bg-sunken);font:var(--type-caption);color:var(--text-secondary)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--text-muted)"><path d="{{ r.icon }}"></path></svg>{{ r.text }}</span></sc-for>
+      </div>
+    </section>
+
+    <section id="mau" style="padding:40px 0;border-top:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;flex-direction:column;gap:6px"><h2 style="margin:0;font:var(--type-display-md);letter-spacing:var(--tracking-tight);color:var(--text-strong)">Màu sắc</h2><p style="margin:0;color:var(--text-secondary);max-width:680px;text-wrap:pretty">Hai lớp: bảng màu gốc (primitive) và token semantic. Component chỉ dùng token semantic, nhờ vậy sáng/tối đổi bằng một thuộc tính <code style="font:var(--type-code-sm)">data-theme</code>. Tỉ lệ tương phản bên dưới được tính trực tiếp từ CSS.</p></div>
+      <h3 style="margin:8px 0 0;font:var(--type-heading-md);color:var(--text-strong)">Bảng màu gốc</h3>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <sc-for list="{{ prims }}" as="g" hint-placeholder-count="5">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span style="font:var(--type-caption);color:var(--text-muted)">{{ g.name }}</span>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:4px">
+              <sc-for list="{{ g.items }}" as="c" hint-placeholder-count="10">
+                <div style="display:flex;flex-direction:column;gap:4px"><div style="height:44px;border-radius:var(--radius-sm);background:var({{ c.n }});border:1px solid var(--border-subtle)"></div><span style="font:var(--type-code-sm);font-size:11px;color:var(--text-secondary)">{{ c.label }}</span><span style="font:var(--type-code-sm);font-size:10px;color:var(--text-muted)">{{ c.hex }}</span></div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <h3 style="margin:16px 0 0;font:var(--type-heading-md);color:var(--text-strong)">Token semantic · sáng và tối</h3>
+      <div style="border:1px solid var(--border-default);border-radius:var(--radius-lg);overflow:auto;background:var(--bg-surface)">
+        <div style="min-width:820px">
+          <div style="display:grid;grid-template-columns:minmax(200px,1.3fr) 1fr 1fr minmax(180px,1.4fr);gap:0;padding:10px 16px;border-bottom:1px solid var(--border-default);background:var(--bg-sunken);font:var(--type-caption);color:var(--text-muted)"><span>Token</span><span>Sáng</span><span>Tối</span><span>Dùng cho</span></div>
+          <sc-for list="{{ semGroups }}" as="g" hint-placeholder-count="5">
+            <div style="padding:10px 16px 6px;font:var(--type-overline);letter-spacing:var(--tracking-wide);text-transform:uppercase;color:var(--text-muted);border-bottom:1px solid var(--border-subtle)">{{ g.name }}</div>
+            <sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="5">
+              <div style="display:grid;grid-template-columns:minmax(200px,1.3fr) 1fr 1fr minmax(180px,1.4fr);align-items:center;padding:8px 16px;border-bottom:1px solid var(--border-subtle)">
+                <span style="font:var(--type-code-sm);color:var(--text-primary)">{{ r.token }}</span>
+                <sc-for list="{{ r.themes }}" as="t" hint-placeholder-count="2">
+                  <div data-theme="{{ t.theme }}" style="display:flex;align-items:center;gap:8px;padding:4px 8px;margin-right:8px;border-radius:var(--radius-sm);background:var({{ t.onVar }})">
+                    <span style="width:28px;height:28px;border-radius:var(--radius-sm);flex-shrink:0;display:grid;place-items:center;background:var({{ t.swVar }});border:1px solid var(--border-subtle);color:var({{ t.fgVar }});font:600 12px/1 var(--font-sans)">{{ t.glyph }}</span>
+                    <span style="display:flex;flex-direction:column;min-width:0"><span style="font:var(--type-code-sm);font-size:11px;color:var(--text-primary)">{{ t.hex }}</span><span style="font:var(--type-caption);font-size:11px;color:var({{ t.badgeFg }})">{{ t.ratio }}</span></span>
+                  </div>
+                </sc-for>
+                <span style="font:var(--type-body-sm);color:var(--text-secondary)">{{ r.use }}</span>
+              </div>
+            </sc-for>
+          </sc-for>
+        </div>
+      </div>
+      <p style="margin:0;font:var(--type-caption);color:var(--text-muted)">Aa trong ô mẫu: chữ theo token trên nền được ghép. Ngưỡng: chữ thường 4.5:1, chữ lớn 3:1, viền điều khiển và vòng focus 3:1. Token vô hiệu được miễn theo WCAG nhưng luôn đi kèm con trỏ và thuộc tính disabled.</p>
+    </section>
+
+    <section id="chu" style="padding:40px 0;border-top:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;flex-direction:column;gap:6px"><h2 style="margin:0;font:var(--type-display-md);letter-spacing:var(--tracking-tight);color:var(--text-strong)">Typography</h2><p style="margin:0;color:var(--text-secondary);max-width:680px;text-wrap:pretty">Ba họ chữ, đều hỗ trợ đầy đủ dấu tiếng Việt. Space Grotesk cùng tinh thần với chữ X, chỉ dùng cho tiêu đề trang và số liệu lớn. Be Vietnam Pro cho toàn bộ giao diện. JetBrains Mono cho code, ID, đường dẫn và log.</p></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">
+        <sc-for list="{{ families }}" as="f" hint-placeholder-count="3">
+          <div style="display:flex;flex-direction:column;gap:8px;padding:20px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+            <span style="font:600 44px/1 {{ f.stack }};color:var(--text-strong)">Aa Ưư</span>
+            <span style="font:var(--type-heading-sm);color:var(--text-strong)">{{ f.name }}</span>
+            <span style="font:var(--type-caption);color:var(--text-muted)">{{ f.role }}</span>
+            <code style="font:var(--type-code-sm);color:var(--text-secondary)">{{ f.token }}</code>
+          </div>
+        </sc-for>
+      </div>
+      <div style="border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface);overflow:auto">
+        <sc-for list="{{ typeScale }}" as="t" hint-placeholder-count="10">
+          <div style="display:grid;grid-template-columns:180px minmax(0,1fr) 150px;gap:16px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border-subtle);min-width:640px">
+            <span style="display:flex;flex-direction:column"><code style="font:var(--type-code-sm);color:var(--text-primary)">{{ t.token }}</code><span style="font:var(--type-caption);color:var(--text-muted)">{{ t.spec }}</span></span>
+            <span style="font:var({{ t.token }});letter-spacing:{{ t.track }};text-transform:{{ t.tt }};color:var(--text-strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.sample }}</span>
+            <span style="font:var(--type-caption);color:var(--text-muted)">{{ t.use }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <section id="khoang-cach" style="padding:40px 0;border-top:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;flex-direction:column;gap:6px"><h2 style="margin:0;font:var(--type-display-md);letter-spacing:var(--tracking-tight);color:var(--text-strong)">Khoảng cách và kích thước</h2><p style="margin:0;color:var(--text-secondary);max-width:680px;text-wrap:pretty">Lưới 4/8 px. Bước 4 px cho khoảng bên trong component, bước 8 px trở lên cho bố cục. 2 px chỉ dùng cho khe focus và đường mảnh.</p></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px">
+        <div style="display:flex;flex-direction:column;gap:6px;padding:16px 20px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+          <sc-for list="{{ spaces }}" as="s" hint-placeholder-count="12">
+            <div style="display:grid;grid-template-columns:96px 44px 1fr;align-items:center;gap:8px"><code style="font:var(--type-code-sm);color:var(--text-primary)">{{ s.token }}</code><span style="font:var(--type-code-sm);color:var(--text-muted)">{{ s.px }}</span><span style="height:12px;width:{{ s.w }};border-radius:2px;background:var(--brand-blue-mid)"></span></div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;padding:16px 20px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+          <span style="font:var(--type-heading-sm);color:var(--text-strong);padding-bottom:6px">Kích thước điều khiển</span>
+          <sc-for list="{{ sizes }}" as="s" hint-placeholder-count="8">
+            <div style="display:grid;grid-template-columns:150px 50px 1fr;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border-subtle)"><code style="font:var(--type-code-sm);color:var(--text-primary)">{{ s.token }}</code><span style="font:var(--type-code-sm);color:var(--text-muted)">{{ s.px }}</span><span style="font:var(--type-caption);color:var(--text-secondary)">{{ s.use }}</span></div>
+          </sc-for>
+          <span style="font:var(--type-caption);color:var(--text-muted);padding-top:6px">Mật độ gọn: đặt <code style="font:var(--type-code-sm)">data-density="compact"</code> để hàng bảng còn 32 px và điều khiển md còn 28 px.</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="bo-goc" style="padding:40px 0;border-top:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;flex-direction:column;gap:6px"><h2 style="margin:0;font:var(--type-display-md);letter-spacing:var(--tracking-tight);color:var(--text-strong)">Bo góc và viền</h2><p style="margin:0;color:var(--text-secondary);max-width:680px;text-wrap:pretty">Góc bo nhẹ: 6–8 px cho điều khiển, 12 px cho card và dialog, 16 px cho drawer và bảng lệnh. Viền 1 px là cách phân tách chính; bóng chỉ dùng cho lớp nổi.</p></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px">
+        <sc-for list="{{ radii }}" as="r" hint-placeholder-count="7">
+          <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start"><div style="width:100%;height:72px;border:1.5px solid var(--border-control);border-radius:{{ r.px }};background:var(--bg-surface)"></div><code style="font:var(--type-code-sm);color:var(--text-primary)">{{ r.token }}</code><span style="font:var(--type-caption);color:var(--text-muted)">{{ r.px }} · {{ r.use }}</span></div>
+        </sc-for>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+        <sc-for list="{{ borders }}" as="b" hint-placeholder-count="5">
+          <div style="display:flex;flex-direction:column;gap:8px;padding:16px;border-radius:var(--radius-md);background:var(--bg-surface);border:{{ b.w }} solid var({{ b.token }})"><code style="font:var(--type-code-sm);color:var(--text-primary)">{{ b.token }}</code><span style="font:var(--type-caption);color:var(--text-muted)">{{ b.use }}</span></div>
+        </sc-for>
+      </div>
+    </section>
+
+    <section id="do-cao" style="padding:40px 0;border-top:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;flex-direction:column;gap:6px"><h2 style="margin:0;font:var(--type-display-md);letter-spacing:var(--tracking-tight);color:var(--text-strong)">Bóng đổ và độ cao</h2><p style="margin:0;color:var(--text-secondary);max-width:680px;text-wrap:pretty">Năm mức. Mức 0 là mặc định cho mọi thứ nằm trên trang. Ở chế độ tối, lớp nổi sáng hơn nền và có thêm viền sáng mờ, vì bóng khó thấy trên nền tối.</p></div>
+      <sc-for list="{{ themePair }}" as="tp" hint-placeholder-count="2">
+        <div data-theme="{{ tp.theme }}" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;padding:24px;border-radius:var(--radius-lg);background:var(--bg-canvas);border:1px solid var(--border-subtle)">
+          <sc-for list="{{ shadows }}" as="s" hint-placeholder-count="5">
+            <div style="display:flex;flex-direction:column;gap:4px;padding:16px;min-height:96px;border-radius:var(--radius-lg);background:var({{ s.bg }});box-shadow:var({{ s.token }});border:1px solid var(--border-subtle)"><code style="font:var(--type-code-sm);color:var(--text-primary)">{{ s.token }}</code><span style="font:var(--type-caption);color:var(--text-muted)">{{ s.use }}</span><span style="font:var(--type-caption);color:var(--text-muted);margin-top:auto">{{ s.z }}</span></div>
+          </sc-for>
+        </div>
+      </sc-for>
+    </section>
+
+    <section id="bo-cuc" style="padding:40px 0;border-top:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;flex-direction:column;gap:6px"><h2 style="margin:0;font:var(--type-display-md);letter-spacing:var(--tracking-tight);color:var(--text-strong)">Bố cục và breakpoint</h2><p style="margin:0;color:var(--text-secondary);max-width:680px;text-wrap:pretty">App shell gồm sidebar, topbar và vùng nội dung. Sidebar thu thành thanh icon ở màn vừa và thành drawer ở mobile; nội dung giới hạn 1200 px, trang đọc giới hạn 72 ký tự mỗi dòng.</p></div>
+      <div style="border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface);overflow:auto">
+        <sc-for list="{{ bps }}" as="b" hint-placeholder-count="5">
+          <div style="display:grid;grid-template-columns:80px 110px 150px minmax(0,1fr);gap:16px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border-subtle);min-width:680px">
+            <code style="font:var(--type-code-sm);color:var(--text-primary)">{{ b.token }}</code>
+            <span style="font:var(--type-code-sm);color:var(--text-muted)">{{ b.range }}</span>
+            <div style="display:flex;gap:3px;height:40px;padding:3px;border:1px solid var(--border-default);border-radius:var(--radius-sm);width:{{ b.w }};background:var(--bg-canvas)"><sc-if value="{{ b.side }}" hint-placeholder-val="{{ true }}"><span style="width:{{ b.sw }};border-radius:2px;background:var(--border-default)"></span></sc-if><span style="flex:1;border-radius:2px;background:var(--state-selected-bg);border:1px dashed var(--state-selected-border)"></span></div>
+            <span style="font:var(--type-body-sm);color:var(--text-secondary)">{{ b.layout }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <section id="chuyen-dong" style="padding:40px 0;border-top:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;flex-direction:column;gap:6px"><h2 style="margin:0;font:var(--type-display-md);letter-spacing:var(--tracking-tight);color:var(--text-strong)">Chuyển động</h2><p style="margin:0;color:var(--text-secondary);max-width:680px;text-wrap:pretty">Ngắn và có mục đích: xác nhận thao tác, cho biết lớp nào mở ra từ đâu. Khi hệ điều hành bật giảm chuyển động, mọi thời lượng về 0 và hiệu ứng lặp (xoay, nhấp nháy, shimmer) dừng lại; trạng thái vẫn đọc được qua chữ và biểu tượng.</p></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px">
+        <div style="display:flex;flex-direction:column;gap:8px;padding:16px 20px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+          <sc-for list="{{ durations }}" as="d" hint-placeholder-count="5"><div style="display:grid;grid-template-columns:150px 56px 1fr;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid var(--border-subtle)"><code style="font:var(--type-code-sm);color:var(--text-primary)">{{ d.token }}</code><span style="font:var(--type-code-sm);color:var(--text-muted)">{{ d.ms }}</span><span style="font:var(--type-caption);color:var(--text-secondary)">{{ d.use }}</span></div></sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;padding:16px 20px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+          <div style="display:flex;align-items:center;gap:8px"><span style="font:var(--type-heading-sm);color:var(--text-strong)">Đường cong</span><button onClick="{{ toggleMove }}" style="margin-left:auto;display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:var(--radius-sm);border:1px solid var(--action-secondary-border);background:var(--action-secondary-bg);color:var(--action-secondary-fg);font:var(--type-label);cursor:pointer" style-hover="background:var(--action-secondary-hover)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.play }}"></path></svg>Chạy thử</button></div>
+          <sc-for list="{{ easings }}" as="e" hint-placeholder-count="4">
+            <div style="display:grid;grid-template-columns:44px 1fr;gap:10px;align-items:center">
+              <svg width="44" height="44" viewBox="-4 -4 108 108" aria-hidden="true" style="border:1px solid var(--border-subtle);border-radius:var(--radius-sm);background:var(--bg-sunken)"><path d="{{ e.path }}" fill="none" stroke="var(--brand-blue-mid)" stroke-width="5"></path></svg>
+              <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+                <span style="display:flex;gap:8px;align-items:baseline"><code style="font:var(--type-code-sm);color:var(--text-primary)">{{ e.token }}</code><span style="font:var(--type-caption);color:var(--text-muted)">{{ e.use }}</span></span>
+                <div style="position:relative;height:10px;border-radius:5px;background:var(--bg-sunken)"><span style="position:absolute;top:0;left:0;width:10px;height:10px;border-radius:50%;background:var(--action-primary-bg);transform:translateX({{ e.x }});transition:transform var(--duration-slower) var({{ e.token }})"></span></div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+
+    <section id="trang-thai" style="padding:40px 0;border-top:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;flex-direction:column;gap:6px"><h2 style="margin:0;font:var(--type-display-md);letter-spacing:var(--tracking-tight);color:var(--text-strong)">Trạng thái tương tác</h2><p style="margin:0;color:var(--text-secondary);max-width:680px;text-wrap:pretty">Mỗi trạng thái có ít nhất một tín hiệu ngoài màu: biểu tượng, chữ, độ đậm viền, vòng focus hoặc con trỏ. Cột cuối mô tả tín hiệu đó.</p></div>
+      <div style="border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface);overflow:auto">
+        <div style="display:grid;grid-template-columns:120px repeat(3,minmax(170px,1fr)) minmax(200px,1.3fr);min-width:960px">
+          <span style="padding:10px 16px;font:var(--type-caption);color:var(--text-muted);background:var(--bg-sunken);border-bottom:1px solid var(--border-default)">Trạng thái</span>
+          <span style="padding:10px 16px;font:var(--type-caption);color:var(--text-muted);background:var(--bg-sunken);border-bottom:1px solid var(--border-default)">Button</span>
+          <span style="padding:10px 16px;font:var(--type-caption);color:var(--text-muted);background:var(--bg-sunken);border-bottom:1px solid var(--border-default)">Input</span>
+          <span style="padding:10px 16px;font:var(--type-caption);color:var(--text-muted);background:var(--bg-sunken);border-bottom:1px solid var(--border-default)">Mục danh sách</span>
+          <span style="padding:10px 16px;font:var(--type-caption);color:var(--text-muted);background:var(--bg-sunken);border-bottom:1px solid var(--border-default)">Tín hiệu ngoài màu</span>
+          <sc-for list="{{ states }}" as="s" hint-placeholder-count="10">
+            <span style="padding:12px 16px;font:var(--type-label);color:var(--text-strong);border-bottom:1px solid var(--border-subtle);display:flex;align-items:center">{{ s.name }}</span>
+            <div style="padding:12px 16px;border-bottom:1px solid var(--border-subtle);display:flex;align-items:center">
+              <span style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:var(--radius-md);font:var(--type-label);font-weight:600;background:var({{ s.b.bg }});color:var({{ s.b.fg }});border:1px solid var({{ s.b.bd }});box-shadow:{{ s.b.sh }};cursor:{{ s.b.cur }}"><sc-if value="{{ s.b.hasIcon }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="animation:{{ s.b.anim }}"><path d="{{ s.b.icon }}"></path></svg></sc-if>{{ s.b.label }}</span>
+            </div>
+            <div style="padding:12px 16px;border-bottom:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:4px;justify-content:center">
+              <span style="display:flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:var(--radius-md);background:var({{ s.i.bg }});border:{{ s.i.bw }} solid var({{ s.i.bd }});box-shadow:{{ s.i.sh }};font:var(--type-body-sm);color:var({{ s.i.fg }})"><span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.i.text }}</span><sc-if value="{{ s.i.hasIcon }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var({{ s.i.ic }});animation:{{ s.i.anim }}"><path d="{{ s.i.icon }}"></path></svg></sc-if></span>
+              <sc-if value="{{ s.i.hasMsg }}" hint-placeholder-val="{{ false }}"><span style="font:var(--type-caption);color:var({{ s.i.ic }})">{{ s.i.msg }}</span></sc-if>
+            </div>
+            <div style="padding:12px 16px;border-bottom:1px solid var(--border-subtle);display:flex;align-items:center">
+              <span style="flex:1;display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border-radius:var(--radius-sm);background:{{ s.r.bg }};color:var({{ s.r.fg }});font:var(--type-body-sm);font-weight:{{ s.r.fw }};box-shadow:{{ s.r.sh }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var({{ s.r.ic }})"><path d="{{ s.r.icon }}"></path></svg>{{ s.r.text }}</span>
+            </div>
+            <span style="padding:12px 16px;font:var(--type-body-sm);color:var(--text-secondary);border-bottom:1px solid var(--border-subtle);display:flex;align-items:center;text-wrap:pretty">{{ s.cue }}</span>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+
+    <section id="tiep-can" style="padding:40px 0;border-top:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;flex-direction:column;gap:6px"><h2 style="margin:0;font:var(--type-display-md);letter-spacing:var(--tracking-tight);color:var(--text-strong)">Tiếp cận và bàn phím</h2><p style="margin:0;color:var(--text-secondary);max-width:680px;text-wrap:pretty">Mục tiêu WCAG 2.2 AA. Mọi thao tác làm được bằng bàn phím, thứ tự focus theo thứ tự đọc, và lớp nổi (dialog, drawer, bảng lệnh) giữ focus bên trong cho đến khi đóng.</p></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px">
+        <div style="display:flex;flex-direction:column;gap:10px;padding:16px 20px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+          <span style="font:var(--type-heading-sm);color:var(--text-strong)">Quy tắc</span>
+          <sc-for list="{{ a11y }}" as="a" hint-placeholder-count="6"><div style="display:grid;grid-template-columns:18px 1fr;gap:8px;font:var(--type-body-sm);color:var(--text-secondary)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--status-success-fg);margin-top:2px"><path d="{{ ic.check }}"></path></svg><span style="text-wrap:pretty">{{ a }}</span></div></sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;padding:16px 20px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+          <span style="font:var(--type-heading-sm);color:var(--text-strong);padding-bottom:6px">Phím tắt toàn cục</span>
+          <sc-for list="{{ keys }}" as="k" hint-placeholder-count="8"><div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border-subtle)"><span style="font:var(--type-body-sm);color:var(--text-secondary);flex:1">{{ k.label }}</span><sc-for list="{{ k.keys }}" as="c" hint-placeholder-count="2"><kbd style="min-width:22px;height:22px;padding:0 6px;display:inline-grid;place-items:center;border-radius:var(--radius-xs);border:1px solid var(--border-default);border-bottom-width:2px;background:var(--bg-surface);font:500 11px/1 var(--font-mono);color:var(--text-primary)">{{ c }}</kbd></sc-for></div></sc-for>
+        </div>
+      </div>
+    </section>
+
+    <section id="noi-dung" style="padding:40px 0;border-top:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;flex-direction:column;gap:6px"><h2 style="margin:0;font:var(--type-display-md);letter-spacing:var(--tracking-tight);color:var(--text-strong)">Nội dung và giọng văn</h2><p style="margin:0;color:var(--text-secondary);max-width:680px;text-wrap:pretty">Tiếng Việt trước, rõ và thẳng như một đồng nghiệp kỹ thuật. Viết hoa đầu câu, không viết hoa mọi từ. Giữ nguyên thuật ngữ quen thuộc với developer (agent, run, task, skill, memory, commit, PR) thay vì dịch gượng.</p></div>
+      <div style="border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface);overflow:auto">
+        <div style="display:grid;grid-template-columns:140px minmax(200px,1fr) minmax(200px,1fr);min-width:620px">
+          <span style="padding:10px 16px;font:var(--type-caption);color:var(--text-muted);background:var(--bg-sunken)">Tình huống</span>
+          <span style="padding:10px 16px;font:var(--type-caption);color:var(--status-success-fg);background:var(--bg-sunken)">✓ Nên viết</span>
+          <span style="padding:10px 16px;font:var(--type-caption);color:var(--status-danger-fg);background:var(--bg-sunken)">✕ Tránh</span>
+          <sc-for list="{{ copy }}" as="c" hint-placeholder-count="6">
+            <span style="padding:10px 16px;font:var(--type-label);color:var(--text-strong);border-top:1px solid var(--border-subtle)">{{ c.k }}</span>
+            <span style="padding:10px 16px;font:var(--type-body-sm);color:var(--text-primary);border-top:1px solid var(--border-subtle)">{{ c.good }}</span>
+            <span style="padding:10px 16px;font:var(--type-body-sm);color:var(--text-muted);border-top:1px solid var(--border-subtle);text-decoration:line-through;text-decoration-color:var(--status-danger-border)">{{ c.bad }}</span>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const lum = h => { const v = [1, 3, 5].map(i => parseInt(h.substr(i, 2), 16) / 255).map(c => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+const ratio = (a, b) => { if (!/^#[0-9a-f]{6}$/i.test(a || '') || !/^#[0-9a-f]{6}$/i.test(b || '')) return null; const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+let ICONS = {};
+const loadIcons = () => window.__xdIcons ? Promise.resolve(ICONS = window.__xdIcons) : fetch('assets/icons.json').then(r => r.json()).then(j => { window.__xdIcons = ICONS = j; });
+const I = n => ICONS[n] || '';
+const icMap = () => { const o = {}; for (const k in ICONS) o[k.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase())] = ICONS[k]; return o; };
+const SEM = [
+  ['Nền', [['--bg-canvas', 'Nền ứng dụng'], ['--bg-subtle', 'Sidebar, vùng phụ'], ['--bg-surface', 'Card, bảng, trình soạn thảo'], ['--bg-raised', 'Dropdown, popover, dialog'], ['--bg-sunken', 'Code, vùng lõm, nền nhóm nút'], ['--bg-inverse', 'Tooltip']]],
+  ['Chữ', [['--text-strong', 'Tiêu đề, số liệu', '--bg-canvas', 't'], ['--text-primary', 'Nội dung chính', '--bg-surface', 't'], ['--text-secondary', 'Mô tả, nhãn phụ', '--bg-surface', 't'], ['--text-muted', 'Metadata, chú thích', '--bg-sunken', 't'], ['--text-link', 'Liên kết', '--bg-surface', 't'], ['--text-disabled', 'Chữ vô hiệu (miễn trừ)', '--bg-surface', 'x'], ['--text-inverse', 'Chữ trên tooltip', '--bg-inverse', 't']]],
+  ['Viền', [['--border-subtle', 'Phân tách trong card, hàng bảng', '--bg-surface', 'x'], ['--border-default', 'Card, panel', '--bg-surface', 'x'], ['--border-control', 'Input, checkbox, switch', '--bg-surface', 'u'], ['--focus-color', 'Vòng focus', '--bg-canvas', 'u']]],
+  ['Hành động', [['--action-primary-fg', 'Chữ trên nút chính', '--action-primary-bg', 't'], ['--action-secondary-fg', 'Nút phụ', '--action-secondary-bg', 't'], ['--action-danger-fg', 'Nút huỷ/xoá', '--action-danger-bg', 't'], ['--state-selected-fg', 'Mục đang chọn', '--state-selected-bg', 't']]],
+  ['Trạng thái', ['success', 'warning', 'danger', 'info', 'running', 'neutral'].map(k => ['--status-' + k + '-fg', { success: 'Xong, đạt', warning: 'Cảnh báo, hết quota', danger: 'Lỗi, thất bại', info: 'Thông tin', running: 'Agent/run đang chạy', neutral: 'Chờ, rảnh, offline' }[k], '--status-' + k + '-bg', 't'])],
+];
+const PRIM = [['Blue (thương hiệu)', 'blue', [50, 100, 200, 300, 400, 500, 600, 700, 800, 900]], ['Neutral (nền sáng)', 'neutral', [0, 25, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950]], ['Navy (nền tối)', 'navy', [950, 900, 850, 800, 750, 700, 600, 500, 400, 300, 100]], ['Green', 'green', [50, 200, 400, 500, 700]], ['Amber', 'amber', [50, 200, 300, 400, 700]], ['Red', 'red', [50, 200, 300, 500, 600, 700]]];
+const bez = (a, b, c, d) => `M0,100 C${a * 100},${100 - b * 100} ${c * 100},${100 - d * 100} 100,0`;
+class Component extends DCLogic {
+  state = { theme: (() => { try { return localStorage.getItem('xdh-ds-theme') === 'dark' ? 'dark' : 'light'; } catch (e) { return 'light'; } })(), tok: null, moved: false };
+  componentDidMount() {
+    loadIcons().then(() => this.forceUpdate());
+    let n = 0; const tryRead = () => { const t = this.readTokens(); if (t) this.setState({ tok: t }); else if (n++ < 30) setTimeout(tryRead, 200); }; tryRead();
+  }
+  readTokens() {
+    const names = new Set(); SEM.forEach(([, rows]) => rows.forEach(r => { names.add(r[0]); if (r[2]) names.add(r[2]); })); PRIM.forEach(([, p, st]) => st.forEach(s => names.add('--' + p + '-' + s)));
+    const out = {};
+    for (const th of ['light', 'dark']) { const d = document.createElement('div'); d.setAttribute('data-theme', th); d.style.display = 'none'; document.body.appendChild(d); const cs = getComputedStyle(d); out[th] = {}; names.forEach(k => out[th][k] = cs.getPropertyValue(k).trim().toUpperCase()); d.remove(); }
+    return out.light['--bg-canvas'] ? out : null;
+  }
+  setTheme(t) { this.setState({ theme: t }); try { localStorage.setItem('xdh-ds-theme', t); } catch (e) {} }
+  renderVals() {
+    const s = this.state, tok = s.tok, light = s.theme !== 'dark';
+    const semGroups = SEM.map(([name, rows]) => ({ name, rows: rows.map(([token, use, on, kind]) => ({ token, use, themes: ['light', 'dark'].map(th => {
+      const hex = tok ? tok[th][token] : '…', r = tok && on ? ratio(tok[th][token], tok[th][on]) : null;
+      const need = kind === 't' ? 4.5 : kind === 'u' ? 3 : 0, ok = r && r >= need;
+      const isText = kind === 't' || kind === 'x' && token.startsWith('--text');
+      return { theme: th, hex, swVar: isText ? (on || '--bg-surface') : token, fgVar: isText ? token : '--text-primary', onVar: '--bg-surface', glyph: isText ? 'Aa' : '',
+        ratio: r ? r.toFixed(2) + ':1 ' + (kind === 'x' ? '· miễn trừ' : ok ? (kind === 'u' ? '· đạt 3:1' : '· đạt AA') : '· chưa đạt') : (kind === 'x' ? 'trang trí' : ''), badgeFg: kind === 'x' ? '--text-muted' : ok ? '--status-success-fg' : '--status-danger-fg' };
+    }) })) }));
+    const prims = PRIM.map(([name, p, st]) => ({ name, items: st.map(x => ({ n: '--' + p + '-' + x, label: p + '-' + x, hex: tok ? tok.light['--' + p + '-' + x] : '' })) }));
+    const B = (bg, fg, bd, label, o = {}) => ({ bg, fg, bd, label, sh: 'none', cur: 'pointer', ...o, hasIcon: !!o.icon, icon: I(o.icon || 'check'), anim: o.spin ? 'xd-spin 0.9s linear infinite' : 'none' });
+    const In = (text, bd, o = {}) => ({ text, bd, bg: '--bg-surface', fg: '--text-primary', bw: '1px', sh: 'none', ic: '--text-muted', ...o, hasIcon: !!o.icon, icon: I(o.icon || 'check'), hasMsg: !!o.msg, msg: o.msg || '', anim: o.spin ? 'xd-spin 0.9s linear infinite' : 'none' });
+    const R = (text, o = {}) => ({ text, bg: 'transparent', fg: '--text-secondary', fw: 400, sh: 'none', ic: '--text-muted', ...o, icon: I(o.icon || 'file-text') });
+    const P = ['--action-primary-bg', '--action-primary-fg', '--action-primary-bg'];
+    const states = [
+      { name: 'Mặc định', b: B(...P, 'Lưu'), i: In('payment-gateway', '--border-control'), r: R('Kiến trúc'), cue: 'Viền điều khiển 3:1 giúp nhận ra ô nhập kể cả khi không có màu.' },
+      { name: 'Hover', b: B('--action-primary-hover', '--action-primary-fg', '--action-primary-hover', 'Lưu'), i: In('payment-gateway', '--text-muted'), r: R('Kiến trúc', { bg: 'var(--state-hover)', fg: '--text-strong' }), cue: 'Con trỏ đổi thành bàn tay; nền đậm hơn một bậc.' },
+      { name: 'Focus', b: B(...P, 'Lưu', { sh: 'var(--focus-ring)' }), i: In('payment-gateway', '--focus-color', { bw: '1px', sh: '0 0 0 3px var(--state-selected-bg)' }), r: R('Kiến trúc', { sh: 'inset 0 0 0 2px var(--focus-color)', fg: '--text-strong' }), cue: 'Vòng focus 2 px cách 2 px, chỉ hiện khi dùng bàn phím (:focus-visible).' },
+      { name: 'Nhấn', b: B('--action-primary-active', '--action-primary-fg', '--action-primary-active', 'Lưu'), i: In('payment-gatew|', '--focus-color'), r: R('Kiến trúc', { bg: 'var(--state-pressed)', fg: '--text-strong' }), cue: 'Nền đậm nhất; con trỏ nhập nhấp nháy trong input.' },
+      { name: 'Đã chọn', b: B('--state-selected-bg', '--state-selected-fg', '--state-selected-border', 'Đang theo dõi', { icon: 'check' }), i: In('payment-gateway', '--border-selected', { icon: 'check', ic: '--text-brand' }), r: R('Kiến trúc', { bg: 'var(--state-selected-bg)', fg: '--state-selected-fg', fw: 600, ic: '--state-selected-fg', icon: 'folder-open' }), cue: 'Dấu ✓ hoặc chữ đậm; aria-selected / aria-pressed.' },
+      { name: 'Vô hiệu', b: B('--state-disabled-bg', '--state-disabled-fg', '--state-disabled-border', 'Lưu', { cur: 'not-allowed', icon: 'lock' }), i: In('Chỉ admin được sửa', '--state-disabled-border', { bg: '--state-disabled-bg', fg: '--state-disabled-fg', icon: 'lock' }), r: R('Kiến trúc', { fg: '--text-disabled', icon: 'lock', ic: '--text-disabled' }), cue: 'Biểu tượng khoá và lý do trong tooltip; thuộc tính disabled.' },
+      { name: 'Đang tải', b: B(...P, 'Đang lưu…', { icon: 'loader-circle', spin: true, cur: 'progress' }), i: In('Đang kiểm tra…', '--border-control', { icon: 'loader-circle', spin: true }), r: R('Đang tải…', { icon: 'loader-circle', fg: '--text-muted' }), cue: 'Chữ “Đang …” và aria-busy; không chỉ dựa vào vòng xoay.' },
+      { name: 'Thành công', b: B('--status-success-bg', '--status-success-fg', '--status-success-border', 'Đã lưu', { icon: 'circle-check' }), i: In('payment-gateway', '--status-success-solid', { icon: 'circle-check', ic: '--status-success-fg', msg: 'Tên hợp lệ' }), r: R('Deploy thành công', { icon: 'circle-check', ic: '--status-success-fg', fg: '--text-primary' }), cue: 'Biểu tượng ✓ và thông điệp bằng chữ.' },
+      { name: 'Cảnh báo', b: B('--status-warning-bg', '--status-warning-fg', '--status-warning-border', 'Xem cảnh báo', { icon: 'triangle-alert' }), i: In('claude-3-opus', '--status-warning-solid', { icon: 'triangle-alert', ic: '--status-warning-fg', msg: 'Model sắp ngừng hỗ trợ' }), r: R('Gói Codex còn 8%', { icon: 'triangle-alert', ic: '--status-warning-fg', fg: '--text-primary' }), cue: 'Tam giác cảnh báo và câu giải thích.' },
+      { name: 'Lỗi', b: B('--action-danger-bg', '--action-danger-fg', '--action-danger-bg', 'Thử lại', { icon: 'rotate-ccw' }), i: In('payment gateway', '--status-danger-solid', { bw: '2px', icon: 'circle-alert', ic: '--status-danger-fg', msg: 'Chỉ dùng chữ thường, số và dấu -' }), r: R('Run #1284 thất bại', { icon: 'circle-x', ic: '--status-danger-fg', fg: '--text-primary' }), cue: 'Viền 2 px, biểu tượng, thông điệp; aria-invalid + aria-describedby.' },
+    ];
+    return {
+      ic: icMap(), theme: s.theme, light, dark: !light, setLight: () => this.setTheme('light'), setDark: () => this.setTheme('dark'),
+      lightBg: light ? 'var(--bg-surface)' : 'transparent', darkBg: light ? 'transparent' : 'var(--bg-surface)', lightSh: light ? 'var(--shadow-1)' : 'none', darkSh: light ? 'none' : 'var(--shadow-1)',
+      toc: [['nguyen-tac', 'Nguyên tắc'], ['thuong-hieu', 'Thương hiệu'], ['mau', 'Màu sắc'], ['chu', 'Typography'], ['khoang-cach', 'Khoảng cách'], ['bo-goc', 'Bo góc và viền'], ['do-cao', 'Bóng đổ và độ cao'], ['bo-cuc', 'Bố cục, breakpoint'], ['chuyen-dong', 'Chuyển động'], ['trang-thai', 'Trạng thái'], ['tiep-can', 'Tiếp cận, bàn phím'], ['noi-dung', 'Nội dung']].map(([h, label]) => ({ href: '#' + h, label })),
+      principles: [
+        { icon: I('eye'), title: 'Rõ ràng trước tiên', body: 'Một màn hình trả lời một câu hỏi chính. Phân cấp bằng cỡ chữ, độ đậm và khoảng trắng trước khi dùng màu.' },
+        { icon: I('zap'), title: 'Thao tác nhanh', body: 'Bảng lệnh ⌘K, phím tắt, mật độ vừa đủ và hành động chính luôn ở cùng một chỗ.' },
+        { icon: I('sparkles'), title: 'Bản sắc có chừng mực', body: 'Gradient xanh chỉ xuất hiện ở logo và vài điểm nhấn trạng thái. Vùng đọc, bảng và editor giữ nền phẳng.' },
+        { icon: I('users'), title: 'Dùng được cho mọi người', body: 'Tương phản AA, bàn phím đầy đủ, giảm chuyển động, không dùng màu làm tín hiệu duy nhất.' },
+      ],
+      gradDo: ['Chữ X trong logo', 'Thanh tiến trình của run đang chạy', 'Vòng quanh avatar agent đang hoạt động', 'Nút Brand: tối đa một nút mỗi màn, cho hành động khởi chạy agent'],
+      gradDont: ['Nền trang, sidebar, card, bảng', 'Chữ, tiêu đề, biểu tượng', 'Trình soạn thảo, code, log, vùng đọc tài liệu', 'Nhiều nút cùng lúc hoặc trạng thái lỗi/cảnh báo'],
+      logoRules: [{ icon: I('square'), text: 'Khoảng trống quanh logo ≥ ¼ chiều cao X' }, { icon: I('smartphone'), text: 'Dưới 24 px chiều cao: dùng X đứng riêng' }, { icon: I('ban'), text: 'Không kéo giãn, xoay, viền, đổ bóng' }, { icon: I('palette'), text: 'Không đổi màu riêng phần chữ' }, { icon: I('image'), text: 'Không đặt lên ảnh rối mắt' }],
+      prims, semGroups,
+      families: [{ name: 'Space Grotesk', role: 'Tiêu đề trang, số liệu KPI', token: '--font-display', stack: 'var(--font-display)' }, { name: 'Be Vietnam Pro', role: 'Giao diện, nội dung, form', token: '--font-sans', stack: 'var(--font-sans)' }, { name: 'JetBrains Mono', role: 'Code, ID, đường dẫn, log', token: '--font-mono', stack: 'var(--font-mono)' }],
+      typeScale: [['--type-display-lg', '32/40 · 600 · −2%', 'Tổng quan dự án', 'Tiêu đề trang'], ['--type-display-md', '24/32 · 600', 'Agent đang chạy', 'Tiêu đề section, dialog lớn'], ['--type-numeric-lg', '28/36 · 600', '1.284 run · 97,2%', 'Số liệu KPI'], ['--type-heading-lg', '20/28 · 600', 'Cấu hình webhook', 'Tiêu đề card lớn, drawer'], ['--type-heading-md', '16/24 · 600', 'Hàng đợi review', 'Tiêu đề card'], ['--type-heading-sm', '14/20 · 600', 'Thông tin trang', 'Nhóm trong panel'], ['--type-body-lg', '16/26 · 400', 'Tài liệu giải thích cách agent đọc context trước khi viết code.', 'Trang đọc tài liệu'], ['--type-body-md', '14/22 · 400', 'Agent đã tạo PR #482 và đang chờ review.', 'Mặc định giao diện'], ['--type-body-sm', '13/20 · 400', 'Cập nhật 3 phút trước bởi claude-code', 'Bảng dày, metadata'], ['--type-label', '13/20 · 500', 'Tên dự án', 'Nhãn form, nút, tab'], ['--type-caption', '12/16 · 500', 'v12 · 2 ảnh', 'Chú thích, badge'], ['--type-overline', '11/16 · 600 · +6%', 'Theo dõi', 'Nhóm menu, nhãn section', 'uppercase'], ['--type-code-md', '13/20 · mono', 'git checkout -b feat/retry-webhook', 'Code block, editor'], ['--type-code-sm', '12/18 · mono', 'run_01J8Z4 · apps/web/src', 'ID, đường dẫn, log']]
+        .map(([token, spec, sample, use, tt]) => ({ token, spec, sample, use, tt: tt || 'none', track: token.includes('display') ? 'var(--tracking-tight)' : tt ? 'var(--tracking-wide)' : 'normal' })),
+      spaces: [['--space-0-5', 2], ['--space-1', 4], ['--space-2', 8], ['--space-3', 12], ['--space-4', 16], ['--space-5', 20], ['--space-6', 24], ['--space-8', 32], ['--space-10', 40], ['--space-12', 48], ['--space-16', 64], ['--space-20', 80]].map(([token, px]) => ({ token, px: px + 'px', w: px * 2 + 'px' })),
+      sizes: [['--control-h-xs', '24px', 'Badge có nút, chip nhỏ'], ['--control-h-sm', '28px', 'Nút trong bảng, toolbar'], ['--control-h-md', '32px', 'Mặc định: nút, input, select'], ['--control-h-lg', '40px', 'Form trang cài đặt, dialog'], ['--control-h-touch', '44px', 'Mục tiêu chạm tối thiểu trên mobile'], ['--row-h', '40px', 'Hàng bảng, mục danh sách'], ['--sidebar-w', '240px', 'Sidebar đầy đủ'], ['--topbar-h', '56px', 'Thanh trên']].map(([token, px, use]) => ({ token, px, use })),
+      radii: [['--radius-xs', '4px', 'Badge, checkbox, kbd'], ['--radius-sm', '6px', 'Nút sm, menu item'], ['--radius-md', '8px', 'Nút, input, select'], ['--radius-lg', '12px', 'Card, dialog, toast'], ['--radius-xl', '16px', 'Drawer, bảng lệnh'], ['--radius-full', '999px', 'Avatar, pill, switch']].map(([token, px, use]) => ({ token, px, use })),
+      borders: [['--border-subtle', '1px', 'Hàng bảng, phân tách trong card'], ['--border-default', '1px', 'Card, panel, nút phụ'], ['--border-strong', '1px', 'Hover của card tương tác'], ['--border-control', '1px', 'Input, checkbox, switch'], ['--border-selected', '2px', 'Card/ô đang chọn']].map(([token, w, use]) => ({ token, w, use })),
+      themePair: [{ theme: 'light' }, { theme: 'dark' }],
+      shadows: [['--shadow-0', 'Trang, card tĩnh', 'z-base', '--bg-surface'], ['--shadow-1', 'Card hover, nút nổi', 'z-sticky', '--bg-surface'], ['--shadow-2', 'Dropdown, tooltip, popover', 'z-dropdown', '--bg-raised'], ['--shadow-3', 'Dialog, drawer, bảng lệnh', 'z-dialog', '--bg-raised'], ['--shadow-4', 'Toast', 'z-toast', '--bg-raised']].map(([token, use, z, bg]) => ({ token, use, z, bg })),
+      bps: [['base', '< 640', '32px', false, '0', 'Mobile: sidebar thành drawer, bảng thành danh sách, mục tiêu chạm 44 px'], ['--bp-sm', '640–767', '48px', false, '0', 'Mobile ngang: lưới 2 cột cho card'], ['--bp-md', '768–1023', '72px', true, '8px', 'Tablet: sidebar thu thành thanh icon 64 px'], ['--bp-lg', '1024–1279', '110px', true, '22px', 'Laptop: sidebar đầy đủ 240 px'], ['--bp-xl', '≥ 1280', '140px', true, '28px', 'Desktop: thêm panel chi tiết bên phải']].map(([token, range, w, side, sw, layout]) => ({ token, range, w, side, sw, layout })),
+      durations: [['--duration-instant', '80ms', 'Hover, đổi màu'], ['--duration-fast', '120ms', 'Nhấn nút, switch, checkbox'], ['--duration-base', '180ms', 'Dropdown, tooltip, tab'], ['--duration-slow', '240ms', 'Dialog, toast vào'], ['--duration-slower', '320ms', 'Drawer, chuyển trang']].map(([token, ms, use]) => ({ token, ms, use })),
+      easings: [['--ease-standard', [0.2, 0, 0, 1], 'Mặc định'], ['--ease-enter', [0, 0, 0.2, 1], 'Lớp mở ra'], ['--ease-exit', [0.4, 0, 1, 1], 'Lớp đóng lại'], ['--ease-emphasized', [0.3, 0, 0, 1], 'Drawer, bảng lệnh']].map(([token, b, use]) => ({ token, use, path: bez(...b), x: s.moved ? 'calc(100% + 180px)' : '0' })),
+      toggleMove: () => this.setState(st => ({ moved: !st.moved })),
+      states,
+      a11y: ['Chữ thường 4.5:1, chữ lớn và viền điều khiển 3:1 ở cả sáng lẫn tối.', 'Focus luôn nhìn thấy: vòng 2 px, không bao giờ outline: none mà không thay thế.', 'Trạng thái đi kèm biểu tượng và chữ; biểu đồ có nhãn trực tiếp.', 'Nút chỉ có icon phải có aria-label và tooltip.', 'Lớp nổi giữ focus, Esc để đóng, trả focus về phần tử đã mở.', 'Tôn trọng prefers-reduced-motion; không nhấp nháy quá 3 lần/giây.', 'Mục tiêu chạm tối thiểu 44 × 44 px trên thiết bị cảm ứng.'],
+      keys: [['Mở bảng lệnh', ['⌘', 'K']], ['Tìm trong trang', ['/']], ['Tạo task mới', ['C']], ['Tới Dashboard', ['G', 'D']], ['Tới Tasks', ['G', 'T']], ['Di chuyển trong danh sách', ['J', 'K']], ['Mở mục đang chọn', ['↵']], ['Đóng lớp nổi', ['Esc']], ['Xem mọi phím tắt', ['?']]].map(([label, keys]) => ({ label, keys })),
+      copy: [['Nút hành động', 'Tạo dự án', 'Tạo mới Dự Án'], ['Xác nhận xoá', 'Xoá dự án payment-gateway? 42 task và lịch sử run sẽ mất.', 'Bạn có chắc chắn không?'], ['Lỗi', 'Không kết nối được máy build-03. Kiểm tra agent đang chạy rồi thử lại.', 'Đã xảy ra lỗi!!!'], ['Trạng thái trống', 'Chưa có skill nào. Tạo skill đầu tiên để agent dùng lại quy trình.', 'Không có dữ liệu'], ['Thời gian', '3 phút trước · 14:05 30/9', '2026-09-30T07:05:00Z'], ['Số', '1.284 run · 97,2% · $12,48', '1284 runs · 97.2 %']].map(([k, good, bad]) => ({ k, good, bad })),
+    };
+  }
+}
+</script>
+</body>
+</html>

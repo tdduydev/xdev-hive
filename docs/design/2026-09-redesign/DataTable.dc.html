@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="display:flex;flex-direction:column;gap:10px;min-width:0;font-family:'Be Vietnam Pro',ui-sans-serif,system-ui,sans-serif;font-size:14px;color:var(--ink)">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <div style="flex:1 1 240px;max-width:380px;display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;border:1px solid var(--line);border-radius:9px;background:var(--surface)">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" style="color:var(--muted);flex-shrink:0"><path d="M3 11a8 8 0 1 0 16 0a8 8 0 1 0-16 0M21 21l-4.3-4.3"></path></svg>
+      <input value="{{ q }}" onChange="{{ setQ }}" placeholder="{{ searchPlaceholder }}" style="flex:1;min-width:0;border:0;background:transparent;outline:none;font-size:13px"></input>
+      <sc-if value="{{ hasQ }}" hint-placeholder-val="{{ false }}"><button onClick="{{ clearQ }}" style="border:0;background:transparent;cursor:pointer;color:var(--muted);font-size:12px">Xoá</button></sc-if>
+    </div>
+    <sc-for list="{{ filterCtrls }}" as="f" hint-placeholder-count="2">
+      <label style="display:flex;align-items:center;gap:6px;height:34px;padding:0 4px 0 10px;border:1px solid {{ f.bd }};border-radius:9px;background:var(--surface);font-size:12px;color:var(--muted)">
+        <span>{{ f.label }}</span>
+        <select value="{{ f.value }}" onChange="{{ f.set }}" style="height:30px;border:0;background:transparent;outline:none;font-size:13px;color:var(--ink);max-width:170px;cursor:pointer">
+          <sc-for list="{{ f.options }}" as="o" hint-placeholder-count="3"><option value="{{ o.v }}">{{ o.l }}</option></sc-for>
+        </select>
+      </label>
+    </sc-for>
+    <sc-if value="{{ hasActiveFilter }}" hint-placeholder-val="{{ false }}"><button onClick="{{ resetFilters }}" style="height:34px;padding:0 10px;border-radius:9px;border:0;background:transparent;cursor:pointer;font-size:12px;color:var(--accent-ink);font-weight:500">Bỏ lọc</button></sc-if>
+    <div style="margin-left:auto;display:flex;gap:2px;padding:3px;border-radius:8px;background:var(--sunken)">
+      <button onClick="{{ setComfy }}" style="height:26px;padding:0 9px;border-radius:6px;border:0;cursor:pointer;font-size:12px;font-weight:600;background:{{ comfyBg }};color:{{ comfyFg }}">Thoáng</button>
+      <button onClick="{{ setDense }}" style="height:26px;padding:0 9px;border-radius:6px;border:0;cursor:pointer;font-size:12px;font-weight:600;background:{{ denseBg }};color:{{ denseFg }}">Gọn</button>
+    </div>
+  </div>
+
+  <sc-if value="{{ hasSel }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 12px;border-radius:10px;background:var(--ink);color:var(--bg)">
+      <span style="font-size:13px;font-weight:600">{{ selLabel }}</span>
+      <sc-if value="{{ canSelectAll }}" hint-placeholder-val="{{ false }}"><button onClick="{{ selectAllMatching }}" style="border:0;background:transparent;cursor:pointer;font-size:12px;color:var(--accent);font-weight:600;text-decoration:underline">{{ selectAllLabel }}</button></sc-if>
+      <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
+        <sc-for list="{{ bulkBtns }}" as="b" hint-placeholder-count="2"><button onClick="{{ b.go }}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid color-mix(in oklch,var(--bg) 30%,transparent);background:transparent;color:var(--bg);cursor:pointer;font-size:12px;font-weight:600">{{ b.label }}</button></sc-for>
+        <button onClick="{{ clearSel }}" style="height:28px;padding:0 10px;border-radius:7px;border:0;background:transparent;color:var(--bg);cursor:pointer;font-size:12px;opacity:.8">Bỏ chọn</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:auto;max-height:{{ maxH }};min-height:160px">
+    <div style="min-width:{{ minW }}">
+      <div style="position:sticky;top:0;z-index:2;display:grid;grid-template-columns:{{ tracks }};gap:10px;align-items:center;padding:0 14px;height:36px;background:var(--surface);border-bottom:1px solid var(--line)">
+        <sc-if value="{{ hasBulk }}" hint-placeholder-val="{{ false }}"><button onClick="{{ togglePage }}" title="Chọn cả trang" style="width:16px;height:16px;border-radius:4px;border:1.5px solid {{ pageBoxBd }};background:{{ pageBoxBg }};color:var(--bg);cursor:pointer;padding:0;display:grid;place-items:center;font-size:11px;font-weight:700;line-height:1">{{ pageBoxMark }}</button></sc-if>
+        <sc-for list="{{ heads }}" as="h" hint-placeholder-count="6">
+          <button onClick="{{ h.sort }}" style="display:flex;align-items:center;gap:4px;justify-content:{{ h.justify }};border:0;background:transparent;padding:0;cursor:{{ h.cursor }};font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:{{ h.fg }};white-space:nowrap;overflow:hidden;min-width:0">{{ h.label }}<span style="font-size:10px">{{ h.arrow }}</span></button>
+        </sc-for>
+      </div>
+      <sc-for list="{{ pageRows }}" as="r" hint-placeholder-count="10">
+        <div onClick="{{ r.click }}" style="display:grid;grid-template-columns:{{ tracks }};gap:10px;align-items:center;padding:0 14px;min-height:{{ rowH }};border-top:1px solid var(--line);background:{{ r.bg }};cursor:{{ r.cursor }};font-size:13px;opacity:{{ r.op }}" style-hover="background:var(--sunken)">
+          <sc-if value="{{ hasBulk }}" hint-placeholder-val="{{ false }}"><button onClick="{{ r.toggle }}" style="width:16px;height:16px;border-radius:4px;border:1.5px solid {{ r.boxBd }};background:{{ r.boxBg }};color:var(--bg);cursor:pointer;padding:0;display:grid;place-items:center;font-size:11px;font-weight:700;line-height:1">{{ r.boxMark }}</button></sc-if>
+          <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="6">
+            <span title="{{ c.title }}" style="display:flex;flex-direction:column;min-width:0;align-items:{{ c.align }};padding:{{ cellPad }}">
+              <sc-if value="{{ c.isChip }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;font-weight:600;padding:1px 7px;border-radius:5px;background:{{ c.bg }};color:{{ c.fg }};white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">{{ c.text }}</span></sc-if>
+              <sc-if value="{{ c.isText }}" hint-placeholder-val="{{ true }}"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;font-family:{{ c.font }};font-size:{{ c.fs }};font-weight:{{ c.fw }};color:{{ c.fg }};font-variant-numeric:tabular-nums">{{ c.text }}</span></sc-if>
+              <sc-if value="{{ c.hasSub }}" hint-placeholder-val="{{ false }}"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;font-size:11px;color:var(--muted);font-family:{{ c.subFont }}">{{ c.sub }}</span></sc-if>
+            </span>
+          </sc-for>
+        </div>
+      </sc-for>
+      <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}"><div style="padding:32px;text-align:center;color:var(--muted);font-size:13px">Không có mục nào khớp bộ lọc.</div></sc-if>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted)">
+    <span style="font-variant-numeric:tabular-nums">{{ rangeLabel }}</span>
+    <label style="display:flex;align-items:center;gap:6px">Mỗi trang
+      <select value="{{ size }}" onChange="{{ setSize }}" style="height:28px;border:1px solid var(--line);border-radius:7px;background:var(--surface);padding:0 4px;font-size:12px;cursor:pointer">
+        <option value="25">25</option><option value="50">50</option><option value="100">100</option><option value="200">200</option>
+      </select>
+    </label>
+    <div style="margin-left:auto;display:flex;gap:3px;align-items:center">
+      <button onClick="{{ prev }}" style="height:28px;min-width:28px;padding:0 8px;border-radius:7px;border:1px solid var(--line);background:var(--surface);cursor:pointer;font-size:12px;opacity:{{ prevOp }}">‹</button>
+      <sc-for list="{{ pages }}" as="p" hint-placeholder-count="5">
+        <button onClick="{{ p.go }}" style="height:28px;min-width:28px;padding:0 8px;border-radius:7px;border:1px solid {{ p.bd }};background:{{ p.bg }};color:{{ p.fg }};cursor:{{ p.cursor }};font-size:12px;font-weight:600;font-family:'JetBrains Mono',monospace">{{ p.label }}</button>
+      </sc-for>
+      <button onClick="{{ next }}" style="height:28px;min-width:28px;padding:0 8px;border-radius:7px;border:1px solid var(--line);background:var(--surface);cursor:pointer;font-size:12px;opacity:{{ nextOp }}">›</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:900,&quot;height&quot;:560},&quot;columns&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;Array&lt;{key:string,label:string,w?:string,align?:'left'|'right',mono?:boolean,sub?:string,strong?:boolean,muted?:boolean,sortable?:boolean,sortKey?:string}&gt;&quot;},&quot;rows&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;Array&lt;Record&lt;string,any&gt;&gt;&quot;},&quot;filters&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;Array&lt;{key:string,label:string,options?:string[]}&gt;&quot;},&quot;searchKeys&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;string[]&quot;},&quot;bulk&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;string[]&quot;},&quot;onBulk&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;(action:string, ids:string[])=&gt;void&quot;},&quot;onRowClick&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;(row:any)=&gt;void&quot;},&quot;selectedId&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;string&quot;},&quot;noun&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;mục&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;maxHeight&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;62vh&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;minWidth&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;720px&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const TONE = {
+  ok: ['var(--ok-soft)', 'var(--ok)'], warn: ['var(--warn-soft)', 'var(--warn)'], bad: ['var(--bad-soft)', 'var(--bad)'],
+  run: ['var(--run-soft)', 'var(--run)'], accent: ['var(--accent-soft)', 'var(--accent-ink)'], neutral: ['var(--sunken)', 'var(--muted)'],
+};
+const MONO = "'JetBrains Mono',monospace";
+const nf = n => n.toLocaleString('vi-VN');
+const val = v => (v && typeof v === 'object' ? v.label : v);
+
+class Component extends DCLogic {
+  state = { q: '', sort: null, dir: 1, page: 0, size: 50, fv: {}, sel: {}, all: false, dense: false };
+  componentDidUpdate(prev) {
+    if (prev.rows !== this.props.rows && this.props.resetOn !== prev.resetOn) this.setState({ page: 0, sel: {}, all: false });
+  }
+  renderVals() {
+    const s = this.state;
+    const cols = this.props.columns || [];
+    const rows = this.props.rows || [];
+    const filters = this.props.filters || [];
+    const bulk = this.props.bulk || [];
+    const noun = this.props.noun || 'mục';
+    const keys = this.props.searchKeys || cols.map(c => c.key);
+    const q = s.q.trim().toLowerCase();
+
+    let list = rows;
+    for (const f of filters) { const v = s.fv[f.key]; if (v && v !== '*') list = list.filter(r => String(val(r[f.key])) === v); }
+    if (q) list = list.filter(r => keys.some(k => String(val(r[k]) ?? '').toLowerCase().includes(q)));
+    if (s.sort) {
+      const k = s.sort, d = s.dir, sk = (cols.find(c => c.key === k) || {}).sortKey || k;
+      list = [...list].sort((a, b) => { const x = a[sk] ?? val(a[k]), y = b[sk] ?? val(b[k]); return (x > y ? 1 : x < y ? -1 : 0) * d; });
+    }
+    const total = list.length, size = s.size, pageCount = Math.max(1, Math.ceil(total / size)), page = Math.min(s.page, pageCount - 1);
+    const slice = list.slice(page * size, page * size + size);
+    const hasBulk = bulk.length > 0;
+    const isSel = r => s.all || !!s.sel[r.id];
+    const selCount = s.all ? total : Object.keys(s.sel).length;
+    const pageAll = slice.length > 0 && slice.every(isSel), pageSome = slice.some(isSel);
+
+    const tracks = (hasBulk ? '16px ' : '') + cols.map(c => c.w || 'minmax(0,1fr)').join(' ');
+    const dense = s.dense;
+    const pageRows = slice.map(r => {
+      const on = isSel(r);
+      return {
+        id: r.id, bg: this.props.selectedId === r.id ? 'var(--accent-soft)' : on ? 'color-mix(in oklch, var(--accent-soft) 60%, transparent)' : 'transparent',
+        cursor: this.props.onRowClick ? 'pointer' : 'default', op: r._op ?? 1,
+        click: () => this.props.onRowClick && this.props.onRowClick(r),
+        toggle: e => { e.stopPropagation(); this.setState(st => { if (st.all) return { all: false, sel: {} }; const sel = { ...st.sel }; if (sel[r.id]) delete sel[r.id]; else sel[r.id] = 1; return { sel }; }); },
+        boxBg: on ? 'var(--accent-ink)' : 'transparent', boxBd: on ? 'var(--accent-ink)' : 'var(--line)', boxMark: on ? '✓' : '',
+        cells: cols.map(c => {
+          const v = r[c.key], chip = v && typeof v === 'object' && v.tone;
+          const text = v == null ? '—' : chip ? v.label : String(v);
+          return { isChip: !!chip, isText: !chip, text, bg: chip ? TONE[v.tone][0] : '', fg: chip ? TONE[v.tone][1] : c.muted ? 'var(--muted)' : 'var(--ink)',
+            font: c.mono ? MONO : 'inherit', fs: c.mono ? '12px' : '13px', fw: c.strong ? 600 : 400, align: c.align === 'right' ? 'flex-end' : 'flex-start',
+            sub: c.sub ? (r[c.sub] ?? '') : '', hasSub: !!c.sub && !dense && r[c.sub] != null && r[c.sub] !== '', subFont: c.subMono ? MONO : 'inherit',
+            title: text + (c.sub && r[c.sub] ? ' · ' + r[c.sub] : '') };
+        }),
+      };
+    });
+    const heads = cols.map(c => {
+      const on = s.sort === c.key, can = c.sortable !== false;
+      return { label: c.label, arrow: on ? (s.dir > 0 ? '▲' : '▼') : '', fg: on ? 'var(--ink)' : 'var(--muted)', justify: c.align === 'right' ? 'flex-end' : 'flex-start', cursor: can ? 'pointer' : 'default',
+        sort: () => can && this.setState(st => ({ sort: c.key, dir: st.sort === c.key ? -st.dir : (c.align === 'right' ? -1 : 1), page: 0 })) };
+    });
+    const nums = [];
+    const add = i => nums.push(i);
+    if (pageCount <= 7) for (let i = 0; i < pageCount; i++) add(i);
+    else { add(0); if (page > 3) add(-1); for (let i = Math.max(1, page - 1); i <= Math.min(pageCount - 2, page + 1); i++) add(i); if (page < pageCount - 4) add(-2); add(pageCount - 1); }
+    const pages = nums.map(i => i < 0 ? { label: '…', bg: 'transparent', fg: 'var(--muted)', bd: 'transparent', cursor: 'default', go: () => {} }
+      : { label: nf(i + 1), bg: i === page ? 'var(--ink)' : 'var(--surface)', fg: i === page ? 'var(--bg)' : 'var(--ink2)', bd: i === page ? 'var(--ink)' : 'var(--line)', cursor: 'pointer', go: () => this.setState({ page: i }) });
+    const activeF = filters.some(f => s.fv[f.key] && s.fv[f.key] !== '*');
+    const filterCtrls = filters.map(f => {
+      const opts = f.options || [...new Set(rows.map(r => String(val(r[f.key]))))].sort();
+      const v = s.fv[f.key] || '*';
+      return { label: f.label, value: v, bd: v !== '*' ? 'var(--accent)' : 'var(--line)', options: [{ v: '*', l: 'Tất cả' }, ...opts.map(o => ({ v: o, l: o }))],
+        set: e => this.setState(st => ({ fv: { ...st.fv, [f.key]: e.target.value }, page: 0, all: false })) };
+    });
+    const selectedIds = () => s.all ? list.map(r => r.id) : Object.keys(s.sel);
+    return {
+      q: s.q, setQ: e => this.setState({ q: e.target.value, page: 0, all: false }), hasQ: !!s.q, clearQ: () => this.setState({ q: '', page: 0 }),
+      searchPlaceholder: this.props.searchPlaceholder || ('Tìm trong ' + nf(rows.length) + ' ' + noun + '…'),
+      filterCtrls, hasActiveFilter: activeF || !!q, resetFilters: () => this.setState({ fv: {}, q: '', page: 0, all: false }),
+      comfyBg: dense ? 'transparent' : 'var(--surface)', comfyFg: dense ? 'var(--muted)' : 'var(--ink)', denseBg: dense ? 'var(--surface)' : 'transparent', denseFg: dense ? 'var(--ink)' : 'var(--muted)',
+      setComfy: () => this.setState({ dense: false }), setDense: () => this.setState({ dense: true }),
+      rowH: dense ? '34px' : '48px', cellPad: dense ? '4px 0' : '7px 0',
+      hasBulk, hasSel: selCount > 0, selLabel: 'Đã chọn ' + nf(selCount) + ' ' + noun,
+      canSelectAll: !s.all && pageAll && total > slice.length, selectAllLabel: 'Chọn cả ' + nf(total) + ' ' + noun + ' khớp bộ lọc',
+      selectAllMatching: () => this.setState({ all: true }), clearSel: () => this.setState({ sel: {}, all: false }),
+      bulkBtns: bulk.map(label => ({ label, go: () => { this.props.onBulk && this.props.onBulk(label, selectedIds()); this.setState({ sel: {}, all: false }); } })),
+      togglePage: () => this.setState(st => { if (pageAll || st.all) return { sel: {}, all: false }; const sel = { ...st.sel }; slice.forEach(r => { sel[r.id] = 1; }); return { sel }; }),
+      pageBoxBg: pageAll ? 'var(--accent-ink)' : 'transparent', pageBoxBd: pageAll || pageSome ? 'var(--accent-ink)' : 'var(--line)', pageBoxMark: pageAll ? '✓' : pageSome ? '–' : '',
+      maxH: this.props.maxHeight || '62vh', minW: this.props.minWidth || '720px', tracks, heads, pageRows, isEmpty: total === 0,
+      rangeLabel: total ? nf(page * size + 1) + '–' + nf(Math.min(total, page * size + size)) + ' trong ' + nf(total) + ' ' + noun + (total !== rows.length ? ' (lọc từ ' + nf(rows.length) + ')' : '') : '0 ' + noun,
+      size: String(size), setSize: e => this.setState({ size: +e.target.value, page: 0 }), pages,
+      prev: () => this.setState({ page: Math.max(0, page - 1) }), next: () => this.setState({ page: Math.min(pageCount - 1, page + 1) }),
+      prevOp: page === 0 ? 0.4 : 1, nextOp: page >= pageCount - 1 ? 0.4 : 1,
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -3,7 +3,8 @@ import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
-import { ErrorNote, HiveLogo } from "./components/common.tsx";
+import { HiveWordmark } from "./components/Brand.tsx";
+import { ErrorNote } from "./components/common.tsx";
 import { LanguageSelect } from "./components/Language.tsx";
 import { errorMessage } from "./hooks.ts";
 import { useT } from "./i18n/index.tsx";
@@ -55,9 +56,8 @@ export function Login({
           }}
         >
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <HiveLogo size={26} />
-              xDev Hive
+            <CardTitle>
+              <HiveWordmark height={44} />
             </CardTitle>
             <CardDescription>{t("login.tagline")}</CardDescription>
           </CardHeader>

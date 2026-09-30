@@ -14,6 +14,13 @@ export const vi = {
   language: {
     label: "Ngôn ngữ",
   },
+  theme: {
+    label: "Giao diện",
+    system: "Theo hệ thống",
+    light: "Sáng",
+    dark: "Tối",
+    toggle: "Đổi giao diện sáng tối",
+  },
   diff: {
     label: "Khác biệt",
     gap: "… {count} dòng không đổi",

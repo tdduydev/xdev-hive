@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="styles.css">
+<style>
+html,body{margin:0;padding:0;background:var(--bg-canvas)}
+a{color:var(--text-link)}a:hover{color:var(--text-link-hover)}
+</style>
+</helmet>
+<div data-theme="{{ theme }}" style="min-height:100vh;background:var(--bg-canvas);color:var(--text-primary);font:var(--type-body-md)">
+
+<header style="position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:16px;min-height:60px;padding:0 24px;border-bottom:1px solid var(--border-subtle);background:var(--bg-canvas);flex-wrap:wrap">
+  <a href="DS%20Foundations.dc.html" style="display:flex;align-items:center;gap:12px;text-decoration:none">
+    <sc-if value="{{ light }}" hint-placeholder-val="{{ true }}"><img src="assets/hive-light.svg" alt="xDev Hive · Dev Hub" style="height:36px;width:auto;display:block"></sc-if>
+    <sc-if value="{{ dark }}" hint-placeholder-val="{{ false }}"><img src="assets/hive-dark.svg" alt="xDev Hive · Dev Hub" style="height:36px;width:auto;display:block"></sc-if>
+    <span style="font:var(--type-caption);color:var(--text-muted);padding:2px 8px;border:1px solid var(--border-default);border-radius:var(--radius-full)">Design System 1.0</span>
+  </a>
+  <nav aria-label="Tài liệu" style="display:flex;gap:4px;flex-wrap:wrap">
+    <a href="DS%20Foundations.dc.html" style="padding:6px 12px;border-radius:var(--radius-md);text-decoration:none;font:var(--type-label);color:var(--text-secondary)" style-hover="background:var(--state-hover);color:var(--text-strong)">Nền tảng</a>
+    <a href="DS%20Components.dc.html" aria-current="page" style="padding:6px 12px;border-radius:var(--radius-md);text-decoration:none;font:var(--type-label);color:var(--state-selected-fg);background:var(--state-selected-bg)">Component</a>
+    <a href="DS%20Developer%20Components.dc.html" style="padding:6px 12px;border-radius:var(--radius-md);text-decoration:none;font:var(--type-label);color:var(--text-secondary)" style-hover="background:var(--state-hover);color:var(--text-strong)">Developer</a>
+    <a href="DS%20Screens.dc.html" style="padding:6px 12px;border-radius:var(--radius-md);text-decoration:none;font:var(--type-label);color:var(--text-secondary)" style-hover="background:var(--state-hover);color:var(--text-strong)">Màn hình mẫu</a>
+  </nav>
+  <div role="group" aria-label="Giao diện" style="margin-left:auto;display:flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--bg-sunken);border:1px solid var(--border-subtle)">
+    <button onClick="{{ setLight }}" aria-pressed="{{ light }}" style="height:28px;padding:0 10px;border:0;border-radius:var(--radius-sm);cursor:pointer;font:var(--type-label);background:{{ lightBg }};color:var(--text-primary);box-shadow:{{ lightSh }}">Sáng</button>
+    <button onClick="{{ setDark }}" aria-pressed="{{ dark }}" style="height:28px;padding:0 10px;border:0;border-radius:var(--radius-sm);cursor:pointer;font:var(--type-label);background:{{ darkBg }};color:var(--text-primary);box-shadow:{{ darkSh }}">Tối</button>
+  </div>
+</header>
+
+<div style="display:flex;gap:40px;max-width:1320px;margin:0 auto;padding:0 24px">
+  <aside style="flex:0 0 190px;position:sticky;top:60px;align-self:flex-start;max-height:calc(100vh - 60px);overflow:auto;padding:32px 0;display:flex;flex-direction:column;gap:1px">
+    <span style="font:var(--type-overline);letter-spacing:var(--tracking-wide);text-transform:uppercase;color:var(--text-muted);padding:0 10px 8px">21 component</span>
+    <sc-for list="{{ comps }}" as="c" hint-placeholder-count="21"><a href="#{{ c.id }}" style="padding:5px 10px;border-radius:var(--radius-sm);text-decoration:none;font:var(--type-body-sm);color:var(--text-secondary)" style-hover="background:var(--state-hover);color:var(--text-strong)">{{ c.name }}</a></sc-for>
+  </aside>
+
+  <main style="flex:1;min-width:0;padding-bottom:80px">
+    <div style="padding:48px 0 24px;display:flex;flex-direction:column;gap:10px;max-width:760px">
+      <h1 style="margin:0;font:var(--type-display-lg);letter-spacing:var(--tracking-tight);color:var(--text-strong)">Thư viện component</h1>
+      <p style="margin:0;font:var(--type-body-lg);color:var(--text-secondary);text-wrap:pretty">Mỗi component có mẫu sống, anatomy, kích thước, biến thể, trạng thái và hướng dẫn dùng. Rê chuột, bấm, dùng Tab trên các mẫu để xem trạng thái thật; hàng “Trạng thái” hiển thị cố định từng trạng thái để so sánh.</p>
+    </div>
+
+    <sc-for list="{{ comps }}" as="c" hint-placeholder-count="3">
+      <section id="{{ c.id }}" style="padding:40px 0;border-top:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:16px;scroll-margin-top:60px">
+        <div style="display:flex;flex-direction:column;gap:6px;max-width:760px">
+          <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font:var(--type-display-md);letter-spacing:var(--tracking-tight);color:var(--text-strong)">{{ c.name }}</h2><span style="font:var(--type-caption);padding:2px 8px;border-radius:var(--radius-full);background:var(--bg-sunken);color:var(--text-muted)">{{ c.group }}</span></div>
+          <p style="margin:0;color:var(--text-secondary);text-wrap:pretty">{{ c.desc }}</p>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:20px;padding:24px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-canvas);overflow:auto">
+
+          <sc-if value="{{ c.is.button }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:8px"><span style="font:var(--type-caption);color:var(--text-muted)">Biến thể</span>
+              <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+                <button style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:var(--radius-md);border:0;background:var(--action-primary-bg);color:var(--action-primary-fg);font:var(--type-label);font-weight:600;cursor:pointer" style-hover="background:var(--action-primary-hover)" style-active="background:var(--action-primary-active)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.plus }}"></path></svg>Tạo task</button>
+                <button style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:var(--radius-md);border:1px solid var(--action-secondary-border);background:var(--action-secondary-bg);color:var(--action-secondary-fg);font:var(--type-label);font-weight:600;cursor:pointer" style-hover="background:var(--action-secondary-hover)" style-active="background:var(--action-secondary-active)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.download }}"></path></svg>Xuất CSV</button>
+                <button style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:var(--radius-md);border:0;background:transparent;color:var(--text-primary);font:var(--type-label);font-weight:600;cursor:pointer" style-hover="background:var(--action-ghost-hover)" style-active="background:var(--action-ghost-active)">Huỷ</button>
+                <button style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:var(--radius-md);border:0;background:var(--action-danger-bg);color:var(--action-danger-fg);font:var(--type-label);font-weight:600;cursor:pointer" style-hover="background:var(--action-danger-hover)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.trash2 }}"></path></svg>Xoá dự án</button>
+                <button style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:var(--radius-md);border:1.5px solid transparent;background:linear-gradient(var(--bg-surface),var(--bg-surface)) padding-box,var(--brand-gradient) border-box;color:var(--text-brand);font:var(--type-label);font-weight:600;cursor:pointer" style-hover="box-shadow:0 0 0 3px var(--state-selected-bg)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.play }}"></path></svg>Chạy agent</button>
+                <button style="display:inline-flex;align-items:center;gap:4px;height:32px;padding:0 4px;border:0;background:transparent;color:var(--text-link);font:var(--type-label);font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px" style-hover="color:var(--text-link-hover)">Xem log<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.arrowUpRight }}"></path></svg></button>
+                <button aria-label="Thêm tuỳ chọn" title="Thêm tuỳ chọn" style="display:inline-grid;place-items:center;width:32px;height:32px;border-radius:var(--radius-md);border:1px solid var(--action-secondary-border);background:var(--action-secondary-bg);color:var(--text-secondary);cursor:pointer" style-hover="background:var(--action-secondary-hover)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.ellipsis }}"></path></svg></button>
+              </div>
+              <span style="font:var(--type-caption);color:var(--text-muted)">Primary · Secondary · Ghost · Danger · Brand (viền gradient, tối đa 1/màn) · Link · Icon</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px"><span style="font:var(--type-caption);color:var(--text-muted)">Kích thước</span>
+              <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+                <button style="height:28px;padding:0 10px;border-radius:var(--radius-sm);border:0;background:var(--action-primary-bg);color:var(--action-primary-fg);font:600 12px/1 var(--font-sans);cursor:pointer">sm · 28</button>
+                <button style="height:32px;padding:0 12px;border-radius:var(--radius-md);border:0;background:var(--action-primary-bg);color:var(--action-primary-fg);font:var(--type-label);font-weight:600;cursor:pointer">md · 32</button>
+                <button style="height:40px;padding:0 16px;border-radius:var(--radius-md);border:0;background:var(--action-primary-bg);color:var(--action-primary-fg);font:600 14px/1 var(--font-sans);cursor:pointer">lg · 40</button>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px"><span style="font:var(--type-caption);color:var(--text-muted)">Trạng thái</span>
+              <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+                <sc-for list="{{ btnStates }}" as="b" hint-placeholder-count="6"><div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start"><span style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:var(--radius-md);background:var({{ b.bg }});color:var({{ b.fg }});box-shadow:{{ b.sh }};font:var(--type-label);font-weight:600"><sc-if value="{{ b.spin }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true" style="animation:xd-spin 0.9s linear infinite"><path d="{{ ic.loaderCircle }}"></path></svg></sc-if>{{ b.label }}</span><span style="font:var(--type-caption);color:var(--text-muted)">{{ b.name }}</span></div></sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.input }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px">
+              <label style="display:flex;flex-direction:column;gap:6px"><span style="font:var(--type-label);color:var(--text-strong)">Tên dự án <span style="color:var(--status-danger-fg)" aria-hidden="true">*</span></span>
+                <input placeholder="vd. payment-gateway" style="height:32px;padding:0 10px;border-radius:var(--radius-md);border:1px solid var(--border-control);background:var(--bg-surface);color:var(--text-primary);font:var(--type-body-md);outline:none" style-hover="border-color:var(--text-muted)" style-focus="border-color:var(--focus-color);box-shadow:0 0 0 3px var(--state-selected-bg)">
+                <span style="font:var(--type-caption);color:var(--text-muted)">Chữ thường, số và dấu gạch ngang.</span></label>
+              <label style="display:flex;flex-direction:column;gap:6px"><span style="font:var(--type-label);color:var(--text-strong)">Tìm kiếm</span>
+                <span style="display:flex;align-items:center;gap:8px;height:32px;padding:0 8px 0 10px;border-radius:var(--radius-md);border:1px solid var(--border-control);background:var(--bg-surface);color:var(--text-muted)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.search }}"></path></svg><input placeholder="Tìm task, tài liệu…" style="flex:1;min-width:0;border:0;background:transparent;outline:none;color:var(--text-primary);font:var(--type-body-md)"><kbd style="min-width:20px;height:20px;display:inline-grid;place-items:center;border-radius:var(--radius-xs);border:1px solid var(--border-default);font:500 11px/1 var(--font-mono);color:var(--text-secondary)">/</kbd></span>
+                <span style="font:var(--type-caption);color:var(--text-muted)">Tiền tố icon, gợi ý phím tắt.</span></label>
+              <label style="display:flex;flex-direction:column;gap:6px"><span style="font:var(--type-label);color:var(--text-strong)">Slug repo</span>
+                <span style="display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border-radius:var(--radius-md);border:2px solid var(--status-danger-solid);background:var(--bg-surface)"><input value="payment gateway" aria-invalid="true" readonly style="flex:1;min-width:0;border:0;background:transparent;outline:none;color:var(--text-primary);font:var(--type-body-md)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--status-danger-fg)"><path d="{{ ic.circleAlert }}"></path></svg></span>
+                <span style="font:var(--type-caption);color:var(--status-danger-fg)">Không được có khoảng trắng.</span></label>
+              <label style="display:flex;flex-direction:column;gap:6px"><span style="font:var(--type-label);color:var(--text-disabled)">Token API</span>
+                <span style="display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border-radius:var(--radius-md);border:1px solid var(--state-disabled-border);background:var(--state-disabled-bg);color:var(--state-disabled-fg);cursor:not-allowed"><span style="flex:1;font:var(--type-code-sm)">xdh_••••••••3f9a</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.lock }}"></path></svg></span>
+                <span style="font:var(--type-caption);color:var(--text-muted)">Vô hiệu: chỉ admin xem được.</span></label>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><span style="font:var(--type-caption);color:var(--text-muted);width:100%">Kích thước</span>
+              <span style="display:flex;align-items:center;height:28px;padding:0 8px;width:160px;border-radius:var(--radius-sm);border:1px solid var(--border-control);background:var(--bg-surface);font:var(--type-body-sm);color:var(--text-muted)">sm · 28</span>
+              <span style="display:flex;align-items:center;height:32px;padding:0 10px;width:180px;border-radius:var(--radius-md);border:1px solid var(--border-control);background:var(--bg-surface);font:var(--type-body-md);color:var(--text-muted)">md · 32</span>
+              <span style="display:flex;align-items:center;height:40px;padding:0 12px;width:200px;border-radius:var(--radius-md);border:1px solid var(--border-control);background:var(--bg-surface);font:var(--type-body-md);color:var(--text-muted)">lg · 40</span>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.textarea }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px">
+              <label style="display:flex;flex-direction:column;gap:6px"><span style="font:var(--type-label);color:var(--text-strong)">Mô tả task</span>
+                <textarea rows="4" onChange="{{ setTa }}" value="{{ ta }}" style="padding:8px 10px;border-radius:var(--radius-md);border:1px solid var(--border-control);background:var(--bg-surface);color:var(--text-primary);font:var(--type-body-md);resize:vertical;outline:none" style-focus="border-color:var(--focus-color);box-shadow:0 0 0 3px var(--state-selected-bg)"></textarea>
+                <span style="display:flex;font:var(--type-caption);color:var(--text-muted)"><span>Hỗ trợ Markdown.</span><span style="margin-left:auto;font-family:var(--font-mono)">{{ taCount }}</span></span></label>
+              <label style="display:flex;flex-direction:column;gap:6px"><span style="font:var(--type-label);color:var(--text-strong)">Ghi chú bàn giao</span>
+                <textarea rows="4" readonly aria-invalid="true" style="padding:8px 10px;border-radius:var(--radius-md);border:2px solid var(--status-danger-solid);background:var(--bg-surface);color:var(--text-primary);font:var(--type-body-md);resize:vertical;outline:none"></textarea>
+                <span style="display:flex;align-items:center;gap:6px;font:var(--type-caption);color:var(--status-danger-fg)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.circleAlert }}"></path></svg>Bắt buộc khi chuyển task sang Chờ review.</span></label>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.select }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start">
+              <div style="display:flex;flex-direction:column;gap:6px;width:260px;position:relative"><span style="font:var(--type-label);color:var(--text-strong)">Agent</span>
+                <button onClick="{{ toggleSel }}" aria-haspopup="listbox" aria-expanded="{{ selOpen }}" style="display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border-radius:var(--radius-md);border:1px solid var(--border-control);background:var(--bg-surface);color:var(--text-primary);font:var(--type-body-md);cursor:pointer;text-align:left" style-hover="border-color:var(--text-muted)"><span style="flex:1">{{ selVal }}</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--text-muted)"><path d="{{ ic.chevronsUpDown }}"></path></svg></button>
+                <sc-if value="{{ selOpen }}" hint-placeholder-val="{{ false }}">
+                  <div role="listbox" style="position:absolute;top:62px;left:0;right:0;z-index:5;padding:4px;border-radius:var(--radius-md);border:1px solid var(--border-default);background:var(--bg-raised);box-shadow:var(--shadow-2);display:flex;flex-direction:column">
+                    <span style="padding:6px 8px 4px;font:var(--type-overline);letter-spacing:var(--tracking-wide);text-transform:uppercase;color:var(--text-muted)">Đang rảnh</span>
+                    <sc-for list="{{ selOpts }}" as="o" hint-placeholder-count="4"><button role="option" aria-selected="{{ o.on }}" aria-disabled="{{ o.off }}" onClick="{{ o.pick }}" style="display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;border:0;border-radius:var(--radius-sm);background:transparent;cursor:{{ o.cur }};text-align:left;font:var(--type-body-sm);color:var({{ o.fg }})" style-hover="background:var(--state-hover)"><span style="flex:1">{{ o.label }}</span><span style="font:var(--type-caption);color:var(--text-muted)">{{ o.meta }}</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--text-brand);opacity:{{ o.chk }}"><path d="{{ ic.check }}"></path></svg></button></sc-for>
+                  </div>
+                </sc-if>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;width:220px"><span style="font:var(--type-label);color:var(--text-disabled)">Máy chạy</span><span style="display:flex;align-items:center;height:32px;padding:0 10px;border-radius:var(--radius-md);border:1px solid var(--state-disabled-border);background:var(--state-disabled-bg);color:var(--state-disabled-fg);font:var(--type-body-md);cursor:not-allowed">Tự chọn theo quota</span></div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.checkbox }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-wrap:wrap;gap:24px">
+              <sc-for list="{{ checks }}" as="k" hint-placeholder-count="5">
+                <label style="display:flex;gap:10px;align-items:flex-start;cursor:{{ k.cur }};max-width:220px">
+                  <button role="checkbox" aria-checked="{{ k.aria }}" aria-disabled="{{ k.dis }}" onClick="{{ k.toggle }}" style="width:18px;height:18px;flex-shrink:0;margin-top:1px;display:grid;place-items:center;padding:0;border-radius:var(--radius-xs);border:{{ k.bw }} solid var({{ k.bd }});background:var({{ k.bg }});color:var(--action-primary-fg);cursor:inherit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity:{{ k.showMark }}"><path d="{{ k.mark }}"></path></svg></button>
+                  <span style="display:flex;flex-direction:column"><span style="font:var(--type-label);color:var({{ k.fg }})">{{ k.label }}</span><span style="font:var(--type-caption);color:var({{ k.subFg }})">{{ k.sub }}</span></span>
+                </label>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.switch }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-wrap:wrap;gap:28px">
+              <sc-for list="{{ switches }}" as="w" hint-placeholder-count="4">
+                <label style="display:flex;gap:10px;align-items:center;cursor:{{ w.cur }}">
+                  <button role="switch" aria-checked="{{ w.on }}" aria-disabled="{{ w.dis }}" onClick="{{ w.toggle }}" style="position:relative;width:{{ w.w }};height:{{ w.h }};padding:0;flex-shrink:0;border-radius:var(--radius-full);border:1px solid var({{ w.bd }});background:var({{ w.bg }});cursor:inherit;transition:background var(--duration-fast) var(--ease-standard)"><span style="position:absolute;top:2px;left:2px;width:{{ w.k }};height:{{ w.k }};border-radius:50%;background:var({{ w.knob }});box-shadow:var(--shadow-1);transform:translateX({{ w.x }});transition:transform var(--duration-fast) var(--ease-standard);display:grid;place-items:center"><sc-if value="{{ w.spin }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--action-primary-bg)" stroke-width="3" aria-hidden="true" style="animation:xd-spin 0.9s linear infinite"><path d="{{ ic.loaderCircle }}"></path></svg></sc-if></span></button>
+                  <span style="display:flex;flex-direction:column"><span style="font:var(--type-label);color:var({{ w.fg }})">{{ w.label }}</span><span style="font:var(--type-caption);color:var(--text-muted)">{{ w.state }}</span></span>
+                </label>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.badge }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><sc-for list="{{ badges }}" as="b" hint-placeholder-count="6"><span style="display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:var(--radius-full);background:var(--status-{{ b.k }}-bg);color:var(--status-{{ b.k }}-fg);font:var(--type-caption)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="animation:{{ b.anim }}"><path d="{{ b.icon }}"></path></svg>{{ b.label }}</span></sc-for></div>
+              <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><sc-for list="{{ badges }}" as="b" hint-placeholder-count="6"><span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:var(--radius-xs);border:1px solid var(--status-{{ b.k }}-border);color:var(--status-{{ b.k }}-fg);font:var(--type-caption)"><span style="width:6px;height:6px;border-radius:50%;background:currentColor"></span>{{ b.label }}</span></sc-for></div>
+              <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center">
+                <span style="display:inline-flex;align-items:center;gap:6px;font:var(--type-label)">Hàng duyệt<span style="min-width:20px;height:20px;padding:0 6px;display:inline-grid;place-items:center;border-radius:var(--radius-full);background:var(--action-primary-bg);color:var(--action-primary-fg);font:600 11px/1 var(--font-sans)">12</span></span>
+                <span style="display:inline-flex;align-items:center;gap:6px;font:var(--type-label)">Task<span style="min-width:20px;height:20px;padding:0 6px;display:inline-grid;place-items:center;border-radius:var(--radius-full);background:var(--status-neutral-bg);color:var(--status-neutral-fg);font:600 11px/1 var(--font-sans)">148</span></span>
+                <span style="display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:var(--radius-xs);background:var(--bg-sunken);border:1px solid var(--border-subtle);font:500 11px/1 var(--font-mono);color:var(--text-secondary)">claude-sonnet-4.5</span>
+                <span style="display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 4px 0 8px;border-radius:var(--radius-full);border:1px solid var(--border-default);font:var(--type-caption);color:var(--text-secondary)">backend<button aria-label="Bỏ nhãn backend" style="width:18px;height:18px;display:grid;place-items:center;border:0;border-radius:50%;background:transparent;color:var(--text-muted);cursor:pointer;padding:0" style-hover="background:var(--state-hover)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="{{ ic.x }}"></path></svg></button></span>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.tooltip }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-wrap:wrap;gap:48px;padding:48px 16px 8px;align-items:flex-end">
+              <div style="position:relative;display:inline-flex"><button aria-label="Sao chép" aria-describedby="tt1" style="width:32px;height:32px;display:grid;place-items:center;border-radius:var(--radius-md);border:1px solid var(--action-secondary-border);background:var(--action-secondary-bg);color:var(--text-secondary);cursor:pointer;box-shadow:var(--focus-ring)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.copy }}"></path></svg></button>
+                <span id="tt1" role="tooltip" style="position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;white-space:nowrap;padding:5px 8px;border-radius:var(--radius-sm);background:var(--bg-inverse);color:var(--text-inverse);font:var(--type-caption);box-shadow:var(--shadow-2)">Sao chép<kbd style="padding:1px 4px;border-radius:3px;background:rgba(127,127,127,0.25);font:500 10px/1.4 var(--font-mono)">⌘C</kbd></span></div>
+              <div style="position:relative;display:inline-flex"><span style="display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:var(--radius-full);background:var(--status-warning-bg);color:var(--status-warning-fg);font:var(--type-caption)">Hết quota</span>
+                <span role="tooltip" style="position:absolute;bottom:calc(100% + 8px);left:0;max-width:240px;width:max-content;padding:8px 10px;border-radius:var(--radius-sm);background:var(--bg-inverse);color:var(--text-inverse);font:var(--type-caption);line-height:1.5;box-shadow:var(--shadow-2)">Gói Codex Team đã dùng 100% trong chu kỳ. Làm mới lúc 00:00 ngày 1/10.</span></div>
+              <span style="font:var(--type-caption);color:var(--text-muted)">Hiện sau 400 ms hover hoặc ngay khi focus · Esc để ẩn · tối đa 240 px</span>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.dropdown }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;min-height:290px">
+              <div style="position:relative">
+                <button onClick="{{ toggleDd }}" aria-haspopup="menu" aria-expanded="{{ ddOpen }}" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px 0 12px;border-radius:var(--radius-md);border:1px solid var(--action-secondary-border);background:var(--action-secondary-bg);color:var(--action-secondary-fg);font:var(--type-label);font-weight:600;cursor:pointer" style-hover="background:var(--action-secondary-hover)">Thao tác<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.chevronDown }}"></path></svg></button>
+                <sc-if value="{{ ddOpen }}" hint-placeholder-val="{{ true }}">
+                  <div role="menu" style="position:absolute;top:38px;left:0;z-index:5;width:240px;padding:4px;border-radius:var(--radius-md);border:1px solid var(--border-default);background:var(--bg-raised);box-shadow:var(--shadow-2);display:flex;flex-direction:column">
+                    <sc-for list="{{ menu }}" as="m" hint-placeholder-count="7">
+                      <sc-if value="{{ m.sep }}" hint-placeholder-val="{{ false }}"><span role="separator" style="height:1px;margin:4px 0;background:var(--border-subtle)"></span></sc-if>
+                      <sc-if value="{{ m.item }}" hint-placeholder-val="{{ true }}"><button role="{{ m.role }}" aria-checked="{{ m.checked }}" aria-disabled="{{ m.dis }}" style="display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;border:0;border-radius:var(--radius-sm);background:transparent;cursor:{{ m.cur }};text-align:left;font:var(--type-body-sm);color:var({{ m.fg }})" style-hover="background:var(--state-hover)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ m.icon }}"></path></svg><span style="flex:1">{{ m.label }}</span><span style="font:var(--type-code-sm);font-size:11px;color:var(--text-muted)">{{ m.kbd }}</span></button></sc-if>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.tabs }}" hint-placeholder-val="{{ false }}">
+            <div role="tablist" style="display:flex;gap:4px;border-bottom:1px solid var(--border-default);overflow:auto">
+              <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4"><button role="tab" aria-selected="{{ t.on }}" aria-disabled="{{ t.dis }}" onClick="{{ t.go }}" style="display:flex;align-items:center;gap:6px;height:40px;padding:0 12px;border:0;border-bottom:2px solid {{ t.bd }};margin-bottom:-1px;background:transparent;cursor:{{ t.cur }};font:var(--type-label);font-weight:{{ t.fw }};color:var({{ t.fg }});white-space:nowrap" style-hover="color:var(--text-strong)">{{ t.label }}<sc-if value="{{ t.hasCount }}" hint-placeholder-val="{{ false }}"><span style="min-width:18px;height:18px;padding:0 5px;display:inline-grid;place-items:center;border-radius:var(--radius-full);background:var(--bg-sunken);font:600 11px/1 var(--font-sans);color:var(--text-secondary)">{{ t.count }}</span></sc-if></button></sc-for>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center">
+              <div role="radiogroup" aria-label="Kiểu xem" style="display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--bg-sunken);border:1px solid var(--border-subtle)">
+                <sc-for list="{{ segs }}" as="g" hint-placeholder-count="3"><button role="radio" aria-checked="{{ g.on }}" onClick="{{ g.go }}" style="display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:0;border-radius:var(--radius-sm);background:{{ g.bg }};box-shadow:{{ g.sh }};color:var({{ g.fg }});font:var(--type-label);cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ g.icon }}"></path></svg>{{ g.label }}</button></sc-for>
+              </div>
+              <span style="font:var(--type-caption);color:var(--text-muted)">Tabs gạch chân cho các phần của một trang · Segmented cho cách xem cùng dữ liệu · ← → chuyển tab</span>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.breadcrumb }}" hint-placeholder-val="{{ false }}">
+            <nav aria-label="Breadcrumb" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font:var(--type-body-sm)">
+              <a href="#breadcrumb" style="color:var(--text-muted);text-decoration:none" style-hover="color:var(--text-strong);text-decoration:underline">Dự án</a><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--text-disabled)"><path d="{{ ic.chevronRight }}"></path></svg>
+              <a href="#breadcrumb" style="color:var(--text-muted);text-decoration:none;font-family:var(--font-mono);font-size:12px" style-hover="color:var(--text-strong);text-decoration:underline">payment-gateway</a><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--text-disabled)"><path d="{{ ic.chevronRight }}"></path></svg>
+              <a href="#breadcrumb" style="color:var(--text-muted);text-decoration:none" style-hover="color:var(--text-strong);text-decoration:underline">Tài liệu</a><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--text-disabled)"><path d="{{ ic.chevronRight }}"></path></svg>
+              <span aria-current="page" style="color:var(--text-strong);font-weight:500">Luồng xử lý chính</span>
+            </nav>
+            <nav aria-label="Breadcrumb rút gọn" style="display:flex;align-items:center;gap:6px;font:var(--type-body-sm)">
+              <a href="#breadcrumb" style="color:var(--text-muted);text-decoration:none">Dự án</a><span style="color:var(--text-disabled)">/</span>
+              <button aria-label="Hiện 2 cấp ẩn" style="height:22px;padding:0 6px;border:0;border-radius:var(--radius-xs);background:var(--bg-sunken);color:var(--text-secondary);cursor:pointer">…</button><span style="color:var(--text-disabled)">/</span>
+              <span aria-current="page" style="color:var(--text-strong);font-weight:500">ADR-014 · Idempotency key</span>
+            </nav>
+          </sc-if>
+
+          <sc-if value="{{ c.is.card }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+              <div style="display:flex;flex-direction:column;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+                <div style="display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border-subtle)"><span style="font:var(--type-heading-sm);color:var(--text-strong)">Hàng đợi</span><span style="margin-left:auto;font:var(--type-caption);color:var(--text-muted)">5 task</span></div>
+                <div style="padding:12px 16px;font:var(--type-body-sm);color:var(--text-secondary)">Header · Body · Footer. Nền phẳng, viền 1 px, không bóng.</div>
+                <div style="padding:8px 16px;border-top:1px solid var(--border-subtle)"><a href="#card" style="font:var(--type-label)">Xem tất cả</a></div>
+              </div>
+              <a href="#card" style="display:flex;flex-direction:column;gap:8px;padding:16px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface);text-decoration:none;color:inherit;transition:box-shadow var(--duration-instant) var(--ease-standard),border-color var(--duration-instant)" style-hover="border-color:var(--border-strong);box-shadow:var(--shadow-1)">
+                <span style="display:flex;align-items:center;gap:8px"><span style="font:var(--type-heading-sm);font-family:var(--font-mono);color:var(--text-strong)">payment-gateway</span><span style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 6px;border-radius:var(--radius-full);background:var(--status-running-bg);color:var(--status-running-fg);font:var(--type-caption)">3 đang chạy</span></span>
+                <span style="font:var(--type-body-sm);color:var(--text-secondary)">Cổng thanh toán cho app ví. Card tương tác: hover nâng viền và bóng mức 1.</span>
+                <span style="font:var(--type-caption);color:var(--text-muted)">42 task mở · cập nhật 3 phút trước</span>
+              </a>
+              <div style="display:flex;flex-direction:column;gap:4px;padding:16px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+                <span style="font:var(--type-caption);color:var(--text-muted)">Tỉ lệ run thành công</span>
+                <span style="font:var(--type-numeric-lg);color:var(--text-strong)">97,2%</span>
+                <span style="display:inline-flex;align-items:center;gap:4px;font:var(--type-caption);color:var(--status-success-fg)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.arrowUp }}"></path></svg>+1,4 điểm so với tuần trước</span>
+              </div>
+              <div aria-selected="true" style="display:flex;flex-direction:column;gap:6px;padding:15px;border:2px solid var(--border-selected);border-radius:var(--radius-lg);background:var(--bg-surface);position:relative">
+                <span style="position:absolute;top:12px;right:12px;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:var(--action-primary-bg);color:var(--action-primary-fg)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.check }}"></path></svg></span>
+                <span style="font:var(--type-heading-sm);color:var(--text-strong)">Gói Team</span><span style="font:var(--type-body-sm);color:var(--text-secondary)">Card đang chọn: viền 2 px và dấu ✓.</span>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.dialog }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;place-items:center;padding:32px 16px;border-radius:var(--radius-md);background:var(--bg-scrim)">
+              <div role="dialog" aria-modal="true" aria-labelledby="dlg-t" style="width:100%;max-width:440px;border-radius:var(--radius-lg);background:var(--bg-raised);box-shadow:var(--shadow-3);border:1px solid var(--border-subtle);display:flex;flex-direction:column">
+                <div style="display:flex;gap:12px;padding:20px 20px 0"><span style="width:36px;height:36px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;background:var(--status-danger-bg);color:var(--status-danger-fg)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.triangleAlert }}"></path></svg></span>
+                  <div style="display:flex;flex-direction:column;gap:4px;flex:1"><span id="dlg-t" style="font:var(--type-heading-md);color:var(--text-strong)">Xoá dự án payment-gateway?</span><span style="font:var(--type-body-sm);color:var(--text-secondary)">42 task, 318 run và toàn bộ tài liệu của dự án sẽ bị xoá. Không thể hoàn tác.</span></div>
+                  <button aria-label="Đóng" style="width:28px;height:28px;display:grid;place-items:center;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--text-muted);cursor:pointer" style-hover="background:var(--state-hover)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="{{ ic.x }}"></path></svg></button></div>
+                <label style="display:flex;flex-direction:column;gap:6px;padding:16px 20px 0 68px"><span style="font:var(--type-label);color:var(--text-strong)">Nhập <code style="font:var(--type-code-sm)">payment-gateway</code> để xác nhận</span><input style="height:32px;padding:0 10px;border-radius:var(--radius-md);border:1px solid var(--border-control);background:var(--bg-surface);color:var(--text-primary);font:var(--type-code-md);outline:none" style-focus="border-color:var(--focus-color);box-shadow:0 0 0 3px var(--state-selected-bg)"></label>
+                <div style="display:flex;justify-content:flex-end;gap:8px;padding:20px"><button style="height:32px;padding:0 12px;border-radius:var(--radius-md);border:1px solid var(--action-secondary-border);background:var(--action-secondary-bg);color:var(--action-secondary-fg);font:var(--type-label);font-weight:600;cursor:pointer">Huỷ</button><button style="height:32px;padding:0 12px;border-radius:var(--radius-md);border:0;background:var(--action-danger-bg);color:var(--action-danger-fg);font:var(--type-label);font-weight:600;cursor:pointer">Xoá dự án</button></div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.drawer }}" hint-placeholder-val="{{ false }}">
+            <div style="position:relative;height:340px;border-radius:var(--radius-md);overflow:hidden;background:var(--bg-canvas);border:1px solid var(--border-subtle)">
+              <div style="position:absolute;inset:0;background:var(--bg-scrim)"></div>
+              <aside role="dialog" aria-label="Chi tiết task" style="position:absolute;top:0;right:0;bottom:0;width:min(400px,90%);display:flex;flex-direction:column;background:var(--bg-raised);box-shadow:var(--shadow-3);border-left:1px solid var(--border-subtle)">
+                <div style="display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid var(--border-subtle)"><span style="font:var(--type-code-sm);color:var(--text-muted)">T-142</span><span style="font:var(--type-heading-sm);color:var(--text-strong);flex:1">Retry webhook Teams</span><button aria-label="Đóng" style="width:28px;height:28px;display:grid;place-items:center;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--text-muted);cursor:pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="{{ ic.x }}"></path></svg></button></div>
+                <div style="flex:1;padding:16px;display:flex;flex-direction:column;gap:12px;overflow:auto;font:var(--type-body-sm);color:var(--text-secondary)">
+                  <div style="display:grid;grid-template-columns:100px 1fr;gap:8px"><span style="color:var(--text-muted)">Trạng thái</span><span style="color:var(--status-running-fg)">● Đang làm</span><span style="color:var(--text-muted)">Agent</span><span style="font-family:var(--font-mono);font-size:12px">claude-code · build-03</span><span style="color:var(--text-muted)">Ưu tiên</span><span>Cao</span></div>
+                  <p style="margin:0">Drawer mở từ phải, rộng 400 / 560 / 720 px. Dùng để xem chi tiết mà không rời danh sách.</p>
+                </div>
+                <div style="display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid var(--border-subtle)"><button style="height:32px;padding:0 12px;border-radius:var(--radius-md);border:1px solid var(--action-secondary-border);background:var(--action-secondary-bg);color:var(--action-secondary-fg);font:var(--type-label);font-weight:600;cursor:pointer">Mở trang đầy đủ</button><button style="height:32px;padding:0 12px;border-radius:var(--radius-md);border:0;background:var(--action-primary-bg);color:var(--action-primary-fg);font:var(--type-label);font-weight:600;cursor:pointer">Duyệt</button></div>
+              </aside>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.toast }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start">
+              <div style="display:flex;flex-direction:column;gap:8px;width:min(360px,100%)" role="region" aria-live="polite" aria-label="Thông báo">
+                <sc-for list="{{ toasts }}" as="t" hint-placeholder-count="3">
+                  <div role="{{ t.role }}" style="display:flex;gap:10px;padding:12px;border-radius:var(--radius-lg);background:var(--bg-raised);border:1px solid var(--border-default);box-shadow:var(--shadow-4);animation:xd-in var(--duration-slow) var(--ease-enter)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;color:var(--status-{{ t.k }}-fg)"><path d="{{ t.icon }}"></path></svg>
+                    <div style="flex:1;display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font:var(--type-heading-sm);color:var(--text-strong)">{{ t.title }}</span><span style="font:var(--type-body-sm);color:var(--text-secondary)">{{ t.body }}</span><sc-if value="{{ t.hasAction }}" hint-placeholder-val="{{ false }}"><button style="align-self:flex-start;margin-top:4px;height:24px;padding:0;border:0;background:transparent;color:var(--text-link);font:var(--type-label);font-weight:600;cursor:pointer">{{ t.action }}</button></sc-if></div>
+                    <button onClick="{{ t.close }}" aria-label="Đóng thông báo" style="width:24px;height:24px;display:grid;place-items:center;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--text-muted);cursor:pointer" style-hover="background:var(--state-hover)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="{{ ic.x }}"></path></svg></button>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px"><button onClick="{{ addToast }}" style="height:32px;padding:0 12px;border-radius:var(--radius-md);border:1px solid var(--action-secondary-border);background:var(--action-secondary-bg);color:var(--action-secondary-fg);font:var(--type-label);font-weight:600;cursor:pointer" style-hover="background:var(--action-secondary-hover)">Hiện toast</button><span style="font:var(--type-caption);color:var(--text-muted);max-width:240px">Góc dưới phải, tối đa 3. Thành công/thông tin tự ẩn sau 5 giây, lỗi giữ đến khi đóng.</span></div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.skeleton }}" hint-placeholder-val="{{ false }}">
+            <div aria-busy="true" aria-label="Đang tải" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">
+              <div style="display:flex;flex-direction:column;gap:10px;padding:16px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+                <div style="display:flex;gap:10px;align-items:center"><span style="width:32px;height:32px;border-radius:50%;background:linear-gradient(90deg,var(--bg-sunken) 25%,var(--border-subtle) 50%,var(--bg-sunken) 75%);background-size:200% 100%;animation:xd-shimmer 1.4s linear infinite"></span><span style="height:12px;width:40%;border-radius:4px;background:linear-gradient(90deg,var(--bg-sunken) 25%,var(--border-subtle) 50%,var(--bg-sunken) 75%);background-size:200% 100%;animation:xd-shimmer 1.4s linear infinite"></span></div>
+                <span style="height:10px;width:100%;border-radius:4px;background:linear-gradient(90deg,var(--bg-sunken) 25%,var(--border-subtle) 50%,var(--bg-sunken) 75%);background-size:200% 100%;animation:xd-shimmer 1.4s linear infinite"></span>
+                <span style="height:10px;width:80%;border-radius:4px;background:linear-gradient(90deg,var(--bg-sunken) 25%,var(--border-subtle) 50%,var(--bg-sunken) 75%);background-size:200% 100%;animation:xd-shimmer 1.4s linear infinite"></span>
+              </div>
+              <div style="display:flex;flex-direction:column;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+                <sc-for list="{{ skelRows }}" as="r" hint-placeholder-count="4"><div style="display:flex;gap:12px;align-items:center;height:40px;padding:0 16px;border-bottom:1px solid var(--border-subtle)"><span style="height:10px;width:56px;border-radius:4px;background:var(--bg-sunken)"></span><span style="height:10px;width:{{ r }};border-radius:4px;background:linear-gradient(90deg,var(--bg-sunken) 25%,var(--border-subtle) 50%,var(--bg-sunken) 75%);background-size:200% 100%;animation:xd-shimmer 1.4s linear infinite"></span><span style="margin-left:auto;height:18px;width:60px;border-radius:var(--radius-full);background:var(--bg-sunken)"></span></div></sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.empty }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">
+              <sc-for list="{{ empties }}" as="e" hint-placeholder-count="3">
+                <div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:32px 20px;border:1px dashed var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+                  <span style="width:48px;height:48px;border-radius:50%;display:grid;place-items:center;background:var({{ e.bg }});color:var({{ e.fg }})"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ e.icon }}"></path></svg></span>
+                  <span style="font:var(--type-heading-md);color:var(--text-strong)">{{ e.title }}</span>
+                  <span style="font:var(--type-body-sm);color:var(--text-secondary);max-width:260px;text-wrap:pretty">{{ e.body }}</span>
+                  <div style="display:flex;gap:8px;margin-top:6px"><button style="height:32px;padding:0 12px;border-radius:var(--radius-md);border:{{ e.bBd }};background:var({{ e.bBg }});color:var({{ e.bFg }});font:var(--type-label);font-weight:600;cursor:pointer">{{ e.cta }}</button></div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.pagination }}" hint-placeholder-val="{{ false }}">
+            <nav aria-label="Phân trang" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <span style="font:var(--type-body-sm);color:var(--text-muted)">{{ pgRange }}</span>
+              <div style="display:flex;gap:4px;margin-left:auto;align-items:center">
+                <button onClick="{{ pgPrev }}" aria-label="Trang trước" aria-disabled="{{ pgFirst }}" style="width:32px;height:32px;display:grid;place-items:center;border-radius:var(--radius-md);border:1px solid var(--action-secondary-border);background:var(--action-secondary-bg);color:var({{ pgPrevFg }});cursor:pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.chevronLeft }}"></path></svg></button>
+                <sc-for list="{{ pages }}" as="p" hint-placeholder-count="6"><button onClick="{{ p.go }}" aria-current="{{ p.cur }}" style="min-width:32px;height:32px;padding:0 6px;border-radius:var(--radius-md);border:1px solid {{ p.bd }};background:{{ p.bg }};color:var({{ p.fg }});font:var(--type-label);font-weight:{{ p.fw }};cursor:{{ p.cursor }}">{{ p.label }}</button></sc-for>
+                <button onClick="{{ pgNext }}" aria-label="Trang sau" style="width:32px;height:32px;display:grid;place-items:center;border-radius:var(--radius-md);border:1px solid var(--action-secondary-border);background:var(--action-secondary-bg);color:var(--text-secondary);cursor:pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.chevronRight }}"></path></svg></button>
+              </div>
+              <label style="display:flex;align-items:center;gap:6px;font:var(--type-body-sm);color:var(--text-muted)">Mỗi trang<select style="height:28px;padding:0 6px;border-radius:var(--radius-sm);border:1px solid var(--border-control);background:var(--bg-surface);color:var(--text-primary);font:var(--type-body-sm)"><option>20</option><option>50</option><option>100</option></select></label>
+            </nav>
+          </sc-if>
+
+          <sc-if value="{{ c.is.table }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface);overflow:hidden">
+              <div style="display:flex;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border-subtle);flex-wrap:wrap">
+                <sc-if value="{{ anySel }}" hint-placeholder-val="{{ false }}"><span style="display:flex;align-items:center;gap:8px;font:var(--type-label);color:var(--state-selected-fg)">{{ selCount }} đã chọn</span><button style="height:28px;padding:0 10px;border-radius:var(--radius-sm);border:1px solid var(--action-secondary-border);background:var(--action-secondary-bg);color:var(--action-secondary-fg);font:var(--type-label);cursor:pointer">Gán agent</button><button style="height:28px;padding:0 10px;border-radius:var(--radius-sm);border:1px solid var(--status-danger-border);background:transparent;color:var(--status-danger-fg);font:var(--type-label);cursor:pointer">Xoá</button></sc-if>
+                <sc-if value="{{ noSel }}" hint-placeholder-val="{{ true }}"><span style="display:flex;align-items:center;gap:6px;height:28px;padding:0 8px;width:200px;border-radius:var(--radius-sm);border:1px solid var(--border-control);color:var(--text-muted);font:var(--type-body-sm)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.search }}"></path></svg>Lọc task…</span><span style="display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:var(--radius-full);border:1px dashed var(--border-control);font:var(--type-caption);color:var(--text-secondary)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="{{ ic.plus }}"></path></svg>Trạng thái</span><span style="display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:var(--radius-full);background:var(--state-selected-bg);color:var(--state-selected-fg);font:var(--type-caption)">Agent: claude-code<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="{{ ic.x }}"></path></svg></span></sc-if>
+              </div>
+              <div style="overflow:auto">
+                <table style="width:100%;min-width:640px;border-collapse:collapse;font:var(--type-body-sm)">
+                  <thead><tr style="height:36px;background:var(--bg-sunken);color:var(--text-muted);text-align:left">
+                    <th style="width:40px;padding:0 12px"><button role="checkbox" aria-checked="{{ allAria }}" aria-label="Chọn tất cả" onClick="{{ toggleAll }}" style="width:16px;height:16px;padding:0;display:grid;place-items:center;border-radius:var(--radius-xs);border:1px solid var({{ allBd }});background:var({{ allBg }});color:var(--action-primary-fg);cursor:pointer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true" style="opacity:{{ allOp }}"><path d="{{ allMark }}"></path></svg></button></th>
+                    <th style="padding:0 8px;font:var(--type-caption)">ID</th>
+                    <th aria-sort="{{ sortAria }}" style="padding:0 8px;font:var(--type-caption)"><button onClick="{{ toggleSort }}" style="display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;padding:0;cursor:pointer;font:var(--type-caption);color:var(--text-strong)">Task<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ sortIcon }}"></path></svg></button></th>
+                    <th style="padding:0 8px;font:var(--type-caption)">Agent</th><th style="padding:0 8px;font:var(--type-caption)">Trạng thái</th><th style="padding:0 12px 0 8px;font:var(--type-caption);text-align:right">Cập nhật</th></tr></thead>
+                  <tbody>
+                    <sc-for list="{{ rows }}" as="r" hint-placeholder-count="5">
+                      <tr aria-selected="{{ r.sel }}" style="height:var(--row-h);border-top:1px solid var(--border-subtle);background:{{ r.bg }}" style-hover="background:var(--state-hover)">
+                        <td style="padding:0 12px"><button role="checkbox" aria-checked="{{ r.sel }}" aria-label="Chọn {{ r.id }}" onClick="{{ r.toggle }}" style="width:16px;height:16px;padding:0;display:grid;place-items:center;border-radius:var(--radius-xs);border:1px solid var({{ r.cbBd }});background:var({{ r.cbBg }});color:var(--action-primary-fg);cursor:pointer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true" style="opacity:{{ r.op }}"><path d="{{ ic.check }}"></path></svg></button></td>
+                        <td style="padding:0 8px;font:var(--type-code-sm);color:var(--text-muted)">{{ r.id }}</td>
+                        <td style="padding:0 8px;color:var(--text-strong);font-weight:500">{{ r.title }}</td>
+                        <td style="padding:0 8px;font:var(--type-code-sm);color:var(--text-secondary)">{{ r.agent }}</td>
+                        <td style="padding:0 8px"><span style="display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:var(--radius-full);background:var(--status-{{ r.k }}-bg);color:var(--status-{{ r.k }}-fg);font:var(--type-caption)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ r.icon }}"></path></svg>{{ r.status }}</span></td>
+                        <td style="padding:0 12px 0 8px;text-align:right;color:var(--text-muted)">{{ r.at }}</td>
+                      </tr>
+                    </sc-for>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.sidebar }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+              <nav aria-label="Điều hướng chính" style="width:240px;height:440px;display:flex;flex-direction:column;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-subtle);overflow:hidden">
+                <div style="padding:14px 14px 10px"><sc-if value="{{ light }}" hint-placeholder-val="{{ true }}"><img src="assets/hive-light.svg" alt="xDev Hive" style="height:30px;display:block"></sc-if><sc-if value="{{ dark }}" hint-placeholder-val="{{ false }}"><img src="assets/hive-dark.svg" alt="xDev Hive" style="height:30px;display:block"></sc-if></div>
+                <button style="margin:0 10px 8px;display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border-radius:var(--radius-md);border:1px solid var(--border-default);background:var(--bg-surface);cursor:pointer;text-align:left;color:var(--text-primary)"><span style="width:20px;height:20px;border-radius:var(--radius-xs);background:var(--status-info-bg);color:var(--status-info-fg);display:grid;place-items:center;font:700 11px/1 var(--font-sans)">P</span><span style="flex:1;font:var(--type-code-sm);font-weight:500">payment-gateway</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--text-muted)"><path d="{{ ic.chevronsUpDown }}"></path></svg></button>
+                <div style="flex:1;overflow:auto;padding:4px 8px;display:flex;flex-direction:column;gap:1px">
+                  <sc-for list="{{ nav }}" as="n" hint-placeholder-count="8">
+                    <sc-if value="{{ n.head }}" hint-placeholder-val="{{ false }}"><span style="padding:12px 8px 4px;font:var(--type-overline);letter-spacing:var(--tracking-wide);text-transform:uppercase;color:var(--text-muted)">{{ n.label }}</span></sc-if>
+                    <sc-if value="{{ n.item }}" hint-placeholder-val="{{ true }}"><a href="#sidebar" aria-current="{{ n.cur }}" style="display:flex;align-items:center;gap:10px;height:32px;flex-shrink:0;padding:0 8px;border-radius:var(--radius-sm);text-decoration:none;background:{{ n.bg }};color:var({{ n.fg }});font:var(--type-body-sm);font-weight:{{ n.fw }}" style-hover="background:var(--state-hover);color:var(--text-strong)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var({{ n.ic }})"><path d="{{ n.icon }}"></path></svg><span style="flex:1">{{ n.label }}</span><sc-if value="{{ n.hasCount }}" hint-placeholder-val="{{ false }}"><span style="font:var(--type-caption);color:var(--text-muted)">{{ n.count }}</span></sc-if></a></sc-if>
+                  </sc-for>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-top:1px solid var(--border-subtle)"><span style="width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--action-primary-bg);color:var(--action-primary-fg);font:600 11px/1 var(--font-sans)">DT</span><span style="display:flex;flex-direction:column;flex:1;min-width:0"><span style="font:var(--type-label);color:var(--text-strong)">Duy Trần</span><span style="font:var(--type-caption);color:var(--text-muted)">Admin</span></span></div>
+              </nav>
+              <nav aria-label="Điều hướng thu gọn" style="width:64px;height:440px;display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 0;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-subtle)">
+                <img src="assets/x-mark.svg" alt="xDev Hive" width="28" height="28" style="margin-bottom:10px">
+                <sc-for list="{{ navItems }}" as="n" hint-placeholder-count="8"><a href="#sidebar" aria-label="{{ n.label }}" title="{{ n.label }}" aria-current="{{ n.cur }}" style="width:40px;height:40px;display:grid;place-items:center;border-radius:var(--radius-md);background:{{ n.bg }};color:var({{ n.ic }})" style-hover="background:var(--state-hover)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ n.icon }}"></path></svg></a></sc-for>
+              </nav>
+              <span style="font:var(--type-caption);color:var(--text-muted);max-width:220px">Đầy đủ 240 px (≥ 1024) · Thanh icon 64 px (768–1023), nhãn qua tooltip · Drawer ở mobile. Mục đang chọn: nền chọn + chữ đậm + icon màu thương hiệu.</span>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.command }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;place-items:start center;padding:24px 16px;border-radius:var(--radius-md);background:var(--bg-scrim)">
+              <div role="dialog" aria-label="Bảng lệnh" style="width:100%;max-width:560px;border-radius:var(--radius-xl);background:var(--bg-raised);box-shadow:var(--shadow-3);border:1px solid var(--border-subtle);overflow:hidden">
+                <div style="display:flex;align-items:center;gap:10px;height:52px;padding:0 16px;border-bottom:1px solid var(--border-subtle)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--text-muted)"><path d="{{ ic.search }}"></path></svg><input value="{{ cmdQ }}" onChange="{{ setCmdQ }}" role="combobox" aria-expanded="true" placeholder="Gõ lệnh hoặc tìm…" style="flex:1;border:0;background:transparent;outline:none;font:var(--type-body-lg);color:var(--text-strong)"><kbd style="height:20px;padding:0 6px;display:inline-grid;place-items:center;border-radius:var(--radius-xs);border:1px solid var(--border-default);font:500 11px/1 var(--font-mono);color:var(--text-muted)">Esc</kbd></div>
+                <div role="listbox" style="max-height:300px;overflow:auto;padding:6px">
+                  <sc-for list="{{ cmdGroups }}" as="g" hint-placeholder-count="2">
+                    <span style="display:block;padding:8px 10px 4px;font:var(--type-overline);letter-spacing:var(--tracking-wide);text-transform:uppercase;color:var(--text-muted)">{{ g.name }}</span>
+                    <sc-for list="{{ g.items }}" as="i" hint-placeholder-count="3"><div role="option" aria-selected="{{ i.on }}" style="display:flex;align-items:center;gap:10px;height:36px;padding:0 10px;border-radius:var(--radius-md);background:{{ i.bg }};color:var(--text-primary)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var({{ i.ic }})"><path d="{{ i.icon }}"></path></svg><span style="flex:1;font:var(--type-body-md)">{{ i.label }}</span><span style="font:var(--type-caption);color:var(--text-muted)">{{ i.meta }}</span></div></sc-for>
+                  </sc-for>
+                  <sc-if value="{{ cmdEmpty }}" hint-placeholder-val="{{ false }}"><div style="padding:24px;text-align:center;font:var(--type-body-sm);color:var(--text-muted)">Không có kết quả cho “{{ cmdQ }}”.</div></sc-if>
+                </div>
+                <div style="display:flex;gap:16px;padding:8px 16px;border-top:1px solid var(--border-subtle);background:var(--bg-sunken);font:var(--type-caption);color:var(--text-muted)"><span>↑↓ di chuyển</span><span>↵ chọn</span><span>⌘↵ mở tab mới</span><span style="margin-left:auto">&gt; để chạy lệnh</span></div>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px">
+          <div style="display:flex;flex-direction:column;gap:6px;padding:14px 16px;border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--bg-surface)">
+            <span style="font:var(--type-overline);letter-spacing:var(--tracking-wide);text-transform:uppercase;color:var(--text-muted)">Anatomy</span>
+            <sc-for list="{{ c.anatomy }}" as="a" hint-placeholder-count="4"><div style="display:grid;grid-template-columns:20px 1fr;gap:6px;font:var(--type-body-sm);color:var(--text-secondary)"><span style="width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:var(--state-selected-bg);color:var(--state-selected-fg);font:600 10px/1 var(--font-sans)">{{ a.n }}</span><span>{{ a.t }}</span></div></sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;padding:14px 16px;border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--bg-surface)">
+            <span style="font:var(--type-overline);letter-spacing:var(--tracking-wide);text-transform:uppercase;color:var(--text-muted)">Kích thước</span>
+            <sc-for list="{{ c.sizes }}" as="z" hint-placeholder-count="3"><div style="display:flex;gap:8px;font:var(--type-body-sm)"><span style="min-width:44px;font:var(--type-code-sm);color:var(--text-strong)">{{ z.k }}</span><span style="color:var(--text-secondary)">{{ z.v }}</span></div></sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;padding:14px 16px;border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--bg-surface)">
+            <span style="font:var(--type-overline);letter-spacing:var(--tracking-wide);text-transform:uppercase;color:var(--text-muted)">Trạng thái · bàn phím</span>
+            <div style="display:flex;flex-wrap:wrap;gap:4px"><sc-for list="{{ c.states }}" as="st" hint-placeholder-count="5"><span style="font:var(--type-caption);padding:2px 6px;border-radius:var(--radius-xs);background:var(--bg-sunken);color:var(--text-secondary)">{{ st }}</span></sc-for></div>
+            <span style="font:var(--type-body-sm);color:var(--text-secondary);text-wrap:pretty">{{ c.a11y }}</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;padding:14px 16px;border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--bg-surface)">
+            <span style="font:var(--type-overline);letter-spacing:var(--tracking-wide);text-transform:uppercase;color:var(--text-muted)">Hướng dẫn</span>
+            <sc-for list="{{ c.do }}" as="d" hint-placeholder-count="2"><div style="display:grid;grid-template-columns:16px 1fr;gap:6px;font:var(--type-body-sm);color:var(--text-secondary)"><span style="color:var(--status-success-fg);font-weight:700">✓</span><span style="text-wrap:pretty">{{ d }}</span></div></sc-for>
+            <sc-for list="{{ c.dont }}" as="d" hint-placeholder-count="2"><div style="display:grid;grid-template-columns:16px 1fr;gap:6px;font:var(--type-body-sm);color:var(--text-secondary)"><span style="color:var(--status-danger-fg);font-weight:700">✕</span><span style="text-wrap:pretty">{{ d }}</span></div></sc-for>
+          </div>
+        </div>
+      </section>
+    </sc-for>
+  </main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+let ICONS = {};
+const loadIcons = () => window.__xdIcons ? Promise.resolve(ICONS = window.__xdIcons) : fetch('assets/icons.json').then(r => r.json()).then(j => { window.__xdIcons = ICONS = j; });
+const I = n => ICONS[n] || '';
+const icMap = () => { const o = {}; for (const k in ICONS) o[k.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase())] = ICONS[k]; return o; };
+const A = (...t) => t.map((x, i) => ({ n: i + 1, t: x }));
+const Z = o => Object.entries(o).map(([k, v]) => ({ k, v }));
+const META = [
+  ['button', 'Button', 'Hành động', 'Kích hoạt một hành động. Mỗi vùng chỉ một nút Primary; nút Brand viền gradient dành cho thao tác khởi chạy agent, tối đa một nút mỗi màn.', A('Container: nền, viền, bo 8 px', 'Icon trước 16 px (tuỳ chọn)', 'Nhãn: động từ, 13/600', 'Icon sau hoặc spinner'), Z({ sm: '28 px · padding 10 · bo 6 · chữ 12', md: '32 px · padding 12 · bo 8 · chữ 13', lg: '40 px · padding 16 · chữ 14', icon: 'vuông 28 / 32 / 40' }), ['Mặc định', 'Hover', 'Focus', 'Nhấn', 'Vô hiệu', 'Đang tải'], 'Enter/Space kích hoạt. Nút chỉ có icon cần aria-label và tooltip. Khi đang tải: aria-busy, giữ nguyên độ rộng.', ['Nhãn bắt đầu bằng động từ: “Tạo task”, “Chạy agent”.', 'Đặt nút Primary ở cuối nhóm (bên phải) trong dialog và form.'], ['Không đặt hai nút Primary cạnh nhau.', 'Không dùng Danger cho hành động có thể hoàn tác.']],
+  ['input', 'Input', 'Form', 'Nhập một dòng văn bản. Luôn có nhãn nhìn thấy được; placeholder chỉ là ví dụ.', A('Nhãn 13/500 + dấu * nếu bắt buộc', 'Khung: viền điều khiển 3:1, bo 8', 'Tiền tố/hậu tố: icon, đơn vị, phím tắt', 'Chữ trợ giúp hoặc lỗi 12 px'), Z({ sm: '28 px · chữ 13', md: '32 px · chữ 14', lg: '40 px · form cài đặt', mobile: '44 px' }), ['Mặc định', 'Hover', 'Focus', 'Đã nhập', 'Vô hiệu', 'Chỉ đọc', 'Lỗi', 'Hợp lệ'], 'Lỗi: aria-invalid + aria-describedby trỏ tới thông điệp; viền 2 px và icon để không phụ thuộc màu.', ['Báo lỗi ngay dưới ô, nói cách sửa.', 'Dùng font mono cho slug, token, đường dẫn.'], ['Không dùng placeholder thay nhãn.', 'Không báo lỗi khi người dùng chưa rời ô.']],
+  ['textarea', 'Textarea', 'Form', 'Nhập nhiều dòng: mô tả task, ghi chú bàn giao, bình luận review. Cho phép kéo giãn theo chiều dọc.', A('Nhãn', 'Vùng nhập, tối thiểu 3 dòng', 'Đếm ký tự (tuỳ chọn)', 'Trợ giúp/lỗi'), Z({ min: '3 dòng · 88 px', mặcđịnh: '4–6 dòng', tốiđa: '12 dòng rồi cuộn' }), ['Mặc định', 'Focus', 'Lỗi', 'Vô hiệu', 'Gần giới hạn'], 'Bộ đếm dùng aria-live="polite" khi còn dưới 10% giới hạn.', ['Ghi rõ hỗ trợ Markdown nếu có.', 'Tự lưu nháp với nội dung dài.'], ['Không khoá kích thước nếu nội dung có thể dài.']],
+  ['select', 'Select', 'Form', 'Chọn một giá trị từ danh sách ngắn (≤ 15). Danh sách dài hơn dùng combobox có tìm kiếm.', A('Nhãn', 'Trigger: giá trị + chevron', 'Listbox: nhóm, tuỳ chọn, dấu ✓', 'Metadata phụ bên phải'), Z({ trigger: '28 / 32 / 40 px', option: '32 px', listbox: 'tối đa 320 px rồi cuộn' }), ['Mặc định', 'Mở', 'Tuỳ chọn đang trỏ', 'Đã chọn', 'Tuỳ chọn vô hiệu', 'Vô hiệu'], '↑↓ di chuyển, Enter chọn, Esc đóng, gõ chữ để nhảy tới. role="listbox"/"option", aria-selected.', ['Sắp xếp tuỳ chọn theo tần suất hoặc chữ cái.', 'Hiện lý do bên cạnh tuỳ chọn vô hiệu.'], ['Không dùng select cho 2 lựa chọn: dùng segmented hoặc switch.']],
+  ['checkbox', 'Checkbox', 'Form', 'Bật/tắt một mục hoặc chọn nhiều mục trong danh sách. Trạng thái trung gian khi chọn một phần.', A('Ô 18 px, bo 4', 'Dấu ✓ hoặc − (trung gian)', 'Nhãn', 'Mô tả phụ'), Z({ ô: '18 px (16 px trong bảng)', vùngbấm: 'cả nhãn; 44 px trên mobile' }), ['Chưa chọn', 'Đã chọn', 'Trung gian', 'Hover', 'Focus', 'Vô hiệu', 'Lỗi'], 'Space để đổi. aria-checked="mixed" cho trung gian. Nhãn bấm được.', ['Dùng cho lựa chọn độc lập, áp dụng khi bấm Lưu.'], ['Không dùng checkbox cho thay đổi có hiệu lực ngay: dùng switch.']],
+  ['switch', 'Switch', 'Form', 'Bật/tắt một thiết lập có hiệu lực ngay lập tức, ví dụ bật webhook hoặc cho phép agent tự tạo PR.', A('Rãnh: viền 3:1 khi tắt, màu chính khi bật', 'Núm tròn, dịch chuyển 120 ms', 'Nhãn + trạng thái bằng chữ'), Z({ sm: '28 × 16', md: '36 × 20' }), ['Tắt', 'Bật', 'Focus', 'Vô hiệu', 'Đang áp dụng'], 'role="switch" + aria-checked. Hiện chữ “Bật/Tắt” cạnh nhãn để không phụ thuộc màu.', ['Áp dụng ngay và báo toast nếu thất bại.'], ['Không cần nút Lưu đi kèm switch.']],
+  ['badge', 'Badge', 'Hiển thị', 'Nhãn trạng thái, số đếm, tag và tên model. Luôn có icon hoặc chấm kèm chữ.', A('Nền soft hoặc viền', 'Icon/chấm trạng thái', 'Nhãn 12/500'), Z({ sm: '20 px', md: '22–24 px', đếm: 'tối thiểu 20 px, tròn' }), ['Neutral', 'Info', 'Thành công', 'Cảnh báo', 'Lỗi', 'Đang chạy'], 'Badge không tương tác thì không nhận focus. Tag có nút bỏ: nút riêng với aria-label.', ['Dùng cùng một bộ từ cho trạng thái trên mọi màn.'], ['Không dùng badge soft cho đoạn chữ dài.', 'Không truyền trạng thái chỉ bằng màu chấm.']],
+  ['tooltip', 'Tooltip', 'Phản hồi', 'Nhãn ngắn cho nút icon, giải thích trạng thái, hiện phím tắt. Không chứa nội dung tương tác.', A('Bong bóng nền đảo, bo 6', 'Chữ 12 px, tối đa 240 px', 'Phím tắt (tuỳ chọn)'), Z({ trễ: '400 ms hover · 0 ms focus', đệm: '5 × 8 px' }), ['Ẩn', 'Hiện khi hover', 'Hiện khi focus'], 'aria-describedby từ trigger. Esc ẩn. Không đặt thông tin bắt buộc chỉ trong tooltip.', ['Mọi nút icon đều có tooltip.'], ['Không đặt link hoặc nút trong tooltip: dùng popover.']],
+  ['dropdown', 'Dropdown menu', 'Điều hướng', 'Danh sách hành động phụ gắn với một nút, ví dụ menu “…” trên hàng bảng.', A('Trigger', 'Mục: icon, nhãn, phím tắt', 'Mục có dấu chọn', 'Phân cách', 'Mục nguy hiểm ở cuối'), Z({ mục: '32 px', rộng: '200–280 px', đệm: '4 px' }), ['Mở', 'Đang trỏ', 'Đã chọn', 'Vô hiệu', 'Nguy hiểm'], 'role="menu"/"menuitem". ↑↓, Home/End, Enter; Esc đóng và trả focus về trigger.', ['Nhóm hành động liên quan, đặt “Xoá” cuối cùng.'], ['Không giấu hành động chính trong menu.']],
+  ['tabs', 'Tabs và segmented', 'Điều hướng', 'Tabs chia các phần của một trang. Segmented đổi cách xem cùng một dữ liệu (bảng/danh sách/lịch).', A('Tab: nhãn + số đếm', 'Gạch chân 2 px khi chọn', 'Segmented: nhóm nền lõm, mục chọn nổi'), Z({ tab: '40 px', segmented: '28 px trong nhóm 32 px' }), ['Mặc định', 'Hover', 'Focus', 'Đã chọn', 'Vô hiệu'], '← → chuyển tab, Home/End. role="tablist"/"tab", aria-selected.', ['Tối đa 6 tab; nhiều hơn thì dùng sidebar phụ.'], ['Không dùng tabs cho các bước tuần tự.']],
+  ['breadcrumb', 'Breadcrumb', 'Điều hướng', 'Cho biết vị trí trong cây dự án/tài liệu và quay lại cấp trên.', A('Liên kết cấp trên', 'Dấu phân cách chevron', 'Trang hiện tại (không phải liên kết)', 'Nút “…” khi rút gọn'), Z({ chữ: '13 px', rútgọn: 'giữ cấp đầu và 2 cấp cuối' }), ['Mặc định', 'Hover', 'Focus', 'Trang hiện tại'], 'nav aria-label="Breadcrumb", aria-current="page" ở mục cuối.', ['Dùng font mono cho tên dự án/slug.'], ['Không lặp lại tiêu đề trang ngay bên dưới nếu breadcrumb đã rõ.']],
+  ['card', 'Card', 'Bố cục', 'Nhóm nội dung liên quan. Mặc định phẳng với viền 1 px; chỉ card tương tác mới có bóng khi hover.', A('Header: tiêu đề + meta/hành động', 'Body', 'Footer: liên kết/hành động', 'Chỉ báo chọn (tuỳ chọn)'), Z({ đệm: '16 px (12 px gọn)', bo: '12 px', khoảng: '12–16 px giữa các card' }), ['Tĩnh', 'Hover (tương tác)', 'Focus', 'Đã chọn'], 'Card bấm được: toàn bộ card là một liên kết, không lồng nút bên trong liên kết.', ['Dùng số lớn Space Grotesk cho card số liệu.'], ['Không lồng card trong card.', 'Không dùng viền trái màu làm điểm nhấn.']],
+  ['dialog', 'Dialog', 'Lớp nổi', 'Xác nhận hoặc thu thập thông tin ngắn, chặn tương tác phía sau.', A('Nền phủ (scrim)', 'Icon mức độ (tuỳ chọn)', 'Tiêu đề + mô tả', 'Nội dung/form', 'Footer: Huỷ + hành động'), Z({ sm: '400 px', md: '480 px', lg: '640 px', bo: '12 px' }), ['Mở', 'Đang xử lý', 'Lỗi trong form'], 'Giữ focus bên trong, Esc đóng, focus về trigger khi đóng. aria-modal, aria-labelledby.', ['Xoá không hoàn tác được: yêu cầu gõ lại tên.', 'Tiêu đề là câu hỏi cụ thể.'], ['Không mở dialog chồng dialog.']],
+  ['drawer', 'Drawer', 'Lớp nổi', 'Panel trượt từ phải để xem/sửa chi tiết mà vẫn giữ ngữ cảnh danh sách.', A('Scrim (tuỳ chọn trên desktop)', 'Header: ID, tiêu đề, đóng', 'Nội dung cuộn', 'Footer hành động'), Z({ sm: '400 px', md: '560 px', lg: '720 px', mobile: 'toàn màn' }), ['Mở', 'Đang tải', 'Có thay đổi chưa lưu'], 'Như dialog: giữ focus, Esc đóng; cảnh báo nếu có thay đổi chưa lưu.', ['Có nút mở trang đầy đủ cho nội dung dài.'], ['Không dùng drawer cho luồng nhiều bước.']],
+  ['toast', 'Toast', 'Phản hồi', 'Thông báo ngắn sau một hành động hoặc sự kiện từ agent.', A('Icon mức độ', 'Tiêu đề', 'Mô tả', 'Hành động (tuỳ chọn)', 'Nút đóng'), Z({ rộng: '360 px', vịtrí: 'dưới phải, cách 16 px', tốiđa: '3 cái' }), ['Thành công', 'Thông tin', 'Cảnh báo', 'Lỗi'], 'aria-live="polite" (lỗi: role="alert"). Tạm dừng tự ẩn khi hover/focus.', ['Kèm hành động hoàn tác khi có thể.'], ['Không dùng toast cho lỗi cần sửa trong form.']],
+  ['skeleton', 'Skeleton', 'Phản hồi', 'Giữ chỗ khi tải lần đầu, đúng hình dạng nội dung thật.', A('Khối hình chữ nhật/tròn', 'Hiệu ứng shimmer 1,4 s'), Z({ dòng: '10–12 px cao', bo: '4 px' }), ['Đang tải', 'Giảm chuyển động: tĩnh'], 'Vùng chứa có aria-busy="true" và nhãn “Đang tải”.', ['Dùng khi tải > 300 ms.'], ['Không dùng skeleton cho thao tác của người dùng: dùng spinner trong nút.']],
+  ['empty', 'Empty state', 'Phản hồi', 'Khi chưa có dữ liệu, không có kết quả, hoặc tải thất bại. Luôn chỉ ra bước tiếp theo.', A('Icon trong vòng tròn 48 px', 'Tiêu đề', 'Mô tả 1–2 câu', 'Hành động'), Z({ icon: '48 px', mô_tả: 'tối đa 260 px' }), ['Lần đầu', 'Không có kết quả', 'Lỗi'], 'Tiêu đề là heading để trình đọc màn hình tìm được.', ['Nói rõ vì sao trống và làm gì tiếp.'], ['Không dùng hình minh hoạ lớn chiếm chỗ.']],
+  ['pagination', 'Pagination', 'Điều hướng', 'Chia danh sách dài theo trang; hiện tổng số và cho đổi số dòng mỗi trang.', A('Phạm vi “1–20 trên 1.284”', 'Trước/Sau', 'Số trang, “…”', 'Số dòng mỗi trang'), Z({ nút: '32 px', rútgọn: 'Trước · Trang 2/64 · Sau' }), ['Mặc định', 'Trang hiện tại', 'Hover', 'Vô hiệu ở đầu/cuối'], 'nav aria-label="Phân trang", aria-current="page".', ['Giữ bộ lọc khi đổi trang.'], ['Không phân trang log đang chạy: dùng cuộn liên tục.']],
+  ['table', 'Data table', 'Dữ liệu', 'Bảng dày cho task, run, máy, token. Hỗ trợ sắp xếp, lọc, chọn nhiều và hành động hàng loạt.', A('Toolbar: tìm, chip lọc', 'Header dính, cột sắp xếp', 'Hàng: checkbox, ID mono, nội dung, trạng thái', 'Thanh hành động khi chọn'), Z({ hàng: '40 px (32 px gọn)', header: '36 px', đệm: '8–12 px' }), ['Hover hàng', 'Đã chọn', 'Sắp xếp ↑/↓', 'Đang tải', 'Trống'], 'aria-sort trên cột, aria-selected trên hàng. J/K di chuyển, X chọn, Enter mở.', ['Căn phải cột số và thời gian.', 'Mobile: chuyển thành danh sách thẻ.'], ['Không dùng sọc ngựa vằn cùng lúc với viền hàng.']],
+  ['sidebar', 'Sidebar', 'Điều hướng', 'Điều hướng chính của app: chuyển dự án, các mục chính, người dùng.', A('Logo', 'Chọn dự án', 'Nhóm mục + số đếm', 'Mục đang chọn', 'Người dùng'), Z({ đầyđủ: '240 px', rail: '64 px', mục: '32 px (40 px rail)' }), ['Mặc định', 'Hover', 'Focus', 'Đang chọn', 'Thu gọn'], 'nav aria-label, aria-current="page". Rail: nhãn qua tooltip và aria-label.', ['Giữ thứ tự mục cố định giữa các dự án.'], ['Không quá 10 mục cấp một.']],
+  ['command', 'Command palette', 'Điều hướng', 'Bảng lệnh ⌘K: nhảy tới trang, tìm task/tài liệu, chạy hành động.', A('Ô tìm kiếm', 'Nhóm kết quả', 'Mục: icon, nhãn, meta', 'Chân: phím tắt'), Z({ rộng: '560 px', mục: '36 px', bo: '16 px' }), ['Mở', 'Đang gõ', 'Mục đang trỏ', 'Không có kết quả'], 'role="combobox" + listbox, aria-activedescendant. ↑↓, Enter, Esc; “>” chuyển sang chế độ lệnh.', ['Hiện hành động gần đây khi ô trống.'], ['Không mở trang mới cho mỗi lần gõ.']],
+];
+class Component extends DCLogic {
+  state = { theme: (() => { try { return localStorage.getItem('xdh-ds-theme') === 'dark' ? 'dark' : 'light'; } catch (e) { return 'light'; } })(), tab: 0, seg: 0, chk: { a: true, b: false, c: 'mixed' }, sw: { a: true, b: false }, selOpen: false, selVal: 'claude-code', ddOpen: true, toasts: [0, 1, 2], tid: 3, sel: { 'T-142': true }, sortAsc: true, page: 2, ta: 'Thêm retry với backoff khi webhook Teams trả 5xx.', cmdQ: 'tạo' };
+  componentDidMount() {
+    loadIcons().then(() => this.forceUpdate());
+  }
+  setTheme(t) { this.setState({ theme: t }); try { localStorage.setItem('xdh-ds-theme', t); } catch (e) {} }
+  renderVals() {
+    const s = this.state, light = s.theme !== 'dark';
+    const comps = META.map(([id, name, group, desc, anatomy, sizes, states, a11y, d, dn]) => ({ id, name, group, desc, anatomy, sizes, states, a11y, do: d, dont: dn, is: { [id]: true } }));
+    const TOAST = [{ k: 'success', icon: 'circle-check', title: 'Đã tạo PR #482', body: 'claude-code hoàn thành T-142 trong 6 phút.', action: 'Xem PR', role: 'status' }, { k: 'danger', icon: 'circle-x', title: 'Run #1284 thất bại', body: 'Test apps/web lỗi 3 case. Log đã lưu.', action: 'Mở log', role: 'alert' }, { k: 'info', icon: 'info', title: 'Có bản 1.4.2', body: 'Cập nhật sẽ cài khi khởi động lại app.', action: '', role: 'status' }];
+    const ROWS = [['T-142', 'Retry webhook Teams', 'claude-code', 'running', 'loader-circle', 'Đang chạy', '2 phút'], ['T-139', 'Thêm idempotency key cho API v2', 'codex', 'warning', 'triangle-alert', 'Hết quota', '14 phút'], ['T-137', 'Sửa lỗi múi giờ báo cáo', 'claude-code', 'success', 'circle-check', 'Xong', '1 giờ'], ['T-131', 'Viết test cho refund', 'gemini-cli', 'danger', 'circle-x', 'Lỗi', '3 giờ'], ['T-128', 'Cập nhật ADR-014', '—', 'neutral', 'circle-dot', 'Chờ', 'hôm qua']];
+    const rowsSorted = [...ROWS].sort((a, b) => s.sortAsc ? a[1].localeCompare(b[1], 'vi') : b[1].localeCompare(a[1], 'vi'));
+    const selCount = Object.values(s.sel).filter(Boolean).length, all = selCount === ROWS.length;
+    const navDef = [['h', 'Làm việc'], ['layout-dashboard', 'Dashboard'], ['list-todo', 'Tasks', '48'], ['bot', 'Agents', '6'], ['folder-kanban', 'Projects'], ['h', 'Kiến thức'], ['file-text', 'Documents'], ['wand-sparkles', 'Skills', '14'], ['brain', 'Memory', '427'], ['h', 'Hệ thống'], ['settings', 'Settings']];
+    const navItems = navDef.filter(n => n[0] !== 'h').map(([icon, label, count]) => { const cur = label === 'Tasks'; return { label, icon: I(icon), cur: cur ? 'page' : 'false', bg: cur ? 'var(--state-selected-bg)' : 'transparent', fg: cur ? '--state-selected-fg' : '--text-secondary', ic: cur ? '--text-brand' : '--text-muted', fw: cur ? 600 : 400, hasCount: !!count, count: count || '' }; });
+    const q = s.cmdQ.trim().toLowerCase();
+    const CMD = [['Hành động', [['plus', 'Tạo task mới', 'C'], ['play', 'Chạy agent cho task đang chọn', ''], ['file-text', 'Tạo trang tài liệu', '']]], ['Chuyển tới', [['layout-dashboard', 'Dashboard', 'G D'], ['list-todo', 'Tasks', 'G T'], ['bot', 'Agents', 'G A']]], ['Tài liệu', [['file-text', 'Tạo release desktop', 'Skill'], ['file-text', 'Luồng tạo PR của agent', 'payment-gateway']]]];
+    let first = true;
+    const cmdGroups = CMD.map(([name, items]) => ({ name, items: items.filter(i => !q || i[1].toLowerCase().includes(q)).map(([icon, label, meta]) => { const on = first; first = false; return { icon: I(icon), label, meta, on, bg: on ? 'var(--state-selected-bg)' : 'transparent', ic: on ? '--text-brand' : '--text-muted' }; }) })).filter(g => g.items.length);
+    const PG = 64, pg = s.page;
+    const pageNums = [1, pg - 1, pg, pg + 1, PG].filter((v, i, a) => v >= 1 && v <= PG && a.indexOf(v) === i).sort((a, b) => a - b);
+    const pages = []; pageNums.forEach((p, i) => { if (i && p - pageNums[i - 1] > 1) pages.push({ label: '…', cur: 'false', bd: 'transparent', bg: 'transparent', fg: '--text-muted', fw: 400, cursor: 'default', go: () => {} }); const on = p === pg; pages.push({ label: String(p), cur: on ? 'page' : 'false', bd: on ? 'var(--border-selected)' : 'transparent', bg: on ? 'var(--state-selected-bg)' : 'transparent', fg: on ? '--state-selected-fg' : '--text-secondary', fw: on ? 600 : 400, cursor: 'pointer', go: () => this.setState({ page: p }) }); });
+    const ck = (key, label, sub, o = {}) => { const v = o.fixed !== undefined ? o.fixed : s.chk[key], on = v === true, mixed = v === 'mixed', dis = !!o.dis, err = !!o.err;
+      return { label, sub, aria: mixed ? 'mixed' : on ? 'true' : 'false', dis: dis ? 'true' : 'false', cur: dis ? 'not-allowed' : 'pointer', mark: mixed ? I('minus') : I('check'), showMark: on || mixed ? 1 : 0, bw: err ? '2px' : '1px',
+        bd: dis ? '--state-disabled-border' : err ? '--status-danger-solid' : on || mixed ? '--action-primary-bg' : '--border-control', bg: dis ? '--state-disabled-bg' : on || mixed ? '--action-primary-bg' : '--bg-surface', fg: dis ? '--text-disabled' : '--text-strong', subFg: err ? '--status-danger-fg' : '--text-muted',
+        toggle: () => { if (!dis && o.fixed === undefined) this.setState(st => ({ chk: { ...st.chk, [key]: st.chk[key] === true ? false : true } })); } }; };
+    const sw = (key, label, o = {}) => { const on = o.fixed !== undefined ? o.fixed : s.sw[key], dis = !!o.dis, md = !o.sm;
+      return { label, on: on ? 'true' : 'false', dis: dis ? 'true' : 'false', cur: dis ? 'not-allowed' : o.spin ? 'progress' : 'pointer', w: md ? '36px' : '28px', h: md ? '20px' : '16px', k: md ? '14px' : '10px', x: on ? (md ? '16px' : '12px') : '0',
+        bg: dis ? '--state-disabled-bg' : on ? '--action-primary-bg' : '--bg-surface', bd: dis ? '--state-disabled-border' : on ? '--action-primary-bg' : '--border-control', knob: dis ? '--state-disabled-fg' : on ? '--action-primary-fg' : '--border-control', fg: dis ? '--text-disabled' : '--text-strong',
+        state: o.spin ? 'Đang áp dụng…' : (on ? 'Bật' : 'Tắt') + (dis ? ' · chỉ admin' : ''), spin: !!o.spin, toggle: () => { if (!dis && o.fixed === undefined) this.setState(st => ({ sw: { ...st.sw, [key]: !st.sw[key] } })); } }; };
+    const toastsV = s.toasts.map(i => { const t = TOAST[i % 3]; return { ...t, icon: I(t.icon), hasAction: !!t.action, close: () => this.setState(st => ({ toasts: st.toasts.filter(x => x !== i) })) }; });
+    return {
+      ic: icMap(), theme: s.theme, light, dark: !light, setLight: () => this.setTheme('light'), setDark: () => this.setTheme('dark'),
+      lightBg: light ? 'var(--bg-surface)' : 'transparent', darkBg: light ? 'transparent' : 'var(--bg-surface)', lightSh: light ? 'var(--shadow-1)' : 'none', darkSh: light ? 'none' : 'var(--shadow-1)',
+      comps,
+      btnStates: [['Mặc định', '--action-primary-bg', 'none', 'Lưu'], ['Hover', '--action-primary-hover', 'none', 'Lưu'], ['Focus', '--action-primary-bg', 'var(--focus-ring)', 'Lưu'], ['Nhấn', '--action-primary-active', 'none', 'Lưu'], ['Vô hiệu', '--state-disabled-bg', 'none', 'Lưu'], ['Đang tải', '--action-primary-bg', 'none', 'Đang lưu…']].map(([name, bg, sh, label]) => ({ name, bg, sh, label, fg: name === 'Vô hiệu' ? '--state-disabled-fg' : '--action-primary-fg', spin: name === 'Đang tải' })),
+      ta: s.ta, setTa: e => this.setState({ ta: e.target.value.slice(0, 500) }), taCount: s.ta.length + ' / 500',
+      selOpen: s.selOpen, selVal: s.selVal, toggleSel: () => this.setState(st => ({ selOpen: !st.selOpen })),
+      selOpts: [['claude-code', 'Claude · build-03'], ['codex', 'OpenAI · build-01'], ['gemini-cli', 'Google · mac-mini'], ['aider', 'Hết quota', true]].map(([label, meta, off]) => ({ label, meta, on: s.selVal === label ? 'true' : 'false', off: off ? 'true' : 'false', chk: s.selVal === label ? 1 : 0, cur: off ? 'not-allowed' : 'pointer', fg: off ? '--text-disabled' : '--text-primary', pick: () => { if (!off) this.setState({ selVal: label, selOpen: false }); } })),
+      checks: [ck('a', 'Tự tạo PR khi xong', 'Agent mở PR nháp'), ck('b', 'Chạy test trước khi bàn giao', 'npm test'), ck('c', 'Chọn tất cả máy', '3 / 8 máy', { fixed: 'mixed' }), ck('d', 'Xoá worktree cũ', 'Chỉ admin', { fixed: true, dis: true }), ck('e', 'Đồng ý điều khoản', 'Bắt buộc để tiếp tục', { fixed: false, err: true })],
+      switches: [sw('a', 'Webhook Teams'), sw('b', 'Cho agent đọc memory'), sw('c', 'Tự cập nhật app', { fixed: true, spin: true }), sw('d', 'Mạng không giới hạn', { fixed: false, dis: true }), sw('e', 'Gọn', { sm: true, fixed: true })],
+      badges: [['neutral', 'circle-dot', 'Chờ'], ['info', 'info', 'Mới'], ['success', 'circle-check', 'Xong'], ['warning', 'triangle-alert', 'Hết quota'], ['danger', 'circle-x', 'Lỗi'], ['running', 'loader-circle', 'Đang chạy']].map(([k, icon, label]) => ({ k, icon: I(icon), label, anim: k === 'running' ? 'xd-spin 1.2s linear infinite' : 'none' })),
+      ddOpen: s.ddOpen, toggleDd: () => this.setState(st => ({ ddOpen: !st.ddOpen })),
+      menu: [['pencil', 'Sửa task', 'E'], ['copy', 'Sao chép ID', '⌘C'], ['git-branch', 'Mở nhánh', ''], ['sep'], ['check', 'Theo dõi', '', { checked: true }], ['bot', 'Giao lại cho agent', '', { dis: true }], ['sep'], ['trash-2', 'Xoá task', '⌫', { danger: true }]].map(([icon, label, kbd, o = {}]) => icon === 'sep' ? { sep: true, item: false } : { sep: false, item: true, icon: I(icon), label, kbd, role: o.checked ? 'menuitemcheckbox' : 'menuitem', checked: o.checked ? 'true' : 'false', dis: o.dis ? 'true' : 'false', cur: o.dis ? 'not-allowed' : 'pointer', fg: o.dis ? '--text-disabled' : o.danger ? '--status-danger-fg' : o.checked ? '--state-selected-fg' : '--text-primary' }),
+      tabs: [['Tổng quan'], ['Run', 12], ['Task', 48], ['Tài liệu', 9], ['Cài đặt', 0, true]].map(([label, count, dis], i) => { const on = s.tab === i; return { label, count, hasCount: !!count, on: on ? 'true' : 'false', dis: dis ? 'true' : 'false', cur: dis ? 'not-allowed' : 'pointer', bd: on ? 'var(--action-primary-bg)' : 'transparent', fg: dis ? '--text-disabled' : on ? '--text-strong' : '--text-secondary', fw: on ? 600 : 500, go: () => { if (!dis) this.setState({ tab: i }); } }; }),
+      segs: [['columns-2', 'Bảng'], ['list', 'Danh sách'], ['calendar', 'Lịch']].map(([icon, label], i) => { const on = s.seg === i; return { icon: I(icon), label, on: on ? 'true' : 'false', bg: on ? 'var(--bg-surface)' : 'transparent', sh: on ? 'var(--shadow-1)' : 'none', fg: on ? '--text-strong' : '--text-secondary', go: () => this.setState({ seg: i }) }; }),
+      toasts: toastsV, addToast: () => { const id = s.tid; this.setState(st => ({ toasts: [id, ...st.toasts].slice(0, 3), tid: st.tid + 1 })); if (id % 3 !== 1) setTimeout(() => this.setState(st => ({ toasts: st.toasts.filter(x => x !== id) })), 5000); },
+      skelRows: ['60%', '45%', '70%', '38%'],
+      empties: [['--state-selected-bg', '--text-brand', 'wand-sparkles', 'Chưa có skill nào', 'Skill giúp agent dùng lại một quy trình chuẩn, ví dụ phát hành bản desktop.', 'Tạo skill', 'primary'], ['--bg-sunken', '--text-muted', 'search', 'Không tìm thấy task', 'Không có task nào khớp “webhook” với bộ lọc hiện tại.', 'Xoá bộ lọc', 'secondary'], ['--status-danger-bg', '--status-danger-fg', 'circle-alert', 'Không tải được danh sách máy', 'Hub không phản hồi sau 10 giây. Dữ liệu cũ vẫn được giữ.', 'Thử lại', 'secondary']]
+        .map(([bg, fg, icon, title, body, cta, kind]) => ({ bg, fg, icon: I(icon), title, body, cta, bBg: kind === 'primary' ? '--action-primary-bg' : '--action-secondary-bg', bFg: kind === 'primary' ? '--action-primary-fg' : '--action-secondary-fg', bBd: kind === 'primary' ? '0' : '1px solid var(--action-secondary-border)' })),
+      pgRange: ((pg - 1) * 20 + 1) + '–' + Math.min(pg * 20, 1284) + ' trên 1.284', pages, pgFirst: pg === 1 ? 'true' : 'false', pgPrevFg: pg === 1 ? '--text-disabled' : '--text-secondary', pgPrev: () => this.setState(st => ({ page: Math.max(1, st.page - 1) })), pgNext: () => this.setState(st => ({ page: Math.min(PG, st.page + 1) })),
+      rows: rowsSorted.map(([id, title, agent, k, icon, status, at]) => { const sel = !!s.sel[id]; return { id, title, agent, k, icon: I(icon), status, at, sel: sel ? 'true' : 'false', bg: sel ? 'var(--state-selected-bg)' : 'transparent', cbBd: sel ? '--action-primary-bg' : '--border-control', cbBg: sel ? '--action-primary-bg' : '--bg-surface', op: sel ? 1 : 0, toggle: () => this.setState(st => ({ sel: { ...st.sel, [id]: !st.sel[id] } })) }; }),
+      anySel: selCount > 0, noSel: selCount === 0, selCount, allAria: all ? 'true' : selCount ? 'mixed' : 'false', allBd: selCount ? '--action-primary-bg' : '--border-control', allBg: selCount ? '--action-primary-bg' : '--bg-surface', allOp: selCount ? 1 : 0, allMark: all ? I('check') : I('minus'),
+      toggleAll: () => this.setState({ sel: all ? {} : Object.fromEntries(ROWS.map(r => [r[0], true])) }), sortAria: s.sortAsc ? 'ascending' : 'descending', sortIcon: s.sortAsc ? I('arrow-up') : I('arrow-down'), toggleSort: () => this.setState(st => ({ sortAsc: !st.sortAsc })),
+      nav: navDef.map(n => n[0] === 'h' ? { head: true, item: false, label: n[1] } : { head: false, item: true, ...navItems.find(x => x.label === n[1]) }), navItems,
+      cmdQ: s.cmdQ, setCmdQ: e => this.setState({ cmdQ: e.target.value }), cmdGroups, cmdEmpty: cmdGroups.length === 0,
+    };
+  }
+}
+</script>
+</body>
+</html>

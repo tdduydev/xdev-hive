@@ -10,7 +10,7 @@ import { formatTime, sourceText, useAction, useCan, useHive, useQuery } from "..
 import { useT } from "../i18n/index.tsx";
 import { docOwner, inScope, scopeLabel } from "../lib/scope.ts";
 
-const SEGMENT = "data-[state=on]:bg-brand-soft data-[state=on]:font-semibold data-[state=on]:text-brand-soft-foreground";
+const SEGMENT = "";
 
 export function ProposalsPage() {
   const { client, scope } = useHive();
