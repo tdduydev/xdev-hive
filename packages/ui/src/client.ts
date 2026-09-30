@@ -181,7 +181,7 @@ export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpCl
     },
     hub: {
       info: () => rpc<HubInfo>("hub.info"),
-      backup: () => rpc<{ file: string; removed: number }>("hub.backup"),
+      backup: () => rpc<{ file: string; removed: number; files: number | null }>("hub.backup"),
     },
     alerts: {
       list: () => rpc<{ open: HubAlert[]; recent: HubAlert[]; rules: AlertRuleState[] }>("alerts.list"),

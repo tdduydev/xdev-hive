@@ -107,6 +107,8 @@ export interface HubInfo {
   /** null: HIVE_BACKUP_DIR is not set. */
   backup: { dir: string; hours: number; keep: number; last: string | null; count: number } | null;
   search: { mode: "keyword" | "hybrid"; model: string | null; url: string | null; indexed: number; total: number; lastError: string | null };
+  /** Doc files (roadmap 23c): in the database, or in a store (SeaweedFS) with `inDb` still to move there. */
+  files: { store: string | null; where: string | null; count: number; bytes: number; inDb: number; lastError: string | null };
   sso: { name: string; issuer: string; linked: number } | null;
   hosts: { allowed: string[] | null; publicUrl: string | null; trustProxy: boolean };
 }

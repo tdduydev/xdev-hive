@@ -12,6 +12,7 @@
     "start": "NODE_ENV=production node src/server.ts",
     "token": "node src/cli.ts token",
     "backup": "node src/cli.ts backup",
+    "files": "node src/cli.ts files",
     "typecheck": "tsc -p tsconfig.json && tsc -p client/tsconfig.json",
     "user": "node src/cli.ts user"
   },
