@@ -189,6 +189,7 @@ export const vi = {
     rangeLabel: "Khoảng thời gian",
     group: { ops: "Vận hành", watch: "Theo dõi", knowledge: "Kiến thức", admin: "Quản trị" },
     nav: {
+      chat: "Chat",
       hub: "Hub",
       context: "Context agent",
       alerts: "Cảnh báo",
@@ -212,6 +213,7 @@ export const vi = {
       audit: "Nhật ký",
     },
     hint: {
+      chat: "Trò chuyện với agent leader của từng dự án",
       hub: "Phiên bản, database, backup, tìm theo nghĩa, đăng nhập",
       context: "AGENTS.md và những gì agent của dự án nhận",
       alerts: "Sự cố đang mở và luật gửi cảnh báo",
