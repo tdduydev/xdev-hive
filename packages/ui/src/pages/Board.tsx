@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { X } from "lucide-react";
+// Board (docs/design/2026-09-redesign, xDev Hive Client): a project's tasks in five columns; drag a card to change
+// its status, click it for the inspector (details, the latest run, and the form that starts an agent on this
+// machine). The runs themselves are on Lượt chạy.
+import { useEffect, useMemo, useState, type ComponentType, type DragEvent, type ReactNode } from "react";
+import { Ban, Circle, CircleCheck, GitPullRequest, LoaderCircle, X } from "lucide-react";
 import { cn } from "cn";
 import {
   AGENT_ROLES,
@@ -9,23 +12,22 @@ import {
   type AgentRole,
   type AgentRun,
   type Task,
+  type TaskStatus,
 } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
-import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
-import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE, StatusDot } from "../components/common.tsx";
-import { formatCount, formatTime, formatUsd, useAction, useHashParam, useHive, useProjects, useQuery } from "../hooks.ts";
-import { rich, useT } from "../i18n/index.tsx";
+import { Badge, ErrorNote, Notice, StatusDot } from "../components/common.tsx";
+import { errorMessage, formatTime, useAction, useCan, useHive, useProjects, useQuery } from "../hooks.ts";
+import { rich, useT, type TFunction } from "../i18n/index.tsx";
 import { runDuration } from "../lib/runs.ts";
 import { projectScope, scopeProject } from "../lib/scope.ts";
+import { ownerLabel } from "../lib/tasks.ts";
+import { useToast } from "../shell/toast.tsx";
 
-const DANGER_GHOST = "text-destructive hover:bg-destructive/10 hover:text-destructive";
-
-/** Re-renders every `ms` while `active`, for live run lists and logs. */
+/** Re-renders every `ms` while `active`, for live runs. */
 function usePulse(active: boolean, ms = 2000): number {
   const [n, setN] = useState(0);
   useEffect(() => {
@@ -36,9 +38,55 @@ function usePulse(active: boolean, ms = 2000): number {
   return n;
 }
 
+const COLUMN_ICON: Record<TaskStatus, [ComponentType<{ className?: string }>, string]> = {
+  todo: [Circle, "text-fg-muted"],
+  doing: [LoaderCircle, "text-running"],
+  review: [GitPullRequest, "text-warning"],
+  blocked: [Ban, "text-danger"],
+  done: [CircleCheck, "text-success"],
+};
+
+/** A task waiting on others shows as blocked until they are done; it is still "to do" underneath. */
+const columnOf = (task: Task): TaskStatus => (task.status === "todo" && task.waitingOn?.length ? "blocked" : task.status);
+
+/** "c2/3" for a best-of-n candidate, "judge" for the run that compares them. */
+function bestOfLabel(run: AgentRun, t: TFunction): string | null {
+  const b = run.bestOf;
+  if (!b) return null;
+  return b.n === 0 ? t("board.judge") : t("board.candidateOf", { n: b.n, of: b.of });
+}
+
+/** The MR / CI chip of a card: "MR !84 · CI lỗi", "PR #12 · đã merge"… */
+function mrTag(run: AgentRun | null, t: TFunction): { text: string; kind: "danger" | "success" | "neutral" } | null {
+  if (!run?.mrUrl) return null;
+  const mr = /\/pull\/\d+$/.test(run.mrUrl) ? `PR #${run.mrIid}` : `MR !${run.mrIid}`;
+  if (run.mrStatus === "merged") return { text: `${mr} · ${t("mrStatus.merged")}`, kind: "success" };
+  if (run.pipelineStatus === "failed") return { text: `${mr} · ${t("board.pipeline", { status: t("pipelineStatus.failed") })}`, kind: "danger" };
+  if (run.pipelineStatus === "success") return { text: `${mr} · ${t("board.pipeline", { status: t("pipelineStatus.success") })}`, kind: "success" };
+  return { text: mr, kind: "neutral" };
+}
+
+const TAG = {
+  danger: "bg-danger-soft text-danger",
+  success: "bg-success-soft text-success",
+  neutral: "bg-neutral-soft text-neutral",
+  info: "bg-info-soft text-info",
+  warning: "bg-warning-soft text-warning",
+} as const;
+
+function Tag({ kind, title, children }: { kind: keyof typeof TAG; title?: string; children: ReactNode }) {
+  return (
+    <span title={title} className={cn("inline-flex h-[18px] items-center rounded-xs px-1.5 font-sans whitespace-nowrap", TAG[kind])}>
+      {children}
+    </span>
+  );
+}
+
 export function BoardPage() {
   const { client, scope, setScope } = useHive();
   const t = useT();
+  const allow = useCan();
+  const toast = useToast();
   const desktop = client.desktop!;
   const projects = useProjects();
   const settings = useQuery(() => desktop.settings(), [desktop]);
@@ -62,147 +110,196 @@ export function BoardPage() {
   // A run that just ended may still get its MR or its task note: keep refreshing until it has.
   const active = (runs.data ?? []).some((r) => r.status === "queued" || r.status === "running" || r.finishing);
   const pulse = usePulse(active);
-  useEffect(() => setTick((t) => t + 1), [pulse]);
+  useEffect(() => setTick((n) => n + 1), [pulse]);
+  // The elapsed time on running cards.
+  usePulse((runs.data ?? []).some((r) => r.status === "running"), 1000);
 
-  const tasks = useQuery(
-    () => (current ? client.call("tasks.list", { project: current }) : Promise.resolve([] as Task[])),
-    [client, current, tick],
-  );
-  const next = useQuery(
-    () => (current ? client.call("tasks.next", { project: current, limit: 1 }) : Promise.resolve([] as Task[])),
-    [client, current, tasks.data],
-  );
+  const tasks = useQuery(() => (current ? client.call("tasks.list", { project: current }) : Promise.resolve([] as Task[])), [client, current, tick]);
+  const next = useQuery(() => (current ? client.call("tasks.next", { project: current, limit: 1 }) : Promise.resolve([] as Task[])), [client, current, tasks.data]);
   const nextId = next.data?.[0]?.id ?? null;
   const profiles = useQuery(() => desktop.profiles(), [desktop, tick]);
   const [selected, setSelected] = useState<string | null>(null);
-  // #/board?run=<id> (Hôm nay, the sidebar): show that run, on its project.
-  const [linked, clearLinked] = useHashParam("run");
-  const linkedRun = useQuery(async () => (linked ? ((await desktop.runs({ limit: 200 })).find((r) => r.id === linked) ?? null) : null), [desktop, linked]);
-  useEffect(() => {
-    if (!linked || linkedRun.loading) return;
-    const r = linkedRun.data;
-    if (r) {
-      setProject(r.project);
-      if (!system) setScope(projectScope(r.project));
-      setSelected(r.id);
-    }
-    clearLinked();
-  }, [linked, linkedRun.loading, linkedRun.data, system, setScope, clearLinked]);
+  // Status changes made here, shown before the list reloads.
+  const [moved, setMoved] = useState<Record<string, TaskStatus>>({});
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [over, setOver] = useState<TaskStatus | null>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
 
   const latestRun = useMemo(() => {
     const map = new Map<string, AgentRun>();
     for (const r of runs.data ?? []) if (!map.has(r.taskId)) map.set(r.taskId, r);
     return map;
   }, [runs.data]);
+  const list = useMemo(
+    () => (tasks.data ?? []).map((task) => (moved[task.id] ? { ...task, status: moved[task.id]!, waitingOn: moved[task.id] === "todo" ? task.waitingOn : [] } : task)),
+    [tasks.data, moved],
+  );
+  useEffect(() => setMoved({}), [tasks.data]);
 
   const counts = {
     running: (runs.data ?? []).filter((r) => r.status === "running").length,
     queued: (runs.data ?? []).filter((r) => r.status === "queued").length,
   };
-  const refresh = () => setTick((t) => t + 1);
+  const refresh = () => setTick((n) => n + 1);
   const isLocalProject = localProjects.includes(current);
-  // GitLab MRs or GitHub PRs (the main process picks by the project's remote).
-  const gitlabReady = (!!settings.data?.gitlab.url && !!settings.data?.gitlab.hasToken) || !!settings.data?.github?.hasToken;
+  const canMove = allow(current || null, "contribute");
+
+  const move = (task: Task, status: TaskStatus) => {
+    const from = task.status;
+    if (from === status) return;
+    setMoved((m) => ({ ...m, [task.id]: status }));
+    setMoveError(null);
+    client.call("tasks.update", { id: task.id, status }).then(
+      () => {
+        refresh();
+        toast(t("board.moved", { id: task.id, status: t(`taskStatus.${status}`) }), {
+          undo: () => void client.call("tasks.update", { id: task.id, status: from }).then(refresh, (err: unknown) => setMoveError(errorMessage(err))),
+        });
+      },
+      (err: unknown) => {
+        setMoved((m) => {
+          const rest = { ...m };
+          delete rest[task.id];
+          return rest;
+        });
+        setMoveError(errorMessage(err));
+      },
+    );
+  };
+  const drop = (status: TaskStatus) => (e: DragEvent) => {
+    e.preventDefault();
+    const id = dragId ?? e.dataTransfer.getData("text/plain");
+    setDragId(null);
+    setOver(null);
+    const task = list.find((x) => x.id === id);
+    if (task && columnOf(task) !== status) move(task, status);
+  };
+
+  const inspected = list.find((x) => x.id === selected) ?? null;
+  const problem = tasks.error ?? runs.error ?? moveError;
 
   return (
-    <Page wide>
-      <PageHeader
-        title={t("nav.board")}
-        subtitle={t("board.subtitle")}
-        actions={
-          <>
-            <Badge tone="info">{t("board.running", { count: counts.running })}</Badge>
-            <Badge tone="neutral">{t("board.queued", { count: counts.queued })}</Badge>
-            <Button asChild size="sm" variant="outline">
-              <a href="#/agents">{t("board.profiles")}</a>
-            </Button>
-          </>
-        }
-      />
-      <div className="flex flex-wrap items-center gap-3">
-        <NativeSelect
-          value={current}
-          onChange={(e) => {
-            setProject(e.target.value);
-            // Within a system the sidebar stays on it.
-            if (!system) setScope(projectScope(e.target.value));
-          }}
-          aria-label={t("tasks.colProject")}
-        >
-          {options.map((p) => (
-            <NativeSelectOption key={p} value={p}>
-              {p}
-              {localProjects.includes(p) ? "" : ` (${t("board.noRepoHere")})`}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
-        <ProfileStrip profiles={profiles.data ?? []} />
-      </div>
-      {!current && !settings.loading ? <Empty>{t("board.addProjectFirst")}</Empty> : null}
-      {current && scoped !== null && scoped !== current && !settings.loading ? (
-        <Notice tone="info">
-          {rich(t("board.scopeNotLocal"), {
-            scoped: <span className="font-mono">{scoped}</span>,
-            current: <span className="font-mono">{current}</span>,
-          })}
-        </Notice>
-      ) : null}
-      {current && !isLocalProject ? (
-        <Notice tone="warn">{t("board.cannotRun")}</Notice>
-      ) : null}
-      <ErrorNote error={tasks.error ?? runs.error} />
-
-      <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
-        {TASK_STATUSES.map((status) => {
-          // A task waiting on others shows as blocked until they are done; it is still "to do" underneath.
-          const column = (tasks.data ?? []).filter((task) => (task.status === "todo" && task.waitingOn?.length ? "blocked" : task.status) === status);
-          return (
-            <section
-              key={status}
-              className="flex min-h-32 min-w-0 flex-col gap-2 rounded-lg border bg-muted/30 p-2"
-              aria-label={t(`taskStatus.${status}`)}
-            >
-              <header className="flex items-center justify-between gap-2 px-1 py-0.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                <span>{t(`taskStatus.${status}`)}</span>
-                <Badge tone="neutral">{column.length}</Badge>
-              </header>
-              {column.map((task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  run={latestRun.get(task.id) ?? null}
-                  profiles={profiles.data ?? []}
-                  canRun={isLocalProject}
-                  isNext={task.id === nextId}
-                  onStarted={(r) => {
-                    setSelected(r.id);
-                    refresh();
+    <div className="flex h-full min-h-0">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line-subtle bg-surface px-3.5 py-2.5">
+          <NativeSelect
+            size="sm"
+            className="font-mono"
+            value={current}
+            onChange={(e) => {
+              setProject(e.target.value);
+              // Within a system the sidebar stays on it.
+              if (!system) setScope(projectScope(e.target.value));
+            }}
+            aria-label={t("tasks.colProject")}
+          >
+            {options.map((p) => (
+              <NativeSelectOption key={p} value={p}>
+                {p}
+                {localProjects.includes(p) ? "" : ` (${t("board.noRepoHere")})`}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+          <ProfileStrip profiles={profiles.data ?? []} />
+          <span className="flex-1" />
+          <Badge tone="running">{t("board.running", { count: counts.running })}</Badge>
+          <Badge tone="neutral">{t("board.queued", { count: counts.queued })}</Badge>
+        </div>
+        {!current && !settings.loading ? (
+          <div className="px-3.5 pt-3">
+            <Notice>{t("board.addProjectFirst")}</Notice>
+          </div>
+        ) : null}
+        {current && scoped !== null && scoped !== current && !settings.loading ? (
+          <div className="px-3.5 pt-3">
+            <Notice tone="info">
+              {rich(t("board.scopeNotLocal"), { scoped: <span className="font-mono">{scoped}</span>, current: <span className="font-mono">{current}</span> })}
+            </Notice>
+          </div>
+        ) : null}
+        {current && !isLocalProject && !settings.loading ? (
+          <div className="px-3.5 pt-3">
+            <Notice tone="warn">{t("board.cannotRun")}</Notice>
+          </div>
+        ) : null}
+        {problem ? (
+          <div className="px-3.5 pt-3">
+            <ErrorNote error={problem} />
+          </div>
+        ) : null}
+        <div className="min-h-0 flex-1 overflow-auto px-3.5 py-3" aria-label={t("board.board")}>
+          <div className="grid min-h-full min-w-[1150px] grid-cols-[repeat(5,minmax(220px,1fr))] gap-2.5">
+            {TASK_STATUSES.map((status) => {
+              const column = list.filter((task) => columnOf(task) === status);
+              const [Icon, iconCls] = COLUMN_ICON[status];
+              return (
+                <section
+                  key={status}
+                  aria-label={t(`taskStatus.${status}`)}
+                  onDragOver={(e) => {
+                    if (!canMove || !dragId) return;
+                    e.preventDefault();
+                    if (over !== status) setOver(status);
                   }}
-                  onOpenRun={setSelected}
-                />
-              ))}
-            </section>
-          );
-        })}
+                  onDragLeave={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver((o) => (o === status ? null : o));
+                  }}
+                  onDrop={drop(status)}
+                  className={cn("flex flex-col gap-1.5 rounded-[10px] border border-dashed p-2", over === status ? "border-line-selected bg-selected" : "border-transparent bg-subtle")}
+                >
+                  <div className="flex items-center gap-1.5 px-1 pt-0.5 pb-1" title={t("board.column", { status: t(`taskStatus.${status}`), count: column.length })}>
+                    <Icon className={cn("size-3.5", iconCls)} />
+                    <span className="text-xs/none font-semibold text-fg-strong">{t(`taskStatus.${status}`)}</span>
+                    <span className="text-xs/none text-fg-muted">{column.length}</span>
+                  </div>
+                  {column.map((task) => (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      run={latestRun.get(task.id) ?? null}
+                      isNext={task.id === nextId}
+                      selected={task.id === selected}
+                      draggable={canMove}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/plain", task.id);
+                        e.dataTransfer.effectAllowed = "move";
+                        setDragId(task.id);
+                      }}
+                      onDragEnd={() => {
+                        setDragId(null);
+                        setOver(null);
+                      }}
+                      onOpen={() => setSelected(task.id)}
+                    />
+                  ))}
+                </section>
+              );
+            })}
+          </div>
+        </div>
       </div>
-
-      <RunsPanel runs={runs.data ?? []} selected={selected} onSelect={setSelected} onChanged={refresh} gitlabReady={gitlabReady} />
-    </Page>
+      {inspected ? (
+        <Inspector
+          key={inspected.id}
+          task={inspected}
+          run={latestRun.get(inspected.id) ?? null}
+          profiles={profiles.data ?? []}
+          canRun={isLocalProject}
+          canMove={canMove}
+          onMove={(status) => move(inspected, status)}
+          onClose={() => setSelected(null)}
+          onStarted={refresh}
+        />
+      ) : null}
+    </div>
   );
-}
-
-/** "c2/3" for a best-of-n candidate, "judge" for the run that compares them. */
-function bestOfLabel(run: AgentRun, t: ReturnType<typeof useT>): string | null {
-  const b = run.bestOf;
-  if (!b) return null;
-  return b.n === 0 ? t("board.judge") : t("board.candidateOf", { n: b.n, of: b.of });
 }
 
 function ProfileStrip({ profiles }: { profiles: AgentProfileStatus[] }) {
   const t = useT();
   if (!profiles.length) return null;
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5" aria-label={t("board.profileStatus")}>
+    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1" aria-label={t("board.profileStatus")}>
       {profiles.map((p) => {
         const resting = p.cooldownUntil !== null;
         const signedOut = p.login?.loggedIn === false;
@@ -215,15 +312,15 @@ function ProfileStrip({ profiles }: { profiles: AgentProfileStatus[] }) {
             : overLimit
               ? t("board.profileOverLimit")
               : resting
-            ? t("board.profileResting", { time: formatTime(p.cooldownUntil) })
-            : p.running
-              ? t("board.profileRunning", { running: p.running, max: p.maxConcurrent })
-              : t("board.profileReady");
+                ? t("board.profileResting", { time: formatTime(p.cooldownUntil) })
+                : p.running
+                  ? t("board.profileRunning", { running: p.running, max: p.maxConcurrent })
+                  : t("board.profileReady");
         return (
           <span key={p.id} className="inline-flex min-w-0 items-center gap-1.5" title={p.cooldownReason ?? p.label}>
             <StatusDot tone={tone} />
-            <span className="font-mono text-xs break-all">{p.id}</span>
-            <span className="text-xs text-muted-foreground">{text}</span>
+            <span className="font-mono text-[11px] break-all text-fg-strong">{p.id}</span>
+            <span className="text-[11px] text-fg-muted">{text}</span>
           </span>
         );
       })}
@@ -234,23 +331,190 @@ function ProfileStrip({ profiles }: { profiles: AgentProfileStatus[] }) {
 function TaskCard({
   task,
   run,
+  isNext,
+  selected,
+  draggable,
+  onDragStart,
+  onDragEnd,
+  onOpen,
+}: {
+  task: Task;
+  run: AgentRun | null;
+  isNext: boolean;
+  selected: boolean;
+  draggable: boolean;
+  onDragStart: (e: DragEvent) => void;
+  onDragEnd: () => void;
+  onOpen: () => void;
+}) {
+  const t = useT();
+  const live = run?.status === "running";
+  const tag = mrTag(run, t);
+  const waiting = task.waitingOn ?? [];
+  const owner = task.owner ? ownerLabel(task.owner).who : run && (live || run.status === "queued") ? run.profileId : null;
+  const stopped = run?.status === "rate_limited" || run?.status === "failed" ? run.status : null;
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className={cn(
+        "flex cursor-pointer flex-col gap-[7px] rounded-md border bg-surface px-2.5 py-[9px] outline-none hover:border-line-strong focus-visible:focus-ring",
+        selected ? "border-line-selected" : "border-line-default",
+      )}
+    >
+      <div className="flex gap-1.5 font-mono text-[11px]/none font-medium text-fg-muted">
+        <span>{task.id}</span>
+        {run?.bestOf ? <span className="truncate">{bestOfLabel(run, t)}</span> : null}
+      </div>
+      <span className="text-[13px]/[18px] font-medium text-pretty text-fg-strong [overflow-wrap:anywhere]">{task.title}</span>
+      {live || run?.status === "queued" || stopped || tag || waiting.length || isNext || owner ? (
+        <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px]/none font-medium">
+          {live ? <span className="text-running">● {runDuration(run!)}</span> : null}
+          {run?.status === "queued" ? <span className="text-fg-muted">◌ {t("runStatus.queued")}</span> : null}
+          {stopped ? <Tag kind={stopped === "failed" ? "danger" : "warning"}>{t(`runStatus.${stopped}`)}</Tag> : null}
+          {tag ? <Tag kind={tag.kind}>{tag.text}</Tag> : null}
+          {waiting.length ? <Tag kind="danger">{t("board.waitingOn", { tasks: waiting.join(", ") })}</Tag> : null}
+          {isNext ? (
+            <Tag kind="info" title={t("board.nextTaskHint")}>
+              {t("board.nextTask")}
+            </Tag>
+          ) : null}
+          {owner ? <span className="ml-auto truncate text-fg-secondary">{owner}</span> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Inspector({
+  task,
+  run,
   profiles,
   canRun,
-  isNext,
+  canMove,
+  onMove,
+  onClose,
   onStarted,
-  onOpenRun,
 }: {
   task: Task;
   run: AgentRun | null;
   profiles: AgentProfileStatus[];
   canRun: boolean;
-  isNext: boolean;
-  onStarted: (run: AgentRun) => void;
-  onOpenRun: (id: string) => void;
+  canMove: boolean;
+  onMove: (status: TaskStatus) => void;
+  onClose: () => void;
+  onStarted: () => void;
 }) {
   const { client, me } = useHive();
   const t = useT();
+  const toast = useToast();
   const [open, setOpen] = useState(false);
+  const busy = run?.status === "queued" || run?.status === "running";
+  const waiting = task.waitingOn ?? [];
+  const allowed = me.role !== "viewer" && canRun && task.status !== "done" && !waiting.length;
+  const tag = mrTag(run, t);
+  const props: Array<[string, ReactNode, boolean?]> = [
+    [
+      t("board.propStatus"),
+      canMove ? (
+        <NativeSelect size="sm" value={task.status} onChange={(e) => onMove(e.target.value as TaskStatus)} aria-label={t("board.propStatus")}>
+          {TASK_STATUSES.map((s) => (
+            <NativeSelectOption key={s} value={s}>
+              {t(`taskStatus.${s}`)}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+      ) : (
+        t(`taskStatus.${task.status}`)
+      ),
+    ],
+    [t("board.propProject"), task.project, true],
+    [t("board.propOwner"), task.owner ? ownerLabel(task.owner).who : t("board.noOwner"), true],
+    [t("board.propMr"), tag ? tag.text : "—"],
+  ];
+
+  return (
+    <aside aria-label={task.id} className="flex w-[360px] shrink-0 flex-col border-l border-line-subtle bg-surface">
+      <div className="flex h-[42px] shrink-0 items-center border-b border-line-subtle pr-2 pl-4">
+        <span className="flex-1 font-mono text-xs/none font-medium text-fg-muted">{task.id}</span>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t("common.close")}
+          className="grid size-7 cursor-pointer place-items-center rounded-sm text-fg-secondary outline-none hover:bg-hover focus-visible:focus-ring"
+        >
+          <X className="size-4" />
+        </button>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto p-4">
+        <h3 className="m-0 font-display text-base/[22px] font-semibold text-fg-strong">{task.title}</h3>
+        <div className="grid grid-cols-[96px_1fr] items-center gap-x-2.5 gap-y-2 text-xs/[18px]">
+          {props.map(([k, v, mono]) => (
+            <div key={k} className="contents">
+              <span className="text-fg-muted">{k}</span>
+              <span className={cn("min-w-0 text-fg-strong", mono && "font-mono")}>{v}</span>
+            </div>
+          ))}
+        </div>
+        {waiting.length ? <Notice tone="warn">{t("board.waitingOn", { tasks: waiting.join(", ") })}</Notice> : null}
+        <p className="m-0 text-[13px]/5 whitespace-pre-wrap text-fg-primary [overflow-wrap:anywhere]">{task.note?.trim() || t("board.noNote")}</p>
+        {run ? (
+          <div className="flex flex-col gap-1 rounded-md border border-line-subtle bg-subtle p-2.5 text-xs/[18px]">
+            <span className="font-semibold text-fg-strong">{t("board.lastRun", { id: run.id, status: t(`runStatus.${run.status}`) })}</span>
+            <span className="font-mono text-fg-muted">{[run.profileId, t(`agentRole.${run.role}`), runDuration(run)].filter(Boolean).join(" · ")}</span>
+            {run.activity ? <span className="text-info [overflow-wrap:anywhere]">{t("board.activity", { activity: run.activity })}</span> : null}
+            {run.error ? <span className="text-fg-muted [overflow-wrap:anywhere]">{run.error}</span> : null}
+          </div>
+        ) : null}
+        {open ? (
+          <RunForm
+            task={task}
+            profiles={profiles}
+            onCancel={() => setOpen(false)}
+            onStarted={(r) => {
+              setOpen(false);
+              onStarted();
+              toast(t("runs.rerunDone", { task: task.id }));
+              window.location.hash = `#/runs?run=${encodeURIComponent(r.id)}`;
+            }}
+          />
+        ) : null}
+      </div>
+      <div className="flex shrink-0 flex-wrap gap-2 border-t border-line-subtle px-4 py-3">
+        {run ? (
+          <Button size="sm" variant={allowed && !busy && !open ? "outline" : "default"} asChild>
+            <a href={`#/runs?run=${encodeURIComponent(run.id)}`}>{t("board.viewRun")}</a>
+          </Button>
+        ) : null}
+        {allowed && !busy && !open ? (
+          <Button size="sm" data-run-here onClick={() => setOpen(true)}>
+            {t("board.runHere")}
+          </Button>
+        ) : null}
+        {run?.worktree ? (
+          <Button size="sm" variant="ghost" onClick={() => void client.desktop!.showInFolder(run.worktree!)}>
+            {t("board.openWorktree")}
+          </Button>
+        ) : null}
+      </div>
+    </aside>
+  );
+}
+
+/** Starts an agent on the task: which job, which subscription (or rotate), how many candidates, extra instructions. */
+function RunForm({ task, profiles, onCancel, onStarted }: { task: Task; profiles: AgentProfileStatus[]; onCancel: () => void; onStarted: (run: AgentRun) => void }) {
+  const { client } = useHive();
+  const t = useT();
   const [role, setRole] = useState<AgentRole>(task.status === "review" ? "review" : "implement");
   const [profileId, setProfileId] = useState("");
   const [instructions, setInstructions] = useState("");
@@ -258,466 +522,82 @@ function TaskCard({
   const [candidates, setCandidates] = useState(1);
   const action = useAction();
   const several = role === "implement" && !profileId;
-  const busy = run?.status === "queued" || run?.status === "running";
-  const waiting = task.waitingOn ?? [];
-  const allowed = me.role !== "viewer" && canRun && task.status !== "done" && !waiting.length;
-
   return (
-    <Card className="gap-2 py-3">
-      <CardContent className="flex flex-col gap-2 px-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-xs whitespace-nowrap">{task.id}</span>
-          {run ? (
-            <button
-              className="cursor-pointer rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-              onClick={() => onOpenRun(run.id)}
-              title={run.activity ?? run.error ?? ""}
-            >
-              <Badge tone={STATUS_TONE[run.status] ?? "neutral"}>
-                {t(`runStatus.${run.status}`)}
-                {run.profileId ? ` · ${run.profileId}` : ""}
-                {run.bestOf ? ` · ${bestOfLabel(run, t)}` : ""}
-              </Badge>
-            </button>
-          ) : null}
-          {run ? <MrLink run={run} /> : null}
-          {isNext ? (
-            <span title={t("board.nextTaskHint")}>
-              <Badge tone="accent">{t("board.nextTask")}</Badge>
-            </span>
-          ) : null}
-          {waiting.length ? <Badge tone="warn">{t("board.waitingOn", { tasks: waiting.join(", ") })}</Badge> : null}
-        </div>
-        <div className="text-sm font-medium wrap-anywhere">{task.title}</div>
-        {task.owner ? <div className="text-xs text-muted-foreground">{t("board.claimedBy", { owner: task.owner })}</div> : null}
-        {allowed && !busy && !open ? (
-          <Button size="sm" variant="outline" className="self-start" onClick={() => setOpen(true)}>
-            {t("board.runAgent")}
-          </Button>
-        ) : null}
-        {open ? (
-          <form
-            className="flex flex-col gap-2 border-t pt-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void action.run(async () => {
-                const started = await client.desktop!.startRun({
-                  project: task.project,
-                  taskId: task.id,
-                  role,
-                  profileId: profileId || null,
-                  instructions,
-                  reviewAfter: role !== "review" && reviewAfter,
-                  ...(several && candidates > 1 ? { candidates } : {}),
-                });
-                setOpen(false);
-                setInstructions("");
-                onStarted(started);
-              });
-            }}
+    <form
+      className="flex flex-col gap-2 rounded-md border border-line-default p-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void action.run(async () => {
+          const started = await client.desktop!.startRun({
+            project: task.project,
+            taskId: task.id,
+            role,
+            profileId: profileId || null,
+            instructions,
+            reviewAfter: role !== "review" && reviewAfter,
+            ...(several && candidates > 1 ? { candidates } : {}),
+          });
+          setInstructions("");
+          onStarted(started);
+        });
+      }}
+    >
+      <Label htmlFor={`role-${task.id}`}>{t("board.role")}</Label>
+      <NativeSelect id={`role-${task.id}`} size="sm" wrapperClassName="w-full" value={role} onChange={(e) => setRole(e.target.value as AgentRole)}>
+        {AGENT_ROLES.map((r) => (
+          <NativeSelectOption key={r} value={r}>
+            {t(`agentRole.${r}`)}
+          </NativeSelectOption>
+        ))}
+      </NativeSelect>
+      <Label htmlFor={`profile-${task.id}`}>{t("board.profile")}</Label>
+      <NativeSelect id={`profile-${task.id}`} size="sm" wrapperClassName="w-full" value={profileId} onChange={(e) => setProfileId(e.target.value)}>
+        <NativeSelectOption value="">{t("board.rotate")}</NativeSelectOption>
+        {profiles
+          .filter((p) => p.enabled && p.roles.includes(role))
+          .map((p) => (
+            <NativeSelectOption key={p.id} value={p.id}>
+              {p.label}
+              {p.cooldownUntil ? ` (${t("board.resting")})` : ""}
+            </NativeSelectOption>
+          ))}
+      </NativeSelect>
+      {several ? (
+        <>
+          <Label htmlFor={`candidates-${task.id}`}>{t("board.candidates")}</Label>
+          <NativeSelect
+            id={`candidates-${task.id}`}
+            size="sm"
+            wrapperClassName="w-full"
+            value={String(candidates)}
+            onChange={(e) => setCandidates(Number(e.target.value))}
+            title={t("board.candidatesHint")}
           >
-            <Label htmlFor={`role-${task.id}`}>{t("board.role")}</Label>
-            <NativeSelect id={`role-${task.id}`} size="sm" value={role} onChange={(e) => setRole(e.target.value as AgentRole)}>
-              {AGENT_ROLES.map((r) => (
-                <NativeSelectOption key={r} value={r}>
-                  {t(`agentRole.${r}`)}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-            <Label htmlFor={`profile-${task.id}`}>{t("board.profile")}</Label>
-            <NativeSelect id={`profile-${task.id}`} size="sm" value={profileId} onChange={(e) => setProfileId(e.target.value)}>
-              <NativeSelectOption value="">{t("board.rotate")}</NativeSelectOption>
-              {profiles
-                .filter((p) => p.enabled && p.roles.includes(role))
-                .map((p) => (
-                  <NativeSelectOption key={p.id} value={p.id}>
-                    {p.label}
-                    {p.cooldownUntil ? ` (${t("board.resting")})` : ""}
-                  </NativeSelectOption>
-                ))}
-            </NativeSelect>
-            {several ? (
-              <>
-                <Label htmlFor={`candidates-${task.id}`}>{t("board.candidates")}</Label>
-                <NativeSelect
-                  id={`candidates-${task.id}`}
-                  size="sm"
-                  value={String(candidates)}
-                  onChange={(e) => setCandidates(Number(e.target.value))}
-                  title={t("board.candidatesHint")}
-                >
-                  {[1, 2, 3, 4].map((n) => (
-                    <NativeSelectOption key={n} value={String(n)}>
-                      {n === 1 ? t("board.candidatesOne") : t("board.candidatesMany", { n })}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-                {candidates > 1 ? <p className="text-xs text-muted-foreground">{t("board.candidatesHint")}</p> : null}
-              </>
-            ) : null}
-            <Textarea
-              placeholder={t("board.instructionsPlaceholder")}
-              value={instructions}
-              onChange={(e) => setInstructions(e.target.value)}
-              aria-label={t("board.instructions")}
-            />
-            {role !== "review" ? (
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox checked={reviewAfter} onCheckedChange={(v) => setReviewAfter(v === true)} />
-                {t("board.reviewAfter")}
-              </label>
-            ) : null}
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" type="submit" disabled={action.busy}>
-                {t("board.run")}
-              </Button>
-              <Button size="sm" variant="ghost" type="button" onClick={() => setOpen(false)}>
-                {t("common.cancel")}
-              </Button>
-            </div>
-            <ErrorNote error={action.error} />
-          </form>
-        ) : null}
-      </CardContent>
-    </Card>
-  );
-}
-
-function RunsPanel({
-  runs,
-  selected,
-  onSelect,
-  onChanged,
-  gitlabReady,
-}: {
-  runs: AgentRun[];
-  selected: string | null;
-  onSelect: (id: string | null) => void;
-  onChanged: () => void;
-  gitlabReady: boolean;
-}) {
-  const t = useT();
-  const run = runs.find((r) => r.id === selected) ?? null;
-  return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-lg font-semibold tracking-tight">{t("board.runs")}</h2>
-      {runs.length === 0 ? <Empty>{t("board.noRuns")}</Empty> : null}
-      <div className={cn("grid grid-cols-1 items-start gap-4", run ? "lg:grid-cols-2" : "")}>
-        {runs.length ? (
-          <div className="min-w-0 overflow-x-auto rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t("board.colRun")}</TableHead>
-                  <TableHead>{t("board.colTask")}</TableHead>
-                  <TableHead>{t("board.role")}</TableHead>
-                  <TableHead>{t("board.profile")}</TableHead>
-                  <TableHead>{t("tasks.status")}</TableHead>
-                  <TableHead>{t("board.colTime")}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {runs.map((r) => (
-                  <TableRow
-                    key={r.id}
-                    data-state={r.id === selected ? "selected" : undefined}
-                    className="cursor-pointer data-[state=selected]:bg-brand-soft/60"
-                    onClick={() => onSelect(r.id)}
-                  >
-                    <TableCell className="font-mono text-xs">
-                      {r.id}
-                      {r.attempt > 1 ? <span className="text-muted-foreground"> · {t("board.attempt", { n: r.attempt })}</span> : null}
-                      {r.bestOf ? (
-                        <div className="flex flex-wrap gap-1 pt-0.5 font-sans">
-                          <Badge tone={r.bestOf.n === 0 ? "accent" : "neutral"}>{bestOfLabel(r, t)}</Badge>
-                          {r.bestOf.n > 0 && r.bestOf.pick !== null ? (
-                            <Badge tone={r.bestOf.pick === r.bestOf.n ? "ok" : "neutral"}>
-                              {r.bestOf.pick === r.bestOf.n ? t("board.kept") : t("board.notKept")}
-                            </Badge>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-mono text-xs">{r.taskId}</div>
-                      <div className="max-w-56 truncate text-xs">{r.taskTitle}</div>
-                    </TableCell>
-                    <TableCell className="text-xs">{t(`agentRole.${r.role}`)}</TableCell>
-                    <TableCell className="font-mono text-xs">{r.profileId ?? r.preferredProfile ?? t("board.auto")}</TableCell>
-                    <TableCell>
-                      <Badge tone={STATUS_TONE[r.status] ?? "neutral"}>{t(`runStatus.${r.status}`)}</Badge>
-                      {r.activity ? (
-                        <div className="max-w-64 truncate text-xs text-info" title={r.activity}>
-                          {r.activity}
-                        </div>
-                      ) : r.error ? (
-                        <div className="max-w-64 truncate text-xs text-muted-foreground">{r.error}</div>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {formatTime(r.createdAt)}
-                      <div>{runDuration(r)}</div>
-                      {r.costUsd !== null ? <div>{t("board.cost", { cost: formatUsd(r.costUsd) })}</div> : null}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        ) : null}
-        {run ? (
-          <RunDetail
-            key={run.id}
-            run={run}
-            group={run.bestOf ? runs.filter((r) => r.bestOf?.group === run.bestOf!.group) : []}
-            onClose={() => onSelect(null)}
-            onChanged={onChanged}
-            gitlabReady={gitlabReady}
-          />
-        ) : null}
-      </div>
-    </section>
-  );
-}
-
-const PIPELINE_TONE: Record<string, string> = { success: "ok", failed: "danger", running: "info", pending: "info", canceled: "neutral", skipped: "neutral" };
-
-function MrLink({ run }: { run: AgentRun }) {
-  const t = useT();
-  if (!run.mrUrl) return null;
-  // A GitHub pull request (…/pull/7) reads "PR #7", a GitLab merge request "MR !7".
-  const pr = /\/pull\/\d+$/.test(run.mrUrl);
-  const tone = run.mrStatus === "merged" ? "ok" : run.mrStatus === "closed" ? "neutral" : run.mrDraft ? "warn" : "accent";
-  return (
-    <>
-      <a className="inline-flex no-underline" href={run.mrUrl} target="_blank" rel="noreferrer" title={run.mrNote ?? run.mrUrl}>
-        <Badge tone={tone}>
-          {pr ? `PR #${run.mrIid}` : `MR !${run.mrIid}`}
-          {run.mrDraft && run.mrStatus !== "merged" ? " draft" : ""}
-          {run.mrStatus && run.mrStatus !== "opened" ? ` · ${t(`mrStatus.${run.mrStatus}`)}` : ""}
-        </Badge>
-      </a>
-      {run.pipelineStatus && run.mrStatus !== "merged" ? (
-        <a className="inline-flex no-underline" href={run.pipelineUrl ?? run.mrUrl} target="_blank" rel="noreferrer">
-          <Badge tone={PIPELINE_TONE[run.pipelineStatus] ?? "neutral"}>{t("board.pipeline", { status: t(`pipelineStatus.${run.pipelineStatus}`) })}</Badge>
-        </a>
+            {[1, 2, 3, 4].map((n) => (
+              <NativeSelectOption key={n} value={String(n)}>
+                {n === 1 ? t("board.candidatesOne") : t("board.candidatesMany", { n })}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+          {candidates > 1 ? <p className="m-0 text-xs text-fg-muted">{t("board.candidatesHint")}</p> : null}
+        </>
       ) : null}
-    </>
-  );
-}
-
-function RunDetail({
-  run,
-  group,
-  onClose,
-  onChanged,
-  gitlabReady,
-}: {
-  run: AgentRun;
-  /** The other runs of its best-of-n group, as far as the list shows them. */
-  group: AgentRun[];
-  onClose: () => void;
-  onChanged: () => void;
-  gitlabReady: boolean;
-}) {
-  const { client } = useHive();
-  const t = useT();
-  const desktop = client.desktop!;
-  const live = run.status === "running" || run.status === "queued";
-  const pulse = usePulse(live, 1500);
-  const log = useQuery(() => desktop.runLog(run.id), [desktop, run.id, pulse, run.status]);
-  const [diff, setDiff] = useState<string | null>(null);
-  const [tall, setTall] = useState(false);
-  const action = useAction();
-  const pre = useRef<HTMLPreElement>(null);
-  const b = run.bestOf;
-  // Nothing of the group left to run and nothing kept: the judge chose none, so a person keeps one.
-  const undecided =
-    b !== null &&
-    b.pick === null &&
-    group.some((r) => r.bestOf!.n > 0 && r.status === "succeeded") &&
-    !group.some((r) => r.status === "queued" || r.status === "running");
-
-  // The end is where the agent's steps and result are: shown first, then followed while the run goes on.
-  const opened = useRef(false);
-  useEffect(() => {
-    const el = pre.current;
-    if (!el || !log.data) return;
-    if (live || !opened.current) el.scrollTop = el.scrollHeight;
-    opened.current = true;
-  }, [log.data, live]);
-
-  return (
-    <aside className="min-w-0 lg:sticky lg:top-3" aria-label={`Run ${run.id}`}>
-      <Card className="gap-3 py-4">
-        <CardContent className="flex flex-col gap-3 px-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <b className="font-mono text-sm">{run.id}</b>
-            <Badge tone={STATUS_TONE[run.status] ?? "neutral"}>{t(`runStatus.${run.status}`)}</Badge>
-            <span className="min-w-0 flex-1 text-xs text-muted-foreground wrap-anywhere">
-              {run.taskId} · {t(`agentRole.${run.role}`)} · {run.profileId ?? t("board.waitingProfile")} ·{" "}
-              {t("board.attemptOf", { n: run.attempt, max: run.maxAttempts })}
-            </span>
-            <Button size="icon-sm" variant="ghost" onClick={onClose} aria-label={t("common.close")}>
-              <X />
-            </Button>
-          </div>
-          {run.branch ? (
-            <div className="font-mono text-xs break-all text-muted-foreground">
-              {run.branch} · {t("board.commits", { count: run.commits })}
-              {run.headSha ? ` · ${run.headSha}` : ""}
-            </div>
-          ) : null}
-          {run.costUsd !== null ? (
-            <div className="text-xs text-muted-foreground">
-              {t("board.costDetail", {
-                cost: formatUsd(run.costUsd),
-                input: run.inputTokens === null ? "?" : formatCount(run.inputTokens),
-                output: run.outputTokens === null ? "?" : formatCount(run.outputTokens),
-              })}
-            </div>
-          ) : null}
-          {b ? (
-            <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {b.n === 0 ? t("board.judgeDetail", { of: b.of }) : t("board.bestOfDetail", { n: b.n, of: b.of })}
-              </span>
-              {b.pick ? <span className="wrap-anywhere">{t("board.keptReason", { n: b.pick, reason: b.reason ?? "" })}</span> : null}
-              {undecided ? <span>{t("board.undecided")}</span> : null}
-            </div>
-          ) : null}
-          {run.ciFix ? (
-            <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-              <a
-                className="font-medium text-primary underline underline-offset-2"
-                href={run.ciFix.pipelineUrl ?? run.ciFix.mrUrl}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {t("board.ciFixOf", {
-                  mr: /\/pull\/\d+$/.test(run.ciFix.mrUrl) ? `PR #${run.ciFix.mrIid ?? "?"}` : `MR !${run.ciFix.mrIid ?? "?"}`,
-                  n: run.ciFix.n,
-                  max: run.ciFix.max,
-                })}
-              </a>
-              <span className="wrap-anywhere">
-                {run.ciFix.jobs.length
-                  ? t("board.ciFixJobs", { jobs: run.ciFix.jobs.map((j) => `${j.name} (${j.stage})`).join(", ") })
-                  : t("board.ciFixNoJobs")}
-              </span>
-            </div>
-          ) : null}
-          {run.activity ? (
-            <div className="flex items-center gap-2 text-xs text-info" aria-live="polite">
-              <span className="size-2 shrink-0 animate-pulse rounded-full bg-info" aria-hidden />
-              <span className="wrap-anywhere">{t("board.activity", { activity: run.activity })}</span>
-            </div>
-          ) : null}
-          {run.error ? (
-            <Notice tone={run.status === "queued" ? "info" : "warn"} className="wrap-anywhere">
-              {run.error}
-            </Notice>
-          ) : null}
-          {run.mrUrl || run.mrState ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <MrLink run={run} />
-              {run.mrState ? <span className="text-xs text-muted-foreground">MR {run.mrState}</span> : null}
-              {run.mrStatus && run.mrCheckedAt ? (
-                <span className="text-xs text-muted-foreground">
-                  {t("board.mrOnGitLab", { status: t(`mrStatus.${run.mrStatus}`), time: formatTime(run.mrCheckedAt) })}
-                </span>
-              ) : null}
-              {run.mrNote ? (
-                <span className={cn("text-xs wrap-anywhere", run.mrState === "failed" ? "text-destructive" : "text-muted-foreground")}>{run.mrNote}</span>
-              ) : null}
-            </div>
-          ) : null}
-          <div className="flex flex-wrap gap-2">
-            {live ? (
-              <Button
-                size="sm"
-                variant="ghost"
-                className={DANGER_GHOST}
-                disabled={action.busy}
-                onClick={() => void action.run(async () => (await desktop.cancelRun(run.id), onChanged()))}
-              >
-                {t("board.cancelRun")}
-              </Button>
-            ) : null}
-            {undecided && b!.n > 0 && run.status === "succeeded" ? (
-              <Button
-                size="sm"
-                disabled={action.busy}
-                onClick={() => {
-                  if (window.confirm(t("board.confirmPick", { n: b!.n, task: run.taskId }))) {
-                    void action.run(async () => (await desktop.pickCandidate(run.id), onChanged()));
-                  }
-                }}
-              >
-                {t("board.pickThis")}
-              </Button>
-            ) : null}
-            {gitlabReady && run.status === "succeeded" && run.role !== "plan" && run.commits > 0 && (!b || b.pick === b.n) ? (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={action.busy}
-                onClick={() => void action.run(async () => (await desktop.createMergeRequest(run.id), onChanged()))}
-              >
-                {run.mrUrl ? t("board.updateMr") : t("board.createMr")}
-              </Button>
-            ) : null}
-            {!run.worktree && b && run.branch ? (
-              <Button size="sm" variant="outline" onClick={() => void action.run(async () => setDiff(await desktop.runDiff(run.id)))}>
-                {t("proposals.showChanges")}
-              </Button>
-            ) : null}
-            {run.worktree ? (
-              <>
-                <Button size="sm" variant="outline" onClick={() => void action.run(async () => setDiff(await desktop.runDiff(run.id)))}>
-                  {t("proposals.showChanges")}
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => void action.run(() => desktop.showInFolder(run.worktree!))}>
-                  {t("board.openWorktree")}
-                </Button>
-                {!live ? (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      if (window.confirm(t("board.confirmRemoveWorktree"))) {
-                        void action.run(async () => (await desktop.removeWorktree(run.id), onChanged()));
-                      }
-                    }}
-                  >
-                    {t("board.removeWorktree")}
-                  </Button>
-                ) : null}
-              </>
-            ) : null}
-          </div>
-          <ErrorNote error={action.error} />
-          {diff !== null ? (
-            <pre className="max-h-60 overflow-auto rounded-md border bg-muted/50 p-3 font-mono text-xs whitespace-pre-wrap wrap-anywhere">{diff}</pre>
-          ) : null}
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-muted-foreground">{t("board.log")}</span>
-            <Button size="sm" variant="ghost" onClick={() => setTall((v) => !v)} aria-expanded={tall}>
-              {tall ? t("board.logShorter") : t("board.logTaller")}
-            </Button>
-          </div>
-          <pre
-            className={cn(
-              "overflow-auto rounded-md border bg-muted/50 p-3 font-mono text-xs whitespace-pre-wrap wrap-anywhere",
-              tall ? "max-h-[75vh]" : "max-h-96",
-            )}
-            ref={pre}
-            aria-label="Log"
-          >
-            {log.data || (live ? t("board.waitingOutput") : t("board.noLog"))}
-          </pre>
-        </CardContent>
-      </Card>
-    </aside>
+      <Textarea placeholder={t("board.instructionsPlaceholder")} value={instructions} onChange={(e) => setInstructions(e.target.value)} aria-label={t("board.instructions")} />
+      {role !== "review" ? (
+        <label className="flex items-center gap-2 text-[13px]">
+          <Checkbox checked={reviewAfter} onCheckedChange={(v) => setReviewAfter(v === true)} />
+          {t("board.reviewAfter")}
+        </label>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" type="submit" disabled={action.busy}>
+          {t("board.run")}
+        </Button>
+        <Button size="sm" variant="ghost" type="button" onClick={onCancel}>
+          {t("common.cancel")}
+        </Button>
+      </div>
+      <ErrorNote error={action.error} />
+    </form>
   );
 }
