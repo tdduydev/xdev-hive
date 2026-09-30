@@ -52,3 +52,53 @@ export const gitlabSettingsSchema = z.object({
   mr: mrSettingsSchema.default(mrSettingsSchema.parse({})),
 });
 export type GitLabSettings = z.output<typeof gitlabSettingsSchema>;
+
+// ── importing a GitLab group (roadmap 19a) ─────────────────────────────────────
+
+/** A repository of a GitLab group, as the import lists it. */
+export interface GitLabGroupRepo {
+  id: number;
+  name: string;
+  /** group/sub/name: the project the app opens MRs on. */
+  pathWithNamespace: string;
+  defaultBranch: string | null;
+  sshUrl: string;
+  httpUrl: string;
+}
+
+/** A repository the import offers: the key it would get, where it would be cloned, and what is already there. */
+export interface GitLabImportCandidate {
+  repo: GitLabGroupRepo;
+  key: string;
+  dir: string;
+  /** added: a project of this app has it already · folder: the folder exists (used as it is) · new: cloned. */
+  state: "added" | "folder" | "new";
+}
+
+export interface GitLabImportResult {
+  key: string;
+  pathWithNamespace: string;
+  ok: boolean;
+  cloned: boolean;
+  error: string | null;
+}
+
+/**
+ * A Hive project key for a repository: its own name made to fit (lowercase letters, digits, . _ -), and when another
+ * project has that key, the name of its group in front, then a number.
+ */
+export function suggestProjectKey(pathWithNamespace: string, taken: Iterable<string>): string {
+  const used = new Set(taken);
+  const clean = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/^[^a-z0-9]+|[-.]+$/g, "")
+      .slice(0, 60) || "repo";
+  const parts = pathWithNamespace.split("/").filter(Boolean);
+  const own = clean(parts.at(-1) ?? "repo");
+  if (!used.has(own)) return own;
+  const withGroup = clean(`${parts.at(-2) ?? "group"}-${parts.at(-1) ?? "repo"}`);
+  if (!used.has(withGroup)) return withGroup;
+  for (let n = 2; ; n++) if (!used.has(`${own}-${n}`)) return `${own}-${n}`;
+}
