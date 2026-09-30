@@ -12,6 +12,7 @@ import { shortAgo, type InboxDone, type InboxItem, type InboxTone } from "../lib
 import { docOwner } from "../lib/scope.ts";
 import { useInbox } from "../shell/inbox.tsx";
 import { useToast } from "../shell/toast.tsx";
+import { alertDetail, alertTitle } from "./admin/Alerts.tsx";
 
 type Kind = InboxTone | "success" | "neutral";
 
@@ -138,6 +139,8 @@ function titleOf(item: InboxItem, t: TFunction): string {
       return t("inbox.machine.title", { label: item.item.label, state: t(`setupState.${item.item.state}`) });
     case "request":
       return t("inbox.request.title", { who: item.command.requestedBy, label: item.command.label });
+    case "alert":
+      return alertTitle(t, item.alert);
   }
 }
 
@@ -166,6 +169,8 @@ function metaOf(item: InboxItem, t: TFunction): string {
       return t("inbox.machine.meta");
     case "request":
       return t("inbox.request.meta");
+    case "alert":
+      return alertDetail(t, item.alert);
   }
 }
 
@@ -623,6 +628,27 @@ function Detail({
           : []),
         { label: t("inbox.machine.openSetup"), kind: s.action ? "secondary" : "primary", run: go("#/setup") },
         seenAction(t("inbox.machine.skip")),
+      ];
+      break;
+    }
+    case "alert": {
+      const a = item.alert;
+      body = (
+        <>
+          <P>{alertDetail(t, a)}</P>
+          <Kv rows={[[t(`alerts.severity.${a.severity}`), formatTime(a.openedAt), false]]} />
+        </>
+      );
+      actions = [
+        {
+          label: t("alerts.ack"),
+          kind: "primary",
+          run: act(async () => {
+            await client.alerts!.ack(a.id);
+            return t("alerts.acked");
+          }),
+        },
+        { label: t("inbox.alert.open"), kind: "secondary", run: go("#/admin/alerts") },
       ];
       break;
     }

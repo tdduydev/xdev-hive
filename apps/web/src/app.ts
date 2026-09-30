@@ -32,6 +32,7 @@ import { ChatGrants } from "./grants.ts";
 import type { TokenStore } from "./tokens.ts";
 import { LoginThrottle, type UserInfo, type UserStore } from "./users.ts";
 import type { ReleaseStore } from "./releases.ts";
+import type { AlertStore } from "./alerts.ts";
 import type { WebhookDispatcher, WebhookStore } from "./webhooks.ts";
 
 export interface HubAppOptions {
@@ -53,6 +54,8 @@ export interface HubAppOptions {
   chatGrants?: ChatGrants;
   /** Desktop builds and their rollout (roadmap 22i). */
   releases?: ReleaseStore;
+  /** Cảnh báo (roadmap 22m): rules, alerts, and the admin overview's feed. */
+  alerts?: AlertStore;
 }
 
 const CSP = [
@@ -128,6 +131,7 @@ export function createHubApp({
   oidc = null,
   chatGrants = new ChatGrants(hive.db),
   releases,
+  alerts,
 }: HubAppOptions): express.Express {
   const app = express();
   app.disable("x-powered-by");
@@ -493,6 +497,21 @@ export function createHubApp({
         } else {
           throw new HiveError("bad_request", `Unknown method ${method}`);
         }
+        return;
+      }
+
+      // Cảnh báo (roadmap 22m): hub admins only.
+      if (typeof method === "string" && method.startsWith("alerts.")) {
+        requireHubAdmin(res);
+        if (!alerts) throw new HiveError("bad_request", `Unknown method ${method}`);
+        if (method === "alerts.list") res.json({ result: await alerts.list() });
+        else if (method === "alerts.feed") res.json({ result: await alerts.feed(Math.min(100, Math.max(1, Number(i.limit ?? 40)))) });
+        else if (method === "alerts.ack") res.json({ result: alerts.ack(Number(i.id), actor.name) });
+        else if (method === "alerts.setRule") {
+          const rule = await alerts.setRule(String(i.rule ?? ""), i.enabled === true, actor.name);
+          hive.audit(actor, "alerts.setRule", rule.rule, rule.enabled ? "on" : "off");
+          res.json({ result: rule });
+        } else throw new HiveError("bad_request", `Unknown method ${method}`);
         return;
       }
 

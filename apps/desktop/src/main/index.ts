@@ -600,6 +600,15 @@ function onRunnerEvent(event: RunnerEvent): void {
 
 /** Tells about MRs that were merged or closed, and pipelines that failed. */
 function onMrChanges(changes: MrChange[]): void {
+  // The hub raises an alert for a pipeline that still fails once the fix runs are used up (roadmap 22m).
+  if (config.mode === "hub") {
+    for (const c of changes.filter((x) => x.fix?.kind === "limit")) {
+      const r = c.run;
+      void backend
+        .call("runs.report", { kind: "ci_limit", project: r.project, taskId: r.taskId, taskTitle: r.taskTitle, runId: r.id, profileId: r.profileId, role: r.role, mrUrl: r.mrUrl, mrIid: r.mrIid }, actor())
+        .catch(() => undefined);
+    }
+  }
   if (!Notification.isSupported()) return;
   for (const c of changes) {
     const mr = mrLabel(c.run);

@@ -324,7 +324,7 @@ export const schemas = {
   "machines.list": z.object({}),
   /** A machine reports a run that failed for good or opened a merge request (for the hub's webhooks). */
   "runs.report": z.object({
-    kind: z.enum(["failed", "mr"]),
+    kind: z.enum(["failed", "mr", "ci_limit"]),
     project,
     taskId,
     taskTitle: z.string().max(300),

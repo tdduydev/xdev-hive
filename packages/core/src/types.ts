@@ -299,7 +299,7 @@ export interface MachineCommand {
 /** Chat services a hub webhook can post to, and the events it can post. */
 export const WEBHOOK_KINDS = ["teams", "slack"] as const;
 export type WebhookKind = (typeof WEBHOOK_KINDS)[number];
-export const WEBHOOK_EVENTS = ["proposal.created", "memory.pending", "command.requested", "command.finished", "run.failed", "mr.created"] as const;
+export const WEBHOOK_EVENTS = ["proposal.created", "memory.pending", "command.requested", "command.finished", "run.failed", "mr.created", "alert.opened"] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 
 /** Something a person may want to hear about, emitted after the change is stored (see SqliteHiveOptions.onEvent). */
@@ -309,7 +309,56 @@ export type HiveEvent =
   | { type: "command.requested"; project: null; command: MachineCommand }
   | { type: "command.finished"; project: null; command: MachineCommand }
   | { type: "run.failed"; project: string; run: RunNotice }
-  | { type: "mr.created"; project: string; run: RunNotice };
+  | { type: "mr.created"; project: string; run: RunNotice }
+  /** A merge request's pipeline still fails after the last fix run the machine may start (roadmap 22m). */
+  | { type: "run.ciLimit"; project: string; run: RunNotice }
+  /** The hub opened an alert (a rule of Cảnh báo holds): see apps/web/src/alerts.ts. */
+  | { type: "alert.opened"; project: string | null; alert: HubAlert };
+
+/** The hub's alert rules (roadmap 22m), each turned on or off by a hub admin. */
+export const ALERT_RULES = ["run_fail_streak", "ci_fix_exhausted", "machine_offline", "webhook_failed", "quota_near", "vendor_resting", "backup_overdue"] as const;
+export type AlertRule = (typeof ALERT_RULES)[number];
+export type AlertSeverity = "high" | "medium" | "low";
+
+/** Something a rule found: open while it holds, resolved by itself once it does not (or by a hub admin). */
+export interface HubAlert {
+  id: number;
+  rule: AlertRule;
+  /** What it is about, within the rule (a machine, project/task, webhook id…): one open alert per rule and key. */
+  key: string;
+  severity: AlertSeverity;
+  /** For the UI's text (alerts.<rule>.title / .detail). */
+  vars: Record<string, string | number>;
+  project: string | null;
+  openedAt: string;
+  lastSeenAt: string;
+  resolvedAt: string | null;
+  /** null with resolvedAt: it ended by itself. */
+  resolvedBy: string | null;
+  ackedBy: string | null;
+  ackedAt: string | null;
+}
+
+export interface AlertRuleState {
+  rule: AlertRule;
+  enabled: boolean;
+  severity: AlertSeverity;
+  updatedBy: string | null;
+  updatedAt: string | null;
+}
+
+/** One line of the admin overview's live feed (alerts.feed): what machines and the hub did lately. */
+export interface FeedEvent {
+  at: string;
+  tone: "running" | "success" | "danger" | "warning" | "info" | "neutral";
+  /** Who or what did it: a machine, a person, "hub". */
+  src: string;
+  /** The UI catalogue's key under feed.* and its values. */
+  key: string;
+  vars: Record<string, string | number>;
+  /** Where a click goes (a hash route), when somewhere. */
+  href?: string;
+}
 
 /**
  * A run as the machine that runs it last pushed it to the hub (runs.push): what the team sees on the web.
@@ -536,7 +585,7 @@ export interface ChatRequest {
 
 /** A run a machine tells the hub about: it failed for good, or it opened a merge request. Not stored. */
 export interface RunNotice {
-  kind: "failed" | "mr";
+  kind: "failed" | "mr" | "ci_limit";
   project: string;
   taskId: string;
   taskTitle: string;
