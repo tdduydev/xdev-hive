@@ -78,3 +78,19 @@ export function skillsFor(all: SkillSummary[], project: string | null): ListedSk
     .map((s) => ({ ...s, overrides: s.project === project && shared.has(s.name), overridden: s.project === null && own.has(s.name) }))
     .sort((a, b) => a.name.localeCompare(b.name) || Number(a.overridden) - Number(b.overridden));
 }
+
+/** The chat leader's guide (roadmap 17c-2), edited per project on the Chat page (17i-1). */
+export const LEADER_SKILL = "hive-leader";
+
+/**
+ * What the leader of a project reads, for the editor: the project's own guide when it has one, else the team's, else
+ * an empty one to start from. `from` says which, and the version to save against is the project's (0: a new one).
+ */
+export function leaderGuide(
+  own: { content: string; version: number } | null,
+  team: { content: string } | null,
+): { parts: SkillParts; from: "project" | "team" | "none"; baseVersion: number } {
+  const source = own ?? team;
+  const parts = source ? splitSkill(source.content) : { name: LEADER_SKILL, description: "", extra: [], body: "" };
+  return { parts: { ...parts, name: LEADER_SKILL }, from: own ? "project" : team ? "team" : "none", baseVersion: own?.version ?? 0 };
+}
