@@ -437,7 +437,7 @@ export class Runner {
     return run;
   }
 
-  list(filter: { project?: string; limit?: number } = {}): AgentRun[] {
+  list(filter: { project?: string; projects?: string[]; limit?: number } = {}): AgentRun[] {
     return this.store.list(filter).map((r) => {
       if (r.status === "queued") return { ...r, error: this.#waiting.get(r.id) ?? r.error };
       if (this.#finishing.has(r.id)) return { ...r, finishing: true };

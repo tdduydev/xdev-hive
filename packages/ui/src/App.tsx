@@ -3,6 +3,7 @@ import {
   Activity,
   Bot,
   BookMarked,
+  Boxes,
   FileText,
   Laptop,
   FolderGit2,
@@ -45,7 +46,7 @@ import { ErrorNote, HiveLogo } from "./components/common.tsx";
 import { ScopeSwitcher } from "./components/ScopeSwitcher.tsx";
 import { HiveContext, useProjectList, useQuery } from "./hooks.ts";
 import { useT, type MessageKey } from "./i18n/index.tsx";
-import { readScope, writeScope, type Scope } from "./lib/scope.ts";
+import { readScope, resolveScope, writeScope, type Scope } from "./lib/scope.ts";
 import { useSystemTheme } from "./lib/theme.ts";
 import { AdminPage } from "./pages/Admin.tsx";
 import { AgentsPage } from "./pages/Agents.tsx";
@@ -61,6 +62,7 @@ import { ProposalsPage } from "./pages/Proposals.tsx";
 import { RunsPage } from "./pages/Runs.tsx";
 import { SetupPage } from "./pages/Setup.tsx";
 import { SkillsPage } from "./pages/Skills.tsx";
+import { SystemsPage } from "./pages/Systems.tsx";
 import { TasksPage } from "./pages/Tasks.tsx";
 import { TokensPage } from "./pages/Tokens.tsx";
 import { UsersPage } from "./pages/Users.tsx";
@@ -82,6 +84,7 @@ type PageId =
   | "tokens"
   | "setup"
   | "projects"
+  | "systems"
   | "device";
 type Icon = ComponentType<{ className?: string }>;
 
@@ -102,6 +105,7 @@ const PAGES: Record<PageId, { label: MessageKey; icon: Icon; render: () => React
   users: { label: "nav.users", icon: UsersRound, render: () => <UsersPage /> },
   tokens: { label: "nav.tokens", icon: KeyRound, render: () => <TokensPage /> },
   projects: { label: "nav.projects", icon: FolderGit2, render: () => <ProjectsPage /> },
+  systems: { label: "nav.systems", icon: Boxes, render: () => <SystemsPage /> },
   // Not in the sidebar: the desktop app opens it (#/device?port=…).
   device: { label: "nav.device", icon: Laptop, render: () => <DevicePage /> },
 };
@@ -109,7 +113,7 @@ const PAGES: Record<PageId, { label: MessageKey; icon: Icon; render: () => React
 const GROUPS: Array<{ label: MessageKey; ids: PageId[] }> = [
   { label: "nav.groupWork", ids: ["overview", "chat", "board", "runs", "docs", "skills", "proposals", "memory", "tasks"] },
   { label: "nav.groupAgents", ids: ["agents", "machines", "setup"] },
-  { label: "nav.groupAdmin", ids: ["admin", "users", "tokens", "projects"] },
+  { label: "nav.groupAdmin", ids: ["admin", "users", "tokens", "systems", "projects"] },
 ];
 
 function readHash(): PageId | null {
@@ -171,12 +175,17 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   const [tick, setTick] = useState(0);
   const bump = useCallback(() => setTick((t) => t + 1), []);
   const seen = useProjectList(client, tick);
-  // Granted projects show in the switcher even before they have any data.
+  // A hub from before systems (roadmap 19b) has no such method: there are none then.
+  const systemList = useQuery(() => client.call("systems.list", {}).catch(() => []), [client, tick]);
+  const systems = useMemo(() => systemList.data ?? [], [systemList.data]);
+  // Granted projects show in the switcher even before they have any data, and so do a system's.
   const projects = useMemo(
-    () => [...new Set([...seen, ...Object.keys(me.access?.projects ?? {})])].sort(),
-    [seen, me.access],
+    () => [...new Set([...seen, ...Object.keys(me.access?.projects ?? {}), ...systems.flatMap((s) => s.projects)])].sort(),
+    [seen, me.access, systems],
   );
-  const [scope, setScopeState] = useState<Scope>(readScope);
+  const [picked, setScopeState] = useState<Scope>(readScope);
+  // A system picked in the sidebar gets its projects once the list is in.
+  const scope = useMemo(() => resolveScope(picked, systemList.data), [picked, systemList.data]);
   const setScope = useCallback((next: Scope) => {
     writeScope(next);
     setScopeState(next);
@@ -192,7 +201,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   }, [home]);
 
   const visible = useMemo(() => {
-    const ids = new Set<PageId>(["overview", "docs", "skills", "proposals", "memory", "tasks"]);
+    const ids = new Set<PageId>(["overview", "docs", "skills", "proposals", "memory", "tasks", "systems"]);
     if (client.desktop) for (const id of ["board", "agents", "setup", "projects"] as const) ids.add(id);
     // Machines only report to a hub (and push their runs to it); a local database never has any. The leader chat
     // runs on a machine the hub hands it to.
@@ -216,7 +225,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   const desktop = Boolean(client.desktop);
 
   return (
-    <HiveContext.Provider value={{ client, me: me, bump, scope, setScope, projects }}>
+    <HiveContext.Provider value={{ client, me: me, bump, scope, setScope, projects, systems }}>
       <TooltipProvider>
         <SidebarProvider>
           {/* Icon-only collapse would sit under the macOS traffic lights; the desktop hides the sidebar instead. */}

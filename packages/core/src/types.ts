@@ -204,6 +204,17 @@ export interface TeamPolicy {
   updatedBy: string | null;
 }
 
+/**
+ * A system (roadmap 19b): the projects that make one product, each a service with its own repository. Picked in the
+ * sidebar, the pages show the tasks, runs, merge requests and chat of every project in it. A project may be in several.
+ */
+export interface HiveSystem {
+  name: string;
+  projects: string[];
+  updatedAt: string;
+  updatedBy: string;
+}
+
 export const COMMAND_STATUSES = ["pending", "running", "done", "failed", "rejected", "cancelled", "expired"] as const;
 export type CommandStatus = (typeof COMMAND_STATUSES)[number];
 

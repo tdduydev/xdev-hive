@@ -62,6 +62,7 @@ import type {
   SetupReport,
   Task,
   TeamPolicy,
+  HiveSystem,
 } from "./types.ts";
 
 const MIGRATIONS: string[] = [
@@ -230,6 +231,10 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE chat_defaults ADD COLUMN commands TEXT;
   `,
+  // Systems (roadmap 19b): projects as a JSON array.
+  `
+  CREATE TABLE systems(name TEXT PRIMARY KEY, projects TEXT NOT NULL, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL);
+  `,
 ];
 
 /** A leader's reply asks for at most this many actions. */
@@ -330,6 +335,8 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
   "tasks.setDeps": (i) => ({ target: i.id, detail: i.dependsOn.length ? `← ${i.dependsOn.join(", ")}` : "—" }),
   "machines.remove": (i) => ({ target: i.id }),
   "cooldowns.clear": (i) => ({ target: i.account }),
+  "systems.save": (i, o: HiveSystem) => ({ target: i.name, detail: o.projects.join(", "), text: { key: "audit.system", vars: { projects: o.projects.join(", ") } } }),
+  "systems.remove": (i) => ({ target: i.name }),
   "policy.set": (_i, o: TeamPolicy) => ({
     target: "policy",
     detail: `CLI: ${o.requiredClis.join(", ") || "—"} · shim: ${o.requireShim ? "có" : "không"} · ${Object.keys(o.projects).length} dự án · ${o.profileTemplates.length} mẫu profile`,
@@ -480,6 +487,16 @@ const toCommand = (r: Row): MachineCommand => ({
   updatedAt: str(r.updated_at),
   output: strOrNull(r.output),
 });
+const toSystem = (r: Row): HiveSystem => ({
+  name: str(r.name),
+  projects: JSON.parse(str(r.projects)) as string[],
+  updatedAt: str(r.updated_at),
+  updatedBy: str(r.updated_by),
+});
+
+/** A project list filter as bound to `json_each`: null when there is none. */
+const listParam = (projects: string[] | undefined) => (projects ? JSON.stringify(projects) : null);
+
 const toRunRequest = (r: Row): RunRequest => ({
   id: num(r.id),
   machineId: str(r.machine_id),
@@ -755,6 +772,13 @@ export class SqliteHive implements HiveBackend {
       }
       case "tasks.create":
         return this.#need(actor, i.project, "manage", `Project ${i.project}`);
+      case "systems.save":
+      case "systems.remove": {
+        // Every project it has and gets: a system never takes in, or drops, a project its editor does not manage.
+        const before = this.#system(i.name)?.projects ?? [];
+        for (const p of new Set([...before, ...((i.projects as string[] | undefined) ?? [])])) this.#need(actor, p, "manage", `Project ${p}`);
+        return;
+      }
       case "tasks.setDeps": {
         const task = this.#getTask(i.id);
         if (task) this.#need(actor, task.project, "manage", `Task ${i.id}`);
@@ -798,6 +822,11 @@ export class SqliteHive implements HiveBackend {
       // Machines are the team's, but what they run and which repos they have shows the project: hide hidden projects.
       case "machines.list":
         return (out as Machine[]).map((m) => ({ ...m, runs: m.runs.filter((r) => sees(r.project)), projects: m.projects.filter((p) => sees(p)) })) as MethodOutput[M];
+      // Only the projects it may see; a system of none of them is not shown at all.
+      case "systems.list":
+        return (out as HiveSystem[])
+          .map((s) => ({ ...s, projects: s.projects.filter((p) => sees(p)) }))
+          .filter((s) => s.projects.length > 0) as MethodOutput[M];
       case "policy.get": {
         const policy = out as TeamPolicy;
         return { ...policy, projects: Object.fromEntries(Object.entries(policy.projects).filter(([p]) => sees(p))) } as MethodOutput[M];
@@ -1098,6 +1127,11 @@ export class SqliteHive implements HiveBackend {
     return (this.db.prepare("SELECT * FROM quota_cooldowns ORDER BY until").all() as Row[]).map(toCooldown);
   }
 
+  #system(name: string): HiveSystem | null {
+    const row = this.db.prepare("SELECT * FROM systems WHERE name = ?").get(name) as Row | undefined;
+    return row ? toSystem(row) : null;
+  }
+
   #policy(): TeamPolicy {
     const row = this.db.prepare("SELECT value FROM settings WHERE key = 'policy'").get() as Row | undefined;
     return row ? { ...EMPTY_POLICY, ...(JSON.parse(str(row.value)) as TeamPolicy) } : EMPTY_POLICY;
@@ -1392,15 +1426,19 @@ export class SqliteHive implements HiveBackend {
         return this.#getProposal(id);
       },
 
-      "memory.search": async ({ project, query, limit, includeShared, anyProject, includeStale }, actor) => {
+      "memory.search": async ({ project, projects, query, limit, includeShared, anyProject, includeStale }, actor) => {
         // Before any read: the handler waits here, and what it reads must be current when it answers.
         const vector = await this.#queryVector(query);
         const match = ftsQuery(query);
-        // ?2 = the project (or shared when none), ?3 = also shared entries, ?5 = every project, ?6 = the stale cutoff ('' keeps all).
+        // ?2 = the project (or shared when none), ?3 = also shared entries, ?5 = every project, ?6 = the stale cutoff ('' keeps all),
+        // ?8 = a system's projects (JSON; '[]' when none).
         // Replaced entries drop out once their replacement is approved, so a chain shows only its newest entry.
-        const scope = `(?5 = 1 OR m.project = ?2 OR (?3 = 1 AND m.project = '')) AND COALESCE(m.last_used_at, m.created_at) >= ?6
+        const scope = `(?5 = 1 OR m.project = ?2 OR m.project IN (SELECT value FROM json_each(?8)) OR (?3 = 1 AND m.project = ''))
+          AND COALESCE(m.last_used_at, m.created_at) >= ?6
           AND NOT EXISTS (SELECT 1 FROM memory s WHERE s.id = m.superseded_by AND s.status = 'approved')`;
-        const own = project ?? SHARED;
+        // A system's projects and no one project: shared entries only with includeShared.
+        const own = project ?? (projects ? null : SHARED);
+        const listed = listParam(projects) ?? "[]";
         const shared = includeShared ? 1 : 0;
         const staleBefore = this.#staleBefore();
         const cutoff = includeStale || staleBefore === null ? "" : staleBefore;
@@ -1414,12 +1452,12 @@ export class SqliteHive implements HiveBackend {
                    WHERE memory_fts MATCH ?1 AND ${scope} AND m.status = 'approved'
                    ORDER BY bm25(memory_fts) LIMIT ?4`,
                 )
-                .all(match, own, shared, pool, anyProject ? 1 : 0, cutoff)
+                .all(match, own, shared, pool, anyProject ? 1 : 0, cutoff, null, listed)
             : vector
               ? []
               : db
                   .prepare(`SELECT m.* FROM memory m WHERE ${scope} AND m.status = 'approved' ORDER BY m.id DESC LIMIT ?4`)
-                  .all(null, own, shared, limit, anyProject ? 1 : 0, cutoff)
+                  .all(null, own, shared, limit, anyProject ? 1 : 0, cutoff, null, listed)
         ) as Row[];
         let rows = words;
         if (vector) {
@@ -1428,7 +1466,7 @@ export class SqliteHive implements HiveBackend {
               `SELECT m.*, v.vector FROM memory m JOIN memory_vectors v ON v.memory_id = m.id AND v.model = ?7
                WHERE ${scope} AND m.status = 'approved'`,
             )
-            .all(null, own, shared, null, anyProject ? 1 : 0, cutoff, this.#opts.embedder!.model) as Row[];
+            .all(null, own, shared, null, anyProject ? 1 : 0, cutoff, this.#opts.embedder!.model, listed) as Row[];
           const meaning = candidates
             .map((r) => ({ r, score: similarity(vector, fromBlob(r.vector as Uint8Array)) }))
             .filter((c) => c.score >= this.#opts.embedMinScore)
@@ -1468,7 +1506,7 @@ export class SqliteHive implements HiveBackend {
         } satisfies MemorySearchInfo;
       },
 
-      "memory.list": ({ project, includeShared, status, stale, limit }) => {
+      "memory.list": ({ project, projects, includeShared, status, stale, limit }) => {
         const staleBefore = this.#staleBefore();
         // ?5: only entries older than this cutoff ('' matches nothing, so staleness off lists none).
         const onlyStale = stale ? (staleBefore ?? "") : null;
@@ -1476,11 +1514,12 @@ export class SqliteHive implements HiveBackend {
           db
             .prepare(
               `SELECT * FROM memory
-               WHERE (?1 IS NULL OR project = ?1 OR (?2 = 1 AND project = '')) AND (?3 IS NULL OR status = ?3)
+               WHERE ((?1 IS NULL AND ?6 IS NULL) OR project = ?1 OR project IN (SELECT value FROM json_each(?6)) OR (?2 = 1 AND project = ''))
+                 AND (?3 IS NULL OR status = ?3)
                  AND (?5 IS NULL OR COALESCE(last_used_at, created_at) < ?5)
                ORDER BY id DESC LIMIT ?4`,
             )
-            .all(project === undefined ? null : (project ?? SHARED), includeShared ? 1 : 0, status ?? null, limit, onlyStale) as Row[]
+            .all(project === undefined ? null : (project ?? SHARED), includeShared ? 1 : 0, status ?? null, limit, onlyStale, listParam(projects)) as Row[]
         ).map((r) => toMemory(r, staleBefore));
       },
 
@@ -1632,14 +1671,14 @@ export class SqliteHive implements HiveBackend {
           return { removed };
         }),
 
-      "tasks.list": ({ project, status }) =>
+      "tasks.list": ({ project, projects, status }) =>
         this.#tasks(
           db
             .prepare(
-              `SELECT * FROM tasks WHERE (?1 IS NULL OR project = ?1) AND (?2 IS NULL OR status = ?2)
+              `SELECT * FROM tasks WHERE (?1 IS NULL OR project = ?1) AND (?2 IS NULL OR status = ?2) AND (?3 IS NULL OR project IN (SELECT value FROM json_each(?3)))
                ORDER BY updated_at DESC LIMIT 500`,
             )
-            .all(project ?? null, status ?? null) as Row[],
+            .all(project ?? null, status ?? null, listParam(projects)) as Row[],
         ),
 
       "tasks.create": (input) =>
@@ -1665,19 +1704,20 @@ export class SqliteHive implements HiveBackend {
           return this.#getTask(id)!;
         }),
 
-      "tasks.next": ({ project, limit }) =>
+      "tasks.next": ({ project, projects, limit }) =>
         this.#tasks(
           db
             .prepare(
               `SELECT t.*, (SELECT COUNT(*) FROM task_deps d JOIN tasks o ON o.id = d.task_id WHERE d.depends_on = t.id AND o.status != 'done') AS unlocks
                FROM tasks t
                WHERE t.status = 'todo' AND (?1 IS NULL OR t.project = ?1)
+                 AND (?4 IS NULL OR t.project IN (SELECT value FROM json_each(?4)))
                  AND (t.owner IS NULL OR t.lease_until IS NULL OR t.lease_until < ?2)
                  AND NOT EXISTS (SELECT 1 FROM task_deps d JOIN tasks p ON p.id = d.depends_on WHERE d.task_id = t.id AND p.status != 'done')
                ORDER BY unlocks DESC, t.rowid
                LIMIT ?3`,
             )
-            .all(project ?? null, this.#now(), limit) as Row[],
+            .all(project ?? null, this.#now(), limit, listParam(projects)) as Row[],
         ),
 
       "tasks.claim": ({ id, leaseMinutes }, actor) => {
@@ -1833,11 +1873,11 @@ export class SqliteHive implements HiveBackend {
           return { stored: runs.length };
         }),
 
-      "runs.list": ({ project, limit }) =>
+      "runs.list": ({ project, projects, limit }) =>
         (
           db
-            .prepare("SELECT * FROM run_records WHERE (?1 IS NULL OR project = ?1) ORDER BY created_at DESC, run_id DESC LIMIT ?2")
-            .all(project ?? null, limit) as Row[]
+            .prepare(`SELECT * FROM run_records WHERE (?1 IS NULL OR project = ?1) AND (?3 IS NULL OR project IN (SELECT value FROM json_each(?3))) ORDER BY created_at DESC, run_id DESC LIMIT ?2`)
+            .all(project ?? null, limit, listParam(projects)) as Row[]
         ).map((r) => toRunRecord(r, false)),
 
       "runs.get": ({ machineId, runId }, actor) => {
@@ -1925,10 +1965,12 @@ export class SqliteHive implements HiveBackend {
           return this.#runRequest(num(res.lastInsertRowid));
         }),
 
-      "runs.requests": ({ project, limit }) => {
+      "runs.requests": ({ project, projects, limit }) => {
         this.#expireRequests();
         return (
-          db.prepare("SELECT * FROM run_requests WHERE (?1 IS NULL OR project = ?1) ORDER BY id DESC LIMIT ?2").all(project ?? null, limit) as Row[]
+          db
+            .prepare(`SELECT * FROM run_requests WHERE (?1 IS NULL OR project = ?1) AND (?3 IS NULL OR project IN (SELECT value FROM json_each(?3))) ORDER BY id DESC LIMIT ?2`)
+            .all(project ?? null, limit, listParam(projects)) as Row[]
         ).map(toRunRequest);
       },
 
@@ -2033,7 +2075,7 @@ export class SqliteHive implements HiveBackend {
           return { thread: this.#chatThread(id), message: this.#chatMessage(message), reply: this.#chatMessage(reply) };
         }),
 
-      "chat.threads": ({ project, query, limit }) => {
+      "chat.threads": ({ project, projects, query, limit }) => {
         this.#expireChats();
         const words = query?.trim();
         // Found in the title or in any message; % and _ are the person's own characters, not wildcards.
@@ -2041,12 +2083,12 @@ export class SqliteHive implements HiveBackend {
         return (
           db
             .prepare(
-              `${THREAD_SELECT} WHERE (?1 IS NULL OR t.project = ?1)
+              `${THREAD_SELECT} WHERE (?1 IS NULL OR t.project = ?1) AND (?4 IS NULL OR t.project IN (SELECT value FROM json_each(?4)))
                  AND (?3 IS NULL OR hive_fold(t.title) LIKE ?3 ESCAPE '\\'
                    OR EXISTS (SELECT 1 FROM chat_messages q WHERE q.thread_id = t.id AND hive_fold(q.text) LIKE ?3 ESCAPE '\\'))
                ORDER BY t.updated_at DESC, t.id DESC LIMIT ?2`,
             )
-            .all(project ?? null, limit, like) as Row[]
+            .all(project ?? null, limit, like, listParam(projects)) as Row[]
         ).map(toChatThread);
       },
 
@@ -2382,6 +2424,18 @@ export class SqliteHive implements HiveBackend {
         );
         return this.#policy();
       },
+
+      "systems.list": () => (db.prepare("SELECT * FROM systems ORDER BY name").all() as Row[]).map(toSystem),
+
+      "systems.save": ({ name, projects }, actor) => {
+        db.prepare(
+          `INSERT INTO systems(name, projects, updated_by, updated_at) VALUES (?, ?, ?, ?)
+           ON CONFLICT(name) DO UPDATE SET projects = excluded.projects, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+        ).run(name, JSON.stringify([...new Set(projects)].sort()), actor.name, this.#now());
+        return this.#system(name)!;
+      },
+
+      "systems.remove": ({ name }) => ({ removed: Number(db.prepare("DELETE FROM systems WHERE name = ?").run(name).changes) > 0 }),
 
       "admin.machines": () => {
         this.#expireCommands();
