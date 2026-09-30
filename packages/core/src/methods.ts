@@ -19,6 +19,8 @@ import {
   type RunRecord,
   type RunRequest,
   CHAT_EFFORTS,
+  LEADER_COMMAND,
+  MAX_LEADER_COMMANDS,
   type ChatAction,
   type ChatDefaults,
   type ChatMessage,
@@ -375,6 +377,11 @@ export const schemas = {
     model: chatModel.nullable(),
     effort: z.enum(CHAT_EFFORTS).nullable(),
   }),
+  /** The commands a project's leader may run; [] runs none. */
+  "chat.setCommands": z.object({
+    project,
+    commands: z.array(z.string().max(60).regex(LEADER_COMMAND, "a command: up to four lowercase words")).max(MAX_LEADER_COMMANDS),
+  }),
   /** A thread's model and effort, for its next replies. */
   "chat.configure": z.object({ threadId: id, model: chatModel.nullable(), effort: z.enum(CHAT_EFFORTS).nullable() }),
   /** A project manager names a thread. */
@@ -507,6 +514,7 @@ export interface MethodOutput {
   "chat.rename": ChatThread;
   "chat.defaults": ChatDefaults;
   "chat.setDefaults": ChatDefaults;
+  "chat.setCommands": ChatDefaults;
   "chat.configure": ChatThread;
   "chat.delete": { deleted: number };
   "chat.get": { thread: ChatThread; messages: ChatMessage[] } | null;
@@ -580,6 +588,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "chat.rename": "agent",
   "chat.defaults": "viewer",
   "chat.setDefaults": "agent",
+  "chat.setCommands": "agent",
   "chat.configure": "agent",
   "chat.delete": "agent",
   "chat.get": "viewer",

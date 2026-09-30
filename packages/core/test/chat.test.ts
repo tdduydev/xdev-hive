@@ -200,7 +200,7 @@ describe("chat with a project's leader", () => {
     await beat(mbp);
     await beat(mini);
     assert.deepEqual(await hive.call("chat.defaults", { project: "app" }, dev), {
-      project: "app", machineId: null, profileId: null, model: null, effort: null, updatedBy: null, updatedAt: null,
+      project: "app", machineId: null, profileId: null, model: null, effort: null, commands: ["git status", "git log", "git diff", "git show"], updatedBy: null, updatedAt: null,
     });
     const set = { project: "app", machineId: mini.name, profileId: "claude-1", model: "opus", effort: "high" as const };
     assert.equal(await refusal(hive.call("chat.setDefaults", set, dev)), "errors.need.manage");
@@ -221,6 +221,26 @@ describe("chat with a project's leader", () => {
     assert.deepEqual([changed.model, changed.effort], ["sonnet", null]);
     assert.equal(await refusal(hive.call("chat.configure", { threadId: plain.thread.id, model: "haiku", effort: null }, dev)), "errors.need.manage");
     assert.equal(await refusal(hive.call("chat.defaults", { project: "app" }, outsider)), "errors.notFound");
+  });
+
+  it("keeps the commands a project's leader may run: read-only git until a manager sets others", async () => {
+    const { hive, beat } = await hub();
+    await beat(mbp);
+    assert.deepEqual((await hive.call("chat.defaults", { project: "app" }, dev)).commands, ["git status", "git log", "git diff", "git show"]);
+    assert.equal(await refusal(hive.call("chat.setCommands", { project: "app", commands: ["git log"] }, dev)), "errors.need.manage");
+    for (const bad of ["git log; rm -rf /", "git log && curl x", "$(id)", "Git Log", "git --output=x", "a b c d e"]) {
+      assert.equal(await refusal(hive.call("chat.setCommands", { project: "app", commands: [bad] }, lead)), "bad_request", bad);
+    }
+    const set = await hive.call("chat.setCommands", { project: "app", commands: ["git log", "npm test", "git log"] }, lead);
+    assert.deepEqual(set.commands, ["git log", "npm test"], "once each");
+    // Setting the other defaults keeps the list, and the other way round.
+    await hive.call("chat.setDefaults", { project: "app", machineId: mbp.name, profileId: null, model: "opus", effort: null }, lead);
+    const both = await hive.call("chat.defaults", { project: "app" }, lead);
+    assert.deepEqual([both.commands, both.model, both.machineId], [["git log", "npm test"], "opus", mbp.name]);
+    await hive.call("chat.send", { project: "app", text: "Log?" }, lead);
+    const [request] = await hive.call("chat.poll", {}, mbp);
+    assert.deepEqual(request!.commands, ["git log", "npm test"], "the machine hears them with each reply");
+    assert.deepEqual((await hive.call("chat.setCommands", { project: "app", commands: [] }, lead)).commands, [], "none at all");
   });
 
   it("lets a project manager rename a thread and delete it once no reply is pending", async () => {

@@ -489,6 +489,10 @@ Trên hub, agent giữ task với tên `<gói>.<máy>@<token>`, ví dụ `claude
     - **Hướng dẫn leader** (roadmap 17i-1): người quản trị dự án bấm *Hướng dẫn leader* trên trang *Chat* để sửa hướng dẫn cho leader của dự án.
       - Khung sửa mở bản đang dùng: bản riêng của dự án nếu có, không thì bản chung của nhóm (skill `hive-leader`).
       - Lưu thì tạo hoặc cập nhật skill `project/<dự án>/skills/hive-leader`, có lịch sử phiên bản như mọi skill. Leader đọc bản riêng này trước (`skill_get`); các dự án khác vẫn dùng bản chung.
+    - **Lệnh leader được chạy** (roadmap 17i-2), cũng nằm trong khung *Hướng dẫn leader*. Mặc định là `git status`, `git log`, `git diff`, `git show`.
+      - Người quản trị dự án sửa danh sách (`chat.setCommands`, migration 21): mỗi dòng một lệnh, tối đa 20, mỗi lệnh chỉ gồm tối đa bốn từ chữ thường, nên không có dấu `;`, `&&`, `$(`… Để trống thì leader không chạy lệnh nào.
+      - Máy đổi mỗi lệnh thành quy tắc `Bash(<lệnh>:*)` của Claude Code: leader chạy được lệnh đó với mọi tham số. Lệnh khác, kể cả lệnh ghép như `git status && touch x`, vẫn bị chặn (đã thử với Claude Code 2.1.283).
+      - Chỉ nên thêm lệnh chỉ đọc. Một lệnh như `npm test` chạy code của repo trên máy của người khác.
     - **Model, mức nỗ lực và mặc định của dự án** (roadmap 17h).
       - *Chat mới* có ô chọn model (bí danh của Claude Code: fable, opus, sonnet, haiku; hoặc để model của gói) và mức nỗ lực (low đến max, hoặc để mặc định). Máy chạy `claude` với `--model` và `--effort` tương ứng.
       - Người quản trị dự án bấm *Lưu làm mặc định*: chat mới của dự án sẽ bắt đầu với máy, gói, model và mức nỗ lực đó (`chat.setDefaults`, migration 20). Form tự điền theo mặc định. Qua API, chat mới không nêu máy hay gói cũng dùng mặc định.
@@ -521,7 +525,7 @@ Trên hub, agent giữ task với tên `<gói>.<máy>@<token>`, ví dụ `claude
   - **Máy viết câu trả lời:** máy đã bật *Được nhận run từ hub* hỏi hub mỗi 3 giây (`chat.poll`; hub cũ thì chờ heartbeat) và viết tối đa 2 câu trả lời cùng lúc.
     - Mỗi câu trả lời dùng một gói Claude đang bật, đã đăng nhập, không nghỉ, chưa chạm ngưỡng (gói ghim của thread nếu có, không thì gói ưu tiên cao nhất).
     - Máy chạy `claude -p` trong repo của dự án, tin nhắn đi qua stdin. MCP chỉ có server `xdev-hive` của hub, dùng token của câu trả lời (`--strict-mcp-config`), không dùng token của máy.
-    - Leader đọc được repo nhưng bị cấm Bash, Edit, Write, MultiEdit, NotebookEdit. Tin tiếp theo của thread chạy `--resume` đúng phiên Claude Code của thread.
+    - Leader đọc được repo nhưng bị cấm Edit, Write, MultiEdit, NotebookEdit. Nó chỉ chạy được các lệnh của dự án (mặc định là git chỉ đọc; xem *Lệnh leader được chạy* bên dưới). Không có lệnh nào thì Bash bị cấm hẳn. Tin tiếp theo của thread chạy `--resume` đúng phiên Claude Code của thread.
     - Máy báo lên hub mỗi 2 giây chữ đã viết, các bước (`▶` công cụ, `✓ ✗` kết quả) và việc đang làm. Hub báo đã huỷ thì máy dừng ngay; quá 20 phút thì cũng dừng.
     - Xong thì máy báo câu trả lời, chi phí và mã phiên. Lỗi (hết quota, không có CLI, thoát lỗi, quá giờ) hiện kèm lý do. File chứa token bị xoá khi câu trả lời xong.
 - **Trang *Máy & run*** (web và desktop, chỉ hiện ở chế độ hub): danh sách máy (đang hoạt động / mất kết nối sau 2 phút), run đang chạy, số run đang chờ, và quota đang nghỉ. Admin xoá được máy đã mất kết nối. Máy im lặng quá 14 ngày thì hub tự xoá.

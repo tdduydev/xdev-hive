@@ -14,7 +14,7 @@ import { checkLogin, checkUsage, LoginMonitor, loginCommand, parseLogin, USAGE_A
 import { SqliteHive } from "@xdev-hive/core/node";
 import { parseResetTime, detectRateLimit } from "../src/main/runner/rate-limit.ts";
 import { Runner, type HubUpdate, type RunnerEvent, type RunnerHost, type RunnerOptions } from "../src/main/runner/runner.ts";
-import { chatArgs } from "../src/main/runner/chat.ts";
+import { chatArgs, leaderBrief, leaderSettings } from "../src/main/runner/chat.ts";
 import { setMainLocale } from "../src/main/i18n.ts";
 import { pickProfile, waitingReason, type ProfileLoad } from "../src/main/runner/schedule.ts";
 
@@ -823,7 +823,12 @@ describe("Runner", () => {
       assert.ok(call!.args.includes("--strict-mcp-config"));
       assert.ok(!call!.args.includes("--resume"), "a new thread starts a session");
       const settings = JSON.parse(call!.args[call!.args.indexOf("--settings") + 1]);
-      assert.deepEqual(settings.permissions.deny, ["Bash", "Edit", "Write", "MultiEdit", "NotebookEdit"], "reads the repo, changes nothing");
+      assert.deepEqual(settings.permissions.deny, ["Edit", "Write", "MultiEdit", "NotebookEdit"], "reads the repo, changes nothing");
+      assert.deepEqual(
+        settings.permissions.allow,
+        ["mcp__xdev-hive", "Bash(git status:*)", "Bash(git log:*)", "Bash(git diff:*)", "Bash(git show:*)"],
+        "the project's leader commands, read-only git until a manager sets others",
+      );
       const brief = call!.args[call!.args.indexOf("--append-system-prompt") + 1]!;
       assert.match(brief, /skill_get, name hive-leader/, "reads the team's guide first");
       assert.match(brief, /propose_task.*a project manager confirms/, "proposes instead of changing the board");
@@ -893,6 +898,15 @@ describe("Runner", () => {
         [`https://hive.example.test/api/chat/files/${again.id}`, "hivechat_test"],
       ], "with the reply's token, never the machine's");
       assert.equal(existsSync(dir), false, "gone with the reply");
+    });
+
+    it("lets the leader run only the project's commands, and no Bash at all without them", () => {
+      assert.deepEqual(leaderSettings([]).permissions, { allow: ["mcp__xdev-hive"], deny: ["Bash", "Edit", "Write", "MultiEdit", "NotebookEdit"] });
+      const some = leaderSettings(["git log", "npm test", "git log; rm -rf /", "$(id)"]).permissions;
+      assert.deepEqual(some.allow, ["mcp__xdev-hive", "Bash(git log:*)", "Bash(npm test:*)"], "an entry that is not plain words is dropped, even from the hub");
+      assert.ok(!some.deny.includes("Bash"), "a Bash deny would win over every allow");
+      assert.match(leaderBrief("demo", "lan", ["git log", "git diff"]), /only commands you may run are these.*git log, git diff/);
+      assert.match(leaderBrief("demo", "lan", []), /You cannot run commands\./);
     });
 
     it("asks Claude Code for the thread's model and effort, and leaves them to the profile when unset", () => {
