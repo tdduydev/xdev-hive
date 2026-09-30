@@ -2,11 +2,12 @@
 // whose Claude plan writes the replies in the same Claude Code session. A reply shows as the machine writes it,
 // with the agent's steps; project managers send messages and stop a reply.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Bot, Check, CheckCheck, MessageSquarePlus, RotateCcw, SendHorizontal, Square, X } from "lucide-react";
+import { ArrowLeft, Bot, Check, CheckCheck, MessageSquarePlus, Pencil, RotateCcw, Search, SendHorizontal, Square, Trash2, X } from "lucide-react";
 import { cn } from "cn";
 import type { ChatAction, ChatMessage, ChatThread } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card } from "@xdev-hive/ui/components/ui/card";
+import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
@@ -47,7 +48,17 @@ export function ChatPage() {
   const project = scopeProject(scope);
   const [busy, setBusy] = useState(false);
   const poll = usePoll(busy ? LIVE_MS : IDLE_MS);
-  const threads = useQuery(() => client.call("chat.threads", { project: project ?? undefined, limit: 100 }), [client, project, poll]);
+  // Typed words are looked up once the typing pauses.
+  const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setQuery(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+  const threads = useQuery(
+    () => client.call("chat.threads", { project: project ?? undefined, query: query || undefined, limit: 100 }),
+    [client, project, query, poll],
+  );
   useEffect(() => setBusy((threads.data ?? []).some((th) => th.busy)), [threads.data]);
   // The open thread is in the address (#/chat?thread=12): a link to it opens it, and so does coming back to the page.
   const [linked] = useHashParam("thread");
@@ -85,7 +96,11 @@ export function ChatPage() {
       <div className="grid items-start gap-4 lg:grid-cols-[19rem_minmax(0,1fr)]">
         {/* On a phone the list and the open chat take turns. */}
         <nav className={cn("flex min-w-0 flex-col gap-2", open && "hidden lg:flex")} aria-label={t("chat.threads")}>
-          {threads.data?.length === 0 ? <Empty>{t("chat.none")}</Empty> : null}
+          <div className="relative">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+            <Input className="pl-8" type="search" placeholder={t("chat.search")} aria-label={t("chat.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          {threads.data?.length === 0 ? <Empty>{query ? t("chat.noMatch", { query }) : t("chat.none")}</Empty> : null}
           <ul className="flex flex-col gap-1.5">
             {(threads.data ?? []).map((th) => (
               <ThreadItem key={th.id} thread={th} showProject={project === null} selected={open?.kind === "thread" && open.id === th.id} onOpen={() => setOpen({ kind: "thread", id: th.id })} />
@@ -101,7 +116,13 @@ export function ChatPage() {
               onStarted={(id) => (setOpen({ kind: "thread", id }), threads.reload())}
             />
           ) : open ? (
-            <Conversation key={open.id} threadId={open.id} onBack={() => setOpen(null)} onChanged={threads.reload} />
+            <Conversation
+              key={open.id}
+              threadId={open.id}
+              onBack={() => setOpen(null)}
+              onChanged={threads.reload}
+              onDeleted={() => (setOpen(null), threads.reload())}
+            />
           ) : (
             <Empty>{managed.length ? t("chat.pick") : t("chat.pickReadOnly")}</Empty>
           )}
@@ -240,7 +261,7 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
   );
 }
 
-function Conversation({ threadId, onBack, onChanged }: { threadId: number; onBack: () => void; onChanged: () => void }) {
+function Conversation({ threadId, onBack, onChanged, onDeleted }: { threadId: number; onBack: () => void; onChanged: () => void; onDeleted: () => void }) {
   const { client } = useHive();
   const t = useT();
   const allow = useCan();
@@ -314,7 +335,11 @@ function Conversation({ threadId, onBack, onChanged }: { threadId: number; onBac
           <ArrowLeft />
         </Button>
         <div className="min-w-0 flex-1">
-          <h2 className="font-medium wrap-anywhere">{thread?.title ?? "…"}</h2>
+          {thread && manage ? (
+            <ThreadTitle thread={thread} onRenamed={(th) => (setThread(th), onChanged())} onDeleted={onDeleted} />
+          ) : (
+            <h2 className="font-medium wrap-anywhere">{thread?.title ?? "…"}</h2>
+          )}
           {thread ? (
             <p className="text-xs text-muted-foreground wrap-anywhere">
               <span className="font-mono">{thread.project}</span> · <span className="font-mono">{thread.machine}</span> · {thread.profileId ?? t("chat.anyPlan")} ·{" "}
@@ -357,6 +382,65 @@ function Conversation({ threadId, onBack, onChanged }: { threadId: number; onBac
         {thread && manage ? <Composer thread={thread} onSent={refresh} /> : thread ? <p className="text-xs text-muted-foreground">{t("chat.readOnly")}</p> : null}
       </footer>
     </Card>
+  );
+}
+
+/** A manager's thread title: renamed in place, or the thread deleted (not while a reply is pending). */
+function ThreadTitle({ thread, onRenamed, onDeleted }: { thread: ChatThread; onRenamed: (thread: ChatThread) => void; onDeleted: () => void }) {
+  const { client } = useHive();
+  const t = useT();
+  const action = useAction();
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(thread.title);
+  if (editing) {
+    return (
+      <form
+        className="flex flex-col gap-1"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void action.run(async () => {
+            onRenamed(await client.call("chat.rename", { threadId: thread.id, title }));
+            setEditing(false);
+          });
+        }}
+      >
+        <div className="flex flex-wrap items-center gap-1">
+          <Input className="h-8 min-w-0 flex-1" maxLength={120} autoFocus onFocus={(e) => e.currentTarget.select()} aria-label={t("chat.rename")} value={title} onChange={(e) => setTitle(e.target.value)} />
+          <Button size="sm" type="submit" disabled={!title.trim() || action.busy}>
+            {t("chat.save")}
+          </Button>
+          <Button size="sm" variant="ghost" type="button" onClick={() => (setEditing(false), setTitle(thread.title))}>
+            {t("common.cancel")}
+          </Button>
+        </div>
+        <ErrorNote error={action.error} />
+      </form>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-start gap-1">
+        <h2 className="min-w-0 flex-1 font-medium wrap-anywhere">{thread.title}</h2>
+        <Button size="icon-sm" variant="ghost" aria-label={t("chat.rename")} title={t("chat.rename")} onClick={() => setEditing(true)}>
+          <Pencil />
+        </Button>
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          className="text-destructive"
+          aria-label={t("chat.delete")}
+          title={thread.busy ? t("chat.deleteBusy") : t("chat.delete")}
+          disabled={thread.busy || action.busy}
+          onClick={() => {
+            if (!window.confirm(t("chat.confirmDelete", { title: thread.title }))) return;
+            void action.run(async () => (await client.call("chat.delete", { threadId: thread.id }), onDeleted()));
+          }}
+        >
+          <Trash2 />
+        </Button>
+      </div>
+      <ErrorNote error={action.error} />
+    </div>
   );
 }
 

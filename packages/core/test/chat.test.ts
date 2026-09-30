@@ -176,6 +176,41 @@ describe("chat with a project's leader", () => {
     assert.ok(!done.text.includes(secret), "a secret-looking line is hidden");
     assert.match(done.text, /^The key:\n.*\nend$/);
   });
+
+  it("finds threads by title or message in any case, Vietnamese letters too, with % and _ as plain characters", async () => {
+    const { hive, beat, later } = await hub();
+    await beat(mbp);
+    const login = await hive.call("chat.send", { project: "app", machineId: mbp.name, title: "Đăng nhập", text: "Lỗi khoá tài khoản" }, lead);
+    await hive.call("chat.finish", { replyId: login.reply.id, status: "done", text: "Bộ đếm chưa reset: 100% chắc" }, mbp);
+    later(1);
+    await beat(mbp);
+    const other = await hive.call("chat.send", { project: "app", machineId: mbp.name, text: "Deploy plan_v2" }, lead);
+    const found = async (query: string) => (await hive.call("chat.threads", { project: "app", query }, lead)).map((t) => t.id);
+    assert.deepEqual(await found("đăng NHẬP"), [login.thread.id], "the title, whatever the case");
+    assert.deepEqual(await found("KHOÁ"), [login.thread.id], "a message");
+    assert.deepEqual(await found("reset"), [login.thread.id], "a reply");
+    assert.deepEqual(await found("100%"), [login.thread.id]);
+    assert.deepEqual(await found("D_ploy"), [], "_ is not a wildcard: Deploy does not match");
+    assert.deepEqual(await found("plan_v2"), [other.thread.id]);
+    assert.deepEqual(await found("  "), [other.thread.id, login.thread.id], "blank: every thread");
+  });
+
+  it("lets a project manager rename a thread and delete it once no reply is pending", async () => {
+    const { hive, beat } = await hub();
+    await beat(mbp);
+    const sent = await hive.call("chat.send", { project: "app", machineId: mbp.name, text: "Plan the reset page" }, lead);
+    assert.equal((await hive.call("chat.rename", { threadId: sent.thread.id, title: "  Reset page  " }, lead)).title, "Reset page");
+    assert.equal(await refusal(hive.call("chat.rename", { threadId: sent.thread.id, title: "x" }, dev)), "errors.need.manage");
+    assert.equal(await refusal(hive.call("chat.rename", { threadId: sent.thread.id, title: "x" }, outsider)), "errors.notFound");
+    assert.equal(await refusal(hive.call("chat.rename", { threadId: sent.thread.id, title: "Hi​dden" }, lead)), "errors.hidden.zeroWidth");
+
+    assert.equal(await refusal(hive.call("chat.delete", { threadId: sent.thread.id }, lead)), "errors.chatBusy", "the reply is still pending");
+    await hive.call("chat.cancel", { replyId: sent.reply.id }, lead);
+    assert.equal(await refusal(hive.call("chat.delete", { threadId: sent.thread.id }, dev)), "errors.need.manage");
+    assert.deepEqual(await hive.call("chat.delete", { threadId: sent.thread.id }, lead), { deleted: sent.thread.id });
+    assert.equal(await hive.call("chat.get", { threadId: sent.thread.id }, lead), null);
+    assert.equal(await refusal(hive.call("chat.delete", { threadId: sent.thread.id }, lead)), "errors.chatNotFound");
+  });
 });
 
 describe("what a chat leader proposes", () => {

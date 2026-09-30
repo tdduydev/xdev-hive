@@ -533,6 +533,13 @@ export const vi = {
   chat: {
     subtitle: "Trò chuyện với leader của dự án. Leader chạy bằng gói Claude của một máy trong nhóm (máy bật nhận run từ hub), đọc repo và làm việc qua Hive: task, run, tài liệu. Câu trả lời hiện dần khi máy viết.",
     threads: "Các cuộc chat",
+    search: "Tìm theo tiêu đề hay nội dung",
+    noMatch: "Không có cuộc chat nào có \"{query}\".",
+    rename: "Đổi tên",
+    save: "Lưu",
+    delete: "Xoá cuộc chat",
+    deleteBusy: "Đang chờ câu trả lời: dừng nó trước khi xoá.",
+    confirmDelete: "Xoá cuộc chat \"{title}\" cùng mọi tin nhắn và đề xuất của nó?",
     new: "Chat mới",
     newHint: "Chọn máy giữ cuộc chat: mọi câu trả lời sau đều viết trên máy đó, tiếp tục cùng một phiên Claude Code.",
     none: "Chưa có cuộc chat nào.",
