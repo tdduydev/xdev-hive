@@ -313,6 +313,23 @@ export interface RunRequest {
   updatedAt: string;
 }
 
+/** Claude Code's --effort levels. */
+export const CHAT_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+export type ChatEffort = (typeof CHAT_EFFORTS)[number];
+/** Aliases Claude Code takes for the latest models (--model); a model's full name is taken too. */
+export const CHAT_MODEL_ALIASES = ["fable", "opus", "sonnet", "haiku"] as const;
+
+/** What a project's new chats start with, unless the person picks otherwise (roadmap 17h). */
+export interface ChatDefaults {
+  project: string;
+  machineId: string | null;
+  profileId: string | null;
+  model: string | null;
+  effort: ChatEffort | null;
+  updatedBy: string | null;
+  updatedAt: string | null;
+}
+
 export const CHAT_REPLY_STATUSES = ["pending", "running", "done", "failed", "cancelled", "expired"] as const;
 export type ChatReplyStatus = (typeof CHAT_REPLY_STATUSES)[number];
 
@@ -326,6 +343,9 @@ export interface ChatThread {
   machine: string;
   /** A Claude profile of that machine; null: the machine picks one. */
   profileId: string | null;
+  /** Claude Code's model for its replies (an alias like opus, or a full name); null: the profile's own. */
+  model: string | null;
+  effort: ChatEffort | null;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -410,6 +430,9 @@ export interface ChatRequest {
   profileId: string | null;
   /** The thread's Claude Code session; null for its first reply. */
   sessionId: string | null;
+  /** The thread's model and effort; null (or missing, from an older hub): the profile's own. */
+  model?: string | null;
+  effort?: ChatEffort | null;
   text: string;
   requestedBy: string;
   createdAt: string;

@@ -195,6 +195,34 @@ describe("chat with a project's leader", () => {
     assert.deepEqual(await found("  "), [other.thread.id, login.thread.id], "blank: every thread");
   });
 
+  it("starts a project's chats with what it set, lets the person pick otherwise, and changes a thread's model later", async () => {
+    const { hive, beat } = await hub();
+    await beat(mbp);
+    await beat(mini);
+    assert.deepEqual(await hive.call("chat.defaults", { project: "app" }, dev), {
+      project: "app", machineId: null, profileId: null, model: null, effort: null, updatedBy: null, updatedAt: null,
+    });
+    const set = { project: "app", machineId: mini.name, profileId: "claude-1", model: "opus", effort: "high" as const };
+    assert.equal(await refusal(hive.call("chat.setDefaults", set, dev)), "errors.need.manage");
+    assert.equal(await refusal(hive.call("chat.setDefaults", { ...set, machineId: "runner.ghost@ghost" }, lead)), "errors.machineNotFound");
+    assert.equal(await refusal(hive.call("chat.setDefaults", { ...set, model: "--dangerously-skip-permissions" }, lead)), "bad_request", "a model is never an option");
+    assert.equal((await hive.call("chat.setDefaults", set, lead)).updatedBy, "lan");
+
+    // Nothing picked: the project's machine, plan, model and effort.
+    const plain = await hive.call("chat.send", { project: "app", text: "Status?" }, lead);
+    assert.deepEqual([plain.thread.machineId, plain.thread.profileId, plain.thread.model, plain.thread.effort], [mini.name, "claude-1", "opus", "high"]);
+    const [request] = await hive.call("chat.poll", {}, mini);
+    assert.deepEqual([request!.model, request!.effort], ["opus", "high"], "the machine hears them");
+    // Picked: kept, even "the profile's own" (null).
+    const own = await hive.call("chat.send", { project: "app", machineId: mbp.name, profileId: null, model: null, effort: "low", text: "Quick one" }, lead);
+    assert.deepEqual([own.thread.machineId, own.thread.profileId, own.thread.model, own.thread.effort], [mbp.name, null, null, "low"]);
+
+    const changed = await hive.call("chat.configure", { threadId: plain.thread.id, model: "sonnet", effort: null }, lead);
+    assert.deepEqual([changed.model, changed.effort], ["sonnet", null]);
+    assert.equal(await refusal(hive.call("chat.configure", { threadId: plain.thread.id, model: "haiku", effort: null }, dev)), "errors.need.manage");
+    assert.equal(await refusal(hive.call("chat.defaults", { project: "app" }, outsider)), "errors.notFound");
+  });
+
   it("lets a project manager rename a thread and delete it once no reply is pending", async () => {
     const { hive, beat } = await hub();
     await beat(mbp);
