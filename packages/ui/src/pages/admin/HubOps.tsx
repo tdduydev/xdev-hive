@@ -103,6 +103,17 @@ export function OpsHub() {
             detail={t("hub.dbDetail", { path: h.db.path, ...h.db.counts })}
           />
           <HubCard
+            title={t("hub.files")}
+            state={!h.files.store ? t("hub.inDb") : h.files.lastError ? t("hub.error") : h.files.inDb ? t("hub.moving") : t("hub.ok")}
+            tone={!h.files.store ? "neutral" : h.files.lastError ? "warn" : h.files.inDb ? "run" : "ok"}
+            value={`${h.files.store ?? "SQLite"} · ${t("hub.filesCount", { count: h.files.count })} · ${fileSize(h.files.bytes)}`}
+            detail={
+              !h.files.store
+                ? t("hub.filesOffHint")
+                : [h.files.where, h.files.lastError, h.files.inDb ? t("hub.filesInDb", { count: h.files.inDb }) : null].filter(Boolean).join(" · ")
+            }
+          />
+          <HubCard
             title={t("hub.backup")}
             state={h.backup ? (backupLate ? t("hub.late") : t("hub.ok")) : t("hub.off")}
             tone={h.backup ? (backupLate ? "warn" : "ok") : "neutral"}

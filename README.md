@@ -368,6 +368,8 @@ HIVE_HOST=0.0.0.0 HIVE_ALLOWED_HOSTS=hive.example.com HIVE_DB=/data/hub.db HIVE_
 | `HIVE_EMBED_MIN_SCORE` | `0.5` | Độ giống (cosine) tối thiểu để một mục tính là tìm thấy theo nghĩa |
 | `HIVE_OIDC_ISSUER` / `HIVE_OIDC_CLIENT_ID` / `HIVE_OIDC_CLIENT_SECRET` | tắt | Đăng nhập qua nhà cung cấp OpenID Connect (xem *Đăng nhập SSO*). Cần đủ cả ba |
 | `HIVE_OIDC_NAME` / `HIVE_OIDC_SCOPES` | `SSO` / `openid profile email` | Tên trên nút đăng nhập; scope xin nhà cung cấp |
+| `HIVE_SEAWEEDFS_URL` | tắt (compose: `http://seaweedfs:8888`) | Filer SeaweedFS để lưu ảnh và tệp của tài liệu thay vì trong database (xem *Ảnh và tệp của tài liệu*) |
+| `HIVE_SEAWEEDFS_PREFIX` | `/xdev-hive/doc-files` | Thư mục trong filer |
 
 ### Tìm memory theo nghĩa (tuỳ chọn)
 
@@ -446,12 +448,22 @@ Hub nhận mọi nhà cung cấp OpenID Connect: GitLab, Microsoft Entra, Google
   - App chờ tối đa 5 phút, có nút *Huỷ*. Bấm *Không* thì app báo bị từ chối.
   - Đăng nhập SSO từ trang này xong thì quay lại đúng trang đó.
 
+### Ảnh và tệp của tài liệu (SeaweedFS)
+
+- Compose chạy SeaweedFS 4.48 cạnh hub (service `seaweedfs`, volume `seaweedfs-data`). Chỉ hub gọi được nó trong mạng của compose, không cổng nào mở ra ngoài. Hub dùng HTTP API của filer (`HIVE_SEAWEEDFS_URL`).
+- Database giữ thông tin tệp (tên, loại, cỡ, người tải, SHA-256). SeaweedFS giữ nội dung, đặt tên theo SHA-256: cùng một nội dung chỉ lưu một lần, và ghi lại nhiều lần cũng không sao. Tệp không còn trang nào dùng thì bị xoá khỏi SeaweedFS.
+- Hub vừa có SeaweedFS thì tự chuyển các tệp đang nằm trong database sang: ngay khi khởi động, rồi mỗi phút cho tới khi hết. Trang *Hub* (Web Admin) có thẻ *Tệp tài liệu*: số tệp, dung lượng, số tệp còn trong database, lỗi gần nhất.
+- SeaweedFS không trả lời thì tải tệp lên bị từ chối (không lưu nửa vời), còn đọc tệp thì báo lỗi rõ ràng. Hub vẫn chạy bình thường.
+- Không dùng SeaweedFS: đặt `HIVE_SEAWEEDFS_URL=` (rỗng) trong `deploy/.env`, tệp nằm trong database như trước. App desktop không có hub luôn lưu tệp trong database của máy. Tệp đã chuyển sang SeaweedFS thì hub không có `HIVE_SEAWEEDFS_URL` sẽ báo *tệp nằm trong kho seaweedfs*.
+- Server bị Docker Hub từ chối (429): `deploy/update.sh` lấy image từ `mirror.gcr.io` rồi tag lại đúng tên. Muốn dùng image khác thì đặt `HIVE_SEAWEEDFS_IMAGE`.
+
 ### Backup, khôi phục, nâng cấp
 
 - Backup dùng `VACUUM INTO`, nên an toàn khi hub đang chạy. Không nên copy thẳng `hub.db`, vì bản copy thiếu phần còn nằm trong file `-wal`. Tên file dạng `hub-2026-09-27T09-00-00-000Z.db`. Khi xoay vòng, hub chỉ xoá file có đúng dạng tên này.
 - Backup ngay (ví dụ trước khi làm việc rủi ro): `npm run backup -w @xdev-hive/web -- [thư mục] [số bản giữ]`. Lệnh này chỉ đọc file, không migrate.
 - Mặc định, compose để backup trên volume `hive-backups`, cùng đĩa với database. Để backup còn nguyên khi mất đĩa, trỏ `HIVE_BACKUP_PATH=/mnt/backup/hive` sang đĩa khác (thư mục phải cho uid 1000 ghi), hoặc đồng bộ thư mục backup ra ngoài.
-- **Khôi phục**: dừng hub, chép bản backup đè lên `hub.db`, xoá `hub.db-wal` và `hub.db-shm` nếu có, rồi khởi động lại.
+- Tệp trong SeaweedFS được chép vào `<thư mục backup>/files/<sha256>` sau mỗi lần backup (cả *Backup ngay*): chỉ chép tệp mới, và chỉ xoá tệp mà cả database lẫn các bản backup còn giữ đều không dùng. Một bản backup `hub-….db` cùng thư mục `files/` là đủ để khôi phục cả tệp.
+- **Khôi phục**: dừng hub, chép bản backup đè lên `hub.db`, xoá `hub.db-wal` và `hub.db-shm` nếu có, rồi khởi động lại. Mất cả dữ liệu SeaweedFS thì đưa tệp từ backup vào lại: `HIVE_SEAWEEDFS_URL=http://seaweedfs:8888 npm run files -w @xdev-hive/web -- restore [thư mục backup]` (trong container hub: `docker compose -p xdev-hive -f deploy/compose.yaml exec hub npm run files -w @xdev-hive/web -- restore`).
 - **Nâng cấp**: trên server chạy `bash deploy/update.sh` (sau Cloudflare Tunnel: `HIVE_TUNNEL=1 bash deploy/update.sh`): lấy `origin/main`, build lại, chờ hub healthy. Hub tự backup trước khi chạy migration mới.
 
 Máy của từng người: app desktop → chế độ **Hub dùng chung** → URL + đăng nhập bằng tài khoản (hoặc dán token). Shim `hive-mcp` tự chuyển tiếp lên hub, nên config MCP trong repo giống nhau cho mọi người và không chứa token.

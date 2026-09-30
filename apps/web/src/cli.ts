@@ -6,10 +6,15 @@
 //   npm run user -w @xdev-hive/web -- reset <username>            (new temporary password, signs out everywhere)
 //   npm run user -w @xdev-hive/web -- list
 //   npm run backup -w @xdev-hive/web -- [dir] [keep]   (default HIVE_BACKUP_DIR, else data/backups; keep 7)
+//   npm run files -w @xdev-hive/web -- restore [dir]   (puts a backup's doc files, <dir>/files, back into HIVE_SEAWEEDFS_URL)
+import { createHash } from "node:crypto";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { Role } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
-import { backupFile } from "./backup.ts";
+import { SHA256_HEX } from "@xdev-hive/core";
+import { backupFile, filesDir } from "./backup.ts";
+import { seaweedFromEnv } from "./seaweed.ts";
 import { TokenStore } from "./tokens.ts";
 import { UserStore } from "./users.ts";
 
@@ -23,6 +28,27 @@ if (cmd === "backup") {
     const r = backupFile(dbPath, { dir, keep: Number(arg ?? process.env.HIVE_BACKUP_KEEP ?? 7) });
     if (!r) throw new Error(`No database at ${dbPath}`);
     console.log(`${r.file}${r.removed.length ? `\nremoved ${r.removed.join(", ")}` : ""}`);
+  } catch (err) {
+    console.error((err as Error).message);
+    process.exitCode = 1;
+  }
+} else if (cmd === "files" && sub === "restore") {
+  // SeaweedFS lost its data: the files a backup copied go back, each checked against its name (its SHA-256).
+  const dir = path.resolve(arg ?? process.env.HIVE_BACKUP_DIR ?? path.join(path.dirname(dbPath), "backups"));
+  try {
+    const store = seaweedFromEnv(process.env);
+    if (!store) throw new Error("Set HIVE_SEAWEEDFS_URL to the filer to restore into.");
+    let put = 0;
+    for (const name of readdirSync(filesDir(dir)).filter((f) => SHA256_HEX.test(f))) {
+      const bytes = new Uint8Array(readFileSync(path.join(filesDir(dir), name)));
+      if (createHash("sha256").update(bytes).digest("hex") !== name) {
+        console.error(`skipped ${name}: its bytes do not match its name`);
+        continue;
+      }
+      await store.put(name, bytes, "application/octet-stream");
+      put++;
+    }
+    console.log(`${put} files put back into ${store.where}`);
   } catch (err) {
     console.error((err as Error).message);
     process.exitCode = 1;

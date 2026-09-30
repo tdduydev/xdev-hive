@@ -36,6 +36,20 @@ if "${compose[@]}" config --services | grep -qx ollama; then
     echo "embeddings: Ollama did not start; memory search matches words only" >&2
   fi
 fi
+# Images from Docker Hub (SeaweedFS): when it refuses (429 on some servers), the same image from Google's mirror of it,
+# tagged with the name compose asks for.
+ensure_image() {
+  local image="$1" mirror
+  docker image inspect "$image" >/dev/null 2>&1 && return 0
+  docker pull -q "$image" >/dev/null 2>&1 && return 0
+  case "$image" in */*) mirror="mirror.gcr.io/$image" ;; *) mirror="mirror.gcr.io/library/$image" ;; esac
+  echo "images: Docker Hub refused $image, pulling $mirror" >&2
+  docker pull -q "$mirror" >/dev/null && docker tag "$mirror" "$image"
+}
+for image in $("${compose[@]}" config --images | grep -i seaweedfs || true); do
+  ensure_image "$image" || echo "images: could not pull $image" >&2
+done
+
 # The hub backs up its database on start, before any schema migration of the new version.
 # Its Hub page shows the commit it runs.
 export HIVE_COMMIT="$(git rev-parse --short HEAD)"
