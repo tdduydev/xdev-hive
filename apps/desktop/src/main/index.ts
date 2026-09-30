@@ -634,6 +634,7 @@ function registerIpc(): void {
     return backend.call(method, input as never, actor());
   });
   handle("hive:me", me);
+  handle("desktop:appInfo", () => ({ version: app.getVersion(), platform: process.platform }));
   handle("desktop:settings", settings);
   handle("desktop:updateSettings", updateSettings);
   handle("desktop:hubSignIn", hubSignIn);

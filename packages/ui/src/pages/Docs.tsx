@@ -13,9 +13,9 @@ import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Diff } from "../components/Diff.tsx";
 import { HiddenChars } from "../components/HiddenChars.tsx";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader } from "../components/common.tsx";
-import { errorMessage, formatTime, sourceText, useAction, useCan, useHive, useQuery } from "../hooks.ts";
+import { errorMessage, formatTime, sourceText, useAction, useCan, useHashParam, useHive, useQuery } from "../hooks.ts";
 import { useT, type TFunction } from "../i18n/index.tsx";
-import { docOwner, inScope, projectScope, scopeLabel, scopeProject, type Scope } from "../lib/scope.ts";
+import { docOwner, inScope, projectScope, scopeLabel, scopeProject, SHARED, type Scope } from "../lib/scope.ts";
 
 interface Draft {
   title: string;
@@ -104,12 +104,24 @@ export function DocsPage() {
   }, [scoped, filter, scope.kind]);
   const visibleCount = groups.reduce((n, g) => n + g.docs.length, 0);
 
+  // #/docs?doc=<key> (command palette, links): open that doc, moving to its scope when it is outside this one.
+  const [linked, clearLinked] = useHashParam("doc");
+  useEffect(() => {
+    if (!linked || !list.data) return;
+    if (list.data.some((d) => d.key === linked)) {
+      const owner = docOwner(linked);
+      if (!inScope(scope, owner)) setScope(owner === null ? SHARED : projectScope(owner));
+      setSelected(linked);
+    }
+    clearLinked();
+  }, [linked, list.data, scope, setScope, clearLinked]);
+
   // Keep the selection inside the scope: pick the first doc in scope (or none) when it falls out.
   useEffect(() => {
-    if (!list.data) return;
+    if (!list.data || linked) return;
     if (selected && inScope(scope, docOwner(selected))) return;
     setSelected(firstInScope);
-  }, [list.data, scope, selected, firstInScope]);
+  }, [list.data, scope, selected, firstInScope, linked]);
 
   // New docs default to the project being looked at (Chung for all / shared).
   useEffect(() => {
