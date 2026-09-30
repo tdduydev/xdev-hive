@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" fill="none"><rect width="600" height="520" fill="#F7F9FC"/><rect x="600" width="600" height="520" fill="#142745"/><svg x="52" y="148" width="496" height="217" viewBox="0 0 178 78">
+  <defs>
+    <radialGradient id="x-gradient-ai-light" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#7BD4FF"/>
+      <stop offset="40%" stop-color="#1E90FF"/>
+      <stop offset="90%" stop-color="#004CFF"/>
+    </radialGradient>
+    <filter id="x-soft-glow-light" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.5" flood-color="#3399FF" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <text x="8" y="52" transform="scale(1.1,1)" font-family="Space Grotesk, Inter, sans-serif" font-weight="600" font-size="60" fill="url(#x-gradient-ai-light)" filter="url(#x-soft-glow-light)">X</text>
+<g stroke="#344568" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24M18 0V24M0 12H18" transform="translate(64 25)"/><path d="M0 0V24" transform="translate(94 25)"/><path d="M0 0L10 24L20 0" transform="translate(105 25)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(137 25)"/></g></svg><svg x="652" y="148" width="496" height="217" viewBox="0 0 178 78">
+  <defs>
+    <radialGradient id="x-gradient-ai-optimal" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#B8F1FF"/>
+      <stop offset="40%" stop-color="#3FA9FF"/>
+      <stop offset="90%" stop-color="#1C58FF"/>
+    </radialGradient>
+    <filter id="x-soft-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#66B2FF" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+  <text x="8" y="52" transform="scale(1.1,1)" font-family="Space Grotesk, Inter, sans-serif" font-weight="600" font-size="60" fill="url(#x-gradient-ai-optimal)" filter="url(#x-soft-glow)">X</text>
+<g stroke="#E8ECF8" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24M18 0V24M0 12H18" transform="translate(64 25)"/><path d="M0 0V24" transform="translate(94 25)"/><path d="M0 0L10 24L20 0" transform="translate(105 25)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(137 25)"/></g></svg></svg>

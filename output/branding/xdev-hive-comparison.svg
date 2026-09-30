@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" fill="none"><rect width="600" height="760" fill="#F7F9FC"/><rect x="600" width="600" height="760" fill="#142745"/><text x="52" y="48" font-family="sans-serif" font-size="14" letter-spacing="2" fill="#344568" opacity=".6">A / HIVE</text><svg x="52" y="65" width="480.6" height="210.6" viewBox="0 0 178 78">
+  <defs>
+    <radialGradient id="r0c0-gradient" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#7BD4FF"/>
+      <stop offset="40%" stop-color="#1E90FF"/>
+      <stop offset="90%" stop-color="#004CFF"/>
+    </radialGradient>
+    <filter id="r0c0-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.5" flood-color="#3399FF" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <text x="8" y="52" transform="scale(1.1,1)" font-family="Space Grotesk, Inter, sans-serif" font-weight="600" font-size="60" fill="url(#r0c0-gradient)" filter="url(#r0c0-glow)">X</text>
+<g stroke="#344568" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24M18 0V24M0 12H18" transform="translate(64 25)"/><path d="M0 0V24" transform="translate(94 25)"/><path d="M0 0L10 24L20 0" transform="translate(105 25)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(137 25)"/></g></svg><svg x="72" y="270" width="178" height="78" viewBox="0 0 178 78">
+  <defs>
+    <radialGradient id="smallr0c0-gradient" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#7BD4FF"/>
+      <stop offset="40%" stop-color="#1E90FF"/>
+      <stop offset="90%" stop-color="#004CFF"/>
+    </radialGradient>
+    <filter id="smallr0c0-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.5" flood-color="#3399FF" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <text x="8" y="52" transform="scale(1.1,1)" font-family="Space Grotesk, Inter, sans-serif" font-weight="600" font-size="60" fill="url(#smallr0c0-gradient)" filter="url(#smallr0c0-glow)">X</text>
+<g stroke="#344568" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24M18 0V24M0 12H18" transform="translate(64 25)"/><path d="M0 0V24" transform="translate(94 25)"/><path d="M0 0L10 24L20 0" transform="translate(105 25)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(137 25)"/></g></svg><text x="652" y="48" font-family="sans-serif" font-size="14" letter-spacing="2" fill="#E8ECF8" opacity=".6">A / HIVE</text><svg x="652" y="65" width="480.6" height="210.6" viewBox="0 0 178 78">
+  <defs>
+    <radialGradient id="r0c1-gradient" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#7BD4FF"/>
+      <stop offset="40%" stop-color="#1E90FF"/>
+      <stop offset="90%" stop-color="#004CFF"/>
+    </radialGradient>
+    <filter id="r0c1-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.5" flood-color="#3399FF" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <text x="8" y="52" transform="scale(1.1,1)" font-family="Space Grotesk, Inter, sans-serif" font-weight="600" font-size="60" fill="url(#r0c1-gradient)" filter="url(#r0c1-glow)">X</text>
+<g stroke="#E8ECF8" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24M18 0V24M0 12H18" transform="translate(64 25)"/><path d="M0 0V24" transform="translate(94 25)"/><path d="M0 0L10 24L20 0" transform="translate(105 25)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(137 25)"/></g></svg><svg x="672" y="270" width="178" height="78" viewBox="0 0 178 78">
+  <defs>
+    <radialGradient id="smallr0c1-gradient" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#7BD4FF"/>
+      <stop offset="40%" stop-color="#1E90FF"/>
+      <stop offset="90%" stop-color="#004CFF"/>
+    </radialGradient>
+    <filter id="smallr0c1-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.5" flood-color="#3399FF" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <text x="8" y="52" transform="scale(1.1,1)" font-family="Space Grotesk, Inter, sans-serif" font-weight="600" font-size="60" fill="url(#smallr0c1-gradient)" filter="url(#smallr0c1-glow)">X</text>
+<g stroke="#E8ECF8" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24M18 0V24M0 12H18" transform="translate(64 25)"/><path d="M0 0V24" transform="translate(94 25)"/><path d="M0 0L10 24L20 0" transform="translate(105 25)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(137 25)"/></g></svg><text x="52" y="428" font-family="sans-serif" font-size="14" letter-spacing="2" fill="#344568" opacity=".6">B / DEV + HIVE</text><svg x="52" y="445" width="432.0" height="210.6" viewBox="0 0 160 78">
+  <defs>
+    <radialGradient id="r1c0-gradient" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#7BD4FF"/>
+      <stop offset="40%" stop-color="#1E90FF"/>
+      <stop offset="90%" stop-color="#004CFF"/>
+    </radialGradient>
+    <filter id="r1c0-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.5" flood-color="#3399FF" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <text x="8" y="52" transform="scale(1.1,1)" font-family="Space Grotesk, Inter, sans-serif" font-weight="600" font-size="60" fill="url(#r1c0-gradient)" filter="url(#r1c0-glow)">X</text>
+<g stroke="#344568" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24H7C22 24 22 0 7 0Z" transform="translate(64 12)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(92 12)"/><path d="M0 0L10 24L20 0" transform="translate(117 12)"/><path d="M0 0V24M18 0V24M0 12H18" transform="translate(64 43) scale(.5)"/><path d="M0 0V24" transform="translate(82 43) scale(.5)"/><path d="M0 0L10 24L20 0" transform="translate(91 43) scale(.5)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(110 43) scale(.5)"/></g></svg><svg x="72" y="650" width="160" height="78" viewBox="0 0 160 78">
+  <defs>
+    <radialGradient id="smallr1c0-gradient" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#7BD4FF"/>
+      <stop offset="40%" stop-color="#1E90FF"/>
+      <stop offset="90%" stop-color="#004CFF"/>
+    </radialGradient>
+    <filter id="smallr1c0-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.5" flood-color="#3399FF" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <text x="8" y="52" transform="scale(1.1,1)" font-family="Space Grotesk, Inter, sans-serif" font-weight="600" font-size="60" fill="url(#smallr1c0-gradient)" filter="url(#smallr1c0-glow)">X</text>
+<g stroke="#344568" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24H7C22 24 22 0 7 0Z" transform="translate(64 12)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(92 12)"/><path d="M0 0L10 24L20 0" transform="translate(117 12)"/><path d="M0 0V24M18 0V24M0 12H18" transform="translate(64 43) scale(.5)"/><path d="M0 0V24" transform="translate(82 43) scale(.5)"/><path d="M0 0L10 24L20 0" transform="translate(91 43) scale(.5)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(110 43) scale(.5)"/></g></svg><text x="652" y="428" font-family="sans-serif" font-size="14" letter-spacing="2" fill="#E8ECF8" opacity=".6">B / DEV + HIVE</text><svg x="652" y="445" width="432.0" height="210.6" viewBox="0 0 160 78">
+  <defs>
+    <radialGradient id="r1c1-gradient" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#7BD4FF"/>
+      <stop offset="40%" stop-color="#1E90FF"/>
+      <stop offset="90%" stop-color="#004CFF"/>
+    </radialGradient>
+    <filter id="r1c1-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.5" flood-color="#3399FF" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <text x="8" y="52" transform="scale(1.1,1)" font-family="Space Grotesk, Inter, sans-serif" font-weight="600" font-size="60" fill="url(#r1c1-gradient)" filter="url(#r1c1-glow)">X</text>
+<g stroke="#E8ECF8" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24H7C22 24 22 0 7 0Z" transform="translate(64 12)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(92 12)"/><path d="M0 0L10 24L20 0" transform="translate(117 12)"/><path d="M0 0V24M18 0V24M0 12H18" transform="translate(64 43) scale(.5)"/><path d="M0 0V24" transform="translate(82 43) scale(.5)"/><path d="M0 0L10 24L20 0" transform="translate(91 43) scale(.5)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(110 43) scale(.5)"/></g></svg><svg x="672" y="650" width="160" height="78" viewBox="0 0 160 78">
+  <defs>
+    <radialGradient id="smallr1c1-gradient" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#7BD4FF"/>
+      <stop offset="40%" stop-color="#1E90FF"/>
+      <stop offset="90%" stop-color="#004CFF"/>
+    </radialGradient>
+    <filter id="smallr1c1-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.5" flood-color="#3399FF" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <text x="8" y="52" transform="scale(1.1,1)" font-family="Space Grotesk, Inter, sans-serif" font-weight="600" font-size="60" fill="url(#smallr1c1-gradient)" filter="url(#smallr1c1-glow)">X</text>
+<g stroke="#E8ECF8" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24H7C22 24 22 0 7 0Z" transform="translate(64 12)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(92 12)"/><path d="M0 0L10 24L20 0" transform="translate(117 12)"/><path d="M0 0V24M18 0V24M0 12H18" transform="translate(64 43) scale(.5)"/><path d="M0 0V24" transform="translate(82 43) scale(.5)"/><path d="M0 0L10 24L20 0" transform="translate(91 43) scale(.5)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(110 43) scale(.5)"/></g></svg></svg>
