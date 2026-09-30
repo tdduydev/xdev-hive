@@ -113,6 +113,8 @@ async function shoot(name, page, delay, extra = {}) {
 for (const [page, delay] of [["board", 6000], ["agents", 1500], ["setup", 4000], ["projects", 1500], ["docs", 1500], ["skills", 1500]]) await shoot(page, page, delay);
 // The GitHub card and the project's GitLab / GitHub fields (roadmap 13a).
 await shoot("projects-github", "projects", 1500, { HIVE_SMOKE_CLICK: "main button[aria-expanded]", HIVE_SMOKE_SCROLL: "#gh-url" });
+// The repositories of the demo's GitLab group, with their keys and folders (roadmap 19a).
+await shoot("projects-import", "projects", 1500, { HIVE_SMOKE_CLICK: "#import-list", HIVE_SMOKE_SCROLL: "#import-group" });
 // The app checks open MRs as it starts (right away in smoke mode): the failed job goes to a fix run.
 gitlab.jobs[7] = [{ id: 71, name: "test", stage: "test", status: "failed", trace: "not ok 2 - settings page renders\n" }];
 for (const mr of gitlab.mrs) mr.head_pipeline = { id: 7, status: "failed", web_url: `${gitlab.base}/group/demo/-/pipelines/7` };
