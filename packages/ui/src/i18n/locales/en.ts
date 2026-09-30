@@ -186,6 +186,7 @@ export const en: Catalog = {
     rangeLabel: "Time range",
     group: { ops: "Operations", watch: "Monitoring", knowledge: "Knowledge", admin: "Administration" },
     nav: {
+      alerts: "Alerts",
       versions: "App versions",
       overview: "Overview",
       runs: "Runs",
@@ -206,6 +207,7 @@ export const en: Catalog = {
       audit: "Audit log",
     },
     hint: {
+      alerts: "Open incidents and the rules that raise them",
       versions: "Builds the hub hands to machines",
       overview: "Refreshes every 15 seconds",
       runs: "Every machine reports to the hub · secrets hidden in logs",
@@ -318,6 +320,7 @@ export const en: Catalog = {
     close: "Dismiss",
   },
   inbox: {
+    alert: { open: "Open Alerts" },
     subtitle: "{date} · what needs you",
     listLabel: "What needs you",
     open: "Needs you",
@@ -337,7 +340,7 @@ export const en: Catalog = {
     ago: { now: "just now", m: "{n}m", h: "{n}h", d: "{n}d" },
     agoLong: "{when} ago",
     shared: "Shared",
-    tag: { ci: "CI failed", proposal: "Proposal", review: "Needs review", memory: "Memory", conflict: "Conflict", machine: "This machine", request: "Install request" },
+    tag: { ci: "CI failed", proposal: "Proposal", review: "Needs review", memory: "Memory", conflict: "Conflict", machine: "This machine", request: "Install request", alert: "Alert" },
     ci: {
       title: "{mr} · pipeline failed in {jobs}",
       titleNoJobs: "{mr} · pipeline failed",
@@ -1734,6 +1737,7 @@ export const en: Catalog = {
     docPathsWholeRepo: "{key} is the doc for the whole repo and cannot be limited to paths.",
     assistNotTaken: "No machine took the request within 15 minutes: one needs the app open, the project added, and runs from the hub turned on.",
     assistSilent: "The machine writing it stopped reporting.",
+    alertRule: "There is no alert rule {rule}.",
     docParentSelf: "{key} cannot go under itself.",
     docParentSkill: "Skills stay in the skills folder: they do not go under pages, and pages do not go under them.",
     docParentSpace: "{parent} is in another space than {key}.",
@@ -2025,6 +2029,8 @@ export const en: Catalog = {
     hint: "The hub does not save text with hidden characters. Removing them leaves emoji alone.",
     strip: "Remove hidden characters",
   },
+  alerts: { severity: { high: "High", medium: "Medium", low: "Low" }, title: { run_fail_streak: "{task} failed {count} times in a row", ci_fix_exhausted: "CI still failing · MR !{mr}", machine_offline: "Machine {machine} offline", webhook_failed: "Webhook \"{name}\" failing", quota_near: "{profile} near its limit", vendor_resting: "Every {vendor} plan resting", backup_overdue: "Backup overdue" }, detail: { run_fail_streak: "{project} · {title} · within an hour", ci_fix_exhausted: "{project} · {task} · out of fix runs on {machine}", machine_offline: "no heartbeat for {minutes} minutes", webhook_failed: "{kind} · {error}", quota_near: "{machine} · session {session}% · week {week}%", vendor_resting: "{count} plans · first free at {until}; runs and cross-reviews wait", backup_overdue: "no new one for {hours} hours · {dir}" }, rule: { run_fail_streak: { label: "Failed runs in a row", cond: "3 failed runs of the same task within an hour" }, ci_fix_exhausted: { label: "CI failing after fixes", cond: "out of fix runs and the pipeline still fails" }, machine_offline: { label: "Machine offline", cond: "no heartbeat for over 60 minutes" }, webhook_failed: { label: "Webhook failing", cond: "the last send got HTTP 4xx/5xx or timed out" }, quota_near: { label: "Plan near its limit", cond: "session or week at 80% or more" }, vendor_resting: { label: "Every plan of a vendor resting", cond: "cross-reviews will wait" }, backup_overdue: { label: "Backup overdue", cond: "no new one for the backup interval plus 2 hours" } }, incidents: "Incidents", rules: "Alert rules", rulesHint: "Open alerts show on the Overview and an admin's Today, and go to webhooks with the Alert event on.", open: "Open alerts", all: "All", none: "No open alerts.", noneRecent: "No incidents in the last 7 days.", ack: "Seen", stateOpen: "Open", stateAcked: "Seen · {who}", stateAuto: "Ended by itself", stateBy: "Handled by {who}", on: "On", off: "Off", since: "since {time}", ended: "ended {time}", healthOk: "All good", healthIncidents: "{high} incidents · {rest} warnings", healthWarnings: "{count} warnings", acked: "Marked as seen", ruleSaved: "Turned {state} {rule}" },
+  feed: { runStarted: "started {task} · {profile}", run: { succeeded: "finished {task} · {profile}", failed: "failed {task} · {profile}", cancelled: "stopped {task}", rate_limited: "out of quota on {task} · {profile}", running: "running {task}", queued: "queued {task}" }, mr: "opened an MR for {task}", alertOpened: "alert: {title}", alertResolved: "alert ended: {title}", audit: "{action} · {target}", proposal: "proposed a change to {doc}", title: "Event feed", hint: "live from machines and the hub", none: "Nothing in the last 24 hours." },
   webhooks: {
     intro: "Post to a Teams or Slack channel when a proposal or memory waits for review, a machine gets an install request, a run fails for good (no attempts left) or a merge request opens. The hub keeps webhook URLs as secrets: this page shows only part of them.",
     add: "Add webhook",
@@ -2043,6 +2049,7 @@ export const en: Catalog = {
       command: { requested: "Install request", finished: "Install request result" },
       run: { failed: "Run failed" },
       mr: { created: "New merge request" },
+      alert: { opened: "Alert" },
     },
     projects: "Only these projects",
     projectsHint: "Comma separated. Empty: every project, the shared data and machine install requests too.",
@@ -2062,6 +2069,8 @@ export const en: Catalog = {
     lastFailed: "last send {time} failed: {error}",
   },
   webhook: {
+    ciLimit: "MR !{iid} ({project} · {task}): out of fix runs and CI still fails.",
+    alert: "[{severity}] {title}: {detail}",
     proposal: "Proposed change to {doc} ({project}) by {author}: {reason}",
     memoryPending: "Memory waiting for approval ({project}) by {author}: {content}",
     commandRequested: "{by} asked for {label} on {machine}; waiting for that machine's user.",

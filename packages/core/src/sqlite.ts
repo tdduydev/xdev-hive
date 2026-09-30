@@ -418,7 +418,7 @@ function eventOf(method: Method, output: unknown): HiveEvent | null {
     }
     case "runs.report": {
       const run = output as RunNotice;
-      return { type: run.kind === "failed" ? "run.failed" : "mr.created", project: run.project, run };
+      return { type: run.kind === "failed" ? "run.failed" : run.kind === "ci_limit" ? "run.ciLimit" : "mr.created", project: run.project, run };
     }
     default:
       return null;

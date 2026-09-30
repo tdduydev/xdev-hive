@@ -170,6 +170,18 @@ export function eventMessage(event: HiveEvent, locale: string): { text: string; 
         ...(r.mrUrl ? { url: r.mrUrl } : {}),
       };
     }
+    case "run.ciLimit": {
+      const r = event.run;
+      return { text: tr("webhook.ciLimit", { iid: r.mrIid ?? "?", project: r.project, task: r.taskId }), page: "#/admin/alerts", ...(r.mrUrl ? { url: r.mrUrl } : {}) };
+    }
+    case "alert.opened": {
+      const a = event.alert;
+      const vars = Object.fromEntries(Object.entries(a.vars).map(([k, v]) => [k, typeof v === "string" ? clip(v, 200) : v]));
+      return {
+        text: tr("webhook.alert", { severity: tr(`alerts.severity.${a.severity}`), title: tr(`alerts.title.${a.rule}`, vars), detail: tr(`alerts.detail.${a.rule}`, vars) }),
+        page: "#/admin/alerts",
+      };
+    }
   }
 }
 
@@ -214,7 +226,7 @@ export class WebhookDispatcher {
   async notify(event: HiveEvent): Promise<void> {
     const targets = this.#store
       .all()
-      .filter((w) => w.enabled && w.events.includes(event.type) && (w.projects.length === 0 || (event.project !== null && w.projects.includes(event.project))));
+      .filter((w) => w.enabled && (w.events as string[]).includes(event.type) && (w.projects.length === 0 || (event.project !== null && w.projects.includes(event.project))));
     await Promise.all(
       targets.map((w) => {
         const { text, page, url } = eventMessage(event, w.locale);
