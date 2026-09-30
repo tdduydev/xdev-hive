@@ -340,3 +340,173 @@
     color: var(--text-muted);
   }
 }
+
+/* The Docs rich editor (roadmap 23a): the same reading type as DocMarkdown, on ProseMirror's own elements. */
+@layer components {
+  .hive-prose {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    color: var(--text-primary);
+    font-size: 15px;
+    line-height: 25px;
+    overflow-wrap: anywhere;
+  }
+  .hive-prose h1 {
+    margin: 0 0 0.25rem;
+    font-family: var(--font-display);
+    font-size: 26px;
+    line-height: 34px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--text-strong);
+  }
+  .hive-prose h2 {
+    margin: 0.625rem 0 0;
+    font-family: var(--font-display);
+    font-size: 17px;
+    line-height: 24px;
+    font-weight: 600;
+    color: var(--text-strong);
+  }
+  .hive-prose h3 {
+    margin: 0.5rem 0 0;
+    font-size: 15px;
+    line-height: 24px;
+    font-weight: 600;
+    color: var(--text-strong);
+  }
+  .hive-prose p {
+    margin: 0;
+  }
+  .hive-prose ul,
+  .hive-prose ol {
+    margin: 0;
+    padding-left: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+  .hive-prose ul {
+    list-style: disc;
+  }
+  .hive-prose ol {
+    list-style: decimal;
+  }
+  .hive-prose li::marker {
+    color: var(--text-muted);
+  }
+  .hive-prose ul[data-type="taskList"] {
+    list-style: none;
+    padding-left: 0.25rem;
+  }
+  .hive-prose ul[data-type="taskList"] li {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+  }
+  .hive-prose ul[data-type="taskList"] li > label {
+    margin-top: 0.3rem;
+  }
+  .hive-prose ul[data-type="taskList"] li > div {
+    flex: 1;
+  }
+  .hive-prose blockquote {
+    margin: 0;
+    border-radius: var(--radius-md, 8px);
+    background: var(--status-info-bg);
+    padding: 0.5rem 0.875rem;
+    font-size: 14px;
+    line-height: 22px;
+    color: var(--text-strong);
+  }
+  .hive-prose code {
+    border-radius: 4px;
+    border: 1px solid var(--border-subtle);
+    background: var(--code-bg);
+    padding: 1px 5px;
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    color: var(--code-fg);
+  }
+  .hive-prose pre {
+    margin: 0;
+    overflow-x: auto;
+    border-radius: var(--radius-md, 8px);
+    border: 1px solid var(--border-subtle);
+    background: var(--code-bg);
+    padding: 0.75rem 0.875rem;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 20px;
+    color: var(--code-fg);
+    white-space: pre-wrap;
+  }
+  .hive-prose pre code {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    font-size: 12px;
+  }
+  .hive-prose hr {
+    margin: 0.25rem 0;
+    border: 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .hive-prose a {
+    color: var(--text-link);
+    font-weight: 500;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .hive-prose .page-link {
+    border-radius: 4px;
+    background: var(--state-selected-bg);
+    padding: 0 4px;
+    color: var(--state-selected-fg);
+    font-weight: 500;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+  .hive-prose table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    line-height: 20px;
+    table-layout: fixed;
+  }
+  .hive-prose th,
+  .hive-prose td {
+    position: relative;
+    border: 1px solid var(--border-subtle);
+    padding: 0.4rem 0.6rem;
+    vertical-align: top;
+    text-align: left;
+  }
+  .hive-prose th {
+    background: var(--bg-sunken);
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  .hive-prose .selectedCell::after {
+    position: absolute;
+    inset: 0;
+    content: "";
+    pointer-events: none;
+    background: var(--state-selected-bg);
+    opacity: 0.6;
+  }
+  .hive-prose p.is-editor-empty:first-child::before,
+  .hive-prose .is-empty::before {
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
+    pointer-events: none;
+    color: var(--text-muted);
+  }
+  .hive-prose .ProseMirror-selectednode {
+    outline: 2px solid var(--border-selected);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
