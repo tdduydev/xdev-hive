@@ -94,6 +94,10 @@ Làm lần lượt, mỗi lượt một mục (mỗi mục một PR). Mục có 
   - [ ] **18c. web-merge** [CẦN HỎI: merge bằng token GitHub/GitLab của máy (qua heartbeat) hay token lưu trên hub]: run có MR/PR hiện trạng thái checks và nút *Merge* cho quản trị dự án.
   - [ ] **18d. web-profiles** [CẦN HỎI: ai được đổi gói sub của một máy: admin hub, chủ máy, hay quản trị dự án]: trang Máy & run bật/tắt gói, đổi ưu tiên; máy nhận ở heartbeat, không cần khởi động lại app.
   - [ ] **18e. bulk-approve** (hỏi 29/9): trang *Đề xuất* (tài liệu, skill) và *Memory*: chọn nhiều mục đang chờ rồi duyệt một lần; đề xuất xung đột phiên bản thì bỏ qua và báo.
+- **21. mr-followup** (ghi 30/9: ý từ bản nháp cũ ở nhánh `backup/main-wip-2026-09-30` trên máy, main chưa có; theo dõi MR, `doneOnMerge` và pipeline đã có trên main):
+  - [ ] **21a. mr-closed**: MR bị đóng mà không merge thì task sang trạng thái chọn được ở thẻ GitLab/GitHub (*Bị chặn*, *Chưa làm* hoặc giữ nguyên; mặc định *Bị chặn*), ghi chú task thêm một dòng.
+  - [ ] **21b. mr-cleanup**: MR merge xong thì xoá worktree của task, và branch `ai/<task>` ở máy nếu đầu branch đúng là commit đã merge; tắt được.
+  - [ ] **21c. mr-poll**: chỉnh chu kỳ hỏi GitLab/GitHub về MR (1–60 phút, mặc định 2) thay cho 2 phút cố định.
 
 ## Sửa lỗi
 
