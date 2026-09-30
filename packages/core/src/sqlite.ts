@@ -1160,7 +1160,8 @@ export class SqliteHive implements HiveBackend {
         .prepare(
           `SELECT m.id, m.thread_id, m.sender, m.created_at, t.project, t.profile_id, t.session_id,
              (SELECT u.text FROM chat_messages u WHERE u.thread_id = m.thread_id AND u.role = 'user' AND u.id < m.id ORDER BY u.id DESC LIMIT 1) AS text,
-             (SELECT u.author FROM chat_messages u WHERE u.thread_id = m.thread_id AND u.role = 'user' AND u.id < m.id ORDER BY u.id DESC LIMIT 1) AS requested_by
+             (SELECT u.author FROM chat_messages u WHERE u.thread_id = m.thread_id AND u.role = 'user' AND u.id < m.id ORDER BY u.id DESC LIMIT 1) AS requested_by,
+             (SELECT u.id FROM chat_messages u WHERE u.thread_id = m.thread_id AND u.role = 'user' AND u.id < m.id ORDER BY u.id DESC LIMIT 1) AS message_id
            FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id
            WHERE t.machine_id = ? AND m.status = 'pending' ORDER BY m.id`,
         )
@@ -1176,6 +1177,7 @@ export class SqliteHive implements HiveBackend {
         requestedBy: str(r.requested_by ?? ""),
         createdAt: str(r.created_at),
         ...(r.sender == null ? {} : { sender: JSON.parse(str(r.sender)) as ChatSender }),
+        files: (this.db.prepare(`SELECT ${FILE_FIELDS} FROM chat_files WHERE message_id = ? ORDER BY id`).all(num(r.message_id ?? 0)) as Row[]).map(toChatFile),
       }),
     );
   }

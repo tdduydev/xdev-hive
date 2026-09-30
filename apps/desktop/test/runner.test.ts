@@ -52,6 +52,7 @@ async function setup(
     /** Wraps the hub as this machine reaches it (to make some calls fail). */
     wrap?: (backend: HiveBackend) => HiveBackend;
     hub?: RunnerHost["hub"];
+    download?: RunnerHost["download"];
   } = {},
 ) {
   const repo = tmp("repo");
@@ -77,6 +78,7 @@ async function setup(
     login: machine.login,
     usage: machine.usage,
     hub: machine.hub,
+    ...(machine.download ? { download: machine.download } : {}),
   };
   const dataDir = tmp("data");
   const hubUpdates: HubUpdate[] = [];
@@ -849,6 +851,47 @@ describe("Runner", () => {
       await a.runner.settleChats();
       const reply = await replyOf(a.hive, sent.thread.id);
       assert.deepEqual([reply.status, reply.text], ["cancelled", "Looking at the tasks…"]);
+    });
+
+    it("hands the leader the message's files: fetched with the reply's token into a folder it may read, gone after", async () => {
+      const fetched: Array<[string, string]> = [];
+      let missing = -1;
+      const a = await setup([profile("claude-1", "claude", 10, "chat", { bin: fakeClaude() })], { acceptHubRuns: true }, "hub", {
+        report: claudeReport,
+        hub: () => ({ url: "https://hive.example.test/", token: "hive_machine_token" }),
+        wrap: withGrant,
+        download: async (url, token) => {
+          fetched.push([url, token]);
+          if (url.endsWith(`/${missing}`)) throw new Error("The hub answered 404.");
+          return new TextEncoder().encode(`bytes of ${url.split("/").pop()}`);
+        },
+      });
+      await a.runner.heartbeat();
+      const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1]);
+      const shot = a.hive.putChatFile({ project: "demo", name: "../../lỗi đăng nhập.png", bytes: png }, admin);
+      const log = a.hive.putChatFile({ project: "demo", name: "run.log", bytes: new TextEncoder().encode("exit 1\n") }, admin);
+      const again = a.hive.putChatFile({ project: "demo", name: "run.log", bytes: new TextEncoder().encode("exit 2\n") }, admin);
+      missing = again.id;
+      await a.hive.call("chat.send", { project: "demo", machineId: "runner.duy-mbp@duy-macbook", text: "Why does login fail?", files: [shot.id, log.id, again.id] }, admin);
+      await a.runner.pollChats();
+      await a.runner.settleChats();
+
+      const call = (await (async () => {
+        const record = readFileSync(a.record, "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, any>);
+        return record.find((r) => typeof r.chat === "string")!;
+      })());
+      const dir = call.args[call.args.indexOf("--add-dir") + 1] as string;
+      assert.ok(call.args.indexOf("--add-dir") < call.args.indexOf("--append-system-prompt"), "an option follows, so the list of folders ends");
+      assert.deepEqual(call.files, { "lỗi đăng nhập.png": `bytes of ${shot.id}`, "run.log": `bytes of ${log.id}` }, "what the leader could read while it ran");
+      assert.match(call.chat, /^Why does login fail\?\n\nFiles attached to this message/);
+      assert.ok(call.chat.includes(`- ${path.join(dir, "lỗi đăng nhập.png")} (image/png, 9 B)`), call.chat);
+      assert.match(call.chat, /- run\.log: could not be fetched \(The hub answered 404\.\)/, "the second run.log, under another name, failed: noted, the reply goes on");
+      assert.deepEqual(fetched.map(([url, token]) => [url, token]), [
+        [`https://hive.example.test/api/chat/files/${shot.id}`, "hivechat_test"],
+        [`https://hive.example.test/api/chat/files/${log.id}`, "hivechat_test"],
+        [`https://hive.example.test/api/chat/files/${again.id}`, "hivechat_test"],
+      ], "with the reply's token, never the machine's");
+      assert.equal(existsSync(dir), false, "gone with the reply");
     });
 
     it("says why it cannot write a reply, and asks for none while it does not take runs from the hub", async () => {
