@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 178 78" fill="none" role="img" aria-label="xDev Hive">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 178 78" fill="none" role="img" aria-label="xDev Hive — Dev Hub">
   <defs>
     <radialGradient id="x-gradient-ai-optimal" cx="50%" cy="50%" r="80%">
       <stop offset="0%" stop-color="#B8F1FF"/>
@@ -10,4 +10,4 @@
     </filter>
   </defs>
   <text x="8" y="52" transform="scale(1.1,1)" font-family="Space Grotesk, Inter, sans-serif" font-weight="600" font-size="60" fill="url(#x-gradient-ai-optimal)" filter="url(#x-soft-glow)">X</text>
-<g stroke="#E8ECF8" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24M18 0V24M0 12H18" transform="translate(64 25)"/><path d="M0 0V24" transform="translate(94 25)"/><path d="M0 0L10 24L20 0" transform="translate(105 25)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(137 25)"/></g></svg>
+<g stroke="#E8ECF8" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24M18 0V24M0 12H18" transform="translate(64 12)"/><path d="M0 0V24" transform="translate(94 12)"/><path d="M0 0L10 24L20 0" transform="translate(105 12)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(137 12)"/></g><g stroke="#E8ECF8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24H7C22 24 22 0 7 0Z" transform="translate(64 43) scale(.31)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(72.68 43) scale(.31)"/><path d="M0 0L10 24L20 0" transform="translate(80.43 43) scale(.31)"/><path d="M0 0V24M18 0V24M0 12H18" transform="translate(92.21 43) scale(.31)"/><path d="M0 0V15C0 28 19 28 19 15V0" transform="translate(99.96 43) scale(.31)"/><path d="M0 0V24H9C22 24 22 12 9 12H0M0 0H9C21 0 21 12 9 12" transform="translate(108.02 43) scale(.31)"/></g></svg>

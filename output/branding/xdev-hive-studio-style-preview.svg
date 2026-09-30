@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="640" viewBox="0 0 1100 640" fill="none"><rect width="1100" height="320" fill="#F7F9FC"/><rect y="320" width="1100" height="320" fill="#142745"/><text x="60" y="48" font-family="sans-serif" font-size="13" letter-spacing="2" fill="#344568" opacity=".65">AI STUDIO</text><svg x="40" y="70" width="480" height="234" viewBox="0 0 160 78">
+  <defs>
+    <radialGradient id="x-gradient-ai-light-0-0" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#7BD4FF"/>
+      <stop offset="40%" stop-color="#1E90FF"/>
+      <stop offset="90%" stop-color="#004CFF"/>
+    </radialGradient>
+    <filter id="x-soft-glow-0-0-light-0-0" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.5" flood-color="#3399FF" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <text x="8" y="52" transform="scale(1.1,1)" font-family="Space Grotesk, Inter, sans-serif" font-weight="600" font-size="60" fill="url(#x-gradient-ai-light-0-0)" filter="url(#x-soft-glow-0-0-light-0-0)">X</text>
+<g stroke="#344568" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M0 24L10 0L20 24M4 15H16" transform="translate(64 12)"/><path d="M0 0V24" transform="translate(91 12)"/></g><path d="M18 2C12 -2 0 -1 0 6C0 14 19 9 19 18C19 25 7 27 0 22" transform="translate(64 43) scale(.31)" stroke="#344568" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M0 0H20M10 0V24" transform="translate(72.68 43) scale(.31)" stroke="#344568" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M0 0V15C0 28 19 28 19 15V0" transform="translate(81.36000000000001 43) scale(.31)" stroke="#344568" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M0 0V24H7C22 24 22 0 7 0Z" transform="translate(89.73000000000002 43) scale(.31)" stroke="#344568" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M0 0V24" transform="translate(98.72000000000001 43) scale(.31)" stroke="#344568" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 0C-4 0 -4 24 10 24C24 24 24 0 10 0Z" transform="translate(101.82000000000001 43) scale(.31)" stroke="#344568" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg><text x="610" y="48" font-family="sans-serif" font-size="13" letter-spacing="2" fill="#344568" opacity=".65">XDEV HIVE</text><svg x="590" y="70" width="480" height="234" viewBox="0 0 160 78">
+  <defs>
+    <radialGradient id="x-gradient-ai-light-0-1" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#7BD4FF"/>
+      <stop offset="40%" stop-color="#1E90FF"/>
+      <stop offset="90%" stop-color="#004CFF"/>
+    </radialGradient>
+    <filter id="x-soft-glow-0-1-light-0-1" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.5" flood-color="#3399FF" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <text x="8" y="52" transform="scale(1.1,1)" font-family="Space Grotesk, Inter, sans-serif" font-weight="600" font-size="60" fill="url(#x-gradient-ai-light-0-1)" filter="url(#x-soft-glow-0-1-light-0-1)">X</text>
+<g stroke="#344568" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24H7C22 24 22 0 7 0Z" transform="translate(64 12)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(92 12)"/><path d="M0 0L10 24L20 0" transform="translate(117 12)"/></g><g stroke="#344568" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24M18 0V24M0 12H18" transform="translate(64 43) scale(.31)"/><path d="M0 0V24" transform="translate(72.68 43) scale(.31)"/><path d="M0 0L10 24L20 0" transform="translate(75.78 43) scale(.31)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(84.77 43) scale(.31)"/></g></svg><text x="60" y="368" font-family="sans-serif" font-size="13" letter-spacing="2" fill="#E8ECF8" opacity=".65">AI STUDIO</text><svg x="40" y="390" width="480" height="234" viewBox="0 0 160 78">
+  <defs>
+    <radialGradient id="x-gradient-ai-optimal-1-0" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#B8F1FF"/>
+      <stop offset="40%" stop-color="#3FA9FF"/>
+      <stop offset="90%" stop-color="#1C58FF"/>
+    </radialGradient>
+    <filter id="x-soft-glow-1-0" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#66B2FF" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+  <text x="8" y="52" transform="scale(1.1,1)" font-family="Space Grotesk, Inter, sans-serif" font-weight="600" font-size="60" fill="url(#x-gradient-ai-optimal-1-0)" filter="url(#x-soft-glow-1-0)">X</text>
+<g stroke="#E8ECF8" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M0 24L10 0L20 24M4 15H16" transform="translate(64 12)"/><path d="M0 0V24" transform="translate(91 12)"/></g><path d="M18 2C12 -2 0 -1 0 6C0 14 19 9 19 18C19 25 7 27 0 22" transform="translate(64 43) scale(.31)" stroke="#E8ECF8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M0 0H20M10 0V24" transform="translate(72.68 43) scale(.31)" stroke="#E8ECF8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M0 0V15C0 28 19 28 19 15V0" transform="translate(81.36000000000001 43) scale(.31)" stroke="#E8ECF8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M0 0V24H7C22 24 22 0 7 0Z" transform="translate(89.73000000000002 43) scale(.31)" stroke="#E8ECF8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M0 0V24" transform="translate(98.72000000000001 43) scale(.31)" stroke="#E8ECF8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 0C-4 0 -4 24 10 24C24 24 24 0 10 0Z" transform="translate(101.82000000000001 43) scale(.31)" stroke="#E8ECF8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg><text x="610" y="368" font-family="sans-serif" font-size="13" letter-spacing="2" fill="#E8ECF8" opacity=".65">XDEV HIVE</text><svg x="590" y="390" width="480" height="234" viewBox="0 0 160 78">
+  <defs>
+    <radialGradient id="x-gradient-ai-optimal-1-1" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#B8F1FF"/>
+      <stop offset="40%" stop-color="#3FA9FF"/>
+      <stop offset="90%" stop-color="#1C58FF"/>
+    </radialGradient>
+    <filter id="x-soft-glow-1-1" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#66B2FF" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+  <text x="8" y="52" transform="scale(1.1,1)" font-family="Space Grotesk, Inter, sans-serif" font-weight="600" font-size="60" fill="url(#x-gradient-ai-optimal-1-1)" filter="url(#x-soft-glow-1-1)">X</text>
+<g stroke="#E8ECF8" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24H7C22 24 22 0 7 0Z" transform="translate(64 12)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(92 12)"/><path d="M0 0L10 24L20 0" transform="translate(117 12)"/></g><g stroke="#E8ECF8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24M18 0V24M0 12H18" transform="translate(64 43) scale(.31)"/><path d="M0 0V24" transform="translate(72.68 43) scale(.31)"/><path d="M0 0L10 24L20 0" transform="translate(75.78 43) scale(.31)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(84.77 43) scale(.31)"/></g></svg></svg>
