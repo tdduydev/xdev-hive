@@ -1,6 +1,6 @@
 # xDev Hive
 
-Bộ nhận diện **X + HIVE**: [logo, màu sắc và hướng dẫn sử dụng](output/branding/brand-notes.md).
+Bộ nhận diện **X + HIVE / DEV HUB**: [logo, màu sắc và hướng dẫn sử dụng](output/branding/brand-notes.md).
 
 Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, Codex, Gemini CLI, Cursor…) chạy trên nhiều gói subscription khác nhau.
 

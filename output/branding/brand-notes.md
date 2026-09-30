@@ -1,6 +1,6 @@
 # xDev Hive identity
 
-The selected identity is **X + HIVE**, extending the [xDev brand](https://xdev.asia/brand/). The original blue X is retained and HIVE uses custom uppercase SVG paths with the same stroke width, cap height and rounded joins as DEV.
+The selected identity is **X + HIVE / DEV HUB**, extending the [xDev brand](https://xdev.asia/brand/). The original blue X is retained and HIVE uses custom uppercase SVG paths with the same stroke width, cap height and rounded joins as DEV. HIVE is the primary name at y=12; DEV HUB is the smaller descriptor at y=43, using the same .31 scale and 2.4-unit stroke as AI Studio’s STUDIO line.
 
 ## Production assets
 
@@ -17,4 +17,8 @@ The original X uses `Space Grotesk, Inter, sans-serif` with weight 600. Install 
 
 ## Exploration archive
 
-`xdev-hive-dev-stack-*` and `xdev-hive-comparison.*` document the alternative DEV / HIVE layout. `xdev-hive-logo-v1.png` and `logo-prompt.txt` are the initial amber concept, superseded by the selected blue identity. These are design references, not production logos.
+`xdev-hive-dev-stack-*`, `xdev-hive-studio-style-*` and `xdev-hive-comparison.*` document the alternative DEV / HIVE layout. `xdev-hive-logo-v1.png` and `logo-prompt.txt` are the initial amber concept, superseded by the selected blue identity. These are design references, not production logos.
+
+## Selected layout — 2026-09-30
+
+The user selected **HIVE / DEV HUB** to make the development focus explicit. The original single-line HIVE and DEV / HIVE layouts are superseded. The primary name remains xDev Hive in written content.
