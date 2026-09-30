@@ -349,7 +349,16 @@ export const schemas = {
     text: z.string().min(1).max(8000),
   }),
   /** Threads, the most recently active first: a project's, or every project the caller sees. */
-  "chat.threads": z.object({ project: project.optional(), limit: z.number().int().min(1).max(200).default(50) }),
+  "chat.threads": z.object({
+    project: project.optional(),
+    /** Words in the title or any message, in any case. */
+    query: z.string().max(200).optional(),
+    limit: z.number().int().min(1).max(200).default(50),
+  }),
+  /** A project manager names a thread. */
+  "chat.rename": z.object({ threadId: id, title: z.string().min(1).max(120) }),
+  /** A project manager removes a thread with its messages; not while a reply is waiting or being written. */
+  "chat.delete": z.object({ threadId: id }),
   /** A thread with its messages; `after` a message id returns only the newer ones (for polling). */
   "chat.get": z.object({ threadId: id, after: z.number().int().min(0).default(0) }),
   /** A machine asks for the replies it should write, between heartbeats (every few seconds while it takes runs). */
@@ -473,6 +482,8 @@ export interface MethodOutput {
   "runs.requestResult": RunRequest;
   "chat.send": { thread: ChatThread; message: ChatMessage; reply: ChatMessage };
   "chat.threads": ChatThread[];
+  "chat.rename": ChatThread;
+  "chat.delete": { deleted: number };
   "chat.get": { thread: ChatThread; messages: ChatMessage[] } | null;
   "chat.poll": ChatRequest[];
   "chat.propose": ChatAction;
@@ -541,6 +552,8 @@ export const METHOD_ROLES: Record<Method, Role> = {
   // Also "manage" on the project, like runs.dispatch.
   "chat.send": "agent",
   "chat.threads": "viewer",
+  "chat.rename": "agent",
+  "chat.delete": "agent",
   "chat.get": "viewer",
   "chat.poll": "agent",
   "chat.propose": "agent",
