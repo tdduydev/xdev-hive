@@ -5,13 +5,13 @@ import { cn } from "cn";
 import { compareVersions, INSTALL_WHEN, type AppRollout, type MachineUpdate } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Switch } from "@xdev-hive/ui/components/ui/switch";
-import { DataTable, type Column } from "../../components/DataTable.tsx";
-import { Empty, ErrorNote } from "../../components/common.tsx";
-import { Chip, type ChipKind } from "../../components/panes.tsx";
-import { DocMarkdown } from "../../components/DocMarkdown.tsx";
-import { formatTime, useAction, useHive, useQuery } from "../../hooks.ts";
-import { useT } from "../../i18n/index.tsx";
-import { useToast } from "../../shell/toast.tsx";
+import { DataTable, type Column } from "#ui/components/DataTable.tsx";
+import { Empty, ErrorNote } from "#ui/components/common.tsx";
+import { Chip, type ChipKind } from "#ui/components/panes.tsx";
+import { DocMarkdown } from "#ui/components/DocMarkdown.tsx";
+import { formatTime, useAction, useHive, useQuery } from "#ui/hooks.ts";
+import { useT } from "#ui/i18n/index.tsx";
+import { useToast } from "#ui/shell/toast.tsx";
 
 const COLORS = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5", "bg-chart-6"];
 

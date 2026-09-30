@@ -1,7 +1,7 @@
 // Warns about invisible characters (bidi controls, tags, zero-width) before the hub refuses the text.
 import { findHidden } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
-import { useT } from "../i18n/index.tsx";
+import { useT } from "#ui/i18n/index.tsx";
 import { Notice } from "./common.tsx";
 
 /** Where the first hidden character is across the fields, and a button that removes them all. */

@@ -15,10 +15,10 @@ import {
 } from "@xdev-hive/ui/components/ui/dropdown-menu";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
-import type { HiveClient } from "../client.ts";
-import { useAction } from "../hooks.ts";
-import { useT } from "../i18n/index.tsx";
-import { useSystemTheme } from "../lib/theme.ts";
+import type { HiveClient } from "#ui/client.ts";
+import { useAction } from "#ui/hooks.ts";
+import { useT } from "#ui/i18n/index.tsx";
+import { useSystemTheme } from "#ui/lib/theme.ts";
 import { XMark } from "./Brand.tsx";
 import { Badge, ErrorNote, Notice, STATUS_TONE } from "./common.tsx";
 import { LanguageMenu, ThemeMenu } from "./Language.tsx";

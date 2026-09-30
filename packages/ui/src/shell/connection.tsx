@@ -2,10 +2,10 @@
 // comes back, doc saves made while it was away (the outbox in the drafts) are sent.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Me } from "@xdev-hive/core";
-import type { HiveClient } from "../client.ts";
-import { errorMessage, usePoll } from "../hooks.ts";
-import { useT } from "../i18n/index.tsx";
-import { DRAFTS_EVENT, isUnreachable, parsePaths, readDrafts, writeDrafts } from "../lib/docdraft.ts";
+import type { HiveClient } from "#ui/client.ts";
+import { errorMessage, usePoll } from "#ui/hooks.ts";
+import { useT } from "#ui/i18n/index.tsx";
+import { DRAFTS_EVENT, isUnreachable, parsePaths, readDrafts, writeDrafts } from "#ui/lib/docdraft.ts";
 import { useToast } from "./toast.tsx";
 
 export interface HubLink {

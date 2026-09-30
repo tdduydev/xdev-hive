@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { findHidden, HiveError, stripHidden, type Actor } from "../src/index.ts";
-import { SqliteHive } from "../src/node.ts";
+import { findHidden, HiveError, stripHidden, type Actor } from "#core/index.ts";
+import { SqliteHive } from "#core/node.ts";
 
 // Built from code points so this file never holds a raw hidden character itself.
 const ch = (...cps: number[]) => String.fromCodePoint(...cps);

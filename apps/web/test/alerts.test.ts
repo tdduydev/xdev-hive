@@ -6,11 +6,11 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import type { Actor, HubAlert } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
-import { AlertStore } from "../src/alerts.ts";
-import { createHubApp } from "../src/app.ts";
-import { TokenStore } from "../src/tokens.ts";
-import { UserStore } from "../src/users.ts";
-import { WebhookStore } from "../src/webhooks.ts";
+import { AlertStore } from "#web/alerts.ts";
+import { createHubApp } from "#web/app.ts";
+import { TokenStore } from "#web/tokens.ts";
+import { UserStore } from "#web/users.ts";
+import { WebhookStore } from "#web/webhooks.ts";
 
 const runner: Actor = { name: "runner.duy-mbp@duy-mbp", role: "agent" };
 const profile = (id: string, over: Record<string, unknown> = {}) => ({

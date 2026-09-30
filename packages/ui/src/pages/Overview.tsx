@@ -6,10 +6,10 @@ import type { DesktopSettings, DocSummary, Memory, Proposal, Task, TaskStatus } 
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
 import { Skeleton } from "@xdev-hive/ui/components/ui/skeleton";
-import { Badge, Empty, ErrorNote, OwnerBadge, Page, PageHeader, STATUS_TONE, StatusDot } from "../components/common.tsx";
-import { formatTime, useHive, useQuery, type QueryState } from "../hooks.ts";
-import { useT, type TFunction } from "../i18n/index.tsx";
-import { ALL, SHARED, docOwner, projectScope, scopeLabel, systemScope } from "../lib/scope.ts";
+import { Badge, Empty, ErrorNote, OwnerBadge, Page, PageHeader, STATUS_TONE, StatusDot } from "#ui/components/common.tsx";
+import { formatTime, useHive, useQuery, type QueryState } from "#ui/hooks.ts";
+import { useT, type TFunction } from "#ui/i18n/index.tsx";
+import { ALL, SHARED, docOwner, projectScope, scopeLabel, systemScope } from "#ui/lib/scope.ts";
 
 type Icon = ComponentType<{ className?: string }>;
 type OpenStatus = Exclude<TaskStatus, "done">;

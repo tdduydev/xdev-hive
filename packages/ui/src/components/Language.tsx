@@ -7,8 +7,8 @@ import {
   DropdownMenuSubTrigger,
 } from "@xdev-hive/ui/components/ui/dropdown-menu";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
-import { isLocale, LOCALES, useI18n, useT } from "../i18n/index.tsx";
-import { THEME_PREFS, useTheme, type ThemePref } from "../lib/theme.ts";
+import { isLocale, LOCALES, useI18n, useT } from "#ui/i18n/index.tsx";
+import { THEME_PREFS, useTheme, type ThemePref } from "#ui/lib/theme.ts";
 
 const entries = Object.entries(LOCALES) as Array<[keyof typeof LOCALES, (typeof LOCALES)[keyof typeof LOCALES]]>;
 

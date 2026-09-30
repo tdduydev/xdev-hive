@@ -23,10 +23,10 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@xdev-hive/ui/components/ui/tabs";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
-import { Badge, Empty, ErrorNote, Page, PageHeader } from "../components/common.tsx";
-import { ProfileStates } from "../components/ProfileStates.tsx";
-import { formatTime, useAction, useHive, useProjects, useQuery } from "../hooks.ts";
-import { hasKey, rich, useT, type MessageKey } from "../i18n/index.tsx";
+import { Badge, Empty, ErrorNote, Page, PageHeader } from "#ui/components/common.tsx";
+import { ProfileStates } from "#ui/components/ProfileStates.tsx";
+import { formatTime, useAction, useHive, useProjects, useQuery } from "#ui/hooks.ts";
+import { hasKey, rich, useT, type MessageKey } from "#ui/i18n/index.tsx";
 import { WebhooksTab } from "./Webhooks.tsx";
 
 type Tab = "machines" | "policy" | "audit" | "webhooks";

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { Actor } from "../src/index.ts";
-import { SqliteHive } from "../src/node.ts";
+import type { Actor } from "#core/index.ts";
+import { SqliteHive } from "#core/node.ts";
 
 const mbp: Actor = { name: "runner.duy-mbp@duy", role: "agent" };
 const imac: Actor = { name: "runner.lan-imac@lan", role: "agent" };

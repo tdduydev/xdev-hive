@@ -1,7 +1,7 @@
 // One short message at the bottom of the window, optionally with an undo (DS: inverse surface, auto-hides).
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
-import { useT } from "../i18n/index.tsx";
+import { useT } from "#ui/i18n/index.tsx";
 
 export interface ToastOptions {
   /** Shows an Undo button; runs this and hides the toast. */

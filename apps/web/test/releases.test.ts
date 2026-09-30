@@ -7,10 +7,10 @@ import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { compareVersions } from "@xdev-hive/core";
-import { createHubApp } from "../src/app.ts";
-import { bucket, ReleaseStore } from "../src/releases.ts";
-import { TokenStore } from "../src/tokens.ts";
-import { UserStore } from "../src/users.ts";
+import { createHubApp } from "#web/app.ts";
+import { bucket, ReleaseStore } from "#web/releases.ts";
+import { TokenStore } from "#web/tokens.ts";
+import { UserStore } from "#web/users.ts";
 
 let base = "";
 let close: () => void;

@@ -3,10 +3,10 @@ import { createHash, randomBytes } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { after, before, describe, it } from "node:test";
 import { SqliteHive } from "@xdev-hive/core/node";
-import { createHubApp } from "../src/app.ts";
-import { safeReturn } from "../src/oidc.ts";
-import { TokenStore } from "../src/tokens.ts";
-import { UserStore } from "../src/users.ts";
+import { createHubApp } from "#web/app.ts";
+import { safeReturn } from "#web/oidc.ts";
+import { TokenStore } from "#web/tokens.ts";
+import { UserStore } from "#web/users.ts";
 
 let base = "";
 let close: () => void;

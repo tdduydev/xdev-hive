@@ -49,9 +49,9 @@ import {
   type Task,
   type UpdateOffer,
 } from "@xdev-hive/core";
-import { tr } from "../i18n.ts";
-import { git, isGitRepo } from "../git.ts";
-import { NO_FEATURES, repoFeatures } from "../installer.ts";
+import { tr } from "#desktop/main/i18n.ts";
+import { git, isGitRepo } from "#desktop/main/git.ts";
+import { NO_FEATURES, repoFeatures } from "#desktop/main/installer.ts";
 import { containerCommand } from "./container.ts";
 import { claudeMcpServers, codexMcpArgs, hubMcpEnv, type McpRun } from "./container-mcp.ts";
 import { deniedHosts, egressAllow, egressPlan, type Egress } from "./egress.ts";

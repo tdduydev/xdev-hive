@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { AGENT_TEMPLATES, HiveError, missingRequired, requiredItemIds, type Actor, type SetupReport } from "../src/index.ts";
-import { SqliteHive } from "../src/node.ts";
+import { AGENT_TEMPLATES, HiveError, missingRequired, requiredItemIds, type Actor, type SetupReport } from "#core/index.ts";
+import { SqliteHive } from "#core/node.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
 const mbp: Actor = { name: "runner.duy-mbp@duy", role: "agent" };

@@ -4,9 +4,9 @@ import { copyFileSync, existsSync, mkdirSync, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { HiveError, RULES_DIR } from "@xdev-hive/core";
-import { git, gitAsync, gitErrorText, isGitRepo } from "../git.ts";
-import { tr } from "../i18n.ts";
-import { RENDERED_FILES } from "../installer.ts";
+import { git, gitAsync, gitErrorText, isGitRepo } from "#desktop/main/git.ts";
+import { tr } from "#desktop/main/i18n.ts";
+import { RENDERED_FILES } from "#desktop/main/installer.ts";
 
 /** Agent config that may exist in the repo but not be committed yet; copied into new worktrees. */
 export const AGENT_CONFIG_FILES = [".mcp.json", ".gemini/settings.json", ".claude/settings.json", ".xdev-hive/guard-docs.sh"];

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { AgentRun, Memory, Proposal, Task } from "@xdev-hive/core";
-import { buildInbox, inboxProject, shortAgo } from "../src/lib/inbox.ts";
+import { buildInbox, inboxProject, shortAgo } from "#ui/lib/inbox.ts";
 
 const run = (over: Partial<AgentRun>): AgentRun => ({ id: "R-1", project: "demo", taskId: "T-1", createdAt: "2026-09-30T10:00:00Z", mrUrl: null, pipelineStatus: null, ...over }) as AgentRun;
 const memory = (over: Partial<Memory>): Memory => ({ id: 1, project: "demo", kind: "decision", content: "x", author: "a", status: "approved", createdAt: "2026-09-30T09:00:00Z", conflictsWith: [], ...over }) as Memory;

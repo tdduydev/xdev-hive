@@ -16,10 +16,10 @@ import {
   type HiveBackend,
   type Task,
 } from "@xdev-hive/core";
-import { git, gitAsync, gitErrorText } from "../git.ts";
-import { tr } from "../i18n.ts";
-import type { RunStore } from "../runner/store.ts";
-import { GitHubClient, type GitHubPull } from "../github/client.ts";
+import { git, gitAsync, gitErrorText } from "#desktop/main/git.ts";
+import { tr } from "#desktop/main/i18n.ts";
+import type { RunStore } from "#desktop/main/runner/store.ts";
+import { GitHubClient, type GitHubPull } from "#desktop/main/github/client.ts";
 import { GitLabClient, type FetchLike, type GitLabMr } from "./client.ts";
 import { mrDescription, mrTitle, parseVerdict, type Verdict } from "./describe.ts";
 import { parseRemoteUrl, type RemoteInfo } from "./remote.ts";

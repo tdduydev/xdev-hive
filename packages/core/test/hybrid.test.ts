@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { describe, it } from "node:test";
-import { fuseRanks, normalize, openAiEmbedder, similarity, type Actor, type Embedder } from "../src/index.ts";
-import { SqliteHive } from "../src/node.ts";
+import { fuseRanks, normalize, openAiEmbedder, similarity, type Actor, type Embedder } from "#core/index.ts";
+import { SqliteHive } from "#core/node.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
 const claude: Actor = { name: "claude@duy", role: "agent" };

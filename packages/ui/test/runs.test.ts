@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { setActiveLocale } from "../src/i18n/translate.ts";
-import { fixInstructions, isLive, latestReviews, runDuration, runLabel } from "../src/lib/runs.ts";
+import { setActiveLocale } from "#ui/i18n/translate.ts";
+import { fixInstructions, isLive, latestReviews, runDuration, runLabel } from "#ui/lib/runs.ts";
 
 describe("run helpers", () => {
   it("measures a run from its start, to its end or to now", () => {

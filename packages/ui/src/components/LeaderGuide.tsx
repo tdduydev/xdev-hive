@@ -9,9 +9,9 @@ import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@xdev-hive/ui/components/ui/sheet";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
-import { useAction, useHive, useQuery } from "../hooks.ts";
-import { useT } from "../i18n/index.tsx";
-import { buildSkill, LEADER_SKILL, leaderGuide } from "../lib/skills.ts";
+import { useAction, useHive, useQuery } from "#ui/hooks.ts";
+import { useT } from "#ui/i18n/index.tsx";
+import { buildSkill, LEADER_SKILL, leaderGuide } from "#ui/lib/skills.ts";
 import { Badge, ErrorNote, Notice } from "./common.tsx";
 
 export function LeaderGuideSheet({

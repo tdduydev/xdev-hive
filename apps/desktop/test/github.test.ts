@@ -17,14 +17,14 @@ import {
   type MrSettings,
 } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
-import { actionsLog, failureId } from "../src/main/github/checks.ts";
-import { checksStatus, githubApi, pullRef, type GitHubCheckRun } from "../src/main/github/client.ts";
-import { CiFixer } from "../src/main/gitlab/ci-fix.ts";
-import { forgeOf, MergeRequester, mrLabel, pushEnv } from "../src/main/gitlab/mr.ts";
-import { MrWatcher } from "../src/main/gitlab/watch.ts";
-import { parseRemoteUrl } from "../src/main/gitlab/remote.ts";
-import { ciFixLines } from "../src/main/runner/command.ts";
-import { Runner } from "../src/main/runner/runner.ts";
+import { actionsLog, failureId } from "#desktop/main/github/checks.ts";
+import { checksStatus, githubApi, pullRef, type GitHubCheckRun } from "#desktop/main/github/client.ts";
+import { CiFixer } from "#desktop/main/gitlab/ci-fix.ts";
+import { forgeOf, MergeRequester, mrLabel, pushEnv } from "#desktop/main/gitlab/mr.ts";
+import { MrWatcher } from "#desktop/main/gitlab/watch.ts";
+import { parseRemoteUrl } from "#desktop/main/gitlab/remote.ts";
+import { ciFixLines } from "#desktop/main/runner/command.ts";
+import { Runner } from "#desktop/main/runner/runner.ts";
 import { startMockGitHub, type MockGitHub } from "./fixtures/mock-github.ts";
 
 const FAKE = path.join(import.meta.dirname, "fixtures", "fake-agent.mjs");

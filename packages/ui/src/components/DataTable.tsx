@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Check, ChevronLeft, ChevronRight, Minus, Search } from "lucide-react";
 import { cn } from "cn";
-import { useT } from "../i18n/index.tsx";
-import { pagesToShow } from "../lib/table.ts";
-import { fold } from "../lib/text.ts";
+import { useT } from "#ui/i18n/index.tsx";
+import { pagesToShow } from "#ui/lib/table.ts";
+import { fold } from "#ui/lib/text.ts";
 
 export interface Column<T> {
   key: string;

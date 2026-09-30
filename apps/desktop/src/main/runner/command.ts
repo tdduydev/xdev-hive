@@ -3,8 +3,8 @@ import { accessSync, constants, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AgentProfile, AgentRole, CiFix } from "@xdev-hive/core";
-import { fence } from "../gitlab/describe.ts";
-import { NO_FEATURES, runMcpServers, SUPERPOWERS_PLUGIN, type RepoFeatures } from "../installer.ts";
+import { fence } from "#desktop/main/gitlab/describe.ts";
+import { NO_FEATURES, runMcpServers, SUPERPOWERS_PLUGIN, type RepoFeatures } from "#desktop/main/installer.ts";
 import { outputFormat } from "./usage.ts";
 
 export interface PromptContext {

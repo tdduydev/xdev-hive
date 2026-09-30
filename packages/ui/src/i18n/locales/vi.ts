@@ -1,5 +1,5 @@
 // Source catalogue: its keys are the keys of every other language. `{name}` is filled in by t().
-import type { KeyPaths, Translation } from "../types.ts";
+import type { KeyPaths, Translation } from "#ui/i18n/types.ts";
 
 export const vi = {
   common: {

@@ -5,7 +5,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { actionTask, chatMachines, isLiveReply, linkIds, machineName, mergeMessages, pollAfter, remarkHiveLinks, REPLY_MARKDOWN, stepCount, withAction } from "../src/lib/chat.ts";
+import { actionTask, chatMachines, isLiveReply, linkIds, machineName, mergeMessages, pollAfter, remarkHiveLinks, REPLY_MARKDOWN, stepCount, withAction } from "#ui/lib/chat.ts";
 
 const profile = (over: Partial<ReportedProfile> = {}): ReportedProfile => ({
   id: "claude-1",

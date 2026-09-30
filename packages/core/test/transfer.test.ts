@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { transferHive, type Actor, type TransferReport } from "../src/index.ts";
-import { SqliteHive } from "../src/node.ts";
+import { transferHive, type Actor, type TransferReport } from "#core/index.ts";
+import { SqliteHive } from "#core/node.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
 const agent: Actor = { name: "hive-transfer@duy-macbook", role: "agent" };

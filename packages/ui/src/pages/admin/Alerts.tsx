@@ -4,12 +4,12 @@ import { useEffect, useState } from "react";
 import { cn } from "cn";
 import type { AlertRule, FeedEvent, HubAlert } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
-import { ErrorNote } from "../../components/common.tsx";
-import { errorMessage, formatTime, useHive, useQuery } from "../../hooks.ts";
-import { useT, type TFunction } from "../../i18n/index.tsx";
-import { activeIntl } from "../../i18n/translate.ts";
-import { useToast } from "../../shell/toast.tsx";
-import { ACTION_LABEL } from "../Admin.tsx";
+import { ErrorNote } from "#ui/components/common.tsx";
+import { errorMessage, formatTime, useHive, useQuery } from "#ui/hooks.ts";
+import { useT, type TFunction } from "#ui/i18n/index.tsx";
+import { activeIntl } from "#ui/i18n/translate.ts";
+import { useToast } from "#ui/shell/toast.tsx";
+import { ACTION_LABEL } from "#ui/pages/Admin.tsx";
 
 const SEV = {
   high: "bg-danger-soft text-danger border-danger-line",

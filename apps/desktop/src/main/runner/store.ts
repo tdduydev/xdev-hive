@@ -4,7 +4,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { AgentKind, AgentRole, AgentRun, BestOf, CiFix, MrState, MrStatus, PipelineStatus, RunStatus } from "@xdev-hive/core";
-import { tr } from "../i18n.ts";
+import { tr } from "#desktop/main/i18n.ts";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS runs(
