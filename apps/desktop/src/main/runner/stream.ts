@@ -23,6 +23,24 @@ function rel(file: unknown, cwd: string): string {
 }
 
 /** "Bash: mvn -B verify", "Edit src/Main.java", "memory_search: jwt refresh". */
+/**
+ * Puts the time each line was written before it (ISO, to the second, UTC, then a tab), so the log viewer shows when
+ * every step happened (roadmap 22l). Blank lines stay bare; a line that arrives in pieces is stamped once.
+ */
+export function lineStamper(now: () => Date = () => new Date()): (text: string) => string {
+  let atStart = true;
+  return (text) => {
+    if (!text) return text;
+    let out = "";
+    for (const part of text.split(/(?<=\n)/)) {
+      if (atStart && part !== "\n") out += `${now().toISOString().slice(0, 19)}Z\t`;
+      out += part;
+      atStart = part.endsWith("\n");
+    }
+    return out;
+  };
+}
+
 export function toolLine(name: string, input: Json, cwd: string): string {
   const short = name.replace(/^mcp__.+?__/, "");
   switch (name) {

@@ -1163,6 +1163,9 @@ export const vi = {
     expired: "Hết hạn",
   },
   runs: {
+    steps: "Các bước của run",
+    step: { read: "Đọc context", code: "Viết code", test: "Chạy test", deliver: "Commit và MR", readDiff: "Đọc diff", check: "Kiểm tra", comment: "Nhận xét", plan: "Lập kế hoạch", write: "Ghi lại" },
+    patchNotSent: "{machine} chưa gửi thay đổi của run này (máy gửi khi run xong, và mỗi phút khi đang chạy).",
     subtitle: "Run của agent trên mọi máy nối hub, trong các dự án bạn thấy: đang làm gì, trên máy và gói nào, chi phí, MR. Chọn một run để xem log (secret đã được ẩn); run đang chạy tự làm mới.",
     none: "Chưa máy nào báo run lên hub.",
     machine: "Máy · gói",
@@ -1965,6 +1968,7 @@ export const vi = {
     allResting: "Mọi gói đang nghỉ vì quota, sớm nhất {time}",
     appClosed: "App đã đóng khi run đang chạy",
     logClipped: "…(đã cắt phần đầu)",
+    patchClipped: "…(diff quá dài, đã cắt phần sau)",
     noWorktree: "Run chưa có worktree.",
     worktreeGone: "Worktree đã bị xoá.",
     noCommits: "(chưa có commit)",
