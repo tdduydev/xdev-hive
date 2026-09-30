@@ -187,6 +187,7 @@ export const en: Catalog = {
     rangeLabel: "Time range",
     group: { ops: "Operations", watch: "Monitoring", knowledge: "Knowledge", admin: "Administration" },
     nav: {
+      chat: "Chat",
       hub: "Hub",
       context: "Agent context",
       alerts: "Alerts",
@@ -210,6 +211,7 @@ export const en: Catalog = {
       audit: "Audit log",
     },
     hint: {
+      chat: "Talk to each project's leader agent",
       hub: "Version, database, backups, meaning search, sign-in",
       context: "The AGENTS.md and what a project's agents get",
       alerts: "Open incidents and the rules that raise them",
