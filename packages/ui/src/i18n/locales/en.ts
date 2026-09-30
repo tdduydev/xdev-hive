@@ -1161,6 +1161,9 @@ export const en: Catalog = {
     expired: "Expired",
   },
   runs: {
+    steps: "The run's steps",
+    step: { read: "Read context", code: "Write code", test: "Run tests", deliver: "Commit & MR", readDiff: "Read the diff", check: "Check", comment: "Comment", plan: "Plan", write: "Write it down" },
+    patchNotSent: "{machine} has not sent this run's changes yet (it sends them when the run ends, and every minute while it runs).",
     subtitle: "Agent runs on every machine connected to the hub, in the projects you can see: what they are doing, on which machine and plan, cost, MR. Pick a run to read its log (secrets hidden); a running run refreshes by itself.",
     none: "No machine has reported a run to the hub yet.",
     machine: "Machine · plan",
@@ -1963,6 +1966,7 @@ export const en: Catalog = {
     allResting: "Every subscription is resting after running out of quota; the first is back at {time}",
     appClosed: "The app closed while the run was going",
     logClipped: "…(beginning cut)",
+    patchClipped: "…(diff too long, the rest cut)",
     noWorktree: "The run has no worktree yet.",
     worktreeGone: "The worktree was removed.",
     noCommits: "(no commits yet)",
