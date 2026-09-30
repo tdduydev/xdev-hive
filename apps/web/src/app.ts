@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, type Hash } from "node:crypto";
 import { createWriteStream, rmSync } from "node:fs";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -122,6 +122,9 @@ function readCookie(req: Request, name: string): string | null {
 function publicUser(u: UserInfo): NonNullable<Me["user"]> {
   return { id: u.id, username: u.username, displayName: u.displayName, admin: u.admin, mustChangePassword: u.mustChangePassword };
 }
+
+/** The most a part of an uploaded build may be (under the 100 MB a Cloudflare tunnel lets through). */
+export const UPLOAD_PART_BYTES = 64 * 1024 * 1024;
 
 export function createHubApp({
   hive,
@@ -491,7 +494,8 @@ export function createHubApp({
         requireHubAdmin(res);
         if (!releases) throw new HiveError("bad_request", `Unknown method ${method}`);
         if (method === "releases.list") {
-          res.json({ result: { releases: releases.list(), rollout: releases.rollout(), machines: releases.machines() } });
+          // uploadPart: the hub takes a build in parts of at most this size (release.mjs asks before it sends parts).
+          res.json({ result: { releases: releases.list(), rollout: releases.rollout(), machines: releases.machines(), uploadPart: UPLOAD_PART_BYTES } });
         } else if (method === "releases.setRollout") {
           const r = releases.setRollout(i as Partial<AppRollout>, actor.name);
           hive.audit(actor, "releases.setRollout", r.target ?? "—", `${r.percent}%${r.paused ? " · paused" : ""} · ${r.installWhen}${r.minVersion ? ` · min ${r.minVersion}` : ""}`);
@@ -648,24 +652,74 @@ export function createHubApp({
   // Desktop builds (roadmap 22i): the release script uploads each one (a hub admin's token); machines download the one
   // their heartbeat offered with their own token.
   if (releases) {
+    // A proxy in front of the hub may refuse big bodies (Cloudflare's tunnel: 413 over 100 MB), and builds are bigger:
+    // those come as the parts of one upload (?upload=<id>&part=<i>&parts=<n>&sha256=<of the whole file>), appended in
+    // order; the last part adds the build. A part out of order drops the upload, and the script sends it again.
+    const uploads = new Map<string, { tmp: string; next: number; parts: number; name: string; hash: Hash; at: number }>();
+    const drop = (id: string) => {
+      const u = uploads.get(id);
+      if (u) rmSync(u.tmp, { force: true });
+      uploads.delete(id);
+    };
     app.post("/api/releases/upload", auth, async (req, res) => {
-      const tmp = releases.tmpFile();
+      const q = (k: string) => String(req.query[k] ?? "");
+      const id = q("upload");
+      // Parts nobody went on with for an hour are gone.
+      for (const [k, u] of uploads) if (Date.now() - u.at > 3_600_000) drop(k);
+      let tmp = releases.tmpFile();
       try {
         requireHubAdmin(res);
-        const q = (k: string) => String(req.query[k] ?? "");
-        const hash = createHash("sha256");
+        let upload: { tmp: string; hash: Hash; next: number; parts: number } | null = null;
+        if (id) {
+          const part = Number(q("part"));
+          const parts = Number(q("parts"));
+          if (!/^[a-f0-9]{16,64}$/.test(id) || !Number.isInteger(part) || !Number.isInteger(parts) || parts < 1 || parts > 1000 || part < 0 || part >= parts) {
+            throw new HiveError("bad_request", "upload, part and parts do not fit together.", { key: "errors.releasePart", vars: { part: q("part"), expected: 0 } });
+          }
+          if (part === 0) {
+            drop(id);
+            uploads.set(id, { tmp, next: 0, parts, name: q("name"), hash: createHash("sha256"), at: Date.now() });
+          }
+          const u = uploads.get(id);
+          if (!u || u.next !== part || u.parts !== parts || u.name !== q("name")) {
+            const expected = u?.next ?? 0;
+            drop(id);
+            throw new HiveError("conflict", `Part ${part} of ${q("name")} came, the hub waited for part ${expected}: send the file again.`, {
+              key: "errors.releasePart",
+              vars: { part, expected },
+            });
+          }
+          tmp = u.tmp;
+          upload = u;
+        }
+        const hash = upload?.hash ?? createHash("sha256");
         const tap = new Transform({
           transform(chunk: Buffer, _enc, done) {
             hash.update(chunk);
             done(null, chunk);
           },
         });
-        await pipeline(req, tap, createWriteStream(tmp));
-        const file = releases.add({ version: q("version"), channel: q("channel"), platform: q("platform"), arch: q("arch"), kind: q("kind"), name: q("name"), tmpFile: tmp, sha256: hash.digest("hex") });
+        await pipeline(req, tap, createWriteStream(tmp, { flags: upload ? "a" : "w" }));
+        if (upload) {
+          const u = uploads.get(id)!;
+          u.next++;
+          u.at = Date.now();
+          if (u.next < u.parts) {
+            res.json({ result: { received: u.next, parts: u.parts } });
+            return;
+          }
+          uploads.delete(id);
+        }
+        const sha256 = hash.digest("hex");
+        if (q("sha256") && q("sha256") !== sha256) {
+          throw new HiveError("bad_request", `${q("name")} arrived with another SHA-256 than it was sent with.`, { key: "errors.releaseChecksum", vars: { name: q("name") } });
+        }
+        const file = releases.add({ version: q("version"), channel: q("channel"), platform: q("platform"), arch: q("arch"), kind: q("kind"), name: q("name"), tmpFile: tmp, sha256 });
         hive.audit(actorOf(res), "releases.upload", `${file.version}/${file.name}`, `${file.platform}-${file.arch} · ${(file.size / 1e6).toFixed(0)} MB`);
         res.json({ result: file });
       } catch (err) {
         rmSync(tmp, { force: true });
+        if (id) drop(id);
         sendError(res, err);
       }
     });

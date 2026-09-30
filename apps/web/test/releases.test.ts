@@ -31,6 +31,7 @@ before(async () => {
   close = () => server.close();
 });
 after(() => close());
+const baseUrl = () => base;
 
 async function rpc(token: string, method: string, input?: unknown, agent = "runner.duy-mbp") {
   const res = await fetch(`${base}/api/rpc`, {
@@ -90,6 +91,32 @@ describe("app releases", () => {
     const list = (await rpc(tok.admin, "releases.list")).body.result;
     assert.deepEqual(list.releases.map((r: { version: string }) => r.version), ["0.80.0"]);
     assert.deepEqual(list.machines.map((m: { current: string; state: string; percent: number }) => [m.current, m.state, m.percent]), [["0.75.0", "downloading", 42]]);
+  });
+
+  it("takes a big build in parts (a proxy refuses big bodies), in order, and checks the whole file", async () => {
+    const list = (await rpc(tok.admin, "releases.list")).body.result;
+    assert.equal(list.uploadPart, 64 * 1024 * 1024, "the hub says how big a part may be");
+    const whole = new TextEncoder().encode("linux build of 0.80.0, sent in three parts");
+    const cut = [whole.slice(0, 10), whole.slice(10, 25), whole.slice(25)];
+    const sha256 = createHash("sha256").update(whole).digest("hex");
+    const base = { version: "0.80.0", channel: "stable", platform: "linux", arch: "arm64", kind: "AppImage", name: "xdev-hive-0.80.0-linux-arm64.AppImage", sha256, upload: "a1b2c3d4e5f60718", parts: "3" };
+    const part = (i: number, extra: Record<string, string> = {}) => upload(tok.admin, { ...base, part: String(i), ...extra }, cut[i]!);
+    const first = await part(0);
+    assert.deepEqual(((await first.json()) as { result: unknown }).result, { received: 1, parts: 3 });
+    const skipped = await part(2);
+    assert.equal(skipped.status, 409, "part 2 before part 1");
+    assert.equal(((await skipped.json()) as { error: { key: string } }).error.key, "errors.releasePart");
+    // The upload was dropped: it starts again from part 0.
+    assert.equal((await part(1)).status, 409);
+    for (const i of [0, 1]) assert.equal((await part(i)).status, 200);
+    const done = ((await (await part(2)).json()) as { result: { size: number; sha256: string } }).result;
+    assert.deepEqual([done.size, done.sha256], [whole.length, sha256]);
+    const dl = await fetch(`${baseUrl()}/api/releases/files/${(done as unknown as { id: number }).id}`, { headers: { authorization: `Bearer ${tok.machine}` } });
+    assert.deepEqual(new Uint8Array(await dl.arrayBuffer()), whole);
+
+    const wrong = { ...base, upload: "ffeeddccbbaa9988", parts: "1", sha256: "0".repeat(64) };
+    const bad = await upload(tok.admin, { ...wrong, part: "0" }, whole);
+    assert.equal(((await bad.json()) as { error: { key: string } }).error.key, "errors.releaseChecksum");
   });
 
   it("offers nothing while paused or outside the rollout's share, or for a platform without a build", async () => {
