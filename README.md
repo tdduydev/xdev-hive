@@ -478,6 +478,8 @@ Trên hub, agent giữ task với tên `<gói>.<máy>@<token>`, ví dụ `claude
       - Câu trả lời và từng khối code có nút *Copy*.
       - Câu trả lời cuối bị lỗi, hết hạn hay bị dừng có nút *Gửi lại*: gửi lại đúng tin nó trả lời.
       - Enter để gửi, Shift+Enter để xuống dòng.
+    - Ô tìm trên danh sách thread: tìm theo tiêu đề và nội dung mọi tin, không phân biệt hoa thường (kể cả chữ có dấu như Đ/đ). `%` và `_` được hiểu đúng là ký tự (roadmap 17f).
+    - Người quản trị dự án đổi tên thread (`chat.rename`) và xoá thread cùng tin nhắn và đề xuất của nó (`chat.delete`). Thread đang chờ câu trả lời thì phải dừng câu trả lời trước khi xoá.
     - Trong câu trả lời, mã task của dự án và mã run (`R-…`) là link: sang *Task* (mở panel của task) hoặc *Lượt chạy* (mở run đó). Trang hiện `code`, **đậm**, *nghiêng*, khối ``` và link web; phần còn lại giữ nguyên chữ.
     - `#/chat?thread=<số>` mở thẳng một thread; quay lại trang thì thread vẫn mở. Người chỉ có quyền xem đọc được nhưng không gửi được. Link *run …* ở yêu cầu chạy của trang *Task* cũng mở thẳng run đó.
     - Leader làm việc với quyền của token câu trả lời. Máy dùng token role *agent* thì leader chỉ tới mức đóng góp, nên nó không tự tạo task hay xếp run. Nó đề xuất các việc đó (dưới đây).

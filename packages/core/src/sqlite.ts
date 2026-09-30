@@ -578,6 +578,8 @@ export class SqliteHive implements HiveBackend {
       ...opts,
     };
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;");
+    // Case folding SQLite's LIKE leaves out beyond ASCII (Đ and đ): searches compare hive_fold of both sides.
+    this.db.function("hive_fold", { deterministic: true }, (v) => (typeof v === "string" ? v.normalize("NFC").toLocaleLowerCase("vi") : v));
     this.#migrate();
     this.#handlers = this.#buildHandlers();
   }
@@ -677,6 +679,12 @@ export class SqliteHive implements HiveBackend {
       case "chat.decide": {
         const row = this.db.prepare("SELECT project FROM chat_actions WHERE id = ?").get(i.actionId) as Row | undefined;
         if (row) this.#need(actor, str(row.project), "manage", `Chat action #${i.actionId}`);
+        return;
+      }
+      case "chat.rename":
+      case "chat.delete": {
+        const row = this.db.prepare("SELECT project FROM chat_threads WHERE id = ?").get(i.threadId) as Row | undefined;
+        if (row) this.#need(actor, str(row.project), "manage", `Chat #${i.threadId}`);
         return;
       }
       case "chat.cancel": {
@@ -1915,12 +1923,40 @@ export class SqliteHive implements HiveBackend {
           return { thread: this.#chatThread(id), message: this.#chatMessage(message), reply: this.#chatMessage(reply) };
         }),
 
-      "chat.threads": ({ project, limit }) => {
+      "chat.threads": ({ project, query, limit }) => {
         this.#expireChats();
-        return (db.prepare(`${THREAD_SELECT} WHERE (?1 IS NULL OR t.project = ?1) ORDER BY t.updated_at DESC, t.id DESC LIMIT ?2`).all(project ?? null, limit) as Row[]).map(
-          toChatThread,
-        );
+        const words = query?.trim();
+        // Found in the title or in any message; % and _ are the person's own characters, not wildcards.
+        const like = words ? `%${words.normalize("NFC").toLocaleLowerCase("vi").replace(/[\\%_]/g, "\\$&")}%` : null;
+        return (
+          db
+            .prepare(
+              `${THREAD_SELECT} WHERE (?1 IS NULL OR t.project = ?1)
+                 AND (?3 IS NULL OR hive_fold(t.title) LIKE ?3 ESCAPE '\\'
+                   OR EXISTS (SELECT 1 FROM chat_messages q WHERE q.thread_id = t.id AND hive_fold(q.text) LIKE ?3 ESCAPE '\\'))
+               ORDER BY t.updated_at DESC, t.id DESC LIMIT ?2`,
+            )
+            .all(project ?? null, limit, like) as Row[]
+        ).map(toChatThread);
       },
+
+      "chat.rename": ({ threadId, title }) =>
+        this.#tx(() => {
+          this.#chatThread(threadId);
+          assertNoHidden(title, "Title");
+          db.prepare("UPDATE chat_threads SET title = ? WHERE id = ?").run(title.trim().slice(0, 120), threadId);
+          return this.#chatThread(threadId);
+        }),
+
+      // A reply being written would lose its place: stop it first.
+      "chat.delete": ({ threadId }) =>
+        this.#tx(() => {
+          if (this.#chatThread(threadId).busy) {
+            throw new HiveError("conflict", `Chat #${threadId} still waits for its reply.`, { key: "errors.chatBusy", vars: { id: threadId } });
+          }
+          db.prepare("DELETE FROM chat_threads WHERE id = ?").run(threadId);
+          return { deleted: threadId };
+        }),
 
       "chat.get": ({ threadId, after }) => {
         this.#expireChats();
