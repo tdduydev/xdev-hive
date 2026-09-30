@@ -532,6 +532,13 @@ export const en: Catalog = {
   chat: {
     subtitle: "Talk with a project's leader agent. It runs on a team machine's Claude plan (a machine that takes runs from the hub), reads the repo and works through Hive: tasks, runs, docs. Replies show as the machine writes them.",
     threads: "Chats",
+    search: "Search titles and messages",
+    noMatch: "No chat has \"{query}\".",
+    rename: "Rename",
+    save: "Save",
+    delete: "Delete chat",
+    deleteBusy: "A reply is pending: stop it before deleting.",
+    confirmDelete: "Delete the chat \"{title}\" with all its messages and proposals?",
     new: "New chat",
     newHint: "Pick the machine that holds the chat: every later reply is written there, in the same Claude Code session.",
     none: "No chat yet.",
