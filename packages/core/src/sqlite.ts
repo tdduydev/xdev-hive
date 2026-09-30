@@ -667,6 +667,13 @@ export class SqliteHive implements HiveBackend {
         if (row) this.#need(actor, str(row.project), "contribute", `Chat reply #${actor.chatReply}`);
         return;
       }
+      case "chat.decideAll": {
+        const row = this.db
+          .prepare("SELECT t.project FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id WHERE m.id = ?")
+          .get(i.replyId) as Row | undefined;
+        if (row) this.#need(actor, str(row.project), "manage", `Chat reply #${i.replyId}`);
+        return;
+      }
       case "chat.decide": {
         const row = this.db.prepare("SELECT project FROM chat_actions WHERE id = ?").get(i.actionId) as Row | undefined;
         if (row) this.#need(actor, str(row.project), "manage", `Chat action #${i.actionId}`);
@@ -1960,17 +1967,21 @@ export class SqliteHive implements HiveBackend {
             assertNoSecret(text, what);
           }
           const task = (id: string) => db.prepare("SELECT project FROM tasks WHERE id = ?").get(id) as Row | undefined;
+          // A task of the project, or one this reply also proposes to create (confirming all makes it first).
+          const planned = (id: string) =>
+            db.prepare("SELECT 1 FROM chat_actions WHERE reply_id = ? AND kind = 'task.create' AND json_extract(input, '$.id') = ?").get(replyId, id) !== undefined;
+          const known = (id: string) => str(task(id)?.project ?? "") === project || planned(id);
           const missing = (id: string) =>
             new HiveError("not_found", `Task ${id} not found in ${project}.`, { key: "errors.chatTaskNotFound", vars: { id, project } });
           let input: Record<string, unknown>;
           if (action.kind === "task.create") {
-            if (task(action.id)) throw new HiveError("conflict", `Task ${action.id} already exists.`, { key: "errors.taskExists", vars: { id: action.id } });
+            if (task(action.id) || planned(action.id)) throw new HiveError("conflict", `Task ${action.id} already exists.`, { key: "errors.taskExists", vars: { id: action.id } });
             input = { id: action.id, project, title: action.title, dependsOn: action.dependsOn };
           } else if (action.kind === "task.update") {
-            if (str(task(action.id)?.project ?? "") !== project) throw missing(action.id);
+            if (!known(action.id)) throw missing(action.id);
             input = { id: action.id, status: action.status, ...(action.note === undefined ? {} : { note: action.note }) };
           } else {
-            if (str(task(action.taskId)?.project ?? "") !== project) throw missing(action.taskId);
+            if (!known(action.taskId)) throw missing(action.taskId);
             // The chat's own machine unless the leader names another (by hub id or machine name).
             const wanted = action.machine ?? str(reply.machine_id);
             const m = db.prepare("SELECT id FROM machines WHERE id = ? OR machine = ? ORDER BY last_seen DESC LIMIT 1").get(wanted, wanted) as Row | undefined;
@@ -2019,6 +2030,30 @@ export class SqliteHive implements HiveBackend {
           db.prepare("UPDATE chat_actions SET status = 'failed', error = ? WHERE id = ?").run(JSON.stringify(why), actionId);
         }
         return this.#chatAction(actionId);
+      },
+
+      // Tasks first, then status changes, then runs, each in the order proposed: a run may be for a task the reply
+      // also creates. The first that fails stops the rest, which wait for a person to look.
+      "chat.decideAll": async ({ replyId, accept }, actor) => {
+        if (!db.prepare("SELECT 1 FROM chat_messages WHERE id = ? AND role = 'assistant'").get(replyId)) {
+          throw new HiveError("not_found", `Chat reply #${replyId} not found.`, { key: "errors.chatReplyNotFound", vars: { id: replyId } });
+        }
+        const all = () => (db.prepare("SELECT * FROM chat_actions WHERE reply_id = ? ORDER BY id").all(replyId) as Row[]).map(toChatAction);
+        const order: Record<ChatActionKind, number> = { "task.create": 0, "task.update": 1, "run.dispatch": 2 };
+        const waiting = all()
+          .filter((a) => a.status === "proposed")
+          .sort((a, b) => order[a.kind] - order[b.kind] || a.id - b.id);
+        for (const a of waiting) {
+          try {
+            const done = await this.#handlers["chat.decide"]({ actionId: a.id, accept }, actor);
+            if (done.status === "failed") break;
+          } catch (err) {
+            // Another manager decided it meanwhile: theirs stands.
+            if (err instanceof HiveError && err.key === "errors.chatActionDecided") continue;
+            throw err;
+          }
+        }
+        return all();
       },
 
       "chat.cancel": ({ replyId }) =>
