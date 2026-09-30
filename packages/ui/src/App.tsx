@@ -4,51 +4,33 @@ import {
   Bot,
   BookMarked,
   Boxes,
+  Brain,
   FileText,
-  Laptop,
   FolderGit2,
+  FolderKanban,
   GitPullRequestArrow,
   KeyRound,
-  LayoutDashboard,
   LayoutGrid,
+  Laptop,
   ListTodo,
-  MessagesSquare,
+  MessageSquare,
   Server,
   ShieldCheck,
-  Sparkles,
+  Terminal,
   UsersRound,
-  Wrench,
+  WandSparkles,
 } from "lucide-react";
 import { Button } from "@xdev-hive/ui/components/ui/button";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarInset,
-  SidebarMenu,
-  SidebarMenuBadge,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  SidebarTrigger,
-  useSidebar,
-} from "@xdev-hive/ui/components/ui/sidebar";
-import { cn } from "cn";
 import { TooltipProvider } from "@xdev-hive/ui/components/ui/tooltip";
 import type { Me } from "@xdev-hive/core";
 import type { HiveClient } from "./client.ts";
-import { AccountMenu, ChangePasswordScreen } from "./components/Account.tsx";
-import { HiveWordmark, XMark } from "./components/Brand.tsx";
+import { ChangePasswordScreen } from "./components/Account.tsx";
 import { ErrorNote } from "./components/common.tsx";
-import { ScopeSwitcher } from "./components/ScopeSwitcher.tsx";
 import { HiveContext, useProjectList, useQuery } from "./hooks.ts";
 import { useT, type MessageKey } from "./i18n/index.tsx";
 import { readScope, resolveScope, writeScope, type Scope } from "./lib/scope.ts";
 import { useSystemTheme } from "./lib/theme.ts";
+import { ClientShell, type NavGroup } from "./shell/ClientShell.tsx";
 import { AdminPage } from "./pages/Admin.tsx";
 import { AgentsPage } from "./pages/Agents.tsx";
 import { BoardPage } from "./pages/Board.tsx";
@@ -89,55 +71,41 @@ type PageId =
   | "device";
 type Icon = ComponentType<{ className?: string }>;
 
-const PAGES: Record<PageId, { label: MessageKey; icon: Icon; render: () => ReactNode }> = {
-  overview: { label: "nav.overview", icon: LayoutGrid, render: () => <OverviewPage /> },
-  chat: { label: "nav.chat", icon: MessagesSquare, render: () => <ChatPage /> },
-  board: { label: "nav.board", icon: LayoutDashboard, render: () => <BoardPage /> },
-  runs: { label: "nav.runs", icon: Activity, render: () => <RunsPage /> },
-  docs: { label: "nav.docs", icon: FileText, render: () => <DocsPage /> },
-  skills: { label: "nav.skills", icon: BookMarked, render: () => <SkillsPage /> },
-  proposals: { label: "nav.proposals", icon: GitPullRequestArrow, render: () => <ProposalsPage /> },
-  memory: { label: "nav.memory", icon: Sparkles, render: () => <MemoryPage /> },
-  tasks: { label: "nav.tasks", icon: ListTodo, render: () => <TasksPage /> },
-  agents: { label: "nav.agents", icon: Bot, render: () => <AgentsPage /> },
-  machines: { label: "nav.machines", icon: Server, render: () => <MachinesPage /> },
-  setup: { label: "nav.setup", icon: Wrench, render: () => <SetupPage /> },
-  admin: { label: "nav.admin", icon: ShieldCheck, render: () => <AdminPage /> },
-  users: { label: "nav.users", icon: UsersRound, render: () => <UsersPage /> },
-  tokens: { label: "nav.tokens", icon: KeyRound, render: () => <TokensPage /> },
-  projects: { label: "nav.projects", icon: FolderGit2, render: () => <ProjectsPage /> },
-  systems: { label: "nav.systems", icon: Boxes, render: () => <SystemsPage /> },
+const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; render: () => ReactNode }> = {
+  overview: { label: "nav.overview", sub: "navSub.overview", icon: LayoutGrid, render: () => <OverviewPage /> },
+  chat: { label: "nav.chat", sub: "navSub.chat", icon: MessageSquare, render: () => <ChatPage /> },
+  board: { label: "nav.board", sub: "navSub.board", icon: FolderKanban, render: () => <BoardPage /> },
+  runs: { label: "nav.runs", sub: "navSub.runs", icon: Activity, render: () => <RunsPage /> },
+  docs: { label: "nav.docs", sub: "navSub.docs", icon: FileText, render: () => <DocsPage /> },
+  skills: { label: "nav.skills", sub: "navSub.skills", icon: WandSparkles, render: () => <SkillsPage /> },
+  proposals: { label: "nav.proposals", sub: "navSub.proposals", icon: GitPullRequestArrow, render: () => <ProposalsPage /> },
+  memory: { label: "nav.memory", sub: "navSub.memory", icon: Brain, render: () => <MemoryPage /> },
+  tasks: { label: "nav.tasks", sub: "navSub.tasks", icon: ListTodo, render: () => <TasksPage /> },
+  agents: { label: "nav.agents", sub: "navSub.agents", icon: Bot, render: () => <AgentsPage /> },
+  machines: { label: "nav.machines", sub: "navSub.machines", icon: Server, render: () => <MachinesPage /> },
+  setup: { label: "nav.setup", sub: "navSub.setup", icon: Terminal, render: () => <SetupPage /> },
+  admin: { label: "nav.admin", sub: "navSub.admin", icon: ShieldCheck, render: () => <AdminPage /> },
+  users: { label: "nav.users", sub: "navSub.users", icon: UsersRound, render: () => <UsersPage /> },
+  tokens: { label: "nav.tokens", sub: "navSub.tokens", icon: KeyRound, render: () => <TokensPage /> },
+  projects: { label: "nav.projects", sub: "navSub.projects", icon: FolderGit2, render: () => <ProjectsPage /> },
+  systems: { label: "nav.systems", sub: "navSub.systems", icon: Boxes, render: () => <SystemsPage /> },
   // Not in the sidebar: the desktop app opens it (#/device?port=…).
-  device: { label: "nav.device", icon: Laptop, render: () => <DevicePage /> },
+  device: { label: "nav.device", sub: "navSub.device", icon: Laptop, render: () => <DevicePage /> },
 };
 
-const GROUPS: Array<{ label: MessageKey; ids: PageId[] }> = [
-  { label: "nav.groupWork", ids: ["overview", "chat", "board", "runs", "docs", "skills", "proposals", "memory", "tasks"] },
-  { label: "nav.groupAgents", ids: ["agents", "machines", "setup"] },
-  { label: "nav.groupAdmin", ids: ["admin", "users", "tokens", "systems", "projects"] },
+/** The design's groups; ⌘1–6 go to Tổng quan, Chat, Board, Lượt chạy, Tài liệu, Agent (those that are shown). */
+const GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
+  { label: null, ids: ["overview", "chat"] },
+  { label: "nav.groupWork", ids: ["board", "runs", "tasks"] },
+  { label: "nav.groupKnowledge", ids: ["docs", "skills", "memory", "proposals"] },
+  { label: "nav.groupAgents", ids: ["agents", "setup", "projects"] },
+  { label: "nav.groupAdmin", ids: ["admin", "machines", "users", "tokens", "systems"] },
 ];
+const SHORTCUTS: Partial<Record<PageId, string>> = { overview: "1", chat: "2", board: "3", runs: "4", docs: "5", agents: "6" };
 
 function readHash(): PageId | null {
   const id = window.location.hash.replace(/^#\/?/, "").split("?")[0]!;
   return id in PAGES ? (id as PageId) : null;
-}
-
-/** On the macOS desktop app the bar is also the window's drag area, and clears the traffic lights when the sidebar is closed. */
-function TopBar({ title, desktop }: { title: string; desktop: boolean }) {
-  const { state, isMobile } = useSidebar();
-  const clearLights = desktop && (state === "collapsed" || isMobile);
-  return (
-    <header
-      className={cn(
-        "sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b bg-background/85 px-3 backdrop-blur",
-        desktop && "[-webkit-app-region:drag]",
-        clearLights && "pl-20",
-      )}
-    >
-      <SidebarTrigger className="[-webkit-app-region:no-drag]" />
-      <span className="text-sm font-medium">{title}</span>
-    </header>
-  );
 }
 
 /** Full-window message (connecting, or a failed sign-in). */
@@ -222,64 +190,30 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     proposals: pending.data?.length ?? 0,
     setup: setup.data ? [...setup.data.machine, ...setup.data.projects.flatMap((p) => p.items)].filter((i) => i.state !== "installed").length : 0,
   };
-  // macOS desktop: the title bar is hidden, so the header doubles as the window drag area.
-  const desktop = Boolean(client.desktop);
+  // The machine's name in the subtitles of Lượt chạy and Agent (desktop).
+  const machine = useQuery(async () => (client.desktop ? (await client.desktop.settings()).machine : null), [client]).data;
+
+  const groups: NavGroup[] = GROUPS.map((g) => ({
+    label: g.label ? t(g.label) : null,
+    items: g.ids
+      .filter((id) => visible.has(id))
+      .map((id) => ({
+        id,
+        label: t(PAGES[id].label),
+        icon: PAGES[id].icon,
+        shortcut: SHORTCUTS[id],
+        badge: counts[id] ? { count: counts[id]!, strong: id === "proposals" } : undefined,
+      })),
+  })).filter((g) => g.items.length > 0);
+  const subtitle =
+    machine && current === "runs" ? t("navSub.runsOn", { machine }) : machine && current === "agents" ? t("navSub.agentsOn", { machine }) : t(PAGES[current].sub);
 
   return (
     <HiveContext.Provider value={{ client, me: me, bump, scope, setScope, projects, systems }}>
       <TooltipProvider>
-        <SidebarProvider>
-          {/* Icon-only collapse would sit under the macOS traffic lights; the desktop hides the sidebar instead. */}
-          <Sidebar collapsible={desktop ? "offcanvas" : "icon"}>
-            <SidebarHeader className={desktop ? "pt-10 [-webkit-app-region:drag]" : undefined}>
-              <div className="flex items-center gap-2 px-2 py-1.5 font-semibold group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
-                <HiveWordmark height={30} className="group-data-[collapsible=icon]:hidden" />
-                <XMark size={24} className="hidden group-data-[collapsible=icon]:block" />
-              </div>
-              <div className="[-webkit-app-region:no-drag]">
-                <ScopeSwitcher />
-              </div>
-            </SidebarHeader>
-            <SidebarContent>
-              {GROUPS.map((g) => {
-                const ids = g.ids.filter((id) => visible.has(id));
-                if (!ids.length) return null;
-                return (
-                  <SidebarGroup key={g.label}>
-                    <SidebarGroupLabel>{t(g.label)}</SidebarGroupLabel>
-                    <SidebarGroupContent>
-                      <SidebarMenu>
-                        {ids.map((id) => {
-                          const { icon: Icon } = PAGES[id];
-                          const label = t(PAGES[id].label);
-                          const count = counts[id] ?? 0;
-                          return (
-                            <SidebarMenuItem key={id}>
-                              <SidebarMenuButton asChild isActive={current === id} tooltip={label}>
-                                <a href={`#/${id}`} aria-current={current === id ? "page" : undefined}>
-                                  <Icon />
-                                  <span>{label}</span>
-                                </a>
-                              </SidebarMenuButton>
-                              {count > 0 ? <SidebarMenuBadge className="bg-brand-soft text-brand-soft-foreground">{count}</SidebarMenuBadge> : null}
-                            </SidebarMenuItem>
-                          );
-                        })}
-                      </SidebarMenu>
-                    </SidebarGroupContent>
-                  </SidebarGroup>
-                );
-              })}
-            </SidebarContent>
-            <SidebarFooter>
-              <AccountMenu client={client} me={me} onSignOut={onSignOut} />
-            </SidebarFooter>
-          </Sidebar>
-          <SidebarInset className="min-w-0">
-            <TopBar title={t(PAGES[current].label)} desktop={desktop} />
-            <main className="min-w-0 flex-1">{PAGES[current].render()}</main>
-          </SidebarInset>
-        </SidebarProvider>
+        <ClientShell client={client} me={me} onSignOut={onSignOut} groups={groups} current={current} title={t(PAGES[current].label)} subtitle={subtitle}>
+          {PAGES[current].render()}
+        </ClientShell>
       </TooltipProvider>
     </HiveContext.Provider>
   );
