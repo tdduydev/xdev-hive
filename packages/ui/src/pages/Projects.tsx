@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   PROJECT_NAME,
   TRANSFER_RESULTS,
+  suggestProjectKey,
   type DesktopProject,
   type DesktopSettings,
   type FileAction,
@@ -801,7 +802,7 @@ const IMPORT_TONE: Record<GitLabImportCandidate["state"], string> = { added: "ne
  * key and folder it would get; the chosen ones are cloned (or their folder used) and added, with their GitLab path.
  */
 function GitLabImportCard({ settings, onChanged }: { settings: DesktopSettings; onChanged: () => void }) {
-  const { client, bump } = useHive();
+  const { client, bump, systems } = useHive();
   const t = useT();
   const desktop = client.desktop!;
   // Where the projects so far are: their group and the folder they sit in, most likely where the rest go too.
@@ -809,6 +810,9 @@ function GitLabImportCard({ settings, onChanged }: { settings: DesktopSettings; 
   const [group, setGroup] = useState(first ? first.gitlabProject!.split("/").slice(0, -1).join("/") : "");
   const [baseDir, setBaseDir] = useState(first ? parentDir(first.repo) : "~/Work");
   const [protocol, setProtocol] = useState<"ssh" | "https">("ssh");
+  // The group's projects as one system (roadmap 19b), named after the group unless changed.
+  const [toSystem, setToSystem] = useState(true);
+  const [systemName, setSystemName] = useState<string | null>(null);
   const [listed, setListed] = useState<{ group: string; candidates: GitLabImportCandidate[] } | null>(null);
   const [picked, setPicked] = useState<Record<string, boolean>>({});
   const [keys, setKeys] = useState<Record<string, string>>({});
@@ -819,6 +823,7 @@ function GitLabImportCard({ settings, onChanged }: { settings: DesktopSettings; 
   const keyOf = (c: GitLabImportCandidate) => keys[c.repo.pathWithNamespace] ?? c.key;
   const bad = chosen.filter((c) => !PROJECT_NAME.test(keyOf(c)));
   const dupes = new Set(chosen.map(keyOf).filter((k, i, all) => all.indexOf(k) !== i));
+  const system = systemName ?? suggestProjectKey(listed?.group ?? group, []);
 
   return (
     <Card>
@@ -940,6 +945,14 @@ function GitLabImportCard({ settings, onChanged }: { settings: DesktopSettings; 
                     items: chosen.map((c) => ({ key: keyOf(c), pathWithNamespace: c.repo.pathWithNamespace, dir: c.dir })),
                   });
                   setResults(out.results);
+                  const joined = [
+                    ...out.results.filter((r) => r.ok).map((r) => r.key),
+                    ...listed.candidates.filter((c) => c.state === "added").map((c) => c.key),
+                  ];
+                  if (toSystem && joined.length && PROJECT_NAME.test(system)) {
+                    const before = systems.find((s) => s.name === system)?.projects ?? [];
+                    await client.call("systems.save", { name: system, projects: [...new Set([...before, ...joined])] });
+                  }
                   bump();
                   onChanged();
                   // What was added is listed as added now.
@@ -949,6 +962,20 @@ function GitLabImportCard({ settings, onChanged }: { settings: DesktopSettings; 
             >
               {importing.busy ? t("projects.importRunning") : t("projects.importRun", { count: chosen.length })}
             </Button>
+            <div className="flex items-center gap-2">
+              <Checkbox id="import-to-system" checked={toSystem} onCheckedChange={(v) => setToSystem(v === true)} />
+              <Label htmlFor="import-to-system" className="font-normal">
+                {t("projects.importToSystem")}
+              </Label>
+              <Input
+                className="h-8 w-36 font-mono text-xs md:text-xs"
+                aria-label={t("systems.name")}
+                value={system}
+                disabled={!toSystem}
+                aria-invalid={toSystem && !PROJECT_NAME.test(system)}
+                onChange={(e) => setSystemName(e.target.value.toLowerCase())}
+              />
+            </div>
             {bad.length || dupes.size ? <span className="text-xs text-destructive">{t("projects.importBadKeys")}</span> : null}
           </div>
         ) : null}

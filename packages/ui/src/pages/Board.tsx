@@ -43,7 +43,9 @@ export function BoardPage() {
   const projects = useProjects();
   const settings = useQuery(() => desktop.settings(), [desktop]);
   const localProjects = settings.data?.projects.map((p) => p.name) ?? [];
-  const options = [...new Set([...localProjects, ...projects])];
+  // A system: only its projects, the ones with a repo here first.
+  const system = scope.kind === "system" ? scope.projects : null;
+  const options = system ? [...new Set([...localProjects.filter((p) => system.includes(p)), ...system])] : [...new Set([...localProjects, ...projects])];
   // Follow the sidebar scope when it is a project with a repo on this machine; otherwise (all, shared,
   // a project not cloned here) keep the project shown last, or the first one.
   const scoped = scopeProject(scope);
@@ -52,7 +54,8 @@ export function BoardPage() {
   useEffect(() => {
     if (scopeLocal) setProject(scopeLocal);
   }, [scopeLocal]);
-  const current = scopeLocal || (options.includes(project) ? project : "") || localProjects[0] || projects[0] || "";
+  const firstLocal = system ? options.find((p) => localProjects.includes(p)) || options[0] : localProjects[0] || projects[0];
+  const current = scopeLocal || (options.includes(project) ? project : "") || firstLocal || "";
 
   const [tick, setTick] = useState(0);
   const runs = useQuery(() => desktop.runs({ project: current || undefined, limit: 60 }), [desktop, current, tick]);
@@ -108,7 +111,8 @@ export function BoardPage() {
           value={current}
           onChange={(e) => {
             setProject(e.target.value);
-            setScope(projectScope(e.target.value));
+            // Within a system the sidebar stays on it.
+            if (!system) setScope(projectScope(e.target.value));
           }}
           aria-label={t("tasks.colProject")}
         >

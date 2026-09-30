@@ -67,6 +67,10 @@ Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, 
   - Mâu thuẫn: `contradicts: <id>` đánh dấu hai mục nói khác nhau. Agent thấy cả hai, kèm `conflictsWith`, cho tới khi người quản trị dự án chọn trên trang Memory: *Giữ mục này*, *Giữ #…* (mục kia bị thay), hoặc *Không mâu thuẫn* (`memory.resolve`).
   - Trang Memory hiện số `#id` của từng mục, *Thay cho #…* và *Đã được thay bằng #…*; mục đã thay bị gạch.
 - **Chung và riêng từng dự án**: tài liệu `org/*` và memory chung dùng cho cả team; tài liệu `project/<dự án>/*`, memory riêng và task thuộc về một dự án. Ở đầu sidebar có ô chọn phạm vi: *Tất cả dự án*, *Chung (cả team)*, hoặc một dự án. Mọi trang lọc theo phạm vi đó (ở một dự án thì thấy dữ liệu riêng của dự án cộng với dữ liệu chung, có nhãn "Chung"), và mục tạo mới mặc định thuộc phạm vi đang chọn. Trang *Tổng quan* tóm tắt từng dự án và phần dữ liệu chung.
+- **Hệ thống** (microservice): gom các dự án (mỗi service một repo) thành một hệ thống ở trang *Hệ thống* (nhóm *Quản trị*, web và app). Hệ thống lưu trên hub, dùng chung cho cả team; một dự án có thể thuộc nhiều hệ thống.
+  - Chọn hệ thống ở ô phạm vi đầu sidebar thì *Tổng quan*, *Task*, *Lượt chạy* (có MR), *Chat*, *Memory*, *Tài liệu*, *Skill*, *Đề xuất* hiện dữ liệu của mọi dự án trong hệ thống, cộng dữ liệu chung. *Board* của app chỉ cho chọn dự án của hệ thống. Task, chat và memory mới chọn một dự án của hệ thống.
+  - Tạo và sửa hệ thống cần quyền *quản lý* trên mọi dự án có trong nó và được thêm vào hay bỏ ra (token agent không sửa được). Người xem chỉ thấy các dự án mình được cấp; hệ thống không có dự án nào mình thấy thì bị ẩn.
+  - Lúc nhập group GitLab, ô *Gom vào hệ thống* (mặc định tên group) đưa luôn các repo đã nhập và repo đã là dự án vào một hệ thống.
 - **Task**: `task_claim` giữ task theo lease, hai agent không nhận trùng. `task_update` kèm ghi chú bàn giao.
   - **Phụ thuộc**: task có thể phụ thuộc task khác cùng dự án. Đặt khi tạo, hoặc bấm *Sửa* ở cột *Phụ thuộc* trang Task (`tasks.setDeps`). Hive từ chối task tự phụ thuộc chính nó, task của dự án khác và vòng lặp.
     - Còn task phụ thuộc chưa *Xong* thì không `task_claim` được và app không chạy agent cho nó. Board để nó ở cột *Bị chặn* với nhãn *Chờ T-1*.
@@ -94,7 +98,7 @@ Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ v�
 
 ```bash
 nvm use && npm install
-npm test            # 389 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR, GitHub PR)
+npm test            # 396 test: core, mcp, hub (REST + MCP HTTP), desktop (installer, git hook, sync, runner, GitLab MR, GitHub PR)
 npm run typecheck
 ```
 
@@ -288,6 +292,7 @@ Hợp cho microservice: mỗi service một repo, cả hệ thống nằm trong 
 - Mỗi repo có project key (tên repo, trùng thì thêm group, vẫn trùng thì thêm số; sửa được) và thư mục `<thư mục gốc>/<tên repo>` (hai repo cùng tên thì repo sau dùng project key làm tên thư mục).
 - Trạng thái: *sẽ clone*, *dùng thư mục có sẵn* (thư mục đã có thì không clone lại), *đã là dự án* (dự án có cùng GitLab project, không chọn được).
 - *Nhập N repo* chạy lần lượt: clone, thêm dự án, gắn GitLab project để MR vào đúng chỗ. Repo lỗi (không clone được, key trùng) được báo riêng, các repo khác vẫn nhập.
+- *Gom vào hệ thống* (bật sẵn, tên mặc định là tên group): các repo đã nhập và repo đã là dự án vào cùng một hệ thống, thêm vào hệ thống cùng tên nếu đã có.
 - Clone không chờ nhập mật khẩu hay xác nhận host key. Qua HTTPS tới host GitLab, token đi bằng header trong env như lúc push, không ghi vào `.git/config`. Địa chỉ clone lấy lại từ GitLab lúc nhập, không lấy từ trang.
 
 ### Pull request trên GitHub
