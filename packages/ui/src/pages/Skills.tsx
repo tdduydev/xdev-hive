@@ -9,16 +9,16 @@ import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
-import { Diff } from "../components/Diff.tsx";
-import { HiddenChars } from "../components/HiddenChars.tsx";
-import { ErrorNote, Notice } from "../components/common.tsx";
-import { Chip, DetailBody, DetailFooter, DetailHeader, KvRows, ListItem, ListPane } from "../components/panes.tsx";
-import { errorMessage, formatTime, useAction, useCan, useHive, useQuery } from "../hooks.ts";
-import { useT } from "../i18n/index.tsx";
-import { docOwner, inScope, scopeProject } from "../lib/scope.ts";
-import { buildSkill, skillsFor, splitSkill, type ListedSkill, type SkillParts } from "../lib/skills.ts";
-import { fold } from "../lib/text.ts";
-import { useToast } from "../shell/toast.tsx";
+import { Diff } from "#ui/components/Diff.tsx";
+import { HiddenChars } from "#ui/components/HiddenChars.tsx";
+import { ErrorNote, Notice } from "#ui/components/common.tsx";
+import { Chip, DetailBody, DetailFooter, DetailHeader, KvRows, ListItem, ListPane } from "#ui/components/panes.tsx";
+import { errorMessage, formatTime, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
+import { useT } from "#ui/i18n/index.tsx";
+import { docOwner, inScope, scopeProject } from "#ui/lib/scope.ts";
+import { buildSkill, skillsFor, splitSkill, type ListedSkill, type SkillParts } from "#ui/lib/skills.ts";
+import { fold } from "#ui/lib/text.ts";
+import { useToast } from "#ui/shell/toast.tsx";
 
 const NEW = "new";
 

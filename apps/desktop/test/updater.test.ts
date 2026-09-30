@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import type { UpdateOffer } from "@xdev-hive/core";
-import { platformKey, Updater, type UpdateStatus } from "../src/main/updater.ts";
+import { platformKey, Updater, type UpdateStatus } from "#desktop/main/updater.ts";
 
 const bytes = Buffer.from("the 0.80.0 build");
 const sha = createHash("sha256").update(bytes).digest("hex");

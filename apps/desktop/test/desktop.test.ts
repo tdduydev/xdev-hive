@@ -6,9 +6,9 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { MANAGED_START, type Actor } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
-import { installAgents, installCodexConfig, installShim } from "../src/main/installer.ts";
-import { commitAll, ensureWorktree, remoteStart } from "../src/main/runner/worktree.ts";
-import { syncProject } from "../src/main/sync.ts";
+import { installAgents, installCodexConfig, installShim } from "#desktop/main/installer.ts";
+import { commitAll, ensureWorktree, remoteStart } from "#desktop/main/runner/worktree.ts";
+import { syncProject } from "#desktop/main/sync.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
 const tmp = (p: string) => mkdtempSync(path.join(os.tmpdir(), `hive-${p}-`));

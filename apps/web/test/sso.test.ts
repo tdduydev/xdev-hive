@@ -4,10 +4,10 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, describe, it } from "node:test";
 import { SqliteHive } from "@xdev-hive/core/node";
-import { createHubApp } from "../src/app.ts";
-import { OidcClient, oidcSettings } from "../src/oidc.ts";
-import { TokenStore } from "../src/tokens.ts";
-import { UserStore } from "../src/users.ts";
+import { createHubApp } from "#web/app.ts";
+import { OidcClient, oidcSettings } from "#web/oidc.ts";
+import { TokenStore } from "#web/tokens.ts";
+import { UserStore } from "#web/users.ts";
 
 const CLIENT_ID = "hive-test";
 const CLIENT_SECRET = `secret-${randomBytes(8).toString("hex")}`;

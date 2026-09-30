@@ -1,7 +1,7 @@
 import { diffLines } from "diff";
 import { useMemo } from "react";
 import { cn } from "cn";
-import { useT } from "../i18n/index.tsx";
+import { useT } from "#ui/i18n/index.tsx";
 import { Empty } from "./common.tsx";
 
 interface Line {

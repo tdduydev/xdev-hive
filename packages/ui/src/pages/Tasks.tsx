@@ -10,12 +10,12 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@xdev-hive/ui/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
-import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "../components/common.tsx";
-import { formatTime, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "../hooks.ts";
-import { useT } from "../i18n/index.tsx";
-import { REQUEST_TONE, requestErrorText, runLabel } from "../lib/runs.ts";
-import { scopeFilter, scopeKey, scopeProject } from "../lib/scope.ts";
-import { ownerLabel } from "../lib/tasks.ts";
+import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "#ui/components/common.tsx";
+import { formatTime, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "#ui/hooks.ts";
+import { useT } from "#ui/i18n/index.tsx";
+import { REQUEST_TONE, requestErrorText, runLabel } from "#ui/lib/runs.ts";
+import { scopeFilter, scopeKey, scopeProject } from "#ui/lib/scope.ts";
+import { ownerLabel } from "#ui/lib/tasks.ts";
 
 /** Text colour of the status select, keyed by STATUS_TONE. */
 const TONE_TEXT: Record<string, string> = {

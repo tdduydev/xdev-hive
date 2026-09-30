@@ -1,5 +1,5 @@
 // Small helpers shared by the Board (this machine's runs) and the Runs page (the runs machines pushed to the hub).
-import { hasKey, translate, type MessageKey } from "../i18n/translate.ts";
+import { hasKey, translate, type MessageKey } from "#ui/i18n/translate.ts";
 
 type Timed = { startedAt: string | null; finishedAt: string | null };
 

@@ -5,9 +5,9 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import type { DesktopProject, SetupReport } from "@xdev-hive/core";
-import { setMainLocale } from "../src/main/i18n.ts";
-import { CODEGRAPH_PACKAGE } from "../src/main/installer.ts";
-import { Setup } from "../src/main/setup.ts";
+import { setMainLocale } from "#desktop/main/i18n.ts";
+import { CODEGRAPH_PACKAGE } from "#desktop/main/installer.ts";
+import { Setup } from "#desktop/main/setup.ts";
 
 const tmp = (p: string) => mkdtempSync(path.join(os.tmpdir(), `hive-setup-${p}-`));
 

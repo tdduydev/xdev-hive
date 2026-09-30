@@ -5,8 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { suggestProjectKey, type DesktopProject, type GitLabGroupRepo } from "@xdev-hive/core";
-import { GitLabClient } from "../src/main/gitlab/client.ts";
-import { importRepos, planImport } from "../src/main/gitlab/import.ts";
+import { GitLabClient } from "#desktop/main/gitlab/client.ts";
+import { importRepos, planImport } from "#desktop/main/gitlab/import.ts";
 
 const tmp = (name: string) => mkdtempSync(path.join(os.tmpdir(), `hive-import-${name}-`));
 const repo = (pathWithNamespace: string, id = 1): GitLabGroupRepo => ({

@@ -21,9 +21,9 @@ import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { ToggleGroup, ToggleGroupItem } from "@xdev-hive/ui/components/ui/toggle-group";
-import { Badge, Empty, ErrorNote, Notice, Page, PageHeader } from "../components/common.tsx";
-import { useAction, useHive, useQuery } from "../hooks.ts";
-import { rich, useT } from "../i18n/index.tsx";
+import { Badge, Empty, ErrorNote, Notice, Page, PageHeader } from "#ui/components/common.tsx";
+import { useAction, useHive, useQuery } from "#ui/hooks.ts";
+import { rich, useT } from "#ui/i18n/index.tsx";
 
 const ACTION_TONE: Record<FileAction["action"], string> = {
   created: "ok",

@@ -8,9 +8,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@xdev-hive/ui/components/ui/dropdown-menu";
-import { useHive } from "../hooks.ts";
-import { useT, type MessageKey } from "../i18n/index.tsx";
-import { ALL, projectScope, SHARED, sameScope, scopeId, scopeLabel, systemScope, type Scope } from "../lib/scope.ts";
+import { useHive } from "#ui/hooks.ts";
+import { useT, type MessageKey } from "#ui/i18n/index.tsx";
+import { ALL, projectScope, SHARED, sameScope, scopeId, scopeLabel, systemScope, type Scope } from "#ui/lib/scope.ts";
 
 const HINT: Record<Exclude<Scope["kind"], "system">, MessageKey> = { all: "scope.allHint", shared: "scope.sharedHint", project: "scope.projectHint" };
 

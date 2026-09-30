@@ -8,9 +8,9 @@ import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
-import { Badge, Empty, ErrorNote, Notice } from "../components/common.tsx";
-import { formatTime, useAction, useHive, useProjects, useQuery } from "../hooks.ts";
-import { LOCALES, useT } from "../i18n/index.tsx";
+import { Badge, Empty, ErrorNote, Notice } from "#ui/components/common.tsx";
+import { formatTime, useAction, useHive, useProjects, useQuery } from "#ui/hooks.ts";
+import { LOCALES, useT } from "#ui/i18n/index.tsx";
 
 const EMPTY: WebhookInput = { name: "", kind: "teams", url: "", events: [...WEBHOOK_EVENTS], projects: [], locale: "vi", enabled: true };
 const HINT = "text-xs text-muted-foreground";

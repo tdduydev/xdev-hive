@@ -6,8 +6,8 @@ import Markdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "cn";
 import { docAssetRef, replaceDocLinks, resolveDocLink } from "@xdev-hive/core";
-import { useT } from "../i18n/index.tsx";
-import { docHeadings } from "../lib/doctree.ts";
+import { useT } from "#ui/i18n/index.tsx";
+import { docHeadings } from "#ui/lib/doctree.ts";
 import { AssetImage, AssetLink } from "./DocAssets.tsx";
 
 const DOC_KEY = /^(org|project)\/[a-z0-9./-]+$/i;

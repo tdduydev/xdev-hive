@@ -6,7 +6,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import type { Actor } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
-import { checkCitations, objectIds, resolveRef } from "../src/main/citations.ts";
+import { checkCitations, objectIds, resolveRef } from "#desktop/main/citations.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();

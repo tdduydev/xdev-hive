@@ -6,13 +6,13 @@ import { ArrowLeft, ArrowRight, Brain, Pencil } from "lucide-react";
 import { cn } from "cn";
 import { docLinkRefs, resolveDocLink } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
-import { useDocAssets } from "../components/DocAssets.tsx";
-import { DocMarkdown, docHref, type DocContext } from "../components/DocMarkdown.tsx";
-import { ErrorNote } from "../components/common.tsx";
-import { formatTime, useHashParam, useHive, useQuery } from "../hooks.ts";
-import { useT } from "../i18n/index.tsx";
-import { buildTree, docHeadings, trail, type TreeNode } from "../lib/doctree.ts";
-import { docOwner } from "../lib/scope.ts";
+import { useDocAssets } from "#ui/components/DocAssets.tsx";
+import { DocMarkdown, docHref, type DocContext } from "#ui/components/DocMarkdown.tsx";
+import { ErrorNote } from "#ui/components/common.tsx";
+import { formatTime, useHashParam, useHive, useQuery } from "#ui/hooks.ts";
+import { useT } from "#ui/i18n/index.tsx";
+import { buildTree, docHeadings, trail, type TreeNode } from "#ui/lib/doctree.ts";
+import { docOwner } from "#ui/lib/scope.ts";
 import { ChildPages } from "./Docs.tsx";
 
 export function DocReaderPage() {

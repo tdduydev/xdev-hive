@@ -9,14 +9,14 @@ import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
-import { ErrorNote, Notice } from "../components/common.tsx";
-import { HiddenChars } from "../components/HiddenChars.tsx";
-import { Chip, DetailBody, DetailFooter, DetailHeader, FilterChips, KvRows, ListItem, ListPane, type ChipKind } from "../components/panes.tsx";
-import type { HiveClient } from "../client.ts";
-import { formatTime, sourceText, useAction, useCan, useHive, useQuery } from "../hooks.ts";
-import { useT, type TFunction } from "../i18n/index.tsx";
-import { scopeKey, type Scope } from "../lib/scope.ts";
-import { useToast } from "../shell/toast.tsx";
+import { ErrorNote, Notice } from "#ui/components/common.tsx";
+import { HiddenChars } from "#ui/components/HiddenChars.tsx";
+import { Chip, DetailBody, DetailFooter, DetailHeader, FilterChips, KvRows, ListItem, ListPane, type ChipKind } from "#ui/components/panes.tsx";
+import type { HiveClient } from "#ui/client.ts";
+import { formatTime, sourceText, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
+import { useT, type TFunction } from "#ui/i18n/index.tsx";
+import { scopeKey, type Scope } from "#ui/lib/scope.ts";
+import { useToast } from "#ui/shell/toast.tsx";
 
 /** Value of the "Chung" option in the owner select (project keys are never empty). */
 const SHARED_OPTION = "";

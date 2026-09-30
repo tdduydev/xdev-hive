@@ -3,10 +3,10 @@ import { useEffect, useMemo, useRef, useState, type ComponentType } from "react"
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { FileText, ListTodo, Search } from "lucide-react";
 import { cn } from "cn";
-import { useHive, useQuery } from "../hooks.ts";
-import { useT } from "../i18n/index.tsx";
-import { scopeFilter } from "../lib/scope.ts";
-import { fold } from "../lib/text.ts";
+import { useHive, useQuery } from "#ui/hooks.ts";
+import { useT } from "#ui/i18n/index.tsx";
+import { scopeFilter } from "#ui/lib/scope.ts";
+import { fold } from "#ui/lib/text.ts";
 
 export interface PaletteCommand {
   id: string;

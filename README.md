@@ -96,6 +96,18 @@ Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, 
 
 Không có native module: SQLite dùng `node:sqlite` có sẵn trong Node 24+ và Electron 44.
 
+**Import trong repo**: file nằm cùng thư mục import bằng `./tên.ts`; file ở thư mục khác trong cùng package dùng alias của package thay cho `../`:
+
+| Alias | Trỏ tới |
+|---|---|
+| `#ui/*` | `packages/ui/src/*` (vd. `#ui/hooks.ts`, `#ui/components/DocMarkdown.tsx`) |
+| `#core/*` | `packages/core/src/*` |
+| `#mcp/*` | `packages/mcp/src/*` |
+| `#web/*` | `apps/web/src/*` |
+| `#desktop/*` | `apps/desktop/src/*` (vd. `#desktop/main/git.ts`) |
+
+Alias khai báo ở `imports` của `package.json` mỗi package (subpath imports của Node), nên Node (`node --test` chạy thẳng file `.ts`), Vite, electron-vite và `tsc` đều tự hiểu, không cần `paths` trong tsconfig hay loader riêng. Package khác import theo tên package (`@xdev-hive/core`, `@xdev-hive/ui/components/ui/button`).
+
 ## Chạy
 
 ```bash

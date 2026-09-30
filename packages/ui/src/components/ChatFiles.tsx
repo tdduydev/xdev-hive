@@ -5,9 +5,9 @@ import { FileText, Loader2, Paperclip, X } from "lucide-react";
 import { cn } from "cn";
 import { CHAT_FILE_ACCEPT, CHAT_FILE_MAX_BYTES, CHAT_FILES_PER_MESSAGE, isImage, type ChatFile } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
-import { errorMessage, useHive } from "../hooks.ts";
-import { useT } from "../i18n/index.tsx";
-import { fileSize } from "../lib/chat.ts";
+import { errorMessage, useHive } from "#ui/hooks.ts";
+import { useT } from "#ui/i18n/index.tsx";
+import { fileSize } from "#ui/lib/chat.ts";
 
 interface Pending {
   key: string;

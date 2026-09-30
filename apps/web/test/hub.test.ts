@@ -9,9 +9,9 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { HiveError, HubBackend, transferHive } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
-import { createHubApp } from "../src/app.ts";
-import { TokenStore } from "../src/tokens.ts";
-import { UserStore } from "../src/users.ts";
+import { createHubApp } from "#web/app.ts";
+import { TokenStore } from "#web/tokens.ts";
+import { UserStore } from "#web/users.ts";
 
 let base = "";
 let close: () => void;

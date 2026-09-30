@@ -4,8 +4,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { isValidElement } from "react";
 import { HIDDEN_KINDS, LEVELS, WEBHOOK_EVENTS, WEBHOOK_KINDS } from "@xdev-hive/core";
-import { rich } from "../src/i18n/rich.ts";
-import { hasKey, LOCALES, translate, type MessageKey } from "../src/i18n/translate.ts";
+import { rich } from "#ui/i18n/rich.ts";
+import { hasKey, LOCALES, translate, type MessageKey } from "#ui/i18n/translate.ts";
 
 /** Every leaf path of a catalogue, plural forms counted as one leaf. */
 function leaves(node: unknown, prefix = ""): string[] {

@@ -1,6 +1,6 @@
 // Chooses which subscription runs next. Pure so the rotation rules are easy to test.
 import type { AgentKind, AgentProfile, AgentRole } from "@xdev-hive/core";
-import { tr } from "../i18n.ts";
+import { tr } from "#desktop/main/i18n.ts";
 
 export interface ProfileLoad {
   profile: AgentProfile;

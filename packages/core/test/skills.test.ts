@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { HiveError, parseDocKey, parseSkill, skillDocKey, type Actor } from "../src/index.ts";
-import { SqliteHive } from "../src/node.ts";
+import { HiveError, parseDocKey, parseSkill, skillDocKey, type Actor } from "#core/index.ts";
+import { SqliteHive } from "#core/node.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
 const claude: Actor = { name: "claude@duy", role: "agent" };
