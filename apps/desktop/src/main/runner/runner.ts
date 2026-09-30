@@ -47,6 +47,7 @@ import {
   type RunStatus,
   type StartRunRequest,
   type Task,
+  type UpdateOffer,
 } from "@xdev-hive/core";
 import { tr } from "../i18n.ts";
 import { git, isGitRepo } from "../git.ts";
@@ -108,6 +109,8 @@ export interface HubUpdate {
   policy: TeamPolicy;
   /** Install requests from an admin waiting for this machine's user. */
   commands: MachineCommand[];
+  /** A newer app build the hub's rollout offers this machine (roadmap 22i); a hub without updates sends none. */
+  update?: UpdateOffer | null;
 }
 
 export type RunnerEvent =
@@ -612,7 +615,7 @@ export class Runner {
       }
     }
     this.#shared = next;
-    const update: HubUpdate = { duplicate: res.duplicate, policy: res.policy, commands: res.commands };
+    const update: HubUpdate = { duplicate: res.duplicate, policy: res.policy, commands: res.commands, update: (res as { update?: UpdateOffer | null }).update ?? null };
     this.#opts.onHub?.(update);
     // A hub older than runs.dispatch sends none.
     await this.#takeRequests(res.runRequests ?? []);

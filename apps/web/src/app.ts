@@ -1,8 +1,13 @@
+import { createHash } from "node:crypto";
+import { createWriteStream, rmSync } from "node:fs";
+import { pipeline } from "node:stream/promises";
+import { Transform } from "node:stream";
 import express, { type NextFunction, type Request, type RequestHandler, type Response } from "express";
 import { hostHeaderValidation } from "@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CHAT_FILE_MAX_BYTES,
+  compareVersions,
   HiveError,
   HTTP_STATUS,
   isImage,
@@ -16,6 +21,8 @@ import {
   type Role,
   type WebhookInput,
   type ChatRequest,
+  type AppRollout,
+  type UpdateReport,
 } from "@xdev-hive/core";
 import type { SqliteHive } from "@xdev-hive/core/node";
 import { createHiveMcpServer } from "@xdev-hive/mcp";
@@ -24,6 +31,7 @@ import { SSO_ERRORS, type OidcClient } from "./oidc.ts";
 import { ChatGrants } from "./grants.ts";
 import type { TokenStore } from "./tokens.ts";
 import { LoginThrottle, type UserInfo, type UserStore } from "./users.ts";
+import type { ReleaseStore } from "./releases.ts";
 import type { WebhookDispatcher, WebhookStore } from "./webhooks.ts";
 
 export interface HubAppOptions {
@@ -43,6 +51,8 @@ export interface HubAppOptions {
   oidc?: OidcClient | null;
   /** Tokens for a chat reply's MCP calls; by default kept in the hub's database. */
   chatGrants?: ChatGrants;
+  /** Desktop builds and their rollout (roadmap 22i). */
+  releases?: ReleaseStore;
 }
 
 const CSP = [
@@ -117,6 +127,7 @@ export function createHubApp({
   webhooks,
   oidc = null,
   chatGrants = new ChatGrants(hive.db),
+  releases,
 }: HubAppOptions): express.Express {
   const app = express();
   app.disable("x-powered-by");
@@ -464,6 +475,25 @@ export function createHubApp({
         return;
       }
 
+      // App builds and their rollout: hub admins only.
+      if (typeof method === "string" && method.startsWith("releases.")) {
+        requireHubAdmin(res);
+        if (!releases) throw new HiveError("bad_request", `Unknown method ${method}`);
+        if (method === "releases.list") {
+          res.json({ result: { releases: releases.list(), rollout: releases.rollout(), machines: releases.machines() } });
+        } else if (method === "releases.setRollout") {
+          const r = releases.setRollout(i as Partial<AppRollout>, actor.name);
+          hive.audit(actor, "releases.setRollout", r.target ?? "—", `${r.percent}%${r.paused ? " · paused" : ""} · ${r.installWhen}${r.minVersion ? ` · min ${r.minVersion}` : ""}`);
+          res.json({ result: r });
+        } else if (method === "releases.notes") {
+          releases.setNotes(String(i.version ?? ""), String(i.notes ?? ""));
+          res.json({ result: { saved: true } });
+        } else {
+          throw new HiveError("bad_request", `Unknown method ${method}`);
+        }
+        return;
+      }
+
       // Chat webhooks: hub admins only. The stored URL never goes back out.
       if (typeof method === "string" && method.startsWith("webhooks.")) {
         requireHubAdmin(res);
@@ -545,8 +575,26 @@ export function createHubApp({
         requests.map(({ sender, ...r }) => ({ ...r, ...(sender ? { grant: chatGrants.issue(r.replyId, sender, actor) } : {}) }));
       if (method === "machines.heartbeat") {
         const out = await hive.call(method, input as never, actor);
-        res.json({ result: { ...out, chatRequests: withGrants(out.chatRequests) } });
+        // App updates live on the hub, not in core: the machine's platform and update state ride along in the input.
+        const beat = (input ?? {}) as { machine?: string; version?: string; platform?: string; arch?: string; update?: UpdateReport | null };
+        let update = null;
+        if (releases && typeof beat.version === "string") {
+          releases.report(actor.name, String(beat.machine ?? actor.name), beat.version, beat.update ?? null);
+          update = releases.offerFor(actor.name, beat.version, String(beat.platform ?? ""), String(beat.arch ?? ""));
+        }
+        res.json({ result: { ...out, chatRequests: withGrants(out.chatRequests), update } });
         return;
+      }
+      // A machine older than the rollout's minimum gets no runs from the hub.
+      if (method === "runs.dispatch" && releases) {
+        const min = releases.rollout().minVersion;
+        const machineId = String((input as { machineId?: unknown } | null)?.machineId ?? "");
+        if (min && machineId) {
+          const m = (await hive.call("machines.list", {}, actor)).find((x) => x.id === machineId);
+          if (m && compareVersions(m.version, min) < 0) {
+            throw new HiveError("conflict", `${m.machine} runs ${m.version}; the hub needs ${min} or newer.`, { key: "errors.machineTooOld", vars: { machine: m.machine, version: m.version, min } });
+          }
+        }
       }
       if (method === "chat.poll") {
         res.json({ result: withGrants(await hive.call(method, input as never, actor)) });
@@ -557,6 +605,47 @@ export function createHubApp({
       sendError(res, err);
     }
   });
+
+  // Desktop builds (roadmap 22i): the release script uploads each one (a hub admin's token); machines download the one
+  // their heartbeat offered with their own token.
+  if (releases) {
+    app.post("/api/releases/upload", auth, async (req, res) => {
+      const tmp = releases.tmpFile();
+      try {
+        requireHubAdmin(res);
+        const q = (k: string) => String(req.query[k] ?? "");
+        const hash = createHash("sha256");
+        const tap = new Transform({
+          transform(chunk: Buffer, _enc, done) {
+            hash.update(chunk);
+            done(null, chunk);
+          },
+        });
+        await pipeline(req, tap, createWriteStream(tmp));
+        const file = releases.add({ version: q("version"), channel: q("channel"), platform: q("platform"), arch: q("arch"), kind: q("kind"), name: q("name"), tmpFile: tmp, sha256: hash.digest("hex") });
+        hive.audit(actorOf(res), "releases.upload", `${file.version}/${file.name}`, `${file.platform}-${file.arch} · ${(file.size / 1e6).toFixed(0)} MB`);
+        res.json({ result: file });
+      } catch (err) {
+        rmSync(tmp, { force: true });
+        sendError(res, err);
+      }
+    });
+    app.get("/api/releases/files/:id", auth, (req, res) => {
+      const id = String(req.params.id ?? "");
+      const found = /^\d+$/.test(id) ? releases.stream(Number(id)) : null;
+      if (!found) {
+        res.status(404).json({ error: { code: "not_found", message: "No such build.", key: "errors.notFound" } });
+        return;
+      }
+      res.set({
+        "content-type": "application/octet-stream",
+        "content-length": String(found.file.size),
+        "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(found.file.name)}`,
+        "x-hive-sha256": found.file.sha256,
+      });
+      found.body.pipe(res);
+    });
+  }
 
   // Chat attachments (roadmap 17g): the bytes go over plain HTTP, not JSON-RPC. A file is uploaded first, then sent
   // with chat.send; whoever sees the project's chats reads it (people by their session, machines by their token).
