@@ -116,8 +116,8 @@ if (backup) {
   }, backup.hours * 3_600_000).unref();
 }
 
-// Doc files still in the database go to the store: right after start, then every minute (the store may start later
-// than the hub). The files moved are backed up at once.
+// Doc files still in the database go to the store: right after start, then every minute. The store usually starts with
+// the hub: while it does not answer in the first 2 minutes, again every 5 s. The files moved are backed up at once.
 if (blobs) {
   let reported: string | null = null;
   const move = async () => {
@@ -131,8 +131,12 @@ if (blobs) {
       await logFiles("moved");
     }
   };
-  void move().catch(() => undefined);
-  setInterval(() => void move().catch(() => undefined), 60_000).unref();
+  const startedAt = Date.now();
+  const round = () =>
+    void move()
+      .catch(() => undefined)
+      .finally(() => setTimeout(round, hive.filesInfo().lastError && Date.now() - startedAt < 120_000 ? 5_000 : 60_000).unref());
+  round();
 }
 
 // Vectors for memory approved since the last round: right after start, then every 20 s. An error is logged when it changes.
