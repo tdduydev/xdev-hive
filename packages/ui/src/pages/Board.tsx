@@ -18,7 +18,7 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE, StatusDot } from "../components/common.tsx";
-import { formatCount, formatTime, formatUsd, useAction, useHive, useProjects, useQuery } from "../hooks.ts";
+import { formatCount, formatTime, formatUsd, useAction, useHashParam, useHive, useProjects, useQuery } from "../hooks.ts";
 import { rich, useT } from "../i18n/index.tsx";
 import { runDuration } from "../lib/runs.ts";
 import { projectScope, scopeProject } from "../lib/scope.ts";
@@ -75,6 +75,19 @@ export function BoardPage() {
   const nextId = next.data?.[0]?.id ?? null;
   const profiles = useQuery(() => desktop.profiles(), [desktop, tick]);
   const [selected, setSelected] = useState<string | null>(null);
+  // #/board?run=<id> (Hôm nay, the sidebar): show that run, on its project.
+  const [linked, clearLinked] = useHashParam("run");
+  const linkedRun = useQuery(async () => (linked ? ((await desktop.runs({ limit: 200 })).find((r) => r.id === linked) ?? null) : null), [desktop, linked]);
+  useEffect(() => {
+    if (!linked || linkedRun.loading) return;
+    const r = linkedRun.data;
+    if (r) {
+      setProject(r.project);
+      if (!system) setScope(projectScope(r.project));
+      setSelected(r.id);
+    }
+    clearLinked();
+  }, [linked, linkedRun.loading, linkedRun.data, system, setScope, clearLinked]);
 
   const latestRun = useMemo(() => {
     const map = new Map<string, AgentRun>();
