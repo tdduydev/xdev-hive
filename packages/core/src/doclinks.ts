@@ -13,7 +13,8 @@ export const DOC_ASSETS_PER_DOC = 60;
 /** How deep pages nest under one another. */
 export const DOC_TREE_DEPTH = 8;
 
-const LINK = /\[\[([^\]\n|]{1,200})(?:\|([^\]\n]{1,200}))?\]\]/g;
+// In a Markdown table the | before the text is written \| (GFM): read either way.
+const LINK = /\[\[([^\]\n|]{1,200}?)\\?(?:\|([^\]\n]{1,200}))?\]\]/g;
 const FENCE = /^(```|~~~)/;
 
 /** Calls `fn` on the parts of Markdown outside code (fenced blocks and inline `code`) and joins the result. */

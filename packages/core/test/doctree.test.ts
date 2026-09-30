@@ -31,6 +31,8 @@ describe("doc links (browser-safe helpers)", () => {
       { target: "c", label: null },
     ]);
     assert.equal(replaceDocLinks("[[a|A]] `[[b]]`", (t, l) => `<${t}:${l}>`), "<a:A> `[[b]]`");
+    // In a table cell the | is written \| (the rich editor writes it so).
+    assert.deepEqual(docLinkRefs("| [[org/deploy\\|Deploy]] |"), [{ target: "org/deploy", label: "Deploy" }]);
   });
 
   it("resolves a slug in the page's space, then the team's, and full keys as they are", () => {
