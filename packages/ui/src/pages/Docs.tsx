@@ -196,7 +196,7 @@ export function DocsPage() {
   };
 
   return (
-    <div className="flex h-full min-h-0 bg-surface">
+    <div className="flex h-full min-h-0 w-full bg-surface">
       <div className="flex min-w-[190px] shrink basis-[250px] flex-col border-r border-line-subtle bg-subtle">
         <div className="flex shrink-0 flex-col gap-2 border-b border-line-subtle px-3 py-2.5">
           {spaces.length <= 3 ? (

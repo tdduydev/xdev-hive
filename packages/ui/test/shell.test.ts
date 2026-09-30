@@ -18,3 +18,14 @@ describe("shell helpers", () => {
     assert.ok(fold("Quy chuẩn code").includes(fold("chuan")));
   });
 });
+
+import { pagesToShow } from "../src/lib/table.ts";
+
+describe("data table pages", () => {
+  it("shows at most seven page buttons, with gaps", () => {
+    assert.deepEqual(pagesToShow(0, 5), [0, 1, 2, 3, 4]);
+    assert.deepEqual(pagesToShow(0, 12), [0, 1, 2, 3, "…", 11]);
+    assert.deepEqual(pagesToShow(6, 12), [0, "…", 5, 6, 7, "…", 11]);
+    assert.deepEqual(pagesToShow(11, 12), [0, "…", 8, 9, 10, 11]);
+  });
+});
