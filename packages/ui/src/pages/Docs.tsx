@@ -1,8 +1,8 @@
 // Tài liệu (docs/design/2026-09-redesign, xDev Hive Client): spaces (Chung and each project) and their pages on the
-// left, as a tree of folders and pages under pages (roadmap 22j); the page on the right in Xem / Sửa / Chia đôi with a
-// Markdown toolbar (links to other pages, images from this machine), its files, its versions, and drafts that stay on
+// left, as a tree of folders and pages under pages (roadmap 22j); the page on the right in Xem / Sửa (the rich editor,
+// roadmap 23a) / Markdown (the source with a toolbar and a preview), its files, its versions, and drafts that stay on
 // the device until saved. Managers save a new version, contributors send it as a proposal.
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   BookOpen,
   Bold,
@@ -36,6 +36,7 @@ import { Diff } from "#ui/components/Diff.tsx";
 import { AttachmentsPanel, uploadDocAsset, useDocAssets } from "#ui/components/DocAssets.tsx";
 import { DocAssistant } from "#ui/components/DocAssistant.tsx";
 import { DocMarkdown, docHref, type DocContext } from "#ui/components/DocMarkdown.tsx";
+import { LinkPicker } from "#ui/components/LinkPicker.tsx";
 import { HiddenChars } from "#ui/components/HiddenChars.tsx";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
 import { errorMessage, formatTime, sourceText, useAction, useCan, useHashParam, useHive, useQuery } from "#ui/hooks.ts";
@@ -55,7 +56,11 @@ const SLUG = /^[a-z0-9][a-z0-9-]{0,79}$/;
 /** A folder shows this many pages until "Xem thêm". */
 const FOLDER_PAGE = 12;
 
-type Mode = "view" | "edit" | "split";
+/** Xem, Sửa (the rich editor, roadmap 23a), Markdown (the source, with its preview beside it). */
+type Mode = "view" | "edit" | "markdown";
+
+// Tiptap is big: it loads when a page is first edited.
+const RichEditor = lazy(() => import("#ui/components/RichEditor.tsx"));
 
 interface Space {
   id: string;
@@ -149,14 +154,18 @@ export function DocsPage() {
     window.addEventListener(DRAFTS_EVENT, on);
     return () => window.removeEventListener(DRAFTS_EVENT, on);
   }, []);
+  // Written here, not in the state updater: React may run that while rendering, and writing tells other components.
+  const draftsNow = useRef(drafts);
+  draftsNow.current = drafts;
   const setDraft = useCallback((key: string, draft: DocDraft | null) => {
-    setDraftsState((cur) => {
-      const next = { ...cur };
-      if (draft) next[key] = draft;
-      else delete next[key];
-      writeDrafts(next);
-      return next;
-    });
+    const cur = draftsNow.current;
+    if (!draft && !(key in cur)) return;
+    const next = { ...cur };
+    if (draft) next[key] = draft;
+    else delete next[key];
+    draftsNow.current = next;
+    writeDrafts(next);
+    setDraftsState(next);
   }, []);
 
   // #/docs?doc=<key> (command palette, links): open that doc, moving to its scope when it is outside this one.
@@ -509,6 +518,7 @@ function DocView({
   const current: Doc | null = doc.data ?? null;
   const writer = canEdit || canPropose;
   const [mode, setMode] = useState<Mode>("view");
+  const [props, setProps] = useState(false);
   // A page made just now opens with the assistant beside it.
   const [panel, setPanel] = useState<Panel>(() => (draft && draft.baseVersion === 0 && !draft.content.trim() ? "assist" : null));
   const [compare, setCompare] = useState<number | null>(null);
@@ -528,7 +538,7 @@ function DocView({
   useEffect(() => {
     if (doc.loading) return;
     if (!current && writer) setMode("edit");
-    else if (draft && writer) setMode("split");
+    else if (draft && writer) setMode("edit");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc.loading]);
 
@@ -640,8 +650,10 @@ function DocView({
     });
   };
 
-  const editing = mode !== "view" && writer;
-  const previewing = mode !== "edit" || !writer;
+  const rich = mode === "edit" && writer;
+  const source = mode === "markdown" && writer;
+  const editing = rich || source;
+  const previewing = !rich;
   const context: DocContext = useMemo(() => ({ key: docKey, titles, href: (k) => docHref(k) }), [docKey, titles]);
   const broken = useMemo(() => {
     const exists = (k: string) => titles.has(k);
@@ -663,7 +675,7 @@ function DocView({
   const applyAssist = (markdown: string) => {
     const before = draft;
     edit({ content: markdown });
-    if (mode === "view" && writer) setMode("split");
+    if (mode === "view" && writer) setMode("edit");
     return () => setDraft(before);
   };
 
@@ -681,62 +693,93 @@ function DocView({
         {editing ? (
           <div className={cn("flex min-w-0 flex-1 flex-col", previewing && "border-r border-line-subtle")}>
             <div className="flex shrink-0 flex-col gap-2 border-b border-line-subtle px-4 py-2.5">
-              <div className="grid grid-cols-[100px_minmax(0,1fr)] items-center gap-x-3 gap-y-2">
-                <label htmlFor="doc-title" className="text-xs text-fg-muted">
-                  {t("docs.docTitle")}
-                </label>
-                <Input id="doc-title" className="h-7 text-[13px]" value={work.title} readOnly={!canEdit} onChange={(e) => edit({ title: e.target.value })} />
-                {canEdit && !docKey.includes("/skills/") ? (
-                  <>
-                    <label htmlFor="doc-parent" className="text-xs text-fg-muted">
-                      {t("docs.parent")}
-                    </label>
-                    <NativeSelect
-                      id="doc-parent"
-                      size="sm"
-                      wrapperClassName="w-full"
-                      value={(current ? current.parent : work.parent) ?? ""}
-                      disabled={action.busy}
-                      onChange={(e) => move(e.target.value || null)}
-                    >
-                      <NativeSelectOption value="">{t("docs.parentTop", { space: spaceLabel })}</NativeSelectOption>
-                      {parentChoices(tree, docKey).map((n) => (
-                        <NativeSelectOption key={n.key} value={n.key}>
-                          {"  ".repeat(n.path.length)}
-                          {n.title}
-                        </NativeSelectOption>
-                      ))}
-                    </NativeSelect>
-                  </>
-                ) : null}
-                {wholeRepo(docKey) ? null : (
-                  <>
-                    <label htmlFor="doc-paths" className="text-xs text-fg-muted" title={t("docs.pathsHint")}>
-                      {t("docs.paths")}
-                    </label>
-                    <Input
-                      id="doc-paths"
-                      className="h-7 font-mono text-xs"
-                      placeholder={t("docs.pathsPlaceholder")}
-                      title={t("docs.pathsHint")}
-                      value={work.paths}
-                      readOnly={!canEdit}
-                      onChange={(e) => edit({ paths: e.target.value })}
-                    />
-                  </>
-                )}
-                <label htmlFor="doc-note" className="text-xs text-fg-muted">
-                  {t("docs.note")}
-                </label>
-                <Input
-                  id="doc-note"
-                  className="h-7 text-[13px]"
-                  placeholder={canEdit ? t("docs.notePlaceholder") : t("docs.reasonPlaceholder")}
-                  value={work.note}
-                  onChange={(e) => edit({ note: e.target.value })}
-                />
-              </div>
-              {org ? (
+              {rich ? (
+                // The rich editor keeps the page in front: its title is the heading, its properties fold away.
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    aria-expanded={props}
+                    onClick={() => setProps((v) => !v)}
+                    className="flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-sm px-1.5 text-xs text-fg-muted outline-none hover:bg-hover hover:text-fg-strong focus-visible:focus-ring"
+                  >
+                    {props ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+                    {t("docs.properties")}
+                  </button>
+                  <Input
+                    aria-label={t("docs.note")}
+                    className="h-7 min-w-0 flex-1 text-[13px]"
+                    placeholder={canEdit ? t("docs.notePlaceholder") : t("docs.reasonPlaceholder")}
+                    value={work.note}
+                    onChange={(e) => edit({ note: e.target.value })}
+                  />
+                </div>
+              ) : null}
+              {!rich || props ? (
+                <div className="grid grid-cols-[100px_minmax(0,1fr)] items-center gap-x-3 gap-y-2">
+                  {rich ? null : (
+                    <>
+                      <label htmlFor="doc-title" className="text-xs text-fg-muted">
+                        {t("docs.docTitle")}
+                      </label>
+                      <Input id="doc-title" className="h-7 text-[13px]" value={work.title} readOnly={!canEdit} onChange={(e) => edit({ title: e.target.value })} />
+                    </>
+                  )}
+                  {canEdit && !docKey.includes("/skills/") ? (
+                    <>
+                      <label htmlFor="doc-parent" className="text-xs text-fg-muted">
+                        {t("docs.parent")}
+                      </label>
+                      <NativeSelect
+                        id="doc-parent"
+                        size="sm"
+                        wrapperClassName="w-full"
+                        value={(current ? current.parent : work.parent) ?? ""}
+                        disabled={action.busy}
+                        onChange={(e) => move(e.target.value || null)}
+                      >
+                        <NativeSelectOption value="">{t("docs.parentTop", { space: spaceLabel })}</NativeSelectOption>
+                        {parentChoices(tree, docKey).map((n) => (
+                          <NativeSelectOption key={n.key} value={n.key}>
+                            {"  ".repeat(n.path.length)}
+                            {n.title}
+                          </NativeSelectOption>
+                        ))}
+                      </NativeSelect>
+                    </>
+                  ) : null}
+                  {wholeRepo(docKey) ? null : (
+                    <>
+                      <label htmlFor="doc-paths" className="text-xs text-fg-muted" title={t("docs.pathsHint")}>
+                        {t("docs.paths")}
+                      </label>
+                      <Input
+                        id="doc-paths"
+                        className="h-7 font-mono text-xs"
+                        placeholder={t("docs.pathsPlaceholder")}
+                        title={t("docs.pathsHint")}
+                        value={work.paths}
+                        readOnly={!canEdit}
+                        onChange={(e) => edit({ paths: e.target.value })}
+                      />
+                    </>
+                  )}
+                  {rich ? null : (
+                    <>
+                      <label htmlFor="doc-note" className="text-xs text-fg-muted">
+                        {t("docs.note")}
+                      </label>
+                      <Input
+                        id="doc-note"
+                        className="h-7 text-[13px]"
+                        placeholder={canEdit ? t("docs.notePlaceholder") : t("docs.reasonPlaceholder")}
+                        value={work.note}
+                        onChange={(e) => edit({ note: e.target.value })}
+                      />
+                    </>
+                  )}
+                </div>
+              ) : null}
+              {org && (!rich || props) ? (
                 <label className="flex items-center gap-2 text-xs text-fg-secondary">
                   <Checkbox checked={work.includeInAgents} disabled={!canEdit} onCheckedChange={(v) => edit({ includeInAgents: v === true })} />
                   {t("docs.includeInAgents")}
@@ -752,6 +795,28 @@ function DocView({
                 onStrip={() => edit({ title: stripHidden(work.title), content: stripHidden(work.content), note: stripHidden(work.note) })}
               />
             </div>
+            {rich ? (
+              <Suspense fallback={<div className="p-6 text-[13px] text-fg-muted">{t("editor.loading")}</div>}>
+                <RichEditor
+                  docKey={docKey}
+                  value={work.content}
+                  onChange={(content) => edit({ content })}
+                  titles={titles}
+                  header={
+                    <input
+                      aria-label={t("docs.docTitle")}
+                      value={work.title}
+                      readOnly={!canEdit}
+                      placeholder={t("docs.docTitle")}
+                      onChange={(e) => edit({ title: e.target.value })}
+                      className="mb-3 w-full border-0 bg-transparent p-0 text-[30px]/[38px] font-semibold tracking-tight text-fg-strong outline-none placeholder:text-fg-disabled"
+                    />
+                  }
+                  onUseMarkdown={() => setMode("markdown")}
+                  onError={(message) => message && toast(message, { tone: "error" })}
+                />
+              </Suspense>
+            ) : (
             <textarea
               ref={area}
               value={work.content}
@@ -775,6 +840,7 @@ function DocView({
               placeholder={t("docs.contentPlaceholder")}
               className="min-h-0 w-full flex-1 resize-none border-0 bg-code px-6 py-5 font-mono text-[13px]/[22px] text-code-fg outline-none placeholder:text-fg-muted"
             />
+            )}
           </div>
         ) : null}
         {previewing ? (
@@ -845,7 +911,7 @@ function DocView({
             options={[
               ["view", t("docs.modeView")],
               ["edit", t("docs.modeEdit")],
-              ["split", t("docs.modeSplit")],
+              ["markdown", t("docs.modeMarkdown")],
             ]}
           />
         ) : null}
@@ -920,7 +986,7 @@ function DocView({
           </>
         ) : null}
       </div>
-      {editing && compare === null && !showDiff ? (
+      {source && compare === null && !showDiff ? (
         <div className="relative shrink-0">
           <div role="toolbar" aria-label={t("docs.toolbar")} className="flex items-center gap-0.5 border-b border-line-subtle bg-subtle px-3 py-1">
             {MD_TOOLS.map((spec, i) => {
@@ -986,7 +1052,7 @@ function DocView({
         ) : null}
         {panel === "files" ? (
           <aside className="flex w-[270px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-line-subtle p-3">
-            <AttachmentsPanel docKey={docKey} canUpload={writer} canManage={canEdit} onInsert={editing ? (md) => insertAt(md) : undefined} />
+            <AttachmentsPanel docKey={docKey} canUpload={writer} canManage={canEdit} onInsert={source ? (md) => insertAt(md) : rich ? (md) => edit({ content: `${work.content.trimEnd()}\n\n${md}\n` }) : undefined} />
           </aside>
         ) : null}
       </div>
@@ -1038,65 +1104,6 @@ export function ChildPages({ nodes, onPick, onNew }: { nodes: TreeNode[]; onPick
         ) : null}
       </div>
     </section>
-  );
-}
-
-/** Pick a page to link to: this space's first, then the team's (Chung); inserts [[slug]] or [[key]]. */
-function LinkPicker({ from, titles, onPick, onClose }: { from: string; titles: ReadonlyMap<string, string>; onPick: (target: string) => void; onClose: () => void }) {
-  const t = useT();
-  const [q, setQ] = useState("");
-  const [at, setAt] = useState(0);
-  const own = keyPrefix(from);
-  const needle = fold(q.trim());
-  const rows = useMemo(
-    () =>
-      [...titles.entries()]
-        .filter(([k]) => k !== from && !k.includes("/skills/") && (k.startsWith(own) || k.startsWith("org/")))
-        .filter(([k, title]) => !needle || fold(`${title} ${k}`).includes(needle))
-        .sort((a, b) => Number(!a[0].startsWith(own)) - Number(!b[0].startsWith(own)) || a[1].localeCompare(b[1]))
-        .slice(0, 40),
-    [titles, from, own, needle],
-  );
-  const target = (k: string) => (k.startsWith(own) ? k.slice(own.length) : k);
-  return (
-    <div className="absolute top-full left-3 z-20 mt-1 flex w-[min(420px,calc(100%-24px))] flex-col gap-1 rounded-lg border border-line-default bg-raised p-2 shadow-e3">
-      <Input
-        autoFocus
-        className="h-8 text-[13px]"
-        value={q}
-        placeholder={t("docs.linkSearch")}
-        aria-label={t("docs.linkSearch")}
-        onChange={(e) => {
-          setQ(e.target.value);
-          setAt(0);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") onClose();
-          if (e.key === "ArrowDown") setAt((i) => Math.min(rows.length - 1, i + 1));
-          if (e.key === "ArrowUp") setAt((i) => Math.max(0, i - 1));
-          if (e.key === "Enter" && rows[at]) onPick(target(rows[at]![0]));
-        }}
-      />
-      <div role="listbox" aria-label={t("docs.linkSearch")} className="flex max-h-64 flex-col overflow-y-auto">
-        {rows.map(([k, title], i) => (
-          <button
-            key={k}
-            type="button"
-            role="option"
-            aria-selected={i === at}
-            onMouseEnter={() => setAt(i)}
-            onClick={() => onPick(target(k))}
-            className={cn("flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left outline-none", i === at && "bg-hover")}
-          >
-            <FileText className="size-3.5 shrink-0 text-fg-muted" />
-            <span className="min-w-0 flex-1 truncate text-[13px] text-fg-strong">{title}</span>
-            <span className="shrink-0 font-mono text-[11px] text-fg-muted">{k.startsWith(own) ? target(k) : k}</span>
-          </button>
-        ))}
-        {!rows.length ? <span className="px-2 py-3 text-center text-xs text-fg-muted">{t("docs.noMatch")}</span> : null}
-      </div>
-      <span className="px-1 text-[11px]/4 text-fg-muted">{t("docs.linkHint")}</span>
-    </div>
   );
 }
 
