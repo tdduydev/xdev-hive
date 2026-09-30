@@ -254,7 +254,7 @@ export function ClientShell({
       {desktop ? (
         <div className="mx-2.5 mb-2.5 flex shrink-0 flex-col gap-px rounded-md border border-line-subtle bg-surface px-1.5 pt-2 pb-1.5">
           <a
-            href="#/board"
+            href="#/runs"
             className="flex items-center gap-1.5 px-1 pb-1 text-xs/4 font-semibold text-fg-strong outline-none focus-visible:focus-ring"
           >
             <span className={cn("size-[7px] rounded-full", running.length ? "bg-success-solid" : "bg-neutral-solid")} />
@@ -263,7 +263,7 @@ export function ClientShell({
           {running.slice(0, 4).map((r) => (
             <a
               key={r.id}
-              href={`#/board?run=${encodeURIComponent(r.id)}`}
+              href={`#/runs?run=${encodeURIComponent(r.id)}`}
               title={r.activity ?? r.taskTitle}
               className="grid h-6 grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-1.5 rounded-xs px-1 text-xs/none text-fg-secondary hover:bg-hover"
             >
@@ -376,7 +376,7 @@ export function ClientShell({
             : statusItem("hub", t("shell.local"), "bg-neutral-solid")}
           {desktop
             ? statusItem("runs", t("shell.runsHereShort", { count: running.length }), running.length ? "bg-info-solid" : "bg-neutral-solid", {
-                href: "#/board",
+                href: "#/runs",
                 title: t("shell.openRuns"),
               })
             : null}

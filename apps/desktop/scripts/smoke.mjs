@@ -111,7 +111,7 @@ async function shoot(name, page, delay, extra = {}) {
   }
 }
 
-for (const [page, delay] of [["board", 6000], ["agents", 1500], ["setup", 4000], ["projects", 1500], ["docs", 1500], ["skills", 1500]]) await shoot(page, page, delay);
+for (const [page, delay] of [["board", 6000], ["runs", 3000], ["agents", 1500], ["setup", 4000], ["projects", 1500], ["docs", 1500], ["skills", 1500]]) await shoot(page, page, delay);
 // The GitHub card and the project's GitLab / GitHub fields (roadmap 13a).
 await shoot("projects-github", "projects", 1500, { HIVE_SMOKE_CLICK: "main button[aria-expanded]", HIVE_SMOKE_SCROLL: "#gh-url" });
 // The repositories of the demo's GitLab group, with their keys and folders (roadmap 19a).
@@ -123,8 +123,8 @@ await shoot("board-ci", "board", 5000);
 // Hôm nay (roadmap 22c): the failed pipeline, T-001 waiting for review and this machine's setup gaps.
 await shoot("today", "today", 4000);
 
-// The run form of the next task (T-002), with its number of candidates (roadmap 12).
-await shoot("board-run", "board", 3000, { HIVE_SMOKE_CLICK: 'section[aria-label="Chưa làm"] button.self-start' });
+// The run form of the next task (T-002), with its number of candidates (roadmap 12): open its card, then the form.
+await shoot("board-run", "board", 3000, { HIVE_SMOKE_CLICK: 'section[aria-label="Chưa làm"] [role="button"] && [data-run-here]' });
 
 // Best-of-n (roadmap 12): the container Codex stays out of it, since this machine may have no Docker, and so does
 // the signed-out Claude: the second candidate prefers another vendor over priority, and the first tick comes
@@ -145,10 +145,10 @@ for (const n of [1, 2]) {
   );
 }
 store.db.close();
-// The kept candidate is the second row (the judge is newest): its details, next to the runs table.
-await shoot("board-best", "board", 6000, { HIVE_SMOKE_CLICK: "tbody tr:nth-child(2)", HIVE_SMOKE_SCROLL: "table" });
-// The first run (Claude, out of quota) is the last row: its log follows Claude Code's steps (stream-json).
-await shoot("board-log", "board", 3000, { HIVE_SMOKE_CLICK: "tbody tr:last-child", HIVE_SMOKE_SCROLL: "table" });
+// The kept candidate on Lượt chạy, next to the judge and the other candidate.
+await shoot("runs-best", "runs", 6000, { HIVE_SMOKE_CLICK: '[data-best="kept"]' });
+// The first run (Claude, out of quota): its log follows Claude Code's steps (stream-json), by level.
+await shoot("runs-log", "runs", 3000, { HIVE_SMOKE_CLICK: '[data-run-status="rate_limited"]' });
 
 const runs = new RunStore(path.join(work, "runs.db")).list({ project: "demo" });
 console.log(

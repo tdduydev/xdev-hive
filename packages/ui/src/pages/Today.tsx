@@ -460,7 +460,7 @@ function Detail({
         </>
       );
       actions = [
-        { label: t("inbox.ci.viewRun"), kind: "primary", run: go(`#/board?run=${encodeURIComponent(r.id)}`) },
+        { label: t("inbox.ci.viewRun"), kind: "primary", run: go(`#/runs?run=${encodeURIComponent(r.id)}`) },
         ...(r.mrUrl ? [{ label: t("inbox.ci.openMr"), kind: "secondary" as const, run: open(r.mrUrl) }] : []),
         seenAction(),
       ];
