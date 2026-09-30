@@ -335,7 +335,7 @@ export class ChatWorker {
 }
 
 /** Claude Code's result event: the answer, whether it is an error, and its cost. */
-function parseResult(line: string | null): { text: string | null; isError: boolean; costUsd: number | null } | null {
+export function parseResult(line: string | null): { text: string | null; isError: boolean; costUsd: number | null } | null {
   if (!line) return null;
   try {
     const json = JSON.parse(line) as Record<string, unknown>;

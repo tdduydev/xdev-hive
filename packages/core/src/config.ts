@@ -92,7 +92,7 @@ export function resolveBackend(config: HiveConfig, file = configPath()): HiveBac
     if (!config.hub.url || !config.hub.token) throw new Error("Hub mode needs hub.url and hub.token in config.json");
     return new HubBackend(config.hub.url, config.hub.token);
   }
-  const hive = new SqliteHive(localDbPath(config, file), { memoryRequiresApproval: config.memoryRequiresApproval });
+  const hive = new SqliteHive(localDbPath(config, file), { memoryRequiresApproval: config.memoryRequiresApproval, local: true });
   hive.seed();
   return hive;
 }

@@ -795,6 +795,7 @@ export const en: Catalog = {
     memoryMentions: "Memory that names it",
     prevPage: "Previous page",
     nextPage: "Next page",
+    assist: { button: "Assistant", title: "Writing assistant", assistant: "Assistant", sources: "Sources · {count}", thisPage: "This page", thisPageHint: "What is being edited, unsaved draft included", memory: "Memory #{id}", addFile: "Add a repo file or glob, e.g. deploy/*.sh", intro: "Pick a task or type a request below. The assistant sends back a revision to apply to the draft; nothing is saved yet.", draftAll: "Draft the whole page", draftAllSub: "An outline and content from the picked sources", draftMore: "Write what is missing", draftMoreSub: "Fill empty sections, keep what is there", code: "Update from the code", codeSub: "Compare with the picked files and recent commits", check: "Check for contradictions", checkSub: "Compare with memory and other docs", summary: "Summarise for agents", summarySub: "Shorten it for AGENTS.md", placeholder: "Ask the assistant, e.g. add a section on errors…", send: "Send", sendHint: "⌘↵ to send", where: "Runs with Claude on {where}; reads the repo, never changes it.", whereProject: "a machine with project {project}", whereLocal: "this machine", whereTeam: "a machine taking the hub's work", waiting: "Waiting for a machine to take it…", writing: "Writing on {machine}…", cancel: "Cancel", cancelled: "Cancelled.", noReply: "Revision ready.", failed: "Could not write it.", retry: "Try again", from: "From", changes: "Changes", apply: "Apply to draft", drop: "Drop", wasApplied: "✓ Applied to the draft", wasDropped: "Dropped", moved: "The draft changed since you asked", movedHint: "Applying replaces the current draft with the assistant's version", applied: "Applied to the draft. Check it, then Save to make a new version." },
     saveShortcut: "⌘S to save",
   },
   proposals: {
@@ -1728,6 +1729,8 @@ export const en: Catalog = {
     commandNotFound: "Request #{id} not found.",
     docConflict: "{key} is now at v{current} but you edited v{base}. Reload and apply your changes again.",
     docPathsWholeRepo: "{key} is the doc for the whole repo and cannot be limited to paths.",
+    assistNotTaken: "No machine took the request within 15 minutes: one needs the app open, the project added, and runs from the hub turned on.",
+    assistSilent: "The machine writing it stopped reporting.",
     docParentSelf: "{key} cannot go under itself.",
     docParentSkill: "Skills stay in the skills folder: they do not go under pages, and pages do not go under them.",
     docParentSpace: "{parent} is in another space than {key}.",
