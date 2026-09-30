@@ -22,6 +22,7 @@ import { backupDatabase, backupFile, backupSettings, type BackupResult } from ".
 import { OidcClient, oidcSettings } from "./oidc.ts";
 import { TokenStore } from "./tokens.ts";
 import { UserStore } from "./users.ts";
+import { ReleaseStore } from "./releases.ts";
 import { WebhookDispatcher, WebhookStore } from "./webhooks.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -116,7 +117,18 @@ if (production) {
 
 httpServer.on(
   "request",
-  createHubApp({ hive, tokens, users, allowedHosts, ui, trustProxy: process.env.HIVE_TRUST_PROXY === "1", webhooks: { store: webhookStore, dispatcher }, oidc }),
+  createHubApp({
+    hive,
+    tokens,
+    users,
+    allowedHosts,
+    ui,
+    trustProxy: process.env.HIVE_TRUST_PROXY === "1",
+    webhooks: { store: webhookStore, dispatcher },
+    oidc,
+    // Desktop builds sit next to the database (the data volume in Docker).
+    releases: new ReleaseStore(hive.db, path.join(path.dirname(dbPath), "releases")),
+  }),
 );
 httpServer.listen(port, host, () => {
   console.log(`[xdev-hive] hub on http://${host}:${port} (${production ? "production" : "dev"}), db ${dbPath}`);
