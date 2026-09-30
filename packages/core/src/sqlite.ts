@@ -8,6 +8,7 @@ import { agentsDocKey, decisionsDocKey, parseDocKey, titleFromSlug, type ParsedD
 import { parseSkill, type SkillSummary } from "./skills.ts";
 import { chatFileName, checkChatFile, isImage } from "./chatfiles.ts";
 import { DOC_ASSET_MAX_BYTES, DOC_ASSETS_PER_DOC, DOC_TREE_DEPTH, docLinkRefs, linkSnippet, resolveDocLink } from "./doclinks.ts";
+import { describeProjectContext } from "./sync.ts";
 import { DEFAULT_LEADER_COMMANDS } from "./types.ts";
 import { EMPTY_POLICY } from "./policy.ts";
 import {
@@ -765,6 +766,8 @@ export class SqliteHive implements HiveBackend {
         return this.#need(actor, owner(i.key), "contribute", `Doc ${i.key}`);
       case "docs.assists":
         return this.#need(actor, owner(i.key), "view", `Doc ${i.key}`);
+      case "docs.context":
+        return this.#need(actor, i.project, "view", `Project ${i.project}`);
       case "proposals.create":
         return this.#need(actor, owner(i.docKey), "contribute", `Doc ${i.docKey}`);
       case "proposals.approve":
@@ -1637,6 +1640,24 @@ export class SqliteHive implements HiveBackend {
           aid,
         );
         return { ok: true };
+      },
+
+      "docs.context": ({ project }) => {
+        const docs = (db.prepare("SELECT * FROM docs WHERE project IS NULL OR project = ?").all(project) as Row[]).map(toDoc);
+        const staleBefore = this.#staleBefore();
+        const count = (p: string, status: string, stale?: boolean) =>
+          (db.prepare("SELECT created_at, last_used_at FROM memory WHERE project = ? AND status = ? AND superseded_by IS NULL").all(p, status) as Row[]).filter(
+            (r) => stale === undefined || (staleBefore !== null && (strOrNull(r.last_used_at) ?? str(r.created_at)) < staleBefore) === stale,
+          ).length;
+        return {
+          ...describeProjectContext(project, docs),
+          memory: {
+            project: count(project, "approved", false),
+            shared: count(SHARED, "approved", false),
+            stale: count(project, "approved", true) + count(SHARED, "approved", true),
+            pending: count(project, "pending") + count(SHARED, "pending"),
+          },
+        };
       },
 
       "docs.assets": ({ key }) => (db.prepare(`SELECT ${ASSET_FIELDS} FROM doc_assets WHERE doc_key = ? ORDER BY name`).all(key) as Row[]).map(toAsset),

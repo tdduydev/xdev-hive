@@ -3,6 +3,8 @@ import {
   Activity,
   BellRing,
   BookOpen,
+  FileCode2,
+  HardDrive,
   Bot,
   Boxes,
   Brain,
@@ -67,6 +69,7 @@ import { WebhooksTab } from "./pages/Webhooks.tsx";
 import { OpsAudit, OpsCosts, OpsFleet, OpsOverview, OpsQueue, OpsQuota, OpsRuns } from "./pages/admin/Ops.tsx";
 import { OpsVersions } from "./pages/admin/Versions.tsx";
 import { OpsAlerts } from "./pages/admin/Alerts.tsx";
+import { OpsContext, OpsHub } from "./pages/admin/HubOps.tsx";
 import { DocReaderPage } from "./pages/DocReader.tsx";
 
 type PageId =
@@ -131,7 +134,7 @@ const PALETTE_ONLY: PageId[] = ["overview"];
 
 // ── The Web Admin (hub admins on the web) ──
 
-type AdminId = "overview" | "runs" | "queue" | "fleet" | "quota" | "costs" | "alerts" | "review" | "docs" | "read" | "memory" | "skills" | "users" | "projects" | "policy" | "versions" | "tokens" | "webhooks" | "audit";
+type AdminId = "overview" | "runs" | "queue" | "fleet" | "quota" | "costs" | "alerts" | "review" | "docs" | "read" | "context" | "memory" | "skills" | "users" | "projects" | "policy" | "versions" | "tokens" | "webhooks" | "audit" | "hub";
 type AdminGroup = "ops" | "watch" | "knowledge" | "admin";
 
 const ADMIN: Record<AdminId, { group: AdminGroup; icon: Icon; render: () => ReactNode; fill?: boolean }> = {
@@ -145,6 +148,7 @@ const ADMIN: Record<AdminId, { group: AdminGroup; icon: Icon; render: () => Reac
   review: { group: "knowledge", icon: SquareCheck, render: () => <ProposalsPage /> },
   docs: { group: "knowledge", icon: BookOpen, render: () => <DocsPage />, fill: true },
   read: { group: "knowledge", icon: BookOpen, render: () => <DocReaderPage />, fill: true },
+  context: { group: "knowledge", icon: FileCode2, render: () => <OpsContext /> },
   memory: { group: "knowledge", icon: Brain, render: () => <MemoryPage />, fill: true },
   skills: { group: "knowledge", icon: WandSparkles, render: () => <SkillsPage />, fill: true },
   users: { group: "admin", icon: UsersRound, render: () => <UsersPage /> },
@@ -154,6 +158,7 @@ const ADMIN: Record<AdminId, { group: AdminGroup; icon: Icon; render: () => Reac
   tokens: { group: "admin", icon: KeyRound, render: () => <TokensPage /> },
   webhooks: { group: "admin", icon: Send, render: () => <WebhooksTab /> },
   audit: { group: "admin", icon: ScrollText, render: () => <OpsAudit /> },
+  hub: { group: "admin", icon: HardDrive, render: () => <OpsHub /> },
 };
 const ADMIN_GROUPS: AdminGroup[] = ["ops", "watch", "knowledge", "admin"];
 
@@ -282,7 +287,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     const groups: AdminNavGroup[] = ADMIN_GROUPS.map((g) => ({
       label: t(`ops.group.${g}`),
       items: (Object.keys(ADMIN) as AdminId[])
-        .filter((id) => ADMIN[id].group === g && id !== "read" && (id !== "alerts" || client.alerts) && (id !== "users" || client.users) && (id !== "tokens" || client.tokens) && (id !== "webhooks" || client.webhooks) && (id !== "versions" || client.releases))
+        .filter((id) => ADMIN[id].group === g && id !== "read" && (id !== "alerts" || client.alerts) && (id !== "hub" || client.hub) && (id !== "users" || client.users) && (id !== "tokens" || client.tokens) && (id !== "webhooks" || client.webhooks) && (id !== "versions" || client.releases))
         .map((id) => ({ id: `admin/${id}`, label: t(`ops.nav.${id}`), icon: ADMIN[id].icon, count: counts[id] })),
     }));
     const a = ADMIN[route.id];

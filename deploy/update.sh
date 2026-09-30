@@ -37,6 +37,8 @@ if "${compose[@]}" config --services | grep -qx ollama; then
   fi
 fi
 # The hub backs up its database on start, before any schema migration of the new version.
+# Its Hub page shows the commit it runs.
+export HIVE_COMMIT="$(git rev-parse --short HEAD)"
 "${compose[@]}" up -d --build hub
 
 container="$("${compose[@]}" ps -q hub)"

@@ -363,9 +363,27 @@ export function OpsQueue() {
   const toast = useToast();
   const tick = useTick(5000);
   const requests = useQuery(() => client.call("runs.requests", { limit: 200 }), [client, tick]);
+  const runs = useQuery(() => client.call("runs.list", { limit: 200 }), [client, tick]);
+  const machines = useQuery(() => client.call("admin.machines", {}), [client, tick]);
   const action = useAction();
   const list = requests.data ?? [];
   const pending = list.filter((r) => r.status === "pending");
+  // Runs a machine queued (from its Board or from these requests), and why each waits: the machine's own reason.
+  const queued = (runs.data ?? []).filter((r) => r.status === "queued").sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const place = new Map<string, number>();
+  const numbered = queued.map((r) => {
+    const n = (place.get(r.machineId) ?? 0) + 1;
+    place.set(r.machineId, n);
+    return { r, n };
+  });
+  /** Why a request no machine took yet still waits. */
+  const whyPending = (r: RunRequest): string => {
+    const m = (machines.data ?? []).find((x) => x.id === r.machineId);
+    if (!m) return t("ops.queue.reasonGone", { machine: r.machine });
+    if (!m.online) return t("ops.queue.reasonOffline", { machine: m.machine, time: formatTime(m.lastSeen) });
+    if (!m.acceptsRuns) return t("ops.queue.reasonNoAccept", { machine: m.machine });
+    return t("ops.queue.reasonNext", { machine: m.machine });
+  };
   const since = (iso: string) => {
     const m = Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 60_000));
     return m < 60 ? `${m} ph` : `${Math.floor(m / 60)} giờ`;
@@ -375,6 +393,7 @@ export function OpsQueue() {
     { key: "status", label: t("ops.col.status"), width: "120px", render: (r) => <Chip kind={r.status === "pending" ? "info" : r.status === "accepted" ? "success" : r.status === "rejected" ? "danger" : "neutral"}>{t(`requestStatus.${r.status}`)}</Chip>, sortValue: (r) => r.status },
     { key: "task", label: t("ops.col.task"), width: "70px", mono: true, render: (r) => r.taskId },
     { key: "work", label: t("ops.col.work"), width: "minmax(220px,1fr)", strong: true, render: (r) => r.taskTitle, sub: (r) => [runLabel("agentRole", r.role), r.project, r.candidates > 1 ? t("ops.candidates", { n: r.candidates }) : null, r.error?.message].filter(Boolean).join(" · ") },
+    { key: "reason", label: t("ops.col.reason"), width: "minmax(180px,0.8fr)", render: (r) => (r.status === "pending" ? <span className="text-xs text-fg-secondary">{whyPending(r)}</span> : "") },
     { key: "machine", label: t("ops.col.machine"), width: "120px", mono: true, render: (r) => r.machine, sub: (r) => r.profileId ?? "" },
     { key: "by", label: t("ops.col.by"), width: "120px", render: (r) => r.requestedBy, sub: (r) => since(r.requestedAt), sortValue: (r) => r.requestedAt },
     {
@@ -404,8 +423,28 @@ export function OpsQueue() {
   ];
   return (
     <div className="flex flex-col gap-3">
-      <ErrorNote error={requests.error ?? action.error} />
+      <ErrorNote error={requests.error ?? action.error ?? runs.error} />
+      <section className="flex flex-col rounded-[14px] border border-line-default bg-surface px-4 pt-3.5 pb-2">
+        <h2 className="m-0 pb-1.5 text-sm font-semibold text-fg-strong">{t("ops.queue.onMachines", { count: queued.length })}</h2>
+        {runs.data && !queued.length ? <p className="m-0 pb-2 text-[13px] text-fg-muted">{t("ops.queue.noneQueued")}</p> : null}
+        {numbered.map(({ r, n }) => (
+          <div key={`${r.machineId}/${r.runId}`} className="grid grid-cols-[34px_62px_minmax(0,1fr)_minmax(0,0.9fr)] items-center gap-3 border-b border-line-subtle py-2.5 last:border-b-0">
+            <span className="font-mono text-xs text-fg-muted">#{n}</span>
+            <span className="font-mono text-xs text-fg-brand">{r.taskId}</span>
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="truncate text-[13px] font-medium text-fg-strong">{r.taskTitle}</span>
+              <span className="truncate text-[11px] text-fg-muted">
+                {runLabel("agentRole", r.role)} · <span className="font-mono">{r.project}</span> · {r.machine} · {t("ops.queue.waiting", { time: runDuration({ ...r, startedAt: r.createdAt }) })}
+              </span>
+            </span>
+            <span className={cn("rounded-md px-2.5 py-1.5 text-xs/[17px]", r.error ? "bg-warning-soft text-fg-strong" : "bg-sunken text-fg-secondary")}>{r.error ?? t("ops.queue.reasonSlot")}</span>
+          </div>
+        ))}
+        <span className="pt-2 text-[11px]/4 text-fg-muted">{t("ops.queue.order")}</span>
+      </section>
+      <h2 className="m-0 mt-1 text-sm font-semibold text-fg-strong">{t("ops.queue.requests")}</h2>
       {requests.data && !pending.length ? <Empty>{t("ops.queueEmpty")}</Empty> : null}
+      {list.length ? (
       <DataTable
         rows={list}
         columns={columns}
@@ -417,6 +456,7 @@ export function OpsQueue() {
           { key: "machine", label: t("ops.col.machine"), value: (r) => r.machine },
         ]}
       />
+      ) : null}
     </div>
   );
 }

@@ -147,6 +147,7 @@ export const en: Catalog = {
     createdAssigned: "Created {id}, assigned to {profile}",
   },
   ops: {
+    queue: { onMachines: "Waiting on machines · {count}", noneQueued: "No run is waiting on a machine.", waiting: "waiting {time}", reasonSlot: "Waiting its turn: the machine runs as many as it may at once", requests: "Run requests from the web", reasonGone: "Machine {machine} is gone", reasonOffline: "{machine} offline since {time}", reasonNoAccept: "{machine} takes no work from the hub (off in the app's settings)", reasonNext: "Waiting for {machine} to take it at its next heartbeat", order: "How a plan is picked: the pinned one; skip plans that are off, not installed, signed out, over their threshold, busy, resting or of the wrong role; a review uses another vendor than the work; lower priority number first, then the one unused the longest." },
     versions: {
       rollout: "Rolling out",
       channel: "{channel} channel",
@@ -186,6 +187,8 @@ export const en: Catalog = {
     rangeLabel: "Time range",
     group: { ops: "Operations", watch: "Monitoring", knowledge: "Knowledge", admin: "Administration" },
     nav: {
+      hub: "Hub",
+      context: "Agent context",
       alerts: "Alerts",
       versions: "App versions",
       overview: "Overview",
@@ -207,6 +210,8 @@ export const en: Catalog = {
       audit: "Audit log",
     },
     hint: {
+      hub: "Version, database, backups, meaning search, sign-in",
+      context: "The AGENTS.md and what a project's agents get",
       alerts: "Open incidents and the rules that raise them",
       versions: "Builds the hub hands to machines",
       overview: "Refreshes every 15 seconds",
@@ -257,6 +262,7 @@ export const en: Catalog = {
     fleet: "Fleet",
     noUsage: "no data",
     col: {
+      reason: "Why it waits",
       status: "Status",
       task: "Task",
       work: "Work",
@@ -1738,6 +1744,7 @@ export const en: Catalog = {
     assistNotTaken: "No machine took the request within 15 minutes: one needs the app open, the project added, and runs from the hub turned on.",
     assistSilent: "The machine writing it stopped reporting.",
     alertRule: "There is no alert rule {rule}.",
+    backupOff: "Backups are off: set HIVE_BACKUP_DIR.",
     docParentSelf: "{key} cannot go under itself.",
     docParentSkill: "Skills stay in the skills folder: they do not go under pages, and pages do not go under them.",
     docParentSpace: "{parent} is in another space than {key}.",
@@ -2029,6 +2036,8 @@ export const en: Catalog = {
     hint: "The hub does not save text with hidden characters. Removing them leaves emoji alone.",
     strip: "Remove hidden characters",
   },
+  hub: { version: "Version", database: "Database", backup: "Backup", search: "Memory search by meaning", sso: "SSO sign-in", hosts: "Allowed hosts", ok: "OK", late: "Overdue", off: "Off", on: "On", error: "Error", indexing: "Indexing", config: "Config", keywordOnly: "Words only", container: "container", process: "process", versionDetail: "{where} · Node {node} · uptime {uptime} · up since {since}", dbDetail: "SQLite WAL · {path} · {docs} docs · {memory} memory · {tasks} tasks · {runs} runs · {machines} machines · {users} accounts", backupDetail: "every {hours} hours · keeps {keep} · {count} in {dir}", noBackupYet: "none yet", backupOffHint: "Set HIVE_BACKUP_DIR for the hub to back itself up (see the README).", backupNow: "Back up now", backingUp: "Backing up…", backedUp: "Backed up: {file}", searchOffHint: "Set HIVE_EMBED_URL to search memory by meaning (see the README).", waitingVectors: "{count} waiting for a vector", passwordOnly: "Passwords only", ssoDetail: "{issuer} · {count} accounts linked", ssoOffHint: "Set HIVE_OIDC_ISSUER, HIVE_OIDC_CLIENT_ID and HIVE_OIDC_CLIENT_SECRET for SSO sign-in.", anyHost: "any host" },
+  context: { project: "Project", noProjects: "No projects yet.", lines: "{lines}/{limit} lines", over: "Over the limit: a sync suggests moving parts into docs for some paths.", under: "Under the line limit: agents read it all before every task.", block: { shared: "Shared block", project: "The project's own", paths: "List of docs for some paths", skills: "Skills" }, none: "None.", pathsCount: "{count} entries", skillsCount: "{count} skills", noProjectDoc: "no page yet", lineCount: "{count} lines", showFull: "Show the whole AGENTS.md", hideFull: "Hide AGENTS.md", copy: "Copy", paths: "Docs for some paths", noPaths: "The project has no doc limited to paths.", readNested: "read by: Codex, Claude Code", readRule: "read by: Claude Code (other agents find it through the list in AGENTS.md)", files: "Files Hive writes in the repo", blockOnly: "Hive's block only", memory: "Memory agents find: {project} of the project + {shared} shared · {stale} stale left out · {pending} waiting for review", syncHint: "A machine writes these files when it syncs the project (Dự án & cài đặt → Sync in the desktop app)." },
   alerts: { severity: { high: "High", medium: "Medium", low: "Low" }, title: { run_fail_streak: "{task} failed {count} times in a row", ci_fix_exhausted: "CI still failing · MR !{mr}", machine_offline: "Machine {machine} offline", webhook_failed: "Webhook \"{name}\" failing", quota_near: "{profile} near its limit", vendor_resting: "Every {vendor} plan resting", backup_overdue: "Backup overdue" }, detail: { run_fail_streak: "{project} · {title} · within an hour", ci_fix_exhausted: "{project} · {task} · out of fix runs on {machine}", machine_offline: "no heartbeat for {minutes} minutes", webhook_failed: "{kind} · {error}", quota_near: "{machine} · session {session}% · week {week}%", vendor_resting: "{count} plans · first free at {until}; runs and cross-reviews wait", backup_overdue: "no new one for {hours} hours · {dir}" }, rule: { run_fail_streak: { label: "Failed runs in a row", cond: "3 failed runs of the same task within an hour" }, ci_fix_exhausted: { label: "CI failing after fixes", cond: "out of fix runs and the pipeline still fails" }, machine_offline: { label: "Machine offline", cond: "no heartbeat for over 60 minutes" }, webhook_failed: { label: "Webhook failing", cond: "the last send got HTTP 4xx/5xx or timed out" }, quota_near: { label: "Plan near its limit", cond: "session or week at 80% or more" }, vendor_resting: { label: "Every plan of a vendor resting", cond: "cross-reviews will wait" }, backup_overdue: { label: "Backup overdue", cond: "no new one for the backup interval plus 2 hours" } }, incidents: "Incidents", rules: "Alert rules", rulesHint: "Open alerts show on the Overview and an admin's Today, and go to webhooks with the Alert event on.", open: "Open alerts", all: "All", none: "No open alerts.", noneRecent: "No incidents in the last 7 days.", ack: "Seen", stateOpen: "Open", stateAcked: "Seen · {who}", stateAuto: "Ended by itself", stateBy: "Handled by {who}", on: "On", off: "Off", since: "since {time}", ended: "ended {time}", healthOk: "All good", healthIncidents: "{high} incidents · {rest} warnings", healthWarnings: "{count} warnings", acked: "Marked as seen", ruleSaved: "Turned {state} {rule}" },
   feed: { runStarted: "started {task} · {profile}", run: { succeeded: "finished {task} · {profile}", failed: "failed {task} · {profile}", cancelled: "stopped {task}", rate_limited: "out of quota on {task} · {profile}", running: "running {task}", queued: "queued {task}" }, mr: "opened an MR for {task}", alertOpened: "alert: {title}", alertResolved: "alert ended: {title}", audit: "{action} · {target}", proposal: "proposed a change to {doc}", title: "Event feed", hint: "live from machines and the hub", none: "Nothing in the last 24 hours." },
   webhooks: {
