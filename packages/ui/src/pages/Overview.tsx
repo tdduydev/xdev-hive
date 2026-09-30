@@ -1,6 +1,6 @@
 // Landing page. Follows the sidebar scope: every project at a glance, the team-wide (shared) data, or one project.
 import { Fragment, type ComponentType, type ReactNode } from "react";
-import { Bot, ChevronRight, FileText, FolderGit2, GitPullRequestArrow, Layers, ListTodo, Server, Sparkles, Users } from "lucide-react";
+import { Bot, Boxes, ChevronRight, FileText, FolderGit2, GitPullRequestArrow, Layers, ListTodo, Server, Sparkles, Users } from "lucide-react";
 import { cn } from "cn";
 import type { DesktopSettings, DocSummary, Memory, Proposal, Task, TaskStatus } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
@@ -9,7 +9,7 @@ import { Skeleton } from "@xdev-hive/ui/components/ui/skeleton";
 import { Badge, Empty, ErrorNote, OwnerBadge, Page, PageHeader, STATUS_TONE, StatusDot } from "../components/common.tsx";
 import { formatTime, useHive, useQuery, type QueryState } from "../hooks.ts";
 import { useT, type TFunction } from "../i18n/index.tsx";
-import { ALL, SHARED, docOwner, projectScope, scopeLabel } from "../lib/scope.ts";
+import { ALL, SHARED, docOwner, projectScope, scopeLabel, systemScope } from "../lib/scope.ts";
 
 type Icon = ComponentType<{ className?: string }>;
 type OpenStatus = Exclude<TaskStatus, "done">;
@@ -44,13 +44,14 @@ export function OverviewPage() {
   const { scope } = useHive();
   if (scope.kind === "shared") return <SharedOverview />;
   if (scope.kind === "project") return <ProjectOverview key={scope.project} project={scope.project} />;
+  if (scope.kind === "system") return <AllOverview key={scope.system} system={{ name: scope.system, projects: scope.projects }} />;
   return <AllOverview />;
 }
 
-// ── all projects ───────────────────────────────────────────────────────────
+// ── all projects, or a system's ────────────────────────────────────────────
 
-function AllOverview() {
-  const { client, projects, setScope } = useHive();
+function AllOverview({ system }: { system?: { name: string; projects: string[] } }) {
+  const { client, projects, systems, setScope } = useHive();
   const t = useT();
   const desktop = client.desktop;
   const docs = useQuery(() => client.call("docs.list", {}), [client]);
@@ -77,7 +78,9 @@ function AllOverview() {
   for (const task of tasks.data ?? []) names.add(task.project);
   for (const m of memory.data ?? []) if (m.project) names.add(m.project);
   for (const name of repos.keys()) names.add(name);
-  const list = [...names].sort();
+  // A system: its projects only, even the ones with nothing yet.
+  const list = system ? [...system.projects].sort() : [...names].sort();
+  const openIn = (ps: string[]) => (tasks.data ? ps.reduce((n, p) => n + OPEN.reduce((m, s) => m + (openTasks.get(p)?.[s] ?? 0), 0), 0) : undefined);
 
   const loading = [docs, memory, tasks, proposals, settings].some(waiting);
   const errors = [...new Set([docs.error, memory.error, tasks.error, proposals.error, settings.error].filter(Boolean))];
@@ -87,8 +90,8 @@ function AllOverview() {
   return (
     <Page>
       <PageHeader
-        title={t("overview.title")}
-        subtitle={t("overview.subtitle")}
+        title={system ? system.name : t("overview.title")}
+        subtitle={system ? t("overview.systemSubtitle", { count: system.projects.length }) : t("overview.subtitle")}
       />
       {errors.length ? <ErrorNote error={errors.join("\n")} /> : null}
 
@@ -108,6 +111,33 @@ function AllOverview() {
           <Count label={t("overview.pendingProposals")} value={value(proposalCount, "")} loading={waiting(proposals)} warnIfAny />
         </dl>
       </ClickCard>
+
+      {!system && systems.length ? (
+        <section className="flex flex-col gap-3">
+          <h2 className="flex items-baseline gap-2 text-sm font-semibold">
+            {t("overview.systems")}
+            <span className="font-normal text-muted-foreground tabular-nums">{systems.length}</span>
+          </h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {systems.map((s) => (
+              <ClickCard
+                key={s.name}
+                onOpen={() => setScope(systemScope(s.name, s.projects))}
+                label={t("overview.openSystem", { system: s.name })}
+                icon={Boxes}
+                title={s.name}
+                titleClassName="font-mono text-sm"
+                description={<span className="font-mono text-xs break-words">{s.projects.join(" · ")}</span>}
+              >
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+                  <Count label={t("overview.systemProjects")} value={s.projects.length} loading={false} />
+                  <Count label={t("overview.openTasks")} value={openIn(s.projects)} loading={waiting(tasks)} />
+                </dl>
+              </ClickCard>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="flex flex-col gap-3">
         <h2 className="flex items-baseline gap-2 text-sm font-semibold">

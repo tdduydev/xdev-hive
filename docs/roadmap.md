@@ -79,7 +79,8 @@ Làm lần lượt, mỗi lượt một mục (mỗi mục một PR). Mục có 
 - **19. microservices** (hỏi 30/9: công ty dùng GitLab nội bộ và kiến trúc microservices; chọn đủ bốn phần; làm sau phần chat, trước Spec Kit). Mỗi service vẫn là một dự án Hive (một repo GitLab); thêm lớp *hệ thống* gom các service:
   - [x] **19a. gitlab-group-import**: chọn một group trên GitLab công ty (URL và token của máy); Hive liệt kê các repo, thêm thành dự án và clone về máy (trang *Dự án* / *Cài đặt máy*), khỏi thêm từng repo.
     - Xong 30/9: thẻ *Nhập từ group GitLab* ở *Dự án & cài đặt* liệt kê repo của group và group con, gợi ý project key và thư mục, clone (SSH/HTTPS, token không vào `.git/config`) rồi thêm dự án có GitLab project; thư mục có sẵn thì dùng luôn, repo đã là dự án thì bỏ qua.
-  - [ ] **19b. project-groups**: nhóm dự án thành *hệ thống*; thanh bên chọn hệ thống thì thấy task, run, MR, chat của mọi service trong đó.
+  - [x] **19b. project-groups**: nhóm dự án thành *hệ thống*; thanh bên chọn hệ thống thì thấy task, run, MR, chat của mọi service trong đó.
+    - Xong 30/9: bảng `systems` trên hub (migration 22), `systems.list/save/remove` (sửa cần *quản lý* mọi dự án liên quan), lọc `projects` cho task, run, yêu cầu run, chat, memory; trang *Hệ thống*, ô phạm vi có mục hệ thống, *Tổng quan* theo hệ thống; nhập group GitLab gom luôn vào hệ thống.
   - [ ] **19c. group-docs**: tài liệu và memory của hệ thống (API contract, sự kiện, cách các service gọi nhau), dùng chung cho mọi service của hệ thống, tách khỏi phần *Chung* của cả team.
   - [ ] **19d. cross-service-tasks**: một tính năng tách thành task ở từng service, phụ thuộc chéo dự án (service B chờ A xong API); leader chat ở mức hệ thống đề xuất task cho nhiều service.
 - **20. speckit** (hỏi 30/9: quản lý Spec Kit trong Hive; chọn đủ bốn phần; làm sau microservices (19), trước 18c–18e):

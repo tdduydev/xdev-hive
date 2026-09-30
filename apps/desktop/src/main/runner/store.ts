@@ -202,11 +202,17 @@ export class RunStore {
     return row ? toRun(row) : null;
   }
 
-  list(filter: { project?: string; limit?: number } = {}): AgentRun[] {
+  /** A project's runs, a system's (`projects`), or every one, the newest first. */
+  list(filter: { project?: string; projects?: string[]; limit?: number } = {}): AgentRun[] {
+    // From the page: only strings go into the list.
+    const projects = Array.isArray(filter.projects) ? JSON.stringify(filter.projects.map(String)) : null;
     return (
       this.db
-        .prepare("SELECT * FROM runs WHERE (?1 IS NULL OR project = ?1) ORDER BY created_at DESC, rowid DESC LIMIT ?2")
-        .all(filter.project ?? null, filter.limit ?? 100) as Row[]
+        .prepare(
+          `SELECT * FROM runs WHERE (?1 IS NULL OR project = ?1) AND (?3 IS NULL OR project IN (SELECT value FROM json_each(?3)))
+           ORDER BY created_at DESC, rowid DESC LIMIT ?2`,
+        )
+        .all(filter.project ?? null, filter.limit ?? 100, projects) as Row[]
     ).map(toRun);
   }
 

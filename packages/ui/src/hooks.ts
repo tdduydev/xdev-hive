@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { can, type Level, type Me, type WriteSource } from "@xdev-hive/core";
+import { can, type HiveSystem, type Level, type Me, type WriteSource } from "@xdev-hive/core";
 import { activeIntl, hasKey, translate, type MessageKey } from "./i18n/translate.ts";
 import type { HiveClient } from "./client.ts";
 import type { Scope } from "./lib/scope.ts";
@@ -12,8 +12,10 @@ export interface HiveContextValue {
   /** The project scope picked in the sidebar (see lib/scope.ts). */
   scope: Scope;
   setScope: (scope: Scope) => void;
-  /** Project keys seen anywhere: docs, tasks, memory, this machine's repos. */
+  /** Project keys seen anywhere: docs, tasks, memory, this machine's repos, systems. */
   projects: string[];
+  /** The team's systems (roadmap 19b), with the projects this person sees. */
+  systems: HiveSystem[];
 }
 
 export const HiveContext = createContext<HiveContextValue | null>(null);

@@ -14,7 +14,7 @@ import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_T
 import { formatTime, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "../hooks.ts";
 import { useT } from "../i18n/index.tsx";
 import { REQUEST_TONE, requestErrorText, runLabel } from "../lib/runs.ts";
-import { scopeProject } from "../lib/scope.ts";
+import { scopeFilter, scopeKey, scopeProject } from "../lib/scope.ts";
 import { ownerLabel } from "../lib/tasks.ts";
 
 /** Text colour of the status select, keyed by STATUS_TONE. */
@@ -32,22 +32,24 @@ export function TasksPage() {
   const { client, scope, projects, me } = useHive();
   const t = useT();
   const allow = useCan();
-  const managed = projects.filter((p) => allow(p, "manage"));
+  // A system's new tasks go to one of its projects.
+  const managed = (scope.kind === "system" ? scope.projects : projects).filter((p) => allow(p, "manage"));
   // Tasks always belong to one project: the shared scope has none of its own, so it shows every project's.
   const scoped = scopeProject(scope);
+  const key = scopeKey(scope);
   const [status, setStatus] = useState<TaskStatus | "">("");
   const list = useQuery(
-    () => client.call("tasks.list", { project: scoped ?? undefined, status: status || undefined }),
-    [client, scoped, status],
+    () => client.call("tasks.list", { ...scopeFilter(scope), status: status || undefined }),
+    [client, key, status],
   );
-  const next = useQuery(() => client.call("tasks.next", { project: scoped ?? undefined, limit: 3 }), [client, scoped, list.data]);
+  const next = useQuery(() => client.call("tasks.next", { ...scopeFilter(scope), limit: 3 }), [client, key, list.data]);
   // Runs queued on a machine from here (hub only): which machine a task waits for, and what became of it.
   const hub = me.mode === "hub";
   const [pending, setPending] = useState(false);
   const poll = usePoll(pending ? PENDING_MS : null);
   const requests = useQuery(
-    async () => (hub ? client.call("runs.requests", { project: scoped ?? undefined, limit: 200 }) : []),
-    [client, hub, scoped, poll],
+    async () => (hub ? client.call("runs.requests", { ...scopeFilter(scope), limit: 200 }) : []),
+    [client, hub, key, poll],
   );
   useEffect(() => setPending((requests.data ?? []).some((r) => r.status === "pending")), [requests.data]);
   const [openId, setOpenId] = useState<string | null>(null);

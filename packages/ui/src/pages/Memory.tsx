@@ -12,13 +12,14 @@ import { HiddenChars } from "../components/HiddenChars.tsx";
 import type { HiveClient } from "../client.ts";
 import { formatTime, sourceText, useAction, useCan, useHive, useQuery } from "../hooks.ts";
 import { useT, type MessageKey } from "../i18n/index.tsx";
-import { scopeProject, type Scope } from "../lib/scope.ts";
+import { scopeId, scopeKey, scopeProject, type Scope } from "../lib/scope.ts";
 
 /** Value of the "Chung" option in the owner select (project keys are never empty). */
 const SHARED_OPTION = "";
 
 /**
- * memory.list / memory.search input for the scope: all → everything, shared → team-wide only, project → its entries + shared.
+ * memory.list / memory.search input for the scope: all → everything, shared → team-wide only, project → its entries + shared,
+ * system → its projects' entries + shared.
  * People see stale entries too (agents' searches skip them), so they can keep or remove them.
  */
 function loadMemory(client: HiveClient, scope: Scope, query: string, filter: { pendingOnly: boolean; staleOnly: boolean }) {
@@ -29,6 +30,11 @@ function loadMemory(client: HiveClient, scope: Scope, query: string, filter: { p
     return search
       ? client.call("memory.search", { project: scope.project, query, limit: 50, includeStale: true })
       : client.call("memory.list", { project: scope.project, includeShared: true, status, stale });
+  }
+  if (scope.kind === "system") {
+    return search
+      ? client.call("memory.search", { projects: scope.projects, query, limit: 50, includeStale: true })
+      : client.call("memory.list", { projects: scope.projects, includeShared: true, status, stale });
   }
   if (scope.kind === "shared") {
     return search ? client.call("memory.search", { query, limit: 50, includeStale: true }) : client.call("memory.list", { project: null, status, stale });
@@ -50,7 +56,7 @@ export function MemoryPage() {
 
   const list = useQuery(
     () => loadMemory(client, scope, submitted, { pendingOnly, staleOnly }),
-    [client, scope.kind, scoped, submitted, pendingOnly, staleOnly],
+    [client, scopeKey(scope), submitted, pendingOnly, staleOnly],
   );
   // A hub from before this has no such method: the line just does not show.
   const search = useQuery(() => client.call("memory.searchInfo", {}), [client, list.data]);
@@ -65,8 +71,9 @@ export function MemoryPage() {
         ]
       : [{ owner: null, title: null, items: rows }];
 
-  // New entries default to the scope: its project, Chung for the shared scope, the first project when looking at all.
-  const defaultOwner = scope.kind === "project" ? scope.project : scope.kind === "shared" ? null : (projects[0] ?? null);
+  // New entries default to the scope: its project, Chung for the shared scope, the first project of a system or of all.
+  const pool = scope.kind === "system" ? scope.projects : projects;
+  const defaultOwner = scope.kind === "project" ? scope.project : scope.kind === "shared" ? null : (pool[0] ?? null);
 
   return (
     <Page>
@@ -110,7 +117,7 @@ export function MemoryPage() {
         </p>
       ) : null}
       {allow(null, "contribute") || projects.some((p) => allow(p, "contribute")) ? (
-        <AddMemory key={scoped === null ? scope.kind : `project:${scoped}`} defaultOwner={defaultOwner} projects={projects} onAdded={list.reload} />
+        <AddMemory key={scopeId(scope)} defaultOwner={defaultOwner} projects={pool} onAdded={list.reload} />
       ) : null}
       <ErrorNote error={list.error} />
       {list.data?.length === 0 ? <Empty>{t("memory.none")}</Empty> : null}

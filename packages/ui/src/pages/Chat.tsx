@@ -31,7 +31,7 @@ import {
   withAction,
 } from "../lib/chat.ts";
 import { requestErrorText, runLabel } from "../lib/runs.ts";
-import { scopeProject } from "../lib/scope.ts";
+import { scopeFilter, scopeId, scopeKey, scopeProject } from "../lib/scope.ts";
 
 /** Machines report a reply being written every 2 s: followed that closely; otherwise a slow check for news. */
 const LIVE_MS = 2000;
@@ -58,8 +58,8 @@ export function ChatPage() {
     return () => clearTimeout(timer);
   }, [search]);
   const threads = useQuery(
-    () => client.call("chat.threads", { project: project ?? undefined, query: query || undefined, limit: 100 }),
-    [client, project, query, poll],
+    () => client.call("chat.threads", { ...scopeFilter(scope), query: query || undefined, limit: 100 }),
+    [client, scopeKey(scope), query, poll],
   );
   useEffect(() => setBusy((threads.data ?? []).some((th) => th.busy)), [threads.data]);
   // The open thread is in the address (#/chat?thread=12): a link to it opens it, and so does coming back to the page.
@@ -73,12 +73,14 @@ export function ChatPage() {
     const next = threadOf(linked);
     if (next) setOpenState(next);
   }, [linked]);
-  // Another project picked in the sidebar: its own threads.
-  const shownProject = useRef(project);
+  // Another project or system picked in the sidebar: its own threads.
+  const shown = scopeId(scope);
+  const shownBefore = useRef(shown);
   useEffect(() => {
-    if (shownProject.current !== project) (shownProject.current = project), setOpen(null);
-  }, [project, setOpen]);
-  const managed = (project ? [project] : projects).filter((p) => allow(p, "manage"));
+    if (shownBefore.current !== shown) (shownBefore.current = shown), setOpen(null);
+  }, [shown, setOpen]);
+  // A system's chats are each with one of its projects' leaders.
+  const managed = (project ? [project] : scope.kind === "system" ? scope.projects : projects).filter((p) => allow(p, "manage"));
   const [guideOpen, setGuideOpen] = useState(false);
 
   return (
@@ -101,7 +103,7 @@ export function ChatPage() {
           ) : null
         }
       />
-      {managed.length ? <LeaderGuideSheet key={project ?? ""} projects={managed} defaultProject={project} open={guideOpen} onOpenChange={setGuideOpen} /> : null}
+      {managed.length ? <LeaderGuideSheet key={shown} projects={managed} defaultProject={project} open={guideOpen} onOpenChange={setGuideOpen} /> : null}
       <ErrorNote error={threads.error} />
       <div className="grid items-start gap-4 lg:grid-cols-[19rem_minmax(0,1fr)]">
         {/* On a phone the list and the open chat take turns. */}

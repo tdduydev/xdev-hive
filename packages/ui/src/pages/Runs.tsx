@@ -13,7 +13,7 @@ import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE } from "
 import { formatTime, formatUsd, useAction, useCan, useHashParam, useHive, useQuery } from "../hooks.ts";
 import { useT } from "../i18n/index.tsx";
 import { fixInstructions, isLive, latestReviews, runDuration, runLabel } from "../lib/runs.ts";
-import { scopeProject } from "../lib/scope.ts";
+import { scopeFilter, scopeKey, scopeProject } from "../lib/scope.ts";
 
 /** Machines push every 5 s while something runs; nothing to follow, a slow check for new runs. */
 const LIVE_MS = 3000;
@@ -35,7 +35,8 @@ export function RunsPage() {
   const project = scopeProject(scope);
   const [active, setActive] = useState(false);
   const tick = useRefresh(active);
-  const runs = useQuery(() => client.call("runs.list", { project: project ?? undefined, limit: 100 }), [client, project, tick]);
+  const key = scopeKey(scope);
+  const runs = useQuery(() => client.call("runs.list", { ...scopeFilter(scope), limit: 100 }), [client, key, tick]);
   useEffect(() => setActive((runs.data ?? []).some(isLive)), [runs.data]);
   const [selected, setSelected] = useState<{ machineId: string; runId: string } | null>(null);
   const run = runs.data?.find((r) => r.machineId === selected?.machineId && r.runId === selected?.runId) ?? null;
