@@ -84,7 +84,16 @@ export function attachmentNote(files: FetchedFile[]): string {
 }
 
 /** The CLI's arguments; the message itself goes in on stdin, so one starting with "-" is never read as an option. */
-export function chatArgs(o: { project: string; requestedBy: string; mcpConfigFile: string; sessionId: string | null; fileDir?: string }): string[] {
+export function chatArgs(o: {
+  project: string;
+  requestedBy: string;
+  mcpConfigFile: string;
+  sessionId: string | null;
+  fileDir?: string;
+  /** The thread's model and effort; left out, the profile's own. */
+  model?: string | null;
+  effort?: string | null;
+}): string[] {
   return [
     "-p",
     "--output-format",
@@ -102,6 +111,8 @@ export function chatArgs(o: { project: string; requestedBy: string; mcpConfigFil
     ...(o.fileDir ? ["--add-dir", o.fileDir] : []),
     "--append-system-prompt",
     leaderBrief(o.project, o.requestedBy),
+    ...(o.model ? ["--model", o.model] : []),
+    ...(o.effort ? ["--effort", o.effort] : []),
     ...(o.sessionId ? ["--resume", o.sessionId] : []),
   ];
 }
@@ -194,6 +205,8 @@ export class ChatWorker {
       mcpConfigFile: mcpFile,
       sessionId: req.sessionId,
       ...(fileDir ? { fileDir } : {}),
+      model: req.model ?? null,
+      effort: req.effort ?? null,
     });
     const stream = new ClaudeStream(project.repo);
     let steps = "";

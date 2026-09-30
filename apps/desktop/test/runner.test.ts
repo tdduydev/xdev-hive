@@ -14,6 +14,7 @@ import { checkLogin, checkUsage, LoginMonitor, loginCommand, parseLogin, USAGE_A
 import { SqliteHive } from "@xdev-hive/core/node";
 import { parseResetTime, detectRateLimit } from "../src/main/runner/rate-limit.ts";
 import { Runner, type HubUpdate, type RunnerEvent, type RunnerHost, type RunnerOptions } from "../src/main/runner/runner.ts";
+import { chatArgs } from "../src/main/runner/chat.ts";
 import { setMainLocale } from "../src/main/i18n.ts";
 import { pickProfile, waitingReason, type ProfileLoad } from "../src/main/runner/schedule.ts";
 
@@ -892,6 +893,16 @@ describe("Runner", () => {
         [`https://hive.example.test/api/chat/files/${again.id}`, "hivechat_test"],
       ], "with the reply's token, never the machine's");
       assert.equal(existsSync(dir), false, "gone with the reply");
+    });
+
+    it("asks Claude Code for the thread's model and effort, and leaves them to the profile when unset", () => {
+      const base = { project: "demo", requestedBy: "lan", mcpConfigFile: "/tmp/m.json", sessionId: "s-1" };
+      const args = chatArgs({ ...base, model: "opus", effort: "high" });
+      assert.deepEqual(args.slice(args.indexOf("--model"), args.indexOf("--model") + 2), ["--model", "opus"]);
+      assert.deepEqual(args.slice(args.indexOf("--effort"), args.indexOf("--effort") + 2), ["--effort", "high"]);
+      assert.deepEqual(args.slice(-2), ["--resume", "s-1"]);
+      const plain = chatArgs({ ...base, model: null, effort: null });
+      assert.ok(!plain.includes("--model") && !plain.includes("--effort"), "the profile's own");
     });
 
     it("says why it cannot write a reply, and asks for none while it does not take runs from the hub", async () => {

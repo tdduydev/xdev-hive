@@ -2,9 +2,9 @@
 // whose Claude plan writes the replies in the same Claude Code session. A reply shows as the machine writes it,
 // with the agent's steps; project managers send messages and stop a reply.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Bot, Check, CheckCheck, MessageSquarePlus, Pencil, RotateCcw, Search, SendHorizontal, Square, Trash2, X } from "lucide-react";
+import { ArrowLeft, Bot, Check, CheckCheck, MessageSquarePlus, Pencil, RotateCcw, Search, SendHorizontal, Settings2, Square, Trash2, X } from "lucide-react";
 import { cn } from "cn";
-import type { ChatAction, ChatMessage, ChatThread } from "@xdev-hive/core";
+import { CHAT_EFFORTS, CHAT_MODEL_ALIASES, type ChatAction, type ChatEffort, type ChatMessage, type ChatThread } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card } from "@xdev-hive/ui/components/ui/card";
 import { Input } from "@xdev-hive/ui/components/ui/input";
@@ -173,13 +173,36 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
   const [machineId, setMachineId] = useState("");
   const machine = fit.find((m) => m.id === machineId) ?? fit[0] ?? null;
   const [profileId, setProfileId] = useState("");
+  const [model, setModel] = useState("");
+  const [effort, setEffort] = useState<ChatEffort | "">("");
   const [text, setText] = useState("");
   const action = useAction();
+  const saving = useAction();
+  const [saved, setSaved] = useState(false);
   const att = useAttachments(project);
+  // What the project set for its chats fills the form; the person may pick otherwise.
+  const defaults = useQuery(() => client.call("chat.defaults", { project }), [client, project]);
+  useEffect(() => {
+    const d = defaults.data;
+    if (!d) return;
+    setMachineId(d.machineId ?? "");
+    setProfileId(d.profileId ?? "");
+    setModel(d.model ?? "");
+    setEffort(d.effort ?? "");
+    setSaved(false);
+  }, [defaults.data]);
   const send = () => {
     if (!machine || !text.trim() || action.busy || att.uploading) return;
     void action.run(async () => {
-      const sent = await client.call("chat.send", { project, machineId: machine.id, profileId: profileId || null, text, files: att.ids });
+      const sent = await client.call("chat.send", {
+        project,
+        machineId: machine.id,
+        profileId: profileId || null,
+        model: model || null,
+        effort: effort || null,
+        text,
+        files: att.ids,
+      });
       att.clear();
       onStarted(sent.thread.id);
     });
@@ -239,6 +262,34 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
             </NativeSelect>
           </div>
         </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <ModelFields model={model} effort={effort} onModel={(v) => (setModel(v), setSaved(false))} onEffort={(v) => (setEffort(v), setSaved(false))} idPrefix="chat-new" />
+          <div className="flex items-end">
+            <Button
+              size="sm"
+              variant="outline"
+              type="button"
+              disabled={saving.busy}
+              title={t("chat.saveDefaultsHint", { project })}
+              onClick={() =>
+                void saving.run(async () => {
+                  await client.call("chat.setDefaults", {
+                    project,
+                    machineId: machine?.id ?? null,
+                    profileId: profileId || null,
+                    model: model || null,
+                    effort: effort || null,
+                  });
+                  setSaved(true);
+                })
+              }
+            >
+              {t("chat.saveDefaults")}
+            </Button>
+          </div>
+        </div>
+        {saved ? <Notice tone="ok">{t("chat.defaultsSaved", { project })}</Notice> : null}
+        <ErrorNote error={saving.error} />
         <ErrorNote error={machines.error} />
         {machines.data && !fit.length ? <Notice tone="info">{t("chat.noMachine", { project })}</Notice> : null}
         <Textarea
@@ -353,10 +404,13 @@ function Conversation({ threadId, onBack, onChanged, onDeleted }: { threadId: nu
           {thread ? (
             <p className="text-xs text-muted-foreground wrap-anywhere">
               <span className="font-mono">{thread.project}</span> · <span className="font-mono">{thread.machine}</span> · {thread.profileId ?? t("chat.anyPlan")} ·{" "}
+              {thread.model ?? t("chat.modelDefault")}
+              {thread.effort ? ` (${t(`effort.${thread.effort}`)})` : ""} ·{" "}
               {t("chat.startedBy", { who: thread.createdBy, time: formatTime(thread.createdAt) })}
             </p>
           ) : null}
         </div>
+        {thread && manage ? <ThreadSettings thread={thread} onChanged={(th) => (setThread(th), onChanged())} /> : null}
       </header>
       <div
         ref={list}
@@ -392,6 +446,99 @@ function Conversation({ threadId, onBack, onChanged, onDeleted }: { threadId: nu
         {thread && manage ? <Composer thread={thread} onSent={refresh} /> : thread ? <p className="text-xs text-muted-foreground">{t("chat.readOnly")}</p> : null}
       </footer>
     </Card>
+  );
+}
+
+/** A model picker (Claude Code's aliases, or the one already set) and an effort picker; empty is the plan's own. */
+function ModelFields({
+  model,
+  effort,
+  onModel,
+  onEffort,
+  idPrefix,
+}: {
+  model: string;
+  effort: ChatEffort | "";
+  onModel: (model: string) => void;
+  onEffort: (effort: ChatEffort | "") => void;
+  idPrefix: string;
+}) {
+  const t = useT();
+  const models: string[] = [...CHAT_MODEL_ALIASES, ...(model && !(CHAT_MODEL_ALIASES as readonly string[]).includes(model) ? [model] : [])];
+  return (
+    <>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`${idPrefix}-model`}>{t("chat.model")}</Label>
+        <NativeSelect id={`${idPrefix}-model`} size="sm" className="w-full" value={model} onChange={(e) => onModel(e.target.value)}>
+          <NativeSelectOption value="">{t("chat.modelDefault")}</NativeSelectOption>
+          {models.map((m) => (
+            <NativeSelectOption key={m} value={m}>
+              {m}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`${idPrefix}-effort`}>{t("chat.effort")}</Label>
+        <NativeSelect id={`${idPrefix}-effort`} size="sm" className="w-full" value={effort} onChange={(e) => onEffort(e.target.value as ChatEffort | "")}>
+          <NativeSelectOption value="">{t("chat.effortDefault")}</NativeSelectOption>
+          {CHAT_EFFORTS.map((e) => (
+            <NativeSelectOption key={e} value={e}>
+              {t(`effort.${e}`)}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+      </div>
+    </>
+  );
+}
+
+/** A thread's model and effort for its next replies, changed by a manager. */
+function ThreadSettings({ thread, onChanged }: { thread: ChatThread; onChanged: (thread: ChatThread) => void }) {
+  const { client } = useHive();
+  const t = useT();
+  const action = useAction();
+  const [open, setOpen] = useState(false);
+  const [model, setModel] = useState(thread.model ?? "");
+  const [effort, setEffort] = useState<ChatEffort | "">(thread.effort ?? "");
+  if (!open) {
+    return (
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        aria-label={t("chat.settings")}
+        title={t("chat.settings")}
+        onClick={() => (setModel(thread.model ?? ""), setEffort(thread.effort ?? ""), setOpen(true))}
+      >
+        <Settings2 />
+      </Button>
+    );
+  }
+  return (
+    <form
+      className="flex w-full flex-col gap-2 rounded-md border bg-muted/30 p-2 sm:w-80"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void action.run(async () => {
+          onChanged(await client.call("chat.configure", { threadId: thread.id, model: model || null, effort: effort || null }));
+          setOpen(false);
+        });
+      }}
+    >
+      <div className="grid grid-cols-2 gap-2">
+        <ModelFields model={model} effort={effort} onModel={setModel} onEffort={setEffort} idPrefix={`chat-${thread.id}`} />
+      </div>
+      <p className="text-xs text-muted-foreground">{t("chat.settingsHint")}</p>
+      <div className="flex gap-1">
+        <Button size="sm" type="submit" disabled={action.busy}>
+          {t("chat.save")}
+        </Button>
+        <Button size="sm" variant="ghost" type="button" onClick={() => setOpen(false)}>
+          {t("common.cancel")}
+        </Button>
+      </div>
+      <ErrorNote error={action.error} />
+    </form>
   );
 }
 

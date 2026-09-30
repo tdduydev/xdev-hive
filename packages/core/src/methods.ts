@@ -18,7 +18,9 @@ import {
   type RunCancel,
   type RunRecord,
   type RunRequest,
+  CHAT_EFFORTS,
   type ChatAction,
+  type ChatDefaults,
   type ChatMessage,
   type ChatRequest,
   type ChatThread,
@@ -112,6 +114,9 @@ const profileTemplate = agentProfileSchema.extend({
 });
 
 /** Every operation the Hive backend supports. Web RPC, desktop IPC and MCP tools all go through this table. */
+/** A model for Claude Code's --model: an alias (opus) or a full name (claude-fable-5); never an option. */
+const chatModel = z.string().regex(/^[a-z0-9][a-z0-9.\-]{1,63}$/, "model: an alias like opus or a model's name");
+
 /** What a chat leader may ask for (chat.propose): the input of the call a project manager then confirms, project left out. */
 const chatAction = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("task.create"), id: taskId, title: z.string().min(1).max(300), dependsOn: z.array(taskId).max(20).default([]) }),
@@ -344,8 +349,11 @@ export const schemas = {
     project,
     threadId: id.optional(),
     machineId: machineRef.optional(),
-    /** A Claude profile of that machine; null lets it pick. Kept for the thread. */
-    profileId: z.string().max(40).nullable().default(null),
+    /** A Claude profile of that machine; null lets it pick. Kept for the thread. Left out: the project's default. */
+    profileId: z.string().max(40).nullable().optional(),
+    /** A new thread's model and effort; left out: the project's defaults. */
+    model: chatModel.nullable().optional(),
+    effort: z.enum(CHAT_EFFORTS).nullable().optional(),
     title: z.string().max(120).optional(),
     text: z.string().min(1).max(8000),
     /** Files the sender uploaded for this message (POST /api/chat/files) and has not sent yet. */
@@ -358,6 +366,17 @@ export const schemas = {
     query: z.string().max(200).optional(),
     limit: z.number().int().min(1).max(200).default(50),
   }),
+  /** What a project's new chats start with. */
+  "chat.defaults": z.object({ project }),
+  "chat.setDefaults": z.object({
+    project,
+    machineId: machineRef.nullable(),
+    profileId: z.string().max(40).nullable(),
+    model: chatModel.nullable(),
+    effort: z.enum(CHAT_EFFORTS).nullable(),
+  }),
+  /** A thread's model and effort, for its next replies. */
+  "chat.configure": z.object({ threadId: id, model: chatModel.nullable(), effort: z.enum(CHAT_EFFORTS).nullable() }),
   /** A project manager names a thread. */
   "chat.rename": z.object({ threadId: id, title: z.string().min(1).max(120) }),
   /** A project manager removes a thread with its messages; not while a reply is waiting or being written. */
@@ -486,6 +505,9 @@ export interface MethodOutput {
   "chat.send": { thread: ChatThread; message: ChatMessage; reply: ChatMessage };
   "chat.threads": ChatThread[];
   "chat.rename": ChatThread;
+  "chat.defaults": ChatDefaults;
+  "chat.setDefaults": ChatDefaults;
+  "chat.configure": ChatThread;
   "chat.delete": { deleted: number };
   "chat.get": { thread: ChatThread; messages: ChatMessage[] } | null;
   "chat.poll": ChatRequest[];
@@ -556,6 +578,9 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "chat.send": "agent",
   "chat.threads": "viewer",
   "chat.rename": "agent",
+  "chat.defaults": "viewer",
+  "chat.setDefaults": "agent",
+  "chat.configure": "agent",
   "chat.delete": "agent",
   "chat.get": "viewer",
   "chat.poll": "agent",
