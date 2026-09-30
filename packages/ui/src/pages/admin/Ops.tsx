@@ -16,6 +16,7 @@ import { useToast } from "../../shell/toast.tsx";
 import { ACTION_LABEL, MachineCard } from "../Admin.tsx";
 import { Costs } from "../Machines.tsx";
 import { HubDetail } from "../Runs.tsx";
+import { EventFeed, OpenAlerts } from "./Alerts.tsx";
 
 const REFRESH_MS = 15_000;
 
@@ -177,6 +178,7 @@ export function OpsOverview() {
             ))}
           </div>
         </Card>
+        <OpenAlerts card={(title, action, body) => <Card title={title} action={action}>{body}</Card>} />
         <Card
           title={t("ops.runningNow")}
           action={
@@ -207,6 +209,7 @@ export function OpsOverview() {
             </a>
           ) : null}
         </Card>
+        <EventFeed card={(title, action, body) => <Card title={title} action={action}>{body}</Card>} />
         <Card
           title={t("ops.quotaTop")}
           action={
