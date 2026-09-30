@@ -182,6 +182,8 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     // Machines only report to a hub (and push their runs to it); a local database never has any. The leader chat
     // runs on a machine the hub hands it to.
     if (me.mode === "hub") for (const id of ["machines", "runs", "chat"] as const) ids.add(id);
+    // The desktop's own runs (local mode too) are on Lượt chạy.
+    if (client.desktop) ids.add("runs");
     // The admin portal reads what every machine reported to the hub: hub admins only.
     const hubAdmin = me.mode === "hub" && me.role === "admin" && !me.access;
     if (hubAdmin) ids.add("admin");

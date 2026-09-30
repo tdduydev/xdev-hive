@@ -739,11 +739,13 @@ function createWindow(): void {
     const capture = () => {
       const delay = Number(process.env.HIVE_SMOKE_DELAY_MS ?? 1500);
       setTimeout(async () => {
-        // HIVE_SMOKE_CLICK / HIVE_SMOKE_SCROLL: CSS selectors to click, then to scroll to, before the shot.
+        // HIVE_SMOKE_CLICK / HIVE_SMOKE_SCROLL: CSS selectors to click (several: joined by " && "), then to scroll to.
         const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
         const click = process.env.HIVE_SMOKE_CLICK;
         const scroll = process.env.HIVE_SMOKE_SCROLL;
-        if (click) await win!.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(click)})?.click()`).then(() => pause(700));
+        for (const sel of click ? click.split(" && ") : []) {
+          await win!.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(sel)})?.click()`).then(() => pause(700));
+        }
         if (scroll) {
           await win!.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(scroll)})?.scrollIntoView({ block: "start" })`).then(() => pause(300));
         }
