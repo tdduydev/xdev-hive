@@ -3,7 +3,8 @@
 // then a cross-review and a merge request on a mock GitLab (through Electron's net.fetch) with a bare repo as origin.
 // Then the MR's pipeline fails on GitLab: the app queues a fix run with the job's log (board-ci.png).
 // Last, T-002 runs as two candidates on two Codex subscriptions and the Gemini judge keeps one (board-best.png).
-//   npm run smoke -w @xdev-hive/desktop [-- <output dir>]      (HIVE_SMOKE_LOCALE=en for the English interface)
+//   npm run smoke -w @xdev-hive/desktop [-- <output dir>]      (HIVE_SMOKE_LOCALE=en for the English interface,
+//   HIVE_SMOKE_THEME=dark for the dark theme)
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";

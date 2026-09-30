@@ -8,12 +8,13 @@ import { useT } from "../i18n/index.tsx";
 
 /** Status colours: tinted backgrounds with the matching text, readable in light and dark. */
 const TONE: Record<string, string> = {
-  ok: "border-transparent bg-success/12 text-success",
-  warn: "border-transparent bg-warning/15 text-warning",
-  info: "border-transparent bg-info/12 text-info",
-  danger: "border-transparent bg-destructive/12 text-destructive",
-  accent: "border-transparent bg-brand-soft text-brand-soft-foreground",
-  neutral: "border-transparent bg-muted text-muted-foreground",
+  ok: "border-transparent bg-success-soft text-success",
+  warn: "border-transparent bg-warning-soft text-warning",
+  info: "border-transparent bg-info-soft text-info",
+  running: "border-transparent bg-running-soft text-running",
+  danger: "border-transparent bg-danger-soft text-danger",
+  accent: "border-transparent bg-selected text-selected-fg",
+  neutral: "border-transparent bg-neutral-soft text-neutral",
 };
 
 export function Badge({ tone = "neutral", className, children }: { tone?: string; className?: string; children: ReactNode }) {
@@ -45,10 +46,10 @@ export function OwnerBadge({ owner, className }: { owner: string | null; classNa
 }
 
 const NOTICE = {
-  ok: { icon: CircleCheck, className: "border-success/30 bg-success/8 text-success" },
-  warn: { icon: TriangleAlert, className: "border-warning/35 bg-warning/10 text-warning" },
-  info: { icon: Info, className: "border-info/30 bg-info/8 text-info" },
-  error: { icon: CircleAlert, className: "border-destructive/30 bg-destructive/8 text-destructive" },
+  ok: { icon: CircleCheck, className: "border-success-line bg-success-soft [&>svg]:text-success" },
+  warn: { icon: TriangleAlert, className: "border-warning-line bg-warning-soft [&>svg]:text-warning" },
+  info: { icon: Info, className: "border-info-line bg-info-soft [&>svg]:text-info" },
+  error: { icon: CircleAlert, className: "border-danger-line bg-danger-soft [&>svg]:text-danger" },
 } as const;
 
 /** A tinted message box (saved, warning, hint). Errors from actions use ErrorNote. */
@@ -57,18 +58,19 @@ export function Notice({ tone = "info", title, className, children }: { tone?: k
   return (
     <Alert className={cn(toneClass, className)}>
       <Icon />
-      {title ? <AlertTitle>{title}</AlertTitle> : null}
-      {children ? <AlertDescription className="text-foreground/80">{children}</AlertDescription> : null}
+      {title ? <AlertTitle className="text-fg-strong">{title}</AlertTitle> : null}
+      {children ? <AlertDescription className="text-fg-strong">{children}</AlertDescription> : null}
     </Alert>
   );
 }
 
 const DOT: Record<string, string> = {
-  ok: "bg-success",
-  warn: "bg-warning",
-  info: "bg-info",
-  danger: "bg-destructive",
-  neutral: "bg-muted-foreground/40",
+  ok: "bg-success-solid",
+  warn: "bg-warning-solid",
+  info: "bg-info-solid",
+  running: "bg-info-solid",
+  danger: "bg-danger-solid",
+  neutral: "bg-neutral-solid",
 };
 
 /** Small status light (online, running, resting…). */
@@ -77,15 +79,15 @@ export function StatusDot({ tone = "neutral", className }: { tone?: string; clas
 }
 
 export function Empty({ children }: { children: ReactNode }) {
-  return <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">{children}</div>;
+  return <div className="rounded-lg border border-dashed border-line-default bg-surface px-5 py-8 text-center type-body-sm text-fg-secondary">{children}</div>;
 }
 
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
   return (
     <header className="flex flex-wrap items-start justify-between gap-4">
       <div className="min-w-0 space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        {subtitle ? <p className="max-w-3xl text-sm text-muted-foreground">{subtitle}</p> : null}
+        <h1 className="type-display-md text-fg-strong">{title}</h1>
+        {subtitle ? <p className="max-w-3xl type-body-sm text-fg-secondary">{subtitle}</p> : null}
       </div>
       {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
     </header>
@@ -97,27 +99,18 @@ export function Page({ wide, className, children }: { wide?: boolean; className?
   return <div className={cn("mx-auto flex w-full flex-col gap-6 p-4 md:p-6", wide ? "max-w-7xl" : "max-w-6xl", className)}>{children}</div>;
 }
 
-export function HiveLogo({ size = 22, className }: { size?: number; className?: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" className={cn("text-brand", className)}>
-      <path d="M12 2.5 20.2 7.25v9.5L12 21.5l-8.2-4.75v-9.5Z" fill="none" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M12 8.2 15.3 10.1v3.8L12 15.8l-3.3-1.9v-3.8Z" fill="currentColor" />
-    </svg>
-  );
-}
-
 export const STATUS_TONE: Record<string, string> = {
   pending: "warn",
   approved: "ok",
   rejected: "danger",
   conflict: "danger",
   todo: "neutral",
-  doing: "info",
+  doing: "running",
   review: "warn",
   done: "ok",
   blocked: "danger",
   queued: "neutral",
-  running: "info",
+  running: "running",
   succeeded: "ok",
   failed: "danger",
   rate_limited: "warn",

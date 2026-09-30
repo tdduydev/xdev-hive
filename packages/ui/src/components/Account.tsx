@@ -19,8 +19,9 @@ import type { HiveClient } from "../client.ts";
 import { useAction } from "../hooks.ts";
 import { useT } from "../i18n/index.tsx";
 import { useSystemTheme } from "../lib/theme.ts";
-import { Badge, ErrorNote, HiveLogo, Notice, STATUS_TONE } from "./common.tsx";
-import { LanguageMenu } from "./Language.tsx";
+import { XMark } from "./Brand.tsx";
+import { Badge, ErrorNote, Notice, STATUS_TONE } from "./common.tsx";
+import { LanguageMenu, ThemeMenu } from "./Language.tsx";
 
 export const MIN_PASSWORD = 10;
 
@@ -76,7 +77,7 @@ export function ChangePasswordScreen({ client, me, onDone, onSignOut }: { client
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-xl">
-            <HiveLogo size={26} />
+            <XMark size={26} />
             {t("password.firstTitle")}
           </CardTitle>
           <CardDescription>
@@ -155,6 +156,7 @@ export function AccountMenu({ client, me, onSignOut }: { client: HiveClient; me:
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <LanguageMenu />
+              <ThemeMenu />
               {client.account && me.sso && !me.sso.linked ? (
                 <DropdownMenuItem
                   onSelect={() => void client.account!.linkSso().then(({ url }) => window.location.assign(url), () => undefined)}

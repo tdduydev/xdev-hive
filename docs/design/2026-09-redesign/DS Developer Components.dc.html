@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="styles.css">
+<style>
+html,body{margin:0;padding:0;background:var(--bg-canvas)}
+a{color:var(--text-link)}a:hover{color:var(--text-link-hover)}
+</style>
+</helmet>
+<div data-theme="{{ theme }}" style="min-height:100vh;background:var(--bg-canvas);color:var(--text-primary);font:var(--type-body-md)">
+
+<header style="position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:16px;min-height:60px;padding:0 24px;border-bottom:1px solid var(--border-subtle);background:var(--bg-canvas);flex-wrap:wrap">
+  <a href="DS%20Foundations.dc.html" style="display:flex;align-items:center;gap:12px;text-decoration:none">
+    <sc-if value="{{ light }}" hint-placeholder-val="{{ true }}"><img src="assets/hive-light.svg" alt="xDev Hive · Dev Hub" style="height:36px;width:auto;display:block"></sc-if>
+    <sc-if value="{{ dark }}" hint-placeholder-val="{{ false }}"><img src="assets/hive-dark.svg" alt="xDev Hive · Dev Hub" style="height:36px;width:auto;display:block"></sc-if>
+    <span style="font:var(--type-caption);color:var(--text-muted);padding:2px 8px;border:1px solid var(--border-default);border-radius:var(--radius-full)">Design System 1.0</span>
+  </a>
+  <nav aria-label="Tài liệu" style="display:flex;gap:4px;flex-wrap:wrap">
+    <a href="DS%20Foundations.dc.html" style="padding:6px 12px;border-radius:var(--radius-md);text-decoration:none;font:var(--type-label);color:var(--text-secondary)" style-hover="background:var(--state-hover);color:var(--text-strong)">Nền tảng</a>
+    <a href="DS%20Components.dc.html" style="padding:6px 12px;border-radius:var(--radius-md);text-decoration:none;font:var(--type-label);color:var(--text-secondary)" style-hover="background:var(--state-hover);color:var(--text-strong)">Component</a>
+    <a href="DS%20Developer%20Components.dc.html" aria-current="page" style="padding:6px 12px;border-radius:var(--radius-md);text-decoration:none;font:var(--type-label);color:var(--state-selected-fg);background:var(--state-selected-bg)">Developer</a>
+    <a href="DS%20Screens.dc.html" style="padding:6px 12px;border-radius:var(--radius-md);text-decoration:none;font:var(--type-label);color:var(--text-secondary)" style-hover="background:var(--state-hover);color:var(--text-strong)">Màn hình mẫu</a>
+  </nav>
+  <div role="group" aria-label="Giao diện" style="margin-left:auto;display:flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--bg-sunken);border:1px solid var(--border-subtle)">
+    <button onClick="{{ setLight }}" aria-pressed="{{ light }}" style="height:28px;padding:0 10px;border:0;border-radius:var(--radius-sm);cursor:pointer;font:var(--type-label);background:{{ lightBg }};color:var(--text-primary);box-shadow:{{ lightSh }}">Sáng</button>
+    <button onClick="{{ setDark }}" aria-pressed="{{ dark }}" style="height:28px;padding:0 10px;border:0;border-radius:var(--radius-sm);cursor:pointer;font:var(--type-label);background:{{ darkBg }};color:var(--text-primary);box-shadow:{{ darkSh }}">Tối</button>
+  </div>
+</header>
+
+<div style="display:flex;gap:40px;max-width:1320px;margin:0 auto;padding:0 24px">
+  <aside style="flex:0 0 190px;position:sticky;top:60px;align-self:flex-start;max-height:calc(100vh - 60px);overflow:auto;padding:32px 0;display:flex;flex-direction:column;gap:1px">
+    <span style="font:var(--type-overline);letter-spacing:var(--tracking-wide);text-transform:uppercase;color:var(--text-muted);padding:0 10px 8px">Cho developer</span>
+    <sc-for list="{{ comps }}" as="c" hint-placeholder-count="8"><a href="#{{ c.id }}" style="padding:5px 10px;border-radius:var(--radius-sm);text-decoration:none;font:var(--type-body-sm);color:var(--text-secondary)" style-hover="background:var(--state-hover);color:var(--text-strong)">{{ c.name }}</a></sc-for>
+  </aside>
+
+  <main style="flex:1;min-width:0;padding-bottom:80px">
+    <div style="padding:48px 0 24px;display:flex;flex-direction:column;gap:10px;max-width:760px">
+      <h1 style="margin:0;font:var(--type-display-lg);letter-spacing:var(--tracking-tight);color:var(--text-strong)">Component cho developer</h1>
+      <p style="margin:0;font:var(--type-body-lg);color:var(--text-secondary);text-wrap:pretty">Code, diff, Markdown, task board, trạng thái agent, tiến trình run, log và lịch sử phiên bản. Các vùng này giữ nền phẳng và chữ mono để đọc lâu không mỏi; gradient chỉ xuất hiện ở tiến trình đang chạy và agent đang hoạt động.</p>
+    </div>
+
+    <sc-for list="{{ comps }}" as="c" hint-placeholder-count="2">
+      <section id="{{ c.id }}" style="padding:40px 0;border-top:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:16px;scroll-margin-top:60px">
+        <div style="display:flex;flex-direction:column;gap:6px;max-width:760px">
+          <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font:var(--type-display-md);letter-spacing:var(--tracking-tight);color:var(--text-strong)">{{ c.name }}</h2><span style="font:var(--type-caption);padding:2px 8px;border-radius:var(--radius-full);background:var(--bg-sunken);color:var(--text-muted)">{{ c.group }}</span></div>
+          <p style="margin:0;color:var(--text-secondary);text-wrap:pretty">{{ c.desc }}</p>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:20px;padding:24px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-canvas);overflow:auto">
+
+          <sc-if value="{{ c.is.code }}" hint-placeholder-val="{{ false }}">
+            <figure style="margin:0;border:1px solid var(--border-default);border-radius:var(--radius-lg);overflow:hidden;background:var(--code-bg)">
+              <div style="display:flex;align-items:center;gap:8px;height:40px;padding:0 8px 0 14px;border-bottom:1px solid var(--border-subtle);background:var(--bg-surface)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--text-muted)"><path d="{{ ic.file }}"></path></svg>
+                <figcaption style="font:var(--type-code-sm);color:var(--text-primary);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">apps/hub/src/webhook.ts</figcaption>
+                <span style="font:var(--type-caption);padding:1px 6px;border-radius:var(--radius-xs);background:var(--bg-sunken);color:var(--text-muted)">TypeScript</span>
+                <button onClick="{{ toggleWrap }}" aria-pressed="{{ wrapOn }}" aria-label="Xuống dòng" title="Xuống dòng" style="width:28px;height:28px;display:grid;place-items:center;border:0;border-radius:var(--radius-sm);background:{{ wrapBg }};color:var(--text-secondary);cursor:pointer" style-hover="background:var(--state-hover)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.wrapText }}"></path></svg></button>
+                <button onClick="{{ copyCode }}" aria-live="polite" style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--action-secondary-border);border-radius:var(--radius-sm);background:var(--action-secondary-bg);color:var({{ copyFg }});font:var(--type-caption);cursor:pointer" style-hover="background:var(--action-secondary-hover)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ copyIcon }}"></path></svg>{{ copyLabel }}</button>
+              </div>
+              <div style="overflow:auto;padding:10px 0;font:var(--type-code-md)">
+                <sc-for list="{{ codeLines }}" as="l" hint-placeholder-count="9">
+                  <div style="display:flex;background:{{ l.bg }};box-shadow:{{ l.bar }}"><span aria-hidden="true" style="flex:0 0 44px;padding-right:14px;text-align:right;color:var(--code-gutter);user-select:none">{{ l.n }}</span><code style="flex:1;padding-right:16px;white-space:{{ l.ws }};font:inherit"><sc-for list="{{ l.toks }}" as="k" hint-placeholder-count="3"><span style="color:var({{ k.c }});font-style:{{ k.fs }}">{{ k.t }}</span></sc-for></code></div>
+                </sc-for>
+              </div>
+            </figure>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><span style="font:var(--type-caption);color:var(--text-muted);margin-right:4px">Màu cú pháp</span><sc-for list="{{ syntax }}" as="x" hint-placeholder-count="7"><span style="display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 8px;border-radius:var(--radius-xs);background:var(--code-bg);border:1px solid var(--border-subtle);font:var(--type-code-sm);color:var({{ x.v }})">{{ x.label }}</span></sc-for></div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font:var(--type-caption);color:var(--text-muted)">Inline</span><span style="font:var(--type-body-md)">Chạy <code style="padding:1px 5px;border-radius:var(--radius-xs);background:var(--code-bg);border:1px solid var(--border-subtle);font:var(--type-code-sm)">npm run typecheck</code> trước khi tạo PR.</span></div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.diff }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid var(--border-default);border-radius:var(--radius-lg);overflow:hidden;background:var(--bg-surface)">
+              <div style="display:flex;align-items:center;gap:10px;min-height:44px;padding:6px 8px 6px 14px;border-bottom:1px solid var(--border-subtle);flex-wrap:wrap">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--text-muted)"><path d="{{ ic.gitCompare }}"></path></svg>
+                <span style="font:var(--type-code-sm);color:var(--text-strong)">apps/hub/src/webhook.ts</span>
+                <span style="font:var(--type-code-sm);color:var(--status-success-fg)">+6</span><span style="font:var(--type-code-sm);color:var(--status-danger-fg)">−3</span>
+                <span aria-hidden="true" style="display:flex;gap:2px"><span style="width:8px;height:8px;border-radius:1px;background:var(--status-success-solid)"></span><span style="width:8px;height:8px;border-radius:1px;background:var(--status-success-solid)"></span><span style="width:8px;height:8px;border-radius:1px;background:var(--status-success-solid)"></span><span style="width:8px;height:8px;border-radius:1px;background:var(--status-danger-solid)"></span><span style="width:8px;height:8px;border-radius:1px;background:var(--status-neutral-solid)"></span></span>
+                <div role="radiogroup" aria-label="Kiểu diff" style="margin-left:auto;display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--bg-sunken);border:1px solid var(--border-subtle)">
+                  <button role="radio" aria-checked="{{ unified }}" onClick="{{ setUnified }}" style="height:26px;padding:0 10px;border:0;border-radius:var(--radius-sm);background:{{ uniBg }};box-shadow:{{ uniSh }};color:var(--text-primary);font:var(--type-caption);cursor:pointer">Gộp</button>
+                  <button role="radio" aria-checked="{{ split }}" onClick="{{ setSplit }}" style="height:26px;padding:0 10px;border:0;border-radius:var(--radius-sm);background:{{ splBg }};box-shadow:{{ splSh }};color:var(--text-primary);font:var(--type-caption);cursor:pointer">Song song</button>
+                </div>
+              </div>
+              <div style="overflow:auto;font:var(--type-code-sm)">
+                <sc-if value="{{ unified }}" hint-placeholder-val="{{ true }}">
+                  <sc-for list="{{ diffU }}" as="d" hint-placeholder-count="10">
+                    <div style="display:grid;grid-template-columns:44px 44px 20px minmax(0,1fr);min-width:560px;background:var({{ d.bg }});color:var({{ d.fg }})"><span style="padding-right:8px;text-align:right;color:var(--code-gutter);background:var({{ d.gut }})">{{ d.o }}</span><span style="padding-right:8px;text-align:right;color:var(--code-gutter);background:var({{ d.gut }})">{{ d.n }}</span><span aria-hidden="true" style="text-align:center;color:var({{ d.mk }})">{{ d.m }}</span><span style="white-space:pre;padding-right:12px"><sc-for list="{{ d.parts }}" as="p" hint-placeholder-count="1"><span style="background:{{ p.bg }};border-radius:2px">{{ p.t }}</span></sc-for></span></div>
+                  </sc-for>
+                </sc-if>
+                <sc-if value="{{ split }}" hint-placeholder-val="{{ false }}">
+                  <sc-for list="{{ diffS }}" as="r" hint-placeholder-count="10">
+                    <div style="display:grid;grid-template-columns:40px minmax(0,1fr) 40px minmax(0,1fr);min-width:720px">
+                      <sc-for list="{{ r.cells }}" as="d" hint-placeholder-count="2"><span style="padding-right:8px;text-align:right;color:var(--code-gutter);background:var({{ d.gut }})">{{ d.no }}</span><span style="white-space:pre;padding:0 12px 0 6px;background:var({{ d.bg }});color:var({{ d.fg }});border-right:1px solid var(--border-subtle)"><span aria-hidden="true" style="color:var({{ d.mk }})">{{ d.m }}</span><sc-for list="{{ d.parts }}" as="p" hint-placeholder-count="1"><span style="background:{{ p.bg }};border-radius:2px">{{ p.t }}</span></sc-for></span></sc-for>
+                    </div>
+                  </sc-for>
+                </sc-if>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.markdown }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid var(--border-default);border-radius:var(--radius-lg);overflow:hidden;background:var(--bg-surface)">
+              <div style="display:flex;align-items:center;gap:2px;padding:4px 6px;border-bottom:1px solid var(--border-subtle);flex-wrap:wrap">
+                <div role="tablist" style="display:flex;gap:2px;margin-right:8px"><sc-for list="{{ mdModes }}" as="m" hint-placeholder-count="3"><button role="tab" aria-selected="{{ m.on }}" onClick="{{ m.go }}" style="height:28px;padding:0 10px;border:0;border-radius:var(--radius-sm);background:{{ m.bg }};color:var({{ m.fg }});font:var(--type-label);font-weight:{{ m.fw }};cursor:pointer">{{ m.label }}</button></sc-for></div>
+                <span style="width:1px;height:18px;background:var(--border-default);margin:0 4px"></span>
+                <sc-for list="{{ mdTools }}" as="t" hint-placeholder-count="8"><button onClick="{{ t.go }}" aria-label="{{ t.label }}" title="{{ t.title }}" style="width:28px;height:28px;display:grid;place-items:center;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--text-secondary);cursor:pointer" style-hover="background:var(--state-hover);color:var(--text-strong)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ t.icon }}"></path></svg></button></sc-for>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;min-height:280px">
+                <sc-if value="{{ mdShowWrite }}" hint-placeholder-val="{{ true }}"><textarea aria-label="Nội dung Markdown" value="{{ md }}" onChange="{{ setMd }}" style="flex:1 1 300px;min-width:0;min-height:280px;padding:14px 16px;border:0;border-right:1px solid var(--border-subtle);background:var(--bg-surface);color:var(--text-primary);font:var(--type-code-md);resize:vertical;outline:none"></textarea></sc-if>
+                <sc-if value="{{ mdShowPreview }}" hint-placeholder-val="{{ true }}">
+                  <div style="flex:1 1 300px;min-width:0;padding:14px 20px;display:flex;flex-direction:column;gap:10px;font:var(--type-body-md);color:var(--text-primary)">
+                    <sc-for list="{{ mdBlocks }}" as="b" hint-placeholder-count="5">
+                      <sc-if value="{{ b.h1 }}" hint-placeholder-val="{{ false }}"><h3 style="margin:4px 0 0;font:var(--type-heading-lg);color:var(--text-strong)">{{ b.text }}</h3></sc-if>
+                      <sc-if value="{{ b.h2 }}" hint-placeholder-val="{{ false }}"><h4 style="margin:4px 0 0;font:var(--type-heading-md);color:var(--text-strong)">{{ b.text }}</h4></sc-if>
+                      <sc-if value="{{ b.inline }}" hint-placeholder-val="{{ true }}"><div style="display:flex;gap:8px;padding-left:{{ b.pad }};border-left:{{ b.bl }};color:var({{ b.fg }})"><sc-if value="{{ b.li }}" hint-placeholder-val="{{ false }}"><span style="color:var(--text-muted)">•</span></sc-if><span style="text-wrap:pretty"><sc-for list="{{ b.parts }}" as="p" hint-placeholder-count="1"><span style="font-family:{{ p.ff }};font-size:{{ p.fs }};font-weight:{{ p.fw }};background:{{ p.bg }};padding:{{ p.pd }};border-radius:3px">{{ p.t }}</span></sc-for></span></div></sc-if>
+                      <sc-if value="{{ b.code }}" hint-placeholder-val="{{ false }}"><pre style="margin:0;padding:10px 12px;border-radius:var(--radius-md);background:var(--code-bg);border:1px solid var(--border-subtle);font:var(--type-code-sm);color:var(--code-fg);overflow:auto">{{ b.text }}</pre></sc-if>
+                      <sc-if value="{{ b.img }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px dashed var(--border-default);border-radius:var(--radius-md);font:var(--type-caption);color:var(--text-muted)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.image }}"></path></svg>{{ b.text }}</div></sc-if>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+              <div style="display:flex;gap:12px;align-items:center;padding:6px 12px;border-top:1px solid var(--border-subtle);background:var(--bg-sunken);font:var(--type-caption);color:var(--text-muted)"><span>{{ mdWords }} từ</span><span style="display:inline-flex;align-items:center;gap:4px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--status-success-fg)"><path d="{{ ic.check }}"></path></svg>Đã lưu nháp</span><span style="margin-left:auto">Kéo ảnh vào để tải lên · ⌘B đậm · ⌘K liên kết</span></div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.board }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:repeat(4,minmax(220px,1fr));gap:12px;min-width:920px">
+              <sc-for list="{{ board }}" as="col" hint-placeholder-count="4">
+                <div role="list" aria-label="{{ col.label }}" onDragOver="{{ col.over }}" onDrop="{{ col.drop }}" style="display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:var(--radius-lg);background:{{ col.bg }};border:1px dashed {{ col.bd }};min-height:260px">
+                  <div style="display:flex;align-items:center;gap:8px;padding:2px 4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var({{ col.ic }})"><path d="{{ col.icon }}"></path></svg><span style="font:var(--type-heading-sm);color:var(--text-strong)">{{ col.label }}</span><span style="font:var(--type-caption);color:var(--text-muted)">{{ col.count }}</span><span style="margin-left:auto;font:var(--type-caption);color:var({{ col.wipFg }})">{{ col.wip }}</span></div>
+                  <sc-for list="{{ col.cards }}" as="t" hint-placeholder-count="2">
+                    <div role="listitem" draggable="true" onDragStart="{{ t.drag }}" onDragEnd="{{ t.dragEnd }}" tabindex="0" style="display:flex;flex-direction:column;gap:8px;padding:10px 12px;border-radius:var(--radius-md);background:var(--bg-surface);border:1px solid var(--border-default);cursor:grab;opacity:{{ t.op }}" style-hover="border-color:var(--border-strong);box-shadow:var(--shadow-1)">
+                      <div style="display:flex;align-items:center;gap:6px"><span style="font:var(--type-code-sm);color:var(--text-muted)">{{ t.id }}</span><span title="{{ t.prioLabel }}" style="display:inline-flex;align-items:center;gap:3px;font:var(--type-caption);color:var({{ t.prioFg }})"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ t.prioIcon }}"></path></svg>{{ t.prioLabel }}</span><button onClick="{{ t.next }}" aria-label="Chuyển {{ t.id }} sang cột sau" title="Chuyển sang cột sau" style="margin-left:auto;width:22px;height:22px;display:grid;place-items:center;border:0;border-radius:var(--radius-xs);background:transparent;color:var(--text-muted);cursor:pointer;visibility:{{ t.nextVis }}" style-hover="background:var(--state-hover)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.chevronRight }}"></path></svg></button></div>
+                      <span style="font:var(--type-label);color:var(--text-strong);text-wrap:pretty">{{ t.title }}</span>
+                      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><sc-for list="{{ t.labels }}" as="lb" hint-placeholder-count="1"><span style="height:18px;padding:0 6px;display:inline-flex;align-items:center;border-radius:var(--radius-xs);background:var(--bg-sunken);font:var(--type-caption);font-size:11px;color:var(--text-secondary)">{{ lb }}</span></sc-for>
+                        <span style="margin-left:auto;display:inline-flex;align-items:center;gap:6px"><sc-if value="{{ t.running }}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="color:var(--status-running-fg);animation:xd-spin 1.2s linear infinite"><path d="{{ ic.loaderCircle }}"></path></svg></sc-if><span title="{{ t.who }}" aria-label="{{ t.who }}" style="width:22px;height:22px;border-radius:{{ t.shape }};display:grid;place-items:center;background:var({{ t.avBg }});color:var({{ t.avFg }});font:600 10px/1 var(--font-sans)">{{ t.av }}</span></span></div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.agent }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px">
+              <sc-for list="{{ agents }}" as="a" hint-placeholder-count="6">
+                <div style="display:flex;flex-direction:column;gap:12px;padding:14px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <span style="position:relative;width:40px;height:40px;flex-shrink:0;display:grid;place-items:center">
+                      <sc-if value="{{ a.live }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" style="position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,#7BD4FF,#1E90FF,#004CFF,#7BD4FF);animation:xd-ring 2.4s linear infinite"></span></sc-if>
+                      <sc-if value="{{ a.still }}" hint-placeholder-val="{{ true }}"><span aria-hidden="true" style="position:absolute;inset:0;border-radius:50%;border:2px {{ a.ringStyle }} var({{ a.ring }})"></span></sc-if>
+                      <span style="position:relative;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--bg-surface);box-shadow:inset 0 0 0 1px var(--border-subtle);font:600 13px/1 var(--font-display);color:var(--text-strong);opacity:{{ a.op }}">{{ a.av }}</span>
+                    </span>
+                    <div style="display:flex;flex-direction:column;min-width:0;flex:1"><span style="font:var(--type-heading-sm);color:var(--text-strong)">{{ a.name }}</span><span style="font:var(--type-code-sm);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.model }} · {{ a.host }}</span></div>
+                  </div>
+                  <span style="align-self:flex-start;display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:var(--radius-full);background:var(--status-{{ a.k }}-bg);color:var(--status-{{ a.k }}-fg);font:var(--type-caption)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="animation:{{ a.anim }}"><path d="{{ a.icon }}"></path></svg>{{ a.state }}</span>
+                  <span style="font:var(--type-body-sm);color:var(--text-secondary);min-height:20px">{{ a.task }}</span>
+                  <div style="display:flex;flex-direction:column;gap:4px"><div style="display:flex;font:var(--type-caption);color:var(--text-muted)"><span>Quota tuần</span><span style="margin-left:auto;font-family:var(--font-mono);color:var({{ a.qFg }})">{{ a.q }}%</span></div><div role="meter" aria-valuenow="{{ a.q }}" aria-valuemin="0" aria-valuemax="100" aria-label="Quota {{ a.name }}" style="height:6px;border-radius:3px;background:var(--bg-sunken);overflow:hidden"><span style="display:block;height:100%;width:{{ a.qw }};background:var({{ a.qBar }});border-radius:3px"></span></div></div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px"><span style="font:var(--type-caption);color:var(--text-muted);width:100%">Dạng chip trong danh sách, bảng, bình luận</span><sc-for list="{{ agents }}" as="a" hint-placeholder-count="6"><span style="display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px 0 4px;border-radius:var(--radius-full);border:1px solid var(--border-default);background:var(--bg-surface);font:var(--type-caption);color:var(--text-primary)"><span style="width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:var(--status-{{ a.k }}-bg);color:var(--status-{{ a.k }}-fg)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="animation:{{ a.anim }}"><path d="{{ a.icon }}"></path></svg></span>{{ a.name }}<span style="color:var(--text-muted)">· {{ a.state }}</span></span></sc-for></div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.run }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;align-items:start">
+              <div style="display:flex;flex-direction:column;gap:14px;padding:16px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+                <div style="display:flex;align-items:flex-start;gap:10px"><div style="display:flex;flex-direction:column;flex:1;min-width:0"><span style="font:var(--type-code-sm);color:var(--text-muted)">run_01J8Z4 · T-142</span><span style="font:var(--type-heading-md);color:var(--text-strong)">Retry webhook Teams</span></div><span style="display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:var(--radius-full);background:var(--status-{{ run.k }}-bg);color:var(--status-{{ run.k }}-fg);font:var(--type-caption)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="animation:{{ run.anim }}"><path d="{{ run.icon }}"></path></svg>{{ run.label }}</span></div>
+                <div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;font:var(--type-caption);color:var(--text-muted)"><span>{{ run.stepLabel }}</span><span style="margin-left:auto;font-family:var(--font-mono);color:var(--text-primary)">{{ run.pct }}%</span></div>
+                  <div role="progressbar" aria-valuenow="{{ run.pct }}" aria-valuemin="0" aria-valuemax="100" aria-label="Tiến độ run" style="height:8px;border-radius:4px;background:var(--bg-sunken);overflow:hidden"><span style="display:block;height:100%;width:{{ run.w }};border-radius:4px;background:{{ run.bar }};transition:width var(--duration-slow) var(--ease-standard)"></span></div></div>
+                <ol style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column">
+                  <sc-for list="{{ run.steps }}" as="st" hint-placeholder-count="5">
+                    <li style="display:grid;grid-template-columns:20px 1fr auto;gap:10px;align-items:center;min-height:30px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var({{ st.fg }});animation:{{ st.anim }}"><path d="{{ st.icon }}"></path></svg><span style="font:var(--type-body-sm);color:var({{ st.tfg }});font-weight:{{ st.fw }}">{{ st.label }}<span style="position:absolute;left:-9999px">{{ st.sr }}</span></span><span style="font:var(--type-code-sm);color:var(--text-muted)">{{ st.t }}</span></li>
+                  </sc-for>
+                </ol>
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding-top:12px;border-top:1px solid var(--border-subtle)"><sc-for list="{{ run.metrics }}" as="m" hint-placeholder-count="3"><div style="display:flex;flex-direction:column"><span style="font:var(--type-caption);color:var(--text-muted)">{{ m.k }}</span><span style="font:600 15px/22px var(--font-display);color:var(--text-strong)">{{ m.v }}</span></div></sc-for></div>
+                <div style="display:flex;gap:8px"><button onClick="{{ run.restart }}" style="height:32px;padding:0 12px;border-radius:var(--radius-md);border:1px solid var(--action-secondary-border);background:var(--action-secondary-bg);color:var(--action-secondary-fg);font:var(--type-label);font-weight:600;cursor:pointer">Chạy lại</button><button onClick="{{ run.stop }}" style="height:32px;padding:0 12px;border-radius:var(--radius-md);border:1px solid var(--status-danger-border);background:transparent;color:var(--status-danger-fg);font:var(--type-label);font-weight:600;cursor:pointer">Dừng run</button><a href="#log" style="margin-left:auto;align-self:center;font:var(--type-label)">Xem log</a></div>
+              </div>
+              <div style="display:flex;flex-direction:column;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+                <span style="padding:12px 14px 6px;font:var(--type-caption);color:var(--text-muted)">Dạng gọn trong danh sách</span>
+                <sc-for list="{{ runMini }}" as="r" hint-placeholder-count="5">
+                  <div style="display:grid;grid-template-columns:18px minmax(0,1fr) 90px 48px;gap:10px;align-items:center;padding:8px 14px;border-top:1px solid var(--border-subtle)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--status-{{ r.k }}-fg);animation:{{ r.anim }}"><path d="{{ r.icon }}"></path></svg><span style="display:flex;flex-direction:column;min-width:0"><span style="font:var(--type-label);color:var(--text-strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.title }}</span><span style="font:var(--type-caption);color:var(--text-muted)">{{ r.label }}</span></span><span style="height:4px;border-radius:2px;background:var(--bg-sunken);overflow:hidden"><span style="display:block;height:100%;width:{{ r.w }};background:{{ r.bar }}"></span></span><span style="font:var(--type-code-sm);color:var(--text-muted);text-align:right">{{ r.t }}</span></div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.log }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid var(--border-default);border-radius:var(--radius-lg);overflow:hidden;background:var(--code-bg)">
+              <div style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-bottom:1px solid var(--border-subtle);background:var(--bg-surface);flex-wrap:wrap">
+                <sc-for list="{{ levels }}" as="lv" hint-placeholder-count="4"><button onClick="{{ lv.toggle }}" aria-pressed="{{ lv.on }}" style="display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 8px;border-radius:var(--radius-full);border:1px solid {{ lv.bd }};background:{{ lv.bg }};color:var({{ lv.fg }});font:600 11px/1 var(--font-mono);cursor:pointer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity:{{ lv.chk }}"><path d="{{ ic.check }}"></path></svg>{{ lv.label }} {{ lv.count }}</button></sc-for>
+                <span style="display:flex;align-items:center;gap:6px;height:28px;padding:0 8px;margin-left:auto;width:200px;border-radius:var(--radius-sm);border:1px solid var(--border-control);background:var(--bg-surface);color:var(--text-muted)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.search }}"></path></svg><input value="{{ logQ }}" onChange="{{ setLogQ }}" aria-label="Tìm trong log" placeholder="Tìm trong log" style="flex:1;min-width:0;border:0;background:transparent;outline:none;font:var(--type-code-sm);color:var(--text-primary)"></span>
+                <button onClick="{{ toggleFollow }}" aria-pressed="{{ follow }}" style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:var(--radius-sm);border:1px solid var(--action-secondary-border);background:{{ followBg }};color:var({{ followFg }});font:var(--type-caption);cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.arrowDownToLine }}"></path></svg>{{ followLabel }}</button>
+                <button aria-label="Tải log" title="Tải log (.txt)" style="width:28px;height:28px;display:grid;place-items:center;border-radius:var(--radius-sm);border:1px solid var(--action-secondary-border);background:var(--action-secondary-bg);color:var(--text-secondary);cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ic.download }}"></path></svg></button>
+              </div>
+              <div data-log="1" role="log" aria-live="off" style="height:280px;overflow:auto;padding:6px 0;font:var(--type-code-sm)">
+                <sc-for list="{{ logLines }}" as="l" hint-placeholder-count="10">
+                  <div style="display:grid;grid-template-columns:44px 96px 58px 110px minmax(0,1fr);gap:0;align-items:start;min-width:640px;background:{{ l.bg }}" style-hover="background:var(--code-line-hl)"><span aria-hidden="true" style="text-align:right;padding-right:10px;color:var(--code-gutter);user-select:none">{{ l.n }}</span><span style="color:var(--code-gutter)">{{ l.ts }}</span><span style="font-weight:600;color:var({{ l.fg }})">{{ l.lv }}</span><span style="color:var(--syntax-type);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:8px">{{ l.src }}</span><span style="color:var(--code-fg);white-space:pre-wrap;word-break:break-word;padding-right:12px"><sc-for list="{{ l.parts }}" as="p" hint-placeholder-count="1"><span style="background:{{ p.bg }};color:{{ p.fg }};border-radius:2px">{{ p.t }}</span></sc-for></span></div>
+                </sc-for>
+              </div>
+              <div style="display:flex;gap:12px;padding:6px 12px;border-top:1px solid var(--border-subtle);background:var(--bg-surface);font:var(--type-caption);color:var(--text-muted)"><span>{{ logShown }}</span><span>{{ logMatches }}</span><span style="margin-left:auto">{{ logStatus }}</span></div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ c.is.history }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr);gap:12px;min-width:680px">
+              <ol style="margin:0;padding:8px;list-style:none;display:flex;flex-direction:column;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+                <sc-for list="{{ versions }}" as="v" hint-placeholder-count="6">
+                  <li style="display:grid;grid-template-columns:22px 1fr;gap:10px;padding:8px;border-radius:var(--radius-md);background:{{ v.bg }}">
+                    <span style="position:relative;display:flex;justify-content:center"><span style="width:10px;height:10px;margin-top:5px;border-radius:50%;background:var({{ v.dot }});box-shadow:0 0 0 3px var(--bg-surface)"></span></span>
+                    <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+                      <div style="display:flex;align-items:center;gap:6px"><span style="font:600 13px/20px var(--font-mono);color:var(--text-strong)">{{ v.v }}</span><sc-if value="{{ v.current }}" hint-placeholder-val="{{ false }}"><span style="height:18px;padding:0 6px;display:inline-flex;align-items:center;border-radius:var(--radius-full);background:var(--status-success-bg);color:var(--status-success-fg);font:var(--type-caption);font-size:11px">Hiện tại</span></sc-if><span style="margin-left:auto;font:var(--type-caption);color:var(--text-muted)">{{ v.at }}</span></div>
+                      <span style="font:var(--type-body-sm);color:var(--text-primary)">{{ v.note }}</span>
+                      <div style="display:flex;align-items:center;gap:6px;font:var(--type-caption);color:var(--text-muted)"><span style="width:18px;height:18px;border-radius:{{ v.shape }};display:grid;place-items:center;background:var(--bg-sunken);color:var(--text-secondary);font:600 9px/1 var(--font-sans)">{{ v.av }}</span>{{ v.who }}<span style="margin-left:auto;font-family:var(--font-mono)"><span style="color:var(--status-success-fg)">+{{ v.add }}</span> <span style="color:var(--status-danger-fg)">−{{ v.del }}</span></span></div>
+                      <div style="display:flex;gap:4px"><button onClick="{{ v.pickA }}" aria-pressed="{{ v.isA }}" style="height:22px;padding:0 8px;border-radius:var(--radius-xs);border:1px solid {{ v.aBd }};background:{{ v.aBg }};color:var({{ v.aFg }});font:600 11px/1 var(--font-sans);cursor:pointer">A</button><button onClick="{{ v.pickB }}" aria-pressed="{{ v.isB }}" style="height:22px;padding:0 8px;border-radius:var(--radius-xs);border:1px solid {{ v.bBd }};background:{{ v.bBg }};color:var({{ v.bFg }});font:600 11px/1 var(--font-sans);cursor:pointer">B</button><sc-if value="{{ v.canRestore }}" hint-placeholder-val="{{ false }}"><button style="margin-left:auto;height:22px;padding:0 8px;border:0;border-radius:var(--radius-xs);background:transparent;color:var(--text-link);font:600 11px/1 var(--font-sans);cursor:pointer">Khôi phục</button></sc-if></div>
+                    </div>
+                  </li>
+                </sc-for>
+              </ol>
+              <div style="display:flex;flex-direction:column;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface);overflow:hidden">
+                <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border-subtle)"><span style="font:var(--type-heading-sm);color:var(--text-strong)">So sánh {{ cmpLabel }}</span><span style="margin-left:auto;font:var(--type-caption);color:var(--text-muted)">Tổng quan dự án · payment-gateway</span></div>
+                <div style="font:var(--type-code-sm);padding:6px 0">
+                  <sc-for list="{{ cmpLines }}" as="d" hint-placeholder-count="6"><div style="display:grid;grid-template-columns:22px minmax(0,1fr);background:var({{ d.bg }});color:var({{ d.fg }})"><span aria-hidden="true" style="text-align:center;color:var({{ d.mk }})">{{ d.m }}</span><span style="white-space:pre-wrap;padding-right:12px">{{ d.t }}</span></div></sc-for>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px">
+          <div style="display:flex;flex-direction:column;gap:6px;padding:14px 16px;border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--bg-surface)">
+            <span style="font:var(--type-overline);letter-spacing:var(--tracking-wide);text-transform:uppercase;color:var(--text-muted)">Anatomy</span>
+            <sc-for list="{{ c.anatomy }}" as="a" hint-placeholder-count="4"><div style="display:grid;grid-template-columns:20px 1fr;gap:6px;font:var(--type-body-sm);color:var(--text-secondary)"><span style="width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:var(--state-selected-bg);color:var(--state-selected-fg);font:600 10px/1 var(--font-sans)">{{ a.n }}</span><span>{{ a.t }}</span></div></sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;padding:14px 16px;border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--bg-surface)">
+            <span style="font:var(--type-overline);letter-spacing:var(--tracking-wide);text-transform:uppercase;color:var(--text-muted)">Kích thước · biến thể</span>
+            <sc-for list="{{ c.sizes }}" as="z" hint-placeholder-count="3"><div style="display:flex;gap:8px;font:var(--type-body-sm)"><span style="min-width:64px;font:var(--type-code-sm);color:var(--text-strong)">{{ z.k }}</span><span style="color:var(--text-secondary)">{{ z.v }}</span></div></sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;padding:14px 16px;border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--bg-surface)">
+            <span style="font:var(--type-overline);letter-spacing:var(--tracking-wide);text-transform:uppercase;color:var(--text-muted)">Trạng thái · bàn phím</span>
+            <div style="display:flex;flex-wrap:wrap;gap:4px"><sc-for list="{{ c.states }}" as="st" hint-placeholder-count="5"><span style="font:var(--type-caption);padding:2px 6px;border-radius:var(--radius-xs);background:var(--bg-sunken);color:var(--text-secondary)">{{ st }}</span></sc-for></div>
+            <span style="font:var(--type-body-sm);color:var(--text-secondary);text-wrap:pretty">{{ c.a11y }}</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;padding:14px 16px;border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--bg-surface)">
+            <span style="font:var(--type-overline);letter-spacing:var(--tracking-wide);text-transform:uppercase;color:var(--text-muted)">Hướng dẫn</span>
+            <sc-for list="{{ c.do }}" as="d" hint-placeholder-count="2"><div style="display:grid;grid-template-columns:16px 1fr;gap:6px;font:var(--type-body-sm);color:var(--text-secondary)"><span style="color:var(--status-success-fg);font-weight:700">✓</span><span style="text-wrap:pretty">{{ d }}</span></div></sc-for>
+            <sc-for list="{{ c.dont }}" as="d" hint-placeholder-count="1"><div style="display:grid;grid-template-columns:16px 1fr;gap:6px;font:var(--type-body-sm);color:var(--text-secondary)"><span style="color:var(--status-danger-fg);font-weight:700">✕</span><span style="text-wrap:pretty">{{ d }}</span></div></sc-for>
+          </div>
+        </div>
+      </section>
+    </sc-for>
+  </main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+let ICONS = {};
+const loadIcons = () => window.__xdIcons ? Promise.resolve(ICONS = window.__xdIcons) : fetch('assets/icons.json').then(r => r.json()).then(j => { window.__xdIcons = ICONS = j; });
+const I = n => ICONS[n] || '';
+const icMap = () => { const o = {}; for (const k in ICONS) o[k.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase())] = ICONS[k]; return o; };
+const A = (...t) => t.map((x, i) => ({ n: i + 1, t: x }));
+const Z = o => Object.entries(o).map(([k, v]) => ({ k, v }));
+const SPIN = 'xd-spin 1.2s linear infinite';
+const KW = /^(import|from|export|async|function|return|const|let|await|new|if|else|throw|type|interface)$/;
+const tokenize = line => { const out = []; const re = /(\/\/.*$)|('[^']*'|"[^"]*"|`[^`]*`)|(\b\d[\d_]*(?:\.\d+)?\b)|([A-Za-z_$][\w$]*)|(\s+)|(.)/g; let m;
+  while ((m = re.exec(line))) { let c; if (m[1]) c = 'comment'; else if (m[2]) c = 'string'; else if (m[3]) c = 'number'; else if (m[4]) c = KW.test(m[4]) ? 'keyword' : /^[A-Z]/.test(m[4]) ? 'type' : line[re.lastIndex] === '(' ? 'function' : 'variable'; else if (m[5]) c = 'ws'; else c = 'punct';
+    const v = c === 'ws' ? (out.length ? out[out.length - 1].c : '--code-fg') : '--syntax-' + c; if (out.length && out[out.length - 1].c === v) out[out.length - 1].t += m[0]; else out.push({ t: m[0], c: v, fs: c === 'comment' ? 'italic' : 'normal' }); } return out.length ? out : [{ t: ' ', c: '--code-fg', fs: 'normal' }]; };
+const CODE = ["import { retry } from '@xdev/hive-sdk';", '', '// Gửi webhook với backoff lũy thừa, tối đa 3 lần', 'export async function sendWebhook(url: string, body: Card) {', '  return retry(() => post(url, body), {', '    attempts: 3,', '    backoff: (n) => 2 ** n * 250,', '    retryOn: (err) => err.status >= 500,', '  });', '}'];
+const DIFF = [['hunk', '', '', '@@ -12,9 +12,12 @@ export async function sendWebhook'], ['ctx', 12, 12, 'export async function sendWebhook(url: string, body: Card) {'], ['del', 13, '', "  const res = await fetch(url, { method: 'POST', body: JSON.stringify(body) });"], ['del', 14, '', "  if (!res.ok) throw new Error('Webhook failed');"], ['add', '', 13, '  return retry(() => post(url, body), {'], ['add', '', 14, '    attempts: 3,'], ['add', '', 15, '    backoff: (n) => 2 ** n * 250,'], ['add', '', 16, '    retryOn: (err) => err.status >= 500,'], ['add', '', 17, '  });'], ['ctx', 15, 18, '}'], ['ctx', 16, 19, ''], ['del', 17, '', 'export const TIMEOUT = 5000;', '5000'], ['add', '', 20, 'export const TIMEOUT = 10_000;', '10_000']];
+const DSTY = { ctx: ['--bg-surface', '--code-fg', '--bg-surface', '--code-gutter', ' '], add: ['--diff-add-bg', '--code-fg', '--diff-add-gutter', '--status-success-fg', '+'], del: ['--diff-del-bg', '--code-fg', '--diff-del-gutter', '--status-danger-fg', '−'], hunk: ['--diff-hunk-bg', '--diff-hunk-fg', '--diff-hunk-bg', '--diff-hunk-fg', ''] };
+const parts = (t, w, type) => { if (!w) return [{ t, bg: 'transparent' }]; const i = t.indexOf(w); return [{ t: t.slice(0, i), bg: 'transparent' }, { t: w, bg: type === 'add' ? 'var(--diff-add-word)' : 'var(--diff-del-word)' }, { t: t.slice(i + w.length), bg: 'transparent' }]; };
+const MD0 = '## Retry webhook Teams\n\nWebhook trả **5xx** thì thử lại tối đa 3 lần với backoff lũy thừa.\n\n- Lần 1 sau 250 ms, lần 2 sau 500 ms\n- Không retry lỗi `4xx`\n\n```ts\nretry(() => post(url, body), { attempts: 3 })\n```\n\n> Xem thêm ADR-014 · Idempotency key';
+const inl = t => t.split(/(`[^`]+`|\*\*[^*]+\*\*)/).filter(Boolean).map(p => p.startsWith('`') ? { t: p.slice(1, -1), ff: 'var(--font-mono)', fs: '12px', fw: 400, bg: 'var(--code-bg)', pd: '1px 4px' } : p.startsWith('**') ? { t: p.slice(2, -2), ff: 'inherit', fs: 'inherit', fw: 600, bg: 'transparent', pd: '0' } : { t: p, ff: 'inherit', fs: 'inherit', fw: 'inherit', bg: 'transparent', pd: '0' });
+const parseMd = src => { const out = []; let code = null; src.split('\n').forEach(l => { if (l.startsWith('```')) { if (code !== null) { out.push({ code: true, text: code.join('\n') }); code = null; } else code = []; return; } if (code) { code.push(l); return; } if (!l.trim()) return;
+  const b = { h1: false, h2: false, code: false, img: false, inline: false, li: false, pad: '0', bl: '0', fg: '--text-primary', parts: [] };
+  if (l.startsWith('# ')) out.push({ ...b, h1: true, text: l.slice(2) }); else if (l.startsWith('## ')) out.push({ ...b, h2: true, text: l.slice(3) }); else if (/^!\[.*\]\(.*\)/.test(l)) out.push({ ...b, img: true, text: l.match(/^!\[(.*)\]/)[1] || 'Ảnh' });
+  else if (l.startsWith('- ')) out.push({ ...b, inline: true, li: true, parts: inl(l.slice(2)) }); else if (l.startsWith('> ')) out.push({ ...b, inline: true, pad: '12px', bl: '3px solid var(--border-strong)', fg: '--text-secondary', parts: inl(l.slice(2)) }); else out.push({ ...b, inline: true, parts: inl(l) }); });
+  if (code) out.push({ code: true, text: code.join('\n'), h1: false, h2: false, img: false, inline: false }); return out; };
+const COLS = [['todo', 'Cần làm', 'circle', '--text-muted', 0], ['doing', 'Đang làm', 'loader-circle', '--status-running-fg', 3], ['review', 'Chờ review', 'git-pull-request', '--status-warning-fg', 2], ['done', 'Xong', 'circle-check', '--status-success-fg', 0]];
+const TASKS0 = [['T-151', 'Thêm trang lịch sử quota', ['web'], 'todo', 'm', null], ['T-149', 'Chuẩn hoá log JSON một dòng', ['hub'], 'todo', 'l', 'DT'], ['T-142', 'Retry webhook Teams', ['hub', 'webhook'], 'doing', 'h', 'claude-code'], ['T-139', 'Idempotency key cho API v2', ['api'], 'doing', 'u', 'codex'], ['T-137', 'Sửa lỗi múi giờ báo cáo', ['report'], 'review', 'm', 'gemini-cli'], ['T-133', 'Tài liệu ADR-014', ['docs'], 'review', 'l', 'LH'], ['T-128', 'Backup bằng VACUUM INTO', ['ops'], 'done', 'm', 'claude-code']];
+const PRIO = { u: ['Khẩn', 'arrow-up', '--status-danger-fg'], h: ['Cao', 'arrow-up', '--status-warning-fg'], m: ['Vừa', 'minus', '--text-muted'], l: ['Thấp', 'arrow-down', '--text-muted'] };
+const STEPS = [['Chuẩn bị worktree', 4], ['Đọc context và memory', 9], ['Viết code', 38], ['Chạy test', 22], ['Tạo PR', 6]];
+const LOGPOOL = [['INFO', 'agent', 'Nhận task T-142 từ hàng đợi'], ['DEBUG', 'git', 'worktree tạo tại .hive/wt/T-142'], ['INFO', 'context', 'Đọc 4 memory liên quan: #188, #201, #214, #230'], ['INFO', 'agent', 'Sửa apps/hub/src/webhook.ts (+6 −3)'], ['WARN', 'quota', 'Gói Claude Team còn 12% cho tuần này'], ['INFO', 'test', 'npm test -- webhook'], ['ERROR', 'test', 'webhook.test.ts › retry khi 503: expected 3 calls, received 2'], ['INFO', 'agent', 'Sửa điều kiện retryOn, chạy lại test'], ['INFO', 'test', '14 passed, 0 failed (3.2s)'], ['INFO', 'git', 'Đẩy nhánh feat/retry-webhook'], ['INFO', 'hub', 'Tạo PR #482 và gắn reviewer'], ['DEBUG', 'hub', 'webhook Teams gửi 200 OK']];
+const LV = { INFO: '--status-info-fg', WARN: '--status-warning-fg', ERROR: '--status-danger-fg', DEBUG: '--text-muted' };
+const VERS = [['v12', 'Duyệt đề xuất: thêm mục Idempotency', 'claude-code', true, 'vừa xong', 14, 2], ['v11', 'Thêm sơ đồ luồng thanh toán', 'Duy Trần', false, '2 giờ trước', 6, 0], ['v10', 'Cập nhật bước deploy', 'Lan Hồ', false, 'hôm qua', 9, 7], ['v9', 'Sửa trực tiếp: đổi tên service', 'Duy Trần', false, '3 ngày trước', 3, 3], ['v8', 'Duyệt đề xuất từ codex', 'codex', true, 'tuần trước', 21, 4], ['v7', 'Tạo trang', 'Lan Hồ', false, '2 tuần trước', 48, 0]];
+const META = [
+  ['code', 'Code block', 'Hiển thị', 'Hiển thị code có tô màu cú pháp, số dòng, tên file và nút sao chép. Dòng được nhấn mạnh có nền và vạch trái.', A('Header: icon file, đường dẫn, ngôn ngữ', 'Nút xuống dòng, nút sao chép', 'Gutter số dòng (không chọn được)', 'Code mono 13/20, dòng nhấn mạnh'), Z({ chữ: '13/20 mono (12/18 gọn)', header: '40 px', đệm: '10 px dọc, 16 px phải' }), ['Mặc định', 'Hover nút', 'Đã sao chép', 'Xuống dòng bật/tắt'], 'Nút sao chép đổi nhãn thành “Đã sao chép” và thông báo qua aria-live. Số dòng aria-hidden để trình đọc không đọc.', ['Luôn hiện đường dẫn tính từ gốc repo.', 'Màu cú pháp đạt 4.5:1 trên nền code ở cả hai chế độ.'], ['Không dùng ảnh chụp code.']],
+  ['diff', 'Diff viewer', 'Review', 'Xem thay đổi của agent trước khi duyệt: chế độ gộp hoặc song song, số dòng cũ/mới, đánh dấu từ thay đổi.', A('Header file: đường dẫn, +/−, thanh tỉ lệ', 'Hunk header', 'Gutter số dòng cũ | mới', 'Dấu + / − và nền dòng', 'Nền đậm hơn cho từ thay đổi'), Z({ gộp: 'mặc định, mọi độ rộng', songsong: '≥ 1024 px', dòng: '12/20 mono' }), ['Ngữ cảnh', 'Thêm', 'Xoá', 'Hunk', 'Từ thay đổi'], 'Dấu + / − luôn hiện nên không phụ thuộc màu. N / P nhảy hunk kế tiếp/trước.', ['Thu gọn file sinh tự động (lockfile).'], ['Không tô màu cú pháp đè lên nền diff nếu làm giảm tương phản.']],
+  ['markdown', 'Markdown editor', 'Soạn thảo', 'Soạn tài liệu, mô tả task và đề xuất. Viết, xem trước hoặc chia đôi; thanh công cụ chèn cú pháp.', A('Tab Viết / Xem trước / Chia đôi', 'Thanh công cụ định dạng', 'Vùng nhập mono', 'Xem trước dùng typography đọc', 'Thanh trạng thái: số từ, lưu nháp'), Z({ tốithiểu: '280 px cao', chiađôi: '≥ 768 px', mobile: 'chỉ tab' }), ['Viết', 'Xem trước', 'Chia đôi', 'Đang lưu', 'Đã lưu nháp'], 'Mọi nút công cụ có aria-label và phím tắt (⌘B, ⌘I, ⌘K). Tab trong vùng nhập chèn thụt lề; Esc rồi Tab để thoát.', ['Tự lưu nháp mỗi 2 giây khi đang gõ.'], ['Không dùng WYSIWYG ẩn cú pháp với developer.']],
+  ['board', 'Task board', 'Công việc', 'Kanban theo trạng thái task. Kéo thả thẻ giữa các cột, hoặc dùng nút › để chuyển bằng bàn phím.', A('Cột: icon trạng thái, tên, số thẻ, giới hạn WIP', 'Thẻ: ID, ưu tiên, tiêu đề', 'Nhãn', 'Người/agent nhận, chỉ báo đang chạy'), Z({ cột: 'tối thiểu 220 px', thẻ: 'đệm 10 × 12, bo 8', mobile: 'một cột, vuốt ngang' }), ['Mặc định', 'Hover', 'Đang kéo', 'Cột nhận thả', 'Vượt WIP'], 'Thẻ nhận focus; nút › chuyển cột kèm aria-label. Kéo thả luôn có cách thay thế bằng bàn phím.', ['Avatar tròn cho người, vuông bo cho agent.'], ['Không quá 6 cột trên một board.']],
+  ['agent', 'Trạng thái agent', 'Agent', 'Cho biết agent nào đang làm gì, trên máy nào, còn bao nhiêu quota. Vòng gradient xoay chỉ dùng cho agent đang chạy.', A('Avatar với vòng trạng thái', 'Tên, model, máy', 'Badge trạng thái: icon + chữ', 'Task hiện tại', 'Thanh quota có số %'), Z({ card: 'tối thiểu 250 px', chip: '26 px cao', avatar: '40 px (vòng 3 px)' }), ['Đang chạy', 'Chờ duyệt', 'Rảnh', 'Hết quota', 'Lỗi', 'Offline'], 'Trạng thái luôn có chữ. Vòng offline dùng nét đứt; giảm chuyển động thì vòng gradient đứng yên.', ['Dùng cùng bộ trạng thái ở card, chip và bảng.'], ['Không dùng gradient cho trạng thái khác “Đang chạy”.']],
+  ['run', 'Tiến trình run', 'Agent', 'Theo dõi một lần chạy của agent: bước hiện tại, % hoàn thành, thời gian, token và chi phí.', A('Header: ID run, task, badge', 'Thanh tiến độ (gradient khi đang chạy)', 'Danh sách bước với icon trạng thái', 'Số liệu', 'Hành động: chạy lại, dừng, xem log'), Z({ đầyđủ: 'card ≥ 320 px', gọn: 'hàng 48 px trong danh sách', thanh: '8 px (4 px gọn)' }), ['Chờ', 'Đang chạy', 'Thành công', 'Thất bại', 'Đã dừng'], 'role="progressbar" với aria-valuenow; mỗi bước có chữ trạng thái ẩn cho trình đọc (“xong”, “đang chạy”).', ['Hiện bước đang chạy bằng chữ ngay trên thanh.'], ['Không hiện % giả khi không đo được: dùng thanh không xác định.']],
+  ['log', 'Log viewer', 'Agent', 'Đọc log run theo thời gian thực: lọc mức, tìm kiếm, tự cuộn theo dòng mới, tải về.', A('Chip lọc mức (có đếm)', 'Ô tìm, nút theo dõi, tải về', 'Dòng: số, thời gian, mức, nguồn, nội dung', 'Thanh trạng thái'), Z({ dòng: '12/18 mono', chiềucao: '280 px trong card, toàn màn khi mở rộng' }), ['Theo dõi', 'Tạm dừng', 'Đang lọc', 'Kết quả tìm', 'Lỗi'], 'Mức log là chữ (INFO/WARN/ERROR) chứ không chỉ màu. role="log"; aria-live tắt khi luồng quá nhanh.', ['Tạm dừng tự cuộn khi người dùng cuộn lên.'], ['Không phân trang log đang chạy.']],
+  ['history', 'Lịch sử phiên bản', 'Tài liệu', 'Dòng thời gian các phiên bản của một trang tài liệu: ai sửa (người hay agent), tóm tắt, số dòng thay đổi; chọn hai bản để so sánh và khôi phục.', A('Mốc thời gian', 'Số phiên bản + nhãn Hiện tại', 'Tóm tắt thay đổi', 'Tác giả + số dòng +/−', 'Chọn A/B, khôi phục'), Z({ danhsách: '260–340 px', sosánh: 'phần còn lại' }), ['Hiện tại', 'Đang chọn A', 'Đang chọn B', 'Hover'], 'Nút A/B dùng aria-pressed. Khôi phục tạo phiên bản mới, không xoá lịch sử.', ['Ghi rõ phiên bản do agent đề xuất và ai duyệt.'], ['Không cho khôi phục ghi đè mà không tạo phiên bản mới.']],
+];
+class Component extends DCLogic {
+  state = { theme: (() => { try { return localStorage.getItem('xdh-ds-theme') === 'dark' ? 'dark' : 'light'; } catch (e) { return 'light'; } })(), wrap: false, copied: false, diffMode: 'u', md: MD0, mdMode: 'split', tasks: TASKS0, drag: null, over: null, tick: 0, runStop: false, lvOn: { INFO: true, WARN: true, ERROR: true, DEBUG: false }, logQ: '', follow: true, logN: 8, vA: 'v10', vB: 'v12' };
+  logRef = React.createRef();
+  componentDidMount() { loadIcons().then(() => this.forceUpdate()); this.iv = setInterval(() => this.setState(st => ({ tick: st.tick + 1, logN: st.follow && st.logN < 60 ? st.logN + 1 : st.logN })), 1500); }
+  componentWillUnmount() { clearInterval(this.iv); }
+  componentDidUpdate() { const el = document.querySelector('[data-log]'); if (el && this.state.follow) el.scrollTop = el.scrollHeight; }
+  setTheme(t) { this.setState({ theme: t }); try { localStorage.setItem('xdh-ds-theme', t); } catch (e) {} }
+  renderVals() {
+    const s = this.state, light = s.theme !== 'dark';
+    const comps = META.map(([id, name, group, desc, anatomy, sizes, states, a11y, d, dn]) => ({ id, name, group, desc, anatomy, sizes, states, a11y, do: d, dont: dn, is: { [id]: true } }));
+    const hl = [5, 6, 7];
+    const codeLines = CODE.map((l, i) => ({ n: i + 1, toks: tokenize(l), ws: s.wrap ? 'pre-wrap' : 'pre', bg: hl.includes(i + 1) ? 'var(--code-line-hl)' : 'transparent', bar: hl.includes(i + 1) ? 'inset 3px 0 0 var(--focus-color)' : 'none' }));
+    const diffU = DIFF.map(([type, o, n, t, w]) => { const [bg, fg, gut, mk, m] = DSTY[type]; return { bg, fg, gut, mk, m, o, n, parts: parts(t, w, type) }; });
+    const cell = (d) => { if (!d) return { no: '', bg: '--bg-sunken', fg: '--code-fg', gut: '--bg-sunken', mk: '--code-gutter', m: ' ', parts: [{ t: '', bg: 'transparent' }] }; const [type, o, n, t, w] = d; const [bg, fg, gut, mk, m] = DSTY[type]; return { no: type === 'add' ? n : o, bg, fg, gut, mk, m: type === 'hunk' ? '' : m + ' ', parts: parts(t, w, type) }; };
+    const diffS = []; for (let i = 0; i < DIFF.length;) { const d = DIFF[i]; if (d[0] === 'ctx' || d[0] === 'hunk') { diffS.push({ cells: [cell(d), cell(d[0] === 'hunk' ? ['hunk', '', '', ''] : d)] }); i++; continue; } const dels = [], adds = []; while (i < DIFF.length && DIFF[i][0] === 'del') dels.push(DIFF[i++]); while (i < DIFF.length && DIFF[i][0] === 'add') adds.push(DIFF[i++]); for (let j = 0; j < Math.max(dels.length, adds.length); j++) diffS.push({ cells: [cell(dels[j]), cell(adds[j])] }); }
+    const ins = (a, b = '') => () => this.setState(st => ({ md: st.md + '\n' + a + b }));
+    const tasks = s.tasks;
+    const board = COLS.map(([key, label, icon, ic, wipMax], ci) => { const cards = tasks.filter(t => t[3] === key); const over = s.over === key;
+      return { label, icon: I(icon), ic, count: cards.length, wip: wipMax ? 'WIP ' + cards.length + '/' + wipMax : '', wipFg: wipMax && cards.length > wipMax ? '--status-danger-fg' : '--text-muted', bg: over ? 'var(--state-selected-bg)' : 'var(--bg-sunken)', bd: over ? 'var(--border-selected)' : 'transparent',
+        over: e => { e.preventDefault(); if (s.over !== key) this.setState({ over: key }); }, drop: e => { e.preventDefault(); const id = s.drag; this.setState(st => ({ tasks: st.tasks.map(t => t[0] === id ? [t[0], t[1], t[2], key, t[4], t[5]] : t), drag: null, over: null })); },
+        cards: cards.map(([id, title, labels, , p, who]) => { const agent = !!who && /^[a-z]/.test(who); const [prioLabel, pi, prioFg] = PRIO[p];
+          return { id, title, labels, prioLabel, prioIcon: I(pi), prioFg, who: who ? (agent ? 'Agent ' + who : 'Người nhận ' + who) : 'Chưa giao', av: who ? (agent ? who[0].toUpperCase() : who) : '–', shape: agent ? '6px' : '50%', avBg: who ? (agent ? '--state-selected-bg' : '--status-neutral-bg') : '--bg-sunken', avFg: agent ? '--state-selected-fg' : '--text-secondary', running: key === 'doing' && agent, op: s.drag === id ? 0.4 : 1, nextVis: ci < 3 ? 'visible' : 'hidden',
+            drag: e => { try { e.dataTransfer.setData('text/plain', id); } catch (x) {} this.setState({ drag: id }); }, dragEnd: () => this.setState({ drag: null, over: null }), next: () => this.setState(st => ({ tasks: st.tasks.map(t => t[0] === id ? [t[0], t[1], t[2], COLS[Math.min(ci + 1, 3)][0], t[4], t[5]] : t) })) }; }) }; });
+    const AG = [['claude-code', 'C', 'claude-sonnet-4.5', 'build-03', 'running', 'Đang chạy', 'loader-circle', 'T-142 · Retry webhook Teams', 68], ['codex', 'O', 'gpt-5-codex', 'build-01', 'info', 'Chờ duyệt', 'git-pull-request', 'PR #479 chờ review', 41], ['gemini-cli', 'G', 'gemini-2.5-pro', 'mac-mini', 'neutral', 'Rảnh', 'circle-pause', 'Sẵn sàng nhận task', 22], ['aider', 'A', 'claude-haiku-4.5', 'build-02', 'warning', 'Hết quota', 'hourglass', 'Làm mới 00:00 ngày 1/10', 100], ['qwen-coder', 'Q', 'qwen3-coder', 'gpu-01', 'danger', 'Lỗi', 'circle-x', 'Mất kết nối model sau 3 lần thử', 57], ['claude-code', 'C', 'claude-opus-4.1', 'laptop-lan', 'neutral', 'Offline', 'circle-dot', 'Thấy lần cuối 2 giờ trước', 9]];
+    const agents = AG.map(([name, av, model, host, k, state, icon, task, q], i) => ({ name, av, model, host, k, state, icon: I(icon), task, q, qw: q + '%', anim: k === 'running' ? SPIN : 'none', live: k === 'running', still: k !== 'running', ring: k === 'neutral' && i === 5 ? '--border-control' : '--status-' + k + '-border', ringStyle: i === 5 ? 'dashed' : 'solid', op: i === 5 ? 0.6 : 1, qFg: q >= 100 ? '--status-warning-fg' : '--text-primary', qBar: q >= 100 ? '--status-warning-solid' : q > 85 ? '--status-warning-solid' : '--action-primary-bg' }));
+    const total = STEPS.reduce((a, b) => a + b[1], 0), t = s.runStop ? -1 : s.tick % (total + 6);
+    let acc = 0; const done = t >= total, failed = false;
+    const steps = STEPS.map(([label, dur]) => { const st = s.runStop && acc <= (s.stopAt || 0) && (s.stopAt || 0) < acc + dur ? 'stop' : t < 0 ? (acc + dur <= (s.stopAt || 0) ? 'done' : 'wait') : t >= acc + dur ? 'done' : t >= acc ? 'run' : 'wait'; const elapsed = st === 'done' ? dur : st === 'run' ? t - acc : 0; acc += dur;
+      const map = { done: ['circle-check', '--status-success-fg', 'xong'], run: ['loader-circle', '--status-running-fg', 'đang chạy'], wait: ['circle', '--text-disabled', 'chờ'], stop: ['circle-x', '--status-danger-fg', 'đã dừng'] }[st];
+      return { label, icon: I(map[0]), fg: map[1], sr: ' (' + map[2] + ')', anim: st === 'run' ? SPIN : 'none', tfg: st === 'wait' ? '--text-muted' : '--text-primary', fw: st === 'run' ? 600 : 400, t: elapsed ? '0:' + String(elapsed).padStart(2, '0') : '' }; });
+    const cur = Math.min(t < 0 ? (s.stopAt || 0) : t, total), pct = Math.round(cur / total * 100);
+    const runK = s.runStop ? 'danger' : done ? 'success' : 'running';
+    const run = { k: runK, label: s.runStop ? 'Đã dừng' : done ? 'Thành công' : 'Đang chạy', icon: I(s.runStop ? 'circle-x' : done ? 'circle-check' : 'loader-circle'), anim: runK === 'running' ? SPIN : 'none', pct, w: pct + '%', bar: runK === 'running' ? 'var(--brand-gradient-h)' : runK === 'success' ? 'var(--status-success-solid)' : 'var(--status-danger-solid)',
+      stepLabel: s.runStop ? 'Người dùng đã dừng run' : done ? 'Đã tạo PR #482' : 'Bước ' + (steps.findIndex(x => x.fw === 600) + 1) + '/5 · ' + (steps.find(x => x.fw === 600) || { label: '' }).label, steps,
+      metrics: [{ k: 'Thời gian', v: Math.floor(cur / 60) + ':' + String(cur % 60).padStart(2, '0') }, { k: 'Token', v: (cur * 1.9).toFixed(1) + 'k' }, { k: 'Chi phí', v: '$' + (cur * 0.011).toFixed(2) }],
+      restart: () => this.setState({ runStop: false, tick: 0 }), stop: () => { if (!s.runStop) this.setState({ runStop: true, stopAt: cur }); } };
+    const runMini = [['running', 'loader-circle', 'Retry webhook Teams', 'claude-code · Viết code', '62%', '4:12'], ['neutral', 'circle-dot', 'Viết test cho refund', 'Chờ máy trống', '0%', '—'], ['success', 'circle-check', 'Sửa lỗi múi giờ', 'gemini-cli · PR #479', '100%', '6:40'], ['danger', 'circle-x', 'Nâng cấp Prisma', 'codex · test lỗi', '71%', '9:05'], ['warning', 'hourglass', 'Idempotency key', 'Hết quota, sẽ tiếp tục', '38%', '3:20']]
+      .map(([k, icon, title, label, w, tt]) => ({ k, icon: I(icon), title, label, w, t: tt, anim: k === 'running' ? SPIN : 'none', bar: k === 'running' ? 'var(--brand-gradient-h)' : 'var(--status-' + k + '-solid, var(--status-neutral-solid))' }));
+    const allLog = Array.from({ length: s.logN }, (_, i) => { const [lv, src, msg] = LOGPOOL[i % LOGPOOL.length]; const sec = 5 + i * 2; return { i, lv, src, msg, ts: '14:0' + (2 + Math.floor(sec / 60)) + ':' + String(sec % 60).padStart(2, '0') + '.' + String((i * 137) % 1000).padStart(3, '0') }; });
+    const q = s.logQ.trim().toLowerCase(); let matches = 0;
+    const logLines = allLog.filter(l => s.lvOn[l.lv]).map(l => { let ps = [{ t: l.msg, bg: 'transparent', fg: 'inherit' }]; if (q) { const idx = l.msg.toLowerCase().indexOf(q); if (idx >= 0) { matches++; ps = [{ t: l.msg.slice(0, idx), bg: 'transparent', fg: 'inherit' }, { t: l.msg.slice(idx, idx + q.length), bg: 'var(--status-warning-solid)', fg: '#1B1300' }, { t: l.msg.slice(idx + q.length), bg: 'transparent', fg: 'inherit' }]; } }
+      return { n: l.i + 1, ts: l.ts, lv: l.lv, fg: LV[l.lv], src: l.src, parts: ps, bg: l.lv === 'ERROR' ? 'var(--diff-del-bg)' : 'transparent' }; });
+    const counts = {}; allLog.forEach(l => counts[l.lv] = (counts[l.lv] || 0) + 1);
+    const vi = v => VERS.findIndex(x => x[0] === v);
+    const [a, b] = [s.vA, s.vB].sort((x, y) => vi(y) - vi(x));
+    const versions = VERS.map(([v, note, who, agent, at, add, del], i) => { const isA = s.vA === v, isB = s.vB === v; return { v, note, who: agent ? who + ' · agent' : who, av: agent ? who[0].toUpperCase() : who.split(' ').map(w => w[0]).join('').slice(0, 2), shape: agent ? '4px' : '50%', at, add, del, current: i === 0, canRestore: i > 0, dot: i === 0 ? '--status-success-solid' : isA || isB ? '--action-primary-bg' : '--border-strong', bg: isA || isB ? 'var(--state-selected-bg)' : 'transparent',
+      isA: isA ? 'true' : 'false', isB: isB ? 'true' : 'false', aBd: isA ? 'var(--border-selected)' : 'var(--border-default)', aBg: isA ? 'var(--action-primary-bg)' : 'transparent', aFg: isA ? '--action-primary-fg' : '--text-secondary', bBd: isB ? 'var(--border-selected)' : 'var(--border-default)', bBg: isB ? 'var(--action-primary-bg)' : 'transparent', bFg: isB ? '--action-primary-fg' : '--text-secondary',
+      pickA: () => this.setState({ vA: v }), pickB: () => this.setState({ vB: v }) }; });
+    const cmpLines = [['ctx', '## Thành phần'], ['ctx', '- API gateway nhận request từ app và đối tác.'], ['del', '- Worker xử lý tác vụ nền.'], ['add', '- Worker xử lý tác vụ nền qua hàng đợi Redis.'], ['add', '- Mỗi request ghi kèm idempotency key.'], ['ctx', ''], ['add', '## Idempotency'], ['add', 'Mọi POST ở API v2 bắt buộc có header Idempotency-Key.']].slice(0, a === b ? 2 : 8).map(([type, t]) => { const [bg, fg, , mk, m] = DSTY[type]; return { bg, fg, mk, m, t: t || ' ' }; });
+    return {
+      ic: icMap(), theme: s.theme, light, dark: !light, setLight: () => this.setTheme('light'), setDark: () => this.setTheme('dark'),
+      lightBg: light ? 'var(--bg-surface)' : 'transparent', darkBg: light ? 'transparent' : 'var(--bg-surface)', lightSh: light ? 'var(--shadow-1)' : 'none', darkSh: light ? 'none' : 'var(--shadow-1)',
+      comps, codeLines, wrapOn: s.wrap ? 'true' : 'false', wrapBg: s.wrap ? 'var(--state-selected-bg)' : 'transparent', toggleWrap: () => this.setState(st => ({ wrap: !st.wrap })),
+      copyLabel: s.copied ? 'Đã sao chép' : 'Sao chép', copyIcon: I(s.copied ? 'check' : 'copy'), copyFg: s.copied ? '--status-success-fg' : '--action-secondary-fg',
+      copyCode: () => { try { navigator.clipboard && navigator.clipboard.writeText(CODE.join('\n')); } catch (e) {} this.setState({ copied: true }); clearTimeout(this.ct); this.ct = setTimeout(() => this.setState({ copied: false }), 2000); },
+      syntax: [['keyword', 'keyword'], ['string', "'string'"], ['number', '250'], ['function', 'fn()'], ['type', 'Type'], ['comment', '// comment'], ['variable', 'variable']].map(([k, label]) => ({ v: '--syntax-' + k, label })),
+      unified: s.diffMode === 'u', split: s.diffMode === 's', setUnified: () => this.setState({ diffMode: 'u' }), setSplit: () => this.setState({ diffMode: 's' }),
+      uniBg: s.diffMode === 'u' ? 'var(--bg-surface)' : 'transparent', uniSh: s.diffMode === 'u' ? 'var(--shadow-1)' : 'none', splBg: s.diffMode === 's' ? 'var(--bg-surface)' : 'transparent', splSh: s.diffMode === 's' ? 'var(--shadow-1)' : 'none', diffU, diffS,
+      md: s.md, setMd: e => this.setState({ md: e.target.value }), mdBlocks: parseMd(s.md), mdWords: (s.md.match(/\S+/g) || []).length, mdShowWrite: s.mdMode !== 'preview', mdShowPreview: s.mdMode !== 'write',
+      mdModes: [['write', 'Viết'], ['preview', 'Xem trước'], ['split', 'Chia đôi']].map(([k, label]) => { const on = s.mdMode === k; return { label, on: on ? 'true' : 'false', bg: on ? 'var(--state-selected-bg)' : 'transparent', fg: on ? '--state-selected-fg' : '--text-secondary', fw: on ? 600 : 500, go: () => this.setState({ mdMode: k }) }; }),
+      mdTools: [['heading-2', 'Tiêu đề', '## Tiêu đề'], ['bold', 'Đậm (⌘B)', '**chữ đậm**'], ['italic', 'Nghiêng (⌘I)', '_nghiêng_'], ['code', 'Code', '```\n\n```'], ['link', 'Liên kết (⌘K)', '[Tên trang](doc:slug)'], ['image', 'Ảnh', '![Sơ đồ luồng](assets/luong.png)'], ['list', 'Danh sách', '- '], ['quote', 'Trích dẫn', '> ']].map(([icon, title, txt]) => ({ icon: I(icon), label: title, title, go: ins(txt) })),
+      board, agents, run, runMini,
+      levels: ['INFO', 'WARN', 'ERROR', 'DEBUG'].map(lv => { const on = s.lvOn[lv]; return { label: lv, count: counts[lv] || 0, on: on ? 'true' : 'false', chk: on ? 1 : 0, bd: on ? 'var(--border-selected)' : 'var(--border-default)', bg: on ? 'var(--state-selected-bg)' : 'transparent', fg: on ? LV[lv] === '--text-muted' ? '--text-secondary' : LV[lv] : '--text-muted', toggle: () => this.setState(st => ({ lvOn: { ...st.lvOn, [lv]: !st.lvOn[lv] } })) }; }),
+      logQ: s.logQ, setLogQ: e => this.setState({ logQ: e.target.value }), logLines, follow: s.follow ? 'true' : 'false', toggleFollow: () => this.setState(st => ({ follow: !st.follow })),
+      followLabel: s.follow ? 'Đang theo dõi' : 'Tạm dừng', followBg: s.follow ? 'var(--state-selected-bg)' : 'var(--action-secondary-bg)', followFg: s.follow ? '--state-selected-fg' : '--action-secondary-fg',
+      logShown: logLines.length + ' / ' + allLog.length + ' dòng', logMatches: q ? matches + ' kết quả cho “' + s.logQ + '”' : '', logStatus: s.follow ? (s.logN >= 60 ? 'Run đã kết thúc' : '● Đang nhận log') : 'Đã tạm dừng tự cuộn',
+      versions, cmpLabel: a + ' → ' + b, cmpLines,
+    };
+  }
+}
+</script>
+</body>
+</html>
