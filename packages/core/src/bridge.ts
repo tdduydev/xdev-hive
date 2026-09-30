@@ -288,6 +288,8 @@ export interface ProfileCheck {
 }
 
 export interface DesktopBridge {
+  /** The app's own version and the OS it runs on (sidebar footer, status bar, macOS window chrome). */
+  appInfo(): Promise<{ version: string; platform: string }>;
   settings(): Promise<DesktopSettings>;
   updateSettings(patch: DesktopSettingsPatch): Promise<DesktopSettings>;
   /** The interface language, for what the main process shows itself (tray, notifications, dialogs). */

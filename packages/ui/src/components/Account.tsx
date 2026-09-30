@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ChevronsUpDown, KeyRound, Link2, LogOut } from "lucide-react";
+import { KeyRound, Link2, LogOut } from "lucide-react";
+import { cn } from "cn";
 import type { Me } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
@@ -14,7 +15,6 @@ import {
 } from "@xdev-hive/ui/components/ui/dropdown-menu";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
-import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@xdev-hive/ui/components/ui/sidebar";
 import type { HiveClient } from "../client.ts";
 import { useAction } from "../hooks.ts";
 import { useT } from "../i18n/index.tsx";
@@ -103,84 +103,97 @@ export function ChangePasswordScreen({ client, me, onDone, onSignOut }: { client
   );
 }
 
-/** Sidebar footer: who is signed in, what they may see, change password, sign out. */
-export function AccountMenu({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOut?: () => void }) {
+/** Initials for the round avatar: first letters of the first two words ("Trần Đức" → TĐ). */
+export const initials = (name: string) =>
+  name
+    .trim()
+    .split(/[\s._-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join("") || "?";
+
+/**
+ * Sidebar footer: who is signed in, what they may see, language, appearance, change password, sign out.
+ * `subtitle` replaces the "@user · role" line (the desktop shows the machine and app version there).
+ */
+export function AccountMenu({ client, me, onSignOut, subtitle }: { client: HiveClient; me: Me; onSignOut?: () => void; subtitle?: string }) {
   const [changing, setChanging] = useState(false);
   const [changed, setChanged] = useState(false);
   const t = useT();
   const grants = Object.entries(me.access?.projects ?? {});
   const where = me.mode === "hub" ? t("account.hub") : t("account.local");
   const role = t(`role.${me.role}`);
+  const name = me.user?.displayName ?? me.name;
   return (
     <>
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <SidebarMenuButton size="lg" tooltip={me.user?.displayName ?? me.name} className="data-[state=open]:bg-sidebar-accent">
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-brand-soft text-sm font-semibold text-brand-soft-foreground uppercase">
-                  {(me.user?.displayName ?? me.name).slice(0, 1)}
-                </span>
-                <span className="flex min-w-0 flex-1 flex-col text-left leading-tight">
-                  <span className="truncate font-medium">{me.user?.displayName ?? me.name}</span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    {me.user ? `@${me.user.username}` : where} · {role}
-                  </span>
-                </span>
-                <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
-              </SidebarMenuButton>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent side="top" align="start" className="w-64">
-              <DropdownMenuLabel className="flex flex-col gap-1.5 font-normal">
-                <span className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate font-medium">{me.user?.displayName ?? me.name}</span>
-                  <Badge tone={STATUS_TONE[me.role]}>{role}</Badge>
-                </span>
-                <span className="text-xs text-muted-foreground">{where}</span>
-                {me.access ? (
-                  <span className="flex flex-wrap gap-1 pt-1">
-                    {grants.length ? (
-                      grants.map(([p, l]) => (
-                        <Badge key={p} tone="neutral" className="font-mono text-[11px]">
-                          {p} · {t(`level.${l}`)}
-                        </Badge>
-                      ))
-                    ) : (
-                      <span className="text-xs text-muted-foreground">{t("account.noGrants")}</span>
-                    )}
-                  </span>
-                ) : me.mode === "hub" && me.role === "admin" ? (
-                  <span className="text-xs text-muted-foreground">{t("account.adminAll")}</span>
-                ) : null}
-                {me.sso?.linked ? <span className="text-xs text-muted-foreground">{t("account.ssoLinked", { name: me.sso.name })}</span> : null}
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <LanguageMenu />
-              <ThemeMenu />
-              {client.account && me.sso && !me.sso.linked ? (
-                <DropdownMenuItem
-                  onSelect={() => void client.account!.linkSso().then(({ url }) => window.location.assign(url), () => undefined)}
-                >
-                  <Link2 />
-                  {t("account.linkSso", { name: me.sso.name })}
-                </DropdownMenuItem>
-              ) : null}
-              {client.account ? (
-                <DropdownMenuItem onSelect={() => setChanging(true)}>
-                  <KeyRound />
-                  {t("password.change")}
-                </DropdownMenuItem>
-              ) : null}
-              {onSignOut ? (
-                <DropdownMenuItem onSelect={onSignOut}>
-                  <LogOut />
-                  {t("account.signOut")}
-                </DropdownMenuItem>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </SidebarMenuItem>
-      </SidebarMenu>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label={t("shell.account")}
+            className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm p-1 text-left outline-none hover:bg-hover focus-visible:focus-ring data-[state=open]:bg-hover"
+          >
+            <span className="grid size-[26px] shrink-0 place-items-center rounded-full bg-primary text-[10px]/none font-semibold text-primary-foreground">
+              {initials(name)}
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-xs/4 font-semibold text-fg-strong">{me.user?.username ?? name}</span>
+              <span className={cn("truncate text-[11px]/[14px] text-fg-muted", subtitle && "font-mono")}>
+                {subtitle ?? `${me.user ? `@${me.user.username}` : where} · ${role}`}
+              </span>
+            </span>
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="top" align="start" className="w-64">
+          <DropdownMenuLabel className="flex flex-col gap-1.5 pt-2 type-body-sm tracking-normal normal-case">
+            <span className="flex items-center gap-2">
+              <span className="min-w-0 flex-1 truncate font-semibold text-fg-strong normal-case tracking-normal">{name}</span>
+              <Badge tone={STATUS_TONE[me.role]}>{role}</Badge>
+            </span>
+            <span className="text-xs text-muted-foreground">{where}</span>
+            {me.access ? (
+              <span className="flex flex-wrap gap-1 pt-1">
+                {grants.length ? (
+                  grants.map(([p, l]) => (
+                    <Badge key={p} tone="neutral" className="font-mono text-[11px]">
+                      {p} · {t(`level.${l}`)}
+                    </Badge>
+                  ))
+                ) : (
+                  <span className="text-xs text-muted-foreground">{t("account.noGrants")}</span>
+                )}
+              </span>
+            ) : me.mode === "hub" && me.role === "admin" ? (
+              <span className="text-xs text-muted-foreground">{t("account.adminAll")}</span>
+            ) : null}
+            {me.sso?.linked ? <span className="text-xs text-muted-foreground">{t("account.ssoLinked", { name: me.sso.name })}</span> : null}
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <LanguageMenu />
+          <ThemeMenu />
+          {client.account && me.sso && !me.sso.linked ? (
+            <DropdownMenuItem
+              onSelect={() => void client.account!.linkSso().then(({ url }) => window.location.assign(url), () => undefined)}
+            >
+              <Link2 />
+              {t("account.linkSso", { name: me.sso.name })}
+            </DropdownMenuItem>
+          ) : null}
+          {client.account ? (
+            <DropdownMenuItem onSelect={() => setChanging(true)}>
+              <KeyRound />
+              {t("password.change")}
+            </DropdownMenuItem>
+          ) : null}
+          {onSignOut ? (
+            <DropdownMenuItem onSelect={onSignOut}>
+              <LogOut />
+              {t("account.signOut")}
+            </DropdownMenuItem>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
       <Dialog
         open={changing}
         onOpenChange={(open) => {
