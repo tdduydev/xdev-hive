@@ -28,6 +28,7 @@ import {
   type ChatRequest,
   type ChatThread,
   type Doc,
+  type AgentContext,
   type DocAsset,
   type DocAssist,
   type DocAssistJob,
@@ -170,6 +171,8 @@ export const schemas = {
   /** Puts a page under another (or at the top) without a new version. */
   "docs.move": z.object({ key: docKey, parent: docKey.nullable() }),
   "docs.links": z.object({ key: docKey }),
+  /** What the project's agents get: the AGENTS.md a sync writes, what it is made of, the files, the memory (roadmap 22n). */
+  "docs.context": z.object({ project }),
   "docs.assets": z.object({ key: docKey }),
   "docs.assetGet": z.object({ key: docKey, name: z.string().min(1).max(200) }),
   /** The file's bytes in base64; a file of the same name on the page is replaced. */
@@ -529,6 +532,7 @@ export interface MethodOutput {
   "docs.save": Doc;
   "docs.move": DocSummary;
   "docs.links": DocLinks;
+  "docs.context": AgentContext;
   "docs.assets": DocAsset[];
   "docs.assetGet": { asset: DocAsset; data: string } | null;
   "docs.assetPut": DocAsset;
@@ -628,6 +632,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "docs.save": "agent",
   "docs.move": "agent",
   "docs.links": "viewer",
+  "docs.context": "viewer",
   "docs.assets": "viewer",
   "docs.assetGet": "viewer",
   "docs.assetPut": "agent",

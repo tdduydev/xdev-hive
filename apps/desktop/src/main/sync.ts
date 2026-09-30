@@ -3,6 +3,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
+  AGENTS_MD_LINES,
   agentsDocKey,
   decisionsDocKey,
   ensureClaudeImport,
@@ -26,7 +27,7 @@ import { tr } from "./i18n.ts";
 const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : null);
 
 /** AGENTS.md longer than this gets a note: move parts of it into docs for some paths. */
-const LONG_AGENTS_LINES = 200;
+const LONG_AGENTS_LINES = AGENTS_MD_LINES;
 
 /** Files a sync wrote for docs of some paths (nested AGENTS.md with a managed block, our rules) and for skills. */
 function managedFiles(repo: string, gitRepo: boolean): string[] {

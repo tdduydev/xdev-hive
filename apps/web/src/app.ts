@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { createWriteStream, rmSync } from "node:fs";
+import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Transform } from "node:stream";
 import express, { type NextFunction, type Request, type RequestHandler, type Response } from "express";
@@ -33,6 +34,7 @@ import type { TokenStore } from "./tokens.ts";
 import { LoginThrottle, type UserInfo, type UserStore } from "./users.ts";
 import type { ReleaseStore } from "./releases.ts";
 import type { AlertStore } from "./alerts.ts";
+import type { HubInfoSource } from "./hubinfo.ts";
 import type { WebhookDispatcher, WebhookStore } from "./webhooks.ts";
 
 export interface HubAppOptions {
@@ -56,6 +58,8 @@ export interface HubAppOptions {
   releases?: ReleaseStore;
   /** Cảnh báo (roadmap 22m): rules, alerts, and the admin overview's feed. */
   alerts?: AlertStore;
+  /** Trang Hub (roadmap 22n): what the hub is, and a backup on request. */
+  hub?: HubInfoSource;
 }
 
 const CSP = [
@@ -132,6 +136,7 @@ export function createHubApp({
   chatGrants = new ChatGrants(hive.db),
   releases,
   alerts,
+  hub,
 }: HubAppOptions): express.Express {
   const app = express();
   app.disable("x-powered-by");
@@ -496,6 +501,19 @@ export function createHubApp({
           res.json({ result: { saved: true } });
         } else {
           throw new HiveError("bad_request", `Unknown method ${method}`);
+        }
+        return;
+      }
+
+      // Trang Hub (roadmap 22n): hub admins only.
+      if (method === "hub.info" || method === "hub.backup") {
+        requireHubAdmin(res);
+        if (!hub) throw new HiveError("bad_request", `Unknown method ${method}`);
+        if (method === "hub.info") res.json({ result: await hub.info() });
+        else {
+          const r = hub.backup();
+          hive.audit(actor, "hub.backup", path.basename(r.file), r.removed.length ? `− ${r.removed.length}` : "");
+          res.json({ result: { file: path.basename(r.file), removed: r.removed.length } });
         }
         return;
       }

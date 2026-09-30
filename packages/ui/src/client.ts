@@ -20,6 +20,7 @@ import {
   type AlertRuleState,
   type FeedEvent,
   type HubAlert,
+  type HubInfo,
 } from "@xdev-hive/core";
 
 /** What the UI needs from its host. The web hub implements it over HTTP, the desktop app over IPC. */
@@ -69,6 +70,11 @@ export interface HiveClient {
     feed(limit?: number): Promise<FeedEvent[]>;
     ack(id: number): Promise<HubAlert>;
     setRule(rule: AlertRule, enabled: boolean): Promise<AlertRuleState>;
+  };
+  /** Hub only, for hub admins: the hub itself, and a backup on request (roadmap 22n). */
+  hub?: {
+    info(): Promise<HubInfo>;
+    backup(): Promise<{ file: string; removed: number }>;
   };
   /** Desktop only: local projects, sync and agent installers. */
   desktop?: DesktopBridge;
@@ -172,6 +178,10 @@ export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpCl
       notes: async (version, notes) => {
         await rpc("releases.notes", { version, notes });
       },
+    },
+    hub: {
+      info: () => rpc<HubInfo>("hub.info"),
+      backup: () => rpc<{ file: string; removed: number }>("hub.backup"),
     },
     alerts: {
       list: () => rpc<{ open: HubAlert[]; recent: HubAlert[]; rules: AlertRuleState[] }>("alerts.list"),

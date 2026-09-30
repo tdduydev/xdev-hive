@@ -25,6 +25,7 @@ import { UserStore } from "./users.ts";
 import { ReleaseStore } from "./releases.ts";
 import { WebhookDispatcher, WebhookStore } from "./webhooks.ts";
 import { AlertStore } from "./alerts.ts";
+import { HubInfoSource } from "./hubinfo.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
 const port = Number(process.env.HIVE_PORT ?? 7788);
@@ -137,6 +138,18 @@ httpServer.on(
     trustProxy: process.env.HIVE_TRUST_PROXY === "1",
     webhooks: { store: webhookStore, dispatcher },
     alerts,
+    hub: new HubInfoSource({
+      hive,
+      dbPath,
+      users,
+      backup,
+      embedUrl: process.env.HIVE_EMBED_URL || null,
+      sso: sso ? { name: sso.name, issuer: sso.issuer } : null,
+      allowedHosts: allowedHosts ?? null,
+      publicUrl,
+      trustProxy: process.env.HIVE_TRUST_PROXY === "1",
+      commit: process.env.HIVE_COMMIT || null,
+    }),
     oidc,
     // Desktop builds sit next to the database (the data volume in Docker).
     releases: new ReleaseStore(hive.db, path.join(path.dirname(dbPath), "releases")),
