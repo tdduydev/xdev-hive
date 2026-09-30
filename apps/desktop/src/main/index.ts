@@ -56,6 +56,7 @@ import { CiFixer } from "./gitlab/ci-fix.ts";
 import { installAgents, installShim } from "./installer.ts";
 import { expandEnv, expandHome, resolveBin } from "./runner/command.ts";
 import { LoginMonitor, loginParts } from "./runner/login.ts";
+import { platformKey, Updater, type UpdateStatus } from "./updater.ts";
 import { Runner, type HubUpdate, type RunnerEvent } from "./runner/runner.ts";
 import { agentPath } from "./runner/shell-path.ts";
 import { landingPage, signInThroughBrowser } from "./hub-browser.ts";
@@ -495,8 +496,29 @@ const reportedProfiles = (): ReportedProfile[] =>
     rateLimited: p.stats.rateLimited,
   }));
 
+let updater: Updater;
+let notifiedUpdate: string | null = null;
+
+/** A download finished: say so once per version (the top bar also shows it). */
+function onUpdateChange(status: UpdateStatus): void {
+  if (status.state !== "ready" || !status.version || notifiedUpdate === status.version || !Notification.isSupported()) return;
+  notifiedUpdate = status.version;
+  const n = new Notification({ title: tr("desktop.updateReadyTitle", { version: status.version }), body: tr("desktop.updateReadyBody") });
+  n.on("click", showWindow);
+  n.show();
+}
+
+/** Restarts into the downloaded build: the runner stops its agents first (before-quit), then the helper swaps the app. */
+async function installAndRestart(): Promise<void> {
+  await updater.install({ relaunch: true });
+  app.quit();
+}
+
 function onHub(update: HubUpdate): void {
   hubState = update;
+  updater.offer(update.update);
+  // "Once no run is going": nothing queued or running, the window may even be closed.
+  if (updater.installsOn("idle") && !runner.store.active().length) void installAndRestart();
   for (const cmd of update.commands) {
     if (notifiedCommands.has(cmd.id) || !Notification.isSupported()) continue;
     notifiedCommands.add(cmd.id);
@@ -636,6 +658,8 @@ function registerIpc(): void {
   handle("hive:me", me);
   handle("desktop:appInfo", () => ({ version: app.getVersion(), platform: process.platform }));
   handle("desktop:hubStatus", () => ({ mode: config.mode, url: config.hub.url, ...runner.hubState() }));
+  handle("desktop:updateStatus", () => updater.status());
+  handle("desktop:installUpdate", () => installAndRestart());
   handle("desktop:hubRetry", async () => {
     await runner.beat();
     return { mode: config.mode, url: config.hub.url, ...runner.hubState() };
@@ -847,7 +871,11 @@ if (!app.requestSingleInstanceLock()) {
     // Stop agents and let the runner commit their work and update Hive before exiting.
     e.preventDefault();
     stopped = true;
-    void runner.stop().finally(() => app.quit());
+    void runner
+      .stop()
+      // The rollout says "install when the app quits": the helper swaps the build once this process is gone.
+      .then(() => (updater.installsOn("quit") ? updater.install({ relaunch: false }).catch(() => undefined) : undefined))
+      .finally(() => app.quit());
   });
   app.on("activate", showWindow);
   app.on("window-all-closed", () => {
@@ -874,6 +902,17 @@ if (!app.requestSingleInstanceLock()) {
     mergeRequester = new MergeRequester(mrHost);
     mrWatcher = new MrWatcher(mrHost, new CiFixer({ ...mrHost, enqueue: (req, extra) => runner.enqueue(req, extra) }));
     logins = new LoginMonitor(() => config.agents, agentEnv);
+    updater = new Updater({
+      version: app.getVersion(),
+      dataDir: path.dirname(configPath()),
+      hub: () => (config.mode === "hub" && config.hub.url && config.hub.token ? { url: config.hub.url, token: config.hub.token } : null),
+      // Never for a dev build or a smoke run: they would replace the app they run from.
+      packaged: app.isPackaged && !smokeShot,
+      platform: process.platform,
+      execPath: process.execPath,
+      appImage: process.env.APPIMAGE,
+      onChange: onUpdateChange,
+    });
     runner = new Runner(
       {
         backend: () => backend,
@@ -883,7 +922,8 @@ if (!app.requestSingleInstanceLock()) {
         mode: () => config.mode,
         machine: () => config.machine,
         env: agentEnv,
-        report: () => ({ setup: setupCache ?? undefined, profiles: reportedProfiles() }),
+        // platform, arch and update are read by the hub itself (app updates, roadmap 22i); core ignores them.
+        report: () => ({ setup: setupCache ?? undefined, profiles: reportedProfiles(), platform: platformKey(process.platform), arch: process.arch, update: updater.report() }),
         login: (id) => logins.get(id),
         usage: (id) => logins.usage(id),
         hub: () => (config.mode === "hub" && config.hub.url && config.hub.token ? { url: config.hub.url, token: config.hub.token } : null),

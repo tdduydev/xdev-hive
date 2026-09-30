@@ -13,6 +13,9 @@ import {
   type TokenInfo,
   type WebhookInfo,
   type WebhookInput,
+  type AppRelease,
+  type AppRollout,
+  type MachineUpdate,
 } from "@xdev-hive/core";
 
 /** What the UI needs from its host. The web hub implements it over HTTP, the desktop app over IPC. */
@@ -49,6 +52,12 @@ export interface HiveClient {
     save(input: WebhookInput): Promise<WebhookInfo>;
     remove(id: number): Promise<void>;
     test(id: number): Promise<{ ok: boolean; error: string | null }>;
+  };
+  /** Hub only, for hub admins: the desktop builds the hub hands out and their rollout (roadmap 22i). */
+  releases?: {
+    list(): Promise<{ releases: AppRelease[]; rollout: AppRollout; machines: MachineUpdate[] }>;
+    setRollout(patch: Partial<Omit<AppRollout, "updatedBy" | "updatedAt">>): Promise<AppRollout>;
+    notes(version: string, notes: string): Promise<void>;
   };
   /** Desktop only: local projects, sync and agent installers. */
   desktop?: DesktopBridge;
@@ -145,6 +154,13 @@ export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpCl
       update: (id, patch) => rpc<HubUser>("users.update", { id, ...patch }),
       setGrants: (id, grants) => rpc<HubUser>("users.setGrants", { id, grants }),
       resetPassword: async (id) => (await rpc<{ password: string }>("users.resetPassword", { id })).password,
+    },
+    releases: {
+      list: () => rpc<{ releases: AppRelease[]; rollout: AppRollout; machines: MachineUpdate[] }>("releases.list"),
+      setRollout: (patch) => rpc<AppRollout>("releases.setRollout", patch),
+      notes: async (version, notes) => {
+        await rpc("releases.notes", { version, notes });
+      },
     },
     webhooks: {
       list: () => rpc<WebhookInfo[]>("webhooks.list"),
