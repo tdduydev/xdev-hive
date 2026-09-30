@@ -188,6 +188,7 @@ export const vi = {
     rangeLabel: "Khoảng thời gian",
     group: { ops: "Vận hành", watch: "Theo dõi", knowledge: "Kiến thức", admin: "Quản trị" },
     nav: {
+      alerts: "Cảnh báo",
       versions: "Phiên bản app",
       overview: "Tổng quan",
       runs: "Lượt chạy",
@@ -208,6 +209,7 @@ export const vi = {
       audit: "Nhật ký",
     },
     hint: {
+      alerts: "Sự cố đang mở và luật gửi cảnh báo",
       versions: "Bản build hub phát cho máy",
       overview: "Tự làm mới mỗi 15 giây",
       runs: "Mọi máy báo lên hub · log đã ẩn secret",
@@ -320,6 +322,7 @@ export const vi = {
     close: "Đóng thông báo",
   },
   inbox: {
+    alert: { open: "Mở Cảnh báo" },
     subtitle: "{date} · việc cần bạn",
     listLabel: "Việc cần bạn",
     open: "Cần bạn",
@@ -339,7 +342,7 @@ export const vi = {
     ago: { now: "vừa xong", m: "{n} ph", h: "{n} giờ", d: "{n} ngày" },
     agoLong: "{when} trước",
     shared: "Chung",
-    tag: { ci: "CI lỗi", proposal: "Đề xuất", review: "Chờ review", memory: "Memory", conflict: "Mâu thuẫn", machine: "Máy này", request: "Yêu cầu cài" },
+    tag: { ci: "CI lỗi", proposal: "Đề xuất", review: "Chờ review", memory: "Memory", conflict: "Mâu thuẫn", machine: "Máy này", request: "Yêu cầu cài", alert: "Cảnh báo" },
     ci: {
       title: "{mr} · pipeline lỗi ở {jobs}",
       titleNoJobs: "{mr} · pipeline lỗi",
@@ -1736,6 +1739,7 @@ export const vi = {
     docPathsWholeRepo: "{key} là tài liệu cho cả repo, không giới hạn theo đường dẫn được.",
     assistNotTaken: "Không máy nào nhận yêu cầu trong 15 phút: cần một máy mở app, có dự án và bật nhận việc từ hub.",
     assistSilent: "Máy đang viết đã ngừng báo về.",
+    alertRule: "Không có luật cảnh báo {rule}.",
     docParentSelf: "Trang {key} không nằm trong chính nó được.",
     docParentSkill: "Skill ở trong thư mục Skill: không đặt dưới trang khác, và trang không đặt dưới skill.",
     docParentSpace: "{parent} ở không gian khác với {key}.",
@@ -2024,6 +2028,8 @@ export const vi = {
     hint: "Hub không lưu nội dung còn ký tự ẩn. Xoá không đụng tới emoji.",
     strip: "Xoá ký tự ẩn",
   },
+  alerts: { severity: { high: "Cao", medium: "Vừa", low: "Thấp" }, title: { run_fail_streak: "{task} lỗi {count} lần liền", ci_fix_exhausted: "CI vẫn lỗi · MR !{mr}", machine_offline: "Máy {machine} offline", webhook_failed: "Webhook \"{name}\" lỗi", quota_near: "{profile} gần ngưỡng", vendor_resting: "Mọi gói {vendor} đang nghỉ", backup_overdue: "Backup quá hạn" }, detail: { run_fail_streak: "{project} · {title} · trong 1 giờ", ci_fix_exhausted: "{project} · {task} · hết lượt tự sửa trên {machine}", machine_offline: "không heartbeat {minutes} phút", webhook_failed: "{kind} · {error}", quota_near: "{machine} · phiên {session}% · tuần {week}%", vendor_resting: "{count} gói · sớm nhất rảnh lúc {until}; run và review chéo phải chờ", backup_overdue: "không có bản mới {hours} giờ · {dir}" }, rule: { run_fail_streak: { label: "Run lỗi liên tiếp", cond: "3 run lỗi của cùng task trong 1 giờ" }, ci_fix_exhausted: { label: "CI lỗi sau khi tự sửa", cond: "hết lượt tự sửa mà pipeline vẫn lỗi" }, machine_offline: { label: "Máy offline", cond: "không heartbeat quá 60 phút" }, webhook_failed: { label: "Webhook lỗi", cond: "lần gửi cuối trả HTTP 4xx/5xx hoặc timeout" }, quota_near: { label: "Gói gần ngưỡng", cond: "phiên hoặc tuần từ 80%" }, vendor_resting: { label: "Mọi gói một vendor đang nghỉ", cond: "review chéo sẽ phải chờ" }, backup_overdue: { label: "Backup quá hạn", cond: "không có bản mới sau chu kỳ backup cộng 2 giờ" } }, incidents: "Sự cố", rules: "Luật cảnh báo", rulesHint: "Cảnh báo mở hiện ở Tổng quan, Hôm nay của admin, và gửi tới webhook có bật sự kiện Cảnh báo.", open: "Cảnh báo đang mở", all: "Tất cả", none: "Không có cảnh báo nào đang mở.", noneRecent: "Chưa có sự cố nào trong 7 ngày.", ack: "Đã biết", stateOpen: "Đang mở", stateAcked: "Đã biết · {who}", stateAuto: "Đã tự hết", stateBy: "Đã xử lý bởi {who}", on: "Bật", off: "Tắt", since: "từ {time}", ended: "hết lúc {time}", healthOk: "Mọi thứ ổn định", healthIncidents: "{high} sự cố · {rest} cảnh báo", healthWarnings: "{count} cảnh báo", acked: "Đã đánh dấu đã biết", ruleSaved: "Đã {state} luật {rule}" },
+  feed: { runStarted: "bắt đầu {task} · {profile}", run: { succeeded: "xong {task} · {profile}", failed: "lỗi {task} · {profile}", cancelled: "dừng {task}", rate_limited: "hết quota ở {task} · {profile}", running: "đang chạy {task}", queued: "xếp hàng {task}" }, mr: "mở MR cho {task}", alertOpened: "cảnh báo: {title}", alertResolved: "hết cảnh báo: {title}", audit: "{action} · {target}", proposal: "đề xuất sửa {doc}", title: "Luồng sự kiện", hint: "trực tiếp từ máy và hub", none: "Chưa có gì trong 24 giờ qua." },
   webhooks: {
     intro: "Gửi thông báo vào kênh Teams hoặc Slack khi có đề xuất hay memory chờ duyệt, yêu cầu cài trên máy, run lỗi hẳn (hết lượt thử) hoặc MR mới. Hub giữ URL webhook như bí mật: trang này chỉ hiện một phần.",
     add: "Thêm webhook",
@@ -2043,6 +2049,7 @@ export const vi = {
       command: { requested: "Yêu cầu cài", finished: "Kết quả yêu cầu cài" },
       run: { failed: "Run lỗi" },
       mr: { created: "MR mới" },
+      alert: { opened: "Cảnh báo" },
     },
     projects: "Chỉ các dự án",
     projectsHint: "Cách nhau bằng dấu phẩy. Để trống: mọi dự án, kể cả dữ liệu chung và yêu cầu cài trên máy.",
@@ -2062,6 +2069,8 @@ export const vi = {
     lastFailed: "lần gửi cuối {time} lỗi: {error}",
   },
   webhook: {
+    ciLimit: "MR !{iid} ({project} · {task}): hết lượt tự sửa mà CI vẫn lỗi.",
+    alert: "[{severity}] {title}: {detail}",
     proposal: "Đề xuất sửa {doc} ({project}) từ {author}: {reason}",
     memoryPending: "Memory chờ duyệt ({project}) từ {author}: {content}",
     commandRequested: "{by} yêu cầu {label} trên máy {machine}; chờ người dùng máy đồng ý.",

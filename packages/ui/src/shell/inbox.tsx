@@ -49,6 +49,9 @@ export function useInboxState(client: HiveClient, me: Me, scope: Scope, tick: nu
   const setup = useQuery(async () => (desktop ? desktop.setupStatus() : null), [desktop, tick, local]);
   const requests = useQuery(async () => (desktop && me.mode === "hub" ? desktop.hubRequests() : null), deps);
   const settings = useQuery(async () => (desktop ? desktop.settings() : null), [desktop]);
+  // Hub admins on the web: the hub's alerts that no admin has seen yet.
+  const hubAdmin = me.mode === "hub" && me.role === "admin" && !me.access;
+  const alerts = useQuery(async () => (hubAdmin && client.alerts ? (await client.alerts.list().catch(() => null))?.open ?? null : null), deps);
 
   const [done, setDone] = useState<InboxDone[]>(readDone);
   const [read, setRead] = useState<Set<string>>(() => new Set(readRead()));
@@ -62,10 +65,11 @@ export function useInboxState(client: HiveClient, me: Me, scope: Scope, tick: nu
       setup: setup.data?.machine,
       commands: requests.data?.commands,
       machine: settings.data?.machine,
+      alerts: alerts.data ?? undefined,
     });
     const handled = new Set(done.map((d) => d.key));
     return all.filter((i) => !handled.has(i.key) && inScope(scope, inboxProject(i)));
-  }, [proposals.data, review.data, memory.data, runs.data, setup.data, requests.data, settings.data, done, scope]);
+  }, [proposals.data, review.data, memory.data, runs.data, setup.data, requests.data, settings.data, alerts.data, done, scope]);
 
   const markRead = useCallback((key: string) => {
     setRead((cur) => {

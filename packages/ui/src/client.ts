@@ -16,6 +16,10 @@ import {
   type AppRelease,
   type AppRollout,
   type MachineUpdate,
+  type AlertRule,
+  type AlertRuleState,
+  type FeedEvent,
+  type HubAlert,
 } from "@xdev-hive/core";
 
 /** What the UI needs from its host. The web hub implements it over HTTP, the desktop app over IPC. */
@@ -58,6 +62,13 @@ export interface HiveClient {
     list(): Promise<{ releases: AppRelease[]; rollout: AppRollout; machines: MachineUpdate[] }>;
     setRollout(patch: Partial<Omit<AppRollout, "updatedBy" | "updatedAt">>): Promise<AppRollout>;
     notes(version: string, notes: string): Promise<void>;
+  };
+  /** Hub only, for hub admins: alert rules, open and recent alerts, the overview's feed (roadmap 22m). */
+  alerts?: {
+    list(): Promise<{ open: HubAlert[]; recent: HubAlert[]; rules: AlertRuleState[] }>;
+    feed(limit?: number): Promise<FeedEvent[]>;
+    ack(id: number): Promise<HubAlert>;
+    setRule(rule: AlertRule, enabled: boolean): Promise<AlertRuleState>;
   };
   /** Desktop only: local projects, sync and agent installers. */
   desktop?: DesktopBridge;
@@ -161,6 +172,12 @@ export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpCl
       notes: async (version, notes) => {
         await rpc("releases.notes", { version, notes });
       },
+    },
+    alerts: {
+      list: () => rpc<{ open: HubAlert[]; recent: HubAlert[]; rules: AlertRuleState[] }>("alerts.list"),
+      feed: (limit?: number) => rpc<FeedEvent[]>("alerts.feed", { limit }),
+      ack: (id: number) => rpc<HubAlert>("alerts.ack", { id }),
+      setRule: (rule: AlertRule, enabled: boolean) => rpc<AlertRuleState>("alerts.setRule", { rule, enabled }),
     },
     webhooks: {
       list: () => rpc<WebhookInfo[]>("webhooks.list"),

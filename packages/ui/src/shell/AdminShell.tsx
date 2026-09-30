@@ -81,6 +81,7 @@ function AdminFrame({
   title,
   hint,
   health,
+  healthHigh,
   fill,
   children,
 }: {
@@ -95,6 +96,8 @@ function AdminFrame({
   hint?: string;
   /** Warnings the health pill counts (0: all steady). */
   health: number;
+  /** Of them, incidents (high alerts): set when the hub has alerts; the pill then leads to Cảnh báo. */
+  healthHigh?: number;
   /** The page fills the area itself (lists with a detail pane) instead of scrolling in the padded column. */
   fill?: boolean;
   children: ReactNode;
@@ -133,15 +136,23 @@ function AdminFrame({
             <span className="rounded-[5px] bg-fg-strong px-1.5 py-[3px] text-[11px]/none font-bold tracking-[0.08em] text-canvas uppercase">{t("ops.badge")}</span>
             <span className="hidden rounded-sm border border-line-default px-2 py-1 font-mono text-xs/none text-fg-secondary lg:inline">{window.location.host}</span>
             <a
-              href="#/admin/fleet"
-              title={t("ops.healthTip")}
+              href={healthHigh === undefined ? "#/admin/fleet" : "#/admin/alerts"}
+              title={healthHigh === undefined ? t("ops.healthTip") : undefined}
               className={cn(
                 "inline-flex h-[30px] items-center gap-2 rounded-md border px-2.5 text-xs/none font-semibold whitespace-nowrap",
-                health ? "border-warning-line bg-warning-soft text-warning" : "border-success-line bg-success-soft text-success",
+                healthHigh ? "border-danger-line bg-danger-soft text-danger" : health ? "border-warning-line bg-warning-soft text-warning" : "border-success-line bg-success-soft text-success",
               )}
             >
-              <span className={cn("size-2 animate-xd-pulse rounded-full motion-reduce:animate-none", health ? "bg-warning-solid" : "bg-success-solid")} />
-              {health ? t("ops.healthWarn", { count: health }) : t("ops.healthOk")}
+              <span className={cn("size-2 animate-xd-pulse rounded-full motion-reduce:animate-none", healthHigh ? "bg-danger-solid" : health ? "bg-warning-solid" : "bg-success-solid")} />
+              {healthHigh === undefined
+                ? health
+                  ? t("ops.healthWarn", { count: health })
+                  : t("ops.healthOk")
+                : healthHigh
+                  ? t("alerts.healthIncidents", { high: healthHigh, rest: health - healthHigh })
+                  : health
+                    ? t("alerts.healthWarnings", { count: health })
+                    : t("alerts.healthOk")}
             </a>
             <span className="flex-1" />
             <div role="radiogroup" aria-label={t("ops.rangeLabel")} className="hidden gap-0.5 rounded-[7px] bg-sunken p-0.5 lg:flex">

@@ -24,6 +24,7 @@ import { TokenStore } from "./tokens.ts";
 import { UserStore } from "./users.ts";
 import { ReleaseStore } from "./releases.ts";
 import { WebhookDispatcher, WebhookStore } from "./webhooks.ts";
+import { AlertStore } from "./alerts.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
 const port = Number(process.env.HIVE_PORT ?? 7788);
@@ -78,7 +79,17 @@ const dispatcher = new WebhookDispatcher(webhookStore, { publicUrl });
 const sso = oidcSettings(process.env, publicUrl);
 const oidc = sso ? new OidcClient(sso) : null;
 if (sso) console.log(`[xdev-hive] SSO: ${sso.name} (${sso.issuer}), redirect URI ${sso.redirectUri}`);
-onEvent = (event) => void dispatcher.notify(event);
+// Cảnh báo (roadmap 22m): rules checked every minute; an alert that opens goes to the webhooks that want it.
+const alerts = new AlertStore(hive, {
+  webhooks: webhookStore,
+  backup,
+  onOpen: (alert) => void dispatcher.notify({ type: "alert.opened", project: alert.project, alert }),
+});
+onEvent = (event) => {
+  alerts.onEvent(event);
+  void dispatcher.notify(event);
+};
+setInterval(() => void alerts.check().catch((err) => console.error(`[xdev-hive] alert check failed: ${(err as Error).message}`)), 60_000).unref();
 
 if (backup) setInterval(() => logBackup("scheduled", () => backupDatabase(hive.db, backup)), backup.hours * 3_600_000).unref();
 
@@ -125,6 +136,7 @@ httpServer.on(
     ui,
     trustProxy: process.env.HIVE_TRUST_PROXY === "1",
     webhooks: { store: webhookStore, dispatcher },
+    alerts,
     oidc,
     // Desktop builds sit next to the database (the data volume in Docker).
     releases: new ReleaseStore(hive.db, path.join(path.dirname(dbPath), "releases")),

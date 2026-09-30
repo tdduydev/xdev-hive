@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import {
   Activity,
+  BellRing,
   BookOpen,
   Bot,
   Boxes,
@@ -65,6 +66,7 @@ import { UsersPage } from "./pages/Users.tsx";
 import { WebhooksTab } from "./pages/Webhooks.tsx";
 import { OpsAudit, OpsCosts, OpsFleet, OpsOverview, OpsQueue, OpsQuota, OpsRuns } from "./pages/admin/Ops.tsx";
 import { OpsVersions } from "./pages/admin/Versions.tsx";
+import { OpsAlerts } from "./pages/admin/Alerts.tsx";
 import { DocReaderPage } from "./pages/DocReader.tsx";
 
 type PageId =
@@ -129,7 +131,7 @@ const PALETTE_ONLY: PageId[] = ["overview"];
 
 // ── The Web Admin (hub admins on the web) ──
 
-type AdminId = "overview" | "runs" | "queue" | "fleet" | "quota" | "costs" | "review" | "docs" | "read" | "memory" | "skills" | "users" | "projects" | "policy" | "versions" | "tokens" | "webhooks" | "audit";
+type AdminId = "overview" | "runs" | "queue" | "fleet" | "quota" | "costs" | "alerts" | "review" | "docs" | "read" | "memory" | "skills" | "users" | "projects" | "policy" | "versions" | "tokens" | "webhooks" | "audit";
 type AdminGroup = "ops" | "watch" | "knowledge" | "admin";
 
 const ADMIN: Record<AdminId, { group: AdminGroup; icon: Icon; render: () => ReactNode; fill?: boolean }> = {
@@ -139,6 +141,7 @@ const ADMIN: Record<AdminId, { group: AdminGroup; icon: Icon; render: () => Reac
   fleet: { group: "watch", icon: Server, render: () => <OpsFleet /> },
   quota: { group: "watch", icon: Gauge, render: () => <OpsQuota /> },
   costs: { group: "watch", icon: DollarSign, render: () => <OpsCosts /> },
+  alerts: { group: "watch", icon: BellRing, render: () => <OpsAlerts /> },
   review: { group: "knowledge", icon: SquareCheck, render: () => <ProposalsPage /> },
   docs: { group: "knowledge", icon: BookOpen, render: () => <DocsPage />, fill: true },
   read: { group: "knowledge", icon: BookOpen, render: () => <DocReaderPage />, fill: true },
@@ -258,12 +261,16 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   const adminRequests = useQuery(async () => (inAdmin ? client.call("runs.requests", { limit: 200 }) : []), [client, inAdmin, poll]);
   const adminMachines = useQuery(async () => (inAdmin ? client.call("admin.machines", {}) : []), [client, inAdmin, poll]);
   const adminPolicy = useQuery(async () => (inAdmin ? client.call("policy.get", {}) : null), [client, inAdmin]);
+  // The health pill: the hub's open alerts (roadmap 22m); a hub without them counts machines missing a required tool.
+  const adminAlerts = useQuery(async () => (inAdmin && client.alerts ? client.alerts.list().catch(() => null) : null), [client, inAdmin, poll]);
   const adminMemory = useQuery(async () => (inAdmin ? client.call("memory.list", { limit: 500 }) : []), [client, inAdmin, poll, tick]);
 
   let frame: ReactNode;
   if (webAdmin && route.kind === "admin") {
     const lacking = adminPolicy.data ? (adminMachines.data ?? []).filter((m) => m.setup && missingRequired(adminPolicy.data!, m.setup).length > 0).length : 0;
-    const health = lacking + (adminMachines.data ?? []).filter((m) => m.duplicate).length;
+    const openAlerts = adminAlerts.data?.open;
+    const health = openAlerts ? openAlerts.length : lacking + (adminMachines.data ?? []).filter((m) => m.duplicate).length;
+    const healthHigh = openAlerts ? openAlerts.filter((a) => a.severity === "high").length : undefined;
     const memoryOpen = (adminMemory.data ?? []).filter((m) => m.status === "pending" || m.conflictsWith.length || m.review).length;
     const counts: Partial<Record<AdminId, { value: number; tone?: "danger" | "accent" }>> = {
       runs: { value: (adminRuns.data ?? []).filter((r) => r.status === "running").length },
@@ -275,7 +282,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     const groups: AdminNavGroup[] = ADMIN_GROUPS.map((g) => ({
       label: t(`ops.group.${g}`),
       items: (Object.keys(ADMIN) as AdminId[])
-        .filter((id) => ADMIN[id].group === g && id !== "read" && (id !== "users" || client.users) && (id !== "tokens" || client.tokens) && (id !== "webhooks" || client.webhooks) && (id !== "versions" || client.releases))
+        .filter((id) => ADMIN[id].group === g && id !== "read" && (id !== "alerts" || client.alerts) && (id !== "users" || client.users) && (id !== "tokens" || client.tokens) && (id !== "webhooks" || client.webhooks) && (id !== "versions" || client.releases))
         .map((id) => ({ id: `admin/${id}`, label: t(`ops.nav.${id}`), icon: ADMIN[id].icon, count: counts[id] })),
     }));
     const a = ADMIN[route.id];
@@ -290,6 +297,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
         title={t(`ops.nav.${route.id}`)}
         hint={t(`ops.hint.${route.id}`)}
         health={health}
+        healthHigh={healthHigh}
         fill={a.fill}
       >
         {a.render()}

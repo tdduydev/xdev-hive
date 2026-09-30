@@ -1,8 +1,8 @@
 // "Hôm nay": what needs the person, gathered from what the hub and this machine already know. Each source becomes
 // items with a stable key, so "seen" and "done" survive reloads (kept in localStorage, per device).
-import type { AgentRun, MachineCommand, Memory, Proposal, SetupItem, Task } from "@xdev-hive/core";
+import type { AgentRun, HubAlert, MachineCommand, Memory, Proposal, SetupItem, Task } from "@xdev-hive/core";
 
-export type InboxKind = "ci" | "proposal" | "review" | "memory" | "conflict" | "machine" | "request";
+export type InboxKind = "ci" | "proposal" | "review" | "memory" | "conflict" | "machine" | "request" | "alert";
 export type InboxTone = "danger" | "warning" | "info";
 
 interface Base {
@@ -23,6 +23,7 @@ export type InboxItem = Base &
     | { kind: "conflict"; memory: Memory; other: Memory }
     | { kind: "machine"; item: SetupItem }
     | { kind: "request"; command: MachineCommand }
+    | { kind: "alert"; alert: HubAlert }
   );
 
 export interface InboxSources {
@@ -37,6 +38,8 @@ export interface InboxSources {
   /** Install requests an admin sent this machine (desktop, hub mode). */
   commands?: MachineCommand[];
   machine?: string;
+  /** The hub's open alerts (hub admins, roadmap 22m): one not seen yet by an admin is theirs to look at. */
+  alerts?: HubAlert[];
 }
 
 const TONE: Record<InboxKind, InboxTone> = {
@@ -47,6 +50,7 @@ const TONE: Record<InboxKind, InboxTone> = {
   conflict: "danger",
   machine: "info",
   request: "info",
+  alert: "danger",
 };
 
 const docProject = (key: string) => /^project\/([^/]+)\//.exec(key)?.[1] ?? null;
@@ -108,6 +112,11 @@ export function buildInbox(src: InboxSources): InboxItem[] {
     items.push({ kind: "request", key: `request:${c.id}`, tone: TONE.request, at: c.requestedAt, scope: src.machine ?? c.machineId, command: c });
   }
 
+  for (const a of src.alerts ?? []) {
+    if (a.resolvedAt || a.ackedBy) continue;
+    items.push({ kind: "alert", key: `alert:${a.id}`, tone: a.severity === "high" ? "danger" : "warning", at: a.openedAt, scope: a.project ?? "hub", alert: a });
+  }
+
   return items.sort((a, b) => b.at.localeCompare(a.at));
 }
 
@@ -123,6 +132,8 @@ export function inboxProject(item: InboxItem): string | null {
     case "memory":
     case "conflict":
       return item.memory.project;
+    case "alert":
+      return item.alert.project;
     default:
       return null;
   }
