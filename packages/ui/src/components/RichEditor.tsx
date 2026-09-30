@@ -18,22 +18,25 @@ import {
   ListOrdered,
   Minus,
   Quote,
+  Workflow,
   Strikethrough,
   Table as TableIcon,
   Trash2,
 } from "lucide-react";
 import { cn } from "cn";
 import { Extension, type Editor, type Range } from "@tiptap/core";
+import CodeBlock from "@tiptap/extension-code-block";
 import DragHandle from "@tiptap/extension-drag-handle-react";
 import Image, { type ImageOptions } from "@tiptap/extension-image";
 import { Placeholder } from "@tiptap/extensions";
-import { EditorContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, type NodeViewProps } from "@tiptap/react";
+import { EditorContent, NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, type NodeViewProps } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import Suggestion from "@tiptap/suggestion";
 import { docAssetRef, DOC_ASSET_MAX_BYTES, resolveDocLink } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { AssetImage, uploadDocAsset } from "#ui/components/DocAssets.tsx";
 import { LinkPicker } from "#ui/components/LinkPicker.tsx";
+import { MermaidDiagram } from "#ui/components/Mermaid.tsx";
 import { Notice } from "#ui/components/common.tsx";
 import { errorMessage, useHive } from "#ui/hooks.ts";
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
@@ -97,6 +100,12 @@ function slashItems(t: TFunction, actions: { image: () => void; link: () => void
     block("task", CheckSquare, (e) => e.chain().focus().toggleTaskList().run(), "todo viec can lam checkbox"),
     block("quote", Quote, (e) => e.chain().focus().toggleBlockquote().run(), "blockquote trich dan"),
     block("code", Code2, (e) => e.chain().focus().toggleCodeBlock().run(), "code khoi"),
+    block(
+      "mermaid",
+      Workflow,
+      (e) => e.chain().focus().insertContent({ type: "codeBlock", attrs: { language: "mermaid" }, content: [{ type: "text", text: MERMAID_SAMPLE }] }).run(),
+      "so do mermaid diagram flowchart luu do sequence",
+    ),
     block("table", TableIcon, (e) => e.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(), "bang table"),
     block("divider", Minus, (e) => e.chain().focus().setHorizontalRule().run(), "hr duong ke"),
     block("image", ImageIcon, () => actions.image(), "anh hinh image"),
@@ -182,6 +191,47 @@ function SlashMenu({ store }: { store: SlashStore }) {
     </div>
   );
 }
+
+const MERMAID_SAMPLE = "flowchart LR\n  A[Yêu cầu] --> B{Máy rảnh?}\n  B -- có --> C[Chạy agent]\n  B -- không --> D[Chờ]";
+
+// ── Code blocks: their language, and a Mermaid block's diagram under its code ──
+
+function CodeBlockView({ node, updateAttributes, editor }: NodeViewProps) {
+  const t = useT();
+  const language = String(node.attrs.language ?? "");
+  return (
+    <NodeViewWrapper className="code-block my-1 overflow-hidden rounded-md border border-line-subtle bg-code">
+      <div contentEditable={false} className="flex items-center gap-2 border-b border-line-subtle px-2.5 py-1">
+        <input
+          aria-label={t("editor.codeLanguage")}
+          placeholder={t("editor.codeLanguage")}
+          value={language}
+          readOnly={!editor.isEditable}
+          onChange={(e) => updateAttributes({ language: e.target.value.trim() || null })}
+          className="w-32 bg-transparent font-mono text-[11px] text-fg-secondary outline-none placeholder:text-fg-disabled"
+        />
+        {language === "mermaid" ? <span className="ml-auto text-[11px] text-fg-muted">{t("editor.mermaidHint")}</span> : null}
+      </div>
+      <pre spellCheck={false}>
+        <NodeViewContent<"code"> as="code" />
+      </pre>
+      {language === "mermaid" ? (
+        <div contentEditable={false} className="border-t border-line-subtle bg-surface p-2">
+          <MermaidDiagram code={node.textContent} delay={400} />
+        </div>
+      ) : null}
+    </NodeViewWrapper>
+  );
+}
+
+const DocCodeBlock = CodeBlock.extend({
+  addNodeView() {
+    // Only the view's own controls (the language, the diagram) keep their events. By default a click on the frame
+    // around the code (the <pre> and <code>) is kept from the editor too: the caret moves there but the editor's
+    // selection stays where it was, and Enter or Backspace then act on that.
+    return ReactNodeViewRenderer(CodeBlockView, { stopEvent: ({ event }) => (event.target instanceof Element ? event.target.closest("[contenteditable=false]") !== null : false) });
+  },
+});
 
 // ── Images of the page ──
 
@@ -314,8 +364,9 @@ function Editing({ docKey, value, onChange, titles, readOnly, header, onError }:
     immediatelyRender: false,
     editable: !readOnly,
     extensions: [
-      ...docExtensions([]).filter((e) => e.name !== "image"),
+      ...docExtensions([]).filter((e) => e.name !== "image" && e.name !== "codeBlock"),
       DocImage.configure({ docKey, inline: false }),
+      DocCodeBlock,
       Placeholder.configure({ placeholder: t("editor.placeholder") }),
       SlashCommand.configure({ store, items: () => itemsRef.current }),
     ],
