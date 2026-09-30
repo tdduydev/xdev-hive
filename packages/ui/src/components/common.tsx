@@ -5,6 +5,7 @@ import { cn } from "cn";
 import { Alert, AlertDescription, AlertTitle } from "@xdev-hive/ui/components/ui/alert";
 import { Badge as UiBadge } from "@xdev-hive/ui/components/ui/badge";
 import { useT } from "../i18n/index.tsx";
+import { useInShell } from "../shell/frame.ts";
 
 /** Status colours: tinted backgrounds with the matching text, readable in light and dark. */
 const TONE: Record<string, string> = {
@@ -83,6 +84,16 @@ export function Empty({ children }: { children: ReactNode }) {
 }
 
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
+  // Inside the app frame the top bar shows the title: keep it for screen readers, show the description and actions.
+  if (useInShell()) {
+    return (
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <h1 className="sr-only">{title}</h1>
+        {subtitle ? <p className="max-w-3xl min-w-0 flex-1 type-body-sm text-fg-secondary">{subtitle}</p> : <span className="flex-1" />}
+        {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+      </header>
+    );
+  }
   return (
     <header className="flex flex-wrap items-start justify-between gap-4">
       <div className="min-w-0 space-y-1">
@@ -96,7 +107,7 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
 
 /** Page body for converted pages (the legacy ones use the .page class). */
 export function Page({ wide, className, children }: { wide?: boolean; className?: string; children: ReactNode }) {
-  return <div className={cn("mx-auto flex w-full flex-col gap-6 p-4 md:p-6", wide ? "max-w-7xl" : "max-w-6xl", className)}>{children}</div>;
+  return <div className={cn("mx-auto flex w-full flex-col gap-5 p-4 md:px-6 md:py-5", wide ? "max-w-7xl" : "max-w-6xl", className)}>{children}</div>;
 }
 
 export const STATUS_TONE: Record<string, string> = {

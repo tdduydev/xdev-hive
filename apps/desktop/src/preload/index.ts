@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("hive", {
   call: (method: string, input: unknown) => invoke("hive:call", method, input),
   me: () => invoke("hive:me"),
   desktop: {
+    appInfo: () => invoke("desktop:appInfo"),
     settings: () => invoke("desktop:settings"),
     updateSettings: (patch: unknown) => invoke("desktop:updateSettings", patch),
     hubSignIn: (input: unknown) => invoke("desktop:hubSignIn", input),
