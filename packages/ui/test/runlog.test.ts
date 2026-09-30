@@ -49,3 +49,17 @@ describe("run log and diff", () => {
     assert.ok(files[1]!.binary);
   });
 });
+
+import { insertMd, parsePaths } from "../src/lib/docdraft.ts";
+
+describe("doc editor helpers", () => {
+  it("wraps the selection, or starts the line, for the Markdown toolbar", () => {
+    assert.deepEqual(insertMd("a word b", 2, 6, "**", "**"), { text: "a **word** b", start: 4, end: 8 });
+    assert.deepEqual(insertMd("one\ntwo", 5, 5, "## ", "", true), { text: "one\n## two", start: 8, end: 8 });
+    assert.deepEqual(insertMd("", 0, 0, "- ", "", true), { text: "- ", start: 2, end: 2 });
+  });
+
+  it("reads globs as typed", () => {
+    assert.deepEqual(parsePaths("apps/web/**, **/*.test.ts\napps/web/**"), ["apps/web/**", "**/*.test.ts"]);
+  });
+});
