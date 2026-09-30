@@ -1,14 +1,17 @@
 // A doc rendered for reading (docs/design/2026-09-redesign: Tài liệu, Xem): GitHub-flavoured Markdown in the
 // design's reading type. No raw HTML. With the page it belongs to (`doc`), [[links]] to other pages open them (a broken
 // one is struck through) and assets/<slug>/<name> shows the page's attached file (roadmap 22j); other images are not
-// fetched and show as a labelled frame. Links to another doc key (org/…, project/…/…) open it in the app.
+// fetched and show as a labelled frame. Links to another doc key (org/…, project/…/…) open it in the app. A ```mermaid
+// block is drawn as its diagram (roadmap 23b).
 import Markdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "cn";
 import { docAssetRef, replaceDocLinks, resolveDocLink } from "@xdev-hive/core";
 import { useT } from "#ui/i18n/index.tsx";
 import { docHeadings } from "#ui/lib/doctree.ts";
+import { mermaidSource } from "#ui/lib/mermaid.ts";
 import { AssetImage, AssetLink } from "./DocAssets.tsx";
+import { MermaidDiagram } from "./Mermaid.tsx";
 
 const DOC_KEY = /^(org|project)\/[a-z0-9./-]+$/i;
 const LINK_SCHEME = "hive-doc:";
@@ -86,11 +89,15 @@ export function DocMarkdown({ text, className, doc, headingIds }: { text: string
         {children}
       </blockquote>
     ),
-    pre: ({ children }) => (
-      <pre className="m-0 overflow-x-auto rounded-md border border-line-subtle bg-code px-3.5 py-3 font-mono text-xs/5 whitespace-pre-wrap text-code-fg [overflow-wrap:anywhere] [&_code]:border-0 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-xs">
-        {children}
-      </pre>
-    ),
+    pre: ({ node, children }) => {
+      const mermaid = mermaidSource(node);
+      if (mermaid !== null) return <MermaidDiagram code={mermaid} />;
+      return (
+        <pre className="m-0 overflow-x-auto rounded-md border border-line-subtle bg-code px-3.5 py-3 font-mono text-xs/5 whitespace-pre-wrap text-code-fg [overflow-wrap:anywhere] [&_code]:border-0 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-xs">
+          {children}
+        </pre>
+      );
+    },
     code: ({ className: c, children }) => (
       <code className={cn("rounded-xs border border-line-subtle bg-code px-[5px] py-px font-mono text-[0.85em] text-code-fg", c)}>{children}</code>
     ),

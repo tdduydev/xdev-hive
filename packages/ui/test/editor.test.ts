@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import Markdown from "react-markdown";
+import { mermaidSource } from "#ui/lib/mermaid.ts";
 import { compactTable, parseDocMarkdown, richEditable, richSafe, serializeDocMarkdown, withPageTitles } from "#ui/lib/editor/markdown.ts";
 
 const roundTrip = (md: string) => serializeDocMarkdown(parseDocMarkdown(md));
@@ -47,5 +51,32 @@ describe("rich editor Markdown", () => {
     assert.equal(richEditable("org/a", "<details>\n<summary>x</summary>\n</details>\n"), false);
     assert.equal(richEditable("org/a", "Dòng<br>mới\n"), true);
     assert.equal(richSafe("org/a", "---\nname: a\n---\n"), false);
+  });
+
+  it("keeps a Mermaid block as its fenced code", () => {
+    const md = "## Luồng\n\n```mermaid\nflowchart LR\n  A[Yêu cầu] --> B{Máy rảnh?}\n  B -- có --> C\n```\n";
+    assert.equal(roundTrip(md), md);
+    assert.equal(richSafe("org/luong", md), true);
+  });
+});
+
+describe("Mermaid in a page", () => {
+  it("finds ```mermaid blocks in what react-markdown renders, and leaves other code as code", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        Markdown,
+        { components: { pre: ({ node, children }) => (mermaidSource(node as never) !== null ? createElement("figure", { "data-mermaid": mermaidSource(node as never) }) : createElement("pre", null, children)) } },
+        "```mermaid\nflowchart LR\n  A --> B\n```\n\n```ts\nconst a = 1;\n```\n",
+      ),
+    );
+    assert.match(html, /<figure data-mermaid="flowchart LR\n  A --&gt; B"><\/figure>/);
+    assert.match(html, /<pre><code class="language-ts">const a = 1;/);
+  });
+
+  it("reads the code of a mermaid block only", () => {
+    const pre = (lang: string) => ({ type: "element", tagName: "pre", children: [{ type: "element", tagName: "code", properties: { className: [`language-${lang}`] }, children: [{ type: "text", value: "graph TD\nA-->B\n" }] }] });
+    assert.equal(mermaidSource(pre("mermaid")), "graph TD\nA-->B");
+    assert.equal(mermaidSource(pre("ts")), null);
+    assert.equal(mermaidSource(undefined), null);
   });
 });
