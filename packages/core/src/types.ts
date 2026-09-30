@@ -320,12 +320,23 @@ export type ChatEffort = (typeof CHAT_EFFORTS)[number];
 export const CHAT_MODEL_ALIASES = ["fable", "opus", "sonnet", "haiku"] as const;
 
 /** What a project's new chats start with, unless the person picks otherwise (roadmap 17h). */
+/**
+ * Commands a project's chat leader may run (roadmap 17i-2), as Claude Code Bash prefixes: the command and any
+ * arguments. Everything else stays refused, a chained command included. Read-only git by default.
+ */
+export const DEFAULT_LEADER_COMMANDS = ["git status", "git log", "git diff", "git show"];
+/** One to four lowercase words: no shell operator, quote or variable can get in. */
+export const LEADER_COMMAND = /^[a-z0-9][a-z0-9._-]*(?: [a-z0-9][a-z0-9._=-]*){0,3}$/;
+export const MAX_LEADER_COMMANDS = 20;
+
 export interface ChatDefaults {
   project: string;
   machineId: string | null;
   profileId: string | null;
   model: string | null;
   effort: ChatEffort | null;
+  /** What its leader may run; DEFAULT_LEADER_COMMANDS until a manager sets them ([] runs nothing). */
+  commands: string[];
   updatedBy: string | null;
   updatedAt: string | null;
 }
@@ -433,6 +444,8 @@ export interface ChatRequest {
   /** The thread's model and effort; null (or missing, from an older hub): the profile's own. */
   model?: string | null;
   effort?: ChatEffort | null;
+  /** The project's leader commands; missing (an older hub): none. */
+  commands?: string[];
   text: string;
   requestedBy: string;
   createdAt: string;

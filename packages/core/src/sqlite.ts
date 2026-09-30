@@ -7,6 +7,7 @@ import { HiveError, type ErrorText } from "./errors.ts";
 import { agentsDocKey, decisionsDocKey, parseDocKey, titleFromSlug, type ParsedDocKey } from "./keys.ts";
 import { parseSkill, type SkillSummary } from "./skills.ts";
 import { chatFileName, checkChatFile, isImage } from "./chatfiles.ts";
+import { DEFAULT_LEADER_COMMANDS } from "./types.ts";
 import { EMPTY_POLICY } from "./policy.ts";
 import {
   authorize,
@@ -225,6 +226,9 @@ const MIGRATIONS: string[] = [
   ALTER TABLE chat_threads ADD COLUMN effort TEXT;
   CREATE TABLE chat_defaults(
     project TEXT PRIMARY KEY, machine_id TEXT, profile_id TEXT, model TEXT, effort TEXT, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL);
+  `,
+  `
+  ALTER TABLE chat_defaults ADD COLUMN commands TEXT;
   `,
 ];
 
@@ -707,6 +711,7 @@ export class SqliteHive implements HiveBackend {
       case "chat.defaults":
         return this.#need(actor, i.project, "view", `Project ${i.project}`);
       case "chat.setDefaults":
+      case "chat.setCommands":
         return this.#need(actor, i.project, "manage", `Project ${i.project}`);
       case "chat.configure":
       case "chat.rename":
@@ -1139,6 +1144,7 @@ export class SqliteHive implements HiveBackend {
       profileId: r ? strOrNull(r.profile_id) : null,
       model: r ? strOrNull(r.model) : null,
       effort: r ? (strOrNull(r.effort) as ChatEffort | null) : null,
+      commands: r?.commands == null ? [...DEFAULT_LEADER_COMMANDS] : (JSON.parse(str(r.commands)) as string[]),
       updatedBy: r ? strOrNull(r.updated_by) : null,
       updatedAt: r ? strOrNull(r.updated_at) : null,
     };
@@ -1209,6 +1215,7 @@ export class SqliteHive implements HiveBackend {
         createdAt: str(r.created_at),
         ...(r.sender == null ? {} : { sender: JSON.parse(str(r.sender)) as ChatSender }),
         files: (this.db.prepare(`SELECT ${FILE_FIELDS} FROM chat_files WHERE message_id = ? ORDER BY id`).all(num(r.message_id ?? 0)) as Row[]).map(toChatFile),
+        commands: this.#chatDefaults(str(r.project)).commands,
       }),
     );
   }
@@ -2044,6 +2051,17 @@ export class SqliteHive implements HiveBackend {
       },
 
       "chat.defaults": ({ project }) => this.#chatDefaults(project),
+
+      // Only the list: the machine, plan, model and effort a manager set stay as they are.
+      "chat.setCommands": ({ project, commands }, actor) =>
+        this.#tx(() => {
+          const list = [...new Set(commands.map((c) => c.trim()))];
+          db.prepare(
+            `INSERT INTO chat_defaults(project, commands, updated_by, updated_at) VALUES (?, ?, ?, ?)
+             ON CONFLICT(project) DO UPDATE SET commands = excluded.commands, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+          ).run(project, JSON.stringify(list), actor.name, this.#now());
+          return this.#chatDefaults(project);
+        }),
 
       "chat.setDefaults": ({ project, machineId, profileId, model, effort }, actor) =>
         this.#tx(() => {

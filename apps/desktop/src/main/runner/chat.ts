@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
-import { chatFileName, toErrorPayload, type Actor, type AgentProfile, type ChatFile, type ChatRequest, type DesktopProject, type HiveBackend, type RunRequestError } from "@xdev-hive/core";
+import { chatFileName, LEADER_COMMAND, toErrorPayload, type Actor, type AgentProfile, type ChatFile, type ChatRequest, type DesktopProject, type HiveBackend, type RunRequestError } from "@xdev-hive/core";
 import { expandEnv, resolveBin } from "./command.ts";
 import { claudeMcpServers } from "./container-mcp.ts";
 import { killTree } from "./kill.ts";
@@ -42,16 +42,30 @@ const TEXT_MAX = 40_000;
 const tail = (s: string) => (s.length > TEXT_MAX ? s.slice(-TEXT_MAX) : s);
 
 /** Read the repo, use Hive; never change files or run commands on this machine. */
-const LEADER_SETTINGS = {
-  disableAllHooks: true,
-  permissions: { allow: ["mcp__xdev-hive"], deny: ["Bash", "Edit", "Write", "MultiEdit", "NotebookEdit"] },
-};
+/**
+ * The leader's permissions: the hub's MCP, and Bash only for the project's leader commands (roadmap 17i-2). In -p mode
+ * anything not allowed is refused, a chained command too (checked with Claude Code 2.1.283); with no command Bash
+ * is denied outright. It never edits or writes files.
+ */
+export function leaderSettings(commands: string[] = []) {
+  const safe = commands.filter((c) => LEADER_COMMAND.test(c));
+  return {
+    disableAllHooks: true,
+    permissions: {
+      allow: ["mcp__xdev-hive", ...safe.map((c) => `Bash(${c}:*)`)],
+      deny: [...(safe.length ? [] : ["Bash"]), "Edit", "Write", "MultiEdit", "NotebookEdit"],
+    },
+  };
+}
 
-export const leaderBrief = (project: string, who: string) =>
+export const leaderBrief = (project: string, who: string, commands: string[] = []) =>
   [
     `You are the leader agent of project ${project} in xDev Hive, answering ${who} in the Hive web chat.`,
     "First read the team's guide with the xdev-hive tool skill_get, name hive-leader, and follow it.",
-    "Work through the xdev-hive tools (tasks, runs, machines, docs, memory, skills). You may read this repository; you cannot change files or run commands.",
+    "Work through the xdev-hive tools (tasks, runs, machines, docs, memory, skills). You may read this repository; you cannot change files.",
+    commands.length
+      ? `The only commands you may run are these, with any arguments, one at a time and never chained: ${commands.join(", ")}.`
+      : "You cannot run commands.",
     "You do not create or move tasks or queue runs yourself: propose them (propose_task, propose_task_status, propose_run) and a project manager confirms them in the chat.",
     "Never merge. When a decision is needed, ask with a few options instead of guessing.",
     "Reply in the language of the message, briefly, and say what you looked at and what you proposed.",
@@ -93,6 +107,8 @@ export function chatArgs(o: {
   /** The thread's model and effort; left out, the profile's own. */
   model?: string | null;
   effort?: string | null;
+  /** The project's leader commands (Bash prefixes); none, no Bash. */
+  commands?: string[];
 }): string[] {
   return [
     "-p",
@@ -100,7 +116,7 @@ export function chatArgs(o: {
     "stream-json",
     "--verbose",
     "--settings",
-    JSON.stringify(LEADER_SETTINGS),
+    JSON.stringify(leaderSettings(o.commands)),
     "--setting-sources",
     "user",
     "--strict-mcp-config",
@@ -110,7 +126,7 @@ export function chatArgs(o: {
     // so the list of directories ends here.
     ...(o.fileDir ? ["--add-dir", o.fileDir] : []),
     "--append-system-prompt",
-    leaderBrief(o.project, o.requestedBy),
+    leaderBrief(o.project, o.requestedBy, o.commands),
     ...(o.model ? ["--model", o.model] : []),
     ...(o.effort ? ["--effort", o.effort] : []),
     ...(o.sessionId ? ["--resume", o.sessionId] : []),
@@ -207,6 +223,7 @@ export class ChatWorker {
       ...(fileDir ? { fileDir } : {}),
       model: req.model ?? null,
       effort: req.effort ?? null,
+      commands: req.commands ?? [],
     });
     const stream = new ClaudeStream(project.repo);
     let steps = "";
