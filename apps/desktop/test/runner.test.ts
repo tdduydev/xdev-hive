@@ -15,6 +15,7 @@ import { SqliteHive } from "@xdev-hive/core/node";
 import { parseResetTime, detectRateLimit } from "../src/main/runner/rate-limit.ts";
 import { Runner, type HubUpdate, type RunnerEvent, type RunnerHost, type RunnerOptions } from "../src/main/runner/runner.ts";
 import { chatArgs, leaderBrief, leaderSettings } from "../src/main/runner/chat.ts";
+import { assistSettings, globRegExp, parseAssist, readRepoFiles } from "../src/main/runner/assist.ts";
 import { setMainLocale } from "../src/main/i18n.ts";
 import { pickProfile, waitingReason, type ProfileLoad } from "../src/main/runner/schedule.ts";
 
@@ -1386,5 +1387,86 @@ describe("cross-review on another vendor", () => {
   it("tells a reviewer to leave the task alone", () => {
     const text = buildPrompt({ project: "demo", taskId: "T-1", title: "x", note: null, role: "review", instructions: "", worktree: "/w", branch: "ai/T-1", baseSha: "abc", attempt: 1, previous: null });
     assert.match(text, /Do not call task_claim or task_update/);
+  });
+});
+
+describe("the Docs writing assistant", () => {
+  const fakeClaude = () => {
+    const file = path.join(tmp("bin"), "claude");
+    writeFileSync(file, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(FAKE)} "$@"\n`, { mode: 0o755 });
+    return file;
+  };
+  const asks = (record: string) =>
+    existsSync(record)
+      ? readFileSync(record, "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, any>).filter((r) => typeof r.assist === "string")
+      : [];
+
+  it("reads globs as repo paths and the answer as a reply and a page", () => {
+    assert.ok(globRegExp("apps/web/**").test("apps/web/src/app.ts"));
+    assert.ok(globRegExp("**/*.test.ts").test("a/b/c.test.ts") && globRegExp("**/*.test.ts").test("c.test.ts"));
+    assert.ok(!globRegExp("src/*.ts").test("src/a/b.ts"));
+    assert.deepEqual(parseAssist("<reply>Đã sửa.</reply>\n<markdown>\n# A\nb\n</markdown>", "# A"), { reply: "Đã sửa.", markdown: "# A\nb\n" });
+    assert.deepEqual(parseAssist("<reply>Không có gì.</reply><markdown></markdown>", "# A"), { reply: "Không có gì.", markdown: null });
+    assert.deepEqual(parseAssist("<reply>Giữ nguyên.</reply><markdown># A</markdown>", "# A\n"), { reply: "Giữ nguyên.", markdown: null }, "the same page is no change");
+    assert.deepEqual(parseAssist("plain answer", "x"), { reply: "plain answer", markdown: null });
+    assert.deepEqual(assistSettings().permissions.allow, ["Read", "Grep", "Glob"]);
+    assert.ok(assistSettings().permissions.deny.includes("Bash") && assistSettings().permissions.deny.includes("Edit"));
+  });
+
+  it("reads only the repo's files that were asked for, and never outside it", () => {
+    const repo = tmp("repo");
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    mkdirSync(path.join(repo, "deploy"));
+    writeFileSync(path.join(repo, "deploy", "update.sh"), "#!/bin/sh\ngit pull\n");
+    writeFileSync(path.join(repo, "deploy", "backup.sh"), "vacuum\n");
+    writeFileSync(path.join(repo, "logo.png"), Buffer.from([0x89, 0x50, 0, 1]));
+    execFileSync("git", ["add", "."], { cwd: repo });
+    const got = readRepoFiles(repo, ["deploy/*.sh", "logo.png", "nope.md", "../../etc/passwd"]);
+    assert.deepEqual(got.files.map((f) => f.path).sort(), ["deploy/backup.sh", "deploy/update.sh"], "binary files are skipped");
+    assert.deepEqual(got.missing, ["nope.md", "../../etc/passwd"]);
+  });
+
+  it("takes an ask of this app's own database and writes it with Claude in the project's repo, reading nothing it may not", async () => {
+    const hive = new SqliteHive(":memory:", { local: true });
+    const a = await setup([profile("claude-1", "claude", 10, "assist", { bin: fakeClaude() })], {}, "local", { hive });
+    writeFileSync(path.join(a.repo, "deploy.sh"), "update.sh --tunnel\n");
+    const mem = await hive.call("memory.write", { project: "demo", kind: "gotcha", content: "update.sh cần HIVE_TUNNEL=1" }, admin);
+    await hive.call("docs.save", { key: "project/demo/deploy", title: "Deploy", content: "# Deploy" }, admin);
+    const ask = await hive.call(
+      "docs.assist",
+      { key: "project/demo/deploy", kind: "draft", prompt: "Viết tiếp phần còn thiếu", content: "# Deploy\nChạy update.sh", memory: [mem.id], code: ["deploy.sh"] },
+      admin,
+    );
+    assert.equal(await a.runner.pollAssists(), true);
+    await a.runner.settleAssists();
+    const [done] = await hive.call("docs.assists", { key: "project/demo/deploy" }, admin);
+    assert.equal(done!.id, ask.id);
+    assert.deepEqual([done!.status, done!.reply, done!.profile], ["done", "Thêm mục Khi lỗi từ memory.", "claude-1"], done!.error?.message);
+    assert.equal(done!.markdown, "# Deploy\nChạy update.sh\n## Khi lỗi\n- Chạy lại update.sh\n");
+    const [call] = asks(a.record);
+    assert.equal(realpathSync(call!.cwd), realpathSync(a.repo), "in the project's checkout");
+    assert.match(call!.assist, /HIVE_TUNNEL=1/, "the memory it was given");
+    assert.match(call!.assist, /## deploy\.sh\n```\nupdate\.sh --tunnel/, "the file, read here");
+    const args = call!.args as string[];
+    assert.ok(args.includes("--strict-mcp-config") && args[args.indexOf("--mcp-config") + 1] === JSON.stringify({ mcpServers: {} }), "no MCP");
+    assert.deepEqual(JSON.parse(args[args.indexOf("--settings") + 1]!).permissions.allow, ["Read", "Grep", "Glob"]);
+    assert.equal(await a.runner.pollAssists(), false, "nothing left");
+  });
+
+  it("on a hub, takes asks only while the user lets it take runs, and stops when the ask is cancelled", async () => {
+    const hive = new SqliteHive(":memory:");
+    const off = await setup([profile("claude-1", "claude", 10, "assist", { bin: fakeClaude() })], { acceptHubRuns: false }, "hub", { hive });
+    await hive.call("docs.save", { key: "project/demo/deploy", title: "Deploy", content: "# Deploy" }, admin);
+    const ask = await hive.call("docs.assist", { key: "project/demo/deploy", kind: "free", prompt: "slow please", content: "# Deploy" }, admin);
+    assert.equal(await off.runner.pollAssists(), false, "not while the user does not take runs from the hub");
+    const on = await setup([profile("claude-1", "claude", 10, "assist", { bin: fakeClaude() })], { acceptHubRuns: true }, "hub", { hive });
+    assert.equal(await on.runner.pollAssists(), false, "a machine the hub has not heard from yet");
+    await on.runner.heartbeat();
+    assert.equal(await on.runner.pollAssists(), true);
+    await until(() => asks(on.record).length === 1);
+    await hive.call("docs.assistCancel", { id: ask.id }, admin);
+    await on.runner.settleAssists();
+    const [gone] = await hive.call("docs.assists", { key: "project/demo/deploy" }, admin);
+    assert.equal(gone!.status, "cancelled");
   });
 });
