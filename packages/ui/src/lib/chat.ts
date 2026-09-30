@@ -54,72 +54,67 @@ export const ACTION_TONE: Record<string, string> = { proposed: "warn", done: "ok
 /** The tool calls in a reply's steps (the ▶ lines of the run log). */
 export const stepCount = (steps: string): number => steps.split("\n").filter((l) => l.startsWith("▶")).length;
 
-export type Inline =
-  | { kind: "text"; text: string }
-  | { kind: "code"; text: string }
-  | { kind: "bold"; text: string }
-  | { kind: "em"; text: string }
-  | { kind: "task"; text: string }
-  | { kind: "run"; text: string }
-  | { kind: "url"; text: string };
-
-export type Block = { kind: "code"; text: string } | { kind: "text"; parts: Inline[] };
-
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/**
- * A leader's reply for display: ``` blocks stay as code, and in the text between them `code`, **bold**, *emphasis*,
- * web links, run ids (R-1a2b3c) and the ids of the project's tasks are picked out. Everything else is shown as written.
- */
-export function replyBlocks(text: string, taskIds: Iterable<string> = []): Block[] {
-  const blocks: Block[] = [];
-  const fence = /^```[^\n]*\n([\s\S]*?)(?:^```[ \t]*$|(?![\s\S]))/gm;
-  let at = 0;
-  for (const m of text.matchAll(fence)) {
-    if (m.index > at) pushText(blocks, text.slice(at, m.index), taskIds);
-    blocks.push({ kind: "code", text: m[1]!.replace(/\n$/, "") });
-    at = m.index + m[0].length;
-  }
-  if (at < text.length) pushText(blocks, text.slice(at), taskIds);
-  return blocks;
-}
+export type IdPart = { kind: "text" | "task" | "run"; text: string };
 
-function pushText(blocks: Block[], text: string, taskIds: Iterable<string>) {
-  const trimmed = text.replace(/^\n+|\n+$/g, "");
-  if (trimmed) blocks.push({ kind: "text", parts: inline(trimmed, taskIds) });
-}
-
-/** Text with its code spans, emphasis, links and ids picked out (see replyBlocks). */
-export function inline(text: string, taskIds: Iterable<string> = []): Inline[] {
+/** Text with the ids of the project's tasks and run ids (R-1a2b3c) picked out, to become links. */
+export function linkIds(text: string, taskIds: Iterable<string> = []): IdPart[] {
   // Longer ids first, so AUTH-12 is not read as AUTH-1 and a trailing 2.
   const ids = [...new Set(taskIds)].filter(Boolean).sort((a, b) => b.length - a.length).map(escape);
   // An id stands alone: not inside a longer word, and a sentence's full stop after it is not part of it.
   const alone = (p: string) => `(?<![\\w.-])(?:${p})(?![\\w-]|\\.\\w)`;
-  const pattern = new RegExp(
-    [
-      "`([^`\\n]+)`",
-      "\\*\\*([^*\\n]+)\\*\\*",
-      // *like this*, not the stars of 2 * 3 * 4.
-      "(?<![\\w*])\\*(?=\\S)([^*\\n]+?)(?<=\\S)\\*(?![\\w*])",
-      "(https?://[^\\s<>()\"'`]+[^\\s<>()\"'`.,;:!?])",
-      `(${alone("R-[0-9a-f]{6}")})`,
-      ...(ids.length ? [`(${alone(ids.join("|"))})`] : []),
-    ].join("|"),
-    "g",
-  );
-  const parts: Inline[] = [];
+  const pattern = new RegExp([`(${alone("R-[0-9a-f]{6}")})`, ...(ids.length ? [`(${alone(ids.join("|"))})`] : [])].join("|"), "g");
+  const parts: IdPart[] = [];
   let at = 0;
   for (const m of text.matchAll(pattern)) {
     if (m.index > at) parts.push({ kind: "text", text: text.slice(at, m.index) });
-    const [, code, bold, em, url, run, task] = m;
-    if (code !== undefined) parts.push({ kind: "code", text: code });
-    else if (bold !== undefined) parts.push({ kind: "bold", text: bold });
-    else if (em !== undefined) parts.push({ kind: "em", text: em });
-    else if (url !== undefined) parts.push({ kind: "url", text: url });
-    else if (run !== undefined) parts.push({ kind: "run", text: run });
-    else parts.push({ kind: "task", text: task! });
+    parts.push(m[1] !== undefined ? { kind: "run", text: m[1] } : { kind: "task", text: m[2]! });
     at = m.index + m[0].length;
   }
   if (at < text.length) parts.push({ kind: "text", text: text.slice(at) });
   return parts;
 }
+
+/** Where a task or run id links to: its panel on the Tasks or Runs page. */
+export const idHref = (p: IdPart): string => (p.kind === "run" ? `#/runs?run=${encodeURIComponent(p.text)}` : `#/tasks?task=${encodeURIComponent(p.text)}`);
+
+/** The few Markdown syntax tree fields this plugin reads and writes. */
+interface MdNode {
+  type: string;
+  value?: string;
+  url?: string;
+  children?: MdNode[];
+}
+
+/** Code, and text already inside a link, stay as they are. */
+const KEEP = new Set(["link", "linkReference", "definition", "code", "inlineCode", "html"]);
+
+function linkTree(node: MdNode, taskIds: string[]): void {
+  if (!node.children) return;
+  node.children = node.children.flatMap((child): MdNode[] => {
+    if (child.type === "text" && child.value) {
+      return linkIds(child.value, taskIds).map((p) =>
+        p.kind === "text" ? { type: "text", value: p.text } : { type: "link", url: idHref(p), children: [{ type: "text", value: p.text }] },
+      );
+    }
+    if (!KEEP.has(child.type)) linkTree(child, taskIds);
+    return [child];
+  });
+}
+
+/** A remark plugin: the project's task ids and run ids in a reply become links to their page. */
+export function remarkHiveLinks(options?: { taskIds?: string[] }) {
+  const taskIds = options?.taskIds ?? [];
+  return (tree: MdNode) => linkTree(tree, taskIds);
+}
+
+/**
+ * How a leader's reply is read as Markdown (GitHub's flavour): raw HTML is never rendered, and an image would load
+ * from wherever the text points, so it is left out. Attachments come with the message instead.
+ */
+export const REPLY_MARKDOWN = {
+  skipHtml: true,
+  disallowedElements: ["img"],
+  unwrapDisallowed: true,
+} as const;

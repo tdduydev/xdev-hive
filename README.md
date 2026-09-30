@@ -473,6 +473,11 @@ Trên hub, agent giữ task với tên `<gói>.<máy>@<token>`, ví dụ `claude
   - **Trang *Chat*** (web, và app ở chế độ hub; nhóm *Làm việc*): các thread của dự án đang chọn ở thanh bên (*Tất cả dự án* thì mọi dự án bạn xem được), mới nhất trước. Thread đang có câu trả lời có chấm xanh.
     - *Chat mới* (người quản trị dự án): chọn dự án, máy, gói Claude hoặc để máy tự chọn, rồi viết tin đầu. Chỉ hiện máy đang online, bật nhận run từ hub, có repo của dự án và có gói Claude đã đăng nhập.
     - Câu trả lời hiện dần khi máy viết (trang hỏi hub mỗi 2 giây), kèm việc agent đang làm và các bước (`▶` công cụ). *Dừng* huỷ câu trả lời và giữ phần đã viết. Thread đang chờ câu trả lời thì chưa gửi được tin tiếp.
+    - Câu trả lời hiện bằng Markdown (kiểu GitHub: tiêu đề, danh sách, danh sách việc, bảng, trích dẫn, khối code, link) (roadmap 17d).
+      - Trang không chạy HTML trong câu trả lời, và không tải ảnh mà chữ trỏ tới. Link ra ngoài mở ở tab mới.
+      - Câu trả lời và từng khối code có nút *Copy*.
+      - Câu trả lời cuối bị lỗi, hết hạn hay bị dừng có nút *Gửi lại*: gửi lại đúng tin nó trả lời.
+      - Enter để gửi, Shift+Enter để xuống dòng.
     - Trong câu trả lời, mã task của dự án và mã run (`R-…`) là link: sang *Task* (mở panel của task) hoặc *Lượt chạy* (mở run đó). Trang hiện `code`, **đậm**, *nghiêng*, khối ``` và link web; phần còn lại giữ nguyên chữ.
     - `#/chat?thread=<số>` mở thẳng một thread; quay lại trang thì thread vẫn mở. Người chỉ có quyền xem đọc được nhưng không gửi được. Link *run …* ở yêu cầu chạy của trang *Task* cũng mở thẳng run đó.
     - Leader làm việc với quyền của token câu trả lời. Máy dùng token role *agent* thì leader chỉ tới mức đóng góp, nên nó không tự tạo task hay xếp run. Nó đề xuất các việc đó (dưới đây).
