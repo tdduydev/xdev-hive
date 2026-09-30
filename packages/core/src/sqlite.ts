@@ -259,6 +259,10 @@ const MIGRATIONS: string[] = [
   CREATE INDEX doc_assists_doc ON doc_assists(doc_key, requested_by);
   CREATE INDEX doc_assists_status ON doc_assists(status);
   `,
+  // What a run changed, as its machine last sent it (roadmap 22l): the web shows a run of another machine's diff.
+  `
+  ALTER TABLE run_records ADD COLUMN patch TEXT;
+  `,
 ];
 
 /** A leader's reply asks for at most this many actions. */
@@ -295,7 +299,7 @@ function toRunRecord(r: Row, withLog: boolean): RunRecord {
     updatedAt: str(r.updated_at),
     cancelRequestedBy: s(r.cancel_by),
     cancelRequestedAt: s(r.cancel_at),
-    ...(withLog ? { log: str(r.log) } : {}),
+    ...(withLog ? { log: str(r.log), patch: r.patch == null ? null : str(r.patch) } : {}),
   };
 }
 
@@ -2179,6 +2183,8 @@ export class SqliteHive implements HiveBackend {
                branch = excluded.branch, commits = excluded.commits, mr_url = excluded.mr_url, cost_usd = excluded.cost_usd,
                log = excluded.log, started_at = excluded.started_at, finished_at = excluded.finished_at, updated_at = excluded.updated_at`,
           );
+          // Sent only when it changed: left out, the one the hub has stays.
+          const patchPut = db.prepare("UPDATE run_records SET patch = ? WHERE machine_id = ? AND run_id = ?");
           for (const r of runs) {
             // The machine already hid secret-looking lines; this is the hub's own check of what it keeps.
             put.run(
@@ -2186,6 +2192,7 @@ export class SqliteHive implements HiveBackend {
               clean(r.activity), clean(r.summary), clean(r.error), r.branch, r.commits, r.mrUrl, r.costUsd, clean(r.log) ?? "",
               r.createdAt, r.startedAt, r.finishedAt, now,
             );
+            if (r.patch !== undefined) patchPut.run(redactLines(stripHidden(r.patch)), actor.name, r.runId);
           }
           db.prepare("DELETE FROM run_records WHERE updated_at < ?").run(this.#now(-RUN_RECORD_DAYS * 24 * 60));
           return { stored: runs.length };

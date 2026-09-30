@@ -22,6 +22,8 @@ import { pickProfile, waitingReason, type ProfileLoad } from "../src/main/runner
 const FAKE = path.join(import.meta.dirname, "fixtures", "fake-agent.mjs");
 const admin: Actor = { name: "duy", role: "admin" };
 const tmp = (p: string) => mkdtempSync(path.join(os.tmpdir(), `hive-${p}-`));
+/** The log without the time the runner puts before each line the agent wrote (roadmap 22l). */
+const unstamp = (log: string) => log.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\t/gm, "");
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 
 function profile(id: string, kind: AgentProfile["kind"], priority: number, mode: string, extra: Partial<AgentProfile> = {}): AgentProfile {
@@ -397,7 +399,10 @@ describe("Runner", () => {
     assert.match(t.note ?? "", /Implemented T-1/);
     assert.match(t.note ?? "", /Branch ai\/T-1, 1 commit/);
     // Claude Code streams its events: the log shows its steps as they come, then its message and the cost.
-    const log = runner.log(run.id);
+    const raw = runner.log(run.id);
+    assert.match(raw, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\t▶ Bash: npm test$/m, "each line the agent wrote says when");
+    assert.match(raw, /\n## Prompt\nYou are working/, "the header and the prompt carry no time");
+    const log = unstamp(raw);
     assert.match(log, /## Output\n# session fake-session · model fake-model · Claude Code 2\.1\.0\n▶ Bash: npm test\n  ✓ ok 1 - adds \(\+1 lines\)\nImplemented T-1\. Tests pass\.\n/);
     assert.match(log, /## Result\nImplemented T-1\. Tests pass\.\n# cost \$0\.0425 · tokens in 6000 out 850/);
     assert.doesNotMatch(log, /"type":"result"/, "no raw events in the log");
@@ -1150,7 +1155,7 @@ describe("best-of-n", () => {
     assert.ok(runs.every((r) => runner.store.get(r.id)!.bestOf!.pick === 2));
     assert.equal(kept.bestOf!.reason, "it tests the empty list.");
     assert.equal(runner.store.get(c1!.id)!.worktree, null);
-    assert.match(runner.diff(c1!.id), /work by claude-a/, "a candidate that was not kept still shows its branch");
+    assert.match(runner.diff(c1!.id), /^diff --git a\/work-claude-a\.txt/m, "a candidate that was not kept still shows its branch");
 
     const t = await task();
     assert.equal(t.status, "review");
@@ -1315,7 +1320,7 @@ describe("live log", () => {
     void runner.tick();
     await until(() => runner.list()[0]?.activity !== undefined);
     assert.equal(runner.list()[0]!.activity, "Bash: npm test", "from Claude Code's events");
-    assert.match(runner.log(run.id), /▶ Bash: npm test\n  ✓ ok 1 - adds \(\+1 lines\)\nthinking…/);
+    assert.match(unstamp(runner.log(run.id)), /▶ Bash: npm test\n  ✓ ok 1 - adds \(\+1 lines\)\nthinking…/);
     runner.cancel(run.id);
     await runner.settle();
     assert.equal(runner.list()[0]!.activity, undefined);
@@ -1340,7 +1345,10 @@ describe("runs on the hub", () => {
     assert.deepEqual([record!.runId, record!.status, record!.machine, record!.profileId, record!.commits], [run.id, "succeeded", "duy-mbp", "claude-a", 1]);
     assert.match(record!.summary ?? "", /Implemented T-1\./);
     const full = (await hive.call("runs.get", { machineId: record!.machineId, runId: run.id }, admin))!;
-    assert.match(full.log ?? "", /▶ Bash: npm test\n  ✓ ok 1 - adds/);
+    assert.match(unstamp(full.log ?? ""), /▶ Bash: npm test\n  ✓ ok 1 - adds/);
+    // What it changed goes with it, for the web's Changes tab.
+    assert.match(full.patch ?? "", /^diff --git a\//m);
+    assert.equal(full.patch, runner.diff(run.id));
     assert.match(full.log ?? "", /\(line hidden: it looked like a GitLab token\)/);
     assert.doesNotMatch(full.log ?? "", /glpat-/, "the token never left the machine");
     assert.match(runner.log(run.id), /glpat-/, "this machine's own log keeps everything");

@@ -11,7 +11,8 @@ import { ErrorNote, Notice } from "../components/common.tsx";
 import { errorMessage, formatCount, formatTime, formatUsd, useAction, useCan, useHashParam, useHive, useQuery } from "../hooks.ts";
 import { useT, type TFunction } from "../i18n/index.tsx";
 import { fixInstructions, isLive, latestReviews, runDuration, runLabel } from "../lib/runs.ts";
-import { parseLog, parsePatch, type DiffFile, type LogLevel } from "../lib/runlog.ts";
+import { parseLog, parsePatch, runSteps, type DiffFile, type LogLevel } from "../lib/runlog.ts";
+import { activeIntl } from "../i18n/translate.ts";
 import { scopeFilter, scopeKey } from "../lib/scope.ts";
 import { useToast } from "../shell/toast.tsx";
 
@@ -245,6 +246,9 @@ function LogView({ text, live, wrap, empty }: { text: string; live: boolean; wra
     opened.current = true;
   }, [text, live]);
   const promptCount = lines.filter((l) => l.section === "Prompt" && l.level !== "section").length;
+  // A log the runner stamped gets a column with the time of each line (older logs have none).
+  const timed = lines.some((l) => l.at);
+  const clock = (at: string) => new Date(at).toLocaleTimeString(activeIntl(), { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
   return (
     <div ref={box} role="log" aria-live={live ? "polite" : undefined} className="min-h-0 flex-1 overflow-auto py-2 font-mono text-xs/5">
       {!text ? <div className="px-3.5 text-fg-muted">{empty}</div> : null}
@@ -266,6 +270,11 @@ function LogView({ text, live, wrap, empty }: { text: string; live: boolean; wra
         }
         return (
           <div key={i} className={cn("flex gap-3 px-3.5", l.level === "error" && "bg-danger-soft")}>
+            {timed ? (
+              <span title={l.at ?? undefined} className="w-[58px] shrink-0 text-fg-disabled tabular-nums">
+                {l.at && (i === 0 || lines[i - 1]!.at !== l.at) ? clock(l.at) : ""}
+              </span>
+            ) : null}
             <span className={cn("w-[46px] shrink-0 font-semibold", LEVEL_CLS[l.level])}>{l.level === "agent" && !l.text ? "" : t(`runs.level.${l.level}`)}</span>
             <span className={cn("min-w-0", l.level === "error" ? "text-danger" : l.level === "tool" ? "text-code-fg" : l.level === "meta" ? "text-fg-muted" : "text-fg-strong", wrap ? "whitespace-pre-wrap [overflow-wrap:anywhere]" : "whitespace-pre")}>
               {l.text || " "}
@@ -274,6 +283,47 @@ function LogView({ text, live, wrap, empty }: { text: string; live: boolean; wra
         );
       })}
     </div>
+  );
+}
+
+/** The run's steps (Đọc context → Viết code → Chạy test → Tạo MR, or a review's), from what its log shows. */
+function Steps({ run, log }: { run: AgentRun | RunRecord; log: string }) {
+  const t = useT();
+  const lines = useMemo(() => parseLog(log), [log]);
+  const steps = runSteps(run.role, lines, run.status);
+  const clock = (at: string) => new Date(at).toLocaleTimeString(activeIntl(), { hour: "2-digit", minute: "2-digit", hour12: false });
+  return (
+    <ol aria-label={t("runs.steps")} className="m-0 flex shrink-0 list-none items-center gap-1.5 overflow-x-auto border-b border-line-subtle px-4 py-2.5">
+      {steps.map((s, i) => (
+        <li key={s.id} className="flex shrink-0 items-center gap-1.5" aria-current={s.state === "current" ? "step" : undefined}>
+          <span
+            className={cn(
+              "flex h-6 items-center gap-1.5 rounded-full border px-2 text-xs font-medium",
+              s.state === "done" && "border-success-line bg-success-soft text-fg-strong",
+              s.state === "current" && "border-running-line bg-running-soft text-fg-strong",
+              s.state === "failed" && "border-danger-line bg-danger-soft text-danger",
+              s.state === "todo" && "border-line-default text-fg-muted",
+            )}
+            title={s.at ? clock(s.at) : undefined}
+          >
+            <span
+              className={cn(
+                "grid size-4 place-items-center rounded-full text-[10px] font-bold",
+                s.state === "done" && "bg-success-solid text-white",
+                s.state === "current" && "bg-running text-white",
+                s.state === "failed" && "bg-danger-solid text-white",
+                s.state === "todo" && "bg-sunken text-fg-muted",
+              )}
+            >
+              {s.state === "done" ? "✓" : s.state === "failed" ? "✗" : s.state === "current" ? "●" : i + 1}
+            </span>
+            {t(`runs.step.${s.id}`)}
+            {s.at && s.state !== "todo" ? <span className="font-mono text-[10px] text-fg-muted">{clock(s.at)}</span> : null}
+          </span>
+          {i < steps.length - 1 ? <span className={cn("h-px w-4", i < steps.findIndex((x) => x.state !== "done") || steps.every((x) => x.state === "done") ? "bg-success" : "bg-line-default")} /> : null}
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -504,6 +554,7 @@ function LocalDetail({ run, machine, gitlabReady, group, onChanged }: { run: Age
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Head run={run} machine={machine} actions={actions} notes={notes} />
+      <Steps run={run} log={log.data ?? ""} />
       <LogArea log={log.data ?? ""} live={live} diff={diff} diffError={diffError} onDiffTab={loadDiff} />
     </div>
   );
@@ -521,6 +572,7 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
   const tick = useRefresh(live);
   const full = useQuery(() => client.call("runs.get", { machineId: run.machineId, runId: run.runId }), [client, run.machineId, run.runId, tick]);
   const manage = allow(run.project, "manage");
+  const patchFiles = useMemo(() => (full.data?.patch ? parsePatch(full.data.patch) : []), [full.data?.patch]);
 
   const actions = live ? (
     run.cancelRequestedBy ? null : manage ? (
@@ -577,7 +629,15 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Head run={run} machine={run.machine} actions={actions} notes={notes} />
-      <LogArea log={full.data?.log ?? ""} live={live} />
+      <Steps run={run} log={full.data?.log ?? ""} />
+      {/* What it changed, as its machine sent it; a hub older than 22l has no patches (no tab). */}
+      <LogArea
+        log={full.data?.log ?? ""}
+        live={live}
+        {...(full.data && full.data.patch !== undefined
+          ? { diff: full.data.patch ? patchFiles : full.data.patch === "" ? [] : null, diffError: full.data.patch === null ? t("runs.patchNotSent", { machine: run.machine }) : null, onDiffTab: () => undefined }
+          : {})}
+      />
     </div>
   );
 }

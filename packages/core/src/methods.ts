@@ -356,6 +356,8 @@ export const schemas = {
           mrUrl: z.url({ protocol: /^https?$/ }).max(500).nullable().default(null),
           costUsd: z.number().min(0).nullable().default(null),
           log: z.string().max(60_000).default(""),
+          /** What the run changed (git diff from its base), when it changed since the last push (roadmap 22l). */
+          patch: z.string().max(400_000).optional(),
           createdAt: z.iso.datetime(),
           startedAt: z.iso.datetime().nullable().default(null),
           finishedAt: z.iso.datetime().nullable().default(null),
