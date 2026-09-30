@@ -483,7 +483,9 @@ Trên hub, agent giữ task với tên `<gói>.<máy>@<token>`, ví dụ `claude
       - Hub đọc loại file từ các byte đầu, không tin tên file hay header. Văn bản phải là UTF-8 và không chứa dòng giống secret. HTML, SVG và file chạy được đều bị từ chối. Tên file được làm sạch (không có thư mục, ký tự ẩn hay chữ đảo chiều).
       - Ai xem được chat của dự án thì đọc được file (`GET /api/chat/files/<id>`). File chưa gửi thì chỉ người tải lên thấy; sau 1 ngày chưa gửi thì bị xoá. Xoá thread thì xoá cả file.
       - Ảnh hiện thu nhỏ trong tin (bấm để xem cỡ thật); file khác là link tải về. Hub trả văn bản dưới dạng `text/plain` có sandbox, nên file không bao giờ chạy như một trang của hub.
-      - Leader chưa đọc được file đính kèm: phần phía máy là roadmap 17g-2.
+      - Leader đọc được file đính kèm (roadmap 17g-2). Yêu cầu trả lời mang theo danh sách file của tin. Máy tải từng file bằng token của câu trả lời (không dùng token của máy) vào một thư mục riêng của câu trả lời, ngoài repo.
+      - Máy làm sạch tên file thêm một lần và đặt tên khác cho file trùng tên. Claude được đọc thư mục đó qua `--add-dir`, và tin gửi leader kèm đường dẫn từng file để nó đọc bằng Read (đọc được cả ảnh và PDF).
+      - File không tải được thì được ghi chú trong tin, câu trả lời vẫn tiếp tục. Thư mục bị xoá khi câu trả lời xong.
     - Ô tìm trên danh sách thread: tìm theo tiêu đề và nội dung mọi tin, không phân biệt hoa thường (kể cả chữ có dấu như Đ/đ). `%` và `_` được hiểu đúng là ký tự (roadmap 17f).
     - Người quản trị dự án đổi tên thread (`chat.rename`) và xoá thread cùng tin nhắn và đề xuất của nó (`chat.delete`). Thread đang chờ câu trả lời thì phải dừng câu trả lời trước khi xoá.
     - Trong câu trả lời, mã task của dự án và mã run (`R-…`) là link: sang *Task* (mở panel của task) hoặc *Lượt chạy* (mở run đó). Trang hiện `code`, **đậm**, *nghiêng*, khối ``` và link web; phần còn lại giữ nguyên chữ.

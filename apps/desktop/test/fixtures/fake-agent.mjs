@@ -1,5 +1,6 @@
 // Stand-in for claude / codex / gemini in tests. Behaviour comes from FAKE_MODE.
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 // Sign-in checks (claude auth status, codex login status). FAKE_LOGIN=out plays a signed-out CLI.
 const [first, second] = process.argv.slice(2);
@@ -116,10 +117,14 @@ switch (process.env.FAKE_MODE ?? "ok") {
     process.stdin.on("data", (d) => (input += d));
     process.stdin.on("end", () => {
       const file = process.argv[process.argv.indexOf("--mcp-config") + 1];
+      // The files it was given to read, as it finds them while it runs.
+      const at = process.argv.indexOf("--add-dir");
+      const dir = at >= 0 ? process.argv[at + 1] : null;
+      const files = dir && existsSync(dir) ? Object.fromEntries(readdirSync(dir).map((n) => [n, readFileSync(join(dir, n), "utf8")])) : null;
       if (process.env.FAKE_RECORD) {
         appendFileSync(
           process.env.FAKE_RECORD,
-          `${JSON.stringify({ chat: input, agent: process.env.HIVE_AGENT, project: process.env.HIVE_PROJECT, cwd: process.cwd(), args: process.argv.slice(2), mcp: file && existsSync(file) ? readFileSync(file, "utf8") : null })}\n`,
+          `${JSON.stringify({ chat: input, agent: process.env.HIVE_AGENT, project: process.env.HIVE_PROJECT, cwd: process.cwd(), args: process.argv.slice(2), mcp: file && existsSync(file) ? readFileSync(file, "utf8") : null, files })}\n`,
         );
       }
       if (input.includes("slow")) {

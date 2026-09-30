@@ -78,6 +78,8 @@ import {
 
 export interface RunnerHost {
   backend(): HiveBackend;
+  /** Reads a file of the hub with a token (chat attachments); fetch when left out. */
+  download?(url: string, token: string): Promise<Uint8Array>;
   profiles(): AgentProfile[];
   settings(): RunnerSettings;
   projects(): DesktopProject[];
@@ -275,6 +277,7 @@ export class Runner {
         machine: () => this.#host.machine(),
         env: () => this.#host.env(),
         hubUrl: () => this.#host.hub?.()?.url ?? null,
+        ...(this.#host.download ? { download: (url: string, token: string) => this.#host.download!(url, token) } : {}),
         // As the Board would see it: signed out, resting (here or on the hub), or at its plan's stop threshold.
         unavailable: (id) => {
           const p = this.profileStatuses().find((x) => x.id === id);

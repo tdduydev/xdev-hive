@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
-import { toErrorPayload, type Actor, type AgentProfile, type ChatRequest, type DesktopProject, type HiveBackend, type RunRequestError } from "@xdev-hive/core";
+import { chatFileName, toErrorPayload, type Actor, type AgentProfile, type ChatFile, type ChatRequest, type DesktopProject, type HiveBackend, type RunRequestError } from "@xdev-hive/core";
 import { expandEnv, resolveBin } from "./command.ts";
 import { claudeMcpServers } from "./container-mcp.ts";
 import { killTree } from "./kill.ts";
@@ -24,6 +24,8 @@ export interface ChatHost {
   hubUrl(): string | null;
   /** A profile the runner would not start now (signed out, resting, over its plan's limit). */
   unavailable?(profileId: string): boolean;
+  /** Reads a file of the hub with a token (default: fetch); tests hand one of their own. */
+  download?(url: string, token: string): Promise<Uint8Array>;
 }
 
 export interface ChatOptions {
@@ -55,8 +57,34 @@ export const leaderBrief = (project: string, who: string) =>
     "Reply in the language of the message, briefly, and say what you looked at and what you proposed.",
   ].join(" ");
 
+interface FetchedFile {
+  file: ChatFile;
+  /** Where it is on this machine; null when it could not be fetched. */
+  path: string | null;
+  error?: string;
+}
+
+/** The hub's file, read with the reply's token. */
+async function fetchBytes(url: string, token: string): Promise<Uint8Array> {
+  const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`The hub answered ${res.status} for ${url}.`);
+  return new Uint8Array(await res.arrayBuffer());
+}
+
+/** What follows the message on stdin when it came with files: where they are, for the leader's Read tool. */
+export function attachmentNote(files: FetchedFile[]): string {
+  if (!files.length) return "";
+  const size = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
+  return [
+    "",
+    "",
+    "Files attached to this message (read them with the Read tool; it shows images and PDFs too):",
+    ...files.map((f) => (f.path ? `- ${f.path} (${f.file.type}, ${size(f.file.size)})` : `- ${f.file.name}: could not be fetched (${f.error ?? "unknown error"})`)),
+  ].join("\n");
+}
+
 /** The CLI's arguments; the message itself goes in on stdin, so one starting with "-" is never read as an option. */
-export function chatArgs(o: { project: string; requestedBy: string; mcpConfigFile: string; sessionId: string | null }): string[] {
+export function chatArgs(o: { project: string; requestedBy: string; mcpConfigFile: string; sessionId: string | null; fileDir?: string }): string[] {
   return [
     "-p",
     "--output-format",
@@ -69,6 +97,9 @@ export function chatArgs(o: { project: string; requestedBy: string; mcpConfigFil
     "--strict-mcp-config",
     "--mcp-config",
     o.mcpConfigFile,
+    // The message's files, outside the repo: the leader's file tools may read them there. The next word is an option,
+    // so the list of directories ends here.
+    ...(o.fileDir ? ["--add-dir", o.fileDir] : []),
     "--append-system-prompt",
     leaderBrief(o.project, o.requestedBy),
     ...(o.sessionId ? ["--resume", o.sessionId] : []),
@@ -152,9 +183,18 @@ export class ChatWorker {
     const run = { agent, machine, project: req.project, task: `chat-${req.threadId}`, run: `chat-${req.replyId}`, readOnly: false };
     writeFileSync(mcpFile, JSON.stringify({ mcpServers: claudeMcpServers({ url: hub, token: req.grant }, run) }), { mode: 0o600 });
 
+    // The message's files, fetched with the reply's token into a folder of this reply, gone with it.
+    const fileDir = req.files?.length ? path.join(dir, `chat-${req.replyId}-files`) : null;
+    const fetched = fileDir ? await this.#fetchFiles(req.files!, fileDir, hub, req.grant) : [];
     const hostEnv = Object.fromEntries(Object.entries(base).filter(([k]) => !k.startsWith("ELECTRON_")));
     const env = { ...hostEnv, ...expandEnv(profile.env), HIVE_AGENT: profile.id, HIVE_PROJECT: req.project };
-    const args = chatArgs({ project: req.project, requestedBy: req.requestedBy || "a project manager", mcpConfigFile: mcpFile, sessionId: req.sessionId });
+    const args = chatArgs({
+      project: req.project,
+      requestedBy: req.requestedBy || "a project manager",
+      mcpConfigFile: mcpFile,
+      sessionId: req.sessionId,
+      ...(fileDir ? { fileDir } : {}),
+    });
     const stream = new ClaudeStream(project.repo);
     let steps = "";
     let stderr = "";
@@ -164,7 +204,7 @@ export class ChatWorker {
       const child = spawn(bin, args, { cwd: project.repo, env, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"] });
       this.#jobs.set(req.replyId, { stop: () => killTree(child) });
       child.stdin.on("error", () => undefined);
-      child.stdin.end(req.text);
+      child.stdin.end(req.text + attachmentNote(fetched));
       const out = new StringDecoder("utf8");
       child.stdout.on("data", (chunk: Buffer) => (steps = tail(steps + stream.push(out.write(chunk)))));
       child.stderr.on("data", (chunk: Buffer) => (stderr = `${stderr}${chunk.toString("utf8")}`.slice(-8000)));
@@ -221,7 +261,31 @@ export class ChatWorker {
       await refuse(toErrorPayload(err).message);
     } finally {
       rmSync(mcpFile, { force: true });
+      if (fileDir) rmSync(fileDir, { recursive: true, force: true });
     }
+  }
+
+  /** Each file written under a safe, distinct name; one the hub would not give is noted, and the reply goes on. */
+  async #fetchFiles(files: ChatFile[], dir: string, hub: string, token: string): Promise<FetchedFile[]> {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const download = this.#host.download ?? fetchBytes;
+    const used = new Set<string>();
+    const out: FetchedFile[] = [];
+    for (const f of files) {
+      // The hub cleaned the name already; this machine does not rely on it.
+      let name = chatFileName(f.name);
+      for (let n = 2; used.has(name.toLowerCase()); n++) name = `${n}-${chatFileName(f.name)}`;
+      used.add(name.toLowerCase());
+      try {
+        const bytes = await download(`${hub.replace(/\/+$/, "")}/api/chat/files/${f.id}`, token);
+        const file = path.join(dir, name);
+        writeFileSync(file, bytes, { mode: 0o600 });
+        out.push({ file: f, path: file });
+      } catch (err) {
+        out.push({ file: f, path: null, error: toErrorPayload(err).message });
+      }
+    }
+    return out;
   }
 
   /** Told again a few times when the hub is away; after that the hub marks the reply as gone silent. */
