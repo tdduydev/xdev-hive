@@ -7,6 +7,7 @@ import { HiveError, type ErrorText } from "./errors.ts";
 import { agentsDocKey, decisionsDocKey, parseDocKey, titleFromSlug, type ParsedDocKey } from "./keys.ts";
 import { parseSkill, type SkillSummary } from "./skills.ts";
 import { chatFileName, checkChatFile, isImage } from "./chatfiles.ts";
+import { DOC_ASSET_MAX_BYTES, DOC_ASSETS_PER_DOC, DOC_TREE_DEPTH, docLinkRefs, linkSnippet, resolveDocLink } from "./doclinks.ts";
 import { DEFAULT_LEADER_COMMANDS } from "./types.ts";
 import { EMPTY_POLICY } from "./policy.ts";
 import {
@@ -40,6 +41,8 @@ import type {
   CommandStatus,
   CostTotals,
   Doc,
+  DocAsset,
+  DocLinks,
   DocSummary,
   HiveEvent,
   DocVersion,
@@ -235,6 +238,15 @@ const MIGRATIONS: string[] = [
   `
   CREATE TABLE systems(name TEXT PRIMARY KEY, projects TEXT NOT NULL, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL);
   `,
+  // Pages under pages, and files on a page (roadmap 22j).
+  `
+  ALTER TABLE docs ADD COLUMN parent TEXT;
+  ALTER TABLE docs ADD COLUMN folder INTEGER NOT NULL DEFAULT 0;
+  CREATE INDEX docs_parent ON docs(parent);
+  CREATE TABLE doc_assets(
+    id INTEGER PRIMARY KEY, doc_key TEXT NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL, size INTEGER NOT NULL,
+    data BLOB NOT NULL, uploaded_by TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(doc_key, name));
+  `,
 ];
 
 /** A leader's reply asks for at most this many actions. */
@@ -324,6 +336,9 @@ const clipDetail = (s: string) => (s.length > 300 ? `${s.slice(0, 299)}…` : s)
  */
 const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: string; detail?: string; text?: ErrorText }>> = {
   "docs.save": (i, o) => ({ target: i.key, detail: `v${o.version}${i.note ? ` · ${i.note}` : ""}` }),
+  "docs.move": (i) => ({ target: i.key, detail: `→ ${i.parent ?? "/"}` }),
+  "docs.assetPut": (i, o) => ({ target: i.key, detail: `+ ${o.name}` }),
+  "docs.assetRemove": (i, o) => (o.removed ? { target: i.key, detail: `− ${i.name}` } : { target: i.key, detail: `− ${i.name} (—)` }),
   "proposals.approve": (i, o) => ({ target: o.docKey, detail: `đề xuất #${i.id}`, text: { key: "audit.proposal", vars: { id: i.id } } }),
   "proposals.reject": (i, o) => {
     const text: ErrorText = i.note ? { key: "audit.proposalNote", vars: { id: i.id, note: i.note } } : { key: "audit.proposal", vars: { id: i.id } };
@@ -409,8 +424,20 @@ const toSummary = (r: Row): DocSummary => ({
   version: num(r.version),
   includeInAgents: num(r.include_in_agents) === 1,
   paths: JSON.parse(str(r.paths ?? "[]")) as string[],
+  parent: strOrNull(r.parent),
+  folder: num(r.folder ?? 0) === 1,
   updatedBy: str(r.updated_by),
   updatedAt: str(r.updated_at),
+});
+const ASSET_FIELDS = "id, doc_key, name, type, size, uploaded_by, created_at";
+const toAsset = (r: Row): DocAsset => ({
+  id: num(r.id),
+  docKey: str(r.doc_key),
+  name: str(r.name),
+  type: str(r.type),
+  size: num(r.size),
+  uploadedBy: str(r.uploaded_by),
+  createdAt: str(r.created_at),
 });
 const toDoc = (r: Row): Doc => ({ ...toSummary(r), content: str(r.content) });
 const toVersion = (r: Row): DocVersion => ({
@@ -677,9 +704,17 @@ export class SqliteHive implements HiveBackend {
     switch (method) {
       case "docs.get":
       case "docs.history":
+      case "docs.links":
+      case "docs.assets":
+      case "docs.assetGet":
         return this.#need(actor, owner(i.key), "view", `Doc ${i.key}`);
       case "docs.save":
+      case "docs.move":
         return this.#need(actor, owner(i.key), "manage", `Doc ${i.key}`);
+      // Contributors attach files to what they propose; removing someone else's file takes manage (see the handler).
+      case "docs.assetPut":
+      case "docs.assetRemove":
+        return this.#need(actor, owner(i.key), "contribute", `Doc ${i.key}`);
       case "proposals.create":
         return this.#need(actor, owner(i.docKey), "contribute", `Doc ${i.docKey}`);
       case "proposals.approve":
@@ -992,11 +1027,12 @@ export class SqliteHive implements HiveBackend {
   #writeDoc(
     key: string,
     content: string,
-    meta: { title?: string; includeInAgents?: boolean; paths?: string[]; note?: string },
+    meta: { title?: string; includeInAgents?: boolean; paths?: string[]; note?: string; parent?: string | null; folder?: boolean },
     author: string,
     source: WriteSource | null = null,
   ): Doc {
     const parsed = parseDocKey(key);
+    if (meta.parent) this.#checkParent(key, meta.parent);
     const paths = [...new Set(meta.paths ?? this.#getDoc(key)?.paths ?? [])];
     if (parsed.skill) {
       SqliteHive.#checkSkill(parsed, content);
@@ -1016,19 +1052,42 @@ export class SqliteHive implements HiveBackend {
     const title = meta.title ?? existing?.title ?? titleFromSlug(parsed.slug);
     // A skill goes to .claude/skills, never into AGENTS.md.
     const include = !parsed.skill && (meta.includeInAgents ?? existing?.includeInAgents ?? parsed.scope === "org");
+    const parent = meta.parent !== undefined ? meta.parent : (existing?.parent ?? null);
+    const folder = !parsed.skill && (meta.folder ?? existing?.folder ?? false);
     this.db
       .prepare(
-        `INSERT INTO docs(key, scope, project, title, content, version, include_in_agents, paths, updated_by, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO docs(key, scope, project, title, content, version, include_in_agents, paths, parent, folder, updated_by, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(key) DO UPDATE SET title = excluded.title, content = excluded.content,
            version = excluded.version, include_in_agents = excluded.include_in_agents, paths = excluded.paths,
-           updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+           parent = excluded.parent, folder = excluded.folder, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
       )
-      .run(key, parsed.scope, parsed.project, title, content, version, include ? 1 : 0, JSON.stringify(paths), author, now);
+      .run(key, parsed.scope, parsed.project, title, content, version, include ? 1 : 0, JSON.stringify(paths), parent, folder ? 1 : 0, author, now);
     this.db
       .prepare("INSERT INTO doc_versions(key, version, content, author, note, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
       .run(key, version, content, author, meta.note ?? "", sourceJson(source), now);
     return this.#getDoc(key)!;
+  }
+
+  /** A page goes under a page of its own space that is not a skill, not under itself or its own pages, and not too deep. */
+  #checkParent(key: string, parent: string): void {
+    const bad = (k: string, msg: string) => new HiveError("bad_request", msg, { key: `errors.${k}`, vars: { key, parent } });
+    const p = parseDocKey(parent);
+    const self = parseDocKey(key);
+    if (parent === key) throw bad("docParentSelf", `${key} cannot go under itself.`);
+    if (p.skill || self.skill) throw bad("docParentSkill", "Skills stay in the skills folder: they do not go under pages, and pages do not go under them.");
+    if (p.project !== self.project) throw bad("docParentSpace", `${parent} is in another space than ${key}.`);
+    let at: string | null = parent;
+    for (let depth = 1; at; depth++) {
+      if (at === key) throw bad("docParentCycle", `${parent} is under ${key}: a page cannot go under its own pages.`);
+      if (depth >= DOC_TREE_DEPTH) throw bad("docParentDepth", `Pages nest at most ${DOC_TREE_DEPTH} deep.`);
+      const row = this.db.prepare("SELECT parent FROM docs WHERE key = ?").get(at) as Row | undefined;
+      if (!row) {
+        if (at === parent) throw bad("docParentMissing", `There is no page ${parent} to put ${key} under.`);
+        break;
+      }
+      at = strOrNull(row.parent);
+    }
   }
 
   /** A skill's SKILL.md must name the folder it is loaded from: the key's last part. */
@@ -1298,7 +1357,7 @@ export class SqliteHive implements HiveBackend {
       "docs.list": ({ project, scope }) => {
         const rows = db
           .prepare(
-            `SELECT key, scope, project, title, version, include_in_agents, paths, updated_by, updated_at FROM docs
+            `SELECT key, scope, project, title, version, include_in_agents, paths, parent, folder, updated_by, updated_at FROM docs
              WHERE (?1 IS NULL OR scope = ?1) AND (?2 IS NULL OR scope = 'org' OR project = ?2)
              ORDER BY scope, project, key`,
           )
@@ -1356,6 +1415,89 @@ export class SqliteHive implements HiveBackend {
           }
           return this.#writeDoc(input.key, input.content, input, actor.name, actor.source);
         }),
+
+      "docs.move": ({ key, parent }) =>
+        this.#tx(() => {
+          if (!this.#getDoc(key)) throw new HiveError("not_found", `Doc ${key} not found.`, { key: "errors.notFound" });
+          if (parent) this.#checkParent(key, parent);
+          db.prepare("UPDATE docs SET parent = ? WHERE key = ?").run(parent, key);
+          const { content: _content, ...summary } = this.#getDoc(key)!;
+          return summary;
+        }),
+
+      "docs.links": ({ key }, actor) => {
+        const rows = db.prepare("SELECT key, title, content FROM docs").all() as Row[];
+        const titles = new Map(rows.map((r) => [str(r.key), str(r.title)]));
+        const exists = (k: string) => titles.has(k);
+        const sees = (k: string) => levelOn(actor, SqliteHive.#docOwner(k)) !== null;
+        const doc = rows.find((r) => str(r.key) === key);
+        const out: DocLinks["out"] = [];
+        for (const ref of docLinkRefs(doc ? str(doc.content) : "")) {
+          const hit = resolveDocLink(ref.target, key, exists);
+          if (!hit || (hit.exists && !sees(hit.key)) || out.some((o) => o.key === hit.key)) continue;
+          out.push({ target: ref.target, key: hit.key, title: hit.exists ? titles.get(hit.key)! : null, exists: hit.exists });
+        }
+        const back: DocLinks["back"] = [];
+        for (const r of rows) {
+          const from = str(r.key);
+          if (from === key || !sees(from)) continue;
+          const text = str(r.content);
+          if (!text.includes("[[")) continue;
+          if (docLinkRefs(text).some((ref) => resolveDocLink(ref.target, from, exists)?.key === key)) {
+            back.push({ key: from, title: str(r.title), snippet: linkSnippet(text, from, key, exists, (k) => titles.get(k)) });
+          }
+        }
+        // Memory that names the page by its key (current entries only).
+        const memory = (
+          db
+            .prepare("SELECT id, project, content FROM memory WHERE instr(content, ?) > 0 AND superseded_by IS NULL ORDER BY id DESC LIMIT 20")
+            .all(key) as Row[]
+        )
+          .map((r) => ({ id: num(r.id), project: str(r.project) === SHARED ? null : str(r.project), content: str(r.content) }))
+          .filter((m) => levelOn(actor, m.project) !== null)
+          .slice(0, 8);
+        return { out, back: back.sort((a, b) => a.title.localeCompare(b.title)), memory };
+      },
+
+      "docs.assets": ({ key }) => (db.prepare(`SELECT ${ASSET_FIELDS} FROM doc_assets WHERE doc_key = ? ORDER BY name`).all(key) as Row[]).map(toAsset),
+
+      "docs.assetGet": ({ key, name }) => {
+        const row = db.prepare("SELECT * FROM doc_assets WHERE doc_key = ? AND name = ?").get(key, name) as Row | undefined;
+        return row ? { asset: toAsset(row), data: Buffer.from(row.data as Uint8Array).toString("base64") } : null;
+      },
+
+      "docs.assetPut": ({ key, name: raw, data }, actor) =>
+        this.#tx(() => {
+          parseDocKey(key);
+          const name = chatFileName(raw);
+          const bytes = new Uint8Array(Buffer.from(data, "base64"));
+          if (bytes.length > DOC_ASSET_MAX_BYTES) {
+            throw new HiveError("bad_request", `${name} is over ${DOC_ASSET_MAX_BYTES / 1024 / 1024} MB.`, { key: "errors.chatFileTooBig", vars: { name, mb: DOC_ASSET_MAX_BYTES / 1024 / 1024 } });
+          }
+          const type = checkChatFile(name, bytes);
+          if (!isImage(type) && type !== "application/pdf") assertNoSecret(new TextDecoder().decode(bytes), name);
+          const has = db.prepare("SELECT uploaded_by FROM doc_assets WHERE doc_key = ? AND name = ?").get(key, name) as Row | undefined;
+          // Replacing someone else's file is removing it: manage only.
+          if (has && str(has.uploaded_by) !== actor.name) this.#need(actor, SqliteHive.#docOwner(key), "manage", `File ${name}`);
+          const count = num((db.prepare("SELECT COUNT(*) AS n FROM doc_assets WHERE doc_key = ?").get(key) as Row).n);
+          if (!has && count >= DOC_ASSETS_PER_DOC) {
+            throw new HiveError("bad_request", `${key} already has ${DOC_ASSETS_PER_DOC} files.`, { key: "errors.docAssetsFull", vars: { key, max: DOC_ASSETS_PER_DOC } });
+          }
+          db.prepare(
+            `INSERT INTO doc_assets(doc_key, name, type, size, data, uploaded_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(doc_key, name) DO UPDATE SET type = excluded.type, size = excluded.size, data = excluded.data,
+               uploaded_by = excluded.uploaded_by, created_at = excluded.created_at`,
+          ).run(key, name, type, bytes.length, bytes, actor.name, this.#now());
+          return toAsset(db.prepare(`SELECT ${ASSET_FIELDS} FROM doc_assets WHERE doc_key = ? AND name = ?`).get(key, name) as Row);
+        }),
+
+      "docs.assetRemove": ({ key, name }, actor) => {
+        const row = db.prepare("SELECT uploaded_by FROM doc_assets WHERE doc_key = ? AND name = ?").get(key, name) as Row | undefined;
+        if (!row) return { removed: false };
+        if (str(row.uploaded_by) !== actor.name) this.#need(actor, SqliteHive.#docOwner(key), "manage", `File ${name}`);
+        db.prepare("DELETE FROM doc_assets WHERE doc_key = ? AND name = ?").run(key, name);
+        return { removed: true };
+      },
 
       "proposals.list": ({ status, docKey }) =>
         (

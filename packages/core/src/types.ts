@@ -30,12 +30,35 @@ export interface DocSummary {
    * AGENTS.md (glob with a folder) or to .claude/rules/xdev-hive/ (glob without one), and AGENTS.md lists it.
    */
   paths: string[];
+  /** The page it sits under (same space), null at the top (roadmap 22j). Missing from a hub older than 22j. */
+  parent: string | null;
+  /** Shown as a folder: a page whose job is to hold other pages. */
+  folder: boolean;
   updatedBy: string;
   updatedAt: string;
 }
 
 export interface Doc extends DocSummary {
   content: string;
+}
+
+/** A file attached to a page (roadmap 22j): Markdown shows it as assets/<slug>/<name>. */
+export interface DocAsset {
+  id: number;
+  docKey: string;
+  name: string;
+  type: string;
+  size: number;
+  uploadedBy: string;
+  createdAt: string;
+}
+
+/** A page's links (docs.links): the pages it links to, those that link to it, and memory that names it. */
+export interface DocLinks {
+  /** exists false: a broken link (the page was never made, or has another key). */
+  out: Array<{ target: string; key: string; title: string | null; exists: boolean }>;
+  back: Array<{ key: string; title: string; snippet: string }>;
+  memory: Array<{ id: number; project: string | null; content: string }>;
 }
 
 export interface DocVersion {

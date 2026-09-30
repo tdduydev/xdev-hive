@@ -1,21 +1,45 @@
 // Tài liệu (docs/design/2026-09-redesign, xDev Hive Client): spaces (Chung and each project) and their pages on the
-// left; the page on the right in Xem / Sửa / Chia đôi with a Markdown toolbar, its versions, and drafts that stay on
+// left, as a tree of folders and pages under pages (roadmap 22j); the page on the right in Xem / Sửa / Chia đôi with a
+// Markdown toolbar (links to other pages, images from this machine), its files, its versions, and drafts that stay on
 // the device until saved. Managers save a new version, contributors send it as a proposal.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Bold, ChevronDown, ChevronRight, Code, FileText, Folder, FolderOpen, Heading2, Italic, Link2, List, Quote, Table, X } from "lucide-react";
+import {
+  BookOpen,
+  Bold,
+  ChevronDown,
+  ChevronRight,
+  Code,
+  FileText,
+  Folder,
+  FolderOpen,
+  FolderPlus,
+  Heading2,
+  History,
+  ImageIcon,
+  Italic,
+  Link2,
+  List,
+  Paperclip,
+  Plus,
+  Quote,
+  Table,
+  X,
+} from "lucide-react";
 import { cn } from "cn";
-import { parseDocKey, stripHidden, type Doc, type DocSummary, type DocVersion } from "@xdev-hive/core";
+import { DOC_ASSET_MAX_BYTES, docLinkRefs, keyPrefix, parseDocKey, resolveDocLink, stripHidden, type Doc, type DocSummary, type DocVersion } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Diff } from "../components/Diff.tsx";
-import { DocMarkdown } from "../components/DocMarkdown.tsx";
+import { AttachmentsPanel, uploadDocAsset, useDocAssets } from "../components/DocAssets.tsx";
+import { DocMarkdown, docHref, type DocContext } from "../components/DocMarkdown.tsx";
 import { HiddenChars } from "../components/HiddenChars.tsx";
 import { ErrorNote, Notice } from "../components/common.tsx";
 import { errorMessage, formatTime, sourceText, useAction, useCan, useHashParam, useHive, useQuery } from "../hooks.ts";
 import { useT, type TFunction } from "../i18n/index.tsx";
 import { DRAFTS_EVENT, insertMd, isUnreachable, parsePaths, readDrafts, writeDrafts, type DocDraft } from "../lib/docdraft.ts";
+import { buildTree, flatten, freeSlug, parentChoices, slugify, trail, type TreeNode } from "../lib/doctree.ts";
 import { fold } from "../lib/text.ts";
 import { docOwner, inScope, projectScope, SHARED, type Scope } from "../lib/scope.ts";
 import { useToast } from "../shell/toast.tsx";
@@ -23,8 +47,11 @@ import { useToast } from "../shell/toast.tsx";
 /** The project's AGENTS.md and decisions doc are for the whole repo. */
 const wholeRepo = (key: string) => /^project\/[^/]+\/(agents|decisions)$/.test(key);
 
-/** Same shape as the slug part of a doc key in core (keys.ts); skills/<name> makes a skill (its content is a SKILL.md). */
-const SLUG = /^(skills\/)?[a-z0-9][a-z0-9-]{0,79}$/;
+/** The slug part of a new page's key (core keys.ts); skills are made on the Skill page. */
+const SLUG = /^[a-z0-9][a-z0-9-]{0,79}$/;
+
+/** A folder shows this many pages until "Xem thêm". */
+const FOLDER_PAGE = 12;
 
 type Mode = "view" | "edit" | "split";
 
@@ -47,8 +74,10 @@ function spacesFor(all: DocSummary[], scope: Scope, t: TFunction): Space[] {
   return [shared, ...projects.map(of)];
 }
 
-/** The part of a doc key after its owner: "skills/review-pr" for org/skills/review-pr. */
-const slugOf = (key: string) => key.replace(/^org\//, "").replace(/^project\/[^/]+\//, "");
+const spaceIdOf = (key: string) => {
+  const owner = docOwner(key);
+  return owner === null ? "shared" : `project:${owner}`;
+};
 
 const draftOf = (doc: Doc | null, key: string): DocDraft => ({
   title: doc?.title ?? "",
@@ -86,20 +115,31 @@ function Seg<T extends string>({ value, options, onChange, label }: { value: T; 
   );
 }
 
+interface Creating {
+  kind: "page" | "folder";
+  parent: string | null;
+  title: string;
+  /** Typed by hand; else it follows the title. */
+  slug: string | null;
+}
+
 export function DocsPage() {
   const { client, scope, setScope } = useHive();
   const t = useT();
   const allow = useCan();
+  const toast = useToast();
   const list = useQuery(() => client.call("docs.list", {}), [client]);
   const spaces = useMemo(() => spacesFor(list.data ?? [], scope, t), [list.data, scope, t]);
+  const titles = useMemo(() => new Map((list.data ?? []).map((d) => [d.key, d.title])), [list.data]);
   const [spaceId, setSpaceId] = useState<string | null>(null);
   const space = spaces.find((s) => s.id === spaceId) ?? spaces[0] ?? null;
   const [selected, setSelected] = useState<string | null>(null);
   const [q, setQ] = useState("");
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [creating, setCreating] = useState(false);
-  const [newSlug, setNewSlug] = useState("");
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [more, setMore] = useState<Record<string, boolean>>({});
+  const [creating, setCreating] = useState<Creating | null>(null);
   const [newError, setNewError] = useState<string | null>(null);
+  const create = useAction();
   const [drafts, setDraftsState] = useState<Record<string, DocDraft>>(readDrafts);
   // The outbox sends queued saves when the hub is back: show what it left.
   useEffect(() => {
@@ -121,89 +161,169 @@ export function DocsPage() {
   const [linked, clearLinked] = useHashParam("doc");
   useEffect(() => {
     if (!linked || !list.data) return;
-    if (list.data.some((d) => d.key === linked)) {
+    if (list.data.some((d) => d.key === linked) || drafts[linked]) {
       const owner = docOwner(linked);
       if (!inScope(scope, owner)) setScope(owner === null ? SHARED : projectScope(owner));
-      setSpaceId(owner === null ? "shared" : `project:${owner}`);
+      setSpaceId(spaceIdOf(linked));
       setSelected(linked);
+      setQ("");
     }
     clearLinked();
-  }, [linked, list.data, scope, setScope, clearLinked]);
+  }, [linked, list.data, drafts, scope, setScope, clearLinked]);
 
+  const prefix = space?.owner ? `project/${space.owner}/` : "org/";
+  // Pages made here and not saved yet sit in the tree with their draft.
+  const unsaved = useMemo(
+    () =>
+      Object.entries(drafts)
+        .filter(([k, d]) => k.startsWith(prefix) && d.baseVersion === 0 && !titles.has(k))
+        .map(([key, d]) => ({ key, title: d.title, parent: d.parent ?? null })),
+    [drafts, prefix, titles],
+  );
+  const tree = useMemo(() => buildTree(space?.docs ?? [], unsaved, t("docs.skillsFolder")), [space, unsaved, t]);
+  const nodes = useMemo(() => flatten(tree), [tree]);
+
+  // A folder just made is selected before the list has it.
+  const justMade = useRef<string | null>(null);
   // Keep the selection inside the space: the first page of the space when it falls out.
   useEffect(() => {
     if (!list.data || linked || !space) return;
-    if (selected && docOwner(selected) === space.owner) return;
-    setSelected(space.docs[0]?.key ?? null);
-  }, [list.data, space, selected, linked]);
+    if (selected && selected === justMade.current) return;
+    if (selected && selected.startsWith(prefix) && (titles.has(selected) || drafts[selected])) return;
+    setSelected(nodes.find((n) => n.doc)?.key ?? null);
+  }, [list.data, space, selected, linked, nodes, prefix, titles, drafts]);
+
+  const selTrail = useMemo(() => new Set(selected ? trail(tree, selected).map((n) => n.key) : []), [tree, selected]);
+  const isOpen = (n: TreeNode, depth: number) => open[n.key] ?? (selTrail.has(n.key) || (depth === 0 && n.folder));
 
   const needle = fold(q.trim());
-  const pages = useMemo(
-    () => (space?.docs ?? []).filter((d) => !needle || fold(`${d.title} ${d.key}`).includes(needle)).sort((a, b) => slugOf(a.key).localeCompare(slugOf(b.key))),
-    [space, needle],
-  );
-  // A page whose slug has a folder part (skills/review-pr) goes under that folder.
-  const tree = useMemo(() => {
-    const rows: Array<{ folder: string; docs: DocSummary[] } | DocSummary> = [];
-    const folders = new Map<string, DocSummary[]>();
-    for (const d of pages) {
-      const slug = slugOf(d.key);
-      const i = slug.indexOf("/");
-      if (i < 0) rows.push(d);
-      else {
-        const f = slug.slice(0, i);
-        if (!folders.has(f)) {
-          folders.set(f, []);
-          rows.push({ folder: f, docs: folders.get(f)! });
-        }
-        folders.get(f)!.push(d);
-      }
-    }
-    return rows;
-  }, [pages]);
+  const hits = useMemo(() => (needle ? nodes.filter((n) => (n.doc || !n.folder) && fold(`${n.title} ${n.key}`).includes(needle)) : []), [nodes, needle]);
 
   const canCreateHere = space ? allow(space.owner, "manage") : false;
-  const keyPrefix = space?.owner ? `project/${space.owner}/` : "org/";
-  const createDoc = () => {
-    const slug = newSlug.trim();
+  const taken = (key: string) => titles.has(key) || Boolean(drafts[key]);
+  const slugFor = (c: Creating) => c.slug ?? freeSlug(prefix, slugify(c.title), taken);
+  const startCreate = (kind: Creating["kind"], parent: string | null) => {
+    setNewError(null);
+    setCreating({ kind, parent, title: "", slug: null });
+    if (parent) setOpen((o) => ({ ...o, [parent]: true }));
+  };
+  const doCreate = () => {
+    if (!creating) return;
+    const title = creating.title.trim();
+    const slug = slugFor(creating);
+    if (!title) return setNewError(t("docs.needTitle"));
     if (!SLUG.test(slug)) return setNewError(t("docs.badSlug"));
+    const key = prefix + slug;
     try {
-      parseDocKey(keyPrefix + slug);
+      parseDocKey(key);
     } catch (err) {
       return setNewError(errorMessage(err));
     }
+    if (taken(key)) return setNewError(t("docs.slugTaken", { key }));
     setNewError(null);
-    setSelected(keyPrefix + slug);
-    setCreating(false);
-    setNewSlug("");
+    if (creating.kind === "folder") {
+      // A folder is a page that holds pages: saved right away, empty.
+      void create.run(async () => {
+        await client.call("docs.save", { key, content: "", title, folder: true, parent: creating.parent, baseVersion: 0 });
+        toast(t("docs.folderCreated", { title }));
+        setCreating(null);
+        setOpen((o) => ({ ...o, [key]: true }));
+        justMade.current = key;
+        setSelected(key);
+        list.reload();
+      });
+      return;
+    }
+    // A page starts as a draft on this device, where it will go in the tree: the first save makes it.
+    setDraft(key, { ...draftOf(null, key), title, parent: creating.parent });
+    setSelected(key);
+    setCreating(null);
   };
 
-  const pageRow = (d: DocSummary, indent: boolean) => {
-    const on = d.key === selected;
+  const row = (n: TreeNode, depth: number, path?: string) => {
+    const on = n.key === selected;
+    const kids = n.children.length > 0;
+    const expanded = isOpen(n, depth);
+    const virtual = !n.doc && n.folder;
+    const openable = !virtual;
+    const Icon = n.folder || kids ? (expanded ? FolderOpen : Folder) : FileText;
     return (
-      <button
-        key={d.key}
-        type="button"
-        role="treeitem"
-        aria-selected={on}
-        onClick={() => setSelected(d.key)}
-        title={d.key}
-        className={cn(
-          "flex h-[30px] w-full shrink-0 cursor-pointer items-center gap-1.5 rounded-sm pr-2 text-left text-[13px]/none outline-none focus-visible:focus-ring",
-          indent ? "pl-[30px]" : "pl-2",
-          on ? "bg-surface font-semibold text-fg-strong shadow-e1" : "text-fg-primary hover:bg-hover",
-        )}
-      >
-        <FileText className="size-3.5 shrink-0 text-fg-muted" />
-        <span className="min-w-0 flex-1 truncate">{d.title || slugOf(d.key)}</span>
-        {drafts[d.key] ? <span title={t("docs.draftLocal")} className="size-1.5 shrink-0 rounded-full bg-warning-solid" /> : null}
-      </button>
+      <div key={n.key} className="group relative flex items-center" style={{ paddingLeft: depth * 14 }}>
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-hidden={!kids}
+          aria-label={expanded ? t("docs.collapse", { title: n.title }) : t("docs.expand", { title: n.title })}
+          onClick={() => setOpen((o) => ({ ...o, [n.key]: !expanded }))}
+          className={cn("grid size-5 shrink-0 cursor-pointer place-items-center rounded-xs text-fg-muted hover:text-fg-strong", !kids && "invisible")}
+        >
+          {expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        </button>
+        <button
+          type="button"
+          role="treeitem"
+          aria-selected={on}
+          aria-expanded={kids ? expanded : undefined}
+          onClick={() => (openable ? setSelected(n.key) : setOpen((o) => ({ ...o, [n.key]: !expanded })))}
+          title={n.key}
+          className={cn(
+            "flex h-[30px] min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-sm pr-2 pl-1 text-left text-[13px]/none outline-none focus-visible:focus-ring",
+            on ? "bg-surface font-semibold text-fg-strong shadow-e1" : "text-fg-primary hover:bg-hover",
+            n.folder && !on && "font-semibold text-fg-secondary",
+          )}
+        >
+          <Icon className={cn("size-3.5 shrink-0", n.folder || kids ? "text-fg-brand" : "text-fg-muted")} />
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="truncate">{n.title}</span>
+            {path ? <span className="truncate text-[11px]/none font-normal text-fg-muted">{path}</span> : null}
+          </span>
+          {drafts[n.key] ? <span title={n.doc ? t("docs.draftLocal") : t("docs.unsavedPage")} className="size-1.5 shrink-0 rounded-full bg-warning-solid" /> : null}
+          {kids && !expanded ? <span className="text-[11px]/none font-normal text-fg-muted">{n.children.length}</span> : null}
+        </button>
+        {canCreateHere && n.doc && !virtual && !path ? (
+          <button
+            type="button"
+            aria-label={t("docs.addUnder", { title: n.title })}
+            title={t("docs.addUnder", { title: n.title })}
+            onClick={() => startCreate("page", n.key)}
+            className="absolute right-1 hidden size-6 cursor-pointer place-items-center rounded-xs bg-surface text-fg-muted shadow-e1 outline-none group-hover:grid hover:text-fg-strong focus-visible:grid focus-visible:focus-ring"
+          >
+            <Plus className="size-3.5" />
+          </button>
+        ) : null}
+      </div>
     );
   };
+  const branch = (list: TreeNode[], depth: number): ReactNode[] =>
+    list.flatMap((n) => {
+      const out: ReactNode[] = [row(n, depth)];
+      if (n.children.length && isOpen(n, depth)) {
+        const all = more[n.key] || n.children.length <= FOLDER_PAGE + 2;
+        out.push(...branch(all ? n.children : n.children.slice(0, FOLDER_PAGE), depth + 1));
+        if (!all) {
+          out.push(
+            <button
+              key={`${n.key}-more`}
+              type="button"
+              onClick={() => setMore((m) => ({ ...m, [n.key]: true }))}
+              style={{ paddingLeft: (depth + 1) * 14 + 26 }}
+              className="flex h-7 cursor-pointer items-center gap-1.5 rounded-sm text-left text-xs font-medium text-fg-link outline-none hover:bg-hover focus-visible:focus-ring"
+            >
+              <Plus className="size-3" />
+              {t("docs.showMore", { count: n.children.length - FOLDER_PAGE })}
+            </button>,
+          );
+        }
+      }
+      return out;
+    });
+
+  const parentTitle = creating?.parent ? (nodes.find((n) => n.key === creating.parent)?.title ?? creating.parent) : null;
+  const selectedNode = selected ? nodes.find((n) => n.key === selected) : undefined;
 
   return (
     <div className="flex h-full min-h-0 w-full bg-surface">
-      <div className="flex min-w-[190px] shrink basis-[250px] flex-col border-r border-line-subtle bg-subtle">
+      <div className="flex min-w-[200px] shrink basis-[260px] flex-col border-r border-line-subtle bg-subtle">
         <div className="flex shrink-0 flex-col gap-2 border-b border-line-subtle px-3 py-2.5">
           {spaces.length <= 3 ? (
             <Seg
@@ -213,6 +333,7 @@ export function DocsPage() {
               onChange={(v) => {
                 setSpaceId(v);
                 setSelected(null);
+                setCreating(null);
               }}
             />
           ) : (
@@ -224,6 +345,7 @@ export function DocsPage() {
               onChange={(e) => {
                 setSpaceId(e.target.value);
                 setSelected(null);
+                setCreating(null);
               }}
               aria-label={t("docs.list")}
             >
@@ -238,54 +360,59 @@ export function DocsPage() {
         </div>
         <div role="tree" aria-label={t("docs.list")} className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-1.5">
           <ErrorNote error={list.error} />
-          {tree.map((row) =>
-            "folder" in row ? (
-              <div key={`f-${row.folder}`} className="flex flex-col gap-px">
-                <button
-                  type="button"
-                  aria-expanded={!collapsed[row.folder]}
-                  onClick={() => setCollapsed((c) => ({ ...c, [row.folder]: !c[row.folder] }))}
-                  className="flex h-[30px] shrink-0 cursor-pointer items-center gap-[5px] rounded-sm px-1 text-left text-xs/none font-semibold text-fg-secondary outline-none hover:bg-hover focus-visible:focus-ring"
-                >
-                  {collapsed[row.folder] ? <ChevronRight className="size-3 text-fg-muted" /> : <ChevronDown className="size-3 text-fg-muted" />}
-                  {collapsed[row.folder] ? <Folder className="size-3.5 text-fg-brand" /> : <FolderOpen className="size-3.5 text-fg-brand" />}
-                  <span className="min-w-0 flex-1 truncate">{row.folder}</span>
-                  <span className="pr-1 text-[11px]/none font-normal text-fg-muted">{row.docs.length}</span>
-                </button>
-                {collapsed[row.folder] ? null : row.docs.map((d) => pageRow(d, true))}
-              </div>
-            ) : (
-              pageRow(row, false)
-            ),
-          )}
-          {!list.loading && !pages.length ? <p className="m-0 px-2 py-4 text-center text-xs text-fg-muted">{q ? t("docs.noMatch") : t("docs.none")}</p> : null}
+          {needle ? hits.map((n) => row(n, 0, n.path.join(" / ") || undefined)) : branch(tree, 0)}
+          {!list.loading && !(needle ? hits.length : nodes.length) ? <p className="m-0 px-2 py-4 text-center text-xs text-fg-muted">{q ? t("docs.noMatch") : t("docs.none")}</p> : null}
         </div>
         <div className="flex shrink-0 flex-col gap-1.5 border-t border-line-subtle px-3 py-2">
           {creating ? (
             <div className="flex flex-col gap-1.5 rounded-md border border-line-selected bg-surface p-2">
-              <span className="text-[11px]/4 font-semibold text-fg-muted">{t("docs.newDoc")}</span>
+              <span className="text-[11px]/4 font-semibold text-fg-muted">
+                {creating.kind === "folder"
+                  ? parentTitle
+                    ? t("docs.newFolderIn", { parent: parentTitle })
+                    : t("docs.newFolderTop", { space: space?.label ?? "" })
+                  : parentTitle
+                    ? t("docs.newPageIn", { parent: parentTitle })
+                    : t("docs.newPageTop", { space: space?.label ?? "" })}
+              </span>
               <Input
                 autoFocus
-                className="h-7 font-mono text-xs"
-                placeholder="vd: security"
-                autoCapitalize="none"
-                spellCheck={false}
-                value={newSlug}
+                className="h-7 text-xs"
+                placeholder={creating.kind === "folder" ? t("docs.folderPlaceholder") : t("docs.pagePlaceholder")}
+                value={creating.title}
                 aria-invalid={newError ? true : undefined}
-                onChange={(e) => setNewSlug(e.target.value.toLowerCase())}
+                onChange={(e) => setCreating({ ...creating, title: e.target.value })}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") createDoc();
-                  if (e.key === "Escape") setCreating(false);
+                  if (e.key === "Enter") doCreate();
+                  if (e.key === "Escape") setCreating(null);
                 }}
-                aria-label={t("docs.slug")}
+                aria-label={t("docs.docTitle")}
               />
-              <span className="font-mono text-[11px] break-all text-fg-muted">{keyPrefix + (newSlug.trim() || `<${t("docs.slugPlaceholder")}>`)}</span>
-              <ErrorNote error={newError} />
+              {creating.slug !== null ? (
+                <Input
+                  className="h-7 font-mono text-xs"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  value={creating.slug}
+                  onChange={(e) => setCreating({ ...creating, slug: e.target.value.toLowerCase() })}
+                  onKeyDown={(e) => e.key === "Enter" && doCreate()}
+                  aria-label={t("docs.slug")}
+                />
+              ) : null}
+              <span className="flex items-center gap-1.5 font-mono text-[11px] break-all text-fg-muted">
+                <span className="min-w-0 flex-1">{prefix + (slugFor(creating) || `<${t("docs.slugPlaceholder")}>`)}</span>
+                {creating.slug === null ? (
+                  <button type="button" onClick={() => setCreating({ ...creating, slug: slugFor(creating) })} className="cursor-pointer font-sans text-fg-link hover:underline">
+                    {t("docs.editSlug")}
+                  </button>
+                ) : null}
+              </span>
+              <ErrorNote error={newError ?? create.error} />
               <div className="flex justify-end gap-1.5">
-                <Button size="xs" variant="ghost" onClick={() => setCreating(false)}>
+                <Button size="xs" variant="ghost" onClick={() => setCreating(null)}>
                   {t("docs.cancelNew")}
                 </Button>
-                <Button size="xs" onClick={createDoc} disabled={!newSlug.trim()}>
+                <Button size="xs" onClick={doCreate} disabled={!creating.title.trim() || create.busy}>
                   {t("docs.create")}
                 </Button>
               </div>
@@ -294,9 +421,14 @@ export function DocsPage() {
           <div className="flex items-center gap-1.5">
             <span className="flex-1 text-[11px] text-fg-muted">{t("docs.pageCount", { count: space?.docs.length ?? 0 })}</span>
             {canCreateHere && !creating ? (
-              <Button size="sm" variant="outline" onClick={() => setCreating(true)}>
-                {t("docs.newPage")}
-              </Button>
+              <>
+                <Button size="icon-sm" variant="ghost" aria-label={t("docs.newFolder")} title={t("docs.newFolder")} onClick={() => startCreate("folder", null)}>
+                  <FolderPlus />
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => startCreate("page", selectedNode?.folder ? selectedNode.key : null)}>
+                  {t("docs.newPage")}
+                </Button>
+              </>
             ) : null}
           </div>
         </div>
@@ -311,6 +443,11 @@ export function DocsPage() {
             draft={drafts[selected] ?? null}
             setDraft={(d) => setDraft(selected, d)}
             onSaved={list.reload}
+            tree={tree}
+            titles={titles}
+            spaceLabel={space?.label ?? ""}
+            onPick={setSelected}
+            onNew={(parent) => startCreate("page", parent)}
           />
         ) : (
           <div className="grid flex-1 place-items-center p-6 text-[13px] text-fg-muted">{t("docs.pick")}</div>
@@ -320,8 +457,8 @@ export function DocsPage() {
   );
 }
 
-type MdId = "heading" | "bold" | "italic" | "code" | "list" | "quote" | "table" | "link";
-const MD_ICON: Record<MdId, typeof Bold> = { heading: Heading2, bold: Bold, italic: Italic, code: Code, list: List, quote: Quote, table: Table, link: Link2 };
+type MdId = "heading" | "bold" | "italic" | "code" | "list" | "quote" | "table" | "link" | "image";
+const MD_ICON: Record<MdId, typeof Bold> = { heading: Heading2, bold: Bold, italic: Italic, code: Code, list: List, quote: Quote, table: Table, link: Link2, image: ImageIcon };
 const MD_TOOLS: Array<{ id: MdId; pre: string; post?: string; line?: boolean } | "sep"> = [
   { id: "heading", pre: "## ", line: true },
   { id: "bold", pre: "**", post: "**" },
@@ -332,8 +469,11 @@ const MD_TOOLS: Array<{ id: MdId; pre: string; post?: string; line?: boolean } |
   { id: "quote", pre: "> ", line: true },
   { id: "table", pre: "" },
   "sep",
-  { id: "link", pre: "[", post: "](org/)" },
+  { id: "link", pre: "" },
+  { id: "image", pre: "" },
 ];
+
+type Panel = "files" | "history" | null;
 
 function DocView({
   docKey,
@@ -342,6 +482,11 @@ function DocView({
   draft,
   setDraft,
   onSaved,
+  tree,
+  titles,
+  spaceLabel,
+  onPick,
+  onNew,
 }: {
   docKey: string;
   canEdit: boolean;
@@ -349,6 +494,11 @@ function DocView({
   draft: DocDraft | null;
   setDraft: (d: DocDraft | null) => void;
   onSaved: () => void;
+  tree: TreeNode[];
+  titles: ReadonlyMap<string, string>;
+  spaceLabel: string;
+  onPick: (key: string) => void;
+  onNew: (parent: string) => void;
 }) {
   const { client } = useHive();
   const t = useT();
@@ -357,12 +507,19 @@ function DocView({
   const current: Doc | null = doc.data ?? null;
   const writer = canEdit || canPropose;
   const [mode, setMode] = useState<Mode>("view");
-  const [hist, setHist] = useState(false);
+  const [panel, setPanel] = useState<Panel>(null);
   const [compare, setCompare] = useState<number | null>(null);
   const [showDiff, setShowDiff] = useState(false);
+  const [picker, setPicker] = useState(false);
   const action = useAction();
+  const upload = useAction();
   const area = useRef<HTMLTextAreaElement>(null);
+  const imageInput = useRef<HTMLInputElement>(null);
   const org = docKey.startsWith("org/");
+  const files = useDocAssets(docKey);
+  const links = useQuery(async () => (current ? client.call("docs.links", { key: docKey }).catch(() => null) : null), [client, docKey, current?.version]);
+  const path = useMemo(() => trail(tree, docKey), [tree, docKey]);
+  const node = path.at(-1);
 
   // A page that does not exist yet opens in edit mode; one with a draft opens where the draft can be seen.
   useEffect(() => {
@@ -377,7 +534,25 @@ function DocView({
   const stale = draft !== null && current !== null && current.version > draft.baseVersion;
   const edit = (patch: Partial<DocDraft>) => {
     const next = { ...work, ...patch, savedAt: new Date().toISOString() };
-    setDraft(sameAsDoc(next, current) && !next.note ? null : next);
+    // A new page keeps its draft (and so its place in the tree) until it is saved.
+    setDraft(sameAsDoc(next, current) && !next.note && current ? null : next);
+  };
+  // Uploads finish later: they insert into the draft as it is by then.
+  const latest = useRef({ work, edit });
+  latest.current = { work, edit };
+  const insertAt = (md: string, sel?: { start: number; end: number }) => {
+    const { work: w, edit: e } = latest.current;
+    const el = area.current;
+    const start = sel?.start ?? el?.selectionStart ?? w.content.length;
+    const end = sel?.end ?? el?.selectionEnd ?? start;
+    const before = w.content.slice(0, start);
+    const pad = before && !before.endsWith("\n") && md.startsWith("!") ? "\n" : "";
+    const res = insertMd(w.content, start, end, pad + md);
+    e({ content: res.text });
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(res.start, res.start);
+    });
   };
 
   const save = () =>
@@ -392,29 +567,37 @@ function DocView({
       }
     });
   const send = async () => {
-    {
-      if (canEdit) {
-        const result = await client.call("docs.save", {
-          key: docKey,
-          content: work.content,
-          title: work.title.trim() || undefined,
-          includeInAgents: org ? work.includeInAgents : undefined,
-          paths: wholeRepo(docKey) ? undefined : parsePaths(work.paths),
-          note: work.note.trim() || undefined,
-          baseVersion: current?.version ?? 0,
-        });
-        toast(t("docs.savedToast", { doc: work.title || docKey, version: result.version }));
-      } else {
-        // Contributors send the change as a proposal for someone who manages the project to approve.
-        await client.call("proposals.create", { docKey, baseVersion: current?.version ?? 0, content: work.content, reason: work.note.trim() || t("docs.proposeDefaultReason") });
-        toast(t("docs.proposedToast", { doc: work.title || docKey }));
-      }
-      setDraft(null);
-      setShowDiff(false);
-      setMode("view");
-      doc.reload();
-      onSaved();
+    if (canEdit) {
+      const result = await client.call("docs.save", {
+        key: docKey,
+        content: work.content,
+        title: work.title.trim() || undefined,
+        includeInAgents: org ? work.includeInAgents : undefined,
+        paths: wholeRepo(docKey) ? undefined : parsePaths(work.paths),
+        note: work.note.trim() || undefined,
+        baseVersion: current?.version ?? 0,
+        ...(!current && work.parent ? { parent: work.parent } : {}),
+      });
+      toast(t("docs.savedToast", { doc: work.title || docKey, version: result.version }));
+    } else {
+      // Contributors send the change as a proposal for someone who manages the project to approve.
+      await client.call("proposals.create", { docKey, baseVersion: current?.version ?? 0, content: work.content, reason: work.note.trim() || t("docs.proposeDefaultReason") });
+      toast(t("docs.proposedToast", { doc: work.title || docKey }));
     }
+    setDraft(null);
+    setShowDiff(false);
+    setMode("view");
+    doc.reload();
+    onSaved();
+  };
+
+  const move = (parent: string | null) => {
+    if (!current) return edit({ parent });
+    void action.run(async () => {
+      await client.call("docs.move", { key: docKey, parent });
+      toast(t("docs.moved", { doc: current.title, parent: parent ? (titles.get(parent) ?? parent) : spaceLabel }));
+      onSaved();
+    });
   };
 
   // ⌘S saves (or proposes) the draft.
@@ -422,23 +605,31 @@ function DocView({
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        if (dirty && writer && !action.busy) void save();
+        if ((dirty || (!current && draft)) && writer && !action.busy) void save();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  const uploadFiles = (list: File[], sel?: { start: number; end: number }) =>
+    void upload.run(async () => {
+      for (const f of list) {
+        const { markdown } = await uploadDocAsset(client, docKey, f, t("errors.chatFileTooBig", { name: f.name, mb: DOC_ASSET_MAX_BYTES / 1024 / 1024 }));
+        insertAt(markdown, sel);
+        sel = undefined;
+      }
+      toast(t("docs.uploaded", { count: list.length }));
+      files.reload();
+    });
+
   const tool = (spec: Exclude<(typeof MD_TOOLS)[number], "sep">) => {
+    if (spec.id === "link") return setPicker((p) => !p);
+    if (spec.id === "image") return imageInput.current?.click();
     const el = area.current;
     const start = el?.selectionStart ?? work.content.length;
     const end = el?.selectionEnd ?? work.content.length;
-    const res =
-      spec.id === "table"
-        ? insertMd(work.content, start, end, `\n${t("docs.mdTable")}\n`)
-        : spec.id === "link" && start === end
-          ? insertMd(work.content, start, end, `[${t("docs.mdLinkText")}`, spec.post)
-          : insertMd(work.content, start, end, spec.pre, spec.post ?? "", spec.line);
+    const res = spec.id === "table" ? insertMd(work.content, start, end, `\n${t("docs.mdTable")}\n`) : insertMd(work.content, start, end, spec.pre, spec.post ?? "", spec.line);
     edit({ content: res.text });
     requestAnimationFrame(() => {
       el?.focus();
@@ -448,6 +639,13 @@ function DocView({
 
   const editing = mode !== "view" && writer;
   const previewing = mode !== "edit" || !writer;
+  const context: DocContext = useMemo(() => ({ key: docKey, titles, href: (k) => docHref(k) }), [docKey, titles]);
+  const broken = useMemo(() => {
+    const exists = (k: string) => titles.has(k);
+    return docLinkRefs(work.content).filter((r) => resolveDocLink(r.target, docKey, exists)?.exists === false).length;
+  }, [work.content, docKey, titles]);
+  const images = (files.data ?? []).filter((f) => f.type.startsWith("image/")).length;
+  const children = node?.children.filter((c) => c.doc) ?? [];
 
   let body: ReactNode;
   if (compare !== null) body = <VersionDiff docKey={docKey} version={compare} onClose={() => setCompare(null)} />;
@@ -468,6 +666,29 @@ function DocView({
                   {t("docs.docTitle")}
                 </label>
                 <Input id="doc-title" className="h-7 text-[13px]" value={work.title} readOnly={!canEdit} onChange={(e) => edit({ title: e.target.value })} />
+                {canEdit && !docKey.includes("/skills/") ? (
+                  <>
+                    <label htmlFor="doc-parent" className="text-xs text-fg-muted">
+                      {t("docs.parent")}
+                    </label>
+                    <NativeSelect
+                      id="doc-parent"
+                      size="sm"
+                      wrapperClassName="w-full"
+                      value={(current ? current.parent : work.parent) ?? ""}
+                      disabled={action.busy}
+                      onChange={(e) => move(e.target.value || null)}
+                    >
+                      <NativeSelectOption value="">{t("docs.parentTop", { space: spaceLabel })}</NativeSelectOption>
+                      {parentChoices(tree, docKey).map((n) => (
+                        <NativeSelectOption key={n.key} value={n.key}>
+                          {"  ".repeat(n.path.length)}
+                          {n.title}
+                        </NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                  </>
+                ) : null}
                 {wholeRepo(docKey) ? null : (
                   <>
                     <label htmlFor="doc-paths" className="text-xs text-fg-muted" title={t("docs.pathsHint")}>
@@ -515,6 +736,20 @@ function DocView({
               ref={area}
               value={work.content}
               onChange={(e) => edit({ content: e.target.value })}
+              // An image pasted or dropped here is attached to the page and shown where it landed.
+              onPaste={(e) => {
+                const list = [...e.clipboardData.files];
+                if (!list.length) return;
+                e.preventDefault();
+                uploadFiles(list);
+              }}
+              onDragOver={(e) => e.dataTransfer.types.includes("Files") && e.preventDefault()}
+              onDrop={(e) => {
+                const list = [...e.dataTransfer.files];
+                if (!list.length) return;
+                e.preventDefault();
+                uploadFiles(list);
+              }}
               spellCheck={false}
               aria-label={t("docs.content")}
               placeholder={t("docs.contentPlaceholder")}
@@ -524,31 +759,59 @@ function DocView({
         ) : null}
         {previewing ? (
           <div className="min-w-[280px] flex-1 overflow-y-auto">
-            <div className="mx-auto max-w-[720px] px-8 pt-6 pb-12">
-              {work.content.trim() ? <DocMarkdown text={work.content} /> : <p className="m-0 text-[15px] text-fg-muted">{t("docs.empty")}</p>}
+            <div className="mx-auto flex max-w-[720px] flex-col gap-6 px-8 pt-6 pb-12">
+              {work.content.trim() ? (
+                <DocMarkdown text={work.content} doc={context} />
+              ) : children.length || node?.folder ? null : (
+                <p className="m-0 text-[15px] text-fg-muted">{t("docs.empty")}</p>
+              )}
+              {children.length || (node?.folder && canEdit) ? (
+                <ChildPages nodes={children} onPick={onPick} onNew={canEdit && node?.doc ? () => onNew(docKey) : undefined} />
+              ) : null}
             </div>
           </div>
         ) : null}
       </div>
     );
 
+  const chip = "inline-flex h-5 items-center rounded-xs px-[7px] text-[11px]/none font-semibold whitespace-nowrap";
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-[44px] shrink-0 flex-wrap items-center gap-2 border-b border-line-subtle px-4 py-2">
-        <span className="min-w-0 truncate font-mono text-xs/none font-medium text-fg-muted">{docKey}</span>
+        <nav aria-label={t("docs.breadcrumb")} className="flex min-w-0 items-center gap-1 text-xs/none">
+          <span className="shrink-0 font-mono font-medium text-fg-muted">{spaceLabel}</span>
+          {path.slice(0, -1).map((n) => (
+            <span key={n.key} className="flex min-w-0 items-center gap-1">
+              <span className="text-fg-disabled">/</span>
+              <button type="button" onClick={() => n.doc && onPick(n.key)} className="max-w-[160px] cursor-pointer truncate text-fg-secondary hover:text-fg-strong hover:underline">
+                {n.title}
+              </button>
+            </span>
+          ))}
+          <span className="text-fg-disabled">/</span>
+          <span title={docKey} className="min-w-0 truncate font-semibold text-fg-strong">
+            {work.title || current?.title || docKey}
+          </span>
+        </nav>
         {current ? <span className="inline-flex h-5 items-center rounded-xs bg-sunken px-1.5 font-mono text-[11px]/none font-medium text-fg-secondary">v{current.version}</span> : null}
-        {current?.includeInAgents ? (
-          <span className="inline-flex h-5 items-center rounded-xs bg-info-soft px-[7px] text-[11px]/none font-semibold whitespace-nowrap text-info">{t("docs.inAgents")}</span>
-        ) : null}
+        {!current && draft ? <span className={cn(chip, "bg-warning-soft text-warning")}>{t("docs.unsavedPage")}</span> : null}
+        {current?.includeInAgents ? <span className={cn(chip, "bg-info-soft text-info")}>{t("docs.inAgents")}</span> : null}
         {draft?.queued ? (
-          <span title={t("docs.queuedHint")} className="inline-flex h-5 items-center rounded-xs bg-warning-soft px-[7px] text-[11px]/none font-semibold whitespace-nowrap text-warning">
+          <span title={t("docs.queuedHint")} className={cn(chip, "bg-warning-soft text-warning")}>
             {t("docs.queued")}
           </span>
         ) : null}
         {current?.paths?.length ? (
-          <span title={current.paths.join(", ")} className="inline-flex h-5 items-center rounded-xs bg-info-soft px-[7px] text-[11px]/none font-semibold whitespace-nowrap text-info">
+          <span title={current.paths.join(", ")} className={cn(chip, "bg-info-soft text-info")}>
             {t("docs.pathsChip", { count: current.paths.length })}
           </span>
+        ) : null}
+        {images ? <span className={cn(chip, "bg-sunken text-fg-secondary")}>{t("docs.imagesChip", { count: images })}</span> : null}
+        {broken ? <span className={cn(chip, "bg-danger-soft text-danger")}>{t("docs.brokenChip", { count: broken })}</span> : null}
+        {links.data?.back.length ? (
+          <a href={docHref(docKey, "read")} className={cn(chip, "bg-sunken text-fg-secondary hover:text-fg-strong")}>
+            {t("docs.backlinksChip", { count: links.data.back.length })}
+          </a>
         ) : null}
         <span className="flex-1" />
         {writer ? (
@@ -567,15 +830,45 @@ function DocView({
           />
         ) : null}
         {current ? (
-          <Button size="sm" variant="outline" aria-pressed={hist} className={cn(hist && "bg-selected")} onClick={() => setHist((h) => !h)}>
-            {t("docs.history")}
+          <Button size="sm" variant="outline" asChild>
+            <a href={docHref(docKey, "read")} title={t("docs.openReader")}>
+              <BookOpen />
+              {t("docs.reader")}
+            </a>
           </Button>
         ) : null}
-        {dirty ? (
+        <Button
+          size="sm"
+          variant="outline"
+          aria-pressed={panel === "files"}
+          aria-label={t("docs.attachments")}
+          title={t("docs.attachments")}
+          className={cn("px-2", panel === "files" && "bg-selected")}
+          onClick={() => setPanel((p) => (p === "files" ? null : "files"))}
+        >
+          <Paperclip />
+          {files.data?.length ? files.data.length : null}
+        </Button>
+        {current ? (
+          <Button
+            size="icon-sm"
+            variant="outline"
+            aria-pressed={panel === "history"}
+            aria-label={t("docs.history")}
+            title={t("docs.history")}
+            className={cn(panel === "history" && "bg-selected")}
+            onClick={() => setPanel((p) => (p === "history" ? null : "history"))}
+          >
+            <History />
+          </Button>
+        ) : null}
+        {dirty || (!current && draft) ? (
           <>
-            <Button size="sm" variant="ghost" onClick={() => setShowDiff((v) => !v)} aria-pressed={showDiff}>
-              {showDiff ? t("docs.hideChanges") : t("docs.showChanges")}
-            </Button>
+            {current ? (
+              <Button size="sm" variant="ghost" onClick={() => setShowDiff((v) => !v)} aria-pressed={showDiff}>
+                {showDiff ? t("docs.hideChanges") : t("docs.showChanges")}
+              </Button>
+            ) : null}
             <Button
               size="sm"
               variant="ghost"
@@ -596,36 +889,176 @@ function DocView({
         ) : null}
       </div>
       {editing && compare === null && !showDiff ? (
-        <div role="toolbar" aria-label={t("docs.toolbar")} className="flex shrink-0 items-center gap-0.5 border-b border-line-subtle bg-subtle px-3 py-1">
-          {MD_TOOLS.map((spec, i) => {
-            if (spec === "sep") return <span key={`s${i}`} className="mx-1 h-4 w-px bg-line-default" />;
-            const Icon = MD_ICON[spec.id];
-            return (
-              <button
-                key={spec.id}
-                type="button"
-                onClick={() => tool(spec)}
-                aria-label={t(`docs.md.${spec.id}`)}
-                title={t(`docs.md.${spec.id}`)}
-                className="grid size-7 cursor-pointer place-items-center rounded-[5px] text-fg-secondary outline-none hover:bg-hover hover:text-fg-strong focus-visible:focus-ring"
-              >
-                <Icon className="size-[15px]" />
-              </button>
-            );
-          })}
-          <span className="ml-auto text-[11px]/none text-fg-muted">{dirty ? t("docs.draftLocal") : t("docs.saveShortcut")}</span>
+        <div className="relative shrink-0">
+          <div role="toolbar" aria-label={t("docs.toolbar")} className="flex items-center gap-0.5 border-b border-line-subtle bg-subtle px-3 py-1">
+            {MD_TOOLS.map((spec, i) => {
+              if (spec === "sep") return <span key={`s${i}`} className="mx-1 h-4 w-px bg-line-default" />;
+              const Icon = MD_ICON[spec.id];
+              return (
+                <button
+                  key={spec.id}
+                  type="button"
+                  onClick={() => tool(spec)}
+                  aria-label={t(`docs.md.${spec.id}`)}
+                  title={t(`docs.md.${spec.id}`)}
+                  aria-pressed={spec.id === "link" ? picker : undefined}
+                  disabled={spec.id === "image" && upload.busy}
+                  className={cn(
+                    "grid size-7 cursor-pointer place-items-center rounded-[5px] text-fg-secondary outline-none hover:bg-hover hover:text-fg-strong focus-visible:focus-ring disabled:opacity-50",
+                    spec.id === "link" && picker && "bg-selected text-selected-fg",
+                  )}
+                >
+                  <Icon className="size-[15px]" />
+                </button>
+              );
+            })}
+            <input
+              ref={imageInput}
+              type="file"
+              multiple
+              accept="image/png,image/jpeg,image/gif,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                const list = [...(e.target.files ?? [])];
+                e.target.value = "";
+                if (list.length) uploadFiles(list);
+              }}
+            />
+            <span className="ml-auto text-[11px]/none text-fg-muted">{upload.busy ? t("docs.uploading") : dirty ? t("docs.draftLocal") : t("docs.saveShortcut")}</span>
+          </div>
+          {picker ? (
+            <LinkPicker
+              from={docKey}
+              titles={titles}
+              onClose={() => setPicker(false)}
+              onPick={(target) => {
+                setPicker(false);
+                insertAt(`[[${target}]]`);
+              }}
+            />
+          ) : null}
         </div>
       ) : null}
-      {doc.error ?? action.error ? (
+      {(doc.error ?? action.error ?? upload.error) ? (
         <div className="px-4 pt-3">
-          <ErrorNote error={doc.error ?? action.error} />
+          <ErrorNote error={doc.error ?? action.error ?? upload.error} />
         </div>
       ) : null}
       <div className="flex min-h-0 flex-1">
         {body}
-        {hist && current ? <HistoryPanel docKey={docKey} version={current.version} selected={compare} onPick={setCompare} /> : null}
+        {panel === "history" && current ? <HistoryPanel docKey={docKey} version={current.version} selected={compare} onPick={setCompare} /> : null}
+        {panel === "files" ? (
+          <aside className="flex w-[270px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-line-subtle p-3">
+            <AttachmentsPanel docKey={docKey} canUpload={writer} canManage={canEdit} onInsert={editing ? (md) => insertAt(md) : undefined} />
+          </aside>
+        ) : null}
       </div>
       {!writer ? <p className="m-0 border-t border-line-subtle bg-subtle px-4 py-2 text-xs text-fg-muted">{t("docs.viewOnly")}</p> : null}
+    </div>
+  );
+}
+
+/** The pages under this one (a folder's content). */
+export function ChildPages({ nodes, onPick, onNew }: { nodes: TreeNode[]; onPick?: (key: string) => void; onNew?: () => void }) {
+  const t = useT();
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="m-0 type-caption text-fg-muted">{t("docs.childPages", { count: nodes.length })}</h2>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2">
+        {nodes.map((n) => {
+          const Icon = n.folder || n.children.length ? Folder : FileText;
+          const inner = (
+            <>
+              <Icon className={cn("size-4 shrink-0", n.folder || n.children.length ? "text-fg-brand" : "text-fg-muted")} />
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="truncate text-[13px] font-medium text-fg-strong">{n.title}</span>
+                <span className="truncate text-[11px] text-fg-muted">
+                  {n.children.length ? t("docs.pageCount", { count: n.children.length }) : n.doc ? `v${n.doc.version} · ${formatTime(n.doc.updatedAt)}` : ""}
+                </span>
+              </span>
+            </>
+          );
+          const cls = "flex min-w-0 cursor-pointer items-center gap-2.5 rounded-md border border-line-subtle bg-surface px-3 py-2.5 text-left outline-none hover:border-line-default hover:bg-hover focus-visible:focus-ring";
+          return onPick ? (
+            <button key={n.key} type="button" onClick={() => onPick(n.key)} className={cls}>
+              {inner}
+            </button>
+          ) : (
+            <a key={n.key} href={docHref(n.key, "read")} className={cls}>
+              {inner}
+            </a>
+          );
+        })}
+        {onNew ? (
+          <button
+            type="button"
+            onClick={onNew}
+            className="flex cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-line-control px-3 py-2.5 text-xs font-medium text-fg-secondary outline-none hover:text-fg-strong focus-visible:focus-ring"
+          >
+            <Plus className="size-3.5" />
+            {t("docs.addChild")}
+          </button>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+/** Pick a page to link to: this space's first, then the team's (Chung); inserts [[slug]] or [[key]]. */
+function LinkPicker({ from, titles, onPick, onClose }: { from: string; titles: ReadonlyMap<string, string>; onPick: (target: string) => void; onClose: () => void }) {
+  const t = useT();
+  const [q, setQ] = useState("");
+  const [at, setAt] = useState(0);
+  const own = keyPrefix(from);
+  const needle = fold(q.trim());
+  const rows = useMemo(
+    () =>
+      [...titles.entries()]
+        .filter(([k]) => k !== from && !k.includes("/skills/") && (k.startsWith(own) || k.startsWith("org/")))
+        .filter(([k, title]) => !needle || fold(`${title} ${k}`).includes(needle))
+        .sort((a, b) => Number(!a[0].startsWith(own)) - Number(!b[0].startsWith(own)) || a[1].localeCompare(b[1]))
+        .slice(0, 40),
+    [titles, from, own, needle],
+  );
+  const target = (k: string) => (k.startsWith(own) ? k.slice(own.length) : k);
+  return (
+    <div className="absolute top-full left-3 z-20 mt-1 flex w-[min(420px,calc(100%-24px))] flex-col gap-1 rounded-lg border border-line-default bg-raised p-2 shadow-e3">
+      <Input
+        autoFocus
+        className="h-8 text-[13px]"
+        value={q}
+        placeholder={t("docs.linkSearch")}
+        aria-label={t("docs.linkSearch")}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setAt(0);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onClose();
+          if (e.key === "ArrowDown") setAt((i) => Math.min(rows.length - 1, i + 1));
+          if (e.key === "ArrowUp") setAt((i) => Math.max(0, i - 1));
+          if (e.key === "Enter" && rows[at]) onPick(target(rows[at]![0]));
+        }}
+      />
+      <div role="listbox" aria-label={t("docs.linkSearch")} className="flex max-h-64 flex-col overflow-y-auto">
+        {rows.map(([k, title], i) => (
+          <button
+            key={k}
+            type="button"
+            role="option"
+            aria-selected={i === at}
+            onMouseEnter={() => setAt(i)}
+            onClick={() => onPick(target(k))}
+            className={cn("flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left outline-none", i === at && "bg-hover")}
+          >
+            <FileText className="size-3.5 shrink-0 text-fg-muted" />
+            <span className="min-w-0 flex-1 truncate text-[13px] text-fg-strong">{title}</span>
+            <span className="shrink-0 font-mono text-[11px] text-fg-muted">{k.startsWith(own) ? target(k) : k}</span>
+          </button>
+        ))}
+        {!rows.length ? <span className="px-2 py-3 text-center text-xs text-fg-muted">{t("docs.noMatch")}</span> : null}
+      </div>
+      <span className="px-1 text-[11px]/4 text-fg-muted">{t("docs.linkHint")}</span>
     </div>
   );
 }
