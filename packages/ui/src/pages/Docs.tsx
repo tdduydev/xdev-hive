@@ -22,6 +22,7 @@ import {
   Paperclip,
   Plus,
   Quote,
+  Sparkles,
   Table,
   X,
 } from "lucide-react";
@@ -33,6 +34,7 @@ import { Input } from "@xdev-hive/ui/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Diff } from "../components/Diff.tsx";
 import { AttachmentsPanel, uploadDocAsset, useDocAssets } from "../components/DocAssets.tsx";
+import { DocAssistant } from "../components/DocAssistant.tsx";
 import { DocMarkdown, docHref, type DocContext } from "../components/DocMarkdown.tsx";
 import { HiddenChars } from "../components/HiddenChars.tsx";
 import { ErrorNote, Notice } from "../components/common.tsx";
@@ -473,7 +475,7 @@ const MD_TOOLS: Array<{ id: MdId; pre: string; post?: string; line?: boolean } |
   { id: "image", pre: "" },
 ];
 
-type Panel = "files" | "history" | null;
+type Panel = "assist" | "files" | "history" | null;
 
 function DocView({
   docKey,
@@ -507,7 +509,8 @@ function DocView({
   const current: Doc | null = doc.data ?? null;
   const writer = canEdit || canPropose;
   const [mode, setMode] = useState<Mode>("view");
-  const [panel, setPanel] = useState<Panel>(null);
+  // A page made just now opens with the assistant beside it.
+  const [panel, setPanel] = useState<Panel>(() => (draft && draft.baseVersion === 0 && !draft.content.trim() ? "assist" : null));
   const [compare, setCompare] = useState<number | null>(null);
   const [showDiff, setShowDiff] = useState(false);
   const [picker, setPicker] = useState(false);
@@ -646,6 +649,23 @@ function DocView({
   }, [work.content, docKey, titles]);
   const images = (files.data ?? []).filter((f) => f.type.startsWith("image/")).length;
   const children = node?.children.filter((c) => c.doc) ?? [];
+  // What the assistant offers as sources: pages linked either way, the page above, the pages below, the team's rules.
+  const related = useMemo(() => {
+    const keys = [
+      ...(links.data?.out.filter((l) => l.exists).map((l) => l.key) ?? []),
+      ...(links.data?.back.map((b) => b.key) ?? []),
+      ...path.slice(0, -1).filter((n) => n.doc).map((n) => n.key),
+      ...children.map((c) => c.key),
+      ...(docKey.startsWith("project/") ? ["org/agent-protocol"] : []),
+    ];
+    return [...new Set(keys)].filter((k) => k !== docKey && titles.has(k)).map((k) => ({ key: k, title: titles.get(k)! }));
+  }, [links.data, path, children, docKey, titles]);
+  const applyAssist = (markdown: string) => {
+    const before = draft;
+    edit({ content: markdown });
+    if (mode === "view" && writer) setMode("split");
+    return () => setDraft(before);
+  };
 
   let body: ReactNode;
   if (compare !== null) body = <VersionDiff docKey={docKey} version={compare} onClose={() => setCompare(null)} />;
@@ -837,6 +857,18 @@ function DocView({
             </a>
           </Button>
         ) : null}
+        {writer ? (
+          <Button
+            size="sm"
+            variant="outline"
+            aria-pressed={panel === "assist"}
+            className={cn(panel === "assist" && "border-line-selected bg-selected text-selected-fg")}
+            onClick={() => setPanel((p) => (p === "assist" ? null : "assist"))}
+          >
+            <Sparkles />
+            {t("docs.assist.button")}
+          </Button>
+        ) : null}
         <Button
           size="sm"
           variant="outline"
@@ -947,6 +979,11 @@ function DocView({
       <div className="flex min-h-0 flex-1">
         {body}
         {panel === "history" && current ? <HistoryPanel docKey={docKey} version={current.version} selected={compare} onPick={setCompare} /> : null}
+        {panel === "assist" && writer ? (
+          <aside className="flex w-[330px] shrink-0 flex-col border-l border-line-subtle bg-subtle">
+            <DocAssistant docKey={docKey} title={work.title || current?.title || ""} content={work.content} paths={current?.paths ?? parsePaths(work.paths)} related={related} onApply={applyAssist} />
+          </aside>
+        ) : null}
         {panel === "files" ? (
           <aside className="flex w-[270px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-line-subtle p-3">
             <AttachmentsPanel docKey={docKey} canUpload={writer} canManage={canEdit} onInsert={editing ? (md) => insertAt(md) : undefined} />

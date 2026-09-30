@@ -29,7 +29,10 @@ import {
   type ChatThread,
   type Doc,
   type DocAsset,
+  type DocAssist,
+  type DocAssistJob,
   type DocLinks,
+  DOC_ASSIST_KINDS,
   type DocSummary,
   type DocVersion,
   type HiveSystem,
@@ -172,6 +175,34 @@ export const schemas = {
   /** The file's bytes in base64; a file of the same name on the page is replaced. */
   "docs.assetPut": z.object({ key: docKey, name: z.string().min(1).max(200), data: z.string().min(1).max(Math.ceil((DOC_ASSET_MAX_BYTES * 4) / 3) + 8) }),
   "docs.assetRemove": z.object({ key: docKey, name: z.string().min(1).max(200) }),
+  /**
+   * Asks the writing assistant (roadmap 22k): the page as it is being edited, other pages of its space or the team's,
+   * memory entries, and repo files (paths or globs, read on the machine that writes it).
+   */
+  "docs.assist": z.object({
+    key: docKey,
+    kind: z.enum(DOC_ASSIST_KINDS),
+    prompt: z.string().min(1).max(4000),
+    content,
+    docs: z.array(docKey).max(8).default([]),
+    memory: z.array(id).max(10).default([]),
+    code: z.array(z.string().min(1).max(300)).max(12).default([]),
+  }),
+  "docs.assists": z.object({ key: docKey }),
+  "docs.assistCancel": z.object({ id }),
+  "docs.assistSettle": z.object({ id, outcome: z.enum(["applied", "dropped"]).nullable() }),
+  /** A machine takes one ask to write: of the team's pages, or of a project it has. */
+  "docs.assistTake": z.object({ projects: z.array(project).max(500).default([]), machine: z.string().max(100).optional() }),
+  "docs.assistProgress": z.object({ id }),
+  "docs.assistFinish": z.object({
+    id,
+    status: z.enum(["done", "failed"]),
+    reply: z.string().max(20_000).default(""),
+    markdown: content.nullable().default(null),
+    profile: z.string().max(100).nullable().default(null),
+    costUsd: z.number().min(0).nullable().default(null),
+    error: machineError.nullable().default(null),
+  }),
 
   /** With a project: the skills its agents get (the project's own replace the team's of the same name). Without: every skill. */
   "skills.list": z.object({ project: project.optional() }),
@@ -500,6 +531,13 @@ export interface MethodOutput {
   "docs.assetGet": { asset: DocAsset; data: string } | null;
   "docs.assetPut": DocAsset;
   "docs.assetRemove": { removed: boolean };
+  "docs.assist": DocAssist;
+  "docs.assists": DocAssist[];
+  "docs.assistCancel": DocAssist;
+  "docs.assistSettle": DocAssist;
+  "docs.assistTake": DocAssistJob | null;
+  "docs.assistProgress": { cancelled: boolean };
+  "docs.assistFinish": { ok: boolean };
   "skills.list": SkillSummary[];
   "proposals.list": Proposal[];
   "proposals.create": Proposal;
@@ -592,6 +630,13 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "docs.assetGet": "viewer",
   "docs.assetPut": "agent",
   "docs.assetRemove": "agent",
+  "docs.assist": "agent",
+  "docs.assists": "viewer",
+  "docs.assistCancel": "agent",
+  "docs.assistSettle": "agent",
+  "docs.assistTake": "agent",
+  "docs.assistProgress": "agent",
+  "docs.assistFinish": "agent",
   "skills.list": "viewer",
   "proposals.list": "viewer",
   "proposals.create": "agent",

@@ -53,6 +53,47 @@ export interface DocAsset {
   createdAt: string;
 }
 
+/** What the writing assistant is asked for (roadmap 22k): the panel's quick asks, or free text. */
+export const DOC_ASSIST_KINDS = ["draft", "code", "check", "summary", "free"] as const;
+export type DocAssistKind = (typeof DOC_ASSIST_KINDS)[number];
+export const DOC_ASSIST_STATUSES = ["pending", "running", "done", "failed", "cancelled", "expired"] as const;
+export type DocAssistStatus = (typeof DOC_ASSIST_STATUSES)[number];
+
+/** One ask of the writing assistant on a page: a machine writes it with one of its Claude profiles. */
+export interface DocAssist {
+  id: number;
+  docKey: string;
+  project: string | null;
+  kind: DocAssistKind;
+  prompt: string;
+  /** What it was given to work from: "doc:<key>", "memory:<id>", "code:<path or glob>" (the page itself always). */
+  sources: string[];
+  status: DocAssistStatus;
+  /** The machine writing it, once one took it. */
+  machine: string | null;
+  profile: string | null;
+  /** Its short answer: what it changed and from which sources. */
+  reply: string;
+  /** The whole page as it proposes it; null: no change to the page. */
+  markdown: string | null;
+  /** The page it started from (the draft at the time): the diff is against this. */
+  base: string;
+  error: { message: string; key?: string; vars?: Record<string, string | number> } | null;
+  costUsd: number | null;
+  /** What the person did with the proposal. */
+  outcome: "applied" | "dropped" | null;
+  requestedBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** What a machine gets to write an ask: the page's title, the sources' text, and repo files to read itself. */
+export interface DocAssistJob extends DocAssist {
+  title: string;
+  context: string;
+  code: string[];
+}
+
 /** A page's links (docs.links): the pages it links to, those that link to it, and memory that names it. */
 export interface DocLinks {
   /** exists false: a broken link (the page was never made, or has another key). */

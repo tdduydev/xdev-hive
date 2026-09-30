@@ -57,6 +57,7 @@ import { claudeMcpServers, codexMcpArgs, hubMcpEnv, type McpRun } from "./contai
 import { deniedHosts, egressAllow, egressPlan, type Egress } from "./egress.ts";
 import { buildCommand, buildPrompt, describeCommand, expandEnv, expandHome, parsePick, resolveBin, type JudgeCandidate } from "./command.ts";
 import { detectRateLimit } from "./rate-limit.ts";
+import { AssistWorker } from "./assist.ts";
 import { ChatWorker } from "./chat.ts";
 import { killTree } from "./kill.ts";
 import { ClaudeStream } from "./stream.ts";
@@ -141,6 +142,8 @@ export interface RunnerOptions {
   chatPollMs?: number;
   /** How often a chat reply being written is reported to the hub. */
   chatProgressMs?: number;
+  /** How often to ask for the Docs writing assistant's asks (0: never by itself; see pollAssists). */
+  assistPollMs?: number;
   /** App version shown on the hub's machine list. */
   version?: string;
   /** Rest for a profile whose CLI is missing, so rotation skips it for a while. */
@@ -244,6 +247,9 @@ export class Runner {
   #chatTimer: NodeJS.Timeout | undefined;
   /** Writes the web chat's replies (see chat.ts). */
   readonly #chats: ChatWorker;
+  /** Writes the Docs writing assistant's asks (see assist.ts). */
+  readonly #assists: AssistWorker;
+  #assistTimer: NodeJS.Timeout | undefined;
   /** The hub does not know chat.poll yet: heartbeats bring the chat replies instead. */
   #chatPollOff = false;
   #hubState: { ok: boolean | null; checkedAt: string | null; lastOkAt: string | null; code: string | null; error: string | null } = {
@@ -273,6 +279,7 @@ export class Runner {
       pushMs: 5000,
       chatPollMs: 3000,
       chatProgressMs: 2000,
+      assistPollMs: 4000,
       version: "",
       unavailableCooldownMinutes: 10,
       ...opts,
@@ -289,6 +296,22 @@ export class Runner {
         hubUrl: () => this.#host.hub?.()?.url ?? null,
         ...(this.#host.download ? { download: (url: string, token: string) => this.#host.download!(url, token) } : {}),
         // As the Board would see it: signed out, resting (here or on the hub), or at its plan's stop threshold.
+        unavailable: (id) => {
+          const p = this.profileStatuses().find((x) => x.id === id);
+          const profile = this.#host.profiles().find((x) => x.id === id);
+          return !p || p.login?.loggedIn === false || (p.cooldownUntil !== null && p.cooldownUntil > this.#iso()) || (!!profile && usageStop(profile, p.usage) !== null);
+        },
+      },
+      { dataDir: opts.dataDir, progressMs: this.#opts.chatProgressMs },
+    );
+    this.#assists = new AssistWorker(
+      {
+        backend: () => this.#host.backend(),
+        actor: () => this.#runnerActor(),
+        profiles: () => this.#host.profiles(),
+        projects: () => this.#host.projects(),
+        machine: () => this.#host.machine(),
+        env: () => this.#host.env(),
         unavailable: (id) => {
           const p = this.profileStatuses().find((x) => x.id === id);
           const profile = this.#host.profiles().find((x) => x.id === id);
@@ -316,6 +339,10 @@ export class Runner {
     if (this.#opts.chatPollMs > 0) {
       this.#chatTimer = setInterval(() => void this.pollChats().catch(() => undefined), this.#opts.chatPollMs);
       this.#chatTimer.unref();
+    }
+    if (this.#opts.assistPollMs > 0) {
+      this.#assistTimer = setInterval(() => void this.pollAssists().catch(() => undefined), this.#opts.assistPollMs);
+      this.#assistTimer.unref();
     }
     beat();
     void this.tick();
@@ -345,9 +372,11 @@ export class Runner {
     clearInterval(this.#heartbeatTimer);
     clearInterval(this.#pushTimer);
     clearInterval(this.#chatTimer);
+    clearInterval(this.#assistTimer);
     for (const id of this.#live.keys()) this.cancel(id);
     this.#chats.stop();
-    await Promise.allSettled([...this.#inflight, this.#chats.settle()]);
+    this.#assists.stop();
+    await Promise.allSettled([...this.#inflight, this.#chats.settle(), this.#assists.settle()]);
   }
 
   /** Resolves once nothing is running and no queued run can start. For tests and graceful quit. */
@@ -647,6 +676,20 @@ export class Runner {
       if (err instanceof HiveError && err.code === "bad_request" && /unknown method/i.test(err.message)) this.#chatPollOff = true;
       throw err;
     }
+  }
+
+  /**
+   * Takes an ask of the Docs writing assistant: from the hub while the user lets it take runs, else from this app's own
+   * database. True when it took one.
+   */
+  pollAssists(): Promise<boolean> {
+    if (this.#host.mode() === "hub" && !this.#host.settings().acceptHubRuns) return Promise.resolve(false);
+    return this.#assists.poll();
+  }
+
+  /** Resolves once the ask being written has ended. For tests. */
+  settleAssists(): Promise<void> {
+    return this.#assists.settle();
   }
 
   /** Resolves once the chat replies started so far have ended. For tests. */

@@ -797,6 +797,7 @@ export const vi = {
     memoryMentions: "Memory nhắc tới",
     prevPage: "Trang trước",
     nextPage: "Trang sau",
+    assist: { button: "Trợ lý", title: "Trợ lý viết", assistant: "Trợ lý", sources: "Nguồn · {count}", thisPage: "Trang này", thisPageHint: "Nội dung đang soạn, gồm cả nháp chưa lưu", memory: "Memory #{id}", addFile: "Thêm file hoặc glob trong repo, vd. deploy/*.sh", intro: "Chọn một việc, hoặc gõ yêu cầu bên dưới. Trợ lý trả về bản sửa để bạn áp vào nháp; chưa có gì được lưu.", draftAll: "Viết nháp cả trang", draftAllSub: "Dựng dàn ý và nội dung từ các nguồn đã chọn", draftMore: "Viết tiếp phần còn thiếu", draftMoreSub: "Bổ sung mục còn trống, giữ nguyên phần đã có", code: "Cập nhật theo code mới", codeSub: "Đối chiếu với file đã chọn và các commit gần đây", check: "Kiểm tra mâu thuẫn", checkSub: "Đối chiếu với memory và tài liệu khác", summary: "Tóm tắt cho agent", summarySub: "Rút gọn để đưa vào AGENTS.md", placeholder: "Yêu cầu trợ lý, vd. thêm mục xử lý lỗi…", send: "Gửi", sendHint: "⌘↵ để gửi", where: "Chạy bằng Claude trên {where}; chỉ đọc repo, không sửa.", whereProject: "máy có dự án {project}", whereLocal: "máy này", whereTeam: "một máy nhận việc của hub", waiting: "Đang chờ một máy nhận…", writing: "Đang viết trên {machine}…", cancel: "Huỷ", cancelled: "Đã huỷ.", noReply: "Đã soạn bản sửa.", failed: "Không viết được.", retry: "Thử lại", from: "Dựa trên", changes: "Thay đổi", apply: "Áp dụng vào nháp", drop: "Bỏ", wasApplied: "✓ Đã áp dụng vào nháp", wasDropped: "Đã bỏ đề xuất", moved: "Nháp đã đổi sau khi hỏi", movedHint: "Áp dụng sẽ thay nội dung nháp hiện tại bằng bản của trợ lý", applied: "Đã áp dụng vào nháp. Kiểm tra rồi bấm Lưu để tạo phiên bản mới." },
     saveShortcut: "⌘S để lưu",
   },
   proposals: {
@@ -1730,6 +1731,8 @@ export const vi = {
     commandNotFound: "Không tìm thấy yêu cầu #{id}.",
     docConflict: "{key} đã lên v{current} trong khi bạn sửa từ v{base}. Tải lại rồi áp dụng lại thay đổi.",
     docPathsWholeRepo: "{key} là tài liệu cho cả repo, không giới hạn theo đường dẫn được.",
+    assistNotTaken: "Không máy nào nhận yêu cầu trong 15 phút: cần một máy mở app, có dự án và bật nhận việc từ hub.",
+    assistSilent: "Máy đang viết đã ngừng báo về.",
     docParentSelf: "Trang {key} không nằm trong chính nó được.",
     docParentSkill: "Skill ở trong thư mục Skill: không đặt dưới trang khác, và trang không đặt dưới skill.",
     docParentSpace: "{parent} ở không gian khác với {key}.",

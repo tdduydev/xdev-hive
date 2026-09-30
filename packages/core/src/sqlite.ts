@@ -42,6 +42,8 @@ import type {
   CostTotals,
   Doc,
   DocAsset,
+  DocAssist,
+  DocAssistJob,
   DocLinks,
   DocSummary,
   HiveEvent,
@@ -247,6 +249,16 @@ const MIGRATIONS: string[] = [
     id INTEGER PRIMARY KEY, doc_key TEXT NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL, size INTEGER NOT NULL,
     data BLOB NOT NULL, uploaded_by TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(doc_key, name));
   `,
+  // The writing assistant's asks (roadmap 22k): a machine that takes one writes it with Claude.
+  `
+  CREATE TABLE doc_assists(
+    id INTEGER PRIMARY KEY, doc_key TEXT NOT NULL, project TEXT, kind TEXT NOT NULL, prompt TEXT NOT NULL,
+    sources TEXT NOT NULL, context TEXT NOT NULL, code TEXT NOT NULL, base TEXT NOT NULL, status TEXT NOT NULL,
+    taken_by TEXT, machine TEXT, profile TEXT, reply TEXT NOT NULL DEFAULT '', markdown TEXT, error TEXT, cost_usd REAL,
+    outcome TEXT, requested_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+  CREATE INDEX doc_assists_doc ON doc_assists(doc_key, requested_by);
+  CREATE INDEX doc_assists_status ON doc_assists(status);
+  `,
 ];
 
 /** A leader's reply asks for at most this many actions. */
@@ -440,6 +452,31 @@ const toAsset = (r: Row): DocAsset => ({
   createdAt: str(r.created_at),
 });
 const toDoc = (r: Row): Doc => ({ ...toSummary(r), content: str(r.content) });
+const toAssist = (r: Row): DocAssist => ({
+  id: num(r.id),
+  docKey: str(r.doc_key),
+  project: strOrNull(r.project),
+  kind: str(r.kind) as DocAssist["kind"],
+  prompt: str(r.prompt),
+  sources: JSON.parse(str(r.sources)) as string[],
+  status: str(r.status) as DocAssist["status"],
+  machine: strOrNull(r.machine),
+  profile: strOrNull(r.profile),
+  reply: str(r.reply),
+  markdown: strOrNull(r.markdown),
+  base: str(r.base),
+  error: r.error == null ? null : (JSON.parse(str(r.error)) as DocAssist["error"]),
+  costUsd: r.cost_usd == null ? null : Number(r.cost_usd),
+  outcome: strOrNull(r.outcome) as DocAssist["outcome"],
+  requestedBy: str(r.requested_by),
+  createdAt: str(r.created_at),
+  updatedAt: str(r.updated_at),
+});
+/** How long an ask waits for a machine, or a machine may go silent, before it is given up. */
+const ASSIST_WAIT_MINUTES = 15;
+/** Of the sources' text, at most this much goes to the assistant (per page, and in all). */
+const ASSIST_DOC_CHARS = 20_000;
+const ASSIST_CONTEXT_CHARS = 120_000;
 const toVersion = (r: Row): DocVersion => ({
   key: str(r.key),
   version: num(r.version),
@@ -625,6 +662,11 @@ export interface SqliteHiveOptions {
   embedMinScore?: number;
   /** Injectable clock for tests. */
   now?: () => Date;
+  /**
+   * The database of one machine (the desktop app without a hub): its own runner writes the writing assistant's asks.
+   * On a hub only a machine that takes runs does.
+   */
+  local?: boolean;
 }
 
 type Handlers = { [M in Method]: (input: ParsedInput<M>, actor: Actor) => MethodOutput[M] | Promise<MethodOutput[M]> };
@@ -646,6 +688,7 @@ export class SqliteHive implements HiveBackend {
       onEvent: () => undefined,
       embedder: null,
       embedMinScore: 0.5,
+      local: false,
       ...opts,
     };
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;");
@@ -714,7 +757,10 @@ export class SqliteHive implements HiveBackend {
       // Contributors attach files to what they propose; removing someone else's file takes manage (see the handler).
       case "docs.assetPut":
       case "docs.assetRemove":
+      case "docs.assist":
         return this.#need(actor, owner(i.key), "contribute", `Doc ${i.key}`);
+      case "docs.assists":
+        return this.#need(actor, owner(i.key), "view", `Doc ${i.key}`);
       case "proposals.create":
         return this.#need(actor, owner(i.docKey), "contribute", `Doc ${i.docKey}`);
       case "proposals.approve":
@@ -1212,6 +1258,24 @@ export class SqliteHive implements HiveBackend {
   }
 
   /** Chat replies nobody started in time expire; one gone silent has failed; old threads are dropped. */
+  /** Asks no machine took in time, or whose machine went silent, are given up; a month on they are gone. */
+  #expireAssists(): void {
+    const now = this.#now();
+    const since = this.#now(-ASSIST_WAIT_MINUTES);
+    const expired = JSON.stringify({ message: "No machine took the ask in time.", key: "errors.assistNotTaken" });
+    const silent = JSON.stringify({ message: "The machine stopped reporting.", key: "errors.assistSilent" });
+    this.db.prepare("UPDATE doc_assists SET status = 'expired', error = ?, updated_at = ? WHERE status = 'pending' AND created_at < ?").run(expired, now, since);
+    this.db.prepare("UPDATE doc_assists SET status = 'failed', error = ?, updated_at = ? WHERE status = 'running' AND updated_at < ?").run(silent, now, since);
+    this.db.prepare("DELETE FROM doc_assists WHERE created_at < ?").run(this.#now(-30 * 24 * 60));
+  }
+
+  /** An ask as its machine sees it; only the machine that took it. */
+  #assistFor(id: number, actor: Actor): Row {
+    const row = this.db.prepare("SELECT * FROM doc_assists WHERE id = ?").get(id) as Row | undefined;
+    if (!row || str(row.taken_by ?? "") !== actor.name) throw new HiveError("not_found", `No ask #${id} for this machine.`, { key: "errors.notFound" });
+    return row;
+  }
+
   #expireChats(): void {
     const now = this.#now();
     const since = this.#now(-CHAT_WAIT_MINUTES);
@@ -1457,6 +1521,118 @@ export class SqliteHive implements HiveBackend {
           .filter((m) => levelOn(actor, m.project) !== null)
           .slice(0, 8);
         return { out, back: back.sort((a, b) => a.title.localeCompare(b.title)), memory };
+      },
+
+      "docs.assist": (input, actor) => {
+        const owner = SqliteHive.#docOwner(input.key);
+        assertNoHidden(input.prompt, "Prompt");
+        assertNoSecret(input.prompt, "Prompt");
+        assertNoSecret(input.content, "Page");
+        const parts: string[] = [];
+        const sources = ["page"];
+        let room = ASSIST_CONTEXT_CHARS;
+        const add = (text: string) => {
+          const cut = text.slice(0, room);
+          room -= cut.length;
+          if (cut) parts.push(cut);
+        };
+        for (const k of [...new Set(input.docs)].filter((k) => k !== input.key)) {
+          const o = SqliteHive.#docOwner(k);
+          // Only what the person sees, of the page's own space or the team's.
+          if ((o !== null && o !== owner) || levelOn(actor, o) === null) continue;
+          const d = this.#getDoc(k);
+          if (!d) continue;
+          sources.push(`doc:${k}`);
+          add(`### Tài liệu: ${d.title} (${k})\n${d.content.slice(0, ASSIST_DOC_CHARS)}\n`);
+        }
+        for (const mid of [...new Set(input.memory)]) {
+          const r = db.prepare("SELECT id, project, kind, content FROM memory WHERE id = ?").get(mid) as Row | undefined;
+          if (!r) continue;
+          const p = str(r.project) === SHARED ? null : str(r.project);
+          if ((p !== null && p !== owner) || levelOn(actor, p) === null) continue;
+          sources.push(`memory:${mid}`);
+          add(`### Memory #${mid} (${str(r.kind)})\n${str(r.content)}\n`);
+        }
+        const code = [...new Set(input.code.map((c) => c.trim()).filter((c) => c && !c.startsWith("/") && !c.split("/").includes("..")))];
+        // Files are read on the machine, from the project's repo: a team page has none.
+        if (owner) for (const c of code) sources.push(`code:${c}`);
+        const now = this.#now();
+        const id = num(
+          db
+            .prepare(
+              `INSERT INTO doc_assists(doc_key, project, kind, prompt, sources, context, code, base, status, requested_by, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+            )
+            .run(input.key, owner, input.kind, input.prompt, JSON.stringify(sources), parts.join("\n"), JSON.stringify(owner ? code : []), input.content, actor.name, now, now).lastInsertRowid,
+        );
+        return toAssist(db.prepare("SELECT * FROM doc_assists WHERE id = ?").get(id) as Row);
+      },
+
+      "docs.assists": ({ key }, actor) => {
+        this.#expireAssists();
+        const rows = db.prepare("SELECT * FROM doc_assists WHERE doc_key = ? AND requested_by = ? ORDER BY id DESC LIMIT 30").all(key, actor.name) as Row[];
+        return rows.reverse().map(toAssist);
+      },
+
+      "docs.assistCancel": ({ id: aid }, actor) => {
+        const row = db.prepare("SELECT * FROM doc_assists WHERE id = ?").get(aid) as Row | undefined;
+        if (!row) throw new HiveError("not_found", `No ask #${aid}.`, { key: "errors.notFound" });
+        if (str(row.requested_by) !== actor.name) this.#need(actor, SqliteHive.#docOwner(str(row.doc_key)), "manage", `Ask #${aid}`);
+        db.prepare("UPDATE doc_assists SET status = 'cancelled', updated_at = ? WHERE id = ? AND status IN ('pending', 'running')").run(this.#now(), aid);
+        return toAssist(db.prepare("SELECT * FROM doc_assists WHERE id = ?").get(aid) as Row);
+      },
+
+      "docs.assistSettle": ({ id: aid, outcome }, actor) => {
+        const row = db.prepare("SELECT * FROM doc_assists WHERE id = ?").get(aid) as Row | undefined;
+        if (!row || str(row.requested_by) !== actor.name) throw new HiveError("not_found", `No ask #${aid}.`, { key: "errors.notFound" });
+        db.prepare("UPDATE doc_assists SET outcome = ? WHERE id = ?").run(outcome, aid);
+        return toAssist(db.prepare("SELECT * FROM doc_assists WHERE id = ?").get(aid) as Row);
+      },
+
+      "docs.assistTake": ({ projects, machine }, actor) =>
+        this.#tx(() => {
+          this.#expireAssists();
+          const m = db.prepare("SELECT machine, accepts_runs FROM machines WHERE id = ?").get(actor.name) as Row | undefined;
+          if (!this.#opts.local && !(m && num(m.accepts_runs) === 1)) return null;
+          const have = new Set(projects);
+          const rows = db.prepare("SELECT * FROM doc_assists WHERE status = 'pending' ORDER BY id LIMIT 50").all() as Row[];
+          const row = rows.find((r) => {
+            const p = strOrNull(r.project);
+            return (p === null || have.has(p)) && levelOn(actor, p) !== null;
+          });
+          if (!row) return null;
+          const label = machine?.trim() || (m ? str(m.machine) : actor.name);
+          db.prepare("UPDATE doc_assists SET status = 'running', taken_by = ?, machine = ?, updated_at = ? WHERE id = ?").run(actor.name, label, this.#now(), row.id as number);
+          const taken = db.prepare("SELECT * FROM doc_assists WHERE id = ?").get(row.id as number) as Row;
+          const key = str(taken.doc_key);
+          return {
+            ...toAssist(taken),
+            title: this.#getDoc(key)?.title ?? titleFromSlug(parseDocKey(key).slug),
+            context: str(taken.context),
+            code: JSON.parse(str(taken.code)) as string[],
+          } satisfies DocAssistJob;
+        }),
+
+      "docs.assistProgress": ({ id: aid }, actor) => {
+        const row = this.#assistFor(aid, actor);
+        if (str(row.status) === "running") db.prepare("UPDATE doc_assists SET updated_at = ? WHERE id = ?").run(this.#now(), aid);
+        return { cancelled: str(row.status) === "cancelled" };
+      },
+
+      "docs.assistFinish": ({ id: aid, status, reply, markdown, profile, costUsd, error }, actor) => {
+        const row = this.#assistFor(aid, actor);
+        if (str(row.status) !== "running") return { ok: false };
+        db.prepare("UPDATE doc_assists SET status = ?, reply = ?, markdown = ?, profile = ?, cost_usd = ?, error = ?, updated_at = ? WHERE id = ?").run(
+          status,
+          reply,
+          markdown,
+          profile,
+          costUsd,
+          error ? JSON.stringify(error) : null,
+          this.#now(),
+          aid,
+        );
+        return { ok: true };
       },
 
       "docs.assets": ({ key }) => (db.prepare(`SELECT ${ASSET_FIELDS} FROM doc_assets WHERE doc_key = ? ORDER BY name`).all(key) as Row[]).map(toAsset),
