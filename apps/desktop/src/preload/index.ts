@@ -23,6 +23,8 @@ contextBridge.exposeInMainWorld("hive", {
     addProject: (project: unknown) => invoke("desktop:addProject", project),
     removeProject: (name: string) => invoke("desktop:removeProject", name),
     pickFolder: () => invoke("desktop:pickFolder"),
+    gitlabGroup: (input: unknown) => invoke("desktop:gitlabGroup", input),
+    importGitlab: (input: unknown) => invoke("desktop:importGitlab", input),
     syncProject: (name: string) => invoke("desktop:syncProject", name),
     installAgents: (name: string) => invoke("desktop:installAgents", name),
     installShim: () => invoke("desktop:installShim"),

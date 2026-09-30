@@ -72,6 +72,18 @@ export async function startMockGitLab(token: string): Promise<MockGitLab> {
     if (req.method === "GET" && p === "/api/v4/projects/group%2Fdemo") {
       return send(200, { id: 42, path_with_namespace: "group/demo", default_branch: "main", web_url: `${gl.base}/group/demo` });
     }
+    // Group `group` (roadmap 19a): demo and two more, one in a subgroup.
+    if (req.method === "GET" && p === "/api/v4/groups/group/projects") {
+      const repo = (id: number, full: string) => ({
+        id,
+        name: full.split("/").at(-1),
+        path_with_namespace: full,
+        default_branch: "main",
+        ssh_url_to_repo: `git@127.0.0.1:${full}.git`,
+        http_url_to_repo: `${gl.base}/${full}.git`,
+      });
+      return send(200, [repo(42, "group/demo"), repo(43, "group/auth-service"), repo(44, "group/payments/gateway")]);
+    }
     if (p === "/api/v4/projects/42/merge_requests" && req.method === "GET") {
       return send(200, gl.mrs.filter((m) => m.source_branch === url.searchParams.get("source_branch")));
     }
