@@ -6,6 +6,7 @@
 # Memory search by meaning: COMPOSE_PROFILES=embed and HIVE_EMBED_URL=http://ollama:11434/v1 in deploy/.env
 # start Ollama below (deploy/update.sh pulls HIVE_EMBED_MODEL, default bge-m3). Any OpenAI-compatible
 # /embeddings endpoint works too: HIVE_EMBED_URL + HIVE_EMBED_MODEL (+ HIVE_EMBED_KEY), without the profile.
+# Doc images and files are kept in SeaweedFS below (roadmap 23c); HIVE_SEAWEEDFS_URL= (empty) keeps them in the database.
 services:
   hub:
     build: ..
@@ -32,12 +33,31 @@ services:
       HIVE_OIDC_CLIENT_SECRET: ${HIVE_OIDC_CLIENT_SECRET:-}
       HIVE_OIDC_NAME: ${HIVE_OIDC_NAME:-}
       HIVE_OIDC_SCOPES: ${HIVE_OIDC_SCOPES:-}
+      # Unset: the SeaweedFS below. Files already in the database move there; backups copy them to /data/backups/files.
+      HIVE_SEAWEEDFS_URL: ${HIVE_SEAWEEDFS_URL-http://seaweedfs:8888}
+    depends_on: [seaweedfs]
     volumes:
       - hive-data:/data
       # Snapshots on a different disk than the database survive losing it. Default: same volume.
       - ${HIVE_BACKUP_PATH:-hive-backups}:/data/backups
     expose:
       - "7788"
+
+  # Doc images and files (roadmap 23c): master, volume server and filer in one process. Only the hub reaches it, on this
+  # compose network (nothing is published); the hub uses the filer's HTTP API on 8888.
+  seaweedfs:
+    image: ${HIVE_SEAWEEDFS_IMAGE:-chrislusf/seaweedfs:4.48}
+    restart: unless-stopped
+    command: server -dir=/data -filer -ip=127.0.0.1 -ip.bind=0.0.0.0 -master.volumeSizeLimitMB=1024 -volume.max=0
+    volumes:
+      - seaweedfs-data:/data
+    expose:
+      - "8888"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "-o", "/dev/null", "http://127.0.0.1:8888/"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
 
   # Embeddings on this machine (profile "embed"): only the hub reaches it, nothing is published.
   ollama:
@@ -68,5 +88,6 @@ services:
 volumes:
   hive-data:
   hive-backups:
+  seaweedfs-data:
   caddy-data:
   ollama-data:

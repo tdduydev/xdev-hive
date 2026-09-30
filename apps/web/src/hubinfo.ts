@@ -4,7 +4,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { HiveError, type HubInfo } from "@xdev-hive/core";
 import type { SqliteHive } from "@xdev-hive/core/node";
-import { backupDatabase, type BackupResult } from "./backup.ts";
+import { backupDatabase, backupFiles, type BackupResult, type FilesBackupResult } from "./backup.ts";
 import type { UserStore } from "./users.ts";
 
 export interface HubInfoOptions {
@@ -74,15 +74,17 @@ export class HubInfoSource {
       },
       backup: o.backup ? { dir: o.backup.dir, hours: o.backup.hours, keep: o.backup.keep, last, count: snapshots } : null,
       search: { mode: search.mode, model: search.model, url: o.embedUrl ?? null, indexed: search.indexed, total: search.total, lastError: search.lastError },
+      files: o.hive.filesInfo(),
       sso: o.sso ? { name: o.sso.name, issuer: o.sso.issuer, linked: o.users ? o.users.list().filter((u) => u.sso).length : 0 } : null,
       hosts: { allowed: o.allowedHosts ?? null, publicUrl: o.publicUrl ?? null, trustProxy: o.trustProxy ?? false },
     };
   }
 
-  /** "Backup ngay": a snapshot now, the oldest beyond the kept number removed. */
-  backup(): BackupResult {
+  /** "Backup ngay": a snapshot now, the oldest beyond the kept number removed, and the doc files in the store. */
+  async backup(): Promise<BackupResult & { files: FilesBackupResult | null }> {
     const b = this.#o.backup;
     if (!b) throw new HiveError("bad_request", "Backups are off: set HIVE_BACKUP_DIR.", { key: "errors.backupOff" });
-    return backupDatabase(this.#o.hive.db, { dir: b.dir, keep: b.keep, now: this.#o.now });
+    const r = backupDatabase(this.#o.hive.db, { dir: b.dir, keep: b.keep, now: this.#o.now });
+    return { ...r, files: this.#o.hive.filesInfo().store ? await backupFiles(this.#o.hive, b.dir) : null };
   }
 }

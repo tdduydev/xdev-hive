@@ -1,8 +1,10 @@
 import { DatabaseSync } from "node:sqlite";
+import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { can, levelOn, type Level } from "./access.ts";
 import type { AgentRole } from "./agents.ts";
+import type { BlobStore } from "./blobs.ts";
 import { HiveError, type ErrorText } from "./errors.ts";
 import { agentsDocKey, decisionsDocKey, parseDocKey, titleFromSlug, type ParsedDocKey } from "./keys.ts";
 import { parseSkill, type SkillSummary } from "./skills.ts";
@@ -263,6 +265,13 @@ const MIGRATIONS: string[] = [
   // What a run changed, as its machine last sent it (roadmap 22l): the web shows a run of another machine's diff.
   `
   ALTER TABLE run_records ADD COLUMN patch TEXT;
+  `,
+  // Doc files in a store beside the hub (roadmap 23c): the row keeps what the file is, the store its bytes by SHA-256.
+  // stored: the store's name (data is then empty), null while the bytes are in this row.
+  `
+  ALTER TABLE doc_assets ADD COLUMN sha256 TEXT;
+  ALTER TABLE doc_assets ADD COLUMN stored TEXT;
+  CREATE INDEX doc_assets_sha ON doc_assets(sha256);
   `,
 ];
 
@@ -672,7 +681,22 @@ export interface SqliteHiveOptions {
    * On a hub only a machine that takes runs does.
    */
   local?: boolean;
+  /** Where doc files keep their bytes (roadmap 23c: SeaweedFS on a hub). Without one: in the database. */
+  blobs?: BlobStore | null;
 }
+
+/** How a hub keeps doc files, for its Hub page. */
+export interface DocFilesInfo {
+  store: string | null;
+  where: string | null;
+  count: number;
+  bytes: number;
+  /** Files whose bytes are still in the database: moved to the store when there is one. */
+  inDb: number;
+  lastError: string | null;
+}
+
+const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 
 type Handlers = { [M in Method]: (input: ParsedInput<M>, actor: Actor) => MethodOutput[M] | Promise<MethodOutput[M]> };
 
@@ -694,6 +718,7 @@ export class SqliteHive implements HiveBackend {
       embedder: null,
       embedMinScore: 0.5,
       local: false,
+      blobs: null,
       ...opts,
     };
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;");
@@ -1058,6 +1083,93 @@ export class SqliteHive implements HiveBackend {
         this.db.exec(`PRAGMA user_version = ${v + 1}`);
       });
     }
+  }
+
+  #filesError: string | null = null;
+  #moving = false;
+
+  async #toStore(blobs: BlobStore, sha: string, bytes: Uint8Array, type: string): Promise<void> {
+    try {
+      await blobs.put(sha, bytes, type);
+      this.#filesError = null;
+    } catch (err) {
+      this.#filesError = (err as Error).message;
+      throw new HiveError("unavailable", `The file store (${blobs.name}) did not take the file: ${(err as Error).message}`, { key: "errors.fileStore", vars: { store: blobs.name } });
+    }
+  }
+
+  async #fromStore(row: Row): Promise<Uint8Array> {
+    const blobs = this.#opts.blobs;
+    const store = str(row.stored);
+    if (!blobs || blobs.name !== store) {
+      throw new HiveError("unavailable", `${str(row.name)} is kept in ${store}, which this hub is not set up to reach.`, { key: "errors.fileStoreOff", vars: { store } });
+    }
+    let bytes: Uint8Array | null;
+    try {
+      bytes = await blobs.get(str(row.sha256));
+    } catch (err) {
+      this.#filesError = (err as Error).message;
+      throw new HiveError("unavailable", `The file store (${store}) did not answer: ${(err as Error).message}`, { key: "errors.fileStore", vars: { store } });
+    }
+    if (!bytes || sha256(bytes) !== str(row.sha256)) {
+      throw new HiveError("not_found", `${str(row.name)} is missing from ${store}.`, { key: "errors.fileMissing", vars: { name: str(row.name), store } });
+    }
+    return bytes;
+  }
+
+  /** The bytes of a file no row points at any more leave the store; a failure only leaves them there. */
+  async #dropBlob(sha: string): Promise<void> {
+    const blobs = this.#opts.blobs;
+    if (!blobs || this.db.prepare("SELECT 1 FROM doc_assets WHERE sha256 = ? AND stored IS NOT NULL").get(sha)) return;
+    await blobs.remove(sha).catch((err: Error) => (this.#filesError = err.message));
+  }
+
+  /**
+   * Moves up to `max` files whose bytes are still in the database into the store (a hub that just got one).
+   * Returns how many moved; the hub calls it until that is 0. A file replaced meanwhile moves next round.
+   */
+  async moveFilesToStore(max = 20): Promise<number> {
+    const blobs = this.#opts.blobs;
+    if (!blobs || this.#moving) return 0;
+    this.#moving = true;
+    try {
+      const rows = this.db.prepare("SELECT id, name, type, created_at, data FROM doc_assets WHERE stored IS NULL ORDER BY id LIMIT ?").all(max) as Row[];
+      let moved = 0;
+      for (const r of rows) {
+        const bytes = r.data as Uint8Array;
+        const sha = sha256(bytes);
+        try {
+          await blobs.put(sha, bytes, str(r.type));
+          this.#filesError = null;
+        } catch (err) {
+          this.#filesError = (err as Error).message;
+          break;
+        }
+        const done = this.db
+          .prepare("UPDATE doc_assets SET stored = ?, sha256 = ?, data = ? WHERE id = ? AND stored IS NULL AND created_at = ?")
+          .run(blobs.name, sha, new Uint8Array(0), num(r.id), str(r.created_at));
+        if (Number(done.changes) === 1) moved++;
+      }
+      return moved;
+    } finally {
+      this.#moving = false;
+    }
+  }
+
+  /** The SHA-256 of every file kept in the store, for a backup to copy. */
+  storedFileIds(): string[] {
+    return (this.db.prepare("SELECT DISTINCT sha256 FROM doc_assets WHERE stored IS NOT NULL AND sha256 IS NOT NULL ORDER BY sha256").all() as Row[]).map((r) => str(r.sha256));
+  }
+
+  /** The bytes of a file in the store, by its SHA-256 (backups). */
+  readStoredFile(sha: string): Promise<Uint8Array | null> {
+    return this.#opts.blobs ? this.#opts.blobs.get(sha) : Promise.resolve(null);
+  }
+
+  filesInfo(): DocFilesInfo {
+    const r = this.db.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(size), 0) AS bytes, COALESCE(SUM(stored IS NULL), 0) AS in_db FROM doc_assets").get() as Row;
+    const blobs = this.#opts.blobs;
+    return { store: blobs?.name ?? null, where: blobs?.where ?? null, count: num(r.n), bytes: num(r.bytes), inDb: num(r.in_db), lastError: this.#filesError };
   }
 
   #tx<T>(fn: () => T): T {
@@ -1662,21 +1774,23 @@ export class SqliteHive implements HiveBackend {
 
       "docs.assets": ({ key }) => (db.prepare(`SELECT ${ASSET_FIELDS} FROM doc_assets WHERE doc_key = ? ORDER BY name`).all(key) as Row[]).map(toAsset),
 
-      "docs.assetGet": ({ key, name }) => {
+      "docs.assetGet": async ({ key, name }) => {
         const row = db.prepare("SELECT * FROM doc_assets WHERE doc_key = ? AND name = ?").get(key, name) as Row | undefined;
-        return row ? { asset: toAsset(row), data: Buffer.from(row.data as Uint8Array).toString("base64") } : null;
+        if (!row) return null;
+        const bytes = row.stored === null || row.stored === undefined ? (row.data as Uint8Array) : await this.#fromStore(row);
+        return { asset: toAsset(row), data: Buffer.from(bytes).toString("base64") };
       },
 
-      "docs.assetPut": ({ key, name: raw, data }, actor) =>
-        this.#tx(() => {
-          parseDocKey(key);
-          const name = chatFileName(raw);
-          const bytes = new Uint8Array(Buffer.from(data, "base64"));
-          if (bytes.length > DOC_ASSET_MAX_BYTES) {
-            throw new HiveError("bad_request", `${name} is over ${DOC_ASSET_MAX_BYTES / 1024 / 1024} MB.`, { key: "errors.chatFileTooBig", vars: { name, mb: DOC_ASSET_MAX_BYTES / 1024 / 1024 } });
-          }
-          const type = checkChatFile(name, bytes);
-          if (!isImage(type) && type !== "application/pdf") assertNoSecret(new TextDecoder().decode(bytes), name);
+      "docs.assetPut": async ({ key, name: raw, data }, actor) => {
+        parseDocKey(key);
+        const name = chatFileName(raw);
+        const bytes = new Uint8Array(Buffer.from(data, "base64"));
+        if (bytes.length > DOC_ASSET_MAX_BYTES) {
+          throw new HiveError("bad_request", `${name} is over ${DOC_ASSET_MAX_BYTES / 1024 / 1024} MB.`, { key: "errors.chatFileTooBig", vars: { name, mb: DOC_ASSET_MAX_BYTES / 1024 / 1024 } });
+        }
+        const type = checkChatFile(name, bytes);
+        if (!isImage(type) && type !== "application/pdf") assertNoSecret(new TextDecoder().decode(bytes), name);
+        const allowed = () => {
           const has = db.prepare("SELECT uploaded_by FROM doc_assets WHERE doc_key = ? AND name = ?").get(key, name) as Row | undefined;
           // Replacing someone else's file is removing it: manage only.
           if (has && str(has.uploaded_by) !== actor.name) this.#need(actor, SqliteHive.#docOwner(key), "manage", `File ${name}`);
@@ -1684,19 +1798,38 @@ export class SqliteHive implements HiveBackend {
           if (!has && count >= DOC_ASSETS_PER_DOC) {
             throw new HiveError("bad_request", `${key} already has ${DOC_ASSETS_PER_DOC} files.`, { key: "errors.docAssetsFull", vars: { key, max: DOC_ASSETS_PER_DOC } });
           }
+        };
+        const blobs = this.#opts.blobs;
+        const sha = sha256(bytes);
+        // Into the store first (checked before, so no one uploads what they may not keep), the row after: a row never
+        // points at bytes the store does not have. Checked again in the transaction, as the doc may have changed.
+        if (blobs) {
+          allowed();
+          await this.#toStore(blobs, sha, bytes, type);
+        }
+        const { asset, dropped } = this.#tx(() => {
+          allowed();
+          const before = db.prepare("SELECT sha256, stored FROM doc_assets WHERE doc_key = ? AND name = ?").get(key, name) as Row | undefined;
           db.prepare(
-            `INSERT INTO doc_assets(doc_key, name, type, size, data, uploaded_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+            `INSERT INTO doc_assets(doc_key, name, type, size, data, uploaded_by, created_at, sha256, stored) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(doc_key, name) DO UPDATE SET type = excluded.type, size = excluded.size, data = excluded.data,
-               uploaded_by = excluded.uploaded_by, created_at = excluded.created_at`,
-          ).run(key, name, type, bytes.length, bytes, actor.name, this.#now());
-          return toAsset(db.prepare(`SELECT ${ASSET_FIELDS} FROM doc_assets WHERE doc_key = ? AND name = ?`).get(key, name) as Row);
-        }),
+               uploaded_by = excluded.uploaded_by, created_at = excluded.created_at, sha256 = excluded.sha256, stored = excluded.stored`,
+          ).run(key, name, type, bytes.length, blobs ? new Uint8Array(0) : bytes, actor.name, this.#now(), sha, blobs ? blobs.name : null);
+          return {
+            asset: toAsset(db.prepare(`SELECT ${ASSET_FIELDS} FROM doc_assets WHERE doc_key = ? AND name = ?`).get(key, name) as Row),
+            dropped: before?.stored && before.sha256 !== sha ? str(before.sha256) : null,
+          };
+        });
+        if (dropped) await this.#dropBlob(dropped);
+        return asset;
+      },
 
-      "docs.assetRemove": ({ key, name }, actor) => {
-        const row = db.prepare("SELECT uploaded_by FROM doc_assets WHERE doc_key = ? AND name = ?").get(key, name) as Row | undefined;
+      "docs.assetRemove": async ({ key, name }, actor) => {
+        const row = db.prepare("SELECT uploaded_by, sha256, stored FROM doc_assets WHERE doc_key = ? AND name = ?").get(key, name) as Row | undefined;
         if (!row) return { removed: false };
         if (str(row.uploaded_by) !== actor.name) this.#need(actor, SqliteHive.#docOwner(key), "manage", `File ${name}`);
         db.prepare("DELETE FROM doc_assets WHERE doc_key = ? AND name = ?").run(key, name);
+        if (row.stored) await this.#dropBlob(str(row.sha256));
         return { removed: true };
       },
 

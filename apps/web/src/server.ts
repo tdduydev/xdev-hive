@@ -12,13 +12,16 @@
 //     (sign-in through an OpenID Connect provider; redirect URI: <HIVE_PUBLIC_URL>/api/auth/oidc/callback)
 //   HIVE_EMBED_URL=http://ollama:11434/v1 (memory search by meaning too: an OpenAI-compatible /embeddings endpoint;
 //     HIVE_EMBED_MODEL=bge-m3, HIVE_EMBED_KEY for an API, HIVE_EMBED_MIN_SCORE=0.5 cosine for a match by meaning)
+//   HIVE_SEAWEEDFS_URL=http://seaweedfs:8888 (doc files in a SeaweedFS filer instead of the database; the ones already
+//     in it move there; HIVE_SEAWEEDFS_PREFIX=/xdev-hive/doc-files. Backups copy them into <HIVE_BACKUP_DIR>/files)
 import { createServer } from "node:http";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { openAiEmbedder, type HiveEvent } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { allowedHostsFor, createHubApp, type HubAppOptions } from "./app.ts";
-import { backupDatabase, backupFile, backupSettings, type BackupResult } from "./backup.ts";
+import { backupDatabase, backupFile, backupFiles, backupSettings, type BackupResult } from "./backup.ts";
+import { seaweedFromEnv } from "./seaweed.ts";
 import { OidcClient, oidcSettings } from "./oidc.ts";
 import { TokenStore } from "./tokens.ts";
 import { UserStore } from "./users.ts";
@@ -50,6 +53,7 @@ const embedder = process.env.HIVE_EMBED_URL
   ? openAiEmbedder({ url: process.env.HIVE_EMBED_URL, model: process.env.HIVE_EMBED_MODEL || "bge-m3", key: process.env.HIVE_EMBED_KEY || undefined })
   : null;
 const minScore = Number(process.env.HIVE_EMBED_MIN_SCORE ?? 0.5);
+const blobs = seaweedFromEnv(process.env);
 // Set once the webhook store exists (it lives in the hub's database).
 let onEvent: (event: HiveEvent) => void = () => undefined;
 const hive = new SqliteHive(dbPath, {
@@ -58,6 +62,7 @@ const hive = new SqliteHive(dbPath, {
   onEvent: (event) => onEvent(event),
   embedder,
   embedMinScore: Number.isFinite(minScore) ? minScore : 0.5,
+  blobs,
 });
 hive.seed("hub", { hub: true });
 const tokens = new TokenStore(hive.db);
@@ -92,7 +97,43 @@ onEvent = (event) => {
 };
 setInterval(() => void alerts.check().catch((err) => console.error(`[xdev-hive] alert check failed: ${(err as Error).message}`)), 60_000).unref();
 
-if (backup) setInterval(() => logBackup("scheduled", () => backupDatabase(hive.db, backup)), backup.hours * 3_600_000).unref();
+// The doc files in the store, copied after each snapshot: only the ones the backup does not have yet.
+const logFiles = async (when: string) => {
+  if (!backup || !blobs) return;
+  try {
+    const r = await backupFiles(hive, backup.dir);
+    if (r.copied || r.removed || r.missing.length) {
+      console.log(`[xdev-hive] backup files (${when}): ${r.copied} copied, ${r.removed} removed, ${r.kept} kept${r.missing.length ? `, ${r.missing.length} missing from ${blobs.name}` : ""}`);
+    }
+  } catch (err) {
+    console.error(`[xdev-hive] backup files (${when}) failed: ${(err as Error).message}`);
+  }
+};
+if (backup) {
+  setInterval(() => {
+    logBackup("scheduled", () => backupDatabase(hive.db, backup));
+    void logFiles("scheduled");
+  }, backup.hours * 3_600_000).unref();
+}
+
+// Doc files still in the database go to the store: right after start, then every minute (the store may start later
+// than the hub). The files moved are backed up at once.
+if (blobs) {
+  let reported: string | null = null;
+  const move = async () => {
+    let total = 0;
+    for (let n = await hive.moveFilesToStore(); n > 0; n = await hive.moveFilesToStore()) total += n;
+    const { lastError, inDb } = hive.filesInfo();
+    if (lastError !== reported) console.error(lastError ? `[xdev-hive] files (${blobs.name}, ${blobs.where}): ${lastError}` : `[xdev-hive] files (${blobs.name}) working again`);
+    reported = lastError;
+    if (total) {
+      console.log(`[xdev-hive] files: ${total} moved to ${blobs.name}${inDb ? `, ${inDb} still in the database` : ""}`);
+      await logFiles("moved");
+    }
+  };
+  void move().catch(() => undefined);
+  setInterval(() => void move().catch(() => undefined), 60_000).unref();
+}
 
 // Vectors for memory approved since the last round: right after start, then every 20 s. An error is logged when it changes.
 if (embedder) {
