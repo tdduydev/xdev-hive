@@ -4,6 +4,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import {
   HiveError,
+  policySummary,
   PROJECT_NAME,
   WEBHOOK_EVENTS,
   WEBHOOK_KINDS,
@@ -173,6 +174,15 @@ export function eventMessage(event: HiveEvent, locale: string): { text: string; 
     case "run.ciLimit": {
       const r = event.run;
       return { text: tr("webhook.ciLimit", { iid: r.mrIid ?? "?", project: r.project, task: r.taskId }), page: "#/admin/alerts", ...(r.mrUrl ? { url: r.mrUrl } : {}) };
+    }
+    case "agentPolicy.changed": {
+      const scope = event.project ?? tr("webhook.agentPolicyHub");
+      return {
+        text: event.policy
+          ? tr("webhook.agentPolicy", { by: event.by, scope, summary: clip(policySummary(event.policy)) })
+          : tr("webhook.agentPolicyCleared", { by: event.by, scope }),
+        page: "#/admin/policy",
+      };
     }
     case "alert.opened": {
       const a = event.alert;

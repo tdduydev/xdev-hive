@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { HiveError } from "./errors.ts";
+import { agentPolicyPartSchema, agentPolicySchema, type AgentPolicy, type AgentPolicyView } from "./agent-policy.ts";
 import { ACCOUNT_ID, AGENT_ROLES, agentProfileSchema, MAX_CANDIDATES, RUN_STATUSES } from "./agents.ts";
 import { CHAT_FILES_PER_MESSAGE } from "./chatfiles.ts";
 import { DOC_ASSET_MAX_BYTES } from "./doclinks.ts";
@@ -514,6 +515,17 @@ export const schemas = {
       .refine((list) => new Set(list.map((p) => p.id)).size === list.length, "template ids must be unique"),
   }),
 
+  /** The hub's agent policy and each visible project's part (roadmap 27a). */
+  "agentPolicy.get": z.object({}),
+  /**
+   * project null: the hub's default (a hub admin; a field left out is open). A project: its own part, which only
+   * tightens the default (projectSettings on it); policy null clears it.
+   */
+  "agentPolicy.set": z.union([
+    z.object({ project: z.null(), policy: agentPolicySchema.nullable() }),
+    z.object({ project, policy: agentPolicyPartSchema.nullable() }),
+  ]),
+
   /** Systems (roadmap 19b), by name. */
   "systems.list": z.object({}),
   /** Creates a system or replaces its projects: needs "manage" on every project it had and gets. */
@@ -581,6 +593,8 @@ export interface MethodOutput {
     duplicate: boolean;
     cooldowns: QuotaCooldown[];
     policy: TeamPolicy;
+    /** The agent policy (roadmap 27a): the hub's default and the parts of the projects this machine has. Older apps ignore it. */
+    agentPolicy: { hub: AgentPolicy; projects: Record<string, Partial<AgentPolicy>> };
     /** Install requests waiting for the machine's user. */
     commands: MachineCommand[];
     /**
@@ -630,6 +644,8 @@ export interface MethodOutput {
   "machines.commandResult": MachineCommand;
   "policy.get": TeamPolicy;
   "policy.set": TeamPolicy;
+  "agentPolicy.get": AgentPolicyView;
+  "agentPolicy.set": AgentPolicyView;
   "systems.list": HiveSystem[];
   "systems.save": HiveSystem;
   "systems.remove": { removed: boolean };
@@ -724,6 +740,9 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "machines.commandResult": "agent",
   "policy.get": "viewer",
   "policy.set": "admin",
+  "agentPolicy.get": "viewer",
+  // Also a hub admin for the hub's default, or projectSettings on the project: a person, never an agent token.
+  "agentPolicy.set": "agent",
   "systems.list": "viewer",
   // Also "manage" on each project of the system: a project manager, never an agent token.
   "systems.save": "agent",
