@@ -27,7 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "cn";
-import { DOC_ASSET_MAX_BYTES, docLinkRefs, keyPrefix, parseDocKey, resolveDocLink, stripHidden, type Doc, type DocSummary, type DocVersion } from "@xdev-hive/core";
+import { DOC_ASSET_MAX_BYTES, docLinkRefs, isContextDoc, keyPrefix, parseDocKey, resolveDocLink, stripHidden, type Doc, type DocSummary, type DocVersion } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Input } from "@xdev-hive/ui/components/ui/input";
@@ -210,7 +210,7 @@ export function DocsPage() {
   const needle = fold(q.trim());
   const hits = useMemo(() => (needle ? nodes.filter((n) => (n.doc || !n.folder) && fold(`${n.title} ${n.key}`).includes(needle)) : []), [nodes, needle]);
 
-  const canCreateHere = space ? allow(space.owner, "manage") : false;
+  const canCreateHere = space ? allow(space.owner, "docEdit") : false;
   const taken = (key: string) => titles.has(key) || Boolean(drafts[key]);
   const slugFor = (c: Creating) => c.slug ?? freeSlug(prefix, slugify(c.title), taken);
   const startCreate = (kind: Creating["kind"], parent: string | null) => {
@@ -449,8 +449,8 @@ export function DocsPage() {
           <DocView
             key={selected}
             docKey={selected}
-            canEdit={allow(docOwner(selected), "manage")}
-            canPropose={allow(docOwner(selected), "contribute")}
+            canEdit={allow(docOwner(selected), isContextDoc(selected, (list.data ?? []).find((d) => d.key === selected)) ? "contextEdit" : "docEdit")}
+            canPropose={allow(docOwner(selected), "docPropose")}
             draft={drafts[selected] ?? null}
             setDraft={(d) => setDraft(selected, d)}
             onSaved={list.reload}

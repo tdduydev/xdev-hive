@@ -128,8 +128,8 @@ describe("run requests from the web", () => {
     const { hive, beat } = await hub();
     await beat(mbp);
     const input = { machineId: mbp.name, project: "app", taskId: "T-1" };
-    assert.equal(await refusal(hive.call("runs.dispatch", input, dev)), "errors.need.manage");
-    assert.equal(await refusal(hive.call("runs.dispatch", input, mbp)), "errors.need.manage", "an agent token never queues runs");
+    assert.equal(await refusal(hive.call("runs.dispatch", input, dev)), "errors.need.runDispatch");
+    assert.equal(await refusal(hive.call("runs.dispatch", input, mbp)), "errors.need.runDispatch", "an agent token never queues runs");
     assert.equal(await refusal(hive.call("runs.dispatch", input, outsider)), "errors.notFound", "a hidden project answers like a missing one");
     assert.equal(await refusal(hive.call("runs.dispatch", input, { name: "viewer", role: "viewer" })), "errors.roleTooLow");
     assert.equal((await hive.call("runs.dispatch", input, admin)).status, "pending");
@@ -177,7 +177,7 @@ describe("run requests from the web", () => {
     const { hive, beat, later } = await hub();
     await beat(mbp);
     const req = await hive.call("runs.dispatch", { machineId: mbp.name, project: "app", taskId: "T-1" }, lead);
-    assert.equal(await refusal(hive.call("runs.cancelRequest", { id: req.id }, dev)), "errors.need.manage");
+    assert.equal(await refusal(hive.call("runs.cancelRequest", { id: req.id }, dev)), "errors.need.runDispatch");
     assert.equal((await hive.call("runs.cancelRequest", { id: req.id }, lead)).status, "cancelled");
     assert.deepEqual((await beat(mbp)).runRequests, []);
     assert.equal(await refusal(hive.call("runs.cancelRequest", { id: req.id }, lead)), "errors.runRequestNotPending");
@@ -256,7 +256,7 @@ describe("cancelling a run from the web", () => {
     await push(hive, mbp, "R-aaaaaa", "running");
     await push(hive, mini, "R-cccccc", "running");
     await push(hive, mbp, "R-dddddd", "running", "site");
-    assert.equal(await refusal(hive.call("runs.cancel", { machineId: mbp.name, runId: "R-aaaaaa" }, dev)), "errors.need.manage");
+    assert.equal(await refusal(hive.call("runs.cancel", { machineId: mbp.name, runId: "R-aaaaaa" }, dev)), "errors.need.runDispatch");
     assert.equal(await refusal(hive.call("runs.cancel", { machineId: mbp.name, runId: "R-dddddd" }, lead)), "errors.notFound", "a project it cannot see");
     assert.equal(await refusal(hive.call("runs.cancel", { machineId: mini.name, runId: "R-cccccc" }, admin)), "errors.machineNoHubRuns");
     assert.equal(await refusal(hive.call("runs.cancel", { machineId: mbp.name, runId: "R-ffffff" }, admin)), "errors.runNotFound");

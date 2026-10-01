@@ -100,8 +100,8 @@ describe("chat with a project's leader", () => {
     const { hive, beat, later } = await hub();
     await beat(mbp);
     const ask = (over: Record<string, unknown>, who: Actor = lead) => refusal(hive.call("chat.send", { project: "app", machineId: mbp.name, text: "hi", ...over }, who));
-    assert.equal(await ask({}, dev), "errors.need.manage");
-    assert.equal(await ask({}, mbp), "errors.need.manage", "an agent token never starts a chat");
+    assert.equal(await ask({}, dev), "errors.need.chatUse");
+    assert.equal(await ask({}, mbp), "errors.need.chatUse", "an agent token never starts a chat");
     assert.equal(await ask({}, outsider), "errors.notFound");
     assert.equal(await ask({ machineId: undefined }), "errors.chatMachine");
     assert.equal(await ask({ machineId: "runner.nobody@x" }), "errors.machineNotFound");
@@ -126,7 +126,7 @@ describe("chat with a project's leader", () => {
     await beat(mbp);
     const { reply } = await hive.call("chat.send", { project: "app", machineId: mbp.name, text: "Summarize the reviews" }, lead);
     await hive.call("chat.progress", { replyId: reply.id, text: "Reading" }, mbp);
-    assert.equal(await refusal(hive.call("chat.cancel", { replyId: reply.id }, dev)), "errors.need.manage");
+    assert.equal(await refusal(hive.call("chat.cancel", { replyId: reply.id }, dev)), "errors.need.chatUse");
     assert.equal((await hive.call("chat.cancel", { replyId: reply.id }, lead)).status, "cancelled");
     assert.deepEqual(await hive.call("chat.progress", { replyId: reply.id, text: "Reading more" }, mbp), { cancelled: true });
     const kept = await hive.call("chat.finish", { replyId: reply.id, status: "done", text: "Partial summary" }, mbp);
@@ -203,7 +203,7 @@ describe("chat with a project's leader", () => {
       project: "app", machineId: null, profileId: null, model: null, effort: null, commands: ["git status", "git log", "git diff", "git show"], updatedBy: null, updatedAt: null,
     });
     const set = { project: "app", machineId: mini.name, profileId: "claude-1", model: "opus", effort: "high" as const };
-    assert.equal(await refusal(hive.call("chat.setDefaults", set, dev)), "errors.need.manage");
+    assert.equal(await refusal(hive.call("chat.setDefaults", set, dev)), "errors.need.projectSettings");
     assert.equal(await refusal(hive.call("chat.setDefaults", { ...set, machineId: "runner.ghost@ghost" }, lead)), "errors.machineNotFound");
     assert.equal(await refusal(hive.call("chat.setDefaults", { ...set, model: "--dangerously-skip-permissions" }, lead)), "bad_request", "a model is never an option");
     assert.equal((await hive.call("chat.setDefaults", set, lead)).updatedBy, "lan");
@@ -219,7 +219,7 @@ describe("chat with a project's leader", () => {
 
     const changed = await hive.call("chat.configure", { threadId: plain.thread.id, model: "sonnet", effort: null }, lead);
     assert.deepEqual([changed.model, changed.effort], ["sonnet", null]);
-    assert.equal(await refusal(hive.call("chat.configure", { threadId: plain.thread.id, model: "haiku", effort: null }, dev)), "errors.need.manage");
+    assert.equal(await refusal(hive.call("chat.configure", { threadId: plain.thread.id, model: "haiku", effort: null }, dev)), "errors.need.chatUse");
     assert.equal(await refusal(hive.call("chat.defaults", { project: "app" }, outsider)), "errors.notFound");
   });
 
@@ -227,7 +227,7 @@ describe("chat with a project's leader", () => {
     const { hive, beat } = await hub();
     await beat(mbp);
     assert.deepEqual((await hive.call("chat.defaults", { project: "app" }, dev)).commands, ["git status", "git log", "git diff", "git show"]);
-    assert.equal(await refusal(hive.call("chat.setCommands", { project: "app", commands: ["git log"] }, dev)), "errors.need.manage");
+    assert.equal(await refusal(hive.call("chat.setCommands", { project: "app", commands: ["git log"] }, dev)), "errors.need.projectSettings");
     for (const bad of ["git log; rm -rf /", "git log && curl x", "$(id)", "Git Log", "git --output=x", "a b c d e"]) {
       assert.equal(await refusal(hive.call("chat.setCommands", { project: "app", commands: [bad] }, lead)), "bad_request", bad);
     }
@@ -248,13 +248,13 @@ describe("chat with a project's leader", () => {
     await beat(mbp);
     const sent = await hive.call("chat.send", { project: "app", machineId: mbp.name, text: "Plan the reset page" }, lead);
     assert.equal((await hive.call("chat.rename", { threadId: sent.thread.id, title: "  Reset page  " }, lead)).title, "Reset page");
-    assert.equal(await refusal(hive.call("chat.rename", { threadId: sent.thread.id, title: "x" }, dev)), "errors.need.manage");
+    assert.equal(await refusal(hive.call("chat.rename", { threadId: sent.thread.id, title: "x" }, dev)), "errors.need.chatUse");
     assert.equal(await refusal(hive.call("chat.rename", { threadId: sent.thread.id, title: "x" }, outsider)), "errors.notFound");
     assert.equal(await refusal(hive.call("chat.rename", { threadId: sent.thread.id, title: "Hi​dden" }, lead)), "errors.hidden.zeroWidth");
 
     assert.equal(await refusal(hive.call("chat.delete", { threadId: sent.thread.id }, lead)), "errors.chatBusy", "the reply is still pending");
     await hive.call("chat.cancel", { replyId: sent.reply.id }, lead);
-    assert.equal(await refusal(hive.call("chat.delete", { threadId: sent.thread.id }, dev)), "errors.need.manage");
+    assert.equal(await refusal(hive.call("chat.delete", { threadId: sent.thread.id }, dev)), "errors.need.chatUse");
     assert.deepEqual(await hive.call("chat.delete", { threadId: sent.thread.id }, lead), { deleted: sent.thread.id });
     assert.equal(await hive.call("chat.get", { threadId: sent.thread.id }, lead), null);
     assert.equal(await refusal(hive.call("chat.delete", { threadId: sent.thread.id }, lead)), "errors.chatNotFound");
@@ -277,7 +277,7 @@ describe("what a chat leader proposes", () => {
 
   it("does nothing until a project manager confirms, then runs it as that manager", async () => {
     const { hive, sent, leader } = await leading();
-    assert.equal(await refusal(hive.call("tasks.create", { id: "T-2", project: "app", title: "Reset" }, leader)), "errors.need.manage", "it cannot itself");
+    assert.equal(await refusal(hive.call("tasks.create", { id: "T-2", project: "app", title: "Reset" }, leader)), "errors.need.taskManage", "it cannot itself");
 
     const create = await hive.call("chat.propose", { action: { kind: "task.create", id: "T-2", title: "Reset page", dependsOn: ["T-1"] }, reason: "Asked for in the chat" }, leader);
     assert.deepEqual([create.status, create.project, create.replyId, create.input], ["proposed", "app", sent.reply.id, { id: "T-2", project: "app", title: "Reset page", dependsOn: ["T-1"] }]);
@@ -293,7 +293,7 @@ describe("what a chat leader proposes", () => {
     assert.deepEqual(reply!.actions.map((a) => [a.kind, a.status]), [["task.create", "proposed"], ["run.dispatch", "proposed"], ["run.dispatch", "proposed"], ["task.update", "proposed"]]);
 
     // A contributor cannot confirm; a manager can, once.
-    assert.equal(await refusal(hive.call("chat.decide", { actionId: create.id, accept: true }, dev)), "errors.need.manage");
+    assert.equal(await refusal(hive.call("chat.decide", { actionId: create.id, accept: true }, dev)), "errors.need.chatApprove");
     const done = await hive.call("chat.decide", { actionId: create.id, accept: true }, lead);
     assert.deepEqual([done.status, done.result, done.decidedBy], ["done", { taskId: "T-2" }, "lan"]);
     assert.deepEqual((await hive.call("tasks.list", { project: "app" }, admin)).find((t) => t.id === "T-2")?.dependsOn, ["T-1"]);
@@ -327,7 +327,7 @@ describe("what a chat leader proposes", () => {
     const create = await hive.call("chat.propose", { action: { kind: "task.create", id: "T-5", title: "Reset page" }, reason: "New" }, leader);
     const run = await hive.call("chat.propose", { action: { kind: "run.dispatch", taskId: "T-5" }, reason: "Go" }, leader);
     assert.equal(await refusal(hive.call("chat.propose", { action: { kind: "task.create", id: "T-5", title: "Again" }, reason: "r" }, leader)), "errors.taskExists");
-    assert.equal(await refusal(hive.call("chat.decideAll", { replyId: sent.reply.id, accept: true }, dev)), "errors.need.manage");
+    assert.equal(await refusal(hive.call("chat.decideAll", { replyId: sent.reply.id, accept: true }, dev)), "errors.need.chatApprove");
 
     const done = await hive.call("chat.decideAll", { replyId: sent.reply.id, accept: true }, lead);
     // The run went through: T-5 existed by then, made first although proposed second.

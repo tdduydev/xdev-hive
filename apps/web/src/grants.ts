@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
-import { LEVELS, type Access, type Actor, type ChatSender, type Level, type Role } from "@xdev-hive/core";
+import { intersectAccess, type Access, type Actor, type ChatSender, type Role } from "@xdev-hive/core";
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 
@@ -8,23 +8,16 @@ const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 const GRANT_MINUTES = 30;
 
 /**
- * How much a role may do, for the narrower of two: an agent token never manages (see access.ts), so it sits under
+ * How much a role may do, for the narrower of two: an agent token never approves (see access.ts), so it sits under
  * a member account even though both rank alike for method roles.
  */
 const REACH: Record<Role, number> = { viewer: 0, agent: 1, member: 2, admin: 3 };
-const RANK: Record<Level, number> = Object.fromEntries(LEVELS.map((l, i) => [l, i])) as Record<Level, number>;
 
-/** What both may do: the lower role, and per project the lower level (a project only one of them has is left out). */
+/** What both may do: the lower role, and per project the permissions both have (a project only one has is left out). */
 export function narrowest(a: ChatSender | Actor, b: ChatSender | Actor): { role: Role; access?: Access } {
   const role = REACH[a.role] <= REACH[b.role] ? a.role : b.role;
-  if (!a.access && !b.access) return { role };
-  if (!a.access || !b.access) return { role, access: (a.access ?? b.access)! };
-  const projects: Record<string, Level> = {};
-  for (const [project, level] of Object.entries(a.access.projects)) {
-    const other = b.access.projects[project];
-    if (other) projects[project] = RANK[level] <= RANK[other] ? level : other;
-  }
-  return { role, access: { projects } };
+  const access = intersectAccess(a.access, b.access);
+  return access ? { role, access } : { role };
 }
 
 type Row = Record<string, unknown>;

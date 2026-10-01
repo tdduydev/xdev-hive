@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Proposal } from "@xdev-hive/core";
+import { approvalOf } from "#ui/lib/permissions.ts";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
@@ -31,7 +32,7 @@ export function ProposalsPage() {
   // Shared-doc proposals show in every project's scope (see lib/scope.ts).
   const proposals = list.data?.filter((p) => inScope(scope, docOwner(p.docKey)));
   // Picks outside the view (another scope, decided meanwhile) simply drop out of what the bar acts on.
-  const selectable = (proposals ?? []).filter((p) => p.status === "pending" && allow(docOwner(p.docKey), "manage"));
+  const selectable = (proposals ?? []).filter((p) => p.status === "pending" && allow(docOwner(p.docKey), approvalOf(p.docKey)));
   const chosen = selectable.filter((p) => picked.has(p.id));
   const label = (p: Proposal) => `#${p.id} ${p.docKey}`;
   const finish = (text: string, trouble: boolean) => {
@@ -138,7 +139,9 @@ function ProposalCard({ proposal: p, onChanged, picked, onPick }: { proposal: Pr
   );
   const action = useAction();
   const stale = current.data !== undefined && (current.data?.version ?? 0) !== p.baseVersion;
-  const manage = p.status === "pending" && allow(docOwner(p.docKey), "manage");
+  const manage = p.status === "pending" && allow(docOwner(p.docKey), approvalOf(p.docKey));
+  // A reviewer of docs sees why this one is not theirs to approve: it changes what agents read.
+  const contextOnly = p.status === "pending" && !manage && approvalOf(p.docKey) === "contextEdit" && allow(docOwner(p.docKey), "docApprove");
 
   const decide = (kind: "approve" | "reject") =>
     action.run(async () => {
@@ -186,6 +189,7 @@ function ProposalCard({ proposal: p, onChanged, picked, onPick }: { proposal: Pr
               {current.loading ? <Empty>{t("common.loading")}</Empty> : <Diff before={current.data?.content ?? ""} after={p.content} />}
             </>
           ) : null}
+          {contextOnly ? <p className="m-0 text-xs text-fg-muted">{t("proposals.needsContext")}</p> : null}
           {manage ? (
             <div className="flex flex-wrap items-center gap-2">
               <Input

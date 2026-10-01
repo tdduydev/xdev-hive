@@ -85,7 +85,7 @@ describe("chat attachments", () => {
 
   it("refuses what the hub does not keep", async () => {
     const hive = new SqliteHive(":memory:");
-    assert.equal(await refusal(() => hive.putChatFile({ project: "app", name: "x.png", bytes: PNG }, reader)), "errors.need.manage");
+    assert.equal(await refusal(() => hive.putChatFile({ project: "app", name: "x.png", bytes: PNG }, reader)), "errors.need.chatUse");
     assert.equal(await refusal(() => hive.putChatFile({ project: "app", name: "x.png", bytes: PNG }, outsider)), "errors.notFound");
     assert.equal(await refusal(() => hive.putChatFile({ project: "app", name: "empty.txt", bytes: new Uint8Array() }, lead)), "errors.chatFileEmpty");
     assert.equal(await refusal(() => hive.putChatFile({ project: "app", name: "big.png", bytes: new Uint8Array(5 * 1024 * 1024 + 1) }, lead)), "errors.chatFileTooBig");

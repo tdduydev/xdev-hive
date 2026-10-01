@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { isValidElement } from "react";
-import { HIDDEN_KINDS, LEVELS, WEBHOOK_EVENTS, WEBHOOK_KINDS } from "@xdev-hive/core";
+import { HIDDEN_KINDS, PERMISSIONS, WEBHOOK_EVENTS, WEBHOOK_KINDS } from "@xdev-hive/core";
 import { rich } from "#ui/i18n/rich.ts";
 import { hasKey, LOCALES, translate, type MessageKey } from "#ui/i18n/translate.ts";
 
@@ -50,8 +50,8 @@ describe("i18n", () => {
         .map((f) => path.join(repo, dir, f)),
     );
     const keys = new Set(files.flatMap((f) => [...readFileSync(f, "utf8").matchAll(/key: "((?:errors|audit)\.[\w.]+)"/g)].map((m) => m[1]!)));
-    // Built from the level: errors.need.<level>, errors.needShared.<level>.
-    for (const level of LEVELS) keys.add(`errors.need.${level}`).add(`errors.needShared.${level}`);
+    // Built from the permission: errors.need.<permission>, errors.needShared.<permission>.
+    for (const p of PERMISSIONS) keys.add(`errors.need.${p}`).add(`errors.needShared.${p}`);
     // Built from the kind: errors.hidden.<kind>.
     for (const kind of HIDDEN_KINDS) keys.add(`errors.hidden.${kind}`);
     assert.ok(keys.size > 30, `found ${keys.size} keys`);
