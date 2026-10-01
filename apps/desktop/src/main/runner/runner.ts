@@ -23,6 +23,7 @@ import {
   redactLines,
   stripHidden,
   toErrorPayload,
+  usageHeadroom,
   usageStop,
   type Actor,
   type AgentProfile,
@@ -939,6 +940,7 @@ export class Runner {
         installed: resolveBin(expandHome(profile.bin), pathEnv) !== null,
         loggedIn: this.#host.login?.(profile.id)?.loggedIn !== false,
         overLimit: usageStop(profile, this.#host.usage?.(profile.id)) !== null,
+        headroom: usageHeadroom(profile, this.#host.usage?.(profile.id)),
       };
     });
   }

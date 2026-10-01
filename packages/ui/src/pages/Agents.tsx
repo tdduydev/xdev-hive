@@ -10,6 +10,8 @@ import {
   type AgentProfile,
   type AgentProfileStatus,
   type AgentRole,
+  type LoginHow,
+  type NewAccount,
   type ProfileCheck,
   type RunnerSettings,
 } from "@xdev-hive/core";
@@ -33,7 +35,7 @@ const ACCOUNT_ENV_HINT: Partial<Record<AgentKind, string>> = {
   codex: "CODEX_HOME=~/.codex-2",
 };
 
-const CODE = "rounded bg-muted px-1 py-0.5 font-mono text-xs";
+const CODE = "rounded bg-muted px-1 py-0.5 font-mono text-xs wrap-anywhere";
 const HINT = "text-xs text-muted-foreground sm:col-start-2";
 
 export function AgentsPage() {
@@ -46,7 +48,37 @@ export function AgentsPage() {
   const requests = useQuery(() => desktop.hubRequests(), [desktop]);
   const templates = requests.data?.policy?.profileTemplates ?? [];
   const [editing, setEditing] = useState<{ profile: AgentProfile; previousId?: string } | null>(null);
+  const [adding, setAdding] = useState<NewAccount["kind"] | null>(null);
+  const toast = useToast();
+  // Profiles whose sign-in was opened from here: checked every few seconds until signed in (at most 5 minutes).
+  const [waiting, setWaiting] = useState<Record<string, number>>({});
   const refresh = () => setTick((t) => t + 1);
+  const waitFor = (id: string) => setWaiting((w) => ({ ...w, [id]: Date.now() }));
+  useEffect(() => {
+    const ids = Object.keys(waiting);
+    if (!ids.length) return;
+    const timer = setInterval(() => {
+      void desktop.recheckLogins().then(
+        (list) => {
+          refresh();
+          setWaiting((w) => {
+            const next = { ...w };
+            for (const id of Object.keys(next)) {
+              const p = list.find((x) => x.id === id);
+              if (p?.login?.loggedIn) {
+                toast(t("agents.signedInToast", { id, account: p.login.account ?? p.login.method ?? "" }));
+                delete next[id];
+              } else if (!p || Date.now() - next[id]! > 5 * 60_000) delete next[id];
+            }
+            return next;
+          });
+        },
+        () => undefined,
+      );
+    }, 4000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [desktop, Object.keys(waiting).join(",")]);
 
   // Back from a terminal sign-in: check the signed-out profiles again.
   const anySignedOut = (profiles.data ?? []).some((p) => p.login?.loggedIn === false);
@@ -73,6 +105,25 @@ export function AgentsPage() {
       <p className="m-0 text-xs/[18px] text-fg-muted">{t("agents.thresholdsNote")}</p>
       <h2 className="m-0 mt-2 text-[13px]/[18px] font-semibold text-fg-strong">{t("agents.manage")}</h2>
       <p className="m-0 -mt-2 max-w-3xl text-xs/[18px] text-fg-muted">{t("agents.subtitle")}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-muted-foreground">{t("agents.addAccount")}</span>
+        {(["claude", "codex"] as const).map((k) => (
+          <Button key={k} size="sm" data-add-account={k} onClick={() => setAdding(k)}>
+            + {t(`agents.accountKind.${k}`)}
+          </Button>
+        ))}
+      </div>
+      {adding ? (
+        <AccountForm
+          kind={adding}
+          onCancel={() => setAdding(null)}
+          onAdded={(id) => {
+            setAdding(null);
+            waitFor(id);
+            refresh();
+          }}
+        />
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm text-muted-foreground">{t("agents.add")}</span>
         {AGENT_KINDS.map((k) => (
@@ -117,7 +168,14 @@ export function AgentsPage() {
       {profiles.data?.length === 0 ? <Empty>{t("agents.none")}</Empty> : null}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {profiles.data?.map((p) => (
-          <ProfileCard key={p.id} profile={p} onEdit={() => setEditing({ profile: p, previousId: p.id })} onChanged={refresh} />
+          <ProfileCard
+            key={p.id}
+            profile={p}
+            waiting={p.id in waiting}
+            onEdit={() => setEditing({ profile: p, previousId: p.id })}
+            onChanged={refresh}
+            onLoginOpened={() => waitFor(p.id)}
+          />
         ))}
       </div>
       {settings.data ? <RunnerCard runner={settings.data.runner} /> : null}
@@ -125,7 +183,73 @@ export function AgentsPage() {
   );
 }
 
-function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileStatus; onEdit: () => void; onChanged: () => void }) {
+/** One more subscription (roadmap 24b): the CLI's own sign-in, in a terminal, with a sign-in folder of its own. */
+function AccountForm({ kind, onAdded, onCancel }: { kind: NewAccount["kind"]; onAdded: (id: string) => void; onCancel: () => void }) {
+  const { client } = useHive();
+  const t = useT();
+  const action = useAction();
+  const [label, setLabel] = useState("");
+  const [way, setWay] = useState(kind === "claude" ? "plan" : "browser");
+  const [email, setEmail] = useState("");
+  const ways = kind === "claude" ? (["plan", "sso", "console"] as const) : (["browser", "device"] as const);
+  const how: LoginHow = { sso: way === "sso", console: way === "console", device: way === "device", ...(kind === "claude" && email.trim() ? { email: email.trim() } : {}) };
+  return (
+    <Card className="gap-3 py-4">
+      <CardContent className="flex flex-col gap-3 px-4">
+        <b className="text-sm font-semibold">{t(`agents.accountKind.${kind}`)}</b>
+        <form
+          className="grid grid-cols-1 items-center gap-x-3 gap-y-2 sm:grid-cols-[160px_minmax(0,1fr)]"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void action.run(async () => onAdded((await client.desktop!.addAccount({ kind, label: label.trim() || undefined, how })).id));
+          }}
+        >
+          <Label htmlFor="acc-label">{t("agents.accountLabel")}</Label>
+          <Input id="acc-label" value={label} placeholder={t("agents.accountLabelHint")} onChange={(e) => setLabel(e.target.value)} />
+          <Label htmlFor="acc-way">{t("agents.loginWay")}</Label>
+          <NativeSelect id="acc-way" value={way} onChange={(e) => setWay(e.target.value)} wrapperClassName="w-full">
+            {ways.map((w) => (
+              <NativeSelectOption key={w} value={w}>
+                {t(`agents.way.${w}`)}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+          {kind === "claude" ? (
+            <>
+              <Label htmlFor="acc-email">{t("agents.loginEmail")}</Label>
+              <Input id="acc-email" type="email" value={email} placeholder="ten@congty.vn" onChange={(e) => setEmail(e.target.value)} />
+            </>
+          ) : null}
+          <span className={HINT}>{t(`agents.wayHint.${way}` as never)}</span>
+          <div className="flex gap-2 sm:col-start-2">
+            <Button type="submit" size="sm" disabled={action.busy}>
+              {t("agents.addAndSignIn")}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+              {t("common.cancel")}
+            </Button>
+          </div>
+        </form>
+        <ErrorNote error={action.error} />
+        <p className="m-0 text-xs/[18px] text-fg-muted">{t("agents.accountNote")}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProfileCard({
+  profile: p,
+  waiting,
+  onEdit,
+  onChanged,
+  onLoginOpened,
+}: {
+  profile: AgentProfileStatus;
+  waiting: boolean;
+  onEdit: () => void;
+  onChanged: () => void;
+  onLoginOpened: () => void;
+}) {
   const { client } = useHive();
   const t = useT();
   const desktop = client.desktop!;
@@ -203,7 +327,10 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
           {p.stats.costUsd > 0 ? <span>· {t("agents.statCost", { cost: formatUsd(p.stats.costUsd) })}</span> : null}
           {p.lastUsedAt ? <span>· {t("agents.lastUsed", { time: formatTime(p.lastUsedAt) })}</span> : null}
           {p.login?.loggedIn ? (
-            <span>· {p.login.method ? t("agents.signedIn", { method: p.login.method }) : t("agents.signedInPlain")}</span>
+            <span>
+              · {p.login.method ? t("agents.signedIn", { method: p.login.method }) : t("agents.signedInPlain")}
+              {p.login.account ? ` · ${p.login.account}` : ""}
+            </span>
           ) : null}
           {p.usage ? (
             <span className={usageHigh ? "text-warning" : undefined} title={p.usage.week?.resets ?? undefined}>
@@ -232,8 +359,18 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
             {p.enabled ? t("agents.disable") : t("agents.enable")}
           </Button>
           {signedOut && p.login?.loginCommand ? (
-            <Button size="sm" disabled={action.busy} onClick={() => void action.run(async () => (await desktop.openLogin(p.id), setLoginOpened(true)))}>
+            <Button size="sm" disabled={action.busy} onClick={() => void action.run(async () => (await desktop.openLogin(p.id), setLoginOpened(true), onLoginOpened()))}>
               {t("agents.login")}
+            </Button>
+          ) : null}
+          {signedOut && p.login?.loginCommand && p.kind === "claude" ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={action.busy}
+              onClick={() => void action.run(async () => (await desktop.openLogin(p.id, { sso: true }), setLoginOpened(true), onLoginOpened()))}
+            >
+              {t("agents.loginSso")}
             </Button>
           ) : null}
           <Button size="sm" variant="outline" disabled={action.busy} onClick={() => void action.run(async () => setCheck(await desktop.checkProfile(p.id)))}>
@@ -264,7 +401,7 @@ function ProfileCard({ profile: p, onEdit, onChanged }: { profile: AgentProfileS
             {t("agents.remove")}
           </Button>
         </div>
-        {loginOpened && signedOut ? <Notice tone="info">{t("agents.loginOpened")}</Notice> : null}
+        {(loginOpened || waiting) && signedOut ? <Notice tone="info">{t(waiting ? "agents.loginWaiting" : "agents.loginOpened")}</Notice> : null}
         {p.kind === "claude" && p.container ? (
           <form
             className="flex flex-col gap-2 rounded-md border p-3"
