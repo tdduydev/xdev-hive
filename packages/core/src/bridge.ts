@@ -262,6 +262,11 @@ export interface AgentRun {
   /** One of several candidates for the task, or the judge that compares them (see BestOf). */
   bestOf: BestOf | null;
   /**
+   * Who asked for it on the web (a hub run request), kept by the runs that follow from it; null: started on this
+   * machine, which the hub counts as its token's account. For spending caps per person (roadmap 27b).
+   */
+  requestedBy: string | null;
+  /**
    * The run has ended and the app is still on what comes after it (the Hive note, the MR, a follow-up run).
    * Set by the runner's list only, so the interface keeps refreshing until those land on the run.
    */

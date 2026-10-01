@@ -150,6 +150,44 @@ describe("hub alerts", () => {
     );
   });
 
+  it("warns at 70% and again at 90% of a spending cap, and opens budget_exceeded when it is reached (roadmap 27b)", async () => {
+    const { hive, alerts, opened, iso } = setup();
+    const admin: Actor = { name: "duy", role: "admin" };
+    await hive.call("budgets.set", { budgets: [{ scope: { kind: "project", project: "app" }, period: "month", limit: { usd: 10 } }] }, admin);
+    let n = 0;
+    const spend = (usd: number) =>
+      hive.call(
+        "machines.heartbeat",
+        {
+          machine: "duy-mbp",
+          instance: "a1b2c3d4",
+          costs: [{ runId: `R-${++n}`, project: "app", taskId: "T-7", profileId: "claude-max-1", account: null, costUsd: usd, inputTokens: null, outputTokens: null, finishedAt: iso(-10) }],
+        },
+        runner,
+      );
+    await spend(6.5);
+    await alerts.check();
+    assert.deepEqual(await open(alerts), [], "65% is not near yet");
+
+    await spend(0.5);
+    await alerts.check();
+    const [near] = (await alerts.list()).open;
+    assert.deepEqual([near!.rule, near!.key, near!.severity, near!.project, near!.vars.step, near!.vars.used, near!.vars.limit], ["budget_near", "project:app:month@70", "medium", "app", 70, "$7.00", "$10.00"]);
+
+    await spend(2);
+    await alerts.check();
+    assert.deepEqual(await open(alerts), ["budget_near project:app:month@90"], "the 70% one ends as the 90% one opens");
+
+    await spend(1);
+    await alerts.check();
+    assert.deepEqual(await open(alerts), ["budget_exceeded project:app:month"]);
+    assert.deepEqual(
+      opened.map((a) => a.rule),
+      ["budget_near", "budget_near", "budget_exceeded"],
+      "each step goes to webhooks once",
+    );
+  });
+
   it("answers hub admins only", async () => {
     const hive = new SqliteHive(":memory:");
     const tokens = new TokenStore(hive.db);

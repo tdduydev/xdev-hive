@@ -3,6 +3,7 @@ export * from "./access.ts";
 export * from "./agent-policy.ts";
 export * from "./agents.ts";
 export * from "./blobs.ts";
+export * from "./budgets.ts";
 export * from "./chatfiles.ts";
 export * from "./doclinks.ts";
 export * from "./gitlab.ts";

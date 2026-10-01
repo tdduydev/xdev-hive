@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { HiveError } from "./errors.ts";
 import { agentPolicyPartSchema, agentPolicySchema, type AgentPolicy, type AgentPolicyView } from "./agent-policy.ts";
+import { BUDGET_USER, budgetSchema, type BudgetBlock, type BudgetUsage } from "./budgets.ts";
 import { ACCOUNT_ID, AGENT_ROLES, agentProfileSchema, MAX_CANDIDATES, RUN_STATUSES } from "./agents.ts";
 import { CHAT_FILES_PER_MESSAGE } from "./chatfiles.ts";
 import { DOC_ASSET_MAX_BYTES } from "./doclinks.ts";
@@ -124,6 +125,11 @@ const runCost = z.object({
   inputTokens: z.number().int().min(0).nullable(),
   outputTokens: z.number().int().min(0).nullable(),
   finishedAt: z.iso.datetime(),
+  /**
+   * Who asked for the run on the web (its run request); null for a Board run, which the hub counts as the account of
+   * the machine's token. Left out by apps older than 27b, the same as null.
+   */
+  requestedBy: z.string().regex(BUDGET_USER).nullable().default(null),
 });
 
 /** Team profile templates never carry env: login dirs and keys belong to each machine. */
@@ -493,6 +499,10 @@ export const schemas = {
     error: machineError.nullable().default(null),
   }),
   "costs.summary": z.object({}),
+  /** Spending caps (roadmap 27b), each with what its current day or month used. */
+  "budgets.list": z.object({}),
+  /** Replaces every cap at once (a hub admin): one per scope and period. */
+  "budgets.set": z.object({ budgets: z.array(budgetSchema).max(200) }),
   "machines.remove": z.object({ id: z.string().min(1).max(200) }),
 
   "cooldowns.list": z.object({}),
@@ -633,9 +643,16 @@ export interface MethodOutput {
      * too. Only the projects its token sees.
      */
     paused: AgentsPaused;
+    /**
+     * Spending caps that are full (roadmap 27b): the machine starts no new run they bind, Board runs included; runs
+     * already going go on. Sent to every machine, whether or not it takes runs from the hub. Older apps ignore it.
+     */
+    budgetBlocked: BudgetBlock[];
   };
   "machines.list": Machine[];
   "costs.summary": CostSummary;
+  "budgets.list": BudgetUsage[];
+  "budgets.set": BudgetUsage[];
   "runs.report": RunNotice;
   "runs.push": { stored: number };
   "runs.list": RunRecord[];
@@ -733,6 +750,9 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "machines.heartbeat": "agent",
   "machines.list": "viewer",
   "costs.summary": "viewer",
+  "budgets.list": "viewer",
+  // Also no per-project grants (a hub admin), as for the hub's agent policy: a cap may bind every project.
+  "budgets.set": "admin",
   "runs.report": "agent",
   "runs.push": "agent",
   "runs.list": "viewer",

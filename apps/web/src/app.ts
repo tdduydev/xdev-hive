@@ -222,6 +222,7 @@ export function createHubApp({
     res.locals.user = user;
     // An account that lost admin keeps its old admin tokens only as a member.
     const role: Role = who.role === "admin" && !user.admin ? "member" : who.role;
+    // A machine's Board runs count against this person's spending cap (roadmap 27b), and their agents act for them (27c).
     return { name, role, access: users.access(user), source, ...trail(user.username) };
   };
 
