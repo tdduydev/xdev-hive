@@ -5,6 +5,7 @@
   "private": true,
   "description": "xDev Hive desktop admin",
   "author": "xDev",
+  "repository": "github:tdduydev/xdev-hive",
   "type": "module",
   "imports": {
     "#desktop/scripts/*": "./scripts/*",
