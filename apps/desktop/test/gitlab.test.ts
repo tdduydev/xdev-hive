@@ -4,13 +4,13 @@ import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
-import { AGENT_TEMPLATES, gitlabSettingsSchema, type Actor, type AgentProfile, type AgentRun, type CiFix, type GitLabSettings, type MrSettings } from "@xdev-hive/core";
+import { AGENT_TEMPLATES, gitlabSettingsSchema, mrSettingsSchema, type Actor, type AgentProfile, type AgentRun, type CiFix, type GitLabSettings, type MrSettings } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { CiFixer, cleanLog } from "#desktop/main/gitlab/ci-fix.ts";
 import { fence, mrDescription, parseVerdict } from "#desktop/main/gitlab/describe.ts";
 import { MergeRequester } from "#desktop/main/gitlab/mr.ts";
 import { parseRemoteUrl } from "#desktop/main/gitlab/remote.ts";
-import { MrWatcher, mrRef } from "#desktop/main/gitlab/watch.ts";
+import { mrPollDelay, MrWatcher, mrRef } from "#desktop/main/gitlab/watch.ts";
 import { ciFixLines } from "#desktop/main/runner/command.ts";
 import { Runner } from "#desktop/main/runner/runner.ts";
 import { cleanupMerged } from "#desktop/main/runner/worktree.ts";
@@ -189,6 +189,24 @@ describe("merge request watch", () => {
     assert.equal(mrRef("https://gitlab.example.com", "https://gitlab.example.com.evil.io/g/p/-/merge_requests/1"), null);
     assert.equal(mrRef("https://gitlab.example.com", "https://other.host/g/p/-/merge_requests/1"), null);
     assert.equal(mrRef("https://gitlab.example.com", "https://gitlab.example.com/g/p/-/issues/1"), null);
+  });
+
+  it("checks every 2 minutes by default and takes only 1–60", () => {
+    assert.equal(gitlabSettingsSchema.parse({}).mr.pollMinutes, 2);
+    assert.equal(mrSettingsSchema.parse({ pollMinutes: 1 }).pollMinutes, 1);
+    assert.equal(mrSettingsSchema.parse({ pollMinutes: 60 }).pollMinutes, 60);
+    for (const pollMinutes of [0, 61, 1.5, -2, "5"]) assert.throws(() => mrSettingsSchema.parse({ pollMinutes }), /pollMinutes/, String(pollMinutes));
+  });
+
+  it("times the next check from the last one, so a new period applies at once", () => {
+    const now = 1_000_000_000;
+    assert.equal(mrPollDelay(null, 2, now), 30_000, "first check shortly after start");
+    assert.equal(mrPollDelay(null, 2, now, 0), 0);
+    assert.equal(mrPollDelay(now - 30_000, 2, now), 90_000);
+    // Shortened from 10 to 1 minute, 3 minutes after the last check: due already.
+    assert.equal(mrPollDelay(now - 3 * 60_000, 1, now), 0);
+    // Lengthened from 2 to 60: waits out the rest of the hour, not a fresh hour.
+    assert.equal(mrPollDelay(now - 60_000, 60, now), 59 * 60_000);
   });
 
   async function opened(mr: Partial<MrSettings> = {}) {
