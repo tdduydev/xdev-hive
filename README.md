@@ -124,6 +124,28 @@ npm run dev:web
 
 Lần chạy đầu tạo tài khoản `admin` và in **mật khẩu tạm** ra console (chỉ một lần). Mở http://localhost:7788, đăng nhập, rồi đặt mật khẩu mới. Muốn reset thì xoá `apps/web/data/`.
 
+Kiểm giao diện web từ đầu tới cuối (chạy khi đổi trang web):
+
+```bash
+npm run e2e -w @xdev-hive/web -- <thư mục ảnh>     # thêm --no-build để dùng bản build có sẵn
+```
+
+Lệnh này làm các bước sau:
+
+- build client;
+- chạy một hub tạm (DB tạm, cổng trống);
+- seed người dùng, trang và việc chờ duyệt;
+- dùng Electron làm trình duyệt ẩn, đi qua các luồng:
+  - đăng nhập bằng token và bằng mật khẩu;
+  - reviewer duyệt tài liệu thường nhưng không duyệt được context agent;
+  - Thành viên của lead và hộp Phân quyền;
+  - trình soạn Tiptap (menu `/`, liên kết trang, bảng) và Markdown;
+  - Mermaid vẽ và báo lỗi;
+  - duyệt hàng loạt đề xuất và memory;
+  - trang Hub.
+
+Mỗi bước kiểm lại dữ liệu trên hub qua RPC và chụp một ảnh. Có bước hỏng thì ảnh mang đuôi `-FAIL` và lệnh thoát khác 0. Giao diện được kiểm bằng tiếng Việt. Trên Linux không có màn hình thì chạy qua `xvfb-run`.
+
 App desktop:
 
 ```bash
