@@ -26,7 +26,7 @@ import {
 import { fuseRanks, similarity, type Embedder } from "./embed.ts";
 import { assertNoHidden, stripHidden } from "./hidden.ts";
 import { assertNoSecret, findSecret, redactLines } from "./secrets.ts";
-import { parseSource, type WriteSource } from "./source.ts";
+import { isAgentActor, MR_WATCHER, parseSource, principalOf, type WriteSource } from "./source.ts";
 import { SEED_DOCS, SEED_VERSION } from "./seed.ts";
 import type {
   Actor,
@@ -289,6 +289,18 @@ const MIGRATIONS: string[] = [
   ALTER TABLE machine_commands ADD COLUMN project TEXT;
   CREATE INDEX machine_commands_project ON machine_commands(project, machine_id);
   `,
+  // Agents in the audit log, and no approving your own work (roadmap 27c). on_behalf: the account a token belongs to,
+  // so an agent's proposal, memory or run counts as its person's. run_records.requested_by: whose the run was.
+  `
+  ALTER TABLE audit ADD COLUMN agent TEXT;
+  ALTER TABLE audit ADD COLUMN on_behalf TEXT;
+  ALTER TABLE audit ADD COLUMN run TEXT;
+  CREATE INDEX audit_run ON audit(run);
+  ALTER TABLE proposals ADD COLUMN on_behalf TEXT;
+  ALTER TABLE memory ADD COLUMN on_behalf TEXT;
+  ALTER TABLE run_requests ADD COLUMN on_behalf TEXT;
+  ALTER TABLE run_records ADD COLUMN requested_by TEXT;
+  `,
 ];
 
 /** A leader's reply asks for at most this many actions. */
@@ -445,6 +457,24 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
     text: { key: "audit.agentsStop", vars: { requests: o.requests, runs: o.runs, chats: o.chats } },
   }),
   "agents.resume": (i) => ({ target: i.project ?? "hub", detail: "cho agent chạy lại", text: { key: "audit.agentsResume" } }),
+};
+
+/**
+ * What an agent writes (roadmap 27c): logged when the actor is an agent (isAgentActor), with its label, the account it
+ * acted for and its run, so the log tells what each agent did. Methods in AUDITED are logged for everyone instead.
+ * Left out: what machines report about themselves (heartbeat, runs.push, chat.progress), which is not an agent's doing.
+ */
+const AGENT_AUDITED: Partial<Record<Method, (input: any, output: any) => { target: string; detail?: string; text?: ErrorText }>> = {
+  "tasks.claim": (i, o: { claimed: boolean }) => ({ target: i.id, detail: o.claimed ? "nhận task" : "chưa nhận được: người khác đang giữ", text: { key: o.claimed ? "audit.taskClaimed" : "audit.taskNotClaimed" } }),
+  "tasks.update": (i, o: Task) => ({ target: o.id, detail: `→ ${o.status}`, text: { key: "audit.taskStatus", vars: { status: o.status } } }),
+  "proposals.create": (_i, o: Proposal) => ({ target: o.docKey, detail: `đề xuất #${o.id}`, text: { key: "audit.proposal", vars: { id: o.id } } }),
+  "memory.write": (_i, o: Memory) => ({ target: `${o.project ?? "org"} #${o.id}`, detail: `${o.kind} · ${o.content}`, text: { key: "audit.memoryWrite", vars: { kind: o.kind, content: clipDetail(o.content) } } }),
+  "memory.resolve": (i) => ({ target: `memory #${i.id}`, detail: `#${i.other} · ${i.keep}` }),
+  "memory.keep": (i) => ({ target: `memory #${i.id}` }),
+  "chat.send": (_i, o: { thread: ChatThread }) => ({ target: `${o.thread.project} · chat #${o.thread.id}` }),
+  "chat.propose": (_i, o: ChatAction) => ({ target: `${o.project} · chat #${o.threadId}`, detail: o.kind, text: { key: "audit.chatPropose", vars: { kind: o.kind, id: o.id } } }),
+  "chat.decide": (_i, o: ChatAction) => ({ target: `${o.project} · chat #${o.threadId}`, detail: `${o.kind} → ${o.status}` }),
+  "chat.decideAll": (i, o: ChatAction[]) => ({ target: `chat reply #${i.replyId}`, detail: `${o.length} · ${i.accept ? "nhận" : "bỏ"}` }),
 };
 
 /** The event a successful call is worth telling people about, if any. */
@@ -707,6 +737,9 @@ const toAudit = (r: Row): AuditEntry => ({
   target: str(r.target),
   detail: str(r.detail),
   ...(r.detail_key ? { detailKey: str(r.detail_key), detailVars: r.detail_vars ? (JSON.parse(str(r.detail_vars)) as AuditEntry["detailVars"]) : undefined } : {}),
+  agent: strOrNull(r.agent),
+  onBehalf: strOrNull(r.on_behalf),
+  run: strOrNull(r.run),
 });
 
 /** FTS5 query from free text: every word becomes a quoted prefix term, OR-ed together. */
@@ -787,7 +820,7 @@ export class SqliteHive implements HiveBackend {
     const handler = this.#handlers[method] as (i: ParsedInput<M>, a: Actor) => MethodOutput[M] | Promise<MethodOutput[M]>;
     this.#check(method, parsed as ParsedInput<Method>, actor);
     const output = this.#filter(method, await handler(parsed, actor), actor);
-    const audited = AUDITED[method];
+    const audited = AUDITED[method] ?? (isAgentActor(actor) ? AGENT_AUDITED[method] : undefined);
     if (audited) {
       const { target, detail, text } = audited(parsed, output);
       this.audit(actor, method, target, detail, text);
@@ -860,9 +893,11 @@ export class SqliteHive implements HiveBackend {
         return this.#need(actor, owner(i.docKey), "docPropose", `Doc ${i.docKey}`);
       case "proposals.approve":
       case "proposals.reject": {
-        const row = this.db.prepare("SELECT doc_key FROM proposals WHERE id = ?").get(i.id) as Row | undefined;
+        const row = this.db.prepare("SELECT doc_key, COALESCE(on_behalf, author) AS owner FROM proposals WHERE id = ?").get(i.id) as Row | undefined;
         // A change to what agents read is the context's to approve; any other a doc reviewer's.
         if (row) this.#need(actor, owner(str(row.doc_key)), this.#docPermission(str(row.doc_key)) === "contextEdit" ? "contextEdit" : "docApprove", `Proposal #${i.id}`);
+        // Rejecting your own proposal is only taking it back.
+        if (row && method === "proposals.approve") this.#notSelf(actor, [str(row.owner)], `Proposal #${i.id}`);
         return;
       }
       case "memory.search":
@@ -958,8 +993,9 @@ export class SqliteHive implements HiveBackend {
       case "memory.resolve":
       case "memory.keep":
       case "memory.remove": {
-        const row = this.db.prepare("SELECT project FROM memory WHERE id = ?").get(i.id) as Row | undefined;
+        const row = this.db.prepare("SELECT project, COALESCE(on_behalf, author) AS owner FROM memory WHERE id = ?").get(i.id) as Row | undefined;
         if (row) this.#need(actor, str(row.project) === SHARED ? null : str(row.project), "memoryApprove", `Memory #${i.id}`);
+        if (row && method === "memory.approve") this.#notSelf(actor, [str(row.owner)], `Memory #${i.id}`);
         return;
       }
       case "tasks.create":
@@ -982,12 +1018,39 @@ export class SqliteHive implements HiveBackend {
         if (!task) return;
         this.#need(actor, task.project, "taskWork", `Task ${i.id}`);
         // Done is a reviewer's call: an agent sends its work to review, a person with codeReview takes it from there.
-        if (method === "tasks.update" && i.status === "done" && task.status !== "done") this.#need(actor, task.project, "codeReview", `Task ${i.id}`);
+        if (method === "tasks.update" && i.status === "done" && task.status !== "done") {
+          this.#need(actor, task.project, "codeReview", `Task ${i.id}`);
+          // The MR watcher moves a task to done when its MR merged: someone already approved it on GitLab or GitHub,
+          // so the merge is the review and the rule below does not apply. (Its label is not proof; a person who fakes
+          // it only skips a check meant to stop their own slip, the codeReview right above still holds.)
+          if (actor.agent !== MR_WATCHER) this.#notSelf(actor, this.#taskRequesters(task), `Task ${i.id}`);
+        }
         return;
       }
       default:
         return;
     }
+  }
+
+  /** Who asked for the implement runs that did a task: by a request from the web, or started from a machine's Board. */
+  #taskRequesters(task: Task): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT COALESCE(on_behalf, requested_by) AS who FROM run_requests WHERE project = ?1 AND task_id = ?2 AND role = 'implement' AND status = 'accepted'
+         UNION SELECT requested_by FROM run_records WHERE project = ?1 AND task_id = ?2 AND role = 'implement' AND requested_by IS NOT NULL`,
+      )
+      .all(task.project, task.id) as Row[];
+    return rows.map((r) => str(r.who));
+  }
+
+  /**
+   * Nobody approves their own work (roadmap 27c); an agent on someone's token counts as that person. With the team
+   * policy's selfApproval "admins", a hub admin may: on a hub of one person, that person's agents run on their token.
+   */
+  #notSelf(actor: Actor, owners: string[], what: string): void {
+    if (!owners.includes(principalOf(actor))) return;
+    if (this.#policy().selfApproval === "admins" && actor.role === "admin" && !actor.access) return;
+    throw new HiveError("forbidden", `${what}: someone else has to approve your own work.`, { key: "errors.selfApprove" });
   }
 
   /** Lists only show what the actor can see (shared items are visible to every account). */
@@ -1110,9 +1173,22 @@ export class SqliteHive implements HiveBackend {
 
   /** Records an admin action (also used by the hub for token changes, which live outside the method table). */
   audit(actor: Actor, action: string, target: string, detail = "", text?: ErrorText): void {
+    // The desktop window sends a label too ("desktop"): only an agent's goes in the agent column.
+    const agent = isAgentActor(actor) ? (actor.agent ?? actor.name) : null;
     this.db
-      .prepare("INSERT INTO audit(at, actor, action, target, detail, detail_key, detail_vars) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .run(this.#now(), actor.name, action, target, clipDetail(detail), text?.key ?? null, text?.vars ? JSON.stringify(text.vars) : null);
+      .prepare("INSERT INTO audit(at, actor, action, target, detail, detail_key, detail_vars, agent, on_behalf, run) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(
+        this.#now(),
+        actor.name,
+        action,
+        target,
+        clipDetail(detail),
+        text?.key ?? null,
+        text?.vars ? JSON.stringify(text.vars) : null,
+        agent,
+        actor.onBehalf ?? null,
+        actor.run ?? actor.source?.run ?? null,
+      );
   }
 
   /** Creates the default org docs on an empty database. Safe to call on every start. */
@@ -2054,10 +2130,10 @@ export class SqliteHive implements HiveBackend {
         }
         const res = db
           .prepare(
-            `INSERT INTO proposals(doc_key, base_version, content, reason, author, source, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO proposals(doc_key, base_version, content, reason, author, source, on_behalf, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           )
-          .run(input.docKey, input.baseVersion, input.content, input.reason, actor.name, sourceJson(actor.source), this.#now());
+          .run(input.docKey, input.baseVersion, input.content, input.reason, actor.name, sourceJson(actor.source), actor.onBehalf ?? null, this.#now());
         return this.#getProposal(num(res.lastInsertRowid));
       },
 
@@ -2221,7 +2297,7 @@ export class SqliteHive implements HiveBackend {
           const status = this.#opts.memoryRequiresApproval && !may(actor, owner, "memoryApprove") ? "pending" : "approved";
           const res = db
             .prepare(
-              "INSERT INTO memory(project, kind, content, author, task_id, status, source, files, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              "INSERT INTO memory(project, kind, content, author, task_id, status, source, files, on_behalf, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .run(
               input.shared ? SHARED : input.project!,
@@ -2232,6 +2308,7 @@ export class SqliteHive implements HiveBackend {
               status,
               sourceJson(actor.source),
               JSON.stringify([...new Set(input.files)].map((path): MemoryFile => ({ path, sha: null }))),
+              actor.onBehalf ?? null,
               this.#now(),
             );
           const created = num(res.lastInsertRowid);
@@ -2536,6 +2613,11 @@ export class SqliteHive implements HiveBackend {
           );
           // Sent only when it changed: left out, the one the hub has stays.
           const patchPut = db.prepare("UPDATE run_records SET patch = ? WHERE machine_id = ? AND run_id = ?");
+          const ownerPut = db.prepare(
+            `UPDATE run_records SET requested_by = COALESCE(
+               (SELECT COALESCE(on_behalf, requested_by) FROM run_requests WHERE machine_id = ?1 AND run_id = ?2 AND status = 'accepted'), ?3)
+             WHERE machine_id = ?1 AND run_id = ?2 AND requested_by IS NULL`,
+          );
           for (const r of runs) {
             // The machine already hid secret-looking lines; this is the hub's own check of what it keeps.
             put.run(
@@ -2544,6 +2626,9 @@ export class SqliteHive implements HiveBackend {
               r.createdAt, r.startedAt, r.finishedAt, now,
             );
             if (r.patch !== undefined) patchPut.run(redactLines(stripHidden(r.patch)), actor.name, r.runId);
+            // Whose run it is, set once: whoever asked for it from the web, else the person whose token the machine has
+            // (a run started from its Board). A machine takes a request (runs.requestResult) before it pushes the run.
+            ownerPut.run(actor.name, r.runId, principalOf(actor));
           }
           db.prepare("DELETE FROM run_records WHERE updated_at < ?").run(this.#now(-RUN_RECORD_DAYS * 24 * 60));
           return { stored: runs.length };
@@ -2636,9 +2721,9 @@ export class SqliteHive implements HiveBackend {
           const res = db
             .prepare(
               `INSERT INTO run_requests(machine_id, machine, project, task_id, task_title, role, profile_id, review_after, candidates,
-                 instructions, requested_by, requested_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 instructions, requested_by, on_behalf, requested_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             )
-            .run(machineId, m.machine, project, taskId, task.title, role, profileId, reviewAfter ? 1 : 0, candidates, instructions, actor.name, now, now);
+            .run(machineId, m.machine, project, taskId, task.title, role, profileId, reviewAfter ? 1 : 0, candidates, instructions, actor.name, actor.onBehalf ?? null, now, now);
           return this.#runRequest(num(res.lastInsertRowid));
         }),
 
@@ -3095,7 +3180,7 @@ export class SqliteHive implements HiveBackend {
       "policy.get": () => this.#policy(),
 
       "policy.set": (input, actor) => {
-        const policy: TeamPolicy = { ...input, updatedAt: this.#now(), updatedBy: actor.name };
+        const policy: TeamPolicy = { ...input, selfApproval: input.selfApproval ?? this.#policy().selfApproval, updatedAt: this.#now(), updatedBy: actor.name };
         assertNoSecret(JSON.stringify(policy), "Policy");
         db.prepare("INSERT INTO settings(key, value) VALUES ('policy', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(
           JSON.stringify(policy),
@@ -3231,9 +3316,18 @@ export class SqliteHive implements HiveBackend {
           return this.#command(id);
         }),
 
-      "admin.audit": ({ limit, action }) =>
+      // agent: `claude-1` also finds `claude-1.<machine>`. user: a person's own rows, and those of agents on their token.
+      "admin.audit": ({ limit, action, agent, user, run }) =>
         (
-          db.prepare("SELECT * FROM audit WHERE (?1 IS NULL OR action = ?1) ORDER BY id DESC LIMIT ?2").all(action ?? null, limit) as Row[]
+          db
+            .prepare(
+              `SELECT * FROM audit WHERE (?1 IS NULL OR action = ?1)
+                 AND (?3 IS NULL OR agent = ?3 OR substr(agent, 1, length(?3) + 1) = ?3 || '.')
+                 AND (?4 IS NULL OR on_behalf = ?4 OR (on_behalf IS NULL AND actor = ?4))
+                 AND (?5 IS NULL OR run = ?5)
+               ORDER BY id DESC LIMIT ?2`,
+            )
+            .all(action ?? null, limit, agent ?? null, user ?? null, run ?? null) as Row[]
         ).map(toAudit),
     };
   }

@@ -17,6 +17,15 @@ export interface Actor {
   source?: WriteSource;
   /** Set by the hub for a chat leader's short-lived token: the reply it writes, the only one it may propose actions for. */
   chatReply?: number;
+  /** The agent's label (`x-hive-agent`, e.g. `claude-1.duy-mbp`), so the audit log tells agents apart from people. */
+  agent?: string;
+  /**
+   * The account that owns the token (or the token's name when no account does). An agent acts for that person, so
+   * "approving your own work" compares this, not `name`, which carries the agent's label.
+   */
+  onBehalf?: string;
+  /** The run the agent works in (`x-hive-run`, from the HIVE_RUN the runner sets). */
+  run?: string;
 }
 
 export interface DocSummary {
@@ -299,6 +308,12 @@ export interface ReportedProfile {
 
 export const POLICY_CLIS = ["claude", "codex", "gemini"] as const;
 export const POLICY_REPO_PARTS = ["agents", "codegraph-mcp", "codegraph-index", "superpowers"] as const;
+/**
+ * admins: a hub admin may approve their own work, since on a hub of one person their agents run on their token too.
+ * nobody: everyone needs someone else.
+ */
+export const SELF_APPROVALS = ["admins", "nobody"] as const;
+export type SelfApproval = (typeof SELF_APPROVALS)[number];
 export type PolicyRepoPart = (typeof POLICY_REPO_PARTS)[number];
 
 /** What the team expects on every machine, set by an admin on the hub. */
@@ -309,6 +324,8 @@ export interface TeamPolicy {
   projects: Record<string, PolicyRepoPart[]>;
   /** Profiles the team recommends; desktops add them in one click (each machine fills in its own env). */
   profileTemplates: AgentProfile[];
+  /** Who may approve their own work (roadmap 27c): hub admins, or nobody. */
+  selfApproval: SelfApproval;
   updatedAt: string | null;
   updatedBy: string | null;
 }
@@ -736,6 +753,10 @@ export interface AuditEntry {
   /** The detail as a message key of the UI catalogue (entries from before keys existed have none). */
   detailKey?: string;
   detailVars?: Record<string, string | number>;
+  /** Set when an agent did it (roadmap 27c): its label, the account it acted for and its run. */
+  agent: string | null;
+  onBehalf: string | null;
+  run: string | null;
 }
 
 /** A queued or running agent run, as a desktop runner reports it to the hub. */

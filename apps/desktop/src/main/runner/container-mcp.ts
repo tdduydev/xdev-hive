@@ -29,6 +29,8 @@ export function hubHeaders(r: McpRun): Record<string, string> {
     "x-hive-agent": r.agent,
     "x-hive-project": r.project,
     "x-hive-source": JSON.stringify(agentSource(r.machine, { HIVE_TASK: r.task, HIVE_RUN: r.run })),
+    // As the stdio shim sends it: the run column of the audit rows this agent's writes leave.
+    "x-hive-run": r.run,
     ...(r.readOnly ? { "x-hive-readonly": "1" } : {}),
   };
 }

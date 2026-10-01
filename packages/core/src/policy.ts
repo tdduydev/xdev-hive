@@ -6,6 +6,7 @@ export const EMPTY_POLICY: TeamPolicy = {
   requireShim: false,
   projects: {},
   profileTemplates: [],
+  selfApproval: "admins",
   updatedAt: null,
   updatedBy: null,
 };
