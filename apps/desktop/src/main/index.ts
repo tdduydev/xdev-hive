@@ -32,6 +32,7 @@ import {
   type ReportedProfile,
   type SetupReport,
   type StartRunRequest,
+  type SyncReport,
   type TransferReport,
   type TransferSide,
 } from "@xdev-hive/core";
@@ -352,6 +353,16 @@ async function checkAllCitations(): Promise<void> {
   for (const project of config.projects) {
     await checkCitations(backend, actor(), project).catch(() => undefined);
   }
+}
+
+/** Đồng bộ of the Projects page, and what a sync request from the hub runs (roadmap 22n). */
+async function syncAndMirror(name: string): Promise<SyncReport> {
+  const report = await syncProject(backend, actor(), project(name), { autoCommit: config.sync.autoCommit });
+  // The other way too (roadmap 26): the repo's docs into Hive, when the repo says which.
+  if (!mirrors(project(name).repo)) return report;
+  const mirror = await mirrorDocs(backend, actor(), project(name));
+  if (mirror.commit) mirrored.set(name, mirror.commit);
+  return { ...report, mirror };
 }
 
 /** The repo's docs into Hive for every project that mirrors some (one at a time; one that fails leaves the others). */
@@ -747,14 +758,7 @@ function registerIpc(): void {
     const res = await dialog.showOpenDialog(win!, { properties: ["openDirectory", "createDirectory"] });
     return res.canceled ? null : (res.filePaths[0] ?? null);
   });
-  handle("desktop:syncProject", async (name: string) => {
-    const report = await syncProject(backend, actor(), project(name), { autoCommit: config.sync.autoCommit });
-    // The other way too (roadmap 26): the repo's docs into Hive, when the repo says which.
-    if (!mirrors(project(name).repo)) return report;
-    const mirror = await mirrorDocs(backend, actor(), project(name));
-    if (mirror.commit) mirrored.set(name, mirror.commit);
-    return { ...report, mirror };
-  });
+  handle("desktop:syncProject", syncAndMirror);
   handle("desktop:installAgents", (name: string) => installAgents(project(name).repo, name));
   handle("desktop:installShim", () => installShim({ electronPath: process.execPath, entry: mcpEntry() }, agentPath()));
   handle("desktop:setupStatus", refreshSetup);
@@ -1045,6 +1049,7 @@ if (!app.requestSingleInstanceLock()) {
         onEvent: onRunnerEvent,
         afterFinish: (run) => mergeRequester.afterFinish(run),
         onHub,
+        sync: (p) => syncAndMirror(p.name),
       },
     );
     setup = new Setup({
