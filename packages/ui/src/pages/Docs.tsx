@@ -109,6 +109,8 @@ function Seg<T extends string>({ value, options, onChange, label }: { value: T; 
           type="button"
           role="radio"
           aria-checked={value === k}
+          // Picked by value in the smoke run, whatever the interface language.
+          data-value={k}
           onClick={() => onChange(k)}
           className={cn(
             "h-6 min-w-0 cursor-pointer truncate rounded-[5px] px-2.5 text-xs/none font-semibold whitespace-nowrap outline-none focus-visible:focus-ring",

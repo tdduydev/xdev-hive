@@ -866,10 +866,26 @@ function createWindow(): void {
         if (scroll) {
           await win!.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(scroll)})?.scrollIntoView({ block: "start" })`).then(() => pause(300));
         }
+        // HIVE_SMOKE_EXPECT: selectors (joined by " && ") that must be on the page within 8 s, or the shot fails:
+        // a check of what rendered, not only a picture of it.
+        const expect = process.env.HIVE_SMOKE_EXPECT;
+        let missing: string | null = null;
+        for (const sel of expect ? expect.split(" && ") : []) {
+          let found = false;
+          for (let i = 0; i < 40 && !found; i++) {
+            found = await win!.webContents.executeJavaScript(`Boolean(document.querySelector(${JSON.stringify(sel)}))`);
+            if (!found) await pause(200);
+          }
+          if (!found) {
+            missing = sel;
+            break;
+          }
+        }
         const image = await win!.webContents.capturePage();
         writeFileSync(smokeShot, image.toPNG());
         console.log(`[xdev-hive] smoke screenshot ${smokeShot}`);
-        app.exit(0);
+        if (missing) console.error(`[xdev-hive] smoke expected ${missing} on the page`);
+        app.exit(missing ? 3 : 0);
       }, delay);
     };
     // HIVE_SMOKE_LOCALE=en / HIVE_SMOKE_THEME=dark: the interface language and theme live in the renderer's
