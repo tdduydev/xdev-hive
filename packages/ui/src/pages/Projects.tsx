@@ -645,6 +645,11 @@ function ProjectsCard({ settings, onChanged }: { settings: DesktopSettings; onCh
       extra: [
         r.imported.length ? t("projects.imported", { keys: r.imported.join(", ") }) : "",
         r.commit ? t("projects.commit", { sha: r.commit }) : "",
+        r.mirror?.commit
+          ? t("projects.mirrored", { changed: r.mirror.changed.length, unchanged: r.mirror.unchanged, commit: r.mirror.commit })
+          : "",
+        r.mirror?.missing.length ? t("projects.mirrorMissing", { files: r.mirror.missing.join(", ") }) : "",
+        r.mirror?.skipped.length ? t("projects.mirrorSkipped", { count: r.mirror.skipped.length, reason: r.mirror.skipped[0]!.reason }) : "",
         r.note ?? "",
       ]
         .filter(Boolean)
