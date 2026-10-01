@@ -1,5 +1,6 @@
 // Browser-safe entry: no Node built-ins. Node-only pieces live in "@xdev-hive/core/node".
 export * from "./access.ts";
+export * from "./agent-policy.ts";
 export * from "./agents.ts";
 export * from "./blobs.ts";
 export * from "./chatfiles.ts";
