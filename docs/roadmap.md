@@ -99,7 +99,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 - **21. mr-followup** (ghi 30/9: ý từ bản nháp cũ ở nhánh `backup/main-wip-2026-09-30` trên máy, main chưa có; theo dõi MR, `doneOnMerge` và pipeline đã có trên main):
   - [x] **21a. mr-closed**: MR bị đóng mà không merge thì task sang trạng thái chọn được ở thẻ GitLab/GitHub (*Bị chặn*, *Chưa làm* hoặc giữ nguyên; mặc định *Bị chặn*), ghi chú task thêm một dòng.
   - [x] **21b. mr-cleanup**: MR merge xong thì xoá worktree của task, và branch `ai/<task>` ở máy nếu đầu branch đúng là commit đã merge; tắt được.
-  - [ ] **21c. mr-poll**: chỉnh chu kỳ hỏi GitLab/GitHub về MR (1–60 phút, mặc định 2) thay cho 2 phút cố định.
+  - [x] **21c. mr-poll**: chỉnh chu kỳ hỏi GitLab/GitHub về MR (1–60 phút, mặc định 2) thay cho 2 phút cố định.
 
 - **22. redesign** (hỏi 30/9: làm theo bản thiết kế Claude Design trong `docs/design/2026-09-redesign` (DS, app Client, Web Admin); làm hết, cả phần cần backend; tách khung app desktop và Web Admin như thiết kế). Tách:
   - [x] **22a. ds-foundation**: token màu, chữ, khoảng cách, bóng, chuyển động của DS (`packages/ui/src/tokens`, sáng/tối theo `data-theme`), font tự host (Be Vietnam Pro, Space Grotesk, JetBrains Mono), logo X + HIVE / DEV HUB và chữ X, icon app và tray từ chữ X trên nền navy, component shadcn theo DS (nút, ô nhập, chọn, badge, tab, segmented, card, hộp thoại, drawer, bảng, tooltip, menu, sidebar), chọn Sáng / Tối / Theo hệ thống.

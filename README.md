@@ -624,6 +624,13 @@ Trang này có trên hub web và trên app desktop ở chế độ hub, chỉ hi
 - **Máy**: mọi máy trong team, cùng kết quả *Cài đặt máy* mà máy gửi kèm heartbeat. App kiểm tra lúc mở, sau mỗi lần cài, và 10 phút một lần. Trang hiện CLI và phiên bản, hive-mcp, cấu hình từng repo, gói sub (không gửi lệnh chạy hay `env`), mục thiếu so với chính sách, và lịch sử yêu cầu cài.
 - **Yêu cầu cài từ xa**: nút *Yêu cầu cài* chỉ có ở mục mà chính máy đó báo là app cài được: CLI qua npm, hive-mcp, cấu hình repo, codegraph, superpowers. Hub không bao giờ gửi lệnh shell tuỳ ý. Máy nhận yêu cầu ở heartbeat kế tiếp và hiện thông báo; ở trang *Cài đặt máy* người dùng phải bấm *Đồng ý và cài* thì app mới chạy, rồi kết quả được gửi lại hub. Yêu cầu chưa ai trả lời sẽ hết hạn sau 24 giờ; admin huỷ được yêu cầu đang chờ.
 - **Chính sách**: CLI và hive-mcp bắt buộc trên mọi máy, các phần bắt buộc theo dự án (cấu hình agent, codegraph, index, superpowers), và profile mẫu cho team. Profile mẫu không được có `env`, vì thư mục đăng nhập và key là của từng máy. Máy nhận chính sách qua heartbeat: trang *Cài đặt máy* gắn nhãn "bắt buộc", trang *Gói sub & agent* có nút thêm từ mẫu.
+- **Chính sách agent** (roadmap 27a, thẻ *Agent* trên trang *Chính sách*): hub có một mặc định, mỗi dự án có thể có thêm phần riêng. Chính sách gồm:
+  - model được dùng theo loại agent;
+  - mức tự chủ: chỉ đọc, đề xuất, sửa hoặc toàn quyền;
+  - mạng: tắt, danh sách host, hoặc mở;
+  - các MCP server được bật.
+
+  Phần riêng của dự án chỉ siết thêm mặc định, không nới được. Cột *Hiệu lực* cho thấy kết quả sau khi gộp. Admin hub sửa mặc định. Người có quyền Cài đặt dự án sửa dòng của dự án mình, ở đây hoặc ở trang *Hệ thống*. Máy nhận phần của các dự án mình có qua heartbeat. Runner bắt đầu ép chính sách từ R-27a-2; trước đó, chính sách chỉ được lưu và gửi xuống máy.
 - **Nhật ký**: mọi thao tác thay đổi dữ liệu của admin (sửa tài liệu, duyệt/từ chối, memory, task, token, chính sách, yêu cầu cài), đăng nhập, tạo/sửa/khoá tài khoản, đổi quyền, đặt lại mật khẩu, và kết quả máy báo về. Không ghi lượt đọc.
 - **Người dùng & quyền**: tạo tài khoản, cấp quyền theo dự án, cấp/bỏ admin, đặt lại mật khẩu, khoá.
 - Trang **Token** có thêm cột *Tài khoản* và *Máy*: token thuộc ai, các máy đang dùng từng token.
