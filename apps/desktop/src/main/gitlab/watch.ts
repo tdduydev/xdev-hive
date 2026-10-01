@@ -3,7 +3,7 @@
 // status chosen in the settings (blocked by default), and a merged one also takes its task's worktree and local
 // branch off the machine (unless turned off); a failed pipeline, or failed checks, on an open one goes to the CI
 // fixer. Only links on the configured GitLab / GitHub, so each token goes nowhere else. No Electron imports.
-import { PIPELINE_STATUSES, type AgentRun, type MrStatus, type PipelineStatus, type TaskStatus } from "@xdev-hive/core";
+import { HiveError, PIPELINE_STATUSES, type AgentRun, type MrStatus, type PipelineStatus, type TaskStatus } from "@xdev-hive/core";
 import { failureId, githubJobs } from "#desktop/main/github/checks.ts";
 import { checksStatus, GitHubClient, pullRef } from "#desktop/main/github/client.ts";
 import { tr } from "#desktop/main/i18n.ts";
@@ -27,6 +27,8 @@ export interface MrChange {
   taskStatus: TaskStatus | null;
   /** Why the task could not be moved, if it could not. */
   taskError: string | null;
+  /** Merged, but the hub refused Done: this machine's account has no Code review, so the task waits in Review. */
+  taskNeedsReview: boolean;
   /** What became of the task's worktree and local branch on merge; null when not tried (turned off, not merged). */
   cleanup: MergedCleanup | null;
 }
@@ -141,6 +143,7 @@ export class MrWatcher {
           taskDone: false,
           taskStatus: null,
           taskError: null,
+          taskNeedsReview: false,
           cleanup: null,
         };
         // openMrs only returns MRs last seen open, so a merged or closed status here is always new.
@@ -152,8 +155,10 @@ export class MrWatcher {
               : null;
         if (move) {
           try {
-            change.taskStatus = await this.#move(run, move.to, move.line);
-            change.taskDone = change.taskStatus === "done";
+            const moved = await this.#move(run, move.to, move.line);
+            change.taskStatus = moved.status;
+            change.taskDone = moved.status === "done";
+            change.taskNeedsReview = moved.needsReview;
           } catch (err) {
             change.taskError = (err as Error).message;
           }
@@ -172,20 +177,31 @@ export class MrWatcher {
 
   /**
    * Moves the task to `to` (null: keeps its status) and adds a line about the MR to its note. Returns the status
-   * it moved to, or null when it did not move.
+   * it moved to (null when it did not move), and whether the hub refused Done for want of Code review.
    */
-  async #move(run: AgentRun, to: TaskStatus | null, what: string): Promise<TaskStatus | null> {
+  async #move(run: AgentRun, to: TaskStatus | null, what: string): Promise<{ status: TaskStatus | null; needsReview: boolean }> {
+    const stayed = { status: null, needsReview: false };
     const backend = this.#host.backend();
     const actor = mrActor(this.#host);
     const task = (await backend.call("tasks.list", { project: run.project }, actor)).find((t) => t.id === run.taskId);
     // A done task is finished whatever became of this MR (it may have gone in through another one).
-    if (!task || task.status === "done") return null;
+    if (!task || task.status === "done") return stayed;
     // tasks.update needs a status, and writing doing back would take the task's lease from whoever holds it.
-    if (to === null && task.status === "doing") return null;
+    if (to === null && task.status === "doing") return stayed;
+    // tasks.update replaces the whole note, so the old one goes back with the new lines under it.
+    const noted = (...lines: string[]) => clipTail([task.note, ...lines].filter(Boolean).join("\n\n"), 2000);
     const line = `${mrLabel(run)} ${what}`;
-    const note = task.note ? `${task.note}\n\n${line}` : line;
-    await backend.call("tasks.update", { id: task.id, status: to ?? task.status, note: clipTail(note, 2000) }, actor);
-    return to;
+    try {
+      await backend.call("tasks.update", { id: task.id, status: to ?? task.status, note: noted(line) }, actor);
+      return { status: to, needsReview: false };
+    } catch (err) {
+      if (to !== "done" || !needsCodeReview(err)) throw err;
+      // Done is a reviewer's call (roadmap 25). The merge still goes on the note, in the task's own status: that
+      // bumps updatedAt, so the task shows again on a reviewer's Today with what is left. Not on a doing task, for
+      // the lease, as above.
+      if (task.status !== "doing") await backend.call("tasks.update", { id: task.id, status: task.status, note: noted(line, NEEDS_REVIEW_LINE) }, actor);
+      return { status: null, needsReview: true };
+    }
   }
 
   /**
@@ -215,6 +231,12 @@ export class MrWatcher {
     return new Date(this.#now().getTime() - WATCH_DAYS * 86_400_000).toISOString();
   }
 }
+
+/** Goes into the team's data (the task note), so it does not follow this machine's language. */
+export const NEEDS_REVIEW_LINE = "MR đã merge, chờ người có quyền Review code chuyển Xong.";
+
+/** The hub's answer to Done from an account without Code review (see tasks.update in packages/core/src/sqlite.ts). */
+const needsCodeReview = (err: unknown): boolean => err instanceof HiveError && err.code === "forbidden" && err.key === "errors.need.codeReview";
 
 const KEPT_KEYS = {
   noSha: "mrNote.keptNoSha",

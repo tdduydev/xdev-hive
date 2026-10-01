@@ -4,13 +4,13 @@ import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
-import { AGENT_TEMPLATES, gitlabSettingsSchema, type Actor, type AgentProfile, type AgentRun, type CiFix, type GitLabSettings, type MrSettings } from "@xdev-hive/core";
+import { AGENT_TEMPLATES, gitlabSettingsSchema, HiveError, type Actor, type AgentProfile, type AgentRun, type CiFix, type GitLabSettings, type HiveBackend, type MrSettings } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { CiFixer, cleanLog } from "#desktop/main/gitlab/ci-fix.ts";
 import { fence, mrDescription, parseVerdict } from "#desktop/main/gitlab/describe.ts";
 import { MergeRequester } from "#desktop/main/gitlab/mr.ts";
 import { parseRemoteUrl } from "#desktop/main/gitlab/remote.ts";
-import { MrWatcher, mrRef } from "#desktop/main/gitlab/watch.ts";
+import { MrWatcher, mrRef, NEEDS_REVIEW_LINE } from "#desktop/main/gitlab/watch.ts";
 import { ciFixLines } from "#desktop/main/runner/command.ts";
 import { Runner } from "#desktop/main/runner/runner.ts";
 import { cleanupMerged } from "#desktop/main/runner/worktree.ts";
@@ -254,6 +254,59 @@ describe("merge request watch", () => {
     assert.equal(merged!.taskDone, false);
     assert.equal(merged!.taskStatus, null);
     assert.equal((await off.task()).status, "review");
+  });
+
+  it("leaves the task in Review with a note when the hub refuses Done for want of Code review", async () => {
+    const s = await opened();
+    const before = (await s.task()).note!;
+    // What the hub answers an account without codeReview (the check in tasks.update, roadmap 25).
+    const refusing: HiveBackend = {
+      call: (method, input, actor) =>
+        method === "tasks.update" && (input as { status?: string }).status === "done"
+          ? Promise.reject(new HiveError("forbidden", 'Task T-1: needs "codeReview" on demo.', { key: "errors.need.codeReview", vars: { project: "demo" } }))
+          : s.hive.call(method, input, actor),
+    };
+    const watcher = new MrWatcher({
+      gitlab: () => gitlabSettingsSchema.parse({ url: gl.base, token: TOKEN, mr: { enabled: true } }),
+      projects: () => [],
+      backend: () => refusing,
+      mode: () => "local",
+      store: () => s.runner.store,
+      user: "duy",
+    });
+    gl.mrs[0]!.state = "merged";
+    const [c] = await watcher.check();
+    assert.deepEqual(c!.status, { from: null, to: "merged" });
+    assert.equal(c!.taskDone, false);
+    assert.equal(c!.taskStatus, null);
+    assert.equal(c!.taskNeedsReview, true);
+    assert.equal(c!.taskError, null, "not the generic failure");
+    const t = await s.task();
+    assert.equal(t.status, "review");
+    assert.equal(t.note, `${before}\n\nMR !1 merged.\n\n${NEEDS_REVIEW_LINE}`, "the old note stays, the new lines go under it");
+    assert.equal(NEEDS_REVIEW_LINE, "MR đã merge, chờ người có quyền Review code chuyển Xong.");
+    assert.equal(watcher.watching(), false, "a merged MR is not asked about again");
+  });
+
+  it("reports any other refusal of Done as a failure", async () => {
+    const s = await opened();
+    const refusing: HiveBackend = {
+      call: (method, input, actor) =>
+        method === "tasks.update" ? Promise.reject(new HiveError("forbidden", "Task T-1: needs \"taskWork\" on demo.", { key: "errors.need.taskWork" })) : s.hive.call(method, input, actor),
+    };
+    const watcher = new MrWatcher({
+      gitlab: () => gitlabSettingsSchema.parse({ url: gl.base, token: TOKEN, mr: { enabled: true } }),
+      projects: () => [],
+      backend: () => refusing,
+      mode: () => "local",
+      store: () => s.runner.store,
+      user: "duy",
+    });
+    gl.mrs[0]!.state = "merged";
+    const [c] = await watcher.check();
+    assert.equal(c!.taskNeedsReview, false);
+    assert.match(c!.taskError ?? "", /taskWork/);
+    assert.doesNotMatch((await s.task()).note ?? "", /chờ người có quyền/);
   });
 
   it("moves the task to Blocked by default when the MR is closed without merging, and notes it", async () => {

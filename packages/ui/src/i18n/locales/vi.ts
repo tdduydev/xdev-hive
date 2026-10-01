@@ -1980,6 +1980,7 @@ export const vi = {
     mrMerged: "{mr} đã merge. Task chuyển sang Xong.",
     mrMergedOnly: "{mr} đã merge.",
     mrMergedTaskFailed: "{mr} đã merge nhưng không chuyển được task sang Xong: {reason}",
+    mrMergedNeedsReview: "{mr} đã merge. Tài khoản của máy này không có quyền Review code nên task ở lại Review, chờ người có quyền Review code chuyển Xong.",
     mrClosed: "{mr} đã đóng, không merge.",
     mrClosedTask: "{mr} đã đóng, không merge. Task chuyển sang {status}.",
     mrClosedTaskFailed: "{mr} đã đóng, không merge, nhưng không cập nhật được task: {reason}",
