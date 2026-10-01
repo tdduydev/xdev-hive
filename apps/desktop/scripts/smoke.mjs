@@ -112,6 +112,8 @@ async function shoot(name, page, delay, extra = {}) {
 }
 
 for (const [page, delay] of [["board", 6000], ["runs", 3000], ["agents", 1500], ["setup", 4000], ["projects", 1500], ["docs", 1500], ["skills", 1500]]) await shoot(page, page, delay);
+// Another Claude account on this machine (roadmap 24b): the form, before the CLI's own sign-in opens.
+await shoot("agents-account", "agents", 1500, { HIVE_SMOKE_CLICK: '[data-add-account="claude"]', HIVE_SMOKE_SCROLL: "#acc-label" });
 // The GitHub card and the project's GitLab / GitHub fields (roadmap 13a).
 await shoot("projects-github", "projects", 1500, { HIVE_SMOKE_CLICK: "main button[aria-expanded]", HIVE_SMOKE_SCROLL: "#gh-url" });
 // The repositories of the demo's GitLab group, with their keys and folders (roadmap 19a).

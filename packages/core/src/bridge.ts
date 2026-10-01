@@ -155,9 +155,30 @@ export interface LoginStatus {
   loggedIn: boolean | null;
   /** How it is signed in, as the CLI puts it (e.g. "claude.ai", "ChatGPT"). */
   method: string | null;
+  /** The account's email when the CLI says (Claude Code), to tell several accounts of one vendor apart. */
+  account?: string | null;
   /** What to run in a terminal to sign in, with the profile's login dir (never its other env). */
   loginCommand: string | null;
   checkedAt: string;
+}
+
+/** How a profile signs in (roadmap 24b): always the CLI's own sign-in, with one of its options. */
+export interface LoginHow {
+  /** Claude Code: through the company's SSO (`--sso`). */
+  sso?: boolean;
+  /** Claude Code: an Anthropic Console account, billed by API use (`--console`), instead of a Claude plan. */
+  console?: boolean;
+  /** Claude Code: the email the sign-in page starts with (`--email`). */
+  email?: string;
+  /** Codex: a code to enter in a browser, on this machine or another (`--device-auth`). */
+  device?: boolean;
+}
+
+/** One more subscription on this machine: a profile with a sign-in folder of its own, signed in right away. */
+export interface NewAccount {
+  kind: "claude" | "codex";
+  label?: string;
+  how?: LoginHow;
 }
 
 export interface AgentProfileStatus extends AgentProfile {
@@ -349,7 +370,9 @@ export interface DesktopBridge {
   resetCooldown(id: string): Promise<AgentProfileStatus[]>;
   checkProfile(id: string): Promise<ProfileCheck>;
   /** Opens a terminal running the profile's sign-in command (Claude Code, Codex). */
-  openLogin(id: string): Promise<{ opened: boolean }>;
+  openLogin(id: string, how?: LoginHow): Promise<{ opened: boolean }>;
+  /** Adds a profile for another account (its own sign-in folder; the first of a kind uses the CLI's usual one) and opens its sign-in. */
+  addAccount(account: NewAccount): Promise<{ id: string; profiles: AgentProfileStatus[] }>;
   /** Checks the signed-out profiles again (after the user signed in elsewhere). */
   recheckLogins(): Promise<AgentProfileStatus[]>;
   /** Saves (or with "" removes) the profile's long-lived token for container runs. */
