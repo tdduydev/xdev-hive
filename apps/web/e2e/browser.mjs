@@ -381,6 +381,42 @@ async function main() {
     await tab.waitFor("Đã đồng bộ on the card", () => /Đã đồng bộ[\s\S]*2 file đổi/.test(document.body.innerText));
   });
 
+  // Roadmap 27a: a project's row only tightens the hub's default; the machines get it at their heartbeat.
+  await step("agent-policy", async () => {
+    const tab = (current = tabs.admin);
+    await tab.go("admin/policy");
+    await tab.waitFor("payment's row", () => [...document.querySelectorAll("tr")].some((r) => r.cells[0]?.textContent.trim() === "payment" && r.querySelector('select[aria-label="Mức tự chủ"]')));
+    await tab.eval(() => {
+      const row = [...document.querySelectorAll("tr")].find((r) => r.cells[0]?.textContent.trim() === "payment" && r.querySelector('select[aria-label="Mức tự chủ"]'));
+      const select = row.querySelector('select[aria-label="Mức tự chủ"]');
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, "read");
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    const { x, y } = await tab.waitFor("payment's save button", () => {
+      const row = [...document.querySelectorAll("tr")].find((r) => r.cells[0]?.textContent.trim() === "payment" && r.querySelector('select[aria-label="Mức tự chủ"]'));
+      const b = row && [...row.querySelectorAll("button")].find((x) => !x.disabled && x.textContent.trim().startsWith("Lưu"));
+      if (!b) return null;
+      b.scrollIntoView({ block: "center" });
+      const r = b.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    await tab.cdp("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
+    await tab.cdp("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
+    await until("payment at read", async () => (await rpc("agentPolicy.get", {})).effective?.payment?.autonomy === "read");
+    await tab.waitFor("the row saved, with its own part to clear", () => {
+      const row = [...document.querySelectorAll("tr")].find((r) => r.cells[0]?.textContent.trim() === "payment" && r.querySelector('select[aria-label="Mức tự chủ"]'));
+      return row && row.innerText.includes("Đã lưu.") && row.innerText.includes("Bỏ phần riêng") && row.innerText.includes("Chỉ đọc");
+    });
+    // Lan's machine has payment: its heartbeat carries the part.
+    const r = await fetch(`${base}/api/rpc`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" },
+      body: JSON.stringify({ method: "machines.heartbeat", input: { machine: "lan-mbp", instance: "e2e00001", version: "0.0.0-e2e", projects: ["payment"] } }),
+    });
+    const beat = (await r.json()).result;
+    expect(beat.agentPolicy?.projects?.payment?.autonomy === "read", `heartbeat agentPolicy: ${JSON.stringify(beat.agentPolicy)}`);
+  });
+
   await step("hub-page", async () => {
     const tab = (current = tabs.admin);
     await tab.go("admin/hub");
