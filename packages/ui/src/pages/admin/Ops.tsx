@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { cn } from "cn";
 import { missingRequired, type AuditEntry, type MachineDetail, type RunRecord, type RunRequest } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
+import { Input } from "@xdev-hive/ui/components/ui/input";
 import { DataTable, type Column } from "#ui/components/DataTable.tsx";
 import { Empty, ErrorNote } from "#ui/components/common.tsx";
 import { Chip, type ChipKind } from "#ui/components/panes.tsx";
@@ -649,22 +650,40 @@ function groupOf(action: string): string {
   if (p === "docs" || p === "proposals") return "docs";
   if (p === "memory") return "memory";
   if (p === "tasks") return "tasks";
+  if (p === "chat") return "chat";
   if (p === "users" || p === "auth" || p === "tokens") return "accounts";
   if (p === "machines" || p === "admin" || p === "cooldowns" || p === "policy") return "machines";
   if (p === "systems") return "projects";
   return "connections";
 }
 
+type AuditFilter = { agent: string; user: string; run: string };
+const NO_FILTER: AuditFilter = { agent: "", user: "", run: "" };
+
 export function OpsAudit() {
   const { client } = useHive();
   const t = useT();
-  const log = useQuery(() => client.call("admin.audit", { limit: 300 }), [client]);
+  // The hub filters (admin.audit), so an older entry shows up too; sent when the admin presses Lọc, not per keystroke.
+  const [draft, setDraft] = useState<AuditFilter>(NO_FILTER);
+  const [filter, setFilter] = useState<AuditFilter>(NO_FILTER);
+  const log = useQuery(
+    () =>
+      client.call("admin.audit", {
+        limit: 300,
+        ...(filter.agent ? { agent: filter.agent } : {}),
+        ...(filter.user ? { user: filter.user } : {}),
+        ...(filter.run ? { run: filter.run } : {}),
+      }),
+    [client, filter],
+  );
+  const filtered = filter.agent !== "" || filter.user !== "" || filter.run !== "";
   const label = (a: string) => (ACTION_LABEL[a] ? t(ACTION_LABEL[a]!) : a);
   const detail = (e: AuditEntry) => (e.detailKey && hasKey(e.detailKey) ? t(e.detailKey as MessageKey, e.detailVars) : e.detail);
   const groups: Array<[string, string]> = [
     ["docs", t("nav.docs")],
     ["memory", t("nav.memory")],
     ["tasks", t("nav.tasks")],
+    ["chat", t("nav.chat")],
     ["accounts", t("ops.nav.users")],
     ["machines", t("nav.machines")],
     ["projects", t("ops.nav.projects")],
@@ -673,6 +692,23 @@ export function OpsAudit() {
   const columns: Array<Column<AuditEntry>> = [
     { key: "at", label: t("ops.col.at"), width: "130px", render: (e) => formatTime(e.at), sortValue: (e) => e.at },
     { key: "actor", label: t("ops.col.actor"), width: "minmax(140px,0.8fr)", mono: true, render: (e) => e.actor, sortValue: (e) => e.actor },
+    { key: "agent", label: t("ops.col.agent"), width: "minmax(120px,0.6fr)", mono: true, render: (e) => e.agent ?? "—", sub: (e) => (e.agent && e.onBehalf ? t("ops.audit.onBehalf", { user: e.onBehalf }) : null), sortValue: (e) => e.agent ?? "" },
+    {
+      key: "run",
+      label: t("ops.col.run"),
+      width: "96px",
+      mono: true,
+      // Opens the run on Lượt chạy (OpsRuns reads ?run=).
+      render: (e) =>
+        e.run ? (
+          <a className="text-primary underline underline-offset-2" href={`#/admin/runs?run=${encodeURIComponent(e.run)}`}>
+            {e.run}
+          </a>
+        ) : (
+          "—"
+        ),
+      sortValue: (e) => e.run ?? "",
+    },
     { key: "action", label: t("ops.col.action"), width: "minmax(150px,0.8fr)", render: (e) => label(e.action), sortValue: (e) => e.action },
     { key: "group", label: t("ops.group2"), width: "110px", render: (e) => groups.find(([g]) => g === groupOf(e.action))?.[1] ?? "" },
     { key: "target", label: t("ops.col.target"), width: "minmax(140px,0.8fr)", mono: true, render: (e) => e.target, title: (e) => e.target },
@@ -680,14 +716,49 @@ export function OpsAudit() {
   ];
   return (
     <div className="flex flex-col gap-3">
+      <form
+        className="flex flex-wrap items-center gap-2"
+        onSubmit={(ev) => {
+          ev.preventDefault();
+          setFilter({ agent: draft.agent.trim(), user: draft.user.trim(), run: draft.run.trim() });
+        }}
+      >
+        {(["agent", "user", "run"] as const).map((k) => (
+          <Input
+            key={k}
+            className="h-8 w-44 font-mono text-xs"
+            value={draft[k]}
+            placeholder={t(`ops.audit.filter.${k}`)}
+            aria-label={t(`ops.audit.filter.${k}`)}
+            maxLength={k === "run" ? 60 : 100}
+            onChange={(ev) => setDraft({ ...draft, [k]: ev.target.value })}
+          />
+        ))}
+        <Button type="submit" size="sm" variant="outline">
+          {t("ops.audit.apply")}
+        </Button>
+        {filtered ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setDraft(NO_FILTER);
+              setFilter(NO_FILTER);
+            }}
+          >
+            {t("ops.audit.clear")}
+          </Button>
+        ) : null}
+      </form>
       <ErrorNote error={log.error} />
       <DataTable
         rows={log.data ?? []}
         columns={columns}
         rowKey={(e) => String(e.id)}
         noun={t("ops.noun.entries")}
-        minWidth={980}
-        searchText={(e) => `${e.actor} ${e.action} ${e.target} ${e.detail}`}
+        minWidth={1200}
+        searchText={(e) => `${e.actor} ${e.agent ?? ""} ${e.onBehalf ?? ""} ${e.run ?? ""} ${e.action} ${e.target} ${e.detail}`}
         filters={[
           { key: "group", label: t("ops.group2"), value: (e) => groupOf(e.action), options: groups.map(([value, l]) => ({ value, label: l })) },
           { key: "action", label: t("ops.col.action"), value: (e) => e.action, options: Object.keys(ACTION_LABEL).map((a) => ({ value: a, label: label(a) })) },

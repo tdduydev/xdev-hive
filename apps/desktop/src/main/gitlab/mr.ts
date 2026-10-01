@@ -8,6 +8,7 @@
 // No Electron imports; the desktop passes Electron's net.fetch (system proxy + certificates).
 import {
   HiveError,
+  MR_WATCHER,
   type Actor,
   type AgentRun,
   type DesktopProject,
@@ -92,8 +93,16 @@ interface MrPlan {
 export const mrLabel = (run: Pick<AgentRun, "mrUrl" | "mrIid">): string =>
   /\/pull\/\d+$/.test(run.mrUrl ?? "") ? `PR #${run.mrIid ?? "?"}` : `MR !${run.mrIid ?? "?"}`;
 
-/** Who writes MR links and merges on tasks. */
-export const mrActor = (host: MrHost): Actor => ({ name: host.mode() === "hub" ? "hive-mr" : `hive-mr@${host.user ?? "local"}`, role: "agent" });
+/**
+ * Who writes MR links and merges on tasks. Its label lets the hub tell it apart: moving a merged MR's task to done is
+ * not approving your own work, since the merge on GitLab or GitHub was someone's review (roadmap 27c).
+ */
+export const mrActor = (host: MrHost): Actor => ({
+  name: host.mode() === "hub" ? MR_WATCHER : `${MR_WATCHER}@${host.user ?? "local"}`,
+  role: "agent",
+  // On a hub the hub reads the label from x-hive-agent (the name); locally this is what it reads.
+  agent: MR_WATCHER,
+});
 
 export class MergeRequester {
   readonly #host: MrHost;

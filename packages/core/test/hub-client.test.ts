@@ -58,7 +58,11 @@ describe("hub client", () => {
     assert.equal(seen?.headers.authorization, "Bearer secret-token");
     assert.equal(seen?.headers["x-hive-agent"], "claude-1");
     assert.equal(seen?.headers["x-hive-source"], undefined, "no source, no header");
+    assert.equal(seen?.headers["x-hive-run"], undefined);
     assert.deepEqual(JSON.parse(seen?.body ?? ""), { method: "docs.list", input: {} });
+    reply(200, { result: [] });
+    await hub.call("docs.list", {}, { name: "claude-1", role: "agent", run: "R-abc123" });
+    assert.equal(seen?.headers["x-hive-run"], "R-abc123", "the run of the shim's HIVE_RUN, for the audit log");
   });
 
   it("keeps the key and vars of a hub error, so the interface shows it in the person's language", async () => {
