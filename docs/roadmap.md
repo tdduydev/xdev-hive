@@ -135,8 +135,8 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 - **27. agent-governance** (hỏi 1/10: quản trị kiểu AI orchestrator, so với GitHub Agent HQ, Codex, Cursor, Devin, Factory, Claude Code, Entra Agent ID, AgentCore). Tách:
   - [ ] **27a. agent-policy**: chính sách agent theo dự án, cấp dưới không nới được: model được dùng, mức tự chủ (chỉ đọc / đề xuất / sửa / đầy đủ), mạng (tắt / allowlist / mở), MCP được phép; hub đẩy xuống máy qua heartbeat, runner ép khi chạy.
   - [ ] **27b. budgets**: trần chi tiêu theo dự án và theo người, cảnh báo khi gần tới, hết thì không giao run mới.
-  - [ ] **27c. agent-audit**: nhật ký mọi việc agent làm (agent nào, thay mặt ai, run nào); người yêu cầu một run hay đề xuất không tự duyệt kết quả của nó.
-  - [ ] **27d. stop-all**: nút dừng mọi agent của một dự án hoặc cả hub (huỷ hàng đợi, dừng run đang chạy, ngưng nhận việc).
+  - [x] **27c. agent-audit**: nhật ký mọi việc agent làm (agent nào, thay mặt ai, run nào); người yêu cầu một run hay đề xuất không tự duyệt kết quả của nó.
+  - [x] **27d. stop-all**: nút dừng mọi agent của một dự án hoặc cả hub (huỷ hàng đợi, dừng run đang chạy, ngưng nhận việc).
 
 ## Sửa lỗi
 

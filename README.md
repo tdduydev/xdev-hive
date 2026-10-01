@@ -143,6 +143,9 @@ Lệnh này làm các bước sau:
   - Mermaid vẽ và báo lỗi;
   - duyệt hàng loạt đề xuất và memory;
   - yêu cầu máy đồng bộ, với một máy giả gửi heartbeat;
+  - chính sách agent của một dự án, và heartbeat mang chính sách đó;
+  - nhật ký: lọc theo run việc một agent ghi thay một người;
+  - dừng mọi agent của cả hub, rồi cho chạy lại;
   - trang Hub.
 
 Mỗi bước kiểm lại dữ liệu trên hub qua RPC và chụp một ảnh. Có bước hỏng thì ảnh mang đuôi `-FAIL` và lệnh thoát khác 0. Giao diện được kiểm bằng tiếng Việt. Trên Linux không có màn hình thì chạy qua `xvfb-run`.

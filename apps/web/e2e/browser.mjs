@@ -450,6 +450,22 @@ async function main() {
     await until("the hub running again", async () => (await rpc("agents.paused", {})).hub === false);
   });
 
+  // Roadmap 27c: what an agent wrote, for whom, in which run; filtered by the run on Nhật ký.
+  await step("audit-agent", async () => {
+    const tab = (current = tabs.admin);
+    await tab.go("admin/audit");
+    await tab.click('input[aria-label="Id run"]');
+    await tab.type("R-e2e01");
+    await tab.key("Enter");
+    await tab.waitFor("claude-1's memory, for minh, in R-e2e01", () => {
+      // DataTable rows are divs with role="row".
+      const rows = [...document.querySelectorAll('[role="row"]')].filter((r) => r.innerText.includes("R-e2e01"));
+      return rows.length > 0 && rows.every((r) => r.innerText.includes("claude-1")) && rows.some((r) => r.innerText.includes("minh"));
+    });
+    const entries = await rpc("admin.audit", { run: "R-e2e01" });
+    expect(entries.length > 0 && entries.every((e) => e.agent === "claude-1" && e.onBehalf === "minh"), `audit: ${JSON.stringify(entries).slice(0, 300)}`);
+  });
+
   await step("hub-page", async () => {
     const tab = (current = tabs.admin);
     await tab.go("admin/hub");
