@@ -60,6 +60,7 @@ export const ACTION_LABEL: Record<string, MessageKey> = {
   "admin.commandCreate": "auditAction.commandCreate",
   "admin.commandCancel": "auditAction.commandCancel",
   "machines.commandResult": "auditAction.commandResult",
+  "docs.syncRequest": "auditAction.syncRequest",
   "tokens.create": "auditAction.tokensCreate",
   "tokens.revoke": "auditAction.tokensRevoke",
   "auth.login": "auditAction.authLogin",

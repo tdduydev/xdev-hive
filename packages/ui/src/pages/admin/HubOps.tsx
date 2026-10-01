@@ -1,11 +1,12 @@
 // Trang Hub and Context agent (docs/design/2026-09-redesign, xDev Hive Web Admin; roadmap 22n): what the hub is and how
 // it is doing (a backup on request), and what a project's agents get from Hive (the AGENTS.md a sync writes).
 import { useEffect, useState, type ReactNode } from "react";
+import { readSyncOutcome, type CommandStatus, type MachineCommand } from "@xdev-hive/core";
 import { cn } from "cn";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { ErrorNote } from "#ui/components/common.tsx";
-import { errorMessage, formatTime, useHive, useQuery } from "#ui/hooks.ts";
+import { errorMessage, formatTime, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { fileSize } from "#ui/lib/chat.ts";
 import { useToast } from "#ui/shell/toast.tsx";
@@ -170,6 +171,98 @@ export function OpsHub() {
   );
 }
 
+const SYNC_TONE: Record<CommandStatus, Tone> = {
+  pending: "run",
+  running: "run",
+  done: "ok",
+  failed: "warn",
+  rejected: "neutral",
+  cancelled: "neutral",
+  expired: "warn",
+};
+
+/** What a machine's last sync did, in one line: files changed, commit, pages mirrored; or why it did not. */
+function syncDetail(c: MachineCommand, t: ReturnType<typeof useT>): string {
+  if (c.status === "expired") return t("context.sync.expiredHint");
+  const o = readSyncOutcome(c.output);
+  if (!o) return c.status === "failed" ? (c.output ?? "") : "";
+  return [
+    o.changed.length ? t("context.sync.changed", { count: o.changed.length }) : t("context.sync.unchanged"),
+    o.skipped.length ? t("context.sync.skipped", { count: o.skipped.length }) : null,
+    o.commit ? t("context.sync.commit", { commit: o.commit }) : o.changed.length ? t("context.sync.noCommit") : null,
+    o.mirrored !== null ? t("context.sync.mirrored", { count: o.mirrored }) : null,
+    o.note,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** Sync on the machines (roadmap 22n): ask every online machine with the project's repo, and how each last went. */
+function SyncCard({ project, className }: { project: string; className: string }) {
+  const { client } = useHive();
+  const t = useT();
+  const toast = useToast();
+  const can = useCan();
+  const state = useQuery(() => client.call("docs.syncStatus", { project }), [client, project]);
+  const [busy, setBusy] = useState(false);
+  const open = (state.data ?? []).some((m) => m.last?.status === "pending" || m.last?.status === "running");
+  const { reload } = state;
+  // Machines answer within a heartbeat or two: look again soon while a request is open, now and then otherwise.
+  useEffect(() => {
+    const id = setInterval(reload, open ? 5_000 : 30_000);
+    return () => clearInterval(id);
+  }, [reload, open]);
+  const request = () => {
+    setBusy(true);
+    void client
+      .call("docs.syncRequest", { project })
+      .then(
+        (sent) => (toast(sent.length ? t("context.sync.requested", { count: sent.length }) : t("context.sync.noneOnline"), sent.length ? {} : { tone: "error" }), reload()),
+        (err: unknown) => toast(errorMessage(err), { tone: "error" }),
+      )
+      .finally(() => setBusy(false));
+  };
+  const list = state.data ?? [];
+  return (
+    <section className={className}>
+      <div className="flex items-center gap-2">
+        <h2 className="m-0 text-sm font-semibold text-fg-strong">{t("context.sync.title")}</h2>
+        {can(project, "contextEdit") ? (
+          <Button size="sm" variant="outline" className="ml-auto" disabled={busy || !list.some((m) => m.online)} onClick={request}>
+            {busy ? t("context.sync.requesting") : t("context.sync.request")}
+          </Button>
+        ) : null}
+      </div>
+      <span className="text-[11px] text-fg-muted">{t("context.sync.hint")}</span>
+      <ErrorNote error={state.error} />
+      {state.data && !list.length ? <span className="text-xs text-fg-muted">{t("context.sync.noMachines")}</span> : null}
+      {list.map((m) => (
+        <div key={m.machineId} className="flex flex-col gap-0.5 border-b border-line-subtle py-1.5 last:border-b-0">
+          <span className="flex items-center gap-2 text-[13px]">
+            <span className={cn("size-1.5 shrink-0 rounded-full", m.online ? "bg-success-solid" : "bg-fg-muted")} />
+            <span className="min-w-0 flex-1 truncate font-mono text-xs text-fg-strong" title={m.machineId}>
+              {m.machine}
+              {m.online ? "" : ` · ${t("context.sync.offline")}`}
+            </span>
+            {m.last ? (
+              <span className={cn("rounded-xs px-1.5 py-0.5 text-[11px] font-semibold", STATE[SYNC_TONE[m.last.status]])}>
+                {t(`context.sync.status.${m.last.status}`)}
+              </span>
+            ) : (
+              <span className="text-[11px] text-fg-muted">{t("context.sync.never")}</span>
+            )}
+          </span>
+          {m.last ? (
+            <span className="text-[11px] text-fg-muted [overflow-wrap:anywhere]">
+              {[t("context.sync.by", { who: m.last.requestedBy, time: formatTime(m.last.updatedAt) }), syncDetail(m.last, t)].filter(Boolean).join(" · ")}
+            </span>
+          ) : null}
+        </div>
+      ))}
+    </section>
+  );
+}
+
 /** Context agent: a project's AGENTS.md as a sync writes it, what it is made of, the files, the memory. */
 export function OpsContext() {
   const { client, projects } = useHive();
@@ -290,6 +383,7 @@ export function OpsContext() {
               </span>
               <span className="text-[11px] text-fg-muted">{t("context.syncHint")}</span>
             </section>
+            {client.hub ? <SyncCard project={project!} className={card} /> : null}
           </div>
         </div>
       ) : null}
