@@ -7,6 +7,7 @@
   "author": "xDev",
   "type": "module",
   "imports": {
+    "#desktop/scripts/*": "./scripts/*",
     "#desktop/*": "./src/*"
   },
   "main": "out/main/index.js",
