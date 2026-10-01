@@ -2,7 +2,7 @@
 // downloads it with the machine's token, checks its SHA-256, and swaps it in when the person restarts (or at quit, or
 // once no run is going, as the rollout says). macOS: the .zip replaces the .app bundle; Windows: the NSIS installer
 // runs silently; Linux: the AppImage file is replaced. Builds are not code-signed, so no OS updater framework is used.
-import { execFile, spawn } from "node:child_process";
+import { execFile, spawn, type SpawnOptions } from "node:child_process";
 import { createHash } from "node:crypto";
 import { accessSync, constants, createWriteStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -33,6 +33,8 @@ export interface UpdaterHost {
   appImage?: string;
   /** Something changed (progress, ready, failed): the window and tray may want to know. */
   onChange?: (status: UpdateStatus) => void;
+  /** Starts the install helper (default: node's spawn). Tests pass their own, so no helper ever swaps a real app. */
+  spawn?: (command: string, args: string[], options: SpawnOptions) => { unref(): void };
 }
 
 /** The hub's name for this platform. */
@@ -146,6 +148,7 @@ export class Updater {
     const file = this.#file;
     if (this.#state.state !== "ready" || !file || !existsSync(file)) throw new HiveError("conflict", "No update is ready to install.", { key: "errors.updateNotReady" });
     this.#set({ state: "installing" });
+    const start = this.#host.spawn ?? spawn;
     try {
       const dir = path.dirname(file);
       const pid = String(process.pid);
@@ -173,10 +176,10 @@ export class Updater {
             "",
           ].join("\n"),
         );
-        spawn("/bin/sh", [script], { detached: true, stdio: "ignore", env: { PATH: "/usr/bin:/bin:/usr/sbin:/sbin", PID: pid, APP: app, NEW: path.join(stage, bundle), RELAUNCH: relaunch ? "1" : "0" } }).unref();
+        start("/bin/sh", [script], { detached: true, stdio: "ignore", env: { PATH: "/usr/bin:/bin:/usr/sbin:/sbin", PID: pid, APP: app, NEW: path.join(stage, bundle), RELAUNCH: relaunch ? "1" : "0" } }).unref();
       } else if (this.#host.platform === "win32") {
         // The NSIS installer updates in place; --force-run starts the app when it is done.
-        spawn(file, relaunch ? ["/S", "--force-run"] : ["/S"], { detached: true, stdio: "ignore" }).unref();
+        start(file, relaunch ? ["/S", "--force-run"] : ["/S"], { detached: true, stdio: "ignore" }).unref();
       } else {
         const image = this.#host.appImage;
         if (!image) throw new Error("Not running from an AppImage.");
@@ -192,7 +195,7 @@ export class Updater {
             "",
           ].join("\n"),
         );
-        spawn("/bin/sh", [script], { detached: true, stdio: "ignore", env: { PATH: "/usr/bin:/bin", PID: pid, IMAGE: image, NEW: file, RELAUNCH: relaunch ? "1" : "0" } }).unref();
+        start("/bin/sh", [script], { detached: true, stdio: "ignore", env: { PATH: "/usr/bin:/bin", PID: pid, IMAGE: image, NEW: file, RELAUNCH: relaunch ? "1" : "0" } }).unref();
       }
     } catch (err) {
       this.#set({ state: "failed", error: (err instanceof Error ? err.message : String(err)).slice(0, 300) });
