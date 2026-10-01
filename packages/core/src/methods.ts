@@ -14,6 +14,8 @@ import {
   PROPOSAL_STATUSES,
   TASK_STATUSES,
   type Actor,
+  type AgentsPaused,
+  type AgentsStop,
   type AuditEntry,
   type CostSummary,
   type RunNotice,
@@ -503,6 +505,16 @@ export const schemas = {
     output: z.string().max(8000).optional(),
   }),
 
+  /**
+   * Stops every agent of a project, or of the hub (null; a hub admin only), roadmap 27d: cancels the run requests and
+   * chat replies still waiting, asks the machines to stop the runs (heartbeat cancelRuns) and pauses the scope.
+   */
+  "agents.stop": z.object({ project: project.nullable() }),
+  /** Lifts that pause; a pause of the hub and one of a project are lifted apart. */
+  "agents.resume": z.object({ project: project.nullable() }),
+  /** What is paused now (only the projects the caller sees), for the Board's notice and the stop buttons. */
+  "agents.paused": z.object({}),
+
   "policy.get": z.object({}),
   "policy.set": z.object({
     requiredClis: z.array(z.enum(POLICY_CLIS)).max(POLICY_CLIS.length).default([]),
@@ -608,6 +620,11 @@ export interface MethodOutput {
     chatRequests: ChatRequest[];
     /** Its runs a project manager asked to stop; same condition. */
     cancelRuns: RunCancel[];
+    /**
+     * Stop-all (roadmap 27d), whether or not it accepts runs: it stops the scope's runs and starts none, Board runs
+     * too. Only the projects its token sees.
+     */
+    paused: AgentsPaused;
   };
   "machines.list": Machine[];
   "costs.summary": CostSummary;
@@ -642,6 +659,9 @@ export interface MethodOutput {
   "cooldowns.set": QuotaCooldown | null;
   "cooldowns.clear": { cleared: boolean };
   "machines.commandResult": MachineCommand;
+  "agents.stop": AgentsStop;
+  "agents.resume": AgentsPaused;
+  "agents.paused": AgentsPaused;
   "policy.get": TeamPolicy;
   "policy.set": TeamPolicy;
   "agentPolicy.get": AgentPolicyView;
@@ -738,6 +758,10 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "cooldowns.set": "agent",
   "cooldowns.clear": "agent",
   "machines.commandResult": "agent",
+  // Also runDispatch on the project, or a hub admin for the whole hub: never an agent token.
+  "agents.stop": "agent",
+  "agents.resume": "agent",
+  "agents.paused": "viewer",
   "policy.get": "viewer",
   "policy.set": "admin",
   "agentPolicy.get": "viewer",

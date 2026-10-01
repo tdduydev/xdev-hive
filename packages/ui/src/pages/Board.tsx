@@ -20,6 +20,7 @@ import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, ErrorNote, Notice, StatusDot } from "#ui/components/common.tsx";
+import { PausedNotice } from "#ui/components/StopAgents.tsx";
 import { errorMessage, formatTime, useAction, useCan, useHive, useProjects, useQuery } from "#ui/hooks.ts";
 import { rich, useT, type TFunction } from "#ui/i18n/index.tsx";
 import { runDuration } from "#ui/lib/runs.ts";
@@ -83,7 +84,7 @@ function Tag({ kind, title, children }: { kind: keyof typeof TAG; title?: string
 }
 
 export function BoardPage() {
-  const { client, scope, setScope } = useHive();
+  const { client, me, scope, setScope } = useHive();
   const t = useT();
   const allow = useCan();
   const toast = useToast();
@@ -208,6 +209,12 @@ export function BoardPage() {
         {!current && !settings.loading ? (
           <div className="px-3.5 pt-3">
             <Notice>{t("board.addProjectFirst")}</Notice>
+          </div>
+        ) : null}
+        {current && me.mode === "hub" ? (
+          // Empty while nothing is paused; the runs it holds say why in their own card too.
+          <div className="px-3.5 pt-3 empty:hidden">
+            <PausedNotice project={current} />
           </div>
         ) : null}
         {current && scoped !== null && scoped !== current && !settings.loading ? (
