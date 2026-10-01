@@ -44,6 +44,7 @@ import type {
   CommandStatus,
   CostTotals,
   Doc,
+  DocMirror,
   DocAsset,
   DocAssist,
   DocAssistJob,
@@ -273,6 +274,10 @@ const MIGRATIONS: string[] = [
   ALTER TABLE doc_assets ADD COLUMN stored TEXT;
   CREATE INDEX doc_assets_sha ON doc_assets(sha256);
   `,
+  // Pages mirrored from the repo (roadmap 26): {from, commit} as JSON, null for pages whose home is Hive.
+  `
+  ALTER TABLE docs ADD COLUMN mirror TEXT;
+  `,
 ];
 
 /** A leader's reply asks for at most this many actions. */
@@ -452,6 +457,7 @@ const toSummary = (r: Row): DocSummary => ({
   paths: JSON.parse(str(r.paths ?? "[]")) as string[],
   parent: strOrNull(r.parent),
   folder: num(r.folder ?? 0) === 1,
+  mirror: r.mirror ? (JSON.parse(str(r.mirror)) as DocMirror) : null,
   updatedBy: str(r.updated_by),
   updatedAt: str(r.updated_at),
 });
@@ -1204,7 +1210,7 @@ export class SqliteHive implements HiveBackend {
   #writeDoc(
     key: string,
     content: string,
-    meta: { title?: string; includeInAgents?: boolean; paths?: string[]; note?: string; parent?: string | null; folder?: boolean },
+    meta: { title?: string; includeInAgents?: boolean; paths?: string[]; note?: string; parent?: string | null; folder?: boolean; mirror?: DocMirror | null },
     author: string,
     source: WriteSource | null = null,
   ): Doc {
@@ -1231,15 +1237,16 @@ export class SqliteHive implements HiveBackend {
     const include = !parsed.skill && (meta.includeInAgents ?? existing?.includeInAgents ?? parsed.scope === "org");
     const parent = meta.parent !== undefined ? meta.parent : (existing?.parent ?? null);
     const folder = !parsed.skill && (meta.folder ?? existing?.folder ?? false);
+    const mirror = meta.mirror !== undefined ? meta.mirror : (existing?.mirror ?? null);
     this.db
       .prepare(
-        `INSERT INTO docs(key, scope, project, title, content, version, include_in_agents, paths, parent, folder, updated_by, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO docs(key, scope, project, title, content, version, include_in_agents, paths, parent, folder, mirror, updated_by, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(key) DO UPDATE SET title = excluded.title, content = excluded.content,
            version = excluded.version, include_in_agents = excluded.include_in_agents, paths = excluded.paths,
-           parent = excluded.parent, folder = excluded.folder, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+           parent = excluded.parent, folder = excluded.folder, mirror = excluded.mirror, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
       )
-      .run(key, parsed.scope, parsed.project, title, content, version, include ? 1 : 0, JSON.stringify(paths), parent, folder ? 1 : 0, author, now);
+      .run(key, parsed.scope, parsed.project, title, content, version, include ? 1 : 0, JSON.stringify(paths), parent, folder ? 1 : 0, mirror ? JSON.stringify(mirror) : null, author, now);
     this.db
       .prepare("INSERT INTO doc_versions(key, version, content, author, note, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
       .run(key, version, content, author, meta.note ?? "", sourceJson(source), now);

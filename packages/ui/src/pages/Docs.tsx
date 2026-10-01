@@ -786,6 +786,8 @@ function DocView({
                 </label>
               ) : null}
               {stale ? <Notice tone="warn">{t("docs.draftStale", { version: current!.version, base: draft!.baseVersion })}</Notice> : null}
+              {/* Roadmap 26: the repo is its home; what is changed here goes when main next moves. */}
+              {current?.mirror ? <Notice tone="warn">{t("docs.mirrorEdit", { from: current.mirror.from })}</Notice> : null}
               <HiddenChars
                 fields={[
                   { label: t("docs.docTitle"), text: work.title },
@@ -882,6 +884,11 @@ function DocView({
         {current ? <span className="inline-flex h-5 items-center rounded-xs bg-sunken px-1.5 font-mono text-[11px]/none font-medium text-fg-secondary">v{current.version}</span> : null}
         {!current && draft ? <span className={cn(chip, "bg-warning-soft text-warning")}>{t("docs.unsavedPage")}</span> : null}
         {current?.includeInAgents ? <span className={cn(chip, "bg-info-soft text-info")}>{t("docs.inAgents")}</span> : null}
+        {current?.mirror ? (
+          <span title={t("docs.mirrorHint", { from: current.mirror.from, commit: current.mirror.commit })} className={cn(chip, "bg-sunken font-mono text-fg-secondary")}>
+            {t("docs.mirrorChip", { from: current.mirror.from.split("#")[0]!, commit: current.mirror.commit })}
+          </span>
+        ) : null}
         {draft?.queued ? (
           <span title={t("docs.queuedHint")} className={cn(chip, "bg-warning-soft text-warning")}>
             {t("docs.queued")}

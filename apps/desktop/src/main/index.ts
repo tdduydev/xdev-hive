@@ -66,6 +66,7 @@ import { landingPage, signInThroughBrowser } from "./hub-browser.ts";
 import { Setup } from "./setup.ts";
 import { checkCitations } from "./citations.ts";
 import { syncProject } from "./sync.ts";
+import { mirrorDocs, mirrors } from "./mirror.ts";
 import { openInTerminal } from "./terminal.ts";
 
 app.setName("xDev Hive");
@@ -83,6 +84,8 @@ let runner: Runner;
 let logins: LoginMonitor;
 /** The first sign-in check after start; the profile list waits for it (briefly) so it opens with the answer. */
 let firstLoginCheck: Promise<void> = Promise.resolve();
+/** The commit each project's docs were last mirrored from (roadmap 26): the same main is not read twice. */
+const mirrored = new Map<string, string>();
 let mergeRequester: MergeRequester;
 let mrWatcher: MrWatcher;
 let setup: Setup;
@@ -348,6 +351,19 @@ function openSetupToken(id: string): { opened: boolean } {
 async function checkAllCitations(): Promise<void> {
   for (const project of config.projects) {
     await checkCitations(backend, actor(), project).catch(() => undefined);
+  }
+}
+
+/** The repo's docs into Hive for every project that mirrors some (one at a time; one that fails leaves the others). */
+async function mirrorAll(): Promise<void> {
+  for (const p of config.projects) {
+    if (!mirrors(p.repo)) continue;
+    const r = await mirrorDocs(backend, actor(), p, { since: mirrored.get(p.name) }).catch((err: Error) => {
+      console.error(`[xdev-hive] mirror ${p.name}: ${err.message}`);
+      return null;
+    });
+    if (r?.commit) mirrored.set(p.name, r.commit);
+    if (r?.changed.length) console.log(`[xdev-hive] mirror ${p.name} @ ${r.commit}: ${r.changed.length} pages`);
   }
 }
 
@@ -731,7 +747,14 @@ function registerIpc(): void {
     const res = await dialog.showOpenDialog(win!, { properties: ["openDirectory", "createDirectory"] });
     return res.canceled ? null : (res.filePaths[0] ?? null);
   });
-  handle("desktop:syncProject", (name: string) => syncProject(backend, actor(), project(name), { autoCommit: config.sync.autoCommit }));
+  handle("desktop:syncProject", async (name: string) => {
+    const report = await syncProject(backend, actor(), project(name), { autoCommit: config.sync.autoCommit });
+    // The other way too (roadmap 26): the repo's docs into Hive, when the repo says which.
+    if (!mirrors(project(name).repo)) return report;
+    const mirror = await mirrorDocs(backend, actor(), project(name));
+    if (mirror.commit) mirrored.set(name, mirror.commit);
+    return { ...report, mirror };
+  });
   handle("desktop:installAgents", (name: string) => installAgents(project(name).repo, name));
   handle("desktop:installShim", () => installShim({ electronPath: process.execPath, entry: mcpEntry() }, agentPath()));
   handle("desktop:setupStatus", refreshSetup);
@@ -1042,6 +1065,10 @@ if (!app.requestSingleInstanceLock()) {
     const citations = () => void checkAllCitations().catch(() => undefined);
     setTimeout(citations, 60_000).unref();
     setInterval(citations, 30 * 60_000).unref();
+    // Docs the repo keeps (roadmap 26): its main fetched and mirrored into Hive shortly after start, then every 10 minutes.
+    const mirror = () => void mirrorAll().catch(() => undefined);
+    if (!smokeShot) setTimeout(mirror, 90_000).unref();
+    setInterval(mirror, 10 * 60_000).unref();
     // Open MRs and PRs (state and pipeline on GitLab, checks on GitHub): shortly after start, then every 2 minutes.
     const watchMrs = () => void mrWatcher.check().then(onMrChanges, () => undefined);
     setTimeout(watchMrs, smokeShot ? 0 : 30_000).unref();
