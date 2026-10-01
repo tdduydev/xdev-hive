@@ -43,6 +43,8 @@ const ADDED_COLUMNS: Array<[name: string, ddl: string]> = [
   ["ci_fix", "TEXT"],
   /** JSON: the best-of-n group this run is a candidate or the judge of. */
   ["best_of", "TEXT"],
+  /** Who asked for the run on the web (hub run request); null: started here. */
+  ["requested_by", "TEXT"],
 ];
 
 type Row = Record<string, unknown>;
@@ -93,6 +95,7 @@ function toRun(r: Row): AgentRun {
     mrCheckedAt: s(r.mr_checked_at),
     ciFix: r.ci_fix == null ? null : (JSON.parse(String(r.ci_fix)) as CiFix | null),
     bestOf: r.best_of == null ? null : (JSON.parse(String(r.best_of)) as BestOf | null),
+    requestedBy: s(r.requested_by),
   };
 }
 
@@ -100,7 +103,7 @@ const encode = (field: string, value: unknown) =>
   JSON_FIELDS.has(field) ? JSON.stringify(value) : BOOL_FIELDS.has(field) ? (value ? 1 : 0) : (value ?? null);
 
 export type NewRun = Pick<AgentRun, "project" | "taskId" | "taskTitle" | "role" | "attempt" | "maxAttempts"> &
-  Partial<Pick<AgentRun, "preferredProfile" | "avoidKinds" | "excludedProfiles" | "parentRunId" | "worktree" | "branch" | "baseSha" | "instructions" | "reviewAfter" | "ciFix" | "bestOf">>;
+  Partial<Pick<AgentRun, "preferredProfile" | "avoidKinds" | "excludedProfiles" | "parentRunId" | "worktree" | "branch" | "baseSha" | "instructions" | "reviewAfter" | "ciFix" | "bestOf" | "requestedBy">>;
 
 export const ACTIVE: RunStatus[] = ["queued", "running"];
 

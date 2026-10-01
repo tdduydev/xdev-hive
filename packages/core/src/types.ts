@@ -21,7 +21,8 @@ export interface Actor {
   agent?: string;
   /**
    * The account that owns the token (or the token's name when no account does). An agent acts for that person, so
-   * "approving your own work" compares this, not `name`, which carries the agent's label.
+   * "approving your own work" compares this, not `name`, which carries the agent's label (27c), and a machine's Board
+   * runs count against that person's spending cap (27b).
    */
   onBehalf?: string;
   /** The run the agent works in (`x-hive-run`, from the HIVE_RUN the runner sets). */
@@ -452,7 +453,17 @@ export type HiveEvent =
   | { type: "agents.resumed"; project: string | null; by: string };
 
 /** The hub's alert rules (roadmap 22m), each turned on or off by a hub admin. */
-export const ALERT_RULES = ["run_fail_streak", "ci_fix_exhausted", "machine_offline", "webhook_failed", "quota_near", "vendor_resting", "backup_overdue"] as const;
+export const ALERT_RULES = [
+  "run_fail_streak",
+  "ci_fix_exhausted",
+  "machine_offline",
+  "webhook_failed",
+  "quota_near",
+  "vendor_resting",
+  "backup_overdue",
+  "budget_near",
+  "budget_exceeded",
+] as const;
 export type AlertRule = (typeof ALERT_RULES)[number];
 export type AlertSeverity = "high" | "medium" | "low";
 

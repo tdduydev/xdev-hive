@@ -13,6 +13,7 @@ import { DOC_ASSET_MAX_BYTES, DOC_ASSETS_PER_DOC, DOC_TREE_DEPTH, docLinkRefs, l
 import { describeProjectContext, syncItemId } from "./sync.ts";
 import { DEFAULT_LEADER_COMMANDS, PAUSED_HUB } from "./types.ts";
 import { EMPTY_POLICY } from "./policy.ts";
+import { budgetApplies, budgetId, budgetRatio, budgetVars, periodStart, type Budget, type BudgetBlock, type BudgetUsage } from "./budgets.ts";
 import { agentPolicyView, EMPTY_AGENT_POLICY, OPEN_POLICY, policySummary, type AgentPolicy, type AgentPolicySettings, type AgentPolicyView } from "./agent-policy.ts";
 import {
   authorize,
@@ -301,6 +302,11 @@ const MIGRATIONS: string[] = [
   ALTER TABLE run_requests ADD COLUMN on_behalf TEXT;
   ALTER TABLE run_records ADD COLUMN requested_by TEXT;
   `,
+  // Spending caps per person (roadmap 27b): who asked for the run. Rows from before stay null and count for no one.
+  `
+  ALTER TABLE run_costs ADD COLUMN requested_by TEXT;
+  CREATE INDEX run_costs_by ON run_costs(requested_by, finished_at);
+  `,
 ];
 
 /** A leader's reply asks for at most this many actions. */
@@ -425,6 +431,11 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
     const summary = policySummary(i.policy);
     return { target, detail: summary, text: { key: "audit.agentPolicy", vars: { summary } } };
   },
+  "budgets.set": (_i, o: BudgetUsage[]) => ({
+    target: "budgets",
+    detail: o.map((b) => b.id).join(", ") || "—",
+    text: { key: "audit.budgets", vars: { count: o.length } },
+  }),
   "admin.commandCreate": (i, o: MachineCommand) => ({
     target: i.machineId,
     detail: `yêu cầu ${o.label} (${i.itemId}, #${o.id})`,
@@ -521,6 +532,11 @@ const strOrNull = (v: unknown) => (v == null ? null : String(v));
 const num = (v: unknown) => Number(v);
 const sourceOf = (v: unknown): WriteSource | null => (v ? parseSource(JSON.parse(str(v))) : null);
 const sourceJson = (s: WriteSource | null | undefined) => (s ? JSON.stringify(s) : null);
+/**
+ * Whom a machine's Board runs count for (roadmap 27b): the account of its token, else the token's name, which a hub
+ * puts after the last "@" of the actor's name.
+ */
+const requesterOf = (actor: Actor) => actor.onBehalf ?? actor.name.slice(actor.name.lastIndexOf("@") + 1);
 
 const toSummary = (r: Row): DocSummary => ({
   key: str(r.key),
@@ -957,6 +973,10 @@ export class SqliteHive implements HiveBackend {
           return;
         }
         return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
+      // The whole list at once, and a cap on a person or the hub binds every project: someone over all of them.
+      case "budgets.set":
+        if (actor.access) throw new HiveError("forbidden", "Only a hub admin sets spending caps.", { key: "errors.hubAdminOnly" });
+        return;
       case "chat.configure":
       case "chat.rename":
       case "chat.delete": {
@@ -1102,6 +1122,13 @@ export class SqliteHive implements HiveBackend {
         const only = <T>(rec: Record<string, T>) => Object.fromEntries(Object.entries(rec).filter(([p]) => visible(p)));
         return { ...view, projects: only(view.projects), effective: only(view.effective) } as MethodOutput[M];
       }
+      // What a project spent shows to who sees the project, a person's to that person; the hub's sums projects they may
+      // not see, so only unrestricted readers get it.
+      case "budgets.list":
+      case "budgets.set":
+        return (out as BudgetUsage[]).filter((b) =>
+          b.scope.kind === "project" ? visible(b.scope.project) : b.scope.kind === "user" ? b.scope.user === (actor.onBehalf ?? actor.name) : false,
+        ) as MethodOutput[M];
       default:
         return output;
     }
@@ -1578,6 +1605,55 @@ export class SqliteHive implements HiveBackend {
       key: "errors.agentsPaused",
       vars: { project: scope === PAUSED_HUB ? "hub" : project, by: mark?.name ?? "?", at: mark?.at ?? "" },
     });
+  }
+
+  #budgets(): Budget[] {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'budgets'").get() as Row | undefined;
+    return row ? (JSON.parse(str(row.value)) as Budget[]) : [];
+  }
+
+  /** Each cap with what run_costs holds for it since its day or month began; runs: those that ended, with a cost. */
+  #budgetUsage(): BudgetUsage[] {
+    const now = this.#opts.now();
+    return this.#budgets().map((b) => {
+      const since = periodStart(b.period, now).toISOString();
+      const s = b.scope;
+      const r = this.db
+        .prepare(
+          `SELECT COALESCE(SUM(cost_usd), 0) AS usd, COUNT(*) AS runs FROM run_costs
+           WHERE finished_at >= ?1 AND (?2 IS NULL OR project = ?2) AND (?3 IS NULL OR requested_by = ?3)`,
+        )
+        .get(since, s.kind === "project" ? s.project : null, s.kind === "user" ? s.user : null) as Row;
+      const used = { usd: Number(r.usd), runs: num(r.runs) };
+      return { ...b, id: budgetId(b), since, used, ratio: budgetRatio(b, used) };
+    });
+  }
+
+  /** Full caps binding a run of this project asked for by this person, the fullest first. */
+  #fullBudgets(project: string, user: string): BudgetUsage[] {
+    return this.#budgetUsage()
+      .filter((u) => u.ratio >= 1 && budgetApplies(u, project, user))
+      .sort((a, b) => b.ratio - a.ratio);
+  }
+
+  /**
+   * What a heartbeat carries: every full cap on the hub or on a person (a machine may run requests of anyone), and
+   * those of the projects the machine has and its token sees, as for the agent policy.
+   */
+  #budgetBlocks(actor: Actor): BudgetBlock[] {
+    const row = this.db.prepare("SELECT projects FROM machines WHERE id = ?").get(actor.name) as Row | undefined;
+    const has = new Set(row ? (JSON.parse(str(row.projects)) as string[]) : []);
+    const owner = requesterOf(actor);
+    const out: BudgetBlock[] = [];
+    for (const u of this.#budgetUsage()) {
+      if (u.ratio < 1) continue;
+      const text = { key: "errors.budgetExceeded", vars: budgetVars(u) };
+      const s = u.scope;
+      if (s.kind === "hub") out.push({ hub: true, ...text });
+      else if (s.kind === "user") out.push({ user: s.user, self: s.user === owner, ...text });
+      else if (has.has(s.project) && sees(actor, s.project)) out.push({ project: s.project, ...text });
+    }
+    return out;
   }
 
   /** Pending commands nobody approved in time become expired; so do sync requests no machine took or finished. */
@@ -2539,11 +2615,12 @@ export class SqliteHive implements HiveBackend {
           if (acceptsRuns !== undefined) db.prepare("UPDATE machines SET accepts_runs = ? WHERE id = ?").run(acceptsRuns ? 1 : 0, actor.name);
           // A machine resends until the hub answers, so a run is kept as first reported.
           const cost = db.prepare(
-            `INSERT OR IGNORE INTO run_costs(machine_id, run_id, machine, project, task_id, profile_id, account, cost_usd, input_tokens, output_tokens, finished_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT OR IGNORE INTO run_costs(machine_id, run_id, machine, project, task_id, profile_id, account, cost_usd, input_tokens, output_tokens, finished_at, requested_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           );
+          const owner = requesterOf(actor);
           for (const c of costs) {
-            cost.run(actor.name, c.runId, machine, c.project, c.taskId, c.profileId, c.account, c.costUsd, c.inputTokens, c.outputTokens, c.finishedAt);
+            cost.run(actor.name, c.runId, machine, c.project, c.taskId, c.profileId, c.account, c.costUsd, c.inputTokens, c.outputTokens, c.finishedAt, c.requestedBy ?? owner);
           }
           db.prepare("DELETE FROM run_costs WHERE finished_at < ?").run(this.#now(-COST_DAYS * 24 * 60));
           db.prepare("DELETE FROM machines WHERE last_seen < ?").run(this.#now(-MACHINE_TTL_DAYS * 24 * 60));
@@ -2594,6 +2671,8 @@ export class SqliteHive implements HiveBackend {
             chatRequests,
             cancelRuns,
             paused: this.#pausedFor(this.#paused(), actor),
+            // After this beat's costs went in, so a run that just filled a cap holds the next one at once.
+            budgetBlocked: this.#budgetBlocks(actor),
           };
         }),
 
@@ -2713,6 +2792,15 @@ export class SqliteHive implements HiveBackend {
                 vars: { id: taskId, run: busy.runId, machine: other.machine },
               });
             }
+          }
+          // The run would count for whoever asks (run_requests.requested_by, which the machine reports with its cost).
+          const full = this.#fullBudgets(project, actor.name)[0];
+          if (full) {
+            const vars = budgetVars(full);
+            throw new HiveError("conflict", `Spending cap ${full.id} is reached: ${vars.used} of ${vars.limit} since ${vars.from}.`, {
+              key: "errors.budgetExceeded",
+              vars,
+            });
           }
           // The machine hands them to an agent as its prompt.
           assertNoHidden(instructions, "Instructions");
@@ -3133,6 +3221,22 @@ export class SqliteHive implements HiveBackend {
             return { machine, profileId, account: account || null, ...t };
           }),
         };
+      },
+
+      "budgets.list": () => this.#budgetUsage(),
+
+      "budgets.set": ({ budgets }) => {
+        const ids = budgets.map(budgetId);
+        const twice = ids.find((id, i) => ids.indexOf(id) !== i);
+        if (twice) throw new HiveError("bad_request", `Two spending caps for ${twice}.`, { key: "errors.budgetDuplicate", vars: { id: twice } });
+        // Only the fields of a cap: what zod left out stays out of the stored value.
+        const list: Budget[] = budgets.map((b) => ({
+          scope: b.scope,
+          period: b.period,
+          limit: { ...(b.limit.usd !== undefined ? { usd: b.limit.usd } : {}), ...(b.limit.runs !== undefined ? { runs: b.limit.runs } : {}) },
+        }));
+        db.prepare("INSERT INTO settings(key, value) VALUES ('budgets', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(list));
+        return this.#budgetUsage();
       },
 
       "machines.list": () =>
