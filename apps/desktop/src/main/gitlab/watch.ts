@@ -15,6 +15,16 @@ import { clipTail, mrActor, mrLabel, type MrHost } from "./mr.ts";
 /** MRs of runs older than this are left alone. */
 const WATCH_DAYS = 30;
 
+/**
+ * Milliseconds until the next MR check, `pollMinutes` after the last one started (0 when that time has passed).
+ * Counted from the last check rather than from the settings change, so shortening the period acts at once and
+ * lengthening it does not push back a check that is already due. No check yet: the first one waits `firstDelayMs`.
+ */
+export function mrPollDelay(lastCheckAt: number | null, pollMinutes: number, now: number, firstDelayMs = 30_000): number {
+  if (lastCheckAt === null) return firstDelayMs;
+  return Math.max(0, lastCheckAt + pollMinutes * 60_000 - now);
+}
+
 export interface MrChange {
   run: AgentRun;
   status: { from: MrStatus | null; to: MrStatus };
