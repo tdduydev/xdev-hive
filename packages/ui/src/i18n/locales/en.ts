@@ -1978,6 +1978,7 @@ export const en: Catalog = {
     mrMerged: "{mr} was merged. The task moved to Done.",
     mrMergedOnly: "{mr} was merged.",
     mrMergedTaskFailed: "{mr} was merged, but the task could not move to Done: {reason}",
+    mrMergedNeedsReview: "{mr} was merged. This machine's account has no Code review, so the task stays in Review until someone with Code review moves it to Done.",
     mrClosed: "{mr} was closed without merging.",
     mrClosedTask: "{mr} was closed without merging. The task moved to {status}.",
     mrClosedTaskFailed: "{mr} was closed without merging, but the task could not be updated: {reason}",
