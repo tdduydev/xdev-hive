@@ -19,12 +19,14 @@ const CODES: Record<number, HiveErrorCode> = {
 /**
  * Signs in once with a hub account (username + password) and gets a token for this machine. The token
  * belongs to that account: agents on the machine see the projects the account is granted, no more.
+ * A hub that cannot be reached is HiveError "unavailable", as for every other call, not fetch's bare TypeError.
  */
 export async function requestDeviceToken(
   url: string,
   input: { username: string; password: string; machine: string },
 ): Promise<{ token: string; user: NonNullable<Me["user"]> }> {
-  const res = await fetch(`${url.replace(/\/+$/, "")}/api/device-token`, {
+  const hub = url.replace(/\/+$/, "");
+  const res = await reach(hub, `${hub}/api/device-token`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
