@@ -633,7 +633,14 @@ Trang này có trên hub web và trên app desktop ở chế độ hub, chỉ hi
   - mạng: tắt, danh sách host, hoặc mở;
   - các MCP server được bật.
 
-  Phần riêng của dự án chỉ siết thêm mặc định, không nới được. Cột *Hiệu lực* cho thấy kết quả sau khi gộp. Admin hub sửa mặc định. Người có quyền Cài đặt dự án sửa dòng của dự án mình, ở đây hoặc ở trang *Hệ thống*. Máy nhận phần của các dự án mình có qua heartbeat. Runner bắt đầu ép chính sách từ R-27a-2; trước đó, chính sách chỉ được lưu và gửi xuống máy.
+  Phần riêng của dự án chỉ siết thêm mặc định, không nới được. Cột *Hiệu lực* cho thấy kết quả sau khi gộp. Admin hub sửa mặc định. Người có quyền Cài đặt dự án sửa dòng của dự án mình, ở đây hoặc ở trang *Hệ thống*. Máy nhận phần của các dự án mình có qua heartbeat. Runner ép chính sách khi dựng lệnh cho mỗi run (chế độ local không có chính sách, giữ như cũ):
+  - **gói bị chặn** được bỏ qua như gói hết quota, lý do ghi vào log run: gói đặt model ngoài danh sách, hoặc mạng không phải *mở* mà gói không chạy trong container, hoặc gói CLI tự đặt khi chính sách hạn chế mức tự chủ hay MCP. Không còn gói nào nhận được thì run lỗi ngay, kèm lý do của từng gói;
+  - **model**: gói không đặt `--model` thì nhận model đầu tiên của danh sách;
+  - **mức tự chủ**: lấy mức thấp hơn giữa chính sách và cờ của gói, rồi thay cờ quyền (`--permission-mode` của Claude, `--sandbox` của Codex, `--approval-mode` của Gemini). Mức *chỉ đọc* còn khoá Hive chỉ đọc cho run;
+  - **mạng**: container `open` bị ép thành `restricted`; *tắt* bỏ hết host thêm của gói, *danh sách host* chỉ giữ host thêm có trong danh sách;
+  - **MCP**: Claude chỉ nhận xdev-hive và các server được phép trong `--mcp-config`, Gemini nhận `--allowed-mcp-server-names`, Codex tắt các server còn lại trong `~/.codex/config.toml` bằng `-c mcp_servers.<tên>.enabled=false`.
+
+  Log của run có một dòng `# policy …` ghi chính sách đang dùng.
 - **Nhật ký**: mọi thao tác thay đổi dữ liệu của admin (sửa tài liệu, duyệt/từ chối, memory, task, token, chính sách, yêu cầu cài), đăng nhập, tạo/sửa/khoá tài khoản, đổi quyền, đặt lại mật khẩu, và kết quả máy báo về. Không ghi lượt đọc.
 - **Nhật ký agent** (roadmap 27c): mọi lần agent ghi (nhận và cập nhật task, đề xuất, memory, chat) cũng vào *Nhật ký*, kèm ba cột: agent (nhãn `x-hive-agent`, vd. `claude-1.<máy>`), người mà agent chạy thay (chủ token), và id run (`hive-mcp` gửi `x-hive-run` từ `HIVE_RUN` của runner). Trang *Nhật ký* của Web Admin lọc theo agent, người và run (`claude-1` tìm được `claude-1` trên mọi máy); bấm id run để mở run đó ở *Lượt chạy*.
 - **Không tự duyệt** (roadmap 27c, thẻ *Tự duyệt* trên trang *Chính sách*): không ai duyệt đề xuất hay memory của chính mình, hay chuyển sang *Xong* task mà run làm nó do chính mình yêu cầu (từ web, hoặc chạy từ Board của máy dùng token của mình). Agent chạy bằng token của ai thì tính là người đó. Hub trả lỗi `errors.selfApprove`. Mặc định *Admin hub được tự duyệt*, cho hub chỉ có một người; chọn *Không ai được tự duyệt* khi team có người duyệt chéo. MR watcher vẫn chuyển task sang *Xong* khi MR merge, vì merge trên GitLab hay GitHub đã là một lần người khác duyệt.

@@ -12,14 +12,16 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
-import { closeSync, createWriteStream, existsSync, mkdirSync, openSync, readSync, rmSync, statSync, writeFileSync, type WriteStream } from "node:fs";
+import { appendFileSync, closeSync, createWriteStream, existsSync, mkdirSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync, type WriteStream } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
   AGENT_ROLES,
   agentActorName,
+  effectivePolicy,
   HiveError,
   MAX_CANDIDATES,
+  OPEN_POLICY,
   PAUSED_HUB,
   redactLines,
   stripHidden,
@@ -28,6 +30,7 @@ import {
   usageHeadroom,
   usageStop,
   type Actor,
+  type AgentPolicy,
   type AgentProfile,
   type AgentProfileStatus,
   type AgentRun,
@@ -60,7 +63,20 @@ import { NO_FEATURES, repoFeatures } from "#desktop/main/installer.ts";
 import { containerCommand } from "./container.ts";
 import { claudeMcpServers, codexMcpArgs, hubMcpEnv, type McpRun } from "./container-mcp.ts";
 import { deniedHosts, egressAllow, egressPlan, type Egress } from "./egress.ts";
-import { buildCommand, buildPrompt, describeCommand, expandEnv, expandHome, parsePick, resolveBin, type JudgeCandidate } from "./command.ts";
+import {
+  applyPolicy,
+  buildCommand,
+  buildPrompt,
+  codexMcpNames,
+  describeCommand,
+  expandEnv,
+  expandHome,
+  parsePick,
+  policyBlocks,
+  policyLine,
+  resolveBin,
+  type JudgeCandidate,
+} from "./command.ts";
 import { detectRateLimit } from "./rate-limit.ts";
 import { AssistWorker } from "./assist.ts";
 import { ChatWorker } from "./chat.ts";
@@ -119,7 +135,11 @@ export interface HubUpdate {
   syncCommands: MachineCommand[];
   /** A newer app build the hub's rollout offers this machine (roadmap 22i); a hub without updates sends none. */
   update?: UpdateOffer | null;
+  /** The agent policy (roadmap 27a): the hub's default and the parts of this machine's projects; a hub older than it sends none. */
+  agentPolicy?: HubAgentPolicy | null;
 }
+
+export type HubAgentPolicy = { hub: AgentPolicy; projects: Record<string, Partial<AgentPolicy>> };
 
 export type RunnerEvent =
   | { type: "finished"; run: AgentRun }
@@ -287,6 +307,8 @@ export class Runner {
   readonly #taking = new Set<number>();
   /** Stop-all (roadmap 27d) as the last heartbeat said; null in local mode and from a hub older than it. */
   #paused: AgentsPaused | null = null;
+  /** The agent policy (roadmap 27a) of the last heartbeat that answered; null in local mode and from a hub older than it. */
+  #agentPolicy: HubAgentPolicy | null = null;
 
   constructor(host: RunnerHost, opts: RunnerOptions) {
     this.#host = host;
@@ -628,6 +650,7 @@ export class Runner {
     if (this.#host.mode() !== "hub") {
       this.#shared.clear();
       this.#paused = null;
+      this.#agentPolicy = null;
       return null;
     }
     const runs = this.store.active().map((r) => ({
@@ -688,7 +711,10 @@ export class Runner {
       commands: res.commands,
       syncCommands: res.syncCommands ?? [],
       update: (res as { update?: UpdateOffer | null }).update ?? null,
+      agentPolicy: res.agentPolicy ?? null,
     };
+    // Before the requests below are taken, so their runs start under the policy the hub just sent.
+    this.#agentPolicy = update.agentPolicy ?? null;
     this.#opts.onHub?.(update);
     this.#takeSyncs(update.syncCommands);
     // A hub older than runs.dispatch sends none.
@@ -963,10 +989,24 @@ export class Runner {
             this.#waiting.set(run.id, tr("runNote.waitingParallel"));
             continue;
           }
-          const loads = this.#loads();
+          const all = this.#loads();
           const needs = this.#needs(run);
+          // A profile the agent policy rules out is skipped like one out of quota.
+          const blocked = this.#policyBlocked(this.#policyOf(run.project));
+          const loads = all.filter((l) => !blocked.has(l.profile.id));
           const pick = pickProfile(loads, needs, now);
           if (!pick) {
+            const could = all.filter(
+              (l) =>
+                l.profile.enabled &&
+                (needs.preferredProfile ? l.profile.id === needs.preferredProfile : l.profile.roles.includes(needs.role)) &&
+                !needs.excludedProfiles.includes(l.profile.id),
+            );
+            // Waiting would not help: every profile that could take the run is ruled out until the policy changes.
+            if (could.length && could.every((l) => blocked.has(l.profile.id))) {
+              this.#failByPolicy(run, could.map((l) => `${l.profile.id}: ${blocked.get(l.profile.id)}`));
+              continue;
+            }
             this.#waiting.set(run.id, waitingReason(loads, needs, now));
             continue;
           }
@@ -983,6 +1023,47 @@ export class Runner {
 
   #iso(offsetMinutes = 0): string {
     return new Date(this.#opts.now().getTime() + offsetMinutes * 60_000).toISOString();
+  }
+
+  /** What a run of the project may do (roadmap 27a): the hub's policy merged with the project's; open in local mode. */
+  #policyOf(project: string): AgentPolicy {
+    const p = this.#agentPolicy;
+    return p ? effectivePolicy(p.hub, p.projects[project] ?? null) : OPEN_POLICY;
+  }
+
+  /** The profiles the policy rules out, with why. */
+  #policyBlocked(pol: AgentPolicy): Map<string, string> {
+    const out = new Map<string, string>();
+    for (const p of this.#host.profiles()) {
+      const reason = policyBlocks(p, pol);
+      if (reason) out.set(p.id, reason);
+    }
+    return out;
+  }
+
+  /** A queued run no profile may take under the policy: failed now, with each profile's reason in its log. */
+  #failByPolicy(run: AgentRun, reasons: string[]): void {
+    const error = tr("errors.policyNoProfile", { reasons: reasons.join("; ") });
+    try {
+      appendFileSync(this.#logPath(run.id), `# ${error}\n`);
+    } catch {
+      // The run's error says the same.
+    }
+    this.#waiting.delete(run.id);
+    const done = this.store.update(run.id, { status: "failed", finishedAt: this.#iso(), error });
+    this.#opts.onEvent?.({ type: "finished", run: done });
+    // It may have been the last one its group waited for.
+    if (done.bestOf) this.#track(this.#bestOfNext(done).catch(() => undefined));
+  }
+
+  /** The MCP servers Codex's config.toml has (the profile's CODEX_HOME, else ~/.codex), to turn off those the policy leaves out. */
+  #codexServers(profile: AgentProfile): string[] {
+    const home = profile.env.CODEX_HOME ? expandHome(profile.env.CODEX_HOME) : path.join(os.homedir(), ".codex");
+    try {
+      return codexMcpNames(readFileSync(path.join(home, "config.toml"), "utf8"));
+    } catch {
+      return [];
+    }
   }
 
   #logPath(id: string): string {
@@ -1093,7 +1174,12 @@ export class Runner {
     void job.finally(() => this.#inflight.delete(job));
   }
 
-  async #execute(run: AgentRun, profile: AgentProfile): Promise<void> {
+  async #execute(run: AgentRun, chosen: AgentProfile): Promise<void> {
+    // Fitted before the first await, under the same policy tick() checked the profile against.
+    const pol = this.#policyOf(run.project);
+    const fit = applyPolicy(chosen, pol, chosen.kind === "codex" && pol.mcp !== null ? this.#codexServers(chosen) : []);
+    const profile = fit.profile;
+    const skipped = [...this.#policyBlocked(pol)].map(([id, reason]) => `# policy skipped ${id}: ${reason}\n`).join("");
     let wt: Worktree | null = null;
     let mcpFile: string | null = null;
     let egress: { plan: Egress; docker: string; env: NodeJS.ProcessEnv } | null = null;
@@ -1145,7 +1231,7 @@ export class Runner {
         mcpFile = path.join(this.#opts.dataDir, "runs", `${run.id}.mcp.json`);
         writeFileSync(mcpFile, JSON.stringify({ mcpServers: this.#containerMcp(profile, run) }), { mode: 0o600 });
       }
-      const cmd = buildCommand(profile, vars, profile.container ? NO_FEATURES : repoFeatures(project.repo), mcpFile ?? undefined);
+      const cmd = buildCommand(profile, vars, profile.container ? NO_FEATURES : repoFeatures(project.repo), mcpFile ?? undefined, fit.mcp);
       const base = this.#host.env();
       const bin = resolveBin(profile.container ? "docker" : cmd.bin, base.PATH ?? "");
       if (!bin) {
@@ -1215,7 +1301,7 @@ export class Runner {
           })
         : null;
       log.write(
-        `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image} · ${egress ? `network limited (${egress.env.HIVE_EGRESS_ALLOW})` : "network open"}\n` : ""}${startNote ? `# ${startNote}\n` : ""}# cwd ${wt.path}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n\n## Prompt\n${prompt}\n\n## Output\n`,
+        `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image} · ${egress ? `network limited (${egress.env.HIVE_EGRESS_ALLOW})` : "network open"}\n` : ""}${startNote ? `# ${startNote}\n` : ""}# cwd ${wt.path}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n${policyLine(pol, fit)}\n${skipped}\n## Prompt\n${prompt}\n\n## Output\n`,
       );
 
       const env: NodeJS.ProcessEnv = box ? { ...hostEnv, ...box.env } : { ...hostEnv, ...agentEnv };
