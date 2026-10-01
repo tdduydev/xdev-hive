@@ -1478,7 +1478,7 @@ export class SqliteHive implements HiveBackend {
 
   #paused(): AgentsPaused {
     const row = this.db.prepare("SELECT value FROM settings WHERE key = 'paused'").get() as Row | undefined;
-    return row ? { hub: false, projects: [], by: {}, ...(JSON.parse(str(row.value)) as AgentsPaused) } : { hub: false, projects: [], by: {} };
+    return row ? { hub: false, projects: [], by: {}, ...(JSON.parse(str(row.value)) as Partial<AgentsPaused>) } : { hub: false, projects: [], by: {} };
   }
 
   #savePaused(paused: AgentsPaused): void {
