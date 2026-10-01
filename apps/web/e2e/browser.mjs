@@ -417,6 +417,39 @@ async function main() {
     expect(beat.agentPolicy?.projects?.payment?.autonomy === "read", `heartbeat agentPolicy: ${JSON.stringify(beat.agentPolicy)}`);
   });
 
+  // Roadmap 27d: the admin stops every agent of the hub; machines hear it, nobody can queue a run until it is lifted.
+  await step("stop-all", async () => {
+    const tab = (current = tabs.admin);
+    await tab.go("admin/overview");
+    // The buttons ask with window.confirm, which a hidden window would wait on forever.
+    await tab.eval(() => {
+      window.confirm = () => true;
+    });
+    // Next to the project picker's own button: the hub's says so in its title.
+    await tab.click('button[title="cả hub"]', "Dừng mọi agent");
+    await until("the hub paused", async () => (await rpc("agents.paused", {})).hub === true);
+    const heartbeat = await (
+      await fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" },
+        body: JSON.stringify({ method: "machines.heartbeat", input: { machine: "lan-mbp", instance: "e2e00001", version: "0.0.0-e2e", projects: ["payment"] } }),
+      })
+    ).json();
+    expect(heartbeat.result?.paused?.hub === true, `heartbeat paused: ${JSON.stringify(heartbeat.result?.paused)}`);
+    const refused = await rpc("runs.dispatch", { machineId: "runner.lan-mbp@lan-e2e", project: "payment", taskId: "PAY-1" }).then(
+      () => null,
+      (err) => err.message,
+    );
+    expect(refused?.includes("paused"), `runs.dispatch while paused: ${refused ?? "accepted"}`);
+    // The notice is on the Board (spec 27d); here the hub's button turns into the way back.
+    await tab.waitFor("Cho agent chạy lại for the hub", () =>
+      [...document.querySelectorAll('button[title="cả hub"]')].some((b) => b.textContent.includes("Cho agent chạy lại")),
+    );
+    await tab.shot(`${String(n).padStart(2, "0")}-stop-all-paused`);
+    await tab.click('button[title="cả hub"]', "Cho agent chạy lại");
+    await until("the hub running again", async () => (await rpc("agents.paused", {})).hub === false);
+  });
+
   await step("hub-page", async () => {
     const tab = (current = tabs.admin);
     await tab.go("admin/hub");
