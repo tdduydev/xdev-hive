@@ -70,6 +70,7 @@ export function ListItem({
   selected,
   mono,
   dim,
+  pick,
   onClick,
 }: {
   title: ReactNode;
@@ -79,6 +80,8 @@ export function ListItem({
   selected: boolean;
   mono?: boolean;
   dim?: boolean;
+  /** A checkbox before the title for bulk actions; its clicks and keys do not open the item. */
+  pick?: ReactNode;
   onClick: () => void;
 }) {
   return (
@@ -100,6 +103,11 @@ export function ListItem({
       )}
     >
       <div className="flex min-w-0 items-center gap-1.5">
+        {pick ? (
+          <span className="flex" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+            {pick}
+          </span>
+        ) : null}
         <span className={cn("min-w-0 flex-1 truncate text-[13px]/[18px] font-semibold text-fg-strong", mono && "font-mono")}>{title}</span>
         {chip}
       </div>
