@@ -9,7 +9,7 @@ import { CODEGRAPH_MCP, SUPERPOWERS_PLUGIN } from "#desktop/main/installer.ts";
 import { buildCommand, buildPrompt, parsePick } from "#desktop/main/runner/command.ts";
 import { ClaudeStream, toolLine } from "#desktop/main/runner/stream.ts";
 import { outputFormat, parseClaudeResult, parsePlanUsage } from "#desktop/main/runner/usage.ts";
-import { usageStop, type HiveEvent, type PlanUsage } from "@xdev-hive/core";
+import { usageHeadroom, usageStop, type HiveEvent, type PlanUsage } from "@xdev-hive/core";
 import { checkLogin, checkUsage, LoginMonitor, loginCommand, parseLogin, USAGE_ARGS } from "#desktop/main/runner/login.ts";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { parseResetTime, detectRateLimit } from "#desktop/main/runner/rate-limit.ts";
@@ -157,6 +157,33 @@ describe("pickProfile", () => {
   });
   const b = profile("claude-b", "claude", 10, "ok");
   const c = profile("codex-a", "codex", 20, "ok");
+
+  it("runs where the most plan is left, before priority, and where usage is known first (roadmap 24a)", () => {
+    const low = profile("claude-low", "claude", 30, "ok");
+    // a has 10 points left, low 60: low runs although its priority number is higher.
+    assert.equal(pickProfile([load(a, { headroom: 10 }), load(low, { headroom: 60 })], needs, now)?.profile.id, "claude-low");
+    assert.equal(pickProfile([load(a, { headroom: 5 }), load(c)], needs, now)?.profile.id, "claude-a", "known usage before unknown");
+    assert.equal(pickProfile([load(a), load(c)], needs, now)?.profile.id, "claude-a", "none known: priority");
+    assert.equal(
+      pickProfile([load(a, { headroom: 40, lastUsedAt: "2026-09-27T07:59:00Z" }), load(b, { headroom: 40, lastUsedAt: "2026-09-27T07:00:00Z" })], needs, now)?.profile.id,
+      "claude-b",
+      "same plan left: priority, then least recently used",
+    );
+    // Cross-review still goes to another vendor first, however much plan the implementer's has left.
+    assert.equal(pickProfile([load(a, { headroom: 90 }), load(c)], { ...needs, avoidKinds: ["claude"] }, now)?.profile.id, "codex-a");
+  });
+
+  it("measures the plan left to the nearer stop threshold", () => {
+    const limit = (percent: number) => ({ percent, resets: null });
+    const at = (session: number | null, week: number | null): PlanUsage => ({ session: session === null ? null : limit(session), week: week === null ? null : limit(week), others: [], checkedAt: "2026-09-27T08:00:00Z" });
+    const p = { stopAtSession: 95, stopAtWeek: 90 };
+    assert.equal(usageHeadroom(p, at(50, 85)), 5, "the week is nearer");
+    assert.equal(usageHeadroom(p, at(70, 20)), 25);
+    assert.equal(usageHeadroom(p, at(null, 30)), 60);
+    assert.equal(usageHeadroom(p, at(99, 10)), 0);
+    assert.equal(usageHeadroom(p, at(null, null)), null);
+    assert.equal(usageHeadroom(p, null), null);
+  });
 
   it("rotates equal-priority subscriptions by least recent use", () => {
     const pick = pickProfile([load(a, { lastUsedAt: "2026-09-27T07:59:00Z" }), load(b, { lastUsedAt: "2026-09-27T07:00:00Z" }), load(c)], needs, now);
@@ -473,6 +500,22 @@ describe("Runner", () => {
     assert.equal(none.runner.store.get(waiting.id)!.status, "queued");
     assert.match(none.runner.list()[0]!.error ?? "", /Chưa gói phù hợp nào đăng nhập CLI \(claude-a\)/);
     none.runner.cancel(waiting.id);
+  });
+
+  it("runs a task on the account with the most plan left, whatever the priority numbers say (roadmap 24a)", async () => {
+    const at = (session: number, week: number): PlanUsage => ({ session: { percent: session, resets: null }, week: { percent: week, resets: null }, others: [], checkedAt: "" });
+    // claude-a: priority 1 but 5 points left before the week's 90%; claude-b: priority 30 with 60 left.
+    const plans: Record<string, PlanUsage> = { "claude-a": at(70, 85), "claude-b": at(20, 30) };
+    const { runner, hive } = await setup([profile("claude-a", "claude", 1, "ok"), profile("claude-b", "claude", 30, "ok")], {}, "local", { usage: (id) => plans[id] });
+    const first = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    assert.equal(runner.store.get(first.id)!.profileId, "claude-b");
+    // Later claude-b is the one nearly used up: the next task goes back to claude-a.
+    plans["claude-b"] = at(93, 40);
+    await hive.call("tasks.create", { id: "T-2", project: "demo", title: "Việc thứ hai" }, admin);
+    const second = await runner.enqueue({ project: "demo", taskId: "T-2" });
+    await runner.settle();
+    assert.equal(runner.store.get(second.id)!.profileId, "claude-a", "claude-a has 5 points left, claude-b 2");
   });
 
   it("skips a subscription over its plan threshold, and says why a run waits when all are", async () => {
