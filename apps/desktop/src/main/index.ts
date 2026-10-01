@@ -676,7 +676,11 @@ function onMrChanges(changes: MrChange[]): void {
           ? tr("desktop.mrMergedTaskFailed", { mr, reason: c.taskError })
           : tr(c.taskDone ? "desktop.mrMerged" : "desktop.mrMergedOnly", { mr })
         : c.status.to === "closed" && c.status.from !== "closed"
-          ? tr("desktop.mrClosed", { mr })
+          ? c.taskError
+            ? tr("desktop.mrClosedTaskFailed", { mr, reason: c.taskError })
+            : c.taskStatus
+              ? tr("desktop.mrClosedTask", { mr, status: tr(`taskStatus.${c.taskStatus}`) })
+              : tr("desktop.mrClosed", { mr })
           : c.fix?.kind === "queued"
             ? tr("desktop.ciFixQueued", { mr, run: c.fix.run.id, n: c.fix.n, max: c.fix.max })
             : c.fix?.kind === "limit"

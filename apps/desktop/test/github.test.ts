@@ -259,15 +259,34 @@ describe("GitHub pull request watch", () => {
     assert.equal(gh.calls.length, 0, "a merged PR is not asked about again");
   });
 
-  it("records a PR closed without merging and leaves the task alone", async () => {
+  it("moves the task to Blocked by default when a PR is closed without merging, and notes it", async () => {
     const { runner, task, reviewed, watcher } = await setup("review");
     const { review } = await reviewed();
     gh.pulls[0]!.state = "closed";
     const [c] = await watcher.check();
     assert.deepEqual(c!.status, { from: null, to: "closed" });
     assert.equal(c!.taskDone, false);
-    assert.equal((await task()).status, "review");
+    assert.equal(c!.taskStatus, "blocked");
+    const t = await task();
+    assert.equal(t.status, "blocked");
+    assert.match(t.note ?? "", /PR #1: http[^\n]+\n\nPR #1 closed without merging\.$/);
     assert.equal(runner.store.get(review.id)!.mrStatus, "closed");
+  });
+
+  it("moves the task to To do, or keeps its status, when a PR is closed, as chosen", async () => {
+    for (const [onClosed, status] of [
+      ["todo", "todo"],
+      ["keep", "review"],
+    ] as const) {
+      const { task, reviewed, watcher } = await setup("review", { onClosed });
+      await reviewed();
+      gh.pulls[0]!.state = "closed";
+      const [c] = await watcher.check();
+      assert.equal(c!.taskStatus, onClosed === "keep" ? null : status, onClosed);
+      const t = await task();
+      assert.equal(t.status, status, onClosed);
+      assert.match(t.note ?? "", /\n\nPR #1 closed without merging\.$/, onClosed);
+    }
   });
 
   it("skips a PR GitHub cannot answer, and watches nothing without a token", async () => {
