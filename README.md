@@ -634,7 +634,14 @@ Trang này có trên hub web và trên app desktop ở chế độ hub, chỉ hi
   - mạng: tắt, danh sách host, hoặc mở;
   - các MCP server được bật.
 
-  Phần riêng của dự án chỉ siết thêm mặc định, không nới được. Cột *Hiệu lực* cho thấy kết quả sau khi gộp. Admin hub sửa mặc định. Người có quyền Cài đặt dự án sửa dòng của dự án mình, ở đây hoặc ở trang *Hệ thống*. Máy nhận phần của các dự án mình có qua heartbeat. Runner bắt đầu ép chính sách từ R-27a-2; trước đó, chính sách chỉ được lưu và gửi xuống máy.
+  Phần riêng của dự án chỉ siết thêm mặc định, không nới được. Cột *Hiệu lực* cho thấy kết quả sau khi gộp. Admin hub sửa mặc định. Người có quyền Cài đặt dự án sửa dòng của dự án mình, ở đây hoặc ở trang *Hệ thống*. Máy nhận phần của các dự án mình có qua heartbeat. Runner ép chính sách khi dựng lệnh cho mỗi run (chế độ local không có chính sách, giữ như cũ):
+  - **gói bị chặn** được bỏ qua như gói hết quota, lý do ghi vào log run: gói đặt model ngoài danh sách, hoặc mạng không phải *mở* mà gói không chạy trong container, hoặc gói CLI tự đặt khi chính sách hạn chế mức tự chủ hay MCP. Không còn gói nào nhận được thì run lỗi ngay, kèm lý do của từng gói;
+  - **model**: gói không đặt `--model` thì nhận model đầu tiên của danh sách;
+  - **mức tự chủ**: lấy mức thấp hơn giữa chính sách và cờ của gói, rồi thay cờ quyền (`--permission-mode` của Claude, `--sandbox` của Codex, `--approval-mode` của Gemini). Mức *chỉ đọc* còn khoá Hive chỉ đọc cho run;
+  - **mạng**: container `open` bị ép thành `restricted`; *tắt* bỏ hết host thêm của gói, *danh sách host* chỉ giữ host thêm có trong danh sách;
+  - **MCP**: Claude chỉ nhận xdev-hive và các server được phép trong `--mcp-config`, Gemini nhận `--allowed-mcp-server-names`, Codex tắt các server còn lại trong `~/.codex/config.toml` bằng `-c mcp_servers.<tên>.enabled=false`.
+
+  Log của run có một dòng `# policy …` ghi chính sách đang dùng.
 - **Trần chi tiêu** (roadmap 27b, thẻ trên trang *Chi phí*): admin hub đặt trần cho một dự án, một người yêu cầu run, hoặc cả hub, theo ngày hoặc theo tháng (giờ của hub). Trần tính bằng USD (giá API ước tính, như trang *Chi phí*), bằng số run, hoặc cả hai.
   - Run được tính cho người yêu cầu nó trên web; run chạy từ Board được tính cho tài khoản sở hữu token của máy.
   - Hết trần thì hub không nhận *Giao run* mới (`errors.budgetExceeded`). Máy nghe qua heartbeat và giữ run mới trong *Hàng đợi* kèm lý do, kể cả run từ Board. Run đang chạy vẫn chạy tiếp.

@@ -2,9 +2,10 @@
 import { accessSync, constants, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { AgentProfile, AgentRole, CiFix } from "@xdev-hive/core";
+import { AUTONOMY, modelsFor, policySummary, type AgentKind, type AgentPolicy, type AgentProfile, type AgentRole, type Autonomy, type CiFix } from "@xdev-hive/core";
 import { fence } from "#desktop/main/gitlab/describe.ts";
-import { NO_FEATURES, runMcpServers, SUPERPOWERS_PLUGIN, type RepoFeatures } from "#desktop/main/installer.ts";
+import { tr } from "#desktop/main/i18n.ts";
+import { MCP_NAME, NO_FEATURES, runMcpServers, SUPERPOWERS_PLUGIN, type RepoFeatures } from "#desktop/main/installer.ts";
 import { outputFormat } from "./usage.ts";
 
 export interface PromptContext {
@@ -186,6 +187,8 @@ export function buildCommand(
   features: RepoFeatures = NO_FEATURES,
   /** Claude's MCP servers from this file instead (a container run: see runner). */
   mcpConfigFile?: string,
+  /** The agent policy's MCP servers besides xdev-hive (see applyPolicy); null: every server. */
+  mcp: string[] | null = null,
 ): BuiltCommand {
   const usesPrompt = profile.args.some((a) => a.includes("{prompt}"));
   const fill = (a: string) =>
@@ -205,7 +208,7 @@ export function buildCommand(
     if (format === null) args.push("--output-format", "stream-json", "--verbose");
     claudeStream = format === null || format === "stream-json";
     claudeJson = format === "json";
-    args.push(...claudeRunArgs(profile.id, { ...vars, readOnly: profile.readOnly }, features, mcpConfigFile));
+    args.push(...claudeRunArgs(profile.id, { ...vars, readOnly: profile.readOnly }, features, mcpConfigFile, mcp));
   }
   if (profile.kind === "codex") args = codexArgs(args, { agent: profile.id, project: vars.project, task: vars.task, run: vars.run, readOnly: profile.readOnly });
   return {
@@ -264,9 +267,13 @@ export function claudeRunArgs(
   run: { project: string; task: string; run?: string; readOnly?: boolean; worktree: string },
   features: RepoFeatures,
   mcpConfigFile?: string,
+  mcp: string[] | null = null,
 ): string[] {
+  // --strict-mcp-config: only the servers listed here run, so the policy is kept by leaving the others out.
+  const allowed = (name: string) => name === MCP_NAME || mcp === null || mcp.includes(name);
+  const codegraph = features.codegraph && allowed("codegraph");
   // Headless, a tool nobody allowed is refused: the run's own MCP servers are allowed here, whatever the user's settings say.
-  const allow = ["mcp__xdev-hive", ...(features.codegraph ? ["mcp__codegraph"] : [])];
+  const allow = ["mcp__xdev-hive", ...(codegraph ? ["mcp__codegraph"] : [])];
   const settings = {
     disableAllHooks: true,
     permissions: { allow },
@@ -281,8 +288,200 @@ export function claudeRunArgs(
     "user",
     "--strict-mcp-config",
     "--mcp-config",
-    mcpConfigFile ?? JSON.stringify({ mcpServers: runMcpServers(agent, run.project, features, { task: run.task, id: run.run, readOnly: run.readOnly }) }),
+    mcpConfigFile ?? JSON.stringify({ mcpServers: runMcpServers(agent, run.project, { ...features, codegraph }, { task: run.task, id: run.run, readOnly: run.readOnly }) }),
   ];
+}
+
+// ── agent policy (roadmap 27a) ────────────────────────────────────────────────
+// The hub's policy reaches the CLI only through its flags: what a run may do is decided here, from the profile's
+// args. A flag the runner does not know is left alone, so the policy only takes away what it can name.
+
+/** The flags that set how much a CLI may do on its own, by kind: those taking a value, and switches. */
+const AUTONOMY_FLAGS: Partial<Record<AgentKind, { valued: string[]; switches: string[] }>> = {
+  claude: { valued: ["--permission-mode"], switches: ["--dangerously-skip-permissions", "--allow-dangerously-skip-permissions"] },
+  codex: { valued: ["--sandbox", "-s"], switches: ["--full-auto", "--dangerously-bypass-approvals-and-sandbox"] },
+  gemini: { valued: ["--approval-mode"], switches: ["-y", "--yolo"] },
+};
+
+const AUTONOMY_ARGS: Record<"claude" | "codex" | "gemini", Record<Autonomy, string[]>> = {
+  claude: {
+    read: ["--permission-mode", "plan"],
+    propose: ["--permission-mode", "plan"],
+    edit: ["--permission-mode", "acceptEdits"],
+    full: ["--permission-mode", "bypassPermissions"],
+  },
+  codex: {
+    read: ["--sandbox", "read-only"],
+    propose: ["--sandbox", "read-only"],
+    edit: ["--sandbox", "workspace-write"],
+    full: ["--sandbox", "danger-full-access"],
+  },
+  gemini: {
+    read: ["--approval-mode", "plan"],
+    propose: ["--approval-mode", "plan"],
+    edit: ["--approval-mode", "auto_edit"],
+    full: ["--approval-mode", "yolo"],
+  },
+};
+
+/** What each flag value means; a value missing here counts as edit, as the spec says. */
+const AUTONOMY_VALUES: Record<string, Autonomy> = {
+  plan: "read",
+  "read-only": "read",
+  acceptEdits: "edit",
+  auto_edit: "edit",
+  "workspace-write": "edit",
+  bypassPermissions: "full",
+  "danger-full-access": "full",
+  yolo: "full",
+};
+const FULL_SWITCHES = ["--dangerously-skip-permissions", "--dangerously-bypass-approvals-and-sandbox", "-y", "--yolo"];
+
+const lowerAutonomy = (a: Autonomy, b: Autonomy): Autonomy => (AUTONOMY.indexOf(a) <= AUTONOMY.indexOf(b) ? a : b);
+
+/** The value of a flag written `--flag X` or `--flag=X` (the last one wins, as in the CLIs). */
+function flagValue(args: string[], names: string[]): string | null {
+  let value: string | null = null;
+  args.forEach((a, i) => {
+    for (const n of names) {
+      if (a === n && i + 1 < args.length) value = args[i + 1]!;
+      else if (a.startsWith(`${n}=`)) value = a.slice(n.length + 1);
+    }
+  });
+  return value;
+}
+
+/** args without the flags (and their values). */
+function withoutFlags(args: string[], valued: string[], switches: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (switches.includes(a)) continue;
+    if (valued.includes(a)) {
+      i++;
+      continue;
+    }
+    if (valued.some((n) => a.startsWith(`${n}=`))) continue;
+    out.push(a);
+  }
+  return out;
+}
+
+/** Codex takes its options after `exec`; elsewhere the end of the args will do. */
+function insertFlags(kind: AgentKind, args: string[], flags: string[]): string[] {
+  if (kind !== "codex") return [...args, ...flags];
+  const at = args[0] === "exec" ? 1 : 0;
+  return [...args.slice(0, at), ...flags, ...args.slice(at)];
+}
+
+/** The autonomy a profile's own args give: `plan` is read, `acceptEdits` edit, a dangerously switch full. */
+export function autonomyOf(kind: AgentKind, args: string[]): Autonomy {
+  const flags = AUTONOMY_FLAGS[kind];
+  if (!flags) return "edit";
+  if (args.some((a) => FULL_SWITCHES.includes(a) && flags.switches.includes(a))) return "full";
+  const value = flagValue(args, flags.valued);
+  return value === null ? "edit" : (AUTONOMY_VALUES[value] ?? "edit");
+}
+
+/**
+ * The profile's args at the lower of `level` and the profile's own autonomy: its permission flags out, the level's in.
+ * At the profile's own level the args stay as they are, so an open policy changes nothing (a profile with no flag,
+ * or one the runner does not know, keeps running as before).
+ */
+export function applyAutonomy(kind: AgentKind, args: string[], level: Autonomy): string[] {
+  const flags = AUTONOMY_FLAGS[kind];
+  if (!flags) return args;
+  const own = autonomyOf(kind, args);
+  const used = lowerAutonomy(own, level);
+  if (used === own) return args;
+  return insertFlags(kind, withoutFlags(args, flags.valued, flags.switches), AUTONOMY_ARGS[kind as "claude" | "codex" | "gemini"][used]);
+}
+
+/** The model the profile's args set (`--model X`, `--model=X`, `-m X`), or null. */
+export function modelOf(args: string[]): string | null {
+  return flagValue(args, ["--model", "-m"]);
+}
+
+/**
+ * Why the policy rules the profile out for a run, or null when it may run (applyPolicy then fits it). The runner
+ * skips a blocked profile as one out of quota.
+ */
+export function policyBlocks(profile: AgentProfile, pol: AgentPolicy): string | null {
+  const models = modelsFor(pol, profile.kind);
+  if (models && !models.length) return tr("runNote.policyNoModel", { kind: profile.kind });
+  const model = modelOf(profile.args);
+  if (models && model && !models.includes(model)) return tr("runNote.policyModel", { model, models: models.join(", ") });
+  // Outside a container nothing stops the CLI from reaching any host.
+  if (pol.network.mode !== "open" && !profile.container) return tr("runNote.policyNetwork", { mode: pol.network.mode });
+  // A custom CLI's flags and MCP servers are its own: the runner cannot hold it to less than full.
+  if (profile.kind === "custom" && (pol.autonomy !== "full" || pol.mcp !== null)) return tr("runNote.policyCustom");
+  return null;
+}
+
+/** What applyPolicy made of a profile: the profile to run, and what the run log says about it. */
+export interface PolicyFit {
+  profile: AgentProfile;
+  /** The autonomy the run gets: the lower of the policy's and the profile's own. */
+  autonomy: Autonomy;
+  model: string | null;
+  /** The MCP servers the run gets besides xdev-hive; null: all of them. */
+  mcp: string[] | null;
+}
+
+/**
+ * The profile as the policy lets it run (call after policyBlocks said null): model, autonomy flags, Hive read-only
+ * at read, the container's network narrowed, and the MCP servers the policy leaves out turned off for Gemini and
+ * Codex (Claude's are left out of its --mcp-config by buildCommand). `codexServers`: the servers Codex's config.toml has.
+ */
+export function applyPolicy(profile: AgentProfile, pol: AgentPolicy, codexServers: string[] = []): PolicyFit {
+  let args = profile.args;
+  const models = modelsFor(pol, profile.kind);
+  let model = modelOf(args);
+  if (models?.length && !model) {
+    model = models[0]!;
+    args = insertFlags(profile.kind, args, ["--model", model]);
+  }
+  const autonomy = lowerAutonomy(autonomyOf(profile.kind, args), pol.autonomy);
+  args = applyAutonomy(profile.kind, args, pol.autonomy);
+  if (pol.mcp !== null) {
+    const keep = [MCP_NAME, ...pol.mcp.filter((n) => n !== MCP_NAME)];
+    // One flag per name: a list option of yargs takes repeats, whether or not this version splits commas.
+    if (profile.kind === "gemini") args = [...args, ...keep.flatMap((n) => ["--allowed-mcp-server-names", n])];
+    if (profile.kind === "codex") {
+      const off = [...new Set(codexServers)].filter((n) => !keep.includes(n));
+      // A TOML key with other characters than these needs its quotes.
+      const key = (n: string) => (/^[\w-]+$/.test(n) ? n : JSON.stringify(n));
+      args = insertFlags("codex", args, off.flatMap((n) => ["-c", `mcp_servers.${key(n)}.enabled=false`]));
+    }
+  }
+  const c = profile.container;
+  // Not open: a restricted container, with the profile's extra hosts only as far as the policy allows them.
+  const container =
+    c && pol.network.mode !== "open"
+      ? { ...c, network: "restricted" as const, allow: pol.network.mode === "off" ? [] : c.allow.filter((h) => pol.network.allow.includes(h.toLowerCase())) }
+      : c;
+  return {
+    // Read means Hive read-only too; a profile set read-only stays so whatever the policy.
+    profile: { ...profile, args, container, readOnly: profile.readOnly || pol.autonomy === "read" },
+    autonomy,
+    model,
+    mcp: pol.mcp === null ? null : pol.mcp.filter((n) => n !== MCP_NAME),
+  };
+}
+
+/** The policy line of the run log (read back by the agent audit of 27c): the merged policy, then what this run got. */
+export function policyLine(pol: AgentPolicy, fit: PolicyFit): string {
+  const c = fit.profile.container;
+  const network = !c ? "host" : c.network === "open" ? "open" : `restricted (${c.allow.join(", ") || "—"})`;
+  const mcp = fit.mcp === null ? "*" : [MCP_NAME, ...fit.mcp].join(", ");
+  const hive = fit.profile.readOnly ? " · Hive read-only" : "";
+  return `# policy ${policySummary(pol)} → model ${fit.model ?? "—"} · autonomy ${fit.autonomy}${hive} · network ${network} · mcp ${mcp}`;
+}
+
+/** The MCP server names a Codex config.toml declares (`[mcp_servers.<name>]` and its sub-tables). */
+export function codexMcpNames(toml: string): string[] {
+  const names = [...toml.matchAll(/^\s*\[mcp_servers\.(?:"([^"]+)"|([\w-]+))(?:\.[^\]]*)?\]/gm)].map((m) => m[1] ?? m[2]!);
+  return [...new Set(names)];
 }
 
 export function expandHome(value: string): string {
