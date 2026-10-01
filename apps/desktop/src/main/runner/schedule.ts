@@ -13,6 +13,8 @@ export interface ProfileLoad {
   loggedIn?: boolean;
   /** The plan usage reached the profile's stop threshold (see usageStop). */
   overLimit?: boolean;
+  /** Plan left before a stop threshold, in points (see usageHeadroom); null or missing: not known. */
+  headroom?: number | null;
 }
 
 export interface RunNeeds {
@@ -47,7 +49,9 @@ export function isAvailable(p: ProfileLoad, now: Date): boolean {
  *    and role-mismatched profiles.
  * 3. Prefer profiles not in avoidProfiles (each best-of-n candidate on its own subscription), then kinds not
  *    in avoidKinds (cross-review uses a different vendor than the implementer).
- * 4. Lower priority number first, then least recently used, which rotates equal-priority subscriptions.
+ * 4. The most plan left first (roadmap 24a): a profile whose usage is known before one whose usage is not, so a run
+ *    goes where it can finish and the subscriptions wear down together.
+ * 5. Lower priority number first, then least recently used, which rotates equal-priority subscriptions.
  */
 export function pickProfile(loads: ProfileLoad[], needs: RunNeeds, now: Date): ProfileLoad | null {
   if (needs.preferredProfile) {
@@ -84,6 +88,7 @@ export function pickProfile(loads: ProfileLoad[], needs: RunNeeds, now: Date): P
     (a, b) =>
       Number(avoid.includes(a.profile.id)) - Number(avoid.includes(b.profile.id)) ||
       Number(needs.avoidKinds.includes(a.profile.kind)) - Number(needs.avoidKinds.includes(b.profile.kind)) ||
+      (b.headroom ?? -1) - (a.headroom ?? -1) ||
       a.profile.priority - b.profile.priority ||
       (a.lastUsedAt ?? "").localeCompare(b.lastUsedAt ?? ""),
   );

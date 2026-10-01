@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { AGENT_TEMPLATES } from "@xdev-hive/core";
-import { LoginMonitor, loginParts } from "#desktop/main/runner/login.ts";
+import { LoginMonitor, loginParts, parseLogin, readLoginHow } from "#desktop/main/runner/login.ts";
 import { openInTerminal, terminalScript, type TerminalCommand } from "#desktop/main/terminal.ts";
 
 const tmp = () => mkdtempSync(path.join(os.tmpdir(), "hive-term-"));
@@ -70,6 +70,40 @@ describe("sign-in terminal", () => {
     assert.deepEqual(parts, { args: ["auth", "login"], env: { CLAUDE_CONFIG_DIR: path.join(os.homedir(), ".claude-2") } });
     assert.deepEqual(loginParts(AGENT_TEMPLATES.codex), { args: ["login"], env: {} });
     assert.equal(loginParts(AGENT_TEMPLATES.gemini), null);
+  });
+
+  it("signs in the way the user picked, with the CLI's own options (roadmap 24b)", () => {
+    const claude = { ...AGENT_TEMPLATES.claude, env: { CLAUDE_CONFIG_DIR: "~/.xdev-hive/accounts/claude-2" } };
+    assert.deepEqual(loginParts(claude, { sso: true, email: "duy@fpt.com" })?.args, ["auth", "login", "--sso", "--email", "duy@fpt.com"]);
+    assert.deepEqual(loginParts(claude, { console: true })?.args, ["auth", "login", "--console"]);
+    assert.deepEqual(loginParts(claude, { device: true })?.args, ["auth", "login"], "Codex's option means nothing to Claude Code");
+    assert.deepEqual(loginParts(AGENT_TEMPLATES.codex, { device: true, sso: true })?.args, ["login", "--device-auth"]);
+    assert.throws(() => loginParts(claude, { email: "a b@x.com" }), /email/);
+    assert.throws(() => loginParts(claude, { email: 'x@y"; rm -rf ~' }), /email/);
+    // From the renderer: only true turns an option on, only a string is an email.
+    assert.deepEqual(readLoginHow({ sso: "yes", console: 1, device: true, email: 42 }), { sso: false, console: false, device: true });
+    assert.deepEqual(readLoginHow(undefined), { sso: false, console: false, device: false });
+  });
+
+  it("counts a new account as signed out until its check answers, even when a check of the old list ends after", async () => {
+    let profiles = [{ ...AGENT_TEMPLATES.claude, bin: process.execPath }];
+    let release!: () => void;
+    const slow = new Promise<void>((r) => (release = r));
+    const monitor = new LoginMonitor(() => profiles, () => ({ PATH: path.dirname(process.execPath) }), async () => (await slow, { code: 0, output: '{"loggedIn":true}' }));
+    const checking = monitor.refresh();
+    const added = { ...AGENT_TEMPLATES.claude, id: "claude-2", bin: process.execPath, env: { CLAUDE_CONFIG_DIR: "/tmp/acc/claude-2" } };
+    monitor.expectSignedOut(added);
+    profiles = [...profiles, added];
+    release();
+    await checking;
+    assert.equal(monitor.get("claude-2")?.loggedIn, false);
+    assert.deepEqual(monitor.signedOut(), ["claude-2"]);
+  });
+
+  it("tells accounts apart by the email Claude Code reports", () => {
+    const out = JSON.stringify({ loggedIn: true, authMethod: "claude.ai", subscriptionType: "max", email: "duy@fpt.com" });
+    assert.deepEqual(parseLogin("claude", 0, out), { loggedIn: true, method: "claude.ai · max", account: "duy@fpt.com" });
+    assert.deepEqual(parseLogin("claude", 1, JSON.stringify({ loggedIn: false, authMethod: "none", email: "old@fpt.com" })), { loggedIn: false, method: null });
   });
 
   it("knows which profiles to check again when the user comes back", async () => {

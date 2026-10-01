@@ -1,9 +1,10 @@
 import { execFile } from "node:child_process";
-import { existsSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, shell, Tray, type IpcMainInvokeEvent } from "electron";
 import {
+  AGENT_TEMPLATES,
   agentProfileSchema,
   HiveError,
   HubBackend,
@@ -23,6 +24,8 @@ import {
   type GitLabImportCandidate,
   type GitLabImportResult,
   type HiveBackend,
+  type LoginHow,
+  type NewAccount,
   type MachineCommand,
   type Me,
   type ProfileCheck,
@@ -53,9 +56,9 @@ import { setMainLocale, tr } from "./i18n.ts";
 import { MergeRequester, mrLabel, type MrHost } from "./gitlab/mr.ts";
 import { MrWatcher, type MrChange } from "./gitlab/watch.ts";
 import { CiFixer } from "./gitlab/ci-fix.ts";
-import { installAgents, installShim } from "./installer.ts";
+import { installAgents, installCodexConfig, installShim } from "./installer.ts";
 import { expandEnv, expandHome, resolveBin } from "./runner/command.ts";
-import { LoginMonitor, loginParts } from "./runner/login.ts";
+import { LOGIN_DIR_ENV, LoginMonitor, loginParts, readLoginHow } from "./runner/login.ts";
 import { platformKey, Updater, type UpdateStatus } from "./updater.ts";
 import { Runner, type HubUpdate, type RunnerEvent } from "./runner/runner.ts";
 import { agentPath } from "./runner/shell-path.ts";
@@ -346,20 +349,56 @@ async function checkAllCitations(): Promise<void> {
 }
 
 /** A terminal with the profile's sign-in command; the app checks again when its window gets focus. */
-function openLogin(id: string): { opened: boolean } {
+function openLogin(id: string, how?: LoginHow): { opened: boolean } {
   const profile = config.agents.find((a) => a.id === id);
   if (!profile) throw new HiveError("not_found", `Không có profile ${id}.`, { key: "errors.profileNotFound", vars: { id } });
-  const parts = loginParts(profile);
+  const parts = loginParts(profile, readLoginHow(how));
   if (!parts) throw new HiveError("bad_request", `${profile.kind} không có lệnh đăng nhập.`, { key: "errors.noLoginCommand", vars: { kind: profile.kind } });
   const pathEnv = agentEnv().PATH ?? "";
   const bin = resolveBin(expandHome(profile.bin), pathEnv);
   if (!bin) throw new HiveError("not_found", tr("desktop.cliNotFound", { bin: profile.bin }), { key: "desktop.cliNotFound", vars: { bin: profile.bin } });
   const file = openInTerminal(
     { title: `xDev Hive: ${tr("desktop.loginTitle", { profile: profile.id })}`, bin, ...parts, done: tr("desktop.loginDone") },
-    { dir: path.join(path.dirname(configPath()), "login", profile.id), which: (b) => resolveBin(b, pathEnv) },
+    // A smoke run writes the script but opens no window on the machine running it.
+    { dir: path.join(path.dirname(configPath()), "login", profile.id), which: (b) => resolveBin(b, pathEnv), ...(smokeShot ? { run: () => undefined } : {}) },
   );
   if (!file) throw new HiveError("not_found", tr("desktop.noTerminal"), { key: "desktop.noTerminal" });
   return { opened: true };
+}
+
+/**
+ * One more subscription (roadmap 24b): a profile from the kind's template with the next free id. The first profile of
+ * a kind on the CLI's usual sign-in folder keeps it; every other one gets ~/.xdev-hive/accounts/<id>, which a Codex
+ * account needs Hive's MCP block in too. Then its sign-in, in a terminal like the Đăng nhập button.
+ */
+function addAccount(input: NewAccount): { id: string; opened: boolean; profiles: ReturnType<typeof runner.profileStatuses> } {
+  const kind = input?.kind;
+  if (kind !== "claude" && kind !== "codex") throw new HiveError("bad_request", `No accounts for ${String(kind)}.`, { key: "errors.noLoginCommand", vars: { kind: String(kind) } });
+  const template = AGENT_TEMPLATES[kind];
+  const pathEnv = agentEnv().PATH ?? "";
+  if (!resolveBin(expandHome(template.bin), pathEnv)) throw new HiveError("not_found", tr("desktop.cliNotFound", { bin: template.bin }), { key: "desktop.cliNotFound", vars: { bin: template.bin } });
+  const dirEnv = LOGIN_DIR_ENV[kind]!;
+  const taken = new Set(config.agents.map((a) => a.id));
+  let n = 1;
+  while (taken.has(`${kind}-${n}`)) n++;
+  const id = `${kind}-${n}`;
+  const usualTaken = config.agents.some((a) => a.kind === kind && !a.env[dirEnv]);
+  const env: Record<string, string> = {};
+  if (usualTaken) {
+    const dir = path.join(path.dirname(configPath()), "accounts", id);
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    if (kind === "codex") installCodexConfig(path.join(dir, "config.toml"));
+    env[dirEnv] = dir.startsWith(os.homedir() + path.sep) ? `~${dir.slice(os.homedir().length)}` : dir;
+  }
+  // Named by how many of the kind there are with it ("Claude 2" next to the one already there), not by its id.
+  const nth = config.agents.filter((a) => a.kind === kind).length + 1;
+  const label = String(input.label ?? "").trim().slice(0, 80) || `${kind === "claude" ? "Claude" : "ChatGPT (Codex)"} ${nth}`;
+  const profile = { ...template, id, label, env };
+  // Before it is saved, in the same turn: the run the save starts must not take an account nobody signed in yet.
+  logins.expectSignedOut(profile);
+  saveProfile(profile);
+  const { opened } = openLogin(id, input.how);
+  return { id, opened, profiles: runner.profileStatuses() };
 }
 
 async function recheckLogins() {
@@ -718,6 +757,7 @@ function registerIpc(): void {
   handle("desktop:resetCooldown", async (id: string) => (await runner.resetCooldown(id), runner.profileStatuses()));
   handle("desktop:checkProfile", checkProfile);
   handle("desktop:openLogin", openLogin);
+  handle("desktop:addAccount", addAccount);
   handle("desktop:recheckLogins", recheckLogins);
   handle("desktop:setProfileToken", setProfileToken);
   handle("desktop:openSetupToken", openSetupToken);

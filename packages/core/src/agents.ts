@@ -57,7 +57,7 @@ export const agentProfileSchema = z.object({
     })
     .nullable()
     .default(null),
-  /** Lower runs first. Equal priority rotates least-recently-used. */
+  /** After the quota left (see usageHeadroom), lower runs first; equal priority rotates least-recently-used. */
   priority: z.number().int().min(0).max(100).default(10),
   roles: z.array(z.enum(AGENT_ROLES)).min(1).default(["plan", "implement", "review"]),
   maxConcurrent: z.number().int().min(1).max(8).default(1),
@@ -97,6 +97,17 @@ export function usageStop(profile: Pick<AgentProfile, "stopAtSession" | "stopAtW
   if (usage.session && usage.session.percent >= profile.stopAtSession) return "session";
   if (usage.week && usage.week.percent >= profile.stopAtWeek) return "week";
   return null;
+}
+/**
+ * How much of the plan the profile may still use before a stop threshold, in points: the smaller of the two
+ * (session, week). Null when the CLI has reported neither, so it is not known (Codex, a profile not checked yet).
+ */
+export function usageHeadroom(profile: Pick<AgentProfile, "stopAtSession" | "stopAtWeek">, usage: PlanUsage | null | undefined): number | null {
+  const left = [
+    usage?.session ? profile.stopAtSession - usage.session.percent : null,
+    usage?.week ? profile.stopAtWeek - usage.week.percent : null,
+  ].filter((n): n is number => n !== null);
+  return left.length ? Math.max(0, Math.min(...left)) : null;
 }
 export type AgentProfileInput = z.input<typeof agentProfileSchema>;
 

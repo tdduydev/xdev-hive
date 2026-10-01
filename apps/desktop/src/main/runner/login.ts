@@ -2,7 +2,7 @@
 // second login dir (CLAUDE_CONFIG_DIR, CODEX_HOME) is checked on its own. No Electron imports.
 import { execFile } from "node:child_process";
 import os from "node:os";
-import type { AgentKind, AgentProfile, LoginStatus, PlanUsage } from "@xdev-hive/core";
+import { HiveError, type AgentKind, type AgentProfile, type LoginHow, type LoginStatus, type PlanUsage } from "@xdev-hive/core";
 import { expandEnv, expandHome, resolveBin } from "./command.ts";
 import { parseClaudeResult, parsePlanUsage } from "./usage.ts";
 
@@ -18,13 +18,14 @@ const LOGIN_DIRS = ["CLAUDE_CONFIG_DIR", "CODEX_HOME"];
 const UNKNOWN = { loggedIn: null, method: null } as const;
 
 /** Reads a status command's answer. Anything unexpected is "unknown", never a guess. */
-export function parseLogin(kind: AgentKind, code: number | null, output: string): Pick<LoginStatus, "loggedIn" | "method"> {
+export function parseLogin(kind: AgentKind, code: number | null, output: string): Pick<LoginStatus, "loggedIn" | "method" | "account"> {
   if (kind === "claude") {
     try {
-      const json = JSON.parse(output.slice(output.indexOf("{"))) as { loggedIn?: unknown; authMethod?: unknown; subscriptionType?: unknown };
+      const json = JSON.parse(output.slice(output.indexOf("{"))) as { loggedIn?: unknown; authMethod?: unknown; subscriptionType?: unknown; email?: unknown };
       if (typeof json.loggedIn !== "boolean") return UNKNOWN;
       const method = [json.authMethod, json.subscriptionType].filter((v) => typeof v === "string" && v && v !== "none").join(" · ");
-      return { loggedIn: json.loggedIn, method: json.loggedIn && method ? method : null };
+      const account = json.loggedIn && typeof json.email === "string" && json.email ? { account: json.email } : {};
+      return { loggedIn: json.loggedIn, method: json.loggedIn && method ? method : null, ...account };
     } catch {
       return UNKNOWN;
     }
@@ -37,13 +38,36 @@ export function parseLogin(kind: AgentKind, code: number | null, output: string)
   return UNKNOWN;
 }
 
+/** An email for the sign-in page: no spaces or quotes, so it is one argument wherever the terminal is. */
+const EMAIL = /^[^\s@"'`$\\%^&|<>]{1,100}@[^\s@"'`$\\%^&|<>]{1,100}$/;
+
+/** A way of signing in as the renderer sent it: only true turns an option on, and only a string is an email. */
+export function readLoginHow(raw: unknown): LoginHow {
+  const h = (raw ?? {}) as Record<string, unknown>;
+  return { sso: h.sso === true, console: h.console === true, device: h.device === true, ...(typeof h.email === "string" ? { email: h.email } : {}) };
+}
+
+/** The CLI's own options for a way of signing in (roadmap 24b); options of the other CLI are ignored. */
+export function loginFlags(kind: AgentKind, how: LoginHow = {}): string[] {
+  if (kind === "claude") {
+    const email = how.email?.trim();
+    if (email && !EMAIL.test(email)) throw new HiveError("bad_request", `Not an email: ${email}`, { key: "errors.badEmail", vars: { email } });
+    return [...(how.console ? ["--console"] : []), ...(how.sso ? ["--sso"] : []), ...(email ? ["--email", email] : [])];
+  }
+  if (kind === "codex") return how.device ? ["--device-auth"] : [];
+  return [];
+}
+
 /** Sign-in args and the login-dir env (expanded) of a profile, for a terminal to run; null when the CLI has none. */
-export function loginParts(profile: AgentProfile): { args: string[]; env: Record<string, string> } | null {
+export function loginParts(profile: AgentProfile, how: LoginHow = {}): { args: string[]; env: Record<string, string> } | null {
   const commands = COMMANDS[profile.kind];
   if (!commands) return null;
   const env = expandEnv(Object.fromEntries(Object.entries(profile.env).filter(([k]) => LOGIN_DIRS.includes(k))));
-  return { args: commands.login, env };
+  return { args: [...commands.login, ...loginFlags(profile.kind, how)], env };
 }
+
+/** The env var that points a CLI at a sign-in folder, for the kinds that have one. */
+export const LOGIN_DIR_ENV: Partial<Record<AgentKind, string>> = { claude: "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME" };
 
 export function loginCommand(profile: AgentProfile): string | null {
   const commands = COMMANDS[profile.kind];
@@ -125,6 +149,14 @@ export class LoginMonitor {
     return this.#usage.get(profileId);
   }
 
+  /**
+   * A profile just made for an account that is not signed in yet (roadmap 24b): signed out until a check says
+   * otherwise, so no run goes to it while that check is still on its way (an unknown status counts as signed in).
+   */
+  expectSignedOut(profile: AgentProfile): void {
+    this.#checks.set(profile.id, { loggedIn: false, method: null, loginCommand: loginCommand(profile), checkedAt: new Date().toISOString() });
+  }
+
   /** Profiles last seen signed out: the ones worth checking again when the user comes back to the app. */
   signedOut(): string[] {
     return [...this.#checks].filter(([, s]) => s.loggedIn === false).map(([id]) => id);
@@ -140,8 +172,10 @@ export class LoginMonitor {
       if (usage) this.#usage.set(p.id, usage);
       else this.#usage.delete(p.id);
     }
+    // The profiles as they are now: one added while this check ran keeps what is known of it.
+    const now = this.#profiles();
     for (const id of [...this.#checks.keys()]) {
-      if (profiles.some((p) => p.id === id && p.enabled)) continue;
+      if (now.some((p) => p.id === id && p.enabled)) continue;
       this.#checks.delete(id);
       this.#usage.delete(id);
     }
