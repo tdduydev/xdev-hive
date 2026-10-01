@@ -17,6 +17,8 @@ export type RunStatus = (typeof RUN_STATUSES)[number];
 export const PROFILE_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
 /** Subscription account name shared across machines, e.g. `claude-max-duy`. */
 export const ACCOUNT_ID = /^[A-Za-z0-9][\w.@:+-]{0,99}$/;
+/** A host a restricted container may reach: host, .domain (with subdomains) or host:port. The agent policy's allow list too. */
+export const ALLOW_HOST = /^\.?[a-z0-9-]+(\.[a-z0-9-]+)*(:\d{1,5})?$/;
 
 export const agentProfileSchema = z.object({
   /** Also the agent's name in Hive (HIVE_AGENT), so memory/tasks show which subscription did the work. */
@@ -53,7 +55,7 @@ export const agentProfileSchema = z.object({
       /** restricted: out only through a proxy to the allowed hosts (the default, asked 28/9); open: Docker's usual network. */
       network: z.enum(["restricted", "open"]).default("restricted"),
       /** More hosts a restricted container may reach: host, .domain (with subdomains) or host:port. */
-      allow: z.array(z.string().regex(/^\.?[a-z0-9-]+(\.[a-z0-9-]+)*(:\d{1,5})?$/, "host, .domain hoặc host:port")).max(50).default([]),
+      allow: z.array(z.string().regex(ALLOW_HOST, "host, .domain hoặc host:port")).max(50).default([]),
     })
     .nullable()
     .default(null),

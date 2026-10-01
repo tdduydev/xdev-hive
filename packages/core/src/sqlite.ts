@@ -13,6 +13,7 @@ import { DOC_ASSET_MAX_BYTES, DOC_ASSETS_PER_DOC, DOC_TREE_DEPTH, docLinkRefs, l
 import { describeProjectContext, syncItemId } from "./sync.ts";
 import { DEFAULT_LEADER_COMMANDS } from "./types.ts";
 import { EMPTY_POLICY } from "./policy.ts";
+import { agentPolicyView, EMPTY_AGENT_POLICY, OPEN_POLICY, policySummary, type AgentPolicy, type AgentPolicySettings, type AgentPolicyView } from "./agent-policy.ts";
 import {
   authorize,
   parseInput,
@@ -404,6 +405,12 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
       vars: { clis: o.requiredClis.join(", ") || "—", projects: Object.keys(o.projects).length, templates: o.profileTemplates.length },
     },
   }),
+  "agentPolicy.set": (i: { project: string | null; policy: Partial<AgentPolicy> | null }) => {
+    const target = i.project ?? "hub";
+    if (!i.policy) return { target, detail: "bỏ chính sách agent", text: { key: "audit.agentPolicyCleared" } };
+    const summary = policySummary(i.policy);
+    return { target, detail: summary, text: { key: "audit.agentPolicy", vars: { summary } } };
+  },
   "admin.commandCreate": (i, o: MachineCommand) => ({
     target: i.machineId,
     detail: `yêu cầu ${o.label} (${i.itemId}, #${o.id})`,
@@ -433,8 +440,13 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
 };
 
 /** The event a successful call is worth telling people about, if any. */
-function eventOf(method: Method, output: unknown): HiveEvent | null {
+function eventOf(method: Method, output: unknown, input: unknown): HiveEvent | null {
   switch (method) {
+    case "agentPolicy.set": {
+      // The input says what changed; the output (filtered for the caller) only who saved it last, which is the caller.
+      const i = input as { project: string | null; policy: Partial<AgentPolicy> | null };
+      return { type: "agentPolicy.changed", project: i.project, by: (output as AgentPolicyView).updatedBy ?? "?", policy: i.policy };
+    }
     case "proposals.create": {
       const proposal = output as Proposal;
       return { type: "proposal.created", project: parseDocKey(proposal.docKey).project, proposal };
@@ -766,7 +778,7 @@ export class SqliteHive implements HiveBackend {
       const { target, detail, text } = audited(parsed, output);
       this.audit(actor, method, target, detail, text);
     }
-    const event = eventOf(method, output);
+    const event = eventOf(method, output, parsed);
     if (event) {
       try {
         this.#opts.onEvent(event);
@@ -883,6 +895,13 @@ export class SqliteHive implements HiveBackend {
       case "chat.setDefaults":
       case "chat.setCommands":
         return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
+      case "agentPolicy.set":
+        // The default binds every project, so only someone over all of them: a hub admin (no per-project grants).
+        if (i.project === null) {
+          if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Only a hub admin sets the hub's agent policy.", { key: "errors.hubAdminOnly" });
+          return;
+        }
+        return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
       case "chat.configure":
       case "chat.rename":
       case "chat.delete": {
@@ -986,6 +1005,12 @@ export class SqliteHive implements HiveBackend {
       case "policy.get": {
         const policy = out as TeamPolicy;
         return { ...policy, projects: Object.fromEntries(Object.entries(policy.projects).filter(([p]) => visible(p))) } as MethodOutput[M];
+      }
+      case "agentPolicy.get":
+      case "agentPolicy.set": {
+        const view = out as AgentPolicyView;
+        const only = <T>(rec: Record<string, T>) => Object.fromEntries(Object.entries(rec).filter(([p]) => visible(p)));
+        return { ...view, projects: only(view.projects), effective: only(view.effective) } as MethodOutput[M];
       }
       default:
         return output;
@@ -1403,6 +1428,25 @@ export class SqliteHive implements HiveBackend {
   #policy(): TeamPolicy {
     const row = this.db.prepare("SELECT value FROM settings WHERE key = 'policy'").get() as Row | undefined;
     return row ? { ...EMPTY_POLICY, ...(JSON.parse(str(row.value)) as TeamPolicy) } : EMPTY_POLICY;
+  }
+
+  /**
+   * What a heartbeat carries: the default and the parts of the projects the machine last said it has (and its token may
+   * see), so a machine never learns the rules of a project it does not work on.
+   */
+  #machineAgentPolicy(actor: Actor): { hub: AgentPolicy; projects: Record<string, Partial<AgentPolicy>> } {
+    const { hub, projects } = this.#agentPolicy();
+    const row = this.db.prepare("SELECT projects FROM machines WHERE id = ?").get(actor.name) as Row | undefined;
+    const has = new Set(row ? (JSON.parse(str(row.projects)) as string[]) : []);
+    return { hub, projects: Object.fromEntries(Object.entries(projects).filter(([p]) => has.has(p) && sees(actor, p))) };
+  }
+
+  /** Next to the team policy, in its own key: policy.set replaces the whole team policy and must not touch this. */
+  #agentPolicy(): AgentPolicySettings {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'agentPolicy'").get() as Row | undefined;
+    if (!row) return EMPTY_AGENT_POLICY;
+    const stored = JSON.parse(str(row.value)) as AgentPolicySettings;
+    return { ...EMPTY_AGENT_POLICY, ...stored, hub: { ...OPEN_POLICY, ...stored.hub } };
   }
 
   /** Pending commands nobody approved in time become expired; so do sync requests no machine took or finished. */
@@ -2411,6 +2455,7 @@ export class SqliteHive implements HiveBackend {
             duplicate: duplicateAt !== null && duplicateAt > this.#now(-DUPLICATE_MINUTES),
             cooldowns: this.#cooldowns(),
             policy: this.#policy(),
+            agentPolicy: this.#machineAgentPolicy(actor),
             commands,
             syncCommands,
             runRequests,
@@ -2998,6 +3043,28 @@ export class SqliteHive implements HiveBackend {
           JSON.stringify(policy),
         );
         return this.#policy();
+      },
+
+      "agentPolicy.get": () => agentPolicyView(this.#agentPolicy()),
+
+      "agentPolicy.set": (input, actor) => {
+        const current = this.#agentPolicy();
+        const projects = { ...current.projects };
+        let hub = current.hub;
+        if (input.project === null) {
+          // A field left out is open (the schema's defaults); null puts the hub back to open.
+          hub = input.policy ?? OPEN_POLICY;
+        } else if (input.policy && Object.keys(input.policy).length) {
+          projects[input.project] = input.policy;
+        } else {
+          delete projects[input.project];
+        }
+        const next: AgentPolicySettings = { hub, projects, updatedAt: this.#now(), updatedBy: actor.name };
+        assertNoSecret(JSON.stringify(next), "Agent policy");
+        db.prepare("INSERT INTO settings(key, value) VALUES ('agentPolicy', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(
+          JSON.stringify(next),
+        );
+        return agentPolicyView(this.#agentPolicy());
       },
 
       "systems.list": () => (db.prepare("SELECT * FROM systems ORDER BY name").all() as Row[]).map(toSystem),
