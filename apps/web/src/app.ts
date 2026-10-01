@@ -9,15 +9,21 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import {
   CHAT_FILE_MAX_BYTES,
   compareVersions,
+  grantPermissions,
+  grantRole,
   HiveError,
   HTTP_STATUS,
   isImage,
   isMethod,
+  may,
+  permissionsOn,
   PROJECT_NAME,
+  sees,
   readSourceHeader,
   toErrorPayload,
   TOKEN_ROLES,
   type Actor,
+  type Grant,
   type Me,
   type Role,
   type WebhookInput,
@@ -103,6 +109,8 @@ function sendError(res: Response, err: unknown): void {
 }
 
 const actorOf = (res: Response) => res.locals.actor as Actor;
+/** A grant for the audit log: its role, or the permissions it has. */
+const grantLabel = (g: Grant) => (grantRole(g) === "custom" ? [...grantPermissions(g)].join("+") : String(grantRole(g)));
 const userOf = (res: Response) => res.locals.user as UserInfo | undefined;
 
 /** Hub admins: an admin account, or an admin token of no account (the bootstrap / pre-account tokens). */
@@ -560,6 +568,36 @@ export function createHubApp({
         return;
       }
 
+      // Thành viên (roadmap 25): who has which role in a project, set by one who may manage its members. A lead adds
+      // accounts that exist (creating one stays a hub admin's), never above their own permissions, never themselves.
+      if (method === "members.list" || method === "members.set") {
+        const project = i.project === null || i.project === undefined || i.project === "" ? null : String(i.project);
+        // A project one cannot see is not there, as everywhere else on the hub.
+        if (!sees(actor, project)) throw new HiveError("not_found", `Project ${project} not found.`, { key: "errors.notFound" });
+        if (!may(actor, project, "membersManage")) throw new HiveError("forbidden", "Cần quyền quản lý thành viên.", { key: project === null ? "errors.needShared.membersManage" : "errors.need.membersManage", vars: { project: project ?? "" } });
+        const grantOf = (u: UserInfo) => (project === null ? u.shared : (u.grants[project] ?? null));
+        if (method === "members.list") {
+          res.json({ result: users.list().filter((u) => !u.disabled).map((u) => ({ id: u.id, username: u.username, displayName: u.displayName, admin: u.admin, grant: u.admin ? "lead" : grantOf(u) })) });
+          return;
+        }
+        const target = users.get(String(i.userId ?? ""));
+        if (!target) throw new HiveError("not_found", "Không có tài khoản này.", { key: "errors.userNotFound" });
+        if (target.admin) throw new HiveError("bad_request", "Admin của hub có mọi quyền.", { key: "errors.memberIsAdmin" });
+        if (user && target.id === user.id) throw new HiveError("bad_request", "Không tự đổi quyền của mình.", { key: "errors.memberIsSelf" });
+        const mine = permissionsOn(actor, project) ?? new Set();
+        const above = (g: unknown) => [...grantPermissions(g as Grant)].filter((p) => !mine.has(p));
+        const raw = i.grant ?? null;
+        const over = [...above(raw), ...above(grantOf(target))];
+        if (actor.access && over.length) {
+          throw new HiveError("forbidden", `Vượt quyền của bạn: ${[...new Set(over)].join(", ")}`, { key: "errors.memberAboveYou", vars: { permissions: [...new Set(over)].join(", ") } });
+        }
+        const updated = users.setGrant(target.id, project, raw);
+        const now = grantOf(updated);
+        hive.audit(actor, "members.set", `${project ?? "Chung"}/${updated.username}`, now ? grantLabel(now) : "—", { key: now ? "audit.memberSet" : "audit.memberRemoved", vars: { project: project ?? "Chung", user: updated.username, role: now ? grantLabel(now) : "" } });
+        res.json({ result: { id: updated.id, username: updated.username, displayName: updated.displayName, admin: updated.admin, grant: now } });
+        return;
+      }
+
       // Accounts: hub admins only.
       if (typeof method === "string" && method.startsWith("users.")) {
         requireHubAdmin(res);
@@ -597,8 +635,8 @@ export function createHubApp({
           res.json({ result: updated });
         } else if (method === "users.setGrants") {
           if (!target) throw new HiveError("not_found", "Không có tài khoản này.", { key: "errors.userNotFound" });
-          const updated = users.setGrants(id, (i.grants ?? {}) as Record<string, string>);
-          const summary = Object.entries(updated.grants).map(([p, l]) => `${p}: ${l}`).join(", ");
+          const updated = users.setGrants(id, (i.grants ?? {}) as Record<string, unknown>, "shared" in i ? i.shared : undefined);
+          const summary = [...Object.entries(updated.grants), ...(updated.shared ? [["Chung", updated.shared] as const] : [])].map(([p, g]) => `${p}: ${grantLabel(g)}`).join(", ");
           hive.audit(actor, "users.setGrants", updated.username, summary || "không dự án nào", summary ? { key: "audit.grants", vars: { grants: summary } } : { key: "audit.noGrants" });
           res.json({ result: updated });
         } else if (method === "users.resetPassword") {

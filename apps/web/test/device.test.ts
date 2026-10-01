@@ -60,7 +60,7 @@ describe("desktop sign-in through the browser", () => {
     assert.equal(exchanged.body.result.user.username, "lan");
     assert.equal(exchanged.body.result.info.name, "duy-mbp-1", "machine name cleaned");
     const me = (await (await fetch(`${base}/api/me`, { headers: { authorization: `Bearer ${exchanged.body.result.token}` } })).json()) as { result: any };
-    assert.deepEqual([me.result.user.username, me.result.access], ["lan", { projects: { app: "contribute" } }]);
+    assert.deepEqual([me.result.user.username, me.result.access], ["lan", { projects: { app: "member" } }]);
 
     const again = await post("/api/device-token/exchange", { code, verifier });
     assert.equal(again.status, 401, "a code works once");

@@ -22,6 +22,7 @@ import { useSystemTheme } from "#ui/lib/theme.ts";
 import { XMark } from "./Brand.tsx";
 import { Badge, ErrorNote, Notice, STATUS_TONE } from "./common.tsx";
 import { LanguageMenu, ThemeMenu } from "./Language.tsx";
+import { GrantBadge } from "#ui/components/GrantEditor.tsx";
 
 export const MIN_PASSWORD = 10;
 
@@ -155,11 +156,7 @@ export function AccountMenu({ client, me, onSignOut, subtitle }: { client: HiveC
             {me.access ? (
               <span className="flex flex-wrap gap-1 pt-1">
                 {grants.length ? (
-                  grants.map(([p, l]) => (
-                    <Badge key={p} tone="neutral" className="font-mono text-[11px]">
-                      {p} · {t(`level.${l}`)}
-                    </Badge>
-                  ))
+                  grants.map(([p, g]) => <GrantBadge key={p} grant={g} label={p} />)
                 ) : (
                   <span className="text-xs text-muted-foreground">{t("account.noGrants")}</span>
                 )}

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { CircleCheck, Copy, Info, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
 import type { Memory } from "@xdev-hive/core";
+import { approvalOf } from "#ui/lib/permissions.ts";
 import { Diff } from "#ui/components/Diff.tsx";
 import { ErrorNote } from "#ui/components/common.tsx";
 import { errorMessage, formatTime, useCan, useHive, useQuery } from "#ui/hooks.ts";
@@ -473,7 +474,7 @@ function Detail({
     }
     case "proposal": {
       const p = item.proposal;
-      const manage = allow(docOwner(p.docKey), "manage");
+      const manage = allow(docOwner(p.docKey), approvalOf(p.docKey));
       const stale = doc.data && doc.data.version !== p.baseVersion;
       body = (
         <>
@@ -530,7 +531,7 @@ function Detail({
           <P>{task.note?.trim() || t("inbox.review.noNote")}</P>
         </>
       );
-      const canMove = allow(task.project, "contribute");
+      const canMove = allow(task.project, "codeReview");
       actions = [
         ...(r?.mrUrl ? [{ label: t("inbox.review.openMr"), kind: "primary" as const, run: open(r.mrUrl) }] : []),
         { label: t("inbox.review.openTask"), kind: r?.mrUrl ? "secondary" : "primary", run: go(`#/tasks?task=${encodeURIComponent(task.id)}`) },
@@ -565,7 +566,7 @@ function Detail({
           />
         </>
       );
-      actions = allow(m.project, "manage")
+      actions = allow(m.project, "memoryApprove")
         ? [
             {
               label: t("inbox.memory.approve"),
@@ -600,7 +601,7 @@ function Detail({
           await client.call("memory.resolve", { id: a.id, other: b.id, keep });
           return note;
         });
-      actions = allow(a.project, "manage")
+      actions = allow(a.project, "chatApprove")
         ? [
             { label: t("inbox.conflict.keep", { id: a.id }), kind: "primary", run: resolve("this", t("inbox.conflict.kept", { id: a.id, other: b.id })) },
             { label: t("inbox.conflict.keep", { id: b.id }), kind: "secondary", run: resolve("other", t("inbox.conflict.kept", { id: b.id, other: a.id })) },

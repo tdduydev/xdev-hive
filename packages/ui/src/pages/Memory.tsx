@@ -90,10 +90,10 @@ export function MemoryPage() {
   // New entries default to the scope: its project, Chung for the shared scope, the first project of a system or of all.
   const pool = scope.kind === "system" ? scope.projects : projects;
   const defaultOwner = scope.kind === "project" ? scope.project : scope.kind === "shared" ? null : (pool[0] ?? null);
-  const canAdd = allow(null, "contribute") || projects.some((p) => allow(p, "contribute"));
+  const canAdd = allow(null, "memoryWrite") || projects.some((p) => allow(p, "memoryWrite"));
 
   // Pending entries in the chip filter being viewed, of projects the person manages (as approving one by one).
-  const selectable = shown.filter((m) => m.status === "pending" && allow(m.project, "manage"));
+  const selectable = shown.filter((m) => m.status === "pending" && allow(m.project, "memoryApprove"));
   const chosen = selectable.filter((m) => picked.has(m.id));
   const label = (m: Memory) => `#${m.id}`;
   const finish = (text: string, trouble: boolean) => {
@@ -170,7 +170,7 @@ export function MemoryPage() {
         <ErrorNote error={bulk.error} />
         {shown.map((m) => {
           const st = stateOf(m, t);
-          const pickable = m.status === "pending" && allow(m.project, "manage");
+          const pickable = m.status === "pending" && allow(m.project, "memoryApprove");
           return (
             <ListItem
               key={m.id}
@@ -229,7 +229,7 @@ function MemoryDetail({ memory: m, all, onChanged, onOpen }: { memory: Memory; a
   const allow = useCan();
   const toast = useToast();
   const action = useAction();
-  const manage = allow(m.project, "manage");
+  const manage = allow(m.project, "memoryApprove");
   const st = stateOf(m, t);
   const run = (fn: () => Promise<unknown>, note: string) =>
     void action.run(async () => {
@@ -355,11 +355,11 @@ function AddMemory({ defaultOwner, projects, onCancel, onAdded }: { defaultOwner
   const t = useT();
   const allow = useCan();
   const toast = useToast();
-  const sharedOk = allow(null, "contribute");
+  const sharedOk = allow(null, "memoryWrite");
   // undefined: not picked yet, so it follows the scope's default (the project list may still be loading).
   const [picked, setPicked] = useState<string | null>();
-  const writable = projects.filter((p) => allow(p, "contribute"));
-  const fallback = defaultOwner !== null && !allow(defaultOwner, "contribute") ? (sharedOk ? null : (writable[0] ?? null)) : defaultOwner;
+  const writable = projects.filter((p) => allow(p, "memoryWrite"));
+  const fallback = defaultOwner !== null && !allow(defaultOwner, "memoryWrite") ? (sharedOk ? null : (writable[0] ?? null)) : defaultOwner;
   const owner = picked === undefined ? fallback : picked;
   const options = owner !== null && !writable.includes(owner) ? [owner, ...writable] : writable;
   const [kind, setKind] = useState<MemoryKind>("decision");

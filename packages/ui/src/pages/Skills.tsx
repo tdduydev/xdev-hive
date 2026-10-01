@@ -43,7 +43,7 @@ export function SkillsPage() {
     [pending.data, scope],
   );
   // Where a new skill may go: the team's (Chung), then the projects this person manages.
-  const owners = useMemo(() => [...(allow(null, "manage") ? [""] : []), ...projects.filter((p) => allow(p, "manage"))], [projects, allow]);
+  const owners = useMemo(() => [...(allow(null, "contextEdit") ? [""] : []), ...projects.filter((p) => allow(p, "contextEdit"))], [projects, allow]);
   const [selected, setSelected] = useState<string | null>(null);
   const current = skills.find((s) => s.key === selected) ?? null;
   // A skill just created is selected before the list that has it comes back.
@@ -224,8 +224,9 @@ function SkillEditor({ skill, proposals, onSaved }: { skill: ListedSkill; propos
   useEffect(() => {
     if (doc.data) setParts(splitSkill(doc.data.content));
   }, [doc.data]);
-  const canEdit = allow(skill.project, "manage");
-  const canPropose = !canEdit && allow(skill.project, "contribute");
+  // Skills are what agents read: their own permission (roadmap 25).
+  const canEdit = allow(skill.project, "contextEdit");
+  const canPropose = !canEdit && allow(skill.project, "docPropose");
   const content = buildSkill(parts);
   // Compared as the form writes it, so a stored file with other spacing is not "changed" just by opening it.
   const dirty = Boolean(doc.data) && content !== buildSkill(splitSkill(stored));

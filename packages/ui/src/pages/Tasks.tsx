@@ -34,7 +34,7 @@ export function TasksPage() {
   const t = useT();
   const allow = useCan();
   // A system's new tasks go to one of its projects.
-  const managed = (scope.kind === "system" ? scope.projects : projects).filter((p) => allow(p, "manage"));
+  const managed = (scope.kind === "system" ? scope.projects : projects).filter((p) => allow(p, "taskManage"));
   // Tasks always belong to one project: the shared scope has none of its own, so it shows every project's.
   const scoped = scopeProject(scope);
   const key = scopeKey(scope);
@@ -92,11 +92,11 @@ export function TasksPage() {
           )}
         </Notice>
       ) : null}
-      {managed.length || allow(null, "manage") ? (
+      {managed.length || allow(null, "taskManage") ? (
         <CreateTask
           key={scoped ?? ""}
           defaultProject={scoped && managed.includes(scoped) ? scoped : ""}
-          projects={allow(null, "manage") ? projects : managed}
+          projects={allow(null, "taskManage") ? projects : managed}
           onCreated={list.reload}
         />
       ) : null}
@@ -222,7 +222,7 @@ function StatusSelect({ task, onChanged }: { task: Task; onChanged: () => void }
   const t = useT();
   const allow = useCan();
   const action = useAction();
-  if (!allow(task.project, "contribute")) return <Badge tone={STATUS_TONE[task.status]}>{t(`taskStatus.${task.status}`)}</Badge>;
+  if (!allow(task.project, "taskWork")) return <Badge tone={STATUS_TONE[task.status]}>{t(`taskStatus.${task.status}`)}</Badge>;
   return (
     <div className="flex flex-col gap-1">
       <NativeSelect
@@ -284,7 +284,7 @@ function TaskDetail({ task, requests, hub, onChanged }: { task: Task; requests: 
             <Owner task={task} />
           </div>
         </section>
-        {hub && allow(task.project, "manage") && task.status !== "done" ? <DispatchForm task={task} requests={requests} onSent={onChanged} /> : null}
+        {hub && allow(task.project, "runDispatch") && task.status !== "done" ? <DispatchForm task={task} requests={requests} onSent={onChanged} /> : null}
         {hub && requests.length ? <RequestList requests={requests} onChanged={onChanged} /> : null}
         <section className="flex flex-col gap-1.5">
           <h3 className="text-xs font-medium text-muted-foreground">{t("tasks.colNote")}</h3>
@@ -479,7 +479,7 @@ function RequestItem({ request: r, onChanged }: { request: RunRequest; onChanged
         </a>
       ) : null}
       {r.error ? <div className="text-destructive wrap-anywhere">{requestErrorText(r.error)}</div> : null}
-      {r.status === "pending" && allow(r.project, "manage") ? (
+      {r.status === "pending" && allow(r.project, "runDispatch") ? (
         <div>
           <Button
             size="sm"
@@ -553,7 +553,7 @@ function Deps({ task, onChanged }: { task: Task; onChanged: () => void }) {
       ) : (
         <span className="text-muted-foreground">—</span>
       )}
-      {allow(task.project, "manage") && task.status !== "done" ? (
+      {allow(task.project, "runDispatch") && task.status !== "done" ? (
         <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs" onClick={() => setEditing(true)}>
           {t("tasks.editDeps")}
         </Button>

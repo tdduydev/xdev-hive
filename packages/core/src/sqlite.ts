@@ -2,7 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import { can, levelOn, type Level } from "./access.ts";
+import { isContextDoc, may, sees, type Permission } from "./access.ts";
 import type { AgentRole } from "./agents.ts";
 import type { BlobStore } from "./blobs.ts";
 import { HiveError, type ErrorText } from "./errors.ts";
@@ -761,14 +761,19 @@ export class SqliteHive implements HiveBackend {
    * Refuses a call on something the actor may not touch. Invisible projects answer not_found, so an
    * account cannot learn what exists in projects it was not given; visible but too low a level is forbidden.
    */
-  #need(actor: Actor, owner: string | null, level: Level, what: string): void {
-    if (can(actor, owner, level)) return;
-    if (levelOn(actor, owner) === null) throw new HiveError("not_found", `${what} not found.`, { key: "errors.notFound" });
+  #need(actor: Actor, owner: string | null, permission: Permission, what: string): void {
+    if (may(actor, owner, permission)) return;
+    if (!sees(actor, owner)) throw new HiveError("not_found", `${what} not found.`, { key: "errors.notFound" });
     const where = owner === null ? "the shared (team-wide) data" : `project ${owner}`;
-    throw new HiveError("forbidden", `${what}: needs "${level}" on ${where}.`, {
-      key: owner === null ? `errors.needShared.${level}` : `errors.need.${level}`,
+    throw new HiveError("forbidden", `${what}: needs "${permission}" on ${where}.`, {
+      key: owner === null ? `errors.needShared.${permission}` : `errors.need.${permission}`,
       vars: { project: owner ?? "" },
     });
+  }
+
+  /** A doc agents read takes contextEdit to change, any other docEdit (roadmap 25): as it is, or as the save makes it. */
+  #docPermission(key: string, after?: { paths?: string[]; includeInAgents?: boolean }): Permission {
+    return isContextDoc(key, this.#getDoc(key)) || isContextDoc(key, after) ? "contextEdit" : "docEdit";
   }
 
   #check(method: Method, input: ParsedInput<Method>, actor: Actor): void {
@@ -782,23 +787,25 @@ export class SqliteHive implements HiveBackend {
       case "docs.assetGet":
         return this.#need(actor, owner(i.key), "view", `Doc ${i.key}`);
       case "docs.save":
+        return this.#need(actor, owner(i.key), this.#docPermission(i.key, { paths: i.paths, includeInAgents: i.includeInAgents }), `Doc ${i.key}`);
       case "docs.move":
-        return this.#need(actor, owner(i.key), "manage", `Doc ${i.key}`);
-      // Contributors attach files to what they propose; removing someone else's file takes manage (see the handler).
+        return this.#need(actor, owner(i.key), this.#docPermission(i.key), `Doc ${i.key}`);
+      // Those who propose attach files to it; removing someone else's file takes docEdit (see the handler).
       case "docs.assetPut":
       case "docs.assetRemove":
       case "docs.assist":
-        return this.#need(actor, owner(i.key), "contribute", `Doc ${i.key}`);
+        return this.#need(actor, owner(i.key), "docPropose", `Doc ${i.key}`);
       case "docs.assists":
         return this.#need(actor, owner(i.key), "view", `Doc ${i.key}`);
       case "docs.context":
         return this.#need(actor, i.project, "view", `Project ${i.project}`);
       case "proposals.create":
-        return this.#need(actor, owner(i.docKey), "contribute", `Doc ${i.docKey}`);
+        return this.#need(actor, owner(i.docKey), "docPropose", `Doc ${i.docKey}`);
       case "proposals.approve":
       case "proposals.reject": {
         const row = this.db.prepare("SELECT doc_key FROM proposals WHERE id = ?").get(i.id) as Row | undefined;
-        if (row) this.#need(actor, owner(str(row.doc_key)), "manage", `Proposal #${i.id}`);
+        // A change to what agents read is the context's to approve; any other a doc reviewer's.
+        if (row) this.#need(actor, owner(str(row.doc_key)), this.#docPermission(str(row.doc_key)) === "contextEdit" ? "contextEdit" : "docApprove", `Proposal #${i.id}`);
         return;
       }
       case "memory.search":
@@ -808,8 +815,9 @@ export class SqliteHive implements HiveBackend {
         if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
         return;
       case "runs.dispatch":
+        return this.#need(actor, i.project, "runDispatch", `Project ${i.project}`);
       case "chat.send":
-        return this.#need(actor, i.project, "manage", `Project ${i.project}`);
+        return this.#need(actor, i.project, "chatUse", `Project ${i.project}`);
       case "chat.threads":
         if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
         return;
@@ -823,84 +831,88 @@ export class SqliteHive implements HiveBackend {
         const row = actor.chatReply
           ? (this.db.prepare("SELECT t.project FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id WHERE m.id = ?").get(actor.chatReply) as Row | undefined)
           : undefined;
-        if (row) this.#need(actor, str(row.project), "contribute", `Chat reply #${actor.chatReply}`);
+        // Only proposing: someone with chatApprove decides, and the token is this one reply's (its sender could chat).
+        if (row) this.#need(actor, str(row.project), "view", `Chat reply #${actor.chatReply}`);
         return;
       }
       case "chat.decideAll": {
         const row = this.db
           .prepare("SELECT t.project FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id WHERE m.id = ?")
           .get(i.replyId) as Row | undefined;
-        if (row) this.#need(actor, str(row.project), "manage", `Chat reply #${i.replyId}`);
+        if (row) this.#need(actor, str(row.project), "chatApprove", `Chat reply #${i.replyId}`);
         return;
       }
       case "chat.decide": {
         const row = this.db.prepare("SELECT project FROM chat_actions WHERE id = ?").get(i.actionId) as Row | undefined;
-        if (row) this.#need(actor, str(row.project), "manage", `Chat action #${i.actionId}`);
+        if (row) this.#need(actor, str(row.project), "chatApprove", `Chat action #${i.actionId}`);
         return;
       }
       case "chat.defaults":
         return this.#need(actor, i.project, "view", `Project ${i.project}`);
       case "chat.setDefaults":
       case "chat.setCommands":
-        return this.#need(actor, i.project, "manage", `Project ${i.project}`);
+        return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
       case "chat.configure":
       case "chat.rename":
       case "chat.delete": {
         const row = this.db.prepare("SELECT project FROM chat_threads WHERE id = ?").get(i.threadId) as Row | undefined;
-        if (row) this.#need(actor, str(row.project), "manage", `Chat #${i.threadId}`);
+        if (row) this.#need(actor, str(row.project), "chatUse", `Chat #${i.threadId}`);
         return;
       }
       case "chat.cancel": {
         const row = this.db
           .prepare("SELECT t.project FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id WHERE m.id = ?")
           .get(i.replyId) as Row | undefined;
-        if (row) this.#need(actor, str(row.project), "manage", `Chat reply #${i.replyId}`);
+        if (row) this.#need(actor, str(row.project), "chatUse", `Chat reply #${i.replyId}`);
         return;
       }
       case "runs.cancel": {
         const row = this.db.prepare("SELECT project FROM run_records WHERE machine_id = ? AND run_id = ?").get(i.machineId, i.runId) as Row | undefined;
-        if (row) this.#need(actor, str(row.project), "manage", `Run ${i.runId}`);
+        if (row) this.#need(actor, str(row.project), "runDispatch", `Run ${i.runId}`);
         return;
       }
       case "runs.cancelRequest": {
         const row = this.db.prepare("SELECT project FROM run_requests WHERE id = ?").get(i.id) as Row | undefined;
-        if (row) this.#need(actor, str(row.project), "manage", `Run request #${i.id}`);
+        if (row) this.#need(actor, str(row.project), "runDispatch", `Run request #${i.id}`);
         return;
       }
       case "runs.push":
-        for (const r of i.runs as Array<{ project: string }>) this.#need(actor, r.project, "contribute", `Project ${r.project}`);
+        for (const r of i.runs as Array<{ project: string }>) this.#need(actor, r.project, "taskWork", `Project ${r.project}`);
         return;
       case "memory.write":
-        return this.#need(actor, i.shared ? null : i.project, "contribute", i.shared ? "Shared memory" : `Project ${i.project}`);
+        return this.#need(actor, i.shared ? null : i.project, "memoryWrite", i.shared ? "Shared memory" : `Project ${i.project}`);
       case "memory.checkFiles":
       case "runs.report":
-        return this.#need(actor, i.project, "contribute", `Project ${i.project}`);
+        return this.#need(actor, i.project, "taskWork", `Project ${i.project}`);
       case "memory.approve":
       case "memory.resolve":
       case "memory.keep":
       case "memory.remove": {
         const row = this.db.prepare("SELECT project FROM memory WHERE id = ?").get(i.id) as Row | undefined;
-        if (row) this.#need(actor, str(row.project) === SHARED ? null : str(row.project), "manage", `Memory #${i.id}`);
+        if (row) this.#need(actor, str(row.project) === SHARED ? null : str(row.project), "memoryApprove", `Memory #${i.id}`);
         return;
       }
       case "tasks.create":
-        return this.#need(actor, i.project, "manage", `Project ${i.project}`);
+        return this.#need(actor, i.project, "taskManage", `Project ${i.project}`);
       case "systems.save":
       case "systems.remove": {
         // Every project it has and gets: a system never takes in, or drops, a project its editor does not manage.
         const before = this.#system(i.name)?.projects ?? [];
-        for (const p of new Set([...before, ...((i.projects as string[] | undefined) ?? [])])) this.#need(actor, p, "manage", `Project ${p}`);
+        for (const p of new Set([...before, ...((i.projects as string[] | undefined) ?? [])])) this.#need(actor, p, "projectSettings", `Project ${p}`);
         return;
       }
       case "tasks.setDeps": {
         const task = this.#getTask(i.id);
-        if (task) this.#need(actor, task.project, "manage", `Task ${i.id}`);
+        if (task) this.#need(actor, task.project, "taskManage", `Task ${i.id}`);
         return;
       }
       case "tasks.claim":
       case "tasks.update": {
         const task = this.#getTask(i.id);
-        if (task) this.#need(actor, task.project, "contribute", `Task ${i.id}`);
+        if (!task) return;
+        this.#need(actor, task.project, "taskWork", `Task ${i.id}`);
+        // Done is a reviewer's call: an agent sends its work to review, a person with codeReview takes it from there.
+        if (method === "tasks.update" && i.status === "done" && task.status !== "done") this.#need(actor, task.project, "codeReview", `Task ${i.id}`);
         return;
       }
       default:
@@ -911,38 +923,38 @@ export class SqliteHive implements HiveBackend {
   /** Lists only show what the actor can see (shared items are visible to every account). */
   #filter<M extends Method>(method: M, output: MethodOutput[M], actor: Actor): MethodOutput[M] {
     if (!actor.access) return output;
-    const sees = (owner: string | null) => levelOn(actor, owner) !== null;
+    const visible = (owner: string | null) => sees(actor, owner);
     const out = output as unknown;
     switch (method as Method) {
       case "docs.list":
-        return (out as DocSummary[]).filter((d) => sees(d.project)) as MethodOutput[M];
+        return (out as DocSummary[]).filter((d) => visible(d.project)) as MethodOutput[M];
       case "skills.list":
-        return (out as SkillSummary[]).filter((s) => sees(s.project)) as MethodOutput[M];
+        return (out as SkillSummary[]).filter((s) => visible(s.project)) as MethodOutput[M];
       case "runs.list":
-        return (out as RunRecord[]).filter((r) => sees(r.project)) as MethodOutput[M];
+        return (out as RunRecord[]).filter((r) => visible(r.project)) as MethodOutput[M];
       case "runs.requests":
-        return (out as RunRequest[]).filter((r) => sees(r.project)) as MethodOutput[M];
+        return (out as RunRequest[]).filter((r) => visible(r.project)) as MethodOutput[M];
       case "chat.threads":
-        return (out as ChatThread[]).filter((t) => sees(t.project)) as MethodOutput[M];
+        return (out as ChatThread[]).filter((t) => visible(t.project)) as MethodOutput[M];
       case "proposals.list":
-        return (out as Proposal[]).filter((p) => sees(SqliteHive.#docOwner(p.docKey))) as MethodOutput[M];
+        return (out as Proposal[]).filter((p) => visible(SqliteHive.#docOwner(p.docKey))) as MethodOutput[M];
       case "memory.search":
       case "memory.list":
-        return (out as Memory[]).filter((m) => sees(m.project)) as MethodOutput[M];
+        return (out as Memory[]).filter((m) => visible(m.project)) as MethodOutput[M];
       case "tasks.list":
       case "tasks.next":
-        return (out as Task[]).filter((t) => sees(t.project)) as MethodOutput[M];
+        return (out as Task[]).filter((t) => visible(t.project)) as MethodOutput[M];
       // Machines are the team's, but what they run and which repos they have shows the project: hide hidden projects.
       case "machines.list":
-        return (out as Machine[]).map((m) => ({ ...m, runs: m.runs.filter((r) => sees(r.project)), projects: m.projects.filter((p) => sees(p)) })) as MethodOutput[M];
+        return (out as Machine[]).map((m) => ({ ...m, runs: m.runs.filter((r) => visible(r.project)), projects: m.projects.filter((p) => visible(p)) })) as MethodOutput[M];
       // Only the projects it may see; a system of none of them is not shown at all.
       case "systems.list":
         return (out as HiveSystem[])
-          .map((s) => ({ ...s, projects: s.projects.filter((p) => sees(p)) }))
+          .map((s) => ({ ...s, projects: s.projects.filter((p) => visible(p)) }))
           .filter((s) => s.projects.length > 0) as MethodOutput[M];
       case "policy.get": {
         const policy = out as TeamPolicy;
-        return { ...policy, projects: Object.fromEntries(Object.entries(policy.projects).filter(([p]) => sees(p))) } as MethodOutput[M];
+        return { ...policy, projects: Object.fromEntries(Object.entries(policy.projects).filter(([p]) => visible(p))) } as MethodOutput[M];
       }
       default:
         return output;
@@ -1046,7 +1058,7 @@ export class SqliteHive implements HiveBackend {
    * the project, who alone can send there. Images and PDF are checked by their bytes; text must be UTF-8 with no secret.
    */
   putChatFile(input: { project: string; name: string; bytes: Uint8Array }, actor: Actor): ChatFile {
-    this.#need(actor, input.project, "manage", `Project ${input.project}`);
+    this.#need(actor, input.project, "chatUse", `Project ${input.project}`);
     const name = chatFileName(input.name);
     const type = checkChatFile(name, input.bytes);
     if (!isImage(type) && type !== "application/pdf") assertNoSecret(new TextDecoder().decode(input.bytes), name);
@@ -1062,7 +1074,7 @@ export class SqliteHive implements HiveBackend {
   /** A file with its bytes, for whoever sees its project's chats; one not sent yet only for whoever uploaded it. */
   chatFile(id: number, actor: Actor): (ChatFile & { bytes: Uint8Array }) | null {
     const row = this.db.prepare("SELECT * FROM chat_files WHERE id = ?").get(id) as Row | undefined;
-    if (!row || levelOn(actor, str(row.project)) === null) return null;
+    if (!row || !sees(actor, str(row.project))) return null;
     if (row.message_id == null && str(row.uploaded_by) !== actor.name) return null;
     return { ...toChatFile(row), bytes: row.data as Uint8Array };
   }
@@ -1612,18 +1624,18 @@ export class SqliteHive implements HiveBackend {
         const rows = db.prepare("SELECT key, title, content FROM docs").all() as Row[];
         const titles = new Map(rows.map((r) => [str(r.key), str(r.title)]));
         const exists = (k: string) => titles.has(k);
-        const sees = (k: string) => levelOn(actor, SqliteHive.#docOwner(k)) !== null;
+        const seen = (k: string) => sees(actor, SqliteHive.#docOwner(k));
         const doc = rows.find((r) => str(r.key) === key);
         const out: DocLinks["out"] = [];
         for (const ref of docLinkRefs(doc ? str(doc.content) : "")) {
           const hit = resolveDocLink(ref.target, key, exists);
-          if (!hit || (hit.exists && !sees(hit.key)) || out.some((o) => o.key === hit.key)) continue;
+          if (!hit || (hit.exists && !seen(hit.key)) || out.some((o) => o.key === hit.key)) continue;
           out.push({ target: ref.target, key: hit.key, title: hit.exists ? titles.get(hit.key)! : null, exists: hit.exists });
         }
         const back: DocLinks["back"] = [];
         for (const r of rows) {
           const from = str(r.key);
-          if (from === key || !sees(from)) continue;
+          if (from === key || !seen(from)) continue;
           const text = str(r.content);
           if (!text.includes("[[")) continue;
           if (docLinkRefs(text).some((ref) => resolveDocLink(ref.target, from, exists)?.key === key)) {
@@ -1637,7 +1649,7 @@ export class SqliteHive implements HiveBackend {
             .all(key) as Row[]
         )
           .map((r) => ({ id: num(r.id), project: str(r.project) === SHARED ? null : str(r.project), content: str(r.content) }))
-          .filter((m) => levelOn(actor, m.project) !== null)
+          .filter((m) => sees(actor, m.project))
           .slice(0, 8);
         return { out, back: back.sort((a, b) => a.title.localeCompare(b.title)), memory };
       },
@@ -1658,7 +1670,7 @@ export class SqliteHive implements HiveBackend {
         for (const k of [...new Set(input.docs)].filter((k) => k !== input.key)) {
           const o = SqliteHive.#docOwner(k);
           // Only what the person sees, of the page's own space or the team's.
-          if ((o !== null && o !== owner) || levelOn(actor, o) === null) continue;
+          if ((o !== null && o !== owner) || !sees(actor, o)) continue;
           const d = this.#getDoc(k);
           if (!d) continue;
           sources.push(`doc:${k}`);
@@ -1668,7 +1680,7 @@ export class SqliteHive implements HiveBackend {
           const r = db.prepare("SELECT id, project, kind, content FROM memory WHERE id = ?").get(mid) as Row | undefined;
           if (!r) continue;
           const p = str(r.project) === SHARED ? null : str(r.project);
-          if ((p !== null && p !== owner) || levelOn(actor, p) === null) continue;
+          if ((p !== null && p !== owner) || !sees(actor, p)) continue;
           sources.push(`memory:${mid}`);
           add(`### Memory #${mid} (${str(r.kind)})\n${str(r.content)}\n`);
         }
@@ -1696,7 +1708,7 @@ export class SqliteHive implements HiveBackend {
       "docs.assistCancel": ({ id: aid }, actor) => {
         const row = db.prepare("SELECT * FROM doc_assists WHERE id = ?").get(aid) as Row | undefined;
         if (!row) throw new HiveError("not_found", `No ask #${aid}.`, { key: "errors.notFound" });
-        if (str(row.requested_by) !== actor.name) this.#need(actor, SqliteHive.#docOwner(str(row.doc_key)), "manage", `Ask #${aid}`);
+        if (str(row.requested_by) !== actor.name) this.#need(actor, SqliteHive.#docOwner(str(row.doc_key)), "docEdit", `Ask #${aid}`);
         db.prepare("UPDATE doc_assists SET status = 'cancelled', updated_at = ? WHERE id = ? AND status IN ('pending', 'running')").run(this.#now(), aid);
         return toAssist(db.prepare("SELECT * FROM doc_assists WHERE id = ?").get(aid) as Row);
       },
@@ -1717,7 +1729,7 @@ export class SqliteHive implements HiveBackend {
           const rows = db.prepare("SELECT * FROM doc_assists WHERE status = 'pending' ORDER BY id LIMIT 50").all() as Row[];
           const row = rows.find((r) => {
             const p = strOrNull(r.project);
-            return (p === null || have.has(p)) && levelOn(actor, p) !== null;
+            return (p === null || have.has(p)) && sees(actor, p);
           });
           if (!row) return null;
           const label = machine?.trim() || (m ? str(m.machine) : actor.name);
@@ -1793,7 +1805,7 @@ export class SqliteHive implements HiveBackend {
         const allowed = () => {
           const has = db.prepare("SELECT uploaded_by FROM doc_assets WHERE doc_key = ? AND name = ?").get(key, name) as Row | undefined;
           // Replacing someone else's file is removing it: manage only.
-          if (has && str(has.uploaded_by) !== actor.name) this.#need(actor, SqliteHive.#docOwner(key), "manage", `File ${name}`);
+          if (has && str(has.uploaded_by) !== actor.name) this.#need(actor, SqliteHive.#docOwner(key), "docEdit", `File ${name}`);
           const count = num((db.prepare("SELECT COUNT(*) AS n FROM doc_assets WHERE doc_key = ?").get(key) as Row).n);
           if (!has && count >= DOC_ASSETS_PER_DOC) {
             throw new HiveError("bad_request", `${key} already has ${DOC_ASSETS_PER_DOC} files.`, { key: "errors.docAssetsFull", vars: { key, max: DOC_ASSETS_PER_DOC } });
@@ -1827,7 +1839,7 @@ export class SqliteHive implements HiveBackend {
       "docs.assetRemove": async ({ key, name }, actor) => {
         const row = db.prepare("SELECT uploaded_by, sha256, stored FROM doc_assets WHERE doc_key = ? AND name = ?").get(key, name) as Row | undefined;
         if (!row) return { removed: false };
-        if (str(row.uploaded_by) !== actor.name) this.#need(actor, SqliteHive.#docOwner(key), "manage", `File ${name}`);
+        if (str(row.uploaded_by) !== actor.name) this.#need(actor, SqliteHive.#docOwner(key), "docEdit", `File ${name}`);
         db.prepare("DELETE FROM doc_assets WHERE doc_key = ? AND name = ?").run(key, name);
         if (row.stored) await this.#dropBlob(str(row.sha256));
         return { removed: true };
@@ -2027,7 +2039,8 @@ export class SqliteHive implements HiveBackend {
             });
           }
           const other = target(input.contradicts);
-          const status = this.#opts.memoryRequiresApproval && !can(actor, owner, "manage") ? "pending" : "approved";
+          // Written by someone who may approve it: approved at once.
+          const status = this.#opts.memoryRequiresApproval && !may(actor, owner, "memoryApprove") ? "pending" : "approved";
           const res = db
             .prepare(
               "INSERT INTO memory(project, kind, content, author, task_id, status, source, files, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -2362,7 +2375,7 @@ export class SqliteHive implements HiveBackend {
       "runs.get": ({ machineId, runId }, actor) => {
         const row = db.prepare("SELECT * FROM run_records WHERE machine_id = ? AND run_id = ?").get(machineId, runId) as Row | undefined;
         // A run of a project the caller does not see answers like a missing one.
-        return row && levelOn(actor, str(row.project)) !== null ? toRunRecord(row, true) : null;
+        return row && sees(actor, str(row.project)) ? toRunRecord(row, true) : null;
       },
 
       // Only a machine that takes runs from the hub obeys it: its user let project managers drive it from the web.
@@ -2826,7 +2839,7 @@ export class SqliteHive implements HiveBackend {
              FROM run_costs WHERE finished_at >= ?3 GROUP BY project, machine, profile_id, account`,
           )
           .all(since(1), since(7), since(30)) as Row[];
-        const visible = rows.filter((r) => levelOn(actor, str(r.project)) !== null);
+        const visible = rows.filter((r) => sees(actor, str(r.project)));
         const zero = (): CostTotals => ({ usd1: 0, usd7: 0, usd30: 0, runs30: 0 });
         const add = (t: CostTotals, r: Row) => {
           t.usd1 += Number(r.usd1);
