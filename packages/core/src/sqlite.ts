@@ -10,7 +10,7 @@ import { agentsDocKey, decisionsDocKey, parseDocKey, titleFromSlug, type ParsedD
 import { parseSkill, type SkillSummary } from "./skills.ts";
 import { chatFileName, checkChatFile, isImage } from "./chatfiles.ts";
 import { DOC_ASSET_MAX_BYTES, DOC_ASSETS_PER_DOC, DOC_TREE_DEPTH, docLinkRefs, linkSnippet, resolveDocLink } from "./doclinks.ts";
-import { describeProjectContext } from "./sync.ts";
+import { describeProjectContext, syncItemId } from "./sync.ts";
 import { DEFAULT_LEADER_COMMANDS } from "./types.ts";
 import { EMPTY_POLICY } from "./policy.ts";
 import {
@@ -41,6 +41,7 @@ import type {
   ChatRequest,
   ChatSender,
   ChatThread,
+  CommandKind,
   CommandStatus,
   CostTotals,
   Doc,
@@ -60,6 +61,7 @@ import type {
   MemoryFile,
   MemoryReview,
   MemorySearchInfo,
+  ProjectSyncState,
   Proposal,
   QuotaCooldown,
   ReportedProfile,
@@ -278,6 +280,12 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE docs ADD COLUMN mirror TEXT;
   `,
+  // Sync requests ride the machine command channel (roadmap 22n): install rows keep kind 'install' and no project.
+  `
+  ALTER TABLE machine_commands ADD COLUMN kind TEXT NOT NULL DEFAULT 'install';
+  ALTER TABLE machine_commands ADD COLUMN project TEXT;
+  CREATE INDEX machine_commands_project ON machine_commands(project, machine_id);
+  `,
 ];
 
 /** A leader's reply asks for at most this many actions. */
@@ -339,6 +347,11 @@ const MACHINE_TTL_DAYS = 14;
 const COMMAND_TTL_HOURS = 24;
 /** Commands kept per machine in the admin view. */
 const COMMAND_HISTORY = 20;
+/**
+ * A sync request not taken or not finished within this time expires: machines hear it within 30 s and a sync takes
+ * seconds, so the machine went away, or its app is older than sync requests and never takes it.
+ */
+const SYNC_TTL_MINUTES = 15;
 /** A run request no machine took within this time expires: machines ask every 30 s, so that one is gone. */
 const RUN_REQUEST_TTL_MINUTES = 15;
 /** Answered run requests are kept this long. */
@@ -402,6 +415,11 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
     text: { key: "audit.commandCancel", vars: { id: i.id, item: o.itemId } },
   }),
   "machines.commandResult": (i, o: MachineCommand) => ({ target: o.machineId, detail: `#${i.id} ${o.itemId} → ${i.status}` }),
+  "docs.syncRequest": (i, o: MachineCommand[]) => ({
+    target: i.project,
+    detail: `yêu cầu đồng bộ trên ${o.length} máy`,
+    text: { key: "audit.syncRequest", vars: { count: o.length } },
+  }),
   "runs.dispatch": (_i, o: RunRequest) => ({
     target: `${o.project}/${o.taskId}`,
     detail: `run ${o.role} trên ${o.machine} (#${o.id})`,
@@ -429,7 +447,8 @@ function eventOf(method: Method, output: unknown): HiveEvent | null {
       return { type: "command.requested", project: null, command: output as MachineCommand };
     case "machines.commandResult": {
       const command = output as MachineCommand;
-      return ["done", "failed", "rejected"].includes(command.status) ? { type: "command.finished", project: null, command } : null;
+      // Webhooks tell about installs; a sync request ends on every machine of the project, its page shows how.
+      return command.kind === "install" && ["done", "failed", "rejected"].includes(command.status) ? { type: "command.finished", project: null, command } : null;
     }
     case "runs.report": {
       const run = output as RunNotice;
@@ -563,7 +582,9 @@ const toCooldown = (r: Row): QuotaCooldown => ({
 const toCommand = (r: Row): MachineCommand => ({
   id: num(r.id),
   machineId: str(r.machine_id),
+  kind: (strOrNull(r.kind) ?? "install") as CommandKind,
   itemId: str(r.item_id),
+  project: strOrNull(r.project),
   label: str(r.label),
   status: str(r.status) as CommandStatus,
   requestedBy: str(r.requested_by),
@@ -804,7 +825,11 @@ export class SqliteHive implements HiveBackend {
       case "docs.assists":
         return this.#need(actor, owner(i.key), "view", `Doc ${i.key}`);
       case "docs.context":
+      case "docs.syncStatus":
         return this.#need(actor, i.project, "view", `Project ${i.project}`);
+      // Whoever may change what agents read may have the machines write it now.
+      case "docs.syncRequest":
+        return this.#need(actor, i.project, "contextEdit", `Project ${i.project}`);
       case "proposals.create":
         return this.#need(actor, owner(i.docKey), "docPropose", `Doc ${i.docKey}`);
       case "proposals.approve":
@@ -1380,11 +1405,15 @@ export class SqliteHive implements HiveBackend {
     return row ? { ...EMPTY_POLICY, ...(JSON.parse(str(row.value)) as TeamPolicy) } : EMPTY_POLICY;
   }
 
-  /** Pending commands nobody approved in time become expired. */
+  /** Pending commands nobody approved in time become expired; so do sync requests no machine took or finished. */
   #expireCommands(): void {
     this.db
-      .prepare("UPDATE machine_commands SET status = 'expired', updated_at = ?1 WHERE status = 'pending' AND requested_at < ?2")
+      .prepare("UPDATE machine_commands SET status = 'expired', updated_at = ?1 WHERE kind = 'install' AND status = 'pending' AND requested_at < ?2")
       .run(this.#now(), this.#now(-COMMAND_TTL_HOURS * 60));
+    // A running one too: the app quit during the sync and will never report it.
+    this.db
+      .prepare("UPDATE machine_commands SET status = 'expired', updated_at = ?1 WHERE kind = 'sync' AND status IN ('pending', 'running') AND updated_at < ?2")
+      .run(this.#now(), this.#now(-SYNC_TTL_MINUTES));
   }
 
   /** Run requests no machine took in time expire; answered ones are dropped after a month. */
@@ -1551,6 +1580,13 @@ export class SqliteHive implements HiveBackend {
       projects: JSON.parse(str(r.projects ?? "[]")) as string[],
       acceptsRuns: num(r.accepts_runs ?? 0) === 1,
     };
+  }
+
+  /** Machines that reported a repo for the project at their last heartbeat, the most recently seen first. */
+  #machinesWith(project: string): Machine[] {
+    return (this.db.prepare("SELECT * FROM machines ORDER BY last_seen DESC").all() as Row[])
+      .map((r) => this.#toMachine(r))
+      .filter((m) => m.projects.includes(project));
   }
 
   #buildHandlers(): Handlers {
@@ -1789,6 +1825,42 @@ export class SqliteHive implements HiveBackend {
             pending: count(project, "pending") + count(SHARED, "pending"),
           },
         };
+      },
+
+      // Offline machines get none: they would sync whenever they come back, long after the person who asked looked.
+      "docs.syncRequest": ({ project }, actor) =>
+        this.#tx(() => {
+          this.#expireCommands();
+          const itemId = syncItemId(project);
+          const now = this.#now();
+          const out: MachineCommand[] = [];
+          for (const m of this.#machinesWith(project)) {
+            if (!m.online) continue;
+            const open = db
+              .prepare("SELECT id FROM machine_commands WHERE machine_id = ? AND item_id = ? AND status IN ('pending', 'running')")
+              .get(m.id, itemId) as Row | undefined;
+            if (open) {
+              out.push(this.#command(num(open.id)));
+              continue;
+            }
+            const res = db
+              .prepare(
+                "INSERT INTO machine_commands(machine_id, kind, item_id, project, label, requested_by, requested_at, updated_at) VALUES (?, 'sync', ?, ?, ?, ?, ?, ?)",
+              )
+              .run(m.id, itemId, project, `sync ${project}`, actor.name, now, now);
+            out.push(this.#command(num(res.lastInsertRowid)));
+          }
+          return out;
+        }),
+
+      "docs.syncStatus": ({ project }) => {
+        this.#expireCommands();
+        return this.#machinesWith(project).map((m): ProjectSyncState => {
+          const row = db
+            .prepare("SELECT * FROM machine_commands WHERE machine_id = ? AND item_id = ? ORDER BY id DESC LIMIT 1")
+            .get(m.id, syncItemId(project)) as Row | undefined;
+          return { machineId: m.id, machine: m.machine, online: m.online, version: m.version, last: row ? toCommand(row) : null };
+        });
       },
 
       "docs.assets": ({ key }) => (db.prepare(`SELECT ${ASSET_FIELDS} FROM doc_assets WHERE doc_key = ? ORDER BY name`).all(key) as Row[]).map(toAsset),
@@ -2300,9 +2372,12 @@ export class SqliteHive implements HiveBackend {
           db.prepare("DELETE FROM run_costs WHERE finished_at < ?").run(this.#now(-COST_DAYS * 24 * 60));
           db.prepare("DELETE FROM machines WHERE last_seen < ?").run(this.#now(-MACHINE_TTL_DAYS * 24 * 60));
           this.#expireCommands();
-          const commands = (
+          const pending = (
             db.prepare("SELECT * FROM machine_commands WHERE machine_id = ? AND status = 'pending' ORDER BY id").all(actor.name) as Row[]
           ).map(toCommand);
+          const commands = pending.filter((c) => c.kind === "install");
+          // Sent until the machine reports it running, whether or not it takes runs: a sync only writes Hive's own files.
+          const syncCommands = pending.filter((c) => c.kind === "sync");
           this.#expireRequests();
           const accepts = num((db.prepare("SELECT accepts_runs FROM machines WHERE id = ?").get(actor.name) as Row).accepts_runs) === 1;
           // The user turned it off after a manager queued something: say so on the web instead of letting it expire.
@@ -2337,6 +2412,7 @@ export class SqliteHive implements HiveBackend {
             cooldowns: this.#cooldowns(),
             policy: this.#policy(),
             commands,
+            syncCommands,
             runRequests,
             chatRequests,
             cancelRuns,
@@ -2943,8 +3019,11 @@ export class SqliteHive implements HiveBackend {
             ...this.#toMachine(r),
             setup: r.setup == null ? null : (JSON.parse(str(r.setup)) as SetupReport),
             setupAt: strOrNull(r.setup_at),
+            // Installs only: sync requests show on the Context agent page, per project.
             commands: (
-              db.prepare("SELECT * FROM machine_commands WHERE machine_id = ? ORDER BY id DESC LIMIT ?").all(str(r.id), COMMAND_HISTORY) as Row[]
+              db
+                .prepare("SELECT * FROM machine_commands WHERE machine_id = ? AND kind = 'install' ORDER BY id DESC LIMIT ?")
+                .all(str(r.id), COMMAND_HISTORY) as Row[]
             ).map(toCommand),
           }),
         );

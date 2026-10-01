@@ -18,6 +18,8 @@ import { chatArgs, leaderBrief, leaderSettings } from "#desktop/main/runner/chat
 import { assistSettings, globRegExp, parseAssist, readRepoFiles } from "#desktop/main/runner/assist.ts";
 import { setMainLocale } from "#desktop/main/i18n.ts";
 import { pickProfile, waitingReason, type ProfileLoad } from "#desktop/main/runner/schedule.ts";
+import { syncProject } from "#desktop/main/sync.ts";
+import { readSyncOutcome } from "@xdev-hive/core";
 
 const FAKE = path.join(import.meta.dirname, "fixtures", "fake-agent.mjs");
 const admin: Actor = { name: "duy", role: "admin" };
@@ -57,6 +59,7 @@ async function setup(
     wrap?: (backend: HiveBackend) => HiveBackend;
     hub?: RunnerHost["hub"];
     download?: RunnerHost["download"];
+    sync?: RunnerOptions["sync"];
   } = {},
 ) {
   const repo = tmp("repo");
@@ -93,6 +96,7 @@ async function setup(
     onHub: (u) => hubUpdates.push(u),
     afterFinish: machine.afterFinish,
     onEvent: machine.onEvent,
+    sync: machine.sync,
     // Chat replies are asked for by hand (pollChats) and reported quickly.
     chatPollMs: 0,
     chatProgressMs: 50,
@@ -792,6 +796,50 @@ describe("Runner", () => {
     const done = await a.runner.reportCommand(cmd.id, "done", "added 1 package");
     assert.equal(done.status, "done");
     assert.deepEqual((await a.runner.heartbeat())?.commands, []);
+  });
+
+  it("syncs a project when the Context agent page asks, and reports what the sync did (roadmap 22n)", async () => {
+    let fail = false;
+    const synced: string[] = [];
+    let hive!: SqliteHive;
+    const a = await setup([profile("claude-1", "claude", 10, "ok")], {}, "hub", {
+      // What the app runs for Đồng bộ: the real sync of Hive's docs into the repo.
+      sync: async (p) => {
+        synced.push(p.name);
+        if (fail) throw new HiveError("not_found", `Không thấy thư mục repo: ${p.repo}`);
+        return syncProject(hive, admin, p, { autoCommit: true });
+      },
+    });
+    hive = a.hive;
+    await a.hive.call("docs.save", { key: "project/demo/agents", content: "# Demo\nChạy npm test.", baseVersion: 0 }, admin);
+    await a.runner.heartbeat(); // the hub learns the machine has demo
+
+    const [cmd] = await a.hive.call("docs.syncRequest", { project: "demo" }, admin);
+    assert.ok(cmd, "the machine is online with the project");
+    const update = await a.runner.heartbeat();
+    assert.deepEqual(update?.syncCommands.map((c) => c.id), [cmd.id]);
+    assert.deepEqual(update?.commands, [], "nothing for the user to approve");
+    await a.runner.heartbeat(); // heard again before it ran: not taken twice
+    await a.runner.settleSyncs();
+    assert.deepEqual(synced, ["demo"]);
+    assert.match(readFileSync(path.join(a.repo, "AGENTS.md"), "utf8"), /Chạy npm test\./);
+    assert.match(git(a.repo, "log", "-1", "--format=%s"), /sync shared docs/);
+
+    const [state] = await a.hive.call("docs.syncStatus", { project: "demo" }, admin);
+    assert.equal(state!.last?.status, "done");
+    const outcome = readSyncOutcome(state!.last!.output);
+    assert.deepEqual(outcome?.changed, ["AGENTS.md", "CLAUDE.md"]);
+    assert.equal(outcome?.commit, git(a.repo, "rev-parse", "--short", "HEAD"));
+    assert.equal(outcome?.mirrored, null, "the repo mirrors nothing");
+
+    fail = true;
+    const [again] = await a.hive.call("docs.syncRequest", { project: "demo" }, admin);
+    await a.runner.heartbeat();
+    await a.runner.settleSyncs();
+    const [failed] = await a.hive.call("docs.syncStatus", { project: "demo" }, admin);
+    assert.equal(failed!.last?.id, again!.id);
+    assert.equal(failed!.last?.status, "failed");
+    assert.match(failed!.last!.output ?? "", /Không thấy thư mục repo/);
   });
 
   it("takes a manager's run request from the hub while the user allows it, as if started on the Board", async () => {
