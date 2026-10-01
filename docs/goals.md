@@ -48,7 +48,9 @@ xDev Hive tự quản lý chính nó trên hive.xdev.asia. Mọi mục roadmap x
 
 Xếp theo nghiên cứu ngày 1/10 (GitHub Agent HQ, Codex, Cursor, Devin, Factory, Claude Code, Entra Agent ID, AgentCore).
 
-- **R-27a. Chính sách agent theo dự án.** Hub giữ cho từng dự án (và mặc định cho cả hub):
+Spec: [`docs/specs/27a-agent-policy.md`](specs/27a-agent-policy.md) cho 27a, [`docs/specs/27bcd-governance.md`](specs/27bcd-governance.md) cho 27b, 27c và 27d. Phần code do agent `claude-1` trên Mac mini làm qua task Hive. Người merge chạy typecheck, test, e2e và smoke rồi mới phát hành.
+
+- **R-27a. Chính sách agent theo dự án** (chia thành R-27a-1 cho hub và giao diện, R-27a-2 cho runner). Hub giữ cho từng dự án (và mặc định cho cả hub):
   - model được dùng;
   - mức tự chủ: chỉ đọc / đề xuất / sửa / đầy đủ;
   - mạng: tắt / allowlist / mở;
