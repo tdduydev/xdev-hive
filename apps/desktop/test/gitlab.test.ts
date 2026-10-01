@@ -245,21 +245,63 @@ describe("merge request watch", () => {
     assert.equal(gl.calls.length, 0);
   });
 
-  it("leaves the task alone when turned off, and records a closed MR", async () => {
+  it("leaves the task alone when turned off", async () => {
     const off = await opened({ doneOnMerge: false });
     gl.mrs[0]!.state = "merged";
     const [merged] = await off.watcher.check();
     assert.equal(merged!.status.to, "merged");
     assert.equal(merged!.taskDone, false);
+    assert.equal(merged!.taskStatus, null);
     assert.equal((await off.task()).status, "review");
+  });
 
+  it("moves the task to Blocked by default when the MR is closed without merging, and notes it", async () => {
     const closed = await opened();
     gl.mrs[0]!.state = "closed";
     const [c] = await closed.watcher.check();
     assert.deepEqual(c!.status, { from: null, to: "closed" });
     assert.equal(c!.taskDone, false);
-    assert.equal((await closed.task()).status, "review");
+    assert.equal(c!.taskStatus, "blocked");
+    assert.equal(c!.taskError, null);
+    const t = await closed.task();
+    assert.equal(t.status, "blocked");
+    assert.match(t.note ?? "", /MR !1: http[^\n]+\n\nMR !1 closed without merging\.$/);
     assert.equal(closed.runner.store.get(closed.review.id)!.mrStatus, "closed");
+    assert.equal(closed.watcher.watching(), false, "a closed MR is not asked about again");
+    assert.deepEqual(await closed.watcher.check(), []);
+  });
+
+  it("moves the task to To do when chosen", async () => {
+    const todo = await opened({ onClosed: "todo" });
+    gl.mrs[0]!.state = "closed";
+    const [c] = await todo.watcher.check();
+    assert.equal(c!.taskStatus, "todo");
+    const t = await todo.task();
+    assert.equal(t.status, "todo");
+    assert.match(t.note ?? "", /\n\nMR !1 closed without merging\.$/);
+  });
+
+  it("keeps the task's status when chosen, but still notes the closed MR", async () => {
+    const keep = await opened({ onClosed: "keep" });
+    gl.mrs[0]!.state = "closed";
+    const [c] = await keep.watcher.check();
+    assert.equal(c!.taskStatus, null);
+    assert.equal(c!.taskError, null);
+    const t = await keep.task();
+    assert.equal(t.status, "review");
+    assert.match(t.note ?? "", /\n\nMR !1 closed without merging\.$/);
+  });
+
+  it("leaves a done task alone when its MR is closed", async () => {
+    const s = await opened();
+    await s.hive.call("tasks.update", { id: "T-1", status: "done" }, admin);
+    const before = (await s.task()).note;
+    gl.mrs[0]!.state = "closed";
+    const [c] = await s.watcher.check();
+    assert.equal(c!.taskStatus, null);
+    const t = await s.task();
+    assert.equal(t.status, "done");
+    assert.equal(t.note, before);
   });
 
   it("asks once per MR and saves the answer on every run that points at it", async () => {

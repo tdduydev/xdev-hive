@@ -470,6 +470,14 @@ function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; onSaved:
           <Checkbox checked={mr.doneOnMerge} onCheckedChange={(v) => set("doneOnMerge", v === true)} />
           {t("projects.doneOnMerge")}
         </label>
+        <div className={FORM_GRID}>
+          <Label htmlFor="gl-closed">{t("projects.mrOnClosed")}</Label>
+          <NativeSelect id="gl-closed" value={mr.onClosed} onChange={(e) => set("onClosed", e.target.value as MrSettings["onClosed"])}>
+            <NativeSelectOption value="blocked">{t("projects.mrOnClosedBlocked")}</NativeSelectOption>
+            <NativeSelectOption value="todo">{t("projects.mrOnClosedTodo")}</NativeSelectOption>
+            <NativeSelectOption value="keep">{t("projects.mrOnClosedKeep")}</NativeSelectOption>
+          </NativeSelect>
+        </div>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox checked={mr.fixCi} onCheckedChange={(v) => set("fixCi", v === true)} />
           {t("projects.fixCi")}

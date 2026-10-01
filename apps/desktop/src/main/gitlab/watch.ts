@@ -1,8 +1,9 @@
 // Follows the merge requests the app opened: their state and pipeline on GitLab, and the same for GitHub pull
-// requests (state and checks). A merged one moves its task to done (unless turned off); a failed pipeline, or
+// requests (state and checks). A merged one moves its task to done (unless turned off), a closed one to the
+// status chosen in the settings (blocked by default); a failed pipeline, or
 // failed checks, on an open one goes to the CI fixer. Only links on the configured GitLab / GitHub, so each
 // token goes nowhere else. No Electron imports.
-import { PIPELINE_STATUSES, type AgentRun, type MrStatus, type PipelineStatus } from "@xdev-hive/core";
+import { PIPELINE_STATUSES, type AgentRun, type MrStatus, type PipelineStatus, type TaskStatus } from "@xdev-hive/core";
 import { failureId, githubJobs } from "#desktop/main/github/checks.ts";
 import { checksStatus, GitHubClient, pullRef } from "#desktop/main/github/client.ts";
 import { gitlabJobs, type CiFixer, type CiFixOutcome, type FailedJobs } from "./ci-fix.ts";
@@ -20,6 +21,8 @@ export interface MrChange {
   fix: CiFixOutcome | null;
   /** The task moved to done because the MR was merged. */
   taskDone: boolean;
+  /** Where the task moved on this change: done on merge, blocked or todo on close; null when it stayed. */
+  taskStatus: TaskStatus | null;
   /** Why the task could not be moved, if it could not. */
   taskError: string | null;
 }
@@ -118,11 +121,20 @@ export class MrWatcher {
           pipeline: { from: run.pipelineStatus, to: pipeline },
           fix,
           taskDone: false,
+          taskStatus: null,
           taskError: null,
         };
-        if (status === "merged" && s.mr.doneOnMerge) {
+        // openMrs only returns MRs last seen open, so a merged or closed status here is always new.
+        const move =
+          status === "merged" && s.mr.doneOnMerge
+            ? { to: "done" as const, line: "merged." }
+            : status === "closed"
+              ? { to: s.mr.onClosed === "keep" ? null : s.mr.onClosed, line: "closed without merging." }
+              : null;
+        if (move) {
           try {
-            change.taskDone = await this.#done(run);
+            change.taskStatus = await this.#move(run, move.to, move.line);
+            change.taskDone = change.taskStatus === "done";
           } catch (err) {
             change.taskError = (err as Error).message;
           }
@@ -135,15 +147,22 @@ export class MrWatcher {
     }
   }
 
-  async #done(run: AgentRun): Promise<boolean> {
+  /**
+   * Moves the task to `to` (null: keeps its status) and adds a line about the MR to its note. Returns the status
+   * it moved to, or null when it did not move.
+   */
+  async #move(run: AgentRun, to: TaskStatus | null, what: string): Promise<TaskStatus | null> {
     const backend = this.#host.backend();
     const actor = mrActor(this.#host);
     const task = (await backend.call("tasks.list", { project: run.project }, actor)).find((t) => t.id === run.taskId);
-    if (!task || task.status === "done") return false;
-    const line = `${mrLabel(run)} merged.`;
+    // A done task is finished whatever became of this MR (it may have gone in through another one).
+    if (!task || task.status === "done") return null;
+    // tasks.update needs a status, and writing doing back would take the task's lease from whoever holds it.
+    if (to === null && task.status === "doing") return null;
+    const line = `${mrLabel(run)} ${what}`;
     const note = task.note ? `${task.note}\n\n${line}` : line;
-    await backend.call("tasks.update", { id: task.id, status: "done", note: clipTail(note, 2000) }, actor);
-    return true;
+    await backend.call("tasks.update", { id: task.id, status: to ?? task.status, note: clipTail(note, 2000) }, actor);
+    return to;
   }
 
   #now(): Date {

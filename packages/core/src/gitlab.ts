@@ -37,6 +37,11 @@ export const mrSettingsSchema = z.object({
   remote: z.string().regex(/^[\w.-]{1,50}$/).default("origin"),
   /** The app follows the MRs it opened; a merged one moves its task to done. */
   doneOnMerge: z.boolean().default(true),
+  /**
+   * Where the task goes when its MR is closed without merging; keep leaves its status. Blocked by default: the
+   * work it was waiting on is gone, so it should not look like it is still in review.
+   */
+  onClosed: z.enum(["blocked", "todo", "keep"]).default("blocked"),
   /** A failed pipeline on an open MR queues a run that fixes it, with the failed jobs' logs. */
   fixCi: z.boolean().default(true),
   /** Automatic fixes per MR; after that a failed pipeline is only reported. */
