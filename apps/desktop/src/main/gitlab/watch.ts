@@ -1,11 +1,13 @@
 // Follows the merge requests the app opened: their state and pipeline on GitLab, and the same for GitHub pull
 // requests (state and checks). A merged one moves its task to done (unless turned off), a closed one to the
-// status chosen in the settings (blocked by default); a failed pipeline, or
-// failed checks, on an open one goes to the CI fixer. Only links on the configured GitLab / GitHub, so each
-// token goes nowhere else. No Electron imports.
+// status chosen in the settings (blocked by default), and a merged one also takes its task's worktree and local
+// branch off the machine (unless turned off); a failed pipeline, or failed checks, on an open one goes to the CI
+// fixer. Only links on the configured GitLab / GitHub, so each token goes nowhere else. No Electron imports.
 import { PIPELINE_STATUSES, type AgentRun, type MrStatus, type PipelineStatus, type TaskStatus } from "@xdev-hive/core";
 import { failureId, githubJobs } from "#desktop/main/github/checks.ts";
 import { checksStatus, GitHubClient, pullRef } from "#desktop/main/github/client.ts";
+import { tr } from "#desktop/main/i18n.ts";
+import { branchFor, cleanupMerged, type CleanupKept, type MergedCleanup } from "#desktop/main/runner/worktree.ts";
 import { gitlabJobs, type CiFixer, type CiFixOutcome, type FailedJobs } from "./ci-fix.ts";
 import { GitLabClient } from "./client.ts";
 import { clipTail, mrActor, mrLabel, type MrHost } from "./mr.ts";
@@ -25,6 +27,8 @@ export interface MrChange {
   taskStatus: TaskStatus | null;
   /** Why the task could not be moved, if it could not. */
   taskError: string | null;
+  /** What became of the task's worktree and local branch on merge; null when not tried (turned off, not merged). */
+  cleanup: MergedCleanup | null;
 }
 
 /** Project path and iid of an MR web URL on `baseUrl`; null for any other URL. */
@@ -77,7 +81,14 @@ export class MrWatcher {
         const ref = gl ? mrRef(gl.baseUrl, run.mrUrl!) : null;
         const pull = !ref && gh ? pullRef(gh.baseUrl, run.mrUrl!) : null;
         if (!ref && !pull) continue;
-        let seen: { status: MrStatus; pipeline: PipelineStatus | null; pipelineUrl: string | null; failed: { id: number; jobs: FailedJobs } | null };
+        let seen: {
+          status: MrStatus;
+          pipeline: PipelineStatus | null;
+          pipelineUrl: string | null;
+          failed: { id: number; jobs: FailedJobs } | null;
+          /** The MR's head commit: what a merge took in. */
+          headSha: string | null;
+        };
         try {
           if (ref) {
             const mr = await gl!.mergeRequest(ref.project, ref.iid);
@@ -86,6 +97,7 @@ export class MrWatcher {
               pipeline: pipelineOf(mr.head_pipeline?.status),
               pipelineUrl: mr.head_pipeline?.web_url ?? null,
               failed: mr.head_pipeline ? { id: mr.head_pipeline.id, jobs: gitlabJobs(gl!, ref.project, mr.head_pipeline.id) } : null,
+              headSha: mr.sha ?? null,
             };
           } else {
             const pr = await gh!.pull(pull!.repo, pull!.number);
@@ -100,7 +112,13 @@ export class MrWatcher {
             // Per commit, so a new push whose checks fail again counts as a change.
             const pipelineUrl = !open ? run.pipelineUrl : pipeline ? `${pr.html_url}/checks?sha=${pr.head.sha}` : null;
             const id = pipeline === "failed" ? failureId(runs ?? [], statuses ?? []) : null;
-            seen = { status, pipeline, pipelineUrl, failed: id === null ? null : { id, jobs: githubJobs(gh!, pull!.repo, runs ?? [], statuses ?? []) } };
+            seen = {
+              status,
+              pipeline,
+              pipelineUrl,
+              failed: id === null ? null : { id, jobs: githubJobs(gh!, pull!.repo, runs ?? [], statuses ?? []) },
+              headSha: pr.head.sha ?? null,
+            };
           }
         } catch {
           continue;
@@ -123,6 +141,7 @@ export class MrWatcher {
           taskDone: false,
           taskStatus: null,
           taskError: null,
+          cleanup: null,
         };
         // openMrs only returns MRs last seen open, so a merged or closed status here is always new.
         const move =
@@ -138,6 +157,10 @@ export class MrWatcher {
           } catch (err) {
             change.taskError = (err as Error).message;
           }
+        }
+        if (status === "merged" && s.mr.cleanupOnMerge) {
+          change.cleanup = this.#cleanup(run, seen.headSha);
+          if (change.cleanup) change.run = store.get(run.id)!;
         }
         changes.push(change);
       }
@@ -165,6 +188,25 @@ export class MrWatcher {
     return to;
   }
 
+  /**
+   * Takes the merged task's worktree and local branch off this machine (see cleanupMerged), but not while the task
+   * has a run queued or going: that run works in them. What happened goes on the run's MR note, so a kept worktree
+   * says why on the Board. null: the project is not on this machine.
+   */
+  #cleanup(run: AgentRun, headSha: string | null): MergedCleanup | null {
+    const project = this.#host.projects().find((p) => p.name === run.project);
+    if (!project) return null;
+    const store = this.#host.store();
+    const branch = branchFor(run.taskId);
+    const result: MergedCleanup = store.activeForTask(run.project, run.taskId)
+      ? { worktree: false, branch: false, kept: "active", reason: null }
+      : cleanupMerged(project.repo, run.worktree, branch, headSha);
+    const line = cleanupNote(result, branch);
+    const now = store.get(run.id)!;
+    if (line) store.update(run.id, { mrNote: [now.mrNote, line].filter(Boolean).join(" · ") });
+    return result;
+  }
+
   #now(): Date {
     return this.#host.now?.() ?? new Date();
   }
@@ -172,4 +214,24 @@ export class MrWatcher {
   #since(): string {
     return new Date(this.#now().getTime() - WATCH_DAYS * 86_400_000).toISOString();
   }
+}
+
+const KEPT_KEYS = {
+  noSha: "mrNote.keptNoSha",
+  newer: "mrNote.keptNewer",
+  dirty: "mrNote.keptDirty",
+  active: "mrNote.keptActive",
+  failed: "mrNote.keptFailed",
+} as const satisfies Record<CleanupKept, string>;
+
+/** One line about a merged MR's cleanup, for the run's MR note and the notification; null when there was nothing to remove. */
+export function cleanupNote(c: MergedCleanup, branch: string): string | null {
+  if (c.kept) {
+    const why = tr(KEPT_KEYS[c.kept], { reason: c.reason ?? "" });
+    return c.worktree ? tr("mrNote.cleanedWorktreeKeptBranch", { branch, why }) : tr("mrNote.cleanupKept", { branch, why });
+  }
+  if (c.worktree && c.branch) return tr("mrNote.cleanedBoth", { branch });
+  if (c.worktree) return tr("mrNote.cleanedWorktree");
+  if (c.branch) return tr("mrNote.cleanedBranch", { branch });
+  return null;
 }
