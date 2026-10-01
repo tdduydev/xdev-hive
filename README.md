@@ -501,6 +501,13 @@ Hub nhận mọi nhà cung cấp OpenID Connect: GitLab, Microsoft Entra, Google
 - Mặc định, compose để backup trên volume `hive-backups`, cùng đĩa với database. Để backup còn nguyên khi mất đĩa, trỏ `HIVE_BACKUP_PATH=/mnt/backup/hive` sang đĩa khác (thư mục phải cho uid 1000 ghi), hoặc đồng bộ thư mục backup ra ngoài.
 - Tệp trong SeaweedFS được chép vào `<thư mục backup>/files/<sha256>` sau mỗi lần backup (cả *Backup ngay*): chỉ chép tệp mới, và chỉ xoá tệp mà cả database lẫn các bản backup còn giữ đều không dùng. Một bản backup `hub-….db` cùng thư mục `files/` là đủ để khôi phục cả tệp.
 - **Khôi phục**: dừng hub, chép bản backup đè lên `hub.db`, xoá `hub.db-wal` và `hub.db-shm` nếu có, rồi khởi động lại. Mất cả dữ liệu SeaweedFS thì đưa tệp từ backup vào lại: `HIVE_SEAWEEDFS_URL=http://seaweedfs:8888 npm run files -w @xdev-hive/web -- restore [thư mục backup]` (trong container hub: `docker compose -p xdev-hive -f deploy/compose.yaml exec hub npm run files -w @xdev-hive/web -- restore`).
+- **Diễn tập khôi phục**: `bash deploy/restore-drill.sh` trên server, sau `deploy/update.sh`. Script làm từ đầu tới cuối mà không đụng vào hub đang chạy:
+  - lấy bản backup mới nhất và `backups/files`;
+  - đưa tệp vào một SeaweedFS mới bằng `files restore`;
+  - mở một hub riêng trên database đó;
+  - đọc lại từng tệp của tài liệu và so với SHA-256 của nó.
+
+  Container, network và thư mục của buổi diễn tập bị xoá khi xong, không dùng prune. Lần chạy ngày 1/10 trên hub thật mất 6 giây: 169 tài liệu và 3 tệp, cả 3 tệp đọc lại đúng. Volume backup khác `xdev-hive_hive-backups` (ví dụ đặt `HIVE_BACKUP_PATH` là một thư mục) thì truyền `HIVE_BACKUPS_VOLUME=<volume hoặc thư mục>`.
 - **Nâng cấp**: trên server chạy `bash deploy/update.sh` (sau Cloudflare Tunnel: `HIVE_TUNNEL=1 bash deploy/update.sh`): lấy `origin/main`, build lại, chờ hub healthy. Hub tự backup trước khi chạy migration mới.
 
 Máy của từng người: app desktop → chế độ **Hub dùng chung** → URL + đăng nhập bằng tài khoản (hoặc dán token). Shim `hive-mcp` tự chuyển tiếp lên hub, nên config MCP trong repo giống nhau cho mọi người và không chứa token.
