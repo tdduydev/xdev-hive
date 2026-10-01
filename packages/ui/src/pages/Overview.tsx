@@ -7,7 +7,8 @@ import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
 import { Skeleton } from "@xdev-hive/ui/components/ui/skeleton";
 import { Badge, Empty, ErrorNote, OwnerBadge, Page, PageHeader, STATUS_TONE, StatusDot } from "#ui/components/common.tsx";
-import { formatTime, useHive, useQuery, type QueryState } from "#ui/hooks.ts";
+import { PausedNotice, StopAgentsButton } from "#ui/components/StopAgents.tsx";
+import { formatTime, useCan, useHive, useQuery, type QueryState } from "#ui/hooks.ts";
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
 import { ALL, SHARED, docOwner, projectScope, scopeLabel, systemScope } from "#ui/lib/scope.ts";
 
@@ -360,6 +361,9 @@ function ProjectOverview({ project: p }: { project: string }) {
   const t = useT();
   const desktop = client.desktop;
   const hubAdmin = me.mode === "hub" && me.role === "admin";
+  // Stop-all is the hub's: a desktop without one has nobody else's agents to stop.
+  const can = useCan();
+  const canStop = me.mode === "hub" && can(p, "runDispatch");
   // docs.list with a project returns its docs plus every shared (org) doc; memory likewise with includeShared.
   const docs = useQuery(() => client.call("docs.list", { project: p }), [client, p]);
   const memory = useQuery(() => client.call("memory.list", { project: p, includeShared: true, limit: MEMORY_LIMIT }), [client, p]);
@@ -390,8 +394,14 @@ function ProjectOverview({ project: p }: { project: string }) {
       <PageHeader
         title={p}
         subtitle={t("overview.projectSubtitle", { project: p })}
-        actions={<AllProjectsButton onClick={() => setScope(ALL)} />}
+        actions={
+          <>
+            {canStop ? <StopAgentsButton project={p} /> : null}
+            <AllProjectsButton onClick={() => setScope(ALL)} />
+          </>
+        }
       />
+      {me.mode === "hub" ? <PausedNotice project={p} /> : null}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           icon={FileText}

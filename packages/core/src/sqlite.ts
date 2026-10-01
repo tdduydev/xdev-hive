@@ -11,7 +11,7 @@ import { parseSkill, type SkillSummary } from "./skills.ts";
 import { chatFileName, checkChatFile, isImage } from "./chatfiles.ts";
 import { DOC_ASSET_MAX_BYTES, DOC_ASSETS_PER_DOC, DOC_TREE_DEPTH, docLinkRefs, linkSnippet, resolveDocLink } from "./doclinks.ts";
 import { describeProjectContext, syncItemId } from "./sync.ts";
-import { DEFAULT_LEADER_COMMANDS } from "./types.ts";
+import { DEFAULT_LEADER_COMMANDS, PAUSED_HUB } from "./types.ts";
 import { EMPTY_POLICY } from "./policy.ts";
 import {
   authorize,
@@ -29,6 +29,8 @@ import { parseSource, type WriteSource } from "./source.ts";
 import { SEED_DOCS, SEED_VERSION } from "./seed.ts";
 import type {
   Actor,
+  AgentsPaused,
+  AgentsStop,
   AuditEntry,
   ChatAction,
   ChatActionKind,
@@ -430,11 +432,23 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
     detail: `huỷ yêu cầu run #${i.id}`,
     text: { key: "audit.runRequestCancel", vars: { id: i.id } },
   }),
+  "agents.stop": (i, o: AgentsStop) => ({
+    target: i.project ?? "hub",
+    detail: `dừng mọi agent: huỷ ${o.requests} yêu cầu, dừng ${o.runs} run, huỷ ${o.chats} chat`,
+    text: { key: "audit.agentsStop", vars: { requests: o.requests, runs: o.runs, chats: o.chats } },
+  }),
+  "agents.resume": (i) => ({ target: i.project ?? "hub", detail: "cho agent chạy lại", text: { key: "audit.agentsResume" } }),
 };
 
 /** The event a successful call is worth telling people about, if any. */
-function eventOf(method: Method, output: unknown): HiveEvent | null {
+function eventOf(method: Method, input: unknown, output: unknown, actor: Actor): HiveEvent | null {
   switch (method) {
+    case "agents.stop": {
+      const stop = output as AgentsStop;
+      return { type: "agents.stopped", project: stop.project, by: actor.name, stop };
+    }
+    case "agents.resume":
+      return { type: "agents.resumed", project: (input as { project: string | null }).project, by: actor.name };
     case "proposals.create": {
       const proposal = output as Proposal;
       return { type: "proposal.created", project: parseDocKey(proposal.docKey).project, proposal };
@@ -766,7 +780,7 @@ export class SqliteHive implements HiveBackend {
       const { target, detail, text } = audited(parsed, output);
       this.audit(actor, method, target, detail, text);
     }
-    const event = eventOf(method, output);
+    const event = eventOf(method, parsed, output, actor);
     if (event) {
       try {
         this.#opts.onEvent(event);
@@ -847,6 +861,12 @@ export class SqliteHive implements HiveBackend {
         return;
       case "runs.dispatch":
         return this.#need(actor, i.project, "runDispatch", `Project ${i.project}`);
+      // Whoever may queue and stop a project's runs may stop them all; the whole hub is its admin's alone.
+      case "agents.stop":
+      case "agents.resume":
+        if (i.project !== null) return this.#need(actor, i.project, "runDispatch", `Project ${i.project}`);
+        if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Only a hub admin stops every agent of the hub.", { key: "errors.hubAdminOnly" });
+        return;
       case "chat.send":
         return this.#need(actor, i.project, "chatUse", `Project ${i.project}`);
       case "chat.threads":
@@ -983,6 +1003,13 @@ export class SqliteHive implements HiveBackend {
         return (out as HiveSystem[])
           .map((s) => ({ ...s, projects: s.projects.filter((p) => visible(p)) }))
           .filter((s) => s.projects.length > 0) as MethodOutput[M];
+      case "agents.paused":
+      case "agents.resume":
+        return this.#pausedFor(out as AgentsPaused, actor) as MethodOutput[M];
+      case "agents.stop": {
+        const stop = out as AgentsStop;
+        return { ...stop, paused: this.#pausedFor(stop.paused, actor) } as MethodOutput[M];
+      }
       case "policy.get": {
         const policy = out as TeamPolicy;
         return { ...policy, projects: Object.fromEntries(Object.entries(policy.projects).filter(([p]) => visible(p))) } as MethodOutput[M];
@@ -1403,6 +1430,34 @@ export class SqliteHive implements HiveBackend {
   #policy(): TeamPolicy {
     const row = this.db.prepare("SELECT value FROM settings WHERE key = 'policy'").get() as Row | undefined;
     return row ? { ...EMPTY_POLICY, ...(JSON.parse(str(row.value)) as TeamPolicy) } : EMPTY_POLICY;
+  }
+
+  #paused(): AgentsPaused {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'paused'").get() as Row | undefined;
+    return row ? { hub: false, projects: [], by: {}, ...(JSON.parse(str(row.value)) as AgentsPaused) } : { hub: false, projects: [], by: {} };
+  }
+
+  #savePaused(paused: AgentsPaused): void {
+    this.db.prepare("INSERT INTO settings(key, value) VALUES ('paused', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(paused));
+  }
+
+  /** Only the projects the actor sees: a paused project's name must not tell an outsider it exists. */
+  #pausedFor(paused: AgentsPaused, actor: Actor): AgentsPaused {
+    const projects = paused.projects.filter((p) => sees(actor, p));
+    const by = Object.fromEntries(Object.entries(paused.by).filter(([k]) => k === PAUSED_HUB || projects.includes(k)));
+    return { hub: paused.hub, projects, by };
+  }
+
+  /** Refuses to start agents of a paused project or hub (runs.dispatch, chat.send). */
+  #assertNotPaused(project: string): void {
+    const paused = this.#paused();
+    const scope = paused.hub ? PAUSED_HUB : paused.projects.includes(project) ? project : null;
+    if (scope === null) return;
+    const mark = paused.by[scope];
+    throw new HiveError("conflict", `Agents of ${scope === PAUSED_HUB ? "the hub" : project} are paused.`, {
+      key: "errors.agentsPaused",
+      vars: { project: scope === PAUSED_HUB ? "hub" : project, by: mark?.name ?? "?", at: mark?.at ?? "" },
+    });
   }
 
   /** Pending commands nobody approved in time become expired; so do sync requests no machine took or finished. */
@@ -2416,6 +2471,7 @@ export class SqliteHive implements HiveBackend {
             runRequests,
             chatRequests,
             cancelRuns,
+            paused: this.#pausedFor(this.#paused(), actor),
           };
         }),
 
@@ -2483,6 +2539,7 @@ export class SqliteHive implements HiveBackend {
       "runs.dispatch": ({ machineId, project, taskId, role, profileId, reviewAfter, candidates, instructions }, actor) =>
         this.#tx(() => {
           this.#expireRequests();
+          this.#assertNotPaused(project);
           const row = db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row | undefined;
           if (!row) throw new HiveError("not_found", `No machine ${machineId}.`, { key: "errors.machineNotFound", vars: { machine: machineId } });
           const m = this.#toMachine(row);
@@ -2579,6 +2636,7 @@ export class SqliteHive implements HiveBackend {
       "chat.send": ({ project, threadId, machineId, profileId, model, effort, title, text, files }, actor) =>
         this.#tx(() => {
           this.#expireChats();
+          this.#assertNotPaused(project);
           const thread = threadId === undefined ? null : (db.prepare(`${THREAD_SELECT} WHERE t.id = ?`).get(threadId) as Row | undefined);
           if (thread === undefined || (thread && str(thread.project) !== project)) {
             throw new HiveError("not_found", `Chat #${threadId} not found in ${project}.`, { key: "errors.chatNotFound", vars: { id: threadId ?? 0 } });
@@ -2999,6 +3057,52 @@ export class SqliteHive implements HiveBackend {
         );
         return this.#policy();
       },
+
+      // Machines that take runs from the hub hear cancelRuns, as after runs.cancel; every machine hears `paused` too.
+      "agents.stop": ({ project }, actor) =>
+        this.#tx(() => {
+          this.#expireRequests();
+          this.#expireChats();
+          const now = this.#now();
+          const requests = num(
+            db.prepare("UPDATE run_requests SET status = 'cancelled', updated_at = ?2 WHERE status = 'pending' AND (?1 IS NULL OR project = ?1)").run(project, now).changes,
+          );
+          // Running ones only: a queued run stays in its machine's queue, saying why, until the pause is lifted.
+          const runs = num(
+            (db.prepare("SELECT COUNT(*) AS n FROM run_records WHERE status = 'running' AND (?1 IS NULL OR project = ?1)").get(project) as Row).n,
+          );
+          // Like runs.cancel: one asked already keeps who asked first.
+          db.prepare(
+            "UPDATE run_records SET cancel_by = ?2, cancel_at = ?3 WHERE status = 'running' AND cancel_by IS NULL AND (?1 IS NULL OR project = ?1)",
+          ).run(project, actor.name, now);
+          // A leader is an agent too; the machine hears it at its next chat.progress, as after chat.cancel.
+          const chats = num(
+            db
+              .prepare(
+                `UPDATE chat_messages SET status = 'cancelled', updated_at = ?2, finished_at = ?2
+                 WHERE role = 'assistant' AND status IN ('pending', 'running') AND thread_id IN (SELECT id FROM chat_threads WHERE ?1 IS NULL OR project = ?1)`,
+              )
+              .run(project, now).changes,
+          );
+          const paused = this.#paused();
+          if (project === null) paused.hub = true;
+          else if (!paused.projects.includes(project)) paused.projects = [...paused.projects, project].sort();
+          paused.by = { ...paused.by, [project ?? PAUSED_HUB]: { name: actor.name, at: now } };
+          this.#savePaused(paused);
+          return { project, paused, requests, runs, chats };
+        }),
+
+      "agents.resume": ({ project }) => {
+        const paused = this.#paused();
+        if (project === null) paused.hub = false;
+        else paused.projects = paused.projects.filter((p) => p !== project);
+        paused.by = { ...paused.by };
+        delete paused.by[project ?? PAUSED_HUB];
+        this.#savePaused(paused);
+        return paused;
+      },
+
+      "agents.paused": () => this.#paused(),
 
       "systems.list": () => (db.prepare("SELECT * FROM systems ORDER BY name").all() as Row[]).map(toSystem),
 

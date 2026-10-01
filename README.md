@@ -628,6 +628,11 @@ Trang này có trên hub web và trên app desktop ở chế độ hub, chỉ hi
 - **Người dùng & quyền**: tạo tài khoản, cấp quyền theo dự án, cấp/bỏ admin, đặt lại mật khẩu, khoá.
 - Trang **Token** có thêm cột *Tài khoản* và *Máy*: token thuộc ai, các máy đang dùng từng token.
 
+**Dừng mọi agent** (`agents.stop`, roadmap 27d): nút trên *Tổng quan* của Web Admin dừng cả hub (chỉ admin hub). Nút cùng tên trên trang dự án dừng một dự án (cần quyền xếp run của dự án đó).
+- Hub huỷ các yêu cầu run và câu trả lời chat đang chờ, rồi báo máy dừng run đang chạy. Hộp xác nhận ghi trước số yêu cầu sẽ huỷ và số run sẽ dừng.
+- Trong lúc tạm ngưng, hub từ chối xếp run và chat leader. Mọi máy, kể cả máy không nhận run từ hub, dừng run đang chạy của phạm vi đó và không bắt đầu run mới, kể cả run bấm trên Board. Run trong hàng đợi nằm lại đó, kèm lý do. Board hiện dải báo ai tạm ngưng, lúc nào.
+- Bấm *Cho agent chạy lại* (`agents.resume`) thì gỡ tạm ngưng. Tạm ngưng cả hub và tạm ngưng một dự án gỡ riêng. Cả hai thao tác đều ghi vào *Nhật ký* và gửi webhook (sự kiện *Dừng mọi agent*, *Cho agent chạy lại*).
+
 Agent không có app desktop (CI, cloud) gọi thẳng MCP qua HTTP: `POST https://<hub>/mcp`, header `Authorization: Bearer <token agent>`, tuỳ chọn `x-hive-agent: <tên>`.
 
 **Agent chỉ đọc**: tạo token vai trò `viewer` cho agent chỉ cần tra cứu, ví dụ bot review hoặc CI đọc quy chuẩn. Với token này, MCP chỉ có các tool đọc: `memory_search`, `doc_list`, `doc_get`, `skill_list`, `skill_get`, `task_list`, `task_next`, `run_list`, `run_get`, `machine_list`. Tool ghi không có trong danh sách, và hub cũng từ chối lệnh ghi.
