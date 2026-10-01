@@ -7,8 +7,10 @@ import { missingRequired, type AuditEntry, type MachineDetail, type RunRecord, t
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { DataTable, type Column } from "#ui/components/DataTable.tsx";
 import { Empty, ErrorNote } from "#ui/components/common.tsx";
+import { StopAgentsButton } from "#ui/components/StopAgents.tsx";
 import { Chip, type ChipKind } from "#ui/components/panes.tsx";
-import { errorMessage, formatTime, formatUsd, useAction, useHive, useQuery } from "#ui/hooks.ts";
+import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
+import { errorMessage, formatTime, formatUsd, useAction, useHive, useProjects, useQuery } from "#ui/hooks.ts";
 import { hasKey, useT, type MessageKey, type TFunction } from "#ui/i18n/index.tsx";
 import { isLive, runDuration, runLabel } from "#ui/lib/runs.ts";
 import { RANGE_HOURS, useAdminRange } from "#ui/shell/AdminShell.tsx";
@@ -80,6 +82,32 @@ const machineKind = (m: MachineDetail, lacking: boolean): { kind: ChipKind; labe
 
 // ── Tổng quan ──
 
+/** Stop-all for the whole hub, and for one project picked here: the Web Admin has no page per project. */
+function StopAgentsBar() {
+  const t = useT();
+  const projects = useProjects();
+  const [project, setProject] = useState("");
+  const picked = projects.includes(project) ? project : (projects[0] ?? "");
+  return (
+    <div className="flex flex-wrap items-start justify-end gap-2">
+      {picked ? (
+        <>
+          <NativeSelect size="sm" className="font-mono" value={picked} onChange={(e) => setProject(e.target.value)} aria-label={t("tasks.colProject")}>
+            {projects.map((p) => (
+              <NativeSelectOption key={p} value={p}>
+                {p}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+          {/* Keyed: each project's button loads its own state. */}
+          <StopAgentsButton key={picked} project={picked} />
+        </>
+      ) : null}
+      <StopAgentsButton project={null} />
+    </div>
+  );
+}
+
 export function OpsOverview() {
   const { client } = useHive();
   const t = useT();
@@ -131,6 +159,7 @@ export function OpsOverview() {
 
   return (
     <div className="flex flex-col gap-4">
+      <StopAgentsBar />
       <ErrorNote error={runs.error ?? machines.error} />
       <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-2.5">
         <Kpi href="#/admin/runs" label={t("ops.kpi.running")} value={live.length} sub={t("ops.kpi.runningSub", { count: new Set(live.map((r) => r.machineId)).size })} />
@@ -650,7 +679,8 @@ function groupOf(action: string): string {
   if (p === "memory") return "memory";
   if (p === "tasks") return "tasks";
   if (p === "users" || p === "auth" || p === "tokens") return "accounts";
-  if (p === "machines" || p === "admin" || p === "cooldowns" || p === "policy") return "machines";
+  // Stop-all stops what the machines run.
+  if (p === "machines" || p === "admin" || p === "cooldowns" || p === "policy" || p === "agents") return "machines";
   if (p === "systems") return "projects";
   return "connections";
 }

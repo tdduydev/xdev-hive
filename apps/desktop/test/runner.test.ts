@@ -1081,6 +1081,48 @@ describe("Runner", () => {
     assert.deepEqual((await a.hive.call("machines.heartbeat", { machine: "duy-macbook", instance: "a1b2c3d4", acceptsRuns: true }, { name: machineId, role: "agent" })).cancelRuns, []);
   });
 
+  it("stops the running runs of a paused project and starts none, Board runs too, until the pause is lifted", async () => {
+    // Not taking runs from the hub: stop-all still holds (roadmap 27d).
+    const a = await setup([profile("claude-1", "claude", 10, "sleep")], { maxParallel: 1 }, "hub");
+    await a.hive.call("tasks.create", { id: "T-2", project: "demo", title: "Trang đăng xuất" }, admin);
+    await a.runner.heartbeat();
+    const running = await a.runner.enqueue({ project: "demo", taskId: "T-1" });
+    // The agent's process is up: stopping it is what is tested.
+    await until(() => a.runner.log(running.id).includes("thinking"));
+    await a.runner.pushRuns();
+
+    await a.hive.call("agents.stop", { project: "demo" }, admin);
+    await a.runner.heartbeat();
+    await a.runner.settle();
+    assert.deepEqual([a.runner.store.get(running.id)!.status, a.runner.store.get(running.id)!.error], ["cancelled", "Dừng vì agent của demo đang tạm ngưng"]);
+
+    // A run asked for on the Board waits in the queue, saying why.
+    const held = await a.runner.enqueue({ project: "demo", taskId: "T-2" });
+    await a.runner.tick();
+    const queued = a.runner.list({ limit: 10 }).find((r) => r.id === held.id)!;
+    assert.deepEqual([queued.status, queued.error], ["queued", "Agent của demo đang tạm ngưng bởi duy: chờ có người cho agent chạy lại"]);
+
+    await a.hive.call("agents.resume", { project: "demo" }, admin);
+    await a.runner.heartbeat();
+    await until(() => a.runner.log(held.id).includes("thinking"));
+    a.runner.cancel(held.id);
+    await a.runner.settle();
+  });
+
+  it("holds every project's runs while the whole hub is paused", async () => {
+    const a = await setup([profile("claude-1", "claude", 10, "ok")], {}, "hub");
+    await a.runner.heartbeat();
+    await a.hive.call("agents.stop", { project: null }, admin);
+    await a.runner.heartbeat();
+    const held = await a.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await a.runner.tick();
+    assert.deepEqual([a.runner.store.get(held.id)!.status, a.runner.list({ limit: 10 })[0]!.error], ["queued", "Agent của cả hub đang tạm ngưng bởi duy: chờ có người cho agent chạy lại"]);
+    await a.hive.call("agents.resume", { project: null }, admin);
+    await a.runner.heartbeat();
+    await a.runner.settle();
+    assert.notEqual(a.runner.store.get(held.id)!.status, "queued", "it started once the pause was lifted");
+  });
+
   it("takes no run from the hub until the user allows it", async () => {
     const a = await setup([profile("claude-1", "claude", 10, "ok")], {}, "hub");
     await a.runner.heartbeat();
