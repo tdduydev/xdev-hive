@@ -47,5 +47,18 @@ export async function seed(base, admin) {
   const memory = [];
   for (const content of ["Sandbox ngân hàng hết hạn token sau 15 phút.", "Cổng thanh toán trả 409 khi gửi lại cùng mã đơn."])
     memory.push((await rpc(people.minh.token, "memory.write", { project: "payment", kind: "gotcha", content, files: [] })).id);
+  // As claude-1 would write it through the MCP shim in run R-e2e01 on Minh's token: the audit log names all three (27c).
+  const asAgent = await fetch(`${base}/api/rpc`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${people.minh.token}`,
+      "x-hive-agent": "claude-1",
+      "x-hive-source": JSON.stringify({ via: "mcp", run: "R-e2e01" }),
+      "x-hive-run": "R-e2e01",
+    },
+    body: JSON.stringify({ method: "memory.write", input: { project: "demo", kind: "convention", content: "Chạy npm ci trước khi test.", files: [] } }),
+  });
+  if (!asAgent.ok) throw new Error(`seed agent memory: ${asAgent.status}`);
   return { people, proposals, memory };
 }
