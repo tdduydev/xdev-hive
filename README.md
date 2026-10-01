@@ -142,6 +142,7 @@ Lệnh này làm các bước sau:
   - trình soạn Tiptap (menu `/`, liên kết trang, bảng) và Markdown;
   - Mermaid vẽ và báo lỗi;
   - duyệt hàng loạt đề xuất và memory;
+  - yêu cầu máy đồng bộ, với một máy giả gửi heartbeat;
   - trang Hub.
 
 Mỗi bước kiểm lại dữ liệu trên hub qua RPC và chụp một ảnh. Có bước hỏng thì ảnh mang đuôi `-FAIL` và lệnh thoát khác 0. Giao diện được kiểm bằng tiếng Việt. Trên Linux không có màn hình thì chạy qua `xvfb-run`.
@@ -171,6 +172,11 @@ Icon: `npm run icons -w @xdev-hive/desktop` (chỉ chạy trên macOS, vì dùng
    - `.claude/settings.json` + `.xdev-hive/guard-docs.sh` (hook chặn sửa tài liệu)
    - `.githooks/pre-commit` + `git config core.hooksPath .githooks`
 4. **Đồng bộ tài liệu**: lần đầu nhập `AGENTS.md` / `docs/decisions.md` sẵn có vào Hive, sau đó render lại và commit.
+
+Đồng bộ từ hub: trên Web Admin, trang *Context agent* → *Yêu cầu máy đồng bộ*. Cần quyền Context agent của dự án.
+- Mỗi máy online có repo của dự án nhận yêu cầu ở heartbeat kế tiếp, rồi làm như nút *Đồng bộ*: ghi context vào repo và đưa tài liệu của repo lên Hive.
+- Thẻ *Đồng bộ trên các máy* hiện lần cuối của từng máy: số file đổi, commit, số trang từ repo, hoặc lỗi.
+- Yêu cầu không được nhận hay làm xong trong 15 phút thì hết hạn. App cũ hơn 0.89.0 không nhận yêu cầu này.
 
 `core.hooksPath` là cấu hình local của git: mỗi người clone repo cần bấm cài *Cấu hình agent* một lần trong *Cài đặt máy*, hoặc chạy `git config core.hooksPath .githooks`.
 

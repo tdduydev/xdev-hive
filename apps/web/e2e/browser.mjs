@@ -79,7 +79,7 @@ class Tab {
   }
 
   async waitFor(what, fn, ...args) {
-    const until = Date.now() + 10_000;
+    const until = Date.now() + 15_000;
     for (;;) {
       const v = await this.eval(fn, ...args).catch(() => null);
       if (v) return v;
@@ -350,6 +350,35 @@ async function main() {
       const list = await rpc("memory.list", { limit: 50 });
       return memory.every((id) => list.find((m) => m.id === id)?.status === "approved");
     });
+  });
+
+  // Roadmap 22n: a machine of Lan's with payment's repo hears the request at its heartbeat and reports how it went.
+  await step("sync-request", async () => {
+    const tab = (current = tabs.admin);
+    const beat = async () => {
+      const r = await fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" },
+        body: JSON.stringify({ method: "machines.heartbeat", input: { machine: "lan-mbp", instance: "e2e00001", version: "0.0.0-e2e", projects: ["payment"] } }),
+      });
+      return (await r.json()).result;
+    };
+    await beat();
+    await tab.go("admin/context");
+    await tab.select('select[aria-label="Dự án"]', "payment");
+    await tab.waitFor("Lan's machine on the card", () => document.body.innerText.includes("lan-mbp"));
+    await tab.click("button", "Yêu cầu máy đồng bộ");
+    const cmd = await until("the request at the machine's heartbeat", async () => (await beat()).syncCommands?.find((c) => c.project === "payment"));
+    const report = (status, output) =>
+      fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" },
+        body: JSON.stringify({ method: "machines.commandResult", input: { id: cmd.id, status, ...(output ? { output } : {}) } }),
+      });
+    await report("running");
+    await report("done", JSON.stringify({ changed: ["AGENTS.md", "CLAUDE.md"], skipped: [], commit: "abc1234", mirrored: 2, note: null }));
+    // The card looks again every 5 seconds while a request is open.
+    await tab.waitFor("Đã đồng bộ on the card", () => /Đã đồng bộ[\s\S]*2 file đổi/.test(document.body.innerText));
   });
 
   await step("hub-page", async () => {
