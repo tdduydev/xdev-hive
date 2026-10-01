@@ -12,6 +12,7 @@ import {
   POLICY_CLIS,
   POLICY_REPO_PARTS,
   PROPOSAL_STATUSES,
+  SELF_APPROVALS,
   TASK_STATUSES,
   type Actor,
   type AuditEntry,
@@ -513,6 +514,8 @@ export const schemas = {
       .max(20)
       .default([])
       .refine((list) => new Set(list.map((p) => p.id)).size === list.length, "template ids must be unique"),
+    // Left out (an app older than 27c) keeps what is set: saving its policy page must not loosen the rule.
+    selfApproval: z.enum(SELF_APPROVALS).optional(),
   }),
 
   /** The hub's agent policy and each visible project's part (roadmap 27a). */
@@ -538,6 +541,11 @@ export const schemas = {
   "admin.audit": z.object({
     limit: z.number().int().min(1).max(1000).default(200),
     action: z.string().max(60).optional(),
+    /** An agent's label; `claude-1` also finds `claude-1.<machine>`, the label a machine on a hub sends. */
+    agent: z.string().min(1).max(100).optional(),
+    /** The person: who acted, or the account an agent acted for. */
+    user: z.string().min(1).max(100).optional(),
+    run: z.string().min(1).max(60).optional(),
   }),
 } as const;
 

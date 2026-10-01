@@ -19,6 +19,7 @@ import {
   permissionsOn,
   PROJECT_NAME,
   sees,
+  readRun,
   readSourceHeader,
   toErrorPayload,
   TOKEN_ROLES,
@@ -194,22 +195,34 @@ export function createHubApp({
   const tokenActor = (req: Request, res: Response, raw: string): Actor | null => {
     const label = (req.get("x-hive-agent") ?? "").replace(/[^\w.-]/g, "").slice(0, 80);
     const source = readSourceHeader(req.get("x-hive-source"));
+    // The shim sends x-hive-run; an agent whose client only passes the source (Gemini in a container) still has it there.
+    const run = readRun(req.get("x-hive-run")) ?? source.run;
+    // For the audit log (roadmap 27c): which agent, for whom, in which run.
+    const trail = (onBehalf: string) => ({ ...(label ? { agent: label } : {}), onBehalf, ...(run ? { run } : {}) });
     const who = tokens.verify(raw);
     if (!who) {
       // A chat reply's leader: the rights cut when the machine got the request (see ChatGrants).
       const grant = chatGrants.verify(raw);
       return grant
-        ? { name: label ? `${label}@${grant.name}` : grant.name, role: grant.role, ...(grant.access ? { access: grant.access } : {}), source, chatReply: grant.replyId }
+        ? {
+            name: label ? `${label}@${grant.name}` : grant.name,
+            role: grant.role,
+            ...(grant.access ? { access: grant.access } : {}),
+            source,
+            chatReply: grant.replyId,
+            ...trail(grant.name),
+          }
         : null;
     }
     const name = label ? `${label}@${who.name}` : who.name;
-    if (!who.ownerId) return { name, role: who.role, source };
+    // A token of no account (CI, the CLI's) stands for itself.
+    if (!who.ownerId) return { name, role: who.role, source, ...trail(who.name) };
     const user = users.get(who.ownerId);
     if (!user || user.disabled) return null;
     res.locals.user = user;
     // An account that lost admin keeps its old admin tokens only as a member.
     const role: Role = who.role === "admin" && !user.admin ? "member" : who.role;
-    return { name, role, access: users.access(user), source };
+    return { name, role, access: users.access(user), source, ...trail(user.username) };
   };
 
   /** Bearer token (agents, machines, CI) or the session cookie (people in the web hub). */

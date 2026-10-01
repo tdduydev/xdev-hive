@@ -67,6 +67,32 @@ describe("hub REST", () => {
     assert.deepEqual(body.result, { name: "codex@duy-macbook", role: "agent", mode: "hub" });
   });
 
+  it("logs an agent's writes with its label, its token's owner and the run from x-hive-run (roadmap 27c)", async () => {
+    const write = (headers: Record<string, string>, content: string) =>
+      fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${tok.agent}`, ...headers },
+        body: JSON.stringify({ method: "memory.write", input: { project: "audit27c", kind: "gotcha", content } }),
+      });
+    const source = JSON.stringify({ via: "mcp", machine: "duy-mbp", run: "R-src001", task: "T-1" });
+    assert.equal((await write({ "x-hive-agent": "claude-1.duy-mbp", "x-hive-source": source, "x-hive-run": "R-hdr001" }, "từ shim")).status, 200);
+    // A client that only sends the source (Gemini in a container) still gets its run logged.
+    assert.equal((await write({ "x-hive-agent": "gemini-1.duy-mbp", "x-hive-source": source }, "từ container")).status, 200);
+    assert.equal((await write({ "x-hive-agent": "codex-1.duy-mbp", "x-hive-run": "not a run id!" }, "run sai dạng")).status, 200);
+
+    const rows = (await rpc(tok.admin, "admin.audit", { action: "memory.write" })).body.result as Array<{ agent: string; onBehalf: string; run: string | null }>;
+    assert.deepEqual(
+      rows.slice(0, 3).map((e) => [e.agent, e.onBehalf, e.run]),
+      [
+        ["codex-1.duy-mbp", "duy-macbook", null],
+        ["gemini-1.duy-mbp", "duy-macbook", "R-src001"],
+        ["claude-1.duy-mbp", "duy-macbook", "R-hdr001"],
+      ],
+      "a token of no account stands for itself",
+    );
+    assert.equal((await rpc(tok.admin, "admin.audit", { run: "R-hdr001" })).body.result.length, 1);
+  });
+
   it("keeps the machine part of long agent labels, so two machines on one token get different leases", async () => {
     const label = `${"p".repeat(40)}.${"m".repeat(24)}`;
     const res = await fetch(`${base}/api/me`, { headers: { authorization: `Bearer ${tok.agent}`, "x-hive-agent": label } });
