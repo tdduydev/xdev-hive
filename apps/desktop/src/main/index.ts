@@ -94,6 +94,9 @@ const notifiedCommands = new Set<number>();
 // Electron's network stack: honours system proxy settings and the macOS keychain's certificates.
 const gitlabFetch = (url: string, init: RequestInit) => net.fetch(url, init);
 let quitting = false;
+// Started by the computer at sign-in ("Mở cùng máy" on Windows): the window waits in the tray until asked for.
+const startHidden = process.argv.includes("--hidden");
+let trayHintShown = false;
 
 const actor = (): Actor => {
   const source = { via: "desktop" as const, machine: config.machine };
@@ -799,14 +802,19 @@ function createWindow(): void {
   win.webContents.on("will-navigate", (e, url) => {
     if (!(devUrl && url.startsWith(devUrl))) e.preventDefault();
   });
+  // Closing the window keeps the app (and the runner taking work) going: in the menu bar on macOS, in the tray on
+  // Windows and Linux. Quitting is the tray's Thoát (or Cmd+Q).
   win.on("close", (e) => {
-    if (!quitting && process.platform === "darwin" && !smokeShot) {
-      e.preventDefault();
-      win?.hide();
+    if (quitting || smokeShot) return;
+    e.preventDefault();
+    win?.hide();
+    if (process.platform !== "darwin" && !trayHintShown) {
+      trayHintShown = true;
+      showNotice(tr("desktop.trayHintTitle"), tr("desktop.trayHint"));
     }
   });
   win.once("ready-to-show", () => {
-    if (!smokeShot) win?.show();
+    if (!smokeShot && !startHidden) win?.show();
   });
 
   const hash = process.env.HIVE_SMOKE_HASH;
@@ -877,12 +885,37 @@ async function refreshTray(): Promise<void> {
 }
 
 /** Built again when the interface language changes. */
+/** Windows: the tray's balloon; elsewhere a notification (the menu bar app on macOS needs none). */
+function showNotice(title: string, content: string): void {
+  if (process.platform === "win32" && tray) tray.displayBalloon({ title, content, iconType: "info" });
+  else if (Notification.isSupported()) new Notification({ title, body: content }).show();
+}
+
+/** Starting with the computer: macOS and Windows (Linux desktops each have their own autostart). */
+const canStartAtLogin = process.platform === "darwin" || process.platform === "win32";
+
 function buildTrayMenu(): void {
+  const atLogin = canStartAtLogin && app.isPackaged ? app.getLoginItemSettings({ args: ["--hidden"] }).openAtLogin : null;
   tray?.setContextMenu(
     Menu.buildFromTemplate([
       { label: tr("desktop.trayOpen"), click: showWindow },
       { label: tr("desktop.trayProposals"), click: () => (showWindow(), win?.webContents.executeJavaScript('location.hash = "#/proposals"')) },
       { type: "separator" },
+      ...(atLogin === null
+        ? []
+        : [
+            {
+              label: tr("desktop.trayStartAtLogin"),
+              type: "checkbox" as const,
+              checked: atLogin,
+              click: (item: Electron.MenuItem) => {
+                // In the tray on Windows; macOS opens it like any login item.
+                app.setLoginItemSettings({ openAtLogin: item.checked, args: ["--hidden"] });
+                buildTrayMenu();
+              },
+            },
+            { type: "separator" as const },
+          ]),
       { label: tr("desktop.trayQuit"), role: "quit" },
     ]),
   );
@@ -900,10 +933,14 @@ function setLocale(locale: unknown): void {
 }
 
 function createTray(): void {
-  const icon = nativeImage.createFromPath(trayIcon());
-  icon.setTemplateImage(true);
+  // macOS: a template image the menu bar tints. Windows and Linux show it as it is, and a black X is lost on a dark
+  // taskbar: the app's own icon there.
+  const icon = process.platform === "darwin" ? nativeImage.createFromPath(trayIcon()) : nativeImage.createFromPath(appIcon()).resize({ width: 32, height: 32, quality: "best" });
+  if (process.platform === "darwin") icon.setTemplateImage(true);
   tray = new Tray(icon);
   tray.setToolTip("xDev Hive");
+  // Windows and Linux: a click opens the window (the menu is on the right button); macOS opens the menu.
+  if (process.platform !== "darwin") tray.on("click", showWindow);
   buildTrayMenu();
   void refreshTray();
   setInterval(() => void refreshTray(), 20_000).unref();
