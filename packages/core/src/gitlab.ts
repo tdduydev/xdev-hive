@@ -47,6 +47,11 @@ export const mrSettingsSchema = z.object({
    * and nothing is left uncommitted: otherwise they pile up, one per task, with dependencies and builds in each.
    */
   cleanupOnMerge: z.boolean().default(true),
+  /**
+   * Minutes between two checks of the open MRs and PRs. 1 at least: each check asks GitLab/GitHub once per open MR,
+   * so faster would spend the token's rate limit; 60 at most, or a merge would wait too long to reach its task.
+   */
+  pollMinutes: z.number().int().min(1).max(60).default(2),
   /** A failed pipeline on an open MR queues a run that fixes it, with the failed jobs' logs. */
   fixCi: z.boolean().default(true),
   /** Automatic fixes per MR; after that a failed pipeline is only reported. */

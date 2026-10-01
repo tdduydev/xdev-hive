@@ -311,7 +311,7 @@ implement (không review, chế độ "ngay khi làm xong") ──────�
 - **MR đã có** (cùng source branch, đang mở): chỉ cập nhật tiêu đề, mô tả và *thêm* label, không đổi target hay label người khác đã sửa trên GitLab.
 - **Mô tả MR** gồm task, tóm tắt của agent làm, kết quả review, danh sách commit. Output của agent nằm trong code block (dài hơn mọi chuỗi backtick trong output), nên GitLab không chạy quick action (`/merge`, `/approve`…) hay mention từ đó.
 - Link MR được ghi vào ghi chú task trong Hive và hiện trên Board. Lỗi GitLab/push được ghi ở run (không làm run thất bại). Có nút *Tạo MR / Cập nhật MR* để chạy tay.
-- **Theo dõi MR**: app hỏi GitLab về các MR nó đã mở (30 giây sau khi mở app, rồi mỗi 2 phút; MR của run trong 30 ngày gần nhất).
+- **Theo dõi MR**: app hỏi GitLab về các MR nó đã mở (30 giây sau khi mở app, rồi mỗi 2 phút; MR của run trong 30 ngày gần nhất). Chu kỳ chỉnh được 1–60 phút ở ô *Hỏi GitLab/GitHub về MR mỗi* (mặc định 2). Lưu là có hiệu lực ngay, không cần mở lại app: lần hỏi sau tính từ lần hỏi trước, nên rút ngắn chu kỳ mà đã quá hạn thì app hỏi luôn.
   - Board hiện trạng thái pipeline (*CI lỗi*, *CI qua*…, bấm để mở pipeline) và MR đã merge hay đóng.
   - MR merge thì task chuyển sang *Xong*, ghi chú task thêm dòng `MR !<iid> merged.`. Tắt được bằng ô *MR merge thì chuyển task sang Xong*.
   - MR bị đóng mà không merge thì task sang trạng thái chọn ở ô *MR đóng mà không merge*: *Bị chặn* (mặc định), *Chưa làm*, hoặc giữ nguyên. Ghi chú task thêm dòng `MR !<iid> closed without merging.` trong cả ba trường hợp. Task đã *Xong* thì không đổi gì. Chọn giữ nguyên mà task đang *Đang làm* thì cũng không đổi gì, vì ghi lại *Đang làm* sẽ lấy lease của người đang giữ task.
@@ -349,7 +349,7 @@ Cấu hình ở *Dự án & cài đặt* → **GitHub pull request** (hỏi ngà
 - **Push qua HTTPS** tới host GitHub dùng token như GitLab: header trong `GIT_CONFIG_*` của env (user `x-access-token`), không ghi vào `.git/config`. Remote SSH dùng key sẵn có.
 - **PR đã có** (cùng branch, đang mở): chỉ cập nhật tiêu đề và mô tả rồi thêm label, không đổi base. Mô tả giống MR, output của agent nằm trong code block.
 - Link `PR #n` được ghi vào ghi chú task và hiện trên Board. Lỗi GitHub (`GitHub 401: Bad credentials`…) được ghi ở run, không làm run thất bại.
-- **Theo dõi PR**: cùng lượt với MR GitLab (30 giây sau khi mở app, rồi mỗi 2 phút; PR của run trong 30 ngày gần nhất), app hỏi GitHub trạng thái PR và check của commit mới nhất.
+- **Theo dõi PR**: cùng lượt với MR GitLab (30 giây sau khi mở app, rồi theo cùng chu kỳ, mặc định 2 phút; PR của run trong 30 ngày gần nhất), app hỏi GitHub trạng thái PR và check của commit mới nhất.
   - Các check (GitHub Actions và app khác, cả commit status kiểu cũ) được gộp thành một trạng thái CI trên Board: *đang chạy* khi còn check chưa xong, rồi *lỗi* nếu có check lỗi, hết giờ hay cần xử lý. Bấm để mở trang checks của commit đó.
   - PR merge thì task sang *Xong*, ghi chú thêm `PR #n merged.` (cùng ô *MR merge thì chuyển task sang Xong*). PR bị đóng mà không merge thì theo ô *MR đóng mà không merge*, ghi chú thêm `PR #n closed without merging.`. Có thông báo khi PR merge, bị đóng, hoặc CI lỗi, kể cả khi lần push sau lại lỗi.
   - PR đã merge hay đóng thì thôi hỏi. Chỉ hỏi PR trên đúng GitHub đã cấu hình, nên token không đi nơi khác.

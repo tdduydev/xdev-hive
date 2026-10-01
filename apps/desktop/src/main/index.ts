@@ -56,7 +56,7 @@ import { gitClone, importRepos, planImport } from "./gitlab/import.ts";
 import { setMainLocale, tr } from "./i18n.ts";
 import { MergeRequester, mrLabel, type MrHost } from "./gitlab/mr.ts";
 import { branchFor } from "#desktop/main/runner/worktree.ts";
-import { cleanupNote, MrWatcher, type MrChange } from "./gitlab/watch.ts";
+import { cleanupNote, mrPollDelay, MrWatcher, type MrChange } from "./gitlab/watch.ts";
 import { CiFixer } from "./gitlab/ci-fix.ts";
 import { installAgents, installCodexConfig, installShim } from "./installer.ts";
 import { expandEnv, expandHome, resolveBin } from "./runner/command.ts";
@@ -152,6 +152,8 @@ function project(name: unknown): DesktopProject {
 function persist(next: HiveConfig): DesktopSettings {
   saveConfig(next);
   reload();
+  // A changed MR check period counts from the last check, not from the next tick of the old period.
+  scheduleMrWatch();
   return settings();
 }
 
@@ -668,6 +670,28 @@ function onRunnerEvent(event: RunnerEvent): void {
   n.show();
 }
 
+let mrWatchTimer: NodeJS.Timeout | null = null;
+let lastMrCheckAt: number | null = null;
+
+/**
+ * (Re)arms the MR check from the period in the settings. One timeout re-armed after each check rather than a
+ * setInterval, so a period saved on the Projects page applies without restarting the app.
+ */
+function scheduleMrWatch(): void {
+  if (!mrWatcher) return;
+  if (mrWatchTimer) clearTimeout(mrWatchTimer);
+  const delay = mrPollDelay(lastMrCheckAt, config.gitlab.mr.pollMinutes, Date.now(), smokeShot ? 0 : 30_000);
+  mrWatchTimer = setTimeout(() => {
+    mrWatchTimer = null;
+    lastMrCheckAt = Date.now();
+    void mrWatcher
+      .check()
+      .then(onMrChanges, () => undefined)
+      .finally(scheduleMrWatch);
+  }, delay);
+  mrWatchTimer.unref();
+}
+
 /** Tells about MRs that were merged or closed, and pipelines that failed. */
 function onMrChanges(changes: MrChange[]): void {
   // The hub raises an alert for a pipeline that still fails once the fix runs are used up (roadmap 22m).
@@ -1097,10 +1121,8 @@ if (!app.requestSingleInstanceLock()) {
     const mirror = () => void mirrorAll().catch(() => undefined);
     if (!smokeShot) setTimeout(mirror, 90_000).unref();
     setInterval(mirror, 10 * 60_000).unref();
-    // Open MRs and PRs (state and pipeline on GitLab, checks on GitHub): shortly after start, then every 2 minutes.
-    const watchMrs = () => void mrWatcher.check().then(onMrChanges, () => undefined);
-    setTimeout(watchMrs, smokeShot ? 0 : 30_000).unref();
-    setInterval(watchMrs, 2 * 60_000).unref();
+    // Open MRs and PRs (state and pipeline on GitLab, checks on GitHub): shortly after start, then every pollMinutes.
+    scheduleMrWatch();
     if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(appIcon());
     registerIpc();
     createWindow();

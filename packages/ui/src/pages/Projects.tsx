@@ -481,6 +481,17 @@ function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; onSaved:
             <NativeSelectOption value="todo">{t("projects.mrOnClosedTodo")}</NativeSelectOption>
             <NativeSelectOption value="keep">{t("projects.mrOnClosedKeep")}</NativeSelectOption>
           </NativeSelect>
+          <Label htmlFor="gl-poll">{t("projects.mrPollMinutes")}</Label>
+          <Input
+            id="gl-poll"
+            className="sm:max-w-40"
+            type="number"
+            min={1}
+            max={60}
+            value={mr.pollMinutes}
+            // Kept within 1–60 here: the schema rejects anything else and the whole save would fail.
+            onChange={(e) => e.target.value !== "" && set("pollMinutes", Math.min(60, Math.max(1, Math.round(Number(e.target.value)) || 1)))}
+          />
         </div>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox checked={mr.fixCi} onCheckedChange={(v) => set("fixCi", v === true)} />
