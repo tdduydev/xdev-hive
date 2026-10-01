@@ -77,6 +77,8 @@ export class HubBackend implements HiveBackend {
         authorization: `Bearer ${this.#token}`,
         "x-hive-agent": actor.name,
         ...(actor.source ? { "x-hive-source": sourceHeader(actor.source) } : {}),
+        // The hub keeps it on the audit row of every write the agent makes (roadmap 27c).
+        ...(actor.run ? { "x-hive-run": actor.run } : {}),
       },
       body: JSON.stringify({ method, input }),
     });

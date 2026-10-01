@@ -3,7 +3,7 @@
 // stdout is the MCP channel, so all logging goes to stderr.
 import os from "node:os";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { agentActorName, agentSource, loadConfig, resolveBackend } from "@xdev-hive/core/node";
+import { agentActorName, agentSource, loadConfig, readRun, resolveBackend, type Actor } from "@xdev-hive/core/node";
 import { createHiveMcpServer } from "./server.ts";
 
 const config = loadConfig();
@@ -12,8 +12,13 @@ const agent = (process.env.HIVE_AGENT ?? "agent").replace(/[^\w.-]/g, "").slice(
 const name = agentActorName(agent, config.mode, config.machine, os.userInfo().username);
 
 const source = agentSource(config.machine, process.env);
+// HIVE_RUN: set by the runner (installer.ts runMcpServers); on a hub it goes as x-hive-run, the audit log's run column.
+const run = readRun(process.env.HIVE_RUN);
+// On a hub, the hub decides the label and the account from the token; without one, this machine's user is the person.
+const local: Partial<Actor> = config.mode === "local" ? { agent, onBehalf: os.userInfo().username } : {};
 // HIVE_READONLY=1: set by the runner for profiles marked read-only.
 const readOnly = process.env.HIVE_READONLY === "1";
-const server = createHiveMcpServer(backend, { name, role: "agent", source }, { defaultProject: process.env.HIVE_PROJECT, readOnly });
+const actor: Actor = { name, role: "agent", source, ...local, ...(run ? { run } : {}) };
+const server = createHiveMcpServer(backend, actor, { defaultProject: process.env.HIVE_PROJECT, readOnly });
 await server.connect(new StdioServerTransport());
 console.error(`[xdev-hive] MCP ready (${config.mode} mode) as ${name}`);

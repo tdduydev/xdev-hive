@@ -5,9 +5,11 @@ import {
   AGENT_TEMPLATES,
   POLICY_CLIS,
   POLICY_REPO_PARTS,
+  SELF_APPROVALS,
   missingRequired,
   requiredItemIds,
   type AuditEntry,
+  type SelfApproval,
   type CommandStatus,
   type MachineCommand,
   type MachineDetail,
@@ -77,6 +79,17 @@ export const ACTION_LABEL: Record<string, MessageKey> = {
   "webhooks.save": "auditAction.webhooksSave",
   "webhooks.remove": "auditAction.webhooksRemove",
   "users.ssoLink": "auditAction.usersSsoLink",
+  // What agents write (roadmap 27c).
+  "tasks.claim": "auditAction.tasksClaim",
+  "tasks.update": "auditAction.tasksUpdate",
+  "proposals.create": "auditAction.proposalsCreate",
+  "memory.write": "auditAction.memoryWrite",
+  "memory.resolve": "auditAction.memoryResolve",
+  "memory.keep": "auditAction.memoryKeep",
+  "chat.send": "auditAction.chatSend",
+  "chat.propose": "auditAction.chatPropose",
+  "chat.decide": "auditAction.chatDecide",
+  "chat.decideAll": "auditAction.chatDecideAll",
 };
 
 /** Small uppercase heading for a group inside a card. */
@@ -446,6 +459,26 @@ export function PolicyTab() {
 
       <Card>
         <CardHeader>
+          <CardTitle>{t("admin.selfApproval")}</CardTitle>
+          <CardDescription>{t("admin.selfApprovalHint")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <NativeSelect
+            value={draft.selfApproval}
+            onChange={(e) => change({ selfApproval: e.target.value as SelfApproval })}
+            aria-label={t("admin.selfApproval")}
+          >
+            {SELF_APPROVALS.map((v) => (
+              <NativeSelectOption key={v} value={v}>
+                {t(`admin.selfApprovalOption.${v}`)}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>{t("admin.templates")}</CardTitle>
           <CardDescription>
             {rich(t("admin.templatesHint"), { env: <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">env</code> })}
@@ -490,6 +523,7 @@ export function PolicyTab() {
                 requireShim: draft.requireShim,
                 projects: draft.projects,
                 profileTemplates,
+                selfApproval: draft.selfApproval,
               });
               setDraft(next);
               setTemplates(JSON.stringify(next.profileTemplates, null, 2));

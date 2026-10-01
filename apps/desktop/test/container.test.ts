@@ -204,7 +204,7 @@ describe("Hive and sign-in for CLIs in a container", () => {
       "-c", 'mcp_servers.hive.bearer_token_env_var="HIVE_HUB_TOKEN"',
     ]);
     const source = JSON.stringify(JSON.stringify({ via: "mcp", machine: "duy-mbp", run: "R-1", task: "T-1" }));
-    assert.equal(args[7], `mcp_servers.hive.http_headers={"x-hive-agent"="codex-1.duy-mbp","x-hive-project"="demo","x-hive-source"=${source},"x-hive-readonly"="1"}`);
+    assert.equal(args[7], `mcp_servers.hive.http_headers={"x-hive-agent"="codex-1.duy-mbp","x-hive-project"="demo","x-hive-source"=${source},"x-hive-run"="R-1","x-hive-readonly"="1"}`);
     assert.deepEqual(args.slice(8), ["-c", 'mcp_servers.hive.default_tools_approval_mode="approve"'], "headless: Hive's tools run without asking");
     assert.ok(!args.join(" ").includes("hive_machine"));
     assert.deepEqual(hubMcpEnv(hub, r, "codex"), { HIVE_HUB_TOKEN: "hive_machine" });
@@ -223,6 +223,7 @@ describe("Hive and sign-in for CLIs in a container", () => {
     const servers = claudeMcpServers(hub, r) as Record<string, { url: string; headers: Record<string, string> }>;
     assert.equal(servers["xdev-hive"]!.url, "https://hive.example.test/mcp");
     assert.equal(servers["xdev-hive"]!.headers.authorization, "Bearer hive_machine");
+    assert.equal(servers["xdev-hive"]!.headers["x-hive-run"], "R-1", "the audit log's run column");
     assert.deepEqual(claudeMcpServers(null, r), {});
   });
 
