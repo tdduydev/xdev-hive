@@ -1,8 +1,9 @@
 // Hub accounts: username + password (or an OpenID Connect identity), per-project grants, browser sessions.
+// A grant is a role or the permissions picked one by one (roadmap 25); the shared data's grant is the row of project "*".
 // Passwords: scrypt with a random salt. Sessions: random token in an HttpOnly cookie, only its SHA-256 is stored.
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
-import { HiveError, LEVELS, PROJECT_NAME, type Access, type HubUser, type Level } from "@xdev-hive/core";
+import { HiveError, PROJECT_NAME, readGrant, type Access, type Grant, type HubUser } from "@xdev-hive/core";
 import type { OidcIdentity } from "./oidc.ts";
 
 export const USERNAME = /^[a-z0-9][a-z0-9._-]{1,39}$/;
@@ -14,6 +15,20 @@ type Row = Record<string, unknown>;
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 
 export type UserInfo = HubUser;
+
+/** The project key the shared data's grant is stored under: no project can be called that. */
+const SHARED_ROW = "*";
+
+/** A grant as the admin page or a project lead sent it, or a bad_request naming what is wrong. */
+function checkGrant(raw: unknown, where: string): Grant {
+  const grant = readGrant(raw);
+  if (grant === null) throw new HiveError("bad_request", `Quyền không hợp lệ cho ${where}: ${JSON.stringify(raw)}`, { key: "errors.badGrant", vars: { project: where } });
+  return grant;
+}
+
+/** As stored: a role in level, or "custom" with the permissions as JSON. */
+const toRow = (g: Grant): { level: string; permissions: string | null } => (typeof g === "string" ? { level: g, permissions: null } : { level: "custom", permissions: JSON.stringify(g.permissions) });
+const fromRow = (r: Row): Grant | null => readGrant(String(r.level) === "custom" ? { permissions: JSON.parse(String(r.permissions ?? "[]")) as unknown } : r.level);
 
 function hashPassword(password: string): string {
   const salt = randomBytes(16);
@@ -62,6 +77,9 @@ export class UserStore {
       issuer TEXT NOT NULL, subject TEXT NOT NULL, user_id TEXT NOT NULL, email TEXT, created_at TEXT NOT NULL,
       PRIMARY KEY(issuer, subject));
     CREATE INDEX IF NOT EXISTS hub_identities_user ON hub_identities(user_id);`);
+    // Roadmap 25: the permissions of a "custom" grant.
+    const columns = (db.prepare("PRAGMA table_info(hub_grants)").all() as Row[]).map((c) => String(c.name));
+    if (!columns.includes("permissions")) db.exec("ALTER TABLE hub_grants ADD COLUMN permissions TEXT");
   }
 
   count(): number {
@@ -69,7 +87,15 @@ export class UserStore {
   }
 
   #info(r: Row): UserInfo {
-    const grants = this.#db.prepare("SELECT project, level FROM hub_grants WHERE user_id = ? ORDER BY project").all(String(r.id)) as Row[];
+    const rows = this.#db.prepare("SELECT project, level, permissions FROM hub_grants WHERE user_id = ? ORDER BY project").all(String(r.id)) as Row[];
+    const grants: Record<string, Grant> = {};
+    let shared: Grant | null = null;
+    for (const g of rows) {
+      const grant = fromRow(g);
+      if (grant === null) continue;
+      if (String(g.project) === SHARED_ROW) shared = grant;
+      else grants[String(g.project)] = grant;
+    }
     return {
       id: String(r.id),
       username: String(r.username),
@@ -79,7 +105,8 @@ export class UserStore {
       mustChangePassword: Number(r.must_change) === 1,
       createdAt: String(r.created_at),
       lastLoginAt: r.last_login_at == null ? null : String(r.last_login_at),
-      grants: Object.fromEntries(grants.map((g) => [String(g.project), String(g.level) as Level])),
+      grants,
+      shared,
       sso: this.#db.prepare("SELECT 1 FROM hub_identities WHERE user_id = ?").get(String(r.id)) !== undefined,
     };
   }
@@ -146,7 +173,7 @@ export class UserStore {
 
   /** Per-project access of a user; undefined for admins (unrestricted). */
   access(user: UserInfo): Access | undefined {
-    return user.admin ? undefined : { projects: user.grants };
+    return user.admin ? undefined : { projects: user.grants, ...(user.shared ? { shared: user.shared } : {}) };
   }
 
   /** New account with a temporary password the user must change at first sign-in. */
@@ -174,21 +201,46 @@ export class UserStore {
     return this.get(id)!;
   }
 
-  setGrants(id: string, grants: Record<string, string>): UserInfo {
+  /** Every grant of an account at once (the admin page); shared undefined keeps the shared data's grant as it is. */
+  setGrants(id: string, grants: Record<string, unknown>, shared?: unknown): UserInfo {
     this.#require(id);
-    for (const [project, level] of Object.entries(grants)) {
+    const checked = Object.entries(grants).map(([project, raw]) => {
       if (!PROJECT_NAME.test(project)) throw new HiveError("bad_request", `Dự án không hợp lệ: ${project}`, { key: "errors.badProject", vars: { project } });
-      if (!(LEVELS as readonly string[]).includes(level)) throw new HiveError("bad_request", `Mức quyền không hợp lệ: ${level}`, { key: "errors.badLevel", vars: { level } });
-    }
+      return [project, checkGrant(raw, project)] as const;
+    });
+    const sharedGrant = shared === undefined || shared === null ? shared : checkGrant(shared, "Chung");
     this.#db.exec("BEGIN IMMEDIATE");
     try {
-      this.#db.prepare("DELETE FROM hub_grants WHERE user_id = ?").run(id);
-      const insert = this.#db.prepare("INSERT INTO hub_grants(user_id, project, level) VALUES (?, ?, ?)");
-      for (const [project, level] of Object.entries(grants)) insert.run(id, project, level);
+      this.#db.prepare(`DELETE FROM hub_grants WHERE user_id = ?${sharedGrant === undefined ? " AND project <> '*'" : ""}`).run(id);
+      const insert = this.#db.prepare("INSERT INTO hub_grants(user_id, project, level, permissions) VALUES (?, ?, ?, ?)");
+      for (const [project, grant] of checked) {
+        const row = toRow(grant);
+        insert.run(id, project, row.level, row.permissions);
+      }
+      if (sharedGrant) {
+        const row = toRow(sharedGrant);
+        insert.run(id, SHARED_ROW, row.level, row.permissions);
+      }
       this.#db.exec("COMMIT");
     } catch (err) {
       this.#db.exec("ROLLBACK");
       throw err;
+    }
+    return this.get(id)!;
+  }
+
+  /** One grant (a project lead's Thành viên page): project null is the shared data; grant null takes the account out. */
+  setGrant(id: string, project: string | null, raw: unknown): UserInfo {
+    this.#require(id);
+    if (project !== null && !PROJECT_NAME.test(project)) throw new HiveError("bad_request", `Dự án không hợp lệ: ${project}`, { key: "errors.badProject", vars: { project } });
+    const key = project ?? SHARED_ROW;
+    if (raw === null) {
+      this.#db.prepare("DELETE FROM hub_grants WHERE user_id = ? AND project = ?").run(id, key);
+    } else {
+      const row = toRow(checkGrant(raw, project ?? "Chung"));
+      this.#db
+        .prepare("INSERT INTO hub_grants(user_id, project, level, permissions) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, project) DO UPDATE SET level = excluded.level, permissions = excluded.permissions")
+        .run(id, key, row.level, row.permissions);
     }
     return this.get(id)!;
   }

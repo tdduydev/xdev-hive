@@ -1,5 +1,5 @@
 // Contracts between the shared UI and its hosts (web hub, desktop main process). Types only.
-import type { Access, Level } from "./access.ts";
+import type { Access, Grant } from "./access.ts";
 import type { AgentKind, AgentProfile, AgentRole, PlanUsage, RunnerSettings, RunStatus } from "./agents.ts";
 import type { GitLabImportCandidate, GitLabImportResult, MrSettings, MrState, MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { TransferReport } from "./transfer.ts";
@@ -68,8 +68,10 @@ export interface HubUser {
   mustChangePassword: boolean;
   createdAt: string;
   lastLoginAt: string | null;
-  /** Project → level; admins see every project whatever this says. */
-  grants: Record<string, Level>;
+  /** Project → role or permissions (roadmap 25); admins see every project whatever this says. */
+  grants: Record<string, Grant>;
+  /** The shared data (Chung); null: view, and propose / write memory where the account may in some project. */
+  shared: Grant | null;
   /** Signs in through the hub's OpenID Connect provider (linked, or created by it). */
   sso: boolean;
 }

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { can, type HiveSystem, type Level, type Me, type WriteSource } from "@xdev-hive/core";
+import { may, type HiveSystem, type Me, type Permission, type WriteSource } from "@xdev-hive/core";
 import { activeIntl, hasKey, translate, type MessageKey } from "./i18n/translate.ts";
 import type { HiveClient } from "./client.ts";
 import type { Scope } from "./lib/scope.ts";
@@ -128,9 +128,10 @@ export function useAction() {
  * What the signed-in person may do with a project's data (null = the shared data), by the rules the hub
  * enforces. Used to hide controls; the hub still checks every call.
  */
-export function useCan(): (owner: string | null, need: Level) => boolean {
+/** Whether I may do something in a project (owner) or in the shared data (owner null), by roadmap 25's permissions. */
+export function useCan(): (owner: string | null, need: Permission) => boolean {
   const { me } = useHive();
-  return useCallback((owner: string | null, need: Level) => can(me, owner, need), [me]);
+  return useCallback((owner: string | null, need: Permission) => may(me, owner, need), [me]);
 }
 
 /** Project keys seen anywhere (loaded once by the shell). */

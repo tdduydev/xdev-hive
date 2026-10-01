@@ -18,7 +18,7 @@ export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   const allow = useCan();
   const toast = useToast();
   const action = useAction();
-  const writable = useMemo(() => projects.filter((p) => allow(p, "contribute")), [projects, allow]);
+  const writable = useMemo(() => projects.filter((p) => allow(p, "taskManage")), [projects, allow]);
   const [title, setTitle] = useState("");
   const [project, setProject] = useState("");
   const [id, setId] = useState("");

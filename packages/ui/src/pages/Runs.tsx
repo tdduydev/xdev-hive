@@ -571,7 +571,7 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
   const verdict = run.role === "review" && run.status === "succeeded" ? parseVerdict(run.summary) : "none";
   const tick = useRefresh(live);
   const full = useQuery(() => client.call("runs.get", { machineId: run.machineId, runId: run.runId }), [client, run.machineId, run.runId, tick]);
-  const manage = allow(run.project, "manage");
+  const manage = allow(run.project, "runDispatch");
   const patchFiles = useMemo(() => (full.data?.patch ? parsePatch(full.data.patch) : []), [full.data?.patch]);
 
   const actions = live ? (

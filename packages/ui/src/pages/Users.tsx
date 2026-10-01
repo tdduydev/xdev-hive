@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Copy, MoreHorizontal, Plus, UserPlus } from "lucide-react";
-import { LEVELS, PROJECT_NAME, type HubUser, type Level } from "@xdev-hive/core";
+import { PROJECT_NAME, type Grant, type HubUser } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
@@ -14,15 +14,12 @@ import {
 } from "@xdev-hive/ui/components/ui/dropdown-menu";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
-import { ToggleGroup, ToggleGroupItem } from "@xdev-hive/ui/components/ui/toggle-group";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader } from "#ui/components/common.tsx";
+import { GrantBadge, GrantEditor, RoleLegend } from "#ui/components/GrantEditor.tsx";
 import { formatTime, useAction, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 
-const SEGMENT = "px-2.5 text-xs";
-const NONE = "none";
 
-const LEVEL_TONE: Record<Level, string> = { view: "neutral", contribute: "info", manage: "accent" };
 
 /** A temporary password to hand over once: after a new account or a reset. */
 function Handover({ shown, onClose }: { shown: { username: string; password: string; reset: boolean }; onClose: () => void }) {
@@ -146,10 +143,9 @@ export function UsersPage() {
                         <Badge tone="accent">{t("users.adminAll")}</Badge>
                       ) : (
                         <div className="flex flex-wrap gap-1">
-                          {grants.map(([p, l]) => (
-                            <Badge key={p} tone={LEVEL_TONE[l]} className="font-mono text-[11px]">
-                              {p} · {t(`level.${l}`)}
-                            </Badge>
+                          {u.shared ? <GrantBadge grant={u.shared} label={t("members.shared")} /> : null}
+                          {grants.map(([p, g]) => (
+                            <GrantBadge key={p} grant={g} label={p} />
                           ))}
                           {grants.length ? null : <span className="text-xs text-muted-foreground">{t("users.sharedOnly")}</span>}
                         </div>
@@ -251,18 +247,19 @@ export function UsersPage() {
 function GrantsDialog({ user, projects, onClose, onSaved }: { user: HubUser; projects: string[]; onClose: () => void; onSaved: () => void }) {
   const { client } = useHive();
   const t = useT();
-  const [grants, setGrants] = useState<Record<string, Level>>(user.grants);
+  const [grants, setGrants] = useState<Record<string, Grant>>(user.grants);
+  const [shared, setShared] = useState<Grant | null>(user.shared);
   const [extra, setExtra] = useState<string[]>([]);
   const [adding, setAdding] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
   const action = useAction();
   const rows = useMemo(() => [...new Set([...projects, ...Object.keys(user.grants), ...extra])].sort(), [projects, user.grants, extra]);
 
-  const set = (project: string, level: Level | typeof NONE) =>
+  const set = (project: string, grant: Grant | null) =>
     setGrants((g) => {
       const next = { ...g };
-      if (level === NONE) delete next[project];
-      else next[project] = level;
+      if (grant === null) delete next[project];
+      else next[project] = grant;
       return next;
     });
 
@@ -274,13 +271,13 @@ function GrantsDialog({ user, projects, onClose, onSaved }: { user: HubUser; pro
     }
     setAddError(null);
     setExtra((x) => [...x, name]);
-    set(name, "view");
+    set(name, "viewer");
     setAdding("");
   };
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
             {t("users.grantsOf", { name: user.displayName })} <span className="font-mono text-sm font-normal text-muted-foreground">@{user.username}</span>
@@ -289,35 +286,24 @@ function GrantsDialog({ user, projects, onClose, onSaved }: { user: HubUser; pro
             {t("users.grantsHint")}
           </DialogDescription>
         </DialogHeader>
-        <ul className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-3">
-          {LEVELS.map((l) => (
-            <li key={l} className="rounded-md bg-muted px-2 py-1.5">
-              <span className="font-semibold text-foreground">{t(`level.${l}`)}</span>: {t(`levelHint.${l}`)}
-            </li>
-          ))}
-        </ul>
-        <div className="flex max-h-[45vh] flex-col divide-y overflow-y-auto rounded-md border">
+        <RoleLegend />
+        <div className="flex max-h-[50vh] flex-col divide-y overflow-y-auto rounded-md border">
+          <div className="flex flex-col gap-1.5 px-3 py-2.5">
+            <span className="flex min-w-0 flex-col">
+              <span className="text-sm font-medium">{t("members.shared")}</span>
+              <span className="text-[11px] text-muted-foreground">{t("members.sharedDefaultHint")}</span>
+            </span>
+            <div>
+              <GrantEditor value={shared} onChange={setShared} noneLabel={t("members.sharedDefault")} label={t("users.levelOn", { project: t("members.shared") })} />
+            </div>
+          </div>
           {rows.length === 0 ? <Empty>{t("users.noProjects")}</Empty> : null}
           {rows.map((p) => (
-            <div key={p} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-              <span className="min-w-0 font-mono text-sm break-all">{p}</span>
-              <ToggleGroup
-                type="single"
-                variant="outline"
-                size="sm"
-                value={grants[p] ?? NONE}
-                onValueChange={(v) => v && set(p, v as Level | typeof NONE)}
-                aria-label={t("users.levelOn", { project: p })}
-              >
-                <ToggleGroupItem value={NONE} className={SEGMENT}>
-                  {t("users.levelNone")}
-                </ToggleGroupItem>
-                {LEVELS.map((l) => (
-                  <ToggleGroupItem key={l} value={l} className={SEGMENT}>
-                    {t(`level.${l}`)}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
+            <div key={p} className="flex flex-col gap-1.5 px-3 py-2.5 sm:flex-row sm:items-start sm:gap-4">
+              <span className="min-w-0 pt-1 font-mono text-sm break-all sm:w-40 sm:shrink-0">{p}</span>
+              <div className="min-w-0 flex-1">
+                <GrantEditor value={grants[p] ?? null} onChange={(g) => set(p, g)} label={t("users.levelOn", { project: p })} />
+              </div>
             </div>
           ))}
         </div>
@@ -354,7 +340,7 @@ function GrantsDialog({ user, projects, onClose, onSaved }: { user: HubUser; pro
             disabled={action.busy}
             onClick={() =>
               void action.run(async () => {
-                await client.users!.setGrants(user.id, grants);
+                await client.users!.setGrants(user.id, grants, shared);
                 onSaved();
               })
             }

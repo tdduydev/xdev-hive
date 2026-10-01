@@ -85,7 +85,8 @@ describe("accounts", () => {
   it("shows a member only the projects granted, and refuses cookie calls without the CSRF header", async () => {
     const b = await signedIn("lan", "blue-comb-2026!");
     const me = (await b.send("/api/me")).body.result;
-    assert.deepEqual([me.role, me.access], ["member", { projects: { app: "manage" } }]);
+    // Saved as the old "manage", read as the role it became (roadmap 25).
+    assert.deepEqual([me.role, me.access], ["member", { projects: { app: "lead" } }]);
     const keys = (await b.rpc("docs.list")).body.result.map((d: { key: string }) => d.key);
     assert.ok(keys.includes("project/app/agents") && keys.includes("org/agent-protocol"));
     assert.ok(!keys.includes("project/billing/agents"));

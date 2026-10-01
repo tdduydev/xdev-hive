@@ -142,7 +142,7 @@ export function BoardPage() {
   };
   const refresh = () => setTick((n) => n + 1);
   const isLocalProject = localProjects.includes(current);
-  const canMove = allow(current || null, "contribute");
+  const canMove = allow(current || null, "taskWork");
 
   const move = (task: Task, status: TaskStatus) => {
     const from = task.status;

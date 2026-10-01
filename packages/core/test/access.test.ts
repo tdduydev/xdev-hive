@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { can, HiveError, levelOn, type Actor } from "#core/index.ts";
+import { grantPermissions, grantRole, HiveError, intersectAccess, isContextDoc, may, permissionsOn, readGrant, ROLE_PERMISSIONS, type Actor } from "#core/index.ts";
 import { SqliteHive } from "#core/node.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
@@ -22,16 +22,89 @@ async function hub() {
   return hive;
 }
 
-describe("access levels", () => {
+const list = (actor: Actor, owner: string | null) => [...(permissionsOn(actor, owner) ?? [])].sort();
+
+describe("permissions per project (roadmap 25)", () => {
+  it("read old levels as roles, so grants saved before keep what they allowed", () => {
+    assert.equal(readGrant("view"), "viewer");
+    assert.equal(readGrant("contribute"), "member");
+    assert.equal(readGrant("manage"), "lead");
+    assert.equal(readGrant("owner"), null);
+    assert.deepEqual(readGrant({ permissions: ["docApprove"] }), { permissions: ["view", "docApprove"] }, "seeing the project comes with any permission");
+    assert.equal(readGrant({ permissions: ["docApprove", "fly"] }), null);
+    assert.equal(grantRole({ permissions: [...ROLE_PERMISSIONS.reviewer] }), "reviewer");
+    assert.equal(grantRole({ permissions: ["view", "docApprove"] }), "custom");
+  });
+
   it("combine grants with the role cap, and give shared data to everyone", () => {
-    assert.equal(levelOn(lan, "web"), "manage");
-    assert.equal(levelOn(lanAgent, "web"), "contribute", "agent tokens never manage");
-    assert.equal(levelOn(lan, "billing"), null);
-    assert.equal(levelOn(lan, null), "contribute", "contributes somewhere → may contribute to shared");
-    assert.equal(levelOn({ name: "x", role: "member", access: { projects: { app: "view" } } }, null), "view");
-    assert.equal(levelOn(admin, "billing"), "manage");
-    assert.equal(levelOn({ name: "old", role: "agent" }, "billing"), "contribute", "tokens of no account keep the old rules");
-    assert.equal(can({ name: "old", role: "agent" }, "billing", "manage"), false);
+    assert.deepEqual(list(lan, "web"), [...ROLE_PERMISSIONS.lead].sort());
+    assert.deepEqual(list(lanAgent, "web"), ["docPropose", "memoryWrite", "taskWork", "view"], "agent tokens never approve or manage");
+    assert.equal(permissionsOn(lan, "billing"), null);
+    assert.deepEqual(list(lan, null), ["docPropose", "memoryWrite", "view"], "works somewhere → may propose to the shared data");
+    assert.deepEqual(list({ name: "x", role: "member", access: { projects: { app: "view" } } }, null), ["view"]);
+    assert.equal(may(admin, "billing", "membersManage"), true);
+    assert.deepEqual(list({ name: "old", role: "agent" }, "billing"), ["codeReview", "docPropose", "memoryWrite", "taskWork", "view"], "tokens of no account keep the old rules");
+  });
+
+  it("give the shared data a grant of its own when the account has one", () => {
+    const keeper: Actor = { name: "hoa", role: "member", access: { projects: { app: "member" }, shared: "reviewer" } };
+    assert.equal(may(keeper, null, "docApprove"), true);
+    assert.equal(may(keeper, null, "contextEdit"), false);
+    const reader: Actor = { name: "an", role: "member", access: { projects: { app: "lead" }, shared: "viewer" } };
+    assert.equal(may(reader, null, "docPropose"), false, "an explicit grant is the whole of it");
+  });
+
+  it("let the chat leader do only what both its sender and its machine may", () => {
+    const both = intersectAccess({ projects: { app: "reviewer", web: "lead" } }, { projects: { app: "lead", billing: "lead" } })!;
+    assert.deepEqual(Object.keys(both.projects), ["app"]);
+    assert.deepEqual([...grantPermissions(both.projects.app)].sort(), [...ROLE_PERMISSIONS.reviewer].sort());
+    assert.deepEqual([...grantPermissions(both.shared)].sort(), ["docPropose", "memoryWrite", "view"]);
+  });
+
+  it("know which docs agents read", () => {
+    assert.equal(isContextDoc("project/app/agents"), true);
+    assert.equal(isContextDoc("project/app/decisions"), true);
+    assert.equal(isContextDoc("project/app/skills/deploy"), true);
+    assert.equal(isContextDoc("org/style", { includeInAgents: true }), true);
+    assert.equal(isContextDoc("project/app/api", { paths: ["apps/api/**"] }), true);
+    assert.equal(isContextDoc("project/app/huong-dan", { paths: [] }), false);
+  });
+});
+
+describe("roles in the hub (roadmap 25)", () => {
+  const as = (name: string, grant: unknown, role: Actor["role"] = "member"): Actor => ({ name, role, access: { projects: { web: grant as never } } });
+  const reviewer = as("rv", "reviewer");
+  const member = as("mb", "member");
+
+  it("let a reviewer approve docs, memory and leader actions, and move reviewed work to done, but not run or edit what agents read", async () => {
+    const hive = await hub();
+    await hive.call("docs.save", { key: "project/web/huong-dan", content: "v1", title: "Hướng dẫn" }, admin);
+    const p = await hive.call("proposals.create", { docKey: "project/web/huong-dan", baseVersion: 1, content: "v2", reason: "sửa" }, member);
+    assert.equal((await hive.call("proposals.approve", { id: p.id }, reviewer)).status, "approved");
+    const ctx = await hive.call("proposals.create", { docKey: "project/web/agents", baseVersion: 1, content: "rules v2", reason: "sửa" }, member);
+    await assert.rejects(hive.call("proposals.approve", { id: ctx.id }, reviewer), (e: unknown) => (e as HiveError).key === "errors.need.contextEdit");
+    assert.equal((await hive.call("proposals.approve", { id: ctx.id }, lan)).status, "approved", "a lead edits the context");
+    await assert.rejects(hive.call("docs.save", { key: "project/web/huong-dan", content: "v3", baseVersion: 2 }, reviewer), (e: unknown) => (e as HiveError).key === "errors.need.docEdit");
+    await assert.rejects(hive.call("runs.dispatch", { machineId: "runner.duy-mbp@duy-mbp", project: "web", taskId: "web-1" } as never, reviewer), (e: unknown) => (e as HiveError).key === "errors.need.runDispatch");
+    await hive.call("tasks.update", { id: "web-1", status: "review" }, member);
+    await assert.rejects(hive.call("tasks.update", { id: "web-1", status: "done" }, member), (e: unknown) => (e as HiveError).key === "errors.need.codeReview");
+    assert.equal((await hive.call("tasks.update", { id: "web-1", status: "done" }, reviewer)).status, "done");
+  });
+
+  it("make a doc for some paths, or one put in AGENTS.md, the context's to change", async () => {
+    const hive = await hub();
+    const editor = as("ed", { permissions: ["docEdit"] });
+    await hive.call("docs.save", { key: "project/web/api", content: "API", title: "API" }, editor);
+    await assert.rejects(hive.call("docs.save", { key: "project/web/api", content: "API", baseVersion: 1, paths: ["apps/api/**"] }, editor), code("forbidden"));
+    await hive.call("docs.save", { key: "project/web/api", content: "API", baseVersion: 1, paths: ["apps/api/**"] }, as("ctx", { permissions: ["docEdit", "contextEdit"] }));
+    await assert.rejects(hive.call("docs.save", { key: "project/web/api", content: "API v3", baseVersion: 2 }, editor), (e: unknown) => (e as HiveError).key === "errors.need.contextEdit");
+  });
+
+  it("approve memory written by someone who may approve it, and keep the rest waiting", async () => {
+    const hive = new SqliteHive(":memory:", { memoryRequiresApproval: true });
+    hive.seed("hub");
+    assert.equal((await hive.call("memory.write", { project: "web", kind: "gotcha", content: "a" }, reviewer)).status, "approved");
+    assert.equal((await hive.call("memory.write", { project: "web", kind: "gotcha", content: "b" }, member)).status, "pending");
   });
 });
 
@@ -58,7 +131,7 @@ describe("per-project access in the hub", () => {
     // The interface shows these in the person's language: the key and its placeholders travel with the error.
     await assert.rejects(hive.call("docs.save", { key: "project/app/agents", content: "x" }, lan), (e: unknown) => {
       const err = e as HiveError;
-      return err.key === "errors.need.manage" && err.vars?.project === "app";
+      return err.key === "errors.need.contextEdit" && err.vars?.project === "app";
     });
     await assert.rejects(hive.call("docs.save", { key: "org/style", content: "x" }, lan), code("forbidden"), "shared docs: hub admins only");
     await assert.rejects(hive.call("tasks.create", { id: "web-2", project: "web", title: "x" }, lanAgent), code("forbidden"), "agent tokens cannot create tasks");
