@@ -167,6 +167,8 @@ export const schemas = {
     /** The page it goes under (same space; null = the top). Left out: where it is. */
     parent: docKey.nullable().optional(),
     folder: z.boolean().optional(),
+    /** Written from the repo (roadmap 26); null: Hive is its home again. Left out: as it is. */
+    mirror: z.object({ from: z.string().min(1).max(300), commit: z.string().regex(/^[0-9a-f]{4,64}$/) }).nullable().optional(),
   }),
   /** Puts a page under another (or at the top) without a new version. */
   "docs.move": z.object({ key: docKey, parent: docKey.nullable() }),
