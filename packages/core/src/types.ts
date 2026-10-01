@@ -34,8 +34,16 @@ export interface DocSummary {
   parent: string | null;
   /** Shown as a folder: a page whose job is to hold other pages. */
   folder: boolean;
+  /** Mirrored from the repo (roadmap 26): the file (and section) it comes from and the commit; null when Hive is its home. */
+  mirror?: DocMirror | null;
   updatedBy: string;
   updatedAt: string;
+}
+
+export interface DocMirror {
+  /** `README.md`, or `README.md#Hub cho team` for a section. */
+  from: string;
+  commit: string;
 }
 
 export interface Doc extends DocSummary {

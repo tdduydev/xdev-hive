@@ -1,0 +1,6 @@
+{
+  "docs": [
+    { "file": "README.md", "split": "##", "folder": "huong-dan", "folderTitle": "Hướng dẫn" },
+    { "file": "docs/roadmap.md", "split": "##", "folder": "roadmap", "folderTitle": "Roadmap", "prefix": "roadmap-", "short": true }
+  ]
+}

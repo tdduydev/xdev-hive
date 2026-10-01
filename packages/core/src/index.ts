@@ -13,6 +13,7 @@ export * from "./errors.ts";
 export * from "./hidden.ts";
 export * from "./keys.ts";
 export * from "./methods.ts";
+export * from "./mirror.ts";
 export * from "./policy.ts";
 export * from "./secrets.ts";
 export * from "./source.ts";

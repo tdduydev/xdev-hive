@@ -90,6 +90,20 @@ export interface SyncReport {
   /** Short hash of the commit made by the sync, if any. */
   commit: string | null;
   note?: string;
+  /** The repo's docs mirrored into Hive (roadmap 26), when the project has a .xdev-hive/docs.json. */
+  mirror?: MirrorReport;
+}
+
+export interface MirrorReport {
+  /** The commit mirrored (short), null when the project mirrors nothing. */
+  commit: string | null;
+  /** Pages saved as a new version. */
+  changed: string[];
+  unchanged: number;
+  /** Files the config names that the branch does not have. */
+  missing: string[];
+  /** Pages this machine's account may not write, with why. */
+  skipped: Array<{ key: string; reason: string }>;
 }
 
 export interface ShimReport {
