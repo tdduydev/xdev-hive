@@ -22,6 +22,7 @@ import {
   MAX_CANDIDATES,
   redactLines,
   stripHidden,
+  syncOutcome,
   toErrorPayload,
   usageHeadroom,
   usageStop,
@@ -47,6 +48,7 @@ import {
   type RunnerSettings,
   type RunStatus,
   type StartRunRequest,
+  type SyncReport,
   type Task,
   type UpdateOffer,
 } from "@xdev-hive/core";
@@ -111,6 +113,8 @@ export interface HubUpdate {
   policy: TeamPolicy;
   /** Install requests from an admin waiting for this machine's user. */
   commands: MachineCommand[];
+  /** Sync requests the runner takes by itself (roadmap 22n); a hub older than them sends none. */
+  syncCommands: MachineCommand[];
   /** A newer app build the hub's rollout offers this machine (roadmap 22i); a hub without updates sends none. */
   update?: UpdateOffer | null;
 }
@@ -156,6 +160,11 @@ export interface RunnerOptions {
   afterFinish?: (run: AgentRun) => Promise<Partial<AgentRun> | void>;
   /** Called after every successful heartbeat. */
   onHub?: (update: HubUpdate) => void;
+  /**
+   * Hub mode: syncs a project as the Projects page's Đồng bộ does (context into the repo, the repo's docs into Hive),
+   * for a sync request from the Context agent page (roadmap 22n). Without it, sync requests are left to expire.
+   */
+  sync?: (project: DesktopProject) => Promise<SyncReport>;
 }
 
 interface Live {
@@ -224,7 +233,10 @@ function tryGit(cwd: string, args: string[]): string | null {
 export class Runner {
   readonly store: RunStore;
   readonly #host: RunnerHost;
-  readonly #opts: Required<Omit<RunnerOptions, "onEvent" | "afterFinish" | "onHub">> & Pick<RunnerOptions, "onEvent" | "afterFinish" | "onHub">;
+  readonly #opts: Required<Omit<RunnerOptions, "onEvent" | "afterFinish" | "onHub" | "sync">> & Pick<RunnerOptions, "onEvent" | "afterFinish" | "onHub" | "sync">;
+  /** Sync requests taken (roadmap 22n): the hub sends one until it hears "running", which may cross a heartbeat. */
+  readonly #syncsTaken = new Set<number>();
+  readonly #syncs = new Set<Promise<void>>();
   readonly #live = new Map<string, Live>();
   readonly #inflight = new Set<Promise<void>>();
   readonly #waiting = new Map<string, string>();
@@ -379,7 +391,7 @@ export class Runner {
     for (const id of this.#live.keys()) this.cancel(id);
     this.#chats.stop();
     this.#assists.stop();
-    await Promise.allSettled([...this.#inflight, this.#chats.settle(), this.#assists.settle()]);
+    await Promise.allSettled([...this.#inflight, this.#chats.settle(), this.#assists.settle(), this.settleSyncs()]);
   }
 
   /** Resolves once nothing is running and no queued run can start. For tests and graceful quit. */
@@ -665,13 +677,63 @@ export class Runner {
       }
     }
     this.#shared = next;
-    const update: HubUpdate = { duplicate: res.duplicate, policy: res.policy, commands: res.commands, update: (res as { update?: UpdateOffer | null }).update ?? null };
+    const update: HubUpdate = {
+      duplicate: res.duplicate,
+      policy: res.policy,
+      commands: res.commands,
+      syncCommands: res.syncCommands ?? [],
+      update: (res as { update?: UpdateOffer | null }).update ?? null,
+    };
     this.#opts.onHub?.(update);
+    this.#takeSyncs(update.syncCommands);
     // A hub older than runs.dispatch sends none.
     await this.#takeRequests(res.runRequests ?? []);
     if (this.#host.settings().acceptHubRuns) this.#cancelFromHub(res.cancelRuns ?? []);
     if (this.#host.settings().acceptHubRuns) this.#chats.take(res.chatRequests ?? []);
     return update;
+  }
+
+  /** Starts the sync requests not taken yet, in the background: a heartbeat must not wait for a repo to be written. */
+  #takeSyncs(commands: MachineCommand[]): void {
+    const sync = this.#opts.sync;
+    if (!sync) return;
+    for (const cmd of commands) {
+      if (cmd.kind !== "sync" || this.#syncsTaken.has(cmd.id)) continue;
+      this.#syncsTaken.add(cmd.id);
+      const job = this.#runSync(cmd, sync).finally(() => this.#syncs.delete(job));
+      this.#syncs.add(job);
+    }
+  }
+
+  async #runSync(cmd: MachineCommand, sync: (project: DesktopProject) => Promise<SyncReport>): Promise<void> {
+    try {
+      await this.reportCommand(cmd.id, "running");
+    } catch {
+      // Not heard: take it again if the hub still sends it (it stops once it expired or was cancelled).
+      this.#syncsTaken.delete(cmd.id);
+      return;
+    }
+    // Removed from the app since its last heartbeat: the hub still listed it.
+    const project = this.#host.projects().find((p) => p.name === cmd.project);
+    let status: "done" | "failed" = "failed";
+    let output: string;
+    if (!project) {
+      output = tr("errors.projectNotAdded", { project: cmd.project ?? "" });
+    } else {
+      try {
+        output = JSON.stringify(syncOutcome(await sync(project)));
+        status = "done";
+      } catch (err) {
+        output = toErrorPayload(err).message;
+      }
+    }
+    // The hub expires a request it never hears the end of; nothing more to do here.
+    await this.reportCommand(cmd.id, status, output).catch(() => undefined);
+  }
+
+  /** Resolves once the sync requests taken so far have ended. For tests and graceful quit. */
+  async settleSyncs(): Promise<void> {
+    await Promise.allSettled([...this.#syncs]);
   }
 
   /** Runs a project manager stopped on the web: asked again at each heartbeat until the hub hears they ended. */

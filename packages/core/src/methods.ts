@@ -42,6 +42,7 @@ import {
   type MachineDetail,
   type Memory,
   type MemorySearchInfo,
+  type ProjectSyncState,
   type Proposal,
   type QuotaCooldown,
   type Role,
@@ -175,6 +176,13 @@ export const schemas = {
   "docs.links": z.object({ key: docKey }),
   /** What the project's agents get: the AGENTS.md a sync writes, what it is made of, the files, the memory (roadmap 22n). */
   "docs.context": z.object({ project }),
+  /**
+   * Asks every online machine that has the project to sync it (roadmap 22n): its context into the repo and the repo's
+   * docs into Hive, as the Projects page's Đồng bộ. Machines hear it at their next heartbeat.
+   */
+  "docs.syncRequest": z.object({ project }),
+  /** Each machine that has the project, with its last sync request and how it went. */
+  "docs.syncStatus": z.object({ project }),
   "docs.assets": z.object({ key: docKey }),
   "docs.assetGet": z.object({ key: docKey, name: z.string().min(1).max(200) }),
   /** The file's bytes in base64; a file of the same name on the page is replaced. */
@@ -535,6 +543,9 @@ export interface MethodOutput {
   "docs.move": DocSummary;
   "docs.links": DocLinks;
   "docs.context": AgentContext;
+  /** The requests made, one per online machine that has the project (an open one is reused); [] when none is online. */
+  "docs.syncRequest": MachineCommand[];
+  "docs.syncStatus": ProjectSyncState[];
   "docs.assets": DocAsset[];
   "docs.assetGet": { asset: DocAsset; data: string } | null;
   "docs.assetPut": DocAsset;
@@ -570,7 +581,13 @@ export interface MethodOutput {
     duplicate: boolean;
     cooldowns: QuotaCooldown[];
     policy: TeamPolicy;
+    /** Install requests waiting for the machine's user. */
     commands: MachineCommand[];
+    /**
+     * Sync requests to run now (roadmap 22n). Apart from commands so an app older than them never shows one as an
+     * install to approve: it ignores the field, and the request expires.
+     */
+    syncCommands: MachineCommand[];
     /** Pending run requests for this machine; only while it accepts runs from the hub. */
     runRequests: RunRequest[];
     /** Chat replies this machine is asked to write; same condition. */
@@ -635,6 +652,9 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "docs.move": "agent",
   "docs.links": "viewer",
   "docs.context": "viewer",
+  // Also contextEdit on the project: a person who may change what agents read, never an agent token.
+  "docs.syncRequest": "agent",
+  "docs.syncStatus": "viewer",
   "docs.assets": "viewer",
   "docs.assetGet": "viewer",
   "docs.assetPut": "agent",

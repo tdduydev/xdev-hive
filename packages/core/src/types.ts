@@ -326,18 +326,50 @@ export interface HiveSystem {
 export const COMMAND_STATUSES = ["pending", "running", "done", "failed", "rejected", "cancelled", "expired"] as const;
 export type CommandStatus = (typeof COMMAND_STATUSES)[number];
 
-/** An install an admin asked a machine to run. The machine's user approves it first. */
+export const COMMAND_KINDS = ["install", "sync"] as const;
+export type CommandKind = (typeof COMMAND_KINDS)[number];
+
+/**
+ * Something the hub asked a machine to do. install: an admin's install the machine's user approves first.
+ * sync (roadmap 22n): write a project's context into its repo and mirror its docs, as the Projects page's Đồng bộ
+ * does; nothing to approve, since it only writes what Hive already holds for that project.
+ */
 export interface MachineCommand {
   id: number;
   machineId: string;
-  /** A SetupItem id the machine reported as installable. */
+  kind: CommandKind;
+  /** install: a SetupItem id the machine reported as installable. sync: `sync:<project>`. */
   itemId: string;
+  /** sync: the project to sync; null for an install. */
+  project: string | null;
   label: string;
   status: CommandStatus;
   requestedBy: string;
   requestedAt: string;
   updatedAt: string;
+  /** install: what the installer printed. sync: a SyncOutcome as JSON when done, the error when failed. */
   output: string | null;
+}
+
+/** What a machine's sync did, sent back as a sync command's output (roadmap 22n): short enough for the web. */
+export interface SyncOutcome {
+  /** Repo files written or removed. */
+  changed: string[];
+  /** Files left as they were because someone edited them by hand, or the repo has its own. */
+  skipped: string[];
+  commit: string | null;
+  /** Pages mirrored from the repo as a new version; null when the project mirrors nothing. */
+  mirrored: number | null;
+  note: string | null;
+}
+
+/** Each machine that has a project, with its last sync request (Context agent page, roadmap 22n). */
+export interface ProjectSyncState {
+  machineId: string;
+  machine: string;
+  online: boolean;
+  version: string;
+  last: MachineCommand | null;
 }
 
 /** Chat services a hub webhook can post to, and the events it can post. */
