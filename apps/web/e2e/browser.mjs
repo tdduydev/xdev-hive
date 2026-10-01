@@ -466,6 +466,53 @@ async function main() {
     expect(entries.length > 0 && entries.every((e) => e.agent === "claude-1" && e.onBehalf === "minh"), `audit: ${JSON.stringify(entries).slice(0, 300)}`);
   });
 
+  // Roadmap 27b: a cap of one run on payment (this month); one run's cost fills it, and the hub holds the next.
+  await step("budget", async () => {
+    const tab = (current = tabs.admin);
+    await tab.go("admin/costs");
+    await tab.click("button", "Thêm trần");
+    const pick = (values, value) =>
+      tab.eval(
+        (vals, v) => {
+          const select = [...document.querySelectorAll("select")].find((s) => vals.every((x) => [...s.options].some((o) => o.value === x)));
+          Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, v);
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+        },
+        values,
+        value,
+      );
+    await pick(["project", "user", "hub"], "project");
+    await tab.waitFor("the project picker", () => [...document.querySelectorAll("select")].some((s) => [...s.options].some((o) => o.value === "payment")));
+    await pick(["payment"], "payment");
+    await tab.click('input[inputmode="numeric"]');
+    await tab.type("1");
+    await tab.click("button", "Lưu");
+    await until("the cap on payment", async () => (await rpc("budgets.list", {})).some((b) => b.scope.kind === "project" && b.scope.project === "payment" && b.limit.runs === 1));
+    const beat = async (costs = []) => {
+      const r = await fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" },
+        body: JSON.stringify({ method: "machines.heartbeat", input: { machine: "lan-mbp", instance: "e2e00001", version: "0.0.0-e2e", projects: ["payment"], costs } }),
+      });
+      return (await r.json()).result;
+    };
+    const cost = { runId: "R-e2e02", project: "payment", taskId: "PAY-1", profileId: "claude-1", account: null, costUsd: 0.42, inputTokens: null, outputTokens: null, finishedAt: new Date().toISOString() };
+    await beat([cost]);
+    const blocked = (await beat()).budgetBlocked ?? [];
+    expect(blocked.some((b) => b.project === "payment"), `budgetBlocked: ${JSON.stringify(blocked)}`);
+    const refused = await rpc("runs.dispatch", { machineId: "runner.lan-mbp@lan-e2e", project: "payment", taskId: "PAY-1" }).then(
+      () => null,
+      (err) => err.message,
+    );
+    expect(refused !== null && !refused.includes("paused"), `runs.dispatch on a full cap: ${refused ?? "accepted"}`);
+    await tab.reload();
+    await tab.go("admin/costs");
+    await tab.waitFor("the full cap on the card", () => document.body.innerText.includes("Đã hết trần"));
+    await tab.shot(`${String(n).padStart(2, "0")}-budget-full`);
+    // Leave the hub as the other steps expect it.
+    await rpc("budgets.set", { budgets: [] });
+  });
+
   await step("hub-page", async () => {
     const tab = (current = tabs.admin);
     await tab.go("admin/hub");
