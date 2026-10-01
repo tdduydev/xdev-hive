@@ -130,8 +130,9 @@ describe("hub client", () => {
   });
 
   it("reports a sign-in to a hub it cannot reach as unavailable", async () => {
+    const port = await closedPort();
     await assert.rejects(
-      () => requestDeviceToken(`http://127.0.0.1:${await closedPort()}`, { username: "duy", password: "pw", machine: "m" }),
+      () => requestDeviceToken(`http://127.0.0.1:${port}`, { username: "duy", password: "pw", machine: "m" }),
       (err: unknown) => err instanceof HiveError && err.code === "unavailable" && err.key === "errors.hubUnreachable",
     );
   });
