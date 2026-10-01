@@ -710,7 +710,9 @@ function onMrChanges(changes: MrChange[]): void {
       c.status.to === "merged" && c.status.from !== "merged"
         ? c.taskError
           ? tr("desktop.mrMergedTaskFailed", { mr, reason: c.taskError })
-          : tr(c.taskDone ? "desktop.mrMerged" : "desktop.mrMergedOnly", { mr })
+          : c.taskNeedsReview
+            ? tr("desktop.mrMergedNeedsReview", { mr })
+            : tr(c.taskDone ? "desktop.mrMerged" : "desktop.mrMergedOnly", { mr })
         : c.status.to === "closed" && c.status.from !== "closed"
           ? c.taskError
             ? tr("desktop.mrClosedTaskFailed", { mr, reason: c.taskError })
