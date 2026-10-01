@@ -7,9 +7,10 @@
 // With HIVE_RELEASE_HUB (https://hive.example) and HIVE_RELEASE_TOKEN (a hub admin's token) the builds also go to the
 // hub, which hands them to machines as updates (roadmap 22i; admins pick the version on Phiên bản app).
 import { execFileSync } from "node:child_process";
-import { createHash, randomBytes } from "node:crypto";
-import { createReadStream, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { uploadToHub } from "./hub-upload.mjs";
 
 const desktop = path.resolve(import.meta.dirname, "..");
 const repoRoot = path.resolve(desktop, "..", "..");
@@ -55,71 +56,15 @@ if (dry) {
   process.exit(0);
 }
 
-/** platform, arch and kind from electron-builder's file names (see artifactName in electron-builder.yml). */
-function describe(name) {
-  const m = /-(mac|win|linux)-(arm64|x64|x86_64)(?:-setup)?\.(dmg|zip|exe|AppImage)$/.exec(name);
-  return m ? { platform: m[1], arch: m[2] === "x86_64" ? "x64" : m[2], kind: m[3] } : null;
-}
-
 /** Uploads every build and the notes to the hub, when HIVE_RELEASE_HUB and HIVE_RELEASE_TOKEN say where. */
 async function toHub(notes) {
-  const hub = process.env.HIVE_RELEASE_HUB?.replace(/\/+$/, "");
+  const hub = process.env.HIVE_RELEASE_HUB;
   const token = process.env.HIVE_RELEASE_TOKEN;
   if (!hub || !token) {
     console.log("HIVE_RELEASE_HUB / HIVE_RELEASE_TOKEN not set: the hub does not get this release.");
     return;
   }
-  const headers = { authorization: `Bearer ${token}` };
-  // A proxy in front of the hub may refuse big bodies (Cloudflare: 100 MB): bigger builds go in parts, which only a
-  // hub that says how big a part may be takes (an older one would keep the first part as the whole build).
-  const listed = await fetch(`${hub}/api/rpc`, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ method: "releases.list" }) });
-  if (!listed.ok) throw new Error(`hub releases.list: HTTP ${listed.status} ${await listed.text()}`);
-  const list = (await listed.json()).result;
-  const partBytes = list?.uploadPart ?? null;
-  // A --hub-only run after a cut-off one sends only what the hub does not have yet (same name and bytes).
-  const have = new Set((list?.releases ?? []).filter((r) => r.version === version).flatMap((r) => r.files ?? []).map((f) => `${f.name} ${f.sha256}`));
-  const send = async (q, body, what) => {
-    const res = await fetch(`${hub}/api/releases/upload?${q}`, { method: "POST", headers: { ...headers, "content-type": "application/octet-stream" }, body, duplex: "half" });
-    if (!res.ok) throw Object.assign(new Error(`hub upload ${what}: HTTP ${res.status} ${(await res.text()).slice(0, 300)}`), { status: res.status });
-  };
-  const sendFile = async (file, name, size, q) => {
-    if (!partBytes || size <= partBytes) return send(new URLSearchParams(q), createReadStream(file), name);
-    const parts = Math.ceil(size / partBytes);
-    const upload = randomBytes(16).toString("hex");
-    for (let part = 0; part < parts; part++) {
-      const start = part * partBytes;
-      const body = createReadStream(file, { start, end: Math.min(size, start + partBytes) - 1 });
-      await send(new URLSearchParams({ ...q, upload, part: String(part), parts: String(parts) }), body, `${name} part ${part + 1}/${parts}`);
-    }
-  };
-  for (const file of assets) {
-    const name = path.basename(file);
-    const d = describe(name);
-    if (!d) continue;
-    const size = statSync(file).size;
-    const sha256 = createHash("sha256").update(readFileSync(file)).digest("hex");
-    const q = { version, channel: "stable", name, sha256, ...d };
-    if (have.has(`${name} ${sha256}`)) {
-      console.log(`hub = ${name} (already there)`);
-      continue;
-    }
-    // The tunnel in front of the hub sometimes cuts a body off (the hub logs "aborted"), and the hub then drops the
-    // whole upload: the file goes again from its first part, twice at most.
-    for (let attempt = 1; ; attempt++) {
-      try {
-        await sendFile(file, name, size, q);
-        break;
-      } catch (err) {
-        if (attempt === 3 || !(err instanceof TypeError || err.status >= 500 || err.status === 409)) throw err;
-        console.log(`hub: ${name} cut off (${err.cause?.code ?? err.message}), sending it again (${attempt + 1}/3)`);
-        await new Promise((r) => setTimeout(r, 5000 * attempt));
-      }
-    }
-    console.log(`hub ← ${name}`);
-  }
-  const res = await fetch(`${hub}/api/rpc`, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ method: "releases.notes", input: { version, notes } }) });
-  if (!res.ok) throw new Error(`hub notes: HTTP ${res.status}`);
-  console.log(`hub has ${version}: pick it on Phiên bản app to roll it out.`);
+  await uploadToHub({ hub, token, version, assets, notes });
 }
 
 // The tag before this one (a --hub-only run comes after this version's tag exists).
