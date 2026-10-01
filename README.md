@@ -308,6 +308,7 @@ implement (không review, chế độ "ngay khi làm xong") ──────�
 - **Theo dõi MR**: app hỏi GitLab về các MR nó đã mở (30 giây sau khi mở app, rồi mỗi 2 phút; MR của run trong 30 ngày gần nhất).
   - Board hiện trạng thái pipeline (*CI lỗi*, *CI qua*…, bấm để mở pipeline) và MR đã merge hay đóng.
   - MR merge thì task chuyển sang *Xong*, ghi chú task thêm dòng `MR !<iid> merged.`. Tắt được bằng ô *MR merge thì chuyển task sang Xong*.
+  - MR bị đóng mà không merge thì task sang trạng thái chọn ở ô *MR đóng mà không merge*: *Bị chặn* (mặc định), *Chưa làm*, hoặc giữ nguyên. Ghi chú task thêm dòng `MR !<iid> closed without merging.` trong cả ba trường hợp. Task đã *Xong* thì không đổi gì. Chọn giữ nguyên mà task đang *Đang làm* thì cũng không đổi gì, vì ghi lại *Đang làm* sẽ lấy lease của người đang giữ task.
   - Có thông báo khi MR merge, bị đóng không merge, hoặc pipeline lỗi.
   - MR đã merge hay đóng thì thôi hỏi. Chỉ hỏi MR trên đúng GitLab đã cấu hình, nên token không đi nơi khác.
 - **Tự sửa CI** (bật sẵn, ô *Pipeline lỗi thì giao agent sửa*): pipeline mới nhất của MR đang mở bị lỗi thì app xếp một run implement trên cùng branch `ai/<task>`, chọn gói như run thường.
@@ -343,7 +344,7 @@ Cấu hình ở *Dự án & cài đặt* → **GitHub pull request** (hỏi ngà
 - Link `PR #n` được ghi vào ghi chú task và hiện trên Board. Lỗi GitHub (`GitHub 401: Bad credentials`…) được ghi ở run, không làm run thất bại.
 - **Theo dõi PR**: cùng lượt với MR GitLab (30 giây sau khi mở app, rồi mỗi 2 phút; PR của run trong 30 ngày gần nhất), app hỏi GitHub trạng thái PR và check của commit mới nhất.
   - Các check (GitHub Actions và app khác, cả commit status kiểu cũ) được gộp thành một trạng thái CI trên Board: *đang chạy* khi còn check chưa xong, rồi *lỗi* nếu có check lỗi, hết giờ hay cần xử lý. Bấm để mở trang checks của commit đó.
-  - PR merge thì task sang *Xong*, ghi chú thêm `PR #n merged.` (cùng ô *MR merge thì chuyển task sang Xong*). Có thông báo khi PR merge, bị đóng, hoặc CI lỗi, kể cả khi lần push sau lại lỗi.
+  - PR merge thì task sang *Xong*, ghi chú thêm `PR #n merged.` (cùng ô *MR merge thì chuyển task sang Xong*). PR bị đóng mà không merge thì theo ô *MR đóng mà không merge*, ghi chú thêm `PR #n closed without merging.`. Có thông báo khi PR merge, bị đóng, hoặc CI lỗi, kể cả khi lần push sau lại lỗi.
   - PR đã merge hay đóng thì thôi hỏi. Chỉ hỏi PR trên đúng GitHub đã cấu hình, nên token không đi nơi khác.
 - **Tự sửa CI** (cùng ô *Pipeline lỗi thì giao agent sửa* và *Số lần tự sửa mỗi MR*): check của commit mới nhất trên PR đang mở bị lỗi thì app xếp một run implement trên branch `ai/<task>`, như với GitLab.
   - Prompt có link trang checks và phần cuối log của tối đa 3 check lỗi: job GitHub Actions lấy log qua API (bỏ mốc giờ và dòng `##[group]`, giữ tên bước và `##[error]`), check của app khác lấy tiêu đề và tóm tắt nó báo, commit status lấy mô tả. Log được làm sạch như GitLab (mã màu, ký tự ẩn, dòng giống secret).
