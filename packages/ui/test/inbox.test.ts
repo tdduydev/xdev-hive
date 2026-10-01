@@ -46,6 +46,18 @@ describe("inbox", () => {
     assert.equal(inboxProject(buildInbox({ proposals: [p] })[0]!), "pg");
   });
 
+  it("shows a merged task the MR watcher could not move to Done again, with its MR and the watcher's note", () => {
+    // The watcher of a machine without Code review leaves the task in Review and adds a line to its note (QA-5).
+    const handed = { id: "T-1", project: "demo", title: "x", status: "review", note: "Xong phần A", updatedAt: "2026-09-30T09:00:00Z" } as Task;
+    const waiting = { ...handed, note: "Xong phần A\n\nMR !1 merged.\n\nMR đã merge, chờ người có quyền Review code chuyển Xong.", updatedAt: "2026-09-30T10:00:00Z" };
+    const mr = run({ mrUrl: "https://git/mr/1", mrStatus: "merged", createdAt: "2026-09-30T08:00:00Z" });
+    const [before] = buildInbox({ reviewTasks: [handed], runs: [mr] });
+    const [after] = buildInbox({ reviewTasks: [waiting], runs: [mr] });
+    assert.ok(after!.kind === "review" && after!.task.note === waiting.note && after!.run?.mrStatus === "merged");
+    assert.notEqual(after!.key, before!.key, "seen or handled before the merge, it is new again");
+    assert.equal(inboxProject(after!), "demo");
+  });
+
   it("puts machine setup gaps last, with no time", () => {
     const items = buildInbox({
       setup: [{ id: "shim", label: "hive-mcp", state: "outdated", detail: "", action: "Cập nhật" }],
