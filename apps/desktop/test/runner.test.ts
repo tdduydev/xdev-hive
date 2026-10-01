@@ -1094,6 +1094,29 @@ describe("Runner", () => {
     assert.deepEqual(a.runner.store.list({ limit: 10 }), []);
   });
 
+  it("starts no run, Board runs included, for a project whose spending cap the heartbeat says is full (roadmap 27b)", async () => {
+    const a = await setup([profile("claude-1", "claude", 10, "ok")], {}, "hub");
+    const cap = (runs: number) => a.hive.call("budgets.set", { budgets: [{ scope: { kind: "project", project: "demo" }, period: "day", limit: { runs } }] }, admin);
+    await cap(1);
+    await a.hive.call("tasks.create", { id: "T-2", project: "demo", title: "Trang đăng xuất" }, admin);
+    await a.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await a.runner.settle();
+    // Its cost fills the cap; the same heartbeat answers with the block.
+    await a.runner.heartbeat();
+
+    const held = await a.runner.enqueue({ project: "demo", taskId: "T-2" });
+    await a.runner.settle();
+    const waiting = a.runner.list().find((r) => r.id === held.id)!;
+    assert.equal(waiting.status, "queued", "it stays in the queue");
+    assert.match(waiting.error ?? "", /hết trần chi tiêu của demo \(1 run trên 1 run/);
+    assert.equal(a.calls().length, 1, "no agent started for it");
+
+    await cap(5);
+    await a.runner.heartbeat();
+    await a.runner.settle();
+    assert.equal(a.runner.store.get(held.id)!.status, "succeeded");
+  });
+
   it("shares a quota cooldown with every machine on the same account, and ends it everywhere", async () => {
     const account = { account: "claude-max-duy" };
     const a = await setup([profile("claude-1", "claude", 10, "limit", account), profile("codex-1", "codex", 20, "ok")], {}, "hub", { name: "duy-mbp" });
