@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
@@ -13,6 +13,7 @@ import { parseRemoteUrl } from "#desktop/main/gitlab/remote.ts";
 import { MrWatcher, mrRef } from "#desktop/main/gitlab/watch.ts";
 import { ciFixLines } from "#desktop/main/runner/command.ts";
 import { Runner } from "#desktop/main/runner/runner.ts";
+import { cleanupMerged } from "#desktop/main/runner/worktree.ts";
 import { startMockGitLab, type MockGitLab } from "./fixtures/mock-gitlab.ts";
 
 const FAKE = path.join(import.meta.dirname, "fixtures", "fake-agent.mjs");
@@ -326,6 +327,117 @@ describe("merge request watch", () => {
     assert.equal(runner.store.get(review.id)!.mrStatus, null);
     gl.mrs.push(mr);
     assert.equal((await watcher.check()).length, 1);
+  });
+});
+
+describe("merged MR cleanup", () => {
+  /** An open MR whose watcher knows the project's repo, so it can clean up; GitLab reports the branch head as the MR's. */
+  async function merged(mr: Partial<MrSettings> = {}) {
+    const s = await setup("review", mr);
+    const run = await s.runner.enqueue({ project: "demo", taskId: "T-1", reviewAfter: true });
+    await s.runner.settle();
+    const review = s.runner.list().find((r) => r.parentRunId === run.id)!;
+    assert.equal(review.mrState, "created", review.mrNote ?? "");
+    const watcher = new MrWatcher({
+      gitlab: () => gitlabSettingsSchema.parse({ url: gl.base, token: TOKEN, mr: { enabled: true, ...mr } }),
+      projects: () => [{ name: "demo", repo: s.repo, gitlabProject: "group/demo" }],
+      backend: () => s.hive,
+      mode: () => "local",
+      store: () => s.runner.store,
+      user: "duy",
+    });
+    const wt = review.worktree!;
+    const head = git(s.repo, "rev-parse", "refs/heads/ai/T-1");
+    gl.mrs[0]!.sha = head;
+    gl.mrs[0]!.state = "merged";
+    const branchLeft = () => git(s.repo, "branch", "--list", "ai/T-1") !== "";
+    return { ...s, review, watcher, wt, head, branchLeft };
+  }
+
+  it("removes the worktree and the local branch when the branch head is the merged commit", async () => {
+    const m = await merged();
+    assert.ok(existsSync(m.wt));
+    // Agent config the runner copies in is never committed, so it does not count as an edit.
+    writeFileSync(path.join(m.wt, ".mcp.json"), "{}\n");
+    const [c] = await m.watcher.check();
+    assert.equal(c!.status.to, "merged");
+    assert.equal(c!.taskDone, true);
+    assert.deepEqual(c!.cleanup, { worktree: true, branch: true, kept: null, reason: null });
+    assert.equal(existsSync(m.wt), false);
+    assert.equal(m.branchLeft(), false);
+    assert.match(m.runner.store.get(m.review.id)!.mrNote ?? "", /Đã xoá worktree và branch ai\/T-1 ở máy/);
+    assert.equal(c!.run.mrNote, m.runner.store.get(m.review.id)!.mrNote, "the change carries the run as it is now");
+  });
+
+  it("keeps both when the branch has a commit newer than the merged one", async () => {
+    const m = await merged();
+    writeFileSync(path.join(m.wt, "later.txt"), "after the merge\n");
+    git(m.wt, "add", "later.txt");
+    git(m.wt, "-c", "user.email=t@example.com", "-c", "user.name=Test", "commit", "-qm", "later");
+    const [c] = await m.watcher.check();
+    assert.equal(c!.cleanup?.kept, "newer");
+    assert.equal(c!.cleanup?.worktree, false);
+    assert.ok(existsSync(m.wt));
+    assert.equal(m.branchLeft(), true);
+    assert.match(m.runner.store.get(m.review.id)!.mrNote ?? "", /Giữ worktree và branch ai\/T-1 ở máy: branch có commit mới hơn/);
+  });
+
+  it("keeps both when the worktree has uncommitted changes", async () => {
+    const m = await merged();
+    writeFileSync(path.join(m.wt, "draft.txt"), "not committed\n");
+    const [c] = await m.watcher.check();
+    assert.deepEqual(c!.cleanup, { worktree: false, branch: false, kept: "dirty", reason: null });
+    assert.ok(existsSync(path.join(m.wt, "draft.txt")));
+    assert.equal(m.branchLeft(), true);
+    assert.match(m.runner.store.get(m.review.id)!.mrNote ?? "", /thay đổi chưa commit/);
+  });
+
+  it("keeps both while the task has a run queued", async () => {
+    const m = await merged();
+    const queued = m.runner.store.insert({ project: "demo", taskId: "T-1", taskTitle: "x", role: "implement", attempt: 1, maxAttempts: 1 }, new Date().toISOString());
+    const [c] = await m.watcher.check();
+    m.runner.store.update(queued.id, { status: "cancelled" });
+    assert.equal(c!.cleanup?.kept, "active");
+    assert.ok(existsSync(m.wt));
+    assert.equal(m.branchLeft(), true);
+  });
+
+  it("leaves the worktree and branch alone when turned off", async () => {
+    const m = await merged({ cleanupOnMerge: false });
+    const [c] = await m.watcher.check();
+    assert.equal(c!.status.to, "merged");
+    assert.equal(c!.cleanup, null);
+    assert.ok(existsSync(m.wt));
+    assert.equal(m.branchLeft(), true);
+    assert.equal(m.runner.store.get(m.review.id)!.mrNote, m.review.mrNote);
+  });
+
+  it("guesses nothing without the merged commit, and only removes the worktree of a branch checked out elsewhere", () => {
+    const repo = tmp("clean");
+    git(repo, "init", "-q", "-b", "main");
+    writeFileSync(path.join(repo, "README.md"), "# demo\n");
+    git(repo, "add", ".");
+    git(repo, "-c", "user.email=t@example.com", "-c", "user.name=Test", "commit", "-qm", "init");
+    const wt = path.join(tmp("wts"), "T-2");
+    git(repo, "worktree", "add", "-q", "-b", "ai/T-2", wt);
+    const head = git(repo, "rev-parse", "HEAD");
+
+    assert.deepEqual(cleanupMerged(repo, wt, "ai/T-2", null), { worktree: false, branch: false, kept: "noSha", reason: null });
+    assert.ok(existsSync(wt));
+    assert.deepEqual(cleanupMerged(repo, null, "ai/none", head), { worktree: false, branch: false, kept: null, reason: null }, "nothing there");
+
+    // The branch is checked out in another working copy: it cannot be deleted, the task's worktree still goes.
+    const other = path.join(tmp("other"), "T-2b");
+    git(repo, "worktree", "remove", wt);
+    git(repo, "worktree", "add", "-q", "--detach", wt, "ai/T-2");
+    git(repo, "worktree", "add", "-q", other, "ai/T-2");
+    const c = cleanupMerged(repo, wt, "ai/T-2", head.toUpperCase());
+    assert.equal(c.worktree, true);
+    assert.equal(c.branch, false);
+    assert.equal(c.kept, "failed");
+    assert.ok(c.reason);
+    assert.equal(existsSync(wt), false);
+    assert.ok(existsSync(other));
   });
 });
 

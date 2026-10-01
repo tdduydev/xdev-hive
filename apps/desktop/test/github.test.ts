@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
@@ -301,6 +301,48 @@ describe("GitHub pull request watch", () => {
     const none = await setup("review", {}, "");
     assert.equal(none.watcher.watching(), false);
     assert.deepEqual(await none.watcher.check(), []);
+  });
+
+  it("removes the task's worktree and local branch when the PR's head commit was merged", async () => {
+    const { runner, repo, reviewed, watcher } = await setup("review");
+    const { review } = await reviewed();
+    const wt = review.worktree!;
+    gh.pulls[0]!.sha = git(repo, "rev-parse", "refs/heads/ai/T-1");
+    gh.pulls[0]!.state = "closed";
+    gh.pulls[0]!.merged = true;
+    const [c] = await watcher.check();
+    assert.equal(c!.status.to, "merged");
+    assert.deepEqual(c!.cleanup, { worktree: true, branch: true, kept: null, reason: null });
+    assert.equal(existsSync(wt), false);
+    assert.equal(git(repo, "branch", "--list", "ai/T-1"), "");
+    assert.match(runner.store.get(review.id)!.mrNote ?? "", /Đã xoá worktree và branch ai\/T-1 ở máy/);
+  });
+
+  it("keeps the worktree and branch when the branch went on after the merged commit, or when turned off", async () => {
+    const newer = await setup("review");
+    const { review } = await newer.reviewed();
+    const wt = review.worktree!;
+    gh.pulls[0]!.sha = git(newer.repo, "rev-parse", "refs/heads/ai/T-1");
+    writeFileSync(path.join(wt, "later.txt"), "after the merge\n");
+    git(wt, "add", "later.txt");
+    git(wt, "commit", "-qm", "later");
+    gh.pulls[0]!.state = "closed";
+    gh.pulls[0]!.merged = true;
+    const [c] = await newer.watcher.check();
+    assert.equal(c!.cleanup?.kept, "newer");
+    assert.ok(existsSync(wt));
+    assert.notEqual(git(newer.repo, "branch", "--list", "ai/T-1"), "");
+
+    const off = await setup("review", { cleanupOnMerge: false });
+    const kept = await off.reviewed();
+    gh.pulls[0]!.sha = git(off.repo, "rev-parse", "refs/heads/ai/T-1");
+    gh.pulls[0]!.state = "closed";
+    gh.pulls[0]!.merged = true;
+    const [d] = await off.watcher.check();
+    assert.equal(d!.status.to, "merged");
+    assert.equal(d!.cleanup, null);
+    assert.ok(existsSync(kept.review.worktree!));
+    assert.notEqual(git(off.repo, "branch", "--list", "ai/T-1"), "");
   });
 });
 

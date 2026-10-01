@@ -15,6 +15,8 @@ export interface MockMr {
   /** Set by tests: what GET .../merge_requests/:iid answers ("opened" when unset). */
   state?: "opened" | "closed" | "locked" | "merged";
   head_pipeline?: { id: number; status: string; web_url: string } | null;
+  /** Set by tests: the MR's head commit (absent when unset). */
+  sha?: string;
 }
 
 export interface MockJob {

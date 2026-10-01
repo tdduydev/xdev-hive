@@ -38,6 +38,8 @@ export interface GitLabPipeline {
 export interface GitLabMrDetail extends GitLabMr {
   state: "opened" | "closed" | "locked" | "merged";
   merged_at?: string | null;
+  /** The MR's head commit (the source branch's last commit GitLab knows). */
+  sha?: string | null;
   /** The pipeline of the MR's latest commit; null before one ran (or without CI). */
   head_pipeline?: GitLabPipeline | null;
 }
