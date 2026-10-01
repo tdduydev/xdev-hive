@@ -5,16 +5,19 @@ import { useEffect, useMemo, useState } from "react";
 import { cn } from "cn";
 import { MEMORY_KINDS, stripHidden, type Memory, type MemoryKind } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
+import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
+import { BulkBar, bulkSummary } from "#ui/components/BulkBar.tsx";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
 import { HiddenChars } from "#ui/components/HiddenChars.tsx";
 import { Chip, DetailBody, DetailFooter, DetailHeader, FilterChips, KvRows, ListItem, ListPane, type ChipKind } from "#ui/components/panes.tsx";
 import type { HiveClient } from "#ui/client.ts";
 import { formatTime, sourceText, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
+import { runBulk, splitMemory } from "#ui/lib/bulk.ts";
 import { scopeKey, type Scope } from "#ui/lib/scope.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
@@ -70,6 +73,9 @@ export function MemoryPage() {
   const [submitted, setSubmitted] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [selected, setSelected] = useState<number | null>(null);
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+  const toast = useToast();
+  const bulk = useAction();
 
   const list = useQuery(() => loadMemory(client, scope, submitted), [client, scopeKey(scope), submitted]);
   // A hub from before this has no such method: the line just does not show.
@@ -85,6 +91,36 @@ export function MemoryPage() {
   const pool = scope.kind === "system" ? scope.projects : projects;
   const defaultOwner = scope.kind === "project" ? scope.project : scope.kind === "shared" ? null : (pool[0] ?? null);
   const canAdd = allow(null, "contribute") || projects.some((p) => allow(p, "contribute"));
+
+  // Pending entries in the chip filter being viewed, of projects the person manages (as approving one by one).
+  const selectable = shown.filter((m) => m.status === "pending" && allow(m.project, "manage"));
+  const chosen = selectable.filter((m) => picked.has(m.id));
+  const label = (m: Memory) => `#${m.id}`;
+  const finish = (text: string, trouble: boolean) => {
+    toast(text, { tone: trouble ? "error" : "info" });
+    setPicked(new Set());
+    list.reload();
+  };
+  const approveAll = () =>
+    void bulk.run(async () => {
+      const { ready, conflicts } = splitMemory(chosen);
+      const r = await runBulk(ready, async (m) => {
+        await client.call("memory.approve", { id: m.id });
+        return "done" as const;
+      });
+      r.conflicts.unshift(...conflicts);
+      finish(bulkSummary(t, "approve", r, label), r.conflicts.length > 0 || r.failed.length > 0);
+    });
+  const rejectAll = () => {
+    if (!window.confirm(t("bulk.confirmRejectMemory", { count: chosen.length }))) return;
+    void bulk.run(async () => {
+      const r = await runBulk(chosen, async (m) => {
+        await client.call("memory.remove", { id: m.id });
+        return "done" as const;
+      });
+      finish(bulkSummary(t, "reject", r, label), r.failed.length > 0);
+    });
+  };
 
   return (
     <div className="flex h-full min-h-0 w-full bg-surface">
@@ -118,15 +154,42 @@ export function MemoryPage() {
                   : t("memory.searchHybrid", { model: search.data.model ?? "", indexed: search.data.indexed, total: search.data.total })}
               </p>
             ) : null}
+            <BulkBar
+              selectable={selectable.length}
+              picked={chosen.length}
+              busy={bulk.busy}
+              onPickAll={() => setPicked(new Set(selectable.map((m) => m.id)))}
+              onClear={() => setPicked(new Set())}
+              onApprove={approveAll}
+              onReject={rejectAll}
+            />
           </>
         }
       >
         <ErrorNote error={list.error} />
+        <ErrorNote error={bulk.error} />
         {shown.map((m) => {
           const st = stateOf(m, t);
+          const pickable = m.status === "pending" && allow(m.project, "manage");
           return (
             <ListItem
               key={m.id}
+              pick={
+                pickable ? (
+                  <Checkbox
+                    checked={picked.has(m.id)}
+                    aria-label={t("bulk.pickItem", { id: m.id })}
+                    onCheckedChange={(v) =>
+                      setPicked((cur) => {
+                        const next = new Set(cur);
+                        if (v === true) next.add(m.id);
+                        else next.delete(m.id);
+                        return next;
+                      })
+                    }
+                  />
+                ) : null
+              }
               selected={m.id === current?.id}
               onClick={() => setSelected(m.id)}
               title={t("memory.itemTitle", { id: m.id, kind: t(`memoryKind.${m.kind}`) })}
