@@ -12,9 +12,10 @@ import { Badge, Empty, ErrorNote, Page, PageHeader } from "#ui/components/common
 import { formatTime, useAction, useCan, useHive } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { systemScope } from "#ui/lib/scope.ts";
+import { AgentPolicyCard } from "#ui/pages/admin/AgentPolicy.tsx";
 
 export function SystemsPage() {
-  const { systems, setScope } = useHive();
+  const { systems, setScope, me, projects } = useHive();
   const t = useT();
   const allow = useCan();
   // The system being edited, "" for a new one.
@@ -74,6 +75,8 @@ export function SystemsPage() {
           </Card>
         ),
       )}
+      {/* A project manager has no Web Admin: their project's agent policy row lives here, with its other settings. */}
+      {me.mode === "hub" && !(me.role === "admin" && !me.access) && projects.some((p) => allow(p, "projectSettings")) ? <AgentPolicyCard editableOnly /> : null}
     </Page>
   );
 }

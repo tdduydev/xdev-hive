@@ -28,6 +28,7 @@ import { ProfileStates } from "#ui/components/ProfileStates.tsx";
 import { formatTime, useAction, useHive, useProjects, useQuery } from "#ui/hooks.ts";
 import { hasKey, rich, useT, type MessageKey } from "#ui/i18n/index.tsx";
 import { WebhooksTab } from "./Webhooks.tsx";
+import { AgentPolicyCard } from "#ui/pages/admin/AgentPolicy.tsx";
 
 type Tab = "machines" | "policy" | "audit" | "webhooks";
 const TABS: Record<Tab, MessageKey> = { machines: "admin.tabMachines", policy: "admin.tabPolicy", audit: "admin.tabAudit", webhooks: "admin.tabWebhooks" };
@@ -55,6 +56,7 @@ export const ACTION_LABEL: Record<string, MessageKey> = {
   "machines.remove": "auditAction.machinesRemove",
   "cooldowns.clear": "auditAction.cooldownsClear",
   "policy.set": "auditAction.policySet",
+  "agentPolicy.set": "auditAction.agentPolicySet",
   "systems.save": "auditAction.systemsSave",
   "systems.remove": "auditAction.systemsRemove",
   "admin.commandCreate": "auditAction.commandCreate",
@@ -503,6 +505,9 @@ export function PolicyTab() {
         ) : null}
       </div>
       <ErrorNote error={action.error} />
+
+      {/* Saved row by row, apart from the button above: a project's manager may change their row without the rest. */}
+      <AgentPolicyCard />
     </>
   );
 }

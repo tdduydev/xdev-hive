@@ -1,4 +1,5 @@
 import type { Access } from "./access.ts";
+import type { AgentPolicy } from "./agent-policy.ts";
 import type { AgentProfile, AgentRole } from "./agents.ts";
 import type { WriteSource } from "./source.ts";
 
@@ -375,7 +376,7 @@ export interface ProjectSyncState {
 /** Chat services a hub webhook can post to, and the events it can post. */
 export const WEBHOOK_KINDS = ["teams", "slack"] as const;
 export type WebhookKind = (typeof WEBHOOK_KINDS)[number];
-export const WEBHOOK_EVENTS = ["proposal.created", "memory.pending", "command.requested", "command.finished", "run.failed", "mr.created", "alert.opened"] as const;
+export const WEBHOOK_EVENTS = ["proposal.created", "memory.pending", "command.requested", "command.finished", "run.failed", "mr.created", "alert.opened", "agentPolicy.changed"] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 
 /** Something a person may want to hear about, emitted after the change is stored (see SqliteHiveOptions.onEvent). */
@@ -389,7 +390,9 @@ export type HiveEvent =
   /** A merge request's pipeline still fails after the last fix run the machine may start (roadmap 22m). */
   | { type: "run.ciLimit"; project: string; run: RunNotice }
   /** The hub opened an alert (a rule of Cảnh báo holds): see apps/web/src/alerts.ts. */
-  | { type: "alert.opened"; project: string | null; alert: HubAlert };
+  | { type: "alert.opened"; project: string | null; alert: HubAlert }
+  /** A hub admin changed the hub's agent policy (project null) or a project manager their project's; policy null: cleared. */
+  | { type: "agentPolicy.changed"; project: string | null; by: string; policy: Partial<AgentPolicy> | null };
 
 /** The hub's alert rules (roadmap 22m), each turned on or off by a hub admin. */
 export const ALERT_RULES = ["run_fail_streak", "ci_fix_exhausted", "machine_offline", "webhook_failed", "quota_near", "vendor_resting", "backup_overdue"] as const;

@@ -78,6 +78,16 @@ describe("webhook messages", () => {
     assert.deepEqual(card.attachments[0].content.body, [{ type: "TextBlock", text: "hi", wrap: true }]);
     assert.deepEqual(card.attachments[0].content.actions, [{ type: "Action.OpenUrl", title: "Open", url: link.url }]);
   });
+
+  it("says who changed an agent policy, and what to (roadmap 27a)", () => {
+    const set: HiveEvent = { type: "agentPolicy.changed", project: "app", by: "lan", policy: { autonomy: "read", network: { mode: "allowlist", allow: ["github.com"] } } };
+    assert.deepEqual(eventMessage(set, "vi"), {
+      text: "lan đổi chính sách agent của app: autonomy read · network allowlist (github.com)",
+      page: "#/admin/policy",
+    });
+    const cleared: HiveEvent = { type: "agentPolicy.changed", project: null, by: "duy", policy: null };
+    assert.equal(eventMessage(cleared, "en").text, "duy removed the agent policy of the hub (default).");
+  });
 });
 
 describe("webhook dispatch", () => {
