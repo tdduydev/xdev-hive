@@ -98,7 +98,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **18e. bulk-approve** (hỏi 29/9): trang *Đề xuất* (tài liệu, skill) và *Memory*: chọn nhiều mục đang chờ rồi duyệt một lần; đề xuất xung đột phiên bản thì bỏ qua và báo. Ô chọn cho mục chờ duyệt của dự án mình quản trị, *Chọn tất cả* trong bộ lọc đang xem, thanh *Đã chọn N* với *Duyệt / Từ chối N mục*; duyệt lần lượt bằng RPC có sẵn (`lib/bulk.ts`). Đề xuất có tài liệu đã lên phiên bản khác, hoặc đề xuất sau trên cùng tài liệu, thì bỏ qua và giữ chờ; memory đang mâu thuẫn cũng bỏ qua. Toast "Đã duyệt X, bỏ qua Y (xung đột): …".
 - **21. mr-followup** (ghi 30/9: ý từ bản nháp cũ ở nhánh `backup/main-wip-2026-09-30` trên máy, main chưa có; theo dõi MR, `doneOnMerge` và pipeline đã có trên main):
   - [x] **21a. mr-closed**: MR bị đóng mà không merge thì task sang trạng thái chọn được ở thẻ GitLab/GitHub (*Bị chặn*, *Chưa làm* hoặc giữ nguyên; mặc định *Bị chặn*), ghi chú task thêm một dòng.
-  - [ ] **21b. mr-cleanup**: MR merge xong thì xoá worktree của task, và branch `ai/<task>` ở máy nếu đầu branch đúng là commit đã merge; tắt được.
+  - [x] **21b. mr-cleanup**: MR merge xong thì xoá worktree của task, và branch `ai/<task>` ở máy nếu đầu branch đúng là commit đã merge; tắt được.
   - [ ] **21c. mr-poll**: chỉnh chu kỳ hỏi GitLab/GitHub về MR (1–60 phút, mặc định 2) thay cho 2 phút cố định.
 
 - **22. redesign** (hỏi 30/9: làm theo bản thiết kế Claude Design trong `docs/design/2026-09-redesign` (DS, app Client, Web Admin); làm hết, cả phần cần backend; tách khung app desktop và Web Admin như thiết kế). Tách:
