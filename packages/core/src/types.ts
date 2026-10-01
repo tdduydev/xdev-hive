@@ -324,6 +324,32 @@ export interface HiveSystem {
   updatedBy: string;
 }
 
+/** Key of `AgentsPaused.by` for the whole hub: no project key is "*". */
+export const PAUSED_HUB = "*";
+
+/**
+ * The stop-all switch (roadmap 27d), settings key `paused`: while the hub or a project is paused nobody queues a run
+ * or talks to its leader, and every machine stops the scope's runs and starts none, Board runs too.
+ */
+export interface AgentsPaused {
+  hub: boolean;
+  projects: string[];
+  /** Who paused each scope and when, for the Board's notice: PAUSED_HUB for the hub, else the project. */
+  by: Record<string, { name: string; at: string }>;
+}
+
+/** What agents.stop did, also what its confirmation counts before it is pressed. */
+export interface AgentsStop {
+  project: string | null;
+  paused: AgentsPaused;
+  /** Run requests no machine took yet, now cancelled. */
+  requests: number;
+  /** Runs running on a machine, now asked to stop (queued ones wait in their queue until the pause is lifted). */
+  runs: number;
+  /** Chat replies waiting or being written, now cancelled. */
+  chats: number;
+}
+
 export const COMMAND_STATUSES = ["pending", "running", "done", "failed", "rejected", "cancelled", "expired"] as const;
 export type CommandStatus = (typeof COMMAND_STATUSES)[number];
 
@@ -376,7 +402,18 @@ export interface ProjectSyncState {
 /** Chat services a hub webhook can post to, and the events it can post. */
 export const WEBHOOK_KINDS = ["teams", "slack"] as const;
 export type WebhookKind = (typeof WEBHOOK_KINDS)[number];
-export const WEBHOOK_EVENTS = ["proposal.created", "memory.pending", "command.requested", "command.finished", "run.failed", "mr.created", "alert.opened", "agentPolicy.changed"] as const;
+export const WEBHOOK_EVENTS = [
+  "proposal.created",
+  "memory.pending",
+  "command.requested",
+  "command.finished",
+  "run.failed",
+  "mr.created",
+  "alert.opened",
+  "agentPolicy.changed",
+  "agents.stopped",
+  "agents.resumed",
+] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 
 /** Something a person may want to hear about, emitted after the change is stored (see SqliteHiveOptions.onEvent). */
@@ -392,7 +429,10 @@ export type HiveEvent =
   /** The hub opened an alert (a rule of Cảnh báo holds): see apps/web/src/alerts.ts. */
   | { type: "alert.opened"; project: string | null; alert: HubAlert }
   /** A hub admin changed the hub's agent policy (project null) or a project manager their project's; policy null: cleared. */
-  | { type: "agentPolicy.changed"; project: string | null; by: string; policy: Partial<AgentPolicy> | null };
+  | { type: "agentPolicy.changed"; project: string | null; by: string; policy: Partial<AgentPolicy> | null }
+  /** Someone stopped every agent of a project (project) or of the hub (null), roadmap 27d. */
+  | { type: "agents.stopped"; project: string | null; by: string; stop: AgentsStop }
+  | { type: "agents.resumed"; project: string | null; by: string };
 
 /** The hub's alert rules (roadmap 22m), each turned on or off by a hub admin. */
 export const ALERT_RULES = ["run_fail_streak", "ci_fix_exhausted", "machine_offline", "webhook_failed", "quota_near", "vendor_resting", "backup_overdue"] as const;

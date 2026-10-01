@@ -20,6 +20,7 @@ import {
   agentActorName,
   HiveError,
   MAX_CANDIDATES,
+  PAUSED_HUB,
   redactLines,
   stripHidden,
   syncOutcome,
@@ -30,6 +31,7 @@ import {
   type AgentProfile,
   type AgentProfileStatus,
   type AgentRun,
+  type AgentsPaused,
   type BestOf,
   type CiFix,
   type DesktopProject,
@@ -283,6 +285,8 @@ export class Runner {
   readonly #startNotes = new Map<string, string>();
   /** Requests being answered now: a heartbeat that comes meanwhile leaves them alone. */
   readonly #taking = new Set<number>();
+  /** Stop-all (roadmap 27d) as the last heartbeat said; null in local mode and from a hub older than it. */
+  #paused: AgentsPaused | null = null;
 
   constructor(host: RunnerHost, opts: RunnerOptions) {
     this.#host = host;
@@ -623,6 +627,7 @@ export class Runner {
   async heartbeat(): Promise<HubUpdate | null> {
     if (this.#host.mode() !== "hub") {
       this.#shared.clear();
+      this.#paused = null;
       return null;
     }
     const runs = this.store.active().map((r) => ({
@@ -690,7 +695,33 @@ export class Runner {
     await this.#takeRequests(res.runRequests ?? []);
     if (this.#host.settings().acceptHubRuns) this.#cancelFromHub(res.cancelRuns ?? []);
     if (this.#host.settings().acceptHubRuns) this.#chats.take(res.chatRequests ?? []);
+    this.#applyPause(res.paused ?? null);
     return update;
+  }
+
+  /**
+   * Stop-all from the hub, whether or not this machine takes runs from it: the scope's running runs are stopped, its
+   * queued ones (Board runs too) wait in the queue saying why. Applied at every heartbeat, so a run that started
+   * between two of them is caught at the next.
+   */
+  #applyPause(paused: AgentsPaused | null): void {
+    const lifted = JSON.stringify(this.#paused) !== JSON.stringify(paused);
+    this.#paused = paused;
+    for (const run of this.store.active()) {
+      const pause = run.status === "running" ? this.#pauseOf(run.project) : null;
+      if (!pause || this.#live.get(run.id)?.cancelled) continue;
+      this.cancel(run.id, tr("runNote.cancelledPaused", { project: pause.project }));
+    }
+    // A pause lifted: the queued runs start now rather than at the next tick.
+    if (lifted) void this.tick();
+  }
+
+  /** The pause that holds a project's runs, if any: the hub's first. */
+  #pauseOf(project: string): { project: string; by: string } | null {
+    const p = this.#paused;
+    if (!p) return null;
+    if (p.hub) return { project: tr("runNote.hub"), by: p.by[PAUSED_HUB]?.name ?? "?" };
+    return p.projects.includes(project) ? { project, by: p.by[project]?.name ?? "?" } : null;
   }
 
   /** Starts the sync requests not taken yet, in the background: a heartbeat must not wait for a repo to be written. */
@@ -923,6 +954,11 @@ export class Runner {
         this.#again = false;
         const now = this.#opts.now();
         for (const run of this.store.queued()) {
+          const pause = this.#pauseOf(run.project);
+          if (pause) {
+            this.#waiting.set(run.id, tr("runNote.waitingPaused", pause));
+            continue;
+          }
           if (this.store.running() >= this.#host.settings().maxParallel) {
             this.#waiting.set(run.id, tr("runNote.waitingParallel"));
             continue;

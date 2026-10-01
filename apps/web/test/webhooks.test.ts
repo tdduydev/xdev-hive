@@ -88,6 +88,14 @@ describe("webhook messages", () => {
     const cleared: HiveEvent = { type: "agentPolicy.changed", project: null, by: "duy", policy: null };
     assert.equal(eventMessage(cleared, "en").text, "duy removed the agent policy of the hub (default).");
   });
+
+  it("tells who stopped every agent, of a project or of the whole hub, and who let them run again", () => {
+    const paused = { hub: true, projects: [], by: {} };
+    const hub: HiveEvent = { type: "agents.stopped", project: null, by: "duy", stop: { project: null, paused, requests: 2, runs: 1, chats: 0 } };
+    assert.deepEqual(eventMessage(hub, "vi"), { text: "duy dừng mọi agent của cả hub: huỷ 2 yêu cầu run, dừng 1 run, huỷ 0 trả lời chat.", page: "#/admin" });
+    const resumed: HiveEvent = { type: "agents.resumed", project: "app", by: "lan" };
+    assert.deepEqual(eventMessage(resumed, "en"), { text: "lan let the agents of app run again.", page: "#/overview" });
+  });
 });
 
 describe("webhook dispatch", () => {

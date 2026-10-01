@@ -192,6 +192,16 @@ export function eventMessage(event: HiveEvent, locale: string): { text: string; 
         page: "#/admin/alerts",
       };
     }
+    case "agents.stopped": {
+      const s = event.stop;
+      return {
+        text: tr("webhook.agentsStopped", { by: event.by, project: event.project ?? tr("webhook.hub"), requests: s.requests, runs: s.runs, chats: s.chats }),
+        // The project's own page has its button; the hub's is on the Web Admin overview.
+        page: event.project ? "#/overview" : "#/admin",
+      };
+    }
+    case "agents.resumed":
+      return { text: tr("webhook.agentsResumed", { by: event.by, project: event.project ?? tr("webhook.hub") }), page: event.project ? "#/overview" : "#/admin" };
   }
 }
 
