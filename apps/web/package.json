@@ -14,7 +14,8 @@
     "backup": "node src/cli.ts backup",
     "files": "node src/cli.ts files",
     "typecheck": "tsc -p tsconfig.json && tsc -p client/tsconfig.json",
-    "user": "node src/cli.ts user"
+    "user": "node src/cli.ts user",
+    "e2e": "node e2e/run.mjs"
   },
   "dependencies": {
     "@xdev-hive/core": "*",
@@ -27,6 +28,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "@types/express": "^5.0.6",
     "@vitejs/plugin-react": "^5.2.0",
+    "electron": "44.4.5",
     "vite": "^7.3.6"
   }
 }
