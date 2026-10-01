@@ -6,7 +6,7 @@
 //   npm run smoke -w @xdev-hive/desktop [-- <output dir>]      (HIVE_SMOKE_LOCALE=en for the English interface,
 //   HIVE_SMOKE_THEME=dark for the dark theme)
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import electron from "electron";
@@ -25,7 +25,10 @@ const git = (...args) => execFileSync("git", args, { cwd: repo });
 git("init", "-q", "-b", "main");
 git("config", "user.email", "smoke@example.com");
 git("config", "user.name", "Smoke");
-writeFileSync(path.join(repo, "README.md"), "# demo\n");
+writeFileSync(path.join(repo, "README.md"), "# demo\n\n## Chạy\n\nnpm ci\n\n## Phát hành\n\nnpm run release\n");
+// Its README as pages of Hive (roadmap 26): the Projects page's Đồng bộ mirrors them (projects-mirror.png).
+mkdirSync(path.join(repo, ".xdev-hive"));
+writeFileSync(path.join(repo, ".xdev-hive", "docs.json"), JSON.stringify({ docs: [{ file: "README.md", split: "##", folder: "huong-dan", folderTitle: "Hướng dẫn" }] }));
 git("add", ".");
 git("commit", "-qm", "init");
 const origin = path.join(work, "origin.git");
@@ -81,6 +84,11 @@ await hive.call("tasks.create", { id: "T-003", project: "demo", title: "Viết t
 const skill = (name, description, body) => `---\nname: ${name}\ndescription: ${description}\n---\n\n${body}\n`;
 await hive.call("docs.save", { key: "org/skills/review-pr", content: skill("review-pr", "Review a pull request: run the tests, read the diff, report a verdict.", "1. Run the tests.\n2. Read the diff."), baseVersion: 0 }, admin);
 await hive.call("docs.save", { key: "project/demo/skills/review-pr", content: skill("review-pr", "Review a demo PR: also check the settings page screenshots.", "1. Run npm test.\n2. Compare the screenshots."), baseVersion: 0 }, admin);
+await hive.call(
+  "docs.save",
+  { key: "project/demo/so-do", title: "Sơ đồ", content: "# Sơ đồ\n\n```mermaid\nflowchart LR\n  A[Yêu cầu] --> B{Máy rảnh?}\n  B -- có --> C[Chạy agent]\n```\n", baseVersion: 0 },
+  admin,
+);
 hive.close();
 new RunStore(path.join(work, "runs.db")).insert(
   { project: "demo", taskId: "T-001", taskTitle: "Thêm trang cài đặt workspace", role: "implement", attempt: 1, maxAttempts: 3, reviewAfter: true },
@@ -151,6 +159,41 @@ store.db.close();
 await shoot("runs-best", "runs", 6000, { HIVE_SMOKE_CLICK: '[data-best="kept"]' });
 // The first run (Claude, out of quota): its log follows Claude Code's steps (stream-json), by level.
 await shoot("runs-log", "runs", 3000, { HIVE_SMOKE_CLICK: '[data-run-status="rate_limited"]' });
+
+// The Docs page in the app (goals QA-2): the diagram is drawn under the app's CSP, and Sửa opens the Tiptap editor.
+const soDo = `docs?doc=${encodeURIComponent("project/demo/so-do")}`;
+await shoot("docs-mermaid", soDo, 2500, { HIVE_SMOKE_EXPECT: '[data-mermaid] [role="img"] svg' });
+await shoot("docs-editor", soDo, 2500, { HIVE_SMOKE_CLICK: '[role="radio"][data-value="edit"]', HIVE_SMOKE_EXPECT: '.ProseMirror && .ProseMirror [data-mermaid] [role="img"] svg' });
+// Đồng bộ on the Projects page mirrors the README's sections into Hive (roadmap 26).
+await shoot("projects-mirror", "projects", 3000, { HIVE_SMOKE_CLICK: '[data-sync-project="demo"]', HIVE_SMOKE_SCROLL: '[data-sync-project="demo"]' });
+const failures = [];
+{
+  const local = new SqliteHive(path.join(work, "local.db"));
+  const chay = await local.call("docs.get", { key: "project/demo/chay" }, admin);
+  if (chay?.mirror?.from !== "README.md#Chạy" || chay.parent !== "project/demo/huong-dan") failures.push(`mirror: project/demo/chay is ${JSON.stringify(chay && { mirror: chay.mirror, parent: chay.parent })}`);
+  local.close();
+}
+// One more account of each (roadmap 24b): its own sign-in folder, a sign-in script with the CLI's command, and no run
+// until it signs in. The CLIs are the fake one, so the check does not need Claude Code or Codex on the machine.
+const accountBin = path.join(work, "bin");
+mkdirSync(accountBin);
+for (const name of ["claude", "codex"]) writeFileSync(path.join(accountBin, name), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(fake)} "$@"\n`, { mode: 0o755 });
+const withBin = { PATH: `${accountBin}${path.delimiter}${process.env.PATH}` };
+for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login"], ["codex", "CODEX_HOME", "login"]]) {
+  await shoot(`agents-account-${kind}`, "agents", 2000, { ...withBin, HIVE_SMOKE_CLICK: `[data-add-account="${kind}"] && form:has(#acc-label) button[type="submit"]` });
+  const added = JSON.parse(readFileSync(path.join(work, "config.json"), "utf8")).agents.find((a) => a.id === `${kind}-1`);
+  const dir = added?.env?.[dirEnv]?.replace(/^~/, os.homedir());
+  const scripts = path.join(work, "login", `${kind}-1`);
+  const script = existsSync(scripts) ? readdirSync(scripts).map((f) => readFileSync(path.join(scripts, f), "utf8")).join("\n") : "";
+  if (!added) failures.push(`account: no ${kind}-1 in config.json`);
+  else if (!dir || !existsSync(dir) || dir === os.homedir()) failures.push(`account: ${kind}-1 has no sign-in folder of its own (${dirEnv}=${added.env[dirEnv]})`);
+  // The script quotes each word (sh: 'auth' 'login'; Windows: "auth" "login").
+  else if (!new RegExp(login.split(" ").map((w) => `['"]?${w}['"]?`).join(" ")).test(script) || !script.includes(dir)) failures.push(`account: the sign-in script of ${kind}-1 does not run "${login}" with ${dir}`);
+}
+if (failures.length) {
+  console.error(`smoke checks failed:\n  ${failures.join("\n  ")}`);
+  process.exitCode = 1;
+}
 
 const runs = new RunStore(path.join(work, "runs.db")).list({ project: "demo" });
 console.log(
