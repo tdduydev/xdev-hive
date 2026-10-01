@@ -685,6 +685,7 @@ function ProjectsCard({ settings, onChanged }: { settings: DesktopSettings; onCh
                       size="sm"
                       variant="outline"
                       disabled={action.busy}
+                      data-sync-project={p.name}
                       onClick={() =>
                         void action.run(async () => {
                           showSync(await desktop.syncProject(p.name));
