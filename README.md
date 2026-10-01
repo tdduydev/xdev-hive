@@ -631,6 +631,10 @@ Trang này có trên hub web và trên app desktop ở chế độ hub, chỉ hi
   - các MCP server được bật.
 
   Phần riêng của dự án chỉ siết thêm mặc định, không nới được. Cột *Hiệu lực* cho thấy kết quả sau khi gộp. Admin hub sửa mặc định. Người có quyền Cài đặt dự án sửa dòng của dự án mình, ở đây hoặc ở trang *Hệ thống*. Máy nhận phần của các dự án mình có qua heartbeat. Runner bắt đầu ép chính sách từ R-27a-2; trước đó, chính sách chỉ được lưu và gửi xuống máy.
+- **Trần chi tiêu** (roadmap 27b, thẻ trên trang *Chi phí*): admin hub đặt trần cho một dự án, một người yêu cầu run, hoặc cả hub, theo ngày hoặc theo tháng (giờ của hub). Trần tính bằng USD (giá API ước tính, như trang *Chi phí*), bằng số run, hoặc cả hai.
+  - Run được tính cho người yêu cầu nó trên web; run chạy từ Board được tính cho tài khoản sở hữu token của máy.
+  - Hết trần thì hub không nhận *Giao run* mới (`errors.budgetExceeded`). Máy nghe qua heartbeat và giữ run mới trong *Hàng đợi* kèm lý do, kể cả run từ Board. Run đang chạy vẫn chạy tiếp.
+  - Luật cảnh báo *Gần trần chi tiêu* mở ở 70% và 90%, *Hết trần chi tiêu* mở khi chạm 100%; cả hai gửi qua webhook như các luật khác. Sang ngày hoặc tháng mới thì trần tự mở lại.
 - **Nhật ký**: mọi thao tác thay đổi dữ liệu của admin (sửa tài liệu, duyệt/từ chối, memory, task, token, chính sách, yêu cầu cài), đăng nhập, tạo/sửa/khoá tài khoản, đổi quyền, đặt lại mật khẩu, và kết quả máy báo về. Không ghi lượt đọc.
 - **Người dùng & quyền**: tạo tài khoản, cấp quyền theo dự án, cấp/bỏ admin, đặt lại mật khẩu, khoá.
 - Trang **Token** có thêm cột *Tài khoản* và *Máy*: token thuộc ai, các máy đang dùng từng token.

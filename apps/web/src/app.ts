@@ -199,17 +199,19 @@ export function createHubApp({
       // A chat reply's leader: the rights cut when the machine got the request (see ChatGrants).
       const grant = chatGrants.verify(raw);
       return grant
-        ? { name: label ? `${label}@${grant.name}` : grant.name, role: grant.role, ...(grant.access ? { access: grant.access } : {}), source, chatReply: grant.replyId }
+        ? { name: label ? `${label}@${grant.name}` : grant.name, role: grant.role, ...(grant.access ? { access: grant.access } : {}), source, chatReply: grant.replyId, onBehalf: grant.name }
         : null;
     }
     const name = label ? `${label}@${who.name}` : who.name;
-    if (!who.ownerId) return { name, role: who.role, source };
+    // A token of no account (CI, the CLI's) stands for itself.
+    if (!who.ownerId) return { name, role: who.role, source, onBehalf: who.name };
     const user = users.get(who.ownerId);
     if (!user || user.disabled) return null;
     res.locals.user = user;
     // An account that lost admin keeps its old admin tokens only as a member.
     const role: Role = who.role === "admin" && !user.admin ? "member" : who.role;
-    return { name, role, access: users.access(user), source };
+    // A machine's Board runs count against this person's spending cap (roadmap 27b).
+    return { name, role, access: users.access(user), source, onBehalf: user.username };
   };
 
   /** Bearer token (agents, machines, CI) or the session cookie (people in the web hub). */

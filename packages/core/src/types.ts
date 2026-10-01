@@ -17,6 +17,11 @@ export interface Actor {
   source?: WriteSource;
   /** Set by the hub for a chat leader's short-lived token: the reply it writes, the only one it may propose actions for. */
   chatReply?: number;
+  /**
+   * The account that owns the token (or the token's name when no account does). An agent acts for that person, so
+   * a machine's Board runs count against that person's spending cap (roadmap 27b).
+   */
+  onBehalf?: string;
 }
 
 export interface DocSummary {
@@ -395,7 +400,17 @@ export type HiveEvent =
   | { type: "agentPolicy.changed"; project: string | null; by: string; policy: Partial<AgentPolicy> | null };
 
 /** The hub's alert rules (roadmap 22m), each turned on or off by a hub admin. */
-export const ALERT_RULES = ["run_fail_streak", "ci_fix_exhausted", "machine_offline", "webhook_failed", "quota_near", "vendor_resting", "backup_overdue"] as const;
+export const ALERT_RULES = [
+  "run_fail_streak",
+  "ci_fix_exhausted",
+  "machine_offline",
+  "webhook_failed",
+  "quota_near",
+  "vendor_resting",
+  "backup_overdue",
+  "budget_near",
+  "budget_exceeded",
+] as const;
 export type AlertRule = (typeof ALERT_RULES)[number];
 export type AlertSeverity = "high" | "medium" | "low";
 

@@ -31,6 +31,7 @@ import {
   type AgentProfileStatus,
   type AgentRun,
   type BestOf,
+  type BudgetBlock,
   type CiFix,
   type DesktopProject,
   type CommandStatus,
@@ -250,6 +251,8 @@ export class Runner {
   readonly #owners = new Map<string, string>();
   /** Hub cooldowns by account, refreshed by every heartbeat. */
   #shared = new Map<string, QuotaCooldown>();
+  /** Full spending caps (roadmap 27b), refreshed by every heartbeat: queued runs they bind wait. */
+  #budgetBlocked: BudgetBlock[] = [];
   /** Tells the hub this app apart from another one running under the same machine name. */
   readonly #instance = randomBytes(8).toString("hex");
   #ticking = false;
@@ -403,8 +406,11 @@ export class Runner {
     }
   }
 
-  /** `extra.ciFix`: the run fixes a failed MR pipeline (queued by the MR watcher, not by the interface). */
-  async enqueue(req: StartRunRequest, extra: { ciFix?: CiFix } = {}): Promise<AgentRun> {
+  /**
+   * `extra.ciFix`: the run fixes a failed MR pipeline (queued by the MR watcher, not by the interface).
+   * `extra.requestedBy`: who asked for it on the web (a hub run request).
+   */
+  async enqueue(req: StartRunRequest, extra: { ciFix?: CiFix; requestedBy?: string } = {}): Promise<AgentRun> {
     const project = this.#host.projects().find((p) => p.name === req.project);
     if (!project) throw new HiveError("not_found", `Dự án ${req.project} chưa được thêm vào app.`, { key: "errors.projectNotAdded", vars: { project: req.project } });
     if (!/^[A-Za-z0-9._-]{1,100}$/.test(req.taskId)) throw new HiveError("bad_request", "Task id không hợp lệ.", { key: "errors.badTaskId" });
@@ -435,7 +441,7 @@ export class Runner {
     const active = this.store.activeForTask(req.project, req.taskId);
     if (active) throw new HiveError("conflict", `Task ${req.taskId} đang có run ${active.id} (${active.status}).`, { key: "errors.taskHasRun", vars: { id: req.taskId, run: active.id } });
     const previous = this.store.lastWithWorktree(req.project, req.taskId);
-    if (count > 1) return await this.#enqueueCandidates(req, project, task, count, previous);
+    if (count > 1) return await this.#enqueueCandidates(req, project, task, count, previous, extra.requestedBy ?? null);
     const run = this.store.insert(
       {
         project: req.project,
@@ -449,6 +455,7 @@ export class Runner {
         reviewAfter: req.reviewAfter ?? false,
         baseSha: previous?.baseSha ?? null,
         ciFix: extra.ciFix ?? null,
+        requestedBy: extra.requestedBy ?? null,
       },
       this.#iso(),
     );
@@ -457,7 +464,7 @@ export class Runner {
   }
 
   /** Candidates start together from the task branch (or HEAD), each on its own branch and worktree. */
-  async #enqueueCandidates(req: StartRunRequest, project: DesktopProject, task: Task, count: number, previous: AgentRun | null): Promise<AgentRun> {
+  async #enqueueCandidates(req: StartRunRequest, project: DesktopProject, task: Task, count: number, previous: AgentRun | null, requestedBy: string | null): Promise<AgentRun> {
     if (!isGitRepo(project.repo)) throw new HiveError("bad_request", `${project.repo} không phải git repo`, { key: "errors.notGitRepo", vars: { path: project.repo } });
     const branch = branchFor(req.taskId);
     const tip = tryGit(project.repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]);
@@ -480,6 +487,7 @@ export class Runner {
           reviewAfter: req.reviewAfter ?? false,
           baseSha,
           bestOf: { group, n: i + 1, of: count, from, pick: null, reason: null },
+          requestedBy,
         },
         now,
       ),
@@ -623,6 +631,7 @@ export class Runner {
   async heartbeat(): Promise<HubUpdate | null> {
     if (this.#host.mode() !== "hub") {
       this.#shared.clear();
+      this.#budgetBlocked = [];
       return null;
     }
     const runs = this.store.active().map((r) => ({
@@ -647,6 +656,7 @@ export class Runner {
       inputTokens: r.inputTokens,
       outputTokens: r.outputTokens,
       finishedAt: r.finishedAt!,
+      requestedBy: r.requestedBy,
     }));
     const res = await this.#host
       .backend()
@@ -677,6 +687,11 @@ export class Runner {
       }
     }
     this.#shared = next;
+    const held = this.#budgetBlocked.length;
+    // A hub older than 27b sends none: nothing is held.
+    this.#budgetBlocked = res.budgetBlocked ?? [];
+    // A cap raised, or a new day or month: what it held may start now rather than at the next tick.
+    if (held) void this.tick();
     const update: HubUpdate = {
       duplicate: res.duplicate,
       policy: res.policy,
@@ -811,15 +826,18 @@ export class Runner {
       return { status: "rejected", runId: null, error: { message: `${machine} does not take runs from the hub.`, key: "errors.machineNoHubRuns", vars: { machine } } };
     }
     try {
-      const run = await this.enqueue({
-        project: req.project,
-        taskId: req.taskId,
-        role: req.role,
-        profileId: req.profileId,
-        reviewAfter: req.reviewAfter,
-        candidates: req.candidates,
-        instructions: req.instructions,
-      });
+      const run = await this.enqueue(
+        {
+          project: req.project,
+          taskId: req.taskId,
+          role: req.role,
+          profileId: req.profileId,
+          reviewAfter: req.reviewAfter,
+          candidates: req.candidates,
+          instructions: req.instructions,
+        },
+        { requestedBy: req.requestedBy },
+      );
       this.#opts.onEvent?.({ type: "dispatched", run, by: req.requestedBy });
       return { status: "accepted", runId: run.id, error: null };
     } catch (err) {
@@ -923,6 +941,11 @@ export class Runner {
         this.#again = false;
         const now = this.#opts.now();
         for (const run of this.store.queued()) {
+          const capped = this.#budgetHold(run);
+          if (capped) {
+            this.#waiting.set(run.id, capped);
+            continue;
+          }
           if (this.store.running() >= this.#host.settings().maxParallel) {
             this.#waiting.set(run.id, tr("runNote.waitingParallel"));
             continue;
@@ -944,6 +967,17 @@ export class Runner {
   }
 
   // ── internals ──────────────────────────────────────────────────────────────
+
+  /**
+   * Why a queued run waits for a spending cap, if one binds it: the hub's, its project's, or its requester's. A run
+   * started here has no requester; it counts for the account of this machine's token, which the hub marks `self`.
+   */
+  #budgetHold(run: AgentRun): string | null {
+    const block = this.#budgetBlocked.find(
+      (b) => b.hub || b.project === run.project || (b.user !== undefined && (run.requestedBy ? b.user === run.requestedBy : b.self === true)),
+    );
+    return block ? tr("runNote.waitingBudget", block.vars) : null;
+  }
 
   #iso(offsetMinutes = 0): string {
     return new Date(this.#opts.now().getTime() + offsetMinutes * 60_000).toISOString();
@@ -1400,6 +1434,7 @@ export class Runner {
           baseSha: done.baseSha,
           ciFix: run.ciFix,
           bestOf: run.bestOf,
+          requestedBy: run.requestedBy,
         },
         this.#iso(),
       );
@@ -1424,6 +1459,7 @@ export class Runner {
           parentRunId: run.id,
           avoidKinds: [profile.kind],
           baseSha: done.baseSha,
+          requestedBy: run.requestedBy,
         },
         this.#iso(),
       );
@@ -1481,6 +1517,7 @@ export class Runner {
         reviewAfter: last.reviewAfter,
         baseSha: last.baseSha,
         bestOf: { ...b, n: 0 },
+        requestedBy: last.requestedBy,
       },
       this.#iso(),
     );
@@ -1540,6 +1577,7 @@ export class Runner {
           parentRunId: kept.id,
           avoidKinds: kind ? [kind] : [],
           baseSha: kept.baseSha,
+          requestedBy: kept.requestedBy,
         },
         this.#iso(),
       );

@@ -7,6 +7,7 @@ import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import {
   ALERT_RULES,
+  budgetVars,
   HiveError,
   type Actor,
   type AlertRule,
@@ -29,6 +30,9 @@ export const RULE_SEVERITY: Record<AlertRule, AlertSeverity> = {
   quota_near: "low",
   vendor_resting: "high",
   backup_overdue: "medium",
+  budget_near: "medium",
+  // Nothing new starts for what the cap binds until someone raises it or the period ends.
+  budget_exceeded: "high",
 };
 /** On until an admin turns them off; the quota one is chatty, so it starts off. */
 const DEFAULT_ON: Record<AlertRule, boolean> = { ...Object.fromEntries(ALERT_RULES.map((r) => [r, true])), quota_near: false } as Record<AlertRule, boolean>;
@@ -40,6 +44,8 @@ const OFFLINE_MINUTES = 60;
 const GONE_DAYS = 7;
 const QUOTA_PERCENT = 80;
 const CI_LIMIT_DAYS = 7;
+/** Shares of a spending cap that warn, highest first; at 1 the cap is reached (budget_exceeded). */
+const BUDGET_STEPS = [0.9, 0.7];
 
 export interface AlertOptions {
   webhooks?: WebhookStore;
@@ -175,6 +181,7 @@ export class AlertStore {
     if (on.has("quota_near")) found.push(...this.#quota(machines));
     if (on.has("vendor_resting")) found.push(...this.#vendors(machines));
     if (on.has("backup_overdue")) found.push(...this.#backup());
+    if (on.has("budget_near") || on.has("budget_exceeded")) found.push(...(await this.#budgets(on)));
 
     const now = this.#iso();
     const open = (this.#db.prepare("SELECT * FROM hub_alerts WHERE resolved_at IS NULL").all() as Row[]).map(toAlert);
@@ -287,6 +294,25 @@ export class AlertStore {
     if (newest === null && this.#startedAt.getTime() > limit) return [];
     if (newest !== null && newest > limit) return [];
     return [{ rule: "backup_overdue", key: "backup", project: null, vars: { dir: b.dir, hours: newest === null ? "?" : Math.round((this.#opts.now().getTime() - newest) / 3_600_000) } }];
+  }
+
+  /**
+   * A spending cap at 70% or 90% (budget_near) or reached (budget_exceeded). The step is in the key, so crossing 90%
+   * opens a new alert, sent to webhooks again, and the 70% one ends; a new period ends them all by itself.
+   */
+  async #budgets(on: Set<AlertRule>): Promise<Found[]> {
+    const out: Found[] = [];
+    for (const u of await this.#hive.call("budgets.list", {}, HUB)) {
+      const vars = budgetVars(u);
+      const project = u.scope.kind === "project" ? u.scope.project : null;
+      if (u.ratio >= 1) {
+        if (on.has("budget_exceeded")) out.push({ rule: "budget_exceeded", key: u.id, project, vars });
+        continue;
+      }
+      const step = BUDGET_STEPS.find((s) => u.ratio >= s);
+      if (step !== undefined && on.has("budget_near")) out.push({ rule: "budget_near", key: `${u.id}@${Math.round(step * 100)}`, project, vars: { ...vars, step: Math.round(step * 100) } });
+    }
+    return out;
   }
 
   /** The overview's feed: runs starting and ending, alerts, what people did, proposals; the newest first. */

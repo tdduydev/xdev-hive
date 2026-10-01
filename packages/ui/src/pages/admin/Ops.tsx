@@ -17,6 +17,7 @@ import { ACTION_LABEL, MachineCard } from "#ui/pages/Admin.tsx";
 import { Costs } from "#ui/pages/Machines.tsx";
 import { HubDetail } from "#ui/pages/Runs.tsx";
 import { EventFeed, OpenAlerts } from "./Alerts.tsx";
+import { BudgetsCard } from "./Budgets.tsx";
 
 const REFRESH_MS = 15_000;
 
@@ -635,6 +636,7 @@ export function OpsCosts() {
   const costs = useQuery(() => client.call("costs.summary", {}), [client, tick]);
   return (
     <div className="flex flex-col gap-4">
+      <BudgetsCard tick={tick} />
       <ErrorNote error={costs.error} />
       {costs.data ? <Costs summary={costs.data} /> : null}
     </div>
@@ -650,7 +652,7 @@ function groupOf(action: string): string {
   if (p === "memory") return "memory";
   if (p === "tasks") return "tasks";
   if (p === "users" || p === "auth" || p === "tokens") return "accounts";
-  if (p === "machines" || p === "admin" || p === "cooldowns" || p === "policy") return "machines";
+  if (p === "machines" || p === "admin" || p === "cooldowns" || p === "policy" || p === "budgets") return "machines";
   if (p === "systems") return "projects";
   return "connections";
 }
