@@ -42,6 +42,11 @@ export const mrSettingsSchema = z.object({
    * work it was waiting on is gone, so it should not look like it is still in review.
    */
   onClosed: z.enum(["blocked", "todo", "keep"]).default("blocked"),
+  /**
+   * A merged MR removes its task's worktree and local ai/<task> branch, when the branch head is the merged commit
+   * and nothing is left uncommitted: otherwise they pile up, one per task, with dependencies and builds in each.
+   */
+  cleanupOnMerge: z.boolean().default(true),
   /** A failed pipeline on an open MR queues a run that fixes it, with the failed jobs' logs. */
   fixCi: z.boolean().default(true),
   /** Automatic fixes per MR; after that a failed pipeline is only reported. */
