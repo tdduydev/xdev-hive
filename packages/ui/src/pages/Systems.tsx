@@ -57,7 +57,7 @@ export function SystemsPage() {
                 >
                   {t("systems.open")}
                 </Button>
-                {s.projects.every((p) => allow(p, "manage")) ? (
+                {s.projects.every((p) => allow(p, "projectSettings")) ? (
                   <Button size="sm" variant="outline" onClick={() => setEditing(s.name)}>
                     {t("systems.edit")}
                   </Button>
@@ -138,7 +138,7 @@ function SystemEditor({ system, onDone }: { system: HiveSystem | null; onDone: (
                 const id = `system-project-${p}`;
                 return (
                   <div key={p} className="flex items-center gap-2">
-                    <Checkbox id={id} checked={picked.has(p)} disabled={!allow(p, "manage")} onCheckedChange={(v) => toggle(p, v === true)} />
+                    <Checkbox id={id} checked={picked.has(p)} disabled={!allow(p, "projectSettings")} onCheckedChange={(v) => toggle(p, v === true)} />
                     <Label htmlFor={id} className="font-mono text-sm font-normal">
                       {p}
                     </Label>

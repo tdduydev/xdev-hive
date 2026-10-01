@@ -403,17 +403,24 @@ npm run token -w @xdev-hive/web -- create ci-gitlab agent   # token không thu�
 ### Tài khoản và quyền theo dự án
 
 - **Người** đăng nhập hub bằng tên đăng nhập + mật khẩu. Admin tạo tài khoản ở *Quản trị → Người dùng & quyền*; hub sinh mật khẩu tạm, chỉ hiện một lần. Lần đăng nhập đầu phải đổi mật khẩu (≥ 10 ký tự, không chứa tên đăng nhập) mới dùng được hub. Quên mật khẩu: admin bấm *Đặt lại mật khẩu*.
-- **Quyền theo dự án**: admin cấp cho mỗi người từng dự án ở một mức. Dự án không được cấp thì người đó không thấy gì của dự án đó: không trong danh sách, không qua agent, không qua MCP (hub trả *không tìm thấy*, nên cũng không lộ tên tài liệu).
+- **Quyền theo dự án** (roadmap 25): mỗi người có một vai trò ở từng dự án, hoặc *Tuỳ chỉnh* (chọn từng quyền ở *Quyền chi tiết*). Dự án không được cấp thì người đó không thấy gì của dự án đó: không trong danh sách, không qua agent, không qua MCP (hub trả *không tìm thấy*, nên cũng không lộ tên tài liệu).
 
-  | Mức | Được làm |
+  | Vai trò | Được làm |
   |---|---|
-  | Xem | đọc tài liệu, memory, task, đề xuất của dự án |
-  | Đóng góp | + đề xuất sửa tài liệu, ghi memory, nhận và cập nhật task |
-  | Quản trị | + sửa và duyệt tài liệu, duyệt/xoá memory, tạo task |
+  | Người xem | xem task, run, tài liệu, memory, skill, chat, Context agent |
+  | Thành viên | + làm task (nhận, cập nhật, gửi kết quả run), đề xuất sửa tài liệu và skill, ghi memory |
+  | Reviewer | + duyệt đề xuất tài liệu và skill, duyệt memory, duyệt hành động của leader chat, Review code (chuyển task sang Xong) |
+  | Quản lý dự án | mọi quyền: thêm sửa tài liệu, Context agent, tạo task, giao và dừng run, chat với leader, cài đặt dự án, quản lý thành viên |
 
-- **Dữ liệu Chung** (tài liệu `org/*`, memory chung): ai đăng nhập cũng xem được. Người có mức Đóng góp ở ít nhất một dự án được đề xuất tài liệu Chung và ghi memory Chung (chờ admin duyệt). Sửa và duyệt dữ liệu Chung là việc của admin.
+  15 quyền: Xem · Làm task · Tạo, sửa task · Giao, dừng run · Review code · Đề xuất tài liệu, skill · Sửa tài liệu · Duyệt đề xuất tài liệu, skill · **Context agent** · Ghi memory · Duyệt memory · Chat với leader · Duyệt hành động leader · Cài đặt dự án · Quản lý thành viên.
+  - **Context agent** là những gì agent đọc: AGENTS.md và quyết định của dự án, skill, tài liệu theo đường dẫn, tài liệu đưa vào AGENTS.md. Sửa hoặc duyệt đề xuất cho chúng cần quyền này; đổi một tài liệu thường thành tài liệu theo đường dẫn cũng vậy. Reviewer duyệt được tài liệu thường nhưng không duyệt AGENTS.md.
+  - **Review code**: chuyển task sang *Xong* (cả khi MR đã merge, MR watcher của máy cũng cần quyền này ở tài khoản của máy). Agent chỉ đưa task sang *Review*.
+  - **Quản lý thành viên**: trang *Thành viên* (nhóm Quản trị): người có quyền này đặt vai trò cho tài khoản có sẵn trong dự án, không trao quyền mình không có, không đổi quyền của mình hay của admin. Tạo tài khoản vẫn do admin hub làm.
+  - Quyền cấp trước bản 0.87 vẫn giữ nguyên: *Xem* đọc thành Người xem, *Đóng góp* thành Thành viên, *Quản trị* thành Quản lý dự án. Khác duy nhất: Thành viên không còn tự chuyển task sang Xong, việc đó cần Review code.
+
+- **Dữ liệu Chung** (tài liệu `org/*`, memory, skill chung) có vai trò riêng như một dự án (dòng *Chung* trong hộp phân quyền, hoặc trang *Thành viên* chọn *Chung*). Để *Theo dự án* (mặc định): ai đăng nhập cũng xem được, người làm được ở ít nhất một dự án thì đề xuất tài liệu Chung và ghi memory Chung, chờ người có quyền duyệt.
 - **Admin** thấy và quản trị mọi dự án, quản lý tài khoản, trang Quản trị và mọi token.
-- **Máy và agent** dùng token *thuộc tài khoản* của người đó, nên chỉ thấy đúng các dự án người đó được cấp. App desktop: *Dự án & cài đặt → Nguồn dữ liệu → Hub dùng chung → Tài khoản*, nhập tên đăng nhập + mật khẩu một lần. Hub cấp cho máy một token (mật khẩu không lưu trên máy); đăng nhập lại từ cùng máy thì token cũ bị thay. Token vai trò `agent` (CI, script) mỗi người tự tạo ở trang *Token*, tối đa mức Đóng góp dù người đó có quyền Quản trị.
+- **Máy và agent** dùng token *thuộc tài khoản* của người đó, nên chỉ thấy đúng các dự án người đó được cấp. App desktop: *Dự án & cài đặt → Nguồn dữ liệu → Hub dùng chung → Tài khoản*, nhập tên đăng nhập + mật khẩu một lần. Hub cấp cho máy một token (mật khẩu không lưu trên máy); đăng nhập lại từ cùng máy thì token cũ bị thay. Token vai trò `agent` (CI, script) mỗi người tự tạo ở trang *Token*, tối đa là Xem, Làm task, Đề xuất và Ghi memory dù người đó là Quản lý dự án: agent không bao giờ duyệt, sửa Context agent hay giao run. Leader chat dùng quyền chung của người gửi và máy chạy nó.
 - Khoá tài khoản thì phiên đăng nhập và mọi token của người đó ngừng hoạt động ngay. Bỏ hay đổi quyền có hiệu lực từ request kế tiếp.
 - Token tạo trước khi có tài khoản (không thuộc ai) vẫn chạy như cũ theo vai trò của nó.
 

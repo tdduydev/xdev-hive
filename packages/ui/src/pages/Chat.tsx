@@ -80,7 +80,7 @@ export function ChatPage() {
     if (shownBefore.current !== shown) (shownBefore.current = shown), setOpen(null);
   }, [shown, setOpen]);
   // A system's chats are each with one of its projects' leaders.
-  const managed = (project ? [project] : scope.kind === "system" ? scope.projects : projects).filter((p) => allow(p, "manage"));
+  const managed = (project ? [project] : scope.kind === "system" ? scope.projects : projects).filter((p) => allow(p, "chatUse"));
   const [guideOpen, setGuideOpen] = useState(false);
 
   return (
@@ -369,7 +369,9 @@ function Conversation({ threadId, onBack, onChanged, onDeleted }: { threadId: nu
   const taskIds = (tasks.data ?? []).map((task) => task.id);
   const machines = useQuery(() => client.call("machines.list", {}), [client, live ? 0 : tick]);
   const machine = thread ? machines.data?.find((m) => m.id === thread.machineId) : undefined;
-  const manage = thread ? allow(thread.project, "manage") : false;
+  const manage = thread ? allow(thread.project, "chatUse") : false;
+  // What the leader proposes to do is approved apart from chatting (roadmap 25).
+  const approve = thread ? allow(thread.project, "chatApprove") : false;
   const refresh = () => (setBump((n) => n + 1), onChanged());
 
   // Follows the reply as it grows, unless the reader scrolled up to read something else.
@@ -443,6 +445,7 @@ function Conversation({ threadId, onBack, onChanged, onDeleted }: { threadId: nu
                 machine={thread?.machine ?? ""}
                 taskIds={taskIds}
                 manage={manage}
+                approve={approve}
                 onStopped={refresh}
                 onDecided={(a) => setMessages((ms) => withAction(ms, a))}
                 onDecidedAll={(replyId, actions) => setMessages((ms) => ms.map((x) => (x.id === replyId ? { ...x, actions } : x)))}
@@ -629,6 +632,7 @@ function Reply({
   machine,
   taskIds,
   manage,
+  approve,
   onStopped,
   onDecided,
   onDecidedAll,
@@ -638,6 +642,8 @@ function Reply({
   machine: string;
   taskIds: string[];
   manage: boolean;
+  /** May accept or refuse the leader's actions. */
+  approve: boolean;
   onStopped: () => void;
   onDecided: (action: ChatAction) => void;
   onDecidedAll: (replyId: number, actions: ChatAction[]) => void;
@@ -672,7 +678,7 @@ function Reply({
             <pre className="mt-1 max-h-64 overflow-auto rounded-md border bg-muted/50 p-2 font-mono whitespace-pre-wrap wrap-anywhere">{m.steps}</pre>
           </details>
         ) : null}
-        {m.actions.length ? <ActionList reply={m} taskIds={taskIds} manage={manage} onDecided={onDecided} onDecidedAll={onDecidedAll} /> : null}
+        {m.actions.length ? <ActionList reply={m} taskIds={taskIds} manage={approve} onDecided={onDecided} onDecidedAll={onDecidedAll} /> : null}
         {m.error ? <div className="text-xs text-destructive wrap-anywhere">{requestErrorText(m.error)}</div> : null}
         {onResend ? (
           <div>

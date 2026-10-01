@@ -30,12 +30,13 @@ import {
   ShieldCheck,
   SquareCheck,
   Terminal,
+  UserCog,
   UsersRound,
   WandSparkles,
 } from "lucide-react";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { TooltipProvider } from "@xdev-hive/ui/components/ui/tooltip";
-import { missingRequired, type Me } from "@xdev-hive/core";
+import { may, missingRequired, type Me } from "@xdev-hive/core";
 import type { HiveClient } from "./client.ts";
 import { ChangePasswordScreen } from "./components/Account.tsx";
 import { ErrorNote } from "./components/common.tsx";
@@ -65,6 +66,7 @@ import { TasksPage } from "./pages/Tasks.tsx";
 import { TodayPage } from "./pages/Today.tsx";
 import { TokensPage } from "./pages/Tokens.tsx";
 import { UsersPage } from "./pages/Users.tsx";
+import { MembersPage } from "./pages/Members.tsx";
 import { WebhooksTab } from "./pages/Webhooks.tsx";
 import { OpsAudit, OpsCosts, OpsFleet, OpsOverview, OpsQueue, OpsQuota, OpsRuns } from "./pages/admin/Ops.tsx";
 import { OpsVersions } from "./pages/admin/Versions.tsx";
@@ -88,6 +90,7 @@ type PageId =
   | "machines"
   | "admin"
   | "users"
+  | "members"
   | "tokens"
   | "setup"
   | "projects"
@@ -113,6 +116,7 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
   setup: { label: "nav.setup", sub: "navSub.setup", icon: Terminal, render: () => <SetupPage /> },
   admin: { label: "nav.admin", sub: "navSub.admin", icon: ShieldCheck, render: () => <AdminPage /> },
   users: { label: "nav.users", sub: "navSub.users", icon: UsersRound, render: () => <UsersPage /> },
+  members: { label: "nav.members", sub: "navSub.members", icon: UserCog, render: () => <MembersPage /> },
   tokens: { label: "nav.tokens", sub: "navSub.tokens", icon: KeyRound, render: () => <TokensPage /> },
   projects: { label: "nav.projects", sub: "navSub.projects", icon: FolderGit2, render: () => <ProjectsPage /> },
   systems: { label: "nav.systems", sub: "navSub.systems", icon: Boxes, render: () => <SystemsPage /> },
@@ -126,7 +130,7 @@ const GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
   { label: "nav.groupWork", ids: ["board", "runs", "tasks"] },
   { label: "nav.groupKnowledge", ids: ["docs", "skills", "memory", "proposals"] },
   { label: "nav.groupAgents", ids: ["agents", "setup", "projects"] },
-  { label: "nav.groupAdmin", ids: ["admin", "machines", "users", "tokens", "systems"] },
+  { label: "nav.groupAdmin", ids: ["admin", "machines", "users", "members", "tokens", "systems"] },
 ];
 const SHORTCUTS: Partial<Record<PageId, string>> = { today: "1", chat: "2", board: "3", runs: "4", docs: "5", agents: "6" };
 /** Not in the sidebar, still in the command palette. */
@@ -251,11 +255,13 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     if (client.desktop) ids.add("runs");
     if (hubAdmin) ids.add("admin");
     if (hubAdmin && client.users) ids.add("users");
+    // Thành viên (roadmap 25): a project lead sets roles in their project; hub admins have Người dùng & quyền too.
+    if (me.mode === "hub" && client.members && (hubAdmin || may(me, null, "membersManage") || projects.some((p) => may(me, p, "membersManage")))) ids.add("members");
     // Everyone with an account manages their own tokens (machines, CI); admins see all.
     if (client.tokens && (hubAdmin || me.user)) ids.add("tokens");
     if (client.device && me.user) ids.add("device");
     return ids;
-  }, [client, me, hubAdmin]);
+  }, [client, me, hubAdmin, projects]);
 
   const inbox = useInboxState(client, me, scope, tick);
   // The machine's name in the subtitles of Lượt chạy and Agent (desktop).

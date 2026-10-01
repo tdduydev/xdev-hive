@@ -3,8 +3,8 @@ import {
   type ChatFile,
   type DesktopBridge,
   type HiveErrorCode,
+  type Grant,
   type HubUser,
-  type Level,
   type Me,
   type Method,
   type MethodInput,
@@ -24,6 +24,15 @@ import {
 } from "@xdev-hive/core";
 
 /** What the UI needs from its host. The web hub implements it over HTTP, the desktop app over IPC. */
+/** An account as a project's Thành viên page shows it (roadmap 25): admins have every permission. */
+export interface ProjectMember {
+  id: string;
+  username: string;
+  displayName: string;
+  admin: boolean;
+  grant: Grant | null;
+}
+
 export interface HiveClient {
   call<M extends Method>(method: M, input: MethodInput<M>): Promise<MethodOutput[M]>;
   me(): Promise<Me>;
@@ -48,8 +57,14 @@ export interface HiveClient {
     list(): Promise<HubUser[]>;
     create(input: { username: string; displayName?: string; admin?: boolean }): Promise<{ user: HubUser; password: string }>;
     update(id: string, patch: { displayName?: string; admin?: boolean; disabled?: boolean }): Promise<HubUser>;
-    setGrants(id: string, grants: Record<string, Level>): Promise<HubUser>;
+    /** shared: the Chung grant (null: from projects); left out, it stays as it is. */
+    setGrants(id: string, grants: Record<string, Grant>, shared?: Grant | null): Promise<HubUser>;
     resetPassword(id: string): Promise<string>;
+  };
+  /** Hub only (roadmap 25): the accounts of a project (null: Chung) and their roles, for whoever may manage its members. */
+  members?: {
+    list(project: string | null): Promise<ProjectMember[]>;
+    set(project: string | null, userId: string, grant: Grant | null): Promise<ProjectMember>;
   };
   /** Hub only, for hub admins: chat webhooks for hub events. */
   webhooks?: {
@@ -169,8 +184,12 @@ export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpCl
       list: () => rpc<HubUser[]>("users.list"),
       create: (input) => rpc<{ user: HubUser; password: string }>("users.create", input),
       update: (id, patch) => rpc<HubUser>("users.update", { id, ...patch }),
-      setGrants: (id, grants) => rpc<HubUser>("users.setGrants", { id, grants }),
+      setGrants: (id, grants, shared) => rpc<HubUser>("users.setGrants", { id, grants, ...(shared === undefined ? {} : { shared }) }),
       resetPassword: async (id) => (await rpc<{ password: string }>("users.resetPassword", { id })).password,
+    },
+    members: {
+      list: (project) => rpc<ProjectMember[]>("members.list", { project }),
+      set: (project, userId, grant) => rpc<ProjectMember>("members.set", { project, userId, grant }),
     },
     releases: {
       list: () => rpc<{ releases: AppRelease[]; rollout: AppRollout; machines: MachineUpdate[] }>("releases.list"),
