@@ -1611,3 +1611,64 @@ describe("the Docs writing assistant", () => {
     assert.equal(gone!.status, "cancelled");
   });
 });
+
+describe("runner: agent policy (roadmap 27a)", () => {
+  /** A hub-mode machine that heard the project's policy at its first heartbeat. */
+  async function withPolicy(profiles: AgentProfile[], policy: Record<string, unknown>) {
+    const s = await setup(profiles, {}, "hub");
+    await s.hive.call("agentPolicy.set", { project: "demo", policy } as never, admin);
+    await s.runner.heartbeat();
+    return s;
+  }
+
+  it("read: the run gets plan mode and a read-only Hive, and its log says so", async () => {
+    const { runner, calls } = await withPolicy([profile("claude-a", "claude", 10, "ok")], { autonomy: "read" });
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const [call] = calls();
+    assert.ok(call, "the agent ran");
+    const i = call.args.indexOf("--permission-mode");
+    assert.equal(call.args[i + 1], "plan");
+    assert.equal(call.readOnly, "1");
+    assert.match(runner.log(run.id), /^# policy .*autonomy read · Hive read-only/m);
+  });
+
+  it("skips a profile the policy blocks, and says why in the run's log", async () => {
+    const { runner, calls } = await withPolicy(
+      [profile("claude-a", "claude", 10, "ok", { args: [FAKE, "{prompt}", "--model", "opus"] }), profile("claude-b", "claude", 20, "ok")],
+      { models: { claude: ["sonnet"] } },
+    );
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    assert.deepEqual(calls().map((c) => c.agent), ["claude-b"]);
+    const args = calls()[0]!.args;
+    assert.equal(args[args.indexOf("--model") + 1], "sonnet", "the policy's first model");
+    assert.equal(runner.store.get(run.id)!.profileId, "claude-b");
+    assert.match(runner.log(run.id), /# policy skipped claude-a: .*opus/);
+  });
+
+  it("fails the run with errors.policyNoProfile when no profile is left", async () => {
+    setMainLocale("en");
+    try {
+      const { runner, calls } = await withPolicy([profile("claude-a", "claude", 10, "ok")], { network: { mode: "off", allow: [] } });
+      const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+      await runner.settle();
+      const done = runner.store.get(run.id)!;
+      assert.equal(done.status, "failed");
+      assert.match(done.error ?? "", /agent policy rules out every profile.*claude-a: .*container/);
+      assert.match(runner.log(run.id), /claude-a/);
+      assert.equal(calls().length, 0, "the agent never started");
+    } finally {
+      setMainLocale("vi");
+    }
+  });
+
+  it("changes nothing in local mode", async () => {
+    const { runner, calls } = await setup([profile("claude-a", "claude", 10, "ok")]);
+    await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const [call] = calls();
+    assert.equal(call!.args.includes("--permission-mode"), false);
+    assert.equal(call!.readOnly, null);
+  });
+});
