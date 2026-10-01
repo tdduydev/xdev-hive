@@ -55,7 +55,8 @@ import { GitLabClient } from "./gitlab/client.ts";
 import { gitClone, importRepos, planImport } from "./gitlab/import.ts";
 import { setMainLocale, tr } from "./i18n.ts";
 import { MergeRequester, mrLabel, type MrHost } from "./gitlab/mr.ts";
-import { MrWatcher, type MrChange } from "./gitlab/watch.ts";
+import { branchFor } from "#desktop/main/runner/worktree.ts";
+import { cleanupNote, MrWatcher, type MrChange } from "./gitlab/watch.ts";
 import { CiFixer } from "./gitlab/ci-fix.ts";
 import { installAgents, installCodexConfig, installShim } from "./installer.ts";
 import { expandEnv, expandHome, resolveBin } from "./runner/command.ts";
@@ -702,7 +703,9 @@ function onMrChanges(changes: MrChange[]): void {
                   ? tr("desktop.pipelineFailed", { mr })
                   : null;
     if (!body) continue;
-    const n = new Notification({ title: `${c.run.taskId} · ${mr}`, body });
+    // Said with the merge, so a worktree the app kept (and why) is not a surprise later.
+    const cleanup = c.cleanup ? cleanupNote(c.cleanup, branchFor(c.run.taskId)) : null;
+    const n = new Notification({ title: `${c.run.taskId} · ${mr}`, body: cleanup ? `${body} ${cleanup}.` : body });
     n.on("click", () => {
       showWindow();
       win?.webContents.executeJavaScript('location.hash = "#/board"').catch(() => undefined);

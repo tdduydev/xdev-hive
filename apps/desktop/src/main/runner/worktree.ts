@@ -42,6 +42,13 @@ function tryGit(repo: string, args: string[]): string | null {
 
 export const hasBranch = (repo: string, branch: string) => tryGit(repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]) !== null;
 
+/** `dir` is one of the repo's worktrees (call `git worktree prune` first, or a deleted folder still counts). */
+const isWorktreeOf = (repo: string, dir: string) =>
+  git(repo, ["worktree", "list", "--porcelain"])
+    .split("\n")
+    .filter((l) => l.startsWith("worktree "))
+    .some((l) => real(l.slice(9)) === real(dir));
+
 /**
  * Where a new task branch starts: the target branch as the remote has it now (`targetBranch`, else the remote's
  * default), so a task queued right after the one it depends on was merged on GitHub or GitLab gets that code.
@@ -89,10 +96,7 @@ export function ensureWorktree(
   if (!isGitRepo(repo)) throw new HiveError("bad_request", `${repo} không phải git repo`, { key: "errors.notGitRepo", vars: { path: repo } });
   const branch = opts.branch ?? branchFor(taskId);
   git(repo, ["worktree", "prune"]);
-  const registered = git(repo, ["worktree", "list", "--porcelain"])
-    .split("\n")
-    .filter((l) => l.startsWith("worktree "))
-    .some((l) => real(l.slice(9)) === real(dir));
+  const registered = isWorktreeOf(repo, dir);
 
   let created = false;
   let started: string | null = null;
@@ -232,5 +236,58 @@ export function removeWorktree(repo: string, dir: string, force = false): void {
   } catch (err) {
     const reason = gitErrorText(err);
     throw new HiveError("bad_request", `Không xoá được worktree: ${reason}`, { key: "errors.worktreeRemove", vars: { reason } });
+  }
+}
+
+/** Why the work of a merged MR stayed on the machine (roadmap 21b). */
+export type CleanupKept = "noSha" | "newer" | "dirty" | "active" | "failed";
+
+export interface MergedCleanup {
+  /** The task's worktree was removed. */
+  worktree: boolean;
+  /** Its local branch was deleted. */
+  branch: boolean;
+  /** Why something was kept; null when all of it went (or there was nothing to remove). */
+  kept: CleanupKept | null;
+  /** Git's own words when `kept` is "failed". */
+  reason: string | null;
+}
+
+/**
+ * After its MR was merged: removes a task's worktree and deletes its local branch, but only when both point at the
+ * commit that was merged (`mergedSha`, the MR's head). A newer commit (pushed after, or a run that went on) or edits
+ * not committed yet are work the merge does not hold, so then everything stays. Agent config the runner copied in
+ * and the docs Hive renders do not count as edits: commitAll keeps them out of the branch too.
+ */
+export function cleanupMerged(repo: string, dir: string | null, branch: string, mergedSha: string | null): MergedCleanup {
+  const kept = (why: CleanupKept, reason: string | null = null): MergedCleanup => ({ worktree: false, branch: false, kept: why, reason });
+  const sha = mergedSha?.toLowerCase() ?? null;
+  try {
+    git(repo, ["worktree", "prune"]);
+    const head = tryGit(repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]);
+    const wt = dir && existsSync(dir) && isWorktreeOf(repo, dir) ? dir : null;
+    if (!head && !wt) return { worktree: false, branch: false, kept: null, reason: null };
+    // Without the merged commit there is no telling whether the branch holds more: never guess on someone's work.
+    if (!sha) return kept("noSha");
+    if (head && head !== sha) return kept("newer");
+    if (wt) {
+      if (tryGit(wt, ["rev-parse", "HEAD"]) !== sha) return kept("newer");
+      const keepOut = [...AGENT_CONFIG_FILES, ...RENDERED_FILES, RULES_DIR, ...AGENT_CLI_DIRS];
+      if (git(wt, ["status", "--porcelain", "--", ".", ...keepOut.map((f) => `:(exclude)${f}`)])) return kept("dirty");
+      // Forced only for what the check above left out (copied config, ignored dependencies and builds).
+      git(repo, ["worktree", "remove", "--force", wt]);
+    }
+    if (head) {
+      try {
+        // -D: a squash or rebase merge leaves the branch out of the target's history, though its work is in.
+        git(repo, ["branch", "-D", branch]);
+      } catch (err) {
+        // Checked out in another working copy (the user's own, say): the worktree is gone, the branch stays.
+        return { worktree: wt !== null, branch: false, kept: "failed", reason: gitErrorText(err) };
+      }
+    }
+    return { worktree: wt !== null, branch: head !== null, kept: null, reason: null };
+  } catch (err) {
+    return kept("failed", gitErrorText(err));
   }
 }
