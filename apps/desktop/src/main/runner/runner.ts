@@ -45,6 +45,8 @@ import {
   type PlanUsage,
   type MachineCommand,
   type ProfileChange,
+  type RunMergeOrder,
+  type RunMr,
   type QuotaCooldown,
   type ReportedProfile,
   type RunCancel,
@@ -141,7 +143,13 @@ export interface HubUpdate {
   agentPolicy?: HubAgentPolicy | null;
   /** Profile changes asked for on the web (roadmap 18d); a hub older than them sends none. */
   profileChanges?: ProfileChange[];
+  /** Merges asked for on the web (roadmap 18c), while this machine takes runs from the hub. */
+  mergeRuns?: RunMergeOrder[];
 }
+
+/** What the MR watcher saw of a run's MR, as the hub keeps it (roadmap 18c); null without an MR. */
+const mrOf = (r: AgentRun): RunMr | null =>
+  r.mrUrl ? { iid: r.mrIid, status: r.mrStatus, draft: r.mrDraft, pipeline: r.pipelineStatus, pipelineUrl: r.pipelineUrl, checkedAt: r.mrCheckedAt } : null;
 
 export type HubAgentPolicy = { hub: AgentPolicy; projects: Record<string, Partial<AgentPolicy>> };
 
@@ -731,6 +739,8 @@ export class Runner {
       update: (res as { update?: UpdateOffer | null }).update ?? null,
       agentPolicy: res.agentPolicy ?? null,
       profileChanges: res.profileChanges ?? [],
+      // The user let project managers drive this machine from the web; without that a merge waits until it expires.
+      mergeRuns: this.#host.settings().acceptHubRuns ? (res.mergeRuns ?? []) : [],
     };
     // Before the requests below are taken, so their runs start under the policy the hub just sent.
     this.#agentPolicy = update.agentPolicy ?? null;
@@ -927,6 +937,9 @@ export class Runner {
     try {
       const since = this.#iso(-24 * 60);
       const recent = this.list({ limit: 60 }).filter((r) => r.status === "queued" || r.status === "running" || (r.finishedAt ?? "") >= since);
+      // An MR the watcher looked at today, however old its run: the web shows its state and checks next to Merge (18c).
+      const seen = new Set(recent.map((r) => r.id));
+      for (const r of this.store.openMrs(this.#iso(-30 * 24 * 60))) if (!seen.has(r.id) && (r.mrCheckedAt ?? "") >= since) recent.push(r);
       const changed: Array<{ run: AgentRun; key: string; log: string; patch?: string }> = [];
       let patches = 0;
       for (const r of recent) {
@@ -934,7 +947,7 @@ export class Runner {
         // A few patches per push keep the request small; the others go with the next ones.
         const patch = patches < 3 ? this.#patchFor(r) : undefined;
         if (patch !== undefined) patches++;
-        const key = JSON.stringify([r.status, r.activity ?? null, r.finishing ?? false, r.mrUrl, r.commits, log.length, log.slice(-200)]);
+        const key = JSON.stringify([r.status, r.activity ?? null, r.finishing ?? false, r.mrUrl, r.commits, log.length, log.slice(-200), mrOf(r)]);
         if (this.#pushed.get(r.id) !== key || patch !== undefined) changed.push({ run: r, key, log, ...(patch !== undefined ? { patch } : {}) });
         if (changed.length === 20) break;
       }
@@ -959,6 +972,7 @@ export class Runner {
             branch: r.branch,
             commits: r.commits,
             mrUrl: r.mrUrl,
+            mr: mrOf(r),
             costUsd: r.costUsd,
             log,
             ...(patch !== undefined ? { patch } : {}),

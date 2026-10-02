@@ -62,6 +62,8 @@ import type {
   MachineDetail,
   MachineRun,
   ProfileChange,
+  RunMr,
+  MergeStatus,
   Memory,
   MemoryFile,
   MemoryReview,
@@ -316,6 +318,17 @@ const MIGRATIONS: string[] = [
     machine_id TEXT NOT NULL, profile_id TEXT NOT NULL, enabled INTEGER, priority INTEGER,
     requested_by TEXT NOT NULL, requested_at TEXT NOT NULL, PRIMARY KEY(machine_id, profile_id));
   `,
+  // Merge from the web (roadmap 18c). mr: the MR as the machine's watcher last saw it (RunMr as JSON). merge_*: a merge
+  // asked for on the web, which the run's machine does with its own token.
+  `
+  ALTER TABLE run_records ADD COLUMN mr TEXT;
+  ALTER TABLE run_records ADD COLUMN merge_by TEXT;
+  ALTER TABLE run_records ADD COLUMN merge_at TEXT;
+  ALTER TABLE run_records ADD COLUMN merge_status TEXT;
+  ALTER TABLE run_records ADD COLUMN merge_error TEXT;
+  ALTER TABLE run_records ADD COLUMN merge_done_at TEXT;
+  CREATE INDEX run_records_merge ON run_records(merge_status);
+  `,
 ];
 
 /** A leader's reply asks for at most this many actions. */
@@ -352,6 +365,17 @@ function toRunRecord(r: Row, withLog: boolean): RunRecord {
     updatedAt: str(r.updated_at),
     cancelRequestedBy: s(r.cancel_by),
     cancelRequestedAt: s(r.cancel_at),
+    mr: r.mr == null ? null : (JSON.parse(String(r.mr)) as RunMr),
+    merge:
+      r.merge_status == null
+        ? null
+        : {
+            requestedBy: str(r.merge_by),
+            requestedAt: str(r.merge_at),
+            status: str(r.merge_status) as MergeStatus,
+            error: r.merge_error == null ? null : (JSON.parse(String(r.merge_error)) as RunRequestError),
+            finishedAt: s(r.merge_done_at),
+          },
     ...(withLog ? { log: str(r.log), patch: r.patch == null ? null : str(r.patch) } : {}),
   };
 }
@@ -389,6 +413,8 @@ const COMMAND_HISTORY = 20;
 const SYNC_TTL_MINUTES = 15;
 /** A run request no machine took within this time expires: machines ask every 30 s, so that one is gone. */
 const RUN_REQUEST_TTL_MINUTES = 15;
+/** A merge no machine reported on within this time failed: machines hear one within 30 s, and a merge takes seconds. */
+const MERGE_TTL_MINUTES = 15;
 /** Answered run requests are kept this long. */
 const RUN_REQUEST_DAYS = 30;
 /** A chat reply no machine started within this time expires; one that stops reporting for as long has failed. */
@@ -475,6 +501,11 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
     target: `${o.project}/${o.taskId}`,
     detail: `run ${o.role} trên ${o.machine} (#${o.id})`,
     text: { key: "audit.runDispatch", vars: { role: o.role, machine: o.machine, id: o.id } },
+  }),
+  "runs.merge": (_i, o: RunRecord) => ({
+    target: `${o.project}/${o.taskId}`,
+    detail: `merge ${o.mrUrl} trên ${o.machine}`,
+    text: { key: "audit.runMerge", vars: { mr: o.mrUrl ?? "", machine: o.machine } },
   }),
   "runs.cancelRequest": (i, o: RunRequest) => ({
     target: `${o.project}/${o.taskId}`,
@@ -1022,6 +1053,14 @@ export class SqliteHive implements HiveBackend {
       case "runs.cancel": {
         const row = this.db.prepare("SELECT project FROM run_records WHERE machine_id = ? AND run_id = ?").get(i.machineId, i.runId) as Row | undefined;
         if (row) this.#need(actor, str(row.project), "runDispatch", `Run ${i.runId}`);
+        return;
+      }
+      case "runs.merge": {
+        const row = this.db.prepare("SELECT project, requested_by FROM run_records WHERE machine_id = ? AND run_id = ?").get(i.machineId, i.runId) as Row | undefined;
+        if (!row) return;
+        // Merging accepts the code, as moving its task to done does: a reviewer's call, and not on your own run.
+        this.#need(actor, str(row.project), "codeReview", `Run ${i.runId}`);
+        if (row.requested_by != null) this.#notSelf(actor, [str(row.requested_by)], `Run ${i.runId}`);
         return;
       }
       case "runs.cancelRequest": {
@@ -1843,6 +1882,14 @@ export class SqliteHive implements HiveBackend {
     const row = this.db.prepare("SELECT * FROM machine_commands WHERE id = ?").get(id) as Row | undefined;
     if (!row) throw new HiveError("not_found", `Command #${id} not found.`, { key: "errors.commandNotFound", vars: { id } });
     return toCommand(row);
+  }
+
+  /** A merge the machine never reported on: gone offline, stopped taking runs from the hub, or an app older than 18c. */
+  #expireMerges(): void {
+    const error: RunRequestError = { message: "The machine did not merge in time.", key: "errors.mergeExpired" };
+    this.db
+      .prepare("UPDATE run_records SET merge_status = 'failed', merge_error = ?, merge_done_at = ? WHERE merge_status = 'pending' AND merge_at < ?")
+      .run(JSON.stringify(error), this.#now(), this.#now(-MERGE_TTL_MINUTES));
   }
 
   #toMachine(r: Row): Machine {
@@ -2696,6 +2743,15 @@ export class SqliteHive implements HiveBackend {
             : [];
           // Sent again at every heartbeat until the machine reports progress on it.
           const chatRequests = accepts ? this.#chatRequests(actor.name) : [];
+          this.#expireMerges();
+          // Sent again at every heartbeat until the machine reports how it went.
+          const mergeRuns = accepts
+            ? (
+                db
+                  .prepare("SELECT run_id, mr_url, merge_by FROM run_records WHERE machine_id = ? AND merge_status = 'pending' AND mr_url IS NOT NULL ORDER BY merge_at")
+                  .all(actor.name) as Row[]
+              ).map((r) => ({ runId: str(r.run_id), mrUrl: str(r.mr_url), requestedBy: str(r.merge_by) }))
+            : [];
           // Until the machine pushes the run as ended.
           const cancelRuns = accepts
             ? (
@@ -2718,6 +2774,7 @@ export class SqliteHive implements HiveBackend {
             // After this beat's costs went in, so a run that just filled a cap holds the next one at once.
             budgetBlocked: this.#budgetBlocks(actor),
             profileChanges: this.#profileChanges(actor.name),
+            mergeRuns,
           };
         }),
 
@@ -2737,6 +2794,7 @@ export class SqliteHive implements HiveBackend {
           );
           // Sent only when it changed: left out, the one the hub has stays.
           const patchPut = db.prepare("UPDATE run_records SET patch = ? WHERE machine_id = ? AND run_id = ?");
+          const mrPut = db.prepare("UPDATE run_records SET mr = ? WHERE machine_id = ? AND run_id = ?");
           const ownerPut = db.prepare(
             `UPDATE run_records SET requested_by = COALESCE(
                (SELECT COALESCE(on_behalf, requested_by) FROM run_requests WHERE machine_id = ?1 AND run_id = ?2 AND status = 'accepted'), ?3)
@@ -2750,6 +2808,10 @@ export class SqliteHive implements HiveBackend {
               r.createdAt, r.startedAt, r.finishedAt, now,
             );
             if (r.patch !== undefined) patchPut.run(redactLines(stripHidden(r.patch)), actor.name, r.runId);
+            if (r.mr !== undefined) {
+              const mr = r.mr && { ...r.mr, pipelineUrl: r.mr.pipelineUrl && /^https?:\/\//.test(r.mr.pipelineUrl) ? r.mr.pipelineUrl : null };
+              mrPut.run(mr ? JSON.stringify(mr) : null, actor.name, r.runId);
+            }
             // Whose run it is, set once: whoever asked for it from the web, else the person whose token the machine has
             // (a run started from its Board). A machine takes a request (runs.requestResult) before it pushes the run.
             ownerPut.run(actor.name, r.runId, principalOf(actor));
@@ -2787,6 +2849,56 @@ export class SqliteHive implements HiveBackend {
           // Asked once: a second click keeps who asked first.
           db.prepare("UPDATE run_records SET cancel_by = ?, cancel_at = ? WHERE machine_id = ? AND run_id = ? AND cancel_by IS NULL").run(actor.name, this.#now(), machineId, runId);
           return toRunRecord(db.prepare("SELECT * FROM run_records WHERE machine_id = ? AND run_id = ?").get(machineId, runId) as Row, false);
+        }),
+
+      // The run's machine merges with its own token (asked 2/10): the hub keeps no GitLab or GitHub secret.
+      "runs.merge": ({ machineId, runId }, actor) =>
+        this.#tx(() => {
+          this.#expireMerges();
+          const row = db.prepare("SELECT * FROM run_records WHERE machine_id = ? AND run_id = ?").get(machineId, runId) as Row | undefined;
+          if (!row) throw new HiveError("not_found", `No run ${runId}.`, { key: "errors.runNotFound", vars: { id: runId } });
+          const run = toRunRecord(row, false);
+          if (!run.mrUrl) throw new HiveError("bad_request", `Run ${runId} has no merge request.`, { key: "errors.runNoMr", vars: { id: runId } });
+          const mr = run.mr;
+          if (mr?.status === "merged" || mr?.status === "closed") {
+            throw new HiveError("conflict", `${run.mrUrl} is ${mr.status}.`, { key: "errors.mrNotOpen", vars: { status: mr.status } });
+          }
+          // Draft: the review asked for changes, or the MR went up before its review; mark it ready on GitLab/GitHub first.
+          if (mr?.draft) throw new HiveError("bad_request", `${run.mrUrl} is a draft.`, { key: "errors.mrDraft" });
+          if (mr?.pipeline === "failed") throw new HiveError("bad_request", `The pipeline of ${run.mrUrl} failed.`, { key: "errors.mrPipelineFailed" });
+          const machine = db.prepare("SELECT accepts_runs, machine FROM machines WHERE id = ?").get(machineId) as Row | undefined;
+          if (!machine || num(machine.accepts_runs) !== 1) {
+            throw new HiveError("bad_request", `${run.machine} does not take runs from the hub.`, { key: "errors.machineNoHubRuns", vars: { machine: run.machine } });
+          }
+          // Other runs of the task point at the same MR: one merge at a time.
+          const open = db.prepare("SELECT run_id FROM run_records WHERE mr_url = ? AND merge_status = 'pending'").get(run.mrUrl) as Row | undefined;
+          if (open) throw new HiveError("conflict", `A merge of ${run.mrUrl} is already waiting.`, { key: "errors.mergePending" });
+          db.prepare("UPDATE run_records SET merge_by = ?, merge_at = ?, merge_status = 'pending', merge_error = NULL, merge_done_at = NULL WHERE machine_id = ? AND run_id = ?").run(
+            actor.account ?? actor.name,
+            this.#now(),
+            machineId,
+            runId,
+          );
+          return toRunRecord(db.prepare("SELECT * FROM run_records WHERE machine_id = ? AND run_id = ?").get(machineId, runId) as Row, false);
+        }),
+
+      "runs.mergeResult": ({ runId, ok, error }, actor) =>
+        this.#tx(() => {
+          // Keyed by the heartbeat's actor: a machine reports on its own runs only.
+          const row = db.prepare("SELECT * FROM run_records WHERE machine_id = ? AND run_id = ?").get(actor.name, runId) as Row | undefined;
+          if (!row || row.merge_status == null) throw new HiveError("not_found", `No merge asked for run ${runId}.`, { key: "errors.runNotFound", vars: { id: runId } });
+          const now = this.#now();
+          const merged = { ...(row.mr == null ? { iid: null, draft: false, pipeline: null, pipelineUrl: null } : (JSON.parse(String(row.mr)) as RunMr)), status: "merged", checkedAt: now };
+          db.prepare("UPDATE run_records SET merge_status = ?, merge_error = ?, merge_done_at = ?, mr = CASE WHEN ? THEN ? ELSE mr END WHERE machine_id = ? AND run_id = ?").run(
+            ok ? "merged" : "failed",
+            ok ? null : JSON.stringify(error ?? { message: "merge failed" }),
+            now,
+            ok ? 1 : 0,
+            JSON.stringify(merged),
+            actor.name,
+            runId,
+          );
+          return toRunRecord(db.prepare("SELECT * FROM run_records WHERE machine_id = ? AND run_id = ?").get(actor.name, runId) as Row, false);
         }),
 
       // What the machine's Board would check first, so a manager hears at once instead of after a heartbeat.
