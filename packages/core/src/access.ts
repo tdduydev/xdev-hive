@@ -153,3 +153,33 @@ export function isContextDoc(key: string, doc?: { paths?: readonly string[]; inc
   if (/^project\/[^/]+\/(agents|decisions)$/.test(key) || /(^|\/)skills\//.test(key)) return true;
   return Boolean(doc && ((doc.paths?.length ?? 0) > 0 || doc.includeInAgents));
 }
+
+// ── systems (roadmap 19c) ─────────────────────────────────────────────────────
+
+/** Docs and memory of a system belong to `sys:<name>`: no project name has a ":", so it is never a project's. */
+export const SYSTEM_OWNER_PREFIX = "sys:";
+export const systemOwner = (name: string): string => `${SYSTEM_OWNER_PREFIX}${name}`;
+/** The system an owner is (`sys:pay` → `pay`), null for a project or the shared data. */
+export const systemOf = (owner: string | null | undefined): string | null =>
+  owner?.startsWith(SYSTEM_OWNER_PREFIX) ? owner.slice(SYSTEM_OWNER_PREFIX.length) : null;
+
+/** What a person in any one service may do in its system's data: read it, propose a change, note what they learned. */
+const SYSTEM_ANY: readonly Permission[] = ["view", "docPropose", "memoryWrite", "chatUse"];
+
+/**
+ * An account's grants with one for each system it sees, derived from its services' (asked 30/9 for 19, spelled out in
+ * docs/specs/19c-system-docs.md): what it may do in any one of them for reading, proposing and writing memory, what
+ * it may do in every one of them for the rest (editing a contract every service follows, approving). Unrestricted
+ * actors (no access) need none.
+ */
+export function withSystemGrants(access: Access | undefined, systems: ReadonlyArray<{ name: string; projects: readonly string[] }>): Access | undefined {
+  if (!access || !systems.length) return access;
+  const projects: Record<string, Grant> = { ...access.projects };
+  for (const s of systems) {
+    const each = s.projects.map((p) => grantPermissions(access.projects[p]));
+    if (!each.some((g) => g.has("view"))) continue;
+    const permissions = PERMISSIONS.filter((p) => (SYSTEM_ANY.includes(p) ? each.some((g) => g.has(p)) : each.every((g) => g.has(p))));
+    projects[systemOwner(s.name)] = { permissions };
+  }
+  return { ...access, projects };
+}

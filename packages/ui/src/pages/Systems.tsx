@@ -58,6 +58,20 @@ export function SystemsPage() {
                 >
                   {t("systems.open")}
                 </Button>
+                {/* Roadmap 19c: the system's own docs and memory, shared by its services; its scope shows them first. */}
+                {(["docs", "memory"] as const).map((page) => (
+                  <Button
+                    key={page}
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setScope(systemScope(s.name, s.projects));
+                      window.location.hash = `#/${page}`;
+                    }}
+                  >
+                    {t(page === "docs" ? "systems.docs" : "systems.memory")}
+                  </Button>
+                ))}
                 {s.projects.every((p) => allow(p, "projectSettings")) ? (
                   <Button size="sm" variant="outline" onClick={() => setEditing(s.name)}>
                     {t("systems.edit")}

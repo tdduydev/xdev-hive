@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { may, type HiveSystem, type Me, type Permission, type WriteSource } from "@xdev-hive/core";
+import { may, systemOf, type HiveSystem, type Me, type Permission, type WriteSource } from "@xdev-hive/core";
 import { activeIntl, hasKey, translate, type MessageKey } from "./i18n/translate.ts";
 import type { HiveClient } from "./client.ts";
 import type { Scope } from "./lib/scope.ts";
@@ -149,9 +149,10 @@ export function useProjectList(client: HiveClient, tick: number): string[] {
       client.desktop?.settings(),
     ]);
     const names = new Set<string>();
-    for (const d of docs) if (d.project) names.add(d.project);
+    // A system's docs and memory (sys:<name>, roadmap 19c) are not a project's.
+    for (const d of docs) if (d.project && !systemOf(d.project)) names.add(d.project);
     for (const t of tasks) names.add(t.project);
-    for (const m of memory) if (m.project) names.add(m.project);
+    for (const m of memory) if (m.project && !systemOf(m.project)) names.add(m.project);
     for (const p of settings?.projects ?? []) names.add(p.name);
     return [...names].sort();
   }, [client, tick]);

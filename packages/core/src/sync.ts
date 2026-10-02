@@ -68,11 +68,18 @@ export function globDir(glob: string): string {
 /** Docs limited to paths that this project's repo gets: its own, and org docs meant for AGENTS.md. */
 export function scopedDocs(project: string, docs: Doc[]): Doc[] {
   return docs
-    .filter((d) => d.paths?.length && (d.scope === "org" ? d.includeInAgents : d.project === project))
+    .filter((d) => d.paths?.length && (d.scope === "project" ? d.project === project : d.includeInAgents))
     .sort((a, b) => a.key.localeCompare(b.key));
 }
 
-const ruleFile = (d: Doc) => `${RULES_DIR}/${d.scope === "org" ? "org-" : ""}${d.key.split("/").at(-1)}.md`;
+/**
+ * Docs every agent of the project reads in AGENTS.md: the team's, then its systems' (roadmap 19c; the list only has the
+ * systems the project is in), each when put in AGENTS.md and not limited to paths.
+ */
+const everyAgent = (docs: Doc[], scope: "org" | "system") =>
+  docs.filter((d) => d.scope === scope && d.includeInAgents && !d.paths?.length && !parseDocKey(d.key).skill).sort((a, b) => a.key.localeCompare(b.key));
+
+const ruleFile = (d: Doc) => `${RULES_DIR}/${d.scope === "org" ? "org-" : d.scope === "system" ? `sys-${d.key.split("/")[1]}-` : ""}${d.key.split("/").at(-1)}.md`;
 const docHeader = (d: Doc, globs: string[]) => [`<!-- ${d.key} v${d.version} -->`, `> Applies to ${globs.map((g) => `\`${g}\``).join(", ")}.`, ""];
 
 /** Where each scoped doc goes: a nested AGENTS.md per glob folder, a rules file for globs without one. */
@@ -93,9 +100,7 @@ function placements(docs: Doc[]): Array<{ doc: Doc; file: string; globs: string[
  * some paths, which stay out of this file) followed by the project's own doc.
  */
 export function renderAgentsMd(project: string, projectDoc: Doc | null, orgDocs: Doc[]): string {
-  const shared = orgDocs
-    .filter((d) => d.scope === "org" && d.includeInAgents && !d.paths?.length && !parseDocKey(d.key).skill)
-    .sort((a, b) => a.key.localeCompare(b.key));
+  const shared = [...everyAgent(orgDocs, "org"), ...everyAgent(orgDocs, "system")];
   const scoped = placements(scopedDocs(project, orgDocs));
   const index = scoped.length
     ? [
@@ -172,13 +177,13 @@ export function describeProjectContext(project: string, docs: Doc[]): Omit<Agent
   const files = planProjectSync(project, docs);
   const agentsMd = files[0]!.content;
   const agents = docs.find((d) => d.key === agentsDocKey(project)) ?? null;
-  const shared = docs
-    .filter((d) => d.scope === "org" && d.includeInAgents && !d.paths?.length && !parseDocKey(d.key).skill)
-    .sort((a, b) => a.key.localeCompare(b.key));
+  const item = (d: Doc) => ({ key: d.key, title: d.title, version: d.version, lines: lineCount(d.content.trim()) + 2 });
+  const system = everyAgent(docs, "system");
   const scoped = placements(scopedDocs(project, docs));
   const skills = projectSkills(project, docs);
   const blocks: AgentContext["blocks"] = [
-    { kind: "shared", items: shared.map((d) => ({ key: d.key, title: d.title, version: d.version, lines: lineCount(d.content.trim()) + 2 })) },
+    { kind: "shared", items: everyAgent(docs, "org").map(item) },
+    ...(system.length ? [{ kind: "system" as const, items: system.map(item) }] : []),
     { kind: "project", items: [{ key: agentsDocKey(project), title: agents?.title ?? project, version: agents?.version ?? null, lines: lineCount((agents?.content ?? `# ${project}`).trim()) }] },
     ...(scoped.length ? [{ kind: "paths" as const, items: [{ key: null, title: String(scoped.length), version: null, lines: scoped.length + 4 }] }] : []),
     ...(skills.length ? [{ kind: "skills" as const, items: [{ key: null, title: String(skills.length), version: null, lines: skills.length + 4 }] }] : []),

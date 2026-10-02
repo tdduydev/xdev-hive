@@ -1,6 +1,6 @@
 // What the whole app is looking at: every project, only the team-wide (shared) data, one project, or a system.
 // Chosen once in the sidebar; every page filters by it and new items default to it.
-import type { HiveSystem } from "@xdev-hive/core";
+import { systemOf, systemOwner, type HiveSystem } from "@xdev-hive/core";
 import { translate } from "#ui/i18n/translate.ts";
 
 export type Scope =
@@ -73,16 +73,31 @@ export function writeScope(s: Scope): void {
   }
 }
 
-/** Where a doc key belongs: `org/…` is shared by every project, `project/<p>/…` belongs to p. */
+/** Where a doc key belongs: `org/…` is shared by every project, `project/<p>/…` belongs to p, `system/<s>/…` to sys:s. */
 export function docOwner(key: string): string | null {
   const m = /^project\/([^/]+)\//.exec(key);
-  return m ? m[1]! : null;
+  if (m) return m[1]!;
+  const s = /^system\/([^/]+)\//.exec(key);
+  return s ? systemOwner(s[1]!) : null;
+}
+
+/** An owner as people read it: the project, "Hệ thống <name>" for a system's (roadmap 19c), `shared` for the team's. */
+export function ownerName(owner: string | null, shared: string): string {
+  const system = systemOf(owner);
+  return system !== null ? translate("docs.systemSpace", { system }) : (owner ?? shared);
+}
+
+/** Where new pages of an owner go: `org/`, `project/<p>/` or `system/<s>/` (roadmap 19c). */
+export function docPrefix(owner: string | null): string {
+  if (owner === null) return "org/";
+  const system = systemOf(owner);
+  return system === null ? `project/${owner}/` : `system/${system}/`;
 }
 
 /** Does an item owned by `owner` (null = shared) show up in this scope? Shared items show in every project and system. */
 export function inScope(s: Scope, owner: string | null): boolean {
   if (s.kind === "all") return true;
   if (s.kind === "shared") return owner === null;
-  if (s.kind === "system") return owner === null || s.projects.includes(owner);
+  if (s.kind === "system") return owner === null || s.projects.includes(owner) || owner === systemOwner(s.system);
   return owner === null || owner === s.project;
 }
