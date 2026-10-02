@@ -17,6 +17,7 @@ export * from "./keys.ts";
 export * from "./methods.ts";
 export * from "./mirror.ts";
 export * from "./policy.ts";
+export * from "./sdlc.ts";
 export * from "./secrets.ts";
 export * from "./source.ts";
 export * from "./speckit.ts";
