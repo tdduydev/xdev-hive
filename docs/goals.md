@@ -83,7 +83,7 @@ Spec: [`docs/specs/27a-agent-policy.md`](specs/27a-agent-policy.md) cho 27a, [`d
 - **R-22m-2. Thông báo hệ điều hành** trên app desktop cho admin khi hub mở cảnh báo.
 - **R-22n-2. Nút "Yêu cầu máy đồng bộ"** (phần "Chưa có" của 22n).
 - **R-19c / R-19d.** Tài liệu và memory của một hệ thống (nhiều service); task phụ thuộc chéo dự án và leader ở mức hệ thống.
-- **R-20a → R-20d. Spec Kit:** cài đặt, trang Spec, nhập `tasks.md` thành task, run cho specify / plan / tasks.
+- **R-20a → R-20d. Spec Kit:** cài đặt, trang Spec, nhập `tasks.md` thành task, run cho specify / plan / tasks. Spec: [docs/specs/20-speckit.md](specs/20-speckit.md).
 - **R-18c / R-18d.** Đã trả lời 2/10:
   - 18c: merge bằng token của máy; hub chỉ ghi yêu cầu, máy nhận qua heartbeat.
   - 18d: chỉ admin hub và chủ máy đổi được gói của máy.
