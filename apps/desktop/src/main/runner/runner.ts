@@ -16,6 +16,7 @@ import { appendFileSync, closeSync, createWriteStream, existsSync, mkdirSync, op
 import os from "node:os";
 import path from "node:path";
 import {
+  cacheReadShare,
   AGENT_ROLES,
   agentActorName,
   effectivePolicy,
@@ -86,7 +87,7 @@ import { detectRateLimit } from "./rate-limit.ts";
 import { AssistWorker } from "./assist.ts";
 import { ChatWorker } from "./chat.ts";
 import { killTree } from "./kill.ts";
-import { ClaudeStream, lineStamper } from "./stream.ts";
+import { ClaudeStream, CodexStream, lineStamper } from "./stream.ts";
 import { parseClaudeResult, type RunUsage } from "./usage.ts";
 import { pickProfile, waitingReason, type ProfileLoad, type RunNeeds } from "./schedule.ts";
 import { ACTIVE, RunStore } from "./store.ts";
@@ -692,8 +693,10 @@ export class Runner {
       taskId: r.taskId,
       profileId: r.profileId ?? "?",
       account: accounts.get(r.profileId ?? "") ?? null,
-      costUsd: r.costUsd!,
+      costUsd: r.costUsd,
       inputTokens: r.inputTokens,
+      cacheWriteTokens: r.cacheWriteTokens,
+      cacheReadTokens: r.cacheReadTokens,
       outputTokens: r.outputTokens,
       finishedAt: r.finishedAt!,
       requestedBy: r.requestedBy,
@@ -1386,7 +1389,7 @@ export class Runner {
       const stamp = lineStamper(this.#opts.now);
       // Claude Code's events become a log to follow while it runs; other CLIs write text as they go, and
       // their last line is what they are doing now.
-      const stream = cmd.claudeStream ? new ClaudeStream(wt.path) : null;
+      const stream = cmd.claudeStream ? new ClaudeStream(wt.path) : cmd.codexJson ? new CodexStream(wt.path) : null;
       const decode = { out: new StringDecoder("utf8"), err: new StringDecoder("utf8") };
       const lastLine = (text: string) => {
         const line = text.split("\n").map((l) => l.trim()).filter(Boolean).at(-1);
@@ -1422,13 +1425,31 @@ export class Runner {
       this.#activity.delete(run.id);
       if (stream) out.write(stamp(stream.end()));
       if (outcome.kind === "exit" && (cmd.claudeJson || stream)) {
-        outcome.usage = parseClaudeResult(stream?.result ?? outcome.stdout);
+        outcome.usage =
+          stream instanceof CodexStream
+            ? stream.tokens.turns
+              ? {
+                  text: stream.lastText,
+                  costUsd: null,
+                  // OpenAI counts cached input inside input_tokens: taken out, to mean what Claude's does.
+                  inputTokens: Math.max(0, stream.tokens.input - stream.tokens.cached),
+                  cacheWriteTokens: 0,
+                  cacheReadTokens: stream.tokens.cached,
+                  outputTokens: stream.tokens.output,
+                }
+              : null
+            : parseClaudeResult((stream instanceof ClaudeStream ? stream.result : null) ?? outcome.stdout);
         // No result (killed, crashed): the summary is its last message, not the raw events.
-        if (stream && !outcome.usage) outcome.stdout = stream.lastText ?? "";
+        // A Codex that printed no events (one older than --json) keeps what it wrote.
+        if (stream && !outcome.usage) outcome.stdout = stream.lastText ?? (stream instanceof CodexStream ? outcome.stdout : "");
         const u = outcome.usage;
         if (u?.text) out.write(`\n\n## Result\n${u.text}\n`);
         if (u && (u.costUsd !== null || u.outputTokens !== null)) {
-          out.write(`# cost ${u.costUsd === null ? "?" : `$${u.costUsd.toFixed(4)}`} · tokens in ${u.inputTokens ?? "?"} out ${u.outputTokens ?? "?"}\n`);
+          const share = cacheReadShare(u);
+          out.write(
+            `# cost ${u.costUsd === null ? "?" : `$${u.costUsd.toFixed(4)}`} · tokens in ${u.inputTokens ?? "?"} cache write ${u.cacheWriteTokens ?? "?"} cache read ${u.cacheReadTokens ?? "?"}` +
+              ` out ${u.outputTokens ?? "?"}${share === null ? "" : ` · ${Math.round(share * 100)}% from cache`}\n`,
+          );
         }
       }
       if (egress) {
@@ -1498,7 +1519,7 @@ export class Runner {
     let rotate = false;
     let exitCode: number | null = null;
     let summary: string | null = null;
-    let usage: Partial<Pick<AgentRun, "costUsd" | "inputTokens" | "outputTokens">> = {};
+    let usage: Partial<Pick<AgentRun, "costUsd" | "inputTokens" | "cacheWriteTokens" | "cacheReadTokens" | "outputTokens">> = {};
 
     if (outcome.kind === "unavailable") {
       error = outcome.reason;
@@ -1511,7 +1532,8 @@ export class Runner {
       const text = (outcome.usage?.text ?? outcome.stdout).trim();
       summary = text ? clip(text, 1500) : null;
       if (outcome.usage) {
-        usage = { costUsd: outcome.usage.costUsd, inputTokens: outcome.usage.inputTokens, outputTokens: outcome.usage.outputTokens };
+        const u = outcome.usage;
+        usage = { costUsd: u.costUsd, inputTokens: u.inputTokens, cacheWriteTokens: u.cacheWriteTokens, cacheReadTokens: u.cacheReadTokens, outputTokens: u.outputTokens };
       }
       const hit = outcome.code !== 0 && !outcome.cancelled ? detectRateLimit(outcome.all, now) : null;
       if (outcome.cancelled) {

@@ -177,6 +177,8 @@ export interface BuiltCommand {
   claudeJson?: boolean;
   /** stdout is Claude Code's stream of events (stream-json): the runner turns it into a live log. */
   claudeStream?: boolean;
+  /** Codex `exec --json` (roadmap 28c): events on stdout, with each turn's tokens. */
+  codexJson?: boolean;
   /** Extra env the CLI needs for these args. */
   env?: Record<string, string>;
 }
@@ -210,13 +212,22 @@ export function buildCommand(
     claudeJson = format === "json";
     args.push(...claudeRunArgs(profile.id, { ...vars, readOnly: profile.readOnly }, features, mcpConfigFile, mcp));
   }
-  if (profile.kind === "codex") args = codexArgs(args, { agent: profile.id, project: vars.project, task: vars.task, run: vars.run, readOnly: profile.readOnly });
+  let codexJson = false;
+  if (profile.kind === "codex") {
+    args = codexArgs(args, { agent: profile.id, project: vars.project, task: vars.task, run: vars.run, readOnly: profile.readOnly });
+    // Events instead of text, for the tokens of each turn (roadmap 28c); only `codex exec`, which has --json.
+    if (args[0] === "exec") {
+      if (!args.includes("--json")) args = ["exec", "--json", ...args.slice(1)];
+      codexJson = true;
+    }
+  }
   return {
     bin: expandHome(profile.bin),
     args,
     stdin: usesPrompt ? null : vars.prompt,
     ...(claudeJson ? { claudeJson } : {}),
     ...(claudeStream ? { claudeStream } : {}),
+    ...(codexJson ? { codexJson } : {}),
     ...(profile.kind === "claude" ? { env: CLAUDE_RUN_ENV } : {}),
   };
 }
@@ -462,11 +473,28 @@ export function applyPolicy(profile: AgentProfile, pol: AgentPolicy, codexServer
       : c;
   return {
     // Read means Hive read-only too; a profile set read-only stays so whatever the policy.
-    profile: { ...profile, args, container, readOnly: profile.readOnly || pol.autonomy === "read" },
+    profile: { ...profile, args, container, env: limitEnv(profile, pol), readOnly: profile.readOnly || pol.autonomy === "read" },
     autonomy,
     model,
     mcp: pol.mcp === null ? null : pol.mcp.filter((n) => n !== MCP_NAME),
   };
+}
+
+/**
+ * The project's output limits (roadmap 28c) as Claude Code reads them: the smaller of the policy's and the profile's own.
+ * Other CLIs have no such setting; their env is left as it is.
+ */
+export function limitEnv(profile: AgentProfile, pol: AgentPolicy): Record<string, string> {
+  if (profile.kind !== "claude" || !pol.limits) return profile.env;
+  const env = { ...profile.env };
+  const cap = (key: string, limit: number | null) => {
+    if (limit === null) return;
+    const own = Number.parseInt(env[key] ?? "", 10);
+    env[key] = String(Number.isFinite(own) && own > 0 ? Math.min(own, limit) : limit);
+  };
+  cap("MAX_MCP_OUTPUT_TOKENS", pol.limits.mcpOutputTokens);
+  cap("BASH_MAX_OUTPUT_LENGTH", pol.limits.bashOutputChars);
+  return env;
 }
 
 /** The policy line of the run log (read back by the agent audit of 27c): the merged policy, then what this run got. */

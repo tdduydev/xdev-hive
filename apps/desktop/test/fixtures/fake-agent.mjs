@@ -35,6 +35,14 @@ const format = process.argv.indexOf("--output-format");
 const json = format !== -1 && process.argv[format + 1] === "json";
 const stream = format !== -1 && process.argv[format + 1] === "stream-json";
 const event = (e) => console.log(JSON.stringify(e));
+// `codex exec --json` (roadmap 28c): thread, a command, the agent's message at the end, then the turn's tokens.
+const codexJson = process.argv[2] === "exec" && process.argv.includes("--json");
+if (codexJson) {
+  event({ type: "thread.started", thread_id: "fake-thread" });
+  event({ type: "turn.started" });
+  event({ type: "item.started", item: { id: "item_0", type: "command_execution", command: "bash -lc 'npm test'", aggregated_output: "", exit_code: null, status: "in_progress" } });
+  event({ type: "item.completed", item: { id: "item_0", type: "command_execution", command: "bash -lc 'npm test'", aggregated_output: "ok 1 - adds\nok 2 - subtracts", exit_code: 0, status: "completed" } });
+}
 if (stream) {
   event({ type: "system", subtype: "init", session_id: "fake-session", model: "fake-model", claude_code_version: "2.1.0", tools: ["Bash"] });
   event({ type: "system", subtype: "task_summary", detail: "Running the tests", session_id: "fake-session" });
@@ -43,11 +51,16 @@ if (stream) {
 }
 const said = [];
 const say = (text) => {
+  if (codexJson) return said.push(text);
   if (stream) event({ type: "assistant", message: { content: [{ type: "text", text }] } });
   if (json || stream) said.push(text);
   else console.log(text);
 };
 const finish = (code = 0) => {
+  if (codexJson) {
+    if (said.length) event({ type: "item.completed", item: { id: "item_1", type: "agent_message", text: said.join("\n") } });
+    event({ type: "turn.completed", usage: { input_tokens: 5000, cached_input_tokens: 4000, output_tokens: 300 } });
+  }
   if (json || stream) {
     console.log(
       JSON.stringify({

@@ -33,6 +33,9 @@ interface Draft {
   allow: string;
   mcp: "" | "all" | "list";
   mcpList: string;
+  /** Output limits (roadmap 28c), "" for none. */
+  mcpTokens: string;
+  bashChars: string;
 }
 
 const split = (s: string) => [...new Set(s.split(",").map((x) => x.trim()).filter(Boolean))];
@@ -45,8 +48,12 @@ function toDraft(p: Partial<AgentPolicy>): Draft {
     allow: (p.network?.allow ?? []).join(", "),
     mcp: p.mcp === undefined ? "" : p.mcp === null ? "all" : "list",
     mcpList: (p.mcp ?? []).join(", "),
+    mcpTokens: p.limits?.mcpOutputTokens?.toString() ?? "",
+    bashChars: p.limits?.bashOutputChars?.toString() ?? "",
   };
 }
+
+const limitOf = (s: string): number | null => (s.trim() ? Number.parseInt(s, 10) || null : null);
 
 /** Only the fields set; the hub's row always sets them all (its selects have no "as the hub"). */
 function toPart(d: Draft): Partial<AgentPolicy> {
@@ -56,6 +63,8 @@ function toPart(d: Draft): Partial<AgentPolicy> {
   if (d.autonomy) part.autonomy = d.autonomy;
   if (d.network) part.network = { mode: d.network, allow: d.network === "allowlist" ? split(d.allow) : [] };
   if (d.mcp) part.mcp = d.mcp === "all" ? null : split(d.mcpList);
+  const limits = { mcpOutputTokens: limitOf(d.mcpTokens), bashOutputChars: limitOf(d.bashChars) };
+  if (limits.mcpOutputTokens !== null || limits.bashOutputChars !== null) part.limits = limits;
   return part;
 }
 
@@ -189,6 +198,21 @@ export function AgentPolicyCard({ editableOnly = false }: { editableOnly?: boole
                 onChange={(e) => edit(key, { mcpList: e.target.value })}
               />
             ) : null}
+            {/* Roadmap 28c: Claude Code's output limits for the row's runs; a project only lowers the hub's. */}
+            {(["mcpTokens", "bashChars"] as const).map((f) => (
+              <label key={f} className="flex items-center gap-2 text-xs" title={t("agentPolicy.limitHint")}>
+                <span className="w-20 shrink-0 text-muted-foreground">{t(`agentPolicy.limit.${f}`)}</span>
+                <Input
+                  className="h-7 font-mono text-xs"
+                  inputMode="numeric"
+                  value={d[f]}
+                  disabled={!editable}
+                  placeholder={isHub ? t("agentPolicy.limitNone") : t("agentPolicy.inherit")}
+                  aria-label={t(`agentPolicy.limit.${f}`)}
+                  onChange={(e) => edit(key, { [f]: e.target.value.replace(/[^\d]/g, "") })}
+                />
+              </label>
+            ))}
           </div>
         </TableCell>
         <TableCell className="align-top whitespace-normal">
@@ -264,6 +288,9 @@ function Effective({ policy: p }: { policy: AgentPolicy }) {
         {p.network.mode === "allowlist" ? `: ${p.network.allow.join(", ") || "—"}` : ""}
       </li>
       <li>MCP: {p.mcp === null ? t("agentPolicy.mcpAll") : p.mcp.length ? p.mcp.join(", ") : t("agentPolicy.mcpNone")}</li>
+      {p.limits?.mcpOutputTokens != null || p.limits?.bashOutputChars != null ? (
+        <li>{t("agentPolicy.limitsEffective", { mcp: p.limits.mcpOutputTokens ?? "—", bash: p.limits.bashOutputChars ?? "—" })}</li>
+      ) : null}
     </ul>
   );
 }

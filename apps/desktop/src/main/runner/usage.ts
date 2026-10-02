@@ -1,5 +1,6 @@
 // What an agent CLI says about a finished run. Claude Code with `--output-format json` prints one
-// result object: the final message, an API-price cost estimate and token counts.
+// result object: the final message, an API-price cost estimate and token counts. Codex with `exec --json` reports the
+// tokens of each turn (roadmap 28c).
 import type { PlanLimit, PlanUsage } from "@xdev-hive/core";
 
 export interface RunUsage {
@@ -7,10 +8,15 @@ export interface RunUsage {
   text: string | null;
   /** Estimated at API prices; a subscription does not bill it. */
   costUsd: number | null;
-  /** Input tokens including cache reads and writes. */
+  /** Input tokens read fresh: neither written to the prompt cache nor read from it (roadmap 28c). */
   inputTokens: number | null;
+  /** Input written to the prompt cache (Claude); Codex has no such count (0). */
+  cacheWriteTokens: number | null;
+  /** Input read from the prompt cache: what a long session saves by reusing its prefix. */
+  cacheReadTokens: number | null;
   outputTokens: number | null;
 }
+
 
 const count = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
 
@@ -28,15 +34,47 @@ export function parseClaudeResult(stdout: string): RunUsage | null {
     }
     if (json.type !== "result") continue;
     const usage = (json.usage ?? {}) as Record<string, unknown>;
-    const parts = [usage.input_tokens, usage.cache_creation_input_tokens, usage.cache_read_input_tokens].map(count);
+    // Kept apart (roadmap 28c): input_tokens is what was neither written to the cache nor read from it.
     return {
       text: typeof json.result === "string" ? json.result : null,
       costUsd: count(json.total_cost_usd),
-      inputTokens: parts.every((p) => p === null) ? null : parts.reduce<number>((n, p) => n + (p ?? 0), 0),
+      inputTokens: count(usage.input_tokens),
+      cacheWriteTokens: count(usage.cache_creation_input_tokens),
+      cacheReadTokens: count(usage.cache_read_input_tokens),
       outputTokens: count(usage.output_tokens),
     };
   }
   return null;
+}
+
+/**
+ * A Codex run's tokens from `codex exec --json`: the usage of every `turn.completed` added up. OpenAI counts cached
+ * input inside input_tokens, so it is taken out to mean what Claude's input_tokens means. [Unverified] against every
+ * Codex version: the event and field names are those of codex-cli 0.1xx's exec --json; a line it does not know is skipped.
+ */
+export function parseCodexUsage(stdout: string, lastMessage: string | null = null): RunUsage | null {
+  let input = 0;
+  let cached = 0;
+  let output = 0;
+  let turns = 0;
+  for (const raw of stdout.split("\n")) {
+    const line = raw.trim();
+    if (!line.startsWith("{")) continue;
+    let e: Record<string, unknown>;
+    try {
+      e = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (e.type !== "turn.completed") continue;
+    const u = (e.usage ?? {}) as Record<string, unknown>;
+    turns++;
+    input += count(u.input_tokens) ?? 0;
+    cached += count(u.cached_input_tokens) ?? 0;
+    output += count(u.output_tokens) ?? 0;
+  }
+  if (!turns) return null;
+  return { text: lastMessage, costUsd: null, inputTokens: Math.max(0, input - cached), cacheWriteTokens: 0, cacheReadTokens: cached, outputTokens: output };
 }
 
 /** "Current session: 3% used · resets Sep 28 at 6:19pm (Asia/Saigon)", "Current week (all models): 47% used · …". */

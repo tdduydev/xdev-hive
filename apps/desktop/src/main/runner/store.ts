@@ -45,6 +45,9 @@ const ADDED_COLUMNS: Array<[name: string, ddl: string]> = [
   ["best_of", "TEXT"],
   /** Who asked for the run on the web (hub run request); null: started here. */
   ["requested_by", "TEXT"],
+  /** Input written to and read from the prompt cache (roadmap 28c); null for runs from before. */
+  ["cache_write_tokens", "INTEGER"],
+  ["cache_read_tokens", "INTEGER"],
 ];
 
 type Row = Record<string, unknown>;
@@ -85,6 +88,8 @@ function toRun(r: Row): AgentRun {
     mrIid: r.mr_iid == null ? null : Number(r.mr_iid),
     costUsd: r.cost_usd == null ? null : Number(r.cost_usd),
     inputTokens: r.input_tokens == null ? null : Number(r.input_tokens),
+    cacheWriteTokens: r.cache_write_tokens == null ? null : Number(r.cache_write_tokens),
+    cacheReadTokens: r.cache_read_tokens == null ? null : Number(r.cache_read_tokens),
     outputTokens: r.output_tokens == null ? null : Number(r.output_tokens),
     mrState: s(r.mr_state) as MrState | null,
     mrDraft: Number(r.mr_draft) === 1,
@@ -234,7 +239,8 @@ export class RunStore {
   unreportedCosts(limit = 100): AgentRun[] {
     return (
       this.db
-        .prepare("SELECT * FROM runs WHERE cost_usd IS NOT NULL AND cost_reported = 0 AND finished_at IS NOT NULL ORDER BY finished_at, rowid LIMIT ?")
+        // Runs with a price (Claude Code) or tokens only (Codex, roadmap 28c).
+        .prepare("SELECT * FROM runs WHERE (cost_usd IS NOT NULL OR output_tokens IS NOT NULL) AND cost_reported = 0 AND finished_at IS NOT NULL ORDER BY finished_at, rowid LIMIT ?")
         .all(limit) as Row[]
     ).map(toRun);
   }

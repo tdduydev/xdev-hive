@@ -20,6 +20,16 @@ export interface AgentPolicy {
   network: { mode: NetworkMode; allow: string[] };
   /** Tên MCP server được bật thêm ngoài xdev-hive (xdev-hive luôn bật). null: mọi server. */
   mcp: string[] | null;
+  /**
+   * Trần output cho run (roadmap 28c): token của mỗi lần gọi MCP, ký tự output của mỗi lệnh Bash (Claude Code đọc
+   * MAX_MCP_OUTPUT_TOKENS, BASH_MAX_OUTPUT_LENGTH). null hoặc không có: không đặt. Cấp dưới chỉ hạ được.
+   */
+  limits?: OutputLimits;
+}
+
+export interface OutputLimits {
+  mcpOutputTokens: number | null;
+  bashOutputChars: number | null;
 }
 
 /** Hub chưa đặt gì thì không đổi gì: runs keep doing what they did before 27a. */
@@ -65,14 +75,25 @@ function tightenNetwork(base: AgentPolicy["network"], over: AgentPolicy["network
 }
 
 /** `base` with `over` on top, never looser than `base`: a lower level only takes away. */
+/** The smaller of two limits, either one null meaning none. */
+const lowerLimit = (a: number | null | undefined, b: number | null | undefined): number | null => (a == null ? (b ?? null) : b == null ? a : Math.min(a, b));
+
 export function tighten(base: AgentPolicy, over: Partial<AgentPolicy> | null): AgentPolicy {
   const own = over?.mcp ?? null;
   const mcp = own === null ? base.mcp : base.mcp === null ? own : common(base.mcp, own);
+  const limits =
+    base.limits || over?.limits
+      ? {
+          mcpOutputTokens: lowerLimit(base.limits?.mcpOutputTokens, over?.limits?.mcpOutputTokens),
+          bashOutputChars: lowerLimit(base.limits?.bashOutputChars, over?.limits?.bashOutputChars),
+        }
+      : null;
   return {
     models: tightenModels(base.models, over?.models),
     autonomy: over?.autonomy ? lower(AUTONOMY, base.autonomy, over.autonomy) : base.autonomy,
     network: tightenNetwork(base.network, over?.network),
     mcp: mcp === null ? null : [...mcp],
+    ...(limits ? { limits } : {}),
   };
 }
 
@@ -89,6 +110,8 @@ export function policySummary(p: Partial<AgentPolicy>): string {
   const models = Object.entries(p.models ?? {}).filter(([, list]) => list?.length);
   if (models.length) parts.push(`models ${models.map(([k, list]) => `${k}: ${list!.join(", ")}`).join("; ")}`);
   if (p.mcp !== undefined) parts.push(`mcp ${p.mcp === null ? "*" : p.mcp.join(", ") || "—"}`);
+  if (p.limits?.mcpOutputTokens != null) parts.push(`mcp output ≤ ${p.limits.mcpOutputTokens} tokens`);
+  if (p.limits?.bashOutputChars != null) parts.push(`bash output ≤ ${p.limits.bashOutputChars} chars`);
   return parts.join(" · ") || "—";
 }
 
@@ -104,6 +127,12 @@ const policyFields = {
     allow: z.array(z.string().regex(ALLOW_HOST, "host, .domain hoặc host:port")).max(50).default([]),
   }),
   mcp: z.array(z.string().regex(/^[\w-]{1,40}$/, "MCP server: 1–40 chữ, số, _ -")).max(20).nullable(),
+  limits: z
+    .object({
+      mcpOutputTokens: z.number().int().min(1000).max(1_000_000).nullable(),
+      bashOutputChars: z.number().int().min(1000).max(10_000_000).nullable(),
+    })
+    .strict(),
 };
 /** A project's part: only the fields it sets. */
 export const agentPolicyPartSchema = z.object(policyFields).partial().strict();
@@ -114,6 +143,7 @@ export const agentPolicySchema = z
     autonomy: policyFields.autonomy.default(OPEN_POLICY.autonomy),
     network: policyFields.network.default({ mode: "open", allow: [] }),
     mcp: policyFields.mcp.default(null),
+    limits: policyFields.limits.optional(),
   })
   .strict();
 
