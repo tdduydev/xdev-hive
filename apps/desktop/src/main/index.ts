@@ -53,7 +53,7 @@ import {
 import { GitHubClient } from "./github/client.ts";
 import { GitLabClient } from "./gitlab/client.ts";
 import { gitClone, importRepos, planImport } from "./gitlab/import.ts";
-import { setMainLocale, tr } from "./i18n.ts";
+import { mainLocale, setMainLocale, tr } from "./i18n.ts";
 import { MergeRequester, mrLabel, type MrHost } from "./gitlab/mr.ts";
 import { branchFor } from "#desktop/main/runner/worktree.ts";
 import { cleanupNote, mrPollDelay, MrWatcher, type MrChange } from "./gitlab/watch.ts";
@@ -70,6 +70,7 @@ import { checkCitations } from "./citations.ts";
 import { syncProject } from "./sync.ts";
 import { mirrorDocs, mirrors } from "./mirror.ts";
 import { openInTerminal } from "./terminal.ts";
+import { AlertWatch, fetchAlerts, noticeText, type AlertNotice } from "./alert-notify.ts";
 
 app.setName("xDev Hive");
 const smokeShot = process.env.HIVE_SMOKE_SCREENSHOT;
@@ -96,6 +97,9 @@ let setupCache: { checkedAt: string; report: SetupReport } | null = null;
 /** What the hub sent on the last heartbeat (hub mode only). */
 let hubState: HubUpdate | null = null;
 const notifiedCommands = new Set<number>();
+let alertWatch: AlertWatch;
+/** The hub and token the alerts were last read with: another one starts the watch over. */
+let alertHub = "";
 // Electron's network stack: honours system proxy settings and the macOS keychain's certificates.
 const gitlabFetch = (url: string, init: RequestInit) => net.fetch(url, init);
 let quitting = false;
@@ -588,6 +592,7 @@ async function installAndRestart(): Promise<void> {
 
 function onHub(update: HubUpdate): void {
   hubState = update;
+  if (!smokeShot) void watchAlerts();
   updater.offer(update.update);
   // "Once no run is going": nothing queued or running, the window may even be closed.
   if (updater.installsOn("idle") && !runner.store.active().length) void installAndRestart();
@@ -604,6 +609,24 @@ function onHub(update: HubUpdate): void {
     });
     n.show();
   }
+}
+
+/** A hub admin's app tells about alerts the hub opened (roadmap 22m-2); the watch asks once a minute at most. */
+async function watchAlerts(): Promise<void> {
+  const hub = `${config.hub.url}\n${config.hub.token}`;
+  if (hub !== alertHub) {
+    alertHub = hub;
+    alertWatch.reset();
+  }
+  await alertWatch.tick();
+}
+
+function showAlert(notice: AlertNotice): void {
+  if (!Notification.isSupported()) return;
+  const n = new Notification(noticeText(tr, notice, (iso) => new Date(iso).toLocaleString(mainLocale())));
+  // Alerts live in the hub's Web Admin, which this app does not have.
+  n.on("click", () => void shell.openExternal(`${config.hub.url}/#/admin/alerts`));
+  n.show();
 }
 
 /** Nothing an admin asks for runs until this machine's user approves it here. */
@@ -1064,6 +1087,11 @@ if (!app.requestSingleInstanceLock()) {
     mergeRequester = new MergeRequester(mrHost);
     mrWatcher = new MrWatcher(mrHost, new CiFixer({ ...mrHost, enqueue: (req, extra) => runner.enqueue(req, extra) }));
     logins = new LoginMonitor(() => config.agents, agentEnv);
+    alertWatch = new AlertWatch({
+      me: () => me(),
+      list: () => fetchAlerts({ url: config.hub.url, token: config.hub.token }, gitlabFetch),
+      notify: showAlert,
+    });
     updater = new Updater({
       version: app.getVersion(),
       dataDir: path.dirname(configPath()),
