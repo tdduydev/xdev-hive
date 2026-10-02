@@ -1,12 +1,12 @@
-# 36. Leader cấp hub
+# 37. Leader cấp hub
 
-Viết ngày 2/10. Người dùng hỏi: trên web có cách nào ra prompt cho một agent điều khiển toàn bộ agent, kiểu "control toàn bộ dự án luôn". Họ chọn:
+Viết ngày 2/10 (lúc đầu ghi nhầm số 36, trùng mục "nhiều dự án" của phiên khác; đổi sang 37). Người dùng hỏi: trên web có cách nào ra prompt cho một agent điều khiển toàn bộ agent, kiểu "control toàn bộ dự án luôn". Họ chọn:
 - **chỉ admin hub**, phạm vi cả hub: mọi dự án, mọi máy;
 - **cài đặt tự chạy riêng** cho leader cấp hub, không phụ thuộc cài đặt của từng dự án.
 
 Hai task, làm lần lượt:
-- **R-36a. Hub và MCP**: thread phạm vi hub, quyền, đề xuất nhắm tới dự án bất kỳ, cài đặt riêng, tool đọc toàn hub.
-- **R-36b. Máy và giao diện**: máy chạy leader không gắn repo nào; trang *Chat* có phạm vi *Toàn hub*; skill hướng dẫn.
+- **R-37a. Hub và MCP**: thread phạm vi hub, quyền, đề xuất nhắm tới dự án bất kỳ, cài đặt riêng, tool đọc toàn hub.
+- **R-37b. Máy và giao diện**: máy chạy leader không gắn repo nào; trang *Chat* có phạm vi *Toàn hub*; skill hướng dẫn.
 
 ## Cơ chế có sẵn
 
@@ -28,7 +28,7 @@ Hai task, làm lần lượt:
 - `chat_defaults` và lệnh của leader có thêm dòng `"*"`: máy, gói, model, effort, **`auto_kinds` của leader cấp hub** (đó là "cài đặt riêng"), lệnh.
 - `chat_actions.project` là **dự án mà đề xuất nhắm tới**, để *Hôm nay*, bộ lọc và nhật ký theo dự án vẫn đúng. Đề xuất không thuộc dự án nào thì là `"*"`: gói của máy, cài mục của máy, dừng hay chạy lại agent cả hub, chính sách mặc định của hub.
 
-## R-36a. Hub và MCP
+## R-37a. Hub và MCP
 
 **Quyền.** Ở mọi chỗ `#check` gặp thread hay đề xuất có `project === "*"`, kể cả `chat.threads` khi không truyền dự án và lọc kết quả:
 - yêu cầu **admin hub** (`actor.role === "admin" && !actor.access`), lỗi `errors.hubAdminOnly` như `agents.stop` cả hub;
@@ -74,7 +74,7 @@ Hai task, làm lần lượt:
 - `packages/mcp/test/mcp.test.ts`: `project_list`; tool không có dự án mặc định; các tool đọc trả toàn hub.
 - `apps/web/test/chat.test.ts`: một vòng qua RPC: admin gửi tin `"*"`, leader đề xuất tạo task ở hai dự án, duyệt tất cả.
 
-## R-36b. Máy và giao diện
+## R-37b. Máy và giao diện
 
 **Máy** (`ChatWorker`), với thread `"*"`:
 - `cwd` là thư mục riêng `<dataDir>/chat-hub` (tạo nếu chưa có, không phải repo);
