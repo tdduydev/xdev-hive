@@ -10,6 +10,7 @@ import { Empty, ErrorNote, Notice } from "#ui/components/common.tsx";
 import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { formatTime, useAction, useHive, useQuery } from "#ui/hooks.ts";
 import { rich, useT } from "#ui/i18n/index.tsx";
+import { GitLabImportCard, ProjectsCard } from "#ui/pages/Projects.tsx";
 import { hasNewer } from "#ui/lib/setup.ts";
 
 const TONE: Record<SetupState, ChipKind> = { installed: "success", missing: "warning", outdated: "info", manual: "danger" };
@@ -96,21 +97,27 @@ export function SetupPage() {
             <SetupList items={shown.machine} required={required} onChanged={replace} />
           </Group>
           {shown.projects.length === 0 ? (
-            <Empty>
-              {rich(t("setup.noProjects"), {
-                link: (
-                  <a href="#/projects" className="font-medium text-fg-link underline underline-offset-2">
-                    {t("nav.projects")}
-                  </a>
-                ),
-              })}
-            </Empty>
+            <Empty>{t("setup.noProjectsBelow")}</Empty>
           ) : null}
           {shown.projects.map((p) => (
             <Group key={p.project} title={p.project} sub={p.repo} mono icon={FolderGit2}>
               <SetupList items={p.items} required={required} onChanged={replace} />
             </Group>
           ))}
+        </>
+      ) : null}
+      {/* The repos on this machine (add, sync, open a CLI): what the checks above run on (roadmap 35a). */}
+      {settings.data ? (
+        <>
+          <ProjectsCard
+            settings={settings.data}
+            onChanged={() => {
+              settings.reload();
+              setReport(null);
+              status.reload();
+            }}
+          />
+          {settings.data.gitlab.url && settings.data.gitlab.hasToken ? <GitLabImportCard settings={settings.data} onChanged={settings.reload} /> : null}
         </>
       ) : null}
     </div>

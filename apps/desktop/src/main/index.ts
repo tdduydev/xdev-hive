@@ -1099,11 +1099,21 @@ function createWindow(): void {
             break;
           }
         }
+        // HIVE_SMOKE_ABSENT: selectors (joined by " && ") that must not be on the page, such as a menu entry left out.
+        const absent = process.env.HIVE_SMOKE_ABSENT;
+        let present: string | null = null;
+        for (const sel of absent ? absent.split(" && ") : []) {
+          if (await win!.webContents.executeJavaScript(`Boolean(document.querySelector(${JSON.stringify(sel)}))`)) {
+            present = sel;
+            break;
+          }
+        }
         const image = await win!.webContents.capturePage();
         writeFileSync(smokeShot, image.toPNG());
         console.log(`[xdev-hive] smoke screenshot ${smokeShot}`);
         if (missing) console.error(`[xdev-hive] smoke expected ${missing} on the page`);
-        app.exit(missing ? 3 : 0);
+        if (present) console.error(`[xdev-hive] smoke did not expect ${present} on the page`);
+        app.exit(missing || present ? 3 : 0);
       }, delay);
     };
     // HIVE_SMOKE_LOCALE=en / HIVE_SMOKE_THEME=dark: the interface language and theme live in the renderer's
