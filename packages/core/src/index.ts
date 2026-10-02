@@ -14,6 +14,7 @@ export * from "./embed.ts";
 export * from "./errors.ts";
 export * from "./hidden.ts";
 export * from "./keys.ts";
+export * from "./mapreduce.ts";
 export * from "./methods.ts";
 export * from "./mirror.ts";
 export * from "./policy.ts";

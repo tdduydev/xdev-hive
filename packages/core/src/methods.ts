@@ -7,6 +7,7 @@ import { CHAT_FILES_PER_MESSAGE } from "./chatfiles.ts";
 import { DOC_ASSET_MAX_BYTES } from "./doclinks.ts";
 import { MR_STATUSES, PIPELINE_STATUSES } from "./gitlab.ts";
 import { MACHINE_ID, PROJECT_NAME } from "./keys.ts";
+import { MAX_MAP_PART, MAX_MAP_PARTS, MAX_MAP_PROMPT } from "./mapreduce.ts";
 import type { SkillSummary } from "./skills.ts";
 import { SPEC_DIR, SPEC_FEATURES_MAX, SPEC_FILE_MAX, SPEC_STEPS, type SpecFeature, type SpecFeatureDetail, type SpecTaskPlan } from "./speckit.ts";
 import { toolEntrySchema } from "./tools.ts";
@@ -584,6 +585,36 @@ export const schemas = {
   }),
   /** Keeps one task of a fan-out group: the others and the prompt's task are done, the kept one goes on (review, MR). */
   "runs.pickWinner": z.object({ groupId: id, taskId }),
+  /**
+   * A big job in parts (roadmap 31c): task P-<n> for the job, P-<n>-1… for the parts, each run by an agent of one machine
+   * at the same time (profiles in turn, or the machine's pick); when every part is done, the hub queues a run on P-<n>
+   * that merges their branches, always. groupId: the parts of a group an agent split (runs.mapSplit), checked by a person.
+   */
+  "runs.mapReduce": z.object({
+    project,
+    groupId: id.optional(),
+    title: z.string().max(120).optional(),
+    /** The job; left out with groupId (its task's note has it). */
+    prompt: z.string().max(MAX_MAP_PROMPT).default(""),
+    parts: z.array(z.string().trim().min(1).max(MAX_MAP_PART)).min(2).max(MAX_MAP_PARTS),
+    /** null: the machine with the most free places now. Every part and the merge run there. */
+    machineId: machineRef.nullable().default(null),
+    /** The parts take these in turn; none: the machine picks for each. */
+    profiles: z.array(z.string().max(40)).max(MAX_MAP_PARTS).default([]),
+    maxParallel: z.number().int().min(1).max(20).nullable().default(null),
+    /** The merged result's cross-review (the parts get none). */
+    reviewAfter: z.boolean().default(true),
+  }),
+  /** Asks an agent to split a big job into parts (roadmap 31c): a plan run on the job's task lists them for a person to check. */
+  "runs.mapSplit": z.object({
+    project,
+    title: z.string().max(120).optional(),
+    prompt: z.string().min(1).max(MAX_MAP_PROMPT),
+    machineId: machineRef.nullable().default(null),
+    profileId: z.string().max(40).nullable().default(null),
+  }),
+  /** Starts a stopped map-reduce group again: its failed parts, or its merge, or its split. */
+  "runs.resumeGroup": z.object({ id }),
   /** Run groups, the newest first: a project's, or every project the caller sees. */
   "runs.groups": z.object({ project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(100).default(30) }),
   /** Stops what a group has not started: its held items, and requests no machine took. Runs going on keep going. */
@@ -919,6 +950,9 @@ export interface MethodOutput {
   "runs.dispatchMany": RunGroup;
   "runs.fanout": RunGroup;
   "runs.pickWinner": RunGroup;
+  "runs.mapReduce": RunGroup;
+  "runs.mapSplit": RunGroup;
+  "runs.resumeGroup": RunGroup;
   "runs.groups": RunGroup[];
   "runs.cancelGroup": RunGroup;
   "runs.requests": RunRequest[];
@@ -1056,6 +1090,9 @@ export const METHOD_ROLES: Record<Method, Role> = {
   // Also "taskManage" and "runDispatch" on the project, like runs.prompt.
   "runs.fanout": "agent",
   "runs.pickWinner": "agent",
+  "runs.mapReduce": "agent",
+  "runs.mapSplit": "agent",
+  "runs.resumeGroup": "agent",
   "runs.requests": "viewer",
   "runs.cancelRequest": "agent",
   "runs.requestResult": "agent",
