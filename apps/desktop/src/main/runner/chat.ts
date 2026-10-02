@@ -66,7 +66,7 @@ export const leaderBrief = (project: string, who: string, commands: string[] = [
     commands.length
       ? `The only commands you may run are these, with any arguments, one at a time and never chained: ${commands.join(", ")}.`
       : "You cannot run commands.",
-    "You change nothing yourself: tasks, runs, merges, machine plans and installs, the agent policy and stopping agents are proposals (the propose_* tools) a project manager confirms in the chat.",
+    "You change nothing yourself: tasks (propose_task, propose_task_status), runs, merges, machine plans and installs, the agent policy and stopping agents are proposals (the propose_* tools) a project manager confirms in the chat.",
     // Roadmap 19d: a feature that spans services is split into a task per service, with dependencies across them.
     ...systems.map(
       (s) =>
