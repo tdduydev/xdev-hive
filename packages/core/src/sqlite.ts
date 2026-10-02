@@ -16,11 +16,18 @@ import { EMPTY_POLICY } from "./policy.ts";
 import { budgetApplies, budgetId, budgetRatio, budgetVars, periodStart, type Budget, type BudgetBlock, type BudgetUsage } from "./budgets.ts";
 import { agentPolicyView, EMPTY_AGENT_POLICY, OPEN_POLICY, policySummary, type AgentPolicy, type AgentPolicySettings, type AgentPolicyView } from "./agent-policy.ts";
 import {
+  effectiveGates,
   EMPTY_SDLC_POLICY,
   fullCeiling,
   GATE_MODES,
+  gateCheckInstructions,
+  NEXT_STEP,
   sdlcPolicyView,
   SDLC_GATES,
+  STEP_GATE,
+  type FlowState,
+  type FlowStep,
+  type SdlcFlow,
   type GateMode,
   type GateModes,
   type GateStatus,
@@ -43,7 +50,8 @@ import { assertNoHidden, stripHidden } from "./hidden.ts";
 import { assertNoSecret, findSecret, redactLines } from "./secrets.ts";
 import { isAgentActor, MR_WATCHER, parseSource, principalOf, type WriteSource } from "./source.ts";
 import { SEED_DOCS, SEED_VERSION } from "./seed.ts";
-import { planSpecTasks, specStage, specTaskPrefix, specTasks, specTitle, type SpecFeature, type SpecFeatureDetail, type SpecFiles } from "./speckit.ts";
+import { planSpecTasks, specStage, specStepInstructions, specTaskPrefix, specTasks, specTitle, type SpecFeature, type SpecFeatureDetail, type SpecFiles, type SpecStep } from "./speckit.ts";
+import { parseVerdict } from "./verdict.ts";
 import { toolEffective, toolProblem, toolSetupItems } from "./tools.ts";
 import type {
   Actor,
@@ -411,6 +419,16 @@ const MIGRATIONS: string[] = [
     status TEXT NOT NULL, subject TEXT NOT NULL DEFAULT '{}', decided_by TEXT, note TEXT, created_at TEXT NOT NULL, decided_at TEXT);
   CREATE INDEX sdlc_gates_project ON sdlc_gates(project, id);
   CREATE INDEX sdlc_gates_task ON sdlc_gates(task_id, gate);
+  `,
+  // Flows the hub drives through the gates (roadmap 34b): one per task. step: the Spec Kit step running, or next when
+  // state is "next" ("import": the tasks.md into the board). request_id: the step's run request, or the gate check's.
+  `
+  CREATE TABLE sdlc_flows(
+    task_id TEXT PRIMARY KEY, project TEXT NOT NULL, dir TEXT, step TEXT NOT NULL, state TEXT NOT NULL,
+    machine_id TEXT NOT NULL, profile_id TEXT, request_id INTEGER, gate_id INTEGER, input TEXT NOT NULL DEFAULT '',
+    note TEXT, reached_at TEXT, created_by TEXT NOT NULL, on_behalf TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+  CREATE INDEX sdlc_flows_project ON sdlc_flows(project, updated_at);
+  CREATE INDEX sdlc_flows_state ON sdlc_flows(state);
   `,
 ];
 
@@ -1417,8 +1435,25 @@ export class SqliteHive implements HiveBackend {
       case "sdlc.setProject":
         return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
       case "sdlc.gates":
+      case "sdlc.flows":
         if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
         return;
+      // A flow makes its task and queues its runs.
+      case "specs.runStep":
+        this.#need(actor, i.project, "taskManage", `Project ${i.project}`);
+        return this.#need(actor, i.project, "runDispatch", `Project ${i.project}`);
+      case "sdlc.decide": {
+        const row = this.db.prepare("SELECT project, gate FROM sdlc_gates WHERE id = ?").get(i.gateId) as Row | undefined;
+        if (!row) return;
+        // Passing the tasks gate imports the feature's tasks into the board.
+        if (str(row.gate) === "tasks" && i.decision === "pass") this.#need(actor, str(row.project), "taskManage", `Gate #${i.gateId}`);
+        return this.#need(actor, str(row.project), "runDispatch", `Gate #${i.gateId}`);
+      }
+      case "sdlc.retry": {
+        const row = this.db.prepare("SELECT project FROM sdlc_flows WHERE task_id = ?").get(i.taskId) as Row | undefined;
+        if (row) this.#need(actor, str(row.project), "runDispatch", `Flow ${i.taskId}`);
+        return;
+      }
       case "agentPolicy.set":
         // The default binds every project, so only someone over all of them: a hub admin (no per-project grants).
         if (i.project === null) {
@@ -1609,6 +1644,8 @@ export class SqliteHive implements HiveBackend {
       }
       case "sdlc.gates":
         return (out as SdlcGateRecord[]).filter((g) => visible(g.project)) as MethodOutput[M];
+      case "sdlc.flows":
+        return (out as SdlcFlow[]).filter((f) => visible(f.project)) as MethodOutput[M];
       case "agentPolicy.set": {
         const view = out as AgentPolicyView;
         const only = <T>(rec: Record<string, T>) => Object.fromEntries(Object.entries(rec).filter(([p]) => visible(p)));
@@ -2492,6 +2529,272 @@ export class SqliteHive implements HiveBackend {
 
   #groupOnBehalf(id: number): string | null {
     return strOrNull((this.db.prepare("SELECT on_behalf FROM run_groups WHERE id = ?").get(id) as Row | undefined)?.on_behalf);
+  }
+
+  /** tasks.md of a feature into board tasks (roadmap 20c): from specs.importTasks, and when a flow's tasks gate passes. */
+  #importSpecTasks(project: string, dir: string, branch: string, prefix: string | null, dryRun: boolean, actor: Actor) {
+    const db = this.db;
+    const row = db.prepare("SELECT * FROM spec_features WHERE project = ? AND dir = ? AND branch = ?").get(project, dir, branch) as Row | undefined;
+    const tasksMd = row ? toSpecFeature(row).files.tasks : null;
+    if (tasksMd === null) throw new HiveError("not_found", `${project} has no tasks.md for ${dir}.`, { key: "errors.specNoTasks", vars: { dir } });
+    const plan = planSpecTasks(tasksMd, prefix ?? specTaskPrefix(dir));
+    const todo = plan.tasks.filter((t) => !t.done);
+    const exists = (id: string) => this.#getTask(id) !== null;
+    const tasks = todo.map((t) => ({ ...t, exists: exists(t.id) }));
+    // A task with that id in another project is not this feature's: refused rather than waited on.
+    for (const t of tasks.filter((x) => x.exists)) {
+      if (this.#getTask(t.id)!.project !== project) {
+        throw new HiveError("conflict", `Task ${t.id} already exists in another project.`, { key: "errors.taskExists", vars: { id: t.id } });
+      }
+    }
+    const created: string[] = [];
+    if (!dryRun) {
+      const note = (phase: string) => `Spec Kit · specs/${dir}/tasks.md${branch ? ` (${branch})` : ""} · ${phase}`;
+      const fresh = tasks.filter((x) => !x.exists);
+      // All first, then what they wait for: a line may name one further down ("depends on T020").
+      for (const t of fresh) {
+        db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)").run(t.id, project, t.title, note(t.phase), this.#now());
+        created.push(t.id);
+      }
+      for (const t of fresh) this.#setDeps(t.id, this.#checkDeps(t.id, project, t.dependsOn.filter((d) => exists(d)), actor));
+      if (created.length) {
+        this.audit(actor, "specs.importTasks", `${project}/${dir}`, `${created.length} task: ${created[0]} … ${created.at(-1)}`, {
+          key: "audit.specImport",
+          vars: { count: created.length, dir },
+        });
+      }
+    }
+    return { tasks, warnings: plan.warnings, created };
+  }
+
+  // ── flows through the gates (roadmap 34b) ─────────────────────────────────
+
+  #flowRow(taskId: string): Row | null {
+    return (this.db.prepare("SELECT * FROM sdlc_flows WHERE task_id = ?").get(taskId) as Row | undefined) ?? null;
+  }
+
+  #flow(taskId: string): SdlcFlow | null {
+    const r = this.#flowRow(taskId);
+    if (!r) return null;
+    const machine = this.db.prepare("SELECT machine FROM machines WHERE id = ?").get(str(r.machine_id)) as Row | undefined;
+    const gate = r.gate_id == null ? undefined : (this.db.prepare("SELECT * FROM sdlc_gates WHERE id = ?").get(num(r.gate_id)) as Row | undefined);
+    return {
+      taskId: str(r.task_id),
+      project: str(r.project),
+      dir: strOrNull(r.dir),
+      step: str(r.step) as FlowStep,
+      state: str(r.state) as FlowState,
+      machineId: str(r.machine_id),
+      machine: machine ? str(machine.machine) : str(r.machine_id),
+      profileId: strOrNull(r.profile_id),
+      gate: gate ? toGate(gate) : null,
+      note: strOrNull(r.note),
+      createdBy: str(r.created_by),
+      createdAt: str(r.created_at),
+      updatedAt: str(r.updated_at),
+    };
+  }
+
+  /** Whoever started the flow: its runs are requested, and counted, as theirs. */
+  #flowActor(r: Row): Actor {
+    return { name: str(r.created_by), role: "member", ...(r.on_behalf ? { onBehalf: str(r.on_behalf) } : {}) };
+  }
+
+  #setFlow(taskId: string, fields: Partial<Record<"state" | "step" | "dir" | "request_id" | "gate_id" | "input" | "note" | "reached_at", string | number | null>>): void {
+    const keys = Object.keys(fields);
+    this.db
+      .prepare(`UPDATE sdlc_flows SET ${keys.map((k) => `${k} = ?`).join(", ")}, updated_at = ? WHERE task_id = ?`)
+      .run(...keys.map((k) => fields[k as keyof typeof fields] ?? null), this.#now(), taskId);
+  }
+
+  #addGate(flow: Row, gate: SdlcGate, mode: GateMode, status: GateStatus, subject: Record<string, unknown>, decided: { by: string; note?: string | null } | null): number {
+    const now = this.#now();
+    const res = this.db
+      .prepare(
+        `INSERT INTO sdlc_gates(project, task_id, gate, mode, status, subject, decided_by, note, created_at, decided_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(str(flow.project), str(flow.task_id), gate, mode, status, JSON.stringify(subject), decided?.by ?? null, decided?.note ?? null, now, decided ? now : null);
+    return num(res.lastInsertRowid);
+  }
+
+  /**
+   * An enabled profile of another vendor than the one that did the step, for a gate's check: a review on the same
+   * vendor would share its blind spots. null: the machine has none ready, it then picks as for any review.
+   */
+  #otherVendorProfile(machineId: string, did: string | null): string | null {
+    const row = this.db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row | undefined;
+    if (!row) return null;
+    const profiles = this.#toMachine(row).profiles;
+    const kind = profiles.find((p) => p.id === did)?.kind ?? null;
+    const now = this.#now();
+    const other = profiles
+      .filter((p) => p.enabled && p.installed && p.loggedIn !== false && !p.overLimit && !(p.cooldownUntil && p.cooldownUntil > now) && p.kind !== kind)
+      .sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50));
+    return other[0]?.id ?? null;
+  }
+
+  /** A step's run ended on its machine: at its gate, the flow waits for a person, has it checked, or goes on. */
+  #reachGate(flow: Row, run: { runId: string; profileId: string | null }): void {
+    const taskId = str(flow.task_id);
+    const step = str(flow.step) as SpecStep;
+    const gate = STEP_GATE[step];
+    const mode = effectiveGates(this.#sdlcPolicy(), str(flow.project))[gate];
+    const subject = { step, dir: strOrNull(flow.dir), runId: run.runId, machineId: str(flow.machine_id) };
+    if (mode === "auto") {
+      this.#addGate(flow, gate, mode, "passed", subject, { by: "auto" });
+      this.#passFlow(taskId);
+      return;
+    }
+    if (mode === "ai") {
+      // Queued by #releaseFlows: the machine may still list the step's run as going until its next heartbeat.
+      const gateId = this.#addGate(flow, gate, mode, "checking", { ...subject, didProfile: run.profileId }, null);
+      this.#setFlow(taskId, { state: "check", gate_id: gateId, reached_at: this.#now() });
+      return;
+    }
+    const gateId = this.#addGate(flow, gate, mode, "waiting", subject, null);
+    this.#setFlow(taskId, { state: "gate", gate_id: gateId, reached_at: this.#now() });
+  }
+
+  /**
+   * The gate's check (mode "ai"): a review run on another vendor's profile, on the flow's machine and branch. A check
+   * that cannot start for a reason that will not pass hands the gate to a person instead of stalling the flow.
+   */
+  #startCheck(flow: Row): void {
+    const taskId = str(flow.task_id);
+    const task = this.#getTask(taskId);
+    const gateRow = flow.gate_id == null ? undefined : (this.db.prepare("SELECT * FROM sdlc_gates WHERE id = ?").get(num(flow.gate_id)) as Row | undefined);
+    if (!task || !gateRow) {
+      this.#setFlow(taskId, { state: "stopped", note: `Task ${taskId} or its gate is gone.` });
+      return;
+    }
+    const subject = JSON.parse(str(gateRow.subject)) as { didProfile?: string | null };
+    const profileId = this.#otherVendorProfile(str(flow.machine_id), subject.didProfile ?? null);
+    const instructions = gateCheckInstructions(str(gateRow.gate) as SdlcGate, { dir: strOrNull(flow.dir) });
+    const actor = this.#flowActor(flow);
+    try {
+      const m = this.#assertDispatchable({ machineId: str(flow.machine_id), project: str(flow.project), task, role: "review", profileId, candidates: 1, instructions }, actor);
+      const req = this.#insertRequest(m, str(flow.project), task, { role: "review", profileId, reviewAfter: false, candidates: 1, instructions }, actor);
+      this.#setFlow(taskId, { state: "checking", request_id: req.id });
+    } catch (err) {
+      if (!(err instanceof HiveError)) throw err;
+      if (!groupFails(err.key)) return;
+      this.db.prepare("UPDATE sdlc_gates SET status = 'escalated', decided_by = 'auto', note = ?, decided_at = ? WHERE id = ?").run(`AI check could not start: ${err.message}`, this.#now(), num(flow.gate_id));
+      this.#setFlow(taskId, { state: "gate" });
+    }
+  }
+
+  /** The gate passed: the next step is queued as soon as it can be (#releaseFlows). */
+  #passFlow(taskId: string): void {
+    const flow = this.#flowRow(taskId)!;
+    const step = str(flow.step) as Exclude<FlowStep, "import">;
+    this.#setFlow(taskId, { state: "next", step: NEXT_STEP[step], gate_id: null, input: "", reached_at: this.#now() });
+  }
+
+  /**
+   * A run of the task ended on that machine (runs.push). Only the flow's own step or check counts: a run on another
+   * machine, or of another role, is someone else's. rate_limited is not an end: the machine tries again on another
+   * profile, under a new run.
+   */
+  #flowRunEnded(machineId: string, r: { runId: string; taskId: string; project: string; role: string; status: string; profileId: string | null; summary: string | null; error: string | null }): void {
+    const flow = this.#flowRow(r.taskId);
+    if (!flow || str(flow.project) !== r.project || str(flow.machine_id) !== machineId || r.status === "rate_limited") return;
+    const req = flow.request_id == null ? null : (this.db.prepare("SELECT status FROM run_requests WHERE id = ?").get(num(flow.request_id)) as Row | undefined);
+    if (!req || str(req.status) !== "accepted") return;
+    const state = str(flow.state);
+    if (state === "running" && r.role === "implement") {
+      if (r.status === "succeeded") this.#reachGate(flow, r);
+      else this.#setFlow(r.taskId, { state: "stopped", note: r.error ?? r.status });
+      return;
+    }
+    if (state === "checking" && r.role === "review" && flow.gate_id != null) {
+      const gateId = num(flow.gate_id);
+      const now = this.#now();
+      const report = r.summary ? r.summary.slice(0, 2000) : (r.error ?? r.status);
+      if (r.status === "succeeded" && parseVerdict(r.summary) === "approve") {
+        this.db.prepare("UPDATE sdlc_gates SET status = 'passed', decided_by = ?, note = ?, decided_at = ? WHERE id = ?").run(`run:${machineId}/${r.runId}`, report, now, gateId);
+        this.#passFlow(r.taskId);
+      } else {
+        // Changes asked, a verdict it could not read, or a check that failed: a person decides, with the report.
+        this.db.prepare("UPDATE sdlc_gates SET status = 'escalated', decided_by = ?, note = ?, decided_at = ? WHERE id = ?").run(`run:${machineId}/${r.runId}`, report, now, gateId);
+        this.#setFlow(r.taskId, { state: "gate" });
+      }
+    }
+  }
+
+  /** A flow's request that no machine will run (refused, expired, cancelled): the step stops, a check goes to a person. */
+  #syncFlows(): void {
+    const rows = this.db
+      .prepare(
+        `SELECT f.task_id, f.state, f.gate_id, r.status AS req_status, r.error AS req_error FROM sdlc_flows f JOIN run_requests r ON r.id = f.request_id
+         WHERE f.state IN ('running', 'checking') AND r.status IN ('rejected', 'expired', 'cancelled')`,
+      )
+      .all() as Row[];
+    for (const r of rows) {
+      const why = r.req_error ? (JSON.parse(str(r.req_error)) as RunRequestError).message : str(r.req_status);
+      if (str(r.state) === "running") this.#setFlow(str(r.task_id), { state: "stopped", note: why });
+      else {
+        if (r.gate_id != null) this.db.prepare("UPDATE sdlc_gates SET status = 'escalated', note = ?, decided_at = ? WHERE id = ?").run(`AI check did not run: ${why}`, this.#now(), num(r.gate_id));
+        this.#setFlow(str(r.task_id), { state: "gate" });
+      }
+    }
+  }
+
+  /**
+   * Queues what flows may do next: the next Spec Kit step on the flow's machine, or the tasks.md import. A step waits
+   * for the feature's folder (the machine pushes it after the specify run) and the import for a tasks.md pushed after
+   * the tasks step; a machine offline or a cap reached keeps it waiting; a refusal that will not pass stops the flow.
+   */
+  #releaseFlows(): void {
+    this.#syncFlows();
+    const rows = this.db.prepare("SELECT * FROM sdlc_flows WHERE state IN ('next', 'check') ORDER BY updated_at").all() as Row[];
+    for (const flow of rows) {
+      const taskId = str(flow.task_id);
+      const project = str(flow.project);
+      if (str(flow.state) === "check") {
+        this.#startCheck(flow);
+        continue;
+      }
+      const branch = `ai/${taskId}`;
+      let dir = strOrNull(flow.dir);
+      if (!dir) {
+        const dirs = this.db.prepare("SELECT dir FROM spec_features WHERE project = ? AND branch = ?").all(project, branch) as Row[];
+        if (dirs.length !== 1) continue;
+        dir = str(dirs[0]!.dir);
+        this.#setFlow(taskId, { dir });
+      }
+      const step = str(flow.step) as FlowStep;
+      const actor = this.#flowActor(flow);
+      if (step === "import") {
+        const f = this.db.prepare("SELECT * FROM spec_features WHERE project = ? AND dir = ? AND branch = ?").get(project, dir, branch) as Row | undefined;
+        // The tasks.md the gate passed: pushed after the step's gate was reached, not an older one.
+        if (!f || toSpecFeature(f).files.tasks === null || (flow.reached_at && str(f.pushed_at) < str(flow.reached_at))) continue;
+        try {
+          const out = this.#importSpecTasks(project, dir, branch, null, false, actor);
+          this.#setFlow(taskId, { state: "done", note: `${out.created.length} task: ${out.created[0] ?? "—"} … ${out.created.at(-1) ?? "—"}` });
+        } catch (err) {
+          if (!(err instanceof HiveError)) throw err;
+          this.#setFlow(taskId, { state: "stopped", note: err.message });
+        }
+        continue;
+      }
+      const task = this.#getTask(taskId);
+      if (!task) {
+        this.#setFlow(taskId, { state: "stopped", note: `Task ${taskId} is gone.` });
+        continue;
+      }
+      const specStep = step as SpecStep;
+      const instructions = specStepInstructions(specStep, { dir, input: str(flow.input) });
+      const profileId = strOrNull(flow.profile_id);
+      try {
+        const m = this.#assertDispatchable({ machineId: str(flow.machine_id), project, task, role: "implement", profileId, candidates: 1, instructions }, actor);
+        const req = this.#insertRequest(m, project, task, { role: "implement", profileId, reviewAfter: false, candidates: 1, instructions }, actor);
+        this.#setFlow(taskId, { state: "running", request_id: req.id, input: "", note: null });
+      } catch (err) {
+        if (!(err instanceof HiveError)) throw err;
+        if (groupFails(err.key)) this.#setFlow(taskId, { state: "stopped", note: err.message });
+      }
+    }
   }
 
   #insertRequest(
@@ -3781,6 +4084,7 @@ export class SqliteHive implements HiveBackend {
           }
           // With this beat's runs in, so a run that ended leaves its place to the next of its group, sent in this answer.
           this.#releaseGroups();
+          this.#releaseFlows();
           const runRequests = accepts
             ? (db.prepare("SELECT * FROM run_requests WHERE machine_id = ? AND status = 'pending' ORDER BY id").all(actor.name) as Row[]).map(toRunRequest)
             : [];
@@ -3844,7 +4148,11 @@ export class SqliteHive implements HiveBackend {
                (SELECT COALESCE(on_behalf, requested_by) FROM run_requests WHERE machine_id = ?1 AND run_id = ?2 AND status = 'accepted'), ?3)
              WHERE machine_id = ?1 AND run_id = ?2 AND requested_by IS NULL`,
           );
+          const prior = db.prepare("SELECT status FROM run_records WHERE machine_id = ? AND run_id = ?");
+          const ended: typeof runs = [];
           for (const r of runs) {
+            const before = (prior.get(actor.name, r.runId) as Row | undefined)?.status;
+            if (["succeeded", "failed", "cancelled"].includes(r.status) && (before === undefined || ["queued", "running"].includes(str(before)))) ended.push(r);
             // The machine already hid secret-looking lines; this is the hub's own check of what it keeps.
             put.run(
               actor.name, r.runId, machine, r.project, r.taskId, stripHidden(r.taskTitle), r.role, r.status, r.profileId,
@@ -3861,6 +4169,9 @@ export class SqliteHive implements HiveBackend {
             ownerPut.run(actor.name, r.runId, principalOf(actor));
           }
           db.prepare("DELETE FROM run_records WHERE updated_at < ?").run(this.#now(-RUN_RECORD_DAYS * 24 * 60));
+          // Flows (roadmap 34b) move on the step or check that just ended, then queue what comes next.
+          for (const r of ended) this.#flowRunEnded(actor.name, { ...r, summary: clean(r.summary) ?? null, error: clean(r.error) ?? null });
+          if (ended.length) this.#releaseFlows();
           return { stored: runs.length };
         }),
 
@@ -3888,6 +4199,8 @@ export class SqliteHive implements HiveBackend {
             drop.run(project, str(r.dir), str(r.branch));
             removed++;
           }
+          // A flow waiting for the folder its specify step made, or for its tasks.md, may go on now.
+          this.#releaseFlows();
           return { stored: features.length, removed };
         }),
 
@@ -3905,40 +4218,7 @@ export class SqliteHive implements HiveBackend {
           return feature;
         }),
 
-      "specs.importTasks": ({ project, dir, branch, prefix, dryRun }, actor) =>
-        this.#tx(() => {
-          const row = db.prepare("SELECT * FROM spec_features WHERE project = ? AND dir = ? AND branch = ?").get(project, dir, branch) as Row | undefined;
-          const tasksMd = row ? toSpecFeature(row).files.tasks : null;
-          if (tasksMd === null) throw new HiveError("not_found", `${project} has no tasks.md for ${dir}.`, { key: "errors.specNoTasks", vars: { dir } });
-          const plan = planSpecTasks(tasksMd, prefix ?? specTaskPrefix(dir));
-          const todo = plan.tasks.filter((t) => !t.done);
-          const exists = (id: string) => this.#getTask(id) !== null;
-          const tasks = todo.map((t) => ({ ...t, exists: exists(t.id) }));
-          // A task with that id in another project is not this feature's: refused rather than waited on.
-          for (const t of tasks.filter((x) => x.exists)) {
-            if (this.#getTask(t.id)!.project !== project) {
-              throw new HiveError("conflict", `Task ${t.id} already exists in another project.`, { key: "errors.taskExists", vars: { id: t.id } });
-            }
-          }
-          const created: string[] = [];
-          if (!dryRun) {
-            const note = (phase: string) => `Spec Kit · specs/${dir}/tasks.md${branch ? ` (${branch})` : ""} · ${phase}`;
-            const fresh = tasks.filter((x) => !x.exists);
-            // All first, then what they wait for: a line may name one further down ("depends on T020").
-            for (const t of fresh) {
-              db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)").run(t.id, project, t.title, note(t.phase), this.#now());
-              created.push(t.id);
-            }
-            for (const t of fresh) this.#setDeps(t.id, this.#checkDeps(t.id, project, t.dependsOn.filter((d) => exists(d)), actor));
-            if (created.length) {
-              this.audit(actor, "specs.importTasks", `${project}/${dir}`, `${created.length} task: ${created[0]} … ${created.at(-1)}`, {
-                key: "audit.specImport",
-                vars: { count: created.length, dir },
-              });
-            }
-          }
-          return { tasks, warnings: plan.warnings, created };
-        }),
+      "specs.importTasks": ({ project, dir, branch, prefix, dryRun }, actor) => this.#tx(() => this.#importSpecTasks(project, dir, branch, prefix ?? null, dryRun, actor)),
 
       "specs.get": ({ project, dir, branch }, actor) => {
         // A project the caller does not see answers like a missing feature.
@@ -4038,6 +4318,11 @@ export class SqliteHive implements HiveBackend {
           const task = this.#getTask(taskId);
           if (!task || task.project !== project) {
             throw new HiveError("not_found", `No task ${taskId} in ${project}.`, { key: "errors.taskNotInProject", vars: { id: taskId, project } });
+          }
+          // Its flow queues its steps itself, and would take this run for one of them.
+          const flow = this.#flowRow(taskId);
+          if (flow && ["running", "check", "checking", "next"].includes(str(flow.state))) {
+            throw new HiveError("conflict", `Task ${taskId} is in a flow that is going on.`, { key: "errors.taskInFlow", vars: { id: taskId } });
           }
           const m = this.#assertDispatchable({ machineId, project, task, role, profileId, candidates, instructions }, actor);
           // Its group would run it again once this run ended.
@@ -4237,8 +4522,9 @@ export class SqliteHive implements HiveBackend {
             this.#now(),
             id,
           );
-          // A refusal frees its group's place at once.
+          // A refusal frees its group's place at once, and stops a flow's step.
           this.#releaseGroups();
+          this.#releaseFlows();
           return this.#runRequest(id);
         }),
 
@@ -4707,16 +4993,102 @@ export class SqliteHive implements HiveBackend {
         return this.#sdlcView();
       },
 
-      "sdlc.gates": ({ project, projects, status, limit }) =>
+      "sdlc.gates": ({ project, projects, taskId, status, limit }) =>
         (
           db
             .prepare(
               `SELECT * FROM sdlc_gates WHERE (?1 IS NULL OR project = ?1) AND (?2 IS NULL OR status = ?2)
-                 AND (?4 IS NULL OR project IN (SELECT value FROM json_each(?4)))
+                 AND (?4 IS NULL OR project IN (SELECT value FROM json_each(?4))) AND (?5 IS NULL OR task_id = ?5)
                ORDER BY CASE status WHEN 'waiting' THEN 0 WHEN 'escalated' THEN 0 ELSE 1 END, id DESC LIMIT ?3`,
             )
-            .all(project ?? null, status ?? null, limit, listParam(projects)) as Row[]
+            .all(project ?? null, status ?? null, limit, listParam(projects), taskId ?? null) as Row[]
         ).map(toGate),
+
+      "specs.runStep": ({ project, step, taskId, title, dir, input, machineId, profileId }, actor) =>
+        this.#tx(() => {
+          const open = this.#flowRow(taskId);
+          if (open && ["running", "check", "checking"].includes(str(open.state))) {
+            throw new HiveError("conflict", `Task ${taskId} has a step going.`, { key: "errors.flowBusy", vars: { id: taskId } });
+          }
+          let task = this.#getTask(taskId);
+          if (!task) {
+            if (!title) throw new HiveError("not_found", `No task ${taskId} in ${project}.`, { key: "errors.taskNotInProject", vars: { id: taskId, project } });
+            assertNoHidden(title, "Title");
+            assertNoSecret(title, "Title");
+            db.prepare("INSERT INTO tasks(id, project, title, updated_at) VALUES (?, ?, ?, ?)").run(taskId, project, title.trim(), this.#now());
+            task = this.#getTask(taskId)!;
+          } else if (task.project !== project) {
+            throw new HiveError("not_found", `No task ${taskId} in ${project}.`, { key: "errors.taskNotInProject", vars: { id: taskId, project } });
+          }
+          const instructions = specStepInstructions(step, { ...(dir ? { dir } : {}), input });
+          const m = this.#assertDispatchable({ machineId, project, task, role: "implement", profileId, candidates: 1, instructions }, actor);
+          this.#assertNotInGroup(taskId);
+          const request = this.#insertRequest(m, project, task, { role: "implement", profileId, reviewAfter: false, candidates: 1, instructions }, actor);
+          const now = this.#now();
+          // Run again by hand from the Spec page: the gate it waited at is over.
+          if (open?.gate_id != null) {
+            db.prepare("UPDATE sdlc_gates SET status = 'rejected', decided_by = ?, note = COALESCE(note, ?), decided_at = ? WHERE id = ? AND status IN ('waiting', 'escalated')").run(
+              actor.name,
+              `${step} run again`,
+              now,
+              num(open.gate_id),
+            );
+          }
+          db.prepare(
+            `INSERT INTO sdlc_flows(task_id, project, dir, step, state, machine_id, profile_id, request_id, created_by, on_behalf, created_at, updated_at)
+             VALUES (?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(task_id) DO UPDATE SET dir = COALESCE(excluded.dir, dir), step = excluded.step, state = 'running',
+               machine_id = excluded.machine_id, profile_id = excluded.profile_id, request_id = excluded.request_id, gate_id = NULL,
+               input = '', note = NULL, updated_at = excluded.updated_at`,
+          ).run(taskId, project, dir ?? null, step, m.id, profileId, request.id, actor.name, actor.onBehalf ?? null, now, now);
+          return { task, request, flow: this.#flow(taskId)! };
+        }),
+
+      "sdlc.decide": ({ gateId, decision, note }, actor) =>
+        this.#tx(() => {
+          const gate = db.prepare("SELECT * FROM sdlc_gates WHERE id = ?").get(gateId) as Row | undefined;
+          if (!gate) throw new HiveError("not_found", `Gate #${gateId} not found.`, { key: "errors.gateNotFound", vars: { id: gateId } });
+          const flow = this.#flowRow(str(gate.task_id));
+          const status = str(gate.status);
+          if ((status !== "waiting" && status !== "escalated") || !flow || num(flow.gate_id) !== gateId) {
+            throw new HiveError("conflict", `Gate #${gateId} is not waiting for a person.`, { key: "errors.gateNotWaiting", vars: { id: gateId } });
+          }
+          assertNoHidden(note, "Note");
+          assertNoSecret(note, "Note");
+          const now = this.#now();
+          db.prepare("UPDATE sdlc_gates SET status = ?, decided_by = ?, note = COALESCE(NULLIF(?, ''), note), decided_at = ? WHERE id = ?").run(
+            decision === "pass" ? "passed" : "rejected",
+            actor.name,
+            note,
+            now,
+            gateId,
+          );
+          const taskId = str(flow.task_id);
+          if (decision === "pass") this.#passFlow(taskId);
+          // The step again, with what the person asked for as its input (AI-DLC: a rejected stage reopens).
+          else db.prepare("UPDATE sdlc_flows SET state = 'next', gate_id = NULL, input = ?, updated_at = ? WHERE task_id = ?").run(note, now, taskId);
+          this.#releaseFlows();
+          return this.#flow(taskId)!;
+        }),
+
+      "sdlc.retry": ({ taskId }) =>
+        this.#tx(() => {
+          const flow = this.#flowRow(taskId);
+          if (!flow) throw new HiveError("not_found", `No flow for ${taskId}.`, { key: "errors.flowNotFound", vars: { id: taskId } });
+          if (str(flow.state) !== "stopped") throw new HiveError("conflict", `The flow of ${taskId} has not stopped.`, { key: "errors.flowNotStopped", vars: { id: taskId } });
+          db.prepare("UPDATE sdlc_flows SET state = 'next', note = NULL, updated_at = ? WHERE task_id = ?").run(this.#now(), taskId);
+          this.#releaseFlows();
+          return this.#flow(taskId)!;
+        }),
+
+      "sdlc.flows": ({ project, projects, limit }) => {
+        this.#tx(() => this.#releaseFlows());
+        return (
+          db
+            .prepare(`SELECT task_id FROM sdlc_flows WHERE (?1 IS NULL OR project = ?1) AND (?3 IS NULL OR project IN (SELECT value FROM json_each(?3))) ORDER BY updated_at DESC LIMIT ?2`)
+            .all(project ?? null, limit, listParam(projects)) as Row[]
+        ).map((r) => this.#flow(str(r.task_id))!);
+      },
 
       "agentPolicy.get": () => agentPolicyView(this.#agentPolicy()),
 

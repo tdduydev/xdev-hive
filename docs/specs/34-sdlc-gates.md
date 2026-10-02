@@ -84,3 +84,11 @@ interface SdlcPolicy {
 - Chốt cho phát hành / deploy của dự án (Hive không chạy deploy của dự án người dùng).
 - Điều kiện theo nội dung (vd. chỉ tự merge khi diff dưới N dòng, không đụng thư mục nhạy cảm).
 - Áp chốt cho task ngoài luồng.
+
+## Đã làm khác spec (34b)
+
+- Trạng thái luồng thêm `check`: run AI kiểm được xếp ở heartbeat sau, vì lúc máy báo run bước xong, danh sách run của máy (gửi ở heartbeat) có thể vẫn ghi run đó đang chạy và hub sẽ từ chối yêu cầu mới.
+- App gọi `afterReport` (sau `pushRuns`) để đẩy spec, kể cả khi không đổi: hub chỉ nhập `tasks.md` đẩy sau lúc chốt `tasks` được ghi.
+- Chạy lại bước bằng tay trên trang *Spec* khi luồng đang chờ ở chốt: chốt đó chuyển *rejected*, luồng chạy bước mới. Task trong luồng đang chạy thì `runs.dispatch` từ chối.
+- Người duyệt chốt spec/plan/tasks không bị luật "không tự duyệt việc mình" (27c): đó là quyết định của người yêu cầu về đặc tả, không phải duyệt code. Chốt review/merge (34d) vẫn theo luật đó.
+
