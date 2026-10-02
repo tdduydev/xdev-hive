@@ -178,8 +178,10 @@ Icon: `npm run icons -w @xdev-hive/desktop` (chỉ chạy trên macOS, vì dùng
 
 ## Nối một repo với Hive (trên app desktop)
 
-1. **Dự án & cài đặt** → thêm repo (project key, ví dụ `xdev-ai-studio`).
-2. **Cài đặt máy**: trang này tự kiểm tra khi mở app, và sidebar hiện số mục chưa sẵn sàng. Mục nào còn thiếu thì có nút cài riêng:
+**App và web làm việc khác nhau** (roadmap 35a). App desktop nối với hub chỉ có việc của máy, năm mục: *Hôm nay* (CI của run trên máy, cài đặt máy, yêu cầu cài từ admin), *Lượt chạy* (run trên máy này), *Agent và quota*, *Dự án & công cụ* (repo trên máy và những gì runner cần), *Cài đặt* (kết nối hub, GitLab, GitHub). Task, tài liệu, spec, memory, đợt chạy, chat, máy của team, thành viên, chính sách nằm trên web của hub. Nút *Mở web* ở góc trên và mọi đường dẫn tới các trang đó mở trình duyệt ở hub. App ở chế độ cục bộ (không nối hub) là cả hệ thống, nên vẫn có đủ trang.
+
+1. **Dự án & công cụ** → *Dự án trên máy này*: thêm repo (project key, ví dụ `xdev-ai-studio`).
+2. Cũng trang đó kiểm tra những gì runner cần: trang tự kiểm tra khi mở app, và sidebar hiện số mục chưa sẵn sàng. Mục nào còn thiếu thì có nút cài riêng:
    - **CLI của agent** (Claude Code, Codex, Gemini): tìm theo `PATH` của login shell và hiện phiên bản. Nút *Cài bằng npm* chạy `npm install -g @anthropic-ai/claude-code` / `@openai/codex` / `@google/gemini-cli`, nên máy cần có Node.js. Profile nào chưa có CLI thì hiện "Chưa có lệnh …", và runner bỏ qua gói đó thay vì chạy thử rồi lỗi.
      - **Phiên bản và nâng cấp** (roadmap 33): app so phiên bản đang dùng với bản mới nhất. Bản mới nhất lấy bằng `npm view <gói> version` (theo registry và proxy của máy); máy không có npm thì hỏi registry.npmjs.org. Kết quả được nhớ 6 giờ, lỗi thì nhớ 30 phút. CLI cũ vẫn là *Đã cài* (không bị tính là thiếu mục bắt buộc) và có nhãn *Có bản x.y.z*.
      - Nút *Nâng cấp lên x.y.z* nâng cấp CLI theo đúng cách đã cài, để không có bản thứ hai trên `PATH`. Cài bằng npm: `npm install -g <gói>@latest`. Claude Code cài bằng bộ cài riêng (`~/.local/share/claude`): `claude update`. Homebrew: `brew upgrade <tên>` (cask thì thêm `--cask`). Không biết cài bằng gì thì không có nút, mà ghi là cần nâng cấp tay.
