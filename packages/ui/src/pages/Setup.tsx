@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { FileText, FolderGit2, GitBranch, ListChecks, Plug, RefreshCw, Sparkles, SquareTerminal, Terminal, Wrench } from "lucide-react";
 import { cn } from "cn";
-import { requiredItemIds, type MachineCommand, type SetupItem, type SetupReport, type SetupState } from "@xdev-hive/core";
+import { requiredItemIds, type MachineCommand, type MachineToolView, type SetupItem, type SetupReport, type SetupState } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
 import { Empty, ErrorNote, Notice } from "#ui/components/common.tsx";
@@ -83,6 +83,7 @@ export function SetupPage() {
           }}
         />
       ) : null}
+      {requests.data?.tools.length ? <HubToolsCard tools={requests.data.tools} onChanged={() => setTick((n) => n + 1)} /> : null}
       {!shown && status.loading ? <p className="m-0 text-[13px] text-fg-muted">{t("setup.checkingAll")}</p> : null}
       {shown ? (
         <>
@@ -173,6 +174,78 @@ function RequestsCard({ commands, onAnswered }: { commands: MachineCommand[]; on
             })}
           </Notice>
         ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+const TRUST_TONE: Record<MachineToolView["trust"], ChipKind> = { app: "success", trusted: "success", new: "warning", changed: "warning" };
+
+/**
+ * The hub's tools this machine's projects use (roadmap 28b): the commands a run would start here, for the user to
+ * allow, version by version. The app's own entries (codegraph, superpowers, Spec Kit as before) need nothing.
+ */
+function HubToolsCard({ tools, onChanged }: { tools: MachineToolView[]; onChanged: () => void }) {
+  const { client } = useHive();
+  const t = useT();
+  const action = useAction();
+  const [shown, setShown] = useState(tools);
+  useEffect(() => setShown(tools), [tools]);
+  const trust = (tool: MachineToolView, allow: boolean) =>
+    void action.run(async () => {
+      setShown(await client.desktop!.toolTrust(tool.id, allow ? tool.hash : null));
+      onChanged();
+    });
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("setup.hubTools")}</CardTitle>
+        <CardDescription>{t("setup.hubToolsHint")}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        {shown.map((tool) => (
+          <div key={tool.id} className="flex flex-col gap-2 rounded-md border border-line-default p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="min-w-0 flex-1 font-medium break-words">
+                {tool.name} <span className="font-mono text-xs text-fg-muted">{tool.id}</span>
+              </span>
+              <Chip kind={TRUST_TONE[tool.trust]}>{t(`setup.toolTrust.${tool.trust}`)}</Chip>
+              {tool.trust === "new" || tool.trust === "changed" ? (
+                <Button size="sm" variant="outline" disabled={action.busy} onClick={() => trust(tool, true)}>
+                  {t("setup.toolAllow")}
+                </Button>
+              ) : null}
+              {tool.trust === "trusted" || tool.trust === "changed" ? (
+                <Button size="sm" variant="ghost" disabled={action.busy} onClick={() => trust(tool, false)}>
+                  {t("setup.toolRevoke")}
+                </Button>
+              ) : null}
+            </div>
+            <div className="text-xs break-words text-fg-muted">
+              {t("setup.toolProjects", { projects: tool.projects.join(", ") })} · {t("setup.toolLicense", { license: tool.license })}
+              {tool.homepage ? (
+                <>
+                  {" · "}
+                  <a href={tool.homepage} target="_blank" rel="noreferrer" className="text-fg-link underline underline-offset-2">
+                    {tool.homepage}
+                  </a>
+                </>
+              ) : null}
+            </div>
+            {tool.commands.length ? (
+              <pre className="m-0 overflow-x-auto rounded-md border border-line-subtle bg-code p-2 font-mono text-xs text-code-fg">
+                {tool.commands.map((c) => `${c.field}: ${c.argv.join(" ")}`).join("\n")}
+              </pre>
+            ) : null}
+            {Object.keys(tool.env).length ? (
+              <div className="text-xs break-all text-fg-muted">
+                {t("setup.toolEnv")}: <span className="font-mono">{Object.entries(tool.env).map(([k, v]) => `${k}=${v}`).join(" ")}</span>
+              </div>
+            ) : null}
+            {tool.secretEnv.length ? <div className="text-xs break-words text-fg-muted">{t("setup.toolSecretEnv", { names: tool.secretEnv.join(", ") })}</div> : null}
+          </div>
+        ))}
+        <ErrorNote error={action.error} />
       </CardContent>
     </Card>
   );
