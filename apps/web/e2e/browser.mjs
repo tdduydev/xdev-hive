@@ -619,6 +619,53 @@ async function main() {
     await rpc("sdlc.setCeiling", { ceiling: {} });
   });
 
+  // Roadmap 34b: a Spec Kit flow stops at payment's spec gate (a person's); Lan approves it from the task's panel and
+  // the machine gets the plan step.
+  await step("sdlc-flow", async () => {
+    const machineRpc = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" },
+        body: JSON.stringify({ method, input }),
+      });
+      const body = await r.json();
+      if (body.error) throw new Error(`${method}: ${body.error.message}`);
+      return body.result;
+    };
+    const profile = (id, kind) => ({ id, label: id, kind, enabled: true, account: null, installed: true, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, maxConcurrent: 1 });
+    const beat = () => machineRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", version: "0.115.0", projects: ["payment"], acceptsRuns: true, profiles: [profile("claude-1", "claude"), profile("codex-1", "codex")], runs: [] });
+    await beat();
+    const lanRpc = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}` }, body: JSON.stringify({ method, input }) });
+      const body = await r.json();
+      if (body.error) throw new Error(`${method}: ${body.error.message}`);
+      return body.result;
+    };
+    const started = await lanRpc("specs.runStep", { project: "payment", step: "specify", taskId: "SPEC-E2E", title: "Spec: hoàn tiền", input: "Hoàn tiền một phần cho đơn hàng.", machineId: "runner.lan-mbp@lan-e2e" });
+    expect(started.flow.state === "running", `flow: ${started.flow.state}`);
+    const [specify] = (await beat()).runRequests.filter((r) => r.taskId === "SPEC-E2E");
+    await machineRpc("runs.requestResult", { id: specify.id, status: "accepted", runId: "R-spec1" });
+    const at = new Date().toISOString();
+    const run = { runId: "R-spec1", project: "payment", taskId: "SPEC-E2E", taskTitle: "Spec: hoàn tiền", role: "implement", profileId: "claude-1", createdAt: at };
+    await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ ...run, status: "running" }] });
+    await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ ...run, status: "succeeded", finishedAt: at }] });
+    await machineRpc("specs.push", { project: "payment", features: [{ dir: "001-hoan-tien", branch: "ai/SPEC-E2E", commit: "abc1230", files: { spec: "# Hoàn tiền\n", plan: null, tasks: null } }] });
+
+    const tab = (current = tabs.lan);
+    await tab.reload();
+    await tab.go("tasks?task=SPEC-E2E");
+    await tab.waitFor("the flow waiting at its spec gate", () => document.querySelector('[data-flow="SPEC-E2E"]')?.getAttribute("data-flow-state") === "gate");
+    await tab.shot(`${String(n).padStart(2, "0")}-sdlc-flow-gate`);
+    await tab.click('[data-flow="SPEC-E2E"] [data-gate-pass]');
+    await tab.waitFor("the plan step running", () => document.querySelector('[data-flow="SPEC-E2E"]')?.getAttribute("data-flow-state") === "running");
+    const [plan] = (await beat()).runRequests.filter((r) => r.taskId === "SPEC-E2E");
+    expect(plan?.instructions.includes('Spec Kit step "plan" for the feature in specs/001-hoan-tien'), `plan request: ${plan?.instructions.slice(0, 120)}`);
+    const gates = await rpc("sdlc.gates", { taskId: "SPEC-E2E" });
+    expect(gates[0]?.gate === "spec" && gates[0]?.status === "passed" && gates[0]?.decidedBy?.startsWith("lan"), `gate: ${JSON.stringify(gates[0])}`);
+    // Leave the hub as the other steps expect it.
+    await rpc("runs.cancelRequest", { id: plan.id });
+  });
+
   // Roadmap 18c: a reviewer merges a run's MR from Lượt chạy; the run's machine does it with its own token at its heartbeat.
   await step("merge-from-web", async () => {
     const lanRpc = async (method, input) => {

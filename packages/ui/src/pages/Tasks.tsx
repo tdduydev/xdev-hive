@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "#ui/components/common.tsx";
+import { FlowList, FlowTaskPanel } from "#ui/components/FlowCard.tsx";
 import { MachineSelect, ProfileSelect, takesRunsOf } from "#ui/components/MachinePicker.tsx";
 import { formatTime, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
@@ -377,6 +378,9 @@ function TaskDetail({ task, requests, hub, onChanged }: { task: Task; requests: 
             <Owner task={task} />
           </div>
         </section>
+        {/* A task the hub drives through the project's gates (roadmap 34b). */}
+        {hub ? <FlowList project={task.project} taskId={task.id} /> : null}
+        {hub ? <FlowTaskPanel project={task.project} taskId={task.id} /> : null}
         {hub && allow(task.project, "runDispatch") && task.status !== "done" ? <DispatchForm task={task} requests={requests} onSent={onChanged} /> : null}
         {hub && requests.length ? <RequestList requests={requests} onChanged={onChanged} /> : null}
         <section className="flex flex-col gap-1.5">

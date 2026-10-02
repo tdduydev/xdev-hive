@@ -8,9 +8,9 @@ import { DOC_ASSET_MAX_BYTES } from "./doclinks.ts";
 import { MR_STATUSES, PIPELINE_STATUSES } from "./gitlab.ts";
 import { MACHINE_ID, PROJECT_NAME } from "./keys.ts";
 import type { SkillSummary } from "./skills.ts";
-import { SPEC_DIR, SPEC_FEATURES_MAX, SPEC_FILE_MAX, type SpecFeature, type SpecFeatureDetail, type SpecTaskPlan } from "./speckit.ts";
+import { SPEC_DIR, SPEC_FEATURES_MAX, SPEC_FILE_MAX, SPEC_STEPS, type SpecFeature, type SpecFeatureDetail, type SpecTaskPlan } from "./speckit.ts";
 import { toolEntrySchema } from "./tools.ts";
-import { GATE_STATUSES, gateModesSchema, MAX_FIX_ROUNDS, type SdlcGateRecord, type SdlcPolicyView } from "./sdlc.ts";
+import { GATE_STATUSES, gateModesSchema, MAX_FIX_ROUNDS, type SdlcFlow, type SdlcFlowTask, type SdlcGateRecord, type SdlcPolicyView } from "./sdlc.ts";
 import {
   MEMORY_KINDS,
   MEMORY_STATUSES,
@@ -734,10 +734,33 @@ export const schemas = {
       })
       .nullable(),
   }),
+  /**
+   * A Spec Kit step from the Spec page (roadmap 34b): the task (made when `title` is given), the run request, and the
+   * flow the hub drives from there through the project's gates.
+   */
+  "specs.runStep": z.object({
+    project,
+    step: z.enum(SPEC_STEPS),
+    taskId,
+    title: z.string().min(1).max(300).optional(),
+    dir: z.string().regex(SPEC_DIR).optional(),
+    input: z.string().max(3000).default(""),
+    machineId: machineRef,
+    profileId: z.string().max(40).nullable().default(null),
+  }),
+  /** A person's word at a gate: pass lets the flow go on; changes runs the step again with the note as instructions. */
+  "sdlc.decide": z.object({ gateId: id, decision: z.enum(["pass", "changes"]), note: z.string().max(2000).default("") }),
+  /** Starts a stopped flow's step again, on the machine it ran on. */
+  "sdlc.retry": z.object({ taskId }),
+  /** Tasks flows gave to agents (34c, 34d) and where each is: a flow's, one task's, or every one the caller sees. */
+  "sdlc.flowTasks": z.object({ project: project.optional(), projects: projectList, flowTask: taskId.optional(), taskId: taskId.optional() }),
+  /** Flows, the newest first: a project's or every project the caller sees. */
+  "sdlc.flows": z.object({ project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(200).default(50) }),
   /** Gates reached, the newest first: a project's or every project the caller sees, those waiting for a person first. */
   "sdlc.gates": z.object({
     project: project.optional(),
     projects: projectList,
+    taskId: taskId.optional(),
     status: z.enum(GATE_STATUSES).optional(),
     limit: z.number().int().min(1).max(200).default(50),
   }),
@@ -928,6 +951,11 @@ export interface MethodOutput {
   "sdlc.setCeiling": SdlcPolicyView;
   "sdlc.setProject": SdlcPolicyView;
   "sdlc.gates": SdlcGateRecord[];
+  "specs.runStep": { task: Task; request: RunRequest; flow: SdlcFlow };
+  "sdlc.decide": SdlcFlow;
+  "sdlc.retry": SdlcFlow;
+  "sdlc.flows": SdlcFlow[];
+  "sdlc.flowTasks": SdlcFlowTask[];
   "agentPolicy.get": AgentPolicyView;
   "agentPolicy.set": AgentPolicyView;
   "tools.list": ToolView[];
@@ -1061,6 +1089,13 @@ export const METHOD_ROLES: Record<Method, Role> = {
   // Also "projectSettings" on the project.
   "sdlc.setProject": "agent",
   "sdlc.gates": "viewer",
+  // Also "taskManage" and "runDispatch" on the project, as runs.prompt.
+  "specs.runStep": "agent",
+  // Also "runDispatch" on the project (and "taskManage" for the tasks gate, which imports tasks).
+  "sdlc.decide": "agent",
+  "sdlc.retry": "agent",
+  "sdlc.flows": "viewer",
+  "sdlc.flowTasks": "viewer",
   "agentPolicy.get": "viewer",
   // Also a hub admin for the hub's default, or projectSettings on the project: a person, never an agent token.
   "agentPolicy.set": "agent",

@@ -7,7 +7,6 @@ import {
   SPEC_FILES,
   specNextStep,
   specRunTask,
-  specStepInstructions,
   specTaskPrefix,
   type Machine,
   type SpecFeature,
@@ -22,6 +21,7 @@ import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@xdev-hive/ui/components/ui/tabs";
 import { DocMarkdown } from "#ui/components/DocMarkdown.tsx";
 import { ErrorNote } from "#ui/components/common.tsx";
+import { FlowList } from "#ui/components/FlowCard.tsx";
 import { Chip, DetailBody, DetailHeader, ListItem, ListPane, type ChipKind } from "#ui/components/panes.tsx";
 import { formatTime, useAction, useCan, useHashParam, useHive, useQuery } from "#ui/hooks.ts";
 import { useToast } from "#ui/shell/toast.tsx";
@@ -128,6 +128,8 @@ export function SpecsPage() {
             <DetailHeader scope={newProject} title={t("specs.run.newTitle")} />
             <DetailBody>
               <SpecRun project={newProject} step="specify" feature={null} onSent={() => setCreating(false)} />
+              {/* New features have no folder until the specify run pushed one: their flows show here meanwhile. */}
+              <FlowList project={newProject} openOnly />
             </DetailBody>
           </>
         ) : current ? (
@@ -189,6 +191,8 @@ function SpecReader({ feature, manyProjects }: { feature: SpecFeature; manyProje
   const next = specNextStep(feature.stage);
   const [running, setRunning] = useState(false);
   const canRun = next !== null && allow(feature.project, "runDispatch") && allow(feature.project, "taskManage");
+  // A feature on a run's branch is a flow's (roadmap 34b): its gates show here.
+  const flowTask = /^ai\/(.+)$/.exec(feature.branch)?.[1] ?? null;
   return (
     <>
       <DetailHeader
@@ -230,6 +234,7 @@ function SpecReader({ feature, manyProjects }: { feature: SpecFeature; manyProje
         <ErrorNote error={detail.error} />
         {importing && canImport ? <ImportTasks feature={feature} onDone={() => setImporting(false)} /> : null}
         {running && canRun ? <SpecRun project={feature.project} step={next} feature={feature} onSent={() => setRunning(false)} /> : null}
+        {flowTask ? <FlowList project={feature.project} taskId={flowTask} /> : null}
         {detail.data === null ? <p className="m-0 text-[13px] text-fg-muted">{t("specs.notFound")}</p> : null}
         {text !== null ? <DocMarkdown text={text} /> : files ? <p className="m-0 text-[13px] text-fg-muted">{t("specs.noFile", { file: `${tab}.md` })}</p> : null}
       </DetailBody>
@@ -365,16 +370,16 @@ function SpecRun({ project, step, feature, onSent }: { project: string; step: Sp
             void action.run(async () => {
               if (!machine || !target) return;
               const title = feature ? target.title : `Spec: ${input.trim().split("\n")[0]!.slice(0, 120)}`;
-              if (title) await client.call("tasks.create", { id: target.taskId, project, title, dependsOn: [] });
-              const req = await client.call("runs.dispatch", {
-                machineId: machine.id,
+              // The hub makes the task when it has none, queues the step and drives the flow through the gates (roadmap 34b).
+              const { request: req } = await client.call("specs.runStep", {
                 project,
+                step,
                 taskId: target.taskId,
-                role: "implement",
+                ...(title ? { title } : {}),
+                ...(feature ? { dir: feature.dir } : {}),
+                input,
+                machineId: machine.id,
                 profileId: null,
-                reviewAfter: false,
-                candidates: 1,
-                instructions: specStepInstructions(step, { ...(feature ? { dir: feature.dir } : {}), input }),
               });
               toast(t("specs.run.sent", { task: target.taskId, machine: req.machine }));
               bump();
