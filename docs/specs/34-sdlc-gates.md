@@ -84,3 +84,19 @@ interface SdlcPolicy {
 - Chốt cho phát hành / deploy của dự án (Hive không chạy deploy của dự án người dùng).
 - Điều kiện theo nội dung (vd. chỉ tự merge khi diff dưới N dòng, không đụng thư mục nhạy cảm).
 - Áp chốt cho task ngoài luồng.
+
+## Đã làm khác spec (34b)
+
+- Trạng thái luồng thêm `check`: run AI kiểm được xếp ở heartbeat sau, vì lúc máy báo run bước xong, danh sách run của máy (gửi ở heartbeat) có thể vẫn ghi run đó đang chạy và hub sẽ từ chối yêu cầu mới.
+- App gọi `afterReport` (sau `pushRuns`) để đẩy spec, kể cả khi không đổi: hub chỉ nhập `tasks.md` đẩy sau lúc chốt `tasks` được ghi.
+- Chạy lại bước bằng tay trên trang *Spec* khi luồng đang chờ ở chốt: chốt đó chuyển *rejected*, luồng chạy bước mới. Task trong luồng đang chạy thì `runs.dispatch` từ chối.
+- Người duyệt chốt spec/plan/tasks không bị luật "không tự duyệt việc mình" (27c): đó là quyết định của người yêu cầu về đặc tả, không phải duyệt code. Chốt review/merge (34d) vẫn theo luật đó.
+
+## Đã làm khác spec (34c, 34d)
+
+- Chốt `dispatch` là của luồng, không của từng task: nhập `tasks.md` xong thì tới chốt; qua chốt thì cả danh sách task thành một đợt chạy (31a). *AI kiểm* đọc danh sách task trên board và `plan.md` một lần cho cả đợt.
+- Task của luồng có bảng riêng `sdlc_flow_tasks` (giai đoạn `queued / build / review / fixnext / fix / check / checking / gate / merge / merging / done / stopped`).
+- Ở chốt `fix`, *Yêu cầu sửa* của người nghĩa là dừng task để người tự xử lý; ở chốt `merge` là không merge. Ở chốt `review`, *Yêu cầu sửa* xếp lượt sửa ngay với ghi chú của người.
+- Merge tự động dùng đúng đường của `runs.merge` (máy merge bằng token của nó ở heartbeat), người yêu cầu ghi `sdlc`.
+- Sửa kèm (31a): task có mục đã gửi trong đợt chưa đóng, mà run của nó đã xong, giờ xếp run tay được (trước đây bị chặn tới khi cả đợt xong, nên *Xếp lượt sửa* không dùng được).
+

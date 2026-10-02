@@ -180,9 +180,9 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 
 - **34. sdlc-gates** (hỏi 2/10: "nghiên cứu thêm AI SDLC, làm thêm các chốt chặn ở từng bước và thêm cấu hình bypass giao cho AI từng bước"; chọn: chốt ở Spec → Plan → Tasks, giao việc và sửa, review, merge; mỗi chốt *Người duyệt* / *AI kiểm rồi cho qua* / *Tự động*; admin hub đặt trần, dự án chọn trong trần; mặc định giữ như hiện nay). Spec: [docs/specs/34-sdlc-gates.md](specs/34-sdlc-gates.md). Tách:
   - [x] **34a. sdlc-policy**: 7 chốt × 3 chế độ, trần của hub và chế độ của dự án (`sdlc.get`, `sdlc.setCeiling`, `sdlc.setProject`), bảng `sdlc_gates` ghi mỗi lần tới chốt, giao diện cấu hình. Chưa đổi hành vi run.
-  - [ ] **34b. spec-flow**: `specs.runStep` mở luồng; run bước Spec Kit xong thì áp chốt `spec` / `plan` / `tasks` (chờ người, run review AI kiểm, hoặc làm bước kế luôn), chốt `tasks` qua thì nhập task.
-  - [ ] **34c. dispatch-fix**: task của luồng tự giao (đợt chạy, máy rảnh) hoặc AI kiểm trước khi giao; review *cần sửa* thì tự xếp lượt sửa, tối đa N lượt.
-  - [ ] **34d. review-merge**: kết luận *đạt* của review chéo đủ để đi tiếp, hoặc bỏ review; MR có CI xanh thì tự merge hoặc AI kiểm rồi merge.
+  - [x] **34b. spec-flow**: `specs.runStep` mở luồng; run bước Spec Kit xong thì áp chốt `spec` / `plan` / `tasks` (chờ người, run review AI kiểm, hoặc làm bước kế luôn), chốt `tasks` qua thì nhập task.
+  - [x] **34c. dispatch-fix**: task của luồng tự giao (đợt chạy, máy rảnh) hoặc AI kiểm trước khi giao; review *cần sửa* thì tự xếp lượt sửa, tối đa N lượt.
+  - [x] **34d. review-merge**: kết luận *đạt* của review chéo đủ để đi tiếp, hoặc bỏ review; MR có CI xanh thì tự merge hoặc AI kiểm rồi merge.
 
 ## Sửa lỗi
 
