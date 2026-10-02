@@ -21,6 +21,7 @@ export * from "./secrets.ts";
 export * from "./source.ts";
 export * from "./speckit.ts";
 export * from "./sync.ts";
+export * from "./tools.ts";
 export * from "./transfer.ts";
 export * from "./types.ts";
 export * from "./verdict.ts";

@@ -30,6 +30,7 @@ import { assertNoSecret, findSecret, redactLines } from "./secrets.ts";
 import { isAgentActor, MR_WATCHER, parseSource, principalOf, type WriteSource } from "./source.ts";
 import { SEED_DOCS, SEED_VERSION } from "./seed.ts";
 import { planSpecTasks, specStage, specTaskPrefix, specTasks, specTitle, type SpecFeature, type SpecFeatureDetail, type SpecFiles } from "./speckit.ts";
+import { toolEffective, toolProblem } from "./tools.ts";
 import type {
   Actor,
   AgentsPaused,
@@ -81,6 +82,9 @@ import type {
   SetupReport,
   Task,
   TeamPolicy,
+  ToolEntry,
+  ToolProjectSetting,
+  ToolView,
   HiveSystem,
 } from "./types.ts";
 
@@ -338,7 +342,92 @@ const MIGRATIONS: string[] = [
     commit_sha TEXT NOT NULL, machine TEXT NOT NULL, pushed_at TEXT NOT NULL, PRIMARY KEY(project, dir, branch));
   CREATE INDEX spec_features_machine ON spec_features(project, machine);
   `,
+  // The tool catalog (roadmap 28a). entry: ToolEntry as JSON without its id. tool_projects.enabled null follows the
+  // entry's enabledByDefault. Seeded with what machines ran on 2/10 (see toolSeedSql).
+  `
+  CREATE TABLE tools(
+    id TEXT PRIMARY KEY, entry TEXT NOT NULL, builtin INTEGER NOT NULL DEFAULT 0, version INTEGER NOT NULL,
+    updated_at TEXT NOT NULL, updated_by TEXT NOT NULL);
+  CREATE TABLE tool_projects(
+    tool_id TEXT NOT NULL, project TEXT NOT NULL, enabled INTEGER, required INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(tool_id, project));
+  CREATE INDEX tool_projects_project ON tool_projects(project);
+  ${toolSeedSql()}
+  `,
 ];
+
+/**
+ * The seeds as the 28a migration wrote them, frozen: a migration must mean the same on every hub, whenever it runs.
+ * Newer versions go through tools.save (after 28b, when machines read the catalog), never through this list.
+ */
+function toolSeedSql(): string {
+  const seeds: ToolEntry[] = [
+    {
+      id: "codegraph",
+      name: "Codegraph",
+      description: "Đồ thị mã nguồn qua MCP: một lần gọi trả về symbol, đường gọi và phạm vi ảnh hưởng, thay cho grep và đọc nhiều file.",
+      kind: "mcp",
+      package: { registry: "npm", name: "@colbymchenry/codegraph", version: "1.6.0" },
+      mcp: { command: "npx", args: ["-y", "{package}", "serve", "--mcp"] },
+      plugin: null,
+      hooks: [],
+      agents: ["claude"],
+      check: null,
+      install: null,
+      prepare: { init: ["npx", "-y", "{package}", "init", "{worktree}"], sync: ["npx", "-y", "{package}", "sync", "{worktree}"], marker: ".codegraph/codegraph.db" },
+      env: { CODEGRAPH_TELEMETRY: "0", CODEGRAPH_NO_UPDATE_CHECK: "1" },
+      secretEnv: [],
+      license: "MIT",
+      homepage: "https://www.npmjs.com/package/@colbymchenry/codegraph",
+      handler: "codegraph",
+      enabledByDefault: false,
+    },
+    {
+      id: "superpowers",
+      name: "Superpowers",
+      description: "Plugin Claude Code gồm các skill lập kế hoạch, làm theo test và gỡ lỗi.",
+      kind: "plugin",
+      package: { registry: "claude-plugin", name: "superpowers@claude-plugins-official", version: "6.4.2" },
+      mcp: null,
+      plugin: "superpowers@claude-plugins-official",
+      hooks: [],
+      agents: ["claude"],
+      check: null,
+      install: null,
+      prepare: null,
+      env: {},
+      secretEnv: [],
+      license: "MIT",
+      homepage: "https://github.com/obra/superpowers",
+      handler: "superpowers",
+      enabledByDefault: false,
+    },
+    {
+      id: "speckit",
+      name: "Spec Kit",
+      description: "CLI Spec Kit của GitHub (specify): spec, plan và tasks cho từng tính năng, trong specs/ của repo.",
+      kind: "cli",
+      package: { registry: "git", name: "https://github.com/github/spec-kit.git", version: "v1.0.13" },
+      mcp: null,
+      plugin: null,
+      hooks: [],
+      agents: ["claude", "codex"],
+      check: ["specify", "--version"],
+      install: ["uv", "tool", "install", "specify-cli", "--from", "{package}"],
+      prepare: null,
+      env: {},
+      secretEnv: [],
+      license: "MIT",
+      homepage: "https://github.com/github/spec-kit",
+      handler: "speckit",
+      enabledByDefault: false,
+    },
+  ];
+  const quote = (s: string) => `'${s.replaceAll("'", "''")}'`;
+  return seeds
+    .map(({ id, ...entry }) => `INSERT INTO tools(id, entry, builtin, version, updated_at, updated_by) VALUES (${quote(id)}, ${quote(JSON.stringify(entry))}, 1, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 'hive');`)
+    .join("\n  ");
+}
 
 /** A leader's reply asks for at most this many actions. */
 const CHAT_ACTIONS_PER_REPLY = 20;
@@ -504,6 +593,20 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
     const summary = policySummary(i.policy);
     return { target, detail: summary, text: { key: "audit.agentPolicy", vars: { summary } } };
   },
+  "tools.save": (i: { baseVersion?: number }, o: ToolView) => {
+    const pkg = o.package ? `${o.package.name}@${o.package.version}` : "—";
+    return { target: o.id, detail: `v${o.version} · ${pkg}`, text: { key: i.baseVersion === undefined ? "audit.toolAdded" : "audit.toolSaved", vars: { pkg, version: o.version } } };
+  },
+  "tools.remove": (i, o: { removed: boolean }) => (o.removed ? { target: i.id } : { target: i.id, detail: "(—)" }),
+  "tools.setProject": (i: { id: string; project: string; enabled: boolean | null; required: boolean }) => {
+    const state = i.enabled === null ? "default" : i.enabled ? "on" : "off";
+    const words = { default: "theo mặc định", on: "bật", off: "tắt" }[state];
+    return {
+      target: `${i.project}/${i.id}`,
+      detail: `${words}${i.required ? ", bắt buộc" : ""}`,
+      text: { key: i.required ? `audit.toolProject.${state}Required` : `audit.toolProject.${state}`, vars: { project: i.project, tool: i.id } },
+    };
+  },
   "budgets.set": (_i, o: BudgetUsage[]) => ({
     target: "budgets",
     detail: o.map((b) => b.id).join(", ") || "—",
@@ -580,6 +683,14 @@ function eventOf(method: Method, input: unknown, output: unknown, actor: Actor):
     }
     case "agents.resume":
       return { type: "agents.resumed", project: (input as { project: string | null }).project, by: actor.name };
+    case "tools.save":
+      return { type: "tool.changed", project: null, by: actor.name, tool: (output as ToolView).id, removed: false };
+    case "tools.remove":
+      return (output as { removed: boolean }).removed ? { type: "tool.changed", project: null, by: actor.name, tool: (input as { id: string }).id, removed: true } : null;
+    case "tools.setProject": {
+      const i = input as { id: string; project: string };
+      return { type: "tool.changed", project: i.project, by: actor.name, tool: i.id, removed: false };
+    }
     case "proposals.create": {
       const proposal = output as Proposal;
       return { type: "proposal.created", project: parseDocKey(proposal.docKey).project, proposal };
@@ -1105,6 +1216,16 @@ export class SqliteHive implements HiveBackend {
           if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Only a hub admin sets the hub's agent policy.", { key: "errors.hubAdminOnly" });
           return;
         }
+        return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
+      case "tools.list":
+        if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
+        return;
+      // An entry is what every project's runs may get, and its commands run on every machine: a hub admin's alone.
+      case "tools.save":
+      case "tools.remove":
+        if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Only a hub admin changes the tool catalog.", { key: "errors.hubAdminOnly" });
+        return;
+      case "tools.setProject":
         return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
       // The whole list at once, and a cap on a person or the hub binds every project: someone over all of them.
       case "budgets.set":
@@ -1735,6 +1856,31 @@ export class SqliteHive implements HiveBackend {
     const row = this.db.prepare("SELECT projects FROM machines WHERE id = ?").get(actor.name) as Row | undefined;
     const has = new Set(row ? (JSON.parse(str(row.projects)) as string[]) : []);
     return { hub, projects: Object.fromEntries(Object.entries(projects).filter(([p]) => has.has(p) && sees(actor, p))) };
+  }
+
+  /**
+   * A catalog entry with the settings of the projects the actor may view: a project's choices tell what it uses, which
+   * is not for those who cannot see the project. With `only`, that project's line alone, there even with no row of its own.
+   */
+  #toolView(row: Row, actor: Actor, only?: string): ToolView {
+    const entry = JSON.parse(str(row.entry)) as Omit<ToolEntry, "id">;
+    const id = str(row.id);
+    const rows = (
+      only === undefined
+        ? this.db.prepare("SELECT * FROM tool_projects WHERE tool_id = ? ORDER BY project").all(id)
+        : this.db.prepare("SELECT * FROM tool_projects WHERE tool_id = ? AND project = ?").all(id, only)
+    ) as Row[];
+    const setting = (project: string, enabled: boolean | null, required: boolean): ToolProjectSetting => ({
+      project,
+      enabled,
+      required,
+      effective: toolEffective(enabled, entry.enabledByDefault),
+    });
+    const projects = rows
+      .filter((r) => may(actor, str(r.project), "view"))
+      .map((r) => setting(str(r.project), r.enabled == null ? null : num(r.enabled) === 1, num(r.required) === 1));
+    if (only !== undefined && !projects.length) projects.push(setting(only, null, false));
+    return { id, ...entry, builtin: num(row.builtin) === 1, version: num(row.version), updatedAt: str(row.updated_at), updatedBy: str(row.updated_by), projects };
   }
 
   /** Next to the team policy, in its own key: policy.set replaces the whole team policy and must not touch this. */
@@ -3721,6 +3867,60 @@ export class SqliteHive implements HiveBackend {
         );
         return agentPolicyView(this.#agentPolicy());
       },
+
+      "tools.list": ({ project }, actor) => (db.prepare("SELECT * FROM tools ORDER BY builtin DESC, id").all() as Row[]).map((r) => this.#toolView(r, actor, project)),
+
+      "tools.save": ({ entry, baseVersion }, actor) =>
+        this.#tx(() => {
+          const row = db.prepare("SELECT * FROM tools WHERE id = ?").get(entry.id) as Row | undefined;
+          if (baseVersion === undefined && row) throw new HiveError("conflict", `There is a tool ${entry.id} already.`, { key: "errors.toolExists", vars: { id: entry.id } });
+          if (baseVersion !== undefined && !row) throw new HiveError("not_found", `No tool ${entry.id}.`, { key: "errors.toolNotFound", vars: { id: entry.id } });
+          if (row && num(row.version) !== baseVersion) {
+            throw new HiveError("conflict", `Tool ${entry.id} changed since it was read (now v${num(row.version)}).`, { key: "errors.toolVersion", vars: { id: entry.id, version: num(row.version) } });
+          }
+          const builtin = !!row && num(row.builtin) === 1;
+          if (builtin) {
+            // The app's own code sets a seed up by its handler and kind: those stay what the seed says.
+            const seed = JSON.parse(str(row.entry)) as Omit<ToolEntry, "id">;
+            if (entry.kind !== seed.kind || entry.handler !== seed.handler) {
+              throw new HiveError("bad_request", `Tool ${entry.id} is built in: its kind and handler stay.`, { key: "errors.toolBuiltinFixed", vars: { field: entry.kind !== seed.kind ? "kind" : "handler" } });
+            }
+          }
+          const problem = toolProblem(entry, builtin);
+          if (problem) throw new HiveError("bad_request", `Tool ${entry.id}: ${problem.key} (${problem.vars?.field ?? ""}).`, problem);
+          const { id, ...rest } = entry;
+          const now = this.#now();
+          db.prepare(
+            `INSERT INTO tools(id, entry, builtin, version, updated_at, updated_by) VALUES (?1, ?2, 0, 1, ?3, ?4)
+             ON CONFLICT(id) DO UPDATE SET entry = excluded.entry, version = tools.version + 1, updated_at = excluded.updated_at, updated_by = excluded.updated_by`,
+          ).run(id, JSON.stringify(rest), now, actor.name);
+          return this.#toolView(db.prepare("SELECT * FROM tools WHERE id = ?").get(id) as Row, actor);
+        }),
+
+      "tools.remove": ({ id }) =>
+        this.#tx(() => {
+          const row = db.prepare("SELECT builtin FROM tools WHERE id = ?").get(id) as Row | undefined;
+          if (!row) return { removed: false };
+          if (num(row.builtin) === 1) throw new HiveError("bad_request", `Tool ${id} is built in: turn it off instead.`, { key: "errors.toolBuiltin", vars: { id } });
+          db.prepare("DELETE FROM tool_projects WHERE tool_id = ?").run(id);
+          db.prepare("DELETE FROM tools WHERE id = ?").run(id);
+          return { removed: true };
+        }),
+
+      "tools.setProject": ({ id, project, enabled, required }, actor) =>
+        this.#tx(() => {
+          const row = db.prepare("SELECT * FROM tools WHERE id = ?").get(id) as Row | undefined;
+          if (!row) throw new HiveError("not_found", `No tool ${id}.`, { key: "errors.toolNotFound", vars: { id } });
+          // Nothing of its own: no row, so the project follows the tool's default again.
+          if (enabled === null && !required) db.prepare("DELETE FROM tool_projects WHERE tool_id = ? AND project = ?").run(id, project);
+          else {
+            db.prepare(
+              `INSERT INTO tool_projects(tool_id, project, enabled, required) VALUES (?, ?, ?, ?)
+               ON CONFLICT(tool_id, project) DO UPDATE SET enabled = excluded.enabled, required = excluded.required`,
+            ).run(id, project, enabled === null ? null : enabled ? 1 : 0, required ? 1 : 0);
+          }
+          return this.#toolView(row, actor, project);
+        }),
 
       // Machines that take runs from the hub hear cancelRuns, as after runs.cancel; every machine hears `paused` too.
       "agents.stop": ({ project }, actor) =>
