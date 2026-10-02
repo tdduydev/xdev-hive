@@ -344,6 +344,46 @@ const MIGRATIONS: string[] = [
 /** A leader's reply asks for at most this many actions. */
 const CHAT_ACTIONS_PER_REPLY = 20;
 
+/**
+ * What confirming each kind of chat action calls, as the person confirming (roadmap 29b): the method, the input it gets
+ * from the stored one, and what the card keeps of its answer. One row per kind, so a new kind (28e, 29c) is one line.
+ */
+interface ChatCall {
+  method: Method;
+  input?: (stored: Record<string, unknown>) => Record<string, unknown>;
+  result?: (output: unknown) => NonNullable<ChatAction["result"]>;
+}
+const CHAT_ACTION_CALLS: Record<ChatActionKind, ChatCall> = {
+  "task.create": { method: "tasks.create", result: (o) => ({ taskId: (o as Task).id }) },
+  "task.update": { method: "tasks.update", result: (o) => ({ taskId: (o as Task).id }) },
+  "run.dispatch": { method: "runs.dispatch", result: (o) => ({ requestId: (o as RunRequest).id }) },
+  "run.cancel": { method: "runs.cancel" },
+  "run.merge": { method: "runs.merge" },
+  "machine.profile": { method: "machines.setProfile" },
+  // `before` is only what the card shows; agentPolicy.set takes no such field.
+  "agent.policy": { method: "agentPolicy.set", input: ({ project, policy }) => ({ project, policy }) },
+  "agents.stop": { method: "agents.stop" },
+  "agents.resume": { method: "agents.resume" },
+  "machine.install": { method: "admin.commandCreate", result: (o) => ({ commandId: (o as MachineCommand).id }) },
+};
+
+/**
+ * Confirm all (chat.decideAll): tasks before what refers to them; agents resumed before runs are queued, and stopped
+ * last, so a reply that also says "stop everything" does not block what was confirmed with it.
+ */
+const CHAT_DECIDE_ORDER: Record<ChatActionKind, number> = {
+  "task.create": 0,
+  "task.update": 1,
+  "agent.policy": 2,
+  "machine.profile": 3,
+  "machine.install": 4,
+  "agents.resume": 5,
+  "run.cancel": 6,
+  "run.merge": 7,
+  "run.dispatch": 8,
+  "agents.stop": 9,
+};
+
 /** Run records (runs.push) are kept this long after their last update. */
 const RUN_RECORD_DAYS = 30;
 
@@ -3420,34 +3460,105 @@ export class SqliteHive implements HiveBackend {
           };
           const missing = (id: string) =>
             new HiveError("not_found", `Task ${id} not found in ${project}.`, { key: "errors.chatTaskNotFound", vars: { id, project } });
-          let input: Record<string, unknown>;
-          if (action.kind === "task.create") {
-            if (task(action.id) || planned(action.id)) throw new HiveError("conflict", `Task ${action.id} already exists.`, { key: "errors.taskExists", vars: { id: action.id } });
-            // A leader of one service plans a feature across its system: a task for another service of it (roadmap 19d).
-            const target = action.project ?? project;
-            if (target !== project && (!this.#sameSystem(target, project) || !sees(actor, target))) {
-              throw new HiveError("bad_request", `${target} is not a service of a system with ${project}.`, { key: "errors.chatProjectOutside", vars: { project: target, home: project } });
-            }
-            input = { id: action.id, project: target, title: action.title, dependsOn: action.dependsOn };
-          } else if (action.kind === "task.update") {
-            if (!known(action.id)) throw missing(action.id);
-            input = { id: action.id, status: action.status, ...(action.note === undefined ? {} : { note: action.note }) };
-          } else {
-            if (!known(action.taskId)) throw missing(action.taskId);
-            // The chat's own machine unless the leader names another (by hub id or machine name).
-            const wanted = action.machine ?? str(reply.machine_id);
-            const m = db.prepare("SELECT id FROM machines WHERE id = ? OR machine = ? ORDER BY last_seen DESC LIMIT 1").get(wanted, wanted) as Row | undefined;
+          // A machine by hub id or name, as run.dispatch names one.
+          const machineRow = (wanted: string): Row => {
+            const m = db.prepare("SELECT * FROM machines WHERE id = ? OR machine = ? ORDER BY last_seen DESC LIMIT 1").get(wanted, wanted) as Row | undefined;
             if (!m) throw new HiveError("not_found", `No machine ${wanted}.`, { key: "errors.machineNotFound", vars: { machine: wanted } });
-            input = {
-              machineId: str(m.id),
-              project: projectOf(action.taskId)!,
-              taskId: action.taskId,
-              role: action.role,
-              profileId: action.profileId,
-              reviewAfter: action.reviewAfter,
-              candidates: action.candidates,
-              instructions: action.instructions,
-            };
+            return m;
+          };
+          // Only a run of this chat's project: the leader acts for this project alone.
+          const runRow = (machineId: string, runId: string): Row => {
+            const r = db.prepare("SELECT status, mr_url FROM run_records WHERE machine_id = ? AND run_id = ? AND project = ?").get(machineId, runId, project) as Row | undefined;
+            if (!r) throw new HiveError("not_found", `Run ${runId} not found in ${project}.`, { key: "errors.chatRunNotFound", vars: { id: runId, project } });
+            return r;
+          };
+          let input: Record<string, unknown>;
+          switch (action.kind) {
+            case "task.create": {
+              if (task(action.id) || planned(action.id)) throw new HiveError("conflict", `Task ${action.id} already exists.`, { key: "errors.taskExists", vars: { id: action.id } });
+              // A leader of one service plans a feature across its system: a task for another service of it (roadmap 19d).
+              const target = action.project ?? project;
+              if (target !== project && (!this.#sameSystem(target, project) || !sees(actor, target))) {
+                throw new HiveError("bad_request", `${target} is not a service of a system with ${project}.`, { key: "errors.chatProjectOutside", vars: { project: target, home: project } });
+              }
+              input = { id: action.id, project: target, title: action.title, dependsOn: action.dependsOn };
+              break;
+            }
+            case "task.update":
+              if (!known(action.id)) throw missing(action.id);
+              input = { id: action.id, status: action.status, ...(action.note === undefined ? {} : { note: action.note }) };
+              break;
+            case "run.dispatch": {
+              if (!known(action.taskId)) throw missing(action.taskId);
+              // The chat's own machine unless the leader names another.
+              const m = machineRow(action.machine ?? str(reply.machine_id));
+              input = {
+                machineId: str(m.id),
+                // The task's own project: another service of the system for a task proposed there (roadmap 19d).
+                project: projectOf(action.taskId)!,
+                taskId: action.taskId,
+                role: action.role,
+                profileId: action.profileId,
+                reviewAfter: action.reviewAfter,
+                candidates: action.candidates,
+                instructions: action.instructions,
+              };
+              break;
+            }
+            case "run.cancel": {
+              const machineId = str(machineRow(action.machine).id);
+              const status = str(runRow(machineId, action.runId).status);
+              if (status !== "queued" && status !== "running") {
+                throw new HiveError("conflict", `Run ${action.runId} has ended (${status}).`, { key: "errors.chatRunEnded", vars: { id: action.runId } });
+              }
+              input = { machineId, runId: action.runId };
+              break;
+            }
+            case "run.merge": {
+              const machineId = str(machineRow(action.machine).id);
+              if (runRow(machineId, action.runId).mr_url == null) {
+                throw new HiveError("bad_request", `Run ${action.runId} has no merge request.`, { key: "errors.chatRunNoMr", vars: { id: action.runId } });
+              }
+              input = { machineId, runId: action.runId };
+              break;
+            }
+            case "machine.profile": {
+              if (action.enabled === undefined && action.priority === undefined) {
+                throw new HiveError("bad_request", "Say enabled or priority.", { key: "errors.chatProfileNothing" });
+              }
+              const m = this.#toMachine(machineRow(action.machine));
+              if (!m.profiles.some((p) => p.id === action.profileId)) {
+                throw new HiveError("not_found", `${m.machine} has not reported a profile ${action.profileId}.`, {
+                  key: "errors.chatProfileNotFound",
+                  vars: { machine: m.machine, profile: action.profileId },
+                });
+              }
+              input = {
+                machineId: m.id,
+                profileId: action.profileId,
+                ...(action.enabled === undefined ? {} : { enabled: action.enabled }),
+                ...(action.priority === undefined ? {} : { priority: action.priority }),
+              };
+              break;
+            }
+            case "agent.policy":
+              // What it is now, so the card shows before and after; the policy may change again before it is confirmed.
+              input = { project, policy: action.policy, before: this.#agentPolicy().projects[project] ?? null };
+              break;
+            case "agents.stop":
+            case "agents.resume":
+              input = { project };
+              break;
+            case "machine.install": {
+              // The machine's own items, or this project's: another project's install is not this chat's to ask for.
+              const colon = action.itemId.indexOf(":");
+              const owner = action.itemId === "shim" || action.itemId.startsWith("cli:") ? null : action.itemId.slice(0, colon);
+              if (owner !== null && owner !== project) {
+                throw new HiveError("forbidden", `${action.itemId} belongs to another project.`, { key: "errors.chatInstallOtherProject", vars: { item: action.itemId, project } });
+              }
+              input = { machineId: str(machineRow(action.machine).id), itemId: action.itemId };
+              break;
+            }
           }
           const id = num(
             db
@@ -3469,13 +3580,10 @@ export class SqliteHive implements HiveBackend {
         if (Number(taken.changes) === 0) throw decided();
         if (!accept) return this.#chatAction(actionId);
         try {
-          const result =
-            action.kind === "run.dispatch"
-              ? { requestId: (await this.call("runs.dispatch", action.input as MethodInput<"runs.dispatch">, actor)).id }
-              : action.kind === "task.create"
-                ? { taskId: (await this.call("tasks.create", action.input as MethodInput<"tasks.create">, actor)).id }
-                : { taskId: (await this.call("tasks.update", action.input as MethodInput<"tasks.update">, actor)).id };
-          db.prepare("UPDATE chat_actions SET result = ? WHERE id = ?").run(JSON.stringify(result), actionId);
+          // this.call, not the handler: the method's own role, rights (#check), audit and events, as on the web.
+          const call = CHAT_ACTION_CALLS[action.kind];
+          const output = await this.call(call.method, (call.input ? call.input(action.input) : action.input) as MethodInput<Method>, actor);
+          if (call.result) db.prepare("UPDATE chat_actions SET result = ? WHERE id = ?").run(JSON.stringify(call.result(output)), actionId);
         } catch (err) {
           const why: RunRequestError =
             err instanceof HiveError && err.key ? { message: err.message, key: err.key, ...(err.vars ? { vars: err.vars } : {}) } : { message: String((err as Error).message ?? err) };
@@ -3484,17 +3592,16 @@ export class SqliteHive implements HiveBackend {
         return this.#chatAction(actionId);
       },
 
-      // Tasks first, then status changes, then runs, each in the order proposed: a run may be for a task the reply
-      // also creates. The first that fails stops the rest, which wait for a person to look.
+      // In CHAT_DECIDE_ORDER, each kind in the order proposed: a run may be for a task the reply also creates. The first
+      // that fails stops the rest, which wait for a person to look.
       "chat.decideAll": async ({ replyId, accept }, actor) => {
         if (!db.prepare("SELECT 1 FROM chat_messages WHERE id = ? AND role = 'assistant'").get(replyId)) {
           throw new HiveError("not_found", `Chat reply #${replyId} not found.`, { key: "errors.chatReplyNotFound", vars: { id: replyId } });
         }
         const all = () => (db.prepare("SELECT * FROM chat_actions WHERE reply_id = ? ORDER BY id").all(replyId) as Row[]).map(toChatAction);
-        const order: Record<ChatActionKind, number> = { "task.create": 0, "task.update": 1, "run.dispatch": 2 };
         const waiting = all()
           .filter((a) => a.status === "proposed")
-          .sort((a, b) => order[a.kind] - order[b.kind] || a.id - b.id);
+          .sort((a, b) => CHAT_DECIDE_ORDER[a.kind] - CHAT_DECIDE_ORDER[b.kind] || a.id - b.id);
         for (const a of waiting) {
           try {
             const done = await this.#handlers["chat.decide"]({ actionId: a.id, accept }, actor);

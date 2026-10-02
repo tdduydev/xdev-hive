@@ -3,6 +3,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   AGENT_ROLES,
   effectivePolicy,
+  agentPolicyPartSchema,
   MAX_CANDIDATES,
   MEMORY_KINDS,
   PAUSED_HUB,
@@ -40,7 +41,12 @@ Put anything worth sharing (decisions, gotchas, the handoff) in your final messa
 const LEADER_INSTRUCTIONS = `
 You are the project's leader in the Hive chat: read skill_get hive-leader first. You cannot create or move tasks or queue runs yourself: propose them with
 propose_task, propose_task_status and propose_run, and say in your reply what you proposed. A project manager confirms or
-sets aside each one in the chat, and it runs with their rights.`;
+sets aside each one in the chat, and it runs with their rights.
+The same for the rest of the project's operations, always on the chat's project: propose_cancel_run (stop a queued or running run),
+propose_merge (merge a run's MR/PR), propose_profile (turn a machine's plan on or off, or change its priority),
+propose_policy (the project's agent policy), propose_stop_agents and propose_resume_agents (every agent of the project),
+propose_install (a machine installs a setup item it reported). Look first with run_list and machine_list: a proposal of a run
+or plan the hub does not know is refused.`;
 
 // Kept apart from LEADER_INSTRUCTIONS so the proposal list there can grow (roadmap 29b) without touching this.
 const LEADER_READ_INSTRUCTIONS = `
@@ -530,6 +536,82 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
           action: { kind: "run.dispatch", taskId, role, machine, profileId: profileId ?? null, candidates, reviewAfter, instructions },
           reason: why,
         } as MethodInput<"chat.propose">),
+    );
+    const machine = z.string().describe("The machine's hub id or name (machine_list)");
+    const runId = z.string().describe("The run's id, e.g. R-1a2b3c (run_list)");
+    server.registerTool(
+      "propose_cancel_run",
+      {
+        title: "Propose cancelling a run",
+        description: "Propose stopping a run of the chat's project that still waits or runs on its machine." + confirm,
+        inputSchema: { machine, runId, reason },
+      },
+      async ({ machine: m, runId: id, reason: why }) => run("chat.propose", { action: { kind: "run.cancel", machine: m, runId: id }, reason: why }),
+    );
+    server.registerTool(
+      "propose_merge",
+      {
+        title: "Propose merging a run's MR/PR",
+        description: "Propose merging the MR or PR a run of the chat's project opened; the run's machine merges it with its own token." + confirm,
+        inputSchema: { machine, runId, reason },
+      },
+      async ({ machine: m, runId: id, reason: why }) => run("chat.propose", { action: { kind: "run.merge", machine: m, runId: id }, reason: why }),
+    );
+    server.registerTool(
+      "propose_profile",
+      {
+        title: "Propose a machine's plan change",
+        description: "Propose turning one of a machine's plans (profiles, see machine_list) on or off, or changing its priority; give enabled, priority or both." + confirm,
+        inputSchema: {
+          machine,
+          profileId: z.string(),
+          enabled: z.boolean().optional(),
+          priority: z.number().int().min(0).max(100).optional(),
+          reason,
+        },
+      },
+      async ({ machine: m, profileId, enabled, priority, reason: why }) =>
+        run("chat.propose", { action: { kind: "machine.profile", machine: m, profileId, enabled, priority }, reason: why }),
+    );
+    server.registerTool(
+      "propose_policy",
+      {
+        title: "Propose the project's agent policy",
+        description:
+          "Propose the chat's project part of the agent policy, replacing the current part: only the fields it sets (models, autonomy, network, mcp), " +
+          "which can only tighten the hub's default; null removes the project's part." +
+          confirm,
+        inputSchema: { policy: agentPolicyPartSchema.nullable(), reason },
+      },
+      async ({ policy, reason: why }) => run("chat.propose", { action: { kind: "agent.policy", policy }, reason: why } as MethodInput<"chat.propose">),
+    );
+    server.registerTool(
+      "propose_stop_agents",
+      {
+        title: "Propose stopping every agent",
+        description: "Propose stopping every agent of the chat's project: running runs are cancelled, queued ones wait, no new run or chat reply starts until resumed." + confirm,
+        inputSchema: { reason },
+      },
+      async ({ reason: why }) => run("chat.propose", { action: { kind: "agents.stop" }, reason: why }),
+    );
+    server.registerTool(
+      "propose_resume_agents",
+      {
+        title: "Propose letting agents run again",
+        description: "Propose lifting the stop on the chat's project, so its agents run again." + confirm,
+        inputSchema: { reason },
+      },
+      async ({ reason: why }) => run("chat.propose", { action: { kind: "agents.resume" }, reason: why }),
+    );
+    server.registerTool(
+      "propose_install",
+      {
+        title: "Propose a machine install",
+        description:
+          "Propose that a machine installs a setup item it reported as missing: the machine's own (cli:<kind>, shim) or the chat project's (<project>:<part>)." + confirm,
+        inputSchema: { machine, itemId: z.string(), reason },
+      },
+      async ({ machine: m, itemId, reason: why }) => run("chat.propose", { action: { kind: "machine.install", machine: m, itemId }, reason: why } as MethodInput<"chat.propose">),
     );
   }
 

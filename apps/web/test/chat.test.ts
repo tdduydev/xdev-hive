@@ -171,4 +171,29 @@ describe("chat replies on the hub", () => {
     assert.equal((await fetch(`${base}/api/chat/files/${file.id}`)).status, 401, "not without a session or token");
     assert.equal((await fetch(`${base}/api/chat/files/abc`, { headers: { cookie } })).status, 404);
   });
+
+  it("cancels a run the leader proposed to stop, once a manager confirms it", async () => {
+    await heartbeat();
+    const pushed = await rpc(machineToken, "runs.push", {
+      machine: "hoa-mbp",
+      runs: [{ runId: "R-web01", project: "app", taskId: "app-1", taskTitle: "app task", role: "implement", status: "running", profileId: "claude-1", createdAt: new Date().toISOString() }],
+    });
+    assert.equal(pushed.status, 200, JSON.stringify(pushed.body));
+    const lan = await signIn("lan");
+    const sent = await lan("chat.send", { project: "app", machineId: "runner.hoa-mbp@hoa-mbp", text: "Stop the run of app-1" });
+    assert.equal(sent.status, 200, JSON.stringify(sent.body));
+    const [request] = (await heartbeat()).body.result.chatRequests;
+    const grant = request.grant as string;
+
+    const proposed = await rpc(grant, "chat.propose", { action: { kind: "run.cancel", machine: "hoa-mbp", runId: "R-web01" }, reason: "Asked in the chat" }, "claude-1.hoa-mbp");
+    assert.equal(proposed.status, 200, JSON.stringify(proposed.body));
+    assert.deepEqual(proposed.body.result.input, { machineId: "runner.hoa-mbp@hoa-mbp", runId: "R-web01" });
+    const run = () => lan("runs.get", { machineId: "runner.hoa-mbp@hoa-mbp", runId: "R-web01" });
+    assert.equal((await run()).body.result.cancelRequestedBy, null, "nothing until confirmed");
+
+    const decided = await lan("chat.decide", { actionId: proposed.body.result.id, accept: true });
+    assert.equal(decided.body.result?.status, "done", JSON.stringify(decided.body));
+    assert.equal((await run()).body.result.cancelRequestedBy, "lan");
+    await rpc(machineToken, "chat.finish", { replyId: request.replyId, status: "done", text: "Proposed to cancel R-web01." });
+  });
 });
