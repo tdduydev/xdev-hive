@@ -219,7 +219,7 @@ export const vi = {
       skills: "Skill",
       users: "Người dùng & quyền",
       projects: "Dự án & hệ thống",
-      policy: "Chính sách",
+      policy: "Chính sách & chốt",
       tools: "Tool",
       tokens: "Token",
       webhooks: "Thông báo & webhook",

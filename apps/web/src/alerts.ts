@@ -321,7 +321,7 @@ export class AlertStore {
     const out: FeedEvent[] = [];
     const who = (m: string) => m.split("@")[0]!.replace(/^runner\./, "");
     for (const r of await this.#hive.call("runs.list", { limit: 100 }, HUB)) {
-      const href = `#/admin/runs?run=${encodeURIComponent(r.runId)}`;
+      const href = `#/runs?run=${encodeURIComponent(r.runId)}`;
       const vars = { task: r.taskId, title: r.taskTitle, profile: r.profileId ?? "?", project: r.project };
       if (r.startedAt && r.startedAt >= since) out.push({ at: r.startedAt, tone: "running", src: r.machine, key: "feed.runStarted", vars, href });
       if (r.finishedAt && r.finishedAt >= since) {
@@ -331,16 +331,16 @@ export class AlertStore {
       }
     }
     for (const a of (this.#db.prepare("SELECT * FROM hub_alerts WHERE opened_at >= ? OR resolved_at >= ?").all(since, since) as Row[]).map(toAlert)) {
-      if (a.openedAt >= since) out.push({ at: a.openedAt, tone: a.severity === "high" ? "danger" : "warning", src: "hub", key: "feed.alertOpened", vars: { rule: a.rule, ...a.vars }, href: "#/admin/alerts" });
-      if (a.resolvedAt && a.resolvedAt >= since) out.push({ at: a.resolvedAt, tone: "success", src: a.resolvedBy ?? "hub", key: "feed.alertResolved", vars: { rule: a.rule, ...a.vars }, href: "#/admin/alerts" });
+      if (a.openedAt >= since) out.push({ at: a.openedAt, tone: a.severity === "high" ? "danger" : "warning", src: "hub", key: "feed.alertOpened", vars: { rule: a.rule, ...a.vars }, href: "#/alerts" });
+      if (a.resolvedAt && a.resolvedAt >= since) out.push({ at: a.resolvedAt, tone: "success", src: a.resolvedBy ?? "hub", key: "feed.alertResolved", vars: { rule: a.rule, ...a.vars }, href: "#/alerts" });
     }
     for (const e of await this.#hive.call("admin.audit", { limit: 60 }, HUB)) {
       if (e.at < since) continue;
-      out.push({ at: e.at, tone: "neutral", src: who(e.actor), key: "feed.audit", vars: { action: e.action, target: e.target }, href: "#/admin/audit" });
+      out.push({ at: e.at, tone: "neutral", src: who(e.actor), key: "feed.audit", vars: { action: e.action, target: e.target }, href: "#/audit" });
     }
     for (const p of await this.#hive.call("proposals.list", { status: "pending" }, HUB)) {
       if (p.createdAt < since) continue;
-      out.push({ at: p.createdAt, tone: "info", src: who(p.author), key: "feed.proposal", vars: { doc: p.docKey }, href: "#/admin/review" });
+      out.push({ at: p.createdAt, tone: "info", src: who(p.author), key: "feed.proposal", vars: { doc: p.docKey }, href: "#/proposals" });
     }
     return out.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit);
   }

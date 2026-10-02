@@ -217,7 +217,7 @@ export const en: Catalog = {
       skills: "Skills",
       users: "Users & access",
       projects: "Projects & systems",
-      policy: "Policy",
+      policy: "Policy & gates",
       tools: "Tools",
       tokens: "Tokens",
       webhooks: "Notifications & webhooks",

@@ -1,6 +1,6 @@
 // Trang đọc (docs/design/2026-09-redesign, xDev Hive Web Admin: Tài liệu → Mở trang đọc; roadmap 22j): one page to read,
 // with its table of contents, the pages under it, the page before and after it, and what links to it.
-// #/read?doc=<key> (in the Web Admin #/admin/read?doc=<key>).
+// #/read?doc=<key>.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Brain, Pencil } from "lucide-react";
 import { cn } from "cn";
@@ -106,7 +106,6 @@ export function DocReaderPage() {
     },
   ];
   const memory = links.data?.memory ?? [];
-  const memoryHref = window.location.hash.startsWith("#/admin/") ? "#/admin/memory" : "#/memory";
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-surface">
@@ -219,7 +218,7 @@ export function DocReaderPage() {
                 <span className="ml-auto font-mono text-[11px] text-fg-muted">{memory.length}</span>
               </div>
               {memory.map((m) => (
-                <a key={m.id} href={memoryHref} className="flex gap-2 rounded-sm px-1.5 py-1.5 outline-none hover:bg-hover focus-visible:focus-ring">
+                <a key={m.id} href="#/memory" className="flex gap-2 rounded-sm px-1.5 py-1.5 outline-none hover:bg-hover focus-visible:focus-ring">
                   <Brain className="mt-0.5 size-3.5 shrink-0 text-fg-muted" />
                   <span className="flex min-w-0 flex-col gap-0.5">
                     <span className="font-mono text-[11px] text-fg-muted">#{m.id}</span>

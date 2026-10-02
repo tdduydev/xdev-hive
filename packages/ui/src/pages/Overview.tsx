@@ -509,7 +509,7 @@ function ProjectOverview({ project: p }: { project: string }) {
             icon={Server}
             title={t("overview.machines")}
             description={t("overview.machinesHint")}
-            action={<LinkButton href="#/admin">{t("nav.admin")}</LinkButton>}
+            action={<LinkButton href="#/fleet">{t("ops.nav.fleet")}</LinkButton>}
           >
             <Load q={machines}>
               {(list) => {

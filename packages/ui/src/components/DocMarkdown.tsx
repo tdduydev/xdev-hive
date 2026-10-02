@@ -25,10 +25,9 @@ export interface DocContext {
   href: (key: string) => string;
 }
 
-/** The hash a doc link opens: #/docs?doc=… or, in the Web Admin, #/admin/docs?doc=… (reader: page "read"). */
+/** The hash a doc link opens: #/docs?doc=… (reader: page "read"). */
 export function docHref(key: string, page: "docs" | "read" = "docs"): string {
-  const admin = typeof window !== "undefined" && window.location.hash.startsWith("#/admin/");
-  return `#/${admin ? "admin/" : ""}${page}?doc=${encodeURIComponent(key)}`;
+  return `#/${page}?doc=${encodeURIComponent(key)}`;
 }
 
 const escapeLabel = (s: string) => s.replace(/([[\]\\])/g, "\\$1");
