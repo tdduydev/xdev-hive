@@ -42,6 +42,7 @@ import { may, missingRequired, withSystemGrants, type Me } from "@xdev-hive/core
 import type { HiveClient } from "./client.ts";
 import { ChangePasswordScreen } from "./components/Account.tsx";
 import { ErrorNote } from "./components/common.tsx";
+import { CrashCard, ErrorBoundary, PageBoundary } from "./components/ErrorBoundary.tsx";
 import { HiveContext, useProjectList, useQuery, usePoll } from "./hooks.ts";
 import { activeIntl, useT, type MessageKey } from "./i18n/index.tsx";
 import { ALL, readScope, resolveScope, writeScope, type Scope } from "./lib/scope.ts";
@@ -194,7 +195,19 @@ function Centered({ children }: { children: ReactNode }) {
   return <div className="flex min-h-svh flex-col items-center justify-center gap-4 p-6 text-sm text-muted-foreground">{children}</div>;
 }
 
-export function HiveApp({ client, onSignOut }: { client: HiveClient; onSignOut?: () => void }) {
+export function HiveApp(props: { client: HiveClient; onSignOut?: () => void }) {
+  // The last resort, for an error in the frame itself: a page's own is caught closer, with the frame kept.
+  return (
+    <ErrorBoundary
+      onError={(text) => void props.client.desktop?.logError?.(text).catch(() => undefined)}
+      fallback={(error, retry) => <CrashCard error={error} retry={retry} whole />}
+    >
+      <HiveAppInner {...props} />
+    </ErrorBoundary>
+  );
+}
+
+function HiveAppInner({ client, onSignOut }: { client: HiveClient; onSignOut?: () => void }) {
   useSystemTheme();
   const t = useT();
   const me = useQuery(() => client.me(), [client]);
@@ -326,7 +339,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
         healthHigh={healthHigh}
         fill={a.fill}
       >
-        {a.render()}
+        <PageBoundary page={route.id}>{a.render()}</PageBoundary>
       </AdminShell>
     );
   } else {
@@ -374,7 +387,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
           title={t(PAGES[current].label)}
           subtitle={subtitle}
         >
-          {PAGES[current].render()}
+          <PageBoundary page={current}>{PAGES[current].render()}</PageBoundary>
         </ClientShell>
       </InboxProvider>
     );
