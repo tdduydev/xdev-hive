@@ -1,5 +1,6 @@
 // Contracts between the shared UI and its hosts (web hub, desktop main process). Types only.
 import type { Access, Grant } from "./access.ts";
+import type { ProfileAutonomy } from "./agent-policy.ts";
 import type { AgentKind, AgentProfile, AgentRole, PlanUsage, RunnerSettings, RunStatus } from "./agents.ts";
 import type { GitLabImportCandidate, GitLabImportResult, MrSettings, MrState, MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { TransferReport } from "./transfer.ts";
@@ -237,6 +238,8 @@ export interface AgentProfileStatus extends AgentProfile {
   lastUsedAt: string | null;
   /** costUsd: sum of the runs' API-price estimates (Claude Code runs only). */
   stats: { runs: number; succeeded: number; failed: number; rateLimited: number; costUsd: number };
+  /** Its own flags' autonomy and what runs get under the agent policy the machine last heard from the hub. */
+  autonomy: ProfileAutonomy;
 }
 
 export interface AgentRun {

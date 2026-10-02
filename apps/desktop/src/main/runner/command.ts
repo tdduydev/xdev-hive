@@ -2,7 +2,7 @@
 import { accessSync, constants, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { AUTONOMY, modelsFor, policySummary, type AgentKind, type AgentPolicy, type AgentProfile, type AgentRole, type Autonomy, type CiFix, type ToolEntry } from "@xdev-hive/core";
+import { AUTONOMY_ARGS, AUTONOMY_FLAGS, autonomyOf, flagValue, lowerAutonomy, modelsFor, policySummary, type AgentKind, type AgentPolicy, type AgentProfile, type AgentRole, type Autonomy, type CiFix, type ToolEntry } from "@xdev-hive/core";
 import { fence } from "#desktop/main/gitlab/describe.ts";
 import { tr } from "#desktop/main/i18n.ts";
 import { MCP_NAME, NO_FEATURES, runMcpServers, type RepoFeatures } from "#desktop/main/installer.ts";
@@ -327,61 +327,6 @@ export function claudeRunArgs(
 // The hub's policy reaches the CLI only through its flags: what a run may do is decided here, from the profile's
 // args. A flag the runner does not know is left alone, so the policy only takes away what it can name.
 
-/** The flags that set how much a CLI may do on its own, by kind: those taking a value, and switches. */
-const AUTONOMY_FLAGS: Partial<Record<AgentKind, { valued: string[]; switches: string[] }>> = {
-  claude: { valued: ["--permission-mode"], switches: ["--dangerously-skip-permissions", "--allow-dangerously-skip-permissions"] },
-  codex: { valued: ["--sandbox", "-s"], switches: ["--full-auto", "--dangerously-bypass-approvals-and-sandbox"] },
-  gemini: { valued: ["--approval-mode"], switches: ["-y", "--yolo"] },
-};
-
-const AUTONOMY_ARGS: Record<"claude" | "codex" | "gemini", Record<Autonomy, string[]>> = {
-  claude: {
-    read: ["--permission-mode", "plan"],
-    propose: ["--permission-mode", "plan"],
-    edit: ["--permission-mode", "acceptEdits"],
-    full: ["--permission-mode", "bypassPermissions"],
-  },
-  codex: {
-    read: ["--sandbox", "read-only"],
-    propose: ["--sandbox", "read-only"],
-    edit: ["--sandbox", "workspace-write"],
-    full: ["--sandbox", "danger-full-access"],
-  },
-  gemini: {
-    read: ["--approval-mode", "plan"],
-    propose: ["--approval-mode", "plan"],
-    edit: ["--approval-mode", "auto_edit"],
-    full: ["--approval-mode", "yolo"],
-  },
-};
-
-/** What each flag value means; a value missing here counts as edit, as the spec says. */
-const AUTONOMY_VALUES: Record<string, Autonomy> = {
-  plan: "read",
-  "read-only": "read",
-  acceptEdits: "edit",
-  auto_edit: "edit",
-  "workspace-write": "edit",
-  bypassPermissions: "full",
-  "danger-full-access": "full",
-  yolo: "full",
-};
-const FULL_SWITCHES = ["--dangerously-skip-permissions", "--dangerously-bypass-approvals-and-sandbox", "-y", "--yolo"];
-
-const lowerAutonomy = (a: Autonomy, b: Autonomy): Autonomy => (AUTONOMY.indexOf(a) <= AUTONOMY.indexOf(b) ? a : b);
-
-/** The value of a flag written `--flag X` or `--flag=X` (the last one wins, as in the CLIs). */
-function flagValue(args: string[], names: string[]): string | null {
-  let value: string | null = null;
-  args.forEach((a, i) => {
-    for (const n of names) {
-      if (a === n && i + 1 < args.length) value = args[i + 1]!;
-      else if (a.startsWith(`${n}=`)) value = a.slice(n.length + 1);
-    }
-  });
-  return value;
-}
-
 /** args without the flags (and their values). */
 function withoutFlags(args: string[], valued: string[], switches: string[]): string[] {
   const out: string[] = [];
@@ -403,15 +348,6 @@ function insertFlags(kind: AgentKind, args: string[], flags: string[]): string[]
   if (kind !== "codex") return [...args, ...flags];
   const at = args[0] === "exec" ? 1 : 0;
   return [...args.slice(0, at), ...flags, ...args.slice(at)];
-}
-
-/** The autonomy a profile's own args give: `plan` is read, `acceptEdits` edit, a dangerously switch full. */
-export function autonomyOf(kind: AgentKind, args: string[]): Autonomy {
-  const flags = AUTONOMY_FLAGS[kind];
-  if (!flags) return "edit";
-  if (args.some((a) => FULL_SWITCHES.includes(a) && flags.switches.includes(a))) return "full";
-  const value = flagValue(args, flags.valued);
-  return value === null ? "edit" : (AUTONOMY_VALUES[value] ?? "edit");
 }
 
 /**
