@@ -218,7 +218,14 @@ async function main() {
     await tab.click("#token");
     await tab.type(admin);
     await tab.click('button[type="submit"]');
-    await tab.waitFor("the admin's Tổng quan", () => document.querySelector("h1")?.textContent.includes("Tổng quan"));
+    // The web opens on Hôm nay for everyone (roadmap 35b), hub admins included.
+    await tab.waitFor("the admin's Hôm nay", () => document.querySelector('nav [aria-current="page"]')?.textContent.includes("Hôm nay"));
+    // Roadmap 35b: one web shell; a hub admin's menu has Vận hành and Quản trị next to the work.
+    const nav = await tab.waitFor("the admin's menu", () => document.querySelector("nav")?.innerText.includes("Hàng đợi") && document.querySelector("nav").innerText);
+    for (const label of ["Vận hành", "Chính sách & chốt", "Nhật ký", "Task"]) expect(nav.includes(label), `no ${label} in the admin's menu:\n${nav}`);
+    // The Web Admin's old addresses open the same page in the one shell.
+    await tab.go("admin/queue");
+    await tab.waitFor("#/admin/queue on Hàng đợi", () => location.hash === "#/queue" && document.querySelector('nav [aria-current="page"]')?.textContent.includes("Hàng đợi"));
   });
 
   await step("login-password", async () => {
@@ -229,6 +236,9 @@ async function main() {
     await tab.type(people.hoa.password);
     await tab.key("Enter");
     await tab.waitFor("Hoa signed in", () => !document.querySelector("#username") && document.body.innerText.includes("@hoa"));
+    // A member's menu has no hub operations or administration (Máy & run, the team's machines, stays).
+    const nav = await tab.eval(() => document.querySelector("nav")?.innerText ?? "");
+    for (const label of ["Đội máy", "Hàng đợi", "Chính sách & chốt", "Nhật ký"]) expect(!nav.includes(label), `${label} in Hoa's menu:\n${nav}`);
   });
 
   await step("reviewer-approves-a-guide-not-context", async () => {

@@ -72,7 +72,7 @@ export function OpenAlerts({ card }: { card: (title: string, action: React.React
   const open = data.data?.open ?? [];
   return card(
     t("alerts.open"),
-    <a className="text-fg-link hover:underline" href="#/admin/alerts">
+    <a className="text-fg-link hover:underline" href="#/alerts">
       {t("alerts.all")}
     </a>,
     <>

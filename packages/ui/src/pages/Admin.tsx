@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, Plus } from "lucide-react";
-import { cn } from "cn";
 import {
   AGENT_TEMPLATES,
   POLICY_CLIS,
@@ -8,7 +7,6 @@ import {
   SELF_APPROVALS,
   missingRequired,
   requiredItemIds,
-  type AuditEntry,
   type SelfApproval,
   type CommandStatus,
   type MachineCommand,
@@ -23,19 +21,15 @@ import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@xdev-hive/ui/components/ui/collapsible";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@xdev-hive/ui/components/ui/tabs";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
-import { Badge, Empty, ErrorNote, Page, PageHeader } from "#ui/components/common.tsx";
+import { Badge, Empty, ErrorNote } from "#ui/components/common.tsx";
 import { ProfileStates } from "#ui/components/ProfileStates.tsx";
 import { formatTime, useAction, useHive, useProjects, useQuery } from "#ui/hooks.ts";
-import { hasKey, rich, useT, type MessageKey } from "#ui/i18n/index.tsx";
+import { rich, useT, type MessageKey } from "#ui/i18n/index.tsx";
 import { hasNewer } from "#ui/lib/setup.ts";
-import { WebhooksTab } from "./Webhooks.tsx";
 import { AgentPolicyCard } from "#ui/pages/admin/AgentPolicy.tsx";
 import { SdlcGatesCard } from "#ui/pages/admin/SdlcGates.tsx";
 
-type Tab = "machines" | "policy" | "audit" | "webhooks";
-const TABS: Record<Tab, MessageKey> = { machines: "admin.tabMachines", policy: "admin.tabPolicy", audit: "admin.tabAudit", webhooks: "admin.tabWebhooks" };
 
 const STATE_TONE: Record<SetupState, string> = { installed: "ok", missing: "warn", outdated: "info", manual: "danger" };
 const COMMAND_TONE: Record<CommandStatus, string> = {
@@ -106,87 +100,6 @@ export const ACTION_LABEL: Record<string, MessageKey> = {
 
 /** Small uppercase heading for a group inside a card. */
 const GROUP_TITLE = "text-xs font-semibold tracking-wide text-muted-foreground uppercase";
-
-export function AdminPage() {
-  const t = useT();
-  const { client } = useHive();
-  const [tab, setTab] = useState<Tab>("machines");
-  // Webhooks live on the hub only (the desktop app has no hub admin).
-  const tabs = (Object.keys(TABS) as Tab[]).filter((id) => id !== "webhooks" || client.webhooks);
-  return (
-    <Page wide>
-      <PageHeader title={t("nav.admin")} subtitle={t("admin.subtitle")} />
-      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="gap-4">
-        <TabsList>
-          {tabs.map((id) => (
-            <TabsTrigger key={id} value={id} className="px-3">
-              {t(TABS[id])}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        <TabsContent value="machines" className="flex flex-col gap-4">
-          <FleetTab />
-        </TabsContent>
-        <TabsContent value="policy" className="flex flex-col gap-4">
-          <PolicyTab />
-        </TabsContent>
-        <TabsContent value="audit" className="flex flex-col gap-4">
-          <AuditTab />
-        </TabsContent>
-        {client.webhooks ? (
-          <TabsContent value="webhooks" className="flex flex-col gap-4">
-            <WebhooksTab />
-          </TabsContent>
-        ) : null}
-      </Tabs>
-    </Page>
-  );
-}
-
-// ── machines ───────────────────────────────────────────────────────────────
-
-function FleetTab() {
-  const { client } = useHive();
-  const t = useT();
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    const timer = setInterval(() => setTick((n) => n + 1), 15_000);
-    return () => clearInterval(timer);
-  }, []);
-  const machines = useQuery(() => client.call("admin.machines", {}), [client, tick]);
-  const policy = useQuery(() => client.call("policy.get", {}), [client]);
-  const reload = () => setTick((n) => n + 1);
-  const list = machines.data ?? [];
-  const lacking = policy.data ? list.filter((m) => m.setup && missingRequired(policy.data!, m.setup).length > 0).length : 0;
-  const waiting = list.reduce((n, m) => n + m.commands.filter((c) => c.status === "pending" || c.status === "running").length, 0);
-
-  return (
-    <>
-      <ErrorNote error={machines.error ?? policy.error} />
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label={t("admin.statMachines")} value={list.length} />
-        <Stat label={t("machineState.online")} value={list.filter((m) => m.online).length} />
-        <Stat label={t("admin.statLacking")} value={lacking} tone={lacking ? "warn" : undefined} />
-        <Stat label={t("admin.statOpen")} value={waiting} />
-      </div>
-      {machines.data && list.length === 0 ? <Empty>{t("admin.noMachines")}</Empty> : null}
-      {list.map((m) => (
-        <MachineCard key={m.id} machine={m} policy={policy.data ?? null} onChanged={reload} />
-      ))}
-    </>
-  );
-}
-
-function Stat({ label, value, tone }: { label: string; value: number; tone?: string }) {
-  return (
-    <Card className={cn("gap-1 py-4", tone === "warn" && "border-warning/35")}>
-      <CardContent className="flex flex-col gap-1 px-4">
-        <div className="text-xs text-muted-foreground">{label}</div>
-        <div className={cn("text-2xl font-semibold tabular-nums", tone === "warn" && "text-warning")}>{value}</div>
-      </CardContent>
-    </Card>
-  );
-}
 
 export function MachineCard({ machine: m, policy, onChanged }: { machine: MachineDetail; policy: TeamPolicy | null; onChanged: () => void }) {
   const t = useT();
@@ -558,62 +471,6 @@ export function PolicyTab() {
       {/* Saved row by row, apart from the button above: a project's manager may change their row without the rest. */}
       <AgentPolicyCard />
       <SdlcGatesCard />
-    </>
-  );
-}
-
-// ── audit ──────────────────────────────────────────────────────────────────
-
-function AuditTab() {
-  const { client } = useHive();
-  const t = useT();
-  const [filter, setFilter] = useState("");
-  const log = useQuery(() => client.call("admin.audit", { limit: 300, action: filter || undefined }), [client, filter]);
-  return (
-    <>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <NativeSelect value={filter} onChange={(e) => setFilter(e.target.value)} aria-label={t("admin.auditFilter")}>
-          <NativeSelectOption value="">{t("admin.auditAll")}</NativeSelectOption>
-          {Object.entries(ACTION_LABEL).map(([k, v]) => (
-            <NativeSelectOption key={k} value={k}>
-              {t(v)}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
-        <span className="text-sm text-muted-foreground">{t("admin.auditHint", { count: 300 })}</span>
-      </div>
-      <ErrorNote error={log.error} />
-      {log.data?.length === 0 ? <Empty>{t("admin.auditNone")}</Empty> : null}
-      {log.data?.length ? (
-        <div className="overflow-x-auto rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("admin.colAt")}</TableHead>
-                <TableHead>{t("admin.colWho")}</TableHead>
-                <TableHead>{t("admin.colAction")}</TableHead>
-                <TableHead>{t("admin.colTarget")}</TableHead>
-                <TableHead>{t("admin.colDetail")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {log.data.map((e: AuditEntry) => (
-                <TableRow key={e.id}>
-                  <TableCell className="align-top text-muted-foreground">{formatTime(e.at)}</TableCell>
-                  <TableCell className="align-top font-mono text-xs">{e.actor}</TableCell>
-                  <TableCell className="align-top">{ACTION_LABEL[e.action] ? t(ACTION_LABEL[e.action]!) : e.action}</TableCell>
-                  <TableCell className="align-top font-mono text-xs">{e.target}</TableCell>
-                  <TableCell className="align-top whitespace-normal">
-                    <div className="max-w-80 min-w-48 text-xs whitespace-pre-wrap wrap-anywhere">
-                      {e.detailKey && hasKey(e.detailKey) ? t(e.detailKey as MessageKey, e.detailVars) : e.detail}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      ) : null}
     </>
   );
 }

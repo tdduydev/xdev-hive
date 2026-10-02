@@ -33,11 +33,10 @@ const STAGE_CHIP: Record<SpecStage, ChipKind> = { specify: "neutral", plan: "inf
 
 const idOf = (f: Pick<SpecFeature, "project" | "dir" | "branch">) => JSON.stringify([f.project, f.dir, f.branch]);
 
-/** The link to one feature, in the frame it is shown in (the Web Admin has its own). */
+/** The link to one feature. */
 function specHref(f: Pick<SpecFeature, "project" | "dir" | "branch">): string {
-  const admin = window.location.hash.startsWith("#/admin/");
   const q = new URLSearchParams({ project: f.project, dir: f.dir, branch: f.branch });
-  return `#/${admin ? "admin/" : ""}specs?${q}`;
+  return `#/specs?${q}`;
 }
 
 export function SpecsPage() {

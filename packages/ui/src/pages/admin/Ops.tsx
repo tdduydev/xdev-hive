@@ -1,9 +1,8 @@
 // Web Admin pages built on what the machines already report to the hub (docs/design/2026-09-redesign, xDev Hive Web
 // Admin): Tổng quan, Lượt chạy, Hàng đợi, Đội máy, Quota & gói, Chi phí, Nhật ký.
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { X } from "lucide-react";
 import { cn } from "cn";
-import { missingRequired, type AuditEntry, type MachineDetail, type RunRecord, type RunRequest } from "@xdev-hive/core";
+import { missingRequired, type AuditEntry, type MachineDetail, type RunRequest } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { DataTable, type Column } from "#ui/components/DataTable.tsx";
@@ -13,12 +12,11 @@ import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { errorMessage, formatTime, formatUsd, useAction, useHive, useProjects, useQuery } from "#ui/hooks.ts";
 import { hasKey, useT, type MessageKey, type TFunction } from "#ui/i18n/index.tsx";
-import { isLive, runDuration, runLabel } from "#ui/lib/runs.ts";
-import { RANGE_HOURS, useAdminRange } from "#ui/shell/AdminShell.tsx";
+import { runDuration, runLabel } from "#ui/lib/runs.ts";
+import { RANGE_HOURS, useAdminRange } from "./frame.tsx";
 import { useToast } from "#ui/shell/toast.tsx";
 import { ACTION_LABEL, MachineCard } from "#ui/pages/Admin.tsx";
 import { Costs } from "#ui/pages/Machines.tsx";
-import { HubDetail } from "#ui/pages/Runs.tsx";
 import { EventFeed, OpenAlerts } from "./Alerts.tsx";
 import { BudgetsCard } from "./Budgets.tsx";
 
@@ -33,7 +31,6 @@ function useTick(ms = REFRESH_MS): number {
   return n;
 }
 
-const RUN_KIND: Record<string, ChipKind> = { running: "running", queued: "neutral", succeeded: "success", failed: "danger", rate_limited: "warning", cancelled: "neutral" };
 
 function Card({ title, sub, action, children, className }: { title: string; sub?: ReactNode; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
@@ -85,13 +82,14 @@ const machineKind = (m: MachineDetail, lacking: boolean): { kind: ChipKind; labe
 // ── Tổng quan ──
 
 /** Stop-all for the whole hub, and for one project picked here: the Web Admin has no page per project. */
-function StopAgentsBar() {
+function StopAgentsBar({ lead }: { lead?: ReactNode }) {
   const t = useT();
   const projects = useProjects();
   const [project, setProject] = useState("");
   const picked = projects.includes(project) ? project : (projects[0] ?? "");
   return (
     <div className="flex flex-wrap items-start justify-end gap-2">
+      {lead ? <div className="mr-auto">{lead}</div> : null}
       {picked ? (
         <>
           <NativeSelect size="sm" className="font-mono" value={picked} onChange={(e) => setProject(e.target.value)} aria-label={t("tasks.colProject")}>
@@ -110,7 +108,8 @@ function StopAgentsBar() {
   );
 }
 
-export function OpsOverview() {
+/** `lead`: what sits at the start of the stop-all row (the time range, on the web). */
+export function OpsOverview({ lead }: { lead?: ReactNode } = {}) {
   const { client } = useHive();
   const t = useT();
   const range = useAdminRange();
@@ -161,16 +160,16 @@ export function OpsOverview() {
 
   return (
     <div className="flex flex-col gap-4">
-      <StopAgentsBar />
+      <StopAgentsBar lead={lead} />
       <ErrorNote error={runs.error ?? machines.error} />
       <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-2.5">
-        <Kpi href="#/admin/runs" label={t("ops.kpi.running")} value={live.length} sub={t("ops.kpi.runningSub", { count: new Set(live.map((r) => r.machineId)).size })} />
-        <Kpi href="#/admin/queue" label={t("ops.kpi.queue")} value={waiting} sub={t("ops.kpi.queueSub")} />
+        <Kpi href="#/runs" label={t("ops.kpi.running")} value={live.length} sub={t("ops.kpi.runningSub", { count: new Set(live.map((r) => r.machineId)).size })} />
+        <Kpi href="#/queue" label={t("ops.kpi.queue")} value={waiting} sub={t("ops.kpi.queueSub")} />
         <Kpi label={`${t("ops.kpi.success")} ${t(`ops.range.${range}`)}`} value={rate === null ? "—" : `${rate}%`} sub={t("ops.kpi.successSub", { done, failed, quota })} />
-        <Kpi href="#/admin/fleet" label={t("ops.kpi.online")} value={`${fleet.filter((m) => m.online).length}/${fleet.length}`} sub={t("ops.kpi.onlineSub", { count: fleet.filter((m) => !m.online).length })} />
-        <Kpi href="#/admin/costs" label={t("ops.kpi.cost", { range: t(`ops.range.${range}`) })} value={cost === null ? "—" : formatUsd(cost)} sub={t("ops.kpi.costSub")} />
+        <Kpi href="#/fleet" label={t("ops.kpi.online")} value={`${fleet.filter((m) => m.online).length}/${fleet.length}`} sub={t("ops.kpi.onlineSub", { count: fleet.filter((m) => !m.online).length })} />
+        <Kpi href="#/costs" label={t("ops.kpi.cost", { range: t(`ops.range.${range}`) })} value={cost === null ? "—" : formatUsd(cost)} sub={t("ops.kpi.costSub")} />
         <Kpi
-          href="#/admin/review"
+          href="#/proposals"
           label={t("ops.kpi.pending")}
           value={(proposals.data?.length ?? 0) + (memory.data?.length ?? 0)}
           sub={t("ops.kpi.pendingSub")}
@@ -213,7 +212,7 @@ export function OpsOverview() {
         <Card
           title={t("ops.runningNow")}
           action={
-            <a className="text-fg-link hover:underline" href="#/admin/runs">
+            <a className="text-fg-link hover:underline" href="#/runs">
               {t("ops.allRuns")}
             </a>
           }
@@ -221,7 +220,7 @@ export function OpsOverview() {
           {live.length === 0 ? <p className="m-0 text-[13px] text-fg-muted">{t("ops.runningNone")}</p> : null}
           <div className="flex flex-col">
             {live.slice(0, 6).map((r) => (
-              <a key={`${r.machineId}/${r.runId}`} href={`#/admin/runs?run=${encodeURIComponent(r.runId)}`} className="grid grid-cols-[62px_minmax(0,1fr)_64px] items-center gap-2 border-b border-line-subtle py-2 last:border-b-0 hover:bg-hover">
+              <a key={`${r.machineId}/${r.runId}`} href={`#/runs?run=${encodeURIComponent(r.runId)}`} className="grid grid-cols-[62px_minmax(0,1fr)_64px] items-center gap-2 border-b border-line-subtle py-2 last:border-b-0 hover:bg-hover">
                 <span className="font-mono text-xs text-fg-brand">{r.taskId}</span>
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate text-[13px] font-medium text-fg-strong">{r.taskTitle}</span>
@@ -235,7 +234,7 @@ export function OpsOverview() {
             ))}
           </div>
           {live.length > 6 ? (
-            <a href="#/admin/runs" className="rounded-md border border-line-default py-2 text-center text-xs text-fg-secondary hover:bg-hover">
+            <a href="#/runs" className="rounded-md border border-line-default py-2 text-center text-xs text-fg-secondary hover:bg-hover">
               {t("ops.moreRunning", { count: live.length - 6 })}
             </a>
           ) : null}
@@ -244,7 +243,7 @@ export function OpsOverview() {
         <Card
           title={t("ops.quotaTop")}
           action={
-            <a className="text-fg-link hover:underline" href="#/admin/quota">
+            <a className="text-fg-link hover:underline" href="#/machines">
               {t("ops.details")}
             </a>
           }
@@ -275,7 +274,7 @@ export function OpsOverview() {
             {fleet.map((m) => {
               const k = machineKind(m, lacking.has(m.id));
               const color = { neutral: "bg-neutral-solid", warning: "bg-warning-solid", running: "bg-info-solid", success: "bg-success-solid", danger: "bg-danger-solid", info: "bg-info-solid" }[k.kind];
-              return <a key={m.id} href="#/admin/fleet" title={`${m.machine} · ${t(k.label)}`} className={cn("size-[13px] rounded-[3px]", color)} />;
+              return <a key={m.id} href="#/fleet" title={`${m.machine} · ${t(k.label)}`} className={cn("size-[13px] rounded-[3px]", color)} />;
             })}
           </div>
           <div className="flex flex-wrap gap-3 text-xs text-fg-muted">
@@ -295,93 +294,6 @@ export function OpsOverview() {
           </div>
         </Card>
       </div>
-    </div>
-  );
-}
-
-// ── Lượt chạy ──
-
-function csv(rows: string[][]): string {
-  return rows.map((r) => r.map((c) => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(",")).join("\n");
-}
-
-function download(name: string, text: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-export function OpsRuns() {
-  const { client } = useHive();
-  const t = useT();
-  const tick = useTick(5000);
-  const runs = useQuery(() => client.call("runs.list", { limit: 200 }), [client, tick]);
-  const [selected, setSelected] = useState<string | null>(null);
-  const list = useMemo(() => runs.data ?? [], [runs.data]);
-  const key = (r: RunRecord) => `${r.machineId}/${r.runId}`;
-  const current = list.find((r) => key(r) === selected) ?? null;
-  useEffect(() => {
-    const run = new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("run");
-    const found = run ? list.find((r) => r.runId === run) : undefined;
-    if (found) setSelected(key(found));
-  }, [list]);
-
-  const columns: Array<Column<RunRecord>> = [
-    { key: "status", label: t("ops.col.status"), width: "104px", render: (r) => <Chip kind={RUN_KIND[r.status] ?? "neutral"}>{runLabel("runStatus", r.status)}</Chip>, sortValue: (r) => r.status },
-    { key: "task", label: t("ops.col.task"), width: "70px", mono: true, render: (r) => r.taskId, sortValue: (r) => r.taskId },
-    { key: "work", label: t("ops.col.work"), width: "minmax(220px,1fr)", strong: true, render: (r) => r.taskTitle, sub: (r) => r.activity ?? r.error ?? runLabel("agentRole", r.role), title: (r) => r.taskTitle, sortValue: (r) => r.taskTitle },
-    { key: "project", label: t("ops.col.project"), width: "140px", mono: true, render: (r) => r.project, sortValue: (r) => r.project },
-    { key: "machine", label: t("ops.col.machine"), width: "118px", mono: true, render: (r) => r.machine, sortValue: (r) => r.machine },
-    { key: "profile", label: t("ops.col.profile"), width: "112px", mono: true, render: (r) => r.profileId ?? "—", sortValue: (r) => r.profileId ?? "" },
-    { key: "cost", label: t("ops.col.cost"), width: "64px", align: "right", mono: true, render: (r) => (r.costUsd === null ? "—" : formatUsd(r.costUsd)), sortValue: (r) => r.costUsd ?? -1 },
-    { key: "duration", label: t("ops.col.duration"), width: "76px", align: "right", mono: true, render: (r) => runDuration(r) || "—", sortValue: (r) => (r.startedAt ? (r.finishedAt ? Date.parse(r.finishedAt) : Date.now()) - Date.parse(r.startedAt) : -1) },
-    { key: "at", label: t("ops.col.at"), width: "110px", align: "right", render: (r) => formatTime(r.createdAt), sortValue: (r) => r.createdAt },
-  ];
-
-  return (
-    <div className="flex flex-wrap items-start gap-4">
-      <div className="min-w-0 flex-[3_1_640px]">
-        <ErrorNote error={runs.error} />
-        <DataTable
-          rows={list}
-          columns={columns}
-          rowKey={key}
-          noun={t("ops.noun.runs")}
-          minWidth={1000}
-          searchText={(r) => `${r.runId} ${r.taskId} ${r.taskTitle} ${r.project} ${r.machine} ${r.profileId ?? ""}`}
-          filters={[
-            { key: "status", label: t("ops.col.status"), value: (r) => r.status, options: ["running", "queued", "succeeded", "failed", "rate_limited", "cancelled"].map((s) => ({ value: s, label: runLabel("runStatus", s) })) },
-            { key: "project", label: t("ops.col.project"), value: (r) => r.project },
-            { key: "machine", label: t("ops.col.machine"), value: (r) => r.machine },
-            { key: "profile", label: t("ops.col.profile"), value: (r) => r.profileId ?? "" },
-          ]}
-          bulk={[{ id: "csv", label: t("ops.csv") }]}
-          onBulk={(_, rows) =>
-            download(
-              "runs.csv",
-              csv([
-                ["run", "status", "project", "task", "title", "machine", "profile", "cost_usd", "created", "started", "finished"],
-                ...rows.map((r) => [r.runId, r.status, r.project, r.taskId, r.taskTitle, r.machine, r.profileId ?? "", r.costUsd?.toString() ?? "", r.createdAt, r.startedAt ?? "", r.finishedAt ?? ""]),
-              ]),
-            )
-          }
-          onRowClick={(r) => setSelected(key(r))}
-          selectedKey={selected}
-        />
-      </div>
-      {current ? (
-        <aside className="sticky top-0 flex max-h-[80vh] min-h-[420px] min-w-0 flex-[2_1_360px] flex-col overflow-hidden rounded-lg border border-line-default bg-surface">
-          <div className="flex justify-end border-b border-line-subtle px-2 py-1">
-            <Button size="icon-sm" variant="ghost" aria-label={t("common.close")} onClick={() => setSelected(null)}>
-              <X />
-            </Button>
-          </div>
-          <HubDetail key={key(current)} run={current} latestReview={false} onChanged={runs.reload} />
-        </aside>
-      ) : null}
     </div>
   );
 }
@@ -578,86 +490,6 @@ export function OpsFleet() {
   );
 }
 
-// ── Quota & gói ──
-
-export function OpsQuota() {
-  const { client } = useHive();
-  const t = useT();
-  const toast = useToast();
-  const tick = useTick();
-  const machines = useQuery(() => client.call("admin.machines", {}), [client, tick]);
-  const cooldowns = useQuery(() => client.call("cooldowns.list", {}), [client, tick]);
-  const action = useAction();
-  const profiles = (machines.data ?? []).flatMap((m) => m.profiles.map((p) => ({ ...p, machine: m.machine, online: m.online })));
-  const rest = (account: string | null) => (account ? (cooldowns.data ?? []).find((c) => c.account === account) : undefined);
-  return (
-    <div className="flex flex-col gap-4">
-      <ErrorNote error={machines.error ?? cooldowns.error ?? action.error} />
-      {machines.data && !profiles.length ? <Empty>{t("ops.noProfiles")}</Empty> : null}
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3">
-        {profiles.map((p) => {
-          const c = rest(p.account);
-          const kind: ChipKind = !p.enabled ? "neutral" : !p.installed || p.loggedIn === false ? "danger" : p.overLimit || c || p.cooldownUntil ? "warning" : "success";
-          return (
-            <section key={`${p.machine}/${p.id}`} className="flex flex-col gap-2.5 rounded-xl border border-line-default bg-surface p-3.5">
-              <div className="flex items-center gap-2">
-                <span className={cn("size-2 rounded-full", p.online ? "bg-success-solid" : "bg-neutral-solid")} />
-                <span className="min-w-0 flex-1 truncate font-mono text-[13px] font-semibold text-fg-strong">{p.id}</span>
-                <Chip kind={kind}>
-                  {!p.enabled
-                    ? t("agents.state.off")
-                    : !p.installed
-                      ? t("agents.state.noCli")
-                      : p.loggedIn === false
-                        ? t("agents.state.signedOut")
-                        : p.overLimit
-                          ? t("agents.state.overLimit")
-                          : c || p.cooldownUntil
-                            ? t("agents.state.resting")
-                            : t("agents.state.ready")}
-                </Chip>
-              </div>
-              <span className="text-xs text-fg-muted">
-                {p.label} · {p.machine}
-                {p.account ? ` · ${p.account}` : ""}
-              </span>
-              <div className="grid grid-cols-[48px_1fr] items-center gap-x-2 gap-y-1.5 text-[11px] text-fg-muted">
-                <span>{t("ops.session")}</span>
-                <Bar percent={p.sessionPercent} />
-                <span>{t("ops.week")}</span>
-                <Bar percent={p.weekPercent} />
-              </div>
-              {c || p.cooldownUntil ? (
-                <div className="flex items-center gap-2 text-xs text-warning">
-                  <span className="min-w-0 flex-1 truncate" title={c?.reason}>
-                    {t("ops.restingUntil", { time: formatTime(c?.until ?? p.cooldownUntil) })}
-                  </span>
-                  {c ? (
-                    <Button
-                      size="xs"
-                      variant="outline"
-                      disabled={action.busy}
-                      onClick={() =>
-                        void action.run(async () => {
-                          await client.call("cooldowns.clear", { account: c.account });
-                          toast(t("ops.restCleared", { account: c.account }));
-                          cooldowns.reload();
-                        })
-                      }
-                    >
-                      {t("ops.clearRest")}
-                    </Button>
-                  ) : null}
-                </div>
-              ) : null}
-            </section>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 // ── Chi phí ──
 
 export function OpsCosts() {
@@ -733,7 +565,7 @@ export function OpsAudit() {
       // Opens the run on Lượt chạy (OpsRuns reads ?run=).
       render: (e) =>
         e.run ? (
-          <a className="text-primary underline underline-offset-2" href={`#/admin/runs?run=${encodeURIComponent(e.run)}`}>
+          <a className="text-primary underline underline-offset-2" href={`#/runs?run=${encodeURIComponent(e.run)}`}>
             {e.run}
           </a>
         ) : (

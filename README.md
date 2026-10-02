@@ -180,6 +180,15 @@ Icon: `npm run icons -w @xdev-hive/desktop` (chỉ chạy trên macOS, vì dùng
 
 **App và web làm việc khác nhau** (roadmap 35a). App desktop nối với hub chỉ có việc của máy, năm mục: *Hôm nay* (CI của run trên máy, cài đặt máy, yêu cầu cài từ admin), *Lượt chạy* (run trên máy này), *Agent và quota*, *Dự án & công cụ* (repo trên máy và những gì runner cần), *Cài đặt* (kết nối hub, GitLab, GitHub). Task, tài liệu, spec, memory, đợt chạy, chat, máy của team, thành viên, chính sách nằm trên web của hub. Nút *Mở web* ở góc trên và mọi đường dẫn tới các trang đó mở trình duyệt ở hub. App ở chế độ cục bộ (không nối hub) là cả hệ thống, nên vẫn có đủ trang.
 
+**Web của hub: một khung cho mọi người** (roadmap 35b). Trước đây admin hub có khung riêng (Web Admin) với 25 mục, nhiều mục trùng với trang của thành viên. Giờ mọi người dùng chung một khung, và menu hiện theo quyền:
+- *Hôm nay*, *Chat*.
+- *Công việc*: Task, Spec, Đợt chạy, Lượt chạy.
+- *Kiến thức*: Tài liệu, Skill, Memory, Đề xuất.
+- *Vận hành*: Tổng quan (có chọn 24 giờ / 7 ngày / 30 ngày), Máy & run, Đội máy, Hàng đợi, Chi phí, Cảnh báo. Chỉ admin hub thấy, trừ *Máy & run*.
+- *Quản trị*: Hệ thống, Thành viên, Người dùng & quyền, Chính sách & chốt, Tool, Context agent, Token, Thông báo & webhook, Nhật ký, Phiên bản app, Hub. Mỗi mục hiện khi người đó có quyền.
+
+Trang trùng đã bỏ: *Lượt chạy* chỉ còn một trang, *Quota & gói* nằm trong *Máy & run*, trang *Quản trị* cũ (tab máy, chính sách, nhật ký, webhook) tách thành các mục trên. Mở web thì vào *Hôm nay*. Địa chỉ cũ `#/admin/<trang>` (trong link đã gửi qua webhook, thông báo app) tự chuyển sang trang mới, ví dụ `#/admin/review` → `#/proposals`, `#/admin/quota` → `#/machines`, `#/admin` → `#/ops`.
+
 1. **Dự án & công cụ** → *Dự án trên máy này*: thêm repo (project key, ví dụ `xdev-ai-studio`).
 2. Cũng trang đó kiểm tra những gì runner cần: trang tự kiểm tra khi mở app, và sidebar hiện số mục chưa sẵn sàng. Mục nào còn thiếu thì có nút cài riêng:
    - **CLI của agent** (Claude Code, Codex, Gemini): tìm theo `PATH` của login shell và hiện phiên bản. Nút *Cài bằng npm* chạy `npm install -g @anthropic-ai/claude-code` / `@openai/codex` / `@google/gemini-cli`, nên máy cần có Node.js. Profile nào chưa có CLI thì hiện "Chưa có lệnh …", và runner bỏ qua gói đó thay vì chạy thử rồi lỗi.
@@ -200,7 +209,7 @@ Icon: `npm run icons -w @xdev-hive/desktop` (chỉ chạy trên macOS, vì dùng
    - `.githooks/pre-commit` + `git config core.hooksPath .githooks`
 4. **Đồng bộ tài liệu**: lần đầu nhập `AGENTS.md` / `docs/decisions.md` sẵn có vào Hive, sau đó render lại và commit.
 
-Đồng bộ từ hub: trên Web Admin, trang *Context agent* → *Yêu cầu máy đồng bộ*. Cần quyền Context agent của dự án.
+Đồng bộ từ hub: trên web, *Quản trị* → *Context agent* → *Yêu cầu máy đồng bộ*. Cần quyền Context agent của dự án.
 - Mỗi máy online có repo của dự án nhận yêu cầu ở heartbeat kế tiếp, rồi làm như nút *Đồng bộ*: ghi context vào repo và đưa tài liệu của repo lên Hive.
 - Thẻ *Đồng bộ trên các máy* hiện lần cuối của từng máy: số file đổi, commit, số trang từ repo, hoặc lỗi.
 - Yêu cầu không được nhận hay làm xong trong 15 phút thì hết hạn. App cũ hơn 0.89.0 không nhận yêu cầu này.
@@ -528,7 +537,7 @@ Hub nhận mọi nhà cung cấp OpenID Connect: GitLab, Microsoft Entra, Google
 
 - Compose chạy SeaweedFS 4.48 cạnh hub (service `seaweedfs`, volume `seaweedfs-data`). Chỉ hub gọi được nó trong mạng của compose, không cổng nào mở ra ngoài. Hub dùng HTTP API của filer (`HIVE_SEAWEEDFS_URL`).
 - Database giữ thông tin tệp (tên, loại, cỡ, người tải, SHA-256). SeaweedFS giữ nội dung, đặt tên theo SHA-256: cùng một nội dung chỉ lưu một lần, và ghi lại nhiều lần cũng không sao. Tệp không còn trang nào dùng thì bị xoá khỏi SeaweedFS.
-- Hub vừa có SeaweedFS thì tự chuyển các tệp đang nằm trong database sang: ngay khi khởi động, rồi mỗi phút cho tới khi hết. Trang *Hub* (Web Admin) có thẻ *Tệp tài liệu*: số tệp, dung lượng, số tệp còn trong database, lỗi gần nhất.
+- Hub vừa có SeaweedFS thì tự chuyển các tệp đang nằm trong database sang: ngay khi khởi động, rồi mỗi phút cho tới khi hết. Trang *Hub* (web, *Quản trị*) có thẻ *Tệp tài liệu*: số tệp, dung lượng, số tệp còn trong database, lỗi gần nhất.
 - SeaweedFS không trả lời thì tải tệp lên bị từ chối (không lưu nửa vời), còn đọc tệp thì báo lỗi rõ ràng. Hub vẫn chạy bình thường.
 - Không dùng SeaweedFS: đặt `HIVE_SEAWEEDFS_URL=` (rỗng) trong `deploy/.env`, tệp nằm trong database như trước. App desktop không có hub luôn lưu tệp trong database của máy. Tệp đã chuyển sang SeaweedFS thì hub không có `HIVE_SEAWEEDFS_URL` sẽ báo *tệp nằm trong kho seaweedfs*.
 - Server bị Docker Hub từ chối (429): `deploy/update.sh` lấy image từ `mirror.gcr.io` rồi tag lại đúng tên. Muốn dùng image khác thì đặt `HIVE_SEAWEEDFS_IMAGE`.
@@ -603,7 +612,7 @@ Trên hub, agent giữ task với tên `<gói>.<máy>@<token>`, ví dụ `claude
     - Hub giữ task chưa tới lượt (`run_group_items`) và chỉ tạo yêu cầu chạy khi thả, nên task chờ lâu không hết hạn. Hub thả ở mỗi heartbeat, khi máy trả lời yêu cầu và khi có người mở trang. Một chỗ được tính là đang dùng khi yêu cầu còn chờ máy nhận, hoặc run (máy đẩy lên hub) còn chờ hay đang chạy. Task chờ task khác thì để sau.
     - *Máy rảnh*: lúc tới lượt, hub chọn máy online, nhận run từ hub, có repo, còn nhiều chỗ nhất. Chỗ = tổng *Song song tối đa* của các gói dùng được ngay (bật, đã cài, không chưa đăng nhập, chưa chạm ngưỡng, không nghỉ), trừ run đang có trên các gói đó và yêu cầu máy chưa trả lời. App từ 0.110.0 báo *Song song tối đa* ở heartbeat; app cũ được tính 1.
     - Lỗi có thể hết (máy offline, chạm trần, dự án đang dừng) thì task chờ tiếp. Lỗi không hết (task đã xong, máy không có repo, gói không còn) thì task ghi *Không gửi được*.
-    - Trang **Đợt chạy** (nhóm *Công việc*; Web Admin: nhóm *Vận hành*) hiện từng đợt: ai gửi, *đang chạy n/tối đa*, đếm chờ thả / xong / lỗi, và từng task: máy · gói, trạng thái (chờ tới lượt, chờ máy nhận, run và kết quả, lỗi). *Huỷ đợt* bỏ task chưa thả và yêu cầu máy chưa nhận; run đang chạy vẫn chạy.
+    - Trang **Đợt chạy** (nhóm *Công việc*) hiện từng đợt: ai gửi, *đang chạy n/tối đa*, đếm chờ thả / xong / lỗi, và từng task: máy · gói, trạng thái (chờ tới lượt, chờ máy nhận, run và kết quả, lỗi). *Huỷ đợt* bỏ task chưa thả và yêu cầu máy chưa nhận; run đang chạy vẫn chạy.
   - **Một prompt cho nhiều agent** (roadmap 31e): trong *Prompt cho agent*, *Thêm agent* (tối đa 8), mỗi dòng một máy (hoặc *Máy rảnh*) và gói.
     - `runs.fanout` tạo task `P-<số>` giữ prompt và một task riêng cho mỗi agent (`P-<số>-a`, `-b`…), rồi một đợt chạy không giới hạn song song. Tiêu đề task con ghi máy/gói (`*` là để hub hoặc máy chọn). Task `P-<số>` chờ các task con nên không ai chạy nó.
     - Mọi agent xong thì thẻ đợt trên trang *Đợt chạy* có *Chọn bản này* ở các bản chạy thành công. `runs.pickWinner` giữ bản được chọn (đi tiếp review, MR như thường), đóng các bản còn lại và task `P-<số>` với ghi chú bản nào được chọn. Branch của bản không chọn vẫn giữ. Chưa xong hết thì hub từ chối, vì run còn chạy sẽ tự mở lại task khi kết thúc.
@@ -717,13 +726,13 @@ Trang này có trên hub web và trên app desktop ở chế độ hub, chỉ hi
   - Hết trần thì hub không nhận *Giao run* mới (`errors.budgetExceeded`). Máy nghe qua heartbeat và giữ run mới trong *Hàng đợi* kèm lý do, kể cả run từ Board. Run đang chạy vẫn chạy tiếp.
   - Luật cảnh báo *Gần trần chi tiêu* mở ở 70% và 90%, *Hết trần chi tiêu* mở khi chạm 100%; cả hai gửi qua webhook như các luật khác. Sang ngày hoặc tháng mới thì trần tự mở lại.
 - **Nhật ký**: mọi thao tác thay đổi dữ liệu của admin (sửa tài liệu, duyệt/từ chối, memory, task, token, chính sách, yêu cầu cài), đăng nhập, tạo/sửa/khoá tài khoản, đổi quyền, đặt lại mật khẩu, và kết quả máy báo về. Không ghi lượt đọc.
-- **Nhật ký agent** (roadmap 27c): mọi lần agent ghi (nhận và cập nhật task, đề xuất, memory, chat) cũng vào *Nhật ký*, kèm ba cột: agent (nhãn `x-hive-agent`, vd. `claude-1.<máy>`), người mà agent chạy thay (chủ token), và id run (`hive-mcp` gửi `x-hive-run` từ `HIVE_RUN` của runner). Trang *Nhật ký* của Web Admin lọc theo agent, người và run (`claude-1` tìm được `claude-1` trên mọi máy); bấm id run để mở run đó ở *Lượt chạy*.
+- **Nhật ký agent** (roadmap 27c): mọi lần agent ghi (nhận và cập nhật task, đề xuất, memory, chat) cũng vào *Nhật ký*, kèm ba cột: agent (nhãn `x-hive-agent`, vd. `claude-1.<máy>`), người mà agent chạy thay (chủ token), và id run (`hive-mcp` gửi `x-hive-run` từ `HIVE_RUN` của runner). Trang *Nhật ký* (web, *Quản trị*) lọc theo agent, người và run (`claude-1` tìm được `claude-1` trên mọi máy); bấm id run để mở run đó ở *Lượt chạy*.
 - **Không tự duyệt** (roadmap 27c, thẻ *Tự duyệt* trên trang *Chính sách*): không ai duyệt đề xuất hay memory của chính mình, hay chuyển sang *Xong* task mà run làm nó do chính mình yêu cầu (từ web, hoặc chạy từ Board của máy dùng token của mình). Agent chạy bằng token của ai thì tính là người đó. Hub trả lỗi `errors.selfApprove`. Mặc định *Admin hub được tự duyệt*, cho hub chỉ có một người; chọn *Không ai được tự duyệt* khi team có người duyệt chéo. MR watcher vẫn chuyển task sang *Xong* khi MR merge, vì merge trên GitLab hay GitHub đã là một lần người khác duyệt.
 - **Cảnh báo** (roadmap 22m): hub kiểm các luật mỗi phút và mở sự cố, gửi tới webhook có bật sự kiện *Cảnh báo*. App desktop ở chế độ hub, khi token là của admin hub, hỏi hub mỗi phút và bật thông báo hệ điều hành cho sự cố mới chưa ai bấm *Đã biết*; bấm thông báo thì mở trang *Cảnh báo* trên trình duyệt. Lúc mở app, sự cố mở hơn 10 phút trước không được báo lại; hơn 3 sự cố mới cùng lúc thì gộp một thông báo.
 - **Người dùng & quyền**: tạo tài khoản, cấp quyền theo dự án, cấp/bỏ admin, đặt lại mật khẩu, khoá.
 - Trang **Token** có thêm cột *Tài khoản* và *Máy*: token thuộc ai, các máy đang dùng từng token.
 
-**Dừng mọi agent** (`agents.stop`, roadmap 27d): nút trên *Tổng quan* của Web Admin dừng cả hub (chỉ admin hub). Nút cùng tên trên trang dự án dừng một dự án (cần quyền xếp run của dự án đó).
+**Dừng mọi agent** (`agents.stop`, roadmap 27d): nút trên *Vận hành* → *Tổng quan* của web dừng cả hub (chỉ admin hub). Nút cùng tên trên trang dự án dừng một dự án (cần quyền xếp run của dự án đó).
 - Hub huỷ các yêu cầu run và câu trả lời chat đang chờ, rồi báo máy dừng run đang chạy. Hộp xác nhận ghi trước số yêu cầu sẽ huỷ và số run sẽ dừng.
 - Trong lúc tạm ngưng, hub từ chối xếp run và chat leader. Mọi máy, kể cả máy không nhận run từ hub, dừng run đang chạy của phạm vi đó và không bắt đầu run mới, kể cả run bấm trên Board. Run trong hàng đợi nằm lại đó, kèm lý do. Board hiện dải báo ai tạm ngưng, lúc nào.
 - Bấm *Cho agent chạy lại* (`agents.resume`) thì gỡ tạm ngưng. Tạm ngưng cả hub và tạm ngưng một dự án gỡ riêng. Cả hai thao tác đều ghi vào *Nhật ký* và gửi webhook (sự kiện *Dừng mọi agent*, *Cho agent chạy lại*).
