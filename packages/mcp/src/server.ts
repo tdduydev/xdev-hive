@@ -206,7 +206,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     {
       title: "Search team memory",
       description:
-        'Search decisions, conventions, gotchas and context recorded by any agent on this project, plus team-wide entries (project: null means shared by every project). Empty query returns the latest entries. ' +
+        'Search decisions, conventions, gotchas and context recorded by any agent on this project, plus team-wide entries (project: null means shared by every project) and those of the systems the project is a service of (project: "sys:<system>"). Empty query returns the latest entries. ' +
         "On a hub with embeddings it also finds entries by meaning (other words, other language), so a short question works. " +
         "Entries no agent used for a long time are left out until a person keeps them. An entry with review set cites files that changed since: check them before relying on it. " +
         "conflictsWith lists entries that disagree with it until a person decides; replaced entries are left out.",
@@ -223,13 +223,15 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
         title: "Record team memory",
         description:
           "Record one durable fact for every other agent: a decision, convention, gotcha or context. Keep it short. No secrets. " +
-          "shared: true only for something true in every project of the team (e.g. an org-wide convention); otherwise it belongs to this project. " +
+          "shared: true only for something true in every project of the team (e.g. an org-wide convention); " +
+          "system: <name> for something every service of that system needs (an API contract, an event, how the services call each other); otherwise it belongs to this project. " +
           "files: the repo files the fact is about, so it gets flagged for review when they change. " +
           "When a fact changed, write the new one with supersedes (the old id) instead of leaving both; " +
           "when you find an entry that looks wrong but are not sure, write yours with contradicts (its id) and a person decides.",
         inputSchema: {
           project,
           shared: z.boolean().optional().describe("Team-wide entry seen from every project (no project then)"),
+          system: z.string().optional().describe("A system's entry, seen from each of its services (no project then)"),
           kind: z.enum(MEMORY_KINDS),
           content: z.string(),
           taskId: z.string().optional(),
@@ -238,9 +240,10 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
           contradicts: z.number().int().positive().optional().describe("Id of an entry this one disagrees with"),
         },
       },
-      async ({ project: p, shared, kind, content, taskId, files, supersedes, contradicts }) => {
+      async ({ project: p, shared, system, kind, content, taskId, files, supersedes, contradicts }) => {
         const links = { taskId, files, supersedes, contradicts };
         if (shared) return run("memory.write", { shared: true, kind, content, ...links });
+        if (system) return run("memory.write", { system, kind, content, ...links });
         return withProject(async ({ project: q }: { project: string }) => run("memory.write", { project: q, kind, content, ...links }))({ project: p });
       },
     );

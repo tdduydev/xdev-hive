@@ -6,7 +6,8 @@ import type { WriteSource } from "./source.ts";
 
 /** member: a person's hub account (what it may do comes from its per-project grants). */
 export type Role = "viewer" | "agent" | "member" | "admin";
-export type DocScope = "org" | "project";
+/** org: the team's shared data; project: one project's; system: a system's, shared by its services (roadmap 19c). */
+export type DocScope = "org" | "project" | "system";
 
 export interface Actor {
   /** Who is acting, e.g. `claude@duy` or `duy`. Recorded on every write. */
@@ -146,7 +147,7 @@ export interface AgentContext {
   /** Past this many lines the sync suggests moving parts into docs for some paths. */
   limit: number;
   /** What AGENTS.md is made of, in order: the team's docs, the project's own, the list of docs for some paths, skills. */
-  blocks: Array<{ kind: "shared" | "project" | "paths" | "skills"; items: Array<{ key: string | null; title: string; version: number | null; lines: number }> }>;
+  blocks: Array<{ kind: "shared" | "system" | "project" | "paths" | "skills"; items: Array<{ key: string | null; title: string; version: number | null; lines: number }> }>;
   /** Docs for some paths and the file each goes to (nested: an AGENTS.md in the folder, read by Codex and Claude Code). */
   paths: Array<{ key: string; title: string; globs: string[]; file: string; nested: boolean }>;
   /** Every file the sync writes in the repo. */

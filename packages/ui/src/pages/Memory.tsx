@@ -3,7 +3,7 @@
 // (words, or words and meaning when the hub has embeddings).
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "cn";
-import { MEMORY_KINDS, stripHidden, type Memory, type MemoryKind } from "@xdev-hive/core";
+import { MEMORY_KINDS, stripHidden, systemOf, systemOwner, type Memory, type MemoryKind } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Input } from "@xdev-hive/ui/components/ui/input";
@@ -18,7 +18,7 @@ import type { HiveClient } from "#ui/client.ts";
 import { formatTime, sourceText, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
 import { runBulk, splitMemory } from "#ui/lib/bulk.ts";
-import { scopeKey, type Scope } from "#ui/lib/scope.ts";
+import { ownerName, scopeKey, type Scope } from "#ui/lib/scope.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
 /** Value of the "Chung" option in the owner select (project keys are never empty). */
@@ -66,7 +66,7 @@ function stateOf(m: Memory, t: TFunction): { label: string; kind: ChipKind } | n
 }
 
 export function MemoryPage() {
-  const { client, scope, projects } = useHive();
+  const { client, scope, projects, systems } = useHive();
   const t = useT();
   const allow = useCan();
   const [query, setQuery] = useState("");
@@ -89,8 +89,9 @@ export function MemoryPage() {
 
   // New entries default to the scope: its project, Chung for the shared scope, the first project of a system or of all.
   const pool = scope.kind === "system" ? scope.projects : projects;
-  const defaultOwner = scope.kind === "project" ? scope.project : scope.kind === "shared" ? null : (pool[0] ?? null);
-  const canAdd = allow(null, "memoryWrite") || projects.some((p) => allow(p, "memoryWrite"));
+  // A system's scope writes the system's own memory first (roadmap 19c).
+  const defaultOwner = scope.kind === "project" ? scope.project : scope.kind === "shared" ? null : scope.kind === "system" ? systemOwner(scope.system) : (pool[0] ?? null);
+  const canAdd = allow(null, "memoryWrite") || projects.some((p) => allow(p, "memoryWrite")) || systems.some((s) => allow(systemOwner(s.name), "memoryWrite"));
 
   // Pending entries in the chip filter being viewed, of projects the person manages (as approving one by one).
   const selectable = shown.filter((m) => m.status === "pending" && allow(m.project, "memoryApprove"));
@@ -195,7 +196,7 @@ export function MemoryPage() {
               title={t("memory.itemTitle", { id: m.id, kind: t(`memoryKind.${m.kind}`) })}
               chip={st ? <Chip kind={st.kind} small>{st.label}</Chip> : null}
               sub={<span className={cn(m.supersededBy !== null && "line-through")}>{m.content}</span>}
-              meta={`${m.project ?? t("inbox.shared")} · ${m.author}`}
+              meta={`${ownerName(m.project, t("inbox.shared"))} · ${m.author}`}
               dim={m.stale || m.supersededBy !== null}
             />
           );
@@ -240,7 +241,7 @@ function MemoryDetail({ memory: m, all, onChanged, onOpen }: { memory: Memory; a
 
   const rows: Array<[string, React.ReactNode, boolean?]> = [
     [t("memory.kvKind"), t(`memoryKind.${m.kind}`)],
-    [t("memory.kvScope"), m.project ?? t("inbox.shared"), true],
+    [t("memory.kvScope"), ownerName(m.project, t("inbox.shared")), true],
     [t("memory.kvAuthor"), `${m.author} · ${formatTime(m.createdAt)}${sourceText(m.source, m.taskId)}`, true],
     [t("memory.kvUsed"), m.useCount ? t("memory.usedTimes", { count: m.useCount, time: formatTime(m.lastUsedAt) }) : t("memory.neverUsed")],
   ];
@@ -268,7 +269,7 @@ function MemoryDetail({ memory: m, all, onChanged, onOpen }: { memory: Memory; a
     <div className="flex min-h-0 flex-1 flex-col">
       <DetailHeader
         chips={st ? <Chip kind={st.kind}>{st.label}</Chip> : <Chip kind="success">{t("memory.inUse")}</Chip>}
-        scope={m.project ?? t("inbox.shared")}
+        scope={ownerName(m.project, t("inbox.shared"))}
         when={formatTime(m.createdAt)}
         title={t("memory.detailTitle", { id: m.id })}
       />
@@ -351,14 +352,15 @@ function MemoryDetail({ memory: m, all, onChanged, onOpen }: { memory: Memory; a
 }
 
 function AddMemory({ defaultOwner, projects, onCancel, onAdded }: { defaultOwner: string | null; projects: string[]; onCancel: () => void; onAdded: (id: number) => void }) {
-  const { client } = useHive();
+  const { client, systems } = useHive();
   const t = useT();
   const allow = useCan();
   const toast = useToast();
   const sharedOk = allow(null, "memoryWrite");
   // undefined: not picked yet, so it follows the scope's default (the project list may still be loading).
   const [picked, setPicked] = useState<string | null>();
-  const writable = projects.filter((p) => allow(p, "memoryWrite"));
+  // Systems (sys:<name>, roadmap 19c) first: what every service of one needs to know.
+  const writable = [...systems.map((s) => systemOwner(s.name)), ...projects].filter((p) => allow(p, "memoryWrite"));
   const fallback = defaultOwner !== null && !allow(defaultOwner, "memoryWrite") ? (sharedOk ? null : (writable[0] ?? null)) : defaultOwner;
   const owner = picked === undefined ? fallback : picked;
   const options = owner !== null && !writable.includes(owner) ? [owner, ...writable] : writable;
@@ -368,7 +370,11 @@ function AddMemory({ defaultOwner, projects, onCancel, onAdded }: { defaultOwner
   const submit = () =>
     void action.run(async () => {
       const text = content.trim();
-      const m = await client.call("memory.write", owner === null ? { shared: true, kind, content: text } : { project: owner, kind, content: text });
+      const system = systemOf(owner);
+      const m = await client.call(
+        "memory.write",
+        owner === null ? { shared: true, kind, content: text } : system !== null ? { system, kind, content: text } : { project: owner, kind, content: text },
+      );
       setContent("");
       toast(t("memory.addedToast"));
       onAdded(m.id);
@@ -383,7 +389,7 @@ function AddMemory({ defaultOwner, projects, onCancel, onAdded }: { defaultOwner
             {sharedOk ? <NativeSelectOption value={SHARED_OPTION}>{t("memory.sharedOption")}</NativeSelectOption> : null}
             {options.map((p) => (
               <NativeSelectOption key={p} value={p}>
-                {p}
+                {ownerName(p, p)}
               </NativeSelectOption>
             ))}
           </NativeSelect>

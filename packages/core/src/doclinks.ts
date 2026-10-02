@@ -50,7 +50,7 @@ export function outsideCode(md: string, fn: (text: string) => string): string {
 }
 
 /** The owner part of a key: "org/" or "project/<p>/". */
-export const keyPrefix = (key: string): string => /^project\/[^/]+\//.exec(key)?.[0] ?? "org/";
+export const keyPrefix = (key: string): string => /^(project|system)\/[^/]+\//.exec(key)?.[0] ?? "org/";
 
 /**
  * The page a link means. A bare slug is a page of the linking page's space, else (from a project) the team's page of
@@ -58,8 +58,9 @@ export const keyPrefix = (key: string): string => /^project\/[^/]+\//.exec(key)?
  */
 export function resolveDocLink(target: string, from: string, exists: (key: string) => boolean): { key: string; exists: boolean } | null {
   const t = target.trim();
-  const full = /^(org|project)\//.test(t);
-  const candidates = full ? [t] : [keyPrefix(from) + t, ...(from.startsWith("project/") ? [`org/${t}`] : [])];
+  const full = /^(org|project|system)\//.test(t);
+  // From a project or a system (roadmap 19c), a slug it has no page of may be the team's.
+  const candidates = full ? [t] : [keyPrefix(from) + t, ...(from.startsWith("org/") ? [] : [`org/${t}`])];
   const valid = candidates.filter((k) => {
     try {
       parseDocKey(k);

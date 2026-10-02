@@ -27,7 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "cn";
-import { DOC_ASSET_MAX_BYTES, docLinkRefs, isContextDoc, keyPrefix, parseDocKey, resolveDocLink, stripHidden, type Doc, type DocSummary, type DocVersion } from "@xdev-hive/core";
+import { DOC_ASSET_MAX_BYTES, docLinkRefs, isContextDoc, keyPrefix, parseDocKey, resolveDocLink, stripHidden, systemOf, systemOwner, type Doc, type DocSummary, type DocVersion, type HiveSystem } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Input } from "@xdev-hive/ui/components/ui/input";
@@ -44,7 +44,7 @@ import { useT, type TFunction } from "#ui/i18n/index.tsx";
 import { DRAFTS_EVENT, insertMd, isUnreachable, parsePaths, readDrafts, writeDrafts, type DocDraft } from "#ui/lib/docdraft.ts";
 import { buildTree, flatten, freeSlug, parentChoices, slugify, trail, type TreeNode } from "#ui/lib/doctree.ts";
 import { fold } from "#ui/lib/text.ts";
-import { docOwner, inScope, projectScope, SHARED, type Scope } from "#ui/lib/scope.ts";
+import { docOwner, docPrefix, inScope, projectScope, SHARED, systemScope, type Scope } from "#ui/lib/scope.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
 /** The project's AGENTS.md and decisions doc are for the whole repo. */
@@ -64,26 +64,35 @@ const RichEditor = lazy(() => import("#ui/components/RichEditor.tsx"));
 
 interface Space {
   id: string;
-  /** null = shared by every project (org/*). */
+  /** null = shared by every project (org/*); sys:<name> = a system's (roadmap 19c). */
   owner: string | null;
   label: string;
   docs: DocSummary[];
 }
 
-/** The spaces a scope shows: Chung, and each project in it (the scope's own project first). */
-function spacesFor(all: DocSummary[], scope: Scope, t: TFunction): Space[] {
+/**
+ * The spaces a scope shows: Chung, each project in it (the scope's own project first), and the systems those projects
+ * are services of (roadmap 19c): a project's scope has its systems after it, a system's has its own space first.
+ */
+function spacesFor(all: DocSummary[], scope: Scope, t: TFunction, systems: HiveSystem[], seen: (owner: string) => boolean): Space[] {
   const shared: Space = { id: "shared", owner: null, label: t("inbox.shared"), docs: all.filter((d) => docOwner(d.key) === null) };
   const of = (p: string): Space => ({ id: `project:${p}`, owner: p, label: p, docs: all.filter((d) => docOwner(d.key) === p) });
+  const sys = (name: string): Space => ({ id: `system:${name}`, owner: systemOwner(name), label: t("docs.systemSpace", { system: name }), docs: all.filter((d) => docOwner(d.key) === systemOwner(name)) });
+  const visible = systems.filter((s) => seen(systemOwner(s.name)));
   if (scope.kind === "shared") return [shared];
-  if (scope.kind === "project") return [of(scope.project), shared];
-  if (scope.kind === "system") return [...[...scope.projects].sort().map(of), shared];
-  const projects = [...new Set(all.map((d) => docOwner(d.key)).filter((p): p is string => p !== null))].sort();
-  return [shared, ...projects.map(of)];
+  if (scope.kind === "project") return [of(scope.project), ...visible.filter((s) => s.projects.includes(scope.project)).map((s) => sys(s.name)), shared];
+  if (scope.kind === "system") return [...(visible.some((s) => s.name === scope.system) ? [sys(scope.system)] : []), ...[...scope.projects].sort().map(of), shared];
+  const owners = [...new Set(all.map((d) => docOwner(d.key)).filter((p): p is string => p !== null))];
+  const projects = owners.filter((p) => systemOf(p) === null).sort();
+  // A system with pages the list has shows even when the system list is older than it (made since the app opened).
+  const names = [...new Set([...visible.map((s) => s.name), ...owners.map(systemOf).filter((n): n is string => n !== null)])].sort();
+  return [shared, ...names.map(sys), ...projects.map(of)];
 }
 
 const spaceIdOf = (key: string) => {
   const owner = docOwner(key);
-  return owner === null ? "shared" : `project:${owner}`;
+  const system = systemOf(owner);
+  return owner === null ? "shared" : system !== null ? `system:${system}` : `project:${owner}`;
 };
 
 const draftOf = (doc: Doc | null, key: string): DocDraft => ({
@@ -133,12 +142,12 @@ interface Creating {
 }
 
 export function DocsPage() {
-  const { client, scope, setScope } = useHive();
+  const { client, scope, setScope, systems } = useHive();
   const t = useT();
   const allow = useCan();
   const toast = useToast();
   const list = useQuery(() => client.call("docs.list", {}), [client]);
-  const spaces = useMemo(() => spacesFor(list.data ?? [], scope, t), [list.data, scope, t]);
+  const spaces = useMemo(() => spacesFor(list.data ?? [], scope, t, systems, (owner) => allow(owner, "view")), [list.data, scope, t, systems, allow]);
   const titles = useMemo(() => new Map((list.data ?? []).map((d) => [d.key, d.title])), [list.data]);
   const [spaceId, setSpaceId] = useState<string | null>(null);
   const space = spaces.find((s) => s.id === spaceId) ?? spaces[0] ?? null;
@@ -176,15 +185,19 @@ export function DocsPage() {
     if (!linked || !list.data) return;
     if (list.data.some((d) => d.key === linked) || drafts[linked]) {
       const owner = docOwner(linked);
-      if (!inScope(scope, owner)) setScope(owner === null ? SHARED : projectScope(owner));
+      const system = systemOf(owner);
+      // A system's page outside this scope opens in the system's scope, where its space is.
+      if (!inScope(scope, owner) && !(system !== null && spacesFor(list.data, scope, t, systems, () => true).some((s) => s.owner === owner))) {
+        setScope(owner === null ? SHARED : system !== null ? systemScope(system, systems.find((s) => s.name === system)?.projects ?? []) : projectScope(owner));
+      }
       setSpaceId(spaceIdOf(linked));
       setSelected(linked);
       setQ("");
     }
     clearLinked();
-  }, [linked, list.data, drafts, scope, setScope, clearLinked]);
+  }, [linked, list.data, drafts, scope, setScope, clearLinked, t, systems]);
 
-  const prefix = space?.owner ? `project/${space.owner}/` : "org/";
+  const prefix = docPrefix(space?.owner ?? null);
   // Pages made here and not saved yet sit in the tree with their draft.
   const unsaved = useMemo(
     () =>
@@ -530,7 +543,8 @@ function DocView({
   const upload = useAction();
   const area = useRef<HTMLTextAreaElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
-  const org = docKey.startsWith("org/");
+  // The team's pages and a system's (roadmap 19c) go to AGENTS.md only when asked; a project's has its own AGENTS.md.
+  const org = docKey.startsWith("org/") || docKey.startsWith("system/");
   const files = useDocAssets(docKey);
   const links = useQuery(async () => (current ? client.call("docs.links", { key: docKey }).catch(() => null) : null), [client, docKey, current?.version]);
   const path = useMemo(() => trail(tree, docKey), [tree, docKey]);
@@ -784,7 +798,7 @@ function DocView({
               {org && (!rich || props) ? (
                 <label className="flex items-center gap-2 text-xs text-fg-secondary">
                   <Checkbox checked={work.includeInAgents} disabled={!canEdit} onCheckedChange={(v) => edit({ includeInAgents: v === true })} />
-                  {t("docs.includeInAgents")}
+                  {t(docKey.startsWith("system/") ? "docs.includeInSystemAgents" : "docs.includeInAgents")}
                 </label>
               ) : null}
               {stale ? <Notice tone="warn">{t("docs.draftStale", { version: current!.version, base: draft!.baseVersion })}</Notice> : null}
