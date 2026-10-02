@@ -29,6 +29,7 @@ import { Badge, Empty, ErrorNote, Page, PageHeader } from "#ui/components/common
 import { ProfileStates } from "#ui/components/ProfileStates.tsx";
 import { formatTime, useAction, useHive, useProjects, useQuery } from "#ui/hooks.ts";
 import { hasKey, rich, useT, type MessageKey } from "#ui/i18n/index.tsx";
+import { hasNewer } from "#ui/lib/setup.ts";
 import { WebhooksTab } from "./Webhooks.tsx";
 import { AgentPolicyCard } from "#ui/pages/admin/AgentPolicy.tsx";
 
@@ -271,11 +272,12 @@ function ItemTable(props: {
                 <Badge tone={STATE_TONE[i.state]}>{t(`setupState.${i.state}`)}</Badge>
                 <span className="min-w-0 text-sm break-words">{i.label}</span>
                 {props.required.has(i.id) ? <Badge tone="accent">{t("setup.required")}</Badge> : null}
+                {hasNewer(i) ? <Badge tone="warn">{t("setup.newVersion", { version: i.latest! })}</Badge> : null}
                 {pending ? (
                   <Badge tone={COMMAND_TONE[pending.status]} className="ml-auto">
                     {t(`commandStatus.${pending.status}`)}
                   </Badge>
-                ) : i.action && i.state !== "installed" ? (
+                ) : i.action && (i.state !== "installed" || hasNewer(i)) ? (
                   <Button
                     size="sm"
                     variant="outline"
@@ -289,7 +291,7 @@ function ItemTable(props: {
                       })
                     }
                   >
-                    {t("admin.requestInstall")}
+                    {i.state === "installed" ? t("admin.requestUpgrade") : t("admin.requestInstall")}
                   </Button>
                 ) : null}
               </div>

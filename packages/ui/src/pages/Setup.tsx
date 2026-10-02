@@ -10,6 +10,7 @@ import { Empty, ErrorNote, Notice } from "#ui/components/common.tsx";
 import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { formatTime, useAction, useHive, useQuery } from "#ui/hooks.ts";
 import { rich, useT } from "#ui/i18n/index.tsx";
+import { hasNewer } from "#ui/lib/setup.ts";
 
 const TONE: Record<SetupState, ChipKind> = { installed: "success", missing: "warning", outdated: "info", manual: "danger" };
 
@@ -280,6 +281,7 @@ function SetupRow({ item, required, onChanged }: { item: SetupItem; required: bo
           </span>
         </span>
         {required ? <Chip kind="info">{t("setup.required")}</Chip> : null}
+        {hasNewer(item) ? <Chip kind="warning">{t("setup.newVersion", { version: item.latest! })}</Chip> : null}
         <span className="inline-flex h-[22px] items-center rounded-full px-2">
           <Chip kind={TONE[item.state]}>{t(`setupState.${item.state}`)}</Chip>
         </span>

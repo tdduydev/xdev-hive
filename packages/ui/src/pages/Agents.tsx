@@ -14,6 +14,7 @@ import {
   type NewAccount,
   type ProfileCheck,
   type RunnerSettings,
+  type SetupItem,
 } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
@@ -29,6 +30,7 @@ import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { useToast } from "#ui/shell/toast.tsx";
 import { errorMessage, formatTime, formatUsd, useAction, useHive, useQuery } from "#ui/hooks.ts";
 import { activeIntl, rich, useT } from "#ui/i18n/index.tsx";
+import { hasNewer } from "#ui/lib/setup.ts";
 
 /** Env var that points each CLI at a separate login, so two subscriptions of one vendor can rotate. */
 const ACCOUNT_ENV_HINT: Partial<Record<AgentKind, string>> = {
@@ -46,6 +48,10 @@ export function AgentsPage() {
   const [tick, setTick] = useState(0);
   const profiles = useQuery(() => desktop.profiles(), [desktop, tick]);
   const settings = useQuery(() => desktop.settings(), [desktop]);
+  // Each CLI's version and the newest out (roadmap 33), for the profiles that run the CLI on PATH.
+  const setup = useQuery(() => desktop.setupStatus(), [desktop, tick]);
+  const cliOf = (p: AgentProfile): SetupItem | null =>
+    p.kind !== "custom" && p.bin === AGENT_TEMPLATES[p.kind].bin ? (setup.data?.machine.find((i) => i.id === `cli:${p.kind}`) ?? null) : null;
   const requests = useQuery(() => desktop.hubRequests(), [desktop]);
   const templates = requests.data?.policy?.profileTemplates ?? [];
   const [editing, setEditing] = useState<{ profile: AgentProfile; previousId?: string } | null>(null);
@@ -174,6 +180,7 @@ export function AgentsPage() {
             profile={p}
             waiting={p.id in waiting}
             projects={settings.data?.projects.map((x) => x.name) ?? []}
+            cli={cliOf(p)}
             onEdit={() => setEditing({ profile: p, previousId: p.id })}
             onChanged={refresh}
             onLoginOpened={() => waitFor(p.id)}
@@ -243,6 +250,7 @@ function ProfileCard({
   profile: p,
   waiting,
   projects,
+  cli,
   onEdit,
   onChanged,
   onLoginOpened,
@@ -251,6 +259,8 @@ function ProfileCard({
   waiting: boolean;
   /** This machine's projects, where its CLI can be opened. */
   projects: string[];
+  /** The CLI's setup check, when the profile runs the one on PATH: its version and an upgrade (roadmap 33). */
+  cli: SetupItem | null;
   onEdit: () => void;
   onChanged: () => void;
   onLoginOpened: () => void;
@@ -343,6 +353,23 @@ function ProfileCard({
             </span>
           ) : null}
         </div>
+        {cli?.version ? (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" data-cli-version={cli.id}>
+            <span className="font-mono">{t("agents.cliVersion", { cli: cli.label, version: cli.version })}</span>
+            {hasNewer(cli) ? <Badge tone="warn">{t("setup.newVersion", { version: cli.latest! })}</Badge> : null}
+            {hasNewer(cli) && cli.action ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={action.busy}
+                data-cli-upgrade={cli.id}
+                onClick={() => void action.run(async () => (await desktop.installSetup(cli.id), onChanged()))}
+              >
+                {action.busy ? t("setup.installing") : cli.action}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
         <div className="flex flex-wrap gap-2">
           {p.roles.map((r) => (
             <Badge key={r}>{t(`agentRole.${r}`)}</Badge>

@@ -1285,6 +1285,8 @@ if (!app.requestSingleInstanceLock()) {
       env: agentEnv,
       projects: () => config.projects,
       shim: { electronPath: process.execPath, entry: mcpEntry() },
+      cliBusy: (kind) => runner.runningOfKind(kind),
+      holdCli: (kind, held) => runner.holdKind(kind, held),
     });
     runner.start();
     // Sign-ins change outside the app (a terminal login, an expired session): check at start, then every 10 minutes.

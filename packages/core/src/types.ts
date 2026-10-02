@@ -289,6 +289,9 @@ export interface SetupItem {
   detail: string;
   /** Install button label, when the app can fix it itself. */
   action: string | null;
+  /** An agent CLI's version, and the newest on its registry when it could be looked up (roadmap 33). */
+  version?: string | null;
+  latest?: string | null;
 }
 
 export interface SetupReport {
