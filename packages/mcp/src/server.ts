@@ -343,10 +343,20 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       "propose_task",
       {
         title: "Propose a task",
-        description: "Propose a new task on the chat's project board (id like the project's others, e.g. T-12; dependsOn: tasks to be done first)." + confirm,
-        inputSchema: { id: z.string(), title: z.string(), dependsOn: z.array(z.string()).max(20).optional(), reason },
+        description:
+          "Propose a new task on the chat's project board (id like the project's others, e.g. T-12; dependsOn: tasks to be done first). " +
+          "project: another service of a system the chat's project is in, for a feature split across services; dependsOn may then name tasks of the other services." +
+          confirm,
+        inputSchema: {
+          id: z.string(),
+          title: z.string(),
+          project: z.string().optional().describe("Another service of the chat project's system; left out: the chat's project"),
+          dependsOn: z.array(z.string()).max(20).optional(),
+          reason,
+        },
       },
-      async ({ id, title, dependsOn, reason: why }) => run("chat.propose", { action: { kind: "task.create", id, title, dependsOn: dependsOn ?? [] }, reason: why }),
+      async ({ id, title, project: p, dependsOn, reason: why }) =>
+        run("chat.propose", { action: { kind: "task.create", id, title, ...(p ? { project: p } : {}), dependsOn: dependsOn ?? [] }, reason: why }),
     );
     server.registerTool(
       "propose_task_status",

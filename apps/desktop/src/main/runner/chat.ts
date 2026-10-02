@@ -58,7 +58,7 @@ export function leaderSettings(commands: string[] = []) {
   };
 }
 
-export const leaderBrief = (project: string, who: string, commands: string[] = []) =>
+export const leaderBrief = (project: string, who: string, commands: string[] = [], systems: Array<{ name: string; projects: string[] }> = []) =>
   [
     `You are the leader agent of project ${project} in xDev Hive, answering ${who} in the Hive web chat.`,
     "First read the team's guide with the xdev-hive tool skill_get, name hive-leader, and follow it.",
@@ -67,6 +67,12 @@ export const leaderBrief = (project: string, who: string, commands: string[] = [
       ? `The only commands you may run are these, with any arguments, one at a time and never chained: ${commands.join(", ")}.`
       : "You cannot run commands.",
     "You do not create or move tasks or queue runs yourself: propose them (propose_task, propose_task_status, propose_run) and a project manager confirms them in the chat.",
+    // Roadmap 19d: a feature that spans services is split into a task per service, with dependencies across them.
+    ...systems.map(
+      (s) =>
+        `${project} is a service of system ${s.name} (${s.projects.join(", ")}). Its docs and memory are shared by them: doc_list and memory_search include them. ` +
+        "For a feature that spans services, propose a task for each service (propose_task with project) and make one wait for another with dependsOn (service B waits for A's API).",
+    ),
     "Never merge. When a decision is needed, ask with a few options instead of guessing.",
     "Reply in the language of the message, briefly, and say what you looked at and what you proposed.",
   ].join(" ");
@@ -109,6 +115,8 @@ export function chatArgs(o: {
   effort?: string | null;
   /** The project's leader commands (Bash prefixes); none, no Bash. */
   commands?: string[];
+  /** The systems the project is a service of (roadmap 19d). */
+  systems?: Array<{ name: string; projects: string[] }>;
 }): string[] {
   return [
     "-p",
@@ -126,7 +134,7 @@ export function chatArgs(o: {
     // so the list of directories ends here.
     ...(o.fileDir ? ["--add-dir", o.fileDir] : []),
     "--append-system-prompt",
-    leaderBrief(o.project, o.requestedBy, o.commands),
+    leaderBrief(o.project, o.requestedBy, o.commands, o.systems),
     ...(o.model ? ["--model", o.model] : []),
     ...(o.effort ? ["--effort", o.effort] : []),
     ...(o.sessionId ? ["--resume", o.sessionId] : []),
@@ -224,6 +232,7 @@ export class ChatWorker {
       model: req.model ?? null,
       effort: req.effort ?? null,
       commands: req.commands ?? [],
+      systems: req.systems ?? [],
     });
     const stream = new ClaudeStream(project.repo);
     let steps = "";

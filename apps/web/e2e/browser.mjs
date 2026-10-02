@@ -604,6 +604,15 @@ async function main() {
     expect(denied.status === 403, `Hoa saving the contract: HTTP ${denied.status}`);
   });
 
+  // Roadmap 19d: a task of one service waits for another service's (demo waits for payment's), named with its project.
+  await step("cross-service-task", async () => {
+    const task = await rpc("tasks.create", { id: "DEMO-2", project: "demo", title: "Trang đơn hàng", dependsOn: ["PAY-1"] });
+    expect(task.depProjects?.["PAY-1"] === "payment", `DEMO-2: ${JSON.stringify(task)}`);
+    const tab = (current = tabs.lan);
+    await tab.go("tasks?task=DEMO-2");
+    await tab.waitFor("DEMO-2 waiting for payment/PAY-1", () => document.body.innerText.includes("Trang đơn hàng") && document.body.innerText.includes("payment/PAY-1"));
+  });
+
   const errors = Object.values(tabs).flatMap((t) => t.errors.map((e) => `${t.name}: ${e}`));
   if (errors.length) console.log(`page errors:\n  ${errors.join("\n  ")}`);
   const failed = results.filter((r) => !r.ok);

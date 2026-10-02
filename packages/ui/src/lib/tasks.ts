@@ -29,3 +29,12 @@ export function nextTaskId(tasks: Pick<Task, "id">[]): string {
   const [prefix, { max, width }] = best;
   return `${prefix}${String(max + 1).padStart(width, "0")}`;
 }
+
+/** A task it depends on as the board names it: another service's with its project in front (roadmap 19d). */
+export const depLabel = (task: Pick<Task, "depProjects">, id: string): string => (task.depProjects?.[id] ? `${task.depProjects[id]}/${id}` : id);
+
+/** What a task still waits for, named, plus how many in projects the reader cannot see ("+2"). */
+export function waitingLabels(task: Pick<Task, "waitingOn" | "depProjects" | "waitingHidden">): string[] {
+  const named = (task.waitingOn ?? []).map((id) => depLabel(task, id));
+  return task.waitingHidden ? [...named, `+${task.waitingHidden}`] : named;
+}

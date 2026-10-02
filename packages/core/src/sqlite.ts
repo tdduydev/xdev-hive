@@ -683,7 +683,7 @@ const toMemory = (r: Row, staleBefore: string | null): Memory => ({
   supersededBy: r.superseded_by == null ? null : num(r.superseded_by),
   conflictsWith: JSON.parse(str(r.conflicts ?? "[]")) as number[],
 });
-const toTask = (r: Row, deps: Pick<Task, "dependsOn" | "waitingOn"> = { dependsOn: [], waitingOn: [] }): Task => ({
+const toTask = (r: Row, deps: Pick<Task, "dependsOn" | "waitingOn" | "depProjects"> = { dependsOn: [], waitingOn: [] }): Task => ({
   id: str(r.id),
   project: str(r.project),
   title: str(r.title),
@@ -694,6 +694,25 @@ const toTask = (r: Row, deps: Pick<Task, "dependsOn" | "waitingOn"> = { dependsO
   updatedAt: str(r.updated_at),
   ...deps,
 });
+/** What a task waits for, in words: `api/API-1, WEB-0, +1` (another service's with its project, hidden ones counted). */
+const waitingLabelsFor = (t: Task): string =>
+  [...t.waitingOn.map((d) => (t.depProjects?.[d] ? `${t.depProjects[d]}/${d}` : d)), ...(t.waitingHidden ? [`+${t.waitingHidden}`] : [])].join(", ");
+
+/** A task as a reader sees it: what it waits for in a project they cannot see is a count, not ids (roadmap 19d). */
+function hideDeps(t: Task, visible: (project: string) => boolean): Task {
+  const hidden = Object.entries(t.depProjects ?? {}).filter(([, p]) => !visible(p)).map(([id]) => id);
+  if (!hidden.length) return t;
+  const keep = (id: string) => !hidden.includes(id);
+  const depProjects = Object.fromEntries(Object.entries(t.depProjects!).filter(([id]) => keep(id)));
+  return {
+    ...t,
+    dependsOn: t.dependsOn.filter(keep),
+    waitingOn: t.waitingOn.filter(keep),
+    ...(Object.keys(depProjects).length ? { depProjects } : { depProjects: undefined }),
+    waitingHidden: t.waitingOn.length - t.waitingOn.filter(keep).length,
+  };
+}
+
 const toCooldown = (r: Row): QuotaCooldown => ({
   account: str(r.account),
   until: str(r.until),
@@ -1191,7 +1210,7 @@ export class SqliteHive implements HiveBackend {
         return (out as Memory[]).filter((m) => visible(m.project)) as MethodOutput[M];
       case "tasks.list":
       case "tasks.next":
-        return (out as Task[]).filter((t) => visible(t.project)) as MethodOutput[M];
+        return (out as Task[]).filter((t) => visible(t.project)).map((t) => hideDeps(t, visible)) as MethodOutput[M];
       // Machines are the team's, but what they run and which repos they have shows the project: hide hidden projects.
       case "machines.list":
         return (out as Machine[]).map((m) => ({ ...m, runs: m.runs.filter((r) => visible(r.project)), projects: m.projects.filter((p) => visible(p)) })) as MethodOutput[M];
@@ -1591,29 +1610,42 @@ export class SqliteHive implements HiveBackend {
     if (!rows.length) return [];
     const deps = this.db
       .prepare(
-        `SELECT d.task_id, d.depends_on, t.status FROM task_deps d LEFT JOIN tasks t ON t.id = d.depends_on
+        `SELECT d.task_id, d.depends_on, t.status, t.project FROM task_deps d LEFT JOIN tasks t ON t.id = d.depends_on
          WHERE d.task_id IN (SELECT value FROM json_each(?)) ORDER BY d.depends_on`,
       )
       .all(JSON.stringify(rows.map((r) => str(r.id)))) as Row[];
-    const by = new Map<string, Pick<Task, "dependsOn" | "waitingOn">>();
+    const projectOf = new Map(rows.map((r) => [str(r.id), str(r.project)]));
+    const by = new Map<string, Pick<Task, "dependsOn" | "waitingOn" | "depProjects">>();
     for (const d of deps) {
       const entry = by.get(str(d.task_id)) ?? { dependsOn: [], waitingOn: [] };
       entry.dependsOn.push(str(d.depends_on));
       if (strOrNull(d.status) !== "done") entry.waitingOn.push(str(d.depends_on));
+      // Another service's task (roadmap 19d): the page says whose.
+      const other = strOrNull(d.project);
+      if (other !== null && other !== projectOf.get(str(d.task_id))) entry.depProjects = { ...entry.depProjects, [str(d.depends_on)]: other };
       by.set(str(d.task_id), entry);
     }
     return rows.map((r) => toTask(r, by.get(str(r.id))));
   }
 
-  /** Dependencies must be other tasks of the same project, and must not lead back to the task. */
-  #checkDeps(id: string, project: string, dependsOn: string[]): string[] {
+  /** Whether two projects are services of one system (roadmap 19c/19d). */
+  #sameSystem(a: string, b: string): boolean {
+    return a === b || this.#systemList().some((s) => s.projects.includes(a) && s.projects.includes(b));
+  }
+
+  /**
+   * Dependencies must be other tasks of the same project, or of another service of a system it is in (roadmap 19d:
+   * service B waits for A's API), that the actor sees, and must not lead back to the task.
+   */
+  #checkDeps(id: string, project: string, dependsOn: string[], actor: Actor): string[] {
     const deps = [...new Set(dependsOn)];
     for (const dep of deps) {
       if (dep === id) throw new HiveError("bad_request", `Task ${id} cannot depend on itself.`, { key: "errors.taskDepSelf", vars: { id } });
       const task = this.#getTask(dep);
-      if (!task) throw new HiveError("not_found", `Task ${dep} not found.`, { key: "errors.taskNotFound", vars: { id: dep } });
-      if (task.project !== project) {
-        throw new HiveError("bad_request", `Task ${dep} belongs to project ${task.project}, not ${project}.`, {
+      // One of a project the actor does not see is not there, as everywhere else.
+      if (!task || !sees(actor, task.project)) throw new HiveError("not_found", `Task ${dep} not found.`, { key: "errors.taskNotFound", vars: { id: dep } });
+      if (!this.#sameSystem(task.project, project)) {
+        throw new HiveError("bad_request", `Task ${dep} belongs to project ${task.project}, which is neither ${project} nor a service of a system with it.`, {
           key: "errors.taskDepProject",
           vars: { id: dep, project: task.project, other: project },
         });
@@ -1887,6 +1919,8 @@ export class SqliteHive implements HiveBackend {
         ...(r.sender == null ? {} : { sender: JSON.parse(str(r.sender)) as ChatSender }),
         files: (this.db.prepare(`SELECT ${FILE_FIELDS} FROM chat_files WHERE message_id = ? ORDER BY id`).all(num(r.message_id ?? 0)) as Row[]).map(toChatFile),
         commands: this.#chatDefaults(str(r.project)).commands,
+        // The systems the project is a service of (roadmap 19d): the leader plans across them.
+        systems: this.#systemList().filter((s) => s.projects.includes(str(r.project))),
       }),
     );
   }
@@ -2625,10 +2659,10 @@ export class SqliteHive implements HiveBackend {
             .all(project ?? null, status ?? null, listParam(projects)) as Row[],
         ),
 
-      "tasks.create": (input) =>
+      "tasks.create": (input, actor) =>
         this.#tx(() => {
           if (this.#getTask(input.id)) throw new HiveError("conflict", `Task ${input.id} already exists.`, { key: "errors.taskExists", vars: { id: input.id } });
-          const deps = this.#checkDeps(input.id, input.project, input.dependsOn);
+          const deps = this.#checkDeps(input.id, input.project, input.dependsOn, actor);
           db.prepare("INSERT INTO tasks(id, project, title, updated_at) VALUES (?, ?, ?, ?)").run(
             input.id,
             input.project,
@@ -2639,11 +2673,15 @@ export class SqliteHive implements HiveBackend {
           return this.#getTask(input.id)!;
         }),
 
-      "tasks.setDeps": ({ id, dependsOn }) =>
+      "tasks.setDeps": ({ id, dependsOn }, actor) =>
         this.#tx(() => {
           const task = this.#getTask(id);
           if (!task) throw new HiveError("not_found", `Task ${id} not found.`, { key: "errors.taskNotFound", vars: { id } });
-          this.#setDeps(id, this.#checkDeps(id, task.project, dependsOn));
+          // What it waits for in projects this person cannot see stays: they could neither see it nor mean to drop it.
+          const hidden = (db.prepare("SELECT d.depends_on, t.project FROM task_deps d JOIN tasks t ON t.id = d.depends_on WHERE d.task_id = ?").all(id) as Row[])
+            .filter((r) => !sees(actor, str(r.project)))
+            .map((r) => str(r.depends_on));
+          this.#setDeps(id, [...this.#checkDeps(id, task.project, dependsOn, actor), ...hidden]);
           db.prepare("UPDATE tasks SET updated_at = ? WHERE id = ?").run(this.#now(), id);
           return this.#getTask(id)!;
         }),
@@ -2669,9 +2707,11 @@ export class SqliteHive implements HiveBackend {
         if (!task) throw new HiveError("not_found", `Task ${id} not found.`, { key: "errors.taskNotFound", vars: { id } });
         // Whoever holds it already may renew; nobody starts it while what it depends on is open.
         if (task.waitingOn.length && task.owner !== actor.name) {
-          throw new HiveError("conflict", `Task ${id} waits on ${task.waitingOn.join(", ")}, which are not done yet.`, {
+          // Named as the actor may see them: another service's task it cannot see is only counted (roadmap 19d).
+          const shown = waitingLabelsFor(hideDeps(task, (p) => sees(actor, p)));
+          throw new HiveError("conflict", `Task ${id} waits on ${shown}, which are not done yet.`, {
             key: "errors.taskWaiting",
-            vars: { id, tasks: task.waitingOn.join(", ") },
+            vars: { id, tasks: shown },
           });
         }
         const now = this.#now();
@@ -3240,16 +3280,30 @@ export class SqliteHive implements HiveBackend {
             assertNoSecret(text, what);
           }
           const task = (id: string) => db.prepare("SELECT project FROM tasks WHERE id = ?").get(id) as Row | undefined;
-          // A task of the project, or one this reply also proposes to create (confirming all makes it first).
-          const planned = (id: string) =>
-            db.prepare("SELECT 1 FROM chat_actions WHERE reply_id = ? AND kind = 'task.create' AND json_extract(input, '$.id') = ?").get(replyId, id) !== undefined;
-          const known = (id: string) => str(task(id)?.project ?? "") === project || planned(id);
+          const plannedRow = (id: string) =>
+            db.prepare("SELECT json_extract(input, '$.project') AS project FROM chat_actions WHERE reply_id = ? AND kind = 'task.create' AND json_extract(input, '$.id') = ?").get(replyId, id) as
+              | Row
+              | undefined;
+          const planned = (id: string) => plannedRow(id) !== undefined;
+          // The project a task is in, or will be in once this reply's proposal to create it is confirmed.
+          const projectOf = (id: string): string | null => strOrNull(task(id)?.project) ?? strOrNull(plannedRow(id)?.project);
+          // A task of the project, or of another service of a system it is in that the sender sees (roadmap 19d), or one
+          // this reply also proposes to create (confirming all makes it first).
+          const known = (id: string) => {
+            const p = projectOf(id);
+            return p !== null && (p === project || (this.#sameSystem(p, project) && sees(actor, p)));
+          };
           const missing = (id: string) =>
             new HiveError("not_found", `Task ${id} not found in ${project}.`, { key: "errors.chatTaskNotFound", vars: { id, project } });
           let input: Record<string, unknown>;
           if (action.kind === "task.create") {
             if (task(action.id) || planned(action.id)) throw new HiveError("conflict", `Task ${action.id} already exists.`, { key: "errors.taskExists", vars: { id: action.id } });
-            input = { id: action.id, project, title: action.title, dependsOn: action.dependsOn };
+            // A leader of one service plans a feature across its system: a task for another service of it (roadmap 19d).
+            const target = action.project ?? project;
+            if (target !== project && (!this.#sameSystem(target, project) || !sees(actor, target))) {
+              throw new HiveError("bad_request", `${target} is not a service of a system with ${project}.`, { key: "errors.chatProjectOutside", vars: { project: target, home: project } });
+            }
+            input = { id: action.id, project: target, title: action.title, dependsOn: action.dependsOn };
           } else if (action.kind === "task.update") {
             if (!known(action.id)) throw missing(action.id);
             input = { id: action.id, status: action.status, ...(action.note === undefined ? {} : { note: action.note }) };
@@ -3261,7 +3315,7 @@ export class SqliteHive implements HiveBackend {
             if (!m) throw new HiveError("not_found", `No machine ${wanted}.`, { key: "errors.machineNotFound", vars: { machine: wanted } });
             input = {
               machineId: str(m.id),
-              project,
+              project: projectOf(action.taskId)!,
               taskId: action.taskId,
               role: action.role,
               profileId: action.profileId,
