@@ -21,6 +21,13 @@ if (first === "-p" && second === "/usage") {
   process.exit(0);
 }
 
+// `<cli> --version` (Setup, the Agents page's check) comes with the app's cwd and no FAKE_MODE: falling through to
+// "ok" wrote work-undefined.txt there, i.e. into apps/desktop when the smoke's fake CLIs were first on PATH.
+if (first === "--version") {
+  console.log("2.1.0 (fake agent)");
+  process.exit(0);
+}
+
 const prompt = process.argv[2] ?? "";
 if (process.env.FAKE_RECORD) {
   appendFileSync(
