@@ -77,6 +77,11 @@ import type {
   ReportedProfile,
   RunNotice,
   RunRecord,
+  RunGroup,
+  RunGroupItem,
+  RunGroupItemStatus,
+  RunGroupKind,
+  RunGroupRun,
   RunRequest,
   RunRequestError,
   RunRequestStatus,
@@ -369,6 +374,22 @@ const MIGRATIONS: string[] = [
   CREATE INDEX tool_projects_project ON tool_projects(project);
   ${toolSeedSql()}
   `,
+  // Run groups (roadmap 31): an item is held here and becomes a run request only when released, so run_requests keep
+  // their meaning and a held item does not expire. machine_id null: any free machine, picked when released.
+  `
+  CREATE TABLE run_groups(
+    id INTEGER PRIMARY KEY, project TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, max_parallel INTEGER,
+    review_after INTEGER NOT NULL DEFAULT 0, instructions TEXT NOT NULL DEFAULT '', parent_task TEXT, winner_task TEXT,
+    created_by TEXT NOT NULL, on_behalf TEXT, created_at TEXT NOT NULL, closed_at TEXT);
+  CREATE INDEX run_groups_open ON run_groups(closed_at);
+  CREATE INDEX run_groups_project ON run_groups(project, id);
+  CREATE TABLE run_group_items(
+    id INTEGER PRIMARY KEY, group_id INTEGER NOT NULL, position INTEGER NOT NULL, task_id TEXT NOT NULL, role TEXT NOT NULL,
+    machine_id TEXT, profile_id TEXT, instructions TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, request_id INTEGER,
+    error TEXT, updated_at TEXT NOT NULL);
+  CREATE INDEX run_group_items_group ON run_group_items(group_id, position);
+  CREATE INDEX run_group_items_task ON run_group_items(task_id, status);
+  `,
 ];
 
 /**
@@ -598,6 +619,11 @@ const COMMAND_HISTORY = 20;
 const SYNC_TTL_MINUTES = 15;
 /** A run request no machine took within this time expires: machines ask every 30 s, so that one is gone. */
 const RUN_REQUEST_TTL_MINUTES = 15;
+/** A run its machine took but has not pushed yet keeps its group's place this long (roadmap 31a). */
+const GROUP_UNREPORTED_MINUTES = 10;
+/** What fails a group's item when it is released; anything else (offline, cap, pause, a run going) waits for later. */
+const GROUP_FAILS = new Set(["errors.machineNotFound", "errors.machineNoRepo", "errors.taskDone", "errors.taskNotInProject", "errors.profileNotOnMachine", "errors.secret"]);
+const groupFails = (key: string | undefined) => !!key && (GROUP_FAILS.has(key) || key.startsWith("errors.hidden."));
 /** A merge no machine reported on within this time failed: machines hear one within 30 s, and a merge takes seconds. */
 const MERGE_TTL_MINUTES = 15;
 /** Answered run requests are kept this long. */
@@ -700,6 +726,16 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
     target: `${o.project}/${o.taskId}`,
     detail: `run ${o.role} trên ${o.machine} (#${o.id})`,
     text: { key: "audit.runDispatch", vars: { role: o.role, machine: o.machine, id: o.id } },
+  }),
+  "runs.dispatchMany": (_i, o: RunGroup) => ({
+    target: o.project,
+    detail: `đợt chạy #${o.id}: ${o.items.length} task${o.maxParallel ? `, tối đa ${o.maxParallel} cùng lúc` : ""}`,
+    text: { key: "audit.runGroup", vars: { id: o.id, count: o.items.length } },
+  }),
+  "runs.cancelGroup": (_i, o: RunGroup) => ({
+    target: o.project,
+    detail: `huỷ đợt chạy #${o.id}`,
+    text: { key: "audit.runGroupCancel", vars: { id: o.id } },
   }),
   "runs.prompt": (_i, o: { task: Task; request: RunRequest }) => ({
     target: `${o.request.project}/${o.task.id}`,
@@ -1251,6 +1287,16 @@ export class SqliteHive implements HiveBackend {
         return;
       case "runs.dispatch":
         return this.#need(actor, i.project, "runDispatch", `Project ${i.project}`);
+      case "runs.dispatchMany":
+        return this.#need(actor, i.project, "runDispatch", `Project ${i.project}`);
+      case "runs.groups":
+        if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
+        return;
+      case "runs.cancelGroup": {
+        const row = this.db.prepare("SELECT project FROM run_groups WHERE id = ?").get(i.id) as Row | undefined;
+        if (row) this.#need(actor, str(row.project), "runDispatch", `Run group #${i.id}`);
+        return;
+      }
       // It makes a task as well as the request.
       case "runs.prompt":
         this.#need(actor, i.project, "taskManage", `Project ${i.project}`);
@@ -1448,6 +1494,8 @@ export class SqliteHive implements HiveBackend {
         return (out as SpecFeature[]).filter((f) => visible(f.project)) as MethodOutput[M];
       case "runs.requests":
         return (out as RunRequest[]).filter((r) => visible(r.project)) as MethodOutput[M];
+      case "runs.groups":
+        return (out as RunGroup[]).filter((g) => visible(g.project)) as MethodOutput[M];
       case "chat.threads":
         return (out as ChatThread[]).filter((t) => visible(t.project)) as MethodOutput[M];
       case "proposals.list":
@@ -2152,19 +2200,199 @@ export class SqliteHive implements HiveBackend {
         }
       }
     }
-    // The run would count for whoever asks (run_requests.requested_by, which the machine reports with its cost).
-    const full = this.#fullBudgets(project, actor.name)[0];
-    if (full) {
-      const vars = budgetVars(full);
-      throw new HiveError("conflict", `Spending cap ${full.id} is reached: ${vars.used} of ${vars.limit} since ${vars.from}.`, {
-        key: "errors.budgetExceeded",
-        vars,
-      });
-    }
+    this.#assertBudget(project, actor);
     // The machine hands them to an agent as its prompt.
     assertNoHidden(instructions, "Instructions");
     assertNoSecret(instructions, "Instructions");
     return m;
+  }
+
+  /** The run would count for whoever asks (run_requests.requested_by, which the machine reports with its cost). */
+  #assertBudget(project: string, actor: Actor): void {
+    const full = this.#fullBudgets(project, actor.name)[0];
+    if (!full) return;
+    const vars = budgetVars(full);
+    throw new HiveError("conflict", `Spending cap ${full.id} is reached: ${vars.used} of ${vars.limit} since ${vars.from}.`, {
+      key: "errors.budgetExceeded",
+      vars,
+    });
+  }
+
+  /** A task waiting or running in a group that is not over: the group starts it, nobody else. */
+  #assertNotInGroup(taskId: string): void {
+    const row = this.db
+      .prepare(
+        `SELECT g.id FROM run_group_items i JOIN run_groups g ON g.id = i.group_id
+         WHERE i.task_id = ? AND g.closed_at IS NULL AND i.status IN ('held', 'sent') LIMIT 1`,
+      )
+      .get(taskId) as Row | undefined;
+    if (row) throw new HiveError("conflict", `Task ${taskId} is in run group #${num(row.id)}.`, { key: "errors.taskInGroup", vars: { id: taskId, group: num(row.id) } });
+  }
+
+  /** What a sent item's run did, as its machine pushed it; null before the machine took it or pushed it. */
+  #groupRun(req: RunRequest | null): RunGroupRun | null {
+    if (!req?.runId) return null;
+    const r = this.db
+      .prepare("SELECT machine_id, run_id, machine, status, profile_id, started_at, finished_at, cost_usd FROM run_records WHERE machine_id = ? AND run_id = ?")
+      .get(req.machineId, req.runId) as Row | undefined;
+    if (!r) return null;
+    return {
+      machineId: str(r.machine_id),
+      runId: str(r.run_id),
+      machine: str(r.machine),
+      status: str(r.status),
+      profileId: strOrNull(r.profile_id),
+      startedAt: strOrNull(r.started_at),
+      finishedAt: strOrNull(r.finished_at),
+      costUsd: r.cost_usd == null ? null : num(r.cost_usd),
+    };
+  }
+
+  /**
+   * A sent item still takes a place of its group: its request waits for the machine, or its run has not ended. A run
+   * the machine took but has not pushed yet counts for 10 minutes, then the place is given back.
+   */
+  #itemActive(status: RunGroupItemStatus, req: RunRequest | null, run: RunGroupRun | null): boolean {
+    if (status !== "sent" || !req) return false;
+    if (req.status === "pending") return true;
+    if (req.status !== "accepted") return false;
+    if (run) return run.status === "queued" || run.status === "running";
+    return req.updatedAt > this.#now(-GROUP_UNREPORTED_MINUTES);
+  }
+
+  #group(id: number): RunGroup {
+    const g = this.db.prepare("SELECT * FROM run_groups WHERE id = ?").get(id) as Row | undefined;
+    if (!g) throw new HiveError("not_found", `Run group #${id} not found.`, { key: "errors.runGroupNotFound", vars: { id } });
+    const rows = this.db.prepare("SELECT * FROM run_group_items WHERE group_id = ? ORDER BY position").all(id) as Row[];
+    const items = rows.map((r): RunGroupItem => {
+      const task = this.#getTask(str(r.task_id));
+      const req = r.request_id == null ? null : ((this.db.prepare("SELECT * FROM run_requests WHERE id = ?").get(num(r.request_id)) as Row | undefined) ?? null);
+      const request = req ? toRunRequest(req) : null;
+      const run = this.#groupRun(request);
+      const status = str(r.status) as RunGroupItemStatus;
+      return {
+        id: num(r.id),
+        position: num(r.position),
+        taskId: str(r.task_id),
+        taskTitle: task?.title ?? null,
+        taskStatus: task?.status ?? null,
+        role: str(r.role) as AgentRole,
+        machineId: strOrNull(r.machine_id),
+        profileId: strOrNull(r.profile_id),
+        instructions: str(r.instructions),
+        status,
+        request,
+        run,
+        active: this.#itemActive(status, request, run),
+        error: r.error ? (JSON.parse(str(r.error)) as RunRequestError) : null,
+        updatedAt: str(r.updated_at),
+      };
+    });
+    return {
+      id,
+      project: str(g.project),
+      kind: str(g.kind) as RunGroupKind,
+      title: str(g.title),
+      maxParallel: g.max_parallel == null ? null : num(g.max_parallel),
+      reviewAfter: num(g.review_after) === 1,
+      instructions: str(g.instructions),
+      parentTask: strOrNull(g.parent_task),
+      winnerTask: strOrNull(g.winner_task),
+      createdBy: str(g.created_by),
+      createdAt: str(g.created_at),
+      closedAt: strOrNull(g.closed_at),
+      items,
+    };
+  }
+
+  /**
+   * The machine with the most free places for a project's run now, for an item of a group that left the machine to
+   * the hub (roadmap 31a). A place: one of maxConcurrent (1 when the app does not say) of a profile that could start a
+   * run now (on, installed, not known signed out, under its stop threshold, not resting, the pinned one if any), less
+   * the runs it has on those profiles and the requests sent to the machine it has not answered.
+   */
+  #freeMachine(project: string, profileId: string | null): string | null {
+    const now = this.#now();
+    const waiting = new Map(
+      (this.db.prepare("SELECT machine_id, COUNT(*) AS n FROM run_requests WHERE status = 'pending' GROUP BY machine_id").all() as Row[]).map((r) => [
+        str(r.machine_id),
+        num(r.n),
+      ]),
+    );
+    let best: { id: string; machine: string; free: number } | null = null;
+    for (const m of (this.db.prepare("SELECT * FROM machines").all() as Row[]).map((r) => this.#toMachine(r))) {
+      if (!m.online || !m.acceptsRuns || m.duplicate || !m.projects.includes(project)) continue;
+      const usable = m.profiles.filter(
+        (p) =>
+          p.enabled &&
+          p.installed &&
+          p.loggedIn !== false &&
+          !p.overLimit &&
+          !(p.cooldownUntil && p.cooldownUntil > now) &&
+          (profileId === null || p.id === profileId),
+      );
+      if (!usable.length) continue;
+      const ids = new Set(usable.map((p) => p.id));
+      const places = usable.reduce((n, p) => n + (p.maxConcurrent ?? 1), 0);
+      // A queued run with no profile yet may take any of them.
+      const busy = m.runs.filter((r) => r.profileId === null || ids.has(r.profileId)).length;
+      const free = places - busy - (waiting.get(m.id) ?? 0);
+      if (free > 0 && (!best || free > best.free || (free === best.free && m.machine < best.machine))) best = { id: m.id, machine: m.machine, free };
+    }
+    return best?.id ?? null;
+  }
+
+  /**
+   * Sends what open groups may start now (roadmap 31a), in their order: an item waits while its group has maxParallel
+   * items going, while its task waits for others, or while no machine is free for it. A check that may pass later
+   * (machine offline, cap reached, project paused) keeps it waiting; one that will not (task done, machine without the
+   * repo) fails it. A group with nothing left to release or going is over.
+   */
+  #releaseGroups(): void {
+    const db = this.db;
+    const groups = db.prepare("SELECT id FROM run_groups WHERE closed_at IS NULL ORDER BY id").all() as Row[];
+    for (const { id } of groups) {
+      const g = this.#group(num(id));
+      let active = g.items.filter((i) => i.active).length;
+      // Whoever made the group: its runs count for them (budgets, run_requests.requested_by).
+      const onBehalf = this.#groupOnBehalf(g.id);
+      const actor: Actor = { name: g.createdBy, role: "member", ...(onBehalf ? { onBehalf } : {}) };
+      for (const item of g.items) {
+        if (item.status !== "held") continue;
+        if (g.maxParallel !== null && active >= g.maxParallel) break;
+        const now = this.#now();
+        const task = this.#getTask(item.taskId);
+        const fail = (error: RunRequestError) =>
+          db.prepare("UPDATE run_group_items SET status = 'failed', error = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(error), now, item.id);
+        if (!task) {
+          fail({ message: `Task ${item.taskId} not found.`, key: "errors.taskNotFound", vars: { id: item.taskId } });
+          continue;
+        }
+        if (task.waitingOn.length) continue;
+        const machineId = item.machineId ?? this.#freeMachine(g.project, item.profileId);
+        if (!machineId) continue;
+        try {
+          const instructions = [g.instructions, item.instructions].filter(Boolean).join("\n\n");
+          const m = this.#assertDispatchable(
+            { machineId, project: g.project, task, role: item.role, profileId: item.profileId, candidates: 1, instructions },
+            actor,
+          );
+          const req = this.#insertRequest(m, g.project, task, { role: item.role, profileId: item.profileId, reviewAfter: g.reviewAfter, candidates: 1, instructions }, actor);
+          db.prepare("UPDATE run_group_items SET status = 'sent', machine_id = ?, request_id = ?, updated_at = ? WHERE id = ?").run(machineId, req.id, now, item.id);
+          active++;
+        } catch (err) {
+          if (!(err instanceof HiveError)) throw err;
+          if (!groupFails(err.key)) continue;
+          fail({ message: err.message, ...(err.key ? { key: err.key } : {}), ...(err.vars ? { vars: err.vars as Record<string, string | number> } : {}) });
+        }
+      }
+      const after = this.#group(g.id);
+      if (!after.items.some((i) => i.status === "held" || i.active)) db.prepare("UPDATE run_groups SET closed_at = ? WHERE id = ?").run(this.#now(), g.id);
+    }
+  }
+
+  #groupOnBehalf(id: number): string | null {
+    return strOrNull((this.db.prepare("SELECT on_behalf FROM run_groups WHERE id = ?").get(id) as Row | undefined)?.on_behalf);
   }
 
   #insertRequest(
@@ -3452,6 +3680,8 @@ export class SqliteHive implements HiveBackend {
                WHERE status = 'pending' AND thread_id IN (SELECT id FROM chat_threads WHERE machine_id = ?)`,
             ).run(JSON.stringify(error), now, now, actor.name);
           }
+          // With this beat's runs in, so a run that ended leaves its place to the next of its group, sent in this answer.
+          this.#releaseGroups();
           const runRequests = accepts
             ? (db.prepare("SELECT * FROM run_requests WHERE machine_id = ? AND status = 'pending' ORDER BY id").all(actor.name) as Row[]).map(toRunRequest)
             : [];
@@ -3711,7 +3941,76 @@ export class SqliteHive implements HiveBackend {
             throw new HiveError("not_found", `No task ${taskId} in ${project}.`, { key: "errors.taskNotInProject", vars: { id: taskId, project } });
           }
           const m = this.#assertDispatchable({ machineId, project, task, role, profileId, candidates, instructions }, actor);
+          // Its group would run it again once this run ended.
+          this.#assertNotInGroup(taskId);
           return this.#insertRequest(m, project, task, { role, profileId, reviewAfter, candidates, instructions }, actor);
+        }),
+
+      "runs.dispatchMany": ({ project, title, items, maxParallel, reviewAfter, instructions }, actor) =>
+        this.#tx(() => {
+          this.#assertNotPaused(project);
+          // What does not change while an item waits is checked now, so a mistake is heard at once and nothing is made.
+          assertNoHidden(title, "Title");
+          assertNoHidden(instructions, "Instructions");
+          assertNoSecret(instructions, "Instructions");
+          this.#assertBudget(project, actor);
+          const seen = new Set<string>();
+          for (const item of items) {
+            const vars = { id: item.taskId };
+            if (seen.has(item.taskId)) throw new HiveError("bad_request", `Task ${item.taskId} is twice in the group.`, { key: "errors.taskTwiceInGroup", vars });
+            seen.add(item.taskId);
+            const task = this.#getTask(item.taskId);
+            if (!task || task.project !== project) {
+              throw new HiveError("not_found", `No task ${item.taskId} in ${project}.`, { key: "errors.taskNotInProject", vars: { ...vars, project } });
+            }
+            if (task.status === "done") throw new HiveError("bad_request", `Task ${item.taskId} is done.`, { key: "errors.taskDone", vars });
+            this.#assertNotInGroup(item.taskId);
+            if (!item.machineId) continue;
+            const row = db.prepare("SELECT * FROM machines WHERE id = ?").get(item.machineId) as Row | undefined;
+            if (!row) throw new HiveError("not_found", `No machine ${item.machineId}.`, { key: "errors.machineNotFound", vars: { machine: item.machineId } });
+            const m = this.#toMachine(row);
+            if (!m.projects.includes(project)) {
+              throw new HiveError("bad_request", `${m.machine} has no repo for ${project}.`, { key: "errors.machineNoRepo", vars: { machine: m.machine, project } });
+            }
+            if (item.profileId && !m.profiles.some((p) => p.id === item.profileId)) {
+              throw new HiveError("bad_request", `${m.machine} has no profile ${item.profileId}.`, { key: "errors.profileNotOnMachine", vars: { machine: m.machine, id: item.profileId } });
+            }
+          }
+          const now = this.#now();
+          const res = db
+            .prepare(
+              `INSERT INTO run_groups(project, kind, title, max_parallel, review_after, instructions, created_by, on_behalf, created_at)
+               VALUES (?, 'batch', ?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .run(project, title.trim(), maxParallel, reviewAfter ? 1 : 0, instructions, actor.name, actor.onBehalf ?? null, now);
+          const groupId = num(res.lastInsertRowid);
+          const put = db.prepare(
+            "INSERT INTO run_group_items(group_id, position, task_id, role, machine_id, profile_id, status, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'held', ?)",
+          );
+          items.forEach((item, i) => put.run(groupId, i + 1, item.taskId, item.role, item.machineId, item.profileId, now));
+          this.#releaseGroups();
+          return this.#group(groupId);
+        }),
+
+      "runs.groups": ({ project, projects, limit }) => {
+        this.#tx(() => this.#releaseGroups());
+        const ids = db
+          .prepare(`SELECT id FROM run_groups WHERE (?1 IS NULL OR project = ?1) AND (?3 IS NULL OR project IN (SELECT value FROM json_each(?3))) ORDER BY id DESC LIMIT ?2`)
+          .all(project ?? null, limit, listParam(projects)) as Row[];
+        return ids.map((r) => this.#group(num(r.id)));
+      },
+
+      "runs.cancelGroup": ({ id }) =>
+        this.#tx(() => {
+          const g = this.#group(id);
+          if (g.closedAt) throw new HiveError("conflict", `Run group #${id} is over.`, { key: "errors.runGroupClosed", vars: { id } });
+          const now = this.#now();
+          db.prepare("UPDATE run_group_items SET status = 'cancelled', updated_at = ? WHERE group_id = ? AND status = 'held'").run(now, id);
+          db.prepare(
+            "UPDATE run_requests SET status = 'cancelled', updated_at = ? WHERE status = 'pending' AND id IN (SELECT request_id FROM run_group_items WHERE group_id = ?)",
+          ).run(now, id);
+          db.prepare("UPDATE run_groups SET closed_at = ? WHERE id = ?").run(now, id);
+          return this.#group(id);
         }),
 
       // A free prompt from the web (roadmap 32b): its own new task and the request to run it, or neither.
@@ -3764,6 +4063,8 @@ export class SqliteHive implements HiveBackend {
             this.#now(),
             id,
           );
+          // A refusal frees its group's place at once.
+          this.#releaseGroups();
           return this.#runRequest(id);
         }),
 

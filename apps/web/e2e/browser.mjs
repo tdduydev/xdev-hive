@@ -454,6 +454,61 @@ async function main() {
     await rpc("runs.cancelRequest", { id: req.id });
   });
 
+  // Roadmap 31a: Lan gives two payment tasks to agents at once, one at a time; when the machine reports the first run
+  // ended, the hub sends the second.
+  await step("batch-run", async () => {
+    const machineRpc = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" },
+        body: JSON.stringify({ method, input }),
+      });
+      const body = await r.json();
+      if (body.error) throw new Error(`${method}: ${body.error.message}`);
+      return body.result;
+    };
+    const profile = (id) => ({ id, label: id, kind: "claude", enabled: true, account: null, installed: true, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, maxConcurrent: 1 });
+    const beat = () => machineRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", version: "0.110.0", projects: ["payment"], acceptsRuns: true, profiles: [profile("claude-1"), profile("claude-2")] });
+    await beat();
+    const tab = (current = tabs.lan);
+    // The last step left a task's panel open on Lan's tab, whose overlay would take the first click.
+    await tab.reload();
+    await tab.go("tasks");
+    const second = (await rpc("tasks.list", { project: "payment" })).find((t) => /^P-\d+$/.test(t.id)).id;
+    // The "ready next" notice comes in after the table and pushes it down: click once the page has settled.
+    await tab.waitFor("the ready-next notice", () => document.body.innerText.includes("Sẵn sàng tiếp theo"));
+    for (const id of ["PAY-1", second]) {
+      await tab.click(`[data-pick-task="${id}"]`);
+      await tab.waitFor(`${id} picked`, (x) => document.querySelector(`[data-pick-task="${x}"]`)?.getAttribute("data-state") === "checked", id);
+    }
+    await tab.click("[data-batch-open]");
+    await tab.waitFor("the group's rows", () => document.querySelectorAll("[data-batch-row]").length === 2);
+    await tab.click("#batch-parallel");
+    await tab.type("1");
+    await tab.shot(`${String(n).padStart(2, "0")}-batch-form`);
+    await tab.click('button[type="submit"]', "Gửi 2 task");
+    const group = await until("the run group", async () => (await rpc("runs.groups", { project: "payment" }))[0]);
+    expect(group.maxParallel === 1, `maxParallel: ${group.maxParallel}`);
+    // In the table's order: the first goes out now, the other waits for its place.
+    const [now, held] = group.items;
+    expect(now?.status === "sent" && held?.status === "held", `items: ${group.items.map((i) => `${i.taskId}:${i.status}`).join()}`);
+    // The machine takes the first and reports its run over; the next heartbeat brings the second.
+    const [first] = (await beat()).runRequests.filter((r) => r.taskId === now.taskId);
+    await machineRpc("runs.requestResult", { id: first.id, status: "accepted", runId: "R-batch1" });
+    const at = new Date().toISOString();
+    await machineRpc("runs.push", {
+      machine: "lan-mbp",
+      runs: [{ runId: "R-batch1", project: "payment", taskId: now.taskId, taskTitle: now.taskTitle, role: "implement", status: "succeeded", profileId: "claude-1", createdAt: at, finishedAt: at }],
+    });
+    const next = (await beat()).runRequests.find((r) => r.taskId === held.taskId);
+    expect(next, "the second task was not sent after the first run ended");
+    await tab.go(`batches?group=${group.id}`);
+    await tab.waitFor("the group on Đợt chạy", (id) => document.querySelector(`[data-group] [data-item-task="${id}"]`)?.getAttribute("data-item-state") === "succeeded", now.taskId);
+    await tab.shot(`${String(n).padStart(2, "0")}-batch-page`);
+    // Leave the hub as the other steps expect it.
+    await rpc("runs.cancelGroup", { id: group.id });
+  });
+
   // Roadmap 18c: a reviewer merges a run's MR from Lượt chạy; the run's machine does it with its own token at its heartbeat.
   await step("merge-from-web", async () => {
     const lanRpc = async (method, input) => {
