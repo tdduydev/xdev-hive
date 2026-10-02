@@ -63,6 +63,19 @@ export function TasksPage() {
   }, [linked, clearLinked]);
   const open = list.data?.find((task) => task.id === openId) ?? null;
   const reload = () => (list.reload(), requests.reload());
+  // Tasks picked to give to agents at once (roadmap 31a): on the hub, open ones of projects the person dispatches in.
+  const [picks, setPicks] = useState<Set<string>>(new Set());
+  const [batching, setBatching] = useState(false);
+  const [batchSent, setBatchSent] = useState<number | null>(null);
+  const pickable = (task: Task) => hub && task.status !== "done" && allow(task.project, "runDispatch");
+  const picked = (list.data ?? []).filter((task) => picks.has(task.id) && pickable(task));
+  const pickedProjects = new Set(picked.map((task) => task.project));
+  const togglePick = (id: string) =>
+    setPicks((p) => {
+      const next = new Set(p);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   // A prompt makes a task and queues its run (roadmap 32b): whoever may do both, on the hub.
   const prompters = hub ? (scope.kind === "system" ? scope.projects : projects).filter((p) => allow(p, "taskManage") && allow(p, "runDispatch")) : [];
   const [prompting, setPrompting] = useState(false);
@@ -112,6 +125,33 @@ export function TasksPage() {
         />
       ) : null}
       <ErrorNote error={list.error} />
+      {batchSent !== null ? (
+        <Notice tone="ok">
+          {t("tasks.batchSent", { id: batchSent })}{" "}
+          <a className="font-medium underline underline-offset-2" href={`#/batches?group=${batchSent}`}>
+            {t("tasks.batchView")}
+          </a>
+        </Notice>
+      ) : null}
+      {picked.length ? (
+        <div role="toolbar" aria-label={t("tasks.picked", { count: picked.length })} className="flex flex-wrap items-center gap-2 rounded-[10px] bg-inverse px-3 py-2 text-[13px] text-fg-inverse">
+          <span className="font-semibold">{t("tasks.picked", { count: picked.length })}</span>
+          {pickedProjects.size > 1 ? <span className="text-xs opacity-80">{t("tasks.batchOneProject")}</span> : null}
+          <span className="flex-1" />
+          <button
+            type="button"
+            disabled={pickedProjects.size !== 1}
+            onClick={() => setBatching(true)}
+            data-batch-open
+            className="h-7 cursor-pointer rounded-sm border border-white/30 px-2.5 text-xs font-semibold outline-none hover:bg-white/10 focus-visible:focus-ring disabled:cursor-default disabled:opacity-60"
+          >
+            {t("tasks.batchOpen", { count: picked.length })}
+          </button>
+          <button type="button" onClick={() => setPicks(new Set())} className="h-7 cursor-pointer rounded-sm px-2 text-xs underline">
+            {t("tasks.clearPicks")}
+          </button>
+        </div>
+      ) : null}
       {list.data?.length === 0 ? <Empty>{t("tasks.none")}</Empty> : null}
       {list.data?.length ? (
         <div className="overflow-x-auto rounded-lg border">
@@ -144,6 +184,7 @@ export function TasksPage() {
                   waiting={requests.data?.find((r) => r.taskId === task.id && r.project === task.project && r.status === "pending") ?? null}
                   showProject={scoped === null}
                   selected={task.id === openId}
+                  pick={pickable(task) ? { on: picks.has(task.id), toggle: () => togglePick(task.id) } : null}
                   onOpen={() => setOpenId(task.id)}
                   onChanged={reload}
                 />
@@ -152,6 +193,19 @@ export function TasksPage() {
           </Table>
         </div>
       ) : null}
+      <Sheet open={batching} onOpenChange={setBatching}>
+        {batching && picked.length && pickedProjects.size === 1 ? (
+          <BatchSheet
+            tasks={picked}
+            onSent={(id) => {
+              setBatching(false);
+              setPicks(new Set());
+              setBatchSent(id);
+              reload();
+            }}
+          />
+        ) : null}
+      </Sheet>
       <Sheet open={prompting} onOpenChange={setPrompting}>
         {prompting ? (
           <PromptSheet
@@ -184,6 +238,7 @@ function TaskRow({
   waiting,
   showProject,
   selected,
+  pick,
   onOpen,
   onChanged,
 }: {
@@ -191,6 +246,8 @@ function TaskRow({
   waiting: RunRequest | null;
   showProject: boolean;
   selected: boolean;
+  /** Its box for giving several tasks to agents at once (roadmap 31a); null when it cannot be picked. */
+  pick: { on: boolean; toggle: () => void } | null;
   onOpen: () => void;
   onChanged: () => void;
 }) {
@@ -200,13 +257,20 @@ function TaskRow({
   return (
     <TableRow data-state={selected ? "selected" : undefined} className="cursor-pointer data-[state=selected]:bg-brand-soft/60" onClick={onOpen}>
       <TableCell className="align-top whitespace-normal">
-        <button type="button" className="flex w-full min-w-0 flex-col items-start gap-0.5 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" onClick={onOpen}>
-          <span className="flex max-w-full items-baseline gap-2">
-            <span className="shrink-0 font-mono text-xs text-muted-foreground">{task.id}</span>
-            <span className="min-w-0 font-medium wrap-anywhere">{task.title}</span>
-          </span>
-          {task.note ? <span className="line-clamp-2 max-w-full text-xs text-muted-foreground wrap-anywhere">{task.note}</span> : null}
-        </button>
+        <div className="flex min-w-0 items-start gap-2">
+          {pick ? (
+            <span onClick={keep} className="pt-0.5">
+              <Checkbox checked={pick.on} onCheckedChange={pick.toggle} aria-label={t("tasks.pick", { id: task.id })} data-pick-task={task.id} />
+            </span>
+          ) : null}
+          <button type="button" className="flex w-full min-w-0 flex-col items-start gap-0.5 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" onClick={onOpen}>
+            <span className="flex max-w-full items-baseline gap-2">
+              <span className="shrink-0 font-mono text-xs text-muted-foreground">{task.id}</span>
+              <span className="min-w-0 font-medium wrap-anywhere">{task.title}</span>
+            </span>
+            {task.note ? <span className="line-clamp-2 max-w-full text-xs text-muted-foreground wrap-anywhere">{task.note}</span> : null}
+          </button>
+        </div>
       </TableCell>
       {showProject ? (
         <TableCell className="align-top">
@@ -449,7 +513,7 @@ function PromptSheet({ projects, defaultProject, onSent }: { projects: string[];
   const [reviewAfter, setReviewAfter] = useState(true);
   const action = useAction();
   return (
-    <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+    <SheetContent className="w-full overflow-y-auto sm:w-[36rem] sm:max-w-[calc(100vw-2rem)]">
       <SheetHeader>
         <SheetTitle>{t("tasks.promptTitle")}</SheetTitle>
         <SheetDescription>{t("tasks.promptHint")}</SheetDescription>
@@ -517,6 +581,99 @@ function PromptSheet({ projects, defaultProject, onSent }: { projects: string[];
           <Button size="sm" type="submit" disabled={action.busy || !machine || !prompt.trim()}>
             <Send />
             {t("tasks.promptSend")}
+          </Button>
+        </div>
+        <ErrorNote error={action.error} />
+      </form>
+    </SheetContent>
+  );
+}
+
+/**
+ * Gives the picked tasks of one project to agents at once (roadmap 31a): each a machine (or any free one, which the
+ * hub picks when the task's turn comes) and a profile; the hub sends at most "at most in parallel" at a time.
+ */
+function BatchSheet({ tasks, onSent }: { tasks: Task[]; onSent: (groupId: number) => void }) {
+  const { client } = useHive();
+  const t = useT();
+  const project = tasks[0]!.project;
+  const machines = useQuery(() => client.call("machines.list", {}), [client]);
+  const fit = (machines.data ?? []).filter((m) => takesRunsOf(m, project));
+  const [rows, setRows] = useState(() => tasks.map((task) => ({ taskId: task.id, machineId: "", profileId: "", role: (task.status === "review" ? "review" : "implement") as AgentRole })));
+  const [title, setTitle] = useState("");
+  const [parallel, setParallel] = useState("");
+  const [reviewAfter, setReviewAfter] = useState(true);
+  const [instructions, setInstructions] = useState("");
+  const action = useAction();
+  const set = (i: number, patch: Partial<(typeof rows)[number]>) => setRows((r) => r.map((row, j) => (j === i ? { ...row, ...patch } : row)));
+  const max = parallel.trim() ? Math.max(1, Math.min(20, Number.parseInt(parallel, 10) || 1)) : null;
+  return (
+    <SheetContent className="w-full overflow-y-auto sm:w-[52rem] sm:max-w-[calc(100vw-2rem)]">
+      <SheetHeader>
+        <SheetTitle>{t("tasks.batchTitle")}</SheetTitle>
+        <SheetDescription>{t("tasks.batchHint")}</SheetDescription>
+      </SheetHeader>
+      <form
+        className="flex flex-col gap-3 px-4 pb-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void action.run(async () => {
+            const group = await client.call("runs.dispatchMany", {
+              project,
+              title: title.trim(),
+              items: rows.map((r) => ({ taskId: r.taskId, machineId: r.machineId || null, profileId: r.profileId || null, role: r.role })),
+              maxParallel: max,
+              reviewAfter,
+              instructions,
+            });
+            onSent(group.id);
+          });
+        }}
+      >
+        <ErrorNote error={machines.error} />
+        {machines.data && !fit.length ? <Notice tone="info">{t("tasks.dispatchNoMachine", { project })}</Notice> : null}
+        <div className="flex flex-col divide-y rounded-lg border">
+          {rows.map((row, i) => {
+            const task = tasks[i]!;
+            const machine = fit.find((m) => m.id === row.machineId) ?? null;
+            return (
+              <div key={row.taskId} className="grid gap-2 p-3 sm:grid-cols-[minmax(0,1fr)_10rem_10rem_8rem] sm:items-center" data-batch-row={row.taskId}>
+                <div className="min-w-0 text-sm">
+                  <span className="mr-2 font-mono text-xs text-muted-foreground">{task.id}</span>
+                  <span className="wrap-anywhere">{task.title}</span>
+                </div>
+                <MachineSelect id={`batch-machine-${i}`} machines={fit} value={row.machineId} any label={false} onChange={(id) => set(i, { machineId: id, profileId: "" })} />
+                <ProfileSelect id={`batch-profile-${i}`} machine={machine} value={row.profileId} label={false} onChange={(id) => set(i, { profileId: id })} />
+                <NativeSelect size="sm" className="w-full" value={row.role} onChange={(e) => set(i, { role: e.target.value as AgentRole })} aria-label={t("board.role")}>
+                  {AGENT_ROLES.map((r) => (
+                    <NativeSelectOption key={r} value={r}>
+                      {t(`agentRole.${r}`)}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </div>
+            );
+          })}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="batch-title">{t("tasks.batchName")}</Label>
+            <Input id="batch-title" maxLength={120} placeholder={t("tasks.batchNamePlaceholder")} value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="batch-parallel">{t("tasks.batchParallel")}</Label>
+            <Input id="batch-parallel" inputMode="numeric" placeholder={t("tasks.batchParallelHint")} value={parallel} onChange={(e) => setParallel(e.target.value.replace(/\D/g, ""))} />
+          </div>
+        </div>
+        <Textarea placeholder={t("board.instructionsPlaceholder")} value={instructions} onChange={(e) => setInstructions(e.target.value)} aria-label={t("board.instructions")} />
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox checked={reviewAfter} onCheckedChange={(v) => setReviewAfter(v === true)} />
+          {t("board.reviewAfter")}
+        </label>
+        <div>
+          <Button size="sm" type="submit" disabled={action.busy || !fit.length}>
+            <Send />
+            {t("tasks.batchSend", { count: rows.length })}
           </Button>
         </div>
         <ErrorNote error={action.error} />

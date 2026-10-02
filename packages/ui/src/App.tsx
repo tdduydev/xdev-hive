@@ -34,6 +34,7 @@ import {
   UserCog,
   UsersRound,
   WandSparkles,
+  Workflow,
   Wrench,
 } from "lucide-react";
 import { Button } from "@xdev-hive/ui/components/ui/button";
@@ -51,6 +52,7 @@ import { ClientShell, type NavEntry, type NavGroup } from "./shell/ClientShell.t
 import { InboxProvider, useInboxState } from "./shell/inbox.tsx";
 import { AdminPage, PolicyTab } from "./pages/Admin.tsx";
 import { AgentsPage } from "./pages/Agents.tsx";
+import { BatchesPage } from "./pages/Batches.tsx";
 import { BoardPage } from "./pages/Board.tsx";
 import { ChatPage } from "./pages/Chat.tsx";
 import { DevicePage } from "./pages/Device.tsx";
@@ -84,6 +86,7 @@ type PageId =
   | "chat"
   | "board"
   | "runs"
+  | "batches"
   | "docs"
   | "read"
   | "specs"
@@ -110,6 +113,7 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
   chat: { label: "nav.chat", sub: "navSub.chat", icon: MessageSquare, render: () => <ChatPage /> },
   board: { label: "nav.board", sub: "navSub.board", icon: FolderKanban, render: () => <BoardPage /> },
   runs: { label: "nav.runs", sub: "navSub.runs", icon: Activity, render: () => <RunsPage /> },
+  batches: { label: "nav.batches", sub: "navSub.batches", icon: Workflow, render: () => <BatchesPage /> },
   docs: { label: "nav.docs", sub: "navSub.docs", icon: FileText, render: () => <DocsPage /> },
   // Not in the sidebar: a doc's reading view (#/read?doc=…), under Tài liệu.
   read: { label: "nav.read", sub: "navSub.read", icon: BookOpen, render: () => <DocReaderPage /> },
@@ -135,7 +139,7 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
 /** The design's groups; ⌘1–6 go to Hôm nay, Chat, Board, Lượt chạy, Tài liệu, Agent (those that are shown). */
 const GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
   { label: null, ids: ["today", "chat"] },
-  { label: "nav.groupWork", ids: ["board", "runs", "tasks"] },
+  { label: "nav.groupWork", ids: ["board", "runs", "batches", "tasks"] },
   { label: "nav.groupKnowledge", ids: ["docs", "specs", "skills", "memory", "proposals"] },
   { label: "nav.groupAgents", ids: ["agents", "setup", "tools", "projects"] },
   { label: "nav.groupAdmin", ids: ["admin", "machines", "users", "members", "tokens", "systems"] },
@@ -146,7 +150,7 @@ const PALETTE_ONLY: PageId[] = ["overview"];
 
 // ── The Web Admin (hub admins on the web) ──
 
-type AdminId = "overview" | "chat" | "runs" | "queue" | "fleet" | "quota" | "costs" | "alerts" | "review" | "docs" | "read" | "specs" | "context" | "memory" | "skills" | "users" | "projects" | "policy" | "tools" | "versions" | "tokens" | "webhooks" | "audit" | "hub";
+type AdminId = "overview" | "chat" | "runs" | "queue" | "batches" | "fleet" | "quota" | "costs" | "alerts" | "review" | "docs" | "read" | "specs" | "context" | "memory" | "skills" | "users" | "projects" | "policy" | "tools" | "versions" | "tokens" | "webhooks" | "audit" | "hub";
 type AdminGroup = "ops" | "watch" | "knowledge" | "admin";
 
 const ADMIN: Record<AdminId, { group: AdminGroup; icon: Icon; render: () => ReactNode; fill?: boolean }> = {
@@ -155,6 +159,7 @@ const ADMIN: Record<AdminId, { group: AdminGroup; icon: Icon; render: () => Reac
   chat: { group: "ops", icon: MessageSquare, render: () => <ChatPage />, fill: true },
   runs: { group: "ops", icon: Activity, render: () => <OpsRuns /> },
   queue: { group: "ops", icon: ListOrdered, render: () => <OpsQueue /> },
+  batches: { group: "ops", icon: Workflow, render: () => <BatchesPage /> },
   fleet: { group: "watch", icon: Server, render: () => <OpsFleet /> },
   quota: { group: "watch", icon: Gauge, render: () => <OpsQuota /> },
   costs: { group: "watch", icon: DollarSign, render: () => <OpsCosts /> },
@@ -263,7 +268,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     if (client.desktop) for (const id of ["board", "agents", "setup", "projects"] as const) ids.add(id);
     // Machines only report to a hub (and push their runs to it); a local database never has any. The leader chat
     // runs on a machine the hub hands it to.
-    if (me.mode === "hub") for (const id of ["machines", "runs", "chat"] as const) ids.add(id);
+    if (me.mode === "hub") for (const id of ["machines", "runs", "batches", "chat"] as const) ids.add(id);
     // The desktop's own runs (local mode too) are on Lượt chạy.
     if (client.desktop) ids.add("runs");
     if (hubAdmin) ids.add("admin");

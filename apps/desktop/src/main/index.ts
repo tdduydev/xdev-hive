@@ -646,6 +646,8 @@ const reportedProfiles = (): ReportedProfile[] =>
     runs: p.stats.runs,
     rateLimited: p.stats.rateLimited,
     priority: p.priority,
+    // The hub counts free places with it when it picks a machine for a run group (roadmap 31a).
+    maxConcurrent: p.maxConcurrent,
   }));
 
 let updater: Updater;

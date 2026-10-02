@@ -325,6 +325,8 @@ export interface ReportedProfile {
   rateLimited: number;
   /** Lower runs first (AgentProfile.priority). Absent from apps older than 0.95, which cannot take changes from the hub. */
   priority?: number;
+  /** Runs it takes at once (AgentProfile.maxConcurrent); absent from apps older than 0.110, counted as 1. */
+  maxConcurrent?: number;
 }
 
 /**
@@ -759,6 +761,65 @@ export interface RunRequest {
   requestedBy: string;
   requestedAt: string;
   updatedAt: string;
+}
+
+export const RUN_GROUP_KINDS = ["batch", "fanout", "mapreduce", "roles"] as const;
+export type RunGroupKind = (typeof RUN_GROUP_KINDS)[number];
+/** held: waits at the hub; sent: became a run request; failed: could not, when released; cancelled: with its group. */
+export const RUN_GROUP_ITEM_STATUSES = ["held", "sent", "failed", "cancelled"] as const;
+export type RunGroupItemStatus = (typeof RUN_GROUP_ITEM_STATUSES)[number];
+
+/** What a run did on its machine, as the machine pushed it (run_records). */
+export interface RunGroupRun {
+  machineId: string;
+  runId: string;
+  machine: string;
+  status: string;
+  profileId: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  costUsd: number | null;
+}
+
+/** One task of a run group (roadmap 31a): held at the hub until there is room, then a run request. */
+export interface RunGroupItem {
+  id: number;
+  position: number;
+  taskId: string;
+  /** null once the task is gone. */
+  taskTitle: string | null;
+  taskStatus: TaskStatus | null;
+  role: AgentRole;
+  /** null: any free machine, picked when the item is released; then the one picked. */
+  machineId: string | null;
+  profileId: string | null;
+  instructions: string;
+  status: RunGroupItemStatus;
+  request: RunRequest | null;
+  run: RunGroupRun | null;
+  /** Taking up one of the group's places: its request waits for the machine, or its run has not ended. */
+  active: boolean;
+  error: RunRequestError | null;
+  updatedAt: string;
+}
+
+/** Runs started as one (roadmap 31): several tasks on several machines, at most maxParallel at a time. */
+export interface RunGroup {
+  id: number;
+  project: string;
+  kind: RunGroupKind;
+  title: string;
+  /** null: every item at once. */
+  maxParallel: number | null;
+  reviewAfter: boolean;
+  instructions: string;
+  parentTask: string | null;
+  winnerTask: string | null;
+  createdBy: string;
+  createdAt: string;
+  /** Nothing left to release or running. */
+  closedAt: string | null;
+  items: RunGroupItem[];
 }
 
 /** Claude Code's --effort levels. */
