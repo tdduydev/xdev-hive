@@ -77,6 +77,7 @@ import type {
   RunRequest,
   RunRequestError,
   RunRequestStatus,
+  MachineSetupMissing,
   SetupReport,
   Task,
   TeamPolicy,
@@ -580,6 +581,8 @@ type Row = Record<string, unknown>;
 const str = (v: unknown) => v as string;
 const strOrNull = (v: unknown) => (v == null ? null : String(v));
 const num = (v: unknown) => Number(v);
+/** Keeps a local path's last part only: a machine's home and folders are not for every reader of a project. */
+const hidePaths = (text: string) => text.replace(/(?<![\w:/.~])(?:~|[A-Za-z]:)?[\\/](?:[^\s\\/·]+[\\/])+([^\s\\/·]*)/g, "…/$1");
 const sourceOf = (v: unknown): WriteSource | null => (v ? parseSource(JSON.parse(str(v))) : null);
 const sourceJson = (s: WriteSource | null | undefined) => (s ? JSON.stringify(s) : null);
 /**
@@ -987,6 +990,7 @@ export class SqliteHive implements HiveBackend {
         return this.#need(actor, owner(i.key), "view", `Doc ${i.key}`);
       case "docs.context":
       case "docs.syncStatus":
+      case "machines.setupMissing":
         return this.#need(actor, i.project, "view", `Project ${i.project}`);
       // Whoever may change what agents read may have the machines write it now.
       case "docs.syncRequest":
@@ -3441,6 +3445,22 @@ export class SqliteHive implements HiveBackend {
 
       "machines.list": () =>
         (db.prepare("SELECT * FROM machines ORDER BY last_seen DESC").all() as Row[]).map((r) => this.#toMachine(r)),
+
+      // The project's readers see why its runs wait, not how to fix the machine: no install action, no repo, no local paths.
+      "machines.setupMissing": ({ project }) => {
+        const rows = new Map((db.prepare("SELECT id, setup FROM machines").all() as Row[]).map((r) => [str(r.id), r.setup]));
+        const out: MachineSetupMissing[] = [];
+        for (const m of this.#machinesWith(project)) {
+          const setup = rows.get(m.id);
+          if (setup == null) continue;
+          const report = JSON.parse(str(setup)) as SetupReport;
+          const items = [...report.machine, ...report.projects.filter((p) => p.project === project).flatMap((p) => p.items)]
+            .filter((item) => item.state !== "installed")
+            .map(({ id, label, state, detail }) => ({ id, label, state, detail: hidePaths(detail) }));
+          if (items.length) out.push({ machineId: m.id, machine: m.machine, items });
+        }
+        return out;
+      },
 
       "machines.remove": ({ id }) => ({ removed: num(db.prepare("DELETE FROM machines WHERE id = ?").run(id).changes) === 1 }),
 
