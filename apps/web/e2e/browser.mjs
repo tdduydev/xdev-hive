@@ -676,15 +676,17 @@ async function main() {
   await step("agent-policy", async () => {
     const tab = (current = tabs.admin);
     await tab.go("admin/policy");
-    await tab.waitFor("payment's row", () => [...document.querySelectorAll("tr")].some((r) => r.cells[0]?.textContent.trim() === "payment" && r.querySelector('select[aria-label="Mức tự chủ"]')));
+    await tab.waitFor("payment's row", () => [...document.querySelectorAll("tr")].some((r) => r.cells[0]?.textContent.trim() === "payment" && r.querySelector('select[aria-label="Mức tự chủ tối đa"]')));
+    // The report of 2/10: the card says the policy never widens a profile's own flags.
+    await tab.waitFor("the ceiling note", () => document.body.innerText.includes("Chính sách chỉ giới hạn, không cấp thêm quyền"));
     await tab.eval(() => {
-      const row = [...document.querySelectorAll("tr")].find((r) => r.cells[0]?.textContent.trim() === "payment" && r.querySelector('select[aria-label="Mức tự chủ"]'));
-      const select = row.querySelector('select[aria-label="Mức tự chủ"]');
+      const row = [...document.querySelectorAll("tr")].find((r) => r.cells[0]?.textContent.trim() === "payment" && r.querySelector('select[aria-label="Mức tự chủ tối đa"]'));
+      const select = row.querySelector('select[aria-label="Mức tự chủ tối đa"]');
       Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, "read");
       select.dispatchEvent(new Event("change", { bubbles: true }));
     });
     const { x, y } = await tab.waitFor("payment's save button", () => {
-      const row = [...document.querySelectorAll("tr")].find((r) => r.cells[0]?.textContent.trim() === "payment" && r.querySelector('select[aria-label="Mức tự chủ"]'));
+      const row = [...document.querySelectorAll("tr")].find((r) => r.cells[0]?.textContent.trim() === "payment" && r.querySelector('select[aria-label="Mức tự chủ tối đa"]'));
       const b = row && [...row.querySelectorAll("button")].find((x) => !x.disabled && x.textContent.trim().startsWith("Lưu"));
       if (!b) return null;
       b.scrollIntoView({ block: "center" });
@@ -695,7 +697,7 @@ async function main() {
     await tab.cdp("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
     await until("payment at read", async () => (await rpc("agentPolicy.get", {})).effective?.payment?.autonomy === "read");
     await tab.waitFor("the row saved, with its own part to clear", () => {
-      const row = [...document.querySelectorAll("tr")].find((r) => r.cells[0]?.textContent.trim() === "payment" && r.querySelector('select[aria-label="Mức tự chủ"]'));
+      const row = [...document.querySelectorAll("tr")].find((r) => r.cells[0]?.textContent.trim() === "payment" && r.querySelector('select[aria-label="Mức tự chủ tối đa"]'));
       return row && row.innerText.includes("Đã lưu.") && row.innerText.includes("Bỏ phần riêng") && row.innerText.includes("Chỉ đọc");
     });
     // Lan's machine has payment: its heartbeat carries the part.
