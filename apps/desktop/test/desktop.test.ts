@@ -352,6 +352,19 @@ describe("agent CLI config in a task worktree", () => {
     assert.equal(sh(repo, "git", ["rev-parse", "HEAD"]).trim(), before);
   });
 
+  it("commits when the repo already ignores a folder it leaves out (git 2.54 refused the whole add)", () => {
+    const repo = gitRepo();
+    writeFileSync(path.join(repo, ".gitignore"), ".codegraph/\n");
+    sh(repo, "git", ["add", ".gitignore"]);
+    sh(repo, "git", ["commit", "-qm", "ignore codegraph"]);
+    mkdirSync(path.join(repo, ".codegraph"), { recursive: true });
+    writeFileSync(path.join(repo, ".codegraph/codegraph.db"), "db\n");
+    writeFileSync(path.join(repo, "work.txt"), "done\n");
+    const c = commitAll(repo, "ai(T-1): work", []);
+    assert.equal(c.error, null);
+    assert.deepEqual(committed(repo), ["work.txt"]);
+  });
+
   it("commits them as usual in a project that tracks those folders", () => {
     const repo = gitRepo();
     mkdirSync(path.join(repo, ".codex"), { recursive: true });
