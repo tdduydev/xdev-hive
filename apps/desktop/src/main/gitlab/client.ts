@@ -170,4 +170,12 @@ export class GitLabClient {
   updateMergeRequest(projectId: number, iid: number, body: Partial<MrBody>): Promise<GitLabMr> {
     return this.#request("PUT", `/projects/${projectId}/merge_requests/${iid}`, body);
   }
+
+  /**
+   * Merges it now (roadmap 18c), as the token's user. GitLab answers 405 or 422 when it cannot (draft, conflicts, a
+   * pipeline that must pass first, no right to merge); the error carries its message.
+   */
+  merge(project: string | number, iid: number): Promise<GitLabMrDetail> {
+    return this.#request("PUT", `/projects/${encodeURIComponent(String(project))}/merge_requests/${iid}/merge`, {});
+  }
 }

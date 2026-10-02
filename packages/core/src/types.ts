@@ -1,6 +1,7 @@
 import type { Access } from "./access.ts";
 import type { AgentPolicy } from "./agent-policy.ts";
 import type { AgentProfile, AgentRole } from "./agents.ts";
+import type { MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { WriteSource } from "./source.ts";
 
 /** member: a person's hub account (what it may do comes from its per-project grants). */
@@ -557,10 +558,44 @@ export interface RunRecord {
   /** A project manager asked on the web to stop it (runs.cancel): the machine stops it at its next heartbeat. */
   cancelRequestedBy: string | null;
   cancelRequestedAt: string | null;
+  /** What its machine last saw of the run's merge request or pull request (roadmap 18c); null: none, or an older app. */
+  mr: RunMr | null;
+  /** A merge asked for on the web (runs.merge) and how it went; null: none asked. */
+  merge: RunMerge | null;
   /** The end of the run's readable log, lines that looked like secrets hidden: runs.get only. */
   log?: string;
   /** What it changed (git diff from its base), as its machine last sent it; null: not sent (yet). runs.get only. */
   patch?: string | null;
+}
+
+/** A run's merge request (GitLab) or pull request (GitHub) as its machine's MR watcher last saw it. */
+export interface RunMr {
+  iid: number | null;
+  status: MrStatus | null;
+  draft: boolean;
+  /** GitLab's pipeline, or GitHub's checks read as one. */
+  pipeline: PipelineStatus | null;
+  pipelineUrl: string | null;
+  checkedAt: string | null;
+}
+
+export const MERGE_STATUSES = ["pending", "merged", "failed"] as const;
+export type MergeStatus = (typeof MERGE_STATUSES)[number];
+
+/** A merge asked for on the web: the run's machine does it with its own GitLab or GitHub token (asked 2/10). */
+export interface RunMerge {
+  requestedBy: string;
+  requestedAt: string;
+  status: MergeStatus;
+  error: RunRequestError | null;
+  finishedAt: string | null;
+}
+
+/** A merge a machine is asked to do (heartbeat). */
+export interface RunMergeOrder {
+  runId: string;
+  mrUrl: string;
+  requestedBy: string;
 }
 
 /** A run a machine is asked to stop (heartbeat), and who asked. */

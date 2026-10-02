@@ -8,9 +8,10 @@ import { parseVerdict, type AgentRun, type RunRecord, type RunRequest } from "@x
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
+import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { errorMessage, formatCount, formatTime, formatUsd, useAction, useCan, useHashParam, useHive, useQuery } from "#ui/hooks.ts";
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
-import { fixInstructions, isLive, latestReviews, runDuration, runLabel } from "#ui/lib/runs.ts";
+import { fixInstructions, isLive, latestReviews, requestErrorText, runDuration, runLabel } from "#ui/lib/runs.ts";
 import { parseLog, parsePatch, runSteps, type DiffFile, type LogLevel } from "#ui/lib/runlog.ts";
 import { activeIntl } from "#ui/i18n/translate.ts";
 import { scopeFilter, scopeKey } from "#ui/lib/scope.ts";
@@ -605,13 +606,7 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
           {run.costUsd !== null ? `${run.branch ? " · " : ""}${t("board.cost", { cost: formatUsd(run.costUsd) })}` : ""}
         </NoteLine>
       ) : null}
-      {run.mrUrl ? (
-        <NoteLine>
-          <a className="font-medium text-fg-link underline underline-offset-2 [overflow-wrap:anywhere]" href={run.mrUrl} target="_blank" rel="noreferrer">
-            {run.mrUrl}
-          </a>
-        </NoteLine>
-      ) : null}
+      {run.mrUrl ? <MrMerge run={run} onChanged={onChanged} /> : null}
       {live && run.cancelRequestedBy ? <Notice tone="warn">{t("runs.cancelRequested", { who: run.cancelRequestedBy, time: formatTime(run.cancelRequestedAt) })}</Notice> : null}
       {run.error ? <Notice tone={run.status === "queued" ? "info" : "warn"} className="[overflow-wrap:anywhere]">{run.error}</Notice> : null}
       {run.summary && !live ? (
@@ -638,6 +633,75 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
           ? { diff: full.data.patch ? patchFiles : full.data.patch === "" ? [] : null, diffError: full.data.patch === null ? t("runs.patchNotSent", { machine: run.machine }) : null, onDiffTab: () => undefined }
           : {})}
       />
+    </div>
+  );
+}
+
+const PIPELINE_KIND: Partial<Record<string, ChipKind>> = { success: "success", failed: "danger", running: "running", pending: "running", canceled: "neutral", skipped: "neutral", manual: "info" };
+
+/**
+ * The run's MR or PR as its machine last saw it, and Merge for someone with Code review (roadmap 18c): the machine merges
+ * with its own GitLab or GitHub token at its next heartbeat. The hub refuses a draft, a failed pipeline, your own run.
+ */
+function MrMerge({ run, onChanged }: { run: RunRecord; onChanged: () => void }) {
+  const { client } = useHive();
+  const t = useT();
+  const allow = useCan();
+  const action = useAction();
+  const mr = run.mr;
+  const merge = run.merge;
+  const label = /\/pull\/\d+$/.test(run.mrUrl ?? "") ? `PR #${mr?.iid ?? "?"}` : `MR !${mr?.iid ?? "?"}`;
+  const open = !mr?.status || mr.status === "opened";
+  const waiting = merge?.status === "pending";
+  const can = allow(run.project, "codeReview") && open && !mr?.draft && mr?.pipeline !== "failed" && !waiting && merge?.status !== "merged";
+  const pipelineDone = !mr?.pipeline || ["success", "skipped", "manual", "canceled"].includes(mr.pipeline);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+        <a className="font-medium text-fg-link underline underline-offset-2" href={run.mrUrl!} target="_blank" rel="noreferrer" title={run.mrUrl!}>
+          {mr ? label : run.mrUrl}
+        </a>
+        {mr?.status ? <Chip kind={mr.status === "merged" ? "success" : mr.status === "closed" ? "neutral" : "info"} small>{t(`mrStatus.${mr.status}`)}</Chip> : null}
+        {mr?.draft ? <Chip kind="warning" small title={t("runs.mrDraftNote")}>draft</Chip> : null}
+        {mr?.pipeline ? (
+          <Chip kind={PIPELINE_KIND[mr.pipeline] ?? "info"} small>
+            {mr.pipelineUrl ? (
+              <a className="underline-offset-2 hover:underline" href={mr.pipelineUrl} target="_blank" rel="noreferrer">
+                {t("runs.mrChecks", { status: t(`pipelineStatus.${mr.pipeline}`) })}
+              </a>
+            ) : (
+              t("runs.mrChecks", { status: t(`pipelineStatus.${mr.pipeline}`) })
+            )}
+          </Chip>
+        ) : null}
+        {mr?.checkedAt ? <span className="text-fg-muted">{t("runs.mrSeen", { time: formatTime(mr.checkedAt) })}</span> : null}
+        {can ? (
+          <Button
+            size="sm"
+            variant="outline"
+            className="ml-auto"
+            disabled={action.busy}
+            title={t("runs.mergeHint", { machine: run.machine })}
+            onClick={() => {
+              if (!pipelineDone && !window.confirm(t("runs.mergeConfirm", { mr: label, status: t(`pipelineStatus.${mr!.pipeline!}`) }))) return;
+              void action.run(async () => {
+                await client.call("runs.merge", { machineId: run.machineId, runId: run.runId });
+                onChanged();
+              });
+            }}
+          >
+            {t("runs.merge")}
+          </Button>
+        ) : null}
+      </div>
+      {waiting ? <Notice tone="info">{t("runs.mergeWaiting", { who: merge.requestedBy, time: formatTime(merge.requestedAt), machine: run.machine })}</Notice> : null}
+      {merge?.status === "merged" ? <NoteLine tone="info">{t("runs.merged", { who: merge.requestedBy, time: formatTime(merge.finishedAt ?? merge.requestedAt) })}</NoteLine> : null}
+      {merge?.status === "failed" ? (
+        <Notice tone="warn" className="[overflow-wrap:anywhere]">
+          {t("runs.mergeFailed", { who: merge.requestedBy, time: formatTime(merge.finishedAt ?? merge.requestedAt), reason: merge.error ? requestErrorText(merge.error) : "" })}
+        </Notice>
+      ) : null}
+      <ErrorNote error={action.error} />
     </div>
   );
 }
