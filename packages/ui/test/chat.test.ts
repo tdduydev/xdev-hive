@@ -70,6 +70,7 @@ const action = (id: number, over: Partial<ChatAction> = {}): ChatAction => ({
   decidedBy: null,
   decidedAt: null,
   createdAt: "2026-09-29T10:00:00Z",
+  auto: false,
   ...over,
 });
 
