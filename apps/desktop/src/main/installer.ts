@@ -195,6 +195,12 @@ export const CODEGRAPH_MCP = {
   env: { CODEGRAPH_TELEMETRY: "0", CODEGRAPH_NO_UPDATE_CHECK: "1" },
 };
 
+/**
+ * A run's server ends with its agent. In a folder with an index codegraph otherwise starts a shared daemon that
+ * stays up after the run, one per worktree. It still watches the files the agent changes.
+ */
+export const CODEGRAPH_RUN_MCP = { ...CODEGRAPH_MCP, env: { ...CODEGRAPH_MCP.env, CODEGRAPH_NO_DAEMON: "1" } };
+
 /** Adds the codegraph MCP server to the repo's .mcp.json, unless one is already configured there. */
 export function installCodegraphMcp(repo: string, opts: { dryRun?: boolean } = {}): FileAction {
   return mergeJson(
@@ -236,7 +242,7 @@ export function runMcpServers(agent: string, project: string, features: RepoFeat
   const env = { ...hive.env, HIVE_TASK: run.task, ...(run.id ? { HIVE_RUN: run.id } : {}), ...(run.readOnly ? { HIVE_READONLY: "1" } : {}) };
   return {
     [MCP_NAME]: { ...hive, env },
-    ...(features.codegraph ? { codegraph: CODEGRAPH_MCP } : {}),
+    ...(features.codegraph ? { codegraph: CODEGRAPH_RUN_MCP } : {}),
   };
 }
 
