@@ -6,6 +6,8 @@
 //   npm run smoke -w @xdev-hive/desktop [-- <output dir>]      (HIVE_SMOKE_LOCALE=en for the English interface,
 //   HIVE_SMOKE_THEME=dark for the dark theme)
 import { execFileSync, spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
+import { createServer } from "node:net";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -125,7 +127,7 @@ await shoot("agents-account", "agents", 1500, { HIVE_SMOKE_CLICK: '[data-add-acc
 // The GitHub card and the project's GitLab / GitHub fields (roadmap 13a).
 await shoot("projects-github", "projects", 1500, { HIVE_SMOKE_CLICK: "main button[aria-expanded]", HIVE_SMOKE_SCROLL: "#gh-url" });
 // The repositories of the demo's GitLab group, with their keys and folders (roadmap 19a).
-await shoot("projects-import", "projects", 1500, { HIVE_SMOKE_CLICK: "#import-list", HIVE_SMOKE_SCROLL: "#import-group" });
+await shoot("projects-import", "setup", 4000, { HIVE_SMOKE_CLICK: "#import-list", HIVE_SMOKE_SCROLL: "#import-group" });
 // The app checks open MRs as it starts (right away in smoke mode): the failed job goes to a fix run.
 gitlab.jobs[7] = [{ id: 71, name: "test", stage: "test", status: "failed", trace: "not ok 2 - settings page renders\n" }];
 for (const mr of gitlab.mrs) mr.head_pipeline = { id: 7, status: "failed", web_url: `${gitlab.base}/group/demo/-/pipelines/7` };
@@ -165,7 +167,7 @@ const soDo = `docs?doc=${encodeURIComponent("project/demo/so-do")}`;
 await shoot("docs-mermaid", soDo, 2500, { HIVE_SMOKE_EXPECT: '[data-mermaid] [role="img"] svg' });
 await shoot("docs-editor", soDo, 2500, { HIVE_SMOKE_CLICK: '[role="radio"][data-value="edit"]', HIVE_SMOKE_EXPECT: '.ProseMirror && .ProseMirror [data-mermaid] [role="img"] svg' });
 // Đồng bộ on the Projects page mirrors the README's sections into Hive (roadmap 26).
-await shoot("projects-mirror", "projects", 3000, { HIVE_SMOKE_CLICK: '[data-sync-project="demo"]', HIVE_SMOKE_SCROLL: '[data-sync-project="demo"]' });
+await shoot("projects-mirror", "setup", 4000, { HIVE_SMOKE_CLICK: '[data-sync-project="demo"]', HIVE_SMOKE_SCROLL: '[data-sync-project="demo"]' });
 const failures = [];
 {
   const local = new SqliteHive(path.join(work, "local.db"));
@@ -199,6 +201,41 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
   else if (!dir || !existsSync(dir) || dir === os.homedir()) failures.push(`account: ${kind}-1 has no sign-in folder of its own (${dirEnv}=${added.env[dirEnv]})`);
   // The script quotes each word (sh: 'auth' 'login'; Windows: "auth" "login").
   else if (!new RegExp(login.split(" ").map((w) => `['"]?${w}['"]?`).join(" ")).test(script) || !script.includes(dir)) failures.push(`account: the sign-in script of ${kind}-1 does not run "${login}" with ${dir}`);
+}
+// Roadmap 35a: connected to a hub, the app shows this machine's work only (five pages, Mở web); the rest is the web's.
+{
+  const webDir = path.resolve(appDir, "..", "web");
+  const port = await new Promise((resolve) => {
+    const s = createServer().listen(0, "127.0.0.1", () => {
+      const { port: p } = s.address();
+      s.close(() => resolve(p));
+    });
+  });
+  // The hub wants a bootstrap token of 32 characters at least.
+  const bootstrap = randomBytes(16).toString("hex");
+  // Development mode: the hub serves its API without a built web client.
+  const hub = spawn(process.execPath, ["src/server.ts"], {
+    cwd: webDir,
+    stdio: "ignore",
+    env: { ...process.env, NODE_ENV: "development", HIVE_PORT: String(port), HIVE_DB: path.join(work, "hub.db"), HIVE_BOOTSTRAP_TOKEN: bootstrap, HIVE_ADMIN_USER: "smoke" },
+  });
+  let up = false;
+  for (let i = 0; i < 150 && !up; i++) {
+    up = await fetch(`http://127.0.0.1:${port}/api/health`).then((r) => r.ok, () => false);
+    if (!up) await new Promise((r) => setTimeout(r, 200));
+  }
+  if (!up) failures.push("hub mode: the hub did not start");
+  else {
+    const file = path.join(work, "config.json");
+    const local = readFileSync(file, "utf8");
+    writeFileSync(file, JSON.stringify({ ...JSON.parse(local), mode: "hub", hub: { url: `http://127.0.0.1:${port}`, token: bootstrap } }, null, 2));
+    const webPages = ["tasks", "board", "docs", "memory", "proposals", "skills", "specs", "chat", "batches", "machines", "members", "tokens", "systems", "tools", "admin"];
+    for (const [name, page] of [["hub-today", "today"], ["hub-runs", "runs"], ["hub-agents", "agents"], ["hub-setup", "setup"], ["hub-projects", "projects"]]) {
+      await shoot(name, page, 3000, { HIVE_SMOKE_EXPECT: "[data-open-web]", HIVE_SMOKE_ABSENT: webPages.map((p) => `nav a[href="#/${p}"]`).join(" && ") });
+    }
+    writeFileSync(file, local);
+  }
+  hub.kill();
 }
 if (failures.length) {
   console.error(`smoke checks failed:\n  ${failures.join("\n  ")}`);

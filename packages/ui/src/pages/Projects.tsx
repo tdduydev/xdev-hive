@@ -59,8 +59,6 @@ export function ProjectsPage() {
           <TransferCard settings={settings.data} />
           <GitLabCard settings={settings.data} onSaved={settings.reload} />
           <GitHubCard settings={settings.data} onSaved={settings.reload} />
-          <ProjectsCard settings={settings.data} onChanged={settings.reload} />
-          {settings.data.gitlab.url && settings.data.gitlab.hasToken ? <GitLabImportCard settings={settings.data} onChanged={settings.reload} /> : null}
         </>
       ) : null}
     </Page>
@@ -650,7 +648,7 @@ function ProjectGitLab({ project, onSaved }: { project: DesktopProject; onSaved:
   );
 }
 
-function ProjectsCard({ settings, onChanged }: { settings: DesktopSettings; onChanged: () => void }) {
+export function ProjectsCard({ settings, onChanged }: { settings: DesktopSettings; onChanged: () => void }) {
   const { client, bump } = useHive();
   const t = useT();
   const desktop = client.desktop!;
@@ -711,9 +709,6 @@ function ProjectsCard({ settings, onChanged }: { settings: DesktopSettings; onCh
                       }
                     >
                       {t("projects.sync")}
-                    </Button>
-                    <Button asChild size="sm" variant="outline">
-                      <a href="#/setup">{t("overview.settings")}</a>
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setGitlabOpen(gitlabOpen === p.name ? null : p.name)} aria-expanded={gitlabOpen === p.name}>
                       {t("projects.forgeOf")}
@@ -833,7 +828,7 @@ const IMPORT_TONE: Record<GitLabImportCandidate["state"], string> = { added: "ne
  * A whole GitLab group at once (roadmap 19a): the repositories of the group and its subgroups, each with the project
  * key and folder it would get; the chosen ones are cloned (or their folder used) and added, with their GitLab path.
  */
-function GitLabImportCard({ settings, onChanged }: { settings: DesktopSettings; onChanged: () => void }) {
+export function GitLabImportCard({ settings, onChanged }: { settings: DesktopSettings; onChanged: () => void }) {
   const { client, bump, systems } = useHive();
   const t = useT();
   const desktop = client.desktop!;
