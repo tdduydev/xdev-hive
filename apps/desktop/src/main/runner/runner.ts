@@ -64,6 +64,7 @@ import {
 import { tr } from "#desktop/main/i18n.ts";
 import { git, isGitRepo } from "#desktop/main/git.ts";
 import { NO_FEATURES, repoFeatures } from "#desktop/main/installer.ts";
+import { prepareCodegraph } from "./codegraph.ts";
 import { containerCommand } from "./container.ts";
 import { claudeMcpServers, codexMcpArgs, hubMcpEnv, type McpRun } from "./container-mcp.ts";
 import { deniedHosts, egressAllow, egressPlan, type Egress } from "./egress.ts";
@@ -1283,7 +1284,8 @@ export class Runner {
         mcpFile = path.join(this.#opts.dataDir, "runs", `${run.id}.mcp.json`);
         writeFileSync(mcpFile, JSON.stringify({ mcpServers: this.#containerMcp(profile, run) }), { mode: 0o600 });
       }
-      const cmd = buildCommand(profile, vars, profile.container ? NO_FEATURES : repoFeatures(project.repo), mcpFile ?? undefined, fit.mcp);
+      const features = profile.container ? NO_FEATURES : repoFeatures(project.repo);
+      const cmd = buildCommand(profile, vars, features, mcpFile ?? undefined, fit.mcp);
       const base = this.#host.env();
       const bin = resolveBin(profile.container ? "docker" : cmd.bin, base.PATH ?? "");
       if (!bin) {
@@ -1308,6 +1310,11 @@ export class Runner {
       log = createWriteStream(this.#logPath(run.id), { flags: "a" });
       log.on("error", () => undefined); // a failing log file must not take the app down
       const hostEnv = Object.fromEntries(Object.entries(base).filter(([k]) => !k.startsWith("ELECTRON_")));
+      // Built for Claude, whose servers the runner lists, and for another CLI whose own config starts codegraph.
+      const codegraph =
+        features.codegraph && (fit.mcp === null || fit.mcp.includes("codegraph"))
+          ? await prepareCodegraph(wt.path, resolveBin("npx", base.PATH ?? ""), hostEnv)
+          : null;
       const agentEnv: Record<string, string> = {
         ...expandEnv(profile.env),
         HIVE_AGENT: profile.id,
@@ -1353,7 +1360,7 @@ export class Runner {
           })
         : null;
       log.write(
-        `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image} · ${egress ? `network limited (${egress.env.HIVE_EGRESS_ALLOW})` : "network open"}\n` : ""}${startNote ? `# ${startNote}\n` : ""}# cwd ${wt.path}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n${policyLine(pol, fit)}\n${skipped}\n## Prompt\n${prompt}\n\n## Output\n`,
+        `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image} · ${egress ? `network limited (${egress.env.HIVE_EGRESS_ALLOW})` : "network open"}\n` : ""}${startNote ? `# ${startNote}\n` : ""}${codegraph ? `${codegraph}\n` : ""}# cwd ${wt.path}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n${policyLine(pol, fit)}\n${skipped}\n## Prompt\n${prompt}\n\n## Output\n`,
       );
 
       const env: NodeJS.ProcessEnv = box ? { ...hostEnv, ...box.env } : { ...hostEnv, ...agentEnv };
