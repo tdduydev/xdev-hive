@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, BookMarked, Bot, Check, CheckCheck, MessageSquarePlus, Pencil, RotateCcw, Search, SendHorizontal, Settings2, Square, Trash2, X } from "lucide-react";
 import { cn } from "cn";
-import { CHAT_EFFORTS, CHAT_MODEL_ALIASES, type ChatAction, type ChatEffort, type ChatMessage, type ChatThread } from "@xdev-hive/core";
+import { CHAT_EFFORTS, CHAT_MODEL_ALIASES, policySummary, type AgentPolicy, type ChatAction, type ChatEffort, type ChatMessage, type ChatThread } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card } from "@xdev-hive/ui/components/ui/card";
 import { Input } from "@xdev-hive/ui/components/ui/input";
@@ -16,7 +16,7 @@ import { AttachButton, AttachmentBar, MessageFiles, useAttachments } from "#ui/c
 import { LeaderGuideSheet } from "#ui/components/LeaderGuide.tsx";
 import { CopyButton, ReplyMarkdown } from "#ui/components/ReplyMarkdown.tsx";
 import { errorMessage, formatTime, formatUsd, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "#ui/hooks.ts";
-import { useT } from "#ui/i18n/index.tsx";
+import { rich, useT } from "#ui/i18n/index.tsx";
 import {
   ACTION_TONE,
   actionTask,
@@ -789,11 +789,24 @@ function ActionItem({ action: a, taskIds, manage, onDecided }: { action: ChatAct
     if (input.reviewAfter) detail.push(t("board.reviewAfter"));
   }
   const text = a.kind === "task.update" ? input.note : a.kind === "run.dispatch" ? input.instructions : null;
-  const taskLink = (
+  const taskLink = task ? (
     <a className={cn(LINK, "font-mono text-[0.9em]")} href={`#/tasks?task=${encodeURIComponent(task)}`}>
       {task}
     </a>
+  ) : null;
+  const run = String(input.runId ?? "");
+  const runLink = (
+    <a className={cn(LINK, "font-mono text-[0.9em]")} href={`#/runs?run=${encodeURIComponent(run)}`}>
+      {run}
+    </a>
   );
+  const machine = <span className="font-mono">{machineName(String(input.machineId ?? ""))}</span>;
+  const change = [
+    input.enabled === true ? t("chat.actionProfileOn") : input.enabled === false ? t("chat.actionProfileOff") : null,
+    typeof input.priority === "number" ? t("chat.actionProfilePriority", { n: input.priority }) : null,
+  ].filter(Boolean);
+  // The project's part as it was when proposed, and as it would be: null is the hub's default alone.
+  const policyText = (p: unknown) => (p && typeof p === "object" ? policySummary(p as Partial<AgentPolicy>) : t("chat.actionPolicyNone"));
   return (
     <li className="flex flex-col gap-1.5 rounded-lg border bg-muted/30 p-2.5 text-xs">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -801,20 +814,43 @@ function ActionItem({ action: a, taskIds, manage, onDecided }: { action: ChatAct
         <span className="min-w-0 text-sm wrap-anywhere">
           {a.kind === "task.create" ? (
             <>
-              {t("chat.actionCreate")} {a.status === "done" || taskIds.includes(task) ? taskLink : <span className="font-mono text-[0.9em]">{task}</span>}: {String(input.title ?? "")}
+              {t("chat.actionCreate")} {a.status === "done" || (task && taskIds.includes(task)) ? taskLink : <span className="font-mono text-[0.9em]">{task}</span>}: {String(input.title ?? "")}
             </>
           ) : a.kind === "task.update" ? (
             <>
               {t("chat.actionMove")} {taskLink} → {t(`taskStatus.${String(input.status)}` as never)}
             </>
-          ) : (
+          ) : a.kind === "run.dispatch" ? (
             <>
-              {t("chat.actionRun", { role: runLabel("agentRole", String(input.role ?? "implement")) })} {taskLink} · <span className="font-mono">{machineName(String(input.machineId ?? ""))}</span>
+              {t("chat.actionRun", { role: runLabel("agentRole", String(input.role ?? "implement")) })} {taskLink} · {machine}
             </>
+          ) : a.kind === "run.cancel" ? (
+            rich(t("chat.actionCancel"), { run: runLink, machine })
+          ) : a.kind === "run.merge" ? (
+            <>
+              {rich(t("chat.actionMerge"), { run: runLink })}
+              <MergeLink machineId={String(input.machineId ?? "")} runId={run} />
+            </>
+          ) : a.kind === "machine.profile" ? (
+            rich(t("chat.actionProfile", { profile: String(input.profileId ?? ""), change: change.join(", ") }), { machine })
+          ) : a.kind === "agent.policy" ? (
+            t("chat.actionPolicy")
+          ) : a.kind === "agents.stop" ? (
+            t("chat.actionStop")
+          ) : a.kind === "agents.resume" ? (
+            t("chat.actionResume")
+          ) : (
+            rich(t("chat.actionInstall", { item: String(input.itemId ?? "") }), { machine })
           )}
         </span>
       </div>
       {detail.length ? <div className="text-muted-foreground">{detail.join(" · ")}</div> : null}
+      {a.kind === "agent.policy" ? (
+        <div className="flex flex-col gap-0.5 rounded-md bg-background/60 p-2 wrap-anywhere">
+          <span>{t("chat.actionPolicyBefore", { policy: policyText(a.input.before) })}</span>
+          <span>{t("chat.actionPolicyAfter", { policy: policyText(a.input.policy) })}</span>
+        </div>
+      ) : null}
       {text ? <div className="rounded-md bg-background/60 p-2 whitespace-pre-wrap wrap-anywhere">{String(text)}</div> : null}
       <div className="text-muted-foreground wrap-anywhere">{t("chat.actionReason", { reason: a.reason })}</div>
       {a.status === "proposed" && manage ? (
@@ -833,12 +869,18 @@ function ActionItem({ action: a, taskIds, manage, onDecided }: { action: ChatAct
       {a.decidedBy && a.status !== "proposed" ? (
         <div className="text-muted-foreground">
           {t(a.status === "dismissed" ? "chat.actionDismissedBy" : "chat.actionConfirmedBy", { who: a.decidedBy, time: formatTime(a.decidedAt) })}
-          {a.result?.requestId ? (
+          {a.result?.requestId && task ? (
             <>
               {" · "}
               <a className={LINK} href={`#/tasks?task=${encodeURIComponent(task)}`}>
                 {t("chat.actionRequest", { id: a.result.requestId })}
               </a>
+            </>
+          ) : null}
+          {a.result?.commandId ? (
+            <>
+              {" · "}
+              {t("chat.actionCommand", { id: a.result.commandId })}
             </>
           ) : null}
         </div>
@@ -850,6 +892,22 @@ function ActionItem({ action: a, taskIds, manage, onDecided }: { action: ChatAct
 }
 
 const LINK = "font-medium text-primary underline underline-offset-2";
+
+/** The MR/PR of a run to merge, when the hub knows it and the reader may see the run. */
+function MergeLink({ machineId, runId }: { machineId: string; runId: string }) {
+  const { client } = useHive();
+  const t = useT();
+  const run = useQuery(() => client.call("runs.get", { machineId, runId }), [client, machineId, runId]);
+  const url = run.data?.mrUrl;
+  return url ? (
+    <>
+      {" · "}
+      <a className={LINK} href={url} target="_blank" rel="noreferrer">
+        {t("chat.actionMrLink")}
+      </a>
+    </>
+  ) : null;
+}
 
 function Composer({ thread, onSent }: { thread: ChatThread; onSent: () => void }) {
   const { client } = useHive();

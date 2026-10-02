@@ -381,3 +381,198 @@ describe("what a chat leader proposes", () => {
     assert.equal((await hive.call("chat.decide", { actionId: reply!.actions[0]!.id, accept: true }, lead)).status, "done");
   });
 });
+
+describe("the rest of the web a chat leader proposes (roadmap 29b)", () => {
+  // Reviews code and confirms proposals in app, but neither runs agents nor sets the project up.
+  const hoa: Actor = { name: "hoa", role: "member", access: { projects: { app: "reviewer" } } };
+  const report = {
+    machine: [
+      { id: "cli:codex", label: "Codex CLI", state: "missing" as const, detail: "Chưa cài", action: "Cài bằng npm" },
+      { id: "shim", label: "Lệnh hive-mcp", state: "manual" as const, detail: "không có trong PATH", action: null },
+    ],
+    projects: [
+      { project: "app", repo: "/Users/duy/app", items: [{ id: "app:codegraph-index", label: "Index codegraph", state: "missing" as const, detail: "Chưa tạo", action: "Tạo index" }] },
+      { project: "site", repo: "/Users/duy/site", items: [{ id: "site:codegraph-index", label: "Index codegraph", state: "missing" as const, detail: "Chưa tạo", action: "Tạo index" }] },
+    ],
+  };
+  const pushed = (over: Record<string, unknown> = {}) => ({
+    runId: "R-run1",
+    project: "app",
+    taskId: "T-1",
+    taskTitle: "Sign in",
+    role: "implement" as const,
+    status: "running" as const,
+    profileId: "claude-1",
+    createdAt: "2026-09-29T07:50:00.000Z",
+    ...over,
+  });
+
+  /**
+   * duy-mbp reports plans with priorities and what it could install, and runs of app: one running, one ended, one with
+   * an MR, one with an MR lan asked for herself; and one of site. The leader writes a reply in an app thread.
+   */
+  async function ops() {
+    const { hive, beat } = await hub();
+    await beat(mbp, {
+      profiles: [profile("claude-1", { priority: 10 }), profile("codex-1", { priority: 20 })],
+      setup: { checkedAt: "2026-09-29T07:59:00.000Z", report },
+    });
+    await beat(mini);
+    await hive.call("tasks.create", { id: "T-1", project: "app", title: "Sign in" }, admin);
+    await hive.call(
+      "runs.push",
+      {
+        machine: "duy-mbp",
+        runs: [
+          pushed(),
+          pushed({ runId: "R-done1", status: "succeeded", finishedAt: "2026-09-29T07:55:00.000Z" }),
+          pushed({ runId: "R-mr1", status: "succeeded", mrUrl: "https://gitlab.example/team/app/-/merge_requests/7" }),
+          pushed({ runId: "R-site1", project: "site", taskId: "S-1", taskTitle: "Landing" }),
+        ],
+      },
+      mbp,
+    );
+    // Pushed on lan's token: the run is hers.
+    await hive.call(
+      "runs.push",
+      { machine: "duy-mbp", runs: [pushed({ runId: "R-mine", status: "succeeded", mrUrl: "https://gitlab.example/team/app/-/merge_requests/8" })] },
+      { ...mbp, onBehalf: "lan" },
+    );
+    const sent = await hive.call("chat.send", { project: "app", machineId: mbp.name, text: "Clean up the runs" }, lead);
+    await hive.call("chat.progress", { replyId: sent.reply.id, text: "Looking" }, mbp);
+    const leader: Actor = { name: "claude-1.duy-mbp@chat-lan", role: "agent", access: { projects: { app: "contribute" } }, chatReply: sent.reply.id };
+    const propose = (action: Record<string, unknown>) => hive.call("chat.propose", { action, reason: "Asked in the chat" } as never, leader);
+    return { hive, sent, leader, propose };
+  }
+
+  it("stores the call each kind becomes, always on the chat's project", async () => {
+    const { hive, propose } = await ops();
+    assert.deepEqual((await propose({ kind: "run.cancel", machine: "duy-mbp", runId: "R-run1" })).input, { machineId: mbp.name, runId: "R-run1" });
+    assert.deepEqual((await propose({ kind: "run.merge", machine: mbp.name, runId: "R-mr1" })).input, { machineId: mbp.name, runId: "R-mr1" });
+    assert.deepEqual((await propose({ kind: "machine.profile", machine: "duy-mbp", profileId: "claude-1", enabled: false })).input, {
+      machineId: mbp.name,
+      profileId: "claude-1",
+      enabled: false,
+    });
+    assert.deepEqual((await propose({ kind: "machine.profile", machine: "duy-mbp", profileId: "codex-1", priority: 1 })).input, { machineId: mbp.name, profileId: "codex-1", priority: 1 });
+    // The part as it is now, for the card to show before and after.
+    await hive.call("agentPolicy.set", { project: "app", policy: { autonomy: "edit" } }, admin);
+    assert.deepEqual((await propose({ kind: "agent.policy", policy: { autonomy: "propose" } })).input, { project: "app", policy: { autonomy: "propose" }, before: { autonomy: "edit" } });
+    assert.deepEqual((await propose({ kind: "agent.policy", policy: null })).input, { project: "app", policy: null, before: { autonomy: "edit" } });
+    assert.deepEqual((await propose({ kind: "agents.stop" })).input, { project: "app" });
+    assert.deepEqual((await propose({ kind: "agents.resume" })).input, { project: "app" });
+    assert.deepEqual((await propose({ kind: "machine.install", machine: "duy-mbp", itemId: "cli:codex" })).input, { machineId: mbp.name, itemId: "cli:codex" });
+    assert.deepEqual((await propose({ kind: "machine.install", machine: "duy-mbp", itemId: "app:codegraph-index" })).input, { machineId: mbp.name, itemId: "app:codegraph-index" });
+    // Nothing ran yet.
+    assert.equal((await hive.call("runs.get", { machineId: mbp.name, runId: "R-run1" }, admin))!.cancelRequestedBy, null);
+    assert.deepEqual((await hive.call("agents.paused", {}, admin)).projects, []);
+  });
+
+  it("refuses what the hub knows is wrong, with a key the page translates", async () => {
+    const { propose } = await ops();
+    assert.equal(await refusal(propose({ kind: "run.cancel", machine: "duy-mbp", runId: "R-site1" })), "errors.chatRunNotFound", "another project's run");
+    assert.equal(await refusal(propose({ kind: "run.cancel", machine: "lan-mini", runId: "R-run1" })), "errors.chatRunNotFound", "not that machine's");
+    assert.equal(await refusal(propose({ kind: "run.cancel", machine: "ghost", runId: "R-run1" })), "errors.machineNotFound");
+    assert.equal(await refusal(propose({ kind: "run.cancel", machine: "duy-mbp", runId: "R-done1" })), "errors.chatRunEnded");
+    assert.equal(await refusal(propose({ kind: "run.merge", machine: "duy-mbp", runId: "R-run1" })), "errors.chatRunNoMr");
+    assert.equal(await refusal(propose({ kind: "run.merge", machine: "duy-mbp", runId: "R-site1" })), "errors.chatRunNotFound");
+    assert.equal(await refusal(propose({ kind: "machine.profile", machine: "duy-mbp", profileId: "gemini-1", enabled: true })), "errors.chatProfileNotFound");
+    assert.equal(await refusal(propose({ kind: "machine.profile", machine: "duy-mbp", profileId: "claude-1" })), "errors.chatProfileNothing");
+    assert.equal(await refusal(propose({ kind: "machine.install", machine: "duy-mbp", itemId: "site:codegraph-index" })), "errors.chatInstallOtherProject");
+    assert.equal(await refusal(propose({ kind: "machine.install", machine: "ghost", itemId: "cli:codex" })), "errors.machineNotFound");
+  });
+
+  it("runs each as the person confirming it, with the method's own rights", async () => {
+    const { hive, propose } = await ops();
+    const cancel = await propose({ kind: "run.cancel", machine: "duy-mbp", runId: "R-run1" });
+    const merge = await propose({ kind: "run.merge", machine: "duy-mbp", runId: "R-mr1" });
+    const profileOff = await propose({ kind: "machine.profile", machine: "duy-mbp", profileId: "claude-1", enabled: false });
+    const policy = await propose({ kind: "agent.policy", policy: { autonomy: "propose" } });
+    const install = await propose({ kind: "machine.install", machine: "duy-mbp", itemId: "cli:codex" });
+    const resume = await propose({ kind: "agents.resume" });
+    // Last: stopping also ends the reply being written, after which it proposes nothing more.
+    const stop = await propose({ kind: "agents.stop" });
+
+    const done = await hive.call("chat.decide", { actionId: cancel.id, accept: true }, lead);
+    assert.deepEqual([done.status, done.result], ["done", null]);
+    assert.equal((await hive.call("runs.get", { machineId: mbp.name, runId: "R-run1" }, admin))!.cancelRequestedBy, "lan");
+
+    assert.equal((await hive.call("chat.decide", { actionId: merge.id, accept: true }, hoa)).status, "done", "a reviewer merges");
+    assert.equal((await hive.call("runs.get", { machineId: mbp.name, runId: "R-mr1" }, admin))!.merge?.requestedBy, "hoa");
+
+    assert.equal((await hive.call("chat.decide", { actionId: policy.id, accept: true }, lead)).status, "done");
+    assert.deepEqual((await hive.call("agentPolicy.get", {}, admin)).projects.app, { autonomy: "propose" });
+
+    // A plan is its machine's owner's or a hub admin's; an install a hub admin's.
+    assert.equal((await hive.call("chat.decide", { actionId: profileOff.id, accept: true }, admin)).status, "done");
+    const m = (await hive.call("machines.list", {}, admin)).find((x) => x.id === mbp.name)!;
+    assert.deepEqual(m.profileChanges.map((c) => [c.profileId, c.enabled]), [["claude-1", false]]);
+    const installed = await hive.call("chat.decide", { actionId: install.id, accept: true }, admin);
+    const [command] = (await hive.call("admin.machines", {}, admin)).find((x) => x.id === mbp.name)!.commands;
+    assert.deepEqual([installed.status, installed.result, command!.itemId, command!.requestedBy], ["done", { commandId: command!.id }, "cli:codex", "duy"]);
+
+    assert.equal((await hive.call("chat.decide", { actionId: stop.id, accept: true }, lead)).status, "done");
+    assert.deepEqual((await hive.call("agents.paused", {}, admin)).projects, ["app"]);
+    assert.equal((await hive.call("chat.decide", { actionId: resume.id, accept: true }, lead)).status, "done");
+    assert.deepEqual((await hive.call("agents.paused", {}, admin)).projects, []);
+  });
+
+  it("fails a confirmed action its confirmer lacks the rights for, with no shortcut", async () => {
+    const { hive, propose } = await ops();
+    const cancel = await propose({ kind: "run.cancel", machine: "duy-mbp", runId: "R-run1" });
+    const policy = await propose({ kind: "agent.policy", policy: { autonomy: "read" } });
+    const profileOff = await propose({ kind: "machine.profile", machine: "duy-mbp", profileId: "claude-1", enabled: false });
+    const install = await propose({ kind: "machine.install", machine: "duy-mbp", itemId: "cli:codex" });
+    const mine = await propose({ kind: "run.merge", machine: "duy-mbp", runId: "R-mine" });
+    const stop = await propose({ kind: "agents.stop" });
+
+    const failed = async (actionId: number, who: Actor) => {
+      const a = await hive.call("chat.decide", { actionId, accept: true }, who);
+      assert.equal(a.status, "failed", a.kind);
+      return a.error?.key;
+    };
+    assert.equal(await failed(cancel.id, hoa), "errors.need.runDispatch");
+    assert.equal(await failed(stop.id, hoa), "errors.need.runDispatch");
+    assert.equal(await failed(policy.id, hoa), "errors.need.projectSettings");
+    assert.equal(await failed(profileOff.id, lead), "errors.machineProfileForbidden", "lan does not own duy-mbp");
+    assert.equal(await failed(install.id, lead), "errors.roleTooLow", "a hub admin's alone");
+    assert.equal(await failed(mine.id, lead), "errors.selfApprove", "not a merge of her own run");
+
+    assert.equal((await hive.call("runs.get", { machineId: mbp.name, runId: "R-run1" }, admin))!.cancelRequestedBy, null);
+    assert.deepEqual((await hive.call("agents.paused", {}, admin)).projects, []);
+    assert.equal((await hive.call("agentPolicy.get", {}, admin)).projects.app, undefined);
+    assert.deepEqual((await hive.call("admin.machines", {}, admin)).find((x) => x.id === mbp.name)!.commands, []);
+  });
+
+  it("confirms all in the spec's order: agents back before runs, stopped last", async () => {
+    const { hive, sent, propose } = await ops();
+    // Proposed the other way round.
+    const stop = await propose({ kind: "agents.stop" });
+    const run = await propose({ kind: "run.dispatch", taskId: "T-7" });
+    const merge = await propose({ kind: "run.merge", machine: "duy-mbp", runId: "R-mr1" });
+    const cancel = await propose({ kind: "run.cancel", machine: "duy-mbp", runId: "R-run1" });
+    const resume = await propose({ kind: "agents.resume" });
+    const install = await propose({ kind: "machine.install", machine: "duy-mbp", itemId: "cli:codex" });
+    const profileOff = await propose({ kind: "machine.profile", machine: "duy-mbp", profileId: "claude-1", enabled: false });
+    const policy = await propose({ kind: "agent.policy", policy: { autonomy: "edit" } });
+    const create = await propose({ kind: "task.create", id: "T-7", title: "Reset page" });
+
+    const done = await hive.call("chat.decideAll", { replyId: sent.reply.id, accept: true }, admin);
+    assert.deepEqual(
+      done.map((a) => a.status),
+      done.map(() => "done"),
+      JSON.stringify(done.map((a) => [a.kind, a.status, a.error?.key])),
+    );
+    const ids = [stop, run, merge, cancel, resume, install, profileOff, policy, create].map((a) => a.id);
+    assert.deepEqual(done.map((a) => a.id), ids);
+    // runs.cancel keeps no audit entry; the run says who cancelled it.
+    const audited = ["tasks.create", "agentPolicy.set", "machines.setProfile", "admin.commandCreate", "agents.resume", "runs.merge", "runs.dispatch", "agents.stop"];
+    const order = (await hive.call("admin.audit", { limit: 100 }, admin))
+      // Not the setup's own task T-1.
+      .filter((e) => audited.includes(e.action) && e.actor === "duy" && !(e.action === "tasks.create" && e.target !== "T-7"))
+      .reverse()
+      .map((e) => e.action);
+    assert.deepEqual(order, audited);
+    assert.equal((await hive.call("runs.get", { machineId: mbp.name, runId: "R-run1" }, admin))!.cancelRequestedBy, "duy");
+  });
+});

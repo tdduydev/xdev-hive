@@ -84,6 +84,8 @@ const repoPath = z
 const objectId = z.string().regex(/^[0-9a-f]{40,64}$/);
 const account = z.string().regex(ACCOUNT_ID, "account: letters, digits, . _ @ : + -");
 const machineRef = z.string().min(1).max(200);
+/** A run's id on its machine (R-1a2b3c). */
+const runId = z.string().regex(/^[\w.-]{1,40}$/);
 /** Why a machine could not do what the hub asked: the message, and its key in the UI catalogue when there is one. */
 const machineError = z.object({
   message: z.string().max(2000),
@@ -170,6 +172,22 @@ const chatAction = z.discriminatedUnion("kind", [
     candidates: z.number().int().min(1).max(MAX_CANDIDATES).default(1),
     instructions: z.string().max(4000).default(""),
   }),
+  // The rest name a machine by hub id or name too; the project is always the chat's.
+  z.object({ kind: z.literal("run.cancel"), machine: machineRef, runId }),
+  z.object({ kind: z.literal("run.merge"), machine: machineRef, runId }),
+  // Enabled or priority is checked in chat.propose: a refine inside a discriminated union is not kept by every zod.
+  z.object({
+    kind: z.literal("machine.profile"),
+    machine: machineRef,
+    profileId: z.string().min(1).max(40),
+    enabled: z.boolean().optional(),
+    priority: z.number().int().min(0).max(100).optional(),
+  }),
+  /** The project's part of the agent policy; null removes it (the hub's default applies). */
+  z.object({ kind: z.literal("agent.policy"), policy: agentPolicyPartSchema.nullable() }),
+  z.object({ kind: z.literal("agents.stop") }),
+  z.object({ kind: z.literal("agents.resume") }),
+  z.object({ kind: z.literal("machine.install"), machine: machineRef, itemId: setupItemId }),
 ]);
 
 export const schemas = {
@@ -472,12 +490,12 @@ export const schemas = {
    * A project manager stops a run that waits or runs on a machine taking runs from the hub: the machine hears it at
    * its next heartbeat, stops the agent and reports the run as cancelled.
    */
-  "runs.cancel": z.object({ machineId: z.string().min(1).max(200), runId: z.string().regex(/^[\w.-]{1,40}$/) }),
+  "runs.cancel": z.object({ machineId: z.string().min(1).max(200), runId }),
   /**
    * Merges the run's open MR or PR (roadmap 18c): someone with Code review on the project, not the one who asked for the
    * run. The machine does it with its own GitLab or GitHub token at its next heartbeat; only one that takes runs from the hub.
    */
-  "runs.merge": z.object({ machineId: z.string().min(1).max(200), runId: z.string().regex(/^[\w.-]{1,40}$/) }),
+  "runs.merge": z.object({ machineId: z.string().min(1).max(200), runId }),
   /** The machine says how a merge asked of it went (only for its own runs). */
   "runs.mergeResult": z.object({ runId: z.string().regex(/^[\w.-]{1,40}$/), ok: z.boolean(), error: machineError.nullable().default(null) }),
   /** One run with the end of its log. */
