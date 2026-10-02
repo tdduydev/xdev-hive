@@ -3,6 +3,7 @@ import type { AgentPolicy } from "./agent-policy.ts";
 import type { AgentProfile, AgentRole } from "./agents.ts";
 import type { MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { WriteSource } from "./source.ts";
+import type { MapPhase } from "./mapreduce.ts";
 
 /** member: a person's hub account (what it may do comes from its per-project grants). */
 export type Role = "viewer" | "agent" | "member" | "admin";
@@ -823,6 +824,17 @@ export interface RunGroup {
   /** Nothing left to release or running. */
   closedAt: string | null;
   items: RunGroupItem[];
+  /** Map-reduce (roadmap 31c): where the group is; null for the other kinds. */
+  phase: MapPhase | null;
+  /** The job's parts: given, or written by the split run (to check while the phase is "ready"). */
+  parts: string[];
+  /** The machine every part and the merge run on: their branches have to be in one repository. */
+  machineId: string | null;
+  /** The split run's or the merge run's request, and what its run did. */
+  phaseRequest: RunRequest | null;
+  phaseRun: RunGroupRun | null;
+  /** Why the group stopped. */
+  phaseError: RunRequestError | null;
 }
 
 /** Claude Code's --effort levels. */

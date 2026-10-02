@@ -56,6 +56,7 @@ import { isAgentActor, MR_WATCHER, parseSource, principalOf, type WriteSource } 
 import { SEED_DOCS, SEED_VERSION } from "./seed.ts";
 import { planSpecTasks, specStage, specStepInstructions, specTaskPrefix, specTasks, specTitle, type SpecFeature, type SpecFeatureDetail, type SpecFiles, type SpecStep } from "./speckit.ts";
 import { parseVerdict } from "./verdict.ts";
+import { parseParts, partInstructions, reduceInstructions, splitInstructions, type MapPhase } from "./mapreduce.ts";
 import { toolEffective, toolProblem, toolSetupItems } from "./tools.ts";
 import type {
   Actor,
@@ -444,6 +445,15 @@ const MIGRATIONS: string[] = [
   CREATE INDEX sdlc_flow_tasks_flow ON sdlc_flow_tasks(flow_task);
   CREATE INDEX sdlc_flow_tasks_stage ON sdlc_flow_tasks(stage);
   `,
+  // Map-reduce groups (roadmap 31c): their phase, the job's parts (JSON), the one machine of the parts and the merge
+  // (their branches have to be in one repository), the split or merge run's request, and why the group stopped.
+  `
+  ALTER TABLE run_groups ADD COLUMN phase TEXT;
+  ALTER TABLE run_groups ADD COLUMN parts TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE run_groups ADD COLUMN machine_id TEXT;
+  ALTER TABLE run_groups ADD COLUMN phase_request INTEGER;
+  ALTER TABLE run_groups ADD COLUMN phase_error TEXT;
+  `,
 ];
 
 /**
@@ -804,6 +814,21 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
     target: `${o.project}/${o.winnerTask}`,
     detail: `giữ ${o.winnerTask} trong ${o.parentTask} (đợt chạy #${o.id})`,
     text: { key: "audit.runPick", vars: { task: o.winnerTask ?? "", parent: o.parentTask ?? "", id: o.id } },
+  }),
+  "runs.mapReduce": (_i, o: RunGroup) => ({
+    target: `${o.project}/${o.parentTask}`,
+    detail: `chia ${o.parentTask} thành ${o.items.length} phần (đợt chạy #${o.id})`,
+    text: { key: "audit.runMapReduce", vars: { id: o.id, count: o.items.length, task: o.parentTask ?? "" } },
+  }),
+  "runs.mapSplit": (_i, o: RunGroup) => ({
+    target: `${o.project}/${o.parentTask}`,
+    detail: `nhờ agent chia ${o.parentTask} (đợt chạy #${o.id})`,
+    text: { key: "audit.runMapSplit", vars: { id: o.id, task: o.parentTask ?? "" } },
+  }),
+  "runs.resumeGroup": (_i, o: RunGroup) => ({
+    target: o.project,
+    detail: `chạy lại đợt chạy #${o.id}`,
+    text: { key: "audit.runGroupResume", vars: { id: o.id } },
   }),
   "runs.cancelGroup": (_i, o: RunGroup) => ({
     target: o.project,
@@ -1381,6 +1406,16 @@ export class SqliteHive implements HiveBackend {
       case "runs.fanout":
         this.#need(actor, i.project, "taskManage", `Project ${i.project}`);
         return this.#need(actor, i.project, "runDispatch", `Project ${i.project}`);
+      case "runs.mapReduce":
+      case "runs.mapSplit":
+        this.#need(actor, i.project, "taskManage", `Project ${i.project}`);
+        return this.#need(actor, i.project, "runDispatch", `Project ${i.project}`);
+      case "runs.resumeGroup": {
+        const row = this.db.prepare("SELECT project FROM run_groups WHERE id = ?").get(i.id) as Row | undefined;
+        if (!row) return;
+        this.#need(actor, str(row.project), "taskManage", `Run group #${i.id}`);
+        return this.#need(actor, str(row.project), "runDispatch", `Run group #${i.id}`);
+      }
       case "runs.pickWinner": {
         const row = this.db.prepare("SELECT project FROM run_groups WHERE id = ?").get(i.groupId) as Row | undefined;
         if (!row) return;
@@ -2468,6 +2503,25 @@ export class SqliteHive implements HiveBackend {
       createdAt: str(g.created_at),
       closedAt: strOrNull(g.closed_at),
       items,
+      ...this.#mapFields(g),
+    };
+  }
+
+  /** A map-reduce group's own fields (roadmap 31c); empty for the other kinds. */
+  #mapFields(g: Row): Pick<RunGroup, "phase" | "parts" | "machineId" | "phaseRequest" | "phaseRun" | "phaseError"> {
+    const phase = strOrNull(g.phase) as MapPhase | null;
+    const req = g.phase_request == null ? null : ((this.db.prepare("SELECT * FROM run_requests WHERE id = ?").get(num(g.phase_request)) as Row | undefined) ?? null);
+    const phaseRequest = req ? toRunRequest(req) : null;
+    let parts = JSON.parse(str(g.parts ?? "[]")) as string[];
+    // The split run's list lands in the task's note when its machine reports the task, which may come after its run.
+    if (phase === "ready" && !parts.length && g.parent_task) parts = parseParts(this.#getTask(str(g.parent_task))?.note);
+    return {
+      phase,
+      parts,
+      machineId: strOrNull(g.machine_id),
+      phaseRequest,
+      phaseRun: this.#groupRun(phaseRequest),
+      phaseError: g.phase_error ? (JSON.parse(str(g.phase_error)) as RunRequestError) : null,
     };
   }
 
@@ -2523,6 +2577,11 @@ export class SqliteHive implements HiveBackend {
       // Whoever made the group: its runs count for them (budgets, run_requests.requested_by).
       const onBehalf = this.#groupOnBehalf(g.id);
       const actor: Actor = { name: g.createdBy, role: "member", ...(onBehalf ? { onBehalf } : {}) };
+      // A map-reduce group splits, waits for a person or merges outside its items (roadmap 31c).
+      if (g.kind === "mapreduce" && g.phase !== "map") {
+        this.#mapStep(g, actor);
+        continue;
+      }
       for (const item of g.items) {
         if (item.status !== "held") continue;
         if (g.maxParallel !== null && active >= g.maxParallel) break;
@@ -2543,7 +2602,9 @@ export class SqliteHive implements HiveBackend {
             { machineId, project: g.project, task, role: item.role, profileId: item.profileId, candidates: 1, instructions },
             actor,
           );
-          const req = this.#insertRequest(m, g.project, task, { role: item.role, profileId: item.profileId, reviewAfter: g.reviewAfter, candidates: 1, instructions }, actor);
+          // A job's parts get no review of their own: the merged result does (roadmap 31c).
+          const reviewAfter = g.kind === "mapreduce" ? false : g.reviewAfter;
+          const req = this.#insertRequest(m, g.project, task, { role: item.role, profileId: item.profileId, reviewAfter, candidates: 1, instructions }, actor);
           db.prepare("UPDATE run_group_items SET status = 'sent', machine_id = ?, request_id = ?, updated_at = ? WHERE id = ?").run(machineId, req.id, now, item.id);
           active++;
         } catch (err) {
@@ -2553,8 +2614,67 @@ export class SqliteHive implements HiveBackend {
         }
       }
       const after = this.#group(g.id);
-      if (!after.items.some((i) => i.status === "held" || i.active)) db.prepare("UPDATE run_groups SET closed_at = ? WHERE id = ?").run(this.#now(), g.id);
+      if (after.kind === "mapreduce") this.#mapStep(after, actor);
+      else if (!after.items.some((i) => i.status === "held" || i.active)) db.prepare("UPDATE run_groups SET closed_at = ? WHERE id = ?").run(this.#now(), g.id);
     }
+  }
+
+  /**
+   * Moves a map-reduce group on (roadmap 31c): the split run's list goes to a person to check; when every part ran, the
+   * parts are done and a run on the job's task merges their branches, on their machine; the merge done, so is the group.
+   * A part, the split or the merge that failed stops it until a person starts it again (runs.resumeGroup).
+   */
+  #mapStep(g: RunGroup, actor: Actor): void {
+    const db = this.db;
+    const now = this.#now();
+    const stop = (error: RunRequestError) =>
+      db.prepare("UPDATE run_groups SET phase = 'stopped', phase_error = ?, closed_at = ? WHERE id = ?").run(JSON.stringify(error), now, g.id);
+    if (g.phase === "split" || g.phase === "reduce") {
+      const req = g.phaseRequest;
+      if (!req || req.status === "pending") return;
+      if (req.status !== "accepted") return void stop({ message: `The machine did not take the run (${req.status}).`, key: "errors.mapRequestGone", vars: { status: req.status } });
+      const run = g.phaseRun;
+      if (!run) {
+        if (req.updatedAt < this.#now(-GROUP_UNREPORTED_MINUTES)) stop({ message: "The machine took the run but never reported it.", key: "errors.mapRunGone" });
+        return;
+      }
+      if (run.status === "queued" || run.status === "running") return;
+      if (run.status !== "succeeded") return void stop({ message: `Run ${run.runId} ${run.status}.`, key: "errors.mapRunFailed", vars: { run: run.runId, status: run.status } });
+      if (g.phase === "split") db.prepare("UPDATE run_groups SET phase = 'ready', parts = ? WHERE id = ?").run(JSON.stringify(parseParts(this.#getTask(g.parentTask!)?.note)), g.id);
+      else db.prepare("UPDATE run_groups SET phase = 'done', closed_at = ? WHERE id = ?").run(now, g.id);
+      return;
+    }
+    if (g.phase !== "map" || g.items.some((i) => i.status === "held" || i.active)) return;
+    const unfinished = g.items.filter((i) => i.run?.status !== "succeeded").map((i) => i.taskId);
+    if (unfinished.length) return void stop({ message: `Parts did not finish: ${unfinished.join(", ")}.`, key: "errors.mapPartsFailed", vars: { tasks: unfinished.join(", ") } });
+    const parent = this.#getTask(g.parentTask!);
+    if (!parent) return void stop({ message: `Task ${g.parentTask} not found.`, key: "errors.taskNotFound", vars: { id: g.parentTask! } });
+    // Every part ran: their work goes on in the job's task, which stops waiting for them.
+    const parts = g.items.map((i) => this.#getTask(i.taskId)).filter((t): t is Task => !!t);
+    const close = db.prepare("UPDATE tasks SET status = 'done', owner = NULL, lease_until = NULL, updated_at = ? WHERE id = ? AND status != 'done'");
+    for (const t of parts) close.run(now, t.id);
+    const task = this.#getTask(parent.id)!;
+    const instructions = reduceInstructions(parent.id, parts.map((t) => ({ taskId: t.id, title: t.title, note: t.note })));
+    try {
+      const m = this.#assertDispatchable({ machineId: g.machineId!, project: g.project, task, role: "implement", profileId: null, candidates: 1, instructions }, actor);
+      const req = this.#insertRequest(m, g.project, task, { role: "implement", profileId: null, reviewAfter: g.reviewAfter, candidates: 1, instructions }, actor);
+      db.prepare("UPDATE run_groups SET phase = 'reduce', phase_request = ?, phase_error = NULL WHERE id = ?").run(req.id, g.id);
+    } catch (err) {
+      if (!(err instanceof HiveError)) throw err;
+      // Offline, busy, paused, over budget: the next heartbeat tries again.
+      if (groupFails(err.key)) stop({ message: err.message, ...(err.key ? { key: err.key } : {}), ...(err.vars ? { vars: err.vars as Record<string, string | number> } : {}) });
+    }
+  }
+
+  /** The machine a job runs on: the one asked for, which has the project's repo, or the one with the most free places now. */
+  #mapMachine(project: string, machineId: string | null, profileId: string | null = null): Machine {
+    const id = machineId ?? this.#freeMachine(project, profileId);
+    if (!id) throw new HiveError("conflict", `No machine with ${project}'s repo is free now.`, { key: "errors.noFreeMachine", vars: { project } });
+    const row = this.db.prepare("SELECT * FROM machines WHERE id = ?").get(id) as Row | undefined;
+    if (!row) throw new HiveError("not_found", `No machine ${id}.`, { key: "errors.machineNotFound", vars: { machine: id } });
+    const m = this.#toMachine(row);
+    if (!m.projects.includes(project)) throw new HiveError("bad_request", `${m.machine} has no repo for ${project}.`, { key: "errors.machineNoRepo", vars: { machine: m.machine, project } });
+    return m;
   }
 
   #groupOnBehalf(id: number): string | null {
@@ -4521,6 +4641,8 @@ export class SqliteHive implements HiveBackend {
           }
           // An MR that turned green, or merged, moves a flow task on as well.
           this.#releaseFlows();
+          // A run that ended moves its group on now (the next part, a job's merge), not at the next heartbeat.
+          if (ended.length) this.#releaseGroups();
           return { stored: runs.length };
         }),
 
@@ -4800,6 +4922,117 @@ export class SqliteHive implements HiveBackend {
           return this.#group(groupId);
         }),
 
+      "runs.mapSplit": ({ project, title, prompt, machineId, profileId }, actor) =>
+        this.#tx(() => {
+          this.#assertNotPaused(project);
+          const heading = (title?.trim() || prompt.trim().split(/\r?\n/, 1)[0]!.trim()).slice(0, 120);
+          for (const [text, what] of [[heading, "Title"], [prompt, "Instructions"]] as const) {
+            assertNoHidden(text, what);
+            assertNoSecret(text, what);
+          }
+          this.#assertBudget(project, actor);
+          const machine = this.#mapMachine(project, machineId, profileId);
+          const parent = this.#nextPromptTaskId();
+          const now = this.#now();
+          db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)").run(parent, project, heading, prompt.slice(0, 2000), now);
+          const task = this.#getTask(parent)!;
+          // The job is the task's note; past the note's 2000 characters the instructions carry all of it.
+          const instructions = [splitInstructions(), prompt.length > 2000 ? `The job, in full:\n${prompt}` : ""].filter(Boolean).join("\n\n");
+          const m = this.#assertDispatchable({ machineId: machine.id, project, task, role: "plan", profileId, candidates: 1, instructions }, actor);
+          const req = this.#insertRequest(m, project, task, { role: "plan", profileId, reviewAfter: false, candidates: 1, instructions }, actor);
+          const res = db
+            .prepare(
+              `INSERT INTO run_groups(project, kind, title, max_parallel, review_after, instructions, parent_task, created_by, on_behalf, created_at, phase, machine_id, phase_request)
+               VALUES (?, 'mapreduce', ?, NULL, 1, ?, ?, ?, ?, ?, 'split', ?, ?)`,
+            )
+            // The job stays in the group: the split run writes its list over the task's note.
+            .run(project, heading, prompt, parent, actor.name, actor.onBehalf ?? null, now, m.id, req.id);
+          return this.#group(num(res.lastInsertRowid));
+        }),
+
+      "runs.mapReduce": ({ project, groupId, title, prompt, parts, machineId, profiles, maxParallel, reviewAfter }, actor) =>
+        this.#tx(() => {
+          this.#assertNotPaused(project);
+          const split = groupId === undefined ? null : this.#group(groupId);
+          if (split && (split.kind !== "mapreduce" || split.phase !== "ready" || split.project !== project || !split.parentTask || split.closedAt)) {
+            throw new HiveError("conflict", `Run group #${groupId} has no parts waiting to run.`, { key: "errors.mapNotReady", vars: { id: groupId! } });
+          }
+          const job = split ? split.instructions : prompt.trim();
+          if (!job) throw new HiveError("bad_request", "Write the job first.", { key: "errors.mapNoJob" });
+          const heading = split ? split.title : (title?.trim() || job.split(/\r?\n/, 1)[0]!.trim()).slice(0, 120);
+          for (const [text, what] of [[heading, "Title"], [job, "Instructions"], ...parts.map((p) => [p, "Part"] as const)] as const) {
+            assertNoHidden(text, what);
+            assertNoSecret(text, what);
+          }
+          this.#assertBudget(project, actor);
+          const m = split ? this.#mapMachine(project, split.machineId) : this.#mapMachine(project, machineId);
+          for (const id of profiles) {
+            if (!m.profiles.some((p) => p.id === id)) throw new HiveError("bad_request", `${m.machine} has no profile ${id}.`, { key: "errors.profileNotOnMachine", vars: { machine: m.machine, id } });
+          }
+          const parent = split?.parentTask ?? this.#nextPromptTaskId();
+          const children = parts.map((_, i) => `${parent}-${i + 1}`);
+          for (const child of children) {
+            if (this.#getTask(child)) throw new HiveError("conflict", `Task ${child} already exists.`, { key: "errors.taskExists", vars: { id: child } });
+          }
+          const now = this.#now();
+          const put = db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)");
+          // The split run handed the job's task in for review: it waits for its parts now.
+          if (split) db.prepare("UPDATE tasks SET status = 'todo', owner = NULL, lease_until = NULL, updated_at = ? WHERE id = ?").run(now, parent);
+          else put.run(parent, project, heading, job.slice(0, 2000), now);
+          // Each part's note says what it is part of; the job itself reaches its run as instructions.
+          parts.forEach((part, i) => put.run(children[i]!, project, part.split(/\r?\n/, 1)[0]!.slice(0, 300), `Phần ${i + 1}/${parts.length} của ${parent}: ${heading}\n\n${part}`.slice(0, 2000), now));
+          // Nobody runs the job's task while its parts run: the merge run does, after them.
+          this.#setDeps(parent, children);
+          let id = split?.id;
+          if (split) {
+            db.prepare("UPDATE run_groups SET phase = 'map', parts = ?, max_parallel = ?, review_after = ?, phase_request = NULL, phase_error = NULL WHERE id = ?").run(
+              JSON.stringify(parts),
+              maxParallel,
+              reviewAfter ? 1 : 0,
+              split.id,
+            );
+          } else {
+            const res = db
+              .prepare(
+                `INSERT INTO run_groups(project, kind, title, max_parallel, review_after, instructions, parent_task, created_by, on_behalf, created_at, phase, parts, machine_id)
+                 VALUES (?, 'mapreduce', ?, ?, ?, ?, ?, ?, ?, ?, 'map', ?, ?)`,
+              )
+              .run(project, heading, maxParallel, reviewAfter ? 1 : 0, job, parent, actor.name, actor.onBehalf ?? null, now, JSON.stringify(parts), m.id);
+            id = num(res.lastInsertRowid);
+          }
+          const item = db.prepare(
+            "INSERT INTO run_group_items(group_id, position, task_id, role, machine_id, profile_id, instructions, status, updated_at) VALUES (?, ?, ?, 'implement', ?, ?, ?, 'held', ?)",
+          );
+          children.forEach((child, i) => item.run(id!, i + 1, child, m.id, profiles.length ? profiles[i % profiles.length]! : null, partInstructions(parent, i + 1, parts.length), now));
+          this.#releaseGroups();
+          return this.#group(id!);
+        }),
+
+      "runs.resumeGroup": ({ id }, actor) =>
+        this.#tx(() => {
+          const g = this.#group(id);
+          if (g.kind !== "mapreduce") throw new HiveError("bad_request", `Run group #${id} is not a job in parts.`, { key: "errors.notMapReduce", vars: { id } });
+          if (g.phase !== "stopped") throw new HiveError("conflict", `Run group #${id} has not stopped.`, { key: "errors.mapNotStopped", vars: { id } });
+          this.#assertNotPaused(g.project);
+          const now = this.#now();
+          if (!g.items.length) {
+            // The split stopped: ask its machine again.
+            const task = this.#getTask(g.parentTask!);
+            if (!task) throw new HiveError("not_found", `Task ${g.parentTask} not found.`, { key: "errors.taskNotFound", vars: { id: g.parentTask! } });
+            const instructions = [splitInstructions(), g.instructions.length > 2000 ? `The job, in full:\n${g.instructions}` : ""].filter(Boolean).join("\n\n");
+            const m = this.#assertDispatchable({ machineId: g.machineId!, project: g.project, task, role: "plan", profileId: null, candidates: 1, instructions }, actor);
+            const req = this.#insertRequest(m, g.project, task, { role: "plan", profileId: null, reviewAfter: false, candidates: 1, instructions }, actor);
+            db.prepare("UPDATE run_groups SET phase = 'split', phase_request = ?, phase_error = NULL, closed_at = NULL WHERE id = ?").run(req.id, id);
+            return this.#group(id);
+          }
+          // The parts that did not finish run again; with all of them in, the merge does.
+          const again = db.prepare("UPDATE run_group_items SET status = 'held', request_id = NULL, error = NULL, updated_at = ? WHERE id = ?");
+          for (const i of g.items) if (i.run?.status !== "succeeded") again.run(now, i.id);
+          db.prepare("UPDATE run_groups SET phase = 'map', phase_request = NULL, phase_error = NULL, closed_at = NULL WHERE id = ?").run(id);
+          this.#releaseGroups();
+          return this.#group(id);
+        }),
+
       "runs.groups": ({ project, projects, limit }) => {
         this.#tx(() => this.#releaseGroups());
         const ids = db
@@ -4817,7 +5050,11 @@ export class SqliteHive implements HiveBackend {
           db.prepare(
             "UPDATE run_requests SET status = 'cancelled', updated_at = ? WHERE status = 'pending' AND id IN (SELECT request_id FROM run_group_items WHERE group_id = ?)",
           ).run(now, id);
-          db.prepare("UPDATE run_groups SET closed_at = ? WHERE id = ?").run(now, id);
+          // A job's split or merge request too; the group stops where it was (runs.resumeGroup goes on from there).
+          db.prepare("UPDATE run_requests SET status = 'cancelled', updated_at = ? WHERE status = 'pending' AND id = (SELECT phase_request FROM run_groups WHERE id = ?)").run(now, id);
+          db.prepare(
+            "UPDATE run_groups SET closed_at = ?, phase = CASE WHEN phase IS NULL OR phase = 'done' THEN phase ELSE 'stopped' END, phase_error = CASE WHEN phase IS NULL OR phase = 'done' THEN phase_error ELSE ? END WHERE id = ?",
+          ).run(now, JSON.stringify({ message: "Cancelled.", key: "errors.mapCancelled" }), id);
           return this.#group(id);
         }),
 
