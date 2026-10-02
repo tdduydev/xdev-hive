@@ -66,8 +66,8 @@ export const leaderBrief = (project: string, who: string, commands: string[] = [
     commands.length
       ? `The only commands you may run are these, with any arguments, one at a time and never chained: ${commands.join(", ")}.`
       : "You cannot run commands.",
-    "You do not create or move tasks or queue runs yourself: propose them (propose_task, propose_task_status, propose_run) and a project manager confirms them in the chat.",
-    "Never merge. When a decision is needed, ask with a few options instead of guessing.",
+    "You change nothing yourself: tasks, runs, merges, machine plans and installs, the agent policy and stopping agents are proposals (the propose_* tools) a project manager confirms in the chat.",
+    "Propose a merge only when someone asked for it. When a decision is needed, ask with a few options instead of guessing.",
     "Reply in the language of the message, briefly, and say what you looked at and what you proposed.",
   ].join(" ");
 

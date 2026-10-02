@@ -190,4 +190,43 @@ describe("mcp tools", () => {
     const [machine] = JSON.parse(text(await claude.callTool({ name: "machine_list", arguments: {} })));
     assert.deepEqual([machine.machine, machine.acceptsRuns, machine.projects], ["duy-mbp", true, ["app"]]);
   });
+
+  it("gives a chat leader the propose tools for the rest of the web, and nobody else", async () => {
+    const hive = new SqliteHive(":memory:");
+    const admin = { name: "duy", role: "admin" as const };
+    const mbp = { name: "runner.duy-mbp@duy-mbp", role: "agent" as const };
+    // A Claude plan: the chat's replies are written with one.
+    const claude = { id: "claude-1", label: "Claude", kind: "claude", enabled: true, account: null, installed: true, cooldownUntil: null, runs: 0, rateLimited: 0 };
+    await hive.call("machines.heartbeat", { machine: "duy-mbp", instance: "a1b2c3d4", projects: ["app"], acceptsRuns: true, profiles: [claude] }, mbp);
+    await hive.call(
+      "runs.push",
+      { machine: "duy-mbp", runs: [{ runId: "R-1fa9c0", project: "app", taskId: "T-2", taskTitle: "Lockout", role: "implement", status: "running", profileId: "claude-1", createdAt: "2026-09-29T10:00:00.000Z" }] },
+      mbp,
+    );
+    const sent = await hive.call("chat.send", { project: "app", machineId: mbp.name, text: "Stop the lockout run" }, admin);
+    await hive.call("chat.progress", { replyId: sent.reply.id, text: "Looking" }, mbp);
+    const server = createHiveMcpServer(hive, { name: "claude-1.duy-mbp@chat-duy", role: "agent", access: { projects: { app: "contribute" } }, chatReply: sent.reply.id }, { defaultProject: "app" });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await server.connect(a);
+    const leader = new Client({ name: "test", version: "0" });
+    await leader.connect(b);
+
+    const added = ["propose_cancel_run", "propose_install", "propose_merge", "propose_policy", "propose_profile", "propose_resume_agents", "propose_stop_agents"];
+    const tools = (await leader.listTools()).tools.map((t) => t.name);
+    for (const name of added) assert.ok(tools.includes(name), name);
+    for (const name of added) assert.match(leader.getInstructions() ?? "", new RegExp(name));
+    const agent = await connect(hive, "claude@duy");
+    const agentTools = (await agent.listTools()).tools.map((t) => t.name);
+    assert.deepEqual(added.filter((name) => agentTools.includes(name)), [], "not for an agent working a task");
+
+    const cancel = JSON.parse(text(await leader.callTool({ name: "propose_cancel_run", arguments: { machine: "duy-mbp", runId: "R-1fa9c0", reason: "Asked to stop it" } })));
+    assert.deepEqual([cancel.kind, cancel.status, cancel.project, cancel.input], ["run.cancel", "proposed", "app", { machineId: mbp.name, runId: "R-1fa9c0" }]);
+    const policy = JSON.parse(text(await leader.callTool({ name: "propose_policy", arguments: { policy: { autonomy: "propose" }, reason: "Tighter" } })));
+    assert.deepEqual(policy.input, { project: "app", policy: { autonomy: "propose" }, before: null });
+    const stop = JSON.parse(text(await leader.callTool({ name: "propose_stop_agents", arguments: { reason: "Everything is off" } })));
+    assert.deepEqual(stop.input, { project: "app" });
+    const refused = await leader.callTool({ name: "propose_merge", arguments: { machine: "duy-mbp", runId: "R-1fa9c0", reason: "Ship it" } });
+    assert.ok(refused.isError);
+    assert.match(text(refused), /no merge request/);
+  });
 });
