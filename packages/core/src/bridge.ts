@@ -3,7 +3,7 @@ import type { Access, Grant } from "./access.ts";
 import type { AgentKind, AgentProfile, AgentRole, PlanUsage, RunnerSettings, RunStatus } from "./agents.ts";
 import type { GitLabImportCandidate, GitLabImportResult, MrSettings, MrState, MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { TransferReport } from "./transfer.ts";
-import type { MachineCommand, Role, SetupItem, SetupReport, TeamPolicy, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
+import type { MachineCommand, Role, SetupItem, SetupReport, TeamPolicy, ToolHandler, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
 
 /**
  * A hub tool as the machine's Setup card shows it (roadmap 28b): what it will run here, for the user to allow.
@@ -25,6 +25,10 @@ export interface MachineToolView {
   trust: "app" | "trusted" | "new" | "changed";
   /** This machine's projects that have it on. */
   projects: string[];
+  /** For the setup items it stands for (toolSetupItems): a seed keeps the app's own items. */
+  handler: ToolHandler | null;
+  /** Those of this machine's projects that require it: its setup items count as required (roadmap 28b-2). */
+  required: string[];
 }
 
 export interface Me {

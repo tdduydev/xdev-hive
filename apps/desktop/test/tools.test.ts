@@ -162,16 +162,16 @@ describe("toolViews", () => {
   it("lists the tools this machine's projects have on, commands written out but for the run's paths", () => {
     const entry = rtk({ secretEnv: ["RTK_API_KEY"], install: ["npm", "i", "-g", "{package}"] });
     const views = toolViews(
-      { entries: [entry, APP_TOOLS.codegraph, APP_TOOLS.superpowers], projects: { demo: [on("rtk")], web: [] } },
+      { entries: [entry, APP_TOOLS.codegraph, APP_TOOLS.superpowers], projects: { demo: [{ ...on("rtk"), required: true }], web: [] } },
       [
         { name: "demo", features: NO_FEATURES },
         { name: "web", features: { codegraph: true, superpowers: false } },
       ],
       {},
     );
-    assert.deepEqual(views.map((v) => [v.id, v.trust, v.projects]), [
-      ["rtk", "new", ["demo"]],
-      ["codegraph", "app", ["web"]],
+    assert.deepEqual(views.map((v) => [v.id, v.trust, v.projects, v.handler, v.required]), [
+      ["rtk", "new", ["demo"], null, ["demo"]],
+      ["codegraph", "app", ["web"], "codegraph", []],
     ]);
     assert.deepEqual(views[0]!.commands, [
       { field: "mcp", argv: ["npx", "-y", "rtk-mcp@0.4.1", "--root", "{repo}"] },

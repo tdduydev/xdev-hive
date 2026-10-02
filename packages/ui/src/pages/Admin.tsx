@@ -16,6 +16,7 @@ import {
   type SetupItem,
   type SetupState,
   type TeamPolicy,
+  type ToolView,
 } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
@@ -151,9 +152,10 @@ function FleetTab() {
   }, []);
   const machines = useQuery(() => client.call("admin.machines", {}), [client, tick]);
   const policy = useQuery(() => client.call("policy.get", {}), [client]);
+  const tools = useHubTools();
   const reload = () => setTick((n) => n + 1);
   const list = machines.data ?? [];
-  const lacking = policy.data ? list.filter((m) => m.setup && missingRequired(policy.data!, m.setup).length > 0).length : 0;
+  const lacking = policy.data ? list.filter((m) => m.setup && missingRequired(policy.data!, m.setup, tools).length > 0).length : 0;
   const waiting = list.reduce((n, m) => n + m.commands.filter((c) => c.status === "pending" || c.status === "running").length, 0);
 
   return (
@@ -167,10 +169,21 @@ function FleetTab() {
       </div>
       {machines.data && list.length === 0 ? <Empty>{t("admin.noMachines")}</Empty> : null}
       {list.map((m) => (
-        <MachineCard key={m.id} machine={m} policy={policy.data ?? null} onChanged={reload} />
+        <MachineCard key={m.id} machine={m} policy={policy.data ?? null} tools={tools} onChanged={reload} />
       ))}
     </>
   );
+}
+
+const NO_TOOLS: ToolView[] = [];
+
+/**
+ * The tool catalog, for the tools a project requires (roadmap 28b-2): those count as missing items like the policy's.
+ * A hub older than the catalog has no tools.list: the policy alone, as before.
+ */
+export function useHubTools(): ToolView[] {
+  const { client } = useHive();
+  return useQuery(() => client.call("tools.list", {}).catch((): ToolView[] => []), [client]).data ?? NO_TOOLS;
 }
 
 function Stat({ label, value, tone }: { label: string; value: number; tone?: string }) {
@@ -184,11 +197,21 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: str
   );
 }
 
-export function MachineCard({ machine: m, policy, onChanged }: { machine: MachineDetail; policy: TeamPolicy | null; onChanged: () => void }) {
+export function MachineCard({
+  machine: m,
+  policy,
+  tools = NO_TOOLS,
+  onChanged,
+}: {
+  machine: MachineDetail;
+  policy: TeamPolicy | null;
+  tools?: ToolView[];
+  onChanged: () => void;
+}) {
   const t = useT();
   const projects = m.setup?.projects.map((p) => p.project) ?? [];
-  const required = policy ? requiredItemIds(policy, projects) : new Set<string>();
-  const missing = policy && m.setup ? missingRequired(policy, m.setup) : [];
+  const required = policy ? requiredItemIds(policy, projects, tools) : new Set<string>();
+  const missing = policy && m.setup ? missingRequired(policy, m.setup, tools) : [];
   const open = new Map(m.commands.filter((c) => c.status === "pending" || c.status === "running").map((c) => [c.itemId, c]));
 
   return (

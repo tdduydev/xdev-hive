@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { AGENT_TEMPLATES, HiveError, missingRequired, requiredItemIds, type Actor, type SetupReport } from "#core/index.ts";
+import { AGENT_TEMPLATES, EMPTY_POLICY, HiveError, missingRequired, requiredItemIds, type Actor, type SetupReport } from "#core/index.ts";
 import { SqliteHive } from "#core/node.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
@@ -135,6 +135,38 @@ describe("admin portal", () => {
     // Spec Kit is a repo part like the others: the policy can require it.
     const speckit = await hive.call("policy.set", { requiredClis: [], requireShim: false, projects: { app: ["speckit"] } }, admin);
     assert.deepEqual([...requiredItemIds(speckit, ["app"])], ["app:speckit"]);
+  });
+
+  it("counts the tools the catalog marks required for a project as required items (roadmap 28b-2)", () => {
+    const tool = (id: string, handler: "codegraph" | "superpowers" | "speckit" | null, required: string[]) => ({
+      id,
+      handler,
+      projects: [...required.map((project) => ({ project, required: true })), { project: "web", required: false }],
+    });
+    const tools = [tool("codegraph", "codegraph", ["app"]), tool("superpowers", "superpowers", ["app"]), tool("speckit", "speckit", ["app"]), tool("rtk", null, ["app"]), tool("lint-mcp", null, ["web-only"])];
+    // codegraph stands for its .mcp.json entry: runs build the index in their own worktree.
+    assert.deepEqual([...requiredItemIds(EMPTY_POLICY, ["app"], tools)].sort(), ["app:codegraph-mcp", "app:speckit", "app:superpowers", "cli:specify", "tool:rtk"]);
+    assert.deepEqual([...requiredItemIds(EMPTY_POLICY, ["web"], tools)], [], "on but not required, or required for a project the machine lacks");
+    assert.deepEqual([...requiredItemIds(EMPTY_POLICY, ["app"])], [], "no catalog (an older hub): the policy alone");
+
+    const withTool: SetupReport = {
+      machine: [...report.machine, { id: "tool:rtk", label: "RTK", state: "manual", detail: "Chưa được cho phép", action: null }],
+      projects: report.projects,
+    };
+    assert.ok(missingRequired(EMPTY_POLICY, withTool, tools).some((i) => i.id === "tool:rtk"));
+    assert.deepEqual(missingRequired(EMPTY_POLICY, withTool), []);
+  });
+
+  it("takes an install request for a machine's hub tool, as a tool:<id> item", async () => {
+    const hive = new SqliteHive(":memory:");
+    const rtk = { id: "tool:rtk", label: "RTK", state: "missing" as const, detail: "Chưa cài", action: "Cài" };
+    await beat(hive, mbp, { setup: { checkedAt: "2026-10-02T07:59:00.000Z", report: { ...report, machine: [...report.machine, rtk] } } });
+    const cmd = await hive.call("admin.commandCreate", { machineId: mbp.name, itemId: "tool:rtk" }, admin);
+    assert.equal(cmd.itemId, "tool:rtk");
+    assert.equal(cmd.status, "pending");
+    for (const itemId of ["tool:", "tool:Rtk", "tool:../x", `tool:${"a".repeat(41)}`]) {
+      await assert.rejects(hive.call("admin.commandCreate", { machineId: mbp.name, itemId }, admin), code("bad_request"), itemId);
+    }
   });
 
   it("logs admin actions with who did them, and never reads", async () => {

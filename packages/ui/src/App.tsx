@@ -38,7 +38,7 @@ import {
 } from "lucide-react";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { TooltipProvider } from "@xdev-hive/ui/components/ui/tooltip";
-import { may, missingRequired, withSystemGrants, type Me } from "@xdev-hive/core";
+import { may, missingRequired, withSystemGrants, type Me, type ToolView } from "@xdev-hive/core";
 import type { HiveClient } from "./client.ts";
 import { ChangePasswordScreen } from "./components/Account.tsx";
 import { ErrorNote } from "./components/common.tsx";
@@ -287,13 +287,15 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   const adminRequests = useQuery(async () => (inAdmin ? client.call("runs.requests", { limit: 200 }) : []), [client, inAdmin, poll]);
   const adminMachines = useQuery(async () => (inAdmin ? client.call("admin.machines", {}) : []), [client, inAdmin, poll]);
   const adminPolicy = useQuery(async () => (inAdmin ? client.call("policy.get", {}) : null), [client, inAdmin]);
+  // Tools a project requires count as missing items too (roadmap 28b-2); a hub before the catalog has no tools.list.
+  const adminTools = useQuery(async () => (inAdmin ? client.call("tools.list", {}).catch((): ToolView[] => []) : []), [client, inAdmin]);
   // The health pill: the hub's open alerts (roadmap 22m); a hub without them counts machines missing a required tool.
   const adminAlerts = useQuery(async () => (inAdmin && client.alerts ? client.alerts.list().catch(() => null) : null), [client, inAdmin, poll]);
   const adminMemory = useQuery(async () => (inAdmin ? client.call("memory.list", { limit: 500 }) : []), [client, inAdmin, poll, tick]);
 
   let frame: ReactNode;
   if (webAdmin && route.kind === "admin") {
-    const lacking = adminPolicy.data ? (adminMachines.data ?? []).filter((m) => m.setup && missingRequired(adminPolicy.data!, m.setup).length > 0).length : 0;
+    const lacking = adminPolicy.data ? (adminMachines.data ?? []).filter((m) => m.setup && missingRequired(adminPolicy.data!, m.setup, adminTools.data ?? []).length > 0).length : 0;
     const openAlerts = adminAlerts.data?.open;
     const health = openAlerts ? openAlerts.length : lacking + (adminMachines.data ?? []).filter((m) => m.duplicate).length;
     const healthHigh = openAlerts ? openAlerts.filter((a) => a.severity === "high").length : undefined;

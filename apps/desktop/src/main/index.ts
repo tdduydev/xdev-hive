@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, shell, Tray, type IpcMainInvokeEvent } from "electron";
@@ -28,6 +28,7 @@ import {
   type LoginHow,
   type NewAccount,
   type MachineCommand,
+  type MachineTools,
   type MachineToolView,
   type ProfileChange,
   type RunMergeOrder,
@@ -352,8 +353,19 @@ function setProfileToken(id: string, token: string) {
 
 /** The Setup card's hub tools (roadmap 28b): none in local mode, nor before the first heartbeat. */
 function hubTools(): MachineToolView[] {
-  const catalog = config.mode === "hub" ? (hubState?.tools ?? null) : null;
-  return toolViews(catalog, config.projects.map((p) => ({ name: p.name, features: repoFeatures(p.repo) })), config.toolTrust);
+  return toolViews(hubCatalog(), config.projects.map((p) => ({ name: p.name, features: repoFeatures(p.repo) })), config.toolTrust);
+}
+
+/**
+ * Screenshots only: a catalog as a heartbeat carries it (HIVE_SMOKE_TOOLS, a JSON file), so the Setup shot shows the
+ * hub's tools and their tool:<id> items without a hub.
+ */
+const smokeTools = smokeShot && process.env.HIVE_SMOKE_TOOLS ? (JSON.parse(readFileSync(process.env.HIVE_SMOKE_TOOLS, "utf8")) as MachineTools) : null;
+
+/** The catalog of the runner's last heartbeat: none in local mode, before the first heartbeat, or from a hub before 28b. */
+function hubCatalog(): MachineTools | null {
+  if (smokeTools) return smokeTools;
+  return config.mode === "hub" ? (hubState?.tools ?? null) : null;
 }
 
 /** The machine's user allows a hub tool's commands as the card showed them (their hash), or takes it back (null). */
@@ -366,6 +378,8 @@ function setToolTrust(id: unknown, hash: unknown): MachineToolView[] {
   persist({ ...config, toolTrust: hash ? { ...rest, [name]: hash } : rest });
   // A run waiting on nothing else may start with it now; one already going keeps what it started with.
   void runner.tick();
+  // Its tool:<id> item can be checked now (or no longer): the hub hears it with the next heartbeat.
+  void refreshSetup().catch(() => undefined);
   return hubTools();
 }
 
@@ -631,7 +645,11 @@ async function installAndRestart(): Promise<void> {
 }
 
 function onHub(update: HubUpdate): void {
+  const catalogBefore = JSON.stringify(hubState?.tools ?? null);
   hubState = update;
+  // The catalog decides the machine's tool:<id> items and Spec Kit's version: check again when it changed, so admins
+  // see a tool turned on or bumped without waiting for the 10-minute check.
+  if (JSON.stringify(update.tools ?? null) !== catalogBefore) void refreshSetup().catch(() => undefined);
   if (!smokeShot) void watchAlerts();
   if (update.profileChanges?.length) takeProfileChanges(update.profileChanges);
   if (update.mergeRuns?.length) void takeMerges(update.mergeRuns);
@@ -1246,6 +1264,8 @@ if (!app.requestSingleInstanceLock()) {
       env: agentEnv,
       projects: () => config.projects,
       shim: { electronPath: process.execPath, entry: mcpEntry() },
+      tools: hubCatalog,
+      toolTrust: () => config.toolTrust,
     });
     runner.start();
     // Sign-ins change outside the app (a terminal login, an expired session): check at start, then every 10 minutes.
