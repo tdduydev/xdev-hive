@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { HiveSystem } from "@xdev-hive/core";
-import { ALL, inScope, projectScope, readScope, resolveScope, sameScope, scopeFilter, scopeKey, scopeProjects, SHARED, systemScope, writeScope } from "#ui/lib/scope.ts";
+import { ALL, inScope, nameMatches, outsideSystems, projectScope, readScope, resolveScope, sameScope, scopeFilter, scopeKey, scopeProjects, SHARED, systemScope, writeScope } from "#ui/lib/scope.ts";
 
 const shop: HiveSystem = { name: "shop", projects: ["api", "web"], updatedAt: "2026-09-30T08:00:00.000Z", updatedBy: "duy" };
 
@@ -43,5 +43,25 @@ describe("the sidebar scope", () => {
     } finally {
       delete (globalThis as { localStorage?: unknown }).localStorage;
     }
+  });
+});
+
+describe("projects outside every system (roadmap 36c)", () => {
+  const billing: HiveSystem = { ...shop, name: "billing", projects: ["invoice", "api"] };
+
+  it("keeps the projects no system has, sorted and once each", () => {
+    assert.deepEqual(outsideSystems(["web", "zeta", "api", "alpha", "zeta"], [shop]), ["alpha", "zeta"]);
+    assert.deepEqual(outsideSystems(["api", "web", "invoice", "crm"], [shop, billing]), ["crm"]);
+  });
+
+  it("is every project when there is no system, none when all are in one", () => {
+    assert.deepEqual(outsideSystems(["b", "a"], []), ["a", "b"]);
+    assert.deepEqual(outsideSystems(["api", "web"], [shop]), []);
+  });
+
+  it("matches names case-insensitively, an empty search keeps all", () => {
+    assert.ok(nameMatches("payment-api", "API"));
+    assert.ok(nameMatches("payment", "  "));
+    assert.ok(!nameMatches("payment", "shop"));
   });
 });
