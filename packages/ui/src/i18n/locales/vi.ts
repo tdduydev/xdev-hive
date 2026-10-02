@@ -199,6 +199,7 @@ export const vi = {
     rangeLabel: "Khoảng thời gian",
     group: { ops: "Vận hành", watch: "Theo dõi", knowledge: "Kiến thức", admin: "Quản trị" },
     nav: {
+      tasks: "Task",
       chat: "Chat",
       hub: "Hub",
       context: "Context agent",
@@ -226,6 +227,7 @@ export const vi = {
       audit: "Nhật ký",
     },
     hint: {
+      tasks: "Task của mọi dự án theo trạng thái; kéo thẻ để đổi trạng thái",
       chat: "Trò chuyện với agent leader của từng dự án",
       hub: "Phiên bản, database, tệp tài liệu, backup, tìm theo nghĩa, đăng nhập",
       context: "AGENTS.md và những gì agent của dự án nhận",
@@ -1016,6 +1018,10 @@ export const vi = {
     add: "Thêm",
   },
   tasks: {
+    view: "Cách xem",
+    view_kanban: "Kanban",
+    view_list: "Danh sách",
+    showOlderDone: "Xem thêm {count} task đã xong",
     title: "Task",
     subtitle: "Agent nhận task bằng task_claim (có hạn giữ), xong thì task_update sang Chờ review kèm ghi chú bàn giao. Bấm một task để xem ghi chú đầy đủ và xếp run.",
     status: "Trạng thái",
