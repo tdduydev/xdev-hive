@@ -681,7 +681,7 @@ export function createHubApp({
         return;
       }
       // A machine older than the rollout's minimum gets no runs from the hub.
-      if (method === "runs.dispatch" && releases) {
+      if ((method === "runs.dispatch" || method === "runs.prompt") && releases) {
         const min = releases.rollout().minVersion;
         const machineId = String((input as { machineId?: unknown } | null)?.machineId ?? "");
         if (min && machineId) {

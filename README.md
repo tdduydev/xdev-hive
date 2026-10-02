@@ -587,6 +587,10 @@ Trên hub, agent giữ task với tên `<gói>.<máy>@<token>`, ví dụ `claude
   - Trên trang *Task* (web, hoặc app ở chế độ hub), bấm một task để mở panel chi tiết. Mục *Chạy trên máy* chỉ hiện với người quản trị dự án, và chỉ liệt kê máy đang online, đã bật ô và có repo của dự án. Chọn máy, việc (mặc định *Review* nếu task đang chờ review), gói hoặc tự xoay, số bản, review chéo, chỉ dẫn, rồi bấm *Gửi cho máy*.
   - Panel hiện các yêu cầu của task: chờ máy nhận (huỷ được), máy đã nhận (mã run, xem ở *Lượt chạy*), máy từ chối (lý do theo ngôn ngữ người xem), đã huỷ, hết hạn. Khi còn yêu cầu đang chờ, trang tự làm mới mỗi 3 giây, và hàng của task trong bảng ghi máy đang được chờ.
   - Trang *Máy & run* ghi máy nào nhận run từ hub và có repo của dự án nào.
+  - **Prompt cho agent** (roadmap 32b): nút trên trang *Task* cho ai vừa tạo được task vừa xếp được run của dự án. Viết prompt (tối đa 4000 ký tự), chọn máy, gói hoặc tự xoay, tiêu đề (để trống thì lấy dòng đầu), review chéo, rồi *Gửi prompt*.
+    - `runs.prompt` tạo task `P-<số>` và yêu cầu chạy trong một lần, kiểm như `runs.dispatch`; một bước kiểm không qua thì không tạo gì. Số đếm chung cả hub vì id task là của cả hub.
+    - Prompt là ghi chú của task, và runner đưa ghi chú vào prompt của agent, nên chỉ dẫn của yêu cầu để trống. Prompt dài hơn 2000 ký tự (ghi chú bị cắt) thì chỉ dẫn mang cả prompt.
+    - Gửi xong, panel của task mới mở ra với yêu cầu đang chờ máy nhận. Nhật ký quản trị ghi `runs.prompt`.
 - **Chat với leader của dự án** (hỏi ngày 29/9: làm trong Hive; người quản trị dự án chat được; leader chạy trên gói Claude của một máy bật *Được nhận run từ hub*). Roadmap 17a-1 (hub), 17a-2 (máy trả lời), 17b (trang *Chat*).
   - **Trang *Chat*** (web, và app ở chế độ hub; nhóm *Làm việc*): các thread của dự án đang chọn ở thanh bên (*Tất cả dự án* thì mọi dự án bạn xem được), mới nhất trước. Thread đang có câu trả lời có chấm xanh.
     - *Chat mới* (người quản trị dự án): chọn dự án, máy, gói Claude hoặc để máy tự chọn, rồi viết tin đầu. Chỉ hiện máy đang online, bật nhận run từ hub, có repo của dự án và có gói Claude đã đăng nhập.

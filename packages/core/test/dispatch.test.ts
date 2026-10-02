@@ -262,3 +262,66 @@ describe("cancelling a run from the web", () => {
     assert.equal(await refusal(hive.call("runs.cancel", { machineId: mbp.name, runId: "R-ffffff" }, admin)), "errors.runNotFound");
   });
 });
+
+describe("a free prompt from the web (roadmap 32b)", () => {
+  it("makes task P-<n> and the request to run it, in one go", async () => {
+    const { hive, beat } = await hub();
+    await beat(mbp);
+    const prompt = "Add a dark theme toggle to the settings page.\n\nKeep the current colours as the light theme.";
+    const first = await hive.call("runs.prompt", { project: "app", prompt, machineId: mbp.name, profileId: "claude-1", reviewAfter: true }, lead);
+    assert.deepEqual([first.task.id, first.task.project, first.task.title, first.task.status, first.task.note], ["P-1", "app", "Add a dark theme toggle to the settings page.", "todo", prompt]);
+    assert.deepEqual(
+      [first.request.taskId, first.request.taskTitle, first.request.profileId, first.request.reviewAfter, first.request.instructions, first.request.requestedBy],
+      ["P-1", first.task.title, "claude-1", true, "", "lan"],
+      "the agent reads the prompt once, as the task's note",
+    );
+    const [sent] = (await beat(mbp)).runRequests;
+    assert.equal(sent!.taskId, "P-1", "the machine gets it like any dispatched run");
+
+    const long = `Rewrite the importer.\n${"x".repeat(2500)}`;
+    const third = await hive.call("runs.prompt", { project: "app", prompt: long, machineId: mbp.name }, lead);
+    assert.equal(third.task.note, long.slice(0, 2000));
+    assert.equal(third.request.instructions, long, "a note cut short: the whole prompt goes as the instructions");
+
+    const second = await hive.call("runs.prompt", { project: "app", title: "  Fix the footer  ", prompt: "The footer overlaps on phones.", machineId: mbp.name }, lead);
+    assert.deepEqual([second.task.id, second.task.title, second.request.profileId], ["P-3", "Fix the footer", null]);
+
+    const [entry] = await hive.call("admin.audit", { action: "runs.prompt" }, admin);
+    assert.deepEqual([entry!.actor, entry!.target, entry!.detailKey], ["lan", "app/P-3", "audit.runPrompt"]);
+  });
+
+  it("numbers past any P-<n> already on the hub, in any project", async () => {
+    const { hive, beat } = await hub();
+    await beat(mbp);
+    await hive.call("tasks.create", { id: "P-7", project: "site", title: "By hand" }, admin);
+    await hive.call("tasks.create", { id: "P-9b", project: "app", title: "Not a number" }, admin);
+    const { task } = await hive.call("runs.prompt", { project: "app", prompt: "Go", machineId: mbp.name }, admin);
+    assert.equal(task.id, "P-8");
+  });
+
+  it("leaves no task behind when a check fails", async () => {
+    const { hive, beat, later } = await hub();
+    await beat(mbp, { acceptsRuns: false });
+    const ask = (over: Record<string, unknown> = {}) => refusal(hive.call("runs.prompt", { project: "app", prompt: "Go", machineId: mbp.name, ...over }, admin));
+    assert.equal(await ask(), "errors.machineNoHubRuns");
+    await beat(mbp);
+    assert.equal(await ask({ profileId: "codex-1" }), "errors.profileNotOnMachine");
+    assert.equal(await ask({ prompt: "use ​this" }), "errors.hidden.zeroWidth");
+    assert.equal(await ask({ prompt: `deploy with ghp_${"a".repeat(36)}` }), "errors.secret");
+    assert.equal(await ask({ title: `token ghp_${"b".repeat(36)}` }), "errors.secret");
+    later(3);
+    assert.equal(await ask(), "errors.machineOffline");
+    const tasks = await hive.call("tasks.list", { project: "app" }, admin);
+    assert.deepEqual(tasks.map((t) => t.id).sort(), ["T-1", "T-2"]);
+  });
+
+  it("needs both queueing runs and making tasks in the project", async () => {
+    const { hive, beat } = await hub();
+    await beat(mbp);
+    const input = { project: "app", prompt: "Go", machineId: mbp.name };
+    assert.equal(await refusal(hive.call("runs.prompt", input, dev)), "errors.need.taskManage");
+    assert.equal(await refusal(hive.call("runs.prompt", input, mbp)), "errors.need.taskManage", "an agent token never sends prompts");
+    assert.equal(await refusal(hive.call("runs.prompt", input, outsider)), "errors.notFound");
+    assert.equal((await hive.call("runs.prompt", input, lead)).task.id, "P-1");
+  });
+});

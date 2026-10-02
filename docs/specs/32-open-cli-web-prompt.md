@@ -66,7 +66,7 @@ Trên trang *Task* (nút **Prompt cho agent** cạnh *Tạo task*) và từ bả
 // → { task: Task; request: RunRequest }
 ```
 - Role và quyền như `runs.dispatch` (quản trị dự án), cộng quyền tạo task của dự án (`#check`).
-- Trong một giao dịch: kiểm máy / gói / trần / ký tự ẩn / secret như `runs.dispatch` → tạo task `P-<n>` (n = số lớn nhất của các task `P-<số>` trong dự án + 1; id task là toàn hub nên nếu `P-<n>` đã có ở dự án khác thì tăng tiếp), tiêu đề = `title` hoặc dòng đầu của prompt (cắt 120 ký tự), ghi chú = prompt (cắt 2000 ký tự) → ghi `run_requests` với `instructions = prompt`.
+- Trong một giao dịch: kiểm máy / gói / trần / ký tự ẩn / secret như `runs.dispatch` → tạo task `P-<n>` (id task là của cả hub, nên n đếm chung mọi dự án: số lớn nhất của các task `P-<số>` + 1), tiêu đề = `title` hoặc dòng đầu của prompt (cắt 120 ký tự), ghi chú = prompt (cắt 2000 ký tự) → ghi `run_requests`. Runner luôn đưa ghi chú task vào prompt của agent, nên `instructions` để trống khi ghi chú đã chứa đủ prompt; prompt dài hơn 2000 ký tự thì `instructions` = cả prompt.
 - Tách phần kiểm của `runs.dispatch` thành `#assertDispatchable({ machineId, project, task?, profileId, role, candidates, instructions }, actor)` dùng chung; `runs.dispatch` giữ nguyên hành vi (test cũ phải qua).
 - Nhật ký (`AUDITED`) ghi `runs.prompt`; `chatAction` không đổi trong mục này.
 
