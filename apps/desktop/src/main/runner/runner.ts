@@ -200,6 +200,8 @@ export interface RunnerOptions {
    * Returned fields are saved on the run. Errors are recorded on the run, never fail it.
    */
   afterFinish?: (run: AgentRun) => Promise<Partial<AgentRun> | void>;
+  /** After a finished run was pushed to the hub (hub mode): what the hub should learn after the run's end. */
+  afterReport?: (run: AgentRun) => Promise<void>;
   /** Called after every successful heartbeat. */
   onHub?: (update: HubUpdate) => void;
   /**
@@ -277,7 +279,8 @@ export class Runner {
   readonly #host: RunnerHost;
   /** CLIs being upgraded (roadmap 33): their profiles take no new run until it is done. */
   readonly #held = new Set<AgentKind>();
-  readonly #opts: Required<Omit<RunnerOptions, "onEvent" | "afterFinish" | "onHub" | "sync">> & Pick<RunnerOptions, "onEvent" | "afterFinish" | "onHub" | "sync">;
+  readonly #opts: Required<Omit<RunnerOptions, "onEvent" | "afterFinish" | "afterReport" | "onHub" | "sync">> &
+    Pick<RunnerOptions, "onEvent" | "afterFinish" | "afterReport" | "onHub" | "sync">;
   /** Sync requests taken (roadmap 22n): the hub sends one until it hears "running", which may cross a heartbeat. */
   readonly #syncsTaken = new Set<number>();
   readonly #syncs = new Set<Promise<void>>();
@@ -1545,10 +1548,14 @@ export class Runner {
     } finally {
       this.#finishing.delete(run.id);
       // The web sees the end (summary, commits, MR) now rather than at the next push.
-      this.#track(this.pushRuns().then(
-        () => undefined,
-        () => undefined,
-      ));
+      this.#track(
+        this.pushRuns()
+          .then(() => this.#opts.afterReport?.(run))
+          .then(
+            () => undefined,
+            () => undefined,
+          ),
+      );
     }
   }
 

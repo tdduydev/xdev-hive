@@ -94,3 +94,77 @@ export interface SdlcGateRecord {
   createdAt: string;
   decidedAt: string | null;
 }
+
+// ── flows (roadmap 34b) ──────────────────────────────────────────────────────
+
+/**
+ * Where a flow stands: its step runs, its gate's check waits to be queued, an agent checks it, a person decides at its
+ * gate, its next step waits for a free machine or for the files the machine pushes, it stopped (a run failed: a person
+ * starts it again), or it is done.
+ */
+export const FLOW_STATES = ["running", "check", "checking", "gate", "next", "stopped", "done"] as const;
+export type FlowState = (typeof FLOW_STATES)[number];
+
+/** The Spec Kit steps of a flow, then the import of its tasks.md into the board. */
+export const FLOW_STEPS = ["specify", "plan", "tasks", "import"] as const;
+export type FlowStep = (typeof FLOW_STEPS)[number];
+
+/** The gate after each Spec Kit step. */
+export const STEP_GATE: Record<Exclude<FlowStep, "import">, SdlcGate> = { specify: "spec", plan: "plan", tasks: "tasks" };
+/** What comes after a step once its gate passed. */
+export const NEXT_STEP: Record<Exclude<FlowStep, "import">, FlowStep> = { specify: "plan", plan: "tasks", tasks: "import" };
+
+/** One feature's way through Spec Kit, driven by the hub (sdlc_flows): one task, one branch, one machine. */
+export interface SdlcFlow {
+  taskId: string;
+  project: string;
+  /** specs/<dir>; null until the machine pushed what the specify step wrote. */
+  dir: string | null;
+  step: FlowStep;
+  state: FlowState;
+  machineId: string;
+  machine: string;
+  profileId: string | null;
+  /** The gate it waits at, when it does. */
+  gate: SdlcGateRecord | null;
+  /** Why it stopped, or what the last check said. */
+  note: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The files each Spec Kit gate reads. */
+const GATE_FILE: Partial<Record<SdlcGate, string>> = { spec: "spec.md", plan: "plan.md", tasks: "tasks.md" };
+
+/** What a gate's check looks for: the agent reads the step's file and says whether the next step can start. */
+const GATE_CHECKS: Partial<Record<SdlcGate, string[]>> = {
+  spec: [
+    "Every requirement is clear and testable, with acceptance criteria.",
+    "No [NEEDS CLARIFICATION] mark is left, and nothing the request asked for is missing or out of scope.",
+  ],
+  plan: [
+    "The plan covers every requirement of spec.md, and its technical choices fit the repository as it is.",
+    "Risks, data changes and tests are named; nothing in it contradicts the project's AGENTS.md.",
+  ],
+  tasks: [
+    "The tasks cover the whole plan, each small enough for one run, in a working order (dependencies, [P] only when independent).",
+    "Each task names the files it touches and how it is checked (tests).",
+  ],
+};
+
+/**
+ * Instructions for the review run that checks a gate (mode "ai"): not a code review. It ends with the verdict line
+ * parseVerdict reads; "approve" lets the flow go on, anything else hands the gate to a person with the report.
+ */
+export function gateCheckInstructions(gate: SdlcGate, o: { dir?: string | null } = {}): string {
+  const file = GATE_FILE[gate];
+  return [
+    `This is the "${gate}" gate of a delivery flow, not a code review: decide whether the next step may start without a person.`,
+    file ? `Read specs/${o.dir ?? "<the feature's folder>"}/${file} on this branch, and the task note.` : "Read the task and its note.",
+    "Check:",
+    ...(GATE_CHECKS[gate] ?? []).map((c) => `- ${c}`),
+    "Change nothing and commit nothing.",
+    "End with exactly one line: `Verdict: approve` when the next step can start as it is, or `Verdict: changes` followed by what must change. When unsure, say changes.",
+  ].join("\n");
+}

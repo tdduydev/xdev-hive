@@ -439,6 +439,17 @@ async function syncAndMirror(name: string): Promise<SyncReport> {
   return { ...report, mirror };
 }
 
+/**
+ * One project's Spec Kit features to the hub after a run (hub mode only), even unchanged: the push itself tells a flow
+ * that what it waits for is as the run left it.
+ */
+async function pushSpecsOf(name: string): Promise<void> {
+  const p = config.mode === "hub" ? config.projects.find((x) => x.name === name) : undefined;
+  if (!p) return;
+  const hash = await pushSpecs(backend, actor(), p, undefined).catch(() => null);
+  if (hash) specsPushed.set(p.name, hash);
+}
+
 /** The repo's docs into Hive for every project that mirrors some (one at a time; one that fails leaves the others). */
 async function mirrorAll(): Promise<void> {
   // Spec Kit features of every project (roadmap 20b), not only those that mirror docs.
@@ -1281,6 +1292,8 @@ if (!app.requestSingleInstanceLock()) {
         version: app.getVersion(),
         onEvent: onRunnerEvent,
         afterFinish: (run) => mergeRequester.afterFinish(run),
+        // What a Spec Kit step just wrote, to the hub once it knows the run ended: a flow there waits for it (roadmap 34b).
+        afterReport: (run) => pushSpecsOf(run.project),
         onHub,
         sync: (p) => syncAndMirror(p.name),
       },
