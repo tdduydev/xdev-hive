@@ -141,8 +141,9 @@ export function ensureWorktree(
  * Config that agent CLIs write into a working copy on their own, not the agent's work. Codex 0.157 can copy a repo's
  * Claude Code setup there (`.mcp.json` → `.codex/config.toml`, hooks → `.codex/hooks.json`, skills →
  * `.agents/skills/`) when its external agent import sync is on; that setting cannot be turned off for one run.
+ * `codegraph init` writes `.codegraph/.gitignore` beside the index the runner builds in each worktree.
  */
-export const AGENT_CLI_DIRS = [".codex", ".agents"];
+export const AGENT_CLI_DIRS = [".codex", ".agents", ".codegraph"];
 
 /**
  * Commits whatever the agent left uncommitted. No git hook runs: the agent could have written one into
