@@ -578,6 +578,47 @@ async function main() {
     expect(status(a.taskId) === "done" && status(group.parentTask) === "done" && status(b.taskId) !== "done", `tasks: ${[a.taskId, b.taskId, group.parentTask].map((id) => `${id}:${status(id)}`).join()}`);
   });
 
+  // Roadmap 34a: the hub admin caps the merge gate at "AI check"; Lan opens payment's spec gate and cannot pick
+  // "Automatic" for merge.
+  await step("sdlc-gates", async () => {
+    const setSelect = (tab, selector, value) =>
+      tab.eval(
+        (sel, v) => {
+          const select = document.querySelector(sel);
+          Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, v);
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+        },
+        selector,
+        value,
+      );
+    let tab = (current = tabs.admin);
+    await tab.go("admin/policy");
+    await tab.waitFor("the hub's gate row", () => !!document.querySelector('[data-sdlc-row="hub"] [data-sdlc-gate="merge"]'));
+    await setSelect(tab, '[data-sdlc-row="hub"] [data-sdlc-gate="merge"]', "ai");
+    await tab.click('[data-sdlc-save="hub"]');
+    await until("the ceiling on the hub", async () => (await rpc("sdlc.get", {})).ceiling.merge === "ai");
+    await tab.shot(`${String(n).padStart(2, "0")}-sdlc-ceiling`);
+
+    tab = current = tabs.lan;
+    await tab.reload();
+    await tab.go("systems");
+    await tab.waitFor("payment's gate row", () => !!document.querySelector('[data-sdlc-row="payment"] [data-sdlc-gate="spec"]'));
+    expect(!(await tab.eval(() => !!document.querySelector('[data-sdlc-row="hub"]'))), "a project manager got the hub's row");
+    const autoMerge = await tab.eval(() => document.querySelector('[data-sdlc-row="payment"] [data-sdlc-gate="merge"] option[value="auto"]')?.disabled);
+    expect(autoMerge === true, `merge "auto" offered over the ceiling: ${autoMerge}`);
+    await setSelect(tab, '[data-sdlc-row="payment"] [data-sdlc-gate="spec"]', "auto");
+    await setSelect(tab, '[data-sdlc-row="payment"] [data-sdlc-gate="merge"]', "ai");
+    await tab.click('[data-sdlc-save="payment"]');
+    const got = await until("payment's gates", async () => {
+      const p = (await rpc("sdlc.get", {})).projects.payment;
+      return p?.gates.spec === "auto" ? p : null;
+    });
+    expect(got.effective.merge === "ai" && got.effective.plan === "human", `effective: ${JSON.stringify(got.effective)}`);
+    // Leave the hub as the other steps expect it.
+    await rpc("sdlc.setProject", { project: "payment", settings: null });
+    await rpc("sdlc.setCeiling", { ceiling: {} });
+  });
+
   // Roadmap 18c: a reviewer merges a run's MR from Lượt chạy; the run's machine does it with its own token at its heartbeat.
   await step("merge-from-web", async () => {
     const lanRpc = async (method, input) => {
