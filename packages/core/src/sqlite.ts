@@ -29,6 +29,7 @@ import { assertNoHidden, stripHidden } from "./hidden.ts";
 import { assertNoSecret, findSecret, redactLines } from "./secrets.ts";
 import { isAgentActor, MR_WATCHER, parseSource, principalOf, type WriteSource } from "./source.ts";
 import { SEED_DOCS, SEED_VERSION } from "./seed.ts";
+import { specStage, specTasks, specTitle, type SpecFeature, type SpecFeatureDetail, type SpecFiles } from "./speckit.ts";
 import type {
   Actor,
   AgentsPaused,
@@ -329,6 +330,14 @@ const MIGRATIONS: string[] = [
   ALTER TABLE run_records ADD COLUMN merge_done_at TEXT;
   CREATE INDEX run_records_merge ON run_records(merge_status);
   `,
+  // Spec Kit features as machines last read them (roadmap 20b). branch '' is the project's target branch; files is
+  // SpecFiles as JSON. A machine replaces only its own rows, so machine is not in the key: the newest push wins.
+  `
+  CREATE TABLE spec_features(
+    project TEXT NOT NULL, dir TEXT NOT NULL, branch TEXT NOT NULL, title TEXT NOT NULL, files TEXT NOT NULL,
+    commit_sha TEXT NOT NULL, machine TEXT NOT NULL, pushed_at TEXT NOT NULL, PRIMARY KEY(project, dir, branch));
+  CREATE INDEX spec_features_machine ON spec_features(project, machine);
+  `,
 ];
 
 /** A leader's reply asks for at most this many actions. */
@@ -339,6 +348,25 @@ const RUN_RECORD_DAYS = 30;
 
 /** A pushed text as the team may see it: no hidden characters, no line that looks like a secret. */
 const clean = (text: string | null) => (text === null ? null : redactLines(stripHidden(text)));
+
+/** Stage and progress come from the files, so the list does not have to send them. */
+function toSpecFeature(r: Row): SpecFeatureDetail {
+  const files = JSON.parse(str(r.files)) as SpecFiles;
+  const tasks = specTasks(files.tasks);
+  return {
+    project: str(r.project),
+    dir: str(r.dir),
+    branch: str(r.branch),
+    title: str(r.title),
+    stage: specStage(files),
+    tasksDone: tasks.done,
+    tasksTotal: tasks.total,
+    commit: str(r.commit_sha),
+    machine: str(r.machine),
+    pushedAt: str(r.pushed_at),
+    files,
+  };
+}
 
 function toRunRecord(r: Row, withLog: boolean): RunRecord {
   const s = (v: unknown) => (v == null ? null : String(v));
@@ -1071,6 +1099,11 @@ export class SqliteHive implements HiveBackend {
       case "runs.push":
         for (const r of i.runs as Array<{ project: string }>) this.#need(actor, r.project, "taskWork", `Project ${r.project}`);
         return;
+      case "specs.push":
+        return this.#need(actor, i.project, "taskWork", `Project ${i.project}`);
+      case "specs.list":
+        if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
+        return;
       case "memory.write":
         return this.#need(actor, i.shared ? null : i.project, "memoryWrite", i.shared ? "Shared memory" : `Project ${i.project}`);
       case "memory.checkFiles":
@@ -1152,6 +1185,8 @@ export class SqliteHive implements HiveBackend {
         return (out as SkillSummary[]).filter((s) => visible(s.project)) as MethodOutput[M];
       case "runs.list":
         return (out as RunRecord[]).filter((r) => visible(r.project)) as MethodOutput[M];
+      case "specs.list":
+        return (out as SpecFeature[]).filter((f) => visible(f.project)) as MethodOutput[M];
       case "runs.requests":
         return (out as RunRequest[]).filter((r) => visible(r.project)) as MethodOutput[M];
       case "chat.threads":
@@ -2819,6 +2854,54 @@ export class SqliteHive implements HiveBackend {
           db.prepare("DELETE FROM run_records WHERE updated_at < ?").run(this.#now(-RUN_RECORD_DAYS * 24 * 60));
           return { stored: runs.length };
         }),
+
+      // A machine's whole view of the project each time: what it no longer sends it no longer has (merged, removed).
+      "specs.push": ({ project, features }, actor) =>
+        this.#tx(() => {
+          const now = this.#now();
+          const put = db.prepare(
+            `INSERT INTO spec_features(project, dir, branch, title, files, commit_sha, machine, pushed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(project, dir, branch) DO UPDATE SET title = excluded.title, files = excluded.files,
+               commit_sha = excluded.commit_sha, machine = excluded.machine, pushed_at = excluded.pushed_at`,
+          );
+          const kept = new Set<string>();
+          for (const f of features) {
+            // The repo's text as the team may see it, like a run's patch: no hidden characters, no secret-looking line.
+            const files: SpecFiles = { spec: clean(f.files.spec), plan: clean(f.files.plan), tasks: clean(f.files.tasks) };
+            put.run(project, f.dir, f.branch, stripHidden(specTitle(files.spec, f.dir)).slice(0, 300), JSON.stringify(files), f.commit, actor.name, now);
+            kept.add(JSON.stringify([f.dir, f.branch]));
+          }
+          const mine = db.prepare("SELECT dir, branch FROM spec_features WHERE project = ? AND machine = ?").all(project, actor.name) as Row[];
+          const drop = db.prepare("DELETE FROM spec_features WHERE project = ? AND dir = ? AND branch = ?");
+          let removed = 0;
+          for (const r of mine) {
+            if (kept.has(JSON.stringify([str(r.dir), str(r.branch)]))) continue;
+            drop.run(project, str(r.dir), str(r.branch));
+            removed++;
+          }
+          return { stored: features.length, removed };
+        }),
+
+      "specs.list": ({ project, projects }) =>
+        (
+          db
+            .prepare(
+              `SELECT * FROM spec_features WHERE (?1 IS NULL OR project = ?1) AND (?2 IS NULL OR project IN (SELECT value FROM json_each(?2)))
+               ORDER BY branch <> '', dir, branch, project`,
+            )
+            .all(project ?? null, listParam(projects)) as Row[]
+        ).map((r) => {
+          const feature: SpecFeature & { files?: SpecFiles } = toSpecFeature(r);
+          delete feature.files;
+          return feature;
+        }),
+
+      "specs.get": ({ project, dir, branch }, actor) => {
+        // A project the caller does not see answers like a missing feature.
+        if (!sees(actor, project)) return null;
+        const row = db.prepare("SELECT * FROM spec_features WHERE project = ? AND dir = ? AND branch = ?").get(project, dir, branch) as Row | undefined;
+        return row ? toSpecFeature(row) : null;
+      },
 
       "runs.list": ({ project, projects, limit }) =>
         (

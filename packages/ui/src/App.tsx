@@ -20,6 +20,7 @@ import {
   Layers,
   LayoutDashboard,
   LayoutGrid,
+  ListChecks,
   ListOrdered,
   ListTodo,
   MessageSquare,
@@ -61,6 +62,7 @@ import { ProposalsPage } from "./pages/Proposals.tsx";
 import { RunsPage } from "./pages/Runs.tsx";
 import { SetupPage } from "./pages/Setup.tsx";
 import { SkillsPage } from "./pages/Skills.tsx";
+import { SpecsPage } from "./pages/Specs.tsx";
 import { SystemsPage } from "./pages/Systems.tsx";
 import { TasksPage } from "./pages/Tasks.tsx";
 import { TodayPage } from "./pages/Today.tsx";
@@ -82,6 +84,7 @@ type PageId =
   | "runs"
   | "docs"
   | "read"
+  | "specs"
   | "skills"
   | "proposals"
   | "memory"
@@ -107,6 +110,7 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
   docs: { label: "nav.docs", sub: "navSub.docs", icon: FileText, render: () => <DocsPage /> },
   // Not in the sidebar: a doc's reading view (#/read?doc=…), under Tài liệu.
   read: { label: "nav.read", sub: "navSub.read", icon: BookOpen, render: () => <DocReaderPage /> },
+  specs: { label: "nav.specs", sub: "navSub.specs", icon: ListChecks, render: () => <SpecsPage /> },
   skills: { label: "nav.skills", sub: "navSub.skills", icon: WandSparkles, render: () => <SkillsPage /> },
   proposals: { label: "nav.proposals", sub: "navSub.proposals", icon: GitPullRequestArrow, render: () => <ProposalsPage /> },
   memory: { label: "nav.memory", sub: "navSub.memory", icon: Brain, render: () => <MemoryPage /> },
@@ -128,7 +132,7 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
 const GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
   { label: null, ids: ["today", "chat"] },
   { label: "nav.groupWork", ids: ["board", "runs", "tasks"] },
-  { label: "nav.groupKnowledge", ids: ["docs", "skills", "memory", "proposals"] },
+  { label: "nav.groupKnowledge", ids: ["docs", "specs", "skills", "memory", "proposals"] },
   { label: "nav.groupAgents", ids: ["agents", "setup", "projects"] },
   { label: "nav.groupAdmin", ids: ["admin", "machines", "users", "members", "tokens", "systems"] },
 ];
@@ -138,7 +142,7 @@ const PALETTE_ONLY: PageId[] = ["overview"];
 
 // ── The Web Admin (hub admins on the web) ──
 
-type AdminId = "overview" | "chat" | "runs" | "queue" | "fleet" | "quota" | "costs" | "alerts" | "review" | "docs" | "read" | "context" | "memory" | "skills" | "users" | "projects" | "policy" | "versions" | "tokens" | "webhooks" | "audit" | "hub";
+type AdminId = "overview" | "chat" | "runs" | "queue" | "fleet" | "quota" | "costs" | "alerts" | "review" | "docs" | "read" | "specs" | "context" | "memory" | "skills" | "users" | "projects" | "policy" | "versions" | "tokens" | "webhooks" | "audit" | "hub";
 type AdminGroup = "ops" | "watch" | "knowledge" | "admin";
 
 const ADMIN: Record<AdminId, { group: AdminGroup; icon: Icon; render: () => ReactNode; fill?: boolean }> = {
@@ -154,6 +158,7 @@ const ADMIN: Record<AdminId, { group: AdminGroup; icon: Icon; render: () => Reac
   review: { group: "knowledge", icon: SquareCheck, render: () => <ProposalsPage /> },
   docs: { group: "knowledge", icon: BookOpen, render: () => <DocsPage />, fill: true },
   read: { group: "knowledge", icon: BookOpen, render: () => <DocReaderPage />, fill: true },
+  specs: { group: "knowledge", icon: ListChecks, render: () => <SpecsPage />, fill: true },
   context: { group: "knowledge", icon: FileCode2, render: () => <OpsContext /> },
   memory: { group: "knowledge", icon: Brain, render: () => <MemoryPage />, fill: true },
   skills: { group: "knowledge", icon: WandSparkles, render: () => <SkillsPage />, fill: true },
@@ -246,7 +251,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   }, [webAdmin]);
 
   const visible = useMemo(() => {
-    const ids = new Set<PageId>(["today", "overview", "docs", "read", "skills", "proposals", "memory", "tasks", "systems"]);
+    const ids = new Set<PageId>(["today", "overview", "docs", "read", "specs", "skills", "proposals", "memory", "tasks", "systems"]);
     if (client.desktop) for (const id of ["board", "agents", "setup", "projects"] as const) ids.add(id);
     // Machines only report to a hub (and push their runs to it); a local database never has any. The leader chat
     // runs on a machine the hub hands it to.
