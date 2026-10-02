@@ -24,6 +24,7 @@ import {
   MAX_CANDIDATES,
   OPEN_POLICY,
   PAUSED_HUB,
+  profileAutonomy,
   redactLines,
   stripHidden,
   syncOutcome,
@@ -676,6 +677,8 @@ export class Runner {
         login: this.#host.login?.(profile.id) ?? null,
         usage: this.#host.usage?.(profile.id) ?? null,
         hasToken: Boolean(this.#host.token?.(profile.id)),
+        // The policy of the last heartbeat, as tick() and #start apply it: the card shows what a run would get.
+        autonomy: profileAutonomy(profile.kind, profile.args, this.#agentPolicy),
       };
     });
   }
