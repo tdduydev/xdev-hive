@@ -2,7 +2,7 @@
 
 Spec Kit (github/spec-kit) cho agent viết `spec.md` → `plan.md` → `tasks.md` cho từng tính năng trong `specs/<NNN-tên>/`. Hive cài nó vào repo (20a), cho xem các tính năng (20b), nhập `tasks.md` thành task (20c) và xếp run cho agent làm từng bước (20d).
 
-Phần này viết cho **R-20a** và **R-20b**. 20c–20d thêm vào đây khi tới lượt.
+Phần này có cả bốn phần, R-20a tới R-20d.
 
 ## Sự thật về CLI (đã chạy thử 2/10, specify-cli 1.0.14.dev0, macOS)
 

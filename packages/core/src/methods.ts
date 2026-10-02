@@ -8,7 +8,7 @@ import { DOC_ASSET_MAX_BYTES } from "./doclinks.ts";
 import { MR_STATUSES, PIPELINE_STATUSES } from "./gitlab.ts";
 import { MACHINE_ID, PROJECT_NAME } from "./keys.ts";
 import type { SkillSummary } from "./skills.ts";
-import { SPEC_DIR, SPEC_FEATURES_MAX, SPEC_FILE_MAX, type SpecFeature, type SpecFeatureDetail } from "./speckit.ts";
+import { SPEC_DIR, SPEC_FEATURES_MAX, SPEC_FILE_MAX, type SpecFeature, type SpecFeatureDetail, type SpecTaskPlan } from "./speckit.ts";
 import {
   MEMORY_KINDS,
   MEMORY_STATUSES,
@@ -452,6 +452,17 @@ export const schemas = {
   "specs.list": z.object({ project: project.optional(), projects: projectList }),
   /** One feature with its spec.md, plan.md and tasks.md. */
   "specs.get": z.object({ project, dir: z.string().regex(SPEC_DIR), branch: z.string().max(200) }),
+  /**
+   * A feature's tasks.md into board tasks <prefix>-T001…, with the order its template sets (roadmap 20c); dryRun only
+   * plans. Tasks already on the board are left as they are.
+   */
+  "specs.importTasks": z.object({
+    project,
+    dir: z.string().regex(SPEC_DIR),
+    branch: z.string().max(200),
+    prefix: z.string().regex(/^[A-Za-z0-9._-]{1,40}$/).optional(),
+    dryRun: z.boolean().default(false),
+  }),
   /** Runs the hub was told about, the newest runs first (no log); a project's, or every project the caller sees. */
   "runs.list": z.object({ project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(200).default(50) }),
   /**
@@ -734,6 +745,7 @@ export interface MethodOutput {
   "specs.push": { stored: number; removed: number };
   "specs.list": SpecFeature[];
   "specs.get": SpecFeatureDetail | null;
+  "specs.importTasks": { tasks: Array<SpecTaskPlan & { exists: boolean }>; warnings: string[]; created: string[] };
   "runs.list": RunRecord[];
   "runs.get": RunRecord | null;
   "runs.cancel": RunRecord;
@@ -841,6 +853,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "specs.push": "agent",
   "specs.list": "viewer",
   "specs.get": "viewer",
+  "specs.importTasks": "agent",
   "runs.list": "viewer",
   "runs.get": "viewer",
   "runs.cancel": "agent",
