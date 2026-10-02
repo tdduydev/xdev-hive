@@ -681,13 +681,18 @@ export function createHubApp({
         return;
       }
       // A machine older than the rollout's minimum gets no runs from the hub.
-      if ((method === "runs.dispatch" || method === "runs.prompt") && releases) {
+      if ((method === "runs.dispatch" || method === "runs.prompt" || method === "runs.dispatchMany") && releases) {
         const min = releases.rollout().minVersion;
-        const machineId = String((input as { machineId?: unknown } | null)?.machineId ?? "");
-        if (min && machineId) {
-          const m = (await hive.call("machines.list", {}, actor)).find((x) => x.id === machineId);
-          if (m && compareVersions(m.version, min) < 0) {
-            throw new HiveError("conflict", `${m.machine} runs ${m.version}; the hub needs ${min} or newer.`, { key: "errors.machineTooOld", vars: { machine: m.machine, version: m.version, min } });
+        const body = input as { machineId?: unknown; items?: Array<{ machineId?: unknown }> } | null;
+        // A run group's pinned machines; those it leaves to the hub are picked later, in the store, which cannot see this.
+        const machineIds = [body?.machineId, ...(Array.isArray(body?.items) ? body.items.map((i) => i?.machineId) : [])].filter((x): x is string => typeof x === "string" && x !== "");
+        if (min && machineIds.length) {
+          const machines = await hive.call("machines.list", {}, actor);
+          for (const machineId of new Set(machineIds)) {
+            const m = machines.find((x) => x.id === machineId);
+            if (m && compareVersions(m.version, min) < 0) {
+              throw new HiveError("conflict", `${m.machine} runs ${m.version}; the hub needs ${min} or newer.`, { key: "errors.machineTooOld", vars: { machine: m.machine, version: m.version, min } });
+            }
           }
         }
       }

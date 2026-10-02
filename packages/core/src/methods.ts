@@ -26,6 +26,7 @@ import {
   type RunNotice,
   type RunCancel,
   type RunRecord,
+  type RunGroup,
   type RunRequest,
   CHAT_ACTION_KINDS,
   CHAT_EFFORTS,
@@ -127,6 +128,7 @@ const reportedProfile = z.object({
   runs: z.number().int().min(0),
   rateLimited: z.number().int().min(0),
   priority: z.number().int().min(0).max(100).optional(),
+  maxConcurrent: z.number().int().min(1).max(8).optional(),
 });
 /** A finished run's cost estimate, sent once by the machine that ran it. */
 const runCost = z.object({
@@ -540,6 +542,33 @@ export const schemas = {
     profileId: z.string().max(40).nullable().default(null),
     reviewAfter: z.boolean().default(false),
   }),
+  /**
+   * A run group (roadmap 31a): several tasks, each on a machine (or any free one, picked by the hub when it is its
+   * turn) and profile. The hub holds them and sends at most maxParallel at a time, the next when a run ends.
+   */
+  "runs.dispatchMany": z.object({
+    project,
+    title: z.string().max(120).default(""),
+    items: z
+      .array(
+        z.object({
+          taskId,
+          /** null: any machine that takes the project's runs and has a free place when the item's turn comes. */
+          machineId: machineRef.nullable().default(null),
+          profileId: z.string().max(40).nullable().default(null),
+          role: z.enum(AGENT_ROLES).default("implement"),
+        }),
+      )
+      .min(1)
+      .max(50),
+    maxParallel: z.number().int().min(1).max(20).nullable().default(null),
+    reviewAfter: z.boolean().default(false),
+    instructions: z.string().max(4000).default(""),
+  }),
+  /** Run groups, the newest first: a project's, or every project the caller sees. */
+  "runs.groups": z.object({ project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(100).default(30) }),
+  /** Stops what a group has not started: its held items, and requests no machine took. Runs going on keep going. */
+  "runs.cancelGroup": z.object({ id }),
   /** Run requests, the newest first: a project's, or every project the caller sees. */
   "runs.requests": z.object({ project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(200).default(50) }),
   /** Withdraws a request no machine took yet. */
@@ -818,6 +847,9 @@ export interface MethodOutput {
   "runs.mergeResult": RunRecord;
   "runs.dispatch": RunRequest;
   "runs.prompt": { task: Task; request: RunRequest };
+  "runs.dispatchMany": RunGroup;
+  "runs.groups": RunGroup[];
+  "runs.cancelGroup": RunGroup;
   "runs.requests": RunRequest[];
   "runs.cancelRequest": RunRequest;
   "runs.requestResult": RunRequest;
@@ -936,6 +968,10 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "runs.dispatch": "agent",
   // Also "manage" on the project as runs.dispatch, and creating its tasks.
   "runs.prompt": "agent",
+  // Also "runDispatch" on the project, like runs.dispatch.
+  "runs.dispatchMany": "agent",
+  "runs.groups": "viewer",
+  "runs.cancelGroup": "agent",
   "runs.requests": "viewer",
   "runs.cancelRequest": "agent",
   "runs.requestResult": "agent",
