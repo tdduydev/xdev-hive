@@ -107,6 +107,15 @@ describe("admin portal", () => {
     await assert.rejects(hive.call("machines.commandResult", { id: b.id, status: "running" }, mbp), code("conflict"));
   });
 
+  it("lets an admin ask a machine to install Spec Kit in a repo", async () => {
+    const hive = new SqliteHive(":memory:");
+    const speckit = { id: "app:speckit", label: "Spec Kit", state: "missing" as const, detail: "Chưa cài", action: "Cài Spec Kit" };
+    const withSpeckit: SetupReport = { ...report, projects: [{ ...report.projects[0]!, items: [...report.projects[0]!.items, speckit] }] };
+    await beat(hive, mbp, { setup: { checkedAt: "2026-10-02T07:59:00.000Z", report: withSpeckit } });
+    const cmd = await hive.call("admin.commandCreate", { machineId: mbp.name, itemId: "app:speckit" }, admin);
+    assert.equal(cmd.status, "pending");
+  });
+
   it("stores the team policy, sends it with every heartbeat, and refuses templates with env", async () => {
     const hive = new SqliteHive(":memory:");
     assert.deepEqual((await hive.call("policy.get", {}, viewer)).requiredClis, []);
@@ -122,6 +131,10 @@ describe("admin portal", () => {
 
     assert.deepEqual([...requiredItemIds(policy, ["app", "other"])].sort(), ["app:agents", "app:codegraph-index", "cli:claude", "shim"]);
     assert.deepEqual(missingRequired(policy, report).map((i) => i.id), ["shim", "app:codegraph-index"]);
+
+    // Spec Kit is a repo part like the others: the policy can require it.
+    const speckit = await hive.call("policy.set", { requiredClis: [], requireShim: false, projects: { app: ["speckit"] } }, admin);
+    assert.deepEqual([...requiredItemIds(speckit, ["app"])], ["app:speckit"]);
   });
 
   it("logs admin actions with who did them, and never reads", async () => {

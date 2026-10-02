@@ -19,15 +19,31 @@ function fakeBin(dir: string, name: string, body = "") {
 }
 const calls = (dir: string) => (existsSync(path.join(dir, "calls.log")) ? readFileSync(path.join(dir, "calls.log"), "utf8").trim().split("\n") : []);
 
-function machine(opts: { npm?: boolean } = {}) {
+/** A fake specify: `init` and `integration install` write .specify/integration.json in the cwd, as the real one does. */
+const SPECIFY = `case "$1" in
+  --version) echo "specify 1.0.14.dev0" ;;
+  init) mkdir -p .specify && echo '{"version":"1.0.14.dev0","installed_integrations":["claude"]}' > .specify/integration.json && echo "init ok" ;;
+  integration) echo '{"version":"1.0.14.dev0","installed_integrations":["claude","'"$3"'"]}' > .specify/integration.json && echo "installed $3" ;;
+esac`;
+
+function machine(opts: { npm?: boolean; uv?: boolean; specify?: boolean } = {}) {
   const bin = tmp("bin");
   const shimDir = tmp("shim");
+  // uv's tool bin dir, not on PATH (like ~/.local/bin for a login shell that lacks it).
+  const uvBin = tmp("uvbin");
   fakeBin(bin, "claude", 'echo "2.1.283 (Claude Code)"');
   if (opts.npm !== false) {
     // `npm install -g @openai/codex` "installs" codex next to it.
     fakeBin(bin, "npm", `[ "$3" = "@openai/codex" ] && printf '#!/bin/sh\\necho codex-cli 0.157.1\\n' > "${bin}/codex" && chmod +x "${bin}/codex"; echo "added 1 package"`);
     fakeBin(bin, "npx", `[ "$3" = "init" ] && mkdir -p .codegraph && echo db > .codegraph/codegraph.db; echo "npx ok"`);
   }
+  if (opts.uv) {
+    // `uv tool install specify-cli …` copies a fake specify into uv's bin dir.
+    const src = tmp("specify-src");
+    fakeBin(src, "specify", SPECIFY);
+    fakeBin(bin, "uv", `[ "$1 $2" = "tool dir" ] && echo "${uvBin}"; [ "$1 $2" = "tool install" ] && cp "${src}/specify" "${uvBin}/specify" && echo "Installed 1 executable: specify"; true`);
+  }
+  if (opts.specify) fakeBin(bin, "specify", SPECIFY);
   const projects: DesktopProject[] = [];
   const pathEnv = [bin, shimDir, "/usr/bin", "/bin"].join(path.delimiter);
   const setup = new Setup({
@@ -37,7 +53,7 @@ function machine(opts: { npm?: boolean } = {}) {
     shim: { electronPath: "/Applications/xDev Hive.app/Contents/MacOS/xDev Hive", entry: "/app/mcp/hive-mcp.mjs", binDir: shimDir },
     home: tmp("home"),
   });
-  return { setup, bin, shimDir, projects };
+  return { setup, bin, shimDir, uvBin, projects };
 }
 
 const find = (r: SetupReport, id: string) => [...r.machine, ...r.projects.flatMap((p) => p.items)].find((i) => i.id === id)!;
@@ -52,7 +68,13 @@ describe("Setup: this machine", () => {
   it("finds installed CLIs with their version and installs a missing one with npm -g", async () => {
     const m = machine();
     const r = await m.setup.status();
-    assert.deepEqual(r.machine.map((i) => [i.id, i.state]), [["cli:claude", "installed"], ["cli:codex", "missing"], ["cli:gemini", "missing"], ["shim", "missing"]]);
+    assert.deepEqual(r.machine.map((i) => [i.id, i.state]), [
+      ["cli:claude", "installed"],
+      ["cli:codex", "missing"],
+      ["cli:gemini", "missing"],
+      ["cli:specify", "manual"],
+      ["shim", "missing"],
+    ]);
     assert.match(find(r, "cli:claude").detail, /^2\.1\.283 \(Claude Code\) · .*\/claude$/);
     assert.equal(find(r, "cli:codex").action, "Cài bằng npm");
     assert.match(find(r, "cli:codex").detail, /npm install -g @openai\/codex/);
@@ -108,14 +130,17 @@ describe("Setup: project repos", () => {
       ["app:codegraph-mcp", "missing"],
       ["app:codegraph-index", "missing"],
       ["app:superpowers", "missing"],
+      ["app:speckit", "missing"],
     ]);
     assert.match(find(r, "app:agents").detail, /\.mcp\.json.*\.claude\/settings\.json/);
+    assert.equal(find(r, "app:speckit").action, null, "no specify on this machine yet");
+    assert.match(find(r, "app:speckit").detail, /Cài Spec Kit CLI \(specify\)/);
 
     for (const id of ["app:agents", "app:codegraph-mcp", "app:superpowers", "app:codegraph-index"]) {
       assert.equal((await m.setup.install(id)).item.state, "installed", id);
     }
     r = await m.setup.status();
-    assert.ok(r.projects[0]!.items.every((i) => i.state === "installed"));
+    assert.ok(r.projects[0]!.items.filter((i) => i.id !== "app:speckit").every((i) => i.state === "installed"));
 
     const mcp = JSON.parse(readFileSync(path.join(repo, ".mcp.json"), "utf8"));
     assert.deepEqual(Object.keys(mcp.mcpServers), ["xdev-hive", "codegraph"]);
@@ -157,5 +182,81 @@ describe("Setup: project repos", () => {
     assert.equal(existsSync(path.join(repo, ".mcp.json")), false);
     // `git config --get` exits 1 when the key is unset.
     assert.throws(() => execFileSync("git", ["config", "--get", "core.hooksPath"], { cwd: repo, stdio: "pipe" }));
+  });
+});
+
+describe("Setup: Spec Kit", () => {
+  const specifyCalls = (bin: string) => calls(bin).filter((c) => c.startsWith("specify ") && !c.startsWith("specify --version"));
+
+  it("without uv or specify, says to install uv and offers no button", async () => {
+    const m = machine();
+    const item = await m.setup.item("cli:specify");
+    assert.equal(item.state, "manual");
+    assert.equal(item.action, null);
+    assert.match(item.detail, /Cần uv: https:\/\/docs\.astral\.sh\/uv/);
+    await assert.rejects(m.setup.install("cli:specify"), /Cần uv/);
+  });
+
+  it("installs specify with uv and finds it in uv's bin dir even when that is not on PATH", async () => {
+    const m = machine({ uv: true });
+    const before = await m.setup.item("cli:specify");
+    assert.equal(before.state, "missing");
+    assert.equal(before.action, "Cài bằng uv");
+
+    const res = await m.setup.install("cli:specify");
+    assert.ok(calls(m.bin).includes("uv tool install specify-cli --from git+https://github.com/github/spec-kit.git telemetry="));
+    assert.equal(res.item.state, "installed");
+    assert.equal(res.item.detail, `specify 1.0.14.dev0 · ${path.join(m.uvBin, "specify")} · ngoài PATH`);
+    assert.match(res.output, /Installed 1 executable/);
+
+    // The repo item can install with it, by full path.
+    const repo = gitRepo();
+    m.projects.push({ name: "app", repo });
+    assert.equal((await m.setup.item("app:speckit")).action, "Cài Spec Kit");
+  });
+
+  it("initialises a repo for Claude, then adds the Codex commands, in the repo", async () => {
+    const m = machine({ specify: true });
+    const repo = gitRepo();
+    m.projects.push({ name: "app", repo });
+    const before = await m.setup.item("app:speckit");
+    assert.equal(before.state, "missing");
+    assert.equal(before.action, "Cài Spec Kit");
+
+    const res = await m.setup.install("app:speckit");
+    assert.deepEqual(specifyCalls(m.bin), [
+      "specify init --here --force --non-interactive --integration claude --script sh --ignore-agent-tools telemetry=",
+      "specify integration install codex --script sh telemetry=",
+    ]);
+    assert.ok(existsSync(path.join(repo, ".specify", "integration.json")), "ran with the repo as cwd");
+    assert.equal(res.item.state, "installed");
+    assert.equal(res.item.detail, "Spec Kit 1.0.14.dev0 · claude, codex");
+    assert.match(res.output, /Nhớ commit \.specify\//);
+  });
+
+  it("on a repo that has Spec Kit for Claude only, adds Codex without running init again", async () => {
+    const m = machine({ specify: true });
+    const repo = gitRepo();
+    m.projects.push({ name: "app", repo });
+    mkdirSync(path.join(repo, ".specify"));
+    writeFileSync(path.join(repo, ".specify", "integration.json"), '{"version":"1.0.14.dev0","installed_integrations":["claude"]}\n');
+    const before = await m.setup.item("app:speckit");
+    assert.equal(before.state, "missing");
+    assert.equal(before.action, "Thêm lệnh cho Codex CLI");
+
+    const res = await m.setup.install("app:speckit");
+    assert.deepEqual(specifyCalls(m.bin), ["specify integration install codex --script sh telemetry="]);
+    assert.equal(res.item.state, "installed");
+  });
+
+  it("reads a broken integration.json as no integration, without throwing", async () => {
+    const m = machine({ specify: true });
+    const repo = gitRepo();
+    m.projects.push({ name: "app", repo });
+    mkdirSync(path.join(repo, ".specify"));
+    writeFileSync(path.join(repo, ".specify", "integration.json"), "{ not json");
+    const r = await m.setup.status();
+    assert.equal(find(r, "app:speckit").state, "missing");
+    assert.equal(find(r, "app:speckit").action, "Thêm lệnh cho Claude Code, Codex CLI");
   });
 });
