@@ -84,9 +84,9 @@ Spec: [`docs/specs/27a-agent-policy.md`](specs/27a-agent-policy.md) cho 27a, [`d
 - **R-22n-2. Nút "Yêu cầu máy đồng bộ"** (phần "Chưa có" của 22n).
 - **R-19c / R-19d.** Tài liệu và memory của một hệ thống (nhiều service); task phụ thuộc chéo dự án và leader ở mức hệ thống.
 - **R-20a → R-20d. Spec Kit:** cài đặt, trang Spec, nhập `tasks.md` thành task, run cho specify / plan / tasks.
-- **R-18c / R-18d.** Đang chờ câu trả lời:
-  - 18c: merge bằng token của máy hay token lưu trên hub?
-  - 18d: ai được đổi gói của một máy: admin hub, chủ máy, hay quản trị dự án?
+- **R-18c / R-18d.** Đã trả lời 2/10:
+  - 18c: merge bằng token của máy; hub chỉ ghi yêu cầu, máy nhận qua heartbeat.
+  - 18d: chỉ admin hub và chủ máy đổi được gói của máy.
 
 ## G4. Vận hành (làm song song)
 
