@@ -18,6 +18,8 @@ export interface Worktree {
   created: boolean;
   /** Untracked agent config in the worktree; excluded from the runner's auto-commit. */
   copied: string[];
+  /** Folders the run's tools prepare in it (roadmap 28b, see toolDirs): kept out of the commit like AGENT_CLI_DIRS. */
+  toolDirs?: string[];
 }
 
 export const branchFor = (taskId: string) => `ai/${taskId}`;
@@ -151,7 +153,7 @@ export const AGENT_CLI_DIRS = [".codex", ".agents", ".codegraph"];
  * pre-commit guard would have kept them; they show up as uncommitted in the run's summary. So do the agent CLIs'
  * folders (AGENT_CLI_DIRS), unless the branch already tracks something in one: then the project keeps it on purpose.
  */
-export function commitAll(dir: string, message: string, exclude: string[]): { sha: string | null; error: string | null } {
+export function commitAll(dir: string, message: string, exclude: string[], toolDirs: string[] = []): { sha: string | null; error: string | null } {
   try {
     if (!git(dir, ["status", "--porcelain"])) return { sha: null, error: null };
     // Nested AGENTS.md and skills with Hive's block, as the branch had them (the agent may have taken the block out).
@@ -161,7 +163,7 @@ export function commitAll(dir: string, message: string, exclude: string[]): { sh
       .split("\n")
       .map((l) => l.replace(/^HEAD:/, ""))
       .filter((f) => f && f !== "AGENTS.md");
-    const cliDirs = AGENT_CLI_DIRS.filter((d) => !tryGit(dir, ["ls-tree", "-r", "--name-only", "HEAD", "--", d]));
+    const cliDirs = [...new Set([...AGENT_CLI_DIRS, ...toolDirs])].filter((d) => !tryGit(dir, ["ls-tree", "-r", "--name-only", "HEAD", "--", d]));
     const keepOut = [...exclude, ...RENDERED_FILES, RULES_DIR, ...nested, ...cliDirs];
     git(dir, ["add", "-A", "--", ".", ...keepOut.map((f) => `:(exclude)${f}`)]);
     if (!git(dir, ["diff", "--cached", "--name-only"])) return { sha: null, error: null };

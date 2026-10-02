@@ -12,6 +12,7 @@ import {
   isMethod,
   PROJECT_NAME,
   toErrorPayload,
+  TOOL_ID,
   transferHive,
   usageStop,
   type Actor,
@@ -27,6 +28,7 @@ import {
   type LoginHow,
   type NewAccount,
   type MachineCommand,
+  type MachineToolView,
   type ProfileChange,
   type RunMergeOrder,
   type Me,
@@ -61,7 +63,8 @@ import { MergeRequester, mrLabel, type MrHost } from "./gitlab/mr.ts";
 import { branchFor } from "#desktop/main/runner/worktree.ts";
 import { cleanupNote, mrPollDelay, MrWatcher, type MrChange } from "./gitlab/watch.ts";
 import { CiFixer } from "./gitlab/ci-fix.ts";
-import { installAgents, installCodexConfig, installShim } from "./installer.ts";
+import { installAgents, installCodexConfig, installShim, repoFeatures } from "./installer.ts";
+import { toolViews } from "./runner/tools.ts";
 import { expandEnv, expandHome, resolveBin } from "./runner/command.ts";
 import { LOGIN_DIR_ENV, LoginMonitor, loginParts, readLoginHow } from "./runner/login.ts";
 import { platformKey, Updater, type UpdateStatus } from "./updater.ts";
@@ -346,6 +349,25 @@ function setProfileToken(id: string, token: string) {
   const { [id]: _old, ...rest } = config.agentTokens;
   persist({ ...config, agentTokens: value ? { ...rest, [id]: value } : rest });
   return runner.profileStatuses();
+}
+
+/** The Setup card's hub tools (roadmap 28b): none in local mode, nor before the first heartbeat. */
+function hubTools(): MachineToolView[] {
+  const catalog = config.mode === "hub" ? (hubState?.tools ?? null) : null;
+  return toolViews(catalog, config.projects.map((p) => ({ name: p.name, features: repoFeatures(p.repo) })), config.toolTrust);
+}
+
+/** The machine's user allows a hub tool's commands as the card showed them (their hash), or takes it back (null). */
+function setToolTrust(id: unknown, hash: unknown): MachineToolView[] {
+  const name = String(id ?? "");
+  if (!TOOL_ID.test(name) || (hash !== null && !(typeof hash === "string" && /^[0-9a-f]{64}$/.test(hash)))) {
+    throw new HiveError("bad_request", `Không cho phép được tool ${name}.`, { key: "errors.toolTrustBad", vars: { id: name } });
+  }
+  const { [name]: _old, ...rest } = config.toolTrust;
+  persist({ ...config, toolTrust: hash ? { ...rest, [name]: hash } : rest });
+  // A run waiting on nothing else may start with it now; one already going keeps what it started with.
+  void runner.tick();
+  return hubTools();
 }
 
 /** A terminal running `claude setup-token` with the profile's login folder: the person copies the token into the app. */
@@ -915,7 +937,9 @@ function registerIpc(): void {
   handle("desktop:hubRequests", () => ({
     policy: config.mode === "hub" ? (hubState?.policy ?? null) : null,
     commands: config.mode === "hub" ? (hubState?.commands ?? []) : [],
+    tools: hubTools(),
   }));
+  handle("desktop:toolTrust", setToolTrust);
   handle("desktop:answerCommand", answerCommand);
   handle("desktop:transferHub", transferHub);
   handle("desktop:showInFolder", async (p: string) => {
@@ -1223,6 +1247,7 @@ if (!app.requestSingleInstanceLock()) {
         hub: () => (config.mode === "hub" && config.hub.url && config.hub.token ? { url: config.hub.url, token: config.hub.token } : null),
         token: (id) => config.agentTokens[id],
         gitlab: () => config.gitlab.url || null,
+        toolTrust: () => config.toolTrust,
       },
       {
         dataDir: path.dirname(configPath()),

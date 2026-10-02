@@ -61,6 +61,7 @@ import type {
   DocVersion,
   Machine,
   MachineCommand,
+  MachineTools,
   MachineDetail,
   MachineRun,
   ProfileChange,
@@ -1937,6 +1938,34 @@ export class SqliteHive implements HiveBackend {
   }
 
   /**
+   * The catalog a heartbeat carries (roadmap 28b), like #machineAgentPolicy: only the projects the machine last said it
+   * has and its token sees. An entry goes when one of them has a line for it, when it is on by default, or when the
+   * app has its own code for it: a project with no line still gets codegraph and superpowers from the repo's own
+   * setup (.mcp.json, .claude/settings.json), which the machine reads itself.
+   */
+  #machineTools(actor: Actor): MachineTools {
+    const row = this.db.prepare("SELECT projects FROM machines WHERE id = ?").get(actor.name) as Row | undefined;
+    const mine = (row ? (JSON.parse(str(row.projects)) as string[]) : []).filter((p) => sees(actor, p));
+    const lines = mine.length
+      ? (this.db.prepare(`SELECT * FROM tool_projects WHERE project IN (${mine.map(() => "?").join(", ")})`).all(...mine) as Row[])
+      : [];
+    const entries: ToolEntry[] = [];
+    const projects: MachineTools["projects"] = Object.fromEntries(mine.map((p) => [p, []]));
+    for (const r of this.db.prepare("SELECT id, entry FROM tools ORDER BY id").all() as Row[]) {
+      const entry: ToolEntry = { id: str(r.id), ...(JSON.parse(str(r.entry)) as Omit<ToolEntry, "id">) };
+      const own = lines.filter((l) => str(l.tool_id) === entry.id);
+      if (!own.length && !entry.enabledByDefault && entry.handler === null) continue;
+      entries.push(entry);
+      for (const p of mine) {
+        const l = own.find((x) => str(x.project) === p);
+        const enabled = l && l.enabled != null ? num(l.enabled) === 1 : null;
+        projects[p]!.push({ id: entry.id, enabled, effective: toolEffective(enabled, entry.enabledByDefault), required: l ? num(l.required) === 1 : false });
+      }
+    }
+    return { entries, projects };
+  }
+
+  /**
    * A catalog entry with the settings of the projects the actor may view: a project's choices tell what it uses, which
    * is not for those who cannot see the project. With `only`, that project's line alone, there even with no row of its own.
    */
@@ -3346,6 +3375,7 @@ export class SqliteHive implements HiveBackend {
             cooldowns: this.#cooldowns(),
             policy: this.#policy(),
             agentPolicy: this.#machineAgentPolicy(actor),
+            tools: this.#machineTools(actor),
             commands,
             syncCommands,
             runRequests,

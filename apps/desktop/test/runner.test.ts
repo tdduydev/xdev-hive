@@ -4,7 +4,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { AGENT_TEMPLATES, HiveError, type Actor, type AgentProfile, type HiveBackend, type RunnerSettings } from "@xdev-hive/core";
+import { AGENT_TEMPLATES, HiveError, toolHash, type Actor, type AgentProfile, type HiveBackend, type RunnerSettings, type ToolEntry } from "@xdev-hive/core";
 import { CODEGRAPH_MCP, CODEGRAPH_RUN_MCP, SUPERPOWERS_PLUGIN } from "#desktop/main/installer.ts";
 import { prepareCodegraph } from "#desktop/main/runner/codegraph.ts";
 import { buildCommand, buildPrompt, parsePick } from "#desktop/main/runner/command.ts";
@@ -74,6 +74,8 @@ async function setup(
     sync?: RunnerOptions["sync"];
     /** Put first on the PATH the runner sees (fake tools such as npx). */
     bin?: string;
+    /** The hub tools this machine's user allowed (roadmap 28b). */
+    toolTrust?: RunnerHost["toolTrust"];
   } = {},
 ) {
   const repo = tmp("repo");
@@ -100,6 +102,7 @@ async function setup(
     usage: machine.usage,
     hub: machine.hub,
     ...(machine.download ? { download: machine.download } : {}),
+    ...(machine.toolTrust ? { toolTrust: machine.toolTrust } : {}),
   };
   const dataDir = tmp("data");
   const hubUpdates: HubUpdate[] = [];
@@ -1784,5 +1787,190 @@ describe("runner: agent policy (roadmap 27a)", () => {
     const [call] = calls();
     assert.equal(call!.args.includes("--permission-mode"), false);
     assert.equal(call!.readOnly, null);
+  });
+});
+
+describe("runner: the hub's tool catalog (roadmap 28b)", () => {
+  /** An MCP tool for Claude and Codex, not on anywhere until a test turns it on. */
+  const rtk = (over: Partial<ToolEntry> = {}): ToolEntry => ({
+    id: "rtk",
+    name: "RTK",
+    description: "",
+    kind: "mcp",
+    package: { registry: "npm", name: "rtk-mcp", version: "0.4.1" },
+    mcp: { command: "npx", args: ["-y", "{package}"] },
+    plugin: null,
+    hooks: [],
+    agents: ["claude", "codex"],
+    check: null,
+    install: null,
+    prepare: null,
+    env: { RTK_TELEMETRY: "0" },
+    secretEnv: [],
+    license: "MIT",
+    homepage: null,
+    handler: null,
+    enabledByDefault: false,
+    ...over,
+  });
+  const servers = (args: string[]) => JSON.parse(args.at(-1)!).mcpServers as Record<string, any>;
+  const settingsOf = (args: string[]) => JSON.parse(args[args.indexOf("--settings") + 1]!) as { disableAllHooks: boolean; permissions: { allow: string[] }; enabledPlugins?: Record<string, boolean> };
+  const turnOn = (hive: SqliteHive, id: string, enabled: boolean | null = true) => hive.call("tools.setProject", { id, project: "demo", enabled, required: false }, admin);
+  /** A hub-mode machine: `catalog` sets the hub's catalog up, then the first heartbeat brings it. */
+  async function onHub(catalog: (hive: SqliteHive) => Promise<unknown>, profiles = [profile("claude-a", "claude", 10, "ok")], machine: Parameters<typeof setup>[3] = {}) {
+    const npx = fakeNpx();
+    const s = await setup(profiles, {}, "hub", { bin: npx.bin, ...machine });
+    await catalog(s.hive);
+    await s.runner.heartbeat();
+    return { ...s, npx };
+  }
+  const runOnce = async (s: Awaited<ReturnType<typeof onHub>>) => {
+    const queued = await s.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await s.runner.settle();
+    return { run: s.runner.store.get(queued.id)!, log: unstamp(s.runner.log(queued.id)) };
+  };
+  const fakeCodex = () => {
+    const file = path.join(tmp("bin"), "codex");
+    writeFileSync(file, `#!/bin/sh\nexec "${process.execPath}" "${FAKE}" "$@"\n`, { mode: 0o755 });
+    return file;
+  };
+
+  it("on for the project: Claude gets the server and its permission, the index is built and kept out of the commit", async () => {
+    const s = await onHub((hive) => turnOn(hive, "codegraph"));
+    assert.ok(s.hubUpdates[0]!.tools?.entries.some((e) => e.id === "codegraph"), "onHub hears the catalog");
+    const { run, log } = await runOnce(s);
+    assert.equal(run.status, "succeeded", run.error ?? "");
+    const { args } = s.calls()[0]!;
+    assert.deepEqual(servers(args).codegraph, CODEGRAPH_RUN_MCP, "the seed runs as the app ran it, no daemon left behind");
+    assert.deepEqual(settingsOf(args), { disableAllHooks: true, permissions: { allow: ["mcp__xdev-hive", "mcp__codegraph"] } });
+    assert.deepEqual(s.npx.calls(), [`-y ${CODEGRAPH_MCP.args[1]} init ${run.worktree} telemetry=0`]);
+    assert.match(log, /^# codegraph: init \d+\.\d s\n# cwd /m);
+    assert.deepEqual(git(s.repo, "show", "--name-only", "--format=", "ai/T-1").split("\n"), ["work-claude-a.txt"]);
+  });
+
+  it("off for the project: nothing, even with codegraph in the repo's .mcp.json", async () => {
+    const s = await onHub((hive) => turnOn(hive, "codegraph", false));
+    writeFileSync(path.join(s.repo, ".mcp.json"), JSON.stringify({ mcpServers: { codegraph: CODEGRAPH_MCP } }));
+    await runOnce(s);
+    const { args } = s.calls()[0]!;
+    assert.deepEqual(Object.keys(servers(args)), ["xdev-hive"]);
+    assert.deepEqual(settingsOf(args).permissions.allow, ["mcp__xdev-hive"]);
+    assert.deepEqual(s.npx.calls(), [], "no index built");
+  });
+
+  it("not chosen by the project: what the repo's setup turned on still runs", async () => {
+    const s = await onHub(async () => undefined);
+    mkdirSync(path.join(s.repo, ".claude"));
+    writeFileSync(path.join(s.repo, ".mcp.json"), JSON.stringify({ mcpServers: { codegraph: CODEGRAPH_MCP } }));
+    writeFileSync(path.join(s.repo, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { [SUPERPOWERS_PLUGIN]: true } }));
+    const { run } = await runOnce(s);
+    const { args } = s.calls()[0]!;
+    assert.deepEqual(servers(args).codegraph, CODEGRAPH_RUN_MCP);
+    assert.deepEqual(settingsOf(args).enabledPlugins, { [SUPERPOWERS_PLUGIN]: true });
+    assert.deepEqual(s.npx.calls(), [`-y ${CODEGRAPH_MCP.args[1]} init ${run.worktree} telemetry=0`]);
+  });
+
+  it("a version the machine's user has not allowed is left out and logged, until they allow it", async () => {
+    let trust: Record<string, string> = {};
+    const s = await onHub(
+      async (hive) => {
+        const seed = (await hive.call("tools.list", {}, admin)).find((t) => t.id === "codegraph")!;
+        const { builtin: _b, version, updatedAt: _a, updatedBy: _u, projects: _p, ...entry } = seed;
+        await hive.call("tools.save", { entry: { ...entry, package: { ...entry.package!, version: "1.6.1" } }, baseVersion: version }, admin);
+        await turnOn(hive, "codegraph");
+      },
+      undefined,
+      { toolTrust: () => trust },
+    );
+    const first = await runOnce(s);
+    assert.equal(first.run.status, "succeeded", first.run.error ?? "");
+    assert.deepEqual(Object.keys(servers(s.calls()[0]!.args)), ["xdev-hive"]);
+    assert.match(first.log, /^# tool codegraph: chờ người dùng máy cho phép \(Cài đặt máy\)$/m);
+    assert.deepEqual(s.npx.calls(), []);
+
+    // Allowed as the Setup card showed it: 1.6.1 runs.
+    const bumped = (await s.hive.call("tools.list", {}, admin)).find((t) => t.id === "codegraph")!;
+    trust = { codegraph: toolHash(bumped) };
+    const second = await runOnce(s);
+    assert.deepEqual(servers(s.calls()[1]!.args).codegraph.args, ["-y", "@colbymchenry/codegraph@1.6.1", "serve", "--mcp"]);
+    assert.equal(s.npx.calls()[0], `-y @colbymchenry/codegraph@1.6.1 init ${second.run.worktree} telemetry=0`);
+    assert.doesNotMatch(second.log, /# tool codegraph/);
+  });
+
+  it("an MCP tool the agent policy leaves out is not started, nor prepared", async () => {
+    const s = await onHub(async (hive) => {
+      await turnOn(hive, "codegraph");
+      await hive.call("agentPolicy.set", { project: "demo", policy: { mcp: [] } } as never, admin);
+    });
+    await runOnce(s);
+    assert.deepEqual(Object.keys(servers(s.calls()[0]!.args)), ["xdev-hive"]);
+    assert.deepEqual(s.npx.calls(), []);
+  });
+
+  it("a tool whose secret variable is missing is left out, and no log line ever holds a value", async () => {
+    const entry = rtk({ secretEnv: ["RTK_API_KEY"] });
+    const catalog = async (hive: SqliteHive) => {
+      await hive.call("tools.save", { entry }, admin);
+      await turnOn(hive, "rtk");
+    };
+    const trust = () => ({ rtk: toolHash(entry) });
+    const without = await onHub(catalog, [profile("claude-a", "claude", 10, "ok")], { toolTrust: trust });
+    const missing = await runOnce(without);
+    assert.equal(servers(without.calls()[0]!.args).rtk, undefined);
+    assert.match(missing.log, /^# tool rtk: thiếu RTK_API_KEY$/m);
+
+    const value = "value-of-the-key-0042";
+    const withKey = await onHub(catalog, [profile("claude-a", "claude", 10, "ok", { env: { FAKE_MODE: "ok", RTK_API_KEY: value } })], { toolTrust: trust });
+    const ran = await runOnce(withKey);
+    const { args } = withKey.calls()[0]!;
+    // Claude Code fills the reference in from the run's environment, where the profile's variables are.
+    assert.deepEqual(servers(args).rtk, { type: "stdio", command: "npx", args: ["-y", "rtk-mcp@0.4.1"], env: { RTK_TELEMETRY: "0", RTK_API_KEY: "${RTK_API_KEY}" } });
+    assert.ok(settingsOf(args).permissions.allow.includes("mcp__rtk"));
+    assert.equal(args.join(" ").includes(value), false, "not on the command line");
+    assert.equal(ran.log.includes(value), false, "not in the run log");
+  });
+
+  it("gives Codex the run's MCP tools as -c overrides, approved", async () => {
+    const entry = rtk();
+    const s = await onHub(
+      async (hive) => {
+        await hive.call("tools.save", { entry }, admin);
+        await turnOn(hive, "rtk");
+        await turnOn(hive, "codegraph");
+      },
+      [profile("codex-a", "codex", 10, "ok", { bin: fakeCodex(), args: ["exec", "--sandbox", "workspace-write", "{prompt}"] })],
+      { toolTrust: () => ({ rtk: toolHash(entry) }) },
+    );
+    const { run } = await runOnce(s);
+    assert.equal(run.status, "succeeded", run.error ?? "");
+    const { args } = s.calls()[0]!;
+    for (const override of [
+      'mcp_servers.rtk.command="npx"',
+      'mcp_servers.rtk.args=["-y","rtk-mcp@0.4.1"]',
+      'mcp_servers.rtk.env={RTK_TELEMETRY="0"}',
+      'mcp_servers.rtk.default_tools_approval_mode="approve"',
+    ]) {
+      assert.equal(args[args.indexOf(override) - 1], "-c", override);
+    }
+    assert.equal(args.some((a) => a.startsWith("mcp_servers.codegraph.")), false, "codegraph's entry is for Claude only");
+    // Its index is built all the same, for a Codex whose own config.toml starts codegraph (as before the catalog).
+    assert.deepEqual(s.npx.calls(), [`-y ${CODEGRAPH_MCP.args[1]} init ${run.worktree} telemetry=0`]);
+  });
+
+  it("a hub that sends no catalog: the run is as before", async () => {
+    const noTools = (b: HiveBackend): HiveBackend => ({
+      call: (async (method: string, input: unknown, actor: Actor) => {
+        const out = (await b.call(method as never, input as never, actor)) as any;
+        if (method !== "machines.heartbeat") return out;
+        const { tools: _tools, ...older } = out;
+        return older;
+      }) as HiveBackend["call"],
+    });
+    const s = await onHub((hive) => turnOn(hive, "codegraph", false), undefined, { wrap: noTools });
+    assert.equal(s.hubUpdates[0]!.tools, null);
+    writeFileSync(path.join(s.repo, ".mcp.json"), JSON.stringify({ mcpServers: { codegraph: CODEGRAPH_MCP } }));
+    const { run } = await runOnce(s);
+    assert.deepEqual(servers(s.calls()[0]!.args).codegraph, CODEGRAPH_RUN_MCP, "the repo's setup decides, as the project's off is unknown here");
+    assert.deepEqual(s.npx.calls(), [`-y ${CODEGRAPH_MCP.args[1]} init ${run.worktree} telemetry=0`]);
   });
 });

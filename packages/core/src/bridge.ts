@@ -3,7 +3,29 @@ import type { Access, Grant } from "./access.ts";
 import type { AgentKind, AgentProfile, AgentRole, PlanUsage, RunnerSettings, RunStatus } from "./agents.ts";
 import type { GitLabImportCandidate, GitLabImportResult, MrSettings, MrState, MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { TransferReport } from "./transfer.ts";
-import type { MachineCommand, Role, SetupItem, SetupReport, TeamPolicy, WebhookEvent, WebhookKind } from "./types.ts";
+import type { MachineCommand, Role, SetupItem, SetupReport, TeamPolicy, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
+
+/**
+ * A hub tool as the machine's Setup card shows it (roadmap 28b): what it will run here, for the user to allow.
+ * trust: app: the app's own commands for it, nothing to allow · trusted: allowed as it is · new: never allowed ·
+ * changed: allowed before, the commands changed since (a new version).
+ */
+export interface MachineToolView {
+  id: string;
+  name: string;
+  kind: ToolKind;
+  license: string;
+  homepage: string | null;
+  /** Each command with `{package}` written out; `{worktree}` and `{repo}` stay, being per run. */
+  commands: Array<{ field: string; argv: string[] }>;
+  env: Record<string, string>;
+  /** Names only: their values come from this machine (a profile's env, or its own). */
+  secretEnv: string[];
+  hash: string;
+  trust: "app" | "trusted" | "new" | "changed";
+  /** This machine's projects that have it on. */
+  projects: string[];
+}
 
 export interface Me {
   name: string;
@@ -431,8 +453,13 @@ export interface DesktopBridge {
   /** push: this machine's local database → hub · pull: hub → local database. Needs the hub URL and token. */
   transferHub(direction: "push" | "pull"): Promise<TransferReport>;
 
-  /** From the last heartbeat: the team policy (null in local mode) and install requests waiting for this machine. */
-  hubRequests(): Promise<{ policy: TeamPolicy | null; commands: MachineCommand[] }>;
+  /**
+   * From the last heartbeat: the team policy (null in local mode), install requests waiting for this machine, and the
+   * hub's tools its projects use, with whether this machine's user allowed them (roadmap 28b; none in local mode).
+   */
+  hubRequests(): Promise<{ policy: TeamPolicy | null; commands: MachineCommand[]; tools: MachineToolView[] }>;
+  /** Allows a hub tool's commands as shown (their hash), or with null takes the permission back. Returns the new list. */
+  toolTrust(id: string, hash: string | null): Promise<MachineToolView[]>;
   /** Runs (approve) or declines an admin's install request, and reports the result to the hub. */
   answerCommand(id: number, approve: boolean): Promise<MachineCommand>;
 }
