@@ -561,7 +561,8 @@ function LocalDetail({ run, machine, gitlabReady, group, onChanged }: { run: Age
 }
 
 /** A run another machine pushed to the hub: the end of its log, stop, and a fix run for a review that asks for one. */
-export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; latestReview: boolean; onChanged: () => void }) {
+/** roomy: in a popup (Web Admin), where a long summary such as a review's verdict gets more height before it scrolls. */
+export function HubDetail({ run, latestReview, roomy = false, onChanged }: { run: RunRecord; latestReview: boolean; roomy?: boolean; onChanged: () => void }) {
   const { client } = useHive();
   const t = useT();
   const allow = useCan();
@@ -612,7 +613,7 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
       {run.summary && !live ? (
         <div className="flex flex-col gap-1">
           <span className="text-xs font-medium text-fg-muted">{t("runs.summary")}</span>
-          <p className="m-0 max-h-40 overflow-y-auto text-[13px]/5 whitespace-pre-wrap text-fg-primary [overflow-wrap:anywhere]">{run.summary}</p>
+          <p className={cn("m-0 overflow-y-auto text-[13px]/5 whitespace-pre-wrap text-fg-primary [overflow-wrap:anywhere]", roomy ? "max-h-[35vh]" : "max-h-40")}>{run.summary}</p>
         </div>
       ) : null}
       {verdict === "changes" && latestReview && manage ? <FixRun run={run} /> : null}

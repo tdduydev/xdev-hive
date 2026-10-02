@@ -16,6 +16,7 @@ import { hasKey, useT, type MessageKey, type TFunction } from "#ui/i18n/index.ts
 import { isLive, runDuration, runLabel } from "#ui/lib/runs.ts";
 import { RANGE_HOURS, useAdminRange } from "#ui/shell/AdminShell.tsx";
 import { useToast } from "#ui/shell/toast.tsx";
+import { DetailDialog } from "#ui/components/DetailDialog.tsx";
 import { ACTION_LABEL, MachineCard } from "#ui/pages/Admin.tsx";
 import { Costs } from "#ui/pages/Machines.tsx";
 import { HubDetail } from "#ui/pages/Runs.tsx";
@@ -342,8 +343,8 @@ export function OpsRuns() {
   ];
 
   return (
-    <div className="flex flex-wrap items-start gap-4">
-      <div className="min-w-0 flex-[3_1_640px]">
+    <div className="flex flex-col gap-4">
+      <div className="min-w-0">
         <ErrorNote error={runs.error} />
         <DataTable
           rows={list}
@@ -372,16 +373,10 @@ export function OpsRuns() {
           selectedKey={selected}
         />
       </div>
-      {current ? (
-        <aside className="sticky top-0 flex max-h-[80vh] min-h-[420px] min-w-0 flex-[2_1_360px] flex-col overflow-hidden rounded-lg border border-line-default bg-surface">
-          <div className="flex justify-end border-b border-line-subtle px-2 py-1">
-            <Button size="icon-sm" variant="ghost" aria-label={t("common.close")} onClick={() => setSelected(null)}>
-              <X />
-            </Button>
-          </div>
-          <HubDetail key={key(current)} run={current} latestReview={false} onChanged={runs.reload} />
-        </aside>
-      ) : null}
+      {/* A popup, not a panel beside the table: a review's verdict and the log need the room (roadmap 30b). */}
+      <DetailDialog open={current !== null} onClose={() => setSelected(null)} title={current ? `${current.runId} · ${current.taskTitle}` : ""}>
+        {current ? <HubDetail key={key(current)} run={current} latestReview={false} roomy onChanged={runs.reload} /> : null}
+      </DetailDialog>
     </div>
   );
 }
@@ -539,8 +534,8 @@ export function OpsFleet() {
         <Kpi label={t("admin.statLacking")} value={list.filter((m) => missing(m) > 0).length} sub="" warn={list.some((m) => missing(m) > 0)} />
         <Kpi label={t("admin.statOpen")} value={waiting} sub="" />
       </div>
-      <div className="flex flex-wrap items-start gap-4">
-        <div className="min-w-0 flex-[3_1_640px]">
+      <div className="min-w-0">
+        <div className="min-w-0">
           <DataTable
             rows={list}
             columns={columns}
@@ -570,10 +565,12 @@ export function OpsFleet() {
             dim={(m) => !m.online}
           />
         </div>
-        <aside className="min-w-0 flex-[2_1_360px]">
-          {current ? <MachineCard key={current.id} machine={current} policy={policy.data ?? null} onChanged={machines.reload} /> : <Empty>{t("ops.pickMachine")}</Empty>}
-        </aside>
       </div>
+      <DetailDialog open={current !== null} onClose={() => setSelected(null)} title={current?.machine ?? ""} className="h-auto max-h-[85vh]">
+        <div className="min-h-0 overflow-y-auto p-5 pr-12">
+          {current ? <MachineCard key={current.id} machine={current} policy={policy.data ?? null} onChanged={machines.reload} /> : null}
+        </div>
+      </DetailDialog>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 // Small helpers of the Tasks page.
-import type { Task } from "@xdev-hive/core";
+import type { Task, TaskStatus } from "@xdev-hive/core";
 
 /**
  * Who holds a task, split for display: an agent's lease is `<profile>.<machine>`, and a hub appends `@<token>`
@@ -38,3 +38,7 @@ export function waitingLabels(task: Pick<Task, "waitingOn" | "depProjects" | "wa
   const named = (task.waitingOn ?? []).map((id) => depLabel(task, id));
   return task.waitingHidden ? [...named, `+${task.waitingHidden}`] : named;
 }
+
+/** A task waiting on others shows as blocked until they are done; it is still "to do" underneath. */
+export const columnOf = (task: Pick<Task, "status" | "waitingOn" | "waitingHidden">): TaskStatus =>
+  task.status === "todo" && (task.waitingOn?.length || task.waitingHidden) ? "blocked" : task.status;

@@ -147,13 +147,15 @@ const PALETTE_ONLY: PageId[] = ["overview"];
 
 // ── The Web Admin (hub admins on the web) ──
 
-type AdminId = "overview" | "chat" | "runs" | "queue" | "fleet" | "quota" | "costs" | "alerts" | "review" | "docs" | "read" | "specs" | "context" | "memory" | "skills" | "users" | "projects" | "policy" | "tools" | "versions" | "tokens" | "webhooks" | "audit" | "hub";
+type AdminId = "overview" | "chat" | "tasks" | "runs" | "queue" | "fleet" | "quota" | "costs" | "alerts" | "review" | "docs" | "read" | "specs" | "context" | "memory" | "skills" | "users" | "projects" | "policy" | "tools" | "versions" | "tokens" | "webhooks" | "audit" | "hub";
 type AdminGroup = "ops" | "watch" | "knowledge" | "admin";
 
 const ADMIN: Record<AdminId, { group: AdminGroup; icon: Icon; render: () => ReactNode; fill?: boolean }> = {
   overview: { group: "ops", icon: LayoutDashboard, render: () => <OpsOverview /> },
   // The projects' leader agents (roadmap 17): a hub admin talks to them from the Web Admin too.
   chat: { group: "ops", icon: MessageSquare, render: () => <ChatPage />, fill: true },
+  // Every project's tasks by status (roadmap 30a): the admin scope is all projects.
+  tasks: { group: "ops", icon: FolderKanban, render: () => <TasksPage /> },
   runs: { group: "ops", icon: Activity, render: () => <OpsRuns /> },
   queue: { group: "ops", icon: ListOrdered, render: () => <OpsQueue /> },
   fleet: { group: "watch", icon: Server, render: () => <OpsFleet /> },
