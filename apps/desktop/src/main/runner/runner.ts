@@ -44,6 +44,7 @@ import {
   type LoginStatus,
   type PlanUsage,
   type MachineCommand,
+  type ProfileChange,
   type QuotaCooldown,
   type ReportedProfile,
   type RunCancel,
@@ -138,6 +139,8 @@ export interface HubUpdate {
   update?: UpdateOffer | null;
   /** The agent policy (roadmap 27a): the hub's default and the parts of this machine's projects; a hub older than it sends none. */
   agentPolicy?: HubAgentPolicy | null;
+  /** Profile changes asked for on the web (roadmap 18d); a hub older than them sends none. */
+  profileChanges?: ProfileChange[];
 }
 
 export type HubAgentPolicy = { hub: AgentPolicy; projects: Record<string, Partial<AgentPolicy>> };
@@ -727,6 +730,7 @@ export class Runner {
       syncCommands: res.syncCommands ?? [],
       update: (res as { update?: UpdateOffer | null }).update ?? null,
       agentPolicy: res.agentPolicy ?? null,
+      profileChanges: res.profileChanges ?? [],
     };
     // Before the requests below are taken, so their runs start under the policy the hub just sent.
     this.#agentPolicy = update.agentPolicy ?? null;
