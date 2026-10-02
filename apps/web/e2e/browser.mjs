@@ -411,6 +411,8 @@ async function main() {
     expect(!(await tab.eval(() => !!document.querySelector('[aria-label="Bật gói claude-1"]'))), "Hoa got the switches of Lan's machine");
     tab = current = tabs.lan;
     await tab.go("machines");
+    // On the agent map (31b) the switches are under each machine's column.
+    await tab.click("summary", "Bật/tắt và ưu tiên gói");
     await tab.click('[aria-label="Bật gói claude-1"]');
     await tab.waitFor("the change waiting on the page", () => document.body.innerText.includes("chờ máy áp dụng"));
     await until("the change at Lan's heartbeat", async () => (await beat(before)).profileChanges?.find((c) => c.profileId === "claude-1" && c.enabled === false && c.requestedBy === "lan"));
@@ -419,6 +421,7 @@ async function main() {
     expect(after.profileChanges.length === 0, `still sent: ${JSON.stringify(after.profileChanges)}`);
     await tab.reload();
     await tab.go("machines");
+    await tab.click("summary", "Bật/tắt và ưu tiên gói");
     await tab.waitFor("claude-1 off, nothing waiting", () => document.querySelector('[aria-label="Bật gói claude-1"]')?.getAttribute("aria-checked") === "false" && !document.body.innerText.includes("chờ máy áp dụng"));
   });
 
@@ -1102,6 +1105,47 @@ async function main() {
     await until("the proposal confirmed from Hôm nay", async () => !(await rpc("chat.pending", { project: "payment" })).some((a) => a.id === proposed.id));
     // Leave the hub as it was: the plan step's request is not for this test.
     for (const r of (await beat()).runRequests.filter((x) => x.taskId === "SPEC-TODAY")) await rpc("runs.cancelRequest", { id: r.id });
+  });
+
+  // Roadmap 31b: the agent map shows each machine's subscriptions; two picked open one prompt for both, or the Task page.
+  await step("agent-map", async () => {
+    const beat = async (machine, profiles) => {
+      const r = await fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": `runner.${machine}` },
+        body: JSON.stringify({ method: "machines.heartbeat", input: { machine, instance: "e2e00002", version: "0.120.0", projects: ["payment"], acceptsRuns: true, profiles, runs: [] } }),
+      });
+      const body = await r.json();
+      if (body.error) throw new Error(`heartbeat: ${body.error.message}`);
+    };
+    const profile = (id, kind, over = {}) => ({ id, label: id, kind, enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, maxConcurrent: 1, ...over });
+    await beat("lan-mbp", [profile("claude-1", "claude", { sessionPercent: 42, weekPercent: 18 }), profile("codex-1", "codex", { loggedIn: false })]);
+    await beat("lan-mini", [profile("claude-2", "claude")]);
+    const machines = await rpc("machines.list");
+    const id = (name) => machines.find((m) => m.machine === name).id;
+
+    const tab = (current = tabs.lan);
+    await tab.reload();
+    await tab.go("machines");
+    await tab.waitFor("the two machines' cards", () => document.querySelector('[data-map-profile="lan-mbp/claude-1"]') && document.querySelector('[data-map-profile="lan-mini/claude-2"]'));
+    const signedOut = await tab.eval(() => document.querySelector('[data-map-profile="lan-mbp/codex-1"]')?.getAttribute("data-map-state"));
+    expect(signedOut === "signedOut", `codex-1: ${signedOut}`);
+    const pickable = await tab.eval(() => document.querySelector('[data-map-profile="lan-mbp/codex-1"]')?.getAttribute("role"));
+    expect(pickable !== "checkbox", "a signed-out subscription cannot be picked");
+    await tab.click('[data-map-profile="lan-mbp/claude-1"]');
+    await tab.click('[data-map-profile="lan-mini/claude-2"]');
+    await tab.click("[data-map-prompt]");
+    const rows = await tab.waitFor("the prompt for two agents", () => {
+      const r = document.querySelectorAll("[data-prompt-agent-row]");
+      return r.length === 2 && [...r].map((row) => [...row.querySelectorAll("select")].map((s) => s.value));
+    });
+    expect(JSON.stringify(rows) === JSON.stringify([[id("lan-mbp"), "claude-1"], [id("lan-mini"), "claude-2"]]), `rows: ${JSON.stringify(rows)}`);
+    await tab.shot(`${String(n).padStart(2, "0")}-agent-map-prompt`);
+    await tab.key("Escape");
+    await tab.waitFor("the prompt closed", () => !document.querySelector('[role="dialog"]'));
+    await tab.shot(`${String(n).padStart(2, "0")}-agent-map-picked`);
+    await tab.click("[data-map-batch]");
+    await tab.waitFor("the Task page with the two agents", () => location.hash.startsWith("#/tasks") && document.body.innerText.includes("Đã chọn 2 agent trên Bản đồ agent"));
   });
 
   const errors = Object.values(tabs).flatMap((t) => t.errors.map((e) => `${t.name}: ${e}`));
