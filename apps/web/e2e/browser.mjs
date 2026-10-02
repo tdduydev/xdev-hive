@@ -584,6 +584,26 @@ async function main() {
     await tab.waitFor("the hub's cards", () => ["Tệp tài liệu", "Backup"].every((t) => document.body.innerText.includes(t)));
   });
 
+  // Roadmap 19c: a system's docs and memory, shared by its services. Hoa reviews in payment only: she reads the shop
+  // system's contract and writes memory there, but may not change the contract (demo is not hers).
+  await step("system-docs", async () => {
+    await rpc("systems.save", { name: "shop", projects: ["payment", "demo"] });
+    await rpc("docs.save", { key: "system/shop/api-contract", title: "API contract", content: "# API contract\n\nPOST /orders trả 201.\n", includeInAgents: true });
+    const inPayment = await rpc("docs.list", { project: "payment" }, people.lan.token);
+    expect(inPayment.some((d) => d.key === "system/shop/api-contract"), "payment's list has the system's contract");
+    const tab = (current = tabs.hoa);
+    await tab.go("docs?doc=system/shop/api-contract");
+    await tab.waitFor("the contract in the system's space", () => document.body.innerText.includes("POST /orders trả 201.") && document.body.innerText.includes("Hệ thống shop"));
+    const memory = await rpc("memory.write", { system: "shop", kind: "decision", content: "Đơn hàng giữ chỗ 15 phút." }, people.hoa.token);
+    expect(memory.project === "sys:shop" && memory.status === "pending", `Hoa's system memory: ${JSON.stringify(memory)}`);
+    const denied = await fetch(`${base}/api/rpc`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${people.hoa.token}` },
+      body: JSON.stringify({ method: "docs.save", input: { key: "system/shop/api-contract", title: "API contract", content: "# x\n", baseVersion: 1 } }),
+    });
+    expect(denied.status === 403, `Hoa saving the contract: HTTP ${denied.status}`);
+  });
+
   const errors = Object.values(tabs).flatMap((t) => t.errors.map((e) => `${t.name}: ${e}`));
   if (errors.length) console.log(`page errors:\n  ${errors.join("\n  ")}`);
   const failed = results.filter((r) => !r.ok);
