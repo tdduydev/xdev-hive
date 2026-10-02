@@ -469,6 +469,16 @@ export const en: Catalog = {
       declined: "Declined installing {label}",
     },
   },
+  crash: {
+    title: "This page ran into an error",
+    hint: "The rest of the app still works. Try again; if it keeps failing, reload and send the error details to an admin.",
+    titleApp: "The app ran into an error",
+    hintApp: "Try again or reload the app. If it happens again, copy the details and send them to an admin.",
+    retry: "Try again",
+    reload: "Reload",
+    copy: "Copy error details",
+    copied: "Copied",
+  },
   app: {
     connecting: "Connecting…",
     signInAgain: "Sign in again",

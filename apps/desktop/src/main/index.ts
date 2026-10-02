@@ -57,6 +57,7 @@ import {
 import { GitHubClient } from "./github/client.ts";
 import { GitLabClient } from "./gitlab/client.ts";
 import { gitClone, importRepos, planImport } from "./gitlab/import.ts";
+import { appendCrashLog, crashLogPath, ReloadGuard } from "./crashlog.ts";
 import { mainLocale, setMainLocale, tr } from "./i18n.ts";
 import { MergeRequester, mrLabel, type MrHost } from "./gitlab/mr.ts";
 import { branchFor } from "#desktop/main/runner/worktree.ts";
@@ -962,6 +963,7 @@ function registerIpc(): void {
   handle("desktop:hubSignInBrowser", hubSignInBrowser);
   handle("desktop:hubSignInCancel", () => browserSignIn?.abort());
   handle("desktop:setLocale", setLocale);
+  handle("desktop:logError", (text: unknown) => appendCrashLog(crashLogPath(path.dirname(configPath())), `renderer: ${String(text)}`));
   handle("desktop:addProject", addProject);
   handle("desktop:gitlabGroup", gitlabGroup);
   handle("desktop:importGitlab", importGitlab);
@@ -1059,6 +1061,21 @@ function createWindow(): void {
   });
   win.once("ready-to-show", () => {
     if (!smokeShot && !startHidden) win?.show();
+  });
+  // A renderer that died (out of memory, a GPU crash) or a page that failed to load leaves the window blank: say so in
+  // the log and load it again.
+  const crashLog = crashLogPath(path.dirname(configPath()));
+  const reloads = new ReloadGuard();
+  win.webContents.on("render-process-gone", (_e, details) => {
+    appendCrashLog(crashLog, `render-process-gone: ${details.reason} (exit ${details.exitCode})`);
+    if (details.reason !== "clean-exit" && reloads.allow()) win?.webContents.reload();
+  });
+  win.webContents.on("unresponsive", () => appendCrashLog(crashLog, "unresponsive"));
+  win.webContents.on("did-fail-load", (_e, code, description, url, isMainFrame) => {
+    // -3 is a load another navigation replaced, not a failure.
+    if (!isMainFrame || code === -3) return;
+    appendCrashLog(crashLog, `did-fail-load: ${code} ${description} ${url}`);
+    if (reloads.allow()) setTimeout(() => win?.webContents.reload(), 2000);
   });
 
   const hash = process.env.HIVE_SMOKE_HASH;

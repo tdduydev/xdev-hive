@@ -471,6 +471,16 @@ export const vi = {
       declined: "Đã từ chối yêu cầu cài {label}",
     },
   },
+  crash: {
+    title: "Trang này gặp lỗi",
+    hint: "Phần còn lại của app vẫn chạy. Bấm Thử lại; vẫn lỗi thì tải lại, và gửi chi tiết lỗi cho người quản trị.",
+    titleApp: "App gặp lỗi",
+    hintApp: "Bấm Thử lại hoặc tải lại app. Nếu lỗi lặp lại, chép chi tiết và gửi cho người quản trị.",
+    retry: "Thử lại",
+    reload: "Tải lại",
+    copy: "Chép chi tiết lỗi",
+    copied: "Đã chép",
+  },
   app: {
     connecting: "Đang kết nối…",
     signInAgain: "Đăng nhập lại",
