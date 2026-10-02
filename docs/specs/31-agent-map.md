@@ -87,6 +87,13 @@ Trang **Bản đồ agent** (`#/agent-map`, nhóm *Agent* của menu; app ở ch
 - Dữ liệu: `machines.list` + `runs.groups` mỗi 5 giây khi tab đang hiện. Heartbeat báo thêm `MachineRun.activity` (≤200 ký tự, lọc ký tự ẩn và dòng giống secret).
 - Test: trạng thái thẻ gói từ `ReportedProfile` (mỗi trạng thái); e2e mở bản đồ có 2 máy giả, chọn 2 gói, mở hộp prompt với 2 đích.
 
+Đã làm khác spec (2/10):
+- Không thêm trang `#/agent-map`: bản đồ thay bảng máy của trang *Máy & run* (cùng `#/machines`, đổi tên *Bản đồ agent*), vì hai trang sẽ trùng máy, gói và run (người dùng muốn mỗi việc một trang, roadmap 35). *Quota đang nghỉ* và *Chi phí ước tính* vẫn ở dưới.
+- Chỉ trên web: từ 35a app desktop ở chế độ hub chỉ có việc của máy mình; link tới bản đồ mở trình duyệt.
+- Không thêm `MachineRun.activity` vào heartbeat: run đang chạy đã được máy đẩy lên (`runs.push`) kèm `activity`; bản đồ ghép theo máy + id run.
+- *Giao task cho N agent* mở trang *Task* với các gói đã chọn (`#/tasks?agents=…`): người dùng chọn task ở đó, hộp đợt chạy điền máy + gói lần lượt theo thứ tự đã chọn.
+- Cột máy có thêm *Bật/tắt và ưu tiên gói* và *Xoá* (trước nằm trong bảng máy).
+
 ## R-31c. Map-reduce (cần xác nhận)
 
 **[Inference]** "Chia một việc thành task con cho nhiều agent, gộp và review":

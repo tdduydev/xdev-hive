@@ -1,39 +1,57 @@
-import { useEffect, useState } from "react";
-import { cacheReadShare, type CostSummary, type CostTotals, type Machine, type QuotaCooldown, type ReportedProfile, type RunTokens } from "@xdev-hive/core";
+import { useEffect, useMemo, useState } from "react";
+import { cacheReadShare, type CostSummary, type CostTotals, type QuotaCooldown, type RunTokens } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
-import { Input } from "@xdev-hive/ui/components/ui/input";
-import { Switch } from "@xdev-hive/ui/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
-import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE } from "#ui/components/common.tsx";
-import { ProfileStates } from "#ui/components/ProfileStates.tsx";
-import { formatCount, formatTime, formatUsd, useAction, useHive, useQuery } from "#ui/hooks.ts";
+import { Empty, ErrorNote, Notice, Page, PageHeader } from "#ui/components/common.tsx";
+import { formatCount, formatTime, formatUsd, useAction, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { rich, useT } from "#ui/i18n/index.tsx";
+import { mapMachines } from "#ui/lib/agentmap.ts";
+import { scopeFilter, scopeKey } from "#ui/lib/scope.ts";
+import { AgentMap } from "./AgentMap.tsx";
 
-const REFRESH_MS = 15_000;
+/** How often the map asks the hub again while it is on screen (machines report every 30 s, runs as they go). */
+const MAP_REFRESH_MS = 5000;
+
+/** Whether the page is in view (not a hidden tab or a minimised window). */
+function usePageVisible(): boolean {
+  const [visible, setVisible] = useState(() => !document.hidden);
+  useEffect(() => {
+    const onChange = () => setVisible(!document.hidden);
+    document.addEventListener("visibilitychange", onChange);
+    return () => document.removeEventListener("visibilitychange", onChange);
+  }, []);
+  return visible;
+}
 
 const CODE = "rounded bg-muted px-1 py-0.5 font-mono text-xs";
 
 export function MachinesPage() {
-  const { client } = useHive();
+  const { client, scope } = useHive();
   const t = useT();
+  // Every few seconds while the page is in view: the map shows what agents do now.
+  const visible = usePageVisible();
+  const poll = usePoll(visible ? MAP_REFRESH_MS : null);
   const [tick, setTick] = useState(0);
-  useEffect(() => {
-    const timer = setInterval(() => setTick((n) => n + 1), REFRESH_MS);
-    return () => clearInterval(timer);
-  }, []);
-  const machines = useQuery(() => client.call("machines.list", {}), [client, tick]);
-  const cooldowns = useQuery(() => client.call("cooldowns.list", {}), [client, tick]);
+  const key = scopeKey(scope);
+  const deps = [client, key, tick, poll];
+  const machines = useQuery(() => client.call("machines.list", {}), deps);
+  const cooldowns = useQuery(() => client.call("cooldowns.list", {}), deps);
+  const runs = useQuery(() => client.call("runs.list", { ...scopeFilter(scope), limit: 200 }), deps);
+  const requests = useQuery(() => client.call("runs.requests", { ...scopeFilter(scope), limit: 200 }), deps);
+  // A hub from before batches (31a) has no such method: none then.
+  const groups = useQuery(() => client.call("runs.groups", { ...scopeFilter(scope), limit: 30 }).catch(() => []), deps);
   const costs = useQuery(() => client.call("costs.summary", {}), [client, tick]);
   const reload = () => setTick((n) => n + 1);
+  const shown = useMemo(() => mapMachines(machines.data ?? [], scope), [machines.data, scope]);
 
   return (
-    <Page>
+    <Page wide>
       <PageHeader title={t("nav.machines")} subtitle={t("machines.subtitle")} />
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold tracking-tight">{t("machines.machines")}</h2>
-        <ErrorNote error={machines.error} />
+        <ErrorNote error={machines.error ?? runs.error ?? requests.error} />
         {machines.data?.length === 0 ? <Empty>{t("machines.none")}</Empty> : null}
+        {machines.data?.length && !shown.length ? <Empty>{t("agentMap.noneInScope")}</Empty> : null}
         {machines.data?.some((m) => m.duplicate) ? (
           <Notice tone="warn">
             <p>
@@ -44,24 +62,8 @@ export function MachinesPage() {
             </p>
           </Notice>
         ) : null}
-        {machines.data?.length ? (
-          <div className="overflow-x-auto rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t("machines.colMachine")}</TableHead>
-                  <TableHead>{t("machines.colStatus")}</TableHead>
-                  <TableHead>{t("machines.colRuns")}</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {machines.data.map((m) => (
-                  <MachineRow key={m.id} machine={m} onChanged={reload} />
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+        {shown.length ? (
+          <AgentMap machines={shown} cooldowns={cooldowns.data ?? []} runs={runs.data ?? []} requests={requests.data ?? []} groups={groups.data ?? []} onChanged={reload} />
         ) : null}
       </section>
 
@@ -194,150 +196,6 @@ export function Costs({ summary: s }: { summary: CostSummary }) {
   );
 }
 
-function MachineRow({ machine: m, onChanged }: { machine: Machine; onChanged: () => void }) {
-  const { client, me } = useHive();
-  const t = useT();
-  const action = useAction();
-  const running = m.runs.filter((r) => r.status === "running");
-  const queued = m.runs.length - running.length;
-  return (
-    <TableRow>
-      <TableCell className="align-top whitespace-normal">
-        <div className="flex min-w-40 flex-col gap-0.5">
-          <span className="font-mono font-semibold break-all">{m.machine}</span>
-          <span className="font-mono text-xs break-all text-muted-foreground">{m.id}</span>
-          {m.version ? <span className="text-xs text-muted-foreground">v{m.version}</span> : null}
-          {m.projects?.length ? <span className="text-xs wrap-anywhere text-muted-foreground">{t("machines.repos", { projects: m.projects.join(", ") })}</span> : null}
-          {m.acceptsRuns ? (
-            <span className="mt-0.5">
-              <Badge tone="accent">{t("machines.acceptsRuns")}</Badge>
-            </span>
-          ) : null}
-          {m.profiles?.length ? (
-            <div className="mt-1.5 flex flex-col gap-1">
-              <span className="text-xs font-medium text-muted-foreground">{t("machines.profiles")}</span>
-              <ProfileStates profiles={m.profiles} />
-              {mayManage(me, m) ? <ProfileControls machine={m} onChanged={onChanged} /> : null}
-            </div>
-          ) : null}
-        </div>
-      </TableCell>
-      <TableCell className="align-top">
-        <div className="flex flex-col items-start gap-1">
-          <Badge tone={m.duplicate ? "danger" : m.online ? "ok" : "neutral"}>
-            {m.duplicate ? t("machineState.duplicate") : m.online ? t("machineState.online") : t("machineState.offline")}
-          </Badge>
-          <span className="text-xs text-muted-foreground">{t("machines.lastSeen", { time: formatTime(m.lastSeen) })}</span>
-        </div>
-      </TableCell>
-      <TableCell className="align-top whitespace-normal">
-        <div className="flex min-w-56 flex-col gap-2">
-          {running.length === 0 && queued === 0 ? <span className="text-muted-foreground">{t("machines.idle")}</span> : null}
-          {running.map((r) => (
-            <div key={r.runId} className="flex flex-col gap-0.5">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <Badge tone={STATUS_TONE[r.status]}>{t("runStatus.running").toLocaleLowerCase()}</Badge>
-                <span className="font-mono text-xs">{r.taskId}</span>
-                <span className="min-w-0 break-words">{r.taskTitle}</span>
-              </div>
-              <div className="text-xs break-words text-muted-foreground">
-                {r.project} · {r.profileId ?? "?"} · {t(`agentRole.${r.role}`).toLocaleLowerCase()} · {t("machines.since", { time: formatTime(r.since) })}
-              </div>
-            </div>
-          ))}
-          {queued > 0 ? <div className="text-muted-foreground">{t("machines.queued", { count: queued })}</div> : null}
-          {!m.online && m.runs.length > 0 ? <div className="text-xs text-muted-foreground">{t("machines.stale")}</div> : null}
-          <ErrorNote error={action.error} />
-        </div>
-      </TableCell>
-      <TableCell className="text-right align-top">
-        {me.role === "admin" && !m.online ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={action.busy}
-            onClick={() =>
-              void action.run(async () => {
-                await client.call("machines.remove", { id: m.id });
-                onChanged();
-              })
-            }
-          >
-            {t("machines.remove")}
-          </Button>
-        ) : null}
-      </TableCell>
-    </TableRow>
-  );
-}
-
-/** Asked 2/10 (roadmap 18d): a subscription is someone's own account, so only hub admins and the machine's owner. */
-function mayManage(me: ReturnType<typeof useHive>["me"], m: Machine): boolean {
-  return (me.role === "admin" && !me.access) || (!!me.user && me.user.username === m.owner);
-}
-
-/** On/off and priority of each profile; the machine applies a change at its next heartbeat. */
-function ProfileControls({ machine: m, onChanged }: { machine: Machine; onChanged: () => void }) {
-  const { client } = useHive();
-  const t = useT();
-  const action = useAction();
-  const set = (p: ReportedProfile, change: { enabled?: boolean; priority?: number }) =>
-    void action.run(async () => {
-      await client.call("machines.setProfile", { machineId: m.id, profileId: p.id, ...change });
-      onChanged();
-    });
-  return (
-    <div className="mt-1 flex flex-col gap-1.5 rounded-md border border-dashed p-2">
-      {m.profiles.map((p) => {
-        const waiting = m.profileChanges?.find((c) => c.profileId === p.id) ?? null;
-        // A change on its way shows as asked, so the switch does not flip back until the machine reports it.
-        const on = waiting?.enabled ?? p.enabled;
-        const old = p.priority === undefined;
-        return (
-          <div key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <Switch checked={on} disabled={old || action.busy} onCheckedChange={(v) => set(p, { enabled: v })} aria-label={t("machines.profileOn", { profile: p.id })} />
-            <span className="min-w-20 font-mono text-xs">{p.id}</span>
-            {old ? (
-              <span className="text-xs text-muted-foreground">{t("machines.profileOldApp")}</span>
-            ) : (
-              <PriorityInput key={`${p.id}-${waiting?.priority ?? p.priority}`} value={waiting?.priority ?? p.priority!} busy={action.busy} label={t("machines.profilePriority")} onSave={(v) => set(p, { priority: v })} />
-            )}
-            {waiting ? <span className="text-xs text-warning">{t("machines.profileWaiting", { who: waiting.requestedBy, time: formatTime(waiting.requestedAt) })}</span> : null}
-          </div>
-        );
-      })}
-      <span className="text-xs text-muted-foreground">{t("machines.profileHint")}</span>
-      <ErrorNote error={action.error} />
-    </div>
-  );
-}
-
-function PriorityInput({ value, busy, label, onSave }: { value: number; busy: boolean; label: string; onSave: (v: number) => void }) {
-  const [draft, setDraft] = useState(String(value));
-  const save = () => {
-    const v = Number(draft);
-    if (Number.isInteger(v) && v >= 0 && v <= 100 && v !== value) onSave(v);
-    else setDraft(String(value));
-  };
-  return (
-    <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-      {label}
-      <Input
-        type="number"
-        min={0}
-        max={100}
-        value={draft}
-        disabled={busy}
-        className="h-7 w-16 px-2 font-mono text-xs"
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={save}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
-        }}
-      />
-    </label>
-  );
-}
 
 function CooldownRow({ cooldown: c, onChanged }: { cooldown: QuotaCooldown; onChanged: () => void }) {
   const { client, me } = useHive();
