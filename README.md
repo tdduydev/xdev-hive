@@ -694,6 +694,11 @@ Trang này có trên hub web và trên app desktop ở chế độ hub, chỉ hi
   - **MCP**: Claude chỉ nhận xdev-hive và các server được phép trong `--mcp-config`, Gemini nhận `--allowed-mcp-server-names`, Codex tắt các server còn lại trong `~/.codex/config.toml` bằng `-c mcp_servers.<tên>.enabled=false`.
 
   Log của run có một dòng `# policy …` ghi chính sách đang dùng.
+- **Chốt chặn theo bước (SDLC)** (roadmap 34, trang *Chính sách*; quản trị dự án thấy phần dự án mình ở trang *Dự án*): bảy chốt `spec`, `plan`, `tasks` (sau từng bước Spec Kit), `dispatch` (trước khi task của luồng chạy), `review` (kết luận review có đủ để đi tiếp), `fix` (review cần sửa thì xếp lượt sửa), `merge` (MR xanh thì merge).
+  - Mỗi chốt một chế độ: *Người duyệt*, *AI kiểm* (agent vendor khác đọc kết quả; đạt thì cho qua, không chắc thì chuyển cho người) hoặc *Tự động*.
+  - Admin hub đặt trần cho từng chốt (mặc định không giới hạn). Quản trị dự án chọn trong trần; chế độ trên trần không chọn được, và hạ trần thì dự án bị kéo xuống ngay (lựa chọn của dự án vẫn giữ để dùng lại khi trần lên). Dự án chưa đặt gì thì mọi chốt là *Người duyệt*, tức như trước.
+  - Mỗi dự án còn có *Lượt sửa* tối đa (mặc định 2) và số task của luồng chạy cùng lúc.
+  - `sdlc.get`, `sdlc.setCeiling` (admin hub), `sdlc.setProject` (quyền *Cài đặt dự án*); mỗi lần đổi vào nhật ký quản trị. Phần hành vi của từng chốt làm ở 34b–34d.
 - **Trần chi tiêu** (roadmap 27b, thẻ trên trang *Chi phí*): admin hub đặt trần cho một dự án, một người yêu cầu run, hoặc cả hub, theo ngày hoặc theo tháng (giờ của hub). Trần tính bằng USD (giá API ước tính, như trang *Chi phí*), bằng số run, hoặc cả hai.
   - Run được tính cho người yêu cầu nó trên web; run chạy từ Board được tính cho tài khoản sở hữu token của máy.
   - Hết trần thì hub không nhận *Giao run* mới (`errors.budgetExceeded`). Máy nghe qua heartbeat và giữ run mới trong *Hàng đợi* kèm lý do, kể cả run từ Board. Run đang chạy vẫn chạy tiếp.

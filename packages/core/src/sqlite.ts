@@ -16,6 +16,20 @@ import { EMPTY_POLICY } from "./policy.ts";
 import { budgetApplies, budgetId, budgetRatio, budgetVars, periodStart, type Budget, type BudgetBlock, type BudgetUsage } from "./budgets.ts";
 import { agentPolicyView, EMPTY_AGENT_POLICY, OPEN_POLICY, policySummary, type AgentPolicy, type AgentPolicySettings, type AgentPolicyView } from "./agent-policy.ts";
 import {
+  EMPTY_SDLC_POLICY,
+  fullCeiling,
+  GATE_MODES,
+  sdlcPolicyView,
+  SDLC_GATES,
+  type GateMode,
+  type GateModes,
+  type GateStatus,
+  type SdlcGate,
+  type SdlcGateRecord,
+  type SdlcPolicySettings,
+  type SdlcPolicyView,
+} from "./sdlc.ts";
+import {
   authorize,
   parseInput,
   type HiveBackend,
@@ -390,6 +404,14 @@ const MIGRATIONS: string[] = [
   CREATE INDEX run_group_items_group ON run_group_items(group_id, position);
   CREATE INDEX run_group_items_task ON run_group_items(task_id, status);
   `,
+  // Lifecycle gates reached (roadmap 34): one row each time a flow comes to a gate, and how it was decided.
+  `
+  CREATE TABLE sdlc_gates(
+    id INTEGER PRIMARY KEY, project TEXT NOT NULL, task_id TEXT NOT NULL, gate TEXT NOT NULL, mode TEXT NOT NULL,
+    status TEXT NOT NULL, subject TEXT NOT NULL DEFAULT '{}', decided_by TEXT, note TEXT, created_at TEXT NOT NULL, decided_at TEXT);
+  CREATE INDEX sdlc_gates_project ON sdlc_gates(project, id);
+  CREATE INDEX sdlc_gates_task ON sdlc_gates(task_id, gate);
+  `,
 ];
 
 /**
@@ -681,6 +703,15 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
       vars: { clis: o.requiredClis.join(", ") || "—", projects: Object.keys(o.projects).length, templates: o.profileTemplates.length },
     },
   }),
+  "sdlc.setCeiling": (i: { ceiling: Partial<GateModes> }) => {
+    const summary = gateSummary(fullCeiling(i.ceiling));
+    return { target: "hub", detail: `trần: ${summary}`, text: { key: "audit.sdlcCeiling", vars: { summary } } };
+  },
+  "sdlc.setProject": (i: { project: string; settings: { gates: Partial<GateModes> } | null }) => {
+    if (!i.settings) return { target: i.project, detail: "mọi chốt về người duyệt", text: { key: "audit.sdlcProjectCleared" } };
+    const summary = gateSummary(i.settings.gates);
+    return { target: i.project, detail: summary, text: { key: "audit.sdlcProject", vars: { summary } } };
+  },
   "agentPolicy.set": (i: { project: string | null; policy: Partial<AgentPolicy> | null }) => {
     const target = i.project ?? "hub";
     if (!i.policy) return { target, detail: "bỏ chính sách agent", text: { key: "audit.agentPolicyCleared" } };
@@ -852,6 +883,22 @@ const sourceJson = (s: WriteSource | null | undefined) => (s ? JSON.stringify(s)
  * puts after the last "@" of the actor's name.
  */
 const requesterOf = (actor: Actor) => actor.onBehalf ?? actor.name.slice(actor.name.lastIndexOf("@") + 1);
+
+const toGate = (r: Row): SdlcGateRecord => ({
+  id: num(r.id),
+  project: str(r.project),
+  taskId: str(r.task_id),
+  gate: str(r.gate) as SdlcGate,
+  mode: str(r.mode) as GateMode,
+  status: str(r.status) as GateStatus,
+  decidedBy: strOrNull(r.decided_by),
+  note: strOrNull(r.note),
+  createdAt: str(r.created_at),
+  decidedAt: strOrNull(r.decided_at),
+});
+/** "spec: ai, merge: auto": the gates left to agents; "—" when every one waits for a person. */
+const gateSummary = (gates: Partial<GateModes>) =>
+  SDLC_GATES.filter((g) => gates[g] && gates[g] !== "human").map((g) => `${g}: ${gates[g]}`).join(", ") || "—";
 
 const toSummary = (r: Row): DocSummary => ({
   key: str(r.key),
@@ -1363,6 +1410,15 @@ export class SqliteHive implements HiveBackend {
       case "chat.setCommands":
       case "chat.setAutonomy":
         return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
+      // The ceiling binds every project: a hub admin (no per-project grants) only.
+      case "sdlc.setCeiling":
+        if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Only a hub admin sets how far gates may go.", { key: "errors.hubAdminOnly" });
+        return;
+      case "sdlc.setProject":
+        return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
+      case "sdlc.gates":
+        if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
+        return;
       case "agentPolicy.set":
         // The default binds every project, so only someone over all of them: a hub admin (no per-project grants).
         if (i.project === null) {
@@ -1545,6 +1601,14 @@ export class SqliteHive implements HiveBackend {
         return { ...policy, projects: Object.fromEntries(Object.entries(policy.projects).filter(([p]) => visible(p))) } as MethodOutput[M];
       }
       case "agentPolicy.get":
+      case "sdlc.get":
+      case "sdlc.setCeiling":
+      case "sdlc.setProject": {
+        const view = out as SdlcPolicyView;
+        return { ...view, projects: Object.fromEntries(Object.entries(view.projects).filter(([p]) => visible(p))) } as MethodOutput[M];
+      }
+      case "sdlc.gates":
+        return (out as SdlcGateRecord[]).filter((g) => visible(g.project)) as MethodOutput[M];
       case "agentPolicy.set": {
         const view = out as AgentPolicyView;
         const only = <T>(rec: Record<string, T>) => Object.fromEntries(Object.entries(rec).filter(([p]) => visible(p)));
@@ -2072,6 +2136,22 @@ export class SqliteHive implements HiveBackend {
     if (!row) return EMPTY_AGENT_POLICY;
     const stored = JSON.parse(str(row.value)) as AgentPolicySettings;
     return { ...EMPTY_AGENT_POLICY, ...stored, hub: { ...OPEN_POLICY, ...stored.hub } };
+  }
+
+  #sdlcPolicy(): SdlcPolicySettings {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'sdlcPolicy'").get() as Row | undefined;
+    return row ? { ...EMPTY_SDLC_POLICY, ...(JSON.parse(str(row.value)) as Partial<SdlcPolicySettings>) } : EMPTY_SDLC_POLICY;
+  }
+
+  #saveSdlc(policy: SdlcPolicySettings, actor: Actor): void {
+    const next: SdlcPolicySettings = { ...policy, updatedAt: this.#now(), updatedBy: actor.name };
+    this.db.prepare("INSERT INTO settings(key, value) VALUES ('sdlcPolicy', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(next));
+  }
+
+  /** Every project with tasks shows, with what applies to it, even one that never changed a gate. */
+  #sdlcView(): SdlcPolicyView {
+    const projects = (this.db.prepare("SELECT DISTINCT project FROM tasks").all() as Row[]).map((r) => str(r.project));
+    return sdlcPolicyView(this.#sdlcPolicy(), projects);
   }
 
   #paused(): AgentsPaused {
@@ -4593,6 +4673,50 @@ export class SqliteHive implements HiveBackend {
         );
         return this.#policy();
       },
+
+      "sdlc.get": () => this.#sdlcView(),
+
+      "sdlc.setCeiling": ({ ceiling }, actor) => {
+        // "auto" is the ceiling a gate has when left out: kept out, so the stored settings say only what was narrowed.
+        const narrowed = Object.fromEntries(Object.entries(ceiling).filter(([, m]) => m !== "auto")) as Partial<GateModes>;
+        this.#saveSdlc({ ...this.#sdlcPolicy(), ceiling: narrowed }, actor);
+        return this.#sdlcView();
+      },
+
+      "sdlc.setProject": ({ project, settings }, actor) => {
+        const current = this.#sdlcPolicy();
+        const ceiling = fullCeiling(current.ceiling);
+        const projects = { ...current.projects };
+        if (!settings) delete projects[project];
+        else {
+          for (const g of SDLC_GATES) {
+            const m = settings.gates[g];
+            if (m && GATE_MODES.indexOf(m) > GATE_MODES.indexOf(ceiling[g])) {
+              throw new HiveError("forbidden", `The hub lets gate ${g} go up to ${ceiling[g]}, not ${m}.`, { key: "errors.gateOverCeiling", vars: { gate: g, mode: m, ceiling: ceiling[g] } });
+            }
+          }
+          // "human" is a gate's default: kept out, so a later ceiling change reads only the gates the project opened.
+          const gates = Object.fromEntries(Object.entries(settings.gates).filter(([, m]) => m !== "human")) as Partial<GateModes>;
+          projects[project] = {
+            gates,
+            ...(settings.maxFixRounds !== undefined ? { maxFixRounds: settings.maxFixRounds } : {}),
+            ...(settings.maxParallel ? { maxParallel: settings.maxParallel } : {}),
+          };
+        }
+        this.#saveSdlc({ ...current, projects }, actor);
+        return this.#sdlcView();
+      },
+
+      "sdlc.gates": ({ project, projects, status, limit }) =>
+        (
+          db
+            .prepare(
+              `SELECT * FROM sdlc_gates WHERE (?1 IS NULL OR project = ?1) AND (?2 IS NULL OR status = ?2)
+                 AND (?4 IS NULL OR project IN (SELECT value FROM json_each(?4)))
+               ORDER BY CASE status WHEN 'waiting' THEN 0 WHEN 'escalated' THEN 0 ELSE 1 END, id DESC LIMIT ?3`,
+            )
+            .all(project ?? null, status ?? null, limit, listParam(projects)) as Row[]
+        ).map(toGate),
 
       "agentPolicy.get": () => agentPolicyView(this.#agentPolicy()),
 
