@@ -113,6 +113,8 @@ describe("chat helpers", () => {
     assert.equal(next[0], known[0], "other messages untouched");
     assert.equal(actionTask(action(1)), "T-5");
     assert.equal(actionTask(action(1, { kind: "run.dispatch", input: { taskId: "T-2", machineId: "runner.team-mbp@team-mbp" } })), "T-2");
+    assert.equal(actionTask(action(1, { kind: "run.cancel", input: { machineId: "runner.team-mbp@team-mbp", runId: "R-1" } })), null, "no task to link");
+    assert.equal(actionTask(action(1, { kind: "agents.stop", input: { project: "app" } })), null);
     assert.equal(machineName("runner.team-mbp@team-mbp"), "team-mbp");
     assert.equal(machineName("mini"), "mini");
   });
