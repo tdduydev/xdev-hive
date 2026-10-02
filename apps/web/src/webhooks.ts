@@ -202,6 +202,9 @@ export function eventMessage(event: HiveEvent, locale: string): { text: string; 
     }
     case "agents.resumed":
       return { text: tr("webhook.agentsResumed", { by: event.by, project: event.project ?? tr("webhook.hub") }), page: event.project ? "#/overview" : "#/admin" };
+    // Not in WEBHOOK_EVENTS yet, so no webhook asks for it; the message is there for when one may.
+    case "tool.changed":
+      return { text: tr("webhook.toolChanged", { by: event.by, tool: event.tool, scope: event.project ?? tr("webhook.hub") }), page: "#/tools" };
   }
 }
 

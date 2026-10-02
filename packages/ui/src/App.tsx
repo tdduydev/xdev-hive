@@ -34,6 +34,7 @@ import {
   UserCog,
   UsersRound,
   WandSparkles,
+  Wrench,
 } from "lucide-react";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { TooltipProvider } from "@xdev-hive/ui/components/ui/tooltip";
@@ -67,6 +68,7 @@ import { SystemsPage } from "./pages/Systems.tsx";
 import { TasksPage } from "./pages/Tasks.tsx";
 import { TodayPage } from "./pages/Today.tsx";
 import { TokensPage } from "./pages/Tokens.tsx";
+import { ToolsPage } from "./pages/Tools.tsx";
 import { UsersPage } from "./pages/Users.tsx";
 import { MembersPage } from "./pages/Members.tsx";
 import { WebhooksTab } from "./pages/Webhooks.tsx";
@@ -96,6 +98,7 @@ type PageId =
   | "members"
   | "tokens"
   | "setup"
+  | "tools"
   | "projects"
   | "systems"
   | "device";
@@ -118,6 +121,7 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
   agents: { label: "nav.agents", sub: "navSub.agents", icon: Bot, render: () => <AgentsPage /> },
   machines: { label: "nav.machines", sub: "navSub.machines", icon: Server, render: () => <MachinesPage /> },
   setup: { label: "nav.setup", sub: "navSub.setup", icon: Terminal, render: () => <SetupPage /> },
+  tools: { label: "nav.tools", sub: "navSub.tools", icon: Wrench, render: () => <ToolsPage /> },
   admin: { label: "nav.admin", sub: "navSub.admin", icon: ShieldCheck, render: () => <AdminPage /> },
   users: { label: "nav.users", sub: "navSub.users", icon: UsersRound, render: () => <UsersPage /> },
   members: { label: "nav.members", sub: "navSub.members", icon: UserCog, render: () => <MembersPage /> },
@@ -133,7 +137,7 @@ const GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
   { label: null, ids: ["today", "chat"] },
   { label: "nav.groupWork", ids: ["board", "runs", "tasks"] },
   { label: "nav.groupKnowledge", ids: ["docs", "specs", "skills", "memory", "proposals"] },
-  { label: "nav.groupAgents", ids: ["agents", "setup", "projects"] },
+  { label: "nav.groupAgents", ids: ["agents", "setup", "tools", "projects"] },
   { label: "nav.groupAdmin", ids: ["admin", "machines", "users", "members", "tokens", "systems"] },
 ];
 const SHORTCUTS: Partial<Record<PageId, string>> = { today: "1", chat: "2", board: "3", runs: "4", docs: "5", agents: "6" };
@@ -142,7 +146,7 @@ const PALETTE_ONLY: PageId[] = ["overview"];
 
 // ── The Web Admin (hub admins on the web) ──
 
-type AdminId = "overview" | "chat" | "runs" | "queue" | "fleet" | "quota" | "costs" | "alerts" | "review" | "docs" | "read" | "specs" | "context" | "memory" | "skills" | "users" | "projects" | "policy" | "versions" | "tokens" | "webhooks" | "audit" | "hub";
+type AdminId = "overview" | "chat" | "runs" | "queue" | "fleet" | "quota" | "costs" | "alerts" | "review" | "docs" | "read" | "specs" | "context" | "memory" | "skills" | "users" | "projects" | "policy" | "tools" | "versions" | "tokens" | "webhooks" | "audit" | "hub";
 type AdminGroup = "ops" | "watch" | "knowledge" | "admin";
 
 const ADMIN: Record<AdminId, { group: AdminGroup; icon: Icon; render: () => ReactNode; fill?: boolean }> = {
@@ -165,6 +169,7 @@ const ADMIN: Record<AdminId, { group: AdminGroup; icon: Icon; render: () => Reac
   users: { group: "admin", icon: UsersRound, render: () => <UsersPage /> },
   projects: { group: "admin", icon: Layers, render: () => <SystemsPage /> },
   policy: { group: "admin", icon: ShieldCheck, render: () => <PolicyTab /> },
+  tools: { group: "admin", icon: Wrench, render: () => <ToolsPage /> },
   versions: { group: "admin", icon: Package, render: () => <OpsVersions /> },
   tokens: { group: "admin", icon: KeyRound, render: () => <TokensPage /> },
   webhooks: { group: "admin", icon: Send, render: () => <WebhooksTab /> },
@@ -253,7 +258,8 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   }, [webAdmin]);
 
   const visible = useMemo(() => {
-    const ids = new Set<PageId>(["today", "overview", "docs", "read", "specs", "skills", "proposals", "memory", "tasks", "systems"]);
+    // Tool: the catalog is the hub's, and project managers on the web turn tools on for their project there too.
+    const ids = new Set<PageId>(["today", "overview", "docs", "read", "specs", "skills", "proposals", "memory", "tasks", "systems", "tools"]);
     if (client.desktop) for (const id of ["board", "agents", "setup", "projects"] as const) ids.add(id);
     // Machines only report to a hub (and push their runs to it); a local database never has any. The leader chat
     // runs on a machine the hub hands it to.
