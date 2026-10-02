@@ -297,6 +297,23 @@ export function toolViews(catalog: MachineTools | null, projects: Array<{ name: 
         return { field, argv: [...argv] };
       }
     });
-    return [{ id: e.id, name: e.name, kind: e.kind, license: e.license, homepage: e.homepage, commands, env: e.env, secretEnv: e.secretEnv, hash: toolHash(e), trust: trustOf(e, trust), projects: on }];
+    const required = on.filter((p) => catalog.projects[p]?.some((s) => s.id === e.id && s.required));
+    return [
+      {
+        id: e.id,
+        name: e.name,
+        kind: e.kind,
+        license: e.license,
+        homepage: e.homepage,
+        commands,
+        env: e.env,
+        secretEnv: e.secretEnv,
+        hash: toolHash(e),
+        trust: trustOf(e, trust),
+        projects: on,
+        handler: e.handler,
+        required,
+      },
+    ];
   });
 }
