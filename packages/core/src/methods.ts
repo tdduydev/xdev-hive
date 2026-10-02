@@ -526,6 +526,20 @@ export const schemas = {
     candidates: z.number().int().min(1).max(MAX_CANDIDATES).default(1),
     instructions: z.string().max(4000).default(""),
   }),
+  /**
+   * A free prompt from the web (roadmap 32b): a new task P-<n> of the project holds it, and one machine is asked to
+   * run it, in one go. Checked like runs.dispatch; nothing is made when a check fails.
+   */
+  "runs.prompt": z.object({
+    project,
+    /** Left out: the prompt's first line. */
+    title: z.string().max(120).optional(),
+    prompt: z.string().min(1).max(4000),
+    machineId: machineRef,
+    /** A profile of that machine; null rotates. */
+    profileId: z.string().max(40).nullable().default(null),
+    reviewAfter: z.boolean().default(false),
+  }),
   /** Run requests, the newest first: a project's, or every project the caller sees. */
   "runs.requests": z.object({ project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(200).default(50) }),
   /** Withdraws a request no machine took yet. */
@@ -803,6 +817,7 @@ export interface MethodOutput {
   "runs.merge": RunRecord;
   "runs.mergeResult": RunRecord;
   "runs.dispatch": RunRequest;
+  "runs.prompt": { task: Task; request: RunRequest };
   "runs.requests": RunRequest[];
   "runs.cancelRequest": RunRequest;
   "runs.requestResult": RunRequest;
@@ -919,6 +934,8 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "runs.mergeResult": "agent",
   // Also "manage" on the project: a project manager, never an agent token.
   "runs.dispatch": "agent",
+  // Also "manage" on the project as runs.dispatch, and creating its tasks.
+  "runs.prompt": "agent",
   "runs.requests": "viewer",
   "runs.cancelRequest": "agent",
   "runs.requestResult": "agent",

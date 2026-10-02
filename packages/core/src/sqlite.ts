@@ -701,6 +701,11 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
     detail: `run ${o.role} trên ${o.machine} (#${o.id})`,
     text: { key: "audit.runDispatch", vars: { role: o.role, machine: o.machine, id: o.id } },
   }),
+  "runs.prompt": (_i, o: { task: Task; request: RunRequest }) => ({
+    target: `${o.request.project}/${o.task.id}`,
+    detail: `prompt → run trên ${o.request.machine} (#${o.request.id})`,
+    text: { key: "audit.runPrompt", vars: { machine: o.request.machine, id: o.request.id } },
+  }),
   "chat.setAutonomy": (i, o: ChatDefaults) => ({
     target: i.project,
     detail: o.autoKinds.join(", ") || "—",
@@ -1245,6 +1250,10 @@ export class SqliteHive implements HiveBackend {
         if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
         return;
       case "runs.dispatch":
+        return this.#need(actor, i.project, "runDispatch", `Project ${i.project}`);
+      // It makes a task as well as the request.
+      case "runs.prompt":
+        this.#need(actor, i.project, "taskManage", `Project ${i.project}`);
         return this.#need(actor, i.project, "runDispatch", `Project ${i.project}`);
       // Whoever may queue and stop a project's runs may stop them all; the whole hub is its admin's alone.
       case "agents.stop":
@@ -2087,6 +2096,101 @@ export class SqliteHive implements HiveBackend {
   }
 
   /** Run requests no machine took in time expire; answered ones are dropped after a month. */
+  /**
+   * What the machine's Board would check first, so a manager hears at once instead of after a heartbeat: for
+   * runs.dispatch, and for runs.prompt (roadmap 32b) before the task it creates exists (`task` null).
+   */
+  #assertDispatchable(
+    r: { machineId: string; project: string; task: Task | null; role: AgentRole; profileId: string | null; candidates: number; instructions: string },
+    actor: Actor,
+  ): Machine {
+    const { machineId, project, task, role, profileId, candidates, instructions } = r;
+    const db = this.db;
+    this.#expireRequests();
+    this.#assertNotPaused(project);
+    const row = db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row | undefined;
+    if (!row) throw new HiveError("not_found", `No machine ${machineId}.`, { key: "errors.machineNotFound", vars: { machine: machineId } });
+    const m = this.#toMachine(row);
+    const name = { machine: m.machine };
+    if (!m.online) throw new HiveError("conflict", `${m.machine} is offline.`, { key: "errors.machineOffline", vars: name });
+    if (!m.acceptsRuns) throw new HiveError("bad_request", `${m.machine} does not take runs from the hub.`, { key: "errors.machineNoHubRuns", vars: name });
+    if (!m.projects.includes(project)) {
+      throw new HiveError("bad_request", `${m.machine} has no repo for ${project}.`, { key: "errors.machineNoRepo", vars: { ...name, project } });
+    }
+    if (task) {
+      const taskId = task.id;
+      if (task.status === "done") throw new HiveError("bad_request", `Task ${taskId} is done.`, { key: "errors.taskDone", vars: { id: taskId } });
+      if (task.waitingOn.length) {
+        throw new HiveError("conflict", `Task ${taskId} waits for ${task.waitingOn.join(", ")}.`, {
+          key: "errors.taskWaiting",
+          vars: { id: taskId, tasks: task.waitingOn.join(", ") },
+        });
+      }
+    }
+    if (profileId && !m.profiles.some((p) => p.id === profileId && p.enabled)) {
+      throw new HiveError("bad_request", `${m.machine} has no enabled profile ${profileId}.`, { key: "errors.profileNotOnMachine", vars: { ...name, id: profileId } });
+    }
+    if (candidates > 1 && role !== "implement") throw new HiveError("bad_request", "Only implement runs have candidates.", { key: "errors.candidatesImplementOnly" });
+    if (candidates > 1 && profileId) throw new HiveError("bad_request", "Candidates rotate profiles; do not pin one.", { key: "errors.candidatesPinned" });
+    if (task) {
+      const taskId = task.id;
+      // One request at a time per task, and none while a machine runs it.
+      const open = db.prepare("SELECT id, machine FROM run_requests WHERE project = ? AND task_id = ? AND status = 'pending'").get(project, taskId) as Row | undefined;
+      if (open) {
+        throw new HiveError("conflict", `Run request #${num(open.id)} for ${taskId} still waits for ${str(open.machine)}.`, {
+          key: "errors.runRequestOpen",
+          vars: { id: taskId, request: num(open.id), machine: str(open.machine) },
+        });
+      }
+      for (const other of (db.prepare("SELECT * FROM machines").all() as Row[]).map((x) => this.#toMachine(x))) {
+        const busy = other.online ? other.runs.find((x) => x.project === project && x.taskId === taskId) : undefined;
+        if (busy) {
+          throw new HiveError("conflict", `Task ${taskId} has run ${busy.runId} on ${other.machine}.`, {
+            key: "errors.taskRunning",
+            vars: { id: taskId, run: busy.runId, machine: other.machine },
+          });
+        }
+      }
+    }
+    // The run would count for whoever asks (run_requests.requested_by, which the machine reports with its cost).
+    const full = this.#fullBudgets(project, actor.name)[0];
+    if (full) {
+      const vars = budgetVars(full);
+      throw new HiveError("conflict", `Spending cap ${full.id} is reached: ${vars.used} of ${vars.limit} since ${vars.from}.`, {
+        key: "errors.budgetExceeded",
+        vars,
+      });
+    }
+    // The machine hands them to an agent as its prompt.
+    assertNoHidden(instructions, "Instructions");
+    assertNoSecret(instructions, "Instructions");
+    return m;
+  }
+
+  #insertRequest(
+    m: Machine,
+    project: string,
+    task: Task,
+    r: { role: AgentRole; profileId: string | null; reviewAfter: boolean; candidates: number; instructions: string },
+    actor: Actor,
+  ): RunRequest {
+    const now = this.#now();
+    const res = this.db
+      .prepare(
+        `INSERT INTO run_requests(machine_id, machine, project, task_id, task_title, role, profile_id, review_after, candidates,
+           instructions, requested_by, on_behalf, requested_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(m.id, m.machine, project, task.id, task.title, r.role, r.profileId, r.reviewAfter ? 1 : 0, r.candidates, r.instructions, actor.name, actor.onBehalf ?? null, now, now);
+    return this.#runRequest(num(res.lastInsertRowid));
+  }
+
+  /** Task ids are the hub's, not a project's: prompts count up across every project, past any P-<n> someone made by hand. */
+  #nextPromptTaskId(): string {
+    const ids = this.db.prepare("SELECT id FROM tasks WHERE id GLOB 'P-[0-9]*'").all() as Row[];
+    const top = Math.max(0, ...ids.map((r) => /^P-(\d+)$/.exec(str(r.id))?.[1]).filter(Boolean).map(Number));
+    return `P-${top + 1}`;
+  }
+
   #expireRequests(): void {
     this.db
       .prepare("UPDATE run_requests SET status = 'expired', updated_at = ?1 WHERE status = 'pending' AND requested_at < ?2")
@@ -3600,75 +3704,32 @@ export class SqliteHive implements HiveBackend {
           return toRunRecord(db.prepare("SELECT * FROM run_records WHERE machine_id = ? AND run_id = ?").get(actor.name, runId) as Row, false);
         }),
 
-      // What the machine's Board would check first, so a manager hears at once instead of after a heartbeat.
       "runs.dispatch": ({ machineId, project, taskId, role, profileId, reviewAfter, candidates, instructions }, actor) =>
         this.#tx(() => {
-          this.#expireRequests();
-          this.#assertNotPaused(project);
-          const row = db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row | undefined;
-          if (!row) throw new HiveError("not_found", `No machine ${machineId}.`, { key: "errors.machineNotFound", vars: { machine: machineId } });
-          const m = this.#toMachine(row);
-          const name = { machine: m.machine };
-          if (!m.online) throw new HiveError("conflict", `${m.machine} is offline.`, { key: "errors.machineOffline", vars: name });
-          if (!m.acceptsRuns) throw new HiveError("bad_request", `${m.machine} does not take runs from the hub.`, { key: "errors.machineNoHubRuns", vars: name });
-          if (!m.projects.includes(project)) {
-            throw new HiveError("bad_request", `${m.machine} has no repo for ${project}.`, { key: "errors.machineNoRepo", vars: { ...name, project } });
-          }
           const task = this.#getTask(taskId);
           if (!task || task.project !== project) {
             throw new HiveError("not_found", `No task ${taskId} in ${project}.`, { key: "errors.taskNotInProject", vars: { id: taskId, project } });
           }
-          if (task.status === "done") throw new HiveError("bad_request", `Task ${taskId} is done.`, { key: "errors.taskDone", vars: { id: taskId } });
-          if (task.waitingOn.length) {
-            throw new HiveError("conflict", `Task ${taskId} waits for ${task.waitingOn.join(", ")}.`, {
-              key: "errors.taskWaiting",
-              vars: { id: taskId, tasks: task.waitingOn.join(", ") },
-            });
-          }
-          if (profileId && !m.profiles.some((p) => p.id === profileId && p.enabled)) {
-            throw new HiveError("bad_request", `${m.machine} has no enabled profile ${profileId}.`, { key: "errors.profileNotOnMachine", vars: { ...name, id: profileId } });
-          }
-          if (candidates > 1 && role !== "implement") throw new HiveError("bad_request", "Only implement runs have candidates.", { key: "errors.candidatesImplementOnly" });
-          if (candidates > 1 && profileId) throw new HiveError("bad_request", "Candidates rotate profiles; do not pin one.", { key: "errors.candidatesPinned" });
-          // One request at a time per task, and none while a machine runs it.
-          const open = db.prepare("SELECT id, machine FROM run_requests WHERE project = ? AND task_id = ? AND status = 'pending'").get(project, taskId) as
-            | Row
-            | undefined;
-          if (open) {
-            throw new HiveError("conflict", `Run request #${num(open.id)} for ${taskId} still waits for ${str(open.machine)}.`, {
-              key: "errors.runRequestOpen",
-              vars: { id: taskId, request: num(open.id), machine: str(open.machine) },
-            });
-          }
-          for (const other of (db.prepare("SELECT * FROM machines").all() as Row[]).map((r) => this.#toMachine(r))) {
-            const busy = other.online ? other.runs.find((r) => r.project === project && r.taskId === taskId) : undefined;
-            if (busy) {
-              throw new HiveError("conflict", `Task ${taskId} has run ${busy.runId} on ${other.machine}.`, {
-                key: "errors.taskRunning",
-                vars: { id: taskId, run: busy.runId, machine: other.machine },
-              });
-            }
-          }
-          // The run would count for whoever asks (run_requests.requested_by, which the machine reports with its cost).
-          const full = this.#fullBudgets(project, actor.name)[0];
-          if (full) {
-            const vars = budgetVars(full);
-            throw new HiveError("conflict", `Spending cap ${full.id} is reached: ${vars.used} of ${vars.limit} since ${vars.from}.`, {
-              key: "errors.budgetExceeded",
-              vars,
-            });
-          }
-          // The machine hands them to an agent as its prompt.
-          assertNoHidden(instructions, "Instructions");
-          assertNoSecret(instructions, "Instructions");
-          const now = this.#now();
-          const res = db
-            .prepare(
-              `INSERT INTO run_requests(machine_id, machine, project, task_id, task_title, role, profile_id, review_after, candidates,
-                 instructions, requested_by, on_behalf, requested_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            )
-            .run(machineId, m.machine, project, taskId, task.title, role, profileId, reviewAfter ? 1 : 0, candidates, instructions, actor.name, actor.onBehalf ?? null, now, now);
-          return this.#runRequest(num(res.lastInsertRowid));
+          const m = this.#assertDispatchable({ machineId, project, task, role, profileId, candidates, instructions }, actor);
+          return this.#insertRequest(m, project, task, { role, profileId, reviewAfter, candidates, instructions }, actor);
+        }),
+
+      // A free prompt from the web (roadmap 32b): its own new task and the request to run it, or neither.
+      "runs.prompt": ({ project, title, prompt, machineId, profileId, reviewAfter }, actor) =>
+        this.#tx(() => {
+          const m = this.#assertDispatchable({ machineId, project, task: null, role: "implement", profileId, candidates: 1, instructions: prompt }, actor);
+          const heading = (title?.trim() || prompt.trim().split(/\r?\n/, 1)[0]!.trim()).slice(0, 120);
+          // The title is the agent's to read too (and every reader's of the project).
+          assertNoHidden(heading, "Title");
+          assertNoSecret(heading, "Title");
+          const id = this.#nextPromptTaskId();
+          db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)").run(id, project, heading, prompt.slice(0, 2000), this.#now());
+          const task = this.#getTask(id)!;
+          // The runner hands the agent the task's note as well as the instructions: the prompt goes once, as the note,
+          // and in full as the instructions only when the note had to cut it.
+          const instructions = prompt.length > 2000 ? prompt : "";
+          const request = this.#insertRequest(m, project, task, { role: "implement", profileId, reviewAfter, candidates: 1, instructions }, actor);
+          return { task, request };
         }),
 
       "runs.requests": ({ project, projects, limit }) => {
