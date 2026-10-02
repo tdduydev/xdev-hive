@@ -31,6 +31,7 @@ import {
   usageHeadroom,
   usageStop,
   type Actor,
+  type AgentKind,
   type AgentPolicy,
   type AgentProfile,
   type AgentProfileStatus,
@@ -274,6 +275,8 @@ function tryGit(cwd: string, args: string[]): string | null {
 export class Runner {
   readonly store: RunStore;
   readonly #host: RunnerHost;
+  /** CLIs being upgraded (roadmap 33): their profiles take no new run until it is done. */
+  readonly #held = new Set<AgentKind>();
   readonly #opts: Required<Omit<RunnerOptions, "onEvent" | "afterFinish" | "onHub" | "sync">> & Pick<RunnerOptions, "onEvent" | "afterFinish" | "onHub" | "sync">;
   /** Sync requests taken (roadmap 22n): the hub sends one until it hears "running", which may cross a heartbeat. */
   readonly #syncsTaken = new Set<number>();
@@ -543,6 +546,18 @@ export class Runner {
   }
 
   /** Stops a run: one waiting ends now, a running agent is stopped. `note`: why, instead of the Board's own note. */
+  /** Holds a CLI's profiles while it is upgraded; letting go starts what waited. */
+  holdKind(kind: AgentKind, held: boolean): void {
+    if (held) this.#held.add(kind);
+    else if (this.#held.delete(kind)) void this.tick();
+  }
+
+  /** Runs going on with a CLI of this kind, which an upgrade would pull the files from under. */
+  runningOfKind(kind: AgentKind): number {
+    const kinds = new Map(this.#host.profiles().map((p) => [p.id, p.kind]));
+    return this.store.active().filter((r) => r.status === "running" && r.profileId !== null && kinds.get(r.profileId) === kind).length;
+  }
+
   cancel(id: string, note?: string): AgentRun {
     const run = this.store.get(id);
     if (!run) throw new HiveError("not_found", `Không có run ${id}.`, { key: "errors.runNotFound", vars: { id } });
@@ -1182,7 +1197,7 @@ export class Runner {
         running: s.running,
         lastUsedAt: s.lastUsedAt,
         cooldownUntil: this.#cooldownOf(profile)?.until ?? null,
-        installed: resolveBin(expandHome(profile.bin), pathEnv) !== null,
+        installed: !this.#held.has(profile.kind) && resolveBin(expandHome(profile.bin), pathEnv) !== null,
         loggedIn: this.#host.login?.(profile.id)?.loggedIn !== false,
         overLimit: usageStop(profile, this.#host.usage?.(profile.id)) !== null,
         headroom: usageHeadroom(profile, this.#host.usage?.(profile.id)),
