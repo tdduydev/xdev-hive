@@ -189,6 +189,13 @@ Icon: `npm run icons -w @xdev-hive/desktop` (chỉ chạy trên macOS, vì dùng
 
 Trang trùng đã bỏ: *Lượt chạy* chỉ còn một trang, *Quota & gói* nằm trong *Máy & run*, trang *Quản trị* cũ (tab máy, chính sách, nhật ký, webhook) tách thành các mục trên. Mở web thì vào *Hôm nay*. Địa chỉ cũ `#/admin/<trang>` (trong link đã gửi qua webhook, thông báo app) tự chuyển sang trang mới, ví dụ `#/admin/review` → `#/proposals`, `#/admin/quota` → `#/machines`, `#/admin` → `#/ops`.
 
+**Hôm nay trên web: việc chờ chính bạn** (roadmap 35c). Một danh sách gom mọi thứ đang chờ người đó quyết, và chỉ gồm những mục người đó có quyền xử lý:
+- *Chốt SDLC*: luồng Spec Kit hoặc task của luồng đang dừng ở một chốt chờ người, hoặc AI kiểm chưa cho qua. Có kết luận của AI (nếu có), ô ghi chú, nút cho qua / yêu cầu sửa như trên thẻ luồng. Chốt review và merge cần quyền Review code, các chốt khác cần quyền xếp run.
+- *Leader đề xuất*: thao tác leader đề xuất trong Chat (tạo task, xếp run, bật tool…) mà chưa ai xác nhận. Nút *Xác nhận* / *Bỏ qua* và *Mở chat*. Cần quyền xác nhận việc của leader.
+- *Đề xuất* tài liệu (quyền duyệt tài liệu, hoặc Context agent với tài liệu agent đọc), *Memory* chờ duyệt và *Mâu thuẫn* (quyền duyệt memory), task *Chờ review* (quyền Review code), *Cảnh báo* của hub (admin hub).
+
+Mục chỉ xem được mà không làm gì được thì không còn trong danh sách. Số chờ duyệt chỉ hiện một chỗ, trên *Hôm nay* (menu web bỏ số riêng của *Đề xuất* và *Memory*), và ô *Chờ duyệt* ở *Vận hành* → *Tổng quan* mở *Hôm nay*. Hub thêm `chat.pending`: thao tác của leader chưa ai quyết, mới nhất trước, theo dự án người gọi xem được.
+
 1. **Dự án & công cụ** → *Dự án trên máy này*: thêm repo (project key, ví dụ `xdev-ai-studio`).
 2. Cũng trang đó kiểm tra những gì runner cần: trang tự kiểm tra khi mở app, và sidebar hiện số mục chưa sẵn sàng. Mục nào còn thiếu thì có nút cài riêng:
    - **CLI của agent** (Claude Code, Codex, Gemini): tìm theo `PATH` của login shell và hiện phiên bản. Nút *Cài bằng npm* chạy `npm install -g @anthropic-ai/claude-code` / `@openai/codex` / `@google/gemini-cli`, nên máy cần có Node.js. Profile nào chưa có CLI thì hiện "Chưa có lệnh …", và runner bỏ qua gói đó thay vì chạy thử rồi lỗi.

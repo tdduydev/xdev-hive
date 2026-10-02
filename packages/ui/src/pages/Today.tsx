@@ -3,17 +3,19 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { CircleCheck, Copy, Info, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
-import type { Memory } from "@xdev-hive/core";
+import type { ChatAction, Memory, SdlcGateRecord } from "@xdev-hive/core";
 import { approvalOf } from "#ui/lib/permissions.ts";
 import { Diff } from "#ui/components/Diff.tsx";
 import { ErrorNote } from "#ui/components/common.tsx";
 import { errorMessage, formatTime, useCan, useHive, useQuery } from "#ui/hooks.ts";
-import { useT, type TFunction } from "#ui/i18n/index.tsx";
+import { useT, type MessageKey, type TFunction } from "#ui/i18n/index.tsx";
 import { shortAgo, type InboxDone, type InboxItem, type InboxTone } from "#ui/lib/inbox.ts";
 import { docOwner } from "#ui/lib/scope.ts";
 import { useInbox } from "#ui/shell/inbox.tsx";
 import { useToast } from "#ui/shell/toast.tsx";
+import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { alertDetail, alertTitle } from "./admin/Alerts.tsx";
+import { ActionItem } from "./Chat.tsx";
 
 type Kind = InboxTone | "success" | "neutral";
 
@@ -101,6 +103,23 @@ function MemoryCard({ m, t }: { m: Memory; t: TFunction }) {
   );
 }
 
+/** "task.create" → its label (a dot in a message key reads as one more level). */
+const leaderKind = (a: ChatAction, t: TFunction) => t(`chat.autoKind.${a.kind.replace(".", "_")}` as MessageKey);
+
+/** What a leader's action is about: the task, run, plan or tool it names. */
+function leaderSubject(a: ChatAction): string {
+  const i = a.input as Record<string, unknown>;
+  const pick = [i.title && i.id ? `${String(i.id)} ${String(i.title)}` : null, i.taskId, i.id, i.runId, i.profileId, i.name, i.itemId].find((v) => typeof v === "string" && v);
+  return typeof pick === "string" ? pick : a.project;
+}
+
+/** The pass and changes buttons a gate shows, as on the flow card: a flow's step, or a task's review, fix or merge. */
+function gateLabels(g: SdlcGateRecord, t: TFunction): { pass: string; changes: string; noteRequired: boolean } {
+  if (g.gate === "review" || g.gate === "fix" || g.gate === "merge")
+    return { pass: t(`flow.taskPass.${g.gate}`), changes: t(`flow.taskChanges.${g.gate}`), noteRequired: g.gate === "review" };
+  return { pass: t(`flow.pass.${g.gate === "tasks" ? "tasks" : g.gate === "dispatch" ? "dispatch" : "next"}`), changes: t("flow.changes"), noteRequired: true };
+}
+
 // ── What each kind shows and can do ──
 
 interface Action {
@@ -142,6 +161,10 @@ function titleOf(item: InboxItem, t: TFunction): string {
       return t("inbox.request.title", { who: item.command.requestedBy, label: item.command.label });
     case "alert":
       return alertTitle(t, item.alert);
+    case "gate":
+      return t("inbox.gate.title", { gate: t(`sdlc.gate.${item.gate.gate}`), task: item.gate.taskId });
+    case "leader":
+      return t("inbox.leader.title", { kind: leaderKind(item.action, t), subject: leaderSubject(item.action) });
   }
 }
 
@@ -172,6 +195,10 @@ function metaOf(item: InboxItem, t: TFunction): string {
       return t("inbox.request.meta");
     case "alert":
       return alertDetail(t, item.alert);
+    case "gate":
+      return item.gate.status === "escalated" ? t("inbox.gate.metaEscalated") : t("inbox.gate.meta", { mode: t(`sdlc.mode.${item.gate.mode}`) });
+    case "leader":
+      return firstLine(item.action.reason, 80);
   }
 }
 
@@ -287,6 +314,7 @@ export function TodayPage() {
                     key={item.key}
                     role="option"
                     aria-selected={on}
+                    data-inbox-key={item.key}
                     onClick={() => setSel(item.key)}
                     className={cn(
                       "relative flex cursor-pointer flex-col gap-1 border-b border-line-subtle py-2.5 pr-3.5 pl-[22px]",
@@ -426,6 +454,8 @@ function Detail({
   const allow = useCan();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // What to change, for a gate sent back (the agent works from it).
+  const [note, setNote] = useState("");
   const docKey = item.kind === "proposal" ? item.proposal.docKey : null;
   const doc = useQuery(async () => (docKey ? client.call("docs.get", { key: docKey }) : null), [client, docKey]);
 
@@ -601,7 +631,7 @@ function Detail({
           await client.call("memory.resolve", { id: a.id, other: b.id, keep });
           return note;
         });
-      actions = allow(a.project, "chatApprove")
+      actions = allow(a.project, "memoryApprove")
         ? [
             { label: t("inbox.conflict.keep", { id: a.id }), kind: "primary", run: resolve("this", t("inbox.conflict.kept", { id: a.id, other: b.id })) },
             { label: t("inbox.conflict.keep", { id: b.id }), kind: "secondary", run: resolve("other", t("inbox.conflict.kept", { id: b.id, other: a.id })) },
@@ -651,6 +681,72 @@ function Detail({
         },
         { label: t("inbox.alert.open"), kind: "secondary", run: go("#/alerts") },
       ];
+      break;
+    }
+    case "gate": {
+      const g = item.gate;
+      const labels = gateLabels(g, t);
+      const what = { gate: t(`sdlc.gate.${g.gate}`), task: g.taskId };
+      const may = allow(g.project, g.gate === "review" || g.gate === "merge" ? "codeReview" : "runDispatch");
+      body = (
+        <>
+          <P>{t(g.status === "escalated" ? "flow.escalated" : "flow.waiting", { gate: what.gate, mode: t(`sdlc.mode.${g.mode}`) })}</P>
+          {g.note ? <CodeBlock lang={t("inbox.gate.aiNote")} text={g.note} /> : null}
+          <Kv
+            rows={[
+              [t("inbox.gate.task"), g.taskId, true],
+              [t("inbox.gate.mode"), t(`sdlc.mode.${g.mode}`)],
+            ]}
+          />
+          {may ? (
+            <Textarea
+              rows={3}
+              value={note}
+              maxLength={2000}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder={labels.noteRequired ? t("flow.notePlaceholder") : t("flow.taskNoteOther")}
+              aria-label={t("flow.note")}
+            />
+          ) : null}
+        </>
+      );
+      const decide = (decision: "pass" | "changes") =>
+        act(async () => {
+          if (decision === "changes" && labels.noteRequired && !note.trim()) throw new Error(t("inbox.gate.needNote"));
+          await client.call("sdlc.decide", { gateId: g.id, decision, note });
+          return t(decision === "pass" ? "inbox.gate.passed" : "inbox.gate.changed", what);
+        });
+      actions = may
+        ? [
+            { label: labels.pass, kind: "primary", run: decide("pass") },
+            { label: labels.changes, kind: "secondary", run: decide("changes") },
+            { label: t("inbox.gate.openTask"), kind: "ghost", run: go(`#/tasks?task=${encodeURIComponent(g.taskId)}`) },
+          ]
+        : [{ label: t("inbox.gate.openTask"), kind: "secondary", run: go(`#/tasks?task=${encodeURIComponent(g.taskId)}`) }, seenAction()];
+      break;
+    }
+    case "leader": {
+      const a = item.action;
+      body = (
+        <>
+          <P>{t("inbox.leader.body", { project: a.project })}</P>
+          <ul className="m-0 flex list-none flex-col p-0">
+            <ActionItem action={a} taskIds={[]} manage={false} onDecided={() => undefined} />
+          </ul>
+        </>
+      );
+      const decide = (accept: boolean) =>
+        act(async () => {
+          await client.call("chat.decide", { actionId: a.id, accept });
+          return t(accept ? "inbox.leader.confirmed" : "inbox.leader.dismissed", { kind: leaderKind(a, t) });
+        });
+      actions = allow(a.project, "chatApprove")
+        ? [
+            { label: t("chat.confirm"), kind: "primary", run: decide(true) },
+            { label: t("inbox.leader.openChat"), kind: "secondary", run: go(`#/chat?thread=${a.threadId}`) },
+            { label: t("chat.dismiss"), kind: "ghost", run: decide(false) },
+          ]
+        : [{ label: t("inbox.leader.openChat"), kind: "secondary", run: go(`#/chat?thread=${a.threadId}`) }, seenAction()];
       break;
     }
     case "request": {

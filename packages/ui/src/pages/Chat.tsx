@@ -769,7 +769,8 @@ function ActionList({
 }
 
 /** One thing the leader asked to do: what, why, and for a project manager Confirm (runs with their rights) or Set aside. */
-function ActionItem({ action: a, taskIds, manage, onDecided }: { action: ChatAction; taskIds: string[]; manage: boolean; onDecided: (action: ChatAction) => void }) {
+/** One action a leader proposed: what it does, why, and (for a manager, while proposed) confirm or set aside. */
+export function ActionItem({ action: a, taskIds, manage, onDecided }: { action: ChatAction; taskIds: string[]; manage: boolean; onDecided: (action: ChatAction) => void }) {
   const { client } = useHive();
   const t = useT();
   const act = useAction();

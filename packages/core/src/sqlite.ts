@@ -1438,6 +1438,9 @@ export class SqliteHive implements HiveBackend {
       }
       case "chat.defaults":
         return this.#need(actor, i.project, "view", `Project ${i.project}`);
+      case "chat.pending":
+        if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
+        return;
       case "chat.setDefaults":
       case "chat.setCommands":
       case "chat.setAutonomy":
@@ -1625,6 +1628,8 @@ export class SqliteHive implements HiveBackend {
         return (out as RunGroup[]).filter((g) => visible(g.project)) as MethodOutput[M];
       case "chat.threads":
         return (out as ChatThread[]).filter((t) => visible(t.project)) as MethodOutput[M];
+      case "chat.pending":
+        return (out as ChatAction[]).filter((a) => visible(a.project)) as MethodOutput[M];
       case "proposals.list":
         return (out as Proposal[]).filter((p) => visible(SqliteHive.#docOwner(p.docKey))) as MethodOutput[M];
       case "memory.search":
@@ -4948,6 +4953,16 @@ export class SqliteHive implements HiveBackend {
           return { thread: this.#chatThread(id), message: this.#chatMessage(message), reply: this.#chatMessage(reply) };
         }),
 
+      "chat.pending": ({ project, projects, limit }) =>
+        (
+          db
+            .prepare(
+              `SELECT * FROM chat_actions WHERE status = 'proposed' AND (?1 IS NULL OR project = ?1)
+                 AND (?3 IS NULL OR project IN (SELECT value FROM json_each(?3)))
+               ORDER BY id DESC LIMIT ?2`,
+            )
+            .all(project ?? null, limit, listParam(projects)) as Row[]
+        ).map(toChatAction),
       "chat.threads": ({ project, projects, query, limit }) => {
         this.#expireChats();
         const words = query?.trim();

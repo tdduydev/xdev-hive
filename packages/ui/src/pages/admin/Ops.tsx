@@ -169,7 +169,7 @@ export function OpsOverview({ lead }: { lead?: ReactNode } = {}) {
         <Kpi href="#/fleet" label={t("ops.kpi.online")} value={`${fleet.filter((m) => m.online).length}/${fleet.length}`} sub={t("ops.kpi.onlineSub", { count: fleet.filter((m) => !m.online).length })} />
         <Kpi href="#/costs" label={t("ops.kpi.cost", { range: t(`ops.range.${range}`) })} value={cost === null ? "—" : formatUsd(cost)} sub={t("ops.kpi.costSub")} />
         <Kpi
-          href="#/proposals"
+          href="#/today"
           label={t("ops.kpi.pending")}
           value={(proposals.data?.length ?? 0) + (memory.data?.length ?? 0)}
           sub={t("ops.kpi.pendingSub")}

@@ -622,6 +622,11 @@ export const schemas = {
     query: z.string().max(200).optional(),
     limit: z.number().int().min(1).max(200).default(50),
   }),
+  /**
+   * What leaders proposed and nobody confirmed or set aside yet, the newest first: a project's, or every project the
+   * caller sees (Hôm nay, roadmap 35c).
+   */
+  "chat.pending": z.object({ project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(200).default(100) }),
   /** What a project's new chats start with. */
   "chat.defaults": z.object({ project }),
   "chat.setDefaults": z.object({
@@ -921,6 +926,7 @@ export interface MethodOutput {
   "runs.requestResult": RunRequest;
   "chat.send": { thread: ChatThread; message: ChatMessage; reply: ChatMessage };
   "chat.threads": ChatThread[];
+  "chat.pending": ChatAction[];
   "chat.rename": ChatThread;
   "chat.defaults": ChatDefaults;
   "chat.setDefaults": ChatDefaults;
@@ -1056,6 +1062,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   // Also "manage" on the project, like runs.dispatch.
   "chat.send": "agent",
   "chat.threads": "viewer",
+  "chat.pending": "viewer",
   "chat.rename": "agent",
   "chat.defaults": "viewer",
   "chat.setDefaults": "agent",
