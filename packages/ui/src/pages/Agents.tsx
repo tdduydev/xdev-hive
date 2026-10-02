@@ -24,6 +24,7 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { Switch } from "@xdev-hive/ui/components/ui/switch";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, StatusDot } from "#ui/components/common.tsx";
+import { OpenCli } from "#ui/components/OpenCli.tsx";
 import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { useToast } from "#ui/shell/toast.tsx";
 import { errorMessage, formatTime, formatUsd, useAction, useHive, useQuery } from "#ui/hooks.ts";
@@ -172,6 +173,7 @@ export function AgentsPage() {
             key={p.id}
             profile={p}
             waiting={p.id in waiting}
+            projects={settings.data?.projects.map((x) => x.name) ?? []}
             onEdit={() => setEditing({ profile: p, previousId: p.id })}
             onChanged={refresh}
             onLoginOpened={() => waitFor(p.id)}
@@ -240,12 +242,15 @@ function AccountForm({ kind, onAdded, onCancel }: { kind: NewAccount["kind"]; on
 function ProfileCard({
   profile: p,
   waiting,
+  projects,
   onEdit,
   onChanged,
   onLoginOpened,
 }: {
   profile: AgentProfileStatus;
   waiting: boolean;
+  /** This machine's projects, where its CLI can be opened. */
+  projects: string[];
   onEdit: () => void;
   onChanged: () => void;
   onLoginOpened: () => void;
@@ -401,6 +406,7 @@ function ProfileCard({
             {t("agents.remove")}
           </Button>
         </div>
+        <OpenCli profiles={[p]} projects={projects} />
         {(loginOpened || waiting) && signedOut ? <Notice tone="info">{t(waiting ? "agents.loginWaiting" : "agents.loginOpened")}</Notice> : null}
         {p.kind === "claude" && p.container ? (
           <form

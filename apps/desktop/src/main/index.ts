@@ -75,6 +75,7 @@ import { checkCitations } from "./citations.ts";
 import { syncProject } from "./sync.ts";
 import { mirrorDocs, mirrors } from "./mirror.ts";
 import { pushSpecs } from "./specs.ts";
+import { cliCommand } from "./cli-open.ts";
 import { openInTerminal } from "./terminal.ts";
 import { AlertWatch, fetchAlerts, noticeText, type AlertNotice } from "./alert-notify.ts";
 import { applyProfileChanges } from "./profile-changes.ts";
@@ -382,6 +383,41 @@ function openSetupToken(id: string): { opened: boolean } {
     { title: `xDev Hive: ${tr("desktop.setupTokenTitle", { profile: profile.id })}`, bin, args: ["setup-token"], env, done: tr("desktop.setupTokenDone") },
     { dir: path.join(path.dirname(configPath()), "login", profile.id), which: (b) => resolveBin(b, pathEnv) },
   );
+  if (!file) throw new HiveError("not_found", tr("desktop.noTerminal"), { key: "desktop.noTerminal" });
+  return { opened: true };
+}
+
+/**
+ * A terminal with the profile's CLI in a project's repo, for the person at this machine to work in (roadmap 32a). Hive's
+ * MCP server goes in under the profile's id. Not a run: no agent policy, no spending cap, nothing in the run store.
+ */
+function openCli(id: string, name: string): { opened: boolean } {
+  const profile = config.agents.find((a) => a.id === id);
+  if (!profile) throw new HiveError("not_found", `Không có profile ${id}.`, { key: "errors.profileNotFound", vars: { id } });
+  const p = project(name);
+  if (!existsSync(p.repo)) throw new HiveError("not_found", `Không thấy thư mục repo: ${p.repo}`, { key: "errors.noFolder", vars: { path: p.repo } });
+  // Unknown (not checked yet, a CLI with no status command) still opens: the CLI says so itself.
+  if (logins.get(id)?.loggedIn === false) throw new HiveError("conflict", tr("desktop.cliSignedOut", { profile: id }), { key: "desktop.cliSignedOut", vars: { profile: id } });
+  const pathEnv = agentEnv().PATH ?? "";
+  const bin = resolveBin(expandHome(profile.bin), pathEnv);
+  if (!bin) throw new HiveError("not_found", tr("desktop.cliNotFound", { bin: profile.bin }), { key: "desktop.cliNotFound", vars: { bin: profile.bin } });
+  const dir = path.join(path.dirname(configPath()), "cli", profile.id);
+  const mcpFile = path.join(dir, "mcp.json");
+  const { command, mcpConfig } = cliCommand(profile, {
+    project: p.name,
+    repo: p.repo,
+    bin,
+    // cmd.exe inherits the app's env, and a Windows PATH may hold characters a cmd script cannot quote.
+    path: process.platform === "win32" ? null : pathEnv,
+    mcpFile,
+    title: `xDev Hive: ${tr("desktop.cliTitle", { profile: profile.id, project: p.name })}`,
+    done: tr("desktop.cliDone"),
+  });
+  if (mcpConfig) {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(mcpFile, mcpConfig, { mode: 0o600 });
+  }
+  const file = openInTerminal(command, { dir, which: (b) => resolveBin(b, pathEnv), ...(smokeShot ? { run: () => undefined } : {}) });
   if (!file) throw new HiveError("not_found", tr("desktop.noTerminal"), { key: "desktop.noTerminal" });
   return { opened: true };
 }
@@ -958,6 +994,7 @@ function registerIpc(): void {
   handle("desktop:recheckLogins", recheckLogins);
   handle("desktop:setProfileToken", setProfileToken);
   handle("desktop:openSetupToken", openSetupToken);
+  handle("desktop:openCli", openCli);
   handle("desktop:startRun", (req: StartRunRequest) => runner.enqueue(req));
   handle("desktop:runs", (filter?: { project?: string; limit?: number }) => runner.list(filter));
   handle("desktop:runLog", (id: string) => runner.log(id));

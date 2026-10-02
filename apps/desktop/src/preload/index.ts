@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld("hive", {
     recheckLogins: () => invoke("desktop:recheckLogins"),
     setProfileToken: (id: string, token: string) => invoke("desktop:setProfileToken", id, token),
     openSetupToken: (id: string) => invoke("desktop:openSetupToken", id),
+    openCli: (id: string, project: string) => invoke("desktop:openCli", id, project),
     startRun: (request: unknown) => invoke("desktop:startRun", request),
     runs: (filter?: unknown) => invoke("desktop:runs", filter),
     runLog: (id: string) => invoke("desktop:runLog", id),
