@@ -1,8 +1,8 @@
 // Board (docs/design/2026-09-redesign, xDev Hive Client): a project's tasks in five columns; drag a card to change
 // its status, click it for the inspector (details, the latest run, and the form that starts an agent on this
 // machine). The runs themselves are on Lượt chạy.
-import { useEffect, useMemo, useState, type ComponentType, type DragEvent, type ReactNode } from "react";
-import { Ban, Circle, CircleCheck, GitPullRequest, LoaderCircle, X } from "lucide-react";
+import { useEffect, useMemo, useState, type DragEvent, type ReactNode } from "react";
+import { X } from "lucide-react";
 import { cn } from "cn";
 import {
   AGENT_ROLES,
@@ -25,7 +25,8 @@ import { errorMessage, formatTime, useAction, useCan, useHive, useProjects, useQ
 import { rich, useT, type TFunction } from "#ui/i18n/index.tsx";
 import { runDuration } from "#ui/lib/runs.ts";
 import { projectScope, scopeProject } from "#ui/lib/scope.ts";
-import { ownerLabel, waitingLabels } from "#ui/lib/tasks.ts";
+import { COLUMN_ICON } from "#ui/components/TaskKanban.tsx";
+import { columnOf, ownerLabel, waitingLabels } from "#ui/lib/tasks.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
 /** Re-renders every `ms` while `active`, for live runs. */
@@ -39,16 +40,6 @@ function usePulse(active: boolean, ms = 2000): number {
   return n;
 }
 
-const COLUMN_ICON: Record<TaskStatus, [ComponentType<{ className?: string }>, string]> = {
-  todo: [Circle, "text-fg-muted"],
-  doing: [LoaderCircle, "text-running"],
-  review: [GitPullRequest, "text-warning"],
-  blocked: [Ban, "text-danger"],
-  done: [CircleCheck, "text-success"],
-};
-
-/** A task waiting on others shows as blocked until they are done; it is still "to do" underneath. */
-const columnOf = (task: Task): TaskStatus => (task.status === "todo" && (task.waitingOn?.length || task.waitingHidden) ? "blocked" : task.status);
 
 /** "c2/3" for a best-of-n candidate, "judge" for the run that compares them. */
 function bestOfLabel(run: AgentRun, t: TFunction): string | null {

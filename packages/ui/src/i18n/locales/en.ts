@@ -197,6 +197,7 @@ export const en: Catalog = {
     rangeLabel: "Time range",
     group: { ops: "Operations", watch: "Monitoring", knowledge: "Knowledge", admin: "Administration" },
     nav: {
+      tasks: "Tasks",
       chat: "Chat",
       hub: "Hub",
       context: "Agent context",
@@ -224,6 +225,7 @@ export const en: Catalog = {
       audit: "Audit log",
     },
     hint: {
+      tasks: "Every project's tasks by status; drag a card to change it",
       chat: "Talk to each project's leader agent",
       hub: "Version, database, doc files, backups, meaning search, sign-in",
       context: "The AGENTS.md and what a project's agents get",
@@ -1014,6 +1016,10 @@ export const en: Catalog = {
     add: "Add",
   },
   tasks: {
+    view: "View",
+    view_kanban: "Kanban",
+    view_list: "List",
+    showOlderDone: "Show {count} older done tasks",
     title: "Tasks",
     subtitle: "Agents claim a task with task_claim (with a lease), then move it to In review with task_update and a handoff note. Pick a task to read its full note and queue a run.",
     status: "Status",

@@ -15,6 +15,7 @@ import { hasKey, useT, type MessageKey, type TFunction } from "#ui/i18n/index.ts
 import { runDuration, runLabel } from "#ui/lib/runs.ts";
 import { RANGE_HOURS, useAdminRange } from "./frame.tsx";
 import { useToast } from "#ui/shell/toast.tsx";
+import { DetailDialog } from "#ui/components/DetailDialog.tsx";
 import { ACTION_LABEL, MachineCard, useHubTools } from "#ui/pages/Admin.tsx";
 import { Costs } from "#ui/pages/Machines.tsx";
 import { EventFeed, OpenAlerts } from "./Alerts.tsx";
@@ -453,8 +454,8 @@ export function OpsFleet() {
         <Kpi label={t("admin.statLacking")} value={list.filter((m) => missing(m) > 0).length} sub="" warn={list.some((m) => missing(m) > 0)} />
         <Kpi label={t("admin.statOpen")} value={waiting} sub="" />
       </div>
-      <div className="flex flex-wrap items-start gap-4">
-        <div className="min-w-0 flex-[3_1_640px]">
+      <div className="min-w-0">
+        <div className="min-w-0">
           <DataTable
             rows={list}
             columns={columns}
@@ -488,6 +489,11 @@ export function OpsFleet() {
           {current ? <MachineCard key={current.id} machine={current} policy={policy.data ?? null} tools={tools} onChanged={machines.reload} /> : <Empty>{t("ops.pickMachine")}</Empty>}
         </aside>
       </div>
+      <DetailDialog open={current !== null} onClose={() => setSelected(null)} title={current?.machine ?? ""} className="h-auto max-h-[85vh]">
+        <div className="min-h-0 overflow-y-auto p-5 pr-12">
+          {current ? <MachineCard key={current.id} machine={current} policy={policy.data ?? null} onChanged={machines.reload} /> : null}
+        </div>
+      </DetailDialog>
     </div>
   );
 }

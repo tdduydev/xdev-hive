@@ -15,6 +15,7 @@ import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_T
 import { BatchSheet, PromptSheet } from "#ui/components/AgentSheets.tsx";
 import { FlowList, FlowTaskPanel } from "#ui/components/FlowCard.tsx";
 import { MachineSelect, ProfileSelect, takesRunsOf } from "#ui/components/MachinePicker.tsx";
+import { TaskKanban } from "#ui/components/TaskKanban.tsx";
 import { formatTime, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { REQUEST_TONE, requestErrorText, runLabel } from "#ui/lib/runs.ts";
@@ -34,6 +35,17 @@ const TONE_TEXT: Record<string, string> = {
 /** Machines take a request at their next heartbeat (30 s): follow it closely until one does. */
 const PENDING_MS = 3000;
 
+type View = "kanban" | "list";
+// Each reader's own choice, in this browser only (roadmap 30a): Kanban unless they picked the list.
+const VIEW_KEY = "hive-tasks-view";
+const readView = (): View => {
+  try {
+    return localStorage.getItem(VIEW_KEY) === "list" ? "list" : "kanban";
+  } catch {
+    return "kanban";
+  }
+};
+
 export function TasksPage() {
   const { client, scope, projects, me } = useHive();
   const t = useT();
@@ -43,10 +55,21 @@ export function TasksPage() {
   // Tasks always belong to one project: the shared scope has none of its own, so it shows every project's.
   const scoped = scopeProject(scope);
   const key = scopeKey(scope);
+  const [view, setViewState] = useState<View>(readView);
+  const setView = (v: View) => {
+    setViewState(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      // Not remembered.
+    }
+  };
   const [status, setStatus] = useState<TaskStatus | "">("");
+  // The board's columns are the statuses: it always gets every task.
+  const filter = view === "list" ? status : "";
   const list = useQuery(
-    () => client.call("tasks.list", { ...scopeFilter(scope), status: status || undefined }),
-    [client, key, status],
+    () => client.call("tasks.list", { ...scopeFilter(scope), status: filter || undefined }),
+    [client, key, filter],
   );
   const next = useQuery(() => client.call("tasks.next", { ...scopeFilter(scope), limit: 3 }), [client, key, list.data]);
   // Runs queued on a machine from here (hub only): which machine a task waits for, and what became of it.
@@ -74,7 +97,8 @@ export function TasksPage() {
   const [agentsParam, clearAgents] = useHashParam("agents");
   const [agents, setAgents] = useState<AgentTarget[]>([]);
   useEffect(() => {
-    if (agentsParam) setAgents(decodeTargets(agentsParam)), clearAgents();
+    // Tasks are picked in the list: that view, for this visit only.
+    if (agentsParam) setAgents(decodeTargets(agentsParam)), setViewState("list"), clearAgents();
   }, [agentsParam, clearAgents]);
   const pickable = (task: Task) => hub && task.status !== "done" && allow(task.project, "runDispatch");
   const picked = (list.data ?? []).filter((task) => picks.has(task.id) && pickable(task));
@@ -90,19 +114,35 @@ export function TasksPage() {
   const [prompting, setPrompting] = useState(false);
 
   return (
-    <Page>
+    <Page wide={view === "kanban"}>
       <PageHeader title={t("tasks.title")} subtitle={t("tasks.subtitle")} />
       <div className="flex flex-wrap items-center gap-2">
-        <NativeSelect value={status} onChange={(e) => setStatus(e.target.value as TaskStatus | "")} aria-label={t("tasks.status")}>
-          <NativeSelectOption value="">{t("tasks.anyStatus")}</NativeSelectOption>
-          {TASK_STATUSES.map((s) => (
-            <NativeSelectOption key={s} value={s}>
-              {t(`taskStatus.${s}`)}
-            </NativeSelectOption>
+        {view === "list" ? (
+          <NativeSelect value={status} onChange={(e) => setStatus(e.target.value as TaskStatus | "")} aria-label={t("tasks.status")}>
+            <NativeSelectOption value="">{t("tasks.anyStatus")}</NativeSelectOption>
+            {TASK_STATUSES.map((s) => (
+              <NativeSelectOption key={s} value={s}>
+                {t(`taskStatus.${s}`)}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        ) : null}
+        <div role="radiogroup" aria-label={t("tasks.view")} className="ml-auto flex gap-0.5 rounded-[7px] bg-sunken p-0.5">
+          {(["kanban", "list"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="radio"
+              aria-checked={view === v}
+              onClick={() => setView(v)}
+              className={cn("h-7 cursor-pointer rounded-[5px] px-2.5 text-xs/none font-semibold outline-none focus-visible:focus-ring", view === v ? "bg-surface text-fg-strong shadow-e1" : "text-fg-secondary")}
+            >
+              {t(`tasks.view_${v}`)}
+            </button>
           ))}
-        </NativeSelect>
+        </div>
         {prompters.length ? (
-          <Button size="sm" className="ml-auto" onClick={() => setPrompting(true)} data-prompt-agent>
+          <Button size="sm" onClick={() => setPrompting(true)} data-prompt-agent>
             <Sparkles />
             {t("tasks.promptOpen")}
           </Button>
@@ -172,7 +212,18 @@ export function TasksPage() {
         </div>
       ) : null}
       {list.data?.length === 0 ? <Empty>{t("tasks.none")}</Empty> : null}
-      {list.data?.length ? (
+      {list.data?.length && view === "kanban" ? (
+        <TaskKanban
+          tasks={list.data}
+          showProject={scoped === null}
+          requests={requests.data ?? []}
+          nextIds={(next.data ?? []).map((task) => task.id)}
+          selectedId={openId}
+          onOpen={setOpenId}
+          onChanged={reload}
+        />
+      ) : null}
+      {list.data?.length && view === "list" ? (
         <div className="overflow-x-auto rounded-lg border">
           {/* Fixed columns: a long title or note wraps in its own cell instead of pushing the others out of view. */}
           {/* On a phone: task and status only; the rest is in the task's panel. */}
