@@ -60,7 +60,11 @@ describe("inbox", () => {
 
   it("puts machine setup gaps last, with no time", () => {
     const items = buildInbox({
-      setup: [{ id: "shim", label: "hive-mcp", state: "outdated", detail: "", action: "Cập nhật" }],
+      setup: [
+        { id: "shim", label: "hive-mcp", state: "outdated", detail: "", action: "Cập nhật" },
+        // Optional: Spec Kit's CLI missing is no gap of the day (roadmap 20a).
+        { id: "cli:specify", label: "Spec Kit CLI", state: "missing", detail: "", action: "Cài bằng uv" },
+      ],
       proposals: [{ id: 1, docKey: "org/a", status: "pending", createdAt: "2026-09-30T10:00:00Z" } as Proposal],
     });
     assert.deepEqual(
