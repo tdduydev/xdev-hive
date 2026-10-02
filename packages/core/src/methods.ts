@@ -60,6 +60,7 @@ import {
   type Role,
   type Task,
   type TeamPolicy,
+  type ToolStatus,
   type ToolView,
 } from "./types.ts";
 
@@ -195,6 +196,8 @@ const chatAction = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("agents.stop") }),
   z.object({ kind: z.literal("agents.resume") }),
   z.object({ kind: z.literal("machine.install"), machine: machineRef, itemId: setupItemId }),
+  /** The chat project's own setting for a catalog tool (roadmap 28e); required left out keeps what the project has. */
+  z.object({ kind: z.literal("tool.enable"), id: z.string().min(1).max(40), enabled: z.boolean().nullable(), required: z.boolean().optional() }),
 ]);
 
 export const schemas = {
@@ -671,6 +674,8 @@ export const schemas = {
   "tools.remove": z.object({ id: z.string().min(1).max(40) }),
   /** A project's own setting (projectSettings on it); enabled null and required false: back to the tool's default. */
   "tools.setProject": z.object({ id: z.string().min(1).max(40), project, enabled: z.boolean().nullable(), required: z.boolean().default(false) }),
+  /** Each tool's setting for the project and its setup items on the project's machines (roadmap 28e). */
+  "tools.status": z.object({ project }),
 
   /** Systems (roadmap 19b), by name. */
   "systems.list": z.object({}),
@@ -829,6 +834,7 @@ export interface MethodOutput {
   "tools.save": ToolView;
   "tools.remove": { removed: boolean };
   "tools.setProject": ToolView;
+  "tools.status": ToolStatus[];
   "systems.list": HiveSystem[];
   "systems.save": HiveSystem;
   "systems.remove": { removed: boolean };
@@ -949,6 +955,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "tools.remove": "admin",
   // Also projectSettings on the project: a person, never an agent token.
   "tools.setProject": "agent",
+  "tools.status": "viewer",
   "systems.list": "viewer",
   // Also "manage" on each project of the system: a project manager, never an agent token.
   "systems.save": "agent",

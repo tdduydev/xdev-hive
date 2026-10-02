@@ -142,3 +142,20 @@ function textFields(e: ToolEntry): Array<[field: string, text: string]> {
 
 /** Whether a project gets the tool: its own choice, else the tool's default. */
 export const toolEffective = (enabled: boolean | null, enabledByDefault: boolean): boolean => enabled ?? enabledByDefault;
+
+/**
+ * The setup items a machine reports for a tool in a project (roadmap 28e). A seed keeps the items the app checked
+ * before the catalog; any other entry is the machine's own tool:<id> (28b-2).
+ */
+export function toolSetupItems(tool: Pick<ToolEntry, "id" | "handler">, project: string): string[] {
+  switch (tool.handler) {
+    case "codegraph":
+      return [`${project}:codegraph-mcp`, `${project}:codegraph-index`];
+    case "superpowers":
+      return [`${project}:superpowers`];
+    case "speckit":
+      return ["cli:specify", `${project}:speckit`];
+    default:
+      return [`tool:${tool.id}`];
+  }
+}

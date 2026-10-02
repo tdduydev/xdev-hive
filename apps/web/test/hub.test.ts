@@ -221,6 +221,9 @@ describe("hub as a backend", () => {
       "skill_list",
       "task_list",
       "task_next",
+      "token_usage",
+      "tool_list",
+      "tool_status",
     ]);
     await client.close();
   });
@@ -248,6 +251,9 @@ describe("hub as a backend", () => {
       "skill_list",
       "task_list",
       "task_next",
+      "token_usage",
+      "tool_list",
+      "tool_status",
     ]);
     const listed = await ro.callTool({ name: "task_list", arguments: {} });
     assert.equal(listed.isError, undefined, "the default project stands in for the missing argument");
