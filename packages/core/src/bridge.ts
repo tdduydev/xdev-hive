@@ -370,6 +370,8 @@ export interface DesktopBridge {
   updateSettings(patch: DesktopSettingsPatch): Promise<DesktopSettings>;
   /** The interface language, for what the main process shows itself (tray, notifications, dialogs). */
   setLocale(locale: string): Promise<void>;
+  /** A crash the interface caught (or an error nobody handled), for the app's log; older apps have none. */
+  logError?(text: string): Promise<void>;
   /** Hub mode with a hub account: the hub issues this machine a token that belongs to the account. */
   hubSignIn(input: { hubUrl: string; username: string; password: string }): Promise<DesktopSettings>;
   /** The same through the browser (SSO or password on the hub's page); waits until allowed, denied or cancelled. */

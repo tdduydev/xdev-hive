@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld("hive", {
     hubSignInBrowser: (input: unknown) => invoke("desktop:hubSignInBrowser", input),
     hubSignInCancel: () => invoke("desktop:hubSignInCancel"),
     setLocale: (locale: string) => invoke("desktop:setLocale", locale),
+    logError: (text: string) => invoke("desktop:logError", text),
     addProject: (project: unknown) => invoke("desktop:addProject", project),
     removeProject: (name: string) => invoke("desktop:removeProject", name),
     pickFolder: () => invoke("desktop:pickFolder"),
