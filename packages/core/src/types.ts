@@ -296,6 +296,13 @@ export interface SetupReport {
   projects: Array<{ project: string; repo: string; items: SetupItem[] }>;
 }
 
+/** What a machine with the project still lacks (roadmap 29a): for the project's readers, so no install action or local paths. */
+export interface MachineSetupMissing {
+  machineId: string;
+  machine: string;
+  items: Array<Omit<SetupItem, "action">>;
+}
+
 /** A subscription profile as a machine reports it to the hub: no command line, no env. */
 export interface ReportedProfile {
   id: string;
