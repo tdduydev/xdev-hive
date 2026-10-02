@@ -71,11 +71,11 @@ Một mục là một task sẽ chạy. Mục `held` chưa thành yêu cầu run
 
 ## R-31e. Fan-out: một prompt cho nhiều agent
 
-`runs.prompt` (32b) nhận thêm `targets: Array<{ machineId | null, profileId | null }>` (2–8) thay cho `machineId` / `profileId`.
+Method riêng `runs.fanout { project, title?, prompt, targets: Array<{ machineId | null, profileId | null }> (2–8), reviewAfter }` → `RunGroup` (quyền như `runs.prompt`). Làm khác spec ban đầu (mở rộng `runs.prompt`): một method trả về đợt chạy thì kiểu dữ liệu rõ hơn.
 - Tạo task cha `P-<n>` (ghi chú = prompt, không chạy) và task con `P-<n>-a`, `P-<n>-b`, … một task mỗi đích; tiêu đề con: `<tiêu đề> · <máy>/<gói>` (hoặc *máy rảnh*, *tự xoay*). Task cha `dependsOn` mọi task con.
 - Một nhóm `fanout`, `max_parallel` null, `parent_task` = cha; mỗi con một mục. Cùng máy + cùng gói hai lần thì được (máy xếp theo `maxConcurrent`).
-- `runs.pickWinner { groupId, taskId }` (`runDispatch`): task được chọn đi tiếp như thường (review, MR); các task con khác → `done` với ghi chú "Không chọn trong P-<n> (chọn <task>)", yêu cầu còn chờ bị huỷ; task cha → `done`; nhóm `winner_task`, `closed_at`. Branch của bản không chọn giữ nguyên.
-- Giao diện: hộp *Prompt cho agent* có *Thêm agent* (mỗi dòng một máy + gói). Thẻ đợt `fanout` trên tab *Đợt chạy* có bảng so sánh: gói, trạng thái, thời gian, chi phí, số file / dòng đổi (diff hub có), kết luận review; *Xem thay đổi* và *Chọn bản này*.
+- `runs.pickWinner { groupId, taskId }` (`taskManage` + `runDispatch`), chỉ khi mọi agent đã xong (`errors.fanoutRunning`): một run còn chạy sẽ tự đưa task của nó về *Chờ review* khi xong, sau khi đã bị đóng ở đây. task được chọn đi tiếp như thường (review, MR); các task con khác → `done` với ghi chú "Không chọn trong P-<n> (chọn <task>)", yêu cầu còn chờ bị huỷ; task cha → `done`; nhóm `winner_task`, `closed_at`. Branch của bản không chọn giữ nguyên.
+- Giao diện: hộp *Prompt cho agent* có *Thêm agent* (mỗi dòng một máy + gói). Thẻ đợt `fanout` trên trang *Đợt chạy* có: máy · gói, kết quả run, chi phí, link tới run (tab *Thay đổi* xem diff) và *Chọn bản này*. Chưa có cột thời gian, số dòng đổi và kết luận review.
 - Không có giám khảo tự động (khác best-of-n): các bản nằm trên nhiều máy.
 
 ## R-31b. Bản đồ agent
