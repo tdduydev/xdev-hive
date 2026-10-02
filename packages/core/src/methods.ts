@@ -8,6 +8,7 @@ import { DOC_ASSET_MAX_BYTES } from "./doclinks.ts";
 import { MR_STATUSES, PIPELINE_STATUSES } from "./gitlab.ts";
 import { MACHINE_ID, PROJECT_NAME } from "./keys.ts";
 import type { SkillSummary } from "./skills.ts";
+import { SPEC_DIR, SPEC_FEATURES_MAX, SPEC_FILE_MAX, type SpecFeature, type SpecFeatureDetail } from "./speckit.ts";
 import {
   MEMORY_KINDS,
   MEMORY_STATUSES,
@@ -72,6 +73,7 @@ const pathGlob = z
   .regex(/^(?!\/)(?!(?:.*\/)?\.\.(?:\/|$))[\w.*?\/{}\[\],@+-]+$/, "path glob: repo-relative, e.g. apps/web/** or **/*.test.ts");
 const taskId = z.string().regex(/^[A-Za-z0-9._-]{1,100}$/, "task id: letters, digits, . _ -");
 const content = z.string().max(200_000);
+const specText = z.string().max(SPEC_FILE_MAX).nullable();
 /** A path from the repo root: no leading slash, no backslash, no empty or ".." segment. */
 const repoPath = z
   .string()
@@ -417,6 +419,28 @@ export const schemas = {
       )
       .max(20),
   }),
+  /**
+   * A machine's Spec Kit features of one project as it reads them now (roadmap 20b): its earlier rows of the project
+   * that are not in this push go (feature removed, branch merged); other machines' rows stay.
+   */
+  "specs.push": z.object({
+    project,
+    features: z
+      .array(
+        z.object({
+          dir: z.string().regex(SPEC_DIR),
+          /** "" for the project's target branch. */
+          branch: z.string().max(200),
+          commit: z.string().regex(/^[0-9a-f]{4,64}$/),
+          files: z.object({ spec: specText, plan: specText, tasks: specText }),
+        }),
+      )
+      .max(SPEC_FEATURES_MAX),
+  }),
+  /** Spec Kit features (no file contents): a project's, or every project the caller sees. */
+  "specs.list": z.object({ project: project.optional(), projects: projectList }),
+  /** One feature with its spec.md, plan.md and tasks.md. */
+  "specs.get": z.object({ project, dir: z.string().regex(SPEC_DIR), branch: z.string().max(200) }),
   /** Runs the hub was told about, the newest runs first (no log); a project's, or every project the caller sees. */
   "runs.list": z.object({ project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(200).default(50) }),
   /**
@@ -696,6 +720,9 @@ export interface MethodOutput {
   "budgets.set": BudgetUsage[];
   "runs.report": RunNotice;
   "runs.push": { stored: number };
+  "specs.push": { stored: number; removed: number };
+  "specs.list": SpecFeature[];
+  "specs.get": SpecFeatureDetail | null;
   "runs.list": RunRecord[];
   "runs.get": RunRecord | null;
   "runs.cancel": RunRecord;
@@ -800,6 +827,9 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "budgets.set": "admin",
   "runs.report": "agent",
   "runs.push": "agent",
+  "specs.push": "agent",
+  "specs.list": "viewer",
+  "specs.get": "viewer",
   "runs.list": "viewer",
   "runs.get": "viewer",
   "runs.cancel": "agent",

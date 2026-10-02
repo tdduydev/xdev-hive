@@ -446,6 +446,41 @@ async function main() {
     await tab.waitFor("merged from Hive, no Merge button", () => document.body.innerText.includes("Đã merge từ Hive") && ![...document.querySelectorAll("button")].some((b) => b.textContent.trim() === "Merge"));
   });
 
+  // Roadmap 20b: Lan's machine pushes payment's Spec Kit features; Hoa reads one on Spec.
+  await step("spec-page", async () => {
+    const pushed = await rpc(
+      "specs.push",
+      {
+        project: "payment",
+        features: [
+          {
+            dir: "001-thanh-toan-qr",
+            branch: "",
+            commit: "abc1234",
+            files: {
+              spec: "# Feature Specification: Thanh toán QR\n\nNgười dùng quét mã để trả tiền.",
+              plan: "# Implementation Plan: Thanh toán QR\n\nDùng VietQR.",
+              tasks: "## Phase 1: Setup\n\n- [x] T001 Tạo module qr\n- [ ] T002 [US1] Trang quét mã, src/qr.tsx",
+            },
+          },
+          { dir: "002-hoan-tien", branch: "ai/PAY-2", commit: "def5678", files: { spec: "# Feature Specification: Hoàn tiền", plan: null, tasks: null } },
+        ],
+      },
+      people.lan.token,
+    );
+    expect(pushed.stored === 2, `specs.push: ${JSON.stringify(pushed)}`);
+    const tab = (current = tabs.hoa);
+    await tab.go("specs?project=payment&dir=001-thanh-toan-qr&branch=");
+    await tab.waitFor("both features, with their stages", () => {
+      const text = document.body.innerText;
+      return text.includes("Thanh toán QR") && text.includes("Hoàn tiền") && text.includes("Đang làm") && text.includes("Viết spec") && text.includes("ai/PAY-2");
+    });
+    await tab.click('[role="tab"]', "Spec");
+    await tab.waitFor("spec.md", () => document.body.innerText.includes("Người dùng quét mã"));
+    await tab.click('[role="tab"]', "Tasks");
+    await tab.waitFor("the tasks of tasks.md", () => document.body.innerText.includes("Trang quét mã") && document.body.innerText.includes("1/2"));
+  });
+
   // Roadmap 27a: a project's row only tightens the hub's default; the machines get it at their heartbeat.
   await step("agent-policy", async () => {
     const tab = (current = tabs.admin);
