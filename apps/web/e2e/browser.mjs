@@ -542,6 +542,43 @@ async function main() {
     expect(beat.agentPolicy?.projects?.payment?.autonomy === "read", `heartbeat agentPolicy: ${JSON.stringify(beat.agentPolicy)}`);
   });
 
+  // Roadmap 28a: Lan (lead of payment) turns codegraph on for payment on the Tool page; the admin adds an MCP entry to
+  // the catalog in the Web Admin, then removes it.
+  await step("tools", async () => {
+    let tab = (current = tabs.lan);
+    await tab.go("tools");
+    await tab.select("#tools-project", "payment");
+    await tab.select("#tool-codegraph-state", "on");
+    await until("codegraph on for payment", async () => (await rpc("tools.list", { project: "payment" })).find((t) => t.id === "codegraph")?.projects[0]?.effective === true);
+    await tab.waitFor("the card says it is on", () => !!document.querySelector('[data-tool="codegraph"] [data-tool-effective="on"]'));
+
+    tab = current = tabs.admin;
+    await tab.go("admin/tools");
+    await tab.click("button[data-tool-add]");
+    await tab.click("#tool-form-new-id");
+    await tab.type("rtk");
+    await tab.click("#tool-form-new-name");
+    await tab.type("RTK");
+    await tab.click("#tool-form-new-pkg-name");
+    await tab.type("rtk-mcp");
+    await tab.click("#tool-form-new-pkg-version");
+    await tab.type("latest");
+    await tab.waitFor("the pin error under the version", () => document.body.innerText.includes("chưa ghim"));
+    await tab.eval(() => {
+      const input = document.querySelector("#tool-form-new-pkg-version");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, "0.4.1");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await tab.click("button[data-tool-save]");
+    const saved = await until("rtk in the catalog", async () => (await rpc("tools.list", {})).find((t) => t.id === "rtk"));
+    expect(saved.kind === "mcp" && saved.package?.version === "0.4.1" && saved.mcp?.args.includes("{package}"), `rtk: ${JSON.stringify(saved)}`);
+    await tab.click('[data-tool="rtk"] button[data-tool-remove]');
+    await tab.click('[data-tool="rtk"] button[data-tool-remove-confirm]');
+    await until("rtk gone", async () => !(await rpc("tools.list", {})).some((t) => t.id === "rtk"));
+    const seeds = await rpc("tools.list", {});
+    expect(["codegraph", "speckit", "superpowers"].every((id) => seeds.some((t) => t.id === id && t.builtin)), "the seeds stay");
+  });
+
   // Roadmap 27d: the admin stops every agent of the hub; machines hear it, nobody can queue a run until it is lifted.
   await step("stop-all", async () => {
     const tab = (current = tabs.admin);

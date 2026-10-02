@@ -364,6 +364,74 @@ export interface TeamPolicy {
   updatedBy: string | null;
 }
 
+/** The tool catalog (roadmap 28a): what machines may set up for runs, kept on the hub instead of in the app's code. */
+export const TOOL_KINDS = ["mcp", "plugin", "hook", "cli"] as const;
+export const TOOL_AGENTS = ["claude", "codex", "gemini"] as const;
+export const TOOL_REGISTRIES = ["npm", "pypi", "brew", "git", "claude-plugin"] as const;
+/**
+ * Tools the app already has its own code for: from 28b the machine runs that code to install, prepare and check them,
+ * and the catalog decides whether they are on, their version and policy.
+ */
+export const TOOL_HANDLERS = ["codegraph", "superpowers", "speckit"] as const;
+export const TOOL_HOOK_EVENTS = ["PreToolUse", "PostToolUse", "SessionStart", "Stop"] as const;
+export type ToolKind = (typeof TOOL_KINDS)[number];
+export type ToolAgent = (typeof TOOL_AGENTS)[number];
+export type ToolRegistry = (typeof TOOL_REGISTRIES)[number];
+export type ToolHandler = (typeof TOOL_HANDLERS)[number];
+
+export interface ToolEntry {
+  /** Also the MCP server's name in a run's config and in the agent policy: TOOL_ID. */
+  id: string;
+  name: string;
+  description: string;
+  kind: ToolKind;
+  /** Always a pinned version: a run gets what was reviewed, not whatever the registry has today. */
+  package: { registry: ToolRegistry; name: string; version: string } | null;
+  /** kind "mcp": the command that runs the server. */
+  mcp: { command: string; args: string[] } | null;
+  /** kind "plugin": the Claude Code plugin id, e.g. superpowers@claude-plugins-official. */
+  plugin: string | null;
+  /** kind "hook": Claude Code hooks a run turns on (28b/28d); runs otherwise set disableAllHooks. */
+  hooks: Array<{ event: (typeof TOOL_HOOK_EVENTS)[number]; matcher: string; command: string[] }>;
+  agents: ToolAgent[];
+  /** On the machine: a command that exits 0 when installed, and one that installs. null: nothing to install (npx fetches it). */
+  check: string[] | null;
+  install: string[] | null;
+  /** In a run's worktree: init when `marker` is missing, sync when it is there (like codegraph's index). */
+  prepare: { init: string[]; sync: string[]; marker: string } | null;
+  /** Fixed variables, never secrets: telemetry and update checks off. */
+  env: Record<string, string>;
+  /** Names of variables the machine supplies itself (API keys…): the hub never holds their values. */
+  secretEnv: string[];
+  /** SPDX, e.g. MIT. */
+  license: string;
+  /** https. */
+  homepage: string | null;
+  /** Seeds only: the code of the app that sets the tool up. */
+  handler: ToolHandler | null;
+  /** On for every project but those that turn it off. */
+  enabledByDefault: boolean;
+}
+
+/** A project's own setting for a tool; enabled null follows the tool's enabledByDefault. */
+export interface ToolProjectSetting {
+  project: string;
+  enabled: boolean | null;
+  required: boolean;
+  effective: boolean;
+}
+
+export interface ToolView extends ToolEntry {
+  /** A seed: never removed, only turned off. */
+  builtin: boolean;
+  /** The entry's own version (optimistic lock), not the package's. */
+  version: number;
+  updatedAt: string;
+  updatedBy: string;
+  /** The projects the reader may view that have their own setting (with tools.list's project: that one, always). */
+  projects: ToolProjectSetting[];
+}
+
 /**
  * A system (roadmap 19b): the projects that make one product, each a service with its own repository. Picked in the
  * sidebar, the pages show the tasks, runs, merge requests and chat of every project in it. A project may be in several.
@@ -483,7 +551,12 @@ export type HiveEvent =
   | { type: "agentPolicy.changed"; project: string | null; by: string; policy: Partial<AgentPolicy> | null }
   /** Someone stopped every agent of a project (project) or of the hub (null), roadmap 27d. */
   | { type: "agents.stopped"; project: string | null; by: string; stop: AgentsStop }
-  | { type: "agents.resumed"; project: string | null; by: string };
+  | { type: "agents.resumed"; project: string | null; by: string }
+  /**
+   * The tool catalog changed (roadmap 28a): an entry saved or removed (project null), or a project's setting. For 28b to
+   * push to machines; not a webhook event yet.
+   */
+  | { type: "tool.changed"; project: string | null; by: string; tool: string; removed: boolean };
 
 /** The hub's alert rules (roadmap 22m), each turned on or off by a hub admin. */
 export const ALERT_RULES = [

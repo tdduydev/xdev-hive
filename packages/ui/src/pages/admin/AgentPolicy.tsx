@@ -11,6 +11,7 @@ import {
   type AgentPolicy,
   type Autonomy,
   type NetworkMode,
+  type ToolView,
 } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
@@ -75,6 +76,9 @@ export function AgentPolicyCard({ editableOnly = false }: { editableOnly?: boole
   const known = useProjects();
   const [tick, setTick] = useState(0);
   const view = useQuery(() => client.call("agentPolicy.get", {}), [client, tick]);
+  // The catalog's MCP servers (roadmap 28a), offered in the MCP list; a hub older than it has none.
+  const catalog = useQuery(() => client.call("tools.list", {}).catch((): ToolView[] => []), [client]);
+  const mcpIds = useMemo(() => (catalog.data ?? []).filter((x) => x.kind === "mcp").map((x) => x.id), [catalog.data]);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [saved, setSaved] = useState<string | null>(null);
   const action = useAction();
@@ -213,6 +217,19 @@ export function AgentPolicyCard({ editableOnly = false }: { editableOnly?: boole
                 />
               </label>
             ))}
+            {/* Other names stay allowed: Codex has servers of its own in ~/.codex/config.toml. */}
+            {d.mcp === "list" && editable && mcpIds.some((id) => !split(d.mcpList).includes(id)) ? (
+              <div className="flex flex-wrap items-center gap-1 text-[11px] text-fg-muted">
+                {t("agentPolicy.mcpSuggest")}
+                {mcpIds
+                  .filter((id) => !split(d.mcpList).includes(id))
+                  .map((id) => (
+                    <Button key={id} type="button" size="xs" variant="outline" className="font-mono" onClick={() => edit(key, { mcpList: [...split(d.mcpList), id].join(", ") })}>
+                      + {id}
+                    </Button>
+                  ))}
+              </div>
+            ) : null}
           </div>
         </TableCell>
         <TableCell className="align-top whitespace-normal">
