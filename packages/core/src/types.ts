@@ -752,6 +752,11 @@ export interface ChatDefaults {
   effort: ChatEffort | null;
   /** What its leader may run; DEFAULT_LEADER_COMMANDS until a manager sets them ([] runs nothing). */
   commands: string[];
+  /**
+   * Kinds of proposal its leader runs at once, as the person who sent the message, without waiting for a confirm
+   * (roadmap 29c). None by default; never one of CHAT_ACTION_ALWAYS_CONFIRM.
+   */
+  autoKinds: ChatActionKind[];
   updatedBy: string | null;
   updatedAt: string | null;
 }
@@ -858,6 +863,8 @@ export interface ChatAction {
   decidedBy: string | null;
   decidedAt: string | null;
   createdAt: string;
+  /** The leader ran it at once, as decidedBy (who sent the message), because the project lets it (roadmap 29c). */
+  auto: boolean;
 }
 
 /** The rights of whoever wrote a chat message, kept for the hub to cut the reply's MCP token (see ChatRequest.grant). */
@@ -865,6 +872,8 @@ export interface ChatSender {
   name: string;
   role: Role;
   access?: Access;
+  /** The hub account, for what checks one (a machine's owner); absent for messages from before roadmap 29c. */
+  account?: string;
 }
 
 /** A reply a machine is asked to write (heartbeat): the person's message and the session to resume. */

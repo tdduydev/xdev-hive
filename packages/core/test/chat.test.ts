@@ -200,7 +200,7 @@ describe("chat with a project's leader", () => {
     await beat(mbp);
     await beat(mini);
     assert.deepEqual(await hive.call("chat.defaults", { project: "app" }, dev), {
-      project: "app", machineId: null, profileId: null, model: null, effort: null, commands: ["git status", "git log", "git diff", "git show"], updatedBy: null, updatedAt: null,
+      project: "app", machineId: null, profileId: null, model: null, effort: null, commands: ["git status", "git log", "git diff", "git show"], autoKinds: [], updatedBy: null, updatedAt: null,
     });
     const set = { project: "app", machineId: mini.name, profileId: "claude-1", model: "opus", effort: "high" as const };
     assert.equal(await refusal(hive.call("chat.setDefaults", set, dev)), "errors.need.projectSettings");
