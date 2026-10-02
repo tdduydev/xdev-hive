@@ -48,6 +48,7 @@ import {
   type RunMergeOrder,
   type MachineCommand,
   type MachineDetail,
+  type MachineSetupMissing,
   type Memory,
   type MemorySearchInfo,
   type ProjectSyncState,
@@ -353,6 +354,8 @@ export const schemas = {
     costs: z.array(runCost).max(100).default([]),
   }),
   "machines.list": z.object({}),
+  /** What the project's machines still lack to run its agents (roadmap 29a): any reader of the project, unlike admin.machines. */
+  "machines.setupMissing": z.object({ project }),
   /**
    * Turns one of a machine's profiles on or off, or changes its priority (roadmap 18d): a hub admin, or the person whose
    * account the machine's token belongs to. The machine applies it at its next heartbeat, no restart.
@@ -694,6 +697,7 @@ export interface MethodOutput {
     mergeRuns: RunMergeOrder[];
   };
   "machines.list": Machine[];
+  "machines.setupMissing": MachineSetupMissing[];
   "machines.setProfile": Machine;
   "costs.summary": CostSummary;
   "budgets.list": BudgetUsage[];
@@ -796,6 +800,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "tasks.update": "agent",
   "machines.heartbeat": "agent",
   "machines.list": "viewer",
+  "machines.setupMissing": "viewer",
   // Not a project right: the hub checks for a hub admin or the machine's owner, and refuses agents.
   "machines.setProfile": "agent",
   "costs.summary": "viewer",
