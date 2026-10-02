@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import type { Actor } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
-import { createHiveMcpServer } from "#mcp/index.ts";
+import { createHiveMcpServer, type HiveMcpOptions } from "#mcp/index.ts";
 
 async function connect(hive: SqliteHive, name = "claude@duy", opts: { role?: "agent" | "viewer"; readOnly?: boolean } = {}) {
   const server = createHiveMcpServer(hive, { name, role: opts.role ?? "agent" }, { defaultProject: "app", readOnly: opts.readOnly });
@@ -21,6 +22,7 @@ describe("mcp tools", () => {
     const client = await connect(new SqliteHive(":memory:"));
     const names = (await client.listTools()).tools.map((t) => t.name).sort();
     assert.deepEqual(names, [
+      "cost_summary",
       "doc_asset",
       "doc_get",
       "doc_list",
@@ -28,8 +30,11 @@ describe("mcp tools", () => {
       "machine_list",
       "memory_search",
       "memory_write",
+      "policy_get",
       "run_get",
       "run_list",
+      "run_requests",
+      "setup_missing",
       "skill_get",
       "skill_list",
       "skill_propose",
@@ -44,13 +49,17 @@ describe("mcp tools", () => {
     const hive = new SqliteHive(":memory:");
     for (const client of [await connect(hive, "claude@duy", { readOnly: true }), await connect(hive, "ci", { role: "viewer" })]) {
       assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), [
+        "cost_summary",
         "doc_asset",
         "doc_get",
         "doc_list",
         "machine_list",
         "memory_search",
+        "policy_get",
         "run_get",
         "run_list",
+        "run_requests",
+        "setup_missing",
         "skill_get",
         "skill_list",
         "task_list",
@@ -190,4 +199,148 @@ describe("mcp tools", () => {
     const [machine] = JSON.parse(text(await claude.callTool({ name: "machine_list", arguments: {} })));
     assert.deepEqual([machine.machine, machine.acceptsRuns, machine.projects], ["duy-mbp", true, ["app"]]);
   });
+
+  it("reads a project's costs, caps, run requests, policy and missing setup, and nothing of a project it does not see", async () => {
+    // Local noon: the day's cap starts at the hub's local midnight, and the run ended an hour before.
+    const noon = new Date(2026, 9, 1, 12, 0);
+    const hive = new SqliteHive(":memory:", { now: () => noon });
+    const admin = { name: "duy", role: "admin" as const };
+    const mbp = { name: "runner.duy-mbp@duy-mbp", role: "agent" as const };
+    const finishedAt = new Date(noon.getTime() - 60 * 60_000).toISOString();
+    const cost = (runId: string, project: string, costUsd: number) => ({ runId, project, taskId: "T-1", profileId: "claude-1", account: null, costUsd, inputTokens: 10, outputTokens: 1, finishedAt });
+    const setup = {
+      checkedAt: noon.toISOString(),
+      report: {
+        machine: [{ id: "cli:codex", label: "Codex CLI", state: "missing", detail: "Chưa cài", action: "Cài bằng npm" }],
+        projects: [
+          { project: "app", repo: "/Users/duy/app", items: [{ id: "app:codegraph-index", label: "Index", state: "missing", detail: "Chưa tạo", action: "Tạo index" }] },
+          { project: "site", repo: "/Users/duy/site", items: [{ id: "site:agents", label: "AGENTS.md", state: "missing", detail: "Chưa có", action: "Tạo" }] },
+        ],
+      },
+    };
+    await hive.call(
+      "machines.heartbeat",
+      { machine: "duy-mbp", instance: "a1b2c3d4", projects: ["app", "site"], acceptsRuns: true, setup, costs: [cost("R-1", "app", 2), cost("R-2", "site", 5)] } as never,
+      mbp,
+    );
+    await hive.call("tasks.create", { id: "T-1", project: "app", title: "API" }, admin);
+    await hive.call("tasks.create", { id: "S-1", project: "site", title: "Home" }, admin);
+    await hive.call("runs.dispatch", { machineId: mbp.name, project: "app", taskId: "T-1" }, admin);
+    await hive.call("runs.dispatch", { machineId: mbp.name, project: "site", taskId: "S-1" }, admin);
+    await hive.call(
+      "budgets.set",
+      {
+        budgets: [
+          { scope: { kind: "project", project: "app" }, period: "day", limit: { usd: 10 } },
+          { scope: { kind: "project", project: "site" }, period: "day", limit: { usd: 10 } },
+          { scope: { kind: "hub" }, period: "month", limit: { runs: 50 } },
+        ],
+      },
+      admin,
+    );
+    await hive.call("agentPolicy.set", { project: "app", policy: { autonomy: "propose" } }, admin);
+    await hive.call("agentPolicy.set", { project: "site", policy: { autonomy: "read" } }, admin);
+    await hive.call("policy.set", { projects: { app: ["agents"], site: ["codegraph-index"] } }, admin);
+    await hive.call("agents.stop", { project: "site" }, admin);
+
+    // A leader whose sender only has app: what it reads is app's, and site answers not_found like on the web.
+    const lan = await connectAs(hive, { name: "claude-1.duy-mbp@chat-lan", role: "agent", chatReply: 1, access: { projects: { app: "member" } } });
+    assert.match(lan.getInstructions() ?? "", /cost_summary/);
+    const costs = JSON.parse(text(await lan.callTool({ name: "cost_summary", arguments: {} })));
+    assert.deepEqual([costs.project, costs.costs.usd1, costs.costs.runs30], ["app", 2, 1]);
+    assert.deepEqual(costs.budgets.map((b: { id: string; used: { usd: number } }) => [b.id, b.used.usd]), [["project:app:day", 2]], "neither site's cap nor the hub's");
+    const requests = JSON.parse(text(await lan.callTool({ name: "run_requests", arguments: {} })));
+    assert.deepEqual(requests.map((r: { project: string; taskId: string; status: string }) => [r.project, r.taskId, r.status]), [["app", "T-1", "pending"]]);
+    const policy = JSON.parse(text(await lan.callTool({ name: "policy_get", arguments: {} })));
+    assert.deepEqual(
+      [policy.agentPolicy.effective.autonomy, policy.agentPolicy.project, policy.required.repo, policy.paused],
+      ["propose", { autonomy: "propose" }, ["agents"], { hub: null, project: null }],
+    );
+    assert.equal(JSON.stringify(policy).includes("site"), false, "nothing of site in app's answer");
+    const missing = JSON.parse(text(await lan.callTool({ name: "setup_missing", arguments: {} })));
+    assert.deepEqual(missing.map((m: { machine: string; items: Array<{ id: string }> }) => [m.machine, m.items.map((i) => i.id)]), [["duy-mbp", ["cli:codex", "app:codegraph-index"]]]);
+    assert.equal(JSON.stringify(missing).includes("action"), false);
+    for (const name of ["cost_summary", "run_requests", "policy_get", "setup_missing"]) {
+      const other = await lan.callTool({ name, arguments: { project: "site" } });
+      assert.equal(other.isError, true, name);
+      assert.match(text(other), /^not_found/, name);
+    }
+
+    // A hub admin sees the hub's cap too, and that site's agents are stopped.
+    const duy = await connectAs(hive, admin);
+    const all = JSON.parse(text(await duy.callTool({ name: "cost_summary", arguments: {} })));
+    assert.deepEqual(all.budgets.map((b: { id: string }) => b.id).sort(), ["hub:month", "project:app:day"]);
+    const site = JSON.parse(text(await duy.callTool({ name: "policy_get", arguments: { project: "site" } })));
+    assert.deepEqual([site.agentPolicy.effective.autonomy, site.paused.hub, site.paused.project?.name], ["read", null, "duy"]);
+  });
+
+  it("shows the hub's open alerts to hub admins only, and only when the hub hands them over", async () => {
+    const hive = new SqliteHive(":memory:");
+    const open = [
+      { id: 1, rule: "machine_offline", project: null },
+      { id: 2, rule: "run_fail_streak", project: "app" },
+      { id: 3, rule: "run_fail_streak", project: "site" },
+    ];
+    const alerts = { list: async () => open };
+    const has = async (client: Client) => (await client.listTools()).tools.some((t) => t.name === "alert_list");
+
+    const admin = await connectAs(hive, { name: "duy", role: "admin" }, { alerts });
+    assert.equal(await has(admin), true);
+    assert.equal(JSON.parse(text(await admin.callTool({ name: "alert_list", arguments: {} }))).length, 3);
+    const app = JSON.parse(text(await admin.callTool({ name: "alert_list", arguments: { project: "app" } })));
+    assert.deepEqual(app.map((a: { id: number }) => a.id), [1, 2], "the project's and the hub-wide ones");
+
+    assert.equal(await has(await connectAs(hive, { name: "duy", role: "admin" })), false, "no alerts handed over");
+    assert.equal(await has(await connectAs(hive, { name: "lan", role: "admin", access: { projects: { app: "lead" } } }, { alerts })), false, "an admin of some projects only");
+    assert.equal(await has(await connectAs(hive, { name: "claude@duy", role: "agent" }, { alerts })), false);
+    assert.equal(await has(await connectAs(hive, { name: "ci", role: "viewer" }, { alerts })), false);
+  });
+
+  it("gives a chat leader the propose tools for the rest of the web, and nobody else", async () => {
+    const hive = new SqliteHive(":memory:");
+    const admin = { name: "duy", role: "admin" as const };
+    const mbp = { name: "runner.duy-mbp@duy-mbp", role: "agent" as const };
+    // A Claude plan: the chat's replies are written with one.
+    const claude = { id: "claude-1", label: "Claude", kind: "claude", enabled: true, account: null, installed: true, cooldownUntil: null, runs: 0, rateLimited: 0 };
+    await hive.call("machines.heartbeat", { machine: "duy-mbp", instance: "a1b2c3d4", projects: ["app"], acceptsRuns: true, profiles: [claude] }, mbp);
+    await hive.call(
+      "runs.push",
+      { machine: "duy-mbp", runs: [{ runId: "R-1fa9c0", project: "app", taskId: "T-2", taskTitle: "Lockout", role: "implement", status: "running", profileId: "claude-1", createdAt: "2026-09-29T10:00:00.000Z" }] },
+      mbp,
+    );
+    const sent = await hive.call("chat.send", { project: "app", machineId: mbp.name, text: "Stop the lockout run" }, admin);
+    await hive.call("chat.progress", { replyId: sent.reply.id, text: "Looking" }, mbp);
+    const server = createHiveMcpServer(hive, { name: "claude-1.duy-mbp@chat-duy", role: "agent", access: { projects: { app: "contribute" } }, chatReply: sent.reply.id }, { defaultProject: "app" });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await server.connect(a);
+    const leader = new Client({ name: "test", version: "0" });
+    await leader.connect(b);
+
+    const added = ["propose_cancel_run", "propose_install", "propose_merge", "propose_policy", "propose_profile", "propose_resume_agents", "propose_stop_agents"];
+    const tools = (await leader.listTools()).tools.map((t) => t.name);
+    for (const name of added) assert.ok(tools.includes(name), name);
+    for (const name of added) assert.match(leader.getInstructions() ?? "", new RegExp(name));
+    const agent = await connect(hive, "claude@duy");
+    const agentTools = (await agent.listTools()).tools.map((t) => t.name);
+    assert.deepEqual(added.filter((name) => agentTools.includes(name)), [], "not for an agent working a task");
+
+    const cancel = JSON.parse(text(await leader.callTool({ name: "propose_cancel_run", arguments: { machine: "duy-mbp", runId: "R-1fa9c0", reason: "Asked to stop it" } })));
+    assert.deepEqual([cancel.kind, cancel.status, cancel.project, cancel.input], ["run.cancel", "proposed", "app", { machineId: mbp.name, runId: "R-1fa9c0" }]);
+    const policy = JSON.parse(text(await leader.callTool({ name: "propose_policy", arguments: { policy: { autonomy: "propose" }, reason: "Tighter" } })));
+    assert.deepEqual(policy.input, { project: "app", policy: { autonomy: "propose" }, before: null });
+    const stop = JSON.parse(text(await leader.callTool({ name: "propose_stop_agents", arguments: { reason: "Everything is off" } })));
+    assert.deepEqual(stop.input, { project: "app" });
+    const refused = await leader.callTool({ name: "propose_merge", arguments: { machine: "duy-mbp", runId: "R-1fa9c0", reason: "Ship it" } });
+    assert.ok(refused.isError);
+    assert.match(text(refused), /no merge request/);
+  });
 });
+
+async function connectAs(hive: SqliteHive, actor: Actor, opts: HiveMcpOptions = {}) {
+  const server = createHiveMcpServer(hive, actor, { defaultProject: "app", ...opts });
+  const [a, b] = InMemoryTransport.createLinkedPair();
+  await server.connect(a);
+  const client = new Client({ name: "test", version: "0" });
+  await client.connect(b);
+  return client;
+}

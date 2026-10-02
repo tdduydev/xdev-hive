@@ -834,12 +834,15 @@ export function createHubApp({
     const actor = actorOf(res);
     // Headers can only narrow what the token may do: a default project, and read-only.
     const project = req.get("x-hive-project");
+    const store = alerts;
     const server = createHiveMcpServer(
       hive,
       { ...actor, source: { ...actor.source, via: "mcp" } },
       {
         ...(project && PROJECT_NAME.test(project) ? { defaultProject: project } : {}),
         ...(req.get("x-hive-readonly") === "1" ? { readOnly: true } : {}),
+        // The server shows alert_list to hub admins only; the rules and the feed stay on the web.
+        ...(store ? { alerts: { list: async () => (await store.list()).open } } : {}),
       },
     );
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });

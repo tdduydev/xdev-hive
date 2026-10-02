@@ -2,8 +2,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   AGENT_ROLES,
+  effectivePolicy,
+  agentPolicyPartSchema,
   MAX_CANDIDATES,
   MEMORY_KINDS,
+  PAUSED_HUB,
+  sees,
   skillDocKey,
   TASK_STATUSES,
   toErrorPayload,
@@ -19,6 +23,8 @@ export interface HiveMcpOptions {
   defaultProject?: string;
   /** Only the read tools. Default: read-only for viewer tokens. */
   readOnly?: boolean;
+  /** The hub's open alerts (apps/web keeps them, not core): alert_list, for hub admins only. */
+  alerts?: { list(): Promise<unknown[]> };
 }
 
 const INSTRUCTIONS = `xDev Hive is the shared memory, docs and task board for every coding agent on this team.
@@ -28,14 +34,25 @@ Team skills (how the team does recurring work): skill_list, then skill_get the o
 End of session: task_update to "review" with a note (done / not done / how to verify / risks). Never store secrets.`;
 
 const READ_ONLY_INSTRUCTIONS = `xDev Hive is the shared memory, docs and task board for every coding agent on this team.
-This connection is read-only: memory_search, doc_list, doc_get, skill_list, skill_get, task_list, task_next, run_list, run_get and machine_list. Search memory for your topic before working.
+This connection is read-only: memory_search, doc_list, doc_get, skill_list, skill_get, task_list, task_next, run_list, run_get, run_requests, machine_list, setup_missing, cost_summary and policy_get (alert_list for hub admins). Search memory for your topic before working.
 Put anything worth sharing (decisions, gotchas, the handoff) in your final message instead of writing it to Hive.`;
 
 // A chat leader (the hub's token for one reply) changes nothing on the board itself: it proposes, a project manager confirms.
 const LEADER_INSTRUCTIONS = `
 You are the project's leader in the Hive chat: read skill_get hive-leader first. You cannot create or move tasks or queue runs yourself: propose them with
 propose_task, propose_task_status and propose_run, and say in your reply what you proposed. A project manager confirms or
-sets aside each one in the chat, and it runs with their rights.`;
+sets aside each one in the chat, and it runs with their rights.
+The same for the rest of the project's operations, always on the chat's project: propose_cancel_run (stop a queued or running run),
+propose_merge (merge a run's MR/PR), propose_profile (turn a machine's plan on or off, or change its priority),
+propose_policy (the project's agent policy), propose_stop_agents and propose_resume_agents (every agent of the project),
+propose_install (a machine installs a setup item it reported). Look first with run_list and machine_list: a proposal of a run
+or plan the hub does not know is refused.`;
+
+// Kept apart from LEADER_INSTRUCTIONS so the proposal list there can grow (roadmap 29b) without touching this.
+const LEADER_READ_INSTRUCTIONS = `
+Read before you answer or propose: costs and spending caps with cost_summary; a run that does not start with run_list, run_requests
+(rejected or expired requests and why) and setup_missing (what a machine lacks); the agent policy and whether agents are stopped with policy_get;
+the hub's open alerts with alert_list when you have it.`;
 
 const project = z.string().optional().describe('Hive project key (see "Hive project key" in AGENTS.md)');
 const reason = z.string().min(1).max(500).describe("One line for the person confirming it: why");
@@ -45,7 +62,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
   const writes = !(opts.readOnly ?? actor.role === "viewer");
   // A chat leader works on no task of its own: no claim or status change, proposals instead.
   const leader = writes && actor.chatReply !== undefined;
-  const instructions = !writes ? READ_ONLY_INSTRUCTIONS : leader ? INSTRUCTIONS + LEADER_INSTRUCTIONS : INSTRUCTIONS;
+  const instructions = !writes ? READ_ONLY_INSTRUCTIONS : leader ? INSTRUCTIONS + LEADER_INSTRUCTIONS + LEADER_READ_INSTRUCTIONS : INSTRUCTIONS;
   const server = new McpServer({ name: "xdev-hive", version: "0.1.0" }, { instructions });
 
   const run = async <M extends Method>(method: M, input: MethodInput<M>): Promise<CallToolResult> => {
@@ -311,6 +328,134 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     async () => run("machines.list", {}),
   );
 
+  // Hub mode, read-only, for every token that reads (roadmap 29a): what the web's Costs, Runs, Policy and Machines pages show.
+  // The methods filter by the token's rights; a project the token does not see answers not_found, as the web does.
+  const unseen = (p: string): CallToolResult | null =>
+    sees(actor, p) ? null : { isError: true, content: [{ type: "text", text: `not_found: Project ${p} not found.` }] };
+  const json = (value: unknown): CallToolResult => ({ content: [{ type: "text", text: JSON.stringify(value, null, 2) }] });
+  const failed = (err: unknown): CallToolResult => {
+    const { code, message } = toErrorPayload(err);
+    return { isError: true, content: [{ type: "text", text: `${code}: ${message}` }] };
+  };
+
+  server.registerTool(
+    "cost_summary",
+    {
+      title: "Project costs and caps",
+      description:
+        "What the project's agent runs cost at API prices over the last 24 hours, 7 days and 30 days (usd1, usd7, usd30, runs30), " +
+        "and the spending caps that apply to it (the project's, the hub's, your own) with what each period used so far (ratio 1 = full, no new run starts).",
+      inputSchema: { project },
+      annotations: readOnly,
+    },
+    withProject(async ({ project: p }) => {
+      const hidden = unseen(p);
+      if (hidden) return hidden;
+      try {
+        const [summary, budgets] = await Promise.all([backend.call("costs.summary", {}, actor), backend.call("budgets.list", {}, actor)]);
+        const me = actor.onBehalf ?? actor.name;
+        return json({
+          project: p,
+          costs: summary.projects.find((c) => c.project === p) ?? { project: p, usd1: 0, usd7: 0, usd30: 0, runs30: 0 },
+          budgets: budgets.filter((b) => (b.scope.kind === "project" ? b.scope.project === p : b.scope.kind === "hub" || b.scope.user === me)),
+        });
+      } catch (err) {
+        return failed(err);
+      }
+    }),
+  );
+
+  server.registerTool(
+    "run_requests",
+    {
+      title: "List run requests",
+      description:
+        "Runs asked for from the web or the chat, newest first: pending (the machine has not taken it), accepted, rejected (with the machine's reason), cancelled, expired. " +
+        "Runs a machine took and why they wait are in run_list.",
+      inputSchema: { project, limit: z.number().int().min(1).max(200).optional() },
+      annotations: readOnly,
+    },
+    withProject(async ({ project: p, limit }) => run("runs.requests", { project: p, limit: limit ?? 30 })),
+  );
+
+  server.registerTool(
+    "policy_get",
+    {
+      title: "Project agent policy",
+      description:
+        "The agent policy in force for the project (models, autonomy, network, MCP servers: the hub's default tightened by the project's own part), " +
+        "the setup every machine with the project must have, and whether agents are stopped for the project or the whole hub.",
+      inputSchema: { project },
+      annotations: readOnly,
+    },
+    withProject(async ({ project: p }) => {
+      const hidden = unseen(p);
+      if (hidden) return hidden;
+      try {
+        const [agentPolicy, policy, paused] = await Promise.all([
+          backend.call("agentPolicy.get", {}, actor),
+          backend.call("policy.get", {}, actor),
+          backend.call("agents.paused", {}, actor),
+        ]);
+        return json({
+          project: p,
+          agentPolicy: {
+            effective: agentPolicy.effective[p] ?? effectivePolicy(agentPolicy.hub, null),
+            hub: agentPolicy.hub,
+            project: agentPolicy.projects[p] ?? null,
+            updatedAt: agentPolicy.updatedAt,
+            updatedBy: agentPolicy.updatedBy,
+          },
+          required: { clis: policy.requiredClis, shim: policy.requireShim, repo: policy.projects[p] ?? [] },
+          // Each scope is lifted on its own, so the leader has to say which stop holds the runs.
+          paused: {
+            hub: paused.hub ? (paused.by[PAUSED_HUB] ?? {}) : null,
+            project: paused.projects.includes(p) ? (paused.by[p] ?? {}) : null,
+          },
+        });
+      } catch (err) {
+        return failed(err);
+      }
+    }),
+  );
+
+  server.registerTool(
+    "setup_missing",
+    {
+      title: "What the project's machines lack",
+      description:
+        "Each machine with the project's repo and what its last setup check found not installed: the machine's (cli:<kind>, shim) and the project's (<project>:<part>), " +
+        "state missing, outdated or manual, with a detail. A run that cannot start on a machine often waits on one of these.",
+      inputSchema: { project },
+      annotations: readOnly,
+    },
+    withProject(async ({ project: p }) => run("machines.setupMissing", { project: p })),
+  );
+
+  // Alerts are the hub's own (apps/web), not core's: only a hub admin sees them, as on the web.
+  const alerts = opts.alerts;
+  if (alerts && actor.role === "admin" && !actor.access) {
+    server.registerTool(
+      "alert_list",
+      {
+        title: "Open hub alerts",
+        description:
+          "The hub's open alerts (machines offline, failing runs, caps near or over, waiting proposals…): rule, severity, project (null = the whole hub), vars, since when. " +
+          "project narrows them to that project's and the hub-wide ones.",
+        inputSchema: { project: z.string().optional().describe("Only this project's and the hub-wide alerts") },
+        annotations: readOnly,
+      },
+      async ({ project: p }) => {
+        try {
+          const open = (await alerts.list()) as Array<{ project?: string | null }>;
+          return json(p ? open.filter((a) => a.project == null || a.project === p) : open);
+        } catch (err) {
+          return failed(err);
+        }
+      },
+    );
+  }
+
   if (writes && !leader) {
     server.registerTool(
       "task_claim",
@@ -391,6 +536,82 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
           action: { kind: "run.dispatch", taskId, role, machine, profileId: profileId ?? null, candidates, reviewAfter, instructions },
           reason: why,
         } as MethodInput<"chat.propose">),
+    );
+    const machine = z.string().describe("The machine's hub id or name (machine_list)");
+    const runId = z.string().describe("The run's id, e.g. R-1a2b3c (run_list)");
+    server.registerTool(
+      "propose_cancel_run",
+      {
+        title: "Propose cancelling a run",
+        description: "Propose stopping a run of the chat's project that still waits or runs on its machine." + confirm,
+        inputSchema: { machine, runId, reason },
+      },
+      async ({ machine: m, runId: id, reason: why }) => run("chat.propose", { action: { kind: "run.cancel", machine: m, runId: id }, reason: why }),
+    );
+    server.registerTool(
+      "propose_merge",
+      {
+        title: "Propose merging a run's MR/PR",
+        description: "Propose merging the MR or PR a run of the chat's project opened; the run's machine merges it with its own token." + confirm,
+        inputSchema: { machine, runId, reason },
+      },
+      async ({ machine: m, runId: id, reason: why }) => run("chat.propose", { action: { kind: "run.merge", machine: m, runId: id }, reason: why }),
+    );
+    server.registerTool(
+      "propose_profile",
+      {
+        title: "Propose a machine's plan change",
+        description: "Propose turning one of a machine's plans (profiles, see machine_list) on or off, or changing its priority; give enabled, priority or both." + confirm,
+        inputSchema: {
+          machine,
+          profileId: z.string(),
+          enabled: z.boolean().optional(),
+          priority: z.number().int().min(0).max(100).optional(),
+          reason,
+        },
+      },
+      async ({ machine: m, profileId, enabled, priority, reason: why }) =>
+        run("chat.propose", { action: { kind: "machine.profile", machine: m, profileId, enabled, priority }, reason: why }),
+    );
+    server.registerTool(
+      "propose_policy",
+      {
+        title: "Propose the project's agent policy",
+        description:
+          "Propose the chat's project part of the agent policy, replacing the current part: only the fields it sets (models, autonomy, network, mcp), " +
+          "which can only tighten the hub's default; null removes the project's part." +
+          confirm,
+        inputSchema: { policy: agentPolicyPartSchema.nullable(), reason },
+      },
+      async ({ policy, reason: why }) => run("chat.propose", { action: { kind: "agent.policy", policy }, reason: why } as MethodInput<"chat.propose">),
+    );
+    server.registerTool(
+      "propose_stop_agents",
+      {
+        title: "Propose stopping every agent",
+        description: "Propose stopping every agent of the chat's project: running runs are cancelled, queued ones wait, no new run or chat reply starts until resumed." + confirm,
+        inputSchema: { reason },
+      },
+      async ({ reason: why }) => run("chat.propose", { action: { kind: "agents.stop" }, reason: why }),
+    );
+    server.registerTool(
+      "propose_resume_agents",
+      {
+        title: "Propose letting agents run again",
+        description: "Propose lifting the stop on the chat's project, so its agents run again." + confirm,
+        inputSchema: { reason },
+      },
+      async ({ reason: why }) => run("chat.propose", { action: { kind: "agents.resume" }, reason: why }),
+    );
+    server.registerTool(
+      "propose_install",
+      {
+        title: "Propose a machine install",
+        description:
+          "Propose that a machine installs a setup item it reported as missing: the machine's own (cli:<kind>, shim) or the chat project's (<project>:<part>)." + confirm,
+        inputSchema: { machine, itemId: z.string(), reason },
+      },
+      async ({ machine: m, itemId, reason: why }) => run("chat.propose", { action: { kind: "machine.install", machine: m, itemId }, reason: why } as MethodInput<"chat.propose">),
     );
   }
 
