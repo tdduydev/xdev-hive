@@ -45,6 +45,7 @@ import {
   type LoginStatus,
   type PlanUsage,
   type MachineCommand,
+  type MachineTools,
   type ProfileChange,
   type RunMergeOrder,
   type RunMr,
@@ -65,7 +66,7 @@ import {
 import { tr } from "#desktop/main/i18n.ts";
 import { git, isGitRepo } from "#desktop/main/git.ts";
 import { NO_FEATURES, repoFeatures } from "#desktop/main/installer.ts";
-import { prepareCodegraph } from "./codegraph.ts";
+import { legacyPick, NO_TOOLS, prepareTool, runTools, toolDirs, type ToolPick } from "./tools.ts";
 import { containerCommand } from "./container.ts";
 import { claudeMcpServers, codexMcpArgs, hubMcpEnv, type McpRun } from "./container-mcp.ts";
 import { deniedHosts, egressAllow, egressPlan, type Egress } from "./egress.ts";
@@ -129,6 +130,8 @@ export interface RunnerHost {
   token?(profileId: string): string | undefined;
   /** The team's GitLab (its URL), which a restricted container may reach. */
   gitlab?(): string | null;
+  /** The hub tools this machine's user allowed, by id: the toolHash they allowed (config.toolTrust). */
+  toolTrust?(): Record<string, string>;
 }
 
 /** What the hub sent back on the last heartbeat. */
@@ -143,6 +146,8 @@ export interface HubUpdate {
   update?: UpdateOffer | null;
   /** The agent policy (roadmap 27a): the hub's default and the parts of this machine's projects; a hub older than it sends none. */
   agentPolicy?: HubAgentPolicy | null;
+  /** The tool catalog for this machine's projects (roadmap 28b); a hub older than it sends none. */
+  tools?: MachineTools | null;
   /** Profile changes asked for on the web (roadmap 18d); a hub older than them sends none. */
   profileChanges?: ProfileChange[];
   /** Merges asked for on the web (roadmap 18c), while this machine takes runs from the hub. */
@@ -325,6 +330,8 @@ export class Runner {
   #paused: AgentsPaused | null = null;
   /** The agent policy (roadmap 27a) of the last heartbeat that answered; null in local mode and from a hub older than it. */
   #agentPolicy: HubAgentPolicy | null = null;
+  /** The tool catalog (roadmap 28b) of the last heartbeat that answered; null in local mode and from a hub older than it. */
+  #tools: MachineTools | null = null;
 
   constructor(host: RunnerHost, opts: RunnerOptions) {
     this.#host = host;
@@ -673,6 +680,7 @@ export class Runner {
       this.#paused = null;
       this.#budgetBlocked = [];
       this.#agentPolicy = null;
+      this.#tools = null;
       return null;
     }
     const runs = this.store.active().map((r) => ({
@@ -742,12 +750,14 @@ export class Runner {
       syncCommands: res.syncCommands ?? [],
       update: (res as { update?: UpdateOffer | null }).update ?? null,
       agentPolicy: res.agentPolicy ?? null,
+      tools: res.tools ?? null,
       profileChanges: res.profileChanges ?? [],
       // The user let project managers drive this machine from the web; without that a merge waits until it expires.
       mergeRuns: this.#host.settings().acceptHubRuns ? (res.mergeRuns ?? []) : [],
     };
     // Before the requests below are taken, so their runs start under the policy the hub just sent.
     this.#agentPolicy = update.agentPolicy ?? null;
+    this.#tools = update.tools ?? null;
     this.#opts.onHub?.(update);
     this.#takeSyncs(update.syncCommands);
     // A hub older than runs.dispatch sends none.
@@ -1281,15 +1291,23 @@ export class Runner {
         candidate: candidate ? { n: candidate.n, of: candidate.of } : null,
         judge: run.bestOf?.n === 0 ? this.#judgeInput(run.bestOf) : null,
       });
-      const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id };
+      const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id, repo: project.repo };
       // A container has neither the hive-mcp shim nor this machine's codegraph: Claude gets the hub's MCP through a file.
       if (profile.container) {
         mcpFile = path.join(this.#opts.dataDir, "runs", `${run.id}.mcp.json`);
         writeFileSync(mcpFile, JSON.stringify({ mcpServers: this.#containerMcp(profile, run) }), { mode: 0o600 });
       }
-      const features = profile.container ? NO_FEATURES : repoFeatures(project.repo);
-      const cmd = buildCommand(profile, vars, features, mcpFile ?? undefined, fit.mcp);
       const base = this.#host.env();
+      const features = profile.container ? NO_FEATURES : repoFeatures(project.repo);
+      // The variables the run has (the machine's, then the profile's), for a tool's secrets: named, never logged.
+      const runEnv: Record<string, string | undefined> = { ...base, ...expandEnv(profile.env) };
+      const tools: ToolPick = profile.container
+        ? NO_TOOLS
+        : this.#tools
+          ? runTools(this.#tools, run.project, features, profile.kind, pol, this.#host.toolTrust?.() ?? {}, runEnv)
+          : legacyPick(features, profile.kind, fit.mcp);
+      wt.toolDirs = toolDirs(tools.prepare);
+      const cmd = buildCommand(profile, vars, this.#tools && !profile.container ? tools.tools : features, mcpFile ?? undefined, fit.mcp);
       const bin = resolveBin(profile.container ? "docker" : cmd.bin, base.PATH ?? "");
       if (!bin) {
         const reason = profile.container ? tr("runNote.dockerNotFound") : tr("runNote.binNotFound", { bin: cmd.bin });
@@ -1313,11 +1331,18 @@ export class Runner {
       log = createWriteStream(this.#logPath(run.id), { flags: "a" });
       log.on("error", () => undefined); // a failing log file must not take the app down
       const hostEnv = Object.fromEntries(Object.entries(base).filter(([k]) => !k.startsWith("ELECTRON_")));
-      // Built for Claude, whose servers the runner lists, and for another CLI whose own config starts codegraph.
-      const codegraph =
-        features.codegraph && (fit.mcp === null || fit.mcp.includes("codegraph"))
-          ? await prepareCodegraph(wt.path, resolveBin("npx", base.PATH ?? ""), hostEnv)
-          : null;
+      // One after the other, before the agent: built for Claude, whose servers the runner lists, and for another CLI
+      // whose own config starts the same server.
+      const prepared: string[] = [];
+      for (const e of tools.prepare) {
+        const secrets: Record<string, string> = {};
+        for (const n of e.secretEnv) {
+          const value = runEnv[n];
+          if (value) secrets[n] = value;
+        }
+        prepared.push(await prepareTool(e, wt.path, { repo: project.repo }, (bin) => resolveBin(bin, base.PATH ?? ""), { ...hostEnv, ...secrets }));
+      }
+      const toolLines = [...tools.notes.map((n) => `# ${n}`), ...prepared].map((l) => `${l}\n`).join("");
       const agentEnv: Record<string, string> = {
         ...expandEnv(profile.env),
         HIVE_AGENT: profile.id,
@@ -1363,7 +1388,7 @@ export class Runner {
           })
         : null;
       log.write(
-        `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image} · ${egress ? `network limited (${egress.env.HIVE_EGRESS_ALLOW})` : "network open"}\n` : ""}${startNote ? `# ${startNote}\n` : ""}${codegraph ? `${codegraph}\n` : ""}# cwd ${wt.path}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n${policyLine(pol, fit)}\n${skipped}\n## Prompt\n${prompt}\n\n## Output\n`,
+        `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image} · ${egress ? `network limited (${egress.env.HIVE_EGRESS_ALLOW})` : "network open"}\n` : ""}${startNote ? `# ${startNote}\n` : ""}${toolLines}# cwd ${wt.path}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n${policyLine(pol, fit)}\n${skipped}\n## Prompt\n${prompt}\n\n## Output\n`,
       );
 
       const env: NodeJS.ProcessEnv = box ? { ...hostEnv, ...box.env } : { ...hostEnv, ...agentEnv };
@@ -1566,7 +1591,7 @@ export class Runner {
     // The judge changes nothing: what it left is dropped when the kept candidate replaces the branch.
     if (wt && existsSync(wt.path) && run.bestOf?.n !== 0) {
       const label = run.role === "review" ? "review" : status === "succeeded" ? "work" : "wip";
-      const c = commitAll(wt.path, `ai(${run.taskId}): ${label} by ${profile.id}\n\nRun ${run.id}, attempt ${run.attempt}, status ${status}`, wt.copied);
+      const c = commitAll(wt.path, `ai(${run.taskId}): ${label} by ${profile.id}\n\nRun ${run.id}, attempt ${run.attempt}, status ${status}`, wt.copied, wt.toolDirs);
       if (c.error) error = [error, `commit: ${c.error}`].filter(Boolean).join(" · ");
       ({ commits, headSha } = branchState(wt.path, wt.baseSha));
     }

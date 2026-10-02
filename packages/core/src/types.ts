@@ -432,6 +432,23 @@ export interface ToolView extends ToolEntry {
   projects: ToolProjectSetting[];
 }
 
+/** A project's setting for one tool, as a heartbeat carries it (roadmap 28b). */
+export interface MachineToolSetting {
+  id: string;
+  enabled: boolean | null;
+  effective: boolean;
+  required: boolean;
+}
+
+/**
+ * The catalog as a machine gets it at its heartbeat (roadmap 28b): the entries its projects may use, placeholders
+ * left as written (the machine fills them in with toolArgv), and each of its projects' settings.
+ */
+export interface MachineTools {
+  entries: ToolEntry[];
+  projects: Record<string, MachineToolSetting[]>;
+}
+
 /**
  * Where a tool stands for a project (roadmap 28e, tools.status): whether the project gets it, and the setup items that
  * set it up as each machine with the project last reported them, so a leader can tell why a run lacks it.

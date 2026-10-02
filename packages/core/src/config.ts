@@ -48,6 +48,11 @@ export const configSchema = z.object({
    * A container cannot read the macOS Keychain. Never sent to the interface; runs get it as CLAUDE_CODE_OAUTH_TOKEN.
    */
   agentTokens: z.record(z.string(), z.string().max(4000)).default({}),
+  /**
+   * Tools of the hub's catalog this machine's user allowed (roadmap 28b), by id: the toolHash of the commands they saw.
+   * A changed command (a new version) runs only once allowed again.
+   */
+  toolTrust: z.record(z.string(), z.string().regex(/^[0-9a-f]{64}$/)).default({}),
   gitlab: gitlabSettingsSchema.default(gitlabSettingsSchema.parse({})),
   github: githubSettingsSchema.default(githubSettingsSchema.parse({})),
 });
