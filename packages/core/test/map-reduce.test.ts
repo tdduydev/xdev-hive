@@ -119,7 +119,7 @@ describe("map-reduce (roadmap 31c)", () => {
     assert.ok(plan!.instructions.includes('starting with "- "'));
     // The plan run writes its list in the task's note, as task_update does.
     await hive.call("runs.requestResult", { id: plan!.id, status: "accepted", runId: "R-plan" }, mbp);
-    await hive.call("tasks.claim", { id: "P-1", owner: "claude-2.duy-mbp" }, mbp);
+    await hive.call("tasks.claim", { id: "P-1" }, mbp);
     await hive.call("tasks.update", { id: "P-1", status: "review", note: "Chia thành:\n- Invoices endpoint\n- Refunds endpoint\n1. Webhooks" }, mbp);
     await hive.call("runs.push", { machine: "duy-mbp", runs: [{ runId: "R-plan", project: "app", taskId: "P-1", taskTitle: "P-1", role: "plan", status: "succeeded", profileId: "claude-2", createdAt: "2026-10-02T08:00:00.000Z" }] }, mbp);
     const ready = await group(g.id);
