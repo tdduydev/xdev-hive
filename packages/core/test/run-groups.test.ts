@@ -207,3 +207,89 @@ describe("run groups (roadmap 31a)", () => {
     assert.equal((await hive.call("runs.groups", {}, dev)).length, 1);
   });
 });
+
+describe("one prompt for several agents (roadmap 31e)", () => {
+  it("makes P-<n> and a task per agent, runs them side by side, and keeps the one picked", async () => {
+    const { hive, beat, push, take } = await hub();
+    await beat(mbp, { profiles: [profile("claude-1"), profile("codex-1")] });
+    await beat(mini);
+    const prompt = "Make the login page load under 1 s.\nMeasure before and after.";
+    const g = await hive.call(
+      "runs.fanout",
+      {
+        project: "app",
+        prompt,
+        targets: [
+          { machineId: mbp.name, profileId: "claude-1" },
+          { machineId: mbp.name, profileId: "codex-1" },
+          { machineId: null, profileId: null },
+        ],
+        reviewAfter: true,
+      },
+      lead,
+    );
+    assert.deepEqual([g.kind, g.parentTask, g.title, g.maxParallel], ["fanout", "P-1", "Make the login page load under 1 s.", null]);
+    assert.deepEqual(
+      g.items.map((i) => [i.taskId, i.status, i.machineId]),
+      [
+        ["P-1-a", "sent", mbp.name],
+        ["P-1-b", "sent", mbp.name],
+        ["P-1-c", "sent", mini.name],
+      ],
+      "all at once; the third goes to the machine with room",
+    );
+    const tasks = await hive.call("tasks.list", { project: "app" }, admin);
+    const parent = tasks.find((t) => t.id === "P-1")!;
+    assert.deepEqual([parent.note, parent.waitingOn], [prompt, ["P-1-a", "P-1-b", "P-1-c"]], "nobody runs the prompt's own task");
+    assert.equal(tasks.find((t) => t.id === "P-1-b")!.title, `Make the login page load under 1 s. · duy-mbp/codex-1`);
+    assert.equal(tasks.find((t) => t.id === "P-1-c")!.title, `Make the login page load under 1 s. · */*`);
+    const sent = (await beat(mbp)).runRequests;
+    assert.deepEqual(
+      sent.map((r) => [r.taskId, r.profileId, r.instructions, r.reviewAfter]),
+      [
+        ["P-1-a", "claude-1", "", true],
+        ["P-1-b", "codex-1", "", true],
+      ],
+      "each agent reads the prompt as its task's note",
+    );
+
+    await take(mbp, sent);
+    await push(mbp, "R-P-1-a", "P-1-a", "running");
+    assert.equal(await refusal(hive.call("runs.pickWinner", { groupId: g.id, taskId: "P-1-a" }, lead)), "errors.fanoutRunning");
+    await push(mbp, "R-P-1-a", "P-1-a", "succeeded");
+    await push(mbp, "R-P-1-b", "P-1-b", "failed");
+    const third = (await beat(mini)).runRequests;
+    await take(mini, third);
+    await push(mini, "R-P-1-c", "P-1-c", "succeeded");
+    assert.equal(await refusal(hive.call("runs.pickWinner", { groupId: g.id, taskId: "P-1-a" }, dev)), "errors.need.taskManage");
+    assert.equal(await refusal(hive.call("runs.pickWinner", { groupId: g.id, taskId: "T-1" }, lead)), "errors.notInGroup");
+
+    const kept = await hive.call("runs.pickWinner", { groupId: g.id, taskId: "P-1-c" }, lead);
+    assert.equal(kept.winnerTask, "P-1-c");
+    assert.ok(kept.closedAt);
+    const after = await hive.call("tasks.list", { project: "app" }, admin);
+    const state = (id: string) => after.find((t) => t.id === id)!;
+    assert.deepEqual([state("P-1-a").status, state("P-1-a").note], ["done", "Không chọn trong P-1 (chọn P-1-c)."]);
+    assert.equal(state("P-1-b").status, "done");
+    assert.equal(state("P-1").status, "done");
+    assert.notEqual(state("P-1-c").status, "done", "the kept one goes on as it was");
+    assert.equal(await refusal(hive.call("runs.pickWinner", { groupId: g.id, taskId: "P-1-a" }, lead)), "errors.winnerPicked");
+    // Over: its task may be run again by hand (a fix, a review).
+    assert.equal((await hive.call("runs.dispatch", { machineId: mini.name, project: "app", taskId: "P-1-c" }, lead)).status, "pending");
+
+    const [entry] = await hive.call("admin.audit", { action: "runs.pickWinner" }, admin);
+    assert.deepEqual([entry!.target, entry!.detailKey], ["app/P-1-c", "audit.runPick"]);
+  });
+
+  it("checks the targets and the prompt first, and makes nothing then", async () => {
+    const { hive, beat } = await hub();
+    await beat(mbp, { projects: ["site"] });
+    const ask = (over: Record<string, unknown>) =>
+      refusal(hive.call("runs.fanout", { project: "app", prompt: "Go", targets: [{ machineId: null }, { machineId: null }], ...over }, admin));
+    assert.equal(await ask({ targets: [{ machineId: mbp.name }, { machineId: null }] }), "errors.machineNoRepo");
+    assert.equal(await ask({ prompt: `deploy with ghp_${"a".repeat(36)}` }), "errors.secret");
+    assert.equal(await ask({ targets: [{ machineId: null }] }), "bad_request", "two agents at least");
+    assert.equal(await refusal(hive.call("runs.fanout", { project: "app", prompt: "Go", targets: [{}, {}] }, dev)), "errors.need.taskManage");
+    assert.deepEqual((await hive.call("tasks.list", { project: "app" }, admin)).filter((t) => t.id.startsWith("P-")), []);
+  });
+});

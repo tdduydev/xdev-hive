@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { cn } from "cn";
-import { Send, Sparkles } from "lucide-react";
+import { Plus, Send, Sparkles } from "lucide-react";
 import { AGENT_ROLES, MAX_CANDIDATES, TASK_STATUSES, type AgentRole, type RunRequest, type Task, type TaskStatus } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
@@ -215,6 +215,11 @@ export function TasksPage() {
               setPrompting(false);
               reload();
               setOpenId(task.id);
+            }}
+            onGroup={(id) => {
+              setPrompting(false);
+              setBatchSent(id);
+              reload();
             }}
           />
         ) : null}
@@ -499,15 +504,35 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
  * A free prompt for an agent (roadmap 32b): the hub makes task P-<n> for it and asks the chosen machine to run it,
  * with the chosen profile or rotating. Then the task's panel shows the request as for any dispatched run.
  */
-function PromptSheet({ projects, defaultProject, onSent }: { projects: string[]; defaultProject: string; onSent: (task: Task) => void }) {
+/** Agents one prompt goes to at most (roadmap 31e); runs.fanout takes 2–8. */
+const MAX_AGENTS = 8;
+
+function PromptSheet({
+  projects,
+  defaultProject,
+  onSent,
+  onGroup,
+}: {
+  projects: string[];
+  defaultProject: string;
+  onSent: (task: Task) => void;
+  /** Several agents: the run group it made (roadmap 31e). */
+  onGroup: (groupId: number) => void;
+}) {
   const { client } = useHive();
   const t = useT();
   const machines = useQuery(() => client.call("machines.list", {}), [client]);
   const [project, setProject] = useState(defaultProject);
   const fit = (machines.data ?? []).filter((m) => takesRunsOf(m, project));
-  const [machineId, setMachineId] = useState("");
-  const machine = fit.find((m) => m.id === machineId) ?? fit[0] ?? null;
-  const [profileId, setProfileId] = useState("");
+  // One agent: a machine and profile, as before. More: each its own, and a machine may be left to the hub ("").
+  const [targets, setTargets] = useState<Array<{ machineId: string; profileId: string }>>([{ machineId: "", profileId: "" }]);
+  const several = targets.length > 1;
+  const machineOf = (id: string) => fit.find((m) => m.id === id) ?? null;
+  const machine = machineOf(targets[0]!.machineId) ?? fit[0] ?? null;
+  const profileId = targets[0]!.profileId;
+  const setTarget = (i: number, patch: Partial<{ machineId: string; profileId: string }>) => setTargets((all) => all.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const setMachineId = (id: string) => setTarget(0, { machineId: id, profileId: "" });
+  const setProfileId = (id: string) => setTarget(0, { profileId: id });
   const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
   const [reviewAfter, setReviewAfter] = useState(true);
@@ -524,6 +549,17 @@ function PromptSheet({ projects, defaultProject, onSent }: { projects: string[];
           e.preventDefault();
           if (!machine) return;
           void action.run(async () => {
+            if (several) {
+              const group = await client.call("runs.fanout", {
+                project,
+                ...(title.trim() ? { title: title.trim() } : {}),
+                prompt,
+                targets: targets.map((x) => ({ machineId: x.machineId || null, profileId: x.profileId || null })),
+                reviewAfter,
+              });
+              onGroup(group.id);
+              return;
+            }
             const { task } = await client.call("runs.prompt", {
               project,
               machineId: machine.id,
@@ -539,7 +575,7 @@ function PromptSheet({ projects, defaultProject, onSent }: { projects: string[];
         {projects.length > 1 ? (
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="prompt-project">{t("tasks.colProject")}</Label>
-            <NativeSelect id="prompt-project" size="sm" className="w-full" value={project} onChange={(e) => (setProject(e.target.value), setMachineId(""), setProfileId(""))}>
+            <NativeSelect id="prompt-project" size="sm" className="w-full" value={project} onChange={(e) => (setProject(e.target.value), setTargets((all) => all.map(() => ({ machineId: "", profileId: "" }))))}>
               {projects.map((p) => (
                 <NativeSelectOption key={p} value={p}>
                   {p}
@@ -550,10 +586,43 @@ function PromptSheet({ projects, defaultProject, onSent }: { projects: string[];
         ) : null}
         <ErrorNote error={machines.error} />
         {machines.data && !machine ? <Notice tone="info">{t("tasks.dispatchNoMachine", { project })}</Notice> : null}
-        {machine ? (
+        {machine && !several ? (
           <div className="grid gap-3 sm:grid-cols-2">
-            <MachineSelect id="prompt-machine" machines={fit} value={machine.id} onChange={(id) => (setMachineId(id), setProfileId(""))} />
+            <MachineSelect id="prompt-machine" machines={fit} value={machine.id} onChange={setMachineId} />
             <ProfileSelect id="prompt-profile" machine={machine} value={profileId} onChange={setProfileId} />
+          </div>
+        ) : null}
+        {machine && several ? (
+          <div className="flex flex-col gap-1.5">
+            <Label>{t("tasks.promptAgents", { count: targets.length })}</Label>
+            <div className="flex flex-col divide-y rounded-lg border">
+              {targets.map((x, i) => (
+                <div key={i} className="grid items-center gap-2 p-2 sm:grid-cols-[1.5rem_minmax(0,1fr)_minmax(0,1fr)_auto]" data-prompt-agent-row={i}>
+                  <span className="font-mono text-xs text-muted-foreground">{String.fromCharCode(97 + i)}</span>
+                  <MachineSelect id={`prompt-machine-${i}`} machines={fit} value={x.machineId} any label={false} onChange={(id) => setTarget(i, { machineId: id, profileId: "" })} />
+                  <ProfileSelect id={`prompt-profile-${i}`} machine={machineOf(x.machineId)} value={x.profileId} label={false} onChange={(id) => setTarget(i, { profileId: id })} />
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setTargets((all) => all.filter((_, j) => j !== i))}>
+                    {t("tasks.promptRemove")}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {machine && targets.length < MAX_AGENTS ? (
+          <div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              data-prompt-add-agent
+              // The first row keeps its machine; a new one starts on any free machine.
+              onClick={() => setTargets((all) => [...all.map((x, j) => (j === 0 && !x.machineId ? { ...x, machineId: machine.id } : x)), { machineId: "", profileId: "" }])}
+            >
+              <Plus />
+              {t("tasks.promptAddAgent")}
+            </Button>
+            {several ? <p className="mt-1.5 text-xs text-muted-foreground">{t("tasks.promptSeveralHint")}</p> : null}
           </div>
         ) : null}
         <div className="flex flex-col gap-1.5">
@@ -580,7 +649,7 @@ function PromptSheet({ projects, defaultProject, onSent }: { projects: string[];
         <div>
           <Button size="sm" type="submit" disabled={action.busy || !machine || !prompt.trim()}>
             <Send />
-            {t("tasks.promptSend")}
+            {several ? t("tasks.promptSendMany", { count: targets.length }) : t("tasks.promptSend")}
           </Button>
         </div>
         <ErrorNote error={action.error} />

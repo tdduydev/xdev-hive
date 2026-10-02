@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { Machine, RunGroup, RunGroupItem } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
@@ -49,6 +49,10 @@ function GroupCard({ group: g, machines, onChanged }: { group: RunGroup; machine
   const held = g.items.filter((i) => i.status === "held").length;
   const failed = g.items.filter((i) => failedItem(i)).length;
   const done = g.items.filter((i) => !i.active && i.status === "sent" && !failedItem(i)).length;
+  // One prompt, several agents (roadmap 31e): once all are done, one is kept and the others closed.
+  const fanout = g.kind === "fanout";
+  const canPick = fanout && !g.winnerTask && held === 0 && active === 0 && allow(g.project, "taskManage") && allow(g.project, "runDispatch");
+  const pick = (taskId: string) => void action.run(async () => (await client.call("runs.pickWinner", { groupId: g.id, taskId }), onChanged()));
   return (
     <Card id={`group-${g.id}`} className="gap-3 py-4" data-group={g.id}>
       <CardContent className="flex flex-col gap-3 px-4">
@@ -59,7 +63,17 @@ function GroupCard({ group: g, machines, onChanged }: { group: RunGroup; machine
               <Badge tone="accent">{t(`batches.kind.${g.kind}`)}</Badge>
               <OwnerBadge owner={g.project} />
             </div>
-            <span className="text-xs text-muted-foreground">{t("batches.by", { who: g.createdBy, time: formatTime(g.createdAt) })}</span>
+            <span className="text-xs text-muted-foreground">
+              {t("batches.by", { who: g.createdBy, time: formatTime(g.createdAt) })}
+              {g.parentTask ? (
+                <>
+                  {" · "}
+                  <a className="underline underline-offset-2" href={`#/tasks?task=${encodeURIComponent(g.parentTask)}`}>
+                    {t("batches.parent", { task: g.parentTask })}
+                  </a>
+                </>
+              ) : null}
+            </span>
           </div>
           <div className="flex flex-col items-end gap-0.5 text-xs">
             {g.closedAt ? (
@@ -89,17 +103,42 @@ function GroupCard({ group: g, machines, onChanged }: { group: RunGroup; machine
               <col />
               <col className="w-44" />
               <col className="w-56" />
+              {fanout ? <col className="w-36" /> : null}
             </colgroup>
             <TableHeader>
               <TableRow>
                 <TableHead>{t("batches.colTask")}</TableHead>
                 <TableHead>{t("batches.colWhere")}</TableHead>
                 <TableHead>{t("batches.colState")}</TableHead>
+                {fanout ? <TableHead /> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
               {g.items.map((item) => (
-                <ItemRow key={item.id} item={item} machines={machines} />
+                <ItemRow key={item.id} item={item} machines={machines}>
+                  {fanout ? (
+                    <TableCell className="align-top text-xs whitespace-normal">
+                      {g.winnerTask ? (
+                        g.winnerTask === item.taskId ? (
+                          <Badge tone="ok">{t("batches.kept")}</Badge>
+                        ) : (
+                          <span className="text-muted-foreground">{t("batches.notKept")}</span>
+                        )
+                      ) : item.run?.status === "succeeded" && allow(g.project, "runDispatch") ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!canPick || action.busy}
+                          title={canPick ? undefined : t("batches.pickHint")}
+                          data-pick-winner={item.taskId}
+                          onClick={() => pick(item.taskId)}
+                        >
+                          {t("batches.pick")}
+                        </Button>
+                      ) : null}
+                    </TableCell>
+                  ) : null}
+                </ItemRow>
               ))}
             </TableBody>
           </Table>
@@ -117,7 +156,7 @@ function failedItem(i: RunGroupItem): boolean {
   return !!i.run && !i.active && i.run.status !== "succeeded";
 }
 
-function ItemRow({ item: i, machines }: { item: RunGroupItem; machines: Machine[] }) {
+function ItemRow({ item: i, machines, children }: { item: RunGroupItem; machines: Machine[]; children?: ReactNode }) {
   const t = useT();
   const machine = i.request?.machine ?? machines.find((m) => m.id === i.machineId)?.machine ?? null;
   return (
@@ -136,6 +175,7 @@ function ItemRow({ item: i, machines }: { item: RunGroupItem; machines: Machine[
       <TableCell className="align-top text-xs whitespace-normal">
         <ItemState item={i} machine={machine} t={t} />
       </TableCell>
+      {children}
     </TableRow>
   );
 }
