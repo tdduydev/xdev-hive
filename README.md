@@ -624,6 +624,10 @@ Trên hub, agent giữ task với tên `<gói>.<máy>@<token>`, ví dụ `claude
     - Câu trả lời có từ hai đề xuất đang chờ thì có *Xác nhận tất cả* và *Bỏ qua tất cả* (`chat.decideAll`, roadmap 17e).
       - Hub chạy lần lượt: tạo task trước, rồi chuyển trạng thái, rồi xếp run; mỗi nhóm theo thứ tự leader đề xuất. Nhờ vậy leader đề xuất được run hay đổi trạng thái cho task mà chính câu trả lời đó tạo.
       - Việc nào lỗi thì dừng ở đó; các việc sau vẫn chờ để người quản trị xem. Việc người khác đã quyết định trong lúc đó thì giữ nguyên.
+  - **Leader tự chạy** (roadmap 29c, hỏi 2/10: theo cài đặt từng dự án, mặc định chờ duyệt hết). Nút *Hướng dẫn leader* → *Leader tự chạy*: người có quyền *Cài đặt dự án* chọn loại đề xuất leader làm luôn (`chat.setAutonomy`).
+    - Leader đề xuất một loại được chọn thì hub chạy ngay bằng quyền của người gửi tin, không hơn. Người đó phải có quyền *Duyệt hành động leader*; thiếu quyền của chính việc đó (vd. không được tạo task) thì đề xuất nằm chờ người có quyền, không thành lỗi. Run hay đổi trạng thái cho task mà câu trả lời mới chỉ đề xuất tạo thì cũng chờ.
+    - Thẻ đề xuất có nhãn *tự chạy · thay <người>*; *Nhật ký agent* ghi leader làm thay ai. Kết quả `propose_*` trả *done* / *failed* thay cho *proposed*, nên leader nói được việc nào đã chạy.
+    - *Đổi chính sách agent* và *Cho agent chạy lại* luôn chờ người duyệt (`CHAT_ACTION_ALWAYS_CONFIRM`): leader không tự nới giới hạn của chính nó.
   - **Hướng dẫn cho leader** (roadmap 17c-2).
     - Hub có sẵn skill chung `hive-leader`. Skill này nói leader cần: tìm hiểu bằng task, lượt chạy (kể cả kết quả review) và máy; đề xuất thay vì tự làm; không merge; hỏi lại kèm vài lựa chọn khi cần quyết định; ghi đúng mã task và mã run để trang *Chat* làm link.
     - Nhóm sửa skill này trên trang *Skill* như mọi skill khác, hoặc tạo skill riêng cùng tên cho một dự án. Hub đang chạy nhận skill này một lần khi cập nhật; xoá đi thì hub không tạo lại. Cơ sở dữ liệu local của máy không có skill này.

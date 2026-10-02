@@ -41,8 +41,8 @@ Put anything worth sharing (decisions, gotchas, the handoff) in your final messa
 const LEADER_INSTRUCTIONS = `
 You are the project's leader in the Hive chat: read skill_get hive-leader first. You cannot create or move tasks or queue runs yourself: propose them with
 propose_task, propose_task_status and propose_run, and say in your reply what you proposed. A project manager confirms or
-sets aside each one in the chat, and it runs with their rights.
-The same for the rest of the project's operations, always on the chat's project: propose_cancel_run (stop a queued or running run),
+sets aside each one in the chat, and it runs with their rights; a kind the project lets you run on your own runs at once,
+as the person who wrote to you (the answer says done or failed): say which ran and which wait. The same for the rest of the project's operations, always on the chat's project: propose_cancel_run (stop a queued or running run),
 propose_merge (merge a run's MR/PR), propose_profile (turn a machine's plan on or off, or change its priority),
 propose_policy (the project's agent policy), propose_stop_agents and propose_resume_agents (every agent of the project),
 propose_install (a machine installs a setup item it reported). Look first with run_list and machine_list: a proposal of a run
@@ -483,7 +483,10 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
   }
 
   if (leader) {
-    const confirm = " Nothing happens until a manager of the project confirms it in the chat; it then runs with their rights.";
+    // Roadmap 29c: a project may let its leader run some kinds at once, as the person who wrote; the answer's status says.
+    const confirm =
+      " Nothing happens until a manager of the project confirms it in the chat; it then runs with their rights. A project may let its leader run some kinds at once," +
+      " as the person who wrote to you: then the answer's status is done (or failed), not proposed.";
     server.registerTool(
       "propose_task",
       {
