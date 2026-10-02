@@ -28,6 +28,7 @@ import {
   type NewAccount,
   type MachineCommand,
   type ProfileChange,
+  type RunMergeOrder,
   type Me,
   type ProfileCheck,
   type ReportedProfile,
@@ -73,6 +74,7 @@ import { mirrorDocs, mirrors } from "./mirror.ts";
 import { openInTerminal } from "./terminal.ts";
 import { AlertWatch, fetchAlerts, noticeText, type AlertNotice } from "./alert-notify.ts";
 import { applyProfileChanges } from "./profile-changes.ts";
+import { mergeMr } from "./gitlab/merge.ts";
 
 app.setName("xDev Hive");
 const smokeShot = process.env.HIVE_SMOKE_SCREENSHOT;
@@ -92,6 +94,8 @@ let firstLoginCheck: Promise<void> = Promise.resolve();
 /** The commit each project's docs were last mirrored from (roadmap 26): the same main is not read twice. */
 const mirrored = new Map<string, string>();
 let mergeRequester: MergeRequester;
+let mrHostRef: MrHost;
+const mrHost = () => mrHostRef;
 let mrWatcher: MrWatcher;
 let setup: Setup;
 /** Last setup check, sent to the hub with every heartbeat. */
@@ -597,6 +601,7 @@ function onHub(update: HubUpdate): void {
   hubState = update;
   if (!smokeShot) void watchAlerts();
   if (update.profileChanges?.length) takeProfileChanges(update.profileChanges);
+  if (update.mergeRuns?.length) void takeMerges(update.mergeRuns);
   updater.offer(update.update);
   // "Once no run is going": nothing queued or running, the window may even be closed.
   if (updater.installsOn("idle") && !runner.store.active().length) void installAndRestart();
@@ -635,6 +640,51 @@ function takeProfileChanges(changes: ProfileChange[]): void {
     });
     n.show();
   }
+}
+
+/** Merges in progress here: the hub sends a merge at every heartbeat until the machine reports on it. */
+const merging = new Set<string>();
+
+/**
+ * Someone with Code review merged a run's MR from the web (roadmap 18c): done here with this machine's GitLab or GitHub
+ * token. Only an MR of one of this machine's own runs. The watcher then sees it merged and moves the task, as for any merge.
+ */
+async function takeMerges(orders: RunMergeOrder[]): Promise<void> {
+  let merged = false;
+  for (const o of orders) {
+    if (merging.has(o.runId)) continue;
+    merging.add(o.runId);
+    try {
+      const run = runner.store.get(o.runId);
+      let error: { message: string; key?: string; vars?: Record<string, string | number> } | null = null;
+      if (!run || run.mrUrl !== o.mrUrl) error = { message: `Run ${o.runId} has no MR ${o.mrUrl} on this machine.`, key: "errors.mrNotOnForge", vars: { url: o.mrUrl } };
+      else {
+        try {
+          await mergeMr(mrHost(), o.mrUrl);
+          merged = true;
+        } catch (err) {
+          const e = toErrorPayload(err);
+          error = { message: e.message.slice(0, 2000), ...(e.key ? { key: e.key, vars: e.vars as Record<string, string | number> } : {}) };
+        }
+      }
+      await backend.call("runs.mergeResult", { runId: o.runId, ok: error === null, error }, actor());
+      if (Notification.isSupported() && run) {
+        const n = new Notification({
+          title: `${run.taskId} · ${mrLabel(run)}`,
+          body: error ? tr("desktop.mergeFailed", { who: o.requestedBy, reason: error.message }) : tr("desktop.mergedFromHub", { who: o.requestedBy }),
+        });
+        n.on("click", showWindow);
+        n.show();
+      }
+    } catch (err) {
+      // The hub did not hear the result: the next heartbeat sends the merge again, and the forge says it is merged.
+      console.error(`[xdev-hive] merge ${o.runId}: ${toErrorPayload(err).message}`);
+    } finally {
+      merging.delete(o.runId);
+    }
+  }
+  // The watcher moves the task to done, cleans up and tells, as for a merge made on GitLab or GitHub.
+  if (merged) void mrWatcher.check().then(onMrChanges, () => undefined);
 }
 
 /** A hub admin's app tells about alerts the hub opened (roadmap 22m-2); the watch asks once a minute at most. */
@@ -1100,7 +1150,7 @@ if (!app.requestSingleInstanceLock()) {
       config = configSchema.parse({});
       backend = resolveBackend(config);
     }
-    const mrHost: MrHost = {
+    mrHostRef = {
       gitlab: () => config.gitlab,
       github: () => config.github,
       projects: () => config.projects,
@@ -1110,8 +1160,8 @@ if (!app.requestSingleInstanceLock()) {
       fetch: gitlabFetch,
       user: os.userInfo().username,
     };
-    mergeRequester = new MergeRequester(mrHost);
-    mrWatcher = new MrWatcher(mrHost, new CiFixer({ ...mrHost, enqueue: (req, extra) => runner.enqueue(req, extra) }));
+    mergeRequester = new MergeRequester(mrHostRef);
+    mrWatcher = new MrWatcher(mrHostRef, new CiFixer({ ...mrHostRef, enqueue: (req, extra) => runner.enqueue(req, extra) }));
     logins = new LoginMonitor(() => config.agents, agentEnv);
     alertWatch = new AlertWatch({
       me: () => me(),

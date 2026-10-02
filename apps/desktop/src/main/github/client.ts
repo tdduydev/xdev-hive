@@ -198,6 +198,11 @@ export class GitHubClient {
     return this.#rest("PATCH", `/repos/${repo}/pulls/${number}`, body);
   }
 
+  /** Merges it with the repository's default method (roadmap 18c); 405 when it cannot be merged, 409 when the head moved. */
+  merge(repo: string, number: number): Promise<{ merged: boolean; message: string; sha?: string }> {
+    return this.#rest("PUT", `/repos/${repo}/pulls/${number}/merge`, {});
+  }
+
   addLabels(repo: string, number: number, labels: string[]): Promise<unknown> {
     return this.#rest("POST", `/repos/${repo}/issues/${number}/labels`, { labels });
   }

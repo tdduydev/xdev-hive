@@ -412,6 +412,40 @@ async function main() {
     await tab.waitFor("claude-1 off, nothing waiting", () => document.querySelector('[aria-label="Bật gói claude-1"]')?.getAttribute("aria-checked") === "false" && !document.body.innerText.includes("chờ máy áp dụng"));
   });
 
+  // Roadmap 18c: a reviewer merges a run's MR from Lượt chạy; the run's machine does it with its own token at its heartbeat.
+  await step("merge-from-web", async () => {
+    const lanRpc = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" },
+        body: JSON.stringify({ method, input }),
+      });
+      return (await r.json()).result;
+    };
+    const mrUrl = "https://gitlab.example/team/payment/-/merge_requests/12";
+    await lanRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", version: "0.97.0", projects: ["payment"], acceptsRuns: true });
+    await lanRpc("runs.push", {
+      machine: "lan-mbp",
+      runs: [{ runId: "R-e2emr1", project: "payment", taskId: "PAY-1", taskTitle: "Việc đầu tiên của payment", role: "implement", status: "succeeded", profileId: "claude-1",
+        mrUrl, mr: { iid: 12, status: "opened", draft: false, pipeline: "success", pipelineUrl: null, checkedAt: new Date().toISOString() },
+        log: "done", createdAt: new Date(Date.now() - 600_000).toISOString(), finishedAt: new Date().toISOString() }],
+    });
+    // Hoa reviews code in payment; the run is Lan's (her machine's token), so Hoa may merge it.
+    const tab = (current = tabs.hoa);
+    await tab.go("runs?run=R-e2emr1");
+    await tab.waitFor("MR !12 with its CI", () => document.body.innerText.includes("MR !12") && document.body.innerText.includes("CI qua"));
+    await tab.click("button", "Merge");
+    await tab.waitFor("waiting for Lan's machine", () => document.body.innerText.includes("chờ máy lan-mbp"));
+    const order = await until("the merge at Lan's heartbeat", async () =>
+      (await lanRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", version: "0.97.0", projects: ["payment"], acceptsRuns: true })).mergeRuns?.find((m) => m.runId === "R-e2emr1"),
+    );
+    expect(order.mrUrl === mrUrl && order.requestedBy === "hoa", `merge order: ${JSON.stringify(order)}`);
+    await lanRpc("runs.mergeResult", { runId: "R-e2emr1", ok: true });
+    await tab.reload();
+    await tab.go("runs?run=R-e2emr1");
+    await tab.waitFor("merged from Hive, no Merge button", () => document.body.innerText.includes("Đã merge từ Hive") && ![...document.querySelectorAll("button")].some((b) => b.textContent.trim() === "Merge"));
+  });
+
   // Roadmap 27a: a project's row only tightens the hub's default; the machines get it at their heartbeat.
   await step("agent-policy", async () => {
     const tab = (current = tabs.admin);
