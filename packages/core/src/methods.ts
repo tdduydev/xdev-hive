@@ -50,6 +50,7 @@ import {
   type ProfileChange,
   type RunMergeOrder,
   type MachineCommand,
+  type MachineTools,
   type MachineDetail,
   type MachineSetupMissing,
   type Memory,
@@ -746,6 +747,11 @@ export interface MethodOutput {
     policy: TeamPolicy;
     /** The agent policy (roadmap 27a): the hub's default and the parts of the projects this machine has. Older apps ignore it. */
     agentPolicy: { hub: AgentPolicy; projects: Record<string, Partial<AgentPolicy>> };
+    /**
+     * The tool catalog (roadmap 28b) for the projects this machine has: entries on for one of them, on by default,
+     * set by one of them, or with the app's own code (whose old per-repo setup still counts). Older apps ignore it.
+     */
+    tools: MachineTools;
     /** Install requests waiting for the machine's user. */
     commands: MachineCommand[];
     /**

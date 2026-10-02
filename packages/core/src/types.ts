@@ -432,6 +432,23 @@ export interface ToolView extends ToolEntry {
   projects: ToolProjectSetting[];
 }
 
+/** A project's setting for one tool, as a heartbeat carries it (roadmap 28b). */
+export interface MachineToolSetting {
+  id: string;
+  enabled: boolean | null;
+  effective: boolean;
+  required: boolean;
+}
+
+/**
+ * The catalog as a machine gets it at its heartbeat (roadmap 28b): the entries its projects may use, placeholders
+ * left as written (the machine fills them in with toolArgv), and each of its projects' settings.
+ */
+export interface MachineTools {
+  entries: ToolEntry[];
+  projects: Record<string, MachineToolSetting[]>;
+}
+
 /**
  * A system (roadmap 19b): the projects that make one product, each a service with its own repository. Picked in the
  * sidebar, the pages show the tasks, runs, merge requests and chat of every project in it. A project may be in several.
