@@ -107,6 +107,8 @@ const setupItem = z.object({
   state: z.enum(["installed", "missing", "outdated", "manual"]),
   detail: z.string().max(1000),
   action: z.string().max(60).nullable(),
+  version: z.string().max(40).nullable().optional(),
+  latest: z.string().max(40).nullable().optional(),
 });
 const setupReport = z.object({
   machine: z.array(setupItem).max(20),

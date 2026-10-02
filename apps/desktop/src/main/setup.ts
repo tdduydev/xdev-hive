@@ -2,9 +2,9 @@
 // repo (Hive's agent config, codegraph, superpowers, Spec Kit), and how to install what is missing.
 // No Electron imports: the main process provides a SetupHost, tests provide a fake one.
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
-import { HiveError, type AgentKind, type DesktopProject, type FileAction, type SetupInstallResult, type SetupItem, type SetupReport } from "@xdev-hive/core";
+import { compareVersions, HiveError, type AgentKind, type DesktopProject, type FileAction, type SetupInstallResult, type SetupItem, type SetupReport } from "@xdev-hive/core";
 import {
   CODEGRAPH_PACKAGE,
   enableSuperpowers,
@@ -34,6 +34,59 @@ export interface SetupHost {
   /** For ~/.codex/config.toml in the agent config check. */
   home?: string;
   run?: Run;
+  /** The newest version of an npm package (roadmap 33); tests pass their own. Default: `npm view`, else the registry. */
+  latest?: (pkg: string, npm: string | null, env: NodeJS.ProcessEnv) => Promise<string | null>;
+  /** Runs going on with a CLI of this kind: it is not upgraded under them. */
+  cliBusy?: (kind: AgentKind) => number;
+  /** While a CLI is upgraded the runner starts no run on it. */
+  holdCli?: (kind: AgentKind, held: boolean) => void;
+  /** The real path of a CLI (symlinks followed), which tells how it was installed. */
+  realpath?: (bin: string) => string;
+}
+
+/** The first dotted version in a CLI's --version output: "2.1.283 (Claude Code)", "codex-cli 0.157.1", "0.61.0". */
+export function parseCliVersion(output: string): string | null {
+  return /(?<![\w.])(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)(?![\w.])/.exec(output)?.[1] ?? null;
+}
+
+/** How a CLI upgrades itself; `bin` is a command looked up on PATH, or the CLI's own path. */
+export interface CliUpgrade {
+  method: "npm" | "native" | "brew";
+  bin: string;
+  args: string[];
+}
+
+/**
+ * How the CLI at `real` (its path with symlinks followed) was installed, so it is upgraded the same way and no second
+ * copy lands elsewhere on PATH. null: not known, the person upgrades it as they installed it.
+ */
+export function cliUpgrade(cli: (typeof AGENT_CLIS)[number], real: string, own: string): CliUpgrade | null {
+  const p = real.replaceAll("\\", "/");
+  if (p.includes(`/node_modules/${cli.pkg}/`)) return { method: "npm", bin: "npm", args: ["install", "-g", `${cli.pkg}@latest`] };
+  // Claude Code's native installer (~/.local/share/claude/versions/…) and its older local install (~/.claude/local).
+  if (cli.kind === "claude" && (p.includes("/.local/share/claude/") || p.includes("/.claude/local/"))) return { method: "native", bin: own, args: ["update"] };
+  const brew = /\/(Cellar|Caskroom)\/([^/]+)\//.exec(p);
+  if (brew) return { method: "brew", bin: "brew", args: brew[1] === "Caskroom" ? ["upgrade", "--cask", brew[2]!] : ["upgrade", brew[2]!] };
+  return null;
+}
+
+/** The registry's newest version is looked up again after this long; a failed lookup sooner. */
+const LATEST_TTL_MS = 6 * 60 * 60_000;
+const LATEST_RETRY_MS = 30 * 60_000;
+
+/** `npm view` follows the machine's own registry and proxy (.npmrc); without npm, the public registry. */
+async function npmLatest(run: Run, pkg: string, npm: string | null, env: NodeJS.ProcessEnv): Promise<string | null> {
+  if (npm) {
+    const r = await run(npm, ["view", pkg, "version"], { env, timeoutMs: 20_000 });
+    return r.ok ? parseCliVersion(r.output) : null;
+  }
+  try {
+    const res = await fetch(`https://registry.npmjs.org/${pkg}/latest`, { signal: AbortSignal.timeout(10_000) });
+    const json = res.ok ? ((await res.json()) as { version?: unknown }) : null;
+    return typeof json?.version === "string" ? json.version : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The CLIs the default profiles use, and the npm package that provides each. */
@@ -89,6 +142,8 @@ const describeFiles = (files: FileAction[]) =>
 export class Setup {
   readonly #host: SetupHost;
   readonly #run: Run;
+  /** The registry's newest version of each CLI package, and when it was looked up. */
+  readonly #latest = new Map<string, { at: number; version: string | null }>();
 
   constructor(host: SetupHost) {
     this.#host = host;
@@ -133,6 +188,8 @@ export class Setup {
         throw new HiveError("bad_request", `uv ${args.join(" ")} lỗi:\n${output}`, { key: "errors.commandFailed", vars: { command: `uv ${args.join(" ")}`, output } });
       }
       output = tail(r.output);
+    } else if (cli && resolveBin(cli.bin, pathEnv)) {
+      output = await this.#upgrade(cli, pathEnv, env);
     } else if (cli) {
       const npm = resolveBin("npm", pathEnv);
       if (!npm) throw new HiveError("bad_request", noNpm(), { key: "setupItem.noNpm" });
@@ -171,13 +228,67 @@ export class Setup {
         action: npm ? tr("setupItem.installNpm") : null,
       };
     }
-    const v = await this.#run(bin, ["--version"], { env: { ...this.#host.env(), PATH: pathEnv }, timeoutMs: 15_000 });
+    const env = { ...this.#host.env(), PATH: pathEnv };
+    const v = await this.#run(bin, ["--version"], { env, timeoutMs: 15_000 });
+    if (!v.ok) return { ...base, state: "installed", detail: tr("setupItem.versionFailed", { bin, output: firstLine(v.output) }), action: null, version: null, latest: null };
+    const version = parseCliVersion(v.output);
+    const latest = await this.#latestOf(cli.pkg, pathEnv, env);
+    // A CLI behind the registry still runs: it stays "installed", so a required one is not reported missing.
+    if (!version || !latest || compareVersions(latest, version) <= 0) {
+      return { ...base, state: "installed", detail: `${firstLine(v.output) || "?"} · ${bin}`, action: null, version, latest };
+    }
+    const upgrade = cliUpgrade(cli, this.#realpath(bin), bin);
     return {
       ...base,
       state: "installed",
-      detail: v.ok ? `${firstLine(v.output) || "?"} · ${bin}` : tr("setupItem.versionFailed", { bin, output: firstLine(v.output) }),
-      action: null,
+      detail: upgrade ? tr("setupItem.cliOutdated", { version, latest, path: bin }) : tr("setupItem.cliOutdatedManual", { version, latest, path: bin }),
+      action: upgrade ? tr("setupItem.upgradeTo", { version: latest }) : null,
+      version,
+      latest,
     };
+  }
+
+  /** Upgrades an installed CLI the way it was installed (roadmap 33), while no run uses it and none starts. */
+  async #upgrade(cli: (typeof AGENT_CLIS)[number], pathEnv: string, env: NodeJS.ProcessEnv): Promise<string> {
+    const own = resolveBin(cli.bin, pathEnv)!;
+    const upgrade = cliUpgrade(cli, this.#realpath(own), own);
+    if (!upgrade) throw new HiveError("bad_request", tr("setupItem.upgradeUnknown", { label: cli.label, pkg: cli.pkg }), { key: "setupItem.upgradeUnknown", vars: { label: cli.label, pkg: cli.pkg } });
+    const busy = this.#host.cliBusy?.(cli.kind) ?? 0;
+    if (busy) throw new HiveError("conflict", tr("setupItem.cliBusy", { label: cli.label, count: busy }), { key: "setupItem.cliBusy", vars: { label: cli.label, count: busy } });
+    const bin = upgrade.bin === own ? own : resolveBin(upgrade.bin, pathEnv);
+    if (!bin) throw new HiveError("bad_request", upgrade.bin === "npm" ? noNpm() : tr("setupItem.upgradeUnknown", { label: cli.label, pkg: cli.pkg }), { key: upgrade.bin === "npm" ? "setupItem.noNpm" : "setupItem.upgradeUnknown", vars: { label: cli.label, pkg: cli.pkg } });
+    const command = `${upgrade.bin === own ? cli.bin : upgrade.bin} ${upgrade.args.join(" ")}`;
+    this.#host.holdCli?.(cli.kind, true);
+    try {
+      const r = await this.#run(bin, upgrade.args, { env, timeoutMs: 15 * 60_000 });
+      if (!r.ok) {
+        const output = tail(r.output);
+        throw new HiveError("bad_request", `${command} lỗi:\n${output}`, { key: "errors.commandFailed", vars: { command, output } });
+      }
+      // Looked up again next time: what was newest may have been what just got installed, or older.
+      this.#latest.delete(cli.pkg);
+      return tail(r.output);
+    } finally {
+      this.#host.holdCli?.(cli.kind, false);
+    }
+  }
+
+  #realpath(bin: string): string {
+    try {
+      return this.#host.realpath ? this.#host.realpath(bin) : realpathSync(bin);
+    } catch {
+      return bin;
+    }
+  }
+
+  async #latestOf(pkg: string, pathEnv: string, env: NodeJS.ProcessEnv): Promise<string | null> {
+    const now = Date.now();
+    const cached = this.#latest.get(pkg);
+    if (cached && now - cached.at < (cached.version ? LATEST_TTL_MS : LATEST_RETRY_MS)) return cached.version;
+    const npm = resolveBin("npm", pathEnv);
+    const version = await (this.#host.latest ? this.#host.latest(pkg, npm, env) : npmLatest(this.#run, pkg, npm, env)).catch(() => null);
+    this.#latest.set(pkg, { at: now, version });
+    return version;
   }
 
   async #findSpecify(pathEnv: string): Promise<Specify | null> {
