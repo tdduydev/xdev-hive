@@ -412,6 +412,48 @@ async function main() {
     await tab.waitFor("claude-1 off, nothing waiting", () => document.querySelector('[aria-label="Bật gói claude-1"]')?.getAttribute("aria-checked") === "false" && !document.body.innerText.includes("chờ máy áp dụng"));
   });
 
+  // Roadmap 32b: Lan, payment's lead, prompts an agent from the Tasks page with one of her machine's profiles; the hub
+  // makes task P-<n> and the request, and the machine gets it at its heartbeat.
+  await step("web-prompt", async () => {
+    const profile = (id) => ({ id, label: id, kind: "claude", enabled: true, account: null, installed: true, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10 });
+    const beat = async () => {
+      const r = await fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" },
+        body: JSON.stringify({
+          method: "machines.heartbeat",
+          input: { machine: "lan-mbp", instance: "e2e00001", version: "0.108.0", projects: ["payment"], acceptsRuns: true, profiles: [profile("claude-1"), profile("claude-2")] },
+        }),
+      });
+      return (await r.json()).result;
+    };
+    await beat();
+    const tab = (current = tabs.lan);
+    await tab.go("tasks");
+    await tab.click("[data-prompt-agent]");
+    await tab.waitFor("the profiles of Lan's machine", () => [...(document.querySelector("#prompt-profile")?.options ?? [])].some((o) => o.value === "claude-2"));
+    await tab.eval(() => {
+      const select = document.querySelector("#prompt-profile");
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, "claude-2");
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await tab.click("#prompt-text");
+    await tab.type("Thêm trang lịch sử giao dịch.\nCó lọc theo ngày.");
+    await tab.shot(`${String(n).padStart(2, "0")}-web-prompt-form`);
+    await tab.click('button[type="submit"]', "Gửi prompt");
+    const task = await until("the prompt's task", async () => (await rpc("tasks.list", { project: "payment" })).find((t) => /^P-\d+$/.test(t.id)));
+    expect(task.title === "Thêm trang lịch sử giao dịch.", `title: ${task.title}`);
+    const [req] = (await rpc("runs.requests", { project: "payment" })).filter((r) => r.taskId === task.id);
+    expect(req?.status === "pending" && req.profileId === "claude-2" && req.machine === "lan-mbp", `request: ${JSON.stringify(req)}`);
+    // The task's panel opens on it, waiting for the machine.
+    await tab.waitFor("the new task's panel", () => document.body.innerText.includes("Chờ máy lan-mbp nhận"));
+    expect(task.note === "Thêm trang lịch sử giao dịch.\nCó lọc theo ngày.", `note: ${task.note}`);
+    const sent = (await beat()).runRequests?.find((r) => r.id === req.id);
+    expect(sent?.taskId === task.id, `at the heartbeat: ${JSON.stringify(sent)}`);
+    // Leave the hub as the other steps expect it.
+    await rpc("runs.cancelRequest", { id: req.id });
+  });
+
   // Roadmap 18c: a reviewer merges a run's MR from Lượt chạy; the run's machine does it with its own token at its heartbeat.
   await step("merge-from-web", async () => {
     const lanRpc = async (method, input) => {
