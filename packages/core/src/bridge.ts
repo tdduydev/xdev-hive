@@ -427,6 +427,8 @@ export interface DesktopBridge {
   setProfileToken(id: string, token: string): Promise<AgentProfileStatus[]>;
   /** Opens a terminal running `claude setup-token` with the profile's login folder. */
   openSetupToken(id: string): Promise<{ opened: boolean }>;
+  /** Opens a terminal running the profile's CLI in a project's repo, for the person to work in (roadmap 32a). */
+  openCli(id: string, project: string): Promise<{ opened: boolean }>;
 
   startRun(request: StartRunRequest): Promise<AgentRun>;
   runs(filter?: { project?: string; projects?: string[]; limit?: number }): Promise<AgentRun[]>;

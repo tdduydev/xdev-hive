@@ -22,6 +22,7 @@ import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { ToggleGroup, ToggleGroupItem } from "@xdev-hive/ui/components/ui/toggle-group";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader } from "#ui/components/common.tsx";
+import { OpenCli } from "#ui/components/OpenCli.tsx";
 import { useAction, useHive, useQuery } from "#ui/hooks.ts";
 import { rich, useT } from "#ui/i18n/index.tsx";
 
@@ -659,6 +660,7 @@ function ProjectsCard({ settings, onChanged }: { settings: DesktopSettings; onCh
   const [result, setResult] = useState<{ project: string; title: string; files: FileAction[]; extra?: string } | null>(null);
   const [gitlabOpen, setGitlabOpen] = useState<string | null>(null);
   const nameValid = PROJECT_NAME.test(name);
+  const profiles = useQuery(() => desktop.profiles(), [desktop]);
 
   const showSync = (r: SyncReport) =>
     setResult({
@@ -735,6 +737,7 @@ function ProjectsCard({ settings, onChanged }: { settings: DesktopSettings; onCh
                     </Button>
                   </div>
                 </div>
+                <OpenCli profiles={profiles.data ?? []} projects={[p.name]} />
                 {gitlabOpen === p.name ? (
                   <ProjectGitLab
                     project={p}

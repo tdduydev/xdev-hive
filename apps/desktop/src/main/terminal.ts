@@ -1,6 +1,6 @@
-// Opens a terminal window that runs one command, for sign-ins a CLI can only do interactively
-// (a browser page, a pasted code). The command goes into a small script file, since each OS starts
-// terminals differently. No Electron imports.
+// Opens a terminal window that runs one command: sign-ins a CLI can only do interactively (a browser
+// page, a pasted code), and a profile's CLI for the person to work in (roadmap 32a). The command goes
+// into a small script file, since each OS starts terminals differently. No Electron imports.
 import { spawn } from "node:child_process";
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -14,6 +14,10 @@ export interface TerminalCommand {
   env: Record<string, string>;
   /** Printed when the command ends, before the window waits. */
   done: string;
+  /** Where the command runs; left out: wherever the terminal starts. */
+  cwd?: string;
+  /** The script's file name without its extension ("login" when left out). */
+  name?: string;
 }
 
 const shq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
@@ -24,30 +28,35 @@ const cmdq = (s: string) => {
 };
 
 export function terminalScript(platform: NodeJS.Platform, c: TerminalCommand): { name: string; content: string } {
+  const base = c.name ?? "login";
   if (platform === "win32") {
     const lines = [
       "@echo off",
       `title ${c.title.replace(/[^\w .:-]/g, "")}`,
       ...Object.entries(c.env).map(([k, v]) => `set ${cmdq(`${k}=${v}`)}`),
+      // /d: the repo may be on another drive than the terminal starts on.
+      ...(c.cwd ? [`cd /d ${cmdq(c.cwd)} || exit /b 1`] : []),
       // `call` so a CLI that is itself a .cmd returns here.
       `call ${[c.bin, ...c.args].map(cmdq).join(" ")}`,
       "echo.",
       `echo ${c.done.replace(/[^\p{L}\p{N} .,:()-]/gu, "")}`,
       "pause",
     ];
-    return { name: "login.cmd", content: `${lines.join("\r\n")}\r\n` };
+    return { name: `${base}.cmd`, content: `${lines.join("\r\n")}\r\n` };
   }
   const lines = [
     "#!/bin/sh",
     `# ${c.title.replace(/\n/g, " ")}`,
     ...Object.entries(c.env).map(([k, v]) => `export ${k}=${shq(v)}`),
+    // A repo that went away must not leave the CLI working in the home folder instead.
+    ...(c.cwd ? [`cd ${shq(c.cwd)} || exit 1`] : []),
     [c.bin, ...c.args].map(shq).join(" "),
     "echo",
     `echo ${shq(c.done)}`,
   ];
   // Terminal on macOS keeps the window open after the script; elsewhere, wait for Enter.
   if (platform !== "darwin") lines.push("read _");
-  return { name: platform === "darwin" ? "login.command" : "login.sh", content: `${lines.join("\n")}\n` };
+  return { name: `${base}.${platform === "darwin" ? "command" : "sh"}`, content: `${lines.join("\n")}\n` };
 }
 
 /** Terminal emulators tried on Linux, in order, with how each takes a command. */

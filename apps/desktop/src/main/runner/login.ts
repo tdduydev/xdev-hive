@@ -58,12 +58,16 @@ export function loginFlags(kind: AgentKind, how: LoginHow = {}): string[] {
   return [];
 }
 
+/** The login-dir env of a profile, expanded: what a terminal script may hold (keys and tokens never go in a file). */
+export function loginDirEnv(profile: AgentProfile): Record<string, string> {
+  return expandEnv(Object.fromEntries(Object.entries(profile.env).filter(([k]) => LOGIN_DIRS.includes(k))));
+}
+
 /** Sign-in args and the login-dir env (expanded) of a profile, for a terminal to run; null when the CLI has none. */
 export function loginParts(profile: AgentProfile, how: LoginHow = {}): { args: string[]; env: Record<string, string> } | null {
   const commands = COMMANDS[profile.kind];
   if (!commands) return null;
-  const env = expandEnv(Object.fromEntries(Object.entries(profile.env).filter(([k]) => LOGIN_DIRS.includes(k))));
-  return { args: [...commands.login, ...loginFlags(profile.kind, how)], env };
+  return { args: [...commands.login, ...loginFlags(profile.kind, how)], env: loginDirEnv(profile) };
 }
 
 /** The env var that points a CLI at a sign-in folder, for the kinds that have one. */

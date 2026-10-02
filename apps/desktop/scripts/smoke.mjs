@@ -173,6 +173,16 @@ const failures = [];
   if (chay?.mirror?.from !== "README.md#Chạy" || chay.parent !== "project/demo/huong-dan") failures.push(`mirror: project/demo/chay is ${JSON.stringify(chay && { mirror: chay.mirror, parent: chay.parent })}`);
   local.close();
 }
+// A profile's CLI in the project's repo (roadmap 32a): the script starts there, and Hive's server carries the profile's id.
+await shoot("agents-cli", "agents", 2000, { HIVE_SMOKE_CLICK: '[data-open-cli="claude-max-1:demo"]', HIVE_SMOKE_SCROLL: '[data-open-cli="claude-max-1:demo"]' });
+{
+  const dir = path.join(work, "cli", "claude-max-1");
+  const files = existsSync(dir) ? readdirSync(dir) : [];
+  const script = files.filter((f) => f.startsWith("cli.")).map((f) => readFileSync(path.join(dir, f), "utf8")).join("\n");
+  const mcp = files.includes("mcp.json") ? JSON.parse(readFileSync(path.join(dir, "mcp.json"), "utf8")) : null;
+  if (!script.includes(repo)) failures.push(`open-cli: the script of claude-max-1 does not start in ${repo}`);
+  if (mcp?.mcpServers?.["xdev-hive"]?.env?.HIVE_AGENT !== "claude-max-1") failures.push(`open-cli: mcp.json is ${JSON.stringify(mcp)}`);
+}
 // One more account of each (roadmap 24b): its own sign-in folder, a sign-in script with the CLI's command, and no run
 // until it signs in. The CLIs are the fake one, so the check does not need Claude Code or Codex on the machine.
 const accountBin = path.join(work, "bin");

@@ -64,7 +64,8 @@ const CODEX_BLOCK = [
   CODEX_END,
 ].join("\n");
 
-const mcpEntry = (agent: string, project: string) => ({
+/** Hive's MCP server for an agent on a project: the shim reads the token itself, so the env holds no secret. */
+export const hiveMcpServer = (agent: string, project: string) => ({
   command: SHIM_NAME,
   args: [] as string[],
   env: { HIVE_AGENT: agent, HIVE_PROJECT: project },
@@ -161,7 +162,7 @@ export function installAgents(repo: string, project: string, opts: { home?: stri
     mergeJson(
       path.join(repo, ".mcp.json"),
       ".mcp.json",
-      (j) => ({ ...j, mcpServers: { ...j.mcpServers, [MCP_NAME]: mcpEntry("claude", project) } }),
+      (j) => ({ ...j, mcpServers: { ...j.mcpServers, [MCP_NAME]: hiveMcpServer("claude", project) } }),
       apply,
     ),
     mergeJson(
@@ -170,7 +171,7 @@ export function installAgents(repo: string, project: string, opts: { home?: stri
       (j) => {
         const names = new Set<string>([j.contextFileName ?? []].flat());
         names.add("AGENTS.md");
-        return { ...j, contextFileName: [...names], mcpServers: { ...j.mcpServers, [MCP_NAME]: mcpEntry("gemini", project) } };
+        return { ...j, contextFileName: [...names], mcpServers: { ...j.mcpServers, [MCP_NAME]: hiveMcpServer("gemini", project) } };
       },
       apply,
     ),
@@ -238,7 +239,7 @@ export function repoFeatures(repo: string): RepoFeatures {
 
 /** MCP servers for one agent run, listed by the app instead of read from the working copy. Task and run go with every write. */
 export function runMcpServers(agent: string, project: string, features: RepoFeatures, run: { task: string; id?: string; readOnly?: boolean }): Json {
-  const hive = mcpEntry(agent, project);
+  const hive = hiveMcpServer(agent, project);
   const env = { ...hive.env, HIVE_TASK: run.task, ...(run.id ? { HIVE_RUN: run.id } : {}), ...(run.readOnly ? { HIVE_READONLY: "1" } : {}) };
   return {
     [MCP_NAME]: { ...hive, env },
