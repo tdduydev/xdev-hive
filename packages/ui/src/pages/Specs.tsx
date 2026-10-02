@@ -2,13 +2,29 @@
 // the target branch and on the branches being worked on, and pushed to the hub. A list on the left (stage, progress,
 // branch); the feature's spec.md, plan.md and tasks.md on the right. #/specs?project=&dir=&branch= opens one.
 import { useEffect, useState } from "react";
-import { SPEC_FILES, type SpecFeature, type SpecFile, type SpecStage } from "@xdev-hive/core";
+import {
+  nextSpecTaskId,
+  SPEC_FILES,
+  specNextStep,
+  specRunTask,
+  specStepInstructions,
+  specTaskPrefix,
+  type Machine,
+  type SpecFeature,
+  type SpecFile,
+  type SpecStage,
+  type SpecStep,
+} from "@xdev-hive/core";
+import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
+import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
+import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@xdev-hive/ui/components/ui/tabs";
 import { DocMarkdown } from "#ui/components/DocMarkdown.tsx";
 import { ErrorNote } from "#ui/components/common.tsx";
 import { Chip, DetailBody, DetailHeader, ListItem, ListPane, type ChipKind } from "#ui/components/panes.tsx";
-import { formatTime, useHashParam, useHive, useQuery } from "#ui/hooks.ts";
+import { formatTime, useAction, useCan, useHashParam, useHive, useQuery } from "#ui/hooks.ts";
+import { useToast } from "#ui/shell/toast.tsx";
 import { useT } from "#ui/i18n/index.tsx";
 import { inScope, projectScope, scopeFilter, scopeKey } from "#ui/lib/scope.ts";
 import { fold } from "#ui/lib/text.ts";
@@ -52,7 +68,13 @@ export function SpecsPage() {
     if (list.data && !current && !linkProject) setSelected(list.data[0] ? idOf(list.data[0]) : null);
   }, [list.data, current, linkProject]);
 
+  // Roadmap 20d: a new feature's spec written by an agent, in a project's scope (the run needs one repo).
+  const allow = useCan();
+  const newProject = scope.kind === "project" && allow(scope.project, "taskManage") && allow(scope.project, "runDispatch") ? scope.project : null;
+  const [creating, setCreating] = useState(false);
+
   const pick = (f: SpecFeature) => {
+    setCreating(false);
     setSelected(idOf(f));
     // Shareable: the address bar names the feature, without a hashchange that would reload the page.
     window.history.replaceState(null, "", specHref(f));
@@ -60,7 +82,19 @@ export function SpecsPage() {
 
   return (
     <div className="flex h-full min-h-0 w-full bg-surface">
-      <ListPane label={t("nav.specs")} head={<Input className="h-7 text-xs" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("specs.search")} aria-label={t("specs.search")} />}>
+      <ListPane
+        label={t("nav.specs")}
+        head={
+          <div className="flex items-center gap-1.5">
+            <Input className="h-7 text-xs" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("specs.search")} aria-label={t("specs.search")} />
+            {newProject ? (
+              <Button size="sm" variant={creating ? "ghost" : "outline"} className="h-7 shrink-0 text-xs" onClick={() => setCreating((v) => !v)}>
+                {creating ? t("specs.import.close") : t("specs.run.new")}
+              </Button>
+            ) : null}
+          </div>
+        }
+      >
         <ErrorNote error={list.error} />
         {shown.map((f) => (
           <ListItem
@@ -89,7 +123,14 @@ export function SpecsPage() {
         {features.length && !shown.length ? <p className="m-0 px-3 py-8 text-center text-xs text-fg-muted">{t("specs.noMatch")}</p> : null}
       </ListPane>
       <div className="flex min-w-0 flex-1 flex-col">
-        {current ? (
+        {creating && newProject ? (
+          <>
+            <DetailHeader scope={newProject} title={t("specs.run.newTitle")} />
+            <DetailBody>
+              <SpecRun project={newProject} step="specify" feature={null} onSent={() => setCreating(false)} />
+            </DetailBody>
+          </>
+        ) : current ? (
           <SpecReader key={idOf(current)} feature={current} manyProjects={manyProjects} />
         ) : (
           <div className="grid flex-1 place-items-center p-6 text-[13px] text-fg-muted">
@@ -140,6 +181,14 @@ function SpecReader({ feature, manyProjects }: { feature: SpecFeature; manyProje
     if (files) setTab([...SPEC_FILES].reverse().find((f) => files[f] !== null) ?? "spec");
   }, [files]);
   const text = files?.[tab] ?? null;
+  const allow = useCan();
+  // Roadmap 20c: tasks.md into board tasks, from the Tasks tab.
+  const [importing, setImporting] = useState(false);
+  const canImport = tab === "tasks" && files?.tasks != null && allow(feature.project, "taskManage");
+  // Roadmap 20d: the next Spec Kit step as an agent's run.
+  const next = specNextStep(feature.stage);
+  const [running, setRunning] = useState(false);
+  const canRun = next !== null && allow(feature.project, "runDispatch") && allow(feature.project, "taskManage");
   return (
     <>
       <DetailHeader
@@ -164,12 +213,178 @@ function SpecReader({ feature, manyProjects }: { feature: SpecFeature; manyProje
           </TabsList>
         </Tabs>
         {feature.tasksTotal ? <Progress done={feature.tasksDone} total={feature.tasksTotal} /> : null}
+        <span className="ml-auto flex gap-1.5">
+          {canRun ? (
+            <Button size="sm" variant={running ? "ghost" : "outline"} onClick={() => (setRunning((v) => !v), setImporting(false))}>
+              {running ? t("specs.import.close") : t(`specs.run.step.${next}`)}
+            </Button>
+          ) : null}
+          {canImport ? (
+            <Button size="sm" variant={importing ? "ghost" : "outline"} onClick={() => (setImporting((v) => !v), setRunning(false))}>
+              {importing ? t("specs.import.close") : t("specs.import.open")}
+            </Button>
+          ) : null}
+        </span>
       </div>
       <DetailBody>
         <ErrorNote error={detail.error} />
+        {importing && canImport ? <ImportTasks feature={feature} onDone={() => setImporting(false)} /> : null}
+        {running && canRun ? <SpecRun project={feature.project} step={next} feature={feature} onSent={() => setRunning(false)} /> : null}
         {detail.data === null ? <p className="m-0 text-[13px] text-fg-muted">{t("specs.notFound")}</p> : null}
         {text !== null ? <DocMarkdown text={text} /> : files ? <p className="m-0 text-[13px] text-fg-muted">{t("specs.noFile", { file: `${tab}.md` })}</p> : null}
       </DetailBody>
     </>
+  );
+}
+
+/**
+ * tasks.md into board tasks (roadmap 20c): what the hub would make, with what each waits for, then the tasks. Lines
+ * already done are left out, tasks already on the board stay as they are.
+ */
+function ImportTasks({ feature, onDone }: { feature: SpecFeature; onDone: () => void }) {
+  const { client, bump } = useHive();
+  const t = useT();
+  const toast = useToast();
+  const action = useAction();
+  const [prefix, setPrefix] = useState(specTaskPrefix(feature.dir));
+  const valid = /^[A-Za-z0-9._-]{1,40}$/.test(prefix);
+  const input = { project: feature.project, dir: feature.dir, branch: feature.branch, prefix };
+  const plan = useQuery(async () => (valid ? client.call("specs.importTasks", { ...input, dryRun: true }) : null), [client, idOf(feature), prefix, feature.pushedAt]);
+  const fresh = plan.data?.tasks.filter((x) => !x.exists) ?? [];
+  const short = (id: string) => id.slice(prefix.length + 1);
+  return (
+    <section className="mb-4 flex flex-col gap-3 rounded-md border border-line-default bg-surface p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2 text-xs text-fg-secondary">
+          {t("specs.import.prefix")}
+          <Input className="h-7 w-28 font-mono text-xs" value={prefix} onChange={(e) => setPrefix(e.target.value.trim())} aria-label={t("specs.import.prefix")} />
+        </label>
+        <span className="text-xs text-fg-muted">{t("specs.import.hint", { example: `${prefix}-T001` })}</span>
+      </div>
+      <ErrorNote error={plan.error ?? action.error} />
+      {plan.data?.warnings.length ? <p className="m-0 text-xs text-warning">{t("specs.import.tooMany", { tasks: plan.data.warnings.join("; ") })}</p> : null}
+      {plan.data ? (
+        <div className="max-h-80 overflow-auto rounded-sm border border-line-subtle">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-surface text-left text-fg-muted">
+              <tr>
+                <th className="px-2 py-1 font-medium">{t("specs.import.colId")}</th>
+                <th className="px-2 py-1 font-medium">{t("specs.import.colTitle")}</th>
+                <th className="px-2 py-1 font-medium">{t("specs.import.colWaits")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {plan.data.tasks.map((x) => (
+                <tr key={x.id} className="border-t border-line-subtle align-top">
+                  <td className="px-2 py-1 font-mono whitespace-nowrap">
+                    {x.id}
+                    {x.exists ? <span className="ml-1.5 text-fg-muted">· {t("specs.import.exists")}</span> : null}
+                  </td>
+                  <td className="px-2 py-1">
+                    <div className="text-fg-primary">{x.title}</div>
+                    <div className="text-[11px] text-fg-muted">{x.phase}</div>
+                  </td>
+                  <td className="px-2 py-1 font-mono text-fg-muted">{x.dependsOn.map(short).join(", ") || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      <div>
+        <Button
+          size="sm"
+          disabled={action.busy || !fresh.length}
+          onClick={() =>
+            void action.run(async () => {
+              const r = await client.call("specs.importTasks", input);
+              toast(t("specs.import.done", { count: r.created.length }));
+              bump();
+              onDone();
+            })
+          }
+        >
+          {fresh.length ? t("specs.import.go", { count: fresh.length }) : t("specs.import.nothing")}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+/** Machines that can take a project's run now: online, taking runs from the hub, with the project's repo. */
+const fits = (m: Machine, project: string) => m.online && m.acceptsRuns && m.projects.includes(project);
+
+/**
+ * One Spec Kit step as an agent's run (roadmap 20d): the feature's task (made when it has none), then the run, on a
+ * machine that has the repo. The run's result is reviewed like any other: its branch, its MR, Merge.
+ */
+function SpecRun({ project, step, feature, onSent }: { project: string; step: SpecStep; feature: SpecFeature | null; onSent: () => void }) {
+  const { client, bump } = useHive();
+  const t = useT();
+  const toast = useToast();
+  const action = useAction();
+  const machines = useQuery(() => client.call("machines.list", {}), [client]);
+  const tasks = useQuery(() => client.call("tasks.list", { project }), [client, project]);
+  const fit = (machines.data ?? []).filter((m) => fits(m, project));
+  const [machineId, setMachineId] = useState("");
+  const machine = fit.find((m) => m.id === machineId) ?? fit[0] ?? null;
+  const [input, setInput] = useState("");
+  const ids = new Set((tasks.data ?? []).map((x) => x.id));
+  const target = feature ? specRunTask(feature, step, (id) => ids.has(id)) : { taskId: nextSpecTaskId([...ids]), title: null };
+  const needsInput = step === "specify";
+  const ready = tasks.data && machine && target && (!needsInput || input.trim());
+  return (
+    <section className="mb-4 flex flex-col gap-3 rounded-md border border-line-default bg-surface p-3">
+      <p className="m-0 text-xs text-fg-muted">{t(`specs.run.hint.${step}`)}</p>
+      <ErrorNote error={machines.error ?? tasks.error ?? action.error} />
+      {feature && tasks.data && !target ? <p className="m-0 text-xs text-warning">{t("specs.run.otherBranch", { branch: feature.branch })}</p> : null}
+      {machines.data && !fit.length ? <p className="m-0 text-xs text-warning">{t("tasks.dispatchNoMachine", { project })}</p> : null}
+      <Textarea
+        rows={step === "specify" ? 5 : 3}
+        value={input}
+        maxLength={3000}
+        onChange={(e) => setInput(e.target.value)}
+        placeholder={t(`specs.run.input.${step}`)}
+        aria-label={t(`specs.run.input.${step}`)}
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        {fit.length ? (
+          <NativeSelect size="sm" value={machine?.id ?? ""} onChange={(e) => setMachineId(e.target.value)} aria-label={t("tasks.dispatchMachine")}>
+            {fit.map((m) => (
+              <NativeSelectOption key={m.id} value={m.id}>
+                {m.machine}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        ) : null}
+        {target ? <span className="font-mono text-xs text-fg-muted">{target.taskId}</span> : null}
+        <Button
+          size="sm"
+          disabled={action.busy || !ready}
+          onClick={() =>
+            void action.run(async () => {
+              if (!machine || !target) return;
+              const title = feature ? target.title : `Spec: ${input.trim().split("\n")[0]!.slice(0, 120)}`;
+              if (title) await client.call("tasks.create", { id: target.taskId, project, title, dependsOn: [] });
+              const req = await client.call("runs.dispatch", {
+                machineId: machine.id,
+                project,
+                taskId: target.taskId,
+                role: "implement",
+                profileId: null,
+                reviewAfter: false,
+                candidates: 1,
+                instructions: specStepInstructions(step, { ...(feature ? { dir: feature.dir } : {}), input }),
+              });
+              toast(t("specs.run.sent", { task: target.taskId, machine: req.machine }));
+              bump();
+              onSent();
+            })
+          }
+        >
+          {t(`specs.run.step.${step}`)}
+        </Button>
+      </div>
+    </section>
   );
 }

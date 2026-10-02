@@ -481,6 +481,31 @@ async function main() {
     await tab.waitFor("the tasks of tasks.md", () => document.body.innerText.includes("Trang quét mã") && document.body.innerText.includes("1/2"));
   });
 
+  // Roadmap 20c and 20d: Lan (lead of payment) imports tasks.md into board tasks, then has an agent plan the refund
+  // feature, which lives on PAY-2's branch: a run of PAY-2 with the plan step's instructions.
+  await step("spec-import-and-run", async () => {
+    await rpc("tasks.create", { id: "PAY-2", project: "payment", title: "Hoàn tiền" });
+    await fetch(`${base}/api/rpc`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" },
+      body: JSON.stringify({ method: "machines.heartbeat", input: { machine: "lan-mbp", instance: "e2e00001", version: "0.100.0", projects: ["payment"], acceptsRuns: true } }),
+    });
+    const tab = (current = tabs.lan);
+    await tab.go("specs?project=payment&dir=001-thanh-toan-qr&branch=");
+    await tab.click('[role="tab"]', "Tasks");
+    await tab.click("button", "Nhập thành task");
+    await tab.waitFor("the plan of S001-T002", () => document.body.innerText.includes("S001-T002"));
+    await tab.click("button", "Nhập 1 task");
+    await until("S001-T002 on the board", async () => (await rpc("tasks.list", { project: "payment" })).find((t) => t.id === "S001-T002"));
+    await tab.go("specs?project=payment&dir=002-hoan-tien&branch=ai%2FPAY-2");
+    await tab.click("button", "Lập kế hoạch");
+    await tab.click("textarea");
+    await tab.type("Dùng VNPay.");
+    await tab.click("button", "Lập kế hoạch");
+    const req = await until("the plan run of PAY-2", async () => (await rpc("runs.requests", { project: "payment" })).find((r) => r.taskId === "PAY-2"));
+    expect(req.instructions.includes("speckit-plan") && req.instructions.includes("Dùng VNPay.") && req.instructions.includes("specs/002-hoan-tien"), `instructions: ${req.instructions}`);
+  });
+
   // Roadmap 27a: a project's row only tightens the hub's default; the machines get it at their heartbeat.
   await step("agent-policy", async () => {
     const tab = (current = tabs.admin);

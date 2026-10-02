@@ -29,7 +29,7 @@ import { assertNoHidden, stripHidden } from "./hidden.ts";
 import { assertNoSecret, findSecret, redactLines } from "./secrets.ts";
 import { isAgentActor, MR_WATCHER, parseSource, principalOf, type WriteSource } from "./source.ts";
 import { SEED_DOCS, SEED_VERSION } from "./seed.ts";
-import { specStage, specTasks, specTitle, type SpecFeature, type SpecFeatureDetail, type SpecFiles } from "./speckit.ts";
+import { planSpecTasks, specStage, specTaskPrefix, specTasks, specTitle, type SpecFeature, type SpecFeatureDetail, type SpecFiles } from "./speckit.ts";
 import type {
   Actor,
   AgentsPaused,
@@ -1150,6 +1150,9 @@ export class SqliteHive implements HiveBackend {
       case "specs.list":
         if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
         return;
+      case "specs.importTasks":
+        // Planning only shows what would be made; making them is creating tasks.
+        return this.#need(actor, i.project, i.dryRun ? "view" : "taskManage", `Project ${i.project}`);
       case "memory.write":
         if (i.system) return this.#need(actor, systemOwner(i.system), "memoryWrite", `System ${i.system}`);
         return this.#need(actor, i.shared ? null : i.project, "memoryWrite", i.shared ? "Shared memory" : `Project ${i.project}`);
@@ -2977,6 +2980,41 @@ export class SqliteHive implements HiveBackend {
           const feature: SpecFeature & { files?: SpecFiles } = toSpecFeature(r);
           delete feature.files;
           return feature;
+        }),
+
+      "specs.importTasks": ({ project, dir, branch, prefix, dryRun }, actor) =>
+        this.#tx(() => {
+          const row = db.prepare("SELECT * FROM spec_features WHERE project = ? AND dir = ? AND branch = ?").get(project, dir, branch) as Row | undefined;
+          const tasksMd = row ? toSpecFeature(row).files.tasks : null;
+          if (tasksMd === null) throw new HiveError("not_found", `${project} has no tasks.md for ${dir}.`, { key: "errors.specNoTasks", vars: { dir } });
+          const plan = planSpecTasks(tasksMd, prefix ?? specTaskPrefix(dir));
+          const todo = plan.tasks.filter((t) => !t.done);
+          const exists = (id: string) => this.#getTask(id) !== null;
+          const tasks = todo.map((t) => ({ ...t, exists: exists(t.id) }));
+          // A task with that id in another project is not this feature's: refused rather than waited on.
+          for (const t of tasks.filter((x) => x.exists)) {
+            if (this.#getTask(t.id)!.project !== project) {
+              throw new HiveError("conflict", `Task ${t.id} already exists in another project.`, { key: "errors.taskExists", vars: { id: t.id } });
+            }
+          }
+          const created: string[] = [];
+          if (!dryRun) {
+            const note = (phase: string) => `Spec Kit · specs/${dir}/tasks.md${branch ? ` (${branch})` : ""} · ${phase}`;
+            const fresh = tasks.filter((x) => !x.exists);
+            // All first, then what they wait for: a line may name one further down ("depends on T020").
+            for (const t of fresh) {
+              db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)").run(t.id, project, t.title, note(t.phase), this.#now());
+              created.push(t.id);
+            }
+            for (const t of fresh) this.#setDeps(t.id, this.#checkDeps(t.id, project, t.dependsOn.filter((d) => exists(d)), actor));
+            if (created.length) {
+              this.audit(actor, "specs.importTasks", `${project}/${dir}`, `${created.length} task: ${created[0]} … ${created.at(-1)}`, {
+                key: "audit.specImport",
+                vars: { count: created.length, dir },
+              });
+            }
+          }
+          return { tasks, warnings: plan.warnings, created };
         }),
 
       "specs.get": ({ project, dir, branch }, actor) => {
