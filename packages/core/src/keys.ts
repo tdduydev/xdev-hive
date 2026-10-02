@@ -5,6 +5,8 @@ export const PROJECT_NAME = /^[a-z0-9][a-z0-9._-]{0,99}$/;
 const SLUG = "[a-z0-9][a-z0-9-]{0,79}";
 const ORG_KEY = new RegExp(`^org/(skills/)?(${SLUG})$`);
 const PROJECT_KEY = new RegExp(`^project/([a-z0-9][a-z0-9._-]{0,99})/(skills/)?(${SLUG})$`);
+/** A system's docs (roadmap 19c); skills are not kept per system yet. */
+const SYSTEM_KEY = new RegExp(`^system/([a-z0-9][a-z0-9._-]{0,99})/(${SLUG})$`);
 
 export interface ParsedDocKey {
   scope: DocScope;
@@ -14,15 +16,21 @@ export interface ParsedDocKey {
   skill: boolean;
 }
 
-/** Doc keys are `org/<slug>` (shared by every project) or `project/<project>/<slug>`; skills put `skills/` before the slug. */
+/**
+ * Doc keys are `org/<slug>` (shared by every project), `project/<project>/<slug>` or `system/<system>/<slug>` (shared by
+ * a system's services, roadmap 19c); skills put `skills/` before the slug (not in a system).
+ */
 export function parseDocKey(key: string): ParsedDocKey {
   const org = ORG_KEY.exec(key);
   if (org) return { scope: "org", project: null, slug: org[2]!, skill: Boolean(org[1]) };
   const proj = PROJECT_KEY.exec(key);
   if (proj) return { scope: "project", project: proj[1]!, slug: proj[3]!, skill: Boolean(proj[2]) };
+  const sys = SYSTEM_KEY.exec(key);
+  // Owned by sys:<name> (access.ts systemOwner), which no project can be.
+  if (sys) return { scope: "system", project: `sys:${sys[1]!}`, slug: sys[2]!, skill: false };
   throw new HiveError(
     "bad_request",
-    `Invalid doc key "${key}". Use org/<slug> or project/<project>/<slug>, with skills/ before the slug for a skill (lowercase, digits, "-").`,
+    `Invalid doc key "${key}". Use org/<slug>, project/<project>/<slug> or system/<system>/<slug>, with skills/ before the slug for a skill (lowercase, digits, "-").`,
     { key: "errors.badDocKey", vars: { key } },
   );
 }
@@ -51,6 +59,7 @@ export function agentActorName(agent: string, mode: "local" | "hub", machine: st
 }
 
 export const agentsDocKey = (project: string) => `project/${project}/agents`;
+export const systemDocKey = (system: string, slug: string) => `system/${system}/${slug}`;
 export const decisionsDocKey = (project: string) => `project/${project}/decisions`;
 
 export function titleFromSlug(slug: string): string {

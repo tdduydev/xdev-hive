@@ -165,7 +165,7 @@ const chatAction = z.discriminatedUnion("kind", [
 export const schemas = {
   "docs.list": z.object({
     project: project.optional(),
-    scope: z.enum(["org", "project"]).optional(),
+    scope: z.enum(["org", "project", "system"]).optional(),
   }),
   "docs.get": z.object({ key: docKey }),
   "docs.history": z.object({ key: docKey }),
@@ -262,6 +262,8 @@ export const schemas = {
   "memory.list": z.object({
     project: project.nullable().optional(),
     projects: projectList,
+    /** That system's own memory (roadmap 19c). */
+    system: systemName.optional(),
     includeShared: z.boolean().default(false),
     status: z.enum(MEMORY_STATUSES).optional(),
     /** true: only the stale entries, to review them. */
@@ -273,6 +275,8 @@ export const schemas = {
     .object({
       project: project.optional(),
       shared: z.boolean().default(false),
+      /** A system's memory (roadmap 19c): every service of the system sees it. */
+      system: systemName.optional(),
       kind: z.enum(MEMORY_KINDS),
       content: z.string().min(1).max(4000),
       taskId: taskId.optional(),
@@ -283,7 +287,7 @@ export const schemas = {
       /** An entry this one disagrees with; a person decides which is right. */
       contradicts: id.optional(),
     })
-    .refine((m) => (m.shared ? m.project === undefined : m.project !== undefined), "memory needs a project, or shared: true without one"),
+    .refine((m) => [m.project !== undefined, m.shared, m.system !== undefined].filter(Boolean).length === 1, "memory needs a project, a system, or shared: true (one of them)"),
   "memory.approve": z.object({ id }),
   /** Settles a conflict: keep this entry (the other is replaced by it), the other, or both (no conflict after all). */
   "memory.resolve": z.object({ id, other: id, keep: z.enum(["this", "other", "both"]) }),

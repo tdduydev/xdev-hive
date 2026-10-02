@@ -2,7 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import { isContextDoc, may, sees, type Permission } from "./access.ts";
+import { isContextDoc, may, sees, systemOf, systemOwner, withSystemGrants, type Permission } from "./access.ts";
 import type { AgentRole } from "./agents.ts";
 import type { BlobStore } from "./blobs.ts";
 import { HiveError, type ErrorText } from "./errors.ts";
@@ -889,8 +889,9 @@ export class SqliteHive implements HiveBackend {
     this.#handlers = this.#buildHandlers();
   }
 
-  async call<M extends Method>(method: M, input: MethodInput<M>, actor: Actor): Promise<MethodOutput[M]> {
-    authorize(method, actor);
+  async call<M extends Method>(method: M, input: MethodInput<M>, caller: Actor): Promise<MethodOutput[M]> {
+    authorize(method, caller);
+    const actor = this.#withSystems(caller);
     const parsed = parseInput(method, input);
     const handler = this.#handlers[method] as (i: ParsedInput<M>, a: Actor) => MethodOutput[M] | Promise<MethodOutput[M]>;
     this.#check(method, parsed as ParsedInput<Method>, actor);
@@ -912,6 +913,32 @@ export class SqliteHive implements HiveBackend {
   }
 
   // ── per-project access (access.ts) ─────────────────────────────────────────
+
+  /** An account's grants with the ones it gets on each system from its services (roadmap 19c). */
+  #withSystems(actor: Actor): Actor {
+    if (!actor.access) return actor;
+    const access = withSystemGrants(actor.access, this.#systemList());
+    return access === actor.access ? actor : { ...actor, access };
+  }
+
+  #systemList(): Array<{ name: string; projects: string[] }> {
+    return (this.db.prepare("SELECT name, projects FROM systems").all() as Row[]).map((r) => ({ name: str(r.name), projects: JSON.parse(str(r.projects)) as string[] }));
+  }
+
+  /** Owners (sys:<name>) of the systems any of these projects is in: their docs and memory go to those projects' agents. */
+  #systemOwnersOf(projects: ReadonlyArray<string | null | undefined>): string[] {
+    const wanted = new Set(projects.filter((p): p is string => !!p));
+    if (!wanted.size) return [];
+    return this.#systemList()
+      .filter((s) => s.projects.some((p) => wanted.has(p)))
+      .map((s) => systemOwner(s.name));
+  }
+
+  /** A system's docs and memory need the system: a key or a name of one that is gone answers like a missing project. */
+  #assertSystem(owner: string | null): void {
+    const name = systemOf(owner);
+    if (name !== null && !this.#system(name)) throw new HiveError("not_found", `No system ${name}.`, { key: "errors.systemNotFound", vars: { system: name } });
+  }
 
   /** Owner project of a doc key: null for org/* (shared). */
   static #docOwner(key: string): string | null {
@@ -1072,6 +1099,7 @@ export class SqliteHive implements HiveBackend {
         for (const r of i.runs as Array<{ project: string }>) this.#need(actor, r.project, "taskWork", `Project ${r.project}`);
         return;
       case "memory.write":
+        if (i.system) return this.#need(actor, systemOwner(i.system), "memoryWrite", `System ${i.system}`);
         return this.#need(actor, i.shared ? null : i.project, "memoryWrite", i.shared ? "Shared memory" : `Project ${i.project}`);
       case "memory.checkFiles":
       case "runs.report":
@@ -1462,6 +1490,7 @@ export class SqliteHive implements HiveBackend {
     source: WriteSource | null = null,
   ): Doc {
     const parsed = parseDocKey(key);
+    this.#assertSystem(parsed.project);
     if (meta.parent) this.#checkParent(key, meta.parent);
     const paths = [...new Set(meta.paths ?? this.#getDoc(key)?.paths ?? [])];
     if (parsed.skill) {
@@ -1925,13 +1954,14 @@ export class SqliteHive implements HiveBackend {
     const db = this.db;
     return {
       "docs.list": ({ project, scope }) => {
+        // A project's list has its systems' docs too (roadmap 19c): what its agents and its sync read.
         const rows = db
           .prepare(
             `SELECT key, scope, project, title, version, include_in_agents, paths, parent, folder, updated_by, updated_at FROM docs
-             WHERE (?1 IS NULL OR scope = ?1) AND (?2 IS NULL OR scope = 'org' OR project = ?2)
+             WHERE (?1 IS NULL OR scope = ?1) AND (?2 IS NULL OR scope = 'org' OR project = ?2 OR project IN (SELECT value FROM json_each(?3)))
              ORDER BY scope, project, key`,
           )
-          .all(scope ?? null, project ?? null) as Row[];
+          .all(scope ?? null, project ?? null, JSON.stringify(this.#systemOwnersOf([project]))) as Row[];
         return rows.map(toSummary);
       },
 
@@ -2142,7 +2172,10 @@ export class SqliteHive implements HiveBackend {
       },
 
       "docs.context": ({ project }) => {
-        const docs = (db.prepare("SELECT * FROM docs WHERE project IS NULL OR project = ?").all(project) as Row[]).map(toDoc);
+        // As docs.list gives a project's sync: its own, the team's and its systems' (roadmap 19c).
+        const docs = (
+          db.prepare("SELECT * FROM docs WHERE project IS NULL OR project = ? OR project IN (SELECT value FROM json_each(?))").all(project, JSON.stringify(this.#systemOwnersOf([project]))) as Row[]
+        ).map(toDoc);
         const staleBefore = this.#staleBefore();
         const count = (p: string, status: string, stale?: boolean) =>
           (db.prepare("SELECT created_at, last_used_at FROM memory WHERE project = ? AND status = ? AND superseded_by IS NULL").all(p, status) as Row[]).filter(
@@ -2337,7 +2370,8 @@ export class SqliteHive implements HiveBackend {
           AND NOT EXISTS (SELECT 1 FROM memory s WHERE s.id = m.superseded_by AND s.status = 'approved')`;
         // A system's projects and no one project: shared entries only with includeShared.
         const own = project ?? (projects ? null : SHARED);
-        const listed = listParam(projects) ?? "[]";
+        // The memory of the systems these projects are in (roadmap 19c) counts as theirs.
+        const listed = JSON.stringify([...(projects ?? []), ...this.#systemOwnersOf([project, ...(projects ?? [])])]);
         const shared = includeShared ? 1 : 0;
         const staleBefore = this.#staleBefore();
         const cutoff = includeStale || staleBefore === null ? "" : staleBefore;
@@ -2405,7 +2439,7 @@ export class SqliteHive implements HiveBackend {
         } satisfies MemorySearchInfo;
       },
 
-      "memory.list": ({ project, projects, includeShared, status, stale, limit }) => {
+      "memory.list": ({ project, projects, system, includeShared, status, stale, limit }) => {
         const staleBefore = this.#staleBefore();
         // ?5: only entries older than this cutoff ('' matches nothing, so staleness off lists none).
         const onlyStale = stale ? (staleBefore ?? "") : null;
@@ -2418,7 +2452,15 @@ export class SqliteHive implements HiveBackend {
                  AND (?5 IS NULL OR COALESCE(last_used_at, created_at) < ?5)
                ORDER BY id DESC LIMIT ?4`,
             )
-            .all(project === undefined ? null : (project ?? SHARED), includeShared ? 1 : 0, status ?? null, limit, onlyStale, listParam(projects)) as Row[]
+            .all(
+              system ? systemOwner(system) : project === undefined ? null : (project ?? SHARED),
+              includeShared ? 1 : 0,
+              status ?? null,
+              limit,
+              onlyStale,
+              // A system's projects (its scope on the web) bring the system's own memory along.
+              projects ? JSON.stringify([...projects, ...this.#systemOwnersOf(projects)]) : null,
+            ) as Row[]
         ).map((r) => toMemory(r, staleBefore));
       },
 
@@ -2426,8 +2468,9 @@ export class SqliteHive implements HiveBackend {
         this.#tx(() => {
           assertNoSecret(input.content, "Memory content");
           assertNoHidden(input.content, "Memory content");
-          const owner = input.shared ? null : input.project!;
-          const stored = input.shared ? SHARED : input.project!;
+          const owner = input.shared ? null : input.system ? systemOwner(input.system) : input.project!;
+          const stored = owner ?? SHARED;
+          this.#assertSystem(owner);
           if (input.supersedes !== undefined && input.supersedes === input.contradicts) {
             throw new HiveError("bad_request", "An entry cannot both replace and contradict the same entry.", { key: "errors.memoryLinkBoth" });
           }
@@ -2457,7 +2500,7 @@ export class SqliteHive implements HiveBackend {
               "INSERT INTO memory(project, kind, content, author, task_id, status, source, files, on_behalf, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .run(
-              input.shared ? SHARED : input.project!,
+              stored,
               input.kind,
               input.content,
               actor.name,
@@ -3560,7 +3603,14 @@ export class SqliteHive implements HiveBackend {
         return this.#system(name)!;
       },
 
-      "systems.remove": ({ name }) => ({ removed: Number(db.prepare("DELETE FROM systems WHERE name = ?").run(name).changes) > 0 }),
+      "systems.remove": ({ name }) => {
+        // Its docs and memory would be left with no one able to see them: moved or deleted first.
+        const owner = systemOwner(name);
+        const docs = num((db.prepare("SELECT COUNT(*) AS n FROM docs WHERE project = ?").get(owner) as Row).n);
+        const memory = num((db.prepare("SELECT COUNT(*) AS n FROM memory WHERE project = ?").get(owner) as Row).n);
+        if (docs || memory) throw new HiveError("conflict", `System ${name} still has ${docs} docs and ${memory} memory entries.`, { key: "errors.systemHasData", vars: { system: name, docs, memory } });
+        return { removed: Number(db.prepare("DELETE FROM systems WHERE name = ?").run(name).changes) > 0 };
+      },
 
       "admin.machines": () => {
         this.#expireCommands();

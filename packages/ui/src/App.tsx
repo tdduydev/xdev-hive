@@ -36,7 +36,7 @@ import {
 } from "lucide-react";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { TooltipProvider } from "@xdev-hive/ui/components/ui/tooltip";
-import { may, missingRequired, type Me } from "@xdev-hive/core";
+import { may, missingRequired, withSystemGrants, type Me } from "@xdev-hive/core";
 import type { HiveClient } from "./client.ts";
 import { ChangePasswordScreen } from "./components/Account.tsx";
 import { ErrorNote } from "./components/common.tsx";
@@ -221,6 +221,8 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   // A hub from before systems (roadmap 19b) has no such method: there are none then.
   const systemList = useQuery(() => client.call("systems.list", {}).catch(() => []), [client, tick]);
   const systems = useMemo(() => systemList.data ?? [], [systemList.data]);
+  // What the hub derives for each system from the account's services (roadmap 19c), so controls show as the hub decides.
+  const withSystems = useMemo(() => (me.access ? { ...me, access: withSystemGrants(me.access, systems) } : me), [me, systems]);
   // Granted projects show in the switcher even before they have any data, and so do a system's.
   const projects = useMemo(
     () => [...new Set([...seen, ...Object.keys(me.access?.projects ?? {}), ...systems.flatMap((s) => s.projects)])].sort(),
@@ -370,7 +372,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   // The Web Admin looks at every project: its pages get the "all projects" scope, whatever the workspace picked.
   const adminScope = webAdmin && route.kind === "admin";
   return (
-    <HiveContext.Provider value={{ client, me: me, bump, scope: adminScope ? ALL : scope, setScope, projects, systems }}>
+    <HiveContext.Provider value={{ client, me: withSystems, bump, scope: adminScope ? ALL : scope, setScope, projects, systems }}>
       <TooltipProvider>{frame}</TooltipProvider>
     </HiveContext.Provider>
   );
