@@ -147,3 +147,43 @@ Method (methods.ts):
 ### README
 
 Một đoạn trong mục Spec Kit: trang *Spec*, máy đẩy gì, khi nào, branch nào được xem là làm dở.
+
+## R-20c. Nhập `tasks.md` thành task
+
+Từ trang *Spec*, một tính năng có `tasks.md` nhập được thành task của bảng, giữ thứ tự Spec Kit đặt ra, để xếp run cho agent.
+
+### Đọc `tasks.md` (core `parseSpecTasks`)
+
+- Pha: dòng `## Phase N: <tên>`. Loại pha theo tên: *Setup*, *Foundational*, *User Story* (có `User Story`), *Polish* (có `Polish`), còn lại là *khác*.
+- Việc: dòng `- [ ] T001 [P] [US1] Mô tả` (hoặc `* `, `[x]`, `[X]`). `[P]`: chạy song song được. `[USn]`: thuộc user story nào. Câu `depends on T012, T013` trong mô tả là phụ thuộc nêu rõ.
+- Bỏ phần trong khối code và chú thích HTML (template có ví dụ trong đó).
+
+### Phụ thuộc (theo phần *Dependencies & Execution Order* của template)
+
+- Trong một pha, chia thành *bước*: mỗi việc không `[P]` là một bước; một dãy việc `[P]` liền nhau là một bước. Mỗi bước chờ mọi việc của bước trước nó trong pha.
+- Bước đầu của pha chờ *cổng* của pha: *Setup* không chờ gì; *Foundational* chờ bước cuối của *Setup*; mỗi *User Story* chờ bước cuối của *Foundational* (không có thì của *Setup*), các story không chờ nhau; *Polish* chờ bước cuối của mọi story (không có story thì của pha trước); pha *khác* chờ bước cuối của pha trước.
+- Cộng thêm `depends on …` nêu rõ. Tối đa 20 phụ thuộc mỗi task (giới hạn của hub): quá thì giữ 20 đầu và báo trong bản xem trước.
+- Việc đã `[x]` không nhập; phụ thuộc vào chúng được bỏ (đã xong).
+
+### Hub
+
+`specs.importTasks { project, dir, branch, prefix, dryRun }` (quyền *Tạo/sửa task* của dự án) đọc `tasks.md` hub đang giữ (từ `specs.push`):
+- Mã task: `<prefix>-<T001>`; `prefix` mặc định `S` + số của thư mục (`001-dang-nhap` → `S001`).
+- Tiêu đề: `T001 [US1] Mô tả` (bỏ `[P]`), tối đa 300 ký tự. Ghi chú task: `Spec Kit · specs/<dir>/tasks.md · <tên pha>`.
+- Task đã có (cùng mã) thì bỏ qua, phụ thuộc vào nó vẫn giữ.
+- `dryRun`: trả kế hoạch, không ghi. Trả `{ tasks: [{ id, code, title, phase, dependsOn, exists }], warnings: string[] }`; ghi thật thì thêm `created`.
+- Một giao dịch: lỗi ở task nào thì không task nào được tạo.
+
+### Giao diện
+
+Tab *Tasks* của một tính năng có nút *Nhập thành task* (người có quyền *Tạo/sửa task*): ô tiền tố, bảng xem trước (mã, tiêu đề, pha, chờ gì, *đã có*), cảnh báo, rồi *Nhập N task*.
+
+## R-20d. Run cho specify / plan / tasks
+
+Agent làm từng bước Spec Kit như một run thường của Hive, trên branch `ai/<task>`; người quản trị duyệt kết quả như mọi run (review, MR, *Merge* ở 18c).
+
+- Mỗi tính năng làm bằng **một task** xuyên suốt: run *specify*, rồi *plan*, rồi *tasks* là các run của cùng task, nên cùng branch `ai/<task>` (branch đã có thì giữ nguyên lịch sử) và thấy file của bước trước.
+- *Tính năng mới* (nút trên trang *Spec*): nhập mô tả → hub tạo task `SPEC-<n>` (n kế tiếp trong dự án) tiêu đề `Spec: <mô tả ngắn>` và xếp run *specify* trên máy chọn.
+- Tính năng ở branch `ai/<task>` mà task đó có: nút bước kế tiếp (*Lập kế hoạch* khi ở bước specify, *Chia việc* khi ở plan) xếp run của chính task đó. Tính năng ở branch đích: tạo task `<prefix>-PLAN` / `<prefix>-TASKS` rồi xếp run (branch mới từ branch đích, thấy file). Branch khác (`NNN-*` người tạo tay): không có nút, nhắc merge vào branch đích trước.
+- Chỉ dẫn cho agent (core `specStepInstructions(step, { dir, input })`): đọc `.claude/skills/speckit-<step>/SKILL.md` (Codex: `.agents/skills/speckit-<step>/SKILL.md`) và làm theo với đầu vào; đặt `SPECIFY_FEATURE_DIRECTORY=specs/<dir>` cho script của Spec Kit (bước plan, tasks); chỉ sửa file spec, không viết code; commit trên branch của task; không chạy bước khác.
+- Máy: chọn như *Xếp run* của trang *Task* (máy online, nhận run từ hub, có repo). Leader chat đề xuất được các run này bằng `propose_run` với chỉ dẫn trên (skill `hive-leader` có ghi).
