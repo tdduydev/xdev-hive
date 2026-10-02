@@ -299,7 +299,9 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   // The desktop app on a hub shows this machine's work; the rest is on the hub's web (roadmap 35a).
   const deskHub = !!client.desktop && me.mode === "hub";
   const webUrl = useQuery(async () => (deskHub ? (await client.desktop!.settings()).hubUrl.replace(/\/+$/, "") : null), [client, deskHub]).data ?? null;
-  const pending = useQuery(() => client.call("proposals.list", { status: "pending" }), [client, tick, route]);
+  // The web counts what waits for review once, on Hôm nay (roadmap 35c); the desktop's own pages keep their count.
+  const local = !!client.desktop && me.mode !== "hub";
+  const pending = useQuery(async () => (local ? client.call("proposals.list", { status: "pending" }) : []), [client, local, tick, route]);
   // Checked when the app opens (and after leaving the setup page), so the sidebar shows what is missing.
   const setup = useQuery(async () => (client.desktop ? client.desktop.setupStatus() : null), [client, page === "setup"]);
 
@@ -386,7 +388,6 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   const adminMachines = useQuery(async () => (webAdmin ? client.call("admin.machines", {}) : []), [client, webAdmin, poll]);
   const adminPolicy = useQuery(async () => (webAdmin ? client.call("policy.get", {}) : null), [client, webAdmin]);
   const adminAlerts = useQuery(async () => (webAdmin && client.alerts ? client.alerts.list().catch(() => null) : null), [client, webAdmin, poll]);
-  const adminMemory = useQuery(async () => (webAdmin ? client.call("memory.list", { limit: 500 }) : []), [client, webAdmin, poll, tick]);
 
   const current: PageId = visible.has(route.id) ? route.id : "today";
   const lacking = adminPolicy.data ? (adminMachines.data ?? []).filter((m) => m.setup && missingRequired(adminPolicy.data!, m.setup).length > 0).length : 0;
@@ -398,7 +399,6 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     queue: (adminRequests.data ?? []).filter((r) => r.status === "pending").length,
     fleet: lacking + (adminMachines.data ?? []).filter((m) => m.duplicate).length,
     alerts: openAlerts.length,
-    memory: webAdmin ? (adminMemory.data ?? []).filter((m) => m.status === "pending" || m.conflictsWith.length || m.review).length : 0,
   };
   // Filled: what waits for you, and alerts the hub rates high.
   const strong = (id: PageId) => id === "today" || (id === "alerts" && openAlerts.some((a) => a.severity === "high"));

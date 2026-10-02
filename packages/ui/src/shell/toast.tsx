@@ -40,13 +40,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
+      {/* Above the status bar and a page's own action bar (Hôm nay's buttons): the next item's buttons stay clickable. */}
       {toast ? (
         <div
           key={toast.id}
           role={toast.tone === "error" ? "alert" : "status"}
           onMouseEnter={() => (paused.current = true)}
           onMouseLeave={() => (paused.current = false)}
-          className="fixed bottom-10 left-1/2 z-400 flex max-w-[calc(100%-32px)] -translate-x-1/2 animate-xd-in items-center gap-2.5 rounded-md bg-inverse py-2 pr-2 pl-3.5 text-[13px]/[18px] font-medium text-fg-inverse shadow-e4"
+          className="fixed bottom-24 left-1/2 z-400 flex max-w-[calc(100%-32px)] -translate-x-1/2 animate-xd-in items-center gap-2.5 rounded-md bg-inverse py-2 pr-2 pl-3.5 text-[13px]/[18px] font-medium text-fg-inverse shadow-e4"
         >
           <span className="min-w-0">{toast.text}</span>
           {toast.undo ? (

@@ -1053,6 +1053,57 @@ async function main() {
     await tab.waitFor("DEMO-2 waiting for payment/PAY-1", () => document.body.innerText.includes("Trang đơn hàng") && document.body.innerText.includes("payment/PAY-1"));
   });
 
+  // Roadmap 35c: Hôm nay on the web has what waits for the person: a spec gate and a leader's proposal, decided there.
+  await step("today-web", async () => {
+    const machineRpc = async (method, input, token = people.lan.token) => {
+      const r = await fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "x-hive-agent": "runner.lan-mbp" },
+        body: JSON.stringify({ method, input }),
+      });
+      const body = await r.json();
+      if (body.error) throw new Error(`${method}: ${body.error.message}`);
+      return body.result;
+    };
+    const profile = (id, kind) => ({ id, label: id, kind, enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, maxConcurrent: 1 });
+    const beat = () => machineRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", version: "0.118.0", projects: ["payment"], acceptsRuns: true, profiles: [profile("claude-1", "claude"), profile("codex-1", "codex")], runs: [] });
+    await beat();
+    // A spec step that ran: its flow waits at the spec gate for a person (the default).
+    await rpc("specs.runStep", { project: "payment", step: "specify", taskId: "SPEC-TODAY", title: "Spec: đổi trả", input: "Đổi trả hàng.", machineId: "runner.lan-mbp@lan-e2e" }, people.lan.token);
+    const [specify] = (await beat()).runRequests.filter((r) => r.taskId === "SPEC-TODAY");
+    await machineRpc("runs.requestResult", { id: specify.id, status: "accepted", runId: "R-today1" });
+    const at = new Date().toISOString();
+    const run = { runId: "R-today1", project: "payment", taskId: "SPEC-TODAY", taskTitle: "Spec: đổi trả", role: "implement", profileId: "claude-1", createdAt: at };
+    await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ ...run, status: "running" }] });
+    await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ ...run, status: "succeeded", finishedAt: at }] });
+    await machineRpc("specs.push", { project: "payment", features: [{ dir: "002-doi-tra", branch: "ai/SPEC-TODAY", commit: "abc1240", files: { spec: "# Đổi trả\n", plan: null, tasks: null } }] });
+    const gate = await until("the spec gate waiting", async () => (await rpc("sdlc.gates", { taskId: "SPEC-TODAY" })).find((g) => g.status === "waiting"));
+    // And a leader's proposal nobody confirmed (payment's leader runs only task.create alone).
+    const machineId = (await rpc("machines.list")).find((m) => m.machine === "lan-mbp").id;
+    const sent = await rpc("chat.send", { project: "payment", machineId, text: "Tắt codegraph cho payment" }, people.lan.token);
+    const request = await until("the chat request at Lan's heartbeat", async () => (await beat()).chatRequests?.find((r) => r.replyId === sent.reply.id));
+    await machineRpc("chat.progress", { replyId: sent.reply.id, text: "Mình đề xuất tắt codegraph." });
+    const proposed = await machineRpc("chat.propose", { action: { kind: "tool.enable", id: "codegraph", enabled: false }, reason: "Không dùng nữa" }, request.grant);
+    await machineRpc("chat.finish", { replyId: sent.reply.id, status: "done", text: "Mình đề xuất tắt codegraph." });
+
+    const tab = (current = tabs.lan);
+    await tab.reload();
+    await tab.go("today");
+    await tab.click(`[data-inbox-key="gate:${gate.id}"]`);
+    await tab.shot(`${String(n).padStart(2, "0")}-today-gate`);
+    await tab.click("button", "Duyệt, sang bước sau");
+    await until("the spec gate passed from Hôm nay", async () => {
+      const [gate] = await rpc("sdlc.gates", { taskId: "SPEC-TODAY" });
+      return gate?.status === "passed" && gate.decidedBy?.startsWith("lan");
+    });
+    await tab.click(`[data-inbox-key="leader:${proposed.id}"]`);
+    await tab.waitFor("the leader's card", () => document.body.innerText.includes("Không dùng nữa"));
+    await tab.click("button", "Xác nhận");
+    await until("the proposal confirmed from Hôm nay", async () => !(await rpc("chat.pending", { project: "payment" })).some((a) => a.id === proposed.id));
+    // Leave the hub as it was: the plan step's request is not for this test.
+    for (const r of (await beat()).runRequests.filter((x) => x.taskId === "SPEC-TODAY")) await rpc("runs.cancelRequest", { id: r.id });
+  });
+
   const errors = Object.values(tabs).flatMap((t) => t.errors.map((e) => `${t.name}: ${e}`));
   if (errors.length) console.log(`page errors:\n  ${errors.join("\n  ")}`);
   const failed = results.filter((r) => !r.ok);

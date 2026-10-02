@@ -1,6 +1,6 @@
 // Loads what "Hôm nay" lists, once for the whole app: the sidebar shows the count, the page the items.
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
-import type { Me } from "@xdev-hive/core";
+import { may, type Me } from "@xdev-hive/core";
 import type { HiveClient } from "#ui/client.ts";
 import { usePoll, useQuery } from "#ui/hooks.ts";
 import { buildInbox, inboxProject, readDone, readRead, writeDone, writeRead, type InboxDone, type InboxItem } from "#ui/lib/inbox.ts";
@@ -41,17 +41,23 @@ export function useInboxState(client: HiveClient, me: Me, scope: Scope, tick: nu
   const [local, setLocal] = useState(0);
   const deps = [client, scopeKey(scope), tick, poll, local];
   const desktop = client.desktop;
+  // The desktop app on a hub lists this machine's work only (roadmap 35a): what waits on the team is the web's.
+  const team = !(desktop && me.mode === "hub");
+  const hub = team && me.mode === "hub";
 
-  const proposals = useQuery(() => client.call("proposals.list", { status: "pending" }), deps);
-  const review = useQuery(() => client.call("tasks.list", { status: "review", ...scopeFilter(scope) }), deps);
-  const memory = useQuery(() => client.call("memory.list", { ...memoryFilter(scope), limit: 500 }), deps);
+  const proposals = useQuery(async () => (team ? client.call("proposals.list", { status: "pending" }) : []), deps);
+  const review = useQuery(async () => (team ? client.call("tasks.list", { status: "review", ...scopeFilter(scope) }) : []), deps);
+  const memory = useQuery(async () => (team ? client.call("memory.list", { ...memoryFilter(scope), limit: 500 }) : []), deps);
+  // Gates and leaders' proposals are the hub's; one from before them has neither method.
+  const gates = useQuery(async () => (hub ? client.call("sdlc.gates", { ...scopeFilter(scope), limit: 100 }).catch(() => []) : []), deps);
+  const leader = useQuery(async () => (hub ? client.call("chat.pending", { ...scopeFilter(scope) }).catch(() => []) : []), deps);
   const runs = useQuery(async () => (desktop ? desktop.runs({ limit: 200 }) : []), deps);
   const setup = useQuery(async () => (desktop ? desktop.setupStatus() : null), [desktop, tick, local]);
   const requests = useQuery(async () => (desktop && me.mode === "hub" ? desktop.hubRequests() : null), deps);
   const settings = useQuery(async () => (desktop ? desktop.settings() : null), [desktop]);
   // Hub admins on the web: the hub's alerts that no admin has seen yet.
   const hubAdmin = me.mode === "hub" && me.role === "admin" && !me.access;
-  const alerts = useQuery(async () => (hubAdmin && client.alerts ? (await client.alerts.list().catch(() => null))?.open ?? null : null), deps);
+  const alerts = useQuery(async () => (team && hubAdmin && client.alerts ? (await client.alerts.list().catch(() => null))?.open ?? null : null), deps);
 
   const [done, setDone] = useState<InboxDone[]>(readDone);
   const [read, setRead] = useState<Set<string>>(() => new Set(readRead()));
@@ -66,10 +72,13 @@ export function useInboxState(client: HiveClient, me: Me, scope: Scope, tick: nu
       commands: requests.data?.commands,
       machine: settings.data?.machine,
       alerts: alerts.data ?? undefined,
+      gates: gates.data,
+      leader: leader.data,
+      can: (owner, permission) => may(me, owner, permission),
     });
     const handled = new Set(done.map((d) => d.key));
     return all.filter((i) => !handled.has(i.key) && inScope(scope, inboxProject(i)));
-  }, [proposals.data, review.data, memory.data, runs.data, setup.data, requests.data, settings.data, alerts.data, done, scope]);
+  }, [proposals.data, review.data, memory.data, runs.data, setup.data, requests.data, settings.data, alerts.data, gates.data, leader.data, me, done, scope]);
 
   const markRead = useCallback((key: string) => {
     setRead((cur) => {

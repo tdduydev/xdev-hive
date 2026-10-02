@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { AgentRun, Memory, Proposal, Task } from "@xdev-hive/core";
+import { may, type Actor, type AgentRun, type ChatAction, type Memory, type Proposal, type SdlcGateRecord, type Task } from "@xdev-hive/core";
 import { buildInbox, inboxProject, shortAgo } from "#ui/lib/inbox.ts";
 
 const run = (over: Partial<AgentRun>): AgentRun => ({ id: "R-1", project: "demo", taskId: "T-1", createdAt: "2026-09-30T10:00:00Z", mrUrl: null, pipelineStatus: null, ...over }) as AgentRun;
@@ -77,5 +77,44 @@ describe("inbox", () => {
     assert.equal(shortAgo("2026-09-30T11:52:00Z", now, t), "inbox.ago.m:8");
     assert.equal(shortAgo("2026-09-30T10:00:00Z", now, t), "inbox.ago.h:2");
     assert.equal(shortAgo("2026-09-27T10:00:00Z", now, t), "inbox.ago.d:3");
+  });
+
+  it("lists gates waiting for a person and leaders' proposals nobody decided (roadmap 35c)", () => {
+    const gate = (over: Partial<SdlcGateRecord>): SdlcGateRecord =>
+      ({ id: 1, project: "pay", taskId: "S001", gate: "spec", mode: "human", status: "waiting", decidedBy: null, note: null, createdAt: "2026-10-02T09:00:00Z", decidedAt: null, ...over }) as SdlcGateRecord;
+    const action = (over: Partial<ChatAction>): ChatAction => ({ id: 5, threadId: 2, project: "pay", kind: "run.dispatch", input: {}, reason: "x", status: "proposed", createdAt: "2026-10-02T08:00:00Z", ...over }) as ChatAction;
+    const items = buildInbox({
+      gates: [gate({ id: 1 }), gate({ id: 2, status: "escalated", gate: "review", taskId: "S001-T3", createdAt: "2026-10-02T10:00:00Z" }), gate({ id: 3, status: "passed" }), gate({ id: 4, status: "checking" })],
+      leader: [action({ id: 5 }), action({ id: 6, status: "done" })],
+    });
+    assert.deepEqual(
+      items.map((i) => [i.key, i.tone]),
+      [
+        ["gate:2", "danger"],
+        ["gate:1", "warning"],
+        ["leader:5", "info"],
+      ],
+    );
+    assert.deepEqual(items.map(inboxProject), ["pay", "pay", "pay"]);
+  });
+
+  it("leaves out what the person could only look at", () => {
+    // Hoa reviews docs and code on pay; on app she only reads.
+    const hoa: Actor = { name: "hoa", role: "member", access: { projects: { pay: "reviewer", app: "viewer" } } };
+    const can = (owner: string | null, p: Parameters<typeof may>[2]) => may(hoa, owner, p);
+    const task = (project: string): Task => ({ id: `T-${project}`, project, title: "x", status: "review", updatedAt: "2026-10-02T09:00:00Z" }) as Task;
+    const items = buildInbox({
+      can,
+      proposals: [{ id: 1, docKey: "project/pay/guide", status: "pending", createdAt: "2026-10-02T09:00:00Z" } as Proposal, { id: 2, docKey: "project/app/guide", status: "pending", createdAt: "2026-10-02T09:00:00Z" } as Proposal],
+      reviewTasks: [task("pay"), task("app")],
+      memory: [memory({ id: 1, project: "pay", status: "pending" }), memory({ id: 2, project: "app", status: "pending" })],
+      gates: [
+        // A task's review is code review (hers on pay); a spec step is running agents (not a reviewer's).
+        { id: 7, project: "pay", taskId: "S1-T1", gate: "review", mode: "human", status: "waiting", createdAt: "2026-10-02T09:00:00Z" } as SdlcGateRecord,
+        { id: 8, project: "pay", taskId: "S1", gate: "spec", mode: "human", status: "waiting", createdAt: "2026-10-02T09:00:00Z" } as SdlcGateRecord,
+      ],
+      leader: [{ id: 9, project: "pay", status: "proposed", createdAt: "2026-10-02T09:00:00Z" } as ChatAction, { id: 10, project: "app", status: "proposed", createdAt: "2026-10-02T09:00:00Z" } as ChatAction],
+    });
+    assert.deepEqual(items.map((i) => i.key).sort(), ["gate:7", "leader:9", "memory:1", "proposal:1", "review:pay:T-pay:2026-10-02T09:00:00Z"]);
   });
 });

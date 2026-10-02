@@ -1,8 +1,9 @@
 // "Hôm nay": what needs the person, gathered from what the hub and this machine already know. Each source becomes
 // items with a stable key, so "seen" and "done" survive reloads (kept in localStorage, per device).
-import type { AgentRun, HubAlert, MachineCommand, Memory, Proposal, SetupItem, Task } from "@xdev-hive/core";
+import type { AgentRun, ChatAction, HubAlert, MachineCommand, Memory, Permission, Proposal, SdlcGateRecord, SetupItem, Task } from "@xdev-hive/core";
+import { approvalOf } from "#ui/lib/permissions.ts";
 
-export type InboxKind = "ci" | "proposal" | "review" | "memory" | "conflict" | "machine" | "request" | "alert";
+export type InboxKind = "ci" | "proposal" | "review" | "memory" | "conflict" | "machine" | "request" | "alert" | "gate" | "leader";
 export type InboxTone = "danger" | "warning" | "info";
 
 interface Base {
@@ -24,6 +25,8 @@ export type InboxItem = Base &
     | { kind: "machine"; item: SetupItem }
     | { kind: "request"; command: MachineCommand }
     | { kind: "alert"; alert: HubAlert }
+    | { kind: "gate"; gate: SdlcGateRecord }
+    | { kind: "leader"; action: ChatAction }
   );
 
 export interface InboxSources {
@@ -40,6 +43,15 @@ export interface InboxSources {
   machine?: string;
   /** The hub's open alerts (hub admins, roadmap 22m): one not seen yet by an admin is theirs to look at. */
   alerts?: HubAlert[];
+  /** Lifecycle gates reached (roadmap 34): those waiting for a person are listed. */
+  gates?: SdlcGateRecord[];
+  /** What leaders proposed in Chat and nobody confirmed yet. */
+  leader?: ChatAction[];
+  /**
+   * Whether the person may act on a project's item (null: shared data). Given, an item they could only look at is left
+   * out: Hôm nay lists what waits for them (roadmap 35c).
+   */
+  can?: (owner: string | null, permission: Permission) => boolean;
 }
 
 /** Machine tools nobody needs unless their team uses them: not a gap to fix today. */
@@ -54,7 +66,14 @@ const TONE: Record<InboxKind, InboxTone> = {
   machine: "info",
   request: "info",
   alert: "danger",
+  gate: "warning",
+  leader: "info",
 };
+
+/** Who decides at a gate, as the hub checks it: a task's review and merge are code review, the rest running agents. */
+export function gatePermission(g: Pick<SdlcGateRecord, "gate">): Permission {
+  return g.gate === "review" || g.gate === "merge" ? "codeReview" : "runDispatch";
+}
 
 const docProject = (key: string) => /^project\/([^/]+)\//.exec(key)?.[1] ?? null;
 
@@ -62,6 +81,7 @@ const docProject = (key: string) => /^project\/([^/]+)\//.exec(key)?.[1] ?? null
 export function buildInbox(src: InboxSources): InboxItem[] {
   const items: InboxItem[] = [];
   const runs = src.runs ?? [];
+  const can = src.can ?? (() => true);
 
   // CI: the newest run of each merge request whose pipeline failed (a fix run, if any, is that newest run).
   const byMr = new Map<string, AgentRun>();
@@ -76,17 +96,17 @@ export function buildInbox(src: InboxSources): InboxItem[] {
   }
 
   for (const p of src.proposals ?? []) {
-    if (p.status !== "pending") continue;
+    if (p.status !== "pending" || !can(docProject(p.docKey), approvalOf(p.docKey))) continue;
     items.push({ kind: "proposal", key: `proposal:${p.id}`, tone: TONE.proposal, at: p.createdAt, scope: p.docKey, proposal: p });
   }
 
   for (const task of src.reviewTasks ?? []) {
-    if (task.status !== "review") continue;
+    if (task.status !== "review" || !can(task.project, "codeReview")) continue;
     const run = runs.filter((r) => r.taskId === task.id && r.project === task.project).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
     items.push({ kind: "review", key: `review:${task.project}:${task.id}:${task.updatedAt}`, tone: TONE.review, at: task.updatedAt, scope: task.project, task, run });
   }
 
-  const memory = src.memory ?? [];
+  const memory = (src.memory ?? []).filter((m) => can(m.project, "memoryApprove"));
   const byId = new Map(memory.map((m) => [m.id, m]));
   const pairs = new Set<string>();
   for (const m of memory) {
@@ -121,6 +141,15 @@ export function buildInbox(src: InboxSources): InboxItem[] {
     items.push({ kind: "alert", key: `alert:${a.id}`, tone: a.severity === "high" ? "danger" : "warning", at: a.openedAt, scope: a.project ?? "hub", alert: a });
   }
 
+  for (const g of src.gates ?? []) {
+    if ((g.status !== "waiting" && g.status !== "escalated") || !can(g.project, gatePermission(g))) continue;
+    items.push({ kind: "gate", key: `gate:${g.id}`, tone: g.status === "escalated" ? "danger" : TONE.gate, at: g.createdAt, scope: g.project, gate: g });
+  }
+  for (const a of src.leader ?? []) {
+    if (a.status !== "proposed" || !can(a.project, "chatApprove")) continue;
+    items.push({ kind: "leader", key: `leader:${a.id}`, tone: TONE.leader, at: a.createdAt, scope: a.project, action: a });
+  }
+
   return items.sort((a, b) => b.at.localeCompare(a.at));
 }
 
@@ -138,6 +167,10 @@ export function inboxProject(item: InboxItem): string | null {
       return item.memory.project;
     case "alert":
       return item.alert.project;
+    case "gate":
+      return item.gate.project;
+    case "leader":
+      return item.action.project;
     default:
       return null;
   }
