@@ -5,11 +5,15 @@ import {
   AGENT_ROLES,
   AGENT_TEMPLATES,
   agentProfileSchema,
+  AUTONOMY,
+  AUTONOMY_ARGS,
+  autonomySource,
   usageStop,
   type AgentKind,
   type AgentProfile,
   type AgentProfileStatus,
   type AgentRole,
+  type Autonomy,
   type LoginHow,
   type NewAccount,
   type ProfileCheck,
@@ -190,6 +194,67 @@ export function AgentsPage() {
       {settings.data ? <RunnerCard runner={settings.data.runner} /> : null}
     </div>
   );
+}
+
+/**
+ * The profile's own autonomy, the agent policy's ceiling and what a run gets: the lower of the two. The policy never
+ * widens a profile's flags, which a user took it to do (report of 2/10), so the card says how to widen them instead.
+ */
+function AutonomyNote({ profile: p }: { profile: AgentProfileStatus }) {
+  const t = useT();
+  const a = p.autonomy;
+  const level = (l: Autonomy) => t(`agentPolicy.autonomy.${l}`);
+  // effective null: a custom CLI, which keeps its own flags at full and is skipped below it.
+  const shown = (effective: Autonomy | null, policy: Autonomy) =>
+    effective ? level(effective) : policy === "full" ? t("agents.autonomy.asCli") : t("agents.autonomy.skipped");
+  const effective = a.hub ? shown(a.hub.effective, a.hub.policy) : a.own ? level(a.own) : t("agents.autonomy.asCli");
+  // The profile, not the policy, holds runs down: only its own args can raise that.
+  const limiting = a.own !== null && AUTONOMY.indexOf(a.own) < AUTONOMY.indexOf(a.hub?.policy ?? "full");
+  const ceilings = a.hub ? [a.hub.policy, ...a.projects.map((x) => x.policy)] : [];
+  const code = (s: string) => <code className={CODE}>{s}</code>;
+  return (
+    <div className="flex flex-col gap-1 text-xs text-muted-foreground" data-autonomy={p.id}>
+      <span>
+        <span className="font-medium text-fg-strong">{t("agents.autonomy.title")}</span>
+        {" · "}
+        {a.own === null ? t("agents.autonomy.ownCustom") : rich(t("agents.autonomy.own"), { own: <OwnLevel level={a.own} flag={a.flag} /> })}
+        {" · "}
+        {a.hub ? t("agents.autonomy.policy", { level: level(a.hub.policy) }) : t("agents.autonomy.noPolicy")}
+        {" → "}
+        <span className="font-medium text-fg-strong">{t("agents.autonomy.effective", { level: effective })}</span>
+      </span>
+      {a.projects.map((x) => (
+        <span key={x.project}>{t("agents.autonomy.project", { project: x.project, policy: level(x.policy), effective: shown(x.effective, x.policy) })}</span>
+      ))}
+      {limiting && p.kind !== "custom" ? (
+        <span>
+          {p.kind === "claude" && a.flag?.includes("acceptEdits") ? `${t("agents.autonomy.claudeEdit")} ` : null}
+          {p.kind === "claude"
+            ? rich(t("agents.autonomy.widenClaude"), { allowed: code('--allowedTools "Bash(git:*)"'), full: code(AUTONOMY_ARGS.claude.full.join(" ")) })
+            : rich(t("agents.autonomy.widen"), { full: code(AUTONOMY_ARGS[p.kind].full.join(" ")) })}
+        </span>
+      ) : null}
+      {a.own === null && ceilings.some((l) => l !== "full") ? <span>{t("agents.autonomy.customSkipped")}</span> : null}
+    </div>
+  );
+}
+
+/** What the args being typed give, read as the runner reads them. */
+function ArgsAutonomy({ kind, args }: { kind: Exclude<AgentKind, "custom">; args: string[] }) {
+  const t = useT();
+  const { level, flag } = autonomySource(kind, args);
+  return (
+    <span className={HINT} data-args-autonomy={level}>
+      {rich(t("agents.autonomy.form"), { own: <OwnLevel level={level} flag={flag} /> })}
+    </span>
+  );
+}
+
+/** A level with the flag it comes from: "Sửa file (--permission-mode acceptEdits)". */
+function OwnLevel({ level, flag }: { level: Autonomy; flag: string | null }) {
+  const t = useT();
+  const name = t(`agentPolicy.autonomy.${level}`);
+  return <>{flag ? rich(t("agents.autonomy.withFlag"), { level: name, flag: <code className={CODE}>{flag}</code> }) : t("agents.autonomy.noFlag", { level: name })}</>;
 }
 
 /** One more subscription (roadmap 24b): the CLI's own sign-in, in a terminal, with a sign-in folder of its own. */
@@ -381,6 +446,7 @@ function ProfileCard({
             .join("")}
           {p.bin} {p.args.join(" ")}
         </code>
+        <AutonomyNote profile={p} />
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
@@ -582,6 +648,7 @@ function ProfileForm({
               {t("agents.args")}
             </Label>
             <Textarea id="pf-args" className="font-mono" value={argsText} onChange={(e) => setArgsText(e.target.value)} />
+            {p.kind !== "custom" ? <ArgsAutonomy kind={p.kind} args={argsText.split("\n").filter((a) => a.length > 0)} /> : null}
             <span className={HINT}>
               {rich(t("agents.argsHint"), {
                 prompt: <code className={CODE}>{"{prompt}"}</code>,

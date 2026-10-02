@@ -102,6 +102,118 @@ export function effectivePolicy(hub: AgentPolicy, project: Partial<AgentPolicy> 
   return tighten(hub, project);
 }
 
+// ── a profile's own autonomy ─────────────────────────────────────────────────
+// The policy is only a ceiling: the runner gives a run the lower of it and what the profile's own flags allow, and
+// never adds a flag that widens one. Here, not in the runner, so the Agents page reads a profile the same way.
+
+/** The flags that set how much a CLI may do on its own, by kind: those taking a value, and switches. */
+export const AUTONOMY_FLAGS: Partial<Record<AgentKind, { valued: string[]; switches: string[] }>> = {
+  claude: { valued: ["--permission-mode"], switches: ["--dangerously-skip-permissions", "--allow-dangerously-skip-permissions"] },
+  codex: { valued: ["--sandbox", "-s"], switches: ["--full-auto", "--dangerously-bypass-approvals-and-sandbox"] },
+  gemini: { valued: ["--approval-mode"], switches: ["-y", "--yolo"] },
+};
+
+/** The flags the runner puts in for a level (the profile's own come out first). */
+export const AUTONOMY_ARGS: Record<"claude" | "codex" | "gemini", Record<Autonomy, string[]>> = {
+  claude: {
+    read: ["--permission-mode", "plan"],
+    propose: ["--permission-mode", "plan"],
+    edit: ["--permission-mode", "acceptEdits"],
+    full: ["--permission-mode", "bypassPermissions"],
+  },
+  codex: {
+    read: ["--sandbox", "read-only"],
+    propose: ["--sandbox", "read-only"],
+    edit: ["--sandbox", "workspace-write"],
+    full: ["--sandbox", "danger-full-access"],
+  },
+  gemini: {
+    read: ["--approval-mode", "plan"],
+    propose: ["--approval-mode", "plan"],
+    edit: ["--approval-mode", "auto_edit"],
+    full: ["--approval-mode", "yolo"],
+  },
+};
+
+/** What each flag value means; a value missing here counts as edit, as the spec says. */
+const AUTONOMY_VALUES: Record<string, Autonomy> = {
+  plan: "read",
+  "read-only": "read",
+  acceptEdits: "edit",
+  auto_edit: "edit",
+  "workspace-write": "edit",
+  bypassPermissions: "full",
+  "danger-full-access": "full",
+  yolo: "full",
+};
+const FULL_SWITCHES = ["--dangerously-skip-permissions", "--dangerously-bypass-approvals-and-sandbox", "-y", "--yolo"];
+
+export const lowerAutonomy = (a: Autonomy, b: Autonomy): Autonomy => lower(AUTONOMY, a, b);
+
+/** The value of a flag written `--flag X` or `--flag=X` (the last one wins, as in the CLIs). */
+export function flagValue(args: string[], names: string[]): string | null {
+  return flagUse(args, names)?.value ?? null;
+}
+
+/** flagValue, with the flag as written ("--sandbox read-only", "--permission-mode=plan"). */
+function flagUse(args: string[], names: string[]): { value: string; written: string } | null {
+  let use: { value: string; written: string } | null = null;
+  args.forEach((a, i) => {
+    for (const n of names) {
+      if (a === n && i + 1 < args.length) use = { value: args[i + 1]!, written: `${a} ${args[i + 1]}` };
+      else if (a.startsWith(`${n}=`)) use = { value: a.slice(n.length + 1), written: a };
+    }
+  });
+  return use;
+}
+
+/** The autonomy a profile's own args give: `plan` is read, `acceptEdits` edit, a dangerously switch full. */
+export function autonomyOf(kind: AgentKind, args: string[]): Autonomy {
+  return autonomySource(kind, args).level;
+}
+
+/** autonomyOf, with the args it read that from as written ("--permission-mode acceptEdits"); flag null: none. */
+export function autonomySource(kind: AgentKind, args: string[]): { level: Autonomy; flag: string | null } {
+  const flags = AUTONOMY_FLAGS[kind];
+  if (!flags) return { level: "edit", flag: null };
+  const full = args.find((a) => FULL_SWITCHES.includes(a) && flags.switches.includes(a));
+  if (full) return { level: "full", flag: full };
+  const use = flagUse(args, flags.valued);
+  return use ? { level: AUTONOMY_VALUES[use.value] ?? "edit", flag: use.written } : { level: "edit", flag: null };
+}
+
+/** How much a run of a profile may do on its own, for its card: what its flags give, and that under each ceiling. */
+export interface ProfileAutonomy {
+  /** What the profile's own args give (autonomyOf); null: a custom CLI, whose flags the runner neither reads nor sets. */
+  own: Autonomy | null;
+  /** The args `own` comes from, as written; null: none, which the runner counts as edit. */
+  flag: string | null;
+  /**
+   * The hub's ceiling and what a run gets under it; null without a policy (local mode, a hub older than 27a).
+   * effective null: a custom CLI, which runs with its own flags at full and is skipped below it.
+   */
+  hub: { policy: Autonomy; effective: Autonomy | null } | null;
+  /** The projects whose own part lowers the hub's ceiling, by name. */
+  projects: { project: string; policy: Autonomy; effective: Autonomy | null }[];
+}
+
+/** `policy`: the hub's default and the parts of the machine's projects, as the heartbeat brings them; null: none. */
+export function profileAutonomy(
+  kind: AgentKind,
+  args: string[],
+  policy: { hub: AgentPolicy; projects: Record<string, Partial<AgentPolicy>> } | null,
+): ProfileAutonomy {
+  const custom = !AUTONOMY_FLAGS[kind];
+  const { level, flag } = autonomySource(kind, args);
+  const under = (ceiling: Autonomy) => ({ policy: ceiling, effective: custom ? null : lowerAutonomy(level, ceiling) });
+  if (!policy) return { own: custom ? null : level, flag, hub: null, projects: [] };
+  const projects = Object.entries(policy.projects)
+    .map(([project, part]) => ({ project, ...under(effectivePolicy(policy.hub, part).autonomy) }))
+    .filter((p) => p.policy !== policy.hub.autonomy)
+    .sort((a, b) => a.project.localeCompare(b.project));
+  return { own: custom ? null : level, flag, hub: under(policy.hub.autonomy), projects };
+}
+
 /** One line for the audit log and webhooks, the same in every language (names, not sentences). */
 export function policySummary(p: Partial<AgentPolicy>): string {
   const parts: string[] = [];
