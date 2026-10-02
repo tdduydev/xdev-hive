@@ -1,5 +1,6 @@
 // The "Agent" part of the policy page (roadmap 27a): the hub's default and one row per project, each with what a run
-// of it may use after the merge. A project's row only tightens the default, so the Hiệu lực column is what runs get.
+// of it may use after the merge. A project's row only tightens the default, so the Hiệu lực column is what runs get,
+// at most: each profile's own CLI flags can hold a run lower still, and the policy never widens them (report of 2/10).
 import { useMemo, useState } from "react";
 import {
   AUTONOMY,
@@ -18,10 +19,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
-import { Empty, ErrorNote } from "#ui/components/common.tsx";
+import { Empty, ErrorNote, Notice } from "#ui/components/common.tsx";
 import { formatTime, useAction, useCan, useHive, useProjects, useQuery } from "#ui/hooks.ts";
-import { useT } from "#ui/i18n/index.tsx";
+import { rich, useT } from "#ui/i18n/index.tsx";
 
+const CODE = "rounded bg-muted px-1 py-0.5 font-mono text-xs";
 /** The hub's row; "@" is not allowed in a project name, so it never collides with one. */
 const HUB = "@hub";
 type Kind = (typeof POLICY_AGENT_KINDS)[number];
@@ -261,6 +263,19 @@ export function AgentPolicyCard({ editableOnly = false }: { editableOnly?: boole
         <CardDescription>{t("agentPolicy.hint")}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        <Notice tone="info" title={t("agentPolicy.ceilingTitle")}>
+          {/* One paragraph: the alert lays out each child on a row of its own. */}
+          <p className="m-0">
+            {rich(t("agentPolicy.ceiling"), {
+              flag: <code className={CODE}>--permission-mode acceptEdits</code>,
+              widen: (
+                <>
+                  <code className={CODE}>--allowedTools</code>, <code className={CODE}>--permission-mode</code>
+                </>
+              ),
+            })}
+          </p>
+        </Notice>
         <div className="overflow-x-auto rounded-lg border">
           <Table>
             <TableHeader>
@@ -299,7 +314,7 @@ function Effective({ policy: p }: { policy: AgentPolicy }) {
           ? models.map(([k, list]) => `${k}: ${list!.length ? list!.join(", ") : t("agentPolicy.noModel")}`).join(" · ")
           : t("agentPolicy.anyModel")}
       </li>
-      <li>{t(`agentPolicy.autonomy.${p.autonomy}`)}</li>
+      <li>{t("agentPolicy.autonomyMax", { level: t(`agentPolicy.autonomy.${p.autonomy}`) })}</li>
       <li>
         {t(`agentPolicy.network.${p.network.mode}`)}
         {p.network.mode === "allowlist" ? `: ${p.network.allow.join(", ") || "—"}` : ""}

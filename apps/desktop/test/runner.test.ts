@@ -1780,8 +1780,24 @@ describe("runner: agent policy (roadmap 27a)", () => {
     }
   });
 
+  it("each profile's status says its own autonomy and what runs get under the policy it heard", async () => {
+    const args = [FAKE, "{prompt}", "--permission-mode", "acceptEdits"];
+    const { runner, hive } = await withPolicy([profile("claude-a", "claude", 10, "ok", { args })], { autonomy: "read" });
+    const [status] = runner.profileStatuses();
+    assert.deepEqual(status!.autonomy, {
+      own: "edit",
+      flag: "--permission-mode acceptEdits",
+      hub: { policy: "full", effective: "edit" },
+      projects: [{ project: "demo", policy: "read", effective: "read" }],
+    });
+    await hive.call("agentPolicy.set", { project: "demo", policy: null } as never, admin);
+    await runner.heartbeat();
+    assert.deepEqual(runner.profileStatuses()[0]!.autonomy.projects, [], "back to the hub's ceiling");
+  });
+
   it("changes nothing in local mode", async () => {
     const { runner, calls } = await setup([profile("claude-a", "claude", 10, "ok")]);
+    assert.equal(runner.profileStatuses()[0]!.autonomy.hub, null, "no policy to show");
     await runner.enqueue({ project: "demo", taskId: "T-1" });
     await runner.settle();
     const [call] = calls();
