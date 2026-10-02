@@ -275,8 +275,13 @@ export interface AgentRun {
   activity?: string;
   /** From the CLI's JSON result (Claude Code): estimated at API prices, which a subscription does not bill. */
   costUsd: number | null;
-  /** Input tokens including cache reads and writes. */
+  /**
+   * Input tokens read fresh, without what was written to or read from the prompt cache (roadmap 28c). Runs from before
+   * 28c have the three added up here and null below.
+   */
   inputTokens: number | null;
+  cacheWriteTokens: number | null;
+  cacheReadTokens: number | null;
   outputTokens: number | null;
 }
 

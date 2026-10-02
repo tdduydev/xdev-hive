@@ -338,8 +338,16 @@ describe("plan usage", () => {
 describe("run usage", () => {
   it("reads Claude Code's JSON result: final message, cost and tokens", () => {
     const line = JSON.stringify({ type: "result", result: "Done.", total_cost_usd: 0.31, usage: { input_tokens: 10, cache_read_input_tokens: 90, output_tokens: 42 } });
-    assert.deepEqual(parseClaudeResult(`warming up\n${line}\n`), { text: "Done.", costUsd: 0.31, inputTokens: 100, outputTokens: 42 });
-    assert.deepEqual(parseClaudeResult(JSON.stringify({ type: "result", result: "x" })), { text: "x", costUsd: null, inputTokens: null, outputTokens: null });
+    // Kept apart (roadmap 28c): fresh input, cache writes, cache reads.
+    assert.deepEqual(parseClaudeResult(`warming up\n${line}\n`), { text: "Done.", costUsd: 0.31, inputTokens: 10, cacheWriteTokens: null, cacheReadTokens: 90, outputTokens: 42 });
+    assert.deepEqual(parseClaudeResult(JSON.stringify({ type: "result", result: "x" })), {
+      text: "x",
+      costUsd: null,
+      inputTokens: null,
+      cacheWriteTokens: null,
+      cacheReadTokens: null,
+      outputTokens: null,
+    });
     assert.equal(parseClaudeResult('{"type":"system"}\nplain text'), null);
     assert.equal(parseClaudeResult('{"type":"result", cut off'), null);
   });
@@ -404,16 +412,20 @@ describe("buildCommand", () => {
       "-c",
       'mcp_servers.xdev-hive.env={HIVE_AGENT="codex-1",HIVE_PROJECT="demo",HIVE_TASK="T-1"}',
     ];
-    assert.deepEqual(buildCommand(AGENT_TEMPLATES.codex, vars).args, ["exec", ...approve, "--sandbox", "workspace-write", "Do T-1"]);
-    assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.codex, args: ["exec", "--full-auto", "{prompt}"] }, vars).args, ["exec", ...approve, "--sandbox", "workspace-write", "Do T-1"]);
+    // `--json` for each turn's tokens (roadmap 28c), once.
+    const codex = buildCommand(AGENT_TEMPLATES.codex, vars);
+    assert.deepEqual(codex.args, ["exec", "--json", ...approve, "--sandbox", "workspace-write", "Do T-1"]);
+    assert.equal(codex.codexJson, true);
+    assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.codex, args: ["exec", "--json", "{prompt}"] }, vars).args, ["exec", ...approve, "--json", "Do T-1"], "a profile's own --json is not doubled");
+    assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.codex, args: ["exec", "--full-auto", "{prompt}"] }, vars).args, ["exec", "--json", ...approve, "--sandbox", "workspace-write", "Do T-1"]);
     assert.deepEqual(
       buildCommand({ ...AGENT_TEMPLATES.codex, args: ["exec", "--full-auto", "-s", "read-only", "{prompt}"] }, vars).args,
-      ["exec", ...approve, "-s", "read-only", "Do T-1"],
+      ["exec", "--json", ...approve, "-s", "read-only", "Do T-1"],
       "a sandbox the profile chose stays",
     );
     assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.codex, args: ["/opt/wrap.sh", "{prompt}"] }, vars).args, ["/opt/wrap.sh", "Do T-1"], "an unknown command line stays as it is");
     const ro = buildCommand({ ...AGENT_TEMPLATES.codex, id: "codex-ro", readOnly: true }, { ...vars, run: "R-1" }).args;
-    assert.equal(ro[4], 'mcp_servers.xdev-hive.env={HIVE_AGENT="codex-ro",HIVE_PROJECT="demo",HIVE_TASK="T-1",HIVE_RUN="R-1",HIVE_READONLY="1"}');
+    assert.equal(ro[5], 'mcp_servers.xdev-hive.env={HIVE_AGENT="codex-ro",HIVE_PROJECT="demo",HIVE_TASK="T-1",HIVE_RUN="R-1",HIVE_READONLY="1"}');
     assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.claude, kind: "custom" }, vars).args, ["-p", "Do T-1", "--permission-mode", "acceptEdits"]);
   });
 });
@@ -449,11 +461,30 @@ describe("Runner", () => {
     assert.match(raw, /\n## Prompt\nYou are working/, "the header and the prompt carry no time");
     const log = unstamp(raw);
     assert.match(log, /## Output\n# session fake-session · model fake-model · Claude Code 2\.1\.0\n▶ Bash: npm test\n  ✓ ok 1 - adds \(\+1 lines\)\nImplemented T-1\. Tests pass\.\n/);
-    assert.match(log, /## Result\nImplemented T-1\. Tests pass\.\n# cost \$0\.0425 · tokens in 6000 out 850/);
+    assert.match(log, /## Result\nImplemented T-1\. Tests pass\.\n# cost \$0\.0425 · tokens in 1200 cache write 300 cache read 4500 out 850 · 75% from cache/);
     assert.doesNotMatch(log, /"type":"result"/, "no raw events in the log");
     assert.equal(done.summary, "Implemented T-1. Tests pass.", "the final message, not the raw JSON");
-    assert.deepEqual([done.costUsd, done.inputTokens, done.outputTokens], [0.0425, 6000, 850]);
+    assert.deepEqual([done.costUsd, done.inputTokens, done.cacheWriteTokens, done.cacheReadTokens, done.outputTokens], [0.0425, 1200, 300, 4500, 850]);
     assert.equal(runner.profileStatuses()[0]!.stats.costUsd, 0.0425);
+  });
+
+  it("runs Codex with --json and keeps its tokens apart, cached input out of input (roadmap 28c)", async () => {
+    // `codex exec …` as the profile has it: a wrapper stands in for the codex binary.
+    const bin = mkdtempSync(path.join(os.tmpdir(), "hive-codex-"));
+    const codex = path.join(bin, "codex");
+    writeFileSync(codex, `#!/bin/sh\nexec "${process.execPath}" "${FAKE}" "$@"\n`);
+    chmodSync(codex, 0o755);
+    const { runner } = await setup([profile("codex-a", "codex", 10, "ok", { bin: codex, args: ["exec", "--sandbox", "workspace-write", "{prompt}"] })]);
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const done = runner.store.get(run.id)!;
+    assert.equal(done.status, "succeeded", done.error ?? "");
+    assert.equal(done.summary, "Implemented T-1. Tests pass.", "the agent's last message, not the events");
+    assert.deepEqual([done.costUsd, done.inputTokens, done.cacheWriteTokens, done.cacheReadTokens, done.outputTokens], [null, 1000, 0, 4000, 300]);
+    const log = unstamp(runner.log(run.id));
+    assert.match(log, /▶ Bash: bash -lc 'npm test'\n {2}✓ ok 1 - adds \(\+1 lines\)\n/);
+    assert.match(log, /# cost \? · tokens in 1000 cache write 0 cache read 4000 out 300 · 80% from cache/);
+    assert.equal(runner.store.unreportedCosts().map((r) => r.id).includes(run.id), true, "reported to the hub though it has no price");
   });
 
   it("gives Claude Code the app's MCP entries for what the repo set up, whatever the working copy says", async () => {
@@ -779,7 +810,13 @@ describe("Runner", () => {
     assert.deepEqual(runner.store.unreportedCosts(), []);
     await runner.heartbeat();
     const s = await hive.call("costs.summary", {}, admin);
-    assert.deepEqual(s.total, { usd1: 0.0425, usd7: 0.0425, usd30: 0.0425, runs30: 1 });
+    assert.deepEqual(s.total, {
+      usd1: 0.0425,
+      usd7: 0.0425,
+      usd30: 0.0425,
+      runs30: 1,
+      tokens30: { inputTokens: 1200, cacheWriteTokens: 300, cacheReadTokens: 4500, outputTokens: 850 },
+    });
     assert.deepEqual(s.profiles.map((p) => [p.machine, p.profileId, p.account]), [["duy-mbp", "claude-a", "claude-max-duy"]]);
   });
 

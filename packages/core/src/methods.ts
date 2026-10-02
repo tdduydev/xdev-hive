@@ -127,8 +127,12 @@ const runCost = z.object({
   taskId,
   profileId: z.string().max(40),
   account: account.nullable(),
-  costUsd: z.number().min(0).max(10_000),
+  /** null: the CLI gives no price (Codex); the run still counts, with its tokens (roadmap 28c). */
+  costUsd: z.number().min(0).max(10_000).nullable(),
   inputTokens: z.number().int().min(0).nullable(),
+  /** Input written to and read from the prompt cache (roadmap 28c); left out by older apps, the same as null. */
+  cacheWriteTokens: z.number().int().min(0).nullable().default(null),
+  cacheReadTokens: z.number().int().min(0).nullable().default(null),
   outputTokens: z.number().int().min(0).nullable(),
   finishedAt: z.iso.datetime(),
   /**

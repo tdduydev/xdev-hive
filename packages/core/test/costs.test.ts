@@ -42,7 +42,12 @@ describe("run costs on the hub", () => {
     await beat(hive, mbp, [cost("R-1", c.ago(0.1), { costUsd: 99 })]); // resent after a lost reply: kept as first reported
 
     const s = await hive.call("costs.summary", {}, admin);
-    assert.deepEqual(s.total, { usd1: 0.75, usd7: 2.75, usd30: 6.75, runs30: 4 }, "the 40-day-old run is outside the window");
+    // Reports from apps before 28c: output tokens, input as one number, nothing about the cache.
+    assert.deepEqual(
+      s.total,
+      { usd1: 0.75, usd7: 2.75, usd30: 6.75, runs30: 4, tokens30: { inputTokens: null, cacheWriteTokens: null, cacheReadTokens: null, outputTokens: 400 } },
+      "the 40-day-old run is outside the window",
+    );
     assert.deepEqual(
       s.projects.map((p) => [p.project, p.usd1, p.usd7, p.usd30, p.runs30]),
       [

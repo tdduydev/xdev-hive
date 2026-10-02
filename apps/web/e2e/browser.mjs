@@ -638,6 +638,30 @@ async function main() {
     await rpc("budgets.set", { budgets: [] });
   });
 
+  // Roadmap 28c: tokens apart. A machine reports a run's input fresh, written to and read from the cache; Chi phí shows
+  // the share read from the cache.
+  await step("token-metrics", async () => {
+    await fetch(`${base}/api/rpc`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" },
+      body: JSON.stringify({
+        method: "machines.heartbeat",
+        input: {
+          machine: "lan-mbp",
+          instance: "e2e00001",
+          version: "0.102.0",
+          costs: [{ runId: "R-tok01", project: "demo", taskId: "DEMO-1", profileId: "claude-tok", account: null, costUsd: 0.2, inputTokens: 1000, cacheWriteTokens: 1000, cacheReadTokens: 8000, outputTokens: 300, finishedAt: new Date().toISOString() }],
+        },
+      }),
+    });
+    const tab = (current = tabs.admin);
+    await tab.go("admin/costs");
+    await tab.waitFor("the cache share of claude-tok", () => {
+      const row = [...document.querySelectorAll("tr")].find((r) => r.textContent.includes("claude-tok"));
+      return document.body.innerText.includes("Đọc cache") && row?.textContent.includes("80%");
+    });
+  });
+
   await step("hub-page", async () => {
     const tab = (current = tabs.admin);
     await tab.go("admin/hub");

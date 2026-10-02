@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { CostSummary, CostTotals, Machine, QuotaCooldown, ReportedProfile } from "@xdev-hive/core";
+import { cacheReadShare, type CostSummary, type CostTotals, type Machine, type QuotaCooldown, type ReportedProfile, type RunTokens } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Switch } from "@xdev-hive/ui/components/ui/switch";
@@ -103,6 +103,18 @@ export function MachinesPage() {
   );
 }
 
+/** The share of input read from the prompt cache (roadmap 28c), "—" when the runs did not say. */
+export function cacheText(tok: RunTokens | undefined): string {
+  const share = tok ? cacheReadShare(tok) : null;
+  return share === null ? "—" : `${Math.round(share * 100)}%`;
+}
+
+export function tokensTitle(t: ReturnType<typeof useT>, tok: RunTokens | undefined): string {
+  if (!tok) return "";
+  const n = (v: number | null) => (v === null ? "?" : formatCount(v));
+  return t("machines.tokensTitle", { input: n(tok.inputTokens), write: n(tok.cacheWriteTokens), read: n(tok.cacheReadTokens), output: n(tok.outputTokens) });
+}
+
 export function Costs({ summary: s }: { summary: CostSummary }) {
   const t = useT();
   if (s.total.runs30 === 0) return <Empty>{t("machines.noCosts")}</Empty>;
@@ -112,6 +124,9 @@ export function Costs({ summary: s }: { summary: CostSummary }) {
       <TableCell className="text-right tabular-nums">{formatUsd(c.usd7)}</TableCell>
       <TableCell className="text-right tabular-nums">{formatUsd(c.usd30)}</TableCell>
       <TableCell className="text-right tabular-nums text-muted-foreground">{formatCount(c.runs30)}</TableCell>
+      <TableCell className="text-right tabular-nums" title={tokensTitle(t, c.tokens30)}>
+        {cacheText(c.tokens30)}
+      </TableCell>
     </>
   );
   const heads = (
@@ -120,12 +135,16 @@ export function Costs({ summary: s }: { summary: CostSummary }) {
       <TableHead className="text-right">{t("machines.col7d")}</TableHead>
       <TableHead className="text-right">{t("machines.col30d")}</TableHead>
       <TableHead className="text-right">{t("machines.colRunCount")}</TableHead>
+      <TableHead className="text-right" title={t("machines.colCacheHint")}>
+        {t("machines.colCache")}
+      </TableHead>
     </>
   );
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm font-medium">
         {t("machines.costTotal", { day: formatUsd(s.total.usd1), week: formatUsd(s.total.usd7), month: formatUsd(s.total.usd30), runs: formatCount(s.total.runs30) })}
+        {s.total.tokens30?.cacheReadTokens != null ? ` · ${t("machines.cacheTotal", { share: cacheText(s.total.tokens30) })}` : ""}
       </p>
       <div className="grid gap-3 xl:grid-cols-2">
         <div className="overflow-x-auto rounded-lg border">

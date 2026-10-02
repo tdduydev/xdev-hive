@@ -338,6 +338,13 @@ const MIGRATIONS: string[] = [
     commit_sha TEXT NOT NULL, machine TEXT NOT NULL, pushed_at TEXT NOT NULL, PRIMARY KEY(project, dir, branch));
   CREATE INDEX spec_features_machine ON spec_features(project, machine);
   `,
+  // Token counts apart (roadmap 28c): input fresh (input_tokens, for rows from now on), written to the cache, read from it.
+  // A run with no price (Codex) is kept with cost 0 and priced 0.
+  `
+  ALTER TABLE run_costs ADD COLUMN cache_write_tokens INTEGER;
+  ALTER TABLE run_costs ADD COLUMN cache_read_tokens INTEGER;
+  ALTER TABLE run_costs ADD COLUMN priced INTEGER NOT NULL DEFAULT 1;
+  `,
 ];
 
 /** A leader's reply asks for at most this many actions. */
@@ -345,6 +352,10 @@ const CHAT_ACTIONS_PER_REPLY = 20;
 
 /** Run records (runs.push) are kept this long after their last update. */
 const RUN_RECORD_DAYS = 30;
+
+/** A run's tokens beside its record (run_costs joined as c), as toRunRecord reads them. */
+const RUN_TOKEN_COLUMNS = "c.input_tokens AS tok_input, c.cache_write_tokens AS tok_cache_write, c.cache_read_tokens AS tok_cache_read, c.output_tokens AS tok_output";
+const numOrNull = (v: unknown) => (v == null ? null : Number(v));
 
 /** A pushed text as the team may see it: no hidden characters, no line that looks like a secret. */
 const clean = (text: string | null) => (text === null ? null : redactLines(stripHidden(text)));
@@ -394,6 +405,11 @@ function toRunRecord(r: Row, withLog: boolean): RunRecord {
     cancelRequestedBy: s(r.cancel_by),
     cancelRequestedAt: s(r.cancel_at),
     mr: r.mr == null ? null : (JSON.parse(String(r.mr)) as RunMr),
+    // From run_costs when the query joined it (runs.list / runs.get) and the machine reported the run.
+    tokens:
+      r.tok_output == null && r.tok_input == null
+        ? null
+        : { inputTokens: numOrNull(r.tok_input), cacheWriteTokens: numOrNull(r.tok_cache_write), cacheReadTokens: numOrNull(r.tok_cache_read), outputTokens: numOrNull(r.tok_output) },
     merge:
       r.merge_status == null
         ? null
@@ -2827,12 +2843,16 @@ export class SqliteHive implements HiveBackend {
           }
           // A machine resends until the hub answers, so a run is kept as first reported.
           const cost = db.prepare(
-            `INSERT OR IGNORE INTO run_costs(machine_id, run_id, machine, project, task_id, profile_id, account, cost_usd, input_tokens, output_tokens, finished_at, requested_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT OR IGNORE INTO run_costs(machine_id, run_id, machine, project, task_id, profile_id, account, cost_usd, input_tokens, output_tokens, finished_at, requested_by,
+               cache_write_tokens, cache_read_tokens, priced)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           );
           const owner = requesterOf(actor);
           for (const c of costs) {
-            cost.run(actor.name, c.runId, machine, c.project, c.taskId, c.profileId, c.account, c.costUsd, c.inputTokens, c.outputTokens, c.finishedAt, c.requestedBy ?? owner);
+            cost.run(
+              actor.name, c.runId, machine, c.project, c.taskId, c.profileId, c.account, c.costUsd ?? 0, c.inputTokens, c.outputTokens, c.finishedAt,
+              c.requestedBy ?? owner, c.cacheWriteTokens, c.cacheReadTokens, c.costUsd === null ? 0 : 1,
+            );
           }
           db.prepare("DELETE FROM run_costs WHERE finished_at < ?").run(this.#now(-COST_DAYS * 24 * 60));
           db.prepare("DELETE FROM machines WHERE last_seen < ?").run(this.#now(-MACHINE_TTL_DAYS * 24 * 60));
@@ -3027,12 +3047,17 @@ export class SqliteHive implements HiveBackend {
       "runs.list": ({ project, projects, limit }) =>
         (
           db
-            .prepare(`SELECT * FROM run_records WHERE (?1 IS NULL OR project = ?1) AND (?3 IS NULL OR project IN (SELECT value FROM json_each(?3))) ORDER BY created_at DESC, run_id DESC LIMIT ?2`)
+            .prepare(
+              `SELECT r.*, ${RUN_TOKEN_COLUMNS} FROM run_records r LEFT JOIN run_costs c ON c.machine_id = r.machine_id AND c.run_id = r.run_id
+               WHERE (?1 IS NULL OR r.project = ?1) AND (?3 IS NULL OR r.project IN (SELECT value FROM json_each(?3))) ORDER BY r.created_at DESC, r.run_id DESC LIMIT ?2`,
+            )
             .all(project ?? null, limit, listParam(projects)) as Row[]
         ).map((r) => toRunRecord(r, false)),
 
       "runs.get": ({ machineId, runId }, actor) => {
-        const row = db.prepare("SELECT * FROM run_records WHERE machine_id = ? AND run_id = ?").get(machineId, runId) as Row | undefined;
+        const row = db
+          .prepare(`SELECT r.*, ${RUN_TOKEN_COLUMNS} FROM run_records r LEFT JOIN run_costs c ON c.machine_id = r.machine_id AND c.run_id = r.run_id WHERE r.machine_id = ? AND r.run_id = ?`)
+          .get(machineId, runId) as Row | undefined;
         // A run of a project the caller does not see answers like a missing one.
         return row && sees(actor, str(row.project)) ? toRunRecord(row, true) : null;
       },
@@ -3569,17 +3594,33 @@ export class SqliteHive implements HiveBackend {
             `SELECT project, machine, profile_id, account,
                SUM(CASE WHEN finished_at >= ?1 THEN cost_usd ELSE 0 END) AS usd1,
                SUM(CASE WHEN finished_at >= ?2 THEN cost_usd ELSE 0 END) AS usd7,
-               SUM(cost_usd) AS usd30, COUNT(*) AS runs30
+               SUM(cost_usd) AS usd30, COUNT(*) AS runs30,
+               SUM(CASE WHEN cache_read_tokens IS NOT NULL THEN input_tokens END) AS tin,
+               SUM(cache_write_tokens) AS twrite, SUM(cache_read_tokens) AS tread, SUM(output_tokens) AS tout
              FROM run_costs WHERE finished_at >= ?3 GROUP BY project, machine, profile_id, account`,
           )
           .all(since(1), since(7), since(30)) as Row[];
         const visible = rows.filter((r) => sees(actor, str(r.project)));
-        const zero = (): CostTotals => ({ usd1: 0, usd7: 0, usd30: 0, runs30: 0 });
+        const zero = (): CostTotals => ({
+          usd1: 0,
+          usd7: 0,
+          usd30: 0,
+          runs30: 0,
+          tokens30: { inputTokens: null, cacheWriteTokens: null, cacheReadTokens: null, outputTokens: null },
+        });
+        // null until some run reported it: an older machine's runs say nothing about the cache.
+        const sum = (a: number | null, b: unknown) => (b == null ? a : (a ?? 0) + Number(b));
         const add = (t: CostTotals, r: Row) => {
           t.usd1 += Number(r.usd1);
           t.usd7 += Number(r.usd7);
           t.usd30 += Number(r.usd30);
           t.runs30 += Number(r.runs30);
+          t.tokens30 = {
+            inputTokens: sum(t.tokens30.inputTokens, r.tin),
+            cacheWriteTokens: sum(t.tokens30.cacheWriteTokens, r.twrite),
+            cacheReadTokens: sum(t.tokens30.cacheReadTokens, r.tread),
+            outputTokens: sum(t.tokens30.outputTokens, r.tout),
+          };
           return t;
         };
         const group = <K extends string>(key: (r: Row) => K) => {

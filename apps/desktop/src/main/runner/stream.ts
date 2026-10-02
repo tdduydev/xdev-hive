@@ -178,3 +178,108 @@ export class ClaudeStream {
     return text ? `${text}\n` : "";
   }
 }
+
+/**
+ * Codex's `exec --json` (roadmap 28c): one JSON event per line (thread, turns, items: its messages, commands, file
+ * changes, MCP calls, then the turn's token usage). Turned into the same kind of log as Claude Code's, with the agent's
+ * last message kept for the run's summary. [Unverified] for Codex versions other than the 0.1xx one the names come from:
+ * a line that is not a known event is written as it came.
+ */
+export class CodexStream {
+  readonly state: StreamState = { activity: null };
+  /** The agent's last message: the run's summary. */
+  lastText: string | null = null;
+  /** Every turn's usage added up as the events pass, so a long run's early turns count even once the log is cut. */
+  readonly tokens = { turns: 0, input: 0, cached: 0, output: 0 };
+  #rest = "";
+  readonly #cwd: string;
+
+  constructor(cwd: string) {
+    this.#cwd = cwd;
+  }
+
+  push(chunk: string): string {
+    const text = this.#rest + chunk;
+    const lines = text.split("\n");
+    this.#rest = lines.pop() ?? "";
+    return lines.map((l) => this.#line(l)).join("");
+  }
+
+  end(): string {
+    const rest = this.#rest;
+    this.#rest = "";
+    return rest ? this.#line(rest) : "";
+  }
+
+  #line(raw: string): string {
+    const line = raw.trim();
+    if (!line) return "";
+    let e: Json;
+    try {
+      e = JSON.parse(line) as Json;
+    } catch {
+      return `${raw}\n`;
+    }
+    const text = this.#describe(e);
+    return text ? `${text}\n` : "";
+  }
+
+  #describe(e: Json): string | null {
+    const item = (e.item ?? {}) as Json;
+    switch (e.type) {
+      case "thread.started":
+        return `# thread ${String(e.thread_id ?? "?")} · Codex`;
+      case "turn.completed": {
+        const u = (e.usage ?? {}) as Json;
+        const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0);
+        this.tokens.turns++;
+        this.tokens.input += n(u.input_tokens);
+        this.tokens.cached += n(u.cached_input_tokens);
+        this.tokens.output += n(u.output_tokens);
+        return `# tokens in ${String(u.input_tokens ?? "?")} (cached ${String(u.cached_input_tokens ?? "?")}) out ${String(u.output_tokens ?? "?")}`;
+      }
+      case "turn.failed":
+        return `✗ ${clipLine(String((e.error as Json | undefined)?.message ?? "turn failed"), 300)}`;
+      case "error":
+        return `✗ ${clipLine(String(e.message ?? "error"), 300)}`;
+      case "item.started":
+        if (item.type === "command_execution") {
+          const cmd = `Bash: ${clipLine(String(item.command ?? ""), 200)}`;
+          this.state.activity = cmd;
+          return `▶ ${cmd}`;
+        }
+        if (item.type === "mcp_tool_call") {
+          const call = `${String(item.tool ?? "?")}${item.server ? ` (${String(item.server)})` : ""}`;
+          this.state.activity = call;
+          return `▶ ${call}`;
+        }
+        return null;
+      case "item.completed":
+        switch (item.type) {
+          case "agent_message": {
+            const said = String(item.text ?? "").trim();
+            if (!said) return null;
+            this.lastText = said;
+            return said;
+          }
+          case "command_execution": {
+            const out = String(item.aggregated_output ?? "").trim().split("\n");
+            const code = item.exit_code;
+            return `  ${code === 0 ? "✓" : "✗"} ${out[0] ? clipLine(out[0], 160) : `exit ${String(code ?? "?")}`}${out.length > 1 ? ` (+${out.length - 1} lines)` : ""}`;
+          }
+          case "file_change": {
+            const changes = Array.isArray(item.changes) ? (item.changes as Json[]) : [];
+            const lines = changes.map((c) => `▶ ${c.kind === "add" ? "Write" : "Edit"} ${rel(c.path, this.#cwd)}`);
+            if (lines.length) this.state.activity = lines.at(-1)!.slice(2);
+            return lines.length ? lines.join("\n") : null;
+          }
+          case "web_search":
+            return `▶ WebSearch: ${clipLine(String(item.query ?? ""), 160)}`;
+          default:
+            return null;
+        }
+      default:
+        return null;
+    }
+  }
+}

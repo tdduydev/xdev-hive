@@ -567,6 +567,8 @@ export interface RunRecord {
   mr: RunMr | null;
   /** A merge asked for on the web (runs.merge) and how it went; null: none asked. */
   merge: RunMerge | null;
+  /** What the run used, once its machine reported it (roadmap 28c); null before, or for a run the CLI gave none. */
+  tokens: RunTokens | null;
   /** The end of the run's readable log, lines that looked like secrets hidden: runs.get only. */
   log?: string;
   /** What it changed (git diff from its base), as its machine last sent it; null: not sent (yet). runs.get only. */
@@ -868,13 +870,36 @@ export interface Machine {
   profileChanges: ProfileChange[];
 }
 
+/**
+ * The share of input read from the prompt cache, 0–1 (roadmap 28c): what a run, a project or a subscription reuses.
+ * null when nothing says how much came from the cache (runs from before the counts were kept apart).
+ */
+export function cacheReadShare(u: { inputTokens: number | null; cacheWriteTokens: number | null; cacheReadTokens: number | null }): number | null {
+  if (u.cacheReadTokens === null) return null;
+  const all = (u.inputTokens ?? 0) + (u.cacheWriteTokens ?? 0) + u.cacheReadTokens;
+  return all > 0 ? u.cacheReadTokens / all : null;
+}
+
 /** API-price cost estimates over rolling windows: the last 24 hours, 7 days and 30 days. */
 export interface CostTotals {
   usd1: number;
   usd7: number;
   usd30: number;
-  /** Runs with a cost in the last 30 days. */
+  /** Runs with a cost or tokens in the last 30 days. */
   runs30: number;
+  /**
+   * Tokens of the last 30 days (roadmap 28c). The input split (fresh, written to the cache, read from it) counts only the
+   * runs that reported it; output counts every run.
+   */
+  tokens30: RunTokens;
+}
+
+/** A run's tokens (roadmap 28c): input read fresh, written to the prompt cache, read from it, and output. */
+export interface RunTokens {
+  inputTokens: number | null;
+  cacheWriteTokens: number | null;
+  cacheReadTokens: number | null;
+  outputTokens: number | null;
 }
 
 /** What finished runs cost, as the machines reported it (Claude Code runs only), for the projects the reader sees. */

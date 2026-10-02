@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Wrench } from "lucide-react";
 import { cn } from "cn";
-import { parseVerdict, type AgentRun, type RunRecord, type RunRequest } from "@xdev-hive/core";
+import { cacheReadShare, parseVerdict, type AgentRun, type RunRecord, type RunRequest, type RunTokens } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
@@ -516,11 +516,10 @@ function LocalDetail({ run, machine, gitlabReady, group, onChanged }: { run: Age
             {run.branch} · {t("board.commits", { count: run.commits })}
             {run.headSha ? ` · ${run.headSha}` : ""}
           </span>
-          {run.costUsd !== null
-            ? ` · ${t("board.costDetail", { cost: formatUsd(run.costUsd), input: run.inputTokens === null ? "?" : formatCount(run.inputTokens), output: run.outputTokens === null ? "?" : formatCount(run.outputTokens) })}`
-            : ""}
+          {run.costUsd !== null ? ` · ${t("board.cost", { cost: formatUsd(run.costUsd) })}` : ""}
         </NoteLine>
       ) : null}
+      {run.outputTokens !== null ? <TokensLine tokens={run} /> : null}
       {b ? (
         <NoteLine>
           {b.n === 0 ? t("board.judgeDetail", { of: b.of }) : t("board.bestOfDetail", { n: b.n, of: b.of })}
@@ -606,6 +605,7 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
           {run.costUsd !== null ? `${run.branch ? " · " : ""}${t("board.cost", { cost: formatUsd(run.costUsd) })}` : ""}
         </NoteLine>
       ) : null}
+      {run.tokens ? <TokensLine tokens={run.tokens} /> : null}
       {run.mrUrl ? <MrMerge run={run} onChanged={onChanged} /> : null}
       {live && run.cancelRequestedBy ? <Notice tone="warn">{t("runs.cancelRequested", { who: run.cancelRequestedBy, time: formatTime(run.cancelRequestedAt) })}</Notice> : null}
       {run.error ? <Notice tone={run.status === "queued" ? "info" : "warn"} className="[overflow-wrap:anywhere]">{run.error}</Notice> : null}
@@ -634,6 +634,23 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
           : {})}
       />
     </div>
+  );
+}
+
+/**
+ * What a run used (roadmap 28c): input read fresh, written to and read from the prompt cache, output, and the share read
+ * from the cache. A run from before 28c has its input as one number and no cache counts.
+ */
+function TokensLine({ tokens: k }: { tokens: RunTokens }) {
+  const t = useT();
+  const n = (v: number | null) => (v === null ? "?" : formatCount(v));
+  const share = cacheReadShare(k);
+  return (
+    <NoteLine>
+      {k.cacheReadTokens === null
+        ? t("runs.tokensOld", { input: n(k.inputTokens), output: n(k.outputTokens) })
+        : t("runs.tokens", { input: n(k.inputTokens), write: n(k.cacheWriteTokens), read: n(k.cacheReadTokens), output: n(k.outputTokens), share: share === null ? "—" : `${Math.round(share * 100)}%` })}
+    </NoteLine>
   );
 }
 
