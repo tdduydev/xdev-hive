@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
-import { expandPackage, HiveError, packageSpec, toolProblem, type Actor, type HiveEvent, type ToolEntry } from "#core/index.ts";
+import { expandPackage, HiveError, packageSpec, sha256Hex, toolArgv, toolHash, toolProblem, type Actor, type HiveEvent, type ToolEntry } from "#core/index.ts";
 import { SqliteHive } from "#core/node.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
@@ -244,5 +245,89 @@ describe("tool catalog (roadmap 28a)", () => {
         ["rtk", null, "duy", true],
       ],
     );
+  });
+});
+
+describe("tool catalog on machines (roadmap 28b)", () => {
+  it("fills in {package} per registry, {worktree} and {repo}, in one pass", () => {
+    const npm = rtk();
+    assert.deepEqual(toolArgv(["npx", "-y", "{package}", "init", "{worktree}"], npm, { worktree: "/wt/T-1" }), ["npx", "-y", "rtk-mcp@0.4.1", "init", "/wt/T-1"]);
+    assert.deepEqual(toolArgv(["uvx", "--from={package}", "rtk"], rtk({ package: { registry: "pypi", name: "rtk", version: "1.2.0" } })), ["uvx", "--from=rtk==1.2.0", "rtk"]);
+    assert.deepEqual(
+      toolArgv(["uv", "tool", "install", "{package}"], rtk({ package: { registry: "git", name: "https://x.test/rtk.git", version: "v1.0.0" } })),
+      ["uv", "tool", "install", "git+https://x.test/rtk.git@v1.0.0"],
+    );
+    assert.deepEqual(toolArgv(["claude", "plugin", "install", "{package}"], rtk({ package: { registry: "claude-plugin", name: "rtk@market", version: "1.0.0" } })), ["claude", "plugin", "install", "rtk@market"]);
+    assert.deepEqual(toolArgv(["--root={repo}", "--wt={worktree}"], npm, { worktree: "/w", repo: "/r" }), ["--root=/r", "--wt=/w"]);
+    // A worktree whose path holds a placeholder is not filled in again; other braces are the tool's own.
+    assert.deepEqual(toolArgv(["{worktree}", "{json}"], npm, { worktree: "/tmp/{repo}" }), ["/tmp/{repo}", "{json}"]);
+  });
+
+  it("refuses a placeholder it has nothing for, with a key", () => {
+    const placeholder = (run: () => unknown) => {
+      try {
+        run();
+      } catch (err) {
+        assert.ok(err instanceof HiveError);
+        return [err.key, err.vars?.placeholder];
+      }
+      assert.fail("expected toolArgv to throw");
+    };
+    assert.deepEqual(placeholder(() => toolArgv(["init", "{worktree}"], rtk())), ["errors.toolPlaceholder", "{worktree}"], "an install has no worktree");
+    assert.deepEqual(placeholder(() => toolArgv(["{repo}"], rtk(), { worktree: "/w" })), ["errors.toolPlaceholder", "{repo}"]);
+    assert.deepEqual(placeholder(() => toolArgv(["-y", "{package}"], rtk({ package: null }))), ["errors.toolPlaceholder", "{package}"]);
+  });
+
+  it("hashes what the machine runs: a new version or command asks again, a new description does not", () => {
+    const base = toolHash(rtk());
+    assert.match(base, /^[0-9a-f]{64}$/);
+    assert.equal(toolHash(rtk({ description: "Other words", name: "RTK!", agents: ["claude", "codex"], enabledByDefault: true, license: "Apache-2.0" })), base);
+    assert.equal(toolHash(rtk({ env: { RTK_TELEMETRY: "0" }, secretEnv: ["RTK_API_KEY"] })), base, "same values, same hash");
+    assert.notEqual(toolHash(rtk({ package: { registry: "npm", name: "rtk-mcp", version: "0.4.2" } })), base);
+    assert.notEqual(toolHash(rtk({ mcp: { command: "npx", args: ["-y", "{package}", "--fast"] } })), base);
+    assert.notEqual(toolHash(rtk({ env: { RTK_TELEMETRY: "1" } })), base);
+    assert.notEqual(toolHash(rtk({ secretEnv: ["RTK_OTHER_KEY"] })), base);
+    assert.notEqual(toolHash(rtk({ check: ["rtk-mcp", "--version"] })), base);
+    assert.notEqual(toolHash(rtk({ install: ["npm", "i", "-g", "{package}"] })), base);
+    assert.notEqual(toolHash(rtk({ prepare: { init: ["rtk", "init"], sync: ["rtk", "sync"], marker: ".rtk/db" } })), base);
+    assert.notEqual(toolHash(rtk({ plugin: "rtk@market" })), base);
+    // Key order in env does not matter.
+    assert.equal(toolHash(rtk({ env: { A: "1", B: "2" } })), toolHash(rtk({ env: { B: "2", A: "1" } })));
+  });
+
+  it("computes SHA-256 like node:crypto, in the browser too", () => {
+    for (const text of ["", "abc", "Tiếng Việt có dấu 🐝", "x".repeat(55), "x".repeat(56), "x".repeat(64), "y".repeat(1000)]) {
+      assert.equal(sha256Hex(text), createHash("sha256").update(text, "utf8").digest("hex"), JSON.stringify(text.slice(0, 20)));
+    }
+  });
+
+  it("sends a machine the entries and settings of the projects it has and its token sees", async () => {
+    const hive = new SqliteHive(":memory:");
+    await hive.call("tools.save", { entry: rtk() }, admin);
+    await hive.call("tools.save", { entry: rtk({ id: "elsewhere" }) }, admin);
+    await hive.call("tools.save", { entry: rtk({ id: "everywhere", enabledByDefault: true }) }, admin);
+    await hive.call("tools.save", { entry: rtk({ id: "unused" }) }, admin);
+    await hive.call("tools.setProject", { id: "rtk", project: "app", enabled: true, required: true }, admin);
+    await hive.call("tools.setProject", { id: "elsewhere", project: "billing", enabled: true, required: false }, admin);
+    await hive.call("tools.setProject", { id: "codegraph", project: "web", enabled: false, required: false }, admin);
+    // A lead's machine: it says it has billing too, which its token does not see.
+    const beat = await hive.call("machines.heartbeat", { machine: "lan-mbp", instance: "a1b2c3d4", projects: ["app", "web", "billing"] }, leadAgent);
+    const ids = beat.tools.entries.map((e) => e.id);
+    assert.deepEqual(ids, ["codegraph", "everywhere", "rtk", "speckit", "superpowers"], "set by its projects, on by default, or the app's own");
+    assert.deepEqual(Object.keys(beat.tools.projects).sort(), ["app", "web"]);
+    const rtkEntry = beat.tools.entries.find((e) => e.id === "rtk")!;
+    assert.deepEqual(rtkEntry.mcp, { command: "npx", args: ["-y", "{package}"] }, "placeholders left for the machine");
+    assert.deepEqual(rtkEntry.secretEnv, ["RTK_API_KEY"], "names only");
+    const of = (project: string, id: string) => beat.tools.projects[project]!.find((s) => s.id === id);
+    assert.deepEqual(of("app", "rtk"), { id: "rtk", enabled: true, effective: true, required: true });
+    assert.deepEqual(of("web", "rtk"), { id: "rtk", enabled: null, effective: false, required: false });
+    assert.deepEqual(of("web", "codegraph"), { id: "codegraph", enabled: false, effective: false, required: false });
+    assert.deepEqual(of("app", "codegraph"), { id: "codegraph", enabled: null, effective: false, required: false });
+    assert.deepEqual(of("app", "everywhere"), { id: "everywhere", enabled: null, effective: true, required: false });
+
+    // A machine with no project yet hears only what is on by default and the app's own entries.
+    const bare = await hive.call("machines.heartbeat", { machine: "new-mbp", instance: "b1b2c3d4" }, { name: "runner.new@duy", role: "agent" });
+    assert.deepEqual(bare.tools.entries.map((e) => e.id), ["codegraph", "everywhere", "speckit", "superpowers"]);
+    assert.deepEqual(bare.tools.projects, {});
   });
 });

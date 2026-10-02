@@ -2,10 +2,11 @@
 import { accessSync, constants, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { AUTONOMY, modelsFor, policySummary, type AgentKind, type AgentPolicy, type AgentProfile, type AgentRole, type Autonomy, type CiFix } from "@xdev-hive/core";
+import { AUTONOMY, modelsFor, policySummary, type AgentKind, type AgentPolicy, type AgentProfile, type AgentRole, type Autonomy, type CiFix, type ToolEntry } from "@xdev-hive/core";
 import { fence } from "#desktop/main/gitlab/describe.ts";
 import { tr } from "#desktop/main/i18n.ts";
-import { MCP_NAME, NO_FEATURES, runMcpServers, SUPERPOWERS_PLUGIN, type RepoFeatures } from "#desktop/main/installer.ts";
+import { MCP_NAME, NO_FEATURES, runMcpServers, type RepoFeatures } from "#desktop/main/installer.ts";
+import { claudeToolServer, codexToolArgs, legacyTools } from "./tools.ts";
 import { outputFormat } from "./usage.ts";
 
 export interface PromptContext {
@@ -185,13 +186,19 @@ export interface BuiltCommand {
 
 export function buildCommand(
   profile: AgentProfile,
-  vars: { prompt: string; worktree: string; task: string; project: string; branch: string; run?: string },
-  features: RepoFeatures = NO_FEATURES,
+  vars: { prompt: string; worktree: string; task: string; project: string; branch: string; run?: string; repo?: string },
+  /**
+   * The run's tools from the hub's catalog (runTools), or what the repo's setup turned on (no catalog): Claude Code
+   * gets the app's own entries for those, as before the catalog.
+   */
+  tools: ToolEntry[] | RepoFeatures = NO_FEATURES,
   /** Claude's MCP servers from this file instead (a container run: see runner). */
   mcpConfigFile?: string,
   /** The agent policy's MCP servers besides xdev-hive (see applyPolicy); null: every server. */
   mcp: string[] | null = null,
 ): BuiltCommand {
+  const catalog = Array.isArray(tools);
+  const ctx = { worktree: vars.worktree, ...(vars.repo ? { repo: vars.repo } : {}) };
   const usesPrompt = profile.args.some((a) => a.includes("{prompt}"));
   const fill = (a: string) =>
     a
@@ -210,11 +217,12 @@ export function buildCommand(
     if (format === null) args.push("--output-format", "stream-json", "--verbose");
     claudeStream = format === null || format === "stream-json";
     claudeJson = format === "json";
-    args.push(...claudeRunArgs(profile.id, { ...vars, readOnly: profile.readOnly }, features, mcpConfigFile, mcp));
+    args.push(...claudeRunArgs(profile.id, { ...vars, readOnly: profile.readOnly }, catalog ? tools : legacyTools(tools), mcpConfigFile, mcp, ctx));
   }
   let codexJson = false;
   if (profile.kind === "codex") {
-    args = codexArgs(args, { agent: profile.id, project: vars.project, task: vars.task, run: vars.run, readOnly: profile.readOnly });
+    // Codex had no tools of the app's before the catalog: its own config.toml starts what the user set up.
+    args = codexArgs(args, { agent: profile.id, project: vars.project, task: vars.task, run: vars.run, readOnly: profile.readOnly }, catalog ? tools : [], ctx);
     // Events instead of text, for the tokens of each turn (roadmap 28c); only `codex exec`, which has --json.
     if (args[0] === "exec") {
       if (!args.includes("--json")) args = ["exec", "--json", ...args.slice(1)];
@@ -251,6 +259,9 @@ export const CLAUDE_RUN_ENV = { CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1
 export function codexArgs(
   args: string[],
   run?: { agent: string; project: string; task: string; run?: string; readOnly?: boolean },
+  /** The run's MCP tools of the catalog (roadmap 28b). */
+  tools: ToolEntry[] = [],
+  ctx: { worktree?: string; repo?: string } = {},
 ): string[] {
   const sandbox = args.some((a) => a === "--sandbox" || a === "-s" || a.startsWith("--sandbox="));
   const fixed = args.flatMap((a) => (a === "--full-auto" ? (sandbox ? [] : ["--sandbox", "workspace-write"]) : [a]));
@@ -270,25 +281,34 @@ export function codexArgs(
     };
     overrides.push("-c", `mcp_servers.xdev-hive.env={${Object.entries(env).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(",")}}`);
   }
+  overrides.push(...codexToolArgs(tools, ctx));
   return ["exec", ...overrides, ...fixed.slice(1)];
 }
 
 export function claudeRunArgs(
   agent: string,
   run: { project: string; task: string; run?: string; readOnly?: boolean; worktree: string },
-  features: RepoFeatures,
+  /** MCP servers and plugins the run gets (runTools, or legacyTools without a catalog). */
+  tools: ToolEntry[],
   mcpConfigFile?: string,
   mcp: string[] | null = null,
+  ctx: { worktree?: string; repo?: string } = { worktree: run.worktree },
 ): string[] {
   // --strict-mcp-config: only the servers listed here run, so the policy is kept by leaving the others out.
-  const allowed = (name: string) => name === MCP_NAME || mcp === null || mcp.includes(name);
-  const codegraph = features.codegraph && allowed("codegraph");
+  const allowed = (name: string) => name !== MCP_NAME && (mcp === null || mcp.includes(name));
+  const servers = tools.filter((e) => e.kind === "mcp" && e.mcp && allowed(e.id));
+  const plugins = tools.filter((e) => e.kind === "plugin" && e.plugin);
   // Headless, a tool nobody allowed is refused: the run's own MCP servers are allowed here, whatever the user's settings say.
-  const allow = ["mcp__xdev-hive", ...(codegraph ? ["mcp__codegraph"] : [])];
+  const allow = ["mcp__xdev-hive", ...servers.map((e) => `mcp__${e.id}`)];
   const settings = {
+    // Hooks of the catalog wait for 28d: with --setting-sources user, turning this off would run the user's own hooks too.
     disableAllHooks: true,
     permissions: { allow },
-    ...(features.superpowers ? { enabledPlugins: { [SUPERPOWERS_PLUGIN]: true } } : {}),
+    ...(plugins.length ? { enabledPlugins: Object.fromEntries(plugins.map((e) => [e.plugin!, true])) } : {}),
+  };
+  const mcpServers = {
+    ...runMcpServers(agent, run.project, NO_FEATURES, { task: run.task, id: run.run, readOnly: run.readOnly }),
+    ...Object.fromEntries(servers.map((e) => [e.id, claudeToolServer(e, ctx)])),
   };
   return [
     "--add-dir",
@@ -299,7 +319,7 @@ export function claudeRunArgs(
     "user",
     "--strict-mcp-config",
     "--mcp-config",
-    mcpConfigFile ?? JSON.stringify({ mcpServers: runMcpServers(agent, run.project, { ...features, codegraph }, { task: run.task, id: run.run, readOnly: run.readOnly }) }),
+    mcpConfigFile ?? JSON.stringify({ mcpServers }),
   ];
 }
 
