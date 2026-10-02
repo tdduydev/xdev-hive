@@ -1992,6 +1992,12 @@ export const en: Catalog = {
     remove: "Remove system",
     removeConfirm: "Remove it (the projects stay)",
     updated: "Changed {time} by {name}",
+    search: "Search systems or projects",
+    noMatch: "No system or project matches “{query}”.",
+    outside: "Projects in no system",
+    outsideHint: "These projects show only in the sidebar. Add one to a system to see it with the other services.",
+    openTasks: { one: "{count} open task", other: "{count} open tasks" },
+    addTo: "Add to system",
   },
   tokens: {
     title: "Access tokens",
