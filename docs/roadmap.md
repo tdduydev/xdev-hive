@@ -166,7 +166,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **29c. chat-autonomy**: quản trị dự án chọn loại đề xuất nào leader được tự chạy không chờ duyệt (mặc định: không loại nào). Việc tự chạy dùng quyền của người gửi tin, nhật ký agent (27c) ghi leader làm thay ai, chat hiện việc đã chạy. Đổi chính sách và chạy lại agent sau khi dừng luôn chờ duyệt, vì leader không được tự nới giới hạn của chính nó.
 
 - **32. open-cli-web-prompt** (hỏi 2/10: client mở Claude Code bằng gói claude-1, claude-2… để tự code, web admin chọn gói để prompt; chọn: CLI mở trong repo dự án, web là prompt tự do thành run. Phần "agent map, một lần chạy nhiều agent" hỏi cùng lúc thuộc roadmap 31). Spec: [docs/specs/32-open-cli-web-prompt.md](specs/32-open-cli-web-prompt.md). Tách:
-  - [ ] **32a. open-cli**: nút *Mở Claude Code* / *Mở Codex* trên thẻ gói (*Gói sub*) và hàng dự án (*Dự án*): terminal chạy CLI tương tác của gói trong repo dự án, env đăng nhập của gói, MCP xdev-hive với `HIVE_AGENT` = id gói. Phiên của người dùng: không áp chính sách 27a, không tính trần 27b.
+  - [x] **32a. open-cli**: nút *Mở Claude Code* / *Mở Codex* trên thẻ gói (*Gói sub*) và hàng dự án (*Dự án*): terminal chạy CLI tương tác của gói trong repo dự án, env đăng nhập của gói, MCP xdev-hive với `HIVE_AGENT` = id gói. Phiên của người dùng: không áp chính sách 27a, không tính trần 27b.
   - [ ] **32b. web-prompt**: *Prompt cho agent* trên trang *Task*: prompt, máy, gói hoặc tự xoay → `runs.prompt` tạo task `P-<n>` và yêu cầu run trong một giao dịch; phần kiểm của `runs.dispatch` tách ra dùng chung.
 
 ## Sửa lỗi
