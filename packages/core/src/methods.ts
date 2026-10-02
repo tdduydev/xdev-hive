@@ -5,6 +5,7 @@ import { BUDGET_USER, budgetSchema, type BudgetBlock, type BudgetUsage } from ".
 import { ACCOUNT_ID, AGENT_ROLES, agentProfileSchema, MAX_CANDIDATES, RUN_STATUSES } from "./agents.ts";
 import { CHAT_FILES_PER_MESSAGE } from "./chatfiles.ts";
 import { DOC_ASSET_MAX_BYTES } from "./doclinks.ts";
+import { MR_STATUSES, PIPELINE_STATUSES } from "./gitlab.ts";
 import { MACHINE_ID, PROJECT_NAME } from "./keys.ts";
 import type { SkillSummary } from "./skills.ts";
 import {
@@ -44,6 +45,7 @@ import {
   type HiveSystem,
   type Machine,
   type ProfileChange,
+  type RunMergeOrder,
   type MachineCommand,
   type MachineDetail,
   type Memory,
@@ -391,6 +393,19 @@ export const schemas = {
           branch: z.string().max(200).nullable().default(null),
           commits: z.number().int().min(0).default(0),
           mrUrl: z.url({ protocol: /^https?$/ }).max(500).nullable().default(null),
+          /** What the MR watcher last saw (roadmap 18c); left out by older apps, then the hub keeps what it had. */
+          mr: z
+            .object({
+              iid: z.number().int().positive().nullable(),
+              status: z.enum(MR_STATUSES).nullable(),
+              draft: z.boolean(),
+              pipeline: z.enum(PIPELINE_STATUSES).nullable(),
+              // Lenient: one odd value must not fail the whole push; the hub keeps only an http(s) link.
+              pipelineUrl: z.string().max(500).nullable(),
+              checkedAt: z.string().max(40).nullable(),
+            })
+            .nullable()
+            .optional(),
           costUsd: z.number().min(0).nullable().default(null),
           log: z.string().max(60_000).default(""),
           /** What the run changed (git diff from its base), when it changed since the last push (roadmap 22l). */
@@ -409,6 +424,13 @@ export const schemas = {
    * its next heartbeat, stops the agent and reports the run as cancelled.
    */
   "runs.cancel": z.object({ machineId: z.string().min(1).max(200), runId: z.string().regex(/^[\w.-]{1,40}$/) }),
+  /**
+   * Merges the run's open MR or PR (roadmap 18c): someone with Code review on the project, not the one who asked for the
+   * run. The machine does it with its own GitLab or GitHub token at its next heartbeat; only one that takes runs from the hub.
+   */
+  "runs.merge": z.object({ machineId: z.string().min(1).max(200), runId: z.string().regex(/^[\w.-]{1,40}$/) }),
+  /** The machine says how a merge asked of it went (only for its own runs). */
+  "runs.mergeResult": z.object({ runId: z.string().regex(/^[\w.-]{1,40}$/), ok: z.boolean(), error: machineError.nullable().default(null) }),
   /** One run with the end of its log. */
   "runs.get": z.object({ machineId: z.string().min(1).max(200), runId: z.string().regex(/^[\w.-]{1,40}$/) }),
   /**
@@ -664,6 +686,8 @@ export interface MethodOutput {
     budgetBlocked: BudgetBlock[];
     /** Changes to this machine's profiles asked for on the web (roadmap 18d). Older apps ignore it; the hub drops them after a day. */
     profileChanges: ProfileChange[];
+    /** Merges asked for on the web (roadmap 18c); only while it accepts runs from the hub. Older apps ignore it. */
+    mergeRuns: RunMergeOrder[];
   };
   "machines.list": Machine[];
   "machines.setProfile": Machine;
@@ -675,6 +699,8 @@ export interface MethodOutput {
   "runs.list": RunRecord[];
   "runs.get": RunRecord | null;
   "runs.cancel": RunRecord;
+  "runs.merge": RunRecord;
+  "runs.mergeResult": RunRecord;
   "runs.dispatch": RunRequest;
   "runs.requests": RunRequest[];
   "runs.cancelRequest": RunRequest;
@@ -777,6 +803,8 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "runs.list": "viewer",
   "runs.get": "viewer",
   "runs.cancel": "agent",
+  "runs.merge": "agent",
+  "runs.mergeResult": "agent",
   // Also "manage" on the project: a project manager, never an agent token.
   "runs.dispatch": "agent",
   "runs.requests": "viewer",
