@@ -42,6 +42,9 @@ export interface InboxSources {
   alerts?: HubAlert[];
 }
 
+/** Machine tools nobody needs unless their team uses them: not a gap to fix today. */
+const OPTIONAL_TOOLS = new Set(["cli:specify"]);
+
 const TONE: Record<InboxKind, InboxTone> = {
   ci: "danger",
   proposal: "info",
@@ -104,7 +107,8 @@ export function buildInbox(src: InboxSources): InboxItem[] {
 
   // The setup check has no time of its own: these sort last and show no time.
   for (const item of src.setup ?? []) {
-    if (item.state === "installed") continue;
+    // Spec Kit is a team's choice per repo (roadmap 20a): its row on Cài đặt máy, and the policy when it is required, say so.
+    if (item.state === "installed" || OPTIONAL_TOOLS.has(item.id)) continue;
     items.push({ kind: "machine", key: `machine:${item.id}:${item.state}`, tone: TONE.machine, at: "", scope: src.machine ?? "", item });
   }
   for (const c of src.commands ?? []) {
