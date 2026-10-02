@@ -1607,7 +1607,11 @@ export class Runner {
     if (wt && existsSync(wt.path) && run.bestOf?.n !== 0) {
       const label = run.role === "review" ? "review" : status === "succeeded" ? "work" : "wip";
       const c = commitAll(wt.path, `ai(${run.taskId}): ${label} by ${profile.id}\n\nRun ${run.id}, attempt ${run.attempt}, status ${status}`, wt.copied, wt.toolDirs);
-      if (c.error) error = [error, `commit: ${c.error}`].filter(Boolean).join(" · ");
+      if (c.error) {
+        error = [error, `commit: ${c.error}`].filter(Boolean).join(" · ");
+        // Its work is in the worktree, not on the branch: an MR or review would show nothing, so it did not succeed.
+        if (status === "succeeded") status = "failed";
+      }
       ({ commits, headSha } = branchState(wt.path, wt.baseSha));
     }
 

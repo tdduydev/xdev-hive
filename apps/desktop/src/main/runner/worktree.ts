@@ -164,7 +164,9 @@ export function commitAll(dir: string, message: string, exclude: string[], toolD
       .map((l) => l.replace(/^HEAD:/, ""))
       .filter((f) => f && f !== "AGENTS.md");
     const cliDirs = [...new Set([...AGENT_CLI_DIRS, ...toolDirs])].filter((d) => !tryGit(dir, ["ls-tree", "-r", "--name-only", "HEAD", "--", d]));
-    const keepOut = [...exclude, ...RENDERED_FILES, RULES_DIR, ...nested, ...cliDirs];
+    // Already ignored by the repo: `add` leaves it out anyway, and git 2.54 fails the whole add ("paths are ignored, use
+    // -f") when an exclude names one, so nothing would be committed (.codegraph/ in xdev-mindmap-ai, 2/10).
+    const keepOut = [...exclude, ...RENDERED_FILES, RULES_DIR, ...nested, ...cliDirs].filter((f) => tryGit(dir, ["check-ignore", "-q", "--", f]) === null);
     git(dir, ["add", "-A", "--", ".", ...keepOut.map((f) => `:(exclude)${f}`)]);
     if (!git(dir, ["diff", "--cached", "--name-only"])) return { sha: null, error: null };
     git(dir, ["-c", `core.hooksPath=${os.devNull}`, "commit", "-m", message]);
