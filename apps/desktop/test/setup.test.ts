@@ -4,9 +4,10 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileS
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
-import type { DesktopProject, SetupReport } from "@xdev-hive/core";
+import { toolHash, type DesktopProject, type MachineTools, type SetupReport, type ToolEntry } from "@xdev-hive/core";
 import { setMainLocale } from "#desktop/main/i18n.ts";
 import { CODEGRAPH_PACKAGE } from "#desktop/main/installer.ts";
+import { APP_TOOLS } from "#desktop/main/runner/tools.ts";
 import { AGENT_CLIS, cliUpgrade, parseCliVersion, Setup, type SetupHost } from "#desktop/main/setup.ts";
 
 const tmp = (p: string) => mkdtempSync(path.join(os.tmpdir(), `hive-setup-${p}-`));
@@ -46,6 +47,8 @@ function machine(opts: { npm?: boolean; uv?: boolean; specify?: boolean } & Pick
   if (opts.specify) fakeBin(bin, "specify", SPECIFY);
   const projects: DesktopProject[] = [];
   const pathEnv = [bin, shimDir, "/usr/bin", "/bin"].join(path.delimiter);
+  // What the runner's last heartbeat carried, and what this machine's user allowed: tests change them in place.
+  const hub: { tools: MachineTools | null; trust: Record<string, string> } = { tools: null, trust: {} };
   const setup = new Setup({
     pathEnv: () => pathEnv,
     env: () => ({ PATH: pathEnv, HOME: process.env.HOME }),
@@ -57,8 +60,10 @@ function machine(opts: { npm?: boolean; uv?: boolean; specify?: boolean } & Pick
     ...(opts.realpath ? { realpath: opts.realpath } : {}),
     ...(opts.cliBusy ? { cliBusy: opts.cliBusy } : {}),
     ...(opts.holdCli ? { holdCli: opts.holdCli } : {}),
+    tools: () => hub.tools,
+    toolTrust: () => hub.trust,
   });
-  return { setup, bin, shimDir, uvBin, projects };
+  return { setup, bin, shimDir, uvBin, projects, hub };
 }
 
 const find = (r: SetupReport, id: string) => [...r.machine, ...r.projects.flatMap((p) => p.items)].find((i) => i.id === id)!;
@@ -209,7 +214,7 @@ describe("Setup: Spec Kit", () => {
     assert.equal(before.action, "Cài bằng uv");
 
     const res = await m.setup.install("cli:specify");
-    assert.ok(calls(m.bin).includes("uv tool install specify-cli --from git+https://github.com/github/spec-kit.git telemetry="));
+    assert.ok(calls(m.bin).includes("uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v1.0.13 telemetry="), "the app's own pin");
     assert.equal(res.item.state, "installed");
     assert.equal(res.item.detail, `specify 1.0.14.dev0 · ${path.join(m.uvBin, "specify")} · ngoài PATH`);
     assert.match(res.output, /Installed 1 executable/);
@@ -337,3 +342,116 @@ describe("Setup: CLI versions and upgrades (roadmap 33)", () => {
   });
 });
 
+describe("Setup: hub tools (tool:<id>)", () => {
+  /** A CLI tool of the catalog with no code of its own in the app. */
+  const RTK: ToolEntry = {
+    id: "rtk",
+    name: "RTK",
+    description: "",
+    kind: "cli",
+    package: { registry: "npm", name: "rtk-cli", version: "0.9.0" },
+    mcp: null,
+    plugin: null,
+    hooks: [],
+    agents: ["claude"],
+    check: ["rtk", "--version"],
+    install: ["toolinst", "{package}"],
+    prepare: null,
+    env: { RTK_TELEMETRY: "0" },
+    secretEnv: [],
+    license: "MIT",
+    homepage: null,
+    handler: null,
+    enabledByDefault: false,
+  };
+  /** The catalog as a heartbeat carries it, with `on` turned on for the project app. */
+  const catalog = (entries: ToolEntry[], on: string[]): MachineTools => ({
+    entries,
+    projects: { app: entries.map((e) => ({ id: e.id, enabled: on.includes(e.id) ? true : null, effective: on.includes(e.id), required: false })) },
+  });
+  /** A machine with the project app, and an installer that puts a fake rtk on PATH. */
+  function withRtk(entries: ToolEntry[] = [RTK], on = ["rtk"]) {
+    const m = machine();
+    m.projects.push({ name: "app", repo: gitRepo() });
+    fakeBin(m.bin, "toolinst", `printf '#!/bin/sh\\necho "rtk 0.9.0 env=$RTK_TELEMETRY"\\n' > "${m.bin}/rtk" && chmod +x "${m.bin}/rtk"; echo "installed $1"`);
+    m.hub.tools = catalog(entries, on);
+    return m;
+  }
+
+  it("before the machine's user allows it: manual, and nothing of the tool runs, not even its check", async () => {
+    const m = withRtk();
+    const item = find(await m.setup.status(), "tool:rtk");
+    assert.equal(item.state, "manual");
+    assert.equal(item.action, null);
+    assert.equal(item.label, "RTK");
+    assert.match(item.detail, /Chưa được cho phép trên máy này/);
+    await assert.rejects(m.setup.install("tool:rtk"), /Chưa được cho phép trên máy này/);
+    assert.deepEqual(calls(m.bin).filter((c) => c.startsWith("toolinst") || c.startsWith("rtk")), []);
+  });
+
+  it("allowed: missing with the install command filled in, installs, then the check finds it", async () => {
+    const m = withRtk();
+    m.hub.trust = { rtk: toolHash(RTK) };
+    const before = await m.setup.item("tool:rtk");
+    assert.equal(before.state, "missing");
+    assert.equal(before.action, "Cài");
+    assert.match(before.detail, /toolinst rtk-cli@0\.9\.0/);
+
+    const res = await m.setup.install("tool:rtk");
+    assert.ok(calls(m.bin).includes("toolinst rtk-cli@0.9.0 telemetry="));
+    assert.match(res.output, /installed rtk-cli@0\.9\.0/);
+    assert.equal(res.item.state, "installed");
+    // The check runs with the entry's own variables.
+    assert.match(res.item.detail, /^rtk 0\.9\.0 env=0 · .*\/rtk$/);
+  });
+
+  it("a new version on the hub is a change the user allows again", async () => {
+    const m = withRtk();
+    m.hub.trust = { rtk: toolHash(RTK) };
+    await m.setup.install("tool:rtk");
+    m.hub.tools = catalog([{ ...RTK, package: { ...RTK.package!, version: "0.10.0" } }], ["rtk"]);
+    assert.equal((await m.setup.item("tool:rtk")).state, "manual");
+    await assert.rejects(m.setup.install("tool:rtk"), /Chưa được cho phép/);
+  });
+
+  it("with no install command: missing, with nothing to press", async () => {
+    const noInstall = { ...RTK, install: null };
+    const m = withRtk([noInstall]);
+    m.hub.trust = { rtk: toolHash(noInstall) };
+    const item = await m.setup.item("tool:rtk");
+    assert.equal(item.state, "missing");
+    assert.equal(item.action, null);
+    await assert.rejects(m.setup.install("tool:rtk"), /Danh mục không có lệnh cài/);
+  });
+
+  it("only tools on for one of the machine's projects, with a check and no handler; none without a catalog", async () => {
+    const mcp: ToolEntry = { ...RTK, id: "docs-mcp", kind: "mcp", mcp: { command: "npx", args: ["-y", "{package}"] }, check: null, install: null };
+    const m = withRtk([RTK, mcp, APP_TOOLS.speckit], []);
+    const ids = (r: SetupReport) => r.machine.map((i) => i.id).filter((id) => id.startsWith("tool:"));
+    assert.deepEqual(ids(await m.setup.status()), [], "off for app");
+    await assert.rejects(m.setup.item("tool:rtk"), /Không có mục tool:rtk/);
+
+    m.hub.tools = catalog([RTK, mcp, APP_TOOLS.speckit], ["rtk", "docs-mcp", "speckit"]);
+    // An MCP server with no check has nothing to install (npx fetches it); the seed keeps cli:specify and app:speckit.
+    assert.deepEqual(ids(await m.setup.status()), ["tool:rtk"]);
+
+    m.hub.tools = null;
+    assert.deepEqual(ids(await m.setup.status()), []);
+  });
+
+  it("installs Spec Kit at the catalog's pinned version once allowed, else at the app's own", async () => {
+    const m = machine({ uv: true });
+    const newer: ToolEntry = { ...APP_TOOLS.speckit, package: { ...APP_TOOLS.speckit.package!, version: "v1.0.14" } };
+    m.hub.tools = catalog([newer], ["speckit"]);
+    const uvInstalls = () => calls(m.bin).filter((c) => c.startsWith("uv tool install"));
+
+    // Not allowed yet: the app's pin, never an unpinned spec-kit.
+    assert.match((await m.setup.item("cli:specify")).detail, /--from git\+https:\/\/github\.com\/github\/spec-kit\.git@v1\.0\.13/);
+    await m.setup.install("cli:specify");
+    assert.deepEqual(uvInstalls(), ["uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v1.0.13 telemetry="]);
+
+    m.hub.trust = { speckit: toolHash(newer) };
+    await m.setup.install("cli:specify");
+    assert.equal(uvInstalls()[1], "uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v1.0.14 telemetry=");
+  });
+});

@@ -99,8 +99,10 @@ const machineError = z.object({
   key: z.string().max(80).optional(),
   vars: z.record(z.string().max(40), z.union([z.string().max(300), z.number()])).optional(),
 });
-/** cli:<kind> · shim · <project>:<part> — ids of the desktop's setup items. */
-const setupItemId = z.string().regex(/^(cli:[a-z]+|shim|[a-z0-9][a-z0-9._-]{0,99}:(agents|codegraph-mcp|codegraph-index|superpowers|speckit))$/, "unknown setup item");
+/** cli:<kind> · shim · tool:<id> (a hub tool, TOOL_ID) · <project>:<part> — ids of the desktop's setup items. */
+const setupItemId = z
+  .string()
+  .regex(/^(cli:[a-z]+|shim|tool:[a-z0-9][a-z0-9-]{0,39}|[a-z0-9][a-z0-9._-]{0,99}:(agents|codegraph-mcp|codegraph-index|superpowers|speckit))$/, "unknown setup item");
 
 const setupItem = z.object({
   id: z.string().max(200),

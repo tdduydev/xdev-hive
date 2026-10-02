@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { TooltipProvider } from "@xdev-hive/ui/components/ui/tooltip";
-import { may, missingRequired, withSystemGrants, type Me } from "@xdev-hive/core";
+import { may, missingRequired, withSystemGrants, type Me, type ToolView } from "@xdev-hive/core";
 import type { HiveClient } from "./client.ts";
 import { ChangePasswordScreen } from "./components/Account.tsx";
 import { ErrorNote } from "./components/common.tsx";
@@ -401,9 +401,11 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   const adminMachines = useQuery(async () => (webAdmin ? client.call("admin.machines", {}) : []), [client, webAdmin, poll]);
   const adminPolicy = useQuery(async () => (webAdmin ? client.call("policy.get", {}) : null), [client, webAdmin]);
   const adminAlerts = useQuery(async () => (webAdmin && client.alerts ? client.alerts.list().catch(() => null) : null), [client, webAdmin, poll]);
+  // Tools a project requires count as missing items too (roadmap 28b-2); a hub before the catalog has no tools.list.
+  const adminTools = useQuery(async () => (webAdmin ? client.call("tools.list", {}).catch((): ToolView[] => []) : []), [client, webAdmin]);
 
   const current: PageId = visible.has(route.id) ? route.id : "today";
-  const lacking = adminPolicy.data ? (adminMachines.data ?? []).filter((m) => m.setup && missingRequired(adminPolicy.data!, m.setup).length > 0).length : 0;
+  const lacking = adminPolicy.data ? (adminMachines.data ?? []).filter((m) => m.setup && missingRequired(adminPolicy.data!, m.setup, adminTools.data ?? []).length > 0).length : 0;
   const openAlerts = adminAlerts.data?.open ?? [];
   const counts: Partial<Record<PageId, number>> = {
     today: inbox.items.length,

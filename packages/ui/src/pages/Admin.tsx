@@ -14,6 +14,7 @@ import {
   type SetupItem,
   type SetupState,
   type TeamPolicy,
+  type ToolView,
 } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
@@ -101,11 +102,32 @@ export const ACTION_LABEL: Record<string, MessageKey> = {
 /** Small uppercase heading for a group inside a card. */
 const GROUP_TITLE = "text-xs font-semibold tracking-wide text-muted-foreground uppercase";
 
-export function MachineCard({ machine: m, policy, onChanged }: { machine: MachineDetail; policy: TeamPolicy | null; onChanged: () => void }) {
+const NO_TOOLS: ToolView[] = [];
+
+/**
+ * The tool catalog, for the tools a project requires (roadmap 28b-2): those count as missing items like the policy's.
+ * A hub older than the catalog has no tools.list: the policy alone, as before.
+ */
+export function useHubTools(): ToolView[] {
+  const { client } = useHive();
+  return useQuery(() => client.call("tools.list", {}).catch((): ToolView[] => []), [client]).data ?? NO_TOOLS;
+}
+
+export function MachineCard({
+  machine: m,
+  policy,
+  tools = NO_TOOLS,
+  onChanged,
+}: {
+  machine: MachineDetail;
+  policy: TeamPolicy | null;
+  tools?: ToolView[];
+  onChanged: () => void;
+}) {
   const t = useT();
   const projects = m.setup?.projects.map((p) => p.project) ?? [];
-  const required = policy ? requiredItemIds(policy, projects) : new Set<string>();
-  const missing = policy && m.setup ? missingRequired(policy, m.setup) : [];
+  const required = policy ? requiredItemIds(policy, projects, tools) : new Set<string>();
+  const missing = policy && m.setup ? missingRequired(policy, m.setup, tools) : [];
   const open = new Map(m.commands.filter((c) => c.status === "pending" || c.status === "running").map((c) => [c.itemId, c]));
 
   return (
