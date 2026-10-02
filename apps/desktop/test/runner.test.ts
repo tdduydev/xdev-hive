@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { AGENT_TEMPLATES, HiveError, type Actor, type AgentProfile, type HiveBackend, type RunnerSettings } from "@xdev-hive/core";
-import { CODEGRAPH_MCP, SUPERPOWERS_PLUGIN } from "#desktop/main/installer.ts";
+import { CODEGRAPH_MCP, CODEGRAPH_RUN_MCP, SUPERPOWERS_PLUGIN } from "#desktop/main/installer.ts";
+import { prepareCodegraph } from "#desktop/main/runner/codegraph.ts";
 import { buildCommand, buildPrompt, parsePick } from "#desktop/main/runner/command.ts";
 import { ClaudeStream, toolLine } from "#desktop/main/runner/stream.ts";
 import { outputFormat, parseClaudeResult, parsePlanUsage } from "#desktop/main/runner/usage.ts";
@@ -27,6 +28,17 @@ const tmp = (p: string) => mkdtempSync(path.join(os.tmpdir(), `hive-${p}-`));
 /** The log without the time the runner puts before each line the agent wrote (roadmap 22l). */
 const unstamp = (log: string) => log.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\t/gm, "");
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+/** A folder with an npx that plays codegraph: init writes what the real one does (2 Oct, 1.6.0), each call is logged. */
+function fakeNpx(): { bin: string; calls: () => string[] } {
+  const bin = tmp("bin");
+  const log = path.join(bin, "calls.log");
+  writeFileSync(
+    path.join(bin, "npx"),
+    `#!/bin/sh\necho "$* telemetry=$CODEGRAPH_TELEMETRY" >> "${log}"\nif [ "$3" = "init" ]; then mkdir -p "$4/.codegraph" && printf '*\\n!.gitignore\\n' > "$4/.codegraph/.gitignore" && echo db > "$4/.codegraph/codegraph.db"; fi\n`,
+  );
+  chmodSync(path.join(bin, "npx"), 0o755);
+  return { bin, calls: () => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n") : []) };
+}
 
 function profile(id: string, kind: AgentProfile["kind"], priority: number, mode: string, extra: Partial<AgentProfile> = {}): AgentProfile {
   return {
@@ -60,6 +72,8 @@ async function setup(
     hub?: RunnerHost["hub"];
     download?: RunnerHost["download"];
     sync?: RunnerOptions["sync"];
+    /** Put first on the PATH the runner sees (fake tools such as npx). */
+    bin?: string;
   } = {},
 ) {
   const repo = tmp("repo");
@@ -80,7 +94,7 @@ async function setup(
     projects: () => [{ name: "demo", repo }],
     mode: () => mode,
     machine: () => machine.name ?? "duy-mbp",
-    env: () => ({ ...process.env }),
+    env: () => ({ ...process.env, ...(machine.bin ? { PATH: `${machine.bin}${path.delimiter}${process.env.PATH ?? ""}` } : {}) }),
     report: machine.report,
     login: machine.login,
     usage: machine.usage,
@@ -367,7 +381,7 @@ describe("buildCommand", () => {
 
   it("adds codegraph and superpowers only when setup turned them on for the repo", () => {
     const { args } = buildCommand(AGENT_TEMPLATES.claude, vars, { codegraph: true, superpowers: true });
-    assert.deepEqual(JSON.parse(args.at(-1)!).mcpServers.codegraph, CODEGRAPH_MCP);
+    assert.deepEqual(JSON.parse(args.at(-1)!).mcpServers.codegraph, CODEGRAPH_RUN_MCP);
     assert.deepEqual(JSON.parse(flag(args, "--settings")), {
       disableAllHooks: true,
       permissions: { allow: ["mcp__xdev-hive", "mcp__codegraph"] },
@@ -443,7 +457,7 @@ describe("Runner", () => {
   });
 
   it("gives Claude Code the app's MCP entries for what the repo set up, whatever the working copy says", async () => {
-    const { repo, runner, calls } = await setup([profile("claude-a", "claude", 10, "ok")]);
+    const { repo, runner, calls } = await setup([profile("claude-a", "claude", 10, "ok")], {}, "local", { bin: fakeNpx().bin });
     mkdirSync(path.join(repo, ".claude"));
     writeFileSync(path.join(repo, ".mcp.json"), JSON.stringify({ mcpServers: { codegraph: { command: "evil" }, other: { command: "evil" } } }));
     writeFileSync(path.join(repo, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { [SUPERPOWERS_PLUGIN]: true } }));
@@ -451,11 +465,51 @@ describe("Runner", () => {
     await runner.settle();
     const { args } = calls()[0]!;
     assert.deepEqual(Object.keys(JSON.parse(args.at(-1)!).mcpServers), ["xdev-hive", "codegraph"]);
-    assert.deepEqual(JSON.parse(args.at(-1)!).mcpServers.codegraph, CODEGRAPH_MCP);
+    assert.deepEqual(JSON.parse(args.at(-1)!).mcpServers.codegraph, CODEGRAPH_RUN_MCP);
     const env = JSON.parse(args.at(-1)!).mcpServers["xdev-hive"].env;
     assert.equal(env.HIVE_AGENT, "claude-a");
     assert.deepEqual([env.HIVE_TASK, env.HIVE_RUN], ["T-1", runner.list()[0]!.id], "so the agent's writes carry its task and run");
     assert.match(calls()[0]!.prompt, /Read AGENTS\.md in the working copy first/);
+  });
+
+  it("builds the worktree's codegraph index before the agent starts, syncs it on the next run, and keeps it out of the commit", async () => {
+    const npx = fakeNpx();
+    const { repo, runner, calls } = await setup([profile("claude-a", "claude", 10, "ok")], {}, "local", { bin: npx.bin });
+    writeFileSync(path.join(repo, ".mcp.json"), JSON.stringify({ mcpServers: { codegraph: CODEGRAPH_MCP } }));
+    const first = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const wt = runner.store.get(first.id)!.worktree!;
+    assert.deepEqual(npx.calls(), [`-y ${CODEGRAPH_MCP.args[1]} init ${wt} telemetry=0`]);
+    assert.equal(calls()[0]!.cwd, realpathSync(wt));
+    assert.match(unstamp(runner.log(first.id)), /^# codegraph: init \d+\.\d s\n# cwd /m, "in the header, before the agent's output");
+    assert.equal(JSON.parse(calls()[0]!.args.at(-1)!).mcpServers.codegraph.env.CODEGRAPH_NO_DAEMON, "1", "no daemon left behind");
+    assert.deepEqual(git(repo, "show", "--name-only", "--format=", "ai/T-1").split("\n"), ["work-claude-a.txt"], "codegraph's own .gitignore stays out");
+
+    // The same task again (a fix after review): the worktree keeps its index, which only needs the changed files.
+    const second = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    assert.equal(runner.store.get(second.id)!.worktree, wt);
+    assert.equal(npx.calls()[1], `-y ${CODEGRAPH_MCP.args[1]} sync ${wt} telemetry=0`);
+    assert.match(unstamp(runner.log(second.id)), /^# codegraph: sync \d+\.\d s$/m);
+  });
+
+  it("says so when there is no npx to build the index with, and runs nothing", async () => {
+    let ran = false;
+    const line = await prepareCodegraph(tmp("wt"), null, {}, async () => ((ran = true), { ok: true, output: "" }));
+    assert.equal(line, "# codegraph: npx not found, no index for this run");
+    assert.equal(ran, false);
+  });
+
+  it("starts the agent without an index when codegraph cannot build one", async () => {
+    const bin = tmp("bin");
+    writeFileSync(path.join(bin, "npx"), '#!/bin/sh\necho "npm notice something"\necho "✗ out of disk" >&2\nexit 1\n');
+    chmodSync(path.join(bin, "npx"), 0o755);
+    const { repo, runner } = await setup([profile("claude-a", "claude", 10, "ok")], {}, "local", { bin });
+    writeFileSync(path.join(repo, ".mcp.json"), JSON.stringify({ mcpServers: { codegraph: CODEGRAPH_MCP } }));
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    assert.equal(runner.store.get(run.id)!.status, "succeeded");
+    assert.match(unstamp(runner.log(run.id)), /^# codegraph: init failed after \d+\.\d s, no index for this run: ✗ out of disk$/m);
   });
 
   it("runs no git hook the agent left in the working copy, and keeps rendered docs out of its commit", async () => {
