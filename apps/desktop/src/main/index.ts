@@ -27,6 +27,7 @@ import {
   type LoginHow,
   type NewAccount,
   type MachineCommand,
+  type ProfileChange,
   type Me,
   type ProfileCheck,
   type ReportedProfile,
@@ -71,6 +72,7 @@ import { syncProject } from "./sync.ts";
 import { mirrorDocs, mirrors } from "./mirror.ts";
 import { openInTerminal } from "./terminal.ts";
 import { AlertWatch, fetchAlerts, noticeText, type AlertNotice } from "./alert-notify.ts";
+import { applyProfileChanges } from "./profile-changes.ts";
 
 app.setName("xDev Hive");
 const smokeShot = process.env.HIVE_SMOKE_SCREENSHOT;
@@ -570,6 +572,7 @@ const reportedProfiles = (): ReportedProfile[] =>
     cooldownUntil: p.cooldownUntil,
     runs: p.stats.runs,
     rateLimited: p.stats.rateLimited,
+    priority: p.priority,
   }));
 
 let updater: Updater;
@@ -593,6 +596,7 @@ async function installAndRestart(): Promise<void> {
 function onHub(update: HubUpdate): void {
   hubState = update;
   if (!smokeShot) void watchAlerts();
+  if (update.profileChanges?.length) takeProfileChanges(update.profileChanges);
   updater.offer(update.update);
   // "Once no run is going": nothing queued or running, the window may even be closed.
   if (updater.installsOn("idle") && !runner.store.active().length) void installAndRestart();
@@ -606,6 +610,28 @@ function onHub(update: HubUpdate): void {
     n.on("click", () => {
       showWindow();
       win?.webContents.executeJavaScript('location.hash = "#/setup"').catch(() => undefined);
+    });
+    n.show();
+  }
+}
+
+/**
+ * Someone else turned a subscription of this machine on or off, or moved its priority, on the web (roadmap 18d): saved
+ * like a change on the Agents page, and said, since it is this machine's user's account.
+ */
+function takeProfileChanges(changes: ProfileChange[]): void {
+  const { agents, applied } = applyProfileChanges(config.agents, changes);
+  if (!applied.length) return;
+  persist({ ...config, agents });
+  // A profile back on may take what waits in the queue now rather than at the next tick.
+  void runner.tick();
+  if (!Notification.isSupported()) return;
+  for (const { change, profile } of applied) {
+    const what = change.enabled === null ? "desktop.profileChangedPriority" : profile.enabled ? "desktop.profileChangedOn" : "desktop.profileChangedOff";
+    const n = new Notification({ title: tr("desktop.profileChangedTitle"), body: tr(what, { who: change.requestedBy, profile: profile.id, priority: profile.priority }) });
+    n.on("click", () => {
+      showWindow();
+      win?.webContents.executeJavaScript('location.hash = "#/agents"').catch(() => undefined);
     });
     n.show();
   }

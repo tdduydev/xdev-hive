@@ -61,6 +61,7 @@ import type {
   MachineCommand,
   MachineDetail,
   MachineRun,
+  ProfileChange,
   Memory,
   MemoryFile,
   MemoryReview,
@@ -307,6 +308,14 @@ const MIGRATIONS: string[] = [
   ALTER TABLE run_costs ADD COLUMN requested_by TEXT;
   CREATE INDEX run_costs_by ON run_costs(requested_by, finished_at);
   `,
+  // Profiles changed from the web (roadmap 18d). owner: the account the machine's token belongs to, null for a token of
+  // no account. One waiting change per profile; null columns leave that part as the machine has it.
+  `
+  ALTER TABLE machines ADD COLUMN owner TEXT;
+  CREATE TABLE machine_profile_changes(
+    machine_id TEXT NOT NULL, profile_id TEXT NOT NULL, enabled INTEGER, priority INTEGER,
+    requested_by TEXT NOT NULL, requested_at TEXT NOT NULL, PRIMARY KEY(machine_id, profile_id));
+  `,
 ];
 
 /** A leader's reply asks for at most this many actions. */
@@ -364,6 +373,11 @@ const ONLINE_MINUTES = 2;
 const DUPLICATE_MINUTES = 5;
 /** Machines silent for this long are dropped. */
 const MACHINE_TTL_DAYS = 14;
+/**
+ * A profile change the machine has not reported within this time is dropped: machines apply one at the next heartbeat,
+ * so that one went away for good, or lost the profile.
+ */
+const PROFILE_CHANGE_HOURS = 24;
 /** A command nobody approved on the machine within this time is dropped. */
 const COMMAND_TTL_HOURS = 24;
 /** Commands kept per machine in the admin view. */
@@ -414,6 +428,11 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
   "tasks.create": (i) => ({ target: i.id, detail: i.dependsOn?.length ? `${i.title} · ← ${i.dependsOn.join(", ")}` : i.title }),
   "tasks.setDeps": (i) => ({ target: i.id, detail: i.dependsOn.length ? `← ${i.dependsOn.join(", ")}` : "—" }),
   "machines.remove": (i) => ({ target: i.id }),
+  "machines.setProfile": (i, o: Machine) => {
+    const key = i.enabled === undefined ? "audit.profilePriority" : i.priority === undefined ? (i.enabled ? "audit.profileOn" : "audit.profileOff") : i.enabled ? "audit.profileOnPriority" : "audit.profileOffPriority";
+    const parts = [i.enabled === undefined ? "" : i.enabled ? "bật" : "tắt", i.priority === undefined ? "" : `ưu tiên ${i.priority}`].filter(Boolean).join(", ");
+    return { target: `${o.machine}/${i.profileId}`, detail: parts, text: { key, vars: { profile: i.profileId, priority: i.priority ?? "" } } };
+  },
   "cooldowns.clear": (i) => ({ target: i.account }),
   "systems.save": (i, o: HiveSystem) => ({ target: i.name, detail: o.projects.join(", "), text: { key: "audit.system", vars: { projects: o.projects.join(", ") } } }),
   "systems.remove": (i) => ({ target: i.name }),
@@ -651,6 +670,15 @@ const toCooldown = (r: Row): QuotaCooldown => ({
   reportedBy: str(r.reported_by),
   updatedAt: str(r.updated_at),
 });
+const toProfileChange = (r: Row): ProfileChange => ({
+  machineId: str(r.machine_id),
+  profileId: str(r.profile_id),
+  enabled: r.enabled == null ? null : num(r.enabled) === 1,
+  priority: r.priority == null ? null : num(r.priority),
+  requestedBy: str(r.requested_by),
+  requestedAt: str(r.requested_at),
+});
+
 const toCommand = (r: Row): MachineCommand => ({
   id: num(r.id),
   machineId: str(r.machine_id),
@@ -1830,7 +1858,13 @@ export class SqliteHive implements HiveBackend {
       profiles: JSON.parse(str(r.profiles ?? "[]")) as ReportedProfile[],
       projects: JSON.parse(str(r.projects ?? "[]")) as string[],
       acceptsRuns: num(r.accepts_runs ?? 0) === 1,
+      owner: strOrNull(r.owner),
+      profileChanges: this.#profileChanges(str(r.id)),
     };
+  }
+
+  #profileChanges(machineId: string): ProfileChange[] {
+    return (this.db.prepare("SELECT * FROM machine_profile_changes WHERE machine_id = ? ORDER BY profile_id").all(machineId) as Row[]).map(toProfileChange);
   }
 
   /** Machines that reported a repo for the project at their last heartbeat, the most recently seen first. */
@@ -2613,6 +2647,16 @@ export class SqliteHive implements HiveBackend {
           if (profiles) db.prepare("UPDATE machines SET profiles = ? WHERE id = ?").run(JSON.stringify(profiles), actor.name);
           if (projects) db.prepare("UPDATE machines SET projects = ? WHERE id = ?").run(JSON.stringify(projects), actor.name);
           if (acceptsRuns !== undefined) db.prepare("UPDATE machines SET accepts_runs = ? WHERE id = ?").run(acceptsRuns ? 1 : 0, actor.name);
+          db.prepare("UPDATE machines SET owner = ? WHERE id = ?").run(actor.account ?? null, actor.name);
+          db.prepare("DELETE FROM machine_profile_changes WHERE requested_at < ?").run(this.#now(-PROFILE_CHANGE_HOURS * 60));
+          if (profiles) {
+            const drop = db.prepare("DELETE FROM machine_profile_changes WHERE machine_id = ? AND profile_id = ?");
+            for (const c of this.#profileChanges(actor.name)) {
+              const p = profiles.find((x) => x.id === c.profileId);
+              // Gone from the machine, or reported as asked: nothing is left to send.
+              if (!p || ((c.enabled === null || p.enabled === c.enabled) && (c.priority === null || p.priority === c.priority))) drop.run(actor.name, c.profileId);
+            }
+          }
           // A machine resends until the hub answers, so a run is kept as first reported.
           const cost = db.prepare(
             `INSERT OR IGNORE INTO run_costs(machine_id, run_id, machine, project, task_id, profile_id, account, cost_usd, input_tokens, output_tokens, finished_at, requested_by)
@@ -2673,6 +2717,7 @@ export class SqliteHive implements HiveBackend {
             paused: this.#pausedFor(this.#paused(), actor),
             // After this beat's costs went in, so a run that just filled a cap holds the next one at once.
             budgetBlocked: this.#budgetBlocks(actor),
+            profileChanges: this.#profileChanges(actor.name),
           };
         }),
 
@@ -3243,6 +3288,39 @@ export class SqliteHive implements HiveBackend {
         (db.prepare("SELECT * FROM machines ORDER BY last_seen DESC").all() as Row[]).map((r) => this.#toMachine(r)),
 
       "machines.remove": ({ id }) => ({ removed: num(db.prepare("DELETE FROM machines WHERE id = ?").run(id).changes) === 1 }),
+
+      // A subscription is a person's own account: only its machine's owner and hub admins change it (asked 2/10).
+      "machines.setProfile": ({ machineId, profileId, enabled, priority }, actor) =>
+        this.#tx(() => {
+          const row = db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row | undefined;
+          if (!row) throw new HiveError("not_found", `No machine ${machineId}.`, { key: "errors.machineNotFound", vars: { machine: machineId } });
+          const m = this.#toMachine(row);
+          const hubAdmin = actor.role === "admin" && !actor.access;
+          // Not an agent on the owner's token: a run should not turn subscriptions on for itself.
+          const owner = !isAgentActor(actor) && actor.account !== undefined && actor.account === m.owner;
+          if (!hubAdmin && !owner) {
+            throw new HiveError("forbidden", `Only a hub admin or the owner of ${m.machine} changes its profiles.`, { key: "errors.machineProfileForbidden", vars: { machine: m.machine } });
+          }
+          const p = m.profiles.find((x) => x.id === profileId);
+          if (!p) throw new HiveError("not_found", `${m.machine} has no profile ${profileId}.`, { key: "errors.machineProfileNotFound", vars: { machine: m.machine, profile: profileId } });
+          // An app that does not report priorities does not take changes either: one would wait a day for nothing.
+          if (p.priority === undefined) throw new HiveError("bad_request", `${m.machine} runs an app too old for profile changes.`, { key: "errors.machineAppTooOld", vars: { machine: m.machine } });
+          const old = m.profileChanges.find((c) => c.profileId === profileId);
+          let on = enabled ?? old?.enabled ?? null;
+          let rank = priority ?? old?.priority ?? null;
+          // What the machine already has needs no change: switching back cancels the waiting one.
+          if (on === p.enabled) on = null;
+          if (rank === p.priority) rank = null;
+          if (on === null && rank === null) db.prepare("DELETE FROM machine_profile_changes WHERE machine_id = ? AND profile_id = ?").run(machineId, profileId);
+          else {
+            db.prepare(
+              `INSERT INTO machine_profile_changes(machine_id, profile_id, enabled, priority, requested_by, requested_at) VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(machine_id, profile_id) DO UPDATE SET enabled = excluded.enabled, priority = excluded.priority,
+                 requested_by = excluded.requested_by, requested_at = excluded.requested_at`,
+            ).run(machineId, profileId, on === null ? null : on ? 1 : 0, rank, actor.account ?? actor.name, this.#now());
+          }
+          return this.#toMachine(db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row);
+        }),
 
       "cooldowns.list": () => this.#cooldowns(),
 

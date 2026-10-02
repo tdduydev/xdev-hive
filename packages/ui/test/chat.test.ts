@@ -32,6 +32,8 @@ const machine = (name: string, over: Partial<Machine> = {}): Machine => ({
   profiles: [profile()],
   projects: ["app"],
   acceptsRuns: true,
+  owner: null,
+  profileChanges: [],
   ...over,
 });
 
