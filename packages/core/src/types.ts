@@ -275,7 +275,7 @@ export type SetupState = "installed" | "missing" | "outdated" | "manual";
 
 /** Something the desktop checks on this machine or in a repo, and the fix it can apply. */
 export interface SetupItem {
-  /** cli:<kind> · shim · <project>:agents · <project>:codegraph-mcp · <project>:codegraph-index · <project>:superpowers */
+  /** cli:<kind> · shim · <project>:agents · <project>:codegraph-mcp · <project>:codegraph-index · <project>:superpowers · <project>:speckit */
   id: string;
   label: string;
   state: SetupState;
@@ -328,7 +328,7 @@ export interface ProfileChange {
 }
 
 export const POLICY_CLIS = ["claude", "codex", "gemini"] as const;
-export const POLICY_REPO_PARTS = ["agents", "codegraph-mcp", "codegraph-index", "superpowers"] as const;
+export const POLICY_REPO_PARTS = ["agents", "codegraph-mcp", "codegraph-index", "superpowers", "speckit"] as const;
 /**
  * admins: a hub admin may approve their own work, since on a hub of one person their agents run on their token too.
  * nobody: everyone needs someone else.
