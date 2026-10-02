@@ -2,7 +2,7 @@
 // grouped pages, this machine's running agents, account), a 52px top bar (title, ⌘K search, Task mới) and a 26px
 // status bar (hub, runs, quota, version). Used by the desktop app and by people who are not hub admins on the web.
 import { useCallback, useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
-import { Download, Moon, PanelLeft, Plus, Search, Sun } from "lucide-react";
+import { Download, ExternalLink, Moon, PanelLeft, Plus, Search, Sun } from "lucide-react";
 import { cn } from "cn";
 import type { AgentRun, Me } from "@xdev-hive/core";
 import type { HiveClient } from "#ui/client.ts";
@@ -90,6 +90,7 @@ function ClientFrame({
   current,
   title,
   subtitle,
+  webUrl = null,
   children,
 }: {
   client: HiveClient;
@@ -101,6 +102,8 @@ function ClientFrame({
   current: string;
   title: string;
   subtitle: string;
+  /** The hub's web, for the desktop app on a hub (roadmap 35a): new tasks and the rest of the work happen there. */
+  webUrl?: string | null;
   children: ReactNode;
 }) {
   const t = useT();
@@ -189,7 +192,8 @@ function ClientFrame({
         setSidebar((s) => !s);
       } else if (k === "n" && !e.shiftKey) {
         e.preventDefault();
-        setNewTask(true);
+        if (webUrl) window.open(`${webUrl}/#/tasks`, "_blank");
+        else setNewTask(true);
       } else if (/^[1-6]$/.test(k)) {
         const hit = items.find((i) => i.shortcut === k);
         if (hit) {
@@ -200,14 +204,16 @@ function ClientFrame({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [items, go, setSidebar]);
+  }, [items, go, setSidebar, webUrl]);
 
   const commands = useMemo<PaletteCommand[]>(
     () => [
-      { id: "new-task", label: t("palette.newTask"), icon: Plus, hint: "⌘N", run: () => setNewTask(true) },
+      webUrl
+        ? { id: "open-web", label: t("shell.openWeb"), icon: ExternalLink, run: () => void window.open(`${webUrl}/#/today`, "_blank") }
+        : { id: "new-task", label: t("palette.newTask"), icon: Plus, hint: "⌘N", run: () => setNewTask(true) },
       { id: "theme", label: t("palette.toggleTheme"), icon: theme === "dark" ? Sun : Moon, run: () => toggleTheme(theme) },
     ],
-    [t, theme],
+    [t, theme, webUrl],
   );
   const pages = useMemo<PaletteCommand[]>(
     () =>
@@ -385,18 +391,35 @@ function ClientFrame({
                   {installing ? t("shell.updateInstalling", { version: up.version }) : t("shell.updateReady", { version: up.version })}
                 </button>
               ) : null}
-              <button
-                type="button"
-                onClick={() => setNewTask(true)}
-                title={t("shell.newTaskShortcut")}
-                className={cn(
-                  "flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 rounded-sm bg-primary pr-3 pl-2.5 text-xs/none font-semibold whitespace-nowrap text-primary-foreground outline-none hover:bg-primary-hover focus-visible:focus-ring",
-                  noDrag,
-                )}
-              >
-                <Plus className="size-3.5" strokeWidth={2} />
-                {t("shell.newTask")}
-              </button>
+              {webUrl ? (
+                <a
+                  href={`${webUrl}/#/today`}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={t("shell.openWebHint")}
+                  data-open-web
+                  className={cn(
+                    "flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 rounded-sm bg-primary pr-3 pl-2.5 text-xs/none font-semibold whitespace-nowrap text-primary-foreground no-underline outline-none hover:bg-primary-hover focus-visible:focus-ring",
+                    noDrag,
+                  )}
+                >
+                  <ExternalLink className="size-3.5" strokeWidth={2} />
+                  {t("shell.openWeb")}
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setNewTask(true)}
+                  title={t("shell.newTaskShortcut")}
+                  className={cn(
+                    "flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 rounded-sm bg-primary pr-3 pl-2.5 text-xs/none font-semibold whitespace-nowrap text-primary-foreground outline-none hover:bg-primary-hover focus-visible:focus-ring",
+                    noDrag,
+                  )}
+                >
+                  <Plus className="size-3.5" strokeWidth={2} />
+                  {t("shell.newTask")}
+                </button>
+              )}
             </header>
             {link.state === "offline" || link.state === "refused" ? (
               <div role="status" className="flex shrink-0 items-center gap-2 border-b border-warning-line bg-warning-soft px-3.5 py-1.5 text-xs/4 font-medium text-fg-strong">

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import {
   Activity,
   BellRing,
@@ -145,6 +145,19 @@ const GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
   { label: "nav.groupAdmin", ids: ["admin", "machines", "users", "members", "tokens", "systems"] },
 ];
 const SHORTCUTS: Partial<Record<PageId, string>> = { today: "1", chat: "2", board: "3", runs: "4", docs: "5", agents: "6" };
+
+/**
+ * The desktop app connected to a hub (roadmap 35a): this machine's work only. Tasks, docs, policies, members and the
+ * rest are the web's; links to them open the hub in the browser. In local mode the app is the whole system and keeps
+ * every page.
+ */
+const DESK_PAGES = new Set<PageId>(["today", "runs", "agents", "setup", "projects", "device"]);
+const DESK_GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
+  { label: null, ids: ["today", "runs"] },
+  { label: "nav.groupAgents", ids: ["agents", "setup", "projects"] },
+];
+/** What the machine's Hôm nay shows: its runs' CI, its own setup, install requests for it. */
+const DESK_INBOX = new Set(["ci", "machine", "request"]);
 /** Not in the sidebar, still in the command palette. */
 const PALETTE_ONLY: PageId[] = ["overview"];
 
@@ -251,6 +264,9 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     setScopeState(next);
   }, []);
   const page = route.kind === "client" ? route.id : null;
+  // The desktop app on a hub shows this machine's work; the rest is on the hub's web (roadmap 35a).
+  const deskHub = !!client.desktop && me.mode === "hub";
+  const webUrl = useQuery(async () => (deskHub ? (await client.desktop!.settings()).hubUrl.replace(/\/+$/, "") : null), [client, deskHub]).data ?? null;
   const pending = useQuery(() => client.call("proposals.list", { status: "pending" }), [client, tick, route]);
   // Checked when the app opens (and after leaving the setup page), so the sidebar shows what is missing.
   const setup = useQuery(async () => (client.desktop ? client.desktop.setupStatus() : null), [client, page === "setup"]);
@@ -263,6 +279,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   }, [webAdmin]);
 
   const visible = useMemo(() => {
+    if (deskHub) return new Set<PageId>([...DESK_PAGES].filter((id) => id !== "device" || (client.device && me.user)));
     // Tool: the catalog is the hub's, and project managers on the web turn tools on for their project there too.
     const ids = new Set<PageId>(["today", "overview", "docs", "read", "specs", "skills", "proposals", "memory", "tasks", "systems", "tools"]);
     if (client.desktop) for (const id of ["board", "agents", "setup", "projects"] as const) ids.add(id);
@@ -279,9 +296,48 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     if (client.tokens && (hubAdmin || me.user)) ids.add("tokens");
     if (client.device && me.user) ids.add("device");
     return ids;
-  }, [client, me, hubAdmin, projects]);
+  }, [client, me, hubAdmin, projects, deskHub]);
 
-  const inbox = useInboxState(client, me, scope, tick);
+  // A link or a jump to a page the desktop app does not have opens it on the hub's web instead.
+  const away = useRef({ deskHub, webUrl, visible });
+  away.current = { deskHub, webUrl, visible };
+  useEffect(() => {
+    const elsewhere = (hash: string) => {
+      const { deskHub: on, webUrl: web, visible: here } = away.current;
+      if (!on || !web) return false;
+      const id = hash.replace(/^#\/?/, "").split(/[?/]/)[0]!;
+      return hash.startsWith("#/") && !here.has(id as PageId);
+    };
+    const onClick = (e: MouseEvent) => {
+      const a = (e.target as HTMLElement | null)?.closest?.("a[href^='#/']");
+      const href = a?.getAttribute("href");
+      if (!href || !elsewhere(href)) return;
+      e.preventDefault();
+      window.open(`${away.current.webUrl}/${href}`, "_blank");
+    };
+    let last = window.location.hash;
+    const onHash = () => {
+      const hash = window.location.hash;
+      if (elsewhere(hash)) {
+        window.open(`${away.current.webUrl}/${hash}`, "_blank");
+        window.history.replaceState(null, "", last || "#/today");
+        return;
+      }
+      last = hash;
+    };
+    document.addEventListener("click", onClick, true);
+    window.addEventListener("hashchange", onHash);
+    return () => {
+      document.removeEventListener("click", onClick, true);
+      window.removeEventListener("hashchange", onHash);
+    };
+  }, []);
+
+  const fullInbox = useInboxState(client, me, scope, tick);
+  const inbox = useMemo(
+    () => (deskHub ? { ...fullInbox, items: fullInbox.items.filter((i) => DESK_INBOX.has(i.kind)), done: fullInbox.done.filter((d) => DESK_INBOX.has(d.kind)) } : fullInbox),
+    [deskHub, fullInbox],
+  );
   // The machine's name in the subtitles of Lượt chạy and Agent (desktop).
   const machine = useQuery(async () => (client.desktop ? (await client.desktop.settings()).machine : null), [client]).data;
 
@@ -341,7 +397,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
       proposals: pending.data?.length ?? 0,
       setup: setup.data ? [...setup.data.machine, ...setup.data.projects.flatMap((p) => p.items)].filter((i) => i.state !== "installed").length : 0,
     };
-    const groups: NavGroup[] = GROUPS.map((g) => ({
+    const groups: NavGroup[] = (deskHub ? DESK_GROUPS : GROUPS).map((g) => ({
       label: g.label ? t(g.label) : null,
       // On the web, a hub admin's admin pages are in the Web Admin: one entry leads there.
       items:
@@ -378,6 +434,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
           current={current === "read" ? "docs" : current}
           title={t(PAGES[current].label)}
           subtitle={subtitle}
+          webUrl={webUrl}
         >
           {PAGES[current].render()}
         </ClientShell>
