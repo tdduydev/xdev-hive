@@ -1,7 +1,7 @@
 // Công cụ và dự án (docs/design/2026-09-redesign, xDev Hive Client): what the runner needs on this machine (the
 // agent CLIs, the hive-mcp command) and in each repo, with the install the app can do, and admins' install requests.
 import { useEffect, useMemo, useState, type ComponentType } from "react";
-import { FileText, FolderGit2, GitBranch, Plug, RefreshCw, Sparkles, SquareTerminal, Terminal, Wrench } from "lucide-react";
+import { FileText, FolderGit2, GitBranch, ListChecks, Plug, RefreshCw, Sparkles, SquareTerminal, Terminal, Wrench } from "lucide-react";
 import { cn } from "cn";
 import { requiredItemIds, type MachineCommand, type SetupItem, type SetupReport, type SetupState } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
@@ -21,6 +21,7 @@ function iconOf(id: string): ComponentType<{ className?: string }> {
   if (id.endsWith(":codegraph-mcp")) return Plug;
   if (id.endsWith(":codegraph-index")) return GitBranch;
   if (id.endsWith(":superpowers")) return Sparkles;
+  if (id.endsWith(":speckit")) return ListChecks;
   return Wrench;
 }
 
