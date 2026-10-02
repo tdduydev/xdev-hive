@@ -168,4 +168,32 @@ describe("admin portal", () => {
     assert.deepEqual((await hive.call("admin.audit", { action: "tasks.create" }, admin)).map((e) => e.target), ["T-1"]);
     await assert.rejects(hive.call("admin.audit", {}, viewer), code("forbidden"));
   });
+
+  it("tells a project's readers what its machines still lack, without the install actions or local paths", async () => {
+    const hive = new SqliteHive(":memory:");
+    const withPath: SetupReport = {
+      ...report,
+      machine: report.machine.map((i) => (i.id === "shim" ? { ...i, detail: "không có trong /Users/duy/.local/bin" } : i)),
+      projects: [...report.projects, { project: "site", repo: "/Users/duy/site", items: [{ id: "site:agents", label: "AGENTS.md", state: "missing", detail: "Chưa có", action: "Tạo" }] }],
+    };
+    await beat(hive, mbp, { projects: ["app", "site"], setup: { checkedAt: "2026-09-27T07:59:00.000Z", report: withPath } });
+    const allInstalled: SetupReport = { machine: [report.machine[0]!], projects: [] };
+    await beat(hive, imac, { projects: ["app"], setup: { checkedAt: "2026-09-27T07:59:00.000Z", report: allInstalled } });
+    await hive.call("machines.heartbeat", { machine: "lan-pc", instance: "bbbbbbbb", projects: ["app"] }, { name: "runner.lan-pc@lan", role: "agent" });
+    await beat(hive, { name: "runner.hoa-mbp@hoa", role: "agent" }, { projects: ["site"], setup: { checkedAt: "2026-09-27T07:59:00.000Z", report } });
+
+    const missing = await hive.call("machines.setupMissing", { project: "app" }, viewer);
+    assert.deepEqual(
+      missing.map((m) => [m.machineId, m.machine, m.items.map((i) => [i.id, i.state])]),
+      [[mbp.name, "duy-mbp", [["cli:codex", "missing"], ["shim", "manual"], ["app:codegraph-index", "missing"]]]],
+      "only machines with the project and something left; the other project's items stay out",
+    );
+    for (const item of missing[0]!.items) assert.equal("action" in item, false);
+    assert.equal(missing[0]!.items.find((i) => i.id === "shim")!.detail, "không có trong …/bin");
+    assert.equal(JSON.stringify(missing).includes("/Users/duy"), false, "no repo or home path");
+
+    const siteOnly: Actor = { name: "lan", role: "member", access: { projects: { site: "view" } } };
+    assert.deepEqual((await hive.call("machines.setupMissing", { project: "site" }, siteOnly)).map((m) => m.machine).sort(), ["duy-mbp", "hoa-mbp"]);
+    await assert.rejects(hive.call("machines.setupMissing", { project: "app" }, siteOnly), code("not_found"));
+  });
 });
