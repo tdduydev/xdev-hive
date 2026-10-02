@@ -16,8 +16,10 @@ import { EMPTY_POLICY } from "./policy.ts";
 import { budgetApplies, budgetId, budgetRatio, budgetVars, periodStart, type Budget, type BudgetBlock, type BudgetUsage } from "./budgets.ts";
 import { agentPolicyView, EMPTY_AGENT_POLICY, OPEN_POLICY, policySummary, type AgentPolicy, type AgentPolicySettings, type AgentPolicyView } from "./agent-policy.ts";
 import {
+  DEFAULT_MAX_FIX_ROUNDS,
   effectiveGates,
   EMPTY_SDLC_POLICY,
+  fixInstructions,
   fullCeiling,
   GATE_MODES,
   gateCheckInstructions,
@@ -28,6 +30,8 @@ import {
   type FlowState,
   type FlowStep,
   type SdlcFlow,
+  type SdlcFlowTask,
+  type TaskStage,
   type GateMode,
   type GateModes,
   type GateStatus,
@@ -429,6 +433,16 @@ const MIGRATIONS: string[] = [
     note TEXT, reached_at TEXT, created_by TEXT NOT NULL, on_behalf TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
   CREATE INDEX sdlc_flows_project ON sdlc_flows(project, updated_at);
   CREATE INDEX sdlc_flows_state ON sdlc_flows(state);
+  `,
+  // Tasks a flow gave to agents (roadmap 34c, 34d) and where each is on its way to main: stage, the gate it waits at,
+  // the fix runs it had, and the run (machine_id, run_id) whose branch and MR it waits on.
+  `
+  CREATE TABLE sdlc_flow_tasks(
+    task_id TEXT PRIMARY KEY, flow_task TEXT NOT NULL, project TEXT NOT NULL, stage TEXT NOT NULL, gate_id INTEGER,
+    fix_rounds INTEGER NOT NULL DEFAULT 0, machine_id TEXT, run_id TEXT, request_id INTEGER, note TEXT,
+    created_by TEXT NOT NULL, on_behalf TEXT, updated_at TEXT NOT NULL);
+  CREATE INDEX sdlc_flow_tasks_flow ON sdlc_flow_tasks(flow_task);
+  CREATE INDEX sdlc_flow_tasks_stage ON sdlc_flow_tasks(stage);
   `,
 ];
 
@@ -1436,6 +1450,7 @@ export class SqliteHive implements HiveBackend {
         return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
       case "sdlc.gates":
       case "sdlc.flows":
+      case "sdlc.flowTasks":
         if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
         return;
       // A flow makes its task and queues its runs.
@@ -1447,6 +1462,8 @@ export class SqliteHive implements HiveBackend {
         if (!row) return;
         // Passing the tasks gate imports the feature's tasks into the board.
         if (str(row.gate) === "tasks" && i.decision === "pass") this.#need(actor, str(row.project), "taskManage", `Gate #${i.gateId}`);
+        // A task's review and its merge are a code reviewer's, as merging from the web is (18c).
+        if (str(row.gate) === "review" || str(row.gate) === "merge") return this.#need(actor, str(row.project), "codeReview", `Gate #${i.gateId}`);
         return this.#need(actor, str(row.project), "runDispatch", `Gate #${i.gateId}`);
       }
       case "sdlc.retry": {
@@ -1646,6 +1663,8 @@ export class SqliteHive implements HiveBackend {
         return (out as SdlcGateRecord[]).filter((g) => visible(g.project)) as MethodOutput[M];
       case "sdlc.flows":
         return (out as SdlcFlow[]).filter((f) => visible(f.project)) as MethodOutput[M];
+      case "sdlc.flowTasks":
+        return (out as SdlcFlowTask[]).filter((f) => visible(f.project)) as MethodOutput[M];
       case "agentPolicy.set": {
         const view = out as AgentPolicyView;
         const only = <T>(rec: Record<string, T>) => Object.fromEntries(Object.entries(rec).filter(([p]) => visible(p)));
@@ -2356,13 +2375,19 @@ export class SqliteHive implements HiveBackend {
 
   /** A task waiting or running in a group that is not over: the group starts it, nobody else. */
   #assertNotInGroup(taskId: string): void {
-    const row = this.db
+    const rows = this.db
       .prepare(
         `SELECT g.id FROM run_group_items i JOIN run_groups g ON g.id = i.group_id
-         WHERE i.task_id = ? AND g.closed_at IS NULL AND i.status IN ('held', 'sent') LIMIT 1`,
+         WHERE i.task_id = ? AND g.closed_at IS NULL AND i.status IN ('held', 'sent')`,
       )
-      .get(taskId) as Row | undefined;
-    if (row) throw new HiveError("conflict", `Task ${taskId} is in run group #${num(row.id)}.`, { key: "errors.taskInGroup", vars: { id: taskId, group: num(row.id) } });
+      .all(taskId) as Row[];
+    for (const row of rows) {
+      // Its run over, a task is free again while the rest of its group goes on: a fix run, a review, by hand.
+      const item = this.#group(num(row.id)).items.find((i) => i.taskId === taskId);
+      if (item && (item.status === "held" || item.active)) {
+        throw new HiveError("conflict", `Task ${taskId} is in run group #${num(row.id)}.`, { key: "errors.taskInGroup", vars: { id: taskId, group: num(row.id) } });
+      }
+    }
   }
 
   /** What a sent item's run did, as its machine pushed it; null before the machine took it or pushed it. */
@@ -2635,9 +2660,9 @@ export class SqliteHive implements HiveBackend {
   }
 
   /** A step's run ended on its machine: at its gate, the flow waits for a person, has it checked, or goes on. */
-  #reachGate(flow: Row, run: { runId: string; profileId: string | null }): void {
+  #reachGate(flow: Row, run: { runId: string | null; profileId: string | null }): void {
     const taskId = str(flow.task_id);
-    const step = str(flow.step) as SpecStep;
+    const step = str(flow.step) as Exclude<FlowStep, "dispatch">;
     const gate = STEP_GATE[step];
     const mode = effectiveGates(this.#sdlcPolicy(), str(flow.project))[gate];
     const subject = { step, dir: strOrNull(flow.dir), runId: run.runId, machineId: str(flow.machine_id) };
@@ -2687,7 +2712,7 @@ export class SqliteHive implements HiveBackend {
   /** The gate passed: the next step is queued as soon as it can be (#releaseFlows). */
   #passFlow(taskId: string): void {
     const flow = this.#flowRow(taskId)!;
-    const step = str(flow.step) as Exclude<FlowStep, "import">;
+    const step = str(flow.step) as Exclude<FlowStep, "dispatch">;
     this.#setFlow(taskId, { state: "next", step: NEXT_STEP[step], gate_id: null, input: "", reached_at: this.#now() });
   }
 
@@ -2747,6 +2772,7 @@ export class SqliteHive implements HiveBackend {
    */
   #releaseFlows(): void {
     this.#syncFlows();
+    this.#releaseTasks();
     const rows = this.db.prepare("SELECT * FROM sdlc_flows WHERE state IN ('next', 'check') ORDER BY updated_at").all() as Row[];
     for (const flow of rows) {
       const taskId = str(flow.task_id);
@@ -2771,11 +2797,22 @@ export class SqliteHive implements HiveBackend {
         if (!f || toSpecFeature(f).files.tasks === null || (flow.reached_at && str(f.pushed_at) < str(flow.reached_at))) continue;
         try {
           const out = this.#importSpecTasks(project, dir, branch, null, false, actor);
-          this.#setFlow(taskId, { state: "done", note: `${out.created.length} task: ${out.created[0] ?? "—"} … ${out.created.at(-1) ?? "—"}` });
+          const now = this.#now();
+          const add = this.db.prepare(
+            "INSERT OR IGNORE INTO sdlc_flow_tasks(task_id, flow_task, project, stage, created_by, on_behalf, updated_at) VALUES (?, ?, ?, 'queued', ?, ?, ?)",
+          );
+          for (const id of out.created) add.run(id, taskId, project, str(flow.created_by), strOrNull(flow.on_behalf), now);
+          this.#setFlow(taskId, { note: `${out.created.length} task: ${out.created[0] ?? "—"} … ${out.created.at(-1) ?? "—"}` });
+          // Whether they go to agents now is the dispatch gate's.
+          this.#reachGate(this.#flowRow(taskId)!, { runId: null, profileId: null });
         } catch (err) {
           if (!(err instanceof HiveError)) throw err;
           this.#setFlow(taskId, { state: "stopped", note: err.message });
         }
+        continue;
+      }
+      if (step === "dispatch") {
+        this.#dispatchFlowTasks(this.#flowRow(taskId)!);
         continue;
       }
       const task = this.#getTask(taskId);
@@ -2793,6 +2830,308 @@ export class SqliteHive implements HiveBackend {
       } catch (err) {
         if (!(err instanceof HiveError)) throw err;
         if (groupFails(err.key)) this.#setFlow(taskId, { state: "stopped", note: err.message });
+      }
+    }
+  }
+
+  // ── a flow's tasks on their way to main (roadmap 34c, 34d) ────────────────
+
+  /** The dispatch gate passed: the flow's tasks become a run group, on free machines, at most maxParallel at a time. */
+  #dispatchFlowTasks(flow: Row): void {
+    const taskId = str(flow.task_id);
+    const project = str(flow.project);
+    const ids = (this.db.prepare("SELECT task_id FROM sdlc_flow_tasks WHERE flow_task = ? AND stage = 'queued' ORDER BY task_id").all(taskId) as Row[]).map((r) => str(r.task_id));
+    const settings = this.#sdlcPolicy().projects[project];
+    const review = effectiveGates(this.#sdlcPolicy(), project).review;
+    const now = this.#now();
+    if (ids.length) {
+      const res = this.db
+        .prepare(
+          `INSERT INTO run_groups(project, kind, title, max_parallel, review_after, instructions, parent_task, created_by, on_behalf, created_at)
+           VALUES (?, 'batch', ?, ?, ?, '', ?, ?, ?, ?)`,
+        )
+        // A cross-review after each run unless the project's review gate leaves it out.
+        .run(project, `${taskId} · ${strOrNull(flow.dir) ?? ""}`.slice(0, 120), settings?.maxParallel ?? null, review === "auto" ? 0 : 1, taskId, str(flow.created_by), strOrNull(flow.on_behalf), now);
+      const groupId = num(res.lastInsertRowid);
+      const item = this.db.prepare(
+        "INSERT INTO run_group_items(group_id, position, task_id, role, machine_id, profile_id, status, updated_at) VALUES (?, ?, ?, 'implement', NULL, NULL, 'held', ?)",
+      );
+      ids.forEach((id, i) => item.run(groupId, i + 1, id, now));
+      this.db.prepare(`UPDATE sdlc_flow_tasks SET stage = 'build', updated_at = ? WHERE flow_task = ? AND stage = 'queued'`).run(now, taskId);
+      this.#setFlow(taskId, { state: "done", note: `${ids.length} task → run group #${groupId}` });
+      this.#releaseGroups();
+    } else this.#setFlow(taskId, { state: "done" });
+  }
+
+  #flowTaskRow(taskId: string): Row | null {
+    return (this.db.prepare("SELECT * FROM sdlc_flow_tasks WHERE task_id = ?").get(taskId) as Row | undefined) ?? null;
+  }
+
+  #toFlowTask(r: Row): SdlcFlowTask {
+    const gate = r.gate_id == null ? undefined : (this.db.prepare("SELECT * FROM sdlc_gates WHERE id = ?").get(num(r.gate_id)) as Row | undefined);
+    return {
+      taskId: str(r.task_id),
+      flowTask: str(r.flow_task),
+      project: str(r.project),
+      stage: str(r.stage) as TaskStage,
+      gate: gate ? toGate(gate) : null,
+      fixRounds: num(r.fix_rounds),
+      machineId: strOrNull(r.machine_id),
+      runId: strOrNull(r.run_id),
+      note: strOrNull(r.note),
+      updatedAt: str(r.updated_at),
+    };
+  }
+
+  #setTask(taskId: string, fields: Partial<Record<"stage" | "gate_id" | "fix_rounds" | "machine_id" | "run_id" | "request_id" | "note", string | number | null>>): void {
+    const keys = Object.keys(fields);
+    this.db
+      .prepare(`UPDATE sdlc_flow_tasks SET ${keys.map((k) => `${k} = ?`).join(", ")}, updated_at = ? WHERE task_id = ?`)
+      .run(...keys.map((k) => fields[k as keyof typeof fields] ?? null), this.#now(), taskId);
+  }
+
+  /** A gate of a flow's task: written like a flow's, with the task as its subject. */
+  #taskGate(ft: Row, gate: SdlcGate, mode: GateMode, status: GateStatus, subject: Record<string, unknown>, decided: { by: string; note?: string | null } | null): number {
+    return this.#addGate({ project: ft.project, task_id: ft.task_id }, gate, mode, status, subject, decided);
+  }
+
+  /**
+   * A run of a flow's task ended (runs.push). Its implement run: on to review (or straight to merge when the review gate
+   * is "auto"). Its review: the review gate decides (34d). A gate's check: approve does what the gate was for.
+   */
+  #taskRunEnded(machineId: string, r: { runId: string; taskId: string; project: string; role: string; status: string; profileId: string | null; summary: string | null; error: string | null }): void {
+    const ft = this.#flowTaskRow(r.taskId);
+    if (!ft || str(ft.project) !== r.project) return;
+    const stage = str(ft.stage);
+    const modes = effectiveGates(this.#sdlcPolicy(), r.project);
+    if (r.role === "implement" && (stage === "build" || stage === "fix")) {
+      if (r.status !== "succeeded") {
+        this.#setTask(r.taskId, { stage: "stopped", note: r.error ?? r.status });
+        return;
+      }
+      // Its branch and MR are this run's from now on.
+      this.#setTask(r.taskId, { machine_id: machineId, run_id: r.runId });
+      if (modes.review === "auto") {
+        this.#taskGate(ft, "review", "auto", "passed", { runId: r.runId }, { by: "auto" });
+        this.#setTask(r.taskId, { stage: "merge", gate_id: null });
+      } else this.#setTask(r.taskId, { stage: "review" });
+      return;
+    }
+    if (r.role !== "review") return;
+    const report = r.summary ? r.summary.slice(0, 2000) : (r.error ?? r.status);
+    const by = `run:${machineId}/${r.runId}`;
+    if (stage === "review") {
+      const verdict = r.status === "succeeded" ? parseVerdict(r.summary) : "unknown";
+      const review = { runId: r.runId, profileId: r.profileId, summary: r.summary };
+      if (modes.review === "human") {
+        const gateId = this.#taskGate(ft, "review", "human", "waiting", { review, verdict }, null);
+        this.#setTask(r.taskId, { stage: "gate", gate_id: gateId, note: report });
+      } else if (verdict === "approve") {
+        this.#taskGate(ft, "review", "ai", "passed", { review }, { by, note: report });
+        this.#setTask(r.taskId, { stage: "merge", gate_id: null, note: null });
+      } else if (verdict === "changes") {
+        this.#taskGate(ft, "review", "ai", "rejected", { review }, { by, note: report });
+        this.#toFix(this.#flowTaskRow(r.taskId)!, review, "");
+      } else {
+        const gateId = this.#taskGate(ft, "review", "ai", "escalated", { review, verdict }, { by, note: report });
+        this.#setTask(r.taskId, { stage: "gate", gate_id: gateId, note: report });
+      }
+      return;
+    }
+    if (stage === "checking" && ft.gate_id != null) {
+      const gateId = num(ft.gate_id);
+      const now = this.#now();
+      if (r.status === "succeeded" && parseVerdict(r.summary) === "approve") {
+        this.db.prepare("UPDATE sdlc_gates SET status = 'passed', decided_by = ?, note = ?, decided_at = ? WHERE id = ?").run(by, report, now, gateId);
+        this.#gatePassed(this.#flowTaskRow(r.taskId)!, gateId, "");
+      } else {
+        this.db.prepare("UPDATE sdlc_gates SET status = 'escalated', decided_by = ?, note = ?, decided_at = ? WHERE id = ?").run(by, report, now, gateId);
+        this.#setTask(r.taskId, { stage: "gate" });
+      }
+    }
+  }
+
+  /**
+   * A person's word at a task's gate. review: pass goes on to merge; changes queues a fix with their note. fix: pass
+   * queues it; changes stops the task for them to take over. merge: pass merges; changes stops it unmerged. Passing a
+   * review or a merge is not for whoever asked for the work (27c), as merging from the web is not.
+   */
+  #decideTask(ft: Row, gate: Row, decision: "pass" | "changes", note: string, actor: Actor): SdlcFlow {
+    const gateId = num(gate.id);
+    const kind = str(gate.gate) as SdlcGate;
+    const status = str(gate.status);
+    if (str(ft.stage) !== "gate" || (status !== "waiting" && status !== "escalated")) {
+      throw new HiveError("conflict", `Gate #${gateId} is not waiting for a person.`, { key: "errors.gateNotWaiting", vars: { id: gateId } });
+    }
+    if (decision === "pass" && (kind === "review" || kind === "merge")) this.#notSelf(actor, [strOrNull(ft.on_behalf) ?? str(ft.created_by)], `Gate #${gateId}`);
+    assertNoHidden(note, "Note");
+    assertNoSecret(note, "Note");
+    const now = this.#now();
+    this.db
+      .prepare("UPDATE sdlc_gates SET status = ?, decided_by = ?, note = COALESCE(NULLIF(?, ''), note), decided_at = ? WHERE id = ?")
+      .run(decision === "pass" ? "passed" : "rejected", actor.name, note, now, gateId);
+    const taskId = str(ft.task_id);
+    const subject = JSON.parse(str(gate.subject)) as { review?: { runId: string; profileId: string | null; summary: string | null } };
+    if (decision === "pass") this.#gatePassed(ft, gateId, note);
+    else if (kind === "review") this.#setTask(taskId, { stage: "fixnext", gate_id: null, note: fixInstructions(subject.review ?? { runId: "?", profileId: null, summary: null }, note) });
+    else this.#setTask(taskId, { stage: "stopped", gate_id: null, note: note || `${kind}: stopped by ${actor.name}` });
+    this.#releaseFlows();
+    return this.#flow(str(ft.flow_task))!;
+  }
+
+  /** The review asked for changes: the fix gate decides, within the project's rounds. */
+  #toFix(ft: Row, review: { runId: string; profileId: string | null; summary: string | null }, note: string): void {
+    const project = str(ft.project);
+    const taskId = str(ft.task_id);
+    const mode = effectiveGates(this.#sdlcPolicy(), project).fix;
+    const max = this.#sdlcPolicy().projects[project]?.maxFixRounds ?? DEFAULT_MAX_FIX_ROUNDS;
+    const subject = { review, note };
+    if (num(ft.fix_rounds) >= max) {
+      const gateId = this.#taskGate(ft, "fix", mode, "escalated", subject, { by: "auto", note: `${num(ft.fix_rounds)} fix rounds already (at most ${max})` });
+      this.#setTask(taskId, { stage: "gate", gate_id: gateId });
+      return;
+    }
+    if (mode === "auto") {
+      this.#taskGate(ft, "fix", mode, "passed", subject, { by: "auto" });
+      this.#setTask(taskId, { stage: "fixnext", gate_id: null, note: fixInstructions(review, note) });
+      return;
+    }
+    const gateId = this.#taskGate(ft, "fix", mode, mode === "ai" ? "checking" : "waiting", subject, null);
+    this.#setTask(taskId, { stage: mode === "ai" ? "check" : "gate", gate_id: gateId, note: review.summary ? review.summary.slice(0, 2000) : null });
+  }
+
+  /** A task's gate passed (a person, or its check): what the gate was for happens. */
+  #gatePassed(ft: Row, gateId: number, note: string): void {
+    const gate = this.db.prepare("SELECT gate, subject FROM sdlc_gates WHERE id = ?").get(gateId) as Row;
+    const subject = JSON.parse(str(gate.subject)) as { review?: { runId: string; profileId: string | null; summary: string | null } };
+    const taskId = str(ft.task_id);
+    switch (str(gate.gate) as SdlcGate) {
+      case "review":
+        this.#setTask(taskId, { stage: "merge", gate_id: null, note: null });
+        break;
+      case "fix":
+        this.#setTask(taskId, { stage: "fixnext", gate_id: null, note: fixInstructions(subject.review ?? { runId: "?", profileId: null, summary: null }, note) });
+        break;
+      case "merge":
+        this.#startMerge(ft);
+        break;
+      default:
+        break;
+    }
+  }
+
+  /** The hub asks the machine of the task's run to merge its MR, as runs.merge does for a person (merge_by "sdlc"). */
+  #startMerge(ft: Row): void {
+    const taskId = str(ft.task_id);
+    const now = this.#now();
+    this.db
+      .prepare("UPDATE run_records SET merge_by = 'sdlc', merge_at = ?, merge_status = 'pending', merge_error = NULL, merge_done_at = NULL WHERE machine_id = ? AND run_id = ?")
+      .run(now, str(ft.machine_id), str(ft.run_id));
+    this.#setTask(taskId, { stage: "merging", gate_id: null });
+  }
+
+  /** How long a task waits for its MR (or for its MR to leave draft, or for CI) before a person is asked. */
+  static readonly #MR_WAIT_MINUTES = 15;
+
+  /**
+   * A task whose review passed waits for a green MR (34d): an open MR, not a draft, its pipeline "success". Then the
+   * merge gate: merged by the hub, checked first, or a person's. No MR, a draft or no CI after a while: a person decides.
+   */
+  #checkMerge(ft: Row): void {
+    const taskId = str(ft.task_id);
+    const run = ft.machine_id == null ? undefined : (this.db.prepare("SELECT * FROM run_records WHERE machine_id = ? AND run_id = ?").get(str(ft.machine_id), str(ft.run_id)) as Row | undefined);
+    const record = run ? toRunRecord(run, false) : null;
+    const mr = record?.mr ?? null;
+    const late = str(ft.updated_at) < this.#now(-SqliteHive.#MR_WAIT_MINUTES);
+    const project = str(ft.project);
+    const mode = effectiveGates(this.#sdlcPolicy(), project).merge;
+    const ask = (why: string) => {
+      const gateId = this.#taskGate(ft, "merge", mode, "escalated", { runId: str(ft.run_id) }, { by: "auto", note: why });
+      this.#setTask(taskId, { stage: "gate", gate_id: gateId });
+    };
+    if (mr?.status === "merged") return this.#setTask(taskId, { stage: "done", note: null });
+    if (mr?.status === "closed") return this.#setTask(taskId, { stage: "stopped", note: "MR closed" });
+    if (!record?.mrUrl) return void (late && ask("No MR for this run: open one (MR settings of its machine), or merge by hand."));
+    if (mr?.draft || mr?.pipeline !== "success") {
+      // CI may still run, or fix itself (mr.fixCi); a person is asked only after a while.
+      return void (late && ask(mr?.draft ? "The MR is still a draft." : mr?.pipeline ? `CI is ${mr.pipeline}.` : "The MR has no CI: merging it needs a person."));
+    }
+    if (mode === "auto") {
+      this.#taskGate(ft, "merge", mode, "passed", { runId: str(ft.run_id), mr: record.mrUrl }, { by: "auto" });
+      this.#startMerge(ft);
+      return;
+    }
+    const gateId = this.#taskGate(ft, "merge", mode, mode === "ai" ? "checking" : "waiting", { runId: str(ft.run_id), mr: record.mrUrl }, null);
+    this.#setTask(taskId, { stage: mode === "ai" ? "check" : "gate", gate_id: gateId });
+  }
+
+  /**
+   * Moves flow tasks on: fixes and checks waiting to be queued (on the machine of the task's run, where its branch is),
+   * MRs awaited green, merges and requests that ended.
+   */
+  #releaseTasks(): void {
+    const rows = this.db.prepare("SELECT * FROM sdlc_flow_tasks WHERE stage IN ('fixnext', 'fix', 'check', 'checking', 'merge', 'merging') ORDER BY updated_at").all() as Row[];
+    for (const ft of rows) {
+      const taskId = str(ft.task_id);
+      const stage = str(ft.stage);
+      const project = str(ft.project);
+      // A request of the task no machine will run: a fix stops, a check goes to a person.
+      if ((stage === "fix" || stage === "checking") && ft.request_id != null) {
+        const req = this.db.prepare("SELECT status, error FROM run_requests WHERE id = ?").get(num(ft.request_id)) as Row | undefined;
+        if (req && ["rejected", "expired", "cancelled"].includes(str(req.status))) {
+          const why = req.error ? (JSON.parse(str(req.error)) as RunRequestError).message : str(req.status);
+          if (stage === "fix") this.#setTask(taskId, { stage: "stopped", note: why });
+          else {
+            if (ft.gate_id != null) this.db.prepare("UPDATE sdlc_gates SET status = 'escalated', note = ?, decided_at = ? WHERE id = ?").run(`AI check did not run: ${why}`, this.#now(), num(ft.gate_id));
+            this.#setTask(taskId, { stage: "gate" });
+          }
+        }
+        continue;
+      }
+      if (stage === "merge") {
+        this.#checkMerge(ft);
+        continue;
+      }
+      if (stage === "merging") {
+        const run = this.db.prepare("SELECT merge_status, merge_error FROM run_records WHERE machine_id = ? AND run_id = ?").get(str(ft.machine_id), str(ft.run_id)) as Row | undefined;
+        if (run?.merge_status === "merged") this.#setTask(taskId, { stage: "done" });
+        else if (run?.merge_status === "failed" || run?.merge_status === "expired") {
+          const mode = effectiveGates(this.#sdlcPolicy(), project).merge;
+          const gateId = this.#taskGate(ft, "merge", mode, "escalated", { runId: str(ft.run_id) }, { by: "auto", note: `Merge ${str(run.merge_status)}: ${strOrNull(run.merge_error) ?? ""}` });
+          this.#setTask(taskId, { stage: "gate", gate_id: gateId });
+        }
+        continue;
+      }
+      if (stage !== "fixnext" && stage !== "check") continue;
+      const task = this.#getTask(taskId);
+      if (!task || ft.machine_id == null) {
+        this.#setTask(taskId, { stage: "stopped", note: `Task ${taskId} or its run is gone.` });
+        continue;
+      }
+      const actor: Actor = { name: str(ft.created_by), role: "member", ...(ft.on_behalf ? { onBehalf: str(ft.on_behalf) } : {}) };
+      const review = effectiveGates(this.#sdlcPolicy(), project).review;
+      let role: AgentRole = "implement";
+      let instructions = str(ft.note ?? "");
+      let profileId: string | null = null;
+      if (stage === "check") {
+        const gate = this.db.prepare("SELECT gate FROM sdlc_gates WHERE id = ?").get(num(ft.gate_id)) as Row;
+        role = "review";
+        instructions = gateCheckInstructions(str(gate.gate) as SdlcGate);
+        const did = this.db.prepare("SELECT profile_id FROM run_records WHERE machine_id = ? AND run_id = ?").get(str(ft.machine_id), str(ft.run_id)) as Row | undefined;
+        profileId = this.#otherVendorProfile(str(ft.machine_id), strOrNull(did?.profile_id));
+      }
+      try {
+        const m = this.#assertDispatchable({ machineId: str(ft.machine_id), project, task, role, profileId, candidates: 1, instructions }, actor);
+        const req = this.#insertRequest(m, project, task, { role, profileId, reviewAfter: role === "implement" && review !== "auto", candidates: 1, instructions }, actor);
+        this.#setTask(taskId, stage === "check" ? { stage: "checking", request_id: req.id } : { stage: "fix", request_id: req.id, fix_rounds: num(ft.fix_rounds) + 1 });
+      } catch (err) {
+        if (!(err instanceof HiveError)) throw err;
+        if (!groupFails(err.key)) continue;
+        if (stage === "fixnext") this.#setTask(taskId, { stage: "stopped", note: err.message });
+        else {
+          this.db.prepare("UPDATE sdlc_gates SET status = 'escalated', decided_by = 'auto', note = ?, decided_at = ? WHERE id = ?").run(`AI check could not start: ${err.message}`, this.#now(), num(ft.gate_id));
+          this.#setTask(taskId, { stage: "gate" });
+        }
       }
     }
   }
@@ -4170,8 +4509,13 @@ export class SqliteHive implements HiveBackend {
           }
           db.prepare("DELETE FROM run_records WHERE updated_at < ?").run(this.#now(-RUN_RECORD_DAYS * 24 * 60));
           // Flows (roadmap 34b) move on the step or check that just ended, then queue what comes next.
-          for (const r of ended) this.#flowRunEnded(actor.name, { ...r, summary: clean(r.summary) ?? null, error: clean(r.error) ?? null });
-          if (ended.length) this.#releaseFlows();
+          for (const r of ended) {
+            const run = { ...r, summary: clean(r.summary) ?? null, error: clean(r.error) ?? null };
+            this.#flowRunEnded(actor.name, run);
+            this.#taskRunEnded(actor.name, run);
+          }
+          // An MR that turned green, or merged, moves a flow task on as well.
+          this.#releaseFlows();
           return { stored: runs.length };
         }),
 
@@ -5048,6 +5392,8 @@ export class SqliteHive implements HiveBackend {
         this.#tx(() => {
           const gate = db.prepare("SELECT * FROM sdlc_gates WHERE id = ?").get(gateId) as Row | undefined;
           if (!gate) throw new HiveError("not_found", `Gate #${gateId} not found.`, { key: "errors.gateNotFound", vars: { id: gateId } });
+          const ft = this.#flowTaskRow(str(gate.task_id));
+          if (ft && ft.gate_id != null && num(ft.gate_id) === gateId) return this.#decideTask(ft, gate, decision, note, actor);
           const flow = this.#flowRow(str(gate.task_id));
           const status = str(gate.status);
           if ((status !== "waiting" && status !== "escalated") || !flow || num(flow.gate_id) !== gateId) {
@@ -5080,6 +5426,18 @@ export class SqliteHive implements HiveBackend {
           this.#releaseFlows();
           return this.#flow(taskId)!;
         }),
+
+      "sdlc.flowTasks": ({ project, projects, flowTask, taskId }) => {
+        this.#tx(() => this.#releaseFlows());
+        return (
+          db
+            .prepare(
+              `SELECT * FROM sdlc_flow_tasks WHERE (?1 IS NULL OR project = ?1) AND (?2 IS NULL OR project IN (SELECT value FROM json_each(?2)))
+                 AND (?3 IS NULL OR flow_task = ?3) AND (?4 IS NULL OR task_id = ?4) ORDER BY task_id`,
+            )
+            .all(project ?? null, listParam(projects), flowTask ?? null, taskId ?? null) as Row[]
+        ).map((r) => this.#toFlowTask(r));
+      },
 
       "sdlc.flows": ({ project, projects, limit }) => {
         this.#tx(() => this.#releaseFlows());

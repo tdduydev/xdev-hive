@@ -10,7 +10,7 @@ import { MACHINE_ID, PROJECT_NAME } from "./keys.ts";
 import type { SkillSummary } from "./skills.ts";
 import { SPEC_DIR, SPEC_FEATURES_MAX, SPEC_FILE_MAX, SPEC_STEPS, type SpecFeature, type SpecFeatureDetail, type SpecTaskPlan } from "./speckit.ts";
 import { toolEntrySchema } from "./tools.ts";
-import { GATE_STATUSES, gateModesSchema, MAX_FIX_ROUNDS, type SdlcFlow, type SdlcGateRecord, type SdlcPolicyView } from "./sdlc.ts";
+import { GATE_STATUSES, gateModesSchema, MAX_FIX_ROUNDS, type SdlcFlow, type SdlcFlowTask, type SdlcGateRecord, type SdlcPolicyView } from "./sdlc.ts";
 import {
   MEMORY_KINDS,
   MEMORY_STATUSES,
@@ -752,6 +752,8 @@ export const schemas = {
   "sdlc.decide": z.object({ gateId: id, decision: z.enum(["pass", "changes"]), note: z.string().max(2000).default("") }),
   /** Starts a stopped flow's step again, on the machine it ran on. */
   "sdlc.retry": z.object({ taskId }),
+  /** Tasks flows gave to agents (34c, 34d) and where each is: a flow's, one task's, or every one the caller sees. */
+  "sdlc.flowTasks": z.object({ project: project.optional(), projects: projectList, flowTask: taskId.optional(), taskId: taskId.optional() }),
   /** Flows, the newest first: a project's or every project the caller sees. */
   "sdlc.flows": z.object({ project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(200).default(50) }),
   /** Gates reached, the newest first: a project's or every project the caller sees, those waiting for a person first. */
@@ -953,6 +955,7 @@ export interface MethodOutput {
   "sdlc.decide": SdlcFlow;
   "sdlc.retry": SdlcFlow;
   "sdlc.flows": SdlcFlow[];
+  "sdlc.flowTasks": SdlcFlowTask[];
   "agentPolicy.get": AgentPolicyView;
   "agentPolicy.set": AgentPolicyView;
   "tools.list": ToolView[];
@@ -1092,6 +1095,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "sdlc.decide": "agent",
   "sdlc.retry": "agent",
   "sdlc.flows": "viewer",
+  "sdlc.flowTasks": "viewer",
   "agentPolicy.get": "viewer",
   // Also a hub admin for the hub's default, or projectSettings on the project: a person, never an agent token.
   "agentPolicy.set": "agent",
