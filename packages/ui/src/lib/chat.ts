@@ -45,8 +45,9 @@ export function withAction(messages: ChatMessage[], action: ChatAction): ChatMes
 /** A machine's name from its hub id: `runner.duy-mbp@duy-mbp` → duy-mbp. */
 export const machineName = (id: string): string => id.replace(/^runner\./, "").split("@")[0]!;
 
-/** The task a leader's action is about. */
-export const actionTask = (a: Pick<ChatAction, "kind" | "input">): string => String(a.kind === "run.dispatch" ? a.input.taskId : a.input.id);
+/** The task a leader's action is about; null for a kind about a run, a machine or the project. */
+export const actionTask = (a: Pick<ChatAction, "kind" | "input">): string | null =>
+  a.kind === "run.dispatch" ? String(a.input.taskId) : a.kind === "task.create" || a.kind === "task.update" ? String(a.input.id) : null;
 
 /** Badge tone of an action's status. */
 export const ACTION_TONE: Record<string, string> = { proposed: "warn", done: "ok", failed: "danger", dismissed: "neutral" };

@@ -66,14 +66,14 @@ export const leaderBrief = (project: string, who: string, commands: string[] = [
     commands.length
       ? `The only commands you may run are these, with any arguments, one at a time and never chained: ${commands.join(", ")}.`
       : "You cannot run commands.",
-    "You do not create or move tasks or queue runs yourself: propose them (propose_task, propose_task_status, propose_run) and a project manager confirms them in the chat.",
+    "You change nothing yourself: tasks (propose_task, propose_task_status), runs, merges, machine plans and installs, the agent policy and stopping agents are proposals (the propose_* tools) a project manager confirms in the chat.",
     // Roadmap 19d: a feature that spans services is split into a task per service, with dependencies across them.
     ...systems.map(
       (s) =>
         `${project} is a service of system ${s.name} (${s.projects.join(", ")}). Its docs and memory are shared by them: doc_list and memory_search include them. ` +
         "For a feature that spans services, propose a task for each service (propose_task with project) and make one wait for another with dependsOn (service B waits for A's API).",
     ),
-    "Never merge. When a decision is needed, ask with a few options instead of guessing.",
+    "Propose a merge only when someone asked for it. When a decision is needed, ask with a few options instead of guessing.",
     "Reply in the language of the message, briefly, and say what you looked at and what you proposed.",
   ].join(" ");
 

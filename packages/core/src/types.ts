@@ -296,6 +296,13 @@ export interface SetupReport {
   projects: Array<{ project: string; repo: string; items: SetupItem[] }>;
 }
 
+/** What a machine with the project still lacks (roadmap 29a): for the project's readers, so no install action or local paths. */
+export interface MachineSetupMissing {
+  machineId: string;
+  machine: string;
+  items: Array<Omit<SetupItem, "action">>;
+}
+
 /** A subscription profile as a machine reports it to the hub: no command line, no env. */
 export interface ReportedProfile {
   id: string;
@@ -733,8 +740,24 @@ export interface ChatFile {
   createdAt: string;
 }
 
-export const CHAT_ACTION_KINDS = ["task.create", "task.update", "run.dispatch"] as const;
+export const CHAT_ACTION_KINDS = [
+  "task.create",
+  "task.update",
+  "run.dispatch",
+  "run.cancel",
+  "run.merge",
+  "machine.profile",
+  "agent.policy",
+  "agents.stop",
+  "agents.resume",
+  "machine.install",
+] as const;
 export type ChatActionKind = (typeof CHAT_ACTION_KINDS)[number];
+/**
+ * Kinds a person always confirms, whatever the project lets its leader do alone (roadmap 29c): both loosen the limits
+ * the leader itself runs under, and an agent does not widen its own leash.
+ */
+export const CHAT_ACTION_ALWAYS_CONFIRM: readonly ChatActionKind[] = ["agent.policy", "agents.resume"];
 export const CHAT_ACTION_STATUSES = ["proposed", "done", "failed", "dismissed"] as const;
 export type ChatActionStatus = (typeof CHAT_ACTION_STATUSES)[number];
 
@@ -748,13 +771,16 @@ export interface ChatAction {
   threadId: number;
   project: string;
   kind: ChatActionKind;
-  /** The input of the call it becomes (tasks.create, tasks.update, runs.dispatch), project included. */
+  /**
+   * The input of the call it becomes (tasks.create, runs.dispatch, runs.cancel, agentPolicy.set…), project included;
+   * agent.policy also keeps `before`, the project's part when proposed, which is not sent.
+   */
   input: Record<string, unknown>;
   /** The leader's one line on why. */
   reason: string;
   status: ChatActionStatus;
-  /** What confirming it made: the task, or the run request sent to the machine. */
-  result: { taskId?: string; requestId?: number } | null;
+  /** What confirming it made: the task, the run request sent to the machine, or the install command. */
+  result: { taskId?: string; requestId?: number; commandId?: number } | null;
   error: RunRequestError | null;
   decidedBy: string | null;
   decidedAt: string | null;
