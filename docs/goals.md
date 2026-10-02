@@ -87,6 +87,7 @@ Spec: [`docs/specs/27a-agent-policy.md`](specs/27a-agent-policy.md) cho 27a, [`d
 - **R-18c / R-18d.** Đã trả lời 2/10:
   - 18c: merge bằng token của máy; hub chỉ ghi yêu cầu, máy nhận qua heartbeat.
   - 18d: chỉ admin hub và chủ máy đổi được gói của máy.
+- **R-28a → R-28d. Danh mục tool** (hỏi 2/10): danh mục tool trên hub thay cho codegraph, superpowers, Spec Kit viết cứng; runner sinh MCP và hook theo danh mục; đo token có tách cache; RTK. 28b chờ 28a, 28d chờ 28b và 28c.
 
 ## G4. Vận hành (làm song song)
 
