@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { AGENT_TEMPLATES, NO_MODEL, OPEN_POLICY, type AgentPolicy, type AgentProfile } from "@xdev-hive/core";
-import { applyAutonomy, applyPolicy, autonomyOf, buildCommand, codexMcpNames, modelOf, policyBlocks, policyLine } from "#desktop/main/runner/command.ts";
+import { AGENT_TEMPLATES, autonomyOf, autonomySource, NO_MODEL, OPEN_POLICY, profileAutonomy, type AgentPolicy, type AgentProfile } from "@xdev-hive/core";
+import { applyAutonomy, applyPolicy, buildCommand, codexMcpNames, modelOf, policyBlocks, policyLine } from "#desktop/main/runner/command.ts";
 
 const pol = (over: Partial<AgentPolicy>): AgentPolicy => ({ ...OPEN_POLICY, ...over });
 const boxed = (p: AgentProfile, container: Partial<NonNullable<AgentProfile["container"]>> = {}): AgentProfile => ({
@@ -25,6 +25,34 @@ describe("applyAutonomy", () => {
     assert.equal(autonomyOf("codex", ["exec", "--dangerously-bypass-approvals-and-sandbox"]), "full");
     assert.equal(autonomyOf("gemini", ["-p", "x", "--yolo"]), "full");
     assert.equal(autonomyOf("gemini", ["-p", "x", "--approval-mode", "something-new"]), "edit", "an unknown value counts as edit");
+  });
+
+  it("names the flag a level comes from, as written", () => {
+    assert.deepEqual(autonomySource("claude", claude), { level: "edit", flag: "--permission-mode acceptEdits" });
+    assert.deepEqual(autonomySource("claude", ["-p", "x", "--permission-mode", "plan", "--permission-mode=bypassPermissions"]), {
+      level: "full",
+      flag: "--permission-mode=bypassPermissions",
+    });
+    assert.deepEqual(autonomySource("claude", ["-p", "x", "--dangerously-skip-permissions"]), { level: "full", flag: "--dangerously-skip-permissions" });
+    assert.deepEqual(autonomySource("claude", ["-p", "x", "--permission-mode"]), { level: "edit", flag: null }, "a flag without its value is none");
+    assert.deepEqual(autonomySource("codex", codex), { level: "edit", flag: "--sandbox workspace-write" });
+    assert.deepEqual(autonomySource("custom", ["--yolo"]), { level: "edit", flag: null }, "the runner does not read a custom CLI");
+  });
+
+  it("profileAutonomy: the profile's own level under the hub's ceiling and each project's lower one", () => {
+    assert.deepEqual(profileAutonomy("claude", claude, null), { own: "edit", flag: "--permission-mode acceptEdits", hub: null, projects: [] });
+    // The report of 2/10: the hub says full, the profile still runs at acceptEdits.
+    const policy = { hub: pol({ autonomy: "full" }), projects: { b: { autonomy: "read" as const }, a: { autonomy: "full" as const }, c: {} } };
+    assert.deepEqual(profileAutonomy("claude", claude, policy), {
+      own: "edit",
+      flag: "--permission-mode acceptEdits",
+      hub: { policy: "full", effective: "edit" },
+      projects: [{ project: "b", policy: "read", effective: "read" }],
+    });
+    const yolo = profileAutonomy("codex", ["exec", "--dangerously-bypass-approvals-and-sandbox"], { hub: pol({ autonomy: "edit" }), projects: {} });
+    assert.deepEqual(yolo.hub, { policy: "edit", effective: "edit" }, "the policy lowers a profile above it");
+    const custom = profileAutonomy("custom", ["{prompt}"], { hub: pol({ autonomy: "propose" }), projects: {} });
+    assert.deepEqual(custom, { own: null, flag: null, hub: { policy: "propose", effective: null }, projects: [] });
   });
 
   it("claude: each level", () => {
