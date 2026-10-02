@@ -2,7 +2,7 @@
 
 Spec Kit (github/spec-kit) cho agent viết `spec.md` → `plan.md` → `tasks.md` cho từng tính năng trong `specs/<NNN-tên>/`. Hive cài nó vào repo (20a), cho xem các tính năng (20b), nhập `tasks.md` thành task (20c) và xếp run cho agent làm từng bước (20d).
 
-Phần này viết cho **R-20a**. 20b–20d có spec riêng khi tới lượt.
+Phần này viết cho **R-20a** và **R-20b**. 20c–20d thêm vào đây khi tới lượt.
 
 ## Sự thật về CLI (đã chạy thử 2/10, specify-cli 1.0.14.dev0, macOS)
 
@@ -74,3 +74,76 @@ Mục *Nối một repo với Hive* (hoặc chỗ đang nói về superpowers / 
 ### Không làm trong 20a
 
 Trang *Spec* (20b), nhập task (20c), run cho specify/plan/tasks (20d). Không tăng version, không đánh dấu roadmap (người merge làm).
+
+## R-20b. Trang *Spec*
+
+Xem các tính năng Spec Kit của một dự án trên web và app: tính năng nào, đang ở bước nào, đọc `spec.md`, `plan.md`, `tasks.md`. Máy đọc repo và đẩy lên hub; hub chỉ giữ bản mới nhất.
+
+### Spec Kit để file ở đâu (đã chạy thử)
+
+- Mỗi tính năng là một thư mục `specs/<NNN-tên>/` (vd. `specs/001-dang-nhap-sso/`), trong đó có `spec.md` (sau /speckit-specify), `plan.md` (sau /speckit-plan, kèm `research.md`, `data-model.md`, `contracts/`, `quickstart.md`), `tasks.md` (sau /speckit-tasks).
+- Spec Kit tạo branch git trùng tên thư mục (`001-dang-nhap-sso`) khi bắt đầu một tính năng. Run của Hive làm trên branch `ai/<task>`. Cho nên tính năng đang viết dở nằm trên branch, chưa có ở branch đích.
+- `tasks.md`: các dòng việc dạng `- [ ] T001 [P] [US1] Mô tả, đường dẫn file` hoặc `- [x] T001 …`, chia theo `## Phase N: …`.
+- Tiêu đề: dòng `# ` đầu tiên của `spec.md`, thường là `# Feature Specification: <tên>`.
+
+### Core (packages/core/src/speckit.ts, chạy được trên trình duyệt)
+
+```ts
+export const SPEC_FILES = ["spec", "plan", "tasks"] as const;          // spec.md, plan.md, tasks.md
+export const SPEC_STAGES = ["specify", "plan", "tasks", "implement", "done"] as const;
+export interface SpecFiles { spec: string | null; plan: string | null; tasks: string | null }
+export interface SpecFeature {
+  project: string;
+  dir: string;          // "001-dang-nhap-sso" (chỉ tên thư mục dưới specs/)
+  branch: string;       // "" = branch đích của dự án; còn lại: tên branch (vd. "ai/SPEC-1", "002-xuat-bao-cao")
+  title: string;        // từ spec.md, bỏ tiền tố "Feature Specification:"; không có thì dir
+  stage: SpecStage;
+  tasksDone: number;
+  tasksTotal: number;
+  commit: string;       // sha ngắn của ref đã đọc
+  machine: string;      // máy đã đẩy
+  pushedAt: string;
+}
+export interface SpecFeatureDetail extends SpecFeature { files: SpecFiles }
+export function specTitle(spec: string | null, dir: string): string;
+export function specTasks(tasks: string | null): { done: number; total: number };   // đếm dòng "- [ ]" / "- [x]" (cả "* [X]")
+export function specStage(files: SpecFiles): SpecStage;
+```
+
+`specStage`: không có `plan` → `specify`; có `plan`, không có `tasks` → `plan`; có `tasks`, chưa việc nào xong → `tasks`; xong một phần → `implement`; tổng > 0 và xong hết → `done`.
+
+### Hub (packages/core/src/sqlite.ts, migration mới)
+
+Bảng `spec_features(project, dir, branch, title, files TEXT /* JSON SpecFiles */, commit, machine, pushed_at, PRIMARY KEY(project, dir, branch))`.
+
+Method (methods.ts):
+- `specs.push { project, features: Array<{ dir, branch, commit, files: SpecFiles }> (tối đa 100) }`, vai trò `agent`, actor phải thấy dự án (như `runs.push`). Mỗi file tối đa 200 000 ký tự. Hub làm sạch như `runs.push` làm với patch (`redactLines(stripHidden(...))`). Upsert từng tính năng (`machine` = `actor.name`), rồi xoá các dòng của dự án đó mà **chính máy này** đã đẩy trước đây và không còn trong lần đẩy này (tính năng bị xoá, branch đã merge). Dòng do máy khác đẩy giữ nguyên. Trả `{ stored: number; removed: number }`. Không ghi nhật ký admin.
+- `specs.list { project?, projects? }` (viewer): `SpecFeature[]` của các dự án actor thấy (lọc như `runs.list`), không kèm nội dung file. Sắp: `branch` rỗng trước, rồi `dir`, rồi `branch`.
+- `specs.get { project, dir, branch }` (viewer): `SpecFeatureDetail | null` (dự án không thấy thì null, như `runs.get`).
+
+### Máy (apps/desktop/src/main/specs.ts, không import Electron)
+
+- `readSpecs(repo, ref)`: chỉ đọc git, không đọc checkout (giống `mirror.ts`). Liệt kê `git ls-tree --name-only <ref> specs/` lấy thư mục, đọc `specs/<dir>/{spec,plan,tasks}.md` bằng `git show`. Trả `{ dir, branch, commit, files }[]`.
+- `collectSpecs(repo, targetBranch)`:
+  1. Ref đích: `remoteStart(repo, targetBranch)` như `mirrorDocs` (fetch branch đích của remote); không có remote thì `HEAD`. Các tính năng ở đây có `branch: ""`.
+  2. Branch làm dở: `git for-each-ref --format=%(refname:short) refs/heads` lọc tên khớp `^ai/` hoặc `^\d{3}-`. Với mỗi branch, đọc như trên, chỉ giữ tính năng **khác** bản ở ref đích (thư mục chưa có ở đích, hoặc một trong ba file khác). Bỏ branch có commit cũ hơn 30 ngày (`git log -1 --format=%ct`).
+  3. Tối đa 100 tính năng (đích trước), file dài quá 200 000 ký tự thì cắt và thêm dòng `…(cắt bớt)`.
+- `pushSpecs(backend, actor, project, last?)`: gọi `collectSpecs`, tính hash JSON của kết quả; trùng `last` thì không gửi. Trả hash mới. Repo không phải git thì không làm gì.
+- index.ts: trong `mirrorAll()` (10 phút một lần, lần đầu 90 giây sau khi mở) gọi `pushSpecs` cho **mọi** dự án (không chỉ dự án có mirror), giữ hash trong một `Map` như `mirrored`. Lỗi của một dự án chỉ ghi console, không chặn dự án khác. Không chạy khi `smokeShot`.
+
+### Giao diện (packages/ui)
+
+- Trang mới `specs` (nhãn *Spec*, nhóm *Kiến thức* ngay sau *Tài liệu*, icon `ListChecks`), có ở web và app. Theo phạm vi dự án/hệ thống của thanh bên như trang *Tài liệu*; phạm vi *Tất cả* thì gộp mọi dự án, có cột dự án.
+- Danh sách: mỗi tính năng một dòng: `dir`, tiêu đề, chip bước (*Viết spec* / *Lập kế hoạch* / *Chia việc* / *Đang làm* / *Xong*), tiến độ `tasksDone/tasksTotal` (thanh nhỏ) khi có tasks, branch (rỗng thì *branch đích*), máy · thời gian đẩy · commit. Rỗng: hướng dẫn ngắn (cài Spec Kit ở *Công cụ và dự án*, máy đẩy 10 phút một lần).
+- Bấm một dòng: khung đọc với tab *Spec* / *Plan* / *Tasks* (tab thiếu file thì mờ), nội dung render bằng component Markdown sẵn có của trang tài liệu (`packages/ui/src/components/DocMarkdown.tsx`). Liên kết trực tiếp `#/specs?project=<p>&dir=<d>&branch=<b>`.
+- i18n vi (gốc) và en: tên trang, phụ đề, các bước, trạng thái rỗng.
+
+### Test
+
+- `packages/core/test/speckit.test.ts`: `specTitle`, `specTasks` (`[x]`, `[X]`, `*`), `specStage` cả năm bước; `specs.push` thay thế đúng (dòng của máy khác giữ, dòng cũ của chính máy bị xoá), làm sạch ký tự ẩn, quá 100 tính năng bị từ chối; `specs.list` / `specs.get` lọc dự án actor không thấy.
+- `apps/desktop/test/specs.test.ts`: repo git tạm (như `mirror.test.ts`): `main` có `specs/001-a/spec.md`; branch `002-b` thêm `specs/002-b/spec.md`, `plan.md`; branch `ai/T-1` sửa `specs/001-a/spec.md`; branch `feature-x` có `specs/003-c/` (không khớp tên, bỏ qua). `collectSpecs` trả đúng 3 tính năng với `branch` đúng; chạy lại không đổi thì `pushSpecs` không gửi.
+- e2e web (`apps/web/e2e/browser.mjs`): một bước `spec-page`: seed bằng `specs.push` (token của một người thấy `payment`), mở `#/specs`, thấy tính năng, bấm vào, tab *Tasks* hiện việc.
+
+### README
+
+Một đoạn trong mục Spec Kit: trang *Spec*, máy đẩy gì, khi nào, branch nào được xem là làm dở.
