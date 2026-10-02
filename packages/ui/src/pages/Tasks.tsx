@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { cn } from "cn";
-import { AGENT_ROLES, MAX_CANDIDATES, TASK_STATUSES, type AgentRole, type Machine, type RunRequest, type Task, type TaskStatus } from "@xdev-hive/core";
+import { Send, Sparkles } from "lucide-react";
+import { AGENT_ROLES, MAX_CANDIDATES, TASK_STATUSES, type AgentRole, type RunRequest, type Task, type TaskStatus } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
@@ -11,6 +12,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "#ui/components/common.tsx";
+import { MachineSelect, ProfileSelect, takesRunsOf } from "#ui/components/MachinePicker.tsx";
 import { formatTime, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { REQUEST_TONE, requestErrorText, runLabel } from "#ui/lib/runs.ts";
@@ -61,6 +63,9 @@ export function TasksPage() {
   }, [linked, clearLinked]);
   const open = list.data?.find((task) => task.id === openId) ?? null;
   const reload = () => (list.reload(), requests.reload());
+  // A prompt makes a task and queues its run (roadmap 32b): whoever may do both, on the hub.
+  const prompters = hub ? (scope.kind === "system" ? scope.projects : projects).filter((p) => allow(p, "taskManage") && allow(p, "runDispatch")) : [];
+  const [prompting, setPrompting] = useState(false);
 
   return (
     <Page>
@@ -74,6 +79,12 @@ export function TasksPage() {
             </NativeSelectOption>
           ))}
         </NativeSelect>
+        {prompters.length ? (
+          <Button size="sm" className="ml-auto" onClick={() => setPrompting(true)} data-prompt-agent>
+            <Sparkles />
+            {t("tasks.promptOpen")}
+          </Button>
+        ) : null}
       </div>
       {scope.kind === "shared" ? <Notice tone="info">{t("tasks.sharedScope")}</Notice> : null}
       {next.data && list.data?.some((task) => task.status !== "done") ? (
@@ -141,6 +152,19 @@ export function TasksPage() {
           </Table>
         </div>
       ) : null}
+      <Sheet open={prompting} onOpenChange={setPrompting}>
+        {prompting ? (
+          <PromptSheet
+            projects={prompters}
+            defaultProject={scoped && prompters.includes(scoped) ? scoped : prompters[0]!}
+            onSent={(task) => {
+              setPrompting(false);
+              reload();
+              setOpenId(task.id);
+            }}
+          />
+        ) : null}
+      </Sheet>
       <Sheet open={open !== null} onOpenChange={(v) => (v ? null : setOpenId(null))}>
         {open ? (
           <TaskDetail
@@ -300,13 +324,12 @@ function TaskDetail({ task, requests, hub, onChanged }: { task: Task; requests: 
 }
 
 /** Machines that can take this task's run now: online, taking runs from the hub, with the project's repo. */
-const fits = (m: Machine, project: string) => m.online && m.acceptsRuns && m.projects.includes(project);
 
 function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunRequest[]; onSent: () => void }) {
   const { client } = useHive();
   const t = useT();
   const machines = useQuery(() => client.call("machines.list", {}), [client]);
-  const fit = (machines.data ?? []).filter((m) => fits(m, task.project));
+  const fit = (machines.data ?? []).filter((m) => takesRunsOf(m, task.project));
   const [machineId, setMachineId] = useState("");
   const machine = fit.find((m) => m.id === machineId) ?? fit[0] ?? null;
   const [role, setRole] = useState<AgentRole>(task.status === "review" ? "review" : "implement");
@@ -318,8 +341,6 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
   const several = role === "implement" && !profileId;
   const waiting = waitingLabels(task);
   const pending = requests.find((r) => r.status === "pending");
-  const profiles = machine?.profiles.filter((p) => p.enabled) ?? [];
-  const now = new Date().toISOString();
 
   return (
     <section className="flex flex-col gap-3 rounded-lg border p-3">
@@ -353,23 +374,7 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
           }}
         >
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`machine-${task.id}`}>{t("tasks.dispatchMachine")}</Label>
-              <NativeSelect
-                id={`machine-${task.id}`}
-                size="sm"
-                className="w-full"
-                value={machine.id}
-                onChange={(e) => (setMachineId(e.target.value), setProfileId(""))}
-              >
-                {fit.map((m) => (
-                  <NativeSelectOption key={m.id} value={m.id}>
-                    {m.machine}
-                    {m.runs.length ? ` · ${t("board.running", { count: m.runs.filter((r) => r.status === "running").length })}` : ""}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </div>
+            <MachineSelect id={`machine-${task.id}`} machines={fit} value={machine.id} onChange={(id) => (setMachineId(id), setProfileId(""))} />
             <div className="flex flex-col gap-1.5">
               <Label htmlFor={`role-${task.id}`}>{t("board.role")}</Label>
               <NativeSelect id={`role-${task.id}`} size="sm" className="w-full" value={role} onChange={(e) => setRole(e.target.value as AgentRole)}>
@@ -380,24 +385,7 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
                 ))}
               </NativeSelect>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`profile-${task.id}`}>{t("board.profile")}</Label>
-              <NativeSelect id={`profile-${task.id}`} size="sm" className="w-full" value={profileId} onChange={(e) => setProfileId(e.target.value)}>
-                <NativeSelectOption value="">{t("board.rotate")}</NativeSelectOption>
-                {profiles.map((p) => (
-                  <NativeSelectOption key={p.id} value={p.id}>
-                    {p.label}
-                    {p.loggedIn === false
-                      ? ` (${t("board.profileSignedOut")})`
-                      : p.overLimit
-                        ? ` (${t("board.profileOverLimit")})`
-                        : p.cooldownUntil && p.cooldownUntil > now
-                          ? ` (${t("board.resting")})`
-                          : ""}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </div>
+            <ProfileSelect id={`profile-${task.id}`} machine={machine} value={profileId} onChange={setProfileId} />
             {several ? (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor={`candidates-${task.id}`}>{t("board.candidates")}</Label>
@@ -440,6 +428,100 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
         </form>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * A free prompt for an agent (roadmap 32b): the hub makes task P-<n> for it and asks the chosen machine to run it,
+ * with the chosen profile or rotating. Then the task's panel shows the request as for any dispatched run.
+ */
+function PromptSheet({ projects, defaultProject, onSent }: { projects: string[]; defaultProject: string; onSent: (task: Task) => void }) {
+  const { client } = useHive();
+  const t = useT();
+  const machines = useQuery(() => client.call("machines.list", {}), [client]);
+  const [project, setProject] = useState(defaultProject);
+  const fit = (machines.data ?? []).filter((m) => takesRunsOf(m, project));
+  const [machineId, setMachineId] = useState("");
+  const machine = fit.find((m) => m.id === machineId) ?? fit[0] ?? null;
+  const [profileId, setProfileId] = useState("");
+  const [title, setTitle] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [reviewAfter, setReviewAfter] = useState(true);
+  const action = useAction();
+  return (
+    <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+      <SheetHeader>
+        <SheetTitle>{t("tasks.promptTitle")}</SheetTitle>
+        <SheetDescription>{t("tasks.promptHint")}</SheetDescription>
+      </SheetHeader>
+      <form
+        className="flex flex-col gap-3 px-4 pb-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!machine) return;
+          void action.run(async () => {
+            const { task } = await client.call("runs.prompt", {
+              project,
+              machineId: machine.id,
+              profileId: profileId || null,
+              ...(title.trim() ? { title: title.trim() } : {}),
+              prompt,
+              reviewAfter,
+            });
+            onSent(task);
+          });
+        }}
+      >
+        {projects.length > 1 ? (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="prompt-project">{t("tasks.colProject")}</Label>
+            <NativeSelect id="prompt-project" size="sm" className="w-full" value={project} onChange={(e) => (setProject(e.target.value), setMachineId(""), setProfileId(""))}>
+              {projects.map((p) => (
+                <NativeSelectOption key={p} value={p}>
+                  {p}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </div>
+        ) : null}
+        <ErrorNote error={machines.error} />
+        {machines.data && !machine ? <Notice tone="info">{t("tasks.dispatchNoMachine", { project })}</Notice> : null}
+        {machine ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <MachineSelect id="prompt-machine" machines={fit} value={machine.id} onChange={(id) => (setMachineId(id), setProfileId(""))} />
+            <ProfileSelect id="prompt-profile" machine={machine} value={profileId} onChange={setProfileId} />
+          </div>
+        ) : null}
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="prompt-title">{t("tasks.promptTaskTitle")}</Label>
+          <Input id="prompt-title" maxLength={120} placeholder={t("tasks.promptTaskTitleHint")} value={title} onChange={(e) => setTitle(e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="prompt-text">{t("tasks.promptText")}</Label>
+          <Textarea
+            id="prompt-text"
+            className="min-h-40"
+            maxLength={4000}
+            required
+            placeholder={t("tasks.promptPlaceholder")}
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+          />
+          <span className="text-xs text-muted-foreground">{t("tasks.promptCount", { count: prompt.length, max: 4000 })}</span>
+        </div>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox checked={reviewAfter} onCheckedChange={(v) => setReviewAfter(v === true)} />
+          {t("board.reviewAfter")}
+        </label>
+        <div>
+          <Button size="sm" type="submit" disabled={action.busy || !machine || !prompt.trim()}>
+            <Send />
+            {t("tasks.promptSend")}
+          </Button>
+        </div>
+        <ErrorNote error={action.error} />
+      </form>
+    </SheetContent>
   );
 }
 
