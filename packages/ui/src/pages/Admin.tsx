@@ -32,6 +32,7 @@ import { hasKey, rich, useT, type MessageKey } from "#ui/i18n/index.tsx";
 import { hasNewer } from "#ui/lib/setup.ts";
 import { WebhooksTab } from "./Webhooks.tsx";
 import { AgentPolicyCard } from "#ui/pages/admin/AgentPolicy.tsx";
+import { SdlcGatesCard } from "#ui/pages/admin/SdlcGates.tsx";
 
 type Tab = "machines" | "policy" | "audit" | "webhooks";
 const TABS: Record<Tab, MessageKey> = { machines: "admin.tabMachines", policy: "admin.tabPolicy", audit: "admin.tabAudit", webhooks: "admin.tabWebhooks" };
@@ -64,6 +65,8 @@ export const ACTION_LABEL: Record<string, MessageKey> = {
   "cooldowns.clear": "auditAction.cooldownsClear",
   "policy.set": "auditAction.policySet",
   "agentPolicy.set": "auditAction.agentPolicySet",
+  "sdlc.setCeiling": "auditAction.sdlcCeiling",
+  "sdlc.setProject": "auditAction.sdlcProject",
   "budgets.set": "auditAction.budgetsSet",
   "tools.save": "auditAction.toolsSave",
   "tools.remove": "auditAction.toolsRemove",
@@ -554,6 +557,7 @@ export function PolicyTab() {
 
       {/* Saved row by row, apart from the button above: a project's manager may change their row without the rest. */}
       <AgentPolicyCard />
+      <SdlcGatesCard />
     </>
   );
 }

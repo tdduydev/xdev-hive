@@ -13,6 +13,7 @@ import { formatTime, useAction, useCan, useHive } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { systemScope } from "#ui/lib/scope.ts";
 import { AgentPolicyCard } from "#ui/pages/admin/AgentPolicy.tsx";
+import { SdlcGatesCard } from "#ui/pages/admin/SdlcGates.tsx";
 
 export function SystemsPage() {
   const { systems, setScope, me, projects } = useHive();
@@ -90,7 +91,12 @@ export function SystemsPage() {
         ),
       )}
       {/* A project manager has no Web Admin: their project's agent policy row lives here, with its other settings. */}
-      {me.mode === "hub" && !(me.role === "admin" && !me.access) && projects.some((p) => allow(p, "projectSettings")) ? <AgentPolicyCard editableOnly /> : null}
+      {me.mode === "hub" && !(me.role === "admin" && !me.access) && projects.some((p) => allow(p, "projectSettings")) ? (
+        <>
+          <AgentPolicyCard editableOnly />
+          <SdlcGatesCard editableOnly />
+        </>
+      ) : null}
     </Page>
   );
 }

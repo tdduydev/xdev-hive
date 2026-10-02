@@ -10,6 +10,7 @@ import { MACHINE_ID, PROJECT_NAME } from "./keys.ts";
 import type { SkillSummary } from "./skills.ts";
 import { SPEC_DIR, SPEC_FEATURES_MAX, SPEC_FILE_MAX, type SpecFeature, type SpecFeatureDetail, type SpecTaskPlan } from "./speckit.ts";
 import { toolEntrySchema } from "./tools.ts";
+import { GATE_STATUSES, gateModesSchema, MAX_FIX_ROUNDS, type SdlcGateRecord, type SdlcPolicyView } from "./sdlc.ts";
 import {
   MEMORY_KINDS,
   MEMORY_STATUSES,
@@ -718,6 +719,28 @@ export const schemas = {
   }),
 
   /** The hub's agent policy and each visible project's part (roadmap 27a). */
+  /** The lifecycle gates (roadmap 34): the hub's ceiling and each project's modes, what applies now. */
+  "sdlc.get": z.object({}),
+  /** The hub's ceiling: how far each gate may be left to agents. A hub admin's. */
+  "sdlc.setCeiling": z.object({ ceiling: gateModesSchema }),
+  /** A project's gates, held to the ceiling; null puts the project back to every gate "human". */
+  "sdlc.setProject": z.object({
+    project,
+    settings: z
+      .object({
+        gates: gateModesSchema,
+        maxFixRounds: z.number().int().min(0).max(MAX_FIX_ROUNDS).optional(),
+        maxParallel: z.number().int().min(1).max(20).nullable().optional(),
+      })
+      .nullable(),
+  }),
+  /** Gates reached, the newest first: a project's or every project the caller sees, those waiting for a person first. */
+  "sdlc.gates": z.object({
+    project: project.optional(),
+    projects: projectList,
+    status: z.enum(GATE_STATUSES).optional(),
+    limit: z.number().int().min(1).max(200).default(50),
+  }),
   "agentPolicy.get": z.object({}),
   /**
    * project null: the hub's default (a hub admin; a field left out is open). A project: its own part, which only
@@ -901,6 +924,10 @@ export interface MethodOutput {
   "agents.paused": AgentsPaused;
   "policy.get": TeamPolicy;
   "policy.set": TeamPolicy;
+  "sdlc.get": SdlcPolicyView;
+  "sdlc.setCeiling": SdlcPolicyView;
+  "sdlc.setProject": SdlcPolicyView;
+  "sdlc.gates": SdlcGateRecord[];
   "agentPolicy.get": AgentPolicyView;
   "agentPolicy.set": AgentPolicyView;
   "tools.list": ToolView[];
@@ -1028,6 +1055,12 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "agents.paused": "viewer",
   "policy.get": "viewer",
   "policy.set": "admin",
+  "sdlc.get": "viewer",
+  // A hub admin's (no per-project grants), as the hub's agent policy.
+  "sdlc.setCeiling": "admin",
+  // Also "projectSettings" on the project.
+  "sdlc.setProject": "agent",
+  "sdlc.gates": "viewer",
   "agentPolicy.get": "viewer",
   // Also a hub admin for the hub's default, or projectSettings on the project: a person, never an agent token.
   "agentPolicy.set": "agent",
