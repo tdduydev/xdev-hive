@@ -567,6 +567,22 @@ export const schemas = {
     reviewAfter: z.boolean().default(false),
     instructions: z.string().max(4000).default(""),
   }),
+  /**
+   * One prompt for several agents at once (roadmap 31e): task P-<n> holds it, and each target gets its own task
+   * P-<n>-a, -b… so they run side by side; P-<n> waits for them until one is picked (runs.pickWinner).
+   */
+  "runs.fanout": z.object({
+    project,
+    title: z.string().max(120).optional(),
+    prompt: z.string().min(1).max(4000),
+    targets: z
+      .array(z.object({ machineId: machineRef.nullable().default(null), profileId: z.string().max(40).nullable().default(null) }))
+      .min(2)
+      .max(8),
+    reviewAfter: z.boolean().default(false),
+  }),
+  /** Keeps one task of a fan-out group: the others and the prompt's task are done, the kept one goes on (review, MR). */
+  "runs.pickWinner": z.object({ groupId: id, taskId }),
   /** Run groups, the newest first: a project's, or every project the caller sees. */
   "runs.groups": z.object({ project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(100).default(30) }),
   /** Stops what a group has not started: its held items, and requests no machine took. Runs going on keep going. */
@@ -850,6 +866,8 @@ export interface MethodOutput {
   "runs.dispatch": RunRequest;
   "runs.prompt": { task: Task; request: RunRequest };
   "runs.dispatchMany": RunGroup;
+  "runs.fanout": RunGroup;
+  "runs.pickWinner": RunGroup;
   "runs.groups": RunGroup[];
   "runs.cancelGroup": RunGroup;
   "runs.requests": RunRequest[];
@@ -974,6 +992,9 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "runs.dispatchMany": "agent",
   "runs.groups": "viewer",
   "runs.cancelGroup": "agent",
+  // Also "taskManage" and "runDispatch" on the project, like runs.prompt.
+  "runs.fanout": "agent",
+  "runs.pickWinner": "agent",
   "runs.requests": "viewer",
   "runs.cancelRequest": "agent",
   "runs.requestResult": "agent",

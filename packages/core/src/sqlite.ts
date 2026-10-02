@@ -732,6 +732,16 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
     detail: `đợt chạy #${o.id}: ${o.items.length} task${o.maxParallel ? `, tối đa ${o.maxParallel} cùng lúc` : ""}`,
     text: { key: "audit.runGroup", vars: { id: o.id, count: o.items.length } },
   }),
+  "runs.fanout": (_i, o: RunGroup) => ({
+    target: `${o.project}/${o.parentTask}`,
+    detail: `một prompt cho ${o.items.length} agent (đợt chạy #${o.id})`,
+    text: { key: "audit.runFanout", vars: { id: o.id, count: o.items.length } },
+  }),
+  "runs.pickWinner": (_i, o: RunGroup) => ({
+    target: `${o.project}/${o.winnerTask}`,
+    detail: `giữ ${o.winnerTask} trong ${o.parentTask} (đợt chạy #${o.id})`,
+    text: { key: "audit.runPick", vars: { task: o.winnerTask ?? "", parent: o.parentTask ?? "", id: o.id } },
+  }),
   "runs.cancelGroup": (_i, o: RunGroup) => ({
     target: o.project,
     detail: `huỷ đợt chạy #${o.id}`,
@@ -1289,6 +1299,15 @@ export class SqliteHive implements HiveBackend {
         return this.#need(actor, i.project, "runDispatch", `Project ${i.project}`);
       case "runs.dispatchMany":
         return this.#need(actor, i.project, "runDispatch", `Project ${i.project}`);
+      case "runs.fanout":
+        this.#need(actor, i.project, "taskManage", `Project ${i.project}`);
+        return this.#need(actor, i.project, "runDispatch", `Project ${i.project}`);
+      case "runs.pickWinner": {
+        const row = this.db.prepare("SELECT project FROM run_groups WHERE id = ?").get(i.groupId) as Row | undefined;
+        if (!row) return;
+        this.#need(actor, str(row.project), "taskManage", `Run group #${i.groupId}`);
+        return this.#need(actor, str(row.project), "runDispatch", `Run group #${i.groupId}`);
+      }
       case "runs.groups":
         if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
         return;
@@ -3989,6 +4008,81 @@ export class SqliteHive implements HiveBackend {
           );
           items.forEach((item, i) => put.run(groupId, i + 1, item.taskId, item.role, item.machineId, item.profileId, now));
           this.#releaseGroups();
+          return this.#group(groupId);
+        }),
+
+      "runs.fanout": ({ project, title, prompt, targets, reviewAfter }, actor) =>
+        this.#tx(() => {
+          this.#assertNotPaused(project);
+          const heading = (title?.trim() || prompt.trim().split(/\r?\n/, 1)[0]!.trim()).slice(0, 120);
+          for (const [text, what] of [[heading, "Title"], [prompt, "Instructions"]] as const) {
+            assertNoHidden(text, what);
+            assertNoSecret(text, what);
+          }
+          this.#assertBudget(project, actor);
+          const names = new Map<string, string>();
+          for (const t of targets) {
+            if (!t.machineId) continue;
+            const row = db.prepare("SELECT * FROM machines WHERE id = ?").get(t.machineId) as Row | undefined;
+            if (!row) throw new HiveError("not_found", `No machine ${t.machineId}.`, { key: "errors.machineNotFound", vars: { machine: t.machineId } });
+            const m = this.#toMachine(row);
+            if (!m.projects.includes(project)) {
+              throw new HiveError("bad_request", `${m.machine} has no repo for ${project}.`, { key: "errors.machineNoRepo", vars: { machine: m.machine, project } });
+            }
+            if (t.profileId && !m.profiles.some((p) => p.id === t.profileId)) {
+              throw new HiveError("bad_request", `${m.machine} has no profile ${t.profileId}.`, { key: "errors.profileNotOnMachine", vars: { machine: m.machine, id: t.profileId } });
+            }
+            names.set(t.machineId, m.machine);
+          }
+          const parent = this.#nextPromptTaskId();
+          const children = targets.map((_, i) => `${parent}-${String.fromCharCode(97 + i)}`);
+          for (const child of children) {
+            if (this.#getTask(child)) throw new HiveError("conflict", `Task ${child} already exists.`, { key: "errors.taskExists", vars: { id: child } });
+          }
+          const now = this.#now();
+          const note = prompt.slice(0, 2000);
+          const put = db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)");
+          put.run(parent, project, heading, note, now);
+          // Where each one runs, in its title: "any" machine or profile is the hub's or the machine's pick.
+          targets.forEach((t, i) => {
+            const where = `${t.machineId ? names.get(t.machineId) : "*"}/${t.profileId ?? "*"}`;
+            put.run(children[i]!, project, `${heading.slice(0, 100)} · ${where}`.slice(0, 300), note, now);
+          });
+          // Nobody runs the prompt's own task: it waits for its agents until one is picked.
+          this.#setDeps(parent, children);
+          const res = db
+            .prepare(
+              `INSERT INTO run_groups(project, kind, title, max_parallel, review_after, instructions, parent_task, created_by, on_behalf, created_at)
+               VALUES (?, 'fanout', ?, NULL, ?, ?, ?, ?, ?, ?)`,
+            )
+            // The agents read the prompt as their task's note; the instructions carry it only when the note had to cut it.
+            .run(project, heading, reviewAfter ? 1 : 0, prompt.length > 2000 ? prompt : "", parent, actor.name, actor.onBehalf ?? null, now);
+          const groupId = num(res.lastInsertRowid);
+          const item = db.prepare(
+            "INSERT INTO run_group_items(group_id, position, task_id, role, machine_id, profile_id, status, updated_at) VALUES (?, ?, ?, 'implement', ?, ?, 'held', ?)",
+          );
+          targets.forEach((t, i) => item.run(groupId, i + 1, children[i]!, t.machineId, t.profileId, now));
+          this.#releaseGroups();
+          return this.#group(groupId);
+        }),
+
+      "runs.pickWinner": ({ groupId, taskId }) =>
+        this.#tx(() => {
+          const g = this.#group(groupId);
+          if (g.kind !== "fanout" || !g.parentTask) throw new HiveError("bad_request", `Run group #${groupId} is not one prompt for several agents.`, { key: "errors.notFanout", vars: { id: groupId } });
+          if (g.winnerTask) throw new HiveError("conflict", `${g.winnerTask} was already kept in ${g.parentTask}.`, { key: "errors.winnerPicked", vars: { task: g.winnerTask, parent: g.parentTask } });
+          if (!g.items.some((i) => i.taskId === taskId)) throw new HiveError("bad_request", `${taskId} is not in run group #${groupId}.`, { key: "errors.notInGroup", vars: { task: taskId, id: groupId } });
+          // A run still going would hand its task back to review when it ends, after it was closed here.
+          if (g.items.some((i) => i.status === "held" || i.active)) {
+            throw new HiveError("conflict", `Run group #${groupId} still has agents working.`, { key: "errors.fanoutRunning", vars: { id: groupId } });
+          }
+          const now = this.#now();
+          const close = db.prepare("UPDATE tasks SET status = 'done', owner = NULL, lease_until = NULL, note = ?, updated_at = ? WHERE id = ?");
+          for (const i of g.items) {
+            if (i.taskId !== taskId) close.run(`Không chọn trong ${g.parentTask} (chọn ${taskId}).`, now, i.taskId);
+          }
+          close.run(`Chọn ${taskId}.`, now, g.parentTask);
+          db.prepare("UPDATE run_groups SET winner_task = ?, closed_at = COALESCE(closed_at, ?) WHERE id = ?").run(taskId, now, groupId);
           return this.#group(groupId);
         }),
 

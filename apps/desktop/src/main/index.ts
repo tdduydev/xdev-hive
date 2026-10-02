@@ -1063,6 +1063,11 @@ function createWindow(): void {
         const click = process.env.HIVE_SMOKE_CLICK;
         const scroll = process.env.HIVE_SMOKE_SCROLL;
         for (const sel of click ? click.split(" && ") : []) {
+          // A page that loads more after its first paint (the CLI versions on Agent) may show the target late.
+          for (let i = 0; i < 40; i++) {
+            if (await win!.webContents.executeJavaScript(`Boolean(document.querySelector(${JSON.stringify(sel)}))`)) break;
+            await pause(200);
+          }
           await win!.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(sel)})?.click()`).then(() => pause(700));
         }
         if (scroll) {
