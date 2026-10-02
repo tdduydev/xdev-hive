@@ -43,6 +43,7 @@ import {
   type DocVersion,
   type HiveSystem,
   type Machine,
+  type ProfileChange,
   type MachineCommand,
   type MachineDetail,
   type Memory,
@@ -113,6 +114,7 @@ const reportedProfile = z.object({
   cooldownUntil: z.string().max(40).nullable(),
   runs: z.number().int().min(0),
   rateLimited: z.number().int().min(0),
+  priority: z.number().int().min(0).max(100).optional(),
 });
 /** A finished run's cost estimate, sent once by the machine that ran it. */
 const runCost = z.object({
@@ -345,6 +347,18 @@ export const schemas = {
     costs: z.array(runCost).max(100).default([]),
   }),
   "machines.list": z.object({}),
+  /**
+   * Turns one of a machine's profiles on or off, or changes its priority (roadmap 18d): a hub admin, or the person whose
+   * account the machine's token belongs to. The machine applies it at its next heartbeat, no restart.
+   */
+  "machines.setProfile": z
+    .object({
+      machineId: machineRef,
+      profileId: z.string().min(1).max(40),
+      enabled: z.boolean().optional(),
+      priority: z.number().int().min(0).max(100).optional(),
+    })
+    .refine((i) => i.enabled !== undefined || i.priority !== undefined, "enabled or priority"),
   /** A machine reports a run that failed for good or opened a merge request (for the hub's webhooks). */
   "runs.report": z.object({
     kind: z.enum(["failed", "mr", "ci_limit"]),
@@ -648,8 +662,11 @@ export interface MethodOutput {
      * already going go on. Sent to every machine, whether or not it takes runs from the hub. Older apps ignore it.
      */
     budgetBlocked: BudgetBlock[];
+    /** Changes to this machine's profiles asked for on the web (roadmap 18d). Older apps ignore it; the hub drops them after a day. */
+    profileChanges: ProfileChange[];
   };
   "machines.list": Machine[];
+  "machines.setProfile": Machine;
   "costs.summary": CostSummary;
   "budgets.list": BudgetUsage[];
   "budgets.set": BudgetUsage[];
@@ -749,6 +766,8 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "tasks.update": "agent",
   "machines.heartbeat": "agent",
   "machines.list": "viewer",
+  // Not a project right: the hub checks for a hub admin or the machine's owner, and refuses agents.
+  "machines.setProfile": "agent",
   "costs.summary": "viewer",
   "budgets.list": "viewer",
   // Also no per-project grants (a hub admin), as for the hub's agent policy: a cap may bind every project.

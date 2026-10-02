@@ -381,6 +381,37 @@ async function main() {
     await tab.waitFor("Đã đồng bộ on the card", () => /Đã đồng bộ[\s\S]*2 file đổi/.test(document.body.innerText));
   });
 
+  // Roadmap 18d: the owner of a machine turns one of its subscriptions off on Máy & run; the machine hears it at its
+  // heartbeat. Another member sees the machine, not its switches.
+  await step("machine-profiles", async () => {
+    const profile = (id, enabled, priority) => ({ id, label: id, kind: "claude", enabled, account: null, installed: true, cooldownUntil: null, runs: 0, rateLimited: 0, priority });
+    const beat = async (profiles) => {
+      const r = await fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" },
+        body: JSON.stringify({ method: "machines.heartbeat", input: { machine: "lan-mbp", instance: "e2e00001", version: "0.95.0", projects: ["payment"], profiles } }),
+      });
+      return (await r.json()).result;
+    };
+    const before = [profile("claude-1", true, 10), profile("claude-2", true, 20)];
+    await beat(before);
+    let tab = (current = tabs.hoa);
+    await tab.go("machines");
+    await tab.waitFor("Lan's machine for Hoa", () => document.body.innerText.includes("lan-mbp") && document.body.innerText.includes("claude-2"));
+    expect(!(await tab.eval(() => !!document.querySelector('[aria-label="Bật gói claude-1"]'))), "Hoa got the switches of Lan's machine");
+    tab = current = tabs.lan;
+    await tab.go("machines");
+    await tab.click('[aria-label="Bật gói claude-1"]');
+    await tab.waitFor("the change waiting on the page", () => document.body.innerText.includes("chờ máy áp dụng"));
+    await until("the change at Lan's heartbeat", async () => (await beat(before)).profileChanges?.find((c) => c.profileId === "claude-1" && c.enabled === false && c.requestedBy === "lan"));
+    // The machine saved it and reports claude-1 off: nothing left to send, the page shows the switch off.
+    const after = await beat([profile("claude-1", false, 10), profile("claude-2", true, 20)]);
+    expect(after.profileChanges.length === 0, `still sent: ${JSON.stringify(after.profileChanges)}`);
+    await tab.reload();
+    await tab.go("machines");
+    await tab.waitFor("claude-1 off, nothing waiting", () => document.querySelector('[aria-label="Bật gói claude-1"]')?.getAttribute("aria-checked") === "false" && !document.body.innerText.includes("chờ máy áp dụng"));
+  });
+
   // Roadmap 27a: a project's row only tightens the hub's default; the machines get it at their heartbeat.
   await step("agent-policy", async () => {
     const tab = (current = tabs.admin);

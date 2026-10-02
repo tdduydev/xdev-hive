@@ -27,6 +27,11 @@ export interface Actor {
   onBehalf?: string;
   /** The run the agent works in (`x-hive-run`, from the HIVE_RUN the runner sets). */
   run?: string;
+  /**
+   * The hub account behind the session or token; absent for a token of no account (CI, the CLI's). Unlike onBehalf it
+   * never falls back to a token's name, so it can tell who owns a machine (roadmap 18d).
+   */
+  account?: string;
 }
 
 export interface DocSummary {
@@ -305,6 +310,21 @@ export interface ReportedProfile {
   cooldownUntil: string | null;
   runs: number;
   rateLimited: number;
+  /** Lower runs first (AgentProfile.priority). Absent from apps older than 0.95, which cannot take changes from the hub. */
+  priority?: number;
+}
+
+/**
+ * A change to one of a machine's profiles asked for on the web (roadmap 18d), waiting until the machine reports the
+ * profile as asked. null: that part is left as the machine has it.
+ */
+export interface ProfileChange {
+  machineId: string;
+  profileId: string;
+  enabled: boolean | null;
+  priority: number | null;
+  requestedBy: string;
+  requestedAt: string;
 }
 
 export const POLICY_CLIS = ["claude", "codex", "gemini"] as const;
@@ -800,6 +820,10 @@ export interface Machine {
   projects: string[];
   /** Its user lets project managers queue runs on it from the web (runs.dispatch). */
   acceptsRuns: boolean;
+  /** The hub account its token belongs to: with hub admins, the only one who may change its profiles from the web. */
+  owner: string | null;
+  /** Profile changes asked for on the web that the machine has not reported yet (roadmap 18d). */
+  profileChanges: ProfileChange[];
 }
 
 /** API-price cost estimates over rolling windows: the last 24 hours, 7 days and 30 days. */

@@ -56,6 +56,7 @@ export const ACTION_LABEL: Record<string, MessageKey> = {
   "tasks.create": "auditAction.tasksCreate",
   "tasks.setDeps": "auditAction.tasksSetDeps",
   "machines.remove": "auditAction.machinesRemove",
+  "machines.setProfile": "auditAction.machinesSetProfile",
   "cooldowns.clear": "auditAction.cooldownsClear",
   "policy.set": "auditAction.policySet",
   "agentPolicy.set": "auditAction.agentPolicySet",

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import type { CostSummary, CostTotals, Machine, QuotaCooldown } from "@xdev-hive/core";
+import type { CostSummary, CostTotals, Machine, QuotaCooldown, ReportedProfile } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
+import { Input } from "@xdev-hive/ui/components/ui/input";
+import { Switch } from "@xdev-hive/ui/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE } from "#ui/components/common.tsx";
 import { ProfileStates } from "#ui/components/ProfileStates.tsx";
@@ -196,6 +198,7 @@ function MachineRow({ machine: m, onChanged }: { machine: Machine; onChanged: ()
             <div className="mt-1.5 flex flex-col gap-1">
               <span className="text-xs font-medium text-muted-foreground">{t("machines.profiles")}</span>
               <ProfileStates profiles={m.profiles} />
+              {mayManage(me, m) ? <ProfileControls machine={m} onChanged={onChanged} /> : null}
             </div>
           ) : null}
         </div>
@@ -246,6 +249,74 @@ function MachineRow({ machine: m, onChanged }: { machine: Machine; onChanged: ()
         ) : null}
       </TableCell>
     </TableRow>
+  );
+}
+
+/** Asked 2/10 (roadmap 18d): a subscription is someone's own account, so only hub admins and the machine's owner. */
+function mayManage(me: ReturnType<typeof useHive>["me"], m: Machine): boolean {
+  return (me.role === "admin" && !me.access) || (!!me.user && me.user.username === m.owner);
+}
+
+/** On/off and priority of each profile; the machine applies a change at its next heartbeat. */
+function ProfileControls({ machine: m, onChanged }: { machine: Machine; onChanged: () => void }) {
+  const { client } = useHive();
+  const t = useT();
+  const action = useAction();
+  const set = (p: ReportedProfile, change: { enabled?: boolean; priority?: number }) =>
+    void action.run(async () => {
+      await client.call("machines.setProfile", { machineId: m.id, profileId: p.id, ...change });
+      onChanged();
+    });
+  return (
+    <div className="mt-1 flex flex-col gap-1.5 rounded-md border border-dashed p-2">
+      {m.profiles.map((p) => {
+        const waiting = m.profileChanges?.find((c) => c.profileId === p.id) ?? null;
+        // A change on its way shows as asked, so the switch does not flip back until the machine reports it.
+        const on = waiting?.enabled ?? p.enabled;
+        const old = p.priority === undefined;
+        return (
+          <div key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <Switch checked={on} disabled={old || action.busy} onCheckedChange={(v) => set(p, { enabled: v })} aria-label={t("machines.profileOn", { profile: p.id })} />
+            <span className="min-w-20 font-mono text-xs">{p.id}</span>
+            {old ? (
+              <span className="text-xs text-muted-foreground">{t("machines.profileOldApp")}</span>
+            ) : (
+              <PriorityInput key={`${p.id}-${waiting?.priority ?? p.priority}`} value={waiting?.priority ?? p.priority!} busy={action.busy} label={t("machines.profilePriority")} onSave={(v) => set(p, { priority: v })} />
+            )}
+            {waiting ? <span className="text-xs text-warning">{t("machines.profileWaiting", { who: waiting.requestedBy, time: formatTime(waiting.requestedAt) })}</span> : null}
+          </div>
+        );
+      })}
+      <span className="text-xs text-muted-foreground">{t("machines.profileHint")}</span>
+      <ErrorNote error={action.error} />
+    </div>
+  );
+}
+
+function PriorityInput({ value, busy, label, onSave }: { value: number; busy: boolean; label: string; onSave: (v: number) => void }) {
+  const [draft, setDraft] = useState(String(value));
+  const save = () => {
+    const v = Number(draft);
+    if (Number.isInteger(v) && v >= 0 && v <= 100 && v !== value) onSave(v);
+    else setDraft(String(value));
+  };
+  return (
+    <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+      {label}
+      <Input
+        type="number"
+        min={0}
+        max={100}
+        value={draft}
+        disabled={busy}
+        className="h-7 w-16 px-2 font-mono text-xs"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+      />
+    </label>
   );
 }
 

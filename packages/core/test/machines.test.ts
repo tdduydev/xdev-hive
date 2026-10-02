@@ -106,3 +106,103 @@ describe("quota cooldowns", () => {
     await assert.rejects(hive.call("cooldowns.set", { account: "ok", until: "tomorrow", reason: "" }, mbp), (e: unknown) => e instanceof HiveError && e.code === "bad_request");
   });
 });
+
+describe("profiles changed from the web (roadmap 18d)", () => {
+  // The machine's token belongs to Duy's account; Hoa is another member, Tú a hub admin.
+  const machine: Actor = { name: "runner.duy-mbp@duy-mbp", role: "member", account: "duy", onBehalf: "duy" };
+  const duy: Actor = { name: "duy", role: "member", account: "duy", source: { via: "web" } };
+  const hoa: Actor = { name: "hoa", role: "member", account: "hoa", source: { via: "web" } };
+  const hubAdmin: Actor = { name: "tu", role: "admin", account: "tu", source: { via: "web" } };
+  const profile = (id: string, over: Record<string, unknown> = {}) => ({
+    id,
+    label: id,
+    kind: "claude",
+    enabled: true,
+    account: null,
+    installed: true,
+    cooldownUntil: null,
+    runs: 0,
+    rateLimited: 0,
+    priority: 10,
+    ...over,
+  });
+
+  async function setup(profiles = [profile("claude-1"), profile("codex-1", { kind: "codex", priority: 20 })]) {
+    const c = clock();
+    const hive = new SqliteHive(":memory:", { now: c.now });
+    const report = (ps: unknown[]) => hive.call("machines.heartbeat", { machine: "duy-mbp", instance: "aaaaaaaa", version: "0.95.0", runs: [], profiles: ps as never }, machine);
+    await report(profiles);
+    return { hive, c, report };
+  }
+  const forbidden = (e: unknown) => e instanceof HiveError && e.code === "forbidden" && e.key === "errors.machineProfileForbidden";
+
+  it("keeps the account the machine's token belongs to as its owner", async () => {
+    const { hive } = await setup();
+    assert.equal((await hive.call("machines.list", {}, viewer))[0]!.owner, "duy");
+    // A token of no account owns nothing, even though onBehalf carries its name.
+    await hive.call("machines.heartbeat", { machine: "ci", instance: "bbbbbbbb", version: "0.95.0", runs: [] }, { name: "runner.ci@ci", role: "agent", onBehalf: "ci" });
+    assert.equal((await hive.call("machines.list", {}, viewer)).find((m) => m.machine === "ci")!.owner, null);
+  });
+
+  it("lets the owner and a hub admin change a profile, not another member or an agent on the owner's token", async () => {
+    const { hive } = await setup();
+    const id = machine.name;
+    await assert.rejects(hive.call("machines.setProfile", { machineId: id, profileId: "claude-1", enabled: false }, hoa), forbidden);
+    // A restricted account is no hub admin, whatever its role says.
+    await assert.rejects(hive.call("machines.setProfile", { machineId: id, profileId: "claude-1", enabled: false }, { ...hubAdmin, access: { projects: {} } as never }), forbidden);
+    const agent: Actor = { name: "claude-1.duy-mbp@duy-mbp", role: "member", account: "duy", agent: "claude-1.duy-mbp", source: { via: "mcp" } };
+    await assert.rejects(hive.call("machines.setProfile", { machineId: id, profileId: "claude-1", enabled: false }, agent), forbidden);
+
+    let m = await hive.call("machines.setProfile", { machineId: id, profileId: "claude-1", enabled: false }, duy);
+    assert.deepEqual(m.profileChanges.map((c) => [c.profileId, c.enabled, c.priority, c.requestedBy]), [["claude-1", false, null, "duy"]]);
+    m = await hive.call("machines.setProfile", { machineId: id, profileId: "codex-1", priority: 5 }, hubAdmin);
+    assert.deepEqual(m.profileChanges.map((c) => [c.profileId, c.enabled, c.priority, c.requestedBy]), [["claude-1", false, null, "duy"], ["codex-1", null, 5, "tu"]]);
+    const log = (await hive.call("admin.audit", { limit: 10 }, admin)).filter((e) => e.action === "machines.setProfile");
+    assert.deepEqual(log.map((e) => [e.target, e.detailKey]), [["duy-mbp/codex-1", "audit.profilePriority"], ["duy-mbp/claude-1", "audit.profileOff"]]);
+  });
+
+  it("sends the change at each heartbeat until the machine reports the profile as asked", async () => {
+    const { hive, report } = await setup();
+    await hive.call("machines.setProfile", { machineId: machine.name, profileId: "claude-1", enabled: false, priority: 3 }, duy);
+    let beat = await report([profile("claude-1"), profile("codex-1", { priority: 20 })]);
+    assert.deepEqual(beat.profileChanges.map((c) => [c.profileId, c.enabled, c.priority]), [["claude-1", false, 3]], "still as before: sent again");
+    beat = await report([profile("claude-1", { enabled: false }), profile("codex-1", { priority: 20 })]);
+    assert.equal(beat.profileChanges.length, 1, "half done: the priority is still to come");
+    beat = await report([profile("claude-1", { enabled: false, priority: 3 }), profile("codex-1", { priority: 20 })]);
+    assert.deepEqual(beat.profileChanges, []);
+    assert.deepEqual((await hive.call("machines.list", {}, viewer))[0]!.profileChanges, []);
+  });
+
+  it("merges a second change into the waiting one, and switching back cancels it", async () => {
+    const { hive } = await setup();
+    const id = machine.name;
+    await hive.call("machines.setProfile", { machineId: id, profileId: "claude-1", enabled: false }, duy);
+    let m = await hive.call("machines.setProfile", { machineId: id, profileId: "claude-1", priority: 1 }, duy);
+    assert.deepEqual(m.profileChanges.map((c) => [c.enabled, c.priority]), [[false, 1]]);
+    m = await hive.call("machines.setProfile", { machineId: id, profileId: "claude-1", enabled: true, priority: 10 }, duy);
+    assert.deepEqual(m.profileChanges, [], "the machine already has it so");
+  });
+
+  it("drops a change for a profile the machine no longer has, and one the machine never took within a day", async () => {
+    const { hive, c, report } = await setup();
+    const id = machine.name;
+    await hive.call("machines.setProfile", { machineId: id, profileId: "codex-1", enabled: false }, duy);
+    assert.deepEqual((await report([profile("claude-1")])).profileChanges, [], "codex-1 is gone from the machine");
+    await hive.call("machines.setProfile", { machineId: id, profileId: "claude-1", enabled: false }, duy);
+    c.advance(23 * 60);
+    assert.equal((await report([profile("claude-1")])).profileChanges.length, 1);
+    c.advance(2 * 60);
+    assert.deepEqual((await report([profile("claude-1")])).profileChanges, []);
+  });
+
+  it("refuses an unknown profile, an unknown machine, and a machine whose app cannot take changes", async () => {
+    const { hive, report } = await setup();
+    await assert.rejects(hive.call("machines.setProfile", { machineId: machine.name, profileId: "gemini-1", enabled: false }, duy), (e: unknown) => e instanceof HiveError && e.key === "errors.machineProfileNotFound");
+    await assert.rejects(hive.call("machines.setProfile", { machineId: "runner.nope@x", profileId: "claude-1", enabled: false }, hubAdmin), (e: unknown) => e instanceof HiveError && e.code === "not_found");
+    // An app older than 0.95 reports no priority.
+    const { priority: _, ...old } = profile("claude-1");
+    await report([old]);
+    await assert.rejects(hive.call("machines.setProfile", { machineId: machine.name, profileId: "claude-1", enabled: false }, duy), (e: unknown) => e instanceof HiveError && e.key === "errors.machineAppTooOld");
+    await assert.rejects(hive.call("machines.setProfile", { machineId: machine.name, profileId: "claude-1" } as never, duy), (e: unknown) => e instanceof HiveError && e.code === "bad_request");
+  });
+});
