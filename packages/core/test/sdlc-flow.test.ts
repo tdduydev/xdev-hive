@@ -95,8 +95,8 @@ describe("a Spec Kit flow through the gates (roadmap 34b)", () => {
     await hive.call("sdlc.decide", { gateId: second.gate!.id, decision: "pass" }, lead);
     assert.equal((await flow("SPEC-1")).state, "next", "the tasks.md the hub has is older than the gate");
     await push("SPEC-1", { spec: "# SSO login\n", plan: "# Plan\n", tasks: TASKS_MD });
-    const done = await flow("SPEC-1");
-    assert.equal(done.state, "done");
+    const imported = await flow("SPEC-1");
+    assert.deepEqual([imported.state, imported.gate?.gate, imported.gate?.status], ["gate", "dispatch", "waiting"], "whether they go to agents now is the dispatch gate's");
     const ids = (await hive.call("tasks.list", { project: "app" }, admin)).map((t) => t.id);
     assert.ok(ids.includes("S001-T001") && ids.includes("S001-T002"), ids.join(", "));
 
@@ -108,6 +108,7 @@ describe("a Spec Kit flow through the gates (roadmap 34b)", () => {
         ["plan", "ai", "passed", "run:runner.duy-mbp@duy-mbp"],
         ["tasks", "human", "rejected", "lan"],
         ["tasks", "human", "passed", "lan"],
+        ["dispatch", "human", "waiting", undefined],
       ],
     );
   });
@@ -151,5 +152,80 @@ describe("a Spec Kit flow through the gates (roadmap 34b)", () => {
     assert.equal((await hive.call("sdlc.gates", { taskId: "SPEC-3" }, admin))[0]?.status, "rejected");
     assert.equal((await flow("SPEC-3")).state, "running");
     assert.equal(await refusal(hive.call("specs.runStep", { project: "app", step: "specify", taskId: "SPEC-3", input: "x", machineId: mbp.name }, admin)), "errors.flowBusy");
+  });
+});
+
+describe("a flow's tasks on their way to main (roadmap 34c, 34d)", () => {
+  /** A finished run of a flow task, with its MR as the machine's watcher saw it. */
+  const mr = (pipeline: "running" | "success" | "failed", draft = false) => ({ iid: 7, status: "opened" as const, draft, pipeline, pipelineUrl: null, checkedAt: "2026-10-02T09:00:00.000Z" });
+
+  it("gives the tasks to agents, fixes what the review asks within the rounds, and merges once CI is green", async () => {
+    const { hive, beat, run, push, flow } = await hub();
+    await beat();
+    await hive.call("sdlc.setProject", { project: "app", settings: { gates: { tasks: "auto", dispatch: "auto", review: "ai", fix: "auto", merge: "auto" }, maxFixRounds: 1 } }, admin);
+    await hive.call("specs.runStep", { project: "app", step: "tasks", taskId: "SPEC-9", title: "Tasks: SSO", dir: "001-login", machineId: mbp.name }, admin);
+    const [tasksStep] = await beat();
+    await run(tasksStep!, "succeeded");
+    await push("SPEC-9", { spec: "# SSO\n", plan: "# Plan\n", tasks: "# Tasks\n\n## Phase 1: Setup\n\n- [ ] T001 Add the SSO config in src/config.ts\n" });
+    assert.equal((await flow("SPEC-9")).state, "done", "imported, and dispatch \"auto\" gave the task to agents");
+    const [ft] = await hive.call("sdlc.flowTasks", { flowTask: "SPEC-9" }, admin);
+    assert.deepEqual([ft?.taskId, ft?.stage], ["S001-T001", "build"]);
+
+    // Built on the free machine, with a cross-review after it (the review gate is not "auto").
+    const [build] = (await beat()).filter((r) => r.taskId === "S001-T001");
+    assert.deepEqual([build!.role, build!.reviewAfter, build!.machineId], ["implement", true, mbp.name]);
+    const built = await run(build!, "succeeded");
+    // The machine queues the review itself (reviewAfter); its report asks for changes.
+    const reviewReq = { ...build!, role: "review" as const, id: build!.id };
+    const asRun = async (runId: string, role: "implement" | "review", status: string, summary: string | null, extra: Record<string, unknown> = {}) =>
+      hive.call("runs.push", { machine: "duy-mbp", runs: [{ runId, project: "app", taskId: "S001-T001", taskTitle: "x", role, status: status as never, profileId: role === "review" ? "codex-1" : "claude-1", summary, createdAt: "2026-10-02T08:00:00.000Z", ...extra }] }, mbp);
+    void reviewReq;
+    await asRun("R-rev1", "review", "running", null);
+    await asRun("R-rev1", "review", "succeeded", "The config misses the callback URL.\n\nVerdict: changes needed");
+    let t = (await hive.call("sdlc.flowTasks", { taskId: "S001-T001" }, admin))[0]!;
+    assert.deepEqual([t.stage, t.fixRounds], ["fix", 1], "fix \"auto\": queued at once");
+    const [fix] = (await beat()).filter((r) => r.taskId === "S001-T001");
+    assert.match(fix!.instructions, /Fix what review R-rev1 \(codex-1\) asked for[\s\S]*callback URL/);
+    assert.equal(fix!.reviewAfter, true);
+
+    // The fix, then a review that approves: on to merge, waiting for a green MR.
+    const fixed = await run(fix!, "succeeded");
+    await asRun("R-rev2", "review", "running", null);
+    await asRun("R-rev2", "review", "succeeded", "All good now.\n\nVerdict: approve");
+    t = (await hive.call("sdlc.flowTasks", { taskId: "S001-T001" }, admin))[0]!;
+    assert.deepEqual([t.stage, t.runId], ["merge", fixed], "the MR is the fix run's from now on");
+    assert.notEqual(built, fixed);
+
+    // CI running: it waits. Green: merge "auto" asks the machine to merge, as a person would on the web.
+    await asRun(fixed, "implement", "succeeded", null, { mrUrl: "https://git.example.com/app/-/merge_requests/7", mr: mr("running") });
+    assert.equal((await hive.call("sdlc.flowTasks", { taskId: "S001-T001" }, admin))[0]!.stage, "merge");
+    await asRun(fixed, "implement", "succeeded", null, { mrUrl: "https://git.example.com/app/-/merge_requests/7", mr: mr("success") });
+    assert.equal((await hive.call("sdlc.flowTasks", { taskId: "S001-T001" }, admin))[0]!.stage, "merging");
+    const { mergeRuns } = await hive.call("machines.heartbeat", { machine: "duy-mbp", instance: "a1b2c3d4", projects: ["app"], acceptsRuns: true, runs: [] }, mbp);
+    assert.deepEqual(mergeRuns.map((m) => [m.runId, m.requestedBy]), [[fixed, "sdlc"]]);
+    await hive.call("runs.mergeResult", { runId: fixed, ok: true }, mbp);
+    await beat();
+    assert.equal((await hive.call("sdlc.flowTasks", { taskId: "S001-T001" }, admin))[0]!.stage, "done");
+
+    const gates = (await hive.call("sdlc.gates", { taskId: "S001-T001" }, admin)).map((g) => `${g.gate}:${g.status}`).reverse();
+    assert.deepEqual(gates, ["review:rejected", "fix:passed", "review:passed", "merge:passed"]);
+  });
+
+  it("asks a person when the fix rounds run out, and keeps a review or a merge from whoever asked for the work", async () => {
+    const { hive, beat, run, push } = await hub();
+    await beat();
+    await hive.call("sdlc.setProject", { project: "app", settings: { gates: { tasks: "auto", dispatch: "auto", review: "ai", fix: "auto" }, maxFixRounds: 0 } }, admin);
+    await hive.call("specs.runStep", { project: "app", step: "tasks", taskId: "SPEC-8", title: "Tasks: export", dir: "001-login", machineId: mbp.name }, lead);
+    const [tasksStep] = await beat();
+    await run(tasksStep!, "succeeded");
+    await push("SPEC-8", { tasks: "# Tasks\n\n## Phase 1: Setup\n\n- [ ] T001 Add the export in src/export.ts\n" });
+    const [build] = (await beat()).filter((r) => r.taskId === "S001-T001");
+    await run(build!, "succeeded");
+    await hive.call("runs.push", { machine: "duy-mbp", runs: [{ runId: "R-rv", project: "app", taskId: "S001-T001", taskTitle: "x", role: "review", status: "succeeded", profileId: "codex-1", summary: "Verdict: changes needed", createdAt: "2026-10-02T08:00:00.000Z" }] }, mbp);
+    const t = (await hive.call("sdlc.flowTasks", { taskId: "S001-T001" }, admin))[0]!;
+    assert.deepEqual([t.stage, t.gate?.gate, t.gate?.status], ["gate", "fix", "escalated"]);
+    // The person stops it and takes over.
+    await hive.call("sdlc.decide", { gateId: t.gate!.id, decision: "changes", note: "I will do it by hand." }, lead);
+    assert.equal((await hive.call("sdlc.flowTasks", { taskId: "S001-T001" }, admin))[0]!.stage, "stopped");
   });
 });

@@ -705,6 +705,11 @@ Trang này có trên hub web và trên app desktop ở chế độ hub, chỉ hi
     - *Tự động*: xếp bước kế luôn.
   - Bước kế chạy trên cùng máy và cùng branch `ai/<task>`. Hub cần biết thư mục `specs/<…>` mà bước specify tạo, và `tasks.md` mới nhất cho bước nhập task, nên app (từ 0.116.0) đẩy spec ngay sau khi báo run xong. Qua chốt `tasks` thì hub nhập `tasks.md` vào board (như *Nhập thành task*).
   - Run lỗi hay yêu cầu bị từ chối thì luồng dừng, có nút *Chạy lại bước*. Task đang trong luồng chạy thì không xếp run tay được (`errors.taskInFlow`). Mỗi lần qua chốt ghi vào `sdlc_gates` (ai quyết: người, run review, hay tự động).
+  - **Task của luồng** (34c, 34d): nhập xong `tasks.md` là tới chốt `dispatch`; qua chốt thì hub đưa các task vào một đợt chạy (máy rảnh, *Song song* của dự án, review chéo trừ khi chốt `review` là *Tự động*). Mỗi task đi tiếp:
+    - `review`: *AI kiểm* lấy kết luận của review chéo (*đạt* → merge, *cần sửa* → chốt `fix`, không đọc được → người); *Người duyệt* chờ người bấm *Đạt, sang merge* hoặc *Yêu cầu sửa*; *Tự động* bỏ review.
+    - `fix`: xếp lượt sửa trên đúng máy có branch, chỉ dẫn là báo cáo review (như *Xếp lượt sửa*), tối đa *Lượt sửa* của dự án; hết lượt thì chuyển người. *Người duyệt*: *Xếp lượt sửa* hoặc *Dừng, tôi tự xử lý*.
+    - `merge`: chờ MR mở, không nháp, pipeline *success*; rồi hub nhờ máy merge (như nút *Merge*, người yêu cầu ghi `sdlc`), AI kiểm lần cuối, hoặc chờ người. Chưa có MR, MR vẫn nháp, hay không có CI sau 15 phút thì chuyển người.
+    - Duyệt review và merge cần quyền *Review code* và không được là người đã mở luồng (luật 27c, như merge từ web). Panel task hiện giai đoạn, số lượt sửa và nút của chốt đang chờ.
 - **Trần chi tiêu** (roadmap 27b, thẻ trên trang *Chi phí*): admin hub đặt trần cho một dự án, một người yêu cầu run, hoặc cả hub, theo ngày hoặc theo tháng (giờ của hub). Trần tính bằng USD (giá API ước tính, như trang *Chi phí*), bằng số run, hoặc cả hai.
   - Run được tính cho người yêu cầu nó trên web; run chạy từ Board được tính cho tài khoản sở hữu token của máy.
   - Hết trần thì hub không nhận *Giao run* mới (`errors.budgetExceeded`). Máy nghe qua heartbeat và giữ run mới trong *Hàng đợi* kèm lý do, kể cả run từ Board. Run đang chạy vẫn chạy tiếp.

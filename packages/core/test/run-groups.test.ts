@@ -293,3 +293,19 @@ describe("one prompt for several agents (roadmap 31e)", () => {
     assert.deepEqual((await hive.call("tasks.list", { project: "app" }, admin)).filter((t) => t.id.startsWith("P-")), []);
   });
 });
+
+describe("a task whose run in a group is over (roadmap 31a fix)", () => {
+  it("may be run again by hand while the rest of its group goes on", async () => {
+    const { hive, beat, push, take } = await hub();
+    await beat(mbp);
+    await hive.call("runs.dispatchMany", { project: "app", items: [{ taskId: "T-1", machineId: mbp.name }, { taskId: "T-2", machineId: mbp.name }], maxParallel: 1 }, admin);
+    const [first] = (await beat(mbp)).runRequests;
+    await take(mbp, [first!]);
+    await push(mbp, "R-T-1", "T-1", "running");
+    assert.equal(await refusal(hive.call("runs.dispatch", { machineId: mbp.name, project: "app", taskId: "T-1" }, admin)), "errors.taskInGroup", "its run is going");
+    await push(mbp, "R-T-1", "T-1", "succeeded");
+    await beat(mbp);
+    // A fix after its review, say: the group still runs T-2.
+    assert.equal((await hive.call("runs.dispatch", { machineId: mbp.name, project: "app", taskId: "T-1" }, admin)).status, "pending");
+  });
+});
