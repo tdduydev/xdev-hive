@@ -97,5 +97,6 @@ ${changes || "- (không có)"}
 `;
 const notesFile = path.join(release, "NOTES.md");
 writeFileSync(notesFile, notes);
-if (!hubOnly) run("gh", ["release", "create", tag, ...assets, sumsFile, "--target", "main", "--title", `xDev Hive ${tag}`, "--notes-file", notesFile], { cwd: repoRoot });
+// The commit that was built, not main as it is by now: another session may have pushed while this one built.
+if (!hubOnly) run("gh", ["release", "create", tag, ...assets, sumsFile, "--target", out("git", ["rev-parse", "HEAD"]), "--title", `xDev Hive ${tag}`, "--notes-file", notesFile], { cwd: repoRoot });
 await toHub(notes);
