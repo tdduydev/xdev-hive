@@ -237,6 +237,11 @@ queued ─chọn gói─▶ running ─exit 0──────▶ succeeded ─
   - Lệnh nằm trong một script ở `~/.xdev-hive/login/<profile>/`, quyền `0700`. Script chỉ chứa biến thư mục đăng nhập (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`), không chứa key hay token.
   - Quay lại cửa sổ app thì app kiểm lại các gói chưa đăng nhập.
   - Gemini và CLI tuỳ chỉnh không có lệnh xem trạng thái, nên để "chưa rõ" và runner vẫn dùng.
+- **Tự code bằng một gói** (roadmap 32a): nút *Mở Claude Code* / *Mở Codex* trên thẻ gói (*Agent và quota*, chọn dự án) và ở hàng dự án (*Dự án & cài đặt*, chọn gói) mở terminal chạy CLI của gói đó trong repo dự án.
+  - Đây là phiên của bạn, không phải run: không `-p`, không cờ của run, không theo chính sách agent và không tính vào trần chi tiêu. MCP, hook và cài đặt của bạn và của repo vẫn dùng như khi tự gõ `claude`.
+  - Hive biết phiên là của gói nào: Claude Code nhận `--mcp-config` với server `xdev-hive` có `HIVE_AGENT` = id gói. Server này thay server cùng tên trong `.mcp.json` của repo (đã kiểm trên Claude Code 2.1.283). Codex nhận `-c mcp_servers.xdev-hive.command/env`.
+  - Script ở `~/.xdev-hive/cli/<gói>/`: chỉ có thư mục đăng nhập, `PATH` của runner (trừ Windows) và `HIVE_AGENT` / `HIVE_PROJECT`, không có key hay token. Repo không còn thì script dừng thay vì chạy ở thư mục khác.
+  - Gói biết là chưa đăng nhập thì app báo lỗi; bấm *Đăng nhập* trước.
 - **Log trực tiếp** (Claude Code): runner thêm `--output-format stream-json --verbose`, trừ khi profile đã tự chọn định dạng (`json`: chỉ có kết quả lúc xong).
   - Log run ghi từng bước ngay khi agent làm: lời agent nói, `▶` lệnh hay tool nó gọi (`Bash: mvn -B verify`, `Edit src/…`, `memory_search …`), `✓` / `✗` và dòng đầu của kết quả. Không ghi sự kiện JSON thô.
   - Board hiện việc agent đang làm dưới trạng thái run (bảng Lượt chạy, chi tiết run, tooltip trên thẻ task): tóm tắt của Claude Code, không có thì tool nó vừa gọi. CLI khác (Codex, Gemini) thì là dòng cuối nó in ra.

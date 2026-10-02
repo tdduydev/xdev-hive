@@ -1022,6 +1022,12 @@ export const vi = {
     nextReady: "Sẵn sàng tiếp theo:",
     nextNone: "Chưa task nào sẵn sàng: mọi task còn lại đang có người giữ hoặc chờ task khác.",
   },
+  openCli: {
+    open: "Mở {cli}",
+    profile: "Gói",
+    project: "Dự án",
+    opened: "Đã mở terminal: {profile} trong repo {project}. Phiên này là của bạn, không phải run: không theo chính sách agent và không tính vào trần chi tiêu.",
+  },
   agentKind: {
     claude: "Claude Code",
     codex: "Codex",
@@ -2320,6 +2326,9 @@ export const vi = {
     setupTokenTitle: "token dài hạn cho {profile}",
     setupTokenDone: "Chép token vừa hiện (bắt đầu bằng sk-ant-) vào ô Token container của profile trong app, rồi đóng cửa sổ này.",
     noTerminal: "Không tìm thấy terminal nào để mở (x-terminal-emulator, gnome-terminal, konsole, xfce4-terminal, xterm).",
+    cliTitle: "{profile} trong {project}",
+    cliDone: "Phiên đã kết thúc. Đóng cửa sổ này được rồi.",
+    cliSignedOut: "{profile} chưa đăng nhập. Bấm Đăng nhập trên thẻ gói trước.",
     gitlabSignedIn: "Đăng nhập GitLab với tài khoản {name} (@{username})",
     githubSignedIn: "Đăng nhập GitHub với tài khoản {name} (@{username})",
     browserSignInDone: "Đã đăng nhập. Quay lại app xDev Hive, có thể đóng tab này.",
