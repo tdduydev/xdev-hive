@@ -9,6 +9,7 @@ import { MR_STATUSES, PIPELINE_STATUSES } from "./gitlab.ts";
 import { MACHINE_ID, PROJECT_NAME } from "./keys.ts";
 import type { SkillSummary } from "./skills.ts";
 import { SPEC_DIR, SPEC_FEATURES_MAX, SPEC_FILE_MAX, type SpecFeature, type SpecFeatureDetail, type SpecTaskPlan } from "./speckit.ts";
+import { toolEntrySchema } from "./tools.ts";
 import {
   MEMORY_KINDS,
   MEMORY_STATUSES,
@@ -58,6 +59,7 @@ import {
   type Role,
   type Task,
   type TeamPolicy,
+  type ToolView,
 } from "./types.ts";
 
 const docKey = z.string().min(1).max(200);
@@ -658,6 +660,15 @@ export const schemas = {
     z.object({ project, policy: agentPolicyPartSchema.nullable() }),
   ]),
 
+  /** The tool catalog (roadmap 28a), each entry with the settings of the projects the caller may view; `project`: that one only. */
+  "tools.list": z.object({ project: project.optional() }),
+  /** Adds an entry (no baseVersion) or replaces one (baseVersion: the version read); a hub admin. */
+  "tools.save": z.object({ entry: toolEntrySchema, baseVersion: z.number().int().positive().optional() }),
+  /** Removes an entry and its projects' settings; seeds are only turned off. */
+  "tools.remove": z.object({ id: z.string().min(1).max(40) }),
+  /** A project's own setting (projectSettings on it); enabled null and required false: back to the tool's default. */
+  "tools.setProject": z.object({ id: z.string().min(1).max(40), project, enabled: z.boolean().nullable(), required: z.boolean().default(false) }),
+
   /** Systems (roadmap 19b), by name. */
   "systems.list": z.object({}),
   /** Creates a system or replaces its projects: needs "manage" on every project it had and gets. */
@@ -810,6 +821,10 @@ export interface MethodOutput {
   "policy.set": TeamPolicy;
   "agentPolicy.get": AgentPolicyView;
   "agentPolicy.set": AgentPolicyView;
+  "tools.list": ToolView[];
+  "tools.save": ToolView;
+  "tools.remove": { removed: boolean };
+  "tools.setProject": ToolView;
   "systems.list": HiveSystem[];
   "systems.save": HiveSystem;
   "systems.remove": { removed: boolean };
@@ -923,6 +938,12 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "agentPolicy.get": "viewer",
   // Also a hub admin for the hub's default, or projectSettings on the project: a person, never an agent token.
   "agentPolicy.set": "agent",
+  "tools.list": "viewer",
+  // Also no per-project grants (a hub admin): an entry is what every project's runs may get.
+  "tools.save": "admin",
+  "tools.remove": "admin",
+  // Also projectSettings on the project: a person, never an agent token.
+  "tools.setProject": "agent",
   "systems.list": "viewer",
   // Also "manage" on each project of the system: a project manager, never an agent token.
   "systems.save": "agent",
