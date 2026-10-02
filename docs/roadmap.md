@@ -185,7 +185,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **34d. review-merge**: kết luận *đạt* của review chéo đủ để đi tiếp, hoặc bỏ review; MR có CI xanh thì tự merge hoặc AI kiểm rồi merge.
 
 - **35. app-web-split** (hỏi 2/10: "giao diện tinh gọn và dễ sử dụng, app là app, web quản trị là web quản trị, đừng mix"; chọn: app desktop chỉ việc của máy, chế độ cục bộ vẫn đủ trang, một web với menu theo quyền, làm từng bước có ảnh trước/sau). Tách:
-  - [ ] **35a. app-trim**: app desktop ở chế độ hub còn năm mục: *Hôm nay* (của máy: CI, cài đặt máy, yêu cầu cài), *Lượt chạy* (trên máy này), *Agent & quota*, *Dự án & công cụ* (repo trên máy và cài đặt), *Cài đặt* (kết nối hub, GitLab/GitHub). Nút *Mở web* và mọi đường dẫn tới trang của web mở trình duyệt ở hub. Chế độ cục bộ giữ đủ trang.
+  - [x] **35a. app-trim**: app desktop ở chế độ hub còn năm mục: *Hôm nay* (của máy: CI, cài đặt máy, yêu cầu cài), *Lượt chạy* (trên máy này), *Agent & quota*, *Dự án & công cụ* (repo trên máy và cài đặt), *Cài đặt* (kết nối hub, GitLab/GitHub). Nút *Mở web* và mọi đường dẫn tới trang của web mở trình duyệt ở hub. Chế độ cục bộ giữ đủ trang.
   - [ ] **35b. web-one-shell**: gộp shell của admin hub và shell thành viên trên web thành một; menu *Công việc*, *Kiến thức*, *Vận hành*, *Quản trị* theo quyền; bỏ trang trùng (mỗi việc một trang); địa chỉ cũ `#/admin/...` chuyển sang trang mới.
   - [ ] **35c. web-today**: *Hôm nay* trên web là mọi thứ chờ người đó: chốt SDLC, đề xuất, memory, review task, cảnh báo, yêu cầu run; gộp các hàng duyệt rời.
 
