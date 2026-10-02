@@ -490,6 +490,8 @@ async function main() {
     const second = (await rpc("tasks.list", { project: "payment" })).find((t) => /^P-\d+$/.test(t.id)).id;
     // The "ready next" notice comes in after the table and pushes it down: click once the page has settled.
     await tab.waitFor("the ready-next notice", () => document.body.innerText.includes("Sẵn sàng tiếp theo"));
+    // Tasks are picked in the list; the page opens on the board (roadmap 30a).
+    await tab.click('[role="radio"]', "Danh sách");
     for (const id of ["PAY-1", second]) {
       await tab.click(`[data-pick-task="${id}"]`);
       await tab.waitFor(`${id} picked`, (x) => document.querySelector(`[data-pick-task="${x}"]`)?.getAttribute("data-state") === "checked", id);
