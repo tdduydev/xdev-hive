@@ -2,7 +2,8 @@
 // of it, edited here by the project's managers. It is saved as the project's skill, so the Skills page shows it too,
 // and the leader reads it with skill_get before it answers.
 import { useState } from "react";
-import { LEADER_COMMAND, MAX_LEADER_COMMANDS, skillDocKey } from "@xdev-hive/core";
+import { CHAT_ACTION_ALWAYS_CONFIRM, CHAT_ACTION_KINDS, LEADER_COMMAND, MAX_LEADER_COMMANDS, skillDocKey, type ChatActionKind } from "@xdev-hive/core";
+import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
@@ -49,6 +50,7 @@ export function LeaderGuideSheet({
           ) : null}
           {project ? <GuideEditor key={project} project={project} /> : null}
           {project ? <CommandsEditor key={`commands-${project}`} project={project} /> : null}
+          {project ? <AutonomyEditor key={`auto-${project}`} project={project} /> : null}
         </div>
       </SheetContent>
     </Sheet>
@@ -201,6 +203,67 @@ function CommandsEditor({ project }: { project: string }) {
           {t("chat.commandsSave", { project })}
         </Button>
         {saved ? <span className="text-xs text-success">{lines.length ? t("chat.commandsSaved", { project }) : t("chat.commandsNone", { project })}</span> : null}
+      </div>
+      <ErrorNote error={action.error} />
+    </form>
+  );
+}
+
+/**
+ * The kinds of proposal the project's leader runs alone (roadmap 29c), as the person who sent the message and never
+ * past their rights; the rest wait for a confirm in the chat. Changing the agent policy and letting agents run again
+ * after a stop always wait: the leader does not loosen its own limits.
+ */
+function AutonomyEditor({ project }: { project: string }) {
+  const { client } = useHive();
+  const t = useT();
+  const action = useAction();
+  const defaults = useQuery(() => client.call("chat.defaults", { project }), [client, project]);
+  const [picked, setPicked] = useState<ChatActionKind[]>();
+  const [saved, setSaved] = useState(false);
+  if (defaults.error) return <ErrorNote error={defaults.error} />;
+  if (!defaults.data) return null;
+  const kinds = picked ?? defaults.data.autoKinds;
+  const toggle = (k: ChatActionKind, on: boolean) => {
+    setSaved(false);
+    setPicked(on ? [...kinds.filter((x) => x !== k), k] : kinds.filter((x) => x !== k));
+  };
+  return (
+    <form
+      className="flex flex-col gap-2 border-t pt-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void action.run(async () => {
+          const next = await client.call("chat.setAutonomy", { project, kinds });
+          setPicked(next.autoKinds);
+          setSaved(true);
+        });
+      }}
+    >
+      <div className="flex flex-col gap-0.5">
+        <Label>{t("chat.autoTitle")}</Label>
+        <p className="text-xs text-muted-foreground">{t("chat.autoHint")}</p>
+      </div>
+      <div className="grid gap-1.5 sm:grid-cols-2">
+        {CHAT_ACTION_KINDS.map((k) => {
+          const never = CHAT_ACTION_ALWAYS_CONFIRM.includes(k);
+          return (
+            <label key={k} className="flex items-center gap-2 text-xs" title={never ? t("chat.autoAlways") : undefined}>
+              <Checkbox checked={!never && kinds.includes(k)} disabled={never} onCheckedChange={(v) => toggle(k, v === true)} />
+              <span className={never ? "text-muted-foreground" : ""}>
+                {/* "task.create" → task_create: a dot in a message key reads as one more level. */}
+                {t(`chat.autoKind.${k.replace(".", "_") as "task_create"}`)}
+                {never ? ` · ${t("chat.autoAlwaysShort")}` : ""}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" type="submit" disabled={action.busy || picked === undefined}>
+          {t("chat.autoSave", { project })}
+        </Button>
+        {saved ? <span className="text-xs text-success">{kinds.length ? t("chat.autoSaved", { project, count: kinds.length }) : t("chat.autoNone", { project })}</span> : null}
       </div>
       <ErrorNote error={action.error} />
     </form>

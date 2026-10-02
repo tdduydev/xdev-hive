@@ -811,6 +811,8 @@ function ActionItem({ action: a, taskIds, manage, onDecided }: { action: ChatAct
     <li className="flex flex-col gap-1.5 rounded-lg border bg-muted/30 p-2.5 text-xs">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <Badge tone={ACTION_TONE[a.status] ?? "neutral"}>{t(`actionStatus.${a.status}`)}</Badge>
+        {/* Roadmap 29c: the project lets its leader run this kind alone, as whoever sent the message. */}
+        {a.auto ? <Badge tone="info">{t("chat.autoRan", { who: a.decidedBy ?? "?" })}</Badge> : null}
         <span className="min-w-0 text-sm wrap-anywhere">
           {a.kind === "task.create" ? (
             <>

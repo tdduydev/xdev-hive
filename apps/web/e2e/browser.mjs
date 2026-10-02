@@ -662,6 +662,22 @@ async function main() {
     });
   });
 
+  // Roadmap 29c: the lead of payment lets its leader create tasks on its own; the agent policy always waits for a person.
+  await step("leader-autonomy", async () => {
+    const tab = (current = tabs.lan);
+    await tab.go("chat");
+    await tab.click("button", "Hướng dẫn leader");
+    // The guide's own text names the setting too: wait for its checkboxes, not for the words.
+    const policyOff = await tab.waitFor("the autonomy checkboxes", () => {
+      const label = [...document.querySelectorAll("label")].find((l) => l.textContent.trim().startsWith("Đổi chính sách agent"));
+      return label ? { disabled: label.querySelector("button")?.disabled === true } : null;
+    });
+    expect(policyOff.disabled, "the agent policy is not something the leader may run alone");
+    await tab.click("label", "Tạo task");
+    await tab.click("button", "Lưu việc tự chạy cho payment");
+    await until("payment's leader creating tasks on its own", async () => (await rpc("chat.defaults", { project: "payment" })).autoKinds.includes("task.create"));
+  });
+
   await step("hub-page", async () => {
     const tab = (current = tabs.admin);
     await tab.go("admin/hub");
