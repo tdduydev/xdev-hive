@@ -509,6 +509,75 @@ async function main() {
     await rpc("runs.cancelGroup", { id: group.id });
   });
 
+  // Roadmap 31e: one prompt for two of Lan's profiles; each runs its own task, and Lan keeps one on Đợt chạy.
+  await step("fanout", async () => {
+    const machineRpc = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" },
+        body: JSON.stringify({ method, input }),
+      });
+      const body = await r.json();
+      if (body.error) throw new Error(`${method}: ${body.error.message}`);
+      return body.result;
+    };
+    const profile = (id) => ({ id, label: id, kind: "claude", enabled: true, account: null, installed: true, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, maxConcurrent: 1 });
+    const beat = () => machineRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", version: "0.112.0", projects: ["payment"], acceptsRuns: true, profiles: [profile("claude-1"), profile("claude-2")], runs: [] });
+    await beat();
+    const tab = (current = tabs.lan);
+    await tab.reload();
+    await tab.go("tasks");
+    await tab.click("[data-prompt-agent]");
+    await tab.waitFor("the profiles of Lan's machine", () => [...(document.querySelector("#prompt-profile")?.options ?? [])].some((o) => o.value === "claude-2"));
+    await tab.click("[data-prompt-add-agent]");
+    await tab.waitFor("two agent rows", () => document.querySelectorAll("[data-prompt-agent-row]").length === 2);
+    const pickProfile = (row, value) =>
+      tab.eval(
+        (r, v) => {
+          const select = document.querySelector(`#prompt-profile-${r}`);
+          Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, v);
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+        },
+        row,
+        value,
+      );
+    await tab.eval(() => {
+      const select = document.querySelector("#prompt-machine-1");
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, select.options[1].value);
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await pickProfile(0, "claude-1");
+    await tab.waitFor("row b's profiles", () => [...(document.querySelector("#prompt-profile-1")?.options ?? [])].some((o) => o.value === "claude-2"));
+    await pickProfile(1, "claude-2");
+    await tab.click("#prompt-text");
+    await tab.type("Tối ưu trang thanh toán cho điện thoại.");
+    await tab.shot(`${String(n).padStart(2, "0")}-fanout-form`);
+    await tab.click('button[type="submit"]', "Gửi cho 2 agent");
+    const group = await until("the fan-out group", async () => (await rpc("runs.groups", { project: "payment" })).find((g) => g.kind === "fanout"));
+    const [a, b] = group.items;
+    expect(group.parentTask && a.taskId === `${group.parentTask}-a` && b.taskId === `${group.parentTask}-b`, `items: ${group.items.map((i) => i.taskId).join()}`);
+    expect(a.profileId === "claude-1" && b.profileId === "claude-2", `profiles: ${a.profileId}, ${b.profileId}`);
+    // The machine runs both and reports them done.
+    const sent = (await beat()).runRequests.filter((r) => r.taskId.startsWith(`${group.parentTask}-`));
+    expect(sent.length === 2, `sent: ${sent.map((r) => r.taskId).join()}`);
+    const at = new Date().toISOString();
+    for (const r of sent) {
+      await machineRpc("runs.requestResult", { id: r.id, status: "accepted", runId: `R-fan-${r.taskId.slice(-1)}` });
+      await machineRpc("runs.push", {
+        machine: "lan-mbp",
+        runs: [{ runId: `R-fan-${r.taskId.slice(-1)}`, project: "payment", taskId: r.taskId, taskTitle: r.taskTitle, role: "implement", status: "succeeded", profileId: r.profileId, createdAt: at, finishedAt: at }],
+      });
+    }
+    await tab.go(`batches?group=${group.id}`);
+    await tab.waitFor("Chọn bản này for b", (id) => document.querySelector(`[data-pick-winner="${id}"]`)?.disabled === false, b.taskId);
+    await tab.shot(`${String(n).padStart(2, "0")}-fanout-compare`);
+    await tab.click(`[data-pick-winner="${b.taskId}"]`);
+    await tab.waitFor("b kept", () => document.body.innerText.includes("Được chọn"));
+    const tasks = await rpc("tasks.list", { project: "payment" });
+    const status = (id) => tasks.find((t) => t.id === id)?.status;
+    expect(status(a.taskId) === "done" && status(group.parentTask) === "done" && status(b.taskId) !== "done", `tasks: ${[a.taskId, b.taskId, group.parentTask].map((id) => `${id}:${status(id)}`).join()}`);
+  });
+
   // Roadmap 18c: a reviewer merges a run's MR from Lượt chạy; the run's machine does it with its own token at its heartbeat.
   await step("merge-from-web", async () => {
     const lanRpc = async (method, input) => {
