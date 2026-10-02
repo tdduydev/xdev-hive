@@ -120,6 +120,23 @@ async function shoot(name, page, delay, extra = {}) {
 }
 
 for (const [page, delay] of [["board", 6000], ["runs", 3000], ["agents", 1500], ["setup", 4000], ["projects", 1500], ["tools", 1500], ["docs", 1500], ["skills", 1500]]) await shoot(page, page, delay);
+// The hub's tools on Cài đặt máy (roadmap 28b-2): the Tool từ hub card, and the tool's own tool:rtk item, required by
+// demo and waiting for this machine's user to allow it. The catalog stands in for a heartbeat's (local mode).
+const smokeTools = path.join(work, "tools.json");
+writeFileSync(
+  smokeTools,
+  JSON.stringify({
+    entries: [
+      {
+        id: "rtk", name: "RTK", description: "", kind: "cli", package: { registry: "npm", name: "rtk-cli", version: "0.9.0" },
+        mcp: null, plugin: null, hooks: [], agents: ["claude"], check: ["rtk", "--version"], install: ["npm", "install", "-g", "{package}"],
+        prepare: null, env: { RTK_TELEMETRY: "0" }, secretEnv: [], license: "MIT", homepage: null, handler: null, enabledByDefault: false,
+      },
+    ],
+    projects: { demo: [{ id: "rtk", enabled: true, effective: true, required: true }] },
+  }),
+);
+await shoot("setup-tools", "setup", 4000, { HIVE_SMOKE_TOOLS: smokeTools, HIVE_SMOKE_EXPECT: '[data-hub-tools] && [data-setup-item="tool:rtk"]' });
 // Another Claude account on this machine (roadmap 24b): the form, before the CLI's own sign-in opens.
 await shoot("agents-account", "agents", 1500, { HIVE_SMOKE_CLICK: '[data-add-account="claude"]', HIVE_SMOKE_SCROLL: "#acc-label" });
 // The GitHub card and the project's GitLab / GitHub fields (roadmap 13a).

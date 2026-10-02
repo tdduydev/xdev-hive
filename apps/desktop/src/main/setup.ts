@@ -4,18 +4,32 @@
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { HiveError, type AgentKind, type DesktopProject, type FileAction, type SetupInstallResult, type SetupItem, type SetupReport } from "@xdev-hive/core";
+import {
+  HiveError,
+  POLICY_REPO_PARTS,
+  toolArgv,
+  type AgentKind,
+  type DesktopProject,
+  type FileAction,
+  type MachineTools,
+  type SetupInstallResult,
+  type SetupItem,
+  type SetupReport,
+  type ToolEntry,
+} from "@xdev-hive/core";
 import {
   CODEGRAPH_PACKAGE,
   enableSuperpowers,
   installAgents,
   installCodegraphMcp,
   installShim,
+  NO_FEATURES,
   shimStatus,
   type ShimOptions,
 } from "./installer.ts";
 import { tr } from "./i18n.ts";
 import { resolveBin } from "./runner/command.ts";
+import { APP_TOOLS, toolOn, trustOf } from "./runner/tools.ts";
 
 export interface RunResult {
   ok: boolean;
@@ -34,6 +48,13 @@ export interface SetupHost {
   /** For ~/.codex/config.toml in the agent config check. */
   home?: string;
   run?: Run;
+  /**
+   * The hub's tool catalog from the runner's last heartbeat (roadmap 28b). Absent or null (local mode, a hub older
+   * than 28b, no heartbeat yet): the machine's items are the app's own, as before the catalog.
+   */
+  tools?(): MachineTools | null;
+  /** The toolHash of each hub tool this machine's user allowed (config.toolTrust). */
+  toolTrust?(): Record<string, string>;
 }
 
 /** The CLIs the default profiles use, and the npm package that provides each. */
@@ -43,8 +64,6 @@ export const AGENT_CLIS: Array<{ kind: Exclude<AgentKind, "custom">; bin: string
   { kind: "gemini", bin: "gemini", label: "Gemini CLI", pkg: "@google/gemini-cli" },
 ];
 
-/** Where `uv tool install` takes specify-cli from (github/spec-kit, docs/specs/20-speckit.md). */
-export const SPECKIT_SOURCE = "git+https://github.com/github/spec-kit.git";
 /** The integrations every repo gets: the commands for Claude Code (.claude/skills) and Codex (.agents/skills). */
 const SPECKIT_INTEGRATIONS = ["claude", "codex"] as const;
 const speckitScript = () => (process.platform === "win32" ? "ps" : "sh");
@@ -86,6 +105,17 @@ export const defaultRun: Run = (bin, args, { cwd, env, timeoutMs }) =>
 const describeFiles = (files: FileAction[]) =>
   files.map((f) => `${f.action.padEnd(9)} ${f.file}${f.note ? ` · ${f.note}` : ""}`).join("\n");
 
+/** Like an agent CLI's --version: a check that takes longer is stuck (asking for input, waiting on the network). */
+const TOOL_CHECK_MS = 15_000;
+
+const notFound = (id: string) => new HiveError("not_found", `Không có mục ${id}.`, { key: "errors.setupItemNotFound", vars: { id } });
+
+/** Why a catalog command cannot run from Setup: it has a placeholder only a run fills in ({worktree}, {repo}). */
+function placeholderText(e: ToolEntry, err: unknown): string {
+  const vars = err instanceof HiveError ? err.vars : undefined;
+  return tr("errors.toolPlaceholder", { id: e.id, placeholder: String(vars?.placeholder ?? "?") });
+}
+
 export class Setup {
   readonly #host: SetupHost;
   readonly #run: Run;
@@ -99,8 +129,9 @@ export class Setup {
     const pathEnv = this.#host.pathEnv(true);
     const clis = await Promise.all(AGENT_CLIS.map((c) => this.#cli(c, pathEnv)));
     const specify = await this.#findSpecify(pathEnv);
+    const tools = await Promise.all(this.#catalogTools().map((e) => this.#tool(e, pathEnv)));
     return {
-      machine: [...clis, await this.#specify(specify, pathEnv), this.#shim(pathEnv)],
+      machine: [...clis, await this.#specify(specify, pathEnv), this.#shim(pathEnv), ...tools],
       projects: this.#host.projects().map((p) => ({ project: p.name, repo: p.repo, items: this.#projectItems(p, pathEnv, specify) })),
     };
   }
@@ -111,10 +142,11 @@ export class Setup {
     if (id === "cli:specify") return this.#specify(await this.#findSpecify(pathEnv), pathEnv);
     const cli = AGENT_CLIS.find((c) => id === `cli:${c.kind}`);
     if (cli) return this.#cli(cli, pathEnv);
+    if (this.#isTool(id)) return this.#tool(this.#catalogTool(id), pathEnv);
     const { project, part } = this.#split(id);
     const specify = part === "speckit" ? await this.#findSpecify(pathEnv) : null;
     const item = this.#projectItems(project, pathEnv, specify).find((i) => i.id === `${project.name}:${part}`);
-    if (!item) throw new HiveError("not_found", `Không có mục ${id}.`, { key: "errors.setupItemNotFound", vars: { id } });
+    if (!item) throw notFound(id);
     return item;
   }
 
@@ -124,15 +156,12 @@ export class Setup {
     let output: string;
     const cli = AGENT_CLIS.find((c) => id === `cli:${c.kind}`);
     if (id === "cli:specify") {
-      const uv = resolveBin("uv", pathEnv);
-      if (!uv) throw new HiveError("bad_request", tr("setupItem.specifyNoUv"), { key: "setupItem.specifyNoUv" });
-      const args = ["tool", "install", "specify-cli", "--from", SPECKIT_SOURCE];
-      const r = await this.#run(uv, args, { env, timeoutMs: 15 * 60_000 });
-      if (!r.ok) {
-        const output = tail(r.output);
-        throw new HiveError("bad_request", `uv ${args.join(" ")} lỗi:\n${output}`, { key: "errors.commandFailed", vars: { command: `uv ${args.join(" ")}`, output } });
-      }
-      output = tail(r.output);
+      const argv = this.#speckitInstall();
+      const bin = resolveBin(argv[0]!, pathEnv);
+      if (!bin) throw this.#noInstaller(argv[0]!);
+      output = await this.#runOrThrow(bin, argv, { env, timeoutMs: 15 * 60_000 });
+    } else if (this.#isTool(id)) {
+      output = await this.#toolInstall(this.#catalogTool(id), pathEnv);
     } else if (cli) {
       const npm = resolveBin("npm", pathEnv);
       if (!npm) throw new HiveError("bad_request", noNpm(), { key: "setupItem.noNpm" });
@@ -151,10 +180,114 @@ export class Setup {
       else if (part === "codegraph-mcp") output = describeFiles([installCodegraphMcp(project.repo)]);
       else if (part === "superpowers") output = describeFiles([enableSuperpowers(project.repo)]);
       else if (part === "codegraph-index") output = await this.#codegraphIndex(project, pathEnv, env);
-      else if (part === "speckit") output = await this.#speckitInstall(project, await this.#findSpecify(pathEnv), env);
-      else throw new HiveError("not_found", `Không có mục ${id}.`, { key: "errors.setupItemNotFound", vars: { id } });
+      else if (part === "speckit") output = await this.#speckitRepoInstall(project, await this.#findSpecify(pathEnv), env);
+      else throw notFound(id);
     }
     return { item: await this.item(id), output };
+  }
+
+  /** Runs `argv` (argv[0] already resolved to `bin`): the output's tail, or an error that carries it. */
+  async #runOrThrow(bin: string, argv: string[], opts: { cwd?: string; env: NodeJS.ProcessEnv; timeoutMs: number }): Promise<string> {
+    const r = await this.#run(bin, argv.slice(1), opts);
+    const output = tail(r.output);
+    if (!r.ok) {
+      const command = argv.join(" ");
+      throw new HiveError("bad_request", `${command} lỗi:\n${output}`, { key: "errors.commandFailed", vars: { command, output } });
+    }
+    return output;
+  }
+
+  #noInstaller(bin: string): HiveError {
+    return bin === "uv"
+      ? new HiveError("bad_request", tr("setupItem.specifyNoUv"), { key: "setupItem.specifyNoUv" })
+      : new HiveError("bad_request", tr("setupItem.toolNoBin", { bin }), { key: "setupItem.toolNoBin", vars: { bin } });
+  }
+
+  // ── hub tools (roadmap 28b-2) ──────────────────────────────────────────────
+
+  #trusted(e: ToolEntry): boolean {
+    const allowed = trustOf(e, this.#host.toolTrust?.() ?? {});
+    return allowed === "app" || allowed === "trusted";
+  }
+
+  /**
+   * The hub tools that are the machine's own tool:<id> items: no code of their own in the app (a seed keeps its old
+   * items), a check to tell whether they are there, and on for one of this machine's projects. Hooks wait for 28d.
+   */
+  #catalogTools(): ToolEntry[] {
+    const catalog = this.#host.tools?.() ?? null;
+    if (!catalog) return [];
+    const projects = this.#host.projects();
+    // No repo features: they only turn a seed on the old way, and seeds are left out here.
+    return catalog.entries.filter((e) => !e.handler && e.check && e.kind !== "hook" && projects.some((p) => toolOn(e, catalog.projects[p.name], NO_FEATURES)));
+  }
+
+  /** tool:<id>, unless it is a repo item of a project named "tool" (tool:agents…), which was there first. */
+  #isTool(id: string): boolean {
+    if (!id.startsWith("tool:")) return false;
+    const part = id.slice("tool:".length);
+    return !((POLICY_REPO_PARTS as readonly string[]).includes(part) && this.#host.projects().some((p) => p.name === "tool"));
+  }
+
+  #catalogTool(id: string): ToolEntry {
+    const e = this.#catalogTools().find((x) => `tool:${x.id}` === id);
+    if (!e) throw notFound(id);
+    return e;
+  }
+
+  /** The tool's fixed variables, never over the PATH the app found for it. */
+  #toolEnv(e: ToolEntry, pathEnv: string): NodeJS.ProcessEnv {
+    return { ...this.#host.env(), ...e.env, PATH: pathEnv };
+  }
+
+  /** None of the tool's commands runs, not even its check, until this machine's user allowed them as they are now. */
+  async #tool(e: ToolEntry, pathEnv: string): Promise<SetupItem> {
+    const base = { id: `tool:${e.id}`, label: e.name };
+    if (!this.#trusted(e)) return { ...base, state: "manual", detail: tr("setupItem.toolUntrusted"), action: null };
+    let check: string[];
+    let install: string[] | null;
+    try {
+      check = toolArgv(e.check!, e);
+      install = e.install ? toolArgv(e.install, e) : null;
+    } catch (err) {
+      return { ...base, state: "manual", detail: placeholderText(e, err), action: null };
+    }
+    const missing: SetupItem = install
+      ? { ...base, state: "missing", detail: tr("setupItem.toolMissing", { command: install.join(" ") }), action: tr("setupItem.install") }
+      : { ...base, state: "missing", detail: tr("setupItem.toolNoInstall"), action: null };
+    const bin = resolveBin(check[0]!, pathEnv);
+    if (!bin) return missing;
+    const started = Date.now();
+    const r = await this.#run(bin, check.slice(1), { env: this.#toolEnv(e, pathEnv), timeoutMs: TOOL_CHECK_MS });
+    if (r.ok) return { ...base, state: "installed", detail: `${firstLine(r.output) || check.join(" ")} · ${bin}`, action: null };
+    // Killed by the timeout says nothing about whether the tool is there: the person looks.
+    if (Date.now() - started >= TOOL_CHECK_MS) return { ...base, state: "manual", detail: tr("setupItem.toolCheckSlow", { command: check.join(" ") }), action: null };
+    return missing;
+  }
+
+  async #toolInstall(e: ToolEntry, pathEnv: string): Promise<string> {
+    // Also for an admin's request the user approved: approving the request is not allowing the tool's commands.
+    if (!this.#trusted(e)) throw new HiveError("bad_request", tr("setupItem.toolUntrusted"), { key: "setupItem.toolUntrusted" });
+    if (!e.install) throw new HiveError("bad_request", tr("setupItem.toolNoInstall"), { key: "setupItem.toolNoInstall" });
+    const argv = toolArgv(e.install, e);
+    const bin = resolveBin(argv[0]!, pathEnv);
+    if (!bin) throw this.#noInstaller(argv[0]!);
+    return this.#runOrThrow(bin, argv, { env: this.#toolEnv(e, pathEnv), timeoutMs: 15 * 60_000 });
+  }
+
+  /**
+   * How specify-cli is installed: the catalog's Spec Kit, pinned there, when this machine runs it as it is (the app's
+   * own commands, or ones its user allowed); otherwise the app's own pin. Never an unpinned spec-kit from git.
+   */
+  #speckitInstall(): string[] {
+    const own = toolArgv(APP_TOOLS.speckit.install!, APP_TOOLS.speckit);
+    const e = this.#host.tools?.()?.entries.find((x) => x.handler === "speckit");
+    if (!e?.install || !this.#trusted(e)) return own;
+    try {
+      return toolArgv(e.install, e);
+    } catch {
+      return own;
+    }
   }
 
   // ── items ──────────────────────────────────────────────────────────────────
@@ -195,9 +328,12 @@ export class Setup {
   async #specify(specify: Specify | null, pathEnv: string): Promise<SetupItem> {
     const base = { id: "cli:specify", label: tr("setupItem.specify") };
     if (!specify) {
-      return resolveBin("uv", pathEnv)
-        ? { ...base, state: "missing", detail: tr("setupItem.specifyMissing", { source: SPECKIT_SOURCE }), action: tr("setupItem.installUv") }
-        : { ...base, state: "manual", detail: tr("setupItem.specifyNoUv"), action: null };
+      const argv = this.#speckitInstall();
+      if (resolveBin(argv[0]!, pathEnv)) {
+        return { ...base, state: "missing", detail: tr("setupItem.specifyMissing", { command: argv.join(" ") }), action: tr("setupItem.installUv") };
+      }
+      const why = argv[0] === "uv" ? tr("setupItem.specifyNoUv") : tr("setupItem.toolNoBin", { bin: argv[0]! });
+      return { ...base, state: "manual", detail: why, action: null };
     }
     const v = await this.#run(specify.bin, ["--version"], { env: { ...this.#host.env(), PATH: pathEnv }, timeoutMs: 15_000 });
     const where = specify.onPath ? specify.bin : `${specify.bin} · ${tr("setupItem.specifyOffPath")}`;
@@ -290,7 +426,7 @@ export class Setup {
     return { ...base, state: "missing", detail: tr("setupItem.speckitLacks", { names }), action: tr("setupItem.addSpeckitCommands", { names }) };
   }
 
-  async #speckitInstall(project: DesktopProject, specify: Specify | null, env: NodeJS.ProcessEnv): Promise<string> {
+  async #speckitRepoInstall(project: DesktopProject, specify: Specify | null, env: NodeJS.ProcessEnv): Promise<string> {
     if (!specify) throw new HiveError("bad_request", tr("setupItem.speckitNoCli"), { key: "setupItem.speckitNoCli" });
     const script = speckitScript();
     const steps: string[][] = [];
@@ -337,7 +473,7 @@ export class Setup {
     const at = id.lastIndexOf(":");
     const name = id.slice(0, at);
     const project = this.#host.projects().find((p) => p.name === name);
-    if (at < 1 || !project) throw new HiveError("not_found", `Không có mục ${id}.`, { key: "errors.setupItemNotFound", vars: { id } });
+    if (at < 1 || !project) throw notFound(id);
     return { project, part: id.slice(at + 1) };
   }
 }

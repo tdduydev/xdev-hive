@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { FileText, FolderGit2, GitBranch, ListChecks, Plug, RefreshCw, Sparkles, SquareTerminal, Terminal, Wrench } from "lucide-react";
 import { cn } from "cn";
-import { requiredItemIds, type MachineCommand, type MachineToolView, type SetupItem, type SetupReport, type SetupState } from "@xdev-hive/core";
+import { EMPTY_POLICY, requiredItemIds, type MachineCommand, type MachineToolView, type SetupItem, type SetupReport, type SetupState } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
 import { Empty, ErrorNote, Notice } from "#ui/components/common.tsx";
@@ -42,7 +42,10 @@ export function SetupPage() {
   const requests = useQuery(() => desktop.hubRequests(), [desktop, tick]);
   const shown = report ?? status.data;
   const policy = requests.data?.policy ?? null;
-  const required = policy && shown ? requiredItemIds(policy, shown.projects.map((p) => p.project)) : new Set<string>();
+  const hubTools = requests.data?.tools ?? [];
+  // Tools the catalog marks required count as the policy's items do (roadmap 28b-2).
+  const requiredTools = hubTools.map((tool) => ({ id: tool.id, handler: tool.handler, projects: tool.required.map((project) => ({ project, required: true })) }));
+  const required = shown ? requiredItemIds(policy ?? EMPTY_POLICY, shown.projects.map((p) => p.project), requiredTools) : new Set<string>();
   const replace = (item: SetupItem) =>
     shown &&
     setReport({
@@ -83,13 +86,23 @@ export function SetupPage() {
           }}
         />
       ) : null}
-      {requests.data?.tools.length ? <HubToolsCard tools={requests.data.tools} onChanged={() => setTick((n) => n + 1)} /> : null}
+      {hubTools.length ? (
+        <HubToolsCard
+          tools={hubTools}
+          onChanged={() => {
+            setTick((n) => n + 1);
+            // Its tool:<id> item can be checked (or no longer) once allowed.
+            setReport(null);
+            status.reload();
+          }}
+        />
+      ) : null}
       {!shown && status.loading ? <p className="m-0 text-[13px] text-fg-muted">{t("setup.checkingAll")}</p> : null}
       {shown ? (
         <>
           <Notice tone={missing ? "warn" : "ok"}>
             {missing ? t("setup.notReady", { count: missing }) : t("setup.allReady")}
-            {policy && required.size ? ` ${t("setup.policyRequires", { count: required.size })}` : ""}
+            {required.size ? ` ${t("setup.policyRequires", { count: required.size })}` : ""}
           </Notice>
           <Group title={t("setup.tools")} sub={[settings.data?.machine, os].filter(Boolean).join(" · ")}>
             <SetupList items={shown.machine} required={required} onChanged={replace} />
@@ -197,7 +210,7 @@ function HubToolsCard({ tools, onChanged }: { tools: MachineToolView[]; onChange
       onChanged();
     });
   return (
-    <Card>
+    <Card data-hub-tools>
       <CardHeader>
         <CardTitle>{t("setup.hubTools")}</CardTitle>
         <CardDescription>{t("setup.hubToolsHint")}</CardDescription>
@@ -268,7 +281,7 @@ function SetupRow({ item, required, onChanged }: { item: SetupItem; required: bo
   const [output, setOutput] = useState<string | null>(null);
   const Icon = iconOf(item.id);
   return (
-    <div className="flex flex-col gap-2 border-b border-line-subtle px-4 py-[11px] last:border-b-0">
+    <div data-setup-item={item.id} className="flex flex-col gap-2 border-b border-line-subtle px-4 py-[11px] last:border-b-0">
       <div className="flex items-center gap-3">
         <span className="grid size-[30px] shrink-0 place-items-center rounded-[7px] bg-sunken text-fg-secondary">
           <Icon className="size-[15px]" />

@@ -16,7 +16,7 @@ import { hasKey, useT, type MessageKey, type TFunction } from "#ui/i18n/index.ts
 import { isLive, runDuration, runLabel } from "#ui/lib/runs.ts";
 import { RANGE_HOURS, useAdminRange } from "#ui/shell/AdminShell.tsx";
 import { useToast } from "#ui/shell/toast.tsx";
-import { ACTION_LABEL, MachineCard } from "#ui/pages/Admin.tsx";
+import { ACTION_LABEL, MachineCard, useHubTools } from "#ui/pages/Admin.tsx";
 import { Costs } from "#ui/pages/Machines.tsx";
 import { HubDetail } from "#ui/pages/Runs.tsx";
 import { EventFeed, OpenAlerts } from "./Alerts.tsx";
@@ -122,6 +122,7 @@ export function OpsOverview() {
   const costs = useQuery(() => client.call("costs.summary", {}), [client, tick]);
   const proposals = useQuery(() => client.call("proposals.list", { status: "pending" }), [client, tick]);
   const memory = useQuery(() => client.call("memory.list", { status: "pending", limit: 500 }), [client, tick]);
+  const tools = useHubTools();
 
   const list = runs.data ?? [];
   const fleet = machines.data ?? [];
@@ -132,7 +133,7 @@ export function OpsOverview() {
   const quota = finished.filter((r) => r.status === "rate_limited").length;
   const rate = done + failed + quota ? Math.round((done / (done + failed + quota)) * 100) : null;
   const live = list.filter((r) => r.status === "running");
-  const lacking = new Set(policy.data ? fleet.filter((m) => m.setup && missingRequired(policy.data!, m.setup).length > 0).map((m) => m.id) : []);
+  const lacking = new Set(policy.data ? fleet.filter((m) => m.setup && missingRequired(policy.data!, m.setup, tools).length > 0).map((m) => m.id) : []);
   const cost = costs.data ? (range === "d1" ? costs.data.total.usd1 : range === "d7" ? costs.data.total.usd7 : costs.data.total.usd30) : null;
   const waiting = (requests.data ?? []).filter((r) => r.status === "pending").length;
 
@@ -501,9 +502,10 @@ export function OpsFleet() {
   const tick = useTick();
   const machines = useQuery(() => client.call("admin.machines", {}), [client, tick]);
   const policy = useQuery(() => client.call("policy.get", {}), [client]);
+  const tools = useHubTools();
   const [selected, setSelected] = useState<string | null>(null);
   const list = machines.data ?? [];
-  const missing = (m: MachineDetail) => (policy.data && m.setup ? missingRequired(policy.data, m.setup).length : 0);
+  const missing = (m: MachineDetail) => (policy.data && m.setup ? missingRequired(policy.data, m.setup, tools).length : 0);
   const current = list.find((m) => m.id === selected) ?? null;
   const waiting = list.reduce((n, m) => n + m.commands.filter((c) => c.status === "pending" || c.status === "running").length, 0);
   const columns: Array<Column<MachineDetail>> = [
@@ -571,7 +573,7 @@ export function OpsFleet() {
           />
         </div>
         <aside className="min-w-0 flex-[2_1_360px]">
-          {current ? <MachineCard key={current.id} machine={current} policy={policy.data ?? null} onChanged={machines.reload} /> : <Empty>{t("ops.pickMachine")}</Empty>}
+          {current ? <MachineCard key={current.id} machine={current} policy={policy.data ?? null} tools={tools} onChanged={machines.reload} /> : <Empty>{t("ops.pickMachine")}</Empty>}
         </aside>
       </div>
     </div>
