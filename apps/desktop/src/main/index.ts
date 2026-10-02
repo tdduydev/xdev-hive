@@ -71,6 +71,7 @@ import { Setup } from "./setup.ts";
 import { checkCitations } from "./citations.ts";
 import { syncProject } from "./sync.ts";
 import { mirrorDocs, mirrors } from "./mirror.ts";
+import { pushSpecs } from "./specs.ts";
 import { openInTerminal } from "./terminal.ts";
 import { AlertWatch, fetchAlerts, noticeText, type AlertNotice } from "./alert-notify.ts";
 import { applyProfileChanges } from "./profile-changes.ts";
@@ -93,6 +94,8 @@ let logins: LoginMonitor;
 let firstLoginCheck: Promise<void> = Promise.resolve();
 /** The commit each project's docs were last mirrored from (roadmap 26): the same main is not read twice. */
 const mirrored = new Map<string, string>();
+/** The hash of the Spec Kit features each project last pushed (roadmap 20b): the same ones are not sent again. */
+const specsPushed = new Map<string, string>();
 let mergeRequester: MergeRequester;
 let mrHostRef: MrHost;
 const mrHost = () => mrHostRef;
@@ -380,6 +383,14 @@ async function syncAndMirror(name: string): Promise<SyncReport> {
 
 /** The repo's docs into Hive for every project that mirrors some (one at a time; one that fails leaves the others). */
 async function mirrorAll(): Promise<void> {
+  // Spec Kit features of every project (roadmap 20b), not only those that mirror docs.
+  for (const p of smokeShot ? [] : config.projects) {
+    const hash = await pushSpecs(backend, actor(), p, specsPushed.get(p.name)).catch((err: Error) => {
+      console.error(`[xdev-hive] specs ${p.name}: ${err.message}`);
+      return null;
+    });
+    if (hash) specsPushed.set(p.name, hash);
+  }
   for (const p of config.projects) {
     if (!mirrors(p.repo)) continue;
     const r = await mirrorDocs(backend, actor(), p, { since: mirrored.get(p.name) }).catch((err: Error) => {
