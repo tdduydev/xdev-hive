@@ -1020,6 +1020,12 @@ export const en: Catalog = {
     nextReady: "Ready next:",
     nextNone: "No task is ready: the rest are held by someone or wait on other tasks.",
   },
+  openCli: {
+    open: "Open {cli}",
+    profile: "Profile",
+    project: "Project",
+    opened: "Terminal opened: {profile} in the {project} repo. This session is yours, not a run: agent policy and spending caps do not apply.",
+  },
   agentKind: {
     claude: "Claude Code",
     codex: "Codex",
@@ -2318,6 +2324,9 @@ export const en: Catalog = {
     setupTokenTitle: "long-lived token for {profile}",
     setupTokenDone: "Copy the token shown above (it starts with sk-ant-) into the profile's Container token field in the app, then close this window.",
     noTerminal: "No terminal found to open (x-terminal-emulator, gnome-terminal, konsole, xfce4-terminal, xterm).",
+    cliTitle: "{profile} in {project}",
+    cliDone: "The session ended. You can close this window.",
+    cliSignedOut: "{profile} is not signed in. Press Sign in on its card first.",
     gitlabSignedIn: "Signed in to GitLab as {name} (@{username})",
     githubSignedIn: "Signed in to GitHub as {name} (@{username})",
     browserSignInDone: "Signed in. Go back to the xDev Hive app; you can close this tab.",

@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 import { AGENT_TEMPLATES } from "@xdev-hive/core";
 import { LoginMonitor, loginParts, parseLogin, readLoginHow } from "#desktop/main/runner/login.ts";
 import { openInTerminal, terminalScript, type TerminalCommand } from "#desktop/main/terminal.ts";
+import { cliCommand } from "#desktop/main/cli-open.ts";
 
 const tmp = () => mkdtempSync(path.join(os.tmpdir(), "hive-term-"));
 const command: TerminalCommand = {
@@ -63,6 +64,46 @@ describe("sign-in terminal", () => {
     const gnome = openInTerminal(command, { dir: tmp(), platform: "linux", which: (b) => (b === "gnome-terminal" ? "/usr/bin/gnome-terminal" : null), run })!;
     assert.deepEqual(calls.at(-1), ["/usr/bin/gnome-terminal", ["--", "sh", gnome]]);
     assert.equal(openInTerminal(command, { dir: tmp(), platform: "linux", which: none, run }), null);
+  });
+
+  it("starts in the given folder, and stops when it is gone rather than work elsewhere (roadmap 32a)", () => {
+    const mac = terminalScript("darwin", { ...command, cwd: "/Users/duy/Work/it's here", name: "cli" });
+    assert.equal(mac.name, "cli.command");
+    assert.ok(mac.content.includes("\ncd '/Users/duy/Work/it'\\''s here' || exit 1\n'/Users/duy/.local/bin/claude'"), mac.content);
+    assert.equal(terminalScript("linux", { ...command, name: "cli" }).name, "cli.sh");
+    assert.ok(!terminalScript("linux", command).content.includes("\ncd "), "no cd without a folder");
+    const win = terminalScript("win32", { ...command, cwd: "D:\\Work\\xdev hive", name: "cli" });
+    assert.equal(win.name, "cli.cmd");
+    assert.ok(win.content.includes('cd /d "D:\\Work\\xdev hive" || exit /b 1\r\ncall '), win.content);
+    assert.throws(() => terminalScript("win32", { ...command, cwd: 'D:\\a"&calc' }), /cmd\.exe/);
+  });
+
+  it("opens a profile's CLI as the person's own session, with Hive's server under the profile's id (roadmap 32a)", () => {
+    const opts = { project: "xdev-hive", repo: "/Users/duy/Work/xdev-hive", bin: "/Users/duy/.local/bin/claude", path: "/opt/homebrew/bin:/usr/bin", mcpFile: "/tmp/cli/claude-2/mcp.json", title: "t", done: "d" };
+    const claude = { ...AGENT_TEMPLATES.claude, id: "claude-2", env: { CLAUDE_CONFIG_DIR: "~/.claude-2", ANTHROPIC_API_KEY: "never-in-a-script" } };
+    const c = cliCommand(claude, opts);
+    assert.deepEqual(c.command.args, ["--mcp-config", opts.mcpFile], "no -p and none of the run's flags");
+    assert.equal(c.command.cwd, opts.repo);
+    assert.deepEqual(c.command.env, {
+      CLAUDE_CONFIG_DIR: path.join(os.homedir(), ".claude-2"),
+      PATH: opts.path,
+      HIVE_AGENT: "claude-2",
+      HIVE_PROJECT: "xdev-hive",
+    });
+    assert.deepEqual(JSON.parse(c.mcpConfig!), { mcpServers: { "xdev-hive": { command: "hive-mcp", args: [], env: { HIVE_AGENT: "claude-2", HIVE_PROJECT: "xdev-hive" } } } });
+    assert.ok(!terminalScript("win32", c.command).content.includes("never-in-a-script"));
+    assert.equal(cliCommand(claude, { ...opts, path: null }).command.env.PATH, undefined, "Windows keeps the terminal's PATH");
+
+    const codex = cliCommand({ ...AGENT_TEMPLATES.codex, id: "codex-2", env: { CODEX_HOME: "/Users/duy/.xdev-hive/accounts/codex-2" } }, opts);
+    assert.deepEqual(codex.command.args, ["-c", "mcp_servers.xdev-hive.command='hive-mcp'", "-c", "mcp_servers.xdev-hive.env={HIVE_AGENT='codex-2',HIVE_PROJECT='xdev-hive'}"]);
+    assert.equal(codex.mcpConfig, null);
+    assert.equal(codex.command.env.CODEX_HOME, "/Users/duy/.xdev-hive/accounts/codex-2");
+    // The script carries the TOML on cmd.exe too: single quotes are no trouble there.
+    assert.ok(terminalScript("win32", codex.command).content.includes(`"mcp_servers.xdev-hive.env={HIVE_AGENT='codex-2',HIVE_PROJECT='xdev-hive'}"`));
+
+    const gemini = cliCommand({ ...AGENT_TEMPLATES.gemini, id: "gemini-1" }, opts);
+    assert.deepEqual(gemini.command.args, []);
+    assert.equal(gemini.command.env.HIVE_AGENT, "gemini-1");
   });
 
   it("takes the sign-in command and only the login-dir env from a profile", () => {
