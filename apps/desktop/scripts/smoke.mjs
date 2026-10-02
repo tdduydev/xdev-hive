@@ -100,8 +100,10 @@ new RunStore(path.join(work, "runs.db")).insert(
 async function shoot(name, page, delay, extra = {}) {
   const shot = path.join(out, `${name}.png`);
   // Async spawn: the mock GitLab in this process must keep answering while the app runs.
-  const child = spawn(electron, ["."], {
-    cwd: appDir,
+  // The throwaway dir as cwd, as a packaged app has none in the repo: what the app starts without a cwd of its own
+  // (a CLI's --version) writes there, not into apps/desktop.
+  const child = spawn(electron, [appDir], {
+    cwd: work,
     stdio: "inherit",
     env: {
       ...process.env,
