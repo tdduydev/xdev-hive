@@ -546,7 +546,8 @@ describe("the rest of the web a chat leader proposes (roadmap 29b)", () => {
 
   it("confirms all in the spec's order: agents back before runs, stopped last", async () => {
     const { hive, sent, propose } = await ops();
-    // Proposed the other way round.
+    // The task first: a run may only name a task the reply already proposed to create. The rest the other way round.
+    const create = await propose({ kind: "task.create", id: "T-7", title: "Reset page" });
     const stop = await propose({ kind: "agents.stop" });
     const run = await propose({ kind: "run.dispatch", taskId: "T-7" });
     const merge = await propose({ kind: "run.merge", machine: "duy-mbp", runId: "R-mr1" });
@@ -555,7 +556,6 @@ describe("the rest of the web a chat leader proposes (roadmap 29b)", () => {
     const install = await propose({ kind: "machine.install", machine: "duy-mbp", itemId: "cli:codex" });
     const profileOff = await propose({ kind: "machine.profile", machine: "duy-mbp", profileId: "claude-1", enabled: false });
     const policy = await propose({ kind: "agent.policy", policy: { autonomy: "edit" } });
-    const create = await propose({ kind: "task.create", id: "T-7", title: "Reset page" });
 
     const done = await hive.call("chat.decideAll", { replyId: sent.reply.id, accept: true }, admin);
     assert.deepEqual(
@@ -563,7 +563,7 @@ describe("the rest of the web a chat leader proposes (roadmap 29b)", () => {
       done.map(() => "done"),
       JSON.stringify(done.map((a) => [a.kind, a.status, a.error?.key])),
     );
-    const ids = [stop, run, merge, cancel, resume, install, profileOff, policy, create].map((a) => a.id);
+    const ids = [create, stop, run, merge, cancel, resume, install, profileOff, policy].map((a) => a.id);
     assert.deepEqual(done.map((a) => a.id), ids);
     // runs.cancel keeps no audit entry; the run says who cancelled it.
     const audited = ["tasks.create", "agentPolicy.set", "machines.setProfile", "admin.commandCreate", "agents.resume", "runs.merge", "runs.dispatch", "agents.stop"];

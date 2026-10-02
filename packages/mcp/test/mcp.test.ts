@@ -294,6 +294,8 @@ describe("mcp tools", () => {
     assert.equal(await has(await connectAs(hive, { name: "lan", role: "admin", access: { projects: { app: "lead" } } }, { alerts })), false, "an admin of some projects only");
     assert.equal(await has(await connectAs(hive, { name: "claude@duy", role: "agent" }, { alerts })), false);
     assert.equal(await has(await connectAs(hive, { name: "ci", role: "viewer" }, { alerts })), false);
+  });
+
   it("gives a chat leader the propose tools for the rest of the web, and nobody else", async () => {
     const hive = new SqliteHive(":memory:");
     const admin = { name: "duy", role: "admin" as const };
