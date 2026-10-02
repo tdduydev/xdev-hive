@@ -780,6 +780,8 @@ function ActionItem({ action: a, taskIds, manage, onDecided }: { action: ChatAct
       onDecided(await client.call("chat.decide", { actionId: a.id, accept }));
     });
   const detail: string[] = [];
+  // A task for another service of the system (roadmap 19d): which one, first.
+  if (a.kind === "task.create" && input.project && input.project !== a.project) detail.push(t("chat.actionService", { project: String(input.project) }));
   if (a.kind === "task.create" && Array.isArray(input.dependsOn) && input.dependsOn.length) detail.push(t("chat.actionDeps", { ids: input.dependsOn.join(", ") }));
   if (a.kind === "run.dispatch") {
     detail.push(input.profileId ? t("chat.actionPlan", { plan: String(input.profileId) }) : t("board.rotate"));

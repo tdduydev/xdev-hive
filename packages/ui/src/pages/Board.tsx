@@ -25,7 +25,7 @@ import { errorMessage, formatTime, useAction, useCan, useHive, useProjects, useQ
 import { rich, useT, type TFunction } from "#ui/i18n/index.tsx";
 import { runDuration } from "#ui/lib/runs.ts";
 import { projectScope, scopeProject } from "#ui/lib/scope.ts";
-import { ownerLabel } from "#ui/lib/tasks.ts";
+import { ownerLabel, waitingLabels } from "#ui/lib/tasks.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
 /** Re-renders every `ms` while `active`, for live runs. */
@@ -48,7 +48,7 @@ const COLUMN_ICON: Record<TaskStatus, [ComponentType<{ className?: string }>, st
 };
 
 /** A task waiting on others shows as blocked until they are done; it is still "to do" underneath. */
-const columnOf = (task: Task): TaskStatus => (task.status === "todo" && task.waitingOn?.length ? "blocked" : task.status);
+const columnOf = (task: Task): TaskStatus => (task.status === "todo" && (task.waitingOn?.length || task.waitingHidden) ? "blocked" : task.status);
 
 /** "c2/3" for a best-of-n candidate, "judge" for the run that compares them. */
 function bestOfLabel(run: AgentRun, t: TFunction): string | null {
@@ -357,7 +357,7 @@ function TaskCard({
   const t = useT();
   const live = run?.status === "running";
   const tag = mrTag(run, t);
-  const waiting = task.waitingOn ?? [];
+  const waiting = waitingLabels(task);
   const owner = task.owner ? ownerLabel(task.owner).who : run && (live || run.status === "queued") ? run.profileId : null;
   const stopped = run?.status === "rate_limited" || run?.status === "failed" ? run.status : null;
   return (
@@ -427,7 +427,7 @@ function Inspector({
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const busy = run?.status === "queued" || run?.status === "running";
-  const waiting = task.waitingOn ?? [];
+  const waiting = waitingLabels(task);
   const allowed = me.role !== "viewer" && canRun && task.status !== "done" && !waiting.length;
   const tag = mrTag(run, t);
   const props: Array<[string, ReactNode, boolean?]> = [

@@ -147,7 +147,14 @@ const chatModel = z.string().regex(/^[a-z0-9][a-z0-9.\-]{1,63}$/, "model: an ali
 
 /** What a chat leader may ask for (chat.propose): the input of the call a project manager then confirms, project left out. */
 const chatAction = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("task.create"), id: taskId, title: z.string().min(1).max(300), dependsOn: z.array(taskId).max(20).default([]) }),
+  z.object({
+    kind: z.literal("task.create"),
+    id: taskId,
+    /** Another service of a system the chat's project is in (roadmap 19d); left out, the chat's project. */
+    project: project.optional(),
+    title: z.string().min(1).max(300),
+    dependsOn: z.array(taskId).max(20).default([]),
+  }),
   z.object({ kind: z.literal("task.update"), id: taskId, status: z.enum(TASK_STATUSES), note: z.string().max(2000).optional() }),
   z.object({
     kind: z.literal("run.dispatch"),

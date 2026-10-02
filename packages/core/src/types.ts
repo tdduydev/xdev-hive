@@ -266,10 +266,14 @@ export interface Task {
   leaseUntil: string | null;
   note: string | null;
   updatedAt: string;
-  /** Tasks of the same project that have to be done first. */
+  /** Tasks that have to be done first: of the same project, or of another service of a system it is in (roadmap 19d). */
   dependsOn: string[];
   /** Those of them not done yet: while any is left the task cannot be claimed. */
   waitingOn: string[];
+  /** The project of each of them in another project (roadmap 19d); absent when all are of this one. */
+  depProjects?: Record<string, string>;
+  /** Open dependencies in projects the reader cannot see: left out of the lists above, counted here. */
+  waitingHidden?: number;
 }
 
 /** installed: nothing to do · missing: the app can install it · outdated: installed for another build · manual: needs a hand edit. */
@@ -775,6 +779,8 @@ export interface ChatRequest {
   effort?: ChatEffort | null;
   /** The project's leader commands; missing (an older hub): none. */
   commands?: string[];
+  /** The systems the project is a service of (roadmap 19d); the leader may propose tasks for their other services. */
+  systems?: Array<{ name: string; projects: string[] }>;
   text: string;
   requestedBy: string;
   createdAt: string;

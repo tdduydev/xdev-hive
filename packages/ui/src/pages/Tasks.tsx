@@ -15,7 +15,7 @@ import { formatTime, useAction, useCan, useHashParam, useHive, usePoll, useQuery
 import { useT } from "#ui/i18n/index.tsx";
 import { REQUEST_TONE, requestErrorText, runLabel } from "#ui/lib/runs.ts";
 import { scopeFilter, scopeKey, scopeProject } from "#ui/lib/scope.ts";
-import { ownerLabel } from "#ui/lib/tasks.ts";
+import { depLabel, ownerLabel, waitingLabels } from "#ui/lib/tasks.ts";
 
 /** Text colour of the status select, keyed by STATUS_TONE. */
 const TONE_TEXT: Record<string, string> = {
@@ -316,7 +316,7 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
   const [candidates, setCandidates] = useState(1);
   const action = useAction();
   const several = role === "implement" && !profileId;
-  const waiting = task.waitingOn ?? [];
+  const waiting = waitingLabels(task);
   const pending = requests.find((r) => r.status === "pending");
   const profiles = machine?.profiles.filter((p) => p.enabled) ?? [];
   const now = new Date().toISOString();
@@ -546,13 +546,18 @@ function Deps({ task, onChanged }: { task: Task; onChanged: () => void }) {
           const open = (task.waitingOn ?? []).includes(d);
           return (
             <span key={d} title={t(open ? "tasks.depOpen" : "tasks.depDone", { id: d })}>
-              <Badge tone={open ? "warn" : "ok"}>{d}</Badge>
+              <Badge tone={open ? "warn" : "ok"}>{depLabel(task, d)}</Badge>
             </span>
           );
         })
       ) : (
         <span className="text-muted-foreground">—</span>
       )}
+      {task.waitingHidden ? (
+        <span title={t("tasks.depHidden", { count: task.waitingHidden })}>
+          <Badge tone="warn">+{task.waitingHidden}</Badge>
+        </span>
+      ) : null}
       {allow(task.project, "runDispatch") && task.status !== "done" ? (
         <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs" onClick={() => setEditing(true)}>
           {t("tasks.editDeps")}
