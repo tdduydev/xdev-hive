@@ -807,6 +807,12 @@ function ActionItem({ action: a, taskIds, manage, onDecided }: { action: ChatAct
   ].filter(Boolean);
   // The project's part as it was when proposed, and as it would be: null is the hub's default alone.
   const policyText = (p: unknown) => (p && typeof p === "object" ? policySummary(p as Partial<AgentPolicy>) : t("chat.actionPolicyNone"));
+  // A project's tool setting (roadmap 28e): on, off or the tool's default, and whether its machines must have it.
+  const toolText = (s: unknown) => {
+    const { enabled, required } = (s ?? {}) as { enabled?: boolean | null; required?: boolean };
+    const state = enabled === true ? t("chat.actionToolOn") : enabled === false ? t("chat.actionToolOff") : t("chat.actionToolDefault");
+    return required ? `${state}, ${t("chat.actionToolRequired")}` : state;
+  };
   return (
     <li className="flex flex-col gap-1.5 rounded-lg border bg-muted/30 p-2.5 text-xs">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -841,6 +847,8 @@ function ActionItem({ action: a, taskIds, manage, onDecided }: { action: ChatAct
             t("chat.actionStop")
           ) : a.kind === "agents.resume" ? (
             t("chat.actionResume")
+          ) : a.kind === "tool.enable" ? (
+            t("chat.actionTool", { tool: String(input.name ?? input.id ?? ""), change: toolText(a.input) })
           ) : (
             rich(t("chat.actionInstall", { item: String(input.itemId ?? "") }), { machine })
           )}
@@ -853,6 +861,7 @@ function ActionItem({ action: a, taskIds, manage, onDecided }: { action: ChatAct
           <span>{t("chat.actionPolicyAfter", { policy: policyText(a.input.policy) })}</span>
         </div>
       ) : null}
+      {a.kind === "tool.enable" && a.input.before ? <div className="text-muted-foreground">{t("chat.actionToolBefore", { state: toolText(a.input.before) })}</div> : null}
       {text ? <div className="rounded-md bg-background/60 p-2 whitespace-pre-wrap wrap-anywhere">{String(text)}</div> : null}
       <div className="text-muted-foreground wrap-anywhere">{t("chat.actionReason", { reason: a.reason })}</div>
       {a.status === "proposed" && manage ? (

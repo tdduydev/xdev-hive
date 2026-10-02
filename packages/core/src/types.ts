@@ -433,6 +433,22 @@ export interface ToolView extends ToolEntry {
 }
 
 /**
+ * Where a tool stands for a project (roadmap 28e, tools.status): whether the project gets it, and the setup items that
+ * set it up as each machine with the project last reported them, so a leader can tell why a run lacks it.
+ */
+export interface ToolStatus {
+  id: string;
+  name: string;
+  /** The project gets it: its own choice, else the tool's default. */
+  effective: boolean;
+  required: boolean;
+  /** The setup items of the tool for the project (toolSetupItems): what propose_install takes. */
+  items: string[];
+  /** Each machine with the project that reported its setup; items: those of the tool it reported (none: an older app). */
+  machines: Array<{ machineId: string; machine: string; items: Array<Omit<SetupItem, "action">> }>;
+}
+
+/**
  * A system (roadmap 19b): the projects that make one product, each a service with its own repository. Picked in the
  * sidebar, the pages show the tasks, runs, merge requests and chat of every project in it. A project may be in several.
  */
@@ -829,6 +845,7 @@ export const CHAT_ACTION_KINDS = [
   "agents.stop",
   "agents.resume",
   "machine.install",
+  "tool.enable",
 ] as const;
 export type ChatActionKind = (typeof CHAT_ACTION_KINDS)[number];
 /**

@@ -2,7 +2,7 @@
 
 Viết ngày 2/10. Người dùng nói hệ thống thiếu phần quản lý các tool như codegraph, và hỏi cần thêm tool gì để tiết kiệm token và bộ nhớ.
 
-Trang này chi tiết **R-28a** (danh mục trên hub). Phần **R-28b** (máy dùng danh mục) chỉ ghi những gì 28a phải chừa sẵn. R-28c (đo token) do phiên khác làm. R-28d (RTK) và R-28e (leader đọc và đề xuất về tool) làm sau.
+Trang này chi tiết **R-28a** (danh mục trên hub). Phần **R-28b** (máy dùng danh mục) chỉ ghi những gì 28a phải chừa sẵn. R-28c (đo token) do phiên khác làm. R-28d (RTK) làm sau. R-28e (leader đọc và đề xuất về tool) có mục riêng bên dưới.
 
 ## Hiện trạng
 
@@ -149,6 +149,61 @@ Migration mới ở cuối `MIGRATIONS` (`packages/core/src/sqlite.ts`), lấy s
   - mục seed không xoá được; `effective` đúng với cả ba trạng thái;
   - nhật ký có dòng cho mỗi method ghi.
 - `apps/web/e2e/browser.mjs`: mở *Tool*, bật codegraph cho một dự án, thấy trạng thái đổi; admin thêm một mục mcp hợp lệ rồi xoá.
+
+## R-28e. Leader đọc và đề xuất về tool, token
+
+Leader trong chat (29a, 29b) đọc được danh mục và token, đề xuất cài đặt tool của dự án.
+
+### Đọc (MCP, mọi token đọc)
+
+- `tool_list` → `tools.list { project }`: các mục và dòng cài đặt của đúng dự án đó (`enabled`, `required`, `effective`).
+- `tool_status` → method mới `tools.status { project }` (viewer, cần `view` trên dự án). Mỗi mục trả về:
+  - `effective`, `required`;
+  - `items`: id các mục cài đặt của tool cho dự án (`toolSetupItems` trong `packages/core/src/tools.ts`);
+  - `machines`: mỗi máy có dự án đã báo cài đặt, kèm các mục đó như máy báo lần cuối. Giống `machines.setupMissing`: không có `action`, đường dẫn bị ẩn.
+- Id mục cài đặt:
+  - mục seed giữ mục cũ: codegraph là `<dự án>:codegraph-mcp` và `<dự án>:codegraph-index`; superpowers là `<dự án>:superpowers`; speckit là `cli:specify` và `<dự án>:speckit`.
+  - Mục khác là `tool:<id>`. Máy báo mục này từ 28b-2.
+- `token_usage { project, limit? }`:
+  - `last30`: số run, usd và token 30 ngày (`costs.summary`), kèm `cacheReadShare`;
+  - `runs`: các run gần đây có token (`runs.list`), mỗi run có `cacheReadShare`.
+  - Codex có token nhưng không có giá.
+- Dự án người đọc không thấy thì trả `not_found`, như ở 29a.
+
+### Đề xuất `tool.enable`
+
+- `chatAction` thêm `{ kind: "tool.enable", id, enabled: boolean | null, required?: boolean }`. MCP là `propose_tool`.
+- Khi đề xuất:
+  - tool không có thì `errors.toolNotFound`;
+  - `input` lưu `{ id, project, enabled, required, name, before }`;
+  - `required` bỏ trống thì giữ như dự án đang có, để đề xuất không làm mất yêu cầu bắt buộc mà dự án đã đặt;
+  - `before` là cài đặt lúc đề xuất. Thẻ hiện *Hiện tại: …*.
+- Khi duyệt, đề xuất chạy `tools.setProject` bằng quyền người duyệt. Người duyệt cần `projectSettings`; thiếu thì thẻ `failed` với `errors.need.projectSettings`.
+- `chat.decideAll`: chạy sau `agent.policy`, trước `machine.profile`, `machine.install` và các run. Như vậy tool được bật trước khi máy được yêu cầu cài và trước các run dùng nó.
+- 29c: `tool.enable` là loại dự án có thể cho leader tự chạy. Leader chạy bằng quyền người nhắn; người đó thiếu `projectSettings` thì đề xuất chờ duyệt.
+- Yêu cầu máy cài tool dùng lại `propose_install` (`machine.install` của 29b) với id mà `tool_status` liệt kê. `setupItemId` nhận `tool:<id>` từ 28b-2.
+
+### Skill hive-leader
+
+Seed (`packages/core/src/seed.ts`) thêm:
+- `tool_list`, `tool_status`, `token_usage` và `propose_tool`;
+- id mục cài đặt dùng cho `propose_install`;
+- câu "không đoán số token hay phần trăm tiết kiệm, dẫn số của `token_usage`".
+
+Hub đang chạy sửa skill qua trang *Skill* (đề xuất), không sửa seed.
+
+### Test
+
+- `packages/core/test/chat-tools.test.ts`:
+  - đề xuất lưu `before`;
+  - người duyệt thiếu quyền thì `failed`, đủ quyền thì `done`, có audit;
+  - giữ `required`;
+  - tự chạy (29c);
+  - thứ tự `decideAll`;
+  - `tools.status`: mục theo máy, ẩn đường dẫn, dự án khác `not_found`;
+  - `toolSetupItems`.
+- `packages/mcp/test/mcp.test.ts`: `tool_list`, `tool_status`, `token_usage` chỉ dữ liệu của dự án; `propose_tool`.
+- e2e `leader-tool-proposal`: leader đề xuất Spec Kit bật và bắt buộc cho payment; Lan xác nhận trên thẻ.
 
 ## R-28b (sau): 28a phải chừa sẵn
 

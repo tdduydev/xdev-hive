@@ -42,6 +42,9 @@ describe("mcp tools", () => {
       "task_list",
       "task_next",
       "task_update",
+      "token_usage",
+      "tool_list",
+      "tool_status",
     ]);
   });
 
@@ -64,6 +67,9 @@ describe("mcp tools", () => {
         "skill_list",
         "task_list",
         "task_next",
+        "token_usage",
+        "tool_list",
+        "tool_status",
       ]);
       assert.match(client.getInstructions() ?? "", /read-only/);
       const called = await client.callTool({ name: "memory_write", arguments: { kind: "decision", content: "x" } }).catch((e: Error) => e);
@@ -316,7 +322,7 @@ describe("mcp tools", () => {
     const leader = new Client({ name: "test", version: "0" });
     await leader.connect(b);
 
-    const added = ["propose_cancel_run", "propose_install", "propose_merge", "propose_policy", "propose_profile", "propose_resume_agents", "propose_stop_agents"];
+    const added = ["propose_cancel_run", "propose_install", "propose_merge", "propose_policy", "propose_profile", "propose_resume_agents", "propose_stop_agents", "propose_tool"];
     const tools = (await leader.listTools()).tools.map((t) => t.name);
     for (const name of added) assert.ok(tools.includes(name), name);
     for (const name of added) assert.match(leader.getInstructions() ?? "", new RegExp(name));
@@ -333,6 +339,77 @@ describe("mcp tools", () => {
     const refused = await leader.callTool({ name: "propose_merge", arguments: { machine: "duy-mbp", runId: "R-1fa9c0", reason: "Ship it" } });
     assert.ok(refused.isError);
     assert.match(text(refused), /no merge request/);
+    // Roadmap 28e: a catalog tool for the chat's project; required left out keeps what the project has.
+    const tool = JSON.parse(text(await leader.callTool({ name: "propose_tool", arguments: { id: "codegraph", enabled: true, reason: "Faster lookups" } })));
+    assert.deepEqual([tool.kind, tool.status, tool.input], [
+      "tool.enable",
+      "proposed",
+      { id: "codegraph", project: "app", enabled: true, required: false, name: "Codegraph", before: { enabled: null, required: false, effective: false } },
+    ]);
+    const unknown = await leader.callTool({ name: "propose_tool", arguments: { id: "nope", enabled: true, reason: "x" } });
+    assert.ok(unknown.isError);
+    assert.match(text(unknown), /^not_found/);
+  });
+
+  it("reads the catalog, where its tools stand and what runs used, for the project only (roadmap 28e)", async () => {
+    const hive = new SqliteHive(":memory:", { now: () => new Date("2026-10-02T04:00:00.000Z") });
+    const admin = { name: "duy", role: "admin" as const };
+    const mbp = { name: "runner.duy-mbp@duy-mbp", role: "agent" as const };
+    const item = (id: string, state: "installed" | "missing") => ({ id, label: id, state, detail: "", action: null });
+    const run = (runId: string, project: string) => ({ runId, project, taskId: "T-1", taskTitle: "x", role: "implement" as const, status: "succeeded" as const, profileId: "claude-1", createdAt: "2026-10-02T02:00:00.000Z" });
+    const cost = (runId: string, project: string) => ({
+      runId,
+      project,
+      taskId: "T-1",
+      profileId: "claude-1",
+      account: null,
+      costUsd: 0.5,
+      inputTokens: 1000,
+      cacheWriteTokens: 1000,
+      cacheReadTokens: 8000,
+      outputTokens: 400,
+      finishedAt: "2026-10-02T03:00:00.000Z",
+    });
+    await hive.call("runs.push", { machine: "duy-mbp", runs: [run("R-a1", "app"), run("R-s1", "site")] }, mbp);
+    await hive.call(
+      "machines.heartbeat",
+      {
+        machine: "duy-mbp",
+        instance: "a1b2c3d4",
+        projects: ["app", "site"],
+        setup: {
+          checkedAt: "2026-10-02T03:00:00.000Z",
+          report: { machine: [item("cli:specify", "installed")], projects: [{ project: "app", repo: "/r/app", items: [item("app:codegraph-mcp", "missing")] }] },
+        },
+        costs: [cost("R-a1", "app"), cost("R-s1", "site")],
+      },
+      mbp,
+    );
+    await hive.call("tools.setProject", { id: "codegraph", project: "app", enabled: true, required: false }, admin);
+    await hive.call("tools.setProject", { id: "speckit", project: "site", enabled: true, required: false }, admin);
+
+    const lan = await connectAs(hive, { name: "claude-1.duy-mbp@chat-lan", role: "agent", chatReply: 1, access: { projects: { app: "member" } } });
+    for (const name of ["tool_list", "tool_status", "token_usage"]) assert.match(lan.getInstructions() ?? "", new RegExp(name));
+    const list = JSON.parse(text(await lan.callTool({ name: "tool_list", arguments: {} })));
+    assert.deepEqual(
+      list.map((t: { id: string; projects: Array<{ project: string; effective: boolean }> }) => [t.id, t.projects.map((p) => [p.project, p.effective])]),
+      [["codegraph", [["app", true]]], ["speckit", [["app", false]]], ["superpowers", [["app", false]]]],
+      "app's line alone: site turned speckit on, which is not app's to read",
+    );
+    const status = JSON.parse(text(await lan.callTool({ name: "tool_status", arguments: {} })));
+    const codegraph = status.find((s: { id: string }) => s.id === "codegraph");
+    assert.deepEqual(
+      [codegraph.effective, codegraph.machines.map((m: { machine: string; items: Array<{ id: string; state: string }> }) => [m.machine, m.items.map((i) => [i.id, i.state])])],
+      [true, [["duy-mbp", [["app:codegraph-mcp", "missing"]]]]],
+    );
+    const usage = JSON.parse(text(await lan.callTool({ name: "token_usage", arguments: {} })));
+    assert.deepEqual([usage.project, usage.last30.runs, usage.last30.cacheReadTokens, usage.last30.cacheReadShare], ["app", 1, 8000, 0.8]);
+    assert.deepEqual(usage.runs.map((r: { runId: string; cacheReadShare: number }) => [r.runId, r.cacheReadShare]), [["R-a1", 0.8]]);
+    for (const name of ["tool_list", "tool_status", "token_usage"]) {
+      const other = await lan.callTool({ name, arguments: { project: "site" } });
+      assert.equal(other.isError, true, name);
+      assert.match(text(other), /^not_found/, name);
+    }
   });
 });
 

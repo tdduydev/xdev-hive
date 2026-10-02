@@ -30,7 +30,7 @@ import { assertNoSecret, findSecret, redactLines } from "./secrets.ts";
 import { isAgentActor, MR_WATCHER, parseSource, principalOf, type WriteSource } from "./source.ts";
 import { SEED_DOCS, SEED_VERSION } from "./seed.ts";
 import { planSpecTasks, specStage, specTaskPrefix, specTasks, specTitle, type SpecFeature, type SpecFeatureDetail, type SpecFiles } from "./speckit.ts";
-import { toolEffective, toolProblem } from "./tools.ts";
+import { toolEffective, toolProblem, toolSetupItems } from "./tools.ts";
 import type {
   Actor,
   AgentsPaused,
@@ -85,6 +85,7 @@ import type {
   TeamPolicy,
   ToolEntry,
   ToolProjectSetting,
+  ToolStatus,
   ToolView,
   HiveSystem,
 } from "./types.ts";
@@ -466,6 +467,8 @@ const CHAT_ACTION_CALLS: Record<ChatActionKind, ChatCall> = {
   "agents.stop": { method: "agents.stop" },
   "agents.resume": { method: "agents.resume" },
   "machine.install": { method: "admin.commandCreate", result: (o) => ({ commandId: (o as MachineCommand).id }) },
+  // `name` and `before` are only what the card shows.
+  "tool.enable": { method: "tools.setProject", input: ({ id, project, enabled, required }) => ({ id, project, enabled, required }) },
 };
 
 /**
@@ -476,13 +479,15 @@ const CHAT_DECIDE_ORDER: Record<ChatActionKind, number> = {
   "task.create": 0,
   "task.update": 1,
   "agent.policy": 2,
-  "machine.profile": 3,
-  "machine.install": 4,
-  "agents.resume": 5,
-  "run.cancel": 6,
-  "run.merge": 7,
-  "run.dispatch": 8,
-  "agents.stop": 9,
+  // A tool turned on before a machine is asked to install it, and both before the runs that use it.
+  "tool.enable": 3,
+  "machine.profile": 4,
+  "machine.install": 5,
+  "agents.resume": 6,
+  "run.cancel": 7,
+  "run.merge": 8,
+  "run.dispatch": 9,
+  "agents.stop": 10,
 };
 
 /** Run records (runs.push) are kept this long after their last update. */
@@ -1216,6 +1221,7 @@ export class SqliteHive implements HiveBackend {
       case "docs.context":
       case "docs.syncStatus":
       case "machines.setupMissing":
+      case "tools.status":
         return this.#need(actor, i.project, "view", `Project ${i.project}`);
       // Whoever may change what agents read may have the machines write it now.
       case "docs.syncRequest":
@@ -2253,6 +2259,23 @@ export class SqliteHive implements HiveBackend {
                 throw new HiveError("forbidden", `${action.itemId} belongs to another project.`, { key: "errors.chatInstallOtherProject", vars: { item: action.itemId, project } });
               }
               input = { machineId: str(machineRow(action.machine).id), itemId: action.itemId };
+              break;
+            }
+            case "tool.enable": {
+              const row = db.prepare("SELECT * FROM tools WHERE id = ?").get(action.id) as Row | undefined;
+              if (!row) throw new HiveError("not_found", `No tool ${action.id}.`, { key: "errors.toolNotFound", vars: { id: action.id } });
+              // The project's setting now: the card shows before and after, and a proposal that leaves required out
+              // should not drop a requirement the project set.
+              const view = this.#toolView(row, actor, project);
+              const now = view.projects.find((p) => p.project === project)!;
+              input = {
+                id: view.id,
+                project,
+                enabled: action.enabled,
+                required: action.required ?? now.required,
+                name: view.name,
+                before: { enabled: now.enabled, required: now.required, effective: now.effective },
+              };
               break;
             }
           }
@@ -4145,6 +4168,34 @@ export class SqliteHive implements HiveBackend {
           db.prepare("DELETE FROM tools WHERE id = ?").run(id);
           return { removed: true };
         }),
+
+      "tools.status": ({ project }, actor) => {
+        const setups = new Map((db.prepare("SELECT id, setup FROM machines").all() as Row[]).map((r) => [str(r.id), r.setup]));
+        const machines = this.#machinesWith(project).flatMap((m) => {
+          const setup = setups.get(m.id);
+          if (setup == null) return [];
+          const report = JSON.parse(str(setup)) as SetupReport;
+          return [{ m, items: [...report.machine, ...report.projects.filter((p) => p.project === project).flatMap((p) => p.items)] }];
+        });
+        return (db.prepare("SELECT * FROM tools ORDER BY builtin DESC, id").all() as Row[]).map((r): ToolStatus => {
+          const view = this.#toolView(r, actor, project);
+          const setting = view.projects.find((p) => p.project === project)!;
+          const ids = toolSetupItems(view, project);
+          return {
+            id: view.id,
+            name: view.name,
+            effective: setting.effective,
+            required: setting.required,
+            items: ids,
+            // As setupMissing: for the project's readers, so no install action or local paths.
+            machines: machines.map(({ m, items }) => ({
+              machineId: m.id,
+              machine: m.machine,
+              items: items.filter((item) => ids.includes(item.id)).map(({ id, label, state, detail }) => ({ id, label, state, detail: hidePaths(detail) })),
+            })),
+          };
+        });
+      },
 
       "tools.setProject": ({ id, project, enabled, required }, actor) =>
         this.#tx(() => {

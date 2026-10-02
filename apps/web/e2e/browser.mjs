@@ -715,6 +715,43 @@ async function main() {
     await until("payment's leader creating tasks on its own", async () => (await rpc("chat.defaults", { project: "payment" })).autoKinds.includes("task.create"));
   });
 
+  // Roadmap 28e: payment's leader proposes Spec Kit, on and required, for the project; Lan confirms the card in the chat.
+  // (Codegraph is on already: the tools step turned it on.)
+  await step("leader-tool-proposal", async () => {
+    const lanRpc = async (method, input, token = people.lan.token) => {
+      const r = await fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "x-hive-agent": "runner.lan-mbp" },
+        body: JSON.stringify({ method, input }),
+      });
+      const j = await r.json();
+      if (j.error) throw new Error(`${method}: ${j.error.message}`);
+      return j.result;
+    };
+    const claude = { id: "claude-1", label: "Claude", kind: "claude", enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0 };
+    const beat = () => lanRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", version: "0.104.0", projects: ["payment"], acceptsRuns: true, profiles: [claude] });
+    await beat();
+    const machineId = (await rpc("machines.list")).find((m) => m.machine === "lan-mbp").id;
+    const sent = await rpc("chat.send", { project: "payment", machineId, text: "Bật Spec Kit cho payment" }, people.lan.token);
+    // The machine gets the request with the reply's own token, as the leader's MCP would use it.
+    const request = await until("the chat request at Lan's heartbeat", async () => (await beat()).chatRequests?.find((r) => r.replyId === sent.reply.id));
+    await lanRpc("chat.progress", { replyId: sent.reply.id, text: "Mình đề xuất bật Spec Kit cho payment." });
+    const proposed = await lanRpc("chat.propose", { action: { kind: "tool.enable", id: "speckit", enabled: true, required: true }, reason: "Viết spec trước khi làm" }, request.grant);
+    expect(proposed.status === "proposed", `payment lets its leader run task.create alone, not this: ${JSON.stringify(proposed)}`);
+    await lanRpc("chat.finish", { replyId: sent.reply.id, status: "done", text: "Mình đề xuất bật Spec Kit cho payment." });
+    const tab = (current = tabs.lan);
+    // The leader guide of the step before stays open otherwise.
+    await tab.reload();
+    await tab.go(`chat?thread=${sent.thread.id}`);
+    await tab.waitFor("the tool card", () => document.body.innerText.includes("Đặt tool Spec Kit cho dự án: bật, bắt buộc") && document.body.innerText.includes("Hiện tại: theo mặc định của tool"));
+    await tab.click("button", "Xác nhận");
+    await until("Spec Kit on and required for payment", async () => {
+      const line = (await rpc("tools.list", { project: "payment" })).find((t) => t.id === "speckit")?.projects[0];
+      return line?.effective === true && line.required === true;
+    });
+    await tab.waitFor("the card done, confirmed by Lan", () => document.body.innerText.includes("Đã làm") && document.body.innerText.includes("lan-e2e xác nhận lúc"));
+  });
+
   await step("hub-page", async () => {
     const tab = (current = tabs.admin);
     await tab.go("admin/hub");

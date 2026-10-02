@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   AGENT_ROLES,
+  cacheReadShare,
   effectivePolicy,
   agentPolicyPartSchema,
   MAX_CANDIDATES,
@@ -34,7 +35,7 @@ Team skills (how the team does recurring work): skill_list, then skill_get the o
 End of session: task_update to "review" with a note (done / not done / how to verify / risks). Never store secrets.`;
 
 const READ_ONLY_INSTRUCTIONS = `xDev Hive is the shared memory, docs and task board for every coding agent on this team.
-This connection is read-only: memory_search, doc_list, doc_get, skill_list, skill_get, task_list, task_next, run_list, run_get, run_requests, machine_list, setup_missing, cost_summary and policy_get (alert_list for hub admins). Search memory for your topic before working.
+This connection is read-only: memory_search, doc_list, doc_get, skill_list, skill_get, task_list, task_next, run_list, run_get, run_requests, machine_list, setup_missing, cost_summary, token_usage, tool_list, tool_status and policy_get (alert_list for hub admins). Search memory for your topic before working.
 Put anything worth sharing (decisions, gotchas, the handoff) in your final message instead of writing it to Hive.`;
 
 // A chat leader (the hub's token for one reply) changes nothing on the board itself: it proposes, a project manager confirms.
@@ -45,14 +46,16 @@ sets aside each one in the chat, and it runs with their rights; a kind the proje
 as the person who wrote to you (the answer says done or failed): say which ran and which wait. The same for the rest of the project's operations, always on the chat's project: propose_cancel_run (stop a queued or running run),
 propose_merge (merge a run's MR/PR), propose_profile (turn a machine's plan on or off, or change its priority),
 propose_policy (the project's agent policy), propose_stop_agents and propose_resume_agents (every agent of the project),
-propose_install (a machine installs a setup item it reported). Look first with run_list and machine_list: a proposal of a run
-or plan the hub does not know is refused.`;
+propose_install (a machine installs a setup item it reported; for a tool, the items tool_status lists), propose_tool (turn a catalog
+tool on or off for the project). Look first with run_list, machine_list and tool_list: a proposal of a run, plan or tool the hub
+does not know is refused.`;
 
 // Kept apart from LEADER_INSTRUCTIONS so the proposal list there can grow (roadmap 29b) without touching this.
 const LEADER_READ_INSTRUCTIONS = `
 Read before you answer or propose: costs and spending caps with cost_summary; a run that does not start with run_list, run_requests
 (rejected or expired requests and why) and setup_missing (what a machine lacks); the agent policy and whether agents are stopped with policy_get;
-the hub's open alerts with alert_list when you have it.`;
+the tools runs may get with tool_list, and where each stands on the machines with tool_status; tokens and the share read from the prompt
+cache with token_usage (quote its numbers: never guess what a tool saves); the hub's open alerts with alert_list when you have it.`;
 
 const project = z.string().optional().describe('Hive project key (see "Hive project key" in AGENTS.md)');
 const reason = z.string().min(1).max(500).describe("One line for the person confirming it: why");
@@ -432,6 +435,66 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     withProject(async ({ project: p }) => run("machines.setupMissing", { project: p })),
   );
 
+  // Roadmap 28e: the catalog, where its tools stand on the project's machines, and what runs used, for every token that reads.
+  server.registerTool(
+    "tool_list",
+    {
+      title: "List catalog tools",
+      description:
+        "The hub's tool catalog (MCP servers, Claude Code plugins, CLIs) with each entry's pinned package, the agents it is for, and the project's setting: " +
+        "enabled (null: the tool's default), required, effective (whether the project's runs get it).",
+      inputSchema: { project },
+      annotations: readOnly,
+    },
+    withProject(async ({ project: p }) => run("tools.list", { project: p })),
+  );
+
+  server.registerTool(
+    "tool_status",
+    {
+      title: "Where the project's tools stand",
+      description:
+        "Each catalog tool for the project: effective and required, the setup items that set it up (items: what propose_install takes), and on each machine " +
+        "with the project those items as it last reported them (installed, missing, outdated, manual). A machine with no items for a tool runs an older app.",
+      inputSchema: { project },
+      annotations: readOnly,
+    },
+    withProject(async ({ project: p }) => run("tools.status", { project: p })),
+  );
+
+  server.registerTool(
+    "token_usage",
+    {
+      title: "Project and run tokens",
+      description:
+        "Tokens of the project's runs: the last 30 days in total and its recent runs, each with input read fresh, written to the prompt cache, read from it, " +
+        "output, and cacheReadShare (0–1, the share of input read from the cache; null when the run did not split its input). Codex runs have tokens but no price.",
+      inputSchema: { project, limit: z.number().int().min(1).max(100).optional() },
+      annotations: readOnly,
+    },
+    withProject(async ({ project: p, limit }) => {
+      const hidden = unseen(p);
+      if (hidden) return hidden;
+      try {
+        const [summary, runs] = await Promise.all([backend.call("costs.summary", {}, actor), backend.call("runs.list", { project: p, limit: limit ?? 20 }, actor)]);
+        const totals = summary.projects.find((c) => c.project === p);
+        const tokens30 = totals?.tokens30 ?? { inputTokens: null, cacheWriteTokens: null, cacheReadTokens: null, outputTokens: null };
+        return json({
+          project: p,
+          last30: { runs: totals?.runs30 ?? 0, usd: totals?.usd30 ?? 0, ...tokens30, cacheReadShare: cacheReadShare(tokens30) },
+          // Only runs that reported tokens: the rest would be rows of nulls.
+          runs: runs.flatMap((r) =>
+            r.tokens
+              ? [{ machineId: r.machineId, runId: r.runId, taskId: r.taskId, role: r.role, profileId: r.profileId, status: r.status, finishedAt: r.finishedAt, usd: r.costUsd, ...r.tokens, cacheReadShare: cacheReadShare(r.tokens) }]
+              : [],
+          ),
+        });
+      } catch (err) {
+        return failed(err);
+      }
+    }),
+  );
+
   // Alerts are the hub's own (apps/web), not core's: only a hub admin sees them, as on the web.
   const alerts = opts.alerts;
   if (alerts && actor.role === "admin" && !actor.access) {
@@ -615,6 +678,23 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
         inputSchema: { machine, itemId: z.string(), reason },
       },
       async ({ machine: m, itemId, reason: why }) => run("chat.propose", { action: { kind: "machine.install", machine: m, itemId }, reason: why } as MethodInput<"chat.propose">),
+    );
+    server.registerTool(
+      "propose_tool",
+      {
+        title: "Propose a tool setting",
+        description:
+          "Propose the chat project's own setting for a catalog tool (tool_list): enabled true or false, or null to follow the tool's default; required to make " +
+          "every machine with the project need it (left out: as the project has it now). Approving it needs the project's settings right." +
+          confirm,
+        inputSchema: {
+          id: z.string().describe("The tool's id (tool_list)"),
+          enabled: z.boolean().nullable(),
+          required: z.boolean().optional(),
+          reason,
+        },
+      },
+      async ({ id, enabled, required, reason: why }) => run("chat.propose", { action: { kind: "tool.enable", id, enabled, required }, reason: why } as MethodInput<"chat.propose">),
     );
   }
 
