@@ -7,7 +7,7 @@ import { describe, it } from "node:test";
 import type { DesktopProject, SetupReport } from "@xdev-hive/core";
 import { setMainLocale } from "#desktop/main/i18n.ts";
 import { CODEGRAPH_PACKAGE } from "#desktop/main/installer.ts";
-import { Setup } from "#desktop/main/setup.ts";
+import { AGENT_CLIS, cliUpgrade, parseCliVersion, Setup, type SetupHost } from "#desktop/main/setup.ts";
 
 const tmp = (p: string) => mkdtempSync(path.join(os.tmpdir(), `hive-setup-${p}-`));
 
@@ -26,7 +26,7 @@ const SPECIFY = `case "$1" in
   integration) echo '{"version":"1.0.14.dev0","installed_integrations":["claude","'"$3"'"]}' > .specify/integration.json && echo "installed $3" ;;
 esac`;
 
-function machine(opts: { npm?: boolean; uv?: boolean; specify?: boolean } = {}) {
+function machine(opts: { npm?: boolean; uv?: boolean; specify?: boolean } & Pick<SetupHost, "latest" | "realpath" | "cliBusy" | "holdCli"> = {}) {
   const bin = tmp("bin");
   const shimDir = tmp("shim");
   // uv's tool bin dir, not on PATH (like ~/.local/bin for a login shell that lacks it).
@@ -52,6 +52,11 @@ function machine(opts: { npm?: boolean; uv?: boolean; specify?: boolean } = {}) 
     projects: () => projects,
     shim: { electronPath: "/Applications/xDev Hive.app/Contents/MacOS/xDev Hive", entry: "/app/mcp/hive-mcp.mjs", binDir: shimDir },
     home: tmp("home"),
+    // No registry in tests unless one says what is newest.
+    latest: opts.latest ?? (async () => null),
+    ...(opts.realpath ? { realpath: opts.realpath } : {}),
+    ...(opts.cliBusy ? { cliBusy: opts.cliBusy } : {}),
+    ...(opts.holdCli ? { holdCli: opts.holdCli } : {}),
   });
   return { setup, bin, shimDir, uvBin, projects };
 }
@@ -260,3 +265,75 @@ describe("Setup: Spec Kit", () => {
     assert.equal(find(r, "app:speckit").action, "Thêm lệnh cho Claude Code, Codex CLI");
   });
 });
+
+describe("Setup: CLI versions and upgrades (roadmap 33)", () => {
+  const claude = AGENT_CLIS.find((c) => c.kind === "claude")!;
+  const codex = AGENT_CLIS.find((c) => c.kind === "codex")!;
+
+  it("reads the version out of each CLI's --version", () => {
+    assert.equal(parseCliVersion("2.1.283 (Claude Code)"), "2.1.283");
+    assert.equal(parseCliVersion("codex-cli 0.157.1"), "0.157.1");
+    assert.equal(parseCliVersion("0.61.0\n"), "0.61.0");
+    assert.equal(parseCliVersion("gemini 0.62.0-preview.3"), "0.62.0-preview.3");
+    assert.equal(parseCliVersion("no version here"), null);
+    assert.equal(parseCliVersion("10.0.0.1"), null, "four parts is not a version this reads");
+  });
+
+  it("upgrades a CLI the way it was installed, so no second copy lands on PATH", () => {
+    const own = "/usr/local/bin/claude";
+    assert.deepEqual(cliUpgrade(claude, "/Users/duy/.nvm/versions/node/v26.10.0/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe", own), {
+      method: "npm",
+      bin: "npm",
+      args: ["install", "-g", "@anthropic-ai/claude-code@latest"],
+    });
+    assert.deepEqual(cliUpgrade(codex, "C:\\Users\\duy\\AppData\\Roaming\\npm\\node_modules\\@openai\\codex\\bin\\codex.js", "C:\\x\\codex.cmd")?.args, ["install", "-g", "@openai/codex@latest"]);
+    assert.deepEqual(cliUpgrade(claude, "/Users/duy/.local/share/claude/versions/2.1.283", own), { method: "native", bin: own, args: ["update"] });
+    assert.deepEqual(cliUpgrade(codex, "/opt/homebrew/Cellar/codex/0.157.1/bin/codex", "/opt/homebrew/bin/codex")?.args, ["upgrade", "codex"]);
+    assert.deepEqual(cliUpgrade(claude, "/opt/homebrew/Caskroom/claude-code/2.1.283/claude", own)?.args, ["upgrade", "--cask", "claude-code"]);
+    assert.equal(cliUpgrade(codex, "/Users/duy/.local/share/claude/versions/2.1.283", own), null, "only Claude Code updates itself");
+    assert.equal(cliUpgrade(claude, "/opt/tools/claude", own), null);
+  });
+
+  it("shows the newest version and offers an upgrade only when it knows how", async () => {
+    const npmInstall = (bin: string) => `/lib/node_modules/@anthropic-ai/claude-code/${path.basename(bin)}`;
+    const m = machine({ latest: async (pkg) => (pkg === "@anthropic-ai/claude-code" ? "2.1.290" : null), realpath: npmInstall });
+    const item = find(await m.setup.status(), "cli:claude");
+    assert.deepEqual([item.state, item.version, item.latest, item.action], ["installed", "2.1.283", "2.1.290", "Nâng cấp lên 2.1.290"], "behind but running: still installed");
+    assert.match(item.detail, /^2\.1\.283, có bản 2\.1\.290 · .*\/claude$/);
+
+    const unknown = machine({ latest: async () => "2.1.290", realpath: (b) => b });
+    const manual = find(await unknown.setup.status(), "cli:claude");
+    assert.equal(manual.action, null);
+    assert.match(manual.detail, /nâng cấp theo cách bạn đã cài/);
+
+    const current = machine({ latest: async () => "2.1.283", realpath: npmInstall });
+    assert.deepEqual([find(await current.setup.status(), "cli:claude").action, find(await current.setup.status(), "cli:claude").latest], [null, "2.1.283"]);
+  });
+
+  it("upgrades with npm while holding the CLI's runs, and not under a running one", async () => {
+    const held: string[] = [];
+    let busy = 1;
+    const m = machine({
+      latest: async () => "2.1.290",
+      realpath: (b) => `/lib/node_modules/@anthropic-ai/claude-code/${path.basename(b)}`,
+      cliBusy: (kind) => (kind === "claude" ? busy : 0),
+      holdCli: (kind, on) => void held.push(`${kind}:${on}`),
+    });
+    await assert.rejects(m.setup.install("cli:claude"), (err: { key?: string }) => err.key === "setupItem.cliBusy");
+    assert.deepEqual(held, [], "refused before anything was held");
+    busy = 0;
+    const r = await m.setup.install("cli:claude");
+    assert.ok(calls(m.bin).some((c) => c.startsWith("npm install -g @anthropic-ai/claude-code@latest")), calls(m.bin).join("\n"));
+    assert.deepEqual(held, ["claude:true", "claude:false"]);
+    assert.equal(r.item.id, "cli:claude");
+  });
+
+  it("asks the registry for the newest version once in a while, not at every check", async () => {
+    let asked = 0;
+    const m = machine({ latest: async () => (asked++, "2.1.290") });
+    await m.setup.status();
+    await m.setup.status();
+    assert.equal(asked, 1);
+  });
+});
+
