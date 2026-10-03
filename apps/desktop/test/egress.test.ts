@@ -10,8 +10,8 @@ const profile = (allow: string[] = []): AgentProfile => ({ ...AGENT_TEMPLATES.co
 
 describe("allowed hosts and the run's network", () => {
   it("allows the defaults, the hub, the team's GitLab and what the profile adds", () => {
-    const allow = egressAllow(profile(["Registry.Corp.Example", "git.corp.example:8443"]), { hub: "https://hive.xdev.asia", gitlab: "https://gitlab.fis.vn:8443/" });
-    for (const h of [".anthropic.com", ".openai.com", ".googleapis.com", "registry.npmjs.org", "pypi.org", "github.com", "hive.xdev.asia", "gitlab.fis.vn:8443", "registry.corp.example", "git.corp.example:8443"]) {
+    const allow = egressAllow(profile(["Registry.Corp.Example", "git.corp.example:8443"]), { hub: "https://hive.xdev.asia", gitlab: "https://gitlab.example.com:8443/" });
+    for (const h of [".anthropic.com", ".openai.com", ".googleapis.com", "registry.npmjs.org", "pypi.org", "github.com", "hive.xdev.asia", "gitlab.example.com:8443", "registry.corp.example", "git.corp.example:8443"]) {
       assert.ok(allow.includes(h), h);
     }
     assert.deepEqual(egressAllow(profile(), { hub: "not a url", gitlab: null }).includes("not a url"), false);

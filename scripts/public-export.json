@@ -1,0 +1,47 @@
+{
+  "exclude": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".claude/",
+    ".xdev-hive/",
+    "docs/design/",
+    "docs/mcp-check.md",
+    "docs/specs/38-ehospital-onboarding.md"
+  ],
+  "docs": ["**/*.md"],
+  "replace": [
+    { "from": " Spec: [docs/specs/38-ehospital-onboarding.md](specs/38-ehospital-onboarding.md).", "to": "" },
+    { "from": "nối eHospital", "to": "nối dự án khách hàng" },
+    { "from": "với eHospital 8 repo", "to": "với dự án khách hàng 8 repo" },
+    { "from": "ehospital-ai", "to": "customer-ai" },
+    { "from": "ehospital", "to": "customer" },
+    { "from": "hc-duytd20-linux", "to": "linux-runner" },
+    { "from": "hc-duytd20-macmini", "to": "mac-mini-1" },
+    { "from": "hc-duytd20", "to": "win-runner" },
+    { "from": "hc-hieupt35", "to": "win-2" },
+    { "from": "gitlab.fis.vn", "to": "gitlab.example.com" },
+    { "from": "ghe.fis.vn", "to": "github.example.com" },
+    { "from": "hive.fis.vn", "to": "hive.example.com" },
+    { "from": "@fpt.com", "to": "@example.com" },
+    { "from": "ssh xdev-server", "to": "ssh hub-server" },
+    { "from": "~/Desktop/Codes", "to": "~/src" },
+    { "from": "D:\\Codes", "to": "D:\\src" },
+    { "from": "tdduydev/xdev-hive", "to": "your-org/xdev-hive", "files": ["**"] }
+  ],
+  "forbid": [
+    "ehospital",
+    "his-service",
+    "his-portal",
+    "system-portal",
+    "keycloak-theme",
+    "fis.vn",
+    "fpt.com",
+    "hc-duytd20",
+    "hc-hieupt35",
+    "xdev-server",
+    "Desktop/Codes",
+    "D:\\Codes",
+    "tdduy"
+  ],
+  "warn": ["hive.xdev.asia"]
+}

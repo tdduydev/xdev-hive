@@ -60,7 +60,7 @@ export const mrSettingsSchema = z.object({
 export type MrSettings = z.output<typeof mrSettingsSchema>;
 
 export const gitlabSettingsSchema = z.object({
-  /** e.g. https://gitlab.fis.vn */
+  /** e.g. https://gitlab.example.com */
   url: z.string().default(""),
   /** Personal/project access token with `api` scope (and `write_repository` when pushing over HTTPS). */
   token: z.string().default(""),

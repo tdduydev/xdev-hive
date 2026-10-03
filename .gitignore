@@ -11,3 +11,7 @@ data/
 .codegraph/
 # git worktrees made by Claude Code sessions
 .claude/worktrees/
+# secrets, never commit
+.env
+*.env
+deploy/.env
