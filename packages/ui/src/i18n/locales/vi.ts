@@ -497,6 +497,11 @@ export const vi = {
     newSystem: "Tạo hệ thống…",
     projects: "Dự án",
     noProjects: "Chưa có dự án nào.",
+    recent: "Gần đây",
+    otherProjects: "Dự án khác",
+    searchProjects: "Tìm dự án hoặc hệ thống…",
+    selectProject: "Chọn dự án hoặc phạm vi",
+    noMatches: "Không tìm thấy dự án hoặc hệ thống.",
   },
   login: {
     tagline: "Tài liệu, memory và task dùng chung cho các coding agent của team.",

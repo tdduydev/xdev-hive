@@ -495,6 +495,11 @@ export const en: Catalog = {
     newSystem: "Create a system…",
     projects: "Projects",
     noProjects: "No projects yet.",
+    recent: "Recent",
+    otherProjects: "Other projects",
+    searchProjects: "Search projects or systems…",
+    selectProject: "Choose a project or scope",
+    noMatches: "No matching projects or systems.",
   },
   login: {
     tagline: "Docs, memory and tasks shared by your team's coding agents.",
