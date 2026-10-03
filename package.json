@@ -15,7 +15,7 @@
     "dev:web": "npm run dev -w @xdev-hive/web",
     "dev:desktop": "npm run dev -w @xdev-hive/desktop",
     "build": "npm run build -w @xdev-hive/web && npm run build -w @xdev-hive/desktop",
-    "test": "node --test \"packages/*/test/*.test.ts\" \"apps/*/test/*.test.ts\"",
+    "test": "node --test \"packages/*/test/*.test.ts\" \"apps/*/test/*.test.ts\" \"scripts/test/*.test.ts\"",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "codegraph:init": "npx -y @colbymchenry/codegraph@1.6.0 telemetry off && npx -y @colbymchenry/codegraph@1.6.0 init"
   },

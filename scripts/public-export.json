@@ -1,0 +1,50 @@
+{
+  "exclude": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".claude/",
+    ".xdev-hive/",
+    "docs/design/",
+    "docs/mcp-check.md",
+    "docs/specs/38-customer-onboarding.md",
+    "scripts/public-export.mjs",
+    "scripts/public-export.json",
+    "scripts/test/public-export.test.ts"
+  ],
+  "docs": ["**/*.md"],
+  "replace": [
+    { "from": "", "to": "" },
+    { "from": "nối dự án khách hàng", "to": "nối dự án khách hàng" },
+    { "from": "với dự án khách hàng 8 repo", "to": "với dự án khách hàng 8 repo" },
+    { "from": "customer-ai", "to": "customer-ai" },
+    { "from": "customer", "to": "customer" },
+    { "from": "linux-runner", "to": "linux-runner" },
+    { "from": "mac-mini-1", "to": "mac-mini-1" },
+    { "from": "win-runner", "to": "win-runner" },
+    { "from": "win-2", "to": "win-2" },
+    { "from": "gitlab.example.com", "to": "gitlab.example.com" },
+    { "from": "github.example.com", "to": "github.example.com" },
+    { "from": "hive.example.com", "to": "hive.example.com" },
+    { "from": "@example.com", "to": "@example.com" },
+    { "from": "ssh hub-server", "to": "ssh hub-server" },
+    { "from": "~/src", "to": "~/src" },
+    { "from": "D:\\Codes", "to": "D:\\src" },
+    { "from": "tdduydev/xdev-hive", "to": "your-org/xdev-hive", "files": ["**"] }
+  ],
+  "forbid": [
+    "customer",
+    "svc-core",
+    "svc-portal",
+    "admin-portal",
+    "login-theme",
+    "example.com",
+    "example.com",
+    "win-runner",
+    "win-2",
+    "hub-server",
+    "src",
+    "D:\\Codes",
+    "tdduy"
+  ],
+  "warn": ["hive.example.com"]
+}
