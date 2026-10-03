@@ -21,7 +21,7 @@ export async function seed(base, admin) {
   await rpc(admin, "tasks.create", { id: "PAY-1", project: "payment", title: "Việc đầu tiên của payment" });
   await rpc(admin, "tasks.create", { id: "DEMO-1", project: "demo", title: "Việc đầu tiên của demo" });
   await rpc(admin, "tasks.create", { id: "LEDGER-1", project: "ledger", title: "Việc đầu tiên của ledger" });
-  await rpc(admin, "systems.save", { name: "Dịch vụ bán hàng", projects: ["payment", "demo", "ledger"] });
+  await rpc(admin, "systems.save", { name: "ban-hang", projects: ["payment", "demo", "ledger"] });
 
   // A first sign-in asks for a new password: done here, so the page test signs in with the final one.
   const people = {};

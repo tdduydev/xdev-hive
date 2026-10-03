@@ -29,7 +29,7 @@ export function ProjectPicker(props: Props) {
   const [recent, setRecent] = useState(readRecent);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
-  const groups = useMemo(() => pickerGroups(props.projects, props.systems, props.mode, query, recent, props.includeShared), [props.projects, props.systems, props.mode, props.includeShared, query, recent]);
+  const groups = useMemo(() => pickerGroups(props.projects, props.systems, props.mode, query, recent, props.includeShared, { all: t("common.allProjects"), shared: t("common.sharedTeam") }), [props.projects, props.systems, props.mode, props.includeShared, query, recent, t]);
   const items = groups.flatMap((group) => group.items);
   const label = (item: Scope) => item.kind === "all" ? t("common.allProjects") : item.kind === "shared" ? t("common.sharedTeam") : item.kind === "system" ? item.system : item.project;
   const selected = (item: Scope) => props.mode === "scope" ? sameScope(props.value, item) : item.kind === "shared" ? props.value === null : item.kind === "project" && item.project === props.value;
