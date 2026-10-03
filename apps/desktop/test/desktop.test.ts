@@ -6,7 +6,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { MANAGED_START, type Actor } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
-import { installAgents, installCodexConfig, installShim } from "#desktop/main/installer.ts";
+import { CODEGRAPH_MCP, installAgents, installCodexConfig, installShim } from "#desktop/main/installer.ts";
 import { commitAll, ensureWorktree, remoteStart } from "#desktop/main/runner/worktree.ts";
 import { syncProject } from "#desktop/main/sync.ts";
 
@@ -26,16 +26,20 @@ function gitRepo(): string {
   return repo;
 }
 
+const SHIM = "/home/duy/.local/bin/hive-mcp";
+const WIN_SHIM = String.raw`C:\Users\duy\.xdev-hive\bin\hive-mcp.cmd`;
+
 describe("installAgents", () => {
   it("wires Claude, Gemini and Codex and is idempotent", () => {
     const repo = gitRepo();
     const home = tmp("home");
     writeFileSync(path.join(repo, ".mcp.json"), JSON.stringify({ mcpServers: { other: { command: "x" } } }));
-    const first = installAgents(repo, "demo", { home });
+    const first = installAgents(repo, "demo", { home, shim: SHIM });
     assert.deepEqual(
       first.map((a) => [a.file, a.action]),
       [
-        [".mcp.json", "updated"],
+        ["~/.claude.json", "created"],
+        [".mcp.json", "unchanged"],
         [".gemini/settings.json", "created"],
         [".claude/settings.json", "created"],
         [".xdev-hive/guard-docs.sh", "created"],
@@ -46,29 +50,73 @@ describe("installAgents", () => {
     );
     const mcp = JSON.parse(readFileSync(path.join(repo, ".mcp.json"), "utf8"));
     assert.ok(mcp.mcpServers.other, "keeps existing servers");
-    assert.deepEqual(mcp.mcpServers["xdev-hive"], { command: "hive-mcp", args: [], env: { HIVE_AGENT: "claude", HIVE_PROJECT: "demo" } });
+    assert.equal(mcp.mcpServers["xdev-hive"], undefined, "not in the file shared through git");
+    // Claude Code's local scope, keyed by the folder it is started in.
+    const local = JSON.parse(readFileSync(path.join(home, ".claude.json"), "utf8"));
+    assert.deepEqual(local.projects[repo].mcpServers["xdev-hive"], {
+      type: "stdio",
+      command: SHIM,
+      args: [],
+      env: { HIVE_AGENT: "claude", HIVE_PROJECT: "demo" },
+    });
     const gemini = JSON.parse(readFileSync(path.join(repo, ".gemini/settings.json"), "utf8"));
     assert.deepEqual(gemini.contextFileName, ["AGENTS.md"]);
     assert.equal(statSync(path.join(repo, ".githooks/pre-commit")).mode & 0o111, 0o111);
 
-    const second = installAgents(repo, "demo", { home });
+    const second = installAgents(repo, "demo", { home, shim: SHIM });
     assert.ok(second.every((a) => a.action === "unchanged"), JSON.stringify(second));
+  });
+
+  it("drops the xdev-hive Hive wrote into .mcp.json but keeps the user's own", () => {
+    const repo = gitRepo();
+    const hive = { mcpServers: { "xdev-hive": { command: "hive-mcp", args: [], env: { HIVE_AGENT: "claude", HIVE_PROJECT: "demo" } }, other: { command: "x" } } };
+    writeFileSync(path.join(repo, ".mcp.json"), JSON.stringify(hive));
+    const dropped = installAgents(repo, "demo", { home: tmp("home"), shim: SHIM }).find((a) => a.file === ".mcp.json")!;
+    assert.equal(dropped.action, "removed");
+    const left = JSON.parse(readFileSync(path.join(repo, ".mcp.json"), "utf8")).mcpServers;
+    assert.deepEqual(Object.keys(left), ["other"]);
+
+    const own = { mcpServers: { "xdev-hive": { command: "node", args: ["my-server.js"] } } };
+    writeFileSync(path.join(repo, ".mcp.json"), JSON.stringify(own));
+    const kept = installAgents(repo, "demo", { home: tmp("home"), shim: SHIM }).find((a) => a.file === ".mcp.json")!;
+    assert.equal(kept.action, "skipped");
+    assert.deepEqual(JSON.parse(readFileSync(path.join(repo, ".mcp.json"), "utf8")), own);
+  });
+
+  it("starts the shim and npx through cmd.exe on Windows", () => {
+    const repo = gitRepo();
+    const home = tmp("home");
+    // codegraph is on for the repo: the local scope overrides the repo's plain npx entry, which other machines keep.
+    writeFileSync(path.join(repo, ".mcp.json"), JSON.stringify({ mcpServers: { codegraph: CODEGRAPH_MCP } }));
+    installAgents(repo, "demo", { home, shim: WIN_SHIM, platform: "win32" });
+    const servers = JSON.parse(readFileSync(path.join(home, ".claude.json"), "utf8")).projects[repo].mcpServers;
+    assert.deepEqual(servers["xdev-hive"], {
+      type: "stdio",
+      command: "cmd",
+      args: ["/c", WIN_SHIM],
+      env: { HIVE_AGENT: "claude", HIVE_PROJECT: "demo" },
+    });
+    assert.deepEqual(servers.codegraph.args.slice(0, 3), ["/c", "npx", "-y"]);
+    assert.equal(servers.codegraph.command, "cmd");
+    assert.deepEqual(JSON.parse(readFileSync(path.join(repo, ".mcp.json"), "utf8")).mcpServers.codegraph, CODEGRAPH_MCP, "the shared file stays portable");
+    assert.match(readFileSync(path.join(home, ".codex/config.toml"), "utf8"), /command = "cmd"\nargs = \["\/c", "C:\\\\Users\\\\duy\\\\.xdev-hive\\\\bin\\\\hive-mcp.cmd"\]/);
   });
 
   it("keeps the user's Codex config and replaces only its own block", () => {
     const file = path.join(tmp("codex"), "config.toml");
     writeFileSync(file, '# my settings\nmodel = "gpt-5"\n');
-    installCodexConfig(file);
-    installCodexConfig(file);
+    installCodexConfig(file, SHIM);
+    installCodexConfig(file, SHIM);
     const text = readFileSync(file, "utf8");
     assert.match(text, /^# my settings\nmodel = "gpt-5"\n/);
     assert.equal(text.match(/\[mcp_servers\.xdev-hive\]/g)?.length, 1);
+    assert.match(text, new RegExp(`command = "${SHIM}"`), "the shim by full path, not looked up on PATH");
     assert.match(text, /\[mcp_servers\.xdev-hive\][\s\S]*default_tools_approval_mode = "approve"/, "Hive's tools need no approval in headless runs");
   });
 
   it("blocks direct commits of AGENTS.md but lets the Hive app commit", () => {
     const repo = gitRepo();
-    installAgents(repo, "demo", { home: tmp("home") });
+    installAgents(repo, "demo", { home: tmp("home"), shim: SHIM });
     writeFileSync(path.join(repo, "AGENTS.md"), "hand edit\n");
     sh(repo, "git", ["add", "AGENTS.md"]);
     assert.throws(() => sh(repo, "git", ["commit", "-qm", "sneaky"]), /được quản lý trong Hive/);
@@ -77,7 +125,7 @@ describe("installAgents", () => {
 
   it("guard hook blocks Claude edits of protected docs only", () => {
     const repo = gitRepo();
-    installAgents(repo, "demo", { home: tmp("home") });
+    installAgents(repo, "demo", { home: tmp("home"), shim: SHIM });
     const guard = path.join(repo, ".xdev-hive/guard-docs.sh");
     const run = (file: string) => {
       try {
@@ -105,7 +153,7 @@ describe("installAgents", () => {
 describe("syncProject", () => {
   it("imports an existing AGENTS.md, renders shared docs and commits only doc files", async () => {
     const repo = gitRepo();
-    installAgents(repo, "demo", { home: tmp("home") });
+    installAgents(repo, "demo", { home: tmp("home"), shim: SHIM });
     writeFileSync(path.join(repo, "AGENTS.md"), "# Demo\nRun `npm test`.\n");
     sh(repo, "git", ["add", "AGENTS.md"]);
     sh(repo, "git", ["commit", "-qm", "agents"], { HIVE_ADMIN: "1" });
@@ -209,7 +257,7 @@ describe("docs for some paths in the repo", () => {
 
   it("keeps agents off Hive's nested AGENTS.md and rules, but not off their own", () => {
     const repo = gitRepo();
-    installAgents(repo, "demo", { home: tmp("home") });
+    installAgents(repo, "demo", { home: tmp("home"), shim: SHIM });
     mkdirSync(path.join(repo, "apps/web"), { recursive: true });
     mkdirSync(path.join(repo, "apps/api"), { recursive: true });
     mkdirSync(path.join(repo, ".claude/rules/xdev-hive"), { recursive: true });
@@ -293,7 +341,7 @@ describe("skills in the repo", () => {
 
   it("keeps agents off Hive's skills, but not off the repo's own", () => {
     const repo = gitRepo();
-    installAgents(repo, "demo", { home: tmp("home") });
+    installAgents(repo, "demo", { home: tmp("home"), shim: SHIM });
     mkdirSync(path.join(repo, ".claude/skills/review-pr"), { recursive: true });
     mkdirSync(path.join(repo, ".claude/skills/own"), { recursive: true });
     writeFileSync(path.join(repo, ".claude/skills/review-pr/SKILL.md"), `---\nname: review-pr\ndescription: x\n---\n${MANAGED_START}\nHive steps\n<!-- xdev-hive:end -->\n`);

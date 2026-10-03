@@ -53,21 +53,47 @@ exit 0
 
 const CODEX_START = `# >>> ${MARK} >>>`;
 const CODEX_END = `# <<< ${MARK} <<<`;
-const CODEX_BLOCK = [
-  CODEX_START,
-  `[mcp_servers.${MCP_NAME}]`,
-  `command = "${SHIM_NAME}"`,
-  "args = []",
-  'env = { HIVE_AGENT = "codex" }',
-  // Codex 0.15x asks before every MCP write (task_claim, memory_write); a headless run has nobody to ask.
-  'default_tools_approval_mode = "approve"',
-  CODEX_END,
-].join("\n");
+
+/** TOML basic string: the same escapes as JSON, which is what a Windows path full of backslashes needs. */
+const toml = (s: string) => JSON.stringify(s);
+
+const codexBlock = (shim: string, platform: NodeJS.Platform) => {
+  const { command, args } = mcpLaunch(shim, [], platform);
+  return [
+    CODEX_START,
+    `[mcp_servers.${MCP_NAME}]`,
+    `command = ${toml(command)}`,
+    `args = [${args.map(toml).join(", ")}]`,
+    'env = { HIVE_AGENT = "codex" }',
+    // Codex 0.15x asks before every MCP write (task_claim, memory_write); a headless run has nobody to ask.
+    'default_tools_approval_mode = "approve"',
+    CODEX_END,
+  ].join("\n");
+};
+
+/**
+ * How an MCP client starts a command on this machine. Windows: a client spawns its servers without a shell, and
+ * neither the shim (a .cmd) nor npx (a .cmd too) starts that way — cmd.exe has to run them.
+ */
+export function mcpLaunch(command: string, args: string[], platform: NodeJS.Platform = process.platform): { command: string; args: string[] } {
+  return platform === "win32" ? { command: "cmd", args: ["/c", command, ...args] } : { command, args };
+}
 
 /** Hive's MCP server for an agent on a project: the shim reads the token itself, so the env holds no secret. */
 export const hiveMcpServer = (agent: string, project: string) => ({
   command: SHIM_NAME,
   args: [] as string[],
+  env: { HIVE_AGENT: agent, HIVE_PROJECT: project },
+});
+
+/**
+ * The same server for a config file read on this machine only: the shim by its full path, because a program started
+ * from Finder, Explorer or the Dock does not get the shell's PATH — `"command": "hive-mcp"` then fails to start
+ * (macOS, 3/10: "Executable not found in $PATH: hive-mcp" though ~/.local/bin/hive-mcp was there).
+ */
+export const hiveMcpServerAt = (shim: string, agent: string, project: string, platform: NodeJS.Platform = process.platform) => ({
+  type: "stdio",
+  ...mcpLaunch(shim, [], platform),
   env: { HIVE_AGENT: agent, HIVE_PROJECT: project },
 });
 
@@ -138,33 +164,91 @@ function configureHooksPath(repo: string, apply: boolean): FileAction {
   return { file: label, action: "updated", note: ".githooks" };
 }
 
-export function installCodexConfig(file: string, apply = true): FileAction {
+export function installCodexConfig(file: string, shim: string, opts: { apply?: boolean; platform?: NodeJS.Platform } = {}): FileAction {
   const label = "~/.codex/config.toml";
+  const block = codexBlock(shim, opts.platform ?? process.platform);
   const before = read(file) ?? "";
   const start = before.indexOf(CODEX_START);
   const end = before.indexOf(CODEX_END);
   let next: string;
   if (start !== -1 && end > start) {
-    next = before.slice(0, start) + CODEX_BLOCK + before.slice(end + CODEX_END.length);
+    next = before.slice(0, start) + block + before.slice(end + CODEX_END.length);
   } else if (new RegExp(`^\\[mcp_servers\\.${MCP_NAME}\\]`, "m").test(before)) {
     return { file: label, action: "skipped", note: tr("fileNote.codexOwnEntry", { name: MCP_NAME }) };
   } else {
-    next = `${before}${before && !before.endsWith("\n") ? "\n" : ""}${before ? "\n" : ""}${CODEX_BLOCK}\n`;
+    next = `${before}${before && !before.endsWith("\n") ? "\n" : ""}${before ? "\n" : ""}${block}\n`;
   }
-  return writeIfChanged(file, next, label, undefined, apply);
+  return writeIfChanged(file, next, label, undefined, opts.apply ?? true);
+}
+
+/** Claude Code's own config for this machine: ~/.claude.json, where `claude mcp add --scope local` puts a server. */
+export const claudeLocalFile = (home: string) => path.join(home, ".claude.json");
+
+/**
+ * Writes `servers` into Claude Code's local scope for `repo`. Local scope, not the repo's .mcp.json, because the
+ * entry holds this machine's own path to the shim: .mcp.json is shared through git, and a project server also has
+ * to be approved once per repo. The key is the folder Claude Code is started in, exactly as it is on disk.
+ * [Unverified] Shape read from Claude Code's docs, not measured here: check with `claude mcp get xdev-hive`.
+ */
+function installClaudeLocalMcp(home: string, repo: string, servers: Json, apply: boolean): FileAction {
+  return mergeJson(
+    claudeLocalFile(home),
+    "~/.claude.json",
+    (j) => {
+      const entry: Json = j.projects?.[repo] ?? {};
+      return { ...j, projects: { ...j.projects, [repo]: { ...entry, mcpServers: { ...entry.mcpServers, ...servers } } } };
+    },
+    apply,
+  );
+}
+
+/**
+ * Takes Hive's own `xdev-hive` out of the repo's .mcp.json: it is shared through git but names a command that only
+ * works where the shim folder is on PATH, which an agent started from a GUI never has. A `xdev-hive` someone wrote
+ * themselves (another command) is left alone.
+ */
+function removeHiveFromMcpJson(repo: string, apply: boolean): FileAction {
+  const file = path.join(repo, ".mcp.json");
+  const label = ".mcp.json";
+  const before = read(file);
+  if (before === null) return { file: label, action: "unchanged" };
+  let json: Json;
+  try {
+    json = JSON.parse(before) as Json;
+  } catch {
+    return { file: label, action: "skipped", note: tr("fileNote.badJson") };
+  }
+  const entry = json.mcpServers?.[MCP_NAME];
+  if (!entry) return { file: label, action: "unchanged" };
+  if (entry.command !== SHIM_NAME) return { file: label, action: "skipped", note: tr("fileNote.ownMcpEntry", { name: MCP_NAME }) };
+  const { [MCP_NAME]: _hive, ...rest } = json.mcpServers as Json;
+  if (apply) writeFileSync(file, `${JSON.stringify({ ...json, mcpServers: rest }, null, 2)}\n`);
+  return { file: label, action: "removed", note: tr("fileNote.movedToClaudeLocal") };
+}
+
+export interface InstallAgentsOptions {
+  /** Full path of the hive-mcp shim on this machine (shimTarget). */
+  shim: string;
+  home?: string;
+  dryRun?: boolean;
+  /** Which OS the config is for; tests build the Windows form on any machine. */
+  platform?: NodeJS.Platform;
 }
 
 /** Registers Hive's MCP server with Claude Code, Gemini CLI and Codex, and installs the doc guards. dryRun lists what would change. */
-export function installAgents(repo: string, project: string, opts: { home?: string; dryRun?: boolean } = {}): FileAction[] {
+export function installAgents(repo: string, project: string, opts: InstallAgentsOptions): FileAction[] {
   const home = opts.home ?? os.homedir();
+  const platform = opts.platform ?? process.platform;
   const apply = !opts.dryRun;
+  // Windows: the repo's .mcp.json keeps the plain `npx` entry, which is what every other machine needs; the local
+  // scope wins over it with the same command through cmd.exe, so nothing machine-specific is committed.
+  const local: Json = {
+    [MCP_NAME]: hiveMcpServerAt(opts.shim, "claude", project, platform),
+    ...(platform === "win32" && repoFeatures(repo).codegraph ? { codegraph: codegraphMcp(platform) } : {}),
+  };
   return [
-    mergeJson(
-      path.join(repo, ".mcp.json"),
-      ".mcp.json",
-      (j) => ({ ...j, mcpServers: { ...j.mcpServers, [MCP_NAME]: hiveMcpServer("claude", project) } }),
-      apply,
-    ),
+    installClaudeLocalMcp(home, repo, local, apply),
+    removeHiveFromMcpJson(repo, apply),
     mergeJson(
       path.join(repo, ".gemini", "settings.json"),
       ".gemini/settings.json",
@@ -179,7 +263,7 @@ export function installAgents(repo: string, project: string, opts: { home?: stri
     writeIfChanged(path.join(repo, ".xdev-hive", "guard-docs.sh"), GUARD_SCRIPT, ".xdev-hive/guard-docs.sh", 0o755, apply),
     installPreCommit(repo, apply),
     configureHooksPath(repo, apply),
-    installCodexConfig(path.join(home, ".codex", "config.toml"), apply),
+    installCodexConfig(path.join(home, ".codex", "config.toml"), opts.shim, { apply, platform }),
   ];
 }
 
@@ -188,19 +272,22 @@ export function installAgents(repo: string, project: string, opts: { home?: stri
 export const CODEGRAPH_PACKAGE = "@colbymchenry/codegraph@1.6.0";
 export const SUPERPOWERS_PLUGIN = "superpowers@claude-plugins-official";
 
-/** Same entry as this repo's .mcp.json: pinned version, no telemetry, no update check. */
-export const CODEGRAPH_MCP = {
-  type: "stdio",
-  command: "npx",
-  args: ["-y", CODEGRAPH_PACKAGE, "serve", "--mcp"],
-  env: { CODEGRAPH_TELEMETRY: "0", CODEGRAPH_NO_UPDATE_CHECK: "1" },
-};
+const CODEGRAPH_ARGV = { command: "npx", args: ["-y", CODEGRAPH_PACKAGE, "serve", "--mcp"] };
+const CODEGRAPH_ENV = { CODEGRAPH_TELEMETRY: "0", CODEGRAPH_NO_UPDATE_CHECK: "1" };
+
+/** Pinned version, no telemetry, no update check — started the way `platform` needs (Windows: npx is a .cmd). */
+export function codegraphMcp(platform: NodeJS.Platform = process.platform) {
+  return { type: "stdio", ...mcpLaunch(CODEGRAPH_ARGV.command, CODEGRAPH_ARGV.args, platform), env: { ...CODEGRAPH_ENV } };
+}
+
+/** The entry written into a repo's .mcp.json, which every machine of the team reads: plain npx, never cmd.exe. */
+export const CODEGRAPH_MCP = { type: "stdio", ...CODEGRAPH_ARGV, env: { ...CODEGRAPH_ENV } };
 
 /**
  * A run's server ends with its agent. In a folder with an index codegraph otherwise starts a shared daemon that
  * stays up after the run, one per worktree. It still watches the files the agent changes.
  */
-export const CODEGRAPH_RUN_MCP = { ...CODEGRAPH_MCP, env: { ...CODEGRAPH_MCP.env, CODEGRAPH_NO_DAEMON: "1" } };
+export const CODEGRAPH_RUN_MCP = { ...codegraphMcp(), env: { ...CODEGRAPH_ENV, CODEGRAPH_NO_DAEMON: "1" } };
 
 /** Adds the codegraph MCP server to the repo's .mcp.json, unless one is already configured there. */
 export function installCodegraphMcp(repo: string, opts: { dryRun?: boolean } = {}): FileAction {
@@ -265,11 +352,19 @@ export interface ShimOptions {
   electronPath: string;
   entry: string;
   binDir?: string;
+  /** Which OS the shim is for; tests build the Windows form on any machine. Paths still join the host's way. */
+  platform?: NodeJS.Platform;
+}
+
+/** Where the shim goes. Windows keeps its own folder, since ~/.local/bin means nothing there. */
+export function shimBinDir(platform: NodeJS.Platform = process.platform, home = os.homedir()): string {
+  return platform === "win32" ? path.join(home, ".xdev-hive", "bin") : path.join(home, ".local", "bin");
 }
 
 function shimFile(opts: ShimOptions): { binDir: string; target: string; script: string } {
-  const windows = process.platform === "win32";
-  const binDir = opts.binDir ?? (windows ? path.join(os.homedir(), ".xdev-hive", "bin") : path.join(os.homedir(), ".local", "bin"));
+  const platform = opts.platform ?? process.platform;
+  const windows = platform === "win32";
+  const binDir = opts.binDir ?? shimBinDir(platform);
   const target = path.join(binDir, windows ? `${SHIM_NAME}.cmd` : SHIM_NAME);
   const script = windows
     ? `@echo off\r\nrem ${MARK}: MCP launcher installed by xDev Hive\r\nset ELECTRON_RUN_AS_NODE=1\r\n"${opts.electronPath}" "${opts.entry}" %*\r\n`
@@ -277,12 +372,15 @@ function shimFile(opts: ShimOptions): { binDir: string; target: string; script: 
   return { binDir, target, script };
 }
 
+/** The full path agent configs name, so they do not depend on the shim folder being on PATH. */
+export const shimTarget = (opts: ShimOptions): string => shimFile(opts).target;
+
 /** Installs `hive-mcp`, which runs the bundled MCP server with the app's own Electron binary as Node. */
 export function installShim(opts: ShimOptions, pathEnv = process.env.PATH ?? ""): ShimReport {
   const { binDir, target, script } = shimFile(opts);
   mkdirSync(binDir, { recursive: true });
   writeFileSync(target, script);
-  if (process.platform !== "win32") chmodSync(target, 0o755);
+  if ((opts.platform ?? process.platform) !== "win32") chmodSync(target, 0o755);
   return { path: target, onPath: pathEnv.split(path.delimiter).includes(binDir) };
 }
 
@@ -290,11 +388,12 @@ export function installShim(opts: ShimOptions, pathEnv = process.env.PATH ?? "")
  * installed: points at this app · outdated: a hive-mcp from another build (e.g. dev vs packaged) ·
  * missing: none, or a file of the same name that Hive did not write.
  */
-export function shimStatus(opts: ShimOptions, pathEnv: string): ShimReport & { state: "installed" | "outdated" | "missing"; foreign: boolean } {
+export function shimStatus(opts: ShimOptions, pathEnv: string): ShimReport & { dir: string; state: "installed" | "outdated" | "missing"; foreign: boolean } {
   const { binDir, target, script } = shimFile(opts);
   const current = read(target);
   const onPath = pathEnv.split(path.delimiter).includes(binDir);
-  if (current === null) return { path: target, onPath, state: "missing", foreign: false };
-  if (current === script) return { path: target, onPath, state: "installed", foreign: false };
-  return { path: target, onPath, state: current.includes(MARK) ? "outdated" : "missing", foreign: !current.includes(MARK) };
+  const base = { path: target, dir: binDir, onPath };
+  if (current === null) return { ...base, state: "missing", foreign: false };
+  if (current === script) return { ...base, state: "installed", foreign: false };
+  return { ...base, state: current.includes(MARK) ? "outdated" : "missing", foreign: !current.includes(MARK) };
 }
