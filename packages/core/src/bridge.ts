@@ -146,6 +146,8 @@ export interface DesktopProject {
   /** owner/repo on GitHub; set, or read from a GitHub remote, the project gets pull requests instead of GitLab MRs. */
   githubRepo?: string;
   targetBranch?: string;
+  /** Projects of this machine whose checkout a run of this one reads, read-only (roadmap 38h). */
+  references?: string[];
 }
 
 export interface DesktopSettings {
@@ -448,7 +450,10 @@ export interface DesktopBridge {
   /** Keeps this candidate when the judge could not choose (best-of-n). */
   pickCandidate(id: string): Promise<AgentRun>;
 
-  updateProject(name: string, patch: { gitlabProject?: string | null; githubRepo?: string | null; targetBranch?: string | null }): Promise<DesktopSettings>;
+  updateProject(
+    name: string,
+    patch: { gitlabProject?: string | null; githubRepo?: string | null; targetBranch?: string | null; references?: string[] | null },
+  ): Promise<DesktopSettings>;
   checkGitLab(): Promise<GitLabCheck>;
   /** Who the GitHub token belongs to (same shape as the GitLab check). */
   checkGitHub(): Promise<GitLabCheck>;
