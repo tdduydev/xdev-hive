@@ -31,6 +31,16 @@ function walk(root, dir = root, out = []) {
   return out;
 }
 
+function pruneEmpty(dir) {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) {
+      pruneEmpty(p);
+      if (!readdirSync(p).length) rmSync(p, { recursive: true });
+    }
+  }
+}
+
 // A NUL byte in the first 8 KB is how git decides "binary" too.
 const isBinary = (buf) => buf.subarray(0, 8192).includes(0);
 
@@ -38,12 +48,19 @@ function excluded(file, exclude) {
   return exclude.some((e) => (e.endsWith("/") ? file.startsWith(e) : file === e));
 }
 
+// Also checks the line without backslashes: tests spell hosts as regexes (gitlab\.fis\.vn).
+// Both forms, because some terms carry a backslash themselves (D:\src).
+function holds(line, term) {
+  const low = line.toLowerCase();
+  const t = term.toLowerCase();
+  return low.includes(t) || low.replaceAll("\\", "").includes(t);
+}
+
 /** Terms of `forbid` found in a text, as [{ line, term }] (1-based lines). */
 export function findForbidden(text, forbid) {
   const hits = [];
   text.split("\n").forEach((l, i) => {
-    const low = l.toLowerCase();
-    for (const term of forbid) if (low.includes(term.toLowerCase())) hits.push({ line: i + 1, term });
+    for (const term of forbid) if (holds(l, term)) hits.push({ line: i + 1, term });
   });
   return hits;
 }
@@ -61,8 +78,7 @@ export function rewrite(file, text, config) {
   let dropped = 0;
   if (doc) {
     const kept = out.split("\n").filter((l) => {
-      const low = l.toLowerCase();
-      const bad = (config.forbid ?? []).some((t) => low.includes(t.toLowerCase()));
+      const bad = (config.forbid ?? []).some((t) => holds(l, t));
       if (bad) dropped++;
       return !bad;
     });
@@ -110,8 +126,8 @@ export function exportTree({ repo, ref = "HEAD", dest, config }) {
     }
     for (const h of findForbidden(text, config.forbid ?? [])) report.leaks.push({ file, ...h });
   }
-  // Excluded folders leave empty directories behind; git would not carry them anyway.
-  for (const e of config.exclude ?? []) if (e.endsWith("/")) rmSync(join(dest, e), { recursive: true, force: true });
+  // Excluded files leave empty directories behind; git would not carry them, so neither do we.
+  pruneEmpty(dest);
   return report;
 }
 
