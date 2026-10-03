@@ -31,6 +31,11 @@ export const configSchema = z.object({
         githubRepo: z.string().max(200).optional(),
         /** MR target branch; default is the GitLab project's default branch. */
         targetBranch: z.string().max(200).optional(),
+        /**
+         * Other projects of this machine a run of this one may read (roadmap 38h): old code a task needs for
+         * context. Names, not paths, so a repo that moves follows its project. Read-only: never written to.
+         */
+        references: z.array(z.string().regex(PROJECT_NAME)).max(10).optional(),
       }),
     )
     .default([]),

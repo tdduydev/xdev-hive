@@ -578,7 +578,25 @@ async function checkProfile(id: string): Promise<ProfileCheck> {
   return { ok: version.ok && login?.loggedIn !== false, path: bin, output: `${version.output}\n${signIn}` };
 }
 
-function updateProject(name: string, patch: { gitlabProject?: string | null; githubRepo?: string | null; targetBranch?: string | null }) {
+/**
+ * The reference repos of a project (roadmap 38h): other projects of this machine, so the runner can read their
+ * checkout. A project cannot reference itself, and a name nobody added here would only be skipped at run time.
+ */
+function references(name: string, patch: string[] | null | undefined, keep: string[] | undefined): string[] | undefined {
+  if (patch === undefined) return keep;
+  const list = [...new Set((patch ?? []).map((n) => String(n).trim()).filter(Boolean))];
+  for (const ref of list) {
+    if (ref === name) throw new HiveError("bad_request", `Dự án ${name} không tham chiếu chính nó được.`, { key: "errors.referenceSelf", vars: { project: name } });
+    // Only a name being added has to exist: one saved earlier whose project went is kept until the user unticks it,
+    // so saving the rest of the form never fails on it.
+    if (!keep?.includes(ref) && !config.projects.some((p) => p.name === ref)) {
+      throw new HiveError("not_found", `Dự án ${ref} chưa được thêm.`, { key: "errors.projectNotAdded", vars: { project: ref } });
+    }
+  }
+  return list.length ? list : undefined;
+}
+
+function updateProject(name: string, patch: { gitlabProject?: string | null; githubRepo?: string | null; targetBranch?: string | null; references?: string[] | null }) {
   const current = project(name);
   const clean = (v: string | null | undefined, keep: string | undefined) =>
     v === undefined ? keep : v === null || !v.trim() ? undefined : v.trim();
@@ -591,6 +609,7 @@ function updateProject(name: string, patch: { gitlabProject?: string | null; git
     gitlabProject: clean(patch?.gitlabProject, current.gitlabProject),
     githubRepo,
     targetBranch: clean(patch?.targetBranch, current.targetBranch),
+    references: references(name, patch?.references, current.references),
   };
   return persist({ ...config, projects: config.projects.map((p) => (p.name === name ? next : p)) });
 }
@@ -990,7 +1009,14 @@ function registerIpc(): void {
   handle("desktop:gitlabGroup", gitlabGroup);
   handle("desktop:importGitlab", importGitlab);
   handle("desktop:removeProject", (name: string) =>
-    persist({ ...config, projects: config.projects.filter((p) => p.name !== name) }),
+    persist({
+      ...config,
+      // A project that goes also goes from the others' reference repos (roadmap 38h), so no run looks for it.
+      projects: config.projects
+        .filter((p) => p.name !== name)
+        .map((p) => (p.references?.includes(name) ? { ...p, references: p.references.filter((r) => r !== name) } : p))
+        .map((p) => (p.references?.length === 0 ? { ...p, references: undefined } : p)),
+    }),
   );
   handle("desktop:pickFolder", async () => {
     const res = await dialog.showOpenDialog(win!, { properties: ["openDirectory", "createDirectory"] });
