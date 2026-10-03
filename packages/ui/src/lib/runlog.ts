@@ -51,6 +51,22 @@ export function parseLog(text: string): LogLine[] {
   return out;
 }
 
+/**
+ * The runner's own header, written before the first `## ` section: `$ <command>`, `# cwd`, `# profile …`, `# policy …`,
+ * the hive context and the tools. It says how the run was set up, not what the agent did, so the detail folds it into
+ * *Chi tiết kỹ thuật* instead of opening the log with it. A log with no section at all is the agent's words, not a
+ * header: nothing is folded then.
+ */
+export function logHeader(lines: LogLine[]): string[] {
+  if (!lines.some((l) => l.section !== null)) return [];
+  const out: string[] = [];
+  for (const l of lines) {
+    if (l.section !== null || l.level !== "meta") break;
+    out.push(l.text);
+  }
+  return out;
+}
+
 export interface DiffFile {
   path: string;
   adds: number;

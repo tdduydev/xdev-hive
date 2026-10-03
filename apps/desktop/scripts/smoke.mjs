@@ -205,8 +205,36 @@ for (const n of [1, 2]) {
 store.db.close();
 // The kept candidate on Lượt chạy, next to the judge and the other candidate.
 await shoot("runs-best", "runs", 6000, { HIVE_SMOKE_CLICK: '[data-best="kept"]' });
-// The first run (Claude, out of quota): its log follows Claude Code's steps (stream-json), by level.
-await shoot("runs-log", "runs", 3000, { HIVE_SMOKE_CLICK: '[data-run-status="rate_limited"]' });
+// The first run (Claude, out of quota): its log follows Claude Code's steps (stream-json), by level. The detail opens
+// on Tóm tắt now (roadmap 39e), so the log is one click away.
+await shoot("runs-log", "runs", 3000, {
+  HIVE_SMOKE_CLICK: '[data-run-status="rate_limited"] && [data-run-tab="log"]',
+  HIVE_SMOKE_EXPECT: '[data-run-tab="log"][aria-selected="true"]',
+});
+
+// Lượt chạy as 39e wants it read (runs-list.png): the list has a run xong, a run lỗi and a run đang chạy at once, and
+// the detail of a finished run opens on its summary. A run left running when the app closed comes back failed
+// (RunStore.failInterrupted), and a profile whose CLI sleeps keeps one run going while the screenshot is taken.
+{
+  const file = path.join(work, "config.json");
+  const before = readFileSync(file, "utf8");
+  writeFileSync(file, JSON.stringify({ ...JSON.parse(before), agents: [...JSON.parse(before).agents, agent("claude-slow", "claude", 97, "sleep", "Claude (chạy lâu)")] }, null, 2));
+  const seed = new RunStore(path.join(work, "runs.db"));
+  const at = new Date().toISOString();
+  // T-001, which has no task waiting on it: the run starts without the Board's dependency getting in the way.
+  const task = { project: "demo", taskId: "T-001", taskTitle: "Thêm trang cài đặt workspace", role: "implement", attempt: 1, maxAttempts: 1 };
+  const interrupted = seed.insert(task, at);
+  seed.update(interrupted.id, { status: "running", profileId: "codex-plus", startedAt: at });
+  seed.insert({ ...task, preferredProfile: "claude-slow" }, at);
+  seed.db.close();
+  await shoot("runs-list", "runs", 6000, {
+    HIVE_SMOKE_CLICK: '[data-run-status="succeeded"]',
+    HIVE_SMOKE_EXPECT:
+      '[data-run-status="succeeded"] && [data-run-status="failed"] && [data-run-status="running"] && [data-run-tab="summary"][aria-selected="true"]',
+  });
+  // The slow profile is only for that one shot: the Agents page and the hub shots list the profiles of the config above.
+  writeFileSync(file, before);
+}
 
 // The Docs page in the app (goals QA-2): the diagram is drawn under the app's CSP, and Sửa opens the Tiptap editor.
 const soDo = `docs?doc=${encodeURIComponent("project/demo/so-do")}`;
@@ -280,11 +308,12 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
     writeFileSync(file, JSON.stringify({ ...JSON.parse(local), mode: "hub", hub: { url: `http://127.0.0.1:${port}`, token: bootstrap } }, null, 2));
     const webPages = ["tasks", "board", "docs", "memory", "proposals", "skills", "specs", "chat", "batches", "machines", "members", "tokens", "systems", "tools", "admin"];
     // hub-agents also proves the 39c table in hub mode: here three subscriptions are off, so only the fold shows them.
+    // Lượt chạy has the same shape in hub mode, and only this machine's runs in it (roadmap 35a, 39e).
     // Connected (roadmap 39d): Cài đặt is one line about the hub, the account and this machine, with no form.
     const absent = webPages.map((p) => `nav a[href="#/${p}"]`).join(" && ");
     const pages = [
       ["hub-today", "today"],
-      ["hub-runs", "runs"],
+      ["hub-runs", "runs", '[data-run-tab="summary"][aria-selected="true"]'],
       ["hub-agents", "agents", '[data-off-group] && [data-profile="claude-max-1"] [role="meter"]'],
       ["hub-setup", "setup"],
       ["hub-projects", "projects", '[data-hub-link="connected"]'],

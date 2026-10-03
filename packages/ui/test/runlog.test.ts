@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parseLog, parsePatch, runSteps } from "#ui/lib/runlog.ts";
+import { logHeader, parseLog, parsePatch, runSteps } from "#ui/lib/runlog.ts";
 
 describe("run log and diff", () => {
   it("labels the runner's readable log", () => {
@@ -25,6 +25,13 @@ describe("run log and diff", () => {
       ],
     );
     assert.equal(lines[6]!.section, "Output");
+  });
+
+  it("folds away the runner's own header, not the notes it writes later", () => {
+    const lines = parseLog(["$ claude -p", "# cwd /w", "# profile claude-max-1 · attempt 1/3 · role implement", "# policy … → model sonnet", "## Prompt", "Do T-1", "## Output", "Done.", "# cost $0.04"].join("\n"));
+    assert.deepEqual(logHeader(lines), ["$ claude -p", "# cwd /w", "# profile claude-max-1 · attempt 1/3 · role implement", "# policy … → model sonnet"]);
+    // A log of the agent's words only has no header to fold: the whole of it stays in the Log tab.
+    assert.deepEqual(logHeader(parseLog("# note\nDone.")), []);
   });
 
   it("counts the lines each file of a git diff adds and removes", () => {

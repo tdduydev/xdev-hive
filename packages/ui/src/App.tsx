@@ -436,8 +436,9 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   const subtitle =
     current === "today"
       ? t("inbox.subtitle", { date: today.charAt(0).toUpperCase() + today.slice(1) })
-      : machine && current === "runs"
-        ? t("navSub.runsOn", { machine })
+      : // The app lists this machine's runs in both modes (roadmap 35a); the web lists the team's, so it keeps navSub.runs.
+        client.desktop && current === "runs"
+        ? t("navSub.runsOn")
         : machine && current === "agents"
           ? t("navSub.agentsOn", { machine })
           : t(PAGES[current].sub);
