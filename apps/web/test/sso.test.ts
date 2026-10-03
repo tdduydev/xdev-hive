@@ -137,7 +137,7 @@ describe("SSO (OpenID Connect)", () => {
 
   it("never takes over an existing account by name or email", async () => {
     users.create({ username: "duy", password: `pw-${randomBytes(8).toString("hex")}` });
-    const r = await roundTrip(good("u-other-duy", { preferred_username: "duy", email: "duythq@example.com" }));
+    const r = await roundTrip(good("u-other-duy", { preferred_username: "duy", email: "duy.other@example.com" }));
     assert.equal((await me(r.session!)).result.user.username, "duy-2");
     const noName = await roundTrip(good("u-viet", { email: "Nguyễn.Văn.Đức@example.com" }));
     assert.equal((await me(noName.session!)).result.user.username, "nguyen.van.duc");

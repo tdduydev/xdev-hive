@@ -2868,7 +2868,7 @@ export const en: Catalog = {
     add: "Add webhook",
     none: "No webhooks yet.",
     name: "Name",
-    namePlaceholder: "e.g. customer dev channel",
+    namePlaceholder: "e.g. backend dev channel",
     kindLabel: "Post to",
     kind: { teams: "Microsoft Teams", slack: "Slack" },
     keepUrl: "Leave empty to keep the current URL",
