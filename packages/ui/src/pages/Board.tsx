@@ -74,7 +74,8 @@ function Tag({ kind, title, children }: { kind: keyof typeof TAG; title?: string
   );
 }
 
-export function BoardPage() {
+/** `switcher`: Board / Danh sách, since the Task page is the two of them in the app (roadmap 39f). */
+export function BoardPage({ switcher }: { switcher?: ReactNode }) {
   const { client, me, scope, setScope } = useHive();
   const t = useT();
   const allow = useCan();
@@ -196,6 +197,7 @@ export function BoardPage() {
           <span className="flex-1" />
           <Badge tone="running">{t("board.running", { count: counts.running })}</Badge>
           <Badge tone="neutral">{t("board.queued", { count: counts.queued })}</Badge>
+          {switcher}
         </div>
         {!current && !settings.loading ? (
           <div className="px-3.5 pt-3">

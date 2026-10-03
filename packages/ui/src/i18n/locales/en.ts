@@ -40,7 +40,6 @@ export const en: Catalog = {
     today: "Today",
     overview: "Overview",
     chat: "Chat",
-    board: "Board",
     docs: "Docs",
     read: "Reader",
     specs: "Specs",
@@ -70,7 +69,6 @@ export const en: Catalog = {
     today: "What needs you today",
     overview: "Projects, docs and memory in the chosen scope",
     chat: "Talk to the project's leader agent",
-    board: "Drag cards to change their status",
     runs: "Runs from the team's machines",
     batches: "Several tasks at once, at most N in parallel",
     runsOn: "Runs on this machine",
@@ -1023,6 +1021,8 @@ export const en: Catalog = {
   tasks: {
     view: "View",
     view_kanban: "Kanban",
+    /** The same view, called the Board in the app, where it is this machine's. */
+    view_board: "Board",
     view_list: "List",
     showOlderDone: "Show {count} older done tasks",
     title: "Tasks",
@@ -1765,6 +1765,7 @@ export const en: Catalog = {
   setup: {
     lastChecked: "Last checked {time}",
     tools: "Tools on this machine",
+    projectTools: "Tools of the projects",
     platform: { darwin: "macOS", win32: "Windows", linux: "Linux" },
     subtitle: "The app checks what is installed on this machine and in each repo. Each button does exactly what its row says.",
     checking: "Checking…",

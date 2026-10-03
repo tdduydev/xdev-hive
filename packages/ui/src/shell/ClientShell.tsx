@@ -240,7 +240,8 @@ function ClientFrame({
       <div className={cn("shrink-0 px-2.5 pb-1.5", noDrag)}>
         <ScopeSwitcher />
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-2.5 pt-0.5 pb-2.5">
+      {/* data-nav-list: the smoke shot of the menu checks this is not scrolling (roadmap 39f). */}
+      <div data-nav-list className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-2.5 pt-0.5 pb-2.5">
         {groups.map((g, gi) => (
           <div key={g.label ?? `g${gi}`} className="flex flex-col gap-px">
             {g.label ? <div className="px-2 pt-3 pb-1 text-[11px]/4 font-semibold text-fg-muted">{g.label}</div> : null}
