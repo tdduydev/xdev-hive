@@ -204,6 +204,16 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **38g. docs-remove-move**: `docs.remove` (xoá mềm, ghi nhật ký, còn trong lịch sử), chuyển trang sang space khác (project → system) giữ lịch sử, cho một project key nghỉ khỏi ô phạm vi; rồi chuyển 141 trang `project/ehospital/*` sang `system/ehospital-ai/*`.
   - [ ] **38h. reference-repos**: ô *Repo tham chiếu* trong cài đặt dự án (dự án cùng hệ thống); run đọc được checkout chính của các repo đó, chỉ đọc, đường dẫn ghi trong prompt.
 
+- **39. client-ux** (hỏi 3/10: "client làm giao diện lại dễ sử dụng hơn đi"; chọn: sửa các màn hiện có và thêm luồng *Bắt đầu*, giữ thiết kế của 22; làm cả cài máy và dự án mới, Agent và quota, Cài đặt kết nối, Lượt chạy; làm cả chế độ cục bộ). Mỗi bước phát hành kèm ảnh trước và sau. Spec: [docs/specs/39-client-ux.md](specs/39-client-ux.md). Tách:
+  - [ ] **39a. setup-guide**: trang *Bắt đầu* cho máy mới (kết nối bằng trình duyệt, cài công cụ còn thiếu, thêm dự án và cài hết, đăng nhập gói, bật nhận việc); *Hôm nay* nhắc "còn n bước" tới khi xong.
+  - [ ] **39b. projects-cards**: *Dự án & công cụ* gom theo hệ thống → dự án, mỗi dự án một thẻ gập "Sẵn sàng / Thiếu n mục" có *Cài hết*; công cụ đã sẵn sàng gộp một dòng; tên file và lệnh vào *Chi tiết*.
+  - [ ] **39c. agents-inline**: *Agent và quota* mỗi gói một dòng có nút ngay tại chỗ (Đăng nhập, Bật/Tắt, Nâng cấp CLI, …); câu "chưa có số liệu" chỉ một chú thích; gói tắt gập lại; *Thêm gói* lên đầu.
+  - [ ] **39d. settings-summary**: *Cài đặt* đã kết nối chỉ hiện tóm tắt (hub · tài khoản · máy) với *Đổi* / *Ngắt*; đăng nhập qua trình duyệt là nút chính; tên máy, ô tích và chuyển dữ liệu vào *Nâng cao*.
+  - [ ] **39e. runs-readable**: *Lượt chạy* lấy tên task và kết quả bằng lời làm chữ chính, chi tiết mở ở tóm tắt và các bước, log ở tab riêng, lọc *Đang chạy / Lỗi / Xong*; phụ đề "Run trên máy này".
+  - [ ] **39f. local-nav**: menu chế độ cục bộ không phải cuộn ở 1440×900: Board gộp vào Task như web, Đợt chạy thành tab của Lượt chạy, Tool vào Dự án & công cụ, Quản trị gộp một mục; địa chỉ cũ chuyển hướng.
+  - [ ] **39g. board-fit**: Board không cuộn ngang ở khoảng 1100px (cột co, *Xong* / *Bị chặn* thu hẹp), dải gói thành một chip tóm tắt.
+  - [ ] **39h. knowledge-pass**: Tài liệu, Spec, Skill, Memory, Đề xuất: sửa panel chi tiết của Skill, phụ đề bằng lời người dùng, trạng thái trống có việc nên làm, nút chính cùng một chỗ.
+
 ## Sửa lỗi
 
 - [x] **work-undefined** (2/10): sau `npm run smoke -w @xdev-hive/desktop`, repo có thêm `apps/desktop/work-undefined.txt` (các dòng `done`). Ở hai bước `agents-account-claude` và `agents-account-codex`, smoke đặt `claude`/`codex` giả lên đầu `PATH`. Khi PATH của login shell không có (hết 8 giây, hoặc máy không cài CLI thật), Setup chạy `<cli giả> --version` không có cwd riêng (cwd của app là `apps/desktop`) và không có `FAKE_MODE`, nên CLI giả rơi vào chế độ `ok` và ghi `work-${HIVE_AGENT}.txt`. Chạy lại với `SHELL=/usr/bin/false` ra 20 dòng. Giờ CLI giả trả lời `--version` như CLI thật rồi thoát, còn smoke mở Electron với cwd là thư mục tạm của nó. `npm test` không tạo file này.
