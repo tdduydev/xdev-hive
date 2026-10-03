@@ -9,6 +9,7 @@ import { setMainLocale } from "#desktop/main/i18n.ts";
 import { CODEGRAPH_PACKAGE } from "#desktop/main/installer.ts";
 import { APP_TOOLS } from "#desktop/main/runner/tools.ts";
 import { AGENT_CLIS, cliUpgrade, parseCliVersion, Setup, type SetupHost } from "#desktop/main/setup.ts";
+import { expandVars, pathHasDir, pathWithDir, type UserPath } from "#desktop/main/winpath.ts";
 
 const tmp = (p: string) => mkdtempSync(path.join(os.tmpdir(), `hive-setup-${p}-`));
 
@@ -27,9 +28,10 @@ const SPECIFY = `case "$1" in
   integration) echo '{"version":"1.0.14.dev0","installed_integrations":["claude","'"$3"'"]}' > .specify/integration.json && echo "installed $3" ;;
 esac`;
 
-function machine(opts: { npm?: boolean; uv?: boolean; specify?: boolean } & Pick<SetupHost, "latest" | "realpath" | "cliBusy" | "holdCli"> = {}) {
+function machine(opts: { npm?: boolean; uv?: boolean; specify?: boolean } & Pick<SetupHost, "latest" | "realpath" | "cliBusy" | "holdCli" | "platform" | "registry"> = {}) {
   const bin = tmp("bin");
   const shimDir = tmp("shim");
+  const home = tmp("home");
   // uv's tool bin dir, not on PATH (like ~/.local/bin for a login shell that lacks it).
   const uvBin = tmp("uvbin");
   fakeBin(bin, "claude", 'echo "2.1.283 (Claude Code)"');
@@ -46,24 +48,43 @@ function machine(opts: { npm?: boolean; uv?: boolean; specify?: boolean } & Pick
   }
   if (opts.specify) fakeBin(bin, "specify", SPECIFY);
   const projects: DesktopProject[] = [];
-  const pathEnv = [bin, shimDir, "/usr/bin", "/bin"].join(path.delimiter);
+  // Windows is the case this task is about: the shim folder is not on PATH until the button writes it to the registry.
+  const pathEnv = [bin, ...(opts.platform === "win32" ? [] : [shimDir]), "/usr/bin", "/bin"].join(path.delimiter);
   // What the runner's last heartbeat carried, and what this machine's user allowed: tests change them in place.
   const hub: { tools: MachineTools | null; trust: Record<string, string> } = { tools: null, trust: {} };
   const setup = new Setup({
     pathEnv: () => pathEnv,
     env: () => ({ PATH: pathEnv, HOME: process.env.HOME }),
     projects: () => projects,
-    shim: { electronPath: "/Applications/xDev Hive.app/Contents/MacOS/xDev Hive", entry: "/app/mcp/hive-mcp.mjs", binDir: shimDir },
-    home: tmp("home"),
+    shim: { electronPath: "/Applications/xDev Hive.app/Contents/MacOS/xDev Hive", entry: "/app/mcp/hive-mcp.mjs", binDir: shimDir, platform: opts.platform },
+    home,
     // No registry in tests unless one says what is newest.
     latest: opts.latest ?? (async () => null),
     ...(opts.realpath ? { realpath: opts.realpath } : {}),
     ...(opts.cliBusy ? { cliBusy: opts.cliBusy } : {}),
     ...(opts.holdCli ? { holdCli: opts.holdCli } : {}),
+    ...(opts.platform ? { platform: opts.platform } : {}),
+    ...(opts.registry ? { registry: opts.registry } : {}),
     tools: () => hub.tools,
     toolTrust: () => hub.trust,
   });
-  return { setup, bin, shimDir, uvBin, projects, hub };
+  return { setup, bin, shimDir, uvBin, home, projects, hub };
+}
+
+/** The user's Path in HKCU\Environment, in memory: what the real one does on Windows, on any machine. */
+function fakeRegistry(start: { value: string; expand: boolean } | null = null) {
+  const state = { current: start, writes: [] as Array<{ value: string; expand: boolean }>, broadcasts: 0 };
+  const reg: UserPath = {
+    read: () => state.current,
+    write: (value, expand) => {
+      state.current = { value, expand };
+      state.writes.push({ value, expand });
+    },
+    broadcast: () => {
+      state.broadcasts++;
+    },
+  };
+  return { reg, state };
 }
 
 const find = (r: SetupReport, id: string) => [...r.machine, ...r.projects.flatMap((p) => p.items)].find((i) => i.id === id)!;
@@ -127,6 +148,62 @@ describe("Setup: this machine", () => {
     assert.equal(foreign.state, "manual");
     assert.equal(foreign.action, null);
   });
+
+  it("Windows: offers Add to PATH and writes the folder into the user's Path once", async () => {
+    const { reg, state } = fakeRegistry({ value: String.raw`%USERPROFILE%\bin;C:\Program Files\Git\cmd`, expand: true });
+    const m = machine({ platform: "win32", registry: reg });
+    const installed = await m.setup.install("shim");
+    const dir = m.shimDir;
+
+    assert.equal(installed.item.state, "installed", "the registry now has the folder, so the item is done");
+    assert.match(installed.output, /Đã thêm/);
+    assert.deepEqual(state.writes, [{ value: String.raw`%USERPROFILE%\bin;C:\Program Files\Git\cmd;${dir}`, expand: true }]);
+    assert.equal(state.broadcasts, 1, "WM_SETTINGCHANGE once");
+    assert.match(state.current!.value, /^%USERPROFILE%\\bin;/, "the entries that were there keep their %…%");
+
+    // Asked again: nothing more is written, and no second broadcast.
+    const again = await m.setup.install("shim");
+    assert.equal(state.writes.length, 1);
+    assert.equal(state.broadcasts, 1);
+    assert.match(again.output, /đã có sẵn/);
+  });
+
+  it("Windows: a shim off the user's Path gets the button, and without a registry it stays manual", async () => {
+    const { reg } = fakeRegistry({ value: String.raw`C:\Windows\system32`, expand: false });
+    const m = machine({ platform: "win32", registry: reg });
+    writeFileSync(path.join(m.shimDir, "hive-mcp.cmd"), "@echo off\r\nrem xdev-hive: MCP launcher installed by xDev Hive\r\nset ELECTRON_RUN_AS_NODE=1\r\n\"/Applications/xDev Hive.app/Contents/MacOS/xDev Hive\" \"/app/mcp/hive-mcp.mjs\" %*\r\n");
+    const item = await m.setup.item("shim");
+    assert.equal(item.state, "manual");
+    assert.equal(item.action, "Thêm vào PATH");
+    assert.match(item.detail, /HKCU\\Environment/);
+
+    const noReg = machine({ platform: "win32" });
+    writeFileSync(path.join(noReg.shimDir, "hive-mcp.cmd"), readFileSync(path.join(m.shimDir, "hive-mcp.cmd"), "utf8"));
+    assert.equal((await noReg.setup.item("shim")).action, null);
+  });
+});
+
+describe("the user's Path on Windows", () => {
+  const env = { USERPROFILE: String.raw`C:\Users\duy`, PATH: "ignored" };
+  const bin = String.raw`C:\Users\duy\.xdev-hive\bin`;
+
+  it("counts a folder written with %USERPROFILE%, another case or a trailing slash as the same one", () => {
+    assert.equal(expandVars("%UserProfile%\\bin", env), String.raw`C:\Users\duy\bin`);
+    assert.equal(expandVars("%NOT_SET%\\bin", env), String.raw`%NOT_SET%\bin`, "a name the env lacks stays as written");
+    assert.ok(pathHasDir(String.raw`C:\Windows;%USERPROFILE%\.xdev-hive\bin`, bin, env));
+    // A plain string: a raw template cannot end with a backslash, and a trailing one is what some installers leave.
+    assert.ok(pathHasDir("c:\\users\\duy\\.xdev-hive\\bin\\", bin, env));
+    assert.ok(pathHasDir(String.raw`"C:\Users\duy\.xdev-hive\bin"`, bin, env));
+    assert.ok(!pathHasDir(String.raw`C:\Users\duy\.xdev-hive\bin2`, bin, env));
+    assert.ok(!pathHasDir(null, bin, env));
+  });
+
+  it("appends once, keeps every entry as written, and makes a Path for a user who had none", () => {
+    assert.equal(pathWithDir(String.raw`%JAVA_HOME%\bin`, bin, env), String.raw`%JAVA_HOME%\bin;${bin}`);
+    assert.equal(pathWithDir(String.raw`%JAVA_HOME%\bin;`, bin, env), String.raw`%JAVA_HOME%\bin;${bin}`, "no empty entry from a trailing ;");
+    assert.equal(pathWithDir(String.raw`%USERPROFILE%\.xdev-hive\bin`, bin, env), null, "already there");
+    assert.equal(pathWithDir(null, bin, env), bin);
+  });
 });
 
 describe("Setup: project repos", () => {
@@ -142,7 +219,7 @@ describe("Setup: project repos", () => {
       ["app:superpowers", "missing"],
       ["app:speckit", "missing"],
     ]);
-    assert.match(find(r, "app:agents").detail, /\.mcp\.json.*\.claude\/settings\.json/);
+    assert.match(find(r, "app:agents").detail, /~\/\.claude\.json.*\.claude\/settings\.json/);
     assert.equal(find(r, "app:speckit").action, null, "no specify on this machine yet");
     assert.match(find(r, "app:speckit").detail, /Cài Spec Kit CLI \(specify\)/);
 
@@ -153,9 +230,12 @@ describe("Setup: project repos", () => {
     assert.ok(r.projects[0]!.items.filter((i) => i.id !== "app:speckit").every((i) => i.state === "installed"));
 
     const mcp = JSON.parse(readFileSync(path.join(repo, ".mcp.json"), "utf8"));
-    assert.deepEqual(Object.keys(mcp.mcpServers), ["xdev-hive", "codegraph"]);
+    // Only codegraph is shared through git; xdev-hive names this machine's own shim, so it goes to the local scope.
+    assert.deepEqual(Object.keys(mcp.mcpServers), ["codegraph"]);
     assert.deepEqual(mcp.mcpServers.codegraph.args, ["-y", CODEGRAPH_PACKAGE, "serve", "--mcp"]);
     assert.equal(mcp.mcpServers.codegraph.env.CODEGRAPH_TELEMETRY, "0");
+    const local = JSON.parse(readFileSync(path.join(m.home, ".claude.json"), "utf8"));
+    assert.equal(local.projects[repo].mcpServers["xdev-hive"].command, path.join(m.shimDir, "hive-mcp"));
     const settings = JSON.parse(readFileSync(path.join(repo, ".claude", "settings.json"), "utf8"));
     assert.match(JSON.stringify(settings.hooks), /guard-docs\.sh/, "the Hive guard hook survives");
     assert.equal(settings.enabledPlugins["superpowers@claude-plugins-official"], true);

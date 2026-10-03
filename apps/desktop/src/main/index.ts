@@ -64,7 +64,8 @@ import { MergeRequester, mrLabel, type MrHost } from "./gitlab/mr.ts";
 import { branchFor } from "#desktop/main/runner/worktree.ts";
 import { cleanupNote, mrPollDelay, MrWatcher, type MrChange } from "./gitlab/watch.ts";
 import { CiFixer } from "./gitlab/ci-fix.ts";
-import { installAgents, installCodexConfig, installShim, repoFeatures } from "./installer.ts";
+import { installAgents, installCodexConfig, installShim, repoFeatures, shimTarget } from "./installer.ts";
+import { windowsUserPath } from "./winpath.ts";
 import { toolViews } from "./runner/tools.ts";
 import { expandEnv, expandHome, resolveBin } from "./runner/command.ts";
 import { LOGIN_DIR_ENV, LoginMonitor, loginParts, readLoginHow } from "./runner/login.ts";
@@ -141,6 +142,8 @@ function reload(): void {
 const resource = (...p: string[]) =>
   app.isPackaged ? path.join(process.resourcesPath, ...p) : path.join(app.getAppPath(), ...p);
 const mcpEntry = () => (app.isPackaged ? resource("mcp", "hive-mcp.mjs") : resource("out", "mcp", "hive-mcp.mjs"));
+/** Agent configs name the shim by its full path: a GUI-started agent has no shell PATH to look it up on. */
+const shimPath = () => shimTarget({ electronPath: process.execPath, entry: mcpEntry() });
 const trayIcon = () => (app.isPackaged ? resource("icons", "trayTemplate.png") : resource("resources", "trayTemplate.png"));
 /** Window icon on Windows/Linux and the Dock icon in dev; packaged macOS builds use build/icon.icns. */
 const appIcon = () => (app.isPackaged ? resource("icons", "icon.png") : resource("resources", "icon.png"));
@@ -424,6 +427,7 @@ function openCli(id: string, name: string): { opened: boolean } {
     bin,
     // cmd.exe inherits the app's env, and a Windows PATH may hold characters a cmd script cannot quote.
     path: process.platform === "win32" ? null : pathEnv,
+    shim: shimPath(),
     mcpFile,
     title: `xDev Hive: ${tr("desktop.cliTitle", { profile: profile.id, project: p.name })}`,
     done: tr("desktop.cliDone"),
@@ -525,7 +529,7 @@ function addAccount(input: NewAccount): { id: string; opened: boolean; profiles:
   if (usualTaken) {
     const dir = path.join(path.dirname(configPath()), "accounts", id);
     mkdirSync(dir, { recursive: true, mode: 0o700 });
-    if (kind === "codex") installCodexConfig(path.join(dir, "config.toml"));
+    if (kind === "codex") installCodexConfig(path.join(dir, "config.toml"), shimPath());
     env[dirEnv] = dir.startsWith(os.homedir() + path.sep) ? `~${dir.slice(os.homedir().length)}` : dir;
   }
   // Named by how many of the kind there are with it ("Claude 2" next to the one already there), not by its id.
@@ -993,7 +997,7 @@ function registerIpc(): void {
     return res.canceled ? null : (res.filePaths[0] ?? null);
   });
   handle("desktop:syncProject", syncAndMirror);
-  handle("desktop:installAgents", (name: string) => installAgents(project(name).repo, name));
+  handle("desktop:installAgents", (name: string) => installAgents(project(name).repo, name, { shim: shimPath() }));
   handle("desktop:installShim", () => installShim({ electronPath: process.execPath, entry: mcpEntry() }, agentPath()));
   handle("desktop:setupStatus", refreshSetup);
   handle("desktop:installSetup", async (id: unknown) => {
@@ -1348,6 +1352,7 @@ if (!app.requestSingleInstanceLock()) {
       env: agentEnv,
       projects: () => config.projects,
       shim: { electronPath: process.execPath, entry: mcpEntry() },
+      registry: process.platform === "win32" ? windowsUserPath() : undefined,
       cliBusy: (kind) => runner.runningOfKind(kind),
       holdCli: (kind, held) => runner.holdKind(kind, held),
       tools: hubCatalog,
