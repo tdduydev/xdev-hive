@@ -8,6 +8,7 @@
 // lines still holding a `forbid` term (counted); rules with their own `files` also rewrite code;
 // `warn` terms outside docs are only reported (they are behaviour, a person decides);
 // then scan every text file for `forbid` and exit 1 with file:line if anything is left.
+// The config excludes this script, its json and its test: the lists themselves name what must not leak.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, posix, relative, resolve, sep } from "node:path";
