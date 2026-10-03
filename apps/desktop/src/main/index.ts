@@ -1114,7 +1114,17 @@ function createWindow(): void {
             if (await win!.webContents.executeJavaScript(`Boolean(document.querySelector(${JSON.stringify(sel)}))`)) break;
             await pause(200);
           }
-          await win!.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(sel)})?.click()`).then(() => pause(700));
+          // A radix menu (the … of an Agent row) opens on pointerdown, so a click alone would leave it shut.
+          await win!.webContents
+            .executeJavaScript(
+              `(() => {
+                 const el = document.querySelector(${JSON.stringify(sel)});
+                 if (!el) return;
+                 if (el.closest('[data-slot="dropdown-menu-trigger"]')) el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+                 else el.click();
+               })()`,
+            )
+            .then(() => pause(700));
         }
         if (scroll) {
           await win!.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(scroll)})?.scrollIntoView({ block: "start" })`).then(() => pause(300));

@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "cn";
+import { ChevronRight, CircleHelp, MoreHorizontal, Plus } from "lucide-react";
 import {
   AGENT_KINDS,
   AGENT_ROLES,
@@ -23,17 +24,20 @@ import {
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@xdev-hive/ui/components/ui/dropdown-menu";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
+import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@xdev-hive/ui/components/ui/popover";
 import { Switch } from "@xdev-hive/ui/components/ui/switch";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
-import { Badge, Empty, ErrorNote, Notice, StatusDot } from "#ui/components/common.tsx";
-import { OpenCli } from "#ui/components/OpenCli.tsx";
+import { Badge, Empty, ErrorNote, Notice, PageHeader } from "#ui/components/common.tsx";
+import { canOpenCli } from "#ui/components/OpenCli.tsx";
 import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { useToast } from "#ui/shell/toast.tsx";
 import { errorMessage, formatTime, formatUsd, useAction, useHive, useQuery } from "#ui/hooks.ts";
 import { activeIntl, rich, useT } from "#ui/i18n/index.tsx";
+import { profileRows, profileState, type ProfileState } from "#ui/lib/agents.ts";
 import { hasNewer } from "#ui/lib/setup.ts";
 
 /** Env var that points each CLI at a separate login, so two subscriptions of one vendor can rotate. */
@@ -61,6 +65,10 @@ export function AgentsPage() {
   const [editing, setEditing] = useState<{ profile: AgentProfile; previousId?: string } | null>(null);
   const [adding, setAdding] = useState<NewAccount["kind"] | null>(null);
   const toast = useToast();
+  // Rows opened for their Chi tiết, and whether the off subscriptions are unfolded (roadmap 39c).
+  const [openRows, setOpenRows] = useState<Record<string, boolean>>({});
+  const [showOff, setShowOff] = useState(false);
+  const manage = useRef<HTMLDivElement>(null);
   // Profiles whose sign-in was opened from here: checked every few seconds until signed in (at most 5 minutes).
   const [waiting, setWaiting] = useState<Record<string, number>>({});
   const refresh = () => setTick((t) => t + 1);
@@ -107,89 +115,102 @@ export function AgentsPage() {
     while (taken.has(`${kind}-${n}`)) n++;
     setEditing({ profile: { ...base, id: `${kind}-${n}`, label: kind === "custom" ? base.label : t("agents.newLabel", { kind: t(`agentKind.${kind}`), n }), env: {} } });
   };
+  // Thêm gói and Sửa both work in Quản lý gói, where the forms are: the button at the top only brings the page there.
+  const goManage = () => manage.current?.scrollIntoView({ block: "start" });
+  const edit = (profile: AgentProfile, previousId?: string) => {
+    setEditing({ profile, previousId });
+    goManage();
+  };
 
   return (
     <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 px-6 pt-5 pb-8">
-      <h1 className="sr-only">{t("nav.agents")}</h1>
+      <PageHeader
+        title={t("nav.agents")}
+        actions={
+          <Button size="sm" data-add-profile onClick={goManage}>
+            <Plus />
+            {t("agents.addProfile")}
+          </Button>
+        }
+      />
       {settings.data ? <IntakeCard runner={settings.data.runner} hub={settings.data.mode === "hub"} onSaved={settings.reload} /> : null}
-      <QuotaTable profiles={profiles.data ?? []} />
-      <p className="m-0 text-xs/[18px] text-fg-muted">{t("agents.thresholdsNote")}</p>
-      <h2 className="m-0 mt-2 text-[13px]/[18px] font-semibold text-fg-strong">{t("agents.manage")}</h2>
-      <p className="m-0 -mt-2 max-w-3xl text-xs/[18px] text-fg-muted">{t("agents.subtitle")}</p>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-muted-foreground">{t("agents.addAccount")}</span>
-        {(["claude", "codex"] as const).map((k) => (
-          <Button key={k} size="sm" data-add-account={k} onClick={() => setAdding(k)}>
-            + {t(`agents.accountKind.${k}`)}
-          </Button>
-        ))}
-      </div>
-      {adding ? (
-        <AccountForm
-          kind={adding}
-          onCancel={() => setAdding(null)}
-          onAdded={(id) => {
-            setAdding(null);
-            waitFor(id);
-            refresh();
-          }}
-        />
-      ) : null}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-muted-foreground">{t("agents.add")}</span>
-        {AGENT_KINDS.map((k) => (
-          <Button key={k} size="sm" variant="outline" onClick={() => newProfile(k)}>
-            + {t(`agentKind.${k}`)}
-          </Button>
-        ))}
-      </div>
-      {templates.length ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-muted-foreground">{t("agents.templates")}</span>
-          {templates.map((tpl) => {
-            const exists = (profiles.data ?? []).some((p) => p.id === tpl.id);
-            return (
-              <Button
-                key={tpl.id}
-                size="sm"
-                variant="outline"
-                disabled={exists}
-                title={exists ? t("agents.templateExists") : t("agents.templateHint")}
-                onClick={() => setEditing({ profile: { ...tpl, env: {} } })}
-              >
-                + {tpl.label}
-              </Button>
-            );
-          })}
-        </div>
-      ) : null}
-      {editing ? (
-        <ProfileForm
-          key={editing.previousId ?? editing.profile.id}
-          initial={editing.profile}
-          previousId={editing.previousId}
-          onDone={() => {
-            setEditing(null);
-            refresh();
-          }}
-          onCancel={() => setEditing(null)}
-        />
-      ) : null}
+      <ProfileTable
+        profiles={profiles.data ?? []}
+        projects={settings.data?.projects.map((x) => x.name) ?? []}
+        waiting={waiting}
+        cliOf={cliOf}
+        open={openRows}
+        onToggle={(id) => setOpenRows((o) => ({ ...o, [id]: !o[id] }))}
+        showOff={showOff}
+        onShowOff={() => setShowOff((v) => !v)}
+        onEdit={(p) => edit(p, p.id)}
+        onChanged={refresh}
+        onLoginOpened={waitFor}
+      />
       <ErrorNote error={profiles.error} />
       {profiles.data?.length === 0 ? <Empty>{t("agents.none")}</Empty> : null}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {profiles.data?.map((p) => (
-          <ProfileCard
-            key={p.id}
-            profile={p}
-            waiting={p.id in waiting}
-            projects={settings.data?.projects.map((x) => x.name) ?? []}
-            cli={cliOf(p)}
-            onEdit={() => setEditing({ profile: p, previousId: p.id })}
-            onChanged={refresh}
-            onLoginOpened={() => waitFor(p.id)}
+      <div ref={manage} className="flex flex-col gap-4 pt-2">
+        <h2 className="m-0 text-[13px]/[18px] font-semibold text-fg-strong">{t("agents.manage")}</h2>
+        <p className="m-0 -mt-2 max-w-3xl text-xs/[18px] text-fg-muted">{t("agents.subtitle")}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-muted-foreground">{t("agents.addAccount")}</span>
+          {(["claude", "codex"] as const).map((k) => (
+            <Button key={k} size="sm" data-add-account={k} onClick={() => setAdding(k)}>
+              + {t(`agents.accountKind.${k}`)}
+            </Button>
+          ))}
+        </div>
+        {adding ? (
+          <AccountForm
+            kind={adding}
+            onCancel={() => setAdding(null)}
+            onAdded={(id) => {
+              setAdding(null);
+              waitFor(id);
+              refresh();
+            }}
           />
-        ))}
+        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-muted-foreground">{t("agents.add")}</span>
+          {AGENT_KINDS.map((k) => (
+            <Button key={k} size="sm" variant="outline" onClick={() => newProfile(k)}>
+              + {t(`agentKind.${k}`)}
+            </Button>
+          ))}
+        </div>
+        {templates.length ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground">{t("agents.templates")}</span>
+            {templates.map((tpl) => {
+              const exists = (profiles.data ?? []).some((p) => p.id === tpl.id);
+              return (
+                <Button
+                  key={tpl.id}
+                  size="sm"
+                  variant="outline"
+                  disabled={exists}
+                  title={exists ? t("agents.templateExists") : t("agents.templateHint")}
+                  onClick={() => setEditing({ profile: { ...tpl, env: {} } })}
+                >
+                  + {tpl.label}
+                </Button>
+              );
+            })}
+          </div>
+        ) : null}
+        {editing ? (
+          <ProfileForm
+            key={editing.previousId ?? editing.profile.id}
+            initial={editing.profile}
+            previousId={editing.previousId}
+            onDone={() => {
+              setEditing(null);
+              refresh();
+            }}
+            onCancel={() => setEditing(null)}
+          />
+        ) : null}
       </div>
       {settings.data ? <RunnerCard runner={settings.data.runner} /> : null}
     </div>
@@ -311,21 +332,144 @@ function AccountForm({ kind, onAdded, onCancel }: { kind: NewAccount["kind"]; on
   );
 }
 
-function ProfileCard({
-  profile: p,
-  waiting,
+const COLS = "grid-cols-[minmax(170px,1.2fr)_118px_minmax(118px,1fr)_minmax(118px,1fr)_72px_minmax(188px,auto)]";
+
+const STATE_TONE: Record<ProfileState, ChipKind> = {
+  off: "neutral",
+  noCli: "danger",
+  signedOut: "danger",
+  running: "running",
+  overLimit: "warning",
+  resting: "warning",
+  near: "warning",
+  ready: "success",
+};
+
+/**
+ * Every subscription on this machine, one row each: its CLI and version, the one state it is in, the session and week
+ * bars, and in the row the buttons that fix what it reports (roadmap 39c). Off subscriptions fold away.
+ */
+function ProfileTable({
+  profiles,
   projects,
+  waiting,
+  cliOf,
+  open,
+  onToggle,
+  showOff,
+  onShowOff,
+  onEdit,
+  onChanged,
+  onLoginOpened,
+}: {
+  profiles: AgentProfileStatus[];
+  /** This machine's projects, where a subscription's CLI can be opened. */
+  projects: string[];
+  /** Profiles whose sign-in was opened from here, by id. */
+  waiting: Record<string, number>;
+  /** The CLI's setup check, when the profile runs the one on PATH: its version and an upgrade (roadmap 33). */
+  cliOf: (p: AgentProfileStatus) => SetupItem | null;
+  open: Record<string, boolean>;
+  onToggle: (id: string) => void;
+  showOff: boolean;
+  onShowOff: () => void;
+  onEdit: (p: AgentProfileStatus) => void;
+  onChanged: () => void;
+  onLoginOpened: (id: string) => void;
+}) {
+  const t = useT();
+  const { on, off, someWithoutUsage } = profileRows(profiles);
+  if (!profiles.length) return null;
+  const row = (p: AgentProfileStatus) => (
+    <ProfileRow
+      key={p.id}
+      profile={p}
+      projects={projects}
+      waiting={p.id in waiting}
+      cli={cliOf(p)}
+      open={Boolean(open[p.id])}
+      onToggle={() => onToggle(p.id)}
+      onEdit={() => onEdit(p)}
+      onChanged={onChanged}
+      onLoginOpened={() => onLoginOpened(p.id)}
+    />
+  );
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="overflow-x-auto rounded-[10px] border border-line-default bg-surface">
+        <div className="min-w-[900px]">
+          <div className={cn("grid h-[34px] items-center gap-3 border-b border-line-subtle bg-subtle px-4 text-[11px]/none font-semibold text-fg-muted", COLS)}>
+            <span>{t("agents.colProfile")}</span>
+            <span>{t("agents.colState")}</span>
+            <span className="flex items-center gap-1">
+              {t("agents.colSession")}
+              <Thresholds />
+            </span>
+            <span>{t("agents.colWeek")}</span>
+            <span title={t("agents.costHint")}>{t("agents.colCost")}</span>
+            <span className="sr-only">{t("agents.colActions")}</span>
+          </div>
+          {on.map(row)}
+          {off.length ? (
+            <button
+              type="button"
+              data-off-group
+              aria-expanded={showOff}
+              onClick={onShowOff}
+              className="flex h-9 w-full cursor-pointer items-center gap-1 border-b border-line-subtle px-4 text-left text-xs/none font-medium text-fg-secondary outline-none last:border-b-0 hover:bg-hover focus-visible:focus-ring"
+            >
+              <ChevronRight className={cn("size-3.5 transition-transform", showOff && "rotate-90")} />
+              {t("agents.offGroup", { count: off.length })}
+            </button>
+          ) : null}
+          {showOff ? off.map(row) : null}
+        </div>
+      </div>
+      {someWithoutUsage ? <p className="m-0 text-xs/[18px] text-fg-muted">{t("agents.noUsageNote")}</p> : null}
+    </div>
+  );
+}
+
+/** What the mark on the bars means: out of the table until someone asks (roadmap 39c). */
+function Thresholds() {
+  const t = useT();
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          data-thresholds
+          aria-label={t("agents.thresholdsTitle")}
+          className="flex cursor-pointer items-center text-fg-muted outline-none hover:text-fg-strong focus-visible:focus-ring"
+        >
+          <CircleHelp className="size-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-80">
+        <PopoverTitle className="mb-1 text-[13px]/[18px]">{t("agents.thresholdsTitle")}</PopoverTitle>
+        <p className="m-0 text-xs/[18px] text-fg-secondary">{t("agents.thresholdsNote")}</p>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function ProfileRow({
+  profile: p,
+  projects,
+  waiting,
   cli,
+  open,
+  onToggle,
   onEdit,
   onChanged,
   onLoginOpened,
 }: {
   profile: AgentProfileStatus;
-  waiting: boolean;
-  /** This machine's projects, where its CLI can be opened. */
   projects: string[];
-  /** The CLI's setup check, when the profile runs the one on PATH: its version and an upgrade (roadmap 33). */
+  waiting: boolean;
   cli: SetupItem | null;
+  open: boolean;
+  onToggle: () => void;
   onEdit: () => void;
   onChanged: () => void;
   onLoginOpened: () => void;
@@ -336,37 +480,133 @@ function ProfileCard({
   const action = useAction();
   const [check, setCheck] = useState<ProfileCheck | null>(null);
   const [loginOpened, setLoginOpened] = useState(false);
+  const [openedCli, setOpenedCli] = useState<{ profile: string; project: string } | null>(null);
   const [token, setToken] = useState("");
-  const resting = p.cooldownUntil !== null;
+  const state = profileState(p);
+  // What the machine works out itself stays out: saveProfile takes the profile as the config holds it.
   const { cooldownUntil: _c, cooldownReason: _r, cooldownFrom: _f, cliPath: _p, running: _n, lastUsedAt: _l, stats: _s, ...plain } = p;
-  const noCli = p.enabled && p.cliPath === null;
-  const signedOut = p.enabled && !noCli && p.login?.loggedIn === false;
-  const stop = p.enabled && !noCli && !signedOut ? usageStop(p, p.usage) : null;
-  const pct = (limit: { percent: number } | null | undefined) => (limit ? `${limit.percent}%` : "?");
-  const usageHigh = [p.usage?.session, p.usage?.week].some((l) => l && l.percent >= 80);
+  const stop = state === "overLimit" ? usageStop(p, p.usage) : null;
+  const cliName = p.kind === "custom" ? p.label : t(`agentKind.${p.kind}`);
+  const upgrade = cli && hasNewer(cli) && cli.action ? cli : null;
 
   return (
-    <Card className={cn("min-w-0 gap-3 py-4", p.enabled ? "" : "opacity-65")}>
-      <CardContent className="flex flex-col gap-3 px-4">
-        <div className="flex items-center gap-2">
-          <StatusDot tone={!p.enabled ? "neutral" : noCli || signedOut ? "danger" : resting || stop ? "warn" : p.running ? "info" : "ok"} />
-          <b className="min-w-0 flex-1 truncate font-semibold">{p.label}</b>
-          {p.readOnly ? <Badge tone="neutral">{t("agents.readOnlyBadge")}</Badge> : null}
-          {p.container ? (
-            <span title={p.container.image}>
-              <Badge tone="info">{p.container.network === "open" ? t("agents.containerBadge") : t("agents.containerLimitedBadge")}</Badge>
+    <div data-profile={p.id} data-state={state} className={cn("border-b border-line-subtle last:border-b-0", p.enabled ? "" : "opacity-70")}>
+      <div className={cn("grid items-center gap-3 px-4 py-3", COLS)}>
+        <span className="flex min-w-0 items-center gap-1">
+          <button
+            type="button"
+            data-profile-toggle={p.id}
+            aria-expanded={open}
+            aria-label={t("agents.rowDetails", { label: p.label })}
+            onClick={onToggle}
+            className="-ml-1 flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-xs text-fg-muted outline-none hover:text-fg-strong focus-visible:focus-ring"
+          >
+            <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
+          </button>
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="truncate text-[13px]/[18px] font-semibold text-fg-strong">{p.label}</span>
+            <span className="truncate text-xs/4 text-fg-muted" data-cli-version={cli?.id}>
+              {cli?.version ? t("agents.cliVersion", { cli: cliName, version: cli.version }) : cliName} · <span className="font-mono">{p.id}</span>
             </span>
+          </span>
+        </span>
+        <span title={p.cooldownReason ?? undefined}>
+          <Chip kind={STATE_TONE[state]} title={p.cooldownUntil ? formatTime(p.cooldownUntil) : undefined}>
+            {state === "resting" && p.cooldownUntil
+              ? `${t("agents.state.resting")} · ${new Date(p.cooldownUntil).toLocaleTimeString(activeIntl(), { hour: "2-digit", minute: "2-digit" })}`
+              : t(`agents.state.${state}`)}
+          </Chip>
+        </span>
+        {/* No numbers from the CLI: a dash, and the one footnote under the table says why. */}
+        {(["session", "week"] as const).map((which) => {
+          const limit = p.usage?.[which];
+          return limit ? (
+            <Meter key={which} percent={limit.percent} resets={limit.resets} stop={which === "session" ? p.stopAtSession : p.stopAtWeek} />
+          ) : (
+            <span key={which} className="text-xs text-fg-muted">
+              —
+            </span>
+          );
+        })}
+        <span className="font-mono text-xs/none text-fg-secondary" title={t("agents.costHint")}>
+          {p.stats.costUsd ? `~${formatUsd(p.stats.costUsd)}` : "—"}
+        </span>
+        <span className="flex items-center justify-end gap-1.5">
+          {/* One button for what the row reports; the states exclude each other, so there is never a second. */}
+          {state === "noCli" ? (
+            <Button asChild size="sm" variant="outline">
+              <a href="#/setup">{t("agents.installCli")}</a>
+            </Button>
+          ) : state === "signedOut" && p.login?.loginCommand ? (
+            <Button
+              size="sm"
+              data-login={p.id}
+              disabled={action.busy}
+              onClick={() => void action.run(async () => (await desktop.openLogin(p.id), setLoginOpened(true), onLoginOpened()))}
+            >
+              {t("agents.login")}
+            </Button>
+          ) : state === "resting" ? (
+            <Button size="sm" variant="outline" disabled={action.busy} onClick={() => void action.run(async () => (await desktop.resetCooldown(p.id), onChanged()))}>
+              {t("machines.clear")}
+            </Button>
           ) : null}
-          <Badge tone="accent">{t(`agentKind.${p.kind}`)}</Badge>
-        </div>
-        <div className="font-mono text-xs wrap-anywhere text-muted-foreground">
-          {p.id} · {t("agents.priorityN", { n: p.priority })} · {t("agents.parallelN", { n: p.maxConcurrent })}
-          {p.account ? ` · ${t("agents.accountN", { account: p.account })}` : ""}
-        </div>
-        <div className="text-sm">
-          {!p.enabled ? (
-            <span className="text-muted-foreground">{t("agents.off")}</span>
-          ) : noCli ? (
+          {upgrade ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={action.busy}
+              data-cli-upgrade={upgrade.id}
+              title={t("setup.newVersion", { version: upgrade.latest! })}
+              onClick={() => void action.run(async () => (await desktop.installSetup(upgrade.id), onChanged()))}
+            >
+              {action.busy ? t("setup.installing") : upgrade.action}
+            </Button>
+          ) : null}
+          <Button
+            size="sm"
+            variant="outline"
+            data-profile-enable={p.id}
+            disabled={action.busy}
+            onClick={() => void action.run(async () => (await desktop.saveProfile({ ...plain, enabled: !p.enabled }, p.id), onChanged()))}
+          >
+            {p.enabled ? t("agents.disable") : t("agents.enable")}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon" variant="ghost" className="size-8" data-row-menu={p.id} aria-label={t("agents.rowActions", { label: p.label })}>
+                <MoreHorizontal />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={onEdit}>{t("agents.edit")}</DropdownMenuItem>
+              {canOpenCli(p)
+                ? projects.map((name) => (
+                    <DropdownMenuItem
+                      key={name}
+                      data-open-cli={`${p.id}:${name}`}
+                      onSelect={() => void action.run(async () => (await desktop.openCli(p.id, name), setOpenedCli({ profile: p.id, project: name })))}
+                    >
+                      {projects.length > 1 ? t("agents.cliOpenIn", { project: name }) : t("agents.cliOpen")}
+                    </DropdownMenuItem>
+                  ))
+                : null}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
+                onSelect={() => {
+                  if (window.confirm(t("agents.confirmRemove", { id: p.id }))) void action.run(async () => (await desktop.removeProfile(p.id), onChanged()));
+                }}
+              >
+                {t("agents.remove")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </span>
+      </div>
+      {open ? (
+        <div className="flex flex-col gap-3 border-t border-line-subtle bg-subtle px-4 py-3 text-sm">
+          {state === "noCli" ? (
             <span className="text-destructive">
               {rich(t("agents.noCli"), {
                 bin: <code className={CODE}>{p.bin}</code>,
@@ -377,6 +617,8 @@ function ProfileCard({
                 ),
               })}
             </span>
+          ) : state === "signedOut" ? (
+            <span className="text-destructive">{rich(t("agents.signedOut"), { cmd: <code className={CODE}>{p.login?.loginCommand ?? p.bin}</code> })}</span>
           ) : stop ? (
             <span className="text-warning">
               {t(stop === "session" ? "agents.overLimitSession" : "agents.overLimitWeek", {
@@ -385,175 +627,128 @@ function ProfileCard({
                 resets: (stop === "session" ? p.usage?.session : p.usage?.week)?.resets ?? "?",
               })}
             </span>
-          ) : signedOut ? (
-            <span className="text-destructive">{rich(t("agents.signedOut"), { cmd: <code className={CODE}>{p.login?.loginCommand ?? p.bin}</code> })}</span>
-          ) : resting ? (
+          ) : state === "resting" ? (
             <span className="text-warning">
               {t("agents.restingUntil", { time: formatTime(p.cooldownUntil) })}
               {p.cooldownFrom ? ` · ${t("agents.reportedBy", { who: p.cooldownFrom })}` : ""}
               {p.cooldownReason ? ` · ${p.cooldownReason}` : ""}
             </span>
-          ) : p.running ? (
+          ) : state === "running" ? (
             <span className="text-info">{t("agents.runningN", { count: p.running })}</span>
-          ) : (
-            <span className="text-success">{t("agents.ready")}</span>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-          <span>{t("agents.statRuns", { count: p.stats.runs })}</span>
-          <span>· {t("agents.statDone", { count: p.stats.succeeded })}</span>
-          <span>· {t("agents.statQuota", { count: p.stats.rateLimited })}</span>
-          <span>· {t("agents.statFailed", { count: p.stats.failed })}</span>
-          {p.stats.costUsd > 0 ? <span>· {t("agents.statCost", { cost: formatUsd(p.stats.costUsd) })}</span> : null}
-          {p.lastUsedAt ? <span>· {t("agents.lastUsed", { time: formatTime(p.lastUsedAt) })}</span> : null}
-          {p.login?.loggedIn ? (
-            <span>
-              · {p.login.method ? t("agents.signedIn", { method: p.login.method }) : t("agents.signedInPlain")}
-              {p.login.account ? ` · ${p.login.account}` : ""}
-            </span>
           ) : null}
-          {p.usage ? (
-            <span className={usageHigh ? "text-warning" : undefined} title={p.usage.week?.resets ?? undefined}>
-              · {t("agents.usage", { session: pct(p.usage.session), week: pct(p.usage.week) })}
+          <div className="flex flex-wrap items-center gap-2">
+            {p.roles.map((r) => (
+              <Badge key={r}>{t(`agentRole.${r}`)}</Badge>
+            ))}
+            {p.readOnly ? <Badge tone="neutral">{t("agents.readOnlyBadge")}</Badge> : null}
+            {p.container ? (
+              <span title={p.container.image}>
+                <Badge tone="info">{p.container.network === "open" ? t("agents.containerBadge") : t("agents.containerLimitedBadge")}</Badge>
+              </span>
+            ) : null}
+            <span className="text-xs text-muted-foreground">
+              {t("agents.priorityN", { n: p.priority })} · {t("agents.parallelN", { n: p.maxConcurrent })}
+              {p.account ? ` · ${t("agents.accountN", { account: p.account })}` : ""}
             </span>
-          ) : null}
-        </div>
-        {cli?.version ? (
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" data-cli-version={cli.id}>
-            <span className="font-mono">{t("agents.cliVersion", { cli: cli.label, version: cli.version })}</span>
-            {hasNewer(cli) ? <Badge tone="warn">{t("setup.newVersion", { version: cli.latest! })}</Badge> : null}
-            {hasNewer(cli) && cli.action ? (
+          </div>
+          <div className="flex flex-wrap gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+            <span>{t("agents.statRuns", { count: p.stats.runs })}</span>
+            <span>· {t("agents.statDone", { count: p.stats.succeeded })}</span>
+            <span>· {t("agents.statQuota", { count: p.stats.rateLimited })}</span>
+            <span>· {t("agents.statFailed", { count: p.stats.failed })}</span>
+            {p.stats.costUsd > 0 ? <span>· {t("agents.statCost", { cost: formatUsd(p.stats.costUsd) })}</span> : null}
+            {p.lastUsedAt ? <span>· {t("agents.lastUsed", { time: formatTime(p.lastUsedAt) })}</span> : null}
+            {p.login?.loggedIn ? (
+              <span>
+                · {p.login.method ? t("agents.signedIn", { method: p.login.method }) : t("agents.signedInPlain")}
+                {p.login.account ? ` · ${p.login.account}` : ""}
+              </span>
+            ) : null}
+          </div>
+          <code className="block overflow-x-auto rounded-md bg-muted px-2 py-1.5 font-mono text-xs whitespace-nowrap">
+            {Object.entries(p.env)
+              .map(([k, v]) => `${k}=${v} `)
+              .join("")}
+            {p.bin} {p.args.join(" ")}
+          </code>
+          <AutonomyNote profile={p} />
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" disabled={action.busy} onClick={() => void action.run(async () => setCheck(await desktop.checkProfile(p.id)))}>
+              {t("agents.checkCli")}
+            </Button>
+            {state === "signedOut" && p.login?.loginCommand && p.kind === "claude" ? (
               <Button
                 size="sm"
                 variant="outline"
                 disabled={action.busy}
-                data-cli-upgrade={cli.id}
-                onClick={() => void action.run(async () => (await desktop.installSetup(cli.id), onChanged()))}
+                onClick={() => void action.run(async () => (await desktop.openLogin(p.id, { sso: true }), setLoginOpened(true), onLoginOpened()))}
               >
-                {action.busy ? t("setup.installing") : cli.action}
+                {t("agents.loginSso")}
               </Button>
             ) : null}
           </div>
-        ) : null}
-        <div className="flex flex-wrap gap-2">
-          {p.roles.map((r) => (
-            <Badge key={r}>{t(`agentRole.${r}`)}</Badge>
-          ))}
-        </div>
-        <code className="block overflow-x-auto rounded-md bg-muted px-2 py-1.5 font-mono text-xs whitespace-nowrap">
-          {Object.entries(p.env)
-            .map(([k, v]) => `${k}=${v} `)
-            .join("")}
-          {p.bin} {p.args.join(" ")}
-        </code>
-        <AutonomyNote profile={p} />
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={action.busy}
-            onClick={() => void action.run(async () => (await desktop.saveProfile({ ...plain, enabled: !p.enabled }, p.id), onChanged()))}
-          >
-            {p.enabled ? t("agents.disable") : t("agents.enable")}
-          </Button>
-          {signedOut && p.login?.loginCommand ? (
-            <Button size="sm" disabled={action.busy} onClick={() => void action.run(async () => (await desktop.openLogin(p.id), setLoginOpened(true), onLoginOpened()))}>
-              {t("agents.login")}
-            </Button>
-          ) : null}
-          {signedOut && p.login?.loginCommand && p.kind === "claude" ? (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={action.busy}
-              onClick={() => void action.run(async () => (await desktop.openLogin(p.id, { sso: true }), setLoginOpened(true), onLoginOpened()))}
+          {p.kind === "claude" && p.container ? (
+            <form
+              className="flex flex-col gap-2 rounded-md border border-line-default p-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void action.run(async () => (await desktop.setProfileToken(p.id, token), setToken(""), onChanged()));
+              }}
             >
-              {t("agents.loginSso")}
-            </Button>
-          ) : null}
-          <Button size="sm" variant="outline" disabled={action.busy} onClick={() => void action.run(async () => setCheck(await desktop.checkProfile(p.id)))}>
-            {t("agents.checkCli")}
-          </Button>
-          {resting ? (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={action.busy}
-              onClick={() => void action.run(async () => (await desktop.resetCooldown(p.id), onChanged()))}
-            >
-              {t("machines.clear")}
-            </Button>
-          ) : null}
-          <Button size="sm" variant="ghost" onClick={onEdit}>
-            {t("agents.edit")}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-            disabled={action.busy}
-            onClick={() => {
-              if (window.confirm(t("agents.confirmRemove", { id: p.id }))) void action.run(async () => (await desktop.removeProfile(p.id), onChanged()));
-            }}
-          >
-            {t("agents.remove")}
-          </Button>
-        </div>
-        <OpenCli profiles={[p]} projects={projects} />
-        {(loginOpened || waiting) && signedOut ? <Notice tone="info">{t(waiting ? "agents.loginWaiting" : "agents.loginOpened")}</Notice> : null}
-        {p.kind === "claude" && p.container ? (
-          <form
-            className="flex flex-col gap-2 rounded-md border p-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void action.run(async () => (await desktop.setProfileToken(p.id, token), setToken(""), onChanged()));
-            }}
-          >
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="font-medium">{t("agents.token")}</span>
-              <Badge tone={p.hasToken ? "ok" : "warn"}>{p.hasToken ? t("agents.tokenSaved") : t("agents.tokenMissing")}</Badge>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Input
-                className="min-w-48 flex-1 font-mono text-xs md:text-xs"
-                type="password"
-                autoComplete="off"
-                placeholder={t("agents.tokenPlaceholder")}
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                aria-label={t("agents.token")}
-              />
-              <Button size="sm" type="submit" variant="outline" disabled={action.busy || !token.trim()}>
-                {t("agents.tokenSave")}
-              </Button>
-              {p.hasToken ? (
-                <Button
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  disabled={action.busy}
-                  onClick={() => void action.run(async () => (await desktop.setProfileToken(p.id, ""), onChanged()))}
-                >
-                  {t("agents.tokenRemove")}
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="font-medium">{t("agents.token")}</span>
+                <Badge tone={p.hasToken ? "ok" : "warn"}>{p.hasToken ? t("agents.tokenSaved") : t("agents.tokenMissing")}</Badge>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Input
+                  className="min-w-48 flex-1 font-mono text-xs md:text-xs"
+                  type="password"
+                  autoComplete="off"
+                  data-token={p.id}
+                  placeholder={t("agents.tokenPlaceholder")}
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  aria-label={t("agents.token")}
+                />
+                <Button size="sm" type="submit" variant="outline" disabled={action.busy || !token.trim()}>
+                  {t("agents.tokenSave")}
                 </Button>
-              ) : null}
-              <Button size="sm" type="button" variant="ghost" disabled={action.busy} onClick={() => void action.run(() => desktop.openSetupToken(p.id))}>
-                {t("agents.tokenCreate")}
-              </Button>
-            </div>
-            <span className="text-xs text-muted-foreground">{t("agents.tokenHint")}</span>
-          </form>
-        ) : null}
-        {check ? (
-          <Notice tone={check.ok ? "ok" : "error"}>
-            {check.path ? <div className="max-w-full font-mono text-xs break-all">{check.path}</div> : null}
-            <div className="max-w-full font-mono text-xs whitespace-pre-wrap wrap-anywhere">{check.output || (check.ok ? "OK" : t("runStatus.failed"))}</div>
-          </Notice>
-        ) : null}
-        <ErrorNote error={action.error} />
-      </CardContent>
-    </Card>
+                {p.hasToken ? (
+                  <Button
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    disabled={action.busy}
+                    onClick={() => void action.run(async () => (await desktop.setProfileToken(p.id, ""), onChanged()))}
+                  >
+                    {t("agents.tokenRemove")}
+                  </Button>
+                ) : null}
+                <Button size="sm" type="button" variant="ghost" disabled={action.busy} onClick={() => void action.run(() => desktop.openSetupToken(p.id))}>
+                  {t("agents.tokenCreate")}
+                </Button>
+              </div>
+              <span className="text-xs text-muted-foreground">{t("agents.tokenHint")}</span>
+            </form>
+          ) : null}
+          {check ? (
+            <Notice tone={check.ok ? "ok" : "error"}>
+              {check.path ? <div className="max-w-full font-mono text-xs break-all">{check.path}</div> : null}
+              <div className="max-w-full font-mono text-xs whitespace-pre-wrap wrap-anywhere">{check.output || (check.ok ? "OK" : t("runStatus.failed"))}</div>
+            </Notice>
+          ) : null}
+        </div>
+      ) : null}
+      {/* Answers to what the row's own buttons did: shown whether or not Chi tiết is open. */}
+      {((loginOpened || waiting) && state === "signedOut") || openedCli || action.error ? (
+        <div className="flex flex-col gap-2 px-4 pb-3">
+          {(loginOpened || waiting) && state === "signedOut" ? <Notice tone="info">{t(waiting ? "agents.loginWaiting" : "agents.loginOpened")}</Notice> : null}
+          {openedCli ? <Notice tone="info">{t("openCli.opened", openedCli)}</Notice> : null}
+          <ErrorNote error={action.error} />
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -929,19 +1124,6 @@ function IntakeCard({ runner, hub, onSaved }: { runner: RunnerSettings; hub: boo
   );
 }
 
-/** The state a subscription is in, as one chip. */
-function stateChip(p: AgentProfileStatus): { key: "running" | "ready" | "off" | "noCli" | "signedOut" | "overLimit" | "resting" | "near"; kind: ChipKind } {
-  if (!p.enabled) return { key: "off", kind: "neutral" };
-  if (p.cliPath === null) return { key: "noCli", kind: "danger" };
-  if (p.login?.loggedIn === false) return { key: "signedOut", kind: "danger" };
-  if (p.running) return { key: "running", kind: "running" };
-  if (usageStop(p, p.usage)) return { key: "overLimit", kind: "warning" };
-  if (p.cooldownUntil) return { key: "resting", kind: "warning" };
-  const top = Math.max(p.usage?.session?.percent ?? 0, p.usage?.week?.percent ?? 0);
-  if (top >= 85) return { key: "near", kind: "warning" };
-  return { key: "ready", kind: "success" };
-}
-
 function Meter({ percent, resets, stop }: { percent: number; resets: string | null; stop: number }) {
   const t = useT();
   const pct = Math.max(0, Math.min(100, Math.round(percent)));
@@ -964,56 +1146,3 @@ function Meter({ percent, resets, stop }: { percent: number; resets: string | nu
   );
 }
 
-const QUOTA_COLS = "grid-cols-[minmax(150px,1.2fr)_150px_minmax(150px,1fr)_minmax(150px,1fr)_110px]";
-
-/** Every subscription on this machine with its session and week use, the stop thresholds and its cost. */
-function QuotaTable({ profiles }: { profiles: AgentProfileStatus[] }) {
-  const t = useT();
-  if (!profiles.length) return null;
-  return (
-    <div className="overflow-x-auto rounded-[10px] border border-line-default bg-surface">
-      <div className="min-w-[760px]">
-        <div className={cn("grid h-[34px] items-center gap-3.5 border-b border-line-subtle bg-subtle px-4 text-[11px]/none font-semibold text-fg-muted", QUOTA_COLS)}>
-          <span>{t("agents.colProfile")}</span>
-          <span>{t("agents.colState")}</span>
-          <span>{t("agents.colSession")}</span>
-          <span>{t("agents.colWeek")}</span>
-          <span title={t("agents.costHint")}>{t("agents.colCost")}</span>
-        </div>
-        {profiles.map((p) => {
-          const st = stateChip(p);
-          const s = p.usage?.session;
-          const w = p.usage?.week;
-          return (
-            <div key={p.id} className={cn("grid items-center gap-3.5 border-b border-line-subtle px-4 py-3 last:border-b-0", QUOTA_COLS)}>
-              <span className="flex min-w-0 flex-col gap-0.5">
-                <span className="truncate font-mono text-[13px]/[18px] font-semibold text-fg-strong">{p.id}</span>
-                <span className="truncate text-xs/4 text-fg-muted">
-                  {t(`agentKind.${p.kind}`)} · {p.roles.map((r) => t(`agentRole.${r}`)).join(", ")}
-                </span>
-              </span>
-              <span title={p.cooldownReason ?? undefined}>
-                <Chip kind={st.kind} title={p.cooldownUntil ? formatTime(p.cooldownUntil) : undefined}>
-                  {st.key === "resting" && p.cooldownUntil
-                    ? `${t("agents.state.resting")} · ${new Date(p.cooldownUntil).toLocaleTimeString(activeIntl(), { hour: "2-digit", minute: "2-digit" })}`
-                    : t(`agents.state.${st.key}`)}
-                </Chip>
-              </span>
-              {s || w ? (
-                <>
-                  {s ? <Meter percent={s.percent} resets={s.resets} stop={p.stopAtSession} /> : <span className="text-xs text-fg-muted">—</span>}
-                  {w ? <Meter percent={w.percent} resets={w.resets} stop={p.stopAtWeek} /> : <span className="text-xs text-fg-muted">—</span>}
-                </>
-              ) : (
-                <span className="col-span-2 text-xs/[17px] text-fg-muted">{t("agents.noUsage")}</span>
-              )}
-              <span className="font-mono text-xs/none text-fg-secondary" title={t("agents.costHint")}>
-                {p.stats.costUsd ? `~${formatUsd(p.stats.costUsd)}` : "—"}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
