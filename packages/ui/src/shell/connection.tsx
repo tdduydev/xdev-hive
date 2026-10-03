@@ -17,7 +17,8 @@ export interface HubLink {
   retry: () => void;
 }
 
-const hostOf = (url: string) => {
+/** Just the host of a hub URL, for lines people read ("Đã kết nối hive.example.com"). */
+export const hostOf = (url: string) => {
   try {
     return new URL(url).host;
   } catch {

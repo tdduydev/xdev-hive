@@ -512,7 +512,7 @@ npm run token -w @xdev-hive/web -- create ci-gitlab agent   # token không thu�
 
 - **Dữ liệu Chung** (tài liệu `org/*`, memory, skill chung) có vai trò riêng như một dự án (dòng *Chung* trong hộp phân quyền, hoặc trang *Thành viên* chọn *Chung*). Để *Theo dự án* (mặc định): ai đăng nhập cũng xem được, người làm được ở ít nhất một dự án thì đề xuất tài liệu Chung và ghi memory Chung, chờ người có quyền duyệt.
 - **Admin** thấy và quản trị mọi dự án, quản lý tài khoản, trang Quản trị và mọi token.
-- **Máy và agent** dùng token *thuộc tài khoản* của người đó, nên chỉ thấy đúng các dự án người đó được cấp. App desktop: *Dự án & cài đặt → Nguồn dữ liệu → Hub dùng chung → Tài khoản*, nhập tên đăng nhập + mật khẩu một lần. Hub cấp cho máy một token (mật khẩu không lưu trên máy); đăng nhập lại từ cùng máy thì token cũ bị thay. Token vai trò `agent` (CI, script) mỗi người tự tạo ở trang *Token*, tối đa là Xem, Làm task, Đề xuất và Ghi memory dù người đó là Quản lý dự án: agent không bao giờ duyệt, sửa Context agent hay giao run. Leader chat dùng quyền chung của người gửi và máy chạy nó.
+- **Máy và agent** dùng token *thuộc tài khoản* của người đó, nên chỉ thấy đúng các dự án người đó được cấp. App desktop: *Cài đặt → Kết nối → Cách khác → Đăng nhập bằng mật khẩu hub*, nhập tên đăng nhập + mật khẩu một lần. Hub cấp cho máy một token (mật khẩu không lưu trên máy); đăng nhập lại từ cùng máy thì token cũ bị thay. Token vai trò `agent` (CI, script) mỗi người tự tạo ở trang *Token*, tối đa là Xem, Làm task, Đề xuất và Ghi memory dù người đó là Quản lý dự án: agent không bao giờ duyệt, sửa Context agent hay giao run. Leader chat dùng quyền chung của người gửi và máy chạy nó.
 - Khoá tài khoản thì phiên đăng nhập và mọi token của người đó ngừng hoạt động ngay. Bỏ hay đổi quyền có hiệu lực từ request kế tiếp.
 - Token tạo trước khi có tài khoản (không thuộc ai) vẫn chạy như cũ theo vai trò của nó.
 
@@ -539,7 +539,7 @@ Hub nhận mọi nhà cung cấp OpenID Connect: GitLab, Microsoft Entra, Google
   - `id_token` lấy thẳng từ token endpoint qua TLS. Hub kiểm issuer (phải khớp issuer đã cấu hình và tài liệu discovery), audience, `azp`, hạn dùng, `nonce`.
   - Issuer phải là `https://`.
 - Tài khoản bị khoá thì không đăng nhập SSO được. Mỗi lần đăng nhập, tạo tài khoản và liên kết đều ghi vào nhật ký.
-- **App desktop**: nút *Đăng nhập qua trình duyệt* ở *Dự án & cài đặt → Nguồn dữ liệu → Tài khoản*. Dùng được cho tài khoản chỉ có SSO; tài khoản có mật khẩu cũng dùng được.
+- **App desktop**: nút *Đăng nhập qua trình duyệt* ở *Cài đặt → Kết nối*. Dùng được cho tài khoản chỉ có SSO; tài khoản có mật khẩu cũng dùng được.
   1. App mở một cổng trên `127.0.0.1` rồi mở trang hub `#/device` trên trình duyệt.
   2. Người dùng đăng nhập ở đó (SSO hay mật khẩu). Trang hỏi *App trên máy … muốn dùng tài khoản @… của bạn*, bấm *Cho phép*.
   3. Hub gửi mã dùng một lần (2 phút) về đúng địa chỉ `127.0.0.1` đó. App đổi mã kèm PKCE verifier lấy token của máy, giống đăng nhập bằng mật khẩu.
@@ -576,7 +576,7 @@ Máy của từng người: app desktop → chế độ **Hub dùng chung** → 
 
 ### Chuyển dữ liệu giữa máy và hub
 
-Ở chế độ hub, app và agent đọc, ghi thẳng lên hub nên không cần đồng bộ. Dữ liệu đã có trong `~/.xdev-hive/local.db` (từ lúc dùng chế độ cục bộ) thì chuyển bằng hai nút ở *Dự án & cài đặt* → **Dữ liệu dùng chung với hub**. Hai nút này cần URL và token hub đã lưu, dù app đang ở chế độ nào:
+Ở chế độ hub, app và agent đọc, ghi thẳng lên hub nên không cần đồng bộ. Dữ liệu đã có trong `~/.xdev-hive/local.db` (từ lúc dùng chế độ cục bộ) thì chuyển bằng hai nút ở *Cài đặt* → **Nâng cao** → **Dữ liệu dùng chung với hub**. Hai nút này cần URL và token hub đã lưu, dù app đang ở chế độ nào:
 
 | | Đẩy dữ liệu máy lên hub | Tải dữ liệu hub về máy |
 |---|---|---|
