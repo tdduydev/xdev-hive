@@ -226,6 +226,12 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **40c. docs-system-default**: *Tài liệu* hiện tài liệu hệ thống trước rồi từng service; trang mới và memory trên web mặc định ở cấp hệ thống.
   - [ ] **40d. overview-by-system**: *Tổng quan* / *Hôm nay* mỗi hệ thống một thẻ; bảng Task và Lượt chạy có cột và bộ lọc *Service*.
 
+- **41. artifacts** (hỏi 3/10: "hệ thống này cũng phải lưu trữ dữ liệu artifacts của AI tạo ra làm tài liệu nữa nhỉ? lỡ sau này quên"; chọn: làm cả bốn mục, nhật ký ở cấp hệ thống). Hiện tóm tắt và log run bị xoá sau 30 ngày, ghi chú task bị ghi đè, file agent làm ra không lên Hive. Spec: [docs/specs/41-artifacts.md](specs/41-artifacts.md). Tách:
+  - [ ] **41a. task-history**: mỗi lần đổi ghi chú task giữ một phiên bản (ai, nguồn, lúc nào); panel task có *Lịch sử ghi chú*; agent đọc được vài bản gần nhất.
+  - [ ] **41b. run-archive**: sau 30 ngày chỉ dọn log và diff của run; tóm tắt, kết luận review, các bước, MR, chi phí giữ mãi.
+  - [ ] **41c. artifact-store**: agent lưu file vào `.xdev-hive/artifacts/`, runner đẩy lên hub (SeaweedFS) gắn với run và task; chữ được che secret và chặn ký tự ẩn; xem trên web, đọc lại qua MCP `artifact_list` / `artifact_get`.
+  - [ ] **41d. task-journal**: task xong thì hub ghi một mục vào nhật ký tháng của hệ thống (`system/<hệ thống>/nhat-ky-<YYYY-MM>`; repo lẻ ghi vào dự án): đã làm, rủi ro, MR, run, artifact.
+
 ## Sửa lỗi
 
 - [x] **work-undefined** (2/10): sau `npm run smoke -w @xdev-hive/desktop`, repo có thêm `apps/desktop/work-undefined.txt` (các dòng `done`). Ở hai bước `agents-account-claude` và `agents-account-codex`, smoke đặt `claude`/`codex` giả lên đầu `PATH`. Khi PATH của login shell không có (hết 8 giây, hoặc máy không cài CLI thật), Setup chạy `<cli giả> --version` không có cwd riêng (cwd của app là `apps/desktop`) và không có `FAKE_MODE`, nên CLI giả rơi vào chế độ `ok` và ghi `work-${HIVE_AGENT}.txt`. Chạy lại với `SHELL=/usr/bin/false` ra 20 dòng. Giờ CLI giả trả lời `--version` như CLI thật rồi thoát, còn smoke mở Electron với cwd là thư mục tạm của nó. `npm test` không tạo file này.
