@@ -79,7 +79,8 @@ describe("sign-in terminal", () => {
   });
 
   it("opens a profile's CLI as the person's own session, with Hive's server under the profile's id (roadmap 32a)", () => {
-    const opts = { project: "xdev-hive", repo: "/Users/duy/Work/xdev-hive", bin: "/Users/duy/.local/bin/claude", path: "/opt/homebrew/bin:/usr/bin", mcpFile: "/tmp/cli/claude-2/mcp.json", title: "t", done: "d" };
+    const shim = "/Users/duy/.local/bin/hive-mcp";
+    const opts = { project: "xdev-hive", repo: "/Users/duy/Work/xdev-hive", bin: "/Users/duy/.local/bin/claude", path: "/opt/homebrew/bin:/usr/bin", shim, mcpFile: "/tmp/cli/claude-2/mcp.json", title: "t", done: "d" };
     const claude = { ...AGENT_TEMPLATES.claude, id: "claude-2", env: { CLAUDE_CONFIG_DIR: "~/.claude-2", ANTHROPIC_API_KEY: "never-in-a-script" } };
     const c = cliCommand(claude, opts);
     assert.deepEqual(c.command.args, ["--mcp-config", opts.mcpFile], "no -p and none of the run's flags");
@@ -90,12 +91,20 @@ describe("sign-in terminal", () => {
       HIVE_AGENT: "claude-2",
       HIVE_PROJECT: "xdev-hive",
     });
-    assert.deepEqual(JSON.parse(c.mcpConfig!), { mcpServers: { "xdev-hive": { command: "hive-mcp", args: [], env: { HIVE_AGENT: "claude-2", HIVE_PROJECT: "xdev-hive" } } } });
+    // The shim by full path: a terminal opened from the app does not always carry the PATH the app found.
+    assert.deepEqual(JSON.parse(c.mcpConfig!), { mcpServers: { "xdev-hive": { type: "stdio", command: shim, args: [], env: { HIVE_AGENT: "claude-2", HIVE_PROJECT: "xdev-hive" } } } });
     assert.ok(!terminalScript("win32", c.command).content.includes("never-in-a-script"));
     assert.equal(cliCommand(claude, { ...opts, path: null }).command.env.PATH, undefined, "Windows keeps the terminal's PATH");
 
     const codex = cliCommand({ ...AGENT_TEMPLATES.codex, id: "codex-2", env: { CODEX_HOME: "/Users/duy/.xdev-hive/accounts/codex-2" } }, opts);
-    assert.deepEqual(codex.command.args, ["-c", "mcp_servers.xdev-hive.command='hive-mcp'", "-c", "mcp_servers.xdev-hive.env={HIVE_AGENT='codex-2',HIVE_PROJECT='xdev-hive'}"]);
+    assert.deepEqual(codex.command.args, [
+      "-c",
+      `mcp_servers.xdev-hive.command='${shim}'`,
+      "-c",
+      "mcp_servers.xdev-hive.args=[]",
+      "-c",
+      "mcp_servers.xdev-hive.env={HIVE_AGENT='codex-2',HIVE_PROJECT='xdev-hive'}",
+    ]);
     assert.equal(codex.mcpConfig, null);
     assert.equal(codex.command.env.CODEX_HOME, "/Users/duy/.xdev-hive/accounts/codex-2");
     // The script carries the TOML on cmd.exe too: single quotes are no trouble there.

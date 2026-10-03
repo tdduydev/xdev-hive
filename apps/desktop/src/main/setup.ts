@@ -26,8 +26,10 @@ import {
   installShim,
   NO_FEATURES,
   shimStatus,
+  shimTarget,
   type ShimOptions,
 } from "./installer.ts";
+import { addToUserPath, pathHasDir, type UserPath } from "./winpath.ts";
 import { tr } from "./i18n.ts";
 import { resolveBin } from "./runner/command.ts";
 import { APP_TOOLS, toolOn, trustOf } from "./runner/tools.ts";
@@ -46,8 +48,12 @@ export interface SetupHost {
   env(): NodeJS.ProcessEnv;
   projects(): DesktopProject[];
   shim: ShimOptions;
-  /** For ~/.codex/config.toml in the agent config check. */
+  /** For ~/.codex/config.toml and ~/.claude.json in the agent config check. */
   home?: string;
+  /** Which OS the items are for; tests check the Windows ones on any machine. */
+  platform?: NodeJS.Platform;
+  /** Windows: the user's Path in the registry, which the "Add to PATH" button writes. Absent: no button. */
+  registry?: UserPath;
   run?: Run;
   /** The newest version of an npm package (roadmap 33); tests pass their own. Default: `npm view`, else the registry. */
   latest?: (pkg: string, npm: string | null, env: NodeJS.ProcessEnv) => Promise<string | null>;
@@ -173,12 +179,19 @@ function placeholderText(e: ToolEntry, err: unknown): string {
 export class Setup {
   readonly #host: SetupHost;
   readonly #run: Run;
+  readonly #platform: NodeJS.Platform;
   /** The registry's newest version of each CLI package, and when it was looked up. */
   readonly #latest = new Map<string, { at: number; version: string | null }>();
 
   constructor(host: SetupHost) {
     this.#host = host;
     this.#run = host.run ?? defaultRun;
+    this.#platform = host.platform ?? process.platform;
+  }
+
+  /** What installAgents needs to name this machine's shim and pick the launch form of each config. */
+  #agentOpts(dryRun = false) {
+    return { shim: shimTarget(this.#host.shim), home: this.#host.home, platform: this.#platform, dryRun };
   }
 
   async status(): Promise<SetupReport> {
@@ -231,10 +244,10 @@ export class Setup {
       output = tail(r.output);
     } else if (id === "shim") {
       const r = installShim(this.#host.shim, pathEnv);
-      output = tr("setupItem.installedAt", { path: r.path });
+      output = [tr("setupItem.installedAt", { path: r.path }), this.#addShimToPath(pathEnv)].filter(Boolean).join("\n");
     } else {
       const { project, part } = this.#split(id);
-      if (part === "agents") output = describeFiles(installAgents(project.repo, project.name, { home: this.#host.home }));
+      if (part === "agents") output = describeFiles(installAgents(project.repo, project.name, this.#agentOpts()));
       else if (part === "codegraph-mcp") output = describeFiles([installCodegraphMcp(project.repo)]);
       else if (part === "superpowers") output = describeFiles([enableSuperpowers(project.repo)]);
       else if (part === "codegraph-index") output = await this.#codegraphIndex(project, pathEnv, env);
@@ -460,14 +473,37 @@ export class Setup {
   #shim(pathEnv: string): SetupItem {
     const s = shimStatus(this.#host.shim, pathEnv);
     const base = { id: "shim", label: tr("setupItem.shim") };
-    const dir = path.dirname(s.path);
+    const windows = this.#platform === "win32";
+    // Windows: what the registry holds counts too. The app's own PATH only changes when it is started again,
+    // so right after "Add to PATH" the item would otherwise still say the folder is missing from PATH.
+    const onPath = s.onPath || (windows && pathHasDir(this.#userPath(), s.dir));
     if (s.foreign) return { ...base, state: "manual", detail: tr("setupItem.shimForeign", { path: s.path }), action: null };
     if (s.state === "missing") return { ...base, state: "missing", detail: tr("setupItem.shimMissing"), action: tr("setupItem.install") };
     if (s.state === "outdated") return { ...base, state: "outdated", detail: tr("setupItem.shimOutdated", { path: s.path }), action: tr("setupItem.reinstall") };
-    if (!s.onPath) {
-      return { ...base, state: "manual", detail: tr("setupItem.shimNotOnPath", { path: s.path, dir }), action: null };
+    if (!onPath) {
+      const vars = { path: s.path, dir: s.dir };
+      return windows
+        ? { ...base, state: "manual", detail: tr("setupItem.shimNotOnPathWindows", vars), action: this.#host.registry ? tr("setupItem.addToPath") : null }
+        : { ...base, state: "manual", detail: tr("setupItem.shimNotOnPath", vars), action: null };
     }
     return { ...base, state: "installed", detail: s.path, action: null };
+  }
+
+  #userPath(): string | null {
+    try {
+      return this.#host.registry?.read()?.value ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Windows: puts the shim folder on the user's Path, so agents started from Explorer find hive-mcp. "" elsewhere. */
+  #addShimToPath(pathEnv: string): string {
+    const reg = this.#host.registry;
+    if (this.#platform !== "win32" || !reg) return "";
+    const { dir } = shimStatus(this.#host.shim, pathEnv);
+    // Already-open programs keep the PATH they started with, Claude Code and its terminal included: the message says so.
+    return addToUserPath(reg, dir).added ? tr("setupItem.pathAdded", { dir }) : tr("setupItem.pathAlready", { dir });
   }
 
   #projectItems(project: DesktopProject, pathEnv: string, specify: Specify | null): SetupItem[] {
@@ -476,8 +512,9 @@ export class Setup {
     if (!existsSync(project.repo)) {
       return [{ id: id("agents"), label: agentsLabel, state: "manual", detail: tr("errors.noFolder", { path: project.repo }), action: null }];
     }
-    const plan = installAgents(project.repo, project.name, { home: this.#host.home, dryRun: true });
-    const changes = plan.filter((f) => f.action === "created" || f.action === "updated");
+    const plan = installAgents(project.repo, project.name, this.#agentOpts(true));
+    // "removed" too: a leftover xdev-hive in .mcp.json still has to go, or the repo keeps a server that cannot start.
+    const changes = plan.filter((f) => f.action === "created" || f.action === "updated" || f.action === "removed");
     const manual = plan.filter((f) => f.action === "skipped");
     const agents: SetupItem = changes.length
       ? { id: id("agents"), label: agentsLabel, state: "missing", detail: tr("setupItem.agentsWrites", { files: changes.map((f) => f.file).join(", ") }), action: tr("setupItem.installAgents") }
