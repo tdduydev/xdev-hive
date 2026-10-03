@@ -6,7 +6,10 @@
     ".xdev-hive/",
     "docs/design/",
     "docs/mcp-check.md",
-    "docs/specs/38-ehospital-onboarding.md"
+    "docs/specs/38-ehospital-onboarding.md",
+    "scripts/public-export.mjs",
+    "scripts/public-export.json",
+    "scripts/test/public-export.test.ts"
   ],
   "docs": ["**/*.md"],
   "replace": [
