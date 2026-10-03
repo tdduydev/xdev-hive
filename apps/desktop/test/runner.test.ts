@@ -17,7 +17,8 @@ import { parseResetTime, detectRateLimit } from "#desktop/main/runner/rate-limit
 import { Runner, type HubUpdate, type RunnerEvent, type RunnerHost, type RunnerOptions } from "#desktop/main/runner/runner.ts";
 import { chatArgs, leaderBrief, leaderSettings } from "#desktop/main/runner/chat.ts";
 import { assistSettings, globRegExp, parseAssist, readRepoFiles } from "#desktop/main/runner/assist.ts";
-import { setMainLocale } from "#desktop/main/i18n.ts";
+import { setMainLocale, tr } from "#desktop/main/i18n.ts";
+import { describeBranch } from "#desktop/main/runner/worktree.ts";
 import { pickProfile, waitingReason, type ProfileLoad } from "#desktop/main/runner/schedule.ts";
 import { syncProject } from "#desktop/main/sync.ts";
 import { readSyncOutcome } from "@xdev-hive/core";
@@ -506,6 +507,64 @@ describe("Runner", () => {
     assert.match(calls()[0]!.prompt, /Read AGENTS\.md in the working copy first/);
   });
 
+  it("puts Hive's context in the worktree of a branch that has none, and keeps it off the branch (roadmap 38a)", async () => {
+    const { repo, runner, hive, calls } = await setup([profile("claude-a", "claude", 10, "ok")]);
+    // The repo never merged the context MR: its target branch has no AGENTS.md, no rules and no skills.
+    hive.seed();
+    await hive.call("docs.save", { key: "project/demo/agents", content: "# demo\nChạy npm test.", baseVersion: 0 }, admin);
+    await hive.call("docs.save", { key: "project/demo/testing", title: "Testing", content: "Use node:test.", paths: ["**/*.test.ts"] }, admin);
+    await hive.call("docs.save", { key: "project/demo/skills/release", content: "---\nname: release\ndescription: Cut a release.\n---\n\nSteps.\n" }, admin);
+
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const done = runner.store.get(run.id)!;
+    assert.equal(done.status, "succeeded", done.error ?? "");
+
+    const wt = done.worktree!;
+    const rendered = ["AGENTS.md", "CLAUDE.md", ".claude/rules/xdev-hive/testing.md", ".claude/skills/release/SKILL.md"];
+    for (const f of rendered) assert.ok(existsSync(path.join(wt, f)), `${f} is in the working copy`);
+    assert.match(readFileSync(path.join(wt, "AGENTS.md"), "utf8"), /Hive project key: `demo`[\s\S]*Chạy npm test\./);
+    assert.match(unstamp(runner.log(run.id)), /^# hive context: 4 file \(4 ghi mới\), bỏ qua 0$/m);
+
+    // The branch holds the agent's work and nothing of Hive's.
+    const onBranch = git(repo, "ls-tree", "-r", "--name-only", "ai/T-1").split("\n");
+    assert.deepEqual(onBranch.sort(), ["README.md", "work-claude-a.txt"]);
+    // Nor does the run's summary call them uncommitted, or its diff show them.
+    assert.equal(describeBranch(wt, done.baseSha!).includes(tr("runNote.uncommitted")), false);
+    assert.equal(runner.diff(run.id).includes("AGENTS.md"), false);
+    assert.doesNotMatch(calls()[0]!.prompt, /\.xdev-hive\/context/, "AGENTS.md itself holds Hive's context here");
+  });
+
+  it("leaves a repo's own AGENTS.md alone and tells the agent where Hive's went (roadmap 38a)", async () => {
+    const { repo, runner, hive, calls } = await setup([profile("claude-a", "claude", 10, "ok")]);
+    hive.seed();
+    const own = "# demo\nQuy ước riêng của repo.\n";
+    writeFileSync(path.join(repo, "AGENTS.md"), own);
+    git(repo, "add", "AGENTS.md");
+    git(repo, "commit", "-qm", "own agents");
+
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const wt = runner.store.get(run.id)!.worktree!;
+    assert.equal(readFileSync(path.join(wt, "AGENTS.md"), "utf8"), own, "kept as the branch has it");
+    assert.match(readFileSync(path.join(wt, ".xdev-hive/context/AGENTS.md"), "utf8"), /Hive project key: `demo`/);
+    assert.equal(readFileSync(path.join(wt, "CLAUDE.md"), "utf8"), "@AGENTS.md\n@.xdev-hive/context/AGENTS.md\n");
+    assert.match(unstamp(runner.log(run.id)), /^# hive context: 2 file \(2 ghi mới\), bỏ qua 1$/m);
+    assert.match(calls()[0]!.prompt, /conventions from xDev Hive are in \.xdev-hive\/context\/AGENTS\.md/);
+    assert.deepEqual(git(repo, "ls-tree", "-r", "--name-only", "ai/T-1").split("\n").sort(), ["AGENTS.md", "README.md", "work-claude-a.txt"]);
+  });
+
+  it("runs on with the branch's own files when the hub cannot be reached (roadmap 38a)", async () => {
+    const { runner, calls } = await setup([profile("claude-a", "claude", 10, "ok")], {}, "hub", {
+      wrap: (backend) => ({ call: (m, i, a) => (m === "docs.list" ? Promise.reject(new Error("mạng hỏng")) : backend.call(m, i, a)) }),
+    });
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    assert.equal(runner.store.get(run.id)!.status, "succeeded");
+    assert.match(unstamp(runner.log(run.id)), /^# hive context: không lấy được từ hub \(mạng hỏng\), chạy tiếp với file của nhánh$/m);
+    assert.equal(calls().length, 1, "the agent still ran");
+  });
+
   it("builds the worktree's codegraph index before the agent starts, syncs it on the next run, and keeps it out of the commit", async () => {
     const npx = fakeNpx();
     const { repo, runner, calls } = await setup([profile("claude-a", "claude", 10, "ok")], {}, "local", { bin: npx.bin });
@@ -561,7 +620,10 @@ describe("Runner", () => {
     assert.equal(done.error, null);
     assert.equal(existsSync(mark), false, "the planted pre-commit hook must not run");
     assert.deepEqual(git(repo, "show", "--name-only", "--format=", "ai/T-1").split("\n").sort(), [".githooks/pre-commit", "work.txt"]);
-    assert.equal(git(path.join(dataDir, "worktrees", "demo", "T-1"), "status", "--porcelain"), "M AGENTS.md");
+    // The repo's own AGENTS.md (no Hive block) stays, so the run's context went beside it; neither is committed.
+    const wt = path.join(dataDir, "worktrees", "demo", "T-1");
+    assert.equal(git(wt, "status", "--porcelain"), "M AGENTS.md\n?? .xdev-hive/\n?? CLAUDE.md");
+    assert.equal(describeBranch(wt, runner.store.get(run.id)!.baseSha!).includes(tr("runNote.uncommitted")), false, "nothing of ours counts as uncommitted");
   });
 
   it("runs a read-only profile with HIVE_READONLY and a prompt without Hive writes, then reports for it", async () => {
@@ -778,11 +840,13 @@ describe("Runner", () => {
 
   it("reports back to a hub that renames actors", async () => {
     const { runner, task } = await setup([profile("claude-a", "claude", 10, "ok")], {}, "hub");
-    await runner.enqueue({ project: "demo", taskId: "T-1" });
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
     await runner.settle();
     const t = await task();
     assert.equal(t.status, "review");
     assert.match(t.note ?? "", /Implemented T-1/);
+    // The run's own agent name may read the project's pages on a hub: without that every run loses its context.
+    assert.match(unstamp(runner.log(run.id)), /^# hive context: \d+ file \(\d+ ghi mới\), bỏ qua 0$/m);
   });
 
   it("keeps two machines on one hub token from taking the same task", async () => {

@@ -4,11 +4,11 @@ import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync, existsSy
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { MANAGED_START, type Actor } from "@xdev-hive/core";
+import { MANAGED_START, type Actor, type HiveBackend } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { installAgents, installCodexConfig, installShim } from "#desktop/main/installer.ts";
 import { commitAll, ensureWorktree, remoteStart } from "#desktop/main/runner/worktree.ts";
-import { syncProject } from "#desktop/main/sync.ts";
+import { renderContext, syncProject } from "#desktop/main/sync.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
 const tmp = (p: string) => mkdtempSync(path.join(os.tmpdir(), `hive-${p}-`));
@@ -323,6 +323,73 @@ describe("skills in the repo", () => {
     const c = commitAll(repo, "ai(T-1): work", []);
     assert.equal(c.error, null);
     assert.deepEqual(sh(repo, "git", ["show", "--name-only", "--format=", "HEAD"]).trim().split("\n"), [".claude/skills/own/SKILL.md"], "the runner commits the team's skill, not Hive's");
+  });
+});
+
+describe("Hive context in a working copy (roadmap 38a)", () => {
+  const skill = (name: string, description: string) => `---\nname: ${name}\ndescription: ${description}\n---\n\nSteps for ${name}.\n`;
+
+  /** A hub with one doc of each kind a repo gets: AGENTS.md, a rule for globs without a folder, and a skill. */
+  async function hub(): Promise<SqliteHive> {
+    const hive = new SqliteHive(":memory:");
+    hive.seed();
+    await hive.call("docs.save", { key: "project/demo/agents", content: "# demo\nChạy npm test.", baseVersion: 0 }, admin);
+    await hive.call("docs.save", { key: "project/demo/testing", title: "Testing", content: "Use node:test.", paths: ["**/*.test.ts"] }, admin);
+    await hive.call("docs.save", { key: "project/demo/skills/release", content: skill("release", "Cut a release.") }, admin);
+    return hive;
+  }
+
+  it("writes the project's context into a folder without touching the hub's copy of the repo", async () => {
+    const hive = await hub();
+    const dir = gitRepo();
+    const out = await renderContext(hive, admin, "demo", dir);
+
+    assert.deepEqual(out.owned, ["AGENTS.md", ".claude/rules/xdev-hive/testing.md", ".claude/skills/release/SKILL.md", "CLAUDE.md"]);
+    assert.deepEqual(out.written, out.owned, "nothing was there yet");
+    assert.deepEqual(out.skipped, []);
+    assert.equal(out.contextFile, null);
+    assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Hive project key: `demo`[\s\S]*Chạy npm test\./);
+    assert.equal(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), "@AGENTS.md\n");
+    assert.match(readFileSync(path.join(dir, ".claude/rules/xdev-hive/testing.md"), "utf8"), /^---\npaths:\n {2}- "\*\*\/\*\.test\.ts"\n---\n/);
+    assert.ok(readFileSync(path.join(dir, ".claude/skills/release/SKILL.md"), "utf8").startsWith("---\nname: release\n"));
+
+    // Run again: the same files, none of them written a second time.
+    const again = await renderContext(hive, admin, "demo", dir);
+    assert.deepEqual(again.written, []);
+    assert.deepEqual(again.owned, out.owned);
+  });
+
+  it("keeps the repo's own AGENTS.md, nested AGENTS.md and skill, and puts Hive's beside them", async () => {
+    const hive = await hub();
+    await hive.call("docs.save", { key: "project/demo/web", title: "Web", content: "Use shadcn/ui.", paths: ["apps/web/**"] }, admin);
+    await hive.call("docs.save", { key: "project/demo/skills/deploy", content: skill("deploy", "Hive's deploy.") }, admin);
+    const dir = gitRepo();
+    const own = "# demo\n309 dòng quy ước của repo.\n";
+    writeFileSync(path.join(dir, "AGENTS.md"), own);
+    mkdirSync(path.join(dir, "apps/web"), { recursive: true });
+    writeFileSync(path.join(dir, "apps/web/AGENTS.md"), "# Web\nOwn notes.\n");
+    mkdirSync(path.join(dir, ".claude/skills/deploy"), { recursive: true });
+    writeFileSync(path.join(dir, ".claude/skills/deploy/SKILL.md"), skill("deploy", "The repo's own deploy steps."));
+    writeFileSync(path.join(dir, "CLAUDE.md"), "Be brief.\n");
+
+    const out = await renderContext(hive, admin, "demo", dir);
+
+    assert.equal(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), own, "the repo's own file is never overwritten");
+    assert.equal(readFileSync(path.join(dir, "apps/web/AGENTS.md"), "utf8"), "# Web\nOwn notes.\n");
+    assert.match(readFileSync(path.join(dir, ".claude/skills/deploy/SKILL.md"), "utf8"), /The repo's own deploy steps/);
+    assert.deepEqual(out.skipped.map((s) => s.file), ["AGENTS.md", "apps/web/AGENTS.md", ".claude/skills/deploy/SKILL.md"]);
+    assert.match(out.skipped[0]!.note, /^repo có AGENTS\.md riêng, giữ nguyên; phần của Hive ghi vào \.xdev-hive\/context\/AGENTS\.md$/);
+    // Hive's goes beside it, and CLAUDE.md imports both: Claude Code reads it, and the prompt names it for the rest.
+    assert.equal(out.contextFile, ".xdev-hive/context/AGENTS.md");
+    assert.match(readFileSync(path.join(dir, ".xdev-hive/context/AGENTS.md"), "utf8"), /Hive project key: `demo`/);
+    assert.equal(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), "@AGENTS.md\n@.xdev-hive/context/AGENTS.md\n\nBe brief.\n");
+  });
+
+  it("gives up on a hub that does not answer, so the run goes on with the files of the branch", async () => {
+    const slow: HiveBackend = { call: () => new Promise(() => undefined) };
+    const dir = gitRepo();
+    await assert.rejects(renderContext(slow, admin, "demo", dir, 20), /hub không trả lời trong 0 giây/);
+    assert.ok(!existsSync(path.join(dir, "AGENTS.md")), "nothing half-written");
   });
 });
 

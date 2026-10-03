@@ -2646,6 +2646,8 @@ export const en: Catalog = {
     codexOwnEntry: "[mcp_servers.{name}] was added by you",
     notInHive: "no version in Hive yet; the repo's file is not overwritten",
     ownSkill: "the repo has its own skill of that name: it stays",
+    ownAgents: "the repo has its own AGENTS.md: it stays, and Hive's part goes to {file}",
+    ownNestedAgents: "the repo has its own AGENTS.md in that folder: it stays",
     uncommitted: "has uncommitted changes; deal with them before syncing",
   },
   syncNote: {
@@ -2697,6 +2699,9 @@ export const en: Catalog = {
     startRemote: "Starting from {ref} ({sha}), just fetched from the remote.",
     startNoRemote: "The repo has no remote: starting from its HEAD ({sha}).",
     startFetchFailed: "Could not fetch from {remote} ({reason}): starting from the repo's HEAD ({sha}), which may lack code merged just now.",
+    context: "{files} files ({written} written), {skipped} skipped",
+    contextFailed: "could not get it from the hub ({reason}): going on with the branch's own files",
+    contextTimeout: "the hub did not answer within {seconds} seconds",
   },
   bestOf: {
     onlyOne: "The only candidate that finished.",
