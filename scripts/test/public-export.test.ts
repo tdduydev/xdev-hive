@@ -46,6 +46,14 @@ describe("public export", () => {
     assert.equal(r.files, 2);
     for (const f of ["AGENTS.md", ".claude", "docs/specs/38-secret.md", "untracked.md"]) assert.equal(existsSync(join(dest, f)), false, f);
     assert.equal(readFileSync(join(dest, "src/a.ts"), "utf8"), "1\n");
+    assert.equal(existsSync(join(dest, "docs/specs/39.md")), true);
+  });
+
+  it("leaves no empty folder behind an excluded file", () => {
+    const repo = fixture({ "AGENTS.md": "x", "docs/specs/38-secret.md": "x", "src/a.ts": "1\n" });
+    const dest = join(tmp, "out-prune");
+    exportTree({ repo, dest, config });
+    assert.equal(existsSync(join(dest, "docs")), false);
   });
 
   it("replaces in docs, drops the lines it cannot fix and counts them", () => {
@@ -63,9 +71,9 @@ describe("public export", () => {
   });
 
   it("blocks forbidden strings left in code with file and line", () => {
-    const repo = fixture({ "src/a.ts": "ok\nconst host = 'gitlab.FIS.vn';\n", "test/b.ts": "// EHospital\n" });
+    const repo = fixture({ "src/a.ts": "ok\nconst host = 'gitlab.FIS.vn';\n", "test/b.ts": "// EHospital\nassert.match(url, /gitlab\\.fis\\.vn/);\n" });
     const r = exportTree({ repo, dest: join(tmp, "out-leak"), config });
-    assert.deepEqual(r.leaks, [{ file: "src/a.ts", line: 2, term: "fis.vn" }, { file: "test/b.ts", line: 1, term: "ehospital" }]);
+    assert.deepEqual(r.leaks, [{ file: "src/a.ts", line: 2, term: "fis.vn" }, { file: "test/b.ts", line: 1, term: "ehospital" }, { file: "test/b.ts", line: 2, term: "fis.vn" }]);
   });
 
   it("refuses a destination that is not empty", () => {
