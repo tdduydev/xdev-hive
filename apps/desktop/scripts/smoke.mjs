@@ -174,6 +174,24 @@ await shoot("agents-account", "agents", 1500, { HIVE_SMOKE_CLICK: '[data-add-acc
 await shoot("projects-github", "projects", 1500, { HIVE_SMOKE_CLICK: '[data-fold="github"]', HIVE_SMOKE_SCROLL: "#gh-url", HIVE_SMOKE_EXPECT: "#gh-url" });
 // The repositories of the demo's GitLab group, with their keys and folders (roadmap 19a).
 await shoot("projects-import", "setup", 4000, { HIVE_SMOKE_CLICK: "#import-list", HIVE_SMOKE_SCROLL: "#import-group" });
+// A folder that is no repository but holds some (roadmap 38d): Chọn thư mục offers each repository under it with its
+// key and target branch. The repository inside a repository and the one in node_modules stay out of the list.
+{
+  const multi = path.join(work, "many-repos");
+  for (const rel of ["app/backend/svc-a", "app/frontend/svc-b", "iam", "node_modules/dep", "app/backend/svc-a/vendor"]) {
+    const dir = path.join(multi, rel);
+    mkdirSync(dir, { recursive: true });
+    execFileSync("git", ["init", "-q", "-b", "main"], { cwd: dir });
+  }
+  await shoot("projects-subrepos", "setup", 4000, {
+    HIVE_SMOKE_PICK_FOLDER: multi,
+    HIVE_SMOKE_CLICK: "[data-pick-folder]",
+    // The form, which is there before the click: the panel renders right under it, and scrolling runs before the wait.
+    HIVE_SMOKE_SCROLL: "[data-pick-folder]",
+    HIVE_SMOKE_EXPECT: '[data-sub-repo="app/backend/svc-a"] && [data-sub-repo="app/frontend/svc-b"] && [data-sub-repo="iam"] && [data-add-sub-repos]',
+    HIVE_SMOKE_ABSENT: '[data-sub-repo="node_modules/dep"] && [data-sub-repo="app/backend/svc-a/vendor"]',
+  });
+}
 // The app checks open MRs as it starts (right away in smoke mode): the failed job goes to a fix run.
 gitlab.jobs[7] = [{ id: 71, name: "test", stage: "test", status: "failed", trace: "not ok 2 - settings page renders\n" }];
 for (const mr of gitlab.mrs) mr.head_pipeline = { id: 7, status: "failed", web_url: `${gitlab.base}/group/demo/-/pipelines/7` };
