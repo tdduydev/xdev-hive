@@ -329,7 +329,8 @@ export function runMcpServers(agent: string, project: string, features: RepoFeat
   const hive = hiveMcpServer(agent, project);
   const env = { ...hive.env, HIVE_TASK: run.task, ...(run.id ? { HIVE_RUN: run.id } : {}), ...(run.readOnly ? { HIVE_READONLY: "1" } : {}) };
   return {
-    [MCP_NAME]: { ...hive, env },
+    // Windows: the shim is a .cmd, which Claude Code cannot start without cmd.exe (agentPath puts its folder on PATH).
+    [MCP_NAME]: { ...hive, ...mcpLaunch(SHIM_NAME, []), env },
     ...(features.codegraph ? { codegraph: CODEGRAPH_RUN_MCP } : {}),
   };
 }
