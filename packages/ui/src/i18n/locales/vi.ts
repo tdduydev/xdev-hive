@@ -1828,6 +1828,13 @@ export const vi = {
     importUsed: "dùng thư mục có sẵn",
     importFailed: "lỗi",
     importToSystem: "Gom vào hệ thống",
+    subReposTitle: { other: "Thư mục này có {count} repo bên trong" },
+    subReposHint:
+      "{path} không phải git repo nên không thêm làm dự án được. Mỗi repo bên dưới thành một dự án riêng: bỏ chọn repo không cần, sửa project key nếu muốn. Quét tối đa 3 cấp, bỏ qua node_modules và thư mục ẩn.",
+    subReposBranch: "Nhánh đích",
+    subReposAdd: { other: "Thêm {count} dự án" },
+    subReposAdding: "Đang thêm…",
+    subReposAdded: "đã thêm",
     subtitle: "Máy này kết nối hub nào, và GitLab, GitHub để mở MR. Thêm dự án và cài công cụ ở trang Dự án & công cụ.",
     connection: "Kết nối",
     connectedTo: "Đã kết nối {hub} · tài khoản {account} · máy {machine}",

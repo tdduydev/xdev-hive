@@ -11,6 +11,9 @@ import {
   type GitLabImportCandidate,
   type GitLabImportResult,
   type MrSettings,
+  type RepoCandidate,
+  type RepoImportResult,
+  type RepoScan,
   type SyncReport,
   type TransferReport,
   type TransferResult,
@@ -820,8 +823,17 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
   const action = useAction();
   const [result, setResult] = useState<{ project: string; title: string; files: FileAction[]; extra?: string } | null>(null);
   const [gitlabOpen, setGitlabOpen] = useState<string | null>(null);
+  // A folder that is no repository but holds some (roadmap 38d): what to offer instead of refusing it.
+  const [found, setFound] = useState<RepoScan | null>(null);
   const nameValid = PROJECT_NAME.test(name);
   const profiles = useQuery(() => desktop.profiles(), [desktop]);
+
+  /** What a folder holds, as soon as it is picked or added: the suggestion comes before the error does. */
+  const look = async (folder: string) => {
+    const scan = await desktop.scanRepos(folder);
+    setFound(!scan.isGit && scan.repos.length ? scan : null);
+    return scan;
+  };
 
   const showSync = (r: SyncReport) =>
     setResult({
@@ -914,6 +926,8 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
           onSubmit={(e) => {
             e.preventDefault();
             void action.run(async () => {
+              // Repositories inside: offer them. Neither a repository nor holding any: addProject says so.
+              if ((await look(repo)).repos.length) return;
               await desktop.addProject({ name, repo });
               setName("");
               setRepo("");
@@ -939,23 +953,39 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
           <Button
             type="button"
             variant="outline"
+            data-pick-folder
             onClick={() =>
               void action.run(async () => {
                 const folder = await desktop.pickFolder();
                 if (folder) {
                   setRepo(folder);
-                  if (!name) setName((folder.split(/[\\/]/).pop() ?? "").toLowerCase().replace(/[^a-z0-9._-]/g, "-"));
+                  if (!name) setName(suggestProjectKey(folder.split(/[\\/]/).filter(Boolean).pop() ?? "", settings.projects.map((p) => p.name)));
+                  await look(folder);
                 }
               })
             }
           >
             {t("projects.pickFolder")}
           </Button>
-          <Button type="submit" disabled={!nameValid || !repo || action.busy}>
+          <Button type="submit" data-add-project disabled={!nameValid || !repo || action.busy}>
             {t("projects.add")}
           </Button>
         </form>
         <ErrorNote error={action.error} />
+        {found ? (
+          <SubRepos
+            key={found.root}
+            scan={found}
+            onAdded={async () => {
+              setName("");
+              setRepo("");
+              onChanged();
+              // Looking again marks what was just added, so a second click cannot try the same repositories.
+              await look(found.root);
+            }}
+            onClose={() => setFound(null)}
+          />
+        ) : null}
         {result ? (
           <div className="flex flex-col gap-3 rounded-lg bg-muted/50 p-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -979,6 +1009,141 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
         ) : null}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * A folder that is no repository but holds some (roadmap 38d, the eight repos of one customer's system): each one
+ * below it as a project of its own, with the key and the target branch it would get, then all of them in one system
+ * named after the folder. Repositories the app already has are listed but not offered again.
+ */
+function SubRepos({ scan, onAdded, onClose }: { scan: RepoScan; onAdded: () => Promise<void>; onClose: () => void }) {
+  const { client, bump, systems } = useHive();
+  const t = useT();
+  const desktop = client.desktop!;
+  const [picked, setPicked] = useState<Record<string, boolean>>(() => Object.fromEntries(scan.repos.filter((r) => r.state === "new").map((r) => [r.dir, true])));
+  const [keys, setKeys] = useState<Record<string, string>>({});
+  const [toSystem, setToSystem] = useState(true);
+  const [systemName, setSystemName] = useState<string | null>(null);
+  const [results, setResults] = useState<RepoImportResult[] | null>(null);
+  const adding = useAction();
+  const keyOf = (r: RepoCandidate) => keys[r.dir] ?? r.key;
+  const chosen = scan.repos.filter((r) => r.state === "new" && picked[r.dir]);
+  const bad = chosen.filter((r) => !PROJECT_NAME.test(keyOf(r)));
+  const dupes = new Set(chosen.map(keyOf).filter((k, i, all) => all.indexOf(k) !== i));
+  const system = systemName ?? scan.system;
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border p-3" data-sub-repos>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium">{t("projects.subReposTitle", { count: scan.repos.length })}</span>
+        <Button size="sm" variant="ghost" className="ml-auto" onClick={onClose}>
+          {t("common.close")}
+        </Button>
+      </div>
+      <p className="m-0 text-xs break-words text-muted-foreground">{t("projects.subReposHint", { path: scan.root })}</p>
+      <div className="overflow-x-auto rounded-lg border">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 text-xs text-muted-foreground">
+            <tr>
+              <th className="w-8 p-2" />
+              <th className="p-2 text-left font-medium">{t("projects.importRepo")}</th>
+              <th className="p-2 text-left font-medium">Project key</th>
+              <th className="p-2 text-left font-medium">{t("projects.subReposBranch")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {scan.repos.map((r) => {
+              const added = r.state === "added";
+              const key = keyOf(r);
+              return (
+                <tr key={r.dir} className="border-t align-top" data-sub-repo={r.rel}>
+                  <td className="p-2">
+                    <Checkbox
+                      checked={!added && Boolean(picked[r.dir])}
+                      disabled={added}
+                      aria-label={r.rel}
+                      onCheckedChange={(v) => setPicked((p) => ({ ...p, [r.dir]: v === true }))}
+                    />
+                  </td>
+                  <td className="p-2">
+                    <div className="font-mono text-xs break-all">{r.rel}</div>
+                    {added ? (
+                      <Badge tone="neutral" className="mt-1">
+                        {t("projects.import_added")}
+                      </Badge>
+                    ) : null}
+                  </td>
+                  <td className="p-2">
+                    {added ? (
+                      <span className="font-mono text-xs">{r.key}</span>
+                    ) : (
+                      <Input
+                        className="h-8 w-40 font-mono text-xs md:text-xs"
+                        value={key}
+                        aria-label={`Project key ${r.rel}`}
+                        aria-invalid={!PROJECT_NAME.test(key) || dupes.has(key)}
+                        onChange={(e) => setKeys((k) => ({ ...k, [r.dir]: e.target.value.toLowerCase() }))}
+                      />
+                    )}
+                  </td>
+                  <td className="p-2 font-mono text-xs break-all text-muted-foreground">{r.targetBranch ?? "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          data-add-sub-repos
+          disabled={!chosen.length || bad.length > 0 || dupes.size > 0 || adding.busy}
+          onClick={() =>
+            void adding.run(async () => {
+              const out = await desktop.addProjects(chosen.map((r) => ({ name: keyOf(r), repo: r.dir, targetBranch: r.targetBranch ?? undefined })));
+              setResults(out.results);
+              const joined = [...out.results.filter((r) => r.ok).map((r) => r.key), ...scan.repos.filter((r) => r.state === "added").map((r) => r.key)];
+              if (toSystem && joined.length && PROJECT_NAME.test(system)) {
+                const before = systems.find((s) => s.name === system)?.projects ?? [];
+                await client.call("systems.save", { name: system, projects: [...new Set([...before, ...joined])] });
+              }
+              bump();
+              await onAdded();
+            })
+          }
+        >
+          {adding.busy ? t("projects.subReposAdding") : t("projects.subReposAdd", { count: chosen.length })}
+        </Button>
+        <div className="flex items-center gap-2">
+          <Checkbox id="sub-repos-to-system" checked={toSystem} onCheckedChange={(v) => setToSystem(v === true)} />
+          <Label htmlFor="sub-repos-to-system" className="font-normal">
+            {t("projects.importToSystem")}
+          </Label>
+          <Input
+            className="h-8 w-36 font-mono text-xs md:text-xs"
+            aria-label={t("systems.name")}
+            value={system}
+            disabled={!toSystem}
+            aria-invalid={toSystem && !PROJECT_NAME.test(system)}
+            onChange={(e) => setSystemName(e.target.value.toLowerCase())}
+          />
+        </div>
+        {bad.length || dupes.size ? <span className="text-xs text-destructive">{t("projects.importBadKeys")}</span> : null}
+      </div>
+      <ErrorNote error={adding.error} />
+      {results ? (
+        <ul className="flex flex-col gap-1 rounded-lg bg-muted/50 p-3 text-sm">
+          {results.map((r) => (
+            <li key={r.dir} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <Badge tone={r.ok ? "ok" : "danger"}>{r.ok ? t("projects.subReposAdded") : t("projects.importFailed")}</Badge>
+              <span className="font-mono text-xs">{r.key}</span>
+              <span className="font-mono text-xs break-all text-muted-foreground">{r.dir}</span>
+              {r.error ? <span className="min-w-0 text-xs break-words text-destructive">{r.error}</span> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 

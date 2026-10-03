@@ -11,6 +11,7 @@ import {
   requestDeviceToken,
   isMethod,
   PROJECT_NAME,
+  suggestProjectKey,
   toErrorPayload,
   TOOL_ID,
   transferHive,
@@ -35,6 +36,8 @@ import {
   type Me,
   type ProfileCheck,
   type ReportedProfile,
+  type RepoImportResult,
+  type RepoScan,
   type SetupReport,
   type StartRunRequest,
   type SyncReport,
@@ -58,6 +61,8 @@ import {
 import { GitHubClient } from "./github/client.ts";
 import { GitLabClient } from "./gitlab/client.ts";
 import { gitClone, importRepos, planImport } from "./gitlab/import.ts";
+import { findGitRepos, isGitRepo } from "./git.ts";
+import { addRepos, planLocalImport } from "./local-import.ts";
 import { appendCrashLog, crashLogPath, ReloadGuard } from "./crashlog.ts";
 import { mainLocale, setMainLocale, tr } from "./i18n.ts";
 import { MergeRequester, mrLabel, type MrHost } from "./gitlab/mr.ts";
@@ -307,11 +312,36 @@ async function importGitlab(input: {
 
 function addProject(p: DesktopProject): DesktopSettings {
   const name = String(p?.name ?? "");
-  const repo = path.resolve(String(p?.repo ?? ""));
+  const repo = path.resolve(expandHome(String(p?.repo ?? "")));
+  const targetBranch = String(p?.targetBranch ?? "").trim() || undefined;
   if (!PROJECT_NAME.test(name)) throw new HiveError("bad_request", "Project key: chữ thường, số, . _ -", { key: "errors.badProjectKey" });
   if (!existsSync(repo) || !statSync(repo).isDirectory()) throw new HiveError("bad_request", `Không thấy thư mục ${repo}`, { key: "errors.noFolder", vars: { path: repo } });
+  // A folder that is no repository (roadmap 38d) is refused here, not later: a run on it fails at the worktree, the
+  // sync writes without committing, and the Spec page stays empty.
+  if (!isGitRepo(repo)) throw new HiveError("bad_request", `${repo} không phải git repo`, { key: "errors.notGitRepo", vars: { path: repo } });
   if (config.projects.some((x) => x.name === name)) throw new HiveError("conflict", `Đã có dự án ${name}.`, { key: "errors.projectExists", vars: { project: name } });
-  return persist({ ...config, projects: [...config.projects, { name, repo }] });
+  return persist({ ...config, projects: [...config.projects, { name, repo, targetBranch }] });
+}
+
+/** What the folder someone picked holds (roadmap 38d): itself a repository, or the repositories under it. */
+function scanRepos(dir: unknown): RepoScan {
+  const root = path.resolve(expandHome(String(dir ?? "")));
+  if (!existsSync(root) || !statSync(root).isDirectory()) throw new HiveError("bad_request", `Không thấy thư mục ${root}`, { key: "errors.noFolder", vars: { path: root } });
+  const isGit = isGitRepo(root);
+  return {
+    root,
+    isGit,
+    repos: isGit ? [] : planLocalImport(root, findGitRepos(root), config.projects),
+    system: suggestProjectKey(path.basename(root), []),
+  };
+}
+
+function addProjects(items: DesktopProject[]): { results: RepoImportResult[]; settings: DesktopSettings } {
+  const results = addRepos(
+    (items ?? []).map((i) => ({ name: String(i?.name ?? ""), repo: String(i?.repo ?? ""), targetBranch: i?.targetBranch })),
+    { add: (p) => void addProject(p) },
+  );
+  return { results, settings: settings() };
 }
 
 // ── agent profiles & runs ────────────────────────────────────────────────────
@@ -987,12 +1017,16 @@ function registerIpc(): void {
   handle("desktop:setLocale", setLocale);
   handle("desktop:logError", (text: unknown) => appendCrashLog(crashLogPath(path.dirname(configPath())), `renderer: ${String(text)}`));
   handle("desktop:addProject", addProject);
+  handle("desktop:scanRepos", scanRepos);
+  handle("desktop:addProjects", addProjects);
   handle("desktop:gitlabGroup", gitlabGroup);
   handle("desktop:importGitlab", importGitlab);
   handle("desktop:removeProject", (name: string) =>
     persist({ ...config, projects: config.projects.filter((p) => p.name !== name) }),
   );
   handle("desktop:pickFolder", async () => {
+    // Screenshots only: no one can answer a file dialog, so the folder the shot wants comes from the environment.
+    if (smokeShot && process.env.HIVE_SMOKE_PICK_FOLDER) return process.env.HIVE_SMOKE_PICK_FOLDER;
     const res = await dialog.showOpenDialog(win!, { properties: ["openDirectory", "createDirectory"] });
     return res.canceled ? null : (res.filePaths[0] ?? null);
   });
