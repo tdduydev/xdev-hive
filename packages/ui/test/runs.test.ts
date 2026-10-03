@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { setActiveLocale } from "#ui/i18n/translate.ts";
-import { fixInstructions, isLive, latestReviews, runDuration, runLabel } from "#ui/lib/runs.ts";
+import { fixInstructions, isLive, latestReviews, mrLabel, runDuration, runGroup, runLabel, runOutcome } from "#ui/lib/runs.ts";
 
 describe("run helpers", () => {
   it("measures a run from its start, to its end or to now", () => {
@@ -31,6 +31,40 @@ describe("run helpers", () => {
       setActiveLocale("vi");
     }
     assert.equal(runLabel("runStatus", "running"), "Đang chạy");
+  });
+
+  it("puts every run under one of the three quick filters, a status it does not know included", () => {
+    const of = (status: string) => runGroup(status);
+    assert.deepEqual(["queued", "running"].map(of), ["live", "live"]);
+    assert.equal(of("succeeded"), "done");
+    // Nothing ends outside the three: cancelled and a status from a newer machine read as a problem.
+    assert.deepEqual(["failed", "rate_limited", "cancelled", "paused"].map(of), ["bad", "bad", "bad", "bad"]);
+  });
+
+  it("names a merge request by its host: GitLab by !iid, GitHub by #iid", () => {
+    assert.equal(mrLabel({ mrUrl: "https://gitlab.example/g/p/-/merge_requests/12", iid: 12 }), "MR !12");
+    assert.equal(mrLabel({ mrUrl: "https://github.com/g/p/pull/7", iid: 7 }), "PR #7");
+    assert.equal(mrLabel({ mrUrl: null, iid: null }), "MR !?");
+  });
+
+  it("says in words what came of a run", () => {
+    const run = (extra: Record<string, unknown>) => ({ status: "succeeded", commits: 0, ...extra });
+    assert.equal(runOutcome(run({ commits: 1, mrUrl: "https://gitlab.example/g/p/-/merge_requests/12", mrIid: 12 })), "Xong · 1 commit · MR !12");
+    assert.equal(runOutcome(run({ commits: 2 })), "Xong · 2 commit");
+    // The hub's record keeps the number under mr, this machine's run under mrIid.
+    assert.equal(runOutcome(run({ mr: { iid: 3 }, mrUrl: "https://gitlab.example/g/p/-/merge_requests/3" })), "Xong · MR !3");
+    assert.equal(runOutcome(run({ status: "failed", error: "TypeError: boom\nat run()" })), "Lỗi: TypeError: boom");
+    assert.equal(runOutcome(run({ status: "cancelled" })), "Đã huỷ");
+    // A row has no log, so a live run says what the agent last reported doing, on one line.
+    assert.equal(runOutcome(run({ status: "running", activity: "Viết test\nvà chạy" })), "Đang chạy · Viết test");
+    assert.equal(runOutcome(run({ status: "running" })), "Đang chạy");
+    assert.equal(runOutcome(run({ status: "running", activity: "x".repeat(200) })), `Đang chạy · ${"x".repeat(79)}…`);
+    setActiveLocale("en");
+    try {
+      assert.equal(runOutcome(run({ status: "failed", error: "boom" })), "Failed: boom");
+    } finally {
+      setActiveLocale("vi");
+    }
   });
 
   it("turns a review's report into a fix run's instructions, as findings, within what runs.dispatch takes", () => {

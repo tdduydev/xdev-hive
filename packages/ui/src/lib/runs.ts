@@ -24,6 +24,54 @@ export function runLabel(kind: "runStatus" | "agentRole", value: string): string
   return hasKey(key) ? translate(key as MessageKey) : value;
 }
 
+/** A run's merge request as a person names it: a GitLab MR by its !iid, a GitHub PR by its #iid. */
+export function mrLabel(mr: { mrUrl: string | null; iid: number | null }): string {
+  return /\/pull\/\d+$/.test(mr.mrUrl ?? "") ? `PR #${mr.iid ?? "?"}` : `MR !${mr.iid ?? "?"}`;
+}
+
+/**
+ * Which quick filter (Đang chạy / Lỗi / Xong) a run belongs to. The three cover every status, one from a newer
+ * machine included, so no run falls out of all of them: anything that ended without succeeding reads as a problem,
+ * a cancelled run too.
+ */
+export function runGroup(status: string): "live" | "bad" | "done" {
+  return isLive({ status }) ? "live" : status === "succeeded" ? "done" : "bad";
+}
+
+/** Fields the result line reads, as AgentRun (this machine) and RunRecord (the hub) each have them. */
+export interface OutcomeRun {
+  status: string;
+  activity?: string | null;
+  error?: string | null;
+  commits?: number;
+  mrUrl?: string | null;
+  mrIid?: number | null;
+  mr?: { iid: number | null } | null;
+}
+
+/** One line, so a result keeps the list row's height whatever the agent wrote. */
+function firstLine(text: string, max = 80): string {
+  const line = (text.split("\n").find((l) => l.trim()) ?? "").trim();
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+}
+
+/**
+ * What happened, in the viewer's words, under the task's title: "Xong · 2 commit · MR !12", "Lỗi: TypeError…",
+ * "Đang chạy · Viết test". A row has no log, so a live run shows what the agent last said it was doing
+ * (AgentRun.activity); which step that is belongs to the detail's steps.
+ */
+export function runOutcome(run: OutcomeRun): string {
+  const state = runLabel("runStatus", run.status);
+  const group = runGroup(run.status);
+  if (group === "live") return run.activity ? `${state} · ${firstLine(run.activity)}` : state;
+  if (group === "bad") return run.error ? translate("runs.outcomeWhy", { state, why: firstLine(run.error) }) : state;
+  const parts = [state];
+  if (run.commits) parts.push(translate("board.commits", { count: run.commits }));
+  const iid = run.mrIid ?? run.mr?.iid ?? null;
+  if (iid !== null || run.mrUrl) parts.push(mrLabel({ mrUrl: run.mrUrl ?? null, iid }));
+  return parts.join(" · ");
+}
+
 /** Badge tone of a run request's status. */
 export const REQUEST_TONE: Record<string, string> = { pending: "info", accepted: "ok", rejected: "danger", cancelled: "neutral", expired: "warn" };
 
