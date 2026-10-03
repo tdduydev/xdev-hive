@@ -217,6 +217,12 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **39g. board-fit**: Board không cuộn ngang ở khoảng 1100px (cột co, *Xong* / *Bị chặn* thu hẹp), dải gói thành một chip tóm tắt.
   - [ ] **39h. knowledge-pass**: Tài liệu, Spec, Skill, Memory, Đề xuất: sửa panel chi tiết của Skill, phụ đề bằng lời người dùng, trạng thái trống có việc nên làm, nút chính cùng một chỗ.
 
+- **40. system-first** (hỏi 3/10: "nên hệ thống → dự án chứ nhỉ? hiện tại dự án nhìn vô nhiều thứ quá; hệ thống có thể nhiều service dạng microservices"; chọn hướng gọn): hệ thống là cấp chính, dự án là *service* bên trong; repo lẻ là hệ thống một service (ảo). Task, run, máy giữ ở cấp service; tài liệu và memory mặc định ở cấp hệ thống. Spec: [docs/specs/40-system-first.md](specs/40-system-first.md). Tách:
+  - [ ] **40a. scope-system-first**: ô phạm vi lấy hệ thống làm gốc (cả hệ thống ảo của repo lẻ), service mở rộng bên trong; menu và tiêu đề ghi `hệ thống › service`.
+  - [ ] **40b. service-naming**: chữ giao diện vi/en "dự án" (nghĩa là một repo) → "service"; README giải thích hệ thống / service; RPC, DB, MCP giữ `project`.
+  - [ ] **40c. docs-system-default**: *Tài liệu* hiện tài liệu hệ thống trước rồi từng service; trang mới và memory trên web mặc định ở cấp hệ thống.
+  - [ ] **40d. overview-by-system**: *Tổng quan* / *Hôm nay* mỗi hệ thống một thẻ; bảng Task và Lượt chạy có cột và bộ lọc *Service*.
+
 ## Sửa lỗi
 
 - [x] **work-undefined** (2/10): sau `npm run smoke -w @xdev-hive/desktop`, repo có thêm `apps/desktop/work-undefined.txt` (các dòng `done`). Ở hai bước `agents-account-claude` và `agents-account-codex`, smoke đặt `claude`/`codex` giả lên đầu `PATH`. Khi PATH của login shell không có (hết 8 giây, hoặc máy không cài CLI thật), Setup chạy `<cli giả> --version` không có cwd riêng (cwd của app là `apps/desktop`) và không có `FAKE_MODE`, nên CLI giả rơi vào chế độ `ok` và ghi `work-${HIVE_AGENT}.txt`. Chạy lại với `SHELL=/usr/bin/false` ra 20 dòng. Giờ CLI giả trả lời `--version` như CLI thật rồi thoát, còn smoke mở Electron với cwd là thư mục tạm của nó. `npm test` không tạo file này.
