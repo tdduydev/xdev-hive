@@ -123,7 +123,11 @@ async function shoot(name, page, delay, extra = {}) {
   }
 }
 
-for (const [page, delay] of [["board", 6000], ["runs", 3000], ["agents", 1500], ["setup", 4000], ["projects", 1500], ["tools", 1500], ["docs", 1500], ["skills", 1500]]) await shoot(page, page, delay);
+for (const [page, delay] of [["board", 6000], ["runs", 3000], ["agents", 1500], ["setup", 4000], ["tools", 1500], ["docs", 1500], ["skills", 1500]]) await shoot(page, page, delay);
+// Cài đặt with no hub (roadmap 39d): the Kết nối card offers the browser sign-in, everything else is folded away.
+await shoot("projects", "projects", 1500, { HIVE_SMOKE_EXPECT: '[data-hub-link="none"] && [data-connect-browser]' });
+// What Nâng cao holds: this machine's name and config.json, the two switches, and the one-off copy to or from the hub.
+await shoot("projects-advanced", "projects", 1500, { HIVE_SMOKE_CLICK: '[data-fold="advanced"]', HIVE_SMOKE_EXPECT: '[data-transfer="push"]' });
 // The hub's tools on Cài đặt máy (roadmap 28b-2): the Tool từ hub card, and the tool's own tool:rtk item, required by
 // demo and waiting for this machine's user to allow it. The catalog stands in for a heartbeat's (local mode).
 const smokeTools = path.join(work, "tools.json");
@@ -143,8 +147,8 @@ writeFileSync(
 await shoot("setup-tools", "setup", 4000, { HIVE_SMOKE_TOOLS: smokeTools, HIVE_SMOKE_EXPECT: '[data-hub-tools] && [data-setup-item="tool:rtk"]' });
 // Another Claude account on this machine (roadmap 24b): the form, before the CLI's own sign-in opens.
 await shoot("agents-account", "agents", 1500, { HIVE_SMOKE_CLICK: '[data-add-account="claude"]', HIVE_SMOKE_SCROLL: "#acc-label" });
-// The GitHub card and the project's GitLab / GitHub fields (roadmap 13a).
-await shoot("projects-github", "projects", 1500, { HIVE_SMOKE_CLICK: "main button[aria-expanded]", HIVE_SMOKE_SCROLL: "#gh-url" });
+// The GitHub card (roadmap 13a), which 39d folds: its heading says Chưa cấu hình until the form below is filled in.
+await shoot("projects-github", "projects", 1500, { HIVE_SMOKE_CLICK: '[data-fold="github"]', HIVE_SMOKE_SCROLL: "#gh-url", HIVE_SMOKE_EXPECT: "#gh-url" });
 // The repositories of the demo's GitLab group, with their keys and folders (roadmap 19a).
 await shoot("projects-import", "setup", 4000, { HIVE_SMOKE_CLICK: "#import-list", HIVE_SMOKE_SCROLL: "#import-group" });
 // The app checks open MRs as it starts (right away in smoke mode): the failed job goes to a fix run.
@@ -249,9 +253,14 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
     const local = readFileSync(file, "utf8");
     writeFileSync(file, JSON.stringify({ ...JSON.parse(local), mode: "hub", hub: { url: `http://127.0.0.1:${port}`, token: bootstrap } }, null, 2));
     const webPages = ["tasks", "board", "docs", "memory", "proposals", "skills", "specs", "chat", "batches", "machines", "members", "tokens", "systems", "tools", "admin"];
+    const absent = webPages.map((p) => `nav a[href="#/${p}"]`).join(" && ");
     for (const [name, page] of [["hub-today", "today"], ["hub-runs", "runs"], ["hub-agents", "agents"], ["hub-setup", "setup"], ["hub-projects", "projects"]]) {
-      await shoot(name, page, 3000, { HIVE_SMOKE_EXPECT: "[data-open-web]", HIVE_SMOKE_ABSENT: webPages.map((p) => `nav a[href="#/${p}"]`).join(" && ") });
+      // Connected (roadmap 39d): Cài đặt is one line about the hub, the account and this machine, with no form.
+      const expect = page === "projects" ? '[data-open-web] && [data-hub-link="connected"]' : "[data-open-web]";
+      await shoot(name, page, 3000, { HIVE_SMOKE_EXPECT: expect, HIVE_SMOKE_ABSENT: absent });
     }
+    // Đổi kết nối brings the sign-in form back over that summary.
+    await shoot("hub-projects-change", "projects", 3000, { HIVE_SMOKE_CLICK: "[data-hub-change]", HIVE_SMOKE_EXPECT: '[data-hub-link="changing"] && [data-connect-browser]' });
     writeFileSync(file, local);
   }
   hub.kill();

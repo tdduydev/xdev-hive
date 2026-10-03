@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { ChevronRight } from "lucide-react";
 import {
   PROJECT_NAME,
   TRANSFER_RESULTS,
@@ -17,14 +18,15 @@ import {
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@xdev-hive/ui/components/ui/collapsible";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
-import { ToggleGroup, ToggleGroupItem } from "@xdev-hive/ui/components/ui/toggle-group";
-import { Badge, Empty, ErrorNote, Notice, Page, PageHeader } from "#ui/components/common.tsx";
+import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, StatusDot } from "#ui/components/common.tsx";
 import { OpenCli } from "#ui/components/OpenCli.tsx";
-import { useAction, useHive, useQuery } from "#ui/hooks.ts";
+import { formatTime, useAction, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { rich, useT } from "#ui/i18n/index.tsx";
+import { hostOf } from "#ui/shell/connection.tsx";
 
 const ACTION_TONE: Record<FileAction["action"], string> = {
   created: "ok",
@@ -55,8 +57,8 @@ export function ProjectsPage() {
       <ErrorNote error={settings.error} />
       {settings.data ? (
         <>
-          <ModeCard settings={settings.data} onSaved={settings.reload} />
-          <TransferCard settings={settings.data} />
+          <ConnectionCard settings={settings.data} onSaved={settings.reload} />
+          <AdvancedCard settings={settings.data} onSaved={settings.reload} />
           <GitLabCard settings={settings.data} onSaved={settings.reload} />
           <GitHubCard settings={settings.data} onSaved={settings.reload} />
         </>
@@ -65,220 +67,392 @@ export function ProjectsPage() {
   );
 }
 
-function ModeCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: () => void }) {
+/** A card whose body folds away: closed, its heading still says what state it is in. */
+function FoldCard({ name, title, badge, children }: { name: string; title: ReactNode; badge?: ReactNode; children: ReactNode }) {
+  return (
+    <Card>
+      <Collapsible className="flex flex-col gap-3">
+        <CardHeader>
+          <CollapsibleTrigger
+            data-fold={name}
+            className="group flex w-full items-center gap-2 rounded-md text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          >
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" aria-hidden="true" />
+            {/* The card's title, as a span: a button may hold text, not the div CardTitle renders. */}
+            <span className="min-w-0 flex-1 type-heading-sm text-fg-strong">{title}</span>
+            {badge}
+          </CollapsibleTrigger>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent className="flex flex-col gap-4">{children}</CardContent>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
+  );
+}
+
+/** Whether a forge (GitLab, GitHub) has a URL and a token, so the closed card still says what is left to do. */
+function SetUpBadge({ on }: { on: boolean }) {
+  const t = useT();
+  return <Badge tone={on ? "ok" : "warn"}>{on ? t("projects.configured") : t("projects.notConfigured")}</Badge>;
+}
+
+/** The same fold inside a card, for the ways to sign in that most people do not need. */
+function Disclosure({ name, label, children }: { name: string; label: string; children: ReactNode }) {
+  return (
+    <Collapsible className="flex flex-col gap-3">
+      <CollapsibleTrigger
+        data-fold={name}
+        className="group flex w-fit items-center gap-1 rounded-md text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      >
+        <ChevronRight className="size-4 transition-transform group-data-[state=open]:rotate-90" aria-hidden="true" />
+        {label}
+      </CollapsibleTrigger>
+      <CollapsibleContent className="flex flex-col gap-3">{children}</CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+/** Is the hub answering? What the last heartbeat found (roadmap 22h); Thử lại sends one now. */
+function HubLink() {
+  const { client } = useHive();
+  const t = useT();
+  const desktop = client.desktop!;
+  const tick = usePoll(5000);
+  const status = useQuery(() => desktop.hubStatus(), [desktop, tick]);
+  const retry = useAction();
+  const link = status.data ?? null;
+  const ok = link?.ok ?? null;
+  const unreachable = link?.code === "unavailable";
+  const tone = ok === null ? "neutral" : ok ? "ok" : unreachable ? "warn" : "danger";
+  const label = ok === null ? t("projects.linkUnknown") : ok ? t("projects.linkOk") : unreachable ? t("projects.linkOffline") : t("projects.linkRefused");
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1" data-hub-status={ok === null ? "unknown" : ok ? "ok" : "down"}>
+      <StatusDot tone={tone} />
+      <span className="text-sm">{label}</span>
+      {link?.checkedAt ? <span className="text-xs text-muted-foreground">{t("projects.linkCheckedAt", { time: formatTime(link.checkedAt) })}</span> : null}
+      {ok === false && link?.lastOkAt ? <span className="text-xs text-muted-foreground">· {t("projects.linkLastOk", { time: formatTime(link.lastOkAt) })}</span> : null}
+      {ok === true ? null : (
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={retry.busy}
+          onClick={() =>
+            void retry.run(async () => {
+              await desktop.hubRetry();
+              status.reload();
+            })
+          }
+        >
+          {retry.busy ? t("shell.retrying") : t("shell.retry")}
+        </Button>
+      )}
+      {ok === false && link?.error ? <p className="w-full text-xs break-words text-muted-foreground">{link.error}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * Connected: one line (hub, account, machine) with the link's state, and nothing to fill in. The sign-in form is
+ * only for a machine that is not connected, or for someone who asked to change the connection.
+ */
+function ConnectionCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: () => void }) {
   const { client, me, bump } = useHive();
   const t = useT();
-  const [mode, setMode] = useState(settings.mode);
+  const desktop = client.desktop!;
+  // Ngắt kết nối only puts the machine back in local mode (the token stays in config.json), so the mode decides
+  // whether this machine is connected, not hasHubToken.
+  const connected = settings.mode === "hub" && settings.hasHubToken;
+  const [changing, setChanging] = useState(false);
+  const action = useAction();
+  const hub = hostOf(settings.hubUrl);
+
+  if (!connected || changing) {
+    return (
+      <SignInCard
+        settings={settings}
+        changing={changing}
+        onDone={() => {
+          setChanging(false);
+          onSaved();
+          bump();
+        }}
+        onCancel={() => setChanging(false)}
+      />
+    );
+  }
+  return (
+    <Card data-hub-link="connected">
+      <CardHeader>
+        <CardTitle>{t("projects.connection")}</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <p className="text-sm break-words">
+          {rich(t("projects.connectedTo"), {
+            hub: <b className="text-foreground">{hub}</b>,
+            account: <b className="text-foreground">{me.user ? `@${me.user.username}` : me.name}</b>,
+            machine: <b className="text-foreground">{settings.machine}</b>,
+          })}
+        </p>
+        <HubLink />
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" data-hub-change onClick={() => setChanging(true)}>
+            {t("projects.change")}
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={action.busy}
+            onClick={() => {
+              if (!window.confirm(t("projects.confirmDisconnect", { hub }))) return;
+              void action.run(async () => {
+                await desktop.updateSettings({ mode: "local" });
+                onSaved();
+                bump();
+              });
+            }}
+          >
+            {t("projects.disconnect")}
+          </Button>
+        </div>
+        <ErrorNote error={action.error} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function SignInCard({
+  settings,
+  changing,
+  onDone,
+  onCancel,
+}: {
+  settings: DesktopSettings;
+  changing: boolean;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const { client } = useHive();
+  const t = useT();
+  const desktop = client.desktop!;
   const [hubUrl, setHubUrl] = useState(settings.hubUrl);
-  const [hubToken, setHubToken] = useState("");
-  // People sign in with their hub account (the hub issues this machine a token); a pasted token still works.
-  const [auth, setAuth] = useState<"account" | "token">("account");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [hubToken, setHubToken] = useState("");
+  const browser = useAction();
   const signIn = useAction();
-  const browserSignIn = useAction();
-  const [signedIn, setSignedIn] = useState<string | null>(null);
+  const paste = useAction();
+  const alone = useAction();
+  const url = hubUrl.trim();
+  const busy = browser.busy || signIn.busy || paste.busy || alone.busy;
+
+  return (
+    <Card data-hub-link={changing ? "changing" : "none"}>
+      <CardHeader>
+        <CardTitle>{t("projects.connection")}</CardTitle>
+        <CardDescription className="break-words">
+          {settings.mode === "local" && !changing
+            ? rich(t("projects.localHint"), { path: <code className={CODE}>{settings.dbPath}</code> })
+            : t("projects.connectHint")}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className={FORM_GRID}>
+          <Label htmlFor="hub-url">{t("projects.hubUrl")}</Label>
+          <Input id="hub-url" className="font-mono" placeholder="https://hive.xdev.asia" value={hubUrl} onChange={(e) => setHubUrl(e.target.value)} />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            data-connect-browser
+            disabled={!url || busy}
+            onClick={() =>
+              void browser.run(async () => {
+                await desktop.hubSignInBrowser({ hubUrl: url });
+                onDone();
+              })
+            }
+          >
+            {t("projects.signInBrowser")}
+          </Button>
+          {browser.busy ? (
+            <>
+              <span className="text-sm text-muted-foreground">{t("projects.signInBrowserWaiting")}</span>
+              <Button size="sm" variant="ghost" onClick={() => void desktop.hubSignInCancel()}>
+                {t("common.cancel")}
+              </Button>
+            </>
+          ) : null}
+          {/* While the browser sign-in waits it has its own Huỷ; two buttons of that name side by side say nothing. */}
+          {changing && !browser.busy ? (
+            <Button variant="ghost" onClick={onCancel}>
+              {t("common.cancel")}
+            </Button>
+          ) : null}
+        </div>
+        <p className="text-xs break-words text-muted-foreground">{t("projects.signInBrowserHint")}</p>
+        <ErrorNote error={browser.error} />
+        <Disclosure name="other-sign-in" label={t("projects.otherWays")}>
+          <form
+            className="flex flex-col gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void signIn.run(async () => {
+                await desktop.hubSignIn({ hubUrl: url, username: username.trim(), password });
+                setPassword("");
+                onDone();
+              });
+            }}
+          >
+            <span className="text-sm font-medium">{t("projects.withPassword")}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                className="min-w-36 flex-1"
+                placeholder={t("login.username")}
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                aria-label={t("projects.hubUsername")}
+              />
+              <Input
+                className="min-w-36 flex-1"
+                type="password"
+                placeholder={t("login.password")}
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                aria-label={t("projects.hubPassword")}
+              />
+              <Button type="submit" variant="outline" disabled={!url || !username.trim() || !password || busy}>
+                {signIn.busy ? t("login.submitting") : t("projects.signInConnect")}
+              </Button>
+            </div>
+            <p className="text-xs break-words text-muted-foreground">
+              {rich(t("projects.signInHint"), { machine: <code className={CODE}>{settings.machine}</code> })}
+            </p>
+            <ErrorNote error={signIn.error} />
+          </form>
+          <form
+            className="flex flex-col gap-2 border-t border-dashed pt-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void paste.run(async () => {
+                await desktop.updateSettings({ mode: "hub", hubUrl: url, hubToken: hubToken.trim() });
+                setHubToken("");
+                onDone();
+              });
+            }}
+          >
+            <span className="text-sm font-medium">{t("projects.withToken")}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                id="hub-token"
+                className="min-w-48 flex-1 font-mono"
+                type="password"
+                autoComplete="off"
+                placeholder="hive_…"
+                value={hubToken}
+                onChange={(e) => setHubToken(e.target.value)}
+                aria-label={t("projects.hubToken")}
+              />
+              <Button type="submit" variant="outline" disabled={!url || !hubToken.trim() || busy}>
+                {t("projects.connectWithToken")}
+              </Button>
+            </div>
+            <ErrorNote error={paste.error} />
+          </form>
+        </Disclosure>
+        {settings.mode === "hub" && !changing ? (
+          <div className="flex flex-col gap-2">
+            <Button
+              variant="ghost"
+              className="w-fit"
+              disabled={busy}
+              onClick={() =>
+                void alone.run(async () => {
+                  await desktop.updateSettings({ mode: "local" });
+                  onDone();
+                })
+              }
+            >
+              {t("projects.useAlone")}
+            </Button>
+            <ErrorNote error={alone.error} />
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Rarely touched: this machine's name and config file, the two switches, and the one-off copy to or from the hub. */
+function AdvancedCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: () => void }) {
+  const t = useT();
+  return (
+    <FoldCard name="advanced" title={t("projects.advanced")}>
+      <MachineSettings settings={settings} onSaved={onSaved} />
+      <TransferSection settings={settings} />
+    </FoldCard>
+  );
+}
+
+function MachineSettings({ settings, onSaved }: { settings: DesktopSettings; onSaved: () => void }) {
+  const { client } = useHive();
+  const t = useT();
   const [approval, setApproval] = useState(settings.memoryRequiresApproval);
   const [autoCommit, setAutoCommit] = useState(settings.autoCommit);
   const action = useAction();
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => setSaved(false), [mode, hubUrl, hubToken, approval, autoCommit]);
+  useEffect(() => setSaved(false), [approval, autoCommit]);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t("projects.source")}</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <ToggleGroup
-          type="single"
-          variant="outline"
-          className="max-w-full"
-          value={mode}
-          onValueChange={(v) => {
-            if (v) setMode(v as DesktopSettings["mode"]);
-          }}
-          aria-label={t("projects.mode")}
+    <div className="flex flex-col gap-4">
+      <div className={FORM_GRID}>
+        <span className="text-sm leading-none font-medium">{t("projects.machineName")}</span>
+        <p className="text-sm break-words text-muted-foreground">
+          {rich(t("projects.machineHint"), {
+            machine: <code className={CODE}>{settings.machine}</code>,
+            lease: <code className={CODE}>&lt;{t("projects.profile")}&gt;.{settings.machine}</code>,
+            field: <code className={CODE}>machine</code>,
+            file: <code className={CODE}>{settings.configPath}</code>,
+          })}
+        </p>
+      </div>
+      <label className="flex items-center gap-2 text-sm">
+        <Checkbox checked={approval} onCheckedChange={(v) => setApproval(v === true)} disabled={settings.mode === "hub"} />
+        {t("projects.approval")} {settings.mode === "hub" ? t("projects.approvalHub") : ""}
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        <Checkbox checked={autoCommit} onCheckedChange={(v) => setAutoCommit(v === true)} />
+        {t("projects.autoCommit")}
+      </label>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          disabled={action.busy}
+          onClick={() =>
+            void action.run(async () => {
+              await client.desktop!.updateSettings({ memoryRequiresApproval: approval, autoCommit });
+              setSaved(true);
+              onSaved();
+            })
+          }
         >
-          <ToggleGroupItem
-            value="local"
-            className="h-auto min-h-9 shrink py-1.5 whitespace-normal"
-          >
-            {t("projects.modeLocal")}
-          </ToggleGroupItem>
-          <ToggleGroupItem
-            value="hub"
-            className="h-auto min-h-9 shrink py-1.5 whitespace-normal"
-          >
-            {t("projects.modeHub")}
-          </ToggleGroupItem>
-        </ToggleGroup>
-        {mode === "local" ? (
-          <p className="text-sm break-words text-muted-foreground">
-            {rich(t("projects.localHint"), { path: <code className={CODE}>{settings.dbPath}</code> })}
-          </p>
-        ) : (
-          <div className={FORM_GRID}>
-            <Label htmlFor="hub-url">{t("projects.hubUrl")}</Label>
-            <Input id="hub-url" className="font-mono" placeholder="https://hive.xdev.asia" value={hubUrl} onChange={(e) => setHubUrl(e.target.value)} />
-            <span className="text-sm leading-none font-medium">{t("projects.signIn")}</span>
-            <div className="flex min-w-0 flex-col gap-3">
-              {settings.mode === "hub" && settings.hasHubToken ? (
-                <p className="text-sm text-muted-foreground">
-                  {me.user ? (
-                    rich(t("projects.usingAccount"), { account: <b className="text-foreground">@{me.user.username}</b> })
-                  ) : (
-                    t("projects.usingToken", { name: me.name })
-                  )}
-                </p>
-              ) : null}
-              <ToggleGroup
-                type="single"
-                variant="outline"
-                size="sm"
-                className="w-fit"
-                value={auth}
-                onValueChange={(v) => v && setAuth(v as "account" | "token")}
-                aria-label={t("projects.signInMethod")}
-              >
-                <ToggleGroupItem value="account" className="px-3">
-                  {t("projects.account")}
-                </ToggleGroupItem>
-                <ToggleGroupItem value="token" className="px-3">
-                  {t("projects.pasteToken")}
-                </ToggleGroupItem>
-              </ToggleGroup>
-              {auth === "account" ? (
-                <form
-                  className="flex flex-wrap items-center gap-2"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void signIn.run(async () => {
-                      await client.desktop!.hubSignIn({ hubUrl, username: username.trim(), password });
-                      setSignedIn(username.trim().toLowerCase());
-                      setPassword("");
-                      setMode("hub");
-                      onSaved();
-                      bump();
-                    });
-                  }}
-                >
-                  <Input
-                    className="min-w-36 flex-1"
-                    placeholder={t("login.username")}
-                    autoComplete="username"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    aria-label={t("projects.hubUsername")}
-                  />
-                  <Input
-                    className="min-w-36 flex-1"
-                    type="password"
-                    placeholder={t("login.password")}
-                    autoComplete="current-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    aria-label={t("projects.hubPassword")}
-                  />
-                  <Button type="submit" variant="outline" disabled={!hubUrl.trim() || !username.trim() || !password || signIn.busy}>
-                    {signIn.busy ? t("login.submitting") : t("projects.signInConnect")}
-                  </Button>
-                  <p className="w-full text-xs text-muted-foreground">
-                    {rich(t("projects.signInHint"), { machine: <code className={CODE}>{settings.machine}</code> })}
-                  </p>
-                  <ErrorNote error={signIn.error} />
-                  {signedIn && !signIn.error ? <Notice tone="ok">{t("projects.connected", { account: signedIn })}</Notice> : null}
-                  <div className="flex w-full flex-wrap items-center gap-2 border-t pt-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={!hubUrl.trim() || browserSignIn.busy || signIn.busy}
-                      onClick={() =>
-                        void browserSignIn.run(async () => {
-                          await client.desktop!.hubSignInBrowser({ hubUrl });
-                          setSignedIn(null);
-                          setMode("hub");
-                          onSaved();
-                          bump();
-                        })
-                      }
-                    >
-                      {t("projects.signInBrowser")}
-                    </Button>
-                    {browserSignIn.busy ? (
-                      <>
-                        <span className="text-sm text-muted-foreground">{t("projects.signInBrowserWaiting")}</span>
-                        <Button type="button" size="sm" variant="ghost" onClick={() => void client.desktop!.hubSignInCancel()}>
-                          {t("common.cancel")}
-                        </Button>
-                      </>
-                    ) : null}
-                    <p className="w-full text-xs text-muted-foreground">{t("projects.signInBrowserHint")}</p>
-                    <ErrorNote error={browserSignIn.error} />
-                  </div>
-                </form>
-              ) : (
-                <Input
-                  id="hub-token"
-                  className="font-mono"
-                  type="password"
-                  autoComplete="off"
-                  placeholder={settings.hasHubToken ? t("projects.savedKeep") : "hive_…"}
-                  value={hubToken}
-                  onChange={(e) => setHubToken(e.target.value)}
-                  aria-label={t("projects.hubToken")}
-                />
-              )}
-            </div>
-            <span className="text-sm leading-none font-medium">{t("projects.machineName")}</span>
-            <p className="text-sm break-words text-muted-foreground">
-              {rich(t("projects.machineHint"), {
-                machine: <code className={CODE}>{settings.machine}</code>,
-                lease: <code className={CODE}>&lt;{t("projects.profile")}&gt;.{settings.machine}</code>,
-                field: <code className={CODE}>machine</code>,
-                file: <code className={CODE}>{settings.configPath}</code>,
-              })}
-            </p>
-          </div>
-        )}
-        <label className="flex items-center gap-2 text-sm">
-          <Checkbox checked={approval} onCheckedChange={(v) => setApproval(v === true)} disabled={mode === "hub"} />
-          {t("projects.approval")} {mode === "hub" ? t("projects.approvalHub") : ""}
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <Checkbox checked={autoCommit} onCheckedChange={(v) => setAutoCommit(v === true)} />
-          {t("projects.autoCommit")}
-        </label>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            disabled={action.busy}
-            onClick={() =>
-              void action.run(async () => {
-                await client.desktop!.updateSettings({ mode, hubUrl, hubToken, memoryRequiresApproval: approval, autoCommit });
-                setHubToken("");
-                setSaved(true);
-                onSaved();
-              })
-            }
-          >
-            {t("projects.saveSettings")}
-          </Button>
-          <span className="min-w-0 font-mono text-xs break-all text-muted-foreground">{settings.configPath}</span>
-        </div>
-        <ErrorNote error={action.error} />
-        {saved ? <Notice tone="ok">{t("projects.savedNotice")}</Notice> : null}
-      </CardContent>
-    </Card>
+          {t("projects.saveSettings")}
+        </Button>
+      </div>
+      <ErrorNote error={action.error} />
+      {saved ? <Notice tone="ok">{t("projects.savedNotice")}</Notice> : null}
+    </div>
   );
 }
 
 const RESULT_TONE: Record<TransferResult, string> = { added: "ok", updated: "info", proposed: "warn", unchanged: "neutral", skipped: "neutral", failed: "danger" };
 const KIND = { doc: "nav.docs", memory: "nav.memory", task: "nav.tasks" } as const;
 
-function TransferCard({ settings }: { settings: DesktopSettings }) {
+/** A one-off copy between this machine's database and the hub; inside Nâng cao, since most machines never need it. */
+function TransferSection({ settings }: { settings: DesktopSettings }) {
   const { client, bump } = useHive();
   const t = useT();
   const action = useAction();
@@ -296,92 +470,91 @@ function TransferCard({ settings }: { settings: DesktopSettings }) {
   const rows = report ? report.items.filter((i) => showAll || i.result !== "unchanged") : [];
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t("projects.transfer")}</CardTitle>
-        <CardDescription className="break-words">
+    <div className="flex flex-col gap-4 border-t pt-4">
+      <div className="flex flex-col gap-1">
+        <span className="text-sm font-medium">{t("projects.transfer")}</span>
+        <p className="text-sm break-words text-muted-foreground">
           {rich(t("projects.transferHint"), {
             hub: <b>{t("projects.modeHub")}</b>,
             once: <b>{t("projects.once")}</b>,
             path: <code className={CODE}>{settings.dbPath}</code>,
           })}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-          <li>{rich(t("projects.pushRule"), { push: <b>{t("projects.pushShort")}</b> })}</li>
-          <li>{rich(t("projects.pullRule"), { pull: <b>{t("projects.pullShort")}</b> })}</li>
-          <li>{t("projects.notTransferred")}</li>
-        </ul>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            disabled={!ready || action.busy}
-            onClick={() => run("push", t("projects.confirmPush", { hub: settings.hubUrl }))}
-          >
-            {t("projects.push")}
-          </Button>
-          <Button
-            variant="outline"
-            disabled={!ready || action.busy}
-            onClick={() => run("pull", t("projects.confirmPull", { hub: settings.hubUrl }))}
-          >
-            {t("projects.pull")}
-          </Button>
-          {action.busy ? <span className="text-sm text-muted-foreground">{t("projects.transferring")}</span> : null}
-        </div>
-        {!ready ? <p className="text-sm text-muted-foreground">{t("projects.transferNotReady")}</p> : null}
-        <ErrorNote error={action.error} />
-        {report ? (
-          <div className="flex flex-col gap-3 rounded-lg bg-muted/50 p-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-medium break-all">
-                {report.from} → {report.to}
-              </span>
-              {TRANSFER_RESULTS.filter((r) => report.counts[r] > 0).map((r) => (
-                <Badge key={r} tone={RESULT_TONE[r]}>
-                  {report.counts[r]} {t(`transferResult.${r}`)}
-                </Badge>
-              ))}
-              <div className="ml-auto flex flex-wrap items-center gap-1">
-                {report.counts.unchanged > 0 ? (
-                  <Button size="sm" variant="ghost" onClick={() => setShowAll(!showAll)}>
-                    {showAll ? t("projects.hideUnchanged") : t("projects.showUnchanged")}
-                  </Button>
-                ) : null}
-                <Button size="sm" variant="ghost" onClick={() => setReport(null)}>
-                  {t("common.close")}
+        </p>
+      </div>
+      <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+        <li>{rich(t("projects.pushRule"), { push: <b>{t("projects.pushShort")}</b> })}</li>
+        <li>{rich(t("projects.pullRule"), { pull: <b>{t("projects.pullShort")}</b> })}</li>
+        <li>{t("projects.notTransferred")}</li>
+      </ul>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          data-transfer="push"
+          disabled={!ready || action.busy}
+          onClick={() => run("push", t("projects.confirmPush", { hub: settings.hubUrl }))}
+        >
+          {t("projects.push")}
+        </Button>
+        <Button
+          variant="outline"
+          disabled={!ready || action.busy}
+          onClick={() => run("pull", t("projects.confirmPull", { hub: settings.hubUrl }))}
+        >
+          {t("projects.pull")}
+        </Button>
+        {action.busy ? <span className="text-sm text-muted-foreground">{t("projects.transferring")}</span> : null}
+      </div>
+      {!ready ? <p className="text-sm text-muted-foreground">{t("projects.transferNotReady")}</p> : null}
+      <ErrorNote error={action.error} />
+      {report ? (
+        <div className="flex flex-col gap-3 rounded-lg bg-muted/50 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium break-all">
+              {report.from} → {report.to}
+            </span>
+            {TRANSFER_RESULTS.filter((r) => report.counts[r] > 0).map((r) => (
+              <Badge key={r} tone={RESULT_TONE[r]}>
+                {report.counts[r]} {t(`transferResult.${r}`)}
+              </Badge>
+            ))}
+            <div className="ml-auto flex flex-wrap items-center gap-1">
+              {report.counts.unchanged > 0 ? (
+                <Button size="sm" variant="ghost" onClick={() => setShowAll(!showAll)}>
+                  {showAll ? t("projects.hideUnchanged") : t("projects.showUnchanged")}
                 </Button>
-              </div>
+              ) : null}
+              <Button size="sm" variant="ghost" onClick={() => setReport(null)}>
+                {t("common.close")}
+              </Button>
             </div>
-            {rows.length ? (
-              <ul className="flex flex-col gap-1">
-                {rows.map((i) => (
-                  <li key={`${i.kind}:${i.key}`} className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <Badge tone={RESULT_TONE[i.result]}>{t(`transferResult.${i.result}`)}</Badge>
-                    <span className="text-xs">{t(KIND[i.kind])}</span>
-                    <span className="min-w-0 font-mono text-xs break-all">{i.key}</span>
-                    {i.note ? <span className="min-w-0 text-xs break-words text-muted-foreground">· {i.note}</span> : null}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-xs text-muted-foreground">{t("projects.nothingNew")}</p>
-            )}
-            {report.counts.proposed > 0 ? (
-              <p className="text-xs text-muted-foreground">
-                {rich(t(report.to === "hub" ? "projects.proposedOnHub" : "projects.proposedHere"), {
-                  link: (
-                    <a href="#/proposals" className={LINK}>
-                      {t("nav.proposals")}
-                    </a>
-                  ),
-                })}
-              </p>
-            ) : null}
           </div>
-        ) : null}
-      </CardContent>
-    </Card>
+          {rows.length ? (
+            <ul className="flex flex-col gap-1">
+              {rows.map((i) => (
+                <li key={`${i.kind}:${i.key}`} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <Badge tone={RESULT_TONE[i.result]}>{t(`transferResult.${i.result}`)}</Badge>
+                  <span className="text-xs">{t(KIND[i.kind])}</span>
+                  <span className="min-w-0 font-mono text-xs break-all">{i.key}</span>
+                  {i.note ? <span className="min-w-0 text-xs break-words text-muted-foreground">· {i.note}</span> : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-muted-foreground">{t("projects.nothingNew")}</p>
+          )}
+          {report.counts.proposed > 0 ? (
+            <p className="text-xs text-muted-foreground">
+              {rich(t(report.to === "hub" ? "projects.proposedOnHub" : "projects.proposedHere"), {
+                link: (
+                  <a href="#/proposals" className={LINK}>
+                    {t("nav.proposals")}
+                  </a>
+                ),
+              })}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -412,17 +585,13 @@ function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; onSaved:
     });
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>GitLab merge request</CardTitle>
+    <FoldCard name="gitlab" title="GitLab merge request" badge={<SetUpBadge on={Boolean(g.url && g.hasToken)} />}>
         <CardDescription className="break-words">
           {rich(t("projects.gitlabHint"), {
             branch: <code className={CODE}>ai/&lt;task&gt;</code>,
             merge: <code className={CODE}>/merge</code>,
           })}
         </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
         <div className={FORM_GRID}>
           <Label htmlFor="gl-url">{t("projects.gitlabUrl")}</Label>
           <Input id="gl-url" className="font-mono" placeholder="https://gitlab.fis.vn" value={url} onChange={(e) => (setSaved(false), setUrl(e.target.value))} />
@@ -527,8 +696,7 @@ function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; onSaved:
           </Notice>
         ) : null}
         <ErrorNote error={action.error} />
-      </CardContent>
-    </Card>
+    </FoldCard>
   );
 }
 
@@ -543,12 +711,8 @@ function GitHubCard({ settings, onSaved }: { settings: DesktopSettings; onSaved:
   const action = useAction();
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>GitHub pull request</CardTitle>
+    <FoldCard name="github" title="GitHub pull request" badge={<SetUpBadge on={g.hasToken} />}>
         <CardDescription className="break-words">{t("projects.githubHint")}</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
         <div className={FORM_GRID}>
           <Label htmlFor="gh-url">{t("projects.githubUrl")}</Label>
           <Input id="gh-url" className="font-mono" placeholder="https://github.com" value={url} onChange={(e) => (setSaved(false), setUrl(e.target.value))} />
@@ -592,8 +756,7 @@ function GitHubCard({ settings, onSaved }: { settings: DesktopSettings; onSaved:
           </Notice>
         ) : null}
         <ErrorNote error={action.error} />
-      </CardContent>
-    </Card>
+    </FoldCard>
   );
 }
 
