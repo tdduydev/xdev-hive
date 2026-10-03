@@ -103,9 +103,10 @@ Có thêm test: repo có AGENTS.md riêng không có khối Hive thì file đó 
 - Quét thư mục gốc bằng `findGitRepos` của 38d.
 - Repo có remote trỏ đúng GitLab project thì dùng lại. So bằng `parseRemoteUrl` theo host và `path_with_namespace`, không phân biệt hoa thường.
 - Thư mục trùng tên mà remote khác thì báo xung đột và không dùng: không clone đè, không thêm.
+- Repo mới clone theo cấu trúc group con (chọn ngày 3/10): `<thư mục gốc>/<đường dẫn group con so với group đang nhập>/<repo>`, ví dụ nhập `ehospital-ai` thì `his-service` vào `<gốc>/his/backend/his-service`, thay cho `<gốc>/<tên repo>` phẳng. Dự án nhập vào có `targetBranch` là `default_branch` của project trên GitLab.
 - Chữ giao diện có vi và en.
 
-**Xong khi.** Có test với bố cục lồng 3 cấp: dùng lại đúng repo, không clone lần hai. Thư mục trùng tên khác remote thì thành *xung đột*.
+**Xong khi.** Có test cho đường dẫn clone theo group con và `targetBranch`. Có test với bố cục lồng 3 cấp: dùng lại đúng repo, không clone lần hai. Thư mục trùng tên khác remote thì thành *xung đột*.
 
 ## R-38f. Đồng bộ không ghi đè AGENTS.md riêng của repo
 
