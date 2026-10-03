@@ -454,6 +454,13 @@ const MIGRATIONS: string[] = [
   ALTER TABLE run_groups ADD COLUMN phase_request INTEGER;
   ALTER TABLE run_groups ADD COLUMN phase_error TEXT;
   `,
+  // Run archive (roadmap 41b): a run's summary stays for good, only its log and patch go after RUN_LOG_DAYS.
+  // log_pruned_at: when they went, so the page and run_get can say so instead of showing an empty log as the truth.
+  // Records are never deleted now, so the clean-up at each runs.push looks only at the ones still to clean.
+  `
+  ALTER TABLE run_records ADD COLUMN log_pruned_at TEXT;
+  CREATE INDEX run_records_unpruned ON run_records(updated_at) WHERE log_pruned_at IS NULL;
+  `,
 ];
 
 /**
@@ -576,8 +583,11 @@ const CHAT_DECIDE_ORDER: Record<ChatActionKind, number> = {
   "agents.stop": 10,
 };
 
-/** Run records (runs.push) are kept this long after their last update. */
-const RUN_RECORD_DAYS = 30;
+/**
+ * A run's log and patch (the heavy part) are dropped this long after its last update; the record itself — summary,
+ * error, branch, MR, merge, cost, who asked — stays for good, so what an agent concluded is never lost (roadmap 41b).
+ */
+const RUN_LOG_DAYS = 30;
 
 /** A run's tokens beside its record (run_costs joined as c), as toRunRecord reads them. */
 const RUN_TOKEN_COLUMNS = "c.input_tokens AS tok_input, c.cache_write_tokens AS tok_cache_write, c.cache_read_tokens AS tok_cache_read, c.output_tokens AS tok_output";
@@ -646,6 +656,7 @@ function toRunRecord(r: Row, withLog: boolean): RunRecord {
             error: r.merge_error == null ? null : (JSON.parse(String(r.merge_error)) as RunRequestError),
             finishedAt: s(r.merge_done_at),
           },
+    logPrunedAt: s(r.log_pruned_at),
     ...(withLog ? { log: str(r.log), patch: r.patch == null ? null : str(r.patch) } : {}),
   };
 }
@@ -1218,6 +1229,8 @@ export interface SqliteHiveOptions {
   memoryRequiresApproval?: boolean;
   /** Memory no agent searched up (nor anyone wrote or kept) for this many days is stale. 0: never. Default 90. */
   memoryStaleDays?: number;
+  /** A run's log and patch go this many days after its last update; the rest of the record stays. 0: keep them. Default 30. */
+  runLogDays?: number;
   /** Called after a change people may want to hear about (the hub sends webhooks); errors are ignored. */
   onEvent?: (event: HiveEvent) => void;
   /** Embeddings for memory search (the hub: Ollama or an API). Without one, search matches words only. */
@@ -1263,6 +1276,7 @@ export class SqliteHive implements HiveBackend {
     this.#opts = {
       memoryRequiresApproval: false,
       memoryStaleDays: 90,
+      runLogDays: RUN_LOG_DAYS,
       now: () => new Date(),
       onEvent: () => undefined,
       embedder: null,
@@ -4602,7 +4616,8 @@ export class SqliteHive implements HiveBackend {
                task_id = excluded.task_id, task_title = excluded.task_title, role = excluded.role, status = excluded.status,
                profile_id = excluded.profile_id, activity = excluded.activity, summary = excluded.summary, error = excluded.error,
                branch = excluded.branch, commits = excluded.commits, mr_url = excluded.mr_url, cost_usd = excluded.cost_usd,
-               log = excluded.log, started_at = excluded.started_at, finished_at = excluded.finished_at, updated_at = excluded.updated_at`,
+               log = excluded.log, started_at = excluded.started_at, finished_at = excluded.finished_at, updated_at = excluded.updated_at,
+               log_pruned_at = NULL`,
           );
           // Sent only when it changed: left out, the one the hub has stays.
           const patchPut = db.prepare("UPDATE run_records SET patch = ? WHERE machine_id = ? AND run_id = ?");
@@ -4632,7 +4647,14 @@ export class SqliteHive implements HiveBackend {
             // (a run started from its Board). A machine takes a request (runs.requestResult) before it pushes the run.
             ownerPut.run(actor.name, r.runId, principalOf(actor));
           }
-          db.prepare("DELETE FROM run_records WHERE updated_at < ?").run(this.#now(-RUN_RECORD_DAYS * 24 * 60));
+          // The heavy part of an old run goes, the record stays (roadmap 41b): what the agent concluded, its MR and what
+          // it cost outlive the log. log_pruned_at IS NULL: a run cleaned once is not touched again.
+          if (this.#opts.runLogDays > 0) {
+            db.prepare("UPDATE run_records SET log = '', patch = NULL, log_pruned_at = ? WHERE updated_at < ? AND log_pruned_at IS NULL").run(
+              now,
+              this.#now(-this.#opts.runLogDays * 24 * 60),
+            );
+          }
           // Flows (roadmap 34b) move on the step or check that just ended, then queue what comes next.
           for (const r of ended) {
             const run = { ...r, summary: clean(r.summary) ?? null, error: clean(r.error) ?? null };

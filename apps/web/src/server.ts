@@ -3,6 +3,8 @@
 //   HIVE_ALLOWED_HOSTS=hive.xdev.asia   (required behind a reverse proxy / public hostname)
 //   HIVE_MEMORY_APPROVAL=off            (memory from agents is visible without admin approval)
 //   HIVE_MEMORY_STALE_DAYS=90           (memory no agent used for this long is left out of agents' searches; 0 = never)
+//   HIVE_RUN_LOG_DAYS=30                (a run's log and diff are dropped this long after its last update, the rest of
+//     the run — summary, MR, cost — stays for good; 0 = keep logs too)
 //   HIVE_PUBLIC_URL=https://hive.xdev.asia (links in webhook messages; default: https:// + the first allowed host)
 //   HIVE_BOOTSTRAP_TOKEN=...            (fixed admin token for automated deploys)
 //   HIVE_ADMIN_USER=admin              (name of the first admin account, created with a temporary password)
@@ -49,6 +51,7 @@ const logBackup = (when: string, take: () => BackupResult | null) => {
 if (backup) logBackup("start", () => backupFile(dbPath, backup));
 
 const staleDays = Number(process.env.HIVE_MEMORY_STALE_DAYS ?? 90);
+const runLogDays = Number(process.env.HIVE_RUN_LOG_DAYS ?? 30);
 const embedder = process.env.HIVE_EMBED_URL
   ? openAiEmbedder({ url: process.env.HIVE_EMBED_URL, model: process.env.HIVE_EMBED_MODEL || "bge-m3", key: process.env.HIVE_EMBED_KEY || undefined })
   : null;
@@ -59,6 +62,7 @@ let onEvent: (event: HiveEvent) => void = () => undefined;
 const hive = new SqliteHive(dbPath, {
   memoryRequiresApproval: process.env.HIVE_MEMORY_APPROVAL !== "off",
   memoryStaleDays: Number.isFinite(staleDays) && staleDays >= 0 ? staleDays : 90,
+  runLogDays: Number.isFinite(runLogDays) && runLogDays >= 0 ? runLogDays : 30,
   onEvent: (event) => onEvent(event),
   embedder,
   embedMinScore: Number.isFinite(minScore) ? minScore : 0.5,

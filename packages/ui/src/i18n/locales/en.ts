@@ -1489,6 +1489,7 @@ export const en: Catalog = {
     tech: "Technical details",
     openMr: "Open {mr}",
     logNote: "End of the log the machine sent · updated {time}",
+    logPruned: "This old run's log and diff were cleaned up at {time}; its summary, MR and cost stay.",
     cancel: "Cancel run",
     cancelHint: "The machine stops the agent at its next heartbeat (about 30 seconds).",
     cancelRequested: "{who} asked to cancel it at {time}; the machine stops the agent at its next heartbeat (about 30 seconds).",

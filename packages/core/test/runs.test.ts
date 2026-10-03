@@ -70,11 +70,45 @@ describe("run records", () => {
     );
   });
 
-  it("forgets runs 30 days after their last update", async () => {
+  // Roadmap 41b: what the agent concluded outlives its log, so a run from months ago still says what it did.
+  it("drops only log and diff 30 days after a run's last update, and keeps the rest for good", async () => {
     const hive = new SqliteHive(":memory:");
-    await hive.call("runs.push", { machine: "duy-mbp", runs: [run()] }, machineA);
+    const old = run({ status: "succeeded", summary: "Measured 1.2 s.", mrUrl: "https://github.com/duy/app/pull/3", commits: 2, costUsd: 0.4, patch: "diff --git a/a.ts b/a.ts\n" });
+    await hive.call("runs.push", { machine: "duy-mbp", runs: [old] }, machineA);
     hive.db.prepare("UPDATE run_records SET updated_at = ?").run(new Date(Date.now() - 31 * 86_400_000).toISOString());
+    // Any push cleans up: this one is a new run, which must stay whole.
+    await hive.call("runs.push", { machine: "duy-mbp", runs: [run({ runId: "R-new001", log: "▶ Bash: npm test", patch: "diff --git a/b.ts b/b.ts\n" })] }, machineA);
+
+    const kept = (await hive.call("runs.get", { machineId: machineA.name, runId: "R-abc123" }, admin))!;
+    assert.deepEqual(
+      [kept.summary, kept.mrUrl, kept.role, kept.profileId, kept.commits, kept.costUsd, kept.status],
+      ["Measured 1.2 s.", "https://github.com/duy/app/pull/3", "implement", "claude-1", 2, 0.4, "succeeded"],
+    );
+    assert.deepEqual([kept.log, kept.patch], ["", null], "the heavy part is gone");
+    assert.ok(kept.logPrunedAt, "and says when it went");
+    assert.deepEqual((await hive.call("runs.list", {}, admin)).map((r) => r.runId).sort(), ["R-abc123", "R-new001"], "neither row is deleted");
+
+    const fresh = (await hive.call("runs.get", { machineId: machineA.name, runId: "R-new001" }, admin))!;
+    assert.deepEqual([fresh.log, fresh.patch, fresh.logPrunedAt], ["▶ Bash: npm test", "diff --git a/b.ts b/b.ts\n", null], "a new run is untouched");
+
+    // Cleaned once, not again: the second clean-up would move the time it says.
+    const at = kept.logPrunedAt;
+    await hive.call("runs.push", { machine: "duy-mbp", runs: [run({ runId: "R-new002" })] }, machineA);
+    assert.equal((await hive.call("runs.get", { machineId: machineA.name, runId: "R-abc123" }, admin))?.logPrunedAt, at);
+
+    // Its machine pushes it again (the MR watcher does, for a run up to 30 days old): a fresh run again, log and all.
+    await hive.call("runs.push", { machine: "duy-mbp", runs: [old] }, machineA);
+    const again = (await hive.call("runs.get", { machineId: machineA.name, runId: "R-abc123" }, admin))!;
+    assert.deepEqual([again.logPrunedAt, again.log], [null, old.log]);
+  });
+
+  it("keeps logs for good with runLogDays 0", async () => {
+    const hive = new SqliteHive(":memory:", { runLogDays: 0 });
+    await hive.call("runs.push", { machine: "duy-mbp", runs: [run()] }, machineA);
+    hive.db.prepare("UPDATE run_records SET updated_at = ?").run(new Date(Date.now() - 400 * 86_400_000).toISOString());
     await hive.call("runs.push", { machine: "duy-mbp", runs: [run({ runId: "R-new001" })] }, machineA);
-    assert.deepEqual((await hive.call("runs.list", {}, admin)).map((r) => r.runId), ["R-new001"]);
+    const kept = (await hive.call("runs.get", { machineId: machineA.name, runId: "R-abc123" }, admin))!;
+    assert.match(kept.log ?? "", /BUILD SUCCESS/);
+    assert.equal(kept.logPrunedAt, null);
   });
 });
