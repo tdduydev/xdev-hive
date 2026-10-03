@@ -29,6 +29,16 @@ describe("project picker choices", () => {
     assert.equal(pickerGroups(["demo"], systems, "project", "", [], true).flatMap((group) => group.items.map(scopeId))[0], "shared");
   });
 
+  it("finds all and shared by their shown labels, accents folded", () => {
+    const labels = { all: "Tất cả dự án", shared: "Chung" };
+    const ids = (mode: "scope" | "project", query: string) => pickerGroups(projects, systems, mode, query, [], true, labels).flatMap((group) => group.items.map(scopeId));
+    assert.deepEqual(ids("scope", "chung"), ["shared"]);
+    assert.deepEqual(ids("scope", "tat ca"), ["all"]);
+    assert.deepEqual(ids("project", "Chung"), ["shared"]);
+    assert.deepEqual(ids("scope", "shared"), []);
+    assert.deepEqual(pickerGroups(projects, systems, "scope", "chung", ["shared"], false, labels).map((group) => [group.kind, group.items.map(scopeId)]), [["recent", ["shared"]], ["other", ["shared"]]]);
+  });
+
   it("keeps five unique recent choices and survives blocked storage", () => {
     const original = globalThis.localStorage;
     let stored = "[]";
