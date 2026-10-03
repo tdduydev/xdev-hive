@@ -6,7 +6,7 @@ import { ownerLabel } from "#ui/lib/tasks.ts";
 
 describe("task helpers", () => {
   it("splits an agent's lease into its profile and machine, and leaves a person's name alone", () => {
-    assert.deepEqual(ownerLabel("codex-1.hc-duytd20-macmini@hc-duytd20-macmini"), { who: "codex-1", machine: "hc-duytd20-macmini" });
+    assert.deepEqual(ownerLabel("codex-1.mac-mini-1@mac-mini-1"), { who: "codex-1", machine: "mac-mini-1" });
     assert.deepEqual(ownerLabel("claude-1.duy-mbp"), { who: "claude-1", machine: "duy-mbp" }, "local mode has no token suffix");
     assert.deepEqual(ownerLabel("duy"), { who: "duy", machine: null });
     assert.deepEqual(ownerLabel("duy@duy-macbook"), { who: "duy", machine: null });

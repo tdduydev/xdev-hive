@@ -2846,7 +2846,7 @@ export const vi = {
     add: "Thêm webhook",
     none: "Chưa có webhook nào.",
     name: "Tên",
-    namePlaceholder: "vd: Kênh dev ehospital",
+    namePlaceholder: "vd: Kênh dev backend",
     kindLabel: "Nơi nhận",
     kind: { teams: "Microsoft Teams", slack: "Slack" },
     keepUrl: "Để trống để giữ URL cũ",
