@@ -205,6 +205,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **38f. keep-own-agents**: đồng bộ không ghi đè AGENTS.md riêng của repo (không có khối Hive, khác trang trên hub): báo *bỏ qua*, đề xuất nhập vào Hive.
   - [ ] **38g. docs-remove-move**: `docs.remove` (xoá mềm, ghi nhật ký, còn trong lịch sử), chuyển trang sang space khác (project → system) giữ lịch sử, cho một project key nghỉ khỏi ô phạm vi; rồi chuyển 141 trang `project/customer/*` sang `system/customer-ai/*`.
   - [ ] **38h. reference-repos**: ô *Repo tham chiếu* trong cài đặt dự án (dự án cùng hệ thống); run đọc được checkout chính của các repo đó, chỉ đọc, đường dẫn ghi trong prompt.
+  - [ ] **38i. run-skills-rules** (từ phần đo của 38a, 3/10: với `--setting-sources user`, Claude Code không nạp `.claude/skills` và `.claude/rules` của worktree, chỉ nạp CLAUDE.md và các file nó import): prompt của run liệt kê skill của dự án và rules theo đường dẫn, lấy từ `renderContext`, cho mọi CLI; vẫn không nạp settings của repo.
 
 - **39. client-ux** (hỏi 3/10: "client làm giao diện lại dễ sử dụng hơn đi"; chọn: sửa các màn hiện có và thêm luồng *Bắt đầu*, giữ thiết kế của 22; làm cả cài máy và dự án mới, Agent và quota, Cài đặt kết nối, Lượt chạy; làm cả chế độ cục bộ). Mỗi bước phát hành kèm ảnh trước và sau. Spec: [docs/specs/39-client-ux.md](specs/39-client-ux.md). Tách:
   - [ ] **39a. setup-guide**: trang *Bắt đầu* cho máy mới (kết nối bằng trình duyệt, cài công cụ còn thiếu, thêm dự án và cài hết, đăng nhập gói, bật nhận việc); *Hôm nay* nhắc "còn n bước" tới khi xong.
