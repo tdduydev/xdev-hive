@@ -147,6 +147,20 @@ export function DetailFooter({ children, foot }: { children?: ReactNode; foot?: 
   );
 }
 
+/**
+ * A list (or the pane beside it) with nothing to show: one sentence, then the one button that fills it.
+ * `action` stays out when the person may not create anything, or when a search or a filter is what hides the rows —
+ * then the way out is to widen it, not to write something new.
+ */
+export function PaneEmpty({ children, action }: { children: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="flex shrink-0 flex-col items-center gap-2.5 px-3 py-8 text-center">
+      <p className="m-0 max-w-[420px] text-xs/5 text-pretty text-fg-muted">{children}</p>
+      {action}
+    </div>
+  );
+}
+
 /** Label / value rows (Loại, Phạm vi, Ghi bởi…). */
 export function KvRows({ rows }: { rows: Array<[string, ReactNode, boolean?]> }) {
   return (
