@@ -29,6 +29,11 @@ export interface PromptContext {
   candidate?: { n: number; of: number } | null;
   /** The best-of-n judge, with the candidates to compare. */
   judge?: { from: string; candidates: JudgeCandidate[] } | null;
+  /**
+   * The repo keeps its own AGENTS.md, so Hive's went to this file instead (roadmap 38a). Said in words because
+   * Codex and Gemini do not read CLAUDE.md, which is where the import of it is.
+   */
+  contextFile?: string | null;
 }
 
 export interface JudgeCandidate {
@@ -123,6 +128,12 @@ export function buildPrompt(c: PromptContext): string {
         "Do not push. Uncommitted changes are committed to this branch for you when you exit.",
       );
     }
+  }
+  if (c.contextFile) {
+    lines.push(
+      "",
+      `AGENTS.md in the working copy is the repo's own. The team's conventions from xDev Hive are in ${c.contextFile}: read that one as well.`,
+    );
   }
   if (c.note) lines.push("", "Latest note on the task:", c.note);
   if (c.previous) {

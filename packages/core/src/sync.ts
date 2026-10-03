@@ -16,6 +16,11 @@ export const RULES_DIR = ".claude/rules/xdev-hive";
 export const SKILLS_DIR = ".claude/skills";
 export const skillFile = (name: string) => `${SKILLS_DIR}/${name}/SKILL.md`;
 
+// Where Hive's own AGENTS.md goes when the repo keeps its one (a file without the managed block): nothing of the
+// repo's is overwritten, and CLAUDE.md imports both. Beside .xdev-hive/docs.json and guard-docs.sh.
+export const CONTEXT_DIR = ".xdev-hive/context";
+export const CONTEXT_AGENTS_FILE = `${CONTEXT_DIR}/AGENTS.md`;
+
 /** The skills a project's repo gets: the team's, and the project's own, which replace a team skill of the same name. */
 export function projectSkills(project: string, docs: Doc[]): Doc[] {
   const byName = new Map<string, Doc>();
@@ -205,11 +210,15 @@ export function withManagedBlock(existing: string | null, block: string): string
   return rest ? `${block}\n\n${rest}\n` : `${block}\n`;
 }
 
-/** Claude Code reads CLAUDE.md, so it imports AGENTS.md. Other content in CLAUDE.md is kept. */
-export function ensureClaudeImport(existing: string | null): string {
-  if (!existing?.trim()) return "@AGENTS.md\n";
-  if (/^@AGENTS\.md\s*$/m.test(existing)) return existing;
-  return `@AGENTS.md\n\n${existing}`;
+/**
+ * Claude Code reads CLAUDE.md, so it imports AGENTS.md. Other content in CLAUDE.md is kept.
+ * `extra`: more files to import, for the repo that keeps its own AGENTS.md (CONTEXT_AGENTS_FILE).
+ */
+export function ensureClaudeImport(existing: string | null, extra: string[] = []): string {
+  const imports = ["AGENTS.md", ...extra].map((f) => `@${f}`);
+  if (!existing?.trim()) return `${imports.join("\n")}\n`;
+  const missing = imports.filter((i) => !new RegExp(`^${i.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "m").test(existing));
+  return missing.length ? `${missing.join("\n")}\n\n${existing}` : existing;
 }
 
 /** The command id a sync request of a project gets: one open request per machine and project. */

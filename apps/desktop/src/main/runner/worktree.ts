@@ -1,9 +1,9 @@
 // One git worktree + branch per task (ai/<task-id>), so agents never share a working copy.
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, realpathSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { HiveError, RULES_DIR } from "@xdev-hive/core";
+import { CONTEXT_DIR, HiveError, MANAGED_START, RULES_DIR } from "@xdev-hive/core";
 import { git, gitAsync, gitErrorText, isGitRepo } from "#desktop/main/git.ts";
 import { tr } from "#desktop/main/i18n.ts";
 import { RENDERED_FILES } from "#desktop/main/installer.ts";
@@ -20,6 +20,8 @@ export interface Worktree {
   copied: string[];
   /** Folders the run's tools prepare in it (roadmap 28b, see toolDirs): kept out of the commit like AGENT_CLI_DIRS. */
   toolDirs?: string[];
+  /** Context the runner rendered from Hive into it (roadmap 38a): not the agent's work, so not in the commit. */
+  context?: string[];
 }
 
 export const branchFor = (taskId: string) => `ai/${taskId}`;
@@ -148,6 +150,30 @@ export function ensureWorktree(
 export const AGENT_CLI_DIRS = [".codex", ".agents", ".codegraph"];
 
 /**
+ * What the app renders from Hive in a working copy, by the same rule as the pre-commit guard: the fixed files, our
+ * rules and context folders, and a nested AGENTS.md or skill that carries the managed block. Never the agent's work,
+ * so it stays out of commits, out of the run's diff and out of what counts as dirty. Read from the working copy,
+ * because a run's worktree gets files the branch does not have (roadmap 38a).
+ */
+export function renderedPaths(dir: string): string[] {
+  const out = [...RENDERED_FILES, RULES_DIR, CONTEXT_DIR];
+  const listed = (tryGit(dir, ["ls-files", "-co", "--exclude-standard", "--", ":(glob)**/AGENTS.md", ":(glob).claude/skills/*/SKILL.md"]) ?? "")
+    .split("\n")
+    .filter((f) => f && !RENDERED_FILES.includes(f));
+  for (const f of listed) {
+    try {
+      if (readFileSync(path.join(dir, f), "utf8").includes(MANAGED_START)) out.push(f);
+    } catch {
+      // listed but gone (or not a file): nothing to keep out
+    }
+  }
+  return out;
+}
+
+const exclude = (paths: string[]) => [".", ...paths.map((f) => `:(exclude)${f}`)];
+const under = (paths: string[], f: string) => paths.some((p) => f === p || f.startsWith(`${p}/`));
+
+/**
  * Commits whatever the agent left uncommitted. No git hook runs: the agent could have written one into
  * the working copy (.githooks), and the app is not sandboxed. Docs rendered from Hive stay out, as the
  * pre-commit guard would have kept them; they show up as uncommitted in the run's summary. So do the agent CLIs'
@@ -195,12 +221,16 @@ export function branchState(dir: string, baseSha: string): { commits: number; he
   return { commits: count ? Number(count) : 0, headSha: tryGit(dir, ["rev-parse", "--short", "HEAD"]) };
 }
 
-/** `ref`: another branch than the one checked out (a candidate whose worktree is gone), with no working copy to show. */
-export function describeBranch(dir: string, baseSha: string, ref = "HEAD"): string {
+/**
+ * `ref`: another branch than the one checked out (a candidate whose worktree is gone), with no working copy to show.
+ * `extra`: more paths to leave out of *uncommitted* (a run's `wt.context` and `wt.copied`), on top of renderedPaths.
+ */
+export function describeBranch(dir: string, baseSha: string, ref = "HEAD", extra: string[] = []): string {
   if (!existsSync(dir)) return tr("runNote.worktreeGone");
   const log = tryGit(dir, ["log", "--oneline", "--no-decorate", `${baseSha}..${ref}`]) || tr("runNote.noCommits");
   const stat = tryGit(dir, ["diff", "--stat", `${baseSha}...${ref}`]) || tr("runNote.noChanges");
-  const dirty = ref === "HEAD" ? tryGit(dir, ["status", "--short"]) : null;
+  // The context the app renders is not the agent's work: it never goes in the branch, so it is not "uncommitted".
+  const dirty = ref === "HEAD" ? tryGit(dir, ["status", "--short", "--", ...exclude([...renderedPaths(dir), ...extra])]) : null;
   return [`Commits:\n${log}`, `${tr("runNote.changesFromBase")}\n${stat}`, dirty ? `${tr("runNote.uncommitted")}\n${dirty}` : ""].filter(Boolean).join("\n\n");
 }
 
@@ -214,10 +244,13 @@ export const PATCH_MAX = 380_000;
 export function branchPatch(dir: string, baseSha: string, ref = "HEAD"): string {
   if (!existsSync(dir)) return "";
   const args = ["-c", "core.quotepath=off", "diff", "--no-color", "--no-ext-diff", "--find-renames"];
-  let out = ref === "HEAD" ? (tryGit(dir, [...args, baseSha]) ?? "") : (tryGit(dir, [...args, `${baseSha}...${ref}`]) ?? "");
+  // Hive's own context would otherwise fill the diff of every run on a repo whose branch has an older copy of it.
+  const hidden = renderedPaths(dir);
+  const paths = ["--", ...exclude(hidden)];
+  let out = ref === "HEAD" ? (tryGit(dir, [...args, baseSha, ...paths]) ?? "") : (tryGit(dir, [...args, `${baseSha}...${ref}`, ...paths]) ?? "");
   if (ref === "HEAD") {
     // New files the agent has not added yet: git diff leaves them out.
-    const untracked = (tryGit(dir, ["ls-files", "--others", "--exclude-standard"]) ?? "").split("\n").filter(Boolean).slice(0, 30);
+    const untracked = (tryGit(dir, ["ls-files", "--others", "--exclude-standard"]) ?? "").split("\n").filter((f) => f && !under(hidden, f)).slice(0, 30);
     for (const f of untracked) {
       if (out.length > PATCH_MAX) break;
       try {
@@ -277,8 +310,8 @@ export function cleanupMerged(repo: string, dir: string | null, branch: string, 
     if (head && head !== sha) return kept("newer");
     if (wt) {
       if (tryGit(wt, ["rev-parse", "HEAD"]) !== sha) return kept("newer");
-      const keepOut = [...AGENT_CONFIG_FILES, ...RENDERED_FILES, RULES_DIR, ...AGENT_CLI_DIRS];
-      if (git(wt, ["status", "--porcelain", "--", ".", ...keepOut.map((f) => `:(exclude)${f}`)])) return kept("dirty");
+      const keepOut = [...AGENT_CONFIG_FILES, ...renderedPaths(wt), ...AGENT_CLI_DIRS];
+      if (git(wt, ["status", "--porcelain", "--", ...exclude(keepOut)])) return kept("dirty");
       // Forced only for what the check above left out (copied config, ignored dependencies and builds).
       git(repo, ["worktree", "remove", "--force", wt]);
     }
