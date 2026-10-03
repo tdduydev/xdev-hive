@@ -18,7 +18,7 @@ import type { HiveClient } from "#ui/client.ts";
 import { formatTime, sourceText, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
 import { runBulk, splitMemory } from "#ui/lib/bulk.ts";
-import { ownerName, scopeKey, type Scope } from "#ui/lib/scope.ts";
+import { defaultOwner, ownerName, scopeKey, type Scope } from "#ui/lib/scope.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
 /** Value of the "Chung" option in the owner select (project keys are never empty). */
@@ -87,10 +87,10 @@ export function MemoryPage() {
     if (selected !== NEW && selected !== null && !rows.some((m) => m.id === selected)) setSelected(null);
   }, [rows, selected]);
 
-  // New entries default to the scope: its project, Chung for the shared scope, the first project of a system or of all.
+  // New entries default to the scope: the system's own memory for a system and for a service of one (roadmap 40c), the
+  // project of a repo in no system, Chung for the shared scope, the first project of all.
   const pool = scope.kind === "system" ? scope.projects : projects;
-  // A system's scope writes the system's own memory first (roadmap 19c).
-  const defaultOwner = scope.kind === "project" ? scope.project : scope.kind === "shared" ? null : scope.kind === "system" ? systemOwner(scope.system) : (pool[0] ?? null);
+  const defaultOwnerOf = scope.kind === "all" ? (pool[0] ?? null) : defaultOwner(scope, systems, (o) => allow(o, "memoryWrite"));
   const canAdd = allow(null, "memoryWrite") || projects.some((p) => allow(p, "memoryWrite")) || systems.some((s) => allow(systemOwner(s.name), "memoryWrite"));
 
   // Pending entries in the chip filter being viewed, of projects the person manages (as approving one by one).
@@ -206,7 +206,7 @@ export function MemoryPage() {
       <div className="flex min-w-0 flex-1 flex-col">
         {selected === NEW ? (
           <AddMemory
-            defaultOwner={defaultOwner}
+            defaultOwner={defaultOwnerOf}
             projects={pool}
             onCancel={() => setSelected(null)}
             onAdded={(id) => {

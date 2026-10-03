@@ -242,6 +242,38 @@ async function main() {
     await tab.click('[role="option"]', "Tất cả dự án");
   });
 
+  // Roadmap 40c: in a system's scope the Docs tree has the system's pages first, then a group per service, and a new page
+  // goes to system/<name>/ unless another place is picked.
+  await step("docs-system-default", async () => {
+    await rpc("docs.save", { key: "system/ban-hang/tong-quan", title: "Tổng quan", content: "# Tổng quan\n\nBa service.\n", baseVersion: 0 });
+    const tab = (current = tabs.admin);
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('input[aria-label="Tìm dự án hoặc hệ thống…"]');
+    await tab.type("ban-hang");
+    await tab.click('[role="option"]', "ban-hang");
+    await tab.go("docs");
+    await tab.waitFor("the system's page before the service groups", () => {
+      const rows = [...document.querySelectorAll('[role="tree"] > div')];
+      const first = rows.findIndex((r) => r.querySelector('[title="system/ban-hang/tong-quan"]'));
+      const groups = ["demo", "ledger", "payment"].map((p) => rows.findIndex((r) => r.dataset.serviceGroup === p));
+      return first === 0 && groups.every((g) => g > first);
+    });
+    await tab.click("button", "+ Trang");
+    await tab.type("Quy ước chung");
+    const key = await tab.waitFor("the new page's key", () => document.querySelector("[data-new-doc-key]")?.textContent.trim());
+    expect(key === "system/ban-hang/quy-uoc-chung", `new page key: ${key}`);
+    const places = await tab.eval(() => [...(document.querySelector("select[data-doc-owner]")?.options ?? [])].map((o) => o.value));
+    expect(["sys:ban-hang", "demo", "ledger", "payment"].every((o) => places.includes(o)), `places to put it: ${places}`);
+    await tab.key("Enter");
+    await tab.waitFor("the new page picked in the tree", () => document.querySelector('[role="treeitem"][aria-selected="true"]')?.getAttribute("title") === "system/ban-hang/quy-uoc-chung");
+    await tab.click(".ProseMirror");
+    await tab.type("Mọi service dùng chung.");
+    await tab.click("button", "Lưu thành v1");
+    await until("the page saved in the system", async () => (await rpc("docs.get", { key: "system/ban-hang/quy-uoc-chung" }))?.version === 1);
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('[role="option"]', "Tất cả dự án");
+  });
+
   await step("login-password", async () => {
     const tab = (current = tabs.hoa = await Tab.open("hoa"));
     await tab.click("#username");
