@@ -103,12 +103,12 @@ describe("GitHub pull requests", () => {
     const url = "https://github.com";
     assert.equal(forgeOf(p, parseRemoteUrl("git@github.com:duy/demo.git"), url), "github");
     assert.equal(forgeOf(p, parseRemoteUrl("https://github.com/duy/demo.git"), url), "github");
-    assert.equal(forgeOf(p, parseRemoteUrl("git@gitlab.fis.vn:group/demo.git"), url), "gitlab");
+    assert.equal(forgeOf(p, parseRemoteUrl("git@gitlab.example.com:group/demo.git"), url), "gitlab");
     assert.equal(forgeOf(p, null, url), "gitlab");
     assert.equal(forgeOf({ ...p, githubRepo: "duy/demo" }, null, url), "github", "a local or unknown remote with owner/repo");
-    assert.equal(forgeOf(p, parseRemoteUrl("git@ghe.fis.vn:team/demo.git"), "https://ghe.fis.vn"), "github", "Enterprise Server");
+    assert.equal(forgeOf(p, parseRemoteUrl("git@github.example.com:team/demo.git"), "https://github.example.com"), "github", "Enterprise Server");
     assert.deepEqual(githubApi("https://github.com/"), { rest: "https://api.github.com", graphql: "https://api.github.com/graphql" });
-    assert.deepEqual(githubApi("https://ghe.fis.vn"), { rest: "https://ghe.fis.vn/api/v3", graphql: "https://ghe.fis.vn/api/graphql" });
+    assert.deepEqual(githubApi("https://github.example.com"), { rest: "https://github.example.com/api/v3", graphql: "https://github.example.com/api/graphql" });
   });
 
   it("pushes over HTTPS with the token as a header for the forge's own host only", () => {
@@ -117,7 +117,7 @@ describe("GitHub pull requests", () => {
     assert.equal(env.GIT_TERMINAL_PROMPT, "0");
     assert.equal(env.GIT_CONFIG_KEY_0, "http.https://github.com/.extraHeader");
     assert.equal(env.GIT_CONFIG_VALUE_0, `Authorization: Basic ${Buffer.from("x-access-token:tok").toString("base64")}`);
-    assert.equal(pushEnv(https, parseRemoteUrl(https), "gitlab.fis.vn", { user: "oauth2", token: "tok" }).GIT_CONFIG_KEY_0, undefined);
+    assert.equal(pushEnv(https, parseRemoteUrl(https), "gitlab.example.com", { user: "oauth2", token: "tok" }).GIT_CONFIG_KEY_0, undefined);
     const ssh = "git@github.com:duy/demo.git";
     assert.equal(pushEnv(ssh, parseRemoteUrl(ssh), "github.com", { user: "x-access-token", token: "tok" }).GIT_CONFIG_KEY_0, undefined, "SSH keeps its own key");
   });
@@ -193,12 +193,12 @@ describe("GitHub pull requests", () => {
 describe("GitHub pull request watch", () => {
   it("reads repository and number from PR links on the configured GitHub only", () => {
     assert.deepEqual(pullRef("https://github.com", "https://github.com/duy/demo/pull/12"), { repo: "duy/demo", number: 12 });
-    assert.deepEqual(pullRef("https://ghe.fis.vn/", "https://ghe.fis.vn/team/app.web/pull/3"), { repo: "team/app.web", number: 3 });
+    assert.deepEqual(pullRef("https://github.example.com/", "https://github.example.com/team/app.web/pull/3"), { repo: "team/app.web", number: 3 });
     assert.equal(pullRef("https://github.com", "https://github.com.evil.io/duy/demo/pull/1"), null);
     assert.equal(pullRef("https://github.com", "https://github.com/duy/demo/issues/1"), null);
-    assert.equal(pullRef("https://github.com", "https://gitlab.fis.vn/g/p/-/merge_requests/1"), null);
+    assert.equal(pullRef("https://github.com", "https://gitlab.example.com/g/p/-/merge_requests/1"), null);
     assert.equal(mrLabel({ mrUrl: "https://github.com/duy/demo/pull/12", mrIid: 12 }), "PR #12");
-    assert.equal(mrLabel({ mrUrl: "https://gitlab.fis.vn/g/p/-/merge_requests/3", mrIid: 3 }), "MR !3");
+    assert.equal(mrLabel({ mrUrl: "https://gitlab.example.com/g/p/-/merge_requests/3", mrIid: 3 }), "MR !3");
   });
 
   it("reads a commit's checks as one CI status", () => {

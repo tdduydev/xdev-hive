@@ -594,7 +594,7 @@ function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; onSaved:
         </CardDescription>
         <div className={FORM_GRID}>
           <Label htmlFor="gl-url">{t("projects.gitlabUrl")}</Label>
-          <Input id="gl-url" className="font-mono" placeholder="https://gitlab.fis.vn" value={url} onChange={(e) => (setSaved(false), setUrl(e.target.value))} />
+          <Input id="gl-url" className="font-mono" placeholder="https://gitlab.example.com" value={url} onChange={(e) => (setSaved(false), setUrl(e.target.value))} />
           <Label htmlFor="gl-token">Access token</Label>
           <Input
             id="gl-token"

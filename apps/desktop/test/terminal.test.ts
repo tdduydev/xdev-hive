@@ -124,7 +124,7 @@ describe("sign-in terminal", () => {
 
   it("signs in the way the user picked, with the CLI's own options (roadmap 24b)", () => {
     const claude = { ...AGENT_TEMPLATES.claude, env: { CLAUDE_CONFIG_DIR: "~/.xdev-hive/accounts/claude-2" } };
-    assert.deepEqual(loginParts(claude, { sso: true, email: "duy@fpt.com" })?.args, ["auth", "login", "--sso", "--email", "duy@fpt.com"]);
+    assert.deepEqual(loginParts(claude, { sso: true, email: "duy@example.com" })?.args, ["auth", "login", "--sso", "--email", "duy@example.com"]);
     assert.deepEqual(loginParts(claude, { console: true })?.args, ["auth", "login", "--console"]);
     assert.deepEqual(loginParts(claude, { device: true })?.args, ["auth", "login"], "Codex's option means nothing to Claude Code");
     assert.deepEqual(loginParts(AGENT_TEMPLATES.codex, { device: true, sso: true })?.args, ["login", "--device-auth"]);
@@ -151,9 +151,9 @@ describe("sign-in terminal", () => {
   });
 
   it("tells accounts apart by the email Claude Code reports", () => {
-    const out = JSON.stringify({ loggedIn: true, authMethod: "claude.ai", subscriptionType: "max", email: "duy@fpt.com" });
-    assert.deepEqual(parseLogin("claude", 0, out), { loggedIn: true, method: "claude.ai · max", account: "duy@fpt.com" });
-    assert.deepEqual(parseLogin("claude", 1, JSON.stringify({ loggedIn: false, authMethod: "none", email: "old@fpt.com" })), { loggedIn: false, method: null });
+    const out = JSON.stringify({ loggedIn: true, authMethod: "claude.ai", subscriptionType: "max", email: "duy@example.com" });
+    assert.deepEqual(parseLogin("claude", 0, out), { loggedIn: true, method: "claude.ai · max", account: "duy@example.com" });
+    assert.deepEqual(parseLogin("claude", 1, JSON.stringify({ loggedIn: false, authMethod: "none", email: "old@example.com" })), { loggedIn: false, method: null });
   });
 
   it("knows which profiles to check again when the user comes back", async () => {

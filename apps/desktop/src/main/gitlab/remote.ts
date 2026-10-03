@@ -1,7 +1,7 @@
 // Reads host + project path from a git remote URL.
-//   git@gitlab.fis.vn:group/sub/project.git       → gitlab.fis.vn, group/sub/project
-//   ssh://git@gitlab.fis.vn:2222/group/project.git → gitlab.fis.vn, group/project
-//   https://user@gitlab.fis.vn/group/project.git   → gitlab.fis.vn, group/project
+//   git@gitlab.example.com:group/sub/project.git       → gitlab.example.com, group/sub/project
+//   ssh://git@gitlab.example.com:2222/group/project.git → gitlab.example.com, group/project
+//   https://user@gitlab.example.com/group/project.git   → gitlab.example.com, group/project
 
 export interface RemoteInfo {
   host: string;

@@ -364,7 +364,7 @@ implement ─(review chéo)─▶ review ── verdict approve ─────�
 implement (không review, chế độ "ngay khi làm xong") ─────────▶ push → MR ready
 ```
 
-- **GitLab project** đọc từ remote (`git@gitlab.fis.vn:group/proj.git`, `https://…/group/proj.git`). Không đọc được thì điền ở nút *GitLab* của dự án. Target mặc định là default branch của project.
+- **GitLab project** đọc từ remote (`git@gitlab.example.com:group/proj.git`, `https://…/group/proj.git`). Không đọc được thì điền ở nút *GitLab* của dự án. Target mặc định là default branch của project.
 - **Push**: remote HTTPS cùng host GitLab thì dùng token qua git config trong env (`GIT_CONFIG_*`), không ghi vào `.git/config` và không hiện trong danh sách tiến trình. Remote SSH dùng key sẵn có, `BatchMode=yes` để không treo chờ nhập. Không bao giờ force push.
 - **MR đã có** (cùng source branch, đang mở): chỉ cập nhật tiêu đề, mô tả và *thêm* label, không đổi target hay label người khác đã sửa trên GitLab.
 - **Mô tả MR** gồm task, tóm tắt của agent làm, kết quả review, danh sách commit. Output của agent nằm trong code block (dài hơn mọi chuỗi backtick trong output), nên GitLab không chạy quick action (`/merge`, `/approve`…) hay mention từ đó.
@@ -522,10 +522,10 @@ Hub nhận mọi nhà cung cấp OpenID Connect: GitLab, Microsoft Entra, Google
 
 1. Tạo ứng dụng OAuth ở nhà cung cấp, với redirect URI `https://<hub>/api/auth/oidc/callback` (hub in URI này khi khởi động).
    - GitLab: *Admin → Applications* hoặc *User settings → Applications*. Chọn *Confidential*, scope `openid profile email`.
-2. Thêm vào `deploy/.env` (issuer là địa chỉ gốc của nhà cung cấp, vd. `https://gitlab.fis.vn`; Entra: `https://login.microsoftonline.com/<tenant>/v2.0`; Google: `https://accounts.google.com`), rồi chạy `deploy/update.sh`:
+2. Thêm vào `deploy/.env` (issuer là địa chỉ gốc của nhà cung cấp, vd. `https://gitlab.example.com`; Entra: `https://login.microsoftonline.com/<tenant>/v2.0`; Google: `https://accounts.google.com`), rồi chạy `deploy/update.sh`:
 
    ```
-   HIVE_OIDC_ISSUER=https://gitlab.fis.vn
+   HIVE_OIDC_ISSUER=https://gitlab.example.com
    HIVE_OIDC_CLIENT_ID=…
    HIVE_OIDC_CLIENT_SECRET=…
    HIVE_OIDC_NAME=GitLab

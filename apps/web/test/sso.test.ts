@@ -118,7 +118,7 @@ describe("SSO (OpenID Connect)", () => {
   });
 
   it("signs in a new person as an account with no project, and the same account next time", async () => {
-    const first = await roundTrip(good("u-lan", { preferred_username: "Lan.Nguyen", name: "Lan Nguyễn", email: "lan@fpt.com" }));
+    const first = await roundTrip(good("u-lan", { preferred_username: "Lan.Nguyen", name: "Lan Nguyễn", email: "lan@example.com" }));
     assert.equal(first.location, "/");
     const who = (await me(first.session!)).result;
     assert.equal(who.user.username, "lan.nguyen");
@@ -137,9 +137,9 @@ describe("SSO (OpenID Connect)", () => {
 
   it("never takes over an existing account by name or email", async () => {
     users.create({ username: "duy", password: `pw-${randomBytes(8).toString("hex")}` });
-    const r = await roundTrip(good("u-other-duy", { preferred_username: "duy", email: "duythq@fpt.com" }));
+    const r = await roundTrip(good("u-other-duy", { preferred_username: "duy", email: "duy.other@example.com" }));
     assert.equal((await me(r.session!)).result.user.username, "duy-2");
-    const noName = await roundTrip(good("u-viet", { email: "Nguyễn.Văn.Đức@fpt.com" }));
+    const noName = await roundTrip(good("u-viet", { email: "Nguyễn.Văn.Đức@example.com" }));
     assert.equal((await me(noName.session!)).result.user.username, "nguyen.van.duc");
   });
 
@@ -212,16 +212,16 @@ describe("SSO (OpenID Connect)", () => {
 
   it("reads its settings from the environment", () => {
     assert.equal(oidcSettings({}, "https://hive.xdev.asia"), null);
-    const s = oidcSettings({ HIVE_OIDC_ISSUER: "https://gitlab.fis.vn/", HIVE_OIDC_CLIENT_ID: "id", HIVE_OIDC_CLIENT_SECRET: "s" }, "https://hive.xdev.asia")!;
+    const s = oidcSettings({ HIVE_OIDC_ISSUER: "https://gitlab.example.com/", HIVE_OIDC_CLIENT_ID: "id", HIVE_OIDC_CLIENT_SECRET: "s" }, "https://hive.xdev.asia")!;
     assert.deepEqual(s, {
-      issuer: "https://gitlab.fis.vn",
+      issuer: "https://gitlab.example.com",
       clientId: "id",
       clientSecret: "s",
       name: "SSO",
       scopes: "openid profile email",
       redirectUri: "https://hive.xdev.asia/api/auth/oidc/callback",
     });
-    assert.throws(() => oidcSettings({ HIVE_OIDC_ISSUER: "http://gitlab.fis.vn", HIVE_OIDC_CLIENT_ID: "id", HIVE_OIDC_CLIENT_SECRET: "s" }, "https://x"), /https/);
+    assert.throws(() => oidcSettings({ HIVE_OIDC_ISSUER: "http://gitlab.example.com", HIVE_OIDC_CLIENT_ID: "id", HIVE_OIDC_CLIENT_SECRET: "s" }, "https://x"), /https/);
   });
 });
 
