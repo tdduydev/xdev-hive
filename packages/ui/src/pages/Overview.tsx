@@ -482,7 +482,7 @@ function ProjectOverview({ project: p }: { project: string }) {
         </Section>
 
         {desktop ? (
-          <Section icon={Bot} title={t("overview.recentRuns")} description={t("overview.recentRunsHint")} action={<LinkButton href="#/board">{t("nav.board")}</LinkButton>}>
+          <Section icon={Bot} title={t("overview.recentRuns")} description={t("overview.recentRunsHint")} action={<LinkButton href="#/tasks">{t("nav.tasks")}</LinkButton>}>
             <Load q={runs}>
               {(list) => (
                 <Rows items={list ?? []} max={5} empty={t("overview.noRuns")}>

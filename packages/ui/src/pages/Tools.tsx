@@ -32,6 +32,20 @@ const stateOf = (enabled: boolean | null): ProjectState => (enabled === null ? "
 const enabledOf = (s: ProjectState): boolean | null => (s === "default" ? null : s === "on");
 
 export function ToolsPage() {
+  const t = useT();
+  return (
+    <Page wide>
+      <ToolCatalog note heading={(add) => <PageHeader title={t("nav.tools")} subtitle={t("tools.subtitle")} actions={add} />} />
+    </Page>
+  );
+}
+
+/**
+ * The catalog itself, so Dự án & công cụ can hold it on this machine (roadmap 39f). `note`: the line saying machines
+ * read the catalog from app 28b on, which is only worth saying where the catalog is a hub's; `heading`: the page
+ * title, given the Thêm tool button to put in it (without one the button sits above the list).
+ */
+export function ToolCatalog({ note, heading }: { note?: boolean; heading?: (add: ReactNode) => ReactNode }) {
   const { client, me, scope } = useHive();
   const t = useT();
   const known = useProjects();
@@ -45,21 +59,17 @@ export function ToolsPage() {
   const hubAdmin = me.role === "admin" && !me.access;
   const tools = list.data ?? [];
   const reload = () => setTick((n) => n + 1);
+  const add =
+    hubAdmin && editing !== "" ? (
+      <Button size="sm" data-tool-add onClick={() => setEditing("")}>
+        {t("tools.add")}
+      </Button>
+    ) : null;
 
   return (
-    <Page wide>
-      <PageHeader
-        title={t("nav.tools")}
-        subtitle={t("tools.subtitle")}
-        actions={
-          hubAdmin && editing !== "" ? (
-            <Button size="sm" data-tool-add onClick={() => setEditing("")}>
-              {t("tools.add")}
-            </Button>
-          ) : null
-        }
-      />
-      <Notice tone="info">{t("tools.machineNote")}</Notice>
+    <>
+      {heading?.(add)}
+      {note ? <Notice tone="info">{t("tools.machineNote")}</Notice> : null}
       <div className="flex flex-wrap items-center gap-2">
         <Label htmlFor="tools-project" className="text-sm">
           {t("tools.project")}
@@ -79,6 +89,7 @@ export function ToolsPage() {
           ))}
         </NativeSelect>
         {project ? null : <span className="text-xs text-fg-muted">{t("tools.pickProject")}</span>}
+        {heading ? null : <span className="ml-auto">{add}</span>}
       </div>
       <ErrorNote error={list.error} />
       {editing === "" ? (
@@ -105,7 +116,7 @@ export function ToolsPage() {
           <ToolCard key={tool.id} tool={tool} project={project} hubAdmin={hubAdmin} busy={editing !== null} onEdit={() => setEditing(tool.id)} onChanged={reload} />
         ),
       )}
-    </Page>
+    </>
   );
 }
 

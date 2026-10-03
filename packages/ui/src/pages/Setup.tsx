@@ -11,6 +11,7 @@ import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { formatTime, useAction, useHive, useQuery } from "#ui/hooks.ts";
 import { rich, useT } from "#ui/i18n/index.tsx";
 import { GitLabImportCard, ProjectsCard } from "#ui/pages/Projects.tsx";
+import { ToolCatalog } from "#ui/pages/Tools.tsx";
 import { hasNewer } from "#ui/lib/setup.ts";
 
 const TONE: Record<SetupState, ChipKind> = { installed: "success", missing: "warning", outdated: "info", manual: "danger" };
@@ -28,7 +29,7 @@ function iconOf(id: string): ComponentType<{ className?: string }> {
 }
 
 export function SetupPage() {
-  const { client } = useHive();
+  const { client, me } = useHive();
   const t = useT();
   const desktop = client.desktop!;
   const status = useQuery(() => desktop.setupStatus(), [desktop]);
@@ -132,6 +133,16 @@ export function SetupPage() {
           />
           {settings.data.gitlab.url && settings.data.gitlab.hasToken ? <GitLabImportCard settings={settings.data} onChanged={settings.reload} /> : null}
         </>
+      ) : null}
+      {/*
+        Tool của dự án (roadmap 39f): on this machine the catalog lives here instead of a menu entry of its own, and
+        without the line about app 28b — nothing here comes from a hub. Connected to one, Tool is on the hub's web.
+      */}
+      {me.mode !== "hub" ? (
+        <section data-project-tools className="flex flex-col gap-[18px]">
+          <h2 className="m-0 text-[13px]/[18px] font-semibold text-fg-strong">{t("setup.projectTools")}</h2>
+          <ToolCatalog />
+        </section>
       ) : null}
     </div>
   );

@@ -125,7 +125,30 @@ async function shoot(name, page, delay, extra = {}) {
 
 const failures = [];
 
-for (const [page, delay] of [["board", 6000], ["runs", 3000], ["setup", 4000], ["tools", 1500], ["docs", 1500], ["skills", 1500]]) await shoot(page, page, delay);
+// Roadmap 39f: Board is the Task page now and Tool a part of Dự án & công cụ, so those two shots load the address
+// each page had before and check where it landed. HIVE_SMOKE_VIEW keeps the Task page on the board whatever view the
+// machine's localStorage remembers.
+for (const [name, page, delay, extra] of [
+  ["board", "board", 6000, { HIVE_SMOKE_VIEW: "kanban", HIVE_SMOKE_EXPECT: 'nav a[href="#/tasks"][aria-current="page"] && [data-task-view="kanban"][aria-checked="true"]' }],
+  ["runs", "runs", 3000],
+  ["setup", "setup", 4000],
+  // Same wait as the setup shot above: the address lands there, and its checks take a moment.
+  ["tools", "tools", 4000, { HIVE_SMOKE_EXPECT: 'nav a[href="#/setup"][aria-current="page"] && [data-project-tools]' }],
+  ["docs", "docs", 1500],
+  ["skills", "skills", 1500],
+]) await shoot(name, page, delay, extra ?? {});
+// The menu of this mode at 1440×900 (roadmap 39f): twelve entries, none of them Board, Tool or Đợt chạy, and the
+// list fits without scrolling.
+await shoot("local-nav", "today", 3000, {
+  HIVE_SMOKE_SIZE: "1440x900",
+  HIVE_SMOKE_SIDEBAR: "open",
+  HIVE_SMOKE_EXPECT: 'nav a[href="#/tasks"] && nav a[href="#/runs"] && nav a[href="#/setup"] && nav a[href="#/systems"]',
+  HIVE_SMOKE_ABSENT: 'nav a[href="#/board"] && nav a[href="#/tools"] && nav a[href="#/batches"] && nav a[href="#/machines"]',
+  HIVE_SMOKE_ASSERT:
+    'document.querySelectorAll("[data-nav-list] a").length === 12 && (() => { const l = document.querySelector("[data-nav-list]"); return l.scrollHeight <= l.clientHeight; })()',
+});
+// The other view of Task on this machine: the list, with the switch next to it.
+await shoot("local-task-list", "tasks", 3000, { HIVE_SMOKE_VIEW: "list", HIVE_SMOKE_EXPECT: '[data-task-view="list"][aria-checked="true"]' });
 // Agent và quota (roadmap 39c): one row per subscription, with a signed-out one, the fold of the off ones and bars
 // on the subscription whose CLI reports usage. The expect waits for the sign-in check, which lands after first paint.
 const agentsTable = '[data-profile="claude-max-2"][data-state="signedOut"] && [data-off-group] && [data-profile="claude-max-1"] [role="meter"]';
@@ -167,7 +190,8 @@ writeFileSync(
     projects: { demo: [{ id: "rtk", enabled: true, effective: true, required: true }] },
   }),
 );
-await shoot("setup-tools", "setup", 4000, { HIVE_SMOKE_TOOLS: smokeTools, HIVE_SMOKE_EXPECT: '[data-hub-tools] && [data-setup-item="tool:rtk"]' });
+// data-project-tools: the catalog Tool had a page of its own for, at the foot of this one since 39f.
+await shoot("setup-tools", "setup", 4000, { HIVE_SMOKE_TOOLS: smokeTools, HIVE_SMOKE_EXPECT: '[data-hub-tools] && [data-setup-item="tool:rtk"] && [data-project-tools]' });
 // Another Claude account on this machine (roadmap 24b): the form, before the CLI's own sign-in opens.
 await shoot("agents-account", "agents", 1500, { HIVE_SMOKE_CLICK: '[data-add-account="claude"]', HIVE_SMOKE_SCROLL: "#acc-label" });
 // The GitHub card (roadmap 13a), which 39d folds: its heading says Chưa cấu hình until the form below is filled in.
@@ -177,12 +201,12 @@ await shoot("projects-import", "setup", 4000, { HIVE_SMOKE_CLICK: "#import-list"
 // The app checks open MRs as it starts (right away in smoke mode): the failed job goes to a fix run.
 gitlab.jobs[7] = [{ id: 71, name: "test", stage: "test", status: "failed", trace: "not ok 2 - settings page renders\n" }];
 for (const mr of gitlab.mrs) mr.head_pipeline = { id: 7, status: "failed", web_url: `${gitlab.base}/group/demo/-/pipelines/7` };
-await shoot("board-ci", "board", 5000);
+await shoot("board-ci", "board", 5000, { HIVE_SMOKE_VIEW: "kanban" });
 // Hôm nay (roadmap 22c): the failed pipeline, T-001 waiting for review and this machine's setup gaps.
 await shoot("today", "today", 4000);
 
 // The run form of the next task (T-002), with its number of candidates (roadmap 12): open its card, then the form.
-await shoot("board-run", "board", 3000, { HIVE_SMOKE_CLICK: 'section[aria-label="Chưa làm"] [role="button"] && [data-run-here]' });
+await shoot("board-run", "board", 3000, { HIVE_SMOKE_VIEW: "kanban", HIVE_SMOKE_CLICK: 'section[aria-label="Chưa làm"] [role="button"] && [data-run-here]' });
 
 // Best-of-n (roadmap 12): the container Codex stays out of it, since this machine may have no Docker, and so does
 // the signed-out Claude: the second candidate prefers another vendor over priority, and the first tick comes
