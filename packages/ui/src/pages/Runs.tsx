@@ -456,6 +456,7 @@ function RunPanes({
   summary,
   live,
   log,
+  logEmpty,
   steps,
   notes,
   diff,
@@ -465,6 +466,8 @@ function RunPanes({
   summary: string | null;
   live: boolean;
   log: string;
+  /** Why there is no log, when it is not "the machine sent none": an old run the hub cleaned up (roadmap 41b). */
+  logEmpty?: string | null;
   steps: ReactNode;
   notes: ReactNode;
   diff?: DiffFile[] | null;
@@ -518,7 +521,7 @@ function RunPanes({
           <div className="flex flex-col gap-2">{notes}</div>
         </SummaryPane>
       ) : tab === "log" ? (
-        <LogView text={log} live={live} wrap={wrap} empty={live ? t("board.waitingOutput") : t("board.noLog")} />
+        <LogView text={log} live={live} wrap={wrap} empty={live ? t("board.waitingOutput") : (logEmpty ?? t("board.noLog"))} />
       ) : (
         <DiffView files={diff ?? null} error={diffError ?? null} />
       )}
@@ -707,6 +710,8 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
   const full = useQuery(() => client.call("runs.get", { machineId: run.machineId, runId: run.runId }), [client, run.machineId, run.runId, tick]);
   const manage = allow(run.project, "runDispatch");
   const patchFiles = useMemo(() => (full.data?.patch ? parsePatch(full.data.patch) : []), [full.data?.patch]);
+  // An old run the hub cleaned up (roadmap 41b): the log and the diff are gone, what it concluded is not.
+  const pruned = run.logPrunedAt ? t("runs.logPruned", { time: formatTime(run.logPrunedAt) }) : null;
 
   // The one button the run's state calls for: stop it while it runs, open its MR once it is done.
   const actions = (
@@ -754,7 +759,7 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
       {run.error ? <Notice tone={run.status === "queued" ? "info" : "warn"} className="[overflow-wrap:anywhere]">{run.error}</Notice> : null}
       {verdict === "changes" && latestReview && manage ? <FixRun run={run} /> : null}
       <ErrorNote error={action.error ?? full.error} />
-      <NoteLine>{t("runs.logNote", { time: formatTime(run.updatedAt) })}</NoteLine>
+      <NoteLine>{pruned ?? t("runs.logNote", { time: formatTime(run.updatedAt) })}</NoteLine>
     </>
   );
 
@@ -766,10 +771,16 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
         summary={live ? null : run.summary}
         live={live}
         log={full.data?.log ?? ""}
+        logEmpty={pruned}
         steps={<Steps run={run} log={full.data?.log ?? ""} />}
         notes={notes}
         {...(full.data && full.data.patch !== undefined
-          ? { diff: full.data.patch ? patchFiles : full.data.patch === "" ? [] : null, diffError: full.data.patch === null ? t("runs.patchNotSent", { machine: run.machine }) : null, onDiffTab: () => undefined }
+          ? {
+              diff: full.data.patch ? patchFiles : full.data.patch === "" ? [] : null,
+              // A dropped diff is not a diff the machine never sent: say which it is (roadmap 41b).
+              diffError: full.data.patch !== null ? null : (pruned ?? t("runs.patchNotSent", { machine: run.machine })),
+              onDiffTab: () => undefined,
+            }
           : {})}
       />
     </div>
