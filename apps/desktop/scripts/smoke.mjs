@@ -123,7 +123,30 @@ async function shoot(name, page, delay, extra = {}) {
   }
 }
 
-for (const [page, delay] of [["board", 6000], ["runs", 3000], ["agents", 1500], ["setup", 4000], ["projects", 1500], ["tools", 1500], ["docs", 1500], ["skills", 1500]]) await shoot(page, page, delay);
+const failures = [];
+
+for (const [page, delay] of [["board", 6000], ["runs", 3000], ["setup", 4000], ["projects", 1500], ["tools", 1500], ["docs", 1500], ["skills", 1500]]) await shoot(page, page, delay);
+// Agent và quota (roadmap 39c): one row per subscription, with a signed-out one, the fold of the off ones and bars
+// on the subscription whose CLI reports usage. The expect waits for the sign-in check, which lands after first paint.
+const agentsTable = '[data-profile="claude-max-2"][data-state="signedOut"] && [data-off-group] && [data-profile="claude-max-1"] [role="meter"]';
+await shoot("agents", "agents", 2500, { HIVE_SMOKE_EXPECT: agentsTable });
+// The off subscriptions unfolded, then the Chi tiết of one: its container token box, command and autonomy.
+await shoot("agents-off", "agents", 2500, { HIVE_SMOKE_CLICK: "[data-off-group]", HIVE_SMOKE_EXPECT: '[data-profile="claude-box"][data-state="off"]' });
+await shoot("agents-detail", "agents", 2500, {
+  HIVE_SMOKE_CLICK: '[data-off-group] && [data-profile-toggle="claude-box"]',
+  HIVE_SMOKE_SCROLL: '[data-profile="claude-box"]',
+  HIVE_SMOKE_EXPECT: '[data-token="claude-box"]',
+});
+// Đăng nhập in the row runs the same sign-in as the button on the old card (roadmap 2e): the CLI's own command, with
+// the subscription's sign-in folder. In smoke the script is written but no terminal window opens.
+await shoot("agents-login", "agents", 2500, { HIVE_SMOKE_CLICK: '[data-login="claude-max-2"]' });
+{
+  const dir = path.join(os.homedir(), ".claude-2");
+  const scripts = path.join(work, "login", "claude-max-2");
+  const script = existsSync(scripts) ? readdirSync(scripts).map((f) => readFileSync(path.join(scripts, f), "utf8")).join("\n") : "";
+  // The script quotes each word (sh: 'auth' 'login'; Windows: "auth" "login").
+  if (!/['"]?auth['"]? ['"]?login['"]?/.test(script) || !script.includes(dir)) failures.push(`row login: the sign-in script of claude-max-2 does not run "auth login" with ${dir}`);
+}
 // The hub's tools on Cài đặt máy (roadmap 28b-2): the Tool từ hub card, and the tool's own tool:rtk item, required by
 // demo and waiting for this machine's user to allow it. The catalog stands in for a heartbeat's (local mode).
 const smokeTools = path.join(work, "tools.json");
@@ -187,7 +210,6 @@ await shoot("docs-mermaid", soDo, 2500, { HIVE_SMOKE_EXPECT: '[data-mermaid] [ro
 await shoot("docs-editor", soDo, 2500, { HIVE_SMOKE_CLICK: '[role="radio"][data-value="edit"]', HIVE_SMOKE_EXPECT: '.ProseMirror && .ProseMirror [data-mermaid] [role="img"] svg' });
 // Đồng bộ on the Projects page mirrors the README's sections into Hive (roadmap 26).
 await shoot("projects-mirror", "setup", 4000, { HIVE_SMOKE_CLICK: '[data-sync-project="demo"]', HIVE_SMOKE_SCROLL: '[data-sync-project="demo"]' });
-const failures = [];
 {
   const local = new SqliteHive(path.join(work, "local.db"));
   const chay = await local.call("docs.get", { key: "project/demo/chay" }, admin);
@@ -195,7 +217,11 @@ const failures = [];
   local.close();
 }
 // A profile's CLI in the project's repo (roadmap 32a): the script starts there, and Hive's server carries the profile's id.
-await shoot("agents-cli", "agents", 2000, { HIVE_SMOKE_CLICK: '[data-open-cli="claude-max-1:demo"]', HIVE_SMOKE_SCROLL: '[data-open-cli="claude-max-1:demo"]' });
+// Mở CLI sits in the row's … menu since 39c, so the shot opens the menu first.
+await shoot("agents-cli", "agents", 2000, {
+  HIVE_SMOKE_CLICK: '[data-row-menu="claude-max-1"] && [data-open-cli="claude-max-1:demo"]',
+  HIVE_SMOKE_SCROLL: '[data-profile="claude-max-1"]',
+});
 {
   const dir = path.join(work, "cli", "claude-max-1");
   const files = existsSync(dir) ? readdirSync(dir) : [];
@@ -249,8 +275,19 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
     const local = readFileSync(file, "utf8");
     writeFileSync(file, JSON.stringify({ ...JSON.parse(local), mode: "hub", hub: { url: `http://127.0.0.1:${port}`, token: bootstrap } }, null, 2));
     const webPages = ["tasks", "board", "docs", "memory", "proposals", "skills", "specs", "chat", "batches", "machines", "members", "tokens", "systems", "tools", "admin"];
-    for (const [name, page] of [["hub-today", "today"], ["hub-runs", "runs"], ["hub-agents", "agents"], ["hub-setup", "setup"], ["hub-projects", "projects"]]) {
-      await shoot(name, page, 3000, { HIVE_SMOKE_EXPECT: "[data-open-web]", HIVE_SMOKE_ABSENT: webPages.map((p) => `nav a[href="#/${p}"]`).join(" && ") });
+    // hub-agents also proves the 39c table in hub mode: here three subscriptions are off, so only the fold shows them.
+    const pages = [
+      ["hub-today", "today"],
+      ["hub-runs", "runs"],
+      ["hub-agents", "agents", '[data-off-group] && [data-profile="claude-max-1"] [role="meter"]'],
+      ["hub-setup", "setup"],
+      ["hub-projects", "projects"],
+    ];
+    for (const [name, page, also] of pages) {
+      await shoot(name, page, 3000, {
+        HIVE_SMOKE_EXPECT: also ? `[data-open-web] && ${also}` : "[data-open-web]",
+        HIVE_SMOKE_ABSENT: webPages.map((p) => `nav a[href="#/${p}"]`).join(" && "),
+      });
     }
     writeFileSync(file, local);
   }
