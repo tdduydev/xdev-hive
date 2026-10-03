@@ -92,7 +92,8 @@ Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, 
   - **Task sẵn sàng tiếp theo** (`task_next` / `tasks.next`): task *Chưa làm*, không chờ task nào, không ai giữ. Task mở khoá được nhiều task khác nhất xếp đầu.
     - Trang Task hiện 3 task đầu, Board gắn nhãn *Tiếp theo*.
 - **Đồng bộ vào repo**: render `AGENTS.md` (khối chung + phần riêng của dự án), `CLAUDE.md` (`@AGENTS.md`), `docs/decisions.md`. Chỉ commit các file này, không push.
-- **Chặn sửa tay**: hook `PreToolUse` của Claude Code và `pre-commit` của git (áp dụng cho mọi agent). Run của runner không chạy hook nào; runner tự để các file này ngoài commit.
+  - **Không đè `AGENTS.md` repo tự viết**: file không có khối của Hive mà nội dung khác trang `agents` trên hub là của repo, giữ nguyên; báo đồng bộ ghi *bỏ qua* kèm lý do. Phần của Hive ghi vào `.xdev-hive/context/AGENTS.md`, `CLAUDE.md` import thêm file đó — đúng như worktree của run. Nút *Đề xuất nhập vào Hive* ở báo cáo đồng bộ gửi nội dung file thành đề xuất sửa trang `agents` (`baseVersion` của trang lúc gửi) cho người có quyền Context agent duyệt. Trang khớp lại với file thì lần đồng bộ sau ghi thẳng `AGENTS.md` và gỡ bản bên cạnh.
+- **Chặn sửa tay**: hook `PreToolUse` của Claude Code và `pre-commit` của git (áp dụng cho mọi agent), kể cả `.xdev-hive/context/`. Run của runner không chạy hook nào; runner tự để các file này ngoài commit.
 - **Board + runner** (desktop): giao task cho agent chạy headless (`claude -p`, `codex exec`, `gemini -p`…). Mỗi task có worktree riêng. Hết quota thì tự chuyển gói sub, xong thì review chéo bằng vendor khác. Task khó thì chạy 2–4 bản trên các gói khác nhau, một giám khảo vendor khác giữ bản tốt nhất.
 - **GitLab MR / GitHub PR**: review chéo đạt thì push `ai/<task>` và tạo MR (review yêu cầu sửa thì tạo Draft). Chạy lại thì cập nhật MR cũ. Dự án trên GitHub thì tạo pull request theo cùng luật.
 
@@ -218,7 +219,7 @@ Mục chỉ xem được mà không làm gì được thì không còn trong dan
    - `.claude/settings.json` + `.xdev-hive/guard-docs.sh` (hook chặn sửa tài liệu)
    - `.githooks/pre-commit` + `git config core.hooksPath .githooks`
    - **Vì sao không còn ghi `xdev-hive` vào `.mcp.json`** (roadmap 38b): `.mcp.json` đi theo git nên phải giống nhau ở mọi máy, mà mục này gọi shim theo đường dẫn riêng của từng máy. Trước đây mục ghi `"command": "hive-mcp"`, chỉ chạy khi thư mục shim nằm trong `PATH` — chương trình mở từ Finder, Explorer hay Dock không có `PATH` của shell, nên Claude Code báo *Connection closed* (Windows) hoặc *Executable not found in $PATH: hive-mcp* (macOS, 3/10, dù `~/.local/bin/hive-mcp` có sẵn). Nay mục nằm ở scope local với đường dẫn đầy đủ của shim; Windows bọc `cmd /c` vì client MCP chạy server không qua shell, mà shim và `npx` đều là `.cmd`. Cài lại sẽ gỡ mục `xdev-hive` cũ khỏi `.mcp.json` (mục `xdev-hive` do bạn tự thêm, lệnh khác `hive-mcp`, thì giữ nguyên). Windows có bật codegraph thì scope local thêm `codegraph` bọc `cmd /c` đè lên mục trong `.mcp.json`, còn `.mcp.json` vẫn giữ dạng `npx` cho các máy khác.
-4. **Đồng bộ tài liệu**: lần đầu nhập `AGENTS.md` / `docs/decisions.md` sẵn có vào Hive, sau đó render lại và commit.
+4. **Đồng bộ tài liệu**: lần đầu nhập `AGENTS.md` / `docs/decisions.md` sẵn có vào Hive, sau đó render lại và commit. Hub đã có trang `agents` khác nội dung thì `AGENTS.md` của repo được giữ nguyên; dùng *Đề xuất nhập vào Hive* trong báo cáo đồng bộ để gửi nội dung đó lên.
 
 Đồng bộ từ hub: trên web, *Quản trị* → *Context agent* → *Yêu cầu máy đồng bộ*. Cần quyền Context agent của dự án.
 - Mỗi máy online có repo của dự án nhận yêu cầu ở heartbeat kế tiếp, rồi làm như nút *Đồng bộ*: ghi context vào repo và đưa tài liệu của repo lên Hive.

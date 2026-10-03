@@ -20,6 +20,7 @@ import {
   type Doc,
   type FileAction,
   type HiveBackend,
+  type Proposal,
   type SyncReport,
 } from "@xdev-hive/core";
 import { git, gitErrorText, isGitRepo } from "./git.ts";
@@ -64,6 +65,18 @@ async function loadDocs(backend: HiveBackend, actor: Actor, project: string): Pr
   return (await Promise.all(summaries.map((s) => backend.call("docs.get", { key: s.key }, actor)))).filter((d): d is Doc => d !== null);
 }
 
+/**
+ * Why the repo's own AGENTS.md stays, or null when Hive may write it (roadmap 38a, 38f). Without Hive's block the
+ * file is the repo's, unless it says word for word what the hub page says: then the page already holds it and
+ * rendering only wraps it in the block, so nothing of the repo is lost. A run's worktree, the project sync and the
+ * context MR all ask here, so the three of them leave the same file alone.
+ */
+function ownAgentsNote(before: string | null, agentsDoc: Doc | null): string | null {
+  if (before === null || before.includes(MANAGED_START)) return null;
+  if (stripManaged(before).trim() === (agentsDoc?.content.trim() ?? "")) return null;
+  return tr(agentsDoc ? "fileNote.ownAgents" : "fileNote.notInHive", { file: CONTEXT_AGENTS_FILE });
+}
+
 export interface ContextPlan {
   files: Array<{ path: string; content: string }>;
   /** A file the repo owns, left as it is, and why. */
@@ -85,13 +98,15 @@ export function planContext(project: string, docs: Doc[], dir: string): ContextP
     const before = at(f);
     return before !== null && !before.includes(MANAGED_START);
   };
+  const agentsDoc = docs.find((d) => d.key === agentsDocKey(project)) ?? null;
   const files: Array<{ path: string; content: string }> = [];
   const skipped: ContextPlan["skipped"] = [];
   let contextFile: string | null = null;
   for (const f of planProjectSync(project, docs)) {
-    if (f.path === "AGENTS.md" && repoOwns(f.path)) {
+    const ownAgents = f.path === "AGENTS.md" ? ownAgentsNote(at(f.path), agentsDoc) : null;
+    if (ownAgents) {
       contextFile = CONTEXT_AGENTS_FILE;
-      skipped.push({ file: f.path, note: tr("fileNote.ownAgents", { file: CONTEXT_AGENTS_FILE }) });
+      skipped.push({ file: f.path, note: ownAgents });
       files.push({ path: CONTEXT_AGENTS_FILE, content: f.content });
       continue;
     }
@@ -187,12 +202,20 @@ export async function syncProject(
   }
 
   const docs = await loadDocs(backend, actor, name);
-  const hasAgentsDoc = docs.some((d) => d.key === agentsDocKey(name));
+  const agentsDoc = docs.find((d) => d.key === agentsDocKey(name)) ?? null;
   const planned = planProjectSync(name, docs).map((f) => (f.block ? { ...f, content: withManagedBlock(read(path.join(repo, f.path)), f.content) } : f));
+  // planProjectSync always puts AGENTS.md first; after it come the nested AGENTS.md, the rules and the skills.
+  const hiveAgents = planned[0]!;
+  // The repo wrote its own AGENTS.md (roadmap 38f): it stays, and Hive's part goes beside it with CLAUDE.md
+  // importing both, exactly as a run's worktree gets it, so an agent still reads the team's conventions.
+  const ownAgents = ownAgentsNote(read(path.join(repo, "AGENTS.md")), agentsDoc);
   const files: Array<{ path: string; content: string | null }> = [
-    ...planned,
-    { path: "CLAUDE.md", content: ensureClaudeImport(read(path.join(repo, "CLAUDE.md"))) },
+    ownAgents ? { path: CONTEXT_AGENTS_FILE, content: hiveAgents.content } : hiveAgents,
+    ...planned.slice(1),
+    { path: "CLAUDE.md", content: ensureClaudeImport(read(path.join(repo, "CLAUDE.md")), ownAgents ? [CONTEXT_AGENTS_FILE] : []) },
   ];
+  // The repo gave up its own AGENTS.md: the copy beside it is stale and CLAUDE.md no longer imports it.
+  if (!ownAgents && existsSync(path.join(repo, CONTEXT_AGENTS_FILE))) files.push({ path: CONTEXT_AGENTS_FILE, content: null });
   // A doc whose paths changed or went away: take our block out of the file (the rest stays), or remove the file.
   const wanted = new Set(files.map((f) => f.path));
   for (const f of managedFiles(repo, gitRepo)) {
@@ -200,20 +223,17 @@ export async function syncProject(
     const rest = f.startsWith(`${RULES_DIR}/`) || isSkillFile(f) ? "" : stripManaged(read(path.join(repo, f)) ?? "").trim();
     files.push({ path: f, content: rest ? `${rest}\n` : null });
   }
-  const agentsLines = planned[0]!.content.split("\n").length;
+  const agentsLines = hiveAgents.content.split("\n").length;
   if (agentsLines > LONG_AGENTS_LINES) notes.push(tr("syncNote.longAgents", { lines: agentsLines, max: LONG_AGENTS_LINES }));
 
   const actions: FileAction[] = [];
   const changed: string[] = [];
+  if (ownAgents) actions.push({ file: "AGENTS.md", action: "skipped", note: ownAgents });
   for (const f of files) {
     const abs = path.join(repo, f.path);
     const before = read(abs);
     if (before === f.content) {
       actions.push({ file: f.path, action: "unchanged" });
-      continue;
-    }
-    if (f.path === "AGENTS.md" && !hasAgentsDoc && before && !before.includes(MANAGED_START)) {
-      actions.push({ file: f.path, action: "skipped", note: tr("fileNote.notInHive") });
       continue;
     }
     // The repo has its own skill of that name: it stays, and Hive's does not go in.
@@ -262,5 +282,20 @@ export async function syncProject(
     }
   }
 
-  return { project: name, files: actions, imported, commit, note: notes.join(" · ") || undefined };
+  return { project: name, files: actions, imported, commit, ownAgents: ownAgents !== null, note: notes.join(" · ") || undefined };
+}
+
+/**
+ * Sends the repo's own AGENTS.md to Hive as a proposal (roadmap 38f), for someone with the Context agent right to
+ * review: the file and the page stop drifting apart without a sync overwriting either. Against the version of the
+ * page read right now, so a page someone else just changed is not silently replaced.
+ */
+export async function proposeAgents(backend: HiveBackend, actor: Actor, project: DesktopProject): Promise<Proposal> {
+  const { name, repo } = project;
+  const content = stripManaged(read(path.join(repo, "AGENTS.md")) ?? "").trim();
+  if (!content) throw new HiveError("not_found", `Repo ${repo} chưa có AGENTS.md`, { key: "errors.noAgentsFile", vars: { path: repo } });
+  const key = agentsDocKey(name);
+  const doc = await backend.call("docs.get", { key }, actor);
+  // The reason is team data a reviewer reads on the hub, so it stays as it is, like the import note above.
+  return backend.call("proposals.create", { docKey: key, baseVersion: doc?.version ?? 0, content, reason: "Imported from AGENTS.md in the repo" }, actor);
 }

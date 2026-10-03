@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { ensureClaudeImport, globDir, MANAGED_END, MANAGED_START, planProjectSync, projectSkills, stripManaged, withManagedBlock, type Doc } from "#core/index.ts";
+import { CONTEXT_AGENTS_FILE, ensureClaudeImport, globDir, MANAGED_END, MANAGED_START, planProjectSync, projectSkills, stripManaged, withManagedBlock, type Doc } from "#core/index.ts";
 
 const doc = (key: string, content: string, extra: Partial<Doc> = {}): Doc => ({
   key,
@@ -40,6 +40,14 @@ describe("sync", () => {
     assert.equal(ensureClaudeImport(null), "@AGENTS.md\n");
     assert.equal(ensureClaudeImport("Be brief.\n"), "@AGENTS.md\n\nBe brief.\n");
     assert.equal(ensureClaudeImport("@AGENTS.md\n\nBe brief.\n"), "@AGENTS.md\n\nBe brief.\n");
+  });
+
+  it("imports Hive's AGENTS.md beside the repo's own, and drops that import when it goes (roadmap 38f)", () => {
+    const both = "@AGENTS.md\n@.xdev-hive/context/AGENTS.md\n\nBe brief.\n";
+    assert.equal(ensureClaudeImport("Be brief.\n", [CONTEXT_AGENTS_FILE]), both);
+    assert.equal(ensureClaudeImport(both, [CONTEXT_AGENTS_FILE]), both, "added once");
+    // The repo gave its AGENTS.md to Hive: the file beside it is gone, so the import must go too.
+    assert.equal(ensureClaudeImport(both), "@AGENTS.md\n\nBe brief.\n");
   });
 });
 
