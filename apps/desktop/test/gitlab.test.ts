@@ -80,7 +80,7 @@ async function setup(reviewMode: string, mr: Partial<MrSettings> = {}, token = T
 
 describe("remote & verdict parsing", () => {
   it("reads GitLab host and project path from remotes", () => {
-    assert.deepEqual(parseRemoteUrl("git@gitlab.example.com:customer-ai/ai/ai-studio.git"), { host: "gitlab.example.com", path: "customer-ai/ai/ai-studio", https: false });
+    assert.deepEqual(parseRemoteUrl("git@gitlab.example.com:group/ai/ai-studio.git"), { host: "gitlab.example.com", path: "group/ai/ai-studio", https: false });
     assert.deepEqual(parseRemoteUrl("ssh://git@gitlab.example.com:2222/group/proj.git"), { host: "gitlab.example.com", path: "group/proj", https: false });
     assert.deepEqual(parseRemoteUrl("https://duy@GitLab.example.com/group/sub/proj"), { host: "gitlab.example.com", path: "group/sub/proj", https: true });
     assert.equal(parseRemoteUrl("/tmp/origin.git"), null);
