@@ -93,12 +93,51 @@ export function trail(tree: TreeNode[], key: string): TreeNode[] {
   return [];
 }
 
-/** The pages `key` may go under: of its space, not itself or below it, not skills, not the skills folder. */
+/**
+ * The pages `key` may go under: of its own owner (a system's tree also holds its services' pages, roadmap 40c), not
+ * itself or below it, not skills, not the skills folder.
+ */
 export function parentChoices(tree: TreeNode[], key: string): TreeNode[] {
   const self = flatten(tree).find((n) => n.key === key);
   const below = new Set(self ? flatten(self.children).map((n) => n.key) : []);
-  return flatten(tree).filter((n) => n.doc && n.key !== key && !below.has(n.key) && !isSkill(n.key));
+  const prefix = keyPrefix(key);
+  return flatten(tree).filter((n) => n.doc && n.key !== key && !below.has(n.key) && !isSkill(n.key) && keyPrefix(n.key) === prefix);
 }
+
+/** A service's group in a system's tree: a folder that is no page, keyed by the service's prefix (never a doc key). */
+export interface ServiceGroup {
+  project: string;
+  docs: DocSummary[];
+  extra?: Array<{ key: string; title: string; parent: string | null }>;
+}
+
+/**
+ * A system's tree (roadmap 40c): the system's own pages first, then one folder per service holding that service's pages,
+ * so what every service shares is read before what one repo keeps for itself.
+ */
+export function systemTree(
+  docs: DocSummary[],
+  extra: Array<{ key: string; title: string; parent: string | null }>,
+  groups: ServiceGroup[],
+  skillsLabel = "skills",
+): TreeNode[] {
+  const top = buildTree(docs, extra, skillsLabel);
+  for (const g of groups) {
+    const children = buildTree(g.docs, g.extra ?? [], skillsLabel);
+    const prefixPath = (list: TreeNode[]) => {
+      for (const n of list) {
+        n.path = [g.project, ...n.path];
+        prefixPath(n.children);
+      }
+    };
+    prefixPath(children);
+    top.push({ key: `project/${g.project}/`, title: g.project, doc: null, folder: true, children, path: [] });
+  }
+  return top;
+}
+
+/** Is this node a service's group of a system's tree (not a page, not a folder page)? */
+export const isServiceGroup = (n: TreeNode): boolean => n.doc === null && /^project\/[^/]+\/$/.test(n.key);
 
 /** "Quy trình deploy" → "quy-trinh-deploy": the slug part of a doc key. */
 export function slugify(title: string): string {

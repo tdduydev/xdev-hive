@@ -42,9 +42,9 @@ import { ErrorNote, Notice } from "#ui/components/common.tsx";
 import { errorMessage, formatTime, sourceText, useAction, useCan, useHashParam, useHive, useQuery } from "#ui/hooks.ts";
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
 import { DRAFTS_EVENT, insertMd, isUnreachable, parsePaths, readDrafts, writeDrafts, type DocDraft } from "#ui/lib/docdraft.ts";
-import { buildTree, flatten, freeSlug, parentChoices, slugify, trail, type TreeNode } from "#ui/lib/doctree.ts";
+import { buildTree, flatten, freeSlug, isServiceGroup, parentChoices, slugify, systemTree, trail, type TreeNode } from "#ui/lib/doctree.ts";
 import { fold } from "#ui/lib/text.ts";
-import { docOwner, docPrefix, inScope, projectScope, SHARED, systemScope, type Scope } from "#ui/lib/scope.ts";
+import { docOwner, docPrefix, inScope, ownerName, projectScope, SHARED, systemScope, type Scope } from "#ui/lib/scope.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
 /** The project's AGENTS.md and decisions doc are for the whole repo. */
@@ -68,11 +68,14 @@ interface Space {
   owner: string | null;
   label: string;
   docs: DocSummary[];
+  /** A system's space (roadmap 40c) also holds these services' pages, a group each after the system's own. */
+  services?: string[];
 }
 
 /**
- * The spaces a scope shows: Chung, each project in it (the scope's own project first), and the systems those projects
- * are services of (roadmap 19c): a project's scope has its systems after it, a system's has its own space first.
+ * The spaces a scope shows: Chung, each project in it, and the systems those projects are services of (roadmap 19c).
+ * A system's scope, and the scope of one of its services, show the system's space holding its services' pages too
+ * (roadmap 40c): the system's own pages first, then a group per service (only the scope's own one for a service).
  */
 function spacesFor(all: DocSummary[], scope: Scope, t: TFunction, systems: HiveSystem[], seen: (owner: string) => boolean): Space[] {
   const shared: Space = { id: "shared", owner: null, label: t("inbox.shared"), docs: all.filter((d) => docOwner(d.key) === null) };
@@ -80,14 +83,35 @@ function spacesFor(all: DocSummary[], scope: Scope, t: TFunction, systems: HiveS
   const sys = (name: string): Space => ({ id: `system:${name}`, owner: systemOwner(name), label: t("docs.systemSpace", { system: name }), docs: all.filter((d) => docOwner(d.key) === systemOwner(name)) });
   const visible = systems.filter((s) => seen(systemOwner(s.name)));
   if (scope.kind === "shared") return [shared];
-  if (scope.kind === "project") return [of(scope.project), ...visible.filter((s) => s.projects.includes(scope.project)).map((s) => sys(s.name)), shared];
-  if (scope.kind === "system") return [...(visible.some((s) => s.name === scope.system) ? [sys(scope.system)] : []), ...[...scope.projects].sort().map(of), shared];
+  const withServices = (name: string, services: string[]): Space => {
+    const own = sys(name);
+    return { ...own, docs: [...own.docs, ...services.flatMap((p) => of(p).docs)], services };
+  };
+  if (scope.kind === "project") {
+    const mine = visible.filter((s) => s.projects.includes(scope.project));
+    return [...(mine.length ? mine.map((s) => withServices(s.name, [scope.project])) : [of(scope.project)]), shared];
+  }
+  if (scope.kind === "system") {
+    const services = [...scope.projects].sort();
+    return [...(visible.some((s) => s.name === scope.system) ? [withServices(scope.system, services)] : services.map(of)), shared];
+  }
   const owners = [...new Set(all.map((d) => docOwner(d.key)).filter((p): p is string => p !== null))];
   const projects = owners.filter((p) => systemOf(p) === null).sort();
   // A system with pages the list has shows even when the system list is older than it (made since the app opened).
   const names = [...new Set([...visible.map((s) => s.name), ...owners.map(systemOf).filter((n): n is string => n !== null)])].sort();
   return [shared, ...names.map(sys), ...projects.map(of)];
 }
+
+/** The space with that id; a project's page whose project is a group of a system's space opens there. */
+function findSpace(spaces: Space[], id: string | null): Space | null {
+  const found = spaces.find((s) => s.id === id);
+  if (found) return found;
+  const project = id?.startsWith("project:") ? id.slice("project:".length) : null;
+  return (project !== null ? spaces.find((s) => s.services?.includes(project)) : undefined) ?? spaces[0] ?? null;
+}
+
+/** The owners whose pages a space holds: its own, then its services'. */
+const spaceOwners = (space: Space | null): Array<string | null> => (space ? [space.owner, ...(space.services ?? [])] : []);
 
 const spaceIdOf = (key: string) => {
   const owner = docOwner(key);
@@ -135,6 +159,8 @@ function Seg<T extends string>({ value, options, onChange, label }: { value: T; 
 
 interface Creating {
   kind: "page" | "folder";
+  /** Whose page it will be: the system's by default in a system's space, or one of its services' (roadmap 40c). */
+  owner: string | null;
   parent: string | null;
   title: string;
   /** Typed by hand; else it follows the title. */
@@ -150,7 +176,7 @@ export function DocsPage() {
   const spaces = useMemo(() => spacesFor(list.data ?? [], scope, t, systems, (owner) => allow(owner, "view")), [list.data, scope, t, systems, allow]);
   const titles = useMemo(() => new Map((list.data ?? []).map((d) => [d.key, d.title])), [list.data]);
   const [spaceId, setSpaceId] = useState<string | null>(null);
-  const space = spaces.find((s) => s.id === spaceId) ?? spaces[0] ?? null;
+  const space = findSpace(spaces, spaceId);
   const [selected, setSelected] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<Record<string, boolean>>({});
@@ -197,16 +223,28 @@ export function DocsPage() {
     clearLinked();
   }, [linked, list.data, drafts, scope, setScope, clearLinked, t, systems]);
 
-  const prefix = docPrefix(space?.owner ?? null);
+  const owners = useMemo(() => spaceOwners(space), [space]);
+  const prefixes = useMemo(() => owners.map(docPrefix), [owners]);
+  const inSpace = useCallback((key: string) => prefixes.some((p) => key.startsWith(p)), [prefixes]);
   // Pages made here and not saved yet sit in the tree with their draft.
   const unsaved = useMemo(
     () =>
       Object.entries(drafts)
-        .filter(([k, d]) => k.startsWith(prefix) && d.baseVersion === 0 && !titles.has(k))
+        .filter(([k, d]) => inSpace(k) && d.baseVersion === 0 && !titles.has(k))
         .map(([key, d]) => ({ key, title: d.title, parent: d.parent ?? null })),
-    [drafts, prefix, titles],
+    [drafts, inSpace, titles],
   );
-  const tree = useMemo(() => buildTree(space?.docs ?? [], unsaved, t("docs.skillsFolder")), [space, unsaved, t]);
+  const tree = useMemo(() => {
+    const label = t("docs.skillsFolder");
+    if (!space?.services) return buildTree(space?.docs ?? [], unsaved, label);
+    const own = (owner: string | null) => (d: { key: string }) => docOwner(d.key) === owner;
+    return systemTree(
+      space.docs.filter(own(space.owner)),
+      unsaved.filter(own(space.owner)),
+      space.services.map((p) => ({ project: p, docs: space.docs.filter(own(p)), extra: unsaved.filter(own(p)) })),
+      label,
+    );
+  }, [space, unsaved, t]);
   const nodes = useMemo(() => flatten(tree), [tree]);
 
   // A folder just made is selected before the list has it.
@@ -215,9 +253,9 @@ export function DocsPage() {
   useEffect(() => {
     if (!list.data || linked || !space) return;
     if (selected && selected === justMade.current) return;
-    if (selected && selected.startsWith(prefix) && (titles.has(selected) || drafts[selected])) return;
+    if (selected && inSpace(selected) && (titles.has(selected) || drafts[selected])) return;
     setSelected(nodes.find((n) => n.doc)?.key ?? null);
-  }, [list.data, space, selected, linked, nodes, prefix, titles, drafts]);
+  }, [list.data, space, selected, linked, nodes, inSpace, titles, drafts]);
 
   const selTrail = useMemo(() => new Set(selected ? trail(tree, selected).map((n) => n.key) : []), [tree, selected]);
   const isOpen = (n: TreeNode, depth: number) => open[n.key] ?? (selTrail.has(n.key) || (depth === 0 && n.folder));
@@ -225,12 +263,16 @@ export function DocsPage() {
   const needle = fold(q.trim());
   const hits = useMemo(() => (needle ? nodes.filter((n) => (n.doc || !n.folder) && fold(`${n.title} ${n.key}`).includes(needle)) : []), [nodes, needle]);
 
-  const canCreateHere = space ? allow(space.owner, "docEdit") : false;
+  // Where the person may make pages in this space; the first is where new ones go (the system's, roadmap 40c).
+  const writable = owners.filter((o) => allow(o, "docEdit"));
+  const canCreateHere = writable.length > 0;
   const taken = (key: string) => titles.has(key) || Boolean(drafts[key]);
-  const slugFor = (c: Creating) => c.slug ?? freeSlug(prefix, slugify(c.title), taken);
+  const slugFor = (c: Creating) => c.slug ?? freeSlug(docPrefix(c.owner), slugify(c.title), taken);
   const startCreate = (kind: Creating["kind"], parent: string | null) => {
+    if (!writable.length) return;
+    const under = parent !== null ? docOwner(parent) : null;
     setNewError(null);
-    setCreating({ kind, parent, title: "", slug: null });
+    setCreating(parent !== null && writable.includes(under) ? { kind, owner: under, parent, title: "", slug: null } : { kind, owner: writable[0]!, parent: null, title: "", slug: null });
     if (parent) setOpen((o) => ({ ...o, [parent]: true }));
   };
   const doCreate = () => {
@@ -239,7 +281,7 @@ export function DocsPage() {
     const slug = slugFor(creating);
     if (!title) return setNewError(t("docs.needTitle"));
     if (!SLUG.test(slug)) return setNewError(t("docs.badSlug"));
-    const key = prefix + slug;
+    const key = docPrefix(creating.owner) + slug;
     try {
       parseDocKey(key);
     } catch (err) {
@@ -274,7 +316,7 @@ export function DocsPage() {
     const openable = !virtual;
     const Icon = n.folder || kids ? (expanded ? FolderOpen : Folder) : FileText;
     return (
-      <div key={n.key} className="group relative flex items-center" style={{ paddingLeft: depth * 14 }}>
+      <div key={n.key} data-service-group={isServiceGroup(n) ? n.title : undefined} className="group relative flex items-center" style={{ paddingLeft: depth * 14 }}>
         <button
           type="button"
           tabIndex={-1}
@@ -306,7 +348,7 @@ export function DocsPage() {
           {drafts[n.key] ? <span title={n.doc ? t("docs.draftLocal") : t("docs.unsavedPage")} className="size-1.5 shrink-0 rounded-full bg-warning-solid" /> : null}
           {kids && !expanded ? <span className="text-[11px]/none font-normal text-fg-muted">{n.children.length}</span> : null}
         </button>
-        {canCreateHere && n.doc && !virtual && !path ? (
+        {n.doc && !virtual && !path && writable.includes(docOwner(n.key)) ? (
           <button
             type="button"
             aria-label={t("docs.addUnder", { title: n.title })}
@@ -396,11 +438,32 @@ export function DocsPage() {
                 {creating.kind === "folder"
                   ? parentTitle
                     ? t("docs.newFolderIn", { parent: parentTitle })
-                    : t("docs.newFolderTop", { space: space?.label ?? "" })
+                    : t("docs.newFolderTop", { space: ownerName(creating.owner, t("inbox.shared")) })
                   : parentTitle
                     ? t("docs.newPageIn", { parent: parentTitle })
-                    : t("docs.newPageTop", { space: space?.label ?? "" })}
+                    : t("docs.newPageTop", { space: ownerName(creating.owner, t("inbox.shared")) })}
               </span>
+              {writable.length > 1 ? (
+                <NativeSelect
+                  size="sm"
+                  wrapperClassName="w-full"
+                  value={creating.owner ?? ""}
+                  title={t("docs.placeInHint")}
+                  aria-label={t("docs.placeIn")}
+                  data-doc-owner
+                  onChange={(e) => {
+                    const owner = e.target.value;
+                    // A parent of another owner cannot hold the page: it goes to the top of the one picked.
+                    setCreating({ ...creating, owner, parent: creating.parent !== null && docOwner(creating.parent) === owner ? creating.parent : null });
+                  }}
+                >
+                  {writable.map((o) => (
+                    <NativeSelectOption key={o ?? ""} value={o ?? ""}>
+                      {t("docs.placeIn")}: {ownerName(o, t("inbox.shared"))}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              ) : null}
               <Input
                 autoFocus
                 className="h-7 text-xs"
@@ -426,7 +489,9 @@ export function DocsPage() {
                 />
               ) : null}
               <span className="flex items-center gap-1.5 font-mono text-[11px] break-all text-fg-muted">
-                <span className="min-w-0 flex-1">{prefix + (slugFor(creating) || `<${t("docs.slugPlaceholder")}>`)}</span>
+                <span className="min-w-0 flex-1" data-new-doc-key>
+                  {docPrefix(creating.owner) + (slugFor(creating) || `<${t("docs.slugPlaceholder")}>`)}
+                </span>
                 {creating.slug === null ? (
                   <button type="button" onClick={() => setCreating({ ...creating, slug: slugFor(creating) })} className="cursor-pointer font-sans text-fg-link hover:underline">
                     {t("docs.editSlug")}
@@ -471,7 +536,7 @@ export function DocsPage() {
             onSaved={list.reload}
             tree={tree}
             titles={titles}
-            spaceLabel={space?.label ?? ""}
+            spaceLabel={ownerName(docOwner(selected), t("inbox.shared"))}
             onPick={setSelected}
             onNew={(parent) => startCreate("page", parent)}
           />

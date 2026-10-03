@@ -865,6 +865,8 @@ export const vi = {
     newFolderIn: "Thư mục mới trong {parent}",
     newFolderTop: "Thư mục mới trong {space}",
     newPageIn: "Trang mới trong {parent}",
+    placeIn: "Đặt ở",
+    placeInHint: "Tài liệu chung của cả hệ thống đặt ở hệ thống; chỉ một repo cần thì chọn service đó.",
     newPageTop: "Trang mới ở gốc {space}",
     folderPlaceholder: "Tên thư mục, ví dụ: Vận hành",
     pagePlaceholder: "Tên trang, ví dụ: Quy trình deploy",
