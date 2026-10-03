@@ -2648,6 +2648,8 @@ export const vi = {
     codexOwnEntry: "đã có [mcp_servers.{name}] do bạn tự thêm",
     notInHive: "chưa có bản trong Hive, không ghi đè bản trong repo",
     ownSkill: "repo đã có skill cùng tên của riêng nó, giữ nguyên",
+    ownAgents: "repo có AGENTS.md riêng, giữ nguyên; phần của Hive ghi vào {file}",
+    ownNestedAgents: "repo có AGENTS.md riêng ở thư mục này, giữ nguyên",
     uncommitted: "có thay đổi chưa commit, xử lý trước khi đồng bộ",
   },
   syncNote: {
@@ -2699,6 +2701,9 @@ export const vi = {
     startRemote: "Bắt đầu từ {ref} ({sha}), vừa lấy về từ remote.",
     startNoRemote: "Repo không có remote: bắt đầu từ HEAD của repo ({sha}).",
     startFetchFailed: "Không lấy được bản mới từ {remote} ({reason}): bắt đầu từ HEAD của repo ({sha}), có thể thiếu code vừa merge.",
+    context: "{files} file ({written} ghi mới), bỏ qua {skipped}",
+    contextFailed: "không lấy được từ hub ({reason}), chạy tiếp với file của nhánh",
+    contextTimeout: "hub không trả lời trong {seconds} giây",
   },
   bestOf: {
     onlyOne: "Chỉ bản này chạy xong.",

@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   AGENTS_MD_LINES,
   agentsDocKey,
+  CONTEXT_AGENTS_FILE,
   decisionsDocKey,
   ensureClaudeImport,
   HiveError,
@@ -57,6 +58,98 @@ function managedFiles(repo: string, gitRepo: boolean): string[] {
 
 const isSkillFile = (f: string) => f.startsWith(`${SKILLS_DIR}/`);
 
+/** The project's pages, as a sync and a run both need them. */
+async function loadDocs(backend: HiveBackend, actor: Actor, project: string): Promise<Doc[]> {
+  const summaries = await backend.call("docs.list", { project }, actor);
+  return (await Promise.all(summaries.map((s) => backend.call("docs.get", { key: s.key }, actor)))).filter((d): d is Doc => d !== null);
+}
+
+export interface ContextPlan {
+  files: Array<{ path: string; content: string }>;
+  /** A file the repo owns, left as it is, and why. */
+  skipped: Array<{ file: string; note: string }>;
+  /** Hive's AGENTS.md went here because the repo keeps its own; null when AGENTS.md itself holds it. */
+  contextFile: string | null;
+}
+
+/**
+ * What Hive's context looks like in `dir`, with the rule that keeps what the repo wrote itself: an AGENTS.md (the
+ * main one or a nested one) or a skill already there without the managed block belongs to the repo, so it stays.
+ * When the main AGENTS.md stays, Hive's goes to CONTEXT_AGENTS_FILE and CLAUDE.md imports both, so the agent still
+ * reads the team's conventions. Shared by the runner (roadmap 38a), the project sync and the context MR, so the
+ * three of them leave the same files alone.
+ */
+export function planContext(project: string, docs: Doc[], dir: string): ContextPlan {
+  const at = (f: string) => read(path.join(dir, f));
+  const repoOwns = (f: string) => {
+    const before = at(f);
+    return before !== null && !before.includes(MANAGED_START);
+  };
+  const files: Array<{ path: string; content: string }> = [];
+  const skipped: ContextPlan["skipped"] = [];
+  let contextFile: string | null = null;
+  for (const f of planProjectSync(project, docs)) {
+    if (f.path === "AGENTS.md" && repoOwns(f.path)) {
+      contextFile = CONTEXT_AGENTS_FILE;
+      skipped.push({ file: f.path, note: tr("fileNote.ownAgents", { file: CONTEXT_AGENTS_FILE }) });
+      files.push({ path: CONTEXT_AGENTS_FILE, content: f.content });
+      continue;
+    }
+    if ((f.block || isSkillFile(f.path)) && repoOwns(f.path)) {
+      skipped.push({ file: f.path, note: tr(f.block ? "fileNote.ownNestedAgents" : "fileNote.ownSkill") });
+      continue;
+    }
+    files.push({ path: f.path, content: f.block ? withManagedBlock(at(f.path), f.content) : f.content });
+  }
+  files.push({ path: "CLAUDE.md", content: ensureClaudeImport(at("CLAUDE.md"), contextFile ? [contextFile] : []) });
+  return { files, skipped, contextFile };
+}
+
+export interface ContextRender extends ContextPlan {
+  /** Repo-relative files Hive owns in `dir` now: they must stay out of the branch. */
+  owned: string[];
+  /** Of those, the ones this call had to write; the rest were already right. */
+  written: string[];
+}
+
+/** A run must not wait on a slow hub: past this it goes on with the files the branch has. */
+export const CONTEXT_TIMEOUT_MS = 30_000;
+
+function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(tr("runNote.contextTimeout", { seconds: Math.round(ms / 1000) }))), ms);
+    // A pending timer must not keep the process (or a test) alive once the docs are in.
+    timer.unref?.();
+  });
+  return Promise.race([work, limit]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Writes the project's Hive context into `dir` (a run's worktree, roadmap 38a): AGENTS.md and the nested ones,
+ * CLAUDE.md with the import, the rules and the skills. Nothing is committed and nothing is removed: the caller
+ * keeps `owned` out of its commit. Throws when the hub fails or is slower than `timeoutMs`; the run goes on then.
+ */
+export async function renderContext(
+  backend: HiveBackend,
+  actor: Actor,
+  project: string,
+  dir: string,
+  timeoutMs = CONTEXT_TIMEOUT_MS,
+): Promise<ContextRender> {
+  const docs = await withTimeout(loadDocs(backend, actor, project), timeoutMs);
+  const plan = planContext(project, docs, dir);
+  const written: string[] = [];
+  for (const f of plan.files) {
+    const abs = path.join(dir, f.path);
+    if (read(abs) === f.content) continue;
+    mkdirSync(path.dirname(abs), { recursive: true });
+    writeFileSync(abs, f.content);
+    written.push(f.path);
+  }
+  return { ...plan, owned: plan.files.map((f) => f.path), written };
+}
+
 const defaultAgentsDoc = (project: string) => `# ${project}
 
 Mô tả ngắn dự án, lệnh build/test/lint, cấu trúc thư mục và quy ước riêng của repo này.
@@ -93,10 +186,7 @@ export async function syncProject(
     }
   }
 
-  const summaries = await backend.call("docs.list", { project: name }, actor);
-  const docs = (await Promise.all(summaries.map((s) => backend.call("docs.get", { key: s.key }, actor)))).filter(
-    (d): d is Doc => d !== null,
-  );
+  const docs = await loadDocs(backend, actor, name);
   const hasAgentsDoc = docs.some((d) => d.key === agentsDocKey(name));
   const planned = planProjectSync(name, docs).map((f) => (f.block ? { ...f, content: withManagedBlock(read(path.join(repo, f.path)), f.content) } : f));
   const files: Array<{ path: string; content: string | null }> = [

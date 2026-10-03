@@ -68,6 +68,7 @@ import {
 import { tr } from "#desktop/main/i18n.ts";
 import { git, isGitRepo } from "#desktop/main/git.ts";
 import { NO_FEATURES, repoFeatures } from "#desktop/main/installer.ts";
+import { renderContext } from "#desktop/main/sync.ts";
 import { legacyPick, NO_TOOLS, prepareTool, runTools, toolDirs, type ToolPick } from "./tools.ts";
 import { containerCommand } from "./container.ts";
 import { claudeMcpServers, codexMcpArgs, hubMcpEnv, type McpRun } from "./container-mcp.ts";
@@ -292,6 +293,8 @@ export class Runner {
   readonly #finishing = new Set<string>();
   /** Why a run was stopped, when not from the Board here (a project manager on the web). */
   readonly #cancelNotes = new Map<string, string>();
+  /** Runs cancelled while #execute was still setting them up, before there was a process to kill. */
+  readonly #stopping = new Set<string>();
   /** What each running agent is doing now (see AgentRun.activity). */
   readonly #activity = new Map<string, string>();
   /** Lease holder name as the backend recorded it (a hub appends the token name: claude-1.duy-mbp@duy). */
@@ -578,6 +581,10 @@ export class Runner {
     if (live) {
       live.cancelled = true;
       stopLive(live);
+    } else if (!TERMINAL.includes(run.status)) {
+      // Running, but its process is not up yet: the worktree, the context from the hub and the tools come first.
+      // There is nothing to kill, so #execute stops just before it starts the agent.
+      this.#stopping.add(id);
     }
     return run;
   }
@@ -1249,6 +1256,25 @@ export class Runner {
     return task;
   }
 
+  /**
+   * Puts the project's Hive context in the worktree before the agent starts (roadmap 38a), so every role reads the
+   * current AGENTS.md, rules and skills even when the target branch has none of them. The files are the app's, not
+   * the branch's: `wt.context` keeps them out of the run's commit. A hub that fails or is slow is not worth losing
+   * a run over, so then the run goes on with what the branch has and the log says why.
+   */
+  async #writeContext(backend: HiveBackend, actor: Actor, project: string, wt: Worktree): Promise<{ note: string; file: string | null }> {
+    try {
+      const out = await renderContext(backend, actor, project, wt.path);
+      wt.context = out.owned;
+      return {
+        note: tr("runNote.context", { files: out.owned.length, written: out.written.length, skipped: out.skipped.length }),
+        file: out.contextFile,
+      };
+    } catch (err) {
+      return { note: tr("runNote.contextFailed", { reason: (err as Error).message }), file: null };
+    }
+  }
+
   /** Marks the run running synchronously (so the next tick sees the slot taken), then does the slow work. */
   #launch(queued: AgentRun, profile: AgentProfile): void {
     const run = this.store.update(queued.id, { status: "running", profileId: profile.id, startedAt: this.#iso(), error: null });
@@ -1293,6 +1319,9 @@ export class Runner {
       const actor = this.#actor(profile);
       const task = await this.#task(backend, actor, run);
       run = this.store.update(run.id, { worktree: wt.path, branch: wt.branch, baseSha: wt.baseSha, taskTitle: task.title });
+      // The branch may carry no Hive context at all (a repo whose context MR is not merged), and the prompt tells
+      // every role to read AGENTS.md: put the current one in the worktree, outside the branch.
+      const context = await this.#writeContext(backend, actor, run.project, wt);
 
       const parent = run.parentRunId ? this.store.get(run.parentRunId) : null;
       const prompt = buildPrompt({
@@ -1311,6 +1340,7 @@ export class Runner {
         ciFix: run.ciFix,
         candidate: candidate ? { n: candidate.n, of: candidate.of } : null,
         judge: run.bestOf?.n === 0 ? this.#judgeInput(run.bestOf) : null,
+        contextFile: context.file,
       });
       const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id, repo: project.repo };
       // A container has neither the hive-mcp shim nor this machine's codegraph: Claude gets the hub's MCP through a file.
@@ -1409,9 +1439,17 @@ export class Runner {
           })
         : null;
       log.write(
-        `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image} · ${egress ? `network limited (${egress.env.HIVE_EGRESS_ALLOW})` : "network open"}\n` : ""}${startNote ? `# ${startNote}\n` : ""}${toolLines}# cwd ${wt.path}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n${policyLine(pol, fit)}\n${skipped}\n## Prompt\n${prompt}\n\n## Output\n`,
+        `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image} · ${egress ? `network limited (${egress.env.HIVE_EGRESS_ALLOW})` : "network open"}\n` : ""}${startNote ? `# ${startNote}\n` : ""}# hive context: ${context.note}\n${toolLines}# cwd ${wt.path}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n${policyLine(pol, fit)}\n${skipped}\n## Prompt\n${prompt}\n\n## Output\n`,
       );
 
+      // Cancelled while this run was being set up: stop here rather than start an agent nobody waits for.
+      if (this.#stopping.delete(run.id)) {
+        log.write(`\n# ${tr("runNote.cancelled")}\n`);
+        await new Promise<void>((r) => log!.end(r));
+        log = null;
+        await this.#complete(run, profile, wt, { kind: "exit", code: null, stdout: "", all: "", cancelled: true, timedOut: false });
+        return;
+      }
       const env: NodeJS.ProcessEnv = box ? { ...hostEnv, ...box.env } : { ...hostEnv, ...agentEnv };
       const child = spawn(bin, box ? box.args : cmd.args, {
         cwd: wt.path,
@@ -1514,6 +1552,7 @@ export class Runner {
       log?.end();
       await this.#complete(run, profile, wt, { kind: "error", reason: (err as Error).message ?? String(err) });
     } finally {
+      this.#stopping.delete(run.id);
       // It carries the hub token: gone with the run.
       if (mcpFile) rmSync(mcpFile, { force: true });
       // A step can fail when setup stopped half-way: try them all.
@@ -1616,7 +1655,7 @@ export class Runner {
     // The judge changes nothing: what it left is dropped when the kept candidate replaces the branch.
     if (wt && existsSync(wt.path) && run.bestOf?.n !== 0) {
       const label = run.role === "review" ? "review" : status === "succeeded" ? "work" : "wip";
-      const c = commitAll(wt.path, `ai(${run.taskId}): ${label} by ${profile.id}\n\nRun ${run.id}, attempt ${run.attempt}, status ${status}`, wt.copied, wt.toolDirs);
+      const c = commitAll(wt.path, `ai(${run.taskId}): ${label} by ${profile.id}\n\nRun ${run.id}, attempt ${run.attempt}, status ${status}`, [...wt.copied, ...(wt.context ?? [])], wt.toolDirs);
       if (c.error) {
         error = [error, `commit: ${c.error}`].filter(Boolean).join(" · ");
         // Its work is in the worktree, not on the branch: an MR or review would show nothing, so it did not succeed.
@@ -1758,6 +1797,8 @@ export class Runner {
     const from = chosen.branch ?? branchFor(candidateName(chosen.taskId, b.n));
     const wt = ensureWorktree(project.repo, path.join(root, project.name, chosen.taskId), chosen.taskId, chosen.baseSha);
     resetTo(wt.path, wt.branch, `refs/heads/${from}`);
+    // After the reset: `git clean` takes the context with everything else untracked, and a review may follow here.
+    await this.#writeContext(this.#host.backend(), this.#runnerActor(), chosen.project, wt);
     this.store.setPick(b.group, b.n, reason);
     // Their branches stay, for a look at what was not kept (Board → show changes).
     const notes: string[] = [];
