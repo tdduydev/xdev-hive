@@ -228,6 +228,20 @@ async function main() {
     await tab.waitFor("#/admin/queue on Hàng đợi", () => location.hash === "#/queue" && document.querySelector('nav [aria-current="page"]')?.textContent.includes("Hàng đợi"));
   });
 
+  await step("scope-search-tasks", async () => {
+    const tab = (current = tabs.admin);
+    await tab.go("tasks");
+    await tab.waitFor("tasks from several projects", () => document.body.innerText.includes("Việc đầu tiên của payment") && document.body.innerText.includes("Việc đầu tiên của demo"));
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('input[aria-label="Tìm dự án hoặc hệ thống…"]');
+    await tab.type("pay");
+    await tab.waitFor("payment in the picker", () => [...document.querySelectorAll('[role="option"]')].some((item) => item.textContent.includes("payment")));
+    await tab.key("Enter");
+    await tab.waitFor("only payment tasks", () => document.body.innerText.includes("Việc đầu tiên của payment") && !document.body.innerText.includes("Việc đầu tiên của demo") && !document.body.innerText.includes("Việc đầu tiên của ledger"));
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('[role="option"]', "Tất cả dự án");
+  });
+
   await step("login-password", async () => {
     const tab = (current = tabs.hoa = await Tab.open("hoa"));
     await tab.click("#username");
