@@ -1,5 +1,5 @@
 // Small building blocks every page uses, on top of shadcn/ui.
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
 import { Alert, AlertDescription, AlertTitle } from "@xdev-hive/ui/components/ui/alert";
@@ -83,13 +83,26 @@ export function Empty({ children }: { children: ReactNode }) {
   return <div className="rounded-lg border border-dashed border-line-default bg-surface px-5 py-8 text-center type-body-sm text-fg-secondary">{children}</div>;
 }
 
+export function PageIntro({ children }: { children: string }) {
+  const t = useT();
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="min-w-0 max-w-3xl flex-1 type-body-sm text-fg-secondary">
+      <p className={expanded ? "" : "max-md:line-clamp-1"}>{children}</p>
+      <button type="button" className="hidden min-h-10 text-fg-link underline md:hidden max-md:block" onClick={() => setExpanded((value) => !value)}>
+        {t(expanded ? "common.showLess" : "common.showMore")}
+      </button>
+    </div>
+  );
+}
+
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
   // Inside the app frame the top bar shows the title: keep it for screen readers, show the description and actions.
   if (useInShell()) {
     return (
       <header className="flex flex-wrap items-start justify-between gap-3">
         <h1 className="sr-only">{title}</h1>
-        {subtitle ? <p className="max-w-3xl min-w-0 flex-1 type-body-sm text-fg-secondary">{subtitle}</p> : <span className="flex-1" />}
+        {subtitle ? <PageIntro>{subtitle}</PageIntro> : <span className="flex-1" />}
         {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
       </header>
     );
@@ -98,7 +111,7 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
     <header className="flex flex-wrap items-start justify-between gap-4">
       <div className="min-w-0 space-y-1">
         <h1 className="type-display-md text-fg-strong">{title}</h1>
-        {subtitle ? <p className="max-w-3xl type-body-sm text-fg-secondary">{subtitle}</p> : null}
+        {subtitle ? <PageIntro>{subtitle}</PageIntro> : null}
       </div>
       {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
     </header>

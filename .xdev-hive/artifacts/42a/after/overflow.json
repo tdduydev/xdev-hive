@@ -1,0 +1,101 @@
+{
+  "page": [],
+  "content": [
+    {
+      "step": "login-password",
+      "width": 390,
+      "scrollWidth": 390,
+      "mainWidth": 390,
+      "mainScrollWidth": 452,
+      "route": ""
+    },
+    {
+      "step": "docs-rich-editor",
+      "width": 390,
+      "scrollWidth": 390,
+      "mainWidth": 390,
+      "mainScrollWidth": 540,
+      "route": "#/docs"
+    },
+    {
+      "step": "docs-markdown",
+      "width": 390,
+      "scrollWidth": 390,
+      "mainWidth": 390,
+      "mainScrollWidth": 540,
+      "route": "#/docs"
+    },
+    {
+      "step": "mermaid-draws",
+      "width": 390,
+      "scrollWidth": 390,
+      "mainWidth": 390,
+      "mainScrollWidth": 540,
+      "route": "#/docs"
+    },
+    {
+      "step": "mermaid-error",
+      "width": 390,
+      "scrollWidth": 390,
+      "mainWidth": 390,
+      "mainScrollWidth": 540,
+      "route": "#/docs"
+    },
+    {
+      "step": "bulk-approve-memory",
+      "width": 390,
+      "scrollWidth": 390,
+      "mainWidth": 390,
+      "mainScrollWidth": 400,
+      "route": "#/memory"
+    },
+    {
+      "step": "merge-from-web",
+      "width": 390,
+      "scrollWidth": 390,
+      "mainWidth": 390,
+      "mainScrollWidth": 474,
+      "route": "#/runs"
+    },
+    {
+      "step": "spec-page",
+      "width": 390,
+      "scrollWidth": 390,
+      "mainWidth": 390,
+      "mainScrollWidth": 650,
+      "route": "#/specs?project=payment&dir=001-thanh-toan-qr&branch="
+    },
+    {
+      "step": "spec-import-and-run",
+      "width": 390,
+      "scrollWidth": 390,
+      "mainWidth": 390,
+      "mainScrollWidth": 632,
+      "route": "#/specs?project=payment&dir=002-hoan-tien&branch=ai%2FPAY-2"
+    },
+    {
+      "step": "budget",
+      "width": 390,
+      "scrollWidth": 390,
+      "mainWidth": 390,
+      "mainScrollWidth": 484,
+      "route": "#/costs"
+    },
+    {
+      "step": "system-docs",
+      "width": 390,
+      "scrollWidth": 390,
+      "mainWidth": 390,
+      "mainScrollWidth": 540,
+      "route": "#/docs"
+    },
+    {
+      "step": "today-web",
+      "width": 390,
+      "scrollWidth": 390,
+      "mainWidth": 390,
+      "mainScrollWidth": 426,
+      "route": "#/today"
+    }
+  ]
+}

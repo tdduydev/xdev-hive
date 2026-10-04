@@ -2,7 +2,7 @@
 // grouped pages, this machine's running agents, account), a 52px top bar (title, ⌘K search, Task mới) and a 26px
 // status bar (hub, runs, quota, version). Used by the desktop app and by people who are not hub admins on the web.
 import { useCallback, useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
-import { Download, ExternalLink, Moon, PanelLeft, Plus, Search, Sun } from "lucide-react";
+import { Download, ExternalLink, Moon, PanelLeft, Plus, Search, Sun, X } from "lucide-react";
 import { cn } from "cn";
 import type { AgentRun, Me } from "@xdev-hive/core";
 import type { HiveClient } from "#ui/client.ts";
@@ -112,6 +112,9 @@ function ClientFrame({
   const [sidebar, setSidebarState] = useState(readSidebar);
   const [palette, setPalette] = useState(false);
   const [newTask, setNewTask] = useState(false);
+  useEffect(() => {
+    if (narrow) setSidebarState(false);
+  }, [narrow]);
   const setSidebar = useCallback((open: boolean | ((was: boolean) => boolean)) => {
     setSidebarState((was) => {
       const next = typeof open === "function" ? open(was) : open;
@@ -231,11 +234,12 @@ function ClientFrame({
       aria-label={t("shell.nav")}
       className={cn(
         "flex w-[236px] shrink-0 flex-col border-r border-line-subtle bg-subtle",
-        narrow && "fixed inset-y-0 left-0 z-200 shadow-e3",
+        narrow && cn("fixed inset-y-0 left-0 z-200 shadow-e3 transition-transform", !sidebar && "-translate-x-full"),
       )}
     >
       <div className={cn("flex h-[52px] shrink-0 items-center px-4", mac && "pl-[84px]", drag)}>
         <HiveWordmark height={30} />
+        {narrow ? <button type="button" aria-label={t("shell.closeSidebar")} onClick={() => setSidebar(false)} className="ml-auto grid size-10 place-items-center rounded-sm text-fg-secondary"><X className="size-4" /></button> : null}
       </div>
       <div className={cn("shrink-0 px-2.5 pb-1.5", noDrag)}>
         <ScopeSwitcher />
@@ -255,7 +259,7 @@ function ClientFrame({
                   aria-current={on ? "page" : undefined}
                   title={item.shortcut ? t("shell.shortcut", { label: item.label, key: item.shortcut }) : item.label}
                   className={cn(
-                    "flex h-[30px] shrink-0 items-center gap-2 rounded-sm px-2 text-[13px]/none outline-none focus-visible:focus-ring",
+                    "flex h-[30px] max-md:min-h-10 shrink-0 items-center gap-2 rounded-sm px-2 text-[13px]/none outline-none focus-visible:focus-ring",
                     on ? "bg-selected font-semibold text-selected-fg" : "text-fg-primary hover:bg-hover",
                   )}
                 >
@@ -342,17 +346,17 @@ function ClientFrame({
     <>
       <div className="fixed inset-0 flex flex-col bg-surface text-fg-primary">
         <div className="flex min-h-0 flex-1">
-          {sidebar ? nav : null}
+          {sidebar || narrow ? nav : null}
           {sidebar && narrow ? <div className="fixed inset-0 z-190 bg-scrim" onClick={() => setSidebar(false)} /> : null}
           <div className="relative flex min-w-0 flex-1 flex-col">
-            <header className={cn("flex h-[52px] shrink-0 items-center gap-0.5 border-b border-line-subtle bg-surface px-3", drag, mac && !sidebar && "pl-[78px]")}>
+            <header className={cn("flex h-[52px] min-w-0 shrink-0 items-center gap-0.5 border-b border-line-subtle bg-surface px-3", drag, mac && !sidebar && !narrow && "pl-[78px]")}>
               <button
                 type="button"
                 onClick={() => setSidebar((s) => !s)}
                 aria-label={t("shell.toggleSidebar")}
                 title={t("shell.sidebarShortcut")}
                 className={cn(
-                  "grid size-[30px] shrink-0 cursor-pointer place-items-center rounded-sm text-fg-secondary outline-none hover:bg-hover hover:text-fg-strong focus-visible:focus-ring",
+                  "grid size-[30px] max-md:size-10 shrink-0 cursor-pointer place-items-center rounded-sm text-fg-secondary outline-none hover:bg-hover hover:text-fg-strong focus-visible:focus-ring",
                   noDrag,
                 )}
               >
@@ -362,12 +366,15 @@ function ClientFrame({
                 <span className="truncate text-sm/[18px] font-semibold text-fg-strong">{title}</span>
                 <span className="truncate text-[11px]/[14px] text-fg-muted">{subtitle}</span>
               </div>
-              <span className="flex-1" />
+              <span className="hidden flex-1 md:block" />
+              <button type="button" onClick={() => setPalette(true)} aria-label={t("shell.search")} className={cn("ml-auto grid size-10 shrink-0 place-items-center rounded-sm text-fg-secondary md:hidden", noDrag)}>
+                <Search className="size-4" />
+              </button>
               <button
                 type="button"
                 onClick={() => setPalette(true)}
                 className={cn(
-                  "hidden h-[30px] w-[320px] min-w-[160px] shrink cursor-pointer items-center gap-2 rounded-[7px] border border-line-default bg-sunken pr-[5px] pl-2.5 text-xs/none text-fg-muted outline-none hover:border-line-strong focus-visible:focus-ring sm:flex",
+                  "hidden h-[30px] w-[320px] min-w-[160px] shrink cursor-pointer items-center gap-2 rounded-[7px] border border-line-default bg-sunken pr-[5px] pl-2.5 text-xs/none text-fg-muted outline-none hover:border-line-strong focus-visible:focus-ring md:flex",
                   noDrag,
                 )}
               >
@@ -375,7 +382,7 @@ function ClientFrame({
                 <span className="min-w-0 flex-1 truncate text-left">{t("shell.search")}</span>
                 <kbd className="rounded-xs border border-line-default bg-surface px-[5px] py-[3px] font-mono text-[10px]/none font-medium text-fg-secondary">⌘K</kbd>
               </button>
-              <span className="flex-1" />
+              <span className="hidden flex-1 md:block" />
               {up?.state === "ready" && up.version ? (
                 <button
                   type="button"
@@ -399,12 +406,12 @@ function ClientFrame({
                   title={t("shell.openWebHint")}
                   data-open-web
                   className={cn(
-                    "flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 rounded-sm bg-primary pr-3 pl-2.5 text-xs/none font-semibold whitespace-nowrap text-primary-foreground no-underline outline-none hover:bg-primary-hover focus-visible:focus-ring",
+                    "flex h-[30px] max-md:size-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-sm bg-primary pr-3 pl-2.5 max-md:justify-center max-md:p-0 text-xs/none font-semibold whitespace-nowrap text-primary-foreground no-underline outline-none hover:bg-primary-hover focus-visible:focus-ring",
                     noDrag,
                   )}
                 >
                   <ExternalLink className="size-3.5" strokeWidth={2} />
-                  {t("shell.openWeb")}
+                  <span className="max-md:sr-only">{t("shell.openWeb")}</span>
                 </a>
               ) : (
                 <button
@@ -412,12 +419,12 @@ function ClientFrame({
                   onClick={() => setNewTask(true)}
                   title={t("shell.newTaskShortcut")}
                   className={cn(
-                    "flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 rounded-sm bg-primary pr-3 pl-2.5 text-xs/none font-semibold whitespace-nowrap text-primary-foreground outline-none hover:bg-primary-hover focus-visible:focus-ring",
+                    "flex h-[30px] max-md:size-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-sm bg-primary pr-3 pl-2.5 max-md:justify-center max-md:p-0 text-xs/none font-semibold whitespace-nowrap text-primary-foreground outline-none hover:bg-primary-hover focus-visible:focus-ring",
                     noDrag,
                   )}
                 >
                   <Plus className="size-3.5" strokeWidth={2} />
-                  {t("shell.newTask")}
+                  <span className="max-md:sr-only">{t("shell.newTask")}</span>
                 </button>
               )}
             </header>
@@ -440,12 +447,12 @@ function ClientFrame({
                 </button>
               </div>
             ) : null}
-            <main className="min-h-0 flex-1 overflow-y-auto bg-canvas">
+            <main className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-canvas max-md:overflow-x-hidden">
               <InShellContext.Provider value={true}>{children}</InShellContext.Provider>
             </main>
           </div>
         </div>
-        <footer className="flex h-[26px] shrink-0 items-center gap-0.5 border-t border-line-subtle bg-subtle px-2">
+        <footer className="flex h-[26px] shrink-0 items-center gap-0.5 border-t border-line-subtle bg-subtle px-2 max-md:hidden">
           {hubMode
             ? statusItem(
                 "hub",
