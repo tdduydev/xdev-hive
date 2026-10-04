@@ -8,7 +8,7 @@ import { MANAGED_START, type Actor, type HiveBackend } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { CODEGRAPH_MCP, installAgents, installCodexConfig, installShim } from "#desktop/main/installer.ts";
 import { commitAll, ensureWorktree, remoteStart } from "#desktop/main/runner/worktree.ts";
-import { renderContext, syncProject } from "#desktop/main/sync.ts";
+import { proposeAgents, renderContext, syncProject } from "#desktop/main/sync.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
 const tmp = (p: string) => mkdtempSync(path.join(os.tmpdir(), `hive-${p}-`));
@@ -197,6 +197,61 @@ describe("syncProject", () => {
     assert.equal(readFileSync(path.join(repo, "AGENTS.md"), "utf8"), "local edit\n");
     assert.ok(!existsSync(path.join(repo, "docs/decisions.md")));
   });
+
+  it("leaves an AGENTS.md the repo owns alone and puts Hive's beside it (roadmap 38f)", async () => {
+    const repo = gitRepo();
+    const own = "# admin-portal\n309 dòng quy ước của repo.\n";
+    const hive = new SqliteHive(":memory:");
+    hive.seed();
+    // The hub already has a page of its own, so the first sync does not import the file: it must not overwrite it.
+    await hive.call("docs.save", { key: "project/demo/agents", content: "# demo\nChạy npm test.", baseVersion: 0 }, admin);
+    writeFileSync(path.join(repo, "AGENTS.md"), own);
+    sh(repo, "git", ["add", "AGENTS.md"]);
+    sh(repo, "git", ["commit", "-qm", "own agents"], { HIVE_ADMIN: "1" });
+
+    const report = await syncProject(hive, admin, { name: "demo", repo }, { autoCommit: true });
+
+    assert.equal(readFileSync(path.join(repo, "AGENTS.md"), "utf8"), own, "the repo's own file is never overwritten");
+    assert.equal(report.ownAgents, true);
+    assert.deepEqual(report.imported, [], "a page was already there, nothing imported");
+    const agents = report.files.find((f) => f.file === "AGENTS.md")!;
+    assert.equal(agents.action, "skipped");
+    assert.match(agents.note ?? "", /repo có AGENTS\.md riêng, giữ nguyên; phần của Hive ghi vào \.xdev-hive\/context\/AGENTS\.md/);
+    // Hive's part goes beside it and CLAUDE.md imports both, exactly as a run's worktree gets it.
+    assert.match(readFileSync(path.join(repo, ".xdev-hive/context/AGENTS.md"), "utf8"), /Hive project key: `demo`[\s\S]*Chạy npm test\./);
+    assert.equal(readFileSync(path.join(repo, "CLAUDE.md"), "utf8"), "@AGENTS.md\n@.xdev-hive/context/AGENTS.md\n");
+    const committed = sh(repo, "git", ["show", "--name-only", "--format=", "HEAD"]).trim().split("\n").sort();
+    assert.deepEqual(committed, [".xdev-hive/context/AGENTS.md", "CLAUDE.md"]);
+
+    // The page catches up with the file: the repo no longer owns it, so the sync writes it and drops the copy.
+    await hive.call("docs.save", { key: "project/demo/agents", content: own }, admin);
+    const after = await syncProject(hive, admin, { name: "demo", repo }, { autoCommit: true });
+    assert.equal(after.ownAgents, false);
+    assert.equal(after.files.find((f) => f.file === "AGENTS.md")?.action, "updated");
+    assert.ok(readFileSync(path.join(repo, "AGENTS.md"), "utf8").startsWith(MANAGED_START));
+    assert.equal(after.files.find((f) => f.file === ".xdev-hive/context/AGENTS.md")?.action, "removed");
+    assert.ok(!existsSync(path.join(repo, ".xdev-hive/context/AGENTS.md")));
+    assert.equal(readFileSync(path.join(repo, "CLAUDE.md"), "utf8"), "@AGENTS.md\n");
+  });
+
+  it("proposes the repo's own AGENTS.md into Hive, once (roadmap 38f)", async () => {
+    const repo = gitRepo();
+    const own = "# admin-portal\n309 dòng quy ước của repo.\n";
+    const hive = new SqliteHive(":memory:");
+    hive.seed();
+    await hive.call("docs.save", { key: "project/demo/agents", content: "# demo\nChạy npm test.", baseVersion: 0 }, admin);
+    writeFileSync(path.join(repo, "AGENTS.md"), own);
+
+    const proposal = await proposeAgents(hive, admin, { name: "demo", repo });
+
+    const page = await hive.call("docs.get", { key: "project/demo/agents" }, admin);
+    assert.equal(proposal.docKey, "project/demo/agents");
+    assert.equal(proposal.baseVersion, page!.version, "against the page as it is now");
+    assert.equal(proposal.content, own.trim());
+    assert.equal(page!.content, "# demo\nChạy npm test.", "the page waits for a human: nothing written yet");
+    const open = await hive.call("proposals.list", { docKey: "project/demo/agents" }, admin);
+    assert.deepEqual(open.map((p) => p.id), [proposal.id], "exactly one proposal");
+  });
 });
 
 describe("docs for some paths in the repo", () => {
@@ -261,9 +316,11 @@ describe("docs for some paths in the repo", () => {
     mkdirSync(path.join(repo, "apps/web"), { recursive: true });
     mkdirSync(path.join(repo, "apps/api"), { recursive: true });
     mkdirSync(path.join(repo, ".claude/rules/xdev-hive"), { recursive: true });
+    mkdirSync(path.join(repo, ".xdev-hive/context"), { recursive: true });
     writeFileSync(path.join(repo, "apps/web/AGENTS.md"), `${MANAGED_START}\nHive part\n<!-- xdev-hive:end -->\n`);
     writeFileSync(path.join(repo, "apps/api/AGENTS.md"), "# API\nTeam notes.\n");
     writeFileSync(path.join(repo, ".claude/rules/xdev-hive/testing.md"), "rule\n");
+    writeFileSync(path.join(repo, ".xdev-hive/context/AGENTS.md"), "Hive's part, beside the repo's own\n");
     sh(repo, "git", ["add", "."]);
     sh(repo, "git", ["commit", "-qm", "via hive"], { HIVE_ADMIN: "1" });
 
@@ -278,6 +335,7 @@ describe("docs for some paths in the repo", () => {
     };
     assert.equal(run(path.join(repo, "apps/web/AGENTS.md")), 2);
     assert.equal(run(path.join(repo, ".claude/rules/xdev-hive/testing.md")), 2);
+    assert.equal(run(path.join(repo, ".xdev-hive/context/AGENTS.md")), 2, "Hive's copy beside the repo's own AGENTS.md (roadmap 38f)");
     assert.equal(run(path.join(repo, "apps/api/AGENTS.md")), 0, "a nested AGENTS.md without the block is the team's");
     assert.equal(run(path.join(repo, ".claude/rules/own.md")), 0);
 
@@ -290,13 +348,18 @@ describe("docs for some paths in the repo", () => {
     sh(repo, "git", ["add", "."]);
     assert.throws(() => sh(repo, "git", ["commit", "-qm", "sneaky"]), /xdev-hive\/testing\.md/);
     sh(repo, "git", ["reset", "-q", "--hard"]);
+    writeFileSync(path.join(repo, ".xdev-hive/context/AGENTS.md"), "changed\n");
+    sh(repo, "git", ["add", "."]);
+    assert.throws(() => sh(repo, "git", ["commit", "-qm", "sneaky"]), /\.xdev-hive\/context\/AGENTS\.md/);
+    sh(repo, "git", ["reset", "-q", "--hard"]);
     writeFileSync(path.join(repo, "apps/api/AGENTS.md"), "# API\nMore team notes.\n");
     sh(repo, "git", ["add", "."]);
     sh(repo, "git", ["commit", "-qm", "team notes"]);
 
-    // The runner's own commit leaves them out as well.
+    // The runner's own commit leaves them out as well, the tracked context file too, and without being told to.
     writeFileSync(path.join(repo, "apps/web/AGENTS.md"), "agent edit\n");
     writeFileSync(path.join(repo, ".claude/rules/xdev-hive/testing.md"), "agent edit\n");
+    writeFileSync(path.join(repo, ".xdev-hive/context/AGENTS.md"), "agent edit\n");
     writeFileSync(path.join(repo, "work.txt"), "done\n");
     const c = commitAll(repo, "ai(T-1): work", []);
     assert.equal(c.error, null);

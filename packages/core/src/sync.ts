@@ -204,6 +204,8 @@ export function describeProjectContext(project: string, docs: Doc[]): Omit<Agent
   };
 }
 
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 /** A managed block in front of what the file already has outside it. */
 export function withManagedBlock(existing: string | null, block: string): string {
   const rest = existing ? stripManaged(existing).trim() : "";
@@ -217,8 +219,11 @@ export function withManagedBlock(existing: string | null, block: string): string
 export function ensureClaudeImport(existing: string | null, extra: string[] = []): string {
   const imports = ["AGENTS.md", ...extra].map((f) => `@${f}`);
   if (!existing?.trim()) return `${imports.join("\n")}\n`;
-  const missing = imports.filter((i) => !new RegExp(`^${i.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "m").test(existing));
-  return missing.length ? `${missing.join("\n")}\n\n${existing}` : existing;
+  // The repo took its own AGENTS.md back, so the file beside it goes: the import would point at nothing.
+  const stale =
+    extra.includes(CONTEXT_AGENTS_FILE) ? existing : existing.replace(new RegExp(`^@${escapeRe(CONTEXT_AGENTS_FILE)}[ \t]*\r?\n?`, "m"), "");
+  const missing = imports.filter((i) => !new RegExp(`^${escapeRe(i)}\\s*$`, "m").test(stale));
+  return missing.length ? `${missing.join("\n")}\n\n${stale}` : stale;
 }
 
 /** The command id a sync request of a project gets: one open request per machine and project. */

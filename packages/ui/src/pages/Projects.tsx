@@ -821,7 +821,8 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
   const [name, setName] = useState("");
   const [repo, setRepo] = useState("");
   const action = useAction();
-  const [result, setResult] = useState<{ project: string; title: string; files: FileAction[]; extra?: string } | null>(null);
+  const [result, setResult] = useState<{ project: string; title: string; files: FileAction[]; extra?: string; ownAgents?: boolean } | null>(null);
+  const [proposed, setProposed] = useState<number | null>(null);
   const [gitlabOpen, setGitlabOpen] = useState<string | null>(null);
   // A folder that is no repository but holds some (roadmap 38d): what to offer instead of refusing it.
   const [found, setFound] = useState<RepoScan | null>(null);
@@ -835,11 +836,13 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
     return scan;
   };
 
-  const showSync = (r: SyncReport) =>
+  const showSync = (r: SyncReport) => {
+    setProposed(null);
     setResult({
       project: r.project,
       title: t("projects.sync"),
       files: r.files,
+      ownAgents: r.ownAgents,
       extra: [
         r.imported.length ? t("projects.imported", { keys: r.imported.join(", ") }) : "",
         r.commit ? t("projects.commit", { sha: r.commit }) : "",
@@ -853,6 +856,7 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
         .filter(Boolean)
         .join(" · "),
     });
+  };
 
   return (
     <Card>
@@ -1005,6 +1009,26 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
               ))}
             </ul>
             {result.extra ? <p className="text-xs break-words text-muted-foreground">{result.extra}</p> : null}
+            {result.ownAgents ? (
+              <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={action.busy || proposed !== null}
+                  data-propose-agents={result.project}
+                  onClick={() =>
+                    void action.run(async () => {
+                      setProposed((await desktop.proposeAgents(result.project)).id);
+                    })
+                  }
+                >
+                  {t("projects.proposeAgents")}
+                </Button>
+                <span className="min-w-0 flex-1 text-xs break-words text-muted-foreground">
+                  {proposed === null ? t("projects.proposeAgentsHint") : t("projects.proposedAgents", { id: proposed })}
+                </span>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </CardContent>

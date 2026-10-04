@@ -80,7 +80,7 @@ import { agentPath } from "./runner/shell-path.ts";
 import { landingPage, signInThroughBrowser } from "./hub-browser.ts";
 import { Setup } from "./setup.ts";
 import { checkCitations } from "./citations.ts";
-import { syncProject } from "./sync.ts";
+import { proposeAgents, syncProject } from "./sync.ts";
 import { mirrorDocs, mirrors } from "./mirror.ts";
 import { pushSpecs } from "./specs.ts";
 import { cliCommand } from "./cli-open.ts";
@@ -1034,6 +1034,7 @@ function registerIpc(): void {
     return res.canceled ? null : (res.filePaths[0] ?? null);
   });
   handle("desktop:syncProject", syncAndMirror);
+  handle("desktop:proposeAgents", (name: string) => proposeAgents(backend, actor(), project(name)));
   handle("desktop:installAgents", (name: string) => installAgents(project(name).repo, name, { shim: shimPath() }));
   handle("desktop:installShim", () => installShim({ electronPath: process.execPath, entry: mcpEntry() }, agentPath()));
   handle("desktop:setupStatus", refreshSetup);

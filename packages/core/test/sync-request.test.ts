@@ -108,6 +108,7 @@ describe("sync requests from the Context agent page (roadmap 22n)", () => {
       ],
       imported: [],
       commit: "abc1234",
+      ownAgents: false,
       mirror: { commit: "def5678", changed: ["project/app/guide"], unchanged: 3, missing: [], skipped: [] },
     });
     assert.deepEqual(o, { changed: ["AGENTS.md", ".claude/rules/xdev-hive/old.md"], skipped: [".claude/skills/deploy/SKILL.md"], commit: "abc1234", mirrored: 1, note: null });
