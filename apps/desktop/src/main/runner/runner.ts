@@ -18,6 +18,7 @@ import path from "node:path";
 import {
   cacheReadShare,
   AGENT_ROLES,
+  PREFER_KINDS,
   agentActorName,
   effectivePolicy,
   HiveError,
@@ -92,8 +93,8 @@ import { AssistWorker } from "./assist.ts";
 import { ChatWorker } from "./chat.ts";
 import { killTree } from "./kill.ts";
 import { ClaudeStream, CodexStream, lineStamper } from "./stream.ts";
-import { parseClaudeResult, type RunUsage } from "./usage.ts";
-import { pickProfile, waitingReason, type ProfileLoad, type RunNeeds } from "./schedule.ts";
+import { limitResetAt, parseClaudeResult, type RunUsage } from "./usage.ts";
+import { pickWithReason, waitingReason, type ProfileLoad, type RunNeeds } from "./schedule.ts";
 import { ACTIVE, RunStore } from "./store.ts";
 import {
   branchFor,
@@ -334,6 +335,8 @@ export class Runner {
   readonly #answers = new Map<number, { status: "accepted" | "rejected"; runId: string | null; error: RunRequestError | null }>();
   /** Where a queued best-of-n candidate's branch came from (see remoteStart), for its log. */
   readonly #startNotes = new Map<string, string>();
+  /** Why tick() took the profile it did (roadmap 24c), for the head of the run's log. */
+  readonly #pickNotes = new Map<string, string>();
   /** Requests being answered now: a heartbeat that comes meanwhile leaves them alone. */
   readonly #taking = new Set<number>();
   /** Stop-all (roadmap 27d) as the last heartbeat said; null in local mode and from a hub older than it. */
@@ -475,6 +478,9 @@ export class Runner {
     if (req.profileId && !this.#host.profiles().some((p) => p.id === req.profileId)) {
       throw new HiveError("not_found", `Không có profile ${req.profileId}.`, { key: "errors.profileNotFound", vars: { id: req.profileId } });
     }
+    if (req.preferKind != null && !PREFER_KINDS.includes(req.preferKind)) {
+      throw new HiveError("bad_request", `Loại gói không hợp lệ: ${String(req.preferKind)}`, { key: "errors.badPreferKind", vars: { kind: String(req.preferKind) } });
+    }
     const count = req.candidates ?? 1;
     if (!Number.isInteger(count) || count < 1 || count > MAX_CANDIDATES) {
       throw new HiveError("bad_request", `Số bản phải từ 1 đến ${MAX_CANDIDATES}.`, { key: "errors.badCandidates", vars: { max: MAX_CANDIDATES } });
@@ -507,6 +513,7 @@ export class Runner {
         attempt: 1,
         maxAttempts: this.#host.settings().maxAttempts,
         preferredProfile: req.profileId ?? null,
+        preferKind: req.profileId ? null : (req.preferKind ?? null),
         instructions: (req.instructions ?? "").slice(0, 4000),
         reviewAfter: req.reviewAfter ?? false,
         baseSha: previous?.baseSha ?? null,
@@ -543,6 +550,7 @@ export class Runner {
           reviewAfter: req.reviewAfter ?? false,
           baseSha,
           bestOf: { group, n: i + 1, of: count, from, pick: null, reason: null },
+          preferKind: req.preferKind ?? null,
           requestedBy,
         },
         now,
@@ -945,6 +953,8 @@ export class Runner {
           taskId: req.taskId,
           role: req.role,
           profileId: req.profileId,
+          // An older hub sends none.
+          preferKind: req.preferKind ?? null,
           reviewAfter: req.reviewAfter,
           candidates: req.candidates,
           instructions: req.instructions,
@@ -1072,12 +1082,13 @@ export class Runner {
             this.#waiting.set(run.id, tr("runNote.waitingParallel"));
             continue;
           }
-          const all = this.#loads();
+          const all = this.#loads(now);
           const needs = this.#needs(run);
           // A profile the agent policy rules out is skipped like one out of quota.
           const blocked = this.#policyBlocked(this.#policyOf(run.project));
           const loads = all.filter((l) => !blocked.has(l.profile.id));
-          const pick = pickProfile(loads, needs, now);
+          const picked = pickWithReason(loads, needs, now);
+          const pick = picked?.load ?? null;
           if (!pick) {
             const could = all.filter(
               (l) =>
@@ -1094,6 +1105,7 @@ export class Runner {
             continue;
           }
           this.#waiting.delete(run.id);
+          this.#pickNotes.set(run.id, picked!.reason);
           this.#launch(run, pick.profile);
         }
       } while (this.#again);
@@ -1201,7 +1213,7 @@ export class Runner {
     }
   }
 
-  #loads(): ProfileLoad[] {
+  #loads(now = new Date()): ProfileLoad[] {
     const pathEnv = this.#host.env().PATH ?? "";
     return this.#host.profiles().map((profile) => {
       const s = this.store.profileStats(profile.id);
@@ -1214,6 +1226,7 @@ export class Runner {
         loggedIn: this.#host.login?.(profile.id)?.loggedIn !== false,
         overLimit: usageStop(profile, this.#host.usage?.(profile.id)) !== null,
         headroom: usageHeadroom(profile, this.#host.usage?.(profile.id)),
+        resetAt: limitResetAt(profile, this.#host.usage?.(profile.id), now)?.toISOString() ?? null,
       };
     });
   }
@@ -1222,6 +1235,7 @@ export class Runner {
     const needs: RunNeeds = {
       role: run.role,
       preferredProfile: run.preferredProfile,
+      preferKind: run.preferKind,
       avoidKinds: run.avoidKinds,
       excludedProfiles: run.excludedProfiles,
       // A review is only a cross-review on another vendor: it waits for one that is busy.
@@ -1308,6 +1322,8 @@ export class Runner {
       const fresh = !candidate && !hasBranch(project.repo, branchFor(run.taskId)) ? await remoteStart(project.repo, project.targetBranch) : null;
       const startNote = fresh?.note ?? this.#startNotes.get(run.id) ?? null;
       this.#startNotes.delete(run.id);
+      const pickNote = this.#pickNotes.get(run.id) ?? null;
+      this.#pickNotes.delete(run.id);
       wt = ensureWorktree(
         project.repo,
         path.join(root, project.name, name),
@@ -1439,7 +1455,7 @@ export class Runner {
           })
         : null;
       log.write(
-        `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image} · ${egress ? `network limited (${egress.env.HIVE_EGRESS_ALLOW})` : "network open"}\n` : ""}${startNote ? `# ${startNote}\n` : ""}# hive context: ${context.note}\n${toolLines}# cwd ${wt.path}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n${policyLine(pol, fit)}\n${skipped}\n## Prompt\n${prompt}\n\n## Output\n`,
+        `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image} · ${egress ? `network limited (${egress.env.HIVE_EGRESS_ALLOW})` : "network open"}\n` : ""}${startNote ? `# ${startNote}\n` : ""}# hive context: ${context.note}\n${toolLines}# cwd ${wt.path}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n${pickNote ? `# ${pickNote}\n` : ""}${policyLine(pol, fit)}\n${skipped}\n## Prompt\n${prompt}\n\n## Output\n`,
       );
 
       // Cancelled while this run was being set up: stop here rather than start an agent nobody waits for.
@@ -1691,6 +1707,7 @@ export class Runner {
           parentRunId: run.id,
           avoidKinds: run.avoidKinds,
           excludedProfiles: [...new Set([...run.excludedProfiles, profile.id])],
+          preferKind: run.preferKind,
           instructions: run.instructions,
           reviewAfter: run.reviewAfter,
           baseSha: done.baseSha,
@@ -1720,6 +1737,8 @@ export class Runner {
           maxAttempts: run.maxAttempts,
           parentRunId: run.id,
           avoidKinds: [profile.kind],
+          // The cross-review still needs another vendor; within that, the kind asked for.
+          preferKind: run.preferKind,
           baseSha: done.baseSha,
           requestedBy: run.requestedBy,
         },

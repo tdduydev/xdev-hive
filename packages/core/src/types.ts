@@ -1,6 +1,6 @@
 import type { Access } from "./access.ts";
 import type { AgentPolicy } from "./agent-policy.ts";
-import type { AgentProfile, AgentRole } from "./agents.ts";
+import type { AgentProfile, AgentRole, PreferKind } from "./agents.ts";
 import type { MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { WriteSource } from "./source.ts";
 import type { MapPhase } from "./mapreduce.ts";
@@ -755,6 +755,8 @@ export interface RunRequest {
   role: AgentRole;
   /** Pinned profile; null: the machine rotates its profiles. */
   profileId: string | null;
+  /** Unpinned: the kind to wait for while one of its profiles could take the run (roadmap 24c); null: any. */
+  preferKind: PreferKind | null;
   reviewAfter: boolean;
   candidates: number;
   instructions: string;
@@ -797,6 +799,7 @@ export interface RunGroupItem {
   /** null: any free machine, picked when the item is released; then the one picked. */
   machineId: string | null;
   profileId: string | null;
+  preferKind: PreferKind | null;
   instructions: string;
   status: RunGroupItemStatus;
   request: RunRequest | null;

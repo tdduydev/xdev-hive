@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { AgentKind, AgentRole, AgentRun, BestOf, CiFix, MrState, MrStatus, PipelineStatus, RunStatus } from "@xdev-hive/core";
+import type { AgentKind, AgentRole, PreferKind, AgentRun, BestOf, CiFix, MrState, MrStatus, PipelineStatus, RunStatus } from "@xdev-hive/core";
 import { tr } from "#desktop/main/i18n.ts";
 
 const SCHEMA = `
@@ -48,6 +48,8 @@ const ADDED_COLUMNS: Array<[name: string, ddl: string]> = [
   /** Input written to and read from the prompt cache (roadmap 28c); null for runs from before. */
   ["cache_write_tokens", "INTEGER"],
   ["cache_read_tokens", "INTEGER"],
+  /** The kind the run prefers (roadmap 24c); null: any. */
+  ["prefer_kind", "TEXT"],
 ];
 
 type Row = Record<string, unknown>;
@@ -66,6 +68,7 @@ function toRun(r: Row): AgentRun {
     status: r.status as RunStatus,
     profileId: s(r.profile_id),
     preferredProfile: s(r.preferred_profile),
+    preferKind: s(r.prefer_kind) as PreferKind | null,
     avoidKinds: JSON.parse(String(r.avoid_kinds)) as AgentKind[],
     excludedProfiles: JSON.parse(String(r.excluded_profiles)) as string[],
     attempt: Number(r.attempt),
@@ -108,7 +111,7 @@ const encode = (field: string, value: unknown) =>
   JSON_FIELDS.has(field) ? JSON.stringify(value) : BOOL_FIELDS.has(field) ? (value ? 1 : 0) : (value ?? null);
 
 export type NewRun = Pick<AgentRun, "project" | "taskId" | "taskTitle" | "role" | "attempt" | "maxAttempts"> &
-  Partial<Pick<AgentRun, "preferredProfile" | "avoidKinds" | "excludedProfiles" | "parentRunId" | "worktree" | "branch" | "baseSha" | "instructions" | "reviewAfter" | "ciFix" | "bestOf" | "requestedBy">>;
+  Partial<Pick<AgentRun, "preferredProfile" | "preferKind" | "avoidKinds" | "excludedProfiles" | "parentRunId" | "worktree" | "branch" | "baseSha" | "instructions" | "reviewAfter" | "ciFix" | "bestOf" | "requestedBy">>;
 
 export const ACTIVE: RunStatus[] = ["queued", "running"];
 
