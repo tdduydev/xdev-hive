@@ -1840,6 +1840,13 @@ export const en: Catalog = {
     importUsed: "folder used",
     importFailed: "failed",
     importToSystem: "Put them in system",
+    subReposTitle: { one: "This folder holds {count} repository", other: "This folder holds {count} repositories" },
+    subReposHint:
+      "{path} is not a git repo, so it cannot be a project. Each repository below becomes a project of its own: clear the ones you do not want, change a project key if you like. Scans three levels down, leaving out node_modules and hidden folders.",
+    subReposBranch: "Target branch",
+    subReposAdd: { one: "Add {count} project", other: "Add {count} projects" },
+    subReposAdding: "Adding…",
+    subReposAdded: "added",
     subtitle: "Which hub this machine is connected to, and the GitLab or GitHub it opens MRs on. Add projects and install tools on the Projects & tools page.",
     connection: "Connection",
     connectedTo: "Connected to {hub} · account {account} · machine {machine}",
