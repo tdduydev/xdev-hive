@@ -63,6 +63,11 @@
   --sidebar-ring: var(--focus-color);
 }
 
+@media (max-width: 767px) {
+  input, textarea, select { font-size: 16px; }
+  button:not([data-slot="switch"]) { min-height: 40px; }
+}
+
 @theme inline {
   /* shadcn names */
   --color-background: var(--background);

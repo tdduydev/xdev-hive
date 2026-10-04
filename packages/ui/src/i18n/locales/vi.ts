@@ -11,6 +11,8 @@ export const vi = {
     copy: "Sao chép",
     copied: "Đã sao chép",
     loading: "Đang tải…",
+    showMore: "Xem thêm",
+    showLess: "Thu gọn",
   },
   language: {
     label: "Ngôn ngữ",
@@ -110,6 +112,7 @@ export const vi = {
     backOnline: "Đã kết nối lại {host}",
     nav: "Điều hướng",
     toggleSidebar: "Ẩn hoặc hiện thanh bên",
+    closeSidebar: "Đóng menu",
     sidebarShortcut: "Thanh bên (⌘B)",
     search: "Tìm task, tài liệu hoặc chạy lệnh",
     newTask: "Task mới",
