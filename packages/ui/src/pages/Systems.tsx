@@ -1,17 +1,18 @@
 // Systems (roadmap 19b): the projects that make one product, a repository (service) each. Picked in the sidebar,
 // the pages show the tasks, runs, merge requests and chat of every project in the system.
-import { useState } from "react";
-import { Boxes } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Boxes, FolderGit2, Search } from "lucide-react";
 import { PROJECT_NAME, type HiveSystem } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@xdev-hive/ui/components/ui/dropdown-menu";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { Badge, Empty, ErrorNote, Page, PageHeader } from "#ui/components/common.tsx";
-import { formatTime, useAction, useCan, useHive } from "#ui/hooks.ts";
+import { formatTime, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
-import { systemScope } from "#ui/lib/scope.ts";
+import { nameMatches, outsideSystems, projectScope, systemScope } from "#ui/lib/scope.ts";
 import { AgentPolicyCard } from "#ui/pages/admin/AgentPolicy.tsx";
 import { SdlcGatesCard } from "#ui/pages/admin/SdlcGates.tsx";
 
@@ -21,6 +22,11 @@ export function SystemsPage() {
   const allow = useCan();
   // The system being edited, "" for a new one.
   const [editing, setEditing] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  // A system shows when its name or one of its projects matches: looking for a project finds the system it is in.
+  const shown = systems.filter((s) => nameMatches(s.name, query) || s.projects.some((p) => nameMatches(p, query)));
+  const outside = useMemo(() => outsideSystems(projects, systems), [projects, systems]);
+  const outsideShown = outside.filter((p) => nameMatches(p, query));
 
   return (
     <Page>
@@ -35,13 +41,30 @@ export function SystemsPage() {
           )
         }
       />
+      {systems.length + outside.length > 0 ? (
+        <div className="relative max-w-sm">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+          <Input
+            className="pl-8"
+            type="search"
+            data-systems-search
+            placeholder={t("systems.search")}
+            aria-label={t("systems.search")}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+      ) : null}
       {editing === "" ? <SystemEditor system={null} onDone={() => setEditing(null)} /> : null}
       {systems.length === 0 && editing !== "" ? <Empty>{t("systems.none")}</Empty> : null}
-      {systems.map((s) =>
+      {query.trim() && systems.length + outside.length > 0 && shown.length + outsideShown.length === 0 ? (
+        <Empty>{t("systems.noMatch", { query: query.trim() })}</Empty>
+      ) : null}
+      {shown.map((s) =>
         editing === s.name ? (
           <SystemEditor key={s.name} system={s} onDone={() => setEditing(null)} />
         ) : (
-          <Card key={s.name}>
+          <Card key={s.name} data-system={s.name}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 font-mono">
                 <Boxes className="size-4 text-muted-foreground" />
@@ -90,6 +113,7 @@ export function SystemsPage() {
           </Card>
         ),
       )}
+      <OutsideProjects all={outside} shown={outsideShown} />
       {/* A project manager has no Web Admin: their project's agent policy row lives here, with its other settings. */}
       {me.mode === "hub" && !(me.role === "admin" && !me.access) && projects.some((p) => allow(p, "projectSettings")) ? (
         <>
@@ -98,6 +122,84 @@ export function SystemsPage() {
         </>
       ) : null}
     </Page>
+  );
+}
+
+/** The projects no system has (roadmap 36c), one line each with its open tasks, to open or add to a system. */
+function OutsideProjects({ all, shown }: { all: string[]; shown: string[] }) {
+  const { client, systems, bump, scope, setScope } = useHive();
+  const t = useT();
+  const allow = useCan();
+  const action = useAction();
+  // At most 200 projects per call (the method's limit); past that the count is left out rather than guessed.
+  const asked = all.slice(0, 200);
+  const tasks = useQuery(async () => (asked.length ? client.call("tasks.list", { projects: asked }) : []), [client, asked.join(",")]);
+  const open = useMemo(() => {
+    const n = new Map<string, number>();
+    for (const task of tasks.data ?? []) if (task.status !== "done") n.set(task.project, (n.get(task.project) ?? 0) + 1);
+    return n;
+  }, [tasks.data]);
+  // systems.save needs the project's settings and every project the system already has, as the editor does.
+  const targets = systems.filter((s) => s.projects.every((p) => allow(p, "projectSettings")));
+  // Hidden while a search matches none of them; the page says so when nothing at all matches.
+  if (shown.length === 0) return null;
+
+  const add = (project: string, name: string) =>
+    void action.run(async () => {
+      const before = systems.find((s) => s.name === name)?.projects ?? [];
+      const saved = await client.call("systems.save", { name, projects: [...new Set([...before, project])] });
+      if (scope.kind === "system" && scope.system === saved.name) setScope(systemScope(saved.name, saved.projects));
+      bump();
+    });
+
+  return (
+    <Card data-systems-outside>
+      <CardHeader>
+        <CardTitle>{t("systems.outside")}</CardTitle>
+        <CardDescription>{t("systems.outsideHint")}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        <ErrorNote error={action.error} />
+        <ul className="flex flex-col divide-y">
+          {shown.map((p) => (
+            <li key={p} data-outside-project={p} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
+              <FolderGit2 className="size-4 text-muted-foreground" aria-hidden />
+              <span className="font-mono text-sm">{p}</span>
+              {tasks.data && asked.includes(p) ? (
+                <span className="text-xs text-muted-foreground">{t("systems.openTasks", { count: open.get(p) ?? 0 })}</span>
+              ) : null}
+              <span className="flex-1" />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setScope(projectScope(p));
+                  window.location.hash = "#/overview";
+                }}
+              >
+                {t("systems.open")}
+              </Button>
+              {allow(p, "projectSettings") && targets.length ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant="ghost" data-outside-add={p} disabled={action.busy}>
+                      {t("systems.addTo")}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {targets.map((s) => (
+                      <DropdownMenuItem key={s.name} className="font-mono" onSelect={() => add(p, s.name)}>
+                        {s.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
   );
 }
 
