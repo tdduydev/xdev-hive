@@ -814,6 +814,62 @@ function ProjectGitLab({ project, onSaved }: { project: DesktopProject; onSaved:
   );
 }
 
+/**
+ * Reference repos of a project (roadmap 38h): other projects of the same system whose checkout is on this machine.
+ * A run reads them and never writes in them, so a task on one service can read the old service's code. Only the
+ * same system is offered: a repo of another product is never the context of this one.
+ */
+function ProjectReferences({ project, projects, onSaved }: { project: DesktopProject; projects: DesktopProject[]; onSaved: () => void }) {
+  const { client, systems } = useHive();
+  const t = useT();
+  const action = useAction();
+  const [picked, setPicked] = useState<string[]>(project.references ?? []);
+  const sameSystem = new Set(systems.filter((s) => s.projects.includes(project.name)).flatMap((s) => s.projects));
+  // A name saved before (a project since removed, or one out of the system now) stays on the list to be unticked.
+  const names = [...new Set([...projects.map((p) => p.name).filter((n) => n !== project.name && sameSystem.has(n)), ...picked])].sort();
+  const toggle = (name: string, on: boolean) => setPicked((list) => (on ? [...new Set([...list, name])] : list.filter((n) => n !== name)));
+
+  return (
+    <form
+      className="flex flex-col gap-2 border-t border-dashed pt-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void action.run(async () => {
+          await client.desktop!.updateProject(project.name, { references: picked });
+          onSaved();
+        });
+      }}
+    >
+      <div className="text-sm font-medium">{t("projects.references")}</div>
+      <p className="text-xs text-muted-foreground">{t("projects.referencesHint")}</p>
+      {names.length ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          {names.map((name) => {
+            const local = projects.find((p) => p.name === name);
+            return (
+              <div key={name} className="flex items-center gap-2">
+                <Checkbox id={`ref-${project.name}-${name}`} checked={picked.includes(name)} onCheckedChange={(v) => toggle(name, v === true)} />
+                <Label htmlFor={`ref-${project.name}-${name}`} className="font-normal">
+                  <span className="font-mono text-xs">{name}</span>
+                  <span className="font-mono text-xs text-muted-foreground">{local ? local.repo : t("projects.referencesGone")}</span>
+                </Label>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">{t("projects.referencesNone")}</p>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" variant="outline" type="submit" disabled={action.busy}>
+          {t("projects.save")}
+        </Button>
+        <ErrorNote error={action.error} />
+      </div>
+    </form>
+  );
+}
+
 export function ProjectsCard({ settings, onChanged }: { settings: DesktopSettings; onChanged: () => void }) {
   const { client, bump } = useHive();
   const t = useT();
@@ -826,6 +882,7 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
   const [gitlabOpen, setGitlabOpen] = useState<string | null>(null);
   // A folder that is no repository but holds some (roadmap 38d): what to offer instead of refusing it.
   const [found, setFound] = useState<RepoScan | null>(null);
+  const [refsOpen, setRefsOpen] = useState<string | null>(null);
   const nameValid = PROJECT_NAME.test(name);
   const profiles = useQuery(() => desktop.profiles(), [desktop]);
 
@@ -892,6 +949,10 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
                     <Button size="sm" variant="ghost" onClick={() => setGitlabOpen(gitlabOpen === p.name ? null : p.name)} aria-expanded={gitlabOpen === p.name}>
                       {t("projects.forgeOf")}
                     </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setRefsOpen(refsOpen === p.name ? null : p.name)} aria-expanded={refsOpen === p.name}>
+                      {t("projects.references")}
+                      {p.references?.length ? <Badge tone="info">{p.references.length}</Badge> : null}
+                    </Button>
                     <Button size="sm" variant="ghost" onClick={() => void desktop.showInFolder(p.repo)}>
                       {t("projects.open")}
                     </Button>
@@ -917,6 +978,16 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
                     project={p}
                     onSaved={() => {
                       setGitlabOpen(null);
+                      onChanged();
+                    }}
+                  />
+                ) : null}
+                {refsOpen === p.name ? (
+                  <ProjectReferences
+                    project={p}
+                    projects={settings.projects}
+                    onSaved={() => {
+                      setRefsOpen(null);
                       onChanged();
                     }}
                   />

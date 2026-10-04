@@ -36,7 +36,7 @@ export interface ContainerRun {
   gitDir: string;
   /** What the agent gets: HIVE_*, the profile's env, the command's own. */
   env: Record<string, string>;
-  /** More files of the machine the container reads (mounted read-only), e.g. the MCP config. */
+  /** More files and folders of the machine the container reads (mounted read-only), e.g. the MCP config, reference repos. */
   readOnly?: string[];
   /** A restricted network (egress.ts): its docker arguments and the proxy variables. */
   network?: { args: string[]; env: Record<string, string> };
@@ -77,6 +77,8 @@ export function containerCommand(run: ContainerRun): ContainerCommand {
   const mounts = [...new Set([run.worktree, run.gitDir, ...loginPaths(run.profile, home), path.join(home, ".gitconfig")])].filter(
     (p, i) => i < 2 || exists(p),
   );
+  // Docker refuses the same destination twice, so a path already mounted (writable) is not mounted again read-only.
+  const readOnly = [...new Set(run.readOnly ?? [])].filter((p) => !mounts.includes(p));
   const args = [
     "run",
     "--rm",
@@ -89,7 +91,7 @@ export function containerCommand(run: ContainerRun): ContainerCommand {
     "--tmpfs",
     `${home}:rw,exec${user ? `,uid=${user.uid},gid=${user.gid}` : ""}`,
     ...mounts.flatMap((p) => ["-v", `${p}:${p}${p.endsWith(".gitconfig") ? ":ro" : ""}`]),
-    ...(run.readOnly ?? []).flatMap((p) => ["-v", `${p}:${p}:ro`]),
+    ...readOnly.flatMap((p) => ["-v", `${p}:${p}:ro`]),
     ...(run.network?.args ?? []),
     "--workdir",
     run.worktree,
