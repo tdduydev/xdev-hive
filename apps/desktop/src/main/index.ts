@@ -89,6 +89,9 @@ const smokeShot = process.env.HIVE_SMOKE_SCREENSHOT;
 // A screenshot run gets its own profile dir: the single-instance lock (and localStorage) live there,
 // so it neither quits because the real app is open nor touches the real app's state.
 if (smokeShot) app.setPath("userData", mkdtempSync(path.join(os.tmpdir(), "hive-smoke-ui-")));
+// HIVE_SMOKE_SIZE=1100x800: the window the screenshot is taken in, so a page can be shot at the widths it has to
+// work at (roadmap 39g, the Board at 1100 and 1440). Screenshot runs only: never resizes a real window.
+const smokeSize = smokeShot ? /^(\d+)x(\d+)$/.exec(process.env.HIVE_SMOKE_SIZE ?? "") : null;
 const devUrl = process.env.ELECTRON_RENDERER_URL;
 
 let config: HiveConfig;
@@ -1047,8 +1050,10 @@ function registerIpc(): void {
 
 function createWindow(): void {
   win = new BrowserWindow({
-    width: 1240,
-    height: 820,
+    width: smokeSize ? Number(smokeSize[1]) : 1240,
+    height: smokeSize ? Number(smokeSize[2]) : 820,
+    // The asked-for size is what the page gets, frame and title bar apart: the shot proves that width.
+    ...(smokeSize ? { useContentSize: true } : {}),
     minWidth: 820,
     minHeight: 560,
     title: "xDev Hive",

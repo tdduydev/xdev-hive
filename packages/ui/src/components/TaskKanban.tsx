@@ -1,24 +1,16 @@
 // The tasks of every project the reader sees as columns by status (roadmap 30a, asked 2/10): the Task page and the
 // Web Admin. Like the desktop's Board, but for the hub's tasks: a card names its project, and a drag moves it only
 // where the reader may work on that project.
-import { useEffect, useMemo, useState, type ComponentType, type DragEvent } from "react";
-import { Ban, Circle, CircleCheck, GitPullRequest, LoaderCircle } from "lucide-react";
+import { useEffect, useMemo, useState, type DragEvent } from "react";
 import { cn } from "cn";
-import { TASK_STATUSES, type RunRequest, type Task, type TaskStatus } from "@xdev-hive/core";
+import { type RunRequest, type Task, type TaskStatus } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
+import { BoardColumns } from "#ui/components/BoardColumns.tsx";
 import { ErrorNote, OwnerBadge } from "#ui/components/common.tsx";
 import { errorMessage, useCan, useHive } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { columnOf, ownerLabel, waitingLabels } from "#ui/lib/tasks.ts";
 import { useToast } from "#ui/shell/toast.tsx";
-
-export const COLUMN_ICON: Record<TaskStatus, [ComponentType<{ className?: string }>, string]> = {
-  todo: [Circle, "text-fg-muted"],
-  doing: [LoaderCircle, "text-running"],
-  review: [GitPullRequest, "text-warning"],
-  blocked: [Ban, "text-danger"],
-  done: [CircleCheck, "text-success"],
-};
 
 /** Done piles up: the newest this many, the rest one click away. */
 const DONE_SHOWN = 30;
@@ -50,7 +42,6 @@ export function TaskKanban({
   const [moved, setMoved] = useState<Record<string, TaskStatus>>({});
   useEffect(() => setMoved({}), [tasks]);
   const [drag, setDrag] = useState<Task | null>(null);
-  const [over, setOver] = useState<TaskStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [allDone, setAllDone] = useState(false);
   const list = useMemo(() => tasks.map((task) => (moved[task.id] ? { ...task, status: moved[task.id]!, waitingOn: moved[task.id] === "todo" ? task.waitingOn : [] } : task)), [tasks, moved]);
@@ -78,43 +69,26 @@ export function TaskKanban({
       },
     );
   };
-  const drop = (status: TaskStatus) => (e: DragEvent) => {
-    e.preventDefault();
-    const task = drag;
-    setDrag(null);
-    setOver(null);
-    if (task && columnOf(task) !== status) move(task, status);
-  };
+  const of = (status: TaskStatus) => list.filter((task) => columnOf(task) === status);
 
   return (
     <div className="flex flex-col gap-2">
       <ErrorNote error={error} />
       <div className="overflow-x-auto pb-1" aria-label={t("board.board")}>
-        <div className="grid min-w-[1100px] grid-cols-[repeat(5,minmax(210px,1fr))] gap-2.5">
-          {TASK_STATUSES.map((status) => {
-            const all = list.filter((task) => columnOf(task) === status);
+        <BoardColumns
+          count={(status) => of(status).length}
+          dragging={drag !== null}
+          onDropTask={(status) => {
+            const task = drag;
+            setDrag(null);
+            if (task && columnOf(task) !== status) move(task, status);
+          }}
+        >
+          {(status) => {
+            const all = of(status);
             const column = status === "done" && !allDone ? all.slice(0, DONE_SHOWN) : all;
-            const [Icon, iconCls] = COLUMN_ICON[status];
             return (
-              <section
-                key={status}
-                aria-label={t(`taskStatus.${status}`)}
-                onDragOver={(e) => {
-                  if (!drag) return;
-                  e.preventDefault();
-                  if (over !== status) setOver(status);
-                }}
-                onDragLeave={(e) => {
-                  if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver((o) => (o === status ? null : o));
-                }}
-                onDrop={drop(status)}
-                className={cn("flex min-h-40 flex-col gap-1.5 rounded-[10px] border border-dashed p-2", over === status ? "border-line-selected bg-selected" : "border-transparent bg-subtle")}
-              >
-                <div className="flex items-center gap-1.5 px-1 pt-0.5 pb-1" title={t("board.column", { status: t(`taskStatus.${status}`), count: all.length })}>
-                  <Icon className={cn("size-3.5", iconCls)} />
-                  <span className="text-xs/none font-semibold text-fg-strong">{t(`taskStatus.${status}`)}</span>
-                  <span className="text-xs/none text-fg-muted">{all.length}</span>
-                </div>
+              <>
                 {column.map((task) => (
                   <KanbanCard
                     key={key(task)}
@@ -129,10 +103,7 @@ export function TaskKanban({
                       e.dataTransfer.effectAllowed = "move";
                       setDrag(task);
                     }}
-                    onDragEnd={() => {
-                      setDrag(null);
-                      setOver(null);
-                    }}
+                    onDragEnd={() => setDrag(null)}
                     onOpen={() => onOpen(task.id)}
                   />
                 ))}
@@ -141,10 +112,10 @@ export function TaskKanban({
                     {t("tasks.showOlderDone", { count: all.length - column.length })}
                   </Button>
                 ) : null}
-              </section>
+              </>
             );
-          })}
-        </div>
+          }}
+        </BoardColumns>
       </div>
     </div>
   );

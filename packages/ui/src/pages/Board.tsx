@@ -8,7 +8,6 @@ import {
   AGENT_ROLES,
   PREFER_KINDS,
   TASK_STATUSES,
-  usageStop,
   type AgentProfileStatus,
   type AgentRole,
   type AgentRun,
@@ -25,9 +24,10 @@ import { Badge, ErrorNote, Notice, StatusDot } from "#ui/components/common.tsx";
 import { PausedNotice } from "#ui/components/StopAgents.tsx";
 import { errorMessage, formatTime, useAction, useCan, useHive, useProjects, useQuery } from "#ui/hooks.ts";
 import { rich, useT, type TFunction } from "#ui/i18n/index.tsx";
+import { profileState, profileSummary } from "#ui/lib/board.ts";
 import { runDuration } from "#ui/lib/runs.ts";
 import { projectScope, scopeProject } from "#ui/lib/scope.ts";
-import { COLUMN_ICON } from "#ui/components/TaskKanban.tsx";
+import { BoardColumns } from "#ui/components/BoardColumns.tsx";
 import { columnOf, ownerLabel, waitingLabels } from "#ui/lib/tasks.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
@@ -116,7 +116,6 @@ export function BoardPage() {
   // Status changes made here, shown before the list reloads.
   const [moved, setMoved] = useState<Record<string, TaskStatus>>({});
   const [dragId, setDragId] = useState<string | null>(null);
-  const [over, setOver] = useState<TaskStatus | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
 
   const latestRun = useMemo(() => {
@@ -160,11 +159,9 @@ export function BoardPage() {
       },
     );
   };
-  const drop = (status: TaskStatus) => (e: DragEvent) => {
-    e.preventDefault();
+  const drop = (status: TaskStatus, e: DragEvent) => {
     const id = dragId ?? e.dataTransfer.getData("text/plain");
     setDragId(null);
-    setOver(null);
     const task = list.find((x) => x.id === id);
     if (task && columnOf(task) !== status) move(task, status);
   };
@@ -228,54 +225,29 @@ export function BoardPage() {
           </div>
         ) : null}
         <div className="min-h-0 flex-1 overflow-auto px-3.5 py-3" aria-label={t("board.board")}>
-          <div className="grid min-h-full min-w-[1150px] grid-cols-[repeat(5,minmax(220px,1fr))] gap-2.5">
-            {TASK_STATUSES.map((status) => {
-              const column = list.filter((task) => columnOf(task) === status);
-              const [Icon, iconCls] = COLUMN_ICON[status];
-              return (
-                <section
-                  key={status}
-                  aria-label={t(`taskStatus.${status}`)}
-                  onDragOver={(e) => {
-                    if (!canMove || !dragId) return;
-                    e.preventDefault();
-                    if (over !== status) setOver(status);
-                  }}
-                  onDragLeave={(e) => {
-                    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver((o) => (o === status ? null : o));
-                  }}
-                  onDrop={drop(status)}
-                  className={cn("flex flex-col gap-1.5 rounded-[10px] border border-dashed p-2", over === status ? "border-line-selected bg-selected" : "border-transparent bg-subtle")}
-                >
-                  <div className="flex items-center gap-1.5 px-1 pt-0.5 pb-1" title={t("board.column", { status: t(`taskStatus.${status}`), count: column.length })}>
-                    <Icon className={cn("size-3.5", iconCls)} />
-                    <span className="text-xs/none font-semibold text-fg-strong">{t(`taskStatus.${status}`)}</span>
-                    <span className="text-xs/none text-fg-muted">{column.length}</span>
-                  </div>
-                  {column.map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      run={latestRun.get(task.id) ?? null}
-                      isNext={task.id === nextId}
-                      selected={task.id === selected}
-                      draggable={canMove}
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData("text/plain", task.id);
-                        e.dataTransfer.effectAllowed = "move";
-                        setDragId(task.id);
-                      }}
-                      onDragEnd={() => {
-                        setDragId(null);
-                        setOver(null);
-                      }}
-                      onOpen={() => setSelected(task.id)}
-                    />
-                  ))}
-                </section>
-              );
-            })}
-          </div>
+          <BoardColumns count={(status) => list.filter((task) => columnOf(task) === status).length} dragging={canMove && dragId !== null} onDropTask={drop}>
+            {(status) =>
+              list
+                .filter((task) => columnOf(task) === status)
+                .map((task) => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    run={latestRun.get(task.id) ?? null}
+                    isNext={task.id === nextId}
+                    selected={task.id === selected}
+                    draggable={canMove}
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("text/plain", task.id);
+                      e.dataTransfer.effectAllowed = "move";
+                      setDragId(task.id);
+                    }}
+                    onDragEnd={() => setDragId(null)}
+                    onOpen={() => setSelected(task.id)}
+                  />
+                ))
+            }
+          </BoardColumns>
         </div>
       </div>
       {inspected ? (
@@ -295,36 +267,52 @@ export function BoardPage() {
   );
 }
 
+/**
+ * The subscriptions in one line ("5/7 gói sẵn sàng · 1 đang nghỉ", roadmap 39g), so the top of the Board stays one
+ * row at 1100px. Each one's own state is in the tooltip, and the chip opens the page that fixes them.
+ */
 function ProfileStrip({ profiles }: { profiles: AgentProfileStatus[] }) {
   const t = useT();
+  const { client } = useHive();
   if (!profiles.length) return null;
-  return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1" aria-label={t("board.profileStatus")}>
-      {profiles.map((p) => {
-        const resting = p.cooldownUntil !== null;
-        const signedOut = p.login?.loggedIn === false;
-        const overLimit = usageStop(p, p.usage) !== null;
-        const tone = !p.enabled ? "neutral" : signedOut ? "danger" : resting || overLimit ? "warn" : p.running ? "info" : "ok";
-        const text = !p.enabled
+  const sum = profileSummary(profiles);
+  const text = [
+    t("board.profileChip", { ready: sum.ready, total: sum.total }),
+    ...(sum.resting ? [t("board.profileChipResting", { count: sum.resting })] : []),
+    ...(sum.overLimit ? [t("board.profileChipOverLimit", { count: sum.overLimit })] : []),
+    ...(sum.signedOut ? [t("board.profileChipSignedOut", { count: sum.signedOut })] : []),
+    ...(sum.off ? [t("board.profileChipOff", { count: sum.off })] : []),
+  ].join(" · ");
+  const tone = sum.signedOut ? "danger" : sum.resting || sum.overLimit ? "warn" : sum.ready ? "ok" : "neutral";
+  // The whole state of each subscription, for whoever hovers: the chip itself counts them only.
+  const detail = profiles
+    .map((p) => {
+      const state = profileState(p);
+      const says =
+        state === "off"
           ? t("board.profileOff")
-          : signedOut
+          : state === "signedOut"
             ? t("board.profileSignedOut")
-            : overLimit
+            : state === "overLimit"
               ? t("board.profileOverLimit")
-              : resting
+              : state === "resting"
                 ? t("board.profileResting", { time: formatTime(p.cooldownUntil) })
                 : p.running
                   ? t("board.profileRunning", { running: p.running, max: p.maxConcurrent })
                   : t("board.profileReady");
-        return (
-          <span key={p.id} className="inline-flex min-w-0 items-center gap-1.5" title={p.cooldownReason ?? p.label}>
-            <StatusDot tone={tone} />
-            <span className="font-mono text-[11px] break-all text-fg-strong">{p.id}</span>
-            <span className="text-[11px] text-fg-muted">{text}</span>
-          </span>
-        );
-      })}
-    </div>
+      return `${p.id} · ${says}${p.cooldownReason ? ` (${p.cooldownReason})` : ""}`;
+    })
+    .join("\n");
+  return (
+    <a
+      href={client.desktop ? "#/agents" : "#/machines"}
+      title={detail}
+      data-profile-chip
+      className="inline-flex min-w-0 items-center gap-1.5 rounded-sm border border-line-default px-2 py-1 text-[11px] text-fg-secondary outline-none hover:bg-hover focus-visible:focus-ring"
+    >
+      <StatusDot tone={tone} />
+      <span className="truncate">{text}</span>
+    </a>
   );
 }
 
