@@ -22,10 +22,11 @@ import { Tabs, TabsList, TabsTrigger } from "@xdev-hive/ui/components/ui/tabs";
 import { DocMarkdown } from "#ui/components/DocMarkdown.tsx";
 import { ErrorNote } from "#ui/components/common.tsx";
 import { FlowList } from "#ui/components/FlowCard.tsx";
-import { Chip, DetailBody, DetailHeader, ListItem, ListPane, type ChipKind } from "#ui/components/panes.tsx";
+import { Chip, DetailBody, DetailHeader, ListItem, ListPane, PaneEmpty, type ChipKind } from "#ui/components/panes.tsx";
 import { formatTime, useAction, useCan, useHashParam, useHive, useQuery } from "#ui/hooks.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 import { useT } from "#ui/i18n/index.tsx";
+import { emptyState } from "#ui/lib/empty.ts";
 import { inScope, projectScope, scopeFilter, scopeKey } from "#ui/lib/scope.ts";
 import { fold } from "#ui/lib/text.ts";
 
@@ -71,6 +72,9 @@ export function SpecsPage() {
   const allow = useCan();
   const newProject = scope.kind === "project" && allow(scope.project, "taskManage") && allow(scope.project, "runDispatch") ? scope.project : null;
   const [creating, setCreating] = useState(false);
+  const empty = emptyState({ loaded: Boolean(list.data), total: features.length, shown: shown.length, query: needle });
+  // A feature belongs to one repo, so the team-wide scope can never have any: say that instead of offering to write one.
+  const noScope = scope.kind === "shared";
 
   const pick = (f: SpecFeature) => {
     setCreating(false);
@@ -118,8 +122,8 @@ export function SpecsPage() {
             meta={`${f.machine} · ${formatTime(f.pushedAt)} · ${f.commit}`}
           />
         ))}
-        {list.data && !features.length ? <p className="m-0 px-3 py-8 text-center text-xs/5 text-fg-muted">{t("specs.empty")}</p> : null}
-        {features.length && !shown.length ? <p className="m-0 px-3 py-8 text-center text-xs text-fg-muted">{t("specs.noMatch")}</p> : null}
+        {/* The button for an empty list sits in the wide pane on the right, so the narrow list keeps the sentence alone. */}
+        {empty ? <PaneEmpty>{t(empty === "noMatch" ? "specs.noMatch" : noScope ? "specs.sharedScope" : "specs.empty")}</PaneEmpty> : null}
       </ListPane>
       <div className="flex min-w-0 flex-1 flex-col">
         {creating && newProject ? (
@@ -147,6 +151,22 @@ export function SpecsPage() {
                   {t("specs.showAll")}
                 </button>
               </span>
+            ) : empty === "none" && noScope ? (
+              <PaneEmpty>{t("specs.sharedScope")}</PaneEmpty>
+            ) : empty === "none" ? (
+              <PaneEmpty
+                action={
+                  newProject ? (
+                    <Button size="sm" data-empty-action onClick={() => setCreating(true)}>
+                      {t("specs.newFirst")}
+                    </Button>
+                  ) : null
+                }
+              >
+                {t("specs.empty")}
+                {/* What it takes to get there (Spec Kit, the push) stays a size down: the sentence above is the point. */}
+                <span className="mt-1.5 block text-[11px]/4">{t("specs.emptyHow")}</span>
+              </PaneEmpty>
             ) : list.data && features.length ? (
               t("specs.pick")
             ) : null}

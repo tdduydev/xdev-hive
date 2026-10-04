@@ -82,20 +82,7 @@ await hive.call("tasks.create", { id: "T-001", project: "demo", title: "Thêm tr
 await hive.call("tasks.create", { id: "T-002", project: "demo", title: "Sửa lỗi phân trang danh sách" }, admin);
 // Waits on T-002 (roadmap 7): shown as blocked, and T-002 is the next ready task.
 await hive.call("tasks.create", { id: "T-003", project: "demo", title: "Viết test cho API đăng nhập", dependsOn: ["T-002"] }, admin);
-// A team skill and the project's own of the same name (roadmap 14c): the Skills page marks which one demo uses.
-const skill = (name, description, body) => `---\nname: ${name}\ndescription: ${description}\n---\n\n${body}\n`;
-await hive.call("docs.save", { key: "org/skills/review-pr", content: skill("review-pr", "Review a pull request: run the tests, read the diff, report a verdict.", "1. Run the tests.\n2. Read the diff."), baseVersion: 0 }, admin);
-await hive.call("docs.save", { key: "project/demo/skills/review-pr", content: skill("review-pr", "Review a demo PR: also check the settings page screenshots.", "1. Run npm test.\n2. Compare the screenshots."), baseVersion: 0 }, admin);
-await hive.call(
-  "docs.save",
-  { key: "project/demo/so-do", title: "Sơ đồ", content: "# Sơ đồ\n\n```mermaid\nflowchart LR\n  A[Yêu cầu] --> B{Máy rảnh?}\n  B -- có --> C[Chạy agent]\n```\n", baseVersion: 0 },
-  admin,
-);
 hive.close();
-new RunStore(path.join(work, "runs.db")).insert(
-  { project: "demo", taskId: "T-001", taskTitle: "Thêm trang cài đặt workspace", role: "implement", attempt: 1, maxAttempts: 3, reviewAfter: true },
-  new Date().toISOString(),
-);
 
 async function shoot(name, page, delay, extra = {}) {
   const shot = path.join(out, `${name}.png`);
@@ -125,6 +112,29 @@ async function shoot(name, page, delay, extra = {}) {
 
 const failures = [];
 
+// Roadmap 39h: Skill and Memory with nothing in them yet — before the skills below are seeded, and before a run is
+// queued, so the pages are quiet. EXPECT asserts the empty state's button is really there, not only in the picture.
+for (const page of ["skills", "memory"]) await shoot(`${page}-empty`, page, 1500, { HIVE_SMOKE_EXPECT: "[data-empty-action]" });
+
+{
+  const local = new SqliteHive(path.join(work, "local.db"));
+  // A team skill and the project's own of the same name (roadmap 14c): the Skills page marks which one demo uses.
+  const skill = (name, description, body) => `---\nname: ${name}\ndescription: ${description}\n---\n\n${body}\n`;
+  await local.call("docs.save", { key: "org/skills/review-pr", content: skill("review-pr", "Review a pull request: run the tests, read the diff, report a verdict.", "1. Run the tests.\n2. Read the diff."), baseVersion: 0 }, admin);
+  await local.call("docs.save", { key: "project/demo/skills/review-pr", content: skill("review-pr", "Review a demo PR: also check the settings page screenshots.", "1. Run npm test.\n2. Compare the screenshots."), baseVersion: 0 }, admin);
+  await local.call(
+    "docs.save",
+    { key: "project/demo/so-do", title: "Sơ đồ", content: "# Sơ đồ\n\n```mermaid\nflowchart LR\n  A[Yêu cầu] --> B{Máy rảnh?}\n  B -- có --> C[Chạy agent]\n```\n", baseVersion: 0 },
+    admin,
+  );
+  local.close();
+}
+new RunStore(path.join(work, "runs.db")).insert(
+  { project: "demo", taskId: "T-001", taskTitle: "Thêm trang cài đặt workspace", role: "implement", attempt: 1, maxAttempts: 3, reviewAfter: true },
+  new Date().toISOString(),
+);
+
+
 // Roadmap 39f: Board is the Task page now and Tool a part of Dự án & công cụ, so those two shots load the address
 // each page had before and check where it landed. HIVE_SMOKE_VIEW keeps the Task page on the board whatever view the
 // machine's localStorage remembers.
@@ -135,7 +145,8 @@ for (const [name, page, delay, extra] of [
   // Same wait as the setup shot above: the address lands there, and its checks take a moment.
   ["tools", "tools", 4000, { HIVE_SMOKE_EXPECT: 'nav a[href="#/setup"][aria-current="page"] && [data-project-tools]' }],
   ["docs", "docs", 1500],
-  ["skills", "skills", 1500],
+  // The Skills panel must have the skill's SKILL.md on screen, not only its frame (roadmap 39h: blank in the 3/10 shot).
+  ["skills", "skills", 1500, { HIVE_SMOKE_EXPECT: "[data-skill-doc]" }],
 ]) await shoot(name, page, delay, extra ?? {});
 // The menu of this mode at 1440×900 (roadmap 39f): twelve entries, none of them Board, Tool or Đợt chạy, and the
 // list fits without scrolling.

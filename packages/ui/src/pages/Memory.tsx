@@ -13,11 +13,12 @@ import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { BulkBar, bulkSummary } from "#ui/components/BulkBar.tsx";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
 import { HiddenChars } from "#ui/components/HiddenChars.tsx";
-import { Chip, DetailBody, DetailFooter, DetailHeader, FilterChips, KvRows, ListItem, ListPane, type ChipKind } from "#ui/components/panes.tsx";
+import { Chip, DetailBody, DetailFooter, DetailHeader, FilterChips, KvRows, ListItem, ListPane, PaneEmpty, type ChipKind } from "#ui/components/panes.tsx";
 import type { HiveClient } from "#ui/client.ts";
 import { formatTime, sourceText, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
 import { runBulk, splitMemory } from "#ui/lib/bulk.ts";
+import { emptyState } from "#ui/lib/empty.ts";
 import { defaultOwner, ownerName, scopeKey, type Scope } from "#ui/lib/scope.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
@@ -92,6 +93,13 @@ export function MemoryPage() {
   const pool = scope.kind === "system" ? scope.projects : projects;
   const defaultOwnerOf = scope.kind === "all" ? (pool[0] ?? null) : defaultOwner(scope, systems, (o) => allow(o, "memoryWrite"));
   const canAdd = allow(null, "memoryWrite") || projects.some((p) => allow(p, "memoryWrite")) || systems.some((s) => allow(systemOwner(s.name), "memoryWrite"));
+  const empty = emptyState({ loaded: Boolean(list.data), total: rows.length, shown: shown.length, query: submitted, filtered: filter !== "all" });
+  // Nothing written yet is the only case with something to do: the first entry, from the same button as the toolbar's.
+  const firstEntry = canAdd ? (
+    <Button size="sm" data-empty-action onClick={() => setSelected(NEW)}>
+      {t("memory.newFirst")}
+    </Button>
+  ) : null;
 
   // Pending entries in the chip filter being viewed, of projects the person manages (as approving one by one).
   const selectable = shown.filter((m) => m.status === "pending" && allow(m.project, "memoryApprove"));
@@ -201,7 +209,8 @@ export function MemoryPage() {
             />
           );
         })}
-        {list.data && shown.length === 0 ? <p className="m-0 px-3 py-8 text-center text-xs text-fg-muted">{t("memory.none")}</p> : null}
+        {/* The button for an empty list sits in the wide pane on the right, so the narrow list keeps the sentence alone. */}
+        {empty ? <PaneEmpty>{t(`memory.${empty}`)}</PaneEmpty> : null}
       </ListPane>
       <div className="flex min-w-0 flex-1 flex-col">
         {selected === NEW ? (
@@ -217,7 +226,9 @@ export function MemoryPage() {
         ) : current ? (
           <MemoryDetail key={current.id} memory={current} all={rows} onChanged={list.reload} onOpen={setSelected} />
         ) : (
-          <div className="grid flex-1 place-items-center p-6 text-[13px] text-fg-muted">{list.data ? t("memory.pick") : null}</div>
+          <div className="grid flex-1 place-items-center p-6">
+            {empty === "none" ? <PaneEmpty action={firstEntry}>{t("memory.none")}</PaneEmpty> : list.data ? <span className="text-[13px] text-fg-muted">{t("memory.pick")}</span> : null}
+          </div>
         )}
       </div>
     </div>
