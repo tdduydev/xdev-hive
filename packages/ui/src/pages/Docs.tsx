@@ -39,10 +39,12 @@ import { DocMarkdown, docHref, type DocContext } from "#ui/components/DocMarkdow
 import { LinkPicker } from "#ui/components/LinkPicker.tsx";
 import { HiddenChars } from "#ui/components/HiddenChars.tsx";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
+import { PaneEmpty } from "#ui/components/panes.tsx";
 import { errorMessage, formatTime, sourceText, useAction, useCan, useHashParam, useHive, useQuery } from "#ui/hooks.ts";
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
 import { DRAFTS_EVENT, insertMd, isUnreachable, parsePaths, readDrafts, writeDrafts, type DocDraft } from "#ui/lib/docdraft.ts";
 import { buildTree, flatten, freeSlug, isServiceGroup, parentChoices, slugify, systemTree, trail, type TreeNode } from "#ui/lib/doctree.ts";
+import { emptyState } from "#ui/lib/empty.ts";
 import { fold } from "#ui/lib/text.ts";
 import { docOwner, docPrefix, inScope, ownerName, projectScope, SHARED, systemScope, type Scope } from "#ui/lib/scope.ts";
 import { useToast } from "#ui/shell/toast.tsx";
@@ -266,6 +268,7 @@ export function DocsPage() {
   // Where the person may make pages in this space; the first is where new ones go (the system's, roadmap 40c).
   const writable = owners.filter((o) => allow(o, "docEdit"));
   const canCreateHere = writable.length > 0;
+  const empty = emptyState({ loaded: !list.loading, total: nodes.length, shown: needle ? hits.length : nodes.length, query: needle });
   const taken = (key: string) => titles.has(key) || Boolean(drafts[key]);
   const slugFor = (c: Creating) => c.slug ?? freeSlug(docPrefix(c.owner), slugify(c.title), taken);
   const startCreate = (kind: Creating["kind"], parent: string | null) => {
@@ -424,14 +427,21 @@ export function DocsPage() {
               ))}
             </NativeSelect>
           )}
-          <Input className="h-7 text-xs" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("docs.search")} aria-label={t("docs.search")} />
-        </div>
-        <div role="tree" aria-label={t("docs.list")} className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-1.5">
-          <ErrorNote error={list.error} />
-          {needle ? hits.map((n) => row(n, 0, n.path.join(" / ") || undefined)) : branch(tree, 0)}
-          {!list.loading && !(needle ? hits.length : nodes.length) ? <p className="m-0 px-2 py-4 text-center text-xs text-fg-muted">{q ? t("docs.noMatch") : t("docs.none")}</p> : null}
-        </div>
-        <div className="flex shrink-0 flex-col gap-1.5 border-t border-line-subtle px-3 py-2">
+          {/* The page's own button goes at the right of its toolbar, as on Spec, Skill and Memory (roadmap 39h). */}
+          <div className="flex items-center gap-1.5">
+            <Input className="h-7 min-w-0 flex-1 text-xs" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("docs.search")} aria-label={t("docs.search")} />
+            {canCreateHere && !creating ? (
+              <>
+                <Button size="icon-sm" variant="ghost" aria-label={t("docs.newFolder")} title={t("docs.newFolder")} onClick={() => startCreate("folder", null)}>
+                  <FolderPlus />
+                </Button>
+                <Button size="sm" variant="outline" className="shrink-0" onClick={() => startCreate("page", selectedNode?.folder ? selectedNode.key : null)}>
+                  {t("docs.newPage")}
+                </Button>
+              </>
+            ) : null}
+          </div>
+          {/* The form opens right under the button that opened it, not at the far end of the pane. */}
           {creating ? (
             <div className="flex flex-col gap-1.5 rounded-md border border-line-selected bg-surface p-2">
               <span className="text-[11px]/4 font-semibold text-fg-muted">
@@ -509,19 +519,15 @@ export function DocsPage() {
               </div>
             </div>
           ) : null}
-          <div className="flex items-center gap-1.5">
-            <span className="flex-1 text-[11px] text-fg-muted">{t("docs.pageCount", { count: space?.docs.length ?? 0 })}</span>
-            {canCreateHere && !creating ? (
-              <>
-                <Button size="icon-sm" variant="ghost" aria-label={t("docs.newFolder")} title={t("docs.newFolder")} onClick={() => startCreate("folder", null)}>
-                  <FolderPlus />
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => startCreate("page", selectedNode?.folder ? selectedNode.key : null)}>
-                  {t("docs.newPage")}
-                </Button>
-              </>
-            ) : null}
-          </div>
+        </div>
+        <div role="tree" aria-label={t("docs.list")} className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-1.5">
+          <ErrorNote error={list.error} />
+          {needle ? hits.map((n) => row(n, 0, n.path.join(" / ") || undefined)) : branch(tree, 0)}
+          {/* The button for an empty space sits in the wide pane on the right, so the narrow tree keeps the sentence alone. */}
+          {empty ? <PaneEmpty>{t(empty === "none" ? "docs.none" : "docs.noMatch")}</PaneEmpty> : null}
+        </div>
+        <div className="flex shrink-0 flex-col gap-1.5 border-t border-line-subtle px-3 py-2">
+          <span className="text-[11px] text-fg-muted">{t("docs.pageCount", { count: space?.docs.length ?? 0 })}</span>
         </div>
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
@@ -541,7 +547,23 @@ export function DocsPage() {
             onNew={(parent) => startCreate("page", parent)}
           />
         ) : (
-          <div className="grid flex-1 place-items-center p-6 text-[13px] text-fg-muted">{t("docs.pick")}</div>
+          <div className="grid flex-1 place-items-center p-6">
+            {empty === "none" ? (
+              <PaneEmpty
+                action={
+                  canCreateHere ? (
+                    <Button size="sm" data-empty-action onClick={() => startCreate("page", null)}>
+                      {t("docs.newFirst")}
+                    </Button>
+                  ) : null
+                }
+              >
+                {t("docs.none")}
+              </PaneEmpty>
+            ) : (
+              <span className="text-[13px] text-fg-muted">{t("docs.pick")}</span>
+            )}
+          </div>
         )}
       </div>
     </div>

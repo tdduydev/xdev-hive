@@ -12,9 +12,10 @@ import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Diff } from "#ui/components/Diff.tsx";
 import { HiddenChars } from "#ui/components/HiddenChars.tsx";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
-import { Chip, DetailBody, DetailFooter, DetailHeader, KvRows, ListItem, ListPane } from "#ui/components/panes.tsx";
+import { Chip, DetailBody, DetailFooter, DetailHeader, KvRows, ListItem, ListPane, PaneEmpty } from "#ui/components/panes.tsx";
 import { errorMessage, formatTime, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
+import { emptyState } from "#ui/lib/empty.ts";
 import { docOwner, inScope, scopeProject } from "#ui/lib/scope.ts";
 import { buildSkill, skillsFor, splitSkill, type ListedSkill, type SkillParts } from "#ui/lib/skills.ts";
 import { fold } from "#ui/lib/text.ts";
@@ -58,6 +59,13 @@ export function SkillsPage() {
   const [q, setQ] = useState("");
   const needle = fold(q.trim());
   const shown = skills.filter((s) => !needle || fold(`${s.name} ${s.description}`).includes(needle));
+  const empty = emptyState({ loaded: Boolean(list.data), total: skills.length, shown: shown.length, query: needle });
+  // The first skill is the thing to do when there is none: the same button as the toolbar's, where the eye already is.
+  const firstSkill = owners.length ? (
+    <Button size="sm" data-empty-action onClick={() => setSelected(NEW)}>
+      {t("skills.newFirst")}
+    </Button>
+  ) : null;
 
   return (
     <div className="flex h-full min-h-0 w-full bg-surface">
@@ -115,7 +123,8 @@ export function SkillsPage() {
             />
           );
         })}
-        {list.data && !shown.length ? <p className="m-0 px-3 py-8 text-center text-xs text-fg-muted">{t("skills.none")}</p> : null}
+        {/* The button for an empty list sits in the wide pane on the right, so the narrow list keeps the sentence alone. */}
+        {empty ? <PaneEmpty>{t(empty === "none" ? "skills.none" : "skills.noMatch")}</PaneEmpty> : null}
       </ListPane>
       <div className="flex min-w-0 flex-1 flex-col">
         {selected === NEW ? (
@@ -133,7 +142,9 @@ export function SkillsPage() {
         ) : current ? (
           <SkillEditor key={current.key} skill={current} proposals={proposals.filter((p) => p.docKey === current.key)} onSaved={reload} />
         ) : (
-          <div className="grid flex-1 place-items-center p-6 text-[13px] text-fg-muted">{list.data ? t("skills.pick") : null}</div>
+          <div className="grid flex-1 place-items-center p-6">
+            {empty === "none" ? <PaneEmpty action={firstSkill}>{t("skills.none")}</PaneEmpty> : list.data ? <span className="text-[13px] text-fg-muted">{t("skills.pick")}</span> : null}
+          </div>
         )}
       </div>
     </div>
@@ -314,17 +325,23 @@ function SkillEditor({ skill, proposals, onSaved }: { skill: ListedSkill; propos
           </>
         ) : (
           <>
-            <p className="m-0 text-sm/[22px] text-pretty text-fg-primary">{parts.description || t("skills.noDescription")}</p>
+            {/* Until docs.get answers, a skill still loading looked exactly like one with nothing in it: say "Đang tải…"
+                and leave the file out, rather than "(chưa có mô tả)" over an empty SKILL.md (roadmap 39h). */}
+            <p className="m-0 text-sm/[22px] text-pretty text-fg-primary">
+              {doc.loading ? t("common.loading") : parts.description || skill.description || t("skills.noDescription")}
+            </p>
             <KvRows
               rows={[
                 [t("skills.writeTo"), `.claude/skills/${skill.name}/SKILL.md`, true],
                 [t("skills.scopeLabel"), skill.project ? t("skills.syncProject", { name: skill.name, project: skill.project }) : t("skills.syncShared", { name: skill.name })],
               ]}
             />
-            <div className="overflow-hidden rounded-md border border-line-subtle bg-code">
-              <div className="flex h-7 items-center border-b border-line-subtle px-3 font-mono text-[11px]/none font-medium text-fg-muted">SKILL.md</div>
-              <pre className="m-0 max-h-[60vh] overflow-auto px-3 py-2.5 font-mono text-xs/[19px] whitespace-pre-wrap text-code-fg [overflow-wrap:anywhere]">{stored || "—"}</pre>
-            </div>
+            {doc.data ? (
+              <div data-skill-doc className="overflow-hidden rounded-md border border-line-subtle bg-code">
+                <div className="flex h-7 items-center border-b border-line-subtle px-3 font-mono text-[11px]/none font-medium text-fg-muted">SKILL.md</div>
+                <pre className="m-0 max-h-[60vh] overflow-auto px-3 py-2.5 font-mono text-xs/[19px] whitespace-pre-wrap text-code-fg [overflow-wrap:anywhere]">{stored || "—"}</pre>
+              </div>
+            ) : null}
           </>
         )}
         <ErrorNote error={action.error} />

@@ -100,9 +100,19 @@ export function ProposalsPage() {
       <ErrorNote error={bulk.error} />
       {proposals?.length === 0 ? (
         <Empty>
-          {scope.kind === "all"
-            ? t(onlyPending ? "proposals.noPending" : "proposals.none")
-            : t(onlyPending ? "proposals.noPendingIn" : "proposals.noneIn", { scope: scopeLabel(scope) })}
+          <div className="flex flex-col items-center gap-2.5">
+            <span>
+              {scope.kind === "all"
+                ? t(onlyPending ? "proposals.noPending" : "proposals.none")
+                : t(onlyPending ? "proposals.noPendingIn" : "proposals.noneIn", { scope: scopeLabel(scope) })}
+            </span>
+            {/* Nothing to approve is a good state, not a to-do: the only thing left to do here is look at the decided ones. */}
+            {onlyPending ? (
+              <Button size="sm" variant="outline" data-empty-action onClick={() => setOnlyPending(false)}>
+                {t("proposals.seeAll")}
+              </Button>
+            ) : null}
+          </div>
         </Empty>
       ) : null}
       <div className="flex flex-col gap-4">
