@@ -88,6 +88,7 @@ import {
   resolveBin,
   type JudgeCandidate,
 } from "./command.ts";
+import { describeReferences, resolveReferences } from "./references.ts";
 import { detectRateLimit } from "./rate-limit.ts";
 import { AssistWorker } from "./assist.ts";
 import { ChatWorker } from "./chat.ts";
@@ -1338,6 +1339,9 @@ export class Runner {
       // The branch may carry no Hive context at all (a repo whose context MR is not merged), and the prompt tells
       // every role to read AGENTS.md: put the current one in the worktree, outside the branch.
       const context = await this.#writeContext(backend, actor, run.project, wt);
+      // Old code a task has to read (roadmap 38h): other checkouts of this machine, read-only for the run.
+      const references = resolveReferences(project.references, this.#host.projects());
+      const referenceLine = describeReferences(references);
 
       const parent = run.parentRunId ? this.store.get(run.parentRunId) : null;
       const prompt = buildPrompt({
@@ -1357,8 +1361,9 @@ export class Runner {
         candidate: candidate ? { n: candidate.n, of: candidate.of } : null,
         judge: run.bestOf?.n === 0 ? this.#judgeInput(run.bestOf) : null,
         contextFile: context.file,
+        references: references.repos,
       });
-      const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id, repo: project.repo };
+      const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id, repo: project.repo, references: references.repos };
       // A container has neither the hive-mcp shim nor this machine's codegraph: Claude gets the hub's MCP through a file.
       if (profile.container) {
         mcpFile = path.join(this.#opts.dataDir, "runs", `${run.id}.mcp.json`);
@@ -1450,12 +1455,13 @@ export class Runner {
               // The macOS Keychain stays outside: a saved long-lived token signs Claude Code in.
               ...(token ? { CLAUDE_CODE_OAUTH_TOKEN: token } : {}),
             },
-            readOnly: mcpFile ? [mcpFile] : [],
+            // A reference repo is mounted read-only: in a container that is what stops a write, not a permission rule.
+            readOnly: [...(mcpFile ? [mcpFile] : []), ...references.repos.map((r) => r.path)],
             ...(egress ? { network: { args: egress.plan.runArgs, env: egress.plan.env } } : {}),
           })
         : null;
       log.write(
-        `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image} · ${egress ? `network limited (${egress.env.HIVE_EGRESS_ALLOW})` : "network open"}\n` : ""}${startNote ? `# ${startNote}\n` : ""}# hive context: ${context.note}\n${toolLines}# cwd ${wt.path}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n${pickNote ? `# ${pickNote}\n` : ""}${policyLine(pol, fit)}\n${skipped}\n## Prompt\n${prompt}\n\n## Output\n`,
+        `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image} · ${egress ? `network limited (${egress.env.HIVE_EGRESS_ALLOW})` : "network open"}\n` : ""}${startNote ? `# ${startNote}\n` : ""}# hive context: ${context.note}\n${referenceLine ? `${referenceLine}\n` : ""}${toolLines}# cwd ${wt.path}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n${pickNote ? `# ${pickNote}\n` : ""}${policyLine(pol, fit)}\n${skipped}\n## Prompt\n${prompt}\n\n## Output\n`,
       );
 
       // Cancelled while this run was being set up: stop here rather than start an agent nobody waits for.
