@@ -51,7 +51,8 @@ export function usePoll(ms: number | null): number {
   return tick;
 }
 
-const hashParam = (name: string) => new URLSearchParams(window.location.hash.split("?")[1] ?? "").get(name);
+/** Read once, now: for a reader of the address who has to see the same value twice (TaskWorkPage). */
+export const hashParam = (name: string) => new URLSearchParams(window.location.hash.split("?")[1] ?? "").get(name);
 
 /**
  * A parameter of the page's address (#/tasks?task=T-1), for a link from another page to one item. `clear` takes it

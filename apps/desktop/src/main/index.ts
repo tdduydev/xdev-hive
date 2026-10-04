@@ -890,7 +890,8 @@ function onRunnerEvent(event: RunnerEvent): void {
     const n = new Notification({ title: tr("desktop.hubRunTitle"), body: tr("desktop.hubRunBody", { who: event.by, task: r.taskId, role: tr(`agentRole.${r.role}`) }) });
     n.on("click", () => {
       showWindow();
-      win?.webContents.executeJavaScript('location.hash = "#/board"').catch(() => undefined);
+      // Task opens on the board of this machine since roadmap 39f, so that is where a run's notification lands.
+      win?.webContents.executeJavaScript('location.hash = "#/tasks"').catch(() => undefined);
     });
     n.show();
     return;
@@ -921,7 +922,7 @@ function onRunnerEvent(event: RunnerEvent): void {
   const n = new Notification({ title, body: body + mr });
   n.on("click", () => {
     showWindow();
-    win?.webContents.executeJavaScript('location.hash = "#/board"').catch(() => undefined);
+    win?.webContents.executeJavaScript('location.hash = "#/tasks"').catch(() => undefined);
   });
   n.show();
 }
@@ -990,7 +991,7 @@ function onMrChanges(changes: MrChange[]): void {
     const n = new Notification({ title: `${c.run.taskId} · ${mr}`, body: cleanup ? `${body} ${cleanup}.` : body });
     n.on("click", () => {
       showWindow();
-      win?.webContents.executeJavaScript('location.hash = "#/board"').catch(() => undefined);
+      win?.webContents.executeJavaScript('location.hash = "#/tasks"').catch(() => undefined);
     });
     n.show();
   }
@@ -1223,19 +1224,39 @@ function createWindow(): void {
             break;
           }
         }
+        // HIVE_SMOKE_ASSERT: JS expressions (joined by " && ") that must each be true in the page, for what no
+        // selector can say — a menu that fits without scrolling, for one.
+        const asserts = process.env.HIVE_SMOKE_ASSERT;
+        let untrue: string | null = null;
+        for (const expr of asserts ? asserts.split(" && ") : []) {
+          let ok = false;
+          for (let i = 0; i < 40 && !ok; i++) {
+            ok = await win!.webContents.executeJavaScript(`Boolean(${expr})`).catch(() => false);
+            if (!ok) await pause(200);
+          }
+          if (!ok) {
+            untrue = expr;
+            break;
+          }
+        }
         const image = await win!.webContents.capturePage();
         writeFileSync(smokeShot, image.toPNG());
         console.log(`[xdev-hive] smoke screenshot ${smokeShot}`);
         if (missing) console.error(`[xdev-hive] smoke expected ${missing} on the page`);
         if (present) console.error(`[xdev-hive] smoke did not expect ${present} on the page`);
-        app.exit(missing || present ? 3 : 0);
+        if (untrue) console.error(`[xdev-hive] smoke expected ${untrue} to be true on the page`);
+        app.exit(missing || present || untrue ? 3 : 0);
       }, delay);
     };
-    // HIVE_SMOKE_LOCALE=en / HIVE_SMOKE_THEME=dark: the interface language and theme live in the renderer's
-    // localStorage, so set them and reload first.
-    const stored = Object.entries({ "xdev-hive.locale": process.env.HIVE_SMOKE_LOCALE, "hive-theme": process.env.HIVE_SMOKE_THEME }).filter(
-      (e): e is [string, string] => Boolean(e[1]),
-    );
+    // HIVE_SMOKE_LOCALE=en / HIVE_SMOKE_THEME=dark / HIVE_SMOKE_VIEW / HIVE_SMOKE_SIDEBAR: the language, the theme,
+    // the Task view and the sidebar live in the renderer's localStorage, so set them and reload first. The last two
+    // are what the reader picked last, which would otherwise decide a shot (roadmap 39f).
+    const stored = Object.entries({
+      "xdev-hive.locale": process.env.HIVE_SMOKE_LOCALE,
+      "hive-theme": process.env.HIVE_SMOKE_THEME,
+      "hive-tasks-view": process.env.HIVE_SMOKE_VIEW,
+      "hive-sidebar": process.env.HIVE_SMOKE_SIDEBAR,
+    }).filter((e): e is [string, string] => Boolean(e[1]));
     win.webContents.once("did-finish-load", () => {
       if (!stored.length) return capture();
       const js = stored.map(([k, v]) => `localStorage.setItem(${JSON.stringify(k)}, ${JSON.stringify(v)});`).join("");
