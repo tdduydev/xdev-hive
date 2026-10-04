@@ -26,6 +26,8 @@ block() {
 case "$file" in
   "$root/AGENTS.md"|"$root/CLAUDE.md"|"$root/docs/decisions.md"|AGENTS.md|CLAUDE.md|docs/decisions.md) block ;;
   "$root/.claude/rules/xdev-hive/"*|.claude/rules/xdev-hive/*) block ;;
+  # Hive's AGENTS.md beside one the repo wrote itself (roadmap 38f).
+  "$root/.xdev-hive/context/"*|.xdev-hive/context/*) block ;;
   # A nested AGENTS.md or a skill is Hive's when it has the managed block (docs for some paths, skills).
   */AGENTS.md|*/.claude/skills/*/SKILL.md|.claude/skills/*/SKILL.md) grep -q 'xdev-hive:start' "$file" 2>/dev/null && block ;;
 esac
@@ -36,7 +38,7 @@ exit 0
 export const PRE_COMMIT = String.raw`#!/bin/sh
 # xdev-hive: docs rendered from xDev Hive can only be committed by the Hive app.
 [ "$HIVE_ADMIN" = "1" ] && exit 0
-blocked=$(git diff --cached --name-only | grep -E '^(AGENTS\.md|CLAUDE\.md|docs/decisions\.md|\.claude/rules/xdev-hive/.*)$')
+blocked=$(git diff --cached --name-only | grep -E '^(AGENTS\.md|CLAUDE\.md|docs/decisions\.md|\.claude/rules/xdev-hive/.*|\.xdev-hive/context/.*)$')
 # A nested AGENTS.md or a skill is Hive's when it has the managed block, in the commit or before it.
 nested=$(git diff --cached --name-only | grep -E '/AGENTS\.md$|^\.claude/skills/[^/]+/SKILL\.md$' | while IFS= read -r f; do
   { git show ":$f" 2>/dev/null; git show "HEAD:$f" 2>/dev/null; } | grep -q 'xdev-hive:start' && printf '%s\n' "$f"

@@ -4,7 +4,7 @@ import type { ProfileAutonomy } from "./agent-policy.ts";
 import type { AgentKind, AgentProfile, AgentRole, PlanUsage, PreferKind, RunnerSettings, RunStatus } from "./agents.ts";
 import type { GitLabImportCandidate, GitLabImportResult, MrSettings, MrState, MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { TransferReport } from "./transfer.ts";
-import type { MachineCommand, Role, SetupItem, SetupReport, TeamPolicy, ToolHandler, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
+import type { MachineCommand, Proposal, Role, SetupItem, SetupReport, TeamPolicy, ToolHandler, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
 
 /**
  * A hub tool as the machine's Setup card shows it (roadmap 28b): what it will run here, for the user to allow.
@@ -116,6 +116,8 @@ export interface SyncReport {
   imported: string[];
   /** Short hash of the commit made by the sync, if any. */
   commit: string | null;
+  /** The repo keeps an AGENTS.md of its own (roadmap 38f), so it can be proposed into Hive instead of overwritten. */
+  ownAgents: boolean;
   note?: string;
   /** The repo's docs mirrored into Hive (roadmap 26), when the project has a .xdev-hive/docs.json. */
   mirror?: MirrorReport;
@@ -454,6 +456,8 @@ export interface DesktopBridge {
   removeProject(name: string): Promise<DesktopSettings>;
   pickFolder(): Promise<string | null>;
   syncProject(name: string): Promise<SyncReport>;
+  /** The repo's own AGENTS.md as a proposal on its Hive page (roadmap 38f), for a Context agent to review. */
+  proposeAgents(name: string): Promise<Proposal>;
   installAgents(name: string): Promise<FileAction[]>;
   installShim(): Promise<ShimReport>;
   showInFolder(path: string): Promise<void>;
