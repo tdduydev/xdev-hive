@@ -148,6 +148,35 @@ export interface DesktopProject {
   targetBranch?: string;
 }
 
+/** A repository found inside a folder that is not one itself (roadmap 38d), as the app offers to add it. */
+export interface RepoCandidate {
+  dir: string;
+  /** Its path under the folder that was scanned, which is what the person recognises it by. */
+  rel: string;
+  key: string;
+  /** What `origin/HEAD` says; null when the repository has no remote (nothing cloned it). */
+  targetBranch: string | null;
+  /** added: a project of this app has that folder already (not offered again) · new: would be added. */
+  state: "added" | "new";
+}
+
+/** What a folder holds: itself a repository, or repositories below it. */
+export interface RepoScan {
+  root: string;
+  isGit: boolean;
+  /** Empty when the folder is a repository itself, or when nothing was found under it. */
+  repos: RepoCandidate[];
+  /** The system the repositories would go into: the folder's name, made to fit a system name. */
+  system: string;
+}
+
+export interface RepoImportResult {
+  key: string;
+  dir: string;
+  ok: boolean;
+  error: string | null;
+}
+
 export interface DesktopSettings {
   mode: "local" | "hub";
   /** Name of this machine in hub leases (config.json `machine`). */
@@ -411,6 +440,10 @@ export interface DesktopBridge {
   hubSignInBrowser(input: { hubUrl: string }): Promise<DesktopSettings>;
   hubSignInCancel(): Promise<void>;
   addProject(project: DesktopProject): Promise<DesktopSettings>;
+  /** Whether a folder is a repository, and the repositories under it when it is not (roadmap 38d). */
+  scanRepos(dir: string): Promise<RepoScan>;
+  /** Adds several repositories at once (what scanRepos found); one failing does not stop the rest. */
+  addProjects(items: DesktopProject[]): Promise<{ results: RepoImportResult[]; settings: DesktopSettings }>;
   /** The repositories of a GitLab group (and its subgroups) with the key and folder each would get (roadmap 19a). */
   gitlabGroup(input: { group: string; baseDir: string }): Promise<GitLabImportCandidate[]>;
   /** Clones the chosen ones (ssh or https) and adds them as projects; one failing does not stop the rest. */

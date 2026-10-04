@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld("hive", {
     setLocale: (locale: string) => invoke("desktop:setLocale", locale),
     logError: (text: string) => invoke("desktop:logError", text),
     addProject: (project: unknown) => invoke("desktop:addProject", project),
+    scanRepos: (dir: string) => invoke("desktop:scanRepos", dir),
+    addProjects: (items: unknown) => invoke("desktop:addProjects", items),
     removeProject: (name: string) => invoke("desktop:removeProject", name),
     pickFolder: () => invoke("desktop:pickFolder"),
     gitlabGroup: (input: unknown) => invoke("desktop:gitlabGroup", input),
