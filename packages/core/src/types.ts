@@ -688,6 +688,11 @@ export interface RunRecord {
   merge: RunMerge | null;
   /** What the run used, once its machine reported it (roadmap 28c); null before, or for a run the CLI gave none. */
   tokens: RunTokens | null;
+  /**
+   * When the hub dropped the run's log and patch to keep only what it did (roadmap 41b); null: it still has them.
+   * An empty log means nothing on its own — a queued run has none either.
+   */
+  logPrunedAt: string | null;
   /** The end of the run's readable log, lines that looked like secrets hidden: runs.get only. */
   log?: string;
   /** What it changed (git diff from its base), as its machine last sent it; null: not sent (yet). runs.get only. */
