@@ -6,11 +6,13 @@ import { X } from "lucide-react";
 import { cn } from "cn";
 import {
   AGENT_ROLES,
+  PREFER_KINDS,
   TASK_STATUSES,
   usageStop,
   type AgentProfileStatus,
   type AgentRole,
   type AgentRun,
+  type PreferKind,
   type Task,
   type TaskStatus,
 } from "@xdev-hive/core";
@@ -515,11 +517,13 @@ function RunForm({ task, profiles, onCancel, onStarted }: { task: Task; profiles
   const t = useT();
   const [role, setRole] = useState<AgentRole>(task.status === "review" ? "review" : "implement");
   const [profileId, setProfileId] = useState("");
+  const [preferKind, setPreferKind] = useState<PreferKind | "">("");
   const [instructions, setInstructions] = useState("");
   const [reviewAfter, setReviewAfter] = useState(true);
   const [candidates, setCandidates] = useState(1);
   const action = useAction();
   const several = role === "implement" && !profileId;
+  const kinds = PREFER_KINDS.filter((k) => profiles.some((p) => p.enabled && p.kind === k));
   return (
     <form
       className="flex flex-col gap-2 rounded-md border border-line-default p-3"
@@ -531,6 +535,7 @@ function RunForm({ task, profiles, onCancel, onStarted }: { task: Task; profiles
             taskId: task.id,
             role,
             profileId: profileId || null,
+            preferKind: (!profileId && preferKind) || null,
             instructions,
             reviewAfter: role !== "review" && reviewAfter,
             ...(several && candidates > 1 ? { candidates } : {}),
@@ -560,6 +565,26 @@ function RunForm({ task, profiles, onCancel, onStarted }: { task: Task; profiles
             </NativeSelectOption>
           ))}
       </NativeSelect>
+      {!profileId && kinds.length > 1 ? (
+        <>
+          <Label htmlFor={`prefer-${task.id}`}>{t("board.preferKind")}</Label>
+          <NativeSelect
+            id={`prefer-${task.id}`}
+            size="sm"
+            wrapperClassName="w-full"
+            value={preferKind}
+            onChange={(e) => setPreferKind(e.target.value as PreferKind | "")}
+            title={t("board.preferKindHint")}
+          >
+            <NativeSelectOption value="">{t("board.preferKindAny")}</NativeSelectOption>
+            {kinds.map((k) => (
+              <NativeSelectOption key={k} value={k}>
+                {t(`agentKind.${k}`)}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        </>
+      ) : null}
       {several ? (
         <>
           <Label htmlFor={`candidates-${task.id}`}>{t("board.candidates")}</Label>

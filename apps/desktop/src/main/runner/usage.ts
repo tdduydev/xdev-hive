@@ -1,7 +1,7 @@
 // What an agent CLI says about a finished run. Claude Code with `--output-format json` prints one
 // result object: the final message, an API-price cost estimate and token counts. Codex with `exec --json` reports the
 // tokens of each turn (roadmap 28c).
-import type { PlanLimit, PlanUsage } from "@xdev-hive/core";
+import type { AgentProfile, PlanLimit, PlanUsage } from "@xdev-hive/core";
 
 export interface RunUsage {
   /** The agent's final message; replaces the raw stdout as the run's summary. */
@@ -104,4 +104,91 @@ export function outputFormat(args: string[]): string | null {
     if (a.startsWith("--output-format=")) return a.slice("--output-format=".length);
   }
   return null;
+}
+
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+/** "Oct 8 at 5:59pm (Asia/Saigon)", "6:20pm (Asia/Saigon)", "Oct 8, 6pm (Asia/Ho_Chi_Minh)"; the month and day are optional. */
+const RESET_TEXT = /^(?:([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2})(?:,|\s+at)?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*\(([A-Za-z0-9_+\-/]+)\)$/i;
+
+/** How far `zone` is ahead of UTC at `at`, in ms; null for a zone this runtime does not know. */
+function zoneOffset(at: number, zone: string): number | null {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "numeric",
+      second: "numeric",
+    }).formatToParts(new Date(at));
+    const n = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+    return Date.UTC(n("year"), n("month") - 1, n("day"), n("hour"), n("minute"), n("second")) - Math.floor(at / 1000) * 1000;
+  } catch {
+    return null;
+  }
+}
+
+/** The instant a wall-clock time in `zone` names; checked twice so a DST change between guess and answer is caught. */
+function zonedTime(y: number, mo: number, d: number, h: number, mi: number, zone: string): number | null {
+  const wall = Date.UTC(y, mo, d, h, mi);
+  const first = zoneOffset(wall, zone);
+  if (first === null) return null;
+  const second = zoneOffset(wall - first, zone)!;
+  return wall - second;
+}
+
+/**
+ * When a plan limit resets, from the text Claude Code's /usage prints after "resets" (roadmap 24c). The CLI leaves out
+ * the year, and the date when the reset is today: the next such time after `now` (a day back is allowed, as /usage may
+ * be a few minutes old). Null when the text is not one of these forms or has no known time zone: then it is not known.
+ */
+export function parseResetAt(text: string | null | undefined, now: Date): Date | null {
+  const m = RESET_TEXT.exec((text ?? "").trim());
+  if (!m) return null;
+  const [, mon, day, hh, mm, ampm, zone] = m;
+  let hour = Number(hh);
+  const minute = Number(mm ?? 0);
+  if (ampm) {
+    if (hour < 1 || hour > 12) return null;
+    hour = (hour % 12) + (ampm.toLowerCase() === "pm" ? 12 : 0);
+  }
+  if (hour > 23 || minute > 59) return null;
+  const offset = zoneOffset(now.getTime(), zone!);
+  if (offset === null) return null;
+  // Today's date as the zone has it.
+  const local = new Date(now.getTime() + offset);
+  const year = local.getUTCFullYear();
+  const slack = 24 * 3600_000;
+  if (mon) {
+    const month = MONTHS.indexOf(mon.toLowerCase());
+    const date = Number(day);
+    if (month < 0 || date < 1 || date > 31) return null;
+    for (const y of [year, year + 1]) {
+      const at = zonedTime(y, month, date, hour, minute, zone!);
+      if (at !== null && at > now.getTime() - slack) return new Date(at);
+    }
+    return null;
+  }
+  for (const add of [0, 1]) {
+    const at = zonedTime(year, local.getUTCMonth(), local.getUTCDate() + add, hour, minute, zone!);
+    if (at !== null && at > now.getTime()) return new Date(at);
+  }
+  return null;
+}
+
+/**
+ * When the limit that stops the profile first resets (the session or the week, whichever has less left before its
+ * threshold), or null when that is not known or already past: then the profile's quota is not about to go to waste.
+ */
+export function limitResetAt(profile: Pick<AgentProfile, "stopAtSession" | "stopAtWeek">, usage: PlanUsage | null | undefined, now: Date): Date | null {
+  const limits = [
+    usage?.session ? { left: profile.stopAtSession - usage.session.percent, resets: usage.session.resets } : null,
+    usage?.week ? { left: profile.stopAtWeek - usage.week.percent, resets: usage.week.resets } : null,
+  ].filter((l) => l !== null);
+  if (!limits.length) return null;
+  const binding = limits.reduce((a, b) => (b.left < a.left ? b : a));
+  const at = parseResetAt(binding.resets, now);
+  return at && at > now ? at : null;
 }

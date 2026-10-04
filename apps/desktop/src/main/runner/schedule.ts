@@ -15,6 +15,8 @@ export interface ProfileLoad {
   overLimit?: boolean;
   /** Plan left before a stop threshold, in points (see usageHeadroom); null or missing: not known. */
   headroom?: number | null;
+  /** ISO time the limit that stops the profile first resets (see limitResetAt); null or missing: not known. */
+  resetAt?: string | null;
 }
 
 export interface RunNeeds {
@@ -29,17 +31,37 @@ export interface RunNeeds {
    * only when every such profile is off, resting or over its plan threshold does a profile of an avoided kind do.
    */
   strictKinds?: boolean;
+  /**
+   * A kind asked for when the run was given (roadmap 24c): the run waits for a profile of it while one could take the
+   * run once free, and goes to another kind only when every one of them is off, signed out, over its threshold or resting.
+   */
+  preferKind?: AgentKind | null;
 }
 
-export function isAvailable(p: ProfileLoad, now: Date): boolean {
+/** Could take a run once a slot is free: on, installed, signed in, under its plan threshold and not resting. */
+function usable(p: ProfileLoad, now: Date): boolean {
   return (
     p.profile.enabled &&
     p.installed !== false &&
     p.loggedIn !== false &&
     !p.overLimit &&
-    p.running < p.profile.maxConcurrent &&
     (p.cooldownUntil === null || new Date(p.cooldownUntil) <= now)
   );
+}
+
+/** A preferred kind the run still waits for: none for a cross-review that has to avoid that kind. */
+function preferred(needs: RunNeeds): AgentKind | null {
+  const kind = needs.preferKind ?? null;
+  return kind && !(needs.strictKinds && needs.avoidKinds.includes(kind)) ? kind : null;
+}
+
+/** When the profile's quota resets, if it has some left and that is known: the sooner, the sooner it goes to waste. */
+const resetKey = (l: ProfileLoad) => (l.resetAt && (l.headroom ?? 0) > 0 ? l.resetAt : null);
+/** Known times first, the earlier first. */
+const soonest = (a: string | null, b: string | null) => (a === b ? 0 : a === null ? 1 : b === null ? -1 : Date.parse(a) - Date.parse(b));
+
+export function isAvailable(p: ProfileLoad, now: Date): boolean {
+  return usable(p, now) && p.running < p.profile.maxConcurrent;
 }
 
 /**
@@ -47,40 +69,45 @@ export function isAvailable(p: ProfileLoad, now: Date): boolean {
  * 1. A pinned profile waits for that profile only.
  * 2. Skip disabled, not installed, signed-out, over their plan threshold, busy, cooling-down, excluded (already failed this run)
  *    and role-mismatched profiles.
- * 3. Prefer profiles not in avoidProfiles (each best-of-n candidate on its own subscription), then kinds not
+ * 3. A cross-review (strictKinds) waits for another vendor; then a preferred kind (preferKind) waits for a profile of
+ *    that kind, while one of either could take the run once free.
+ * 4. Prefer profiles not in avoidProfiles (each best-of-n candidate on its own subscription), then kinds not
  *    in avoidKinds (cross-review uses a different vendor than the implementer).
- * 4. The most plan left first (roadmap 24a): a profile whose usage is known before one whose usage is not, so a run
+ * 5. Among profiles with plan left, the one whose binding limit resets soonest first (roadmap 24c): its quota is the
+ *    next to go to waste. A reset that is not known comes after.
+ * 6. The most plan left (roadmap 24a): a profile whose usage is known before one whose usage is not, so a run
  *    goes where it can finish and the subscriptions wear down together.
- * 5. Lower priority number first, then least recently used, which rotates equal-priority subscriptions.
+ * 7. Lower priority number first, then least recently used, which rotates equal-priority subscriptions.
  */
 export function pickProfile(loads: ProfileLoad[], needs: RunNeeds, now: Date): ProfileLoad | null {
+  return pickWithReason(loads, needs, now)?.load ?? null;
+}
+
+/** The profile pickProfile takes and why, for the run's log (roadmap 24c). */
+export function pickWithReason(loads: ProfileLoad[], needs: RunNeeds, now: Date): { load: ProfileLoad; reason: string } | null {
   if (needs.preferredProfile) {
     const pinned = loads.find((l) => l.profile.id === needs.preferredProfile);
-    return pinned && isAvailable(pinned, now) ? pinned : null;
+    return pinned && isAvailable(pinned, now) ? { load: pinned, reason: tr("runNote.pickPinned", { profile: pinned.profile.id }) } : null;
   }
-  const candidates = loads.filter(
-    (l) =>
-      isAvailable(l, now) &&
-      l.profile.roles.includes(needs.role) &&
-      !needs.excludedProfiles.includes(l.profile.id),
-  );
+  const fits = (l: ProfileLoad) => l.profile.roles.includes(needs.role) && !needs.excludedProfiles.includes(l.profile.id);
+  let candidates = loads.filter((l) => isAvailable(l, now) && fits(l));
   if (needs.strictKinds && needs.avoidKinds.length) {
     const other = (l: ProfileLoad) => !needs.avoidKinds.includes(l.profile.kind);
-    const could = loads.some(
-      (l) =>
-        other(l) &&
-        l.profile.enabled &&
-        l.installed !== false &&
-        l.loggedIn !== false &&
-        !l.overLimit &&
-        (l.cooldownUntil === null || new Date(l.cooldownUntil) <= now) &&
-        l.profile.roles.includes(needs.role) &&
-        !needs.excludedProfiles.includes(l.profile.id),
-    );
-    if (could) {
-      const others = candidates.filter(other);
-      if (!others.length) return null;
-      candidates.splice(0, candidates.length, ...others);
+    if (loads.some((l) => other(l) && usable(l, now) && fits(l))) {
+      candidates = candidates.filter(other);
+      if (!candidates.length) return null;
+    }
+  }
+  const kind = preferred(needs);
+  let prefer: string | null = null;
+  if (kind) {
+    const same = (l: ProfileLoad) => l.profile.kind === kind;
+    if (loads.some((l) => same(l) && usable(l, now) && fits(l))) {
+      candidates = candidates.filter(same);
+      if (!candidates.length) return null;
+      prefer = tr("runNote.pickPreferred", { kind });
+    } else {
+      prefer = tr("runNote.pickPreferredGone", { kind });
     }
   }
   const avoid = needs.avoidProfiles ?? [];
@@ -88,11 +115,23 @@ export function pickProfile(loads: ProfileLoad[], needs: RunNeeds, now: Date): P
     (a, b) =>
       Number(avoid.includes(a.profile.id)) - Number(avoid.includes(b.profile.id)) ||
       Number(needs.avoidKinds.includes(a.profile.kind)) - Number(needs.avoidKinds.includes(b.profile.kind)) ||
+      soonest(resetKey(a), resetKey(b)) ||
       (b.headroom ?? -1) - (a.headroom ?? -1) ||
       a.profile.priority - b.profile.priority ||
       (a.lastUsedAt ?? "").localeCompare(b.lastUsedAt ?? ""),
   );
-  return candidates[0] ?? null;
+  const load = candidates[0];
+  if (!load) return null;
+  const reset = resetKey(load);
+  const order =
+    candidates.length === 1
+      ? tr("runNote.pickOnly")
+      : reset
+        ? tr("runNote.pickResetFirst", { time: reset })
+        : load.headroom != null
+          ? tr("runNote.pickHeadroom", { left: load.headroom })
+          : tr("runNote.pickRotate");
+  return { load, reason: tr("runNote.picked", { profile: load.profile.id, why: [prefer, order].filter(Boolean).join("; ") }) };
 }
 
 /** Why a queued run is still waiting, for the UI. */
@@ -116,6 +155,8 @@ export function waitingReason(loads: ProfileLoad[], needs: RunNeeds, now: Date):
   if (needs.strictKinds && needs.avoidKinds.length && underLimit.some((l) => !needs.avoidKinds.includes(l.profile.kind) && !resting.includes(l))) {
     return tr("runNote.waitingVendor");
   }
+  const kind = preferred(needs);
+  if (kind && underLimit.some((l) => l.profile.kind === kind && !resting.includes(l))) return tr("runNote.waitingKind", { kind });
   if (resting.length === underLimit.length) {
     const next = resting.map((l) => l.cooldownUntil!).sort()[0]!;
     return tr("runNote.allResting", { time: next });

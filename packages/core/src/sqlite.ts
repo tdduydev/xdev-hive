@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { isContextDoc, may, sees, systemOf, systemOwner, withSystemGrants, type Permission } from "./access.ts";
-import type { AgentRole } from "./agents.ts";
+import type { AgentRole, PreferKind } from "./agents.ts";
 import type { BlobStore } from "./blobs.ts";
 import { HiveError, type ErrorText } from "./errors.ts";
 import { agentsDocKey, decisionsDocKey, parseDocKey, titleFromSlug, type ParsedDocKey } from "./keys.ts";
@@ -453,6 +453,11 @@ const MIGRATIONS: string[] = [
   ALTER TABLE run_groups ADD COLUMN machine_id TEXT;
   ALTER TABLE run_groups ADD COLUMN phase_request INTEGER;
   ALTER TABLE run_groups ADD COLUMN phase_error TEXT;
+  `,
+  // A kind a run prefers (roadmap 24c): it waits for a profile of that kind while one could take it, then any.
+  `
+  ALTER TABLE run_requests ADD COLUMN prefer_kind TEXT;
+  ALTER TABLE run_group_items ADD COLUMN prefer_kind TEXT;
   `,
 ];
 
@@ -1130,6 +1135,7 @@ const toRunRequest = (r: Row): RunRequest => ({
   taskTitle: str(r.task_title),
   role: str(r.role) as AgentRole,
   profileId: strOrNull(r.profile_id),
+  preferKind: strOrNull(r.prefer_kind) as PreferKind | null,
   reviewAfter: num(r.review_after) === 1,
   candidates: num(r.candidates),
   instructions: str(r.instructions),
@@ -2480,6 +2486,7 @@ export class SqliteHive implements HiveBackend {
         role: str(r.role) as AgentRole,
         machineId: strOrNull(r.machine_id),
         profileId: strOrNull(r.profile_id),
+        preferKind: strOrNull(r.prefer_kind) as PreferKind | null,
         instructions: str(r.instructions),
         status,
         request,
@@ -2604,7 +2611,7 @@ export class SqliteHive implements HiveBackend {
           );
           // A job's parts get no review of their own: the merged result does (roadmap 31c).
           const reviewAfter = g.kind === "mapreduce" ? false : g.reviewAfter;
-          const req = this.#insertRequest(m, g.project, task, { role: item.role, profileId: item.profileId, reviewAfter, candidates: 1, instructions }, actor);
+          const req = this.#insertRequest(m, g.project, task, { role: item.role, profileId: item.profileId, preferKind: item.preferKind, reviewAfter, candidates: 1, instructions }, actor);
           db.prepare("UPDATE run_group_items SET status = 'sent', machine_id = ?, request_id = ?, updated_at = ? WHERE id = ?").run(machineId, req.id, now, item.id);
           active++;
         } catch (err) {
@@ -3265,16 +3272,17 @@ export class SqliteHive implements HiveBackend {
     m: Machine,
     project: string,
     task: Task,
-    r: { role: AgentRole; profileId: string | null; reviewAfter: boolean; candidates: number; instructions: string },
+    r: { role: AgentRole; profileId: string | null; preferKind?: PreferKind | null; reviewAfter: boolean; candidates: number; instructions: string },
     actor: Actor,
   ): RunRequest {
     const now = this.#now();
     const res = this.db
       .prepare(
-        `INSERT INTO run_requests(machine_id, machine, project, task_id, task_title, role, profile_id, review_after, candidates,
-           instructions, requested_by, on_behalf, requested_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO run_requests(machine_id, machine, project, task_id, task_title, role, profile_id, prefer_kind, review_after, candidates,
+           instructions, requested_by, on_behalf, requested_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(m.id, m.machine, project, task.id, task.title, r.role, r.profileId, r.reviewAfter ? 1 : 0, r.candidates, r.instructions, actor.name, actor.onBehalf ?? null, now, now);
+      // A pinned profile is the run's whatever its kind, so the preference would mean nothing.
+      .run(m.id, m.machine, project, task.id, task.title, r.role, r.profileId, r.profileId ? null : (r.preferKind ?? null), r.reviewAfter ? 1 : 0, r.candidates, r.instructions, actor.name, actor.onBehalf ?? null, now, now);
     return this.#runRequest(num(res.lastInsertRowid));
   }
 
@@ -4784,7 +4792,7 @@ export class SqliteHive implements HiveBackend {
           return toRunRecord(db.prepare("SELECT * FROM run_records WHERE machine_id = ? AND run_id = ?").get(actor.name, runId) as Row, false);
         }),
 
-      "runs.dispatch": ({ machineId, project, taskId, role, profileId, reviewAfter, candidates, instructions }, actor) =>
+      "runs.dispatch": ({ machineId, project, taskId, role, profileId, preferKind, reviewAfter, candidates, instructions }, actor) =>
         this.#tx(() => {
           const task = this.#getTask(taskId);
           if (!task || task.project !== project) {
@@ -4798,7 +4806,7 @@ export class SqliteHive implements HiveBackend {
           const m = this.#assertDispatchable({ machineId, project, task, role, profileId, candidates, instructions }, actor);
           // Its group would run it again once this run ended.
           this.#assertNotInGroup(taskId);
-          return this.#insertRequest(m, project, task, { role, profileId, reviewAfter, candidates, instructions }, actor);
+          return this.#insertRequest(m, project, task, { role, profileId, preferKind, reviewAfter, candidates, instructions }, actor);
         }),
 
       "runs.dispatchMany": ({ project, title, items, maxParallel, reviewAfter, instructions }, actor) =>
@@ -4840,9 +4848,9 @@ export class SqliteHive implements HiveBackend {
             .run(project, title.trim(), maxParallel, reviewAfter ? 1 : 0, instructions, actor.name, actor.onBehalf ?? null, now);
           const groupId = num(res.lastInsertRowid);
           const put = db.prepare(
-            "INSERT INTO run_group_items(group_id, position, task_id, role, machine_id, profile_id, status, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'held', ?)",
+            "INSERT INTO run_group_items(group_id, position, task_id, role, machine_id, profile_id, prefer_kind, status, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'held', ?)",
           );
-          items.forEach((item, i) => put.run(groupId, i + 1, item.taskId, item.role, item.machineId, item.profileId, now));
+          items.forEach((item, i) => put.run(groupId, i + 1, item.taskId, item.role, item.machineId, item.profileId, item.profileId ? null : item.preferKind, now));
           this.#releaseGroups();
           return this.#group(groupId);
         }),
@@ -5059,7 +5067,7 @@ export class SqliteHive implements HiveBackend {
         }),
 
       // A free prompt from the web (roadmap 32b): its own new task and the request to run it, or neither.
-      "runs.prompt": ({ project, title, prompt, machineId, profileId, reviewAfter }, actor) =>
+      "runs.prompt": ({ project, title, prompt, machineId, profileId, preferKind, reviewAfter }, actor) =>
         this.#tx(() => {
           const m = this.#assertDispatchable({ machineId, project, task: null, role: "implement", profileId, candidates: 1, instructions: prompt }, actor);
           const heading = (title?.trim() || prompt.trim().split(/\r?\n/, 1)[0]!.trim()).slice(0, 120);
@@ -5072,7 +5080,7 @@ export class SqliteHive implements HiveBackend {
           // The runner hands the agent the task's note as well as the instructions: the prompt goes once, as the note,
           // and in full as the instructions only when the note had to cut it.
           const instructions = prompt.length > 2000 ? prompt : "";
-          const request = this.#insertRequest(m, project, task, { role: "implement", profileId, reviewAfter, candidates: 1, instructions }, actor);
+          const request = this.#insertRequest(m, project, task, { role: "implement", profileId, preferKind, reviewAfter, candidates: 1, instructions }, actor);
           return { task, request };
         }),
 

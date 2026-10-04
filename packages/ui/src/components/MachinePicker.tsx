@@ -1,4 +1,4 @@
-import type { Machine } from "@xdev-hive/core";
+import { PREFER_KINDS, type Machine, type PreferKind } from "@xdev-hive/core";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { useT } from "#ui/i18n/index.tsx";
@@ -74,6 +74,49 @@ export function ProfileSelect({
                 : p.cooldownUntil && p.cooldownUntil > now
                   ? ` (${t("board.resting")})`
                   : ""}
+          </NativeSelectOption>
+        ))}
+      </NativeSelect>
+    </div>
+  );
+}
+
+/**
+ * The kind of subscription a rotating run waits for first (roadmap 24c), or "" for any. Only the kinds the machine has
+ * a profile of; with `machine` null (any machine) every kind.
+ */
+export function PreferKindSelect({
+  id,
+  machine,
+  value,
+  onChange,
+  label = true,
+}: {
+  id: string;
+  machine: Machine | null;
+  value: PreferKind | "";
+  onChange: (kind: PreferKind | "") => void;
+  label?: boolean;
+}) {
+  const t = useT();
+  const kinds = PREFER_KINDS.filter((k) => !machine || machine.profiles.some((p) => p.enabled && p.kind === k));
+  return (
+    <div className="flex flex-col gap-1.5">
+      {label ? <Label htmlFor={id}>{t("board.preferKind")}</Label> : null}
+      <NativeSelect
+        id={id}
+        size="sm"
+        className="w-full"
+        value={value}
+        onChange={(e) => onChange(e.target.value as PreferKind | "")}
+        title={t("board.preferKindHint")}
+        aria-label={label ? undefined : t("board.preferKind")}
+        data-prefer-kind
+      >
+        <NativeSelectOption value="">{t("board.preferKindAny")}</NativeSelectOption>
+        {kinds.map((k) => (
+          <NativeSelectOption key={k} value={k}>
+            {t(`agentKind.${k}`)}
           </NativeSelectOption>
         ))}
       </NativeSelect>
