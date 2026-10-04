@@ -184,6 +184,19 @@ await shoot("today", "today", 4000);
 // The run form of the next task (T-002), with its number of candidates (roadmap 12): open its card, then the form.
 await shoot("board-run", "board", 3000, { HIVE_SMOKE_CLICK: 'section[aria-label="Chưa làm"] [role="button"] && [data-run-here]' });
 
+// The Board at the two widths it has to work at (roadmap 39g). At 1100 there is no room for five columns, so Xong
+// and Bị chặn are rails with their count and the board fits without scrolling sideways; at 1440 the three columns
+// with work in them are open, Bị chặn too (T-003 waits for T-002), and only the empty Xong stays a rail.
+await shoot("board-1100", "board", 5000, {
+  HIVE_SMOKE_SIZE: "1100x800",
+  HIVE_SMOKE_EXPECT: '[data-board-fit="narrow"] && [data-column-rail="done"] && [data-column-rail="blocked"] && [data-profile-chip]',
+});
+await shoot("board-1440", "board", 5000, {
+  HIVE_SMOKE_SIZE: "1440x820",
+  HIVE_SMOKE_EXPECT: '[data-board-fit="wide"] && [data-column-rail="done"]',
+  HIVE_SMOKE_ABSENT: '[data-column-rail="blocked"]',
+});
+
 // Best-of-n (roadmap 12): the container Codex stays out of it, since this machine may have no Docker, and so does
 // the signed-out Claude: the second candidate prefers another vendor over priority, and the first tick comes
 // before the sign-in check.
