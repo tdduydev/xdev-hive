@@ -101,3 +101,12 @@ export function inScope(s: Scope, owner: string | null): boolean {
   if (s.kind === "system") return owner === null || s.projects.includes(owner) || owner === systemOwner(s.system);
   return owner === null || owner === s.project;
 }
+
+/** The projects no system has (roadmap 36c): otherwise only the sidebar's long list shows them. Sorted. */
+export function outsideSystems(projects: string[], systems: HiveSystem[]): string[] {
+  const inSome = new Set(systems.flatMap((s) => s.projects));
+  return [...new Set(projects)].filter((p) => !inSome.has(p)).sort();
+}
+
+/** A name search, case-insensitive; an empty query keeps everything. */
+export const nameMatches = (name: string, query: string): boolean => name.toLowerCase().includes(query.trim().toLowerCase());

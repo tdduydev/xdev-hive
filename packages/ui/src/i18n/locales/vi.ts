@@ -2032,6 +2032,12 @@ export const vi = {
     remove: "Xoá hệ thống",
     removeConfirm: "Xoá thật (dự án vẫn giữ nguyên)",
     updated: "Sửa lúc {time} bởi {name}",
+    search: "Tìm hệ thống hoặc dự án",
+    noMatch: "Không có hệ thống hay dự án nào khớp “{query}”.",
+    outside: "Dự án chưa thuộc hệ thống nào",
+    outsideHint: "Các dự án này chỉ hiện ở thanh bên. Thêm vào một hệ thống để thấy chung với các service khác.",
+    openTasks: "{count} task đang mở",
+    addTo: "Thêm vào hệ thống",
   },
   tokens: {
     title: "Token truy cập",

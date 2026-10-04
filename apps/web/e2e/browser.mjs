@@ -1100,6 +1100,27 @@ async function main() {
     expect(denied.status === 403, `Hoa saving the contract: HTTP ${denied.status}`);
   });
 
+  // Roadmap 36c: crm is in no system, so the Systems page lists it with its open tasks; the admin finds it with the
+  // search and adds it to shop, and it leaves that list.
+  await step("systems-outside", async () => {
+    await rpc("tasks.create", { id: "CRM-1", project: "crm", title: "Việc đầu tiên của crm" });
+    await rpc("tasks.create", { id: "CRM-2", project: "crm", title: "Việc thứ hai của crm" });
+    const tab = (current = tabs.admin);
+    await tab.reload();
+    await tab.go("systems");
+    await tab.waitFor("crm outside every system, 2 open tasks", () => document.querySelector('[data-outside-project="crm"]')?.innerText.includes("2 task đang mở"));
+    await tab.click("[data-systems-search]");
+    await tab.type("crm");
+    await tab.waitFor("shop filtered out, crm kept", () => !document.querySelector('[data-system="shop"]') && !!document.querySelector('[data-outside-project="crm"]'));
+    await tab.shot(`${String(n).padStart(2, "0")}-systems-search`);
+    await tab.click('[data-outside-add="crm"]');
+    await tab.click('[role="menuitem"]', "shop");
+    await until("crm in shop", async () => (await rpc("systems.list", {})).find((s) => s.name === "shop")?.projects.includes("crm"));
+    await tab.waitFor("crm no longer outside", () => !document.querySelector('[data-outside-project="crm"]') && !document.querySelector("[data-systems-outside]"));
+    // Leave shop as the other steps expect it.
+    await rpc("systems.save", { name: "shop", projects: ["payment", "demo"] });
+  });
+
   // Roadmap 19d: a task of one service waits for another service's (demo waits for payment's), named with its project.
   await step("cross-service-task", async () => {
     const task = await rpc("tasks.create", { id: "DEMO-2", project: "demo", title: "Trang đơn hàng", dependsOn: ["PAY-1"] });
