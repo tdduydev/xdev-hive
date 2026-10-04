@@ -1514,6 +1514,7 @@ export const vi = {
     tech: "Chi tiết kỹ thuật",
     openMr: "Mở {mr}",
     logNote: "Phần cuối log máy gửi lên · cập nhật {time}",
+    logPruned: "Log và diff của run cũ này đã được dọn lúc {time}; tóm tắt, MR và chi phí vẫn giữ.",
     cancel: "Huỷ run",
     cancelHint: "Máy dừng agent ở heartbeat sau (khoảng 30 giây).",
     cancelRequested: "{who} yêu cầu huỷ lúc {time}; máy dừng agent ở heartbeat sau (khoảng 30 giây).",

@@ -459,6 +459,7 @@ HIVE_HOST=0.0.0.0 HIVE_ALLOWED_HOSTS=hive.example.com HIVE_DB=/data/hub.db HIVE_
 | `HIVE_DB` | `apps/web/data/hub.db` | File SQLite (image: `/data/hub.db`) |
 | `HIVE_MEMORY_APPROVAL` | bật | `off`: memory của agent hiện ngay, không cần duyệt |
 | `HIVE_MEMORY_STALE_DAYS` | `90` | Memory không agent nào dùng (và không ai ghi hay giữ lại) trong ngần này ngày bị coi là cũ: `memory_search` của agent bỏ qua, trang Memory vẫn hiện để xem lại. `0`: không bao giờ cũ |
+| `HIVE_RUN_LOG_DAYS` | `30` | Run không cập nhật trong ngần này ngày thì hub dọn log và diff (phần nặng); tóm tắt, lỗi, branch, MR, merge, chi phí, người yêu cầu giữ mãi. `0`: giữ cả log |
 | `HIVE_PUBLIC_URL` | `https://` + host đầu tiên của `HIVE_ALLOWED_HOSTS` | Địa chỉ hub dùng cho link trong tin webhook |
 | `HIVE_ADMIN_USER` | `admin` | Tên tài khoản admin đầu tiên (tạo khi hub chưa có tài khoản nào) |
 | `HIVE_TRUST_PROXY` | tắt (compose: `1`) | Hub đứng sau proxy TLS: cookie phiên có `Secure`, giới hạn đăng nhập sai theo IP thật từ `X-Forwarded-For`. Chỉ bật khi mọi request đi qua proxy |
@@ -602,10 +603,11 @@ Trên hub, agent giữ task với tên `<gói>.<máy>@<token>`, ví dụ `claude
 ### Nhiều máy trên một hub
 
 - **Heartbeat**: mỗi 30 giây, runner báo lên hub các run đang chạy và đang chờ (`machines.heartbeat`). Hub lưu theo tên `runner.<máy>@<token>`, cùng khoá với lease task của máy đó.
-- **Run lên hub** (hỏi ngày 29/9: log dạng đọc được, đã lọc secret; hub giữ 30 ngày; ai xem được dự án thì xem được): mỗi 5 giây runner gửi các run vừa đổi (`runs.push`): run đang chạy hay chờ, và run đã xong trong 24 giờ.
+- **Run lên hub** (hỏi ngày 29/9: log dạng đọc được, đã lọc secret; ai xem được dự án thì xem được): mỗi 5 giây runner gửi các run vừa đổi (`runs.push`): run đang chạy hay chờ, và run đã xong trong 24 giờ.
   - Mỗi run có trạng thái, gói, việc agent đang làm, tóm tắt, lỗi, branch, số commit, MR/PR, chi phí, và khoảng 200 dòng cuối của log dạng đọc được (`▶` lệnh, `✓ ✗` kết quả). Run xong thì gửi ngay, không chờ lượt 5 giây.
   - Trước khi gửi, máy bỏ mã màu và ký tự ẩn, thay dòng giống secret bằng `(line hidden: …)`. Hub kiểm lại lần nữa trước khi lưu. Log đầy đủ vẫn chỉ nằm trên máy chạy.
-  - Hub lưu theo máy và mã run (`run_records`, migration 13), xoá run không cập nhật quá 30 ngày. Đọc bằng `runs.list` (không có log) và `runs.get` (có log); người không có quyền xem dự án thì không thấy run của dự án đó.
+  - Hub lưu theo máy và mã run (`run_records`, migration 13). Đọc bằng `runs.list` (không có log) và `runs.get` (có log); người không có quyền xem dự án thì không thấy run của dự án đó.
+  - **Giữ lại** (roadmap 41b): run không cập nhật quá `HIVE_RUN_LOG_DAYS` ngày (mặc định 30) chỉ bị dọn log và diff — dòng run vẫn còn mãi với tóm tắt, lỗi, vai, gói, branch, số commit, MR, merge, chi phí và người yêu cầu, nên kết luận review hay kết quả đo của agent không mất. `logPrunedAt` ghi lúc dọn: trang *Lượt chạy* và `run_get` báo "log đã dọn" thay vì hiện log rỗng như thật. Dọn chạy cùng `runs.push`; run cũ được máy gửi lại thì tính là mới.
 - **Trang *Lượt chạy*** (web và desktop, chỉ hiện ở chế độ hub): các run máy đã gửi lên, của mọi máy, trong các dự án người xem thấy; lọc theo dự án đang chọn ở thanh bên.
   - Mỗi dòng: mã run, dự án · task, việc (làm task / review / lập kế hoạch), máy · gói, trạng thái kèm việc agent đang làm hoặc lỗi, giờ tạo, thời lượng, chi phí.
   - Chọn một run để xem chi tiết: branch, số commit, link MR/PR, kết quả, và phần cuối log (đã ẩn secret). Run đang chạy hay đang chờ thì danh sách và log tự làm mới mỗi 3 giây, log cuộn theo dòng mới; không còn run nào chạy thì 20 giây một lần.

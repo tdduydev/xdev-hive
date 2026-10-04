@@ -311,7 +311,9 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     "run_get",
     {
       title: "Read an agent run",
-      description: "One run from run_list (machineId and runId as listed) with the end of its log: the agent's steps and result, secrets hidden.",
+      description:
+        "One run from run_list (machineId and runId as listed) with the end of its log: the agent's steps and result, secrets hidden. " +
+        "An old run keeps its summary for good but not its log: logPrunedAt says when log and patch were dropped (empty log, patch null).",
       inputSchema: { machineId: z.string(), runId: z.string() },
       annotations: readOnly,
     },
