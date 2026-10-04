@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { DocSummary } from "@xdev-hive/core";
-import { buildTree, docHeadings, flatten, freeSlug, parentChoices, slugify, trail } from "#ui/lib/doctree.ts";
+import { buildTree, docHeadings, flatten, freeSlug, isServiceGroup, parentChoices, slugify, systemTree, trail } from "#ui/lib/doctree.ts";
 
 const doc = (key: string, title: string, extra: Partial<DocSummary> = {}): DocSummary => ({
   key,
@@ -81,5 +81,35 @@ describe("docs tree", () => {
       { depth: 3, text: "Bước 1", id: "h-buoc-1", line: 7 },
       { depth: 2, text: "Cài đặt", id: "h-cai-dat-2", line: 8 },
     ]);
+  });
+});
+
+describe("a system's tree (roadmap 40c)", () => {
+  const tree = systemTree(
+    [doc("system/shop/api-contract", "API contract")],
+    [{ key: "system/shop/moi", title: "Mới", parent: null }],
+    [
+      { project: "api", docs: [doc("project/api/huong-dan", "Hướng dẫn"), doc("project/api/cai-dat", "Cài đặt", { parent: "project/api/huong-dan" })] },
+      { project: "web", docs: [doc("project/web/huong-dan", "Hướng dẫn")] },
+    ],
+  );
+
+  it("shows the system's pages first, then a group per service", () => {
+    assert.deepEqual(
+      tree.map((n) => n.key),
+      ["system/shop/api-contract", "system/shop/moi", "project/api/", "project/web/"],
+    );
+    const api = tree[2]!;
+    assert.ok(isServiceGroup(api) && api.folder && api.title === "api");
+    assert.ok(!isServiceGroup(tree[0]!));
+    assert.deepEqual(api.children.map((n) => n.key), ["project/api/huong-dan"]);
+    assert.deepEqual(trail(tree, "project/api/cai-dat").map((n) => n.title), ["api", "Hướng dẫn", "Cài đặt"]);
+    assert.deepEqual(flatten(tree).find((n) => n.key === "project/api/cai-dat")?.path, ["api", "Hướng dẫn"]);
+  });
+
+  it("only offers parents of the page's own owner", () => {
+    assert.deepEqual(parentChoices(tree, "project/web/huong-dan").map((n) => n.key), []);
+    assert.deepEqual(parentChoices(tree, "project/api/cai-dat").map((n) => n.key), ["project/api/huong-dan"]);
+    assert.deepEqual(parentChoices(tree, "system/shop/moi").map((n) => n.key), ["system/shop/api-contract"]);
   });
 });

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { HiveSystem } from "@xdev-hive/core";
-import { ALL, inScope, nameMatches, outsideSystems, projectScope, readScope, resolveScope, sameScope, scopeFilter, scopeKey, scopeProjects, SHARED, systemScope, writeScope } from "#ui/lib/scope.ts";
+import { ALL, defaultOwner, inScope, nameMatches, outsideSystems, projectScope, readScope, resolveScope, sameScope, scopeFilter, scopeKey, scopeProjects, SHARED, systemScope, writeScope } from "#ui/lib/scope.ts";
 
 const shop: HiveSystem = { name: "shop", projects: ["api", "web"], updatedAt: "2026-09-30T08:00:00.000Z", updatedBy: "duy" };
 
@@ -63,5 +63,26 @@ describe("projects outside every system (roadmap 36c)", () => {
     assert.ok(nameMatches("payment-api", "API"));
     assert.ok(nameMatches("payment", "  "));
     assert.ok(!nameMatches("payment", "shop"));
+  });
+});
+
+describe("where new docs and memory go (roadmap 40c)", () => {
+  const billing: HiveSystem = { ...shop, name: "billing", projects: ["api", "ledger"] };
+  it("puts them in the system's own space for a system and for a service of one", () => {
+    assert.equal(defaultOwner(systemScope("shop", ["api", "web"]), [shop]), "sys:shop");
+    assert.equal(defaultOwner(projectScope("web"), [shop]), "sys:shop");
+    // A service of two systems: the first by name.
+    assert.equal(defaultOwner(projectScope("api"), [shop, billing]), "sys:billing");
+  });
+
+  it("keeps a repo in no system, the shared scope and all where they were", () => {
+    assert.equal(defaultOwner(projectScope("solo"), [shop]), "solo");
+    assert.equal(defaultOwner(SHARED, [shop]), null);
+    assert.equal(defaultOwner(ALL, [shop]), null);
+  });
+
+  it("falls back to the service when the person may not write the system's", () => {
+    assert.equal(defaultOwner(projectScope("api"), [shop, billing], (o) => o !== "sys:billing"), "sys:shop");
+    assert.equal(defaultOwner(projectScope("web"), [shop], (o) => o === "web"), "web");
   });
 });

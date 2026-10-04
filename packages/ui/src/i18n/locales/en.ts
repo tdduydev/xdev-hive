@@ -866,6 +866,8 @@ export const en: Catalog = {
     newFolderIn: "New folder in {parent}",
     newFolderTop: "New folder in {space}",
     newPageIn: "New page in {parent}",
+    placeIn: "Put in",
+    placeInHint: "Docs for the whole system go in the system; pick a service when only that repo needs them.",
     newPageTop: "New page at the top of {space}",
     folderPlaceholder: "Folder name, e.g. Operations",
     pagePlaceholder: "Page name, e.g. Deploy steps",
