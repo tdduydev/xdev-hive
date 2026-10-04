@@ -226,7 +226,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 - **40. system-first** (hỏi 3/10: "nên hệ thống → dự án chứ nhỉ? hiện tại dự án nhìn vô nhiều thứ quá; hệ thống có thể nhiều service dạng microservices"; chọn hướng gọn): hệ thống là cấp chính, dự án là *service* bên trong; repo lẻ là hệ thống một service (ảo). Task, run, máy giữ ở cấp service; tài liệu và memory mặc định ở cấp hệ thống. Spec: [docs/specs/40-system-first.md](specs/40-system-first.md). Tách:
   - [ ] **40a. scope-system-first**: ô phạm vi lấy hệ thống làm gốc (cả hệ thống ảo của repo lẻ), service mở rộng bên trong; menu và tiêu đề ghi `hệ thống › service`.
   - [ ] **40b. service-naming**: chữ giao diện vi/en "dự án" (nghĩa là một repo) → "service"; README giải thích hệ thống / service; RPC, DB, MCP giữ `project`.
-  - [ ] **40c. docs-system-default**: *Tài liệu* hiện tài liệu hệ thống trước rồi từng service; trang mới và memory trên web mặc định ở cấp hệ thống.
+  - [x] **40c. docs-system-default**: *Tài liệu* hiện tài liệu hệ thống trước rồi từng service; trang mới và memory trên web mặc định ở cấp hệ thống.
   - [ ] **40d. overview-by-system**: *Tổng quan* / *Hôm nay* mỗi hệ thống một thẻ; bảng Task và Lượt chạy có cột và bộ lọc *Service*.
 
 - **41. artifacts** (hỏi 3/10: "hệ thống này cũng phải lưu trữ dữ liệu artifacts của AI tạo ra làm tài liệu nữa nhỉ? lỡ sau này quên"; chọn: làm cả bốn mục, nhật ký ở cấp hệ thống). Hiện tóm tắt và log run bị xoá sau 30 ngày, ghi chú task bị ghi đè, file agent làm ra không lên Hive. Spec: [docs/specs/41-artifacts.md](specs/41-artifacts.md). Tách:
