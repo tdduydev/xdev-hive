@@ -110,3 +110,19 @@ export function outsideSystems(projects: string[], systems: HiveSystem[]): strin
 
 /** A name search, case-insensitive; an empty query keeps everything. */
 export const nameMatches = (name: string, query: string): boolean => name.toLowerCase().includes(query.trim().toLowerCase());
+
+/** The systems a project is a service of, by name: a project may be in more than one. */
+export const systemsOfProject = (project: string, systems: HiveSystem[]): HiveSystem[] => systems.filter((s) => s.projects.includes(project)).sort((a, b) => a.name.localeCompare(b.name));
+
+/**
+ * Where new docs and memory of a scope go by default (roadmap 40c): a system's own space for a system and for a service
+ * of one (its first system by name), since most of what is written there is for every service; the project for a repo
+ * in no system; the team's (null) for shared and all. `can` says whether the person may write there: a system they may
+ * not write falls back to the service.
+ */
+export function defaultOwner(s: Scope, systems: HiveSystem[], can: (owner: string | null) => boolean = () => true): string | null {
+  if (s.kind === "system") return systemOwner(s.system);
+  if (s.kind !== "project") return null;
+  const system = systemsOfProject(s.project, systems).find((x) => can(systemOwner(x.name)));
+  return system ? systemOwner(system.name) : s.project;
+}
