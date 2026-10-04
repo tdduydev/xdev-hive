@@ -2,7 +2,7 @@
 // for several at once. The Task page and the agent map (31b) open them.
 import { useState } from "react";
 import { Plus, Send } from "lucide-react";
-import { AGENT_ROLES, type AgentRole, type Task } from "@xdev-hive/core";
+import { AGENT_ROLES, type AgentRole, type PreferKind, type Task } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Input } from "@xdev-hive/ui/components/ui/input";
@@ -11,7 +11,7 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@xdev-hive/ui/components/ui/sheet";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
-import { MachineSelect, ProfileSelect, takesRunsOf } from "#ui/components/MachinePicker.tsx";
+import { MachineSelect, PreferKindSelect, ProfileSelect, takesRunsOf } from "#ui/components/MachinePicker.tsx";
 import { useAction, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import type { AgentTarget } from "#ui/lib/agentmap.ts";
@@ -55,6 +55,7 @@ export function PromptSheet({
   const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
   const [reviewAfter, setReviewAfter] = useState(true);
+  const [preferKind, setPreferKind] = useState<PreferKind | "">("");
   const action = useAction();
   return (
     <SheetContent className="w-full overflow-y-auto sm:w-[36rem] sm:max-w-[calc(100vw-2rem)]">
@@ -83,6 +84,7 @@ export function PromptSheet({
               project,
               machineId: machine.id,
               profileId: profileId || null,
+              preferKind: (!profileId && preferKind) || null,
               ...(title.trim() ? { title: title.trim() } : {}),
               prompt,
               reviewAfter,
@@ -109,6 +111,7 @@ export function PromptSheet({
           <div className="grid gap-3 sm:grid-cols-2">
             <MachineSelect id="prompt-machine" machines={fit} value={machine.id} onChange={setMachineId} />
             <ProfileSelect id="prompt-profile" machine={machine} value={profileId} onChange={setProfileId} />
+            {!profileId ? <PreferKindSelect id="prompt-prefer" machine={machine} value={preferKind} onChange={setPreferKind} /> : null}
           </div>
         ) : null}
         {machine && several ? (
@@ -195,6 +198,8 @@ export function BatchSheet({ tasks, targets = [], onSent }: { tasks: Task[]; tar
   const [parallel, setParallel] = useState("");
   const [reviewAfter, setReviewAfter] = useState(true);
   const [instructions, setInstructions] = useState("");
+  // One for the group: every row that rotates waits for this kind first (roadmap 24c).
+  const [preferKind, setPreferKind] = useState<PreferKind | "">("");
   const action = useAction();
   const set = (i: number, patch: Partial<(typeof rows)[number]>) => setRows((r) => r.map((row, j) => (j === i ? { ...row, ...patch } : row)));
   const max = parallel.trim() ? Math.max(1, Math.min(20, Number.parseInt(parallel, 10) || 1)) : null;
@@ -212,7 +217,7 @@ export function BatchSheet({ tasks, targets = [], onSent }: { tasks: Task[]; tar
             const group = await client.call("runs.dispatchMany", {
               project,
               title: title.trim(),
-              items: rows.map((r) => ({ taskId: r.taskId, machineId: r.machineId || null, profileId: r.profileId || null, role: r.role })),
+              items: rows.map((r) => ({ taskId: r.taskId, machineId: r.machineId || null, profileId: r.profileId || null, preferKind: (!r.profileId && preferKind) || null, role: r.role })),
               maxParallel: max,
               reviewAfter,
               instructions,
@@ -255,6 +260,7 @@ export function BatchSheet({ tasks, targets = [], onSent }: { tasks: Task[]; tar
             <Label htmlFor="batch-parallel">{t("tasks.batchParallel")}</Label>
             <Input id="batch-parallel" inputMode="numeric" placeholder={t("tasks.batchParallelHint")} value={parallel} onChange={(e) => setParallel(e.target.value.replace(/\D/g, ""))} />
           </div>
+          <PreferKindSelect id="batch-prefer" machine={null} value={preferKind} onChange={setPreferKind} />
         </div>
         <Textarea placeholder={t("board.instructionsPlaceholder")} value={instructions} onChange={(e) => setInstructions(e.target.value)} aria-label={t("board.instructions")} />
         <label className="flex items-center gap-2 text-sm">

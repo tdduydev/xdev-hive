@@ -2,7 +2,7 @@ import { z } from "zod";
 import { HiveError } from "./errors.ts";
 import { agentPolicyPartSchema, agentPolicySchema, type AgentPolicy, type AgentPolicyView } from "./agent-policy.ts";
 import { BUDGET_USER, budgetSchema, type BudgetBlock, type BudgetUsage } from "./budgets.ts";
-import { ACCOUNT_ID, AGENT_ROLES, agentProfileSchema, MAX_CANDIDATES, RUN_STATUSES } from "./agents.ts";
+import { ACCOUNT_ID, AGENT_ROLES, PREFER_KINDS, agentProfileSchema, MAX_CANDIDATES, RUN_STATUSES } from "./agents.ts";
 import { CHAT_FILES_PER_MESSAGE } from "./chatfiles.ts";
 import { DOC_ASSET_MAX_BYTES } from "./doclinks.ts";
 import { MR_STATUSES, PIPELINE_STATUSES } from "./gitlab.ts";
@@ -530,6 +530,8 @@ export const schemas = {
     role: z.enum(AGENT_ROLES).default("implement"),
     /** A profile of that machine; null rotates. */
     profileId: z.string().max(40).nullable().default(null),
+    /** Unpinned: wait for a profile of this kind while one could take the run, then any (roadmap 24c). */
+    preferKind: z.enum(PREFER_KINDS).nullable().default(null),
     reviewAfter: z.boolean().default(false),
     candidates: z.number().int().min(1).max(MAX_CANDIDATES).default(1),
     instructions: z.string().max(4000).default(""),
@@ -546,6 +548,8 @@ export const schemas = {
     machineId: machineRef,
     /** A profile of that machine; null rotates. */
     profileId: z.string().max(40).nullable().default(null),
+    /** Unpinned: wait for a profile of this kind while one could take the run, then any (roadmap 24c). */
+    preferKind: z.enum(PREFER_KINDS).nullable().default(null),
     reviewAfter: z.boolean().default(false),
   }),
   /**
@@ -562,6 +566,8 @@ export const schemas = {
           /** null: any machine that takes the project's runs and has a free place when the item's turn comes. */
           machineId: machineRef.nullable().default(null),
           profileId: z.string().max(40).nullable().default(null),
+          /** Unpinned: wait for a profile of this kind while one could take the run, then any (roadmap 24c). */
+          preferKind: z.enum(PREFER_KINDS).nullable().default(null),
           role: z.enum(AGENT_ROLES).default("implement"),
         }),
       )

@@ -1,7 +1,7 @@
 // Contracts between the shared UI and its hosts (web hub, desktop main process). Types only.
 import type { Access, Grant } from "./access.ts";
 import type { ProfileAutonomy } from "./agent-policy.ts";
-import type { AgentKind, AgentProfile, AgentRole, PlanUsage, RunnerSettings, RunStatus } from "./agents.ts";
+import type { AgentKind, AgentProfile, AgentRole, PlanUsage, PreferKind, RunnerSettings, RunStatus } from "./agents.ts";
 import type { GitLabImportCandidate, GitLabImportResult, MrSettings, MrState, MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { TransferReport } from "./transfer.ts";
 import type { MachineCommand, Role, SetupItem, SetupReport, TeamPolicy, ToolHandler, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
@@ -257,6 +257,8 @@ export interface AgentRun {
   profileId: string | null;
   /** Pinned by the admin; null = rotate automatically. */
   preferredProfile: string | null;
+  /** A kind to wait for while one of its profiles could take the run; null = any (roadmap 24c). */
+  preferKind: PreferKind | null;
   /** Kinds to avoid, e.g. the implementer's kind for a cross-review. */
   avoidKinds: AgentKind[];
   excludedProfiles: string[];
@@ -350,6 +352,8 @@ export interface StartRunRequest {
   role?: AgentRole;
   /** Pin a profile; omit to rotate. */
   profileId?: string | null;
+  /** Unpinned: wait for a profile of this kind while one could take the run, then any (roadmap 24c). */
+  preferKind?: PreferKind | null;
   instructions?: string;
   /** After success, queue a review on a different agent kind. */
   reviewAfter?: boolean;

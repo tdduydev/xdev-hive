@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { cn } from "cn";
 import { Sparkles } from "lucide-react";
-import { AGENT_ROLES, MAX_CANDIDATES, TASK_STATUSES, type AgentRole, type RunRequest, type Task, type TaskStatus } from "@xdev-hive/core";
+import { AGENT_ROLES, MAX_CANDIDATES, TASK_STATUSES, type AgentRole, type PreferKind, type RunRequest, type Task, type TaskStatus } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
@@ -14,7 +14,7 @@ import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "#ui/components/common.tsx";
 import { BatchSheet, PromptSheet } from "#ui/components/AgentSheets.tsx";
 import { FlowList, FlowTaskPanel } from "#ui/components/FlowCard.tsx";
-import { MachineSelect, ProfileSelect, takesRunsOf } from "#ui/components/MachinePicker.tsx";
+import { MachineSelect, PreferKindSelect, ProfileSelect, takesRunsOf } from "#ui/components/MachinePicker.tsx";
 import { TaskKanban } from "#ui/components/TaskKanban.tsx";
 import { formatTime, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
@@ -478,6 +478,7 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
   const machine = fit.find((m) => m.id === machineId) ?? fit[0] ?? null;
   const [role, setRole] = useState<AgentRole>(task.status === "review" ? "review" : "implement");
   const [profileId, setProfileId] = useState("");
+  const [preferKind, setPreferKind] = useState<PreferKind | "">("");
   const [instructions, setInstructions] = useState("");
   const [reviewAfter, setReviewAfter] = useState(true);
   const [candidates, setCandidates] = useState(1);
@@ -508,6 +509,7 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
                 taskId: task.id,
                 role,
                 profileId: profileId || null,
+                preferKind: (!profileId && preferKind) || null,
                 reviewAfter: role !== "review" && reviewAfter,
                 candidates: several ? candidates : 1,
                 instructions,
@@ -530,6 +532,7 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
               </NativeSelect>
             </div>
             <ProfileSelect id={`profile-${task.id}`} machine={machine} value={profileId} onChange={setProfileId} />
+            {!profileId ? <PreferKindSelect id={`prefer-${task.id}`} machine={machine} value={preferKind} onChange={setPreferKind} /> : null}
             {several ? (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor={`candidates-${task.id}`}>{t("board.candidates")}</Label>

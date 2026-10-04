@@ -4,6 +4,9 @@ import { z } from "zod";
 
 export const AGENT_KINDS = ["claude", "codex", "gemini", "custom"] as const;
 export type AgentKind = (typeof AGENT_KINDS)[number];
+/** Kinds a run may prefer when it is given (roadmap 24c): the vendors with a subscription to rotate. */
+export const PREFER_KINDS = ["claude", "codex", "gemini"] as const;
+export type PreferKind = (typeof PREFER_KINDS)[number];
 
 export const AGENT_ROLES = ["plan", "implement", "review"] as const;
 export type AgentRole = (typeof AGENT_ROLES)[number];
