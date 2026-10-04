@@ -15,3 +15,6 @@ data/
 .env
 *.env
 deploy/.env
+
+# What agents make in a run (roadmap 41c uploads it to the hub); never part of a commit.
+.xdev-hive/artifacts/
