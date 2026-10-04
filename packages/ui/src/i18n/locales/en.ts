@@ -10,6 +10,8 @@ export const en: Catalog = {
     copy: "Copy",
     copied: "Copied",
     loading: "Loading…",
+    showMore: "Show more",
+    showLess: "Show less",
   },
   language: {
     label: "Language",
@@ -108,6 +110,7 @@ export const en: Catalog = {
     backOnline: "Connected to {host} again",
     nav: "Navigation",
     toggleSidebar: "Show or hide the sidebar",
+    closeSidebar: "Close menu",
     sidebarShortcut: "Sidebar (⌘B)",
     search: "Search tasks, docs or run a command",
     newTask: "New task",

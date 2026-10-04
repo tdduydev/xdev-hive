@@ -8,6 +8,10 @@ import path from "node:path";
 
 const base = process.env.HIVE_E2E_BASE;
 const out = process.env.HIVE_E2E_OUT;
+const width = Number(process.env.HIVE_E2E_W ?? 1440);
+const height = Number(process.env.HIVE_E2E_H ?? 900);
+if (!Number.isInteger(width) || width < 320 || !Number.isInteger(height) || height < 480) throw new Error("invalid HIVE_E2E_W/HIVE_E2E_H");
+const mobile = width < 768;
 const { admin, people, proposals, memory } = JSON.parse(process.env.HIVE_E2E_SEED);
 
 app.commandLine.appendSwitch("force-device-scale-factor", "1");
@@ -53,7 +57,7 @@ class Tab {
   errors = [];
 
   static async open(name) {
-    const win = new BrowserWindow({ show: false, width: 1440, height: 900, webPreferences: { partition: `e2e-${name}` } });
+    const win = new BrowserWindow({ show: false, width, height, webPreferences: { partition: `e2e-${name}` } });
     const tab = new Tab(win, name);
     win.webContents.on("console-message", (e) => {
       if (e.level === "error" && /Uncaught|TypeError|ReferenceError/.test(e.message)) tab.errors.push(e.message.slice(0, 300));
@@ -127,6 +131,13 @@ class Tab {
   }
 
   async click(selector, text, within) {
+    if (mobile && selector === "[data-project-picker-trigger]") {
+      const hidden = await this.eval(() => {
+        const r = document.querySelector("[data-project-picker-trigger]")?.getBoundingClientRect();
+        return r && (r.right <= 0 || r.left >= innerWidth);
+      });
+      if (hidden) await this.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
+    }
     const { x, y } = await this.find(selector, text, within);
     await this.cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
     await this.cdp("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
@@ -177,6 +188,8 @@ class Tab {
 }
 
 const results = [];
+const overflows = [];
+const contentOverflows = [];
 let current = null;
 let n = 0;
 async function step(name, fn) {
@@ -191,6 +204,18 @@ async function step(name, fn) {
     results.push({ name, ok: false });
     console.log(`  ✗ ${name}: ${err.message}`);
     await current?.shot(`${id}-${name}-FAIL`).catch(() => undefined);
+  } finally {
+    if (mobile && current) {
+      const size = await current.eval(() => {
+        const main = document.querySelector("main");
+        return { width: innerWidth, scrollWidth: document.documentElement.scrollWidth, mainWidth: main?.clientWidth, mainScrollWidth: main?.scrollWidth, route: location.hash };
+      }).catch(() => null);
+      if (size && size.scrollWidth > size.width + 1) {
+        overflows.push({ step: name, ...size });
+        console.log(`    ↔ overflow at ${name}: ${size.scrollWidth}px > ${size.width}px (${size.route})`);
+      }
+      if (size?.mainWidth && size.mainScrollWidth > size.mainWidth + 1) contentOverflows.push({ step: name, ...size });
+    }
   }
 }
 const expect = (ok, message) => {
@@ -240,6 +265,7 @@ async function main() {
     await tab.waitFor("only payment tasks", () => document.body.innerText.includes("Việc đầu tiên của payment") && !document.body.innerText.includes("Việc đầu tiên của demo") && !document.body.innerText.includes("Việc đầu tiên của ledger"));
     await tab.click("[data-project-picker-trigger]");
     await tab.click('[role="option"]', "Tất cả dự án");
+    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
   });
 
   await step("login-password", async () => {
@@ -282,16 +308,26 @@ async function main() {
       const row = [...document.querySelectorAll("tr")].find((r) => r.textContent.includes("@minh"));
       const b = row && [...row.querySelectorAll("button")].find((x) => x.textContent.trim() === "Phân quyền");
       if (!b) return null;
+      b.scrollIntoView({ block: "center", inline: "center" });
       const r = b.getBoundingClientRect();
       return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
     });
     await tab.cdp("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
     await tab.cdp("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
     await tab.find('[role="dialog"]');
+    expect((await tab.text('[role="dialog"]')).includes("@minh"), "the grants dialog is not Minh's");
     await tab.select('[role="dialog"] select[aria-label="Quyền trên demo"]', "reviewer");
-    await tab.click('[role="dialog"] button', "Lưu quyền");
+    await tab.waitFor("the reviewer grant selected", () => document.querySelector('[role="dialog"] select[aria-label="Quyền trên demo"]')?.value === "reviewer");
+    if (mobile) {
+      // The full-screen grant sheet belongs to 42d; keyboard activation keeps this flow covered meanwhile.
+      await tab.eval(() => [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent.trim() === "Lưu quyền")?.focus());
+      await tab.key("Enter");
+    } else await tab.click('[role="dialog"] button', "Lưu quyền");
     await tab.waitFor("the dialog to close", () => !document.querySelector('[role="dialog"]'));
-    const minh = (await rpc("users.list", {})).find((u) => u.username === "minh");
+    const minh = await until("Minh's reviewer grant", async () => {
+      const user = (await rpc("users.list", {})).find((u) => u.username === "minh");
+      return user?.grants.demo === "reviewer" && user;
+    });
     expect(JSON.stringify(minh.grants.demo) === '"reviewer"', `Minh on demo: ${JSON.stringify(minh.grants.demo)}`);
   });
 
@@ -328,7 +364,8 @@ async function main() {
   await step("docs-markdown", async () => {
     const tab = (current = tabs.admin);
     await tab.click('[role="radio"]', "Markdown");
-    await tab.click('textarea[aria-label^="Nội dung"]');
+    if (mobile) await tab.eval(() => document.querySelector('textarea[aria-label^="Nội dung"]')?.focus());
+    else await tab.click('textarea[aria-label^="Nội dung"]');
     // The caret to the end, then typed as a person would.
     await tab.eval(() => {
       const area = document.querySelector('textarea[aria-label^="Nội dung"]');
@@ -1167,6 +1204,11 @@ async function main() {
   const errors = Object.values(tabs).flatMap((t) => t.errors.map((e) => `${t.name}: ${e}`));
   if (errors.length) console.log(`page errors:\n  ${errors.join("\n  ")}`);
   const failed = results.filter((r) => !r.ok);
+  if (mobile) {
+    writeFileSync(path.join(out, "overflow.json"), JSON.stringify({ page: overflows, content: contentOverflows }, null, 2));
+    console.log(`mobile overflow: ${overflows.length} steps${overflows.length ? `; ${overflows.map((o) => o.step).join(", ")}` : ""}`);
+    console.log(`content wider than pane: ${contentOverflows.length} steps${contentOverflows.length ? `; ${contentOverflows.map((o) => o.step).join(", ")}` : ""}`);
+  }
   console.log(`${results.length - failed.length}/${results.length} steps passed${failed.length ? `; failed: ${failed.map((f) => f.name).join(", ")}` : ""}`);
   app.exit(failed.length || errors.length ? 1 : 0);
 }
