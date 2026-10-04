@@ -11,7 +11,6 @@ import {
   DollarSign,
   FileText,
   FolderGit2,
-  FolderKanban,
   Gauge,
   GitPullRequestArrow,
   Inbox,
@@ -46,6 +45,7 @@ import { ErrorNote } from "./components/common.tsx";
 import { CrashCard, ErrorBoundary, PageBoundary } from "./components/ErrorBoundary.tsx";
 import { HiveContext, useProjectList, useQuery, usePoll } from "./hooks.ts";
 import { activeIntl, useT, type MessageKey } from "./i18n/index.tsx";
+import { resolveHash } from "./lib/route.ts";
 import { readScope, resolveScope, writeScope, type Scope } from "./lib/scope.ts";
 import { useSystemTheme } from "./lib/theme.ts";
 import { ClientShell, type NavEntry, type NavGroup } from "./shell/ClientShell.tsx";
@@ -53,7 +53,6 @@ import { InboxProvider, useInboxState } from "./shell/inbox.tsx";
 import { PolicyTab } from "./pages/Admin.tsx";
 import { AgentsPage } from "./pages/Agents.tsx";
 import { BatchesPage } from "./pages/Batches.tsx";
-import { BoardPage } from "./pages/Board.tsx";
 import { ChatPage } from "./pages/Chat.tsx";
 import { DevicePage } from "./pages/Device.tsx";
 import { DocsPage } from "./pages/Docs.tsx";
@@ -67,7 +66,7 @@ import { SetupPage } from "./pages/Setup.tsx";
 import { SkillsPage } from "./pages/Skills.tsx";
 import { SpecsPage } from "./pages/Specs.tsx";
 import { SystemsPage } from "./pages/Systems.tsx";
-import { TasksPage } from "./pages/Tasks.tsx";
+import { TaskWorkPage } from "./pages/Tasks.tsx";
 import { TodayPage } from "./pages/Today.tsx";
 import { TokensPage } from "./pages/Tokens.tsx";
 import { ToolsPage } from "./pages/Tools.tsx";
@@ -85,7 +84,6 @@ type PageId =
   | "today"
   | "overview"
   | "chat"
-  | "board"
   | "runs"
   | "batches"
   | "docs"
@@ -122,7 +120,6 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
   today: { label: "nav.today", sub: "navSub.today", icon: Inbox, render: () => <TodayPage /> },
   overview: { label: "nav.overview", sub: "navSub.overview", icon: LayoutGrid, render: () => <OverviewPage /> },
   chat: { label: "nav.chat", sub: "navSub.chat", icon: MessageSquare, render: () => <ChatPage /> },
-  board: { label: "nav.board", sub: "navSub.board", icon: FolderKanban, render: () => <BoardPage /> },
   runs: { label: "nav.runs", sub: "navSub.runs", icon: Activity, render: () => <RunsPage /> },
   batches: { label: "nav.batches", sub: "navSub.batches", icon: Workflow, render: () => <BatchesPage /> },
   docs: { label: "nav.docs", sub: "navSub.docs", icon: FileText, render: () => <DocsPage /> },
@@ -132,7 +129,8 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
   skills: { label: "nav.skills", sub: "navSub.skills", icon: WandSparkles, render: () => <SkillsPage /> },
   proposals: { label: "nav.proposals", sub: "navSub.proposals", icon: GitPullRequestArrow, render: () => <ProposalsPage /> },
   memory: { label: "nav.memory", sub: "navSub.memory", icon: Brain, render: () => <MemoryPage /> },
-  tasks: { label: "nav.tasks", sub: "navSub.tasks", icon: ListTodo, render: () => <TasksPage /> },
+  // The desktop app opens it on the Board of this machine (roadmap 39f); the web keeps the shared Kanban.
+  tasks: { label: "nav.tasks", sub: "navSub.tasks", icon: ListTodo, render: () => <TaskWorkPage /> },
   agents: { label: "nav.agents", sub: "navSub.agents", icon: Bot, render: () => <AgentsPage /> },
   machines: { label: "nav.machines", sub: "navSub.machines", icon: Server, render: () => <MachinesPage /> },
   setup: { label: "nav.setup", sub: "navSub.setup", icon: Terminal, render: () => <SetupPage /> },
@@ -158,13 +156,18 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
   device: { label: "nav.device", sub: "navSub.device", icon: Laptop, render: () => <DevicePage /> },
 };
 
-/** The desktop app in local mode: the whole system on this machine (hub-only pages drop out by visibility). */
+/**
+ * The desktop app in local mode: the whole system on this machine. Twelve entries since roadmap 39f, so the menu
+ * fits a 1440×900 window without scrolling. Only pages a machine on its own can have are listed: Chat, Đợt chạy,
+ * Bản đồ agent, Người dùng, Thành viên and Token all need a hub (see `visible` below, which left them out of this
+ * mode all along), Board is now the Task page and Tool a part of Dự án & công cụ.
+ */
 const LOCAL_GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
-  { label: null, ids: ["today", "chat"] },
-  { label: "nav.groupWork", ids: ["board", "runs", "batches", "tasks"] },
+  { label: null, ids: ["today"] },
+  { label: "nav.groupWork", ids: ["tasks", "runs"] },
   { label: "nav.groupKnowledge", ids: ["docs", "specs", "skills", "memory", "proposals"] },
-  { label: "nav.groupAgents", ids: ["agents", "setup", "tools", "projects"] },
-  { label: "nav.groupAdmin", ids: ["machines", "users", "members", "tokens", "systems"] },
+  { label: "nav.groupAgents", ids: ["agents", "setup", "projects"] },
+  { label: "nav.groupAdmin", ids: ["systems"] },
 ];
 /**
  * The web (roadmap 35b): one shell for everyone, each group showing what the person may use. Work and knowledge for
@@ -177,8 +180,14 @@ const WEB_GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
   { label: "ops.group.ops", ids: ["ops", "machines", "fleet", "queue", "costs", "alerts"] },
   { label: "nav.groupAdmin", ids: ["systems", "members", "users", "policy", "tools", "context", "tokens", "webhooks", "audit", "versions", "hub"] },
 ];
-/** ⌘1–6 go to Hôm nay, Chat, Board, Lượt chạy, Tài liệu, Agent (those that are shown). */
-const SHORTCUTS: Partial<Record<PageId, string>> = { today: "1", chat: "2", board: "3", runs: "4", docs: "5", agents: "6" };
+/**
+ * ⌘1–6 on the web and on a machine connected to a hub: Hôm nay, Chat, Lượt chạy, Tài liệu, Agent, of those the mode
+ * shows. ⌘3 was the Board, which is the Task page now (roadmap 39f); the others keep the key they had, since this
+ * roadmap item only changes the menu of the local mode.
+ */
+const SHORTCUTS: Partial<Record<PageId, string>> = { today: "1", chat: "2", runs: "4", docs: "5", agents: "6" };
+/** On this machine the menu is another one (roadmap 39f), so ⌘1–6 follow it: its first six entries. */
+const LOCAL_SHORTCUTS: Partial<Record<PageId, string>> = { today: "1", tasks: "2", runs: "3", docs: "4", agents: "5", setup: "6" };
 
 /**
  * The desktop app connected to a hub (roadmap 35a): this machine's work only. Tasks, docs, policies, members and the
@@ -198,47 +207,11 @@ const PALETTE_ONLY: PageId[] = ["overview"];
 type Route = { kind: "client"; id: PageId };
 const HOME: Route = { kind: "client", id: "today" };
 
-/** The Web Admin's addresses before roadmap 35b (alerts, webhooks and old links still use them): its page here. */
-const ADMIN_ALIASES: Record<string, PageId> = {
-  "": "ops",
-  overview: "ops",
-  chat: "chat",
-  runs: "runs",
-  queue: "queue",
-  batches: "batches",
-  fleet: "fleet",
-  quota: "machines",
-  costs: "costs",
-  alerts: "alerts",
-  review: "proposals",
-  docs: "docs",
-  read: "read",
-  specs: "specs",
-  context: "context",
-  memory: "memory",
-  skills: "skills",
-  users: "users",
-  projects: "systems",
-  policy: "policy",
-  tools: "tools",
-  versions: "versions",
-  tokens: "tokens",
-  webhooks: "webhooks",
-  audit: "audit",
-  hub: "hub",
-};
-
-function readHash(): Route | null {
-  const raw = window.location.hash.replace(/^#\/?/, "");
-  const id = raw.split("?")[0]!;
-  // #/admin, #/admin/<page>?…: the page's own address now, with the same query.
-  if (id === "admin" || id.startsWith("admin/")) {
-    const page = ADMIN_ALIASES[id.slice("admin/".length)] ?? "ops";
-    const query = raw.includes("?") ? raw.slice(raw.indexOf("?")) : "";
-    window.history.replaceState(null, "", `#/${page}${query}`);
-    return { kind: "client", id: page };
-  }
-  return id in PAGES ? { kind: "client", id: id as PageId } : null;
+/** The page the address bar means (lib/route.ts has the table), with an old address rewritten to the page it reaches. */
+function readHash(local: boolean): Route | null {
+  const { id, hash } = resolveHash(window.location.hash, { local, isPage: (page) => page in PAGES });
+  if (hash) window.history.replaceState(null, "", hash);
+  return id ? { kind: "client", id: id as PageId } : null;
 }
 
 /** Full-window message (connecting, or a failed sign-in). */
@@ -287,7 +260,9 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   // Operations and administration read what every machine reported to the hub: hub admins only, on the web.
   const hubAdmin = me.mode === "hub" && me.role === "admin" && !me.access;
   const webAdmin = hubAdmin && !client.desktop;
-  const [route, setRoute] = useState<Route>(() => readHash() ?? HOME);
+  // This machine on its own: fewer pages, so a few addresses lead elsewhere (roadmap 39f) and ⌘1–6 follow its menu.
+  const local = !!client.desktop && me.mode !== "hub";
+  const [route, setRoute] = useState<Route>(() => readHash(local) ?? HOME);
   const [tick, setTick] = useState(0);
   const bump = useCallback(() => setTick((t) => t + 1), []);
   const seen = useProjectList(client, tick);
@@ -313,13 +288,15 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   const deskHub = !!client.desktop && me.mode === "hub";
   const webUrl = useQuery(async () => (deskHub ? (await client.desktop!.settings()).hubUrl.replace(/\/+$/, "") : null), [client, deskHub]).data ?? null;
   // The web counts what waits for review once, on Hôm nay (roadmap 35c); the desktop's own pages keep their count.
-  const local = !!client.desktop && me.mode !== "hub";
   const pending = useQuery(async () => (local ? client.call("proposals.list", { status: "pending" }) : []), [client, local, tick, route]);
   // Checked when the app opens (and after leaving the setup page), so the sidebar shows what is missing.
   const setup = useQuery(async () => (client.desktop ? client.desktop.setupStatus() : null), [client, page === "setup"]);
 
+  // The listener is set once, so the mode it reads an address in comes from a ref, as the one below does.
+  const localRef = useRef(local);
+  localRef.current = local;
   useEffect(() => {
-    const onHash = () => setRoute(readHash() ?? HOME);
+    const onHash = () => setRoute(readHash(localRef.current) ?? HOME);
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
@@ -328,7 +305,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     if (deskHub) return new Set<PageId>([...DESK_PAGES].filter((id) => id !== "device" || (client.device && me.user)));
     // Tool: the catalog is the hub's, and project managers on the web turn tools on for their project there too.
     const ids = new Set<PageId>(["today", "overview", "docs", "read", "specs", "skills", "proposals", "memory", "tasks", "systems", "tools"]);
-    if (client.desktop) for (const id of ["board", "agents", "setup", "projects"] as const) ids.add(id);
+    if (client.desktop) for (const id of ["agents", "setup", "projects"] as const) ids.add(id);
     // Machines only report to a hub (and push their runs to it); a local database never has any. The leader chat
     // runs on a machine the hub hands it to.
     if (me.mode === "hub") for (const id of ["machines", "runs", "batches", "chat"] as const) ids.add(id);
@@ -417,7 +394,8 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   };
   // Filled: what waits for you, and alerts the hub rates high.
   const strong = (id: PageId) => id === "today" || (id === "alerts" && openAlerts.some((a) => a.severity === "high"));
-  const groups: NavGroup[] = (deskHub ? DESK_GROUPS : client.desktop ? LOCAL_GROUPS : WEB_GROUPS)
+  const shortcuts = local ? LOCAL_SHORTCUTS : SHORTCUTS;
+  const groups: NavGroup[] = (deskHub ? DESK_GROUPS : local ? LOCAL_GROUPS : WEB_GROUPS)
     .map((g) => ({
       label: g.label ? t(g.label) : null,
       items: g.ids
@@ -426,7 +404,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
           id,
           label: t(PAGES[id].label),
           icon: PAGES[id].icon,
-          shortcut: SHORTCUTS[id],
+          shortcut: shortcuts[id],
           badge: counts[id] ? { count: counts[id]!, strong: strong(id) } : undefined,
         })),
     }))

@@ -43,7 +43,6 @@ export const vi = {
     today: "Hôm nay",
     overview: "Tổng quan",
     chat: "Chat",
-    board: "Board",
     docs: "Tài liệu",
     read: "Trang đọc",
     specs: "Spec",
@@ -74,7 +73,6 @@ export const vi = {
     today: "Việc cần bạn hôm nay",
     overview: "Dự án, tài liệu và memory theo phạm vi đang chọn",
     chat: "Trò chuyện với agent leader của dự án",
-    board: "Kéo thẻ để đổi trạng thái",
     runs: "Run của các máy trong nhóm",
     batches: "Nhiều task giao một lần, chạy song song có giới hạn",
     runsOn: "Run trên máy này",
@@ -1030,6 +1028,8 @@ export const vi = {
   tasks: {
     view: "Cách xem",
     view_kanban: "Kanban",
+    /** Cùng chỗ với Kanban, nhưng trong app là Board của máy này. */
+    view_board: "Board",
     view_list: "Danh sách",
     showOlderDone: "Xem thêm {count} task đã xong",
     title: "Task",
@@ -1781,6 +1781,7 @@ export const vi = {
   setup: {
     lastChecked: "Kiểm tra lần cuối {time}",
     tools: "Công cụ trên máy",
+    projectTools: "Tool của dự án",
     platform: { darwin: "macOS", win32: "Windows", linux: "Linux" },
     subtitle: "App kiểm tra những gì đã có trên máy này và trong từng repo. Mỗi nút chỉ làm đúng việc ghi ở dòng đó.",
     checking: "Đang kiểm tra…",

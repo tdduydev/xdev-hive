@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "cn";
 import { Sparkles } from "lucide-react";
 import { AGENT_ROLES, MAX_CANDIDATES, TASK_STATUSES, type AgentRole, type PreferKind, type RunRequest, type Task, type TaskStatus } from "@xdev-hive/core";
@@ -13,10 +13,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "#ui/components/common.tsx";
 import { BatchSheet, PromptSheet } from "#ui/components/AgentSheets.tsx";
+import { BoardPage } from "#ui/pages/Board.tsx";
 import { FlowList, FlowTaskPanel } from "#ui/components/FlowCard.tsx";
 import { MachineSelect, PreferKindSelect, ProfileSelect, takesRunsOf } from "#ui/components/MachinePicker.tsx";
 import { TaskKanban } from "#ui/components/TaskKanban.tsx";
-import { formatTime, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "#ui/hooks.ts";
+import { formatTime, hashParam, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { REQUEST_TONE, requestErrorText, runLabel } from "#ui/lib/runs.ts";
 import { scopeFilter, scopeKey, scopeProject } from "#ui/lib/scope.ts";
@@ -45,8 +46,66 @@ const readView = (): View => {
     return "kanban";
   }
 };
+const writeView = (v: View) => {
+  try {
+    localStorage.setItem(VIEW_KEY, v);
+  } catch {
+    // Not remembered.
+  }
+};
 
-export function TasksPage() {
+/** Kanban (Board in the app) or Danh sách. Buttons, not a select: the screenshot harness clicks them. */
+function ViewSwitch({ value, onChange, board }: { value: View; onChange: (v: View) => void; board?: boolean }) {
+  const t = useT();
+  return (
+    <div role="radiogroup" aria-label={t("tasks.view")} className="ml-auto flex gap-0.5 rounded-[7px] bg-sunken p-0.5">
+      {(["kanban", "list"] as const).map((v) => (
+        <button
+          key={v}
+          type="button"
+          role="radio"
+          data-task-view={v}
+          aria-checked={value === v}
+          onClick={() => onChange(v)}
+          className={cn("h-7 cursor-pointer rounded-[5px] px-2.5 text-xs/none font-semibold outline-none focus-visible:focus-ring", value === v ? "bg-surface text-fg-strong shadow-e1" : "text-fg-secondary")}
+        >
+          {t(v === "kanban" && board ? "tasks.view_board" : `tasks.view_${v}`)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Task. In the desktop app it opens on the Board of this machine, with Danh sách as the other view (roadmap 39f):
+ * the two were separate menu entries before, and the Board is where a run starts. On the web the page is this one,
+ * with the shared Kanban.
+ */
+export function TaskWorkPage() {
+  const { client } = useHive();
+  const [view, setViewState] = useState<View>(readView);
+  // A link to one task (#/tasks?task=…, from Hôm nay, a run or memory) opens the list: the task's panel is there.
+  // Read from the address each time rather than useHashParam: the list takes the parameter out when it opens the
+  // task, so the same link followed again would look unchanged to a state that remembered it.
+  useEffect(() => {
+    const onHash = () => {
+      if (hashParam("task")) setViewState("list");
+    };
+    onHash();
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  if (!client.desktop) return <TasksPage />;
+  const change = (v: View) => {
+    setViewState(v);
+    writeView(v);
+  };
+  const switcher = <ViewSwitch value={view} onChange={change} board />;
+  return view === "list" ? <TasksPage view="list" switcher={switcher} /> : <BoardPage switcher={switcher} />;
+}
+
+/** `view` and `switcher` are set by TaskWorkPage when the Board is the other view; alone, the page owns both. */
+export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: ReactNode }) {
   const { client, scope, projects, me } = useHive();
   const t = useT();
   const allow = useCan();
@@ -55,14 +114,11 @@ export function TasksPage() {
   // Tasks always belong to one project: the shared scope has none of its own, so it shows every project's.
   const scoped = scopeProject(scope);
   const key = scopeKey(scope);
-  const [view, setViewState] = useState<View>(readView);
+  const [own, setViewState] = useState<View>(readView);
+  const view = fixed ?? own;
   const setView = (v: View) => {
     setViewState(v);
-    try {
-      localStorage.setItem(VIEW_KEY, v);
-    } catch {
-      // Not remembered.
-    }
+    writeView(v);
   };
   const [status, setStatus] = useState<TaskStatus | "">("");
   // The board's columns are the statuses: it always gets every task.
@@ -127,20 +183,7 @@ export function TasksPage() {
             ))}
           </NativeSelect>
         ) : null}
-        <div role="radiogroup" aria-label={t("tasks.view")} className="ml-auto flex gap-0.5 rounded-[7px] bg-sunken p-0.5">
-          {(["kanban", "list"] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              role="radio"
-              aria-checked={view === v}
-              onClick={() => setView(v)}
-              className={cn("h-7 cursor-pointer rounded-[5px] px-2.5 text-xs/none font-semibold outline-none focus-visible:focus-ring", view === v ? "bg-surface text-fg-strong shadow-e1" : "text-fg-secondary")}
-            >
-              {t(`tasks.view_${v}`)}
-            </button>
-          ))}
-        </div>
+        {switcher ?? <ViewSwitch value={view} onChange={setView} />}
         {prompters.length ? (
           <Button size="sm" onClick={() => setPrompting(true)} data-prompt-agent>
             <Sparkles />
