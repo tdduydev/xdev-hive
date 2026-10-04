@@ -101,6 +101,19 @@ describe("run requests from the web", () => {
     assert.deepEqual([entry!.actor, entry!.target, entry!.detailKey], ["lan", "app/T-1", "audit.runDispatch"]);
   });
 
+  it("keeps the kind a rotating run prefers, and none for a pinned one (roadmap 24c)", async () => {
+    const { hive, beat } = await hub();
+    await beat(mbp);
+    const req = await hive.call("runs.dispatch", { machineId: mbp.name, project: "app", taskId: "T-1", preferKind: "codex" }, lead);
+    assert.equal(req.preferKind, "codex");
+    const [sent] = (await beat(mbp)).runRequests;
+    assert.equal(sent!.preferKind, "codex", "the machine hears it with the request");
+    const { request } = await hive.call("runs.prompt", { project: "app", prompt: "Go", machineId: mbp.name, profileId: "claude-1", preferKind: "codex" }, lead);
+    assert.equal(request.preferKind, null, "a pinned profile wins");
+    assert.equal((await hive.call("runs.prompt", { project: "app", prompt: "Go on", machineId: mbp.name }, lead)).request.preferKind, null);
+    assert.equal(await refusal(hive.call("runs.dispatch", { machineId: mbp.name, project: "app", taskId: "T-1", preferKind: "custom" as never }, lead)), "bad_request");
+  });
+
   it("keeps the reason a machine refused, cleaned for the web", async () => {
     const { hive, beat } = await hub();
     await beat(mbp);

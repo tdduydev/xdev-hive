@@ -122,6 +122,24 @@ describe("run groups (roadmap 31a)", () => {
     assert.deepEqual([entry!.actor, entry!.target, entry!.detailKey], ["lan", "app", "audit.runGroup"]);
   });
 
+  it("hands each item's preferred kind to its request (roadmap 24c)", async () => {
+    const { hive, beat } = await hub();
+    await beat(mbp);
+    const group = await hive.call(
+      "runs.dispatchMany",
+      { project: "app", items: [{ taskId: "T-1", preferKind: "codex" }, { taskId: "T-2", profileId: "claude-1", preferKind: "codex" }, { taskId: "T-3" }] },
+      admin,
+    );
+    assert.deepEqual(
+      group.items.map((i) => [i.taskId, i.preferKind, i.request?.preferKind ?? null]),
+      [
+        ["T-1", "codex", "codex"],
+        ["T-2", null, null],
+        ["T-3", null, null],
+      ],
+    );
+  });
+
   it("gives an item left to the hub to the machine with the most free places", async () => {
     const { hive, beat } = await hub();
     // mbp: one place, busy. mini: two Claude accounts of 2 places, one resting.

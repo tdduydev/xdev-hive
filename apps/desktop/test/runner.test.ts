@@ -9,7 +9,7 @@ import { CODEGRAPH_MCP, CODEGRAPH_RUN_MCP, SUPERPOWERS_PLUGIN } from "#desktop/m
 import { prepareCodegraph } from "#desktop/main/runner/codegraph.ts";
 import { buildCommand, buildPrompt, parsePick } from "#desktop/main/runner/command.ts";
 import { ClaudeStream, toolLine } from "#desktop/main/runner/stream.ts";
-import { outputFormat, parseClaudeResult, parsePlanUsage } from "#desktop/main/runner/usage.ts";
+import { limitResetAt, outputFormat, parseClaudeResult, parsePlanUsage, parseResetAt } from "#desktop/main/runner/usage.ts";
 import { usageHeadroom, usageStop, type HiveEvent, type PlanUsage } from "@xdev-hive/core";
 import { checkLogin, checkUsage, LoginMonitor, loginCommand, parseLogin, USAGE_ARGS } from "#desktop/main/runner/login.ts";
 import { SqliteHive } from "@xdev-hive/core/node";
@@ -19,7 +19,7 @@ import { chatArgs, leaderBrief, leaderSettings } from "#desktop/main/runner/chat
 import { assistSettings, globRegExp, parseAssist, readRepoFiles } from "#desktop/main/runner/assist.ts";
 import { setMainLocale, tr } from "#desktop/main/i18n.ts";
 import { describeBranch } from "#desktop/main/runner/worktree.ts";
-import { pickProfile, waitingReason, type ProfileLoad } from "#desktop/main/runner/schedule.ts";
+import { pickProfile, pickWithReason, waitingReason, type ProfileLoad } from "#desktop/main/runner/schedule.ts";
 import { syncProject } from "#desktop/main/sync.ts";
 import { readSyncOutcome } from "@xdev-hive/core";
 
@@ -225,6 +225,86 @@ describe("pickProfile", () => {
     const planOnly = { ...c, roles: ["plan" as const] };
     assert.equal(pickProfile([load(planOnly)], needs, now), null);
     assert.equal(pickProfile([load(a), load(b)], { ...needs, excludedProfiles: ["claude-a"] }, now)?.profile.id, "claude-b");
+  });
+});
+
+describe("prefer a kind, spend the quota that resets first (roadmap 24c)", () => {
+  const now = new Date("2026-10-04T08:00:00Z");
+  const load = (p: AgentProfile, extra: Partial<ProfileLoad> = {}): ProfileLoad => ({ profile: p, running: 0, cooldownUntil: null, lastUsedAt: null, ...extra });
+  const needs = { role: "implement" as const, preferredProfile: null, avoidKinds: [], excludedProfiles: [], preferKind: "codex" as const };
+  const claude1 = profile("claude-1", "claude", 10, "ok");
+  const claude2 = profile("claude-2", "claude", 10, "ok");
+  const codex1 = profile("codex-1", "codex", 20, "ok");
+  const codex2 = profile("codex-2", "codex", 20, "ok");
+
+  it("takes a free profile of the preferred kind, though another has more quota and a lower priority number", () => {
+    const loads = [load(claude1, { headroom: 90 }), load(codex1, { running: 1 }), load(codex2)];
+    const picked = pickWithReason(loads, needs, now)!;
+    assert.equal(picked.load.profile.id, "codex-2");
+    assert.match(picked.reason, /codex-2.*ưu tiên codex/);
+  });
+
+  it("waits while every profile of that kind is busy, and says so", () => {
+    const loads = [load(claude1), load(codex1, { running: 1 }), load(codex2, { running: 1 })];
+    assert.equal(pickProfile(loads, needs, now), null);
+    assert.match(waitingReason(loads, needs, now), /^Đang chờ gói codex rảnh/);
+  });
+
+  it("goes to another kind when every one of that kind is over its threshold, resting, off or signed out", () => {
+    const resting = { cooldownUntil: "2026-10-04T09:00:00Z" };
+    for (const gone of [
+      [load(codex1, { overLimit: true }), load(codex2, resting)],
+      [load(codex1, { loggedIn: false }), load({ ...codex2, enabled: false })],
+    ]) {
+      const picked = pickWithReason([load(claude1), ...gone], needs, now)!;
+      assert.equal(picked.load.profile.id, "claude-1");
+      assert.match(picked.reason, /không gói codex nào dùng được/);
+    }
+    // A pinned run is unchanged: it waits for its profile whatever it prefers.
+    assert.equal(pickProfile([load(claude1), load(codex1, { running: 1 })], { ...needs, preferredProfile: "codex-1" }, now), null);
+    // A cross-review away from the preferred kind keeps to another vendor.
+    assert.equal(pickProfile([load(claude1), load(codex1)], { ...needs, role: "review", avoidKinds: ["codex"], strictKinds: true }, now)?.profile.id, "claude-1");
+  });
+
+  it("runs on the subscription whose binding limit resets sooner, before the one with more quota", () => {
+    const soon = load(claude1, { headroom: 20, resetAt: "2026-10-04T10:00:00.000Z", lastUsedAt: "2026-10-04T07:59:00Z" });
+    const late = load(claude2, { headroom: 80, resetAt: "2026-10-08T10:59:00.000Z" });
+    const any = { ...needs, preferKind: null };
+    const picked = pickWithReason([late, soon], any, now)!;
+    assert.equal(picked.load.profile.id, "claude-1");
+    assert.match(picked.reason, /reset sớm nhất \(2026-10-04T10:00:00.000Z\)/);
+    // A reset not known comes after a known one, then the most quota left.
+    assert.equal(pickProfile([load(claude2, { headroom: 90 }), soon], any, now)?.profile.id, "claude-1");
+    assert.equal(pickProfile([load(claude2, { headroom: 90 }), load(claude1, { headroom: 30 })], any, now)?.profile.id, "claude-2");
+    // Within the preferred kind too.
+    const c1 = load(codex1, { headroom: 50, resetAt: "2026-10-05T00:00:00.000Z" });
+    const c2 = load(codex2, { headroom: 50, resetAt: "2026-10-04T12:00:00.000Z" });
+    assert.equal(pickProfile([soon, c1, c2], needs, now)?.profile.id, "codex-2");
+  });
+
+  it("reads the reset times Claude Code prints, in their time zone", () => {
+    // Asia/Saigon and Asia/Ho_Chi_Minh are UTC+7.
+    assert.equal(parseResetAt("Oct 8 at 5:59pm (Asia/Saigon)", now)?.toISOString(), "2026-10-08T10:59:00.000Z");
+    assert.equal(parseResetAt("6:20pm (Asia/Saigon)", now)?.toISOString(), "2026-10-04T11:20:00.000Z", "no date: today");
+    assert.equal(parseResetAt("2:10pm (Asia/Saigon)", now)?.toISOString(), "2026-10-05T07:10:00.000Z", "past today: tomorrow");
+    assert.equal(parseResetAt("Oct 8, 6pm (Asia/Ho_Chi_Minh)", now)?.toISOString(), "2026-10-08T11:00:00.000Z");
+    assert.equal(parseResetAt("12am (UTC)", now)?.toISOString(), "2026-10-05T00:00:00.000Z");
+    assert.equal(parseResetAt("Jan 2 at 9am (Europe/London)", now)?.toISOString(), "2027-01-02T09:00:00.000Z", "the year turns");
+    assert.equal(parseResetAt("Oct 8 at 5:59pm (America/New_York)", now)?.toISOString(), "2026-10-08T21:59:00.000Z", "daylight time");
+    for (const text of ["Oct 8 at 5:59pm", "soon", "Oct 8 at 5:59pm (Mars/Olympus)", "13pm (UTC)", "", null]) assert.equal(parseResetAt(text, now), null, String(text));
+  });
+
+  it("takes the reset of the limit nearer its threshold", () => {
+    const p = { stopAtSession: 95, stopAtWeek: 90 };
+    const usage = (session: number, week: number): PlanUsage => ({
+      session: { percent: session, resets: "6:20pm (Asia/Saigon)" },
+      week: { percent: week, resets: "Oct 8 at 5:59pm (Asia/Saigon)" },
+      others: [],
+      checkedAt: now.toISOString(),
+    });
+    assert.equal(limitResetAt(p, usage(20, 85), now)?.toISOString(), "2026-10-08T10:59:00.000Z", "the week stops it first");
+    assert.equal(limitResetAt(p, usage(80, 30), now)?.toISOString(), "2026-10-04T11:20:00.000Z", "the session stops it first");
+    assert.equal(limitResetAt(p, null, now), null);
   });
 });
 
