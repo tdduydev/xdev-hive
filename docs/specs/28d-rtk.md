@@ -35,6 +35,14 @@ Từ đó:
 - [Suy ra, chưa kiểm] Với `''`, hook trong cài đặt người dùng không chạy. Máy thử không có hook người dùng nào, và không sửa file của người dùng để thử. Kiểm khi merge bằng tài khoản 24b: thêm hook vào `settings.json` trong `CLAUDE_CONFIG_DIR` của tài khoản đó.
 - [Chưa kiểm] Hook của plugin. Superpowers có hook `SessionStart` (`hooks/hooks.json`, v6.4.2), hôm nay bị `disableAllHooks` tắt. Bật hook thì nhiều khả năng hook này chạy trong run có superpowers. Máy thử không cài superpowers.
 
+### Tài liệu Claude Code (đọc 5/10, trang Hooks; chưa chạy thật)
+
+Lần kiểm 5/10 không chạy được `claude` hay cài RTK (máy agent cần duyệt từng lệnh). Đây là những gì tài liệu ghi, chưa phải kết quả chạy:
+- `timeout` của hook `command`: tính bằng giây, mặc định 600 (30 với `UserPromptSubmit`). Vậy `timeout: 10` là trường có thật. Vẫn cần kiểm khi merge là Claude Code nhận nó trong `--settings`.
+- Hook của plugin: "When a plugin is enabled, its hooks merge with your user and project hooks." Vậy run có superpowers mà bỏ `disableAllHooks` thì hook `SessionStart` của nó nhiều khả năng chạy. Kiểm khi merge.
+- Ngoài file settings và plugin, hook còn đến từ **frontmatter của skill** (chạy từ lúc skill được gọi đến hết phiên) và **frontmatter của subagent** (khi subagent đó chạy). [Suy ra, chưa kiểm] Với `--setting-sources ''`, skill và subagent trong `~/.claude` và trong worktree không được nạp (memory 369: với `user` đã không nạp skill của worktree). Kiểm khi merge: một skill có hook trong `.claude/skills` của worktree và một trong `CLAUDE_CONFIG_DIR/skills`, hook không được chạy.
+- `disableAllHooks` không tắt được hook của managed settings. Máy có managed settings với hook thì hook đó chạy trong mọi run, có hay không 28d.
+
 ### RTK v0.50.0 (tag ngày 24/9, commit `1d87b8e`, đọc mã nguồn, chưa cài)
 
 - **Giấy phép, cài đặt**:
@@ -115,7 +123,7 @@ Admin hub thêm mục này trên trang *Tool*, hoặc migration của 28d chèn 
    - `hooks: { <event>: [{ matcher, hooks: [{ type: "command", command, timeout: 10 }] }] }`.
      - `command` là argv của mục, nối thành một chuỗi shell có quote đúng.
      - Phần tử đầu thay bằng đường dẫn tuyệt đối mà máy tìm được (như `resolveBin`), để PATH của shell chạy hook không quyết định chạy file nào.
-     - [Chưa kiểm] trường `timeout` (giây). Kiểm khi merge; Claude Code không nhận thì bỏ.
+     - Trường `timeout` (giây): có trong tài liệu, mặc định 600 (xem *Tài liệu Claude Code*). [Chưa kiểm] Claude Code có nhận nó trong `--settings` không. Kiểm khi merge; không nhận thì bỏ.
 3. **Chép từ cài đặt người dùng** những gì run đang lấy từ đó, vì nguồn `user` không còn được nạp. Chỉ chép khoá có trong danh sách sau, đọc từ `$CLAUDE_CONFIG_DIR/settings.json` (tài khoản 24b) hoặc `~/.claude/settings.json`:
    - `permissions`: `allow` gộp với allow của run (`mcp__xdev-hive`, `mcp__<tool>`); giữ nguyên `deny` và `ask`;
    - `env`, `apiKeyHelper`, `model`.
@@ -175,6 +183,7 @@ Prompt của run có RTK thêm một dòng:
   - một hook trong `settings.json` của tài khoản 24b **không** chạy;
   - `timeout` của hook được nhận;
   - superpowers bật thì hook `SessionStart` của nó có chạy không;
+  - hook trong frontmatter của một skill ở worktree và ở `CLAUDE_CONFIG_DIR/skills` **không** chạy;
   - `recall.db` nằm ở đâu.
 
 ## Ràng buộc khi làm
