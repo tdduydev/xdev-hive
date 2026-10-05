@@ -1186,7 +1186,14 @@ async function main() {
     await until("throwaway deleted", async () => (await rpc("projects.list", {})).find((p) => p.project === "throwaway")?.state === "deleted");
     const left = await rpc("projects.list", {});
     expect(left.find((p) => p.project === "throwaway")?.tasks === 0, "the deleted project still has rows");
-    expect((await rpc("docs.list", { project: "throwaway" })).length === 0, "the deleted project still has docs");
+    // docs.list of a project also hands back the team's org/* pages (the seed's agent protocol among them), so ask for
+    // the project's own space only: scope "project" leaves out org and system docs, which the delete never touches.
+    const docs = await rpc("docs.list", { project: "throwaway", scope: "project" });
+    expect(docs.length === 0, `the deleted project still has docs: ${JSON.stringify(docs.map((d) => d.key))}`);
+    const memory = await rpc("memory.list", { project: "throwaway" });
+    expect(memory.length === 0, `the deleted project still has memory: ${JSON.stringify(memory.map((m) => m.content))}`);
+    const tasks = await rpc("tasks.list", { project: "throwaway" });
+    expect(tasks.length === 0, `the deleted project still has tasks: ${JSON.stringify(tasks.map((t) => t.id))}`);
   });
 
   // Roadmap 19d: a task of one service waits for another service's (demo waits for payment's), named with its project.
