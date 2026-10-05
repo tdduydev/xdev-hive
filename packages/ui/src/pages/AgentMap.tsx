@@ -14,6 +14,7 @@ import { ErrorNote } from "#ui/components/common.tsx";
 import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { formatTime, useAction, useCan, useHive } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
+import { usageAsOf } from "#ui/lib/agents.ts";
 import { encodeTargets, machineCards, type AgentTarget, type ProfileCard, type ProfileState } from "#ui/lib/agentmap.ts";
 import { shortAgo } from "#ui/lib/inbox.ts";
 import { scopeProject } from "#ui/lib/scope.ts";
@@ -302,6 +303,17 @@ function ProfileCardView({
           <Quota label={t("ops.session")} percent={p.sessionPercent} />
           <Quota label={t("ops.week")} percent={p.weekPercent} />
         </div>
+      ) : null}
+      {p.sessionResets || p.weekResets || usageAsOf(p.usageCheckedAt) ? (
+        <span data-usage-resets className="text-[11px]/4 text-fg-muted">
+          {[
+            p.sessionResets ? t("machines.sessionResets", { time: p.sessionResets }) : null,
+            p.weekResets ? t("machines.weekResets", { time: p.weekResets }) : null,
+            usageAsOf(p.usageCheckedAt) ? t("agents.usageAsOf", { time: formatTime(p.usageCheckedAt!) }) : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </span>
       ) : null}
       {c.runs.map((r) => {
         const doing = activity.get(`${m.id}/${r.runId}`);

@@ -318,10 +318,14 @@ export interface ReportedProfile {
   installed: boolean;
   /** The CLI says it is signed in; null: unknown (no status command, not checked yet, older app). */
   loggedIn?: boolean | null;
-  /** Plan usage in percent (Claude Code subscriptions); null when unknown. */
+  /** Plan usage in percent (Claude Code and Codex subscriptions); null when unknown. */
   sessionPercent?: number | null;
   weekPercent?: number | null;
+  /** When each limit resets, as PlanLimit.resets has it ("Oct 8 at 5:59pm (Asia/Saigon)"). */
+  sessionResets?: string | null;
   weekResets?: string | null;
+  /** When those numbers were taken: Codex's are those of its last turn on the machine, which may be hours old. */
+  usageCheckedAt?: string | null;
   /** The profile's stop threshold is reached: the machine starts no new run on it. */
   overLimit?: boolean;
   cooldownUntil: string | null;

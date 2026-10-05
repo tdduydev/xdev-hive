@@ -71,7 +71,7 @@ export const agentProfileSchema = z.object({
   timeoutMinutes: z.number().int().min(1).max(12 * 60).default(60),
   /**
    * The runner starts no new run on this subscription once its plan usage reaches these shares
-   * (Claude Code reports them through /usage), keeping the rest for people working by hand.
+   * (Claude Code reports them through /usage, Codex in its session files), keeping the rest for people working by hand.
    */
   stopAtSession: z.number().int().min(1).max(100).default(95),
   stopAtWeek: z.number().int().min(1).max(100).default(90),
@@ -85,7 +85,7 @@ export interface PlanLimit {
   resets: string | null;
 }
 
-/** How much of a subscription plan's limits is used, from Claude Code's /usage. */
+/** How much of a subscription plan's limits is used, from Claude Code's /usage or Codex's session files (roadmap 45). */
 export interface PlanUsage {
   /** The rolling session (about five hours). */
   session: PlanLimit | null;
@@ -93,6 +93,7 @@ export interface PlanUsage {
   week: PlanLimit | null;
   /** Other weekly limits the plan has, e.g. per model. */
   others: Array<PlanLimit & { label: string }>;
+  /** When the numbers were taken; for Codex the time of its last turn, not of the check. */
   checkedAt: string;
 }
 
@@ -105,7 +106,8 @@ export function usageStop(profile: Pick<AgentProfile, "stopAtSession" | "stopAtW
 }
 /**
  * How much of the plan the profile may still use before a stop threshold, in points: the smaller of the two
- * (session, week). Null when the CLI has reported neither, so it is not known (Codex, a profile not checked yet).
+ * (session, week). Null when the CLI has reported neither, so it is not known (Gemini, a Codex that never ran here, a
+ * profile not checked yet).
  */
 export function usageHeadroom(profile: Pick<AgentProfile, "stopAtSession" | "stopAtWeek">, usage: PlanUsage | null | undefined): number | null {
   const left = [

@@ -45,7 +45,7 @@ describe("admin portal", () => {
     assert.equal(m!.setup?.machine[1]!.id, "cli:codex");
     assert.deepEqual(
       m!.profiles,
-      [{ ...profile, loggedIn: null, sessionPercent: null, weekPercent: null, weekResets: null, overLimit: false }],
+      [{ ...profile, loggedIn: null, sessionPercent: null, weekPercent: null, sessionResets: null, weekResets: null, usageCheckedAt: null, overLimit: false }],
       "an older app sends neither sign-in nor plan usage",
     );
     await assert.rejects(hive.call("admin.machines", {}, viewer), code("forbidden"));

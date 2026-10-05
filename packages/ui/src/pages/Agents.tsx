@@ -37,7 +37,7 @@ import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { useToast } from "#ui/shell/toast.tsx";
 import { errorMessage, formatTime, formatUsd, useAction, useHive, useQuery } from "#ui/hooks.ts";
 import { activeIntl, rich, useT } from "#ui/i18n/index.tsx";
-import { profileRows, profileState, type ProfileState } from "#ui/lib/agents.ts";
+import { profileRows, profileState, usageAsOf, type ProfileState } from "#ui/lib/agents.ts";
 import { hasNewer } from "#ui/lib/setup.ts";
 
 /** Env var that points each CLI at a separate login, so two subscriptions of one vendor can rotate. */
@@ -521,7 +521,14 @@ function ProfileRow({
         {(["session", "week"] as const).map((which) => {
           const limit = p.usage?.[which];
           return limit ? (
-            <Meter key={which} percent={limit.percent} resets={limit.resets} stop={which === "session" ? p.stopAtSession : p.stopAtWeek} />
+            <Meter
+              key={which}
+              percent={limit.percent}
+              resets={limit.resets}
+              stop={which === "session" ? p.stopAtSession : p.stopAtWeek}
+              // Once per row: both numbers come from the same check.
+              asOf={which === "session" || !p.usage?.session ? usageAsOf(p.usage?.checkedAt) : null}
+            />
           ) : (
             <span key={which} className="text-xs text-fg-muted">
               —
@@ -1124,7 +1131,7 @@ function IntakeCard({ runner, hub, onSaved }: { runner: RunnerSettings; hub: boo
   );
 }
 
-function Meter({ percent, resets, stop }: { percent: number; resets: string | null; stop: number }) {
+function Meter({ percent, resets, stop, asOf }: { percent: number; resets: string | null; stop: number; asOf: string | null }) {
   const t = useT();
   const pct = Math.max(0, Math.min(100, Math.round(percent)));
   return (
@@ -1142,6 +1149,12 @@ function Meter({ percent, resets, stop }: { percent: number; resets: string | nu
         <span className={cn("absolute inset-y-0 left-0 rounded-[3px]", pct >= 85 ? "bg-warning-solid" : "bg-primary")} style={{ width: `${pct}%` }} />
         <span title={t("agents.stopMark", { percent: stop })} className="absolute -top-[3px] -bottom-[3px] w-0.5 bg-fg-muted" style={{ left: `${Math.min(100, stop)}%` }} />
       </span>
+      {/* Codex reports its share only when it runs: old numbers say how old they are. */}
+      {asOf ? (
+        <span data-usage-as-of className="truncate text-[11px]/none text-fg-muted">
+          {t("agents.usageAsOf", { time: formatTime(asOf) })}
+        </span>
+      ) : null}
     </span>
   );
 }
