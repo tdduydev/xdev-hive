@@ -2,7 +2,7 @@
 // what came of it in words under it. The app lists this machine's runs only (roadmap 35a); the web lists every machine's
 // (runs.push). The detail opens on the summary — the agent's last words, its steps, the MR — and keeps the log in a tab.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Wrench } from "lucide-react";
+import { Wrench, X } from "lucide-react";
 import { cn } from "cn";
 import { cacheReadShare, parseVerdict, type AgentRun, type RunRecord, type RunRequest, type RunTokens } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
@@ -80,17 +80,30 @@ export function RunsPage() {
   const settings = useQuery(async () => (desktop ? desktop.settings() : null), [desktop]);
   const machine = settings.data?.machine ?? null;
 
+  // One subscription's runs, from its numbers on Agent và quota (roadmap 46): kept until cleared, the link goes.
+  const [profileLink, clearProfileLink] = useHashParam("profile");
+  const [profile, setProfile] = useState<string | null>(null);
+  useEffect(() => {
+    if (!profileLink) return;
+    setProfile(profileLink);
+    clearProfileLink();
+  }, [profileLink, clearProfileLink]);
+
   const rows = useMemo(() => {
     const mine = new Set((local.data ?? []).map((r) => r.id));
-    const localRows: Row[] = (local.data ?? []).map((run) => ({ src: "local", key: `local/${run.id}`, run }));
-    const hubRows: Row[] = (hub.data ?? []).filter((r) => !mine.has(r.runId)).map((run) => ({ src: "hub", key: `${run.machineId}/${run.runId}`, run }));
+    const ofProfile = (r: Row) => profile === null || r.run.profileId === profile;
+    const localRows: Row[] = (local.data ?? []).map((run): Row => ({ src: "local", key: `local/${run.id}`, run })).filter(ofProfile);
+    const hubRows: Row[] = (hub.data ?? [])
+      .filter((r) => !mine.has(r.runId))
+      .map((run): Row => ({ src: "hub", key: `${run.machineId}/${run.runId}`, run }))
+      .filter(ofProfile);
     const newest = (a: Row, b: Row) => rowTime(b).localeCompare(rowTime(a));
     return {
       here: localRows.filter((r) => isLive(r.run)).sort(newest),
       other: hubRows.filter((r) => isLive(r.run)).sort(newest),
       recent: [...localRows, ...hubRows].filter((r) => !isLive(r.run)).sort(newest).slice(0, 60),
     };
-  }, [local.data, hub.data]);
+  }, [local.data, hub.data, profile]);
   const all = useMemo(() => [...rows.here, ...rows.other, ...rows.recent], [rows]);
   useEffect(() => setActive(all.some((r) => isLive(r.run))), [all]);
 
@@ -137,6 +150,18 @@ export function RunsPage() {
         head={
           <>
             <FilterChips value={filter} options={FILTERS.map((id) => ({ id, label: t(`runs.filter.${id}`), count: counts[id] }))} onChange={setFilter} />
+            {profile ? (
+              <button
+                type="button"
+                data-profile-filter={profile}
+                title={t("runs.profileFilterClear")}
+                onClick={() => setProfile(null)}
+                className="flex h-[22px] w-fit cursor-pointer items-center gap-1 rounded-full border border-line-selected bg-selected px-2 text-[11px]/none font-medium text-selected-fg outline-none focus-visible:focus-ring"
+              >
+                {t("runs.profileFilter", { profile })}
+                <X className="size-3" aria-hidden="true" />
+              </button>
+            ) : null}
             <ErrorNote error={local.error ?? hub.error} />
           </>
         }
@@ -145,7 +170,7 @@ export function RunsPage() {
         {group(teamRuns ? t("runs.otherMachines") : null, kept.other)}
         {group(t("runs.recent"), kept.recent)}
         {loaded && !shown.length ? (
-          <div className="px-3 py-8 text-center text-[13px] text-fg-muted">{all.length ? t("runs.noneFilter") : teamRuns ? t("runs.none") : t("runs.noneHere")}</div>
+          <div className="px-3 py-8 text-center text-[13px] text-fg-muted">{all.length || profile ? t("runs.noneFilter") : teamRuns ? t("runs.none") : t("runs.noneHere")}</div>
         ) : null}
       </ListPane>
       <div className="flex min-w-0 flex-1 flex-col">
