@@ -33,6 +33,15 @@ export interface ProfileRows {
 
 export const hasUsage = (p: AgentProfileStatus) => Boolean(p.usage?.session || p.usage?.week);
 
+/** Usage numbers older than this get "cập nhật lúc …": Codex's are those of its last turn, which may be hours back. */
+export const USAGE_STALE_MS = 3600_000;
+
+/** When usage taken at `checkedAt` is old enough to say so; null while it is fresh or not known. */
+export function usageAsOf(checkedAt: string | null | undefined, now = Date.now()): string | null {
+  const at = checkedAt ? Date.parse(checkedAt) : NaN;
+  return !Number.isNaN(at) && now - at > USAGE_STALE_MS ? checkedAt! : null;
+}
+
 /** Splits the machine's subscriptions the way the table shows them (roadmap 39, "Nguyên tắc chung"). */
 export function profileRows(profiles: AgentProfileStatus[]): ProfileRows {
   const on = profiles.filter((p) => p.enabled);

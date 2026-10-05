@@ -1226,7 +1226,9 @@ async function main() {
     };
     const profile = (id, kind, over = {}) => ({ id, label: id, kind, enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, maxConcurrent: 1, ...over });
     await beat("lan-mbp", [profile("claude-1", "claude", { sessionPercent: 42, weekPercent: 18 }), profile("codex-1", "codex", { loggedIn: false })]);
-    await beat("lan-mini", [profile("claude-2", "claude")]);
+    // Roadmap 45: Codex's numbers are those of its last turn, here two hours old.
+    const codexUsage = { sessionPercent: 98, weekPercent: 81, sessionResets: "Oct 5 at 4:00pm (Asia/Saigon)", weekResets: "Oct 9 at 7:00am (Asia/Saigon)", usageCheckedAt: new Date(Date.now() - 2 * 3600_000).toISOString() };
+    await beat("lan-mini", [profile("claude-2", "claude"), profile("codex-2", "codex", codexUsage)]);
     const machines = await rpc("machines.list");
     const id = (name) => machines.find((m) => m.machine === name).id;
 
@@ -1238,6 +1240,9 @@ async function main() {
     expect(signedOut === "signedOut", `codex-1: ${signedOut}`);
     const pickable = await tab.eval(() => document.querySelector('[data-map-profile="lan-mbp/codex-1"]')?.getAttribute("role"));
     expect(pickable !== "checkbox", "a signed-out subscription cannot be picked");
+    const codexLine = await tab.eval(() => document.querySelector('[data-map-profile="lan-mini/codex-2"] [data-usage-resets]')?.textContent ?? "");
+    expect(codexLine.includes("phiên làm mới Oct 5 at 4:00pm") && codexLine.includes("tuần làm mới Oct 9") && codexLine.includes("cập nhật lúc"), `codex-2: ${codexLine}`);
+    await tab.shot(`${String(n).padStart(2, "0")}-agent-map-codex`);
     await tab.click('[data-map-profile="lan-mbp/claude-1"]');
     await tab.click('[data-map-profile="lan-mini/claude-2"]');
     await tab.click("[data-map-prompt]");
