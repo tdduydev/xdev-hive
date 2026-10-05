@@ -80,7 +80,7 @@ import { agentPath } from "./runner/shell-path.ts";
 import { landingPage, signInThroughBrowser } from "./hub-browser.ts";
 import { Setup } from "./setup.ts";
 import { checkCitations } from "./citations.ts";
-import { proposeAgents, syncProject } from "./sync.ts";
+import { proposeAgents, syncProject, type SyncOptions } from "./sync.ts";
 import { mirrorDocs, mirrors } from "./mirror.ts";
 import { pushSpecs } from "./specs.ts";
 import { cliCommand } from "./cli-open.ts";
@@ -481,9 +481,20 @@ async function checkAllCitations(): Promise<void> {
   }
 }
 
-/** Đồng bộ of the Projects page, and what a sync request from the hub runs (roadmap 22n). */
+/**
+ * How a project's docs get into its repo: as a merge request when the repo is on a forge this app can open one on
+ * (roadmap 38c), so the checkout the user works in keeps its branch and its unfinished files; by a commit into the
+ * checkout otherwise, as before. Auto-commit off means the app writes no git history at all, so no MR either.
+ */
+function syncMr(p: DesktopProject): SyncOptions["mr"] {
+  if (!config.sync.autoCommit || !mergeRequester.canOpenContext(p)) return undefined;
+  const worktreeRoot = config.runner.worktreeRoot ?? path.join(path.dirname(configPath()), "worktrees");
+  return { worktreeRoot, open: (target, branch) => mergeRequester.openContext(target, branch) };
+}
+
+/** Đồng bộ of the Projects page, and what a sync request from the hub runs (roadmap 22n), the same way for both. */
 async function syncAndMirror(name: string): Promise<SyncReport> {
-  const report = await syncProject(backend, actor(), project(name), { autoCommit: config.sync.autoCommit });
+  const report = await syncProject(backend, actor(), project(name), { autoCommit: config.sync.autoCommit, mr: syncMr(project(name)) });
   // The other way too (roadmap 26): the repo's docs into Hive, when the repo says which.
   if (!mirrors(project(name).repo)) return report;
   const mirror = await mirrorDocs(backend, actor(), project(name));
