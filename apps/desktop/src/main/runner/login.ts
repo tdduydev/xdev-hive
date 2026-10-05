@@ -145,11 +145,14 @@ export class LoginMonitor {
   readonly #profiles: () => AgentProfile[];
   readonly #env: () => NodeJS.ProcessEnv;
   readonly #run: RunCli;
+  // Codex's numbers turn to 0 once their reset is past, so a test pins the clock instead of depending on when it runs.
+  readonly #now: () => Date;
 
-  constructor(profiles: () => AgentProfile[], env: () => NodeJS.ProcessEnv, run: RunCli = runCli) {
+  constructor(profiles: () => AgentProfile[], env: () => NodeJS.ProcessEnv, run: RunCli = runCli, now: () => Date = () => new Date()) {
     this.#profiles = profiles;
     this.#env = env;
     this.#run = run;
+    this.#now = now;
   }
 
   get(profileId: string): LoginStatus | undefined {
@@ -166,7 +169,7 @@ export class LoginMonitor {
    * otherwise, so no run goes to it while that check is still on its way (an unknown status counts as signed in).
    */
   expectSignedOut(profile: AgentProfile): void {
-    this.#checks.set(profile.id, { loggedIn: false, method: null, loginCommand: loginCommand(profile), checkedAt: new Date().toISOString() });
+    this.#checks.set(profile.id, { loggedIn: false, method: null, loginCommand: loginCommand(profile), checkedAt: this.#now().toISOString() });
   }
 
   /**
@@ -176,7 +179,7 @@ export class LoginMonitor {
   rereadUsage(profileId: string): void {
     const p = this.#profiles().find((x) => x.id === profileId && x.enabled);
     if (p?.kind !== "codex" || this.#checks.get(p.id)?.loggedIn === false) return;
-    const usage = readCodexUsage(codexHome(p), new Date());
+    const usage = readCodexUsage(codexHome(p), this.#now());
     if (usage) this.#usage.set(p.id, usage);
   }
 
@@ -189,10 +192,10 @@ export class LoginMonitor {
   async refresh(ids?: string[]): Promise<void> {
     const profiles = this.#profiles();
     for (const p of profiles.filter((x) => x.enabled && (!ids || ids.includes(x.id)))) {
-      const login = await checkLogin(p, this.#env(), new Date(), this.#run);
+      const login = await checkLogin(p, this.#env(), this.#now(), this.#run);
       this.#checks.set(p.id, login);
       // Codex's numbers come from files, not from its sign-in: only a profile known to be signed out goes without.
-      const usage = login.loggedIn || (p.kind === "codex" && login.loggedIn !== false) ? await checkUsage(p, this.#env(), new Date(), this.#run) : null;
+      const usage = login.loggedIn || (p.kind === "codex" && login.loggedIn !== false) ? await checkUsage(p, this.#env(), this.#now(), this.#run) : null;
       if (usage) this.#usage.set(p.id, usage);
       else this.#usage.delete(p.id);
     }

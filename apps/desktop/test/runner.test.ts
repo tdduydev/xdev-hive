@@ -530,15 +530,22 @@ describe("Codex plan usage from its session files (roadmap 45)", () => {
     const h = home();
     const p = { ...AGENT_TEMPLATES.codex, bin: process.execPath, env: { CODEX_HOME: h }, stopAtSession: 95, stopAtWeek: 90 };
     const run = async (_bin: string, args: string[]) => ({ code: 0, output: args[0] === "login" ? "Logged in using ChatGPT" : "" });
-    const logins = new LoginMonitor(() => [p], () => ({ PATH: path.dirname(process.execPath) }), run);
+    // The fixture's 5-hour window resets at 09:00 UTC: a real clock past it would read 0 instead of 98.
+    let clock = now;
+    const logins = new LoginMonitor(() => [p], () => ({ PATH: path.dirname(process.execPath) }), run, () => clock);
     await logins.refresh();
     assert.equal(usageStop(p, logins.usage(p.id)), "session");
     assert.equal(usageHeadroom(p, logins.usage(p.id)), 0);
-    write(h, "2026/10/05", "d", [limits(new Date().toISOString(), "codex", window(5, 300, "2099-01-01T00:00:00Z"), window(81, 10080, "2099-01-01T00:00:00Z"))], new Date().toISOString());
+    write(h, "2026/10/05", "d", [limits("2026-10-05T06:30:00Z", "codex", window(5, 300, "2026-10-05T11:30:00Z"), window(81, 10080, "2026-10-09T00:00:00Z"))], "2026-10-05T06:30:00Z");
+    clock = new Date("2026-10-05T06:31:00Z");
     logins.rereadUsage(p.id);
     assert.equal(logins.usage(p.id)?.session?.percent, 5);
     assert.equal(usageStop(p, logins.usage(p.id)), null);
     assert.equal(usageHeadroom(p, logins.usage(p.id)), 9);
+    // The monitor's clock, not the machine's, decides that the window has reset.
+    clock = new Date("2026-10-05T12:00:00Z");
+    logins.rereadUsage(p.id);
+    assert.deepEqual(logins.usage(p.id)?.session, { percent: 0, resets: null });
   });
 });
 
