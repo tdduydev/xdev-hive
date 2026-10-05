@@ -486,6 +486,42 @@ export interface HiveSystem {
   updatedBy: string;
 }
 
+/**
+ * What a project is to the hub (roadmap 47), table `project_states`: no row means in use.
+ * `archived` hides it and refuses writes, and can be undone; `deleted` is the headstone left after the data went,
+ * so a machine still reporting the repo cannot bring the name back by itself.
+ */
+export const PROJECT_STATES = ["archived", "deleted"] as const;
+export type ProjectState = (typeof PROJECT_STATES)[number];
+
+/** A project as the admin table shows it (projects.list): what it holds, where it is, and its state. */
+export interface ProjectSummary {
+  project: string;
+  /** null while the project is in use. */
+  state: ProjectState | null;
+  stateAt: string | null;
+  stateBy: string | null;
+  openTasks: number;
+  tasks: number;
+  docs: number;
+  memory: number;
+  runs: number;
+  /** Machines that reported a repo for it at their last heartbeat. */
+  machines: string[];
+  /** Systems it is a service of. */
+  systems: string[];
+}
+
+/** What projects.delete removed: rows per table, and the doc files of the store that went with them. */
+export interface ProjectDeleted {
+  project: string;
+  /** The database snapshot taken before anything was deleted. */
+  backup: string;
+  /** Table → rows deleted, tables that had none left out. */
+  rows: Record<string, number>;
+  files: { removed: number; failed: number };
+}
+
 /** Key of `AgentsPaused.by` for the whole hub: no project key is "*". */
 export const PAUSED_HUB = "*";
 
@@ -575,6 +611,8 @@ export const WEBHOOK_EVENTS = [
   "agentPolicy.changed",
   "agents.stopped",
   "agents.resumed",
+  "project.archived",
+  "project.deleted",
 ] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 
@@ -599,7 +637,11 @@ export type HiveEvent =
    * The tool catalog changed (roadmap 28a): an entry saved or removed (project null), or a project's setting. For 28b to
    * push to machines; not a webhook event yet.
    */
-  | { type: "tool.changed"; project: string | null; by: string; tool: string; removed: boolean };
+  | { type: "tool.changed"; project: string | null; by: string; tool: string; removed: boolean }
+  /** A hub admin archived a project (roadmap 47) or took it back out of the archive. */
+  | { type: "project.archived"; project: string; by: string; archived: boolean }
+  /** A hub admin deleted a project for good: what went with it is in `deleted`. */
+  | { type: "project.deleted"; project: string; by: string; deleted: ProjectDeleted };
 
 /** The hub's alert rules (roadmap 22m), each turned on or off by a hub admin. */
 export const ALERT_RULES = [

@@ -1076,6 +1076,8 @@ function registerIpc(): void {
     policy: config.mode === "hub" ? (hubState?.policy ?? null) : null,
     commands: config.mode === "hub" ? (hubState?.commands ?? []) : [],
     tools: hubTools(),
+    // Roadmap 47: repos this machine has that the hub no longer keeps, so Dự án & công cụ says so.
+    archivedProjects: config.mode === "hub" ? (hubState?.archivedProjects ?? []) : [],
   }));
   handle("desktop:toolTrust", setToolTrust);
   handle("desktop:answerCommand", answerCommand);

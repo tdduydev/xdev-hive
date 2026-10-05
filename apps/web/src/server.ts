@@ -21,7 +21,7 @@
 import { createServer } from "node:http";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { openAiEmbedder, type HiveEvent } from "@xdev-hive/core";
+import { HiveError, openAiEmbedder, type HiveEvent } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { allowedHostsFor, createHubApp, type HubAppOptions } from "./app.ts";
 import { backupDatabase, backupFile, backupFiles, backupSettings, type BackupResult } from "./backup.ts";
@@ -61,6 +61,8 @@ const minScore = Number(process.env.HIVE_EMBED_MIN_SCORE ?? 0.5);
 const blobs = seaweedFromEnv(process.env);
 // Set once the webhook store exists (it lives in the hub's database).
 let onEvent: (event: HiveEvent) => void = () => undefined;
+// Set once the Hub page's source exists: it snapshots this very hive, so it cannot be built before it.
+let hubInfo: HubInfoSource | null = null;
 const hive = new SqliteHive(dbPath, {
   memoryRequiresApproval: process.env.HIVE_MEMORY_APPROVAL !== "off",
   memoryStaleDays: Number.isFinite(staleDays) && staleDays >= 0 ? staleDays : 90,
@@ -69,6 +71,12 @@ const hive = new SqliteHive(dbPath, {
   embedder,
   embedMinScore: Number.isFinite(minScore) ? minScore : 0.5,
   blobs,
+  // Deleting a project snapshots the whole hub first (roadmap 47), the same snapshot the Hub page's "Backup ngay"
+  // makes. With HIVE_BACKUP_DIR unset this throws errors.backupOff, and nothing is deleted.
+  backup: async () => {
+    if (!hubInfo) throw new HiveError("conflict", "The hub is still starting up.", { key: "errors.backupOff" });
+    return hubInfo.backup();
+  },
 });
 hive.seed("hub", { hub: true });
 const tokens = new TokenStore(hive.db);
@@ -189,7 +197,7 @@ httpServer.on(
     trustProxy: process.env.HIVE_TRUST_PROXY === "1",
     webhooks: { store: webhookStore, dispatcher },
     alerts,
-    hub: new HubInfoSource({
+    hub: (hubInfo = new HubInfoSource({
       hive,
       dbPath,
       users,
@@ -200,7 +208,7 @@ httpServer.on(
       publicUrl,
       trustProxy: process.env.HIVE_TRUST_PROXY === "1",
       commit: process.env.HIVE_COMMIT || null,
-    }),
+    })),
     oidc,
     // Desktop builds sit next to the database (the data volume in Docker).
     releases: new ReleaseStore(hive.db, path.join(path.dirname(dbPath), "releases")),

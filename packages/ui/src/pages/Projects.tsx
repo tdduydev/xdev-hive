@@ -885,6 +885,9 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
   const [refsOpen, setRefsOpen] = useState<string | null>(null);
   const nameValid = PROJECT_NAME.test(name);
   const profiles = useQuery(() => desktop.profiles(), [desktop]);
+  // Roadmap 47: repos the hub archived or deleted. The folder stays and works here, but nothing of it reaches the hub.
+  const requests = useQuery(() => desktop.hubRequests(), [desktop]);
+  const archived = new Set(requests.data?.archivedProjects ?? []);
 
   /** What a folder holds, as soon as it is picked or added: the suggestion comes before the error does. */
   const look = async (folder: string) => {
@@ -928,7 +931,14 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
               <div key={p.name} className="flex flex-col gap-2 rounded-lg border p-3">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                   <div className="min-w-0 flex-1 basis-48">
-                    <div className="font-mono text-sm break-all">{p.name}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-sm break-all">{p.name}</span>
+                      {archived.has(p.name) ? (
+                        <Badge tone="warn" data-project-archived={p.name}>
+                          {t("projects.archivedOnHub")}
+                        </Badge>
+                      ) : null}
+                    </div>
                     <div className="font-mono text-xs break-all text-muted-foreground">{p.repo}</div>
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">

@@ -511,10 +511,11 @@ export interface DesktopBridge {
   transferHub(direction: "push" | "pull"): Promise<TransferReport>;
 
   /**
-   * From the last heartbeat: the team policy (null in local mode), install requests waiting for this machine, and the
-   * hub's tools its projects use, with whether this machine's user allowed them (roadmap 28b; none in local mode).
+   * From the last heartbeat: the team policy (null in local mode), install requests waiting for this machine, the
+   * hub's tools its projects use, with whether this machine's user allowed them (roadmap 28b; none in local mode),
+   * and the repos of this machine the hub archived or deleted (roadmap 47), which it takes nothing for any more.
    */
-  hubRequests(): Promise<{ policy: TeamPolicy | null; commands: MachineCommand[]; tools: MachineToolView[] }>;
+  hubRequests(): Promise<{ policy: TeamPolicy | null; commands: MachineCommand[]; tools: MachineToolView[]; archivedProjects: string[] }>;
   /** Allows a hub tool's commands as shown (their hash), or with null takes the permission back. Returns the new list. */
   toolTrust(id: string, hash: string | null): Promise<MachineToolView[]>;
   /** Runs (approve) or declines an admin's install request, and reports the result to the hub. */

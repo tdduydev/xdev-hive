@@ -2,14 +2,15 @@
 // the pages show the tasks, runs, merge requests and chat of every project in the system.
 import { useMemo, useState } from "react";
 import { Boxes, FolderGit2, Search } from "lucide-react";
-import { PROJECT_NAME, type HiveSystem } from "@xdev-hive/core";
+import { PROJECT_NAME, type HiveSystem, type ProjectSummary } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@xdev-hive/ui/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@xdev-hive/ui/components/ui/dropdown-menu";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
-import { Badge, Empty, ErrorNote, Page, PageHeader } from "#ui/components/common.tsx";
+import { Badge, Empty, ErrorNote, Notice, Page, PageHeader } from "#ui/components/common.tsx";
 import { formatTime, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { nameMatches, outsideSystems, projectScope, systemScope } from "#ui/lib/scope.ts";
@@ -114,6 +115,8 @@ export function SystemsPage() {
         ),
       )}
       <OutsideProjects all={outside} shown={outsideShown} />
+      {/* Archiving and deleting a project (roadmap 47) is a hub admin's; the desktop sends them to the hub's web. */}
+      {me.mode === "hub" && me.role === "admin" && !me.access ? <ProjectsCard query={query} /> : null}
       {/* A project manager has no Web Admin: their project's agent policy row lives here, with its other settings. */}
       {me.mode === "hub" && !(me.role === "admin" && !me.access) && projects.some((p) => allow(p, "projectSettings")) ? (
         <>
@@ -200,6 +203,136 @@ function OutsideProjects({ all, shown }: { all: string[]; shown: string[] }) {
         </ul>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Every project the hub knows (roadmap 47), with what it holds, and the buttons to archive one, bring it back, or
+ * delete it for good. A hub admin's table: archiving hides a project from everyone, deleting cannot be undone.
+ */
+function ProjectsCard({ query }: { query: string }) {
+  const { client, bump } = useHive();
+  const t = useT();
+  const action = useAction();
+  const [tick, setTick] = useState(0);
+  const [deleting, setDeleting] = useState<ProjectSummary | null>(null);
+  // A hub from before this method has none of it: the card stays empty instead of showing an error.
+  const list = useQuery(() => client.call("projects.list", {}).catch(() => []), [client, tick]);
+  const rows = (list.data ?? []).filter((p) => nameMatches(p.project, query));
+  const refresh = () => {
+    setTick((n) => n + 1);
+    bump();
+  };
+
+  if (!rows.length) return null;
+  return (
+    <Card data-projects-admin>
+      <CardHeader>
+        <CardTitle>{t("projectAdmin.title")}</CardTitle>
+        <CardDescription>{t("projectAdmin.hint")}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        <ErrorNote error={action.error} />
+        <ul className="flex flex-col divide-y">
+          {rows.map((p) => (
+            <li key={p.project} data-project-row={p.project} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
+              <FolderGit2 className="size-4 text-muted-foreground" aria-hidden />
+              <span className="font-mono text-sm">{p.project}</span>
+              {p.state ? (
+                <Badge tone={p.state === "deleted" ? "danger" : "warn"}>{t(p.state === "deleted" ? "projectAdmin.deleted" : "projectAdmin.archived")}</Badge>
+              ) : null}
+              <span className="text-xs text-muted-foreground">
+                {t("projectAdmin.counts", { tasks: p.tasks, open: p.openTasks, docs: p.docs, memory: p.memory, runs: p.runs })}
+              </span>
+              {p.machines.length ? <span className="text-xs text-muted-foreground">{t("projectAdmin.onMachines", { machines: p.machines.join(", ") })}</span> : null}
+              {p.systems.length ? <span className="text-xs text-muted-foreground">{t("projectAdmin.inSystems", { systems: p.systems.join(", ") })}</span> : null}
+              <span className="flex-1" />
+              {p.state === null ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  data-project-archive={p.project}
+                  disabled={action.busy}
+                  onClick={() => void action.run(async () => (await client.call("projects.archive", { project: p.project }), refresh()))}
+                >
+                  {t("projectAdmin.archive")}
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  data-project-restore={p.project}
+                  disabled={action.busy}
+                  onClick={() => void action.run(async () => (await client.call("projects.restore", { project: p.project }), refresh()))}
+                >
+                  {t(p.state === "deleted" ? "projectAdmin.restoreName" : "projectAdmin.restore")}
+                </Button>
+              )}
+              {p.state === "archived" ? (
+                <Button size="sm" variant="destructive" data-project-delete={p.project} disabled={action.busy} onClick={() => setDeleting(p)}>
+                  {t("projectAdmin.delete")}
+                </Button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+      {deleting ? (
+        <DeleteProjectDialog
+          project={deleting}
+          onClose={() => setDeleting(null)}
+          onDeleted={() => {
+            setDeleting(null);
+            refresh();
+          }}
+        />
+      ) : null}
+    </Card>
+  );
+}
+
+/** What is about to be lost, spelled out, and the project's name to type: a deletion nobody can undo asks twice. */
+function DeleteProjectDialog({ project, onClose, onDeleted }: { project: ProjectSummary; onClose: () => void; onDeleted: () => void }) {
+  const { client } = useHive();
+  const t = useT();
+  const [typed, setTyped] = useState("");
+  const action = useAction();
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("projectAdmin.deleteTitle", { project: project.project })}</DialogTitle>
+          <DialogDescription>{t("projectAdmin.deleteWhat", { tasks: project.tasks, docs: project.docs, memory: project.memory, runs: project.runs })}</DialogDescription>
+        </DialogHeader>
+        <Notice tone="warn" title={t("projectAdmin.deleteBackup")}>
+          {t("projectAdmin.deleteForever")}
+        </Notice>
+        <ErrorNote error={action.error} />
+        <Label htmlFor="delete-project-name">{t("projectAdmin.deleteConfirmLabel", { project: project.project })}</Label>
+        <Input
+          id="delete-project-name"
+          data-project-delete-name
+          className="font-mono"
+          autoComplete="off"
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+        />
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={action.busy}>
+            {t("common.cancel")}
+          </Button>
+          <Button
+            variant="destructive"
+            data-project-delete-confirm
+            disabled={action.busy || typed !== project.project}
+            onClick={() => void action.run(async () => (await client.call("projects.delete", { project: project.project, confirm: typed }), onDeleted()))}
+          >
+            {t("projectAdmin.delete")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
