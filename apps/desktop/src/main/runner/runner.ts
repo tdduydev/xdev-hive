@@ -200,6 +200,11 @@ export interface RunnerOptions {
   /** Rest for a profile whose CLI is missing, so rotation skips it for a while. */
   unavailableCooldownMinutes?: number;
   /**
+   * How long to wait before each further try when a new task branch's base cannot be fetched from the remote
+   * (see remoteStart). Default: 5 s, then 20 s. Tests pass shorter waits, or none.
+   */
+  fetchRetryMs?: number[];
+  /**
    * Called for every finished run before follow-ups are queued (e.g. open a merge request).
    * Returned fields are saved on the run. Errors are recorded on the run, never fail it.
    */
@@ -261,6 +266,14 @@ const JSON_BYTES = 2_000_000;
 const keepTail = (s: string, max = TAIL_BYTES) => (s.length > max ? s.slice(-max) : s);
 const clip = (s: string, n: number) => (s.length > n ? `…${s.slice(-(n - 1))}` : s);
 const TERMINAL: RunStatus[] = ["succeeded", "failed", "rate_limited", "cancelled"];
+
+/**
+ * How many ticks a run may go back to the queue because the remote could not be reached, before it fails
+ * (BUG-stale-base). Each try fetches up to fetchRetryMs.length + 1 times, so the default is at least two minutes
+ * of trying (longer when a fetch hangs to its timeout): enough for a blip, not so long that a machine which is
+ * really offline keeps a task held.
+ */
+const FETCH_TRIES = 5;
 
 /** The latest attempt of each candidate of a group (a rotation adds a run), in candidate order. */
 function latestCandidates(group: AgentRun[]): AgentRun[] {
@@ -336,6 +349,8 @@ export class Runner {
   readonly #answers = new Map<number, { status: "accepted" | "rejected"; runId: string | null; error: RunRequestError | null }>();
   /** Where a queued best-of-n candidate's branch came from (see remoteStart), for its log. */
   readonly #startNotes = new Map<string, string>();
+  /** How often a run went back to the queue because the remote could not be reached (see FETCH_TRIES). */
+  readonly #fetchFails = new Map<string, number>();
   /** Why tick() took the profile it did (roadmap 24c), for the head of the run's log. */
   readonly #pickNotes = new Map<string, string>();
   /** Requests being answered now: a heartbeat that comes meanwhile leaves them alone. */
@@ -360,6 +375,7 @@ export class Runner {
       assistPollMs: 4000,
       version: "",
       unavailableCooldownMinutes: 10,
+      fetchRetryMs: [5_000, 20_000],
       ...opts,
     };
     this.store = new RunStore(path.join(opts.dataDir, "runs.db"));
@@ -533,7 +549,13 @@ export class Runner {
     const branch = branchFor(req.taskId);
     const tip = tryGit(project.repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]);
     // No task branch yet: the candidates start from the target branch as the remote has it now.
-    const start = tip ? null : await remoteStart(project.repo, project.targetBranch);
+    const start = tip ? null : await remoteStart(project.repo, project.targetBranch, { retryMs: this.#opts.fetchRetryMs });
+    // Every candidate's branch is cut here, before any of them is queued, so there is no tick to try again at:
+    // the ask fails instead of putting the whole group on a base that may be days behind (BUG-stale-base).
+    if (start?.error) {
+      const vars = { remote: start.remote!, tries: this.#opts.fetchRetryMs.length + 1, reason: start.error };
+      throw new HiveError("unavailable", tr("errors.fetchFailed", vars), { key: "errors.fetchFailed", vars });
+    }
     const from = tip ?? git(project.repo, ["rev-parse", start?.ref ?? "HEAD"]);
     const baseSha = tip ? (previous?.baseSha ?? git(project.repo, ["merge-base", "HEAD", branch])) : from;
     const group = `B-${randomBytes(3).toString("hex")}`;
@@ -580,6 +602,7 @@ export class Runner {
     if (note) this.#cancelNotes.set(id, note);
     if (run.status === "queued") {
       this.#waiting.delete(id);
+      this.#fetchFails.delete(id);
       const done = this.store.update(id, { status: "cancelled", finishedAt: this.#iso(), error: note ?? tr("runNote.cancelledQueued") });
       this.#cancelNotes.delete(id);
       // It may have been the last one its group waited for.
@@ -1163,6 +1186,35 @@ export class Runner {
     if (done.bestOf) this.#track(this.#bestOfNext(done).catch(() => undefined));
   }
 
+  /**
+   * A run whose task has no branch yet and whose repo could not be fetched: back to the queue with why, so the next
+   * tick tries again instead of starting the branch at a checkout that may be days behind (BUG-stale-base). After
+   * FETCH_TRIES it throws, and #execute's catch fails the run with a reason a person can read in their language.
+   */
+  async #waitForRemote(run: AgentRun, profile: AgentProfile, remote: string, reason: string): Promise<void> {
+    // Stopped while it waited: there is no process to kill, so end it here. Before the count, so a stop asked for
+    // during the last try still ends the run as cancelled rather than as a failure nobody is waiting for.
+    if (this.#stopping.has(run.id)) {
+      await this.#complete(run, profile, null, { kind: "exit", code: null, stdout: "", all: "", cancelled: true, timedOut: false });
+      return;
+    }
+    const tries = (this.#fetchFails.get(run.id) ?? 0) + 1;
+    this.#fetchFails.set(run.id, tries);
+    if (tries >= FETCH_TRIES) {
+      const vars = { remote, tries, reason };
+      throw new HiveError("unavailable", tr("errors.fetchFailed", vars), { key: "errors.fetchFailed", vars });
+    }
+    const note = tr("runNote.waitingFetch", { remote, reason, tries, max: FETCH_TRIES });
+    try {
+      appendFileSync(this.#logPath(run.id), `# ${note}\n`);
+    } catch {
+      // The run's note says the same.
+    }
+    this.#waiting.set(run.id, note);
+    // Queued again as it was given: a profile is picked afresh at the next tick, and no slot stays taken.
+    this.store.update(run.id, { status: "queued", profileId: null, startedAt: null, error: note });
+  }
+
   /** The MCP servers Codex's config.toml has (the profile's CODEX_HOME, else ~/.codex), to turn off those the policy leaves out. */
   #codexServers(profile: AgentProfile): string[] {
     const home = profile.env.CODEX_HOME ? expandHome(profile.env.CODEX_HOME) : path.join(os.homedir(), ".codex");
@@ -1320,11 +1372,20 @@ export class Runner {
       const name = candidate ? candidateName(run.taskId, candidate.n) : run.taskId;
       // A task without its branch yet starts from the target branch as the remote has it now; an existing branch
       // (a follow-up, a review, the kept candidate) goes on from its own history.
-      const fresh = !candidate && !hasBranch(project.repo, branchFor(run.taskId)) ? await remoteStart(project.repo, project.targetBranch) : null;
-      const startNote = fresh?.note ?? this.#startNotes.get(run.id) ?? null;
+      // Taken before the fetch below, which may end the attempt: a run that goes back to the queue gets a fresh
+      // pick note at the next tick, and a run that fails leaves nothing behind in the maps.
+      const queuedNote = this.#startNotes.get(run.id) ?? null;
       this.#startNotes.delete(run.id);
       const pickNote = this.#pickNotes.get(run.id) ?? null;
       this.#pickNotes.delete(run.id);
+      const fresh = !candidate && !hasBranch(project.repo, branchFor(run.taskId)) ? await remoteStart(project.repo, project.targetBranch, { retryMs: this.#opts.fetchRetryMs }) : null;
+      // The checkout here may be days behind the remote (BUG-stale-base): rather than let the agent work on code
+      // that old, the run goes back to the queue and tries again at the next tick, then fails.
+      if (fresh?.error) {
+        await this.#waitForRemote(run, profile, fresh.remote!, fresh.error);
+        return;
+      }
+      const startNote = fresh?.note ?? queuedNote;
       wt = ensureWorktree(
         project.repo,
         path.join(root, project.name, name),
@@ -1625,6 +1686,7 @@ export class Runner {
 
   async #finish(run: AgentRun, profile: AgentProfile, wt: Worktree | null, outcome: Outcome): Promise<void> {
     const now = this.#opts.now();
+    this.#fetchFails.delete(run.id);
     let status: RunStatus = "failed";
     let error: string | null = null;
     let rotate = false;
