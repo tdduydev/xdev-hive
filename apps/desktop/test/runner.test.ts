@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
@@ -9,7 +9,7 @@ import { CODEGRAPH_MCP, CODEGRAPH_RUN_MCP, SUPERPOWERS_PLUGIN } from "#desktop/m
 import { prepareCodegraph } from "#desktop/main/runner/codegraph.ts";
 import { buildCommand, buildPrompt, parsePick } from "#desktop/main/runner/command.ts";
 import { ClaudeStream, toolLine } from "#desktop/main/runner/stream.ts";
-import { limitResetAt, outputFormat, parseClaudeResult, parsePlanUsage, parseResetAt } from "#desktop/main/runner/usage.ts";
+import { limitResetAt, outputFormat, parseClaudeResult, parsePlanUsage, parseResetAt, readCodexUsage, resetText } from "#desktop/main/runner/usage.ts";
 import { usageHeadroom, usageStop, type HiveEvent, type PlanUsage } from "@xdev-hive/core";
 import { checkLogin, checkUsage, LoginMonitor, loginCommand, parseLogin, USAGE_ARGS } from "#desktop/main/runner/login.ts";
 import { SqliteHive } from "@xdev-hive/core/node";
@@ -415,7 +415,7 @@ describe("plan usage", () => {
     assert.equal(usageStop(p, null), null);
   });
 
-  it("asks /usage with the profile's env, no hooks and no MCP servers, and only for Claude Code", async () => {
+  it("asks /usage with the profile's env, no hooks and no MCP servers, and only of Claude Code", async () => {
     const seen: Array<{ args: string[]; dir: string | undefined }> = [];
     const run = async (_bin: string, args: string[], env: NodeJS.ProcessEnv) => {
       seen.push({ args, dir: env.CLAUDE_CONFIG_DIR });
@@ -426,7 +426,7 @@ describe("plan usage", () => {
     assert.equal((await checkUsage(p, env, now, run))?.week?.percent, 47);
     assert.deepEqual(seen, [{ args: USAGE_ARGS, dir: "/tmp/claude-2" }]);
     assert.ok(USAGE_ARGS.includes("--strict-mcp-config") && USAGE_ARGS.includes("--setting-sources"));
-    assert.equal(await checkUsage({ ...AGENT_TEMPLATES.codex, bin: process.execPath }, env, now, run), null);
+    assert.equal(await checkUsage({ ...AGENT_TEMPLATES.gemini, bin: process.execPath }, env, now, run), null);
     assert.equal(seen.length, 1);
   });
 
@@ -440,6 +440,105 @@ describe("plan usage", () => {
     signedIn = false;
     await logins.refresh();
     assert.equal(logins.usage("claude-1"), undefined);
+  });
+});
+
+describe("Codex plan usage from its session files (roadmap 45)", () => {
+  const now = new Date("2026-10-05T06:00:00Z");
+  const sec = (iso: string) => Date.parse(iso) / 1000;
+  const window = (used: number, minutes: number, resets: string) => ({ used_percent: used, window_minutes: minutes, resets_at: sec(resets) });
+  /** A token_count line as Codex writes it; only the fields the reader looks at, made up for the test. */
+  const limits = (at: string, id: string, primary: unknown, secondary: unknown) =>
+    JSON.stringify({ timestamp: at, type: "event_msg", payload: { type: "token_count", info: null, rate_limits: { limit_id: id, primary, secondary, plan_type: "plus" } } });
+  const message = (at: string) => JSON.stringify({ timestamp: at, type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "xong — đã sửa" }] } });
+  const write = (home: string, day: string, name: string, lines: string[], mtime: string) => {
+    const dir = path.join(home, "sessions", ...day.split("/"));
+    mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `rollout-${name}.jsonl`);
+    writeFileSync(file, `${lines.join("\n")}\n`);
+    utimesSync(file, new Date(mtime), new Date(mtime));
+  };
+  const home = () => {
+    const h = tmp("codex-home");
+    // An older day, and two files of the newest one: the one written last wins.
+    write(h, "2026/10/04", "a", [limits("2026-10-04T10:00:00Z", "codex", window(10, 300, "2026-10-05T09:00:00Z"), window(20, 10080, "2026-10-09T00:00:00Z"))], "2026-10-04T10:00:00Z");
+    write(h, "2026/10/05", "b", [limits("2026-10-05T04:00:00Z", "codex", window(40, 300, "2026-10-05T09:00:00Z"), window(60, 10080, "2026-10-09T00:00:00Z"))], "2026-10-05T04:00:00Z");
+    write(
+      h,
+      "2026/10/05",
+      "c",
+      [
+        limits("2026-10-05T05:00:00Z", "codex", window(98, 300, "2026-10-05T09:00:00Z"), window(81, 10080, "2026-10-09T00:00:00Z")),
+        // Written after it, but the premium limit has no windows: skipped.
+        limits("2026-10-05T05:00:01Z", "premium", null, null),
+        message("2026-10-05T05:00:02Z"),
+      ],
+      "2026-10-05T05:00:02Z",
+    );
+    return h;
+  };
+
+  it("reads the latest codex limits of the newest session file, from its end", () => {
+    assert.deepEqual(readCodexUsage(home(), now, "Asia/Saigon"), {
+      session: { percent: 98, resets: "Oct 5 at 4:00pm (Asia/Saigon)" },
+      week: { percent: 81, resets: "Oct 9 at 7:00am (Asia/Saigon)" },
+      others: [],
+      checkedAt: "2026-10-05T05:00:00.000Z",
+    });
+  });
+
+  it("writes resets the way /usage does, so the reset-first pick reads it", () => {
+    const at = new Date("2026-10-05T09:00:00Z");
+    assert.equal(resetText(at, "Asia/Saigon"), "Oct 5 at 4:00pm (Asia/Saigon)");
+    assert.equal(parseResetAt(resetText(at, "Asia/Saigon"), now)?.toISOString(), at.toISOString());
+  });
+
+  it("counts a window whose reset is past as 0, and finds nothing without a sessions folder", () => {
+    const later = new Date("2026-10-05T10:00:00Z");
+    const u = readCodexUsage(home(), later, "UTC");
+    assert.deepEqual(u?.session, { percent: 0, resets: null });
+    assert.equal(u?.week?.percent, 81);
+    assert.equal(readCodexUsage(tmp("codex-empty"), now), null);
+    assert.equal(readCodexUsage(path.join(tmp("codex-none"), "missing"), now), null);
+    const premiumOnly = tmp("codex-premium");
+    write(premiumOnly, "2026/10/05", "p", [limits("2026-10-05T05:00:00Z", "premium", null, null)], "2026-10-05T05:00:00Z");
+    assert.equal(readCodexUsage(premiumOnly, now), null);
+  });
+
+  it("finds the limits behind many chunks of later lines", () => {
+    const h = tmp("codex-long");
+    const after = Array.from({ length: 2000 }, (_, i) => message(`2026-10-05T05:${String(i % 60).padStart(2, "0")}:00Z`));
+    write(h, "2026/10/05", "long", [limits("2026-10-05T05:00:00Z", "codex", window(33, 300, "2026-10-05T09:00:00Z"), null), ...after], "2026-10-05T05:30:00Z");
+    const u = readCodexUsage(h, now, "UTC");
+    assert.equal(u?.session?.percent, 33);
+    assert.equal(u?.week, null);
+  });
+
+  it("checks a Codex profile from its own CODEX_HOME without running the CLI", async () => {
+    let calls = 0;
+    const run = async () => (calls++, { code: 0, output: "" });
+    const env = { PATH: path.dirname(process.execPath) };
+    const h = home();
+    const p = { ...AGENT_TEMPLATES.codex, bin: process.execPath, env: { CODEX_HOME: h } };
+    assert.equal((await checkUsage(p, env, now, run))?.session?.percent, 98);
+    const other = { ...p, env: { CODEX_HOME: tmp("codex-2") } };
+    assert.equal(await checkUsage(other, env, now, run), null, "another profile's folder has no sessions");
+    assert.equal(calls, 0);
+  });
+
+  it("stops a Codex profile at its threshold, and reads again when a run ends", async () => {
+    const h = home();
+    const p = { ...AGENT_TEMPLATES.codex, bin: process.execPath, env: { CODEX_HOME: h }, stopAtSession: 95, stopAtWeek: 90 };
+    const run = async (_bin: string, args: string[]) => ({ code: 0, output: args[0] === "login" ? "Logged in using ChatGPT" : "" });
+    const logins = new LoginMonitor(() => [p], () => ({ PATH: path.dirname(process.execPath) }), run);
+    await logins.refresh();
+    assert.equal(usageStop(p, logins.usage(p.id)), "session");
+    assert.equal(usageHeadroom(p, logins.usage(p.id)), 0);
+    write(h, "2026/10/05", "d", [limits(new Date().toISOString(), "codex", window(5, 300, "2099-01-01T00:00:00Z"), window(81, 10080, "2099-01-01T00:00:00Z"))], new Date().toISOString());
+    logins.rereadUsage(p.id);
+    assert.equal(logins.usage(p.id)?.session?.percent, 5);
+    assert.equal(usageStop(p, logins.usage(p.id)), null);
+    assert.equal(usageHeadroom(p, logins.usage(p.id)), 9);
   });
 });
 
