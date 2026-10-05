@@ -722,7 +722,9 @@ const reportedProfiles = (): ReportedProfile[] =>
     loggedIn: p.login?.loggedIn ?? null,
     sessionPercent: p.usage?.session?.percent ?? null,
     weekPercent: p.usage?.week?.percent ?? null,
+    sessionResets: p.usage?.session?.resets ?? null,
     weekResets: p.usage?.week?.resets ?? null,
+    usageCheckedAt: p.usage?.checkedAt ?? null,
     overLimit: usageStop(p, p.usage) !== null,
     cooldownUntil: p.cooldownUntil,
     runs: p.stats.runs,
@@ -1436,7 +1438,11 @@ if (!app.requestSingleInstanceLock()) {
       {
         dataDir: path.dirname(configPath()),
         version: app.getVersion(),
-        onEvent: onRunnerEvent,
+        onEvent: (event) => {
+          // A run that ended (on its own, rotated or before its follow-up) left Codex's newest limits in its session file.
+          if (event.type !== "dispatched" && event.run.profileId) logins.rereadUsage(event.run.profileId);
+          onRunnerEvent(event);
+        },
         afterFinish: (run) => mergeRequester.afterFinish(run),
         // What a Spec Kit step just wrote, to the hub once it knows the run ended: a flow there waits for it (roadmap 34b).
         afterReport: (run) => pushSpecsOf(run.project),

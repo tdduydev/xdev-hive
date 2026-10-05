@@ -2,9 +2,10 @@
 // second login dir (CLAUDE_CONFIG_DIR, CODEX_HOME) is checked on its own. No Electron imports.
 import { execFile } from "node:child_process";
 import os from "node:os";
+import path from "node:path";
 import { HiveError, type AgentKind, type AgentProfile, type LoginHow, type LoginStatus, type PlanUsage } from "@xdev-hive/core";
 import { expandEnv, expandHome, resolveBin } from "./command.ts";
-import { parseClaudeResult, parsePlanUsage } from "./usage.ts";
+import { parseClaudeResult, parsePlanUsage, readCodexUsage } from "./usage.ts";
 
 /** Status and sign-in subcommands of the CLIs that have them. Gemini and custom CLIs have none. */
 const COMMANDS: Partial<Record<AgentKind, { status: string[]; login: string[] }>> = {
@@ -121,7 +122,14 @@ export const USAGE_ARGS = [
   JSON.stringify({ mcpServers: {} }),
 ];
 
+/** The folder a Codex profile keeps its sign-in and sessions in: its CODEX_HOME, else ~/.codex. */
+export function codexHome(profile: AgentProfile): string {
+  return profile.env.CODEX_HOME ? expandHome(profile.env.CODEX_HOME) : path.join(os.homedir(), ".codex");
+}
+
+/** Plan usage: Claude Code's /usage, Codex's session files (no CLI started, roadmap 45); null for the other CLIs. */
 export async function checkUsage(profile: AgentProfile, baseEnv: NodeJS.ProcessEnv, now: Date, run: RunCli = runCli): Promise<PlanUsage | null> {
+  if (profile.kind === "codex") return readCodexUsage(codexHome(profile), now);
   if (profile.kind !== "claude") return null;
   const bin = resolveBin(expandHome(profile.bin), baseEnv.PATH ?? "");
   if (!bin) return null;
@@ -148,7 +156,7 @@ export class LoginMonitor {
     return this.#checks.get(profileId);
   }
 
-  /** Plan usage of a signed-in Claude Code profile, from the same check. */
+  /** Plan usage of a signed-in Claude Code or Codex profile, from the same check. */
   usage(profileId: string): PlanUsage | undefined {
     return this.#usage.get(profileId);
   }
@@ -159,6 +167,17 @@ export class LoginMonitor {
    */
   expectSignedOut(profile: AgentProfile): void {
     this.#checks.set(profile.id, { loggedIn: false, method: null, loginCommand: loginCommand(profile), checkedAt: new Date().toISOString() });
+  }
+
+  /**
+   * Codex writes its limits into the session file at every turn: read again as soon as a run on the profile ends,
+   * so the next pick and the stop threshold see that run's share instead of the one from the last 10-minute check.
+   */
+  rereadUsage(profileId: string): void {
+    const p = this.#profiles().find((x) => x.id === profileId && x.enabled);
+    if (p?.kind !== "codex" || this.#checks.get(p.id)?.loggedIn === false) return;
+    const usage = readCodexUsage(codexHome(p), new Date());
+    if (usage) this.#usage.set(p.id, usage);
   }
 
   /** Profiles last seen signed out: the ones worth checking again when the user comes back to the app. */
@@ -172,7 +191,8 @@ export class LoginMonitor {
     for (const p of profiles.filter((x) => x.enabled && (!ids || ids.includes(x.id)))) {
       const login = await checkLogin(p, this.#env(), new Date(), this.#run);
       this.#checks.set(p.id, login);
-      const usage = login.loggedIn ? await checkUsage(p, this.#env(), new Date(), this.#run) : null;
+      // Codex's numbers come from files, not from its sign-in: only a profile known to be signed out goes without.
+      const usage = login.loggedIn || (p.kind === "codex" && login.loggedIn !== false) ? await checkUsage(p, this.#env(), new Date(), this.#run) : null;
       if (usage) this.#usage.set(p.id, usage);
       else this.#usage.delete(p.id);
     }
