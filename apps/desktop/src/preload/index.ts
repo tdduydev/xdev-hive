@@ -66,5 +66,7 @@ contextBridge.exposeInMainWorld("hive", {
     hubRequests: () => invoke("desktop:hubRequests"),
     toolTrust: (id: string, hash: string | null) => invoke("desktop:toolTrust", id, hash),
     answerCommand: (id: number, approve: boolean) => invoke("desktop:answerCommand", id, approve),
+    chatMachine: () => invoke("desktop:chatMachine"),
+    chatUpload: (project: string, name: string, bytes: Uint8Array) => invoke("desktop:chatUpload", project, name, bytes),
   },
 });

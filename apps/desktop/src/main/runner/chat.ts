@@ -2,11 +2,14 @@
 // Claude profiles, in the project's repo, resuming the thread's Claude Code session. The leader reaches Hive only
 // through the hub's MCP with the reply's own token (the sender's rights, never more than this machine's), may read
 // the repo but not change it, and reports as it goes so the web shows the reply while it is written.
+// In local mode (roadmap 48) the chat is this machine's own: its database hands the replies, and the leader reaches it
+// through the app's hive-mcp shim, told which reply it writes so it gets the leader's proposals and not the board.
 import { spawn } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { chatFileName, LEADER_COMMAND, toErrorPayload, type Actor, type AgentProfile, type ChatFile, type ChatRequest, type DesktopProject, type HiveBackend, type RunRequestError } from "@xdev-hive/core";
+import { NO_FEATURES, runMcpServers } from "#desktop/main/installer.ts";
 import { expandEnv, resolveBin } from "./command.ts";
 import { claudeMcpServers } from "./container-mcp.ts";
 import { killTree } from "./kill.ts";
@@ -26,6 +29,12 @@ export interface ChatHost {
   unavailable?(profileId: string): boolean;
   /** Reads a file of the hub with a token (default: fetch); tests hand one of their own. */
   download?(url: string, token: string): Promise<Uint8Array>;
+  /** The chat is this machine's own database's (local mode): no hub, no reply token. */
+  local?(): boolean;
+  /** Local mode: a message's file, from the database. */
+  localFile?(id: number): Uint8Array | null;
+  /** A reply this machine wrote ended (the app tells its user when the window is hidden). */
+  onFinished?(req: ChatRequest, status: "done" | "failed"): void;
 }
 
 export interface ChatOptions {
@@ -198,14 +207,18 @@ export class ChatWorker {
 
   async #write(req: ChatRequest): Promise<void> {
     const machine = this.#host.machine();
-    const refuse = (message: string, key?: string, vars?: Record<string, string | number>) =>
-      this.#finish(req.replyId, { status: "failed", text: "", steps: "", sessionId: null, costUsd: null, error: { message, ...(key ? { key } : {}), ...(vars ? { vars } : {}) } });
+    const refuse = async (message: string, key?: string, vars?: Record<string, string | number>) => {
+      await this.#finish(req.replyId, { status: "failed", text: "", steps: "", sessionId: null, costUsd: null, error: { message, ...(key ? { key } : {}), ...(vars ? { vars } : {}) } });
+      this.#ended(req, "failed");
+    };
     const profile = this.#pick(req.profileId);
     if (!profile) return refuse(`${machine} has no Claude profile it can start now.`, "errors.chatNoClaude", { machine, id: req.profileId ?? "claude" });
     const project = this.#host.projects().find((p) => p.name === req.project);
     if (!project) return refuse(`Project ${req.project} is not added to the app.`, "errors.projectNotAdded", { project: req.project });
-    const hub = this.#host.hubUrl();
-    if (!hub || !req.grant) return refuse("The hub sent no token for the leader; update the hub.", "errors.chatNoGrant");
+    const local = this.#host.local?.() === true;
+    const hub = local ? null : this.#host.hubUrl();
+    const grant = req.grant;
+    if (!local && (!hub || !grant)) return refuse("The hub sent no token for the leader; update the hub.", "errors.chatNoGrant");
     const base = this.#host.env();
     const bin = resolveBin(profile.bin, base.PATH ?? "");
     if (!bin) return refuse(`"${profile.bin}" is not on PATH.`, "runNote.binNotFound", { bin: profile.bin });
@@ -216,11 +229,21 @@ export class ChatWorker {
     const mcpFile = path.join(dir, `chat-${req.replyId}.mcp.json`);
     const agent = `${profile.id}.${machine}`;
     const run = { agent, machine, project: req.project, task: `chat-${req.threadId}`, run: `chat-${req.replyId}`, readOnly: false };
-    writeFileSync(mcpFile, JSON.stringify({ mcpServers: claudeMcpServers({ url: hub, token: req.grant }, run) }), { mode: 0o600 });
+    const mcpServers = hub && grant
+      ? claudeMcpServers({ url: hub, token: grant }, run)
+      : runMcpServers(profile.id, req.project, NO_FEATURES, { task: run.task, id: run.run, chatReply: req.replyId });
+    writeFileSync(mcpFile, JSON.stringify({ mcpServers }), { mode: 0o600 });
 
-    // The message's files, fetched with the reply's token into a folder of this reply, gone with it.
+    // The message's files, fetched with the reply's token (or read from this machine's database) into a folder of
+    // this reply, gone with it.
     const fileDir = req.files?.length ? path.join(dir, `chat-${req.replyId}-files`) : null;
-    const fetched = fileDir ? await this.#fetchFiles(req.files!, fileDir, hub, req.grant) : [];
+    const download = this.#host.download ?? fetchBytes;
+    const read = (f: ChatFile): Promise<Uint8Array> => {
+      if (hub && grant) return download(`${hub.replace(/\/+$/, "")}/api/chat/files/${f.id}`, grant);
+      const bytes = this.#host.localFile?.(f.id);
+      return bytes ? Promise.resolve(bytes) : Promise.reject(new Error(`No file #${f.id} in this machine's database.`));
+    };
+    const fetched = fileDir ? await this.#fetchFiles(req.files!, fileDir, read) : [];
     const hostEnv = Object.fromEntries(Object.entries(base).filter(([k]) => !k.startsWith("ELECTRON_")));
     const env = { ...hostEnv, ...expandEnv(profile.env), HIVE_AGENT: profile.id, HIVE_PROJECT: req.project };
     const args = chatArgs({
@@ -296,6 +319,8 @@ export class ChatWorker {
         costUsd: result?.costUsd ?? null,
         error,
       });
+      // Whoever stopped it knows already.
+      if (!cancelled) this.#ended(req, ok ? "done" : "failed");
     } catch (err) {
       await refuse(toErrorPayload(err).message);
     } finally {
@@ -304,10 +329,17 @@ export class ChatWorker {
     }
   }
 
+  #ended(req: ChatRequest, status: "done" | "failed"): void {
+    try {
+      this.#host.onFinished?.(req, status);
+    } catch {
+      // A notice that could not be shown changes nothing about the reply.
+    }
+  }
+
   /** Each file written under a safe, distinct name; one the hub would not give is noted, and the reply goes on. */
-  async #fetchFiles(files: ChatFile[], dir: string, hub: string, token: string): Promise<FetchedFile[]> {
+  async #fetchFiles(files: ChatFile[], dir: string, read: (f: ChatFile) => Promise<Uint8Array>): Promise<FetchedFile[]> {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const download = this.#host.download ?? fetchBytes;
     const used = new Set<string>();
     const out: FetchedFile[] = [];
     for (const f of files) {
@@ -316,7 +348,7 @@ export class ChatWorker {
       for (let n = 2; used.has(name.toLowerCase()); n++) name = `${n}-${chatFileName(f.name)}`;
       used.add(name.toLowerCase());
       try {
-        const bytes = await download(`${hub.replace(/\/+$/, "")}/api/chat/files/${f.id}`, token);
+        const bytes = await read(f);
         const file = path.join(dir, name);
         writeFileSync(file, bytes, { mode: 0o600 });
         out.push({ file: f, path: file });

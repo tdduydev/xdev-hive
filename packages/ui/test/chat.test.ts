@@ -5,7 +5,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { actionTask, chatMachines, isLiveReply, linkIds, machineName, mergeMessages, pollAfter, remarkHiveLinks, REPLY_MARKDOWN, stepCount, withAction } from "#ui/lib/chat.ts";
+import { actionTask, chatMachines, chatTarget, isLiveReply, linkIds, machineName, mergeMessages, pollAfter, remarkHiveLinks, REPLY_MARKDOWN, stepCount, withAction } from "#ui/lib/chat.ts";
 
 const profile = (over: Partial<ReportedProfile> = {}): ReportedProfile => ({
   id: "claude-1",
@@ -88,6 +88,31 @@ describe("chat helpers", () => {
     ];
     assert.deepEqual(chatMachines(list, "app").map((m) => m.machine), ["mbp", "unknown"]);
     assert.deepEqual(chatMachines(list, "other").map((m) => m.machine), ["norepo"]);
+  });
+
+  it("starts a new thread in the app on this machine and its Claude plan, else on what the project saved (roadmap 48)", () => {
+    const now = "2026-10-05T10:00:00Z";
+    const mine = machine("mini", {
+      profiles: [
+        profile({ id: "claude-2", priority: 20 }),
+        profile({ id: "claude-1", priority: 10, overLimit: true }),
+        profile({ id: "claude-3", priority: 5, cooldownUntil: "2026-10-05T11:00:00Z" }),
+        profile({ id: "claude-4", priority: 1, loggedIn: false }),
+      ],
+    });
+    const fit = [machine("mbp"), mine];
+    const saved = { machineId: "runner.mbp@team", profileId: "claude-1" };
+    // This machine's first plan by priority that can write now: not over its limit, not resting, signed in.
+    assert.deepEqual(chatTarget(fit, { here: "mini", defaults: saved, now }), { machineId: "runner.mini@team", profileId: "claude-2" });
+    // The project saved this machine and a plan of it: that plan, even one resting (the person chose it).
+    assert.deepEqual(chatTarget(fit, { here: "mini", defaults: { machineId: "runner.mini@team", profileId: "claude-3" }, now }), { machineId: "runner.mini@team", profileId: "claude-3" });
+    // Every plan busy: the machine picks when the reply starts.
+    const tired = machine("mini", { profiles: [profile({ overLimit: true })] });
+    assert.deepEqual(chatTarget([tired], { here: "mini", defaults: null, now }), { machineId: "runner.mini@team", profileId: "" });
+    // This machine cannot hold it (or the web): the project's saved machine and plan, else the first that can.
+    assert.deepEqual(chatTarget([machine("mbp"), machine("box")], { here: "mini", defaults: saved, now }), { machineId: "runner.mbp@team", profileId: "claude-1" });
+    assert.deepEqual(chatTarget([machine("box"), machine("mbp")], { here: null, defaults: { machineId: "runner.gone@team", profileId: "claude-9" }, now }), { machineId: "runner.box@team", profileId: "" });
+    assert.deepEqual(chatTarget([], { here: "mini", defaults: saved, now }), { machineId: "", profileId: "" });
   });
 
   it("polls from just before the reply being written, since it changes in place", () => {
