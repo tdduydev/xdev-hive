@@ -39,6 +39,7 @@ describe("mcp tools", () => {
       "skill_list",
       "skill_propose",
       "task_claim",
+      "task_get",
       "task_list",
       "task_next",
       "task_update",
@@ -65,6 +66,7 @@ describe("mcp tools", () => {
         "setup_missing",
         "skill_get",
         "skill_list",
+        "task_get",
         "task_list",
         "task_next",
         "token_usage",
@@ -124,14 +126,95 @@ describe("mcp tools", () => {
     assert.match(text(claim), /waits on T-1/);
   });
 
+  it("cuts the notes a task list carries, and reads one task in full (roadmap 28f)", async () => {
+    const hive = new SqliteHive(":memory:");
+    const admin = { name: "duy", role: "admin" as const };
+    const long = `ĐÃ LÀM: ${"chi tiết bàn giao ".repeat(40)}`;
+    await hive.call("tasks.create", { id: "T-1", project: "app", title: "API" }, admin);
+    await hive.call("tasks.update", { id: "T-1", status: "review", note: long }, admin);
+    await hive.call("tasks.create", { id: "T-2", project: "app", title: "UI" }, admin);
+    await hive.call("tasks.update", { id: "T-2", status: "review", note: "Xong, đã chạy test" }, admin);
+    const claude = await connect(hive, "claude@duy");
+
+    const answer = await claude.callTool({ name: "task_list", arguments: {} });
+    assert.equal(text(answer).includes("\n"), false, "JSON without indentation");
+    const listed = JSON.parse(text(answer)) as Array<{ id: string; note: string; noteTruncated?: boolean }>;
+    const cut = listed.find((t) => t.id === "T-1")!;
+    assert.deepEqual([cut.note, cut.note.length, cut.noteTruncated], [long.slice(0, 200), 200, true]);
+    const short = listed.find((t) => t.id === "T-2")!;
+    assert.deepEqual([short.note, "noteTruncated" in short], ["Xong, đã chạy test", false], "a note that fits is left alone");
+
+    const whole = JSON.parse(text(await claude.callTool({ name: "task_list", arguments: { full: true } }))) as Array<{ id: string; note: string; noteTruncated?: boolean }>;
+    const kept = whole.find((t) => t.id === "T-1")!;
+    assert.deepEqual([kept.note, "noteTruncated" in kept], [long, false]);
+
+    const one = JSON.parse(text(await claude.callTool({ name: "task_get", arguments: { id: "T-1" } })));
+    assert.deepEqual([one.id, one.status, one.note], ["T-1", "review", long]);
+    const missing = await claude.callTool({ name: "task_get", arguments: { id: "T-9" } });
+    assert.equal(missing.isError, true);
+    assert.match(text(missing), /^not_found: Task T-9/);
+  });
+
+  it("gives agents the memory fields they act on, eight at a time (roadmap 28f)", async () => {
+    const hive = new SqliteHive(":memory:");
+    const agent = { name: "claude@duy", role: "agent" as const };
+    const claude = await connect(hive, agent.name);
+    for (let i = 1; i <= 10; i++) await claude.callTool({ name: "memory_write", arguments: { kind: "context", content: `Ghi chú ${i}` } });
+    const pool = JSON.parse(text(await claude.callTool({ name: "memory_write", arguments: { kind: "gotcha", content: "Đóng pool trong test", taskId: "T-1", files: ["src/db/pool.ts"] } })));
+    const other = JSON.parse(text(await claude.callTool({ name: "memory_write", arguments: { kind: "decision", content: "Pool tự đóng khi hết test", contradicts: pool.id } })));
+    // A cited file that changed since the baseline: the entry comes back with review set.
+    const sha = (c: string) => c.repeat(40);
+    for (const s of [sha("a"), sha("b")]) await hive.call("memory.checkFiles", { project: "app", files: [{ path: "src/db/pool.ts", sha: s }] }, agent);
+
+    const [hit] = JSON.parse(text(await claude.callTool({ name: "memory_search", arguments: { query: "pool trong test" } }))) as Array<Record<string, unknown>>;
+    assert.deepEqual(Object.keys(hit!).sort(), ["conflictsWith", "content", "files", "id", "kind", "review", "taskId"], "no author, project, dates or use count");
+    assert.deepEqual([hit!.files, hit!.taskId, hit!.review, hit!.conflictsWith], [["src/db/pool.ts"], "T-1", true, [other.id]], "paths without their blob ids, and flags only");
+
+    const latest = JSON.parse(text(await claude.callTool({ name: "memory_search", arguments: {} }))) as unknown[];
+    assert.equal(latest.length, 8, "8 by default, not the 10 of the RPC");
+    assert.equal(JSON.parse(text(await claude.callTool({ name: "memory_search", arguments: { limit: 3 } }))).length, 3);
+    const [verbose] = JSON.parse(text(await claude.callTool({ name: "memory_search", arguments: { query: "pool trong test", verbose: true } })));
+    // The baseline blob id stays the one the entry was written against until a person keeps it; review.current holds what the file is now.
+    assert.deepEqual([verbose.author, verbose.files, verbose.review.changed], [agent.name, [{ path: "src/db/pool.ts", sha: sha("a") }], ["src/db/pool.ts"]]);
+  });
+
+  it("answers a 120-task board and a memory search in a fraction of the bytes (roadmap 28f)", async (t) => {
+    const hive = new SqliteHive(":memory:");
+    const admin = { name: "duy", role: "admin" as const };
+    const note = `ĐÃ LÀM: ${"chi tiết bàn giao ".repeat(100)}`.slice(0, 1900);
+    for (let i = 1; i <= 120; i++) {
+      await hive.call("tasks.create", { id: `T-${i}`, project: "app", title: `Việc ${i}` }, admin);
+      await hive.call("tasks.update", { id: `T-${i}`, status: "review", note }, admin);
+    }
+    const claude = await connect(hive, "claude@duy");
+    for (let i = 1; i <= 20; i++) {
+      await claude.callTool({ name: "memory_write", arguments: { kind: "convention", content: `Quy ước ${i}: ${"một câu đủ dài để đo ".repeat(10)}`, taskId: `T-${i}`, files: ["src/db/pool.ts", "src/web/app.ts"] } });
+    }
+    const bytes = (s: string) => Buffer.byteLength(s, "utf8");
+    // What the tool answered before 28f: every field, indented.
+    const was = (s: string) => bytes(JSON.stringify(JSON.parse(s), null, 2));
+
+    const tasksFull = text(await claude.callTool({ name: "task_list", arguments: { full: true } }));
+    const tasksNow = bytes(text(await claude.callTool({ name: "task_list", arguments: {} })));
+    const memoryFull = text(await claude.callTool({ name: "memory_search", arguments: { limit: 20, verbose: true } }));
+    const memoryNow = bytes(text(await claude.callTool({ name: "memory_search", arguments: { limit: 20 } })));
+    t.diagnostic(`task_list (120 tasks, notes of ${note.length} chars): ${was(tasksFull)} B before, ${tasksNow} B now`);
+    t.diagnostic(`memory_search (20 entries): ${was(memoryFull)} B before, ${memoryNow} B now`);
+    assert.ok(tasksNow * 5 < was(tasksFull), `task_list ${tasksNow} B of ${was(tasksFull)} B`);
+    // Memory keeps less to cut: the content is the point and stays whole, so the saving is the bookkeeping around it.
+    assert.ok(memoryNow * 2 < was(memoryFull), `memory_search ${memoryNow} B of ${was(memoryFull)} B`);
+  });
+
   it("shares memory between two agents", async () => {
     const hive = new SqliteHive(":memory:");
     const claude = await connect(hive, "claude@duy");
     const codex = await connect(hive, "codex@duy");
     await claude.callTool({ name: "memory_write", arguments: { kind: "decision", content: "API dùng tRPC" } });
-    const res = await codex.callTool({ name: "memory_search", arguments: { query: "trpc" } });
-    const hits = JSON.parse(text(res));
-    assert.equal(hits[0].author, "claude@duy");
+    const hits = JSON.parse(text(await codex.callTool({ name: "memory_search", arguments: { query: "trpc" } })));
+    assert.deepEqual(hits.map((h: { content: string }) => h.content), ["API dùng tRPC"]);
+    // Who wrote it and when is bookkeeping: verbose: true for whoever asks about the entry itself.
+    const full = JSON.parse(text(await codex.callTool({ name: "memory_search", arguments: { query: "trpc", verbose: true } })));
+    assert.equal(full[0].author, "claude@duy");
   });
 
   it("records team-wide memory with shared: true, and every project's search finds it", async () => {
@@ -144,7 +227,7 @@ describe("mcp tools", () => {
     await server.connect(a);
     const inWeb = new Client({ name: "test", version: "0" });
     await inWeb.connect(b);
-    const hits = JSON.parse(text(await inWeb.callTool({ name: "memory_search", arguments: {} }))) as Array<{ project: string | null; content: string }>;
+    const hits = JSON.parse(text(await inWeb.callTool({ name: "memory_search", arguments: { verbose: true } }))) as Array<{ project: string | null; content: string }>;
     assert.deepEqual(hits.map((h) => [h.project, h.content]), [[null, "Commit theo Conventional Commits"]], "web sees the shared entry, not app's");
   });
 
