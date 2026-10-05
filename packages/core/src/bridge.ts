@@ -109,13 +109,24 @@ export interface FileAction {
   note?: string;
 }
 
+/** The merge request (pull request on GitHub) a sync in MR mode opened or updated (roadmap 38c). */
+export interface SyncMr {
+  url: string;
+  iid: number;
+  /** The branch the docs went to; the user's checkout keeps its own branch and its unfinished work. */
+  branch: string;
+  state: "created" | "updated";
+}
+
 export interface SyncReport {
   project: string;
   files: FileAction[];
   /** Doc keys created in Hive from files that already existed in the repo. */
   imported: string[];
-  /** Short hash of the commit made by the sync, if any. */
+  /** Short hash of the commit made by the sync, if any; in MR mode it is on the docs branch, not the checkout. */
   commit: string | null;
+  /** The merge request the docs went into (roadmap 38c); absent when the sync committed into the checkout. */
+  mr?: SyncMr;
   /** The repo keeps an AGENTS.md of its own (roadmap 38f), so it can be proposed into Hive instead of overwritten. */
   ownAgents: boolean;
   note?: string;

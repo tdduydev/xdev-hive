@@ -121,6 +121,34 @@ export async function remoteStart(repo: string, target: string | undefined, opts
 }
 
 /**
+ * The working copy a sync in MR mode builds the docs branch in (roadmap 38c), so the checkout the user works in
+ * keeps its branch and its unfinished files. Always restarted at `ref` (the target branch as the remote has it
+ * now): the branch of a merged or abandoned MR must not carry old files into the next one. The leftovers of an
+ * earlier sync go too, since a doc whose paths changed is removed by the sync itself, not by git.
+ */
+export function contextWorktree(repo: string, dir: string, branch: string, ref: string): void {
+  if (!isGitRepo(repo)) throw new HiveError("bad_request", `${repo} không phải git repo`, { key: "errors.notGitRepo", vars: { path: repo } });
+  git(repo, ["worktree", "prune"]);
+  try {
+    if (isWorktreeOf(repo, dir)) {
+      // --force only throws away what is in this folder, which is ours; a branch checked out elsewhere still refuses.
+      git(dir, ["checkout", "--force", "-B", branch, ref]);
+      git(dir, ["clean", "-fd"]);
+    } else {
+      mkdirSync(path.dirname(dir), { recursive: true });
+      git(repo, ["worktree", "add", "-B", branch, dir, ref]);
+    }
+  } catch (err) {
+    // Most often: someone has that branch checked out elsewhere (the MR made by hand before 38c).
+    const reason = gitErrorText(err);
+    throw new HiveError("conflict", `Không chuẩn bị được worktree ${dir} cho nhánh ${branch}: ${reason}`, {
+      key: "errors.contextWorktree",
+      vars: { path: dir, branch, reason },
+    });
+  }
+}
+
+/**
  * `opts.branch` + `opts.from`: a best-of-n candidate's branch, (re)started at `from` whenever its worktree is
  * created, so a new group never builds on an older group's candidate.
  * `opts.start`: where the task's branch starts if it does not exist yet (see remoteStart); default the checkout's HEAD.

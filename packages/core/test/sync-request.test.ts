@@ -49,7 +49,7 @@ describe("sync requests from the Context agent page (roadmap 22n)", () => {
     await assert.rejects(hive.call("machines.commandResult", { id: sent[0]!.id, status: "running" }, lan), code("forbidden"));
     await hive.call("machines.commandResult", { id: sent[0]!.id, status: "running" }, mbp);
     assert.deepEqual((await beat(hive, mbp, ["app", "web"])).syncCommands, [], "not sent again once running");
-    const outcome = { changed: ["AGENTS.md"], skipped: [], commit: "abc1234", mirrored: 2, note: null };
+    const outcome = { changed: ["AGENTS.md"], skipped: [], commit: "abc1234", mr: null, mirrored: 2, note: null };
     await hive.call("machines.commandResult", { id: sent[0]!.id, status: "done", output: JSON.stringify(outcome) }, mbp);
 
     const status = await hive.call("docs.syncStatus", { project: "app" }, admin);
@@ -111,7 +111,28 @@ describe("sync requests from the Context agent page (roadmap 22n)", () => {
       ownAgents: false,
       mirror: { commit: "def5678", changed: ["project/app/guide"], unchanged: 3, missing: [], skipped: [] },
     });
-    assert.deepEqual(o, { changed: ["AGENTS.md", ".claude/rules/xdev-hive/old.md"], skipped: [".claude/skills/deploy/SKILL.md"], commit: "abc1234", mirrored: 1, note: null });
+    assert.deepEqual(o, {
+      changed: ["AGENTS.md", ".claude/rules/xdev-hive/old.md"],
+      skipped: [".claude/skills/deploy/SKILL.md"],
+      commit: "abc1234",
+      mr: null,
+      mirrored: 1,
+      note: null,
+    });
     assert.deepEqual(readSyncOutcome(JSON.stringify(o)), o);
+
+    // The docs went into a merge request instead (roadmap 38c): the web shows its link.
+    const viaMr = syncOutcome({
+      project: "app",
+      files: [{ file: "AGENTS.md", action: "updated" }],
+      imported: [],
+      commit: "abc1234",
+      ownAgents: false,
+      mr: { url: "https://gitlab.example.com/group/app/-/merge_requests/7", iid: 7, branch: "chore/xdev-hive-context", state: "created" },
+    });
+    assert.equal(viaMr.mr, "https://gitlab.example.com/group/app/-/merge_requests/7");
+    assert.deepEqual(readSyncOutcome(JSON.stringify(viaMr)), viaMr);
+    // An older machine's output has no such field at all.
+    assert.equal(readSyncOutcome(JSON.stringify({ changed: [], skipped: [], commit: null }))!.mr, null);
   });
 });

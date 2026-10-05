@@ -190,6 +190,8 @@ function syncDetail(c: MachineCommand, t: ReturnType<typeof useT>): string {
     o.changed.length ? t("context.sync.changed", { count: o.changed.length }) : t("context.sync.unchanged"),
     o.skipped.length ? t("context.sync.skipped", { count: o.skipped.length }) : null,
     o.commit ? t("context.sync.commit", { commit: o.commit }) : o.changed.length ? t("context.sync.noCommit") : null,
+    // The machine put the docs in a merge request instead of its checkout (roadmap 38c): the link is what to read next.
+    o.mr ? t("context.sync.mr", { url: o.mr }) : null,
     o.mirrored !== null ? t("context.sync.mirrored", { count: o.mirrored }) : null,
     o.note,
   ]
