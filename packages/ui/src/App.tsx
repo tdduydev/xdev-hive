@@ -29,6 +29,7 @@ import {
   Server,
   ShieldCheck,
   SquareCheck,
+  SquareKanban,
   Terminal,
   UserCog,
   UsersRound,
@@ -186,17 +187,20 @@ const WEB_GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
  * roadmap item only changes the menu of the local mode.
  */
 const SHORTCUTS: Partial<Record<PageId, string>> = { today: "1", chat: "2", runs: "4", docs: "5", agents: "6" };
+/** Connected to a hub the app adds its Board (roadmap 44) on the key the Board has in local mode. */
+const DESK_SHORTCUTS: Partial<Record<PageId, string>> = { ...SHORTCUTS, tasks: "2" };
 /** On this machine the menu is another one (roadmap 39f), so ⌘1–6 follow it: its first six entries. */
 const LOCAL_SHORTCUTS: Partial<Record<PageId, string>> = { today: "1", tasks: "2", runs: "3", docs: "4", agents: "5", setup: "6" };
 
 /**
- * The desktop app connected to a hub (roadmap 35a): this machine's work only. Tasks, docs, policies, members and the
- * rest are the web's; links to them open the hub in the browser. In local mode the app is the whole system and keeps
- * every page.
+ * The desktop app connected to a hub (roadmap 35a): this machine's work only. Docs, policies, members and the rest
+ * are the web's; links to them open the hub in the browser. Task is back as the Board of the projects with a repo
+ * here (roadmap 44: a client could not see its own tasks), the list and every other project stay on the web. In
+ * local mode the app is the whole system and keeps every page.
  */
-const DESK_PAGES = new Set<PageId>(["today", "runs", "agents", "setup", "projects", "device"]);
+const DESK_PAGES = new Set<PageId>(["today", "tasks", "runs", "agents", "setup", "projects", "device"]);
 const DESK_GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
-  { label: null, ids: ["today", "runs"] },
+  { label: null, ids: ["today", "tasks", "runs"] },
   { label: "nav.groupAgents", ids: ["agents", "setup", "projects"] },
 ];
 /** What the machine's Hôm nay shows: its runs' CI, its own setup, install requests for it. */
@@ -394,7 +398,9 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   };
   // Filled: what waits for you, and alerts the hub rates high.
   const strong = (id: PageId) => id === "today" || (id === "alerts" && openAlerts.some((a) => a.severity === "high"));
-  const shortcuts = local ? LOCAL_SHORTCUTS : SHORTCUTS;
+  const shortcuts = local ? LOCAL_SHORTCUTS : deskHub ? DESK_SHORTCUTS : SHORTCUTS;
+  // There Task is the Board alone, over this machine's projects, so it says so.
+  const label = (id: PageId): MessageKey => (deskHub && id === "tasks" ? "nav.board" : PAGES[id].label);
   const groups: NavGroup[] = (deskHub ? DESK_GROUPS : local ? LOCAL_GROUPS : WEB_GROUPS)
     .map((g) => ({
       label: g.label ? t(g.label) : null,
@@ -402,8 +408,8 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
         .filter((id) => visible.has(id))
         .map((id) => ({
           id,
-          label: t(PAGES[id].label),
-          icon: PAGES[id].icon,
+          label: t(label(id)),
+          icon: deskHub && id === "tasks" ? SquareKanban : PAGES[id].icon,
           shortcut: shortcuts[id],
           badge: counts[id] ? { count: counts[id]!, strong: strong(id) } : undefined,
         })),
@@ -419,7 +425,9 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
         ? t("navSub.runsOn")
         : machine && current === "agents"
           ? t("navSub.agentsOn", { machine })
-          : t(PAGES[current].sub);
+          : deskHub && current === "tasks"
+            ? t("navSub.boardOn")
+            : t(PAGES[current].sub);
   const frame = (
     <InboxProvider value={inbox}>
       <ClientShell
@@ -429,7 +437,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
         groups={groups}
         extraPages={extraPages}
         current={current === "read" ? "docs" : current}
-        title={t(PAGES[current].label)}
+        title={t(label(current))}
         subtitle={subtitle}
         webUrl={webUrl}
       >

@@ -12,6 +12,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import os from "node:os";
 import path from "node:path";
 import electron from "electron";
+import { HubBackend } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { RunStore } from "../src/main/runner/store.ts";
 import { startMockGitLab } from "../test/fixtures/mock-gitlab.ts";
@@ -345,7 +346,8 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
   // The script quotes each word (sh: 'auth' 'login'; Windows: "auth" "login").
   else if (!new RegExp(login.split(" ").map((w) => `['"]?${w}['"]?`).join(" ")).test(script) || !script.includes(dir)) failures.push(`account: the sign-in script of ${kind}-1 does not run "${login}" with ${dir}`);
 }
-// Roadmap 35a: connected to a hub, the app shows this machine's work only (five pages, Mở web); the rest is the web's.
+// Roadmap 35a: connected to a hub, the app shows this machine's work only (Mở web); the rest is the web's. Roadmap 44
+// brought the Board of this machine's projects back.
 {
   const webDir = path.resolve(appDir, "..", "web");
   const port = await new Promise((resolve) => {
@@ -372,7 +374,8 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
     const file = path.join(work, "config.json");
     const local = readFileSync(file, "utf8");
     writeFileSync(file, JSON.stringify({ ...JSON.parse(local), mode: "hub", hub: { url: `http://127.0.0.1:${port}`, token: bootstrap } }, null, 2));
-    const webPages = ["tasks", "board", "docs", "memory", "proposals", "skills", "specs", "chat", "batches", "machines", "members", "tokens", "systems", "tools", "admin"];
+    // Task is in the menu again as this machine's Board (roadmap 44); #/board is only an old address of it.
+    const webPages = ["board", "docs", "memory", "proposals", "skills", "specs", "chat", "batches", "machines", "members", "tokens", "systems", "tools", "admin"];
     // hub-agents also proves the 39c table in hub mode: here three subscriptions are off, so only the fold shows them.
     // Lượt chạy has the same shape in hub mode, and only this machine's runs in it (roadmap 35a, 39e).
     // Connected (roadmap 39d): Cài đặt is one line about the hub, the account and this machine, with no form.
@@ -387,6 +390,29 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
     for (const [name, page, also] of pages) {
       await shoot(name, page, 3000, { HIVE_SMOKE_EXPECT: also ? `[data-open-web] && ${also}` : "[data-open-web]", HIVE_SMOKE_ABSENT: absent });
     }
+    // Roadmap 44: the Board of the projects with a repo here. The hub also has a project this machine does not clone,
+    // which the picker leaves out (it is on the web, behind Mở trên web).
+    const api = new HubBackend(`http://127.0.0.1:${port}`, bootstrap);
+    const seeder = { name: "smoke", role: "admin" };
+    await api.call("tasks.create", { id: "T-001", project: "demo", title: "Thêm trang cài đặt workspace" }, seeder);
+    await api.call("tasks.create", { id: "T-002", project: "demo", title: "Sửa lỗi phân trang danh sách" }, seeder);
+    await api.call("tasks.update", { id: "T-002", status: "doing" }, seeder);
+    await api.call("tasks.create", { id: "T-003", project: "demo", title: "Viết test cho API đăng nhập", dependsOn: ["T-002"] }, seeder);
+    await api.call("tasks.create", { id: "O-001", project: "other", title: "Việc của máy khác" }, seeder);
+    const board = 'nav a[href="#/tasks"][aria-current="page"] && [data-open-web-board] && section[aria-label="Chưa làm"] [role="button"]';
+    await shoot("hub-board", "tasks", 4000, {
+      HIVE_SMOKE_EXPECT: `[data-open-web] && ${board}`,
+      HIVE_SMOKE_ABSENT: `${absent} && option[value="other"] && [data-task-view]`,
+    });
+    // The old address lands on it too, and a card opens its panel with the run form of this machine.
+    await shoot("hub-board-task", "board", 4000, {
+      HIVE_SMOKE_CLICK: 'section[aria-label="Chưa làm"] [role="button"]',
+      HIVE_SMOKE_EXPECT: `${board} && aside[aria-label^="T-00"]`,
+    });
+    // A machine with no project: the Board says where to add one.
+    writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), projects: [] }, null, 2));
+    await shoot("hub-board-empty", "tasks", 3000, { HIVE_SMOKE_EXPECT: '[data-board-empty] a[href="#/setup"]' });
+    writeFileSync(file, JSON.stringify({ ...JSON.parse(local), mode: "hub", hub: { url: `http://127.0.0.1:${port}`, token: bootstrap } }, null, 2));
     // Đổi kết nối brings the sign-in form back over that summary.
     await shoot("hub-projects-change", "projects", 3000, { HIVE_SMOKE_CLICK: "[data-hub-change]", HIVE_SMOKE_EXPECT: '[data-hub-link="changing"] && [data-connect-browser]' });
     writeFileSync(file, local);
