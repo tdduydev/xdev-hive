@@ -157,6 +157,8 @@ export interface HubUpdate {
   profileChanges?: ProfileChange[];
   /** Merges asked for on the web (roadmap 18c), while this machine takes runs from the hub. */
   mergeRuns?: RunMergeOrder[];
+  /** Repos of this machine the hub archived or deleted (roadmap 47); a hub older than it sends none. */
+  archivedProjects?: string[];
 }
 
 /** What the MR watcher saw of a run's MR, as the hub keeps it (roadmap 18c); null without an MR. */
@@ -396,6 +398,8 @@ export class Runner {
   #agentPolicy: HubAgentPolicy | null = null;
   /** The tool catalog (roadmap 28b) of the last heartbeat that answered; null in local mode and from a hub older than it. */
   #tools: MachineTools | null = null;
+  /** Repos of this machine the hub archived or deleted (roadmap 47); empty in local mode and from a hub older than it. */
+  #archivedProjects: string[] = [];
 
   constructor(host: RunnerHost, opts: RunnerOptions) {
     this.#host = host;
@@ -776,6 +780,7 @@ export class Runner {
       this.#budgetBlocked = [];
       this.#agentPolicy = null;
       this.#tools = null;
+      this.#archivedProjects = [];
       return null;
     }
     const runs = this.store.active().map((r) => ({
@@ -849,10 +854,12 @@ export class Runner {
       profileChanges: res.profileChanges ?? [],
       // The user let project managers drive this machine from the web; without that a merge waits until it expires.
       mergeRuns: this.#host.settings().acceptHubRuns ? (res.mergeRuns ?? []) : [],
+      archivedProjects: res.archivedProjects ?? [],
     };
     // Before the requests below are taken, so their runs start under the policy the hub just sent.
     this.#agentPolicy = update.agentPolicy ?? null;
     this.#tools = update.tools ?? null;
+    this.#archivedProjects = update.archivedProjects ?? [];
     this.#opts.onHub?.(update);
     this.#takeSyncs(update.syncCommands);
     // A hub older than runs.dispatch sends none.
@@ -1130,6 +1137,12 @@ export class Runner {
           const pause = this.#pauseOf(run.project);
           if (pause) {
             this.#waiting.set(run.id, tr("runNote.waitingPaused", pause));
+            continue;
+          }
+          // Archived or deleted on the hub (roadmap 47): the hub keeps nothing of the project and refuses its writes,
+          // so a Board run of it would have nowhere to land. It waits here, and goes when the project is restored.
+          if (this.#archivedProjects.includes(run.project)) {
+            this.#waiting.set(run.id, tr("runNote.waitingArchived", { project: run.project }));
             continue;
           }
           const capped = this.#budgetHold(run);

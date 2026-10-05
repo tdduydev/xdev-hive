@@ -275,10 +275,14 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   const systems = useMemo(() => systemList.data ?? [], [systemList.data]);
   // What the hub derives for each system from the account's services (roadmap 19c), so controls show as the hub decides.
   const withSystems = useMemo(() => (me.access ? { ...me, access: withSystemGrants(me.access, systems) } : me), [me, systems]);
+  // Archived and deleted projects (roadmap 47). The hub already leaves them out of every list, so this is only about
+  // the names that come from the account's own grants: a grant outlives the project it was given on.
+  const archived = useQuery(async () => (me.mode === "hub" ? client.call("projects.list", {}).catch(() => []) : []), [client, me.mode, tick]);
+  const hidden = useMemo(() => new Set((archived.data ?? []).filter((p) => p.state !== null).map((p) => p.project)), [archived.data]);
   // Granted projects show in the switcher even before they have any data, and so do a system's.
   const projects = useMemo(
-    () => [...new Set([...seen, ...Object.keys(me.access?.projects ?? {}), ...systems.flatMap((s) => s.projects)])].sort(),
-    [seen, me.access, systems],
+    () => [...new Set([...seen, ...Object.keys(me.access?.projects ?? {}), ...systems.flatMap((s) => s.projects)])].filter((p) => !hidden.has(p)).sort(),
+    [seen, me.access, systems, hidden],
   );
   const [picked, setScopeState] = useState<Scope>(readScope);
   // A system picked in the sidebar gets its projects once the list is in.

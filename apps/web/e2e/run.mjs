@@ -38,7 +38,17 @@ const admin = `e2e-${randomBytes(16).toString("hex")}`;
 const hub = spawn(process.execPath, ["src/server.ts"], {
   cwd: webDir,
   stdio: ["ignore", "pipe", "pipe"],
-  env: { ...process.env, NODE_ENV: "production", HIVE_PORT: String(port), HIVE_DB: path.join(work, "hub.db"), HIVE_BOOTSTRAP_TOKEN: admin, HIVE_ADMIN_USER: "duy", HIVE_COMMIT: "e2e" },
+  // HIVE_BACKUP_DIR: deleting a project snapshots the hub first (roadmap 47) and refuses without somewhere to put it.
+  env: {
+    ...process.env,
+    NODE_ENV: "production",
+    HIVE_PORT: String(port),
+    HIVE_DB: path.join(work, "hub.db"),
+    HIVE_BOOTSTRAP_TOKEN: admin,
+    HIVE_ADMIN_USER: "duy",
+    HIVE_COMMIT: "e2e",
+    HIVE_BACKUP_DIR: path.join(work, "backups"),
+  },
 });
 let hubLog = "";
 hub.stdout.on("data", (d) => (hubLog += d));

@@ -98,6 +98,9 @@ import type {
   MemoryFile,
   MemoryReview,
   MemorySearchInfo,
+  ProjectDeleted,
+  ProjectState,
+  ProjectSummary,
   ProjectSyncState,
   Proposal,
   QuotaCooldown,
@@ -466,6 +469,11 @@ const MIGRATIONS: string[] = [
   ALTER TABLE run_records ADD COLUMN log_pruned_at TEXT;
   CREATE INDEX run_records_unpruned ON run_records(updated_at) WHERE log_pruned_at IS NULL;
   `,
+  // Archived and deleted projects (roadmap 47): no row means the project is in use. A "deleted" row is the headstone
+  // left behind after its data went, so a machine that still reports the repo cannot bring the name back by itself.
+  `
+  CREATE TABLE project_states(project TEXT PRIMARY KEY, state TEXT NOT NULL, at TEXT NOT NULL, by TEXT NOT NULL);
+  `,
 ];
 
 /**
@@ -753,6 +761,13 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
   "cooldowns.clear": (i) => ({ target: i.account }),
   "systems.save": (i, o: HiveSystem) => ({ target: i.name, detail: o.projects.join(", "), text: { key: "audit.system", vars: { projects: o.projects.join(", ") } } }),
   "systems.remove": (i) => ({ target: i.name }),
+  "projects.archive": (i) => ({ target: i.project, detail: "lưu trữ", text: { key: "audit.projectArchived" } }),
+  "projects.restore": (i) => ({ target: i.project, detail: "khôi phục", text: { key: "audit.projectRestored" } }),
+  // The row count is the only record of what a deletion took: nothing is left in the tables to look at afterwards.
+  "projects.delete": (i, o: ProjectDeleted) => {
+    const rows = Object.values(o.rows).reduce((n, v) => n + v, 0);
+    return { target: i.project, detail: `xoá hẳn · ${rows} dòng · backup ${o.backup}`, text: { key: "audit.projectDeleted", vars: { rows, backup: o.backup } } };
+  },
   "policy.set": (_i, o: TeamPolicy) => ({
     target: "policy",
     detail: `CLI: ${o.requiredClis.join(", ") || "—"} · shim: ${o.requireShim ? "có" : "không"} · ${Object.keys(o.projects).length} dự án · ${o.profileTemplates.length} mẫu profile`,
@@ -897,6 +912,47 @@ const AGENT_AUDITED: Partial<Record<Method, (input: any, output: any) => { targe
   "chat.decideAll": (i, o: ChatAction[]) => ({ target: `chat reply #${i.replyId}`, detail: `${o.length} · ${i.accept ? "nhận" : "bỏ"}` }),
 };
 
+/**
+ * The writes an archived or deleted project refuses (roadmap 47), and where each one's project is: `project` for the
+ * input's own field, `task` / `thread` / `doc` / `proposal` for the row it names. Spelled out method by method on
+ * purpose — a write added later is refused only once someone says where its project is, instead of being caught (or
+ * missed) by a rule that guesses from the input's field names.
+ * Not here, and so still allowed: what machines report about work already going (runs.push, machines.heartbeat,
+ * docs.assistFinish…), and clearing up (cancelling, removing memory, deleting a thread).
+ */
+const PROJECT_WRITES: Partial<Record<Method, "project" | "task" | "thread" | "doc" | "proposal">> = {
+  "docs.save": "doc",
+  "docs.move": "doc",
+  "docs.assetPut": "doc",
+  "docs.assetRemove": "doc",
+  "docs.assist": "doc",
+  "docs.syncRequest": "project",
+  "proposals.create": "doc",
+  "proposals.approve": "proposal",
+  "memory.write": "project",
+  "tasks.create": "project",
+  "tasks.setDeps": "task",
+  "tasks.claim": "task",
+  "tasks.update": "task",
+  "specs.push": "project",
+  "specs.importTasks": "project",
+  "specs.runStep": "project",
+  "runs.dispatch": "project",
+  "runs.prompt": "project",
+  "runs.dispatchMany": "project",
+  "runs.fanout": "project",
+  "runs.mapReduce": "project",
+  "chat.send": "project",
+  "chat.setDefaults": "project",
+  "chat.setCommands": "project",
+  "chat.setAutonomy": "project",
+  "chat.rename": "thread",
+  "chat.configure": "thread",
+  "sdlc.setProject": "project",
+  "tools.setProject": "project",
+  "agentPolicy.set": "project",
+};
+
 /** The event a successful call is worth telling people about, if any. */
 function eventOf(method: Method, input: unknown, output: unknown, actor: Actor): HiveEvent | null {
   switch (method) {
@@ -937,6 +993,14 @@ function eventOf(method: Method, input: unknown, output: unknown, actor: Actor):
     case "runs.report": {
       const run = output as RunNotice;
       return { type: run.kind === "failed" ? "run.failed" : run.kind === "ci_limit" ? "run.ciLimit" : "mr.created", project: run.project, run };
+    }
+    case "projects.archive":
+      return { type: "project.archived", project: (input as { project: string }).project, by: actor.name, archived: true };
+    case "projects.restore":
+      return { type: "project.archived", project: (input as { project: string }).project, by: actor.name, archived: false };
+    case "projects.delete": {
+      const deleted = output as ProjectDeleted;
+      return { type: "project.deleted", project: deleted.project, by: actor.name, deleted };
     }
     default:
       return null;
@@ -1252,6 +1316,12 @@ export interface SqliteHiveOptions {
   local?: boolean;
   /** Where doc files keep their bytes (roadmap 23c: SeaweedFS on a hub). Without one: in the database. */
   blobs?: BlobStore | null;
+  /**
+   * A snapshot of the whole hub, as the Hub page's "Backup ngay" makes one (roadmap 47): projects.delete takes one
+   * before it deletes anything, and gives up when it cannot. Without this, deleting a project is refused — a deletion
+   * nobody can undo is not worth taking on trust.
+   */
+  backup?: (() => Promise<{ file: string }>) | null;
 }
 
 /** How a hub keeps doc files, for its Hub page. */
@@ -1289,6 +1359,7 @@ export class SqliteHive implements HiveBackend {
       embedMinScore: 0.5,
       local: false,
       blobs: null,
+      backup: null,
       ...opts,
     };
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;");
@@ -1304,7 +1375,8 @@ export class SqliteHive implements HiveBackend {
     const parsed = parseInput(method, input);
     const handler = this.#handlers[method] as (i: ParsedInput<M>, a: Actor) => MethodOutput[M] | Promise<MethodOutput[M]>;
     this.#check(method, parsed as ParsedInput<Method>, actor);
-    const output = this.#filter(method, await handler(parsed, actor), actor);
+    this.#assertProjectOpen(method, parsed as ParsedInput<Method>);
+    const output = this.#hideArchived(method, parsed as ParsedInput<Method>, this.#filter(method, await handler(parsed, actor), actor));
     const audited = AUDITED[method] ?? (isAgentActor(actor) ? AGENT_AUDITED[method] : undefined);
     if (audited) {
       const { target, detail, text } = audited(parsed, output);
@@ -1546,6 +1618,12 @@ export class SqliteHive implements HiveBackend {
         return;
       case "tools.setProject":
         return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
+      // Archiving hides a project from everyone and deleting takes it from the whole hub: no project manager's call.
+      case "projects.archive":
+      case "projects.restore":
+      case "projects.delete":
+        if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Only a hub admin archives or deletes a project.", { key: "errors.hubAdminOnly" });
+        return;
       // The whole list at once, and a cap on a person or the hub binds every project: someone over all of them.
       case "budgets.set":
         if (actor.access) throw new HiveError("forbidden", "Only a hub admin sets spending caps.", { key: "errors.hubAdminOnly" });
@@ -1696,6 +1774,8 @@ export class SqliteHive implements HiveBackend {
       // Machines are the team's, but what they run and which repos they have shows the project: hide hidden projects.
       case "machines.list":
         return (out as Machine[]).map((m) => ({ ...m, runs: m.runs.filter((r) => visible(r.project)), projects: m.projects.filter((p) => visible(p)) })) as MethodOutput[M];
+      case "projects.list":
+        return (out as ProjectSummary[]).filter((p) => visible(p.project)) as MethodOutput[M];
       // Only the projects it may see; a system of none of them is not shown at all.
       case "systems.list":
         return (out as HiveSystem[])
@@ -2296,6 +2376,250 @@ export class SqliteHive implements HiveBackend {
       key: "errors.agentsPaused",
       vars: { project: scope === PAUSED_HUB ? "hub" : project, by: mark?.name ?? "?", at: mark?.at ?? "" },
     });
+  }
+
+  // ── archived and deleted projects (roadmap 47) ─────────────────────────────
+
+  /** Project → its state; empty on a hub where nothing was ever archived, which is the usual case. */
+  #projectStates(): Map<string, { state: ProjectState; at: string; by: string }> {
+    return new Map(
+      (this.db.prepare(`SELECT project, state, at, "by" FROM project_states`).all() as Row[]).map((r) => [
+        str(r.project),
+        { state: str(r.state) as ProjectState, at: str(r.at), by: str(r.by) },
+      ]),
+    );
+  }
+
+  #projectState(project: string): ProjectState | null {
+    const row = this.db.prepare("SELECT state FROM project_states WHERE project = ?").get(project) as Row | undefined;
+    return row ? (str(row.state) as ProjectState) : null;
+  }
+
+  #projectGone(project: string): HiveError {
+    const state = this.#projectState(project);
+    const key = state === "deleted" ? "errors.projectDeleted" : "errors.projectArchived";
+    return new HiveError("conflict", `Project ${project} is ${state === "deleted" ? "deleted" : "archived"}.`, { key, vars: { project } });
+  }
+
+  /**
+   * Refuses a write to an archived or deleted project. Reads stay open on purpose: a hub admin has to be able to look
+   * through what is in the archive before restoring it or deciding to delete it.
+   */
+  #assertProjectOpen(method: Method, input: ParsedInput<Method>): void {
+    const where = PROJECT_WRITES[method];
+    if (!where) return;
+    const i = input as Record<string, any>;
+    const rowProject = (sql: string, key: unknown): string | null =>
+      key == null ? null : strOrNull((this.db.prepare(sql).get(key as string) as Row | undefined)?.project);
+    const keys: Array<string | null> = [];
+    if (where === "project") keys.push(typeof i.project === "string" ? i.project : null);
+    else if (where === "task") keys.push(rowProject("SELECT project FROM tasks WHERE id = ?", i.id ?? i.taskId));
+    else if (where === "thread") keys.push(rowProject("SELECT project FROM chat_threads WHERE id = ?", i.threadId));
+    else if (where === "proposal") keys.push(rowProject("SELECT doc_key AS project FROM proposals WHERE id = ?", i.id));
+    // A page moved is a write where it comes from and where it lands.
+    else for (const k of [i.key ?? i.docKey, i.parent]) if (typeof k === "string") keys.push(k);
+    for (const key of keys) {
+      if (key === null) continue;
+      const project = where === "doc" || where === "proposal" ? SqliteHive.#docOwner(key) : key;
+      if (project !== null && this.#projectState(project) !== null) throw this.#projectGone(project);
+    }
+  }
+
+  /**
+   * Lists leave out archived and deleted projects, so they disappear from the scope picker, the boards, the runs and
+   * the chat without every page having to know about them. Asking for that project by name still works, which is how
+   * a hub admin looks at what the archive holds before restoring or deleting it.
+   */
+  #hideArchived<M extends Method>(method: M, input: ParsedInput<Method>, output: MethodOutput[M]): MethodOutput[M] {
+    const hidden = new Set(this.#projectStates().keys());
+    if (!hidden.size) return output;
+    const asked = (input as Record<string, unknown>).project;
+    // Asked for by name: the caller already knows it and wants what is in it.
+    if (typeof asked === "string" && hidden.has(asked)) return output;
+    const shown = (project: string | null | undefined) => !(project != null && hidden.has(project));
+    const out = output as unknown;
+    switch (method as Method) {
+      case "docs.list":
+        return (out as DocSummary[]).filter((d) => shown(d.project)) as MethodOutput[M];
+      case "skills.list":
+        return (out as SkillSummary[]).filter((s) => shown(s.project)) as MethodOutput[M];
+      case "memory.search":
+      case "memory.list":
+        return (out as Memory[]).filter((m) => shown(m.project)) as MethodOutput[M];
+      case "tasks.list":
+      case "tasks.next":
+        return (out as Task[]).filter((t) => shown(t.project)) as MethodOutput[M];
+      case "specs.list":
+        return (out as SpecFeature[]).filter((f) => shown(f.project)) as MethodOutput[M];
+      case "runs.list":
+        return (out as RunRecord[]).filter((r) => shown(r.project)) as MethodOutput[M];
+      case "runs.requests":
+        return (out as RunRequest[]).filter((r) => shown(r.project)) as MethodOutput[M];
+      case "runs.groups":
+        return (out as RunGroup[]).filter((g) => shown(g.project)) as MethodOutput[M];
+      case "chat.threads":
+        return (out as ChatThread[]).filter((t) => shown(t.project)) as MethodOutput[M];
+      case "chat.pending":
+        return (out as ChatAction[]).filter((a) => shown(a.project)) as MethodOutput[M];
+      case "proposals.list":
+        return (out as Proposal[]).filter((p) => shown(SqliteHive.#docOwner(p.docKey))) as MethodOutput[M];
+      case "sdlc.gates":
+        return (out as SdlcGateRecord[]).filter((g) => shown(g.project)) as MethodOutput[M];
+      case "sdlc.flows":
+        return (out as SdlcFlow[]).filter((f) => shown(f.project)) as MethodOutput[M];
+      case "sdlc.flowTasks":
+        return (out as SdlcFlowTask[]).filter((f) => shown(f.project)) as MethodOutput[M];
+      // A machine stays in the list; only what it says about a hidden project goes.
+      case "machines.list":
+        return (out as Machine[]).map((m) => ({ ...m, runs: m.runs.filter((r) => shown(r.project)), projects: m.projects.filter(shown) })) as MethodOutput[M];
+      // A system keeps its name even when every service of it was archived: its own docs and memory are still there.
+      case "systems.list":
+        return (out as HiveSystem[]).map((s) => ({ ...s, projects: s.projects.filter(shown) })) as MethodOutput[M];
+      default:
+        return output;
+    }
+  }
+
+  #setProjectState(project: string, state: ProjectState, by: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO project_states(project, state, at, "by") VALUES (?, ?, ?, ?)
+         ON CONFLICT(project) DO UPDATE SET state = excluded.state, at = excluded.at, "by" = excluded."by"`,
+      )
+      .run(project, state, this.#now(), by);
+  }
+
+  /** Every project name the hub knows: from its data, from what machines report, and from the states themselves. */
+  #projectNames(): string[] {
+    const names = new Set<string>();
+    // A system's own docs and memory sit under sys:<name> (roadmap 19c), which is not a project.
+    const add = (v: unknown) => {
+      if (typeof v === "string" && v && systemOf(v) === null) names.add(v);
+    };
+    for (const table of ["tasks", "docs", "memory", "run_records", "chat_threads", "project_states"]) {
+      for (const r of this.db.prepare(`SELECT DISTINCT project FROM ${table}`).all() as Row[]) add(r.project);
+    }
+    for (const table of ["machines", "systems"]) {
+      for (const r of this.db.prepare(`SELECT projects FROM ${table}`).all() as Row[]) for (const p of JSON.parse(str(r.projects ?? "[]")) as string[]) add(p);
+    }
+    return [...names].sort();
+  }
+
+  #projectSummary(project: string, states = this.#projectStates()): ProjectSummary {
+    const count = (sql: string) => num((this.db.prepare(sql).get(project) as Row).n);
+    const state = states.get(project);
+    return {
+      project,
+      state: state?.state ?? null,
+      stateAt: state?.at ?? null,
+      stateBy: state?.by ?? null,
+      openTasks: count("SELECT COUNT(*) AS n FROM tasks WHERE project = ? AND status != 'done'"),
+      tasks: count("SELECT COUNT(*) AS n FROM tasks WHERE project = ?"),
+      docs: count("SELECT COUNT(*) AS n FROM docs WHERE project = ?"),
+      memory: count("SELECT COUNT(*) AS n FROM memory WHERE project = ?"),
+      runs: count("SELECT COUNT(*) AS n FROM run_records WHERE project = ?"),
+      machines: this.#machinesWith(project).map((m) => m.machine),
+      systems: this.#systemList().filter((s) => s.projects.includes(project)).map((s) => s.name).sort(),
+    };
+  }
+
+  #hasTable(name: string): boolean {
+    return !!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
+  }
+
+  /**
+   * Tables with a `project` column, read from the schema instead of a list kept by hand: a table added by a later
+   * migration (or by the hub's own stores, such as hub_grants) is cleared out too, without anyone remembering to.
+   * project_states is left out — the headstone is the one row a deletion leaves behind.
+   */
+  #projectTables(): string[] {
+    const names = (this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as Row[]).map((r) => str(r.name));
+    return names
+      .filter((t) => t !== "project_states")
+      .filter((t) => (this.db.prepare(`PRAGMA table_info("${t}")`).all() as Row[]).some((c) => str(c.name) === "project"));
+  }
+
+  /**
+   * Everything of a project, in one transaction: the rows that hang off a doc key or a task id, then every table with
+   * a project column, then the JSON lists and settings that only name it. Returns the rows deleted per table and the
+   * doc files to take out of the store afterwards (the store is not part of the transaction).
+   */
+  #deleteProject(project: string, by: string): { rows: Record<string, number>; files: string[] } {
+    const db = this.db;
+    const rows: Record<string, number> = {};
+    const count = (table: string, n: number) => {
+      if (n) rows[table] = (rows[table] ?? 0) + n;
+    };
+    const run = (table: string, sql: string, ...args: unknown[]) => count(table, Number(db.prepare(sql).run(...(args as never[])).changes));
+    const holes = (ids: string[]) => ids.map(() => "?").join(", ");
+
+    // Read before anything goes: these rows are found by a doc key or a task id, which the deletes below take away.
+    const docKeys = (db.prepare("SELECT key FROM docs WHERE project = ?").all(project) as Row[]).map((r) => str(r.key));
+    const taskIds = (db.prepare("SELECT id FROM tasks WHERE project = ?").all(project) as Row[]).map((r) => str(r.id));
+    // Only the files a store holds: without one the bytes are in the row, and go with it.
+    const files = docKeys.length
+      ? (
+          db
+            .prepare(`SELECT DISTINCT sha256 FROM doc_assets WHERE stored IS NOT NULL AND sha256 IS NOT NULL AND doc_key IN (${holes(docKeys)})`)
+            .all(...docKeys) as Row[]
+        ).map((r) => str(r.sha256))
+      : [];
+
+    for (const [table, column] of [["doc_versions", "key"], ["proposals", "doc_key"], ["doc_assets", "doc_key"], ["doc_assists", "doc_key"]] as const) {
+      if (docKeys.length) run(table, `DELETE FROM ${table} WHERE ${column} IN (${holes(docKeys)})`, ...docKeys);
+    }
+    // Both ways round: a task of another project may be waiting on one of these (roadmap 19d cross-service deps).
+    if (taskIds.length) run("task_deps", `DELETE FROM task_deps WHERE task_id IN (${holes(taskIds)}) OR depends_on IN (${holes(taskIds)})`, ...taskIds, ...taskIds);
+    // Items hang off their group by id, with no project column of their own and no cascade to carry them.
+    run("run_group_items", "DELETE FROM run_group_items WHERE group_id IN (SELECT id FROM run_groups WHERE project = ?)", project);
+
+    for (const table of this.#projectTables()) run(table, `DELETE FROM "${table}" WHERE project = ?`, project);
+
+    // JSON lists of project names: no column scan can look inside them.
+    for (const [table, key] of [["machines", "id"], ["systems", "name"], ["hub_webhooks", "id"]] as const) {
+      if (!this.#hasTable(table)) continue;
+      for (const r of db.prepare(`SELECT ${key} AS k, projects FROM ${table}`).all() as Row[]) {
+        const list = JSON.parse(str(r.projects ?? "[]")) as string[];
+        if (!list.includes(project)) continue;
+        // A system keeps its name even with nothing left in it: its own docs and memory are not the project's.
+        db.prepare(`UPDATE ${table} SET projects = ? WHERE ${key} = ?`).run(JSON.stringify(list.filter((p) => p !== project)), r.k as string);
+        count(`${table}.projects`, 1);
+      }
+    }
+
+    const setting = (key: string, drop: (value: any) => boolean) => {
+      const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as Row | undefined;
+      if (!row) return;
+      const value = JSON.parse(str(row.value)) as unknown;
+      if (!drop(value)) return;
+      db.prepare("UPDATE settings SET value = ? WHERE key = ?").run(JSON.stringify(value), key);
+      count(`settings.${key}`, 1);
+    };
+    const fromRecord = (rec: Record<string, unknown> | undefined) => {
+      if (!rec || !(project in rec)) return false;
+      delete rec[project];
+      return true;
+    };
+    setting("policy", (v) => fromRecord(v.projects));
+    setting("agentPolicy", (v) => fromRecord(v.projects));
+    setting("sdlcPolicy", (v) => fromRecord(v.projects));
+    setting("paused", (v) => {
+      const paused = Array.isArray(v.projects) && v.projects.includes(project);
+      if (paused) v.projects = (v.projects as string[]).filter((p) => p !== project);
+      return fromRecord(v.by) || paused;
+    });
+    setting("budgets", (v) => {
+      if (!Array.isArray(v)) return false;
+      const left = (v as Budget[]).filter((b) => !(b.scope.kind === "project" && b.scope.project === project));
+      if (left.length === v.length) return false;
+      v.length = 0;
+      v.push(...left);
+      return true;
+    });
+
+    // The headstone, last: the name does not come back to life because a machine still reports the repo.
+    this.#setProjectState(project, "deleted", by);
+    return { rows, files };
   }
 
   #budgets(): Budget[] {
@@ -4518,7 +4842,11 @@ export class SqliteHive implements HiveBackend {
           ).run(actor.name, machine, instance, prev, version, JSON.stringify(runs), now, duplicateAt);
           if (setup) db.prepare("UPDATE machines SET setup = ?, setup_at = ? WHERE id = ?").run(JSON.stringify(setup.report), setup.checkedAt, actor.name);
           if (profiles) db.prepare("UPDATE machines SET profiles = ? WHERE id = ?").run(JSON.stringify(profiles), actor.name);
-          if (projects) db.prepare("UPDATE machines SET projects = ? WHERE id = ?").run(JSON.stringify(projects), actor.name);
+          // An archived or deleted project is not stored as a repo this machine has (roadmap 47): a machine that still
+          // has the folder must not put the name back into the lists, nor bring a deleted one back from its headstone.
+          const hidden = new Set(this.#projectStates().keys());
+          const archivedProjects = (projects ?? []).filter((p) => hidden.has(p));
+          if (projects) db.prepare("UPDATE machines SET projects = ? WHERE id = ?").run(JSON.stringify(projects.filter((p) => !hidden.has(p))), actor.name);
           if (acceptsRuns !== undefined) db.prepare("UPDATE machines SET accepts_runs = ? WHERE id = ?").run(acceptsRuns ? 1 : 0, actor.name);
           db.prepare("UPDATE machines SET owner = ? WHERE id = ?").run(actor.account ?? null, actor.name);
           db.prepare("DELETE FROM machine_profile_changes WHERE requested_at < ?").run(this.#now(-PROFILE_CHANGE_HOURS * 60));
@@ -4571,11 +4899,15 @@ export class SqliteHive implements HiveBackend {
           // With this beat's runs in, so a run that ended leaves its place to the next of its group, sent in this answer.
           this.#releaseGroups();
           this.#releaseFlows();
+          // Held back rather than rejected for an archived project: restoring it lets the work go on, and anything
+          // still waiting when the fifteen minutes are up expires on its own.
           const runRequests = accepts
-            ? (db.prepare("SELECT * FROM run_requests WHERE machine_id = ? AND status = 'pending' ORDER BY id").all(actor.name) as Row[]).map(toRunRequest)
+            ? (db.prepare("SELECT * FROM run_requests WHERE machine_id = ? AND status = 'pending' ORDER BY id").all(actor.name) as Row[])
+                .map(toRunRequest)
+                .filter((r) => !hidden.has(r.project))
             : [];
           // Sent again at every heartbeat until the machine reports progress on it.
-          const chatRequests = accepts ? this.#chatRequests(actor.name) : [];
+          const chatRequests = accepts ? this.#chatRequests(actor.name).filter((r) => !hidden.has(r.project)) : [];
           this.#expireMerges();
           // Sent again at every heartbeat until the machine reports how it went.
           const mergeRuns = accepts
@@ -4609,6 +4941,7 @@ export class SqliteHive implements HiveBackend {
             budgetBlocked: this.#budgetBlocks(actor),
             profileChanges: this.#profileChanges(actor.name),
             mergeRuns,
+            archivedProjects,
           };
         }),
 
@@ -5897,6 +6230,54 @@ export class SqliteHive implements HiveBackend {
         const memory = num((db.prepare("SELECT COUNT(*) AS n FROM memory WHERE project = ?").get(owner) as Row).n);
         if (docs || memory) throw new HiveError("conflict", `System ${name} still has ${docs} docs and ${memory} memory entries.`, { key: "errors.systemHasData", vars: { system: name, docs, memory } });
         return { removed: Number(db.prepare("DELETE FROM systems WHERE name = ?").run(name).changes) > 0 };
+      },
+
+      "projects.list": () => {
+        const states = this.#projectStates();
+        return this.#projectNames().map((p) => this.#projectSummary(p, states));
+      },
+
+      "projects.archive": ({ project }, actor) =>
+        this.#tx(() => {
+          // A deleted project has nothing left to archive; restoring the name is the only way out of the headstone.
+          if (this.#projectState(project) === "deleted") throw this.#projectGone(project);
+          this.#setProjectState(project, "archived", actor.name);
+          return this.#projectSummary(project);
+        }),
+
+      "projects.restore": ({ project }) =>
+        this.#tx(() => {
+          db.prepare("DELETE FROM project_states WHERE project = ?").run(project);
+          return this.#projectSummary(project);
+        }),
+
+      "projects.delete": async ({ project, confirm }, actor) => {
+        // Archiving first is the pause that makes this deliberate: nothing is deleted straight off a list.
+        if (this.#projectState(project) !== "archived") {
+          throw new HiveError("conflict", `Project ${project} has to be archived before it can be deleted.`, { key: "errors.projectNotArchived", vars: { project } });
+        }
+        if (confirm !== project) throw new HiveError("bad_request", `Confirm with the project's name: ${project}.`, { key: "errors.projectConfirm", vars: { project } });
+        const backup = this.#opts.backup;
+        if (!backup) throw new HiveError("conflict", "Backups are off: set HIVE_BACKUP_DIR.", { key: "errors.backupOff" });
+        // Nothing goes until the whole hub is in a snapshot: it is the only way back from here. A backup that fails
+        // throws out of the call, before a single row is touched.
+        const snapshot = await backup();
+        const { rows, files } = this.#tx(() => this.#deleteProject(project, actor.name));
+        // Outside the transaction: the file store is not part of it. A file left behind costs disk, a missing one costs
+        // a page, so a failure here is only counted — the rows are already gone either way.
+        let removed = 0;
+        let failed = 0;
+        for (const sha of files) {
+          // Files are named after their bytes, so another page may well be pointing at the very same file (#dropBlob).
+          if (db.prepare("SELECT 1 FROM doc_assets WHERE sha256 = ? AND stored IS NOT NULL").get(sha)) continue;
+          try {
+            await this.#opts.blobs?.remove(sha);
+            removed++;
+          } catch {
+            failed++;
+          }
+        }
+        return { project, backup: path.basename(snapshot.file), rows, files: { removed, failed } };
       },
 
       "admin.machines": () => {

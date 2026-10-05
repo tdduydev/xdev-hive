@@ -205,6 +205,12 @@ export function eventMessage(event: HiveEvent, locale: string): { text: string; 
     // Not in WEBHOOK_EVENTS yet, so no webhook asks for it; the message is there for when one may.
     case "tool.changed":
       return { text: tr("webhook.toolChanged", { by: event.by, tool: event.tool, scope: event.project ?? tr("webhook.hub") }), page: "#/tools" };
+    case "project.archived":
+      return { text: tr(event.archived ? "webhook.projectArchived" : "webhook.projectRestored", { by: event.by, project: event.project }), page: "#/systems" };
+    case "project.deleted": {
+      const rows = Object.values(event.deleted.rows).reduce((n, v) => n + v, 0);
+      return { text: tr("webhook.projectDeleted", { by: event.by, project: event.project, rows, backup: event.deleted.backup }), page: "#/systems" };
+    }
   }
 }
 
