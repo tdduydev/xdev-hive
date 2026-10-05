@@ -2,7 +2,7 @@
 // its status, click it for the inspector (details, the latest run, and the form that starts an agent on this
 // machine). The runs themselves are on Lượt chạy.
 import { useEffect, useMemo, useState, type DragEvent, type ReactNode } from "react";
-import { X } from "lucide-react";
+import { ExternalLink, X } from "lucide-react";
 import { cn } from "cn";
 import {
   AGENT_ROLES,
@@ -22,9 +22,9 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, ErrorNote, Notice, StatusDot } from "#ui/components/common.tsx";
 import { PausedNotice } from "#ui/components/StopAgents.tsx";
-import { errorMessage, formatTime, useAction, useCan, useHive, useProjects, useQuery } from "#ui/hooks.ts";
+import { errorMessage, formatTime, hashParam, useAction, useCan, useHive, useProjects, useQuery } from "#ui/hooks.ts";
 import { rich, useT, type TFunction } from "#ui/i18n/index.tsx";
-import { profileState, profileSummary } from "#ui/lib/board.ts";
+import { boardProjects, profileState, profileSummary } from "#ui/lib/board.ts";
 import { runDuration } from "#ui/lib/runs.ts";
 import { projectScope, scopeProject } from "#ui/lib/scope.ts";
 import { BoardColumns } from "#ui/components/BoardColumns.tsx";
@@ -76,7 +76,16 @@ function Tag({ kind, title, children }: { kind: keyof typeof TAG; title?: string
   );
 }
 
-/** `switcher`: Board / Danh sách, since the Task page is the two of them in the app (roadmap 39f). */
+/** A refused move in the reader's language: the hub's own text when it has one, else that the token may not. */
+function moveError(err: unknown, t: TFunction): string {
+  const { code, key } = (err ?? {}) as { code?: unknown; key?: unknown };
+  return code === "forbidden" && typeof key !== "string" ? t("board.moveForbidden") : errorMessage(err);
+}
+
+/**
+ * `switcher`: Board / Danh sách, since the Task page is the two of them in the app (roadmap 39f). Connected to a hub
+ * the app has the Board alone, over this machine's projects only (roadmap 44): the rest opens on the hub's web.
+ */
 export function BoardPage({ switcher }: { switcher?: ReactNode }) {
   const { client, me, scope, setScope } = useHive();
   const t = useT();
@@ -86,9 +95,11 @@ export function BoardPage({ switcher }: { switcher?: ReactNode }) {
   const projects = useProjects();
   const settings = useQuery(() => desktop.settings(), [desktop]);
   const localProjects = settings.data?.projects.map((p) => p.name) ?? [];
+  const machineOnly = me.mode === "hub";
+  const webUrl = machineOnly && settings.data?.hubUrl ? settings.data.hubUrl.replace(/\/+$/, "") : null;
   // A system: only its projects, the ones with a repo here first.
   const system = scope.kind === "system" ? scope.projects : null;
-  const options = system ? [...new Set([...localProjects.filter((p) => system.includes(p)), ...system])] : [...new Set([...localProjects, ...projects])];
+  const options = boardProjects({ local: localProjects, seen: projects, system, machineOnly });
   // Follow the sidebar scope when it is a project with a repo on this machine; otherwise (all, shared,
   // a project not cloned here) keep the project shown last, or the first one.
   const scoped = scopeProject(scope);
@@ -97,7 +108,7 @@ export function BoardPage({ switcher }: { switcher?: ReactNode }) {
   useEffect(() => {
     if (scopeLocal) setProject(scopeLocal);
   }, [scopeLocal]);
-  const firstLocal = system ? options.find((p) => localProjects.includes(p)) || options[0] : localProjects[0] || projects[0];
+  const firstLocal = machineOnly ? options[0] : system ? options.find((p) => localProjects.includes(p)) || options[0] : localProjects[0] || projects[0];
   const current = scopeLocal || (options.includes(project) ? project : "") || firstLocal || "";
 
   const [tick, setTick] = useState(0);
@@ -117,7 +128,19 @@ export function BoardPage({ switcher }: { switcher?: ReactNode }) {
   // Status changes made here, shown before the list reloads.
   const [moved, setMoved] = useState<Record<string, TaskStatus>>({});
   const [dragId, setDragId] = useState<string | null>(null);
-  const [moveError, setMoveError] = useState<string | null>(null);
+  const [moveProblem, setMoveError] = useState<string | null>(null);
+  // A link to one task (#/tasks?task=…, from Hôm nay or a run) opens its panel once the list has it.
+  const [wanted, setWanted] = useState(() => hashParam("task"));
+  useEffect(() => {
+    const onHash = () => setWanted(hashParam("task"));
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  useEffect(() => {
+    if (!wanted || !tasks.data) return;
+    if (tasks.data.some((task) => task.id === wanted)) setSelected(wanted);
+    setWanted(null);
+  }, [wanted, tasks.data]);
 
   const latestRun = useMemo(() => {
     const map = new Map<string, AgentRun>();
@@ -147,7 +170,7 @@ export function BoardPage({ switcher }: { switcher?: ReactNode }) {
       () => {
         refresh();
         toast(t("board.moved", { id: task.id, status: t(`taskStatus.${status}`) }), {
-          undo: () => void client.call("tasks.update", { id: task.id, status: from }).then(refresh, (err: unknown) => setMoveError(errorMessage(err))),
+          undo: () => void client.call("tasks.update", { id: task.id, status: from }).then(refresh, (err: unknown) => setMoveError(moveError(err, t))),
         });
       },
       (err: unknown) => {
@@ -156,7 +179,7 @@ export function BoardPage({ switcher }: { switcher?: ReactNode }) {
           delete rest[task.id];
           return rest;
         });
-        setMoveError(errorMessage(err));
+        setMoveError(moveError(err, t));
       },
     );
   };
@@ -168,39 +191,65 @@ export function BoardPage({ switcher }: { switcher?: ReactNode }) {
   };
 
   const inspected = list.find((x) => x.id === selected) ?? null;
-  const problem = tasks.error ?? runs.error ?? moveError;
+  const problem = tasks.error ?? runs.error ?? moveProblem;
 
   return (
     <div className="flex h-full min-h-0">
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line-subtle bg-surface px-3.5 py-2.5">
-          <NativeSelect
-            size="sm"
-            className="font-mono"
-            value={current}
-            onChange={(e) => {
-              setProject(e.target.value);
-              // Within a system the sidebar stays on it.
-              if (!system) setScope(projectScope(e.target.value));
-            }}
-            aria-label={t("tasks.colProject")}
-          >
-            {options.map((p) => (
-              <NativeSelectOption key={p} value={p}>
-                {p}
-                {localProjects.includes(p) ? "" : ` (${t("board.noRepoHere")})`}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+          {options.length || !machineOnly ? (
+            <NativeSelect
+              size="sm"
+              className="font-mono"
+              value={current}
+              onChange={(e) => {
+                setProject(e.target.value);
+                // Within a system the sidebar stays on it.
+                if (!system) setScope(projectScope(e.target.value));
+              }}
+              aria-label={t("tasks.colProject")}
+            >
+              {options.map((p) => (
+                <NativeSelectOption key={p} value={p}>
+                  {p}
+                  {localProjects.includes(p) ? "" : ` (${t("board.noRepoHere")})`}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          ) : null}
           <ProfileStrip profiles={profiles.data ?? []} />
           <span className="flex-1" />
           <Badge tone="running">{t("board.running", { count: counts.running })}</Badge>
           <Badge tone="neutral">{t("board.queued", { count: counts.queued })}</Badge>
+          {webUrl ? (
+            // Other projects, batches and work handed to other machines: the hub's Task page has them.
+            <Button size="sm" variant="outline" asChild>
+              <a href={`${webUrl}/#/tasks`} target="_blank" rel="noreferrer" title={t("board.openWebHint")} data-open-web-board>
+                <ExternalLink />
+                {t("board.openWeb")}
+              </a>
+            </Button>
+          ) : null}
           {switcher}
         </div>
         {!current && !settings.loading ? (
-          <div className="px-3.5 pt-3">
-            <Notice>{t("board.addProjectFirst")}</Notice>
+          <div className="px-3.5 pt-3" data-board-empty>
+            {machineOnly ? (
+              <Notice>
+                {/* One span: the notice lays its children out as a grid, so the link alone would take a row. */}
+                <span>
+                  {rich(t(system ? "board.machineNoProjectsInScope" : "board.machineNoProjects"), {
+                    setup: (
+                      <a href="#/setup" className="font-medium text-fg-link underline-offset-2 hover:underline">
+                        {t("nav.setup")}
+                      </a>
+                    ),
+                  })}
+                </span>
+              </Notice>
+            ) : (
+              <Notice>{t("board.addProjectFirst")}</Notice>
+            )}
           </div>
         ) : null}
         {current && me.mode === "hub" ? (
@@ -226,31 +275,33 @@ export function BoardPage({ switcher }: { switcher?: ReactNode }) {
             <ErrorNote error={problem} />
           </div>
         ) : null}
-        <div className="min-h-0 flex-1 overflow-auto px-3.5 py-3" aria-label={t("board.board")}>
-          <BoardColumns count={(status) => list.filter((task) => columnOf(task) === status).length} dragging={canMove && dragId !== null} onDropTask={drop}>
-            {(status) =>
-              list
-                .filter((task) => columnOf(task) === status)
-                .map((task) => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    run={latestRun.get(task.id) ?? null}
-                    isNext={task.id === nextId}
-                    selected={task.id === selected}
-                    draggable={canMove}
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData("text/plain", task.id);
-                      e.dataTransfer.effectAllowed = "move";
-                      setDragId(task.id);
-                    }}
-                    onDragEnd={() => setDragId(null)}
-                    onOpen={() => setSelected(task.id)}
-                  />
-                ))
-            }
-          </BoardColumns>
-        </div>
+        {machineOnly && !current ? null : (
+          <div className="min-h-0 flex-1 overflow-auto px-3.5 py-3" aria-label={t("board.board")}>
+            <BoardColumns count={(status) => list.filter((task) => columnOf(task) === status).length} dragging={canMove && dragId !== null} onDropTask={drop}>
+              {(status) =>
+                list
+                  .filter((task) => columnOf(task) === status)
+                  .map((task) => (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      run={latestRun.get(task.id) ?? null}
+                      isNext={task.id === nextId}
+                      selected={task.id === selected}
+                      draggable={canMove}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/plain", task.id);
+                        e.dataTransfer.effectAllowed = "move";
+                        setDragId(task.id);
+                      }}
+                      onDragEnd={() => setDragId(null)}
+                      onOpen={() => setSelected(task.id)}
+                    />
+                  ))
+              }
+            </BoardColumns>
+          </div>
+        )}
       </div>
       {inspected ? (
         <Inspector

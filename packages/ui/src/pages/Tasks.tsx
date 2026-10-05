@@ -82,7 +82,7 @@ function ViewSwitch({ value, onChange, board }: { value: View; onChange: (v: Vie
  * with the shared Kanban.
  */
 export function TaskWorkPage() {
-  const { client } = useHive();
+  const { client, me } = useHive();
   const [view, setViewState] = useState<View>(readView);
   // A link to one task (#/tasks?task=…, from Hôm nay, a run or memory) opens the list: the task's panel is there.
   // Read from the address each time rather than useHashParam: the list takes the parameter out when it opens the
@@ -96,6 +96,8 @@ export function TaskWorkPage() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
   if (!client.desktop) return <TasksPage />;
+  // Connected to a hub the app has the Board of this machine's projects only (roadmap 44); the list is the web's.
+  if (me.mode === "hub") return <BoardPage />;
   const change = (v: View) => {
     setViewState(v);
     writeView(v);
