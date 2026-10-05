@@ -1273,6 +1273,8 @@ export class SqliteHive implements HiveBackend {
   readonly db: DatabaseSync;
   readonly #opts: Required<SqliteHiveOptions>;
   readonly #handlers: Handlers;
+  /** The desktop app's own machine in local mode (roadmap 48): it never heartbeats, so it is no row of `machines`. */
+  #chatMachine: (() => Machine | null) | null = null;
 
   constructor(dbOrPath: DatabaseSync | string, opts: SqliteHiveOptions = {}) {
     if (typeof dbOrPath === "string" && dbOrPath !== ":memory:") {
@@ -1871,6 +1873,23 @@ export class SqliteHive implements HiveBackend {
     if (!row || !sees(actor, str(row.project))) return null;
     if (row.message_id == null && str(row.uploaded_by) !== actor.name) return null;
     return { ...toChatFile(row), bytes: row.data as Uint8Array };
+  }
+
+  /**
+   * The machine that writes this database's chat replies when it is one machine's own (roadmap 48): chat.send and
+   * chat.poll take it as a machine that took runs. Left out of machines.list, so no Board or Spec form offers a hub
+   * run to a machine that never asks for one. Only a local database (opts.local) takes one.
+   */
+  setChatMachine(machine: (() => Machine | null) | null): void {
+    this.#chatMachine = this.#opts.local ? machine : null;
+  }
+
+  /** A machine as chat sees it: this database's own one, or one that heartbeats. */
+  #machineFor(id: string): Machine | null {
+    const own = this.#chatMachine?.();
+    if (own && own.id === id) return own;
+    const row = this.db.prepare("SELECT * FROM machines WHERE id = ?").get(id) as Row | undefined;
+    return row ? this.#toMachine(row) : null;
   }
 
   close(): void {
@@ -5160,9 +5179,8 @@ export class SqliteHive implements HiveBackend {
           const defaults = thread ? null : this.#chatDefaults(project);
           const target = thread ? str(thread.machine_id) : (machineId ?? defaults?.machineId ?? undefined);
           if (!target) throw new HiveError("bad_request", "Pick the machine that runs the chat.", { key: "errors.chatMachine" });
-          const row = db.prepare("SELECT * FROM machines WHERE id = ?").get(target) as Row | undefined;
-          if (!row) throw new HiveError("not_found", `No machine ${target}.`, { key: "errors.machineNotFound", vars: { machine: target } });
-          const m = this.#toMachine(row);
+          const m = this.#machineFor(target);
+          if (!m) throw new HiveError("not_found", `No machine ${target}.`, { key: "errors.machineNotFound", vars: { machine: target } });
           const name = { machine: m.machine };
           if (!m.online) throw new HiveError("conflict", `${m.machine} is offline.`, { key: "errors.machineOffline", vars: name });
           if (!m.acceptsRuns) throw new HiveError("bad_request", `${m.machine} does not take runs from the hub.`, { key: "errors.machineNoHubRuns", vars: name });
@@ -5275,7 +5293,7 @@ export class SqliteHive implements HiveBackend {
 
       "chat.setDefaults": ({ project, machineId, profileId, model, effort }, actor) =>
         this.#tx(() => {
-          if (machineId && !db.prepare("SELECT 1 FROM machines WHERE id = ?").get(machineId)) {
+          if (machineId && !this.#machineFor(machineId)) {
             throw new HiveError("not_found", `No machine ${machineId}.`, { key: "errors.machineNotFound", vars: { machine: machineId } });
           }
           db.prepare(
@@ -5323,8 +5341,7 @@ export class SqliteHive implements HiveBackend {
       // Only for a machine that heartbeats and takes runs from the hub; cheap enough to ask every few seconds.
       "chat.poll": (_input, actor) => {
         this.#expireChats();
-        const row = db.prepare("SELECT accepts_runs FROM machines WHERE id = ?").get(actor.name) as Row | undefined;
-        return row && num(row.accepts_runs) === 1 ? this.#chatRequests(actor.name) : [];
+        return this.#machineFor(actor.name)?.acceptsRuns ? this.#chatRequests(actor.name) : [];
       },
 
       // Only the leader writing a reply, through that reply's token; nothing runs until a project manager confirms it.

@@ -3,11 +3,26 @@
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from "react";
 import { FileText, Loader2, Paperclip, X } from "lucide-react";
 import { cn } from "cn";
-import { CHAT_FILE_ACCEPT, CHAT_FILE_MAX_BYTES, CHAT_FILES_PER_MESSAGE, isImage, type ChatFile } from "@xdev-hive/core";
+import { CHAT_FILE_ACCEPT, CHAT_FILE_MAX_BYTES, CHAT_FILES_PER_MESSAGE, chatFileUrl, isImage, type ChatFile } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
+import type { HiveClient } from "#ui/client.ts";
 import { errorMessage, useHive } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { fileSize } from "#ui/lib/chat.ts";
+
+/**
+ * The web's chat files, or the desktop app's (roadmap 48): there the main process uploads with the machine's token
+ * (or into the local database) and serves them under its own scheme, since the page holds neither.
+ */
+export function chatFilesOf(client: HiveClient): HiveClient["chatFiles"] {
+  if (client.chatFiles) return client.chatFiles;
+  const desk = client.desktop;
+  if (!desk?.chatUpload) return undefined;
+  return {
+    upload: async (project, file) => desk.chatUpload!(project, file.name, new Uint8Array(await file.arrayBuffer())),
+    href: chatFileUrl,
+  };
+}
 
 interface Pending {
   key: string;
@@ -29,7 +44,7 @@ export function useAttachments(project: string) {
   const [notice, setNotice] = useState<string | null>(null);
   const known = useRef(items);
   known.current = items;
-  const upload = client.chatFiles;
+  const upload = chatFilesOf(client);
 
   const clear = useCallback(() => {
     for (const p of known.current) if (p.preview) URL.revokeObjectURL(p.preview);
@@ -166,7 +181,7 @@ export function AttachmentBar({ att }: { att: Attachments }) {
 /** The files a message came with: images as pictures that open full size, the rest as downloads. */
 export function MessageFiles({ files }: { files: ChatFile[] }) {
   const { client } = useHive();
-  const href = client.chatFiles?.href;
+  const href = chatFilesOf(client)?.href;
   if (!files.length) return null;
   const images = files.filter((f) => isImage(f.type));
   const others = files.filter((f) => !isImage(f.type));

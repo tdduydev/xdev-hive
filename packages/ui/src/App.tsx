@@ -159,13 +159,14 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
 
 /**
  * The desktop app in local mode: the whole system on this machine. Twelve entries since roadmap 39f, so the menu
- * fits a 1440×900 window without scrolling. Only pages a machine on its own can have are listed: Chat, Đợt chạy,
- * Bản đồ agent, Người dùng, Thành viên and Token all need a hub (see `visible` below, which left them out of this
- * mode all along), Board is now the Task page and Tool a part of Dự án & công cụ.
+ * fits a 1440×900 window without scrolling, and Chat since 48 (this machine's own leader, in its database). Only
+ * pages a machine on its own can have are listed: Đợt chạy, Bản đồ agent, Người dùng, Thành viên and Token all need a
+ * hub (see `visible` below, which leaves them out of this mode), Board is now the Task page and Tool a part of Dự án
+ * & công cụ.
  */
 const LOCAL_GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
   { label: null, ids: ["today"] },
-  { label: "nav.groupWork", ids: ["tasks", "runs"] },
+  { label: "nav.groupWork", ids: ["tasks", "chat", "runs"] },
   { label: "nav.groupKnowledge", ids: ["docs", "specs", "skills", "memory", "proposals"] },
   { label: "nav.groupAgents", ids: ["agents", "setup", "projects"] },
   { label: "nav.groupAdmin", ids: ["systems"] },
@@ -187,20 +188,21 @@ const WEB_GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
  * roadmap item only changes the menu of the local mode.
  */
 const SHORTCUTS: Partial<Record<PageId, string>> = { today: "1", chat: "2", runs: "4", docs: "5", agents: "6" };
-/** Connected to a hub the app adds its Board (roadmap 44) on the key the Board has in local mode. */
-const DESK_SHORTCUTS: Partial<Record<PageId, string>> = { ...SHORTCUTS, tasks: "2" };
+/** Connected to a hub the app adds its Board (roadmap 44) on the key the Board has in local mode, and Chat (48) after it. */
+const DESK_SHORTCUTS: Partial<Record<PageId, string>> = { ...SHORTCUTS, tasks: "2", chat: "3" };
 /** On this machine the menu is another one (roadmap 39f), so ⌘1–6 follow it: its first six entries. */
 const LOCAL_SHORTCUTS: Partial<Record<PageId, string>> = { today: "1", tasks: "2", runs: "3", docs: "4", agents: "5", setup: "6" };
 
 /**
  * The desktop app connected to a hub (roadmap 35a): this machine's work only. Docs, policies, members and the rest
  * are the web's; links to them open the hub in the browser. Task is back as the Board of the projects with a repo
- * here (roadmap 44: a client could not see its own tasks), the list and every other project stay on the web. In
- * local mode the app is the whole system and keeps every page.
+ * here (roadmap 44: a client could not see its own tasks), the list and every other project stay on the web. Chat
+ * is the hub's leader chat, the same threads as on the web (roadmap 48), its replies written on this machine by
+ * default. In local mode the app is the whole system and keeps every page.
  */
-const DESK_PAGES = new Set<PageId>(["today", "tasks", "runs", "agents", "setup", "projects", "device"]);
+const DESK_PAGES = new Set<PageId>(["today", "tasks", "chat", "runs", "agents", "setup", "projects", "device"]);
 const DESK_GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
-  { label: null, ids: ["today", "tasks", "runs"] },
+  { label: null, ids: ["today", "tasks", "chat", "runs"] },
   { label: "nav.groupAgents", ids: ["agents", "setup", "projects"] },
 ];
 /** What the machine's Hôm nay shows: its runs' CI, its own setup, install requests for it. */
@@ -313,8 +315,10 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     // Machines only report to a hub (and push their runs to it); a local database never has any. The leader chat
     // runs on a machine the hub hands it to.
     if (me.mode === "hub") for (const id of ["machines", "runs", "batches", "chat"] as const) ids.add(id);
-    // The desktop's own runs (local mode too) are on Lượt chạy.
+    // The desktop's own runs (local mode too) are on Lượt chạy, and in local mode its own leader chat (roadmap 48),
+    // which an app before it has no bridge for.
     if (client.desktop) ids.add("runs");
+    if (client.desktop?.chatMachine) ids.add("chat");
     if (webAdmin) {
       for (const id of ["ops", "fleet", "queue", "costs", "policy", "context", "audit"] as const) ids.add(id);
       if (client.alerts) ids.add("alerts");

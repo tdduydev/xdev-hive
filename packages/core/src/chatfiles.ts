@@ -72,3 +72,9 @@ export function checkChatFile(name: string, bytes: Uint8Array): ChatFileType {
   if (!type) throw new HiveError("bad_request", `${name}: only images, PDF and text files.`, { key: "errors.chatFileType", vars: { name } });
   return type;
 }
+
+/** The scheme the desktop app serves chat files under (roadmap 48): an <img> there cannot send the machine's token. */
+export const CHAT_FILE_SCHEME = "hive-file";
+
+/** Where the desktop page reads a chat file: the main process fetches it with the token, or from the local database. */
+export const chatFileUrl = (id: number): string => `${CHAT_FILE_SCHEME}://chat/${id}`;
