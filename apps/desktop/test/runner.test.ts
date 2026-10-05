@@ -26,6 +26,8 @@ import { readSyncOutcome } from "@xdev-hive/core";
 const FAKE = path.join(import.meta.dirname, "fixtures", "fake-agent.mjs");
 const admin: Actor = { name: "duy", role: "admin" };
 const tmp = (p: string) => mkdtempSync(path.join(os.tmpdir(), `hive-${p}-`));
+/** A task note as a person writes it: what a run that ends badly must leave behind (BUG-note-wipe). */
+const BRIEF = "Làm trang cài đặt.\nXong khi:\n- có nút Lưu\n- test xanh";
 /** The log without the time the runner puts before each line the agent wrote (roadmap 22l). */
 const unstamp = (log: string) => log.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\t/gm, "");
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
@@ -878,7 +880,8 @@ describe("Runner", () => {
   });
 
   it("cancels a running agent and gives the task back", async () => {
-    const { runner, task } = await setup([profile("claude-a", "claude", 10, "sleep")]);
+    const { runner, hive, task } = await setup([profile("claude-a", "claude", 10, "sleep")]);
+    await hive.call("tasks.update", { id: "T-1", status: "todo", note: BRIEF }, admin);
     const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
     await until(() => runner.log(run.id).includes("thinking"));
     assert.equal((await task()).status, "doing");
@@ -888,6 +891,64 @@ describe("Runner", () => {
     const t = await task();
     assert.equal(t.status, "todo");
     assert.equal(t.owner, null);
+    assert.ok(t.note!.startsWith(`▸ run ${run.id} · claude-a · cancelled`), t.note ?? "");
+    assert.match(t.note ?? "", /Xong khi:\n- có nút Lưu/, "cancelling must not take the task's criteria away");
+  });
+
+  // BUG-note-wipe: a run that ends while the task is still doing used to replace its note, criteria and all.
+  it("keeps the task's own note under the block of a run that ends without the agent reporting", async () => {
+    for (const [mode, status, taskStatus] of [
+      ["limit", "rate_limited", "todo"],
+      ["fail", "failed", "todo"],
+      ["ok", "succeeded", "review"],
+    ] as const) {
+      // One profile and one attempt: the run ends where it is instead of rotating to another subscription.
+      const { runner, hive, task } = await setup([profile("claude-a", "claude", 10, mode)], { maxAttempts: 1 });
+      await hive.call("tasks.update", { id: "T-1", status: "todo", note: BRIEF }, admin);
+      const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+      await runner.settle();
+
+      assert.equal(runner.store.get(run.id)!.status, status);
+      const t = await task();
+      assert.equal(t.status, taskStatus);
+      const note = t.note ?? "";
+      assert.ok(note.startsWith(`▸ run ${run.id} · claude-a · ${status}`), `${mode}: ${note}`);
+      assert.match(note, /\n\n---\n\n/, `${mode}: the block and the note are told apart`);
+      assert.ok(note.endsWith(BRIEF), `${mode}: ${note}`);
+      assert.ok(note.length <= 2000, `${mode}: ${note.length} characters`);
+    }
+  });
+
+  it("replaces the block of the run before, so three failures in a row do not push the criteria out", async () => {
+    const { runner, hive, task } = await setup([profile("claude-a", "claude", 10, "fail")], { maxAttempts: 1 });
+    await hive.call("tasks.update", { id: "T-1", status: "todo", note: BRIEF }, admin);
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+      await runner.settle();
+      assert.equal(runner.store.get(run.id)!.status, "failed");
+      ids.push(run.id);
+    }
+    const note = (await task()).note ?? "";
+    assert.equal(note.match(/^▸ run /gm)?.length, 1, note);
+    assert.ok(note.startsWith(`▸ run ${ids[2]!} ·`), note);
+    assert.equal(note.includes(ids[0]!), false, "the first run's block is gone, not stacked on");
+    assert.ok(note.endsWith(BRIEF), note);
+  });
+
+  it("cuts the end of a long task note rather than dropping it, and stays inside the 2000 characters", async () => {
+    const { runner, hive, task } = await setup([profile("claude-a", "claude", 10, "fail")], { maxAttempts: 1 });
+    const long = `${BRIEF}\n${"chi tiết. ".repeat(190)}CUỐI`;
+    assert.ok(long.length > 1900 && long.length <= 2000, `${long.length} characters`);
+    await hive.call("tasks.update", { id: "T-1", status: "todo", note: long }, admin);
+    await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+
+    const note = (await task()).note ?? "";
+    assert.ok(note.length <= 2000, `${note.length} characters`);
+    assert.match(note, /Xong khi:\n- có nút Lưu/, "the criteria are at the head of the note: they stay");
+    assert.ok(note.endsWith("…"), note.slice(-50));
+    assert.equal(note.includes("CUỐI"), false, "what did not fit went from the end of the note");
   });
 
   it("starts a new task from the remote's latest target branch, and says so in the log", async () => {
