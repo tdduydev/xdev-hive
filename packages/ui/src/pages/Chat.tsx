@@ -1,6 +1,7 @@
 // Talking with a project's leader agent (hub only, roadmap 17): threads by project, each held on one team machine
 // whose Claude plan writes the replies in the same Claude Code session. A reply shows as the machine writes it,
-// with the agent's steps; project managers send messages and stop a reply.
+// with the agent's steps; project managers send messages and stop a reply. The desktop app has it too (roadmap 48):
+// on a hub the same threads, a new one on this machine by default; in local mode this machine's own, in its database.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, BookMarked, Bot, Check, CheckCheck, MessageSquarePlus, Pencil, RotateCcw, Search, SendHorizontal, Settings2, Square, Trash2, X } from "lucide-react";
 import { cn } from "cn";
@@ -22,6 +23,7 @@ import {
   actionTask,
   chatMachines,
   chatProfile,
+  chatTarget,
   isLiveReply,
   machineName,
   mergeMessages,
@@ -42,6 +44,22 @@ const MAX_TEXT = 8000;
 type Open = { kind: "thread"; id: number } | { kind: "new" } | null;
 
 const threadOf = (param: string | null): Open => (param && /^\d+$/.test(param) && Number(param) > 0 ? { kind: "thread", id: Number(param) } : null);
+
+/** The desktop app on its own (roadmap 48): its chats are in its database and run on it alone. */
+function useLocalChat(): boolean {
+  const { client, me } = useHive();
+  return !!client.desktop && me.mode !== "hub";
+}
+
+/** The machines a chat may run on: the hub's, or in local mode this machine as its database's chat sees it. */
+function useChatMachines(deps: unknown[]) {
+  const { client } = useHive();
+  const local = useLocalChat();
+  return useQuery(
+    async () => (local ? [await client.desktop!.chatMachine!()].filter((m) => m !== null) : client.call("machines.list", {})),
+    [client, local, ...deps],
+  );
+}
 
 export function ChatPage() {
   const { client, scope, projects } = useHive();
@@ -82,12 +100,13 @@ export function ChatPage() {
   // A system's chats are each with one of its projects' leaders.
   const managed = (project ? [project] : scope.kind === "system" ? scope.projects : projects).filter((p) => allow(p, "chatUse"));
   const [guideOpen, setGuideOpen] = useState(false);
+  const local = useLocalChat();
 
   return (
     <Page wide>
       <PageHeader
         title={t("nav.chat")}
-        subtitle={t("chat.subtitle")}
+        subtitle={t(local ? "chat.subtitleLocal" : "chat.subtitle")}
         actions={
           managed.length ? (
             <>
@@ -95,7 +114,7 @@ export function ChatPage() {
                 <BookMarked />
                 {t("chat.guideOpen")}
               </Button>
-              <Button size="sm" onClick={() => setOpen({ kind: "new" })}>
+              <Button size="sm" data-chat-new onClick={() => setOpen({ kind: "new" })}>
               <MessageSquarePlus />
               {t("chat.new")}
             </Button>
@@ -179,16 +198,25 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
   const { client } = useHive();
   const t = useT();
   const [project, setProject] = useState(defaultProject && projects.includes(defaultProject) ? defaultProject : (projects[0] ?? ""));
-  const machines = useQuery(() => client.call("machines.list", {}), [client]);
+  const local = useLocalChat();
+  const [bumped, setBumped] = useState(0);
+  const machines = useChatMachines([bumped]);
   const fit = chatMachines(machines.data ?? [], project);
+  // The desktop app: this machine's name, and whether it takes runs from the hub (its leader only runs if so).
+  const desk = useQuery(async () => (client.desktop ? client.desktop.settings() : null), [client, bumped]);
+  const here = desk.data?.machine ?? null;
+  const hubOff = !local && desk.data?.mode === "hub" && !desk.data.runner.acceptHubRuns;
   const [machineId, setMachineId] = useState("");
   const machine = fit.find((m) => m.id === machineId) ?? fit[0] ?? null;
   const [profileId, setProfileId] = useState("");
+  // Until the person picks a machine or plan, the form follows what loads (the project's defaults, the machines).
+  const [touched, setTouched] = useState(false);
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState<ChatEffort | "">("");
   const [text, setText] = useState("");
   const action = useAction();
   const saving = useAction();
+  const enabling = useAction();
   const [saved, setSaved] = useState(false);
   const att = useAttachments(project);
   // What the project set for its chats fills the form; the person may pick otherwise.
@@ -196,12 +224,32 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
   useEffect(() => {
     const d = defaults.data;
     if (!d) return;
-    setMachineId(d.machineId ?? "");
-    setProfileId(d.profileId ?? "");
     setModel(d.model ?? "");
     setEffort(d.effort ?? "");
     setSaved(false);
   }, [defaults.data]);
+  const fitKey = fit.map((m) => `${m.id}:${m.profiles.filter(chatProfile).map((p) => p.id).join(",")}`).join(" ");
+  useEffect(() => {
+    if (touched || !defaults.data) return;
+    const target = chatTarget(fit, { here, defaults: defaults.data, now: new Date().toISOString() });
+    setMachineId(target.machineId);
+    setProfileId(target.profileId);
+    // fit is read through fitKey: a new array each render, the same machines.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [touched, defaults.data, fitKey, here]);
+  const pick = (next: { machineId?: string; profileId: string }) => {
+    setTouched(true);
+    if (next.machineId !== undefined) setMachineId(next.machineId);
+    setProfileId(next.profileId);
+  };
+  const enableHubRuns = () =>
+    void enabling.run(async () => {
+      await client.desktop!.updateSettings({ runner: { acceptHubRuns: true } });
+      // The hub hears it with a heartbeat: one now, so this machine is offered at once.
+      await client.desktop!.hubRetry().catch(() => undefined);
+      setTouched(false);
+      setBumped((n) => n + 1);
+    });
   const send = () => {
     if (!machine || !text.trim() || action.busy || att.uploading) return;
     void action.run(async () => {
@@ -227,7 +275,7 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
         </Button>
         <div className="flex flex-col gap-0.5">
           <h2 className="font-medium">{t("chat.new")}</h2>
-          <p className="text-xs text-muted-foreground">{t("chat.newHint")}</p>
+          <p className="text-xs text-muted-foreground">{t(local ? "chat.newHintLocal" : "chat.newHint")}</p>
         </div>
       </div>
       <form
@@ -242,7 +290,7 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="chat-project">{t("chat.project")}</Label>
-            <NativeSelect id="chat-project" size="sm" className="w-full" value={project} onChange={(e) => (setProject(e.target.value), setMachineId(""), setProfileId(""))}>
+            <NativeSelect id="chat-project" size="sm" className="w-full" value={project} onChange={(e) => (setProject(e.target.value), setTouched(false))}>
               {projects.map((p) => (
                 <NativeSelectOption key={p} value={p}>
                   {p}
@@ -252,7 +300,7 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="chat-machine">{t("chat.machine")}</Label>
-            <NativeSelect id="chat-machine" size="sm" className="w-full" value={machine?.id ?? ""} disabled={!machine} onChange={(e) => (setMachineId(e.target.value), setProfileId(""))}>
+            <NativeSelect id="chat-machine" size="sm" className="w-full" value={machine?.id ?? ""} disabled={!machine || local} onChange={(e) => pick({ machineId: e.target.value, profileId: "" })}>
               {fit.map((m) => (
                 <NativeSelectOption key={m.id} value={m.id}>
                   {m.machine}
@@ -262,7 +310,7 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="chat-plan">{t("chat.plan")}</Label>
-            <NativeSelect id="chat-plan" size="sm" className="w-full" value={profileId} disabled={!machine} onChange={(e) => setProfileId(e.target.value)}>
+            <NativeSelect id="chat-plan" size="sm" className="w-full" value={profileId} disabled={!machine} onChange={(e) => pick({ profileId: e.target.value })}>
               <NativeSelectOption value="">{t("chat.anyPlan")}</NativeSelectOption>
               {(machine?.profiles ?? []).filter(chatProfile).map((p) => (
                 <NativeSelectOption key={p.id} value={p.id}>
@@ -302,7 +350,26 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
         {saved ? <Notice tone="ok">{t("chat.defaultsSaved", { project })}</Notice> : null}
         <ErrorNote error={saving.error} />
         <ErrorNote error={machines.error} />
-        {machines.data && !fit.length ? <Notice tone="info">{t("chat.noMachine", { project })}</Notice> : null}
+        {hubOff && here ? (
+          <Notice tone="warn">
+            <div className="flex flex-col gap-2" data-chat-here="off">
+              <span>{t("chat.hereOff", { machine: here })}</span>
+              <span className="flex flex-wrap items-center gap-2">
+                <Button size="sm" type="button" disabled={enabling.busy} onClick={enableHubRuns}>
+                  {t("chat.hereEnable")}
+                </Button>
+                <a className={LINK} href="#/agents">
+                  {t("chat.hereAgents")}
+                </a>
+              </span>
+            </div>
+          </Notice>
+        ) : null}
+        <ErrorNote error={enabling.error} />
+        {!local && !hubOff && here && machines.data && fit.length > 0 && !fit.some((m) => m.machine === here) ? (
+          <Notice tone="info">{t("chat.hereNotFit", { machine: here, project })}</Notice>
+        ) : null}
+        {machines.data && !fit.length ? <Notice tone="info">{t(local ? "chat.noMachineLocal" : "chat.noMachine", { project })}</Notice> : null}
         <Textarea
           rows={4}
           maxLength={MAX_TEXT}
@@ -367,7 +434,7 @@ function Conversation({ threadId, onBack, onChanged, onDeleted }: { threadId: nu
   const ended = messages.filter((m) => m.status === "done").length + messages.flatMap((m) => m.actions).filter((a) => a.status === "done").length;
   const tasks = useQuery(async () => (thread ? client.call("tasks.list", { project: thread.project }) : []), [client, thread?.project, ended]);
   const taskIds = (tasks.data ?? []).map((task) => task.id);
-  const machines = useQuery(() => client.call("machines.list", {}), [client, live ? 0 : tick]);
+  const machines = useChatMachines([live ? 0 : tick]);
   const machine = thread ? machines.data?.find((m) => m.id === thread.machineId) : undefined;
   const manage = thread ? allow(thread.project, "chatUse") : false;
   // What the leader proposes to do is approved apart from chatting (roadmap 25).
@@ -403,7 +470,7 @@ function Conversation({ threadId, onBack, onChanged, onDeleted }: { threadId: nu
   }
 
   return (
-    <Card className="flex h-[calc(100svh-9rem)] min-h-[28rem] flex-col gap-0 py-0 lg:h-[calc(100svh-13rem)]">
+    <Card className="flex h-[calc(100svh-9rem)] min-h-[28rem] flex-col gap-0 py-0 lg:h-[calc(100svh-13rem)]" data-chat-thread={threadId}>
       <header className="flex items-start gap-2 border-b px-4 py-3">
         <Button size="icon-sm" variant="ghost" className="lg:hidden" onClick={onBack} aria-label={t("chat.threads")}>
           <ArrowLeft />
@@ -815,7 +882,7 @@ export function ActionItem({ action: a, taskIds, manage, onDecided }: { action: 
     return required ? `${state}, ${t("chat.actionToolRequired")}` : state;
   };
   return (
-    <li className="flex flex-col gap-1.5 rounded-lg border bg-muted/30 p-2.5 text-xs">
+    <li className="flex flex-col gap-1.5 rounded-lg border bg-muted/30 p-2.5 text-xs" data-action-status={a.status}>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <Badge tone={ACTION_TONE[a.status] ?? "neutral"}>{t(`actionStatus.${a.status}`)}</Badge>
         {/* Roadmap 29c: the project lets its leader run this kind alone, as whoever sent the message. */}

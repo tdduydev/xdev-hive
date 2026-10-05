@@ -79,6 +79,8 @@ async function setup(
     bin?: string;
     /** The hub tools this machine's user allowed (roadmap 28b). */
     toolTrust?: RunnerHost["toolTrust"];
+    onChat?: RunnerOptions["onChat"];
+    chatFile?: RunnerOptions["chatFile"];
   } = {},
 ) {
   const repo = tmp("repo");
@@ -117,6 +119,8 @@ async function setup(
     afterFinish: machine.afterFinish,
     onEvent: machine.onEvent,
     sync: machine.sync,
+    onChat: machine.onChat,
+    chatFile: machine.chatFile,
     // Chat replies are asked for by hand (pollChats) and reported quickly.
     chatPollMs: 0,
     chatProgressMs: 50,
@@ -1523,6 +1527,50 @@ describe("Runner", () => {
         [`https://hive.example.test/api/chat/files/${again.id}`, "hivechat_test"],
       ], "with the reply's token, never the machine's");
       assert.equal(existsSync(dir), false, "gone with the reply");
+    });
+
+    it("writes this machine's own chat in local mode: from its database, through the app's MCP shim told the reply (roadmap 48)", async () => {
+      const hive = new SqliteHive(":memory:", { local: true });
+      const ended: Array<[number, string]> = [];
+      const a = await setup([profile("claude-1", "claude", 10, "chat", { bin: fakeClaude() })], {}, "local", {
+        hive,
+        report: claudeReport,
+        onChat: (req, status) => ended.push([req.replyId, status]),
+        chatFile: (id) => hive.chatFile(id, { name: "runner", role: "agent" })?.bytes ?? null,
+      });
+      hive.setChatMachine(() => a.runner.localChatMachine());
+      const here = a.runner.localChatMachine()!;
+      assert.deepEqual([here.id, here.machine, here.projects, here.acceptsRuns], ["runner@duy", "duy-mbp", ["demo"], true], "this machine, without acceptHubRuns");
+      assert.deepEqual(await hive.call("machines.list", {}, admin), [], "no Board or Spec form offers it a hub run");
+
+      const log = hive.putChatFile({ project: "demo", name: "run.log", bytes: new TextEncoder().encode("exit 1\n") }, admin);
+      const sent = await hive.call("chat.send", { project: "demo", machineId: here.id, text: "What failed?", files: [log.id] }, admin);
+      assert.deepEqual(await hive.call("chat.poll", {}, { name: "runner@other", role: "agent" }), [], "another machine gets nothing of it");
+      assert.equal(await a.runner.pollChats(), 1);
+      await a.runner.settleChats();
+      const reply = await replyOf(hive, sent.thread.id);
+      assert.equal(reply.status, "done", reply.error?.message);
+      assert.match(reply.text, /^Answer: What failed\?\n\nFiles attached to this message.*\n- .*run\.log \(/s);
+      assert.deepEqual(ended, [[sent.reply.id, "done"]], "the app hears the reply ended");
+
+      const call = a.chats()[0]!;
+      assert.deepEqual(call.files, { "run.log": "exit 1\n" }, "read from this machine's database");
+      const mcp = JSON.parse(call.mcp)["mcpServers"]["xdev-hive"];
+      assert.equal(mcp.url, undefined, "no hub");
+      assert.equal(mcp.headers, undefined, "and no token");
+      assert.deepEqual([mcp.env.HIVE_CHAT_REPLY, mcp.env.HIVE_AGENT, mcp.env.HIVE_PROJECT], [String(sent.reply.id), "claude-1", "demo"], "the shim gives the leader's proposals for this reply");
+
+      // The machine set aside: an app that is not the database's own one has no chat to write.
+      hive.setChatMachine(null);
+      await assert.rejects(hive.call("chat.send", { project: "demo", threadId: sent.thread.id, text: "And now?" }, admin), /No machine runner@duy/);
+      assert.equal(await a.runner.pollChats(), 0);
+    });
+
+    it("takes no machine for a hub database's chat: only a local one (roadmap 48)", async () => {
+      const hub = new SqliteHive(":memory:");
+      const fake = { id: "runner.ghost@x", machine: "ghost", version: "", lastSeen: "", online: true, duplicate: false, runs: [], profiles: [], projects: ["demo"], acceptsRuns: true, owner: null, profileChanges: [] };
+      hub.setChatMachine(() => fake);
+      await assert.rejects(hub.call("chat.send", { project: "demo", machineId: fake.id, text: "hi" }, admin), /No machine runner\.ghost@x/);
     });
 
     it("lets the leader run only the project's commands, and no Bash at all without them", () => {
