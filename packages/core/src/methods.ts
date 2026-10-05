@@ -58,6 +58,8 @@ import {
   type MachineSetupMissing,
   type Memory,
   type MemorySearchInfo,
+  type ProjectDeleted,
+  type ProjectSummary,
   type ProjectSyncState,
   type Proposal,
   type QuotaCooldown,
@@ -835,6 +837,15 @@ export const schemas = {
   "systems.save": z.object({ name: systemName, projects: z.array(project).min(1).max(200) }),
   "systems.remove": z.object({ name: systemName }),
 
+  /** Every project the hub knows (roadmap 47) with what it holds and its state; a reader sees only the ones they view. */
+  "projects.list": z.object({}),
+  /** Hides a project and refuses writes to it; undone by projects.restore. Hub admins. */
+  "projects.archive": z.object({ project }),
+  /** Back in use: lifts `archived`, or takes the headstone off a deleted name so it can be used again. Hub admins. */
+  "projects.restore": z.object({ project }),
+  /** Deletes an archived project and everything of it, for good. `confirm` has to be the project's name. Hub admins. */
+  "projects.delete": z.object({ project, confirm: z.string().min(1).max(100) }),
+
   "admin.machines": z.object({}),
   "admin.commandCreate": z.object({ machineId: machineRef, itemId: setupItemId }),
   "admin.commandCancel": z.object({ id }),
@@ -935,6 +946,12 @@ export interface MethodOutput {
     profileChanges: ProfileChange[];
     /** Merges asked for on the web (roadmap 18c); only while it accepts runs from the hub. Older apps ignore it. */
     mergeRuns: RunMergeOrder[];
+    /**
+     * Of the repos this machine reported, the ones the hub archived or deleted (roadmap 47): the hub keeps none of
+     * them, so the app marks them instead of letting the user wonder why nothing of theirs reaches the hub.
+     * One list for both states — the app shows one label, and a deleted project is just as gone. Older apps ignore it.
+     */
+    archivedProjects: string[];
   };
   "machines.list": Machine[];
   "machines.setupMissing": MachineSetupMissing[];
@@ -1014,6 +1031,10 @@ export interface MethodOutput {
   "systems.list": HiveSystem[];
   "systems.save": HiveSystem;
   "systems.remove": { removed: boolean };
+  "projects.list": ProjectSummary[];
+  "projects.archive": ProjectSummary;
+  "projects.restore": ProjectSummary;
+  "projects.delete": ProjectDeleted;
   "admin.machines": MachineDetail[];
   "admin.commandCreate": MachineCommand;
   "admin.commandCancel": MachineCommand;
@@ -1162,6 +1183,11 @@ export const METHOD_ROLES: Record<Method, Role> = {
   // Also "manage" on each project of the system: a project manager, never an agent token.
   "systems.save": "agent",
   "systems.remove": "agent",
+  // The list is for anyone (filtered to what they view); archiving and deleting are a hub admin's, checked in #check.
+  "projects.list": "viewer",
+  "projects.archive": "admin",
+  "projects.restore": "admin",
+  "projects.delete": "admin",
   "admin.machines": "admin",
   "admin.commandCreate": "admin",
   "admin.commandCancel": "admin",

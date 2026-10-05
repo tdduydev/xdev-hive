@@ -1153,6 +1153,42 @@ async function main() {
     await rpc("systems.save", { name: "shop", projects: ["payment", "demo"] });
   });
 
+  // Roadmap 47: a throwaway project is archived (it leaves every list and refuses writes), then deleted for good
+  // through the dialog that asks for its name. The hub snapshots itself first, into the run's temporary backup dir.
+  await step("project-archive-delete", async () => {
+    await rpc("tasks.create", { id: "OLD-1", project: "throwaway", title: "Việc của dự án bỏ đi" });
+    await rpc("memory.write", { project: "throwaway", kind: "gotcha", content: "Ghi chú của dự án bỏ đi." });
+    await rpc("docs.save", { key: "project/throwaway/arch", title: "Kiến trúc", content: "# Kiến trúc cũ\n" });
+    const tab = (current = tabs.admin);
+    await tab.reload();
+    await tab.go("systems");
+    await tab.click("[data-systems-search]");
+    await tab.type("throwaway");
+    await tab.waitFor("throwaway in the admin's project table", () => !!document.querySelector('[data-project-row="throwaway"]'));
+    await tab.click('[data-project-archive="throwaway"]');
+    await until("throwaway archived", async () => (await rpc("projects.list", {})).find((p) => p.project === "throwaway")?.state === "archived");
+    // Hidden from the lists, and no new writes: the hub says so to the one who tries.
+    expect((await rpc("tasks.list", {})).every((t) => t.project !== "throwaway"), "tasks.list still shows the archived project");
+    const refused = await fetch(`${base}/api/rpc`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${admin}` },
+      body: JSON.stringify({ method: "tasks.create", input: { id: "OLD-2", project: "throwaway", title: "x" } }),
+    }).then((r) => r.json());
+    expect(refused.error?.key === "errors.projectArchived", `writing to an archived project: ${JSON.stringify(refused)}`);
+    await tab.shot(`${String(n).padStart(2, "0")}-project-archived`);
+    // Xoá hẳn: the dialog only lets the button through once the name is typed in full.
+    await tab.click('[data-project-delete="throwaway"]');
+    await tab.waitFor("the delete dialog", () => !!document.querySelector("[data-project-delete-name]"));
+    await tab.click("[data-project-delete-name]");
+    await tab.type("throwaway");
+    await tab.shot(`${String(n).padStart(2, "0")}-project-delete-dialog`);
+    await tab.click("[data-project-delete-confirm]");
+    await until("throwaway deleted", async () => (await rpc("projects.list", {})).find((p) => p.project === "throwaway")?.state === "deleted");
+    const left = await rpc("projects.list", {});
+    expect(left.find((p) => p.project === "throwaway")?.tasks === 0, "the deleted project still has rows");
+    expect((await rpc("docs.list", { project: "throwaway" })).length === 0, "the deleted project still has docs");
+  });
+
   // Roadmap 19d: a task of one service waits for another service's (demo waits for payment's), named with its project.
   await step("cross-service-task", async () => {
     const task = await rpc("tasks.create", { id: "DEMO-2", project: "demo", title: "Trang đơn hàng", dependsOn: ["PAY-1"] });
