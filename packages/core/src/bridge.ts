@@ -4,7 +4,7 @@ import type { ProfileAutonomy } from "./agent-policy.ts";
 import type { AgentKind, AgentProfile, AgentRole, PlanUsage, PreferKind, RunnerSettings, RunStatus } from "./agents.ts";
 import type { GitLabImportCandidate, GitLabImportResult, MrSettings, MrState, MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { TransferReport } from "./transfer.ts";
-import type { MachineCommand, Proposal, Role, SetupItem, SetupReport, TeamPolicy, ToolHandler, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
+import type { MachineCommand, Proposal, Role, SetupItem, SetupReport, TeamPolicy, TokenWindows, ToolHandler, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
 
 /**
  * A hub tool as the machine's Setup card shows it (roadmap 28b): what it will run here, for the user to allow.
@@ -275,6 +275,8 @@ export interface AgentProfileStatus extends AgentProfile {
   lastUsedAt: string | null;
   /** costUsd: sum of the runs' API-price estimates (Claude Code runs only). */
   stats: { runs: number; succeeded: number; failed: number; rateLimited: number; costUsd: number };
+  /** Its runs' tokens and cache over 24 hours, 7 and 30 days, from this machine's runs.db (roadmap 46). */
+  tokens: TokenWindows;
   /** Its own flags' autonomy and what runs get under the agent policy the machine last heard from the hub. */
   autonomy: ProfileAutonomy;
 }

@@ -8,7 +8,10 @@ import {
   agentProfileSchema,
   AUTONOMY,
   AUTONOMY_ARGS,
+  addTokenWindows,
   autonomySource,
+  cacheReadShare,
+  TOKEN_WINDOWS,
   usageStop,
   type AgentKind,
   type AgentProfile,
@@ -20,6 +23,8 @@ import {
   type ProfileCheck,
   type RunnerSettings,
   type SetupItem,
+  type TokenTotals,
+  type TokenWindow,
 } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
@@ -31,11 +36,12 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@xdev-hive/ui/components/ui/popover";
 import { Switch } from "@xdev-hive/ui/components/ui/switch";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@xdev-hive/ui/components/ui/toggle-group";
 import { Badge, Empty, ErrorNote, Notice, PageHeader } from "#ui/components/common.tsx";
 import { canOpenCli } from "#ui/components/OpenCli.tsx";
 import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { useToast } from "#ui/shell/toast.tsx";
-import { errorMessage, formatTime, formatUsd, useAction, useHive, useQuery } from "#ui/hooks.ts";
+import { errorMessage, formatCount, formatTime, formatUsd, useAction, useHive, useQuery } from "#ui/hooks.ts";
 import { activeIntl, rich, useT } from "#ui/i18n/index.tsx";
 import { profileRows, profileState, usageAsOf, type ProfileState } from "#ui/lib/agents.ts";
 import { hasNewer } from "#ui/lib/setup.ts";
@@ -149,6 +155,7 @@ export function AgentsPage() {
       />
       <ErrorNote error={profiles.error} />
       {profiles.data?.length === 0 ? <Empty>{t("agents.none")}</Empty> : null}
+      {profiles.data?.length ? <TokenStats profiles={profiles.data} /> : null}
       <div ref={manage} className="flex flex-col gap-4 pt-2">
         <h2 className="m-0 text-[13px]/[18px] font-semibold text-fg-strong">{t("agents.manage")}</h2>
         <p className="m-0 -mt-2 max-w-3xl text-xs/[18px] text-fg-muted">{t("agents.subtitle")}</p>
@@ -427,6 +434,95 @@ function ProfileTable({
       </div>
       {someWithoutUsage ? <p className="m-0 text-xs/[18px] text-fg-muted">{t("agents.noUsageNote")}</p> : null}
     </div>
+  );
+}
+
+const TOKEN_COLS = "grid-cols-[minmax(170px,1.4fr)_repeat(4,minmax(84px,1fr))_96px_64px]";
+
+/** 1,2 Tr, 34 N: token counts run into the millions; the exact number is in the cell's title. */
+const compact = (n: number) => new Intl.NumberFormat(activeIntl(), { notation: "compact", maximumFractionDigits: 1 }).format(n);
+
+/**
+ * Each subscription's tokens over 24 hours, 7 or 30 days, and the machine's line (roadmap 46): fresh input, written to
+ * and read from the prompt cache, output, and the share of input read from the cache. From this machine's runs.db, in
+ * local mode and on a hub alike; a row opens Lượt chạy on that subscription's runs.
+ */
+function TokenStats({ profiles }: { profiles: AgentProfileStatus[] }) {
+  const t = useT();
+  const [win, setWin] = useState<TokenWindow>("d7");
+  const total = addTokenWindows(profiles.map((p) => p.tokens))[win];
+  const cells = (k: TokenTotals) => {
+    const share = cacheReadShare(k);
+    // A window of old runs only has no split: dashes, not zeros that read as "nothing from the cache".
+    const split = k.cacheReadTokens !== null;
+    const num = (v: number, shown = split) => (
+      <span className="text-right tabular-nums" title={shown ? formatCount(v) : undefined}>
+        {shown ? compact(v) : "—"}
+      </span>
+    );
+    return (
+      <>
+        {num(k.inputTokens)}
+        {num(k.cacheWriteTokens)}
+        {num(k.cacheReadTokens ?? 0)}
+        {num(k.outputTokens, k.runs > 0)}
+        <span className="text-right font-medium tabular-nums text-fg-strong">{share === null ? "—" : `${Math.round(share * 100)}%`}</span>
+        <span className="text-right tabular-nums text-fg-muted">{formatCount(k.runs)}</span>
+      </>
+    );
+  };
+  const ROW = cn("grid min-h-10 items-center py-2 gap-3 border-b border-line-subtle px-4 text-xs/none last:border-b-0", TOKEN_COLS);
+  return (
+    <section data-token-stats className="flex flex-col gap-2 pt-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-col gap-0.5">
+          <h2 className="m-0 text-[13px]/[18px] font-semibold text-fg-strong">{t("agents.tokensTitle")}</h2>
+          <p className="m-0 max-w-3xl text-xs/[18px] text-fg-muted">{t("agents.tokensHint")}</p>
+        </div>
+        <ToggleGroup type="single" variant="outline" size="sm" value={win} onValueChange={(v) => v && setWin(v as TokenWindow)} aria-label={t("agents.tokensWindow")}>
+          {TOKEN_WINDOWS.map((w) => (
+            <ToggleGroupItem key={w} value={w} data-token-window={w} className="px-2.5 text-xs">
+              {t(`agents.tokenWindow.${w}`)}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      </div>
+      <div className="overflow-x-auto rounded-[10px] border border-line-default bg-surface">
+        <div className="min-w-[760px]">
+          <div className={cn("grid h-[34px] items-center gap-3 border-b border-line-subtle bg-subtle px-4 text-[11px]/none font-semibold text-fg-muted", TOKEN_COLS)}>
+            <span>{t("agents.colProfile")}</span>
+            <span className="text-right">{t("agents.colInput")}</span>
+            <span className="text-right">{t("agents.colCacheWrite")}</span>
+            <span className="text-right">{t("agents.colCacheRead")}</span>
+            <span className="text-right">{t("agents.colOutput")}</span>
+            <span className="text-right" title={t("agents.colShareHint")}>
+              {t("agents.colShare")}
+            </span>
+            <span className="text-right">{t("agents.colRuns")}</span>
+          </div>
+          {profiles.map((p) => (
+            <a
+              key={p.id}
+              href={`#/runs?profile=${encodeURIComponent(p.id)}`}
+              data-token-row={p.id}
+              title={t("agents.tokensOpenRuns", { id: p.id })}
+              className={cn(ROW, "text-fg-secondary no-underline outline-none hover:bg-hover focus-visible:focus-ring")}
+            >
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="truncate font-medium text-fg-strong">{p.label}</span>
+                <span className="truncate font-mono text-[11px]/none text-fg-muted">{p.id}</span>
+              </span>
+              {cells(p.tokens[win])}
+            </a>
+          ))}
+          <div data-token-total className={cn(ROW, "bg-subtle font-semibold text-fg-strong")}>
+            <span>{t("agents.tokensMachine")}</span>
+            {cells(total)}
+          </div>
+        </div>
+      </div>
+      {total.oldRuns ? <p className="m-0 text-xs/[18px] text-fg-muted">{t("agents.tokensOldRuns", { count: total.oldRuns })}</p> : null}
+    </section>
   );
 }
 
