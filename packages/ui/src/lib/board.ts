@@ -45,3 +45,16 @@ export function profileSummary(profiles: ProfileLike[]): Record<ProfileState, nu
   for (const p of profiles) out[profileState(p)] += 1;
   return out;
 }
+
+/**
+ * The projects the Board's picker offers. In local mode (and on the web's old Board) every project the reader sees,
+ * the ones with a repo here first. The app connected to a hub shows this machine's work only (roadmap 44, after 35a):
+ * just the projects in its config, since a run can only start where the repo is; the rest is on the hub's web.
+ * A system picked in the sidebar narrows either list to its projects.
+ */
+export function boardProjects(input: { local: string[]; seen: string[]; system: string[] | null; machineOnly: boolean }): string[] {
+  const { local, seen, system, machineOnly } = input;
+  const inSystem = (p: string) => !system || system.includes(p);
+  if (machineOnly) return [...new Set(local.filter(inSystem))];
+  return system ? [...new Set([...local.filter(inSystem), ...system])] : [...new Set([...local, ...seen])];
+}

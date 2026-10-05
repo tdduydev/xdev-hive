@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { AgentProfileStatus, TaskStatus } from "@xdev-hive/core";
-import { fitsEveryColumn, foldedColumns, profileState, profileSummary } from "#ui/lib/board.ts";
+import { boardProjects, fitsEveryColumn, foldedColumns, profileState, profileSummary } from "#ui/lib/board.ts";
 
 const counts = (n: Partial<Record<TaskStatus, number>>) => (status: TaskStatus) => n[status] ?? 0;
 const none = new Set<TaskStatus>();
@@ -50,5 +50,29 @@ describe("subscription chip", () => {
       profile({ login: { loggedIn: false } as never }),
     ]);
     assert.deepEqual(sum, { total: 5, ready: 2, resting: 1, overLimit: 0, off: 1, signedOut: 1 });
+  });
+});
+
+describe("board projects", () => {
+  const local = ["demo", "api"];
+  const seen = ["web", "demo", "docs"];
+
+  it("offers every project in local mode, this machine's first", () => {
+    assert.deepEqual(boardProjects({ local, seen, system: null, machineOnly: false }), ["demo", "api", "web", "docs"]);
+  });
+
+  it("offers only the projects in this machine's config when connected to a hub", () => {
+    assert.deepEqual(boardProjects({ local, seen, system: null, machineOnly: true }), ["demo", "api"]);
+    assert.deepEqual(boardProjects({ local: ["demo", "demo"], seen, system: null, machineOnly: true }), ["demo"]);
+  });
+
+  it("narrows to the picked system's projects", () => {
+    assert.deepEqual(boardProjects({ local, seen, system: ["api", "web"], machineOnly: false }), ["api", "web"]);
+    assert.deepEqual(boardProjects({ local, seen, system: ["api", "web"], machineOnly: true }), ["api"]);
+  });
+
+  it("offers nothing on a machine without a project, so the Board says where to add one", () => {
+    assert.deepEqual(boardProjects({ local: [], seen, system: null, machineOnly: true }), []);
+    assert.deepEqual(boardProjects({ local, seen, system: ["web"], machineOnly: true }), []);
   });
 });
