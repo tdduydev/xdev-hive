@@ -327,9 +327,20 @@ export function repoFeatures(repo: string): RepoFeatures {
 }
 
 /** MCP servers for one agent run, listed by the app instead of read from the working copy. Task and run go with every write. */
-export function runMcpServers(agent: string, project: string, features: RepoFeatures, run: { task: string; id?: string; readOnly?: boolean }): Json {
+export function runMcpServers(
+  agent: string,
+  project: string,
+  features: RepoFeatures,
+  run: { task: string; id?: string; readOnly?: boolean; /** The local chat reply a leader writes (roadmap 48). */ chatReply?: number },
+): Json {
   const hive = hiveMcpServer(agent, project);
-  const env = { ...hive.env, HIVE_TASK: run.task, ...(run.id ? { HIVE_RUN: run.id } : {}), ...(run.readOnly ? { HIVE_READONLY: "1" } : {}) };
+  const env = {
+    ...hive.env,
+    HIVE_TASK: run.task,
+    ...(run.id ? { HIVE_RUN: run.id } : {}),
+    ...(run.readOnly ? { HIVE_READONLY: "1" } : {}),
+    ...(run.chatReply ? { HIVE_CHAT_REPLY: String(run.chatReply) } : {}),
+  };
   return {
     // Windows: the shim is a .cmd, which Claude Code cannot start without cmd.exe (agentPath puts its folder on PATH).
     [MCP_NAME]: { ...hive, ...mcpLaunch(SHIM_NAME, []), env },

@@ -2,10 +2,16 @@ import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, shell, Tray, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, protocol, shell, Tray, type IpcMainInvokeEvent } from "electron";
 import {
   AGENT_TEMPLATES,
   agentProfileSchema,
+  CHAT_FILE_SCHEME,
+  chatFileName,
+  isImage,
+  type ChatFile,
+  type ChatRequest,
+  type Machine,
   HiveError,
   HubBackend,
   requestDeviceToken,
@@ -88,8 +94,11 @@ import { openInTerminal } from "./terminal.ts";
 import { AlertWatch, fetchAlerts, noticeText, type AlertNotice } from "./alert-notify.ts";
 import { applyProfileChanges } from "./profile-changes.ts";
 import { mergeMr } from "./gitlab/merge.ts";
+import { chatFileId, chatNotice, hubChatUpload, servedName } from "./chat.ts";
 
 app.setName("xDev Hive");
+// Chat files (roadmap 48): the page shows them from hive-file://chat/<id>, which only the main process can answer.
+protocol.registerSchemesAsPrivileged([{ scheme: CHAT_FILE_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 const smokeShot = process.env.HIVE_SMOKE_SCREENSHOT;
 // A screenshot run gets its own profile dir: the single-instance lock (and localStorage) live there,
 // so it neither quits because the real app is open nor touches the real app's state.
@@ -145,6 +154,8 @@ function reload(): void {
     console.warn("[xdev-hive] could not pin the machine name in config.json:", toErrorPayload(err).message);
   }
   backend = resolveBackend(config);
+  // This machine's own chat (local mode, roadmap 48): the database takes it as the machine its threads run on.
+  if (backend instanceof SqliteHive) backend.setChatMachine(() => runner?.localChatMachine() ?? null);
 }
 
 const resource = (...p: string[]) =>
@@ -881,6 +892,74 @@ async function answerCommand(id: unknown, approve: unknown): Promise<MachineComm
   }
 }
 
+// ── the leader chat in the app (roadmap 48) ─────────────────────────────────
+
+const hubAccess = () => (config.mode === "hub" && config.hub.url && config.hub.token ? { url: config.hub.url, token: config.hub.token } : null);
+
+/** Local mode: the machine this database's chats run on. On a hub, machines.list has it. */
+function chatMachine(): Machine | null {
+  return runner.localChatMachine();
+}
+
+/** A file for the project's chat: on the hub as the app's calls name it, or in the local database. */
+async function chatUpload(project: unknown, name: unknown, bytes: unknown): Promise<ChatFile> {
+  if (!(bytes instanceof Uint8Array)) throw new HiveError("bad_request", "No file.", { key: "errors.chatFileEmpty", vars: { name: String(name ?? "") } });
+  const hub = hubAccess();
+  if (hub) return hubChatUpload(hub, actor().name, String(project ?? ""), String(name ?? "file"), bytes, gitlabFetch);
+  if (!(backend instanceof SqliteHive)) throw new HiveError("bad_request", "No database for the chat's files.");
+  return backend.putChatFile({ project: String(project ?? ""), name: String(name ?? "file"), bytes }, actor());
+}
+
+/** A chat file's bytes and name, read as the app's user: with the machine's token, or from the local database. */
+async function readChatFile(id: number): Promise<{ name: string; type: string; bytes: Uint8Array } | null> {
+  const hub = hubAccess();
+  if (hub) {
+    const res = await gitlabFetch(`${hub.url}/api/chat/files/${id}`, { headers: { authorization: `Bearer ${hub.token}`, "x-hive-agent": actor().name } });
+    if (!res.ok) return null;
+    return { name: servedName(res.headers.get("content-disposition")) ?? `file-${id}`, type: res.headers.get("content-type") ?? "application/octet-stream", bytes: new Uint8Array(await res.arrayBuffer()) };
+  }
+  const file = backend instanceof SqliteHive ? backend.chatFile(id, actor()) : null;
+  return file ? { name: file.name, type: file.type, bytes: file.bytes } : null;
+}
+
+/** hive-file://chat/<id> for the page: images and PDF as they are, anything else as plain text, never a page. */
+function serveChatFiles(): void {
+  protocol.handle(CHAT_FILE_SCHEME, async (request) => {
+    const id = chatFileId(request.url);
+    const file = id === null ? null : await readChatFile(id).catch(() => null);
+    if (!file) return new Response("Not found", { status: 404 });
+    const type = isImage(file.type) || file.type === "application/pdf" ? file.type : "text/plain; charset=utf-8";
+    return new Response(new Uint8Array(file.bytes).buffer, { headers: { "content-type": type, "x-content-type-options": "nosniff", "cache-control": "private, max-age=3600" } });
+  });
+}
+
+/** A chat file the person clicked: saved in a folder of the app and opened with what the system opens it with. */
+async function openChatFile(url: string): Promise<void> {
+  const id = chatFileId(url);
+  const file = id === null ? null : await readChatFile(id).catch(() => null);
+  if (!file || id === null) return;
+  const dir = path.join(app.getPath("temp"), "xdev-hive-chat", String(id));
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const target = path.join(dir, chatFileName(file.name));
+  writeFileSync(target, file.bytes, { mode: 0o600 });
+  await shell.openPath(target);
+}
+
+/** A reply this machine wrote ended while the window was away: told, and a click opens its thread. */
+async function onChatEnded(req: ChatRequest, status: "done" | "failed"): Promise<void> {
+  if (!Notification.isSupported()) return;
+  const shown = !!win && !win.isDestroyed() && win.isVisible() && !win.isMinimized() && win.isFocused();
+  const who = shown ? null : await me().then((m) => m.name, () => null);
+  const notice = chatNotice(req, status, { me: who, windowShown: shown });
+  if (!notice) return;
+  const n = new Notification(notice);
+  n.on("click", () => {
+    showWindow();
+    win?.webContents.executeJavaScript(`location.hash = ${JSON.stringify(`#/chat?thread=${req.threadId}`)}`).catch(() => undefined);
+  });
+  n.show();
+}
+
 function knownPath(p: string): boolean {
   return config.projects.some((x) => x.repo === p) || runner.store.list({ limit: 500 }).some((r) => r.worktree === p);
 }
@@ -1112,6 +1191,8 @@ function registerIpc(): void {
   handle("desktop:checkGitLab", checkGitLab);
   handle("desktop:checkGitHub", checkGitHub);
   handle("desktop:createMergeRequest", createMergeRequest);
+  handle("desktop:chatMachine", chatMachine);
+  handle("desktop:chatUpload", chatUpload);
 }
 
 function createWindow(): void {
@@ -1136,10 +1217,13 @@ function createWindow(): void {
   });
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//.test(url)) void shell.openExternal(url);
+    // A chat file (an image opened full size): the system's viewer, not a window of the app.
+    else if (chatFileId(url) !== null) void openChatFile(url).catch(() => undefined);
     return { action: "deny" };
   });
   win.webContents.on("will-navigate", (e, url) => {
     if (!(devUrl && url.startsWith(devUrl))) e.preventDefault();
+    if (chatFileId(url) !== null) void openChatFile(url).catch(() => undefined);
   });
   // Closing the window keeps the app (and the runner taking work) going: in the menu bar on macOS, in the tray on
   // Windows and Linux. Quitting is the tray's Thoát (or Cmd+Q).
@@ -1450,6 +1534,9 @@ if (!app.requestSingleInstanceLock()) {
         afterReport: (run) => pushSpecsOf(run.project),
         onHub,
         sync: (p) => syncAndMirror(p.name),
+        onChat: (req, status) => void onChatEnded(req, status).catch(() => undefined),
+        // The chat's own machine reads a message's files as the runner: the database hands it only sent ones.
+        chatFile: (id) => (backend instanceof SqliteHive ? (backend.chatFile(id, { name: "runner", role: "agent" })?.bytes ?? null) : null),
       },
     );
     setup = new Setup({
@@ -1483,6 +1570,7 @@ if (!app.requestSingleInstanceLock()) {
     scheduleMrWatch();
     if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(appIcon());
     registerIpc();
+    serveChatFiles();
     createWindow();
     if (!smokeShot) createTray();
   });

@@ -149,15 +149,47 @@ for (const [name, page, delay, extra] of [
   // The Skills panel must have the skill's SKILL.md on screen, not only its frame (roadmap 39h: blank in the 3/10 shot).
   ["skills", "skills", 1500, { HIVE_SMOKE_EXPECT: "[data-skill-doc]" }],
 ]) await shoot(name, page, delay, extra ?? {});
-// The menu of this mode at 1440×900 (roadmap 39f): twelve entries, none of them Board, Tool or Đợt chạy, and the
-// list fits without scrolling.
+// The menu of this mode at 1440×900 (roadmap 39f): twelve entries and Chat (48), none of them Board, Tool or Đợt
+// chạy, and the list fits without scrolling.
 await shoot("local-nav", "today", 3000, {
   HIVE_SMOKE_SIZE: "1440x900",
   HIVE_SMOKE_SIDEBAR: "open",
-  HIVE_SMOKE_EXPECT: 'nav a[href="#/tasks"] && nav a[href="#/runs"] && nav a[href="#/setup"] && nav a[href="#/systems"]',
+  HIVE_SMOKE_EXPECT: 'nav a[href="#/tasks"] && nav a[href="#/chat"] && nav a[href="#/runs"] && nav a[href="#/setup"] && nav a[href="#/systems"]',
   HIVE_SMOKE_ABSENT: 'nav a[href="#/board"] && nav a[href="#/tools"] && nav a[href="#/batches"] && nav a[href="#/machines"]',
   HIVE_SMOKE_ASSERT:
-    'document.querySelectorAll("[data-nav-list] a").length === 12 && (() => { const l = document.querySelector("[data-nav-list]"); return l.scrollHeight <= l.clientHeight; })()',
+    'document.querySelectorAll("[data-nav-list] a").length === 13 && (() => { const l = document.querySelector("[data-nav-list]"); return l.scrollHeight <= l.clientHeight; })()',
+});
+// This machine's own chat (roadmap 48): a thread in the local database whose leader proposed a task, waiting for
+// Xác nhận / Bỏ qua. The reply is written here as the app's runner would report it, so no Claude plan is used.
+const user = os.userInfo().username;
+const localRunner = `runner@${user}`;
+let localThread = 0;
+{
+  const local = new SqliteHive(path.join(work, "local.db"), { local: true });
+  const plan = { id: "claude-max-1", label: "Claude Max (gói 1)", kind: "claude", enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0 };
+  local.setChatMachine(() => ({
+    id: localRunner, machine: "smoke-mac", version: "", lastSeen: new Date().toISOString(), online: true, duplicate: false,
+    runs: [], profiles: [plan], projects: ["demo"], acceptsRuns: true, owner: null, profileChanges: [],
+  }));
+  const sent = await local.call("chat.send", { project: "demo", machineId: localRunner, text: "Trang cài đặt còn thiếu gì?" }, admin);
+  const leader = { name: `claude-max-1@${user}`, role: "agent", chatReply: sent.reply.id };
+  await local.call("chat.propose", { action: { kind: "task.create", id: "T-004", title: "Thêm nút Lưu cho trang cài đặt", dependsOn: [] }, reason: "T-001 làm trang nhưng chưa lưu được" }, leader);
+  await local.call(
+    "chat.finish",
+    { replyId: sent.reply.id, status: "done", text: "T-001 đang làm trang cài đặt; trang chưa có nút **Lưu**. Tôi đề xuất thêm task T-004 cho việc đó.", steps: "▶ task_get T-001\n", sessionId: "smoke-session", costUsd: 0.02, error: null },
+    { name: localRunner, role: "agent" },
+  );
+  localThread = sent.thread.id;
+  local.close();
+}
+await shoot("local-chat", `chat?thread=${localThread}`, 3000, {
+  HIVE_SMOKE_EXPECT: `nav a[href="#/chat"][aria-current="page"] && [data-chat-thread="${localThread}"] [data-action-status="proposed"] button`,
+});
+// Chat mới on this machine: the one machine is this one, with its Claude plan.
+await shoot("local-chat-new", "chat", 3000, {
+  HIVE_SMOKE_CLICK: "[data-chat-new]",
+  HIVE_SMOKE_EXPECT: `#chat-machine option[value="${localRunner}"] && #chat-plan`,
+  HIVE_SMOKE_ABSENT: "[data-chat-here]",
 });
 // The other view of Task on this machine: the list, with the switch next to it.
 await shoot("local-task-list", "tasks", 3000, { HIVE_SMOKE_VIEW: "list", HIVE_SMOKE_EXPECT: '[data-task-view="list"][aria-checked="true"]' });
@@ -402,7 +434,8 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
     const local = readFileSync(file, "utf8");
     writeFileSync(file, JSON.stringify({ ...JSON.parse(local), mode: "hub", hub: { url: `http://127.0.0.1:${port}`, token: bootstrap } }, null, 2));
     // Task is in the menu again as this machine's Board (roadmap 44); #/board is only an old address of it.
-    const webPages = ["board", "docs", "memory", "proposals", "skills", "specs", "chat", "batches", "machines", "members", "tokens", "systems", "tools", "admin"];
+    // Chat is in it since roadmap 48, the hub's threads.
+    const webPages = ["board", "docs", "memory", "proposals", "skills", "specs", "batches", "machines", "members", "tokens", "systems", "tools", "admin"];
     // hub-agents also proves the 39c table in hub mode: here three subscriptions are off, so only the fold shows them.
     // Lượt chạy has the same shape in hub mode, and only this machine's runs in it (roadmap 35a, 39e).
     // Connected (roadmap 39d): Cài đặt is one line about the hub, the account and this machine, with no form.
@@ -435,6 +468,28 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
     await shoot("hub-board-task", "board", 4000, {
       HIVE_SMOKE_CLICK: 'section[aria-label="Chưa làm"] [role="button"]',
       HIVE_SMOKE_EXPECT: `${board} && aside[aria-label^="T-00"]`,
+    });
+    // Roadmap 48: the hub's chat in the app. Another machine of the team holds a thread (the web sees the same), and
+    // Chat mới says this machine does not take runs from the hub yet, with the switch to turn it on.
+    await api.call(
+      "machines.heartbeat",
+      {
+        machine: "box", instance: randomBytes(8).toString("hex"), version: "0.130.0", projects: ["demo"], acceptsRuns: true, runs: [], costs: [],
+        profiles: [{ id: "claude-1", label: "Claude", kind: "claude", enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0 }],
+      },
+      { name: "runner.box", role: "agent" },
+    );
+    const box = (await api.call("machines.list", {}, seeder)).find((m) => m.machine === "box");
+    const hubThread = box ? (await api.call("chat.send", { project: "demo", machineId: box.id, text: "Tuần này còn task nào chưa ai nhận?" }, seeder)).thread.id : 0;
+    if (!box) failures.push("hub chat: the hub lists no machine box");
+    await shoot("hub-chat", `chat?thread=${hubThread}`, 3000, {
+      HIVE_SMOKE_EXPECT: `[data-open-web] && nav a[href="#/chat"][aria-current="page"] && [data-chat-thread="${hubThread}"] && button[aria-current="true"]`,
+      HIVE_SMOKE_ABSENT: absent,
+    });
+    await shoot("hub-chat-new", "chat", 3000, {
+      HIVE_SMOKE_CLICK: "[data-chat-new]",
+      HIVE_SMOKE_EXPECT: '[data-open-web] && [data-chat-here="off"] button && a[href="#/agents"]',
+      HIVE_SMOKE_ABSENT: absent,
     });
     // A machine with no project: the Board says where to add one.
     writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), projects: [] }, null, 2));

@@ -4,7 +4,7 @@ import type { ProfileAutonomy } from "./agent-policy.ts";
 import type { AgentKind, AgentProfile, AgentRole, PlanUsage, PreferKind, RunnerSettings, RunStatus } from "./agents.ts";
 import type { GitLabImportCandidate, GitLabImportResult, MrSettings, MrState, MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { TransferReport } from "./transfer.ts";
-import type { MachineCommand, Proposal, Role, SetupItem, SetupReport, TeamPolicy, TokenWindows, ToolHandler, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
+import type { ChatFile, Machine, MachineCommand, Proposal, Role, SetupItem, SetupReport, TeamPolicy, TokenWindows, ToolHandler, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
 
 /**
  * A hub tool as the machine's Setup card shows it (roadmap 28b): what it will run here, for the user to allow.
@@ -520,4 +520,13 @@ export interface DesktopBridge {
   toolTrust(id: string, hash: string | null): Promise<MachineToolView[]>;
   /** Runs (approve) or declines an admin's install request, and reports the result to the hub. */
   answerCommand(id: number, approve: boolean): Promise<MachineCommand>;
+
+  /**
+   * The leader chat in the app (roadmap 48). chatMachine: in local mode the machine this database's chats run on
+   * (this one, with its profiles and projects); null on a hub, whose machines.list has it. chatUpload keeps a file for
+   * the project's chat, on the hub (with the machine's token) or in the local database; the page shows it from
+   * chatFileUrl(id). Optional: an app older than 48 has neither.
+   */
+  chatMachine?(): Promise<Machine | null>;
+  chatUpload?(project: string, name: string, bytes: Uint8Array): Promise<ChatFile>;
 }

@@ -10,6 +10,29 @@ export function chatMachines(machines: Machine[], project: string): Machine[] {
   return machines.filter((m) => m.online && m.acceptsRuns && m.projects.includes(project) && m.profiles.some(chatProfile));
 }
 
+/**
+ * What a new thread starts on (roadmap 48). In the desktop app (`here`: this machine's name) this machine, when it can
+ * hold the thread, with its Claude plan: the project's saved plan when the saved machine is this one, else the first
+ * by priority that is neither over its limit nor resting (none: "" lets the machine pick). Elsewhere, or when this
+ * machine cannot, what the project saved (chat.defaults), else the first machine that can.
+ */
+export function chatTarget(
+  fit: Machine[],
+  o: { here: string | null; defaults: { machineId: string | null; profileId: string | null } | null; now: string },
+): { machineId: string; profileId: string } {
+  const mine = o.here ? fit.find((m) => m.machine === o.here) : undefined;
+  if (mine) {
+    const plans = mine.profiles.filter(chatProfile);
+    const savedPlan = o.defaults?.machineId === mine.id ? o.defaults.profileId : null;
+    if (savedPlan && plans.some((p) => p.id === savedPlan)) return { machineId: mine.id, profileId: savedPlan };
+    const ready = plans.filter((p) => !p.overLimit && !(p.cooldownUntil && p.cooldownUntil > o.now)).sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
+    return { machineId: mine.id, profileId: ready[0]?.id ?? "" };
+  }
+  const saved = fit.find((m) => m.id === o.defaults?.machineId) ?? fit[0];
+  if (!saved) return { machineId: "", profileId: "" };
+  return { machineId: saved.id, profileId: saved.id === o.defaults?.machineId ? (o.defaults?.profileId ?? "") : "" };
+}
+
 /** A reply that is still waiting for its machine or being written. */
 export const isLiveReply = (m: Pick<ChatMessage, "status">): boolean => m.status === "pending" || m.status === "running";
 

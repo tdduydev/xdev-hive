@@ -16,9 +16,12 @@ const source = agentSource(config.machine, process.env);
 const run = readRun(process.env.HIVE_RUN);
 // On a hub, the hub decides the label and the account from the token; without one, this machine's user is the person.
 const local: Partial<Actor> = config.mode === "local" ? { agent, onBehalf: os.userInfo().username } : {};
+// HIVE_CHAT_REPLY: the app's leader chat in local mode (roadmap 48) writes that reply, so it gets the leader's
+// proposals instead of the board. On a hub the reply's token says so, never a variable.
+const chatReply = config.mode === "local" && /^[1-9]\d{0,15}$/.test(process.env.HIVE_CHAT_REPLY ?? "") ? Number(process.env.HIVE_CHAT_REPLY) : undefined;
 // HIVE_READONLY=1: set by the runner for profiles marked read-only.
 const readOnly = process.env.HIVE_READONLY === "1";
-const actor: Actor = { name, role: "agent", source, ...local, ...(run ? { run } : {}) };
+const actor: Actor = { name, role: "agent", source, ...local, ...(run ? { run } : {}), ...(chatReply ? { chatReply } : {}) };
 const server = createHiveMcpServer(backend, actor, { defaultProject: process.env.HIVE_PROJECT, readOnly });
 await server.connect(new StdioServerTransport());
 console.error(`[xdev-hive] MCP ready (${config.mode} mode) as ${name}`);

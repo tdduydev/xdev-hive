@@ -48,6 +48,8 @@ import {
   type HiveBackend,
   type LoginStatus,
   type PlanUsage,
+  type ChatRequest,
+  type Machine,
   type MachineCommand,
   type MachineTools,
   type ProfileChange,
@@ -216,6 +218,10 @@ export interface RunnerOptions {
   afterReport?: (run: AgentRun) => Promise<void>;
   /** Called after every successful heartbeat. */
   onHub?: (update: HubUpdate) => void;
+  /** A chat reply this machine wrote ended, cancelled ones apart (the app tells its user, roadmap 48). */
+  onChat?: (req: ChatRequest, status: "done" | "failed") => void;
+  /** Local mode: a chat message's file from this machine's database (SqliteHive.chatFile). */
+  chatFile?: (id: number) => Uint8Array | null;
   /**
    * Hub mode: syncs a project as the Projects page's Đồng bộ does (context into the repo, the repo's docs into Hive),
    * for a sync request from the Context agent page (roadmap 22n). Without it, sync requests are left to expire.
@@ -334,8 +340,8 @@ export class Runner {
   readonly #host: RunnerHost;
   /** CLIs being upgraded (roadmap 33): their profiles take no new run until it is done. */
   readonly #held = new Set<AgentKind>();
-  readonly #opts: Required<Omit<RunnerOptions, "onEvent" | "afterFinish" | "afterReport" | "onHub" | "sync">> &
-    Pick<RunnerOptions, "onEvent" | "afterFinish" | "afterReport" | "onHub" | "sync">;
+  readonly #opts: Required<Omit<RunnerOptions, "onEvent" | "afterFinish" | "afterReport" | "onHub" | "sync" | "onChat" | "chatFile">> &
+    Pick<RunnerOptions, "onEvent" | "afterFinish" | "afterReport" | "onHub" | "sync" | "onChat" | "chatFile">;
   /** Sync requests taken (roadmap 22n): the hub sends one until it hears "running", which may cross a heartbeat. */
   readonly #syncsTaken = new Set<number>();
   readonly #syncs = new Set<Promise<void>>();
@@ -429,6 +435,9 @@ export class Runner {
         env: () => this.#host.env(),
         hubUrl: () => this.#host.hub?.()?.url ?? null,
         ...(this.#host.download ? { download: (url: string, token: string) => this.#host.download!(url, token) } : {}),
+        local: () => this.#host.mode() === "local",
+        localFile: (id) => this.#opts.chatFile?.(id) ?? null,
+        onFinished: (req, status) => this.#opts.onChat?.(req, status),
         // As the Board would see it: signed out, resting (here or on the hub), or at its plan's stop threshold.
         unavailable: (id) => {
           const p = this.profileStatuses().find((x) => x.id === id);
@@ -951,10 +960,12 @@ export class Runner {
 
   /**
    * Hub mode, taking runs from the hub: asks for chat replies to write between heartbeats, so the web chat answers
-   * within seconds. A hub without chat.poll gets asked no more (its heartbeats carry the replies).
+   * within seconds. A hub without chat.poll gets asked no more (its heartbeats carry the replies). In local mode the
+   * app's own chat (roadmap 48): this database's replies, for the machine localChatMachine() describes.
    */
   async pollChats(): Promise<number> {
-    if (this.#host.mode() !== "hub" || !this.#host.settings().acceptHubRuns || this.#chatPollOff) return 0;
+    const hub = this.#host.mode() === "hub";
+    if ((hub && !this.#host.settings().acceptHubRuns) || this.#chatPollOff) return 0;
     try {
       const requests = await this.#host.backend().call("chat.poll", {}, this.#runnerActor());
       this.#chats.take(requests);
@@ -977,6 +988,28 @@ export class Runner {
   /** Resolves once the ask being written has ended. For tests. */
   settleAssists(): Promise<void> {
     return this.#assists.settle();
+  }
+
+  /**
+   * In local mode, this machine as the local database's chat sees it (SqliteHive.setChatMachine): its Claude
+   * profiles and projects as a heartbeat would report them, taking runs, since its chat has no other machine.
+   */
+  localChatMachine(): Machine | null {
+    if (this.#host.mode() !== "local") return null;
+    return {
+      id: this.#runnerActor().name,
+      machine: this.#host.machine(),
+      version: this.#opts.version,
+      lastSeen: this.#iso(),
+      online: true,
+      duplicate: false,
+      runs: [],
+      profiles: this.#host.report?.().profiles ?? [],
+      projects: this.#host.projects().map((p) => p.name),
+      acceptsRuns: true,
+      owner: null,
+      profileChanges: [],
+    };
   }
 
   /** Resolves once the chat replies started so far have ended. For tests. */
