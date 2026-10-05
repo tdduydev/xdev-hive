@@ -1,6 +1,8 @@
 // xDev Hive hub: shared docs, memory and tasks for a team, plus MCP over HTTP.
 //   HIVE_PORT=7788 HIVE_HOST=127.0.0.1 HIVE_DB=./data/hub.db
 //   HIVE_ALLOWED_HOSTS=hive.xdev.asia   (required behind a reverse proxy / public hostname)
+//   HIVE_LAN_HOSTS=10.86.140.52,my-server (names and addresses the hub also answers to on the LAN, see
+//     deploy/compose.lan.yaml; they come after HIVE_ALLOWED_HOSTS, so the public hostname stays the hub's own URL)
 //   HIVE_MEMORY_APPROVAL=off            (memory from agents is visible without admin approval)
 //   HIVE_MEMORY_STALE_DAYS=90           (memory no agent used for this long is left out of agents' searches; 0 = never)
 //   HIVE_PUBLIC_URL=https://hive.xdev.asia (links in webhook messages; default: https:// + the first allowed host)
@@ -75,7 +77,7 @@ if (users.count() === 0) {
   console.log(`\n  First admin account: ${username}\n  Temporary password (shown once; the first sign-in asks for a new one):\n\n  ${password}\n`);
 }
 
-const allowedHosts = allowedHostsFor(process.env.HIVE_ALLOWED_HOSTS, host);
+const allowedHosts = allowedHostsFor(process.env.HIVE_ALLOWED_HOSTS, host, process.env.HIVE_LAN_HOSTS);
 
 const publicHost = allowedHosts?.find((h) => !["localhost", "127.0.0.1", "::1", "[::1]"].includes(h));
 // || : compose passes an unset variable as "".

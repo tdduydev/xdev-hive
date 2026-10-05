@@ -90,12 +90,27 @@ const OIDC_PATH = "/api/auth/oidc";
 const CSRF_HEADER = "x-hive-csrf";
 
 /**
- * Host header allow-list from HIVE_ALLOWED_HOSTS. Loopback names are always accepted, so container health
- * checks and a proxy on the same host work: DNS rebinding sends the attacker's hostname, never these.
- * Undefined (no check) only when nothing is configured and the hub listens beyond loopback.
+ * One entry of the allow-list as a hostname: the check compares the Host header's hostname, so an entry
+ * written with a port (10.86.140.52:7780, the address a LAN browser shows) could never match. What the URL
+ * parser refuses stays as it is, so a typo fails the check instead of quietly disappearing from the list.
  */
-export function allowedHostsFor(configured: string | undefined, bindHost: string): string[] | undefined {
-  const list = configured?.split(",").map((h) => h.trim()).filter(Boolean) ?? [];
+function hostnameOf(entry: string): string {
+  try {
+    return new URL(`http://${entry}`).hostname;
+  } catch {
+    return entry;
+  }
+}
+
+/**
+ * Host header allow-list from HIVE_ALLOWED_HOSTS, plus the LAN names and addresses of HIVE_LAN_HOSTS
+ * (roadmap 43). Loopback names are always accepted, so container health checks and a proxy on the same
+ * host work: DNS rebinding sends the attacker's hostname, never these.
+ * Undefined (no check) only when nothing is configured and the hub listens beyond loopback.
+ * The public hostname comes first: the hub's own URL is the first name of this list (server.ts).
+ */
+export function allowedHostsFor(configured: string | undefined, bindHost: string, lan?: string): string[] | undefined {
+  const list = [configured, lan].flatMap((v) => v?.split(",").map((h) => h.trim()).filter(Boolean) ?? []).map(hostnameOf);
   if (list.length) return [...new Set([...list, ...LOOPBACK_HOSTS])];
   return ["127.0.0.1", "localhost", "::1"].includes(bindHost) ? LOOPBACK_HOSTS : undefined;
 }

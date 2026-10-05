@@ -1,7 +1,7 @@
 # Hub behind Caddy (automatic HTTPS). From the repo root:
 #   HIVE_HOSTNAME=hive.example.com docker compose -f deploy/compose.yaml up -d --build
 #   docker compose -f deploy/compose.yaml logs hub    # first start prints the admin's temporary password
-# Behind a Cloudflare Tunnel instead of Caddy: see compose.tunnel.yaml.
+# Behind a Cloudflare Tunnel instead of Caddy: see compose.tunnel.yaml. A port for the LAN too: compose.lan.yaml.
 # DNS for HIVE_HOSTNAME must point here and ports 80/443 must be reachable for the certificate.
 # Memory search by meaning: COMPOSE_PROFILES=embed and HIVE_EMBED_URL=http://ollama:11434/v1 in deploy/.env
 # start Ollama below (deploy/update.sh pulls HIVE_EMBED_MODEL, default bge-m3). Any OpenAI-compatible
@@ -12,7 +12,10 @@ services:
     build: ..
     restart: unless-stopped
     environment:
-      HIVE_ALLOWED_HOSTS: ${HIVE_HOSTNAME:?set HIVE_HOSTNAME, e.g. hive.example.com}
+      # The public hostname. Empty only for a hub that lives on the LAN alone (compose.lan.yaml adds its
+      # names in HIVE_LAN_HOSTS): compose reads this file before any override, so a required variable here
+      # would make that deploy impossible. deploy/update.sh asks for the hostname when there is no LAN port.
+      HIVE_ALLOWED_HOSTS: ${HIVE_HOSTNAME:-}
       HIVE_BOOTSTRAP_TOKEN: ${HIVE_BOOTSTRAP_TOKEN:-}
       # Caddy terminates TLS: Secure session cookies, client address for sign-in throttling.
       HIVE_TRUST_PROXY: "1"
@@ -80,7 +83,8 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      HIVE_HOSTNAME: ${HIVE_HOSTNAME}
+      # Caddy's site address: this service only makes sense with a public hostname, so never start it without one.
+      HIVE_HOSTNAME: ${HIVE_HOSTNAME:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
