@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
@@ -18,7 +18,7 @@ import { Runner, type HubUpdate, type RunnerEvent, type RunnerHost, type RunnerO
 import { chatArgs, leaderBrief, leaderSettings } from "#desktop/main/runner/chat.ts";
 import { assistSettings, globRegExp, parseAssist, readRepoFiles } from "#desktop/main/runner/assist.ts";
 import { setMainLocale, tr } from "#desktop/main/i18n.ts";
-import { describeBranch } from "#desktop/main/runner/worktree.ts";
+import { describeBranch, hasBranch, remoteStart } from "#desktop/main/runner/worktree.ts";
 import { pickProfile, pickWithReason, waitingReason, type ProfileLoad } from "#desktop/main/runner/schedule.ts";
 import { syncProject } from "#desktop/main/sync.ts";
 import { readSyncOutcome } from "@xdev-hive/core";
@@ -118,6 +118,8 @@ async function setup(
     // Chat replies are asked for by hand (pollChats) and reported quickly.
     chatPollMs: 0,
     chatProgressMs: 50,
+    // A broken remote must not make a test wait out the real 5 s + 20 s between fetch tries.
+    fetchRetryMs: [],
   });
   if (!machine.hive) await hive.call("tasks.create", { id: "T-1", project: "demo", title: "Thêm trang cài đặt" }, admin);
   const calls = () =>
@@ -129,6 +131,26 @@ async function setup(
       : [];
   const task = async () => (await hive.call("tasks.list", { project: "demo" }, admin)).find((t) => t.id === "T-1")!;
   return { repo, hive, runner, dataDir, calls, task, hubUpdates, record };
+}
+
+/**
+ * Gives `repo` a bare remote that is one merge ahead of it: what every machine's checkout looks like once someone
+ * merged the task this one depends on. Returns the remote's folder (rename it away to make a fetch fail) and the sha.
+ */
+function teamAhead(repo: string): { origin: string; merged: string } {
+  const origin = tmp("origin");
+  git(origin, "init", "-q", "--bare", "-b", "main");
+  git(repo, "remote", "add", "origin", origin);
+  git(repo, "push", "-q", "origin", "main");
+  const team = tmp("team");
+  git(team, "clone", "-q", origin, ".");
+  git(team, "config", "user.email", "t@example.com");
+  git(team, "config", "user.name", "Test");
+  writeFileSync(path.join(team, "merged.txt"), "T-0\n");
+  git(team, "add", ".");
+  git(team, "commit", "-qm", "T-0 merged");
+  git(team, "push", "-q", "origin", "main");
+  return { origin, merged: git(team, "rev-parse", "HEAD") };
 }
 
 async function until(check: () => boolean, ms = 10_000) {
@@ -916,6 +938,82 @@ describe("Runner", () => {
     assert.ok(existsSync(path.join(done.worktree!, "merged.txt")));
     assert.match(runner.log(run.id), new RegExp(`# .*origin/main \\(${merged.slice(0, 7)}`));
     assert.equal(git(repo, "rev-parse", "HEAD"), local, "the user's checkout was not moved");
+  });
+
+  it("fetches again after a failed try, and tells a lasting failure apart from a repo without a remote", async () => {
+    const { repo } = await setup([profile("claude-1", "claude", 10, "ok")]);
+    assert.equal((await remoteStart(repo, undefined)).error, null, "a repo with no remote is not a failure");
+    const origin = tmp("origin");
+    git(origin, "init", "-q", "--bare", "-b", "main");
+    git(repo, "remote", "add", "origin", origin);
+    git(repo, "push", "-q", "origin", "main");
+    const off = `${origin}.off`;
+
+    // Out of reach for the first try, back by the second: remoteStart waits, tries again and gets the remote's branch.
+    renameSync(origin, off);
+    const back = setTimeout(() => renameSync(off, origin), 50);
+    const again = await remoteStart(repo, "main", { retryMs: [300] });
+    clearTimeout(back);
+    if (existsSync(off)) renameSync(off, origin);
+    assert.equal(again.error, null);
+    assert.equal(again.ref, "refs/remotes/origin/main");
+
+    renameSync(origin, off);
+    const never = await remoteStart(repo, "main", { retryMs: [1, 1] });
+    assert.equal(never.ref, null, "no ref to start from, so the caller must not quietly use HEAD");
+    assert.equal(never.remote, "origin");
+    assert.ok(never.error, "git's own words, so the run's note can say why");
+    renameSync(off, origin);
+  });
+
+  it("puts a run back in the queue instead of starting its branch at a stale HEAD", async () => {
+    const { repo, runner } = await setup([profile("claude-1", "claude", 10, "ok")]);
+    const { origin, merged } = teamAhead(repo);
+    const off = `${origin}.off`;
+    // The remote is out of reach, as it was for run R-2ff553 on 5 Oct (a passing failure, BUG-stale-base).
+    renameSync(origin, off);
+
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await until(() => runner.store.get(run.id)!.status === "queued" && /Đang chờ mạng hoặc remote/.test(runner.list()[0]!.error ?? ""));
+    assert.equal(runner.store.get(run.id)!.profileId, null, "the slot is free again while it waits");
+    assert.equal(hasBranch(repo, "ai/T-1"), false, "no branch was cut from the checkout's old HEAD");
+    assert.match(unstamp(runner.log(run.id)), /^# Đang chờ mạng hoặc remote.*thử lại lần 1\/5\.$/m);
+
+    renameSync(off, origin);
+    await runner.settle();
+    const done = runner.store.get(run.id)!;
+    assert.equal(done.status, "succeeded");
+    assert.equal(done.baseSha, merged, "it starts from what the remote has, not from the three-day-old checkout");
+    assert.ok(existsSync(path.join(done.worktree!, "merged.txt")));
+  });
+
+  it("fails a run, with a reason in the user's language, when the remote stays out of reach", async () => {
+    const { repo, runner, dataDir } = await setup([profile("claude-1", "claude", 10, "ok")]);
+    const { origin } = teamAhead(repo);
+    renameSync(origin, `${origin}.off`);
+
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const done = runner.store.get(run.id)!;
+    assert.equal(done.status, "failed");
+    assert.match(done.error ?? "", /^Không lấy được bản mới từ origin sau 5 lần thử/);
+    assert.equal(hasBranch(repo, "ai/T-1"), false, "the bug: a branch cut here starts days behind main");
+    assert.equal(existsSync(path.join(dataDir, "worktrees", "demo", "T-1")), false);
+  });
+
+  it("goes on from an existing task branch when the remote is out of reach", async () => {
+    const { repo, runner } = await setup([profile("claude-1", "claude", 10, "ok")]);
+    const { origin } = teamAhead(repo);
+    // A follow-up or review of a task that already has a branch: nothing to fetch, so a broken remote changes nothing.
+    const first = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    assert.equal(runner.store.get(first.id)!.status, "succeeded");
+    renameSync(origin, `${origin}.off`);
+
+    const second = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    assert.equal(runner.store.get(second.id)!.status, "succeeded");
+    assert.equal(runner.store.get(second.id)!.branch, "ai/T-1");
   });
 
   it("reports back to a hub that renames actors", async () => {
