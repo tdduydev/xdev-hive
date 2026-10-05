@@ -53,34 +53,70 @@ const isWorktreeOf = (repo: string, dir: string) =>
     .filter((l) => l.startsWith("worktree "))
     .some((l) => real(l.slice(9)) === real(dir));
 
+export interface RemoteStartOptions {
+  timeoutMs?: number;
+  /**
+   * How long to wait before each further try when the remote cannot be reached; `[]` (the default) tries once.
+   * A fetch fails on a passing blip as often as on a real outage, so a caller that must not start from stale
+   * code (the runner) passes a short wait then a longer one.
+   */
+  retryMs?: number[];
+}
+
+export interface RemoteStart {
+  /** The remote-tracking ref a new branch should start at; null when there is no remote or it could not be reached. */
+  ref: string | null;
+  /** One line for the run's log, whichever of the three happened. */
+  note: string;
+  /** Git's own words when the remote could not be reached; null when it worked, and when the repo has no remote. */
+  error: string | null;
+  /** The remote it tried; null when the repo has none. */
+  remote: string | null;
+}
+
+const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 /**
  * Where a new task branch starts: the target branch as the remote has it now (`targetBranch`, else the remote's
  * default), so a task queued right after the one it depends on was merged on GitHub or GitLab gets that code.
- * Only fetches: the user's checkout (its branch, its files) stays as it is. No remote, or a fetch that fails:
- * `ref` is null and the branch starts at the checkout's HEAD, as before. `note` goes to the run's log either way.
+ * Only fetches: the user's checkout (its branch, its files) stays as it is. No remote: `ref` is null and the branch
+ * starts at the checkout's HEAD. A fetch that keeps failing also leaves `ref` null, but sets `error`: a caller that
+ * would otherwise build on a checkout days behind (BUG-stale-base) tells the two apart by it. `note` goes to the log.
  */
-export async function remoteStart(repo: string, target: string | undefined, timeoutMs = 30_000): Promise<{ ref: string | null; note: string }> {
+export async function remoteStart(repo: string, target: string | undefined, opts: RemoteStartOptions = {}): Promise<RemoteStart> {
+  const { timeoutMs = 30_000, retryMs = [] } = opts;
   const head = tryGit(repo, ["rev-parse", "--short", "HEAD"]) ?? "?";
   const remotes = (tryGit(repo, ["remote"]) ?? "").split("\n").filter(Boolean);
-  if (!remotes.length) return { ref: null, note: tr("runNote.startNoRemote", { sha: head }) };
+  if (!remotes.length) return { ref: null, note: tr("runNote.startNoRemote", { sha: head }), error: null, remote: null };
   const remote = remotes.includes("origin") ? "origin" : remotes[0]!;
   // Never wait on a password prompt: the app has no terminal to show it in.
   const env = { GIT_TERMINAL_PROMPT: "0" };
-  try {
-    let branch = target;
-    if (!branch) {
-      // The clone's record of the remote's default branch, else the remote itself.
-      const known = tryGit(repo, ["symbolic-ref", "--quiet", "--short", `refs/remotes/${remote}/HEAD`]);
-      branch = known?.startsWith(`${remote}/`)
-        ? known.slice(remote.length + 1)
-        : (await gitAsync(repo, ["ls-remote", "--symref", remote, "HEAD"], env, timeoutMs)).match(/^ref: refs\/heads\/(\S+)\s+HEAD$/m)?.[1];
-      if (!branch) throw new Error(`${remote} names no default branch`);
+  let reason = "";
+  for (let attempt = 0; ; attempt++) {
+    try {
+      let branch = target;
+      if (!branch) {
+        // The clone's record of the remote's default branch, else the remote itself.
+        const known = tryGit(repo, ["symbolic-ref", "--quiet", "--short", `refs/remotes/${remote}/HEAD`]);
+        branch = known?.startsWith(`${remote}/`)
+          ? known.slice(remote.length + 1)
+          : (await gitAsync(repo, ["ls-remote", "--symref", remote, "HEAD"], env, timeoutMs)).match(/^ref: refs\/heads\/(\S+)\s+HEAD$/m)?.[1];
+        if (!branch) throw new Error(`${remote} names no default branch`);
+      }
+      const ref = `refs/remotes/${remote}/${branch}`;
+      await gitAsync(repo, ["fetch", "--quiet", "--no-tags", remote, `+refs/heads/${branch}:${ref}`], env, timeoutMs);
+      return {
+        ref,
+        note: tr("runNote.startRemote", { ref: `${remote}/${branch}`, sha: git(repo, ["rev-parse", "--short", `${ref}^{commit}`]) }),
+        error: null,
+        remote,
+      };
+    } catch (err) {
+      reason = gitErrorText(err);
+      const pause = retryMs[attempt];
+      if (pause === undefined) return { ref: null, note: tr("runNote.startFetchFailed", { remote, reason, sha: head }), error: reason, remote };
+      await wait(pause);
     }
-    const ref = `refs/remotes/${remote}/${branch}`;
-    await gitAsync(repo, ["fetch", "--quiet", "--no-tags", remote, `+refs/heads/${branch}:${ref}`], env, timeoutMs);
-    return { ref, note: tr("runNote.startRemote", { ref: `${remote}/${branch}`, sha: git(repo, ["rev-parse", "--short", `${ref}^{commit}`]) }) };
-  } catch (err) {
-    return { ref: null, note: tr("runNote.startFetchFailed", { remote, reason: gitErrorText(err), sha: head }) };
   }
 }
 
