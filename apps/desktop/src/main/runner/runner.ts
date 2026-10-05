@@ -265,6 +265,8 @@ const TAIL_BYTES = 20_000;
 const JSON_BYTES = 2_000_000;
 const keepTail = (s: string, max = TAIL_BYTES) => (s.length > max ? s.slice(-max) : s);
 const clip = (s: string, n: number) => (s.length > n ? `…${s.slice(-(n - 1))}` : s);
+/** Keeps the head, unlike `clip`: what a task's note says first (its "Xong khi") is what a later run needs. */
+const clipHead = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const TERMINAL: RunStatus[] = ["succeeded", "failed", "rate_limited", "cancelled"];
 
 /**
@@ -274,6 +276,39 @@ const TERMINAL: RunStatus[] = ["succeeded", "failed", "rate_limited", "cancelled
  * really offline keeps a task held.
  */
 const FETCH_TRIES = 5;
+
+/** tasks.update refuses a longer note. */
+const NOTE_MAX = 2000;
+/** Room a task's own note always gets back from a long run block: enough for a "Xong khi" list. */
+const NOTE_KEEP = 900;
+/** First line of the block a run leaves on a task: the next run replaces that block instead of stacking on it. */
+const RUN_MARK = "▸ run ";
+/** Blank lines around it, or Markdown would read "---" under a line of text as a heading. */
+const NOTE_SEP = "\n\n---\n\n";
+
+/** A note without the block an earlier run left on top of it. */
+function withoutRunBlock(note: string): string {
+  if (!note.startsWith(RUN_MARK)) return note;
+  const lines = note.split("\n");
+  const sep = lines.findIndex((l) => l === "---");
+  // No separator: the whole note was that block.
+  return sep === -1 ? "" : lines.slice(sep + 1).join("\n").trim();
+}
+
+/**
+ * What a run writes on a task it did not finish: its own block first, then the note the task already had. The task's
+ * note carries its brief and its "Xong khi", which a run that fails or runs out of quota must not take away
+ * (BUG-note-wipe); over the limit the END of that note goes, and the block of the run before is replaced, so three
+ * failures in a row still leave the brief readable.
+ */
+export function taskNote(block: string, note: string | null): string {
+  // A "---" line inside the block would read as the separator; "- - -" is the same rule in Markdown.
+  const body = block.replace(/^-{3,}$/gm, "- - -").trim();
+  const kept = withoutRunBlock((note ?? "").trim());
+  if (!kept) return clipHead(body, NOTE_MAX);
+  const head = clipHead(body, NOTE_MAX - NOTE_SEP.length - Math.min(kept.length, NOTE_KEEP));
+  return head + NOTE_SEP + clipHead(kept, NOTE_MAX - head.length - NOTE_SEP.length);
+}
 
 /** The latest attempt of each candidate of a group (a rotation adds a run), in candidate order. */
 function latestCandidates(group: AgentRun[]): AgentRun[] {
@@ -2010,19 +2045,25 @@ export class Runner {
 
     if (run.role === "review") {
       if (run.status !== "succeeded" || !run.summary) return;
-      const note = clip(`${task.note ? `${task.note}\n\n` : ""}Review (${sig}):\n${run.summary}`, 2000);
+      const review = clipHead(`Review (${sig}):\n${run.summary}`, NOTE_MAX);
+      const kept = (task.note ?? "").trim();
+      const room = NOTE_MAX - review.length - 2;
+      // The review reads under the note, as before; what does not fit is cut from the end of the note, not from its head.
+      const note = kept && room > 0 ? `${clipHead(kept, room)}\n\n${review}` : review;
       await backend.call("tasks.update", { id: run.taskId, status: task.status, note }, actor);
       return;
     }
     const owner = this.#owners.get(run.id) ?? actor.name;
     this.#owners.delete(run.id);
     if (task.status !== "doing" || task.owner !== owner) return;
-    const note =
+    const block =
       run.status === "succeeded"
-        ? `${run.summary ?? "Agent kết thúc không để lại tóm tắt."}\n\n${branch} ${sig}.`
+        ? `${run.summary ?? "Agent kết thúc không để lại tóm tắt."}\n\n${branch}`
         : run.status === "rate_limited"
-          ? `${profile.id} hết quota (${run.error}). Hive chuyển sang gói khác. ${branch} ${sig}.`
-          : `${sig} ${run.status}: ${run.error ?? ""}. ${branch}`;
-    await backend.call("tasks.update", { id: run.taskId, status: run.status === "succeeded" ? "review" : "todo", note: clip(note, 2000) }, actor);
+          ? `${profile.id} hết quota (${run.error}). Hive chuyển sang gói khác. ${branch}`
+          : `${run.error ?? ""} ${branch}`;
+    // The task keeps what it said: the agent did not report, so the next run starts from this note (BUG-note-wipe).
+    const note = taskNote(`${RUN_MARK}${run.id} · ${profile.id} · ${run.status}\n${block.trim()}`, task.note);
+    await backend.call("tasks.update", { id: run.taskId, status: run.status === "succeeded" ? "review" : "todo", note }, actor);
   }
 }
