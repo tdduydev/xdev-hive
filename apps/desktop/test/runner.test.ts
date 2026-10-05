@@ -1666,12 +1666,13 @@ describe("best-of-n", () => {
     const events: RunnerEvent[] = [];
     const finished: Array<{ id: string; branch: string | null }> = [];
     const afterFinish = async (r: { id: string; branch: string | null }) => void finished.push({ id: r.id, branch: r.branch });
-    const { repo, runner, calls, task, dataDir } = await setup(
+    const { repo, runner, hive, calls, task, dataDir } = await setup(
       [profile("claude-a", "claude", 1, "ok"), profile("codex-b", "codex", 2, "ok"), judge()],
       {},
       "local",
       { onEvent: (e) => events.push(e), afterFinish },
     );
+    await hive.call("tasks.update", { id: "T-1", status: "todo", note: BRIEF }, admin);
     const first = await runner.enqueue({ project: "demo", taskId: "T-1", candidates: 2 });
     assert.deepEqual([first.bestOf!.n, first.bestOf!.of, first.bestOf!.pick], [1, 2, null]);
     assert.equal(first.bestOf!.from, git(repo, "rev-parse", "HEAD"));
@@ -1715,6 +1716,9 @@ describe("best-of-n", () => {
     assert.equal(t.owner, null);
     assert.match(t.note ?? "", /Best-of-2: giữ bản c2 \(run R-[0-9a-f]+ · codex-b\), giám khảo gemini-j \(run R-[0-9a-f]+\)\. it tests the empty list\./);
     assert.match(t.note ?? "", /Branch ai\/T-1, 1 commit/);
+    // BUG-note-wipe-2: what the judge kept goes above the task's own brief, not in place of it.
+    assert.ok((t.note ?? "").startsWith(`▸ run ${c2!.id} · codex-b · succeeded`), t.note ?? "");
+    assert.ok((t.note ?? "").endsWith(BRIEF), t.note ?? "");
 
     assert.deepEqual(finished, [{ id: c2!.id, branch: "ai/T-1" }], "the MR hook sees only the kept candidate, on the task's branch");
     assert.deepEqual(
@@ -1748,49 +1752,76 @@ describe("best-of-n", () => {
   });
 
   it("keeps the only candidate that finished, without a judge", async () => {
-    const { runner, task } = await setup([profile("claude-a", "claude", 1, "ok"), profile("codex-b", "codex", 2, "fail"), judge()]);
+    const { runner, hive, task } = await setup([profile("claude-a", "claude", 1, "ok"), profile("codex-b", "codex", 2, "fail"), judge()]);
+    await hive.call("tasks.update", { id: "T-1", status: "todo", note: BRIEF }, admin);
     const first = await runner.enqueue({ project: "demo", taskId: "T-1", candidates: 2 });
     await runner.settle();
     const runs = runner.store.group(first.bestOf!.group);
     assert.equal(runs.length, 2, "no judge");
     assert.deepEqual([runs[0]!.bestOf!.pick, runs[0]!.bestOf!.reason], [1, "Chỉ bản này chạy xong."]);
-    assert.equal((await task()).status, "review");
+    const t = await task();
+    assert.equal(t.status, "review");
+    // BUG-note-wipe-2: a candidate is told not to move the task, so keeping it must not drop the task's own brief.
+    const note = t.note ?? "";
+    assert.ok(note.startsWith(`▸ run ${runs[0]!.id} · claude-a · succeeded`), note);
+    assert.match(note, /Best-of-2: giữ bản c1 /);
+    assert.ok(note.endsWith(BRIEF), note);
+    assert.ok(note.length <= 2000, `${note.length} characters`);
   });
 
   it("gives the task back when no candidate finished", async () => {
     const events: RunnerEvent[] = [];
-    const { runner, task } = await setup([profile("claude-a", "claude", 1, "fail"), profile("codex-b", "codex", 2, "fail"), judge()], {}, "local", {
+    const { runner, hive, task } = await setup([profile("claude-a", "claude", 1, "fail"), profile("codex-b", "codex", 2, "fail"), judge()], {}, "local", {
       onEvent: (e) => events.push(e),
     });
+    await hive.call("tasks.update", { id: "T-1", status: "todo", note: BRIEF }, admin);
     await runner.enqueue({ project: "demo", taskId: "T-1", candidates: 2 });
     await runner.settle();
     const t = await task();
     assert.equal(t.status, "todo");
     assert.equal(t.owner, null);
-    assert.match(t.note ?? "", /Best-of-2: không bản nào chạy xong\.\nc1 \(claude-a\) failed: .*\nc2 \(codex-b\) failed: /);
+    const note = t.note ?? "";
+    assert.match(note, /Best-of-2: không bản nào chạy xong\.\nc1 \(claude-a\) failed: .*\nc2 \(codex-b\) failed: /);
+    // BUG-note-wipe-2: the task goes back to todo, so the next run has to find its "Xong khi" still there.
+    assert.ok(note.startsWith("▸ run "), note);
+    assert.ok(note.endsWith(BRIEF), note);
+    assert.ok(note.length <= 2000, `${note.length} characters`);
     assert.deepEqual(events.map((e) => e.type), ["finished"]);
     assert.ok(runner.list().every((r) => r.bestOf!.pick === 0), "decided: none kept");
   });
 
   it("waits for a person when the judge names no winner, then keeps the one they pick", async () => {
     const events: RunnerEvent[] = [];
-    const { repo, runner, task } = await setup(
+    const { repo, runner, hive, task } = await setup(
       [profile("claude-a", "claude", 1, "ok"), profile("codex-b", "codex", 2, "ok"), judge({ env: { FAKE_MODE: "review", FAKE_PICK: "none" } })],
       {},
       "local",
       { onEvent: (e) => events.push(e) },
     );
+    await hive.call("tasks.update", { id: "T-1", status: "todo", note: BRIEF }, admin);
     const first = await runner.enqueue({ project: "demo", taskId: "T-1", candidates: 2 });
     await runner.settle();
     assert.deepEqual(events.map((e) => e.type), ["judging", "undecided"]);
-    const [c1, c2] = runner.store.group(first.bestOf!.group);
+    const group = runner.store.group(first.bestOf!.group);
+    const [c1, c2] = group;
+    const judged = group.find((r) => r.bestOf!.n === 0)!;
     assert.equal(c1!.bestOf!.pick, null);
     assert.ok(existsSync(c1!.worktree!), "the candidates stay until someone picks");
-    assert.match((await task()).note ?? "", /chưa chọn được bản nào: báo cáo không có dòng Winner: c<n>\. Chọn tay một bản ở Board: c1 \(claude-a, ai\/T-1\+c1\), c2/);
+    const waiting = (await task()).note ?? "";
+    assert.match(waiting, /chưa chọn được bản nào: báo cáo không có dòng Winner: c<n>\. Chọn tay một bản ở Board: c1 \(claude-a, ai\/T-1\+c1\), c2/);
+    // BUG-note-wipe-2: whoever picks by hand reads the task's own brief, not only the judge's verdict.
+    assert.ok(waiting.startsWith(`▸ run ${judged.id} · gemini-j · succeeded`), waiting);
+    assert.ok(waiting.endsWith(BRIEF), waiting);
 
     await assert.rejects(runner.pick("R-none"), /Không có run/);
     const kept = await runner.pick(c1!.id);
     assert.deepEqual([kept.branch, kept.bestOf!.pick, kept.bestOf!.reason], ["ai/T-1", 1, "duy chọn tay."]);
+    // Picking replaces the judge's block instead of stacking a second one on it.
+    const picked = (await task()).note ?? "";
+    assert.equal(picked.match(/^▸ run /gm)?.length, 1, picked);
+    assert.ok(picked.startsWith(`▸ run ${c1!.id} · claude-a · succeeded`), picked);
+    assert.equal(picked.includes(judged.id), false, "the judge's block is gone, not kept above the new one");
+    assert.ok(picked.endsWith(BRIEF), picked);
     assert.equal(git(repo, "rev-parse", "ai/T-1"), git(repo, "rev-parse", "ai/T-1+c1"));
     assert.equal(existsSync(c2!.worktree!), false);
     assert.equal((await task()).status, "review");

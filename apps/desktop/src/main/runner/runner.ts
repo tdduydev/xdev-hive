@@ -1942,11 +1942,13 @@ export class Runner {
     const task = await this.#groupTask(kept, b.group);
     if (task) {
       const by = judge ? `, giám khảo ${judge.profileId ?? "?"} (run ${judge.id})` : "";
-      const note =
+      const block =
+        `${RUN_MARK}${kept.id} · ${kept.profileId ?? "?"} · ${kept.status}\n` +
         `${kept.summary ?? "Agent kết thúc không để lại tóm tắt."}\n\n` +
         `Best-of-${b.of}: giữ bản c${b.n} (run ${kept.id} · ${kept.profileId ?? "?"})${by}. ${reason}\n` +
         `Branch ${kept.branch}, ${kept.commits} commit${kept.headSha ? ` (${kept.headSha})` : ""}.`;
-      await this.#host.backend().call("tasks.update", { id: kept.taskId, status: "review", note: clip(note, 2000) }, this.#runnerActor());
+      // The task keeps its brief and its "Xong khi": the candidates were told not to move the task (BUG-note-wipe).
+      await this.#host.backend().call("tasks.update", { id: kept.taskId, status: "review", note: taskNote(block, task.note) }, this.#runnerActor());
     }
     this.#owners.delete(b.group);
     let next: AgentRun | null = null;
@@ -1986,8 +1988,11 @@ export class Runner {
     const task = await this.#groupTask(judge, b.group);
     if (task) {
       const list = done.map((c) => `c${c.bestOf!.n} (${c.profileId ?? "?"}, ${c.branch ?? "?"})`).join(", ");
-      const note = `Best-of-${b.of}: giám khảo ${judge.profileId ?? "?"} (run ${judge.id}) chưa chọn được bản nào: ${why}. Chọn tay một bản ở Board: ${list}.`;
-      await this.#host.backend().call("tasks.update", { id: judge.taskId, status: "review", note: clip(note, 2000) }, this.#runnerActor());
+      const block =
+        `${RUN_MARK}${judge.id} · ${judge.profileId ?? "?"} · ${judge.status}\n` +
+        `Best-of-${b.of}: giám khảo ${judge.profileId ?? "?"} (run ${judge.id}) chưa chọn được bản nào: ${why}. Chọn tay một bản ở Board: ${list}.`;
+      // Whoever picks a candidate next reads the task's own note here, not just the judge's verdict (BUG-note-wipe).
+      await this.#host.backend().call("tasks.update", { id: judge.taskId, status: "review", note: taskNote(block, task.note) }, this.#runnerActor());
     }
     this.#owners.delete(b.group);
     this.#opts.onEvent?.({ type: "undecided", run: judge });
@@ -2002,8 +2007,9 @@ export class Runner {
     const task = await this.#groupTask(last, b.group);
     if (task) {
       const lines = finals.map((c) => `c${c.bestOf!.n} (${c.profileId ?? "?"}) ${c.status}: ${c.error ?? ""}`);
-      const note = `Best-of-${b.of}: không bản nào chạy xong.\n${lines.join("\n")}`;
-      await this.#host.backend().call("tasks.update", { id: last.taskId, status: "todo", note: clip(note, 2000) }, this.#runnerActor());
+      const block = `${RUN_MARK}${last.id} · ${last.profileId ?? "?"} · ${last.status}\nBest-of-${b.of}: không bản nào chạy xong.\n${lines.join("\n")}`;
+      // The task goes back to todo: the next run starts from this note, so its brief must still be there (BUG-note-wipe).
+      await this.#host.backend().call("tasks.update", { id: last.taskId, status: "todo", note: taskNote(block, task.note) }, this.#runnerActor());
     }
     this.#owners.delete(b.group);
     this.#opts.onEvent?.({ type: "finished", run: last });
