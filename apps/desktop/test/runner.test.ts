@@ -1553,7 +1553,8 @@ describe("Runner", () => {
       assert.match(reply.text, /^Answer: What failed\?\n\nFiles attached to this message.*\n- .*run\.log \(/s);
       assert.deepEqual(ended, [[sent.reply.id, "done"]], "the app hears the reply ended");
 
-      const call = a.chats()[0]!;
+      // setup() gives local mode no chats() helper, so read the fake agent's record the way leader() does.
+      const call = readFileSync(a.record, "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, any>).find((r) => typeof r.chat === "string")!;
       assert.deepEqual(call.files, { "run.log": "exit 1\n" }, "read from this machine's database");
       const mcp = JSON.parse(call.mcp)["mcpServers"]["xdev-hive"];
       assert.equal(mcp.url, undefined, "no hub");
