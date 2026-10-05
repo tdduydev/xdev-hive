@@ -1,0 +1,16 @@
+# The same hub on the LAN, over plain HTTP (roadmap 43): any Host on this port reaches it, the hub itself
+# checks the name against HIVE_ALLOWED_HOSTS + HIVE_LAN_HOSTS. The port here is the one inside the container;
+# compose.lan.yaml publishes it on ${HIVE_LAN_PORT:-7780} of the machine. http:// : no certificate, no ACME.
+http://:7780 {
+	# A machine on the LAN must not choose its own address or scheme: the hub trusts X-Forwarded-*
+	# (HIVE_TRUST_PROXY=1 in compose.yaml), so a made-up -For would get around the sign-in throttle of its
+	# real address, and -Proto: https would mark the session cookie Secure, which a http page never sends back.
+	# Dropped before the proxy, then set from the connection Caddy really has.
+	request_header -X-Forwarded-For
+	request_header -X-Forwarded-Proto
+	request_header -X-Forwarded-Host
+	reverse_proxy hub:7788 {
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}

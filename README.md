@@ -443,6 +443,7 @@ docker compose -f deploy/compose.yaml logs hub     # lần đầu in mật khẩ
 - [`Dockerfile`](Dockerfile): image chỉ gồm hub (core, mcp, web và UI đã build), không có mã desktop. Chạy bằng user `node`, dữ liệu ở `/data`, có `HEALTHCHECK` gọi `/api/health`.
 - [`deploy/compose.yaml`](deploy/compose.yaml): hub + Caddy (HTTPS tự động, cần DNS trỏ về máy và mở cổng 80/443). Không muốn dùng Caddy thì bỏ service `caddy`, publish cổng `7788` và đặt proxy của bạn phía trước, giữ nguyên Host header.
 - [`deploy/compose.tunnel.yaml`](deploy/compose.tunnel.yaml): máy đã có `cloudflared` (Cloudflare Tunnel) thì bỏ Caddy, hub chỉ nghe `127.0.0.1:7788`: `HIVE_HOSTNAME=hive.example.com docker compose -p xdev-hive -f deploy/compose.yaml -f deploy/compose.tunnel.yaml up -d --build hub`, rồi thêm Public Hostname trỏ về `http://localhost:7788` trên dashboard Cloudflare.
+- [`deploy/compose.lan.yaml`](deploy/compose.lan.yaml): thêm một cổng cho máy trong mạng nội bộ, đi thẳng không qua Internet (xem *Cổng LAN* dưới).
 - **Chỉ chạy 1 container cho mỗi database.** SQLite không chia sẻ file giữa nhiều replica. Muốn chịu tải lớn hơn thì chuyển sang Postgres (xem *Việc tiếp theo*).
 
 Không dùng Docker:
@@ -455,7 +456,8 @@ HIVE_HOST=0.0.0.0 HIVE_ALLOWED_HOSTS=hive.example.com HIVE_DB=/data/hub.db HIVE_
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
 | `HIVE_PORT` / `HIVE_HOST` | `7788` / `127.0.0.1` | Cổng và địa chỉ bind (image: `0.0.0.0`) |
-| `HIVE_ALLOWED_HOSTS` | localhost | Danh sách Host header hợp lệ (chống DNS rebinding). Bắt buộc khi có hostname công khai hoặc đặt sau reverse proxy. `localhost`/`127.0.0.1` luôn được chấp nhận (health check) |
+| `HIVE_ALLOWED_HOSTS` | localhost | Danh sách Host header hợp lệ (chống DNS rebinding). Bắt buộc khi có hostname công khai hoặc đặt sau reverse proxy. `localhost`/`127.0.0.1` luôn được chấp nhận (health check). Chỉ ghi tên hoặc IP, cổng (nếu có) được bỏ qua khi so |
+| `HIVE_LAN_HOSTS` | – | Tên và IP trong LAN hub cũng nhận, thêm vào sau `HIVE_ALLOWED_HOSTS` (xem *Cổng LAN*) |
 | `HIVE_DB` | `apps/web/data/hub.db` | File SQLite (image: `/data/hub.db`) |
 | `HIVE_MEMORY_APPROVAL` | bật | `off`: memory của agent hiện ngay, không cần duyệt |
 | `HIVE_MEMORY_STALE_DAYS` | `90` | Memory không agent nào dùng (và không ai ghi hay giữ lại) trong ngần này ngày bị coi là cũ: `memory_search` của agent bỏ qua, trang Memory vẫn hiện để xem lại. `0`: không bao giờ cũ |
@@ -473,6 +475,36 @@ HIVE_HOST=0.0.0.0 HIVE_ALLOWED_HOSTS=hive.example.com HIVE_DB=/data/hub.db HIVE_
 | `HIVE_OIDC_NAME` / `HIVE_OIDC_SCOPES` | `SSO` / `openid profile email` | Tên trên nút đăng nhập; scope xin nhà cung cấp |
 | `HIVE_SEAWEEDFS_URL` | tắt (compose: `http://seaweedfs:8888`) | Filer SeaweedFS để lưu ảnh và tệp của tài liệu thay vì trong database (xem *Ảnh và tệp của tài liệu*) |
 | `HIVE_SEAWEEDFS_PREFIX` | `/xdev-hive/doc-files` | Thư mục trong filer |
+
+### Cổng LAN (HTTP, tuỳ chọn)
+
+Máy trong cùng mạng nội bộ vào thẳng hub bằng IP hoặc tên máy, không vòng ra Internet. Vẫn là một hub, một database với địa chỉ công khai; chỉ thêm một Caddy nữa ([`deploy/Caddyfile.lan`](deploy/Caddyfile.lan)) đứng trước nó.
+
+Thêm vào `deploy/.env` rồi chạy `HIVE_LAN=1 bash deploy/update.sh`:
+
+```bash
+HIVE_LAN_HOSTS=192.0.2.52,linux-runner   # tên và IP mà máy trong LAN sẽ gõ (không kèm cổng)
+# HIVE_LAN_PORT=7780      # cổng trên máy chủ (mặc định 7780)
+# HIVE_LAN_BIND=0.0.0.0   # chỉ mở trên một card mạng: HIVE_LAN_BIND=192.0.2.52
+```
+
+Dùng được cùng Cloudflare Tunnel (`HIVE_TUNNEL=1 HIVE_LAN=1 bash deploy/update.sh`), cùng Caddy công khai, hoặc chỉ LAN. Chỉ LAN thì không cần tên miền: bỏ `HIVE_HOSTNAME`, service `caddy` (80/443) không chạy và không xin chứng chỉ nào — nhớ đặt `HIVE_PUBLIC_URL=http://192.0.2.52:7780` để link trong tin webhook trỏ đúng chỗ.
+
+- Máy trong LAN: app desktop → *Hub dùng chung* → URL `http://192.0.2.52:7780`; trình duyệt mở cùng địa chỉ. Đăng nhập web chạy như thường, cookie phiên không đặt `Secure` khi vào bằng `http`.
+- `HIVE_RELEASE_HUB=http://192.0.2.52:7780` đưa bản phát hành lên qua LAN, không qua tunnel.
+- SSO (OIDC) vẫn quay về `HIVE_PUBLIC_URL` công khai, nên máy đăng nhập SSO phải ra được địa chỉ đó. Đăng nhập bằng mật khẩu thì không cần.
+- Caddy của cổng LAN bỏ `X-Forwarded-For` / `-Proto` khách gửi và đặt lại theo kết nối thật, nên một máy trong LAN không khai man địa chỉ để lách giới hạn đăng nhập sai của địa chỉ nó.
+
+⚠️ **Cổng LAN không mã hoá**: token, mật khẩu và mọi thứ khác đi dạng rõ trong mạng nội bộ, ai bắt được gói tin cũng đọc được. Chỉ bật trong mạng tin được, và thu hẹp lại:
+
+- `HIVE_LAN_BIND=192.0.2.52` để cổng chỉ nằm trên card mạng LAN, không mở ra mọi địa chỉ của máy.
+- Giới hạn theo dải máy. Docker publish cổng bằng iptables trước ufw, nên `ufw deny 7780` thường không chặn được cổng đã publish; luật đặt vào chain `DOCKER-USER` thì có:
+
+  ```bash
+  sudo iptables -I DOCKER-USER '!' -s 192.0.2.0/24 -p tcp --dport 7780 -j DROP
+  ```
+
+  Cổng trong luật này là cổng **bên trong container** (luôn `7780`, luật chạy sau DNAT), không phải `HIVE_LAN_PORT`. Luật iptables mất khi khởi động lại máy nếu không lưu (`iptables-persistent`).
 
 ### Tìm memory theo nghĩa (tuỳ chọn)
 
@@ -581,7 +613,7 @@ Hub nhận mọi nhà cung cấp OpenID Connect: GitLab, Microsoft Entra, Google
   - đọc lại từng tệp của tài liệu và so với SHA-256 của nó.
 
   Container, network và thư mục của buổi diễn tập bị xoá khi xong, không dùng prune. Lần chạy ngày 1/10 trên hub thật mất 6 giây: 169 tài liệu và 3 tệp, cả 3 tệp đọc lại đúng. Volume backup khác `xdev-hive_hive-backups` (ví dụ đặt `HIVE_BACKUP_PATH` là một thư mục) thì truyền `HIVE_BACKUPS_VOLUME=<volume hoặc thư mục>`.
-- **Nâng cấp**: trên server chạy `bash deploy/update.sh` (sau Cloudflare Tunnel: `HIVE_TUNNEL=1 bash deploy/update.sh`): lấy `origin/main`, build lại, chờ hub healthy. Hub tự backup trước khi chạy migration mới.
+- **Nâng cấp**: trên server chạy `bash deploy/update.sh` (sau Cloudflare Tunnel: `HIVE_TUNNEL=1 bash deploy/update.sh`; có cổng LAN thì thêm `HIVE_LAN=1`): lấy `origin/main`, build lại, chờ hub healthy. Hub tự backup trước khi chạy migration mới. Cờ nào bật khi deploy thì lần sau cũng phải bật lại, vì nó quyết định file compose nào được tính đến.
 
 Máy của từng người: app desktop → chế độ **Hub dùng chung** → URL + đăng nhập bằng tài khoản (hoặc dán token). Shim `hive-mcp` tự chuyển tiếp lên hub, nên config MCP không chứa token; từ 38b config này nằm ở scope local của từng máy (`~/.claude.json`), không nằm trong repo.
 
