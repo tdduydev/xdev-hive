@@ -160,7 +160,7 @@ Prompt của run có RTK thêm một dòng:
 ## Ảnh hưởng khác
 
 - Các bước của run (22l): regex `TEST` trong `packages/ui/src/lib/runlog.ts` cho phép phần trước tên lệnh (`^Bash: .*\b(test|…)`). Vì vậy `rtk npm test` vẫn được nhận là bước *Kiểm tra*. [Chưa kiểm] log stream-json ghi lệnh gốc hay lệnh đã đổi.
-- **Quyền** (T7): hook đổi được một lệnh được phép thành một lệnh bất kỳ. Vì vậy hook chỉ đến từ danh mục mà admin hub duyệt và người dùng máy cho phép (28b-1). Không có đường nào khác để đưa hook vào run.
+- **Quyền** (T7): hook đổi được một lệnh được phép thành một lệnh bất kỳ. Hook của danh mục cần admin hub duyệt và người dùng máy cho phép (28b-1). Hook của plugin bật sẵn và managed settings vẫn có thể chạy; phải kiểm chúng trước khi coi run chỉ dùng hook đã duyệt trong danh mục.
 
 ## Test
 
