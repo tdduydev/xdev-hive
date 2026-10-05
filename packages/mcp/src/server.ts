@@ -14,8 +14,10 @@ import {
   toErrorPayload,
   type Actor,
   type HiveBackend,
+  type Memory,
   type Method,
   type MethodInput,
+  type Task,
 } from "@xdev-hive/core";
 import { z } from "zod";
 
@@ -32,10 +34,12 @@ const INSTRUCTIONS = `xDev Hive is the shared memory, docs and task board for ev
 Start of session: memory_search for your topic. Before working: task_claim (task_next suggests a ready task). Record decisions/conventions/gotchas with memory_write.
 Never edit AGENTS.md, CLAUDE.md or docs/decisions.md directly: doc_get, then doc_propose with the baseVersion you read.
 Team skills (how the team does recurring work): skill_list, then skill_get the ones that fit. A new or better skill: skill_propose.
+Answers are kept short: memory_search gives 8 entries without their bookkeeping (verbose: true for every field), task_list cuts each note to 200 characters (task_get reads one task in full, full: true the whole board).
 End of session: task_update to "review" with a note (done / not done / how to verify / risks). Never store secrets.`;
 
 const READ_ONLY_INSTRUCTIONS = `xDev Hive is the shared memory, docs and task board for every coding agent on this team.
-This connection is read-only: memory_search, doc_list, doc_get, skill_list, skill_get, task_list, task_next, run_list, run_get, run_requests, machine_list, setup_missing, cost_summary, token_usage, tool_list, tool_status and policy_get (alert_list for hub admins). Search memory for your topic before working.
+This connection is read-only: memory_search, doc_list, doc_get, skill_list, skill_get, task_list, task_get, task_next, run_list, run_get, run_requests, machine_list, setup_missing, cost_summary, token_usage, tool_list, tool_status and policy_get (alert_list for hub admins). Search memory for your topic before working.
+Answers are kept short: memory_search gives 8 entries without their bookkeeping (verbose: true for every field), task_list cuts each note to 200 characters (task_get reads one task in full, full: true the whole board).
 Put anything worth sharing (decisions, gotchas, the handoff) in your final message instead of writing it to Hive.`;
 
 // A chat leader (the hub's token for one reply) changes nothing on the board itself: it proposes, a project manager confirms.
@@ -57,6 +61,25 @@ Read before you answer or propose: costs and spending caps with cost_summary; a 
 the tools runs may get with tool_list, and where each stands on the machines with tool_status; tokens and the share read from the prompt
 cache with token_usage (quote its numbers: never guess what a tool saves); the hub's open alerts with alert_list when you have it.`;
 
+// Roadmap 28f: what an agent acts on. The bookkeeping (author, project, dates, use count, file shas) is for the people on the web, and twenty entries of it cost more than the facts themselves.
+const compactMemory = (m: Memory) => ({
+  id: m.id,
+  kind: m.kind,
+  content: m.content,
+  files: m.files.map((f) => f.path),
+  ...(m.taskId ? { taskId: m.taskId } : {}),
+  ...(m.stale ? { stale: true } : {}),
+  // Only the flag: which files changed is in `files`, and an agent can neither read nor compare a blob id.
+  ...(m.review ? { review: true } : {}),
+  ...(m.supersededBy !== null ? { supersededBy: m.supersededBy } : {}),
+  ...(m.conflictsWith.length > 0 ? { conflictsWith: m.conflictsWith } : {}),
+});
+
+/** Roadmap 28f: notes are over half of a board's bytes, and a list is read to pick a task, not to work it (task_get then reads the one). */
+const NOTE_IN_LIST = 200;
+const shortNote = (t: Task): Task & { noteTruncated?: true } =>
+  t.note && t.note.length > NOTE_IN_LIST ? { ...t, note: t.note.slice(0, NOTE_IN_LIST), noteTruncated: true } : t;
+
 const project = z.string().optional().describe('Hive project key (see "Hive project key" in AGENTS.md)');
 const reason = z.string().min(1).max(500).describe("One line for the person confirming it: why");
 
@@ -68,13 +91,18 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
   const instructions = !writes ? READ_ONLY_INSTRUCTIONS : leader ? INSTRUCTIONS + LEADER_INSTRUCTIONS + LEADER_READ_INSTRUCTIONS : INSTRUCTIONS;
   const server = new McpServer({ name: "xdev-hive", version: "0.1.0" }, { instructions });
 
+  // Roadmap 28f: every answer is JSON without indentation. Only an agent reads these, and the spaces are tokens it pays for.
+  const json = (value: unknown): CallToolResult => ({ content: [{ type: "text", text: JSON.stringify(value) }] });
+  const failed = (err: unknown): CallToolResult => {
+    const { code, message } = toErrorPayload(err);
+    return { isError: true, content: [{ type: "text", text: `${code}: ${message}` }] };
+  };
+
   const run = async <M extends Method>(method: M, input: MethodInput<M>): Promise<CallToolResult> => {
     try {
-      const result = await backend.call(method, input, actor);
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      return json(await backend.call(method, input, actor));
     } catch (err) {
-      const { code, message } = toErrorPayload(err);
-      return { isError: true, content: [{ type: "text", text: `${code}: ${message}` }] };
+      return failed(err);
     }
   };
   const needProject = (p: string | undefined): string => {
@@ -138,8 +166,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
         }
         return { content: [{ type: "text", text: Buffer.from(got.data, "base64").toString("utf8") }] };
       } catch (err) {
-        const { code, message } = toErrorPayload(err);
-        return { isError: true, content: [{ type: "text", text: `${code}: ${message}` }] };
+        return failed(err);
       }
     },
   );
@@ -189,10 +216,9 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
         const own = scope ? await backend.call("docs.get", { key: skillDocKey(name, scope) }, actor) : null;
         const doc = own ?? (await backend.call("docs.get", { key: skillDocKey(name) }, actor));
         if (!doc) return { isError: true, content: [{ type: "text", text: `not_found: no skill ${name} (see skill_list)` }] };
-        return { content: [{ type: "text", text: JSON.stringify(doc, null, 2) }] };
+        return json(doc);
       } catch (err) {
-        const { code, message } = toErrorPayload(err);
-        return { isError: true, content: [{ type: "text", text: `${code}: ${message}` }] };
+        return failed(err);
       }
     },
   );
@@ -226,14 +252,28 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     {
       title: "Search team memory",
       description:
-        'Search decisions, conventions, gotchas and context recorded by any agent on this project, plus team-wide entries (project: null means shared by every project) and those of the systems the project is a service of (project: "sys:<system>"). Empty query returns the latest entries. ' +
+        "Search decisions, conventions, gotchas and context recorded by any agent on this project, plus the team's and those of the systems the project is a service of. Empty query returns the latest entries. " +
         "On a hub with embeddings it also finds entries by meaning (other words, other language), so a short question works. " +
-        "Entries no agent used for a long time are left out until a person keeps them. An entry with review set cites files that changed since: check them before relying on it. " +
-        "conflictsWith lists entries that disagree with it until a person decides; replaced entries are left out.",
-      inputSchema: { project, query: z.string().optional(), limit: z.number().int().min(1).max(50).optional() },
+        "Entries no agent used for a long time are left out until a person keeps them; replaced entries too. " +
+        "An entry comes back as id, kind, content, the repo files it is about and taskId, plus a flag when there is one: " +
+        "review (a cited file changed since: check those files before relying on it), stale, supersededBy, conflictsWith (entries that disagree with it until a person decides). " +
+        "8 entries by default; a narrower query beats a bigger limit. verbose: true adds the rest (author, project, dates, use count, file blob ids), for a person asking about the memory itself.",
+      inputSchema: {
+        project,
+        query: z.string().optional(),
+        limit: z.number().int().min(1).max(50).optional().describe("Default 8"),
+        verbose: z.boolean().optional().describe("Every field of each entry, as the web shows it"),
+      },
       annotations: readOnly,
     },
-    withProject(async ({ project: p, query, limit }) => run("memory.search", { project: p, query, limit, includeShared: true })),
+    withProject(async ({ project: p, query, limit, verbose }) => {
+      try {
+        const hits = await backend.call("memory.search", { project: p, query, limit: limit ?? 8, includeShared: true }, actor);
+        return json(verbose ? hits : hits.map(compactMemory));
+      } catch (err) {
+        return failed(err);
+      }
+    }),
   );
 
   if (writes) {
@@ -274,11 +314,40 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     {
       title: "List tasks",
       description:
-        "List tasks on the shared board for a project, optionally filtered by status. dependsOn: tasks that must be done first; waitingOn: those still open.",
-      inputSchema: { project, status: z.enum(TASK_STATUSES).optional() },
+        "List tasks on the shared board for a project, optionally filtered by status. dependsOn: tasks that must be done first; waitingOn: those still open. " +
+        `The whole board is long: for what to work on next use task_next, and for one part of it status ("todo", "doing", "review"). ` +
+        `Each note is cut to ${NOTE_IN_LIST} characters (noteTruncated: true when it was): task_get reads one task with its whole note, full: true the whole board with every note.`,
+      inputSchema: { project, status: z.enum(TASK_STATUSES).optional(), full: z.boolean().optional().describe("Whole notes, not cut") },
       annotations: readOnly,
     },
-    withProject(async ({ project: p, status }) => run("tasks.list", { project: p, status })),
+    withProject(async ({ project: p, status, full }) => {
+      try {
+        const tasks = await backend.call("tasks.list", { project: p, status }, actor);
+        return json(full ? tasks : tasks.map(shortNote));
+      } catch (err) {
+        return failed(err);
+      }
+    }),
+  );
+
+  // No tasks.get RPC: the board is one query and a project's tasks are few, so the one task is picked out of the list here (roadmap 28f, MCP only).
+  server.registerTool(
+    "task_get",
+    {
+      title: "Read one task",
+      description: "One task of the board with its whole note (what another agent left: done / not done / how to verify / risks), its dependencies and who holds it.",
+      inputSchema: { id: z.string(), project },
+      annotations: readOnly,
+    },
+    withProject(async ({ id, project: p }) => {
+      try {
+        const task = (await backend.call("tasks.list", { project: p }, actor)).find((t) => t.id === id);
+        if (!task) return { isError: true, content: [{ type: "text", text: `not_found: Task ${id} not found in ${p} (task_list shows the board).` }] };
+        return json(task);
+      } catch (err) {
+        return failed(err);
+      }
+    }),
   );
 
   server.registerTool(
@@ -337,11 +406,6 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
   // The methods filter by the token's rights; a project the token does not see answers not_found, as the web does.
   const unseen = (p: string): CallToolResult | null =>
     sees(actor, p) ? null : { isError: true, content: [{ type: "text", text: `not_found: Project ${p} not found.` }] };
-  const json = (value: unknown): CallToolResult => ({ content: [{ type: "text", text: JSON.stringify(value, null, 2) }] });
-  const failed = (err: unknown): CallToolResult => {
-    const { code, message } = toErrorPayload(err);
-    return { isError: true, content: [{ type: "text", text: `${code}: ${message}` }] };
-  };
 
   server.registerTool(
     "cost_summary",
