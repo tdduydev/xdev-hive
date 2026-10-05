@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { AgentProfileStatus, PlanUsage } from "@xdev-hive/core";
+import { tokenWindows, type AgentProfileStatus, type PlanUsage } from "@xdev-hive/core";
 import { hasUsage, needsHand, profileRows, profileState } from "#ui/lib/agents.ts";
 
 const usage = (session: number | null, week: number | null): PlanUsage => ({
@@ -37,6 +37,7 @@ const profile = (over: Partial<AgentProfileStatus> = {}): AgentProfileStatus => 
   hasToken: false,
   lastUsedAt: null,
   stats: { runs: 0, succeeded: 0, failed: 0, rateLimited: 0, costUsd: 0 },
+  tokens: tokenWindows([], new Date()),
   autonomy: { own: "full", flag: null, hub: null, projects: [] },
   ...over,
 });

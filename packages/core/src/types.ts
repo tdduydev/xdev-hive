@@ -1106,6 +1106,70 @@ export function cacheReadShare(u: { inputTokens: number | null; cacheWriteTokens
   return all > 0 ? u.cacheReadTokens / all : null;
 }
 
+/** The windows the app adds a subscription's tokens up over (roadmap 46): 24 hours, 7 days, 30 days. */
+export const TOKEN_WINDOWS = ["d1", "d7", "d30"] as const;
+export type TokenWindow = (typeof TOKEN_WINDOWS)[number];
+const WINDOW_DAYS: Record<TokenWindow, number> = { d1: 1, d7: 7, d30: 30 };
+
+/**
+ * A window's tokens (roadmap 46). The input split counts only the runs that reported it, as on the web's costs (28c);
+ * output counts every run. `oldRuns`: runs from before 28c, their input one number the split cannot use.
+ * cacheReadTokens stays null while no run of the window split its input, so cacheReadShare says nothing.
+ */
+export interface TokenTotals {
+  runs: number;
+  oldRuns: number;
+  inputTokens: number;
+  cacheWriteTokens: number;
+  cacheReadTokens: number | null;
+  outputTokens: number;
+}
+
+export type TokenWindows = Record<TokenWindow, TokenTotals>;
+
+const noTokens = (): TokenTotals => ({ runs: 0, oldRuns: 0, inputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: null, outputTokens: 0 });
+
+/** Adds runs' tokens up over each window by the time they finished; runs without tokens (not finished, a custom CLI) stay out. */
+export function tokenWindows(runs: Array<RunTokens & { finishedAt: string | null }>, now: Date): TokenWindows {
+  const out = { d1: noTokens(), d7: noTokens(), d30: noTokens() };
+  for (const r of runs) {
+    if (!r.finishedAt || (r.inputTokens === null && r.outputTokens === null && r.cacheReadTokens === null)) continue;
+    const age = now.getTime() - Date.parse(r.finishedAt);
+    for (const w of TOKEN_WINDOWS) {
+      if (age > WINDOW_DAYS[w] * 86_400_000) continue;
+      const t = out[w];
+      t.runs++;
+      t.outputTokens += r.outputTokens ?? 0;
+      if (r.cacheReadTokens === null) {
+        t.oldRuns++;
+        continue;
+      }
+      t.inputTokens += r.inputTokens ?? 0;
+      t.cacheWriteTokens += r.cacheWriteTokens ?? 0;
+      t.cacheReadTokens = (t.cacheReadTokens ?? 0) + r.cacheReadTokens;
+    }
+  }
+  return out;
+}
+
+/** Several subscriptions' windows as one: the machine's line. */
+export function addTokenWindows(list: TokenWindows[]): TokenWindows {
+  const out = { d1: noTokens(), d7: noTokens(), d30: noTokens() };
+  for (const w of list) {
+    for (const k of TOKEN_WINDOWS) {
+      const a = out[k];
+      const b = w[k];
+      a.runs += b.runs;
+      a.oldRuns += b.oldRuns;
+      a.inputTokens += b.inputTokens;
+      a.cacheWriteTokens += b.cacheWriteTokens;
+      a.outputTokens += b.outputTokens;
+      if (b.cacheReadTokens !== null) a.cacheReadTokens = (a.cacheReadTokens ?? 0) + b.cacheReadTokens;
+    }
+  }
+  return out;
+}
+
 /** API-price cost estimates over rolling windows: the last 24 hours, 7 days and 30 days. */
 export interface CostTotals {
   usd1: number;

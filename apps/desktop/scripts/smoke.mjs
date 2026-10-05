@@ -161,6 +161,33 @@ await shoot("local-nav", "today", 3000, {
 });
 // The other view of Task on this machine: the list, with the switch next to it.
 await shoot("local-task-list", "tasks", 3000, { HIVE_SMOKE_VIEW: "list", HIVE_SMOKE_EXPECT: '[data-task-view="list"][aria-checked="true"]' });
+// Token và cache on Agent và quota (roadmap 46): finished runs with tokens, a Claude one, a Codex one and one from
+// before 28c (no cache split), on a task the board has not, marked reported so a hub never gets their costs.
+{
+  const store = new RunStore(path.join(work, "runs.db"));
+  const hoursAgo = (h) => new Date(Date.now() - h * 3_600_000).toISOString();
+  for (const [profileId, hours, inputTokens, cacheWriteTokens, cacheReadTokens, outputTokens] of [
+    ["claude-max-1", 2, 12_400, 38_000, 412_000, 9_800],
+    ["claude-max-1", 50, 8_100, 21_000, 268_000, 6_200],
+    ["codex-plus", 5, 31_000, 0, 96_000, 4_100],
+    ["claude-max-1", 20 * 24, 54_000, null, null, 3_000],
+  ]) {
+    const r = store.insert({ project: "demo", taskId: "T-900", taskTitle: "Token mẫu", role: "implement", attempt: 1, maxAttempts: 1 }, hoursAgo(hours + 1));
+    store.update(r.id, { status: "succeeded", profileId, startedAt: hoursAgo(hours + 1), finishedAt: hoursAgo(hours), inputTokens, cacheWriteTokens, cacheReadTokens, outputTokens, costReported: 1 });
+  }
+  store.db.close();
+}
+await shoot("agents-tokens", "agents", 2500, {
+  HIVE_SMOKE_CLICK: '[data-token-window="d30"]',
+  HIVE_SMOKE_SCROLL: "[data-token-stats]",
+  HIVE_SMOKE_EXPECT: '[data-token-row="claude-max-1"] && [data-token-row="codex-plus"] && [data-token-total] && [data-token-window="d30"][data-state="on"]',
+});
+// A subscription's numbers open Lượt chạy on its runs only.
+await shoot("agents-tokens-runs", "agents", 2500, {
+  HIVE_SMOKE_CLICK: '[data-token-row="codex-plus"]',
+  HIVE_SMOKE_EXPECT: '[data-profile-filter="codex-plus"]',
+  HIVE_SMOKE_ASSERT: 'document.querySelectorAll("[data-run-index]").length >= 1',
+});
 // Agent và quota (roadmap 39c): one row per subscription, with a signed-out one, the fold of the off ones and bars
 // on the subscription whose CLI reports usage. The expect waits for the sign-in check, which lands after first paint.
 const agentsTable = '[data-profile="claude-max-2"][data-state="signedOut"] && [data-off-group] && [data-profile="claude-max-1"] [role="meter"]';

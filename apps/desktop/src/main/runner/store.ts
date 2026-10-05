@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { AgentKind, AgentRole, PreferKind, AgentRun, BestOf, CiFix, MrState, MrStatus, PipelineStatus, RunStatus } from "@xdev-hive/core";
+import type { AgentKind, AgentRole, PreferKind, AgentRun, BestOf, CiFix, MrState, MrStatus, PipelineStatus, RunStatus, RunTokens } from "@xdev-hive/core";
 import { tr } from "#desktop/main/i18n.ts";
 
 const SCHEMA = `
@@ -309,6 +309,24 @@ export class RunStore {
         costUsd: rows.reduce((n, r) => n + Number(r.cost ?? 0), 0),
       },
     };
+  }
+
+  /** A profile's runs that finished since `since`, with their tokens only (roadmap 46). */
+  profileTokens(profileId: string, since: string): Array<RunTokens & { finishedAt: string }> {
+    const rows = this.db
+      .prepare(
+        `SELECT finished_at, input_tokens, cache_write_tokens, cache_read_tokens, output_tokens FROM runs
+         WHERE profile_id = ? AND finished_at >= ?`,
+      )
+      .all(profileId, since) as Row[];
+    const n = (v: unknown) => (v == null ? null : Number(v));
+    return rows.map((r) => ({
+      finishedAt: String(r.finished_at),
+      inputTokens: n(r.input_tokens),
+      cacheWriteTokens: n(r.cache_write_tokens),
+      cacheReadTokens: n(r.cache_read_tokens),
+      outputTokens: n(r.output_tokens),
+    }));
   }
 
   cooldown(profileId: string): { until: string; reason: string } | null {
