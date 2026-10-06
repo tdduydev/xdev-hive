@@ -110,8 +110,8 @@ describe("addresses", () => {
   });
 
   it("follows an address that moved twice to where it ends", () => {
-    assert.deepEqual(local("#/admin/tools"), { id: "setup", hash: "#/setup" }, "the Web Admin's Tool, then Dự án & công cụ");
-    assert.deepEqual(web("#/admin/tools"), { id: "settings", hash: "#/settings?tab=tools" }, "on the web, Cài đặt dự án");
+    assert.deepEqual(local("#/admin/tools"), { id: "setup", hash: "#/setup" }, "the Web Admin's Tool, then Service & công cụ");
+    assert.deepEqual(web("#/admin/tools"), { id: "settings", hash: "#/settings?tab=tools" }, "on the web, Cài đặt service");
     assert.deepEqual(local("#/admin/batches"), { id: "runs", hash: "#/runs" });
     assert.deepEqual(web("#/admin/batches"), { id: "runs", hash: "#/runs" });
   });

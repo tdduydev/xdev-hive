@@ -247,9 +247,9 @@ async function main() {
     await tab.click('button[type="submit"]');
     // The web opens on Hôm nay for everyone (roadmap 35b), hub admins included.
     await tab.waitFor("the admin's Hôm nay", () => document.querySelector('nav [aria-current="page"]')?.textContent.includes("Hôm nay"));
-    // Roadmap 49b: one web shell, its menu by job; a hub admin's has Cài đặt dự án, Máy & agent and Quản trị after the work.
+    // Roadmap 49b: one web shell, its menu by job; a hub admin's has Cài đặt service, Máy & agent and Quản trị after the work.
     const nav = await tab.waitFor("the admin's menu", () => document.querySelector("nav")?.innerText.includes("Máy & agent") && document.querySelector("nav").innerText);
-    for (const label of ["Làm việc", "Task", "Cài đặt dự án", "Quản trị"]) expect(nav.includes(label), `no ${label} in the admin's menu:\n${nav}`);
+    for (const label of ["Làm việc", "Task", "Cài đặt service", "Quản trị"]) expect(nav.includes(label), `no ${label} in the admin's menu:\n${nav}`);
     // The Web Admin's old addresses open the tab that holds the page now.
     await tab.go("admin/queue");
     await tab.waitFor("#/admin/queue on Máy & agent › Hàng đợi", () =>
@@ -264,13 +264,13 @@ async function main() {
     await tab.go("tasks");
     await tab.waitFor("tasks from several projects", () => document.body.innerText.includes("Việc đầu tiên của payment") && document.body.innerText.includes("Việc đầu tiên của demo"));
     await tab.click("[data-project-picker-trigger]");
-    await tab.click('input[aria-label="Tìm dự án hoặc hệ thống…"]');
+    await tab.click('input[aria-label="Tìm service hoặc hệ thống…"]');
     await tab.type("pay");
     await tab.waitFor("payment in the picker", () => [...document.querySelectorAll('[role="option"]')].some((item) => item.textContent.includes("payment")));
     await tab.key("Enter");
     await tab.waitFor("only payment tasks", () => document.body.innerText.includes("Việc đầu tiên của payment") && !document.body.innerText.includes("Việc đầu tiên của demo") && !document.body.innerText.includes("Việc đầu tiên của ledger"));
     await tab.click("[data-project-picker-trigger]");
-    await tab.click('[role="option"]', "Tất cả dự án");
+    await tab.click('[role="option"]', "Tất cả service");
     if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
   });
 
@@ -312,7 +312,7 @@ async function main() {
     const graphMachine = (await rpc("machines.list")).find((m) => m.machine === "lan-mbp");
     const tab = (current = tabs.admin);
     await tab.click("[data-project-picker-trigger]");
-    await tab.click('input[aria-label="Tìm dự án hoặc hệ thống…"]');
+    await tab.click('input[aria-label="Tìm service hoặc hệ thống…"]');
     await tab.type("payment");
     await tab.key("Enter");
     if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
@@ -371,7 +371,7 @@ async function main() {
     await tab.waitFor("assigned task on agent graph", () => !!document.querySelector('[data-graph-agent-task="PAY-GRAPH"]'));
     await tab.shot("graph-agent-layer");
     await tab.click("[data-project-picker-trigger]");
-    await tab.click('[role="option"]', "Tất cả dự án");
+    await tab.click('[role="option"]', "Tất cả service");
     if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
   });
 
@@ -381,7 +381,7 @@ async function main() {
     await rpc("docs.save", { key: "system/ban-hang/tong-quan", title: "Tổng quan", content: "# Tổng quan\n\nBa service.\n", baseVersion: 0 });
     const tab = (current = tabs.admin);
     await tab.click("[data-project-picker-trigger]");
-    await tab.click('input[aria-label="Tìm dự án hoặc hệ thống…"]');
+    await tab.click('input[aria-label="Tìm service hoặc hệ thống…"]');
     await tab.type("ban-hang");
     await tab.click('[role="option"]', "ban-hang");
     // Otherwise the drawer's scrim takes the click on "+ Trang" and no form opens (the "new page's key" timeout).
@@ -409,7 +409,7 @@ async function main() {
     await tab.click("button", "Lưu thành v1");
     await until("the page saved in the system", async () => (await rpc("docs.get", { key: "system/ban-hang/quy-uoc-chung" }))?.version === 1);
     await tab.click("[data-project-picker-trigger]");
-    await tab.click('[role="option"]', "Tất cả dự án");
+    await tab.click('[role="option"]', "Tất cả service");
     // Picking a scope leaves the phone drawer open; its scrim would take admin-grants-a-role's clicks.
     if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
   });
@@ -424,15 +424,15 @@ async function main() {
     await tab.waitFor("Hoa signed in", () => !document.querySelector("#username") && document.body.innerText.includes("@hoa"));
     // A member's menu has no project settings or hub administration (Máy & agent, the team's machines, stays).
     const nav = await tab.eval(() => document.querySelector("nav")?.innerText ?? "");
-    for (const label of ["Cài đặt dự án", "Quản trị", "Đội máy", "Hàng đợi", "Nhật ký"]) expect(!nav.includes(label), `${label} in Hoa's menu:\n${nav}`);
+    for (const label of ["Cài đặt service", "Quản trị", "Đội máy", "Hàng đợi", "Nhật ký"]) expect(!nav.includes(label), `${label} in Hoa's menu:\n${nav}`);
   });
 
   // Roadmap 49b: the menu by job, for a hub admin and for a project member (Hoa reviews payment). Token and the
   // password are in the account menu; old addresses land on their tab.
   await step("nav-by-job", async () => {
     const menus = [
-      // Quy trình (56a) is for whoever may view a project: Hoa views payment, so she reads it without Cài đặt dự án.
-      ["admin", tabs.admin, ["Hôm nay", "Chat", "Sơ đồ", "Tính năng", "Task", "Agent đang chạy", "Tài liệu", "Skill", "Memory", "Quy trình", "Cài đặt dự án", "Máy & agent", "Quản trị"]],
+      // Quy trình (56a) is for whoever may view a project: Hoa views payment, so she reads it without Cài đặt service.
+      ["admin", tabs.admin, ["Hôm nay", "Chat", "Sơ đồ", "Tính năng", "Task", "Agent đang chạy", "Tài liệu", "Skill", "Memory", "Quy trình", "Cài đặt service", "Máy & agent", "Quản trị"]],
       ["member", tabs.hoa, ["Hôm nay", "Sơ đồ", "Tính năng", "Task", "Agent đang chạy", "Tài liệu", "Skill", "Memory", "Quy trình", "Máy & agent"]],
     ];
     for (const [who, tab, want] of menus) {
@@ -663,7 +663,7 @@ async function main() {
     };
     await beat();
     await tab.go("admin/context");
-    await tab.select('select[aria-label="Dự án"]', "payment");
+    await tab.select('select[aria-label="Service"]', "payment");
     await tab.waitFor("Lan's machine on the card", () => document.body.innerText.includes("lan-mbp"));
     await tab.click("button", "Yêu cầu máy đồng bộ");
     const cmd = await until("the request at the machine's heartbeat", async () => (await beat()).syncCommands?.find((c) => c.project === "payment"));
@@ -985,7 +985,7 @@ async function main() {
 
     tab = current = tabs.lan;
     await tab.reload();
-    // Roadmap 49b: a lead's gate rows are on Cài đặt dự án › Chốt & chính sách.
+    // Roadmap 49b: a lead's gate rows are on Cài đặt service › Chốt & chính sách.
     await tab.go("settings?tab=policy");
     await tab.waitFor("payment's gate row", () => !!document.querySelector('[data-sdlc-row="payment"] [data-sdlc-gate="spec"]'));
     expect(!(await tab.eval(() => !!document.querySelector('[data-sdlc-row="hub"]'))), "a project manager got the hub's row");
@@ -1495,7 +1495,7 @@ async function main() {
     // The leader guide of the step before stays open otherwise.
     await tab.reload();
     await tab.go(`chat?thread=${sent.thread.id}`);
-    await tab.waitFor("the tool card", () => document.body.innerText.includes("Đặt tool Spec Kit cho dự án: bật, bắt buộc") && document.body.innerText.includes("Hiện tại: theo mặc định của tool"));
+    await tab.waitFor("the tool card", () => document.body.innerText.includes("Đặt tool Spec Kit cho service: bật, bắt buộc") && document.body.innerText.includes("Hiện tại: theo mặc định của tool"));
     await tab.click("button", "Xác nhận");
     await until("Spec Kit on and required for payment", async () => {
       const line = (await rpc("tools.list", { project: "payment" })).find((t) => t.id === "speckit")?.projects[0];
@@ -1562,8 +1562,8 @@ async function main() {
   // Roadmap 47: a throwaway project is archived (it leaves every list and refuses writes), then deleted for good
   // through the dialog that asks for its name. The hub snapshots itself first, into the run's temporary backup dir.
   await step("project-archive-delete", async () => {
-    await rpc("tasks.create", { id: "OLD-1", project: "throwaway", title: "Việc của dự án bỏ đi" });
-    await rpc("memory.write", { project: "throwaway", kind: "gotcha", content: "Ghi chú của dự án bỏ đi." });
+    await rpc("tasks.create", { id: "OLD-1", project: "throwaway", title: "Việc của service bỏ đi" });
+    await rpc("memory.write", { project: "throwaway", kind: "gotcha", content: "Ghi chú của service bỏ đi." });
     await rpc("docs.save", { key: "project/throwaway/arch", title: "Kiến trúc", content: "# Kiến trúc cũ\n" });
     const tab = (current = tabs.admin);
     await tab.reload();
@@ -1602,13 +1602,65 @@ async function main() {
     expect(tasks.length === 0, `the deleted project still has tasks: ${JSON.stringify(tasks.map((t) => t.id))}`);
   });
 
+  // Roadmap 40a: the scope picker lists systems first, a repo in no system as a system of its own; a system's services
+  // show when it is opened or searched, picking the system leaves its services' tasks, and the titles name the system.
+  await step("scope-system-first", async () => {
+    await rpc("tasks.create", { id: "KHO-1", project: "kho-api", title: "Việc của kho-api" });
+    await rpc("tasks.create", { id: "KHO-2", project: "kho-web", title: "Việc của kho-web" });
+    await rpc("tasks.create", { id: "KHOLE-1", project: "kho-le", title: "Việc của kho-le" });
+    await rpc("systems.save", { name: "kho", projects: ["kho-api", "kho-web"] });
+    const tab = (current = tabs.admin);
+    // From all projects whatever an earlier step left picked.
+    await tab.eval(() => localStorage.removeItem("xdev-hive.scope"));
+    await tab.reload();
+    await tab.go("tasks");
+    await tab.waitFor("tasks of every project", () => ["kho-api", "kho-web", "kho-le", "payment"].every((p) => document.body.innerText.includes(`Việc ${p === "payment" ? "đầu tiên " : ""}của ${p}`)));
+    await tab.click("[data-project-picker-trigger]");
+    // Roots as "name", a virtual one as "name*".
+    const closed = await tab.waitFor("kho and kho-le as roots, services hidden", () => {
+      const all = [...document.querySelectorAll('[data-scope-row="root"]')].map((r) => `${r.dataset.scopeRoot}${r.hasAttribute("data-scope-virtual") ? "*" : ""}`);
+      return all.includes("kho") && all.includes("kho-le*") && !document.querySelector('[data-scope-row="service"][data-scope-root="kho"]') && all;
+    });
+    expect(!closed.some((r) => r.startsWith("kho-api") || r.startsWith("kho-web")), `a service of kho as a root: ${closed}`);
+    await tab.click('[data-scope-toggle="kho"]');
+    await tab.waitFor("kho opened on its two services", () => document.querySelectorAll('[data-scope-row="service"][data-scope-root="kho"]').length === 2);
+    await tab.shot(`${String(n).padStart(2, "0")}-scope-picker`);
+    await tab.click('input[aria-label="Tìm service hoặc hệ thống…"]');
+    await tab.type("kho");
+    const found = await tab.waitFor("two roots for kho", () => {
+      const all = [...document.querySelectorAll('[data-scope-row="root"]')].map((r) => `${r.dataset.scopeRoot}${r.hasAttribute("data-scope-virtual") ? "*" : ""}`);
+      return all.length === 2 && all;
+    });
+    expect(found.join() === "kho,kho-le*", `roots for kho: ${found}`);
+    await tab.click('[role="option"]', "kho");
+    await tab.waitFor("only the tasks of kho's two services", () => {
+      const text = document.body.innerText;
+      return text.includes("Việc của kho-api") && text.includes("Việc của kho-web") && !text.includes("Việc của kho-le") && !text.includes("Việc đầu tiên của payment");
+    });
+    await tab.waitFor("the system in the title", () => document.querySelector("[data-shell-title]")?.textContent.startsWith("kho › "));
+    await tab.shot(`${String(n).padStart(2, "0")}-scope-system`);
+    // A service reads as system › service in the menu and the title.
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('[data-scope-toggle="kho"]');
+    await tab.click('[role="option"]', "kho-api");
+    await tab.waitFor("kho › kho-api", () => document.querySelector("[data-project-picker-trigger]")?.textContent.includes("kho › kho-api") && document.querySelector("[data-shell-title]")?.textContent.startsWith("kho › kho-api › "));
+    await tab.waitFor("only kho-api's task", () => document.body.innerText.includes("Việc của kho-api") && !document.body.innerText.includes("Việc của kho-web"));
+    // The lone repo: its own scope, named by itself.
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('[role="option"]', "kho-le");
+    await tab.waitFor("only kho-le's task", () => document.body.innerText.includes("Việc của kho-le") && !document.body.innerText.includes("Việc của kho-api") && document.querySelector("[data-shell-title]")?.textContent.startsWith("kho-le › "));
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('[role="option"]', "Tất cả service");
+    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
+  });
+
   // Roadmap 19d: a task of one service waits for another service's (demo waits for payment's), named with its project.
   await step("cross-service-task", async () => {
     const task = await rpc("tasks.create", { id: "DEMO-2", project: "demo", title: "Trang đơn hàng", dependsOn: ["PAY-1"] });
     expect(task.depProjects?.["PAY-1"] === "payment", `DEMO-2: ${JSON.stringify(task)}`);
     const tab = (current = tabs.lan);
     await tab.click("[data-project-picker-trigger]");
-    await tab.click('[role="option"]', "Tất cả dự án");
+    await tab.click('[role="option"]', "Tất cả service");
     if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
     await tab.go("tasks?task=DEMO-2");
     await tab.waitFor("DEMO-2 waiting for payment/PAY-1", () => document.body.innerText.includes("Trang đơn hàng") && document.body.innerText.includes("payment/PAY-1"));
