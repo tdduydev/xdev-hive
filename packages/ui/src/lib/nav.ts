@@ -81,9 +81,9 @@ export function settingsTabs(me: Me, projects: string[], caps: Pick<WebCaps, "me
   return tabs;
 }
 
-export type MachineTab = "map" | "fleet" | "queue" | "costs";
+export type MachineTab = "map" | "quota" | "fleet" | "queue" | "costs";
 /** Máy & agent: the agent map for everyone who sees a project; the fleet, queue and costs read every machine, so admin. */
-export const machineTabs = (me: Me): MachineTab[] => (isHubAdmin(me) ? ["map", "fleet", "queue", "costs"] : ["map"]);
+export const machineTabs = (me: Me): MachineTab[] => (isHubAdmin(me) ? ["map", "quota", "fleet", "queue", "costs"] : ["map", "quota"]);
 
 export type AdminTab = "ops" | "users" | "tools" | "budgets" | "alerts" | "audit" | "webhooks" | "versions" | "hub";
 /** Quản trị: one entry, a tab per job of the hub admin. */

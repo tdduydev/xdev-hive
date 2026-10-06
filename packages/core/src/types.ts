@@ -373,6 +373,11 @@ export interface MachineSetupMissing {
 
 /** A subscription profile as a machine reports it to the hub: no command line, no env. */
 export interface ReportedProfile extends QuotaOutlook {
+  /** Instants supplied by newer apps; reset text remains the older-app fallback. */
+  sessionResetsAt?: string | null;
+  weekResetsAt?: string | null;
+  /** Total occupancy, including runs the viewer cannot see. */
+  running?: number;
   id: string;
   label: string;
   kind: string;
