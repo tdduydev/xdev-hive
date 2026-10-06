@@ -271,7 +271,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 
 - **50. agent-assign** (hỏi 6/10: "cho phép giao cho từng agent làm task"; chọn: gán rồi tự chạy khi rảnh): task có *Agent phụ trách* (máy + gói, hàng có thứ tự); hub tự giao run khi agent rảnh và task hết phụ thuộc (cạnh đợt chạy 31a, qua chính sách và ngân sách); run lỗi thì tạm ngừng chờ người; `task_next` của máy khác bỏ qua; leader đề xuất `taskAssign`; Board chế độ *Theo agent* kéo thả. Spec: [docs/specs/50-agent-assign.md](specs/50-agent-assign.md). Tách:
   - [x] **50a. assign-core**: cột `agent_*` của `tasks`, `tasks.assign` / `unassign` / `agentQueue`, `#releaseAssigned`, MCP, `taskAssign`.
-  - [ ] **50b. assign-ui**: ô *Agent phụ trách*, Board *Theo agent*, hàng của gói ở *Máy & agent*, mục *Agent dừng ở task* ở *Hôm nay*, gán nhiều task.
+  - [x] **50b. assign-ui**: ô *Agent phụ trách*, Board *Theo agent*, hàng của gói ở *Máy & agent*, mục *Agent dừng ở task* ở *Hôm nay*, gán nhiều task.
 
 - **51. project-flow** (hỏi 6/10: "overview theo từng dự án bằng React Flow"; chọn: cả bốn lớp): trang *Sơ đồ* (`@xyflow/react` + dagre, tải lười, màu theo token): lớp Task và phụ thuộc, Agent đang làm gì (kéo task vào agent để gán), luồng SDLC có nút chốt, Hệ thống nhiều service; dùng được trên điện thoại. Spec: [docs/specs/51-project-flow.md](specs/51-project-flow.md). Tách:
   - [x] **51a. graph-tasks**: trang, khung React Flow, lớp Task.
@@ -281,6 +281,12 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 - [x] **52. app-quota** (hỏi 6/10: "control quota, chưa thấy chỗ hiển thị số lần reset, hiển thị đi, và bấm reset trên giao diện client được"; chọn cả bốn): trang *Agent và quota* của app có khối quota luôn hiện cho mỗi gói: thanh 5 giờ / tuần với giờ reset và còn bao lâu, số lần chạm giới hạn và số run từ mốc đếm (nút *Đặt lại bộ đếm*), chip đang nghỉ và nút *Bỏ nghỉ* luôn hiện, nút *Đọc lại quota* cho từng gói và cho cả máy. Spec: [docs/specs/52-app-quota.md](specs/52-app-quota.md).
 
 - [x] **53. antigravity** (hỏi 6/10: "login sso antigravity nữa nhé"): loại gói mới `antigravity` chạy Antigravity CLI `agy -p` (thay Gemini CLI cho tài khoản Google cá nhân từ 18/6/2026); nút *+ Tài khoản Google (Antigravity)* mở `agy` để tự đăng nhập Google hay SSO Workspace (tuỳ chọn Google Cloud project cho doanh nghiệp); hạn mức 5 giờ / tuần đọc bằng `agy -p /usage` (≥ 1.1.11, không tốn lượt); Hive không bao giờ đụng token OAuth (điều khoản của Google). Nhiều tài khoản: Linux tách `HOME` (thử nghiệm), macOS/Windows một tài khoản mỗi người dùng máy. Spec: [docs/specs/53-antigravity.md](specs/53-antigravity.md).
+
+- **54. model-router** (hỏi 6/10: "tuỳ theo tác vụ thì chọn model nào tối ưu task, token nhất… codex nhiều mode, claude cũng vậy"; chọn: cân bằng, luật + AI phân loại, tự học có giới hạn): run hôm nay không chọn model hay mức suy nghĩ theo task. Task có loại / cỡ / rủi ro (luật, run `classify` bằng model rẻ khi chưa rõ); bảng cấp `light` / `standard` / `strong` / `max` ánh xạ sang model + effort của Claude (`--model`, `--effort`), Codex (`-m`, `model_reasoning_effort`), agy; bảng loại × cỡ → cấp theo dự án, ba hồ sơ Tiết kiệm / Cân bằng / Chất lượng; lỗi thì nâng mức suy nghĩ rồi một cấp (tối đa 2); tự học: cấp rẻ nhất có tỉ lệ xong ≥ 80%, thử rẻ hơn 10%, khoá ô được. Không bao giờ tự dùng fast mode, `max`, Fable. Spec: [docs/specs/54-model-router.md](specs/54-model-router.md). Tách:
+  - [ ] **54a. run-data**: run ghi model, effort, loại gói, lần thử, run cha, kết luận review.
+  - [ ] **54b. task-kind**: loại / cỡ / rủi ro của task, luật và AI phân loại, ô trong khung task.
+  - [ ] **54c. router**: bảng cấp, bảng loại × cỡ, hồ sơ, hub gửi lựa chọn, runner thêm cờ, nâng cấp khi lỗi, áp lực hạn mức, trang *Chọn model*.
+  - [ ] **54d. learning**: thống kê, đề xuất hằng đêm, thử rẻ hơn, khoá ô.
 
 ## Sửa lỗi
 
