@@ -1,6 +1,6 @@
 import { ResponsiveTable as Table, ResponsiveTableRow as TableRow } from "#ui/components/ResponsiveTable.tsx";
 import { useEffect, useState, type ReactNode } from "react";
-import type { Machine, RunGroup, RunGroupItem } from "@xdev-hive/core";
+import type { Machine, MapPhase, RunGroup, RunGroupItem, RunGroupRun, RunRequest } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { TableBody, TableCell, TableHead, TableHeader } from "@xdev-hive/ui/components/ui/table";
@@ -54,6 +54,14 @@ function GroupCard({ group: g, machines, onChanged }: { group: RunGroup; machine
   const fanout = g.kind === "fanout";
   const canPick = fanout && !g.winnerTask && held === 0 && active === 0 && allow(g.project, "taskManage") && allow(g.project, "runDispatch");
   const pick = (taskId: string) => void action.run(async () => (await client.call("runs.pickWinner", { groupId: g.id, taskId }), onChanged()));
+  // A job in parts (roadmap 31c): its split and merge run outside the items, and a stopped one starts again from here.
+  const job = g.kind === "mapreduce";
+  const parting = job && g.phase !== "map" && !g.items.length;
+  // A chain of roles on one task (roadmap 31d): one step at a time; a failed or cancelled one starts again from here.
+  const chain = g.kind === "roles";
+  const step = g.items.findIndex((i) => i.status === "held" || i.active);
+  const stoppable = job || chain;
+  const resume = () => void action.run(async () => (await client.call("runs.resumeGroup", { id: g.id }), onChanged()));
   return (
     <Card id={`group-${g.id}`} className="gap-3 py-4" data-group={g.id}>
       <CardContent className="flex flex-col gap-3 px-4">
@@ -70,19 +78,33 @@ function GroupCard({ group: g, machines, onChanged }: { group: RunGroup; machine
                 <>
                   {" · "}
                   <a className="underline underline-offset-2" href={`#/tasks?task=${encodeURIComponent(g.parentTask)}`}>
-                    {t("batches.parent", { task: g.parentTask })}
+                    {t(job ? "batches.job" : chain ? "batches.task" : "batches.parent", { task: g.parentTask })}
                   </a>
                 </>
               ) : null}
+              {stoppable && g.machineId ? ` · ${t("batches.machine", { machine: machines.find((m) => m.id === g.machineId)?.machine ?? g.machineId })}` : null}
             </span>
           </div>
           <div className="flex flex-col items-end gap-0.5 text-xs">
-            {g.closedAt ? (
+            {job && g.phase ? (
+              <span data-map-phase={g.phase}>
+                <Badge tone={PHASE_TONE[g.phase]}>{t(`batches.phase.${g.phase}`)}</Badge>
+              </span>
+            ) : null}
+            {chain ? (
+              <span data-roles-phase={g.phase ?? "going"}>
+                <Badge tone={g.phase === "done" ? "ok" : g.phase === "stopped" ? "danger" : "running"}>
+                  {g.phase === "done" || g.phase === "stopped" ? t(`batches.rolesPhase.${g.phase}`) : t("batches.rolesPhase.going", { n: Math.max(step, 0) + 1, total: g.items.length })}
+                </Badge>
+              </span>
+            ) : null}
+            {/* A stopped job is closed too, but not over: Chạy lại goes on from where it stopped. */}
+            {g.closedAt && g.phase === "stopped" ? null : g.closedAt ? (
               <span className="text-muted-foreground">{t("batches.over", { time: formatTime(g.closedAt) })}</span>
-            ) : (
+            ) : parting ? null : (
               <span className="font-medium text-info">{g.maxParallel ? t("batches.parallel", { active, max: g.maxParallel }) : t("batches.parallelAll", { active })}</span>
             )}
-            <span className="text-muted-foreground">{t("batches.counts", { held, done, failed })}</span>
+            {parting ? null : <span className="text-muted-foreground">{t("batches.counts", { held, done, failed })}</span>}
           </div>
           {!g.closedAt && allow(g.project, "runDispatch") ? (
             <Button
@@ -96,58 +118,99 @@ function GroupCard({ group: g, machines, onChanged }: { group: RunGroup; machine
               {t("batches.cancel")}
             </Button>
           ) : null}
+          {stoppable && g.phase === "stopped" && allow(g.project, "runDispatch") ? (
+            <Button size="sm" disabled={action.busy} onClick={resume} data-map-resume>
+              {t("batches.resume")}
+            </Button>
+          ) : null}
         </div>
-        <ErrorNote error={action.error} />
-        <div className="overflow-x-auto rounded-lg border">
-          <Table className="table-fixed md:min-w-[40rem]">
-            <colgroup>
-              <col />
-              <col className="w-44" />
-              <col className="w-56" />
-              {fanout ? <col className="w-36" /> : null}
-            </colgroup>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("batches.colTask")}</TableHead>
-                <TableHead>{t("batches.colWhere")}</TableHead>
-                <TableHead>{t("batches.colState")}</TableHead>
-                {fanout ? <TableHead /> : null}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {g.items.map((item) => (
-                <ItemRow key={item.id} item={item} machines={machines}>
-                  {fanout ? (
-                    <TableCell className="align-top text-xs whitespace-normal">
-                      {g.winnerTask ? (
-                        g.winnerTask === item.taskId ? (
-                          <Badge tone="ok">{t("batches.kept")}</Badge>
-                        ) : (
-                          <span className="text-muted-foreground">{t("batches.notKept")}</span>
-                        )
-                      ) : item.run?.status === "succeeded" && allow(g.project, "runDispatch") ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={!canPick || action.busy}
-                          title={canPick ? undefined : t("batches.pickHint")}
-                          data-pick-winner={item.taskId}
-                          onClick={() => pick(item.taskId)}
-                        >
-                          {t("batches.pick")}
-                        </Button>
-                      ) : null}
-                    </TableCell>
-                  ) : null}
-                </ItemRow>
+        {stoppable && g.phase === "stopped" && g.phaseError ? <p className="text-xs text-danger">{t("batches.stopped", { error: requestErrorText(g.phaseError) })}</p> : null}
+        {job && g.phaseRequest ? (
+          <div className="flex flex-wrap items-baseline gap-x-2 text-xs" data-map-run={g.items.length ? "reduce" : "split"}>
+            <span className="font-medium">{t(g.items.length ? "batches.mergeRun" : "batches.splitRun")}</span>
+            <RequestState request={g.phaseRequest} run={g.phaseRun} machine={g.phaseRequest.machine} t={t} />
+          </div>
+        ) : null}
+        {job && g.phase === "ready" ? (
+          <div className="flex flex-col gap-1.5 text-sm">
+            <span className="font-medium">{t("batches.parts", { count: g.parts.length })}</span>
+            <ol className="list-decimal pl-5 text-[13px]">
+              {g.parts.map((p, i) => (
+                <li key={i} className="wrap-anywhere">
+                  {p}
+                </li>
               ))}
-            </TableBody>
-          </Table>
-        </div>
+            </ol>
+            {allow(g.project, "taskManage") && allow(g.project, "runDispatch") ? (
+              <a className="w-fit font-medium underline underline-offset-2" href={`#/tasks?split=${g.id}`} data-map-edit={g.id}>
+                {t("batches.editParts")}
+              </a>
+            ) : null}
+          </div>
+        ) : null}
+        <ErrorNote error={action.error} />
+        {g.items.length ? (
+          <div className="overflow-x-auto rounded-lg border">
+            <Table className="table-fixed md:min-w-[40rem]">
+              <colgroup>
+                <col />
+                <col className="w-44" />
+                <col className="w-56" />
+                {fanout ? <col className="w-36" /> : null}
+              </colgroup>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("batches.colTask")}</TableHead>
+                  <TableHead>{t("batches.colWhere")}</TableHead>
+                  <TableHead>{t("batches.colState")}</TableHead>
+                  {fanout ? <TableHead /> : null}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {g.items.map((item) => (
+                  <ItemRow key={item.id} item={item} machines={machines}>
+                    {fanout ? (
+                      <TableCell className="align-top text-xs whitespace-normal">
+                        {g.winnerTask ? (
+                          g.winnerTask === item.taskId ? (
+                            <Badge tone="ok">{t("batches.kept")}</Badge>
+                          ) : (
+                            <span className="text-muted-foreground">{t("batches.notKept")}</span>
+                          )
+                        ) : item.run?.status === "succeeded" && allow(g.project, "runDispatch") ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={!canPick || action.busy}
+                            title={canPick ? undefined : t("batches.pickHint")}
+                            data-pick-winner={item.taskId}
+                            onClick={() => pick(item.taskId)}
+                          >
+                            {t("batches.pick")}
+                          </Button>
+                        ) : null}
+                      </TableCell>
+                    ) : null}
+                  </ItemRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
 }
+
+/** A job's phase: an agent at work, a person's turn, merged, stopped. */
+const PHASE_TONE: Record<MapPhase, string> = {
+  split: "running",
+  ready: "warn",
+  map: "running",
+  reduce: "running",
+  done: "ok",
+  stopped: "danger",
+};
 
 /** It will not run: refused, expired, not sent, cancelled, or its run did not succeed. */
 function failedItem(i: RunGroupItem): boolean {
@@ -161,13 +224,14 @@ function ItemRow({ item: i, machines, children }: { item: RunGroupItem; machines
   const t = useT();
   const machine = i.request?.machine ?? machines.find((m) => m.id === i.machineId)?.machine ?? null;
   return (
-    <TableRow data-item-task={i.taskId} data-item-state={itemState(i)}>
+    <TableRow data-item-task={i.taskId} data-item-step={i.step ?? undefined} data-item-state={itemState(i)}>
       <TableCell className="align-top whitespace-normal">
         <a href={`#/tasks?task=${encodeURIComponent(i.taskId)}`} className="flex min-w-0 items-baseline gap-2 hover:underline">
           <span className="shrink-0 font-mono text-xs text-muted-foreground">{i.taskId}</span>
           <span className="min-w-0 wrap-anywhere">{i.taskTitle ?? "—"}</span>
         </a>
-        <span className="text-xs text-muted-foreground">{runLabel("agentRole", i.role)}</span>
+        {/* A chain's step says what it does: writing code, tests and docs are all implement runs (roadmap 31d). */}
+        <span className="text-xs text-muted-foreground">{i.step ? `${i.position}. ${t(`roleStep.${i.step}`)}` : runLabel("agentRole", i.role)}</span>
       </TableCell>
       <TableCell className="align-top text-xs whitespace-normal">
         <div className="font-mono wrap-anywhere">{machine ?? t("batches.anyMachine")}</div>
@@ -199,8 +263,12 @@ function ItemState({ item: i, machine, t }: { item: RunGroupItem; machine: strin
       </span>
     );
   }
-  const req = i.request;
-  if (!req) return <span>—</span>;
+  if (!i.request) return <span>—</span>;
+  return <RequestState request={i.request} run={i.run} machine={machine} t={t} />;
+}
+
+/** A request and its run: an item's, or a job's split or merge run (roadmap 31c). */
+function RequestState({ request: req, run, machine, t }: { request: RunRequest; run: RunGroupRun | null; machine: string | null; t: TFunction }) {
   if (req.status === "pending") return <span className="text-info">{t("batches.state.pending", { machine: machine ?? "?" })}</span>;
   if (req.status === "rejected") {
     return (
@@ -212,7 +280,6 @@ function ItemState({ item: i, machine, t }: { item: RunGroupItem; machine: strin
   }
   if (req.status === "expired") return <span className="text-warning">{t("batches.state.expired")}</span>;
   if (req.status === "cancelled") return <span className="text-muted-foreground">{t("batches.state.cancelled")}</span>;
-  const run = i.run;
   if (!run) return <span className="text-info">{t("batches.state.accepted", { machine: machine ?? "?" })}</span>;
   const tone = run.status === "succeeded" ? "text-success" : run.status === "running" || run.status === "queued" ? "text-info" : "text-danger";
   return (

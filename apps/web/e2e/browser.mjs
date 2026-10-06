@@ -941,7 +941,7 @@ async function main() {
       return body.result;
     };
     const profile = (id) => ({ id, label: id, kind: "claude", enabled: true, account: null, installed: true, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, maxConcurrent: 1 });
-    const beat = () => machineRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", version: "0.112.0", projects: ["payment"], acceptsRuns: true, profiles: [profile("claude-1"), profile("claude-2")], runs: [] });
+    const beat = () => machineRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", version: "0.139.0", projects: ["payment"], acceptsRuns: true, profiles: [profile("claude-1"), profile("claude-2")], runs: [] });
     await beat();
     const tab = (current = tabs.lan);
     await tab.reload();
@@ -970,6 +970,193 @@ async function main() {
     const tasks = await rpc("tasks.list", { project: "payment" });
     const status = (id) => tasks.find((t) => t.id === id)?.status;
     expect(status(a.taskId) === "done" && status(group.parentTask) === "done" && status(b.taskId) !== "done", `tasks: ${[a.taskId, b.taskId, group.parentTask].map((id) => `${id}:${status(id)}`).join()}`);
+  });
+
+  // Roadmap 31c: Lan asks an agent to split a payment job, adds a part to its list and runs it; every part runs on
+  // Lan's machine, then one run merges them. The merge fails once and Lan starts it again on Đợt chạy.
+  await step("map-reduce", async () => {
+    const machineRpc = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" },
+        body: JSON.stringify({ method, input }),
+      });
+      const body = await r.json();
+      if (body.error) throw new Error(`${method}: ${body.error.message}`);
+      return body.result;
+    };
+    const profile = (id) => ({ id, label: id, kind: "claude", enabled: true, account: null, installed: true, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, maxConcurrent: 1 });
+    const beat = () => machineRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", version: "0.139.0", projects: ["payment"], acceptsRuns: true, profiles: [profile("claude-1"), profile("claude-2")], runs: [] });
+    /** The machine takes each request and reports its run ended. */
+    const finish = async (requests, status, tag) => {
+      const at = new Date().toISOString();
+      for (const r of requests) {
+        const runId = `R-map-${tag}-${r.id}`;
+        await machineRpc("runs.requestResult", { id: r.id, status: "accepted", runId });
+        await machineRpc("runs.push", {
+          machine: "lan-mbp",
+          runs: [{ runId, project: "payment", taskId: r.taskId, taskTitle: r.taskTitle, role: r.role, status, profileId: r.profileId ?? "claude-1", createdAt: at, finishedAt: at }],
+        });
+      }
+    };
+    const group = async (id) => (await rpc("runs.groups", { project: "payment" })).find((g) => g.id === id);
+    await beat();
+    const tab = (current = tabs.lan);
+    await tab.reload();
+    await tab.go("tasks");
+    await tab.click("[data-map-open]");
+    await tab.click("[data-map-mode=agent]");
+    await tab.waitFor("Lan's machine in the list", () => document.querySelector("#map-machine")?.options.length > 1);
+    await tab.eval(() => {
+      const select = document.querySelector("#map-machine");
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, select.options[1].value);
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await tab.click("#map-job");
+    await tab.type("Thêm trang hoàn tiền:\n- Form\n- API\n- Tài liệu");
+    await tab.shot(`${String(n).padStart(2, "0")}-map-split-form`);
+    await tab.click("[data-map-send]", "Nhờ agent chia");
+    const split = await until("the map-reduce group", async () => (await rpc("runs.groups", { project: "payment" })).find((g) => g.kind === "mapreduce"));
+    expect(split.phase === "split" && split.parentTask, `phase: ${split.phase}`);
+    // The split run (a plan run on the job's task) writes the parts in the task's note, as the agent would.
+    const [plan] = (await beat()).runRequests.filter((r) => r.taskId === split.parentTask);
+    expect(plan?.role === "plan", `split request: ${plan?.role}`);
+    await finish([plan], "succeeded", "split");
+    expect((await group(split.id)).parts.length === 0, "the original prompt must not become the split result");
+    await rpc("tasks.update", { id: split.parentTask, status: "review", note: "- Form hoàn tiền ở src/refund/form.tsx\n- API hoàn tiền ở src/api/refund.ts" });
+    expect((await group(split.id)).phase === "ready", "the split did not leave parts to check");
+    // Lan checks the agent's list from the Task page and adds the docs.
+    await tab.reload();
+    await tab.go("tasks");
+    await tab.click(`[data-map-ready="${split.id}"]`);
+    await tab.waitFor("the agent's parts", () => document.querySelector("#map-parts")?.value.split("\n").length === 2);
+    await tab.eval(() => {
+      const box = document.querySelector("#map-parts");
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(box, `${box.value}\nTài liệu ở docs/refund.md`);
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await tab.click("[data-map-profile=claude-2]");
+    await tab.shot(`${String(n).padStart(2, "0")}-map-ready-form`);
+    await tab.click("[data-map-send]", "Chạy 3 việc con");
+    const map = await until("the parts", async () => ((g) => g?.phase === "map" && g)(await group(split.id)));
+    expect(map.items.length === 3 && map.items.every((i) => i.profileId === "claude-2" && i.machineId === map.machineId), `items: ${map.items.map((i) => `${i.taskId}:${i.profileId}`).join()}`);
+    // Every part runs and succeeds; the next heartbeat brings the merge run on the job's task.
+    await finish((await beat()).runRequests.filter((r) => r.taskId.startsWith(`${split.parentTask}-`)), "succeeded", "part");
+    const [merge] = (await beat()).runRequests.filter((r) => r.taskId === split.parentTask);
+    expect(merge?.role === "implement" && merge.reviewAfter && merge.instructions.includes(`ai/${split.parentTask}-3`), "no merge run of the three branches");
+    await finish([merge], "failed", "merge");
+    await tab.go(`batches?group=${split.id}`);
+    await tab.waitFor("the job stopped", (id) => document.querySelector(`[data-group="${id}"] [data-map-phase]`)?.getAttribute("data-map-phase") === "stopped", split.id);
+    await tab.shot(`${String(n).padStart(2, "0")}-map-stopped`);
+    await tab.click("[data-map-resume]");
+    await tab.waitFor("merging again", (id) => document.querySelector(`[data-group="${id}"] [data-map-phase]`)?.getAttribute("data-map-phase") === "reduce", split.id);
+    const [again] = (await beat()).runRequests.filter((r) => r.taskId === split.parentTask);
+    expect(again, "no second merge run");
+    await finish([again], "succeeded", "merge2");
+    await tab.reload();
+    await tab.go(`batches?group=${split.id}`);
+    await tab.waitFor("merged", (id) => document.querySelector(`[data-group="${id}"] [data-map-phase]`)?.getAttribute("data-map-phase") === "done", split.id);
+  });
+
+  // Roadmap 31d: Lan runs one payment task as a chain of roles on her machine: code, then tests, then review, each with
+  // its profile. The tests step fails once, the chain stops there, and Lan starts it again on Đợt chạy.
+  await step("roles", async () => {
+    const machineRpc = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" },
+        body: JSON.stringify({ method, input }),
+      });
+      const body = await r.json();
+      if (body.error) throw new Error(`${method}: ${body.error.message}`);
+      return body.result;
+    };
+    const profile = (id) => ({ id, label: id, kind: "claude", enabled: true, account: null, installed: true, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, maxConcurrent: 1 });
+    const beat = async () =>
+      (await machineRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", version: "0.139.0", projects: ["payment"], acceptsRuns: true, profiles: [profile("claude-1"), profile("claude-2")], runs: [] }))
+        .runRequests.filter((r) => r.taskId === "PAY-ROLES");
+    /** The machine takes the step's request and reports its run ended. */
+    const finish = async (r, status) => {
+      const at = new Date().toISOString();
+      const runId = `R-roles-${r.id}`;
+      await machineRpc("runs.requestResult", { id: r.id, status: "accepted", runId });
+      await machineRpc("runs.push", {
+        machine: "lan-mbp",
+        runs: [{ runId, project: "payment", taskId: r.taskId, taskTitle: r.taskTitle, role: r.role, status, profileId: r.profileId ?? "claude-1", createdAt: at, finishedAt: at }],
+      });
+    };
+    await rpc("tasks.create", { project: "payment", id: "PAY-ROLES", title: "Hoàn tiền một phần" });
+    await beat();
+    const tab = (current = tabs.lan);
+    await tab.reload();
+    await tab.go("tasks");
+    await tab.click('[data-task-view="list"]');
+    await tab.waitFor("the task's pick box", () => !!document.querySelector('[data-pick-task="PAY-ROLES"]'));
+    // Clicked in the page: a notice coming in above the table would move it under a pointer click.
+    await tab.eval(() => document.querySelector('[data-pick-task="PAY-ROLES"]').click());
+    await tab.waitFor("PAY-ROLES picked", () => document.querySelector('[data-pick-task="PAY-ROLES"]')?.getAttribute("data-state") === "checked");
+    await tab.click("[data-roles-open]");
+    await tab.waitFor("Lan's machine in the list", () => document.querySelector("#roles-machine")?.options.length > 1);
+    const pick = (selector, value) =>
+      tab.eval(
+        (s, v) => {
+          const select = document.querySelector(s);
+          Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, v ?? select.options[1].value);
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+        },
+        selector,
+        value,
+      );
+    await pick("#roles-machine");
+    await tab.waitFor("the steps' profiles", () => [...(document.querySelector("#roles-profile-1")?.options ?? [])].some((o) => o.value === "claude-2"));
+    await pick("#roles-profile-0", "claude-1");
+    await pick("#roles-profile-1", "claude-2");
+    // The sheet slides in: shoot it once it is all in view.
+    await tab.waitFor("the form in view", () => document.querySelector("[data-roles-form]").getBoundingClientRect().right <= window.innerWidth);
+    await tab.shot(`${String(n).padStart(2, "0")}-roles-form`);
+    await tab.cdp("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await tab.waitFor("role form fits a phone", () => document.querySelector("[data-roles-form]").getBoundingClientRect().right <= 390);
+    const controls = await tab.eval(() => [...document.querySelectorAll("[data-roles-form] button, [data-roles-form] select, [data-roles-form] input")].map((el) => ({ height: el.getBoundingClientRect().height, font: parseFloat(getComputedStyle(el).fontSize), tag: el.tagName })));
+    expect(controls.every((el) => el.height >= 44), `role touch targets: ${JSON.stringify(controls)}`);
+    expect(controls.filter((el) => el.tag === "SELECT").every((el) => el.font >= 16), "role selects must not zoom a phone");
+    await tab.shot(`${String(n).padStart(2, "0")}-roles-mobile`);
+    await tab.cdp("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile });
+
+    await tab.click("[data-roles-send]", "Chạy chuỗi 3 bước");
+    const chain = await until("the chain", async () => (await rpc("runs.groups", { project: "payment" })).find((g) => g.kind === "roles"));
+    expect(
+      chain.parentTask === "PAY-ROLES" && chain.items.map((i) => `${i.step}:${i.profileId}`).join() === "code:claude-1,test:claude-2,review:null",
+      `items: ${chain.items.map((i) => `${i.step}:${i.profileId}`).join()}`,
+    );
+    const [code, ...early] = await beat();
+    expect(code?.role === "implement" && !early.length, `first step: ${code?.role}, then ${early.length}`);
+    await finish(code, "succeeded");
+    const [test] = await beat();
+    expect(test?.role === "implement" && test.profileId === "claude-2" && test.instructions.includes("Viết test cho phần"), `tests step: ${test?.instructions}`);
+    await finish(test, "failed");
+    await tab.go(`batches?group=${chain.id}`);
+    await tab.waitFor("the chain stopped", (id) => document.querySelector(`[data-group="${id}"] [data-roles-phase]`)?.getAttribute("data-roles-phase") === "stopped", chain.id);
+    expect((await beat()).length === 0, "the review ran after a failed step");
+    await tab.shot(`${String(n).padStart(2, "0")}-roles-stopped`);
+    await tab.click(`[data-group="${chain.id}"] [data-map-resume]`);
+    await tab.waitFor("going again", (id) => document.querySelector(`[data-group="${id}"] [data-roles-phase]`)?.getAttribute("data-roles-phase") === "going", chain.id);
+    const [retry] = await beat();
+    expect(retry?.profileId === "claude-2", `again: ${retry?.profileId}`);
+    await finish(retry, "succeeded");
+    const [review] = await beat();
+    expect(review?.role === "review", `last step: ${review?.role}`);
+    await finish(review, "succeeded");
+    await tab.reload();
+    await tab.go(`batches?group=${chain.id}`);
+    await tab.waitFor("the chain done", (id) => document.querySelector(`[data-group="${id}"] [data-roles-phase]`)?.getAttribute("data-roles-phase") === "done", chain.id);
+    await tab.shot(`${String(n).padStart(2, "0")}-roles-done`);
+    await tab.go(`runs?run=R-roles-${review.id}`);
+    await tab.waitFor("chain action on the completed run", () => !!document.querySelector("[data-run-roles-open]"));
+    await tab.click("[data-run-roles-open]");
+    await tab.waitFor("chain form from the run", () => !!document.querySelector('[data-roles-form="PAY-ROLES"]'));
+    await tab.waitFor("run machine preselected", () => !!document.querySelector("#roles-machine")?.value);
+    await tab.shot(`${String(n).padStart(2, "0")}-roles-from-run`);
+
   });
 
   // Roadmap 34a: the hub admin caps the merge gate at "AI check"; Lan opens payment's spec gate and cannot pick

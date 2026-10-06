@@ -8,6 +8,7 @@ import type { MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { WriteSource } from "./source.ts";
 import type { MapPhase } from "./mapreduce.ts";
 import type { TaskKind, TaskRisk, TaskSize } from "./task-classify.ts";
+import type { RoleStep } from "./roles.ts";
 
 /** member: a person's hub account (what it may do comes from its per-project grants). */
 export type Role = "viewer" | "agent" | "member" | "admin";
@@ -981,6 +982,8 @@ export interface RunGroupItem {
   taskTitle: string | null;
   taskStatus: TaskStatus | null;
   role: AgentRole;
+  /** A chain of roles' step (roadmap 31d): what this run does on the task; null for the other kinds. */
+  step: RoleStep | null;
   /** null: any free machine, picked when the item is released; then the one picked. */
   machineId: string | null;
   profileId: string | null;
@@ -1012,11 +1015,14 @@ export interface RunGroup {
   /** Nothing left to release or running. */
   closedAt: string | null;
   items: RunGroupItem[];
-  /** Map-reduce (roadmap 31c): where the group is; null for the other kinds. */
+  /**
+   * Map-reduce (roadmap 31c): where the group is. A chain of roles (31d): null while its steps run, then "done", or
+   * "stopped" when a step failed or the chain was cancelled. null for the other kinds.
+   */
   phase: MapPhase | null;
   /** The job's parts: given, or written by the split run (to check while the phase is "ready"). */
   parts: string[];
-  /** The machine every part and the merge run on: their branches have to be in one repository. */
+  /** The machine every part and the merge run on (31c), or every step of a chain (31d): their branches have to be in one repository. */
   machineId: string | null;
   /** The split run's or the merge run's request, and what its run did. */
   phaseRequest: RunRequest | null;

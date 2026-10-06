@@ -13,6 +13,7 @@ import { DOC_ASSET_MAX_BYTES } from "./doclinks.ts";
 import { MR_STATUSES, PIPELINE_STATUSES } from "./gitlab.ts";
 import { MACHINE_ID, PROJECT_NAME } from "./keys.ts";
 import { MAX_MAP_PART, MAX_MAP_PARTS, MAX_MAP_PROMPT } from "./mapreduce.ts";
+import { MAX_ROLE_INSTRUCTIONS, MAX_ROLE_STEPS, MIN_ROLE_STEPS, ROLE_STEPS } from "./roles.ts";
 import type { SkillSummary } from "./skills.ts";
 import { SPEC_DIR, SPEC_FEATURES_MAX, SPEC_FILE_MAX, SPEC_STEPS, type SpecFeature, type SpecFeatureDetail, type SpecTaskPlan } from "./speckit.ts";
 import { toolEntrySchema } from "./tools.ts";
@@ -788,7 +789,31 @@ export const schemas = {
     machineId: machineRef.nullable().default(null),
     profileId: z.string().max(40).nullable().default(null),
   }),
-  /** Starts a stopped map-reduce group again: its failed parts, or its merge, or its split. */
+  /**
+   * A chain of roles on one task (roadmap 31d): each step an agent with its role and profile (write the code, then the
+   * tests, then review…), one after the other on the task's branch of one machine. The next step goes when the run of
+   * the one before it succeeded; a step that fails stops the chain. Checked like runs.dispatch.
+   */
+  "runs.roles": z.object({
+    project,
+    taskId,
+    /** Left out: the task's title. */
+    title: z.string().max(120).default(""),
+    /** null: the machine with the most free places now. Every step runs there. */
+    machineId: machineRef.nullable().default(null),
+    steps: z
+      .array(
+        z.object({
+          step: z.enum(ROLE_STEPS),
+          /** A profile of that machine; null: the machine picks for the step. */
+          profileId: z.string().max(40).nullable().default(null),
+          instructions: z.string().max(MAX_ROLE_INSTRUCTIONS).default(""),
+        }),
+      )
+      .min(MIN_ROLE_STEPS)
+      .max(MAX_ROLE_STEPS),
+  }),
+  /** Starts a stopped map-reduce group again (its failed parts, or its merge, or its split), or a chain of roles from its failed step. */
   "runs.resumeGroup": z.object({ id }),
   /** Run groups, the newest first: a project's, or every project the caller sees. */
   "runs.groups": z.object({ project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(100).default(30) }),
@@ -1191,6 +1216,7 @@ export interface MethodOutput {
   "runs.fanout": RunGroup;
   "runs.pickWinner": RunGroup;
   "runs.mapReduce": RunGroup;
+  "runs.roles": RunGroup;
   "runs.mapSplit": RunGroup;
   "runs.resumeGroup": RunGroup;
   "runs.groups": RunGroup[];
@@ -1372,6 +1398,8 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "runs.fanout": "agent",
   "runs.pickWinner": "agent",
   "runs.mapReduce": "agent",
+  // Also "runDispatch" on the project, like runs.dispatch: it makes no task.
+  "runs.roles": "agent",
   "runs.mapSplit": "agent",
   "runs.resumeGroup": "agent",
   "runs.requests": "viewer",
