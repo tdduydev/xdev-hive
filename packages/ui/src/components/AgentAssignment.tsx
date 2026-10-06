@@ -5,7 +5,7 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { ErrorNote } from "#ui/components/common.tsx";
 import { useAction, useCan, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
-import { agentLabel, assignableMachines, assignmentInput, assignInOrder } from "#ui/lib/assignment.ts";
+import { agentKey, agentLabel, agentStatus, assignableMachines, assignmentInput, assignInOrder } from "#ui/lib/assignment.ts";
 import { requestErrorText } from "#ui/lib/runs.ts";
 
 export const assignmentControl = "w-full max-md:min-h-11 max-md:text-base";
@@ -24,10 +24,13 @@ export function AgentAssignment({ tasks, onChanged, onAssigned }: { tasks: Task[
   const [profileId, setProfile] = useState(current?.profileId ?? "");
   const [before, setBefore] = useState("");
   useEffect(() => { setMachine(current?.machineId ?? ""); setProfile(current?.profileId ?? ""); setBefore(""); }, [single?.id, current?.machineId, current?.profileId]);
+  // Both callers build `tasks` fresh on every render, so the array itself cannot be a dependency: useQuery compares
+  // them by identity and would refetch for ever. This key changes exactly when the queries' answers would.
+  const taskKey = tasks.map((task) => `${task.id}:${agentKey(task.agent)}`).join(" ");
   const machines = useQuery(() => client.call("machines.list", {}), [client, poll]);
-  const requests = useQuery(() => client.call("runs.requests", { limit: 200 }), [client, poll, tasks]);
-  const counts = useQuery(() => client.call("tasks.list", {}), [client, poll, tasks]);
-  const queue = useQuery(async () => machineId ? client.call("tasks.agentQueue", { machineId }) : [], [client, machineId, poll, tasks]);
+  const requests = useQuery(() => client.call("runs.requests", { limit: 200 }), [client, poll, taskKey]);
+  const counts = useQuery(() => client.call("tasks.list", {}), [client, poll, taskKey]);
+  const queue = useQuery(async () => machineId ? client.call("tasks.agentQueue", { machineId }) : [], [client, machineId, poll, taskKey]);
   const fit = assignableMachines(machines.data ?? [], tasks.map((task) => task.project));
   const machine = fit.find((m) => m.id === machineId);
   const can = tasks.length > 0 && tasks.every((task) => allow(task.project, "runDispatch"));
@@ -35,17 +38,9 @@ export function AgentAssignment({ tasks, onChanged, onAssigned }: { tasks: Task[
   const rows = queue.data ?? [];
   const position = rows.findIndex((r) => r.task.id === single?.id);
   const waiting = current?.hold ?? (current?.machineId === machineId ? rows[position]?.waiting : null);
-  const count = (m: Machine, p?: ReportedProfile) => (counts.data ?? []).filter((task) => task.status !== "done" && task.agent?.machineId === m.id && (!p || task.agent.profileId === p.id)).length;
   const detail = (m: Machine, p?: ReportedProfile) => {
-    const profiles = p ? [p] : m.profiles.filter((p) => p.enabled);
-    const running = m.runs.filter((r) => r.status === "running" && (!p || r.profileId === p.id)).length;
-    const pending = (requests.data ?? []).filter((r) => r.machineId === m.id && r.status === "pending" && (!p || !r.profileId || r.profileId === p.id)).length;
-    const max = profiles.reduce((n, p) => n + (p.maxConcurrent ?? 1), 0);
-    const pct = (key: "sessionPercent" | "weekPercent") => {
-      const values = profiles.map((p) => p[key]).filter((v): v is number => v != null);
-      return values.length ? `${Math.round(Math.max(...values))}%` : "—";
-    };
-    return `${t(!m.online ? "assignment.offline" : running + pending >= max ? "assignment.busy" : "assignment.free")} · ${t("assignment.quota", { session: pct("sessionPercent"), week: pct("weekPercent") })} · ${t("assignment.queued", { n: count(m, p) })}`;
+    const s = agentStatus(m, p ?? null, { tasks: counts.data ?? [], requests: requests.data ?? [] });
+    return `${t(`assignment.${s.state}`)} · ${t("assignment.quota", { session: s.session, week: s.week })} · ${t("assignment.queued", { n: s.queued })}`;
   };
   const refresh = () => { queue.reload(); counts.reload(); onChanged(); bump(); };
   const assign = () => void action.run(async () => {
@@ -106,12 +101,14 @@ export function AssignedQueue({ machineId, profileId }: { machineId: string; pro
   const queue = useQuery(() => client.call("tasks.agentQueue", { machineId, profileId }), [client, machineId, profileId, poll]);
   // A null API filter means every profile; the rotating lane must not duplicate pinned tasks.
   const rows = (queue.data ?? []).filter((r) => r.task.agent?.profileId === profileId && r.task.status !== "done");
+  // Most plans have nothing queued: an empty box under every one of them would bury the map's own cards.
+  if (!rows.length && !queue.error) return null;
   return <section data-assigned-queue className="flex min-w-0 flex-col gap-2 rounded-md border border-line-default bg-surface p-2 text-xs">
     <h4 className="font-semibold">{profileId ?? t("assignment.any")} · {t("assignment.queue")} ({rows.length})</h4>
     {(all ? rows : rows.slice(0, 3)).map(({ task, waiting }) => <div key={task.id} className="flex min-w-0 flex-col gap-1">
       <a className="flex min-h-11 items-center wrap-anywhere underline focus-visible:focus-ring md:min-h-0" href={`#/tasks?task=${encodeURIComponent(task.id)}`}>{task.id} · {task.title}</a>
       {waiting ? <span className="wrap-anywhere text-fg-secondary">{requestErrorText(waiting)}</span> : null}
-      {allow(task.project, "runDispatch") ? <NativeSelect aria-label={`${t("assignment.before")} · ${task.id}`} wrapperClassName="w-full min-w-0" className={assignmentControl} value="" disabled={action.busy} onChange={(e) => void action.run(async () => {
+      {rows.length > 1 && allow(task.project, "runDispatch") ? <NativeSelect aria-label={`${t("assignment.before")} · ${task.id}`} wrapperClassName="w-full min-w-0" className={assignmentControl} value="" disabled={action.busy} onChange={(e) => void action.run(async () => {
         await client.call("tasks.assign", assignmentInput(task.id, { machineId, profileId }, e.target.value)); queue.reload(); bump();
       })}>
         <NativeSelectOption value="" disabled>{t("assignment.before")}</NativeSelectOption>

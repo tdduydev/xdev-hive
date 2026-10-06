@@ -46,7 +46,9 @@ export function useInboxState(client: HiveClient, me: Me, scope: Scope, tick: nu
   const hub = team && me.mode === "hub";
 
   const proposals = useQuery(async () => (team ? client.call("proposals.list", { status: "pending" }) : []), deps);
-  const review = useQuery(async () => (team ? client.call("tasks.list", { ...scopeFilter(scope) }) : []), deps);
+  // A task the hub stopped at (roadmap 50b) can be in any status, and tasks.list cannot filter by agent, so the hub
+  // reads the whole board; everywhere else the inbox still asks only for what waits to be reviewed.
+  const review = useQuery(async () => (team ? client.call("tasks.list", { ...scopeFilter(scope), ...(hub ? {} : { status: "review" as const }) }) : []), deps);
   const memory = useQuery(async () => (team ? client.call("memory.list", { ...memoryFilter(scope), limit: 500 }) : []), deps);
   // Gates and leaders' proposals are the hub's; one from before them has neither method.
   const gates = useQuery(async () => (hub ? client.call("sdlc.gates", { ...scopeFilter(scope), limit: 100 }).catch(() => []) : []), deps);

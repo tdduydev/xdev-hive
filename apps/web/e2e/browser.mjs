@@ -1379,8 +1379,9 @@ async function main() {
     const beat = () => machineRpc("machines.heartbeat", { machine: machineName, instance: "e2e00003", version: "0.132.0", projects: ["payment"], acceptsRuns: true, profiles: [profile], runs: [] });
     await beat();
     const machine = (await rpc("machines.list")).find((m) => m.machine === machineName);
-    const first = await rpc("tasks.create", { project: "payment", title: "Assignment first" });
-    const second = await rpc("tasks.create", { project: "payment", title: "Assignment second" });
+    const first = await rpc("tasks.create", { id: "PAY-ASSIGN-1", project: "payment", title: "Assignment first" });
+    const second = await rpc("tasks.create", { id: "PAY-ASSIGN-2", project: "payment", title: "Assignment second" });
+    const taskNow = async (id) => (await rpc("tasks.list", { project: "payment" })).find((x) => x.id === id);
     const tab = (current = tabs.lan);
     await tab.reload();
     for (const task of [first, second]) {
@@ -1389,7 +1390,7 @@ async function main() {
       await tab.select("[data-assign-machine]", machine.id);
       await tab.select("[data-assign-profile]", profile.id);
       await tab.click("[data-assign-save]");
-      await until("saved assignment", async () => (await rpc("tasks.get", { id: task.id })).agent?.profileId === profile.id);
+      await until("saved assignment", async () => (await taskNow(task.id))?.agent?.profileId === profile.id);
       await tab.key("Escape");
     }
     const requests = await rpc("runs.requests", { project: "payment", limit: 200 });

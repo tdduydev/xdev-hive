@@ -24,6 +24,8 @@ export function AgentBoard({ tasks, machines, onOpen, onChanged }: { tasks: Task
   const canMove = (task: Task) => task.status !== "done" && allow(task.project, "runDispatch");
   const move = (task: Task, target: AssignmentTarget | null, before?: string) => {
     if (!canMove(task) || action.busy || task.id === before) return;
+    // Dropped back where it came from: nothing to change, and the hub would still write an audit line for it.
+    if (agentKey(target) === agentKey(task.agent) && !before) return;
     void action.run(async () => {
       if (target) await client.call("tasks.assign", assignmentInput(task.id, target, before));
       else await client.call("tasks.unassign", { id: task.id });
@@ -33,12 +35,14 @@ export function AgentBoard({ tasks, machines, onOpen, onChanged }: { tasks: Task
   return <div className="flex min-w-0 flex-col gap-2">
     <ErrorNote error={action.error} />
     <div data-agent-board className="flex min-w-0 flex-col gap-3 md:flex-row md:overflow-x-auto">
-      {lanes.map((lane) => <section key={lane.key} data-agent-lane={lane.key} aria-label={lane.label} className="flex w-full shrink-0 flex-col gap-2 rounded-lg border border-line-default bg-sunken p-3 md:w-72"
+      {lanes.map((lane) => {
+        const mine = agentTasks(tasks, lane.key);
+        return <section key={lane.key} data-agent-lane={lane.key} aria-label={lane.label} className="flex w-full shrink-0 flex-col gap-2 rounded-lg border border-line-default bg-sunken p-3 md:w-72"
         onDragOver={(e) => { if (!mobile && drag && !action.busy) e.preventDefault(); }}
         onDrop={(e) => { e.preventDefault(); if (!mobile && drag) move(drag, lane.target); setDrag(null); }}>
-        <h3 className="text-sm font-semibold wrap-anywhere">{lane.label} ({agentTasks(tasks, lane.key).length})</h3>
-        {!agentTasks(tasks, lane.key).length ? <p className="text-xs text-fg-secondary">{t("assignment.empty")}</p> : null}
-        {agentTasks(tasks, lane.key).map((task) => {
+        <h3 className="text-sm font-semibold wrap-anywhere">{lane.label} ({mine.length})</h3>
+        {!mine.length ? <p className="text-xs text-fg-secondary">{t("assignment.empty")}</p> : null}
+        {mine.map((task) => {
           const fit = new Set(assignableMachines(machines, [task.project]).map((m) => m.id));
           const choices = lanes.filter((l) => !l.target || fit.has(l.target.machineId) && (!l.target.profileId || machines.find((m) => m.id === l.target!.machineId)?.profiles.some((p) => p.id === l.target!.profileId && p.enabled)));
           return <article key={task.id} data-agent-task={task.id} draggable={!mobile && canMove(task) && !action.busy}
@@ -55,16 +59,18 @@ export function AgentBoard({ tasks, machines, onOpen, onChanged }: { tasks: Task
                   {!choices.some((l) => l.key === agentKey(task.agent)) ? <NativeSelectOption value={agentKey(task.agent)} disabled>{lane.label}</NativeSelectOption> : null}
                 </NativeSelect>
               </label>
-              {lane.target ? <label className="flex min-w-0 flex-col gap-1 text-xs">{t("assignment.before")}
+              {/* The keyboard and touch way to reorder, which dragging alone would not give (WCAG 2.2 "Dragging Movements"). */}
+              {lane.target && mine.length > 1 ? <label className="flex min-w-0 flex-col gap-1 text-xs">{t("assignment.before")}
                 <NativeSelect data-agent-card-before wrapperClassName="w-full min-w-0" className={assignmentControl} aria-label={`${t("assignment.before")} · ${task.id}`} value="" disabled={action.busy} onChange={(e) => move(task, lane.target, e.target.value)}>
                   <NativeSelectOption value="" disabled>{t("assignment.before")}</NativeSelectOption>
-                            {agentTasks(tasks, lane.key).filter((x) => x.id !== task.id).map((x) => <NativeSelectOption key={x.id} value={x.id}>{x.id} · {x.title}</NativeSelectOption>)}
+                  {mine.filter((x) => x.id !== task.id).map((x) => <NativeSelectOption key={x.id} value={x.id}>{x.id} · {x.title}</NativeSelectOption>)}
                 </NativeSelect>
               </label> : null}
             </> : null}
           </article>;
         })}
-      </section>)}
+      </section>;
+      })}
     </div>
   </div>;
 }
