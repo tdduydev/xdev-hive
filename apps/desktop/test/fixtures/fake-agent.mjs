@@ -18,7 +18,13 @@ if (first === "-p" && second === "/usage") {
   if (process.env.FAKE_AGY === "1") {
     if (process.env.FAKE_LOGIN === "out") { console.error('AGY_ERROR: {"message":"authentication required"}'); process.exit(3); }
     const [session, week] = (process.env.FAKE_AGY_USAGE ?? "23,46").split(",").map(Number);
-    console.log(JSON.stringify({ pools: { gemini: { session: { percent: session }, week: { percent: week } }, claude_gpt: { session: { percent: 37 }, week: { percent: 62 } } } }));
+    const group = (name, prefix, session, week) => ({ name, buckets: [
+      { id: prefix + "-5h", window: "5h", remaining_fraction: 1 - session / 100 },
+      { id: prefix + "-weekly", window: "weekly", remaining_fraction: 1 - week / 100 },
+    ] });
+    console.log(JSON.stringify({ command: { name: "usage", data: { groups: [
+      group("Gemini Models", "gemini", session, week), group("Claude and GPT models", "3p", 37, 62),
+    ] } } }));
     process.exit(0);
   }
   const [session, week] = (process.env.FAKE_USAGE ?? "").split(",");

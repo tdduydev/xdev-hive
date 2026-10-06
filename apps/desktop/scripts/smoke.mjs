@@ -64,6 +64,9 @@ const codexHome = path.join(work, "codex-plus");
     `${JSON.stringify({ timestamp: new Date().toISOString(), type: "event_msg", payload: { type: "token_count", info: null, rate_limits } })}\n`,
   );
 }
+// CLI discovery checks HOME/.local/bin before PATH; keep newly added accounts off the host's real agy.
+const smokeHome = path.join(work, "home");
+mkdirSync(smokeHome, { recursive: true });
 const agyBin = path.join(work, "agy-bin");
 mkdirSync(agyBin, { recursive: true });
 writeFileSync(path.join(agyBin, "agy"), `#!/bin/sh
@@ -124,6 +127,7 @@ async function shoot(name, page, delay, extra = {}) {
       ...process.env,
       PATH: `${agyBin}${path.delimiter}${process.env.PATH ?? ""}`,
       SHELL: "/usr/bin/false",
+      HOME: smokeHome,
       HIVE_CONFIG: path.join(work, "config.json"),
       HIVE_SMOKE_SCREENSHOT: shot,
       HIVE_SMOKE_HASH: `/${page}`,
@@ -308,7 +312,7 @@ await shoot("agents-detail", "agents", 2500, {
 // the subscription's sign-in folder. In smoke the script is written but no terminal window opens.
 await shoot("agents-login", "agents", 2500, { HIVE_SMOKE_CLICK: '[data-login="claude-max-2"]' });
 {
-  const dir = path.join(os.homedir(), ".claude-2");
+  const dir = path.join(smokeHome, ".claude-2");
   const scripts = path.join(work, "login", "claude-max-2");
   const script = existsSync(scripts) ? readdirSync(scripts).map((f) => readFileSync(path.join(scripts, f), "utf8")).join("\n") : "";
   // The script quotes each word (sh: 'auth' 'login'; Windows: "auth" "login").
@@ -470,11 +474,11 @@ const withBin = { PATH: `${accountBin}${path.delimiter}${process.env.PATH}` };
 for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login"], ["codex", "CODEX_HOME", "login"]]) {
   await shoot(`agents-account-${kind}`, "agents", 2000, { ...withBin, HIVE_SMOKE_CLICK: `[data-add-account="${kind}"] && form:has(#acc-label) button[type="submit"]` });
   const added = JSON.parse(readFileSync(path.join(work, "config.json"), "utf8")).agents.find((a) => a.id === `${kind}-1`);
-  const dir = added?.env?.[dirEnv]?.replace(/^~/, os.homedir());
+  const dir = added?.env?.[dirEnv]?.replace(/^~/, smokeHome);
   const scripts = path.join(work, "login", `${kind}-1`);
   const script = existsSync(scripts) ? readdirSync(scripts).map((f) => readFileSync(path.join(scripts, f), "utf8")).join("\n") : "";
   if (!added) failures.push(`account: no ${kind}-1 in config.json`);
-  else if (!dir || !existsSync(dir) || dir === os.homedir()) failures.push(`account: ${kind}-1 has no sign-in folder of its own (${dirEnv}=${added.env[dirEnv]})`);
+  else if (!dir || !existsSync(dir) || dir === smokeHome) failures.push(`account: ${kind}-1 has no sign-in folder of its own (${dirEnv}=${added.env[dirEnv]})`);
   // The script quotes each word (sh: 'auth' 'login'; Windows: "auth" "login").
   else if (!new RegExp(login.split(" ").map((w) => `['"]?${w}['"]?`).join(" ")).test(script) || !script.includes(dir)) failures.push(`account: the sign-in script of ${kind}-1 does not run "${login}" with ${dir}`);
 }
