@@ -1,5 +1,5 @@
-// The web's menu entries that hold several pages as tabs (roadmap 49b): Cài đặt dự án, Máy & agent, Quản trị and
-// Agent đang chạy. Each tab is a page or card that already existed, drawn as it was; only where it sits changed.
+// The web's menu entries that hold several pages as tabs (roadmap 49b): Cài đặt dự án, Máy & agent and Quản trị
+// (Agent đang chạy lost its tabs in 49e: run groups became a filter). Each tab is a page or card that already existed, drawn as it was; only where it sits changed.
 import type { ReactNode } from "react";
 import { Page } from "#ui/components/common.tsx";
 import { LeaderGuidePanel } from "#ui/components/LeaderGuide.tsx";

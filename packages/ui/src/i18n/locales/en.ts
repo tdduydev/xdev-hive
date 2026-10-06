@@ -576,7 +576,6 @@ export const en: Catalog = {
     settings: { policy: "Gates & policy", tools: "Tools", context: "Agent context", leader: "Leader", members: "Members", systems: "Systems" },
     machines: { map: "Agent map", fleet: "Fleet", queue: "Queue", costs: "Costs" },
     admin: { ops: "Operations overview", users: "Users & access", tools: "Tools", budgets: "Budgets", alerts: "Alerts", audit: "Audit log", webhooks: "Notifications & webhooks", versions: "App versions", hub: "Hub" },
-    runs: { runs: "Runs", batches: "Run groups" },
   },
   taskStatus: {
     todo: "To do",
