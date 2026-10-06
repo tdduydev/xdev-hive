@@ -11,6 +11,7 @@ import {
   isImage,
   type ChatFile,
   type ChatRequest,
+  type ConfigIssue,
   type Machine,
   HiveError,
   HubBackend,
@@ -57,7 +58,6 @@ import {
   configSchema,
   githubSettingsSchema,
   gitlabSettingsSchema,
-  loadConfig,
   localDbPath,
   pinMachine,
   resolveBackend,
@@ -72,6 +72,7 @@ import { gitClone, importRepos, planImport } from "./gitlab/import.ts";
 import { findGitRepos, isGitRepo, isRepoRoot, remoteUrl } from "./git.ts";
 import { addRepos, planLocalImport } from "./local-import.ts";
 import { appendCrashLog, crashLogPath, ReloadGuard } from "./crashlog.ts";
+import { readDesktopConfig } from "./config-read.ts";
 import { MainLog, mainLogDir, QuitReasons, relaunchAfterQuitInstall, takeStartHidden } from "./applog.ts";
 import { mainLocale, setMainLocale, tr } from "./i18n.ts";
 import { MergeRequester, mrLabel, type MrHost } from "./gitlab/mr.ts";
@@ -112,6 +113,8 @@ const smokeSize = smokeShot ? /^(\d+)x(\d+)$/.exec(process.env.HIVE_SMOKE_SIZE ?
 const devUrl = process.env.ELECTRON_RENDERER_URL;
 
 let config: HiveConfig;
+/** What the last read of config.json left out or defaulted: shown on Agents and Today, written to main.log. */
+let configIssues: ConfigIssue[] = [];
 let backend: HiveBackend;
 let win: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -158,12 +161,15 @@ const actor = (): Actor => {
 };
 
 function reload(): void {
-  config = loadConfig();
+  const read = readDesktopConfig(configPath(), (line) => mainLog.write(line), configIssues);
+  configIssues = read.issues;
+  if (!read.config) throw new Error(read.issues[0]?.message ?? "config.json cannot be read");
+  config = read.config;
   setMainLocale(config.locale);
   try {
     pinMachine(config);
   } catch (err) {
-    console.warn("[xdev-hive] could not pin the machine name in config.json:", toErrorPayload(err).message);
+    mainLog.write(`config: could not pin the machine name: ${toErrorPayload(err).message}`);
   }
   backend = resolveBackend(config);
   // This machine's own chat (local mode, roadmap 48): the database takes it as the machine its threads run on.
@@ -193,6 +199,7 @@ function settings(): DesktopSettings {
     runner: config.runner,
     gitlab: { url: config.gitlab.url, hasToken: config.gitlab.token.length > 0, mr: config.gitlab.mr },
     github: { url: config.github.url, hasToken: config.github.token.length > 0 },
+    configIssues,
   };
 }
 
@@ -1609,9 +1616,15 @@ if (!app.requestSingleInstanceLock()) {
     try {
       reload();
     } catch (err) {
-      dialog.showErrorBox("xDev Hive", tr("desktop.badConfig", { path: configPath(), reason: toErrorPayload(err).message }));
-      config = configSchema.parse({});
+      // Not showErrorBox: it blocks the main process until someone clicks it, and a runner started hidden at sign-in
+      // then sends no heartbeat at all (BUG-config-silent). The message box waits on its own; the app goes on.
+      const reason = toErrorPayload(err).message;
+      mainLog.write(`config: cannot use ${configPath()}: ${reason}; running in local mode`);
+      if (!configIssues.some((i) => i.section === "file")) configIssues = [...configIssues, { section: "file", id: null, field: "", message: reason, action: "default" }];
+      // A file that read but whose hub cannot be used (hub mode without a token) keeps its profiles and projects.
+      config = { ...(config ?? configSchema.parse({})), mode: "local" };
       backend = resolveBackend(config);
+      if (!smokeShot) void dialog.showMessageBox({ type: "error", title: "xDev Hive", message: tr("desktop.badConfig", { path: configPath(), reason }) });
     }
     mrHostRef = {
       gitlab: () => config.gitlab,
