@@ -1893,6 +1893,8 @@ async function main() {
     await until("hub commands saved", async () => (await rpc("chat.defaults", { project: "*" })).commands.length === 2);
     expect(JSON.stringify(await rpc("chat.defaults", { project: "payment" })) === JSON.stringify(beforePayment), "hub settings did not change payment's defaults, commands or autonomy");
     await tab.key("Escape");
+    // The guide sheet's overlay takes the next click until it has closed.
+    await tab.waitFor("leader guide closed", () => !document.querySelector('[role="dialog"]'));
     await tab.click('textarea[aria-label="Tin nhắn"]');
     await tab.type("Điều phối toàn hub 37b");
     await tab.click("button", "Bắt đầu");
