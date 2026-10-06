@@ -2,6 +2,14 @@
 import type { KeyPaths, Translation } from "#ui/i18n/types.ts";
 
 export const vi = {
+  assignment: {
+    title: "Agent phụ trách", agent: "Agent", any: "Gói nào cũng được", unassigned: "Chưa gán", all: "Tất cả agent",
+    byAgent: "Theo agent", machine: "Máy", profile: "Gói", choose: "Chọn máy", assign: "Gán cho agent", remove: "Bỏ gán", retry: "Chạy lại",
+    position: "Vị trí {n} trong hàng của máy", waiting: "Chờ đến lượt", queued: "{n} task đang xếp", busy: "Bận", free: "Rảnh", offline: "Offline",
+    quota: "5 giờ: {session} · Tuần: {week}", queue: "Task đã gán", allQueue: "Xem tất cả ({n})", before: "Xếp trước task", last: "Giữ vị trí hiện tại / xếp cuối nếu mới gán",
+    noMachines: "Chưa có máy nhận run có repo của các task này.", stopped: "Agent dừng ở task {id}", change: "Gán agent khác", noRight: "Bạn không có quyền gán agent.",
+    hint: "Hub tự chạy khi agent rảnh và task hết phụ thuộc.", selected: "Đã gán {n} task.", empty: "Chưa có task trong làn này.",
+  },
   common: {
     shared: "Chung",
     sharedTeam: "Chung (cả team)",
@@ -400,7 +408,7 @@ export const vi = {
     ago: { now: "vừa xong", m: "{n} ph", h: "{n} giờ", d: "{n} ngày" },
     agoLong: "{when} trước",
     shared: "Chung",
-    tag: { ci: "CI lỗi", proposal: "Đề xuất", review: "Chờ review", memory: "Memory", conflict: "Mâu thuẫn", machine: "Máy này", request: "Yêu cầu cài", alert: "Cảnh báo", gate: "Chốt SDLC", leader: "Leader đề xuất" },
+    tag: { agentHold: "Agent tạm ngừng", ci: "CI lỗi", proposal: "Đề xuất", review: "Chờ review", memory: "Memory", conflict: "Mâu thuẫn", machine: "Máy này", request: "Yêu cầu cài", alert: "Cảnh báo", gate: "Chốt SDLC", leader: "Leader đề xuất" },
     ci: {
       title: "{mr} · pipeline lỗi ở {jobs}",
       titleNoJobs: "{mr} · pipeline lỗi",

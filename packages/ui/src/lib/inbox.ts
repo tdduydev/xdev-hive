@@ -3,7 +3,7 @@
 import type { AgentRun, ChatAction, HubAlert, MachineCommand, Memory, Permission, Proposal, SdlcGateRecord, SetupItem, Task } from "@xdev-hive/core";
 import { approvalOf } from "#ui/lib/permissions.ts";
 
-export type InboxKind = "ci" | "proposal" | "review" | "memory" | "conflict" | "machine" | "request" | "alert" | "gate" | "leader";
+export type InboxKind = "agentHold" | "ci" | "proposal" | "review" | "memory" | "conflict" | "machine" | "request" | "alert" | "gate" | "leader";
 export type InboxTone = "danger" | "warning" | "info";
 
 interface Base {
@@ -17,6 +17,7 @@ interface Base {
 
 export type InboxItem = Base &
   (
+    | { kind: "agentHold"; task: Task }
     | { kind: "ci"; run: AgentRun }
     | { kind: "proposal"; proposal: Proposal }
     | { kind: "review"; task: Task; run: AgentRun | null }
@@ -32,6 +33,8 @@ export type InboxItem = Base &
 export interface InboxSources {
   proposals?: Proposal[];
   reviewTasks?: Task[];
+  assignedTasks?: Task[];
+  principal?: string;
   /** Memory in scope, any status: pending entries and the ones in a conflict are picked out. */
   memory?: Memory[];
   /** This machine's runs (desktop). */
@@ -58,6 +61,7 @@ export interface InboxSources {
 const OPTIONAL_TOOLS = new Set(["cli:specify"]);
 
 const TONE: Record<InboxKind, InboxTone> = {
+  agentHold: "warning",
   ci: "danger",
   proposal: "info",
   review: "warning",
@@ -104,6 +108,11 @@ export function buildInbox(src: InboxSources): InboxItem[] {
     if (task.status !== "review" || !can(task.project, "codeReview")) continue;
     const run = runs.filter((r) => r.taskId === task.id && r.project === task.project).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
     items.push({ kind: "review", key: `review:${task.project}:${task.id}:${task.updatedAt}`, tone: TONE.review, at: task.updatedAt, scope: task.project, task, run });
+  }
+
+  for (const task of src.assignedTasks ?? []) {
+    if (!task.agent?.hold || task.status === "done" || (!can(task.project, "runDispatch") && task.agent.by !== src.principal)) continue;
+    items.push({ kind: "agentHold", key: `agentHold:${task.id}:${task.agent.at}:${JSON.stringify(task.agent.hold)}`, tone: TONE.agentHold, at: task.updatedAt, scope: task.project, task });
   }
 
   const memory = (src.memory ?? []).filter((m) => can(m.project, "memoryApprove"));
@@ -161,6 +170,7 @@ export function inboxProject(item: InboxItem): string | null {
     case "proposal":
       return docProject(item.proposal.docKey);
     case "review":
+    case "agentHold":
       return item.task.project;
     case "memory":
     case "conflict":

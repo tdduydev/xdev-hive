@@ -1,6 +1,14 @@
 import type { Catalog } from "./vi.ts";
 
 export const en: Catalog = {
+  assignment: {
+    title: "Assigned agent", agent: "Agent", any: "Any profile", unassigned: "Unassigned", all: "All agents",
+    byAgent: "By agent", machine: "Machine", profile: "Profile", choose: "Choose a machine", assign: "Assign to agent", remove: "Unassign", retry: "Retry",
+    position: "Position {n} in machine queue", waiting: "Waiting for its turn", queued: "{n} queued tasks", busy: "Busy", free: "Available", offline: "Offline",
+    quota: "5 hours: {session} · Week: {week}", queue: "Assigned tasks", allQueue: "View all ({n})", before: "Place before task", last: "Keep position / append if newly assigned",
+    noMachines: "No machine accepting hub runs has repositories for these tasks.", stopped: "Agent stopped at task {id}", change: "Assign another agent", noRight: "You cannot assign agents.",
+    hint: "The hub starts work when the agent is available and dependencies are complete.", selected: "Assigned {n} tasks.", empty: "No tasks in this lane.",
+  },
   common: {
     shared: "Shared",
     sharedTeam: "Shared (whole team)",
@@ -398,7 +406,7 @@ export const en: Catalog = {
     ago: { now: "just now", m: "{n}m", h: "{n}h", d: "{n}d" },
     agoLong: "{when} ago",
     shared: "Shared",
-    tag: { ci: "CI failed", proposal: "Proposal", review: "Needs review", memory: "Memory", conflict: "Conflict", machine: "This machine", request: "Install request", alert: "Alert", gate: "SDLC gate", leader: "Leader proposal" },
+    tag: { agentHold: "Agent paused", ci: "CI failed", proposal: "Proposal", review: "Needs review", memory: "Memory", conflict: "Conflict", machine: "This machine", request: "Install request", alert: "Alert", gate: "SDLC gate", leader: "Leader proposal" },
     ci: {
       title: "{mr} · pipeline failed in {jobs}",
       titleNoJobs: "{mr} · pipeline failed",
