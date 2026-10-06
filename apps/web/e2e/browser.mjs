@@ -1087,7 +1087,12 @@ async function main() {
         await tab.shot(`${String(n).padStart(2, "0")}-pipeline-saved`);
         await tab.eval(() => { const picker = document.querySelector("[data-pipeline-feature]"); picker.value = "SPEC-E2E"; picker.dispatchEvent(new Event("change", { bubbles: true })); });
         await tab.waitFor("feature highlighted at Spec", () => document.querySelector('[data-pipeline-step="spec"]')?.getAttribute("data-active") === "true");
-        await tab.click('[data-pipeline-count="spec"]');
+        // On a phone, by keyboard: the step list (eleven steps since 57e) shifts after scrolling, so a pointer click at the
+        // scrolled position lands on the flow card below. The desktop canvas is React Flow, which keeps Enter for itself.
+        if (mobile) {
+          await tab.eval(() => document.querySelector('[data-pipeline-count="spec"]').focus());
+          await tab.key("Enter");
+        } else await tab.click('[data-pipeline-count="spec"]');
         await tab.waitFor("Spec count opens filtered features", () => location.hash.includes("pipelineStep=spec") && !!document.querySelector('[data-feature-column="spec"]'));
         await tab.go("pipeline?project=payment");
         await rpc("sdlc.setCeiling", { ceiling: { merge: "human" } });
