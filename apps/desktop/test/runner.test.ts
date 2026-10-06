@@ -4,8 +4,9 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { AGENT_TEMPLATES, HiveError, toolHash, type Actor, type AgentProfile, type HiveBackend, type RunnerSettings, type ToolEntry } from "@xdev-hive/core";
+import { AGENT_TEMPLATES, ARTIFACT_DIR, HiveError, toolHash, type Actor, type AgentProfile, type HiveBackend, type RunnerSettings, type ToolEntry } from "@xdev-hive/core";
 import { CODEGRAPH_MCP, CODEGRAPH_RUN_MCP, SUPERPOWERS_PLUGIN } from "#desktop/main/installer.ts";
+import { collectArtifacts } from "#desktop/main/runner/artifacts.ts";
 import { prepareCodegraph } from "#desktop/main/runner/codegraph.ts";
 import { buildCommand, buildPrompt, parsePick } from "#desktop/main/runner/command.ts";
 import { ClaudeStream, toolLine } from "#desktop/main/runner/stream.ts";
@@ -2160,6 +2161,39 @@ describe("runs on the hub", () => {
     await local.runner.settle();
     assert.equal(await local.runner.pushRuns(), 0);
     assert.deepEqual(await local.hive.call("runs.list", {}, admin), []);
+  });
+
+  // Roadmap 41c: the branch may be deleted, the machine replaced; what the agent made stays on the hub.
+  it("sends the files the agent left in .xdev-hive/artifacts, and keeps them out of the branch", async () => {
+    const { repo, runner, hive } = await setup([profile("claude-a", "claude", 1, "artifacts")], {}, "hub");
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const done = runner.store.get(run.id)!;
+    assert.equal(done.status, "succeeded", done.error ?? "");
+
+    const kept = await hive.call("artifacts.list", { project: "demo", taskId: "T-1" }, admin);
+    assert.deepEqual(kept.map((a) => a.name).sort(), ["report.md", "shots/board.png"]);
+    assert.partialDeepStrictEqual(kept.find((a) => a.name === "shots/board.png"), { runId: run.id, type: "image/png", profileId: "claude-a", project: "demo" });
+    const got = await hive.call("artifacts.get", { id: kept.find((a) => a.name === "report.md")!.id }, admin);
+    assert.equal(Buffer.from(got!.data, "base64").toString("utf8"), "# T-1\nĐo xong.\n");
+
+    // The folder is the agent's, not the branch's: the runner's commit carries only its work.
+    assert.deepEqual(git(repo, "show", "--name-only", "--format=", "ai/T-1").trim().split("\n"), ["work-claude-a.txt"]);
+    // What did not fit says so where the team reads it.
+    const log = runner.log(run.id);
+    assert.match(log, /# Đã gửi 2 file lên Hive/);
+    assert.match(log, /huge\.log.*5 MB/);
+    assert.match(log, /bundle\.zip/);
+    // And the run's own summary is untouched by the upload.
+    assert.equal(done.error, null);
+
+    // The task keeps this worktree for its review and its next attempt: what the hub took is gone from it, so the
+    // next run does not send this run's work again under its own id (and fill its twenty with it).
+    const dir = path.join(done.worktree!, ARTIFACT_DIR);
+    assert.equal(existsSync(path.join(dir, "report.md")), false);
+    assert.equal(existsSync(path.join(dir, "shots/board.png")), false);
+    assert.equal(existsSync(path.join(dir, "huge.log")), true, "what the hub would not take stays for the person to look at");
+    assert.deepEqual(collectArtifacts(done.worktree!).files, [], "a run right after this one has nothing to send");
   });
 });
 

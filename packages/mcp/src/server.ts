@@ -2,6 +2,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   WORK_ROLES,
+  AGENT_ROLES,
+  ARTIFACT_DIR,
   cacheReadShare,
   effectivePolicy,
   agentPolicyPartSchema,
@@ -41,7 +43,7 @@ Answers are kept short: memory_search gives 8 entries without their bookkeeping 
 End of session: task_update to "review" with a note (done / not done / how to verify / risks); it is kept beside the handovers before it, which task_notes reads. Never store secrets.`;
 
 const READ_ONLY_INSTRUCTIONS = `xDev Hive is the shared memory, docs and task board for every coding agent on this team.
-This connection is read-only: memory_search, doc_list, doc_get, skill_list, skill_get, task_list, task_get, task_notes, task_next, run_list, run_get, run_requests, machine_list, setup_missing, cost_summary, token_usage, tool_list, tool_status and policy_get (alert_list for hub admins). Search memory for your topic before working.
+This connection is read-only: memory_search, doc_list, doc_get, doc_asset, artifact_list, artifact_get, skill_list, skill_get, task_list, task_get, task_notes, task_next, run_list, run_get, run_requests, machine_list, setup_missing, cost_summary, token_usage, tool_list, tool_status and policy_get (alert_list for hub admins). Search memory for your topic before working.
 Answers are kept short: memory_search gives 8 entries without their bookkeeping (verbose: true for every field), task_list cuts each note to 200 characters (task_get reads one task in full, full: true the whole board).
 Put anything worth sharing (decisions, gotchas, the handoff) in your final message instead of writing it to Hive.`;
 
@@ -137,6 +139,14 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
 
   const readOnly = { readOnlyHint: true, openWorldHint: false } as const;
 
+  /** A file the hub keeps, as the agent can use it: an image it can look at, a PDF to hand on, text to read. */
+  const fileResult = (type: string, data: string, uri: string): CallToolResult => {
+    if (type.startsWith("image/")) return { content: [{ type: "image", data, mimeType: type }] };
+    if (type === "application/pdf") return { content: [{ type: "resource", resource: { uri, mimeType: type, blob: data } }] };
+    return { content: [{ type: "text", text: Buffer.from(data, "base64").toString("utf8") }] };
+  };
+
+
   server.registerTool(
     "doc_list",
     {
@@ -174,12 +184,38 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       try {
         const got = await backend.call("docs.assetGet", { key, name }, actor);
         if (!got) return { isError: true, content: [{ type: "text", text: `not_found: ${key} has no file ${name} (doc_asset without name lists them)` }] };
-        const { type } = got.asset;
-        if (type.startsWith("image/")) return { content: [{ type: "image", data: got.data, mimeType: type }] };
-        if (type === "application/pdf") {
-          return { content: [{ type: "resource", resource: { uri: `hive://docs/${key}/assets/${encodeURIComponent(name)}`, mimeType: type, blob: got.data } }] };
-        }
-        return { content: [{ type: "text", text: Buffer.from(got.data, "base64").toString("utf8") }] };
+        return fileResult(got.asset.type, got.data, `hive://docs/${key}/assets/${encodeURIComponent(name)}`);
+      } catch (err) {
+        return failed(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "artifact_list",
+    {
+      title: "List the files runs made",
+      description:
+        `Files agents made while working and the hub kept (roadmap 41c): smoke screenshots, reports, measurements, plans. Narrow to one task or one run; read one with artifact_get its id. Write your own into ${ARTIFACT_DIR} of your working copy and the run sends them here when it ends.`,
+      inputSchema: { project, taskId: z.string().optional().describe("Only this task's files"), runId: z.string().optional().describe("Only this run's files") },
+      annotations: readOnly,
+    },
+    withProject(async ({ project: p, taskId, runId }) => run("artifacts.list", { project: p, taskId, runId })),
+  );
+
+  server.registerTool(
+    "artifact_get",
+    {
+      title: "Read a file a run made",
+      description: "Read one file by the id artifact_list gives. Images come back as images, text as text.",
+      inputSchema: { id: z.number().int().positive() },
+      annotations: readOnly,
+    },
+    async ({ id }) => {
+      try {
+        const got = await backend.call("artifacts.get", { id }, actor);
+        if (!got) return { isError: true, content: [{ type: "text", text: `not_found: no artifact #${id} (artifact_list shows the ids)` }] };
+        return fileResult(got.artifact.type, got.data, `hive://artifacts/${id}/${encodeURIComponent(got.artifact.name)}`);
       } catch (err) {
         return failed(err);
       }

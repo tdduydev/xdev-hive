@@ -4,6 +4,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { isContextDoc, may, sees, systemOf, systemOwner, withSystemGrants, type Permission } from "./access.ts";
 import type { AgentKind, AgentRole, PreferKind } from "./agents.ts";
+import { ARTIFACTS_PER_RUN, artifactName, checkArtifact, isArtifactText, type Artifact } from "./artifacts.ts";
 import type { BlobStore } from "./blobs.ts";
 import { HiveError, type ErrorText } from "./errors.ts";
 import { agentsDocKey, decisionsDocKey, parseDocKey, titleFromSlug, type ParsedDocKey } from "./keys.ts";
@@ -542,6 +543,19 @@ const MIGRATIONS: string[] = [
   INSERT INTO task_notes(task_id, version, note, status, author, created_at)
     SELECT id, 1, note, status, 'hub', updated_at FROM tasks WHERE note IS NOT NULL AND note != '';
   `,
+  // Files an agent made during a run (roadmap 41c). Like doc_assets: the row says what the file is, the store keeps
+  // its bytes by SHA-256 (stored = the store's name, data then empty), null while they are in this row. One name per
+  // run, so a run sent twice replaces instead of doubling. Nothing deletes a row on its own.
+  `
+  CREATE TABLE artifacts(
+    id INTEGER PRIMARY KEY, project TEXT NOT NULL, task_id TEXT NOT NULL, run_id TEXT NOT NULL, machine_id TEXT NOT NULL,
+    name TEXT NOT NULL, type TEXT NOT NULL, size INTEGER NOT NULL, sha256 TEXT NOT NULL, stored TEXT, data BLOB NOT NULL,
+    profile_id TEXT, uploaded_by TEXT NOT NULL, on_behalf TEXT, source TEXT, created_at TEXT NOT NULL,
+    UNIQUE(machine_id, run_id, name));
+  CREATE INDEX artifacts_project ON artifacts(project, id);
+  CREATE INDEX artifacts_task ON artifacts(project, task_id);
+  CREATE INDEX artifacts_sha ON artifacts(sha256);
+  `,
 ];
 
 /**
@@ -858,6 +872,10 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
   "docs.move": (i) => ({ target: i.key, detail: `→ ${i.parent ?? "/"}` }),
   "docs.assetPut": (i, o) => ({ target: i.key, detail: `+ ${o.name}` }),
   "docs.assetRemove": (i, o) => (o.removed ? { target: i.key, detail: `− ${i.name}` } : { target: i.key, detail: `− ${i.name} (—)` }),
+  "artifacts.remove": (i, o) =>
+    o.removed
+      ? { target: `${o.project} #${i.id}`, detail: `− ${o.name}`, text: { key: "audit.artifactRemoved", vars: { name: o.name } } }
+      : { target: `#${i.id}`, detail: "− (—)" },
   "proposals.approve": (i, o) => ({ target: o.docKey, detail: `đề xuất #${i.id}`, text: { key: "audit.proposal", vars: { id: i.id } } }),
   "proposals.reject": (i, o) => {
     const text: ErrorText = i.note ? { key: "audit.proposalNote", vars: { id: i.id, note: i.note } } : { key: "audit.proposal", vars: { id: i.id } };
@@ -1188,6 +1206,25 @@ const toAsset = (r: Row): DocAsset => ({
   type: str(r.type),
   size: num(r.size),
   uploadedBy: str(r.uploaded_by),
+  createdAt: str(r.created_at),
+});
+/** The tables whose rows point at bytes in the file store: both are read before a blob is dropped or backed up. */
+const BLOB_TABLES = ["doc_assets", "artifacts"] as const;
+/** Everything but the bytes: a list of artifacts never reads a blob. */
+const ARTIFACT_FIELDS = "id, project, task_id, run_id, machine_id, name, type, size, sha256, profile_id, uploaded_by, source, created_at";
+const toArtifact = (r: Row): Artifact => ({
+  id: num(r.id),
+  project: str(r.project),
+  taskId: str(r.task_id),
+  runId: str(r.run_id),
+  machineId: str(r.machine_id),
+  name: str(r.name),
+  type: str(r.type),
+  size: num(r.size),
+  sha256: str(r.sha256),
+  profileId: strOrNull(r.profile_id),
+  uploadedBy: str(r.uploaded_by),
+  source: sourceOf(r.source),
   createdAt: str(r.created_at),
 });
 const toDoc = (r: Row): Doc => ({ ...toSummary(r), content: str(r.content) });
@@ -1625,6 +1662,18 @@ export class SqliteHive implements HiveBackend {
       case "docs.assets":
       case "docs.assetGet":
         return this.#need(actor, owner(i.key), "view", `Doc ${i.key}`);
+      // A run's files belong to its project, like the run (roadmap 41c): sending one is work on the task.
+      case "artifacts.put":
+        return this.#need(actor, i.project, "taskWork", `Project ${i.project}`);
+      case "artifacts.list":
+        return this.#need(actor, i.project, "view", `Project ${i.project}`);
+      case "artifacts.get":
+      case "artifacts.remove": {
+        const row = this.db.prepare("SELECT project FROM artifacts WHERE id = ?").get(i.id) as Row | undefined;
+        // Removing is the project manager's: nothing else ever deletes an artifact.
+        if (row) this.#need(actor, str(row.project), method === "artifacts.get" ? "view" : "projectSettings", `Artifact #${i.id}`);
+        return;
+      }
       case "docs.save":
         return this.#need(actor, owner(i.key), this.#docPermission(i.key, { paths: i.paths, includeInAgents: i.includeInAgents }), `Doc ${i.key}`);
       case "docs.move":
@@ -2214,10 +2263,14 @@ export class SqliteHive implements HiveBackend {
     return bytes;
   }
 
-  /** The bytes of a file no row points at any more leave the store; a failure only leaves them there. */
+  /**
+   * The bytes of a file no row points at any more leave the store; a failure only leaves them there. Both tables are
+   * asked: the same bytes are kept once, so a doc's file and a run's artifact can be the very same blob.
+   */
   async #dropBlob(sha: string): Promise<void> {
     const blobs = this.#opts.blobs;
-    if (!blobs || this.db.prepare("SELECT 1 FROM doc_assets WHERE sha256 = ? AND stored IS NOT NULL").get(sha)) return;
+    if (!blobs) return;
+    for (const table of BLOB_TABLES) if (this.db.prepare(`SELECT 1 FROM ${table} WHERE sha256 = ? AND stored IS NOT NULL`).get(sha)) return;
     await blobs.remove(sha).catch((err: Error) => (this.#filesError = err.message));
   }
 
@@ -2230,22 +2283,25 @@ export class SqliteHive implements HiveBackend {
     if (!blobs || this.#moving) return 0;
     this.#moving = true;
     try {
-      const rows = this.db.prepare("SELECT id, name, type, created_at, data FROM doc_assets WHERE stored IS NULL ORDER BY id LIMIT ?").all(max) as Row[];
       let moved = 0;
-      for (const r of rows) {
-        const bytes = r.data as Uint8Array;
-        const sha = sha256(bytes);
-        try {
-          await blobs.put(sha, bytes, str(r.type));
-          this.#filesError = null;
-        } catch (err) {
-          this.#filesError = (err as Error).message;
-          break;
+      for (const table of BLOB_TABLES) {
+        if (moved >= max) break;
+        const rows = this.db.prepare(`SELECT id, name, type, created_at, data FROM ${table} WHERE stored IS NULL ORDER BY id LIMIT ?`).all(max - moved) as Row[];
+        for (const r of rows) {
+          const bytes = r.data as Uint8Array;
+          const sha = sha256(bytes);
+          try {
+            await blobs.put(sha, bytes, str(r.type));
+            this.#filesError = null;
+          } catch (err) {
+            this.#filesError = (err as Error).message;
+            return moved;
+          }
+          const done = this.db
+            .prepare(`UPDATE ${table} SET stored = ?, sha256 = ?, data = ? WHERE id = ? AND stored IS NULL AND created_at = ?`)
+            .run(blobs.name, sha, new Uint8Array(0), num(r.id), str(r.created_at));
+          if (Number(done.changes) === 1) moved++;
         }
-        const done = this.db
-          .prepare("UPDATE doc_assets SET stored = ?, sha256 = ?, data = ? WHERE id = ? AND stored IS NULL AND created_at = ?")
-          .run(blobs.name, sha, new Uint8Array(0), num(r.id), str(r.created_at));
-        if (Number(done.changes) === 1) moved++;
       }
       return moved;
     } finally {
@@ -2255,7 +2311,8 @@ export class SqliteHive implements HiveBackend {
 
   /** The SHA-256 of every file kept in the store, for a backup to copy. */
   storedFileIds(): string[] {
-    return (this.db.prepare("SELECT DISTINCT sha256 FROM doc_assets WHERE stored IS NOT NULL AND sha256 IS NOT NULL ORDER BY sha256").all() as Row[]).map((r) => str(r.sha256));
+    const union = BLOB_TABLES.map((t) => `SELECT sha256 FROM ${t} WHERE stored IS NOT NULL AND sha256 IS NOT NULL`).join(" UNION ");
+    return (this.db.prepare(`${union} ORDER BY sha256`).all() as Row[]).map((r) => str(r.sha256));
   }
 
   /** The bytes of a file in the store, by its SHA-256 (backups). */
@@ -2264,7 +2321,8 @@ export class SqliteHive implements HiveBackend {
   }
 
   filesInfo(): DocFilesInfo {
-    const r = this.db.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(size), 0) AS bytes, COALESCE(SUM(stored IS NULL), 0) AS in_db FROM doc_assets").get() as Row;
+    const union = BLOB_TABLES.map((t) => `SELECT size, stored FROM ${t}`).join(" UNION ALL ");
+    const r = this.db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(size), 0) AS bytes, COALESCE(SUM(stored IS NULL), 0) AS in_db FROM (${union})`).get() as Row;
     const blobs = this.#opts.blobs;
     return { store: blobs?.name ?? null, where: blobs?.where ?? null, count: num(r.n), bytes: num(r.bytes), inDb: num(r.in_db), lastError: this.#filesError };
   }
@@ -2796,7 +2854,7 @@ export class SqliteHive implements HiveBackend {
     const add = (v: unknown) => {
       if (typeof v === "string" && v && systemOf(v) === null) names.add(v);
     };
-    for (const table of ["tasks", "docs", "memory", "run_records", "chat_threads", "project_states"]) {
+    for (const table of ["tasks", "docs", "memory", "run_records", "chat_threads", "project_states", "artifacts"]) {
       for (const r of this.db.prepare(`SELECT DISTINCT project FROM ${table}`).all() as Row[]) add(r.project);
     }
     for (const table of ["machines", "systems"]) {
@@ -2864,6 +2922,7 @@ export class SqliteHive implements HiveBackend {
             .all(...docKeys) as Row[]
         ).map((r) => str(r.sha256))
       : [];
+    files.push(...(db.prepare("SELECT DISTINCT sha256 FROM artifacts WHERE project = ? AND stored IS NOT NULL").all(project) as Row[]).map((r) => str(r.sha256)));
 
     for (const [table, column] of [["doc_versions", "key"], ["proposals", "doc_key"], ["doc_assets", "doc_key"], ["doc_assists", "doc_key"]] as const) {
       if (docKeys.length) run(table, `DELETE FROM ${table} WHERE ${column} IN (${holes(docKeys)})`, ...docKeys);
@@ -5031,6 +5090,83 @@ export class SqliteHive implements HiveBackend {
         return { removed: true };
       },
 
+      // A run's files (roadmap 41c), from the machine that ran it. Secrets and hidden characters are the hub's own
+      // check of what it keeps, as for a run's log and patch: the machine already looked, this is the second look.
+      "artifacts.put": async ({ project, taskId, runId, profileId, name: raw, data }, actor) => {
+        const name = artifactName(raw);
+        if (!name) throw new HiveError("bad_request", `${raw} is not a file name.`, { key: "errors.artifactName", vars: { name: raw } });
+        let bytes = new Uint8Array(Buffer.from(data, "base64"));
+        const type = checkArtifact(name, bytes);
+        if (isArtifactText(type)) {
+          const text = new TextDecoder().decode(bytes);
+          // Refused, not stripped: an artifact is read by people and by agents, like a doc (41c "Nguyên tắc chung").
+          assertNoHidden(text, name);
+          bytes = new TextEncoder().encode(redactLines(text));
+        }
+        // After redaction: the bytes the store gets are the bytes the row names, or artifacts.get would refuse them.
+        const sha = sha256(bytes);
+        const allowed = () => {
+          const has = db.prepare("SELECT id FROM artifacts WHERE machine_id = ? AND run_id = ? AND name = ?").get(actor.name, runId, name);
+          if (has) return;
+          const count = num((db.prepare("SELECT COUNT(*) AS n FROM artifacts WHERE machine_id = ? AND run_id = ?").get(actor.name, runId) as Row).n);
+          if (count >= ARTIFACTS_PER_RUN) {
+            throw new HiveError("bad_request", `Run ${runId} already has ${ARTIFACTS_PER_RUN} files.`, { key: "errors.artifactsFull", vars: { run: runId, max: ARTIFACTS_PER_RUN } });
+          }
+        };
+        const blobs = this.#opts.blobs;
+        // Into the store first, the row after, as for a doc's file: a row never points at bytes the store lacks.
+        if (blobs) {
+          allowed();
+          await this.#toStore(blobs, sha, bytes, type);
+        }
+        const { artifact, dropped } = this.#tx(() => {
+          allowed();
+          const before = db.prepare("SELECT sha256, stored FROM artifacts WHERE machine_id = ? AND run_id = ? AND name = ?").get(actor.name, runId, name) as Row | undefined;
+          db.prepare(
+            `INSERT INTO artifacts(project, task_id, run_id, machine_id, name, type, size, sha256, stored, data, profile_id, uploaded_by, on_behalf, source, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(machine_id, run_id, name) DO UPDATE SET project = excluded.project, task_id = excluded.task_id,
+               type = excluded.type, size = excluded.size, sha256 = excluded.sha256, stored = excluded.stored, data = excluded.data,
+               profile_id = excluded.profile_id, uploaded_by = excluded.uploaded_by, on_behalf = excluded.on_behalf,
+               source = excluded.source, created_at = excluded.created_at`,
+          ).run(
+            project, taskId, runId, actor.name, name, type, bytes.length, sha, blobs ? blobs.name : null, blobs ? new Uint8Array(0) : bytes,
+            profileId, actor.name, actor.onBehalf ?? null, sourceJson(actor.source), this.#now(),
+          );
+          return {
+            artifact: toArtifact(db.prepare(`SELECT ${ARTIFACT_FIELDS} FROM artifacts WHERE machine_id = ? AND run_id = ? AND name = ?`).get(actor.name, runId, name) as Row),
+            dropped: before?.stored && before.sha256 !== sha ? str(before.sha256) : null,
+          };
+        });
+        if (dropped) await this.#dropBlob(dropped);
+        return artifact;
+      },
+
+      "artifacts.list": ({ project, taskId, runId, machineId, limit }) =>
+        (
+          db
+            .prepare(
+              `SELECT ${ARTIFACT_FIELDS} FROM artifacts WHERE project = ?1 AND (?2 IS NULL OR task_id = ?2) AND (?3 IS NULL OR run_id = ?3)
+               AND (?4 IS NULL OR machine_id = ?4) ORDER BY id DESC LIMIT ?5`,
+            )
+            .all(project, taskId ?? null, runId ?? null, machineId ?? null, limit) as Row[]
+        ).map(toArtifact),
+
+      "artifacts.get": async ({ id }) => {
+        const row = db.prepare("SELECT * FROM artifacts WHERE id = ?").get(id) as Row | undefined;
+        if (!row) return null;
+        const bytes = row.stored === null || row.stored === undefined ? (row.data as Uint8Array) : await this.#fromStore(row);
+        return { artifact: toArtifact(row), data: Buffer.from(bytes).toString("base64") };
+      },
+
+      "artifacts.remove": async ({ id }) => {
+        const row = db.prepare("SELECT project, name, sha256, stored FROM artifacts WHERE id = ?").get(id) as Row | undefined;
+        if (!row) return { removed: false, project: null, name: null };
+        db.prepare("DELETE FROM artifacts WHERE id = ?").run(id);
+        if (row.stored) await this.#dropBlob(str(row.sha256));
+        return { removed: true, project: str(row.project), name: str(row.name) };
+      },
+
       "proposals.list": ({ status, docKey }) =>
         (
           db
@@ -7187,9 +7323,9 @@ export class SqliteHive implements HiveBackend {
         // a page, so a failure here is only counted — the rows are already gone either way.
         let removed = 0;
         let failed = 0;
-        for (const sha of files) {
+        for (const sha of new Set(files)) {
           // Files are named after their bytes, so another page may well be pointing at the very same file (#dropBlob).
-          if (db.prepare("SELECT 1 FROM doc_assets WHERE sha256 = ? AND stored IS NOT NULL").get(sha)) continue;
+          if (BLOB_TABLES.some((table) => db.prepare(`SELECT 1 FROM ${table} WHERE sha256 = ? AND stored IS NOT NULL`).get(sha))) continue;
           try {
             await this.#opts.blobs?.remove(sha);
             removed++;

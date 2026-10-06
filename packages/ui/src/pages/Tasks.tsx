@@ -16,6 +16,7 @@ import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_T
 import { BatchSheet } from "#ui/components/AgentSheets.tsx";
 import { BoardPage } from "#ui/pages/Board.tsx";
 import { Diff } from "#ui/components/Diff.tsx";
+import { ArtifactList } from "#ui/components/Artifacts.tsx";
 import { FlowList, FlowTaskPanel } from "#ui/components/FlowCard.tsx";
 import { MachineSelect, PreferKindSelect, ProfileSelect, takesRunsOf } from "#ui/components/MachinePicker.tsx";
 import { AgentAssignment } from "#ui/components/AgentAssignment.tsx";
@@ -499,6 +500,8 @@ function TaskDetail({ task, requests, hub, onChanged }: { task: Task; requests: 
           )}
         </section>
         <NoteHistory task={task} />
+        {/* What the task's runs made and the hub kept (roadmap 41c); only a hub has them. */}
+        {hub ? <ArtifactList project={task.project} taskId={task.id} /> : null}
       </div>
     </SheetContent>
   );
