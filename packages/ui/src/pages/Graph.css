@@ -95,6 +95,9 @@
 .graph-step-stopped { border-color: var(--status-danger-border); }
 .graph-step-stopped .graph-step-state, .graph-step-changes .graph-step-state { color: var(--status-danger-fg); }
 .graph-step-done { border-color: var(--status-success-border); }
+/* A node that is neither draggable nor selectable (an SDLC step) gets inline pointer-events:none from React Flow, which
+   made its Pass/Changes buttons and link unclickable. */
+.graph-canvas .react-flow__node { pointer-events: all !important; }
 .graph-step-actions { display: flex; gap: 4px; }
 .graph-step-actions button { flex: 1; min-width: 0; min-height: 32px; padding: 2px 4px; border: 1px solid var(--border-default); border-radius: 6px; background: var(--bg-surface); color: var(--text-primary); font-size: 11px; font-weight: 600; cursor: pointer; }
 .graph-step-actions button:first-child { border-color: var(--border-selected); background: var(--state-selected-bg); color: var(--state-selected-fg); }

@@ -122,8 +122,8 @@ class Tab {
         const label = (el) => (el.getAttribute("aria-label") ?? el.textContent ?? "").trim();
         const el = txt == null ? all[0] : (all.find((e) => label(e) === txt) ?? all.find((e) => label(e).startsWith(txt)));
         if (!el || el.disabled) return null;
-        // Scrolling a transformed React Flow node changes the pane under the pointer.
-        if (!el.closest(".react-flow")) el.scrollIntoView({ block: "center", inline: "center" });
+        // Scrolling a node of the Graph page's canvas changes the pane under the pointer; the Pipeline canvas is a wide scroller whose gates must be scrolled into view like a user would.
+        if (!el.closest("[data-graph-canvas]")) el.scrollIntoView({ block: "center", inline: "center" });
         const r = el.getBoundingClientRect();
         return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
       },
@@ -334,8 +334,9 @@ async function main() {
     });
     await tab.shot("graph-task-layer");
     expect(!!(await tab.eval(() => document.querySelector('[data-graph-layer="task"]')?.getAttribute("aria-pressed") === "true")), "Task layer is active");
-    const locked = await tab.eval(() => [...document.querySelectorAll('[aria-label="Lớp sơ đồ"] button:disabled')].length);
-    expect(locked === 2, `SDLC and System layers are shown but locked: ${locked}`);
+    // 51c opened the SDLC layer; only System stays locked in a single project (it needs a system scope).
+    const locked = await tab.eval(() => [...document.querySelectorAll('[aria-label="Lớp sơ đồ"] button:disabled')].map((b) => b.getAttribute("data-graph-layer")));
+    expect(locked.length === 1 && locked[0] === "system", `only the System layer is locked in a project: ${locked}`);
     const label = await tab.eval(() => document.querySelector('[data-graph-task="PAY-GRAPH"]')?.getAttribute("aria-label") ?? "");
     expect(label.includes("PAY-GRAPH") && label.includes("Kiểm tra sơ đồ"), `node label for screen readers: ${label}`);
     // Spec 51, Mobile: no minimap on a phone, and the zoom controls stay big enough to touch.
