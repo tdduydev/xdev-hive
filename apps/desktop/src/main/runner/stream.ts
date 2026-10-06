@@ -5,6 +5,14 @@ import path from "node:path";
 
 type Json = Record<string, unknown>;
 
+function loadedSkill(name: unknown, input: unknown): string | null {
+  if (!input || typeof input !== "object") return null;
+  const args = input as Json;
+  const candidate = typeof name === "string" && /(?:^|__)skill_get$/.test(name) ? args.name
+    : name === "Read" && typeof args.file_path === "string" ? /(?:^|[\\/])([^\\/]+)[\\/]SKILL\.md$/.exec(args.file_path)?.[1] : null;
+  return typeof candidate === "string" && /^[a-z0-9][a-z0-9-]{0,63}$/.test(candidate) ? candidate : null;
+}
+
 export interface StreamState {
   /** What the agent does now: its own summary of the step, else its last tool call. */
   activity: string | null;
@@ -127,6 +135,8 @@ export function describeEvent(e: Json, cwd: string, state: StreamState): string 
 
 /** Feeds stdout chunks in; gives back the log text for the complete lines so far. */
 export class ClaudeStream {
+  readonly skills = new Set<string>();
+  readonly pendingSkills = new Map<string, string>();
   readonly state: StreamState = { activity: null };
   /** The result event's line (cost, tokens, final message), once it came. */
   result: string | null = null;
@@ -174,6 +184,17 @@ export class ClaudeStream {
       const said = (content as Json[]).filter((b) => b.type === "text" && typeof b.text === "string" && b.text.trim()).at(-1);
       if (said) this.lastText = String(said.text).trim();
     }
+    if (Array.isArray(content)) for (const b of content as Json[]) {
+      if (event.type === "assistant" && b.type === "tool_use") {
+        const skill = loadedSkill(b.name, b.input);
+        if (skill && typeof b.id === "string") this.pendingSkills.set(b.id, skill);
+      }
+      if (event.type === "user" && b.type === "tool_result") {
+        const skill = this.pendingSkills.get(String(b.tool_use_id));
+        if (skill && !b.is_error && this.skills.size < 256) this.skills.add(skill);
+        this.pendingSkills.delete(String(b.tool_use_id));
+      }
+    }
     const text = describeEvent(event, this.#cwd, this.state);
     return text ? `${text}\n` : "";
   }
@@ -186,6 +207,7 @@ export class ClaudeStream {
  * a line that is not a known event is written as it came.
  */
 export class CodexStream {
+  readonly skills = new Set<string>();
   readonly state: StreamState = { activity: null };
   /** The agent's last message: the run's summary. */
   lastText: string | null = null;
@@ -226,6 +248,12 @@ export class CodexStream {
 
   #describe(e: Json): string | null {
     const item = (e.item ?? {}) as Json;
+    if (e.type === "item.completed" && item.type === "mcp_tool_call" && item.status === "completed" && !item.error && !(item.result as Json | undefined)?.isError) {
+      let args = item.arguments;
+      if (typeof args === "string") { try { args = JSON.parse(args); } catch { args = null; } }
+      const skill = loadedSkill(item.tool, args);
+      if (skill && this.skills.size < 256) this.skills.add(skill);
+    }
     switch (e.type) {
       case "thread.started":
         return `# thread ${String(e.thread_id ?? "?")} · Codex`;

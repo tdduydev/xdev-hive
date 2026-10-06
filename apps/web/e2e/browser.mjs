@@ -1904,6 +1904,28 @@ async function main() {
     await tab.click('[data-task-view="kanban"]');
   });
 
+  await step("skill-usage", async () => {
+    const tab = (current = tabs.admin);
+    for (const name of ["stats-used", "stats-unused"]) await rpc("docs.save", {
+      key: `org/skills/${name}`, content: `---\nname: ${name}\ndescription: Skill usage fixture\n---\nSteps`, baseVersion: 0,
+    });
+    const at = new Date().toISOString();
+    await rpc("runs.push", { machine: "fixture", runs: [{ runId: "R-skill-stats", project: "payment", taskId: "STATS-1", taskTitle: "Skill stats fixture", role: "implement", status: "succeeded", profileId: null, createdAt: at, startedAt: at, finishedAt: at, skills: ["stats-used", "stats-used"] }] });
+    await tab.go("skills");
+    await tab.click('input[aria-label="Tìm skill"]');
+    await tab.type("stats-");
+    await tab.waitFor("skill usage columns", () => document.body.innerText.includes("Số run dùng 30 ngày"));
+    await tab.click('main [role="option"]', "stats-used");
+    await tab.waitFor("weekly usage chart", () => document.querySelector("[data-skill-usage]")?.children.length === 8);
+    expect(await tab.eval(() => [...document.querySelectorAll("[data-skill-usage] > div > span")].reduce((n, el) => n + Number(el.textContent), 0) === 1), "duplicate loads count once");
+    await tab.shot(`${String(n).padStart(2, "0")}-skill-usage-chart`);
+    if (mobile) await tab.click('button', "Quay lại");
+    await tab.click('label', "Skill không ai dùng");
+    await tab.waitFor("unused skill filter", () => [...document.querySelectorAll('main [role="option"]')].some((e) => e.textContent.includes("stats-unused")) && ![...document.querySelectorAll('main [role="option"]')].some((e) => e.textContent.includes("stats-used")));
+    if (mobile) expect(await tab.eval(() => [...document.querySelectorAll("label")].find((e) => e.textContent.includes("Skill không ai dùng"))?.getBoundingClientRect().height >= 44), "filter touch target");
+    await tab.click('label', "Skill không ai dùng");
+  });
+
   await step("knowledge-pending", async () => {
     const tab = (current = tabs.admin);
     const teamKey = "org/skills/knowledge-check";

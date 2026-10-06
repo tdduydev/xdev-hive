@@ -630,6 +630,7 @@ const MIGRATIONS: string[] = [
     from_tier TEXT, to_tier TEXT, tasks INTEGER, clean_rate REAL, changed_by TEXT NOT NULL, at TEXT NOT NULL);
   CREATE INDEX model_learning_log_project ON model_learning_log(project, id);
   `,
+  `ALTER TABLE run_records ADD COLUMN skills TEXT NOT NULL DEFAULT '[]';`,
 ];
 
 /**
@@ -849,6 +850,7 @@ function toRunRecord(r: Row, withLog: boolean): RunRecord {
     cancelRequestedBy: s(r.cancel_by),
     cancelRequestedAt: s(r.cancel_at),
     mr: r.mr == null ? null : (JSON.parse(String(r.mr)) as RunMr),
+    skills: JSON.parse(String(r.skills ?? "[]")),
     // From run_costs when the query joined it (runs.list / runs.get) and the machine reported the run.
     compression: r.compression == null ? null : (JSON.parse(String(r.compression)) as RunCompression),
     tokens:
@@ -5289,7 +5291,15 @@ export class SqliteHive implements HiveBackend {
         return at && sees(actor, at.project) ? at : null;
       },
 
-      "skills.list": ({ project }) => {
+      "skills.list": ({ project }, actor) => {
+        const now = Date.parse(this.#now());
+        const day = 86400000;
+        const monday = new Date(now);
+        monday.setUTCHours(0, 0, 0, 0);
+        monday.setUTCDate(monday.getUTCDate() - (monday.getUTCDay() + 6) % 7);
+        const hidden = this.#projectStates();
+        const records = (db.prepare("SELECT project, skills, COALESCE(started_at, created_at) AS at FROM run_records WHERE skills != '[]' AND (? IS NULL OR project = ?)").all(project ?? null, project ?? null) as Row[])
+          .filter((r) => sees(actor, str(r.project)) && (project === r.project || !hidden.has(str(r.project))));
         const rows = db
           .prepare(
             `SELECT key, scope, project, content, version, updated_by, updated_at FROM docs
@@ -5316,6 +5326,25 @@ export class SqliteHive implements HiveBackend {
             updatedAt: str(r.updated_at),
           };
         });
+        const overrides = new Set(all.filter((s) => s.project).map((s) => `${s.project}/${s.name}`));
+        const loads = records.map((r) => ({ project: str(r.project), at: str(r.at), skills: new Set(JSON.parse(str(r.skills)) as string[]) }));
+        for (const skill of all) {
+          const weeks = Array.from({ length: 8 }, (_, i) => ({ start: new Date(monday.getTime() - (7 - i) * 7 * day).toISOString(), runs: 0 }));
+          let runs30d = 0;
+          let lastUsedAt: string | null = null;
+          for (const r of loads) {
+            if (skill.project ? r.project !== skill.project : overrides.has(`${r.project}/${skill.name}`)) continue;
+            if (!r.skills.has(skill.name)) continue;
+            const time = Date.parse(r.at);
+            if (!Number.isFinite(time) || time > now) continue;
+            const at = new Date(time).toISOString();
+            if (!lastUsedAt || at > lastUsedAt) lastUsedAt = at;
+            if (time >= now - 30 * day) runs30d++;
+            const week = weeks.find((w) => time >= Date.parse(w.start) && time < Date.parse(w.start) + 7 * day);
+            if (week) week.runs++;
+          }
+          skill.usage = { runs30d, lastUsedAt, weeks };
+        }
         if (!project) return all;
         // The project's own skill replaces the team's of the same name.
         const own = new Set(all.filter((s) => s.project === project).map((s) => s.name));
@@ -6569,6 +6598,7 @@ export class SqliteHive implements HiveBackend {
               const mr = r.mr && { ...r.mr, pipelineUrl: r.mr.pipelineUrl && /^https?:\/\//.test(r.mr.pipelineUrl) ? r.mr.pipelineUrl : null };
               mrPut.run(mr ? JSON.stringify(mr) : null, actor.name, r.runId);
             }
+            if (r.skills !== undefined) db.prepare("UPDATE run_records SET skills = ? WHERE machine_id = ? AND run_id = ?").run(JSON.stringify([...new Set(r.skills)]), actor.name, r.runId);
             if (r.compression !== undefined) compressionPut.run(r.compression ? JSON.stringify(r.compression) : null, actor.name, r.runId);
             // An older app sends no verdict: a review's is read here from the summary, which it clipped, so a verdict
             // past its end reads as unknown. The app reads the whole report.

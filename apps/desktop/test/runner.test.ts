@@ -2125,6 +2125,14 @@ describe("live log", () => {
 });
 
 describe("runs on the hub", () => {
+  it("persists successfully loaded skills and pushes them with the run", async () => {
+    const { runner, hive } = await setup([profile("claude-a", "claude", 1, "ok", { env: { FAKE_MODE: "ok", FAKE_SKILLS: "1" } })], {}, "hub");
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    assert.deepEqual(runner.list().find((r) => r.id === run.id)?.skills, ["review-pr"]);
+    assert.deepEqual((await hive.call("runs.list", { project: "demo" }, admin))[0]?.skills, ["review-pr"]);
+  });
+
   it("pushes what changed for the web, with the end of the log and secret-looking lines hidden", async () => {
     const { runner, hive } = await setup([profile("claude-a", "claude", 1, "leak")], {}, "hub");
     const run = await runner.enqueue({ project: "demo", taskId: "T-1" });

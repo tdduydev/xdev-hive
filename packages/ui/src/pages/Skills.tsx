@@ -18,7 +18,7 @@ import { errorMessage, formatTime, useAction, useCan, useHive, useHashParam, use
 import { useT } from "#ui/i18n/index.tsx";
 import { emptyState } from "#ui/lib/empty.ts";
 import { docOwner, inScope, scopeProject } from "#ui/lib/scope.ts";
-import { buildSkill, skillsFor, splitSkill, type ListedSkill, type SkillParts } from "#ui/lib/skills.ts";
+import { buildSkill, filterSkills, skillsFor, splitSkill, type ListedSkill, type SkillParts } from "#ui/lib/skills.ts";
 import { fold } from "#ui/lib/text.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 import { useToast } from "#ui/shell/toast.tsx";
@@ -69,9 +69,10 @@ export function SkillsPage() {
   }, [list.data, selected, current, skills]);
   const reload = () => setTick((n) => n + 1);
 
+  const [unused, setUnused] = useState(false);
   const [q, setQ] = useState("");
   const needle = fold(q.trim());
-  const shown = skills.filter((s) => !needle || fold(`${s.name} ${s.description}`).includes(needle));
+  const shown = filterSkills(skills, q, unused);
   const empty = emptyState({ loaded: Boolean(list.data), total: skills.length, shown: shown.length, query: needle });
   // The first skill is the thing to do when there is none: the same button as the toolbar's, where the eye already is.
   const firstSkill = owners.length ? (
@@ -97,6 +98,10 @@ export function SkillsPage() {
         }
       >
         <ErrorNote error={list.error} />
+        <label className="flex min-h-11 cursor-pointer items-center gap-2 px-2 text-xs">
+          <input type="checkbox" checked={unused} onChange={(e) => setUnused(e.target.checked)} />
+          {t("skills.unused")}
+        </label>
         {project ? <p className="m-0 px-2 pt-1 pb-2 text-[11px]/4 text-fg-muted">{t("skills.effectiveFor", { project })}</p> : null}
         {proposals.length ? (
           <a className="mx-1 mb-1 rounded-sm bg-warning-soft px-2 py-1.5 text-xs text-fg-strong no-underline hover:underline" href="#/skills?tab=pending">
@@ -133,7 +138,13 @@ export function SkillsPage() {
                 ) : null
               }
               sub={s.description || t("skills.noDescription")}
-              meta={`${s.project ?? t("common.sharedTeam")} · ${formatTime(s.updatedAt)}`}
+              meta={<span className="flex flex-col gap-1">
+                <span>{s.project ?? t("common.sharedTeam")} · {formatTime(s.updatedAt)}</span>
+                <span className="grid grid-cols-2 gap-2 font-sans text-xs">
+                  <span>{t("skills.runs30d")}<br /><strong>{s.usage?.runs30d ?? "—"}</strong></span>
+                  <span>{t("skills.lastUsed")}<br />{s.usage?.lastUsedAt ? formatTime(s.usage.lastUsedAt) : t("skills.neverUsed")}</span>
+                </span>
+              </span>}
             />
           );
         })}
@@ -305,6 +316,7 @@ function SkillEditor({ skill, proposals, onSaved }: { skill: ListedSkill; propos
         title={skill.name}
       />
       <DetailBody>
+        {skill.usage ? <SkillUsage skill={skill} /> : null}
         {skill.overrides ? <Notice tone="info">{t("skills.overridesHint")}</Notice> : null}
         {skill.overridden ? <Notice tone="info">{t("skills.overriddenHint")}</Notice> : null}
         {unchecked ? <Notice tone="warn">{t("skills.noFrontMatter")}</Notice> : null}
@@ -477,4 +489,27 @@ function NewSkill({
       </DetailFooter>
     </div>
   );
+}
+
+function SkillUsage({ skill }: { skill: ListedSkill }) {
+  const t = useT();
+  const usage = skill.usage!;
+  const max = Math.max(1, ...usage.weeks.map((w) => w.runs));
+  return <section className="rounded-md border border-line-subtle p-3" aria-label={t("skills.weekly")}>
+    <KvRows rows={[
+      [t("skills.runs30d"), String(usage.runs30d)],
+      [t("skills.lastUsed"), usage.lastUsedAt ? formatTime(usage.lastUsedAt) : t("skills.neverUsed")],
+    ]} />
+    <p className="mb-2 text-xs text-fg-muted">{t("skills.weekly")}</p>
+    <div className="grid grid-cols-8 gap-1" data-skill-usage>
+      {usage.weeks.map((w) => <div key={w.start} className="flex min-w-0 flex-col items-center gap-1 text-xs tabular-nums">
+        <span>{w.runs}</span>
+        <div className="flex h-12 w-full items-end bg-surface" aria-hidden="true">
+          <div className="w-full rounded-sm bg-fg-muted" style={{ height: `${w.runs / max * 100}%` }} />
+        </div>
+        <time dateTime={w.start} className="text-fg-muted">{w.start.slice(5, 10).replace("-", "/")}</time>
+      </div>)}
+    </div>
+    <p className="mt-2 text-xs text-fg-muted">{t("skills.usageHint")}</p>
+  </section>;
 }

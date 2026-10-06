@@ -364,6 +364,7 @@ export interface AgentRun {
   cacheWriteTokens: number | null;
   cacheReadTokens: number | null;
   outputTokens: number | null;
+  skills?: string[];
   /** What RTK left out of its Bash output (roadmap 28d); null or left out: no RTK, or no numbers. */
   compression?: RunCompression | null;
   /** The hub's model choice it was asked with (roadmap 54c); null or left out: none (older hub, or routing off). */

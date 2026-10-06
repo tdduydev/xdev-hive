@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { parseSkill, type SkillSummary } from "@xdev-hive/core";
-import { buildSkill, leaderGuide, skillsFor, splitSkill } from "#ui/lib/skills.ts";
+import { buildSkill, filterSkills, leaderGuide, skillsFor, splitSkill } from "#ui/lib/skills.ts";
 
 const summary = (name: string, project: string | null): SkillSummary => ({
   key: project ? `project/${project}/skills/${name}` : `org/skills/${name}`,
@@ -73,4 +73,14 @@ describe("skills per project", () => {
     // Whatever the source said, the saved guide is the leader's.
     assert.equal(parseSkill(buildSkill({ ...leaderGuide({ content: "no front matter", version: 1 }, null).parts, description: "x" })).name, "hive-leader");
   });
+});
+
+it("filters unused skills using recorded history and combines Vietnamese search", () => {
+  const unused = { ...summary("review", null), description: "Kiểm thử", usage: { runs30d: 0, lastUsedAt: null, weeks: [] } };
+  const old = { ...summary("release", null), usage: { runs30d: 0, lastUsedAt: "2026-01-01T00:00:00.000Z", weeks: [] } };
+  const unknown = summary("legacy", null);
+  assert.deepEqual(filterSkills([unused, old, unknown], "", true), [unused]);
+  assert.deepEqual(filterSkills([unused, old, unknown], "kiem thu", true), [unused]);
+  assert.deepEqual(filterSkills([unused, old, unknown], "release", true), []);
+  assert.deepEqual(filterSkills([unused, old, unknown], "release", false), [old]);
 });

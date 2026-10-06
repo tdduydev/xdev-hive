@@ -1,6 +1,7 @@
 // A SKILL.md as the Skills page edits it: the name and description as form fields, the instructions as text, and
 // whatever else the front matter holds (allowed-tools…) kept as it was.
 import type { SkillSummary } from "@xdev-hive/core";
+import { fold } from "#ui/lib/text.ts";
 
 export interface SkillParts {
   name: string;
@@ -95,4 +96,10 @@ export function leaderGuide(
   const source = own ?? team;
   const parts = source ? splitSkill(source.content) : { name: LEADER_SKILL, description: "", extra: [], body: "" };
   return { parts: { ...parts, name: LEADER_SKILL }, from: own ? "project" : team ? "team" : "none", baseVersion: own?.version ?? 0 };
+}
+
+/** Missing telemetry on an older hub must not classify a skill as unused. */
+export function filterSkills<T extends SkillSummary>(skills: T[], query: string, unused: boolean): T[] {
+  const needle = fold(query.trim());
+  return skills.filter((s) => (!unused || s.usage?.lastUsedAt === null) && (!needle || fold(`${s.name} ${s.description}`).includes(needle)));
 }

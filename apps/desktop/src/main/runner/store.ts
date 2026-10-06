@@ -58,6 +58,7 @@ const ADDED_COLUMNS: Array<[name: string, ddl: string]> = [
   /** The kind the run prefers (roadmap 24c); null: any. */
   ["prefer_kind", "TEXT"],
   /** JSON: what RTK left out of the run's Bash output (roadmap 28d); null: no RTK, or no numbers. */
+  ["skills", "TEXT"],
   ["compression", "TEXT"],
   /** What it ran on (roadmap 54a): the profile's kind, and the model and effort its final args set. */
   ["agent_kind", "TEXT"],
@@ -67,7 +68,7 @@ const ADDED_COLUMNS: Array<[name: string, ddl: string]> = [
 ];
 
 type Row = Record<string, unknown>;
-const JSON_FIELDS = new Set(["avoidKinds", "excludedProfiles", "ciFix", "bestOf", "compression", "selection"]);
+const JSON_FIELDS = new Set(["skills", "avoidKinds", "excludedProfiles", "ciFix", "bestOf", "compression", "selection"]);
 const BOOL_FIELDS = new Set(["reviewAfter", "mrDraft"]);
 const column = (field: string) => field.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 
@@ -108,6 +109,7 @@ function toRun(r: Row): AgentRun {
     cacheWriteTokens: r.cache_write_tokens == null ? null : Number(r.cache_write_tokens),
     cacheReadTokens: r.cache_read_tokens == null ? null : Number(r.cache_read_tokens),
     outputTokens: r.output_tokens == null ? null : Number(r.output_tokens),
+    skills: r.skills == null ? [] : JSON.parse(String(r.skills)),
     compression: r.compression == null ? null : (JSON.parse(String(r.compression)) as RunCompression | null),
     mrState: s(r.mr_state) as MrState | null,
     mrDraft: Number(r.mr_draft) === 1,
