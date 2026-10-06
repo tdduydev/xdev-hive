@@ -1504,6 +1504,7 @@ export const en: Catalog = {
     history: "Gates so far ({count})",
     gateStatus: { waiting: "waiting", checking: "AI checking", passed: "passed", rejected: "changes asked", escalated: "to a person" },
   },
+  models: {"title": "Models", "description": "Hub tiers and models reported by each profile. Machines use a supported model in the same family or the CLI default.", "default": "default", "nearestTier": "Use nearest tier", "unavailable": "No ready profile reports support for {model}. Check the list below; the machine may use a fallback.", "profiles": "Models by profile", "noProfiles": "No profiles in this scope.", "online": "Online", "offline": "Offline · last reported data", "enabled": "Runs enabled", "disabled": "Not ready for runs", "unknown": "Unknown (discovery unavailable or older app)", "empty": "No models listed"},
   pipeline: {
     noGate: "This step has no separate gate. Select a neighbouring gate to configure it.",
     passed: "Passed", fastSelect: "Task kinds taking the fast path",

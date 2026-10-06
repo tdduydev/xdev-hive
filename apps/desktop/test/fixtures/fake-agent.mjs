@@ -2,6 +2,14 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+// Combine a rejected startup with the existing steering and planning protocols.
+if (process.env.FAKE_REJECT_MODEL === "1" && !process.argv.includes("--help") &&
+    process.argv.some((a) => a === "-m" || a === "--model" || a.startsWith("--model="))) {
+  if (process.env.FAKE_RECORD) appendFileSync(process.env.FAKE_RECORD, JSON.stringify({ agent: process.env.HIVE_AGENT, prompt: process.argv.at(-1), cwd: process.cwd(), args: process.argv.slice(2), readOnly: process.env.HIVE_READONLY ?? null }) + "\n");
+  console.error("unknown model: requested");
+  process.exit(1);
+}
+
 // Bidirectional Claude fixture: one result for each user turn, staying open until the runner sends EOF.
 if (process.env.FAKE_MODE === "steer-stream") {
   if (process.argv.includes("--help")) { console.log("--input-format text|stream-json"); process.exit(0); }
@@ -50,6 +58,8 @@ if ((first === "auth" || first === "login") && second === "status") {
   process.exit(out && first === "login" ? 1 : 0);
 }
 
+if (first === "models") { console.log('["gemini-3.8-pro"]'); process.exit(0); }
+
 // Claude Code's /usage (plan usage). FAKE_USAGE="<session>,<week>" percentages; unset: an API key, no limits.
 // FAKE_USAGE_RESETS="<session reset>|<week reset>" in /usage's own form: fixed texts go stale once their day is past,
 // so the smoke passes times from its own clock (roadmap 52 counts down to them).
@@ -88,6 +98,15 @@ if (process.env.FAKE_RECORD) {
     process.env.FAKE_RECORD,
     `${JSON.stringify({ agent: process.env.HIVE_AGENT, task: process.env.HIVE_TASK, project: process.env.HIVE_PROJECT, cwd: process.cwd(), prompt, args: process.argv.slice(3), readOnly: process.env.HIVE_READONLY ?? null, hostOnly: process.env.HIVE_TEST_HOST_ONLY ?? null, oauth: process.env.CLAUDE_CODE_OAUTH_TOKEN ? "set" : null, hubToken: process.env.HIVE_HUB_TOKEN ? "set" : null, proxy: process.env.HTTPS_PROXY ?? null })}\n`,
   );
+}
+
+if (process.env.FAKE_MODE?.startsWith("unsupported")) {
+  const hasModel = process.argv.some((a) => a === "-m" || a === "--model" || a.startsWith("--model="));
+  if (hasModel || process.env.FAKE_MODE === "unsupported-always") {
+    console.error("The 'requested' model is not supported when using this account.");
+    process.exit(1);
+  }
+  process.env.FAKE_MODE = "ok";
 }
 
 // `--output-format json` (Claude Code): nothing on stdout until one result object at the end.

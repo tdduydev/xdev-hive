@@ -3333,6 +3333,161 @@ describe("steering a live run", () => {
   });
 });
 
+describe("unsupported model recovery", () => {
+  it("keeps Codex steering on the recovered thread and counts both successful turns", async () => {
+    const bin = path.join(tmp("recover-steer"), "codex");
+    writeFileSync(bin, `#!/bin/sh\nexec "${process.execPath}" "${FAKE}" "$@"\n`, { mode: 0o755 });
+    const p = profile("codex-a", "codex", 10, "steer-resume", { bin, args: ["exec", "--sandbox", "workspace-write", "-m", "rejected", "{prompt}"], env: { FAKE_MODE: "steer-resume", FAKE_REJECT_MODEL: "1" } });
+    const a = await setup([p]);
+    try {
+      const run = await a.runner.enqueue({ project: "demo", taskId: "T-1" });
+      await until(() => a.calls().length === 2, 10_000);
+      await a.runner.steer(run.id, "Keep mobile layout");
+      await a.runner.settle();
+      const done = a.runner.store.get(run.id)!;
+      assert.equal(done.status, "succeeded", done.error ?? "");
+      assert.equal(a.calls().length, 3);
+      assert.equal(done.attempt, 1);
+      assert.equal(done.model, null);
+      const resumed = a.calls()[2]!.args;
+      assert.ok(resumed.includes("resume") && resumed.includes("fake-thread-57a"));
+      assert.ok(resumed.includes("workspace-write"));
+      assert.ok(!resumed.includes("-m"));
+      assert.equal(done.inputTokens, 16);
+      assert.equal(done.outputTokens, 6);
+      assert.match(readFileSync(path.join(done.worktree!, "work-steered.txt"), "utf8"), /Keep mobile layout/);
+    } finally { await a.runner.stop(); a.hive.close(); }
+  });
+
+  it("retains plan read-only permissions when recovering an unsupported model", async () => {
+    const bin = path.join(tmp("recover-plan"), "codex");
+    writeFileSync(bin, `#!/bin/sh\nexec "${process.execPath}" "${FAKE}" "$@"\n`, { mode: 0o755 });
+    const p = profile("codex-a", "codex", 10, "plan-approval", { bin, args: ["exec", "--sandbox", "danger-full-access", "-m", "rejected", "{prompt}"], env: { FAKE_MODE: "plan-approval", FAKE_REJECT_MODEL: "1" } });
+    const a = await setup([p]);
+    try {
+      const run = await a.runner.enqueue({ project: "demo", taskId: "T-1" }, { plan: { id: 1, phase: "plan", text: null, note: null } });
+      await a.runner.settle();
+      const done = a.runner.store.get(run.id)!;
+      assert.equal(done.status, "succeeded", done.error ?? "");
+      assert.ok(done.plan?.text?.startsWith("## Work"));
+      assert.equal(a.calls().length, 2);
+      assert.ok(a.calls().every(c => c.readOnly === "1" && c.args.includes("read-only") && !c.args.includes("danger-full-access")));
+      assert.equal(done.commits, 0);
+      assert.equal((await a.task()).status, "todo");
+    } finally { await a.runner.stop(); a.hive.close(); }
+  });
+
+  it("never bypasses a model allowlist during recovery", async () => {
+    const a = await setup([profile("claude-a", "claude", 10, "unsupported", { args: [FAKE, "{prompt}", "--model", "sonnet"] })], {}, "hub");
+    try {
+      await a.hive.call("agentPolicy.set", { project: "demo", policy: { models: { claude: ["sonnet"] } } }, admin);
+      await a.runner.heartbeat();
+      const run = await a.runner.enqueue({ project: "demo", taskId: "T-1" });
+      await a.runner.settle();
+      assert.equal(a.calls().length, 1);
+      assert.equal(a.runner.store.get(run.id)!.status, "failed");
+      assert.match(a.runner.log(run.id), /cannot retry with CLI default under a model allowlist/);
+      assert.equal(a.runner.profileStatuses()[0]!.cooldownUntil, null);
+    } finally { await a.runner.stop(); a.hive.close(); }
+  });
+
+  for (const kind of ["claude", "codex"] as const) for (const diff of [false, true]) {
+    it(`recovers an unsupported ${kind} ${diff ? "diff summary" : "classifier"} while retaining its output contract`, async () => {
+      const dir = tmp("recover-aux");
+      const cli = path.join(dir, kind);
+      const rec = path.join(dir, "calls");
+      writeFileSync(cli, `#!/bin/sh\nprintf 'CALL %s\\n' "$*" >> "${rec}"\nfor arg in "$@"; do case "$arg" in --model|-m) echo 'unknown model: requested' >&2; exit 1;; esac; done\ncat > /dev/null\nprintf '%s' "$FAKE_OUT"\n`, { mode: 0o755 });
+      const value = diff ? { groups: [{ title: "DB", explanation: "Deletes data", files: ["db.ts"] }], risks: [{ path: "db.ts", hunk: 0, kind: "deletion", level: "high", explanation: "Removes rows" }] } : { kind: "ui", size: "s", risk: "normal", reason: "One page" };
+      const output = kind === "claude" ? JSON.stringify({ result: JSON.stringify(value), usage: { input_tokens: 700 } }) : JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify(value) } });
+      const p = profile("summary", kind, 10, "ok", { bin: cli, args: [], env: { FAKE_OUT: output } });
+      const a = await setup([p], {}, "hub", { diffReview: true });
+      try {
+        const before = await a.task();
+        const parent = a.runner.store.insert({ project: "demo", taskId: "T-1", taskTitle: "Demo", role: "implement", attempt: 1, maxAttempts: 1 }, new Date().toISOString());
+        a.runner.store.update(parent.id, { status: "succeeded", finishedAt: new Date().toISOString() });
+        const run = a.runner.store.insert({ project: "demo", taskId: "T-1", taskTitle: "Demo", role: diff ? "review" : "classify", attempt: 1, maxAttempts: 1,
+          ...(diff ? { parentRunId: parent.id, diffSummaryFor: parent.id, instructions: "diff --git a/db.ts b/db.ts\n@@ -1 +1 @@\n-old\n+DROP TABLE users;\n", selection: { tier: "light" as const, models: { [kind]: { model: "rejected", effort: "low" as const } }, reason: "diff summary" } } : {}) }, new Date().toISOString());
+        await a.runner.tick(); await a.runner.settle();
+        const done = a.runner.store.get(run.id)!;
+        assert.equal(done.status, "succeeded", done.error ?? "");
+        assert.deepEqual(JSON.parse(done.summary!), value);
+        assert.equal(done.model, null);
+        const calls = readFileSync(rec, "utf8").trim().split(/^CALL /m).filter(Boolean);
+        assert.equal(calls.length, 2);
+        assert.doesNotMatch(calls[1]!, /--model|(?:^| )-m(?: |$)|model_reasoning_effort|--effort/);
+        if (kind === "codex") assert.match(calls[1]!, /read-only/);
+        else assert.match(calls[1]!, /--strict-mcp-config/);
+        if (diff) {
+          assert.deepEqual(a.runner.store.get(parent.id)!.diffReview, value);
+          assert.deepEqual(await a.task(), before);
+          if (kind === "codex") assert.match(calls[1]!, /mcp_servers=\{\}/);
+        }
+      } finally { await a.runner.stop(); a.hive.close(); }
+    });
+  }
+
+  for (const kind of ["claude", "codex", "antigravity"] as const) {
+    it(`retries ${kind} on the same profile without a model, within the same run`, async () => {
+      const p = profile("agent-a", kind, 10, "unsupported", { args: [FAKE, "{prompt}", "--model", "unavailable", "--effort", "high"] });
+      const { runner, calls, task } = await setup([p]);
+      const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+      await runner.settle();
+      const done = runner.store.get(run.id)!;
+      assert.equal(done.status, "succeeded", done.error ?? "");
+      assert.equal(done.attempt, 1);
+      assert.equal(done.model, null);
+      assert.equal(done.effort, null);
+      assert.equal(calls().length, 2);
+      assert.equal(calls()[0]!.cwd, calls()[1]!.cwd);
+      assert.ok(!calls()[1]!.args.includes("--model"));
+      assert.ok(!calls()[1]!.args.includes("--effort"));
+      assert.equal(runner.profileStatuses()[0]!.cooldownUntil, null);
+      assert.equal((await task()).status, "review");
+      assert.match(runner.log(run.id), /# model: .*retry once.*CLI default/);
+      assert.equal(runner.list().length, 1);
+      await runner.stop();
+    });
+  }
+
+  it("retries a routed Codex model that a stale cache still lists", async () => {
+    const home = tmp("stale-model-cache");
+    writeFileSync(path.join(home, "models_cache.json"), JSON.stringify({ models: [{ slug: "gpt-6.1-sol", visibility: "list" }] }));
+    const cli = path.join(home, "codex");
+    writeFileSync(cli, `#!/bin/sh\nexec '${process.execPath}' '${FAKE}' "$@"\n`, { mode: 0o755 });
+    const { runner, calls } = await setup([profile("codex-a", "codex", 10, "unsupported", { bin: cli, args: ["{prompt}"], env: { CODEX_HOME: home, FAKE_MODE: "unsupported" } })]);
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1", selection: { tier: "standard", reason: "feature/m", models: { codex: { model: "gpt-6.1-sol", effort: "low" } } } });
+    await runner.settle();
+    assert.equal(runner.store.get(run.id)!.status, "succeeded");
+    assert.equal(calls().length, 2);
+    assert.equal(runner.store.get(run.id)!.attempt, 1);
+    assert.equal(runner.store.get(run.id)!.model, null);
+    assert.match(runner.log(run.id), /gpt-6.1-sol rejected by CLI/);
+    await runner.stop();
+  });
+
+  it("does not loop when the default is rejected too", async () => {
+    const { runner, calls } = await setup([profile("claude-a", "claude", 10, "unsupported-always", { args: [FAKE, "{prompt}", "--model=x"] })]);
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    assert.equal(calls().length, 2);
+    assert.equal(runner.store.get(run.id)!.status, "failed");
+    assert.equal(runner.profileStatuses()[0]!.cooldownUntil, null);
+    await runner.stop();
+  });
+
+  it("carries per-profile capabilities through heartbeat and machines.list", async () => {
+    const home = tmp("model-cache");
+    writeFileSync(path.join(home, "models_cache.json"), JSON.stringify({ models: [{ slug: "gpt-6-sol", visibility: "list" }] }));
+    let runner: Runner;
+    const s = await setup([profile("codex-a", "codex", 10, "ok", { env: { CODEX_HOME: home } })], {}, "hub", { report: () => ({ profiles: runner.profileStatuses().map((p) => ({ id: p.id, label: p.label, kind: p.kind, enabled: p.enabled, installed: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, supportedModels: p.supportedModels })) }) });
+    runner = s.runner;
+    await runner.heartbeat();
+    const machines = await s.hive.call("machines.list", {}, admin);
+    assert.deepEqual(machines[0]!.profiles[0]!.supportedModels, ["gpt-6-sol"]);
+    await runner.stop();
+  });
+});
+
 after(() => {
   for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });
