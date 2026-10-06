@@ -144,6 +144,46 @@ async function shoot(name, page, delay, extra = {}) {
   }
 }
 
+// Deterministic setup checks: no registry/install command runs for these presentation fixtures.
+async function setupCardShots(prefix = "") {
+  const file = path.join(work, "config.json");
+  const config = JSON.parse(readFileSync(file, "utf8"));
+  const before = readFileSync(file, "utf8");
+  config.projects = ["demo", "api", "outside"].map((name) => ({ name, repo, targetBranch: "main" }));
+  config.agents = [];
+  writeFileSync(file, JSON.stringify(config));
+  const fixture = path.join(work, "setup-report.json");
+  const makeItem = (id, label, state) => ({ id, label, state, detail: ".mcp.json · fixture command", action: state === "installed" ? null : "Cài" });
+  for (const state of ["missing", "installed"]) {
+    writeFileSync(fixture, JSON.stringify({
+      machine: [makeItem("cli:claude", "Claude Code", "installed"), makeItem("shim", "Kết nối Hive cho agent", state)],
+      projects: config.projects.map((p) => ({ project: p.name, repo: p.repo, items: [makeItem(`${p.name}:agents`, "Cấu hình agent", state), makeItem(`${p.name}:codegraph-mcp`, "Tra cứu cấu trúc code", state)] })),
+    }));
+    const checks = process.env.HIVE_SMOKE_BEFORE ? {} : {
+      HIVE_SMOKE_EXPECT: '[data-setup-system="hospital"] [data-setup-project="demo"] && [data-setup-system="hospital"] [data-setup-project="api"] && [data-setup-system=""] [data-setup-project="outside"] && [data-ready-tools]',
+      HIVE_SMOKE_ASSERT: 'document.querySelectorAll("[data-setup-project]").length === 3',
+    };
+    await shoot(`${prefix}setup-cards-${state}`, "setup", 2500, { HIVE_SMOKE_SETUP_REPORT: fixture, ...checks });
+    if (!process.env.HIVE_SMOKE_BEFORE) {
+      await shoot(`${prefix}setup-cards-${state}-details`, "setup", 2500, { HIVE_SMOKE_SETUP_REPORT: fixture, HIVE_SMOKE_CLICK: '[data-project-checks="demo"] > summary', ...checks });
+      await shoot(`${prefix}setup-cards-${state}-mobile`, "setup", 2500, {
+        HIVE_SMOKE_SETUP_REPORT: fixture, HIVE_SMOKE_SIZE: "390x844", ...checks,
+        HIVE_SMOKE_ASSERT: 'document.documentElement.scrollWidth <= window.innerWidth && Array.from(document.querySelectorAll("[data-install-project], [data-install-all]")).every(b => b.getBoundingClientRect().height >= 44)',
+      });
+    }
+  }
+  writeFileSync(file, before);
+}
+if (process.env.HIVE_SMOKE_ONLY === "setup-cards") {
+  const local = new SqliteHive(path.join(work, "local.db"));
+  await local.call("systems.save", { name: "hospital", projects: ["demo", "api"] }, admin);
+  local.close();
+  await setupCardShots();
+  await gitlab.close();
+  console.log(`setup card screenshots in ${out}`);
+  process.exit(0);
+}
+
 async function antigravityShots() {
   await shoot("agents-antigravity", "agents", 2500, { HIVE_SMOKE_SCROLL: '[data-profile="antigravity-google"]', HIVE_SMOKE_EXPECT: '[data-profile="antigravity-google"] [role="meter"] && [data-add-account="antigravity"]' });
   await shoot("agents-antigravity-account", "agents", 1500, { HIVE_SMOKE_CLICK: '[data-add-account="antigravity"]', HIVE_SMOKE_SCROLL: '#acc-label', HIVE_SMOKE_EXPECT: '#acc-way' });
@@ -533,6 +573,8 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
     // which the picker leaves out (it is on the web, behind Mở trên web).
     const api = new HubBackend(`http://127.0.0.1:${port}`, bootstrap);
     const seeder = { name: "smoke", role: "admin" };
+    await api.call("systems.save", { name: "hospital", projects: ["demo", "api"] }, seeder);
+    await setupCardShots("hub-");
     await api.call("tasks.create", { id: "T-001", project: "demo", title: "Thêm trang cài đặt workspace" }, seeder);
     await api.call("tasks.create", { id: "T-002", project: "demo", title: "Sửa lỗi phân trang danh sách" }, seeder);
     await api.call("tasks.update", { id: "T-002", status: "doing" }, seeder);

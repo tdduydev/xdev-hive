@@ -1,7 +1,7 @@
 // Công cụ và dự án (docs/design/2026-09-redesign, xDev Hive Client): what the runner needs on this machine (the
 // agent CLIs, the hive-mcp command) and in each repo, with the install the app can do, and admins' install requests.
 import { useEffect, useMemo, useState, type ComponentType } from "react";
-import { FileText, FolderGit2, GitBranch, ListChecks, Plug, RefreshCw, Sparkles, SquareTerminal, Terminal, Wrench } from "lucide-react";
+import { FileText, GitBranch, ListChecks, Plug, RefreshCw, Sparkles, SquareTerminal, Terminal, Wrench } from "lucide-react";
 import { cn } from "cn";
 import { EMPTY_POLICY, requiredItemIds, type MachineCommand, type MachineToolView, type SetupItem, type SetupReport, type SetupState } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
@@ -9,10 +9,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev
 import { Empty, ErrorNote, Notice } from "#ui/components/common.tsx";
 import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { formatTime, useAction, useHive, useQuery } from "#ui/hooks.ts";
-import { rich, useT } from "#ui/i18n/index.tsx";
+import { useT } from "#ui/i18n/index.tsx";
 import { GitLabImportCard, ProjectsCard } from "#ui/pages/Projects.tsx";
 import { ToolCatalog } from "#ui/pages/Tools.tsx";
-import { hasNewer } from "#ui/lib/setup.ts";
+import { hasNewer, needsSetup, setupGroups, setupOrder, installSetupSequence } from "#ui/lib/setup.ts";
 
 const TONE: Record<SetupState, ChipKind> = { installed: "success", missing: "warning", outdated: "info", manual: "danger" };
 
@@ -29,13 +29,27 @@ function iconOf(id: string): ComponentType<{ className?: string }> {
 }
 
 export function SetupPage() {
-  const { client, me } = useHive();
+  const { client, me, systems } = useHive();
   const t = useT();
   const desktop = client.desktop!;
   const status = useQuery(() => desktop.setupStatus(), [desktop]);
   const info = useQuery(() => desktop.appInfo(), [desktop]);
   const settings = useQuery(() => desktop.settings(), [desktop]);
   const [report, setReport] = useState<SetupReport | null>(null);
+  const batch = useAction();
+  const [rowBusy, setRowBusy] = useState(false);
+  const busy = batch.busy || rowBusy;
+  const [progress, setProgress] = useState<string | null>(null);
+  const [remaining, setRemaining] = useState<number | null>(null);
+  const installAll = (projects?: string[]) => void batch.run(async () => {
+    if (!shown) return;
+    setRemaining(null);
+    try {
+      const left = await installSetupSequence(shown, projects, desktop, setReport,
+        (item, completed, total) => setProgress(t("setup.progress", { label: item.label, completed: completed + 1, total })));
+      setRemaining(left.length);
+    } finally { setProgress(null); }
+  });
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const timer = setInterval(() => setTick((n) => n + 1), 15_000);
@@ -49,18 +63,15 @@ export function SetupPage() {
   // Tools the catalog marks required count as the policy's items do (roadmap 28b-2).
   const requiredTools = hubTools.map((tool) => ({ id: tool.id, handler: tool.handler, projects: tool.required.map((project) => ({ project, required: true })) }));
   const required = shown ? requiredItemIds(policy ?? EMPTY_POLICY, shown.projects.map((p) => p.project), requiredTools) : new Set<string>();
-  const replace = (item: SetupItem) =>
-    shown &&
-    setReport({
-      machine: shown.machine.map((i) => (i.id === item.id ? item : i)),
-      projects: shown.projects.map((p) => ({ ...p, items: p.items.map((i) => (i.id === item.id ? item : i)) })),
-    });
-  const missing = shown ? [...shown.machine, ...shown.projects.flatMap((p) => p.items)].filter((i) => i.state !== "installed").length : 0;
+  const replace = async (_item: SetupItem) => {
+    setReport(await desktop.setupStatus());
+  };
+  const missing = shown ? [...shown.machine, ...shown.projects.flatMap((p) => p.items)].filter(needsSetup).length : 0;
   const platform = info.data?.platform;
   const os = platform === "darwin" || platform === "win32" || platform === "linux" ? t(`setup.platform.${platform}`) : (platform ?? "");
 
   return (
-    <div className="mx-auto flex w-full max-w-[980px] flex-col gap-[18px] px-6 pt-5 pb-8">
+    <div className="max-md:[&_button]:min-h-11 max-md:[&_summary]:min-h-11 max-md:[&_summary]:py-3 [&_summary]:focus-visible:focus-ring mx-auto flex w-full max-w-[980px] flex-col gap-[18px] px-6 pt-5 pb-8">
       <h1 className="sr-only">{t("nav.setup")}</h1>
       <p className="sr-only">{t("setup.subtitle")}</p>
       <div className="flex flex-wrap items-center gap-2.5">
@@ -68,7 +79,7 @@ export function SetupPage() {
         <Button
           size="sm"
           variant="outline"
-          disabled={status.loading}
+          disabled={status.loading || busy}
           onClick={() => {
             setReport(null);
             status.reload();
@@ -107,16 +118,44 @@ export function SetupPage() {
             {missing ? t("setup.notReady", { count: missing }) : t("setup.allReady")}
             {required.size ? ` ${t("setup.policyRequires", { count: required.size })}` : ""}
           </Notice>
+          {missing ? <Button data-install-all disabled={busy || !setupOrder(shown).some((i) => i.action)} onClick={() => installAll()}>{t("setup.installMissing")}</Button> : null}
+          <div role="status" aria-live="polite">{progress || (remaining !== null ? t(remaining ? "setup.manualRemaining" : "setup.batchDone", { count: remaining }) : null)}</div>
+          <ErrorNote error={batch.error} />
           <Group title={t("setup.tools")} sub={[settings.data?.machine, os].filter(Boolean).join(" · ")}>
-            <SetupList items={shown.machine} required={required} onChanged={replace} />
+            <SetupList items={shown.machine.filter(needsSetup)} required={required} onChanged={replace} disabled={busy} onBusy={setRowBusy} />
+            {shown.machine.some((i) => !needsSetup(i)) ? <details className="p-4" data-ready-tools>
+              <summary className="cursor-pointer text-[13px] text-fg-secondary">{t("setup.readyTools", { tools: shown.machine.filter((i) => !needsSetup(i)).map((i) => `${i.label}${i.version ? ` ${i.version}` : ""}`).join(", ") })}</summary>
+              <SetupList items={shown.machine.filter((i) => !needsSetup(i))} required={required} onChanged={replace} disabled={busy} onBusy={setRowBusy} />
+            </details> : null}
           </Group>
           {shown.projects.length === 0 ? (
             <Empty>{t("setup.noProjectsBelow")}</Empty>
           ) : null}
-          {shown.projects.map((p) => (
-            <Group key={p.project} title={p.project} sub={p.repo} mono icon={FolderGit2}>
-              <SetupList items={p.items} required={required} onChanged={replace} />
-            </Group>
+          {setupGroups(shown.projects, systems).map((group) => (
+            <section key={group.name} data-setup-system={group.name} className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-[13px] font-semibold text-fg-strong">{group.name || t("setup.outsideSystems")}</h2>
+                {group.name && group.projects.some((p) => p.items.some(needsSetup)) ? <Button size="sm" variant="outline" disabled={busy || !group.projects.some((p) => p.items.some((i) => needsSetup(i) && i.action))} onClick={() => installAll(group.projects.map((p) => p.project))}>{t("setup.installSystem")}</Button> : null}
+              </div>
+              {group.projects.map((p) => {
+                const count = p.items.filter(needsSetup).length;
+                const branch = settings.data?.projects.find((project) => project.name === p.project)?.targetBranch ?? "main";
+                return <Card key={p.project} data-setup-project={p.project}>
+                  <CardContent className="pt-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-semibold text-fg-strong">{p.project}</span>
+                      <Chip kind={count ? "warning" : "success"}>{t(count ? "setup.projectMissing" : "setup.projectReady", { count })}</Chip>
+                      {count ? <Button size="sm" variant="outline" data-install-project={p.project} disabled={busy || !p.items.some((i) => needsSetup(i) && i.action)} onClick={() => installAll([p.project])}>{t("setup.installAll")}</Button> : null}
+                    </div>
+                    <p className="my-2 truncate font-mono text-xs text-fg-muted" title={p.repo}>{p.repo.replace(/^.*[\\/]([^\\/]+[\\/][^\\/]+)$/, "…/$1")}{branch ? ` · ${branch}` : ""}</p>
+                    <details data-project-checks={p.project}>
+                      <summary className="cursor-pointer text-[13px] text-fg-secondary">{t("setup.viewItems")}</summary>
+                      <SetupList items={[...p.items].sort((a, b) => Number(needsSetup(b)) - Number(needsSetup(a)))} required={required} onChanged={replace} disabled={busy} onBusy={setRowBusy} />
+                    </details>
+                  </CardContent>
+                </Card>;
+              })}
+            </section>
           ))}
         </>
       ) : null}
@@ -283,17 +322,17 @@ function HubToolsCard({ tools, onChanged }: { tools: MachineToolView[]; onChange
   );
 }
 
-function SetupList({ items, required, onChanged }: { items: SetupItem[]; required: Set<string>; onChanged: (item: SetupItem) => void }) {
+function SetupList({ items, required, onChanged, disabled, onBusy }: { items: SetupItem[]; required: Set<string>; onChanged: (item: SetupItem) => Promise<void>; disabled?: boolean; onBusy?: (busy: boolean) => void }) {
   return (
     <>
       {items.map((item) => (
-        <SetupRow key={item.id} item={item} required={required.has(item.id)} onChanged={onChanged} />
+        <SetupRow key={item.id} item={item} required={required.has(item.id)} onChanged={onChanged} disabled={disabled} onBusy={onBusy} />
       ))}
     </>
   );
 }
 
-function SetupRow({ item, required, onChanged }: { item: SetupItem; required: boolean; onChanged: (item: SetupItem) => void }) {
+function SetupRow({ item, required, onChanged, disabled, onBusy }: { item: SetupItem; required: boolean; onChanged: (item: SetupItem) => Promise<void>; disabled?: boolean; onBusy?: (busy: boolean) => void }) {
   const { client } = useHive();
   const t = useT();
   const action = useAction();
@@ -301,15 +340,12 @@ function SetupRow({ item, required, onChanged }: { item: SetupItem; required: bo
   const Icon = iconOf(item.id);
   return (
     <div data-setup-item={item.id} className="flex flex-col gap-2 border-b border-line-subtle px-4 py-[11px] last:border-b-0">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <span className="grid size-[30px] shrink-0 place-items-center rounded-[7px] bg-sunken text-fg-secondary">
-          <Icon className="size-[15px]" />
+          <Icon aria-hidden className="size-[15px]" />
         </span>
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="text-[13px]/[18px] font-semibold text-fg-strong">{item.label}</span>
-          <span className="truncate font-mono text-xs/4 text-fg-muted" title={item.detail}>
-            {item.detail}
-          </span>
         </span>
         {required ? <Chip kind="info">{t("setup.required")}</Chip> : null}
         {hasNewer(item) ? <Chip kind="warning">{t("setup.newVersion", { version: item.latest! })}</Chip> : null}
@@ -321,12 +357,15 @@ function SetupRow({ item, required, onChanged }: { item: SetupItem; required: bo
             size="sm"
             variant="outline"
             className="min-w-[84px]"
-            disabled={action.busy}
+            disabled={action.busy || disabled}
             onClick={() =>
               void action.run(async () => {
-                const r = await client.desktop!.installSetup(item.id);
-                setOutput(r.output || null);
-                onChanged(r.item);
+                onBusy?.(true);
+                try {
+                  const r = await client.desktop!.installSetup(item.id);
+                  setOutput(r.output || null);
+                  await onChanged(r.item);
+                } finally { onBusy?.(false); }
               })
             }
           >
@@ -334,6 +373,10 @@ function SetupRow({ item, required, onChanged }: { item: SetupItem; required: bo
           </Button>
         ) : null}
       </div>
+      <details className="pl-[42px]">
+        <summary className="cursor-pointer text-xs text-fg-muted">{t("setup.details")}</summary>
+        <p className="font-mono text-xs break-all text-fg-muted">{item.detail}</p>
+      </details>
       <ErrorNote error={action.error} />
       {output ? (
         <details className="pl-[42px]">
