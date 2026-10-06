@@ -1,5 +1,6 @@
 import { cleanupSuggestionSchema, MEMORY_CLEANUP_ERRORS, type MemoryCleanupSetting, type MemoryCleanupRun, type MemoryCleanupProposal } from "#core/memory-cleanup.ts";
 import { z } from "zod";
+import { PLAN_APPROVAL_MODES, PLAN_MAX, type ImplementationPlan } from "#core/plan-approval.ts";
 import { HiveError } from "./errors.ts";
 import { agentPolicyPartSchema, agentPolicySchema, type AgentPolicy, type AgentPolicyView } from "./agent-policy.ts";
 import { BUDGET_USER, budgetSchema, type BudgetBlock, type BudgetUsage } from "./budgets.ts";
@@ -166,6 +167,7 @@ const reportedProfile = z.object({
   priority: z.number().int().min(0).max(100).optional(),
   maxConcurrent: z.number().int().min(1).max(8).optional(),
   classify: z.boolean().optional(),
+  planApproval: z.boolean().optional(),
 });
 /** A finished run's cost estimate, sent once by the machine that ran it. */
 const runCost = z.object({
@@ -566,6 +568,7 @@ export const schemas = {
     runs: z
       .array(
         z.object({
+          planText: z.string().max(PLAN_MAX).nullable().optional(),
           runId: z.string().regex(/^[\w.-]{1,40}$/),
           project,
           taskId,
@@ -660,6 +663,10 @@ export const schemas = {
     dryRun: z.boolean().default(false),
   }),
   /** Runs the hub was told about, the newest runs first (no log); a project's, or every project the caller sees. */
+  // A local Board run still needs project plan approval. Only its own registered machine may prepare that plan.
+  "runs.preparePlan": z.object({ project, taskId, profileId: z.string().max(40).nullable().default(null), preferKind: z.enum(PREFER_KINDS).nullable().default(null), reviewAfter: z.boolean().default(false), candidates: z.number().int().min(1).max(MAX_CANDIDATES).default(1), instructions: z.string().max(4000).default("") }),
+  "runs.plans": z.object({ project: project.optional(), projects: projectList, taskId: taskId.optional(), status: z.enum(["planning", "waiting", "approved", "changes", "failed", "cancelled"]).optional(), limit: z.number().int().min(1).max(200).default(100) }),
+  "runs.decidePlan": z.object({ id, revision: z.number().int().min(1), decision: z.enum(["approve", "changes", "cancel"]), note: z.string().max(2000).default("") }),
   "runs.list": z.object({ project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(200).default(50) }),
   /**
    * A project manager stops a run that waits or runs on a machine taking runs from the hub: the machine hears it at
@@ -935,6 +942,7 @@ export const schemas = {
         gates: gateModesSchema,
         maxFixRounds: z.number().int().min(0).max(MAX_FIX_ROUNDS).optional(),
         maxParallel: z.number().int().min(1).max(20).nullable().optional(),
+        planApproval: z.object({ mode: z.enum(PLAN_APPROVAL_MODES), timeoutMinutes: z.number().int().min(1).max(10080).nullable() }).optional(),
         fastLaneKinds: z.array(z.enum(FAST_LANE_KINDS)).max(FAST_LANE_KINDS.length).optional(),
       })
       .nullable(),
@@ -1165,6 +1173,9 @@ export interface MethodOutput {
   "specs.list": SpecFeature[];
   "specs.get": SpecFeatureDetail | null;
   "specs.importTasks": { tasks: Array<SpecTaskPlan & { exists: boolean }>; warnings: string[]; created: string[] };
+  "runs.preparePlan": RunRequest;
+  "runs.plans": ImplementationPlan[];
+  "runs.decidePlan": ImplementationPlan;
   "runs.list": RunRecord[];
   "runs.get": RunRecord | null;
   "runs.cancel": RunRecord;
@@ -1337,6 +1348,9 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "specs.list": "viewer",
   "specs.get": "viewer",
   "specs.importTasks": "agent",
+  "runs.preparePlan": "agent",
+  "runs.plans": "viewer",
+  "runs.decidePlan": "agent",
   "runs.list": "viewer",
   "runs.get": "viewer",
   "runs.cancel": "agent",

@@ -374,6 +374,7 @@ export interface MachineSetupMissing {
 
 /** A subscription profile as a machine reports it to the hub: no command line, no env. */
 export interface ReportedProfile extends QuotaOutlook {
+  planApproval?: boolean;
   /** Instants supplied by newer apps; reset text remains the older-app fallback. */
   sessionResetsAt?: string | null;
   weekResetsAt?: string | null;
@@ -797,6 +798,7 @@ export interface FeedEvent {
  * Kept 30 days after its last update.
  */
 export interface RunRecord {
+  plan?: import("#core/plan-approval.ts").RunPlan | null;
   /** The machine's hub actor, which with runId names the run. */
   machineId: string;
   machine: string;
@@ -922,6 +924,7 @@ export interface RunRequestError {
  * heartbeat, queues it like a run started on its Board, and says whether it took it (runs.requestResult).
  */
 export interface RunRequest {
+  plan?: import("#core/plan-approval.ts").RunPlan | null;
   id: number;
   /** The machine's hub actor. */
   machineId: string;

@@ -114,7 +114,7 @@ const said = [];
 const say = (text) => {
   if (codexJson) return said.push(text);
   if (stream) event({ type: "assistant", message: { content: [{ type: "text", text }] } });
-  if (json || stream) said.push(text);
+  if (json || stream || codexJson) said.push(text);
   else console.log(text);
 };
 const finish = (code = 0) => {
@@ -140,6 +140,11 @@ const finish = (code = 0) => {
 };
 
 switch (process.env.FAKE_MODE ?? "ok") {
+  case "plan-approval":
+    if (process.env.HIVE_READONLY === "1") say("## Work\nImplement settings.\n## Files\napp.ts\n## Verification\nnpm test\n## Risks\nNone. " + "Keep scope focused. ".repeat(110));
+    else { appendFileSync(`work-${process.env.HIVE_AGENT}.txt`, "implemented after approval\n"); say("Implemented the approved plan."); }
+    finish();
+    break;
   case "ok":
     // Appends, so a second run on the same branch (a CI fix) has something to commit too.
     appendFileSync(`work-${process.env.HIVE_AGENT}.txt`, "done\n");

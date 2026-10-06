@@ -495,7 +495,7 @@ export function claudeRunArgs(
 // args. A flag the runner does not know is left alone, so the policy only takes away what it can name.
 
 /** args without the flags (and their values). */
-function withoutFlags(args: string[], valued: string[], switches: string[]): string[] {
+export function withoutFlags(args: string[], valued: string[], switches: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
