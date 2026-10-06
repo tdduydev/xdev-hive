@@ -1354,6 +1354,22 @@ async function main() {
     await tab.waitFor("DEMO-2 waiting for payment/PAY-1", () => document.body.innerText.includes("Trang đơn hàng") && document.body.innerText.includes("payment/PAY-1"));
   });
 
+  // Roadmap 41a: a new handover does not erase the one before it — the panel lists them and diffs two neighbours.
+  await step("task-note-history", async () => {
+    await rpc("tasks.update", { id: "DEMO-1", status: "review", note: "Bàn giao 1:\nĐã dựng trang." });
+    await rpc("tasks.update", { id: "DEMO-1", status: "review", note: "Bàn giao 1:\nĐã dựng trang.\nĐã thêm test." });
+    const tab = (current = tabs.lan);
+    await tab.go("tasks?task=DEMO-1");
+    const versions = await tab.waitFor("the two notes in the panel", () => {
+      const rows = [...document.querySelectorAll("[data-task-note]")];
+      return rows.length === 2 && rows.map((li) => li.getAttribute("data-task-note"));
+    });
+    expect(JSON.stringify(versions) === JSON.stringify(["2", "1"]), `versions: ${JSON.stringify(versions)}`);
+    await tab.click('[data-task-note="2"] button');
+    const diff = await tab.waitFor("the diff of the two notes", () => document.querySelector('[data-task-note-diff="2"]')?.innerText);
+    expect(diff.includes("Đã thêm test"), `diff: ${diff}`);
+  });
+
   // Roadmap 35c: Hôm nay on the web has what waits for the person: a spec gate and a leader's proposal, decided there.
   await step("today-web", async () => {
     const machineRpc = async (method, input, token = people.lan.token) => {

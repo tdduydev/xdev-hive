@@ -67,6 +67,7 @@ import {
   type Role,
   type Task,
   type TaskAgentQueueItem,
+  type TaskNote,
   type TeamPolicy,
   type ToolStatus,
   type ToolView,
@@ -391,6 +392,8 @@ export const schemas = {
   "tasks.unassign": z.object({ id: taskId }),
   /** One agent's queue in order, each with why the hub has not sent it out yet; profileId null: the machine's whole queue. */
   "tasks.agentQueue": z.object({ machineId: machineRef, profileId: z.string().max(40).nullable().default(null) }),
+  /** The task's handover notes, newest first (roadmap 41a): the newest is what `tasks.list` shows as its note. */
+  "tasks.notes": z.object({ id: taskId, limit: z.number().int().min(1).max(50).default(10) }),
 
   /** Desktop runners report every ~30 s; the reply carries the shared quota cooldowns. */
   "machines.heartbeat": z.object({
@@ -956,6 +959,7 @@ export interface MethodOutput {
   "tasks.assign": Task;
   "tasks.unassign": Task;
   "tasks.agentQueue": TaskAgentQueueItem[];
+  "tasks.notes": TaskNote[];
   "machines.heartbeat": {
     duplicate: boolean;
     cooldowns: QuotaCooldown[];
@@ -1140,6 +1144,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "tasks.assign": "agent",
   "tasks.unassign": "agent",
   "tasks.agentQueue": "viewer",
+  "tasks.notes": "viewer",
   "machines.heartbeat": "agent",
   "machines.list": "viewer",
   "machines.setupMissing": "viewer",

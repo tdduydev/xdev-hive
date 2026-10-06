@@ -35,10 +35,10 @@ Start of session: memory_search for your topic. Before working: task_claim (task
 Never edit AGENTS.md, CLAUDE.md or docs/decisions.md directly: doc_get, then doc_propose with the baseVersion you read.
 Team skills (how the team does recurring work): skill_list, then skill_get the ones that fit. A new or better skill: skill_propose.
 Answers are kept short: memory_search gives 8 entries without their bookkeeping (verbose: true for every field), task_list cuts each note to 200 characters (task_get reads one task in full, full: true the whole board).
-End of session: task_update to "review" with a note (done / not done / how to verify / risks). Never store secrets.`;
+End of session: task_update to "review" with a note (done / not done / how to verify / risks); it is kept beside the handovers before it, which task_notes reads. Never store secrets.`;
 
 const READ_ONLY_INSTRUCTIONS = `xDev Hive is the shared memory, docs and task board for every coding agent on this team.
-This connection is read-only: memory_search, doc_list, doc_get, skill_list, skill_get, task_list, task_get, task_next, run_list, run_get, run_requests, machine_list, setup_missing, cost_summary, token_usage, tool_list, tool_status and policy_get (alert_list for hub admins). Search memory for your topic before working.
+This connection is read-only: memory_search, doc_list, doc_get, skill_list, skill_get, task_list, task_get, task_notes, task_next, run_list, run_get, run_requests, machine_list, setup_missing, cost_summary, token_usage, tool_list, tool_status and policy_get (alert_list for hub admins). Search memory for your topic before working.
 Answers are kept short: memory_search gives 8 entries without their bookkeeping (verbose: true for every field), task_list cuts each note to 200 characters (task_get reads one task in full, full: true the whole board).
 Put anything worth sharing (decisions, gotchas, the handoff) in your final message instead of writing it to Hive.`;
 
@@ -361,6 +361,19 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
         return failed(err);
       }
     }),
+  );
+
+  server.registerTool(
+    "task_notes",
+    {
+      title: "Read a task's handover notes",
+      description:
+        "The handover notes of one task, newest first: note, the status it was moved to, who wrote it, when. " +
+        "The newest is the note task_list shows; the ones before it are what earlier agents left, kept as they were written.",
+      inputSchema: { id: z.string(), limit: z.number().int().min(1).max(50).optional() },
+      annotations: readOnly,
+    },
+    async ({ id, limit }) => run("tasks.notes", { id, limit: limit ?? 5 }),
   );
 
   server.registerTool(
