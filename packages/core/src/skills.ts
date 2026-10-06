@@ -21,6 +21,12 @@ export interface SkillSummary extends SkillMeta {
   version: number;
   updatedBy: string;
   updatedAt: string;
+  /** Optional for clients connected to a hub predating skill telemetry. */
+  usage?: {
+    runs30d: number;
+    lastUsedAt: string | null;
+    weeks: Array<{ start: string; runs: number }>;
+  };
 }
 
 export const skillDocKey = (name: string, project?: string | null): string => (project ? `project/${project}/skills/${name}` : `org/skills/${name}`);
