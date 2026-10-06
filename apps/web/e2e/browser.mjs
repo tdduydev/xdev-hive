@@ -1031,7 +1031,7 @@ async function main() {
     const [specify] = (await beat()).runRequests.filter((r) => r.taskId === "SPEC-E2E");
     await machineRpc("runs.requestResult", { id: specify.id, status: "accepted", runId: "R-spec1" });
     const at = new Date().toISOString();
-    const run = { runId: "R-spec1", project: "payment", taskId: "SPEC-E2E", taskTitle: "Spec: hoàn tiền", role: "implement", profileId: "claude-1", createdAt: at };
+    const run = { kind: "claude", model: "sonnet", effort: "low", tier: "strong", runId: "R-spec1", project: "payment", taskId: "SPEC-E2E", taskTitle: "Spec: hoàn tiền", role: "implement", profileId: "claude-1", createdAt: at };
     await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ ...run, status: "running" }] });
     await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ ...run, status: "succeeded", finishedAt: at }] });
     await machineRpc("specs.push", { project: "payment", features: [{ dir: "001-hoan-tien", branch: "ai/SPEC-E2E", commit: "abc1230", files: { spec: "# Hoàn tiền\n", plan: null, tasks: null } }] });
@@ -1108,6 +1108,60 @@ async function main() {
         await tab.go("tasks?task=SPEC-E2E");
       }
       await tab.waitFor("the flow on Task after pipeline", () => !!document.querySelector('[data-flow="SPEC-E2E"]'));
+    });
+    await step("models-in-pipeline", async () => {
+      const original = await rpc("modelRouter.get", {});
+      try {
+        await tab.go("pipeline?project=payment");
+        await tab.waitFor("model per step", () => document.querySelector('[data-pipeline-step="spec"]')?.textContent.includes("Sonnet") || document.querySelector('[data-pipeline-step="spec"]')?.textContent.includes("Opus"));
+        await tab.click('[data-pipeline-gate="review"]');
+        await tab.waitFor("model editor", () => !!document.querySelector('[data-step-model] [data-model-tier]'));
+        await tab.eval(() => { const el = document.querySelector('[data-step-model] [data-model-tier]'); el.value = "light"; el.dispatchEvent(new Event("change", { bubbles: true })); });
+        await tab.click('[data-step-model-save]');
+        await until("review cell saved", async () => (await rpc("modelRouter.get", {})).projects.payment?.cells.review?.m === "light");
+        await tab.shot(`${String(n).padStart(2, "0")}-models-step`);
+        await tab.key("Escape");
+        await tab.waitFor("step editor closed", () => !document.querySelector("[data-pipeline-editor]"));
+        await tab.click('[data-model-tab="models"]');
+        await tab.waitFor("task cell table", () => document.querySelectorAll('[data-model-row]').length === 11);
+        expect(await tab.eval(() => !document.querySelector('[data-hub-model-save]')), "project manager cannot edit hub tiers");
+        await tab.click('[data-model-profile="economy"]');
+        await tab.eval(() => { const el = document.querySelector('[data-model-row="docs"] [data-model-tier]'); el.value = "standard"; el.dispatchEvent(new Event("change", { bubbles: true })); });
+        await tab.click('[data-model-save]');
+        await until("profile and docs cell saved", async () => { const p = (await rpc("modelRouter.get", {})).projects.payment; return p?.profile === "economy" && p.cells.docs?.s === "standard"; });
+        if (mobile) {
+          const fit = await tab.eval(() => ({ overflow: document.documentElement.scrollWidth > innerWidth, controls: [...document.querySelectorAll('[data-model-routing] select, [data-model-routing] button')].every((el) => el.getBoundingClientRect().height >= 44 && parseFloat(getComputedStyle(el).fontSize) >= 12) }));
+          expect(!fit.overflow && fit.controls, `model table mobile: ${JSON.stringify(fit)}`);
+        }
+        await tab.shot(`${String(n).padStart(2, "0")}-models-table`);
+        const adminTab = tabs.admin; current = adminTab;
+        await adminTab.go("pipeline?project=payment");
+        await adminTab.click('[data-model-tab="models"]');
+        await adminTab.click('[data-model-routing] summary');
+        await adminTab.waitFor("admin hub tier table", () => !!document.querySelector('[data-hub-model="light/claude"]'));
+        await adminTab.eval(() => {
+          const input = document.querySelector('[data-hub-model="light/claude"]');
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, "haiku");
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+        await adminTab.waitFor("hub model draft", () => document.querySelector('[data-hub-model="light/claude"]')?.value === "haiku");
+        await adminTab.click('[data-hub-model-save]');
+        await until("hub model saved", async () => (await rpc("modelRouter.get", {})).tiers.light.claude?.model === "haiku");
+        await adminTab.shot(`${String(n).padStart(2, "0")}-models-hub`);
+        current = tab;
+        await tab.go("tasks?task=SPEC-E2E");
+        await tab.waitFor("task model reason", () => document.querySelector('[data-task-model]')?.textContent.includes("spec/"));
+        await tab.shot(`${String(n).padStart(2, "0")}-models-task`);
+        await tab.go("runs?run=R-spec1");
+        await tab.waitFor("run model with original selection", () => [...document.querySelectorAll('[data-run-model="sonnet"]')].some((el) => el.textContent.includes("spec/m") && el.title.includes("balanced")));
+        await tab.shot(`${String(n).padStart(2, "0")}-models-run`);
+      } finally {
+        await rpc("modelRouter.set", { project: null, tiers: original.tiers, cells: original.cells });
+        await rpc("modelRouter.set", { project: "payment", setting: original.projects.payment ?? { enabled: true, profile: "balanced", cells: {} } });
+        current = tab;
+        await tab.go("tasks?task=SPEC-E2E");
+        await tab.waitFor("flow after model settings", () => !!document.querySelector('[data-flow="SPEC-E2E"]'));
+      }
     });
     await tab.click('[data-flow="SPEC-E2E"] [data-gate-pass]');
     await tab.waitFor("the plan step running", () => document.querySelector('[data-flow="SPEC-E2E"]')?.getAttribute("data-flow-state") === "running");
