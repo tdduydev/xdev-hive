@@ -616,6 +616,8 @@ export interface SyncOutcome {
   /** Files left as they were because someone edited them by hand, or the repo has its own. */
   skipped: string[];
   commit: string | null;
+  /** The merge request the docs went into (roadmap 38c); null when the sync committed into the checkout. */
+  mr: string | null;
   /** Pages mirrored from the repo as a new version; null when the project mirrors nothing. */
   mirrored: number | null;
   note: string | null;

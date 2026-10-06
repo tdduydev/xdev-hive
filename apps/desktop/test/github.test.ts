@@ -25,6 +25,7 @@ import { MrWatcher } from "#desktop/main/gitlab/watch.ts";
 import { parseRemoteUrl } from "#desktop/main/gitlab/remote.ts";
 import { ciFixLines } from "#desktop/main/runner/command.ts";
 import { Runner } from "#desktop/main/runner/runner.ts";
+import { syncProject } from "#desktop/main/sync.ts";
 import { startMockGitHub, type MockGitHub } from "./fixtures/mock-github.ts";
 
 const FAKE = path.join(import.meta.dirname, "fixtures", "fake-agent.mjs");
@@ -455,5 +456,30 @@ describe("GitHub CI fix", () => {
     const [c] = await s.watcher.check();
     assert.deepEqual([c!.status.to, c!.pipeline.to], ["opened", null]);
     assert.equal(s.runner.store.get(review.id)!.mrStatus, "opened");
+  });
+
+  /** The docs sync of roadmap 38c on GitHub: the same branch, a pull request instead of a merge request. */
+  it("puts the Hive docs in a pull request and updates that one on the next sync", async () => {
+    const s = await setup("ok");
+    const project = { name: "demo", repo: s.repo, githubRepo: "duy/demo" };
+    assert.equal(s.requester.canOpenContext(project), true);
+    const worktreeRoot = tmp("worktrees");
+    const sync = () => syncProject(s.hive, admin, project, { autoCommit: true, mr: { worktreeRoot, open: (p, b) => s.requester.openContext(p, b) } });
+
+    const first = await sync();
+
+    assert.equal(gh.pulls.length, 1);
+    assert.equal(gh.pulls[0]!.head.ref, "chore/xdev-hive-context");
+    assert.equal(gh.pulls[0]!.base.ref, "main");
+    assert.equal(first.mr?.state, "created");
+    assert.equal(first.mr?.url, gh.pulls[0]!.html_url);
+    assert.equal(git(s.repo, "rev-parse", "--abbrev-ref", "HEAD"), "main", "the checkout is untouched");
+    assert.equal(git(s.repo, "status", "--porcelain"), "");
+
+    await s.hive.call("docs.save", { key: "project/demo/agents", content: "# demo\nChạy npm test." }, admin);
+    const second = await sync();
+    assert.equal(gh.pulls.length, 1, "the same pull request");
+    assert.equal(second.mr?.state, "updated");
+    assert.match(git(s.origin, "show", "chore/xdev-hive-context:AGENTS.md"), /Chạy npm test\./);
   });
 });
