@@ -32,7 +32,7 @@ import { inScope, projectScope, scopeFilter, scopeKey } from "#ui/lib/scope.ts";
 import { fold } from "#ui/lib/text.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 
-const STAGE_CHIP: Record<SpecStage, ChipKind> = { specify: "neutral", plan: "info", tasks: "info", implement: "running", done: "success" };
+export const STAGE_CHIP: Record<SpecStage, ChipKind> = { specify: "neutral", plan: "info", tasks: "info", implement: "running", done: "success" };
 
 const idOf = (f: Pick<SpecFeature, "project" | "dir" | "branch">) => JSON.stringify([f.project, f.dir, f.branch]);
 
@@ -194,7 +194,7 @@ export function SpecsPage() {
   );
 }
 
-function Progress({ done, total }: { done: number; total: number }) {
+export function Progress({ done, total }: { done: number; total: number }) {
   const t = useT();
   return (
     <span className="flex items-center gap-2" title={t("specs.progress", { done, total })}>
@@ -282,7 +282,7 @@ function SpecReader({ feature, manyProjects }: { feature: SpecFeature; manyProje
  * tasks.md into board tasks (roadmap 20c): what the hub would make, with what each waits for, then the tasks. Lines
  * already done are left out, tasks already on the board stay as they are.
  */
-function ImportTasks({ feature, onDone }: { feature: SpecFeature; onDone: () => void }) {
+export function ImportTasks({ feature, onDone }: { feature: SpecFeature; onDone: () => void }) {
   const { client, bump } = useHive();
   const t = useT();
   const toast = useToast();
@@ -359,7 +359,7 @@ const fits = (m: Machine, project: string) => m.online && m.acceptsRuns && m.pro
  * One Spec Kit step as an agent's run (roadmap 20d): the feature's task (made when it has none), then the run, on a
  * machine that has the repo. The run's result is reviewed like any other: its branch, its MR, Merge.
  */
-function SpecRun({ project, step, feature, onSent }: { project: string; step: SpecStep; feature: SpecFeature | null; onSent: () => void }) {
+export function SpecRun({ project, step, feature, onSent }: { project: string; step: SpecStep; feature: SpecFeature | null; onSent: () => void }) {
   const { client, bump } = useHive();
   const t = useT();
   const toast = useToast();
