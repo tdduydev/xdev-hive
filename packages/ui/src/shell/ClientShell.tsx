@@ -427,7 +427,7 @@ function ClientFrame({
                   )}
                 >
                   <Plus className="size-3.5" strokeWidth={2} />
-                  <span className="max-md:sr-only">{t(client.desktop ? "shell.newTask" : "newWork.title")}</span>
+                  <span className="max-md:sr-only">{t(client.desktop ? "shell.newTask" : "newWork.button")}</span>
                 </button>
               )}
             </header>
@@ -491,7 +491,7 @@ function ClientFrame({
         </footer>
       </div>
       <CommandPalette open={palette} onOpenChange={setPalette} commands={commands} pages={pages} />
-      {client.desktop ? <NewTaskDialog open={newTask} onOpenChange={setNewTask} /> : <NewWorkDialog open={newTask} onOpenChange={setNewTask} />}
+      {client.desktop ? <NewTaskDialog open={newTask} onOpenChange={setNewTask} /> : newTask ? <NewWorkDialog open onOpenChange={setNewTask} /> : null}
     </>
   );
 }

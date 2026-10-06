@@ -46,6 +46,7 @@ export function SpecsPage() {
   const { client, scope, setScope } = useHive();
   const t = useT();
   const mobileDetail = useMobileDetail("feature");
+  const newWork = useMobileDetail("newWork").value;
   // Features are a project's: the team-wide scope has none.
   const list = useQuery(async () => (scope.kind === "shared" ? [] : client.call("specs.list", scopeFilter(scope))), [client, scopeKey(scope)]);
   const [linkProject, clearLink] = useHashParam("project");
@@ -81,7 +82,7 @@ export function SpecsPage() {
   const noScope = scope.kind === "shared";
   useEffect(() => {
     setCreating(mobileDetail.value === "new");
-  }, [mobileDetail.mobile, mobileDetail.value]);
+  }, [mobileDetail.mobile, mobileDetail.value, newWork]);
 
   const pick = (f: SpecFeature) => {
     setCreating(false);
