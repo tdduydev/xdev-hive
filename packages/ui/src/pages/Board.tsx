@@ -24,6 +24,7 @@ import { Badge, ErrorNote, Notice, StatusDot } from "#ui/components/common.tsx";
 import { PausedNotice } from "#ui/components/StopAgents.tsx";
 import { errorMessage, formatTime, hashParam, useAction, useCan, useHive, useProjects, useQuery } from "#ui/hooks.ts";
 import { rich, useT, type TFunction } from "#ui/i18n/index.tsx";
+import { agentLabel } from "#ui/lib/assignment.ts";
 import { boardProjects, profileState, profileSummary } from "#ui/lib/board.ts";
 import { canCloseTask } from "#ui/lib/permission-controls.ts";
 import { runDuration } from "#ui/lib/runs.ts";
@@ -423,12 +424,14 @@ function TaskCard({
         {run?.bestOf ? <span className="truncate">{bestOfLabel(run, t)}</span> : null}
       </div>
       <span className="text-[13px]/[18px] font-medium text-pretty text-fg-strong [overflow-wrap:anywhere]">{task.title}</span>
-      {live || run?.status === "queued" || stopped || tag || waiting.length || isNext || owner ? (
+      {live || run?.status === "queued" || stopped || tag || task.agent || waiting.length || isNext || owner ? (
         <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px]/none font-medium">
           {live ? <span className="text-running">● {runDuration(run!)}</span> : null}
           {run?.status === "queued" ? <span className="text-fg-muted">◌ {t("runStatus.queued")}</span> : null}
           {stopped ? <Tag kind={stopped === "failed" ? "danger" : "warning"}>{t(`runStatus.${stopped}`)}</Tag> : null}
           {tag ? <Tag kind={tag.kind}>{tag.text}</Tag> : null}
+          {/* Who the task is *for*, next to who took it: the app's board shows the same chip as the web's (roadmap 50b). */}
+          {task.agent ? <Tag kind="info">{agentLabel(task.agent, t("assignment.any"))}</Tag> : null}
           {waiting.length ? <Tag kind="danger">{t("board.waitingOn", { tasks: waiting.join(", ") })}</Tag> : null}
           {isNext ? (
             <Tag kind="info" title={t("board.nextTaskHint")}>

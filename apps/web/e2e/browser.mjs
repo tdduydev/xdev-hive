@@ -1452,6 +1452,69 @@ async function main() {
     await tab.waitFor("the Task page with the two agents", () => location.hash.startsWith("#/tasks") && document.body.innerText.includes("Đã chọn 2 agent trên Bản đồ agent"));
   });
 
+  // Assignment uses a dedicated fake machine so open requests from earlier scenarios cannot occupy its only slot.
+  await step("agent-assign", async () => {
+    const machineName = "lan-assign";
+    const machineRpc = async (method, input) => {
+      const response = await fetch(`${base}/api/rpc`, {
+        method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": `runner.${machineName}` },
+        body: JSON.stringify({ method, input }),
+      });
+      const body = await response.json();
+      if (body.error) throw new Error(`${method}: ${body.error.message}`);
+      return body.result;
+    };
+    const profile = { id: "claude-assign", label: "claude-assign", kind: "claude", enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0, maxConcurrent: 1, sessionPercent: 24, weekPercent: 12 };
+    const beat = () => machineRpc("machines.heartbeat", { machine: machineName, instance: "e2e00003", version: "0.132.0", projects: ["payment"], acceptsRuns: true, profiles: [profile], runs: [] });
+    await beat();
+    const machine = (await rpc("machines.list")).find((m) => m.machine === machineName);
+    const first = await rpc("tasks.create", { id: "PAY-ASSIGN-1", project: "payment", title: "Assignment first" });
+    const second = await rpc("tasks.create", { id: "PAY-ASSIGN-2", project: "payment", title: "Assignment second" });
+    const taskNow = async (id) => (await rpc("tasks.list", { project: "payment" })).find((x) => x.id === id);
+    const tab = (current = tabs.lan);
+    await tab.reload();
+    for (const task of [first, second]) {
+      await tab.go(`tasks?task=${task.id}`);
+      // The select mounts before machines.list answers, and tab.select throws at once on a missing option.
+      await tab.waitFor("assignment form", (id) => document.querySelector(`[data-assign-machine] option[value="${id}"]`), machine.id);
+      await tab.select("[data-assign-machine]", machine.id);
+      await tab.select("[data-assign-profile]", profile.id);
+      await tab.click("[data-assign-save]");
+      await until("saved assignment", async () => (await taskNow(task.id))?.agent?.profileId === profile.id);
+      await tab.key("Escape");
+    }
+    const requests = await rpc("runs.requests", { project: "payment", limit: 200 });
+    const request = requests.find((r) => r.taskId === first.id && r.status === "pending");
+    expect(request && !requests.some((r) => r.taskId === second.id && r.status === "pending"), "only the first assignment starts");
+    const queue = await rpc("tasks.agentQueue", { machineId: machine.id, profileId: profile.id });
+    expect(queue.find((r) => r.task.id === second.id)?.waiting?.key === "errors.agentBusy", "second task waits for the agent");
+    await tab.click('[data-task-view="agent"]');
+    const key = JSON.stringify([machine.id, profile.id]);
+    await tab.select("[data-agent-filter]", key);
+    await tab.waitFor("agent lane order", (a, b) => {
+      const ids = [...document.querySelectorAll("[data-agent-task]")].map((el) => el.dataset.agentTask);
+      return ids.length === 2 && ids[0] === a && ids[1] === b;
+    }, first.id, second.id);
+    await tab.select(`[data-agent-task="${second.id}"] [data-agent-card-before]`, first.id);
+    await until("before persisted", async () => (await rpc("tasks.agentQueue", { machineId: machine.id, profileId: profile.id }))[0]?.task.id === second.id);
+    if (mobile) {
+      const safe = await tab.eval(() => [...document.querySelectorAll("[data-agent-task]")].every((el) => !el.draggable) && [...document.querySelectorAll("[data-agent-card-select]")].every((el) => el.getBoundingClientRect().height >= 44));
+      expect(safe, "mobile uses 44px selects without dragging");
+    }
+    await tab.shot(`${String(n).padStart(2, "0")}-agent-assign-lanes`);
+    await machineRpc("runs.requestResult", { id: request.id, status: "accepted", runId: "R-assign1" });
+    // Heartbeat before push catches the accepted-but-unreported gap covered by 50a.
+    expect(!(await beat()).runRequests?.some((r) => r.taskId === second.id), "accepted run retains the slot before push");
+    const at = new Date().toISOString();
+    await machineRpc("runs.push", { machine: machineName, runs: [{ runId: "R-assign1", project: "payment", taskId: first.id, taskTitle: first.title, role: "implement", status: "succeeded", profileId: profile.id, createdAt: at, finishedAt: at }] });
+    const next = await until("second assignment released", async () => (await beat()).runRequests?.find((r) => r.taskId === second.id));
+    expect(next, "second task starts after first finishes");
+    for (const task of [first, second]) await rpc("tasks.unassign", { id: task.id });
+    await rpc("runs.cancelRequest", { id: next.id });
+    await tab.select("[data-agent-filter]", "");
+    await tab.click('[data-task-view="kanban"]');
+  });
+
   if (mobile) {
     current = tabs.admin;
     await tableCardsChecks({ tab: current, rpc, step, expect });

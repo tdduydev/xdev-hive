@@ -17,6 +17,9 @@ import { BatchSheet, PromptSheet } from "#ui/components/AgentSheets.tsx";
 import { BoardPage } from "#ui/pages/Board.tsx";
 import { FlowList, FlowTaskPanel } from "#ui/components/FlowCard.tsx";
 import { MachineSelect, PreferKindSelect, ProfileSelect, takesRunsOf } from "#ui/components/MachinePicker.tsx";
+import { AgentAssignment } from "#ui/components/AgentAssignment.tsx";
+import { AgentBoard } from "#ui/components/AgentBoard.tsx";
+import { agentLabel, agentLanes, filterAgent } from "#ui/lib/assignment.ts";
 import { TaskKanban } from "#ui/components/TaskKanban.tsx";
 import { formatTime, hashParam, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
@@ -38,12 +41,13 @@ const TONE_TEXT: Record<string, string> = {
 /** Machines take a request at their next heartbeat (30 s): follow it closely until one does. */
 const PENDING_MS = 3000;
 
-type View = "kanban" | "list";
+type View = "kanban" | "list" | "agent";
 // Each reader's own choice, in this browser only (roadmap 30a): Kanban unless they picked the list.
 const VIEW_KEY = "hive-tasks-view";
 const readView = (): View => {
   try {
-    return localStorage.getItem(VIEW_KEY) === "list" ? "list" : "kanban";
+    const saved = localStorage.getItem(VIEW_KEY);
+    return saved === "list" || saved === "agent" ? saved : "kanban";
   } catch {
     return "kanban";
   }
@@ -57,11 +61,11 @@ const writeView = (v: View) => {
 };
 
 /** Kanban (Board in the app) or Danh sách. Buttons, not a select: the screenshot harness clicks them. */
-function ViewSwitch({ value, onChange, board }: { value: View; onChange: (v: View) => void; board?: boolean }) {
+function ViewSwitch({ value, onChange, board, agents = false }: { value: View; onChange: (v: View) => void; board?: boolean; agents?: boolean }) {
   const t = useT();
   return (
     <div role="radiogroup" aria-label={t("tasks.view")} className="ml-auto flex gap-0.5 rounded-[7px] bg-sunken p-0.5">
-      {(["kanban", "list"] as const).map((v) => (
+      {(["kanban", "list", ...(agents ? ["agent" as const] : [])] as const).map((v) => (
         <button
           key={v}
           type="button"
@@ -69,9 +73,9 @@ function ViewSwitch({ value, onChange, board }: { value: View; onChange: (v: Vie
           data-task-view={v}
           aria-checked={value === v}
           onClick={() => onChange(v)}
-          className={cn("h-7 max-md:h-10 cursor-pointer rounded-[5px] px-2.5 text-xs/none font-semibold outline-none focus-visible:focus-ring", value === v ? "bg-surface text-fg-strong shadow-e1" : "text-fg-secondary")}
+          className={cn("h-7 max-md:min-h-11 cursor-pointer rounded-[5px] px-2.5 text-xs/none font-semibold outline-none focus-visible:focus-ring", value === v ? "bg-surface text-fg-strong shadow-e1" : "text-fg-secondary")}
         >
-          {t(v === "kanban" && board ? "tasks.view_board" : `tasks.view_${v}`)}
+          {t(v === "agent" ? "assignment.byAgent" : v === "kanban" && board ? "tasks.view_board" : `tasks.view_${v}`)}
         </button>
       ))}
     </div>
@@ -105,7 +109,7 @@ export function TaskWorkPage() {
     writeView(v);
   };
   const switcher = <ViewSwitch value={view} onChange={change} board />;
-  return view === "list" ? <TasksPage view="list" switcher={switcher} /> : <BoardPage switcher={switcher} />;
+  return view !== "kanban" ? <TasksPage view="list" switcher={switcher} /> : <BoardPage switcher={switcher} />;
 }
 
 /** `view` and `switcher` are set by TaskWorkPage when the Board is the other view; alone, the page owns both. */
@@ -119,7 +123,8 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
   const scoped = scopeProject(scope);
   const key = scopeKey(scope);
   const [own, setViewState] = useState<View>(readView);
-  const view = fixed ?? own;
+  const chosen = fixed ?? own;
+  const view = chosen === "agent" && me.mode !== "hub" ? "list" : chosen;
   const setView = (v: View) => {
     setViewState(v);
     writeView(v);
@@ -127,9 +132,10 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
   const [status, setStatus] = useState<TaskStatus | "">("");
   // The board's columns are the statuses: it always gets every task.
   const filter = view === "list" ? status : "";
+  const taskPoll = usePoll(me.mode === "hub" ? 5000 : null);
   const list = useQuery(
     () => client.call("tasks.list", { ...scopeFilter(scope), status: filter || undefined }),
-    [client, key, filter],
+    [client, key, filter, taskPoll],
   );
   const next = useQuery(() => client.call("tasks.next", { ...scopeFilter(scope), limit: 3 }), [client, key, list.data]);
   // Runs queued on a machine from here (hub only): which machine a task waits for, and what became of it.
@@ -151,6 +157,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
   const reload = () => (list.reload(), requests.reload());
   // Tasks picked to give to agents at once (roadmap 31a): on the hub, open ones of projects the person dispatches in.
   const [picks, setPicks] = useState<Set<string>>(new Set());
+  const [assigning, setAssigning] = useState(false);
   const [batching, setBatching] = useState(false);
   const [batchSent, setBatchSent] = useState<number | null>(null);
   // Agents picked on the agent map (#/tasks?agents=…, roadmap 31b): the tasks picked here go to them in turn.
@@ -161,7 +168,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
     if (agentsParam) setAgents(decodeTargets(agentsParam)), setViewState("list"), clearAgents();
   }, [agentsParam, clearAgents]);
   const pickable = (task: Task) => hub && task.status !== "done" && allow(task.project, "runDispatch");
-  const picked = (list.data ?? []).filter((task) => picks.has(task.id) && pickable(task));
+  const picked = [...picks].flatMap((id) => (list.data ?? []).filter((task) => task.id === id && pickable(task)));
   const pickedProjects = new Set(picked.map((task) => task.project));
   const togglePick = (id: string) =>
     setPicks((p) => {
@@ -173,8 +180,12 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
   const prompters = hub ? (scope.kind === "system" ? scope.projects : projects).filter((p) => allow(p, "taskManage") && allow(p, "runDispatch")) : [];
   const [prompting, setPrompting] = useState(false);
 
+  const [agentFilter, setAgentFilter] = useState("");
+  const machines = useQuery(async () => hub ? client.call("machines.list", {}) : [], [client, hub, poll]);
+  const lanes = agentLanes(machines.data ?? [], list.data ?? [], t("assignment.any"), t("assignment.unassigned"));
+  const visible = filterAgent(list.data ?? [], agentFilter);
   return (
-    <Page wide={view === "kanban"}>
+    <Page wide={view !== "list"}>
       <PageHeader title={t("tasks.title")} subtitle={t("tasks.subtitle")} />
       <div className="flex flex-wrap items-center gap-2">
         {view === "list" ? (
@@ -187,7 +198,11 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
             ))}
           </NativeSelect>
         ) : null}
-        {switcher ?? <ViewSwitch value={view} onChange={setView} />}
+        {hub ? <NativeSelect data-agent-filter aria-label={t("assignment.agent")} wrapperClassName="max-w-full" className="max-md:min-h-11 max-md:text-base" value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)}>
+          <NativeSelectOption value="">{t("assignment.all")}</NativeSelectOption>
+          {lanes.map((lane) => <NativeSelectOption key={lane.key} value={lane.key}>{lane.label}</NativeSelectOption>)}
+        </NativeSelect> : null}
+        {switcher ?? <ViewSwitch value={view} onChange={setView} agents={hub} />}
         {prompters.length ? (
           <Button size="sm" className="max-md:min-h-10" onClick={() => setPrompting(true)} data-prompt-agent>
             <Sparkles />
@@ -244,6 +259,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
           <span className="font-semibold">{t("tasks.picked", { count: picked.length })}</span>
           {pickedProjects.size > 1 ? <span className="text-xs opacity-80">{t("tasks.batchOneProject")}</span> : null}
           <span className="flex-1" />
+          <Button data-assign-bulk className="max-md:min-h-11" onClick={() => setAssigning(true)}>{t("assignment.assign")}</Button>
           <button
             type="button"
             disabled={pickedProjects.size !== 1}
@@ -259,9 +275,10 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
         </div>
       ) : null}
       {list.data?.length === 0 ? <Empty>{t("tasks.none")}</Empty> : null}
+      {hub && view === "agent" ? <AgentBoard tasks={visible} machines={machines.data ?? []} onOpen={setOpenId} onChanged={reload} /> : null}
       {list.data?.length && view === "kanban" ? (
         <TaskKanban
-          tasks={list.data}
+          tasks={visible}
           showProject={scoped === null}
           requests={requests.data ?? []}
           nextIds={(next.data ?? []).map((task) => task.id)}
@@ -293,7 +310,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
               </TableRow>
             </TableHeader>
             <TableBody>
-              {list.data.map((task) => (
+              {visible.map((task) => (
                 <TaskRow
                   key={task.id}
                   task={task}
@@ -309,6 +326,9 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
           </Table>
         </div>
       ) : null}
+      <Sheet open={assigning} onOpenChange={setAssigning}>
+        {assigning ? <SheetContent className="w-full overflow-y-auto sm:max-w-xl"><SheetHeader><SheetTitle>{t("assignment.assign")}</SheetTitle><SheetDescription>{t("tasks.picked", { count: picked.length })}</SheetDescription></SheetHeader><div className="p-4"><AgentAssignment tasks={picked} onChanged={reload} onAssigned={() => { setAssigning(false); setPicks(new Set()); }} /></div></SheetContent> : null}
+      </Sheet>
       <Sheet open={batching} onOpenChange={setBatching}>
         {batching && picked.length && pickedProjects.size === 1 ? (
           <BatchSheet
@@ -391,6 +411,7 @@ function TaskRow({
               <span className="shrink-0 font-mono text-xs text-muted-foreground">{task.id}</span>
               <span className="min-w-0 font-medium wrap-anywhere">{task.title}</span>
             </span>
+            {task.agent ? <span className="text-xs text-info wrap-anywhere">{agentLabel(task.agent, t("assignment.any"))}</span> : null}
             {task.note ? <span className="line-clamp-2 max-w-full text-xs text-muted-foreground wrap-anywhere">{task.note}</span> : null}
           </button>
         </div>
@@ -499,6 +520,7 @@ function TaskDetail({ task, requests, hub, onChanged }: { task: Task; requests: 
         {/* A task the hub drives through the project's gates (roadmap 34b). */}
         {hub ? <FlowList project={task.project} taskId={task.id} /> : null}
         {hub ? <FlowTaskPanel project={task.project} taskId={task.id} /> : null}
+        {hub ? <AgentAssignment tasks={[task]} onChanged={onChanged} /> : null}
         {hub && allow(task.project, "runDispatch") && task.status !== "done" ? <DispatchForm task={task} requests={requests} onSent={onChanged} /> : null}
         {hub && requests.length ? <RequestList requests={requests} onChanged={onChanged} /> : null}
         <section className="flex flex-col gap-1.5">

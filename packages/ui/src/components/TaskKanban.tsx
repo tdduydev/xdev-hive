@@ -11,6 +11,7 @@ import { errorMessage, useCan, useHive } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { columnOf, ownerLabel, waitingLabels } from "#ui/lib/tasks.ts";
 import { canCloseTask } from "#ui/lib/permission-controls.ts";
+import { agentLabel } from "#ui/lib/assignment.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
 /** Done piles up: the newest this many, the rest one click away. */
@@ -182,6 +183,7 @@ function KanbanCard({
         {showProject ? <OwnerBadge owner={task.project} className="ml-auto max-w-[60%] truncate" /> : null}
       </div>
       <span className="text-[13px]/[18px] font-medium text-pretty text-fg-strong [overflow-wrap:anywhere]">{task.title}</span>
+      {task.agent ? <span data-task-agent className="rounded-sm bg-info-soft px-2 py-1 text-xs text-info wrap-anywhere">{agentLabel(task.agent, t("assignment.any"))}</span> : null}
       {task.note ? <span className="line-clamp-2 text-xs text-fg-secondary [overflow-wrap:anywhere]">{task.note}</span> : null}
       {deps.length || waiting || isNext || owner ? (
         <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px]/none font-medium">
