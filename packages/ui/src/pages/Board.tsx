@@ -5,11 +5,11 @@ import { useEffect, useMemo, useState, type DragEvent, type ReactNode } from "re
 import { ExternalLink, X } from "lucide-react";
 import { cn } from "cn";
 import {
-  AGENT_ROLES,
+  WORK_ROLES,
   PREFER_KINDS,
   TASK_STATUSES,
   type AgentProfileStatus,
-  type AgentRole,
+  type WorkRole,
   type AgentRun,
   type PreferKind,
   type Task,
@@ -567,7 +567,7 @@ function Inspector({
 function RunForm({ task, profiles, onCancel, onStarted }: { task: Task; profiles: AgentProfileStatus[]; onCancel: () => void; onStarted: (run: AgentRun) => void }) {
   const { client } = useHive();
   const t = useT();
-  const [role, setRole] = useState<AgentRole>(task.status === "review" ? "review" : "implement");
+  const [role, setRole] = useState<WorkRole>(task.status === "review" ? "review" : "implement");
   const [profileId, setProfileId] = useState("");
   const [preferKind, setPreferKind] = useState<PreferKind | "">("");
   const [instructions, setInstructions] = useState("");
@@ -598,8 +598,8 @@ function RunForm({ task, profiles, onCancel, onStarted }: { task: Task; profiles
       }}
     >
       <Label htmlFor={`role-${task.id}`}>{t("board.role")}</Label>
-      <NativeSelect id={`role-${task.id}`} size="sm" wrapperClassName="w-full" value={role} onChange={(e) => setRole(e.target.value as AgentRole)}>
-        {AGENT_ROLES.map((r) => (
+      <NativeSelect id={`role-${task.id}`} size="sm" wrapperClassName="w-full" value={role} onChange={(e) => setRole(e.target.value as WorkRole)}>
+        {WORK_ROLES.map((r) => (
           <NativeSelectOption key={r} value={r}>
             {t(`agentRole.${r}`)}
           </NativeSelectOption>

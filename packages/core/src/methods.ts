@@ -2,7 +2,7 @@ import { z } from "zod";
 import { HiveError } from "./errors.ts";
 import { agentPolicyPartSchema, agentPolicySchema, type AgentPolicy, type AgentPolicyView } from "./agent-policy.ts";
 import { BUDGET_USER, budgetSchema, type BudgetBlock, type BudgetUsage } from "./budgets.ts";
-import { ACCOUNT_ID, AGENT_ROLES, PREFER_KINDS, agentProfileSchema, MAX_CANDIDATES, RUN_STATUSES } from "./agents.ts";
+import { ACCOUNT_ID, AGENT_ROLES, PREFER_KINDS, agentProfileSchema, MAX_CANDIDATES, RUN_STATUSES, WORK_ROLES } from "./agents.ts";
 import { CHAT_FILES_PER_MESSAGE } from "./chatfiles.ts";
 import { DOC_ASSET_MAX_BYTES } from "./doclinks.ts";
 import { MR_STATUSES, PIPELINE_STATUSES } from "./gitlab.ts";
@@ -142,6 +142,7 @@ const reportedProfile = z.object({
   statsSince: z.string().max(40).nullable().optional(),
   priority: z.number().int().min(0).max(100).optional(),
   maxConcurrent: z.number().int().min(1).max(8).optional(),
+  classify: z.boolean().optional(),
 });
 /** A finished run's cost estimate, sent once by the machine that ran it. */
 const runCost = z.object({
@@ -183,15 +184,20 @@ const chatAction = z.discriminatedUnion("kind", [
     project: project.optional(),
     title: z.string().min(1).max(300),
     dependsOn: z.array(taskId).max(20).default([]),
+    /** `taskKind`, since `kind` names the action here; tasks.create gets it as `kind`. */
+    taskKind: z.enum(TASK_KINDS).optional(),
+    size: z.enum(TASK_SIZES).optional(),
+    risk: z.enum(TASK_RISKS).optional(),
   }),
   z.object({ kind: z.literal("task.update"), id: taskId, status: z.enum(TASK_STATUSES), note: z.string().max(2000).optional() }),
+  /** Corrects what a task is (roadmap 54b): at least one of the three. */
   z.object({ kind: z.literal("task.classify"), id: taskId, taskKind: z.enum(TASK_KINDS).optional(), size: z.enum(TASK_SIZES).optional(), risk: z.enum(TASK_RISKS).optional() }),
   /** Gives a task to an agent (roadmap 50); the machine is named by hub id or name, like the kinds below. */
   z.object({ kind: z.literal("task.assign"), taskId, machine: machineRef, profileId: z.string().max(40).nullable().default(null) }),
   z.object({
     kind: z.literal("run.dispatch"),
     taskId,
-    role: z.enum(AGENT_ROLES).default("implement"),
+    role: z.enum(WORK_ROLES).default("implement"),
     /** A machine's hub id or name; the chat's own machine when left out. */
     machine: machineRef.optional(),
     profileId: z.string().max(40).nullable().default(null),
@@ -363,7 +369,16 @@ export const schemas = {
     projects: projectList,
     status: z.enum(TASK_STATUSES).optional(),
   }),
-  "tasks.create": z.object({ id: taskId, project, title: z.string().min(1).max(300), dependsOn: z.array(taskId).max(20).default([]) }),
+  "tasks.create": z.object({
+    id: taskId,
+    project,
+    title: z.string().min(1).max(300),
+    dependsOn: z.array(taskId).max(20).default([]),
+    /** What the task is (roadmap 54b); left out, the hub's rules and its classify run fill it. */
+    kind: z.enum(TASK_KINDS).optional(),
+    size: z.enum(TASK_SIZES).optional(),
+    risk: z.enum(TASK_RISKS).optional(),
+  }),
   /** Replaces what the task depends on (tasks of the same project, no cycles). */
   "tasks.setDeps": z.object({ id: taskId, dependsOn: z.array(taskId).max(20) }),
   /** Tasks ready to start: to do, nothing they depend on is open, nobody holds them. Those that unlock the most come first. */
@@ -377,8 +392,12 @@ export const schemas = {
     status: z.enum(TASK_STATUSES),
     note: z.string().max(2000).optional(),
   }),
-  "tasks.classify": z.object({ id: taskId, kind: z.enum(TASK_KINDS).optional(), size: z.enum(TASK_SIZES).optional(), risk: z.enum(TASK_RISKS).optional() }).refine((v) => v.kind !== undefined || v.size !== undefined || v.risk !== undefined),
-  "tasks.classifyConfig": z.object({ project }),
+  /** Says what a task is (roadmap 54b), by hand: what is given replaces the hub's rules and its classify run. */
+  "tasks.classify": z
+    .object({ id: taskId, kind: z.enum(TASK_KINDS).optional(), size: z.enum(TASK_SIZES).optional(), risk: z.enum(TASK_RISKS).optional() })
+    .refine((v) => v.kind !== undefined || v.size !== undefined || v.risk !== undefined, "kind, size or risk"),
+  /** The projects that turned the classify run off (on by default); only those the caller sees. */
+  "tasks.classifyConfig": z.object({}),
   "tasks.setClassifyConfig": z.object({ project, enabled: z.boolean() }),
   /**
    * Gives a task to one agent (roadmap 50): the hub queues the run itself as soon as that machine has a free place and
@@ -566,7 +585,7 @@ export const schemas = {
     machineId: machineRef,
     project,
     taskId,
-    role: z.enum(AGENT_ROLES).default("implement"),
+    role: z.enum(WORK_ROLES).default("implement"),
     /** A profile of that machine; null rotates. */
     profileId: z.string().max(40).nullable().default(null),
     /** Unpinned: wait for a profile of this kind while one could take the run, then any (roadmap 24c). */
@@ -607,7 +626,7 @@ export const schemas = {
           profileId: z.string().max(40).nullable().default(null),
           /** Unpinned: wait for a profile of this kind while one could take the run, then any (roadmap 24c). */
           preferKind: z.enum(PREFER_KINDS).nullable().default(null),
-          role: z.enum(AGENT_ROLES).default("implement"),
+          role: z.enum(WORK_ROLES).default("implement"),
         }),
       )
       .min(1)
@@ -946,7 +965,7 @@ export interface MethodOutput {
   "tasks.claim": { claimed: boolean; task: Task | null };
   "tasks.update": Task;
   "tasks.classify": Task;
-  "tasks.classifyConfig": { project: string; enabled: boolean };
+  "tasks.classifyConfig": { project: string; enabled: boolean }[];
   "tasks.setClassifyConfig": { project: string; enabled: boolean };
   "tasks.assign": Task;
   "tasks.unassign": Task;

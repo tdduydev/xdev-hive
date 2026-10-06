@@ -69,6 +69,7 @@ export const ACTION_LABEL: Record<string, MessageKey> = {
   "systems.save": "auditAction.systemsSave",
   "systems.remove": "auditAction.systemsRemove",
   "projects.archive": "auditAction.projectsArchive",
+  "tasks.setClassifyConfig": "auditAction.tasksSetClassifyConfig",
   "projects.restore": "auditAction.projectsRestore",
   "projects.delete": "auditAction.projectsDelete",
   "admin.commandCreate": "auditAction.commandCreate",

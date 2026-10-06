@@ -373,6 +373,11 @@ export interface ReportedProfile {
   priority?: number;
   /** Runs it takes at once (AgentProfile.maxConcurrent); absent from apps older than 0.110, counted as 1. */
   maxConcurrent?: number;
+  /**
+   * It can do the hub's classify run (roadmap 54b): a Claude or Codex profile that takes implement runs, on an app that
+   * knows the role. Absent from older apps, so the hub never sends them a run they would refuse.
+   */
+  classify?: boolean;
 }
 
 /**

@@ -27,7 +27,6 @@ const profile = (id: string, over: Record<string, unknown> = {}) => ({
 async function hub() {
   const clock = { at: Date.parse("2026-10-02T08:00:00.000Z") };
   const hive = new SqliteHive(":memory:", { now: () => new Date(clock.at) });
-  for (const project of ["app", "site"]) await hive.call("tasks.setClassifyConfig", { project, enabled: false }, admin);
   for (const n of [1, 2, 3, 4]) await hive.call("tasks.create", { id: `T-${n}`, project: "app", title: `Task ${n}` }, admin);
   await hive.call("tasks.create", { id: "T-5", project: "app", title: "After T-1", dependsOn: ["T-1"] }, admin);
   await hive.call("tasks.create", { id: "S-1", project: "site", title: "Landing" }, admin);

@@ -1,8 +1,9 @@
 import { ResponsiveTable as Table, ResponsiveTableRow as TableRow } from "#ui/components/ResponsiveTable.tsx";
-import { useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { cn } from "cn";
 import { Sparkles } from "lucide-react";
-import { AGENT_ROLES, MAX_CANDIDATES, TASK_KINDS, TASK_RISKS, TASK_SIZES, TASK_STATUSES, type AgentRole, type PreferKind, type RunRequest, type Task, type TaskKind, type TaskRisk, type TaskSize, type TaskStatus } from "@xdev-hive/core";
+import { WORK_ROLES, MAX_CANDIDATES, TASK_STATUSES, type WorkRole, type PreferKind, type RunRequest, type Task, type TaskStatus } from "@xdev-hive/core";
+import { CLASS_FIELDS, CLASS_VALUES, classInput, classSource, type ClassField } from "#ui/lib/task-class.ts";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
@@ -508,9 +509,7 @@ function TaskDetail({ task, requests, hub, onChanged }: { task: Task; requests: 
           <div className="max-w-48">
             <StatusSelect task={task} onChanged={onChanged} />
           </div>
-          <TaskClassField task={task} field="kind" values={TASK_KINDS} onChanged={onChanged} />
-          <TaskClassField task={task} field="size" values={TASK_SIZES} onChanged={onChanged} />
-          <TaskClassField task={task} field="risk" values={TASK_RISKS} onChanged={onChanged} />
+          <TaskClassFields task={task} onChanged={onChanged} />
           <span className="text-xs font-medium text-muted-foreground">{t("tasks.colDeps")}</span>
           <div className="text-xs">
             <Deps task={task} onChanged={onChanged} />
@@ -539,27 +538,75 @@ function TaskDetail({ task, requests, hub, onChanged }: { task: Task; requests: 
   );
 }
 
-function TaskClassField({ task, field, values, onChanged }: { task: Task; field: "kind" | "size" | "risk"; values: readonly string[]; onChanged: () => void }) {
+/** Kind, size and risk (roadmap 54b): a select each for whoever manages the project's tasks, words for the rest. */
+function TaskClassFields({ task, onChanged }: { task: Task; onChanged: () => void }) {
   const { client } = useHive();
   const t = useT();
   const allow = useCan();
   const action = useAction();
-  const label = t(`taskClass.${field}`);
-  return <>
-    <span className="text-xs font-medium text-muted-foreground">{label}</span>
-    <div className="min-w-0">
-      {allow(task.project, "taskManage") ? <NativeSelect size="sm" className="w-full max-w-48" value={task[field] ?? ""} aria-label={label} disabled={action.busy}
-        onChange={(e) => void action.run(async () => {
-          const value = e.target.value;
-          await client.call("tasks.classify", { id: task.id, ...(field === "kind" ? { kind: value as TaskKind } : field === "size" ? { size: value as TaskSize } : { risk: value as TaskRisk }) });
-          onChanged();
-        })}>
-        <NativeSelectOption value="" disabled>{t("taskClass.unknown")}</NativeSelectOption>
-        {values.map((value) => <NativeSelectOption key={value} value={value}>{t(`taskClass.${field}Values.${value}` as Parameters<typeof t>[0])}</NativeSelectOption>)}
-      </NativeSelect> : <span className="text-sm">{task[field] ? t(`taskClass.${field}Values.${task[field]}` as Parameters<typeof t>[0]) : t("taskClass.unknown")}</span>}
-      <ErrorNote error={action.error} />
-    </div>
-  </>;
+  const edit = allow(task.project, "taskManage");
+  const valueText = (field: ClassField, value: string | null | undefined) =>
+    value ? t(`taskClass.${field}Values.${value}` as Parameters<typeof t>[0]) : t("taskClass.unknown");
+  const source = classSource(task);
+  return (
+    <>
+      {CLASS_FIELDS.map((field) => {
+        const label = t(`taskClass.${field}`);
+        const value = task[field] ?? null;
+        return (
+          <Fragment key={field}>
+            <span className="text-xs font-medium text-muted-foreground">{label}</span>
+            <div className="max-w-48" data-task-class={field}>
+              {edit ? (
+                <NativeSelect
+                  size="sm"
+                  className="w-full"
+                  value={value ?? ""}
+                  aria-label={t("taskClass.fieldOf", { field: label, id: task.id })}
+                  disabled={action.busy}
+                  onChange={(e) =>
+                    void action.run(async () => {
+                      await client.call("tasks.classify", classInput(task.id, field, e.target.value));
+                      onChanged();
+                    })
+                  }
+                >
+                  {value === null ? (
+                    <NativeSelectOption value="" disabled>
+                      {t("taskClass.unknown")}
+                    </NativeSelectOption>
+                  ) : null}
+                  {CLASS_VALUES[field].map((v) => (
+                    <NativeSelectOption key={v} value={v}>
+                      {valueText(field, v)}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              ) : (
+                <span className={cn("text-sm", value === null && "text-muted-foreground")}>{valueText(field, value)}</span>
+              )}
+            </div>
+          </Fragment>
+        );
+      })}
+      {source || action.error ? (
+        <>
+          <span />
+          <div className="flex flex-col gap-1">
+            {source ? (
+              <span className="text-xs text-muted-foreground">
+                {t("taskClass.by", {
+                  by: source.by === "rule" ? t("taskClass.byRule") : source.by === "ai" ? t("taskClass.byAi") : source.name,
+                  time: formatTime(source.at),
+                })}
+              </span>
+            ) : null}
+            <ErrorNote error={action.error} />
+          </div>
+        </>
+      ) : null}
+    </>
+  );
 }
 
 /** Machines that can take this task's run now: online, taking runs from the hub, with the project's repo. */
@@ -571,7 +618,7 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
   const fit = (machines.data ?? []).filter((m) => takesRunsOf(m, task.project));
   const [machineId, setMachineId] = useState("");
   const machine = fit.find((m) => m.id === machineId) ?? fit[0] ?? null;
-  const [role, setRole] = useState<AgentRole>(task.status === "review" ? "review" : "implement");
+  const [role, setRole] = useState<WorkRole>(task.status === "review" ? "review" : "implement");
   const [profileId, setProfileId] = useState("");
   const [preferKind, setPreferKind] = useState<PreferKind | "">("");
   const [instructions, setInstructions] = useState("");
@@ -618,8 +665,8 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
             <MachineSelect id={`machine-${task.id}`} machines={fit} value={machine.id} onChange={(id) => (setMachineId(id), setProfileId(""))} />
             <div className="flex flex-col gap-1.5">
               <Label htmlFor={`role-${task.id}`}>{t("board.role")}</Label>
-              <NativeSelect id={`role-${task.id}`} size="sm" className="w-full" value={role} onChange={(e) => setRole(e.target.value as AgentRole)}>
-                {AGENT_ROLES.map((r) => (
+              <NativeSelect id={`role-${task.id}`} size="sm" className="w-full" value={role} onChange={(e) => setRole(e.target.value as WorkRole)}>
+                {WORK_ROLES.map((r) => (
                   <NativeSelectOption key={r} value={r}>
                     {t(`agentRole.${r}`)}
                   </NativeSelectOption>

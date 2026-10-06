@@ -32,7 +32,6 @@ const profile = (id: string, over: Record<string, unknown> = {}) => ({
 async function hub() {
   const clock = { at: Date.parse("2026-10-06T08:00:00.000Z") };
   const hive = new SqliteHive(":memory:", { now: () => new Date(clock.at) });
-  await hive.call("tasks.setClassifyConfig", { project: "app", enabled: false }, admin);
   for (const n of [1, 2, 3]) await hive.call("tasks.create", { id: `T-${n}`, project: "app", title: `Task ${n}` }, admin);
   await hive.call("tasks.create", { id: "T-4", project: "app", title: "After T-1", dependsOn: ["T-1"] }, admin);
   const beat = (actor: Actor, over: Record<string, unknown> = {}) =>
