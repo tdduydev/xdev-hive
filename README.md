@@ -405,9 +405,9 @@ implement (không review, chế độ "ngay khi làm xong") ──────�
 Hợp cho microservice: mỗi service một repo, cả hệ thống nằm trong một group. Thẻ **Nhập từ group GitLab** ở *Dự án & cài đặt* hiện khi máy đã có URL và token GitLab.
 
 - Điền group (`company/team`, sẵn group của dự án đầu tiên) và thư mục gốc (sẵn thư mục chứa dự án đó), chọn clone qua SSH hay HTTPS, bấm *Liệt kê repo*. Danh sách lấy mọi repo của group và group con, bỏ repo đã archive.
-- Mỗi repo có project key (tên repo, trùng thì thêm group, vẫn trùng thì thêm số; sửa được) và thư mục `<thư mục gốc>/<tên repo>` (hai repo cùng tên thì repo sau dùng project key làm tên thư mục).
-- Trạng thái: *sẽ clone*, *dùng thư mục có sẵn* (thư mục đã có thì không clone lại), *đã là dự án* (dự án có cùng GitLab project, không chọn được).
-- *Nhập N repo* chạy lần lượt: clone, thêm dự án, gắn GitLab project để MR vào đúng chỗ. Repo lỗi (không clone được, key trùng) được báo riêng, các repo khác vẫn nhập.
+- Mỗi repo có project key (tên repo, trùng thì thêm group, vẫn trùng thì thêm số; sửa được). Repo mới được clone vào `<thư mục gốc>/<đường dẫn group con>/<tên repo>`.
+- Trạng thái: *sẽ clone*, *dùng clone có sẵn* (remote trùng URL SSH hoặc HTTPS GitLab trả về, kể cả clone ở chỗ khác), *đã là dự án* (cùng GitLab project hoặc clone đã thuộc dự án), *thư mục xung đột* (đích chứa repo khác hoặc không phải repo, không chọn được).
+- *Nhập N repo* chạy lần lượt: clone hoặc dùng lại clone, thêm dự án với default branch từ GitLab, gắn GitLab project để MR vào đúng chỗ. Repo lỗi (không clone được, key trùng) được báo riêng, các repo khác vẫn nhập.
 - *Gom vào hệ thống* (bật sẵn, tên mặc định là tên group): các repo đã nhập và repo đã là dự án vào cùng một hệ thống, thêm vào hệ thống cùng tên nếu đã có.
 - Clone không chờ nhập mật khẩu hay xác nhận host key. Qua HTTPS tới host GitLab, token đi bằng header trong env như lúc push, không ghi vào `.git/config`. Địa chỉ clone lấy lại từ GitLab lúc nhập, không lấy từ trang.
 
