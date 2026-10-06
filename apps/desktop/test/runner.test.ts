@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { after, describe, it } from "node:test";
 import { AGENT_TEMPLATES, ARTIFACT_DIR, HiveError, toolHash, type Actor, type AgentProfile, type HiveBackend, type RunnerSettings, type ToolEntry } from "@xdev-hive/core";
-import { CODEGRAPH_MCP, CODEGRAPH_RUN_MCP, SUPERPOWERS_PLUGIN } from "#desktop/main/installer.ts";
+import { CODEGRAPH_MCP, CODEGRAPH_RUN_MCP, SHIM_NAME, SUPERPOWERS_PLUGIN, mcpLaunch, shimBinDir } from "#desktop/main/installer.ts";
 import { collectArtifacts } from "#desktop/main/runner/artifacts.ts";
 import { prepareCodegraph } from "#desktop/main/runner/codegraph.ts";
 import { buildCommand, buildPrompt, parsePick } from "#desktop/main/runner/command.ts";
@@ -638,7 +638,13 @@ describe("buildCommand", () => {
   it("leaves other CLIs' arguments as the profile has them, but a Codex --full-auto that newer versions refuse", () => {
     // Codex asks before an MCP write, and a headless run has nobody to answer: Hive's own tools are approved.
     // The shim gets the profile's name (the runner's lease is under it) and the run's project and task.
+    const shim = path.join(shimBinDir(), process.platform === "win32" ? `${SHIM_NAME}.cmd` : SHIM_NAME);
+    const launch = mcpLaunch(shim, []);
     const approve = [
+      "-c",
+      `mcp_servers.xdev-hive.command=${JSON.stringify(launch.command)}`,
+      "-c",
+      `mcp_servers.xdev-hive.args=${JSON.stringify(launch.args)}`,
       "-c",
       'mcp_servers.xdev-hive.default_tools_approval_mode="approve"',
       "-c",
@@ -657,7 +663,7 @@ describe("buildCommand", () => {
     );
     assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.codex, args: ["/opt/wrap.sh", "{prompt}"] }, vars).args, ["/opt/wrap.sh", "Do T-1"], "an unknown command line stays as it is");
     const ro = buildCommand({ ...AGENT_TEMPLATES.codex, id: "codex-ro", readOnly: true }, { ...vars, run: "R-1" }).args;
-    assert.equal(ro[5], 'mcp_servers.xdev-hive.env={HIVE_AGENT="codex-ro",HIVE_PROJECT="demo",HIVE_TASK="T-1",HIVE_RUN="R-1",HIVE_READONLY="1"}');
+    assert.equal(ro[9], 'mcp_servers.xdev-hive.env={HIVE_AGENT="codex-ro",HIVE_PROJECT="demo",HIVE_TASK="T-1",HIVE_RUN="R-1",HIVE_READONLY="1"}');
     assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.claude, kind: "custom" }, vars).args, ["-p", "Do T-1", "--permission-mode", "acceptEdits"]);
   });
 });

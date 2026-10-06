@@ -5,7 +5,7 @@ import path from "node:path";
 import { ARTIFACT_DIR, AUTONOMY_ARGS, AUTONOMY_FLAGS, autonomyOf, flagValue, lowerAutonomy, modelsFor, policySummary, type AgentKind, type AgentPolicy, type AgentProfile, type AgentRole, type Autonomy, type CiFix, type ToolEntry, type ModelSelection } from "@xdev-hive/core";
 import { fence } from "#desktop/main/gitlab/describe.ts";
 import { tr } from "#desktop/main/i18n.ts";
-import { MCP_NAME, NO_FEATURES, runMcpServers, type RepoFeatures } from "#desktop/main/installer.ts";
+import { MCP_NAME, NO_FEATURES, SHIM_NAME, mcpLaunch, runMcpServers, shimBinDir, type RepoFeatures } from "#desktop/main/installer.ts";
 import { loadWorktreeRules, loadWorktreeSkills, type WorktreeRule, type WorktreeSkill } from "#desktop/main/sync.ts";
 import type { ReferenceRepo } from "./references.ts";
 import { claudeHooks, claudeToolServer, codexToolArgs, legacyTools, type ReadyHook, type UserClaudeSettings } from "./tools.ts";
@@ -382,8 +382,15 @@ export function codexArgs(
   const fixed = args.flatMap((a) => (a === "--full-auto" ? (sandbox ? [] : ["--sandbox", "workspace-write"]) : [a]));
   // Only for `codex exec …`, whose options are known; older versions ignore unknown keys.
   if (fixed[0] !== "exec") return fixed;
-  // Codex 0.15x refuses MCP writes (task_claim, memory_write) it cannot ask about: Hive's own tools go through.
-  const overrides = ["-c", 'mcp_servers.xdev-hive.default_tools_approval_mode="approve"'];
+  // The profile's CODEX_HOME may have no Hive block. An env or approval override alone creates an invalid server.
+  const shim = path.join(shimBinDir(), process.platform === "win32" ? `${SHIM_NAME}.cmd` : SHIM_NAME);
+  const launch = mcpLaunch(shim, []);
+  const overrides = [
+    "-c", `mcp_servers.xdev-hive.command=${JSON.stringify(launch.command)}`,
+    "-c", `mcp_servers.xdev-hive.args=${JSON.stringify(launch.args)}`,
+    // Codex 0.15x refuses MCP writes it cannot ask about in a headless run.
+    "-c", 'mcp_servers.xdev-hive.default_tools_approval_mode="approve"',
+  ];
   if (run) {
     // The shim's identity is the profile's, as for Claude Code: ~/.codex/config.toml says "codex", which would claim
     // the task as someone else than the runner, and hold it against the next run.
