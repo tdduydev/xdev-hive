@@ -29,6 +29,11 @@ import { z } from "zod";
 export interface HiveMcpOptions {
   /** Used when a tool call omits `project` (e.g. from HIVE_PROJECT). */
   defaultProject?: string;
+  /**
+   * The token writes a reply in the hub-wide chat (roadmap 37): there is no default project, so every tool that needs
+   * one asks for it, and the reads that can answer for the whole hub do when none is given.
+   */
+  hubScope?: boolean;
   /** Only the read tools. Default: read-only for viewer tokens. */
   readOnly?: boolean;
   /** The hub's open alerts (apps/web keeps them, not core): alert_list, for hub admins only. */
@@ -56,7 +61,7 @@ as the person who wrote to you (the answer says done or failed): say which ran a
 propose_merge (merge a run's MR/PR), propose_profile (turn a machine's plan on or off, or change its priority),
 propose_policy (the project's agent policy), propose_stop_agents and propose_resume_agents (every agent of the project),
 propose_install (a machine installs a setup item it reported; for a tool, the items tool_status lists), propose_tool (turn a catalog
-tool on or off for the project). Look first with run_list, machine_list and tool_list: a proposal of a run, plan or tool the hub
+tool on or off for the project). Look first with project_list, run_list, machine_list and tool_list: a proposal of a run, plan or tool the hub
 does not know is refused.`;
 
 // Kept apart from LEADER_INSTRUCTIONS so the proposal list there can grow (roadmap 29b) without touching this.
@@ -96,6 +101,14 @@ const shortTask = (t: Task): Omit<Task, "agent" | "kind" | "size" | "risk" | "cl
     ...(agent ? { agent: agent.profileId ? `${agent.machine}/${agent.profileId}` : agent.machine } : {}),
   };
 };
+// Roadmap 37: the hub-wide leader works over every project at once, so nothing can be guessed from "the chat's project".
+const LEADER_HUB_INSTRUCTIONS = `
+This chat is the whole hub, not one project: read project_list first (every project with its tasks, runs, machines and systems), and alert_list
+when you have it. There is no default project: every propose_* takes project, and it is required — name the project each proposal is for, and do
+not guess one. Only machine_list, project_list and a machine's own setup item (cli:<kind>, shim, tool:<id>) belong to no project, and propose_stop_agents,
+propose_resume_agents and propose_policy without project mean the whole hub, which is a much bigger thing to ask for: say so plainly.
+run_list, run_requests, cost_summary and alert_list without project answer for the whole hub; the other reads need one.
+Group what you propose by project, and leave merges, stopping agents and policy changes for the person to decide.`;
 
 const project = z.string().optional().describe('Hive project key (see "Hive project key" in AGENTS.md)');
 const reason = z.string().min(1).max(500).describe("One line for the person confirming it: why");
@@ -105,7 +118,18 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
   const writes = !(opts.readOnly ?? actor.role === "viewer");
   // A chat leader works on no task of its own: no claim or status change, proposals instead.
   const leader = writes && actor.chatReply !== undefined;
-  const instructions = !writes ? READ_ONLY_INSTRUCTIONS : leader ? INSTRUCTIONS + LEADER_INSTRUCTIONS + LEADER_READ_INSTRUCTIONS : INSTRUCTIONS;
+  const hubScope = opts.hubScope === true && actor.chatReply !== undefined;
+  // The web derives hubScope from the authenticated reply's thread, opened only by a hub admin.
+  // Broaden only these reads; proposals and every mutation retain the machine's intersected grants.
+  const hubReads = new Set<Method>(["projects.list", "tasks.list", "runs.list", "runs.requests", "machines.list", "systems.list", "costs.summary", "budgets.list"]);
+  const readActor: Actor = hubScope ? { ...actor, role: "viewer", access: undefined } : actor;
+  const call: HiveBackend["call"] = (method, input, caller) =>
+    backend.call(method, input, hubScope && hubReads.has(method) ? readActor : caller);
+  const instructions = !writes
+    ? READ_ONLY_INSTRUCTIONS
+    : leader
+      ? INSTRUCTIONS + LEADER_INSTRUCTIONS + LEADER_READ_INSTRUCTIONS + (hubScope ? LEADER_HUB_INSTRUCTIONS : "")
+      : INSTRUCTIONS;
   const server = new McpServer({ name: "xdev-hive", version: "0.1.0" }, { instructions });
 
   // Roadmap 28f: every answer is JSON without indentation. Only an agent reads these, and the spaces are tokens it pays for.
@@ -117,14 +141,20 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
 
   const run = async <M extends Method>(method: M, input: MethodInput<M>): Promise<CallToolResult> => {
     try {
-      return json(await backend.call(method, input, actor));
+      return json(await call(method, input, actor));
     } catch (err) {
       return failed(err);
     }
   };
   const needProject = (p: string | undefined): string => {
-    const value = p ?? opts.defaultProject;
-    if (!value) throw new Error("project is required (pass the Hive project key from AGENTS.md)");
+    const value = p ?? (hubScope ? undefined : opts.defaultProject);
+    if (!value) {
+      throw new Error(
+        hubScope
+          ? "project is required: this chat is the whole hub and has no default project. Name one (project_list lists them)."
+          : "project is required (pass the Hive project key from AGENTS.md)",
+      );
+    }
     return value;
   };
   const withProject =
@@ -132,6 +162,20 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     async (args: A): Promise<CallToolResult> => {
       try {
         return await fn({ ...args, project: needProject(args.project) });
+      } catch (err) {
+        return { isError: true, content: [{ type: "text", text: String((err as Error).message ?? err) }] };
+      }
+    };
+  /**
+   * A read that answers for one project, or for the whole hub when none is given. Only the hub-wide leader (roadmap 37)
+   * may leave it out: every other token works in one project and gets the same answer as before.
+   */
+  const overHub =
+    <A extends { project?: string }>(fn: (args: A & { project: string | undefined }) => Promise<CallToolResult>) =>
+    async (args: A): Promise<CallToolResult> => {
+      try {
+        const p = args.project ?? (hubScope ? undefined : opts.defaultProject);
+        return await fn({ ...args, project: p ?? (hubScope ? undefined : needProject(undefined)) });
       } catch (err) {
         return { isError: true, content: [{ type: "text", text: String((err as Error).message ?? err) }] };
       }
@@ -155,7 +199,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       inputSchema: { project },
       annotations: readOnly,
     },
-    async ({ project: p }) => run("docs.list", { project: p ?? opts.defaultProject }),
+    async ({ project: p }) => run("docs.list", { project: p ?? (hubScope ? undefined : opts.defaultProject) }),
   );
 
   server.registerTool(
@@ -169,7 +213,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     },
     // A removed page (roadmap 38g) reads as gone: an agent must not work from a page the team took out.
     async ({ key }) => {
-      const doc = await backend.call("docs.get", { key }, actor);
+      const doc = await call("docs.get", { key }, actor);
       if (doc?.removedAt) return { isError: true, content: [{ type: "text", text: `not_found: ${doc.key} was removed on ${doc.removedAt}` }] };
       return run("docs.get", { key });
     },
@@ -187,7 +231,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     async ({ key, name }) => {
       if (!name) return run("docs.assets", { key });
       try {
-        const got = await backend.call("docs.assetGet", { key, name }, actor);
+        const got = await call("docs.assetGet", { key, name }, actor);
         if (!got) return { isError: true, content: [{ type: "text", text: `not_found: ${key} has no file ${name} (doc_asset without name lists them)` }] };
         return fileResult(got.asset.type, got.data, `hive://docs/${key}/assets/${encodeURIComponent(name)}`);
       } catch (err) {
@@ -218,7 +262,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     },
     async ({ id }) => {
       try {
-        const got = await backend.call("artifacts.get", { id }, actor);
+        const got = await call("artifacts.get", { id }, actor);
         if (!got) return { isError: true, content: [{ type: "text", text: `not_found: no artifact #${id} (artifact_list shows the ids)` }] };
         return fileResult(got.artifact.type, got.data, `hive://artifacts/${id}/${encodeURIComponent(got.artifact.name)}`);
       } catch (err) {
@@ -255,7 +299,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       inputSchema: { project },
       annotations: readOnly,
     },
-    async ({ project: p }) => run("skills.list", { project: p ?? opts.defaultProject }),
+    async ({ project: p }) => run("skills.list", { project: p ?? (hubScope ? undefined : opts.defaultProject) }),
   );
 
   server.registerTool(
@@ -267,10 +311,10 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       annotations: readOnly,
     },
     async ({ name, project: p }) => {
-      const scope = p ?? opts.defaultProject;
+      const scope = p ?? (hubScope ? undefined : opts.defaultProject);
       try {
-        const own = scope ? await backend.call("docs.get", { key: skillDocKey(name, scope) }, actor) : null;
-        const doc = own ?? (await backend.call("docs.get", { key: skillDocKey(name) }, actor));
+        const own = scope ? await call("docs.get", { key: skillDocKey(name, scope) }, actor) : null;
+        const doc = own ?? (await call("docs.get", { key: skillDocKey(name) }, actor));
         if (!doc) return { isError: true, content: [{ type: "text", text: `not_found: no skill ${name} (see skill_list)` }] };
         return json(doc);
       } catch (err) {
@@ -324,7 +368,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     },
     withProject(async ({ project: p, query, limit, verbose }) => {
       try {
-        const hits = await backend.call("memory.search", { project: p, query, limit: limit ?? 8, includeShared: true }, actor);
+        const hits = await call("memory.search", { project: p, query, limit: limit ?? 8, includeShared: true }, actor);
         return json(verbose ? hits : hits.map(compactMemory));
       } catch (err) {
         return failed(err);
@@ -379,7 +423,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     },
     withProject(async ({ project: p, status, full }) => {
       try {
-        const tasks = await backend.call("tasks.list", { project: p, status }, actor);
+        const tasks = await call("tasks.list", { project: p, status }, actor);
         return json(full ? tasks : tasks.map(shortTask));
       } catch (err) {
         return failed(err);
@@ -400,7 +444,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     },
     withProject(async ({ id, project: p }) => {
       try {
-        const task = (await backend.call("tasks.list", { project: p }, actor)).find((t) => t.id === id);
+        const task = (await call("tasks.list", { project: p }, actor)).find((t) => t.id === id);
         if (!task) return { isError: true, content: [{ type: "text", text: `not_found: Task ${id} not found in ${p} (task_list shows the board).` }] };
         return json(task);
       } catch (err) {
@@ -447,7 +491,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       inputSchema: { project, limit: z.number().int().min(1).max(100).optional() },
       annotations: readOnly,
     },
-    withProject(async ({ project: p, limit }) => run("runs.list", { project: p, limit: limit ?? 30 })),
+    overHub(async ({ project: p, limit }) => run("runs.list", { project: p, limit: limit ?? 30 })),
   );
 
   server.registerTool(
@@ -481,22 +525,68 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
   const unseen = (p: string): CallToolResult | null =>
     sees(actor, p) ? null : { isError: true, content: [{ type: "text", text: `not_found: Project ${p} not found.` }] };
 
+  // Roadmap 37: where the hub-wide leader starts. Built from the lists, each already cut to what the token sees, so a
+  // project it has no grant on is not even named.
+  server.registerTool(
+    "project_list",
+    {
+      title: "List the hub's projects",
+      description:
+        "Every project you can see, with its tasks by status (todo, doing, review, done, blocked), the runs going on now (running, queued), " +
+        "the run requests still waiting for a machine, the machines that have its repo, and the systems it is a service of. " +
+        "Read this first in the hub-wide chat: a proposal there has to name one of these projects.",
+      inputSchema: {},
+      annotations: readOnly,
+    },
+    async () => {
+      try {
+        const [projects, tasks, runs, requests, machines, systems] = await Promise.all([
+          call("projects.list", {}, actor),
+          call("tasks.list", {}, actor),
+          call("runs.list", { limit: 200 }, actor),
+          call("runs.requests", { limit: 200 }, actor),
+          call("machines.list", {}, actor),
+          call("systems.list", {}, actor),
+        ]);
+        const names = new Set(projects.filter((p) => p.state === null).map((p) => p.project));
+        return json(
+          [...names].sort().map((p) => ({
+            project: p,
+            tasks: Object.fromEntries(TASK_STATUSES.map((s) => [s, tasks.filter((t) => t.project === p && t.status === s).length])),
+            runs: {
+              running: runs.filter((r) => r.project === p && r.status === "running").length,
+              queued: runs.filter((r) => r.project === p && r.status === "queued").length,
+              pendingRequests: requests.filter((r) => r.project === p && r.status === "pending").length,
+            },
+            machines: machines.filter((m) => m.projects.includes(p)).map((m) => ({ machine: m.machine, id: m.id, online: m.online, acceptsRuns: m.acceptsRuns })),
+            systems: systems.filter((s) => s.projects.includes(p)).map((s) => s.name),
+          })),
+        );
+      } catch (err) {
+        return failed(err);
+      }
+    },
+  );
+
   server.registerTool(
     "cost_summary",
     {
       title: "Project costs and caps",
       description:
         "What the project's agent runs cost at API prices over the last 24 hours, 7 days and 30 days (usd1, usd7, usd30, runs30), " +
-        "and the spending caps that apply to it (the project's, the hub's, your own) with what each period used so far (ratio 1 = full, no new run starts).",
+        "and the spending caps that apply to it (the project's, the hub's, your own) with what each period used so far (ratio 1 = full, no new run starts). " +
+        "In the hub-wide chat, without project: every project you see, with the hub's total and all the caps.",
       inputSchema: { project },
       annotations: readOnly,
     },
-    withProject(async ({ project: p }) => {
-      const hidden = unseen(p);
+    overHub(async ({ project: p }) => {
+      const hidden = p === undefined ? null : unseen(p);
       if (hidden) return hidden;
       try {
-        const [summary, budgets] = await Promise.all([backend.call("costs.summary", {}, actor), backend.call("budgets.list", {}, actor)]);
+        const [summary, budgets] = await Promise.all([call("costs.summary", {}, actor), call("budgets.list", {}, actor)]);
         const me = actor.onBehalf ?? actor.name;
+        // The whole hub: costs.summary and budgets.list are already cut to what the token sees.
+        if (p === undefined) return json({ project: null, total: summary.total, costs: summary.projects, budgets });
         return json({
           project: p,
           costs: summary.projects.find((c) => c.project === p) ?? { project: p, usd1: 0, usd7: 0, usd30: 0, runs30: 0 },
@@ -518,7 +608,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       inputSchema: { project, limit: z.number().int().min(1).max(200).optional() },
       annotations: readOnly,
     },
-    withProject(async ({ project: p, limit }) => run("runs.requests", { project: p, limit: limit ?? 30 })),
+    overHub(async ({ project: p, limit }) => run("runs.requests", { project: p, limit: limit ?? 30 })),
   );
 
   server.registerTool(
@@ -536,9 +626,9 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       if (hidden) return hidden;
       try {
         const [agentPolicy, policy, paused] = await Promise.all([
-          backend.call("agentPolicy.get", {}, actor),
-          backend.call("policy.get", {}, actor),
-          backend.call("agents.paused", {}, actor),
+          call("agentPolicy.get", {}, actor),
+          call("policy.get", {}, actor),
+          call("agents.paused", {}, actor),
         ]);
         return json({
           project: p,
@@ -567,7 +657,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     {
       title: "What the project's machines lack",
       description:
-        "Each machine with the project's repo and what its last setup check found not installed: the machine's (cli:<kind>, shim) and the project's (<project>:<part>), " +
+        "Each machine with the project's repo and what its last setup check found not installed: the machine's (cli:<kind>, shim, tool:<id>) and the project's (<project>:<part>), " +
         "state missing, outdated or manual, with a detail. A run that cannot start on a machine often waits on one of these.",
       inputSchema: { project },
       annotations: readOnly,
@@ -616,7 +706,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       const hidden = unseen(p);
       if (hidden) return hidden;
       try {
-        const [summary, runs] = await Promise.all([backend.call("costs.summary", {}, actor), backend.call("runs.list", { project: p, limit: limit ?? 20 }, actor)]);
+        const [summary, runs] = await Promise.all([call("costs.summary", {}, actor), call("runs.list", { project: p, limit: limit ?? 20 }, actor)]);
         const totals = summary.projects.find((c) => c.project === p);
         const tokens30 = totals?.tokens30 ?? { inputTokens: null, cacheWriteTokens: null, cacheReadTokens: null, outputTokens: null };
         return json({
@@ -635,9 +725,10 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     }),
   );
 
-  // Alerts are the hub's own (apps/web), not core's: only a hub admin sees them, as on the web.
+  // Alerts are the hub's own (apps/web), not core's: only a hub admin sees them, as on the web. The hub-wide leader
+  // gets them too (roadmap 37): its token is cut down from the machine's, but only a hub admin can open that chat at all.
   const alerts = opts.alerts;
-  if (alerts && actor.role === "admin" && !actor.access) {
+  if (alerts && ((actor.role === "admin" && !actor.access) || (hubScope && leader))) {
     server.registerTool(
       "alert_list",
       {
@@ -691,19 +782,25 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     const confirm =
       " Nothing happens until a manager of the project confirms it in the chat; it then runs with their rights. A project may let its leader run some kinds at once," +
       " as the person who wrote to you: then the answer's status is done (or failed), not proposed.";
+    // Roadmap 37: in the hub-wide chat the leader says which project each proposal is for; in a project's chat it is that project.
+    const aim = hubScope
+      ? z.string().describe("Required here: the project this is for (project_list)")
+      : z.string().optional().describe("Left out: the chat's project");
+    const aimed = (p: string | undefined) => (p ? { project: p } : {});
     server.registerTool(
       "propose_task",
       {
         title: "Propose a task",
         description:
-          "Propose a new task on the chat's project board (id like the project's others, e.g. T-12; dependsOn: tasks to be done first). " +
+          "Propose a new task on a project board (id like the project's others, e.g. T-12; dependsOn: tasks to be done first). " +
+          (hubScope ? "project is required (project_list). " : "") +
           "project: another service of a system the chat's project is in, for a feature split across services; dependsOn may then name tasks of the other services. " +
           "taskKind, size, risk: what the task is, when you know (see propose_task_classify); left out, the hub's rules and a cheap classify run fill them." +
           confirm,
         inputSchema: {
           id: z.string(),
           title: z.string(),
-          project: z.string().optional().describe("Another service of the chat project's system; left out: the chat's project"),
+          project: hubScope ? aim : z.string().optional().describe("Another service of the chat project's system; left out: the chat's project"),
           dependsOn: z.array(z.string()).max(20).optional(),
           taskKind: z.enum(TASK_KINDS).optional(),
           size: z.enum(TASK_SIZES).optional(),
@@ -721,10 +818,10 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       "propose_task_status",
       {
         title: "Propose a task status",
-        description: "Propose moving a task of the chat's project to another status, with a note." + confirm,
-        inputSchema: { id: z.string(), status: z.enum(TASK_STATUSES), note: z.string().optional(), reason },
+        description: "Propose moving a task to another status, with a note. The task has to be in the project this is for." + confirm,
+        inputSchema: { id: z.string(), status: z.enum(TASK_STATUSES), note: z.string().optional(), project: aim, reason },
       },
-      async ({ id, status, note, reason: why }) => run("chat.propose", { action: { kind: "task.update", id, status, note }, reason: why }),
+      async ({ id, status, note, project: p, reason: why }) => run("chat.propose", { action: { kind: "task.update", id, status, note, ...aimed(p) }, reason: why }),
     );
     server.registerTool(
       "propose_task_classify",
@@ -734,9 +831,9 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
           "Propose what a task is, so its runs start on a fitting model: taskKind (docs, test, small-fix, feature, ui, refactor, debug, spec, review, merge, ops), " +
           "size (s, m, l), risk (high: a migration, security, permissions or several core packages). At least one of the three." +
           confirm,
-        inputSchema: { id: z.string(), taskKind: z.enum(TASK_KINDS).optional(), size: z.enum(TASK_SIZES).optional(), risk: z.enum(TASK_RISKS).optional(), reason },
+        inputSchema: { id: z.string(), taskKind: z.enum(TASK_KINDS).optional(), size: z.enum(TASK_SIZES).optional(), risk: z.enum(TASK_RISKS).optional(), project: aim, reason },
       },
-      async ({ id, taskKind, size, risk, reason: why }) => run("chat.propose", { action: { kind: "task.classify", id, taskKind, size, risk }, reason: why }),
+      async ({ id, taskKind, size, risk, project: p, reason: why }) => run("chat.propose", { action: { kind: "task.classify", id, taskKind, size, risk, ...aimed(p) }, reason: why }),
     );
     server.registerTool(
       "propose_run",
@@ -754,12 +851,13 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
           candidates: z.number().int().min(1).max(MAX_CANDIDATES).optional(),
           reviewAfter: z.boolean().optional(),
           instructions: z.string().optional(),
+          project: aim,
           reason,
         },
       },
-      async ({ taskId, role, machine, profileId, candidates, reviewAfter, instructions, reason: why }) =>
+      async ({ taskId, role, machine, profileId, candidates, reviewAfter, instructions, project: p, reason: why }) =>
         run("chat.propose", {
-          action: { kind: "run.dispatch", taskId, role, machine, profileId: profileId ?? null, candidates, reviewAfter, instructions },
+          action: { kind: "run.dispatch", taskId, role, machine, profileId: profileId ?? null, candidates, reviewAfter, instructions, ...aimed(p) },
           reason: why,
         } as MethodInput<"chat.propose">),
     );
@@ -774,34 +872,37 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
           "the task waits for nothing, and no other agent takes it. profileId pins a plan (machine_list); left out, any plan of that machine. " +
           'Use this for "give X to <machine>", and for work that should wait for a machine busy now; propose_run is for a run to start at once.' +
           confirm,
-        inputSchema: { taskId: z.string(), machine, profileId: z.string().optional(), reason },
+        inputSchema: { taskId: z.string(), machine, profileId: z.string().optional(), project: aim, reason },
       },
-      async ({ taskId, machine: m, profileId, reason: why }) =>
-        run("chat.propose", { action: { kind: "task.assign", taskId, machine: m, profileId: profileId ?? null }, reason: why } as MethodInput<"chat.propose">),
+      async ({ taskId, machine: m, profileId, project: p, reason: why }) =>
+        run("chat.propose", { action: { kind: "task.assign", taskId, machine: m, profileId: profileId ?? null, ...aimed(p) }, reason: why } as MethodInput<"chat.propose">),
     );
     server.registerTool(
       "propose_cancel_run",
       {
         title: "Propose cancelling a run",
-        description: "Propose stopping a run of the chat's project that still waits or runs on its machine." + confirm,
-        inputSchema: { machine, runId, reason },
+        description: "Propose stopping a run that still waits or runs on its machine. The run has to be the project's this is for." + confirm,
+        inputSchema: { machine, runId, project: aim, reason },
       },
-      async ({ machine: m, runId: id, reason: why }) => run("chat.propose", { action: { kind: "run.cancel", machine: m, runId: id }, reason: why }),
+      async ({ machine: m, runId: id, project: p, reason: why }) => run("chat.propose", { action: { kind: "run.cancel", machine: m, runId: id, ...aimed(p) }, reason: why }),
     );
     server.registerTool(
       "propose_merge",
       {
         title: "Propose merging a run's MR/PR",
-        description: "Propose merging the MR or PR a run of the chat's project opened; the run's machine merges it with its own token." + confirm,
-        inputSchema: { machine, runId, reason },
+        description: "Propose merging the MR or PR a run opened; the run's machine merges it with its own token. The run has to be the project's this is for." + confirm,
+        inputSchema: { machine, runId, project: aim, reason },
       },
-      async ({ machine: m, runId: id, reason: why }) => run("chat.propose", { action: { kind: "run.merge", machine: m, runId: id }, reason: why }),
+      async ({ machine: m, runId: id, project: p, reason: why }) => run("chat.propose", { action: { kind: "run.merge", machine: m, runId: id, ...aimed(p) }, reason: why }),
     );
     server.registerTool(
       "propose_profile",
       {
         title: "Propose a machine's plan change",
-        description: "Propose turning one of a machine's plans (profiles, see machine_list) on or off, or changing its priority; give enabled, priority or both." + confirm,
+        description:
+          "Propose turning one of a machine's plans (profiles, see machine_list) on or off, or changing its priority; give enabled, priority or both. " +
+          "A plan belongs to the machine, not to any project, so this takes no project." +
+          confirm,
         inputSchema: {
           machine,
           profileId: z.string(),
@@ -813,62 +914,76 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       async ({ machine: m, profileId, enabled, priority, reason: why }) =>
         run("chat.propose", { action: { kind: "machine.profile", machine: m, profileId, enabled, priority }, reason: why }),
     );
+    // These three mean the whole hub when the hub-wide chat names no project: a much bigger ask, so it is said, not assumed.
+    const orHub = hubScope
+      ? z.string().optional().describe("The project this is for; left out: the whole hub, every project at once")
+      : z.string().optional().describe("Left out: the chat's project");
     server.registerTool(
       "propose_policy",
       {
-        title: "Propose the project's agent policy",
+        title: "Propose an agent policy",
         description:
-          "Propose the chat's project part of the agent policy, replacing the current part: only the fields it sets (models, autonomy, network, mcp), " +
+          "Propose a project's part of the agent policy, replacing the current part: only the fields it sets (models, autonomy, network, mcp), " +
           "which can only tighten the hub's default; null removes the project's part." +
+          (hubScope ? " Without project this is the hub's own default, which binds every project: say so in your reply." : "") +
           confirm,
-        inputSchema: { policy: agentPolicyPartSchema.nullable(), reason },
+        inputSchema: { policy: agentPolicyPartSchema.nullable(), project: orHub, reason },
       },
-      async ({ policy, reason: why }) => run("chat.propose", { action: { kind: "agent.policy", policy }, reason: why } as MethodInput<"chat.propose">),
+      async ({ policy, project: p, reason: why }) => run("chat.propose", { action: { kind: "agent.policy", policy, ...aimed(p) }, reason: why } as MethodInput<"chat.propose">),
     );
     server.registerTool(
       "propose_stop_agents",
       {
         title: "Propose stopping every agent",
-        description: "Propose stopping every agent of the chat's project: running runs are cancelled, queued ones wait, no new run or chat reply starts until resumed." + confirm,
-        inputSchema: { reason },
+        description:
+          "Propose stopping every agent of a project: running runs are cancelled, queued ones wait, no new run or chat reply starts until resumed." +
+          (hubScope ? " Without project this stops every agent of the whole hub." : "") +
+          confirm,
+        inputSchema: { project: orHub, reason },
       },
-      async ({ reason: why }) => run("chat.propose", { action: { kind: "agents.stop" }, reason: why }),
+      async ({ project: p, reason: why }) => run("chat.propose", { action: { kind: "agents.stop", ...aimed(p) }, reason: why }),
     );
     server.registerTool(
       "propose_resume_agents",
       {
         title: "Propose letting agents run again",
-        description: "Propose lifting the stop on the chat's project, so its agents run again." + confirm,
-        inputSchema: { reason },
+        description: "Propose lifting the stop on a project, so its agents run again." + (hubScope ? " Without project this lifts the hub's own stop." : "") + confirm,
+        inputSchema: { project: orHub, reason },
       },
-      async ({ reason: why }) => run("chat.propose", { action: { kind: "agents.resume" }, reason: why }),
+      async ({ project: p, reason: why }) => run("chat.propose", { action: { kind: "agents.resume", ...aimed(p) }, reason: why }),
     );
     server.registerTool(
       "propose_install",
       {
         title: "Propose a machine install",
         description:
-          "Propose that a machine installs a setup item it reported as missing: the machine's own (cli:<kind>, shim) or the chat project's (<project>:<part>)." + confirm,
-        inputSchema: { machine, itemId: z.string(), reason },
+          "Propose that a machine installs a setup item it reported as missing: the machine's own (cli:<kind>, shim, tool:<id>), which needs no project, " +
+          "or a project's (<project>:<part>)" +
+          (hubScope ? ", which needs project, the same one the item names." : ", of the chat's project.") +
+          confirm,
+        inputSchema: { machine, itemId: z.string(), project: orHub, reason },
       },
-      async ({ machine: m, itemId, reason: why }) => run("chat.propose", { action: { kind: "machine.install", machine: m, itemId }, reason: why } as MethodInput<"chat.propose">),
+      async ({ machine: m, itemId, project: p, reason: why }) =>
+        run("chat.propose", { action: { kind: "machine.install", machine: m, itemId, ...aimed(p) }, reason: why } as MethodInput<"chat.propose">),
     );
     server.registerTool(
       "propose_tool",
       {
         title: "Propose a tool setting",
         description:
-          "Propose the chat project's own setting for a catalog tool (tool_list): enabled true or false, or null to follow the tool's default; required to make " +
+          "Propose a project's own setting for a catalog tool (tool_list): enabled true or false, or null to follow the tool's default; required to make " +
           "every machine with the project need it (left out: as the project has it now). Approving it needs the project's settings right." +
           confirm,
         inputSchema: {
           id: z.string().describe("The tool's id (tool_list)"),
           enabled: z.boolean().nullable(),
           required: z.boolean().optional(),
+          project: aim,
           reason,
         },
       },
-      async ({ id, enabled, required, reason: why }) => run("chat.propose", { action: { kind: "tool.enable", id, enabled, required }, reason: why } as MethodInput<"chat.propose">),
+      async ({ id, enabled, required, project: p, reason: why }) =>
+        run("chat.propose", { action: { kind: "tool.enable", id, enabled, required, ...aimed(p) }, reason: why } as MethodInput<"chat.propose">),
     );
   }
 

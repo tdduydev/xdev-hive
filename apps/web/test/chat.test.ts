@@ -31,6 +31,9 @@ before(async () => {
     users.setGrants(user.id, grants);
     return user;
   };
+  // Duy admins the hub itself (no grants: unrestricted), the only one the hub-wide chat is open to (roadmap 37).
+  const duy = users.create({ username: "duy", admin: true });
+  users.changePassword(duy.user.id, duy.password, password);
   // Lan manages app; the machine belongs to Hoa, who only contributes to app but manages site.
   person("lan", { app: "manage" });
   const hoa = person("hoa", { app: "contribute", site: "manage" });
@@ -195,5 +198,60 @@ describe("chat replies on the hub", () => {
     assert.equal(decided.body.result?.status, "done", JSON.stringify(decided.body));
     assert.equal((await run()).body.result.cancelRequestedBy, "lan");
     await rpc(machineToken, "chat.finish", { replyId: request.replyId, status: "done", text: "Proposed to cancel R-web01." });
+  });
+
+  // Roadmap 37: a hub admin writes to the hub-wide leader, which proposes across two projects and gets them confirmed.
+  it("runs a hub-wide chat over RPC: the admin writes, the leader proposes per project, the admin confirms all", async () => {
+    await heartbeat();
+    const duy = await signIn("duy");
+    const lan = await signIn("lan");
+
+    // Only the hub's admin: Lan leads app and still cannot open it or see it.
+    assert.equal((await lan("chat.send", { project: "*", machineId: "runner.hoa-mbp@hoa-mbp", text: "everything" })).body.error?.key, "errors.hubAdminOnly");
+    const sent = await duy("chat.send", { project: "*", machineId: "runner.hoa-mbp@hoa-mbp", text: "Tidy up every project" });
+    assert.equal(sent.status, 200, JSON.stringify(sent.body));
+    assert.equal(sent.body.result.thread.project, "*");
+    const hers = (await lan("chat.threads", {})).body.result as Array<{ project: string }>;
+    assert.deepEqual(hers.filter((t) => t.project === "*"), [], "never in someone else's threads");
+    assert.equal((await lan("chat.get", { threadId: sent.body.result.thread.id })).body.error?.key, "errors.hubAdminOnly");
+
+    const request = ((await heartbeat()).body.result.chatRequests as Array<{ replyId: number }>).find((r) => r.replyId === sent.body.result.reply.id) as any;
+    assert.equal(request.project, "*");
+    assert.deepEqual(request.projects.map((p: { project: string }) => p.project), ["app", "site"], "every project of the hub, with no repo needed");
+    const grant = request.grant as string;
+
+    // Over MCP, as the leader's own calls go: no default project, and each proposal names the one it is for.
+    const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { requestInit: { headers: { authorization: `Bearer ${grant}`, "x-hive-agent": "claude-1.hoa-mbp", "x-hive-project": "app" } } });
+    const client = new Client({ name: "test", version: "0" });
+    await client.connect(transport);
+    const tools = (await client.listTools()).tools.map((t) => t.name);
+    assert.ok(tools.includes("project_list"), tools.join());
+    const said = (out: Awaited<ReturnType<Client["callTool"]>>) => (out.content as Array<{ text: string }>)[0]!.text;
+    const listed = JSON.parse(said(await client.callTool({ name: "project_list", arguments: {} }))) as Array<{ project: string }>;
+    assert.deepEqual(listed.map((p) => p.project), ["app", "site"]);
+
+    const noDefault = await client.callTool({ name: "task_list", arguments: {} });
+    assert.equal(noDefault.isError, true, "an inherited header must not supply a hub chat default");
+
+    const propose = async (project: string, id: string) => {
+      const out = await client.callTool({ name: "propose_task", arguments: { id, title: `From the hub chat (${project})`, project, reason: "Asked in the chat" } });
+      assert.notEqual(out.isError, true, said(out));
+      return JSON.parse(said(out)) as { id: number; project: string };
+    };
+    const forApp = await propose("app", "app-9");
+    const forSite = await propose("site", "site-9");
+    assert.deepEqual([forApp.project, forSite.project], ["app", "site"], "filed under the project each is aimed at");
+    const guessed = await client.callTool({ name: "propose_task", arguments: { id: "app-8", title: "No project", reason: "x" } });
+    assert.equal(guessed.isError, true, "project is required, never guessed");
+    await client.close();
+
+    // Lan leads app, and app-9 is aimed at app: a proposal of the hub-wide chat is still not hers to confirm.
+    assert.equal((await lan("chat.decide", { actionId: forApp.id, accept: true })).body.error?.key, "errors.hubAdminOnly");
+    const all = await duy("chat.decideAll", { replyId: request.replyId, accept: true });
+    assert.deepEqual(all.body.result?.map((a: { status: string }) => a.status), ["done", "done"], JSON.stringify(all.body));
+    for (const [project, id] of [["app", "app-9"], ["site", "site-9"]]) {
+      assert.equal((await duy("tasks.list", { project })).body.result.some((t: { id: string }) => t.id === id), true, id);
+    }
+    await rpc(machineToken, "chat.finish", { replyId: request.replyId, status: "done", text: "Proposed a task in app and site." });
   });
 });
