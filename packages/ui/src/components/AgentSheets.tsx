@@ -1,8 +1,25 @@
-// The forms that give work to agents (roadmaps 31a, 31e, 32b): one prompt for one or several agents, and picked tasks
-// for several at once. The Task page and the agent map (31b) open them.
+// The forms that give work to agents (roadmaps 31a, 31c, 31d, 31e, 32b): one prompt for one or several agents, picked
+// tasks for several at once, a big job in parts, and a chain of roles on one task. The Task page and the agent map (31b)
+// open them.
 import { useState } from "react";
+import { cn } from "cn";
 import { Plus, Send } from "lucide-react";
-import { WORK_ROLES, type WorkRole, type PreferKind, type Task } from "@xdev-hive/core";
+import {
+  WORK_ROLES,
+  type WorkRole,
+  type PreferKind,
+  MAX_MAP_PART,
+  MAX_MAP_PARTS,
+  MAX_MAP_PROMPT,
+  MAX_ROLE_INSTRUCTIONS,
+  MAX_ROLE_STEPS,
+  MIN_ROLE_STEPS,
+  ROLE_STEPS,
+  type Machine,
+  type RoleStep,
+  type RunGroup,
+  type Task,
+} from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Input } from "@xdev-hive/ui/components/ui/input";
@@ -13,7 +30,7 @@ import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
 import { MachineSelect, PreferKindSelect, ProfileSelect, takesRunsOf } from "#ui/components/MachinePicker.tsx";
 import { useAction, useHive, useQuery } from "#ui/hooks.ts";
-import { useT } from "#ui/i18n/index.tsx";
+import { useT, type TFunction } from "#ui/i18n/index.tsx";
 import type { AgentTarget } from "#ui/lib/agentmap.ts";
 
 /**
@@ -271,6 +288,302 @@ export function BatchSheet({ tasks, targets = [], onSent }: { tasks: Task[]; tar
           <Button size="sm" type="submit" disabled={action.busy || !fit.length}>
             <Send />
             {t("tasks.batchSend", { count: rows.length })}
+          </Button>
+        </div>
+        <ErrorNote error={action.error} />
+      </form>
+    </SheetContent>
+  );
+}
+
+/** The parts written in a box, one a line; a list marker the person or the agent put in front is not part of it. */
+export function partLines(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*(?:[-*•]|\d{1,2}[.)])\s+/, "").trim())
+    .filter(Boolean);
+}
+
+/**
+ * A big job in parts (roadmap 31c): the person lists the parts, or asks an agent to (runs.mapSplit) and checks its list
+ * here once it is ready (`ready`, runs.mapReduce with the group). Every part and the merge run on one machine, so the
+ * merge run finds every part's branch in its repository.
+ */
+export function SplitSheet({
+  projects,
+  defaultProject,
+  ready = null,
+  onGroup,
+}: {
+  projects: string[];
+  defaultProject: string;
+  /** A group whose split run listed its parts: they wait for this person to check them, on the group's machine. */
+  ready?: RunGroup | null;
+  onGroup: (groupId: number) => void;
+}) {
+  const { client } = useHive();
+  const t = useT();
+  const machines = useQuery(() => client.call("machines.list", {}), [client]);
+  const [project, setProject] = useState(ready?.project ?? defaultProject);
+  const fit = (machines.data ?? []).filter((m) => takesRunsOf(m, project));
+  const [mode, setMode] = useState<"list" | "agent">("list");
+  const [machineId, setMachineId] = useState("");
+  // The group's machine is fixed: its split ran there, and the parts and merge will.
+  const machine: Machine | null = (ready ? machines.data?.find((m) => m.id === ready.machineId) : fit.find((m) => m.id === machineId)) ?? null;
+  const [profiles, setProfiles] = useState<string[]>([]);
+  const [profileId, setProfileId] = useState("");
+  const [title, setTitle] = useState("");
+  const [job, setJob] = useState("");
+  const [partsText, setPartsText] = useState(() => (ready?.parts ?? []).join("\n"));
+  const [parallel, setParallel] = useState("");
+  const [reviewAfter, setReviewAfter] = useState(true);
+  const action = useAction();
+  const parts = partLines(partsText);
+  const tooLong = parts.some((p) => p.length > MAX_MAP_PART);
+  const partsOk = parts.length >= 2 && parts.length <= MAX_MAP_PARTS && !tooLong;
+  const max = parallel.trim() ? Math.max(1, Math.min(20, Number.parseInt(parallel, 10) || 1)) : null;
+  const byAgent = !ready && mode === "agent";
+  const enabled = machine?.profiles.filter((p) => p.enabled) ?? [];
+  const toggleProfile = (id: string) => setProfiles((all) => (all.includes(id) ? all.filter((x) => x !== id) : [...all, id]));
+  const canSend = !action.busy && (ready ? !!ready.machineId : fit.length > 0) && (byAgent ? !!job.trim() : partsOk && (!!ready || !!job.trim()));
+  return (
+    <SheetContent className="w-full overflow-y-auto sm:w-[40rem] sm:max-w-[calc(100vw-2rem)]">
+      <SheetHeader>
+        <SheetTitle>{t("tasks.mapTitle")}</SheetTitle>
+        <SheetDescription>{ready ? t("tasks.mapReadyHint", { task: ready.parentTask ?? "", machine: machine?.machine ?? ready.machineId ?? "?" }) : t("tasks.mapHint")}</SheetDescription>
+      </SheetHeader>
+      <form
+        className="flex flex-col gap-3 px-4 pb-4 max-md:[&_button]:min-h-11 max-md:[&_select]:min-h-11 max-md:[&_input]:min-h-11 max-md:[&_input]:text-base! max-md:[&_select]:text-base! max-md:[&_textarea]:text-base!"
+        data-map-form={ready ? ready.id : "new"}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void action.run(async () => {
+            const heading = title.trim() ? { title: title.trim() } : {};
+            const group = byAgent
+              ? await client.call("runs.mapSplit", { project, ...heading, prompt: job, machineId: machineId || null, profileId: profileId || null })
+              : await client.call("runs.mapReduce", {
+                  project,
+                  ...(ready ? { groupId: ready.id } : { ...heading, prompt: job }),
+                  parts,
+                  machineId: ready ? null : machineId || null,
+                  // Profiles are a machine's: none when the hub picks the machine.
+                  profiles: machine ? profiles.filter((id) => enabled.some((p) => p.id === id)) : [],
+                  maxParallel: max,
+                  reviewAfter,
+                });
+            onGroup(group.id);
+          });
+        }}
+      >
+        {!ready && projects.length > 1 ? (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="map-project">{t("tasks.colProject")}</Label>
+            <NativeSelect id="map-project" size="sm" className="w-full" value={project} onChange={(e) => (setProject(e.target.value), setMachineId(""), setProfiles([]), setProfileId(""))}>
+              {projects.map((p) => (
+                <NativeSelectOption key={p} value={p}>
+                  {p}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </div>
+        ) : null}
+        {!ready ? (
+          <div role="radiogroup" aria-label={t("tasks.mapMode")} className="flex w-fit gap-0.5 rounded-[7px] bg-sunken p-0.5">
+            {(["list", "agent"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={mode === m}
+                onClick={() => setMode(m)}
+                data-map-mode={m}
+                className={cn("h-7 cursor-pointer rounded-[5px] px-2.5 text-xs/none font-semibold outline-none focus-visible:focus-ring", mode === m ? "bg-surface text-fg-strong shadow-e1" : "text-fg-secondary")}
+              >
+                {t(m === "list" ? "tasks.mapModeList" : "tasks.mapModeAgent")}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <ErrorNote error={machines.error} />
+        {!ready && machines.data && !fit.length ? <Notice tone="info">{t("tasks.dispatchNoMachine", { project })}</Notice> : null}
+        {!ready && fit.length ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <MachineSelect id="map-machine" machines={fit} value={machineId} any onChange={(id) => (setMachineId(id), setProfiles([]), setProfileId(""))} />
+            {byAgent ? <ProfileSelect id="map-profile" machine={machine} value={profileId} onChange={setProfileId} /> : null}
+            <p className="text-xs text-muted-foreground sm:col-span-2">{t("tasks.mapMachineHint")}</p>
+          </div>
+        ) : null}
+        {!ready ? (
+          <>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="map-title">{t("tasks.promptTaskTitle")}</Label>
+              <Input id="map-title" maxLength={120} placeholder={t("tasks.promptTaskTitleHint")} value={title} onChange={(e) => setTitle(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="map-job">{t("tasks.mapJob")}</Label>
+              <Textarea id="map-job" className="min-h-28" maxLength={MAX_MAP_PROMPT} placeholder={t("tasks.mapJobPlaceholder")} value={job} onChange={(e) => setJob(e.target.value)} />
+              <span className="text-xs text-muted-foreground">{t("tasks.promptCount", { count: job.length, max: MAX_MAP_PROMPT })}</span>
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium">{t("tasks.mapJob")}</span>
+            <p className="max-h-40 overflow-y-auto rounded-lg border bg-sunken p-2 text-sm whitespace-pre-wrap wrap-anywhere">{ready.instructions}</p>
+          </div>
+        )}
+        {byAgent ? (
+          <p className="text-xs text-muted-foreground">{t("tasks.mapAgentHint")}</p>
+        ) : (
+          <>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="map-parts">{t("tasks.mapParts")}</Label>
+              <Textarea id="map-parts" className="min-h-32 font-mono text-xs" placeholder={t("tasks.mapPartsPlaceholder")} value={partsText} onChange={(e) => setPartsText(e.target.value)} />
+              <span className={tooLong || parts.length > MAX_MAP_PARTS ? "text-xs text-danger" : "text-xs text-muted-foreground"}>
+                {t("tasks.mapPartsCount", { count: parts.length, max: MAX_MAP_PARTS, each: MAX_MAP_PART })}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium">{t("tasks.mapProfiles")}</span>
+              {machine && enabled.length ? (
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                  {enabled.map((p) => (
+                    <label key={p.id} className="flex items-center gap-2 text-sm max-md:min-h-11">
+                      <Checkbox checked={profiles.includes(p.id)} onCheckedChange={() => toggleProfile(p.id)} data-map-profile={p.id} />
+                      {p.label}
+                    </label>
+                  ))}
+                </div>
+              ) : null}
+              <span className="text-xs text-muted-foreground">{machine ? t("tasks.mapProfilesHint") : t("tasks.mapProfilesNeedMachine")}</span>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="map-parallel">{t("tasks.batchParallel")}</Label>
+              <Input id="map-parallel" inputMode="numeric" placeholder={t("tasks.batchParallelHint")} value={parallel} onChange={(e) => setParallel(e.target.value.replace(/\D/g, ""))} />
+            </div>
+            <label className="flex items-center gap-2 text-sm max-md:min-h-11">
+              <Checkbox checked={reviewAfter} onCheckedChange={(v) => setReviewAfter(v === true)} />
+              {t("tasks.mapReviewAfter")}
+            </label>
+          </>
+        )}
+        <div>
+          <Button size="sm" type="submit" disabled={!canSend} data-map-send>
+            <Send aria-hidden="true" />
+            {byAgent ? t("tasks.mapSendAgent") : t("tasks.mapSendList", { count: parts.length })}
+          </Button>
+        </div>
+        <ErrorNote error={action.error} />
+      </form>
+    </SheetContent>
+  );
+}
+
+/** What a writing step is asked when the person writes nothing else; the code and the review need only the task's note. */
+const roleTemplate = (t: TFunction, step: RoleStep) => (step === "test" || step === "docs" ? t(`tasks.rolesTemplate.${step}`) : "");
+
+/**
+ * A chain of roles on one task (roadmap 31d): each step an agent with its role and profile, one after the other on the
+ * task's branch. Every step runs on one machine, so each finds the commits of the steps before it.
+ */
+export function RolesSheet({ task, initialMachineId = "", onSent }: { task: Task; initialMachineId?: string; onSent: (groupId: number) => void }) {
+  const { client } = useHive();
+  const t = useT();
+  const machines = useQuery(() => client.call("machines.list", {}), [client]);
+  const fit = (machines.data ?? []).filter((m) => takesRunsOf(m, task.project));
+  const [machineId, setMachineId] = useState(initialMachineId);
+  const machine = fit.find((m) => m.id === machineId) ?? null;
+  const [steps, setSteps] = useState(() => (["code", "test", "review"] as const).map((step) => ({ step: step as RoleStep, profileId: "", instructions: roleTemplate(t, step) })));
+  const [title, setTitle] = useState("");
+  const action = useAction();
+  const set = (i: number, patch: Partial<(typeof steps)[number]>) => setSteps((all) => all.map((s, j) => (j === i ? { ...s, ...patch } : s)));
+  // A new role brings its own template, unless the person wrote instructions of their own.
+  const setStep = (i: number, step: RoleStep) => {
+    const cur = steps[i]!;
+    set(i, { step, ...(cur.instructions.trim() === roleTemplate(t, cur.step) ? { instructions: roleTemplate(t, step) } : {}) });
+  };
+  return (
+    <SheetContent className="w-full overflow-y-auto sm:w-[40rem] sm:max-w-[calc(100vw-2rem)]">
+      <SheetHeader>
+        <SheetTitle>{t("tasks.rolesTitle", { task: task.id })}</SheetTitle>
+        <SheetDescription>{t("tasks.rolesHint", { task: task.id })}</SheetDescription>
+      </SheetHeader>
+      <form
+        className="flex flex-col gap-3 px-4 pb-4 max-md:[&_button]:min-h-11 max-md:[&_select]:min-h-11 max-md:[&_input]:min-h-11 max-md:[&_input]:text-base! max-md:[&_select]:text-base! max-md:[&_textarea]:text-base!"
+        data-roles-form={task.id}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void action.run(async () => {
+            const group = await client.call("runs.roles", {
+              project: task.project,
+              taskId: task.id,
+              title: title.trim(),
+              machineId: machineId || null,
+              // Profiles are a machine's: none when the hub picks the machine.
+              steps: steps.map((s) => ({ step: s.step, profileId: machine ? s.profileId || null : null, instructions: s.instructions.trim() })),
+            });
+            onSent(group.id);
+          });
+        }}
+      >
+        <p className="text-sm">
+          <span className="mr-2 font-mono text-xs text-muted-foreground">{task.id}</span>
+          <span className="wrap-anywhere">{task.title}</span>
+        </p>
+        <ErrorNote error={machines.error} />
+        {machines.data && !fit.length ? <Notice tone="info">{t("tasks.dispatchNoMachine", { project: task.project })}</Notice> : null}
+        {fit.length ? (
+          <div className="flex flex-col gap-1.5">
+            <MachineSelect id="roles-machine" machines={fit} value={machineId} any onChange={(id) => (setMachineId(id), setSteps((all) => all.map((s) => ({ ...s, profileId: "" }))))} />
+            <p className="text-xs text-muted-foreground">{t("tasks.rolesMachineHint")}</p>
+          </div>
+        ) : null}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium">{t("tasks.rolesSteps")}</span>
+          <ol className="flex flex-col divide-y rounded-lg border">
+            {steps.map((s, i) => (
+              <li key={i} className="flex flex-col gap-2 p-3" data-roles-step-row={i}>
+                <div className="grid items-center gap-2 sm:grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)_auto]">
+                  <span className="text-xs font-medium text-muted-foreground">{t("tasks.rolesStep", { n: i + 1 })}</span>
+                  <NativeSelect size="sm" className="w-full" value={s.step} onChange={(e) => setStep(i, e.target.value as RoleStep)} aria-label={t("board.role")} data-roles-step={i}>
+                    {ROLE_STEPS.map((r) => (
+                      <NativeSelectOption key={r} value={r}>
+                        {t(`roleStep.${r}`)}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                  <ProfileSelect id={`roles-profile-${i}`} machine={machine} value={s.profileId} label={false} onChange={(id) => set(i, { profileId: id })} />
+                  <Button type="button" size="sm" variant="ghost" disabled={steps.length <= MIN_ROLE_STEPS} onClick={() => setSteps((all) => all.filter((_, j) => j !== i))}>
+                    {t("tasks.rolesRemoveStep")}
+                  </Button>
+                </div>
+                <Textarea
+                  className="min-h-16 text-[13px]"
+                  maxLength={MAX_ROLE_INSTRUCTIONS}
+                  placeholder={t("tasks.rolesInstructionsPlaceholder")}
+                  aria-label={t("tasks.rolesInstructions", { n: i + 1 })}
+                  value={s.instructions}
+                  onChange={(e) => set(i, { instructions: e.target.value })}
+                />
+              </li>
+            ))}
+          </ol>
+          {steps.length < MAX_ROLE_STEPS ? (
+            <div>
+              <Button type="button" size="sm" variant="outline" data-roles-add onClick={() => setSteps((all) => [...all, { step: "review", profileId: "", instructions: "" }])}>
+                <Plus aria-hidden="true" />
+                {t("tasks.rolesAddStep")}
+              </Button>
+            </div>
+          ) : null}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="roles-title">{t("tasks.batchName")}</Label>
+          <Input id="roles-title" maxLength={120} placeholder={task.title} value={title} onChange={(e) => setTitle(e.target.value)} />
+        </div>
+        <div>
+          <Button size="sm" type="submit" disabled={action.busy || !fit.length} data-roles-send>
+            <Send aria-hidden="true" />
+            {t("tasks.rolesSend", { count: steps.length })}
           </Button>
         </div>
         <ErrorNote error={action.error} />
