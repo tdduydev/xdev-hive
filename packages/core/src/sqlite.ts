@@ -74,6 +74,7 @@ import {
 } from "./model-learning.ts";
 import { parseVerdict, type Verdict } from "./verdict.ts";
 import { parseParts, partInstructions, reduceInstructions, splitInstructions, type MapPhase } from "./mapreduce.ts";
+import { ROLE_STEP_RUN, stepInstructions, type RoleStep } from "./roles.ts";
 import { toolEffective, toolProblem, toolSetupItems } from "./tools.ts";
 import { classifyTaskRule, DEFAULT_TASK_CLASS, parseTaskClass, TASK_SIZES, type TaskClass, type TaskKind, type TaskSize } from "./task-classify.ts";
 import type {
@@ -631,6 +632,11 @@ const MIGRATIONS: string[] = [
   CREATE INDEX model_learning_log_project ON model_learning_log(project, id);
   `,
   `ALTER TABLE audit ADD COLUMN source TEXT;`,
+  // Chains of roles (roadmap 31d): what each step does. Its run's role cannot tell: writing code, tests or docs are all
+  // implement runs.
+  `
+  ALTER TABLE run_group_items ADD COLUMN step TEXT;
+  `,
 ];
 
 /**
@@ -1100,6 +1106,11 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
     target: `${o.project}/${o.parentTask}`,
     detail: `chia ${o.parentTask} thành ${o.items.length} phần (đợt chạy #${o.id})`,
     text: { key: "audit.runMapReduce", vars: { id: o.id, count: o.items.length, task: o.parentTask ?? "" } },
+  }),
+  "runs.roles": (_i, o: RunGroup) => ({
+    target: `${o.project}/${o.parentTask}`,
+    detail: `chuỗi ${o.items.length} vai trên ${o.parentTask} (đợt chạy #${o.id})`,
+    text: { key: "audit.runRoles", vars: { id: o.id, count: o.items.length, task: o.parentTask ?? "" } },
   }),
   "runs.mapSplit": (_i, o: RunGroup) => ({
     target: `${o.project}/${o.parentTask}`,
@@ -1854,6 +1865,7 @@ export class SqliteHive implements HiveBackend {
       case "runs.dispatch":
         return this.#need(actor, i.project, "runDispatch", `Project ${i.project}`);
       case "runs.dispatchMany":
+      case "runs.roles":
         return this.#need(actor, i.project, "runDispatch", `Project ${i.project}`);
       case "runs.fanout":
         this.#need(actor, i.project, "taskManage", `Project ${i.project}`);
@@ -1863,9 +1875,10 @@ export class SqliteHive implements HiveBackend {
         this.#need(actor, i.project, "taskManage", `Project ${i.project}`);
         return this.#need(actor, i.project, "runDispatch", `Project ${i.project}`);
       case "runs.resumeGroup": {
-        const row = this.db.prepare("SELECT project FROM run_groups WHERE id = ?").get(i.id) as Row | undefined;
+        const row = this.db.prepare("SELECT project, kind FROM run_groups WHERE id = ?").get(i.id) as Row | undefined;
         if (!row) return;
-        this.#need(actor, str(row.project), "taskManage", `Run group #${i.id}`);
+        // A job in parts made its tasks; a chain of roles runs one that was there, as runs.roles needs.
+        if (str(row.kind) !== "roles") this.#need(actor, str(row.project), "taskManage", `Run group #${i.id}`);
         return this.#need(actor, str(row.project), "runDispatch", `Run group #${i.id}`);
       }
       case "runs.pickWinner": {
@@ -3674,8 +3687,8 @@ export class SqliteHive implements HiveBackend {
       .all(taskId) as Row[];
     for (const row of rows) {
       // Its run over, a task is free again while the rest of its group goes on: a fix run, a review, by hand.
-      const item = this.#group(num(row.id)).items.find((i) => i.taskId === taskId);
-      if (item && (item.status === "held" || item.active)) {
+      // A chain of roles has the task in each of its steps (roadmap 31d): it holds it until its last step ran.
+      if (this.#group(num(row.id)).items.some((i) => i.taskId === taskId && (i.status === "held" || i.active))) {
         throw new HiveError("conflict", `Task ${taskId} is in run group #${num(row.id)}.`, { key: "errors.taskInGroup", vars: { id: taskId, group: num(row.id) } });
       }
     }
@@ -3729,6 +3742,7 @@ export class SqliteHive implements HiveBackend {
         taskTitle: task?.title ?? null,
         taskStatus: task?.status ?? null,
         role: str(r.role) as AgentRole,
+        step: strOrNull(r.step) as RoleStep | null,
         machineId: strOrNull(r.machine_id),
         profileId: strOrNull(r.profile_id),
         preferKind: strOrNull(r.prefer_kind) as PreferKind | null,
@@ -3765,8 +3779,8 @@ export class SqliteHive implements HiveBackend {
     const req = g.phase_request == null ? null : ((this.db.prepare("SELECT * FROM run_requests WHERE id = ?").get(num(g.phase_request)) as Row | undefined) ?? null);
     const phaseRequest = req ? toRunRequest(req) : null;
     let parts = JSON.parse(str(g.parts ?? "[]")) as string[];
-    // The split run's list lands in the task's note when its machine reports the task, which may come after its run.
-    if (phase === "ready" && !parts.length && g.parent_task) parts = parseParts(this.#getTask(str(g.parent_task))?.note);
+    // A run can arrive before its handoff: keep reading the latest plan until the person confirms the parts.
+    if (phase === "ready" && g.parent_task) parts = this.#splitParts(str(g.parent_task), str(g.instructions));
     return {
       phase,
       parts,
@@ -3775,6 +3789,12 @@ export class SqliteHive implements HiveBackend {
       phaseRun: this.#groupRun(phaseRequest),
       phaseError: g.phase_error ? (JSON.parse(str(g.phase_error)) as RunRequestError) : null,
     };
+  }
+
+  /** The original job can have bullets too; only the split run's new handoff proposes parts. */
+  #splitParts(taskId: string, prompt: string): string[] {
+    const note = this.#getTask(taskId)?.note;
+    return note === prompt.slice(0, 2000) ? [] : parseParts(note);
   }
 
   /**
@@ -3844,51 +3864,88 @@ export class SqliteHive implements HiveBackend {
         this.#mapStep(g, actor);
         continue;
       }
+      // A chain of roles goes one step at a time, and only on from a step that succeeded (roadmap 31d).
+      if (g.kind === "roles") {
+        this.#rolesStep(g, actor);
+        continue;
+      }
       for (const item of g.items) {
         if (item.status !== "held") continue;
         if (g.maxParallel !== null && active >= g.maxParallel) break;
-        const now = this.#now();
-        const task = this.#getTask(item.taskId);
-        const fail = (error: RunRequestError) =>
-          db.prepare("UPDATE run_group_items SET status = 'failed', error = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(error), now, item.id);
-        if (!task) {
-          fail({ message: `Task ${item.taskId} not found.`, key: "errors.taskNotFound", vars: { id: item.taskId } });
-          continue;
-        }
-        if (task.waitingOn.length) continue;
-        // The group still decides when the task runs; a task with an agent (roadmap 50) only lends the item the machine
-        // and plan to run it on, when the item names none of its own.
-        const agent = item.machineId === null ? task.agent : null;
-        const profileId = item.profileId ?? agent?.profileId ?? null;
-        const machineId = item.machineId ?? agent?.machineId ?? this.#freeMachine(g.project, profileId);
-        if (!machineId) continue;
-        try {
-          const instructions = [g.instructions, item.instructions].filter(Boolean).join("\n\n");
-          // Its classify run (roadmap 54b) still going: the item waits. Asked before #assertDispatchable, which would
-          // see that run as the task's and refuse.
-          if (item.role === "implement" && db.prepare("SELECT 1 FROM task_classify_runs WHERE task_id = ?").get(task.id)) {
-            if (this.#queueClassify(task, this.#machineByRef(machineId), actor)) continue;
-          }
-          const m = this.#assertDispatchable(
-            { machineId, project: g.project, task, role: item.role, profileId, candidates: 1, instructions },
-            actor,
-          );
-          if (item.role === "implement" && this.#queueClassify(task, m, actor)) continue;
-          // A job's parts get no review of their own: the merged result does (roadmap 31c).
-          const reviewAfter = g.kind === "mapreduce" ? false : g.reviewAfter;
-          const req = this.#insertRequest(m, g.project, task, { role: item.role, profileId, preferKind: item.preferKind, reviewAfter, candidates: 1, instructions }, actor);
-          db.prepare("UPDATE run_group_items SET status = 'sent', machine_id = ?, request_id = ?, updated_at = ? WHERE id = ?").run(machineId, req.id, now, item.id);
-          active++;
-        } catch (err) {
-          if (!(err instanceof HiveError)) throw err;
-          if (!groupFails(err.key)) continue;
-          fail({ message: err.message, ...(err.key ? { key: err.key } : {}), ...(err.vars ? { vars: err.vars as Record<string, string | number> } : {}) });
-        }
+        if (this.#releaseItem(g, item, actor) === "sent") active++;
       }
       const after = this.#group(g.id);
       if (after.kind === "mapreduce") this.#mapStep(after, actor);
       else if (!after.items.some((i) => i.status === "held" || i.active)) db.prepare("UPDATE run_groups SET closed_at = ? WHERE id = ?").run(this.#now(), g.id);
     }
+  }
+
+  /**
+   * Sends one held item as a run request: "wait" when it cannot go yet (its task waits, no machine is free, a check
+   * that may pass later), "failed" when it never will (the item is failed with the reason).
+   */
+  #releaseItem(g: RunGroup, item: RunGroupItem, actor: Actor): "sent" | "wait" | "failed" {
+    const db = this.db;
+    const now = this.#now();
+    const task = this.#getTask(item.taskId);
+    const fail = (error: RunRequestError) => {
+      db.prepare("UPDATE run_group_items SET status = 'failed', error = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(error), now, item.id);
+      return "failed" as const;
+    };
+    if (!task) return fail({ message: `Task ${item.taskId} not found.`, key: "errors.taskNotFound", vars: { id: item.taskId } });
+    if (task.waitingOn.length) return "wait";
+    // The group still decides when the task runs; a task with an agent (roadmap 50) only lends the item the machine
+    // and plan to run it on, when the item names none of its own.
+    const agent = item.machineId === null ? task.agent : null;
+    const profileId = item.profileId ?? agent?.profileId ?? null;
+    const machineId = item.machineId ?? agent?.machineId ?? this.#freeMachine(g.project, profileId);
+    if (!machineId) return "wait";
+    try {
+      const instructions = [g.instructions, item.instructions].filter(Boolean).join("\n\n");
+      // Its classify run (roadmap 54b) still going: the item waits. Asked before #assertDispatchable, which would
+      // see that run as the task's and refuse.
+      if (item.role === "implement" && db.prepare("SELECT 1 FROM task_classify_runs WHERE task_id = ?").get(task.id)) {
+        if (this.#queueClassify(task, this.#machineByRef(machineId), actor)) return "wait";
+      }
+      const m = this.#assertDispatchable(
+        { machineId, project: g.project, task, role: item.role, profileId, candidates: 1, instructions },
+        actor,
+      );
+      if (item.role === "implement" && this.#queueClassify(task, m, actor)) return "wait";
+      // A job reviews its merged result; a chain reviews in its own steps.
+      const reviewAfter = (g.kind === "mapreduce" || g.kind === "roles") ? false : g.reviewAfter;
+      const req = this.#insertRequest(m, g.project, task, { role: item.role, profileId, preferKind: item.preferKind, reviewAfter, candidates: 1, instructions }, actor);
+      db.prepare("UPDATE run_group_items SET status = 'sent', machine_id = ?, request_id = ?, updated_at = ? WHERE id = ?").run(machineId, req.id, now, item.id);
+      return "sent";
+    } catch (err) {
+      if (!(err instanceof HiveError)) throw err;
+      if (!groupFails(err.key)) return "wait";
+      return fail({ message: err.message, ...(err.key ? { key: err.key } : {}), ...(err.vars ? { vars: err.vars as Record<string, string | number> } : {}) });
+    }
+  }
+
+  /**
+   * Moves a chain of roles on (roadmap 31d): its steps in order, the next one sent only once the run of the one before
+   * it succeeded, all on the chain's machine so each finds the branch the others left. A step that failed, could not be
+   * sent, or whose run its machine never reported stops the chain; the steps after it are cancelled.
+   */
+  #rolesStep(g: RunGroup, actor: Actor): void {
+    const db = this.db;
+    const now = this.#now();
+    const stop = (item: RunGroupItem) => {
+      db.prepare("UPDATE run_group_items SET status = 'cancelled', updated_at = ? WHERE group_id = ? AND status = 'held'").run(now, g.id);
+      const error = { message: `Step ${item.position} (${item.step}) did not finish.`, key: "errors.rolesStepFailed", vars: { step: item.position, role: item.step ?? item.role } };
+      db.prepare("UPDATE run_groups SET phase = 'stopped', phase_error = ?, closed_at = ? WHERE id = ?").run(JSON.stringify(error), now, g.id);
+    };
+    for (const item of g.items) {
+      if (item.status === "held") {
+        if (this.#releaseItem(g, item, actor) === "failed") stop(item);
+        return;
+      }
+      if (item.active) return;
+      if (item.run?.status !== "succeeded") return void stop(item);
+    }
+    db.prepare("UPDATE run_groups SET phase = 'done', closed_at = ? WHERE id = ?").run(now, g.id);
   }
 
   /**
@@ -3912,7 +3969,7 @@ export class SqliteHive implements HiveBackend {
       }
       if (run.status === "queued" || run.status === "running") return;
       if (run.status !== "succeeded") return void stop({ message: `Run ${run.runId} ${run.status}.`, key: "errors.mapRunFailed", vars: { run: run.runId, status: run.status } });
-      if (g.phase === "split") db.prepare("UPDATE run_groups SET phase = 'ready', parts = ? WHERE id = ?").run(JSON.stringify(parseParts(this.#getTask(g.parentTask!)?.note)), g.id);
+      if (g.phase === "split") db.prepare("UPDATE run_groups SET phase = 'ready', parts = ? WHERE id = ?").run(JSON.stringify(this.#splitParts(g.parentTask!, g.instructions)), g.id);
       else db.prepare("UPDATE run_groups SET phase = 'done', closed_at = ? WHERE id = ?").run(now, g.id);
       return;
     }
@@ -7117,18 +7174,89 @@ export class SqliteHive implements HiveBackend {
           return this.#group(id!);
         }),
 
+      "runs.roles": ({ project, taskId, title, machineId, steps }, actor) =>
+        this.#tx(() => {
+          const task = this.#getTask(taskId);
+          if (!task || task.project !== project) {
+            throw new HiveError("not_found", `No task ${taskId} in ${project}.`, { key: "errors.taskNotInProject", vars: { id: taskId, project } });
+          }
+          const flow = this.#flowRow(taskId);
+          if (flow && ["running", "check", "checking", "next"].includes(str(flow.state))) {
+            throw new HiveError("conflict", `Task ${taskId} is in a flow that is going on.`, { key: "errors.taskInFlow", vars: { id: taskId } });
+          }
+          const heading = (title.trim() || task.title).slice(0, 120);
+          assertNoHidden(heading, "Title");
+          for (const s of steps) {
+            assertNoHidden(s.instructions, "Instructions");
+            assertNoSecret(s.instructions, "Instructions");
+          }
+          // Every step on one machine: each finds the branch ai/<task> the steps before it left in its repository.
+          const m = this.#mapMachine(project, machineId);
+          for (const s of steps) {
+            if (s.profileId && !m.profiles.some((p) => p.id === s.profileId)) {
+              throw new HiveError("bad_request", `${m.machine} has no profile ${s.profileId}.`, { key: "errors.profileNotOnMachine", vars: { machine: m.machine, id: s.profileId } });
+            }
+          }
+          // The first step goes now: checked as runs.dispatch checks it (online, takes runs, no run of the task going, cap).
+          const first = steps[0]!;
+          this.#assertDispatchable({ machineId: m.id, project, task, role: ROLE_STEP_RUN[first.step], profileId: first.profileId, candidates: 1, instructions: first.instructions }, actor);
+          this.#assertNotInGroup(taskId);
+          const now = this.#now();
+          const res = db
+            .prepare(
+              `INSERT INTO run_groups(project, kind, title, max_parallel, review_after, instructions, parent_task, created_by, on_behalf, created_at, machine_id)
+               VALUES (?, 'roles', ?, 1, 0, '', ?, ?, ?, ?, ?)`,
+            )
+            .run(project, heading, taskId, actor.name, actor.onBehalf ?? null, now, m.id);
+          const groupId = num(res.lastInsertRowid);
+          const item = db.prepare(
+            "INSERT INTO run_group_items(group_id, position, task_id, role, step, machine_id, profile_id, instructions, status, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'held', ?)",
+          );
+          steps.forEach((s, i) => {
+            const instructions = [stepInstructions(taskId, i + 1, steps), s.instructions.trim()].filter(Boolean).join("\n\n");
+            item.run(groupId, i + 1, taskId, ROLE_STEP_RUN[s.step], s.step, m.id, s.profileId, instructions, now);
+          });
+          this.#releaseGroups();
+          return this.#group(groupId);
+        }),
+
       "runs.resumeGroup": ({ id }, actor) =>
         this.#tx(() => {
           const g = this.#group(id);
+          if (g.kind === "roles") {
+            if (g.phase !== "stopped") throw new HiveError("conflict", `Run group #${id} has not stopped.`, { key: "errors.mapNotStopped", vars: { id } });
+            // A step cancelled while its run went on would run twice: once it ends, the chain can go on from after it.
+            if (g.items.some((i) => i.active)) throw new HiveError("conflict", `Run group #${id} still has a run going.`, { key: "errors.rolesRunning", vars: { id } });
+            this.#assertNotPaused(g.project);
+            // From the step that did not finish: the ones before it succeeded, and their work is on the branch.
+            const from = g.items.findIndex((i) => i.run?.status !== "succeeded");
+            const again = db.prepare("UPDATE run_group_items SET status = 'held', request_id = NULL, error = NULL, updated_at = ? WHERE id = ?");
+            const now = this.#now();
+            // A cancelled last run may have succeeded since: there is no step left to repeat.
+            if (from >= 0) for (const i of g.items.slice(from)) again.run(now, i.id);
+            db.prepare("UPDATE run_groups SET phase = NULL, phase_error = NULL, closed_at = NULL WHERE id = ?").run(id);
+            this.#releaseGroups();
+            return this.#group(id);
+          }
           if (g.kind !== "mapreduce") throw new HiveError("bad_request", `Run group #${id} is not a job in parts.`, { key: "errors.notMapReduce", vars: { id } });
           if (g.phase !== "stopped") throw new HiveError("conflict", `Run group #${id} has not stopped.`, { key: "errors.mapNotStopped", vars: { id } });
           this.#assertNotPaused(g.project);
           const now = this.#now();
+          // A run can finish after cancellation; its successful split or merge must not be repeated either.
+          if (g.phaseRun?.status === "succeeded") {
+            db.prepare("UPDATE run_groups SET phase = ?, phase_error = NULL, closed_at = ? WHERE id = ?").run(g.items.length ? "done" : "ready", g.items.length ? now : null, id);
+            return this.#group(id);
+          }
+          // Cancellation cannot stop an accepted run: keep its request and reopen the phase it is still doing.
+          if (this.#itemActive("sent", g.phaseRequest, g.phaseRun)) {
+            db.prepare("UPDATE run_groups SET phase = ?, phase_error = NULL, closed_at = NULL WHERE id = ?").run(g.items.length ? "reduce" : "split", id);
+            return this.#group(id);
+          }
           if (!g.items.length) {
             // The split stopped: ask its machine again.
             const task = this.#getTask(g.parentTask!);
             if (!task) throw new HiveError("not_found", `Task ${g.parentTask} not found.`, { key: "errors.taskNotFound", vars: { id: g.parentTask! } });
-            const instructions = [splitInstructions(), g.instructions.length > 2000 ? `The job, in full:\n${g.instructions}` : ""].filter(Boolean).join("\n\n");
+            const instructions = [splitInstructions(), `The job, in full:\n${g.instructions}`].filter(Boolean).join("\n\n");
             const m = this.#assertDispatchable({ machineId: g.machineId!, project: g.project, task, role: "plan", profileId: null, candidates: 1, instructions }, actor);
             const req = this.#insertRequest(m, g.project, task, { role: "plan", profileId: null, reviewAfter: false, candidates: 1, instructions }, actor);
             db.prepare("UPDATE run_groups SET phase = 'split', phase_request = ?, phase_error = NULL, closed_at = NULL WHERE id = ?").run(req.id, id);
@@ -7136,7 +7264,7 @@ export class SqliteHive implements HiveBackend {
           }
           // The parts that did not finish run again; with all of them in, the merge does.
           const again = db.prepare("UPDATE run_group_items SET status = 'held', request_id = NULL, error = NULL, updated_at = ? WHERE id = ?");
-          for (const i of g.items) if (i.run?.status !== "succeeded") again.run(now, i.id);
+          for (const i of g.items) if (!i.active && i.run?.status !== "succeeded") again.run(now, i.id);
           db.prepare("UPDATE run_groups SET phase = 'map', phase_request = NULL, phase_error = NULL, closed_at = NULL WHERE id = ?").run(id);
           this.#release();
           return this.#group(id);
@@ -7162,7 +7290,10 @@ export class SqliteHive implements HiveBackend {
           // A job's split or merge request too; the group stops where it was (runs.resumeGroup goes on from there).
           db.prepare("UPDATE run_requests SET status = 'cancelled', updated_at = ? WHERE status = 'pending' AND id = (SELECT phase_request FROM run_groups WHERE id = ?)").run(now, id);
           db.prepare(
-            "UPDATE run_groups SET closed_at = ?, phase = CASE WHEN phase IS NULL OR phase = 'done' THEN phase ELSE 'stopped' END, phase_error = CASE WHEN phase IS NULL OR phase = 'done' THEN phase_error ELSE ? END WHERE id = ?",
+            // A chain of roles stops too, so that Chạy lại goes on from the step it had reached (roadmap 31d).
+            `UPDATE run_groups SET closed_at = ?,
+               phase = CASE WHEN phase = 'done' OR (phase IS NULL AND kind != 'roles') THEN phase ELSE 'stopped' END,
+               phase_error = CASE WHEN phase = 'done' OR (phase IS NULL AND kind != 'roles') THEN phase_error ELSE ? END WHERE id = ?`,
           ).run(now, JSON.stringify({ message: "Cancelled.", key: "errors.mapCancelled" }), id);
           return this.#group(id);
         }),
