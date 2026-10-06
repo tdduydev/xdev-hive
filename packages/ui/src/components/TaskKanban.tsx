@@ -44,6 +44,13 @@ export function TaskKanban({
   const [drag, setDrag] = useState<Task | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [allDone, setAllDone] = useState(false);
+  const [mobile, setMobile] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const update = () => setMobile(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
   const list = useMemo(() => tasks.map((task) => (moved[task.id] ? { ...task, status: moved[task.id]!, waitingOn: moved[task.id] === "todo" ? task.waitingOn : [] } : task)), [tasks, moved]);
   const key = (task: Task) => `${task.project}/${task.id}`;
 
@@ -74,7 +81,7 @@ export function TaskKanban({
   return (
     <div className="flex flex-col gap-2">
       <ErrorNote error={error} />
-      <div className="overflow-x-auto pb-1" aria-label={t("board.board")}>
+      <div className="min-w-0 pb-1" aria-label={t("board.board")}>
         <BoardColumns
           count={(status) => of(status).length}
           dragging={drag !== null}
@@ -97,7 +104,7 @@ export function TaskKanban({
                     waiting={requests.find((r) => r.taskId === task.id && r.project === task.project && r.status === "pending") ?? null}
                     isNext={nextIds.includes(task.id)}
                     selected={task.id === selectedId}
-                    draggable={allow(task.project, "taskWork")}
+                    draggable={!mobile && allow(task.project, "taskWork")}
                     onDragStart={(e) => {
                       e.dataTransfer.setData("text/plain", task.id);
                       e.dataTransfer.effectAllowed = "move";

@@ -1,3 +1,4 @@
+import { ResponsiveTable as Table, ResponsiveTableRow as TableRow } from "#ui/components/ResponsiveTable.tsx";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "cn";
 import { Sparkles } from "lucide-react";
@@ -9,7 +10,7 @@ import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@xdev-hive/ui/components/ui/sheet";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
+import { TableBody, TableCell, TableHead, TableHeader } from "@xdev-hive/ui/components/ui/table";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "#ui/components/common.tsx";
 import { BatchSheet, PromptSheet } from "#ui/components/AgentSheets.tsx";
@@ -67,7 +68,7 @@ function ViewSwitch({ value, onChange, board }: { value: View; onChange: (v: Vie
           data-task-view={v}
           aria-checked={value === v}
           onClick={() => onChange(v)}
-          className={cn("h-7 cursor-pointer rounded-[5px] px-2.5 text-xs/none font-semibold outline-none focus-visible:focus-ring", value === v ? "bg-surface text-fg-strong shadow-e1" : "text-fg-secondary")}
+          className={cn("h-7 max-md:h-10 cursor-pointer rounded-[5px] px-2.5 text-xs/none font-semibold outline-none focus-visible:focus-ring", value === v ? "bg-surface text-fg-strong shadow-e1" : "text-fg-secondary")}
         >
           {t(v === "kanban" && board ? "tasks.view_board" : `tasks.view_${v}`)}
         </button>
@@ -187,7 +188,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
         ) : null}
         {switcher ?? <ViewSwitch value={view} onChange={setView} />}
         {prompters.length ? (
-          <Button size="sm" onClick={() => setPrompting(true)} data-prompt-agent>
+          <Button size="sm" className="max-md:min-h-10" onClick={() => setPrompting(true)} data-prompt-agent>
             <Sparkles />
             {t("tasks.promptOpen")}
           </Button>
@@ -271,7 +272,6 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
       {list.data?.length && view === "list" ? (
         <div className="overflow-x-auto rounded-lg border">
           {/* Fixed columns: a long title or note wraps in its own cell instead of pushing the others out of view. */}
-          {/* On a phone: task and status only; the rest is in the task's panel. */}
           <Table className={cn("table-fixed", scoped === null ? "md:min-w-[56rem]" : "md:min-w-[48rem]")}>
             <colgroup>
               <col />
@@ -763,52 +763,59 @@ function CreateTask({
   const [project, setProject] = useState<string>();
   const [title, setTitle] = useState("");
   const [deps, setDeps] = useState("");
+  const [expanded, setExpanded] = useState(false);
   const action = useAction();
   const effectiveProject = project ?? defaultProject;
   return (
-    <Card className="py-4">
-      <CardContent className="flex flex-col gap-2 px-4">
-        <form
-          className="flex flex-wrap items-center gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void action.run(async () => {
-              await client.call("tasks.create", { id: id.trim(), project: effectiveProject.trim(), title: title.trim(), dependsOn: parseIds(deps) });
-              setId("");
-              setTitle("");
-              setDeps("");
-              onCreated();
-            });
-          }}
-        >
-          <Input className="w-28 font-mono text-xs md:text-xs" placeholder="T-001" value={id} onChange={(e) => setId(e.target.value)} aria-label={t("tasks.newId")} />
-          <Input
-            className="w-40 min-w-0 flex-1 font-mono text-xs sm:flex-none md:text-xs"
-            placeholder={t("tasks.newProject")}
-            list="hive-projects"
-            value={effectiveProject}
-            onChange={(e) => setProject(e.target.value)}
-            aria-label={t("tasks.colProject")}
-          />
-          <datalist id="hive-projects">
-            {projects.map((p) => (
-              <option key={p} value={p} />
-            ))}
-          </datalist>
-          <Input className="min-w-48 flex-1" placeholder={t("tasks.newTitle")} value={title} onChange={(e) => setTitle(e.target.value)} aria-label={t("tasks.colTitle")} />
-          <Input
-            className="w-40 font-mono text-xs md:text-xs"
-            placeholder={t("tasks.newDeps")}
-            value={deps}
-            onChange={(e) => setDeps(e.target.value)}
-            aria-label={t("tasks.colDeps")}
-          />
-          <Button variant="outline" type="submit" disabled={!id.trim() || !effectiveProject.trim() || !title.trim() || action.busy}>
-            {t("tasks.create")}
-          </Button>
-        </form>
-        <ErrorNote error={action.error} />
-      </CardContent>
-    </Card>
+    <div>
+      <Button type="button" variant="outline" className="mb-2 min-h-10 md:hidden" data-create-task-toggle aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
+        {t("shell.newTask")}
+      </Button>
+      <Card className={cn("py-4", !expanded && "hidden md:flex")}>
+        <CardContent className="flex flex-col gap-2 px-4">
+          <form
+            className="flex flex-wrap items-center gap-2 max-md:flex-col max-md:items-stretch max-md:[&_input]:min-h-10"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void action.run(async () => {
+                await client.call("tasks.create", { id: id.trim(), project: effectiveProject.trim(), title: title.trim(), dependsOn: parseIds(deps) });
+                setId("");
+                setTitle("");
+                setDeps("");
+                setExpanded(false);
+                onCreated();
+              });
+            }}
+          >
+            <Input className="w-28 font-mono text-base md:text-xs max-md:w-full" placeholder="T-001" value={id} onChange={(e) => setId(e.target.value)} aria-label={t("tasks.newId")} />
+            <Input
+              className="w-40 min-w-0 flex-1 font-mono text-base md:text-xs max-md:w-full"
+              placeholder={t("tasks.newProject")}
+              list="hive-projects"
+              value={effectiveProject}
+              onChange={(e) => setProject(e.target.value)}
+              aria-label={t("tasks.colProject")}
+            />
+            <datalist id="hive-projects">
+              {projects.map((p) => (
+                <option key={p} value={p} />
+              ))}
+            </datalist>
+            <Input className="min-w-48 flex-1 max-md:w-full max-md:min-w-0" placeholder={t("tasks.newTitle")} value={title} onChange={(e) => setTitle(e.target.value)} aria-label={t("tasks.colTitle")} />
+            <Input
+              className="w-40 font-mono text-base md:text-xs max-md:w-full"
+              placeholder={t("tasks.newDeps")}
+              value={deps}
+              onChange={(e) => setDeps(e.target.value)}
+              aria-label={t("tasks.colDeps")}
+            />
+            <Button variant="outline" type="submit" className="max-md:min-h-10" disabled={!id.trim() || !effectiveProject.trim() || !title.trim() || action.busy}>
+              {t("tasks.create")}
+            </Button>
+          </form>
+          <ErrorNote error={action.error} />
+        </CardContent>
+      </Card>
+    </div>
   );
 }

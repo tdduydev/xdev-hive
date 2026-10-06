@@ -9,9 +9,11 @@ import { ToggleGroup, ToggleGroupItem } from "@xdev-hive/ui/components/ui/toggle
 import { BulkBar, bulkSummary } from "#ui/components/BulkBar.tsx";
 import { Diff } from "#ui/components/Diff.tsx";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "#ui/components/common.tsx";
+import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { formatTime, sourceText, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { runBulk, splitProposals } from "#ui/lib/bulk.ts";
+import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 import { docOwner, inScope, scopeLabel } from "#ui/lib/scope.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
@@ -24,6 +26,7 @@ export function ProposalsPage() {
   const toast = useToast();
   const bulk = useAction();
   const [onlyPending, setOnlyPending] = useState(true);
+  const mobileDetail = useMobileDetail("proposal");
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const list = useQuery(
     () => client.call("proposals.list", onlyPending ? { status: "pending" } : {}),
@@ -63,7 +66,7 @@ export function ProposalsPage() {
   };
 
   return (
-    <Page>
+    <Page className="mobile-master-detail">
       <PageHeader
         title={t("proposals.title")}
         subtitle={t("proposals.subtitle")}
@@ -88,7 +91,7 @@ export function ProposalsPage() {
       />
       <ErrorNote error={list.error} />
       <BulkBar
-        className="mb-4"
+        className={mobileDetail.showingDetail ? "mb-4 hidden md:flex" : "mb-4"}
         selectable={selectable.length}
         picked={chosen.length}
         busy={bulk.busy}
@@ -115,10 +118,13 @@ export function ProposalsPage() {
           </div>
         </Empty>
       ) : null}
-      <div className="flex flex-col gap-4">
+      {mobileDetail.showingDetail ? <MobileBack onClick={() => mobileDetail.navigate(null)} /> : null}
+      <div className="flex flex-col gap-2 md:hidden">
+        {!mobileDetail.showingDetail ? proposals?.map((p) => <button key={p.id} data-mobile-proposal={p.id} type="button" className="flex min-h-14 min-w-0 flex-col rounded-md border border-line-subtle bg-surface p-3 text-left" onClick={() => mobileDetail.navigate(String(p.id))}><span className="font-semibold text-fg-strong">#{p.id} · {p.reason}</span><span className="truncate text-xs text-fg-muted">{p.docKey}</span></button>) : null}
+      </div>
+      <div className="flex min-w-0 flex-col gap-4">
         {proposals?.map((p) => (
-          <ProposalCard
-            key={p.id}
+          <div key={p.id} className={mobileDetail.mobile && (mobileDetail.value === null || mobileDetail.value !== String(p.id)) ? "hidden md:block" : "min-w-0"}><ProposalCard
             proposal={p}
             onChanged={list.reload}
             picked={picked.has(p.id)}
@@ -130,7 +136,7 @@ export function ProposalsPage() {
                 return next;
               })
             }
-          />
+          /></div>
         ))}
       </div>
     </Page>

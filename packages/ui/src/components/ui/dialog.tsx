@@ -59,7 +59,7 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "fixed top-[50%] left-[50%] z-300 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border border-line-subtle bg-raised p-5 text-fg-primary shadow-e3 duration-(--duration-slow) ease-enter outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-[480px]",
+          "fixed top-[50%] left-[50%] z-300 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border border-line-subtle bg-raised p-5 text-fg-primary shadow-e3 duration-(--duration-slow) ease-enter outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-[480px] max-md:!inset-0 max-md:!h-dvh max-md:!w-screen max-md:!max-w-none max-md:!translate-x-0 max-md:!translate-y-0 max-md:!overflow-y-auto max-md:!rounded-none max-md:!border-0 max-md:!content-start max-md:[&_input]:min-h-10 max-md:[&_input]:text-base max-md:[&_select]:min-h-10 max-md:[&_select]:text-base max-md:[&_textarea]:text-base max-md:[&_button]:min-h-10",
           className
         )}
         {...props}
@@ -68,7 +68,7 @@ function DialogContent({
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
-            className="absolute top-4 right-4 grid size-7 cursor-pointer place-items-center rounded-sm text-fg-muted transition-colors outline-none hover:bg-hover hover:text-fg-strong focus-visible:focus-ring disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+            className="absolute top-4 right-4 grid size-7 max-md:size-10 cursor-pointer place-items-center rounded-sm text-fg-muted transition-colors outline-none hover:bg-hover hover:text-fg-strong focus-visible:focus-ring disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
           >
             <XIcon />
             <span className="sr-only">Close</span>

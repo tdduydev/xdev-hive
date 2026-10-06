@@ -1,7 +1,8 @@
+import { ResponsiveTable as Table, ResponsiveTableRow as TableRow } from "#ui/components/ResponsiveTable.tsx";
 import { useEffect, useMemo, useState } from "react";
 import { cacheReadShare, type CostSummary, type CostTotals, type QuotaCooldown, type RunTokens } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
+import { TableBody, TableCell, TableHead, TableHeader } from "@xdev-hive/ui/components/ui/table";
 import { Empty, ErrorNote, Notice, Page, PageHeader } from "#ui/components/common.tsx";
 import { formatCount, formatTime, formatUsd, useAction, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { rich, useT } from "#ui/i18n/index.tsx";

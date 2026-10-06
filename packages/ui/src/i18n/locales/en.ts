@@ -12,6 +12,7 @@ export const en: Catalog = {
     loading: "Loading…",
     showMore: "Show more",
     showLess: "Show less",
+    backToList: "Back to list",
   },
   language: {
     label: "Language",
@@ -332,6 +333,11 @@ export const en: Catalog = {
     group2: "Group",
   },
   table: {
+    severity: "Severity",
+    sort: "Sort by",
+    defaultOrder: "Default order",
+    ascending: "Ascending",
+    descending: "Descending",
     search: "Search {count} {noun}…",
     clear: "Clear",
     all: "All",

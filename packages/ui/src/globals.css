@@ -18,6 +18,7 @@
 @import "./tokens/typography.css";
 @import "./tokens/spacing.css";
 @import "./tokens/motion.css";
+@import "./components/ResponsiveTable.css";
 /* In the base layer so a component's own focus style (outline-none + ring) still wins over the global outline. */
 @import "./tokens/base.css" layer(base);
 
@@ -346,6 +347,18 @@
   }
 }
 
+@media (max-width: 767px) {
+  .mobile-master-detail button:not([role="checkbox"]):not([role="switch"]),
+  .mobile-master-detail [role="treeitem"] { min-height: 40px; }
+  .mobile-master-detail input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  .mobile-master-detail textarea,
+  .mobile-master-detail select { font-size: 16px; }
+  .mobile-master-detail [role="toolbar"] button { flex-shrink: 0; }
+  /* Enlarge the tap area without stretching the checkbox drawn by the design system. */
+  .mobile-master-detail [role="checkbox"] { position: relative; }
+  .mobile-master-detail [role="checkbox"]::before { content: ""; position: absolute; inset: -12px; }
+}
+
 /* The Docs rich editor (roadmap 23a): the same reading type as DocMarkdown, on ProseMirror's own elements. */
 @layer components {
   .hive-prose {
@@ -356,6 +369,9 @@
     font-size: 15px;
     line-height: 25px;
     overflow-wrap: anywhere;
+  }
+  @media (max-width: 767px) {
+    .hive-prose { font-size: 16px; }
   }
   .hive-prose h1 {
     margin: 0 0 0.25rem;

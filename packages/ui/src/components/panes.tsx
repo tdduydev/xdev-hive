@@ -51,9 +51,9 @@ export function FilterChips<T extends string>({ value, options, onChange }: { va
   );
 }
 
-export function ListPane({ head, children, label }: { head: ReactNode; children: ReactNode; label: string }) {
+export function ListPane({ head, children, label, className }: { head: ReactNode; children: ReactNode; label: string; className?: string }) {
   return (
-    <div className="flex min-w-[260px] shrink basis-[320px] flex-col border-r border-line-subtle bg-subtle">
+    <div className={cn("flex min-w-0 flex-1 flex-col border-r border-line-subtle bg-subtle md:min-w-[260px] md:flex-none md:shrink md:basis-[320px]", className)}>
       <div className="flex shrink-0 flex-col gap-2 border-b border-line-subtle px-3 py-2.5">{head}</div>
       <div role="listbox" aria-label={label} className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-1.5">
         {children}

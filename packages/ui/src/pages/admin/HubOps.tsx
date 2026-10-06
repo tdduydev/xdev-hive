@@ -1,3 +1,4 @@
+import { ResponsiveTableFrame } from "#ui/components/ResponsiveTable.tsx";
 // Trang Hub and Context agent (docs/design/2026-09-redesign, xDev Hive Web Admin; roadmap 22n): what the hub is and how
 // it is doing (a backup on request), and what a project's agents get from Hive (the AGENTS.md a sync writes).
 import { useEffect, useState, type ReactNode } from "react";
@@ -80,7 +81,7 @@ export function OpsHub() {
       .finally(() => setBusy(false));
   };
   return (
-    <div className="flex flex-col gap-3">
+    <ResponsiveTableFrame className="flex flex-col gap-3">
       <ErrorNote error={info.error} />
       {h ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,300px),1fr))] gap-2.5">
@@ -167,7 +168,7 @@ export function OpsHub() {
           />
         </div>
       ) : null}
-    </div>
+    </ResponsiveTableFrame>
   );
 }
 

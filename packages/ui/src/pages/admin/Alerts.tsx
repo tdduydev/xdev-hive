@@ -1,3 +1,4 @@
+import { ResponsiveGridRow, ResponsiveTableFrame } from "#ui/components/ResponsiveTable.tsx";
 // Cảnh báo (docs/design/2026-09-redesign, xDev Hive Web Admin; roadmap 22m): the incidents the hub's rules found and the
 // rules themselves; on Tổng quan, the open alerts and the live feed of what machines and people did.
 import { useEffect, useState } from "react";
@@ -38,7 +39,7 @@ function useEvery(ms: number): number {
 
 function AlertRow({ a, t, state, onAck }: { a: HubAlert; t: TFunction; state?: string; onAck?: () => void }) {
   return (
-    <div className={cn("flex items-center gap-3 border-b border-line-subtle py-2.5 last:border-b-0", a.resolvedAt && "opacity-60")}>
+    <ResponsiveGridRow primary={1} labels={[t("table.severity"), null, null]} className={cn("flex items-center gap-3 border-b border-line-subtle py-2.5 last:border-b-0", a.resolvedAt && "opacity-60")}>
       <span className={cn("inline-flex h-5 w-12 shrink-0 items-center justify-center rounded-xs border text-[11px] font-semibold", SEV[a.severity])}>{t(`alerts.severity.${a.severity}`)}</span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="truncate text-[13px] font-medium text-fg-strong">{alertTitle(t, a)}</span>
@@ -53,7 +54,7 @@ function AlertRow({ a, t, state, onAck }: { a: HubAlert; t: TFunction; state?: s
       ) : state ? (
         <span className="shrink-0 text-xs text-fg-muted">{state}</span>
       ) : null}
-    </div>
+    </ResponsiveGridRow>
   );
 }
 
@@ -78,7 +79,7 @@ export function OpenAlerts({ card }: { card: (title: string, action: React.React
     <>
       <ErrorNote error={data.error} />
       {data.data && !open.length ? <p className="m-0 text-[13px] text-fg-muted">{t("alerts.none")}</p> : null}
-      <div className="flex flex-col">
+      <ResponsiveTableFrame className="flex flex-col">
         {open.slice(0, 6).map((a) => (
           <AlertRow
             key={a.id}
@@ -93,7 +94,7 @@ export function OpenAlerts({ card }: { card: (title: string, action: React.React
             }
           />
         ))}
-      </div>
+      </ResponsiveTableFrame>
     </>,
   );
 }
@@ -172,7 +173,7 @@ export function OpsAlerts() {
   const all = [...(data.data?.open ?? []), ...(data.data?.recent ?? [])];
   const section = "flex min-w-0 flex-col gap-1 rounded-[14px] border border-line-default bg-surface px-4 pt-3.5 pb-2";
   return (
-    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,460px),1fr))] items-start gap-4">
+    <ResponsiveTableFrame className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,460px),1fr))] items-start gap-4">
       <ErrorNote error={data.error} />
       <section className={section}>
         <h2 className="m-0 pb-1 text-sm font-semibold text-fg-strong">{t("alerts.incidents")}</h2>
@@ -193,7 +194,7 @@ export function OpsAlerts() {
           <span className="text-xs text-fg-muted">{t("alerts.rulesHint")}</span>
         </div>
         {(data.data?.rules ?? []).map((r) => (
-          <div key={r.rule} className="flex items-center gap-3 border-b border-line-subtle py-2.5 last:border-b-0">
+          <ResponsiveGridRow primary={1} labels={[t("table.severity"), null, null]} key={r.rule} className="flex items-center gap-3 border-b border-line-subtle py-2.5 last:border-b-0">
             <span className={cn("inline-flex h-5 w-12 shrink-0 items-center justify-center rounded-xs border text-[11px] font-semibold", SEV[r.severity])}>{t(`alerts.severity.${r.severity}`)}</span>
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="truncate text-[13px] font-medium text-fg-strong">{t(`alerts.rule.${r.rule}.label`)}</span>
@@ -220,9 +221,9 @@ export function OpsAlerts() {
             >
               {r.enabled ? t("alerts.on") : t("alerts.off")}
             </button>
-          </div>
+          </ResponsiveGridRow>
         ))}
       </section>
-    </div>
+    </ResponsiveTableFrame>
   );
 }

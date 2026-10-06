@@ -1,3 +1,4 @@
+import { ResponsiveTable as Table, ResponsiveTableRow as TableRow } from "#ui/components/ResponsiveTable.tsx";
 import { useState } from "react";
 import { Copy } from "lucide-react";
 import { TOKEN_ROLES, type Role } from "@xdev-hive/core";
@@ -5,7 +6,7 @@ import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
+import { TableBody, TableCell, TableHead, TableHeader } from "@xdev-hive/ui/components/ui/table";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, STATUS_TONE, StatusDot } from "#ui/components/common.tsx";
 import { formatTime, useAction, useHive, useQuery } from "#ui/hooks.ts";
 import { rich, useT } from "#ui/i18n/index.tsx";

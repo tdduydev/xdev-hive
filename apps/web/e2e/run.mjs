@@ -5,7 +5,7 @@
 // Linux without a display: run it under xvfb-run.
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -67,12 +67,29 @@ if (!up) {
 }
 
 const seeded = await seed(base, admin);
+const resultFile = path.join(out, "result.json");
+rmSync(resultFile, { force: true });
 const browser = spawn(electron, [path.join(import.meta.dirname, "browser.mjs")], {
   stdio: "inherit",
   env: { ...process.env, HIVE_E2E_BASE: base, HIVE_E2E_OUT: out, HIVE_E2E_SEED: JSON.stringify({ admin, ...seeded }), ELECTRON_ENABLE_LOGGING: "" },
 });
+// Chromium can hang while tearing down windows on macOS after every check has finished.
+// Only a completed result may shorten teardown; a stuck test still fails at the overall timeout.
+let completedCode;
+let teardownTimer;
+const completion = setInterval(() => {
+  if (completedCode !== undefined || !existsSync(resultFile)) return;
+  try {
+    const result = JSON.parse(readFileSync(resultFile, "utf8"));
+    if (![0, 1].includes(result.exitCode) || !Array.isArray(result.results) || !Array.isArray(result.errors)) return;
+    completedCode = result.exitCode;
+    teardownTimer = setTimeout(() => browser.kill("SIGKILL"), 5000);
+  } catch { /* The browser may still be writing its result. */ }
+}, 100);
 const timer = setTimeout(() => browser.kill("SIGKILL"), 5 * 60_000);
-const code = await new Promise((resolve) => browser.once("exit", (c) => resolve(c ?? 1)));
+const code = await new Promise((resolve) => browser.once("exit", (c) => resolve(c ?? completedCode ?? 1)));
+clearInterval(completion);
+clearTimeout(teardownTimer);
 clearTimeout(timer);
 stop();
 if (code !== 0) console.error(`\nhub log:\n${hubLog.split("\n").slice(-40).join("\n")}`);

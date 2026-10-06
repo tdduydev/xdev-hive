@@ -16,7 +16,7 @@ import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, StatusDot } from "#u
 import { AttachButton, AttachmentBar, MessageFiles, useAttachments } from "#ui/components/ChatFiles.tsx";
 import { LeaderGuideSheet } from "#ui/components/LeaderGuide.tsx";
 import { CopyButton, ReplyMarkdown } from "#ui/components/ReplyMarkdown.tsx";
-import { errorMessage, formatTime, formatUsd, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "#ui/hooks.ts";
+import { errorMessage, formatTime, formatUsd, useAction, useCan, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { rich, useT } from "#ui/i18n/index.tsx";
 import {
   ACTION_TONE,
@@ -34,6 +34,7 @@ import {
 } from "#ui/lib/chat.ts";
 import { requestErrorText, runLabel } from "#ui/lib/runs.ts";
 import { scopeFilter, scopeId, scopeKey, scopeProject } from "#ui/lib/scope.ts";
+import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 
 /** Machines report a reply being written every 2 s: followed that closely; otherwise a slow check for news. */
 const LIVE_MS = 2000;
@@ -43,7 +44,7 @@ const MAX_TEXT = 8000;
 
 type Open = { kind: "thread"; id: number } | { kind: "new" } | null;
 
-const threadOf = (param: string | null): Open => (param && /^\d+$/.test(param) && Number(param) > 0 ? { kind: "thread", id: Number(param) } : null);
+const threadOf = (param: string | null): Open => param === "new" ? { kind: "new" } : (param && /^\d+$/.test(param) && Number(param) > 0 ? { kind: "thread", id: Number(param) } : null);
 
 /** The desktop app on its own (roadmap 48): its chats are in its database and run on it alone. */
 function useLocalChat(): boolean {
@@ -81,16 +82,16 @@ export function ChatPage() {
   );
   useEffect(() => setBusy((threads.data ?? []).some((th) => th.busy)), [threads.data]);
   // The open thread is in the address (#/chat?thread=12): a link to it opens it, and so does coming back to the page.
-  const [linked] = useHashParam("thread");
-  const [open, setOpenState] = useState<Open>(() => threadOf(linked));
+  const mobileDetail = useMobileDetail("thread");
+  const [open, setOpenState] = useState<Open>(() => threadOf(mobileDetail.value));
   const setOpen = useCallback((next: Open) => {
-    window.history.replaceState(null, "", next?.kind === "thread" ? `#/chat?thread=${next.id}` : "#/chat");
+    if (mobileDetail.mobile) mobileDetail.navigate(next?.kind === "thread" ? String(next.id) : next?.kind === "new" ? "new" : null);
+    else window.history.replaceState(null, "", next?.kind === "thread" ? `#/chat?thread=${next.id}` : "#/chat");
     setOpenState(next);
-  }, []);
+  }, [mobileDetail]);
   useEffect(() => {
-    const next = threadOf(linked);
-    if (next) setOpenState(next);
-  }, [linked]);
+    setOpenState(threadOf(mobileDetail.value));
+  }, [mobileDetail.value]);
   // Another project or system picked in the sidebar: its own threads.
   const shown = scopeId(scope);
   const shownBefore = useRef(shown);
@@ -103,7 +104,7 @@ export function ChatPage() {
   const local = useLocalChat();
 
   return (
-    <Page wide>
+    <Page wide className="mobile-master-detail">
       <PageHeader
         title={t("nav.chat")}
         subtitle={t(local ? "chat.subtitleLocal" : "chat.subtitle")}
@@ -124,7 +125,7 @@ export function ChatPage() {
       />
       {managed.length ? <LeaderGuideSheet key={shown} projects={managed} defaultProject={project} open={guideOpen} onOpenChange={setGuideOpen} /> : null}
       <ErrorNote error={threads.error} />
-      <div className="grid items-start gap-4 lg:grid-cols-[19rem_minmax(0,1fr)]">
+      <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[19rem_minmax(0,1fr)]">
         {/* On a phone the list and the open chat take turns. */}
         <nav className={cn("flex min-w-0 flex-col gap-2", open && "hidden lg:flex")} aria-label={t("chat.threads")}>
           <div className="relative">

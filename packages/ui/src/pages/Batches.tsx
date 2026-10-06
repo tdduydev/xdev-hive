@@ -1,8 +1,9 @@
+import { ResponsiveTable as Table, ResponsiveTableRow as TableRow } from "#ui/components/ResponsiveTable.tsx";
 import { useEffect, useState, type ReactNode } from "react";
 import type { Machine, RunGroup, RunGroupItem } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
+import { TableBody, TableCell, TableHead, TableHeader } from "@xdev-hive/ui/components/ui/table";
 import { Badge, Empty, ErrorNote, OwnerBadge, Page, PageHeader } from "#ui/components/common.tsx";
 import { formatTime, formatUsd, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { useT, type TFunction } from "#ui/i18n/index.tsx";

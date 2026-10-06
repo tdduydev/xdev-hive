@@ -7,9 +7,11 @@ import type { ChatAction, Memory, SdlcGateRecord } from "@xdev-hive/core";
 import { approvalOf } from "#ui/lib/permissions.ts";
 import { Diff } from "#ui/components/Diff.tsx";
 import { ErrorNote } from "#ui/components/common.tsx";
+import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { errorMessage, formatTime, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT, type MessageKey, type TFunction } from "#ui/i18n/index.tsx";
 import { shortAgo, type InboxDone, type InboxItem, type InboxTone } from "#ui/lib/inbox.ts";
+import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 import { docOwner } from "#ui/lib/scope.ts";
 import { useInbox } from "#ui/shell/inbox.tsx";
 import { useToast } from "#ui/shell/toast.tsx";
@@ -217,6 +219,11 @@ export function TodayPage() {
   const t = useT();
   const [tab, setTab] = useState<"open" | "done">("open");
   const [sel, setSel] = useState<string | null>(null);
+  const mobileDetail = useMobileDetail("item");
+  const pick = (key: string | null) => {
+    setSel(key);
+    if (mobileDetail.mobile) mobileDetail.navigate(key);
+  };
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 60_000);
@@ -224,8 +231,14 @@ export function TodayPage() {
   }, []);
 
   const list = tab === "open" ? inbox.items : [];
-  const current = tab === "open" ? (list.find((i) => i.key === sel) ?? list[0] ?? null) : null;
-  const doneCurrent = tab === "done" ? (inbox.done.find((d) => d.key === sel) ?? inbox.done[0] ?? null) : null;
+  const selected = mobileDetail.mobile ? mobileDetail.value : sel;
+  const current = tab === "open" ? (list.find((i) => i.key === selected) ?? (mobileDetail.mobile ? null : list[0] ?? null)) : null;
+  const doneCurrent = tab === "done" ? (inbox.done.find((d) => d.key === selected) ?? (mobileDetail.mobile ? null : inbox.done[0] ?? null)) : null;
+  useEffect(() => {
+    if (!mobileDetail.mobile || !mobileDetail.value) return;
+    if (inbox.done.some((d) => d.key === mobileDetail.value)) setTab("done");
+    else if (inbox.items.some((i) => i.key === mobileDetail.value)) setTab("open");
+  }, [mobileDetail.mobile, mobileDetail.value, inbox.done, inbox.items]);
 
   useEffect(() => {
     if (current) inbox.markRead(current.key);
@@ -265,7 +278,7 @@ export function TodayPage() {
   const toast = useToast();
   const next = (key: string) => {
     const i = keys.indexOf(key);
-    setSel(keys[i + 1] ?? keys[i - 1] ?? null);
+    pick(keys[i + 1] ?? keys[i - 1] ?? null);
   };
   const finish = (item: InboxItem, note: string, undoable = false) => {
     next(item.key);
@@ -275,8 +288,8 @@ export function TodayPage() {
   const seen = (item: InboxItem) => finish(item, t("inbox.seenNote"), true);
 
   return (
-    <div className="flex h-full min-h-0 w-full bg-surface">
-      <div className="flex min-w-[280px] shrink basis-[360px] flex-col border-r border-line-subtle">
+    <div className="mobile-master-detail flex h-full min-h-0 w-full bg-surface">
+      <div className={cn("min-w-0 flex-1 flex-col border-r border-line-subtle md:flex md:min-w-[280px] md:flex-none md:shrink md:basis-[360px]", mobileDetail.showingDetail ? "hidden" : "flex")}>
         <div className="flex shrink-0 items-center gap-2 border-b border-line-subtle px-3 py-[9px]">
           <div role="tablist" className="flex gap-0.5 rounded-[7px] bg-sunken p-0.5">
             {(
@@ -292,7 +305,7 @@ export function TodayPage() {
                 aria-selected={tab === k}
                 onClick={() => {
                   setTab(k);
-                  setSel(null);
+                  pick(null);
                 }}
                 className={cn(
                   "h-6 cursor-pointer rounded-[5px] px-2.5 text-xs/none font-semibold whitespace-nowrap outline-none focus-visible:focus-ring",
@@ -315,7 +328,7 @@ export function TodayPage() {
                     role="option"
                     aria-selected={on}
                     data-inbox-key={item.key}
-                    onClick={() => setSel(item.key)}
+                    onClick={() => pick(item.key)}
                     className={cn(
                       "relative flex cursor-pointer flex-col gap-1 border-b border-line-subtle py-2.5 pr-3.5 pl-[22px]",
                       on ? "bg-selected" : "hover:bg-hover",
@@ -339,7 +352,7 @@ export function TodayPage() {
                   key={d.key}
                   role="option"
                   aria-selected={d.key === doneCurrent?.key}
-                  onClick={() => setSel(d.key)}
+                  onClick={() => pick(d.key)}
                   className={cn(
                     "flex cursor-pointer flex-col gap-1 border-b border-line-subtle py-2.5 pr-3.5 pl-[22px]",
                     d.key === doneCurrent?.key ? "bg-selected" : "hover:bg-hover",
@@ -365,7 +378,8 @@ export function TodayPage() {
           <span>{t("inbox.keySeen")}</span>
         </div>
       </div>
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className={cn("min-w-0 flex-1 flex-col", mobileDetail.mobile && !mobileDetail.showingDetail ? "hidden md:flex" : "flex")}>
+        {mobileDetail.showingDetail ? <MobileBack onClick={() => pick(null)} /> : null}
         <ErrorNote error={inbox.error} />
         {current ? (
           <Detail key={current.key} item={current} now={now} onActions={setActions} finish={finish} seen={seen} />
