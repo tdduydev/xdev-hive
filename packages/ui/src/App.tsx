@@ -30,7 +30,7 @@ import type { HiveClient } from "./client.ts";
 import { ChangePasswordScreen } from "./components/Account.tsx";
 import { ErrorNote } from "./components/common.tsx";
 import { CrashCard, ErrorBoundary, PageBoundary } from "./components/ErrorBoundary.tsx";
-import { HiveContext, useProjectList, useQuery, usePoll } from "./hooks.ts";
+import { HiveContext, useProjectList, useQuery, usePoll, useRetiredProjects } from "./hooks.ts";
 import { activeIntl, useT, type MessageKey } from "./i18n/index.tsx";
 import { resolveHash } from "./lib/route.ts";
 import { WEB_MENU, WEB_SHORTCUTS, webCaps, webPages } from "./lib/nav.ts";
@@ -227,7 +227,12 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   const seen = useProjectList(client, tick);
   // A hub from before systems (roadmap 19b) has no such method: there are none then.
   const systemList = useQuery(() => client.call("systems.list", {}).catch(() => []), [client, tick]);
-  const systems = useMemo(() => systemList.data ?? [], [systemList.data]);
+  // Keys put to rest with nothing left on them are out of the switcher, of their system's group and of every list (38g).
+  const retired = useRetiredProjects(client, tick);
+  const systems = useMemo(
+    () => (systemList.data ?? []).map((s) => ({ ...s, projects: s.projects.filter((p) => !retired.has(p)) })).filter((s) => s.projects.length > 0),
+    [systemList.data, retired],
+  );
   // What the hub derives for each system from the account's services (roadmap 19c), so controls show as the hub decides.
   const withSystems = useMemo(() => (me.access ? { ...me, access: withSystemGrants(me.access, systems) } : me), [me, systems]);
   // Archived and deleted projects (roadmap 47). The hub already leaves them out of every list, so this is only about
@@ -236,8 +241,8 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   const hidden = useMemo(() => new Set((archived.data ?? []).filter((p) => p.state !== null).map((p) => p.project)), [archived.data]);
   // Granted projects show in the switcher even before they have any data, and so do a system's.
   const projects = useMemo(
-    () => [...new Set([...seen, ...Object.keys(me.access?.projects ?? {}), ...systems.flatMap((s) => s.projects)])].filter((p) => !hidden.has(p)).sort(),
-    [seen, me.access, systems, hidden],
+    () => [...new Set([...seen, ...Object.keys(me.access?.projects ?? {}), ...systems.flatMap((s) => s.projects)])].filter((p) => !hidden.has(p) && !retired.has(p)).sort(),
+    [seen, me.access, systems, hidden, retired],
   );
   const [picked, setScopeState] = useState<Scope>(readScope);
   // A system picked in the sidebar gets its projects once the list is in.

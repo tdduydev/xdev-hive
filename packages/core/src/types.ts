@@ -57,6 +57,13 @@ export interface DocSummary {
   folder: boolean;
   /** Mirrored from the repo (roadmap 26): the file (and section) it comes from and the commit; null when Hive is its home. */
   mirror?: DocMirror | null;
+  /**
+   * When the page was removed (roadmap 38g); null while it is in use. A removed page is out of every list, of
+   * AGENTS.md and of the next sync, but its versions stay and docs.restore brings it back.
+   */
+  removedAt?: string | null;
+  removedBy?: string | null;
+  removedNote?: string | null;
   updatedBy: string;
   updatedAt: string;
 }
@@ -584,6 +591,21 @@ export interface ProjectDeleted {
   /** Table → rows deleted, tables that had none left out. */
   rows: Record<string, number>;
   files: { removed: number; failed: number };
+}
+
+/**
+ * A project key put to rest (roadmap 38g), settings key `retiredProjects`: its work is over, so it goes out of the
+ * scope picker and of every project list. Nothing of it is deleted and projects.resume brings it back. `hidden` is
+ * false while something still lives on the key: the lists keep it until the last machine, page and open task is gone.
+ */
+export interface RetiredProject {
+  project: string;
+  at: string;
+  by: string;
+  note: string | null;
+  hidden: boolean;
+  /** Why it is still listed: machines that reported the repo, pages in use, tasks not done. */
+  left: { machines: number; docs: number; openTasks: number };
 }
 
 /** Key of `AgentsPaused.by` for the whole hub: no project key is "*". */

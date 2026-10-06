@@ -53,6 +53,7 @@ import {
   type DocSummary,
   type DocVersion,
   type HiveSystem,
+  type RetiredProject,
   type Machine,
   type ProfileChange,
   type RunMergeOrder,
@@ -258,8 +259,20 @@ export const schemas = {
     /** Written from the repo (roadmap 26); null: Hive is its home again. Left out: as it is. */
     mirror: z.object({ from: z.string().min(1).max(300), commit: z.string().regex(/^[0-9a-f]{4,64}$/) }).nullable().optional(),
   }),
-  /** Puts a page under another (or at the top) without a new version. */
-  "docs.move": z.object({ key: docKey, parent: docKey.nullable() }),
+  /**
+   * Puts a page under another (or at the top), and with `to` gives it another key — another space too
+   * (`project/ehospital/x` → `system/ehospital-ai/x`). Its versions, files and pages under it go with it, and the old
+   * key keeps pointing at the new one. No new version either way.
+   */
+  "docs.move": z.object({ key: docKey, parent: docKey.nullable().optional(), to: docKey.optional() }),
+  /**
+   * Removes a page and the pages under it (roadmap 38g): they leave every list, AGENTS.md and the next sync, their
+   * versions stay, and docs.restore puts back what one removal took. A mirrored page is refused: it goes in its repo.
+   */
+  "docs.remove": z.object({ key: docKey, note: z.string().max(500).optional() }),
+  "docs.restore": z.object({ key: docKey }),
+  /** Removed pages, newest removal first: what the Documents page offers to restore. */
+  "docs.removed": z.object({ project: project.optional() }),
   "docs.links": z.object({ key: docKey }),
   /** What the project's agents get: the AGENTS.md a sync writes, what it is made of, the files, the memory (roadmap 22n). */
   "docs.context": z.object({ project }),
@@ -965,6 +978,12 @@ export const schemas = {
   /** Deletes an archived project and everything of it, for good. `confirm` has to be the project's name. Hub admins. */
   "projects.delete": z.object({ project, confirm: z.string().min(1).max(100) }),
 
+  /** Project keys put to rest (roadmap 38g) with what still lives on each: the lists hide the ones with nothing left. */
+  "projects.retired": z.object({}),
+  /** Lets a project key rest: a hub admin's, written to the log, and projects.resume undoes it. Nothing is deleted. */
+  "projects.retire": z.object({ project, note: z.string().max(200).optional() }),
+  "projects.resume": z.object({ project }),
+
   "admin.machines": z.object({}),
   "admin.commandCreate": z.object({ machineId: machineRef, itemId: setupItemId }),
   "admin.commandCancel": z.object({ id }),
@@ -990,7 +1009,12 @@ export interface MethodOutput {
   "docs.get": Doc | null;
   "docs.history": DocVersion[];
   "docs.save": Doc;
-  "docs.move": DocSummary;
+  /** The page at its key after the move; `moved` is every key the move changed, the page's first. */
+  "docs.move": DocSummary & { moved: Array<{ from: string; to: string }> };
+  /** Every key the removal took, the page's first. */
+  "docs.remove": { keys: string[] };
+  "docs.restore": { keys: string[] };
+  "docs.removed": DocSummary[];
   "docs.links": DocLinks;
   "docs.context": AgentContext;
   /** The requests made, one per online machine that has the project (an open one is reused); [] when none is online. */
@@ -1175,6 +1199,9 @@ export interface MethodOutput {
   "projects.archive": ProjectSummary;
   "projects.restore": ProjectSummary;
   "projects.delete": ProjectDeleted;
+  "projects.retired": RetiredProject[];
+  "projects.retire": RetiredProject;
+  "projects.resume": { removed: boolean };
   "admin.machines": MachineDetail[];
   "admin.commandCreate": MachineCommand;
   "admin.commandCancel": MachineCommand;
@@ -1192,6 +1219,10 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "docs.history": "viewer",
   "docs.save": "agent",
   "docs.move": "agent",
+  // Removing and restoring a page take what changing it takes (contextEdit for a page agents read).
+  "docs.remove": "agent",
+  "docs.restore": "agent",
+  "docs.removed": "viewer",
   "docs.links": "viewer",
   "docs.context": "viewer",
   // Also contextEdit on the project: a person who may change what agents read, never an agent token.
@@ -1350,6 +1381,10 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "projects.archive": "admin",
   "projects.restore": "admin",
   "projects.delete": "admin",
+  "projects.retired": "viewer",
+  // A hub admin's call, like the stop-all switch: letting a key rest takes it out of everyone's lists.
+  "projects.retire": "admin",
+  "projects.resume": "admin",
   "admin.machines": "admin",
   "admin.commandCreate": "admin",
   "admin.commandCancel": "admin",

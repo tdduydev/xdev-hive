@@ -580,6 +580,55 @@ async function main() {
     await tab.waitFor("the diagram's error", () => document.querySelector('[data-mermaid] [role="alert"]'));
   });
 
+  // Roadmap 38g: a page goes to another space (project → system) with its history, and the key it had still leads to it.
+  await step("docs-move-space", async () => {
+    const tab = (current = tabs.admin);
+    await rpc("docs.save", { key: "project/demo/tai-lieu-cu", title: "Tài liệu cũ", content: "# Tài liệu cũ\n\nChuyển sang hệ thống.\n", baseVersion: 0 });
+    await tab.go(`admin/docs?doc=${encodeURIComponent("project/demo/tai-lieu-cu")}`);
+    // A page the cached list has not seen opens only after another docs.get and a list reload; until then the
+    // previous step's page is still open, and the Space select would move that one instead.
+    const picked = (key) => document.querySelector('[role="treeitem"][aria-selected="true"]')?.getAttribute("title") === key;
+    await tab.waitFor("the new page open", picked, "project/demo/tai-lieu-cu");
+    if (mobile) await tab.click("summary", "Chế độ");
+    await tab.click('[role="radio"]', "Markdown");
+    await tab.select("[data-doc-space]", "system:ban-hang");
+    const moved = await until("the page in the system's space", async () => await rpc("docs.get", { key: "system/ban-hang/tai-lieu-cu" }));
+    expect(moved.version === 1, `v${moved.version}: moving a page does not make a version`);
+    const old = await rpc("docs.get", { key: "project/demo/tai-lieu-cu" });
+    expect(old?.key === "system/ban-hang/tai-lieu-cu", `the old key leads to ${old?.key}`);
+    await tab.waitFor("the page open in the system's space", picked, "system/ban-hang/tai-lieu-cu");
+  });
+
+  // Roadmap 38g: removing takes the page out of the lists without losing it; it comes back from Đã xoá.
+  await step("docs-remove-page", async () => {
+    const tab = (current = tabs.admin);
+    await tab.click("[data-doc-remove]");
+    await tab.click("[data-doc-remove-confirm]");
+    await until("the page out of the list", async () => !(await rpc("docs.list", {})).some((d) => d.key === "system/ban-hang/tai-lieu-cu"));
+    const gone = await rpc("docs.get", { key: "system/ban-hang/tai-lieu-cu" });
+    expect(gone?.removedAt && gone.version === 1, `removed page: ${JSON.stringify(gone)}`);
+    expect((await rpc("docs.history", { key: "system/ban-hang/tai-lieu-cu" })).length === 1, "its versions stay");
+    await tab.click('[data-doc-restore="system/ban-hang/tai-lieu-cu"]');
+    await until("the page back", async () => (await rpc("docs.list", {})).some((d) => d.key === "system/ban-hang/tai-lieu-cu"));
+  });
+
+  // Roadmap 38g: a key whose work is over leaves the scope picker (36a) once no machine, page or open task is on it.
+  await step("project-retire", async () => {
+    const tab = (current = tabs.admin);
+    await rpc("tasks.update", { id: "LEDGER-1", status: "done" });
+    await tab.go("policy");
+    await tab.select("[data-retire-project]", "ledger");
+    await tab.click("[data-retire-start]");
+    await tab.click("[data-retire-confirm]");
+    await until("ledger at rest with nothing left on it", async () => (await rpc("projects.retired", {})).some((r) => r.project === "ledger" && r.hidden));
+    await tab.go("tasks");
+    await tab.click("[data-project-picker-trigger]");
+    await tab.waitFor("ledger gone from the picker", () => [...document.querySelectorAll('[role="option"]')].length > 0 && ![...document.querySelectorAll('[role="option"]')].some((o) => o.textContent.includes("ledger")));
+    await tab.key("Escape");
+    // At phone width the picker sits in the nav drawer, which Escape leaves open over the next step's page.
+    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
+  });
+
   await step("bulk-approve-proposals", async () => {
     const tab = (current = tabs.admin);
     await tab.go("admin/review");
