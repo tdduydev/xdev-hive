@@ -148,7 +148,7 @@ export function SpecsPage() {
           <>
             <DetailHeader scope={newProject} title={t("specs.run.newTitle")} />
             <DetailBody>
-              <SpecRun project={newProject} step="specify" feature={null} onSent={() => setCreating(false)} />
+              <SpecRun key={`${newWork ?? "draft"}:${newProject}`} project={newProject} step="specify" feature={null} onSent={() => setCreating(false)} />
               {/* New features have no folder until the specify run pushed one: their flows show here meanwhile. */}
               <FlowList project={newProject} openOnly />
             </DetailBody>
