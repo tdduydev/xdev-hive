@@ -3036,6 +3036,8 @@ export const en: Catalog = {
     chatTaskNotFound: "Project {project} has no task {id}.",
     chatAutoNever: "{kinds} always wait for a person: the leader does not loosen its own limits.",
     chatProjectOutside: "{project} is not a service of a system with {home}.",
+    chatProjectRequired: "In the hub-wide chat, {kind} has to say which project it is for.",
+    chatProjectUnknown: "The hub has no project {project}.",
     chatActionNotFound: "No proposal #{id}.",
     chatActionDecided: "Proposal #{id} was already decided.",
     chatRunNotFound: "Project {project} has no run {id}.",

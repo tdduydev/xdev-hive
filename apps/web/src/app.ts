@@ -17,6 +17,7 @@ import {
   isMethod,
   may,
   permissionsOn,
+  HUB_SCOPE,
   PROJECT_NAME,
   sees,
   readRun,
@@ -818,7 +819,7 @@ export function createHubApp({
   app.post("/api/chat/files", auth, fileBody, (req, res) => {
     try {
       const project = String(req.query.project ?? "");
-      if (!PROJECT_NAME.test(project)) throw new HiveError("bad_request", "Pick the chat's project.", { key: "errors.chatFileProject" });
+      if (project !== HUB_SCOPE && !PROJECT_NAME.test(project)) throw new HiveError("bad_request", "Pick the chat's project.", { key: "errors.chatFileProject" });
       const bytes = Buffer.isBuffer(req.body) ? new Uint8Array(req.body) : new Uint8Array();
       res.json({ result: hive.putChatFile({ project, name: String(req.query.name ?? "file"), bytes }, actorOf(res)) });
     } catch (err) {
@@ -855,11 +856,19 @@ export function createHubApp({
     // Headers can only narrow what the token may do: a default project, and read-only.
     const project = req.get("x-hive-project");
     const store = alerts;
+    // A chat leader's scope is its thread's, not a header the machine sends (roadmap 37): the hub-wide chat has no
+    // default project at all, so each tool asks which project it is for instead of guessing one.
+    const scope =
+      actor.chatReply === undefined
+        ? null
+        : ((hive.db.prepare("SELECT t.project FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id WHERE m.id = ?").get(actor.chatReply) as { project?: string } | undefined)
+            ?.project ?? null);
     const server = createHiveMcpServer(
       hive,
       { ...actor, source: { ...actor.source, via: "mcp" } },
       {
-        ...(project && PROJECT_NAME.test(project) ? { defaultProject: project } : {}),
+        ...(scope === HUB_SCOPE ? { hubScope: true } : {}),
+        ...(scope === HUB_SCOPE ? {} : scope ? { defaultProject: scope } : project && PROJECT_NAME.test(project) ? { defaultProject: project } : {}),
         ...(req.get("x-hive-readonly") === "1" ? { readOnly: true } : {}),
         // The server shows alert_list to hub admins only; the rules and the feed stay on the web.
         ...(store ? { alerts: { list: async () => (await store.list()).open } } : {}),
