@@ -74,6 +74,14 @@ describe("feature board (roadmap 49d)", () => {
     assert.equal(merged!.spec?.branch, "");
   });
 
+  it("finds the folder on the flow's branch while the hub has not set flow.dir yet (at the spec gate)", () => {
+    const items = featureItems([flow({ dir: null, state: "gate", gate: gate() })], [spec({ dir: "003-hoa-don", title: "Xuất hoá đơn" })], []);
+    assert.deepEqual(items.map((x) => [x.key, x.title, x.spec?.dir]), [["flow:app:SPEC-1", "Xuất hoá đơn", "003-hoa-don"]]);
+    // Two folders on the branch: the hub picks none, nor does the page.
+    const two = featureItems([flow({ dir: null })], [spec({ dir: "003-a" }), spec({ dir: "004-b" })], []);
+    assert.equal(two.find((x) => x.flow)!.spec, null);
+  });
+
   it("counts the gates of the flow's tasks as waiting too", () => {
     const [item] = featureItems([flow({ step: "dispatch", state: "done" })], [], [task("gate", { gate: gate({ id: 7, gate: "review", taskId: "S001-T1" }) }), task("gate", { taskId: "S001-T2", gate: gate({ id: 8, status: "passed" }) })]);
     assert.deepEqual(item!.waiting.map((g) => g.id), [7]);
