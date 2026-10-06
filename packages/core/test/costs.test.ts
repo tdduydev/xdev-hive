@@ -178,7 +178,8 @@ describe("what a run ran on (roadmap 54a)", () => {
     ...extra,
   });
   const ran = { kind: "claude", model: "sonnet", effort: "low", tier: null, attempt: 1, parentRun: null };
-  const pick = (r: Record<string, unknown>) => Object.fromEntries(["kind", "model", "effort", "tier", "attempt", "parentRun", "verdict"].map((k) => [k, r[k]]));
+  // RunRecord is an interface (no index signature), so read it through a plain record.
+  const pick = (r: object) => Object.fromEntries(["kind", "model", "effort", "tier", "attempt", "parentRun", "verdict"].map((k) => [k, (r as Record<string, unknown>)[k]]));
 
   it("keeps kind, model, effort, attempt, parent and verdict, and what it had when a push leaves them out", async () => {
     const hive = new SqliteHive(":memory:");
