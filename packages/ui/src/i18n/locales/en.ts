@@ -2734,6 +2734,7 @@ export const en: Catalog = {
     updateNotReady: "No update has finished downloading.",
     updateInstall: "Could not install the update: {reason}",
     hubAdminOnly: "Only a hub admin can do this.",
+    noModelProposal: "No proposal for {cell}: no tier has finished ≥ 80% of at least 10 tasks yet, or the cell is already at it.",
     agentsPaused: "Agents of {project} are paused (by {by}): no runs or chats until someone lets them run again.",
     selfApprove: "You cannot approve your own work (nor can agents on your token): someone else has to.",
     budgetExceeded: "The spending cap of {name} is reached: {used} of {limit} since {from}.",

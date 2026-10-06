@@ -48,6 +48,8 @@ export interface ModelSelection {
   reason: string;
   /** The choice for the review the machine runs after this implement run (reviewAfter), which is not the hub's request. */
   review?: Omit<ModelSelection, "review"> | null;
+  /** One tier below the cell, so the learning (54d) sees whether the cheaper tier would do. */
+  trial?: boolean;
 }
 
 const choice = (model: string, effort: ModelEffort | null): ModelChoice => ({ model, effort });
@@ -105,6 +107,13 @@ export interface RouteInput {
   role: AgentRole;
   /** Failed tries of this task so far (failed run, review asking for changes, red CI); only the implementer escalates. */
   failures?: number;
+  /** The hub picked this task to try the tier below (54d); taken on a first, normal-risk implement run only. */
+  trial?: boolean;
+}
+
+/** How far a project's profile moves a cell: economy one down, quality one up except docs and tests. */
+export function profileShift(profile: ModelProfile, kind: TaskKind): number {
+  return profile === "economy" ? -1 : profile === "quality" && kind !== "docs" && kind !== "test" ? 1 : 0;
 }
 
 /** null: routing is off for the project, or the role is not one it picks for (classify has its own cheap model). */
@@ -117,12 +126,15 @@ export function selectModel(settings: ModelRouterSettings, project: string, inpu
   const profile = own?.profile ?? "balanced";
   const start = own?.cells[kind]?.[size] ?? settings.cells[kind]?.[size] ?? DEFAULT_MODEL_CELLS[kind][size];
   const failures = input.role === "implement" ? Math.min(MAX_ESCALATIONS, Math.max(0, input.failures ?? 0)) : 0;
+  // A failure ends the trial: the retry escalates from the cell as any other task's would.
+  const trial = !!input.trial && input.role === "implement" && failures === 0 && input.risk !== "high";
   const shift =
-    (profile === "economy" ? -1 : profile === "quality" && kind !== "docs" && kind !== "test" ? 1 : 0) +
+    profileShift(profile, kind) +
     (input.risk === "high" ? 1 : 0) +
     // The first failure raises the effort only; the second takes the tier above.
     (failures >= 2 ? 1 : 0);
-  const tier = shiftTier(start, shift);
+  const normal = shiftTier(start, shift);
+  const tier = trial ? shiftTier(normal, -1) : normal;
   const models = modelsAt(settings.tiers, tier);
   if (failures === 1)
     for (const k of ROUTED_KINDS) {
@@ -131,6 +143,8 @@ export function selectModel(settings: ModelRouterSettings, project: string, inpu
     }
   // Plan with Opus, then edit with Sonnet (spec 54, like Aider's architect/editor): for big features and refactors only.
   if (tier === "strong" && size === "l" && (kind === "feature" || kind === "refactor") && models.claude?.model === "opus") models.claude = { ...models.claude, model: "opusplan" };
-  const reason = [`${kind}/${size}`, profile, input.risk === "high" ? "high risk" : null, failures ? `failure ${failures}` : null].filter(Boolean).join(", ");
-  return { tier, models, reason };
+  // At light already there is no tier below: an ordinary run, not a trial.
+  const tried = tier !== normal;
+  const reason = [`${kind}/${size}`, profile, input.risk === "high" ? "high risk" : null, failures ? `failure ${failures}` : null, tried ? "trial" : null].filter(Boolean).join(", ");
+  return tried ? { tier, models, reason, trial: true } : { tier, models, reason };
 }
