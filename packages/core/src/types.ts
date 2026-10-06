@@ -1021,6 +1021,15 @@ export const DEFAULT_LEADER_COMMANDS = ["git status", "git log", "git diff", "gi
 export const LEADER_COMMAND = /^[a-z0-9][a-z0-9._-]*(?: [a-z0-9][a-z0-9._=-]*){0,3}$/;
 export const MAX_LEADER_COMMANDS = 20;
 
+/**
+ * The hub-wide chat (roadmap 37): its thread, defaults and leader commands are kept under this project key. PROJECT_NAME
+ * rejects "*", so it can never be a real project's, and chat_threads.project stays NOT NULL (SQLite cannot drop that
+ * without rebuilding the table). Only a hub admin sees or touches anything under it.
+ *
+ * The same marker as PAUSED_HUB, and for the same reason: "the whole hub, not one project".
+ */
+export const HUB_SCOPE = "*";
+
 export interface ChatDefaults {
   project: string;
   machineId: string | null;
@@ -1127,6 +1136,11 @@ export interface ChatAction {
   id: number;
   replyId: number;
   threadId: number;
+  /**
+   * The project the proposal is aimed at, so Today, the filters and the log stay per project. In a hub-wide thread
+   * (roadmap 37) that is the project the leader named; HUB_SCOPE for what belongs to no project: a machine's plan or
+   * setup item, a stop of every agent, the hub's own policy.
+   */
   project: string;
   kind: ChatActionKind;
   /**
@@ -1171,6 +1185,11 @@ export interface ChatRequest {
   commands?: string[];
   /** The systems the project is a service of (roadmap 19d); the leader may propose tasks for their other services. */
   systems?: Array<{ name: string; projects: string[] }>;
+  /**
+   * Hub-wide threads only (project HUB_SCOPE, roadmap 37): every project the hub knows, so the leader can name one in
+   * each proposal and the machine can tell which repos it has. Absent for a project's own thread.
+   */
+  projects?: Array<{ project: string; systems: string[]; machines: string[] }>;
   text: string;
   requestedBy: string;
   createdAt: string;

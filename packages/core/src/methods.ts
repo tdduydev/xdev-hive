@@ -38,6 +38,7 @@ import {
   type RunRequest,
   CHAT_ACTION_KINDS,
   CHAT_EFFORTS,
+  HUB_SCOPE,
   LEADER_COMMAND,
   MAX_LEADER_COMMANDS,
   type ChatAction,
@@ -83,6 +84,11 @@ const docKey = z.string().min(1).max(200);
 const project = z.string().regex(PROJECT_NAME, "project must be lowercase letters, digits, . _ -");
 /** Only these projects (a system's, roadmap 19b); none listed: nothing. With `project` too, both must hold. */
 const projectList = z.array(project).max(200).optional();
+/**
+ * A project, or the hub-wide chat (roadmap 37). Only the chat methods take it: everything else is a real project, and
+ * "*" never matches PROJECT_NAME. The hub still refuses it to anyone but a hub admin.
+ */
+const chatScope = project.or(z.literal(HUB_SCOPE));
 const systemName = z.string().regex(PROJECT_NAME, "system name must be lowercase letters, digits, . _ -");
 const id = z.number().int().positive();
 // Repo-relative glob, e.g. apps/web/** or src/**/*.{ts,tsx}. No leading "/", no "..", no spaces.
@@ -191,7 +197,14 @@ const profileTemplate = agentProfileSchema.extend({
 /** A model for Claude Code's --model: an alias (opus) or a full name (claude-fable-5); never an option. */
 const chatModel = z.string().regex(/^[a-z0-9][a-z0-9.\-]{1,63}$/, "model: an alias like opus or a model's name");
 
-/** What a chat leader may ask for (chat.propose): the input of the call a project manager then confirms, project left out. */
+/**
+ * What a chat leader may ask for (chat.propose): the input of the call a project manager then confirms.
+ *
+ * `project` is the project the proposal is aimed at. In a project's own thread it is left out (the chat's project),
+ * except for task.create across a system (roadmap 19d). In the hub-wide thread (roadmap 37) it is required, apart from
+ * the kinds that belong to a machine or to the hub itself: machine.profile, machine.install of a machine's own item,
+ * and agents.stop / agents.resume / agent.policy meant for the whole hub.
+ */
 const chatAction = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("task.create"),
@@ -205,13 +218,14 @@ const chatAction = z.discriminatedUnion("kind", [
     size: z.enum(TASK_SIZES).optional(),
     risk: z.enum(TASK_RISKS).optional(),
   }),
-  z.object({ kind: z.literal("task.update"), id: taskId, status: z.enum(TASK_STATUSES), note: z.string().max(2000).optional() }),
+  z.object({ kind: z.literal("task.update"), project: project.optional(), id: taskId, status: z.enum(TASK_STATUSES), note: z.string().max(2000).optional() }),
   /** Corrects what a task is (roadmap 54b): at least one of the three. */
-  z.object({ kind: z.literal("task.classify"), id: taskId, taskKind: z.enum(TASK_KINDS).optional(), size: z.enum(TASK_SIZES).optional(), risk: z.enum(TASK_RISKS).optional() }),
+  z.object({ kind: z.literal("task.classify"), project: project.optional(), id: taskId, taskKind: z.enum(TASK_KINDS).optional(), size: z.enum(TASK_SIZES).optional(), risk: z.enum(TASK_RISKS).optional() }),
   /** Gives a task to an agent (roadmap 50); the machine is named by hub id or name, like the kinds below. */
-  z.object({ kind: z.literal("task.assign"), taskId, machine: machineRef, profileId: z.string().max(40).nullable().default(null) }),
+  z.object({ kind: z.literal("task.assign"), project: project.optional(), taskId, machine: machineRef, profileId: z.string().max(40).nullable().default(null) }),
   z.object({
     kind: z.literal("run.dispatch"),
+    project: project.optional(),
     taskId,
     role: z.enum(WORK_ROLES).default("implement"),
     /** A machine's hub id or name; the chat's own machine when left out. */
@@ -221,24 +235,25 @@ const chatAction = z.discriminatedUnion("kind", [
     candidates: z.number().int().min(1).max(MAX_CANDIDATES).default(1),
     instructions: z.string().max(4000).default(""),
   }),
-  // The rest name a machine by hub id or name too; the project is always the chat's.
-  z.object({ kind: z.literal("run.cancel"), machine: machineRef, runId }),
-  z.object({ kind: z.literal("run.merge"), machine: machineRef, runId }),
+  // The rest name a machine by hub id or name too.
+  z.object({ kind: z.literal("run.cancel"), project: project.optional(), machine: machineRef, runId }),
+  z.object({ kind: z.literal("run.merge"), project: project.optional(), machine: machineRef, runId }),
   // Enabled or priority is checked in chat.propose: a refine inside a discriminated union is not kept by every zod.
   z.object({
     kind: z.literal("machine.profile"),
+    project: project.optional(),
     machine: machineRef,
     profileId: z.string().min(1).max(40),
     enabled: z.boolean().optional(),
     priority: z.number().int().min(0).max(100).optional(),
   }),
-  /** The project's part of the agent policy; null removes it (the hub's default applies). */
-  z.object({ kind: z.literal("agent.policy"), policy: agentPolicyPartSchema.nullable() }),
-  z.object({ kind: z.literal("agents.stop") }),
-  z.object({ kind: z.literal("agents.resume") }),
-  z.object({ kind: z.literal("machine.install"), machine: machineRef, itemId: setupItemId }),
-  /** The chat project's own setting for a catalog tool (roadmap 28e); required left out keeps what the project has. */
-  z.object({ kind: z.literal("tool.enable"), id: z.string().min(1).max(40), enabled: z.boolean().nullable(), required: z.boolean().optional() }),
+  /** A project's part of the agent policy, or the hub's default when the hub-wide thread names no project; null removes it. */
+  z.object({ kind: z.literal("agent.policy"), project: project.optional(), policy: agentPolicyPartSchema.nullable() }),
+  z.object({ kind: z.literal("agents.stop"), project: project.optional() }),
+  z.object({ kind: z.literal("agents.resume"), project: project.optional() }),
+  z.object({ kind: z.literal("machine.install"), project: project.optional(), machine: machineRef, itemId: setupItemId }),
+  /** A project's own setting for a catalog tool (roadmap 28e); required left out keeps what the project has. */
+  z.object({ kind: z.literal("tool.enable"), project: project.optional(), id: z.string().min(1).max(40), enabled: z.boolean().nullable(), required: z.boolean().optional() }),
 ]);
 
 export const schemas = {
@@ -777,9 +792,12 @@ export const schemas = {
     runId: z.string().regex(/^[\w.-]{1,40}$/).nullable().default(null),
     error: machineError.nullable().default(null),
   }),
-  /** A message to a project's leader: the first of a new thread (machineId required) or the next of one. */
+  /**
+   * A message to a project's leader: the first of a new thread (machineId required) or the next of one. project
+   * HUB_SCOPE is the hub-wide leader (roadmap 37), a hub admin's alone.
+   */
   "chat.send": z.object({
-    project,
+    project: chatScope,
     threadId: id.optional(),
     machineId: machineRef.optional(),
     /** A Claude profile of that machine; null lets it pick. Kept for the thread. Left out: the project's default. */
@@ -792,9 +810,9 @@ export const schemas = {
     /** Files the sender uploaded for this message (POST /api/chat/files) and has not sent yet. */
     files: z.array(id).max(CHAT_FILES_PER_MESSAGE).default([]),
   }),
-  /** Threads, the most recently active first: a project's, or every project the caller sees. */
+  /** Threads, the most recently active first: a project's, or every project the caller sees (hub-wide ones: hub admins). */
   "chat.threads": z.object({
-    project: project.optional(),
+    project: chatScope.optional(),
     projects: projectList,
     /** Words in the title or any message, in any case. */
     query: z.string().max(200).optional(),
@@ -804,11 +822,11 @@ export const schemas = {
    * What leaders proposed and nobody confirmed or set aside yet, the newest first: a project's, or every project the
    * caller sees (Hôm nay, roadmap 35c).
    */
-  "chat.pending": z.object({ project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(200).default(100) }),
+  "chat.pending": z.object({ project: chatScope.optional(), projects: projectList, limit: z.number().int().min(1).max(200).default(100) }),
   /** What a project's new chats start with. */
-  "chat.defaults": z.object({ project }),
+  "chat.defaults": z.object({ project: chatScope }),
   "chat.setDefaults": z.object({
-    project,
+    project: chatScope,
     machineId: machineRef.nullable(),
     profileId: z.string().max(40).nullable(),
     model: chatModel.nullable(),
@@ -816,11 +834,11 @@ export const schemas = {
   }),
   /** The commands a project's leader may run; [] runs none. */
   "chat.setCommands": z.object({
-    project,
+    project: chatScope,
     commands: z.array(z.string().max(60).regex(LEADER_COMMAND, "a command: up to four lowercase words")).max(MAX_LEADER_COMMANDS),
   }),
   /** The kinds of proposal the project's leader runs without a confirm (roadmap 29c); [] for none. */
-  "chat.setAutonomy": z.object({ project, kinds: z.array(z.enum(CHAT_ACTION_KINDS)).max(CHAT_ACTION_KINDS.length) }),
+  "chat.setAutonomy": z.object({ project: chatScope, kinds: z.array(z.enum(CHAT_ACTION_KINDS)).max(CHAT_ACTION_KINDS.length) }),
   /** A thread's model and effort, for its next replies. */
   "chat.configure": z.object({ threadId: id, model: chatModel.nullable(), effort: z.enum(CHAT_EFFORTS).nullable() }),
   /** A project manager names a thread. */

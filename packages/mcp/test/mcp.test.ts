@@ -33,6 +33,7 @@ describe("mcp tools", () => {
       "memory_search",
       "memory_write",
       "policy_get",
+      "project_list",
       "run_get",
       "run_list",
       "run_requests",
@@ -65,6 +66,7 @@ describe("mcp tools", () => {
         "machine_list",
         "memory_search",
         "policy_get",
+        "project_list",
         "run_get",
         "run_list",
         "run_requests",
@@ -564,10 +566,157 @@ describe("mcp tools", () => {
       assert.match(text(other), /^not_found/, name);
     }
   });
+
+  /** A hub with two projects, a task and a run each, one machine with both repos, and a system over them. */
+  async function hubWide() {
+    const hive = new SqliteHive(":memory:");
+    const admin = { name: "duy", role: "admin" as const };
+    const mbp = { name: "runner.duy-mbp@duy-mbp", role: "agent" as const };
+    const claude = { id: "claude-1", label: "Claude", kind: "claude", enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0 };
+    await hive.call("machines.heartbeat", { machine: "duy-mbp", instance: "a1b2c3d4", projects: ["app", "site"], acceptsRuns: true, profiles: [claude] }, mbp);
+    await hive.call("tasks.create", { id: "T-1", project: "app", title: "Sign in" }, admin);
+    await hive.call("tasks.create", { id: "T-2", project: "app", title: "Reset", dependsOn: ["T-1"] }, admin);
+    await hive.call("tasks.update", { id: "T-1", status: "doing" }, admin);
+    await hive.call("tasks.create", { id: "S-1", project: "site", title: "Landing" }, admin);
+    await hive.call("systems.save", { name: "shop", projects: ["app", "site"] }, admin);
+    const run = (runId: string, project: string, taskId: string, status: "running" | "succeeded") => ({
+      runId,
+      project,
+      taskId,
+      taskTitle: "x",
+      role: "implement" as const,
+      status,
+      profileId: "claude-1",
+      createdAt: "2026-09-29T07:50:00.000Z",
+    });
+    await hive.call("runs.push", { machine: "duy-mbp", runs: [run("R-app1", "app", "T-1", "running"), run("R-site1", "site", "S-1", "succeeded")] }, mbp);
+    // The reply the hub-wide leader writes; its token is cut from the machine's, so it is never a hub admin itself.
+    const sent = await hive.call("chat.send", { project: "*", machineId: mbp.name, text: "Tidy up every project" }, admin);
+    await hive.call("chat.progress", { replyId: sent.reply.id, text: "Looking" }, mbp);
+    const leader: Actor = { name: "claude-1.duy-mbp@chat-duy", role: "agent", chatReply: sent.reply.id };
+    return { hive, admin, leader };
+  }
+
+  it("gives the hub-wide leader every project, no default project, and reads over the whole hub (roadmap 37)", async () => {
+    const { hive, leader } = await hubWide();
+    const open = [{ id: 1, rule: "machine.offline", project: "app" }, { id: 2, rule: "budget.over", project: null }];
+    const client = await connectHubLeader(hive, leader, { alerts: { list: async () => open } });
+
+    const instructions = client.getInstructions() ?? "";
+    assert.match(instructions, /project_list/);
+    assert.match(instructions, /no default project/);
+
+    const projects = JSON.parse(text(await client.callTool({ name: "project_list", arguments: {} })));
+    assert.deepEqual(
+      projects.map((p: { project: string; systems: string[] }) => [p.project, p.systems]),
+      [["app", ["shop"]], ["site", ["shop"]]],
+    );
+    const app = projects.find((p: { project: string }) => p.project === "app");
+    assert.deepEqual([app.tasks.todo, app.tasks.doing, app.runs.running], [1, 1, 1]);
+    assert.deepEqual(app.machines.map((m: { machine: string; online: boolean }) => [m.machine, m.online]), [["duy-mbp", true]]);
+
+    // No project and no default: the reads that can answer for the whole hub do.
+    const runs = JSON.parse(text(await client.callTool({ name: "run_list", arguments: {} })));
+    assert.deepEqual(runs.map((r: { runId: string }) => r.runId).sort(), ["R-app1", "R-site1"]);
+    assert.deepEqual(JSON.parse(text(await client.callTool({ name: "run_list", arguments: { project: "site" } }))).map((r: { runId: string }) => r.runId), ["R-site1"]);
+    const costs = JSON.parse(text(await client.callTool({ name: "cost_summary", arguments: {} })));
+    assert.equal(costs.project, null, "the whole hub, with every project's line");
+    assert.equal(JSON.parse(text(await client.callTool({ name: "run_requests", arguments: {} }))).length, 0);
+    assert.equal(JSON.parse(text(await client.callTool({ name: "alert_list", arguments: {} }))).length, 2, "a hub-wide chat is a hub admin's: it sees the alerts");
+    assert.equal(JSON.parse(text(await client.callTool({ name: "machine_list", arguments: {} }))).length, 1);
+
+    // The rest need one named, and say so rather than guessing.
+    for (const name of ["task_list", "task_next", "tool_list", "tool_status", "policy_get", "setup_missing", "token_usage", "memory_search"]) {
+      const refused = await client.callTool({ name, arguments: {} });
+      assert.equal(refused.isError, true, name);
+      assert.match(text(refused), /project is required: this chat is the whole hub/, name);
+    }
+    assert.deepEqual(JSON.parse(text(await client.callTool({ name: "task_list", arguments: { project: "app" } }))).map((t: { id: string }) => t.id).sort(), ["T-1", "T-2"]);
+  });
+
+  it("uses the complete project inventory and keeps hub reads separate from mutation grants", async () => {
+    const { hive, admin, leader } = await hubWide();
+    await hive.call("docs.save", { key: "project/docs-only/agents", content: "Docs only" }, admin);
+    await hive.call("tasks.create", { id: "P-1", project: "private", title: "Outside machine grants" }, admin);
+    const restricted: Actor = { ...leader, access: { projects: { app: "contribute" } } };
+    const client = await connectHubLeader(hive, restricted, {
+      defaultProject: "app",
+      alerts: { list: async () => [{ project: "private" }, { project: null }] },
+    });
+    const projects = JSON.parse(text(await client.callTool({ name: "project_list", arguments: {} })));
+    assert.deepEqual(projects.map((p: { project: string }) => p.project), ["app", "docs-only", "private", "site"]);
+    assert.equal((await client.callTool({ name: "task_list", arguments: {} })).isError, true);
+    const runs = JSON.parse(text(await client.callTool({ name: "run_list", arguments: {} })));
+    assert.deepEqual(runs.map((r: { project: string }) => r.project).sort(), ["app", "site"]);
+    assert.equal(JSON.parse(text(await client.callTool({ name: "alert_list", arguments: {} }))).length, 2);
+    const refused = await client.callTool({ name: "propose_task", arguments: { id: "P-2", title: "No wider mutation", project: "private", reason: "Check grants" } });
+    assert.equal(refused.isError, true);
+    assert.equal((await client.listTools()).tools.some((t) => t.name === "task_update"), false);
+    await client.close();
+    const regular = await connectAs(hive, restricted);
+    const visible = JSON.parse(text(await regular.callTool({ name: "project_list", arguments: {} })));
+    assert.deepEqual(visible.map((p: { project: string }) => p.project), ["app"]);
+    await regular.close();
+  });
+
+  it("makes the hub-wide leader name the project it proposes for, except for what belongs to no project", async () => {
+    const { hive, admin, leader } = await hubWide();
+    const client = await connectHubLeader(hive, leader);
+
+    const needsProject = await client.callTool({ name: "propose_task", arguments: { id: "T-9", title: "Reset page", reason: "Asked in the chat" } });
+    assert.equal(needsProject.isError, true, "project is required at hub scope");
+    const made = JSON.parse(text(await client.callTool({ name: "propose_task", arguments: { id: "T-9", title: "Reset page", project: "app", reason: "Asked in the chat" } })));
+    assert.deepEqual([made.project, made.status, made.input.project], ["app", "proposed", "app"]);
+    const moved = JSON.parse(text(await client.callTool({ name: "propose_task_status", arguments: { id: "S-1", status: "doing", project: "site", reason: "Started" } })));
+    assert.equal(moved.project, "site");
+    const unknown = await client.callTool({ name: "propose_task_status", arguments: { id: "S-1", status: "doing", project: "ghost", reason: "x" } });
+    assert.ok(unknown.isError);
+    assert.match(text(unknown), /^not_found/);
+
+    // A plan is the machine's and needs no project; stopping agents without one means the whole hub.
+    const plan = JSON.parse(text(await client.callTool({ name: "propose_profile", arguments: { machine: "duy-mbp", profileId: "claude-1", enabled: false, reason: "Resting" } })));
+    assert.equal(plan.project, "*");
+    const stopAll = JSON.parse(text(await client.callTool({ name: "propose_stop_agents", arguments: { reason: "Everything off" } })));
+    assert.deepEqual([stopAll.project, stopAll.input], ["*", { project: null }]);
+    const stopApp = JSON.parse(text(await client.callTool({ name: "propose_stop_agents", arguments: { project: "app", reason: "app only" } })));
+    assert.deepEqual([stopApp.project, stopApp.input], ["app", { project: "app" }]);
+
+    // Only a hub admin confirms, and it then runs as them.
+    const decided = await hive.call("chat.decide", { actionId: made.id, accept: true }, admin);
+    assert.deepEqual([decided.status, decided.result], ["done", { taskId: "T-9" }]);
+    assert.equal((await hive.call("tasks.list", { project: "app" }, admin)).some((t) => t.id === "T-9"), true);
+  });
+
+  it("keeps a project chat's leader working the way it did before roadmap 37", async () => {
+    const { hive, admin } = await hubWide();
+    const mbp = { name: "runner.duy-mbp@duy-mbp", role: "agent" as const };
+    const app = await hive.call("chat.send", { project: "app", machineId: mbp.name, text: "Plan the reset page" }, admin);
+    await hive.call("chat.progress", { replyId: app.reply.id, text: "Looking" }, mbp);
+    const client = await connectAs(hive, { name: "claude-1.duy-mbp@chat-duy", role: "agent", chatReply: app.reply.id });
+
+    // The default project stands in for the missing argument, and nothing asks which project.
+    assert.deepEqual(JSON.parse(text(await client.callTool({ name: "run_list", arguments: {} }))).map((r: { runId: string }) => r.runId), ["R-app1"]);
+    assert.equal(JSON.parse(text(await client.callTool({ name: "cost_summary", arguments: {} }))).project, "app");
+    assert.doesNotMatch(client.getInstructions() ?? "", /no default project/);
+    const proposed = JSON.parse(text(await client.callTool({ name: "propose_task", arguments: { id: "T-9", title: "Reset page", reason: "Asked in the chat" } })));
+    assert.deepEqual([proposed.project, proposed.input.project], ["app", "app"], "the chat's project, not named");
+    const stop = JSON.parse(text(await client.callTool({ name: "propose_stop_agents", arguments: { reason: "Pause app" } })));
+    assert.deepEqual([stop.project, stop.input], ["app", { project: "app" }], "never the whole hub from a project's chat");
+  });
 });
 
 async function connectAs(hive: SqliteHive, actor: Actor, opts: HiveMcpOptions = {}) {
   const server = createHiveMcpServer(hive, actor, { defaultProject: "app", ...opts });
+  const [a, b] = InMemoryTransport.createLinkedPair();
+  await server.connect(a);
+  const client = new Client({ name: "test", version: "0" });
+  await client.connect(b);
+  return client;
+}
+
+/** The leader of a hub-wide chat (roadmap 37): no default project, and the hub's alerts. */
+async function connectHubLeader(hive: SqliteHive, actor: Actor, opts: HiveMcpOptions = {}) {
+  const server = createHiveMcpServer(hive, actor, { hubScope: true, ...opts });
   const [a, b] = InMemoryTransport.createLinkedPair();
   await server.connect(a);
   const client = new Client({ name: "test", version: "0" });
