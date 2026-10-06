@@ -803,6 +803,14 @@ export const vi = {
     superpowers: "Hướng dẫn agent làm việc",
     speckit: "Soạn đặc tả và kế hoạch",
   },
+  systemOverview: {
+    service: "Service",
+    allServices: "Tất cả service",
+    running: "Run đang chạy",
+    pending: "Chờ duyệt",
+    pendingHint: "Task ở trạng thái chờ duyệt và đề xuất tài liệu chưa duyệt.",
+    capped: "Số liệu có thể chưa đủ do giới hạn danh sách task/run.",
+  },
   overview: {
     systems: "Hệ thống",
     systemProjects: "Service",

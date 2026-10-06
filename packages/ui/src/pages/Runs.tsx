@@ -1,5 +1,6 @@
 import { RunDiff, type DiffFixTarget } from "#ui/components/RunDiff.tsx";
 import type { DiffReview } from "@xdev-hive/core";
+import { ServiceFilter, useServiceFilter } from "#ui/components/ServiceFilter.tsx";
 // Lượt chạy (docs/design/2026-09-redesign, xDev Hive Client; roadmap 39e): one line per run, the task's title first and
 // what came of it in words under it. The app lists this machine's runs only (roadmap 35a); the web lists every machine's
 // (runs.push). The detail opens on the summary — the agent's last words, its steps, the MR — and keeps the log in a tab.
@@ -90,9 +91,10 @@ export function RunsPage() {
   }, [linkedGroup, clearLinkedGroup]);
   const tick = useRefresh(active);
   const key = scopeKey(scope);
-  const local = useQuery(async () => (desktop ? desktop.runs({ ...scopeFilter(scope), limit: 100 }) : []), [desktop, key, tick]);
-  const hub = useQuery(async () => (teamRuns ? client.call("runs.list", { ...scopeFilter(scope), limit: 100 }) : []), [client, teamRuns, key, tick]);
-  const groups = useQuery(async () => (teamRuns ? client.call("runs.groups", { ...scopeFilter(scope), limit: 30 }) : []), [client, teamRuns, key, tick]);
+  const [service, setService] = useServiceFilter(scope);
+  const local = useQuery(async () => (desktop ? desktop.runs({ ...(service ? { project: service } : scopeFilter(scope)), limit: 100 }) : []), [desktop, key, service, tick]);
+  const hub = useQuery(async () => (teamRuns ? client.call("runs.list", { ...(service ? { project: service } : scopeFilter(scope)), limit: 100 }) : []), [client, teamRuns, key, service, tick]);
+  const groups = useQuery(async () => (teamRuns ? client.call("runs.groups", { ...(service ? { project: service } : scopeFilter(scope)), limit: 30 }) : []), [client, teamRuns, key, service, tick]);
   const settings = useQuery(async () => (desktop ? desktop.settings() : null), [desktop]);
   const machine = settings.data?.machine ?? null;
 
@@ -183,6 +185,7 @@ export function RunsPage() {
         label={t("nav.runs")}
         head={
           <>
+            <ServiceFilter scope={scope} value={service} onChange={setService} />
             <div className="max-md:[&_button]:min-h-11 max-md:[&_button]:text-xs"><FilterChips value={filter} options={FILTERS.map((id) => ({ id, label: t(`runs.filter.${id}`), count: counts[id] }))} onChange={setFilter} /></div>
             {teamRuns ? <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 md:grid-cols-1">
               <NativeSelect wrapperClassName="w-full min-w-0" className="w-full max-md:h-11 max-md:text-base" aria-label={t("runs.groupFilter")} value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)}><NativeSelectOption value="">{t("runs.allGroups")}</NativeSelectOption>{(groups.data ?? []).map((g) => <NativeSelectOption key={g.id} value={String(g.id)}>{g.title || `#${g.id}`}</NativeSelectOption>)}</NativeSelect>
@@ -269,6 +272,7 @@ function RunRow({ row, index, on, machine, onPick }: { row: Row; index: number; 
         {waiting ? <Chip kind="warning" small>{t("runs.waiting")}</Chip> : null}
         <span className="shrink-0 text-[11px]/none text-fg-muted tabular-nums">{live ? runDuration(r) : formatTime(rowTime(row))}</span>
       </div>
+      <span data-run-service={r.project} className="text-xs text-fg-secondary wrap-anywhere">{t("systemOverview.service")}: <span className="font-mono">{r.project}</span></span>
       <span className="line-clamp-2 text-xs/[17px] text-fg-secondary">{runOutcome(r)}</span>
       <ModelRunChip run={r} />
       <span className="truncate text-xs/[17px] text-fg-muted md:text-[11px]/[14px]">
