@@ -53,9 +53,9 @@ describe("web menu by job (roadmap 49b)", () => {
   });
 
   it("gives Máy & agent the fleet, queue and costs tabs for the hub admin only", () => {
-    assert.deepEqual(machineTabs(admin), ["map", "fleet", "queue", "costs"]);
-    assert.deepEqual(machineTabs(lead), ["map"]);
-    assert.deepEqual(machineTabs(viewer), ["map"]);
+    assert.deepEqual(machineTabs(admin), ["map", "quota", "fleet", "queue", "costs"]);
+    assert.deepEqual(machineTabs(lead), ["map", "quota"]);
+    assert.deepEqual(machineTabs(viewer), ["map", "quota"]);
   });
 
   it("puts the hub admin's jobs in Quản trị's tabs, leaving out what an older hub lacks", () => {
