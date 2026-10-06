@@ -45,11 +45,11 @@ describe("web menu by job (roadmap 49b)", () => {
   });
 
   it("gathers a lead's settings, Context agent only where contextEdit is granted (49a)", () => {
-    assert.deepEqual(settingsTabs(lead, projects, caps), ["policy", "tools", "context", "leader", "members", "systems"]);
+    assert.deepEqual(settingsTabs(lead, projects, caps), ["policy", "agent", "tools", "context", "leader", "members", "systems"]);
     const settingsOnly = account({ app: { permissions: ["view", "projectSettings"] } });
-    assert.deepEqual(settingsTabs(settingsOnly, projects, caps), ["policy", "tools", "leader", "systems"]);
+    assert.deepEqual(settingsTabs(settingsOnly, projects, caps), ["policy", "agent", "tools", "leader", "systems"]);
     assert.deepEqual(settingsTabs(member, projects, caps), []);
-    assert.deepEqual(settingsTabs(admin, projects, caps), ["policy", "tools", "context", "leader", "members", "systems"]);
+    assert.deepEqual(settingsTabs(admin, projects, caps), ["policy", "agent", "tools", "context", "leader", "members", "systems"]);
   });
 
   it("gives Máy & agent the fleet, queue and costs tabs for the hub admin only", () => {
@@ -59,8 +59,8 @@ describe("web menu by job (roadmap 49b)", () => {
   });
 
   it("puts the hub admin's jobs in Quản trị's tabs, leaving out what an older hub lacks", () => {
-    assert.deepEqual(adminTabs(caps), ["ops", "users", "tools", "budgets", "alerts", "audit", "webhooks", "versions", "hub"]);
-    assert.deepEqual(adminTabs({ ...caps, users: false, alerts: false, webhooks: false, releases: false, hub: false }), ["ops", "tools", "budgets", "audit"]);
+    assert.deepEqual(adminTabs(caps), ["ops", "users", "policy", "tools", "budgets", "alerts", "audit", "webhooks", "versions", "hub"]);
+    assert.deepEqual(adminTabs({ ...caps, users: false, alerts: false, webhooks: false, releases: false, hub: false }), ["ops", "policy", "tools", "budgets", "audit"]);
   });
 
   it("opens the tab an address asks for, else the first one the person has", () => {

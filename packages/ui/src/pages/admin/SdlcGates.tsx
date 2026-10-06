@@ -21,7 +21,7 @@ interface Draft {
   maxParallel: string;
 }
 
-export function SdlcGatesCard({ editableOnly = false }: { editableOnly?: boolean }) {
+export function SdlcGatesCard({ editableOnly = false, hubOnly = false }: { editableOnly?: boolean; hubOnly?: boolean }) {
   const { client, me } = useHive();
   const t = useT();
   const can = useCan();
@@ -156,7 +156,7 @@ export function SdlcGatesCard({ editableOnly = false }: { editableOnly?: boolean
             </TableHeader>
             <TableBody>
               {editableOnly && !hubAdmin ? null : row(HUB)}
-              {projects.map(row)}
+              {hubOnly ? null : projects.map(row)}
             </TableBody>
           </Table>
         </div>

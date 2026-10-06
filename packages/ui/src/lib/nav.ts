@@ -63,7 +63,7 @@ export const isHubAdmin =(me: Me): boolean => me.mode === "hub" && me.role === "
 /** Whether the person may `need` somewhere: in the shared data or in one of the projects they see. */
 const anywhere = (me: Me, projects: string[], need: Permission): boolean => may(me, null, need) || projects.some((p) => may(me, p, need));
 
-export type SettingsTab = "policy" | "tools" | "context" | "leader" | "members" | "systems";
+export type SettingsTab = "policy" | "agent" | "tools" | "context" | "leader" | "members" | "systems";
 /**
  * Cài đặt dự án gathers the cards a project's settings had in six places (spec 49, "Tech lead"), as they are. Chốt &
  * chính sách is the hub admin's whole policy page, a lead's own rows; Context agent follows contextEdit (49a).
@@ -74,7 +74,7 @@ export function settingsTabs(me: Me, projects: string[], caps: Pick<WebCaps, "me
   const members = admin || anywhere(me, projects, "membersManage");
   if (!settings && !members) return [];
   const tabs: SettingsTab[] = [];
-  if (settings) tabs.push("policy", "tools");
+  if (settings) tabs.push("policy", "agent", "tools");
   if (admin || contextProjects(me, projects).length) tabs.push("context");
   if (settings) tabs.push("leader");
   if (members && caps.members) tabs.push("members");
@@ -86,12 +86,12 @@ export type MachineTab = "map" | "quota" | "fleet" | "queue" | "costs";
 /** Máy & agent: the agent map for everyone who sees a project; the fleet, queue and costs read every machine, so admin. */
 export const machineTabs = (me: Me): MachineTab[] => (isHubAdmin(me) ? ["map", "quota", "fleet", "queue", "costs"] : ["map", "quota"]);
 
-export type AdminTab = "ops" | "users" | "tools" | "budgets" | "alerts" | "audit" | "webhooks" | "versions" | "hub";
+export type AdminTab = "ops" | "users" | "policy" | "tools" | "budgets" | "alerts" | "audit" | "webhooks" | "versions" | "hub";
 /** Quản trị: one entry, a tab per job of the hub admin. */
 export function adminTabs(caps: WebCaps): AdminTab[] {
   const tabs: AdminTab[] = ["ops"];
   if (caps.users) tabs.push("users");
-  tabs.push("tools", "budgets");
+  tabs.push("policy", "tools", "budgets");
   if (caps.alerts) tabs.push("alerts");
   tabs.push("audit");
   if (caps.webhooks) tabs.push("webhooks");

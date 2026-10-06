@@ -686,9 +686,23 @@ export const vi = {
   /** Tabs of one menu entry (roadmap 49b). */
   sections: {
     tabs: "Các phần của trang",
-    settings: { policy: "Chốt & chính sách", tools: "Tool", context: "Context agent", leader: "Leader", members: "Thành viên", systems: "Hệ thống" },
+    settings: { policy: "Quy trình", agent: "Agent", tools: "Tool", context: "Context agent", leader: "Leader", members: "Thành viên", systems: "Hệ thống" },
     machines: { quota: "Quota", map: "Bản đồ agent", fleet: "Đội máy", queue: "Hàng đợi", costs: "Chi phí" },
-    admin: { ops: "Tổng quan vận hành", users: "Người dùng & quyền", tools: "Tool", budgets: "Ngân sách", alerts: "Cảnh báo", audit: "Nhật ký", webhooks: "Thông báo & webhook", versions: "Phiên bản app", hub: "Hub" },
+    admin: { ops: "Tổng quan vận hành", users: "Người dùng & quyền", policy: "Chính sách", tools: "Tool", budgets: "Ngân sách", alerts: "Cảnh báo", audit: "Nhật ký", webhooks: "Thông báo & webhook", versions: "Phiên bản app", hub: "Hub" },
+  },
+  settingsTidy: {
+    edit: "Sửa", close: "Đóng", openProcess: "Mở trang Quy trình", addModel: "Thêm model khác", learnMore: "Tìm hiểu thêm",
+    hubCeiling: "Bị trần chính sách của hub giới hạn", hubPolicy: "Trần áp dụng cho mọi dự án",
+    modelsByProcess: "model theo Quy trình",
+    autonomy: { read: "Xem mà không thay đổi", propose: "Đề xuất để người duyệt", edit: "Sửa file trong worktree", full: "Sửa file và chạy lệnh" },
+    summary: {
+      policy: "Xem các bước, chốt duyệt và model của quy trình dự án.",
+      tools: "Chọn tool và phiên bản được dùng trong dự án.",
+      context: "Chọn tài liệu và quy tắc đưa vào context của agent.",
+      leader: "Đặt lệnh, mức tự chạy và model chat cho leader.",
+      members: "Quản lý thành viên và quyền của dự án.",
+      systems: "Sắp xếp dự án vào hệ thống.",
+    },
   },
   taskStatus: {
     todo: "Chưa làm",
@@ -2635,7 +2649,7 @@ export const vi = {
     title: "Agent",
     hint: "Model, mức tự chủ, mạng và MCP mà một run được dùng. Dự án chỉ siết thêm mặc định của hub, không nới được. Máy nhận ở heartbeat kế tiếp.",
     colScope: "Phạm vi",
-    colModels: "Model (cách nhau bằng dấu phẩy)",
+    colModels: "Model được phép",
     colAutonomy: "Mức tự chủ tối đa",
     autonomyMax: "Tự chủ tối đa: {level}",
     ceilingTitle: "Chính sách chỉ giới hạn, không cấp thêm quyền",
