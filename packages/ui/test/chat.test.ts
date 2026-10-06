@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { ChatAction, ChatMessage, Machine, ReportedProfile } from "@xdev-hive/core";
+import { HUB_SCOPE, type ChatAction, type ChatMessage, type Machine, type ReportedProfile } from "@xdev-hive/core";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import Markdown from "react-markdown";
@@ -88,6 +88,7 @@ describe("chat helpers", () => {
     ];
     assert.deepEqual(chatMachines(list, "app").map((m) => m.machine), ["mbp", "unknown"]);
     assert.deepEqual(chatMachines(list, "other").map((m) => m.machine), ["norepo"]);
+    assert.deepEqual(chatMachines([...list, machine("empty", { projects: [] })], HUB_SCOPE).map((m) => m.machine), ["mbp", "norepo", "unknown", "empty"], "a hub-wide leader needs no local repo, but still needs an online machine accepting runs with Claude");
   });
 
   it("starts a new thread in the app on this machine and its Claude plan, else on what the project saved (roadmap 48)", () => {

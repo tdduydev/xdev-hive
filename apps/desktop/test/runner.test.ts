@@ -6,7 +6,7 @@ import path from "node:path";
 import { RunStore } from "#desktop/main/runner/store.ts";
 import { writeSteer } from "#desktop/main/runner/steer.ts";
 import { after, describe, it } from "node:test";
-import { AGENT_TEMPLATES, ARTIFACT_DIR, HiveError, toolHash, type Actor, type AgentProfile, type HiveBackend, type RunnerSettings, type ToolEntry } from "@xdev-hive/core";
+import { AGENT_TEMPLATES, ARTIFACT_DIR, HiveError, toolHash, type Actor, type AgentProfile, type HiveBackend, type DesktopProject, type RunnerSettings, type ToolEntry } from "@xdev-hive/core";
 import { CODEGRAPH_MCP, CODEGRAPH_RUN_MCP, SHIM_NAME, SUPERPOWERS_PLUGIN, mcpLaunch, shimBinDir } from "#desktop/main/installer.ts";
 import { collectArtifacts } from "#desktop/main/runner/artifacts.ts";
 import { prepareCodegraph } from "#desktop/main/runner/codegraph.ts";
@@ -76,6 +76,7 @@ async function setup(
   /** Pass another setup's hive to simulate a second machine on the same hub. */
   machine: {
     name?: string;
+    projects?: (repo: string) => DesktopProject[];
     diffReview?: boolean;
     hive?: SqliteHive;
     report?: RunnerHost["report"];
@@ -111,7 +112,7 @@ async function setup(
     backend: () => (mode === "hub" ? (machine.wrap?.(hubLike) ?? hubLike) : hive),
     profiles: () => profiles.map((p) => ({ ...p, env: { ...p.env, FAKE_RECORD: record } })),
     settings: () => ({ worktreeRoot: null, maxParallel: 2, maxAttempts: 3, acceptHubRuns: false, ...settings }),
-    projects: () => [{ name: "demo", repo }],
+    projects: () => machine.projects?.(repo) ?? [{ name: "demo", repo }],
     mode: () => mode,
     machine: () => machine.name ?? "duy-mbp",
     env: () => ({ ...process.env, ...(machine.bin ? { PATH: `${machine.bin}${path.delimiter}${process.env.PATH ?? ""}` } : {}) }),
@@ -1507,11 +1508,12 @@ describe("Runner", () => {
       writeFileSync(file, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(FAKE)} "$@"\n`, { mode: 0o755 });
       return file;
     };
-    const leader = async () => {
+    const leader = async (projects?: (repo: string) => DesktopProject[]) => {
       const a = await setup([profile("claude-1", "claude", 10, "chat", { bin: fakeClaude() })], { acceptHubRuns: true }, "hub", {
         report: claudeReport,
         hub: () => ({ url: "https://hive.example.test", token: "hive_machine_token" }),
         wrap: withGrant,
+        projects,
       });
       await a.runner.heartbeat();
       const chats = () =>
@@ -1559,6 +1561,85 @@ describe("Runner", () => {
       const second = a.chats()[1]!;
       assert.equal(second.args[second.args.indexOf("--resume") + 1], "fake-session");
       assert.equal((await replyOf(a.hive, sent.thread.id)).text, "Answer: And T-2?");
+    });
+
+    it("runs the hub-wide leader outside repos, adds all local repos, describes services and resumes there", async () => {
+      const site = tmp("site repo");
+      const a = await leader((repo) => [{ name: "demo", repo }, { name: "site", repo: site }]);
+      await a.hive.call("tasks.create", { id: "site-1", project: "site", title: "Site" }, admin);
+      await a.hive.call("tasks.create", { id: "remote-1", project: "remote", title: "Remote service" }, admin);
+      const sent = await a.hive.call("chat.send", { project: "*", machineId: a.machineId, text: "Coordinate every service" }, admin);
+      await a.runner.pollChats();
+      await a.runner.settleChats();
+      assert.equal((await replyOf(a.hive, sent.thread.id)).status, "done");
+      const [call] = a.chats();
+      assert.equal(call!.cwd, realpathSync(path.join(a.dataDir, "chat-hub")));
+      assert.equal(existsSync(path.join(call!.cwd, ".git")), false);
+      const start = call!.args.indexOf("--add-dir");
+      assert.deepEqual(call!.args.slice(start + 1, call!.args.indexOf("--append-system-prompt")), [a.repo, site]);
+      const brief = call!.args[call!.args.indexOf("--append-system-prompt") + 1];
+      assert.match(brief, /hub-wide leader.*hub admin duy/);
+      assert.match(brief, /project_list and alert_list first/);
+      assert.match(brief, /always name project/);
+      assert.ok(brief.includes('"project":"remote"'), brief);
+      assert.ok(brief.includes('"machines":["duy-mbp"]'), brief);
+      assert.ok(brief.includes(site), brief);
+      const settings = JSON.parse(call!.args[call!.args.indexOf("--settings") + 1]);
+      assert.deepEqual(settings.permissions.deny, ["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+      assert.ok(settings.permissions.allow.includes(`Bash(git -C '${site}' status:*)`), "git names its repo without granting cd or command chains");
+      const headers = JSON.parse(call!.mcp).mcpServers["xdev-hive"].headers;
+      assert.equal(headers.authorization, "Bearer hivechat_test");
+      assert.equal(headers["x-hive-project"], "*");
+      await a.hive.call("chat.send", { project: "*", threadId: sent.thread.id, text: "Continue" }, admin);
+      await a.runner.pollChats();
+      await a.runner.settleChats();
+      assert.equal(a.chats()[1]!.cwd, call!.cwd);
+      assert.equal(a.chats()[1]!.args.at(-1), "fake-session");
+      assert.deepEqual(readdirSync(path.join(a.dataDir, "runs")).filter((f) => f.startsWith("chat-")), []);
+    });
+
+    it("adds hub attachments alongside repos and uses only the hub's saved commands", async () => {
+      const a = await leader();
+      await a.hive.call("chat.setCommands", { project: "demo", commands: ["git status"] }, admin);
+      await a.hive.call("chat.setCommands", { project: "*", commands: ["git log"] }, admin);
+      const file = a.hive.putChatFile({ project: "*", name: "notes.txt", bytes: new TextEncoder().encode("Hub notes") }, admin);
+      // This test's download stays in memory; no request is sent to hive.example.test.
+      const b = await setup([profile("claude-1", "claude", 10, "chat", { bin: fakeClaude() })], { acceptHubRuns: true }, "hub", {
+        hive: a.hive,
+        report: claudeReport,
+        hub: () => ({ url: "https://hive.example.test", token: "hive_machine_token" }),
+        wrap: withGrant,
+        download: async (_url, token) => {
+          assert.equal(token, "hivechat_test");
+          return new TextEncoder().encode("Hub notes");
+        },
+      });
+      await b.runner.heartbeat();
+      const sent = await b.hive.call("chat.send", { project: "*", machineId: a.machineId, text: "Read the notes", files: [file.id] }, admin);
+      await b.runner.pollChats();
+      await b.runner.settleChats();
+      assert.equal((await replyOf(b.hive, sent.thread.id)).status, "done");
+      const call = readFileSync(b.record, "utf8").trim().split("\n").map((line) => JSON.parse(line) as Record<string, any>).find((r) => typeof r.chat === "string")!;
+      const at = call.args.indexOf("--add-dir");
+      const dirs = call.args.slice(at + 1, call.args.indexOf("--append-system-prompt"));
+      assert.deepEqual(dirs, [path.join(b.dataDir, "runs", `chat-${sent.reply.id}-files`), b.repo]);
+      assert.deepEqual(call.files, { "notes.txt": "Hub notes" });
+      assert.equal(existsSync(dirs[0]!), false, "attachments removed when the reply ends");
+      assert.equal(existsSync(b.repo), true, "the repo is kept");
+      assert.deepEqual(JSON.parse(call.args[call.args.indexOf("--settings") + 1]).permissions.allow, ["mcp__xdev-hive", `Bash(git -C '${b.repo}' log:*)`], "the service's commands are not inherited by the hub thread");
+    });
+
+    it("writes a hub-wide reply on a machine with no local repos", async () => {
+      const a = await leader(() => []);
+      const sent = await a.hive.call("chat.send", { project: "*", machineId: a.machineId, text: "Read the hub" }, admin);
+      await a.runner.pollChats();
+      await a.runner.settleChats();
+      assert.equal((await replyOf(a.hive, sent.thread.id)).status, "done");
+      const [call] = a.chats();
+      assert.equal(call!.cwd, realpathSync(path.join(a.dataDir, "chat-hub")));
+      assert.ok(!call!.args.includes("--add-dir"));
+      const settings = JSON.parse(call!.args[call!.args.indexOf("--settings") + 1]);
+      assert.ok(settings.permissions.deny.includes("Bash"));
     });
 
     it("stops writing when the reply is cancelled on the web, and keeps what it wrote", async () => {

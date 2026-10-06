@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, BookMarked, Bot, Check, CheckCheck, MessageSquarePlus, Pencil, RotateCcw, Search, SendHorizontal, Settings2, Square, Trash2, X } from "lucide-react";
 import { cn } from "cn";
-import { CHAT_EFFORTS, CHAT_MODEL_ALIASES, policySummary, type AgentPolicy, type ChatAction, type ChatEffort, type ChatMessage, type ChatThread } from "@xdev-hive/core";
+import { CHAT_EFFORTS, CHAT_MODEL_ALIASES, HUB_SCOPE, policySummary, type AgentPolicy, type ChatAction, type ChatEffort, type ChatMessage, type ChatThread } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card } from "@xdev-hive/ui/components/ui/card";
 import { Input } from "@xdev-hive/ui/components/ui/input";
@@ -33,7 +33,7 @@ import {
   withAction,
 } from "#ui/lib/chat.ts";
 import { requestErrorText, runLabel } from "#ui/lib/runs.ts";
-import { canEditChatSettings } from "#ui/lib/permission-controls.ts";
+import { canEditChatSettings, canUseHubChat } from "#ui/lib/permission-controls.ts";
 import { scopeFilter, scopeId, scopeKey, scopeProject } from "#ui/lib/scope.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 
@@ -64,7 +64,7 @@ function useChatMachines(deps: unknown[]) {
 }
 
 export function ChatPage() {
-  const { client, scope, projects } = useHive();
+  const { client, scope, projects, me } = useHive();
   const t = useT();
   const allow = useCan();
   const project = scopeProject(scope);
@@ -105,7 +105,8 @@ export function ChatPage() {
     if (newWork) setOpenState({ kind: "new" });
   }, [newWork, shown]);
   // A system's chats are each with one of its projects' leaders.
-  const managed = (project ? [project] : scope.kind === "system" ? scope.projects : projects).filter((p) => allow(p, "chatUse"));
+  const managedServices = (project ? [project] : scope.kind === "system" ? scope.projects : projects).filter((p) => allow(p, "chatUse"));
+  const managed = canUseHubChat(me) ? [HUB_SCOPE, ...managedServices] : managedServices;
   const [guideOpen, setGuideOpen] = useState(false);
   const local = useLocalChat();
 
@@ -193,7 +194,7 @@ function ThreadItem({ thread: th, showProject, selected, onOpen }: { thread: Cha
           ) : null}
         </span>
         <span className="flex flex-wrap gap-x-2 text-xs text-muted-foreground">
-          {showProject ? <span className="font-mono">{th.project}</span> : null}
+          {showProject ? <span className="font-mono">{th.project === HUB_SCOPE ? t("chat.hubScope") : th.project}</span> : null}
           <span className="font-mono">{th.machine}</span>
           <span>{formatTime(th.updatedAt)}</span>
         </span>
@@ -205,8 +206,10 @@ function ThreadItem({ thread: th, showProject, selected, onOpen }: { thread: Cha
 function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: string[]; defaultProject: string | null; onBack: () => void; onStarted: (id: number) => void }) {
   const { client, me } = useHive();
   const t = useT();
-  const [project, setProject] = useState(defaultProject && projects.includes(defaultProject) ? defaultProject : (projects[0] ?? ""));
+  const [chosenProject, setProject] = useState(defaultProject && projects.includes(defaultProject) ? defaultProject : (projects[0] ?? ""));
+  const project = projects.includes(chosenProject) ? chosenProject : defaultProject && projects.includes(defaultProject) ? defaultProject : (projects[0] ?? "");
   const local = useLocalChat();
+  const projectLabel = project === HUB_SCOPE ? t("chat.hubScope") : project;
   const [bumped, setBumped] = useState(0);
   const machines = useChatMachines([bumped]);
   const fit = chatMachines(machines.data ?? [], project);
@@ -298,11 +301,11 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
       >
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="chat-project">{t("chat.project")}</Label>
+            <Label htmlFor="chat-project">{t(projects.includes(HUB_SCOPE) ? "chat.scope" : "chat.project")}</Label>
             <NativeSelect id="chat-project" size="sm" className="w-full" value={project} onChange={(e) => (setProject(e.target.value), setTouched(false))}>
               {projects.map((p) => (
                 <NativeSelectOption key={p} value={p}>
-                  {p}
+                  {p === HUB_SCOPE ? t("chat.hubScope") : p}
                 </NativeSelectOption>
               ))}
             </NativeSelect>
@@ -330,6 +333,7 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
             </NativeSelect>
           </div>
         </div>
+        {project === HUB_SCOPE ? <Notice tone="info">{t("chat.hubHint")}</Notice> : null}
         <div className="grid gap-3 sm:grid-cols-3">
           <ModelFields model={model} effort={effort} onModel={(v) => (setModel(v), setSaved(false))} onEffort={(v) => (setEffort(v), setSaved(false))} idPrefix="chat-new" />
           {canEditChatSettings(me, project) ? (
@@ -339,7 +343,7 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
                 variant="outline"
                 type="button"
                 disabled={saving.busy}
-                title={t("chat.saveDefaultsHint", { project })}
+                title={t("chat.saveDefaultsHint", { project: projectLabel })}
                 onClick={() =>
                   void saving.run(async () => {
                     await client.call("chat.setDefaults", {
@@ -358,7 +362,7 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
             </div>
           ) : null}
         </div>
-        {saved ? <Notice tone="ok">{t("chat.defaultsSaved", { project })}</Notice> : null}
+        {saved ? <Notice tone="ok">{t("chat.defaultsSaved", { project: projectLabel })}</Notice> : null}
         <ErrorNote error={saving.error} />
         <ErrorNote error={machines.error} />
         {hubOff && here ? (
@@ -378,9 +382,9 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
         ) : null}
         <ErrorNote error={enabling.error} />
         {!local && !hubOff && here && machines.data && fit.length > 0 && !fit.some((m) => m.machine === here) ? (
-          <Notice tone="info">{t("chat.hereNotFit", { machine: here, project })}</Notice>
+          <Notice tone="info">{t(project === HUB_SCOPE ? "chat.hubHereNotFit" : "chat.hereNotFit", { machine: here, project })}</Notice>
         ) : null}
-        {machines.data && !fit.length ? <Notice tone="info">{t(local ? "chat.noMachineLocal" : "chat.noMachine", { project })}</Notice> : null}
+        {machines.data && !fit.length ? <Notice tone="info">{t(local ? "chat.noMachineLocal" : project === HUB_SCOPE ? "chat.hubNoMachine" : "chat.noMachine", { project })}</Notice> : null}
         <Textarea
           rows={4}
           maxLength={MAX_TEXT}
@@ -412,7 +416,7 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
 }
 
 function Conversation({ threadId, onBack, onChanged, onDeleted }: { threadId: number; onBack: () => void; onChanged: () => void; onDeleted: () => void }) {
-  const { client } = useHive();
+  const { client, me } = useHive();
   const t = useT();
   const allow = useCan();
   const [thread, setThread] = useState<ChatThread | null>(null);
@@ -443,13 +447,13 @@ function Conversation({ threadId, onBack, onChanged, onDeleted }: { threadId: nu
   }, [client, threadId, tick, bump]);
   // A reply that ended, or an action confirmed, may have made tasks: their ids become links.
   const ended = messages.filter((m) => m.status === "done").length + messages.flatMap((m) => m.actions).filter((a) => a.status === "done").length;
-  const tasks = useQuery(async () => (thread ? client.call("tasks.list", { project: thread.project }) : []), [client, thread?.project, ended]);
+  const tasks = useQuery(async () => (thread ? client.call("tasks.list", thread.project === HUB_SCOPE ? {} : { project: thread.project }) : []), [client, thread?.project, ended]);
   const taskIds = (tasks.data ?? []).map((task) => task.id);
   const machines = useChatMachines([live ? 0 : tick]);
   const machine = thread ? machines.data?.find((m) => m.id === thread.machineId) : undefined;
-  const manage = thread ? allow(thread.project, "chatUse") : false;
+  const manage = thread ? thread.project === HUB_SCOPE ? canUseHubChat(me) : allow(thread.project, "chatUse") : false;
   // What the leader proposes to do is approved apart from chatting (roadmap 25).
-  const approve = thread ? allow(thread.project, "chatApprove") : false;
+  const approve = thread ? thread.project === HUB_SCOPE ? canUseHubChat(me) : allow(thread.project, "chatApprove") : false;
   const refresh = () => (setBump((n) => n + 1), onChanged());
 
   // Follows the reply as it grows, unless the reader scrolled up to read something else.
@@ -494,7 +498,7 @@ function Conversation({ threadId, onBack, onChanged, onDeleted }: { threadId: nu
           )}
           {thread ? (
             <p className="text-xs text-muted-foreground wrap-anywhere">
-              <span className="font-mono">{thread.project}</span> · <span className="font-mono">{thread.machine}</span> · {thread.profileId ?? t("chat.anyPlan")} ·{" "}
+              <span className="font-mono">{thread.project === HUB_SCOPE ? t("chat.hubScope") : thread.project}</span> · <span className="font-mono">{thread.machine}</span> · {thread.profileId ?? t("chat.anyPlan")} ·{" "}
               {thread.model ?? t("chat.modelDefault")}
               {thread.effort ? ` (${t(`effort.${thread.effort}`)})` : ""} ·{" "}
               {t("chat.startedBy", { who: thread.createdBy, time: formatTime(thread.createdAt) })}
@@ -896,6 +900,7 @@ export function ActionItem({ action: a, taskIds, manage, onDecided }: { action: 
     <li className="flex flex-col gap-1.5 rounded-lg border bg-muted/30 p-2.5 text-xs" data-action-status={a.status}>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <Badge tone={ACTION_TONE[a.status] ?? "neutral"}>{t(`actionStatus.${a.status}`)}</Badge>
+        <Badge tone="neutral" className="h-auto max-w-full whitespace-normal"><span className="wrap-anywhere" data-action-project={a.project}>{a.project === HUB_SCOPE ? t("chat.actionHub") : t("chat.actionService", { project: a.project })}</span></Badge>
         {/* Roadmap 29c: the project lets its leader run this kind alone, as whoever sent the message. */}
         {a.auto ? <Badge tone="info">{t("chat.autoRan", { who: a.decidedBy ?? "?" })}</Badge> : null}
         <span className="min-w-0 text-sm wrap-anywhere">
