@@ -68,13 +68,13 @@ function stateOf(m: Memory, t: TFunction): { label: string; kind: ChipKind } | n
   return null;
 }
 
-export function MemoryPage() {
+export function MemoryPage({ pendingOnly = false }: { pendingOnly?: boolean }) {
   const { client, scope, projects, systems } = useHive();
   const t = useT();
   const allow = useCan();
   const [query, setQuery] = useState("");
   const [submitted, setSubmitted] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Filter>(pendingOnly ? "pending" : "all");
   const [selected, setSelected] = useState<number | null>(null);
   const mobileDetail = useMobileDetail("memory");
   const pick = (id: number | null) => {
@@ -163,7 +163,7 @@ export function MemoryPage() {
             <FilterChips
               value={filter}
               onChange={setFilter}
-              options={FILTERS.map(([id, test]) => ({ id, label: t(`memory.filter.${id}`), count: rows.filter(test).length }))}
+              options={(pendingOnly ? FILTERS.filter(([id]) => id === "pending") : FILTERS).map(([id, test]) => ({ id, label: t(`memory.filter.${id}`), count: rows.filter(test).length }))}
             />
             {search.data?.mode === "hybrid" ? (
               <p className={cn("m-0 text-[11px]/4", search.data.lastError ? "text-warning" : "text-fg-muted")}>

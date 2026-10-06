@@ -24,12 +24,12 @@ export type WebPage =
 /**
  * The menu in the order of the work: what waits for you, then the work from a feature to its runs, then what agents
  * read, then the project's settings, the machines and the hub's administration, each out of the main path.
- * Đề xuất stays last under Kiến thức until 49f moves proposals into tabs of Tài liệu and Skill.
+ * Knowledge proposals live on their content pages (49f).
  */
 export const WEB_MENU: Array<{ label: MessageKey | null; ids: WebPage[] }> = [
   { label: null, ids: ["today", "chat"] },
   { label: "nav.groupDoing", ids: ["graph", "specs", "tasks", "runs"] },
-  { label: "nav.groupKnowledge", ids: ["docs", "skills", "memory", "proposals"] },
+  { label: "nav.groupKnowledge", ids: ["docs", "skills", "memory"] },
   { label: "nav.groupProject", ids: ["settings"] },
   { label: "nav.groupMachines", ids: ["machines"] },
   { label: "nav.groupHubAdmin", ids: ["admin"] },
@@ -110,7 +110,7 @@ export const pickTab = <T extends string>(tabs: readonly T[], wanted: string | n
 /** The entries of the web menu this person sees (the hub's web: `me.mode` is "hub"). */
 export function webPages(me: Me, projects: string[], caps: WebCaps): Set<WebPage> {
   const admin = isHubAdmin(me);
-  const ids = new Set<WebPage>(["today", "specs", "tasks", "docs", "skills", "memory", "proposals"]);
+  const ids = new Set<WebPage>(["today", "specs", "tasks", "docs", "skills", "memory"]);
   const viewer = me.role === "admin" || projects.some((p) => may(me, p, "view"));
   if (viewer) ids.add("graph");
   if (me.mode === "hub") {

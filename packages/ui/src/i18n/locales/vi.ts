@@ -2,6 +2,38 @@
 import type { KeyPaths, Translation } from "#ui/i18n/types.ts";
 
 export const vi = {
+  cleanup: {
+    errors: {
+      expired: "Máy không báo tiến độ trong 15 phút.",
+      disabled: "Đã tắt dọn memory cho dự án.",
+      stopped: "Lượt dọn đã dừng.",
+      timeout: "Lượt dọn quá 10 phút.",
+      result: "Kết quả AI không hợp lệ; chưa tạo đề xuất.",
+      model: "Chính sách dự án không cho phép model Haiku.",
+      cli: "Không tìm thấy Claude CLI trên máy.",
+      hub: "Hub chưa nhận kết quả dọn memory.",
+      failed: "Lượt AI không hoàn tất; kiểm tra máy và gói Claude.",
+      human: "Chỉ người dùng được bật lịch và duyệt đề xuất dọn memory.",
+    },
+    title: "Dọn memory định kỳ",
+    hint: "Bật theo dự án. Hub xếp một lượt AI mỗi tuần; máy nhận run dùng model Haiku, chỉ đọc memory của dự án qua MCP và tạo đề xuất gộp/bỏ. Bạn duyệt trước khi thay đổi memory. Cần máy có gói Claude đã đăng nhập và bật nhận run từ hub.",
+    proposals: "Đề xuất dọn memory",
+    reviewHint: "Đối chiếu các mục gốc và lý do trước khi duyệt. Gộp giữ lại mục gốc dưới dạng đã thay thế; bỏ chỉ xoá khi bạn duyệt.",
+    none: "Không có đề xuất dọn memory chờ duyệt.",
+    merge: "Gộp memory",
+    remove: "Bỏ memory",
+    source: "Lượt dọn memory #{id}",
+    conflict: "Memory đã đổi kể từ lúc AI đọc. Đề xuất này không được áp dụng.",
+    run: "Lượt #{id} · {status} · {time}",
+    runStatus: { queued: "Đang xếp hàng", running: "Đang đọc", done: "Đã xong", failed: "Không hoàn tất" },
+  },
+  knowledge: {
+    overridesBy: "Dự án dùng skill riêng cùng tên",
+    content: "Nội dung",
+    pending: "Chờ duyệt",
+    applies: "Lúc áp dụng",
+    modified: "Lần sửa cuối",
+  },
   assignment: {
     title: "Agent phụ trách", agent: "Agent", any: "Gói nào cũng được", unassigned: "Chưa gán", all: "Tất cả agent",
     byAgent: "Theo agent", machine: "Máy", profile: "Gói", choose: "Chọn máy", assign: "Gán cho agent", remove: "Bỏ gán", retry: "Chạy lại",
@@ -425,7 +457,8 @@ export const vi = {
     ago: { now: "vừa xong", m: "{n} ph", h: "{n} giờ", d: "{n} ngày" },
     agoLong: "{when} trước",
     shared: "Chung",
-    tag: { agentHold: "Agent tạm ngừng", ci: "CI lỗi", proposal: "Đề xuất", review: "Chờ review", memory: "Memory", conflict: "Mâu thuẫn", machine: "Máy này", request: "Yêu cầu cài", alert: "Cảnh báo", gate: "Chốt SDLC", leader: "Leader đề xuất" },
+    tag: {
+      cleanup: "Dọn memory", agentHold: "Agent tạm ngừng", ci: "CI lỗi", proposal: "Đề xuất", review: "Chờ review", memory: "Memory", conflict: "Mâu thuẫn", machine: "Máy này", request: "Yêu cầu cài", alert: "Cảnh báo", gate: "Chốt SDLC", leader: "Leader đề xuất" },
     ci: {
       title: "{mr} · pipeline lỗi ở {jobs}",
       titleNoJobs: "{mr} · pipeline lỗi",

@@ -1,3 +1,4 @@
+import { cleanupSuggestionSchema, MEMORY_CLEANUP_ERRORS, type MemoryCleanupSetting, type MemoryCleanupRun, type MemoryCleanupProposal } from "#core/memory-cleanup.ts";
 import { z } from "zod";
 import { HiveError } from "./errors.ts";
 import { agentPolicyPartSchema, agentPolicySchema, type AgentPolicy, type AgentPolicyView } from "./agent-policy.ts";
@@ -304,6 +305,15 @@ export const schemas = {
   "proposals.reject": z.object({ id, note: z.string().max(500).optional() }),
 
   /** A project's memory plus the team-wide (shared) entries; no project: shared entries only; anyProject: everything. */
+  "memory.cleanupSettings": z.object({ project: project.optional() }),
+  "memory.setCleanup": z.object({ project, enabled: z.boolean() }),
+  "memory.cleanupRuns": z.object({ project: project.optional() }),
+  "memory.cleanupTake": z.object({ projects: z.array(project).max(500) }),
+  "memory.cleanupRead": z.object({ id, offset: z.number().int().min(0).default(0) }),
+  "memory.cleanupProgress": z.object({ id }),
+  "memory.cleanupFinish": z.object({ id, suggestions: z.array(cleanupSuggestionSchema).max(30).default([]), profile: z.string().max(40).nullable().default(null), model: z.string().max(100).regex(/^(haiku|claude-haiku-[a-zA-Z0-9.-]+)$/).default("haiku"), costUsd: z.number().min(0).max(10000).nullable().default(null), error: z.enum(MEMORY_CLEANUP_ERRORS).optional() }),
+  "memory.cleanupProposals": z.object({ project: project.optional() }),
+  "memory.decideCleanup": z.object({ id, accept: z.boolean() }),
   "memory.search": z.object({
     project: project.optional(),
     projects: projectList,
@@ -938,6 +948,15 @@ export interface MethodOutput {
   "proposals.create": Proposal;
   "proposals.approve": Proposal;
   "proposals.reject": Proposal;
+  "memory.cleanupSettings": MemoryCleanupSetting[];
+  "memory.setCleanup": MemoryCleanupSetting;
+  "memory.cleanupRuns": MemoryCleanupRun[];
+  "memory.cleanupTake": MemoryCleanupRun | null;
+  "memory.cleanupRead": { entries: Memory[]; next: number | null };
+  "memory.cleanupProgress": { ok: boolean };
+  "memory.cleanupFinish": { ok: boolean };
+  "memory.cleanupProposals": MemoryCleanupProposal[];
+  "memory.decideCleanup": MemoryCleanupProposal;
   "memory.search": Memory[];
   "memory.list": Memory[];
   "memory.write": Memory;
@@ -1121,6 +1140,15 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "proposals.create": "agent",
   "proposals.approve": "agent",
   "proposals.reject": "agent",
+  "memory.cleanupSettings": "viewer",
+  "memory.setCleanup": "agent",
+  "memory.cleanupRuns": "viewer",
+  "memory.cleanupTake": "agent",
+  "memory.cleanupRead": "agent",
+  "memory.cleanupProgress": "agent",
+  "memory.cleanupFinish": "agent",
+  "memory.cleanupProposals": "viewer",
+  "memory.decideCleanup": "agent",
   "memory.search": "viewer",
   "memory.list": "viewer",
   "memory.write": "agent",

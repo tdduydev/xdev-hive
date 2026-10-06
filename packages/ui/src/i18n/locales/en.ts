@@ -1,6 +1,38 @@
 import type { Catalog } from "./vi.ts";
 
 export const en: Catalog = {
+  cleanup: {
+    errors: {
+      expired: "The machine did not report progress for 15 minutes.",
+      disabled: "Memory cleanup was disabled for this project.",
+      stopped: "The cleanup run was stopped.",
+      timeout: "The cleanup run exceeded 10 minutes.",
+      result: "Invalid AI result; no proposals were created.",
+      model: "Project policy does not allow a Haiku model.",
+      cli: "Claude CLI was not found on the machine.",
+      hub: "The hub could not accept the cleanup result.",
+      failed: "The AI run did not complete; check the machine and Claude profile.",
+      human: "Only a person can enable the schedule and decide memory cleanup proposals.",
+    },
+    title: "Periodic memory cleanup",
+    hint: "Enable per project. Each week the hub queues an AI run on a machine using Haiku. It reads only project memory via MCP and proposes merges/removals for your approval. Requires a signed-in Claude profile and a machine accepting hub runs.",
+    proposals: "Memory cleanup proposals",
+    reviewHint: "Compare the original entries and reasons before approving. Merging keeps originals as superseded; removal only deletes after approval.",
+    none: "No memory cleanup proposals awaiting review.",
+    merge: "Merge memory",
+    remove: "Remove memory",
+    source: "Memory cleanup run #{id}",
+    conflict: "Memory changed since the AI read it. This proposal was not applied.",
+    run: "Run #{id} · {status} · {time}",
+    runStatus: { queued: "Queued", running: "Reading", done: "Done", failed: "Failed" },
+  },
+  knowledge: {
+    overridesBy: "Projects using their own skill of this name",
+    content: "Content",
+    pending: "Pending review",
+    applies: "When to apply",
+    modified: "Last modified",
+  },
   assignment: {
     title: "Assigned agent", agent: "Agent", any: "Any profile", unassigned: "Unassigned", all: "All agents",
     byAgent: "By agent", machine: "Machine", profile: "Profile", choose: "Choose a machine", assign: "Assign to agent", remove: "Unassign", retry: "Retry",
@@ -423,7 +455,8 @@ export const en: Catalog = {
     ago: { now: "just now", m: "{n}m", h: "{n}h", d: "{n}d" },
     agoLong: "{when} ago",
     shared: "Shared",
-    tag: { agentHold: "Agent paused", ci: "CI failed", proposal: "Proposal", review: "Needs review", memory: "Memory", conflict: "Conflict", machine: "This machine", request: "Install request", alert: "Alert", gate: "SDLC gate", leader: "Leader proposal" },
+    tag: {
+      cleanup: "Memory cleanup", agentHold: "Agent paused", ci: "CI failed", proposal: "Proposal", review: "Needs review", memory: "Memory", conflict: "Conflict", machine: "This machine", request: "Install request", alert: "Alert", gate: "SDLC gate", leader: "Leader proposal" },
     ci: {
       title: "{mr} · pipeline failed in {jobs}",
       titleNoJobs: "{mr} · pipeline failed",

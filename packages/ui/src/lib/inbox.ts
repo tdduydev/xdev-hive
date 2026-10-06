@@ -1,9 +1,9 @@
 // "Hôm nay": what needs the person, gathered from what the hub and this machine already know. Each source becomes
 // items with a stable key, so "seen" and "done" survive reloads (kept in localStorage, per device).
-import type { AgentRun, ChatAction, HubAlert, MachineCommand, Memory, Permission, Proposal, SdlcGateRecord, SetupItem, Task } from "@xdev-hive/core";
+import type { MemoryCleanupProposal, AgentRun, ChatAction, HubAlert, MachineCommand, Memory, Permission, Proposal, SdlcGateRecord, SetupItem, Task } from "@xdev-hive/core";
 import { approvalOf } from "#ui/lib/permissions.ts";
 
-export type InboxKind = "agentHold" | "ci" | "proposal" | "review" | "memory" | "conflict" | "machine" | "request" | "alert" | "gate" | "leader";
+export type InboxKind = "cleanup" | "agentHold" | "ci" | "proposal" | "review" | "memory" | "conflict" | "machine" | "request" | "alert" | "gate" | "leader";
 export type InboxTone = "danger" | "warning" | "info";
 
 interface Base {
@@ -17,6 +17,7 @@ interface Base {
 
 export type InboxItem = Base &
   (
+    | { kind: "cleanup"; proposal: MemoryCleanupProposal }
     | { kind: "agentHold"; task: Task }
     | { kind: "ci"; run: AgentRun }
     | { kind: "proposal"; proposal: Proposal }
@@ -32,6 +33,7 @@ export type InboxItem = Base &
 
 export interface InboxSources {
   proposals?: Proposal[];
+  cleanup?: MemoryCleanupProposal[];
   reviewTasks?: Task[];
   assignedTasks?: Task[];
   principal?: string;
@@ -61,6 +63,7 @@ export interface InboxSources {
 const OPTIONAL_TOOLS = new Set(["cli:specify"]);
 
 const TONE: Record<InboxKind, InboxTone> = {
+  cleanup: "info",
   agentHold: "warning",
   ci: "danger",
   proposal: "info",
@@ -102,6 +105,11 @@ export function buildInbox(src: InboxSources): InboxItem[] {
   for (const p of src.proposals ?? []) {
     if (p.status !== "pending" || !can(docProject(p.docKey), approvalOf(p.docKey))) continue;
     items.push({ kind: "proposal", key: `proposal:${p.id}`, tone: TONE.proposal, at: p.createdAt, scope: p.docKey, proposal: p });
+  }
+
+  for (const p of src.cleanup ?? []) {
+    if (p.status !== "pending" || !can(p.project, "memoryApprove")) continue;
+    items.push({ kind: "cleanup", key: `cleanup:${p.id}`, tone: TONE.cleanup, at: p.createdAt, scope: p.project, proposal: p });
   }
 
   for (const task of src.reviewTasks ?? []) {
@@ -169,6 +177,7 @@ export function inboxProject(item: InboxItem): string | null {
       return item.run.project;
     case "proposal":
       return docProject(item.proposal.docKey);
+    case "cleanup": return item.proposal.project;
     case "review":
     case "agentHold":
       return item.task.project;
