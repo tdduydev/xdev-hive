@@ -13,6 +13,9 @@ export const GATE_MODES = ["human", "ai", "auto"] as const;
 export type GateMode = (typeof GATE_MODES)[number];
 
 export type GateModes = Record<SdlcGate, GateMode>;
+/** A new project's starting point; merge still gets a second check. */
+export const MAX_AUTOMATION_GATES: GateModes = Object.fromEntries(SDLC_GATES.map((g) => [g, g === "merge" ? "ai" : "auto"])) as GateModes;
+export const FAST_LANE_KINDS = ["docs", "small-fix", "test"] as const;
 
 /** Fix runs a flow queues by itself for one task before a person has to look (spec 34). */
 export const DEFAULT_MAX_FIX_ROUNDS = 2;
@@ -27,6 +30,8 @@ export interface SdlcProjectSettings {
   maxFixRounds?: number;
   /** Flow tasks running at once when dispatch is not "human"; left out: no limit. */
   maxParallel?: number;
+  /** Small work may enter at dispatch instead of going through Spec Kit. */
+  fastLaneKinds?: Array<(typeof FAST_LANE_KINDS)[number]>;
 }
 
 export interface SdlcPolicySettings {
@@ -56,7 +61,7 @@ export function effectiveGates(policy: SdlcPolicySettings, project: string): Gat
 /** The settings as the pages read them: the ceiling filled in, and each project's choice next to what applies. */
 export interface SdlcPolicyView {
   ceiling: GateModes;
-  projects: Record<string, { gates: Partial<GateModes>; effective: GateModes; maxFixRounds: number; maxParallel: number | null }>;
+  projects: Record<string, { gates: Partial<GateModes>; effective: GateModes; maxFixRounds: number; maxParallel: number | null; fastLaneKinds: Array<(typeof FAST_LANE_KINDS)[number]> }>;
   updatedAt: string | null;
   updatedBy: string | null;
 }
@@ -68,7 +73,7 @@ export function sdlcPolicyView(policy: SdlcPolicySettings, projects: string[]): 
     projects: Object.fromEntries(
       names.map((p) => {
         const own = policy.projects[p];
-        return [p, { gates: own?.gates ?? {}, effective: effectiveGates(policy, p), maxFixRounds: own?.maxFixRounds ?? DEFAULT_MAX_FIX_ROUNDS, maxParallel: own?.maxParallel ?? null }];
+        return [p, { gates: own?.gates ?? {}, effective: effectiveGates(policy, p), maxFixRounds: own?.maxFixRounds ?? DEFAULT_MAX_FIX_ROUNDS, maxParallel: own?.maxParallel ?? null, fastLaneKinds: own?.fastLaneKinds ?? [] }];
       }),
     ),
     updatedAt: policy.updatedAt,
@@ -93,6 +98,8 @@ export interface SdlcGateRecord {
   note: string | null;
   createdAt: string;
   decidedAt: string | null;
+  /** Included when querying dated history; false if this task reached the same gate before. */
+  firstAttempt?: boolean;
 }
 
 // ── flows (roadmap 34b) ──────────────────────────────────────────────────────

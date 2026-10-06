@@ -21,6 +21,8 @@ export async function seed(base, admin) {
   await rpc(admin, "tasks.create", { id: "PAY-1", project: "payment", title: "Việc đầu tiên của payment" });
   await rpc(admin, "tasks.create", { id: "DEMO-1", project: "demo", title: "Việc đầu tiên của demo" });
   await rpc(admin, "tasks.create", { id: "LEDGER-1", project: "ledger", title: "Việc đầu tiên của ledger" });
+  // Existing flows in this fixture test the human baseline; newly created real projects start more automatic.
+  for (const project of ["payment", "demo", "ledger"]) await rpc(admin, "sdlc.setProject", { project, settings: null });
   await rpc(admin, "systems.save", { name: "ban-hang", projects: ["payment", "demo", "ledger"] });
 
   // A first sign-in asks for a new password: done here, so the page test signs in with the final one.

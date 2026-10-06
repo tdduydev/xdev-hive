@@ -1039,6 +1039,66 @@ async function main() {
     await tab.go("tasks?task=SPEC-E2E");
     await tab.waitFor("the flow waiting at its spec gate", () => document.querySelector('[data-flow="SPEC-E2E"]')?.getAttribute("data-flow-state") === "gate");
     await tab.shot(`${String(n).padStart(2, "0")}-sdlc-flow-gate`);
+    await step("pipeline", async () => {
+      await tab.go("settings?tab=sdlc&project=payment");
+      await tab.waitFor("legacy SDLC link redirected to pipeline", () => location.hash.startsWith("#/pipeline?") && !!document.querySelector('[data-pipeline-step="spec"]'));
+      const count = await tab.eval(() => document.querySelector('[data-pipeline-count="spec"]')?.textContent);
+      expect(/\b1\b/.test(count ?? ""), `Spec does not show one active flow: ${count}`);
+      const stepCount = await tab.eval(() => document.querySelectorAll("[data-pipeline-step]").length);
+      expect(stepCount === 10, `pipeline stages: ${stepCount}`);
+      if (mobile) {
+        const layout = await tab.eval(() => ({ vertical: !!document.querySelector("[data-pipeline-mobile]"), overflow: document.documentElement.scrollWidth > innerWidth }));
+        expect(layout.vertical && !layout.overflow, `pipeline mobile layout: ${JSON.stringify(layout)}`);
+      }
+      const gateCount = await tab.eval(() => document.querySelectorAll("[data-pipeline-gate]").length);
+      expect(gateCount === 7, `pipeline gates: ${gateCount}`);
+      await tab.shot(`${String(n).padStart(2, "0")}-pipeline-open`);
+      await tab.click('[data-pipeline-gate="review"]');
+      await tab.waitFor("Review gate editor", () => !!document.querySelector('[data-pipeline-editor] [data-pipeline-mode="ai"]'));
+      if (mobile) {
+        const targets = await tab.eval(() => [...document.querySelectorAll('[data-pipeline-editor] button')].filter((el) => el.getBoundingClientRect().width > 0).map((el) => ({ width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height })));
+        expect(targets.every((r) => r.width >= 44 && r.height >= 44), `pipeline editor touch targets: ${JSON.stringify(targets)}`);
+      }
+      await tab.shot(`${String(n).padStart(2, "0")}-pipeline-editor`);
+      await tab.click('[data-pipeline-editor] [data-pipeline-mode="ai"]');
+      await tab.click('[data-pipeline-save]');
+      await until("Review changed to AI check", async () => (await rpc("sdlc.get", {})).projects.payment?.effective.review === "ai");
+      await tab.click('[data-pipeline-preset="cautious"]');
+      await tab.waitFor("cautious preview", () => document.querySelectorAll('[data-pipeline-preview] [data-pipeline-change]').length === 7);
+      await tab.shot(`${String(n).padStart(2, "0")}-pipeline-preview`);
+      await tab.click('[data-pipeline-apply]');
+      await until("cautious preset saved", async () => {
+        const p = (await rpc("sdlc.get", {})).projects.payment;
+        return p?.effective.spec === "human" && p?.effective.review === "human" && p?.effective.merge === "human";
+      });
+      await tab.shot(`${String(n).padStart(2, "0")}-pipeline-saved`);
+      await tab.eval(() => { const picker = document.querySelector("[data-pipeline-feature]"); picker.value = "SPEC-E2E"; picker.dispatchEvent(new Event("change", { bubbles: true })); });
+      await tab.waitFor("feature highlighted at Spec", () => document.querySelector('[data-pipeline-step="spec"]')?.getAttribute("data-active") === "true");
+      await tab.click('[data-pipeline-count="spec"]');
+      await tab.waitFor("Spec count opens filtered features", () => location.hash.includes("pipelineStep=spec") && !!document.querySelector('[data-feature-column="spec"]'));
+      await tab.go("pipeline?project=payment");
+      await rpc("sdlc.setCeiling", { ceiling: { merge: "human" } });
+      // Reload policy on the page: the ceiling is edited separately by the hub admin.
+      await tab.go("tasks");
+      await tab.go("pipeline?project=payment");
+      await tab.click('[data-pipeline-gate="merge"]');
+      await tab.waitFor("Merge cannot exceed the ceiling", () => document.querySelector('[data-pipeline-editor] [data-pipeline-mode="auto"]')?.disabled && document.querySelector('[data-pipeline-editor] [data-pipeline-mode="ai"]')?.disabled);
+      await tab.shot(`${String(n).padStart(2, "0")}-pipeline-ceiling`);
+      await tab.key("Escape");
+      await tab.click('[data-pipeline-preset="fast"]');
+      await tab.waitFor("fast path preview", () => document.querySelectorAll("[data-pipeline-fast-kind]").length === 3);
+      await tab.click('[data-pipeline-fast-kind="test"]');
+      await tab.click('[data-pipeline-apply]');
+      await until("only chosen fast kinds saved", async () => {
+        const kinds = (await rpc("sdlc.get", {})).projects.payment?.fastLaneKinds ?? [];
+        return kinds.length === 2 && kinds.includes("docs") && kinds.includes("small-fix") && !kinds.includes("test");
+      });
+      await tab.shot(`${String(n).padStart(2, "0")}-pipeline-fast`);
+      await rpc("sdlc.setCeiling", { ceiling: {} });
+      await rpc("sdlc.setProject", { project: "payment", settings: null });
+      await tab.go("tasks?task=SPEC-E2E");
+      await tab.waitFor("the flow on Task after pipeline", () => !!document.querySelector('[data-flow="SPEC-E2E"]'));
+    });
     await tab.click('[data-flow="SPEC-E2E"] [data-gate-pass]');
     await tab.waitFor("the plan step running", () => document.querySelector('[data-flow="SPEC-E2E"]')?.getAttribute("data-flow-state") === "running");
     const [plan] = (await beat()).runRequests.filter((r) => r.taskId === "SPEC-E2E");

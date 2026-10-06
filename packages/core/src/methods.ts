@@ -16,7 +16,7 @@ import { SPEC_DIR, SPEC_FEATURES_MAX, SPEC_FILE_MAX, SPEC_STEPS, type SpecFeatur
 import { toolEntrySchema } from "./tools.ts";
 import { modelCellsSchema, modelProjectSchema, modelTableSchema, type ModelRouterSettings } from "./model-router.ts";
 import { TASK_KINDS, TASK_RISKS, TASK_SIZES } from "./task-classify.ts";
-import { GATE_STATUSES, gateModesSchema, MAX_FIX_ROUNDS, type SdlcFlow, type SdlcFlowTask, type SdlcGateRecord, type SdlcPolicyView } from "./sdlc.ts";
+import { FAST_LANE_KINDS, GATE_STATUSES, gateModesSchema, MAX_FIX_ROUNDS, type SdlcFlow, type SdlcFlowTask, type SdlcGateRecord, type SdlcPolicyView } from "./sdlc.ts";
 import {
   MEMORY_KINDS,
   MEMORY_STATUSES,
@@ -913,6 +913,7 @@ export const schemas = {
         gates: gateModesSchema,
         maxFixRounds: z.number().int().min(0).max(MAX_FIX_ROUNDS).optional(),
         maxParallel: z.number().int().min(1).max(20).nullable().optional(),
+        fastLaneKinds: z.array(z.enum(FAST_LANE_KINDS)).max(FAST_LANE_KINDS.length).optional(),
       })
       .nullable(),
   }),
@@ -937,9 +938,11 @@ export const schemas = {
   /** Tasks flows gave to agents (34c, 34d) and where each is: a flow's, one task's, or every one the caller sees. */
   "sdlc.flowTasks": z.object({ project: project.optional(), projects: projectList, flowTask: taskId.optional(), taskId: taskId.optional() }),
   /** Flows, the newest first: a project's or every project the caller sees. */
-  "sdlc.flows": z.object({ project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(200).default(50) }),
+  "sdlc.flows": z.object({ offset: z.number().int().min(0).default(0), project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(200).default(50) }),
   /** Gates reached, the newest first: a project's or every project the caller sees, those waiting for a person first. */
   "sdlc.gates": z.object({
+    beforeId: id.optional(),
+    since: z.iso.datetime().optional(),
     project: project.optional(),
     projects: projectList,
     taskId: taskId.optional(),
