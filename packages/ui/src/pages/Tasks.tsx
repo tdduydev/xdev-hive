@@ -7,6 +7,7 @@ import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { cn } from "cn";
 import { WORK_ROLES, MAX_CANDIDATES, TASK_STATUSES, type WorkRole, type PreferKind, type RunRequest, type Task, type TaskNote, type TaskStatus } from "@xdev-hive/core";
 import { CLASS_FIELDS, CLASS_VALUES, classInput, classSource, type ClassField } from "#ui/lib/task-class.ts";
+import { ListOrdered, Split, Sparkles } from "lucide-react";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
@@ -17,7 +18,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { TableBody, TableCell, TableHead, TableHeader } from "@xdev-hive/ui/components/ui/table";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "#ui/components/common.tsx";
-import { BatchSheet } from "#ui/components/AgentSheets.tsx";
+import { BatchSheet, PromptSheet, RolesSheet, SplitSheet } from "#ui/components/AgentSheets.tsx";
 import { BoardPage } from "#ui/pages/Board.tsx";
 import { Diff } from "#ui/components/Diff.tsx";
 import { ArtifactList } from "#ui/components/Artifacts.tsx";
@@ -46,6 +47,8 @@ const TONE_TEXT: Record<string, string> = {
 
 /** Machines take a request at their next heartbeat (30 s): follow it closely until one does. */
 const PENDING_MS = 3000;
+/** An agent splitting a job lists its parts within minutes: look again this often, so they show to be checked. */
+const OPEN_GROUP_MS = 5000;
 
 type View = "kanban" | "list" | "agent";
 // Each reader's own choice, in this browser only (roadmap 30a): Kanban unless they picked the list.
@@ -188,6 +191,28 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
       if (!next.delete(id)) next.add(id);
       return next;
     });
+  // A prompt makes a task and queues its run (roadmap 32b): whoever may do both, on the hub.
+  const prompters = hub ? (scope.kind === "system" ? scope.projects : projects).filter((p) => allow(p, "taskManage") && allow(p, "runDispatch")) : [];
+  const [prompting, setPrompting] = useState(false);
+  // A big job in parts (roadmap 31c): a new one, or one whose parts an agent listed, waiting for a person to check them.
+  const [splitting, setSplitting] = useState<number | "new" | null>(null);
+  const [splitRunning, setSplitRunning] = useState(false);
+  const jobsPoll = usePoll(splitRunning ? OPEN_GROUP_MS : null);
+  const jobs = useQuery(
+    async () => (prompters.length ? client.call("runs.groups", { ...scopeFilter(scope), limit: 30 }) : []),
+    [client, key, prompters.length, jobsPoll, list.data],
+  );
+  const mapGroups = (jobs.data ?? []).filter((g) => g.kind === "mapreduce" && !g.closedAt && prompters.includes(g.project));
+  useEffect(() => setSplitRunning(mapGroups.some((g) => g.phase === "split")), [jobs.data]);
+  const readyJobs = mapGroups.filter((g) => g.phase === "ready");
+  // A link from Đợt chạy (#/tasks?split=…) opens that group's parts.
+  const [splitParam, clearSplit] = useHashParam("split");
+  useEffect(() => {
+    if (splitParam) setSplitting(Number(splitParam) || null), clearSplit();
+  }, [splitParam, clearSplit]);
+  // A chain of roles on one task (roadmap 31d): from the one picked task, or from a task's panel.
+  const [chaining, setChaining] = useState<Task | null>(null);
+  const readyGroup = typeof splitting === "number" ? (mapGroups.find((g) => g.id === splitting && g.phase === "ready") ?? null) : null;
 
 
   const [agentFilter, setAgentFilter] = useState("");
@@ -214,7 +239,19 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
           {lanes.map((lane) => <NativeSelectOption key={lane.key} value={lane.key}>{lane.label}</NativeSelectOption>)}
         </NativeSelect> : null}
         {switcher ?? <ViewSwitch value={view} onChange={setView} agents={hub} />}
-              </div>
+        {prompters.length ? (
+          <Button size="sm" className="max-md:min-h-11" onClick={() => setPrompting(true)} data-prompt-agent>
+            <Sparkles aria-hidden="true" />
+            {t("tasks.promptOpen")}
+          </Button>
+        ) : null}
+        {prompters.length ? (
+          <Button size="sm" variant="outline" className="max-md:min-h-11" onClick={() => setSplitting("new")} data-map-open>
+            <Split aria-hidden="true" />
+            {t("tasks.mapOpen")}
+          </Button>
+        ) : null}
+      </div>
       {scope.kind === "shared" ? <Notice tone="info">{t("tasks.sharedScope")}</Notice> : null}
       {next.data && list.data?.some((task) => task.status !== "done") ? (
         <Notice tone="info">
@@ -241,6 +278,16 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
           </a>
         </Notice>
       ) : null}
+      {readyJobs.map((g) => (
+        <Notice key={g.id} tone="warn">
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="min-w-0 wrap-anywhere">{t("tasks.mapReady", { task: g.parentTask ?? "", title: g.title, count: g.parts.length })}</span>
+            <button type="button" className="font-medium underline underline-offset-2 focus-visible:focus-ring max-md:min-h-11" onClick={() => setSplitting(g.id)} data-map-ready={g.id}>
+              {t("tasks.mapReadyOpen")}
+            </button>
+          </span>
+        </Notice>
+      ))}
       {agents.length ? (
         <Notice tone="info">
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -265,6 +312,16 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
             className="h-7 cursor-pointer rounded-sm border border-white/30 px-2.5 text-xs font-semibold outline-none hover:bg-white/10 focus-visible:focus-ring disabled:cursor-default disabled:opacity-60"
           >
             {t("tasks.batchOpen", { count: picked.length })}
+          </button>
+          <button
+            type="button"
+            disabled={picked.length !== 1}
+            title={picked.length !== 1 ? t("tasks.rolesOpenHint") : undefined}
+            onClick={() => setChaining(picked[0]!)}
+            data-roles-open
+            className="h-7 max-md:min-h-11 cursor-pointer rounded-sm border border-white/30 px-2.5 text-xs font-semibold outline-none hover:bg-white/10 focus-visible:focus-ring disabled:cursor-default disabled:opacity-60"
+          >
+            {t("tasks.rolesOpen")}
           </button>
           <button type="button" onClick={() => setPicks(new Set())} className="h-7 cursor-pointer rounded-sm px-2 text-xs underline">
             {t("tasks.clearPicks")}
@@ -341,6 +398,54 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
           />
         ) : null}
       </Sheet>
+      <Sheet open={chaining !== null} onOpenChange={(v) => (v ? null : setChaining(null))}>
+        {chaining ? (
+          <RolesSheet
+            key={chaining.id}
+            task={chaining}
+            onSent={(id) => {
+              setChaining(null);
+              setPicks(new Set());
+              setBatchSent(id);
+              reload();
+            }}
+          />
+        ) : null}
+      </Sheet>
+      <Sheet open={prompting} onOpenChange={setPrompting}>
+        {prompting ? (
+          <PromptSheet
+            projects={prompters}
+            defaultProject={scoped && prompters.includes(scoped) ? scoped : prompters[0]!}
+            onSent={(task) => {
+              setPrompting(false);
+              reload();
+              setOpenId(task.id);
+            }}
+            onGroup={(id) => {
+              setPrompting(false);
+              setBatchSent(id);
+              reload();
+            }}
+          />
+        ) : null}
+      </Sheet>
+      <Sheet open={splitting === "new" || readyGroup !== null} onOpenChange={(v) => (v ? null : setSplitting(null))}>
+        {splitting === "new" || readyGroup ? (
+          <SplitSheet
+            key={readyGroup?.id ?? "new"}
+            projects={prompters}
+            defaultProject={scoped && prompters.includes(scoped) ? scoped : (prompters[0] ?? "")}
+            ready={readyGroup}
+            onGroup={(id) => {
+              setSplitting(null);
+              setBatchSent(id);
+              reload();
+              jobs.reload();
+            }}
+          />
+        ) : null}
+      </Sheet>
       <Sheet open={open !== null} onOpenChange={(v) => (v ? null : setOpenId(null))}>
         {open ? (
           <TaskDetail
@@ -348,6 +453,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
             requests={(requests.data ?? []).filter((r) => r.taskId === open.id && r.project === open.project)}
             hub={hub}
             onChanged={reload}
+            onRoles={() => (setOpenId(null), setChaining(open))}
           />
         ) : null}
       </Sheet>
@@ -462,7 +568,7 @@ function StatusSelect({ task, onChanged }: { task: Task; onChanged: () => void }
 }
 
 /** Everything about one task: its full note, what it depends on, and (hub) running it on a team machine. */
-function TaskDetail({ task, requests, hub, onChanged }: { task: Task; requests: RunRequest[]; hub: boolean; onChanged: () => void }) {
+function TaskDetail({ task, requests, hub, onChanged, onRoles }: { task: Task; requests: RunRequest[]; hub: boolean; onChanged: () => void; onRoles: () => void }) {
   const t = useT();
   const allow = useCan();
   return (
@@ -506,6 +612,14 @@ function TaskDetail({ task, requests, hub, onChanged }: { task: Task; requests: 
         {hub ? <FlowTaskPanel project={task.project} taskId={task.id} /> : null}
         {hub ? <AgentAssignment tasks={[task]} onChanged={onChanged} /> : null}
         {hub && allow(task.project, "runDispatch") && task.status !== "done" ? <DispatchForm task={task} requests={requests} onSent={onChanged} /> : null}
+        {hub && allow(task.project, "runDispatch") && task.status !== "done" ? (
+          <div>
+            <Button size="sm" variant="outline" className="max-md:min-h-11" onClick={onRoles} data-roles-detail>
+              <ListOrdered aria-hidden="true" />
+              {t("tasks.rolesDetail")}
+            </Button>
+          </div>
+        ) : null}
         {hub && requests.length ? <RequestList requests={requests} onChanged={onChanged} /> : null}
         <section className="flex flex-col gap-1.5">
           <h3 className="text-xs font-medium text-muted-foreground">{t("tasks.colNote")}</h3>

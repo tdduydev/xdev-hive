@@ -8,7 +8,7 @@ Lúc 12:28 cùng ngày, một phiên khác đã tạo R-31a–d trên hub, chỉ
 - 31c map-reduce: chia một việc thành task con cho nhiều agent, gộp và review;
 - 31d multi-role: nhiều agent khác vai trên một task, gộp vào một branch.
 
-Trang này giữ bốn mục đó và thêm **31e fan-out** (một prompt cho nhiều agent). Phần 31c và 31d dưới đây là cách hiểu tiêu đề của phiên kia (**[Inference]**), cần người dùng xác nhận trước khi làm.
+Trang này giữ bốn mục đó và thêm **31e fan-out** (một prompt cho nhiều agent). Phần 31c và 31d dưới đây ban đầu là cách hiểu tiêu đề của phiên kia (**[Inference]**); người dùng đã xác nhận 31c và 31d (2/10).
 
 Thứ tự làm: 31a → 31e → 31b → 31c → 31d. Bốn mục sau dùng bảng *đợt chạy* của 31a.
 
@@ -94,20 +94,45 @@ Trang **Bản đồ agent** (`#/agent-map`, nhóm *Agent* của menu; app ở ch
 - *Giao task cho N agent* mở trang *Task* với các gói đã chọn (`#/tasks?agents=…`): người dùng chọn task ở đó, hộp đợt chạy điền máy + gói lần lượt theo thứ tự đã chọn.
 - Cột máy có thêm *Bật/tắt và ưu tiên gói* và *Xoá* (trước nằm trong bảng máy).
 
-## R-31c. Map-reduce (cần xác nhận)
+## R-31c. Map-reduce
 
-**[Inference]** "Chia một việc thành task con cho nhiều agent, gộp và review":
-- Người dùng viết việc lớn và danh sách việc con (mỗi dòng một việc). Hub tạo task cha và các task con `P-<n>-1…k`, task cha chờ các con; một nhóm `mapreduce` có `max_parallel`.
-- **Map**: các con chạy như đợt chạy 31a, mỗi con một branch.
-- **Reduce**: khi mọi con ở *Chờ review* hoặc *Xong*, nhóm có nút *Gộp* (hoặc tự gộp nếu đã chọn khi tạo): một run *Làm task* trên task cha với chỉ dẫn gộp các branch `ai/<con>` vào `ai/<cha>`, sửa xung đột, chạy test; sau đó review chéo.
-- Run gộp cần thấy mọi branch con: chạy trên máy đã chạy mọi con, hoặc các branch con đã lên remote (MR/PR). Không được thì hub báo lý do, không xếp.
+Người dùng xác nhận (2/10): chia việc cả hai cách (người viết danh sách việc con, hoặc nhờ agent chia rồi người sửa); luôn tự gộp branch con vào branch cha rồi review chéo, một MR.
 
-## R-31d. Nhiều vai trên một task (cần xác nhận)
+**Engine** (`packages/core/src/mapreduce.ts`, `sqlite.ts`):
+- `runs.mapReduce { project, groupId?, title?, prompt, parts (2–12, ≤300 ký tự), machineId | null, profiles[], maxParallel, reviewAfter = true }` (quyền như `runs.dispatch`): task cha `P-<n>` (chờ các con) và `P-<n>-1…k`; nhóm `mapreduce`, `phase` `map`, `machine_id` là máy của mọi con và của run gộp (null = máy còn nhiều chỗ nhất lúc gửi). Các con lần lượt lấy `profiles` (rỗng: máy chọn), không review riêng.
+- `runs.mapSplit { project, title?, prompt, machineId | null, profileId | null }`: task cha và một run `plan` trên nó, chỉ dẫn "ghi danh sách việc con vào ghi chú, không viết code"; nhóm ở `phase` `split`. Run xong thì `parts` = các dòng `- …` / `1. …` của ghi chú, `phase` `ready`: chờ người sửa rồi gọi `runs.mapReduce` với `groupId` (máy của nhóm giữ nguyên).
+- `#mapStep` trong `#releaseGroups`: mọi con `succeeded` thì các con → `done` và xếp run `implement` trên task cha, trên máy của nhóm, chỉ dẫn gộp `ai/<con>` theo thứ tự (kèm ghi chú bàn giao của con, coi là dữ liệu), sửa xung đột, chạy test; `reviewAfter` của nhóm. Run gộp xong → `done`. Một con, run chia hoặc run gộp không thành công, máy không nhận, hoặc *Huỷ đợt* → `stopped` + `phase_error`.
+- `runs.resumeGroup { id }`: nhóm `stopped` chạy lại run chia (chưa có con), hoặc các con chưa `succeeded`, hoặc (đủ con) run gộp.
 
-**[Inference]** "Nhiều agent khác vai trên một task, gộp vào một branch": một chuỗi bước trên cùng task và cùng branch `ai/<task>`, mỗi bước một gói và một vai, ví dụ: *viết code* (claude-1) → *viết test* (codex-1) → *review* (gemini). Một task chỉ có một run một lúc, nên các bước chạy lần lượt: nhóm `roles`, `max_parallel` 1, bước sau được thả khi run bước trước *xong* (thất bại thì dừng chuỗi). Mọi bước trên cùng một máy để branch có sẵn. Vai *viết test* / *viết tài liệu* là run *Làm task* với chỉ dẫn mẫu của vai; *review* là run review.
+**Giao diện**:
+- Trang *Task*: nút *Chia việc* (ai có `taskManage` + `runDispatch`, chế độ hub) mở hộp *Chia việc cho nhiều agent* (`SplitSheet`, `packages/ui/src/components/AgentSheets.tsx`): dự án, cách chia (*Tôi viết danh sách việc con* / *Nhờ agent chia*), máy (*Máy rảnh* được), tiêu đề, việc lớn; danh sách việc con mỗi dòng một việc, gói (ô chọn, các con lần lượt lấy; chỉ khi đã chọn máy), *Chạy song song tối đa*, review chéo bản gộp. Nhờ agent chia: một gói cho run chia.
+- Nhóm ở `ready` hiện thành thông báo trên trang *Task* với *Kiểm và chạy*: cùng hộp, việc lớn chỉ đọc, danh sách của agent để sửa, máy của nhóm. Trang hỏi lại mỗi 5 giây khi có nhóm đang chia. `#/tasks?split=<id>` mở thẳng nhóm đó.
+- Trang *Đợt chạy*: thẻ `mapreduce` có giai đoạn, *Việc lớn: P-<n>*, máy, run chia hoặc run gộp (trạng thái + link run), lý do dừng và *Chạy lại* (`runs.resumeGroup`) khi `stopped`; ở `ready` là danh sách agent đề xuất và link *Sửa danh sách và chạy*; bảng việc con như đợt 31a.
+
+**Test**: core `packages/core/test/map-reduce.test.ts`: giữ đủ branch và chỉ dẫn gộp trong 4000 ký tự; retry không gửi trùng run còn hoạt động hoặc run đã thành công sau huỷ; run chia thử lại nhận việc gốc; kiểm cả run chia báo thành công trước ghi chú bàn giao, prompt gốc có danh sách (kể cả >2000 ký tự) không bị nhận làm việc con, và ghi chú sửa lại được đọc tới khi người xác nhận. e2e `map-reduce` (`apps/web/e2e/browser.mjs`): nhờ agent chia trên máy của Lan, máy giả ghi 2 việc con, Lan thêm việc thứ ba và chọn gói rồi chạy; 3 con xong → run gộp có đủ 3 branch; run gộp lỗi → thẻ *Đã dừng*, *Chạy lại* → *Đang gộp*, xong → *Đã gộp*.
+
+Chưa làm: run gộp chỉ chạy trên máy của các con (chưa gộp từ branch đã lên remote).
+
+## R-31d. Nhiều vai trên một task
+
+Người dùng xác nhận (2/10 17:20) cách hiểu ban đầu: một chuỗi bước trên cùng task và cùng branch `ai/<task>`, mỗi bước một gói và một vai, ví dụ: *viết code* (claude-1) → *viết test* (codex-1) → *review*. Một task chỉ có một run một lúc, nên các bước chạy lần lượt: nhóm `roles`, `max_parallel` 1, bước sau được thả khi run bước trước *xong* (thất bại thì dừng chuỗi). Mọi bước trên cùng một máy để branch có sẵn. Vai *viết test* / *viết tài liệu* là run *Làm task* với chỉ dẫn mẫu của vai; *review* là run review.
+
+**Engine** (`packages/core/src/roles.ts`, `sqlite.ts`):
+- `runs.roles { project, taskId, title?, machineId | null, steps: Array<{ step: 'code' | 'test' | 'docs' | 'review', profileId | null, instructions ≤2000 }> (2–6) }` → `RunGroup` (quyền `runDispatch` như `runs.dispatch`, không cần `taskManage` vì không tạo task; có trong `AUDITED`). Kiểm như `runs.dispatch`: task thuộc dự án, chưa xong, không trong luồng đang chạy, không trong đợt khác còn mở; máy (null = máy còn nhiều chỗ nhất lúc gửi) online, nhận run, có repo; gói ghim có trên máy; bước đầu qua `#assertDispatchable` (không yêu cầu/run nào của task đang chờ, trần chi tiêu); ký tự ẩn và secret trong chỉ dẫn. Lỗi thì không tạo gì.
+- Nhóm `roles`: `max_parallel` 1, `parent_task` = task, `machine_id` = máy của mọi bước, `review_after` 0 (review là một bước). Mỗi bước một mục (cùng `task_id`), cột mới `run_group_items.step` (migration cuối `MIGRATIONS`) vì `role` không phân biệt được code/test/docs. `code`/`test`/`docs` → run `implement`, `review` → run `review`. Chỉ dẫn của mục = ngữ cảnh chuỗi do hub viết (`stepInstructions`: các bước, bước này là bước mấy, làm tiếp trên commit của bước trước, để phần của bước sau cho bước sau) + chỉ dẫn của người (giao diện điền sẵn mẫu của vai *viết test* / *viết tài liệu*, chữ trong i18n).
+- `#rolesStep` trong `#releaseGroups`: đi theo `position`; mục đang chạy thì chờ; mục `held` chỉ được thả khi mọi mục trước có run `succeeded`. Một bước không gửi được, máy từ chối/hết hạn, run không `succeeded`, hoặc máy nhận mà không báo run sau 10 phút → các bước sau `cancelled`, nhóm `phase` `stopped` + `phase_error` (`errors.rolesStepFailed`). Mọi bước xong → `phase` `done`. Đang chạy thì `phase` null.
+- `#assertNotInGroup` nhìn mọi mục của task (trước chỉ mục đầu): giữa hai bước task vẫn thuộc chuỗi, không ai giao tay hay cho đợt khác.
+- *Huỷ đợt* trên chuỗi → `stopped` (như map-reduce). `runs.resumeGroup` trên chuỗi `stopped` (chỉ cần `runDispatch`) đưa bước chưa `succeeded` đầu tiên và các bước sau về `held`; từ chối khi còn run đang chạy (`errors.rolesRunning`), vì bước bị huỷ khi run còn chạy sẽ chạy hai lần.
+
+**Giao diện**:
+- Trang *Task*: chọn đúng một task ở chế độ danh sách → nút *Chuỗi vai* trên thanh *Đã chọn*; hoặc *Chạy theo chuỗi vai* trong bảng chi tiết task (ai có `runDispatch`, chế độ hub). Hộp *Chuỗi vai trên <task>* (`RolesSheet`, `AgentSheets.tsx`): máy (*Máy rảnh* được), các bước (mặc định viết code → viết test → review; mỗi bước vai, gói, chỉ dẫn; *Thêm bước* / *Bỏ bước*, 2–6 bước), tên đợt.
+- Trang *Đợt chạy*: thẻ *Nhiều vai* có *Task: <task>*, máy, nhãn *Bước n/m* / *Xong chuỗi* / *Đã dừng*, lý do dừng và *Chạy lại*; mỗi hàng là một bước (`1. Viết code`…), máy · gói, trạng thái run.
+
+**Test**: core `packages/core/test/roles.test.ts`: nâng cấp schema 0.139 giữ dữ liệu cũ; chờ classify và giữ model router; huỷ bước cuối rồi nhận thành công không chạy lại cả chuỗi; thả lần lượt, bước sau chờ run bước trước, task bị giữ giữa các bước; dừng khi một bước lỗi và chạy lại từ bước đó; mọi bước trên máy đã chọn dù máy khác rảnh hơn; huỷ rồi chạy lại không chạy một bước hai lần; kiểm lúc gửi và quyền (`runDispatch` đủ, `member` bị từ chối). e2e `roles`: Lan chọn một task, chuỗi 3 bước với hai gói trên máy của mình; bước viết test lỗi → *Đã dừng*, review không chạy; *Chạy lại* → bước test chạy lại, rồi review → *Xong chuỗi*.
+
+Chưa làm: chuỗi chỉ chạy trên một máy (chưa đi tiếp từ branch đã lên remote trên máy khác); chưa chọn chuỗi vai từ *Bản đồ agent*.
 
 ## Chưa làm trong mục 31
 
-- Agent tự chia việc lớn thành việc con (31c chỉ nhận danh sách người dùng viết).
 - Giám khảo tự động cho fan-out.
 - Hub kiểm phiên bản tối thiểu của máy khi tự thả mục máy rảnh (kiểm này hiện ở `apps/web/src/app.ts`, ngoài core).

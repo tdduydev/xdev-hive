@@ -11,6 +11,8 @@ import { cn } from "cn";
 import { cacheReadShare, parseVerdict, type AgentRun, type RunCompression, type RunRecord, type RunMessage, type RunRequest, type RunTokens } from "@xdev-hive/core";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Button } from "@xdev-hive/ui/components/ui/button";
+import { Sheet } from "@xdev-hive/ui/components/ui/sheet";
+import { RolesSheet } from "#ui/components/AgentSheets.tsx";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { ArtifactList } from "#ui/components/Artifacts.tsx";
@@ -320,7 +322,10 @@ function Head({ run, machine, actions }: { run: AgentRun | RunRecord; machine: s
             {id} · {run.project} · {run.taskId} · {machine}
           </span>
         </div>
-        <div className="flex flex-wrap justify-end gap-1.5">{actions}</div>
+        <div className="flex flex-wrap justify-end gap-1.5 max-md:gap-2">
+          {actions}
+          <RunRoles run={run} />
+        </div>
       </div>
     </div>
   );
@@ -396,6 +401,43 @@ function SummaryPane({ summary, live, head, children }: { summary: string | null
         ) : null}
       </div>
     </div>
+  );
+}
+
+/** A completed run can start another chain on its task; live runs still hold the branch. */
+function RunRoles({ run }: { run: AgentRun | RunRecord }) {
+  const { client, me } = useHive();
+  const allow = useCan();
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const enabled = me.mode === "hub" && allow(run.project, "runDispatch");
+  const tasks = useQuery(async () => enabled ? client.call("tasks.list", { project: run.project }) : [], [client, run.project, enabled]);
+  const task = tasks.data?.find((task) => task.id === run.taskId && task.status !== "done");
+  if (!enabled || !task) return null;
+  return (
+    <>
+      <Button
+        size="sm"
+        variant="outline"
+        className="max-md:min-h-11"
+        disabled={isLive(run)}
+        title={isLive(run) ? t("tasks.rolesWaitRun") : undefined}
+        data-run-roles-open
+        onClick={() => setOpen(true)}
+      >
+        {t("tasks.rolesOpen")}
+      </Button>
+      <Sheet open={open} onOpenChange={setOpen}>
+        <RolesSheet
+          task={task}
+          initialMachineId={"machineId" in run ? run.machineId : undefined}
+          onSent={(id) => {
+            setOpen(false);
+            window.location.hash = `/batches?group=${id}`;
+          }}
+        />
+      </Sheet>
+    </>
   );
 }
 
