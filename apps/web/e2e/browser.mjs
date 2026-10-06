@@ -203,7 +203,7 @@ async function step(name, fn) {
     results.push({ name, ok: true });
     console.log(`  ✓ ${name} (${Date.now() - t0} ms)`);
   } catch (err) {
-    results.push({ name, ok: false });
+    results.push({ name, ok: false, error: err.message });
     console.log(`  ✗ ${name}: ${err.message}`);
     await current?.shot(`${id}-${name}-FAIL`).catch(() => undefined);
   } finally {
@@ -707,6 +707,13 @@ async function main() {
     await tab.click("[data-new-work-submit]");
     await tab.waitFor("full Spec form", () => location.hash.startsWith("#/specs") && document.body.innerText.includes("Viết spec"));
     await tab.shot(`${String(n).padStart(2, "0")}-new-work-spec`);
+    await tab.click("textarea");
+    await tab.type("Bản nháp tính năng trước đó");
+    await tab.click("[data-new-work-open]");
+    await tab.click('[data-new-work-path="feature"]');
+    await tab.select("#new-work-project", "payment");
+    await tab.click("[data-new-work-submit]");
+    await tab.waitFor("fresh feature draft while Specs stays mounted", () => location.hash.startsWith("#/specs") && document.querySelector("textarea")?.value === "");
     await tab.click("[data-new-work-open]");
     await tab.click('[data-new-work-path="quick"]');
     await tab.select("#new-work-project", "payment");
