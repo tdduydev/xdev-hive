@@ -278,6 +278,8 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **51b. graph-agents**: lớp Agent, kéo thả để gán (cần 50a).
   - [ ] **51c. graph-sdlc-system**: lớp SDLC và Hệ thống.
 
+- [ ] **52. app-quota** (hỏi 6/10: "control quota, chưa thấy chỗ hiển thị số lần reset, hiển thị đi, và bấm reset trên giao diện client được"; chọn cả bốn): trang *Agent và quota* của app có khối quota luôn hiện cho mỗi gói: thanh 5 giờ / tuần với giờ reset và còn bao lâu, số lần chạm giới hạn và số run từ mốc đếm (nút *Đặt lại bộ đếm*), chip đang nghỉ và nút *Bỏ nghỉ* luôn hiện, nút *Đọc lại quota* cho từng gói và cho cả máy. Spec: [docs/specs/52-app-quota.md](specs/52-app-quota.md).
+
 ## Sửa lỗi
 
 - [x] **stale-base** (5/10, BUG-stale-base): run R-43 trên máy .52 gặp lỗi fetch tạm thời, và runner lặng lẽ tạo branch `ai/<task>` từ HEAD của checkout chính, tức code cũ 3 ngày (0.107.0 trong khi main đã 0.126.0). Giờ fetch lỗi thì thử lại sau 5 giây rồi 20 giây. Vẫn lỗi thì run của task chưa có branch quay về hàng đợi, kèm lý do hiện trên Board và Lượt chạy, thử lại ở các tick sau; quá 5 lần thì *failed* với lỗi dịch được. Không còn tạo branch từ HEAD cũ. Branch đã có (run sửa, review) chạy như cũ. Hỏi best-of-n thì báo lỗi ngay. Repo không có remote nào thì giữ cách cũ. Do claude-1 trên máy .52 làm.
