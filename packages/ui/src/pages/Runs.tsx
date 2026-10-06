@@ -433,7 +433,7 @@ function RunRoles({ run }: { run: AgentRun | RunRecord }) {
           initialMachineId={"machineId" in run ? run.machineId : undefined}
           onSent={(id) => {
             setOpen(false);
-            window.location.hash = `/batches?group=${id}`;
+            window.location.hash = `/runs?tab=batches&group=${id}`;
           }}
         />
       </Sheet>

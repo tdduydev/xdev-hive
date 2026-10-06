@@ -9,6 +9,7 @@ import { WORK_ROLES, MAX_CANDIDATES, TASK_STATUSES, type WorkRole, type PreferKi
 import { CLASS_FIELDS, CLASS_VALUES, classInput, classSource, type ClassField } from "#ui/lib/task-class.ts";
 import { ListOrdered, Split, Sparkles } from "lucide-react";
 import { Button } from "@xdev-hive/ui/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@xdev-hive/ui/components/ui/dropdown-menu";
 import { Card } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Input } from "@xdev-hive/ui/components/ui/input";
@@ -239,17 +240,26 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
           {lanes.map((lane) => <NativeSelectOption key={lane.key} value={lane.key}>{lane.label}</NativeSelectOption>)}
         </NativeSelect> : null}
         {switcher ?? <ViewSwitch value={view} onChange={setView} agents={hub} />}
+        {/* One create entry (49c) stays + Mới: what asks an agent to write or split work lives behind one menu, not as buttons of its own. */}
         {prompters.length ? (
-          <Button size="sm" className="max-md:min-h-11" onClick={() => setPrompting(true)} data-prompt-agent>
-            <Sparkles aria-hidden="true" />
-            {t("tasks.promptOpen")}
-          </Button>
-        ) : null}
-        {prompters.length ? (
-          <Button size="sm" variant="outline" className="max-md:min-h-11" onClick={() => setSplitting("new")} data-map-open>
-            <Split aria-hidden="true" />
-            {t("tasks.mapOpen")}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline" className="max-md:min-h-11" data-agent-work-menu>
+                <Sparkles aria-hidden="true" />
+                {t("tasks.agentWork")}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setPrompting(true)} data-prompt-agent>
+                <Sparkles aria-hidden="true" />
+                {t("tasks.promptOpen")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setSplitting("new")} data-map-open>
+                <Split aria-hidden="true" />
+                {t("tasks.mapOpen")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : null}
       </div>
       {scope.kind === "shared" ? <Notice tone="info">{t("tasks.sharedScope")}</Notice> : null}
@@ -273,7 +283,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
       {batchSent !== null ? (
         <Notice tone="ok">
           {t("tasks.batchSent", { id: batchSent })}{" "}
-          <a className="font-medium underline underline-offset-2" href={`#/batches?group=${batchSent}`}>
+          <a className="font-medium underline underline-offset-2" href={`#/runs?tab=batches&group=${batchSent}`}>
             {t("tasks.batchView")}
           </a>
         </Notice>

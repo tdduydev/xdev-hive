@@ -812,7 +812,7 @@ async function main() {
     const tab = (current = tabs.lan);
     await tab.reload();
     await tab.go("tasks");
-    expect(await tab.eval(() => !document.querySelector("[data-create-task-toggle], [data-prompt-agent]") && !document.body.innerText.includes("task_claim")), "task page uses human wording and one create entry");
+    expect(await tab.eval(() => !document.querySelector("[data-create-task-toggle], [data-prompt-agent], [data-map-open]") && !document.body.innerText.includes("task_claim")), "task page uses human wording and one create entry");
     await tab.click("[data-new-work-open]");
     await tab.waitFor("three start paths", () => document.querySelectorAll("[data-new-work-path]").length === 3);
     await tab.shot(`${String(n).padStart(2, "0")}-new-work-choices`);
@@ -1004,6 +1004,7 @@ async function main() {
     const tab = (current = tabs.lan);
     await tab.reload();
     await tab.go("tasks");
+    await tab.click("[data-agent-work-menu]");
     await tab.click("[data-map-open]");
     await tab.click("[data-map-mode=agent]");
     await tab.waitFor("Lan's machine in the list", () => document.querySelector("#map-machine")?.options.length > 1);
@@ -1045,7 +1046,7 @@ async function main() {
     const [merge] = (await beat()).runRequests.filter((r) => r.taskId === split.parentTask);
     expect(merge?.role === "implement" && merge.reviewAfter && merge.instructions.includes(`ai/${split.parentTask}-3`), "no merge run of the three branches");
     await finish([merge], "failed", "merge");
-    await tab.go(`batches?group=${split.id}`);
+    await tab.go(`runs?tab=batches&group=${split.id}`);
     await tab.waitFor("the job stopped", (id) => document.querySelector(`[data-group="${id}"] [data-map-phase]`)?.getAttribute("data-map-phase") === "stopped", split.id);
     await tab.shot(`${String(n).padStart(2, "0")}-map-stopped`);
     await tab.click("[data-map-resume]");
@@ -1054,7 +1055,7 @@ async function main() {
     expect(again, "no second merge run");
     await finish([again], "succeeded", "merge2");
     await tab.reload();
-    await tab.go(`batches?group=${split.id}`);
+    await tab.go(`runs?tab=batches&group=${split.id}`);
     await tab.waitFor("merged", (id) => document.querySelector(`[data-group="${id}"] [data-map-phase]`)?.getAttribute("data-map-phase") === "done", split.id);
   });
 
@@ -1120,7 +1121,8 @@ async function main() {
     expect(controls.every((el) => el.height >= 44), `role touch targets: ${JSON.stringify(controls)}`);
     expect(controls.filter((el) => el.tag === "SELECT").every((el) => el.font >= 16), "role selects must not zoom a phone");
     await tab.shot(`${String(n).padStart(2, "0")}-roles-mobile`);
-    await tab.cdp("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile });
+    // Clear it rather than override again: a kept override pins innerWidth, so later steps that resize the window never see it.
+    await tab.cdp("Emulation.clearDeviceMetricsOverride", {});
 
     await tab.click("[data-roles-send]", "Chạy chuỗi 3 bước");
     const chain = await until("the chain", async () => (await rpc("runs.groups", { project: "payment" })).find((g) => g.kind === "roles"));
@@ -1134,7 +1136,7 @@ async function main() {
     const [test] = await beat();
     expect(test?.role === "implement" && test.profileId === "claude-2" && test.instructions.includes("Viết test cho phần"), `tests step: ${test?.instructions}`);
     await finish(test, "failed");
-    await tab.go(`batches?group=${chain.id}`);
+    await tab.go(`runs?tab=batches&group=${chain.id}`);
     await tab.waitFor("the chain stopped", (id) => document.querySelector(`[data-group="${id}"] [data-roles-phase]`)?.getAttribute("data-roles-phase") === "stopped", chain.id);
     expect((await beat()).length === 0, "the review ran after a failed step");
     await tab.shot(`${String(n).padStart(2, "0")}-roles-stopped`);
@@ -1147,7 +1149,7 @@ async function main() {
     expect(review?.role === "review", `last step: ${review?.role}`);
     await finish(review, "succeeded");
     await tab.reload();
-    await tab.go(`batches?group=${chain.id}`);
+    await tab.go(`runs?tab=batches&group=${chain.id}`);
     await tab.waitFor("the chain done", (id) => document.querySelector(`[data-group="${id}"] [data-roles-phase]`)?.getAttribute("data-roles-phase") === "done", chain.id);
     await tab.shot(`${String(n).padStart(2, "0")}-roles-done`);
     await tab.go(`runs?run=R-roles-${review.id}`);

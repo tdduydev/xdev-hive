@@ -96,7 +96,7 @@ export function AgentMap({
           {open.map((g) => {
             const held = g.items.filter((i) => i.status === "held");
             return (
-              <a key={g.id} href={`#/batches?group=${g.id}`} className="flex flex-col gap-1 rounded-lg border border-line-default bg-surface p-2.5 outline-none hover:border-fg-secondary focus-visible:focus-ring">
+              <a key={g.id} href={`#/runs?tab=batches&group=${g.id}`} className="flex flex-col gap-1 rounded-lg border border-line-default bg-surface p-2.5 outline-none hover:border-fg-secondary focus-visible:focus-ring">
                 <span className="truncate text-[13px] font-medium text-fg-strong">{g.title || t("agentMap.batchTitle", { id: g.id })}</span>
                 <span className="text-xs text-fg-muted">
                   <span className="font-mono">{g.project}</span> · {t("agentMap.batchProgress", { active: g.items.filter((i) => i.active).length, held: held.length, total: g.items.length })}
