@@ -3301,6 +3301,7 @@ export const vi = {
     taskClaimed: "nhận task",
     taskNotClaimed: "chưa nhận được: người khác đang giữ",
     taskStatus: "→ {status}",
+    taskStatusNote: "→ {status} · cập nhật ghi chú",
     taskAssign: "giao cho agent {agent}",
     taskUnassign: "bỏ gán agent",
     memoryWrite: "{kind} · {content}",
