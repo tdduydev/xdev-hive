@@ -1649,6 +1649,96 @@ async function main() {
     }
   });
 
+  // Roadmap 37b: the UI opens a hub thread; heartbeat/RPC stand in for a leader, with no real CLI or hub.
+  await step("hub-leader-chat", async () => {
+    const machineRpc = async (method, input, token = admin) => {
+      const response = await fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "x-hive-agent": "runner.hub-leader-e2e" },
+        body: JSON.stringify({ method, input }),
+      });
+      const body = await response.json();
+      if (body.error) throw new Error(`${method}: ${body.error.message}`);
+      return body.result;
+    };
+    const claude = { id: "claude-hub", label: "Claude hub", kind: "claude", enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0 };
+    const beat = () => machineRpc("machines.heartbeat", { machine: "hub-leader-e2e", instance: "hub00001", projects: [], acceptsRuns: true, profiles: [claude] });
+    await beat();
+    const machineId = (await rpc("machines.list")).find((m) => m.machine === "hub-leader-e2e").id;
+    const beforePayment = await rpc("chat.defaults", { project: "payment" });
+    const tab = (current = tabs.admin);
+    await tab.eval(() => localStorage.removeItem("xdev-hive.scope"));
+    await tab.reload();
+    await tab.go("chat");
+    await tab.click("[data-chat-new]");
+    const options = await tab.waitFor("whole hub first in the scope choices", () => {
+      const select = document.querySelector("#chat-project");
+      return select && [...select.options].map((o) => ({ value: o.value, label: o.textContent }));
+    });
+    expect(options[0].value === "*" && options[0].label === "Toàn hub", JSON.stringify(options));
+    await tab.select("#chat-project", "*");
+    await tab.select("#chat-machine", machineId);
+    await tab.select("#chat-plan", "claude-hub");
+    await tab.select("#chat-new-model", "opus");
+    await tab.select("#chat-new-effort", "high");
+    await tab.click("button", "Lưu làm mặc định");
+    await until("hub chat defaults saved", async () => {
+      const d = await rpc("chat.defaults", { project: "*" });
+      return d.machineId === machineId && d.profileId === "claude-hub" && d.model === "opus" && d.effort === "high";
+    });
+    if (mobile) {
+      const targets = await tab.eval(() => [...document.querySelectorAll('#chat-project, #chat-machine, #chat-plan, #chat-new-model, #chat-new-effort')].map((el) => ({ height: el.getBoundingClientRect().height, font: parseFloat(getComputedStyle(el).fontSize) })));
+      expect(targets.every((el) => el.height >= 44 && el.font >= 16), JSON.stringify(targets));
+    }
+    await tab.click("button", "Hướng dẫn leader");
+    await tab.select("#guide-project", "*");
+    await tab.waitFor("shared guide and separate hub autonomy", () => document.body.innerText.includes("Leader toàn hub dùng skill hive-leader chung") && document.body.innerText.includes("Cài đặt này độc lập với từng service"));
+    await tab.click("label", "Đổi trạng thái task");
+    await tab.click("button", "Lưu việc tự chạy cho Toàn hub");
+    await until("hub autonomy saved", async () => (await rpc("chat.defaults", { project: "*" })).autoKinds.includes("task.update"));
+    await tab.click("#guide-commands");
+    await tab.key("a", "Meta");
+    await tab.type("git status\ngit log");
+    await tab.click("button", "Lưu lệnh cho Toàn hub");
+    await until("hub commands saved", async () => (await rpc("chat.defaults", { project: "*" })).commands.length === 2);
+    expect(JSON.stringify(await rpc("chat.defaults", { project: "payment" })) === JSON.stringify(beforePayment), "hub settings did not change payment's defaults, commands or autonomy");
+    await tab.key("Escape");
+    await tab.click('textarea[aria-label="Tin nhắn"]');
+    await tab.type("Điều phối toàn hub 37b");
+    await tab.click("button", "Bắt đầu");
+    const sent = await until("hub thread sent from the UI", async () => (await rpc("chat.threads", { project: "*" })).find((th) => th.title === "Điều phối toàn hub 37b"));
+    const reply = (await rpc("chat.get", { threadId: sent.id })).messages.at(-1);
+    const request = await until("hub leader heartbeat request", async () => (await beat()).chatRequests?.find((r) => r.replyId === reply.id));
+    await machineRpc("chat.progress", { replyId: reply.id, text: "Đề xuất theo service và máy." });
+    for (const [project, id] of [["payment", "HUB-PAY-37B"], ["demo", "HUB-DEMO-37B"]]) {
+      await machineRpc("chat.propose", { action: { kind: "task.create", project, id, title: `Việc toàn hub cho ${project}`, dependsOn: [] }, reason: "Admin giao điều phối toàn hub" }, request.grant);
+    }
+    await machineRpc("chat.propose", { action: { kind: "machine.profile", machineId, profileId: "claude-hub", enabled: true }, reason: "Gói cho leader toàn hub" }, request.grant);
+    await machineRpc("chat.finish", { replyId: reply.id, status: "done", text: "Đề xuất theo service và máy." });
+    await tab.waitFor("all service and hub proposal labels", () => ["payment", "demo", "*"].every((p) => document.querySelector(`[data-action-project="${p}"]`)));
+    const labels = await tab.eval(() => [...document.querySelectorAll("[data-action-project]")].map((el) => el.textContent));
+    expect(labels.includes("cho service payment") && labels.includes("cho service demo") && labels.includes("Cả hub"), JSON.stringify(labels));
+    await tab.shot("hub-leader-proposals");
+    await tab.click("button", "Xác nhận tất cả");
+    await until("hub proposals confirmed together", async () => (await rpc("chat.get", { threadId: sent.id })).messages.at(-1).actions.every((a) => a.status === "done"));
+    for (const [project, id] of [["payment", "HUB-PAY-37B"], ["demo", "HUB-DEMO-37B"]]) {
+      expect((await rpc("tasks.list", { project })).some((t) => t.id === id), `${id} was created in ${project}`);
+    }
+    // A project lead can open Chat, but cannot choose or see the hub's thread or its settings.
+    const lead = tabs.lan;
+    await lead.reload();
+    await lead.go("chat");
+    await lead.click("[data-chat-new]");
+    expect(await lead.eval(() => !document.querySelector('#chat-project option[value="*"]')), "a project lead has no whole-hub choice");
+    await lead.click("button", "Hướng dẫn leader");
+    expect(await lead.eval(() => !document.querySelector('#guide-project option[value="*"]')), "a project lead has no whole-hub settings");
+    await lead.key("Escape");
+    expect(!(await rpc("chat.threads", {}, people.lan.token)).some((t) => t.id === sent.id), "a project lead cannot list hub threads");
+    await tab.reload();
+    await tab.go("chat");
+    await tab.waitFor("the hub label in the thread list", () => [...document.querySelectorAll('nav[aria-label="Các cuộc chat"] button')].some((el) => el.textContent.includes("Điều phối toàn hub 37b") && el.textContent.includes("Toàn hub")));
+  });
+
   await step("hub-page", async () => {
     const tab = (current = tabs.admin);
     await tab.go("admin/hub");

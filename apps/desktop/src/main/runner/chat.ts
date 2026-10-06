@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
-import { chatFileName, LEADER_COMMAND, toErrorPayload, type Actor, type AgentProfile, type ChatFile, type ChatRequest, type DesktopProject, type HiveBackend, type RunRequestError } from "@xdev-hive/core";
+import { chatFileName, HUB_SCOPE, LEADER_COMMAND, toErrorPayload, type Actor, type AgentProfile, type ChatFile, type ChatRequest, type DesktopProject, type HiveBackend, type RunRequestError } from "@xdev-hive/core";
 import { NO_FEATURES, runMcpServers } from "#desktop/main/installer.ts";
 import { expandEnv, resolveBin } from "./command.ts";
 import { claudeMcpServers } from "./container-mcp.ts";
@@ -56,8 +56,15 @@ const tail = (s: string) => (s.length > TEXT_MAX ? s.slice(-TEXT_MAX) : s);
  * anything not allowed is refused, a chained command too (checked with Claude Code 2.1.283); with no command Bash
  * is denied outright. It never edits or writes files.
  */
-export function leaderSettings(commands: string[] = []) {
+function leaderCommands(commands: string[], repos?: DesktopProject[]): string[] {
   const safe = commands.filter((c) => LEADER_COMMAND.test(c));
+  // The hub's cwd is outside every repo: git must name its repo without granting cd or chained shell commands.
+  const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
+  return repos ? safe.flatMap((c) => c.startsWith("git ") ? repos.map((p) => `git -C ${quote(p.repo)} ${c.slice(4)}`) : [c]) : safe;
+}
+
+export function leaderSettings(commands: string[] = [], repos?: DesktopProject[]) {
+  const safe = leaderCommands(commands, repos);
   return {
     disableAllHooks: true,
     permissions: {
@@ -67,15 +74,22 @@ export function leaderSettings(commands: string[] = []) {
   };
 }
 
-export const leaderBrief = (project: string, who: string, commands: string[] = [], systems: Array<{ name: string; projects: string[] }> = []) =>
+export const leaderBrief = (project: string, who: string, commands: string[] = [], systems: Array<{ name: string; projects: string[] }> = [], projects: ChatRequest["projects"] = [], repos: DesktopProject[] = []) =>
   [
-    `You are the leader agent of project ${project} in xDev Hive, answering ${who} in the Hive web chat.`,
+    project === HUB_SCOPE
+      ? `You are the hub-wide leader agent in xDev Hive, answering hub admin ${who} in the Hive web chat. Your scope is the whole hub, across services and machines.`
+      : `You are the leader agent of project ${project} in xDev Hive, answering ${who} in the Hive web chat.`,
     "First read the team's guide with the xdev-hive tool skill_get, name hive-leader, and follow it.",
-    "Work through the xdev-hive tools (tasks, runs, machines, docs, memory, skills). You may read this repository; you cannot change files.",
+    ...(project === HUB_SCOPE ? [
+      "Read project_list and alert_list first. There is no default project: always name project in project-specific reads and proposals. Group work by service; leave merges, stopping agents and policy decisions to the hub admin.",
+      `Services known to the hub: ${JSON.stringify(projects)}. Each entry names its systems and machines with a repo.`,
+      `Repositories on this machine: ${JSON.stringify(repos)}. Run each command for an explicitly named repository; use the permitted git -C prefix for git, never cd or chained commands. A service without a local repo is managed through Hive tools.`,
+    ] : []),
+    `Work through the xdev-hive tools (tasks, runs, machines, docs, memory, skills). You may read ${project === HUB_SCOPE ? "the repositories added to this chat" : "this repository"}; you cannot change files.`,
     commands.length
       ? `The only commands you may run are these, with any arguments, one at a time and never chained: ${commands.join(", ")}.`
       : "You cannot run commands.",
-    "You change nothing yourself: tasks (propose_task, propose_task_status), runs, merges, machine plans and installs, the agent policy and stopping agents are proposals (the propose_* tools) a project manager confirms in the chat.",
+    `You change nothing yourself: tasks (propose_task, propose_task_status), runs, merges, machine plans and installs, the agent policy and stopping agents are proposals (the propose_* tools) ${project === HUB_SCOPE ? "a hub admin" : "a project manager"} confirms in the chat.`,
     // Roadmap 19d: a feature that spans services is split into a task per service, with dependencies across them.
     ...systems.map(
       (s) =>
@@ -126,6 +140,9 @@ export function chatArgs(o: {
   commands?: string[];
   /** The systems the project is a service of (roadmap 19d). */
   systems?: Array<{ name: string; projects: string[] }>;
+  projects?: ChatRequest["projects"];
+  /** All this machine's repos, only for a hub-wide thread. */
+  repos?: DesktopProject[];
 }): string[] {
   return [
     "-p",
@@ -133,7 +150,7 @@ export function chatArgs(o: {
     "stream-json",
     "--verbose",
     "--settings",
-    JSON.stringify(leaderSettings(o.commands)),
+    JSON.stringify(leaderSettings(o.commands, o.repos)),
     "--setting-sources",
     "user",
     "--strict-mcp-config",
@@ -141,9 +158,9 @@ export function chatArgs(o: {
     o.mcpConfigFile,
     // The message's files, outside the repo: the leader's file tools may read them there. The next word is an option,
     // so the list of directories ends here.
-    ...(o.fileDir ? ["--add-dir", o.fileDir] : []),
+    ...((o.fileDir || o.repos?.length) ? ["--add-dir", ...new Set([...(o.fileDir ? [o.fileDir] : []), ...(o.repos ?? []).map((p) => p.repo)])] : []),
     "--append-system-prompt",
-    leaderBrief(o.project, o.requestedBy, o.commands, o.systems),
+    leaderBrief(o.project, o.requestedBy, leaderCommands(o.commands ?? [], o.repos), o.systems, o.projects, o.repos),
     ...(o.model ? ["--model", o.model] : []),
     ...(o.effort ? ["--effort", o.effort] : []),
     ...(o.sessionId ? ["--resume", o.sessionId] : []),
@@ -213,8 +230,11 @@ export class ChatWorker {
     };
     const profile = this.#pick(req.profileId);
     if (!profile) return refuse(`${machine} has no Claude profile it can start now.`, "errors.chatNoClaude", { machine, id: req.profileId ?? "claude" });
-    const project = this.#host.projects().find((p) => p.name === req.project);
-    if (!project) return refuse(`Project ${req.project} is not added to the app.`, "errors.projectNotAdded", { project: req.project });
+    const hubScope = req.project === HUB_SCOPE;
+    const repos = this.#host.projects();
+    const project = repos.find((p) => p.name === req.project);
+    if (!hubScope && !project) return refuse(`Project ${req.project} is not added to the app.`, "errors.projectNotAdded", { project: req.project });
+    const cwd = hubScope ? path.join(this.#opts.dataDir, "chat-hub") : project!.repo;
     const local = this.#host.local?.() === true;
     const hub = local ? null : this.#host.hubUrl();
     const grant = req.grant;
@@ -256,14 +276,17 @@ export class ChatWorker {
       effort: req.effort ?? null,
       commands: req.commands ?? [],
       systems: req.systems ?? [],
+      projects: req.projects,
+      ...(hubScope ? { repos } : {}),
     });
-    const stream = new ClaudeStream(project.repo);
+    const stream = new ClaudeStream(cwd);
     let steps = "";
     let stderr = "";
     let cancelled = false;
     let timedOut = false;
     try {
-      const child = spawn(bin, args, { cwd: project.repo, env, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"] });
+      if (hubScope) mkdirSync(cwd, { recursive: true });
+      const child = spawn(bin, args, { cwd, env, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"] });
       this.#jobs.set(req.replyId, { stop: () => killTree(child) });
       child.stdin.on("error", () => undefined);
       child.stdin.end(req.text + attachmentNote(fetched));
