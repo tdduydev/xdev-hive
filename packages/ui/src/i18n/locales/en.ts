@@ -484,8 +484,25 @@ export const en: Catalog = {
     ago: { now: "just now", m: "{n}m", h: "{n}h", d: "{n}d" },
     agoLong: "{when} ago",
     shared: "Shared",
+    group: { decide: "Needs your decision", review: "Needs your review", agent: "Agents waiting on you", watch: "To watch" },
+    orderBy: "Ordered for {role}",
+    waitingRun: {
+      title: "{id} · {title}",
+      reason: { question: "agent asks you", ci: "CI failed", quota: "out of quota" },
+      body: {
+        question: "The agent stopped to ask you something. Read the question, then answer in the task or start the next run.",
+        ci: "The merge request's pipeline failed after this run. Read the log, then fix it or start a fix run.",
+        quota: "The agent's plan ran out of quota midway. Pick another plan or wait for the quota, then run it again.",
+      },
+      summary: "The agent wrote",
+      error: "Error",
+      task: "Task",
+      machine: "Machine",
+      run: "Run",
+      open: "Open run",
+    },
     tag: {
-      cleanup: "Memory cleanup", agentHold: "Agent paused", ci: "CI failed", proposal: "Proposal", review: "Needs review", memory: "Memory", conflict: "Conflict", machine: "This machine", request: "Install request", alert: "Alert", gate: "SDLC gate", leader: "Leader proposal" },
+      cleanup: "Memory cleanup", agentHold: "Agent paused", ci: "CI failed", waitingRun: "Waiting on a person", proposal: "Proposal", review: "Needs review", memory: "Memory", conflict: "Conflict", machine: "This machine", request: "Install request", alert: "Alert", gate: "SDLC gate", leader: "Leader proposal" },
     ci: {
       title: "{mr} · pipeline failed in {jobs}",
       titleNoJobs: "{mr} · pipeline failed",

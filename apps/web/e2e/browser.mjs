@@ -1592,9 +1592,26 @@ async function main() {
     await machineRpc("chat.progress", { replyId: sent.reply.id, text: "Mình đề xuất tắt codegraph." });
     const proposed = await machineRpc("chat.propose", { action: { kind: "tool.enable", id: "codegraph", enabled: false }, reason: "Không dùng nữa" }, request.grant);
     await machineRpc("chat.finish", { replyId: sent.reply.id, status: "done", text: "Mình đề xuất tắt codegraph." });
+    // Roadmap 49g: and a run that stopped to ask (Chờ người, 49e), which lands in Agent đang chờ bạn.
+    const asked = { runId: "R-today2", project: "payment", taskId: "TODAY-ASK", taskTitle: "Hỏi cách làm", role: "implement", profileId: "claude-1", createdAt: at, finishedAt: at };
+    await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ ...asked, status: "succeeded", summary: "Cần bạn xác nhận: dùng API cũ hay mới?" }] });
 
     const tab = (current = tabs.lan);
     await tab.reload();
+    await tab.go("today");
+    // Lan leads payment: what she decides comes first, then the agents waiting on her, then what to review.
+    const groups = await tab.waitFor("Hôm nay grouped for a lead", () => {
+      const list = [...document.querySelectorAll("[data-inbox-group]")].map((g) => g.getAttribute("data-inbox-group"));
+      return document.querySelector("[data-inbox-role]")?.getAttribute("data-inbox-role") === "lead" && list.includes("agent") && list;
+    });
+    expect(groups[0] === "decide" && groups.indexOf("agent") < (groups.includes("review") ? groups.indexOf("review") : Infinity), `groups: ${groups.join()}`);
+    const askedKey = await tab.waitFor("the asking run in Agent đang chờ bạn", () =>
+      document.querySelector('[data-inbox-group="agent"] [data-inbox-key*="/R-today2:question:"]')?.getAttribute("data-inbox-key"));
+    await tab.shot(`${String(n).padStart(2, "0")}-today-groups`);
+    await tab.click(`[data-inbox-key="${askedKey}"]`);
+    await tab.waitFor("the run's question", () => document.body.innerText.includes("dùng API cũ hay mới"));
+    await tab.click("button", "Mở run");
+    await tab.waitFor("the run on Agent đang chạy", () => location.hash.startsWith("#/runs") && document.body.innerText.includes("Hỏi cách làm"));
     await tab.go("today");
     await tab.click(`[data-inbox-key="gate:${gate.id}"]`);
     await tab.shot(`${String(n).padStart(2, "0")}-today-gate`);

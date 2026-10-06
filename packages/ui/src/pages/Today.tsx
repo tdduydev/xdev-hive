@@ -12,7 +12,7 @@ import { ErrorNote } from "#ui/components/common.tsx";
 import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { errorMessage, formatTime, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT, type MessageKey, type TFunction } from "#ui/i18n/index.tsx";
-import { shortAgo, type InboxDone, type InboxItem, type InboxTone } from "#ui/lib/inbox.ts";
+import { groupInbox, shortAgo, type InboxDone, type InboxItem, type InboxTone } from "#ui/lib/inbox.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 import { docOwner } from "#ui/lib/scope.ts";
 import { useInbox } from "#ui/shell/inbox.tsx";
@@ -152,6 +152,7 @@ function titleOf(item: InboxItem, t: TFunction): string {
       const jobs = item.run.ciFix?.jobs.map((j) => j.name).join(", ");
       return jobs ? t("inbox.ci.title", { mr, jobs }) : t("inbox.ci.titleNoJobs", { mr });
     }
+    case "waitingRun": return t("inbox.waitingRun.title", { id: item.run.taskId, title: item.run.taskTitle });
     case "cleanup": return firstLine(item.proposal.reason);
     case "proposal":
       return firstLine(item.proposal.reason) || item.proposal.docKey;
@@ -183,6 +184,7 @@ function metaOf(item: InboxItem, t: TFunction): string {
       const live = item.run.status === "running" || item.run.status === "queued";
       return live ? t("inbox.ci.fixing", { profile: item.run.profileId ?? "agent", n: f.n, max: f.max }) : t("inbox.ci.fixed", { n: f.n, max: f.max });
     }
+    case "waitingRun": return [t(`inbox.waitingRun.reason.${item.reason}`), item.run.machine, item.run.profileId].filter(Boolean).join(" · ");
     case "cleanup": return t("cleanup.source", { id: item.proposal.runId });
     case "proposal":
       return t("inbox.proposal.meta", { author: item.proposal.author, from: item.proposal.baseVersion, to: item.proposal.baseVersion + 1 });
@@ -236,7 +238,9 @@ export function TodayPage() {
     return () => clearInterval(timer);
   }, []);
 
-  const list = tab === "open" ? inbox.items : [];
+  const groups = useMemo(() => groupInbox(inbox.items, inbox.role), [inbox.items, inbox.role]);
+  // J / K and the first item follow the groups as shown, not the newest-first order they came in.
+  const list = useMemo(() => (tab === "open" ? groups.flatMap((g) => g.items) : []), [tab, groups]);
   const selected = mobileDetail.mobile ? mobileDetail.value : sel;
   const current = tab === "open" ? (list.find((i) => i.key === selected) ?? (mobileDetail.mobile ? null : list[0] ?? null)) : null;
   const doneCurrent = tab === "done" ? (inbox.done.find((d) => d.key === selected) ?? (mobileDetail.mobile ? null : inbox.done[0] ?? null)) : null;
@@ -322,37 +326,50 @@ export function TodayPage() {
               </button>
             ))}
           </div>
+          {tab === "open" && groups.length > 1 ? (
+            <span className="ml-auto min-w-0 truncate text-[11px]/4 text-fg-muted" data-inbox-role={inbox.role}>
+              {t("inbox.orderBy", { role: t(`projectRole.${inbox.role}`) })}
+            </span>
+          ) : null}
         </div>
         <div role="listbox" aria-label={t("inbox.listLabel")} className="min-h-0 flex-1 overflow-y-auto">
           {tab === "open"
-            ? list.map((item) => {
-                const on = item.key === current?.key;
-                const unread = !inbox.read.has(item.key) && !on;
-                return (
-                  <div
-                    key={item.key}
-                    role="option"
-                    aria-selected={on}
-                    data-inbox-key={item.key}
-                    onClick={() => pick(item.key)}
-                    className={cn(
-                      "relative flex cursor-pointer flex-col gap-1 border-b border-line-subtle py-2.5 pr-3.5 pl-[22px]",
-                      on ? "bg-selected" : "hover:bg-hover",
-                    )}
-                  >
-                    {unread ? <span aria-label={t("inbox.unread")} className="absolute top-[17px] left-[9px] size-[7px] rounded-full bg-info-solid" /> : null}
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      <Chip kind={item.tone}>{t(`inbox.tag.${item.kind}`)}</Chip>
-                      <span className="min-w-0 flex-1 truncate text-[13px]/[18px] font-semibold text-fg-strong">{titleOf(item, t)}</span>
-                      <span className="shrink-0 text-[11px]/none text-fg-muted">{shortAgo(item.at, now, t)}</span>
-                    </div>
-                    <span className="truncate text-xs/4 text-fg-muted">
-                      <span className="font-mono">{scopeText(item, t)}</span>
-                      {metaOf(item, t) ? ` · ${metaOf(item, t)}` : ""}
-                    </span>
+            ? groups.map(({ group, items }) => (
+                <div key={group} role="group" aria-labelledby={`inbox-group-${group}`} data-inbox-group={group}>
+                  <div id={`inbox-group-${group}`} className="flex items-center gap-1.5 border-b border-line-subtle bg-subtle px-3.5 py-1.5 text-[11px]/4 font-semibold text-fg-secondary">
+                    <span className="min-w-0 flex-1 truncate">{t(`inbox.group.${group}`)}</span>
+                    <span className="font-normal text-fg-muted">{items.length}</span>
                   </div>
-                );
-              })
+                  {items.map((item) => {
+                    const on = item.key === current?.key;
+                    const unread = !inbox.read.has(item.key) && !on;
+                    return (
+                      <div
+                        key={item.key}
+                        role="option"
+                        aria-selected={on}
+                        data-inbox-key={item.key}
+                        onClick={() => pick(item.key)}
+                        className={cn(
+                          "relative flex cursor-pointer flex-col gap-1 border-b border-line-subtle py-2.5 pr-3.5 pl-[22px]",
+                          on ? "bg-selected" : "hover:bg-hover",
+                        )}
+                      >
+                        {unread ? <span aria-label={t("inbox.unread")} className="absolute top-[17px] left-[9px] size-[7px] rounded-full bg-info-solid" /> : null}
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <Chip kind={item.tone}>{t(`inbox.tag.${item.kind}`)}</Chip>
+                          <span className="min-w-0 flex-1 truncate text-[13px]/[18px] font-semibold text-fg-strong">{titleOf(item, t)}</span>
+                          <span className="shrink-0 text-[11px]/none text-fg-muted">{shortAgo(item.at, now, t)}</span>
+                        </div>
+                        <span className="truncate text-xs/4 text-fg-muted">
+                          <span className="font-mono">{scopeText(item, t)}</span>
+                          {metaOf(item, t) ? ` · ${metaOf(item, t)}` : ""}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))
             : inbox.done.map((d) => (
                 <div
                   key={d.key}
@@ -530,6 +547,28 @@ function Detail({
       actions = [
         { label: t("inbox.ci.viewRun"), kind: "primary", run: go(`#/runs?run=${encodeURIComponent(r.id)}`) },
         ...(r.mrUrl ? [{ label: t("inbox.ci.openMr"), kind: "secondary" as const, run: open(r.mrUrl) }] : []),
+        seenAction(),
+      ];
+      break;
+    }
+    case "waitingRun": {
+      const r = item.run;
+      body = (
+        <>
+          <P>{t(`inbox.waitingRun.body.${item.reason}`)}</P>
+          {item.reason === "quota" && r.error ? <CodeBlock lang={t("inbox.waitingRun.error")} text={r.error} /> : r.summary ? <CodeBlock lang={t("inbox.waitingRun.summary")} text={r.summary} /> : null}
+          <Kv
+            rows={[
+              [t("inbox.waitingRun.task"), r.taskId, true],
+              [t("inbox.waitingRun.machine"), r.machine, true],
+              [t("inbox.waitingRun.run"), `${r.runId} · ${r.profileId ?? "—"}`, true],
+            ]}
+          />
+        </>
+      );
+      actions = [
+        { label: t("inbox.waitingRun.open"), kind: "primary", run: go(`#/runs?run=${encodeURIComponent(`${r.machineId}/${r.runId}`)}`) },
+        { label: t("inbox.review.openTask"), kind: "secondary", run: go(`#/tasks?task=${encodeURIComponent(r.taskId)}`) },
         seenAction(),
       ];
       break;
