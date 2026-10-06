@@ -7,6 +7,7 @@ import { cn } from "cn";
 import { cacheReadShare, parseVerdict, type AgentRun, type RunCompression, type RunRecord, type RunRequest, type RunTokens } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
+import { ArtifactList } from "#ui/components/Artifacts.tsx";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
 import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { Chip, FilterChips, ListPane, type ChipKind } from "#ui/components/panes.tsx";
@@ -814,6 +815,8 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
       {live && run.cancelRequestedBy ? <Notice tone="warn">{t("runs.cancelRequested", { who: run.cancelRequestedBy, time: formatTime(run.cancelRequestedAt) })}</Notice> : null}
       {run.error ? <Notice tone={run.status === "queued" ? "info" : "warn"} className="[overflow-wrap:anywhere]">{run.error}</Notice> : null}
       {verdict === "changes" && latestReview && manage ? <FixRun run={run} /> : null}
+      {/* What this run made and sent to the hub (roadmap 41c): the branch may be gone, these stay. */}
+      <ArtifactList project={run.project} runId={run.runId} machineId={run.machineId} />
       <ErrorNote error={action.error ?? full.error} />
       <NoteLine>{pruned ?? t("runs.logNote", { time: formatTime(run.updatedAt) })}</NoteLine>
     </>

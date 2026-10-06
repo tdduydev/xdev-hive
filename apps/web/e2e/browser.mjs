@@ -1589,6 +1589,58 @@ async function main() {
     }
   }
 
+  // Roadmap 41c: what a run made is on the run and on its task, and the project manager can take it away.
+  await step("artifacts", async () => {
+    const asMachine = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" },
+        body: JSON.stringify({ method, input }),
+      });
+      const body = await r.json();
+      if (body.error) throw new Error(`${method}: ${body.error.message}`);
+      return body.result;
+    };
+    const runId = "R-e2eart";
+    await asMachine("runs.push", {
+      machine: "lan-mbp",
+      runs: [{ runId, project: "payment", taskId: "PAY-1", taskTitle: "Việc đầu tiên của payment", role: "implement", status: "succeeded", profileId: "claude-1",
+        log: "done", createdAt: new Date(Date.now() - 300_000).toISOString(), finishedAt: new Date().toISOString() }],
+    });
+    // A 1×1 PNG, so the hub reads its signature as one; and a report with a line that looks like a token.
+    const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const base64 = (s) => Buffer.from(s, "utf8").toString("base64");
+    const put = (name, data) => asMachine("artifacts.put", { project: "payment", taskId: "PAY-1", runId, profileId: "claude-1", name, data });
+    await put("shots/board.png", png);
+    const report = await put("do-duoc.md", base64(`# Đo được\nTOKEN=glpat-${"x".repeat(24)}\nXong.\n`));
+    const kept = Buffer.from((await rpc("artifacts.get", { id: report.id })).data, "base64").toString("utf8");
+    expect(!kept.includes("glpat-") && kept.includes("line hidden"), `the secret-looking line was kept: ${kept}`);
+
+    const tab = (current = tabs.lan);
+    await tab.reload();
+    await tab.go(`runs?run=${runId}`);
+    await tab.waitFor("the run's artifacts", () => document.querySelector('[data-artifact="shots/board.png"]') && document.querySelector('[data-artifact="do-duoc.md"]'));
+    if (mobile) {
+      const targets = await tab.eval(() => [...document.querySelectorAll('[data-artifacts] button')].every((el) => {
+        const box = el.getBoundingClientRect();
+        return box.width >= 44 && box.height >= 44;
+      }));
+      expect(targets, "artifact controls have 44px phone targets");
+    }
+    await tab.click('[data-artifact="shots/board.png"] button');
+    await tab.waitFor("the screenshot itself", () => document.querySelector('[data-artifacts] img[alt="shots/board.png"]'));
+
+    // The same files on the task's panel, whichever run made them.
+    await tab.go("tasks?task=PAY-1");
+    await tab.waitFor("the task's artifacts", () => document.querySelector('[data-artifact="do-duoc.md"]'));
+    // Lan manages payment: she may take one away, and the audit log says she did.
+    await tab.click(`[aria-label="Xoá do-duoc.md"]`);
+    await tab.waitFor("it is gone", () => !document.querySelector('[data-artifact="do-duoc.md"]') && document.querySelector('[data-artifact="shots/board.png"]'));
+    // By person, not by actor: Lan's tab signs in with her token "lan-e2e", which acts on her behalf.
+    const log = await rpc("admin.audit", { action: "artifacts.remove", user: "lan" });
+    expect(log.some((e) => e.detail.includes("do-duoc.md")), `the removal is not in the audit log: ${JSON.stringify(log)}`);
+  });
+
   const errors = Object.values(tabs).flatMap((t) => t.errors.map((e) => `${t.name}: ${e}`));
   if (errors.length) console.log(`page errors:\n  ${errors.join("\n  ")}`);
   const failed = results.filter((r) => !r.ok);

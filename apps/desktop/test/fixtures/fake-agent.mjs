@@ -140,6 +140,17 @@ switch (process.env.FAKE_MODE ?? "ok") {
     writeFileSync("work.txt", "done\n");
     finish();
     break;
+  case "artifacts":
+    // Leaves files for the hub (roadmap 41c): one it keeps, one over 5 MB and one of a kind it does not take.
+    appendFileSync(`work-${process.env.HIVE_AGENT}.txt`, "done\n");
+    mkdirSync(".xdev-hive/artifacts/shots", { recursive: true });
+    writeFileSync(".xdev-hive/artifacts/report.md", `# ${process.env.HIVE_TASK}\nĐo xong.\n`);
+    writeFileSync(".xdev-hive/artifacts/shots/board.png", Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]));
+    writeFileSync(".xdev-hive/artifacts/huge.log", Buffer.alloc(5 * 1024 * 1024 + 1, 0x61));
+    writeFileSync(".xdev-hive/artifacts/bundle.zip", Buffer.from([0x50, 0x4b, 0x03, 0x04, 1, 2]));
+    say(`Implemented ${process.env.HIVE_TASK}.`);
+    finish();
+    break;
   case "leak":
     // Prints something that looks like a token: the log on this machine keeps it, what goes to the hub must not.
     appendFileSync(`work-${process.env.HIVE_AGENT}.txt`, "done\n");

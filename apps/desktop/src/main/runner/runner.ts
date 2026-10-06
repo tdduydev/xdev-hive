@@ -22,6 +22,7 @@ import {
   AGENT_ROLES,
   PREFER_KINDS,
   agentActorName,
+  ARTIFACT_DIR,
   effectivePolicy,
   HiveError,
   MAX_CANDIDATES,
@@ -77,6 +78,7 @@ import { git, isGitRepo } from "#desktop/main/git.ts";
 import { NO_FEATURES, repoFeatures } from "#desktop/main/installer.ts";
 import { renderContext } from "#desktop/main/sync.ts";
 import { hookEnv, legacyPick, NO_TOOLS, prepareTool, readyHooks, rtkGain, runTools, toolDirs, userClaudeSettings, type ToolPick } from "./tools.ts";
+import { collectArtifacts } from "./artifacts.ts";
 import { containerCommand } from "./container.ts";
 import { claudeMcpServers, codexMcpArgs, hubMcpEnv, type McpRun } from "./container-mcp.ts";
 import { deniedHosts, egressAllow, egressPlan, type Egress } from "./egress.ts";
@@ -1167,6 +1169,41 @@ export class Runner {
     }
   }
 
+  /**
+   * Sends what the agent made (roadmap 41c) to the hub, beside its run and its task: the files it left in
+   * ARTIFACT_DIR of the worktree, which no commit carries. Hub mode only — a local hive has no one to show them to.
+   * One call per file, so a file the hub refuses does not take the others with it; what stayed behind and what
+   * failed go in the run's log and never change its status, because the work itself is already done.
+   *
+   * A file the hub took is deleted from the worktree: the task keeps its folder across runs (a review, a next
+   * attempt, a CI fix), so leaving it there would send the same file again under every later run's id, and fill
+   * that run's twenty with the last one's work.
+   */
+  async #pushArtifacts(run: AgentRun, dir: string): Promise<void> {
+    if (this.#host.mode() !== "hub" || !existsSync(path.join(dir, ARTIFACT_DIR))) return;
+    const { files, skipped } = collectArtifacts(dir);
+    const notes = [...skipped];
+    let sent = 0;
+    for (const f of files) {
+      try {
+        const input = { project: run.project, taskId: run.taskId, runId: run.id, profileId: run.profileId, name: f.name, data: f.data };
+        await this.#host.backend().call("artifacts.put", input, this.#runnerActor());
+        sent++;
+        // Only once the hub has it: one that failed stays for the next run to try again.
+        rmSync(f.file, { force: true });
+      } catch (err) {
+        notes.push(tr("runNote.artifactFailed", { name: f.name, reason: toErrorPayload(err).message }));
+      }
+    }
+    if (sent) notes.unshift(tr("runNote.artifactsSent", { count: sent }));
+    if (!notes.length) return;
+    try {
+      appendFileSync(this.#logPath(run.id), `${notes.map((n) => `# ${n}`).join("\n")}\n`);
+    } catch {
+      // The log is the only place these notes go; there is nothing else to try.
+    }
+  }
+
   /** The last lines of a run's log for the hub: no colour codes or hidden characters, secret-looking lines replaced. */
   #logTail(id: string, lines = 200, bytes = 48_000): string {
     const text = this.log(id, bytes)
@@ -1565,6 +1602,8 @@ export class Runner {
         contextFile: context.file,
         references: references.repos,
         rtk: hooks?.ready.some((r) => r.entry.id === "rtk") ?? false,
+        // Only a hub keeps what the run makes; on a local hive the folder would fill up for nothing.
+        artifacts: this.#host.mode() === "hub",
       });
       const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id, repo: project.repo, references: references.repos };
       wt.toolDirs = toolDirs(tools.prepare);
@@ -1905,6 +1944,17 @@ export class Runner {
     }
 
     const done = this.store.update(run.id, { status, error, exitCode, summary, commits, headSha, ...usage, finishedAt: now.toISOString() });
+    // After the run is marked done, so a slow upload never holds it open: the work is in the branch either way.
+    // Nothing it can throw may stop #report below, or the task would stay in "doing" holding its lease.
+    if (wt) {
+      await this.#pushArtifacts(done, wt.path).catch((err: unknown) => {
+        try {
+          appendFileSync(this.#logPath(run.id), `# ${tr("runNote.artifactFailed", { name: ARTIFACT_DIR, reason: toErrorPayload(err).message })}\n`);
+        } catch {
+          // Nothing else to try: the run and its work are already safe.
+        }
+      });
+    }
     await this.#report(done, profile).catch((err: unknown) => {
       this.store.update(run.id, { error: [done.error, `Hive: ${(err as Error).message}`].filter(Boolean).join(" · ") });
     });
