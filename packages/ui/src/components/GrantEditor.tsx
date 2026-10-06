@@ -40,7 +40,7 @@ export function GrantBadge({ grant, label, className }: { grant: Grant | null | 
   const t = useT();
   const role = grantRole(grant);
   return (
-    <Badge tone={role ? ROLE_TONE[role] : "neutral"} className={cn("font-mono text-[11px]", className)}>
+    <Badge tone={role ? ROLE_TONE[role] : "neutral"} className={cn("h-auto max-w-full font-mono text-[11px] whitespace-normal wrap-anywhere", className)}>
       {label ? `${label} · ` : ""}
       {grantLabel(t, grant)}
     </Badge>
