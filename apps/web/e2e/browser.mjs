@@ -476,6 +476,7 @@ async function main() {
 
   await step("lead-sees-members", async () => {
     const tab = (current = tabs.lan = await signInWithToken("lan", people.lan.token, "members"));
+    await tab.click("button", "Sửa");
     const text = await tab.waitFor("the members of payment", () => document.body.innerText.includes("Hoa Trần") && document.body.innerText);
     expect(/Minh Lê/.test(text), "Minh is a member of payment");
   });
@@ -617,7 +618,7 @@ async function main() {
   await step("project-retire", async () => {
     const tab = (current = tabs.admin);
     await rpc("tasks.update", { id: "LEDGER-1", status: "done" });
-    await tab.go("policy");
+    await tab.go("admin?tab=policy");
     await tab.select("[data-retire-project]", "ledger");
     await tab.click("[data-retire-start]");
     await tab.click("[data-retire-confirm]");
@@ -662,7 +663,8 @@ async function main() {
       return (await r.json()).result;
     };
     await beat();
-    await tab.go("admin/context");
+    await tab.go("settings?tab=context");
+    await tab.click("button", "Sửa");
     await tab.select('select[aria-label="Dự án"]', "payment");
     await tab.waitFor("Lan's machine on the card", () => document.body.innerText.includes("lan-mbp"));
     await tab.click("button", "Yêu cầu máy đồng bộ");
@@ -976,7 +978,7 @@ async function main() {
         value,
       );
     let tab = (current = tabs.admin);
-    await tab.go("admin/policy");
+    await tab.go("admin?tab=policy");
     await tab.waitFor("the hub's gate row", () => !!document.querySelector('[data-sdlc-row="hub"] [data-sdlc-gate="merge"]'));
     await setSelect(tab, '[data-sdlc-row="hub"] [data-sdlc-gate="merge"]', "ai");
     await tab.click('[data-sdlc-save="hub"]');
@@ -985,15 +987,13 @@ async function main() {
 
     tab = current = tabs.lan;
     await tab.reload();
-    // Roadmap 49b: a lead's gate rows are on Cài đặt dự án › Chốt & chính sách.
+    // 56b: project settings links to the dedicated process page; it has no duplicate gate table.
     await tab.go("settings?tab=policy");
-    await tab.waitFor("payment's gate row", () => !!document.querySelector('[data-sdlc-row="payment"] [data-sdlc-gate="spec"]'));
-    expect(!(await tab.eval(() => !!document.querySelector('[data-sdlc-row="hub"]'))), "a project manager got the hub's row");
-    const autoMerge = await tab.eval(() => document.querySelector('[data-sdlc-row="payment"] [data-sdlc-gate="merge"] option[value="auto"]')?.disabled);
-    expect(autoMerge === true, `merge "auto" offered over the ceiling: ${autoMerge}`);
-    await setSelect(tab, '[data-sdlc-row="payment"] [data-sdlc-gate="spec"]', "auto");
-    await setSelect(tab, '[data-sdlc-row="payment"] [data-sdlc-gate="merge"]', "ai");
-    await tab.click('[data-sdlc-save="payment"]');
+    await tab.waitFor("process link", () => !!document.querySelector('a[href="#/pipeline"]'));
+    expect(!(await tab.eval(() => !!document.querySelector('[data-sdlc-row="payment"]'))), "settings duplicated the process table");
+    await tab.eval(() => document.querySelector('a[href="#/pipeline"]')?.click());
+    await tab.waitFor("process page", () => location.hash.startsWith("#/pipeline"));
+    await rpc("sdlc.setProject", { project: "payment", settings: { gates: { spec: "auto", merge: "ai" }, maxFixRounds: 2, maxParallel: null } });
     const got = await until("payment's gates", async () => {
       const p = (await rpc("sdlc.get", {})).projects.payment;
       return p?.gates.spec === "auto" ? p : null;
@@ -1256,32 +1256,19 @@ async function main() {
 
   // Roadmap 27a: a project's row only tightens the hub's default; the machines get it at their heartbeat.
   await step("agent-policy", async () => {
-    const tab = (current = tabs.admin);
-    await tab.go("admin/policy");
-    await tab.waitFor("payment's row", () => [...document.querySelectorAll("tr")].some((r) => r.cells[0]?.textContent.trim() === "payment" && r.querySelector('select[aria-label="Mức tự chủ tối đa"]')));
-    // The report of 2/10: the card says the policy never widens a profile's own flags.
-    await tab.waitFor("the ceiling note", () => document.body.innerText.includes("Chính sách chỉ giới hạn, không cấp thêm quyền"));
-    await tab.eval(() => {
-      const row = [...document.querySelectorAll("tr")].find((r) => r.cells[0]?.textContent.trim() === "payment" && r.querySelector('select[aria-label="Mức tự chủ tối đa"]'));
-      const select = row.querySelector('select[aria-label="Mức tự chủ tối đa"]');
-      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, "read");
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    const { x, y } = await tab.waitFor("payment's save button", () => {
-      const row = [...document.querySelectorAll("tr")].find((r) => r.cells[0]?.textContent.trim() === "payment" && r.querySelector('select[aria-label="Mức tự chủ tối đa"]'));
-      const b = row && [...row.querySelectorAll("button")].find((x) => !x.disabled && x.textContent.trim().startsWith("Lưu"));
-      if (!b) return null;
-      b.scrollIntoView({ block: "center" });
-      const r = b.getBoundingClientRect();
-      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
-    });
-    await tab.cdp("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
-    await tab.cdp("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
+    const tab = (current = tabs.lan);
+    await tab.go("settings?tab=agent");
+    await tab.waitFor("agent summary", () => !!document.querySelector("[data-policy-summary]"));
+    await tab.shot(`${String(n).padStart(2, "0")}-settings-agent-summary`);
+    await tab.click("[data-compact-agent-policy] button", "Sửa");
+    await tab.waitFor("agent editor", () => !!document.querySelector("[data-policy-editor]"));
+    await tab.waitFor("model chips from the router", () => { const sheet = document.querySelector('[data-policy-editor]'); const box = sheet?.getBoundingClientRect(); return box?.left >= 0 && box?.right <= innerWidth && sheet?.textContent.includes("sonnet"); });
+    if (mobile) { const short = await tab.eval(() => [...document.querySelectorAll('[data-policy-editor] button')].filter((b) => b.getBoundingClientRect().width > 0 && b.getBoundingClientRect().height < 44).map((b) => `${b.textContent.trim() || b.getAttribute('aria-label')}: ${Math.round(b.getBoundingClientRect().height)}px`)); expect(short.length === 0, `agent editor touch targets below 44px: ${short.join(", ")}`); }
+    await tab.shot(`${String(n).padStart(2, "0")}-settings-agent-editor`);
+    await tab.click('[data-policy-editor] button[aria-pressed]', "Chỉ đọc");
+    await tab.click('[data-policy-editor] button', "Lưu");
     await until("payment at read", async () => (await rpc("agentPolicy.get", {})).effective?.payment?.autonomy === "read");
-    await tab.waitFor("the row saved, with its own part to clear", () => {
-      const row = [...document.querySelectorAll("tr")].find((r) => r.cells[0]?.textContent.trim() === "payment" && r.querySelector('select[aria-label="Mức tự chủ tối đa"]'));
-      return row && row.innerText.includes("Đã lưu.") && row.innerText.includes("Bỏ phần riêng") && row.innerText.includes("Chỉ đọc");
-    });
+    await tab.waitFor("effective summary", () => document.querySelector("[data-policy-summary]")?.textContent.includes("Chỉ đọc"));
     // Lan's machine has payment: its heartbeat carries the part.
     const r = await fetch(`${base}/api/rpc`, {
       method: "POST",
@@ -1297,13 +1284,14 @@ async function main() {
   await step("tools", async () => {
     let tab = (current = tabs.lan);
     await tab.go("tools");
+    await tab.click("button", "Sửa");
     await tab.select("#tools-project", "payment");
     await tab.select("#tool-codegraph-state", "on");
     await until("codegraph on for payment", async () => (await rpc("tools.list", { project: "payment" })).find((t) => t.id === "codegraph")?.projects[0]?.effective === true);
     await tab.waitFor("the card says it is on", () => !!document.querySelector('[data-tool="codegraph"] [data-tool-effective="on"]'));
 
     tab = current = tabs.admin;
-    await tab.go("admin/tools");
+    await tab.go("admin?tab=tools");
     await tab.click("button[data-tool-add]");
     await tab.click("#tool-form-new-id");
     await tab.type("rtk-mcp");
@@ -1546,6 +1534,7 @@ async function main() {
     const tab = (current = tabs.admin);
     await tab.reload();
     await tab.go("systems");
+    await tab.click("button", "Sửa");
     await tab.waitFor("crm outside every system, 2 open tasks", () => document.querySelector('[data-outside-project="crm"]')?.innerText.includes("2 task đang mở"));
     await tab.click("[data-systems-search]");
     await tab.type("crm");
@@ -1568,6 +1557,7 @@ async function main() {
     const tab = (current = tabs.admin);
     await tab.reload();
     await tab.go("settings?tab=systems");
+    await tab.click("button", "Sửa");
     await tab.click("[data-systems-search]");
     await tab.type("throwaway");
     await tab.waitFor("throwaway in the admin's project table", () => !!document.querySelector('[data-project-row="throwaway"]'));
@@ -2073,7 +2063,8 @@ async function main() {
     await until("merge approved", async () => (await rpc("memory.cleanupProposals", { project: "payment" })).find((p) => p.reason === "Knowledge memory merge")?.status === "approved");
     const entries = await rpc("memory.list", { project: "payment", limit: 500 });
     expect(entries.find((m) => m.id === a.id)?.supersededBy === entries.find((m) => m.id === b.id)?.supersededBy, "original facts point to one merged fact");
-    await tab.go("settings?tab=policy");
+    await tab.go("settings?tab=context");
+    await tab.click("button", "Sửa");
     await tab.waitFor("project cleanup setting", () => document.querySelector('[data-cleanup-project="payment"]'));
     await tab.click('[data-cleanup-project="payment"]');
     await until("cleanup disabled", async () => (await rpc("memory.cleanupSettings", { project: "payment" }))[0]?.enabled === false);

@@ -28,9 +28,7 @@ import { ProfileStates } from "#ui/components/ProfileStates.tsx";
 import { formatTime, useAction, useHive, useProjects, useQuery } from "#ui/hooks.ts";
 import { rich, useT, type MessageKey } from "#ui/i18n/index.tsx";
 import { hasNewer } from "#ui/lib/setup.ts";
-import { AgentPolicyCard } from "#ui/pages/admin/AgentPolicy.tsx";
 import { RetiredProjectsCard } from "#ui/pages/admin/RetiredProjects.tsx";
-import { SdlcGatesCard } from "#ui/pages/admin/SdlcGates.tsx";
 
 
 const STATE_TONE: Record<SetupState, string> = { installed: "ok", missing: "warn", outdated: "info", manual: "danger" };
@@ -500,9 +498,6 @@ export function PolicyTab() {
       </div>
       <ErrorNote error={action.error} />
 
-      {/* Saved row by row, apart from the button above: a project's manager may change their row without the rest. */}
-      <AgentPolicyCard />
-      <SdlcGatesCard />
       <RetiredProjectsCard />
     </>
   );

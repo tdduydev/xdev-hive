@@ -76,6 +76,7 @@ describe("addresses", () => {
   it("keeps a link's own query when it moves to a tab, the target's tab first", () => {
     assert.deepEqual(web("#/batches?group=3"), { id: "runs", hash: "#/runs?group=3" });
     assert.deepEqual(web("#/members?project=app"), { id: "settings", hash: "#/settings?tab=members&project=app" });
+    assert.deepEqual(web("#/admin/policy"), { id: "admin", hash: "#/admin?tab=policy" });
     assert.deepEqual(web("#/fleet?tab=map"), { id: "machines", hash: "#/machines?tab=fleet" });
   });
 

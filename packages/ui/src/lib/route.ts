@@ -98,6 +98,7 @@ export function resolveHash(raw: string, opts: { local: boolean; web?: boolean; 
     const q = params.toString();
     return { id: page, hash: `#/${page}${q ? `?${q}` : ""}` };
   };
+  if (opts.web && id === "admin/policy") return to("admin?tab=policy");
   // On the web #/admin is Quản trị itself (roadmap 49b). Anywhere else, and #/admin/<page>?… everywhere, it is the
   // old Web Admin's address. Then the aliases, so an address that moved twice (#/admin/tools → Tool → Dự án & công cụ
   // on this machine, → Cài đặt dự án on the web) still ends on the page that holds it.
