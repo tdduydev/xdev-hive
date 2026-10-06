@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { AGENT_TEMPLATES, autonomyOf, autonomySource, NO_MODEL, OPEN_POLICY, profileAutonomy, type AgentPolicy, type AgentProfile } from "@xdev-hive/core";
-import { applyAutonomy, applyPolicy, buildCommand, codexMcpNames, modelOf, policyBlocks, policyLine } from "#desktop/main/runner/command.ts";
+import { applyAutonomy, applyPolicy, buildCommand, codexMcpNames, effortOf, modelOf, policyBlocks, policyLine, ranOn } from "#desktop/main/runner/command.ts";
 
 const pol = (over: Partial<AgentPolicy>): AgentPolicy => ({ ...OPEN_POLICY, ...over });
 const boxed = (p: AgentProfile, container: Partial<NonNullable<AgentProfile["container"]>> = {}): AgentProfile => ({
@@ -201,5 +201,24 @@ describe("applyPolicy", () => {
     const line = policyLine(p, applyPolicy(AGENT_TEMPLATES.claude, p));
     assert.match(line, /^# policy /);
     assert.match(line, /model sonnet · autonomy read · Hive read-only · network host · mcp xdev-hive$/);
+  });
+});
+
+describe("what a run ran on (roadmap 54a)", () => {
+  it("reads the effort each CLI takes, the last one winning", () => {
+    assert.equal(effortOf("claude", ["-p", "{prompt}", "--effort", "low", "--effort=high"]), "high");
+    assert.equal(effortOf("antigravity", ["--effort", "medium"]), "medium");
+    assert.equal(effortOf("codex", ["exec", "-c", "model_reasoning_effort=low", "--config", 'model_reasoning_effort="xhigh"']), "xhigh");
+    assert.equal(effortOf("codex", ["exec", "--config=model_reasoning_effort='medium'"]), "medium");
+    assert.equal(effortOf("codex", ["exec", "-c", "model_verbosity=low", "--effort", "high"]), null, "codex has no --effort");
+    assert.equal(effortOf("claude", ["-p", "{prompt}"]), null, "the CLI's default");
+    assert.equal(effortOf("gemini", ["--effort", "high"]), null);
+  });
+
+  it("reads the model and effort from the args after the policy, none from a custom CLI", () => {
+    const fit = applyPolicy({ ...AGENT_TEMPLATES.codex, args: ["exec", "-c", "model_reasoning_effort=high", "{prompt}"] }, { ...OPEN_POLICY, models: { codex: ["gpt-6.1-sol"] } });
+    assert.deepEqual(ranOn(fit.profile), { model: "gpt-6.1-sol", effort: "high" });
+    assert.deepEqual(ranOn(AGENT_TEMPLATES.claude), { model: null, effort: null });
+    assert.deepEqual(ranOn({ ...AGENT_TEMPLATES.claude, kind: "custom", args: ["--model", "x", "--effort", "low"] }), { model: null, effort: null });
   });
 });

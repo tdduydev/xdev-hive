@@ -383,7 +383,8 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       title: "List agent runs",
       description:
         "Agent runs the team's machines reported to the hub, newest first: task, role (implement, review), machine, plan, status, " +
-        "activity, the result summary (a review's verdict), error, branch, MR. run_get reads one with the end of its log.",
+        "activity, the result summary (a review's verdict), error, branch, MR, and what it ran on: kind, model and effort (null: the CLI's default), " +
+        "attempt, parentRun, verdict. run_get reads one with the end of its log.",
       inputSchema: { project, limit: z.number().int().min(1).max(100).optional() },
       annotations: readOnly,
     },

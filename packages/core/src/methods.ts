@@ -2,7 +2,8 @@ import { z } from "zod";
 import { HiveError } from "./errors.ts";
 import { agentPolicyPartSchema, agentPolicySchema, type AgentPolicy, type AgentPolicyView } from "./agent-policy.ts";
 import { BUDGET_USER, budgetSchema, type BudgetBlock, type BudgetUsage } from "./budgets.ts";
-import { ACCOUNT_ID, AGENT_ROLES, PREFER_KINDS, agentProfileSchema, MAX_CANDIDATES, RUN_STATUSES } from "./agents.ts";
+import { ACCOUNT_ID, AGENT_KINDS, AGENT_ROLES, PREFER_KINDS, agentProfileSchema, MAX_CANDIDATES, RUN_STATUSES } from "./agents.ts";
+import { VERDICTS } from "./verdict.ts";
 import { CHAT_FILES_PER_MESSAGE } from "./chatfiles.ts";
 import { DOC_ASSET_MAX_BYTES } from "./doclinks.ts";
 import { MR_STATUSES, PIPELINE_STATUSES } from "./gitlab.ts";
@@ -494,6 +495,18 @@ export const schemas = {
             })
             .nullable()
             .optional(),
+          /**
+           * What the run ran on (roadmap 54a): kind, model and effort as the final args set them (null: the CLI's default),
+           * the router's tier, the attempt and the run it follows, a review's verdict. Each left out by older apps, then
+           * the hub keeps what it had; a review's verdict the hub then reads from the summary itself.
+           */
+          kind: z.enum(AGENT_KINDS).nullable().optional(),
+          model: z.string().max(100).nullable().optional(),
+          effort: z.string().max(40).nullable().optional(),
+          tier: z.string().max(40).nullable().optional(),
+          attempt: z.number().int().min(1).max(1000).nullable().optional(),
+          parentRun: z.string().regex(/^[\w.-]{1,40}$/).nullable().optional(),
+          verdict: z.enum(VERDICTS).nullable().optional(),
           log: z.string().max(60_000).default(""),
           /** What the run changed (git diff from its base), when it changed since the last push (roadmap 22l). */
           patch: z.string().max(400_000).optional(),

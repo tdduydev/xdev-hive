@@ -27,6 +27,7 @@ import {
   MAX_CANDIDATES,
   OPEN_POLICY,
   PAUSED_HUB,
+  parseVerdict,
   profileAutonomy,
   tokenWindows,
   redactLines,
@@ -90,6 +91,7 @@ import {
   parsePick,
   policyBlocks,
   policyLine,
+  ranOn,
   resolveBin,
   type ClaudeHookRun,
   type JudgeCandidate,
@@ -1112,7 +1114,7 @@ export class Runner {
         // A few patches per push keep the request small; the others go with the next ones.
         const patch = patches < 3 ? this.#patchFor(r) : undefined;
         if (patch !== undefined) patches++;
-        const key = JSON.stringify([r.status, r.activity ?? null, r.finishing ?? false, r.mrUrl, r.commits, log.length, log.slice(-200), mrOf(r), r.compression ?? null]);
+        const key = JSON.stringify([r.status, r.activity ?? null, r.finishing ?? false, r.mrUrl, r.commits, log.length, log.slice(-200), mrOf(r), r.compression ?? null, r.model ?? null, r.effort ?? null]);
         if (this.#pushed.get(r.id) !== key || patch !== undefined) changed.push({ run: r, key, log, ...(patch !== undefined ? { patch } : {}) });
         if (changed.length === 20) break;
       }
@@ -1140,6 +1142,15 @@ export class Runner {
             mr: mrOf(r),
             costUsd: r.costUsd,
             compression: r.compression ?? null,
+            kind: r.agentKind ?? null,
+            model: clip(r.model ?? null, 100),
+            effort: clip(r.effort ?? null, 40),
+            // Set by the model router (54c); none picks a tier yet.
+            tier: null,
+            attempt: r.attempt,
+            parentRun: r.parentRunId,
+            // From the whole report: the summary sent above is clipped, and the verdict often closes it.
+            verdict: r.role === "review" && r.status === "succeeded" ? parseVerdict(r.summary) : null,
             log,
             ...(patch !== undefined ? { patch } : {}),
             createdAt: r.createdAt,
@@ -1455,7 +1466,9 @@ export class Runner {
     const pol = this.#policyOf(run.project);
     const fit = applyPolicy(chosen, pol, chosen.kind === "codex" && pol.mcp !== null ? this.#codexServers(chosen) : []);
     const profile = fit.profile;
-    const skipped = [...this.#policyBlocked(pol)].map(([id, reason]) => `# policy skipped ${id}: ${reason}\n`).join("");
+    // Read from the args the CLI gets, not the profile's own: the policy may have put a model in (roadmap 54a).
+    run = this.store.update(run.id, { agentKind: profile.kind, ...ranOn(profile) });
+    const skipped =[...this.#policyBlocked(pol)].map(([id, reason]) => `# policy skipped ${id}: ${reason}\n`).join("");
     let wt: Worktree | null = null;
     let mcpFile: string | null = null;
     let runDir: string | null = null;
