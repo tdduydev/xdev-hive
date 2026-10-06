@@ -9,6 +9,8 @@ import { ErrorNote } from "#ui/components/common.tsx";
 import { errorMessage, formatTime, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { fileSize } from "#ui/lib/chat.ts";
+import { contextProjects } from "#ui/lib/permission-controls.ts";
+import { scopeProject } from "#ui/lib/scope.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
 type Tone = "ok" | "warn" | "run" | "neutral";
@@ -265,10 +267,12 @@ function SyncCard({ project, className }: { project: string; className: string }
 
 /** Context agent: a project's AGENTS.md as a sync writes it, what it is made of, the files, the memory. */
 export function OpsContext() {
-  const { client, projects } = useHive();
+  const { client, projects, me, scope } = useHive();
   const t = useT();
   const [picked, setPicked] = useState<string | null>(null);
-  const project = picked ?? projects[0] ?? null;
+  const editableProjects = contextProjects(me, projects);
+  const selected = scopeProject(scope);
+  const project = picked && editableProjects.includes(picked) ? picked : selected && editableProjects.includes(selected) ? selected : (editableProjects[0] ?? null);
   const ctx = useQuery(async () => (project ? client.call("docs.context", { project }) : null), [client, project]);
   const [full, setFull] = useState(false);
   const c = ctx.data;
@@ -285,7 +289,7 @@ export function OpsContext() {
           onChange={(e) => (setPicked(e.target.value), setFull(false))}
           aria-label={t("context.project")}
         >
-          {projects.map((p) => (
+          {editableProjects.map((p) => (
             <NativeSelectOption key={p} value={p}>
               {p}
             </NativeSelectOption>
@@ -293,7 +297,7 @@ export function OpsContext() {
         </NativeSelect>
       </label>
       <ErrorNote error={ctx.error} />
-      {!projects.length ? <p className="m-0 text-[13px] text-fg-muted">{t("context.noProjects")}</p> : null}
+      {!editableProjects.length ? <p className="m-0 text-[13px] text-fg-muted">{t("context.noProjects")}</p> : null}
       {c ? (
         <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,420px),1fr))] items-start gap-3">
           <section className={card}>

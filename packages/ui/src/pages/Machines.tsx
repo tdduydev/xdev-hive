@@ -6,6 +6,7 @@ import { Empty, ErrorNote, Notice, Page, PageHeader } from "#ui/components/commo
 import { formatCount, formatTime, formatUsd, useAction, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { rich, useT } from "#ui/i18n/index.tsx";
 import { mapMachines } from "#ui/lib/agentmap.ts";
+import { canClearCooldown } from "#ui/lib/permission-controls.ts";
 import { scopeFilter, scopeKey } from "#ui/lib/scope.ts";
 import { AgentMap } from "./AgentMap.tsx";
 
@@ -213,7 +214,7 @@ function CooldownRow({ cooldown: c, onChanged }: { cooldown: QuotaCooldown; onCh
       </TableCell>
       <TableCell className="align-top font-mono text-xs text-muted-foreground">{c.reportedBy}</TableCell>
       <TableCell className="text-right align-top">
-        {me.role !== "viewer" ? (
+        {canClearCooldown(me) ? (
           <Button
             size="sm"
             variant="outline"
