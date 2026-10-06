@@ -175,6 +175,11 @@ export function formatTime(iso: string | null | undefined): string {
   return d.toLocaleString(activeIntl(), { dateStyle: "short", timeStyle: "short" });
 }
 
+/** The date alone, as formatTime writes it. */
+export function formatDay(iso: string | null | undefined): string {
+  return iso ? new Date(iso).toLocaleDateString(activeIntl(), { dateStyle: "short" }) : "—";
+}
+
 /** " · via MCP · duy-mbp · run R-1fa9 · task T-7", or "" when the write has no source. `shownTask` is not repeated. */
 export function sourceText(source: WriteSource | null | undefined, shownTask?: string | null): string {
   if (!source) return "";

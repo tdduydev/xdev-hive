@@ -1,6 +1,6 @@
 // A machine's subscription profiles as it reported them: off, no CLI, not signed in, resting, ready.
 import type { ReportedProfile } from "@xdev-hive/core";
-import { formatTime } from "#ui/hooks.ts";
+import { formatDay, formatTime } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { StatusDot } from "./common.tsx";
 
@@ -33,6 +33,9 @@ export function ProfileStates({ profiles, details = false }: { profiles: Reporte
                 : ""}
               {details && p.account ? ` · ${p.account}` : ""}
               {details ? ` · ${t("agents.statRuns", { count: p.runs })}` : ""}
+              {details && p.rateLimited ? ` · ${t("agents.quota.hitLimit", { count: p.rateLimited })}` : ""}
+              {/* The same counts as the machine's Agent page, from the mark its user set there. */}
+              {details && p.statsSince ? ` · ${t("agents.quota.since", { date: formatDay(p.statsSince) })}` : ""}
             </span>
           </span>
         );

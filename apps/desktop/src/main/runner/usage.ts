@@ -314,6 +314,16 @@ export function parseResetAt(text: string | null | undefined, now: Date): Date |
 }
 
 /**
+ * The usage with each limit's reset as an instant (roadmap 52), read with the same parser the scheduler uses, so the
+ * countdown on the page and the runner's pick never disagree about when a limit resets.
+ */
+export function withResetsAt(usage: PlanUsage | null | undefined, now: Date): PlanUsage | null {
+  if (!usage) return null;
+  const at = (l: PlanLimit | null) => (l ? { ...l, resetsAt: parseResetAt(l.resets, now)?.toISOString() ?? null } : null);
+  return { ...usage, session: at(usage.session), week: at(usage.week) };
+}
+
+/**
  * When the limit that stops the profile first resets (the session or the week, whichever has less left before its
  * threshold), or null when that is not known or already past: then the profile's quota is not about to go to waste.
  */

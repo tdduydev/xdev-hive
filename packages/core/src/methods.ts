@@ -138,6 +138,7 @@ const reportedProfile = z.object({
   cooldownUntil: z.string().max(40).nullable(),
   runs: z.number().int().min(0),
   rateLimited: z.number().int().min(0),
+  statsSince: z.string().max(40).nullable().optional(),
   priority: z.number().int().min(0).max(100).optional(),
   maxConcurrent: z.number().int().min(1).max(8).optional(),
 });
