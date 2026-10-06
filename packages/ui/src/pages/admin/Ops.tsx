@@ -1,3 +1,4 @@
+import { ResponsiveGridRow, ResponsiveTableFrame } from "#ui/components/ResponsiveTable.tsx";
 // Web Admin pages built on what the machines already report to the hub (docs/design/2026-09-redesign, xDev Hive Web
 // Admin): Tổng quan, Lượt chạy, Hàng đợi, Đội máy, Quota & gói, Chi phí, Nhật ký.
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -369,11 +370,11 @@ export function OpsQueue() {
   return (
     <div className="flex flex-col gap-3">
       <ErrorNote error={requests.error ?? action.error ?? runs.error} />
-      <section className="flex flex-col rounded-[14px] border border-line-default bg-surface px-4 pt-3.5 pb-2">
+      <ResponsiveTableFrame className="flex flex-col rounded-[14px] border border-line-default bg-surface px-4 pt-3.5 pb-2">
         <h2 className="m-0 pb-1.5 text-sm font-semibold text-fg-strong">{t("ops.queue.onMachines", { count: queued.length })}</h2>
         {runs.data && !queued.length ? <p className="m-0 pb-2 text-[13px] text-fg-muted">{t("ops.queue.noneQueued")}</p> : null}
         {numbered.map(({ r, n }) => (
-          <div key={`${r.machineId}/${r.runId}`} className="grid grid-cols-[34px_62px_minmax(0,1fr)_minmax(0,0.9fr)] items-center gap-3 border-b border-line-subtle py-2.5 last:border-b-0">
+          <ResponsiveGridRow primary={2} labels={["#", t("ops.col.task"), t("ops.col.work"), t("ops.col.reason")]} key={`${r.machineId}/${r.runId}`} className="grid grid-cols-[34px_62px_minmax(0,1fr)_minmax(0,0.9fr)] items-center gap-3 border-b border-line-subtle py-2.5 last:border-b-0">
             <span className="font-mono text-xs text-fg-muted">#{n}</span>
             <span className="font-mono text-xs text-fg-brand">{r.taskId}</span>
             <span className="flex min-w-0 flex-col gap-0.5">
@@ -383,14 +384,14 @@ export function OpsQueue() {
               </span>
             </span>
             <span className={cn("rounded-md px-2.5 py-1.5 text-xs/[17px]", r.error ? "bg-warning-soft text-fg-strong" : "bg-sunken text-fg-secondary")}>{r.error ?? t("ops.queue.reasonSlot")}</span>
-          </div>
+          </ResponsiveGridRow>
         ))}
         <span className="pt-2 text-[11px]/4 text-fg-muted">{t("ops.queue.order")}</span>
-      </section>
+      </ResponsiveTableFrame>
       <h2 className="m-0 mt-1 text-sm font-semibold text-fg-strong">{t("ops.queue.requests")}</h2>
       {requests.data && !pending.length ? <Empty>{t("ops.queueEmpty")}</Empty> : null}
       {list.length ? (
-      <DataTable
+      <DataTable responsive
         rows={list}
         columns={columns}
         rowKey={(r) => String(r.id)}
@@ -456,7 +457,7 @@ export function OpsFleet() {
       </div>
       <div className="min-w-0">
         <div className="min-w-0">
-          <DataTable
+          <DataTable responsive
             rows={list}
             columns={columns}
             rowKey={(m) => m.id}
@@ -624,7 +625,7 @@ export function OpsAudit() {
         ) : null}
       </form>
       <ErrorNote error={log.error} />
-      <DataTable
+      <DataTable responsive
         rows={log.data ?? []}
         columns={columns}
         rowKey={(e) => String(e.id)}

@@ -1,3 +1,4 @@
+import { ResponsiveTable as Table, ResponsiveTableRow as TableRow } from "#ui/components/ResponsiveTable.tsx";
 import { useMemo, useState } from "react";
 import { Copy, MoreHorizontal, Plus, UserPlus } from "lucide-react";
 import { PROJECT_NAME, type Grant, type HubUser } from "@xdev-hive/core";
@@ -13,7 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@xdev-hive/ui/components/ui/dropdown-menu";
 import { Input } from "@xdev-hive/ui/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@xdev-hive/ui/components/ui/table";
+import { TableBody, TableCell, TableHead, TableHeader } from "@xdev-hive/ui/components/ui/table";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader } from "#ui/components/common.tsx";
 import { GrantBadge, GrantEditor, RoleLegend } from "#ui/components/GrantEditor.tsx";
 import { formatTime, useAction, useHive, useQuery } from "#ui/hooks.ts";

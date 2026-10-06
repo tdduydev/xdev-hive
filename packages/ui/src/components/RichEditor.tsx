@@ -274,7 +274,7 @@ function Tool({ label, icon: Icon, active, onClick, disabled }: { label: string;
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       className={cn(
-        "grid size-7 cursor-pointer place-items-center rounded-[5px] text-fg-secondary outline-none hover:bg-hover hover:text-fg-strong focus-visible:focus-ring disabled:opacity-50",
+        "grid size-10 cursor-pointer place-items-center rounded-[5px] text-fg-secondary outline-none hover:bg-hover hover:text-fg-strong focus-visible:focus-ring disabled:opacity-50 md:size-7",
         active && "bg-selected text-selected-fg",
       )}
     >
@@ -437,9 +437,9 @@ function Editing({ docKey, value, onChange, titles, readOnly, header, onError }:
     <div className="flex min-h-0 flex-1 flex-col">
       {!readOnly ? (
         <div className="relative shrink-0">
-          <div role="toolbar" aria-label={t("docs.toolbar")} className="flex items-center gap-0.5 border-b border-line-subtle bg-subtle px-3 py-1">
+          <div role="toolbar" aria-label={t("docs.toolbar")} className="flex items-center gap-0.5 overflow-x-auto border-b border-line-subtle bg-subtle px-3 py-1">
             {toolbar.map((b, i) => (b === "sep" ? <span key={`s${i}`} className="mx-1 h-4 w-px bg-line-default" /> : <Tool key={b.id} label={t(`editor.tool.${b.id}` as never)} icon={b.icon} active={b.active} onClick={b.run} />))}
-            <span className="ml-auto text-[11px]/none text-fg-muted">{t("editor.slashTip")}</span>
+            <span className="ml-auto hidden text-[11px]/none text-fg-muted md:inline">{t("editor.slashTip")}</span>
           </div>
           {picker ? <LinkPicker from={docKey} titles={titles} onClose={() => setPicker(false)} onPick={insertPageLink} /> : null}
         </div>
@@ -457,10 +457,10 @@ function Editing({ docKey, value, onChange, titles, readOnly, header, onError }:
         }}
       />
       <div className="relative min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-[760px] px-12 pt-6 pb-24">
+        <div className="mx-auto max-w-[760px] px-4 pt-6 pb-24 md:px-12">
           {!readOnly ? (
             <DragHandle editor={e}>
-              <span className="grid h-6 w-4 cursor-grab place-items-center rounded-xs text-fg-disabled hover:bg-hover hover:text-fg-secondary" title={t("editor.drag")}>
+              <span className="hidden h-6 w-4 cursor-grab place-items-center rounded-xs text-fg-disabled hover:bg-hover hover:text-fg-secondary md:grid" title={t("editor.drag")}>
                 <GripVertical className="size-3.5" />
               </span>
             </DragHandle>

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Check, ChevronLeft, ChevronRight, Minus, Search } from "lucide-react";
 import { cn } from "cn";
 import { useT } from "#ui/i18n/index.tsx";
+import { ResponsiveCellLabel, ResponsiveTableFrame } from "#ui/components/ResponsiveTable.tsx";
 import { pagesToShow } from "#ui/lib/table.ts";
 import { fold } from "#ui/lib/text.ts";
 
@@ -62,7 +63,9 @@ export function DataTable<T>({
   minWidth = 720,
   maxHeight = "62vh",
   toolbar,
+  responsive = false,
 }: {
+  responsive?: boolean;
   rows: T[];
   columns: Array<Column<T>>;
   rowKey: (row: T) => string;
@@ -157,7 +160,7 @@ export function DataTable<T>({
   );
 
   return (
-    <div className="flex min-w-0 flex-col gap-2.5">
+    <ResponsiveTableFrame enabled={responsive} className="flex min-w-0 flex-col gap-2.5">
       <div className="flex flex-wrap items-center gap-2">
         {searchText ? (
           <label className="relative flex h-[34px] max-w-[380px] min-w-[200px] flex-[1_1_240px] items-center">
@@ -228,6 +231,27 @@ export function DataTable<T>({
           ))}
         </div>
       </div>
+      {responsive && bulk?.length ? (
+        <label className="flex items-center gap-2 text-xs text-fg-muted md:hidden">
+          {box(pagePicked === 0 ? false : pagePicked === pageKeys.length ? true : "mixed", t("table.selectPage"), () => {
+            setAllMatching(false);
+            setPicked((cur) => { const next = new Set(cur); if (pagePicked === pageKeys.length) pageKeys.forEach((k) => next.delete(k)); else pageKeys.forEach((k) => next.add(k)); return next; });
+          })}
+          {t("table.selectPage")}
+        </label>
+      ) : null}
+      {responsive && columns.some((c) => c.sortValue) ? (
+        <div className="flex flex-wrap items-center gap-2 md:hidden">
+          <label className="flex min-w-0 items-center gap-2 text-xs text-fg-muted">
+            {t("table.sort")}
+            <select aria-label={t("table.sort")} className="min-w-0 max-w-48 rounded-sm border border-line-default bg-surface px-2" value={sort?.key ?? ""} onChange={(e) => { const c = columns.find((c) => c.key === e.target.value); setSort(c ? { key: c.key, dir: c.align === "right" ? -1 : 1 } : null); }}>
+              <option value="">{t("table.defaultOrder")}</option>
+              {columns.filter((c) => c.sortValue).map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+            </select>
+          </label>
+          {sort ? <button type="button" className="rounded-sm border border-line-default px-3 text-xs" onClick={() => setSort({ ...sort, dir: sort.dir === 1 ? -1 : 1 })}>{t(sort.dir === 1 ? "table.ascending" : "table.descending")}</button> : null}
+        </div>
+      ) : null}
       {bulk?.length && chosen.length ? (
         <div className="flex flex-wrap items-center gap-2.5 rounded-[10px] bg-inverse px-3 py-2 text-[13px] text-fg-inverse">
           <span className="font-semibold">{t("table.selected", { count: chosen.length.toLocaleString(), noun })}</span>
@@ -259,9 +283,10 @@ export function DataTable<T>({
           </button>
         </div>
       ) : null}
-      <div className="min-h-40 overflow-auto rounded-lg border border-line-default bg-surface" style={{ maxHeight }}>
-        <div style={{ minWidth }}>
+      <div data-card-scroll className="min-h-40 overflow-auto rounded-lg border border-line-default bg-surface" style={{ maxHeight }}>
+        <div data-card-body style={{ minWidth }}>
           <div
+            data-card-header
             role="row"
             className="sticky top-0 z-2 grid h-9 items-center gap-2.5 border-b border-line-subtle bg-sunken px-3.5 type-overline text-fg-muted uppercase"
             style={{ gridTemplateColumns: tracks }}
@@ -296,7 +321,11 @@ export function DataTable<T>({
             return (
               <div
                 key={k}
+                data-card-row
+                data-card-selected={k === selectedKey || on || undefined}
                 role="row"
+                tabIndex={onRowClick ? 0 : undefined}
+                onKeyDown={onRowClick ? (e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onRowClick(r); } } : undefined}
                 onClick={onRowClick ? () => onRowClick(r) : undefined}
                 className={cn(
                   "grid items-center gap-2.5 border-b border-line-subtle px-3.5 last:border-b-0",
@@ -319,9 +348,12 @@ export function DataTable<T>({
                     })
                   : null}
                 {columns.map((c) => (
-                  <div key={c.key} title={c.title?.(r)} className={cn("flex min-w-0 flex-col gap-0.5", c.align === "right" && "items-end text-right")}>
+                  <div data-card-cell data-card-primary={c.key === (columns.find((col) => col.strong)?.key ?? columns[0]?.key) || undefined} data-card-actions={!c.label || undefined} key={c.key} title={c.title?.(r)} className={cn("flex min-w-0 flex-col gap-0.5", c.align === "right" && "items-end text-right")}>
+                    <ResponsiveCellLabel>{c.label}</ResponsiveCellLabel>
+                    <div data-card-value>
                     <div className={cn("w-full truncate text-[13px]/5 text-fg-primary", c.mono && "font-mono text-xs/5", c.strong && "font-semibold text-fg-strong", c.align === "right" && "tabular-nums")}>{c.render(r)}</div>
-                    {c.sub && !compact ? <div className="w-full truncate text-[11px]/4 text-fg-muted">{c.sub(r)}</div> : null}
+                    {c.sub ? <div className={cn("w-full truncate text-[11px]/4 text-fg-muted", compact && (responsive ? "md:hidden" : "hidden"))}>{c.sub(r)}</div> : null}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -376,6 +408,6 @@ export function DataTable<T>({
           </div>
         ) : null}
       </div>
-    </div>
+    </ResponsiveTableFrame>
   );
 }
