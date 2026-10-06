@@ -95,7 +95,7 @@ function firstObject(text: string): unknown {
 }
 
 /** The reply text and the input tokens of Claude's json result or Codex's event stream. */
-function reply(output: string): { text: string; input: number | null } {
+export function classifierReply(output: string): { text: string; input: number | null } {
   try {
     const r = JSON.parse(output) as { result?: unknown; usage?: Record<string, unknown> };
     if (typeof r.result === "string") {
@@ -122,7 +122,7 @@ function reply(output: string): { text: string; input: number | null } {
 
 /** The answer, or why there is none (the hub then gives the task the default class). */
 export function classifierResult(output: string): { value: TaskClass & { reason: string } } | { error: string } {
-  const { text, input } = reply(output);
+  const { text, input } = classifierReply(output);
   if (input !== null && input > CLASSIFY_INPUT_TOKENS) return { error: tr("runNote.classifyOverCap", { tokens: input, cap: CLASSIFY_INPUT_TOKENS }) };
   const value = firstObject(text);
   const parsed = parseTaskClass(value);

@@ -35,3 +35,5 @@ export * from "./verdict.ts";
 export { HubBackend, requestDeviceToken } from "./hub-client.ts";
 
 export * from "#core/memory-cleanup.ts";
+
+export * from "#core/diff-review.ts";

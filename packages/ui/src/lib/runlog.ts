@@ -1,3 +1,4 @@
+import { patchFilePath } from "@xdev-hive/core";
 // Reading a run's log and diff for the Lượt chạy page: the runner writes a readable log (▶ tool calls, ✓ ✗ results,
 // the agent's words, # notes, ## sections) and the diff is `git diff` output.
 
@@ -72,6 +73,7 @@ export interface DiffFile {
   adds: number;
   dels: number;
   binary: boolean;
+  metadata?: string[];
   lines: Array<{ kind: "hunk" | "add" | "del" | "ctx"; text: string }>;
 }
 
@@ -80,14 +82,15 @@ export function parsePatch(patch: string): DiffFile[] {
   const files: DiffFile[] = [];
   let cur: DiffFile | null = null;
   for (const line of patch.split("\n")) {
-    const head = /^diff --git a\/(.+?) b\/(.+)$/.exec(line);
-    if (head) {
-      cur = { path: head[2]!, adds: 0, dels: 0, binary: false, lines: [] };
+    const path = patchFilePath(line);
+    if (path !== null) {
+      cur = { path, adds: 0, dels: 0, binary: false, lines: [] };
       files.push(cur);
       continue;
     }
     if (!cur) continue;
     if (line.startsWith("+++ ") || line.startsWith("--- ") || line.startsWith("index ") || /^(new|deleted) file mode|^similarity index|^rename (from|to)|^old mode|^new mode/.test(line)) {
+      if (/^(new|deleted) file mode|^old mode|^new mode|^rename (from|to)/.test(line)) (cur.metadata ??= []).push(line);
       const to = /^\+\+\+ b\/(.+)$/.exec(line);
       if (to) cur.path = to[1]!;
       continue;

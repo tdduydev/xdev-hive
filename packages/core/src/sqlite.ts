@@ -1,3 +1,4 @@
+import { diffReviewSelection, validDiffReview, patchHunks } from "#core/diff-review.ts";
 import { memoryCleanupBaseline, type MemoryCleanupRun, type MemoryCleanupProposal } from "#core/memory-cleanup.ts";
 import { needsPlanApproval, type ImplementationPlan, type RunPlan } from "#core/plan-approval.ts";
 import { DatabaseSync } from "node:sqlite";
@@ -653,6 +654,7 @@ const MIGRATIONS: string[] = [
   CREATE INDEX implementation_plans_task ON implementation_plans(project, task_id, id);
   CREATE INDEX implementation_plans_waiting ON implementation_plans(status, deadline);
   `,
+  `ALTER TABLE run_records ADD COLUMN diff_review TEXT;`,
 ];
 
 /**
@@ -910,7 +912,7 @@ function toRunRecord(r: Row, withLog: boolean): RunRecord {
     attempt: numOrNull(r.attempt),
     parentRun: s(r.parent_run),
     verdict: s(r.verdict) as Verdict | null,
-    ...(withLog ? { log: str(r.log), patch: r.patch == null ? null : str(r.patch) } : {}),
+    ...(withLog ? { log: str(r.log), patch: r.patch == null ? null : str(r.patch), diffReview: r.diff_review == null ? null : JSON.parse(str(r.diff_review)) } : {}),
   };
 }
 
@@ -5542,8 +5544,9 @@ export class SqliteHive implements HiveBackend {
       task.kind !== null && task.size !== null && task.risk !== "high" && (LEARNED_KINDS as readonly string[]).includes(task.kind) && isTrialTask(project, task.id) &&
       this.#learningOn(project) && !this.#lockedCells(project).has(`${task.kind}/${task.size}`);
     const selection = selectModel(router, project, { kind: task.kind, size: task.size, risk: task.risk, role, failures, trial });
-    if (!selection || role !== "implement") return selection;
-    return { ...selection, review: selectModel(router, project, { kind: task.kind, size: task.size, risk: task.risk, role: "review" }) };
+    if (!selection) return selection;
+    if (role !== "implement") return { ...selection, diffReview: diffReviewSelection(router) };
+    return { ...selection, diffReview: diffReviewSelection(router), review: selectModel(router, project, { kind: task.kind, size: task.size, risk: task.risk, role: "review" }) };
   }
 
   #command(id: number): MachineCommand {
@@ -6899,7 +6902,19 @@ export class SqliteHive implements HiveBackend {
               clean(r.activity), clean(r.summary), clean(r.error), r.branch, r.commits, r.mrUrl, r.costUsd, clean(r.log) ?? "",
               r.createdAt, r.startedAt, r.finishedAt, now,
             );
-            if (r.patch !== undefined) patchPut.run(redactLines(stripHidden(r.patch)), actor.name, r.runId);
+            if (r.patch !== undefined) {
+              const patch = redactLines(stripHidden(r.patch));
+              db.prepare("UPDATE run_records SET diff_review = NULL WHERE machine_id = ? AND run_id = ? AND patch IS NOT ?").run(actor.name, r.runId, patch);
+              patchPut.run(patch, actor.name, r.runId);
+            }
+            if (r.diffReview !== undefined) {
+              const stored = db.prepare("SELECT patch FROM run_records WHERE machine_id = ? AND run_id = ?").get(actor.name, r.runId) as Row;
+              const review = r.diffReview && validDiffReview(r.diffReview, patchHunks(str(stored.patch)));
+              db.prepare("UPDATE run_records SET diff_review = ? WHERE machine_id = ? AND run_id = ?").run(review ? JSON.stringify({
+                groups: review.groups.map(g => ({ ...g, title: clean(g.title) ?? "", explanation: clean(g.explanation) ?? "" })),
+                risks: review.risks.map(risk => ({ ...risk, explanation: clean(risk.explanation) ?? "" })),
+              }) : null, actor.name, r.runId);
+            }
             if (r.mr !== undefined) {
               const mr = r.mr && { ...r.mr, pipelineUrl: r.mr.pipelineUrl && /^https?:\/\//.test(r.mr.pipelineUrl) ? r.mr.pipelineUrl : null };
               mrPut.run(mr ? JSON.stringify(mr) : null, actor.name, r.runId);
@@ -6940,7 +6955,7 @@ export class SqliteHive implements HiveBackend {
           // The heavy part of an old run goes, the record stays (roadmap 41b): what the agent concluded, its MR and what
           // it cost outlive the log. log_pruned_at IS NULL: a run cleaned once is not touched again.
           if (this.#opts.runLogDays > 0) {
-            db.prepare("UPDATE run_records SET log = '', patch = NULL, log_pruned_at = ? WHERE updated_at < ? AND log_pruned_at IS NULL").run(
+            db.prepare("UPDATE run_records SET log = '', patch = NULL, diff_review = NULL, log_pruned_at = ? WHERE updated_at < ? AND log_pruned_at IS NULL").run(
               now,
               this.#now(-this.#opts.runLogDays * 24 * 60),
             );

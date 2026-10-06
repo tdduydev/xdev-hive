@@ -1,3 +1,4 @@
+import { diffReviewSchema } from "#core/diff-review.ts";
 import { cleanupSuggestionSchema, MEMORY_CLEANUP_ERRORS, type MemoryCleanupSetting, type MemoryCleanupRun, type MemoryCleanupProposal } from "#core/memory-cleanup.ts";
 import { z } from "zod";
 import { PLAN_APPROVAL_MODES, PLAN_MAX, type ImplementationPlan } from "#core/plan-approval.ts";
@@ -622,6 +623,7 @@ export const schemas = {
           log: z.string().max(60_000).default(""),
           /** What the run changed (git diff from its base), when it changed since the last push (roadmap 22l). */
           patch: z.string().max(400_000).optional(),
+          diffReview: diffReviewSchema.nullable().optional(),
           createdAt: z.iso.datetime(),
           startedAt: z.iso.datetime().nullable().default(null),
           finishedAt: z.iso.datetime().nullable().default(null),
