@@ -579,7 +579,6 @@ export const vi = {
     settings: { policy: "Chốt & chính sách", tools: "Tool", context: "Context agent", leader: "Leader", members: "Thành viên", systems: "Hệ thống" },
     machines: { map: "Bản đồ agent", fleet: "Đội máy", queue: "Hàng đợi", costs: "Chi phí" },
     admin: { ops: "Tổng quan vận hành", users: "Người dùng & quyền", tools: "Tool", budgets: "Ngân sách", alerts: "Cảnh báo", audit: "Nhật ký", webhooks: "Thông báo & webhook", versions: "Phiên bản app", hub: "Hub" },
-    runs: { runs: "Lượt chạy", batches: "Đợt chạy" },
   },
   taskStatus: {
     todo: "Chưa làm",

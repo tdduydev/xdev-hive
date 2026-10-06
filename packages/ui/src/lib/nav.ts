@@ -99,10 +99,6 @@ export function adminTabs(caps: WebCaps): AdminTab[] {
   return tabs;
 }
 
-export type RunsTab = "runs" | "batches";
-/** Agent đang chạy: runs, and batches as a tab until 49e makes them a filter. */
-export const RUNS_TABS: RunsTab[] = ["runs", "batches"];
-
 /** The tab an address asks for, or the first one the person has. */
 export const pickTab = <T extends string>(tabs: readonly T[], wanted: string | null): T | undefined =>
   tabs.find((tab) => tab === wanted) ?? tabs[0];
