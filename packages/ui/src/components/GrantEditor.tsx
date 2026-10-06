@@ -10,7 +10,7 @@ import { useT, type TFunction } from "#ui/i18n/index.tsx";
 
 /** How the permissions sit on screen. */
 export const PERMISSION_GROUPS: Array<{ id: "work" | "docs" | "memory" | "chat" | "project"; permissions: Permission[] }> = [
-  { id: "work", permissions: ["view", "taskWork", "taskManage", "runDispatch", "codeReview"] },
+  { id: "work", permissions: ["view", "taskWork", "taskManage", "runDispatch", "qaVerify", "codeReview"] },
   { id: "docs", permissions: ["docPropose", "docEdit", "docApprove", "contextEdit"] },
   { id: "memory", permissions: ["memoryWrite", "memoryApprove"] },
   { id: "chat", permissions: ["chatUse", "chatApprove"] },
@@ -34,7 +34,7 @@ export function grantLabel(t: TFunction, grant: Grant | null | undefined): strin
   return role === "custom" ? `${t("projectRole.custom")} · ${grantPermissions(grant).size}` : t(`projectRole.${role}`);
 }
 
-export const ROLE_TONE: Record<ProjectRole | "custom", "neutral" | "info" | "accent" | "warn"> = { viewer: "neutral", member: "info", reviewer: "warn", lead: "accent", custom: "info" };
+export const ROLE_TONE: Record<ProjectRole | "custom", "neutral" | "info" | "accent" | "warn"> = { viewer: "neutral", member: "info", qa: "accent", reviewer: "warn", lead: "accent", custom: "info" };
 
 export function GrantBadge({ grant, label, className }: { grant: Grant | null | undefined; label?: string; className?: string }) {
   const t = useT();

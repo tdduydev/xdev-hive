@@ -785,7 +785,7 @@ function Detail({
       const g = item.gate;
       const labels = gateLabels(g, t);
       const what = { gate: t(`sdlc.gate.${g.gate}`), task: g.taskId };
-      const may = allow(g.project, g.gate === "review" || g.gate === "merge" ? "codeReview" : "runDispatch");
+      const may = allow(g.project, g.gate === "test" ? "qaVerify" : g.gate === "review" || g.gate === "merge" ? "codeReview" : "runDispatch");
       body = (
         <>
           <P>{t(g.status === "escalated" ? "flow.escalated" : "flow.waiting", { gate: what.gate, mode: t(`sdlc.mode.${g.mode}`) })}</P>

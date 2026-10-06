@@ -58,6 +58,11 @@ describe("inbox", () => {
     assert.equal(inboxProject(after!), "demo");
   });
 
+  it("recognizes the QA permission set and gives QA gates their own Today group", () => {
+    assert.equal(roleOfPermissions(new Set<Permission>(["view", "qaVerify", "codeReview"])), "qa");
+    assert.equal(roleOfPermissions(new Set<Permission>(["view", "qaVerify", "codeReview", "projectSettings"])), "lead");
+  });
+
   it("puts machine setup gaps last, with no time", () => {
     const items = buildInbox({
       setup: [

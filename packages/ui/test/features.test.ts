@@ -94,6 +94,8 @@ describe("feature board (roadmap 49d)", () => {
     const dispatcher = grant(["view", "runDispatch"]);
     assert.equal(mayDecide(reviewer, gate({ gate: "review" })), true);
     assert.equal(mayDecide(reviewer, gate({ gate: "merge" })), true);
+    assert.equal(mayDecide(grant(["view", "qaVerify"]), gate({ gate: "test" })), true);
+    assert.equal(mayDecide(reviewer, gate({ gate: "test" })), false);
     assert.equal(mayDecide(reviewer, gate({ gate: "spec" })), false, "Chờ bạn is not shown to a reviewer at a spec gate");
     assert.equal(mayDecide(dispatcher, gate({ gate: "spec" })), true);
     assert.equal(mayDecide(dispatcher, gate({ gate: "tasks" })), false, "passing tasks imports them: taskManage too");
@@ -103,6 +105,7 @@ describe("feature board (roadmap 49d)", () => {
   it("puts a gate's buttons on the tab it decides on, and asks for a note where the agent redoes the step", () => {
     assert.equal(gateTab(gate({ gate: "spec" })), "spec");
     assert.equal(gateTab(gate({ gate: "plan" })), "plan");
+    assert.equal(gateTab(gate({ gate: "test" })), "checks");
     assert.equal(gateTab(gate({ gate: "dispatch" })), "tasks");
     assert.equal(gateTab(gate({ gate: "review" })), "tasks");
     assert.equal(noteRequired(gate({ gate: "spec" })), true);
