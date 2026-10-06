@@ -120,7 +120,8 @@ class Tab {
         const label = (el) => (el.getAttribute("aria-label") ?? el.textContent ?? "").trim();
         const el = txt == null ? all[0] : (all.find((e) => label(e) === txt) ?? all.find((e) => label(e).startsWith(txt)));
         if (!el || el.disabled) return null;
-        el.scrollIntoView({ block: "center", inline: "center" });
+        // Scrolling a transformed React Flow node changes the pane under the pointer.
+        if (!sel.startsWith("[data-graph-task")) el.scrollIntoView({ block: "center", inline: "center" });
         const r = el.getBoundingClientRect();
         return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
       },
@@ -268,6 +269,28 @@ async function main() {
     if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
   });
 
+  await step("graph", async () => {
+    await rpc("tasks.create", { id: "PAY-GRAPH", project: "payment", title: "Kiểm tra sơ đồ", dependsOn: ["PAY-1"] });
+    const tab = (current = tabs.admin);
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('input[aria-label="Tìm dự án hoặc hệ thống…"]');
+    await tab.type("payment");
+    await tab.key("Enter");
+    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
+    await tab.go("graph");
+    await tab.waitFor("task nodes and dependency edge", () => document.querySelector('[data-graph-task="PAY-1"]') && document.querySelector('[data-graph-task="PAY-GRAPH"]') && document.querySelector(".graph-edge-open .react-flow__edge-path"));
+    await tab.shot("graph-task-layer");
+    expect(!!(await tab.eval(() => document.querySelector('[data-graph-layer="task"]')?.getAttribute("aria-pressed") === "true")), "Task layer is active");
+    await tab.click('[data-graph-task="PAY-GRAPH"]');
+    const openedHash = await tab.eval(() => location.hash);
+    expect(openedHash.startsWith("#/tasks?task=PAY-GRAPH") || openedHash === "#/tasks", `graph click route: ${openedHash}`);
+    await tab.waitFor("existing task sheet", () => document.querySelector('[role="dialog"]')?.textContent.includes("Kiểm tra sơ đồ"));
+    await tab.key("Escape");
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('[role="option"]', "Tất cả dự án");
+    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
+  });
+
   // Roadmap 40c: in a system's scope the Docs tree has the system's pages first, then a group per service, and a new page
   // goes to system/<name>/ unless another place is picked.
   await step("docs-system-default", async () => {
@@ -277,6 +300,7 @@ async function main() {
     await tab.click('input[aria-label="Tìm dự án hoặc hệ thống…"]');
     await tab.type("ban-hang");
     await tab.click('[role="option"]', "ban-hang");
+    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
     await tab.go("docs");
     await tab.waitFor("the system's page before the service groups", () => {
       const rows = [...document.querySelectorAll('[role="tree"] > div')];
@@ -292,6 +316,7 @@ async function main() {
     expect(["sys:ban-hang", "demo", "ledger", "payment"].every((o) => places.includes(o)), `places to put it: ${places}`);
     await tab.key("Enter");
     await tab.waitFor("the new page picked in the tree", () => document.querySelector('[role="treeitem"][aria-selected="true"]')?.getAttribute("title") === "system/ban-hang/quy-uoc-chung");
+    if (mobile) await tab.click("button", "Trợ lý");
     await tab.click(".ProseMirror");
     await tab.type("Mọi service dùng chung.");
     await tab.click("button", "Lưu thành v1");
