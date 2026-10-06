@@ -13,6 +13,12 @@ if ((first === "auth" || first === "login") && second === "status") {
 
 // Claude Code's /usage (plan usage). FAKE_USAGE="<session>,<week>" percentages; unset: an API key, no limits.
 if (first === "-p" && second === "/usage") {
+  if (process.env.FAKE_AGY === "1") {
+    if (process.env.FAKE_LOGIN === "out") { console.error('AGY_ERROR: {"message":"authentication required"}'); process.exit(3); }
+    const [session, week] = (process.env.FAKE_AGY_USAGE ?? "23,46").split(",").map(Number);
+    console.log(JSON.stringify({ pools: { gemini: { session: { percent: session }, week: { percent: week } }, claude_gpt: { session: { percent: 37 }, week: { percent: 62 } } } }));
+    process.exit(0);
+  }
   const [session, week] = (process.env.FAKE_USAGE ?? "").split(",");
   const result = process.env.FAKE_USAGE
     ? `You are currently using your subscription to power your Claude Code usage\n\nCurrent session: ${session}% used · resets 6:20pm (Asia/Saigon)\nCurrent week (all models): ${week}% used · resets Oct 1 at 6pm (Asia/Saigon)\n`
@@ -24,7 +30,7 @@ if (first === "-p" && second === "/usage") {
 // `<cli> --version` (Setup, the Agents page's check) comes with the app's cwd and no FAKE_MODE: falling through to
 // "ok" wrote work-undefined.txt there, i.e. into apps/desktop when the smoke's fake CLIs were first on PATH.
 if (first === "--version") {
-  console.log("2.1.0 (fake agent)");
+  console.log(process.env.FAKE_AGY_VERSION ?? "2.1.0 (fake agent)");
   process.exit(0);
 }
 
@@ -97,6 +103,16 @@ switch (process.env.FAKE_MODE ?? "ok") {
     say("Working…");
     console.error("Error: You've hit your usage limit. Try again in 2 hours 13 minutes.");
     finish(1);
+    break;
+  case "agy-error-overflow":
+  case "agy-error-zero":
+    console.error('AGY_ERROR: {"message":"authentication required"}');
+    if (process.env.FAKE_MODE === "agy-error-overflow") console.log("x".repeat(30_000));
+    finish(0);
+    break;
+  case "agy-limit":
+    console.error('AGY_ERROR: {"message":"QUOTA_EXHAUSTED"}');
+    finish(3);
     break;
   case "fail":
     console.error("TypeError: boom");

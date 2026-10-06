@@ -5,16 +5,18 @@ import os from "node:os";
 import path from "node:path";
 import { HiveError, type AgentKind, type AgentProfile, type LoginHow, type LoginStatus, type PlanUsage } from "@xdev-hive/core";
 import { expandEnv, expandHome, resolveBin } from "./command.ts";
+import { supportsAgyUsage, parseAgyUsage, AGY_USAGE_ARGS } from "./antigravity.ts";
 import { parseClaudeResult, parsePlanUsage, readCodexUsage } from "./usage.ts";
 
 /** Status and sign-in subcommands of the CLIs that have them. Gemini and custom CLIs have none. */
 const COMMANDS: Partial<Record<AgentKind, { status: string[]; login: string[] }>> = {
   claude: { status: ["auth", "status", "--json"], login: ["auth", "login"] },
+  antigravity: { status: AGY_USAGE_ARGS, login: [] },
   codex: { status: ["login", "status"], login: ["login"] },
 };
 
 /** Env that picks a login dir: shown in the sign-in command. Other env (keys, tokens) never is. */
-const LOGIN_DIRS = ["CLAUDE_CONFIG_DIR", "CODEX_HOME"];
+const LOGIN_DIRS = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "HOME"];
 
 const UNKNOWN = { loggedIn: null, method: null } as const;
 
@@ -30,6 +32,10 @@ export function parseLogin(kind: AgentKind, code: number | null, output: string)
     } catch {
       return UNKNOWN;
     }
+  }
+  if (kind === "antigravity") {
+    if (/authentication required|not authenticated|not logged in/i.test(output)) return { loggedIn: false, method: null };
+    return code === 0 ? { loggedIn: true, method: "Google / SSO" } : UNKNOWN;
   }
   if (kind === "codex") {
     if (/not logged in|logged out/i.test(output)) return { loggedIn: false, method: null };
@@ -61,7 +67,8 @@ export function loginFlags(kind: AgentKind, how: LoginHow = {}): string[] {
 
 /** The login-dir env of a profile, expanded: what a terminal script may hold (keys and tokens never go in a file). */
 export function loginDirEnv(profile: AgentProfile): Record<string, string> {
-  return expandEnv(Object.fromEntries(Object.entries(profile.env).filter(([k]) => LOGIN_DIRS.includes(k))));
+  const allowed = profile.kind === "antigravity" ? ["HOME", "AGY_ADC_AUTH", "GOOGLE_CLOUD_QUOTA_PROJECT"] : ["CLAUDE_CONFIG_DIR", "CODEX_HOME"];
+  return expandEnv(Object.fromEntries(Object.entries(profile.env).filter(([k]) => allowed.includes(k))));
 }
 
 /** Sign-in args and the login-dir env (expanded) of a profile, for a terminal to run; null when the CLI has none. */
@@ -72,16 +79,16 @@ export function loginParts(profile: AgentProfile, how: LoginHow = {}): { args: s
 }
 
 /** The env var that points a CLI at a sign-in folder, for the kinds that have one. */
-export const LOGIN_DIR_ENV: Partial<Record<AgentKind, string>> = { claude: "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME" };
+export const LOGIN_DIR_ENV: Partial<Record<AgentKind, string>> = { claude: "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME", antigravity: "HOME" };
 
 export function loginCommand(profile: AgentProfile): string | null {
   const commands = COMMANDS[profile.kind];
   if (!commands) return null;
   const dirs = Object.entries(profile.env)
-    .filter(([k]) => LOGIN_DIRS.includes(k))
+    .filter(([k]) => LOGIN_DIRS.includes(k) && (k !== "HOME" || profile.kind === "antigravity"))
     .map(([k, v]) => `${k}=${v} `)
     .join("");
-  return `${dirs}${profile.bin} ${commands.login.join(" ")}`;
+  return `${dirs}${profile.bin}${commands.login.length ? ` ${commands.login.join(" ")}` : ""}`;
 }
 
 export type RunCli = (bin: string, args: string[], env: NodeJS.ProcessEnv) => Promise<{ code: number | null; output: string }>;
@@ -100,7 +107,12 @@ export async function checkLogin(profile: AgentProfile, baseEnv: NodeJS.ProcessE
   const base = { loginCommand: loginCommand(profile), checkedAt: now.toISOString() };
   const bin = commands ? resolveBin(expandHome(profile.bin), baseEnv.PATH ?? "") : null;
   if (!commands || !bin) return { ...UNKNOWN, ...base };
-  const res = await run(bin, commands.status, { ...baseEnv, ...expandEnv(profile.env) });
+  const env = { ...baseEnv, ...expandEnv(profile.env) };
+  if (profile.kind === "antigravity") {
+    const version = await run(bin, ["--version"], env);
+    if (version.code !== 0 || !supportsAgyUsage(version.output)) return { ...UNKNOWN, ...base };
+  }
+  const res = await run(bin, commands.status, env);
   return { ...parseLogin(profile.kind, res.code, res.output), ...base };
 }
 
@@ -130,6 +142,15 @@ export function codexHome(profile: AgentProfile): string {
 /** Plan usage: Claude Code's /usage, Codex's session files (no CLI started, roadmap 45); null for the other CLIs. */
 export async function checkUsage(profile: AgentProfile, baseEnv: NodeJS.ProcessEnv, now: Date, run: RunCli = runCli): Promise<PlanUsage | null> {
   if (profile.kind === "codex") return readCodexUsage(codexHome(profile), now);
+  if (profile.kind === "antigravity") {
+    const bin = resolveBin(expandHome(profile.bin), baseEnv.PATH ?? "");
+    if (!bin) return null;
+    const env = { ...baseEnv, ...expandEnv(profile.env) };
+    const version = await run(bin, ["--version"], env);
+    if (version.code !== 0 || !supportsAgyUsage(version.output)) return null;
+    const res = await run(bin, AGY_USAGE_ARGS, env);
+    return res.code === 0 ? parseAgyUsage(res.output, profile.args, now) : null;
+  }
   if (profile.kind !== "claude") return null;
   const bin = resolveBin(expandHome(profile.bin), baseEnv.PATH ?? "");
   if (!bin) return null;

@@ -14,6 +14,7 @@ import {
   cacheReadShare,
   TOKEN_WINDOWS,
   usageStop,
+  flagValue,
   type AgentKind,
   type AgentProfile,
   type AgentProfileStatus,
@@ -52,6 +53,9 @@ const ACCOUNT_ENV_HINT: Partial<Record<AgentKind, string>> = {
   claude: "CLAUDE_CONFIG_DIR=~/.claude-2",
   codex: "CODEX_HOME=~/.codex-2",
 };
+
+const AGY_CONTROL = "min-h-11 text-base md:min-h-0 md:text-[13px]";
+const AGY_BUTTON = "min-h-11 md:min-h-0";
 
 const CODE = "rounded bg-muted px-1 py-0.5 font-mono text-xs wrap-anywhere";
 const HINT = "text-xs text-muted-foreground sm:col-start-2";
@@ -162,8 +166,8 @@ export function AgentsPage() {
         <p className="m-0 -mt-2 max-w-3xl text-xs/[18px] text-fg-muted">{t("agents.subtitle")}</p>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-muted-foreground">{t("agents.addAccount")}</span>
-          {(["claude", "codex"] as const).map((k) => (
-            <Button key={k} size="sm" data-add-account={k} onClick={() => setAdding(k)}>
+          {(["claude", "codex", "antigravity"] as const).map((k) => (
+            <Button key={k} size="sm" className={k === "antigravity" ? AGY_BUTTON : undefined} data-add-account={k} onClick={() => setAdding(k)}>
               + {t(`agents.accountKind.${k}`)}
             </Button>
           ))}
@@ -294,7 +298,7 @@ function AccountForm({ kind, onAdded, onCancel }: { kind: NewAccount["kind"]; on
   const [label, setLabel] = useState("");
   const [way, setWay] = useState(kind === "claude" ? "plan" : "browser");
   const [email, setEmail] = useState("");
-  const ways = kind === "claude" ? (["plan", "sso", "console"] as const) : (["browser", "device"] as const);
+  const ways = kind === "antigravity" ? (["browser"] as const) : kind === "claude" ? (["plan", "sso", "console"] as const) : (["browser", "device"] as const);
   const how: LoginHow = { sso: way === "sso", console: way === "console", device: way === "device", ...(kind === "claude" && email.trim() ? { email: email.trim() } : {}) };
   return (
     <Card className="gap-3 py-4">
@@ -308,12 +312,12 @@ function AccountForm({ kind, onAdded, onCancel }: { kind: NewAccount["kind"]; on
           }}
         >
           <Label htmlFor="acc-label">{t("agents.accountLabel")}</Label>
-          <Input id="acc-label" value={label} placeholder={t("agents.accountLabelHint")} onChange={(e) => setLabel(e.target.value)} />
+          <Input id="acc-label" className={kind === "antigravity" ? AGY_CONTROL : undefined} value={label} placeholder={t(kind === "antigravity" ? "agents.agyLabelHint" : "agents.accountLabelHint")} onChange={(e) => setLabel(e.target.value)} />
           <Label htmlFor="acc-way">{t("agents.loginWay")}</Label>
-          <NativeSelect id="acc-way" value={way} onChange={(e) => setWay(e.target.value)} wrapperClassName="w-full">
+          <NativeSelect id="acc-way" className={kind === "antigravity" ? AGY_CONTROL : undefined} value={way} onChange={(e) => setWay(e.target.value)} wrapperClassName="w-full">
             {ways.map((w) => (
               <NativeSelectOption key={w} value={w}>
-                {t(`agents.way.${w}`)}
+                {kind === "antigravity" ? t("agents.agyWay") : t(`agents.way.${w}`)}
               </NativeSelectOption>
             ))}
           </NativeSelect>
@@ -323,18 +327,18 @@ function AccountForm({ kind, onAdded, onCancel }: { kind: NewAccount["kind"]; on
               <Input id="acc-email" type="email" value={email} placeholder="ten@congty.vn" onChange={(e) => setEmail(e.target.value)} />
             </>
           ) : null}
-          <span className={HINT}>{t(`agents.wayHint.${way}` as never)}</span>
+          <span className={HINT}>{kind === "antigravity" ? t("agents.agyLogin") : t(`agents.wayHint.${way}` as never)}</span>
           <div className="flex gap-2 sm:col-start-2">
-            <Button type="submit" size="sm" disabled={action.busy}>
+            <Button type="submit" size="sm" className={kind === "antigravity" ? AGY_BUTTON : undefined} disabled={action.busy}>
               {t("agents.addAndSignIn")}
             </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+            <Button type="button" size="sm" className={kind === "antigravity" ? AGY_BUTTON : undefined} variant="ghost" onClick={onCancel}>
               {t("common.cancel")}
             </Button>
           </div>
         </form>
         <ErrorNote error={action.error} />
-        <p className="m-0 text-xs/[18px] text-fg-muted">{t("agents.accountNote")}</p>
+        <p className="m-0 text-xs/[18px] text-fg-muted">{kind === "antigravity" ? t("agents.agyAccounts") : t("agents.accountNote")}</p>
       </CardContent>
     </Card>
   );
@@ -683,7 +687,7 @@ function ProfileRow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={onEdit}>{t("agents.edit")}</DropdownMenuItem>
+              <DropdownMenuItem data-edit-profile={p.id} onSelect={onEdit}>{t("agents.edit")}</DropdownMenuItem>
               {canOpenCli(p)
                 ? projects.map((name) => (
                     <DropdownMenuItem
@@ -708,6 +712,12 @@ function ProfileRow({
           </DropdownMenu>
         </span>
       </ResponsiveGridRow>
+      {p.kind === "antigravity" ? (
+        <div data-agy-pools className="flex flex-wrap gap-x-3 gap-y-1 px-4 pb-2 text-xs text-fg-muted">
+          <span>{t("agents.agyPoolSelected", { pool: /claude|gpt/i.test(flagValue(p.args, ["--model"]) ?? "") ? "Claude/GPT" : "Gemini" })}</span>
+          {p.usage?.others.map((limit) => <span key={limit.label}>{limit.label}: {limit.percent}%</span>)}
+        </div>
+      ) : null}
       {open ? (
         <div className="flex flex-col gap-3 border-t border-line-subtle bg-subtle px-4 py-3 text-sm">
           {state === "noCli" ? (
@@ -960,6 +970,17 @@ function ProfileForm({
                 help: <code className={CODE}>--help</code>,
               })}
             </span>
+            {p.kind === "antigravity" ? <>
+              <Label htmlFor="pf-agy-project">{t("agents.agyProject")}</Label>
+              <Input id="pf-agy-project" className={AGY_CONTROL} aria-describedby="pf-agy-project-hint" value={textToEnv(envText).GOOGLE_CLOUD_QUOTA_PROJECT ?? ""} onChange={(e) => {
+                const env = textToEnv(envText);
+                if (e.target.value) { env.GOOGLE_CLOUD_QUOTA_PROJECT = e.target.value; env.AGY_ADC_AUTH = "true"; }
+                else { delete env.GOOGLE_CLOUD_QUOTA_PROJECT; delete env.AGY_ADC_AUTH; }
+                setEnvText(envToText(env));
+              }} />
+              <span id="pf-agy-project-hint" className={HINT}>{t("agents.agyProjectHint")}</span>
+              <span className={HINT}>{t("agents.agyAccounts")}</span>
+            </> : null}
             <Label htmlFor="pf-env" className="leading-snug sm:self-start sm:pt-2.5">
               {t("agents.env")}
             </Label>
@@ -971,7 +992,7 @@ function ProfileForm({
               onChange={(e) => setEnvText(e.target.value)}
             />
             <span className={HINT}>
-              {ACCOUNT_ENV_HINT[p.kind]
+              {p.kind === "antigravity" ? t("agents.agyAccounts") : ACCOUNT_ENV_HINT[p.kind]
                 ? rich(t("agents.envHintExample"), { example: <code className={CODE}>{ACCOUNT_ENV_HINT[p.kind]}</code> })
                 : t("agents.envHint")}
             </span>
@@ -1056,7 +1077,7 @@ function ProfileForm({
               value={p.stopAtWeek}
               onChange={(e) => set("stopAtWeek", num(e.target.value, p.stopAtWeek))}
             />
-            <span className={HINT}>{t("agents.stopHint")}</span>
+            <span className={HINT}>{t(p.kind === "antigravity" ? "agents.agyStopHint" : "agents.stopHint")}</span>
           </div>
           <label className="flex items-center gap-2 text-sm">
             <Checkbox checked={p.enabled} onCheckedChange={(v) => set("enabled", v === true)} />
@@ -1117,10 +1138,10 @@ function ProfileForm({
           <ErrorNote error={error} />
           <ErrorNote error={action.error} />
           <div className="flex flex-wrap gap-2">
-            <Button type="submit" disabled={action.busy}>
+            <Button type="submit" className={p.kind === "antigravity" ? AGY_BUTTON : undefined} disabled={action.busy}>
               {t("agents.save")}
             </Button>
-            <Button variant="ghost" type="button" onClick={onCancel}>
+            <Button variant="ghost" type="button" className={p.kind === "antigravity" ? AGY_BUTTON : undefined} onClick={onCancel}>
               {t("common.cancel")}
             </Button>
           </div>

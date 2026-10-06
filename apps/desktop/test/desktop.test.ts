@@ -30,7 +30,7 @@ const SHIM = "/home/duy/.local/bin/hive-mcp";
 const WIN_SHIM = String.raw`C:\Users\duy\.xdev-hive\bin\hive-mcp.cmd`;
 
 describe("installAgents", () => {
-  it("wires Claude, Gemini and Codex and is idempotent", () => {
+  it("wires Claude, Gemini, Codex and Antigravity and is idempotent", () => {
     const repo = gitRepo();
     const home = tmp("home");
     writeFileSync(path.join(repo, ".mcp.json"), JSON.stringify({ mcpServers: { other: { command: "x" } } }));
@@ -41,6 +41,7 @@ describe("installAgents", () => {
         ["~/.claude.json", "created"],
         [".mcp.json", "unchanged"],
         [".gemini/settings.json", "created"],
+        [".agents/mcp_config.json", "created"],
         [".claude/settings.json", "created"],
         [".xdev-hive/guard-docs.sh", "created"],
         [".githooks/pre-commit", "created"],
@@ -61,6 +62,8 @@ describe("installAgents", () => {
     });
     const gemini = JSON.parse(readFileSync(path.join(repo, ".gemini/settings.json"), "utf8"));
     assert.deepEqual(gemini.contextFileName, ["AGENTS.md"]);
+    const agy = JSON.parse(readFileSync(path.join(repo, ".agents", "mcp_config.json"), "utf8"));
+    assert.deepEqual(agy.mcpServers["xdev-hive"], { command: "hive-mcp", args: [], env: { HIVE_AGENT: "antigravity", HIVE_PROJECT: "demo" } });
     assert.equal(statSync(path.join(repo, ".githooks/pre-commit")).mode & 0o111, 0o111);
 
     const second = installAgents(repo, "demo", { home, shim: SHIM });

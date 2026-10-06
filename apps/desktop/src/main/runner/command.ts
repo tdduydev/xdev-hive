@@ -212,6 +212,7 @@ export interface BuiltCommand {
   claudeStream?: boolean;
   /** Codex `exec --json` (roadmap 28c): events on stdout, with each turn's tokens. */
   codexJson?: boolean;
+  antigravityStream?: boolean;
   /** Extra env the CLI needs for these args. */
   env?: Record<string, string>;
 }
@@ -238,7 +239,8 @@ export function buildCommand(
       .replaceAll("{worktree}", vars.worktree)
       .replaceAll("{task}", vars.task)
       .replaceAll("{project}", vars.project)
-      .replaceAll("{branch}", vars.branch);
+      .replaceAll("{branch}", vars.branch)
+      .replaceAll("{timeoutMinutes}", String(profile.timeoutMinutes));
   let args = profile.args.map(fill);
   let claudeJson = false;
   let claudeStream = false;
@@ -271,6 +273,7 @@ export function buildCommand(
     ...(claudeJson ? { claudeJson } : {}),
     ...(claudeStream ? { claudeStream } : {}),
     ...(codexJson ? { codexJson } : {}),
+    ...(profile.kind === "antigravity" && outputFormat(args) === "stream-json" ? { antigravityStream: true } : {}),
     ...(profile.kind === "claude" ? { env: CLAUDE_RUN_ENV } : {}),
   };
 }
@@ -418,7 +421,7 @@ export function applyAutonomy(kind: AgentKind, args: string[], level: Autonomy):
   const own = autonomyOf(kind, args);
   const used = lowerAutonomy(own, level);
   if (used === own) return args;
-  return insertFlags(kind, withoutFlags(args, flags.valued, flags.switches), AUTONOMY_ARGS[kind as "claude" | "codex" | "gemini"][used]);
+  return insertFlags(kind, withoutFlags(args, flags.valued, flags.switches), AUTONOMY_ARGS[kind as Exclude<AgentKind, "custom">][used]);
 }
 
 /** The model the profile's args set (`--model X`, `--model=X`, `-m X`), or null. */
@@ -439,6 +442,8 @@ export function policyBlocks(profile: AgentProfile, pol: AgentPolicy): string | 
   if (pol.network.mode !== "open" && !profile.container) return tr("runNote.policyNetwork", { mode: pol.network.mode });
   // A custom CLI's flags and MCP servers are its own: the runner cannot hold it to less than full.
   if (profile.kind === "custom" && (pol.autonomy !== "full" || pol.mcp !== null)) return tr("runNote.policyCustom");
+  // agy sandbox and MCP filter flags are not verified yet: do not silently run past a restrictive policy.
+  if (profile.kind === "antigravity" && (pol.autonomy !== "full" || pol.mcp !== null)) return tr("runNote.policyAntigravity");
   return null;
 }
 

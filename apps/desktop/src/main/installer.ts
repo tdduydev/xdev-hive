@@ -261,12 +261,20 @@ export function installAgents(repo: string, project: string, opts: InstallAgents
       },
       apply,
     ),
+    installAntigravityMcp(repo, project, { apply, platform }),
     mergeJson(path.join(repo, ".claude", "settings.json"), ".claude/settings.json", withGuardHook, apply),
     writeIfChanged(path.join(repo, ".xdev-hive", "guard-docs.sh"), GUARD_SCRIPT, ".xdev-hive/guard-docs.sh", 0o755, apply),
     installPreCommit(repo, apply),
     configureHooksPath(repo, apply),
     installCodexConfig(path.join(home, ".codex", "config.toml"), opts.shim, { apply, platform }),
   ];
+}
+
+/** Repo-local stdio configuration: the shim owns Hive credentials; agy's OAuth never enters this file. */
+export function installAntigravityMcp(repo: string, project: string, opts: { apply?: boolean; platform?: NodeJS.Platform; env?: Record<string, string> } = {}): FileAction {
+  const launch = mcpLaunch(SHIM_NAME, [], opts.platform);
+  return mergeJson(path.join(repo, ".agents", "mcp_config.json"), ".agents/mcp_config.json",
+    (j) => ({ ...j, mcpServers: { ...j.mcpServers, [MCP_NAME]: { ...launch, env: { HIVE_AGENT: "antigravity", HIVE_PROJECT: project, ...opts.env } } } }), opts.apply !== false);
 }
 
 // ── codegraph and superpowers (optional, per repo) ─────────────────────────────
