@@ -97,6 +97,7 @@ import {
   policyBlocks,
   policyLine,
   ranOn,
+  routeProfile,
   resolveBin,
   type ClaudeHookRun,
   type JudgeCandidate,
@@ -614,6 +615,7 @@ export class Runner {
         baseSha: previous?.baseSha ?? null,
         ciFix: extra.ciFix ?? null,
         requestedBy: extra.requestedBy ?? null,
+        selection: req.selection ?? null,
       },
       this.#iso(),
     );
@@ -1098,6 +1100,7 @@ export class Runner {
           reviewAfter: req.reviewAfter,
           candidates: req.candidates,
           instructions: req.instructions,
+          selection: req.selection ?? null,
         },
         { requestedBy: req.requestedBy },
       );
@@ -1171,7 +1174,7 @@ export class Runner {
             model: clip(r.model ?? null, 100),
             effort: clip(r.effort ?? null, 40),
             // Set by the model router (54c); none picks a tier yet.
-            tier: null,
+            tier: r.selection?.tier ?? null,
             attempt: r.attempt,
             parentRun: r.parentRunId,
             // From the whole report: the summary sent above is clipped, and the verdict often closes it.
@@ -1446,6 +1449,7 @@ export class Runner {
         loggedIn: this.#host.login?.(profile.id)?.loggedIn !== false,
         overLimit: usageStop(profile, this.#host.usage?.(profile.id)) !== null,
         headroom: usageHeadroom(profile, this.#host.usage?.(profile.id)),
+        sessionPercent: this.#host.usage?.(profile.id)?.session?.percent ?? null,
         resetAt: limitResetAt(profile, this.#host.usage?.(profile.id), now)?.toISOString() ?? null,
       };
     });
@@ -1456,6 +1460,7 @@ export class Runner {
       role: run.role,
       preferredProfile: run.preferredProfile,
       preferKind: run.preferKind,
+      pressure: run.selection?.tier === "light" || run.selection?.tier === "standard",
       avoidKinds: run.avoidKinds,
       excludedProfiles: run.excludedProfiles,
       // A review is only a cross-review on another vendor: it waits for one that is busy.
@@ -1533,7 +1538,8 @@ export class Runner {
     // Fitted before the first await, under the same policy tick() checked the profile against.
     const pol = this.#policyOf(run.project);
     const fit = applyPolicy(chosen, pol, chosen.kind === "codex" && pol.mcp !== null ? this.#codexServers(chosen) : []);
-    const profile = fit.profile;
+    const routed = routeProfile(chosen, fit.profile, pol, run.selection);
+    const profile = routed.profile;
     // Read from the args the CLI gets, not the profile's own: the policy may have put a model in (roadmap 54a).
     run = this.store.update(run.id, { agentKind: profile.kind, ...ranOn(profile) });
     const skipped =[...this.#policyBlocked(pol)].map(([id, reason]) => `# policy skipped ${id}: ${reason}\n`).join("");
@@ -1731,7 +1737,7 @@ export class Runner {
           })
         : null;
       log.write(
-        `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image} · ${egress ? `network limited (${egress.env.HIVE_EGRESS_ALLOW})` : "network open"}\n` : ""}${startNote ? `# ${startNote}\n` : ""}# hive context: ${context.note}\n${referenceLine ? `${referenceLine}\n` : ""}${toolLines}# cwd ${wt.path}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n${pickNote ? `# ${pickNote}\n` : ""}${policyLine(pol, fit)}\n${skipped}\n## Prompt\n${prompt}\n\n## Output\n`,
+        `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image} · ${egress ? `network limited (${egress.env.HIVE_EGRESS_ALLOW})` : "network open"}\n` : ""}${startNote ? `# ${startNote}\n` : ""}# hive context: ${context.note}\n${referenceLine ? `${referenceLine}\n` : ""}${toolLines}# cwd ${wt.path}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n${pickNote ? `# ${pickNote}\n` : ""}${policyLine(pol, fit)}\n${routed.note ? `# model: ${routed.note}\n` : ""}${skipped}\n## Prompt\n${prompt}\n\n## Output\n`,
       );
 
       // Cancelled while this run was being set up: stop here rather than start an agent nobody waits for.
@@ -2111,6 +2117,7 @@ export class Runner {
           ciFix: run.ciFix,
           bestOf: run.bestOf,
           requestedBy: run.requestedBy,
+          selection: run.selection,
         },
         this.#iso(),
       );
@@ -2138,6 +2145,7 @@ export class Runner {
           preferKind: run.preferKind,
           baseSha: done.baseSha,
           requestedBy: run.requestedBy,
+          selection: run.selection,
         },
         this.#iso(),
       );

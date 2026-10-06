@@ -2,7 +2,7 @@
 import { accessSync, constants, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ARTIFACT_DIR, AUTONOMY_ARGS, AUTONOMY_FLAGS, autonomyOf, flagValue, lowerAutonomy, modelsFor, policySummary, type AgentKind, type AgentPolicy, type AgentProfile, type AgentRole, type Autonomy, type CiFix, type ToolEntry } from "@xdev-hive/core";
+import { ARTIFACT_DIR, AUTONOMY_ARGS, AUTONOMY_FLAGS, autonomyOf, flagValue, lowerAutonomy, modelsFor, policySummary, type AgentKind, type AgentPolicy, type AgentProfile, type AgentRole, type Autonomy, type CiFix, type ToolEntry, type ModelSelection } from "@xdev-hive/core";
 import { fence } from "#desktop/main/gitlab/describe.ts";
 import { tr } from "#desktop/main/i18n.ts";
 import { MCP_NAME, NO_FEATURES, runMcpServers, type RepoFeatures } from "#desktop/main/installer.ts";
@@ -547,6 +547,26 @@ export function effortOf(kind: AgentKind, args: string[]): string | null {
 export function ranOn(profile: AgentProfile): { model: string | null; effort: string | null } {
   if (profile.kind === "custom") return { model: null, effort: null };
   return { model: modelOf(profile.args), effort: effortOf(profile.kind, profile.args) };
+}
+
+/** Apply the hub choice only after policy fitting, while preserving a model pinned in the profile. */
+export function routeProfile(original: AgentProfile, fitted: AgentProfile, policy: AgentPolicy, selection: ModelSelection | null | undefined, failureStep = 0): { profile: AgentProfile; note: string | null } {
+  if (!selection || !["claude", "codex", "antigravity"].includes(fitted.kind)) return { profile: fitted, note: null };
+  const kind = fitted.kind as "claude" | "codex" | "antigravity";
+  if (modelOf(original.args)) return { profile: fitted, note: `profile args pinned ${modelOf(original.args)}` };
+  const preferred = selection.models[kind];
+  if (!preferred) return { profile: fitted, note: `no ${kind} model at ${selection.tier}` };
+  const allowed = modelsFor(policy, kind);
+  const model = !allowed || allowed.includes(preferred.model) ? preferred.model : allowed[0];
+  if (!model) return { profile: fitted, note: `policy has no ${kind} model` };
+  let args = withoutFlags(fitted.args, ["--model", "-m"], []);
+  args = insertFlags(kind, args, [kind === "codex" ? "-m" : "--model", model]);
+  if (!effortOf(kind, original.args) && preferred.effort) {
+    const levels = ["low", "medium", "high", "xhigh"];
+    const effort = levels[Math.min(3, Math.max(0, levels.indexOf(preferred.effort) + failureStep))]!;
+    args = insertFlags(kind, args, kind === "codex" ? ["-c", `model_reasoning_effort=${effort}`] : ["--effort", effort]);
+  }
+  return { profile: { ...fitted, args, env: kind === "claude" && ["light", "standard"].includes(selection.tier) ? { ...fitted.env, CLAUDE_CODE_SUBAGENT_MODEL: "sonnet" } : fitted.env }, note: `${model} · ${effortOf(kind, args) ?? "default"} · tier ${selection.tier} (${selection.reason})${model !== preferred.model ? " · policy fallback" : ""}` };
 }
 
 /**
