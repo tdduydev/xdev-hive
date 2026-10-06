@@ -47,7 +47,11 @@ const toml = (s: string) => JSON.stringify(s);
 /** Codex's -c overrides (put before its subcommand). The token itself stays in the environment. */
 export function codexMcpArgs(hub: HubMcp | null, r: McpRun): string[] {
   // ~/.codex/config.toml (mounted) points xdev-hive at the shim, which the container does not have.
-  const off = ["-c", "mcp_servers.xdev-hive.enabled=false"];
+  const off = [
+    "-c", 'mcp_servers.xdev-hive.command="hive-mcp"',
+    "-c", "mcp_servers.xdev-hive.args=[]",
+    "-c", "mcp_servers.xdev-hive.enabled=false",
+  ];
   if (!hub) return off;
   const headers = Object.entries(hubHeaders(r))
     .map(([k, v]) => `${toml(k)}=${toml(v)}`)

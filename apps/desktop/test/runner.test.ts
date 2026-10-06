@@ -600,7 +600,7 @@ describe("run usage", () => {
 });
 
 describe("buildCommand", () => {
-  const vars = { prompt: "Do T-1", worktree: "/wt", task: "T-1", project: "demo", branch: "ai/T-1" };
+  const vars = { prompt: "Do T-1", worktree: "/wt", task: "T-1", project: "demo", branch: "ai/T-1", hiveMcp: "/opt/hive-mcp" };
   const flag = (args: string[], name: string) => args[args.indexOf(name) + 1]!;
 
   it("starts Claude Code with the user's settings only, no hooks, and the app's MCP servers", () => {
@@ -638,8 +638,8 @@ describe("buildCommand", () => {
   it("leaves other CLIs' arguments as the profile has them, but a Codex --full-auto that newer versions refuse", () => {
     // Codex asks before an MCP write, and a headless run has nobody to answer: Hive's own tools are approved.
     // The shim gets the profile's name (the runner's lease is under it) and the run's project and task.
-    const shim = path.join(shimBinDir(), process.platform === "win32" ? `${SHIM_NAME}.cmd` : SHIM_NAME);
-    const launch = mcpLaunch(shim, []);
+    // The shim the runner found on the profile's PATH (vars.hiveMcp); without one, the app's own.
+    const launch = mcpLaunch("/opt/hive-mcp", []);
     const approve = [
       "-c",
       `mcp_servers.xdev-hive.command=${JSON.stringify(launch.command)}`,
@@ -662,6 +662,9 @@ describe("buildCommand", () => {
       "a sandbox the profile chose stays",
     );
     assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.codex, args: ["/opt/wrap.sh", "{prompt}"] }, vars).args, ["/opt/wrap.sh", "Do T-1"], "an unknown command line stays as it is");
+    const shim = path.join(shimBinDir(), process.platform === "win32" ? `${SHIM_NAME}.cmd` : SHIM_NAME);
+    const { hiveMcp: _found, ...noShim } = vars;
+    assert.ok(buildCommand(AGENT_TEMPLATES.codex, noShim).args.includes(`mcp_servers.xdev-hive.command=${JSON.stringify(mcpLaunch(shim, []).command)}`), "falls back to the app's shim");
     const ro = buildCommand({ ...AGENT_TEMPLATES.codex, id: "codex-ro", readOnly: true }, { ...vars, run: "R-1" }).args;
     assert.equal(ro[9], 'mcp_servers.xdev-hive.env={HIVE_AGENT="codex-ro",HIVE_PROJECT="demo",HIVE_TASK="T-1",HIVE_RUN="R-1",HIVE_READONLY="1"}');
     assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.claude, kind: "custom" }, vars).args, ["-p", "Do T-1", "--permission-mode", "acceptEdits"]);
@@ -2633,6 +2636,21 @@ describe("runner: the hub's tool catalog (roadmap 28b)", () => {
     assert.equal(args.some((a) => a.startsWith("mcp_servers.codegraph.")), false, "codegraph's entry is for Claude only");
     // Its index is built all the same, for a Codex whose own config.toml starts codegraph (as before the catalog).
     assert.deepEqual(s.npx.calls(), [`-y ${CODEGRAPH_MCP.args[1]} init ${run.worktree} telemetry=0`]);
+  });
+
+  it("explains an invalid Codex MCP transport and names that profile's config.toml", async () => {
+    const codexHome = tmp("codex-home");
+    const s = await setup([
+      profile("codex-broken", "codex", 10, "codex-config-error", {
+        bin: fakeCodex(), args: ["exec", "--sandbox", "workspace-write", "{prompt}"], env: { FAKE_MODE: "codex-config-error", CODEX_HOME: codexHome },
+      }),
+    ]);
+    const queued = await s.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await s.runner.settle();
+    const run = s.runner.store.get(queued.id)!;
+    assert.equal(run.status, "failed");
+    assert.match(run.error ?? "", new RegExp(codexHome.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(run.error ?? "", /Cấu hình MCP của Codex profile không hợp lệ/i);
   });
 
   // ── catalog hooks (roadmap 28d): RTK as the migration put it, a fake rtk on the PATH ──

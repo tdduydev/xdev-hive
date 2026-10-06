@@ -275,7 +275,7 @@ export interface BuiltCommand {
 
 export function buildCommand(
   profile: AgentProfile,
-  vars: { prompt: string; worktree: string; task: string; project: string; branch: string; run?: string; repo?: string; references?: ReferenceRepo[] },
+  vars: { prompt: string; worktree: string; task: string; project: string; branch: string; run?: string; repo?: string; references?: ReferenceRepo[]; hiveMcp?: string },
   /**
    * The run's tools from the hub's catalog (runTools), or what the repo's setup turned on (no catalog): Claude Code
    * gets the app's own entries for those, as before the catalog.
@@ -289,7 +289,7 @@ export function buildCommand(
   hooks: ClaudeHookRun | null = null,
 ): BuiltCommand {
   const catalog = Array.isArray(tools);
-  const ctx = { worktree: vars.worktree, ...(vars.repo ? { repo: vars.repo } : {}) };
+  const ctx = { worktree: vars.worktree, ...(vars.repo ? { repo: vars.repo } : {}), ...(vars.hiveMcp ? { hiveMcp: vars.hiveMcp } : {}) };
   const usesPrompt = profile.args.some((a) => a.includes("{prompt}"));
   const fill = (a: string) =>
     a
@@ -376,7 +376,7 @@ export function codexArgs(
   run?: { agent: string; project: string; task: string; run?: string; readOnly?: boolean },
   /** The run's MCP tools of the catalog (roadmap 28b). */
   tools: ToolEntry[] = [],
-  ctx: { worktree?: string; repo?: string } = {},
+  ctx: { worktree?: string; repo?: string; hiveMcp?: string } = {},
 ): string[] {
   const sandbox = args.some((a) => a === "--sandbox" || a === "-s" || a.startsWith("--sandbox="));
   const fixed = args.flatMap((a) => (a === "--full-auto" ? (sandbox ? [] : ["--sandbox", "workspace-write"]) : [a]));
@@ -384,7 +384,8 @@ export function codexArgs(
   if (fixed[0] !== "exec") return fixed;
   // The profile's CODEX_HOME may have no Hive block. An env or approval override alone creates an invalid server.
   const shim = path.join(shimBinDir(), process.platform === "win32" ? `${SHIM_NAME}.cmd` : SHIM_NAME);
-  const launch = mcpLaunch(shim, []);
+  // The shim the runner found on the profile's PATH wins: a hand-made one (as on .52) may be the only one there.
+  const launch = mcpLaunch(ctx.hiveMcp ?? shim, []);
   const overrides = [
     "-c", `mcp_servers.xdev-hive.command=${JSON.stringify(launch.command)}`,
     "-c", `mcp_servers.xdev-hive.args=${JSON.stringify(launch.args)}`,
