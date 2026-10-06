@@ -799,6 +799,14 @@ export const en: Catalog = {
     superpowers: "Guide agent workflows",
     speckit: "Write specs and plans",
   },
+  systemOverview: {
+    service: "Service",
+    allServices: "All services",
+    running: "Running runs",
+    pending: "Awaiting review",
+    pendingHint: "Tasks in review and pending document proposals.",
+    capped: "Counts may be incomplete because task/run lists are limited.",
+  },
   overview: {
     systems: "Systems",
     systemProjects: "Services",
