@@ -22,6 +22,12 @@ export const en: Catalog = {
     manageAgents: "Add accounts and manage sign-in",
     enableIntake: "Accept work",
   },
+  configIssues: {
+    title: "{count} entries in the settings could not be read",
+    skipped: "left out",
+    default: "default used",
+    fix: "The rest keeps running. Fix the entries above in {path} and reopen the app; main.log has the details.",
+  },
   cleanup: {
     errors: {
       expired: "The machine did not report progress for 15 minutes.",

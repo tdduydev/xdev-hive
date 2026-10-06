@@ -208,6 +208,21 @@ export interface DesktopSettings {
   gitlab: { url: string; hasToken: boolean; mr: MrSettings };
   /** Pull requests on GitHub; they follow the MR options in `gitlab.mr`. */
   github: { url: string; hasToken: boolean };
+  /** Parts of config.json the app could not read at the last load (left out or defaulted); empty when it read all of it. */
+  configIssues: ConfigIssue[];
+}
+
+/** A part of config.json that did not parse (BUG-config-silent). */
+export interface ConfigIssue {
+  /** Top-level key: `agents`, `projects`, `runner`…; `file` when the file itself could not be read. */
+  section: string;
+  /** The profile id or project name (`#2` when it has none); null for a key that is not a list. */
+  id: string | null;
+  /** Path inside the entry or key, e.g. `account`; empty for the whole of it. */
+  field: string;
+  message: string;
+  /** skipped: the entry is left out; default: the key's default is used instead. */
+  action: "skipped" | "default";
 }
 
 export interface DesktopSettingsPatch {

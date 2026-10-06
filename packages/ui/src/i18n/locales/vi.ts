@@ -23,6 +23,12 @@ export const vi = {
     manageAgents: "Thêm gói và quản lý đăng nhập",
     enableIntake: "Bật nhận việc",
   },
+  configIssues: {
+    title: "Không đọc được {count} mục trong cấu hình",
+    skipped: "đã bỏ qua",
+    default: "dùng mặc định",
+    fix: "Phần còn lại vẫn chạy. Sửa mục trên trong {path} rồi mở lại app; chi tiết có trong main.log.",
+  },
   cleanup: {
     errors: {
       expired: "Máy không báo tiến độ trong 15 phút.",

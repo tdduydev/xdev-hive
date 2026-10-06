@@ -1,4 +1,5 @@
 import { ResponsiveGridRow, ResponsiveTableFrame } from "#ui/components/ResponsiveTable.tsx";
+import { ConfigIssues } from "#ui/components/ConfigIssues.tsx";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "cn";
 import { ChevronRight, CircleHelp, MoreHorizontal, Plus, RefreshCw } from "lucide-react";
@@ -161,6 +162,7 @@ export function AgentsPage() {
           </Button>
         }
       />
+      <ConfigIssues issues={settings.data?.configIssues} configPath={settings.data?.configPath} />
       <MachineQuota profiles={profiles.data ?? []} now={now} />
       {settings.data ? <IntakeCard runner={settings.data.runner} hub={settings.data.mode === "hub"} onSaved={settings.reload} /> : null}
       <ProfileTable

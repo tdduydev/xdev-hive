@@ -10,6 +10,7 @@ import { approvalOf } from "#ui/lib/permissions.ts";
 import { Diff } from "#ui/components/Diff.tsx";
 import { requestErrorText } from "#ui/lib/runs.ts";
 import { ErrorNote } from "#ui/components/common.tsx";
+import { DesktopConfigIssues } from "#ui/components/ConfigIssues.tsx";
 import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { errorMessage, formatTime, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT, type MessageKey, type TFunction } from "#ui/i18n/index.tsx";
@@ -302,6 +303,7 @@ export function TodayPage() {
     <div className="mobile-master-detail flex h-full min-h-0 w-full bg-surface">
       <div className={cn("min-w-0 flex-1 flex-col border-r border-line-subtle md:flex md:min-w-[280px] md:flex-none md:shrink md:basis-[360px]", mobileDetail.showingDetail ? "hidden" : "flex")}>
         <StartReminder />
+        <DesktopConfigIssues className="border-b border-line-subtle p-3" />
         <div className="flex shrink-0 items-center gap-2 border-b border-line-subtle px-3 py-[9px]">
           <div role="tablist" className="flex gap-0.5 rounded-[7px] bg-sunken p-0.5">
             {(
