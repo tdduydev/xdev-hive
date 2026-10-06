@@ -39,13 +39,15 @@ import { DocMarkdown, docHref, type DocContext } from "#ui/components/DocMarkdow
 import { LinkPicker } from "#ui/components/LinkPicker.tsx";
 import { HiddenChars } from "#ui/components/HiddenChars.tsx";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
+import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { PaneEmpty } from "#ui/components/panes.tsx";
-import { errorMessage, formatTime, sourceText, useAction, useCan, useHashParam, useHive, useQuery } from "#ui/hooks.ts";
+import { errorMessage, formatTime, sourceText, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
 import { DRAFTS_EVENT, insertMd, isUnreachable, parsePaths, readDrafts, writeDrafts, type DocDraft } from "#ui/lib/docdraft.ts";
 import { buildTree, flatten, freeSlug, isServiceGroup, parentChoices, slugify, systemTree, trail, type TreeNode } from "#ui/lib/doctree.ts";
 import { emptyState } from "#ui/lib/empty.ts";
 import { fold } from "#ui/lib/text.ts";
+import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 import { docOwner, docPrefix, inScope, ownerName, projectScope, SHARED, systemScope, type Scope } from "#ui/lib/scope.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
@@ -180,6 +182,13 @@ export function DocsPage() {
   const [spaceId, setSpaceId] = useState<string | null>(null);
   const space = findSpace(spaces, spaceId);
   const [selected, setSelected] = useState<string | null>(null);
+  const [treeOpen, setTreeOpen] = useState(false);
+  const mobileDetail = useMobileDetail("doc");
+  const pick = (key: string | null) => {
+    setSelected(key);
+    setTreeOpen(false);
+    if (mobileDetail.mobile) mobileDetail.navigate(key);
+  };
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [more, setMore] = useState<Record<string, boolean>>({});
@@ -208,7 +217,7 @@ export function DocsPage() {
   }, []);
 
   // #/docs?doc=<key> (command palette, links): open that doc, moving to its scope when it is outside this one.
-  const [linked, clearLinked] = useHashParam("doc");
+  const linked = mobileDetail.value;
   useEffect(() => {
     if (!linked || !list.data) return;
     if (list.data.some((d) => d.key === linked) || drafts[linked]) {
@@ -222,8 +231,8 @@ export function DocsPage() {
       setSelected(linked);
       setQ("");
     }
-    clearLinked();
-  }, [linked, list.data, drafts, scope, setScope, clearLinked, t, systems]);
+    if (!mobileDetail.mobile) mobileDetail.navigate(null, true);
+  }, [linked, list.data, drafts, scope, setScope, t, systems, mobileDetail.mobile, mobileDetail.navigate]);
 
   const owners = useMemo(() => spaceOwners(space), [space]);
   const prefixes = useMemo(() => owners.map(docPrefix), [owners]);
@@ -256,8 +265,9 @@ export function DocsPage() {
     if (!list.data || linked || !space) return;
     if (selected && selected === justMade.current) return;
     if (selected && inSpace(selected) && (titles.has(selected) || drafts[selected])) return;
-    setSelected(nodes.find((n) => n.doc)?.key ?? null);
-  }, [list.data, space, selected, linked, nodes, inSpace, titles, drafts]);
+    // On a phone the list is the first screen: opening a page there would hide it behind a page nobody picked.
+    if (!mobileDetail.mobile) setSelected(nodes.find((n) => n.doc)?.key ?? null);
+  }, [list.data, space, selected, linked, nodes, inSpace, titles, drafts, mobileDetail.mobile]);
 
   const selTrail = useMemo(() => new Set(selected ? trail(tree, selected).map((n) => n.key) : []), [tree, selected]);
   const isOpen = (n: TreeNode, depth: number) => open[n.key] ?? (selTrail.has(n.key) || (depth === 0 && n.folder));
@@ -300,14 +310,14 @@ export function DocsPage() {
         setCreating(null);
         setOpen((o) => ({ ...o, [key]: true }));
         justMade.current = key;
-        setSelected(key);
+        pick(key);
         list.reload();
       });
       return;
     }
     // A page starts as a draft on this device, where it will go in the tree: the first save makes it.
     setDraft(key, { ...draftOf(null, key), title, parent: creating.parent });
-    setSelected(key);
+    pick(key);
     setCreating(null);
   };
 
@@ -335,7 +345,7 @@ export function DocsPage() {
           role="treeitem"
           aria-selected={on}
           aria-expanded={kids ? expanded : undefined}
-          onClick={() => (openable ? setSelected(n.key) : setOpen((o) => ({ ...o, [n.key]: !expanded })))}
+          onClick={() => (openable ? pick(n.key) : setOpen((o) => ({ ...o, [n.key]: !expanded })))}
           title={n.key}
           className={cn(
             "flex h-[30px] min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-sm pr-2 pl-1 text-left text-[13px]/none outline-none focus-visible:focus-ring",
@@ -390,11 +400,13 @@ export function DocsPage() {
     });
 
   const parentTitle = creating?.parent ? (nodes.find((n) => n.key === creating.parent)?.title ?? creating.parent) : null;
-  const selectedNode = selected ? nodes.find((n) => n.key === selected) : undefined;
+  const active = mobileDetail.mobile ? mobileDetail.value : selected;
+  const selectedNode = active ? nodes.find((n) => n.key === active) : undefined;
 
   return (
-    <div className="flex h-full min-h-0 w-full bg-surface">
-      <div className="flex min-w-[200px] shrink basis-[260px] flex-col border-r border-line-subtle bg-subtle">
+    <div className="mobile-master-detail flex h-full min-h-0 w-full bg-surface">
+      {treeOpen && mobileDetail.showingDetail ? <button type="button" aria-label={t("common.close")} onClick={() => setTreeOpen(false)} className="fixed inset-0 z-30 bg-black/40 md:hidden" /> : null}
+      <div className={cn("min-w-0 flex-1 flex-col border-r border-line-subtle bg-subtle md:flex md:min-w-[200px] md:flex-none md:shrink md:basis-[260px]", mobileDetail.showingDetail ? treeOpen ? "fixed inset-y-0 left-0 z-40 flex w-[min(340px,85vw)]" : "hidden" : "flex")}>
         <div className="flex shrink-0 flex-col gap-2 border-b border-line-subtle px-3 py-2.5">
           {spaces.length <= 3 ? (
             <Seg
@@ -403,7 +415,7 @@ export function DocsPage() {
               options={spaces.map((s) => [s.id, s.label])}
               onChange={(v) => {
                 setSpaceId(v);
-                setSelected(null);
+                pick(null);
                 setCreating(null);
               }}
             />
@@ -415,7 +427,7 @@ export function DocsPage() {
               value={space?.id ?? ""}
               onChange={(e) => {
                 setSpaceId(e.target.value);
-                setSelected(null);
+                pick(null);
                 setCreating(null);
               }}
               aria-label={t("docs.list")}
@@ -530,20 +542,21 @@ export function DocsPage() {
           <span className="text-[11px] text-fg-muted">{t("docs.pageCount", { count: space?.docs.length ?? 0 })}</span>
         </div>
       </div>
-      <div className="flex min-w-0 flex-1 flex-col">
-        {selected ? (
+      <div className={cn("min-w-0 flex-1 flex-col", mobileDetail.mobile && !mobileDetail.showingDetail ? "hidden md:flex" : "flex")}>
+        {mobileDetail.showingDetail ? <div className="flex items-center"><MobileBack onClick={() => pick(null)} /><Button variant="ghost" className="min-h-10" onClick={() => setTreeOpen(true)}>{t("docs.list")}</Button></div> : null}
+        {active ? (
           <DocView
-            key={selected}
-            docKey={selected}
-            canEdit={allow(docOwner(selected), isContextDoc(selected, (list.data ?? []).find((d) => d.key === selected)) ? "contextEdit" : "docEdit")}
-            canPropose={allow(docOwner(selected), "docPropose")}
-            draft={drafts[selected] ?? null}
-            setDraft={(d) => setDraft(selected, d)}
+            key={active}
+            docKey={active}
+            canEdit={allow(docOwner(active), isContextDoc(active, (list.data ?? []).find((d) => d.key === active)) ? "contextEdit" : "docEdit")}
+            canPropose={allow(docOwner(active), "docPropose")}
+            draft={drafts[active] ?? null}
+            setDraft={(d) => setDraft(active, d)}
             onSaved={list.reload}
             tree={tree}
             titles={titles}
-            spaceLabel={ownerName(docOwner(selected), t("inbox.shared"))}
-            onPick={setSelected}
+            spaceLabel={ownerName(docOwner(active), t("inbox.shared"))}
+            onPick={pick}
             onNew={(parent) => startCreate("page", parent)}
           />
         ) : (
@@ -949,8 +962,8 @@ function DocView({
           </div>
         ) : null}
         {previewing ? (
-          <div className="min-w-[280px] flex-1 overflow-y-auto">
-            <div className="mx-auto flex max-w-[720px] flex-col gap-6 px-8 pt-6 pb-12">
+          <div className={cn("min-w-0 flex-1 overflow-y-auto", editing && "hidden md:block")}>
+            <div className="mx-auto flex max-w-[720px] flex-col gap-6 px-4 pt-6 pb-12 md:px-8">
               {work.content.trim() ? (
                 <DocMarkdown text={work.content} doc={context} />
               ) : children.length || node?.folder ? null : (
@@ -1010,6 +1023,20 @@ function DocView({
           </a>
         ) : null}
         <span className="flex-1" />
+        <details className="relative ml-auto md:hidden">
+          <summary className="flex min-h-10 cursor-pointer items-center rounded-sm border border-line-default px-3 text-sm font-medium text-fg-strong">{t("docs.modes")}</summary>
+          <div onClick={(event) => { if ((event.target as HTMLElement).closest("button, a")) event.currentTarget.closest("details")?.removeAttribute("open"); }} className="absolute right-0 z-30 mt-1 flex w-[min(290px,calc(100vw-32px))] flex-col gap-1 rounded-md border border-line-default bg-raised p-2 shadow-e3">
+            {writer ? (["view", "edit", "markdown"] as const).map((m) => <Button key={m} role="radio" aria-checked={mode === m} variant={mode === m ? "secondary" : "ghost"} className="min-h-10 justify-start" onClick={(event) => { setMode(m); setCompare(null); event.currentTarget.closest("details")?.removeAttribute("open"); }}>{m === "view" ? t("docs.modeView") : m === "edit" ? t("docs.modeEdit") : t("docs.modeMarkdown")}</Button>) : null}
+            {current ? <Button variant="ghost" className="min-h-10 justify-start" asChild><a href={docHref(docKey, "read")}>{t("docs.reader")}</a></Button> : null}
+            {writer ? <Button variant="ghost" className="min-h-10 justify-start" onClick={() => setPanel((p) => p === "assist" ? null : "assist")}>{t("docs.assist.button")}</Button> : null}
+            <Button variant="ghost" className="min-h-10 justify-start" onClick={() => setPanel((p) => p === "files" ? null : "files")}>{t("docs.attachments")}</Button>
+            {current ? <Button variant="ghost" className="min-h-10 justify-start" onClick={() => setPanel((p) => p === "history" ? null : "history")}>{t("docs.history")}</Button> : null}
+            {dirty && current ? <Button variant="ghost" className="min-h-10 justify-start" onClick={() => setShowDiff((v) => !v)}>{showDiff ? t("docs.hideChanges") : t("docs.showChanges")}</Button> : null}
+            {dirty || (!current && draft) ? <Button variant="ghost" className="min-h-10 justify-start" onClick={() => { setDraft(null); setShowDiff(false); }}>{t("docs.discard")}</Button> : null}
+            {writer && (dirty || (!current && draft)) ? <Button className="min-h-10" onClick={(event) => { void save(); event.currentTarget.closest("details")?.removeAttribute("open"); }} disabled={action.busy}>{canEdit ? t("docs.saveAs", { version: (current?.version ?? 0) + 1 }) : t("docs.propose")}</Button> : null}
+          </div>
+        </details>
+        <div className="hidden flex-wrap items-center gap-2 md:flex">
         {writer ? (
           <Seg
             label={t("docs.modes")}
@@ -1095,10 +1122,17 @@ function DocView({
             ) : null}
           </>
         ) : null}
+        </div>
       </div>
       {source && compare === null && !showDiff ? (
         <div className="relative shrink-0">
-          <div role="toolbar" aria-label={t("docs.toolbar")} className="flex items-center gap-0.5 border-b border-line-subtle bg-subtle px-3 py-1">
+          <details className="border-b border-line-subtle bg-subtle px-3 py-1 md:hidden">
+            <summary className="flex min-h-10 cursor-pointer items-center text-sm font-medium">{t("docs.toolbar")}</summary>
+            <div className="grid grid-cols-3 gap-1 pb-2">
+              {MD_TOOLS.filter((s) => s !== "sep").map((spec) => <Button key={spec.id} variant="ghost" className="min-h-10 justify-start" onClick={() => tool(spec)}>{t(`docs.md.${spec.id}`)}</Button>)}
+            </div>
+          </details>
+          <div role="toolbar" aria-label={t("docs.toolbar")} className="hidden items-center gap-0.5 border-b border-line-subtle bg-subtle px-3 py-1 md:flex">
             {MD_TOOLS.map((spec, i) => {
               if (spec === "sep") return <span key={`s${i}`} className="mx-1 h-4 w-px bg-line-default" />;
               const Icon = MD_ICON[spec.id];
@@ -1152,16 +1186,16 @@ function DocView({
           <ErrorNote error={doc.error ?? action.error ?? upload.error} />
         </div>
       ) : null}
-      <div className="flex min-h-0 flex-1">
-        {body}
-        {panel === "history" && current ? <HistoryPanel docKey={docKey} version={current.version} selected={compare} onPick={setCompare} /> : null}
+      <div className="flex min-h-0 min-w-0 flex-1">
+        <div className={cn("min-h-0 min-w-0 flex-1", panel ? "hidden md:flex" : "flex")}>{body}</div>
+        {panel === "history" && current ? <HistoryPanel docKey={docKey} version={current.version} selected={compare} onPick={(version) => { setCompare(version); if (window.matchMedia("(max-width: 767px)").matches) setPanel(null); }} /> : null}
         {panel === "assist" && writer ? (
-          <aside className="flex w-[330px] shrink-0 flex-col border-l border-line-subtle bg-subtle">
+          <aside className="flex min-w-0 flex-1 flex-col border-l border-line-subtle bg-subtle md:w-[330px] md:flex-none md:shrink-0">
             <DocAssistant docKey={docKey} title={work.title || current?.title || ""} content={work.content} paths={current?.paths ?? parsePaths(work.paths)} related={related} onApply={applyAssist} />
           </aside>
         ) : null}
         {panel === "files" ? (
-          <aside className="flex w-[270px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-line-subtle p-3">
+          <aside className="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto border-l border-line-subtle p-3 md:w-[270px] md:flex-none md:shrink-0">
             <AttachmentsPanel docKey={docKey} canUpload={writer} canManage={canEdit} onInsert={source ? (md) => insertAt(md) : rich ? (md) => edit({ content: `${work.content.trimEnd()}\n\n${md}\n` }) : undefined} />
           </aside>
         ) : null}
@@ -1223,7 +1257,7 @@ function HistoryPanel({ docKey, version, selected, onPick }: { docKey: string; v
   const history = useQuery(() => client.call("docs.history", { key: docKey }), [client, docKey, version]);
   const versions: DocVersion[] = history.data ?? [];
   return (
-    <aside aria-label={t("docs.versions")} className="flex w-[250px] shrink-0 flex-col gap-1 overflow-y-auto border-l border-line-subtle p-3">
+    <aside aria-label={t("docs.versions")} className="flex min-w-0 flex-1 flex-col gap-1 overflow-y-auto border-l border-line-subtle p-3 md:w-[250px] md:flex-none md:shrink-0">
       <span className="px-1.5 pb-1.5 text-[11px]/4 font-semibold text-fg-muted">{t("docs.versions")}</span>
       {!versions.length && !history.loading ? <span className="px-1.5 text-xs text-fg-muted">{t("docs.noVersions")}</span> : null}
       {versions.map((v, i) => (

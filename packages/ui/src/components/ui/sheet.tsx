@@ -57,9 +57,9 @@ function SheetContent({
       <SheetPrimitive.Content
         data-slot="sheet-content"
         className={cn(
-          "fixed z-200 flex flex-col gap-4 border-line-subtle bg-raised text-fg-primary shadow-e3 transition ease-emphasized data-[state=closed]:animate-out data-[state=closed]:duration-(--duration-base) data-[state=open]:animate-in data-[state=open]:duration-(--duration-slower)",
+          "fixed z-200 flex flex-col gap-4 border-line-subtle bg-raised text-fg-primary shadow-e3 transition ease-emphasized data-[state=closed]:animate-out data-[state=closed]:duration-(--duration-base) data-[state=open]:animate-in data-[state=open]:duration-(--duration-slower) max-md:[&_input]:min-h-10 max-md:[&_input]:text-base max-md:[&_select]:min-h-10 max-md:[&_select]:text-base max-md:[&_textarea]:text-base max-md:[&_button]:min-h-10",
           side === "right" &&
-            "inset-y-0 right-0 h-full w-full border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:w-[400px] sm:max-w-[400px]",
+            "inset-y-0 right-0 h-full w-full border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:w-[400px] sm:max-w-[400px] max-md:!max-w-none",
           side === "left" &&
             "inset-y-0 left-0 h-full w-full border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:w-[400px] sm:max-w-[400px]",
           side === "top" &&
@@ -72,7 +72,7 @@ function SheetContent({
       >
         {children}
         {showCloseButton && (
-          <SheetPrimitive.Close className="absolute top-3 right-3 grid size-7 cursor-pointer place-items-center rounded-sm text-fg-muted transition-colors outline-none hover:bg-hover hover:text-fg-strong focus-visible:focus-ring disabled:pointer-events-none">
+          <SheetPrimitive.Close className="absolute top-3 right-3 grid size-7 max-md:size-10 cursor-pointer place-items-center rounded-sm text-fg-muted transition-colors outline-none hover:bg-hover hover:text-fg-strong focus-visible:focus-ring disabled:pointer-events-none">
             <XIcon className="size-4" />
             <span className="sr-only">Close</span>
           </SheetPrimitive.Close>

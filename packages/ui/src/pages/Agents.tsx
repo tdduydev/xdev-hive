@@ -1,3 +1,4 @@
+import { ResponsiveGridRow, ResponsiveTableFrame } from "#ui/components/ResponsiveTable.tsx";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "cn";
 import { ChevronRight, CircleHelp, MoreHorizontal, Plus } from "lucide-react";
@@ -403,9 +404,9 @@ function ProfileTable({
   );
   return (
     <div className="flex flex-col gap-2">
-      <div className="overflow-x-auto rounded-[10px] border border-line-default bg-surface">
-        <div className="min-w-[900px]">
-          <div className={cn("grid h-[34px] items-center gap-3 border-b border-line-subtle bg-subtle px-4 text-[11px]/none font-semibold text-fg-muted", COLS)}>
+      <ResponsiveTableFrame className="md:overflow-x-auto rounded-[10px] border border-line-default bg-surface">
+        <div className="md:min-w-[900px]">
+          <div data-card-header className={cn("grid h-[34px] items-center gap-3 border-b border-line-subtle bg-subtle px-4 text-[11px]/none font-semibold text-fg-muted", COLS)}>
             <span>{t("agents.colProfile")}</span>
             <span>{t("agents.colState")}</span>
             <span className="flex items-center gap-1">
@@ -431,7 +432,7 @@ function ProfileTable({
           ) : null}
           {showOff ? off.map(row) : null}
         </div>
-      </div>
+      </ResponsiveTableFrame>
       {someWithoutUsage ? <p className="m-0 text-xs/[18px] text-fg-muted">{t("agents.noUsageNote")}</p> : null}
     </div>
   );
@@ -587,7 +588,7 @@ function ProfileRow({
 
   return (
     <div data-profile={p.id} data-state={state} className={cn("border-b border-line-subtle last:border-b-0", p.enabled ? "" : "opacity-70")}>
-      <div className={cn("grid items-center gap-3 px-4 py-3", COLS)}>
+      <ResponsiveGridRow labels={[t("agents.colProfile"), t("agents.colState"), t("agents.colSession"), t("agents.colWeek"), t("agents.colCost"), null]} className={cn("grid items-center gap-3 px-4 py-3", COLS)}>
         <span className="flex min-w-0 items-center gap-1">
           <button
             type="button"
@@ -706,7 +707,7 @@ function ProfileRow({
             </DropdownMenuContent>
           </DropdownMenu>
         </span>
-      </div>
+      </ResponsiveGridRow>
       {open ? (
         <div className="flex flex-col gap-3 border-t border-line-subtle bg-subtle px-4 py-3 text-sm">
           {state === "noCli" ? (

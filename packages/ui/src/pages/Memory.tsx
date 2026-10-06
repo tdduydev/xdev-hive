@@ -12,6 +12,7 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { BulkBar, bulkSummary } from "#ui/components/BulkBar.tsx";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
+import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { HiddenChars } from "#ui/components/HiddenChars.tsx";
 import { Chip, DetailBody, DetailFooter, DetailHeader, FilterChips, KvRows, ListItem, ListPane, PaneEmpty, type ChipKind } from "#ui/components/panes.tsx";
 import type { HiveClient } from "#ui/client.ts";
@@ -19,6 +20,7 @@ import { formatTime, sourceText, useAction, useCan, useHive, useQuery } from "#u
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
 import { runBulk, splitMemory } from "#ui/lib/bulk.ts";
 import { emptyState } from "#ui/lib/empty.ts";
+import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 import { defaultOwner, ownerName, scopeKey, type Scope } from "#ui/lib/scope.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
@@ -74,6 +76,11 @@ export function MemoryPage() {
   const [submitted, setSubmitted] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [selected, setSelected] = useState<number | null>(null);
+  const mobileDetail = useMobileDetail("memory");
+  const pick = (id: number | null) => {
+    setSelected(id);
+    if (mobileDetail.mobile) mobileDetail.navigate(id === null ? null : String(id));
+  };
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const toast = useToast();
   const bulk = useAction();
@@ -83,7 +90,8 @@ export function MemoryPage() {
   const search = useQuery(() => client.call("memory.searchInfo", {}), [client, list.data]);
   const rows = useMemo(() => list.data ?? [], [list.data]);
   const shown = rows.filter(FILTERS.find(([id]) => id === filter)![1]);
-  const current = selected === NEW ? null : (rows.find((m) => m.id === selected) ?? shown[0] ?? null);
+  const active = mobileDetail.mobile ? (mobileDetail.value === null ? null : Number(mobileDetail.value)) : selected;
+  const current = active === NEW ? null : (rows.find((m) => m.id === active) ?? (mobileDetail.mobile ? null : shown[0] ?? null));
   useEffect(() => {
     if (selected !== NEW && selected !== null && !rows.some((m) => m.id === selected)) setSelected(null);
   }, [rows, selected]);
@@ -96,7 +104,7 @@ export function MemoryPage() {
   const empty = emptyState({ loaded: Boolean(list.data), total: rows.length, shown: shown.length, query: submitted, filtered: filter !== "all" });
   // Nothing written yet is the only case with something to do: the first entry, from the same button as the toolbar's.
   const firstEntry = canAdd ? (
-    <Button size="sm" data-empty-action onClick={() => setSelected(NEW)}>
+    <Button size="sm" data-empty-action onClick={() => pick(NEW)}>
       {t("memory.newFirst")}
     </Button>
   ) : null;
@@ -132,8 +140,9 @@ export function MemoryPage() {
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full bg-surface">
+    <div className="mobile-master-detail flex h-full min-h-0 w-full bg-surface">
       <ListPane
+        className={mobileDetail.showingDetail ? "hidden md:flex" : undefined}
         label={t("nav.memory")}
         head={
           <>
@@ -146,7 +155,7 @@ export function MemoryPage() {
             >
               <Input className="h-7 min-w-0 flex-1 text-xs" placeholder={t("memory.searchPlaceholder")} value={query} onChange={(e) => setQuery(e.target.value)} aria-label={t("memory.searchLabel")} />
               {canAdd ? (
-                <Button type="button" size="sm" variant="outline" onClick={() => setSelected(NEW)}>
+                <Button type="button" size="sm" variant="outline" onClick={() => pick(NEW)}>
                   {t("memory.newEntry")}
                 </Button>
               ) : null}
@@ -200,7 +209,7 @@ export function MemoryPage() {
                 ) : null
               }
               selected={m.id === current?.id}
-              onClick={() => setSelected(m.id)}
+              onClick={() => pick(m.id)}
               title={t("memory.itemTitle", { id: m.id, kind: t(`memoryKind.${m.kind}`) })}
               chip={st ? <Chip kind={st.kind} small>{st.label}</Chip> : null}
               sub={<span className={cn(m.supersededBy !== null && "line-through")}>{m.content}</span>}
@@ -212,19 +221,20 @@ export function MemoryPage() {
         {/* The button for an empty list sits in the wide pane on the right, so the narrow list keeps the sentence alone. */}
         {empty ? <PaneEmpty>{t(`memory.${empty}`)}</PaneEmpty> : null}
       </ListPane>
-      <div className="flex min-w-0 flex-1 flex-col">
-        {selected === NEW ? (
+      <div className={mobileDetail.mobile && !mobileDetail.showingDetail ? "hidden min-w-0 flex-1 flex-col md:flex" : "flex min-w-0 flex-1 flex-col"}>
+        {mobileDetail.showingDetail ? <MobileBack onClick={() => pick(null)} /> : null}
+        {active === NEW ? (
           <AddMemory
             defaultOwner={defaultOwnerOf}
             projects={pool}
-            onCancel={() => setSelected(null)}
+            onCancel={() => pick(null)}
             onAdded={(id) => {
               list.reload();
-              setSelected(id);
+              pick(id);
             }}
           />
         ) : current ? (
-          <MemoryDetail key={current.id} memory={current} all={rows} onChanged={list.reload} onOpen={setSelected} />
+          <MemoryDetail key={current.id} memory={current} all={rows} onChanged={list.reload} onOpen={pick} />
         ) : (
           <div className="grid flex-1 place-items-center p-6">
             {empty === "none" ? <PaneEmpty action={firstEntry}>{t("memory.none")}</PaneEmpty> : list.data ? <span className="text-[13px] text-fg-muted">{t("memory.pick")}</span> : null}

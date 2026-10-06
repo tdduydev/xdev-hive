@@ -8,8 +8,10 @@ import { cacheReadShare, parseVerdict, type AgentRun, type RunRecord, type RunRe
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
+import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { Chip, FilterChips, ListPane, type ChipKind } from "#ui/components/panes.tsx";
-import { errorMessage, formatCount, formatTime, formatUsd, useAction, useCan, useHashParam, useHive, useQuery } from "#ui/hooks.ts";
+import { errorMessage, formatCount, formatTime, formatUsd, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
+import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
 import { fixInstructions, isLive, latestReviews, mrLabel, requestErrorText, runDuration, runGroup, runLabel, runOutcome } from "#ui/lib/runs.ts";
 import { logHeader, parseLog, parsePatch, runSteps, type DiffFile, type LogLevel } from "#ui/lib/runlog.ts";
@@ -108,15 +110,19 @@ export function RunsPage() {
   useEffect(() => setActive(all.some((r) => isLive(r.run))), [all]);
 
   const [selected, setSelected] = useState<string | null>(null);
-  const [linked, clearLinked] = useHashParam("run");
+  const mobileDetail = useMobileDetail("run");
+  const pick = (id: string | null) => {
+    setSelected(id);
+    if (mobileDetail.mobile) mobileDetail.navigate(id);
+  };
   useEffect(() => {
-    if (!linked) return;
-    const found = all.find((r) => rowId(r) === linked);
+    if (!mobileDetail.value) return;
+    const found = all.find((r) => rowId(r) === mobileDetail.value || r.key === mobileDetail.value);
     if (found) {
       setSelected(found.key);
-      clearLinked();
+      if (!mobileDetail.mobile) mobileDetail.navigate(null, true);
     }
-  }, [linked, all, clearLinked]);
+  }, [mobileDetail.value, mobileDetail.mobile, mobileDetail.navigate, all]);
   const latest = latestReviews((hub.data ?? []) as RunRecord[]);
   const loaded = !local.loading && !hub.loading;
   const counts = useMemo(() => {
@@ -130,7 +136,7 @@ export function RunsPage() {
   }, [rows, filter]);
   const shown = [...kept.here, ...kept.other, ...kept.recent];
   // A filter narrows the list, never what a link or a click may open: #run=… still finds a run the filter leaves out.
-  const current = all.find((r) => r.key === selected) ?? shown[0] ?? all[0] ?? null;
+  const current = all.find((r) => r.key === (mobileDetail.mobile ? mobileDetail.value : selected) || (mobileDetail.mobile && rowId(r) === mobileDetail.value)) ?? (mobileDetail.mobile ? null : shown[0] ?? all[0] ?? null);
 
   let index = 0;
   const group = (label: string | null, list: Row[]) =>
@@ -138,14 +144,15 @@ export function RunsPage() {
       <>
         {label ? <div className="px-2 pt-2.5 pb-1 text-[11px]/4 font-semibold text-fg-muted">{label}</div> : null}
         {list.map((r) => (
-          <RunRow key={r.key} row={r} index={index++} on={r.key === current?.key} machine={machine} onPick={() => setSelected(r.key)} />
+          <RunRow key={r.key} row={r} index={index++} on={r.key === current?.key} machine={machine} onPick={() => pick(r.key)} />
         ))}
       </>
     ) : null;
 
   return (
-    <div className="flex h-full min-h-0 w-full bg-surface">
+    <div className="mobile-master-detail flex h-full min-h-0 w-full bg-surface">
       <ListPane
+        className={mobileDetail.showingDetail ? "hidden md:flex" : undefined}
         label={t("nav.runs")}
         head={
           <>
@@ -173,7 +180,8 @@ export function RunsPage() {
           <div className="px-3 py-8 text-center text-[13px] text-fg-muted">{all.length || profile ? t("runs.noneFilter") : teamRuns ? t("runs.none") : t("runs.noneHere")}</div>
         ) : null}
       </ListPane>
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className={cn("min-w-0 flex-1 flex-col", mobileDetail.mobile && !mobileDetail.showingDetail ? "hidden md:flex" : "flex")}>
+        {mobileDetail.showingDetail ? <MobileBack onClick={() => pick(null)} /> : null}
         {current ? (
           current.src === "local" ? (
             <LocalDetail key={current.key} run={current.run} machine={machine ?? "—"} gitlabReady={Boolean((settings.data?.gitlab.url && settings.data.gitlab.hasToken) || settings.data?.github?.hasToken)} group={local.data ?? []} onChanged={local.reload} />

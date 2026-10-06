@@ -1,0 +1,89 @@
+/* The label/value wrappers are transparent at normal window widths. */
+[data-card-label] { display: none; }
+[data-card-value] { display: contents; }
+
+@media (width < 768px) {
+  [data-responsive-table] [data-slot="table-container"] { overflow: visible; }
+  [data-responsive-table] [data-slot="table"],
+  [data-responsive-table] [data-slot="table-body"],
+  [data-responsive-table] [data-card-body] {
+    display: block;
+    min-width: 0 !important;
+    width: 100%;
+  }
+  [data-responsive-table] colgroup { display: none; }
+  /* Keep native column headers available to assistive technology. */
+  [data-responsive-table] [data-slot="table-header"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  [data-responsive-table] [data-card-header] { display: none; }
+  [data-responsive-table] [data-card-scroll] { max-height: none !important; overflow: visible; }
+  [data-responsive-table] [data-slot="table-body"] > tr,
+  [data-responsive-table] [data-card-row] {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+    margin: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--border-default) !important;
+    border-radius: var(--radius-md);
+    background-color: var(--bg-surface);
+    min-width: 0;
+  }
+  [data-responsive-table] [data-slot="table-row"][data-state="selected"],
+  [data-responsive-table] [data-card-selected] {
+    background-color: var(--state-selected-bg);
+    border-color: var(--state-selected-border) !important;
+  }
+  [data-responsive-table] [data-slot="table-cell"],
+  [data-responsive-table] [data-card-cell] {
+    display: flex !important;
+    flex-direction: row;
+    align-items: start;
+    gap: var(--space-3);
+    height: auto;
+    min-width: 0;
+    max-width: 100%;
+    padding: 0;
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  [data-responsive-table] [data-card-label] {
+    display: block;
+    flex: 0 0 35%;
+    color: var(--text-muted);
+    font: var(--type-caption);
+  }
+  [data-responsive-table] [data-card-value] {
+    display: block;
+    flex: 1;
+    min-width: 0;
+    max-width: 100%;
+    text-align: left;
+  }
+  [data-responsive-table] [data-slot="table-cell"]:first-child,
+  [data-responsive-table] [data-card-primary] { order: -1; font-weight: 600; }
+  [data-responsive-table] [data-slot="table-cell"]:first-child > [data-card-label],
+  [data-responsive-table] [data-card-primary] > [data-card-label] { display: none; }
+  [data-responsive-table] .truncate {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  [data-responsive-table] button,
+  [data-responsive-table] [role="button"],
+  [data-responsive-table] select { min-height: var(--control-h-lg); }
+  [data-responsive-table] input,
+  [data-responsive-table] select,
+  [data-responsive-table] textarea { font-size: 16px; }
+  [data-responsive-table] [role="checkbox"] { min-width: var(--control-h-lg); }
+  [data-responsive-table] [data-card-actions] { order: 1; flex-wrap: wrap; }
+  [data-responsive-table] [data-card-actions] > [data-card-value] { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+}

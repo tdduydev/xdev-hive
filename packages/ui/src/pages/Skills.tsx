@@ -12,6 +12,7 @@ import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Diff } from "#ui/components/Diff.tsx";
 import { HiddenChars } from "#ui/components/HiddenChars.tsx";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
+import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { Chip, DetailBody, DetailFooter, DetailHeader, KvRows, ListItem, ListPane, PaneEmpty } from "#ui/components/panes.tsx";
 import { errorMessage, formatTime, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
@@ -19,6 +20,7 @@ import { emptyState } from "#ui/lib/empty.ts";
 import { docOwner, inScope, scopeProject } from "#ui/lib/scope.ts";
 import { buildSkill, skillsFor, splitSkill, type ListedSkill, type SkillParts } from "#ui/lib/skills.ts";
 import { fold } from "#ui/lib/text.ts";
+import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
 const NEW = "new";
@@ -46,12 +48,18 @@ export function SkillsPage() {
   // Where a new skill may go: the team's (Chung), then the projects this person manages.
   const owners = useMemo(() => [...(allow(null, "contextEdit") ? [""] : []), ...projects.filter((p) => allow(p, "contextEdit"))], [projects, allow]);
   const [selected, setSelected] = useState<string | null>(null);
-  const current = skills.find((s) => s.key === selected) ?? null;
+  const mobileDetail = useMobileDetail("skill");
+  const pick = (key: string | null) => {
+    setSelected(key);
+    if (mobileDetail.mobile) mobileDetail.navigate(key);
+  };
+  const current = skills.find((s) => s.key === (mobileDetail.mobile ? mobileDetail.value : selected)) ?? null;
   // A skill just created is selected before the list that has it comes back.
   const created = useRef<string | null>(null);
   useEffect(() => {
     if (current) created.current = null;
     if (!list.data || selected === NEW || current || (selected && selected === created.current)) return;
+    if (mobileDetail.mobile) return;
     setSelected(skills[0]?.key ?? null);
   }, [list.data, selected, current, skills]);
   const reload = () => setTick((n) => n + 1);
@@ -62,20 +70,21 @@ export function SkillsPage() {
   const empty = emptyState({ loaded: Boolean(list.data), total: skills.length, shown: shown.length, query: needle });
   // The first skill is the thing to do when there is none: the same button as the toolbar's, where the eye already is.
   const firstSkill = owners.length ? (
-    <Button size="sm" data-empty-action onClick={() => setSelected(NEW)}>
+    <Button size="sm" data-empty-action onClick={() => pick(NEW)}>
       {t("skills.newFirst")}
     </Button>
   ) : null;
 
   return (
-    <div className="flex h-full min-h-0 w-full bg-surface">
+    <div className="mobile-master-detail flex h-full min-h-0 w-full bg-surface">
       <ListPane
+        className={mobileDetail.showingDetail ? "hidden md:flex" : undefined}
         label={t("nav.skills")}
         head={
           <div className="flex gap-1.5">
             <Input className="h-7 min-w-0 flex-1 text-xs" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("skills.search")} aria-label={t("skills.search")} />
             {owners.length ? (
-              <Button size="sm" variant="outline" onClick={() => setSelected(NEW)}>
+              <Button size="sm" variant="outline" onClick={() => pick(NEW)}>
                 {t("skills.new")}
               </Button>
             ) : null}
@@ -96,7 +105,7 @@ export function SkillsPage() {
               key={s.key}
               mono
               selected={s.key === selected}
-              onClick={() => setSelected(s.key)}
+              onClick={() => pick(s.key)}
               title={s.name}
               dim={s.overridden}
               chip={
@@ -126,16 +135,17 @@ export function SkillsPage() {
         {/* The button for an empty list sits in the wide pane on the right, so the narrow list keeps the sentence alone. */}
         {empty ? <PaneEmpty>{t(empty === "none" ? "skills.none" : "skills.noMatch")}</PaneEmpty> : null}
       </ListPane>
-      <div className="flex min-w-0 flex-1 flex-col">
-        {selected === NEW ? (
+      <div className={mobileDetail.mobile && !mobileDetail.showingDetail ? "hidden min-w-0 flex-1 flex-col md:flex" : "flex min-w-0 flex-1 flex-col"}>
+        {mobileDetail.showingDetail ? <MobileBack onClick={() => pick(null)} /> : null}
+        {(mobileDetail.mobile ? mobileDetail.value : selected) === NEW ? (
           <NewSkill
             owners={owners}
             defaultOwner={project && owners.includes(project) ? project : (owners[0] ?? "")}
             taken={new Set((list.data ?? []).map((s) => s.key))}
-            onCancel={() => setSelected(null)}
+            onCancel={() => pick(null)}
             onCreated={(key) => {
               created.current = key;
-              setSelected(key);
+              pick(key);
               reload();
             }}
           />

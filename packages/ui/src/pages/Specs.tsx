@@ -21,6 +21,7 @@ import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@xdev-hive/ui/components/ui/tabs";
 import { DocMarkdown } from "#ui/components/DocMarkdown.tsx";
 import { ErrorNote } from "#ui/components/common.tsx";
+import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { FlowList } from "#ui/components/FlowCard.tsx";
 import { Chip, DetailBody, DetailHeader, ListItem, ListPane, PaneEmpty, type ChipKind } from "#ui/components/panes.tsx";
 import { formatTime, useAction, useCan, useHashParam, useHive, useQuery } from "#ui/hooks.ts";
@@ -29,6 +30,7 @@ import { useT } from "#ui/i18n/index.tsx";
 import { emptyState } from "#ui/lib/empty.ts";
 import { inScope, projectScope, scopeFilter, scopeKey } from "#ui/lib/scope.ts";
 import { fold } from "#ui/lib/text.ts";
+import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 
 const STAGE_CHIP: Record<SpecStage, ChipKind> = { specify: "neutral", plan: "info", tasks: "info", implement: "running", done: "success" };
 
@@ -43,6 +45,7 @@ function specHref(f: Pick<SpecFeature, "project" | "dir" | "branch">): string {
 export function SpecsPage() {
   const { client, scope, setScope } = useHive();
   const t = useT();
+  const mobileDetail = useMobileDetail("feature");
   // Features are a project's: the team-wide scope has none.
   const list = useQuery(async () => (scope.kind === "shared" ? [] : client.call("specs.list", scopeFilter(scope))), [client, scopeKey(scope)]);
   const [linkProject, clearLink] = useHashParam("project");
@@ -62,10 +65,11 @@ export function SpecsPage() {
   const needle = fold(q.trim());
   const features = list.data ?? [];
   const shown = features.filter((f) => !needle || fold(`${f.dir} ${f.title} ${f.branch} ${f.project}`).includes(needle));
-  const current = features.find((f) => idOf(f) === selected) ?? null;
+  const current = features.find((f) => idOf(f) === (mobileDetail.mobile ? mobileDetail.value ?? linked : selected)) ?? null;
+  const mobileOpen = mobileDetail.mobile && (mobileDetail.value !== null || linked !== null);
   const manyProjects = scope.kind !== "project";
   useEffect(() => {
-    if (list.data && !current && !linkProject) setSelected(list.data[0] ? idOf(list.data[0]) : null);
+    if (list.data && !current && !linkProject && !mobileDetail.mobile) setSelected(list.data[0] ? idOf(list.data[0]) : null);
   }, [list.data, current, linkProject]);
 
   // Roadmap 20d: a new feature's spec written by an agent, in a project's scope (the run needs one repo).
@@ -75,23 +79,35 @@ export function SpecsPage() {
   const empty = emptyState({ loaded: Boolean(list.data), total: features.length, shown: shown.length, query: needle });
   // A feature belongs to one repo, so the team-wide scope can never have any: say that instead of offering to write one.
   const noScope = scope.kind === "shared";
+  useEffect(() => {
+    if (mobileDetail.mobile) setCreating(mobileDetail.value === "new");
+  }, [mobileDetail.mobile, mobileDetail.value]);
 
   const pick = (f: SpecFeature) => {
     setCreating(false);
     setSelected(idOf(f));
     // Shareable: the address bar names the feature, without a hashchange that would reload the page.
-    window.history.replaceState(null, "", specHref(f));
+    if (mobileDetail.mobile) mobileDetail.navigate(idOf(f));
+    else window.history.replaceState(null, "", specHref(f));
+  };
+  const back = () => {
+    window.history.pushState(null, "", "#/specs");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    setSelected(null);
+    setCreating(false);
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full bg-surface">
+    <div className="mobile-master-detail flex h-full min-h-0 w-full bg-surface">
       <ListPane
+        className={mobileOpen ? "hidden md:flex" : undefined}
         label={t("nav.specs")}
         head={
           <div className="flex items-center gap-1.5">
             <Input className="h-7 text-xs" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("specs.search")} aria-label={t("specs.search")} />
             {newProject ? (
-              <Button size="sm" variant={creating ? "ghost" : "outline"} className="h-7 shrink-0 text-xs" onClick={() => setCreating((v) => !v)}>
+              <Button size="sm" variant={creating ? "ghost" : "outline"} className="h-7 shrink-0 text-xs" onClick={() => { setCreating((v) => !v); if (mobileDetail.mobile) mobileDetail.navigate(creating ? null : "new"); }}>
                 {creating ? t("specs.import.close") : t("specs.run.new")}
               </Button>
             ) : null}
@@ -125,7 +141,8 @@ export function SpecsPage() {
         {/* The button for an empty list sits in the wide pane on the right, so the narrow list keeps the sentence alone. */}
         {empty ? <PaneEmpty>{t(empty === "noMatch" ? "specs.noMatch" : noScope ? "specs.sharedScope" : "specs.empty")}</PaneEmpty> : null}
       </ListPane>
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className={mobileDetail.mobile && !mobileOpen ? "hidden min-w-0 flex-1 flex-col md:flex" : "flex min-w-0 flex-1 flex-col"}>
+        {mobileOpen ? <MobileBack onClick={back} /> : null}
         {creating && newProject ? (
           <>
             <DetailHeader scope={newProject} title={t("specs.run.newTitle")} />
@@ -225,7 +242,7 @@ function SpecReader({ feature, manyProjects }: { feature: SpecFeature; manyProje
         when={`${feature.machine} · ${formatTime(feature.pushedAt)} · ${feature.commit}`}
         title={feature.title}
       />
-      <div className="flex shrink-0 items-center gap-3 border-b border-line-subtle px-6 py-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-line-subtle px-6 py-2 md:flex-nowrap">
         <Tabs value={tab} onValueChange={(v) => setTab(v as SpecFile)}>
           <TabsList>
             {SPEC_FILES.map((f) => (
@@ -236,7 +253,7 @@ function SpecReader({ feature, manyProjects }: { feature: SpecFeature; manyProje
           </TabsList>
         </Tabs>
         {feature.tasksTotal ? <Progress done={feature.tasksDone} total={feature.tasksTotal} /> : null}
-        <span className="ml-auto flex gap-1.5">
+        <span className="ml-auto flex flex-wrap gap-1.5 md:flex-nowrap">
           {canRun ? (
             <Button size="sm" variant={running ? "ghost" : "outline"} onClick={() => (setRunning((v) => !v), setImporting(false))}>
               {running ? t("specs.import.close") : t(`specs.run.step.${next}`)}

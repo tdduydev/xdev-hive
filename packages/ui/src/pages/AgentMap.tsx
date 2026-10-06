@@ -76,21 +76,21 @@ export function AgentMap({
           <span className="font-semibold">{t("agentMap.picked", { count: picks.length })}</span>
           <span className="flex-1" />
           {prompters.length ? (
-            <button type="button" onClick={() => setPrompting(true)} data-map-prompt className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-sm border border-white/30 px-2.5 text-xs font-semibold outline-none hover:bg-white/10 focus-visible:focus-ring">
+            <button type="button" onClick={() => setPrompting(true)} data-map-prompt className="inline-flex h-10 md:h-7 cursor-pointer items-center gap-1.5 rounded-sm border border-white/30 px-2.5 text-xs font-semibold outline-none hover:bg-white/10 focus-visible:focus-ring">
               <Sparkles className="size-3.5" />
               {picks.length > 1 ? t("agentMap.promptMany", { count: picks.length }) : t("agentMap.promptOne")}
             </button>
           ) : null}
-          <a href={`#/tasks?agents=${encodeURIComponent(encodeTargets(picks))}`} data-map-batch className="inline-flex h-7 items-center gap-1.5 rounded-sm border border-white/30 px-2.5 text-xs font-semibold outline-none hover:bg-white/10 focus-visible:focus-ring">
+          <a href={`#/tasks?agents=${encodeURIComponent(encodeTargets(picks))}`} data-map-batch className="inline-flex h-10 md:h-7 items-center gap-1.5 rounded-sm border border-white/30 px-2.5 text-xs font-semibold outline-none hover:bg-white/10 focus-visible:focus-ring">
             <ListChecks className="size-3.5" />
             {t("agentMap.giveTasks", { count: picks.length })}
           </a>
-          <button type="button" onClick={() => setPicks([])} className="h-7 cursor-pointer rounded-sm px-2 text-xs underline">
+          <button type="button" onClick={() => setPicks([])} className="h-10 md:h-7 cursor-pointer rounded-sm px-2 text-xs underline">
             {t("agentMap.clear")}
           </button>
         </div>
       ) : null}
-      <div className="flex items-start gap-3 overflow-x-auto pb-2">
+      <div className="flex flex-col items-stretch gap-3 pb-2 md:flex-row md:items-start md:overflow-x-auto">
         {machines.map((m) => (
           <MachineColumn
             key={m.id}
@@ -105,7 +105,7 @@ export function AgentMap({
             onChanged={onChanged}
           />
         ))}
-        <section className="flex w-[280px] shrink-0 flex-col gap-2 rounded-xl border border-line-default bg-sunken p-2.5" aria-label={t("agentMap.batches")}>
+        <section className="flex w-full shrink-0 md:w-[280px] flex-col gap-2 rounded-xl border border-line-default bg-sunken p-2.5" aria-label={t("agentMap.batches")}>
           <h3 className="m-0 px-1 text-[13px]/5 font-semibold text-fg-strong">{t("agentMap.batches")}</h3>
           {open.length === 0 ? <p className="m-0 px-1 text-xs text-fg-muted">{t("agentMap.batchesNone")}</p> : null}
           {open.map((g) => {
@@ -171,7 +171,7 @@ function MachineColumn({
   const action = useAction();
   const { cards, queue } = machineCards(m, cooldowns, now);
   return (
-    <section className={cn("flex w-[300px] shrink-0 flex-col gap-2 rounded-xl border border-line-default bg-sunken p-2.5", !m.online && "opacity-75")} aria-label={m.machine} data-map-machine={m.machine}>
+    <section className={cn("flex w-full shrink-0 md:w-[300px] flex-col gap-2 rounded-xl border border-line-default bg-sunken p-2.5", !m.online && "opacity-75")} aria-label={m.machine} data-map-machine={m.machine}>
       <div className="flex flex-col gap-0.5 px-1">
         <div className="flex items-center gap-2">
           <span className={cn("size-2 shrink-0 rounded-full", m.duplicate ? "bg-danger-solid" : m.online ? "bg-success-solid" : "bg-neutral-solid")} />
