@@ -184,7 +184,7 @@ function codexLimit(w: unknown, now: Date, zone: string): PlanLimit | null {
   if (typeof used_percent !== "number" || !Number.isFinite(used_percent)) return null;
   const at = typeof resets_at === "number" && Number.isFinite(resets_at) ? new Date(resets_at * 1000) : null;
   if (at && at.getTime() <= now.getTime()) return { percent: 0, resets: null };
-  return { percent: used_percent, resets: at ? resetText(at, zone) : null };
+  return { percent: used_percent, resets: at ? resetText(at, zone) : null, resetsAt: at?.toISOString() ?? null };
 }
 
 /**
@@ -220,6 +220,12 @@ export function readCodexUsage(home: string, now: Date, zone = Intl.DateTimeForm
         return {
           session: codexLimit(limits.primary, now, zone),
           week: codexLimit(limits.secondary, now, zone),
+          credits: limits.credits && typeof limits.credits === "object" ? (() => {
+            const c = limits.credits as Record<string, unknown>;
+            return { balance: typeof c.balance === "string" || (typeof c.balance === "number" && Number.isFinite(c.balance)) ? c.balance : null, hasCredits: c.has_credits === true, unlimited: c.unlimited === true };
+          })() : null,
+          planType: typeof limits.plan_type === "string" ? limits.plan_type : null,
+          spendControlReached: typeof limits.spend_control_reached === "boolean" ? limits.spend_control_reached : null,
           others: [],
           checkedAt: new Date(Number.isNaN(stamp) ? mtime : stamp).toISOString(),
         };
@@ -319,7 +325,7 @@ export function parseResetAt(text: string | null | undefined, now: Date): Date |
  */
 export function withResetsAt(usage: PlanUsage | null | undefined, now: Date): PlanUsage | null {
   if (!usage) return null;
-  const at = (l: PlanLimit | null) => (l ? { ...l, resetsAt: parseResetAt(l.resets, now)?.toISOString() ?? null } : null);
+  const at = (l: PlanLimit | null) => (l ? { ...l, resetsAt: l.resetsAt ?? parseResetAt(l.resets, now)?.toISOString() ?? null } : null);
   return { ...usage, session: at(usage.session), week: at(usage.week) };
 }
 
@@ -336,4 +342,43 @@ export function limitResetAt(profile: Pick<AgentProfile, "stopAtSession" | "stop
   const binding = limits.reduce((a, b) => (b.left < a.left ? b : a));
   const at = parseResetAt(binding.resets, now);
   return at && at > now ? at : null;
+}
+
+export interface UsageSample { at: string; session: number; week: number; sessionResetsAt: string | null }
+const FIVE_HOURS = 5 * 3600_000;
+
+/** Reset identities keep idle gaps and weekly rollovers from being mistaken for consumption. */
+export function quotaOutlook(usage: PlanUsage | null, history: UsageSample[], now: Date): PlanUsage | null {
+  if (!usage) return null;
+  const sessionAt = Date.parse(usage.session?.resetsAt ?? "");
+  const weekAt = Date.parse(usage.week?.resetsAt ?? "");
+  const resetsLeft = Number.isFinite(sessionAt) && Number.isFinite(weekAt)
+    ? sessionAt >= weekAt || weekAt <= +now ? 0 : Math.max(0, 1 + Math.floor((weekAt - Math.max(sessionAt, +now)) / FIVE_HOURS)) : null;
+  const ratios: number[] = [];
+  let first: UsageSample | undefined;
+  let last: UsageSample | undefined;
+  const finish = () => {
+    if (first && last && last.session > first.session && last.week > first.week)
+      ratios.push(100 * (last.week - first.week) / (last.session - first.session));
+  };
+  for (const sample of history) {
+    if (last && sample.week < last.week) {
+      if (last.sessionResetsAt && Date.parse(last.sessionResetsAt) <= Date.parse(sample.at)) finish();
+      first = sample; last = sample;
+      continue;
+    }
+    if (!first || (last && (sample.sessionResetsAt !== last.sessionResetsAt || sample.session < last.session || Date.parse(sample.at) - Date.parse(first.at) >= FIVE_HOURS))) {
+      finish(); first = sample;
+    }
+    last = sample;
+  }
+  if (last?.sessionResetsAt && Date.parse(last.sessionResetsAt) <= +now) finish();
+  // The current window is a fallback, not one of the three completed windows.
+  const valid = ratios.filter((n) => Number.isFinite(n) && n > 0).sort((a, b) => a - b);
+  const mid = Math.floor(valid.length / 2);
+  const session = usage.session?.percent ?? 0;
+  const week = usage.week?.percent ?? 0;
+  const fallback = session > 0 && week > 0 && (session >= 5 || week >= 5) ? 100 * week / session : null;
+  const weekPerSession = valid.length >= 3 ? (valid.length % 2 ? valid[mid]! : (valid[mid - 1]! + valid[mid]!) / 2) : fallback;
+  return { ...usage, resetsLeft, weekPerSession, fullSessionsLeft: usage.week && weekPerSession ? Math.max(0, 100 - week) / weekPerSession : null };
 }

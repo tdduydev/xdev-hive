@@ -91,7 +91,16 @@ export interface PlanLimit {
 }
 
 /** How much of a subscription plan's limits is used, from Claude Code's /usage or Codex's session files (roadmap 45). */
-export interface PlanUsage {
+export interface QuotaOutlook {
+  resetsLeft?: number | null;
+  fullSessionsLeft?: number | null;
+  weekPerSession?: number | null;
+  credits?: { balance: string | number | null; hasCredits: boolean; unlimited: boolean } | null;
+  planType?: string | null;
+  spendControlReached?: boolean | null;
+}
+
+export interface PlanUsage extends QuotaOutlook {
   /** The rolling session (about five hours). */
   session: PlanLimit | null;
   /** The weekly limit for all models. */

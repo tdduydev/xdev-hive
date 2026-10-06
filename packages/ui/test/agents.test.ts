@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { tokenWindows, type AgentProfileStatus, type PlanUsage } from "@xdev-hive/core";
-import { countdown, meterTone, needsHand, profileRows, profileState, quotaView, rowFix } from "#ui/lib/agents.ts";
+import { machineQuota, countdown, meterTone, needsHand, profileRows, profileState, quotaView, rowFix } from "#ui/lib/agents.ts";
 import { translate } from "#ui/i18n/translate.ts";
 
 const usage = (session: number | null, week: number | null): PlanUsage => ({
@@ -147,4 +147,12 @@ describe("quota block (roadmap 52)", () => {
     assert.equal(since(profile({ stats: { ...stats, runs: 0, succeeded: 0, failed: 0, rateLimited: 0, since: "2026-10-06T07:00:00Z" } })), "từ 2026-10-06");
     assert.equal(translate("agents.quota.hitLimit", { count: 2 }, "en"), "Hit the limit 2 times");
   });
+});
+
+
+it("counts only available slots and finds the earliest future reset", () => {
+  const now = Date.parse("2026-10-06T00:00:00Z");
+  const u = usage(20, 30); u.session!.resetsAt = "2026-10-06T05:00:00Z";
+  const profiles = [profile({ maxConcurrent: 3, running: 1, usage: u }), profile({ enabled: false }), profile({ cliPath: null }), profile({ usage: usage(99, 30) }), profile({ cooldownUntil: "2026-10-07T00:00:00Z" }), profile({ running: 1 })];
+  assert.deepEqual(machineQuota(profiles, now), { count: 1, slots: 2, reset: "2026-10-06T05:00:00Z", label: "Claude Max (gói 1)" });
 });

@@ -58,7 +58,7 @@ const codexHome = path.join(work, "codex-plus");
   const dir = path.join(codexHome, "sessions", String(day.getFullYear()), String(day.getMonth() + 1).padStart(2, "0"), String(day.getDate()).padStart(2, "0"));
   mkdirSync(dir, { recursive: true });
   const limit = (used_percent, minutes, resetIn) => ({ used_percent, window_minutes: minutes, resets_at: Math.floor(inMinutes(resetIn).getTime() / 1000) });
-  const rate_limits = { limit_id: "codex", primary: limit(37, 300, 3 * 60 + 40), secondary: limit(62, 10080, 4 * 1440 + 9 * 60), plan_type: "plus" };
+  const rate_limits = { limit_id: "codex", primary: limit(37, 300, 3 * 60 + 40), secondary: limit(62, 10080, 4 * 1440 + 9 * 60), plan_type: "plus", credits: { balance: "0", has_credits: false, unlimited: false }, spend_control_reached: false };
   writeFileSync(
     path.join(dir, "rollout-smoke.jsonl"),
     `${JSON.stringify({ timestamp: new Date().toISOString(), type: "event_msg", payload: { type: "token_count", info: null, rate_limits } })}\n`,
@@ -298,6 +298,8 @@ await shoot("agents-quota", "agents", 3000, {
     '[data-profile="codex-plus"] [data-stats-since]:not([data-stats-since=""])',
     '[data-profile="codex-plus"] [data-read-usage]',
     "[data-read-usage-all]",
+    '[data-profile="codex-plus"] [data-quota-outlook][data-resets-left][data-full-sessions-left]',
+    "[data-machine-quota]",
   ].join(" && "),
 });
 // The off subscriptions unfolded, then the Chi tiết of one: its container token box, command and autonomy.
