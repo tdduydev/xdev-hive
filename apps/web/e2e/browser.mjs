@@ -944,10 +944,12 @@ async function main() {
       summary: "ĐÃ LÀM: Sửa luồng thanh toán\nCHƯA LÀM: Cần bạn xác nhận cách xử lý\nCÁCH KIỂM: npm test\nRỦI RO: CI đang lỗi", log: "[AGENT] Bàn giao", patch: "diff --git a/pay.ts b/pay.ts\n--- a/pay.ts\n+++ b/pay.ts\n@@ -1 +1 @@\n-old\n+new", mrUrl: "https://gitlab.example/team/payment/-/merge_requests/49", mr: { iid: 49, status: "opened", draft: false, pipeline: "failed", pipelineUrl: null, checkedAt: now } }] });
     await tab.go("batches");
     await tab.waitFor("old batch route in runs", () => location.hash === "#/runs");
+    if (mobile) await tab.go("runs?run=R-e2ereview");
     await tab.waitFor("run needs a person", () => document.querySelector('[data-run-review]')?.textContent.includes("ĐÃ LÀM") && document.body.innerText.includes("Chờ người"));
     const order = await tab.eval(() => { const body = document.querySelector('[data-run-review]')?.innerText ?? ""; return ["ĐÃ LÀM", "Log", "Thay đổi / MR", "MR !49"].map((s) => body.indexOf(s)); });
     expect(order.every((n) => n >= 0) && order.every((n, i) => i === 0 || n > order[i - 1]), `run review order: ${order}`);
     await tab.shot(`${String(n).padStart(2, "0")}-runs-review-detail`);
+    if (mobile) await tab.go("runs");
     await tab.select('select[aria-label="Lọc theo máy"]', "runner.lan-mbp@lan-e2e");
     await tab.select('select[aria-label="Lọc theo task"]', "PAY-1");
     await rpc("tasks.create", { id: "PAY-49E", project: "payment", title: "Giao run gọn" });
