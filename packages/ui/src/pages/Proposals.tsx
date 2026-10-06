@@ -14,12 +14,13 @@ import { formatTime, sourceText, useAction, useCan, useHive, useQuery } from "#u
 import { useT } from "#ui/i18n/index.tsx";
 import { runBulk, splitProposals } from "#ui/lib/bulk.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
-import { docOwner, inScope, scopeLabel } from "#ui/lib/scope.ts";
+import { knowledgeProposals } from "#ui/lib/knowledge.ts";
+import { docOwner, scopeLabel } from "#ui/lib/scope.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
-const SEGMENT = "";
+const SEGMENT = "max-md:min-h-11";
 
-export function ProposalsPage() {
+export function ProposalsPage({ kind }: { kind?: "docs" | "skills" }) {
   const { client, scope, bump } = useHive();
   const t = useT();
   const allow = useCan();
@@ -33,7 +34,7 @@ export function ProposalsPage() {
     [client, onlyPending],
   );
   // Shared-doc proposals show in every project's scope (see lib/scope.ts).
-  const proposals = list.data?.filter((p) => inScope(scope, docOwner(p.docKey)));
+  const proposals = list.data ? knowledgeProposals(list.data, scope, kind) : undefined;
   // Picks outside the view (another scope, decided meanwhile) simply drop out of what the bar acts on.
   const selectable = (proposals ?? []).filter((p) => p.status === "pending" && allow(docOwner(p.docKey), approvalOf(p.docKey)));
   const chosen = selectable.filter((p) => picked.has(p.id));
@@ -68,7 +69,7 @@ export function ProposalsPage() {
   return (
     <Page className="mobile-master-detail">
       <PageHeader
-        title={t("proposals.title")}
+        title={t(kind ? "knowledge.pending" : "proposals.title")}
         subtitle={t("proposals.subtitle")}
         actions={
           <ToggleGroup
@@ -111,7 +112,7 @@ export function ProposalsPage() {
             </span>
             {/* Nothing to approve is a good state, not a to-do: the only thing left to do here is look at the decided ones. */}
             {onlyPending ? (
-              <Button size="sm" variant="outline" data-empty-action onClick={() => setOnlyPending(false)}>
+              <Button className="max-md:min-h-11" size="sm" variant="outline" data-empty-action onClick={() => setOnlyPending(false)}>
                 {t("proposals.seeAll")}
               </Button>
             ) : null}
@@ -168,13 +169,13 @@ function ProposalCard({ proposal: p, onChanged, picked, onPick }: { proposal: Pr
     });
 
   return (
-    <article>
+    <article data-proposal-card={p.id}>
       <Card className="py-4">
         <CardContent className="flex flex-col gap-4 px-4">
           <div className="flex flex-wrap items-start gap-3">
             <div className="flex min-w-0 flex-1 flex-col gap-1.5">
               <div className="flex flex-wrap items-center gap-2">
-                {manage ? <Checkbox checked={picked} onCheckedChange={(v) => onPick(v === true)} aria-label={t("bulk.pickItem", { id: p.id })} /> : null}
+                {manage ? <Checkbox className="max-md:before:inset-[-13px]" checked={picked} onCheckedChange={(v) => onPick(v === true)} aria-label={t("bulk.pickItem", { id: p.id })} /> : null}
                 <Badge tone={STATUS_TONE[p.status]}>{t(`proposalStatus.${p.status}`)}</Badge>
                 <OwnerBadge owner={docOwner(p.docKey)} />
                 <span className="min-w-0 font-mono text-xs break-all">{p.docKey}</span>
@@ -190,7 +191,7 @@ function ProposalCard({ proposal: p, onChanged, picked, onPick }: { proposal: Pr
               </div>
               {p.reviewNote ? <Notice tone="info">{p.reviewNote}</Notice> : null}
             </div>
-            <Button variant="ghost" onClick={() => setOpen(!open)} aria-expanded={open}>
+            <Button className="max-md:min-h-11" variant="ghost" onClick={() => setOpen(!open)} aria-expanded={open}>
               {open ? t("proposals.hideChanges") : t("proposals.showChanges")}
             </Button>
           </div>
@@ -217,13 +218,13 @@ function ProposalCard({ proposal: p, onChanged, picked, onPick }: { proposal: Pr
               />
               <Button
                 variant="ghost"
-                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                className="max-md:min-h-11 text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => decide("reject")}
                 disabled={action.busy}
               >
                 {t("proposals.reject")}
               </Button>
-              <Button onClick={() => decide("approve")} disabled={action.busy}>
+              <Button className="max-md:min-h-11" onClick={() => decide("approve")} disabled={action.busy}>
                 {t("proposals.approve")}
               </Button>
             </div>

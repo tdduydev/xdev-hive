@@ -1,3 +1,4 @@
+import { memoryCleanupBaseline, type MemoryCleanupRun, type MemoryCleanupProposal } from "#core/memory-cleanup.ts";
 import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -517,6 +518,17 @@ const MIGRATIONS: string[] = [
   ALTER TABLE run_records ADD COLUMN verdict TEXT;
   CREATE INDEX run_records_finished ON run_records(finished_at);
   `,
+  // Migration 48 (49f): scheduled reviews hold snapshots; only a human decision changes memory.
+  `
+  CREATE TABLE memory_cleanup_settings(project TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 0, last_queued_at TEXT);
+  CREATE TABLE memory_cleanup_runs(
+    id INTEGER PRIMARY KEY, project TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued',
+    taken_by TEXT, machine TEXT, snapshot TEXT NOT NULL DEFAULT '[]', profile TEXT, model TEXT NOT NULL DEFAULT 'haiku', cost_usd REAL, error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+  CREATE INDEX memory_cleanup_active ON memory_cleanup_runs(project, status);
+  CREATE TABLE memory_cleanup_proposals(
+    id INTEGER PRIMARY KEY, project TEXT NOT NULL, run_id INTEGER NOT NULL, suggestion TEXT NOT NULL,
+    entries TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', reviewer TEXT, decided_at TEXT, created_at TEXT NOT NULL);
+  `,
 ];
 
 /**
@@ -828,6 +840,8 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
     const text: ErrorText = i.note ? { key: "audit.proposalNote", vars: { id: i.id, note: i.note } } : { key: "audit.proposal", vars: { id: i.id } };
     return { target: o.docKey, detail: `đề xuất #${i.id}${i.note ? ` · ${i.note}` : ""}`, text };
   },
+  "memory.setCleanup": (i) => ({ target: i.project, detail: `enabled=${i.enabled}` }),
+  "memory.decideCleanup": (i, o) => ({ target: `${o.project} memory proposal #${i.id}`, detail: o.status }),
   "memory.approve": (i, o) => ({ target: `${o.project ?? "org"} #${i.id}` }),
   "memory.remove": (i) => ({ target: `memory #${i.id}` }),
   "tasks.create": (i) => ({ target: i.id, detail: i.dependsOn?.length ? `${i.title} · ← ${i.dependsOn.join(", ")}` : i.title }),
@@ -1015,6 +1029,7 @@ const PROJECT_WRITES: Partial<Record<Method, "project" | "task" | "thread" | "do
   "proposals.create": "doc",
   "proposals.approve": "proposal",
   "memory.write": "project",
+  "memory.setCleanup": "project",
   "tasks.create": "project",
   "tasks.setDeps": "task",
   "tasks.claim": "task",
@@ -1596,6 +1611,9 @@ export class SqliteHive implements HiveBackend {
         if (row && method === "proposals.approve") this.#notSelf(actor, [str(row.owner)], `Proposal #${i.id}`);
         return;
       }
+      case "memory.cleanupSettings":
+      case "memory.cleanupRuns":
+      case "memory.cleanupProposals":
       case "memory.search":
       case "skills.list":
       case "runs.list":
@@ -1782,6 +1800,15 @@ export class SqliteHive implements HiveBackend {
       case "specs.importTasks":
         // Planning only shows what would be made; making them is creating tasks.
         return this.#need(actor, i.project, i.dryRun ? "view" : "taskManage", `Project ${i.project}`);
+      case "memory.setCleanup":
+        if (actor.role === "agent" || isAgentActor(actor)) throw new HiveError("forbidden", "Only a person enables periodic memory cleanup.", { key: "cleanup.errors.human" });
+        return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
+      case "memory.decideCleanup": {
+        const row = this.db.prepare("SELECT project FROM memory_cleanup_proposals WHERE id = ?").get(i.id) as Row | undefined;
+        if (row) this.#need(actor, str(row.project), "memoryApprove", `Memory proposal #${i.id}`);
+        if (actor.role === "agent" || isAgentActor(actor)) throw new HiveError("forbidden", "A person must decide memory cleanup proposals.", { key: "cleanup.errors.human" });
+        return;
+      }
       case "memory.write":
         if (i.system) return this.#need(actor, systemOwner(i.system), "memoryWrite", `System ${i.system}`);
         return this.#need(actor, i.shared ? null : i.project, "memoryWrite", i.shared ? "Shared memory" : `Project ${i.project}`);
@@ -1886,6 +1913,10 @@ export class SqliteHive implements HiveBackend {
       case "memory.search":
       case "memory.list":
         return (out as Memory[]).filter((m) => visible(m.project)) as MethodOutput[M];
+      case "memory.cleanupSettings":
+      case "memory.cleanupRuns":
+      case "memory.cleanupProposals":
+        return (out as Array<{ project: string }>).filter((m) => visible(m.project)) as MethodOutput[M];
       case "tasks.list":
       case "tasks.next":
         return (out as Task[]).filter((t) => visible(t.project)).map((t) => hideDeps(t, visible)) as MethodOutput[M];
@@ -2025,6 +2056,47 @@ export class SqliteHive implements HiveBackend {
         actor.onBehalf ?? null,
         actor.run ?? actor.source?.run ?? null,
       );
+  }
+
+  /** Called on hub start and every minute: persisted timestamps survive restarts and catch up once. */
+  queueMemoryCleanup(): number {
+    return this.#tx(() => {
+      const db = this.db;
+      const now = this.#now();
+      // A lost worker ends visibly; a new weekly run can be queued after its lease expires.
+      db.prepare("UPDATE memory_cleanup_runs SET status = 'failed', snapshot = '[]', error = 'expired', updated_at = ? WHERE status = 'running' AND updated_at < ?")
+        .run(now, new Date(Date.parse(now) - 15 * 60_000).toISOString());
+      let queued = 0;
+      const rows = db.prepare("SELECT * FROM memory_cleanup_settings WHERE enabled = 1").all() as Row[];
+      for (const row of rows) {
+        const p = str(row.project);
+        if (this.#projectState(p) !== null || this.#isPaused(p)) continue;
+        if (row.last_queued_at && Date.parse(now) - Date.parse(str(row.last_queued_at)) < 7 * 86400_000) continue;
+        if (db.prepare("SELECT 1 FROM memory_cleanup_runs WHERE project = ? AND status IN ('queued','running')").get(p)) continue;
+        db.prepare("INSERT INTO memory_cleanup_runs(project, created_at, updated_at) VALUES (?, ?, ?)").run(p, now, now);
+        db.prepare("UPDATE memory_cleanup_settings SET last_queued_at = ? WHERE project = ?").run(now, p);
+        queued++;
+      }
+      return queued;
+    });
+  }
+
+  #cleanupRun(row: Row): MemoryCleanupRun {
+    return { id: num(row.id), project: str(row.project), status: str(row.status) as MemoryCleanupRun["status"], machine: strOrNull(row.machine), profile: strOrNull(row.profile), model: str(row.model), costUsd: numOrNull(row.cost_usd), createdAt: str(row.created_at), updatedAt: str(row.updated_at), error: strOrNull(row.error) as MemoryCleanupRun["error"] };
+  }
+
+  #cleanupProposal(id: number): MemoryCleanupProposal {
+    const row = this.db.prepare("SELECT * FROM memory_cleanup_proposals WHERE id = ?").get(id) as Row | undefined;
+    if (!row) throw new HiveError("not_found", `No memory proposal #${id}.`);
+    return { ...JSON.parse(str(row.suggestion)), id, project: str(row.project), runId: num(row.run_id), entries: JSON.parse(str(row.entries)), status: str(row.status), reviewer: strOrNull(row.reviewer), decidedAt: strOrNull(row.decided_at), createdAt: str(row.created_at) };
+  }
+
+  #cleanupJob(id: number, actor: Actor): Row {
+    const row = this.db.prepare("SELECT * FROM memory_cleanup_runs WHERE id = ?").get(id) as Row | undefined;
+    if (!row) throw new HiveError("not_found", `No memory cleanup run #${id}.`);
+    this.#need(actor, str(row.project), "taskWork", `Memory cleanup #${id}`);
+    if (row.taken_by !== actor.name) throw new HiveError("forbidden", "Only the machine that took this run can report it.");
+    return row;
   }
 
   /** Creates the default org docs on an empty database. Safe to call on every start. */
@@ -2206,6 +2278,21 @@ export class SqliteHive implements HiveBackend {
       this.db.exec("ROLLBACK");
       throw err;
     }
+  }
+
+  #removeMemory(id: number): { removed: boolean } {
+    const db = this.db;
+          const removed = num(db.prepare("DELETE FROM memory WHERE id = ?").run(id).changes) === 1;
+          if (removed) {
+            db.prepare("UPDATE memory SET superseded_by = NULL WHERE superseded_by = ?").run(id);
+            db.prepare("UPDATE memory SET supersedes = NULL WHERE supersedes = ?").run(id);
+            const linked = db.prepare("SELECT id, conflicts FROM memory WHERE conflicts != '[]'").all() as Row[];
+            for (const r of linked) {
+              const ids = JSON.parse(str(r.conflicts)) as number[];
+              if (ids.includes(id)) this.#setConflicts(num(r.id), ids.filter((x) => x !== id));
+            }
+          }
+          return { removed };
   }
 
   #getDoc(key: string): Doc | null {
@@ -2510,6 +2597,11 @@ export class SqliteHive implements HiveBackend {
   }
 
   /** Refuses to start agents of a paused project or hub (runs.dispatch, chat.send). */
+  #isPaused(project: string): boolean {
+    const paused = this.#paused();
+    return paused.hub || paused.projects.includes(project);
+  }
+
   #assertNotPaused(project: string): void {
     const paused = this.#paused();
     const scope = paused.hub ? PAUSED_HUB : paused.projects.includes(project) ? project : null;
@@ -2549,6 +2641,11 @@ export class SqliteHive implements HiveBackend {
    * through what is in the archive before restoring it or deciding to delete it.
    */
   #assertProjectOpen(method: Method, input: ParsedInput<Method>): void {
+    if (["memory.cleanupRead", "memory.cleanupProgress", "memory.cleanupFinish", "memory.decideCleanup"].includes(method)) {
+      const table = method === "memory.decideCleanup" ? "memory_cleanup_proposals" : "memory_cleanup_runs";
+      const row = this.db.prepare(`SELECT project FROM ${table} WHERE id = ?`).get((input as { id: number }).id) as Row | undefined;
+      if (row && this.#projectState(str(row.project)) !== null) throw this.#projectGone(str(row.project));
+    }
     const where = PROJECT_WRITES[method];
     if (!where) return;
     const i = input as Record<string, any>;
@@ -2589,6 +2686,10 @@ export class SqliteHive implements HiveBackend {
       case "memory.search":
       case "memory.list":
         return (out as Memory[]).filter((m) => shown(m.project)) as MethodOutput[M];
+      case "memory.cleanupSettings":
+      case "memory.cleanupRuns":
+      case "memory.cleanupProposals":
+        return (out as Array<{ project: string }>).filter((m) => shown(m.project)) as MethodOutput[M];
       case "tasks.list":
       case "tasks.next":
         return (out as Task[]).filter((t) => shown(t.project)) as MethodOutput[M];
@@ -4939,6 +5040,95 @@ export class SqliteHive implements HiveBackend {
         return rows.map((r) => toMemory(r, staleBefore));
       },
 
+      "memory.cleanupSettings": ({ project }) => (db.prepare("SELECT * FROM memory_cleanup_settings WHERE (? IS NULL OR project = ?)").all(project ?? null, project ?? null) as Row[])
+        .map((r) => ({ project: str(r.project), enabled: num(r.enabled) === 1, lastQueuedAt: strOrNull(r.last_queued_at) })),
+      "memory.setCleanup": ({ project, enabled }) => {
+        db.prepare("INSERT INTO memory_cleanup_settings(project, enabled) VALUES (?, ?) ON CONFLICT(project) DO UPDATE SET enabled = excluded.enabled").run(project, enabled ? 1 : 0);
+        if (!enabled) db.prepare("UPDATE memory_cleanup_runs SET status = 'failed', snapshot = '[]', error = 'disabled', updated_at = ? WHERE project = ? AND status IN ('queued','running')").run(this.#now(), project);
+        const row = db.prepare("SELECT * FROM memory_cleanup_settings WHERE project = ?").get(project) as Row;
+        return { project, enabled, lastQueuedAt: strOrNull(row.last_queued_at) };
+      },
+      "memory.cleanupRuns": ({ project }) => (db.prepare("SELECT * FROM memory_cleanup_runs WHERE (? IS NULL OR project = ?) ORDER BY id DESC LIMIT 100").all(project ?? null, project ?? null) as Row[]).map((r) => this.#cleanupRun(r)),
+      "memory.cleanupTake": ({ projects }, actor) => this.#tx(() => {
+        const machine = db.prepare("SELECT machine, accepts_runs, projects FROM machines WHERE id = ?").get(actor.name) as Row | undefined;
+        if (!machine || num(machine.accepts_runs) !== 1) return null;
+        const reported = JSON.parse(str(machine.projects)) as string[];
+        const rows = db.prepare("SELECT * FROM memory_cleanup_runs WHERE status = 'queued' ORDER BY id").all() as Row[];
+        const row = rows.find((r) => projects.includes(str(r.project)) && reported.includes(str(r.project)) && may(actor, str(r.project), "taskWork") && this.#projectState(str(r.project)) === null && !this.#isPaused(str(r.project)));
+        if (!row) return null;
+        const entries = (db.prepare("SELECT * FROM memory WHERE project = ? AND status = 'approved' AND superseded_by IS NULL ORDER BY id").all(str(row.project)) as Row[]).map((r) => toMemory(r, this.#staleBefore()));
+        db.prepare("UPDATE memory_cleanup_runs SET status = 'running', taken_by = ?, machine = ?, snapshot = ?, updated_at = ? WHERE id = ?").run(actor.name, str(machine.machine), JSON.stringify(entries), this.#now(), num(row.id));
+        return this.#cleanupRun(db.prepare("SELECT * FROM memory_cleanup_runs WHERE id = ?").get(num(row.id)) as Row);
+      }),
+      "memory.cleanupRead": ({ id, offset }, actor) => {
+        const row = this.#cleanupJob(id, actor);
+        if (row.status !== "running") throw new HiveError("conflict", "This cleanup run is no longer running.");
+        const entries = JSON.parse(str(row.snapshot)) as Memory[];
+        return { entries: entries.slice(offset, offset + 10), next: offset + 10 < entries.length ? offset + 10 : null };
+      },
+      "memory.cleanupProgress": ({ id }, actor) => {
+        const row = this.#cleanupJob(id, actor);
+        if (row.status !== "running") return { ok: false };
+        if (this.#isPaused(str(row.project))) return { ok: false };
+        db.prepare("UPDATE memory_cleanup_runs SET updated_at = ? WHERE id = ?").run(this.#now(), id);
+        return { ok: true };
+      },
+      "memory.cleanupFinish": ({ id, suggestions, error, profile, model, costUsd }, actor) => this.#tx(() => {
+        const row = this.#cleanupJob(id, actor);
+        if (row.status !== "running") return { ok: false };
+        if (this.#isPaused(str(row.project))) throw new HiveError("conflict", "Agents are paused.");
+        const entries = JSON.parse(str(row.snapshot)) as Memory[];
+        const used = new Set<number>();
+        if (!error) for (const suggestion of suggestions) {
+          const sources = suggestion.ids.map((mid) => entries.find((m) => m.id === mid));
+          if (sources.some((m) => !m) || suggestion.ids.some((mid) => used.has(mid))) throw new HiveError("bad_request", "Suggestion ids must be unique entries from this run's project snapshot.");
+          suggestion.ids.forEach((mid) => used.add(mid));
+          assertNoHidden(suggestion.reason, "Reason"); assertNoSecret(suggestion.reason, "Reason");
+          if (suggestion.content) { assertNoHidden(suggestion.content, "Content"); assertNoSecret(suggestion.content, "Content"); }
+          // An undecided proposal already covers these facts: do not fill the inbox with weekly duplicates.
+          const pending = db.prepare("SELECT suggestion FROM memory_cleanup_proposals WHERE project = ? AND status = 'pending'").all(str(row.project)) as Row[];
+          if (pending.some((p) => (JSON.parse(str(p.suggestion)).ids as number[]).some((mid) => suggestion.ids.includes(mid)))) continue;
+          db.prepare("INSERT INTO memory_cleanup_proposals(project, run_id, suggestion, entries, created_at) VALUES (?, ?, ?, ?, ?)").run(str(row.project), id, JSON.stringify(suggestion), JSON.stringify(sources), this.#now());
+        }
+        db.prepare("UPDATE memory_cleanup_runs SET status = ?, snapshot = '[]', error = ?, profile = ?, model = ?, cost_usd = ?, updated_at = ? WHERE id = ?").run(error ? "failed" : "done", error ?? null, profile, model, costUsd, this.#now(), id);
+        return { ok: true };
+      }),
+      "memory.cleanupProposals": ({ project }) => (db.prepare("SELECT id FROM memory_cleanup_proposals WHERE (? IS NULL OR project = ?) ORDER BY id DESC LIMIT 500").all(project ?? null, project ?? null) as Row[]).map((r) => this.#cleanupProposal(num(r.id))),
+      "memory.decideCleanup": ({ id, accept }, actor) => this.#tx(() => {
+        const p = this.#cleanupProposal(id);
+        if (p.status !== "pending") throw new HiveError("conflict", "This proposal has already been decided.");
+        let status: MemoryCleanupProposal["status"] = accept ? "approved" : "rejected";
+        if (accept) {
+          const fresh = p.entries.every((m) => {
+            const row = db.prepare("SELECT * FROM memory WHERE id = ?").get(m.id) as Row | undefined;
+            return !!row && memoryCleanupBaseline(toMemory(row, this.#staleBefore())) === memoryCleanupBaseline(m);
+          });
+          if (!fresh) status = "conflict";
+          else {
+            let replacement: number | null = null;
+            if (p.kind === "merge") {
+              const first = p.entries[0]!;
+              const files = [...new Map(p.entries.flatMap((m) => m.files).map((f) => [f.path, f])).values()];
+              const r = db.prepare("INSERT INTO memory(project, kind, content, author, status, files, created_at) VALUES (?, ?, ?, ?, 'approved', ?, ?)").run(p.project, first.kind, p.content!, actor.name, JSON.stringify(files), this.#now());
+              replacement = Number(r.lastInsertRowid);
+              const conflicts = [...new Set(p.entries.flatMap((m) => m.conflictsWith))].filter((mid) => !p.ids.includes(mid));
+              this.#setConflicts(replacement, conflicts);
+              for (const m of p.entries) this.#setConflicts(m.id, []);
+              for (const mid of conflicts) {
+                const other = this.#getMemory(mid);
+                this.#setConflicts(mid, [...new Set([...other.conflictsWith.filter((source) => !p.ids.includes(source)), replacement])]);
+              }
+            }
+            for (const m of p.entries) {
+              if (replacement !== null) db.prepare("UPDATE memory SET superseded_by = ? WHERE id = ?").run(replacement, m.id);
+              else this.#removeMemory(m.id);
+            }
+          }
+        }
+        db.prepare("UPDATE memory_cleanup_proposals SET status = ?, reviewer = ?, decided_at = ? WHERE id = ?").run(status, actor.name, this.#now(), id);
+        return this.#cleanupProposal(id);
+      }),
+
       "memory.searchInfo": () => {
         const model = this.#opts.embedder?.model ?? null;
         const count = (sql: string, ...args: string[]) => num((db.prepare(sql).get(...args) as Row).n);
@@ -5115,20 +5305,7 @@ export class SqliteHive implements HiveBackend {
         }),
 
       // A removed replacement brings the entry it replaced back; conflicts with it are dropped.
-      "memory.remove": ({ id }) =>
-        this.#tx(() => {
-          const removed = num(db.prepare("DELETE FROM memory WHERE id = ?").run(id).changes) === 1;
-          if (removed) {
-            db.prepare("UPDATE memory SET superseded_by = NULL WHERE superseded_by = ?").run(id);
-            db.prepare("UPDATE memory SET supersedes = NULL WHERE supersedes = ?").run(id);
-            const linked = db.prepare("SELECT id, conflicts FROM memory WHERE conflicts != '[]'").all() as Row[];
-            for (const r of linked) {
-              const ids = JSON.parse(str(r.conflicts)) as number[];
-              if (ids.includes(id)) this.#setConflicts(num(r.id), ids.filter((x) => x !== id));
-            }
-          }
-          return { removed };
-        }),
+      "memory.remove": ({ id }) => this.#tx(() => this.#removeMemory(id)),
 
       "tasks.list": ({ project, projects, status }) =>
         this.#tasks(

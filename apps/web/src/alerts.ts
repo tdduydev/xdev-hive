@@ -340,7 +340,7 @@ export class AlertStore {
     }
     for (const p of await this.#hive.call("proposals.list", { status: "pending" }, HUB)) {
       if (p.createdAt < since) continue;
-      out.push({ at: p.createdAt, tone: "info", src: who(p.author), key: "feed.proposal", vars: { doc: p.docKey }, href: "#/proposals" });
+      out.push({ at: p.createdAt, tone: "info", src: who(p.author), key: "feed.proposal", vars: { doc: p.docKey }, href: `#/proposals?doc=${encodeURIComponent(p.docKey)}` });
     }
     return out.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit);
   }

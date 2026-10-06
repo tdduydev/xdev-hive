@@ -79,6 +79,13 @@ const hive = new SqliteHive(dbPath, {
   },
 });
 hive.seed("hub", { hub: true });
+const cleanupRound = () => {
+  try { hive.queueMemoryCleanup(); }
+  catch (err) { console.error(`[xdev-hive] memory cleanup scheduling failed: ${(err as Error).message}`); }
+};
+cleanupRound();
+setInterval(cleanupRound, 60_000).unref();
+
 const tokens = new TokenStore(hive.db);
 const users = new UserStore(hive.db);
 if (process.env.HIVE_BOOTSTRAP_TOKEN) tokens.ensure(process.env.HIVE_BOOTSTRAP_TOKEN, "bootstrap", "admin");

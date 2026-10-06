@@ -28,3 +28,5 @@ export * from "./transfer.ts";
 export * from "./types.ts";
 export * from "./verdict.ts";
 export { HubBackend, requestDeviceToken } from "./hub-client.ts";
+
+export * from "#core/memory-cleanup.ts";

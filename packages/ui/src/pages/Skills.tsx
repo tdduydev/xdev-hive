@@ -14,7 +14,7 @@ import { HiddenChars } from "#ui/components/HiddenChars.tsx";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
 import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { Chip, DetailBody, DetailFooter, DetailHeader, KvRows, ListItem, ListPane, PaneEmpty } from "#ui/components/panes.tsx";
-import { errorMessage, formatTime, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
+import { errorMessage, formatTime, useAction, useCan, useHive, useHashParam, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { emptyState } from "#ui/lib/empty.ts";
 import { docOwner, inScope, scopeProject } from "#ui/lib/scope.ts";
@@ -35,7 +35,7 @@ export function SkillsPage() {
   const pending = useQuery(() => client.call("proposals.list", { status: "pending" }), [client, tick]);
   const skills = useMemo(() => {
     const all = list.data ?? [];
-    if (scope.kind === "shared") return skillsFor(all.filter((s) => s.project === null), null);
+    if (scope.kind === "shared") return skillsFor(all, null).filter((s) => s.project === null);
     // A system: the team's skills and those of its projects.
     if (scope.kind === "system") return skillsFor(all.filter((s) => s.project === null || scope.projects.includes(s.project)), null);
     return skillsFor(all, project);
@@ -49,6 +49,11 @@ export function SkillsPage() {
   const owners = useMemo(() => [...(allow(null, "contextEdit") ? [""] : []), ...projects.filter((p) => allow(p, "contextEdit"))], [projects, allow]);
   const [selected, setSelected] = useState<string | null>(null);
   const mobileDetail = useMobileDetail("skill");
+  const [wanted, clearWanted] = useHashParam("skill");
+  useEffect(() => {
+    if (!mobileDetail.mobile && wanted && skills.some((s) => s.key === wanted)) { setSelected(wanted); clearWanted(); }
+  }, [wanted, skills, mobileDetail.mobile, clearWanted]);
+
   const pick = (key: string | null) => {
     setSelected(key);
     if (mobileDetail.mobile) mobileDetail.navigate(key);
@@ -94,7 +99,7 @@ export function SkillsPage() {
         <ErrorNote error={list.error} />
         {project ? <p className="m-0 px-2 pt-1 pb-2 text-[11px]/4 text-fg-muted">{t("skills.effectiveFor", { project })}</p> : null}
         {proposals.length ? (
-          <a className="mx-1 mb-1 rounded-sm bg-warning-soft px-2 py-1.5 text-xs text-fg-strong no-underline hover:underline" href="#/proposals">
+          <a className="mx-1 mb-1 rounded-sm bg-warning-soft px-2 py-1.5 text-xs text-fg-strong no-underline hover:underline" href="#/skills?tab=pending">
             {t("skills.pendingNotice", { count: proposals.length })} {t("skills.openProposals")}
           </a>
         ) : null}
@@ -128,7 +133,7 @@ export function SkillsPage() {
                 ) : null
               }
               sub={s.description || t("skills.noDescription")}
-              meta={s.project ?? t("inbox.shared")}
+              meta={`${s.project ?? t("common.sharedTeam")} · ${formatTime(s.updatedAt)}`}
             />
           );
         })}
@@ -307,7 +312,7 @@ function SkillEditor({ skill, proposals, onSaved }: { skill: ListedSkill; propos
           <div className="flex flex-col gap-1.5 rounded-md border border-warning-line bg-warning-soft p-3">
             <span className="text-xs font-semibold text-fg-strong">{t("skills.pendingTitle")}</span>
             {proposals.map((p) => (
-              <a key={p.id} href="#/proposals" className="text-xs text-fg-strong [overflow-wrap:anywhere] hover:underline">
+              <a key={p.id} href="#/skills?tab=pending" className="text-xs text-fg-strong [overflow-wrap:anywhere] hover:underline">
                 #{p.id} · {p.reason} · {p.author} · {formatTime(p.createdAt)}
               </a>
             ))}
@@ -342,6 +347,9 @@ function SkillEditor({ skill, proposals, onSaved }: { skill: ListedSkill; propos
             </p>
             <KvRows
               rows={[
+                [t("knowledge.applies"), parts.description || skill.description || t("skills.noDescription")],
+                [t("knowledge.overridesBy"), skill.overridesBy.length ? skill.overridesBy.join(", ") : "—"],
+                [t("knowledge.modified"), `${skill.updatedBy} · ${formatTime(skill.updatedAt)}`],
                 [t("skills.writeTo"), `.claude/skills/${skill.name}/SKILL.md`, true],
                 [t("skills.scopeLabel"), skill.project ? t("skills.syncProject", { name: skill.name, project: skill.project }) : t("skills.syncShared", { name: skill.name })],
               ]}

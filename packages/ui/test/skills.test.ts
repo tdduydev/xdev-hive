@@ -43,10 +43,14 @@ describe("skills per project", () => {
     assert.deepEqual(skillsFor(all, null).map((s) => [s.name, s.project, s.overrides, s.overridden]), [
       ["deploy", null, false, false],
       ["review-pr", null, false, false],
-      ["deploy", "app", false, false],
+      ["deploy", "app", true, false],
       ["lint", "app", false, false],
       ["seo", "site", false, false],
     ]);
+  });
+
+  it("names project overrides even in the whole-team view", () => {
+    assert.deepEqual(skillsFor(all, null).find((s) => s.project === null && s.name === "deploy")!.overridesBy, ["app"]);
   });
 
   it("shows what a project's agents get: its own skill replaces the team's of the same name", () => {
