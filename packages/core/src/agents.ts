@@ -8,7 +8,7 @@ export type AgentKind = (typeof AGENT_KINDS)[number];
 export const PREFER_KINDS = ["claude", "codex", "gemini", "antigravity"] as const;
 export type PreferKind = (typeof PREFER_KINDS)[number];
 
-export const AGENT_ROLES = ["plan", "implement", "review"] as const;
+export const AGENT_ROLES = ["plan", "implement", "review", "classify"] as const;
 export type AgentRole = (typeof AGENT_ROLES)[number];
 
 /** Best-of-n: at most this many candidates of one implement run. */

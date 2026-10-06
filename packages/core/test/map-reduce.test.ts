@@ -15,6 +15,7 @@ const profile = (id: string) => ({ id, label: id, kind: id.split("-")[0]!, enabl
 async function hub() {
   const clock = { at: Date.parse("2026-10-02T08:00:00.000Z") };
   const hive = new SqliteHive(":memory:", { now: () => new Date(clock.at) });
+  await hive.call("tasks.setClassifyConfig", { project: "app", enabled: false }, admin);
   const beat = async () =>
     (
       await hive.call(

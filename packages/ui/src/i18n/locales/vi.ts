@@ -642,6 +642,7 @@ export const vi = {
     plan: "Lập kế hoạch",
     implement: "Làm task",
     review: "Review",
+    classify: "Phân loại",
   },
   setupPart: {
     agents: "Cấu hình agent",
@@ -1151,6 +1152,13 @@ export const vi = {
     nextReady: "Sẵn sàng tiếp theo:",
     nextNone: "Chưa task nào sẵn sàng: mọi task còn lại đang có người giữ hoặc chờ task khác.",
   },
+  taskClass: {
+    kind: "Loại", size: "Cỡ", risk: "Rủi ro", unknown: "Chưa phân loại",
+    settingsTitle: "AI phân loại task", settingsDescription: "Hub dùng luật trước. Khi loại chưa rõ và task sắp giao, agent phân loại bằng một run ngắn.", enabled: "Bật", disabled: "Tắt",
+    kindValues: { docs: "Tài liệu", test: "Kiểm thử", "small-fix": "Sửa nhỏ", feature: "Tính năng", ui: "Giao diện", refactor: "Tái cấu trúc", debug: "Điều tra lỗi", spec: "Đặc tả", review: "Review", merge: "Gộp", ops: "Vận hành" },
+    sizeValues: { s: "Nhỏ", m: "Vừa", l: "Lớn" },
+    riskValues: { normal: "Bình thường", high: "Cao" },
+  },
   flow: {
     title: "Luồng {task}",
     state: {
@@ -1417,7 +1425,7 @@ export const vi = {
     autoHint: "Loại đề xuất leader của dự án làm luôn, không chờ ai bấm Xác nhận: bằng quyền của người gửi tin (người đó phải có quyền Duyệt hành động leader), không hơn. Loại không chọn thì chờ duyệt như trước. Mặc định không loại nào.",
     autoAlways: "Leader không tự nới giới hạn của chính nó: loại này luôn chờ người duyệt.",
     autoAlwaysShort: "luôn chờ duyệt",
-    autoKind: { task_create: "Tạo task", task_update: "Đổi trạng thái task", task_assign: "Giao task cho agent", run_dispatch: "Xếp run", run_cancel: "Huỷ run", run_merge: "Merge MR/PR", machine_profile: "Bật/tắt gói của máy", agent_policy: "Đổi chính sách agent", agents_stop: "Dừng mọi agent", agents_resume: "Cho agent chạy lại", machine_install: "Yêu cầu máy cài", tool_enable: "Bật/tắt tool của dự án" },
+    autoKind: { task_create: "Tạo task", task_update: "Đổi trạng thái task", task_classify: "Phân loại task", task_assign: "Giao task cho agent", run_dispatch: "Xếp run", run_cancel: "Huỷ run", run_merge: "Merge MR/PR", machine_profile: "Bật/tắt gói của máy", agent_policy: "Đổi chính sách agent", agents_stop: "Dừng mọi agent", agents_resume: "Cho agent chạy lại", machine_install: "Yêu cầu máy cài", tool_enable: "Bật/tắt tool của dự án" },
     autoSave: "Lưu việc tự chạy cho {project}",
     autoSaved: "Đã lưu: leader của {project} tự chạy {count} loại.",
     autoNone: "Đã lưu: leader của {project} chờ duyệt mọi đề xuất.",
@@ -1494,6 +1502,7 @@ export const vi = {
     actions: "Leader đề xuất",
     actionCreate: "Tạo task",
     actionMove: "Chuyển",
+    actionClassify: "Phân loại",
     actionRun: "Chạy {role}",
     actionDeps: "phụ thuộc {ids}",
     actionService: "cho service {project}",

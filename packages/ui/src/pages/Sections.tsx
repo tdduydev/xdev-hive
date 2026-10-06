@@ -28,6 +28,7 @@ import { OverviewWithRange, OpsPage } from "./admin/frame.tsx";
 import { OpsContext, OpsHub } from "./admin/HubOps.tsx";
 import { OpsAudit, OpsCosts, OpsFleet, OpsQueue } from "./admin/Ops.tsx";
 import { SdlcGatesCard } from "./admin/SdlcGates.tsx";
+import { ClassifySettingsCard } from "./admin/ClassifySettings.tsx";
 import { OpsVersions } from "./admin/Versions.tsx";
 import { BatchesPage } from "./Batches.tsx";
 import { MachinesPage } from "./Machines.tsx";
@@ -53,11 +54,13 @@ export function SettingsPage() {
       isHubAdmin(me) ? (
         <OpsPage>
           <PolicyTab />
+          <ClassifySettingsCard projects={projects} />
         </OpsPage>
       ) : (
         <Page>
           <AgentPolicyCard editableOnly />
           <SdlcGatesCard editableOnly />
+          <ClassifySettingsCard projects={projects.filter((p) => canEditChatSettings(me, p))} />
         </Page>
       ),
     tools: () => <ToolsPage />,

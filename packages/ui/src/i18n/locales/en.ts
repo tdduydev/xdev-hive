@@ -639,6 +639,7 @@ export const en: Catalog = {
     plan: "Planning",
     implement: "Implementation",
     review: "Review",
+    classify: "Classify",
   },
   setupPart: {
     agents: "Agent config",
@@ -1148,6 +1149,13 @@ export const en: Catalog = {
     nextReady: "Ready next:",
     nextNone: "No task is ready: the rest are held by someone or wait on other tasks.",
   },
+  taskClass: {
+    kind: "Kind", size: "Size", risk: "Risk", unknown: "Unclassified",
+    settingsTitle: "AI task classification", settingsDescription: "The hub applies rules first. When a task is about to run and its kind is unclear, an agent classifies it in a short run.", enabled: "On", disabled: "Off",
+    kindValues: { docs: "Docs", test: "Test", "small-fix": "Small fix", feature: "Feature", ui: "UI", refactor: "Refactor", debug: "Debug", spec: "Spec", review: "Review", merge: "Merge", ops: "Ops" },
+    sizeValues: { s: "Small", m: "Medium", l: "Large" },
+    riskValues: { normal: "Normal", high: "High" },
+  },
   flow: {
     title: "Flow {task}",
     state: {
@@ -1414,7 +1422,7 @@ export const en: Catalog = {
     autoHint: "Kinds of proposal the project's leader carries out at once, without waiting for a Confirm: with the rights of whoever sent the message (who must be able to confirm the leader's actions), never more. Kinds left out wait for a confirm as before. None by default.",
     autoAlways: "The leader does not loosen its own limits: this kind always waits for a person.",
     autoAlwaysShort: "always confirmed",
-    autoKind: { task_create: "Create a task", task_update: "Move a task", task_assign: "Give a task to an agent", run_dispatch: "Queue a run", run_cancel: "Cancel a run", run_merge: "Merge an MR/PR", machine_profile: "Turn a machine's subscription on or off", agent_policy: "Change the agent policy", agents_stop: "Stop every agent", agents_resume: "Let agents run again", machine_install: "Ask a machine to install", tool_enable: "Turn a project tool on or off" },
+    autoKind: { task_create: "Create a task", task_update: "Move a task", task_classify: "Classify a task", task_assign: "Give a task to an agent", run_dispatch: "Queue a run", run_cancel: "Cancel a run", run_merge: "Merge an MR/PR", machine_profile: "Turn a machine's subscription on or off", agent_policy: "Change the agent policy", agents_stop: "Stop every agent", agents_resume: "Let agents run again", machine_install: "Ask a machine to install", tool_enable: "Turn a project tool on or off" },
     autoSave: "Save what runs on its own for {project}",
     autoSaved: { one: "Saved: the leader of {project} runs {count} kind on its own.", other: "Saved: the leader of {project} runs {count} kinds on its own." },
     autoNone: "Saved: the leader of {project} waits for a confirm on every proposal.",
@@ -1491,6 +1499,7 @@ export const en: Catalog = {
     actions: "Proposed by the leader",
     actionCreate: "Create task",
     actionMove: "Move",
+    actionClassify: "Classify",
     actionRun: "Run {role} of",
     actionDeps: "after {ids}",
     actionService: "for service {project}",

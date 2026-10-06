@@ -4,6 +4,7 @@ import type { AgentProfile, AgentRole, PreferKind } from "./agents.ts";
 import type { MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { WriteSource } from "./source.ts";
 import type { MapPhase } from "./mapreduce.ts";
+import type { TaskKind, TaskRisk, TaskSize } from "./task-classify.ts";
 
 /** member: a person's hub account (what it may do comes from its per-project grants). */
 export type Role = "viewer" | "agent" | "member" | "admin";
@@ -283,6 +284,11 @@ export interface Task {
   id: string;
   project: string;
   title: string;
+  kind: TaskKind | null;
+  size: TaskSize | null;
+  risk: TaskRisk | null;
+  classifiedBy: string | null;
+  classifiedAt: string | null;
   status: TaskStatus;
   owner: string | null;
   leaseUntil: string | null;
@@ -1018,6 +1024,7 @@ export interface ChatFile {
 export const CHAT_ACTION_KINDS = [
   "task.create",
   "task.update",
+  "task.classify",
   "task.assign",
   "run.dispatch",
   "run.cancel",
@@ -1147,7 +1154,7 @@ export interface MachineRun {
   project: string;
   taskId: string;
   taskTitle: string;
-  role: "plan" | "implement" | "review";
+  role: "plan" | "implement" | "review" | "classify";
   status: "queued" | "running";
   profileId: string | null;
   since: string;

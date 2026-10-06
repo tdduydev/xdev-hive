@@ -2,7 +2,7 @@ import { ResponsiveTable as Table, ResponsiveTableRow as TableRow } from "#ui/co
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "cn";
 import { Sparkles } from "lucide-react";
-import { AGENT_ROLES, MAX_CANDIDATES, TASK_STATUSES, type AgentRole, type PreferKind, type RunRequest, type Task, type TaskStatus } from "@xdev-hive/core";
+import { AGENT_ROLES, MAX_CANDIDATES, TASK_KINDS, TASK_RISKS, TASK_SIZES, TASK_STATUSES, type AgentRole, type PreferKind, type RunRequest, type Task, type TaskKind, type TaskRisk, type TaskSize, type TaskStatus } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
@@ -508,6 +508,9 @@ function TaskDetail({ task, requests, hub, onChanged }: { task: Task; requests: 
           <div className="max-w-48">
             <StatusSelect task={task} onChanged={onChanged} />
           </div>
+          <TaskClassField task={task} field="kind" values={TASK_KINDS} onChanged={onChanged} />
+          <TaskClassField task={task} field="size" values={TASK_SIZES} onChanged={onChanged} />
+          <TaskClassField task={task} field="risk" values={TASK_RISKS} onChanged={onChanged} />
           <span className="text-xs font-medium text-muted-foreground">{t("tasks.colDeps")}</span>
           <div className="text-xs">
             <Deps task={task} onChanged={onChanged} />
@@ -534,6 +537,29 @@ function TaskDetail({ task, requests, hub, onChanged }: { task: Task; requests: 
       </div>
     </SheetContent>
   );
+}
+
+function TaskClassField({ task, field, values, onChanged }: { task: Task; field: "kind" | "size" | "risk"; values: readonly string[]; onChanged: () => void }) {
+  const { client } = useHive();
+  const t = useT();
+  const allow = useCan();
+  const action = useAction();
+  const label = t(`taskClass.${field}`);
+  return <>
+    <span className="text-xs font-medium text-muted-foreground">{label}</span>
+    <div className="min-w-0">
+      {allow(task.project, "taskManage") ? <NativeSelect size="sm" className="w-full max-w-48" value={task[field] ?? ""} aria-label={label} disabled={action.busy}
+        onChange={(e) => void action.run(async () => {
+          const value = e.target.value;
+          await client.call("tasks.classify", { id: task.id, ...(field === "kind" ? { kind: value as TaskKind } : field === "size" ? { size: value as TaskSize } : { risk: value as TaskRisk }) });
+          onChanged();
+        })}>
+        <NativeSelectOption value="" disabled>{t("taskClass.unknown")}</NativeSelectOption>
+        {values.map((value) => <NativeSelectOption key={value} value={value}>{t(`taskClass.${field}Values.${value}` as Parameters<typeof t>[0])}</NativeSelectOption>)}
+      </NativeSelect> : <span className="text-sm">{task[field] ? t(`taskClass.${field}Values.${task[field]}` as Parameters<typeof t>[0]) : t("taskClass.unknown")}</span>}
+      <ErrorNote error={action.error} />
+    </div>
+  </>;
 }
 
 /** Machines that can take this task's run now: online, taking runs from the hub, with the project's repo. */

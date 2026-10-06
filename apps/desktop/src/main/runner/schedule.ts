@@ -89,7 +89,7 @@ export function pickWithReason(loads: ProfileLoad[], needs: RunNeeds, now: Date)
     const pinned = loads.find((l) => l.profile.id === needs.preferredProfile);
     return pinned && isAvailable(pinned, now) ? { load: pinned, reason: tr("runNote.pickPinned", { profile: pinned.profile.id }) } : null;
   }
-  const fits = (l: ProfileLoad) => l.profile.roles.includes(needs.role) && !needs.excludedProfiles.includes(l.profile.id);
+  const fits = (l: ProfileLoad) => (needs.role === "classify" ? (l.profile.kind === "claude" || l.profile.kind === "codex") && l.profile.roles.includes("implement") : l.profile.roles.includes(needs.role)) && !needs.excludedProfiles.includes(l.profile.id);
   let candidates = loads.filter((l) => isAvailable(l, now) && fits(l));
   if (needs.strictKinds && needs.avoidKinds.length) {
     const other = (l: ProfileLoad) => !needs.avoidKinds.includes(l.profile.kind);
