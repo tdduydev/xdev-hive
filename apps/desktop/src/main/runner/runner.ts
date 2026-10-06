@@ -85,6 +85,8 @@ import { renderContext, type WorktreeRule, type WorktreeSkill } from "#desktop/m
 import { hookEnv, legacyPick, NO_TOOLS, prepareTool, readyHooks, rtkGain, runTools, toolDirs, userClaudeSettings, type ToolPick } from "./tools.ts";
 import { collectArtifacts } from "./artifacts.ts";
 import { containerCommand } from "./container.ts";
+import { needsPlanApproval, PLAN_MAX, type RunPlan } from "@xdev-hive/core";
+import { planningProfile, planningPrompt } from "#desktop/main/runner/plan-approval.ts";
 import { CLASSIFY_INPUT_TOKENS, CLASSIFY_TIMEOUT_MS, classifierCommand, classifierResult, classifyModel, classifyPrompt } from "./classify.ts";
 import { claudeMcpServers, codexMcpArgs, hubMcpEnv, type McpRun } from "./container-mcp.ts";
 import { deniedHosts, egressAllow, egressPlan, type Egress } from "./egress.ts";
@@ -574,7 +576,7 @@ export class Runner {
    * `extra.ciFix`: the run fixes a failed MR pipeline (queued by the MR watcher, not by the interface).
    * `extra.requestedBy`: who asked for it on the web (a hub run request).
    */
-  async enqueue(req: StartRunRequest, extra: { ciFix?: CiFix; requestedBy?: string } = {}): Promise<AgentRun> {
+  async enqueue(req: StartRunRequest, extra: { ciFix?: CiFix; requestedBy?: string; plan?: RunPlan | null; fromHub?: boolean } = {}): Promise<AgentRun> {
     const project = this.#host.projects().find((p) => p.name === req.project);
     if (!project) throw new HiveError("not_found", `Dự án ${req.project} chưa được thêm vào app.`, { key: "errors.projectNotAdded", vars: { project: req.project } });
     if (!/^[A-Za-z0-9._-]{1,100}$/.test(req.taskId)) throw new HiveError("bad_request", "Task id không hợp lệ.", { key: "errors.badTaskId" });
@@ -586,7 +588,18 @@ export class Runner {
     if (req.preferKind != null && !PREFER_KINDS.includes(req.preferKind)) {
       throw new HiveError("bad_request", `Loại gói không hợp lệ: ${String(req.preferKind)}`, { key: "errors.badPreferKind", vars: { kind: String(req.preferKind) } });
     }
-    const count = req.candidates ?? 1;
+    if (role === "implement" && !extra.fromHub && this.#host.mode() === "hub") {
+      const policy = await this.#host.backend().call("sdlc.get", {}, this.#runnerActor());
+      const tasks = await this.#host.backend().call("tasks.list", { project: req.project }, this.#runnerActor());
+      if (needsPlanApproval(policy.projects[req.project]?.planApproval, tasks.find((t) => t.id === req.taskId)?.size ?? null)) {
+        const request = await this.#host.backend().call("runs.preparePlan", req, this.#runnerActor());
+        const answer = await this.#take(request);
+        await this.#host.backend().call("runs.requestResult", { id: request.id, ...answer }, this.#runnerActor());
+        if (!answer.runId) throw new Error(answer.error?.message ?? "Plan request refused.");
+        return this.store.get(answer.runId)!;
+      }
+    }
+    const count = extra.plan?.phase === "plan" ? 1 : req.candidates ?? 1;
     if (!Number.isInteger(count) || count < 1 || count > MAX_CANDIDATES) {
       throw new HiveError("bad_request", `Số bản phải từ 1 đến ${MAX_CANDIDATES}.`, { key: "errors.badCandidates", vars: { max: MAX_CANDIDATES } });
     }
@@ -608,7 +621,7 @@ export class Runner {
     const active = this.store.activeForTask(req.project, req.taskId);
     if (active) throw new HiveError("conflict", `Task ${req.taskId} đang có run ${active.id} (${active.status}).`, { key: "errors.taskHasRun", vars: { id: req.taskId, run: active.id } });
     const previous = this.store.lastWithWorktree(req.project, req.taskId);
-    if (count > 1) return await this.#enqueueCandidates(req, project, task, count, previous, extra.requestedBy ?? null);
+    if (count > 1) return await this.#enqueueCandidates(req, project, task, count, previous, extra.requestedBy ?? null, extra.plan ?? null);
     const run = this.store.insert(
       {
         project: req.project,
@@ -620,7 +633,8 @@ export class Runner {
         preferredProfile: req.profileId ?? null,
         preferKind: req.profileId ? null : (req.preferKind ?? null),
         instructions: (req.instructions ?? "").slice(0, 4000),
-        reviewAfter: req.reviewAfter ?? false,
+        plan: extra.plan ?? null,
+        reviewAfter: extra.plan?.phase === "plan" ? false : req.reviewAfter ?? false,
         baseSha: previous?.baseSha ?? null,
         ciFix: extra.ciFix ?? null,
         requestedBy: extra.requestedBy ?? null,
@@ -633,7 +647,7 @@ export class Runner {
   }
 
   /** Candidates start together from the task branch (or HEAD), each on its own branch and worktree. */
-  async #enqueueCandidates(req: StartRunRequest, project: DesktopProject, task: Task, count: number, previous: AgentRun | null, requestedBy: string | null): Promise<AgentRun> {
+  async #enqueueCandidates(req: StartRunRequest, project: DesktopProject, task: Task, count: number, previous: AgentRun | null, requestedBy: string | null, plan: RunPlan | null = null): Promise<AgentRun> {
     if (!isGitRepo(project.repo)) throw new HiveError("bad_request", `${project.repo} không phải git repo`, { key: "errors.notGitRepo", vars: { path: project.repo } });
     const branch = branchFor(req.taskId);
     const tip = tryGit(project.repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]);
@@ -662,6 +676,7 @@ export class Runner {
           reviewAfter: req.reviewAfter ?? false,
           baseSha,
           bestOf: { group, n: i + 1, of: count, from, pick: null, reason: null },
+          plan,
           preferKind: req.preferKind ?? null,
           requestedBy,
           selection: req.selection ?? null,
@@ -1183,7 +1198,7 @@ export class Runner {
           instructions: req.instructions,
           selection: req.selection ?? null,
         },
-        { requestedBy: req.requestedBy },
+        { requestedBy: req.requestedBy, plan: req.plan ?? null, fromHub: true },
       );
       this.#opts.onEvent?.({ type: "dispatched", run, by: req.requestedBy });
       return { status: "accepted", runId: run.id, error: null };
@@ -1259,6 +1274,7 @@ export class Runner {
             attempt: r.attempt,
             parentRun: r.parentRunId,
             // From the whole report: the summary sent above is clipped, and the verdict often closes it.
+            planText: r.plan?.phase === "plan" ? r.plan.text : undefined,
             verdict: r.role === "review" && r.status === "succeeded" ? parseVerdict(r.summary) : null,
             log,
             ...(patch !== undefined ? { patch } : {}),
@@ -1361,7 +1377,7 @@ export class Runner {
           const needs = this.#needs(run);
           // A profile the agent policy rules out is skipped like one out of quota.
           const blocked = this.#policyBlocked(this.#policyOf(run.project));
-          const loads = all.filter((l) => !blocked.has(l.profile.id));
+          const loads = all.filter((l) => !blocked.has(l.profile.id) && (run.plan?.phase !== "plan" || ["claude", "codex"].includes(l.profile.kind)));
           const picked = pickWithReason(loads, needs, now);
           const pick = picked?.load ?? null;
           if (!pick) {
@@ -1620,7 +1636,7 @@ export class Runner {
     const pol = this.#policyOf(run.project);
     const fit = applyPolicy(chosen, pol, chosen.kind === "codex" && pol.mcp !== null ? this.#codexServers(chosen) : []);
     const routed = routeProfile(chosen, fit.profile, pol, run.selection);
-    const profile = routed.profile;
+    const profile = run.plan?.phase === "plan" ? planningProfile(routed.profile) : routed.profile;
     // Read from the args the CLI gets, not the profile's own: the policy may have put a model in (roadmap 54a).
     run = this.store.update(run.id, { agentKind: profile.kind, ...ranOn(profile) });
     const skipped =[...this.#policyBlocked(pol)].map(([id, reason]) => `# policy skipped ${id}: ${reason}\n`).join("");
@@ -1686,7 +1702,7 @@ export class Runner {
       // Catalog hooks (roadmap 28d), before the prompt, which tells the agent about RTK when it is on.
       const hookLines: string[] = [];
       let hooks: ClaudeHookRun | null = null;
-      if (tools.hooks?.length) {
+      if (tools.hooks?.length && run.plan?.phase !== "plan") {
         const found = await readyHooks(tools.hooks, { autonomy: fit.autonomy, resolve: (b) => resolveBin(b, base.PATH ?? ""), env: { ...base, ...expandEnv(profile.env) } });
         hookLines.push(...found.notes);
         if (found.ready.length) {
@@ -1701,13 +1717,13 @@ export class Runner {
       }
 
       const parent = run.parentRunId ? this.store.get(run.parentRunId) : null;
-      const prompt = buildPrompt({
+      const prompt = run.plan?.phase === "plan" ? planningPrompt({ project: run.project, taskId: run.taskId, title: task.title, note: task.note, instructions: run.instructions, worktree: wt.path, plan: run.plan }) : buildPrompt({
         project: run.project,
         taskId: run.taskId,
         title: task.title,
         note: task.note,
         role: run.role,
-        instructions: run.instructions,
+        instructions: [run.instructions, ...(run.plan?.phase === "implement" ? ["Approved implementation plan (follow this scope and verification):", run.plan.text ?? "", run.plan.note ?? ""] : [])].join("\n\n"),
         worktree: wt.path,
         branch: wt.branch,
         baseSha: wt.baseSha,
@@ -1736,7 +1752,7 @@ export class Runner {
         return;
       }
 
-      if (run.role !== "review") {
+      if (run.role !== "review" && run.plan?.phase !== "plan") {
         // Candidates share one lease, which the runner holds for the group (long enough for the slowest profile).
         const minutes = candidate ? Math.max(...this.#host.profiles().map((p) => p.timeoutMinutes)) : profile.timeoutMinutes;
         const lease = Math.min(minutes + 15, 24 * 60);
@@ -2110,7 +2126,7 @@ export class Runner {
       project: run.project,
       task: run.taskId,
       run: run.id,
-      readOnly: profile.readOnly,
+      readOnly: profile.readOnly || run.plan?.phase === "plan",
     };
   }
 
@@ -2199,6 +2215,17 @@ export class Runner {
       }
     }
 
+    if (run.plan?.phase === "plan") {
+      const text = outcome.kind === "exit" ? redactLines(stripHidden((outcome.usage?.text ?? outcome.stdout).trim())).slice(0, PLAN_MAX) : "";
+      if (status === "succeeded" && !text) { status = "failed"; error = tr("runNote.planEmpty"); }
+      const done = this.store.update(run.id, { status, error, exitCode, summary, plan: { ...run.plan, text: status === "succeeded" ? text : null }, ...usage, finishedAt: now.toISOString() });
+      // Saving outside the checkout preserves CLI read-only mode and keeps plans out of code commits.
+      if (status === "succeeded") writeFileSync(path.join(this.#opts.dataDir, "runs", `${run.id}.plan.md`), text);
+      this.#opts.onEvent?.({ type: "finished", run: done });
+      void this.tick();
+      return;
+    }
+
     let commits = run.commits;
     let headSha = run.headSha;
     // The judge changes nothing: what it left is dropped when the kept candidate replaces the branch.
@@ -2259,6 +2286,7 @@ export class Runner {
           bestOf: run.bestOf,
           requestedBy: run.requestedBy,
           selection: run.selection,
+          plan: run.plan,
         },
         this.#iso(),
       );

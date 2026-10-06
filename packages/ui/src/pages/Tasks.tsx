@@ -1,3 +1,5 @@
+import { ImplementationPlans } from "#ui/components/ImplementationPlans.tsx";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@xdev-hive/ui/components/ui/tabs";
 import { ResponsiveTable as Table, ResponsiveTableRow as TableRow } from "#ui/components/ResponsiveTable.tsx";
 import { TaskModelChips } from "#ui/components/ModelChip.tsx";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
@@ -476,7 +478,10 @@ function TaskDetail({ task, requests, hub, onChanged }: { task: Task; requests: 
           </div>
         </SheetDescription>
       </SheetHeader>
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
+      <Tabs defaultValue="details" className="min-h-0 flex-1 overflow-y-auto p-4">
+        <TabsList variant="line" className="shrink-0"><TabsTrigger value="details" className="min-h-(--control-h-touch)">{t("planApproval.detail")}</TabsTrigger>{hub ? <TabsTrigger value="plan" className="min-h-(--control-h-touch)" data-task-plan-tab>{t("planApproval.tab")}</TabsTrigger> : null}</TabsList>
+        {hub ? <TabsContent value="plan"><ImplementationPlans project={task.project} taskId={task.id} /></TabsContent> : null}
+        <TabsContent value="details" className="flex flex-col gap-5">
         <section className="grid grid-cols-[auto_1fr] items-start gap-x-4 gap-y-3 text-sm">
           <span className="text-xs font-medium text-muted-foreground">{t("tasks.status")}</span>
           <div className="max-w-48">
@@ -510,7 +515,7 @@ function TaskDetail({ task, requests, hub, onChanged }: { task: Task; requests: 
         <NoteHistory task={task} />
         {/* What the task's runs made and the hub kept (roadmap 41c); only a hub has them. */}
         {hub ? <ArtifactList project={task.project} taskId={task.id} /> : null}
-      </div>
+      </TabsContent></Tabs>
     </SheetContent>
   );
 }

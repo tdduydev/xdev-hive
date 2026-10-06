@@ -2,6 +2,7 @@
 // another vendor checks and passes it (or hands it to a person), or it goes on by itself. The hub admin sets how far
 // each gate may go (the ceiling); a project picks within it, never past it.
 import { z } from "zod";
+import { DEFAULT_PLAN_APPROVAL, type PlanApprovalSettings } from "#core/plan-approval.ts";
 
 /** In flow order. spec/plan/tasks: after each Spec Kit step; dispatch: before a flow task runs; review: after it ran;
  * fix: when its review asks for changes; merge: when its MR is green. */
@@ -27,6 +28,7 @@ export const gateModesSchema = z.partialRecord(z.enum(SDLC_GATES), gateModeSchem
 export interface SdlcProjectSettings {
   /** A gate left out is "human". */
   gates: Partial<GateModes>;
+  planApproval?: PlanApprovalSettings;
   maxFixRounds?: number;
   /** Flow tasks running at once when dispatch is not "human"; left out: no limit. */
   maxParallel?: number;
@@ -61,7 +63,7 @@ export function effectiveGates(policy: SdlcPolicySettings, project: string): Gat
 /** The settings as the pages read them: the ceiling filled in, and each project's choice next to what applies. */
 export interface SdlcPolicyView {
   ceiling: GateModes;
-  projects: Record<string, { gates: Partial<GateModes>; effective: GateModes; maxFixRounds: number; maxParallel: number | null; fastLaneKinds: Array<(typeof FAST_LANE_KINDS)[number]> }>;
+  projects: Record<string, { gates: Partial<GateModes>; effective: GateModes; maxFixRounds: number; maxParallel: number | null; fastLaneKinds: Array<(typeof FAST_LANE_KINDS)[number]>; planApproval?: PlanApprovalSettings }>;
   updatedAt: string | null;
   updatedBy: string | null;
 }
@@ -73,7 +75,7 @@ export function sdlcPolicyView(policy: SdlcPolicySettings, projects: string[]): 
     projects: Object.fromEntries(
       names.map((p) => {
         const own = policy.projects[p];
-        return [p, { gates: own?.gates ?? {}, effective: effectiveGates(policy, p), maxFixRounds: own?.maxFixRounds ?? DEFAULT_MAX_FIX_ROUNDS, maxParallel: own?.maxParallel ?? null, fastLaneKinds: own?.fastLaneKinds ?? [] }];
+        return [p, { gates: own?.gates ?? {}, effective: effectiveGates(policy, p), maxFixRounds: own?.maxFixRounds ?? DEFAULT_MAX_FIX_ROUNDS, maxParallel: own?.maxParallel ?? null, fastLaneKinds: own?.fastLaneKinds ?? [], planApproval: own?.planApproval ?? DEFAULT_PLAN_APPROVAL }];
       }),
     ),
     updatedAt: policy.updatedAt,

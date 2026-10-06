@@ -156,6 +156,18 @@ describe("model learning on the hub", () => {
     return { hive, finished };
   }
 
+  it("counts planning cost without treating its errors or tier as an implementation attempt", async () => {
+    const { hive, finished } = await hub();
+    const id = await finished("feature", "m", "light");
+    const time = "2026-09-30T23:00:00.000Z";
+    hive.db.prepare(`INSERT INTO run_records(machine_id, run_id, machine, project, task_id, task_title, role, status, tier, kind, created_at, finished_at, updated_at, plan)
+      VALUES ('m', 'planning', 'test', 'app', ?, 'x', 'implement', 'failed', 'strong', 'claude', ?, ?, ?, ?)`)
+      .run(id, time, time, time, JSON.stringify({ id: 1, phase: "plan", text: null, note: null }));
+    hive.db.prepare(`INSERT INTO run_costs(machine_id, run_id, machine, project, task_id, profile_id, cost_usd, input_tokens, output_tokens, finished_at, priced)
+      VALUES ('m', 'planning', 'test', 'app', ?, 'claude-1', 1, 100, 10, ?, 1)`).run(id, time);
+    const stat = (await hive.call("modelLearning.get", { project: "app" }, viewer)).stats[0]!;
+    assert.deepEqual([stat.tier, stat.clean, stat.costMedian, stat.tokensMedian], ["light", 1, 5, 2310]); hive.close();
+  });
   it("applies each proposal to an unlocked cell at night, logs it, and leaves locked cells and other tasks alone", async () => {
     const { hive, finished } = await hub();
     for (let i = 0; i < 10; i++) await finished("feature", "m", "light", { clean: i < 9 });

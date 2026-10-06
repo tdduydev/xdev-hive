@@ -1025,7 +1025,7 @@ async function main() {
       if (body.error) throw new Error(`${method}: ${body.error.message}`);
       return body.result;
     };
-    const profile = (id, kind) => ({ id, label: id, kind, enabled: true, account: null, installed: true, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, maxConcurrent: 1 });
+    const profile = (id, kind) => ({ id, label: id, kind, enabled: true, account: null, installed: true, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, maxConcurrent: 1, planApproval: true });
     const beat = () => machineRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", version: "0.115.0", projects: ["payment"], acceptsRuns: true, profiles: [profile("claude-1", "claude"), profile("codex-1", "codex")], runs: [] });
     await beat();
     const lanRpc = async (method, input) => {
@@ -1117,6 +1117,50 @@ async function main() {
       }
       await tab.waitFor("the flow on Task after pipeline", () => !!document.querySelector('[data-flow="SPEC-E2E"]'));
     });
+    await step("plan-approval", async () => {
+      try {
+        await tab.go("pipeline?project=payment");
+        await tab.click('[data-pipeline-gate="dispatch"]');
+        await tab.waitFor("planning settings next to dispatch", () => !!document.querySelector("[data-plan-settings]"));
+        await tab.click('[data-plan-mode="medium-large"]');
+        await tab.waitFor("only the selected plan mode is pressed", () => document.querySelectorAll('[data-plan-mode][aria-pressed="true"]').length === 1 && document.querySelector('[data-plan-mode="medium-large"]')?.getAttribute("aria-pressed") === "true");
+        await tab.click('[data-pipeline-save]');
+        await until("plan mode saved", async () => (await rpc("sdlc.get", {})).projects.payment?.planApproval?.mode === "medium-large");
+        await lanRpc("tasks.create", { id: "PLAN-E2E", project: "payment", title: "Lập kế hoạch sửa hoàn tiền", kind: "feature", size: "m" });
+        const first = await lanRpc("runs.dispatch", { project: "payment", taskId: "PLAN-E2E", machineId: "runner.lan-mbp@lan-e2e" });
+        expect(first.plan?.phase === "plan", "first phase must only plan");
+        const finishPlan = async (req, runId, planText) => {
+          await machineRpc("runs.requestResult", { id: req.id, status: "accepted", runId });
+          await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ runId, project: "payment", taskId: "PLAN-E2E", taskTitle: "Lập kế hoạch sửa hoàn tiền", role: "implement", status: "succeeded", profileId: "claude-1", createdAt: at, finishedAt: at, planText }] });
+        };
+        await finishPlan(first, "R-impl-plan1", "## Việc sẽ làm\nSửa hoàn tiền.\n## File\npayment.ts\n## Cách kiểm\nnpm test\n## Rủi ro\nKhông đổi dữ liệu.");
+        await tab.reload(); await tab.go("today");
+        await tab.click(`[data-inbox-key="plan:${first.plan.id}:1"]`);
+        await tab.waitFor("plan ready in Today", () => !!document.querySelector("[data-plan-note]"));
+        await tab.shot(`${String(n).padStart(2, "0")}-plan-today`);
+        await tab.click("[data-plan-note]"); await tab.type("Thêm test hoàn tiền hai lần");
+        await tab.click("button", "Sửa kế hoạch");
+        const revised = await until("revised planning request", async () => (await beat()).runRequests.find((r) => r.taskId === "PLAN-E2E"));
+        expect(revised.plan.phase === "plan" && revised.plan.note.includes("hai lần"), "revision notes reach planner");
+        await finishPlan(revised, "R-impl-plan2", "Kế hoạch sửa: thêm test hoàn tiền hai lần, sửa payment.ts, chạy npm test. Rủi ro: giữ nguyên dữ liệu.");
+        await tab.reload(); await tab.go("tasks?task=PLAN-E2E");
+        await tab.click("[data-task-plan-tab]");
+        await tab.waitFor("task Plan tab", () => !!document.querySelector("[data-plan-approve]"));
+        if (mobile) {
+          const check = await tab.eval(() => ({ overflow: document.documentElement.scrollWidth > innerWidth, targets: [...document.querySelectorAll('[data-implementation-plan] button')].map((el) => ({ w: el.getBoundingClientRect().width, h: el.getBoundingClientRect().height })) }));
+          expect(!check.overflow && check.targets.every((r) => r.w >= 44 && r.h >= 44), `plan mobile targets: ${JSON.stringify(check)}`);
+        }
+        await tab.shot(`${String(n).padStart(2, "0")}-plan-task-tab`);
+        await tab.click("[data-plan-approve]");
+        const implementation = await until("implementation queued after approval", async () => (await beat()).runRequests.find((r) => r.taskId === "PLAN-E2E"));
+        expect(implementation.plan.phase === "implement" && implementation.plan.text.includes("hai lần"), "approved plan accompanies implementation");
+        await rpc("runs.cancelRequest", { id: implementation.id });
+      } finally {
+        await rpc("sdlc.setProject", { project: "payment", settings: null });
+        await tab.go("tasks?task=SPEC-E2E");
+      }
+    });
+
     await step("models-in-pipeline", async () => {
       const original = await rpc("modelRouter.get", {});
       try {
