@@ -299,6 +299,10 @@ describe("one prompt for several agents (roadmap 31e)", () => {
     assert.equal(state("P-1-b").status, "done");
     assert.equal(state("P-1").status, "done");
     assert.notEqual(state("P-1-c").status, "done", "the kept one goes on as it was");
+    const journalPage = (await hive.call("docs.list", { project: "app" }, admin)).find((d) => d.key.startsWith("project/app/nhat-ky-"))!;
+    const journal = (await hive.call("docs.get", { key: journalPage.key }, admin))!;
+    for (const id of ["P-1", "P-1-a", "P-1-b"]) assert.ok(journal.content.includes(`<!-- task-journal:${id} -->`));
+    assert.ok(!journal.content.includes("<!-- task-journal:P-1-c -->"));
     assert.equal(await refusal(hive.call("runs.pickWinner", { groupId: g.id, taskId: "P-1-a" }, lead)), "errors.winnerPicked");
     // Over: its task may be run again by hand (a fix, a review).
     assert.equal((await hive.call("runs.dispatch", { machineId: mini.name, project: "app", taskId: "P-1-c" }, lead)).status, "pending");

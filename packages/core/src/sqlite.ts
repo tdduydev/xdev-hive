@@ -2563,6 +2563,71 @@ export class SqliteHive implements HiveBackend {
           return { removed };
   }
 
+  /** Keep completion and its journal in the same transaction, including automatic group closures. */
+  #journalTask(id: string): void {
+    const task = this.#getTask(id)!;
+    const now = this.#now();
+    const systems = (this.db.prepare("SELECT name, projects FROM systems ORDER BY name").all() as Row[])
+      .filter((r) => (JSON.parse(str(r.projects)) as string[]).includes(task.project));
+    const prefixes = systems.length ? systems.map((r) => `system/${str(r.name)}`) : [`project/${task.project}`];
+    const handover = this.db.prepare("SELECT note, source FROM task_notes WHERE task_id = ? ORDER BY version DESC LIMIT 1").get(id) as Row | undefined;
+    const note = handover ? str(handover.note) : task.note ?? "";
+    const section = (label: string): string => {
+      const lines = note.split(/\r?\n/);
+      const start = lines.findIndex((line) => new RegExp(`^\\s*(?:#{1,6}\\s*)?(?:\\*\\*)?${label}`, "i").test(line));
+      if (start < 0) return label === "ĐÃ LÀM" ? note.slice(0, 700) : "Không ghi trong bàn giao.";
+      let end = start + 1;
+      while (end < lines.length && !/^\s*(?:#{1,6}\s*)?(?:\*\*)?(ĐÃ LÀM|CHƯA LÀM|CÁCH KIỂM|RỦI RO)\b/i.test(lines[end]!)) end++;
+      return lines.slice(start, end).join("\n").slice(0, 700);
+    };
+    const run = this.db.prepare("SELECT * FROM run_records WHERE project = ? AND task_id = ? ORDER BY created_at DESC, updated_at DESC, rowid DESC LIMIT 1").get(task.project, id) as Row | undefined;
+    const artifacts = this.db.prepare("SELECT id, name, run_id FROM artifacts WHERE project = ? AND task_id = ? ORDER BY id").all(task.project, id) as Row[];
+    const source: WriteSource = {
+      ...(handover?.source ? JSON.parse(str(handover.source)) as WriteSource : { via: "api" as const }),
+      ...(run ? { machine: str(run.machine), run: str(run.run_id) } : {}),
+      task: id,
+    };
+    const text = (value: string) => value.replace(/[\\\[\]`*_<>]/g, "\\$&");
+    const marker = `<!-- task-journal:${encodeURIComponent(id)} -->`;
+    const endMarker = `<!-- /task-journal:${encodeURIComponent(id)} -->`;
+    const lines = [marker, `## ${now.slice(0, 10)} · ${task.project} · ${id}: ${text(task.title)}`, "", "### Đã làm", section("ĐÃ LÀM"), "", "### Rủi ro", section("RỦI RO")];
+    if (run) {
+      lines.push("", `Run: [${str(run.run_id)}](#/runs?run=${encodeURIComponent(str(run.run_id))}) · máy ${str(run.machine_id)}`);
+      if (run.mr_url) lines.push(`MR/PR: ${str(run.mr_url)}`);
+    }
+    for (const a of artifacts) lines.push(`Artifact #${num(a.id)}: [${text(str(a.name))}](#/tasks?task=${encodeURIComponent(id)}) · run ${str(a.run_id)}`);
+    lines.push(endMarker);
+    const cleanEntry = redactLines(lines.join("\n"));
+    assertNoHidden(cleanEntry, "Task journal");
+    for (const prefix of prefixes) {
+      const folder = `${prefix}/nhat-ky`;
+      if (!this.#getDoc(folder)) this.#writeDoc(folder, "# Nhật ký\n", { title: "Nhật ký", folder: true, includeInAgents: false, note: `Nhật ký: ${id}` }, "hub", source);
+      // Reopened tasks retain their original month; exact markers avoid collisions between task ids.
+      const existing = (this.db.prepare("SELECT * FROM docs WHERE project = ? AND key LIKE ? AND removed_at IS NULL").all(parseDocKey(`${prefix}/nhat-ky`).project!, `${prefix}/nhat-ky-%`) as Row[])
+        .map(toDoc).find((doc) => doc.content.includes(marker));
+      const key = existing?.key ?? `${prefix}/nhat-ky-${now.slice(0, 7)}`;
+      const doc = existing ?? this.#getDoc(key);
+      let content = doc?.content ?? `# Nhật ký ${now.slice(0, 7)}\n`;
+      let entry = cleanEntry;
+      if (existing) {
+        const start = content.indexOf(marker), end = content.indexOf(endMarker, start);
+        const previous = content.slice(start, end);
+        const completions = previous.split("\n").filter((line) => line.startsWith("Hoàn tất lại: "));
+        entry = entry.replace(endMarker, `${[...completions, `Hoàn tất lại: ${now.slice(0, 10)}`].join("\n")}\n${endMarker}`);
+        content = content.slice(0, start) + content.slice(end + endMarker.length);
+      }
+      const heading = /^# [^\n]*\n/.exec(content)?.[0] ?? "";
+      content = `${heading}\n${entry}\n\n${content.slice(heading.length).trim()}\n`;
+      this.#writeDoc(key, content, { includeInAgents: false, parent: folder, note: `Nhật ký: ${id}` }, "hub", source);
+      if (prefix.startsWith("system/")) {
+        const overviewKey = `${prefix}/tong-quan`;
+        const overview = this.#getDoc(overviewKey);
+        const link = `[[${folder}|Nhật ký]]`;
+        if (!overview?.content.includes(link)) this.#writeDoc(overviewKey, `${overview?.content ?? "# Tổng quan\n"}\n${link}\n`, { note: `Nhật ký: ${id}` }, "hub", source);
+      }
+    }
+  }
+
   #getDoc(key: string): Doc | null {
     const row = this.db.prepare("SELECT * FROM docs WHERE key = ?").get(key) as Row | undefined;
     return row ? toDoc(row) : null;
@@ -3852,7 +3917,10 @@ export class SqliteHive implements HiveBackend {
     // Every part ran: their work goes on in the job's task, which stops waiting for them.
     const parts = g.items.map((i) => this.#getTask(i.taskId)).filter((t): t is Task => !!t);
     const close = db.prepare("UPDATE tasks SET status = 'done', owner = NULL, lease_until = NULL, updated_at = ? WHERE id = ? AND status != 'done'");
-    for (const t of parts) close.run(now, t.id);
+    for (const t of parts) {
+      close.run(now, t.id);
+      if (t.status !== "done") this.#journalTask(t.id);
+    }
     const task = this.#getTask(parent.id)!;
     const instructions = reduceInstructions(parent.id, parts.map((t) => ({ taskId: t.id, title: t.title, note: t.note })));
     try {
@@ -6317,6 +6385,7 @@ export class SqliteHive implements HiveBackend {
           if (note !== undefined) this.#applyTaskRule(id);
           // An empty note clears the task's note as it always did, but is no handover to keep.
           if (kept !== null && kept.trim()) this.#keepNote(id, kept, status, actor, now);
+          if (status === "done" && task.status !== "done") this.#journalTask(id);
           return this.#getTask(id)!;
         }),
       "tasks.classify": ({ id, kind, size, risk }, actor) =>
@@ -6932,8 +7001,10 @@ export class SqliteHive implements HiveBackend {
           const close = db.prepare("UPDATE tasks SET status = 'done', owner = NULL, lease_until = NULL, note = ?, updated_at = ? WHERE id = ?");
           // The line that closes a candidate goes over its agent's handover, so that handover is kept as a version first.
           const closeNote = (id: string, text: string) => {
+            const wasDone = this.#getTask(id)?.status === "done";
             close.run(text, now, id);
             this.#keepNote(id, text, "done", actor, now);
+            if (!wasDone) this.#journalTask(id);
           };
           for (const i of g.items) {
             if (i.taskId !== taskId) closeNote(i.taskId, `Không chọn trong ${g.parentTask} (chọn ${taskId}).`);

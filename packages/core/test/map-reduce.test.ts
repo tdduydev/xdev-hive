@@ -82,6 +82,8 @@ describe("map-reduce (roadmap 31c)", () => {
     const merging = await group(g.id);
     assert.equal(merging.phase, "reduce");
     assert.deepEqual(await tasks(hive, ["P-1-1", "P-1-2", "P-1-3"]), ["P-1-1:done", "P-1-2:done", "P-1-3:done"]);
+    const journal = (await hive.call("docs.get", { key: "project/app/nhat-ky-2026-10" }, admin))!;
+    for (const id of ["P-1-1", "P-1-2", "P-1-3"]) assert.ok(journal.content.includes(`<!-- task-journal:${id} -->`));
     const [merge] = await beat();
     assert.deepEqual([merge!.taskId, merge!.machineId, merge!.reviewAfter], ["P-1", mbp.name, true], "on the parts' machine, reviewed after");
     for (const b of ["ai/P-1-1", "ai/P-1-2", "ai/P-1-3"]) assert.ok(merge!.instructions.includes(b), b);
