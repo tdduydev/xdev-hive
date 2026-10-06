@@ -66,7 +66,9 @@ export function useHashParam(name: string): [string | null, () => void] {
     return () => window.removeEventListener("hashchange", onHash);
   }, [name]);
   const clear = useCallback(() => {
-    window.history.replaceState(null, "", window.location.hash.split("?")[0] || "#/");
+    // The tab is the frame's (roadmap 49b: Đợt chạy is a tab of Agent đang chạy), so a page in a tab keeps it.
+    const tab = hashParam("tab");
+    window.history.replaceState(null, "", `${window.location.hash.split("?")[0] || "#/"}${tab ? `?tab=${encodeURIComponent(tab)}` : ""}`);
     setValue(null);
   }, []);
   return [value, clear];

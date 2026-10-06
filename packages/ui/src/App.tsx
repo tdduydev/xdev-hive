@@ -1,46 +1,31 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import {
   Activity,
-  BellRing,
   BookOpen,
-  FileCode2,
-  HardDrive,
   Bot,
   Boxes,
   Brain,
-  DollarSign,
   FileText,
   FolderGit2,
-  Gauge,
   GitPullRequestArrow,
   Inbox,
   KeyRound,
   Laptop,
-  Layers,
-  LayoutDashboard,
   LayoutGrid,
   ListChecks,
-  ListOrdered,
   ListTodo,
   MessageSquare,
   Network,
-  Package,
-  ScrollText,
-  Send,
   Server,
+  Settings2,
   ShieldCheck,
-  SquareCheck,
   SquareKanban,
   Terminal,
-  UserCog,
-  UsersRound,
   WandSparkles,
-  Workflow,
-  Wrench,
 } from "lucide-react";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { TooltipProvider } from "@xdev-hive/ui/components/ui/tooltip";
-import { may, missingRequired, withSystemGrants, type Me, type ToolView } from "@xdev-hive/core";
+import { missingRequired, withSystemGrants, type Me, type ToolView } from "@xdev-hive/core";
 import type { HiveClient } from "./client.ts";
 import { ChangePasswordScreen } from "./components/Account.tsx";
 import { ErrorNote } from "./components/common.tsx";
@@ -48,23 +33,20 @@ import { CrashCard, ErrorBoundary, PageBoundary } from "./components/ErrorBounda
 import { HiveContext, useProjectList, useQuery, usePoll } from "./hooks.ts";
 import { activeIntl, useT, type MessageKey } from "./i18n/index.tsx";
 import { resolveHash } from "./lib/route.ts";
-import { contextProjects } from "./lib/permission-controls.ts";
+import { WEB_MENU, WEB_SHORTCUTS, webCaps, webPages } from "./lib/nav.ts";
 import { readScope, resolveScope, writeScope, type Scope } from "./lib/scope.ts";
 import { useSystemTheme } from "./lib/theme.ts";
 import { ClientShell, type NavEntry, type NavGroup } from "./shell/ClientShell.tsx";
 import { InboxProvider, useInboxState } from "./shell/inbox.tsx";
-import { PolicyTab } from "./pages/Admin.tsx";
 import { AgentsPage } from "./pages/Agents.tsx";
-import { BatchesPage } from "./pages/Batches.tsx";
 import { ChatPage } from "./pages/Chat.tsx";
 import { DevicePage } from "./pages/Device.tsx";
 import { DocsPage } from "./pages/Docs.tsx";
-import { MachinesPage } from "./pages/Machines.tsx";
 import { MemoryPage } from "./pages/Memory.tsx";
 import { OverviewPage } from "./pages/Overview.tsx";
 import { ProjectsPage } from "./pages/Projects.tsx";
 import { ProposalsPage } from "./pages/Proposals.tsx";
-import { RunsPage } from "./pages/Runs.tsx";
+import { AdminPage, MachinesAgentsPage, RunsWorkPage, SettingsPage } from "./pages/Sections.tsx";
 import { SetupPage } from "./pages/Setup.tsx";
 import { SkillsPage } from "./pages/Skills.tsx";
 import { SpecsPage } from "./pages/Specs.tsx";
@@ -72,15 +54,6 @@ import { SystemsPage } from "./pages/Systems.tsx";
 import { TaskWorkPage } from "./pages/Tasks.tsx";
 import { TodayPage } from "./pages/Today.tsx";
 import { TokensPage } from "./pages/Tokens.tsx";
-import { ToolsPage } from "./pages/Tools.tsx";
-import { UsersPage } from "./pages/Users.tsx";
-import { MembersPage } from "./pages/Members.tsx";
-import { WebhooksTab } from "./pages/Webhooks.tsx";
-import { OpsAudit, OpsCosts, OpsFleet, OpsQueue } from "./pages/admin/Ops.tsx";
-import { OpsPage, OverviewWithRange } from "./pages/admin/frame.tsx";
-import { OpsVersions } from "./pages/admin/Versions.tsx";
-import { OpsAlerts } from "./pages/admin/Alerts.tsx";
-import { OpsContext, OpsHub } from "./pages/admin/HubOps.tsx";
 import { DocReaderPage } from "./pages/DocReader.tsx";
 const GraphPage = lazy(() => import("./pages/Graph.tsx").then((module) => ({ default: module.GraphPage })));
 
@@ -89,7 +62,6 @@ type PageId =
   | "overview"
   | "chat"
   | "runs"
-  | "batches"
   | "docs"
   | "read"
   | "specs"
@@ -100,22 +72,10 @@ type PageId =
   | "graph"
   | "agents"
   | "machines"
-  | "ops"
-  | "fleet"
-  | "queue"
-  | "costs"
-  | "alerts"
-  | "policy"
-  | "context"
-  | "webhooks"
-  | "audit"
-  | "versions"
-  | "hub"
-  | "users"
-  | "members"
+  | "settings"
+  | "admin"
   | "tokens"
   | "setup"
-  | "tools"
   | "projects"
   | "systems"
   | "device";
@@ -125,8 +85,8 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
   today: { label: "nav.today", sub: "navSub.today", icon: Inbox, render: () => <TodayPage /> },
   overview: { label: "nav.overview", sub: "navSub.overview", icon: LayoutGrid, render: () => <OverviewPage /> },
   chat: { label: "nav.chat", sub: "navSub.chat", icon: MessageSquare, render: () => <ChatPage /> },
-  runs: { label: "nav.runs", sub: "navSub.runs", icon: Activity, render: () => <RunsPage /> },
-  batches: { label: "nav.batches", sub: "navSub.batches", icon: Workflow, render: () => <BatchesPage /> },
+  // On the web with Đợt chạy as a tab (roadmap 49b); the desktop app's own runs as they were.
+  runs: { label: "nav.runs", sub: "navSub.runs", icon: Activity, render: () => <RunsWorkPage /> },
   docs: { label: "nav.docs", sub: "navSub.docs", icon: FileText, render: () => <DocsPage /> },
   // Not in the sidebar: a doc's reading view (#/read?doc=…), under Tài liệu.
   read: { label: "nav.read", sub: "navSub.read", icon: BookOpen, render: () => <DocReaderPage /> },
@@ -138,23 +98,12 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
   tasks: { label: "nav.tasks", sub: "navSub.tasks", icon: ListTodo, render: () => <TaskWorkPage /> },
   graph: { label: "nav.graph", sub: "navSub.graph", icon: Network, render: () => <Suspense fallback={null}><GraphPage /></Suspense> },
   agents: { label: "nav.agents", sub: "navSub.agents", icon: Bot, render: () => <AgentsPage /> },
-  machines: { label: "nav.machines", sub: "navSub.machines", icon: Server, render: () => <MachinesPage /> },
+  // The web's entries that hold tabs (roadmap 49b): the pages that were in Vận hành and Quản trị before.
+  machines: { label: "nav.machines", sub: "navSub.machines", icon: Server, render: () => <MachinesAgentsPage /> },
+  settings: { label: "nav.settings", sub: "navSub.settings", icon: Settings2, render: () => <SettingsPage /> },
+  admin: { label: "nav.admin", sub: "navSub.admin", icon: ShieldCheck, render: () => <AdminPage /> },
   setup: { label: "nav.setup", sub: "navSub.setup", icon: Terminal, render: () => <SetupPage /> },
-  tools: { label: "nav.tools", sub: "navSub.tools", icon: Wrench, render: () => <ToolsPage /> },
-  // Operations and administration of the hub (roadmap 35b): what the Web Admin had, in the one web shell.
-  ops: { label: "ops.nav.overview", sub: "ops.hint.overview", icon: LayoutDashboard, render: () => <OverviewWithRange /> },
-  fleet: { label: "ops.nav.fleet", sub: "ops.hint.fleet", icon: Gauge, render: () => <OpsPage><OpsFleet /></OpsPage> },
-  queue: { label: "ops.nav.queue", sub: "ops.hint.queue", icon: ListOrdered, render: () => <OpsPage><OpsQueue /></OpsPage> },
-  costs: { label: "ops.nav.costs", sub: "ops.hint.costs", icon: DollarSign, render: () => <OpsPage><OpsCosts /></OpsPage> },
-  alerts: { label: "ops.nav.alerts", sub: "ops.hint.alerts", icon: BellRing, render: () => <OpsPage><OpsAlerts /></OpsPage> },
-  policy: { label: "ops.nav.policy", sub: "ops.hint.policy", icon: ShieldCheck, render: () => <OpsPage><PolicyTab /></OpsPage> },
-  context: { label: "ops.nav.context", sub: "ops.hint.context", icon: FileCode2, render: () => <OpsPage><OpsContext /></OpsPage> },
-  webhooks: { label: "ops.nav.webhooks", sub: "ops.hint.webhooks", icon: Send, render: () => <OpsPage><WebhooksTab /></OpsPage> },
-  audit: { label: "ops.nav.audit", sub: "ops.hint.audit", icon: ScrollText, render: () => <OpsPage><OpsAudit /></OpsPage> },
-  versions: { label: "ops.nav.versions", sub: "ops.hint.versions", icon: Package, render: () => <OpsPage><OpsVersions /></OpsPage> },
-  hub: { label: "ops.nav.hub", sub: "ops.hint.hub", icon: HardDrive, render: () => <OpsPage><OpsHub /></OpsPage> },
-  users: { label: "nav.users", sub: "navSub.users", icon: UsersRound, render: () => <UsersPage /> },
-  members: { label: "nav.members", sub: "navSub.members", icon: UserCog, render: () => <MembersPage /> },
+  // Not in the web's sidebar: the account menu opens it (roadmap 49b).
   tokens: { label: "nav.tokens", sub: "navSub.tokens", icon: KeyRound, render: () => <TokensPage /> },
   projects: { label: "nav.projects", sub: "navSub.projects", icon: FolderGit2, render: () => <ProjectsPage /> },
   systems: { label: "nav.systems", sub: "navSub.systems", icon: Boxes, render: () => <SystemsPage /> },
@@ -177,24 +126,16 @@ const LOCAL_GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
   { label: "nav.groupAdmin", ids: ["systems"] },
 ];
 /**
- * The web (roadmap 35b): one shell for everyone, each group showing what the person may use. Work and knowledge for
- * every member; operations and administration for those who run projects or the hub.
+ * The web: one shell for everyone (roadmap 35b), its menu by job since 49b (lib/nav.ts has it, with who sees what):
+ * Hôm nay and Chat, the work, the knowledge, then the project's settings, the machines and the hub's administration.
  */
-const WEB_GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
-  { label: null, ids: ["today", "graph", "chat"] },
-  { label: "nav.groupWork", ids: ["tasks", "specs", "batches", "runs"] },
-  { label: "nav.groupKnowledge", ids: ["docs", "skills", "memory", "proposals"] },
-  { label: "ops.group.ops", ids: ["ops", "machines", "fleet", "queue", "costs", "alerts"] },
-  { label: "nav.groupAdmin", ids: ["systems", "members", "users", "policy", "tools", "context", "tokens", "webhooks", "audit", "versions", "hub"] },
-];
+const WEB_GROUPS = WEB_MENU as Array<{ label: MessageKey | null; ids: PageId[] }>;
+const SHORTCUTS = WEB_SHORTCUTS as Partial<Record<PageId, string>>;
 /**
- * ⌘1–6 on the web and on a machine connected to a hub: Hôm nay, Chat, Lượt chạy, Tài liệu, Agent, of those the mode
- * shows. ⌘3 was the Board, which is the Task page now (roadmap 39f); the others keep the key they had, since this
- * roadmap item only changes the menu of the local mode.
+ * ⌘1–6 on a machine connected to a hub: Hôm nay, its Board (roadmap 44, on the key the Board has in local mode), Chat
+ * (48), Lượt chạy, Tài liệu, Agent. Written out since 49b gave the web keys of its own, and the app's stay.
  */
-const SHORTCUTS: Partial<Record<PageId, string>> = { today: "1", chat: "2", runs: "4", docs: "5", agents: "6" };
-/** Connected to a hub the app adds its Board (roadmap 44) on the key the Board has in local mode, and Chat (48) after it. */
-const DESK_SHORTCUTS: Partial<Record<PageId, string>> = { ...SHORTCUTS, tasks: "2", chat: "3" };
+const DESK_SHORTCUTS: Partial<Record<PageId, string>> = { today: "1", tasks: "2", chat: "3", runs: "4", docs: "5", agents: "6" };
 /** On this machine the menu is another one (roadmap 39f), so ⌘1–6 follow it: its first six entries. */
 const LOCAL_SHORTCUTS: Partial<Record<PageId, string>> = { today: "1", tasks: "2", runs: "3", docs: "4", agents: "5", setup: "6" };
 
@@ -212,15 +153,15 @@ const DESK_GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
 ];
 /** What the machine's Hôm nay shows: its runs' CI, its own setup, install requests for it. */
 const DESK_INBOX = new Set(["ci", "machine", "request"]);
-/** Not in the sidebar, still in the command palette. */
-const PALETTE_ONLY: PageId[] = ["overview"];
+/** Not in the sidebar, still in the command palette: Token moved to the account menu on the web (roadmap 49b). */
+const PALETTE_ONLY: PageId[] = ["overview", "tokens"];
 
 type Route = { kind: "client"; id: PageId };
 const HOME: Route = { kind: "client", id: "today" };
 
 /** The page the address bar means (lib/route.ts has the table), with an old address rewritten to the page it reaches. */
-function readHash(local: boolean): Route | null {
-  const { id, hash } = resolveHash(window.location.hash, { local, isPage: (page) => page in PAGES });
+function readHash(local: boolean, web: boolean): Route | null {
+  const { id, hash } = resolveHash(window.location.hash, { local, web, isPage: (page) => page in PAGES });
   if (hash) window.history.replaceState(null, "", hash);
   return id ? { kind: "client", id: id as PageId } : null;
 }
@@ -273,7 +214,9 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   const webAdmin = hubAdmin && !client.desktop;
   // This machine on its own: fewer pages, so a few addresses lead elsewhere (roadmap 39f) and ⌘1–6 follow its menu.
   const local = !!client.desktop && me.mode !== "hub";
-  const [route, setRoute] = useState<Route>(() => readHash(local) ?? HOME);
+  // The hub's web, whose menu folded pages into tabs (roadmap 49b), so its old addresses lead to those tabs.
+  const web = !client.desktop;
+  const [route, setRoute] = useState<Route>(() => readHash(local, web) ?? HOME);
   const [tick, setTick] = useState(0);
   const bump = useCallback(() => setTick((t) => t + 1), []);
   const seen = useProjectList(client, tick);
@@ -311,41 +254,30 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   const localRef = useRef(local);
   localRef.current = local;
   useEffect(() => {
-    const onHash = () => setRoute(readHash(localRef.current) ?? HOME);
+    const onHash = () => setRoute(readHash(localRef.current, web) ?? HOME);
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
   const visible = useMemo(() => {
     if (deskHub) return new Set<PageId>([...DESK_PAGES].filter((id) => id !== "device" || (client.device && me.user)));
-    // Tool: the catalog is the hub's, and project managers on the web turn tools on for their project there too.
-    const ids = new Set<PageId>(["today", "overview", "docs", "read", "specs", "skills", "proposals", "memory", "tasks", "systems", "tools"]);
-    if (!client.desktop && (me.role === "admin" || projects.some((project) => may(me, project, "view")))) ids.add("graph");
-    if (client.desktop) for (const id of ["agents", "setup", "projects"] as const) ids.add(id);
-    // Machines only report to a hub (and push their runs to it); a local database never has any. The leader chat
-    // runs on a machine the hub hands it to.
-    if (me.mode === "hub") for (const id of ["machines", "runs", "batches", "chat"] as const) ids.add(id);
-    // The desktop's own runs (local mode too) are on Lượt chạy, and in local mode its own leader chat (roadmap 48),
-    // which an app before it has no bridge for.
-    if (client.desktop) ids.add("runs");
-    if (client.desktop?.chatMachine) ids.add("chat");
-    if (webAdmin) {
-      for (const id of ["ops", "fleet", "queue", "costs", "policy", "context", "audit"] as const) ids.add(id);
-      if (client.alerts) ids.add("alerts");
-      if (client.webhooks) ids.add("webhooks");
-      if (client.releases) ids.add("versions");
-      if (client.hub) ids.add("hub");
-      // Vận hành › Tổng quan is the same picture for every project; the members' one stays for the others.
-      ids.delete("overview");
+    // Everyone with an account manages their own tokens (machines, CI), from the account menu; admins see all.
+    const account = (ids: Set<PageId>) => {
+      if (client.tokens && (hubAdmin || me.user)) ids.add("tokens");
+      if (client.device && me.user) ids.add("device");
+      return ids;
+    };
+    if (!client.desktop) {
+      // Quản trị › Tổng quan vận hành is the same picture for every project; the members' Tổng quan stays for the others.
+      const ids = new Set<PageId>([...webPages(me, projects, webCaps(client)), "read"]);
+      if (!webAdmin) ids.add("overview");
+      return account(ids);
     }
-    if (me.mode === "hub" && !client.desktop && contextProjects(me, projects).length) ids.add("context");
-    if (hubAdmin && client.users) ids.add("users");
-    // Thành viên (roadmap 25): a project lead sets roles in their project; hub admins have Người dùng & quyền too.
-    if (me.mode === "hub" && client.members && (hubAdmin || may(me, null, "membersManage") || projects.some((p) => may(me, p, "membersManage")))) ids.add("members");
-    // Everyone with an account manages their own tokens (machines, CI); admins see all.
-    if (client.tokens && (hubAdmin || me.user)) ids.add("tokens");
-    if (client.device && me.user) ids.add("device");
-    return ids;
+    // The desktop app on its own machine (roadmap 39f): its runs and, from 48, its own leader chat, which an app
+    // before it has no bridge for. Machines, batches, members and the rest need a hub.
+    const ids = new Set<PageId>(["today", "overview", "docs", "read", "specs", "skills", "proposals", "memory", "tasks", "systems", "agents", "setup", "projects", "runs"]);
+    if (client.desktop.chatMachine) ids.add("chat");
+    return account(ids);
   }, [client, me, hubAdmin, webAdmin, projects, deskHub]);
 
   // A link or a jump to a page the desktop app does not have opens it on the hub's web instead.
@@ -407,15 +339,18 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     today: inbox.items.length,
     proposals: pending.data?.length ?? 0,
     setup: setup.data ? [...setup.data.machine, ...setup.data.projects.flatMap((p) => p.items)].filter((i) => i.state !== "installed").length : 0,
-    queue: (adminRequests.data ?? []).filter((r) => r.status === "pending").length,
-    fleet: lacking + (adminMachines.data ?? []).filter((m) => m.duplicate).length,
-    alerts: openAlerts.length,
+    // Máy & agent counts what Hàng đợi and Đội máy counted (requests waiting, machines lacking something or twice);
+    // Quản trị the open alerts (roadmap 49b).
+    machines: (adminRequests.data ?? []).filter((r) => r.status === "pending").length + lacking + (adminMachines.data ?? []).filter((m) => m.duplicate).length,
+    admin: openAlerts.length,
   };
   // Filled: what waits for you, and alerts the hub rates high.
-  const strong = (id: PageId) => id === "today" || (id === "alerts" && openAlerts.some((a) => a.severity === "high"));
+  const strong = (id: PageId) => id === "today" || (id === "admin" && openAlerts.some((a) => a.severity === "high"));
   const shortcuts = local ? LOCAL_SHORTCUTS : deskHub ? DESK_SHORTCUTS : SHORTCUTS;
-  // There Task is the Board alone, over this machine's projects, so it says so.
-  const label = (id: PageId): MessageKey => (deskHub && id === "tasks" ? "nav.board" : PAGES[id].label);
+  // There Task is the Board alone, over this machine's projects, so it says so. The web names two entries by the job
+  // they are for (roadmap 49b) until 49d and 49e give them pages of their own; the app keeps Spec and Lượt chạy.
+  const label = (id: PageId): MessageKey =>
+    deskHub && id === "tasks" ? "nav.board" : web && id === "runs" ? "nav.running" : web && id === "specs" ? "nav.features" : PAGES[id].label;
   const groups: NavGroup[] = (deskHub ? DESK_GROUPS : local ? LOCAL_GROUPS : WEB_GROUPS)
     .map((g) => ({
       label: g.label ? t(g.label) : null,
@@ -442,7 +377,11 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
           ? t("navSub.agentsOn", { machine })
           : deskHub && current === "tasks"
             ? t("navSub.boardOn")
-            : t(PAGES[current].sub);
+            : web && current === "runs"
+              ? t("navSub.running")
+              : web && current === "specs"
+                ? t("navSub.features")
+                : t(PAGES[current].sub);
   const frame = (
     <InboxProvider value={inbox}>
       <ClientShell

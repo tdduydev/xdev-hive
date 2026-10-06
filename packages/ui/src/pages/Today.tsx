@@ -693,7 +693,7 @@ function Detail({
             return t("alerts.acked");
           }),
         },
-        { label: t("inbox.alert.open"), kind: "secondary", run: go("#/alerts") },
+        { label: t("inbox.alert.open"), kind: "secondary", run: go("#/admin?tab=alerts") },
       ];
       break;
     }

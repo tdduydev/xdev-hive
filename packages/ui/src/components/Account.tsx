@@ -116,9 +116,22 @@ export const initials = (name: string) =>
 
 /**
  * Sidebar footer: who is signed in, what they may see, language, appearance, change password, sign out.
- * `subtitle` replaces the "@user · role" line (the desktop shows the machine and app version there).
+ * `subtitle` replaces the "@user · role" line (the desktop shows the machine and app version there). `onNavigate`:
+ * an entry opened a page, so a phone's menu drawer closes as a menu link would.
  */
-export function AccountMenu({ client, me, onSignOut, subtitle }: { client: HiveClient; me: Me; onSignOut?: () => void; subtitle?: string }) {
+export function AccountMenu({
+  client,
+  me,
+  onSignOut,
+  subtitle,
+  onNavigate,
+}: {
+  client: HiveClient;
+  me: Me;
+  onSignOut?: () => void;
+  subtitle?: string;
+  onNavigate?: () => void;
+}) {
   const [changing, setChanging] = useState(false);
   const [changed, setChanged] = useState(false);
   const t = useT();
@@ -175,6 +188,15 @@ export function AccountMenu({ client, me, onSignOut, subtitle }: { client: HiveC
             >
               <Link2 />
               {t("account.linkSso", { name: me.sso.name })}
+            </DropdownMenuItem>
+          ) : null}
+          {/* Token is one's own (machines, CI), so it sits with the account, not in the menu (roadmap 49b). */}
+          {client.tokens && (me.user || (me.mode === "hub" && me.role === "admin" && !me.access)) ? (
+            <DropdownMenuItem asChild onSelect={onNavigate}>
+              <a href="#/tokens" data-account-tokens>
+                <KeyRound />
+                {t("account.tokens")}
+              </a>
             </DropdownMenuItem>
           ) : null}
           {client.account ? (

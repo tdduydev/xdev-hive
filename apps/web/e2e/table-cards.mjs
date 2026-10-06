@@ -9,10 +9,25 @@ export async function tableCardsChecks({ tab, rpc, step, expect }) {
   await rpc("tasks.create", { id: "MOBILE-CARD", project: "payment", title: `Mobile table ${"long-title-".repeat(20)}` });
   await tab.eval(() => localStorage.setItem("hive-tasks-view", "list"));
   await tab.reload();
-  for (const route of ["tasks", "batches", "machines", "queue", "costs", "alerts", "audit", "users", "tokens", "webhooks", "versions", "hub"]) {
+  // Roadmap 49b: most of these are tabs now; each is opened at its own address (the step keeps the page's old name).
+  const pages = [
+    ["tasks", "tasks"],
+    ["batches", "runs?tab=batches"],
+    ["machines", "machines"],
+    ["queue", "machines?tab=queue"],
+    ["costs", "machines?tab=costs"],
+    ["alerts", "admin?tab=alerts"],
+    ["audit", "admin?tab=audit"],
+    ["users", "admin?tab=users"],
+    ["tokens", "tokens"],
+    ["webhooks", "admin?tab=webhooks"],
+    ["versions", "admin?tab=versions"],
+    ["hub", "admin?tab=hub"],
+  ];
+  for (const [route, address] of pages) {
     await step(`table-cards-${route}`, async () => {
-      await tab.go(route);
-      await tab.waitFor(route, (route) => location.hash === `#/${route}` && document.querySelector("main"), route);
+      await tab.go(address);
+      await tab.waitFor(route, (address) => location.hash === `#/${address}` && document.querySelector("main"), address);
       // Put the table in the handoff image, including on Task where the create form sits above it.
       await tab.eval(() => {
         const table = document.querySelector('main [data-slot="table"], main [data-card-row]');
