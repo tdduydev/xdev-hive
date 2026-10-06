@@ -118,6 +118,8 @@ import type {
   MachineSetupMissing,
   SetupReport,
   Task,
+  TaskAgent,
+  TaskAgentQueueItem,
   TeamPolicy,
   ToolEntry,
   ToolProjectSetting,
@@ -474,6 +476,21 @@ const MIGRATIONS: string[] = [
   `
   CREATE TABLE project_states(project TEXT PRIMARY KEY, state TEXT NOT NULL, at TEXT NOT NULL, by TEXT NOT NULL);
   `,
+  // The agent a task is for (roadmap 50), apart from owner, which says who took it. agent_order: its place in that
+  // machine's queue, a REAL so a task dragged between two others takes the value in between and the rest keep theirs.
+  // agent_request: the run the hub queued for this turn, so a task it already handed over is not handed over twice;
+  // assigning the task again (the *Chạy lại* button) clears it and starts a new turn.
+  // agent_hold: why the hub stopped sending it (a run of it failed); assigning it again clears that too.
+  `
+  ALTER TABLE tasks ADD COLUMN agent_machine TEXT;
+  ALTER TABLE tasks ADD COLUMN agent_profile TEXT;
+  ALTER TABLE tasks ADD COLUMN agent_order REAL;
+  ALTER TABLE tasks ADD COLUMN agent_by TEXT;
+  ALTER TABLE tasks ADD COLUMN agent_at TEXT;
+  ALTER TABLE tasks ADD COLUMN agent_request INTEGER;
+  ALTER TABLE tasks ADD COLUMN agent_hold TEXT;
+  CREATE INDEX tasks_agent ON tasks(agent_machine, agent_order) WHERE agent_machine IS NOT NULL;
+  `,
 ];
 
 /**
@@ -564,6 +581,8 @@ interface ChatCall {
 const CHAT_ACTION_CALLS: Record<ChatActionKind, ChatCall> = {
   "task.create": { method: "tasks.create", result: (o) => ({ taskId: (o as Task).id }) },
   "task.update": { method: "tasks.update", result: (o) => ({ taskId: (o as Task).id }) },
+  // `machine` is only the name the card shows; tasks.assign takes the hub id.
+  "task.assign": { method: "tasks.assign", input: ({ id, machineId, profileId }) => ({ id, machineId, profileId }), result: (o) => ({ taskId: (o as Task).id }) },
   "run.dispatch": { method: "runs.dispatch", result: (o) => ({ requestId: (o as RunRequest).id }) },
   "run.cancel": { method: "runs.cancel" },
   "run.merge": { method: "runs.merge" },
@@ -584,16 +603,18 @@ const CHAT_ACTION_CALLS: Record<ChatActionKind, ChatCall> = {
 const CHAT_DECIDE_ORDER: Record<ChatActionKind, number> = {
   "task.create": 0,
   "task.update": 1,
-  "agent.policy": 2,
+  // After the task exists and has its status; the hub starts it by itself from there (roadmap 50).
+  "task.assign": 2,
+  "agent.policy": 3,
   // A tool turned on before a machine is asked to install it, and both before the runs that use it.
-  "tool.enable": 3,
-  "machine.profile": 4,
-  "machine.install": 5,
-  "agents.resume": 6,
-  "run.cancel": 7,
-  "run.merge": 8,
-  "run.dispatch": 9,
-  "agents.stop": 10,
+  "tool.enable": 4,
+  "machine.profile": 5,
+  "machine.install": 6,
+  "agents.resume": 7,
+  "run.cancel": 8,
+  "run.merge": 9,
+  "run.dispatch": 10,
+  "agents.stop": 11,
 };
 
 /**
@@ -752,6 +773,11 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
   "memory.remove": (i) => ({ target: `memory #${i.id}` }),
   "tasks.create": (i) => ({ target: i.id, detail: i.dependsOn?.length ? `${i.title} · ← ${i.dependsOn.join(", ")}` : i.title }),
   "tasks.setDeps": (i) => ({ target: i.id, detail: i.dependsOn.length ? `← ${i.dependsOn.join(", ")}` : "—" }),
+  "tasks.assign": (i, o: Task) => {
+    const agent = o.agent ? `${o.agent.machine}${o.agent.profileId ? `/${o.agent.profileId}` : ""}` : "—";
+    return { target: i.id, detail: `agent ${agent}`, text: { key: "audit.taskAssign", vars: { agent } } };
+  },
+  "tasks.unassign": (i) => ({ target: i.id, detail: "bỏ gán agent", text: { key: "audit.taskUnassign" } }),
   "machines.remove": (i) => ({ target: i.id }),
   "machines.setProfile": (i, o: Machine) => {
     const key = i.enabled === undefined ? "audit.profilePriority" : i.priority === undefined ? (i.enabled ? "audit.profileOn" : "audit.profileOff") : i.enabled ? "audit.profileOnPriority" : "audit.profileOffPriority";
@@ -934,6 +960,8 @@ const PROJECT_WRITES: Partial<Record<Method, "project" | "task" | "thread" | "do
   "tasks.setDeps": "task",
   "tasks.claim": "task",
   "tasks.update": "task",
+  "tasks.assign": "task",
+  "tasks.unassign": "task",
   "specs.push": "project",
   "specs.importTasks": "project",
   "specs.runStep": "project",
@@ -1132,7 +1160,12 @@ const toMemory = (r: Row, staleBefore: string | null): Memory => ({
   supersededBy: r.superseded_by == null ? null : num(r.superseded_by),
   conflictsWith: JSON.parse(str(r.conflicts ?? "[]")) as number[],
 });
-const toTask = (r: Row, deps: Pick<Task, "dependsOn" | "waitingOn" | "depProjects"> = { dependsOn: [], waitingOn: [] }): Task => ({
+const toTask = (
+  r: Row,
+  deps: Pick<Task, "dependsOn" | "waitingOn" | "depProjects"> = { dependsOn: [], waitingOn: [] },
+  /** Machine names by hub id: the row keeps only the id, and a reader wants the name it knows the machine by. */
+  machines: Map<string, string> = new Map(),
+): Task => ({
   id: str(r.id),
   project: str(r.project),
   title: str(r.title),
@@ -1142,7 +1175,24 @@ const toTask = (r: Row, deps: Pick<Task, "dependsOn" | "waitingOn" | "depProject
   note: strOrNull(r.note),
   updatedAt: str(r.updated_at),
   ...deps,
+  agent: toTaskAgent(r, machines),
 });
+
+/** The assignment a task row carries (roadmap 50); null when agent_machine is empty, which is every task before 50. */
+function toTaskAgent(r: Row, machines: Map<string, string>): TaskAgent | null {
+  const machineId = strOrNull(r.agent_machine);
+  if (machineId === null) return null;
+  return {
+    machineId,
+    // A machine the hub has forgotten (removed, never seen) still shows the id, so the assignment is not a blank.
+    machine: machines.get(machineId) ?? machineId,
+    profileId: strOrNull(r.agent_profile),
+    order: r.agent_order == null ? 0 : num(r.agent_order),
+    by: strOrNull(r.agent_by) ?? "",
+    at: strOrNull(r.agent_at) ?? "",
+    hold: r.agent_hold ? (JSON.parse(str(r.agent_hold)) as RunRequestError) : null,
+  };
+}
 /** What a task waits for, in words: `api/API-1, WEB-0, +1` (another service's with its project, hidden ones counted). */
 const waitingLabelsFor = (t: Task): string =>
   [...t.waitingOn.map((d) => (t.depProjects?.[d] ? `${t.depProjects[d]}/${d}` : d)), ...(t.waitingHidden ? [`+${t.waitingHidden}`] : [])].join(", ");
@@ -1702,6 +1752,13 @@ export class SqliteHive implements HiveBackend {
         if (task) this.#need(actor, task.project, "taskManage", `Task ${i.id}`);
         return;
       }
+      // Giving a task to an agent is queueing its run, only without saying when: the same right as runs.dispatch.
+      case "tasks.assign":
+      case "tasks.unassign": {
+        const task = this.#getTask(i.id);
+        if (task) this.#need(actor, task.project, "runDispatch", `Task ${i.id}`);
+        return;
+      }
       case "tasks.claim":
       case "tasks.update": {
         const task = this.#getTask(i.id);
@@ -1773,6 +1830,9 @@ export class SqliteHive implements HiveBackend {
       case "tasks.list":
       case "tasks.next":
         return (out as Task[]).filter((t) => visible(t.project)).map((t) => hideDeps(t, visible)) as MethodOutput[M];
+      // A machine is the team's but its queue is tasks: a reader sees only the projects they may view (no project input).
+      case "tasks.agentQueue":
+        return (out as TaskAgentQueueItem[]).filter((q) => visible(q.task.project)).map((q) => ({ ...q, task: hideDeps(q.task, visible) })) as MethodOutput[M];
       // Machines are the team's, but what they run and which repos they have shows the project: hide hidden projects.
       case "machines.list":
         return (out as Machine[]).map((m) => ({ ...m, runs: m.runs.filter((r) => visible(r.project)), projects: m.projects.filter((p) => visible(p)) })) as MethodOutput[M];
@@ -2218,7 +2278,12 @@ export class SqliteHive implements HiveBackend {
       if (other !== null && other !== projectOf.get(str(d.task_id))) entry.depProjects = { ...entry.depProjects, [str(d.depends_on)]: other };
       by.set(str(d.task_id), entry);
     }
-    return rows.map((r) => toTask(r, by.get(str(r.id))));
+    return rows.map((r) => toTask(r, by.get(str(r.id)), this.#machineNames()));
+  }
+
+  /** Machine names by hub id; machines are few and the map is read once per task list. */
+  #machineNames(): Map<string, string> {
+    return new Map((this.db.prepare("SELECT id, machine FROM machines").all() as Row[]).map((r) => [str(r.id), str(r.machine)]));
   }
 
   /** Whether two projects are services of one system (roadmap 19c/19d). */
@@ -2468,6 +2533,8 @@ export class SqliteHive implements HiveBackend {
       case "tasks.list":
       case "tasks.next":
         return (out as Task[]).filter((t) => shown(t.project)) as MethodOutput[M];
+      case "tasks.agentQueue":
+        return (out as TaskAgentQueueItem[]).filter((q) => shown(q.task.project)) as MethodOutput[M];
       case "specs.list":
         return (out as SpecFeature[]).filter((f) => shown(f.project)) as MethodOutput[M];
       case "runs.list":
@@ -2896,34 +2963,44 @@ export class SqliteHive implements HiveBackend {
    * the runs it has on those profiles and the requests sent to the machine it has not answered.
    */
   #freeMachine(project: string, profileId: string | null): string | null {
-    const now = this.#now();
-    const waiting = new Map(
+    const waiting = this.#waitingRequests();
+    let best: { id: string; machine: string; free: number } | null = null;
+    for (const m of (this.db.prepare("SELECT * FROM machines").all() as Row[]).map((r) => this.#toMachine(r))) {
+      const free = this.#freePlaces(m, project, profileId, waiting);
+      if (free > 0 && (!best || free > best.free || (free === best.free && m.machine < best.machine))) best = { id: m.id, machine: m.machine, free };
+    }
+    return best?.id ?? null;
+  }
+
+  /** Requests sent to each machine that it has not answered yet: every one of them is a place already spoken for. */
+  #waitingRequests(): Map<string, number> {
+    return new Map(
       (this.db.prepare("SELECT machine_id, COUNT(*) AS n FROM run_requests WHERE status = 'pending' GROUP BY machine_id").all() as Row[]).map((r) => [
         str(r.machine_id),
         num(r.n),
       ]),
     );
-    let best: { id: string; machine: string; free: number } | null = null;
-    for (const m of (this.db.prepare("SELECT * FROM machines").all() as Row[]).map((r) => this.#toMachine(r))) {
-      if (!m.online || !m.acceptsRuns || m.duplicate || !m.projects.includes(project)) continue;
-      const usable = m.profiles.filter(
-        (p) =>
-          p.enabled &&
-          p.installed &&
-          p.loggedIn !== false &&
-          !p.overLimit &&
-          !(p.cooldownUntil && p.cooldownUntil > now) &&
-          (profileId === null || p.id === profileId),
-      );
-      if (!usable.length) continue;
-      const ids = new Set(usable.map((p) => p.id));
-      const places = usable.reduce((n, p) => n + (p.maxConcurrent ?? 1), 0);
-      // A queued run with no profile yet may take any of them.
-      const busy = m.runs.filter((r) => r.profileId === null || ids.has(r.profileId)).length;
-      const free = places - busy - (waiting.get(m.id) ?? 0);
-      if (free > 0 && (!best || free > best.free || (free === best.free && m.machine < best.machine))) best = { id: m.id, machine: m.machine, free };
-    }
-    return best?.id ?? null;
+  }
+
+  /** Free places of one machine for a project's run now, by the rule above; 0 when it could not take the run at all. */
+  #freePlaces(m: Machine, project: string, profileId: string | null, waiting: Map<string, number>): number {
+    if (!m.online || !m.acceptsRuns || m.duplicate || !m.projects.includes(project)) return 0;
+    const now = this.#now();
+    const usable = m.profiles.filter(
+      (p) =>
+        p.enabled &&
+        p.installed &&
+        p.loggedIn !== false &&
+        !p.overLimit &&
+        !(p.cooldownUntil && p.cooldownUntil > now) &&
+        (profileId === null || p.id === profileId),
+    );
+    if (!usable.length) return 0;
+    const ids = new Set(usable.map((p) => p.id));
+    const places = usable.reduce((n, p) => n + (p.maxConcurrent ?? 1), 0);
+    // A queued run with no profile yet may take any of them.
+    const busy = m.runs.filter((r) => r.profileId === null || ids.has(r.profileId)).length;
+    return places - busy - (waiting.get(m.id) ?? 0);
   }
 
   /**
@@ -2958,17 +3035,21 @@ export class SqliteHive implements HiveBackend {
           continue;
         }
         if (task.waitingOn.length) continue;
-        const machineId = item.machineId ?? this.#freeMachine(g.project, item.profileId);
+        // The group still decides when the task runs; a task with an agent (roadmap 50) only lends the item the machine
+        // and plan to run it on, when the item names none of its own.
+        const agent = item.machineId === null ? task.agent : null;
+        const profileId = item.profileId ?? agent?.profileId ?? null;
+        const machineId = item.machineId ?? agent?.machineId ?? this.#freeMachine(g.project, profileId);
         if (!machineId) continue;
         try {
           const instructions = [g.instructions, item.instructions].filter(Boolean).join("\n\n");
           const m = this.#assertDispatchable(
-            { machineId, project: g.project, task, role: item.role, profileId: item.profileId, candidates: 1, instructions },
+            { machineId, project: g.project, task, role: item.role, profileId, candidates: 1, instructions },
             actor,
           );
           // A job's parts get no review of their own: the merged result does (roadmap 31c).
           const reviewAfter = g.kind === "mapreduce" ? false : g.reviewAfter;
-          const req = this.#insertRequest(m, g.project, task, { role: item.role, profileId: item.profileId, preferKind: item.preferKind, reviewAfter, candidates: 1, instructions }, actor);
+          const req = this.#insertRequest(m, g.project, task, { role: item.role, profileId, preferKind: item.preferKind, reviewAfter, candidates: 1, instructions }, actor);
           db.prepare("UPDATE run_group_items SET status = 'sent', machine_id = ?, request_id = ?, updated_at = ? WHERE id = ?").run(machineId, req.id, now, item.id);
           active++;
         } catch (err) {
@@ -3028,6 +3109,247 @@ export class SqliteHive implements HiveBackend {
       // Offline, busy, paused, over budget: the next heartbeat tries again.
       if (groupFails(err.key)) stop({ message: err.message, ...(err.key ? { key: err.key } : {}), ...(err.vars ? { vars: err.vars as Record<string, string | number> } : {}) });
     }
+  }
+
+  // ── agents with a queue of their own (roadmap 50) ──────────────────────────
+
+  /**
+   * Everything the hub may start by itself now, in this order: the items of the open run groups (roadmap 31a), then the
+   * tasks each agent was given (roadmap 50). The groups first, so a task that is in one is started by its group alone.
+   */
+  #release(): void {
+    this.#releaseGroups();
+    this.#releaseAssigned();
+  }
+
+  /**
+   * The machines a call speaks for, or [] for a person: the runner's own token (its name is the machine's hub id), and
+   * an agent run on a machine, which says so in its write source. A hub may hold two rows for one machine name (two
+   * accounts' tokens), and the agent's token tells them apart no better than its user does — so all of them count.
+   */
+  #callerMachines(actor: Actor): string[] {
+    const own = this.db.prepare("SELECT id FROM machines WHERE id = ?").get(actor.name) as Row | undefined;
+    if (own) return [str(own.id)];
+    const name = actor.source?.machine;
+    if (!name) return [];
+    return (this.db.prepare("SELECT id FROM machines WHERE machine = ?").all(name) as Row[]).map((r) => str(r.id));
+  }
+
+  /** A machine by hub id, or by the name people know it as (as a chat proposal names one). */
+  #machineByRef(ref: string): Machine {
+    const row = this.db.prepare("SELECT * FROM machines WHERE id = ? OR machine = ? ORDER BY last_seen DESC LIMIT 1").get(ref, ref) as Row | undefined;
+    if (!row) throw new HiveError("not_found", `No machine ${ref}.`, { key: "errors.machineNotFound", vars: { machine: ref } });
+    return this.#toMachine(row);
+  }
+
+  /**
+   * Gives each agent the next task of its own queue, as a group releases an item: the task has to be free (todo, held
+   * by nobody, waiting for nothing, no run going, not in a group or a flow) and its machine has to have a place.
+   * A check that may pass later (offline, busy, cap, pause) leaves the task waiting; one that will not (the machine
+   * lost the repo, the plan is gone) writes a hold, so nobody watches the same refusal every thirty seconds.
+   */
+  #releaseAssigned(): void {
+    const db = this.db;
+    const rows = db
+      .prepare("SELECT * FROM tasks WHERE agent_machine IS NOT NULL AND agent_hold IS NULL AND status = 'todo' ORDER BY agent_machine, agent_order, rowid")
+      .all() as Row[];
+    if (!rows.length) return;
+    const waiting = this.#waitingRequests();
+    const machines = new Map<string, Machine | null>();
+    const machineOf = (id: string): Machine | null => {
+      if (!machines.has(id)) {
+        const row = db.prepare("SELECT * FROM machines WHERE id = ?").get(id) as Row | undefined;
+        machines.set(id, row ? this.#toMachine(row) : null);
+      }
+      return machines.get(id)!;
+    };
+    for (const task of this.#tasks(rows)) {
+      const agent = task.agent!;
+      const m = machineOf(agent.machineId);
+      // A machine the hub no longer has: no places to count, and #agentWait says so before it looks at them.
+      const free = m ? this.#freePlaces(m, task.project, agent.profileId, waiting) - this.#unreportedRequests(m) : 0;
+      const why = this.#agentWait(task, m, free);
+      if (why) {
+        if (groupFails(why.key)) this.#holdAgent(task.id, why);
+        continue;
+      }
+      // Whoever gave the agent the task: its runs count for them, in the budgets and in the log (as a group's do).
+      const actor: Actor = { name: agent.by, role: "member" };
+      try {
+        const r = { machineId: agent.machineId, project: task.project, task, role: "implement" as AgentRole, profileId: agent.profileId, candidates: 1, instructions: "" };
+        const machine = this.#assertDispatchable(r, actor);
+        // The project's review gate decides the cross-review, as it does for the tasks a flow hands out (roadmap 34c).
+        const reviewAfter = effectiveGates(this.#sdlcPolicy(), task.project).review !== "auto";
+        const req = this.#insertRequest(machine, task.project, task, { role: "implement", profileId: agent.profileId, reviewAfter, candidates: 1, instructions: "" }, actor);
+        // This turn's run: the task is not handed over again until a person assigns it afresh.
+        db.prepare("UPDATE tasks SET agent_request = ? WHERE id = ?").run(req.id, task.id);
+        // The place it just took, so the next task of the same machine sees one fewer.
+        waiting.set(agent.machineId, (waiting.get(agent.machineId) ?? 0) + 1);
+      } catch (err) {
+        if (!(err instanceof HiveError)) throw err;
+        if (groupFails(err.key)) {
+          this.#holdAgent(task.id, { message: err.message, ...(err.key ? { key: err.key } : {}), ...(err.vars ? { vars: err.vars as Record<string, string | number> } : {}) });
+        }
+      }
+    }
+  }
+
+  /**
+   * Why the hub is not giving an assigned task to its agent right now, or null when it should go out. The release loop
+   * and tasks.agentQueue ask the same question, so the queue a person reads says exactly what the hub is waiting for.
+   */
+  #agentWait(task: Task, m: Machine | null, free: number): RunRequestError | null {
+    const agent = task.agent!;
+    const id = task.id;
+    if (agent.hold) return agent.hold;
+    if (!m) return { message: `No machine ${agent.machineId}.`, key: "errors.machineNotFound", vars: { machine: agent.machineId } };
+    if (task.status !== "todo") {
+      return { message: `Task ${id} is ${task.status}.`, key: "errors.agentTaskBusy", vars: { id, status: task.status } };
+    }
+    const now = this.#now();
+    if (task.owner !== null && task.leaseUntil !== null && task.leaseUntil > now) {
+      return { message: `Task ${id} is held by ${task.owner}.`, key: "errors.taskHeld", vars: { id, owner: task.owner, until: task.leaseUntil } };
+    }
+    if (task.waitingOn.length) {
+      const tasks = waitingLabelsFor(task);
+      return { message: `Task ${id} waits for ${tasks}.`, key: "errors.taskWaiting", vars: { id, tasks } };
+    }
+    if (this.#projectState(task.project) !== null) {
+      const state = this.#projectState(task.project);
+      return { message: `Project ${task.project} is ${state}.`, key: state === "deleted" ? "errors.projectDeleted" : "errors.projectArchived", vars: { project: task.project } };
+    }
+    try {
+      this.#assertNotPaused(task.project);
+      // A group that is not over starts the task itself; the assignment then only says which machine and plan it uses.
+      this.#assertNotInGroup(id);
+    } catch (err) {
+      if (!(err instanceof HiveError)) throw err;
+      return { message: err.message, ...(err.key ? { key: err.key } : {}), ...(err.vars ? { vars: err.vars as Record<string, string | number> } : {}) };
+    }
+    // So does a flow, by the same rule runs.dispatch goes by, and for as long as a flow's task is still on its way.
+    const flow = this.#flowRow(id);
+    const flowTask = this.#flowTaskRow(id);
+    if ((flow && ["running", "check", "checking", "next"].includes(str(flow.state))) || (flowTask && !["done", "stopped"].includes(str(flowTask.stage)))) {
+      return { message: `Task ${id} is in a flow that is going on.`, key: "errors.taskInFlow", vars: { id } };
+    }
+    // Any run of the task that is going, not only the one this turn queued: one started by hand on another machine
+    // counts just as much, and #assertDispatchable would not see it until its machine pushes it.
+    if (this.#taskRunOpen(task)) return { message: `Task ${id} has a run going.`, key: "errors.agentTaskBusy", vars: { id, status: "running" } };
+    const turn = this.#agentTurn(task);
+    if (turn === "going") return { message: `Task ${id} has a run going.`, key: "errors.agentTaskBusy", vars: { id, status: "running" } };
+    // It already had its turn and nobody moved it on: a second one would only repeat the same run for ever.
+    if (turn === "over") return { message: `The agent already ran task ${id} once.`, key: "errors.agentTurnOver", vars: { id } };
+    if (free <= 0) return { message: `${m.machine} has no free place now.`, key: "errors.agentBusy", vars: { machine: m.machine } };
+    return null;
+  }
+
+  /**
+   * A run of the task some machine has taken and not finished, whoever asked for it: an accepted request whose run is
+   * queued or running, or one it has not pushed a run for yet (for GROUP_UNREPORTED_MINUTES, as a group's item counts).
+   * #assertDispatchable sees only pending requests and the runs a heartbeat listed, so without this a task already
+   * running elsewhere — started by hand, by a flow, by an earlier assignment — would be handed out a second time.
+   */
+  #taskRunOpen(task: Task): boolean {
+    const rows = this.db
+      .prepare(
+        `SELECT q.updated_at, r.status AS run_status FROM run_requests q
+         LEFT JOIN run_records r ON r.machine_id = q.machine_id AND r.run_id = q.run_id
+         WHERE q.project = ? AND q.task_id = ? AND q.status = 'accepted'`,
+      )
+      .all(task.project, task.id) as Row[];
+    const since = this.#now(-GROUP_UNREPORTED_MINUTES);
+    return rows.some((r) => {
+      const status = strOrNull(r.run_status);
+      return status === null ? str(r.updated_at) > since : status === "queued" || status === "running";
+    });
+  }
+
+  /**
+   * What became of the run this turn queued (tasks.agent_request): "going" while the request waits or its run is on,
+   * "over" once that run ended, whatever the agent then did with the task — a second run would only repeat it for ever.
+   * null: no run this turn, or one the machine never took; a request it took but never pushed a run for counts as
+   * going for GROUP_UNREPORTED_MINUTES, as a group's item does, and after that the run never happened.
+   */
+  #agentTurn(task: Task): "going" | "over" | null {
+    const r = this.db
+      .prepare(
+        `SELECT q.status, q.updated_at, r.status AS run_status FROM run_requests q
+         LEFT JOIN run_records r ON r.machine_id = q.machine_id AND r.run_id = q.run_id
+         WHERE q.id = (SELECT agent_request FROM tasks WHERE id = ?)`,
+      )
+      .get(task.id) as Row | undefined;
+    if (!r) return null;
+    if (str(r.status) === "pending") return "going";
+    if (str(r.status) !== "accepted") return null;
+    const status = strOrNull(r.run_status);
+    if (status === "queued" || status === "running") return "going";
+    if (status !== null) return "over";
+    return str(r.updated_at) > this.#now(-GROUP_UNREPORTED_MINUTES) ? "going" : null;
+  }
+
+  /**
+   * Places taken on a machine that #freeMachine's count of pending requests misses: one the machine has taken but whose
+   * run it has not pushed yet. Without this an assignment goes out twice in the window between runs.requestResult and
+   * the first push, when the task looks free to #assertDispatchable and the place looks free to #freePlaces.
+   */
+  #unreportedRequests(m: Machine): number {
+    const have = new Set(m.runs.map((r) => r.runId));
+    const rows = this.db
+      .prepare(
+        `SELECT q.run_id, r.status AS run_status FROM run_requests q
+         LEFT JOIN run_records r ON r.machine_id = q.machine_id AND r.run_id = q.run_id
+         WHERE q.machine_id = ? AND q.status = 'accepted' AND q.updated_at > ?`,
+      )
+      .all(m.id, this.#now(-GROUP_UNREPORTED_MINUTES)) as Row[];
+    return rows.filter((r) => {
+      const runId = strOrNull(r.run_id);
+      // The heartbeat already counts it among the machine's runs.
+      if (runId !== null && have.has(runId)) return false;
+      const status = strOrNull(r.run_status);
+      return status === null || status === "queued" || status === "running";
+    }).length;
+  }
+
+  #holdAgent(taskId: string, why: RunRequestError): void {
+    this.db.prepare("UPDATE tasks SET agent_hold = ?, updated_at = ? WHERE id = ? AND agent_machine IS NOT NULL").run(JSON.stringify(why), this.#now(), taskId);
+  }
+
+  /**
+   * A run of an assigned task ended (runs.push). Failed or cancelled: the agent stops here and the task says why, so it
+   * does not take a broken task again and again; a person presses *Chạy lại* (assigns it again) or gives it to another.
+   */
+  #agentRunEnded(r: { runId: string; taskId: string; project: string; role: string; status: string; error: string | null }): void {
+    if (r.role !== "implement" || r.status === "succeeded") return;
+    const row = this.db.prepare("SELECT agent_machine, agent_hold FROM tasks WHERE id = ? AND project = ?").get(r.taskId, r.project) as Row | undefined;
+    if (!row || row.agent_machine == null || row.agent_hold != null) return;
+    this.#holdAgent(
+      r.taskId,
+      r.status === "cancelled"
+        ? { message: `Run ${r.runId} was cancelled.`, key: "errors.agentRunCancelled", vars: { run: r.runId } }
+        : { message: r.error ?? `Run ${r.runId} ${r.status}.`, key: "errors.agentRunFailed", vars: { run: r.runId, error: clipDetail(r.error ?? r.status) } },
+    );
+  }
+
+  /**
+   * Where a task goes in its machine's queue. `before`: just in front of that task, halfway between it and the one
+   * above — a drag moves one task and leaves every other order as it was. Left out: it keeps the place it has when it
+   * is already that machine's (pressing *Chạy lại* must not send it to the back), else it goes last.
+   */
+  #agentOrder(task: Task, machineId: string, before: string | undefined): number {
+    const db = this.db;
+    if (before === undefined) {
+      if (task.agent?.machineId === machineId) return task.agent.order;
+      const top = db.prepare("SELECT MAX(agent_order) AS top FROM tasks WHERE agent_machine = ?").get(machineId) as Row;
+      return top.top == null ? 1 : num(top.top) + 1;
+    }
+    const next = this.#getTask(before);
+    if (!next || next.agent?.machineId !== machineId) {
+      throw new HiveError("bad_request", `Task ${before} is not in that agent's queue.`, { key: "errors.agentBeforeOther", vars: { id: before } });
+    }
+    const above = db
+      .prepare("SELECT MAX(agent_order) AS top FROM tasks WHERE agent_machine = ? AND id != ? AND agent_order < ?")
+      .get(machineId, task.id, next.agent.order) as Row;
+    return above.top == null ? next.agent.order - 1 : (num(above.top) + next.agent.order) / 2;
   }
 
   /** The machine a job runs on: the one asked for, which has the project's repo, or the one with the most free places now. */
@@ -3348,7 +3670,7 @@ export class SqliteHive implements HiveBackend {
       ids.forEach((id, i) => item.run(groupId, i + 1, id, now));
       this.db.prepare(`UPDATE sdlc_flow_tasks SET stage = 'build', updated_at = ? WHERE flow_task = ? AND stage = 'queued'`).run(now, taskId);
       this.#setFlow(taskId, { state: "done", note: `${ids.length} task → run group #${groupId}` });
-      this.#releaseGroups();
+      this.#release();
     } else this.#setFlow(taskId, { state: "done" });
   }
 
@@ -3782,6 +4104,19 @@ export class SqliteHive implements HiveBackend {
               if (!known(action.id)) throw missing(action.id);
               input = { id: action.id, status: action.status, ...(action.note === undefined ? {} : { note: action.note }) };
               break;
+            case "task.assign": {
+              if (!known(action.taskId)) throw missing(action.taskId);
+              const m = this.#toMachine(machineRow(action.machine));
+              if (action.profileId !== null && !m.profiles.some((p) => p.id === action.profileId)) {
+                throw new HiveError("not_found", `${m.machine} has not reported a profile ${action.profileId}.`, {
+                  key: "errors.chatProfileNotFound",
+                  vars: { machine: m.machine, profile: action.profileId },
+                });
+              }
+              // `machine` is only what the card shows: tasks.assign takes the hub id.
+              input = { id: action.taskId, machineId: m.id, profileId: action.profileId, machine: m.machine };
+              break;
+            }
             case "run.dispatch": {
               if (!known(action.taskId)) throw missing(action.taskId);
               // The chat's own machine unless the leader names another.
@@ -3920,7 +4255,8 @@ export class SqliteHive implements HiveBackend {
   async #autoRun(action: ChatAction, leader: Actor): Promise<ChatAction> {
     if (CHAT_ACTION_ALWAYS_CONFIRM.includes(action.kind) || !this.#chatDefaults(action.project).autoKinds.includes(action.kind)) return action;
     // A run or a move of a task this reply proposes to create waits until someone confirms the task.
-    const taskId = action.kind === "run.dispatch" ? action.input.taskId : action.kind === "task.update" ? action.input.id : null;
+    const taskId =
+      action.kind === "run.dispatch" ? action.input.taskId : action.kind === "task.update" || action.kind === "task.assign" ? action.input.id : null;
     if (typeof taskId === "string" && !this.#getTask(taskId)) return action;
     const row = this.db.prepare("SELECT sender FROM chat_messages WHERE id = ?").get(action.replyId) as Row | undefined;
     if (row?.sender == null) return action;
@@ -4772,25 +5108,38 @@ export class SqliteHive implements HiveBackend {
           return this.#getTask(id)!;
         }),
 
-      "tasks.next": ({ project, projects, limit }) =>
-        this.#tasks(
+      "tasks.next": ({ project, projects, limit }, actor) => {
+        // A machine asking gets its own tasks first and never another agent's (roadmap 50); anyone else sees the board
+        // as before, assignments and all — a person picking work is not bound by them.
+        const mine = this.#callerMachines(actor);
+        return this.#tasks(
           db
             .prepare(
-              `SELECT t.*, (SELECT COUNT(*) FROM task_deps d JOIN tasks o ON o.id = d.task_id WHERE d.depends_on = t.id AND o.status != 'done') AS unlocks
+              `SELECT t.*, (SELECT COUNT(*) FROM task_deps d JOIN tasks o ON o.id = d.task_id WHERE d.depends_on = t.id AND o.status != 'done') AS unlocks,
+                 (t.agent_machine IS NOT NULL AND t.agent_machine IN (SELECT value FROM json_each(?5))) AS assigned_to_me
                FROM tasks t
                WHERE t.status = 'todo' AND (?1 IS NULL OR t.project = ?1)
                  AND (?4 IS NULL OR t.project IN (SELECT value FROM json_each(?4)))
                  AND (t.owner IS NULL OR t.lease_until IS NULL OR t.lease_until < ?2)
+                 AND (?6 = 0 OR t.agent_machine IS NULL OR t.agent_machine IN (SELECT value FROM json_each(?5)))
                  AND NOT EXISTS (SELECT 1 FROM task_deps d JOIN tasks p ON p.id = d.depends_on WHERE d.task_id = t.id AND p.status != 'done')
-               ORDER BY unlocks DESC, t.rowid
+               ORDER BY assigned_to_me DESC, CASE WHEN assigned_to_me THEN t.agent_order END, unlocks DESC, t.rowid
                LIMIT ?3`,
             )
-            .all(project ?? null, this.#now(), limit, listParam(projects)) as Row[],
-        ),
+            .all(project ?? null, this.#now(), limit, listParam(projects), JSON.stringify(mine), mine.length ? 1 : 0) as Row[],
+        );
+      },
 
       "tasks.claim": ({ id, leaseMinutes }, actor) => {
         const task = this.#getTask(id);
         if (!task) throw new HiveError("not_found", `Task ${id} not found.`, { key: "errors.taskNotFound", vars: { id } });
+        // Given to one agent (roadmap 50): nobody else takes it from under it. A hub admin still can, to unblock it.
+        if (task.agent && actor.role !== "admin" && !this.#callerMachines(actor).includes(task.agent.machineId)) {
+          throw new HiveError("conflict", `Task ${id} is assigned to ${task.agent.machine}.`, {
+            key: "errors.taskAssignedElsewhere",
+            vars: { id, machine: task.agent.machine },
+          });
+        }
         // Whoever holds it already may renew; nobody starts it while what it depends on is open.
         if (task.waitingOn.length && task.owner !== actor.name) {
           // Named as the actor may see them: another service's task it cannot see is only counted (roadmap 19d).
@@ -4837,6 +5186,60 @@ export class SqliteHive implements HiveBackend {
           );
           return this.#getTask(id)!;
         }),
+
+      "tasks.assign": ({ id, machineId, profileId, before }, actor) =>
+        this.#tx(() => {
+          const task = this.#getTask(id);
+          if (!task) throw new HiveError("not_found", `Task ${id} not found.`, { key: "errors.taskNotFound", vars: { id } });
+          if (task.status === "done") throw new HiveError("bad_request", `Task ${id} is done.`, { key: "errors.taskDone", vars: { id } });
+          const m = this.#machineByRef(machineId);
+          const name = { machine: m.machine };
+          // What the hub would need the moment it gives the task out: said now, not left to a hold nobody expected.
+          if (!m.acceptsRuns) throw new HiveError("bad_request", `${m.machine} does not take runs from the hub.`, { key: "errors.machineNoHubRuns", vars: name });
+          if (!m.projects.includes(task.project)) {
+            throw new HiveError("bad_request", `${m.machine} has no repo for ${task.project}.`, { key: "errors.machineNoRepo", vars: { ...name, project: task.project } });
+          }
+          if (profileId && !m.profiles.some((p) => p.id === profileId && p.enabled)) {
+            throw new HiveError("bad_request", `${m.machine} has no enabled profile ${profileId}.`, { key: "errors.profileNotOnMachine", vars: { ...name, id: profileId } });
+          }
+          const now = this.#now();
+          db.prepare(
+            `UPDATE tasks SET agent_machine = ?, agent_profile = ?, agent_order = ?, agent_by = ?, agent_at = ?,
+               agent_request = NULL, agent_hold = NULL, updated_at = ? WHERE id = ?`,
+          ).run(m.id, profileId, this.#agentOrder(task, m.id, before), principalOf(actor), now, now, id);
+          // A fresh turn: it may start at once, whatever run the task had under the assignment before this one.
+          this.#releaseAssigned();
+          return this.#getTask(id)!;
+        }),
+
+      "tasks.unassign": ({ id }) =>
+        this.#tx(() => {
+          const task = this.#getTask(id);
+          if (!task) throw new HiveError("not_found", `Task ${id} not found.`, { key: "errors.taskNotFound", vars: { id } });
+          // A run already going keeps going: taking the task off the queue is not cancelling its work.
+          db.prepare(
+            `UPDATE tasks SET agent_machine = NULL, agent_profile = NULL, agent_order = NULL, agent_by = NULL, agent_at = NULL,
+               agent_request = NULL, agent_hold = NULL, updated_at = ? WHERE id = ?`,
+          ).run(this.#now(), id);
+          return this.#getTask(id)!;
+        }),
+
+      "tasks.agentQueue": ({ machineId, profileId }) => {
+        const m = this.#machineByRef(machineId);
+        const rows = db
+          .prepare("SELECT * FROM tasks WHERE agent_machine = ? AND (?2 IS NULL OR agent_profile = ?2) ORDER BY agent_order, rowid")
+          .all(m.id, profileId) as Row[];
+        const waiting = this.#waitingRequests();
+        const taken = this.#unreportedRequests(m);
+        // The same count the release loop works from, so the queue says "busy" exactly when the hub would hold a task.
+        const places = new Map<string, number>();
+        const freeFor = (project: string, plan: string | null): number => {
+          const key = `${project}\u0000${plan ?? ""}`;
+          if (!places.has(key)) places.set(key, this.#freePlaces(m, project, plan, waiting) - taken);
+          return places.get(key)!;
+        };
+        return this.#tasks(rows).map((task): TaskAgentQueueItem => ({ task, waiting: this.#agentWait(task, m, freeFor(task.project, task.agent!.profileId)) }));
+      },
 
       // Keyed by the hub actor (`runner.<machine>@<token>`): the same key as the leases that machine takes.
       "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, projects, acceptsRuns, costs }, actor) =>
@@ -4916,7 +5319,7 @@ export class SqliteHive implements HiveBackend {
             ).run(JSON.stringify(error), now, now, actor.name);
           }
           // With this beat's runs in, so a run that ended leaves its place to the next of its group, sent in this answer.
-          this.#releaseGroups();
+          this.#release();
           this.#releaseFlows();
           // Held back rather than rejected for an archived project: restoring it lets the work go on, and anything
           // still waiting when the fifteen minutes are up expires on its own.
@@ -5020,11 +5423,13 @@ export class SqliteHive implements HiveBackend {
             const run = { ...r, summary: clean(r.summary) ?? null, error: clean(r.error) ?? null };
             this.#flowRunEnded(actor.name, run);
             this.#taskRunEnded(actor.name, run);
+            // A run that failed stops its agent at that task (roadmap 50) before the release below looks at the queue.
+            this.#agentRunEnded(run);
           }
           // An MR that turned green, or merged, moves a flow task on as well.
           this.#releaseFlows();
-          // A run that ended moves its group on now (the next part, a job's merge), not at the next heartbeat.
-          if (ended.length) this.#releaseGroups();
+          // A run that ended moves its group, and its agent's queue, on now rather than at the next heartbeat.
+          if (ended.length) this.#release();
           return { stored: runs.length };
         }),
 
@@ -5225,7 +5630,7 @@ export class SqliteHive implements HiveBackend {
             "INSERT INTO run_group_items(group_id, position, task_id, role, machine_id, profile_id, prefer_kind, status, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'held', ?)",
           );
           items.forEach((item, i) => put.run(groupId, i + 1, item.taskId, item.role, item.machineId, item.profileId, item.profileId ? null : item.preferKind, now));
-          this.#releaseGroups();
+          this.#release();
           return this.#group(groupId);
         }),
 
@@ -5280,7 +5685,7 @@ export class SqliteHive implements HiveBackend {
             "INSERT INTO run_group_items(group_id, position, task_id, role, machine_id, profile_id, status, updated_at) VALUES (?, ?, ?, 'implement', ?, ?, 'held', ?)",
           );
           targets.forEach((t, i) => item.run(groupId, i + 1, children[i]!, t.machineId, t.profileId, now));
-          this.#releaseGroups();
+          this.#release();
           return this.#group(groupId);
         }),
 
@@ -5386,7 +5791,7 @@ export class SqliteHive implements HiveBackend {
             "INSERT INTO run_group_items(group_id, position, task_id, role, machine_id, profile_id, instructions, status, updated_at) VALUES (?, ?, ?, 'implement', ?, ?, ?, 'held', ?)",
           );
           children.forEach((child, i) => item.run(id!, i + 1, child, m.id, profiles.length ? profiles[i % profiles.length]! : null, partInstructions(parent, i + 1, parts.length), now));
-          this.#releaseGroups();
+          this.#release();
           return this.#group(id!);
         }),
 
@@ -5411,12 +5816,12 @@ export class SqliteHive implements HiveBackend {
           const again = db.prepare("UPDATE run_group_items SET status = 'held', request_id = NULL, error = NULL, updated_at = ? WHERE id = ?");
           for (const i of g.items) if (i.run?.status !== "succeeded") again.run(now, i.id);
           db.prepare("UPDATE run_groups SET phase = 'map', phase_request = NULL, phase_error = NULL, closed_at = NULL WHERE id = ?").run(id);
-          this.#releaseGroups();
+          this.#release();
           return this.#group(id);
         }),
 
       "runs.groups": ({ project, projects, limit }) => {
-        this.#tx(() => this.#releaseGroups());
+        this.#tx(() => this.#release());
         const ids = db
           .prepare(`SELECT id FROM run_groups WHERE (?1 IS NULL OR project = ?1) AND (?3 IS NULL OR project IN (SELECT value FROM json_each(?3))) ORDER BY id DESC LIMIT ?2`)
           .all(project ?? null, limit, listParam(projects)) as Row[];
@@ -5491,7 +5896,7 @@ export class SqliteHive implements HiveBackend {
             id,
           );
           // A refusal frees its group's place at once, and stops a flow's step.
-          this.#releaseGroups();
+          this.#release();
           this.#releaseFlows();
           return this.#runRequest(id);
         }),

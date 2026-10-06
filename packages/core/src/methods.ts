@@ -65,6 +65,7 @@ import {
   type QuotaCooldown,
   type Role,
   type Task,
+  type TaskAgentQueueItem,
   type TeamPolicy,
   type ToolStatus,
   type ToolView,
@@ -182,6 +183,8 @@ const chatAction = z.discriminatedUnion("kind", [
     dependsOn: z.array(taskId).max(20).default([]),
   }),
   z.object({ kind: z.literal("task.update"), id: taskId, status: z.enum(TASK_STATUSES), note: z.string().max(2000).optional() }),
+  /** Gives a task to an agent (roadmap 50); the machine is named by hub id or name, like the kinds below. */
+  z.object({ kind: z.literal("task.assign"), taskId, machine: machineRef, profileId: z.string().max(40).nullable().default(null) }),
   z.object({
     kind: z.literal("run.dispatch"),
     taskId,
@@ -371,6 +374,21 @@ export const schemas = {
     status: z.enum(TASK_STATUSES),
     note: z.string().max(2000).optional(),
   }),
+  /**
+   * Gives a task to one agent (roadmap 50): the hub queues the run itself as soon as that machine has a free place and
+   * the task waits for nothing. `before`: the task it goes in front of in the machine's queue; left out it keeps its
+   * place when it is already that machine's, else it goes last. Assigning again clears a hold (*Chạy lại*).
+   */
+  "tasks.assign": z.object({
+    id: taskId,
+    machineId: machineRef,
+    /** A plan of that machine; null lets the hub pick one of its plans when the run goes out. */
+    profileId: z.string().max(40).nullable().default(null),
+    before: taskId.optional(),
+  }),
+  "tasks.unassign": z.object({ id: taskId }),
+  /** One agent's queue in order, each with why the hub has not sent it out yet; profileId null: the machine's whole queue. */
+  "tasks.agentQueue": z.object({ machineId: machineRef, profileId: z.string().max(40).nullable().default(null) }),
 
   /** Desktop runners report every ~30 s; the reply carries the shared quota cooldowns. */
   "machines.heartbeat": z.object({
@@ -910,6 +928,9 @@ export interface MethodOutput {
   "tasks.next": Task[];
   "tasks.claim": { claimed: boolean; task: Task | null };
   "tasks.update": Task;
+  "tasks.assign": Task;
+  "tasks.unassign": Task;
+  "tasks.agentQueue": TaskAgentQueueItem[];
   "machines.heartbeat": {
     duplicate: boolean;
     cooldowns: QuotaCooldown[];
@@ -1090,6 +1111,10 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "tasks.next": "viewer",
   "tasks.claim": "agent",
   "tasks.update": "agent",
+  // Also "runDispatch" on the project: giving a task to an agent is queueing its run, only without a time.
+  "tasks.assign": "agent",
+  "tasks.unassign": "agent",
+  "tasks.agentQueue": "viewer",
   "machines.heartbeat": "agent",
   "machines.list": "viewer",
   "machines.setupMissing": "viewer",
