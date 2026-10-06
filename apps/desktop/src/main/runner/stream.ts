@@ -283,3 +283,31 @@ export class CodexStream {
     }
   }
 }
+
+/** agy's schema is unverified: preserve every line, extracting only recognisable messages and results. */
+export class AntigravityStream {
+  readonly state: StreamState = { activity: null };
+  lastText: string | null = null;
+  #rest = "";
+  push(chunk: string): string {
+    const lines = (this.#rest + chunk).split("\n");
+    this.#rest = lines.pop() ?? "";
+    return lines.map((line) => this.#line(line)).join("");
+  }
+  end(): string {
+    const line = this.#rest;
+    this.#rest = "";
+    return line ? this.#line(line) : "";
+  }
+  #line(line: string): string {
+    try {
+      const e = JSON.parse(line) as Json;
+      const message = e.message as Json | undefined;
+      const content = message?.content;
+      const text = typeof e.result === "string" ? e.result : typeof e.text === "string" ? e.text : resultText(content);
+      if (text && /result|assistant|message|final/.test(String(e.type))) this.lastText = text;
+      this.state.activity = clipLine(text || String(e.type ?? line), 160);
+    } catch { this.state.activity = clipLine(line, 160); }
+    return `${line}\n`;
+  }
+}

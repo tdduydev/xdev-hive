@@ -43,9 +43,10 @@ const token = "mock-gitlab-smoke-token";
 const gitlab = await startMockGitLab(token);
 
 const fake = path.join(appDir, "test", "fixtures", "fake-agent.mjs");
+const shellWord = (value) => "'" + value.replaceAll("'", "'\"'\"'") + "'";
 // A wrapper as the CLI, so sign-in checks (`<bin> auth status --json`) reach the fake agent as well.
 const cli = path.join(work, "fake-cli");
-writeFileSync(cli, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(fake)} "$@"\n`, { mode: 0o755 });
+writeFileSync(cli, `#!/bin/sh\nexec ${shellWord(process.execPath)} ${shellWord(fake)} "$@"\n`, { mode: 0o755 });
 // Quota with resets ahead of the smoke's own clock (roadmap 52): /usage's text for Claude, and a Codex session file as
 // Codex writes it, so codex-plus shows these numbers and not this machine's real ~/.codex.
 const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -63,6 +64,12 @@ const codexHome = path.join(work, "codex-plus");
     `${JSON.stringify({ timestamp: new Date().toISOString(), type: "event_msg", payload: { type: "token_count", info: null, rate_limits } })}\n`,
   );
 }
+const agyBin = path.join(work, "agy-bin");
+mkdirSync(agyBin, { recursive: true });
+writeFileSync(path.join(agyBin, "agy"), `#!/bin/sh
+export FAKE_AGY=1 FAKE_AGY_VERSION='agy 1.2.17' FAKE_LOGIN=out
+exec ${shellWord(process.execPath)} ${shellWord(fake)} "$@"
+`, { mode: 0o755 });
 const agent = (id, kind, priority, mode, label, extra = {}) => ({
   id, label, kind, bin: cli, args: ["{prompt}"], env: { FAKE_MODE: mode },
   enabled: true, priority, roles: ["plan", "implement", "review"], maxConcurrent: 1, cooldownMinutes: 60, timeoutMinutes: 5,
@@ -84,6 +91,8 @@ writeFileSync(
       // Signed out (roadmap 2d): shown on its card, never picked. Lowest priority so it cannot win the first tick.
       agent("claude-max-2", "claude", 40, "ok", "Claude Max (gói 2)", { env: { FAKE_MODE: "ok", FAKE_LOGIN: "out", CLAUDE_CONFIG_DIR: "~/.claude-2" } }),
       agent("codex-plus", "codex", 20, "ok", "Codex (ChatGPT Plus)", { env: { FAKE_MODE: "ok", CODEX_HOME: codexHome } }),
+      // Kept over its stop threshold so the quota sample cannot take a run from the existing rotation scenarios.
+      agent("antigravity-google", "antigravity", 96, "ok", "Antigravity (Google)", { env: { FAKE_MODE: "ok", FAKE_AGY: "1", FAKE_AGY_USAGE: "98,46" } }),
       // A second Codex subscription: the other best-of-n candidate (roadmap 12).
       agent("codex-team", "codex", 25, "ok", "Codex (ChatGPT Team)"),
       // The reviewer only reads Hive (roadmap 2c), and judges the candidates.
@@ -113,6 +122,8 @@ async function shoot(name, page, delay, extra = {}) {
     stdio: "inherit",
     env: {
       ...process.env,
+      PATH: `${agyBin}${path.delimiter}${process.env.PATH ?? ""}`,
+      SHELL: "/usr/bin/false",
       HIVE_CONFIG: path.join(work, "config.json"),
       HIVE_SMOKE_SCREENSHOT: shot,
       HIVE_SMOKE_HASH: `/${page}`,
@@ -127,6 +138,28 @@ async function shoot(name, page, delay, extra = {}) {
     console.error(`smoke failed on ${name}`, code, existsSync(shot) ? "" : "(no screenshot)");
     process.exit(1);
   }
+}
+
+async function antigravityShots() {
+  await shoot("agents-antigravity", "agents", 2500, { HIVE_SMOKE_SCROLL: '[data-profile="antigravity-google"]', HIVE_SMOKE_EXPECT: '[data-profile="antigravity-google"] [role="meter"] && [data-add-account="antigravity"]' });
+  await shoot("agents-antigravity-account", "agents", 1500, { HIVE_SMOKE_CLICK: '[data-add-account="antigravity"]', HIVE_SMOKE_SCROLL: '#acc-label', HIVE_SMOKE_EXPECT: '#acc-way' });
+  await shoot("agents-antigravity-form", "agents", 1500, { HIVE_SMOKE_CLICK: '[data-row-menu="antigravity-google"] && [data-edit-profile="antigravity-google"]', HIVE_SMOKE_SCROLL: '#pf-agy-project', HIVE_SMOKE_EXPECT: '#pf-agy-project' });
+  await shoot("agents-antigravity-mobile", "agents", 1500, { HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: '[data-add-account="antigravity"]', HIVE_SMOKE_SCROLL: '#acc-label', HIVE_SMOKE_EXPECT: '#acc-way', HIVE_SMOKE_ASSERT: 'window.innerWidth === 390 && document.documentElement.scrollWidth <= window.innerWidth && document.querySelector("#acc-label").getBoundingClientRect().height >= 44' });
+  await shoot("agents-antigravity-form-mobile", "agents", 1500, { HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: '[data-row-menu="antigravity-google"] && [data-edit-profile="antigravity-google"]', HIVE_SMOKE_SCROLL: '#pf-agy-project', HIVE_SMOKE_EXPECT: '#pf-agy-project', HIVE_SMOKE_ASSERT: 'window.innerWidth === 390 && document.documentElement.scrollWidth <= window.innerWidth && document.querySelector("#pf-agy-project").getBoundingClientRect().height >= 44 && parseFloat(getComputedStyle(document.querySelector("#pf-agy-project")).fontSize) >= 16' });
+  await shoot("agents-antigravity-add-login", "agents", 2000, { HIVE_SMOKE_CLICK: '[data-add-account="antigravity"] && form:has(#acc-label) button[type="submit"]', HIVE_SMOKE_EXPECT: '[data-profile="antigravity-1"][data-state="signedOut"]' });
+  const added = JSON.parse(readFileSync(path.join(work, "config.json"), "utf8")).agents.find((p) => p.id === "antigravity-1");
+  if (!added || added.kind !== "antigravity") throw new Error("Antigravity account was not saved");
+  const scripts = path.join(work, "login", "antigravity-1");
+  const script = readdirSync(scripts).map((name) => readFileSync(path.join(scripts, name), "utf8")).join("\n");
+  if (!script.includes(path.join(agyBin, "agy"))) throw new Error("Antigravity login did not open the fake agy binary");
+  if (process.platform !== "linux" && added.env.HOME) throw new Error("Antigravity must not claim separate OS keyring accounts on this platform");
+}
+
+// Repeat the new forms after a UI fix without rerunning the unrelated MR / chat scenarios.
+if (process.env.HIVE_SMOKE_AGY_ONLY === "1") {
+  await antigravityShots();
+  await gitlab.close();
+  process.exit(0);
 }
 
 const failures = [];
@@ -264,6 +297,7 @@ await shoot("agents-quota", "agents", 3000, {
   ].join(" && "),
 });
 // The off subscriptions unfolded, then the Chi tiết of one: its container token box, command and autonomy.
+await antigravityShots();
 await shoot("agents-off", "agents", 2500, { HIVE_SMOKE_CLICK: "[data-off-group]", HIVE_SMOKE_EXPECT: '[data-profile="claude-box"][data-state="off"]' });
 await shoot("agents-detail", "agents", 2500, {
   HIVE_SMOKE_CLICK: '[data-off-group] && [data-profile-toggle="claude-box"]',
@@ -431,7 +465,7 @@ await shoot("agents-cli", "agents", 2000, {
 // until it signs in. The CLIs are the fake one, so the check does not need Claude Code or Codex on the machine.
 const accountBin = path.join(work, "bin");
 mkdirSync(accountBin);
-for (const name of ["claude", "codex"]) writeFileSync(path.join(accountBin, name), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(fake)} "$@"\n`, { mode: 0o755 });
+for (const name of ["claude", "codex"]) writeFileSync(path.join(accountBin, name), `#!/bin/sh\nexec ${shellWord(process.execPath)} ${shellWord(fake)} "$@"\n`, { mode: 0o755 });
 const withBin = { PATH: `${accountBin}${path.delimiter}${process.env.PATH}` };
 for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login"], ["codex", "CODEX_HOME", "login"]]) {
   await shoot(`agents-account-${kind}`, "agents", 2000, { ...withBin, HIVE_SMOKE_CLICK: `[data-add-account="${kind}"] && form:has(#acc-label) button[type="submit"]` });

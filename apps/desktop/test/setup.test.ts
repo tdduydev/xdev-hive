@@ -102,6 +102,7 @@ describe("Setup: this machine", () => {
     assert.deepEqual(r.machine.map((i) => [i.id, i.state]), [
       ["cli:claude", "installed"],
       ["cli:codex", "missing"],
+      ["cli:antigravity", "missing"],
       ["cli:gemini", "missing"],
       ["cli:specify", "manual"],
       ["shim", "missing"],
@@ -556,5 +557,18 @@ describe("Setup: hub tools (tool:<id>)", () => {
     m.hub.trust = { speckit: toolHash(newer) };
     await m.setup.install("cli:specify");
     assert.equal(uvInstalls()[1], "uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v1.0.14 telemetry=");
+  });
+});
+
+describe("Antigravity setup without a real CLI or network", () => {
+  it("reports GitHub release versions and the /usage minimum without installing anything", async () => {
+    const m = machine({ latest: async (pkg) => pkg === "google-antigravity/antigravity-cli" ? "1.2.17" : null });
+    fakeBin(m.bin, "agy", 'echo "agy 1.1.10"');
+    const old = await m.setup.item("cli:antigravity");
+    assert.equal(old.version, "1.1.10");
+    assert.equal(old.latest, "1.2.17");
+    assert.match(old.detail, /1.1.11/);
+    assert.equal(old.action, null, "no guessed installer command");
+    assert.ok(!calls(m.bin).some((line) => line.includes("/usage")));
   });
 });

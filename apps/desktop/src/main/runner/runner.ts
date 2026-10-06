@@ -9,6 +9,8 @@
 // another vendor ──"Winner: c<n>"──▶ that branch becomes ai/<task> ──▶ review / MR as after one implement run.
 //
 // No Electron imports: the desktop main process provides a RunnerHost, tests provide a fake one.
+import { installAntigravityMcp } from "#desktop/main/installer.ts";
+import { agyError, AGY_LIMIT_PATTERN } from "./antigravity.ts";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
@@ -97,7 +99,7 @@ import { detectRateLimit } from "./rate-limit.ts";
 import { AssistWorker } from "./assist.ts";
 import { ChatWorker } from "./chat.ts";
 import { killTree } from "./kill.ts";
-import { ClaudeStream, CodexStream, lineStamper } from "./stream.ts";
+import { AntigravityStream, ClaudeStream, CodexStream, lineStamper } from "./stream.ts";
 import { limitResetAt, parseClaudeResult, withResetsAt, type RunUsage } from "./usage.ts";
 import { pickWithReason, waitingReason, type ProfileLoad, type RunNeeds } from "./schedule.ts";
 import { ACTIVE, RunStore } from "./store.ts";
@@ -264,6 +266,7 @@ type Outcome =
       cancelled: boolean;
       timedOut: boolean;
       usage?: RunUsage | null;
+      agyFailure?: string | null;
       /** Hosts the restricted network refused (from the proxy's log). */
       blocked?: string[];
     }
@@ -1597,6 +1600,15 @@ export class Runner {
         ...(profile.readOnly ? { HIVE_READONLY: "1" } : {}),
         ...cmd.env,
       };
+      if (profile.kind === "antigravity" && !profile.container) {
+        // The repo's setup identity must not override the profile holding this task's lease.
+        const configured = installAntigravityMcp(wt.path, run.project, { env: {
+          HIVE_AGENT: agentEnv.HIVE_AGENT!, HIVE_PROJECT: run.project, HIVE_TASK: run.taskId,
+          HIVE_RUN: run.id, ...(profile.readOnly ? { HIVE_READONLY: "1" } : {}),
+        } });
+        if (configured.action === "skipped") throw new Error(`${configured.file}: ${configured.note}`);
+        if (!wt.copied.includes(configured.file)) wt.copied.push(configured.file);
+      }
       // A restricted container: its own network and proxy, set up before the agent starts.
       if (profile.container && profile.container.network !== "open") {
         const allow = egressAllow(profile, { hub: this.#host.hub?.()?.url, gitlab: this.#host.gitlab?.() });
@@ -1663,12 +1675,14 @@ export class Runner {
 
       let stdout = "";
       let all = "";
+      let agyStderr = "";
+      let agyFailure: string | null = null;
       const out = log;
       // What the agent writes carries the time of each line; the header above and the result below do not.
       const stamp = lineStamper(this.#opts.now);
       // Claude Code's events become a log to follow while it runs; other CLIs write text as they go, and
       // their last line is what they are doing now.
-      const stream = cmd.claudeStream ? new ClaudeStream(wt.path) : cmd.codexJson ? new CodexStream(wt.path) : null;
+      const stream = cmd.claudeStream ? new ClaudeStream(wt.path) : cmd.codexJson ? new CodexStream(wt.path) : cmd.antigravityStream ? new AntigravityStream() : null;
       const decode = { out: new StringDecoder("utf8"), err: new StringDecoder("utf8") };
       const lastLine = (text: string) => {
         const line = text.split("\n").map((l) => l.trim()).filter(Boolean).at(-1);
@@ -1688,6 +1702,11 @@ export class Runner {
       });
       child.stderr?.on("data", (b: Buffer) => {
         const text = decode.err.write(b);
+        if (profile.kind === "antigravity") {
+          agyStderr = keepTail(agyStderr + text);
+          // Once reported, an error stays an error even when later stdout scrolls it out of the combined tail.
+          agyFailure = agyError(agyStderr) ?? agyFailure;
+        }
         out.write(stamp(text));
         if (!stream) lastLine(text);
         all = keepTail(all + text);
@@ -1696,7 +1715,7 @@ export class Runner {
       const outcome = await new Promise<Outcome>((resolve) => {
         child.once("error", (err) => resolve({ kind: "error", reason: tr("runNote.spawnFailed", { bin: cmd.bin, reason: err.message }) }));
         child.once("close", (code) =>
-          resolve({ kind: "exit", code, stdout, all, cancelled: live.cancelled, timedOut: live.timedOut }),
+          resolve({ kind: "exit", code, stdout, all, agyFailure, cancelled: live.cancelled, timedOut: live.timedOut }),
         );
       });
       clearTimeout(timer);
@@ -1717,10 +1736,10 @@ export class Runner {
                   outputTokens: stream.tokens.output,
                 }
               : null
-            : parseClaudeResult((stream instanceof ClaudeStream ? stream.result : null) ?? outcome.stdout);
+            : stream instanceof AntigravityStream ? null : parseClaudeResult((stream instanceof ClaudeStream ? stream.result : null) ?? outcome.stdout);
         // No result (killed, crashed): the summary is its last message, not the raw events.
         // A Codex that printed no events (one older than --json) keeps what it wrote.
-        if (stream && !outcome.usage) outcome.stdout = stream.lastText ?? (stream instanceof CodexStream ? outcome.stdout : "");
+        if (stream && !outcome.usage) outcome.stdout = stream.lastText ?? (stream instanceof CodexStream || stream instanceof AntigravityStream ? outcome.stdout : "");
         const u = outcome.usage;
         if (u?.text) out.write(`\n\n## Result\n${u.text}\n`);
         if (u && (u.costUsd !== null || u.outputTokens !== null)) {
@@ -1830,14 +1849,16 @@ export class Runner {
         const u = outcome.usage;
         usage = { costUsd: u.costUsd, inputTokens: u.inputTokens, cacheWriteTokens: u.cacheWriteTokens, cacheReadTokens: u.cacheReadTokens, outputTokens: u.outputTokens };
       }
-      const hit = outcome.code !== 0 && !outcome.cancelled ? detectRateLimit(outcome.all, now) : null;
+      const agyFailure = profile.kind === "antigravity" ? outcome.agyFailure ?? agyError(outcome.all) : null;
+      const failed = outcome.code !== 0 || agyFailure !== null;
+      const hit = failed && !outcome.cancelled ? detectRateLimit(agyFailure ?? outcome.all, now) ?? (agyFailure && AGY_LIMIT_PATTERN.test(agyFailure) ? { reason: agyFailure, resetAt: null } : null) : null;
       if (outcome.cancelled) {
         status = "cancelled";
         error = this.#cancelNotes.get(run.id) ?? tr("runNote.cancelled");
         this.#cancelNotes.delete(run.id);
       } else if (outcome.timedOut) {
         error = tr("runNote.timedOut", { minutes: profile.timeoutMinutes });
-      } else if (outcome.code === 0) {
+      } else if (!failed) {
         status = "succeeded";
       } else if (hit) {
         status = "rate_limited";
@@ -1848,7 +1869,7 @@ export class Runner {
         const shareError = await this.#shareCooldown(profile, until, hit.reason);
         if (shareError) error = `${error} · ${shareError}`;
       } else {
-        const lastErr = (outcome.usage?.text ?? outcome.all).trim().split("\n").at(-1) ?? "";
+        const lastErr = (agyFailure ?? outcome.usage?.text ?? outcome.all).trim().split("\n").at(-1) ?? "";
         error = `${tr("runNote.exited", { code: outcome.code ?? "?" })}${lastErr ? `: ${clip(lastErr, 200)}` : ""}`;
       }
       if (status !== "succeeded" && outcome.blocked?.length) {
