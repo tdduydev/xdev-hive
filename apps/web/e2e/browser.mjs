@@ -1066,6 +1066,8 @@ async function main() {
         await tab.click('[data-pipeline-editor] [data-pipeline-mode="ai"]');
         await tab.click('[data-pipeline-save]');
         await until("Review changed to AI check", async () => (await rpc("sdlc.get", {})).projects.payment?.effective.review === "ai");
+        // The editor's sheet closes after the save; its overlay would take the next click.
+        await tab.waitFor("gate editor closed", () => !document.querySelector("[data-pipeline-editor]"));
         await tab.click('[data-pipeline-preset="cautious"]');
         await tab.waitFor("cautious preview", () => document.querySelectorAll('[data-pipeline-preview] [data-pipeline-change]').length === 7);
         await tab.shot(`${String(n).padStart(2, "0")}-pipeline-preview`);
