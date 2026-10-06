@@ -832,6 +832,7 @@ export interface RunRecord {
   merge: RunMerge | null;
   /** What the run used, once its machine reported it (roadmap 28c); null before, or for a run the CLI gave none. */
   tokens: RunTokens | null;
+  skills?: string[];
   /** What RTK left out of the run's Bash output (roadmap 28d); null: no RTK, or its numbers could not be read. */
   compression: RunCompression | null;
   /**

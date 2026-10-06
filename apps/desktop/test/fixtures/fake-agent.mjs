@@ -110,6 +110,13 @@ if (stream) {
   event({ type: "assistant", message: { content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "npm test", description: "Run tests" } }] } });
   event({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", content: "ok 1 - adds\nok 2 - subtracts", is_error: false }] } });
 }
+if (process.env.FAKE_SKILLS) {
+  if (stream) {
+    event({ type: "assistant", message: { content: [{ type: "tool_use", id: "skill", name: "mcp__xdev_hive__skill_get", input: { name: "review-pr" } }] } });
+    event({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "skill", content: "skill instructions" }] } });
+  }
+  if (codexJson) event({ type: "item.completed", item: { type: "mcp_tool_call", tool: "skill_get", arguments: { name: "review-pr" }, status: "completed", result: { content: [] } } });
+}
 const said = [];
 const say = (text) => {
   if (codexJson) return said.push(text);

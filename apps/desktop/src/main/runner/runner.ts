@@ -1254,7 +1254,7 @@ export class Runner {
         // A few patches per push keep the request small; the others go with the next ones.
         const patch = patches < 3 ? this.#patchFor(r) : undefined;
         if (patch !== undefined) patches++;
-        const key = JSON.stringify([r.status, r.activity ?? null, r.finishing ?? false, r.mrUrl, r.commits, log.length, log.slice(-200), mrOf(r), r.compression ?? null, r.model ?? null, r.effort ?? null, r.diffReview ?? null]);
+        const key = JSON.stringify([r.status, r.activity ?? null, r.finishing ?? false, r.mrUrl, r.commits, log.length, log.slice(-200), mrOf(r), r.compression ?? null, r.skills ?? [], r.model ?? null, r.effort ?? null, r.diffReview ?? null]);
         if (this.#pushed.get(r.id) !== key || patch !== undefined) changed.push({ run: r, key, log, ...(patch !== undefined ? { patch } : {}) });
         if (changed.length === 20) break;
       }
@@ -1281,6 +1281,7 @@ export class Runner {
             mrUrl: r.mrUrl,
             mr: mrOf(r),
             costUsd: r.costUsd,
+            skills: r.skills ?? [],
             compression: r.compression ?? null,
             kind: r.agentKind ?? null,
             model: clip(r.model ?? null, 100),
@@ -1897,6 +1898,14 @@ export class Runner {
       // Claude Code's events become a log to follow while it runs; other CLIs write text as they go, and
       // their last line is what they are doing now.
       const stream = cmd.claudeStream ? new ClaudeStream(wt.path) : cmd.codexJson ? new CodexStream(wt.path) : cmd.antigravityStream ? new AntigravityStream() : null;
+      if (stream instanceof ClaudeStream || stream instanceof CodexStream) for (const skill of run.skills ?? []) stream.skills.add(skill);
+      let skillCount = run.skills?.length ?? 0;
+      const saveSkills = () => {
+        if ((stream instanceof ClaudeStream || stream instanceof CodexStream) && stream.skills.size !== skillCount) {
+          skillCount = stream.skills.size;
+          this.store.update(run.id, { skills: [...stream.skills] });
+        }
+      };
       if (this.#stopping.delete(run.id)) {
         outcome = { kind: "exit", code: null, stdout: "", all: "", cancelled: true, timedOut: false };
       } else {
@@ -1937,6 +1946,7 @@ export class Runner {
             const text = decode.out.write(b);
             if (stream) {
               out.write(stamp(stream.push(text)));
+              saveSkills();
               // EOF after every queued user turn completed: an idle stream must not keep a finished run alive forever.
               if (streamInput && stream instanceof ClaudeStream && stream.results >= sentTurns) child.stdin?.end();
               if (stream.state.activity) this.#activity.set(run.id, stream.state.activity);
@@ -1969,6 +1979,7 @@ export class Runner {
           this.#live.delete(run.id);
           this.#activity.delete(run.id);
           if (stream) out.write(stamp(stream.end()));
+          saveSkills();
           const messages = this.store.steering(run.id).length;
           if (!resumeInput || !(stream instanceof CodexStream) || !stream.threadId ||
               outcome.kind !== "exit" || outcome.code !== 0 || outcome.cancelled || outcome.timedOut ||

@@ -597,6 +597,7 @@ export const schemas = {
             .nullable()
             .optional(),
           costUsd: z.number().min(0).nullable().default(null),
+          skills: z.array(z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/)).max(256).optional(),
           /** What RTK left out of its Bash output (roadmap 28d); left out by older apps, then the hub keeps what it had. */
           compression: z
             .object({

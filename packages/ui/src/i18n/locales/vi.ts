@@ -970,6 +970,12 @@ export const vi = {
     },
   },
   skills: {
+    runs30d: "Số run dùng 30 ngày",
+    lastUsed: "Lần dùng cuối",
+    unused: "Skill không ai dùng",
+    neverUsed: "Chưa ghi nhận",
+    weekly: "Số run theo tuần (8 tuần, UTC)",
+    usageHint: "Chỉ tính các lần nạp skill được ghi nhận trong dự án bạn được xem; dữ liệu cũ có thể chưa có.",
     projectChip: "Dự án",
     search: "Tìm skill",
     edit: "Sửa skill",
