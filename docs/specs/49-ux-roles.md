@@ -35,7 +35,7 @@ Nguồn đọc ngày 5–6/10/2026, qua công cụ tóm tắt trang; có chỗ c
   - → Hive cần **lối nhanh** cho việc nhỏ, không bắt mọi việc qua đủ 7 chốt.
 - **BMAD** ([docs](https://docs.bmad-method.org/reference/skills-and-agents/)): các persona agent Analyst, PM, Architect, Developer, UX Designer, và tự nói quy trình phải "vừa cỡ" việc.
 
-**Sản phẩm điều phối agent** (chi tiết và link trong báo cáo nghiên cứu, ghi chú task R-49):
+**Sản phẩm điều phối agent** (chi tiết và link: [49-research.md](49-research.md)):
 - Linear:
   - người vẫn là chủ issue, agent chỉ là người được *giao* (delegate);
   - phiên của agent có trạng thái *chờ người trả lời* (`awaitingInput`);
