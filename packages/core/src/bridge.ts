@@ -286,6 +286,8 @@ export interface NewAccount {
 }
 
 export interface AgentProfileStatus extends AgentProfile {
+  /** null/absent: discovery unavailable, not evidence of support. */
+  supportedModels?: string[] | null;
   running: number;
   /** Set while the subscription is resting after a rate limit (or a missing CLI). */
   cooldownUntil: string | null;
