@@ -1602,6 +1602,58 @@ async function main() {
     expect(tasks.length === 0, `the deleted project still has tasks: ${JSON.stringify(tasks.map((t) => t.id))}`);
   });
 
+  // Roadmap 40a: the scope picker lists systems first, a repo in no system as a system of its own; a system's services
+  // show when it is opened or searched, picking the system leaves its services' tasks, and the titles name the system.
+  await step("scope-system-first", async () => {
+    await rpc("tasks.create", { id: "KHO-1", project: "kho-api", title: "Việc của kho-api" });
+    await rpc("tasks.create", { id: "KHO-2", project: "kho-web", title: "Việc của kho-web" });
+    await rpc("tasks.create", { id: "KHOLE-1", project: "kho-le", title: "Việc của kho-le" });
+    await rpc("systems.save", { name: "kho", projects: ["kho-api", "kho-web"] });
+    const tab = (current = tabs.admin);
+    // From all projects whatever an earlier step left picked.
+    await tab.eval(() => localStorage.removeItem("xdev-hive.scope"));
+    await tab.reload();
+    await tab.go("tasks");
+    await tab.waitFor("tasks of every project", () => ["kho-api", "kho-web", "kho-le", "payment"].every((p) => document.body.innerText.includes(`Việc ${p === "payment" ? "đầu tiên " : ""}của ${p}`)));
+    await tab.click("[data-project-picker-trigger]");
+    // Roots as "name", a virtual one as "name*".
+    const closed = await tab.waitFor("kho and kho-le as roots, services hidden", () => {
+      const all = [...document.querySelectorAll('[data-scope-row="root"]')].map((r) => `${r.dataset.scopeRoot}${r.hasAttribute("data-scope-virtual") ? "*" : ""}`);
+      return all.includes("kho") && all.includes("kho-le*") && !document.querySelector('[data-scope-row="service"][data-scope-root="kho"]') && all;
+    });
+    expect(!closed.some((r) => r.startsWith("kho-api") || r.startsWith("kho-web")), `a service of kho as a root: ${closed}`);
+    await tab.click('[data-scope-toggle="kho"]');
+    await tab.waitFor("kho opened on its two services", () => document.querySelectorAll('[data-scope-row="service"][data-scope-root="kho"]').length === 2);
+    await tab.shot(`${String(n).padStart(2, "0")}-scope-picker`);
+    await tab.click('input[aria-label="Tìm dự án hoặc hệ thống…"]');
+    await tab.type("kho");
+    const found = await tab.waitFor("two roots for kho", () => {
+      const all = [...document.querySelectorAll('[data-scope-row="root"]')].map((r) => `${r.dataset.scopeRoot}${r.hasAttribute("data-scope-virtual") ? "*" : ""}`);
+      return all.length === 2 && all;
+    });
+    expect(found.join() === "kho,kho-le*", `roots for kho: ${found}`);
+    await tab.click('[role="option"]', "kho");
+    await tab.waitFor("only the tasks of kho's two services", () => {
+      const text = document.body.innerText;
+      return text.includes("Việc của kho-api") && text.includes("Việc của kho-web") && !text.includes("Việc của kho-le") && !text.includes("Việc đầu tiên của payment");
+    });
+    await tab.waitFor("the system in the title", () => document.querySelector("[data-shell-title]")?.textContent.startsWith("kho › "));
+    await tab.shot(`${String(n).padStart(2, "0")}-scope-system`);
+    // A service reads as system › service in the menu and the title.
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('[data-scope-toggle="kho"]');
+    await tab.click('[role="option"]', "kho-api");
+    await tab.waitFor("kho › kho-api", () => document.querySelector("[data-project-picker-trigger]")?.textContent.includes("kho › kho-api") && document.querySelector("[data-shell-title]")?.textContent.startsWith("kho › kho-api › "));
+    await tab.waitFor("only kho-api's task", () => document.body.innerText.includes("Việc của kho-api") && !document.body.innerText.includes("Việc của kho-web"));
+    // The lone repo: its own scope, named by itself.
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('[role="option"]', "kho-le");
+    await tab.waitFor("only kho-le's task", () => document.body.innerText.includes("Việc của kho-le") && !document.body.innerText.includes("Việc của kho-api") && document.querySelector("[data-shell-title]")?.textContent.startsWith("kho-le › "));
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('[role="option"]', "Tất cả dự án");
+    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
+  });
+
   // Roadmap 19d: a task of one service waits for another service's (demo waits for payment's), named with its project.
   await step("cross-service-task", async () => {
     const task = await rpc("tasks.create", { id: "DEMO-2", project: "demo", title: "Trang đơn hàng", dependsOn: ["PAY-1"] });
