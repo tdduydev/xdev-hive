@@ -3,6 +3,7 @@ import { may, systemOf, type HiveSystem, type Me, type Permission, type WriteSou
 import { activeIntl, hasKey, translate, type MessageKey } from "./i18n/translate.ts";
 import type { HiveClient } from "./client.ts";
 import type { Scope } from "./lib/scope.ts";
+import { visibleInterval } from "#ui/lib/visible-interval.ts";
 
 export interface HiveContextValue {
   client: HiveClient;
@@ -40,13 +41,12 @@ export interface QueryState<T> {
   reload: () => void;
 }
 
-/** A counter that goes up every `ms` while `ms` is set: put it in a query's deps to refresh the query. */
+/** Refresh queries while visible, and once when returning to a hidden page. */
 export function usePoll(ms: number | null): number {
   const [tick, setTick] = useState(0);
   useEffect(() => {
     if (ms === null) return;
-    const timer = setInterval(() => setTick((n) => n + 1), ms);
-    return () => clearInterval(timer);
+    return visibleInterval(ms, () => setTick((n) => n + 1));
   }, [ms]);
   return tick;
 }

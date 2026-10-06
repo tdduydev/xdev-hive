@@ -1,3 +1,4 @@
+import { visibleInterval } from "#ui/lib/visible-interval.ts";
 // Công cụ và dự án (docs/design/2026-09-redesign, xDev Hive Client): what the runner needs on this machine (the
 // agent CLIs, the hive-mcp command) and in each repo, with the install the app can do, and admins' install requests.
 import { useEffect, useMemo, useState, type ComponentType } from "react";
@@ -53,8 +54,7 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
   });
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    const timer = setInterval(() => setTick((n) => n + 1), 15_000);
-    return () => clearInterval(timer);
+    return visibleInterval(15_000, () => setTick((n) => n + 1));
   }, []);
   const checkedAt = useMemo(() => (status.data ? new Date().toISOString() : null), [status.data]);
   const requests = useQuery(() => desktop.hubRequests(), [desktop, tick]);
