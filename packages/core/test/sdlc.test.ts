@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { effectiveGates, EMPTY_SDLC_POLICY, HiveError, type Actor } from "#core/index.ts";
-import { SqliteHive } from "#core/node.ts";
+import { SqliteHive, migrationIndex } from "#core/node.ts";
 
 // Roadmap 34a: lifecycle gates. The hub admin sets how far each gate may go; a project picks within it.
 
@@ -14,6 +17,9 @@ async function hub() {
   const hive = new SqliteHive(":memory:");
   await hive.call("tasks.create", { id: "T-1", project: "app", title: "One" }, admin);
   await hive.call("tasks.create", { id: "S-1", project: "site", title: "Landing" }, admin);
+  // Existing-flow tests exercise the human policy explicitly; new projects now start more automatic.
+  await hive.call("sdlc.setProject", { project: "app", settings: null }, admin);
+  await hive.call("sdlc.setProject", { project: "site", settings: null }, admin);
   return hive;
 }
 
@@ -28,6 +34,31 @@ async function refusal(call: Promise<unknown>): Promise<string | undefined> {
 }
 
 describe("lifecycle gates (roadmap 34a)", () => {
+  it("keeps projects already present when the pipeline migration runs", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "hive-pipeline-upgrade-"));
+    try {
+      const file = path.join(dir, "hub.db");
+      const old = new SqliteHive(file, { migrateTo: migrationIndex("sdlc_legacy_projects") });
+      await old.call("tasks.create", { id: "OLD-1", project: "old", title: "Existing" }, admin);
+      old.close();
+      const upgraded = new SqliteHive(file);
+      assert.equal((await upgraded.call("sdlc.get", {}, admin)).projects.old?.effective.spec, "human");
+      await upgraded.call("tasks.create", { id: "NEW-1", project: "new", title: "New" }, admin);
+      assert.equal((await upgraded.call("sdlc.get", {}, admin)).projects.new?.effective.spec, "auto");
+      upgraded.close();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+  it("starts a new project at maximum automation within the hub ceiling", async () => {
+    const hive = new SqliteHive(":memory:");
+    await hive.call("tasks.create", { id: "NEW-1", project: "new", title: "New project" }, admin);
+    const view = await hive.call("sdlc.get", {}, admin);
+    assert.deepEqual(view.projects.new?.effective, { spec: "auto", plan: "auto", tasks: "auto", dispatch: "auto", review: "auto", fix: "auto", merge: "ai" });
+    await hive.call("sdlc.setCeiling", { ceiling: { merge: "human", review: "ai" } }, admin);
+    const held = await hive.call("sdlc.get", {}, admin);
+    assert.deepEqual([held.projects.new?.effective.merge, held.projects.new?.effective.review], ["human", "ai"]);
+    await hive.call("sdlc.setProject", { project: "new", settings: null }, admin);
+    assert.equal((await hive.call("sdlc.get", {}, admin)).projects.new?.effective.spec, "human");
+  });
   it("leaves every gate to a person until a project opens one, and never past the hub's ceiling", () => {
     assert.deepEqual(effectiveGates(EMPTY_SDLC_POLICY, "app"), { spec: "human", plan: "human", tasks: "human", dispatch: "human", review: "human", fix: "human", merge: "human" });
     const policy = { ...EMPTY_SDLC_POLICY, ceiling: { merge: "ai" as const, fix: "human" as const }, projects: { app: { gates: { spec: "auto" as const, merge: "auto" as const, fix: "auto" as const } } } };

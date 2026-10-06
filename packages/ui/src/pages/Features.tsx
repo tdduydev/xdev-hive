@@ -56,6 +56,7 @@ export function FeaturesPage() {
   const allow = useCan();
   const [linkProject] = useHashParam("project");
   const [linkFlow] = useHashParam("flow");
+  const [linkColumn] = useHashParam("column");
   const [linkDir] = useHashParam("dir");
   const [linkBranch] = useHashParam("branch");
   // + Mới's "Tính năng mới" (roadmap 49c) lands here with ?newWork=<key>, a new key per opening.
@@ -103,7 +104,7 @@ export function FeaturesPage() {
   }
   // Roadmap 20d: a new feature's spec written by an agent, in a project's scope (the run needs one repo).
   const newProject = scope.kind === "project" && allow(scope.project, "taskManage") && allow(scope.project, "runDispatch") ? scope.project : null;
-  return <Board items={items} loaded={!!data.data} error={data.error} shared={shared} manyProjects={manyProjects} newProject={newProject} newWork={newWork} />;
+  return <Board items={linkColumn ? items.filter((item) => item.column === linkColumn) : items} loaded={!!data.data} error={data.error} shared={shared} manyProjects={manyProjects} newProject={newProject} newWork={newWork} />;
 }
 
 /** Back to the board, at every width: the board and a feature are two pages of one entry. */

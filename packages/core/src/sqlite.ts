@@ -19,6 +19,7 @@ import { budgetApplies, budgetId, budgetRatio, budgetVars, periodStart, type Bud
 import { agentPolicyView, EMPTY_AGENT_POLICY, OPEN_POLICY, policySummary, type AgentPolicy, type AgentPolicySettings, type AgentPolicyView } from "./agent-policy.ts";
 import {
   DEFAULT_MAX_FIX_ROUNDS,
+  MAX_AUTOMATION_GATES,
   effectiveGates,
   EMPTY_SDLC_POLICY,
   fixInstructions,
@@ -589,6 +590,17 @@ const MIGRATIONS: string[] = [
   CREATE TABLE doc_redirects(
     from_key TEXT PRIMARY KEY, to_key TEXT NOT NULL, moved_by TEXT NOT NULL, moved_at TEXT NOT NULL);
   CREATE INDEX doc_redirects_to ON doc_redirects(to_key);
+  `,
+  // Projects already known at upgrade keep their chosen gates. Later projects start from maximum automation.
+  `
+  INSERT INTO hive_meta(key, value)
+    SELECT 'sdlc_legacy_projects', json_group_array(project) FROM (
+      SELECT project FROM tasks UNION SELECT project FROM docs UNION SELECT project FROM memory
+      UNION SELECT project FROM run_records UNION SELECT project FROM chat_threads
+      UNION SELECT project FROM project_states UNION SELECT project FROM artifacts
+      UNION SELECT value AS project FROM machines, json_each(machines.projects)
+      UNION SELECT value AS project FROM systems, json_each(systems.projects)
+    ) WHERE project IS NOT NULL AND project != '' AND project NOT LIKE 'sys:%';
   `,
 ];
 
@@ -2929,7 +2941,15 @@ export class SqliteHive implements HiveBackend {
 
   #sdlcPolicy(): SdlcPolicySettings {
     const row = this.db.prepare("SELECT value FROM settings WHERE key = 'sdlcPolicy'").get() as Row | undefined;
-    return row ? { ...EMPTY_SDLC_POLICY, ...(JSON.parse(str(row.value)) as Partial<SdlcPolicySettings>) } : EMPTY_SDLC_POLICY;
+    const stored = row ? { ...EMPTY_SDLC_POLICY, ...(JSON.parse(str(row.value)) as Partial<SdlcPolicySettings>) } : EMPTY_SDLC_POLICY;
+    const legacyRow = this.db.prepare("SELECT value FROM hive_meta WHERE key = 'sdlc_legacy_projects'").get() as Row | undefined;
+    if (!legacyRow) return stored;
+    const legacy = new Set(JSON.parse(str(legacyRow.value)) as string[]);
+    const projects = { ...stored.projects };
+    for (const project of this.#projectNames()) {
+      if (!legacy.has(project) && !projects[project]) projects[project] = { gates: MAX_AUTOMATION_GATES };
+    }
+    return { ...stored, projects };
   }
 
   #saveSdlc(policy: SdlcPolicySettings, actor: Actor): void {
@@ -2939,8 +2959,7 @@ export class SqliteHive implements HiveBackend {
 
   /** Every project with tasks shows, with what applies to it, even one that never changed a gate. */
   #sdlcView(): SdlcPolicyView {
-    const projects = (this.db.prepare("SELECT DISTINCT project FROM tasks").all() as Row[]).map((r) => str(r.project));
-    return sdlcPolicyView(this.#sdlcPolicy(), projects);
+    return sdlcPolicyView(this.#sdlcPolicy(), this.#projectNames());
   }
 
   #paused(): AgentsPaused {
@@ -7408,11 +7427,12 @@ export class SqliteHive implements HiveBackend {
         const current = this.#sdlcPolicy();
         const ceiling = fullCeiling(current.ceiling);
         const projects = { ...current.projects };
-        if (!settings) delete projects[project];
+        // An explicit reset means human gates, including for a project whose creation default was automatic.
+        if (!settings) projects[project] = { gates: {} };
         else {
           for (const g of SDLC_GATES) {
             const m = settings.gates[g];
-            if (m && GATE_MODES.indexOf(m) > GATE_MODES.indexOf(ceiling[g])) {
+            if (m && GATE_MODES.indexOf(m) > GATE_MODES.indexOf(ceiling[g]) && m !== current.projects[project]?.gates[g]) {
               throw new HiveError("forbidden", `The hub lets gate ${g} go up to ${ceiling[g]}, not ${m}.`, { key: "errors.gateOverCeiling", vars: { gate: g, mode: m, ceiling: ceiling[g] } });
             }
           }
@@ -7422,6 +7442,7 @@ export class SqliteHive implements HiveBackend {
             gates,
             ...(settings.maxFixRounds !== undefined ? { maxFixRounds: settings.maxFixRounds } : {}),
             ...(settings.maxParallel ? { maxParallel: settings.maxParallel } : {}),
+            ...(settings.fastLaneKinds ? { fastLaneKinds: [...new Set(settings.fastLaneKinds)] } : {}),
           };
         }
         this.#saveSdlc({ ...current, projects }, actor);
