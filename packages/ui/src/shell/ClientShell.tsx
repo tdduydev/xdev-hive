@@ -14,6 +14,7 @@ import { useT } from "#ui/i18n/index.tsx";
 import { toggleTheme, useTheme } from "#ui/lib/theme.ts";
 import { CommandPalette, type PaletteCommand } from "./CommandPalette.tsx";
 import { NewTaskDialog } from "./NewTaskDialog.tsx";
+import { NewWorkDialog } from "#ui/shell/NewWorkDialog.tsx";
 import { InShellContext } from "./frame.ts";
 import { useDocOutbox, useHubConnection } from "./connection.tsx";
 import { ToastProvider } from "./toast.tsx";
@@ -213,7 +214,7 @@ function ClientFrame({
     () => [
       webUrl
         ? { id: "open-web", label: t("shell.openWeb"), icon: ExternalLink, run: () => void window.open(`${webUrl}/#/today`, "_blank") }
-        : { id: "new-task", label: t("palette.newTask"), icon: Plus, hint: "⌘N", run: () => setNewTask(true) },
+        : { id: "new-task", label: t(client.desktop ? "palette.newTask" : "newWork.title"), icon: Plus, hint: "⌘N", run: () => setNewTask(true) },
       { id: "theme", label: t("palette.toggleTheme"), icon: theme === "dark" ? Sun : Moon, run: () => toggleTheme(theme) },
     ],
     [t, theme, webUrl],
@@ -407,7 +408,7 @@ function ClientFrame({
                   title={t("shell.openWebHint")}
                   data-open-web
                   className={cn(
-                    "flex h-[30px] max-md:size-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-sm bg-primary pr-3 pl-2.5 max-md:justify-center max-md:p-0 text-xs/none font-semibold whitespace-nowrap text-primary-foreground no-underline outline-none hover:bg-primary-hover focus-visible:focus-ring",
+                    "flex h-[30px] max-md:size-11 shrink-0 cursor-pointer items-center gap-1.5 rounded-sm bg-primary pr-3 pl-2.5 max-md:justify-center max-md:p-0 text-xs/none font-semibold whitespace-nowrap text-primary-foreground no-underline outline-none hover:bg-primary-hover focus-visible:focus-ring",
                     noDrag,
                   )}
                 >
@@ -418,14 +419,15 @@ function ClientFrame({
                 <button
                   type="button"
                   onClick={() => setNewTask(true)}
-                  title={t("shell.newTaskShortcut")}
+                  data-new-work-open
+                  title={t(client.desktop ? "shell.newTaskShortcut" : "newWork.shortcut")}
                   className={cn(
-                    "flex h-[30px] max-md:size-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-sm bg-primary pr-3 pl-2.5 max-md:justify-center max-md:p-0 text-xs/none font-semibold whitespace-nowrap text-primary-foreground outline-none hover:bg-primary-hover focus-visible:focus-ring",
+                    "flex h-[30px] max-md:size-11 shrink-0 cursor-pointer items-center gap-1.5 rounded-sm bg-primary pr-3 pl-2.5 max-md:justify-center max-md:p-0 text-xs/none font-semibold whitespace-nowrap text-primary-foreground outline-none hover:bg-primary-hover focus-visible:focus-ring",
                     noDrag,
                   )}
                 >
                   <Plus className="size-3.5" strokeWidth={2} />
-                  <span className="max-md:sr-only">{t("shell.newTask")}</span>
+                  <span className="max-md:sr-only">{t(client.desktop ? "shell.newTask" : "newWork.title")}</span>
                 </button>
               )}
             </header>
@@ -489,7 +491,7 @@ function ClientFrame({
         </footer>
       </div>
       <CommandPalette open={palette} onOpenChange={setPalette} commands={commands} pages={pages} />
-      <NewTaskDialog open={newTask} onOpenChange={setNewTask} />
+      {client.desktop ? <NewTaskDialog open={newTask} onOpenChange={setNewTask} /> : <NewWorkDialog open={newTask} onOpenChange={setNewTask} />}
     </>
   );
 }

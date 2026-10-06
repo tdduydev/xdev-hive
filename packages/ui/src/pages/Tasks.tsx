@@ -1,10 +1,9 @@
 import { ResponsiveTable as Table, ResponsiveTableRow as TableRow } from "#ui/components/ResponsiveTable.tsx";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "cn";
-import { Sparkles } from "lucide-react";
 import { AGENT_ROLES, MAX_CANDIDATES, TASK_STATUSES, type AgentRole, type PreferKind, type RunRequest, type Task, type TaskStatus } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
-import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
+import { Card } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
@@ -13,7 +12,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { TableBody, TableCell, TableHead, TableHeader } from "@xdev-hive/ui/components/ui/table";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "#ui/components/common.tsx";
-import { BatchSheet, PromptSheet } from "#ui/components/AgentSheets.tsx";
+import { BatchSheet } from "#ui/components/AgentSheets.tsx";
 import { BoardPage } from "#ui/pages/Board.tsx";
 import { FlowList, FlowTaskPanel } from "#ui/components/FlowCard.tsx";
 import { MachineSelect, PreferKindSelect, ProfileSelect, takesRunsOf } from "#ui/components/MachinePicker.tsx";
@@ -114,7 +113,6 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
   const t = useT();
   const allow = useCan();
   // A system's new tasks go to one of its projects.
-  const managed = (scope.kind === "system" ? scope.projects : projects).filter((p) => allow(p, "taskManage"));
   // Tasks always belong to one project: the shared scope has none of its own, so it shows every project's.
   const scoped = scopeProject(scope);
   const key = scopeKey(scope);
@@ -169,9 +167,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
       if (!next.delete(id)) next.add(id);
       return next;
     });
-  // A prompt makes a task and queues its run (roadmap 32b): whoever may do both, on the hub.
-  const prompters = hub ? (scope.kind === "system" ? scope.projects : projects).filter((p) => allow(p, "taskManage") && allow(p, "runDispatch")) : [];
-  const [prompting, setPrompting] = useState(false);
+
 
   return (
     <Page wide={view === "kanban"}>
@@ -188,12 +184,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
           </NativeSelect>
         ) : null}
         {switcher ?? <ViewSwitch value={view} onChange={setView} />}
-        {prompters.length ? (
-          <Button size="sm" className="max-md:min-h-10" onClick={() => setPrompting(true)} data-prompt-agent>
-            <Sparkles />
-            {t("tasks.promptOpen")}
-          </Button>
-        ) : null}
+
       </div>
       {scope.kind === "shared" ? <Notice tone="info">{t("tasks.sharedScope")}</Notice> : null}
       {next.data && list.data?.some((task) => task.status !== "done") ? (
@@ -211,14 +202,6 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
             t("tasks.nextNone")
           )}
         </Notice>
-      ) : null}
-      {managed.length || allow(null, "taskManage") ? (
-        <CreateTask
-          key={scoped ?? ""}
-          defaultProject={scoped && managed.includes(scoped) ? scoped : ""}
-          projects={allow(null, "taskManage") ? projects : managed}
-          onCreated={list.reload}
-        />
       ) : null}
       <ErrorNote error={list.error} />
       {batchSent !== null ? (
@@ -318,24 +301,6 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
               setBatching(false);
               setPicks(new Set());
               setAgents([]);
-              setBatchSent(id);
-              reload();
-            }}
-          />
-        ) : null}
-      </Sheet>
-      <Sheet open={prompting} onOpenChange={setPrompting}>
-        {prompting ? (
-          <PromptSheet
-            projects={prompters}
-            defaultProject={scoped && prompters.includes(scoped) ? scoped : prompters[0]!}
-            onSent={(task) => {
-              setPrompting(false);
-              reload();
-              setOpenId(task.id);
-            }}
-            onGroup={(id) => {
-              setPrompting(false);
               setBatchSent(id);
               reload();
             }}
@@ -744,79 +709,6 @@ function Deps({ task, onChanged }: { task: Task; onChanged: () => void }) {
           {t("tasks.editDeps")}
         </Button>
       ) : null}
-    </div>
-  );
-}
-
-function CreateTask({
-  defaultProject,
-  projects,
-  onCreated,
-}: {
-  defaultProject: string;
-  projects: string[];
-  onCreated: () => void;
-}) {
-  const { client } = useHive();
-  const t = useT();
-  const [id, setId] = useState("");
-  // undefined: not typed yet, so it shows the scope's project (prefilled in a project scope).
-  const [project, setProject] = useState<string>();
-  const [title, setTitle] = useState("");
-  const [deps, setDeps] = useState("");
-  const [expanded, setExpanded] = useState(false);
-  const action = useAction();
-  const effectiveProject = project ?? defaultProject;
-  return (
-    <div>
-      <Button type="button" variant="outline" className="mb-2 min-h-10 md:hidden" data-create-task-toggle aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
-        {t("shell.newTask")}
-      </Button>
-      <Card className={cn("py-4", !expanded && "hidden md:flex")}>
-        <CardContent className="flex flex-col gap-2 px-4">
-          <form
-            className="flex flex-wrap items-center gap-2 max-md:flex-col max-md:items-stretch max-md:[&_input]:min-h-10"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void action.run(async () => {
-                await client.call("tasks.create", { id: id.trim(), project: effectiveProject.trim(), title: title.trim(), dependsOn: parseIds(deps) });
-                setId("");
-                setTitle("");
-                setDeps("");
-                setExpanded(false);
-                onCreated();
-              });
-            }}
-          >
-            <Input className="w-28 font-mono text-base md:text-xs max-md:w-full" placeholder="T-001" value={id} onChange={(e) => setId(e.target.value)} aria-label={t("tasks.newId")} />
-            <Input
-              className="w-40 min-w-0 flex-1 font-mono text-base md:text-xs max-md:w-full"
-              placeholder={t("tasks.newProject")}
-              list="hive-projects"
-              value={effectiveProject}
-              onChange={(e) => setProject(e.target.value)}
-              aria-label={t("tasks.colProject")}
-            />
-            <datalist id="hive-projects">
-              {projects.map((p) => (
-                <option key={p} value={p} />
-              ))}
-            </datalist>
-            <Input className="min-w-48 flex-1 max-md:w-full max-md:min-w-0" placeholder={t("tasks.newTitle")} value={title} onChange={(e) => setTitle(e.target.value)} aria-label={t("tasks.colTitle")} />
-            <Input
-              className="w-40 font-mono text-base md:text-xs max-md:w-full"
-              placeholder={t("tasks.newDeps")}
-              value={deps}
-              onChange={(e) => setDeps(e.target.value)}
-              aria-label={t("tasks.colDeps")}
-            />
-            <Button variant="outline" type="submit" className="max-md:min-h-10" disabled={!id.trim() || !effectiveProject.trim() || !title.trim() || action.busy}>
-              {t("tasks.create")}
-            </Button>
-          </form>
-          <ErrorNote error={action.error} />
-        </CardContent>
-      </Card>
     </div>
   );
 }
