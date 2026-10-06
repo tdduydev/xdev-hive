@@ -634,6 +634,8 @@ export const vi = {
     searchProjects: "Tìm dự án hoặc hệ thống…",
     selectProject: "Chọn dự án hoặc phạm vi",
     noMatches: "Không tìm thấy dự án hoặc hệ thống.",
+    expand: "Mở các service của {system}",
+    collapse: "Thu gọn {system}",
   },
   login: {
     tagline: "Tài liệu, memory và task dùng chung cho các coding agent của team.",
@@ -751,6 +753,14 @@ export const vi = {
     "codegraph-index": "Lập chỉ mục code để tra cứu",
     superpowers: "Hướng dẫn agent làm việc",
     speckit: "Soạn đặc tả và kế hoạch",
+  },
+  systemOverview: {
+    service: "Service",
+    allServices: "Tất cả service",
+    running: "Run đang chạy",
+    pending: "Chờ duyệt",
+    pendingHint: "Task ở trạng thái chờ duyệt và đề xuất tài liệu chưa duyệt.",
+    capped: "Số liệu có thể chưa đủ do giới hạn danh sách task/run.",
   },
   overview: {
     systems: "Hệ thống",

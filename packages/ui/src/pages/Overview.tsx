@@ -1,3 +1,4 @@
+import { SystemOverview } from "#ui/components/SystemOverview.tsx";
 // Landing page. Follows the sidebar scope: every project at a glance, the team-wide (shared) data, or one project.
 import { Fragment, type ComponentType, type ReactNode } from "react";
 import { Bot, Boxes, ChevronRight, FileText, FolderGit2, GitPullRequestArrow, Layers, ListTodo, Server, Sparkles, Users } from "lucide-react";
@@ -10,7 +11,7 @@ import { Badge, Empty, ErrorNote, OwnerBadge, Page, PageHeader, STATUS_TONE, Sta
 import { PausedNotice, StopAgentsButton } from "#ui/components/StopAgents.tsx";
 import { formatTime, useCan, useHive, useQuery, type QueryState } from "#ui/hooks.ts";
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
-import { ALL, SHARED, docOwner, projectScope, scopeLabel, systemScope } from "#ui/lib/scope.ts";
+import { ALL, SHARED, docOwner, projectScope, scopeLabel, scopeTitle, systemScope } from "#ui/lib/scope.ts";
 
 type Icon = ComponentType<{ className?: string }>;
 type OpenStatus = Exclude<TaskStatus, "done">;
@@ -113,33 +114,9 @@ function AllOverview({ system }: { system?: { name: string; projects: string[] }
         </dl>
       </ClickCard>
 
-      {!system && systems.length ? (
-        <section className="flex flex-col gap-3">
-          <h2 className="flex items-baseline gap-2 text-sm font-semibold">
-            {t("overview.systems")}
-            <span className="font-normal text-muted-foreground tabular-nums">{systems.length}</span>
-          </h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {systems.map((s) => (
-              <ClickCard
-                key={s.name}
-                onOpen={() => setScope(systemScope(s.name, s.projects))}
-                label={t("overview.openSystem", { system: s.name })}
-                icon={Boxes}
-                title={s.name}
-                titleClassName="font-mono text-sm"
-                description={<span className="font-mono text-xs break-words">{s.projects.join(" · ")}</span>}
-              >
-                <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
-                  <Count label={t("overview.systemProjects")} value={s.projects.length} loading={false} />
-                  <Count label={t("overview.openTasks")} value={openIn(s.projects)} loading={waiting(tasks)} />
-                </dl>
-              </ClickCard>
-            ))}
-          </div>
-        </section>
-      ) : null}
+      {!system ? <SystemOverview /> : null}
 
+      {system ? (
       <section className="flex flex-col gap-3">
         <h2 className="flex items-baseline gap-2 text-sm font-semibold">
           {t("overview.projects")}
@@ -193,6 +170,7 @@ function AllOverview({ system }: { system?: { name: string; projects: string[] }
         )}
         {capped ? <p className="text-xs text-muted-foreground">{t("overview.capped", { memory: MEMORY_LIMIT, tasks: TASK_LIMIT })}</p> : null}
       </section>
+      ) : null}
     </Page>
   );
 }
@@ -357,7 +335,7 @@ function SharedOverview() {
 // ── one project ────────────────────────────────────────────────────────────
 
 function ProjectOverview({ project: p }: { project: string }) {
-  const { client, me, setScope } = useHive();
+  const { client, me, setScope, systems } = useHive();
   const t = useT();
   const desktop = client.desktop;
   const hubAdmin = me.mode === "hub" && me.role === "admin";
@@ -392,7 +370,7 @@ function ProjectOverview({ project: p }: { project: string }) {
     // A project key has no spaces: let a long one wrap at 375px.
     <Page className="[&_h1]:wrap-anywhere">
       <PageHeader
-        title={p}
+        title={scopeTitle(projectScope(p), systems)}
         subtitle={t("overview.projectSubtitle", { project: p })}
         actions={
           <>

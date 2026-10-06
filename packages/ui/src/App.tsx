@@ -35,7 +35,7 @@ import { HiveContext, useProjectList, useQuery, usePoll, useRetiredProjects } fr
 import { activeIntl, useT, type MessageKey } from "./i18n/index.tsx";
 import { resolveHash } from "./lib/route.ts";
 import { WEB_MENU, WEB_SHORTCUTS, webCaps, webPages } from "./lib/nav.ts";
-import { readScope, resolveScope, writeScope, type Scope } from "./lib/scope.ts";
+import { readScope, resolveScope, scopeTitle, writeScope, type Scope } from "./lib/scope.ts";
 import { useSystemTheme } from "./lib/theme.ts";
 import { ClientShell, type NavEntry, type NavGroup } from "./shell/ClientShell.tsx";
 import { InboxProvider, useInboxState } from "./shell/inbox.tsx";
@@ -426,6 +426,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
         extraPages={extraPages}
         current={current === "read" ? "docs" : current}
         title={t(label(current))}
+        scopeName={scope.kind === "system" || scope.kind === "project" ? scopeTitle(scope, systems) : null}
         subtitle={subtitle}
         webUrl={webUrl}
       >

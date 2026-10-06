@@ -1,3 +1,4 @@
+import { SystemOverview } from "#ui/components/SystemOverview.tsx";
 import { StartReminder } from "#ui/pages/Start.tsx";
 import { knowledgeHref } from "#ui/lib/knowledge.ts";
 // Hôm nay (docs/design/2026-09-redesign, xDev Hive Client): a list of what needs the person on the left, the
@@ -224,6 +225,7 @@ function scopeText(item: InboxItem, t: TFunction): string {
 }
 
 export function TodayPage() {
+  const { scope } = useHive();
   const inbox = useInbox();
   const t = useT();
   const [tab, setTab] = useState<"open" | "done">("open");
@@ -334,7 +336,9 @@ export function TodayPage() {
             </span>
           ) : null}
         </div>
-        <div role="listbox" aria-label={t("inbox.listLabel")} className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {scope.kind === "all" ? <div className="p-3"><SystemOverview compact /></div> : null}
+        <div role="listbox" aria-label={t("inbox.listLabel")}>
           {tab === "open"
             ? groups.map(({ group, items }) => (
                 <div key={group} role="group" aria-labelledby={`inbox-group-${group}`} data-inbox-group={group}>
@@ -396,6 +400,7 @@ export function TodayPage() {
           {(tab === "open" ? list.length : inbox.done.length) === 0 && !inbox.loading ? (
             <div className="px-6 py-10 text-center text-[13px] text-fg-muted">{t("inbox.empty")}</div>
           ) : null}
+        </div>
         </div>
         <div className="flex shrink-0 gap-3.5 border-t border-line-subtle px-3.5 py-[7px] text-[11px]/4 text-fg-muted">
           <span>{t("inbox.keySelect")}</span>

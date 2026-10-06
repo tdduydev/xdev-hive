@@ -1602,6 +1602,112 @@ async function main() {
     expect(tasks.length === 0, `the deleted project still has tasks: ${JSON.stringify(tasks.map((t) => t.id))}`);
   });
 
+  // Roadmap 40a: the scope picker lists systems first, a repo in no system as a system of its own; a system's services
+  // show when it is opened or searched, picking the system leaves its services' tasks, and the titles name the system.
+  await step("scope-system-first", async () => {
+    await rpc("tasks.create", { id: "KHO-1", project: "kho-api", title: "Việc của kho-api" });
+    await rpc("tasks.create", { id: "KHO-2", project: "kho-web", title: "Việc của kho-web" });
+    await rpc("tasks.create", { id: "KHOLE-1", project: "kho-le", title: "Việc của kho-le" });
+    await rpc("systems.save", { name: "kho", projects: ["kho-api", "kho-web"] });
+    const tab = (current = tabs.admin);
+    // From all projects whatever an earlier step left picked.
+    await tab.eval(() => localStorage.removeItem("xdev-hive.scope"));
+    await tab.reload();
+    await tab.go("tasks");
+    await tab.waitFor("tasks of every project", () => ["kho-api", "kho-web", "kho-le", "payment"].every((p) => document.body.innerText.includes(`Việc ${p === "payment" ? "đầu tiên " : ""}của ${p}`)));
+    await tab.click("[data-project-picker-trigger]");
+    // Roots as "name", a virtual one as "name*".
+    const closed = await tab.waitFor("kho and kho-le as roots, services hidden", () => {
+      const all = [...document.querySelectorAll('[data-scope-row="root"]')].map((r) => `${r.dataset.scopeRoot}${r.hasAttribute("data-scope-virtual") ? "*" : ""}`);
+      return all.includes("kho") && all.includes("kho-le*") && !document.querySelector('[data-scope-row="service"][data-scope-root="kho"]') && all;
+    });
+    expect(!closed.some((r) => r.startsWith("kho-api") || r.startsWith("kho-web")), `a service of kho as a root: ${closed}`);
+    await tab.click('[data-scope-toggle="kho"]');
+    await tab.waitFor("kho opened on its two services", () => document.querySelectorAll('[data-scope-row="service"][data-scope-root="kho"]').length === 2);
+    await tab.shot(`${String(n).padStart(2, "0")}-scope-picker`);
+    await tab.click('input[aria-label="Tìm dự án hoặc hệ thống…"]');
+    await tab.type("kho");
+    const found = await tab.waitFor("two roots for kho", () => {
+      const all = [...document.querySelectorAll('[data-scope-row="root"]')].map((r) => `${r.dataset.scopeRoot}${r.hasAttribute("data-scope-virtual") ? "*" : ""}`);
+      return all.length === 2 && all;
+    });
+    expect(found.join() === "kho,kho-le*", `roots for kho: ${found}`);
+    await tab.click('[role="option"]', "kho");
+    await tab.waitFor("only the tasks of kho's two services", () => {
+      const text = document.body.innerText;
+      return text.includes("Việc của kho-api") && text.includes("Việc của kho-web") && !text.includes("Việc của kho-le") && !text.includes("Việc đầu tiên của payment");
+    });
+    await tab.waitFor("the system in the title", () => document.querySelector("[data-shell-title]")?.textContent.startsWith("kho › "));
+    await tab.shot(`${String(n).padStart(2, "0")}-scope-system`);
+    // A service reads as system › service in the menu and the title.
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('[data-scope-toggle="kho"]');
+    await tab.click('[role="option"]', "kho-api");
+    await tab.waitFor("kho › kho-api", () => document.querySelector("[data-project-picker-trigger]")?.textContent.includes("kho › kho-api") && document.querySelector("[data-shell-title]")?.textContent.startsWith("kho › kho-api › "));
+    await tab.waitFor("only kho-api's task", () => document.body.innerText.includes("Việc của kho-api") && !document.body.innerText.includes("Việc của kho-web"));
+    // The lone repo: its own scope, named by itself.
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('[role="option"]', "kho-le");
+    await tab.waitFor("only kho-le's task", () => document.body.innerText.includes("Việc của kho-le") && !document.body.innerText.includes("Việc của kho-api") && document.querySelector("[data-shell-title]")?.textContent.startsWith("kho-le › "));
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('[role="option"]', "Tất cả dự án");
+    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
+  });
+
+  await step("overview-by-system", async () => {
+    const at = new Date().toISOString();
+    for (const [id, project, status] of [["OV-1", "ov-api", "review"], ["OV-2", "ov-web", "todo"], ["OV-3", "ov-jobs", "doing"], ["OV-4", "ov-solo", "todo"]]) {
+      await rpc("tasks.create", { id, project, title: `Overview ${project}` });
+      if (status !== "todo") await rpc("tasks.update", { id, status });
+    }
+    await rpc("systems.save", { name: "ov-shop", projects: ["ov-api", "ov-web"] });
+    await rpc("systems.save", { name: "ov-backoffice", projects: ["ov-jobs"] });
+    const machineRpc = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.overview" }, body: JSON.stringify({ method, input }) });
+      const j = await r.json();
+      if (j.error) throw new Error(j.error.message);
+      return j.result;
+    };
+    await machineRpc("machines.heartbeat", { machine: "overview", instance: "overview01", version: "0.138.0", projects: ["ov-api", "ov-web", "ov-jobs"] });
+    await machineRpc("runs.push", { machine: "overview", runs: [
+      { runId: "OV-R1", project: "ov-api", taskId: "OV-1", taskTitle: "Overview ov-api", role: "implement", status: "running", createdAt: at, startedAt: at },
+      { runId: "OV-R2", project: "ov-web", taskId: "OV-2", taskTitle: "Overview ov-web", role: "implement", status: "queued", createdAt: at },
+      { runId: "OV-R3", project: "ov-jobs", taskId: "OV-3", taskTitle: "Overview ov-jobs", role: "implement", status: "running", createdAt: at, startedAt: at },
+    ] });
+    const tab = (current = tabs.admin);
+    await tab.eval(() => localStorage.removeItem("xdev-hive.scope"));
+    await tab.reload();
+    for (const route of ["overview", "today"]) {
+      await tab.go(route);
+      await tab.waitFor(`${route}: counts of two systems and lone repo`, () => {
+        const totals = (name) => [...document.querySelectorAll(`[data-system-card="${name}"] [data-system-total] [data-system-count]`)].map((el) => el.textContent).join();
+        return totals("ov-shop") === "2,1,1" && totals("ov-backoffice") === "1,1,0" && totals("ov-solo") === "1,0,0";
+      });
+      expect(await tab.eval(() => !document.querySelector('[data-system-card="ov-api"]') && document.querySelectorAll('[data-system-card="ov-shop"] [data-system-service]').length === 2), "services also appeared as roots or are missing");
+      expect(await tab.eval(() => [...document.querySelectorAll('[data-system-card="ov-shop"] button')].every((b) => b.getBoundingClientRect().height >= 44)), "system/service touch target below 44px");
+      await tab.shot(`${String(n).padStart(2, "0")}-${route}-systems`);
+    }
+    await tab.click('[data-system-card="ov-shop"] > button');
+    await tab.go("tasks");
+    await tab.click('[data-task-view="list"]');
+    await tab.waitFor("both services in task list", () => document.body.innerText.includes("Overview ov-api") && document.body.innerText.includes("Overview ov-web"));
+    await tab.select("[data-service-filter]", "ov-web");
+    await tab.waitFor("tasks filtered by service", () => document.body.innerText.includes("Overview ov-web") && !document.body.innerText.includes("Overview ov-api"));
+    expect(await tab.eval(() => document.querySelector('[data-project-picker-trigger]')?.textContent.includes("ov-shop")), "filter changed sidebar scope");
+    await tab.go("runs");
+    await tab.waitFor("runs from both services", () => document.querySelector('[data-run-service="ov-api"]') && document.querySelector('[data-run-service="ov-web"]'));
+    await tab.select("[data-service-filter]", "ov-api");
+    await tab.waitFor("runs filtered by service", () => document.querySelector('[data-run-service="ov-api"]') && !document.querySelector('[data-run-service="ov-web"]'));
+    if (mobile) expect(await tab.eval(() => document.querySelector('[data-service-filter]').getBoundingClientRect().height >= 44), "service filter touch target below 44px");
+    // Changing scope invalidates the local service filter, including across two systems.
+    await tab.eval(() => localStorage.setItem("xdev-hive.scope", "@system:ov-backoffice"));
+    await tab.reload();
+    await tab.go("runs");
+    await tab.waitFor("other system's service", () => document.querySelector('[data-run-service="ov-jobs"]') && document.querySelector('[data-service-filter]')?.value === "");
+    await tab.eval(() => localStorage.removeItem("xdev-hive.scope"));
+    await tab.reload();
+  });
+
   // Roadmap 19d: a task of one service waits for another service's (demo waits for payment's), named with its project.
   await step("cross-service-task", async () => {
     const task = await rpc("tasks.create", { id: "DEMO-2", project: "demo", title: "Trang đơn hàng", dependsOn: ["PAY-1"] });
