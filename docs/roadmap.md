@@ -270,11 +270,11 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **49h. mobile-pass** (hỏi 6/10: "dùng skill ux-ui-pro-max để thiết kế giao diện trên mobile trên web cho dễ sử dụng hơn"): rà mọi trang web ở 390×844 bằng skill `ui-ux-pro-max`, sửa, ảnh trước/sau. Cần MOBILE-42-land (42b/42c/42d đã làm từ 5/10 nhưng chưa gộp vào main) và SKILL-uiux. Từ nay mọi mục 49–51 phải qua `e2e:mobile`.
 
 - **50. agent-assign** (hỏi 6/10: "cho phép giao cho từng agent làm task"; chọn: gán rồi tự chạy khi rảnh): task có *Agent phụ trách* (máy + gói, hàng có thứ tự); hub tự giao run khi agent rảnh và task hết phụ thuộc (cạnh đợt chạy 31a, qua chính sách và ngân sách); run lỗi thì tạm ngừng chờ người; `task_next` của máy khác bỏ qua; leader đề xuất `taskAssign`; Board chế độ *Theo agent* kéo thả. Spec: [docs/specs/50-agent-assign.md](specs/50-agent-assign.md). Tách:
-  - [ ] **50a. assign-core**: cột `agent_*` của `tasks`, `tasks.assign` / `unassign` / `agentQueue`, `#releaseAssigned`, MCP, `taskAssign`.
+  - [x] **50a. assign-core**: cột `agent_*` của `tasks`, `tasks.assign` / `unassign` / `agentQueue`, `#releaseAssigned`, MCP, `taskAssign`.
   - [ ] **50b. assign-ui**: ô *Agent phụ trách*, Board *Theo agent*, hàng của gói ở *Máy & agent*, mục *Agent dừng ở task* ở *Hôm nay*, gán nhiều task.
 
 - **51. project-flow** (hỏi 6/10: "overview theo từng dự án bằng React Flow"; chọn: cả bốn lớp): trang *Sơ đồ* (`@xyflow/react` + dagre, tải lười, màu theo token): lớp Task và phụ thuộc, Agent đang làm gì (kéo task vào agent để gán), luồng SDLC có nút chốt, Hệ thống nhiều service; dùng được trên điện thoại. Spec: [docs/specs/51-project-flow.md](specs/51-project-flow.md). Tách:
-  - [ ] **51a. graph-tasks**: trang, khung React Flow, lớp Task.
+  - [x] **51a. graph-tasks**: trang, khung React Flow, lớp Task.
   - [ ] **51b. graph-agents**: lớp Agent, kéo thả để gán (cần 50a).
   - [ ] **51c. graph-sdlc-system**: lớp SDLC và Hệ thống.
 
