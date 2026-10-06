@@ -5215,7 +5215,7 @@ export class SqliteHive implements HiveBackend {
     // Only a classified task tries the tier below: the learning counts tasks by their kind and size (54d). The review
     // row also routes every review run, so it is not one the learning moves.
     const trial =
-      task.kind !== null && task.size !== null && task.risk !== "high" && LEARNED_KINDS.includes(task.kind) && isTrialTask(project, task.id) &&
+      task.kind !== null && task.size !== null && task.risk !== "high" && (LEARNED_KINDS as readonly string[]).includes(task.kind) && isTrialTask(project, task.id) &&
       this.#learningOn(project) && !this.#lockedCells(project).has(`${task.kind}/${task.size}`);
     const selection = selectModel(router, project, { kind: task.kind, size: task.size, risk: task.risk, role, failures, trial });
     if (!selection || role !== "implement") return selection;
