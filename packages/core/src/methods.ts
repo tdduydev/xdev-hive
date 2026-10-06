@@ -362,7 +362,7 @@ export const schemas = {
     projects: projectList,
     status: z.enum(TASK_STATUSES).optional(),
   }),
-  "tasks.create": z.object({ id: taskId, project, title: z.string().min(1).max(300), dependsOn: z.array(taskId).max(20).default([]) }),
+  "tasks.create": z.object({ id: taskId, project, title: z.string().min(1).max(300), note: z.string().max(2000).optional(), dependsOn: z.array(taskId).max(20).default([]) }),
   /** Replaces what the task depends on (tasks of the same project, no cycles). */
   "tasks.setDeps": z.object({ id: taskId, dependsOn: z.array(taskId).max(20) }),
   /** Tasks ready to start: to do, nothing they depend on is open, nobody holds them. Those that unlock the most come first. */

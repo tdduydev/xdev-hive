@@ -22,3 +22,5 @@ deploy/.env
 !.claude/skills/ui-ux-pro-max/data/
 # Bytecode the vendored skill's search.py leaves behind; a run must not commit it.
 __pycache__/
+# e2e runs that pass an output dir inside the repo leave screenshots here.
+apps/web/artifacts/
