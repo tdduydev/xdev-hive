@@ -1,3 +1,4 @@
+import { ServiceFilter, useServiceFilter } from "#ui/components/ServiceFilter.tsx";
 import { ResponsiveTable as Table, ResponsiveTableRow as TableRow } from "#ui/components/ResponsiveTable.tsx";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { cn } from "cn";
@@ -129,6 +130,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
     if (linkedProject && projects.includes(linkedProject) && linkedProject !== scoped) setScope({ kind: "project", project: linkedProject });
   }, [linkedProject, projects, scoped, setScope]);
   const key = scopeKey(scope);
+  const [service, setService] = useServiceFilter(scope);
   const [own, setViewState] = useState<View>(readView);
   const chosen = fixed ?? own;
   const view = chosen === "agent" && me.mode !== "hub" ? "list" : chosen;
@@ -141,17 +143,17 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
   const filter = view === "list" ? status : "";
   const taskPoll = usePoll(me.mode === "hub" ? 5000 : null);
   const list = useQuery(
-    () => client.call("tasks.list", { ...scopeFilter(scope), status: filter || undefined }),
-    [client, key, filter, taskPoll],
+    () => client.call("tasks.list", { ...(service ? { project: service } : scopeFilter(scope)), status: filter || undefined }),
+    [client, key, service, filter, taskPoll],
   );
-  const next = useQuery(() => client.call("tasks.next", { ...scopeFilter(scope), limit: 3 }), [client, key, list.data]);
+  const next = useQuery(() => client.call("tasks.next", { ...(service ? { project: service } : scopeFilter(scope)), limit: 3 }), [client, key, service, list.data]);
   // Runs queued on a machine from here (hub only): which machine a task waits for, and what became of it.
   const hub = me.mode === "hub";
   const [pending, setPending] = useState(false);
   const poll = usePoll(pending ? PENDING_MS : null);
   const requests = useQuery(
-    async () => (hub ? client.call("runs.requests", { ...scopeFilter(scope), limit: 200 }) : []),
-    [client, hub, key, poll],
+    async () => (hub ? client.call("runs.requests", { ...(service ? { project: service } : scopeFilter(scope)), limit: 200 }) : []),
+    [client, hub, key, service, poll],
   );
   useEffect(() => setPending((requests.data ?? []).some((r) => r.status === "pending")), [requests.data]);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -193,6 +195,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
     <Page wide={view !== "list"}>
       <PageHeader title={t("tasks.title")} subtitle={t("tasks.subtitle")} />
       <div className="flex flex-wrap items-center gap-2">
+        <ServiceFilter scope={scope} value={service} onChange={setService} />
         {view === "list" ? (
           <NativeSelect value={status} onChange={(e) => setStatus(e.target.value as TaskStatus | "")} aria-label={t("tasks.status")}>
             <NativeSelectOption value="">{t("tasks.anyStatus")}</NativeSelectOption>
@@ -293,7 +296,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
             <TableHeader>
               <TableRow>
                 <TableHead>{t("tasks.colTask")}</TableHead>
-                {scoped === null ? <TableHead>{t("tasks.colProject")}</TableHead> : null}
+                {scoped === null ? <TableHead>{t("systemOverview.service")}</TableHead> : null}
                 <TableHead>{t("tasks.status")}</TableHead>
                 <TableHead className="hidden md:table-cell">{t("tasks.colDeps")}</TableHead>
                 <TableHead className="hidden md:table-cell">{t("tasks.colOwner")}</TableHead>

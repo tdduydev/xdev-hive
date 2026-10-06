@@ -632,6 +632,8 @@ export const en: Catalog = {
     searchProjects: "Search projects or systems…",
     selectProject: "Choose a project or scope",
     noMatches: "No matching projects or systems.",
+    expand: "Show the services of {system}",
+    collapse: "Collapse {system}",
   },
   login: {
     tagline: "Docs, memory and tasks shared by your team's coding agents.",
@@ -748,6 +750,14 @@ export const en: Catalog = {
     "codegraph-index": "Index code for search",
     superpowers: "Guide agent workflows",
     speckit: "Write specs and plans",
+  },
+  systemOverview: {
+    service: "Service",
+    allServices: "All services",
+    running: "Running runs",
+    pending: "Awaiting review",
+    pendingHint: "Tasks in review and pending document proposals.",
+    capped: "Counts may be incomplete because task/run lists are limited.",
   },
   overview: {
     systems: "Systems",
