@@ -52,3 +52,20 @@ test("install exception names the failing item and stops before later items", as
   }, () => {}, () => {}), /cli:specify: installer failed/);
   assert.deepEqual(calls, ["cli:specify"]);
 });
+
+
+test("machine-only guide step stays scoped after refreshing the full report", async () => {
+  const current = report(); const calls: string[] = [];
+  const left = await installSetupSequence(current, "machine", {
+    async installSetup(id) {
+      calls.push(id);
+      const i = current.machine.find((i) => i.id === id)!;
+      i.state = "installed";
+      return { item: i, output: "" };
+    },
+    async setupStatus() { return current; },
+  }, () => {}, () => {});
+  assert.deepEqual(calls, ["cli:specify"]);
+  assert.deepEqual(left, []);
+  assert.equal(current.projects[0]!.items[0]!.state, "missing");
+});
