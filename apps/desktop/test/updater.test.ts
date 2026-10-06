@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile, type SpawnOptions } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
@@ -10,6 +10,13 @@ import { after, before, describe, it } from "node:test";
 import { promisify } from "node:util";
 import { HiveError, type UpdateOffer } from "@xdev-hive/core";
 import { platformKey, Updater, type UpdaterHost, type UpdateStatus } from "#desktop/main/updater.ts";
+
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
 
 const run = promisify(execFile);
 const sha256 = (b: Buffer) => createHash("sha256").update(b).digest("hex");
@@ -61,7 +68,7 @@ interface Spawned {
 function updater(packaged = true, over: Partial<UpdaterHost> = {}) {
   const changes: UpdateStatus[] = [];
   const spawned: Spawned[] = [];
-  const dataDir = mkdtempSync(path.join(os.tmpdir(), "hive-update-"));
+  const dataDir = testTmpDir(path.join(os.tmpdir(), "hive-update-"));
   const host: UpdaterHost = {
     version: "0.75.0",
     dataDir,
@@ -242,7 +249,7 @@ describe("app updater: install", () => {
   });
 
   it("fails on Linux when the app no longer runs from an AppImage", async () => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), "hive-appimage-"));
+    const dir = testTmpDir(path.join(os.tmpdir(), "hive-appimage-"));
     const { u, host, spawned } = updater(true, { platform: "linux", appImage: path.join(dir, "xDev-Hive.AppImage") });
     u.offer(served(Buffer.from("appimage a"), "xdev-hive-0.80.0-linux-x64.AppImage"));
     await u.download();
@@ -256,7 +263,7 @@ describe("app updater: install", () => {
   });
 
   it("writes the Linux helper that swaps the AppImage once the app has quit", async () => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), "hive-appimage-"));
+    const dir = testTmpDir(path.join(os.tmpdir(), "hive-appimage-"));
     const image = path.join(dir, "xDev-Hive.AppImage");
     writeFileSync(image, "old build");
     const { u, dataDir, spawned } = updater(true, { platform: "linux", appImage: image });
@@ -292,7 +299,7 @@ describe("app updater: install", () => {
   const mac = { skip: process.platform !== "darwin" ? "needs /usr/bin/ditto" : false };
 
   it("unpacks the macOS .zip and writes the helper that swaps the .app bundle", mac, async () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "hive-mac-"));
+    const root = testTmpDir(path.join(os.tmpdir(), "hive-mac-"));
     const build = path.join(root, "build", "xDev Hive.app");
     mkdirSync(path.join(build, "Contents"), { recursive: true });
     writeFileSync(path.join(build, "Contents", "Info.plist"), "<plist/>");
@@ -322,7 +329,7 @@ describe("app updater: install", () => {
   });
 
   it("fails a macOS update whose .zip holds no .app", mac, async () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "hive-mac-"));
+    const root = testTmpDir(path.join(os.tmpdir(), "hive-mac-"));
     mkdirSync(path.join(root, "payload"));
     writeFileSync(path.join(root, "payload", "README"), "not an app");
     const zip = path.join(root, "update.zip");
@@ -337,4 +344,8 @@ describe("app updater: install", () => {
     assert.equal(u.status().error, "The update has no .app inside.");
     assert.equal(spawned.length, 0);
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

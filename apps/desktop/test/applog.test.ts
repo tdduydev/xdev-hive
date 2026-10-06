@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { MainLog, mainLogDir, markStartHidden, QuitReasons, relaunchAfterQuitInstall, takeStartHidden, type QuitReason } from "#desktop/main/applog.ts";
+
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
 
 describe("main.log (BUG-update-relaunch)", () => {
   it("lives where each OS keeps logs", () => {
@@ -15,7 +22,7 @@ describe("main.log (BUG-update-relaunch)", () => {
   });
 
   it("writes one timestamped line per event and rotates, keeping 3 old files", () => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), "hive-mainlog-"));
+    const dir = testTmpDir(path.join(os.tmpdir(), "hive-mainlog-"));
     const file = path.join(dir, "logs", "main.log");
     const log = new MainLog(file, { maxBytes: 100, now: () => new Date("2026-10-06T03:27:59Z") });
     log.write("start 0.133.0\npid 1");
@@ -73,7 +80,7 @@ describe("relaunch after an install at quit", () => {
   });
 
   it("opens hidden through a marker read once, and only soon after the install", () => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), "hive-hidden-"));
+    const dir = testTmpDir(path.join(os.tmpdir(), "hive-hidden-"));
     const t0 = Date.parse("2026-10-06T03:28:00Z");
     assert.equal(takeStartHidden(dir, t0), false, "no marker: a normal start");
     markStartHidden(dir, t0);
@@ -82,4 +89,8 @@ describe("relaunch after an install at quit", () => {
     markStartHidden(dir, t0);
     assert.equal(takeStartHidden(dir, t0 + 11 * 60_000), false, "a helper that never relaunched must not hide a window opened later by hand");
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

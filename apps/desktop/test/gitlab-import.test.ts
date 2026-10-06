@@ -1,14 +1,21 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { suggestProjectKey, type DesktopProject, type GitLabGroupRepo } from "@xdev-hive/core";
 import { GitLabClient } from "#desktop/main/gitlab/client.ts";
 import { importRepos, planImport, subgroupPath } from "#desktop/main/gitlab/import.ts";
 
-const tmp = (name: string) => mkdtempSync(path.join(os.tmpdir(), `hive-import-${name}-`));
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
+
+const tmp = (name: string) => testTmpDir(path.join(os.tmpdir(), `hive-import-${name}-`));
 const repo = (pathWithNamespace: string, id = 1): GitLabGroupRepo => ({
   id,
   name: pathWithNamespace.split("/").at(-1)!,
@@ -143,4 +150,8 @@ describe("importing a GitLab group", () => {
     assert.deepEqual(added.map((p) => [p.name, p.gitlabProject, p.targetBranch]), [["auth", "fis/auth", "main"]], "with its GitLab path and default branch");
     assert.equal(execFileSync("git", ["-C", path.join(base, "auth"), "rev-parse", "--is-inside-work-tree"]).toString().trim(), "true");
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

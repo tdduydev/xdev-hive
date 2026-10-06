@@ -1,15 +1,22 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, readdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import type { Actor } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { allowedHostsFor } from "#web/app.ts";
 import { backupDatabase, backupFile, backupName, backupSettings } from "#web/backup.ts";
 
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
+
 const admin: Actor = { name: "duy", role: "admin" };
-const tmp = () => mkdtempSync(path.join(os.tmpdir(), "hive-backup-"));
+const tmp = () => testTmpDir(path.join(os.tmpdir(), "hive-backup-"));
 
 describe("hub backups", () => {
   it("snapshots a live database, keeps the newest and restores from a snapshot", async () => {
@@ -52,4 +59,8 @@ describe("allowed hosts", () => {
     assert.deepEqual(allowedHostsFor(undefined, "127.0.0.1"), ["localhost", "127.0.0.1", "[::1]"]);
     assert.equal(allowedHostsFor("", "0.0.0.0"), undefined, "nothing configured on a public bind: no check (the server warns)");
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

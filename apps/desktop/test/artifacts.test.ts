@@ -1,19 +1,26 @@
 // What a run leaves for the hub (roadmap 41c): the files in .xdev-hive/artifacts/, which no commit carries.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { ARTIFACT_DIR, ARTIFACTS_PER_RUN } from "@xdev-hive/core";
 import { collectArtifacts } from "#desktop/main/runner/artifacts.ts";
 import { branchPatch, commitAll, describeBranch } from "#desktop/main/runner/worktree.ts";
+
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
 
 const sh = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 
 function gitRepo(): string {
-  const repo = mkdtempSync(path.join(os.tmpdir(), "hive-artifacts-"));
+  const repo = testTmpDir(path.join(os.tmpdir(), "hive-artifacts-"));
   sh(repo, ["init", "-q", "-b", "main"]);
   sh(repo, ["config", "user.email", "test@example.com"]);
   sh(repo, ["config", "user.name", "Test"]);
@@ -73,7 +80,7 @@ describe("the files a run makes (roadmap 41c)", () => {
 
   it("sends nothing when the artifacts folder is a link out of the worktree, so cleanup cannot delete what it points at", () => {
     const dir = gitRepo();
-    const outside = mkdtempSync(path.join(os.tmpdir(), "hive-outside-"));
+    const outside = testTmpDir(path.join(os.tmpdir(), "hive-outside-"));
     writeFileSync(path.join(outside, "keep.md"), "# not the agent's\n");
     mkdirSync(path.join(dir, ".xdev-hive"), { recursive: true });
     symlinkSync(outside, path.join(dir, ARTIFACT_DIR), "dir");
@@ -86,7 +93,7 @@ describe("the files a run makes (roadmap 41c)", () => {
 
   it("does not follow a link to a file or a folder inside the artifacts folder", () => {
     const dir = gitRepo();
-    const outside = mkdtempSync(path.join(os.tmpdir(), "hive-outside-"));
+    const outside = testTmpDir(path.join(os.tmpdir(), "hive-outside-"));
     writeFileSync(path.join(outside, "secret.txt"), "not for the hub\n");
     artifact(dir, "ok.md", "# fine\n");
     symlinkSync(path.join(outside, "secret.txt"), path.join(dir, ARTIFACT_DIR, "secret.txt"));
@@ -125,4 +132,8 @@ describe("the files a run makes (roadmap 41c)", () => {
     assert.doesNotMatch(describeBranch(dir, base), /artifacts/);
     assert.doesNotMatch(branchPatch(dir, base), /artifacts/);
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { OPEN_POLICY, packageSpec, toolHash, type Actor, type MachineTools, type ToolEntry } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { CODEGRAPH_MCP, CODEGRAPH_PACKAGE, NO_FEATURES, SUPERPOWERS_PLUGIN } from "#desktop/main/installer.ts";
@@ -23,6 +23,13 @@ import {
   trustOf,
   userClaudeSettings,
 } from "#desktop/main/runner/tools.ts";
+
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
 
 const admin: Actor = { name: "duy", role: "admin" };
 
@@ -156,7 +163,7 @@ describe("tool config per CLI", () => {
 
 describe("prepareTool", () => {
   it("runs init without the marker and sync with it, with the entry's env", async () => {
-    const wt = mkdtempSync(path.join(os.tmpdir(), "hive-prep-"));
+    const wt = testTmpDir(path.join(os.tmpdir(), "hive-prep-"));
     const seen: Array<{ bin: string; args: string[]; env: NodeJS.ProcessEnv }> = [];
     const run = async (bin: string, args: string[], opts: { env: NodeJS.ProcessEnv }) => (seen.push({ bin, args, env: opts.env }), { ok: true, output: "" });
     const entry = rtk({ prepare: { init: ["rtk", "init", "{worktree}", "{repo}"], sync: ["rtk", "sync"], marker: ".rtk/db" } });
@@ -224,7 +231,7 @@ const RTK: ToolEntry = {
 
 /** A folder (a space in its name, for quoting) with an rtk that prints `version`; `gain` prints RTK's JSON or fails. */
 export function fakeRtk(version = "0.50.0", gain: "ok" | "fail" | "junk" = "ok"): { bin: string; dir: string; calls: () => string[] } {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "hive rtk-"));
+  const dir = testTmpDir(path.join(os.tmpdir(), "hive rtk-"));
   const log = path.join(dir, "calls.log");
   const out =
     gain === "ok"
@@ -295,7 +302,7 @@ describe("hooks of the catalog (roadmap 28d)", () => {
   });
 
   it("takes only the listed keys of the user's settings, from CLAUDE_CONFIG_DIR when set", () => {
-    const home = mkdtempSync(path.join(os.tmpdir(), "hive-home-"));
+    const home = testTmpDir(path.join(os.tmpdir(), "hive-home-"));
     mkdirSync(path.join(home, ".claude"));
     const full = {
       permissions: { allow: ["Bash(npm test:*)"], deny: ["Read(./.env)"], ask: ["Bash(git push:*)"], defaultMode: "plan" },
@@ -361,4 +368,8 @@ describe("hooks of the catalog (roadmap 28d)", () => {
     assert.equal(await rtkGain(ready(fakeRtk("0.50.0", "junk").bin), env), null);
     assert.equal(await rtkGain([], env), null, "no RTK in the run");
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

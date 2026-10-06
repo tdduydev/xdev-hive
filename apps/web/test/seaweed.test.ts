@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
@@ -11,9 +11,16 @@ import { SqliteHive } from "@xdev-hive/core/node";
 import { backupDatabase, backupFiles, filesDir } from "#web/backup.ts";
 import { seaweedFromEnv, seaweedStore } from "#web/seaweed.ts";
 
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
+
 const admin: Actor = { name: "duy", role: "admin" };
 const hex = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
-const tmp = () => mkdtempSync(path.join(os.tmpdir(), "hive-seaweed-"));
+const tmp = () => testTmpDir(path.join(os.tmpdir(), "hive-seaweed-"));
 const png = (...tail: number[]) => new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...tail]);
 const body = async (req: IncomingMessage) => {
   const parts: Buffer[] = [];
@@ -116,4 +123,8 @@ describe("SeaweedFS for doc files (roadmap 23c)", () => {
     filer.files.clear();
     assert.deepEqual((await backupFiles(hive, dir)).missing, [hex(png(3))]);
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });
