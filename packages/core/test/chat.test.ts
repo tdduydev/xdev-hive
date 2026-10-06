@@ -9,6 +9,8 @@ const mini: Actor = { name: "runner.lan-mini@lan-mini", role: "agent" };
 const lead: Actor = { name: "lan", role: "member", access: { projects: { app: "manage" } } };
 const dev: Actor = { name: "minh", role: "member", access: { projects: { app: "contribute" } } };
 const outsider: Actor = { name: "khoa", role: "member", access: { projects: { site: "manage" } } };
+/** Admin of two projects, not of the hub: the closest anyone gets to the hub-wide chat without being a hub admin. */
+const projectAdmin: Actor = { name: "khanh", role: "admin", access: { projects: { app: "lead", site: "lead" } } };
 
 const profile = (id: string, over: Record<string, unknown> = {}) => ({
   id,
@@ -574,5 +576,229 @@ describe("the rest of the web a chat leader proposes (roadmap 29b)", () => {
       .map((e) => e.action);
     assert.deepEqual(order, audited);
     assert.equal((await hive.call("runs.get", { machineId: mbp.name, runId: "R-run1" }, admin))!.cancelRequestedBy, "duy");
+  });
+});
+
+describe("the hub-wide chat (roadmap 37)", () => {
+  /**
+   * lan-mini holds the hub-wide chat with no repo of its own, duy-mbp has app and site, and each project has a task and
+   * a run. `leader` is the token the hub would cut for the reply being written.
+   */
+  async function hubChat() {
+    const { hive, beat, later } = await hub();
+    // The machine that runs the hub-wide leader needs no project checked out, at this heartbeat or any later one.
+    const beatHub = () => beat(mini, { projects: [] });
+    await beatHub();
+    await beat(mbp);
+    await hive.call("tasks.create", { id: "T-1", project: "app", title: "Sign in" }, admin);
+    await hive.call("tasks.create", { id: "S-1", project: "site", title: "Landing" }, admin);
+    await hive.call(
+      "runs.push",
+      {
+        machine: "duy-mbp",
+        runs: [
+          { runId: "R-app1", project: "app", taskId: "T-1", taskTitle: "Sign in", role: "implement" as const, status: "running" as const, profileId: "claude-1", createdAt: "2026-09-29T07:50:00.000Z" },
+          { runId: "R-site1", project: "site", taskId: "S-1", taskTitle: "Landing", role: "implement" as const, status: "running" as const, profileId: "claude-1", createdAt: "2026-09-29T07:50:00.000Z" },
+        ],
+      },
+      mbp,
+    );
+    const sent = await hive.call("chat.send", { project: "*", machineId: mini.name, text: "Tidy up every project" }, admin);
+    await hive.call("chat.progress", { replyId: sent.reply.id, text: "Looking" }, mini);
+    // What ChatGrants hands the leader: a hub admin narrowed by the machine's own token, so never a hub admin itself.
+    const leader: Actor = { name: "claude-1.lan-mini@chat-duy", role: "agent", chatReply: sent.reply.id };
+    const propose = (action: Record<string, unknown>) => hive.call("chat.propose", { action, reason: "Asked in the chat" } as never, leader);
+    return { hive, beat, beatHub, later, sent, leader, propose };
+  }
+
+  it("is a hub admin's alone to open, and nobody else sees it in their threads", async () => {
+    const { hive, beat } = await hub();
+    await beat(mini, { projects: [] });
+    const open = (who: Actor) => refusal(hive.call("chat.send", { project: "*", machineId: mini.name, text: "hi" }, who));
+    assert.equal(await open(lead), "errors.hubAdminOnly");
+    assert.equal(await open(dev), "errors.hubAdminOnly");
+    assert.equal(await open(projectAdmin), "errors.hubAdminOnly", "an admin of some projects is not the hub's");
+    assert.equal(await open(mini), "errors.hubAdminOnly", "nor is a machine's own token");
+
+    // No repo for any project: the hub-wide leader reads the board, not a checkout.
+    const hubThread = await hive.call("chat.send", { project: "*", machineId: mini.name, text: "Tidy up every project" }, admin);
+    assert.deepEqual([hubThread.thread.project, hubThread.thread.machine], ["*", "lan-mini"]);
+    await hive.call("chat.finish", { replyId: hubThread.reply.id, status: "done", text: "Done." }, mini);
+    await beat(mbp);
+    const appThread = await hive.call("chat.send", { project: "app", machineId: mbp.name, text: "app question" }, lead);
+
+    assert.deepEqual((await hive.call("chat.threads", {}, admin)).map((t) => t.id).sort(), [hubThread.thread.id, appThread.thread.id].sort());
+    for (const who of [lead, projectAdmin]) {
+      assert.deepEqual((await hive.call("chat.threads", {}, who)).map((t) => t.id), [appThread.thread.id], `${who.name} never sees it`);
+    }
+    assert.deepEqual((await hive.call("chat.threads", {}, mini)).map((t) => t.id), [appThread.thread.id], "nor does an unrestricted agent token");
+    assert.equal(await refusal(hive.call("chat.threads", { project: "*" }, lead)), "errors.hubAdminOnly");
+
+    const id = hubThread.thread.id;
+    assert.equal(await refusal(hive.call("chat.get", { threadId: id }, projectAdmin)), "errors.hubAdminOnly");
+    assert.equal(await refusal(hive.call("chat.rename", { threadId: id, title: "x" }, lead)), "errors.hubAdminOnly");
+    assert.equal(await refusal(hive.call("chat.configure", { threadId: id, model: "opus", effort: null }, lead)), "errors.hubAdminOnly");
+    assert.equal(await refusal(hive.call("chat.cancel", { replyId: hubThread.reply.id }, lead)), "errors.hubAdminOnly");
+    assert.equal(await refusal(hive.call("chat.defaults", { project: "*" }, lead)), "errors.hubAdminOnly");
+    assert.equal(await refusal(hive.call("chat.setCommands", { project: "*", commands: [] }, lead)), "errors.hubAdminOnly");
+    assert.equal(await refusal(hive.call("chat.setAutonomy", { project: "*", kinds: [] }, projectAdmin)), "errors.hubAdminOnly");
+    assert.equal(await refusal(hive.call("chat.setDefaults", { project: "*", machineId: mini.name, profileId: null, model: null, effort: null }, lead)), "errors.hubAdminOnly");
+    assert.deepEqual((await hive.call("chat.setCommands", { project: "*", commands: ["git log"] }, admin)).commands, ["git log"]);
+    assert.equal(await refusal(hive.call("chat.delete", { threadId: id }, lead)), "errors.hubAdminOnly");
+    assert.deepEqual(await hive.call("chat.delete", { threadId: id }, admin), { deleted: id });
+  });
+
+  it("hands the machine every project of the hub, with its systems and who has its repo", async () => {
+    const { hive, beat, beatHub, sent } = await hubChat();
+    await hive.call("systems.save", { name: "shop", projects: ["app", "site"] }, admin);
+    // Shared memory is kept under "" and a system's under sys:<name>: neither is a project of the hub.
+    await hive.call("memory.write", { shared: true, kind: "decision", content: "Every project tags its releases" }, admin);
+    await hive.call("memory.write", { system: "shop", kind: "decision", content: "The services talk over the order event" }, admin);
+    assert.deepEqual((await beatHub()).chatRequests, [], "the reply it already started is not sent again");
+
+    await hive.call("chat.finish", { replyId: sent.reply.id, status: "done", text: "Looked." }, mini);
+    const again = await hive.call("chat.send", { project: "*", threadId: sent.thread.id, text: "and the costs?" }, admin);
+    const [request] = (await beatHub()).chatRequests;
+    assert.deepEqual([request!.replyId, request!.project], [again.reply.id, "*"]);
+    assert.deepEqual(request!.projects, [
+      { project: "app", systems: ["shop"], machines: ["duy-mbp"] },
+      { project: "site", systems: ["shop"], machines: ["duy-mbp"] },
+    ]);
+    // A project's own thread is told nothing about the rest of the hub.
+    await beat(mbp);
+    const app = await hive.call("chat.send", { project: "app", machineId: mbp.name, text: "app question" }, lead);
+    const [other] = (await beat(mbp)).chatRequests;
+    assert.deepEqual([other!.replyId, other!.project, other!.projects], [app.reply.id, "app", undefined]);
+  });
+
+  it("makes every proposal name its project, and files what belongs to no project under the hub", async () => {
+    const { hive, propose } = await hubChat();
+    assert.equal(await refusal(propose({ kind: "task.create", id: "T-2", title: "Reset page" })), "errors.chatProjectRequired");
+    assert.equal(await refusal(propose({ kind: "task.create", id: "T-2", title: "Reset page", project: "ghost" })), "errors.chatProjectUnknown");
+    assert.equal(await refusal(propose({ kind: "task.update", id: "S-1", status: "doing", project: "app" })), "errors.chatTaskNotFound", "S-1 is site's");
+    assert.equal(await refusal(propose({ kind: "run.cancel", machine: "duy-mbp", runId: "R-app1", project: "site" })), "errors.chatRunNotFound");
+    assert.equal(await refusal(propose({ kind: "machine.install", machine: "duy-mbp", itemId: "app:codegraph-index" })), "errors.chatProjectRequired");
+    assert.equal(await refusal(propose({ kind: "machine.install", machine: "duy-mbp", itemId: "app:codegraph-index", project: "site" })), "errors.chatInstallOtherProject");
+
+    // Aimed at a project: chat_actions.project is that project, so Today and the filters stay right.
+    const made = await propose({ kind: "task.create", id: "T-2", title: "Reset page", project: "app" });
+    assert.deepEqual([made.project, made.input], ["app", { id: "T-2", project: "app", title: "Reset page", dependsOn: [] }]);
+    assert.equal((await propose({ kind: "task.update", id: "S-1", status: "doing", project: "site" })).project, "site");
+    assert.equal((await propose({ kind: "run.cancel", machine: "duy-mbp", runId: "R-site1", project: "site" })).project, "site");
+    const stopApp = await propose({ kind: "agents.stop", project: "app" });
+    assert.deepEqual([stopApp.project, stopApp.input], ["app", { project: "app" }]);
+
+    // Belonging to no project: filed under "*", and the call it becomes says the whole hub.
+    const profile = await propose({ kind: "machine.profile", machine: "duy-mbp", profileId: "claude-1", enabled: false });
+    assert.equal(profile.project, "*", "a plan is the machine's, not a project's");
+    assert.equal((await propose({ kind: "machine.install", machine: "duy-mbp", itemId: "cli:codex" })).project, "*");
+    assert.equal((await propose({ kind: "machine.install", machine: "duy-mbp", itemId: "tool:rtk" })).project, "*");
+    const stopAll = await propose({ kind: "agents.stop" });
+    assert.deepEqual([stopAll.project, stopAll.input], ["*", { project: null }]);
+    const policy = await propose({ kind: "agent.policy", policy: { autonomy: "propose" } });
+    assert.deepEqual([policy.project, policy.input.project], ["*", null]);
+    assert.deepEqual(policy.input.before, (await hive.call("agentPolicy.get", {}, admin)).hub, "the card shows the hub's default before and after");
+    const forApp = await propose({ kind: "agent.policy", policy: { autonomy: "read" }, project: "app" });
+    assert.deepEqual([forApp.project, forApp.input.project, forApp.input.before], ["app", "app", null]);
+  });
+
+  it("keeps hub attachments admin-only and forwards them in the chat request", async () => {
+    const { hive, beat } = await hub();
+    await beat(mini, { projects: [] });
+    const input = { project: "*", name: "plan.txt", bytes: new TextEncoder().encode("Hub plan") };
+    const member: Actor = { name: "member", role: "member" };
+    assert.throws(() => hive.putChatFile(input, member), (e: unknown) => e instanceof HiveError && e.key === "errors.hubAdminOnly");
+    const file = hive.putChatFile(input, admin);
+    const sent = await hive.call("chat.send", { project: "*", machineId: mini.name, text: "Read the plan", files: [file.id] }, admin);
+    assert.equal(hive.chatFile(file.id, member), null);
+    assert.equal(hive.chatFile(file.id, admin)?.name, "plan.txt");
+    const request = (await beat(mini, { projects: [] })).chatRequests.find((r) => r.replyId === sent.reply.id)!;
+    assert.deepEqual(request.files?.map((f) => f.id), [file.id]);
+  });
+
+  it("keeps main's classification and assignment proposals scoped, and hides hub proposals from project readers", async () => {
+    const { hive, propose } = await hubChat();
+    for (const action of [
+      { kind: "task.classify", id: "S-1", taskKind: "feature", size: "m", risk: "high" },
+      { kind: "task.assign", taskId: "S-1", machine: "duy-mbp", profileId: "claude-1" },
+    ]) {
+      assert.equal(await refusal(propose(action)), "errors.chatProjectRequired");
+      assert.equal(await refusal(propose({ ...action, project: "app" })), "errors.chatTaskNotFound");
+      const proposed = await propose({ ...action, project: "site" });
+      assert.equal(proposed.project, "site");
+      assert.equal((await hive.call("chat.decide", { actionId: proposed.id, accept: true }, admin)).status, "done");
+    }
+    await propose({ kind: "task.create", id: "T-2", title: "Hub proposal", project: "app" });
+    assert.equal((await hive.call("chat.pending", { project: "app" }, admin)).length, 1);
+    assert.deepEqual(await hive.call("chat.pending", { project: "app" }, lead), []);
+    assert.deepEqual(await hive.call("chat.pending", {}, { name: "reader", role: "viewer" }), []);
+    assert.equal((await hive.call("projects.list", {}, admin)).some((p) => p.project === "*"), false);
+  });
+
+  it("lets one reply propose 50 things, where a project's chat stops at 20", async () => {
+    const { hive, sent, propose } = await hubChat();
+    for (let i = 0; i < 50; i++) await propose({ kind: "task.create", id: `N-${i}`, title: "x", project: "app" });
+    assert.equal(await refusal(propose({ kind: "task.create", id: "N-50", title: "x", project: "app" })), "errors.chatTooManyActions");
+    const reply = (await hive.call("chat.get", { threadId: sent.thread.id }, admin))!.messages.find((m) => m.id === sent.reply.id)!;
+    assert.equal(reply.actions.length, 50);
+  });
+
+  it("is a hub admin's alone to confirm, and what is confirmed still goes through the method", async () => {
+    const { hive, sent, propose } = await hubChat();
+    const create = await propose({ kind: "task.create", id: "T-2", title: "Reset page", project: "app" });
+    // lan leads app and may confirm her own project's chats; a proposal of the hub-wide chat is not hers to decide.
+    assert.equal(await refusal(hive.call("chat.decide", { actionId: create.id, accept: true }, lead)), "errors.hubAdminOnly");
+    assert.equal(await refusal(hive.call("chat.decide", { actionId: create.id, accept: true }, projectAdmin)), "errors.hubAdminOnly");
+    assert.equal(await refusal(hive.call("chat.decideAll", { replyId: sent.reply.id, accept: true }, lead)), "errors.hubAdminOnly");
+    assert.deepEqual([(await hive.call("chat.decide", { actionId: create.id, accept: true }, admin)).status, create.project], ["done", "app"]);
+    assert.equal((await hive.call("tasks.list", { project: "app" }, admin)).some((t) => t.id === "T-2"), true);
+
+    // No shortcut: the method runs with the confirmer's own call and refuses what it always refuses.
+    const bad = await propose({ kind: "run.dispatch", taskId: "T-1", machine: "lan-mini", project: "app" });
+    const failed = await hive.call("chat.decide", { actionId: bad.id, accept: true }, admin);
+    assert.deepEqual([failed.status, failed.error?.key], ["failed", "errors.machineNoRepo"], "lan-mini holds the chat but has no app repo");
+    assert.deepEqual(await hive.call("runs.requests", { project: "app" }, admin), []);
+
+    const stop = await propose({ kind: "agents.stop" });
+    assert.equal((await hive.call("chat.decide", { actionId: stop.id, accept: true }, admin)).status, "done");
+    assert.equal((await hive.call("agents.paused", {}, admin)).hub, true, "no project named: the whole hub");
+  });
+
+  it("runs on its own only what chat_defaults[\"*\"] allows, and never what always waits", async () => {
+    const { hive, propose } = await hubChat();
+    // The hub-wide leader has settings of its own: what app lets its leader do says nothing here.
+    await hive.call("chat.setAutonomy", { project: "app", kinds: ["task.update"] }, lead);
+    assert.equal(await refusal(hive.call("chat.setAutonomy", { project: "*", kinds: ["agent.policy"] }, admin)), "errors.chatAutoNever");
+    assert.deepEqual((await hive.call("chat.setAutonomy", { project: "*", kinds: ["task.create"] }, admin)).autoKinds, ["task.create"]);
+
+    const made = await propose({ kind: "task.create", id: "T-2", title: "Reset page", project: "app" });
+    assert.deepEqual([made.status, made.auto, made.decidedBy], ["done", true, "duy"], "as the hub admin who wrote the message");
+    assert.equal((await hive.call("tasks.list", { project: "app" }, admin)).some((t) => t.id === "T-2"), true);
+    const entry = (await hive.call("admin.audit", { limit: 30 }, admin)).find((e) => e.action === "tasks.create" && e.target === "T-2")!;
+    assert.deepEqual([entry.agent, entry.onBehalf], ["claude-1.lan-mini@chat-duy", "duy"], "the log says the leader acted for duy");
+
+    // app's own auto kind does not follow the proposal into the hub-wide chat.
+    assert.equal((await propose({ kind: "task.update", id: "T-1", status: "doing", project: "app" })).status, "proposed");
+    assert.equal((await propose({ kind: "agent.policy", policy: { autonomy: "read" } })).status, "proposed", "loosening the leash always waits");
+  });
+
+  it("leaves a project's own chat exactly as it was", async () => {
+    const { hive, beat } = await hub();
+    await beat(mbp);
+    await hive.call("tasks.create", { id: "T-1", project: "app", title: "Sign in" }, admin);
+    const sent = await hive.call("chat.send", { project: "app", machineId: mbp.name, text: "Plan it" }, lead);
+    await hive.call("chat.progress", { replyId: sent.reply.id, text: "Looking" }, mbp);
+    const leader: Actor = { name: "claude-1.duy-mbp@chat-lan", role: "agent", access: { projects: { app: "contribute" } }, chatReply: sent.reply.id };
+    const propose = (action: Record<string, unknown>) => hive.call("chat.propose", { action, reason: "r" } as never, leader);
+
+    // No project named and none needed: everything is filed under the chat's own project, as before roadmap 37.
+    assert.equal((await propose({ kind: "task.create", id: "T-2", title: "Reset" })).project, "app");
+    assert.equal((await propose({ kind: "agents.stop" })).project, "app");
+    assert.deepEqual((await propose({ kind: "agents.resume" })).input, { project: "app" });
+    assert.equal((await propose({ kind: "machine.install", machine: "duy-mbp", itemId: "cli:codex" })).project, "app");
+    // Still twenty to a reply, and a project outside its systems is still refused.
+    assert.equal(await refusal(propose({ kind: "task.create", id: "T-9", title: "x", project: "site" })), "errors.chatProjectOutside");
+    for (let i = 0; i < 16; i++) await propose({ kind: "task.create", id: `N-${i}`, title: "x" });
+    assert.equal(await refusal(propose({ kind: "task.create", id: "N-20", title: "x" })), "errors.chatTooManyActions");
   });
 });

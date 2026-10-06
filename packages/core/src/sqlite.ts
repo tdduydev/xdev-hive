@@ -8,12 +8,12 @@ import type { AgentKind, AgentRole, PreferKind } from "./agents.ts";
 import { ARTIFACTS_PER_RUN, artifactName, checkArtifact, isArtifactText, type Artifact } from "./artifacts.ts";
 import type { BlobStore } from "./blobs.ts";
 import { HiveError, type ErrorText } from "./errors.ts";
-import { agentsDocKey, decisionsDocKey, parseDocKey, titleFromSlug, type ParsedDocKey } from "./keys.ts";
+import { agentsDocKey, decisionsDocKey, parseDocKey, PROJECT_NAME, titleFromSlug, type ParsedDocKey } from "./keys.ts";
 import { parseSkill, type SkillSummary } from "./skills.ts";
 import { chatFileName, checkChatFile, isImage } from "./chatfiles.ts";
 import { DOC_ASSET_MAX_BYTES, DOC_ASSETS_PER_DOC, DOC_TREE_DEPTH, docLinkRefs, linkSnippet, resolveDocLink } from "./doclinks.ts";
 import { describeProjectContext, syncItemId } from "./sync.ts";
-import { CHAT_ACTION_ALWAYS_CONFIRM, DEFAULT_LEADER_COMMANDS, PAUSED_HUB } from "./types.ts";
+import { CHAT_ACTION_ALWAYS_CONFIRM, DEFAULT_LEADER_COMMANDS, HUB_SCOPE, PAUSED_HUB } from "./types.ts";
 import { EMPTY_POLICY } from "./policy.ts";
 import { budgetApplies, budgetId, budgetRatio, budgetVars, periodStart, type Budget, type BudgetBlock, type BudgetUsage } from "./budgets.ts";
 import { agentPolicyView, EMPTY_AGENT_POLICY, OPEN_POLICY, policySummary, type AgentPolicy, type AgentPolicySettings, type AgentPolicyView } from "./agent-policy.ts";
@@ -733,6 +733,8 @@ function rtkSeedSql(): string {
 
 /** A leader's reply asks for at most this many actions. */
 const CHAT_ACTIONS_PER_REPLY = 20;
+/** More for the hub-wide leader (roadmap 37): one instruction there can touch every project at once. */
+const CHAT_ACTIONS_PER_HUB_REPLY = 50;
 
 /**
  * How long a task waits for its classify run (roadmap 54b) before it starts with the default class anyway: the run
@@ -1730,6 +1732,20 @@ export class SqliteHive implements HiveBackend {
     return access === actor.access ? actor : { ...actor, access };
   }
 
+  /** Each project with the systems it is a service of and the machines that have its repo (ChatRequest.projects). */
+  #projectsForHubChat(): Array<{ project: string; systems: string[]; machines: string[] }> {
+    const systems = this.#systemList();
+    const machines = (this.db.prepare("SELECT machine, projects FROM machines").all() as Row[]).map((r) => ({
+      machine: str(r.machine),
+      projects: JSON.parse(str(r.projects)) as string[],
+    }));
+    return this.#projectNames().map((project) => ({
+      project,
+      systems: systems.filter((s) => s.projects.includes(project)).map((s) => s.name),
+      machines: machines.filter((m) => m.projects.includes(project)).map((m) => m.machine),
+    }));
+  }
+
   #systemList(): Array<{ name: string; projects: string[] }> {
     return (this.db.prepare("SELECT name, projects FROM systems").all() as Row[]).map((r) => ({ name: str(r.name), projects: JSON.parse(str(r.projects)) as string[] }));
   }
@@ -1766,6 +1782,26 @@ export class SqliteHive implements HiveBackend {
       key: owner === null ? `errors.needShared.${permission}` : `errors.need.${permission}`,
       vars: { project: owner ?? "" },
     });
+  }
+
+  /**
+   * The hub-wide chat (roadmap 37) reaches every project and every machine, so nothing short of a hub admin may see or
+   * touch it: no grant can add up to it, as with stopping every agent of the hub. A project manager is not one.
+   */
+  #needHubAdmin(actor: Actor, what: string): void {
+    if (this.#isHubAdmin(actor)) return;
+    throw new HiveError("forbidden", `${what}: only a hub admin.`, { key: "errors.hubAdminOnly" });
+  }
+
+  /** Whether the actor may see the hub-wide chat at all; lists use it to leave its threads out for everyone else. */
+  #isHubAdmin(actor: Actor): boolean {
+    return actor.role === "admin" && !actor.access;
+  }
+
+  /** The thread a reply belongs to, or a chat action: HUB_SCOPE for the hub-wide one. */
+  #threadProjectOfReply(replyId: number): string | null {
+    const row = this.db.prepare("SELECT t.project FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id WHERE m.id = ?").get(replyId) as Row | undefined;
+    return row ? str(row.project) : null;
   }
 
   /** A doc agents read takes contextEdit to change, any other docEdit (roadmap 25): as it is, or as the save makes it. */
@@ -1893,44 +1929,59 @@ export class SqliteHive implements HiveBackend {
         if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Only a hub admin stops every agent of the hub.", { key: "errors.hubAdminOnly" });
         return;
       case "chat.send":
+        if (i.project === HUB_SCOPE) return this.#needHubAdmin(actor, "The hub-wide chat");
         return this.#need(actor, i.project, "chatUse", `Project ${i.project}`);
       case "chat.threads":
+        // Without a project the handler leaves the hub-wide threads out; asking for them outright says who may.
+        if (i.project === HUB_SCOPE) return this.#needHubAdmin(actor, "The hub-wide chat");
         if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
         return;
       case "chat.get": {
         const row = this.db.prepare("SELECT project FROM chat_threads WHERE id = ?").get(i.threadId) as Row | undefined;
-        if (row) this.#need(actor, str(row.project), "view", `Chat #${i.threadId}`);
+        if (!row) return;
+        if (str(row.project) === HUB_SCOPE) return this.#needHubAdmin(actor, `Chat #${i.threadId}`);
+        this.#need(actor, str(row.project), "view", `Chat #${i.threadId}`);
         return;
       }
       case "chat.propose": {
         // The reply's own token only: the leader has at most what the sender and the machine both have.
-        const row = actor.chatReply
-          ? (this.db.prepare("SELECT t.project FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id WHERE m.id = ?").get(actor.chatReply) as Row | undefined)
-          : undefined;
+        const project = actor.chatReply ? this.#threadProjectOfReply(actor.chatReply) : null;
+        // The hub-wide leader is never a hub admin itself (its token is cut to the machine's): the reply's token is what
+        // lets it propose, and #proposeChat checks the project each proposal names. Confirming is still a hub admin's.
+        if (project === null || project === HUB_SCOPE) return;
         // Only proposing: someone with chatApprove decides, and the token is this one reply's (its sender could chat).
-        if (row) this.#need(actor, str(row.project), "view", `Chat reply #${actor.chatReply}`);
+        this.#need(actor, project, "view", `Chat reply #${actor.chatReply}`);
         return;
       }
       case "chat.decideAll": {
-        const row = this.db
-          .prepare("SELECT t.project FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id WHERE m.id = ?")
-          .get(i.replyId) as Row | undefined;
-        if (row) this.#need(actor, str(row.project), "chatApprove", `Chat reply #${i.replyId}`);
+        const project = this.#threadProjectOfReply(i.replyId);
+        if (project === null) return;
+        if (project === HUB_SCOPE) return this.#needHubAdmin(actor, `Chat reply #${i.replyId}`);
+        this.#need(actor, project, "chatApprove", `Chat reply #${i.replyId}`);
         return;
       }
       case "chat.decide": {
-        const row = this.db.prepare("SELECT project FROM chat_actions WHERE id = ?").get(i.actionId) as Row | undefined;
-        if (row) this.#need(actor, str(row.project), "chatApprove", `Chat action #${i.actionId}`);
+        const row = this.db
+          .prepare("SELECT a.project, t.project AS thread_project FROM chat_actions a JOIN chat_threads t ON t.id = a.thread_id WHERE a.id = ?")
+          .get(i.actionId) as Row | undefined;
+        if (!row) return;
+        // The action's own project is what it is aimed at; whether a person may confirm it follows the thread it was
+        // proposed in, so a manager of one project cannot confirm what the hub-wide leader asked for.
+        if (str(row.thread_project) === HUB_SCOPE) return this.#needHubAdmin(actor, `Chat action #${i.actionId}`);
+        this.#need(actor, str(row.project), "chatApprove", `Chat action #${i.actionId}`);
         return;
       }
       case "chat.defaults":
+        if (i.project === HUB_SCOPE) return this.#needHubAdmin(actor, "The hub-wide chat");
         return this.#need(actor, i.project, "view", `Project ${i.project}`);
       case "chat.pending":
+        if (i.project === HUB_SCOPE) return this.#needHubAdmin(actor, "The hub-wide chat");
         if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
         return;
       case "chat.setDefaults":
       case "chat.setCommands":
       case "chat.setAutonomy":
+        if (i.project === HUB_SCOPE) return this.#needHubAdmin(actor, "The hub-wide chat");
         return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
       // The ceiling binds every project: a hub admin (no per-project grants) only.
       case "sdlc.setCeiling":
@@ -2002,14 +2053,16 @@ export class SqliteHive implements HiveBackend {
       case "chat.rename":
       case "chat.delete": {
         const row = this.db.prepare("SELECT project FROM chat_threads WHERE id = ?").get(i.threadId) as Row | undefined;
-        if (row) this.#need(actor, str(row.project), "chatUse", `Chat #${i.threadId}`);
+        if (!row) return;
+        if (str(row.project) === HUB_SCOPE) return this.#needHubAdmin(actor, `Chat #${i.threadId}`);
+        this.#need(actor, str(row.project), "chatUse", `Chat #${i.threadId}`);
         return;
       }
       case "chat.cancel": {
-        const row = this.db
-          .prepare("SELECT t.project FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id WHERE m.id = ?")
-          .get(i.replyId) as Row | undefined;
-        if (row) this.#need(actor, str(row.project), "chatUse", `Chat reply #${i.replyId}`);
+        const project = this.#threadProjectOfReply(i.replyId);
+        if (project === null) return;
+        if (project === HUB_SCOPE) return this.#needHubAdmin(actor, `Chat reply #${i.replyId}`);
+        this.#need(actor, project, "chatUse", `Chat reply #${i.replyId}`);
         return;
       }
       case "runs.cancel": {
@@ -2390,7 +2443,8 @@ export class SqliteHive implements HiveBackend {
    * the project, who alone can send there. Images and PDF are checked by their bytes; text must be UTF-8 with no secret.
    */
   putChatFile(input: { project: string; name: string; bytes: Uint8Array }, actor: Actor): ChatFile {
-    this.#need(actor, input.project, "chatUse", `Project ${input.project}`);
+    if (input.project === HUB_SCOPE) this.#needHubAdmin(actor, "The hub-wide chat");
+    else this.#need(actor, input.project, "chatUse", `Project ${input.project}`);
     const name = chatFileName(input.name);
     const type = checkChatFile(name, input.bytes);
     if (!isImage(type) && type !== "application/pdf") assertNoSecret(new TextDecoder().decode(input.bytes), name);
@@ -2407,6 +2461,7 @@ export class SqliteHive implements HiveBackend {
   chatFile(id: number, actor: Actor): (ChatFile & { bytes: Uint8Array }) | null {
     const row = this.db.prepare("SELECT * FROM chat_files WHERE id = ?").get(id) as Row | undefined;
     if (!row || !sees(actor, str(row.project))) return null;
+    if (str(row.project) === HUB_SCOPE && !this.#isHubAdmin(actor)) return null;
     if (row.message_id == null && str(row.uploaded_by) !== actor.name) return null;
     return { ...toChatFile(row), bytes: row.data as Uint8Array };
   }
@@ -3399,9 +3454,9 @@ export class SqliteHive implements HiveBackend {
     const names = new Set<string>();
     // A system's own docs and memory sit under sys:<name> (roadmap 19c), which is not a project.
     const add = (v: unknown) => {
-      if (typeof v === "string" && v && systemOf(v) === null) names.add(v);
+      if (typeof v === "string" && PROJECT_NAME.test(v)) names.add(v);
     };
-    for (const table of ["tasks", "docs", "memory", "run_records", "chat_threads", "project_states", "artifacts"]) {
+    for (const table of ["tasks", "docs", "memory", "run_records", "run_requests", "chat_threads", "chat_defaults", "tool_projects", "project_states", "artifacts"]) {
       for (const r of this.db.prepare(`SELECT DISTINCT project FROM ${table}`).all() as Row[]) add(r.project);
     }
     for (const table of ["machines", "systems"]) {
@@ -4940,11 +4995,13 @@ export class SqliteHive implements HiveBackend {
           if (str(reply.status) !== "pending" && str(reply.status) !== "running") {
             throw new HiveError("conflict", `Chat reply #${replyId} has ended.`, { key: "errors.chatReplyEnded", vars: { id: replyId } });
           }
-          const count = num((db.prepare("SELECT COUNT(*) AS n FROM chat_actions WHERE reply_id = ?").get(replyId) as Row).n);
-          if (count >= CHAT_ACTIONS_PER_REPLY) {
-            throw new HiveError("bad_request", `A reply proposes at most ${CHAT_ACTIONS_PER_REPLY} actions.`, { key: "errors.chatTooManyActions", vars: { max: CHAT_ACTIONS_PER_REPLY } });
-          }
           const project = str(reply.project);
+          const hub = project === HUB_SCOPE;
+          const max = hub ? CHAT_ACTIONS_PER_HUB_REPLY : CHAT_ACTIONS_PER_REPLY;
+          const count = num((db.prepare("SELECT COUNT(*) AS n FROM chat_actions WHERE reply_id = ?").get(replyId) as Row).n);
+          if (count >= max) {
+            throw new HiveError("bad_request", `A reply proposes at most ${max} actions.`, { key: "errors.chatTooManyActions", vars: { max } });
+          }
           // A person reads it before confirming, and an agent may read it as its prompt.
           const texts: Array<[string, string | undefined]> = [["Reason", reason]];
           if (action.kind === "task.create") texts.push(["Title", action.title]);
@@ -4963,33 +5020,61 @@ export class SqliteHive implements HiveBackend {
           const planned = (id: string) => plannedRow(id) !== undefined;
           // The project a task is in, or will be in once this reply's proposal to create it is confirmed.
           const projectOf = (id: string): string | null => strOrNull(task(id)?.project) ?? strOrNull(plannedRow(id)?.project);
-          // A task of the project, or of another service of a system it is in that the sender sees (roadmap 19d), or one
-          // this reply also proposes to create (confirming all makes it first).
-          const known = (id: string) => {
+          // A task of the project aimed at, or of another service of a system it is in that the sender sees (roadmap
+          // 19d), or one this reply also proposes to create (confirming all makes it first). The hub-wide leader names
+          // the project itself, so there it is that one exactly.
+          const known = (id: string, scope: string) => {
             const p = projectOf(id);
-            return p !== null && (p === project || (this.#sameSystem(p, project) && sees(actor, p)));
+            return p !== null && (p === scope || (!hub && this.#sameSystem(p, scope) && sees(actor, p)));
           };
-          const missing = (id: string) =>
-            new HiveError("not_found", `Task ${id} not found in ${project}.`, { key: "errors.chatTaskNotFound", vars: { id, project } });
+          const missing = (id: string, scope: string) =>
+            new HiveError("not_found", `Task ${id} not found in ${scope}.`, { key: "errors.chatTaskNotFound", vars: { id, project: scope } });
+          /**
+           * The project this proposal is aimed at. A project's own thread works on its own project, as it always has.
+           * The hub-wide thread (roadmap 37) reaches every project, so there the leader has to name one, and it has to
+           * be a project the hub really has and the leader's token sees.
+           */
+          const named = action.project;
+          const aimed = (): string => {
+            if (!hub) return project;
+            if (!named) {
+              throw new HiveError("bad_request", `${action.kind} in the hub-wide chat says which project it is for.`, {
+                key: "errors.chatProjectRequired",
+                vars: { kind: action.kind },
+              });
+            }
+            if (!this.#projectNames().includes(named) || !sees(actor, named)) {
+              throw new HiveError("not_found", `No project ${named} on the hub.`, { key: "errors.chatProjectUnknown", vars: { project: named } });
+            }
+            return named;
+          };
+          // Kinds that need no project: left out in the hub-wide chat they mean the whole hub (null), as agents.stop does.
+          const aimedOrHub = (): string | null => (hub && !named ? null : aimed());
           // A machine by hub id or name, as run.dispatch names one.
           const machineRow = (wanted: string): Row => {
             const m = db.prepare("SELECT * FROM machines WHERE id = ? OR machine = ? ORDER BY last_seen DESC LIMIT 1").get(wanted, wanted) as Row | undefined;
             if (!m) throw new HiveError("not_found", `No machine ${wanted}.`, { key: "errors.machineNotFound", vars: { machine: wanted } });
             return m;
           };
-          // Only a run of this chat's project: the leader acts for this project alone.
-          const runRow = (machineId: string, runId: string): Row => {
-            const r = db.prepare("SELECT status, mr_url FROM run_records WHERE machine_id = ? AND run_id = ? AND project = ?").get(machineId, runId, project) as Row | undefined;
-            if (!r) throw new HiveError("not_found", `Run ${runId} not found in ${project}.`, { key: "errors.chatRunNotFound", vars: { id: runId, project } });
+          // Only a run of the project aimed at: the leader never reaches past the project it named.
+          const runRow = (machineId: string, runId: string, scope: string): Row => {
+            const r = db.prepare("SELECT status, mr_url FROM run_records WHERE machine_id = ? AND run_id = ? AND project = ?").get(machineId, runId, scope) as Row | undefined;
+            if (!r) throw new HiveError("not_found", `Run ${runId} not found in ${scope}.`, { key: "errors.chatRunNotFound", vars: { id: runId, project: scope } });
             return r;
           };
           let input: Record<string, unknown>;
+          /**
+           * What chat_actions.project keeps: the project the proposal is aimed at, so Today, the filters and the log
+           * stay per project. A project's thread files everything under itself, as before 37. HUB_SCOPE is for what
+           * belongs to no project: a machine's plan or setup item, a stop of every agent, the hub's own policy.
+           */
+          let scope = project;
           switch (action.kind) {
             case "task.create": {
               if (task(action.id) || planned(action.id)) throw new HiveError("conflict", `Task ${action.id} already exists.`, { key: "errors.taskExists", vars: { id: action.id } });
               // A leader of one service plans a feature across its system: a task for another service of it (roadmap 19d).
-              const target = action.project ?? project;
-              if (target !== project && (!this.#sameSystem(target, project) || !sees(actor, target))) {
+              const target = hub ? aimed() : (action.project ?? project);
+              if (!hub && target !== project && (!this.#sameSystem(target, project) || !sees(actor, target))) {
                 throw new HiveError("bad_request", `${target} is not a service of a system with ${project}.`, { key: "errors.chatProjectOutside", vars: { project: target, home: project } });
               }
               input = {
@@ -5001,14 +5086,20 @@ export class SqliteHive implements HiveBackend {
                 ...(action.size ? { size: action.size } : {}),
                 ...(action.risk ? { risk: action.risk } : {}),
               };
+              if (hub) scope = target;
               break;
             }
-            case "task.update":
-              if (!known(action.id)) throw missing(action.id);
+            case "task.update": {
+              const target = aimed();
+              if (!known(action.id, target)) throw missing(action.id, target);
               input = { id: action.id, status: action.status, ...(action.note === undefined ? {} : { note: action.note }) };
+              if (hub) scope = target;
               break;
-            case "task.classify":
-              if (!known(action.id)) throw missing(action.id);
+            }
+            case "task.classify": {
+              const target = aimed();
+              if (!known(action.id, target)) throw missing(action.id, target);
+              if (hub) scope = target;
               if (action.taskKind === undefined && action.size === undefined && action.risk === undefined) {
                 throw new HiveError("bad_request", "A classification needs a kind, size or risk.", { key: "errors.classifyEmpty" });
               }
@@ -5019,8 +5110,11 @@ export class SqliteHive implements HiveBackend {
                 ...(action.risk ? { risk: action.risk } : {}),
               };
               break;
+            }
             case "task.assign": {
-              if (!known(action.taskId)) throw missing(action.taskId);
+              const target = aimed();
+              if (!known(action.taskId, target)) throw missing(action.taskId, target);
+              if (hub) scope = target;
               const m = this.#toMachine(machineRow(action.machine));
               if (action.profileId !== null && !m.profiles.some((p) => p.id === action.profileId)) {
                 throw new HiveError("not_found", `${m.machine} has not reported a profile ${action.profileId}.`, {
@@ -5033,7 +5127,8 @@ export class SqliteHive implements HiveBackend {
               break;
             }
             case "run.dispatch": {
-              if (!known(action.taskId)) throw missing(action.taskId);
+              const target = aimed();
+              if (!known(action.taskId, target)) throw missing(action.taskId, target);
               // The chat's own machine unless the leader names another.
               const m = machineRow(action.machine ?? str(reply.machine_id));
               input = {
@@ -5047,23 +5142,28 @@ export class SqliteHive implements HiveBackend {
                 candidates: action.candidates,
                 instructions: action.instructions,
               };
+              if (hub) scope = target;
               break;
             }
             case "run.cancel": {
+              const target = aimed();
               const machineId = str(machineRow(action.machine).id);
-              const status = str(runRow(machineId, action.runId).status);
+              const status = str(runRow(machineId, action.runId, target).status);
               if (status !== "queued" && status !== "running") {
                 throw new HiveError("conflict", `Run ${action.runId} has ended (${status}).`, { key: "errors.chatRunEnded", vars: { id: action.runId } });
               }
               input = { machineId, runId: action.runId };
+              if (hub) scope = target;
               break;
             }
             case "run.merge": {
+              const target = aimed();
               const machineId = str(machineRow(action.machine).id);
-              if (runRow(machineId, action.runId).mr_url == null) {
+              if (runRow(machineId, action.runId, target).mr_url == null) {
                 throw new HiveError("bad_request", `Run ${action.runId} has no merge request.`, { key: "errors.chatRunNoMr", vars: { id: action.runId } });
               }
               input = { machineId, runId: action.runId };
+              if (hub) scope = target;
               break;
             }
             case "machine.profile": {
@@ -5083,48 +5183,65 @@ export class SqliteHive implements HiveBackend {
                 ...(action.enabled === undefined ? {} : { enabled: action.enabled }),
                 ...(action.priority === undefined ? {} : { priority: action.priority }),
               };
+              // A plan belongs to the machine, not to any project.
+              if (hub) scope = HUB_SCOPE;
               break;
             }
-            case "agent.policy":
+            case "agent.policy": {
               // What it is now, so the card shows before and after; the policy may change again before it is confirmed.
-              input = { project, policy: action.policy, before: this.#agentPolicy().projects[project] ?? null };
+              const target = aimedOrHub();
+              const policy = this.#agentPolicy();
+              input = { project: target, policy: action.policy, before: target === null ? policy.hub : (policy.projects[target] ?? null) };
+              if (hub) scope = target ?? HUB_SCOPE;
               break;
+            }
             case "agents.stop":
-            case "agents.resume":
-              input = { project };
+            case "agents.resume": {
+              const target = aimedOrHub();
+              input = { project: target };
+              if (hub) scope = target ?? HUB_SCOPE;
               break;
+            }
             case "machine.install": {
-              // The machine's own items, or this project's: another project's install is not this chat's to ask for.
+              // The machine's own items (cli:<kind>, shim) belong to no project; a project's item is only that project's
+              // to ask for, so the hub-wide leader has to name the one it belongs to.
               const colon = action.itemId.indexOf(":");
-              const owner = action.itemId === "shim" || action.itemId.startsWith("cli:") ? null : action.itemId.slice(0, colon);
-              if (owner !== null && owner !== project) {
-                throw new HiveError("forbidden", `${action.itemId} belongs to another project.`, { key: "errors.chatInstallOtherProject", vars: { item: action.itemId, project } });
+              const owner = action.itemId === "shim" || action.itemId.startsWith("cli:") || action.itemId.startsWith("tool:") ? null : action.itemId.slice(0, colon);
+              const target = owner === null ? null : aimed();
+              if (owner !== null && owner !== (target ?? project)) {
+                throw new HiveError("forbidden", `${action.itemId} belongs to another project.`, {
+                  key: "errors.chatInstallOtherProject",
+                  vars: { item: action.itemId, project: target ?? project },
+                });
               }
               input = { machineId: str(machineRow(action.machine).id), itemId: action.itemId };
+              if (hub) scope = target ?? HUB_SCOPE;
               break;
             }
             case "tool.enable": {
+              const target = aimed();
               const row = db.prepare("SELECT * FROM tools WHERE id = ?").get(action.id) as Row | undefined;
               if (!row) throw new HiveError("not_found", `No tool ${action.id}.`, { key: "errors.toolNotFound", vars: { id: action.id } });
               // The project's setting now: the card shows before and after, and a proposal that leaves required out
               // should not drop a requirement the project set.
-              const view = this.#toolView(row, actor, project);
-              const now = view.projects.find((p) => p.project === project)!;
+              const view = this.#toolView(row, actor, target);
+              const now = view.projects.find((p) => p.project === target)!;
               input = {
                 id: view.id,
-                project,
+                project: target,
                 enabled: action.enabled,
                 required: action.required ?? now.required,
                 name: view.name,
                 before: { enabled: now.enabled, required: now.required, effective: now.effective },
               };
+              if (hub) scope = target;
               break;
             }
           }
           const id = num(
             db
               .prepare("INSERT INTO chat_actions(reply_id, thread_id, project, kind, input, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-              .run(replyId, num(reply.thread_id), project, action.kind, JSON.stringify(input), reason, this.#now()).lastInsertRowid,
+              .run(replyId, num(reply.thread_id), scope, action.kind, JSON.stringify(input), reason, this.#now()).lastInsertRowid,
           );
           return this.#chatAction(id);
     });
@@ -5168,7 +5285,11 @@ export class SqliteHive implements HiveBackend {
    * more than their rights, and only when they could confirm it themselves (chatApprove). Anything else waits for a person.
    */
   async #autoRun(action: ChatAction, leader: Actor): Promise<ChatAction> {
-    if (CHAT_ACTION_ALWAYS_CONFIRM.includes(action.kind) || !this.#chatDefaults(action.project).autoKinds.includes(action.kind)) return action;
+    // What a leader may run alone is the chat's own setting, not the target project's: the hub-wide leader (roadmap 37)
+    // follows chat_defaults["*"], which only a hub admin sets, whichever project the proposal is aimed at.
+    const thread = this.#threadProjectOfReply(action.replyId);
+    const settings = thread === HUB_SCOPE ? HUB_SCOPE : action.project;
+    if (CHAT_ACTION_ALWAYS_CONFIRM.includes(action.kind) || !this.#chatDefaults(settings).autoKinds.includes(action.kind)) return action;
     // A run or a move of a task this reply proposes to create waits until someone confirms the task.
     const taskId =
       action.kind === "run.dispatch" ? action.input.taskId : action.kind === "task.update" || action.kind === "task.classify" || action.kind === "task.assign" ? action.input.id : null;
@@ -5258,6 +5379,8 @@ export class SqliteHive implements HiveBackend {
         commands: this.#chatDefaults(str(r.project)).commands,
         // The systems the project is a service of (roadmap 19d): the leader plans across them.
         systems: this.#systemList().filter((s) => s.projects.includes(str(r.project))),
+        // The hub-wide leader works across projects (roadmap 37): it gets the whole list, with who has each repo.
+        ...(str(r.project) === HUB_SCOPE ? { projects: this.#projectsForHubChat() } : {}),
       }),
     );
   }
@@ -7248,7 +7371,8 @@ export class SqliteHive implements HiveBackend {
           const name = { machine: m.machine };
           if (!m.online) throw new HiveError("conflict", `${m.machine} is offline.`, { key: "errors.machineOffline", vars: name });
           if (!m.acceptsRuns) throw new HiveError("bad_request", `${m.machine} does not take runs from the hub.`, { key: "errors.machineNoHubRuns", vars: name });
-          if (!m.projects.includes(project)) {
+          // The hub-wide leader reads the board, not one repo (roadmap 37): its machine needs no project checked out.
+          if (project !== HUB_SCOPE && !m.projects.includes(project)) {
             throw new HiveError("bad_request", `${m.machine} has no repo for ${project}.`, { key: "errors.machineNoRepo", vars: { ...name, project } });
           }
           const pinned = thread ? strOrNull(thread.profile_id) : profileId === undefined ? (defaults?.profileId ?? null) : profileId;
@@ -7302,30 +7426,34 @@ export class SqliteHive implements HiveBackend {
           return { thread: this.#chatThread(id), message: this.#chatMessage(message), reply: this.#chatMessage(reply) };
         }),
 
-      "chat.pending": ({ project, projects, limit }) =>
+      "chat.pending": ({ project, projects, limit }, actor) =>
         (
           db
             .prepare(
               `SELECT * FROM chat_actions WHERE status = 'proposed' AND (?1 IS NULL OR project = ?1)
                  AND (?3 IS NULL OR project IN (SELECT value FROM json_each(?3)))
+                 AND (?4 = 1 OR thread_id IN (SELECT id FROM chat_threads WHERE project <> '*'))
                ORDER BY id DESC LIMIT ?2`,
             )
-            .all(project ?? null, limit, listParam(projects)) as Row[]
+            .all(project ?? null, limit, listParam(projects), this.#isHubAdmin(actor) ? 1 : 0) as Row[]
         ).map(toChatAction),
-      "chat.threads": ({ project, projects, query, limit }) => {
+      "chat.threads": ({ project, projects, query, limit }, actor) => {
         this.#expireChats();
         const words = query?.trim();
         // Found in the title or in any message; % and _ are the person's own characters, not wildcards.
         const like = words ? `%${words.normalize("NFC").toLocaleLowerCase("vi").replace(/[\\%_]/g, "\\$&")}%` : null;
+        // The hub-wide thread (roadmap 37) is left out here rather than in #filter, which only trims actors with grants:
+        // an unrestricted token that is not a hub admin's must not see it either.
         return (
           db
             .prepare(
               `${THREAD_SELECT} WHERE (?1 IS NULL OR t.project = ?1) AND (?4 IS NULL OR t.project IN (SELECT value FROM json_each(?4)))
+                 AND (?5 = 1 OR t.project <> '${HUB_SCOPE}')
                  AND (?3 IS NULL OR hive_fold(t.title) LIKE ?3 ESCAPE '\\'
                    OR EXISTS (SELECT 1 FROM chat_messages q WHERE q.thread_id = t.id AND hive_fold(q.text) LIKE ?3 ESCAPE '\\'))
                ORDER BY t.updated_at DESC, t.id DESC LIMIT ?2`,
             )
-            .all(project ?? null, limit, like, listParam(projects)) as Row[]
+            .all(project ?? null, limit, like, listParam(projects), this.#isHubAdmin(actor) ? 1 : 0) as Row[]
         ).map(toChatThread);
       },
 

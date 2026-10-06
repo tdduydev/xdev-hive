@@ -3096,6 +3096,8 @@ export const vi = {
     chatTaskNotFound: "Dự án {project} không có task {id}.",
     chatAutoNever: "Loại {kinds} luôn chờ người duyệt: leader không tự nới giới hạn của chính nó.",
     chatProjectOutside: "{project} không phải một service trong hệ thống của {home}.",
+    chatProjectRequired: "Ở chat Toàn hub, việc {kind} phải nêu rõ dự án.",
+    chatProjectUnknown: "Hub không có dự án {project}.",
     chatActionNotFound: "Không có đề xuất #{id}.",
     chatActionDecided: "Đề xuất #{id} đã được quyết định rồi.",
     chatRunNotFound: "Dự án {project} không có run {id}.",
