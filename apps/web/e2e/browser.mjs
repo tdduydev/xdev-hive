@@ -291,10 +291,7 @@ async function main() {
     });
     expect(sheet.width <= sheet.viewport + 1 && sheet.left >= -1 && sheet.scroll <= sheet.viewport + 1, `task panel overflow: ${JSON.stringify(sheet)}`);
     await tab.key("Escape");
-    await tab.click("[data-create-task-toggle]");
-    await tab.waitFor("create task form expanded", () => document.querySelector("[data-create-task-toggle]")?.getAttribute("aria-expanded") === "true");
-    await tab.click("[data-create-task-toggle]");
-    await tab.click('header button[title="Task mới (⌘N)"]');
+    await tab.click("[data-new-work-open]");
     await tab.waitFor("phone dialog", () => document.querySelector('[data-slot="dialog-content"]')?.getBoundingClientRect().height >= innerHeight - 1);
     const dialog = await tab.eval(() => {
       const r = document.querySelector('[data-slot="dialog-content"]').getBoundingClientRect();
@@ -655,28 +652,74 @@ async function main() {
     await beat();
     const tab = (current = tabs.lan);
     await tab.go("tasks");
-    await tab.click("[data-prompt-agent]");
-    await tab.waitFor("the profiles of Lan's machine", () => [...(document.querySelector("#prompt-profile")?.options ?? [])].some((o) => o.value === "claude-2"));
-    await tab.eval(() => {
-      const select = document.querySelector("#prompt-profile");
-      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, "claude-2");
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    await tab.click("#prompt-text");
-    await tab.type("Thêm trang lịch sử giao dịch.\nCó lọc theo ngày.");
-    await tab.shot(`${String(n).padStart(2, "0")}-web-prompt-form`);
-    await tab.click('button[type="submit"]', "Gửi prompt");
-    const task = await until("the prompt's task", async () => (await rpc("tasks.list", { project: "payment" })).find((t) => /^P-\d+$/.test(t.id)));
-    expect(task.title === "Thêm trang lịch sử giao dịch.", `title: ${task.title}`);
-    const [req] = (await rpc("runs.requests", { project: "payment" })).filter((r) => r.taskId === task.id);
-    expect(req?.status === "pending" && req.profileId === "claude-2" && req.machine === "lan-mbp", `request: ${JSON.stringify(req)}`);
-    // The task's panel opens on it, waiting for the machine.
-    await tab.waitFor("the new task's panel", () => document.body.innerText.includes("Chờ máy lan-mbp nhận"));
-    expect(task.note === "Thêm trang lịch sử giao dịch.\nCó lọc theo ngày.", `note: ${task.note}`);
-    const sent = (await beat()).runRequests?.find((r) => r.id === req.id);
-    expect(sent?.taskId === task.id, `at the heartbeat: ${JSON.stringify(sent)}`);
+    await tab.click("[data-new-work-open]");
+    await tab.click('[data-new-work-path="quick"]');
+    await tab.click("#new-work-title");
+    await tab.type("Thêm trang lịch sử giao dịch.");
+    await tab.click("#new-work-description");
+    await tab.type("Có lọc theo ngày.");
+    await tab.click("#new-work-done");
+    await tab.type("Lọc đúng giao dịch trong khoảng ngày.");
+    await setSelect(tab, "#new-work-run", "run");
+    await tab.waitFor("available agents", () => document.querySelector("#new-work-agent")?.options.length > 1);
+    await setSelect(tab, "#new-work-agent", "runner.lan-mbp@lan-e2e");
+    await setSelect(tab, "#new-work-profile", "claude-2");
+    await tab.shot(`${String(n).padStart(2, "0")}-new-work-run`);
+    await tab.click("[data-new-work-submit]");
+    const task = await until("the quick task", async () => (await rpc("tasks.list", { project: "payment" })).find((t) => t.title === "Thêm trang lịch sử giao dịch."));
+    const sent = (await beat()).runRequests?.find((r) => r.taskId === task.id);
+    expect(sent?.profileId === "claude-2", `assigned request: ${JSON.stringify(sent)}`);
+    const req = sent;
+    expect(task.note.includes("Có lọc theo ngày.") && task.note.includes("Xong khi\nLọc đúng"), `note: ${task.note}`);
+    await tab.waitFor("new task panel", (id) => !!document.querySelector(`[data-task-notes="${id}"]`) || location.hash.includes(encodeURIComponent(id)), task.id);
     // Leave the hub as the other steps expect it.
     await rpc("runs.cancelRequest", { id: req.id });
+  });
+
+  await step("new-work", async () => {
+    const tab = (current = tabs.lan);
+    await tab.reload();
+    await tab.go("tasks");
+    expect(await tab.eval(() => !document.querySelector("[data-create-task-toggle], [data-prompt-agent]") && !document.body.innerText.includes("task_claim")), "task page uses human wording and one create entry");
+    await tab.click("[data-new-work-open]");
+    await tab.waitFor("three start paths", () => document.querySelectorAll("[data-new-work-path]").length === 3);
+    await tab.shot(`${String(n).padStart(2, "0")}-new-work-choices`);
+    await tab.click('[data-new-work-path="ask"]');
+    await setSelect(tab, "#new-work-project", "payment");
+    await tab.click("#new-work-title");
+    await tab.type("Nên bắt đầu kiểm tra thanh toán từ đâu?");
+    await tab.click("[data-new-work-submit]");
+    await tab.waitFor("question carried into Chat", () => location.hash.startsWith("#/chat") && [...document.querySelectorAll("textarea")].some((el) => el.value === "Nên bắt đầu kiểm tra thanh toán từ đâu?"));
+    await tab.shot(`${String(n).padStart(2, "0")}-new-work-chat`);
+    await tab.click("[data-new-work-open]");
+    await tab.click('[data-new-work-path="feature"]');
+    await setSelect(tab, "#new-work-project", "payment");
+    await tab.click("[data-new-work-submit]");
+    await tab.waitFor("full Spec form", () => location.hash.startsWith("#/specs") && document.body.innerText.includes("Viết spec"));
+    await tab.shot(`${String(n).padStart(2, "0")}-new-work-spec`);
+    await tab.click("[data-new-work-open]");
+    await tab.click('[data-new-work-path="quick"]');
+    await setSelect(tab, "#new-work-project", "payment");
+    await tab.click("#new-work-title"); await tab.type("Việc nhỏ chỉ tạo 49c");
+    await tab.click("#new-work-description"); await tab.type("Sửa nhãn trên màn hình.");
+    await tab.click("#new-work-done"); await tab.type("Nhãn đúng ở cả hai ngôn ngữ.");
+    const form = await tab.eval(() => {
+      const dialog = document.querySelector("[data-new-work]");
+      return { overflow: dialog.scrollWidth > dialog.clientWidth, smallInputs: [...dialog.querySelectorAll("input, textarea, select")].some((el) => parseFloat(getComputedStyle(el).fontSize) < 16), smallButtons: [...dialog.querySelectorAll("button")].some((el) => el.getBoundingClientRect().height < 44) };
+    });
+    expect(!form.overflow && (!mobile || (!form.smallInputs && !form.smallButtons)), `new work mobile audit: ${JSON.stringify(form)}`);
+    await tab.shot(`${String(n).padStart(2, "0")}-new-work-quick`);
+    await tab.click("[data-new-work-submit]");
+    const task = await until("create-only task", async () => (await rpc("tasks.list", { project: "payment" })).find((t) => t.title === "Việc nhỏ chỉ tạo 49c"));
+    expect(task.note === "Sửa nhãn trên màn hình.\n\nXong khi\nNhãn đúng ở cả hai ngôn ngữ.", `quick note: ${task.note}`);
+    expect(!(await rpc("runs.requests", { project: "payment" })).some((r) => r.taskId === task.id), "create only does not dispatch");
+    expect(!task.agent, "create only leaves agent unassigned");
+    await tab.waitFor("quick task opened", (id) => location.hash.includes(encodeURIComponent(id)), task.id);
+    const viewer = (current = tabs.minh);
+    await viewer.go("tasks");
+    await viewer.click("[data-new-work-open]");
+    expect(await viewer.eval(() => !document.querySelector('[data-new-work-path="quick"], [data-new-work-path="feature"]')), "viewer cannot create tasks or features");
+    await viewer.key("Escape");
   });
 
   // Roadmap 31a: Lan gives two payment tasks to agents at once, one at a time; when the machine reports the first run
@@ -699,7 +742,7 @@ async function main() {
     // The last step left a task's panel open on Lan's tab, whose overlay would take the first click.
     await tab.reload();
     await tab.go("tasks");
-    const second = (await rpc("tasks.list", { project: "payment" })).find((t) => /^P-\d+$/.test(t.id)).id;
+    const second = (await rpc("tasks.list", { project: "payment" })).find((t) => t.title === "Thêm trang lịch sử giao dịch.").id;
     // The "ready next" notice comes in after the table and pushes it down: click once the page has settled.
     await tab.waitFor("the ready-next notice", () => document.body.innerText.includes("Sẵn sàng tiếp theo"));
     // Tasks are picked in the list; the page opens on the board (roadmap 30a).
@@ -754,33 +797,8 @@ async function main() {
     const tab = (current = tabs.lan);
     await tab.reload();
     await tab.go("tasks");
-    await tab.click("[data-prompt-agent]");
-    await tab.waitFor("the profiles of Lan's machine", () => [...(document.querySelector("#prompt-profile")?.options ?? [])].some((o) => o.value === "claude-2"));
-    await tab.click("[data-prompt-add-agent]");
-    await tab.waitFor("two agent rows", () => document.querySelectorAll("[data-prompt-agent-row]").length === 2);
-    const pickProfile = (row, value) =>
-      tab.eval(
-        (r, v) => {
-          const select = document.querySelector(`#prompt-profile-${r}`);
-          Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, v);
-          select.dispatchEvent(new Event("change", { bubbles: true }));
-        },
-        row,
-        value,
-      );
-    await tab.eval(() => {
-      const select = document.querySelector("#prompt-machine-1");
-      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, select.options[1].value);
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    await pickProfile(0, "claude-1");
-    await tab.waitFor("row b's profiles", () => [...(document.querySelector("#prompt-profile-1")?.options ?? [])].some((o) => o.value === "claude-2"));
-    await pickProfile(1, "claude-2");
-    await tab.click("#prompt-text");
-    await tab.type("Tối ưu trang thanh toán cho điện thoại.");
-    await tab.shot(`${String(n).padStart(2, "0")}-fanout-form`);
-    await tab.click('button[type="submit"]', "Gửi cho 2 agent");
-    const group = await until("the fan-out group", async () => (await rpc("runs.groups", { project: "payment" })).find((g) => g.kind === "fanout"));
+    // The removed prompt entry no longer starts fan-out; keep the hub fan-out/compare coverage.
+    const group = await rpc("runs.fanout", { project: "payment", prompt: "Tối ưu trang thanh toán cho điện thoại.", targets: [{ machineId: "runner.lan-mbp@lan-e2e", profileId: "claude-1" }, { machineId: "runner.lan-mbp@lan-e2e", profileId: "claude-2" }] }, people.lan.token);
     const [a, b] = group.items;
     expect(group.parentTask && a.taskId === `${group.parentTask}-a` && b.taskId === `${group.parentTask}-b`, `items: ${group.items.map((i) => i.taskId).join()}`);
     expect(a.profileId === "claude-1" && b.profileId === "claude-2", `profiles: ${a.profileId}, ${b.profileId}`);
@@ -1438,15 +1456,7 @@ async function main() {
     await tab.shot(`${String(n).padStart(2, "0")}-agent-map-codex`);
     await tab.click('[data-map-profile="lan-mbp/claude-1"]');
     await tab.click('[data-map-profile="lan-mini/claude-2"]');
-    await tab.click("[data-map-prompt]");
-    const rows = await tab.waitFor("the prompt for two agents", () => {
-      const r = document.querySelectorAll("[data-prompt-agent-row]");
-      return r.length === 2 && [...r].map((row) => [...row.querySelectorAll("select")].map((s) => s.value));
-    });
-    expect(JSON.stringify(rows) === JSON.stringify([[id("lan-mbp"), "claude-1"], [id("lan-mini"), "claude-2"]]), `rows: ${JSON.stringify(rows)}`);
-    await tab.shot(`${String(n).padStart(2, "0")}-agent-map-prompt`);
-    await tab.key("Escape");
-    await tab.waitFor("the prompt closed", () => !document.querySelector('[role="dialog"]'));
+    expect(await tab.eval(() => !document.querySelector("[data-map-prompt]")), "new work has one entry in the top bar");
     await tab.shot(`${String(n).padStart(2, "0")}-agent-map-picked`);
     await tab.click("[data-map-batch]");
     await tab.waitFor("the Task page with the two agents", () => location.hash.startsWith("#/tasks") && document.body.innerText.includes("Đã chọn 2 agent trên Bản đồ agent"));

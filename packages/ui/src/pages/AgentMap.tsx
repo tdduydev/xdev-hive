@@ -2,14 +2,12 @@
 // the agent is doing, the machine's queue under them, and the open batches on the right. Profiles picked here get one
 // prompt (one agent, or a fan-out) or the tasks picked next on the Task page.
 import { useState, type KeyboardEvent } from "react";
-import { ListChecks, Sparkles } from "lucide-react";
+import { ListChecks } from "lucide-react";
 import { cn } from "cn";
 import type { Machine, QuotaCooldown, ReportedProfile, RunGroup, RunRecord, RunRequest } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Input } from "@xdev-hive/ui/components/ui/input";
-import { Sheet } from "@xdev-hive/ui/components/ui/sheet";
 import { Switch } from "@xdev-hive/ui/components/ui/switch";
-import { PromptSheet } from "#ui/components/AgentSheets.tsx";
 import { ErrorNote } from "#ui/components/common.tsx";
 import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { formatTime, useAction, useCan, useHive } from "#ui/hooks.ts";
@@ -17,7 +15,6 @@ import { useT } from "#ui/i18n/index.tsx";
 import { usageAsOf } from "#ui/lib/agents.ts";
 import { encodeTargets, machineCards, type AgentTarget, type ProfileCard, type ProfileState } from "#ui/lib/agentmap.ts";
 import { shortAgo } from "#ui/lib/inbox.ts";
-import { scopeProject } from "#ui/lib/scope.ts";
 
 const STATE_KIND: Record<ProfileState, ChipKind> = {
   offline: "neutral",
@@ -51,23 +48,16 @@ export function AgentMap({
   groups: RunGroup[];
   onChanged: () => void;
 }) {
-  const { scope, projects } = useHive();
+  const { projects } = useHive();
   const t = useT();
   const allow = useCan();
   const now = Date.now();
-  // A prompt makes a task and queues its run; giving tasks queues runs: whoever may, on some project of the machine.
-  const prompters = (scope.kind === "system" ? scope.projects : projects).filter((p) => allow(p, "taskManage") && allow(p, "runDispatch"));
   const dispatchers = projects.filter((p) => allow(p, "runDispatch"));
   const [picks, setPicks] = useState<AgentTarget[]>([]);
-  const [prompting, setPrompting] = useState(false);
   const picked = (x: AgentTarget) => picks.some((p) => targetKey(p) === targetKey(x));
   const toggle = (x: AgentTarget) => setPicks((all) => (picked(x) ? all.filter((p) => targetKey(p) !== targetKey(x)) : [...all, x]));
   const activity = new Map(runs.map((r) => [`${r.machineId}/${r.runId}`, r.activity]));
   const open = groups.filter((g) => !g.closedAt);
-  const scoped = scopeProject(scope);
-  // The prompt's project: one every picked machine has a repo of, so each picked agent can take it.
-  const shared = prompters.filter((p) => picks.every((x) => machines.find((m) => m.id === x.machineId)?.projects.includes(p)));
-  const promptProject = scoped && shared.includes(scoped) ? scoped : (shared[0] ?? prompters[0]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -75,12 +65,6 @@ export function AgentMap({
         <div role="toolbar" aria-label={t("agentMap.picked", { count: picks.length })} className="flex flex-wrap items-center gap-2 rounded-[10px] bg-inverse px-3 py-2 text-[13px] text-fg-inverse">
           <span className="font-semibold">{t("agentMap.picked", { count: picks.length })}</span>
           <span className="flex-1" />
-          {prompters.length ? (
-            <button type="button" onClick={() => setPrompting(true)} data-map-prompt className="inline-flex h-10 md:h-7 cursor-pointer items-center gap-1.5 rounded-sm border border-white/30 px-2.5 text-xs font-semibold outline-none hover:bg-white/10 focus-visible:focus-ring">
-              <Sparkles className="size-3.5" />
-              {picks.length > 1 ? t("agentMap.promptMany", { count: picks.length }) : t("agentMap.promptOne")}
-            </button>
-          ) : null}
           <a href={`#/tasks?agents=${encodeURIComponent(encodeTargets(picks))}`} data-map-batch className="inline-flex h-10 md:h-7 items-center gap-1.5 rounded-sm border border-white/30 px-2.5 text-xs font-semibold outline-none hover:bg-white/10 focus-visible:focus-ring">
             <ListChecks className="size-3.5" />
             {t("agentMap.giveTasks", { count: picks.length })}
@@ -122,25 +106,7 @@ export function AgentMap({
           })}
         </section>
       </div>
-      <Sheet open={prompting} onOpenChange={setPrompting}>
-        {prompting && promptProject ? (
-          <PromptSheet
-            projects={prompters}
-            defaultProject={promptProject}
-            initialTargets={picks}
-            onSent={(task) => {
-              setPrompting(false);
-              setPicks([]);
-              window.location.hash = `#/tasks?task=${encodeURIComponent(task.id)}`;
-            }}
-            onGroup={(id) => {
-              setPrompting(false);
-              setPicks([]);
-              window.location.hash = `#/batches?group=${id}`;
-            }}
-          />
-        ) : null}
-      </Sheet>
+
     </div>
   );
 }

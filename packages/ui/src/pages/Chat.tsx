@@ -215,7 +215,8 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
   const [touched, setTouched] = useState(false);
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState<ChatEffort | "">("");
-  const [text, setText] = useState("");
+  const [text, setText] = useState(() => sessionStorage.getItem("hive-new-work-question") ?? "");
+  useEffect(() => { sessionStorage.removeItem("hive-new-work-question"); }, []);
   const action = useAction();
   const saving = useAction();
   const enabling = useAction();
