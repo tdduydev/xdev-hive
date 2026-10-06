@@ -3,10 +3,11 @@
 // stdout is the MCP channel, so all logging goes to stderr.
 import os from "node:os";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { agentActorName, agentSource, loadConfig, readRun, resolveBackend, type Actor } from "@xdev-hive/core/node";
+import { agentActorName, agentSource, configIssueText, readConfig, readRun, resolveBackend, type Actor } from "@xdev-hive/core/node";
 import { createHiveMcpServer } from "./server.ts";
 
-const config = loadConfig();
+const { config, issues } = readConfig();
+for (const issue of issues) console.error(`[xdev-hive] config.json ${configIssueText(issue)}`);
 const backend = resolveBackend(config);
 const agent = (process.env.HIVE_AGENT ?? "agent").replace(/[^\w.-]/g, "").slice(0, 40) || "agent";
 const name = agentActorName(agent, config.mode, config.machine, os.userInfo().username);
