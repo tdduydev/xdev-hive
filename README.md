@@ -4,6 +4,10 @@ Bộ nhận diện **X + HIVE / DEV HUB**: [logo, màu sắc và hướng dẫn 
 
 Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, Codex, Gemini CLI, Cursor…) chạy trên nhiều gói subscription khác nhau.
 
+## Bắt đầu trên máy mới
+
+Mở app desktop: trang **Bắt đầu** tự mở khi máy còn bước cần làm. Đăng nhập hub qua trình duyệt (địa chỉ hub, mật khẩu và token nằm trong **Nâng cao**), hoặc chọn **Dùng một mình trên máy này**. Tiếp theo, cài công cụ còn thiếu, chọn thư mục dự án (app nhận ra repo con) hoặc nhập group GitLab, rồi **Cài hết** cấu hình dự án. Đăng nhập ít nhất một gói agent đang bật; ở chế độ hub, bật **Nhận việc** và chọn số lượt chạy tối đa cùng lúc. Mỗi bước báo trạng thái và có nút **Làm ngay**. **Hôm nay** nhắc số bước còn lại; mở lại hướng dẫn ở đó hoặc tìm **Bắt đầu** bằng ⌘K.
+
 ```
 ┌─ xDev Hive.app (Electron, menu bar) ─┐        ┌─ Hub web (Express) ─────────────────┐
 │ Tài liệu · Đề xuất · Memory · Task   │  HTTP  │ /api/rpc   UI + tài khoản, quyền    │

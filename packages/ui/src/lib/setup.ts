@@ -23,7 +23,8 @@ export function setupGroups(projects: ProjectSetup[], systems: { name: string; p
 }
 
 /** Machine prerequisites precede repo configuration; an index is built after the integrations are ready. */
-export function setupOrder(report: import("@xdev-hive/core").SetupReport, projects?: string[]) {
+export function setupOrder(report: import("@xdev-hive/core").SetupReport, projects?: string[] | "machine") {
+  if (projects === "machine") return report.machine.filter(needsSetup);
   const rank = (i: SetupItem) => i.id.endsWith(":codegraph-index") ? 1 : 0;
   return [
     ...(projects ? [] : report.machine),
@@ -33,7 +34,7 @@ export function setupOrder(report: import("@xdev-hive/core").SetupReport, projec
 
 export async function installSetupSequence(
   initial: import("@xdev-hive/core").SetupReport,
-  projects: string[] | undefined,
+  projects: string[] | "machine" | undefined,
   host: { setupStatus(): Promise<import("@xdev-hive/core").SetupReport>; installSetup(id: string): Promise<{ item: SetupItem; output: string }> },
   changed: (report: import("@xdev-hive/core").SetupReport) => void,
   progress: (item: SetupItem, completed: number, total: number) => void,

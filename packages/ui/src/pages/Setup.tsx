@@ -10,7 +10,7 @@ import { Empty, ErrorNote, Notice } from "#ui/components/common.tsx";
 import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { formatTime, useAction, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
-import { GitLabImportCard, ProjectsCard } from "#ui/pages/Projects.tsx";
+import { GitLabCard, GitLabImportCard, ProjectsCard } from "#ui/pages/Projects.tsx";
 import { ToolCatalog } from "#ui/pages/Tools.tsx";
 import { hasNewer, needsSetup, setupGroups, setupOrder, installSetupSequence } from "#ui/lib/setup.ts";
 
@@ -28,7 +28,7 @@ function iconOf(id: string): ComponentType<{ className?: string }> {
   return Wrench;
 }
 
-export function SetupPage() {
+export function SetupPage({ section, onChanged }: { section?: "machine" | "projects"; onChanged?: () => void } = {}) {
   const { client, me, systems } = useHive();
   const t = useT();
   const desktop = client.desktop!;
@@ -45,7 +45,8 @@ export function SetupPage() {
     if (!shown) return;
     setRemaining(null);
     try {
-      const left = await installSetupSequence(shown, projects, desktop, setReport,
+      const scope = projects ?? (section === "projects" ? shown.projects.map((p) => p.project) : section === "machine" ? "machine" : undefined);
+      const left = await installSetupSequence(shown, scope, desktop, setReport,
         (item, completed, total) => setProgress(t("setup.progress", { label: item.label, completed: completed + 1, total })));
       setRemaining(left.length);
     } finally { setProgress(null); }
@@ -57,7 +58,9 @@ export function SetupPage() {
   }, []);
   const checkedAt = useMemo(() => (status.data ? new Date().toISOString() : null), [status.data]);
   const requests = useQuery(() => desktop.hubRequests(), [desktop, tick]);
-  const shown = report ?? status.data;
+  const full = report ?? status.data;
+  const shown = full && section ? { machine: section === "machine" ? full.machine : [], projects: section === "projects" ? full.projects : [] } : full;
+  useEffect(() => { if (full) onChanged?.(); }, [full]);
   const policy = requests.data?.policy ?? null;
   const hubTools = requests.data?.tools ?? [];
   // Tools the catalog marks required count as the policy's items do (roadmap 28b-2).
@@ -90,7 +93,7 @@ export function SetupPage() {
         </Button>
       </div>
       <ErrorNote error={status.error} />
-      {requests.data?.commands.length ? (
+      {!section && requests.data?.commands.length ? (
         <RequestsCard
           commands={requests.data.commands}
           onAnswered={() => {
@@ -100,7 +103,7 @@ export function SetupPage() {
           }}
         />
       ) : null}
-      {hubTools.length ? (
+      {!section && hubTools.length ? (
         <HubToolsCard
           tools={hubTools}
           onChanged={() => {
@@ -121,14 +124,14 @@ export function SetupPage() {
           {missing ? <Button data-install-all disabled={busy || !setupOrder(shown).some((i) => i.action)} onClick={() => installAll()}>{t("setup.installMissing")}</Button> : null}
           <div role="status" aria-live="polite">{progress || (remaining !== null ? t(remaining ? "setup.manualRemaining" : "setup.batchDone", { count: remaining }) : null)}</div>
           <ErrorNote error={batch.error} />
-          <Group title={t("setup.tools")} sub={[settings.data?.machine, os].filter(Boolean).join(" · ")}>
+          {section !== "projects" ? <Group title={t("setup.tools")} sub={[settings.data?.machine, os].filter(Boolean).join(" · ")}>
             <SetupList items={shown.machine.filter(needsSetup)} required={required} onChanged={replace} disabled={busy} onBusy={setRowBusy} />
             {shown.machine.some((i) => !needsSetup(i)) ? <details className="p-4" data-ready-tools>
               <summary className="cursor-pointer text-[13px] text-fg-secondary">{t("setup.readyTools", { tools: shown.machine.filter((i) => !needsSetup(i)).map((i) => `${i.label}${i.version ? ` ${i.version}` : ""}`).join(", ") })}</summary>
               <SetupList items={shown.machine.filter((i) => !needsSetup(i))} required={required} onChanged={replace} disabled={busy} onBusy={setRowBusy} />
             </details> : null}
-          </Group>
-          {shown.projects.length === 0 ? (
+          </Group> : null}
+          {section !== "machine" && shown.projects.length === 0 ? (
             <Empty>{t("setup.noProjectsBelow")}</Empty>
           ) : null}
           {setupGroups(shown.projects, systems).map((group) => (
@@ -160,24 +163,25 @@ export function SetupPage() {
         </>
       ) : null}
       {/* The repos on this machine (add, sync, open a CLI): what the checks above run on (roadmap 35a). */}
-      {settings.data ? (
+      {section !== "machine" && settings.data ? (
         <>
           <ProjectsCard
             settings={settings.data}
             onChanged={() => {
               settings.reload();
+              onChanged?.();
               setReport(null);
               status.reload();
             }}
           />
-          {settings.data.gitlab.url && settings.data.gitlab.hasToken ? <GitLabImportCard settings={settings.data} onChanged={settings.reload} /> : null}
+          {settings.data.gitlab.url && settings.data.gitlab.hasToken ? <GitLabImportCard settings={settings.data} onChanged={() => { settings.reload(); setReport(null); status.reload(); onChanged?.(); }} /> : section === "projects" ? <GitLabCard settings={settings.data} onSaved={settings.reload} /> : null}
         </>
       ) : null}
       {/*
         Tool của dự án (roadmap 39f): on this machine the catalog lives here instead of a menu entry of its own, and
         without the line about app 28b — nothing here comes from a hub. Connected to one, Tool is on the hub's web.
       */}
-      {me.mode !== "hub" ? (
+      {!section && me.mode !== "hub" ? (
         <section data-project-tools className="flex flex-col gap-[18px]">
           <h2 className="m-0 text-[13px]/[18px] font-semibold text-fg-strong">{t("setup.projectTools")}</h2>
           <ToolCatalog />

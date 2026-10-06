@@ -1,6 +1,27 @@
 import type { Catalog } from "./vi.ts";
 
 export const en: Catalog = {
+  start: {
+    connectHint: "Connect to your team’s hub, or work on this machine on your own.",
+    disabled: "Disabled",
+    title: "Get started",
+    sub: "Prepare this machine for agent work",
+    connection: "1. Connection",
+    tools: "2. Tools",
+    projects: "3. Projects",
+    agents: "4. Agent accounts",
+    intake: "5. Accept work",
+    done: "Done",
+    todo: "Action needed",
+    optional: "Optional",
+    doNow: "Do now",
+    intro: "Follow these steps to prepare this machine.",
+    ready: "This machine is ready.",
+    reminder: "This machine is not ready: {count} steps left",
+    open: "Open the getting started guide",
+    manageAgents: "Add accounts and manage sign-in",
+    enableIntake: "Accept work",
+  },
   cleanup: {
     errors: {
       expired: "The machine did not report progress for 15 minutes.",
