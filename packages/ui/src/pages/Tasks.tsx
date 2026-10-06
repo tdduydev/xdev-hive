@@ -23,6 +23,7 @@ import { useT } from "#ui/i18n/index.tsx";
 import { REQUEST_TONE, requestErrorText, runLabel } from "#ui/lib/runs.ts";
 import { scopeFilter, scopeKey, scopeProject } from "#ui/lib/scope.ts";
 import { depLabel, ownerLabel, waitingLabels } from "#ui/lib/tasks.ts";
+import { canCloseTask, canEditDependencies } from "#ui/lib/permission-controls.ts";
 import { decodeTargets, type AgentTarget } from "#ui/lib/agentmap.ts";
 
 /** Text colour of the status select, keyed by STATUS_TONE. */
@@ -428,7 +429,7 @@ function Owner({ task }: { task: Task }) {
 }
 
 function StatusSelect({ task, onChanged }: { task: Task; onChanged: () => void }) {
-  const { client } = useHive();
+  const { client, me } = useHive();
   const t = useT();
   const allow = useCan();
   const action = useAction();
@@ -449,11 +450,12 @@ function StatusSelect({ task, onChanged }: { task: Task; onChanged: () => void }
         }
       >
         {TASK_STATUSES.map((s) => (
-          <NativeSelectOption key={s} value={s}>
+          <NativeSelectOption key={s} value={s} disabled={s === "done" && task.status !== "done" && !canCloseTask(me, task.project)}>
             {t(`taskStatus.${s}`)}
           </NativeSelectOption>
         ))}
       </NativeSelect>
+      {task.status !== "done" && !canCloseTask(me, task.project) ? <span className="text-xs text-muted-foreground">{t("tasks.doneNeedsReview")}</span> : null}
       <ErrorNote error={action.error} />
     </div>
   );
@@ -686,9 +688,8 @@ function RequestItem({ request: r, onChanged }: { request: RunRequest; onChanged
 const parseIds = (text: string) => text.split(/[\s,]+/).filter(Boolean);
 
 function Deps({ task, onChanged }: { task: Task; onChanged: () => void }) {
-  const { client } = useHive();
+  const { client, me } = useHive();
   const t = useT();
-  const allow = useCan();
   const action = useAction();
   const [editing, setEditing] = useState(false);
   const deps = task.dependsOn ?? [];
@@ -738,7 +739,7 @@ function Deps({ task, onChanged }: { task: Task; onChanged: () => void }) {
           <Badge tone="warn">+{task.waitingHidden}</Badge>
         </span>
       ) : null}
-      {allow(task.project, "runDispatch") && task.status !== "done" ? (
+      {canEditDependencies(me, task.project) && task.status !== "done" ? (
         <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs" onClick={() => setEditing(true)}>
           {t("tasks.editDeps")}
         </Button>

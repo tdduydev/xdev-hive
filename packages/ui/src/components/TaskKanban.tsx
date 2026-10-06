@@ -10,6 +10,7 @@ import { ErrorNote, OwnerBadge } from "#ui/components/common.tsx";
 import { errorMessage, useCan, useHive } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { columnOf, ownerLabel, waitingLabels } from "#ui/lib/tasks.ts";
+import { canCloseTask } from "#ui/lib/permission-controls.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
 /** Done piles up: the newest this many, the rest one click away. */
@@ -34,7 +35,7 @@ export function TaskKanban({
   onOpen: (id: string) => void;
   onChanged: () => void;
 }) {
-  const { client } = useHive();
+  const { client, me } = useHive();
   const t = useT();
   const allow = useCan();
   const toast = useToast();
@@ -57,6 +58,10 @@ export function TaskKanban({
   const move = (task: Task, status: TaskStatus) => {
     const from = task.status;
     if (from === status) return;
+    if (status === "done" && !canCloseTask(me, task.project)) {
+      setError(t("tasks.doneNeedsReview"));
+      return;
+    }
     setMoved((m) => ({ ...m, [task.id]: status }));
     setError(null);
     client.call("tasks.update", { id: task.id, status }).then(

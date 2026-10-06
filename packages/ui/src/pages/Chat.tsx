@@ -33,6 +33,7 @@ import {
   withAction,
 } from "#ui/lib/chat.ts";
 import { requestErrorText, runLabel } from "#ui/lib/runs.ts";
+import { canEditChatSettings } from "#ui/lib/permission-controls.ts";
 import { scopeFilter, scopeId, scopeKey, scopeProject } from "#ui/lib/scope.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 
@@ -196,7 +197,7 @@ function ThreadItem({ thread: th, showProject, selected, onOpen }: { thread: Cha
 }
 
 function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: string[]; defaultProject: string | null; onBack: () => void; onStarted: (id: number) => void }) {
-  const { client } = useHive();
+  const { client, me } = useHive();
   const t = useT();
   const [project, setProject] = useState(defaultProject && projects.includes(defaultProject) ? defaultProject : (projects[0] ?? ""));
   const local = useLocalChat();
@@ -324,29 +325,31 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
           <ModelFields model={model} effort={effort} onModel={(v) => (setModel(v), setSaved(false))} onEffort={(v) => (setEffort(v), setSaved(false))} idPrefix="chat-new" />
-          <div className="flex items-end">
-            <Button
-              size="sm"
-              variant="outline"
-              type="button"
-              disabled={saving.busy}
-              title={t("chat.saveDefaultsHint", { project })}
-              onClick={() =>
-                void saving.run(async () => {
-                  await client.call("chat.setDefaults", {
-                    project,
-                    machineId: machine?.id ?? null,
-                    profileId: profileId || null,
-                    model: model || null,
-                    effort: effort || null,
-                  });
-                  setSaved(true);
-                })
-              }
-            >
-              {t("chat.saveDefaults")}
-            </Button>
-          </div>
+          {canEditChatSettings(me, project) ? (
+            <div className="flex items-end">
+              <Button
+                size="sm"
+                variant="outline"
+                type="button"
+                disabled={saving.busy}
+                title={t("chat.saveDefaultsHint", { project })}
+                onClick={() =>
+                  void saving.run(async () => {
+                    await client.call("chat.setDefaults", {
+                      project,
+                      machineId: machine?.id ?? null,
+                      profileId: profileId || null,
+                      model: model || null,
+                      effort: effort || null,
+                    });
+                    setSaved(true);
+                  })
+                }
+              >
+                {t("chat.saveDefaults")}
+              </Button>
+            </div>
+          ) : null}
         </div>
         {saved ? <Notice tone="ok">{t("chat.defaultsSaved", { project })}</Notice> : null}
         <ErrorNote error={saving.error} />
