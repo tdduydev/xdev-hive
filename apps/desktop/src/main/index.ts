@@ -1433,8 +1433,18 @@ function showWindow(): void {
     createWindow();
     return;
   }
-  win!.show();
-  win!.focus();
+  win.show();
+  win.focus();
+}
+
+/** Opens the window on a page ("/tasks"): one made now loads straight there, as the closed one has no renderer left. */
+function showPage(hash: string): void {
+  if (win && !win.isDestroyed()) {
+    win.webContents.executeJavaScript(`location.hash = ${JSON.stringify(`#${hash}`)}`).catch(() => undefined);
+  } else {
+    lastWindowHash = hash;
+  }
+  showWindow();
 }
 
 let lastPending = 0;
