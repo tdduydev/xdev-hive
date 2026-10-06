@@ -627,7 +627,9 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
             ) : null}
             </div>
             {several && candidates > 1 ? <p className="text-xs text-muted-foreground">{t("board.candidatesHint")}</p> : null}
+            <Label className="mt-3" htmlFor={`instructions-${task.id}`}>{t("board.instructions")}</Label>
             <Textarea
+              id={`instructions-${task.id}`}
               placeholder={t("board.instructionsPlaceholder")}
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
@@ -635,7 +637,7 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
               className="mt-3 max-md:text-base"
             />
             {role !== "review" ? (
-              <label className="mt-3 flex items-center gap-2 text-sm">
+              <label className="mt-3 flex items-center gap-2 text-sm max-md:min-h-11">
                 <Checkbox checked={reviewAfter} onCheckedChange={(v) => setReviewAfter(v === true)} />
                 {t("board.reviewAfter")}
               </label>

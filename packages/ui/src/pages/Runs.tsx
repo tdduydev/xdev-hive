@@ -557,7 +557,7 @@ function RunPanes({
   const [wrap, setWrap] = useState(true);
   const head = useMemo(() => logHeader(parseLog(log)), [log]);
   if (vertical) return (
-    <div className="min-h-0 flex-1 overflow-y-auto bg-surface" data-run-review>
+    <div className="min-h-0 flex-1 overflow-y-auto bg-surface max-md:[&_button]:min-h-11 max-md:[&_summary]:min-h-11 max-md:[&_summary]:flex max-md:[&_summary]:items-center" data-run-review>
       <div className="max-w-[900px]">
         <SummaryPane summary={summary} live={live} head={head}>{steps}<div className="flex flex-col gap-2">{notes}</div></SummaryPane>
         <section aria-label={t("runs.tabLog")} className="border-t border-line-subtle">
@@ -863,7 +863,7 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
       <RunPanes
         vertical
         footer={<>{run.mrUrl ? <MrMerge run={run} onChanged={onChanged} /> : null}{verdict === "changes" && latestReview && manage ? <FixRun run={run} /> : null}</>}
-        summary={live ? null : run.summary}
+        summary={run.summary}
         live={live}
         log={full.data?.log ?? ""}
         logEmpty={pruned}
