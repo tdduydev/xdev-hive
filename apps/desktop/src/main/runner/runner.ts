@@ -14,7 +14,7 @@ import { agyError, AGY_LIMIT_PATTERN } from "./antigravity.ts";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
-import { appendFileSync, closeSync, createWriteStream, existsSync, mkdirSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync, type WriteStream } from "node:fs";
+import { appendFileSync, closeSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync, type WriteStream } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -25,6 +25,7 @@ import {
   effectivePolicy,
   HiveError,
   MAX_CANDIDATES,
+  modelsFor,
   OPEN_POLICY,
   PAUSED_HUB,
   parseVerdict,
@@ -78,6 +79,7 @@ import { NO_FEATURES, repoFeatures } from "#desktop/main/installer.ts";
 import { renderContext } from "#desktop/main/sync.ts";
 import { hookEnv, legacyPick, NO_TOOLS, prepareTool, readyHooks, rtkGain, runTools, toolDirs, userClaudeSettings, type ToolPick } from "./tools.ts";
 import { containerCommand } from "./container.ts";
+import { CLASSIFY_INPUT_TOKENS, CLASSIFY_TIMEOUT_MS, classifierCommand, classifierResult, classifyModel, classifyPrompt } from "./classify.ts";
 import { claudeMcpServers, codexMcpArgs, hubMcpEnv, type McpRun } from "./container-mcp.ts";
 import { deniedHosts, egressAllow, egressPlan, type Egress } from "./egress.ts";
 import {
@@ -103,7 +105,7 @@ import { ChatWorker } from "./chat.ts";
 import { killTree } from "./kill.ts";
 import { AntigravityStream, ClaudeStream, CodexStream, lineStamper } from "./stream.ts";
 import { limitResetAt, parseClaudeResult, withResetsAt, quotaOutlook, type RunUsage } from "./usage.ts";
-import { pickWithReason, waitingReason, type ProfileLoad, type RunNeeds } from "./schedule.ts";
+import { pickWithReason, takesRole, waitingReason, type ProfileLoad, type RunNeeds } from "./schedule.ts";
 import { ACTIVE, RunStore } from "./store.ts";
 import {
   branchFor,
@@ -1224,7 +1226,7 @@ export class Runner {
             const could = all.filter(
               (l) =>
                 l.profile.enabled &&
-                (needs.preferredProfile ? l.profile.id === needs.preferredProfile : l.profile.roles.includes(needs.role)) &&
+                (needs.preferredProfile ? l.profile.id === needs.preferredProfile : takesRole(l.profile, needs.role)) &&
                 !needs.excludedProfiles.includes(l.profile.id),
             );
             // Waiting would not help: every profile that could take the run is ruled out until the policy changes.
@@ -1462,6 +1464,7 @@ export class Runner {
   }
 
   async #execute(run: AgentRun, chosen: AgentProfile): Promise<void> {
+    if (run.role === "classify") return this.#executeClassify(run, chosen);
     // Fitted before the first await, under the same policy tick() checked the profile against.
     const pol = this.#policyOf(run.project);
     const fit = applyPolicy(chosen, pol, chosen.kind === "codex" && pol.mcp !== null ? this.#codexServers(chosen) : []);
@@ -1795,6 +1798,94 @@ export class Runner {
       // A step can fail when setup stopped half-way: try them all.
       if (egress) for (const step of egress.plan.teardown) await dockerRun(egress.docker, step, egress.env).catch(() => undefined);
     }
+  }
+
+  /**
+   * A classify run (roadmap 54b): the cheapest model on this profile reads the task's title, note and the files they
+   * name, and answers {kind, size, risk, reason}. No worktree, no Hive token, no MCP server, no tools, and an empty
+   * folder as cwd so no CLAUDE.md / AGENTS.md is read in: it is metadata in, JSON out. Whatever goes wrong, the run
+   * fails and the hub gives the task the default class, so a classifier never holds a task up.
+   */
+  async #executeClassify(run: AgentRun, profile: AgentProfile): Promise<void> {
+    let status: RunStatus = "failed";
+    let summary: string | null = null;
+    let error: string | null = null;
+    const note = (line: string) => {
+      try {
+        appendFileSync(this.#logPath(run.id), `# ${line}\n`);
+      } catch {
+        // The run's summary and error say the same.
+      }
+    };
+    let dir: string | null = null;
+    try {
+      const allowed = modelsFor(this.#policyOf(run.project), profile.kind);
+      const model = classifyModel(profile.kind);
+      if (model && allowed && !allowed.includes(model)) throw new Error(tr("runNote.classifyModelBlocked", { model }));
+      const task = await this.#task(this.#host.backend(), this.#actor(profile), run);
+      const prompt = classifyPrompt(task);
+      if (!prompt) throw new Error(tr("runNote.classifyTooLong", { tokens: CLASSIFY_INPUT_TOKENS }));
+      const cmd = classifierCommand(profile, prompt);
+      if (!cmd) throw new Error(tr("runNote.classifyNoKind", { kind: profile.kind }));
+      const bin = resolveBin(expandHome(cmd.bin), this.#host.env().PATH ?? "");
+      if (!bin) throw new Error(tr("runNote.classifyNoCli", { bin: cmd.bin }));
+      note(tr("runNote.classifyStart", { profile: profile.id, model: model ?? "?" }));
+      dir = mkdtempSync(path.join(os.tmpdir(), "hive-classify-"));
+      // The app's ELECTRON_* variables are left out, as the assist worker leaves them out of its CLI.
+      const hostEnv = Object.fromEntries(Object.entries(this.#host.env()).filter(([k]) => !k.startsWith("ELECTRON_")));
+      const child = spawn(bin, cmd.args, { cwd: dir, env: { ...hostEnv, ...expandEnv(profile.env) }, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+      const live: Live = { child, cancelled: false, timedOut: false };
+      this.#live.set(run.id, live);
+      let output = "";
+      let stderr = "";
+      child.stdout?.on("data", (b: Buffer) => {
+        output = keepTail(output + b.toString(), 200_000);
+      });
+      child.stderr?.on("data", (b: Buffer) => {
+        stderr = keepTail(stderr + b.toString(), 2000);
+      });
+      child.stdin?.on("error", () => undefined);
+      child.stdin?.end(cmd.stdin);
+      const timer = setTimeout(() => {
+        live.timedOut = true;
+        stopLive(live);
+      }, CLASSIFY_TIMEOUT_MS);
+      const code = await new Promise<number | null>((resolve) => {
+        child.once("error", () => resolve(null));
+        child.once("close", resolve);
+      });
+      clearTimeout(timer);
+      this.#live.delete(run.id);
+      if (live.cancelled) {
+        status = "cancelled";
+        error = tr("runNote.classifyCancelled");
+      } else if (live.timedOut) error = tr("runNote.classifyTimeout");
+      else if (code !== 0) error = tr("runNote.classifyExit", { code: String(code), stderr: stderr.trim().slice(-300) });
+      else {
+        const answer = classifierResult(output);
+        if ("error" in answer) error = answer.error;
+        else {
+          status = "succeeded";
+          summary = JSON.stringify(answer.value);
+          note(tr("runNote.classifyDone", { kind: answer.value.kind, size: answer.value.size, risk: answer.value.risk, reason: answer.value.reason }));
+        }
+      }
+    } catch (err) {
+      error = (err as Error).message;
+    } finally {
+      if (dir) rmSync(dir, { recursive: true, force: true });
+    }
+    if (error) note(error);
+    const done = this.store.update(run.id, { status, summary, error, finishedAt: this.#iso() });
+    this.#opts.onEvent?.({ type: "finished", run: done });
+    // The hub holds the task's own run until it hears this one ended: tell it now, not at the next push.
+    this.#track(
+      this.pushRuns().then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
+    void this.tick();
   }
 
   /** Where an agent in a container reaches Hive: the hub (hub mode only; see container-mcp.ts). */
@@ -2161,6 +2252,7 @@ export class Runner {
 
   /** Moves the Hive task on, unless the agent already did it through MCP. */
   async #report(run: AgentRun, profile: AgentProfile): Promise<void> {
+    if (run.role === "classify") return;
     // A best-of-n group reports once, for the kept candidate (#keep) or for all of them.
     if (!TERMINAL.includes(run.status) || run.bestOf) return;
     const backend = this.#host.backend();

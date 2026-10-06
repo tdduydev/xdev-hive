@@ -464,6 +464,16 @@ describe("mcp tools", () => {
     await hive.call("tasks.create", { id: "T-2", project: "app", title: "Lockout" }, admin);
     const assign = JSON.parse(text(await leader.callTool({ name: "propose_task_agent", arguments: { taskId: "T-2", machine: "duy-mbp", reason: "Its repo is there" } })));
     assert.deepEqual([assign.kind, assign.status, assign.input.id, assign.input.machineId, assign.input.profileId], ["task.assign", "proposed", "T-2", mbp.name, null]);
+    // Roadmap 54b: what a task is, proposed like the rest; confirming sets it as the person who confirmed.
+    assert.ok(tools.includes("propose_task_classify"));
+    assert.match(leader.getInstructions() ?? "", /propose_task_classify/);
+    const kind = JSON.parse(text(await leader.callTool({ name: "propose_task_classify", arguments: { id: "T-2", taskKind: "debug", size: "s", reason: "Lockout cause unknown" } })));
+    assert.deepEqual([kind.kind, kind.status, kind.input], ["task.classify", "proposed", { id: "T-2", taskKind: "debug", size: "s" }]);
+    await hive.call("chat.decide", { actionId: kind.id, accept: true }, admin);
+    const t2 = (await hive.call("tasks.list", { project: "app" }, admin)).find((t) => t.id === "T-2")!;
+    assert.deepEqual([t2.kind, t2.size, t2.classifiedBy], ["debug", "s", "duy"]);
+    const empty = await leader.callTool({ name: "propose_task_classify", arguments: { id: "T-2", reason: "Nothing" } });
+    assert.ok(empty.isError);
   });
 
   it("reads the catalog, where its tools stand and what runs used, for the project only (roadmap 28e)", async () => {

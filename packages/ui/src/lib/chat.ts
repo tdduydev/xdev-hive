@@ -70,7 +70,7 @@ export const machineName = (id: string): string => id.replace(/^runner\./, "").s
 
 /** The task a leader's action is about; null for a kind about a run, a machine or the project. */
 export const actionTask = (a: Pick<ChatAction, "kind" | "input">): string | null =>
-  a.kind === "run.dispatch" ? String(a.input.taskId) : a.kind === "task.create" || a.kind === "task.update" ? String(a.input.id) : null;
+  a.kind === "run.dispatch" ? String(a.input.taskId) : a.kind === "task.create" || a.kind === "task.update" || a.kind === "task.classify" ? String(a.input.id) : null;
 
 /** Badge tone of an action's status. */
 export const ACTION_TONE: Record<string, string> = { proposed: "warn", done: "ok", failed: "danger", dismissed: "neutral" };

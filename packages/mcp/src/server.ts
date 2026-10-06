@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
-  AGENT_ROLES,
+  WORK_ROLES,
   cacheReadShare,
   effectivePolicy,
   agentPolicyPartSchema,
@@ -11,6 +11,9 @@ import {
   sees,
   skillDocKey,
   TASK_STATUSES,
+  TASK_KINDS,
+  TASK_SIZES,
+  TASK_RISKS,
   toErrorPayload,
   type Actor,
   type HiveBackend,
@@ -45,7 +48,7 @@ Put anything worth sharing (decisions, gotchas, the handoff) in your final messa
 // A chat leader (the hub's token for one reply) changes nothing on the board itself: it proposes, a project manager confirms.
 const LEADER_INSTRUCTIONS = `
 You are the project's leader in the Hive chat: read skill_get hive-leader first. You cannot create or move tasks or queue runs yourself: propose them with
-propose_task, propose_task_status, propose_task_agent (give a task to one agent, which the hub then starts by itself) and propose_run, and say in your reply what you proposed. A project manager confirms or
+propose_task, propose_task_status, propose_task_classify, propose_task_agent (give a task to one agent, which the hub then starts by itself) and propose_run, and say in your reply what you proposed. A project manager confirms or
 sets aside each one in the chat, and it runs with their rights; a kind the project lets you run on your own runs at once,
 as the person who wrote to you (the answer says done or failed): say which ran and which wait. The same for the rest of the project's operations, always on the chat's project: propose_cancel_run (stop a queued or running run),
 propose_merge (merge a run's MR/PR), propose_profile (turn a machine's plan on or off, or change its priority),
@@ -81,10 +84,12 @@ const NOTE_IN_LIST = 200;
  * A task as a list gives it: its note cut, and the agent it belongs to as one string (roadmap 50) rather than the
  * object task_get returns — an agent reading the board only needs to know whose task it is.
  */
-const shortTask = (t: Task): Omit<Task, "agent"> & { noteTruncated?: true; agent?: string } => {
-  const { agent, ...rest } = t;
+const shortTask = (t: Task): Omit<Task, "agent" | "kind" | "size" | "risk" | "classifiedBy" | "classifiedAt"> & Partial<Pick<Task, "kind" | "size" | "risk" | "classifiedBy" | "classifiedAt">> & { noteTruncated?: true; agent?: string } => {
+  const { agent, kind, size, risk, classifiedBy, classifiedAt, ...rest } = t;
   return {
     ...rest,
+    ...(kind ? { kind } : {}), ...(size ? { size } : {}), ...(risk && risk !== "normal" ? { risk } : {}),
+    ...(classifiedBy && classifiedBy !== "rule" ? { classifiedBy } : {}),
     ...(t.note && t.note.length > NOTE_IN_LIST ? { note: t.note.slice(0, NOTE_IN_LIST), noteTruncated: true as const } : {}),
     ...(agent ? { agent: agent.profileId ? `${agent.machine}/${agent.profileId}` : agent.machine } : {}),
   };
@@ -638,18 +643,25 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
         title: "Propose a task",
         description:
           "Propose a new task on the chat's project board (id like the project's others, e.g. T-12; dependsOn: tasks to be done first). " +
-          "project: another service of a system the chat's project is in, for a feature split across services; dependsOn may then name tasks of the other services." +
+          "project: another service of a system the chat's project is in, for a feature split across services; dependsOn may then name tasks of the other services. " +
+          "taskKind, size, risk: what the task is, when you know (see propose_task_classify); left out, the hub's rules and a cheap classify run fill them." +
           confirm,
         inputSchema: {
           id: z.string(),
           title: z.string(),
           project: z.string().optional().describe("Another service of the chat project's system; left out: the chat's project"),
           dependsOn: z.array(z.string()).max(20).optional(),
+          taskKind: z.enum(TASK_KINDS).optional(),
+          size: z.enum(TASK_SIZES).optional(),
+          risk: z.enum(TASK_RISKS).optional(),
           reason,
         },
       },
-      async ({ id, title, project: p, dependsOn, reason: why }) =>
-        run("chat.propose", { action: { kind: "task.create", id, title, ...(p ? { project: p } : {}), dependsOn: dependsOn ?? [] }, reason: why }),
+      async ({ id, title, project: p, dependsOn, taskKind, size, risk, reason: why }) =>
+        run("chat.propose", {
+          action: { kind: "task.create", id, title, ...(p ? { project: p } : {}), dependsOn: dependsOn ?? [], ...(taskKind ? { taskKind } : {}), ...(size ? { size } : {}), ...(risk ? { risk } : {}) },
+          reason: why,
+        }),
     );
     server.registerTool(
       "propose_task_status",
@@ -661,6 +673,18 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       async ({ id, status, note, reason: why }) => run("chat.propose", { action: { kind: "task.update", id, status, note }, reason: why }),
     );
     server.registerTool(
+      "propose_task_classify",
+      {
+        title: "Propose a task classification",
+        description:
+          "Propose what a task is, so its runs start on a fitting model: taskKind (docs, test, small-fix, feature, ui, refactor, debug, spec, review, merge, ops), " +
+          "size (s, m, l), risk (high: a migration, security, permissions or several core packages). At least one of the three." +
+          confirm,
+        inputSchema: { id: z.string(), taskKind: z.enum(TASK_KINDS).optional(), size: z.enum(TASK_SIZES).optional(), risk: z.enum(TASK_RISKS).optional(), reason },
+      },
+      async ({ id, taskKind, size, risk, reason: why }) => run("chat.propose", { action: { kind: "task.classify", id, taskKind, size, risk }, reason: why }),
+    );
+    server.registerTool(
       "propose_run",
       {
         title: "Propose a run",
@@ -670,7 +694,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
           confirm,
         inputSchema: {
           taskId: z.string(),
-          role: z.enum(AGENT_ROLES).optional(),
+          role: z.enum(WORK_ROLES).optional(),
           machine: z.string().optional(),
           profileId: z.string().optional(),
           candidates: z.number().int().min(1).max(MAX_CANDIDATES).optional(),

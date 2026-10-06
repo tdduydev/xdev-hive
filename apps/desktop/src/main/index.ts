@@ -51,6 +51,7 @@ import {
   type TransferSide,
 } from "@xdev-hive/core";
 import { antigravityHome } from "#desktop/main/runner/antigravity.ts";
+import { canClassify } from "#desktop/main/runner/classify.ts";
 import {
   configPath,
   configSchema,
@@ -774,6 +775,8 @@ const reportedProfiles = (): ReportedProfile[] =>
     priority: p.priority,
     // The hub counts free places with it when it picks a machine for a run group (roadmap 31a).
     maxConcurrent: p.maxConcurrent,
+    // Only then does the hub put a classify run before a task with no kind on this machine (roadmap 54b).
+    classify: canClassify(p),
   }));
 
 let updater: Updater;
