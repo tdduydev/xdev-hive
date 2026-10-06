@@ -64,10 +64,13 @@ const ADDED_COLUMNS: Array<[name: string, ddl: string]> = [
   ["model", "TEXT"],
   ["effort", "TEXT"],
   ["selection", "TEXT"],
+  ["diff_review", "TEXT"],
+  ["diff_summary_for", "TEXT"],
+  ["diff_patch", "TEXT"],
 ];
 
 type Row = Record<string, unknown>;
-const JSON_FIELDS = new Set(["avoidKinds", "excludedProfiles", "ciFix", "bestOf", "compression", "selection"]);
+const JSON_FIELDS = new Set(["avoidKinds", "excludedProfiles", "ciFix", "bestOf", "compression", "selection", "diffReview"]);
 const BOOL_FIELDS = new Set(["reviewAfter", "mrDraft"]);
 const column = (field: string) => field.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 
@@ -122,6 +125,9 @@ function toRun(r: Row): AgentRun {
     agentKind: s(r.agent_kind) as AgentKind | null,
     model: s(r.model),
     effort: s(r.effort),
+    diffSummaryFor: s(r.diff_summary_for),
+    diffPatch: s(r.diff_patch),
+    diffReview: r.diff_review == null ? null : JSON.parse(String(r.diff_review)),
     selection: r.selection == null ? null : JSON.parse(String(r.selection)) as ModelSelection,
   };
 }
@@ -130,7 +136,7 @@ const encode = (field: string, value: unknown) =>
   JSON_FIELDS.has(field) ? JSON.stringify(value) : BOOL_FIELDS.has(field) ? (value ? 1 : 0) : (value ?? null);
 
 export type NewRun = Pick<AgentRun, "project" | "taskId" | "taskTitle" | "role" | "attempt" | "maxAttempts"> &
-  Partial<Pick<AgentRun, "preferredProfile" | "preferKind" | "avoidKinds" | "excludedProfiles" | "parentRunId" | "worktree" | "branch" | "baseSha" | "instructions" | "reviewAfter" | "ciFix" | "bestOf" | "requestedBy" | "selection">>;
+  Partial<Pick<AgentRun, "preferredProfile" | "preferKind" | "avoidKinds" | "excludedProfiles" | "parentRunId" | "worktree" | "branch" | "baseSha" | "instructions" | "reviewAfter" | "ciFix" | "bestOf" | "requestedBy" | "selection" | "diffSummaryFor">>;
 
 export const ACTIVE: RunStatus[] = ["queued", "running"];
 
@@ -245,16 +251,16 @@ export class RunStore {
   }
 
   /** A project's runs, a system's (`projects`), or every one, the newest first. */
-  list(filter: { project?: string; projects?: string[]; limit?: number } = {}): AgentRun[] {
+  list(filter: { project?: string; projects?: string[]; limit?: number; includeDiffSummaries?: boolean } = {}): AgentRun[] {
     // From the page: only strings go into the list.
     const projects = Array.isArray(filter.projects) ? JSON.stringify(filter.projects.map(String)) : null;
     return (
       this.db
         .prepare(
-          `SELECT * FROM runs WHERE (?1 IS NULL OR project = ?1) AND (?3 IS NULL OR project IN (SELECT value FROM json_each(?3)))
+          `SELECT * FROM runs WHERE (?1 IS NULL OR project = ?1) AND (?3 IS NULL OR project IN (SELECT value FROM json_each(?3))) AND (?4 = 1 OR diff_summary_for IS NULL)
            ORDER BY created_at DESC, rowid DESC LIMIT ?2`,
         )
-        .all(filter.project ?? null, filter.limit ?? 100, projects) as Row[]
+        .all(filter.project ?? null, filter.limit ?? 100, projects, filter.includeDiffSummaries === false ? 0 : 1) as Row[]
     ).map(toRun);
   }
 
@@ -294,7 +300,7 @@ export class RunStore {
   /** Runs of a task created after `since`. */
   newerRuns(project: string, taskId: string, since: string): AgentRun[] {
     return (
-      this.db.prepare("SELECT * FROM runs WHERE project = ? AND task_id = ? AND created_at > ? ORDER BY created_at, rowid").all(project, taskId, since) as Row[]
+      this.db.prepare("SELECT * FROM runs WHERE project = ? AND task_id = ? AND created_at > ? AND diff_summary_for IS NULL ORDER BY created_at, rowid").all(project, taskId, since) as Row[]
     ).map(toRun);
   }
 
@@ -302,7 +308,7 @@ export class RunStore {
   lastSucceeded(project: string, taskId: string, role: AgentRole): AgentRun | null {
     const row = this.db
       .prepare(
-        "SELECT * FROM runs WHERE project = ? AND task_id = ? AND role = ? AND status = 'succeeded' ORDER BY created_at DESC, rowid DESC LIMIT 1",
+        "SELECT * FROM runs WHERE project = ? AND task_id = ? AND role = ? AND status = 'succeeded' AND diff_summary_for IS NULL ORDER BY created_at DESC, rowid DESC LIMIT 1",
       )
       .get(project, taskId, role) as Row | undefined;
     return row ? toRun(row) : null;

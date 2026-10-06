@@ -66,6 +66,7 @@ async function setup(
   /** Pass another setup's hive to simulate a second machine on the same hub. */
   machine: {
     name?: string;
+    diffReview?: boolean;
     hive?: SqliteHive;
     report?: RunnerHost["report"];
     login?: RunnerHost["login"];
@@ -115,6 +116,8 @@ async function setup(
   const hubUpdates: HubUpdate[] = [];
   const runner = new Runner(host, {
     dataDir,
+    // Normal-run fixtures do not speak the auxiliary JSON review protocol.
+    diffReview: machine.diffReview ?? false,
     user: "duy",
     tickMs: 60_000,
     onHub: (u) => hubUpdates.push(u),
@@ -2940,5 +2943,64 @@ describe("classify runs", () => {
     assert.ok(run.error);
     const t = await a.task();
     assert.deepEqual([t.kind, t.size, t.risk, t.classifiedBy], ["feature", "m", "normal", "ai"]);
+  });
+});
+
+// 57c: auxiliary summaries read only a frozen patch and never conclude the task's code review.
+describe("diff summary runs", () => {
+  for (const kind of ["claude", "codex"] as const) it(`uses a configured light ${kind} model, stores groups on the parent and leaves its task alone`, async () => {
+    const bin = tmp("diff-review-cli");
+    const cli = path.join(bin, kind);
+    const rec = path.join(bin, "rec");
+    writeFileSync(cli, `#!/bin/sh\nprintf '%s\\n' "$@" > "${rec}.args"\ncat > "${rec}.stdin"\npwd > "${rec}.cwd"\nprintf '%s' "$FAKE_OUT"\n`, { mode: 0o755 });
+    const patch = "diff --git a/db.ts b/db.ts\n@@ -1 +1 @@\n-old\n+DROP TABLE users;\n";
+    const value = { groups: [{ title: "Cơ sở dữ liệu", explanation: "Xoá bảng users.", files: ["db.ts"] }], risks: [{ path: "db.ts", hunk: 0, kind: "deletion", level: "high", explanation: "Xoá toàn bộ dữ liệu." }] };
+    const output = kind === "claude" ? JSON.stringify({ result: JSON.stringify(value), usage: { input_tokens: 700 } }) : [JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify(value) } }), JSON.stringify({ type: "turn.completed", usage: { input_tokens: 700 } })].join("\n");
+    const p = profile("summary", kind, 10, "ok", { bin: cli, args: [], env: { FAKE_OUT: output } });
+    const a = await setup([p], {}, "hub", { diffReview: true });
+    try {
+      const parent = a.runner.store.insert({ project: "demo", taskId: "T-1", taskTitle: "Demo", role: "implement", attempt: 1, maxAttempts: 1 }, new Date().toISOString());
+      a.runner.store.update(parent.id, { status: "succeeded", diffPatch: patch, finishedAt: new Date().toISOString() });
+      const before = await a.task();
+      const child = a.runner.store.insert({ project: "demo", taskId: "T-1", taskTitle: "Demo", role: "review", attempt: 1, maxAttempts: 1, parentRunId: parent.id, diffSummaryFor: parent.id, instructions: patch,
+        selection: { tier: "light", models: { [kind]: { model: "cheap-from-hub", effort: "low" } }, reason: "diff summary" } }, new Date().toISOString());
+      await a.runner.tick();
+      await a.runner.settle();
+      assert.equal(a.runner.store.get(child.id)!.status, "succeeded");
+      assert.deepEqual(a.runner.store.get(parent.id)!.diffReview, value);
+      assert.deepEqual(await a.task(), before);
+      assert.deepEqual(a.runner.list().map(r => r.id), [parent.id]);
+      const args = readFileSync(`${rec}.args`, "utf8").split("\n");
+      assert.equal(args[args.indexOf(kind === "claude" ? "--model" : "-m") + 1], "cheap-from-hub");
+      if (kind === "claude") assert.match(args.join("\n"), /--tools\n\n/);
+      else { assert.ok(args.includes("read-only")); assert.ok(args.includes("mcp_servers={}")); }
+      assert.match(readFileSync(`${rec}.stdin`, "utf8"), /DROP TABLE/);
+      assert.ok(!existsSync(readFileSync(`${rec}.cwd`, "utf8").trim()));
+      const records = await a.hive.call("runs.list", { project: "demo" }, admin);
+      assert.equal(records.length, 1);
+      assert.deepEqual((await a.hive.call("runs.get", { machineId: records[0]!.machineId, runId: parent.id }, admin))?.diffReview, value);
+      assert.deepEqual(a.runner.store.newerRuns("demo", "T-1", parent.createdAt), []);
+      assert.equal(a.runner.store.lastSucceeded("demo", "T-1", "review"), null);
+      p.env.FAKE_OUT = kind === "claude" ? JSON.stringify({ result: "invalid" }) : JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "invalid" } });
+      const bad = a.runner.store.insert({ project: "demo", taskId: "T-1", taskTitle: "Demo", role: "review", attempt: 1, maxAttempts: 1, parentRunId: parent.id, diffSummaryFor: parent.id, instructions: patch, selection: child.selection }, new Date().toISOString());
+      await a.runner.tick(); await a.runner.settle();
+      assert.equal(a.runner.store.get(bad.id)!.status, "failed");
+      assert.deepEqual(a.runner.store.get(parent.id)!.diffReview, value);
+      assert.deepEqual(await a.task(), before);
+    } finally { await a.runner.stop(); a.hive.close(); }
+  });
+  it("freezes completed changes before a later fix modifies the worktree", async () => {
+    const a = await setup([profile("impl", "claude", 10, "ok")], {}, "local", { diffReview: true });
+    try {
+      const run = await a.runner.enqueue({ project: "demo", taskId: "T-1", role: "implement", reviewAfter: false });
+      await a.runner.settle();
+      const done = a.runner.store.get(run.id)!;
+      assert.ok(done.diffPatch?.includes("diff --git"));
+      const child = a.runner.store.list().find(r => r.diffSummaryFor === run.id)!;
+      assert.equal(child.instructions, done.diffPatch);
+      assert.equal(child.selection?.tier, "light");
+      writeFileSync(path.join(done.worktree!, "later.txt"), "later changes\n");
+      assert.equal(a.runner.diff(run.id), done.diffPatch);
+    } finally { await a.runner.stop(); a.hive.close(); }
   });
 });
