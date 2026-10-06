@@ -163,7 +163,7 @@ export function DataTable<T>({
     <ResponsiveTableFrame enabled={responsive} className="flex min-w-0 flex-col gap-2.5">
       <div className="flex flex-wrap items-center gap-2">
         {searchText ? (
-          <label className="relative flex h-[34px] max-w-[380px] min-w-[200px] flex-[1_1_240px] items-center">
+          <label className="relative flex h-[34px] max-md:h-11 max-w-[380px] min-w-[200px] flex-[1_1_240px] items-center">
             <Search className="pointer-events-none absolute left-2.5 size-[15px] text-fg-muted" aria-hidden="true" />
             <input
               value={q}
@@ -185,13 +185,13 @@ export function DataTable<T>({
           return (
             <label
               key={f.key}
-              className={cn("flex h-[34px] items-center gap-1.5 rounded-[9px] border bg-surface pr-1 pl-2.5 text-xs text-fg-muted", on ? "border-line-selected" : "border-line-default")}
+              className={cn("flex h-[34px] max-md:h-auto max-md:min-h-11 max-md:max-w-full max-md:flex-wrap items-center gap-1.5 rounded-[9px] border bg-surface pr-1 pl-2.5 text-xs text-fg-muted", on ? "border-line-selected" : "border-line-default")}
             >
               {f.label}
               <select
                 value={values[f.key] ?? ""}
                 onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
-                className="h-7 max-w-44 cursor-pointer rounded-sm bg-transparent pr-1 text-[13px] font-medium text-fg-strong outline-none"
+                className="h-7 max-w-44 cursor-pointer rounded-sm bg-transparent pr-1 text-[13px] font-medium text-fg-strong outline-none focus-visible:focus-ring"
               >
                 <option value="">{t("table.all")}</option>
                 {options.map((o) => (

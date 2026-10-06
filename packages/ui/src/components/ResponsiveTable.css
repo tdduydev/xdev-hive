@@ -77,13 +77,12 @@
     white-space: normal;
     overflow-wrap: anywhere;
   }
-  [data-responsive-table] button,
+  [data-responsive-table] button:not([role="checkbox"]):not([role="switch"]),
   [data-responsive-table] [role="button"],
-  [data-responsive-table] select { min-height: var(--control-h-lg); }
+  [data-responsive-table] select { min-height: var(--control-h-touch); }
   [data-responsive-table] input,
   [data-responsive-table] select,
   [data-responsive-table] textarea { font-size: 16px; }
-  [data-responsive-table] [role="checkbox"] { min-width: var(--control-h-lg); }
   [data-responsive-table] [data-card-actions] { order: 1; flex-wrap: wrap; }
   [data-responsive-table] [data-card-actions] > [data-card-value] { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 }

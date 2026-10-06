@@ -1,0 +1,48 @@
+/* The phone contract must beat desktop typography/size utilities, including controls in portals.
+   Keep it outside layers: text-xs and size-6 otherwise override the accessibility baseline. */
+@media (max-width: 767px) {
+  /* Raw selects and editable code fields also use outline-none, without a component focus ring. */
+  :focus-visible:not([class*="focus-visible:focus-ring"]) {
+    outline: var(--focus-ring-width) solid var(--focus-color);
+    outline-offset: var(--focus-ring-offset);
+  }
+  :where([class*="text-[10px]"], [class*="text-[11px]"], .type-overline) {
+    font-size: 12px;
+  }
+  input:not([type="checkbox"]):not([type="radio"]), textarea, select,
+  [data-slot="select-trigger"], [contenteditable="true"] {
+    font-size: 16px;
+  }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), select {
+    min-height: var(--control-h-touch);
+    max-width: 100%;
+  }
+  button:not([role="checkbox"]):not([role="switch"]),
+  [role="button"], [role="treeitem"], [role="option"], [role="menuitem"],
+  [role="menuitemcheckbox"], [role="menuitemradio"], summary,
+  [data-slot="button"], nav a {
+    min-height: var(--control-h-touch);
+    min-width: var(--control-h-touch);
+  }
+  /* Reserve space for the invisible tap area so adjacent choices do not overlap.
+     The checkbox and switch retain their design-system drawing. */
+  button[role="checkbox"], button[role="switch"] { position: relative; }
+  button[role="checkbox"] { min-height: 0; min-width: 0; margin: var(--space-4); }
+  button[role="switch"] { margin: var(--space-4) var(--space-2); }
+  button[role="checkbox"]::before, button[role="switch"]::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: var(--control-h-touch);
+    height: var(--control-h-touch);
+    transform: translate(-50%, -50%);
+  }
+  label:has(input[type="checkbox"], input[type="radio"]) {
+    min-height: var(--control-h-touch);
+  }
+  input[type="checkbox"], input[type="radio"] {
+    min-width: var(--control-h-touch);
+    min-height: var(--control-h-touch);
+  }
+}
