@@ -17,6 +17,7 @@
     "build": "electron-vite build && npm run build:mcp",
     "build:mcp": "esbuild ../../packages/mcp/src/stdio.ts --bundle --platform=node --format=esm --target=node22 --outfile=out/mcp/hive-mcp.mjs --banner:js=\"import{createRequire as __cr}from'node:module';const require=__cr(import.meta.url);\"",
     "smoke": "node scripts/smoke.mjs",
+    "smoke:hidden": "node scripts/hidden-memory-smoke.mjs",
     "icons": "node scripts/icons.mjs",
     "dist": "npm run build && electron-builder",
     "dist:dir": "npm run build && electron-builder --dir",
