@@ -1386,7 +1386,8 @@ async function main() {
     await tab.reload();
     for (const task of [first, second]) {
       await tab.go(`tasks?task=${task.id}`);
-      await tab.waitFor("assignment form", () => document.querySelector("[data-assign-machine]"));
+      // The select mounts before machines.list answers, and tab.select throws at once on a missing option.
+      await tab.waitFor("assignment form", (id) => document.querySelector(`[data-assign-machine] option[value="${id}"]`), machine.id);
       await tab.select("[data-assign-machine]", machine.id);
       await tab.select("[data-assign-profile]", profile.id);
       await tab.click("[data-assign-save]");
@@ -1411,7 +1412,7 @@ async function main() {
       const safe = await tab.eval(() => [...document.querySelectorAll("[data-agent-task]")].every((el) => !el.draggable) && [...document.querySelectorAll("[data-agent-card-select]")].every((el) => el.getBoundingClientRect().height >= 44));
       expect(safe, "mobile uses 44px selects without dragging");
     }
-    await tab.shot(`${String(n).padStart(2, "0")}-agent-assign`);
+    await tab.shot(`${String(n).padStart(2, "0")}-agent-assign-lanes`);
     await machineRpc("runs.requestResult", { id: request.id, status: "accepted", runId: "R-assign1" });
     // Heartbeat before push catches the accepted-but-unreported gap covered by 50a.
     expect(!(await beat()).runRequests?.some((r) => r.taskId === second.id), "accepted run retains the slot before push");
