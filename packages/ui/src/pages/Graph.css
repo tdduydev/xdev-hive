@@ -120,6 +120,9 @@
   .graph-tools { flex-wrap: nowrap; overflow-x: auto; }
   .graph-actions { margin-left: 0; }
   .graph-toolbar button, .graph-toolbar a, .graph-toolbar select, .graph-filters label { min-height: 44px; flex-shrink: 0; }
+  .graph-toolbar select { font-size: 16px; }
+  .graph-task-top, .graph-task-meta { font-size: 12px; }
+  .graph-page .react-flow__attribution { font-size: 12px; }
   .graph-canvas { min-height: 0; }
   .graph-workspace { flex-direction: column; }
   .graph-unassigned { width: 100%; max-height: 160px; }

@@ -6,6 +6,7 @@ import { app, BrowserWindow } from "electron";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { tableCardsChecks } from "./table-cards.mjs";
+import { mobileAudit } from "./mobile-audit.mjs";
 
 const base = process.env.HIVE_E2E_BASE;
 const out = process.env.HIVE_E2E_OUT;
@@ -259,6 +260,8 @@ async function main() {
     );
   });
 
+  if (mobile) await mobileAudit({ tab: tabs.admin, out, step, expect });
+
   await step("scope-search-tasks", async () => {
     const tab = (current = tabs.admin);
     await tab.go("tasks");
@@ -426,6 +429,10 @@ async function main() {
     const nav = await tab.eval(() => document.querySelector("nav")?.innerText ?? "");
     for (const label of ["Cài đặt dự án", "Quản trị", "Đội máy", "Hàng đợi", "Nhật ký"]) expect(!nav.includes(label), `${label} in Hoa's menu:\n${nav}`);
   });
+
+  if (mobile) await mobileAudit({ tab: tabs.hoa, out, step, expect,
+    pages: ["overview", `device?port=12345&state=${"s".repeat(16)}&challenge=${"c".repeat(43)}`],
+    reportName: "mobile-audit-member.json" });
 
   // Roadmap 49b: the menu by job, for a hub admin and for a project member (Hoa reviews payment). Token and the
   // password are in the account menu; old addresses land on their tab.
