@@ -10,7 +10,7 @@ import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
 import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { Chip, FilterChips, ListPane, type ChipKind } from "#ui/components/panes.tsx";
-import { errorMessage, formatCount, formatTime, formatUsd, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
+import { errorMessage, formatCount, formatTime, formatUsd, useAction, useCan, useHashParam, useHive, useQuery } from "#ui/hooks.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
 import { fixInstructions, isLive, latestReviews, mrLabel, requestErrorText, runDuration, runGroup, runLabel, runOutcome } from "#ui/lib/runs.ts";
