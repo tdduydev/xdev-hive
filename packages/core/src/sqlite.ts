@@ -129,6 +129,7 @@ import type {
   ReportedProfile,
   RunNotice,
   RunRecord,
+  RunMessage,
   RunGroup,
   RunGroupItem,
   RunGroupItemStatus,
@@ -630,6 +631,14 @@ const MIGRATIONS: string[] = [
     from_tier TEXT, to_tier TEXT, tasks INTEGER, clean_rate REAL, changed_by TEXT NOT NULL, at TEXT NOT NULL);
   CREATE INDEX model_learning_log_project ON model_learning_log(project, id);
   `,
+  `
+  CREATE TABLE run_messages(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, machine_id TEXT NOT NULL,
+    text TEXT NOT NULL, by TEXT NOT NULL, at TEXT NOT NULL, delivered_at TEXT,
+    FOREIGN KEY(machine_id, run_id) REFERENCES run_records(machine_id, run_id) ON DELETE CASCADE);
+  CREATE INDEX run_messages_run ON run_messages(machine_id, run_id, id);
+  CREATE INDEX run_messages_pending ON run_messages(machine_id, id) WHERE delivered_at IS NULL;
+  `,
 ];
 
 /**
@@ -821,6 +830,10 @@ function toSpecFeature(r: Row): SpecFeatureDetail {
     pushedAt: str(r.pushed_at),
     files,
   };
+}
+
+function toRunMessage(r: Row): RunMessage {
+  return { id: num(r.id), machineId: str(r.machine_id), runId: str(r.run_id), text: str(r.text), by: str(r.by), at: str(r.at), deliveredAt: strOrNull(r.delivered_at) };
 }
 
 function toRunRecord(r: Row, withLog: boolean): RunRecord {
@@ -1999,6 +2012,7 @@ export class SqliteHive implements HiveBackend {
         if (row) this.#need(actor, str(row.project), "chatUse", `Chat reply #${i.replyId}`);
         return;
       }
+      case "runs.steer":
       case "runs.cancel": {
         const row = this.db.prepare("SELECT project FROM run_records WHERE machine_id = ? AND run_id = ?").get(i.machineId, i.runId) as Row | undefined;
         if (row) this.#need(actor, str(row.project), "runDispatch", `Run ${i.runId}`);
@@ -6402,8 +6416,10 @@ export class SqliteHive implements HiveBackend {
       },
 
       // Keyed by the hub actor (`runner.<machine>@<token>`): the same key as the leases that machine takes.
-      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, projects, acceptsRuns, costs }, actor) =>
+      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, projects, acceptsRuns, costs, deliveredMessages }, actor) =>
         this.#tx(() => {
+          const ack = db.prepare("UPDATE run_messages SET delivered_at = COALESCE(delivered_at, ?) WHERE machine_id = ? AND id = ?");
+          for (const id of deliveredMessages) ack.run(this.#now(), actor.name, id);
           const now = this.#now();
           const row = db.prepare("SELECT instance, prev_instance, last_seen, duplicate_at FROM machines WHERE id = ?").get(actor.name) as
             | Row
@@ -6518,6 +6534,13 @@ export class SqliteHive implements HiveBackend {
             runRequests,
             chatRequests,
             cancelRuns,
+            runMessages: accepts ? (db.prepare(`SELECT m.*, r.project FROM run_messages m JOIN run_records r
+              ON r.machine_id = m.machine_id AND r.run_id = m.run_id
+              WHERE m.machine_id = ? AND m.delivered_at IS NULL AND r.status = 'running'
+              ORDER BY m.id`).all(actor.name) as Row[])
+              .filter((r) => sees(actor, str(r.project)) && !hidden.has(str(r.project)))
+              .slice(0, 100)
+              .map(toRunMessage) : [],
             paused: this.#pausedFor(this.#paused(), actor),
             // After this beat's costs went in, so a run that just filled a cap holds the next one at once.
             budgetBlocked: this.#budgetBlocks(actor),
@@ -6699,8 +6722,24 @@ export class SqliteHive implements HiveBackend {
           .prepare(`SELECT r.*, ${RUN_TOKEN_COLUMNS} FROM run_records r LEFT JOIN run_costs c ON c.machine_id = r.machine_id AND c.run_id = r.run_id WHERE r.machine_id = ? AND r.run_id = ?`)
           .get(machineId, runId) as Row | undefined;
         // A run of a project the caller does not see answers like a missing one.
-        return row && sees(actor, str(row.project)) ? toRunRecord(row, true) : null;
+        return row && sees(actor, str(row.project)) ? {
+          ...toRunRecord(row, true),
+          messages: (db.prepare("SELECT * FROM run_messages WHERE machine_id = ? AND run_id = ? ORDER BY id").all(machineId, runId) as Row[]).map(toRunMessage),
+        } : null;
       },
+
+      "runs.steer": ({ machineId, runId, text }, actor) => this.#tx(() => {
+        const row = db.prepare("SELECT * FROM run_records WHERE machine_id = ? AND run_id = ?").get(machineId, runId) as Row | undefined;
+        if (!row) throw new HiveError("not_found", `No run ${runId}.`, { key: "errors.runNotFound", vars: { id: runId } });
+        if (this.#projectState(str(row.project)) !== null) throw this.#projectGone(str(row.project));
+        if (str(row.status) !== "running") throw new HiveError("conflict", `Run ${runId} is not running.`, { key: "errors.runNotRunning", vars: { id: runId } });
+        const machine = db.prepare("SELECT accepts_runs FROM machines WHERE id = ?").get(machineId) as Row | undefined;
+        if (!machine || num(machine.accepts_runs) !== 1) throw new HiveError("bad_request", "Machine does not accept hub runs.", { key: "errors.machineNoHubRuns", vars: { machine: str(row.machine) } });
+        assertNoHidden(text, "text");
+        assertNoSecret(text, "text");
+        const result = db.prepare("INSERT INTO run_messages(run_id, machine_id, text, by, at) VALUES (?, ?, ?, ?, ?)").run(runId, machineId, text, actor.name, this.#now());
+        return toRunMessage(db.prepare("SELECT * FROM run_messages WHERE id = ?").get(result.lastInsertRowid) as Row);
+      }),
 
       // Only a machine that takes runs from the hub obeys it: its user let project managers drive it from the web.
       "runs.cancel": ({ machineId, runId }, actor) =>

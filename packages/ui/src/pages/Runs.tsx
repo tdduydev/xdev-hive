@@ -4,7 +4,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Wrench, X } from "lucide-react";
 import { cn } from "cn";
-import { cacheReadShare, parseVerdict, type AgentRun, type RunCompression, type RunRecord, type RunRequest, type RunTokens } from "@xdev-hive/core";
+import { cacheReadShare, parseVerdict, type AgentRun, type RunCompression, type RunRecord, type RunMessage, type RunRequest, type RunTokens } from "@xdev-hive/core";
+import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
@@ -402,6 +403,7 @@ function SummaryPane({ summary, live, head, children }: { summary: string | null
 }
 
 const LEVEL_CLS: Record<LogLevel, string> = {
+  human: "text-fg-brand",
   tool: "text-fg-brand",
   ok: "text-success",
   error: "text-danger",
@@ -459,7 +461,7 @@ function LogView({ text, live, wrap, empty }: { text: string; live: boolean; wra
                 {l.at && (i === 0 || lines[i - 1]!.at !== l.at) ? clock(l.at) : ""}
               </span>
             ) : null}
-            <span className={cn("w-[46px] shrink-0 font-semibold", LEVEL_CLS[l.level])}>{l.level === "agent" && !l.text ? "" : t(`runs.level.${l.level}`)}</span>
+            <span className={cn("w-[76px] shrink-0 font-semibold", LEVEL_CLS[l.level])}>{l.level === "agent" && !l.text ? "" : t(`runs.level.${l.level}`)}</span>
             <span className={cn("min-w-0", l.level === "error" ? "text-danger" : l.level === "tool" ? "text-code-fg" : l.level === "meta" ? "text-fg-muted" : "text-fg-strong", wrap ? "whitespace-pre-wrap [overflow-wrap:anywhere]" : "whitespace-pre")}>
               {l.text || " "}
             </span>
@@ -650,6 +652,41 @@ function NoteLine({ children, tone = "muted" }: { children: ReactNode; tone?: "m
   return <div className={cn("text-xs/[18px] [overflow-wrap:anywhere]", tone === "info" ? "text-info" : tone === "danger" ? "text-danger" : "text-fg-muted")}>{children}</div>;
 }
 
+function SteerForm({ send, local = false, onChanged }: { send: (text: string) => Promise<unknown>; local?: boolean; onChanged: () => void }) {
+  const t = useT();
+  const [text, setText] = useState("");
+  const [status, setStatus] = useState("");
+  const action = useAction();
+  return <form data-run-steer className="space-y-2" aria-busy={action.busy} onSubmit={(e) => {
+    e.preventDefault();
+    if (action.busy || !text.trim()) return;
+    void action.run(async () => {
+      await send(text.trim());
+      setText("");
+      setStatus(t(local ? "runs.steerDelivered" : "runs.steerQueued"));
+      onChanged();
+    });
+  }}>
+    <label className="block text-sm font-medium" htmlFor="run-steer-text">{t("runs.steerLabel")}</label>
+    <Textarea id="run-steer-text" aria-describedby="run-steer-hint run-steer-error" aria-invalid={!!action.error} maxLength={8000} value={text} disabled={action.busy} onChange={(e) => { setText(e.target.value); setStatus(""); }} className="text-base md:text-sm" />
+    <p id="run-steer-hint" className="text-xs text-fg-muted">{t(local ? "runs.steerLocalHint" : "runs.steerHint")}</p>
+    <Button type="submit" className="min-h-11" disabled={action.busy || !text.trim()}>{t(action.busy ? "runs.steerSending" : "runs.steerSend")}</Button>
+    <p role="status" className="text-xs text-fg-muted">{status}</p>
+    <div id="run-steer-error"><ErrorNote error={action.error} /></div>
+  </form>;
+}
+
+function SteerHistory({ messages, ended = false }: { messages: RunMessage[]; ended?: boolean }) {
+  const t = useT();
+  if (!messages.length) return null;
+  return <section data-run-messages aria-label={t("runs.steerHistory")} className="space-y-2 text-xs">
+    {messages.map((m) => <div data-run-message key={m.id} className="border-l-2 border-line-control pl-3 [overflow-wrap:anywhere]">
+      <p className="text-fg-muted">{t("runs.level.human")} · {m.by} · {formatTime(m.at)} · {t(m.deliveredAt ? "runs.steerDelivered" : ended ? "runs.steerUndelivered" : "runs.steerPending")}</p>
+      <p className="whitespace-pre-wrap">{m.text}</p>
+    </div>)}
+  </section>;
+}
+
 /** A run on this machine: full log, changes, and what the Board used to offer (stop, MR, worktree, best-of pick). */
 function LocalDetail({ run, machine, gitlabReady, group, onChanged }: { run: AgentRun; machine: string; gitlabReady: boolean; group: AgentRun[]; onChanged: () => void }) {
   const { client } = useHive();
@@ -659,6 +696,7 @@ function LocalDetail({ run, machine, gitlabReady, group, onChanged }: { run: Age
   const live = isLive(run);
   const tick = useRefresh(live);
   const log = useQuery(() => desktop.runLog(run.id), [desktop, run.id, tick, run.status]);
+  const messages = useQuery(() => desktop.runMessages(run.id), [desktop, run.id, tick, run.status]);
   const [diff, setDiff] = useState<DiffFile[] | null>(null);
   const [diffError, setDiffError] = useState<string | null>(null);
   const action = useAction();
@@ -794,6 +832,8 @@ function LocalDetail({ run, machine, gitlabReady, group, onChanged }: { run: Age
         <NoteLine tone={run.mrState === "failed" ? "danger" : "muted"}>{run.mrNote}</NoteLine>
       ) : null}
       {run.error ? <Notice tone={run.status === "queued" ? "info" : "warn"} className="[overflow-wrap:anywhere]">{run.error}</Notice> : null}
+      <SteerHistory messages={messages.data ?? []} />
+      {run.status === "running" ? <SteerForm key={run.id} local send={(text) => desktop.steerRun(run.id, text)} onChanged={() => { messages.reload(); log.reload(); onChanged(); }} /> : null}
       <ErrorNote error={action.error} />
     </>
   );
@@ -878,6 +918,8 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
       {run.error ? <Notice tone={run.status === "queued" ? "info" : "warn"} className="[overflow-wrap:anywhere]">{run.error}</Notice> : null}
       {/* What this run made and sent to the hub (roadmap 41c): the branch may be gone, these stay. */}
       <ArtifactList project={run.project} runId={run.runId} machineId={run.machineId} />
+      <SteerHistory messages={full.data?.messages ?? []} ended={!live} />
+      {run.status === "running" && manage ? <SteerForm key={`${run.machineId}:${run.runId}`} send={(text) => client.call("runs.steer", { machineId: run.machineId, runId: run.runId, text })} onChanged={() => { full.reload(); onChanged(); }} /> : null}
       <ErrorNote error={action.error ?? full.error} />
       <NoteLine>{pruned ?? t("runs.logNote", { time: formatTime(run.updatedAt) })}</NoteLine>
     </>

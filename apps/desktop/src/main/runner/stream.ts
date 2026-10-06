@@ -130,6 +130,7 @@ export class ClaudeStream {
   readonly state: StreamState = { activity: null };
   /** The result event's line (cost, tokens, final message), once it came. */
   result: string | null = null;
+  results = 0;
   /** The agent's last message, for a run that ends without a result. */
   lastText: string | null = null;
   /** Claude Code's session, from its init event or its result: what `--resume` takes next time. */
@@ -165,7 +166,7 @@ export class ClaudeStream {
       // Not an event (a CLI warning…): as it came.
       return `${raw}\n`;
     }
-    if (event.type === "result") this.result = line;
+    if (event.type === "result") { this.result = line; this.results++; }
     if ((event.type === "result" || (event.type === "system" && event.subtype === "init")) && typeof event.session_id === "string") {
       this.sessionId = event.session_id;
     }
@@ -189,6 +190,7 @@ export class CodexStream {
   readonly state: StreamState = { activity: null };
   /** The agent's last message: the run's summary. */
   lastText: string | null = null;
+  threadId: string | null = null;
   /** Every turn's usage added up as the events pass, so a long run's early turns count even once the log is cut. */
   readonly tokens = { turns: 0, input: 0, cached: 0, output: 0 };
   #rest = "";
@@ -228,6 +230,7 @@ export class CodexStream {
     const item = (e.item ?? {}) as Json;
     switch (e.type) {
       case "thread.started":
+        if (typeof e.thread_id === "string") this.threadId = e.thread_id;
         return `# thread ${String(e.thread_id ?? "?")} · Codex`;
       case "turn.completed": {
         const u = (e.usage ?? {}) as Json;

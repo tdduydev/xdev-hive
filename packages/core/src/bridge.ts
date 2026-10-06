@@ -5,7 +5,7 @@ import type { ModelSelection } from "./model-router.ts";
 import type { AgentKind, AgentProfile, AgentRole, PlanUsage, PreferKind, RunnerSettings, RunStatus } from "./agents.ts";
 import type { GitLabImportCandidate, GitLabImportResult, MrSettings, MrState, MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { TransferReport } from "./transfer.ts";
-import type { ChatFile, Machine, MachineCommand, Proposal, Role, RunCompression, SetupItem, SetupReport, TeamPolicy, TokenWindows, ToolHandler, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
+import type { ChatFile, Machine, MachineCommand, Proposal, Role, RunMessage, RunCompression, SetupItem, SetupReport, TeamPolicy, TokenWindows, ToolHandler, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
 
 /**
  * A hub tool as the machine's Setup card shows it (roadmap 28b): what it will run here, for the user to allow.
@@ -519,8 +519,10 @@ export interface DesktopBridge {
   startRun(request: StartRunRequest): Promise<AgentRun>;
   runs(filter?: { project?: string; projects?: string[]; limit?: number }): Promise<AgentRun[]>;
   runLog(id: string): Promise<string>;
+  runMessages(id: string): Promise<RunMessage[]>;
   runDiff(id: string): Promise<string>;
   cancelRun(id: string): Promise<AgentRun>;
+  steerRun(id: string, text: string): Promise<void>;
   removeWorktree(id: string): Promise<AgentRun>;
   /** Keeps this candidate when the judge could not choose (best-of-n). */
   pickCandidate(id: string): Promise<AgentRun>;

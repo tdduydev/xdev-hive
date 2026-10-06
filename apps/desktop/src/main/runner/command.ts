@@ -1,3 +1,4 @@
+import { STEER_PROMPT } from "#desktop/main/runner/steer.ts";
 // Builds the command line and prompt for one run.
 import { accessSync, constants, statSync } from "node:fs";
 import os from "node:os";
@@ -90,6 +91,7 @@ export function buildPrompt(c: PromptContext): string {
       "Read AGENTS.md in the working copy first for the project's conventions. Read the candidates with git diff, git log and git show.",
       "Judge correctness first, then tests, then how well each does what the task asks and follows the conventions, then size and risk.",
       "Do not check out another branch, change files or commit here, and do not change the task status: the app keeps the chosen branch as it is.",
+      STEER_PROMPT,
       "End your report with exactly these two lines:",
       "Winner: c<number>",
       "Reason: <one sentence>",
@@ -183,6 +185,7 @@ export function buildPrompt(c: PromptContext): string {
   }
   if (c.ciFix) lines.push("", ...ciFixLines(c.ciFix));
   if (c.instructions.trim()) lines.push("", "Extra instructions from the admin:", c.instructions.trim());
+  if (!c.judge) lines.push("", STEER_PROMPT);
   return lines.join("\n");
 }
 

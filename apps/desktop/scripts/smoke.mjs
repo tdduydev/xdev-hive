@@ -40,7 +40,7 @@ execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin]);
 git("remote", "add", "origin", origin);
 git("push", "-q", "origin", "main");
 const token = "mock-gitlab-smoke-token";
-const gitlab = process.env.HIVE_SMOKE_ONLY === "setup-guide"
+const gitlab = ["setup-guide", "run-steer"].includes(process.env.HIVE_SMOKE_ONLY)
   ? { base: "", close: async () => {} }
   : await startMockGitLab(token);
 
@@ -199,6 +199,40 @@ async function startGuideShots(prefix = "") {
   }
   writeFileSync(file, before);
 }
+if (process.env.HIVE_SMOKE_ONLY === "run-steer") {
+  const file = path.join(work, "config.json");
+  const before = JSON.parse(readFileSync(file, "utf8"));
+  writeFileSync(file, JSON.stringify({ ...before, agents: [agent("claude-slow", "claude", 10, "sleep", "Claude (chạy lâu)")] }));
+  for (const phone of [false, true]) {
+    const seed = new RunStore(path.join(work, "runs.db"));
+    const run = seed.insert({ project: "demo", taskId: "T-001", taskTitle: "Nhắn agent đang chạy", role: "implement", attempt: 1, maxAttempts: 1, preferredProfile: "claude-slow" }, new Date().toISOString());
+    seed.db.close();
+    await shoot(phone ? "run-steer-mobile" : "run-steer-desktop", `runs?run=${run.id}`, 3500, {
+      ...(phone ? { HIVE_SMOKE_SIZE: "390x844" } : {}),
+      HIVE_SMOKE_EXPECT: "[data-run-steer] textarea",
+      HIVE_SMOKE_SCROLL: "[data-run-steer]",
+      HIVE_SMOKE_ASSERT: `(() => {
+        const form = document.querySelector('[data-run-steer]');
+        if (!form) return false;
+        if (!form.dataset.sent) {
+          form.dataset.sent = 'true';
+          const input = form.querySelector('textarea');
+          Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, 'Kiểm tra mobile, giữ màu hiện có');
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          setTimeout(() => form.requestSubmit(), 100);
+        }
+        return Array.from(document.querySelectorAll('[data-run-message]')).some(el => el.textContent.includes('Kiểm tra mobile'));
+      })()` + (phone ? ` && (() => { const input = document.querySelector('[data-run-steer] textarea'); const button = document.querySelector('[data-run-steer] button'); return [button.getBoundingClientRect().height >= 44, parseFloat(getComputedStyle(input).fontSize) >= 16, document.documentElement.scrollWidth <= innerWidth].every(Boolean); })()` : ""),
+    });
+    const result = new RunStore(path.join(work, "runs.db"));
+    if (result.steering(run.id).length !== 1) throw new Error("smoke: local steering message was not delivered once");
+    result.db.close();
+  }
+  await gitlab.close();
+  console.log(`run steering screenshots in ${out}`);
+  process.exit(0);
+}
+
 if (process.env.HIVE_SMOKE_ONLY === "setup-guide") {
   await startGuideShots();
   await gitlab.close();
