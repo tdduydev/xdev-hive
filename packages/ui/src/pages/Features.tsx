@@ -43,6 +43,7 @@ import {
 } from "#ui/lib/features.ts";
 import { runLabel, runOutcome } from "#ui/lib/runs.ts";
 import { inScope, projectScope, scopeFilter, scopeKey } from "#ui/lib/scope.ts";
+import { flowStep, taskStep, allPipelineFlows } from "#ui/lib/pipeline.ts";
 import { fold } from "#ui/lib/text.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 import { ImportTasks, Progress, SpecRun, STAGE_CHIP } from "./Specs.tsx";
@@ -56,6 +57,8 @@ export function FeaturesPage() {
   const allow = useCan();
   const [linkProject] = useHashParam("project");
   const [linkFlow] = useHashParam("flow");
+  const [linkStep] = useHashParam("pipelineStep");
+  const [linkColumn] = useHashParam("column");
   const [linkDir] = useHashParam("dir");
   const [linkBranch] = useHashParam("branch");
   // + Mới's "Tính năng mới" (roadmap 49c) lands here with ?newWork=<key>, a new key per opening.
@@ -76,7 +79,7 @@ export function FeaturesPage() {
     const filter = scopeFilter(scope);
     const [specs, flows, flowTasks, tasks] = await Promise.all([
       client.call("specs.list", filter),
-      client.call("sdlc.flows", { ...filter, limit: 200 }),
+      allPipelineFlows(client, filter),
       client.call("sdlc.flowTasks", filter),
       client.call("tasks.list", filter),
     ]);
@@ -103,7 +106,7 @@ export function FeaturesPage() {
   }
   // Roadmap 20d: a new feature's spec written by an agent, in a project's scope (the run needs one repo).
   const newProject = scope.kind === "project" && allow(scope.project, "taskManage") && allow(scope.project, "runDispatch") ? scope.project : null;
-  return <Board items={items} loaded={!!data.data} error={data.error} shared={shared} manyProjects={manyProjects} newProject={newProject} newWork={newWork} />;
+  return <Board items={items.filter((item) => (!linkColumn || item.column === linkColumn) && (!linkStep || (item.flow?.step !== "dispatch" && item.flow && flowStep(item.flow) === linkStep) || item.tasks.some((task) => taskStep(task) === linkStep)))} loaded={!!data.data} error={data.error} shared={shared} manyProjects={manyProjects} newProject={newProject} newWork={newWork} />;
 }
 
 /** Back to the board, at every width: the board and a feature are two pages of one entry. */

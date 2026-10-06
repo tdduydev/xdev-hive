@@ -18,6 +18,7 @@ import {
   Network,
   Server,
   Settings2,
+  Workflow,
   ShieldCheck,
   SquareKanban,
   Terminal,
@@ -51,6 +52,7 @@ import { ProposalsPage } from "./pages/Proposals.tsx";
 import { AdminPage, MachinesAgentsPage, RunsWorkPage, SettingsPage } from "./pages/Sections.tsx";
 import { SetupPage } from "./pages/Setup.tsx";
 
+import { PipelinePage } from "./pages/Pipeline.tsx";
 import { SpecsPage } from "./pages/Specs.tsx";
 import { SystemsPage } from "./pages/Systems.tsx";
 import { TaskWorkPage } from "./pages/Tasks.tsx";
@@ -79,6 +81,7 @@ type PageId =
   | "agents"
   | "machines"
   | "settings"
+  | "pipeline"
   | "admin"
   | "tokens"
   | "setup"
@@ -109,6 +112,7 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
   agents: { label: "nav.agents", sub: "navSub.agents", icon: Bot, render: () => <AgentsPage /> },
   // The web's entries that hold tabs (roadmap 49b): the pages that were in Vận hành and Quản trị before.
   machines: { label: "nav.machines", sub: "navSub.machines", icon: Server, render: () => <MachinesAgentsPage /> },
+  pipeline: { label: "nav.pipeline", sub: "navSub.pipeline", icon: Workflow, render: () => <PipelinePage /> },
   settings: { label: "nav.settings", sub: "navSub.settings", icon: Settings2, render: () => <SettingsPage /> },
   admin: { label: "nav.admin", sub: "navSub.admin", icon: ShieldCheck, render: () => <AdminPage /> },
   setup: { label: "nav.setup", sub: "navSub.setup", icon: Terminal, render: () => <SetupPage /> },
