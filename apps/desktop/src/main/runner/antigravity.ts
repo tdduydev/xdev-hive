@@ -1,5 +1,5 @@
 import path from "node:path";
-import { resetText } from "./usage.ts";
+import { resetText } from "#desktop/main/runner/usage.ts";
 import { tr } from "#desktop/main/i18n.ts";
 import { compareVersions, flagValue, type PlanLimit, type PlanUsage } from "@xdev-hive/core";
 
@@ -15,24 +15,36 @@ type Json = Record<string, unknown>;
 const object = (v: unknown): Json => v && typeof v === "object" && !Array.isArray(v) ? v as Json : {};
 function limit(v: unknown): PlanLimit | null {
   const j = object(v);
-  const n = j.percent ?? j.used_percent ?? j.usedPercent;
-  if (typeof n !== "number" || !Number.isFinite(n) || n < 0 || n > 100) return null;
-  const reset = j.resets ?? j.resets_at ?? j.resetsAt;
+  const remaining = j.remaining_fraction;
+  if (typeof remaining !== "number" || !Number.isFinite(remaining) || remaining < 0 || remaining > 1) return null;
+  const reset = j.reset_time;
   const iso = typeof reset === "string" && /^\d{4}-\d{2}-\d{2}T/.test(reset) ? new Date(reset) : null;
-  return { percent: n, resets: iso && !Number.isNaN(iso.getTime()) ? resetText(iso, "UTC") : typeof reset === "string" ? reset : null };
+  return { percent: Math.round((1 - remaining) * 100), resets: iso && !Number.isNaN(iso.getTime()) ? resetText(iso, "UTC") : null };
 }
 
-/** Provisional aliases until a real /usage sample exists; missing fields never imply zero usage. */
+/** agy 1.3.0 reports shared model pools with weekly and five-hour quota buckets. */
 export function parseAgyUsage(output: string, args: string[], now: Date): PlanUsage | null {
   let root: Json;
   try { root = object(JSON.parse(output)); } catch { return null; }
-  const pools = object(root.pools ?? root.usage ?? root);
-  const gemini = object(pools.gemini);
-  const other = object(pools.claude_gpt ?? pools.claudeGpt ?? pools.claude);
-  const windows = (p: Json) => ({ session: limit(p.session ?? p.five_hour ?? p.fiveHour), week: limit(p.week ?? p.weekly) });
+  const groups = object(object(root.command).data).groups;
+  const gemini: { session: PlanLimit | null; week: PlanLimit | null } = { session: null, week: null };
+  const other: typeof gemini = { session: null, week: null };
+  for (const value of Array.isArray(groups) ? groups : []) {
+    const group = object(value);
+    for (const value of Array.isArray(group.buckets) ? group.buckets : []) {
+      const bucket = object(value);
+      const id = typeof bucket.id === "string" ? bucket.id : "";
+      const pool = id.startsWith("gemini-") ? gemini : id.startsWith("3p-") ? other
+        : group.name === "Gemini Models" ? gemini : group.name === "Claude and GPT models" ? other : null;
+      const window = id === "gemini-weekly" || id === "3p-weekly" ? "week"
+        : id === "gemini-5h" || id === "3p-5h" ? "session"
+        : bucket.window === "weekly" ? "week" : bucket.window === "5h" ? "session" : null;
+      if (pool && window) pool[window] = limit(bucket);
+    }
+  }
   const alternate = /claude|gpt/i.test(flagValue(args, ["--model"]) ?? "");
-  const selected = windows(alternate ? other : gemini);
-  const secondary = windows(alternate ? gemini : other);
+  const selected = alternate ? other : gemini;
+  const secondary = alternate ? gemini : other;
   const label = alternate ? "Gemini" : "Claude/GPT";
   if (![selected.session, selected.week, secondary.session, secondary.week].some(Boolean)) return null;
   return { ...selected, others: [
