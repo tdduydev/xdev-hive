@@ -195,7 +195,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 
 
 - **37. hub-leader** (hỏi 2/10: trên web ra prompt cho một agent "control toàn bộ" các agent; chọn: chỉ admin hub, phạm vi cả hub, việc tự chạy là cài đặt riêng của leader cấp hub). Leader của *Chat* hiện gắn một dự án (19d mở tới các service cùng hệ thống). Spec: [docs/specs/37-hub-leader.md](specs/37-hub-leader.md). Tách:
-  - [ ] **37a. hub-leader-core**: thread phạm vi hub (`project = "*"`, chỉ admin hub thấy và dùng), mọi loại đề xuất nêu dự án nhắm tới (hoặc cả hub với việc của máy và hub), duyệt bằng quyền admin hub qua method của web, tự chạy theo `chat_defaults["*"]`; MCP không có dự án mặc định, thêm `project_list`, tool đọc trả toàn hub.
+  - [x] **37a. hub-leader-core**: thread phạm vi hub (`project = "*"`, chỉ admin hub thấy và dùng), mọi loại đề xuất nêu dự án nhắm tới (hoặc cả hub với việc của máy và hub), duyệt bằng quyền admin hub qua method của web, tự chạy theo `chat_defaults["*"]`; MCP không có dự án mặc định, thêm `project_list`, tool đọc trả toàn hub.
   - [ ] **37b. hub-leader-ui**: máy chạy leader cấp hub trong thư mục riêng với `--add-dir` mọi repo nó có; *Chat mới* có *Toàn hub* cho admin hub, thẻ đề xuất có nhãn dự án, cài đặt và *Leader tự chạy* riêng cho *Toàn hub*; skill `hive-leader` có mục phạm vi hub.
 
 - **38. customer-onboarding** (báo 3/10: nối dự án khách hàng, 8 repo GitLab lồng nhau trên Windows `win-runner`, gom vào hệ thống `customer-ai`, phải đi vòng qua 8 chỗ thiếu; chọn: A và B làm trước; `customer` và `customer-ai` là một, tên chung là hệ thống `customer-ai`). Tách:
@@ -232,9 +232,9 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 
 - **40. system-first** (hỏi 3/10: "nên hệ thống → dự án chứ nhỉ? hiện tại dự án nhìn vô nhiều thứ quá; hệ thống có thể nhiều service dạng microservices"; chọn hướng gọn): hệ thống là cấp chính, dự án là *service* bên trong; repo lẻ là hệ thống một service (ảo). Task, run, máy giữ ở cấp service; tài liệu và memory mặc định ở cấp hệ thống. Spec: [docs/specs/40-system-first.md](specs/40-system-first.md). Tách:
   - [x] **40a. scope-system-first**: ô phạm vi lấy hệ thống làm gốc (cả hệ thống ảo của repo lẻ), service mở rộng bên trong; menu và tiêu đề ghi `hệ thống › service`.
-  - [ ] **40b. service-naming**: chữ giao diện vi/en "dự án" (nghĩa là một repo) → "service"; README giải thích hệ thống / service; RPC, DB, MCP giữ `project`.
+  - [x] **40b. service-naming**: chữ giao diện vi/en "dự án" (nghĩa là một repo) → "service"; README giải thích hệ thống / service; RPC, DB, MCP giữ `project`.
   - [x] **40c. docs-system-default**: *Tài liệu* hiện tài liệu hệ thống trước rồi từng service; trang mới và memory trên web mặc định ở cấp hệ thống.
-  - [ ] **40d. overview-by-system**: *Tổng quan* / *Hôm nay* mỗi hệ thống một thẻ; bảng Task và Lượt chạy có cột và bộ lọc *Service*.
+  - [x] **40d. overview-by-system**: *Tổng quan* / *Hôm nay* mỗi hệ thống một thẻ; bảng Task và Lượt chạy có cột và bộ lọc *Service*.
 
 - **41. artifacts** (hỏi 3/10: "hệ thống này cũng phải lưu trữ dữ liệu artifacts của AI tạo ra làm tài liệu nữa nhỉ? lỡ sau này quên"; chọn: làm cả bốn mục, nhật ký ở cấp hệ thống). Hiện tóm tắt và log run bị xoá sau 30 ngày, ghi chú task bị ghi đè, file agent làm ra không lên Hive. Spec: [docs/specs/41-artifacts.md](specs/41-artifacts.md). Tách:
   - [x] **41a. task-history**: mỗi lần đổi ghi chú task giữ một phiên bản (ai, nguồn, lúc nào); panel task có *Lịch sử ghi chú*; agent đọc được vài bản gần nhất.
@@ -298,11 +298,11 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **56c. models-in-pipeline**: model từng bước, tab *Model theo loại task*, chip model ở run và task (giao diện của 54c/54d).
 
 - **57. agent-collab** (hỏi 6/10: thêm việc cho các gói Codex; chọn cả bốn): làm việc cùng agent. Spec: [docs/specs/57-agent-collab.md](specs/57-agent-collab.md). Tách:
-  - [ ] **57a. run-steer**: nhắn thêm chỉ dẫn cho run đang chạy (`runs.steer`, Claude qua stdin stream-json hoặc file steer, Codex qua file steer).
-  - [ ] **57b. plan-approval**: pha kế hoạch chỉ đọc, *Chờ duyệt kế hoạch* ở *Hôm nay*, duyệt / sửa / tự duyệt sau thời hạn; chế độ theo dự án ở *Quy trình*.
-  - [ ] **57c. diff-review**: tab *Diff* ở trang run, nhóm theo ý có giải thích (model rẻ), cờ rủi ro, yêu cầu sửa theo hunk.
-  - [ ] **57d. skill-stats**: run ghi skill đã nạp; trang Skill có số run dùng 30 ngày, lần dùng cuối, lọc skill không ai dùng.
-  - [ ] **57e. qa-role**: quyền `qaVerify`, vai QA, chốt *Kiểm thử* trước Merge (mặc định tự động), Hôm nay của QA.
+  - [x] **57a. run-steer**: nhắn thêm chỉ dẫn cho run đang chạy (`runs.steer`, Claude qua stdin stream-json hoặc file steer, Codex qua file steer).
+  - [x] **57b. plan-approval**: pha kế hoạch chỉ đọc, *Chờ duyệt kế hoạch* ở *Hôm nay*, duyệt / sửa / tự duyệt sau thời hạn; chế độ theo dự án ở *Quy trình*.
+  - [x] **57c. diff-review**: tab *Diff* ở trang run, nhóm theo ý có giải thích (model rẻ), cờ rủi ro, yêu cầu sửa theo hunk.
+  - [x] **57d. skill-stats**: run ghi skill đã nạp; trang Skill có số run dùng 30 ngày, lần dùng cuối, lọc skill không ai dùng.
+  - [x] **57e. qa-role**: quyền `qaVerify`, vai QA, chốt *Kiểm thử* trước Merge (mặc định tự động), Hôm nay của QA.
 
 ## Sửa lỗi
 
