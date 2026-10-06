@@ -1255,7 +1255,7 @@ function SubRepos({ scan, onAdded, onClose }: { scan: RepoScan; onAdded: () => P
 /** The folder a path is in, for / and \\ alike. */
 const parentDir = (p: string) => p.replace(/[\\/]+$/, "").replace(/[\\/][^\\/]*$/, "") || p;
 
-const IMPORT_TONE: Record<GitLabImportCandidate["state"], string> = { added: "neutral", folder: "info", new: "ok" };
+const IMPORT_TONE: Record<GitLabImportCandidate["state"], string> = { added: "neutral", folder: "info", conflict: "danger", new: "ok" };
 
 /**
  * A whole GitLab group at once (roadmap 19a): the repositories of the group and its subgroups, each with the project
@@ -1279,7 +1279,7 @@ export function GitLabImportCard({ settings, onChanged }: { settings: DesktopSet
   const [results, setResults] = useState<GitLabImportResult[] | null>(null);
   const listing = useAction();
   const importing = useAction();
-  const chosen = (listed?.candidates ?? []).filter((c) => c.state !== "added" && picked[c.repo.pathWithNamespace]);
+  const chosen = (listed?.candidates ?? []).filter((c) => c.state !== "added" && c.state !== "conflict" && picked[c.repo.pathWithNamespace]);
   const keyOf = (c: GitLabImportCandidate) => keys[c.repo.pathWithNamespace] ?? c.key;
   const bad = chosen.filter((c) => !PROJECT_NAME.test(keyOf(c)));
   const dupes = new Set(chosen.map(keyOf).filter((k, i, all) => all.indexOf(k) !== i));
@@ -1299,7 +1299,7 @@ export function GitLabImportCard({ settings, onChanged }: { settings: DesktopSet
             void listing.run(async () => {
               const candidates = await desktop.gitlabGroup({ group, baseDir });
               setListed({ group, candidates });
-              setPicked(Object.fromEntries(candidates.filter((c) => c.state !== "added").map((c) => [c.repo.pathWithNamespace, true])));
+              setPicked(Object.fromEntries(candidates.filter((c) => c.state !== "added" && c.state !== "conflict").map((c) => [c.repo.pathWithNamespace, true])));
               setKeys({});
               setResults(null);
             });
@@ -1355,13 +1355,13 @@ export function GitLabImportCard({ settings, onChanged }: { settings: DesktopSet
                 {listed.candidates.map((c) => {
                   const id = c.repo.pathWithNamespace;
                   const key = keyOf(c);
-                  const added = c.state === "added";
+                  const locked = c.state === "added" || c.state === "conflict";
                   return (
                     <tr key={id} className="border-t align-top">
                       <td className="p-2">
                         <Checkbox
-                          checked={!added && Boolean(picked[id])}
-                          disabled={added}
+                          checked={!locked && Boolean(picked[id])}
+                          disabled={locked}
                           aria-label={id}
                           onCheckedChange={(v) => setPicked((p) => ({ ...p, [id]: v === true }))}
                         />
@@ -1373,7 +1373,7 @@ export function GitLabImportCard({ settings, onChanged }: { settings: DesktopSet
                         </Badge>
                       </td>
                       <td className="p-2">
-                        {added ? (
+                        {locked ? (
                           <span className="font-mono text-xs">{c.key}</span>
                         ) : (
                           <Input

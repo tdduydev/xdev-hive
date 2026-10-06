@@ -86,8 +86,8 @@ export interface GitLabImportCandidate {
   repo: GitLabGroupRepo;
   key: string;
   dir: string;
-  /** added: a project of this app has it already · folder: the folder exists (used as it is) · new: cloned. */
-  state: "added" | "folder" | "new";
+  /** added: already a project · folder: matching clone · conflict: occupied by something else · new: to clone. */
+  state: "added" | "folder" | "conflict" | "new";
 }
 
 export interface GitLabImportResult {
