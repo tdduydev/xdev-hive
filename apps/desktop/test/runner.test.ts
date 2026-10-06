@@ -17,7 +17,7 @@ import { usageHeadroom, usageStop, type HiveEvent, type PlanUsage } from "@xdev-
 import { checkLogin, checkUsage, LoginMonitor, loginCommand, parseLogin, USAGE_ARGS, usageRefresher } from "#desktop/main/runner/login.ts";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { parseResetTime, detectRateLimit } from "#desktop/main/runner/rate-limit.ts";
-import { Runner, type HubUpdate, type RunnerEvent, type RunnerHost, type RunnerOptions } from "#desktop/main/runner/runner.ts";
+import { codexConfigFailure, Runner, type HubUpdate, type RunnerEvent, type RunnerHost, type RunnerOptions } from "#desktop/main/runner/runner.ts";
 import { chatArgs, leaderBrief, leaderSettings } from "#desktop/main/runner/chat.ts";
 import { assistSettings, globRegExp, parseAssist, readRepoFiles } from "#desktop/main/runner/assist.ts";
 import { setMainLocale, tr } from "#desktop/main/i18n.ts";
@@ -672,8 +672,20 @@ describe("buildCommand", () => {
     const { hiveMcp: _found, ...noShim } = vars;
     assert.ok(buildCommand(AGENT_TEMPLATES.codex, noShim).args.includes(`mcp_servers.xdev-hive.command=${JSON.stringify(mcpLaunch(shim, []).command)}`), "falls back to the app's shim");
     const ro = buildCommand({ ...AGENT_TEMPLATES.codex, id: "codex-ro", readOnly: true }, { ...vars, run: "R-1" }).args;
-    assert.equal(ro[9], 'mcp_servers.xdev-hive.env={HIVE_AGENT="codex-ro",HIVE_PROJECT="demo",HIVE_TASK="T-1",HIVE_RUN="R-1",HIVE_READONLY="1"}');
+    assert.ok(ro.includes('mcp_servers.xdev-hive.env={HIVE_AGENT="codex-ro",HIVE_PROJECT="demo",HIVE_TASK="T-1",HIVE_RUN="R-1",HIVE_READONLY="1"}'));
     assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.claude, kind: "custom" }, vars).args, ["-p", "Do T-1", "--permission-mode", "acceptEdits"]);
+  });
+});
+
+describe("Codex config failures", () => {
+  it("points to the profile config in the localized run error", () => {
+    const profile = { ...AGENT_TEMPLATES.codex, env: { CODEX_HOME: "/tmp/codex-profile" } };
+    setMainLocale("en");
+    assert.equal(codexConfigFailure(profile, "Error loading config.toml: invalid transport in `mcp_servers.xdev-hive`"),
+      "Codex MCP configuration is invalid in /tmp/codex-profile/config.toml. Repair or recreate the xdev-hive MCP entry, then retry.");
+    setMainLocale("vi");
+    assert.match(codexConfigFailure(profile, "Error loading config.toml: invalid transport" )!, /Cấu hình MCP.*\/tmp\/codex-profile\/config.toml/);
+    assert.equal(codexConfigFailure(profile, "unrelated failure"), null);
   });
 });
 
@@ -2656,7 +2668,7 @@ describe("runner: the hub's tool catalog (roadmap 28b)", () => {
     const run = s.runner.store.get(queued.id)!;
     assert.equal(run.status, "failed");
     assert.match(run.error ?? "", new RegExp(codexHome.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-    assert.match(run.error ?? "", /Cấu hình MCP của Codex profile không hợp lệ/i);
+    assert.match(run.error ?? "", /Cấu hình MCP của Codex bị lỗi/i);
   });
 
   // ── catalog hooks (roadmap 28d): RTK as the migration put it, a fake rtk on the PATH ──
