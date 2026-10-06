@@ -127,6 +127,10 @@ switch (process.env.FAKE_MODE ?? "ok") {
     console.error("TypeError: boom");
     finish(3);
     break;
+  case "codex-config-error":
+    console.error("Error loading config.toml: invalid transport in `mcp_servers.xdev-hive`");
+    finish(1);
+    break;
   case "sleep":
     // Streams even in JSON mode, so tests can wait for it.
     console.log("thinking…");
