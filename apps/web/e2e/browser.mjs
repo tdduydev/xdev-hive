@@ -431,8 +431,8 @@ async function main() {
   // password are in the account menu; old addresses land on their tab.
   await step("nav-by-job", async () => {
     const menus = [
-      ["admin", tabs.admin, ["Hôm nay", "Chat", "Sơ đồ", "Tính năng", "Task", "Agent đang chạy", "Tài liệu", "Skill", "Memory", "Đề xuất", "Cài đặt dự án", "Máy & agent", "Quản trị"]],
-      ["member", tabs.hoa, ["Hôm nay", "Sơ đồ", "Tính năng", "Task", "Agent đang chạy", "Tài liệu", "Skill", "Memory", "Đề xuất", "Máy & agent"]],
+      ["admin", tabs.admin, ["Hôm nay", "Chat", "Sơ đồ", "Tính năng", "Task", "Agent đang chạy", "Tài liệu", "Skill", "Memory", "Cài đặt dự án", "Máy & agent", "Quản trị"]],
+      ["member", tabs.hoa, ["Hôm nay", "Sơ đồ", "Tính năng", "Task", "Agent đang chạy", "Tài liệu", "Skill", "Memory", "Máy & agent"]],
     ];
     for (const [who, tab, want] of menus) {
       current = tab;
