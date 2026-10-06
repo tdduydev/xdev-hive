@@ -713,7 +713,7 @@ describe("the hub-wide chat (roadmap 37)", () => {
     assert.equal(hive.chatFile(file.id, member), null);
     assert.equal(hive.chatFile(file.id, admin)?.name, "plan.txt");
     const request = (await beat(mini, { projects: [] })).chatRequests.find((r) => r.replyId === sent.reply.id)!;
-    assert.deepEqual(request.files.map((f) => f.id), [file.id]);
+    assert.deepEqual(request.files?.map((f) => f.id), [file.id]);
   });
 
   it("keeps main's classification and assignment proposals scoped, and hides hub proposals from project readers", async () => {
