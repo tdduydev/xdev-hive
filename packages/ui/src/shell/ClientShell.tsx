@@ -90,6 +90,7 @@ function ClientFrame({
   extraPages = [],
   current,
   title,
+  scopeName = null,
   subtitle,
   webUrl = null,
   children,
@@ -102,6 +103,8 @@ function ClientFrame({
   extraPages?: NavEntry[];
   current: string;
   title: string;
+  /** The system (or `system › service`) in scope, before the page's name; null for all and shared (roadmap 40a). */
+  scopeName?: string | null;
   subtitle: string;
   /** The hub's web, for the desktop app on a hub (roadmap 35a): new tasks and the rest of the work happen there. */
   webUrl?: string | null;
@@ -365,7 +368,10 @@ function ClientFrame({
                 <PanelLeft className="size-4" />
               </button>
               <div className="ml-2 flex min-w-0 max-w-[320px] flex-col">
-                <span className="truncate text-sm/[18px] font-semibold text-fg-strong">{title}</span>
+                <span className="truncate text-sm/[18px] font-semibold text-fg-strong" data-shell-title>
+                  {scopeName ? <span className="font-normal text-fg-secondary">{scopeName} › </span> : null}
+                  {title}
+                </span>
                 <span className="truncate text-[11px]/[14px] text-fg-muted">{subtitle}</span>
               </div>
               <span className="hidden flex-1 md:block" />
