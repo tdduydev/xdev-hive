@@ -1056,13 +1056,13 @@ async function main() {
         const count = await tab.eval(() => document.querySelector('[data-pipeline-count="spec"]')?.textContent);
         expect(/\b1\b/.test(count ?? ""), `Spec does not show one active flow: ${count}`);
         const stepCount = await tab.eval(() => document.querySelectorAll("[data-pipeline-step]").length);
-        expect(stepCount === 10, `pipeline stages: ${stepCount}`);
+        expect(stepCount === 11, `pipeline stages: ${stepCount}`);
         if (mobile) {
           const layout = await tab.eval(() => ({ vertical: !!document.querySelector("[data-pipeline-mobile]"), overflow: document.documentElement.scrollWidth > innerWidth }));
           expect(layout.vertical && !layout.overflow, `pipeline mobile layout: ${JSON.stringify(layout)}`);
         }
         const gateCount = await tab.eval(() => document.querySelectorAll("[data-pipeline-gate]").length);
-        expect(gateCount === 7, `pipeline gates: ${gateCount}`);
+        expect(gateCount === 8, `pipeline gates: ${gateCount}`);
         await tab.shot(`${String(n).padStart(2, "0")}-pipeline-open`);
         await tab.click('[data-pipeline-gate="review"]');
         await tab.waitFor("Review gate editor", () => !!document.querySelector('[data-pipeline-editor] [data-pipeline-mode="ai"]'));
@@ -1077,7 +1077,7 @@ async function main() {
         // The editor's sheet closes after the save; its overlay would take the next click.
         await tab.waitFor("gate editor closed", () => !document.querySelector("[data-pipeline-editor]"));
         await tab.click('[data-pipeline-preset="cautious"]');
-        await tab.waitFor("cautious preview", () => document.querySelectorAll('[data-pipeline-preview] [data-pipeline-change]').length === 7);
+        await tab.waitFor("cautious preview", () => document.querySelectorAll('[data-pipeline-preview] [data-pipeline-change]').length === 8);
         await tab.shot(`${String(n).padStart(2, "0")}-pipeline-preview`);
         await tab.click('[data-pipeline-apply]');
         await until("cautious preset saved", async () => {
@@ -1275,8 +1275,9 @@ async function main() {
     await tab.go("runs?run=R-e2e57c");
     await tab.waitFor("diff groups", () => document.body.innerText.includes("Thêm vai và cập nhật giao diện."));
     await tab.click('[data-run-tab="diff"]');
-    await tab.click('nav[aria-label="Cờ rủi ro"] a', "Xoá dữ liệu");
-    expect(await tab.eval(() => document.activeElement?.textContent.includes("@@ -8 +8 @@") && location.hash.includes("R-e2e57c")), "risk flag must focus the exact hunk without leaving the run");
+    await tab.click('nav[aria-label="Cờ rủi ro"] a', "Cao · Xoá dữ liệu · db.ts");
+    // The desktop list consumes ?run= once the run is selected, so there the route is plain #/runs; the phone keeps it as its detail route.
+    expect(await tab.eval(() => document.activeElement?.textContent.includes("@@ -8 +8 @@") && (location.hash === "#/runs" || location.hash.includes("R-e2e57c")) && document.body.innerText.includes("R-e2e57c")), "risk flag must focus the exact hunk without leaving the run");
     await tab.click("section:focus button", "Yêu cầu sửa");
     await tab.waitFor("hunk note", () => !!document.querySelector("textarea"));
     await tab.click("textarea");
@@ -1307,9 +1308,12 @@ async function main() {
         { id: "codex-review", label: "Codex", kind: "codex", enabled: true, installed: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, maxConcurrent: 8 }] });
     await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ runId: "R-e2ereview", project: "payment", taskId: "PAY-1", taskTitle: "Việc đầu tiên của payment", role: "implement", status: "succeeded", profileId: "claude-1", createdAt: now, finishedAt: now,
       summary: "ĐÃ LÀM: Sửa luồng thanh toán\nCHƯA LÀM: Cần bạn xác nhận cách xử lý\nCÁCH KIỂM: npm test\nRỦI RO: CI đang lỗi", log: "[AGENT] Bàn giao", patch: "diff --git a/pay.ts b/pay.ts\n--- a/pay.ts\n+++ b/pay.ts\n@@ -1 +1 @@\n-old\n+new", mrUrl: "https://gitlab.example/team/payment/-/merge_requests/49", mr: { iid: 49, status: "opened", draft: false, pipeline: "failed", pipelineUrl: null, checkedAt: now } }] });
+    // The previous step left the Runs page mounted with a list from before this run was pushed; leave it so the next visit loads fresh.
+    await tab.go("tasks");
     await tab.go("batches");
     await tab.waitFor("old batch route in runs", () => location.hash === "#/runs");
-    if (mobile) await tab.go("runs?run=R-e2ereview");
+    // The previous step left its run selected on the desktop list too, so pick this one by its link everywhere.
+    await tab.go("runs?run=R-e2ereview");
     await tab.waitFor("run needs a person", () => document.querySelector('[data-run-review]')?.textContent.includes("ĐÃ LÀM") && document.body.innerText.includes("Chờ người"));
     const order = await tab.eval(() => { const body = document.querySelector('[data-run-review]')?.innerText ?? ""; return ["ĐÃ LÀM", "Log", "Thay đổi / MR", "MR !49"].map((s) => body.indexOf(s)); });
     expect(order.every((n) => n >= 0) && order.every((n, i) => i === 0 || n > order[i - 1]), `run review order: ${order}`);
@@ -1800,9 +1804,9 @@ async function main() {
     };
     await machineRpc("machines.heartbeat", { machine: "overview", instance: "0e40d001", version: "0.138.0", projects: ["ov-api", "ov-web", "ov-jobs"] });
     await machineRpc("runs.push", { machine: "overview", runs: [
-      { runId: "OV-R1", project: "ov-api", taskId: "OV-1", taskTitle: "Overview ov-api", role: "implement", status: "running", createdAt: at, startedAt: at },
-      { runId: "OV-R2", project: "ov-web", taskId: "OV-2", taskTitle: "Overview ov-web", role: "implement", status: "queued", createdAt: at },
-      { runId: "OV-R3", project: "ov-jobs", taskId: "OV-3", taskTitle: "Overview ov-jobs", role: "implement", status: "running", createdAt: at, startedAt: at },
+      { runId: "OV-R1", project: "ov-api", taskId: "OV-1", taskTitle: "Overview ov-api", role: "implement", profileId: null, status: "running", createdAt: at, startedAt: at },
+      { runId: "OV-R2", project: "ov-web", taskId: "OV-2", taskTitle: "Overview ov-web", role: "implement", profileId: null, status: "queued", createdAt: at },
+      { runId: "OV-R3", project: "ov-jobs", taskId: "OV-3", taskTitle: "Overview ov-jobs", role: "implement", profileId: null, status: "running", createdAt: at, startedAt: at },
     ] });
     const tab = (current = tabs.admin);
     await tab.eval(() => localStorage.removeItem("xdev-hive.scope"));
@@ -1910,7 +1914,7 @@ async function main() {
     if (plan) await rpc("runs.cancelRequest", { id: plan.id });
 
     await tab.click("[data-project-picker-trigger]");
-    await tab.click('input[aria-label="Tìm dự án hoặc hệ thống…"]');
+    await tab.click('input[aria-label="Tìm service hoặc hệ thống…"]');
     await tab.type("ban-hang");
     await tab.click('[role="option"]', "ban-hang");
     if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
@@ -1919,7 +1923,7 @@ async function main() {
     await tab.waitFor("the system's services", () => ["payment", "demo"].every((p) => !!document.querySelector(`[data-graph-service="${p}"]`)));
     await tab.shot("graph-system-layer");
     await tab.click("[data-project-picker-trigger]");
-    await tab.click('[role="option"]', "Tất cả dự án");
+    await tab.click('[role="option"]', "Tất cả service");
     if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
   });
 
