@@ -10,7 +10,7 @@ export type WebPage =
   | "today"
   | "chat"
   | "graph"
-  | "specs"
+  | "features"
   | "tasks"
   | "runs"
   | "docs"
@@ -28,7 +28,7 @@ export type WebPage =
  */
 export const WEB_MENU: Array<{ label: MessageKey | null; ids: WebPage[] }> = [
   { label: null, ids: ["today", "chat"] },
-  { label: "nav.groupDoing", ids: ["graph", "specs", "tasks", "runs"] },
+  { label: "nav.groupDoing", ids: ["graph", "features", "tasks", "runs"] },
   { label: "nav.groupKnowledge", ids: ["docs", "skills", "memory", "proposals"] },
   { label: "nav.groupProject", ids: ["settings"] },
   { label: "nav.groupMachines", ids: ["machines"] },
@@ -110,7 +110,7 @@ export const pickTab = <T extends string>(tabs: readonly T[], wanted: string | n
 /** The entries of the web menu this person sees (the hub's web: `me.mode` is "hub"). */
 export function webPages(me: Me, projects: string[], caps: WebCaps): Set<WebPage> {
   const admin = isHubAdmin(me);
-  const ids = new Set<WebPage>(["today", "specs", "tasks", "docs", "skills", "memory", "proposals"]);
+  const ids = new Set<WebPage>(["today", "features", "tasks", "docs", "skills", "memory", "proposals"]);
   const viewer = me.role === "admin" || projects.some((p) => may(me, p, "view"));
   if (viewer) ids.add("graph");
   if (me.mode === "hub") {
