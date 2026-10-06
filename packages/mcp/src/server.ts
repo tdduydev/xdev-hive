@@ -167,7 +167,12 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       inputSchema: { key: z.string() },
       annotations: readOnly,
     },
-    async ({ key }) => run("docs.get", { key }),
+    // A removed page (roadmap 38g) reads as gone: an agent must not work from a page the team took out.
+    async ({ key }) => {
+      const doc = await backend.call("docs.get", { key }, actor);
+      if (doc?.removedAt) return { isError: true, content: [{ type: "text", text: `not_found: ${doc.key} was removed on ${doc.removedAt}` }] };
+      return run("docs.get", { key });
+    },
   );
 
   server.registerTool(

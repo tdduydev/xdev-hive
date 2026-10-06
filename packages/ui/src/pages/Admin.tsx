@@ -29,6 +29,7 @@ import { formatTime, useAction, useHive, useProjects, useQuery } from "#ui/hooks
 import { rich, useT, type MessageKey } from "#ui/i18n/index.tsx";
 import { hasNewer } from "#ui/lib/setup.ts";
 import { AgentPolicyCard } from "#ui/pages/admin/AgentPolicy.tsx";
+import { RetiredProjectsCard } from "#ui/pages/admin/RetiredProjects.tsx";
 import { SdlcGatesCard } from "#ui/pages/admin/SdlcGates.tsx";
 
 
@@ -72,6 +73,11 @@ export const ACTION_LABEL: Record<string, MessageKey> = {
   "tasks.setClassifyConfig": "auditAction.tasksSetClassifyConfig",
   "projects.restore": "auditAction.projectsRestore",
   "projects.delete": "auditAction.projectsDelete",
+  "docs.move": "auditAction.docsMove",
+  "docs.remove": "auditAction.docsRemove",
+  "docs.restore": "auditAction.docsRestore",
+  "projects.retire": "auditAction.projectsRetire",
+  "projects.resume": "auditAction.projectsResume",
   "admin.commandCreate": "auditAction.commandCreate",
   "admin.commandCancel": "auditAction.commandCancel",
   "machines.commandResult": "auditAction.commandResult",
@@ -497,6 +503,7 @@ export function PolicyTab() {
       {/* Saved row by row, apart from the button above: a project's manager may change their row without the rest. */}
       <AgentPolicyCard />
       <SdlcGatesCard />
+      <RetiredProjectsCard />
     </>
   );
 }
