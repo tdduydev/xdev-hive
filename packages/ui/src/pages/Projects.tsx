@@ -160,7 +160,7 @@ function HubLink() {
  * Connected: one line (hub, account, machine) with the link's state, and nothing to fill in. The sign-in form is
  * only for a machine that is not connected, or for someone who asked to change the connection.
  */
-function ConnectionCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: () => void }) {
+export function ConnectionCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: () => void }) {
   const { client, me, bump } = useHive();
   const t = useT();
   const desktop = client.desktop!;
@@ -224,12 +224,14 @@ function ConnectionCard({ settings, onSaved }: { settings: DesktopSettings; onSa
   );
 }
 
-function SignInCard({
+export function SignInCard({
   settings,
   changing,
   onDone,
   onCancel,
+  guide = false,
 }: {
+  guide?: boolean;
   settings: DesktopSettings;
   changing: boolean;
   onDone: () => void;
@@ -254,16 +256,16 @@ function SignInCard({
       <CardHeader>
         <CardTitle>{t("projects.connection")}</CardTitle>
         <CardDescription className="break-words">
-          {settings.mode === "local" && !changing
+          {guide ? t("start.connectHint") : settings.mode === "local" && !changing
             ? rich(t("projects.localHint"), { path: <code className={CODE}>{settings.dbPath}</code> })
             : t("projects.connectHint")}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <div className={FORM_GRID}>
+        {!guide ? <div className={FORM_GRID}>
           <Label htmlFor="hub-url">{t("projects.hubUrl")}</Label>
           <Input id="hub-url" className="font-mono" placeholder="https://hive.xdev.asia" value={hubUrl} onChange={(e) => setHubUrl(e.target.value)} />
-        </div>
+        </div> : null}
         <div className="flex flex-wrap items-center gap-2">
           <Button
             data-connect-browser
@@ -294,7 +296,11 @@ function SignInCard({
         </div>
         <p className="text-xs break-words text-muted-foreground">{t("projects.signInBrowserHint")}</p>
         <ErrorNote error={browser.error} />
-        <Disclosure name="other-sign-in" label={t("projects.otherWays")}>
+        <Disclosure name="other-sign-in" label={t(guide ? "projects.advanced" : "projects.otherWays")}>
+          {guide ? <div className={FORM_GRID}>
+            <Label htmlFor="hub-url">{t("projects.hubUrl")}</Label>
+            <Input id="hub-url" className="font-mono" placeholder="https://hive.xdev.asia" value={hubUrl} onChange={(e) => setHubUrl(e.target.value)} />
+          </div> : null}
           <form
             className="flex flex-col gap-2"
             onSubmit={(e) => {
@@ -366,7 +372,7 @@ function SignInCard({
             <ErrorNote error={paste.error} />
           </form>
         </Disclosure>
-        {settings.mode === "hub" && !changing ? (
+        {(guide || settings.mode === "hub") && !changing ? (
           <div className="flex flex-col gap-2">
             <Button
               variant="ghost"
@@ -561,7 +567,7 @@ function TransferSection({ settings }: { settings: DesktopSettings }) {
   );
 }
 
-function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: () => void }) {
+export function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: () => void }) {
   const { client } = useHive();
   const t = useT();
   const g = settings.gitlab;

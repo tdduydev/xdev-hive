@@ -40,7 +40,9 @@ execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin]);
 git("remote", "add", "origin", origin);
 git("push", "-q", "origin", "main");
 const token = "mock-gitlab-smoke-token";
-const gitlab = await startMockGitLab(token);
+const gitlab = process.env.HIVE_SMOKE_ONLY === "setup-guide"
+  ? { base: "", close: async () => {} }
+  : await startMockGitLab(token);
 
 const fake = path.join(appDir, "test", "fixtures", "fake-agent.mjs");
 const shellWord = (value) => "'" + value.replaceAll("'", "'\"'\"'") + "'";
@@ -136,10 +138,10 @@ async function shoot(name, page, delay, extra = {}) {
     },
   });
   const timer = setTimeout(() => child.kill("SIGKILL"), 60_000);
-  const code = await new Promise((resolve) => child.once("exit", resolve));
+  const { code, signal } = await new Promise((resolve) => child.once("exit", (code, signal) => resolve({ code, signal })));
   clearTimeout(timer);
   if (code !== 0 || !existsSync(shot)) {
-    console.error(`smoke failed on ${name}`, code, existsSync(shot) ? "" : "(no screenshot)");
+    console.error(`smoke failed on ${name}`, signal ?? code, existsSync(shot) ? "" : "(no screenshot)");
     process.exit(1);
   }
 }
@@ -174,6 +176,35 @@ async function setupCardShots(prefix = "") {
   }
   writeFileSync(file, before);
 }
+// The guide uses only fake CLI and setup reports; never installs tools or connects to a real hub.
+async function startGuideShots(prefix = "") {
+  const file = path.join(work, "config.json");
+  const before = readFileSync(file, "utf8");
+  const original = JSON.parse(before);
+  const fixture = path.join(work, "start-report.json");
+  for (const state of ["new", "half", "ready"]) {
+    const config = { ...original, runner: { ...original.runner, acceptHubRuns: state === "ready" }, projects: state === "new" ? [] : original.projects, agents: state === "ready" ? [original.agents.find((a) => a.id === "codex-team")] : [] };
+    writeFileSync(file, JSON.stringify(config));
+    writeFileSync(fixture, JSON.stringify({
+      machine: [{ id: "shim", label: "Kết nối Hive cho agent", state: state === "new" ? "missing" : "installed", detail: "Smoke fixture", action: state === "new" ? "Cài" : null }],
+      projects: config.projects.map((p) => ({ project: p.name, repo: p.repo, items: [] })),
+    }));
+    const extra = { HIVE_SMOKE_SETUP_REPORT: fixture, HIVE_SMOKE_EXPECT: original.mode === "hub" ? '[data-start-guide] && [data-start-step="connection"][data-state="done"]' : '[data-start-guide] && [data-start-step="connection"][data-state="optional"] && [data-start-step="intake"][data-state="optional"]',
+      HIVE_SMOKE_ASSERT: 'document.querySelectorAll("[data-start-step]").length === 5', };
+    if (state === "ready") extra.HIVE_SMOKE_EXPECT += ' && [data-start-step="agents"][data-state="done"]';
+    if (state === "new") extra.HIVE_SMOKE_HASH = "";
+    await shoot(`${prefix}start-${state}`, "start", 4000, extra);
+    if (state === "new") await shoot(`${prefix}start-new-mobile`, "start", 4000, { ...extra, HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_ASSERT: 'document.documentElement.scrollWidth <= window.innerWidth && Array.from(document.querySelectorAll("[data-start-step] > div > div > button")).every(b => b.getBoundingClientRect().height >= 44)' });
+    await shoot(`${prefix}start-${state}-today`, "start", 4000, { HIVE_SMOKE_CLICK: "[data-start-today]", HIVE_SMOKE_SETUP_REPORT: fixture, HIVE_SMOKE_EXPECT: 'a[href="#/today"][aria-current="page"]', HIVE_SMOKE_ASSERT: 'Array.from(document.querySelectorAll("button")).some(b => /Bắt đầu|chưa sẵn sàng|getting started|not ready/.test(b.textContent))' });
+  }
+  writeFileSync(file, before);
+}
+if (process.env.HIVE_SMOKE_ONLY === "setup-guide") {
+  await startGuideShots();
+  await gitlab.close();
+  console.log(`getting started screenshots in ${out}`);
+  process.exit(0);
+}
 if (process.env.HIVE_SMOKE_ONLY === "setup-cards") {
   const local = new SqliteHive(path.join(work, "local.db"));
   await local.call("systems.save", { name: "hospital", projects: ["demo", "api"] }, admin);
@@ -205,6 +236,8 @@ if (process.env.HIVE_SMOKE_AGY_ONLY === "1") {
   await gitlab.close();
   process.exit(0);
 }
+
+await startGuideShots();
 
 const failures = [];
 
@@ -575,6 +608,7 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
     const seeder = { name: "smoke", role: "admin" };
     await api.call("systems.save", { name: "hospital", projects: ["demo", "api"] }, seeder);
     await setupCardShots("hub-");
+    await startGuideShots("hub-");
     await api.call("tasks.create", { id: "T-001", project: "demo", title: "Thêm trang cài đặt workspace" }, seeder);
     await api.call("tasks.create", { id: "T-002", project: "demo", title: "Sửa lỗi phân trang danh sách" }, seeder);
     await api.call("tasks.update", { id: "T-002", status: "doing" }, seeder);
