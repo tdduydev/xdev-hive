@@ -34,7 +34,7 @@ export function SystemOverview({ compact = false }: { compact?: boolean }) {
           <div data-system-total>{metrics(counts)}</div>
           <ul className="flex flex-col gap-2 border-t pt-2">
             {counts.services.map((s) => <li key={s.project} className="min-w-0" data-system-service={s.project}>
-              <button type="button" className="min-h-11 max-w-full cursor-pointer rounded-sm text-left font-mono text-xs wrap-anywhere hover:text-primary focus-visible:focus-ring" onClick={() => setScope(projectScope(s.project))}>{s.project}</button>
+              <button type="button" className="min-h-11 min-w-11 max-w-full cursor-pointer rounded-sm text-left font-mono text-xs wrap-anywhere hover:text-primary focus-visible:focus-ring" onClick={() => setScope(projectScope(s.project))}>{s.project}</button>
               {metrics(s)}
             </li>)}
           </ul>

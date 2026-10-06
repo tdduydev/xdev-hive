@@ -1668,7 +1668,7 @@ async function main() {
       if (j.error) throw new Error(j.error.message);
       return j.result;
     };
-    await machineRpc("machines.heartbeat", { machine: "overview", instance: "overview01", version: "0.138.0", projects: ["ov-api", "ov-web", "ov-jobs"] });
+    await machineRpc("machines.heartbeat", { machine: "overview", instance: "0e40d001", version: "0.138.0", projects: ["ov-api", "ov-web", "ov-jobs"] });
     await machineRpc("runs.push", { machine: "overview", runs: [
       { runId: "OV-R1", project: "ov-api", taskId: "OV-1", taskTitle: "Overview ov-api", role: "implement", status: "running", createdAt: at, startedAt: at },
       { runId: "OV-R2", project: "ov-web", taskId: "OV-2", taskTitle: "Overview ov-web", role: "implement", status: "queued", createdAt: at },
@@ -1684,13 +1684,19 @@ async function main() {
         return totals("ov-shop") === "2,1,1" && totals("ov-backoffice") === "1,1,0" && totals("ov-solo") === "1,0,0";
       });
       expect(await tab.eval(() => !document.querySelector('[data-system-card="ov-api"]') && document.querySelectorAll('[data-system-card="ov-shop"] [data-system-service]').length === 2), "services also appeared as roots or are missing");
-      expect(await tab.eval(() => [...document.querySelectorAll('[data-system-card="ov-shop"] button')].every((b) => b.getBoundingClientRect().height >= 44)), "system/service touch target below 44px");
+      expect(await tab.eval(() => {
+        const counts = (service) => [...document.querySelectorAll(`[data-system-card="ov-shop"] [data-system-service="${service}"] [data-system-count]`)].map((el) => el.textContent).join();
+        return counts("ov-api") === "1,1,1" && counts("ov-web") === "1,0,0";
+      }), "service counts differ from their system total");
+      expect(await tab.eval(() => [...document.querySelectorAll('[data-system-card="ov-shop"] button')].every((b) => { const r = b.getBoundingClientRect(); return r.height >= 44 && r.width >= 44; })), "system/service touch target below 44px");
+      if (mobile) expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "system overview overflows phone");
       await tab.shot(`${String(n).padStart(2, "0")}-${route}-systems`);
     }
     await tab.click('[data-system-card="ov-shop"] > button');
     await tab.go("tasks");
     await tab.click('[data-task-view="list"]');
     await tab.waitFor("both services in task list", () => document.body.innerText.includes("Overview ov-api") && document.body.innerText.includes("Overview ov-web"));
+    expect(await tab.eval(() => [...document.querySelectorAll("th")].some((th) => th.textContent === "Service")), "task table has no Service column");
     await tab.select("[data-service-filter]", "ov-web");
     await tab.waitFor("tasks filtered by service", () => document.body.innerText.includes("Overview ov-web") && !document.body.innerText.includes("Overview ov-api"));
     expect(await tab.eval(() => document.querySelector('[data-project-picker-trigger]')?.textContent.includes("ov-shop")), "filter changed sidebar scope");
@@ -1700,9 +1706,9 @@ async function main() {
     await tab.waitFor("runs filtered by service", () => document.querySelector('[data-run-service="ov-api"]') && !document.querySelector('[data-run-service="ov-web"]'));
     if (mobile) expect(await tab.eval(() => document.querySelector('[data-service-filter]').getBoundingClientRect().height >= 44), "service filter touch target below 44px");
     // Changing scope invalidates the local service filter, including across two systems.
-    await tab.eval(() => localStorage.setItem("xdev-hive.scope", "@system:ov-backoffice"));
-    await tab.reload();
-    await tab.go("runs");
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('[data-scope-row="root"][data-scope-root="ov-backoffice"] [role="option"]');
+    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
     await tab.waitFor("other system's service", () => document.querySelector('[data-run-service="ov-jobs"]') && document.querySelector('[data-service-filter]')?.value === "");
     await tab.eval(() => localStorage.removeItem("xdev-hive.scope"));
     await tab.reload();
