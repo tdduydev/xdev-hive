@@ -76,6 +76,8 @@ import type {
   ChatThread,
   CommandKind,
   CommandStatus,
+  CompressionCompare,
+  CompressionSide,
   CostTotals,
   Doc,
   DocMirror,
@@ -92,6 +94,7 @@ import type {
   MachineDetail,
   MachineRun,
   ProfileChange,
+  RunCompression,
   RunMr,
   MergeStatus,
   Memory,
@@ -491,6 +494,13 @@ const MIGRATIONS: string[] = [
   ALTER TABLE tasks ADD COLUMN agent_hold TEXT;
   CREATE INDEX tasks_agent ON tasks(agent_machine, agent_order) WHERE agent_machine IS NOT NULL;
   `,
+  // What RTK left out of a run's Bash output (roadmap 28d), RunCompression as JSON; null: no RTK, or no numbers.
+  // The catalog gets RTK as an entry of its own, off by default and not built in: the Chi phí page compares runs with
+  // and without it before anyone turns it on. OR IGNORE: a hub whose admin added an "rtk" already keeps theirs.
+  `
+  ALTER TABLE run_records ADD COLUMN compression TEXT;
+  ${rtkSeedSql()}
+  `,
 ];
 
 /**
@@ -564,6 +574,31 @@ function toolSeedSql(): string {
   return seeds
     .map(({ id, ...entry }) => `INSERT INTO tools(id, entry, builtin, version, updated_at, updated_by) VALUES (${quote(id)}, ${quote(JSON.stringify(entry))}, 1, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 'hive');`)
     .join("\n  ");
+}
+
+/** RTK as the 28d migration wrote it, frozen like toolSeedSql: a newer version goes through tools.save. */
+function rtkSeedSql(): string {
+  const entry: Omit<ToolEntry, "id"> = {
+    name: "RTK",
+    description: "Nén output lệnh Bash của agent (git, test, build…) để đọc ít token hơn; chỉ cho run Claude.",
+    kind: "hook",
+    package: { registry: "brew", name: "rtk", version: "0.50.0" },
+    mcp: null,
+    plugin: null,
+    hooks: [{ event: "PreToolUse", matcher: "Bash", command: ["rtk", "hook", "claude"] }],
+    agents: ["claude"],
+    check: ["rtk", "--version"],
+    install: ["brew", "install", "{package}"],
+    prepare: null,
+    env: { RTK_TELEMETRY_DISABLED: "1", RTK_SUPPRESS_HOOK_WARNING: "1", RTK_DB_PATH: "{runDir}/rtk.db" },
+    secretEnv: [],
+    license: "Apache-2.0",
+    homepage: "https://github.com/rtk-ai/rtk",
+    handler: null,
+    enabledByDefault: false,
+  };
+  const quote = (s: string) => `'${s.replaceAll("'", "''")}'`;
+  return `INSERT OR IGNORE INTO tools(id, entry, builtin, version, updated_at, updated_by) VALUES ('rtk', ${quote(JSON.stringify(entry))}, 0, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 'hive');`;
 }
 
 /** A leader's reply asks for at most this many actions. */
@@ -676,6 +711,7 @@ function toRunRecord(r: Row, withLog: boolean): RunRecord {
     cancelRequestedAt: s(r.cancel_at),
     mr: r.mr == null ? null : (JSON.parse(String(r.mr)) as RunMr),
     // From run_costs when the query joined it (runs.list / runs.get) and the machine reported the run.
+    compression: r.compression == null ? null : (JSON.parse(String(r.compression)) as RunCompression),
     tokens:
       r.tok_output == null && r.tok_input == null
         ? null
@@ -5385,6 +5421,7 @@ export class SqliteHive implements HiveBackend {
           // Sent only when it changed: left out, the one the hub has stays.
           const patchPut = db.prepare("UPDATE run_records SET patch = ? WHERE machine_id = ? AND run_id = ?");
           const mrPut = db.prepare("UPDATE run_records SET mr = ? WHERE machine_id = ? AND run_id = ?");
+          const compressionPut = db.prepare("UPDATE run_records SET compression = ? WHERE machine_id = ? AND run_id = ?");
           const ownerPut = db.prepare(
             `UPDATE run_records SET requested_by = COALESCE(
                (SELECT COALESCE(on_behalf, requested_by) FROM run_requests WHERE machine_id = ?1 AND run_id = ?2 AND status = 'accepted'), ?3)
@@ -5406,6 +5443,7 @@ export class SqliteHive implements HiveBackend {
               const mr = r.mr && { ...r.mr, pipelineUrl: r.mr.pipelineUrl && /^https?:\/\//.test(r.mr.pipelineUrl) ? r.mr.pipelineUrl : null };
               mrPut.run(mr ? JSON.stringify(mr) : null, actor.name, r.runId);
             }
+            if (r.compression !== undefined) compressionPut.run(r.compression ? JSON.stringify(r.compression) : null, actor.name, r.runId);
             // Whose run it is, set once: whoever asked for it from the web, else the person whose token the machine has
             // (a run started from its Board). A machine takes a request (runs.requestResult) before it pushes the run.
             ownerPut.run(actor.name, r.runId, principalOf(actor));
@@ -6213,7 +6251,40 @@ export class SqliteHive implements HiveBackend {
           return [...out].sort((a, b) => b[1].usd30 - a[1].usd30);
         };
         const sep = "\u0000";
+        // Priced runs only (Claude Code's: RTK is for Claude alone), so a Codex run never sits in the "without" column.
+        const sides = db
+          .prepare(
+            `SELECT r.project, r.role, r.compression IS NOT NULL AS rtk, COUNT(*) AS runs,
+               SUM(CASE WHEN r.status = 'failed' THEN 1 ELSE 0 END) AS failed,
+               AVG(c.input_tokens + COALESCE(c.cache_write_tokens, 0) + COALESCE(c.cache_read_tokens, 0)) AS input_avg,
+               AVG(c.output_tokens) AS output_avg, AVG(c.cost_usd) AS cost_avg,
+               SUM(c.cache_read_tokens) AS tread,
+               SUM(CASE WHEN c.cache_read_tokens IS NOT NULL THEN c.input_tokens + COALESCE(c.cache_write_tokens, 0) + c.cache_read_tokens END) AS tall
+             FROM run_costs c JOIN run_records r ON r.machine_id = c.machine_id AND r.run_id = c.run_id
+             WHERE c.finished_at >= ?1 AND c.priced = 1
+             GROUP BY r.project, r.role, r.compression IS NOT NULL`,
+          )
+          .all(since(30)) as Row[];
+        const noSide = (): CompressionSide => ({ runs: 0, failed: 0, inputAvg: null, outputAvg: null, cacheShare: null, costAvg: null });
+        const compare = new Map<string, CompressionCompare>();
+        for (const r of sides) {
+          if (!sees(actor, str(r.project))) continue;
+          const key = [str(r.project), str(r.role)].join(sep);
+          const row = compare.get(key) ?? { project: str(r.project), role: str(r.role), rtk: noSide(), plain: noSide() };
+          row[num(r.rtk) === 1 ? "rtk" : "plain"] = {
+            runs: num(r.runs),
+            failed: num(r.failed),
+            inputAvg: numOrNull(r.input_avg),
+            outputAvg: numOrNull(r.output_avg),
+            cacheShare: r.tall == null || Number(r.tall) === 0 ? null : Number(r.tread) / Number(r.tall),
+            costAvg: numOrNull(r.cost_avg),
+          };
+          compare.set(key, row);
+        }
         return {
+          compression: [...compare.values()]
+            .filter((c) => c.rtk.runs > 0)
+            .sort((a, b) => a.project.localeCompare(b.project) || a.role.localeCompare(b.role)),
           total: visible.reduce(add, zero()),
           projects: group((r) => str(r.project)).map(([project, t]) => ({ project, ...t })),
           profiles: group((r) => [str(r.machine), str(r.profile_id), strOrNull(r.account) ?? ""].join(sep)).map(([k, t]) => {

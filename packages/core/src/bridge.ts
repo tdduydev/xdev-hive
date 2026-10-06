@@ -4,7 +4,7 @@ import type { ProfileAutonomy } from "./agent-policy.ts";
 import type { AgentKind, AgentProfile, AgentRole, PlanUsage, PreferKind, RunnerSettings, RunStatus } from "./agents.ts";
 import type { GitLabImportCandidate, GitLabImportResult, MrSettings, MrState, MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { TransferReport } from "./transfer.ts";
-import type { ChatFile, Machine, MachineCommand, Proposal, Role, SetupItem, SetupReport, TeamPolicy, TokenWindows, ToolHandler, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
+import type { ChatFile, Machine, MachineCommand, Proposal, Role, RunCompression, SetupItem, SetupReport, TeamPolicy, TokenWindows, ToolHandler, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
 
 /**
  * A hub tool as the machine's Setup card shows it (roadmap 28b): what it will run here, for the user to allow.
@@ -352,6 +352,8 @@ export interface AgentRun {
   cacheWriteTokens: number | null;
   cacheReadTokens: number | null;
   outputTokens: number | null;
+  /** What RTK left out of its Bash output (roadmap 28d); null or left out: no RTK, or no numbers. */
+  compression?: RunCompression | null;
 }
 
 /** A run queued because the pipeline of a merge request failed. */

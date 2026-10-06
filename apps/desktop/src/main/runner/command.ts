@@ -7,7 +7,7 @@ import { fence } from "#desktop/main/gitlab/describe.ts";
 import { tr } from "#desktop/main/i18n.ts";
 import { MCP_NAME, NO_FEATURES, runMcpServers, type RepoFeatures } from "#desktop/main/installer.ts";
 import type { ReferenceRepo } from "./references.ts";
-import { claudeToolServer, codexToolArgs, legacyTools } from "./tools.ts";
+import { claudeHooks, claudeToolServer, codexToolArgs, legacyTools, type ReadyHook, type UserClaudeSettings } from "./tools.ts";
 import { outputFormat } from "./usage.ts";
 
 export interface PromptContext {
@@ -37,6 +37,8 @@ export interface PromptContext {
   contextFile?: string | null;
   /** Other checkouts on this machine the run may read, never write (roadmap 38h). */
   references?: ReferenceRepo[] | null;
+  /** RTK rewrites the run's Bash commands (roadmap 28d): the agent is told how to see a full output. */
+  rtk?: boolean;
 }
 
 export interface JudgeCandidate {
@@ -154,6 +156,12 @@ export function buildPrompt(c: PromptContext): string {
       "and a judge on another vendor compares the branches and keeps one. Work on your own branch only.",
     );
   }
+  if (c.rtk) {
+    lines.push(
+      "",
+      "Bash commands run through RTK, which prints a compact output. For the full output run the command again as `RTK_DISABLED=1 <command>`, or `rtk recall <hash>` when the output gives that hint.",
+    );
+  }
   if (c.ciFix) lines.push("", ...ciFixLines(c.ciFix));
   if (c.instructions.trim()) lines.push("", "Extra instructions from the admin:", c.instructions.trim());
   return lines.join("\n");
@@ -228,6 +236,8 @@ export function buildCommand(
   mcpConfigFile?: string,
   /** The agent policy's MCP servers besides xdev-hive (see applyPolicy); null: every server. */
   mcp: string[] | null = null,
+  /** Catalog hooks ready for this Claude run (roadmap 28d); null: none, the run as before. */
+  hooks: ClaudeHookRun | null = null,
 ): BuiltCommand {
   const catalog = Array.isArray(tools);
   const ctx = { worktree: vars.worktree, ...(vars.repo ? { repo: vars.repo } : {}) };
@@ -249,7 +259,7 @@ export function buildCommand(
     if (format === null) args.push("--output-format", "stream-json", "--verbose");
     claudeStream = format === null || format === "stream-json";
     claudeJson = format === "json";
-    args.push(...claudeRunArgs(profile.id, { ...vars, readOnly: profile.readOnly }, catalog ? tools : legacyTools(tools), mcpConfigFile, mcp, ctx));
+    args.push(...claudeRunArgs(profile.id, { ...vars, readOnly: profile.readOnly }, catalog ? tools : legacyTools(tools), mcpConfigFile, mcp, ctx, hooks));
   }
   let codexJson = false;
   if (profile.kind === "codex") {
@@ -271,8 +281,25 @@ export function buildCommand(
     ...(claudeJson ? { claudeJson } : {}),
     ...(claudeStream ? { claudeStream } : {}),
     ...(codexJson ? { codexJson } : {}),
-    ...(profile.kind === "claude" ? { env: CLAUDE_RUN_ENV } : {}),
+    ...(profile.kind === "claude" ? { env: hooks ? { ...userEnv(hooks.user.env), ...CLAUDE_RUN_ENV, ...hooks.env } : CLAUDE_RUN_ENV } : {}),
   };
+}
+
+/** What a Claude run with catalog hooks gets besides its flags (roadmap 28d). */
+export interface ClaudeHookRun {
+  ready: ReadyHook[];
+  /** The hook entries' variables, `{runDir}` written out (hookEnv). */
+  env: Record<string, string>;
+  /** The keys of the user's settings the run keeps (userClaudeSettings). */
+  user: UserClaudeSettings;
+}
+
+/**
+ * The user's settings' env, as Claude Code would have set it from them: not the run's own names (HIVE_*), nor the
+ * folder the profile's account signs in with.
+ */
+function userEnv(env: Record<string, string> | undefined): Record<string, string> {
+  return Object.fromEntries(Object.entries(env ?? {}).filter(([k]) => !k.startsWith("HIVE_") && k !== "CLAUDE_CONFIG_DIR"));
 }
 
 /**
@@ -286,6 +313,8 @@ export const CLAUDE_RUN_ENV = { CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1
  * Claude Code loads hooks, MCP servers and settings from the working copy, which the agent can edit:
  * a hook one run commits would execute on the next. Runs load only the user's own settings, run no
  * hooks and get the MCP servers the app lists. Appended last because --mcp-config takes several values.
+ * With the catalog's hooks (roadmap 28d) a run loads no settings source at all: the only hooks are the
+ * catalog's, and the few user keys it needs are copied in (userClaudeSettings).
  */
 /**
  * Codex 0.15x dropped --full-auto: a profile saved with it gets --sandbox workspace-write, which it meant
@@ -346,6 +375,8 @@ export function claudeRunArgs(
   mcpConfigFile?: string,
   mcp: string[] | null = null,
   ctx: { worktree?: string; repo?: string } = { worktree: run.worktree },
+  /** Catalog hooks (roadmap 28d): with them, no source of settings but these flags, and no disableAllHooks. */
+  hooks: ClaudeHookRun | null = null,
 ): string[] {
   // --strict-mcp-config: only the servers listed here run, so the policy is kept by leaving the others out.
   const allowed = (name: string) => name !== MCP_NAME && (mcp === null || mcp.includes(name));
@@ -355,12 +386,28 @@ export function claudeRunArgs(
   const allow = ["mcp__xdev-hive", ...servers.map((e) => `mcp__${e.id}`)];
   const references = run.references ?? [];
   const deny = claudeDenyWrites(references.map((r) => r.path));
-  const settings = {
-    // Hooks of the catalog wait for 28d: with --setting-sources user, turning this off would run the user's own hooks too.
-    disableAllHooks: true,
-    permissions: { allow, ...(deny.length ? { deny } : {}) },
-    ...(plugins.length ? { enabledPlugins: Object.fromEntries(plugins.map((e) => [e.plugin!, true])) } : {}),
-  };
+  const on = hooks !== null && hooks.ready.length > 0;
+  const user = on ? hooks.user : {};
+  const userDeny = user.permissions?.deny ?? [];
+  const settings = on
+    ? {
+        // No setting source is loaded (below), so these come from the user's settings by hand; hooks only from the catalog.
+        ...(user.apiKeyHelper ? { apiKeyHelper: user.apiKeyHelper } : {}),
+        ...(user.model ? { model: user.model } : {}),
+        permissions: {
+          allow: [...new Set([...(user.permissions?.allow ?? []), ...allow])],
+          ...(userDeny.length || deny.length ? { deny: [...new Set([...userDeny, ...deny])] } : {}),
+          ...(user.permissions?.ask?.length ? { ask: user.permissions.ask } : {}),
+        },
+        hooks: claudeHooks(hooks.ready),
+        ...(plugins.length ? { enabledPlugins: Object.fromEntries(plugins.map((e) => [e.plugin!, true])) } : {}),
+      }
+    : {
+        // disableAllHooks also turns off the hooks of --settings itself: a run with catalog hooks goes the other way.
+        disableAllHooks: true,
+        permissions: { allow, ...(deny.length ? { deny } : {}) },
+        ...(plugins.length ? { enabledPlugins: Object.fromEntries(plugins.map((e) => [e.plugin!, true])) } : {}),
+      };
   const mcpServers = {
     ...runMcpServers(agent, run.project, NO_FEATURES, { task: run.task, id: run.run, readOnly: run.readOnly }),
     ...Object.fromEntries(servers.map((e) => [e.id, claudeToolServer(e, ctx)])),
@@ -373,7 +420,8 @@ export function claudeRunArgs(
     "--settings",
     JSON.stringify(settings),
     "--setting-sources",
-    "user",
+    // None at all with catalog hooks: "user" would run the user's own hooks as well, since hooks of all sources add up.
+    on ? "" : "user",
     "--strict-mcp-config",
     "--mcp-config",
     mcpConfigFile ?? JSON.stringify({ mcpServers }),
