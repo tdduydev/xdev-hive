@@ -25,7 +25,8 @@ export function AgentAssignment({ tasks, onChanged, onAssigned }: { tasks: Task[
   const [before, setBefore] = useState("");
   useEffect(() => { setMachine(current?.machineId ?? ""); setProfile(current?.profileId ?? ""); setBefore(""); }, [single?.id, current?.machineId, current?.profileId]);
   // Both callers build `tasks` fresh on every render, so the array itself cannot be a dependency: useQuery compares
-  // them by identity and would refetch for ever. This key changes exactly when the queries' answers would.
+  // them by identity, and all three queries would go out again every time the page above re-renders. This key
+  // changes exactly when their answers would.
   const taskKey = tasks.map((task) => `${task.id}:${agentKey(task.agent)}`).join(" ");
   const machines = useQuery(() => client.call("machines.list", {}), [client, poll]);
   const requests = useQuery(() => client.call("runs.requests", { limit: 200 }), [client, poll, taskKey]);
