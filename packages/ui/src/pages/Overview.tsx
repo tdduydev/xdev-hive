@@ -10,7 +10,7 @@ import { Badge, Empty, ErrorNote, OwnerBadge, Page, PageHeader, STATUS_TONE, Sta
 import { PausedNotice, StopAgentsButton } from "#ui/components/StopAgents.tsx";
 import { formatTime, useCan, useHive, useQuery, type QueryState } from "#ui/hooks.ts";
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
-import { ALL, SHARED, docOwner, projectScope, scopeLabel, systemScope } from "#ui/lib/scope.ts";
+import { ALL, SHARED, docOwner, projectScope, scopeLabel, scopeTitle, systemScope } from "#ui/lib/scope.ts";
 
 type Icon = ComponentType<{ className?: string }>;
 type OpenStatus = Exclude<TaskStatus, "done">;
@@ -357,7 +357,7 @@ function SharedOverview() {
 // ── one project ────────────────────────────────────────────────────────────
 
 function ProjectOverview({ project: p }: { project: string }) {
-  const { client, me, setScope } = useHive();
+  const { client, me, setScope, systems } = useHive();
   const t = useT();
   const desktop = client.desktop;
   const hubAdmin = me.mode === "hub" && me.role === "admin";
@@ -392,7 +392,7 @@ function ProjectOverview({ project: p }: { project: string }) {
     // A project key has no spaces: let a long one wrap at 375px.
     <Page className="[&_h1]:wrap-anywhere">
       <PageHeader
-        title={p}
+        title={scopeTitle(projectScope(p), systems)}
         subtitle={t("overview.projectSubtitle", { project: p })}
         actions={
           <>
