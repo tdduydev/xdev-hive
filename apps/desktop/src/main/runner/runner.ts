@@ -73,7 +73,7 @@ import { tr } from "#desktop/main/i18n.ts";
 import { git, isGitRepo } from "#desktop/main/git.ts";
 import { NO_FEATURES, repoFeatures } from "#desktop/main/installer.ts";
 import { renderContext } from "#desktop/main/sync.ts";
-import { legacyPick, NO_TOOLS, prepareTool, runTools, toolDirs, type ToolPick } from "./tools.ts";
+import { hookEnv, legacyPick, NO_TOOLS, prepareTool, readyHooks, rtkGain, runTools, toolDirs, userClaudeSettings, type ToolPick } from "./tools.ts";
 import { containerCommand } from "./container.ts";
 import { claudeMcpServers, codexMcpArgs, hubMcpEnv, type McpRun } from "./container-mcp.ts";
 import { deniedHosts, egressAllow, egressPlan, type Egress } from "./egress.ts";
@@ -89,6 +89,7 @@ import {
   policyBlocks,
   policyLine,
   resolveBin,
+  type ClaudeHookRun,
   type JudgeCandidate,
 } from "./command.ts";
 import { describeReferences, resolveReferences } from "./references.ts";
@@ -1100,7 +1101,7 @@ export class Runner {
         // A few patches per push keep the request small; the others go with the next ones.
         const patch = patches < 3 ? this.#patchFor(r) : undefined;
         if (patch !== undefined) patches++;
-        const key = JSON.stringify([r.status, r.activity ?? null, r.finishing ?? false, r.mrUrl, r.commits, log.length, log.slice(-200), mrOf(r)]);
+        const key = JSON.stringify([r.status, r.activity ?? null, r.finishing ?? false, r.mrUrl, r.commits, log.length, log.slice(-200), mrOf(r), r.compression ?? null]);
         if (this.#pushed.get(r.id) !== key || patch !== undefined) changed.push({ run: r, key, log, ...(patch !== undefined ? { patch } : {}) });
         if (changed.length === 20) break;
       }
@@ -1127,6 +1128,7 @@ export class Runner {
             mrUrl: r.mrUrl,
             mr: mrOf(r),
             costUsd: r.costUsd,
+            compression: r.compression ?? null,
             log,
             ...(patch !== undefined ? { patch } : {}),
             createdAt: r.createdAt,
@@ -1445,6 +1447,7 @@ export class Runner {
     const skipped = [...this.#policyBlocked(pol)].map(([id, reason]) => `# policy skipped ${id}: ${reason}\n`).join("");
     let wt: Worktree | null = null;
     let mcpFile: string | null = null;
+    let runDir: string | null = null;
     let egress: { plan: Egress; docker: string; env: NodeJS.ProcessEnv } | null = null;
     let log: WriteStream | null = null;
     try {
@@ -1487,6 +1490,37 @@ export class Runner {
       const references = resolveReferences(project.references, this.#host.projects());
       const referenceLine = describeReferences(references);
 
+      // A container has neither the hive-mcp shim nor this machine's codegraph: Claude gets the hub's MCP through a file.
+      if (profile.container) {
+        mcpFile = path.join(this.#opts.dataDir, "runs", `${run.id}.mcp.json`);
+        writeFileSync(mcpFile, JSON.stringify({ mcpServers: this.#containerMcp(profile, run) }), { mode: 0o600 });
+      }
+      const base = this.#host.env();
+      const features = profile.container ? NO_FEATURES : repoFeatures(project.repo);
+      // The variables the run has (the machine's, then the profile's), for a tool's secrets: named, never logged.
+      const runEnv: Record<string, string | undefined> = { ...base, ...expandEnv(profile.env) };
+      const tools: ToolPick = profile.container
+        ? NO_TOOLS
+        : this.#tools
+          ? runTools(this.#tools, run.project, features, profile.kind, pol, this.#host.toolTrust?.() ?? {}, runEnv)
+          : legacyPick(features, profile.kind, fit.mcp);
+      // Catalog hooks (roadmap 28d), before the prompt, which tells the agent about RTK when it is on.
+      const hookLines: string[] = [];
+      let hooks: ClaudeHookRun | null = null;
+      if (tools.hooks?.length) {
+        const found = await readyHooks(tools.hooks, { autonomy: fit.autonomy, resolve: (b) => resolveBin(b, base.PATH ?? ""), env: { ...base, ...expandEnv(profile.env) } });
+        hookLines.push(...found.notes);
+        if (found.ready.length) {
+          const user = userClaudeSettings(runEnv);
+          if (user.note) hookLines.push(user.note);
+          // RTK's history (RTK_DB_PATH) for this run alone: what `rtk gain` reads after it.
+          runDir = path.join(this.#opts.dataDir, "runs", run.id);
+          mkdirSync(runDir, { recursive: true });
+          hooks = { ready: found.ready, env: hookEnv(found.ready, runDir), user: user.settings };
+          for (const r of found.ready) hookLines.push(`${r.entry.id}: hook ${r.hooks.map((h) => `${h.event}${h.matcher ? ` ${h.matcher}` : ""}`).join(", ")}`);
+        }
+      }
+
       const parent = run.parentRunId ? this.store.get(run.parentRunId) : null;
       const prompt = buildPrompt({
         project: run.project,
@@ -1506,24 +1540,11 @@ export class Runner {
         judge: run.bestOf?.n === 0 ? this.#judgeInput(run.bestOf) : null,
         contextFile: context.file,
         references: references.repos,
+        rtk: hooks?.ready.some((r) => r.entry.id === "rtk") ?? false,
       });
       const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id, repo: project.repo, references: references.repos };
-      // A container has neither the hive-mcp shim nor this machine's codegraph: Claude gets the hub's MCP through a file.
-      if (profile.container) {
-        mcpFile = path.join(this.#opts.dataDir, "runs", `${run.id}.mcp.json`);
-        writeFileSync(mcpFile, JSON.stringify({ mcpServers: this.#containerMcp(profile, run) }), { mode: 0o600 });
-      }
-      const base = this.#host.env();
-      const features = profile.container ? NO_FEATURES : repoFeatures(project.repo);
-      // The variables the run has (the machine's, then the profile's), for a tool's secrets: named, never logged.
-      const runEnv: Record<string, string | undefined> = { ...base, ...expandEnv(profile.env) };
-      const tools: ToolPick = profile.container
-        ? NO_TOOLS
-        : this.#tools
-          ? runTools(this.#tools, run.project, features, profile.kind, pol, this.#host.toolTrust?.() ?? {}, runEnv)
-          : legacyPick(features, profile.kind, fit.mcp);
       wt.toolDirs = toolDirs(tools.prepare);
-      const cmd = buildCommand(profile, vars, this.#tools && !profile.container ? tools.tools : features, mcpFile ?? undefined, fit.mcp);
+      const cmd = buildCommand(profile, vars, this.#tools && !profile.container ? tools.tools : features, mcpFile ?? undefined, fit.mcp, hooks);
       const bin = resolveBin(profile.container ? "docker" : cmd.bin, base.PATH ?? "");
       if (!bin) {
         const reason = profile.container ? tr("runNote.dockerNotFound") : tr("runNote.binNotFound", { bin: cmd.bin });
@@ -1558,7 +1579,7 @@ export class Runner {
         }
         prepared.push(await prepareTool(e, wt.path, { repo: project.repo }, (bin) => resolveBin(bin, base.PATH ?? ""), { ...hostEnv, ...secrets }));
       }
-      const toolLines = [...tools.notes.map((n) => `# ${n}`), ...prepared].map((l) => `${l}\n`).join("");
+      const toolLines = [...[...tools.notes, ...hookLines].map((n) => `# ${n}`), ...prepared].map((l) => `${l}\n`).join("");
       const agentEnv: Record<string, string> = {
         ...expandEnv(profile.env),
         HIVE_AGENT: profile.id,
@@ -1702,6 +1723,14 @@ export class Runner {
           );
         }
       }
+      if (hooks) {
+        // RTK's own count of what it left out, from this run's history only; null when it cannot tell (roadmap 28d).
+        const compression = await rtkGain(hooks.ready, env);
+        if (compression) {
+          out.write(`# ${compression.tool}: ${compression.commands} commands · ~${compression.saved} tokens left out (RTK's estimate)\n`);
+          this.store.update(run.id, { compression });
+        }
+      }
       if (egress) {
         // What the proxy refused: the run's log says so, and a failed run names the hosts.
         const denied = deniedHosts(await dockerRun(egress.docker, ["logs", egress.plan.proxy], egress.env).catch(() => ""));
@@ -1721,6 +1750,8 @@ export class Runner {
       this.#stopping.delete(run.id);
       // It carries the hub token: gone with the run.
       if (mcpFile) rmSync(mcpFile, { force: true });
+      // RTK's history of the run: its numbers went into the run record.
+      if (runDir) rmSync(runDir, { recursive: true, force: true });
       // A step can fail when setup stopped half-way: try them all.
       if (egress) for (const step of egress.plan.teardown) await dockerRun(egress.docker, step, egress.env).catch(() => undefined);
     }

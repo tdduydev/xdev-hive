@@ -14,6 +14,11 @@ export const TOOL_VERSION = /^v?\d+\.\d+\.\d+([-+.][0-9A-Za-z.-]+)?$/;
 export const TOOL_ENV_NAME = /^[A-Z][A-Z0-9_]{0,63}$/;
 /** Stands for the pinned package in a command, so the version is written once (see packageSpec). */
 export const PACKAGE_PLACEHOLDER = "{package}";
+/**
+ * A run's own folder, which the machine fills in (roadmap 28d): only in a hook's env values, so what a hook keeps (RTK's
+ * history) is per run. Nowhere else: an install or a check has no run, and a command must not write outside the worktree.
+ */
+export const RUN_DIR_PLACEHOLDER = "{runDir}";
 
 const argv = z.array(z.string().min(1).max(500)).max(40);
 
@@ -98,6 +103,7 @@ export function toolProblem(e: ToolEntry, builtin: boolean): ErrorText | null {
   if (e.kind === "cli" && !e.check) return at("check", "errors.toolKindField", { kind: e.kind });
   if (e.package && !TOOL_VERSION.test(e.package.version)) return at("package.version", "errors.toolVersionPin", { version: e.package.version });
   for (const [field, args] of commands(e)) {
+    if (args.some((a) => a.includes(RUN_DIR_PLACEHOLDER))) return at(field, "errors.toolRunDir", { placeholder: RUN_DIR_PLACEHOLDER });
     const loose = args.find(unpinned);
     if (loose !== undefined) return at(field, "errors.toolUnpinned", { arg: loose });
     const named = e.package ? args.slice(1).find((a) => namesPackage(a, e.package!.name)) : undefined;
@@ -107,6 +113,7 @@ export function toolProblem(e: ToolEntry, builtin: boolean): ErrorText | null {
     if (!TOOL_ENV_NAME.test(name)) return at(name in e.env ? "env" : "secretEnv", "errors.toolEnvName", { name });
   }
   for (const [name, value] of Object.entries(e.env)) {
+    if (value.includes(RUN_DIR_PLACEHOLDER) && e.kind !== "hook") return at("env", "errors.toolRunDir", { placeholder: RUN_DIR_PLACEHOLDER });
     const [hidden] = findHidden(value, 1);
     if (hidden) return at("env", "errors.toolHidden", { name, code: hidden.code });
     const secret = findSecret(value);
@@ -114,6 +121,8 @@ export function toolProblem(e: ToolEntry, builtin: boolean): ErrorText | null {
   }
   // Machines run these commands and agents read the rest: nothing a reviewer cannot see, and no credential anywhere.
   for (const [field, text] of textFields(e)) {
+    // Words a person reads may name it; anything the machine uses may not.
+    if (field !== "name" && field !== "description" && text.includes(RUN_DIR_PLACEHOLDER)) return at(field, "errors.toolRunDir", { placeholder: RUN_DIR_PLACEHOLDER });
     const [hidden] = findHidden(text, 1);
     if (hidden) return at(field, "errors.toolHidden", { name: field, code: hidden.code });
     const secret = findSecret(text);
@@ -184,6 +193,32 @@ export function toolArgv(argv: readonly string[], entry: Pick<ToolEntry, "id" | 
       return value;
     }),
   );
+}
+
+/**
+ * The variables an entry's commands get. `runDir`: the run's own folder for `{runDir}` (a hook's, roadmap 28d); without
+ * one (a check, an install) the variables that need it are left out rather than pointing at a folder named "{runDir}".
+ */
+export function toolEnv(e: Pick<ToolEntry, "env">, runDir: string | null = null): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(e.env).flatMap(([k, v]) =>
+      !v.includes(RUN_DIR_PLACEHOLDER) ? [[k, v]] : runDir === null ? [] : [[k, v.split(RUN_DIR_PLACEHOLDER).join(runDir)]],
+    ),
+  );
+}
+
+/** The first release number a `check` printed (`rtk 0.50.0`, `v1.2.3-rc.1`), without its "v"; null when there is none. */
+export function versionIn(output: string): string | null {
+  return /(?:^|[^\w.])v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)(?![\w.])/.exec(output)?.[1] ?? null;
+}
+
+/**
+ * Whether a check's output is the pinned version (roadmap 28d). For a hook, which rewrites what the agent runs: brew
+ * installs whatever homebrew has, so the version the hub approved is checked rather than trusted.
+ */
+export function versionMatches(output: string, pinned: string): boolean {
+  const found = versionIn(output);
+  return found !== null && found === pinned.replace(/^v/, "");
 }
 
 /** What decides what a machine runs for an entry: name, description, agents or projects changing do not ask again. */

@@ -1,13 +1,28 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { OPEN_POLICY, packageSpec, toolHash, type Actor, type MachineTools, type ToolEntry } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { CODEGRAPH_MCP, CODEGRAPH_PACKAGE, NO_FEATURES, SUPERPOWERS_PLUGIN } from "#desktop/main/installer.ts";
-import { codexArgs } from "#desktop/main/runner/command.ts";
-import { APP_TOOLS, codexToolArgs, legacyPick, prepareTool, runTools, toolDirs, toolViews, trustOf } from "#desktop/main/runner/tools.ts";
+import { claudeRunArgs, codexArgs, type ClaudeHookRun } from "#desktop/main/runner/command.ts";
+import {
+  APP_TOOLS,
+  claudeHooks,
+  codexToolArgs,
+  hookEnv,
+  legacyPick,
+  prepareTool,
+  readyHooks,
+  rtkGain,
+  runTools,
+  shellQuote,
+  toolDirs,
+  toolViews,
+  trustOf,
+  userClaudeSettings,
+} from "#desktop/main/runner/tools.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
 
@@ -39,7 +54,7 @@ const on = (id: string, enabled: boolean | null = true) => ({ id, enabled, effec
 describe("the app's own tools (roadmap 28b)", () => {
   it("are the hub's seeds, command for command: machines running them before the catalog need not allow them", async () => {
     const seeds = await new SqliteHive(":memory:").call("tools.list", {}, admin);
-    for (const seed of seeds) {
+    for (const seed of seeds.filter((s) => s.builtin)) {
       assert.equal(toolHash(seed), toolHash(APP_TOOLS[seed.handler!]), seed.id);
       assert.equal(trustOf(seed, {}), "app");
     }
@@ -180,5 +195,170 @@ describe("toolViews", () => {
     assert.deepEqual(views[0]!.secretEnv, ["RTK_API_KEY"]);
     assert.equal(views[0]!.hash, toolHash(entry));
     assert.deepEqual(toolViews(null, [{ name: "demo", features: NO_FEATURES }], {}), [], "local mode");
+  });
+});
+
+// ── hooks (roadmap 28d) ──────────────────────────────────────────────────────
+
+/** RTK as the 28d migration puts it in the catalog. */
+const RTK: ToolEntry = {
+  id: "rtk",
+  name: "RTK",
+  description: "",
+  kind: "hook",
+  package: { registry: "brew", name: "rtk", version: "0.50.0" },
+  mcp: null,
+  plugin: null,
+  hooks: [{ event: "PreToolUse", matcher: "Bash", command: ["rtk", "hook", "claude"] }],
+  agents: ["claude"],
+  check: ["rtk", "--version"],
+  install: ["brew", "install", "{package}"],
+  prepare: null,
+  env: { RTK_TELEMETRY_DISABLED: "1", RTK_SUPPRESS_HOOK_WARNING: "1", RTK_DB_PATH: "{runDir}/rtk.db" },
+  secretEnv: [],
+  license: "Apache-2.0",
+  homepage: "https://github.com/rtk-ai/rtk",
+  handler: null,
+  enabledByDefault: false,
+};
+
+/** A folder (a space in its name, for quoting) with an rtk that prints `version`; `gain` prints RTK's JSON or fails. */
+export function fakeRtk(version = "0.50.0", gain: "ok" | "fail" | "junk" = "ok"): { bin: string; dir: string; calls: () => string[] } {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "hive rtk-"));
+  const log = path.join(dir, "calls.log");
+  const out =
+    gain === "ok"
+      ? `echo 'warning: something first'; echo '{"summary":{"total_commands":42,"total_input":50000,"total_output":8000,"total_saved":42000,"avg_savings_pct":84.0}}'`
+      : gain === "junk"
+        ? "echo 'not json'"
+        : "echo 'gain: no database' >&2; exit 1";
+  writeFileSync(
+    path.join(dir, "rtk"),
+    `#!/bin/sh\necho "$*|$RTK_DB_PATH|$RTK_TELEMETRY_DISABLED" >> "${log}"\ncase "$1" in\n  --version) echo "rtk ${version}";;\n  gain) ${out};;\nesac\n`,
+  );
+  chmodSync(path.join(dir, "rtk"), 0o755);
+  return { bin: path.join(dir, "rtk"), dir, calls: () => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n") : []) };
+}
+
+describe("hooks of the catalog (roadmap 28d)", () => {
+  const pick = (c: MachineTools, kind: "claude" | "codex" = "claude", trust: Record<string, string> = { rtk: toolHash(RTK) }) =>
+    runTools(c, "demo", NO_FEATURES, kind, { ...OPEN_POLICY }, trust, {});
+
+  it("picks a hook on for the project and allowed, for Claude Code runs only", () => {
+    const c = catalog([RTK], [on("rtk")]);
+    const got = pick(c);
+    assert.deepEqual([got.tools, got.prepare, got.hooks?.map((e) => e.id)], [[], [], ["rtk"]]);
+    assert.equal(pick(c, "codex").hooks, undefined, "Codex runs keep no hooks");
+    assert.equal(pick(catalog([RTK], [on("rtk", null)])).hooks, undefined, "off by default");
+    const untrusted = pick(c, "claude", {});
+    assert.deepEqual([untrusted.hooks, untrusted.notes], [undefined, ["tool rtk: chờ người dùng máy cho phép (Cài đặt máy)"]]);
+  });
+
+  it("lists a hook on the Setup card with its commands, so it can be allowed", () => {
+    const [view] = toolViews(catalog([RTK], [on("rtk")]), [{ name: "demo", features: NO_FEATURES }], {});
+    assert.equal(view!.kind, "hook");
+    assert.equal(view!.trust, "new");
+    assert.deepEqual(view!.commands, [
+      { field: "hooks.0", argv: ["rtk", "hook", "claude"] },
+      { field: "check", argv: ["rtk", "--version"] },
+      { field: "install", argv: ["brew", "install", "rtk"] },
+    ]);
+  });
+
+  it("is ready at autonomy full, the pinned version found, with the program's full path", async () => {
+    const rtk = fakeRtk();
+    const resolve = (b: string) => (b === "rtk" ? rtk.bin : null);
+    const ok = await readyHooks([RTK], { autonomy: "full", resolve, env: {}, platform: "darwin" });
+    assert.deepEqual(ok.notes, []);
+    assert.deepEqual(ok.ready.map((r) => r.hooks), [[{ event: "PreToolUse", matcher: "Bash", argv: [rtk.bin, "hook", "claude"] }]]);
+    assert.deepEqual(rtk.calls(), ["--version||1"], "the check gets the entry's env, without what needs {runDir}");
+
+    const edit = await readyHooks([RTK], { autonomy: "edit", resolve, env: {}, platform: "darwin" });
+    assert.deepEqual([edit.ready, edit.notes], [[], ["tool rtk: chỉ chạy với autonomy full"]]);
+    const win = await readyHooks([RTK], { autonomy: "full", resolve, env: {}, platform: "win32" });
+    assert.deepEqual([win.ready, win.notes], [[], ["tool rtk: hook chưa chạy trên Windows"]]);
+    const newer = fakeRtk("0.51.0");
+    const other = await readyHooks([RTK], { autonomy: "full", resolve: () => newer.bin, env: {}, platform: "darwin" });
+    assert.deepEqual([other.ready, other.notes], [[], ["tool rtk: máy có 0.51.0, danh mục duyệt 0.50.0, run không dùng hook"]]);
+    const none = await readyHooks([RTK], { autonomy: "full", resolve: () => null, env: {}, platform: "darwin" });
+    assert.deepEqual([none.ready, none.notes], [[], ["tool rtk: không tìm thấy rtk, run không dùng hook"]]);
+  });
+
+  it("writes the hooks for Claude Code's settings, each command one quoted shell line", () => {
+    assert.equal(shellQuote("/usr/local/bin/rtk"), "/usr/local/bin/rtk");
+    assert.equal(shellQuote("/tmp/hive rtk/it's"), String.raw`'/tmp/hive rtk/it'\''s'`);
+    const ready = [{ entry: RTK, hooks: [{ event: "PreToolUse" as const, matcher: "Bash", argv: ["/opt/my tools/rtk", "hook", "claude"] }] }];
+    assert.deepEqual(claudeHooks(ready), {
+      PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "'/opt/my tools/rtk' hook claude", timeout: 10 }] }],
+    });
+    assert.deepEqual(hookEnv(ready, "/data/runs/R-1"), { RTK_TELEMETRY_DISABLED: "1", RTK_SUPPRESS_HOOK_WARNING: "1", RTK_DB_PATH: "/data/runs/R-1/rtk.db" });
+  });
+
+  it("takes only the listed keys of the user's settings, from CLAUDE_CONFIG_DIR when set", () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), "hive-home-"));
+    mkdirSync(path.join(home, ".claude"));
+    const full = {
+      permissions: { allow: ["Bash(npm test:*)"], deny: ["Read(./.env)"], ask: ["Bash(git push:*)"], defaultMode: "plan" },
+      env: { SOME_FLAG: "1", BAD: 3 },
+      apiKeyHelper: "~/bin/key.sh",
+      model: "opus",
+      hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "evil" }] }] },
+      disableAllHooks: false,
+      enabledPlugins: { "x@y": true },
+      statusLine: { type: "command", command: "evil" },
+      cleanupPeriodDays: 1,
+    };
+    writeFileSync(path.join(home, ".claude", "settings.json"), JSON.stringify(full));
+    assert.deepEqual(userClaudeSettings({}, home), {
+      settings: { permissions: { allow: ["Bash(npm test:*)"], deny: ["Read(./.env)"], ask: ["Bash(git push:*)"] }, env: { SOME_FLAG: "1" }, apiKeyHelper: "~/bin/key.sh", model: "opus" },
+      note: null,
+    });
+    // A 24b account's folder, written with ~ as profiles do.
+    mkdirSync(path.join(home, "acct2"));
+    writeFileSync(path.join(home, "acct2", "settings.json"), JSON.stringify({ model: "sonnet" }));
+    assert.deepEqual(userClaudeSettings({ CLAUDE_CONFIG_DIR: "~/acct2" }, home).settings, { model: "sonnet" });
+    assert.deepEqual(userClaudeSettings({ CLAUDE_CONFIG_DIR: path.join(home, "none") }, home), { settings: {}, note: null }, "no file: nothing to take");
+    writeFileSync(path.join(home, "acct2", "settings.json"), "{ broken");
+    const broken = userClaudeSettings({ CLAUDE_CONFIG_DIR: path.join(home, "acct2") }, home);
+    assert.deepEqual(broken.settings, {});
+    assert.match(broken.note!, /^không đọc được .*acct2\/settings\.json \(.+\): run không chép gì/);
+  });
+
+  it("starts Claude with no setting source, the catalog's hooks and the user's keys, and the old flags without hooks", () => {
+    const run = { project: "demo", task: "T-1", worktree: "/w/T-1" };
+    const before = claudeRunArgs("claude-a", run, []);
+    assert.deepEqual(claudeRunArgs("claude-a", run, [], undefined, null, { worktree: run.worktree }, null), before, "no hook: the flags as before");
+    assert.deepEqual(claudeRunArgs("claude-a", run, [], undefined, null, { worktree: run.worktree }, { ready: [], env: {}, user: { model: "opus" } }), before, "none ready: as before");
+    assert.equal(before[before.indexOf("--setting-sources") + 1], "user");
+
+    const hooks: ClaudeHookRun = {
+      ready: [{ entry: RTK, hooks: [{ event: "PreToolUse", matcher: "Bash", argv: ["/opt/homebrew/bin/rtk", "hook", "claude"] }] }],
+      env: { RTK_DB_PATH: "/data/runs/R-1/rtk.db" },
+      user: { permissions: { allow: ["Bash(npm test:*)", "mcp__xdev-hive"], deny: ["Read(./.env)"], ask: ["Bash(git push:*)"] }, model: "opus", apiKeyHelper: "/k.sh", env: { SECRET_ONE: "value-0042" } },
+    };
+    const args = claudeRunArgs("claude-a", { ...run, references: [{ project: "old", path: "/r/old", branch: "main", sha: "abc" }] }, [], undefined, null, { worktree: run.worktree }, hooks);
+    assert.equal(args[args.indexOf("--setting-sources") + 1], "");
+    assert.deepEqual(JSON.parse(args[args.indexOf("--settings") + 1]!), {
+      apiKeyHelper: "/k.sh",
+      model: "opus",
+      permissions: {
+        allow: ["Bash(npm test:*)", "mcp__xdev-hive"],
+        deny: ["Read(./.env)", "Write(/r/old/**)", "Edit(/r/old/**)", "MultiEdit(/r/old/**)", "NotebookEdit(/r/old/**)", "Write(//r/old/**)", "Edit(//r/old/**)", "MultiEdit(//r/old/**)", "NotebookEdit(//r/old/**)"],
+        ask: ["Bash(git push:*)"],
+      },
+      hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "/opt/homebrew/bin/rtk hook claude", timeout: 10 }] }] },
+    });
+    assert.equal(args.join(" ").includes("value-0042"), false, "the user's env goes to the process, not the command line");
+  });
+
+  it("reads RTK's numbers for the run, and null when it cannot tell", async () => {
+    const ready = (bin: string) => [{ entry: RTK, hooks: [{ event: "PreToolUse" as const, matcher: "Bash", argv: [bin, "hook", "claude"] }] }];
+    const ok = fakeRtk();
+    const env = { ...process.env, RTK_DB_PATH: "/data/runs/R-1/rtk.db" };
+    assert.deepEqual(await rtkGain(ready(ok.bin), env), { tool: "rtk", commands: 42, input: 50000, output: 8000, saved: 42000 });
+    assert.deepEqual(ok.calls(), ["gain --format json|/data/runs/R-1/rtk.db|"]);
+    assert.equal(await rtkGain(ready(fakeRtk("0.50.0", "fail").bin), env), null);
+    assert.equal(await rtkGain(ready(fakeRtk("0.50.0", "junk").bin), env), null);
+    assert.equal(await rtkGain([], env), null, "no RTK in the run");
   });
 });

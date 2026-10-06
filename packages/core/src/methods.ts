@@ -482,6 +482,17 @@ export const schemas = {
             .nullable()
             .optional(),
           costUsd: z.number().min(0).nullable().default(null),
+          /** What RTK left out of its Bash output (roadmap 28d); left out by older apps, then the hub keeps what it had. */
+          compression: z
+            .object({
+              tool: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/),
+              commands: z.number().int().min(0),
+              input: z.number().int().min(0),
+              output: z.number().int().min(0),
+              saved: z.number().int().min(0),
+            })
+            .nullable()
+            .optional(),
           log: z.string().max(60_000).default(""),
           /** What the run changed (git diff from its base), when it changed since the last push (roadmap 22l). */
           patch: z.string().max(400_000).optional(),

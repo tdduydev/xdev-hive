@@ -504,6 +504,29 @@ describe("Setup: hub tools (tool:<id>)", () => {
     await assert.rejects(m.setup.install("tool:rtk"), /Danh mục không có lệnh cài/);
   });
 
+  it("a hook (28d): installed only at the version the catalog pins, else outdated; no {runDir} variable without a run", async () => {
+    const hook: ToolEntry = {
+      ...RTK,
+      kind: "hook",
+      hooks: [{ event: "PreToolUse", matcher: "Bash", command: ["rtk", "hook", "claude"] }],
+      env: { RTK_TELEMETRY: "0", RTK_DB_PATH: "{runDir}/rtk.db" },
+    };
+    const m = withRtk([hook]);
+    m.hub.trust = { rtk: toolHash(hook) };
+    fakeBin(m.bin, "rtk", 'echo "rtk 0.9.0 db=[$RTK_DB_PATH]"');
+    const ok = await m.setup.item("tool:rtk");
+    assert.equal(ok.state, "installed");
+    assert.match(ok.detail, /^rtk 0\.9\.0 db=\[\] · /);
+
+    const pinned = { ...hook, package: { ...hook.package!, version: "0.8.0" } };
+    m.hub.tools = catalog([pinned], ["rtk"]);
+    m.hub.trust = { rtk: toolHash(pinned) };
+    const old = await m.setup.item("tool:rtk");
+    assert.equal(old.state, "outdated");
+    assert.equal(old.action, null);
+    assert.equal(old.detail, "Máy có 0.9.0, danh mục duyệt 0.8.0: run không dùng hook cho tới khi đúng bản (cài đúng bản, hoặc admin nâng phiên bản trong danh mục).");
+  });
+
   it("only tools on for one of the machine's projects, with a check and no handler; none without a catalog", async () => {
     const mcp: ToolEntry = { ...RTK, id: "docs-mcp", kind: "mcp", mcp: { command: "npx", args: ["-y", "{package}"] }, check: null, install: null };
     const m = withRtk([RTK, mcp, APP_TOOLS.speckit], []);
