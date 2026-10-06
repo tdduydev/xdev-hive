@@ -75,7 +75,7 @@ import {
 import { tr } from "#desktop/main/i18n.ts";
 import { git, isGitRepo } from "#desktop/main/git.ts";
 import { NO_FEATURES, repoFeatures } from "#desktop/main/installer.ts";
-import { renderContext } from "#desktop/main/sync.ts";
+import { renderContext, type WorktreeRule, type WorktreeSkill } from "#desktop/main/sync.ts";
 import { hookEnv, legacyPick, NO_TOOLS, prepareTool, readyHooks, rtkGain, runTools, toolDirs, userClaudeSettings, type ToolPick } from "./tools.ts";
 import { containerCommand } from "./container.ts";
 import { claudeMcpServers, codexMcpArgs, hubMcpEnv, type McpRun } from "./container-mcp.ts";
@@ -1436,16 +1436,23 @@ export class Runner {
    * the branch's: `wt.context` keeps them out of the run's commit. A hub that fails or is slow is not worth losing
    * a run over, so then the run goes on with what the branch has and the log says why.
    */
-  async #writeContext(backend: HiveBackend, actor: Actor, project: string, wt: Worktree): Promise<{ note: string; file: string | null }> {
+  async #writeContext(
+    backend: HiveBackend,
+    actor: Actor,
+    project: string,
+    wt: Worktree,
+  ): Promise<{ note: string; file: string | null; skills: WorktreeSkill[] | null; rules: WorktreeRule[] | null }> {
     try {
       const out = await renderContext(backend, actor, project, wt.path);
       wt.context = out.owned;
       return {
         note: tr("runNote.context", { files: out.owned.length, written: out.written.length, skipped: out.skipped.length }),
         file: out.contextFile,
+        skills: out.skills,
+        rules: out.rules,
       };
     } catch (err) {
-      return { note: tr("runNote.contextFailed", { reason: (err as Error).message }), file: null };
+      return { note: tr("runNote.contextFailed", { reason: (err as Error).message }), file: null, skills: null, rules: null };
     }
   }
 
@@ -1565,6 +1572,8 @@ export class Runner {
         contextFile: context.file,
         references: references.repos,
         rtk: hooks?.ready.some((r) => r.entry.id === "rtk") ?? false,
+        skills: context.skills,
+        rules: context.rules,
       });
       const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id, repo: project.repo, references: references.repos };
       wt.toolDirs = toolDirs(tools.prepare);
