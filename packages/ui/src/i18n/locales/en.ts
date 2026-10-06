@@ -51,6 +51,9 @@ export const en: Catalog = {
     layers: "Graph layers", system: "System", soon: "Coming soon", completed: "completed", running: "Running",
     hideOldDone: "Hide tasks done over 7 days ago", openOnly: "Unfinished only", minimap: "Mini map", mine: "My tasks", byAgent: "Filter by agent", allAgents: "All agents",
     fit: "Fit view", reset: "Reset layout", list: "List", pickProject: "Select a project to view its task graph.",
+    online: "Online", offline: "Offline", unassigned: "Unassigned", dragHint: "Drag a task onto a profile to assign it.", tapHint: "Tap a task to choose an agent.", chooseAgent: "Choose agent", cancel: "Cancel", assign: "Assign",
+    quota: "5 hours {session} · Week {week}", places: "{count} free places",
+    state: { ready: "Free", running: "Busy", overLimit: "Quota reached", resting: "Resting", signedOut: "Signed out", off: "Disabled", offline: "Offline", noCli: "CLI missing" },
   },
   nav: {
     today: "Today",
