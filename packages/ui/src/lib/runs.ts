@@ -15,6 +15,34 @@ export function runDuration(run: Timed, now: Date = new Date()): string {
 /** Still worth following: it waits for a plan or an agent is on it. */
 export const isLive = (run: { status: string }): boolean => run.status === "queued" || run.status === "running";
 
+/** Signals already reported by the machine; a free-form question is only recognized when the agent explicitly asks. */
+export function waitingReason(run: { status: string; summary?: string | null; error?: string | null; mr?: { pipeline: string | null } | null }): "question" | "ci" | "quota" | null {
+  if (run.mr?.pipeline === "failed") return "ci";
+  if (run.status === "rate_limited" || /\b(quota|rate limit|usage limit)\b|hết (hạn mức|quota)/i.test(run.error ?? "")) return "quota";
+  if (/\b(need your input|please (confirm|clarify|choose)|awaiting (input|response))\b|cần (bạn|người dùng) (xác nhận|trả lời|chọn)|chờ (bạn|người dùng) (trả lời|xác nhận)/i.test(run.summary ?? "")) return "question";
+  return null;
+}
+
+export function handoffSections(summary: string | null): Array<{ id: "done" | "left" | "verify" | "risk"; text: string }> {
+  if (!summary) return [];
+  const headings: Array<["done" | "left" | "verify" | "risk", RegExp]> = [
+    ["done", /^(?:#{1,4}\s*)?(?:ĐÃ LÀM|DONE)\s*:?\s*(.*)$/i],
+    ["left", /^(?:#{1,4}\s*)?(?:CHƯA LÀM|NOT DONE|REMAINING)\s*:?\s*(.*)$/i],
+    ["verify", /^(?:#{1,4}\s*)?(?:CÁCH KIỂM|HOW TO VERIFY|VERIFICATION)\s*:?\s*(.*)$/i],
+    ["risk", /^(?:#{1,4}\s*)?(?:RỦI RO|RISKS?)\s*:?\s*(.*)$/i],
+  ];
+  const found: Array<{ id: "done" | "left" | "verify" | "risk"; text: string }> = [];
+  for (const line of summary.split("\n")) {
+    const match = headings.map(([id, re]) => ({ id, match: line.trim().replace(/\*\*/g, "").match(re) })).find((x) => x.match);
+    if (match) found.push({ id: match.id, text: match.match![1] ?? "" });
+    else if (found.length) found[found.length - 1]!.text += `${found[found.length - 1]!.text ? "\n" : ""}${line}`;
+  }
+  return headings.flatMap(([id]) => {
+    const text = found.filter((item) => item.id === id).map((item) => item.text.trim()).filter(Boolean).join("\n");
+    return found.some((item) => item.id === id) ? [{ id, text }] : [];
+  });
+}
+
 /**
  * A run's status or role in the viewer's language. The hub stores what machines sent, and a newer machine may send
  * one this page does not know yet: shown as it came.

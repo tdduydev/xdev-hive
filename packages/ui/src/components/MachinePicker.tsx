@@ -29,7 +29,7 @@ export function MachineSelect({
   return (
     <div className="flex flex-col gap-1.5">
       {label ? <Label htmlFor={id}>{t("tasks.dispatchMachine")}</Label> : null}
-      <NativeSelect id={id} size="sm" className="w-full" value={value} onChange={(e) => onChange(e.target.value)} aria-label={label ? undefined : t("tasks.dispatchMachine")}>
+      <NativeSelect id={id} size="sm" className="w-full max-md:h-11 max-md:text-base" value={value} onChange={(e) => onChange(e.target.value)} aria-label={label ? undefined : t("tasks.dispatchMachine")}>
         {any ? <NativeSelectOption value="">{t("batches.anyMachine")}</NativeSelectOption> : null}
         {machines.map((m) => (
           <NativeSelectOption key={m.id} value={m.id}>
@@ -62,7 +62,7 @@ export function ProfileSelect({
   return (
     <div className="flex flex-col gap-1.5">
       {label ? <Label htmlFor={id}>{t("board.profile")}</Label> : null}
-      <NativeSelect id={id} size="sm" className="w-full" value={value} onChange={(e) => onChange(e.target.value)} aria-label={label ? undefined : t("board.profile")}>
+      <NativeSelect id={id} size="sm" className="w-full max-md:h-11 max-md:text-base" value={value} onChange={(e) => onChange(e.target.value)} aria-label={label ? undefined : t("board.profile")}>
         <NativeSelectOption value="">{t("board.rotate")}</NativeSelectOption>
         {profiles.map((p) => (
           <NativeSelectOption key={p.id} value={p.id}>
@@ -106,7 +106,7 @@ export function PreferKindSelect({
       <NativeSelect
         id={id}
         size="sm"
-        className="w-full"
+        className="w-full max-md:h-11 max-md:text-base"
         value={value}
         onChange={(e) => onChange(e.target.value as PreferKind | "")}
         title={t("board.preferKindHint")}
