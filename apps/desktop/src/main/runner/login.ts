@@ -139,6 +139,30 @@ export async function checkUsage(profile: AgentProfile, baseEnv: NodeJS.ProcessE
 }
 
 /** The last sign-in check of every enabled profile. The runner skips profiles known to be signed out. */
+/**
+ * Đọc lại quota (roadmap 52): checks the given profiles (all enabled ones without ids), lets the runner pick with the
+ * new numbers, then answers what the page shows. A click while a read is going on gets that read's answer: each read
+ * runs the CLIs one by one, and a second one on top would only queue the same checks again.
+ */
+export function usageRefresher<T>(refresh: (ids?: string[]) => Promise<void>, tick: () => Promise<unknown>, statuses: () => T): (ids?: string[]) => Promise<T> {
+  let going: Promise<T> | null = null;
+  return (ids) => {
+    if (going) return going;
+    const read = (async () => {
+      await refresh(ids?.length ? ids : undefined);
+      await tick();
+      return statuses();
+    })();
+    going = read;
+    // Cleared once settled, failed or not, so the next click reads again.
+    read.then(
+      () => void (going === read && (going = null)),
+      () => void (going === read && (going = null)),
+    );
+    return read;
+  };
+}
+
 export class LoginMonitor {
   readonly #checks = new Map<string, LoginStatus>();
   readonly #usage = new Map<string, PlanUsage>();

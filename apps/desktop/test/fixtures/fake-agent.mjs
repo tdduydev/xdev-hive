@@ -12,10 +12,13 @@ if ((first === "auth" || first === "login") && second === "status") {
 }
 
 // Claude Code's /usage (plan usage). FAKE_USAGE="<session>,<week>" percentages; unset: an API key, no limits.
+// FAKE_USAGE_RESETS="<session reset>|<week reset>" in /usage's own form: fixed texts go stale once their day is past,
+// so the smoke passes times from its own clock (roadmap 52 counts down to them).
 if (first === "-p" && second === "/usage") {
   const [session, week] = (process.env.FAKE_USAGE ?? "").split(",");
+  const [sessionResets, weekResets] = (process.env.FAKE_USAGE_RESETS ?? "6:20pm (Asia/Saigon)|Oct 1 at 6pm (Asia/Saigon)").split("|");
   const result = process.env.FAKE_USAGE
-    ? `You are currently using your subscription to power your Claude Code usage\n\nCurrent session: ${session}% used · resets 6:20pm (Asia/Saigon)\nCurrent week (all models): ${week}% used · resets Oct 1 at 6pm (Asia/Saigon)\n`
+    ? `You are currently using your subscription to power your Claude Code usage\n\nCurrent session: ${session}% used · resets ${sessionResets}\nCurrent week (all models): ${week}% used · resets ${weekResets}\n`
     : "You are currently using an API key.";
   console.log(JSON.stringify({ type: "result", subtype: "success", is_error: false, num_turns: 0, result, total_cost_usd: 0 }));
   process.exit(0);

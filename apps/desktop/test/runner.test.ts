@@ -9,9 +9,9 @@ import { CODEGRAPH_MCP, CODEGRAPH_RUN_MCP, SUPERPOWERS_PLUGIN } from "#desktop/m
 import { prepareCodegraph } from "#desktop/main/runner/codegraph.ts";
 import { buildCommand, buildPrompt, parsePick } from "#desktop/main/runner/command.ts";
 import { ClaudeStream, toolLine } from "#desktop/main/runner/stream.ts";
-import { limitResetAt, outputFormat, parseClaudeResult, parsePlanUsage, parseResetAt, readCodexUsage, resetText } from "#desktop/main/runner/usage.ts";
+import { limitResetAt, outputFormat, parseClaudeResult, parsePlanUsage, parseResetAt, readCodexUsage, resetText, withResetsAt } from "#desktop/main/runner/usage.ts";
 import { usageHeadroom, usageStop, type HiveEvent, type PlanUsage } from "@xdev-hive/core";
-import { checkLogin, checkUsage, LoginMonitor, loginCommand, parseLogin, USAGE_ARGS } from "#desktop/main/runner/login.ts";
+import { checkLogin, checkUsage, LoginMonitor, loginCommand, parseLogin, USAGE_ARGS, usageRefresher } from "#desktop/main/runner/login.ts";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { parseResetTime, detectRateLimit } from "#desktop/main/runner/rate-limit.ts";
 import { Runner, type HubUpdate, type RunnerEvent, type RunnerHost, type RunnerOptions } from "#desktop/main/runner/runner.ts";
@@ -890,7 +890,9 @@ describe("Runner", () => {
     const high: PlanUsage = { session: { percent: 97, resets: "6:20pm" }, week: { percent: 40, resets: null }, others: [], checkedAt: "" };
     const usage = (id: string) => (id === "claude-a" ? high : undefined);
     const { runner } = await setup([profile("claude-a", "claude", 1, "ok"), profile("claude-b", "claude", 10, "ok")], {}, "local", { usage });
-    assert.deepEqual(runner.profileStatuses().find((p) => p.id === "claude-a")!.usage, high);
+    // "6:20pm" names no zone, so the page gets no instant to count down to (roadmap 52).
+    const shown = { ...high, session: { ...high.session!, resetsAt: null }, week: { ...high.week!, resetsAt: null } };
+    assert.deepEqual(runner.profileStatuses().find((p) => p.id === "claude-a")!.usage, shown);
     const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
     await runner.settle();
     assert.equal(runner.store.get(run.id)!.profileId, "claude-b", "claude-a has used 97% of its session (threshold 95%)");
@@ -2477,5 +2479,96 @@ describe("runner: the hub's tool catalog (roadmap 28b)", () => {
     const { run } = await runOnce(s);
     assert.deepEqual(servers(s.calls()[0]!.args).codegraph, CODEGRAPH_RUN_MCP, "the repo's setup decides, as the project's off is unknown here");
     assert.deepEqual(s.npx.calls(), [`-y ${CODEGRAPH_MCP.args[1]} init ${run.worktree} telemetry=0`]);
+  });
+});
+
+describe("quota on the Agent page (roadmap 52)", () => {
+  it("reads the given profiles again, then lets the runner pick, and answers with the statuses", async () => {
+    const order: string[] = [];
+    const refresh = usageRefresher(
+      async (ids) => void order.push(`refresh ${ids?.join(",") ?? "all"}`),
+      async () => void order.push("tick"),
+      () => (order.push("statuses"), order.length),
+    );
+    assert.equal(await refresh(["claude-a"]), 3);
+    await refresh();
+    // An empty list from the page is every enabled profile, not none.
+    await refresh([]);
+    assert.deepEqual(order, ["refresh claude-a", "tick", "statuses", "refresh all", "tick", "statuses", "refresh all", "tick", "statuses"]);
+  });
+
+  it("gives a click during a read that read's answer instead of starting another", async () => {
+    let calls = 0;
+    let release!: () => void;
+    const refresh = usageRefresher(
+      (ids) => (calls++, new Promise<void>((r) => (release = r))).then(() => void ids),
+      async () => undefined,
+      () => `read ${calls}`,
+    );
+    const first = refresh(["claude-a"]);
+    const second = refresh(["codex-a"]);
+    assert.equal(second, first, "the same read");
+    release();
+    assert.deepEqual(await Promise.all([first, second]), ["read 1", "read 1"]);
+    assert.equal(calls, 1);
+    // Done: the next click reads again, also after a failed read.
+    const third = refresh();
+    release();
+    await third;
+    assert.equal(calls, 2);
+    const failing = usageRefresher(
+      async () => {
+        throw new Error("CLI gone");
+      },
+      async () => undefined,
+      () => "ok",
+    );
+    await assert.rejects(failing(), /CLI gone/);
+    await assert.rejects(failing(), /CLI gone/, "a failed read is not kept");
+  });
+
+  it("counts a profile's runs from the reset on, and keeps the runs themselves", async () => {
+    const { runner, hive } = await setup([profile("claude-a", "claude", 10, "limit"), profile("codex-a", "codex", 20, "ok")]);
+    await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const before = runner.profileStatuses().find((p) => p.id === "claude-a")!;
+    assert.deepEqual([before.stats.runs, before.stats.rateLimited, before.stats.since], [1, 1, null]);
+    const kept = runner.list().length;
+
+    await new Promise((r) => setTimeout(r, 5));
+    runner.resetStats("claude-a");
+    const after = runner.profileStatuses().find((p) => p.id === "claude-a")!;
+    assert.deepEqual([after.stats.runs, after.stats.succeeded, after.stats.failed, after.stats.rateLimited, after.stats.costUsd], [0, 0, 0, 0, 0]);
+    assert.ok(after.stats.since && Date.parse(after.stats.since) > Date.parse(before.lastUsedAt!), "the mark is now");
+    assert.equal(after.lastUsedAt, before.lastUsedAt, "last used still looks at every run");
+    assert.equal(runner.list().length, kept, "no run is deleted");
+    assert.equal(runner.profileStatuses().find((p) => p.id === "codex-a")!.stats.runs, 1, "other profiles keep their counts");
+
+    // A new run after the mark counts: claude-a still rests, so T-2 goes to codex-a.
+    runner.resetStats("codex-a");
+    assert.equal(runner.profileStatuses().find((p) => p.id === "codex-a")!.stats.runs, 0);
+    await hive.call("tasks.create", { id: "T-2", project: "demo", title: "Việc thứ hai" }, admin);
+    await runner.enqueue({ project: "demo", taskId: "T-2" });
+    await runner.settle();
+    const codex = runner.profileStatuses().find((p) => p.id === "codex-a")!;
+    assert.deepEqual([codex.stats.runs, codex.stats.succeeded], [1, 1]);
+    assert.ok(runner.profileStatuses().find((p) => p.id === "claude-a")!.cooldownUntil, "a reset of the counter leaves the rest alone");
+    assert.throws(() => runner.resetStats("nope"), /nope/);
+  });
+
+  it("gives each limit its reset as an instant the page counts down to", () => {
+    const now = new Date("2026-10-06T07:00:00Z");
+    const usage: PlanUsage = {
+      session: { percent: 41, resets: "6:20pm (Asia/Saigon)" },
+      week: { percent: 83, resets: "Oct 8 at 5:59pm (Asia/Saigon)" },
+      others: [],
+      checkedAt: now.toISOString(),
+    };
+    const shown = withResetsAt(usage, now)!;
+    assert.equal(shown.session!.resetsAt, "2026-10-06T11:20:00.000Z");
+    assert.equal(shown.week!.resetsAt, "2026-10-08T10:59:00.000Z");
+    assert.equal(shown.session!.resets, "6:20pm (Asia/Saigon)", "the CLI's text stays for the tooltip");
+    assert.equal(withResetsAt({ ...usage, week: { percent: 3, resets: "soon" } }, now)!.week!.resetsAt, null);
+    assert.equal(withResetsAt(undefined, now), null);
   });
 });

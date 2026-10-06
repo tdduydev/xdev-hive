@@ -83,6 +83,11 @@ export type AgentProfile = z.output<typeof agentProfileSchema>;
 export interface PlanLimit {
   percent: number;
   resets: string | null;
+  /**
+   * The reset as an instant, read from `resets` by the machine (roadmap 52): the CLI prints it without a year and in
+   * its own zone, so the page counts down from this. Absent or null when the text could not be read.
+   */
+  resetsAt?: string | null;
 }
 
 /** How much of a subscription plan's limits is used, from Claude Code's /usage or Codex's session files (roadmap 45). */
