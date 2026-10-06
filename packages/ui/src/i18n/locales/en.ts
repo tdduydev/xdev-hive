@@ -1339,6 +1339,7 @@ export const en: Catalog = {
     dispatchMachine: "Machine",
     dispatchSend: "Run",
     dispatchOptions: "Options",
+    agentWork: "Agent work",
     promptOpen: "Prompt an agent",
     agentsPicked: "{count} agents picked on the agent map: pick tasks, then Give; each task goes to the next agent in turn.",
     agentsClear: "Drop the picked agents",

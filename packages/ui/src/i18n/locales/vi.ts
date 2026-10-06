@@ -1343,6 +1343,7 @@ export const vi = {
     dispatchMachine: "Máy",
     dispatchSend: "Chạy",
     dispatchOptions: "Tuỳ chọn",
+    agentWork: "Giao agent",
     promptOpen: "Prompt cho agent",
     agentsPicked: "Đã chọn {count} agent trên Bản đồ agent: chọn task rồi bấm Giao, mỗi task một agent theo thứ tự.",
     agentsClear: "Bỏ các agent đã chọn",

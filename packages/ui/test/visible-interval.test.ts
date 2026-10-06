@@ -14,7 +14,7 @@ it("stops polling while hidden, refreshes on return, and removes its timer/liste
   t.mock.timers.enable({ apis: ["setInterval"] });
   const page = new Page();
   let calls = 0;
-  const stop = visibleInterval(1000, () => calls++, page);
+  const stop = visibleInterval(1000, () => calls++, page, () => true);
   t.mock.timers.tick(2000);
   assert.equal(calls, 2);
   page.hide(true);
@@ -37,7 +37,7 @@ it("does not create a poll on an initially hidden page, or duplicate timers acro
   const page = new Page();
   page.hidden = true;
   let calls = 0;
-  const stop = visibleInterval(1000, () => calls++, page);
+  const stop = visibleInterval(1000, () => calls++, page, () => true);
   t.mock.timers.tick(10_000);
   assert.equal(calls, 0);
   page.hide(false);
@@ -45,5 +45,16 @@ it("does not create a poll on an initially hidden page, or duplicate timers acro
   const refreshed = calls;
   t.mock.timers.tick(1000);
   assert.equal(calls, refreshed + 1, "only one timer remains");
+  stop();
+});
+
+it("keeps polling a hidden page outside the desktop app", (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const page = new Page();
+  page.hidden = true;
+  let calls = 0;
+  const stop = visibleInterval(1000, () => calls++, page, () => false);
+  t.mock.timers.tick(3000);
+  assert.equal(calls, 3);
   stop();
 });
