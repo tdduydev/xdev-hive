@@ -114,6 +114,14 @@ export const nameMatches = (name: string, query: string): boolean => name.toLowe
 /** The systems a project is a service of, by name: a project may be in more than one. */
 export const systemsOfProject = (project: string, systems: HiveSystem[]): HiveSystem[] => systems.filter((s) => s.projects.includes(project)).sort((a, b) => a.name.localeCompare(b.name));
 
+/** A scope as the menu and page titles name it (roadmap 40a): a service of a system as `system › service` (its first
+ *  system by name, as defaultOwner picks), a system or a repo in no system by its own name. */
+export function scopeTitle(s: Scope, systems: HiveSystem[]): string {
+  if (s.kind !== "project") return scopeLabel(s);
+  const system = systemsOfProject(s.project, systems)[0];
+  return system ? `${system.name} › ${s.project}` : s.project;
+}
+
 /**
  * Where new docs and memory of a scope go by default (roadmap 40c): a system's own space for a system and for a service
  * of one (its first system by name), since most of what is written there is for every service; the project for a repo
