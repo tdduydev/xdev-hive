@@ -57,9 +57,12 @@ import { TaskWorkPage } from "./pages/Tasks.tsx";
 import { TodayPage } from "./pages/Today.tsx";
 import { TokensPage } from "./pages/Tokens.tsx";
 import { DocReaderPage } from "./pages/DocReader.tsx";
+import { StartPage } from "#ui/pages/Start.tsx";
+import { remainingSteps, startSteps } from "#ui/lib/start.ts";
 const GraphPage = lazy(() => import("./pages/Graph.tsx").then((module) => ({ default: module.GraphPage })));
 
 type PageId =
+  | "start"
   | "today"
   | "overview"
   | "chat"
@@ -85,6 +88,7 @@ type PageId =
 type Icon = ComponentType<{ className?: string }>;
 
 const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; render: () => ReactNode }> = {
+  start: { label: "start.title", sub: "start.sub", icon: ListChecks, render: () => <StartPage /> },
   today: { label: "nav.today", sub: "navSub.today", icon: Inbox, render: () => <TodayPage /> },
   overview: { label: "nav.overview", sub: "navSub.overview", icon: LayoutGrid, render: () => <OverviewPage /> },
   chat: { label: "nav.chat", sub: "navSub.chat", icon: MessageSquare, render: () => <ChatPage /> },
@@ -151,7 +155,7 @@ const LOCAL_SHORTCUTS: Partial<Record<PageId, string>> = { today: "1", tasks: "2
  * is the hub's leader chat, the same threads as on the web (roadmap 48), its replies written on this machine by
  * default. In local mode the app is the whole system and keeps every page.
  */
-const DESK_PAGES = new Set<PageId>(["today", "tasks", "chat", "runs", "agents", "setup", "projects", "device"]);
+const DESK_PAGES = new Set<PageId>(["start", "today", "tasks", "chat", "runs", "agents", "setup", "projects", "device"]);
 const DESK_GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
   { label: null, ids: ["today", "tasks", "chat", "runs"] },
   { label: "nav.groupAgents", ids: ["agents", "setup", "projects"] },
@@ -159,7 +163,7 @@ const DESK_GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
 /** What the machine's Hôm nay shows: its runs' CI, its own setup, install requests for it. */
 const DESK_INBOX = new Set(["ci", "machine", "request"]);
 /** Not in the sidebar, still in the command palette: Token moved to the account menu on the web (roadmap 49b). */
-const PALETTE_ONLY: PageId[] = ["overview", "tokens"];
+const PALETTE_ONLY: PageId[] = ["start", "overview", "tokens"];
 
 type Route = { kind: "client"; id: PageId };
 const HOME: Route = { kind: "client", id: "today" };
@@ -192,6 +196,11 @@ function HiveAppInner({ client, onSignOut }: { client: HiveClient; onSignOut?: (
   useSystemTheme();
   const t = useT();
   const me = useQuery(() => client.me(), [client]);
+  useEffect(() => {
+    const changed = () => me.reload();
+    window.addEventListener("xdev-hive:connection-changed", changed);
+    return () => window.removeEventListener("xdev-hive:connection-changed", changed);
+  }, [me.reload]);
   if (me.error) {
     return (
       <Centered>
@@ -260,6 +269,19 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   // Checked when the app opens (and after leaving the setup page), so the sidebar shows what is missing.
   const setup = useQuery(async () => (client.desktop ? client.desktop.setupStatus() : null), [client, page === "setup"]);
 
+  const initialStart = useQuery(async () => {
+    if (!client.desktop) return false;
+    const [settings, report, profiles] = await Promise.all([client.desktop.settings(), client.desktop.setupStatus(), client.desktop.profiles()]);
+    return remainingSteps(startSteps(settings, report, profiles)) > 0;
+  }, [client]);
+  const startChecked = useRef(false);
+  useEffect(() => {
+    if (initialStart.data === undefined || startChecked.current) return;
+    startChecked.current = true;
+    // Explicit deep links (including a browser connection callback) keep their destination.
+    if (initialStart.data && (!window.location.hash || window.location.hash === "#/today")) window.location.hash = "/start";
+  }, [initialStart.data]);
+
   // The listener is set once, so the mode it reads an address in comes from a ref, as the one below does.
   const localRef = useRef(local);
   localRef.current = local;
@@ -285,7 +307,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     }
     // The desktop app on its own machine (roadmap 39f): its runs and, from 48, its own leader chat, which an app
     // before it has no bridge for. Machines, batches, members and the rest need a hub.
-    const ids = new Set<PageId>(["today", "overview", "docs", "read", "specs", "skills", "proposals", "memory", "tasks", "systems", "agents", "setup", "projects", "runs"]);
+    const ids = new Set<PageId>(["start", "today", "overview", "docs", "read", "specs", "skills", "proposals", "memory", "tasks", "systems", "agents", "setup", "projects", "runs"]);
     if (client.desktop.chatMachine) ids.add("chat");
     return account(ids);
   }, [client, me, hubAdmin, webAdmin, projects, deskHub]);

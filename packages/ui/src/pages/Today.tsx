@@ -1,3 +1,4 @@
+import { StartReminder } from "#ui/pages/Start.tsx";
 import { knowledgeHref } from "#ui/lib/knowledge.ts";
 // Hôm nay (docs/design/2026-09-redesign, xDev Hive Client): a list of what needs the person on the left, the
 // selected item with its actions on the right. J / K move, ↵ runs the first button, E marks it seen.
@@ -296,6 +297,7 @@ export function TodayPage() {
   return (
     <div className="mobile-master-detail flex h-full min-h-0 w-full bg-surface">
       <div className={cn("min-w-0 flex-1 flex-col border-r border-line-subtle md:flex md:min-w-[280px] md:flex-none md:shrink md:basis-[360px]", mobileDetail.showingDetail ? "hidden" : "flex")}>
+        <StartReminder />
         <div className="flex shrink-0 items-center gap-2 border-b border-line-subtle px-3 py-[9px]">
           <div role="tablist" className="flex gap-0.5 rounded-[7px] bg-sunken p-0.5">
             {(

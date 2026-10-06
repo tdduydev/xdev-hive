@@ -2,6 +2,27 @@
 import type { KeyPaths, Translation } from "#ui/i18n/types.ts";
 
 export const vi = {
+  start: {
+    connectHint: "Kết nối với nhóm qua hub, hoặc dùng một mình trên máy này.",
+    disabled: "Đang tắt",
+    title: "Bắt đầu",
+    sub: "Chuẩn bị máy này để agent nhận việc",
+    connection: "1. Kết nối",
+    tools: "2. Công cụ",
+    projects: "3. Dự án",
+    agents: "4. Gói agent",
+    intake: "5. Nhận việc",
+    done: "Xong",
+    todo: "Cần làm",
+    optional: "Bỏ qua được",
+    doNow: "Làm ngay",
+    intro: "Làm lần lượt các bước dưới đây để chuẩn bị máy này.",
+    ready: "Máy này đã sẵn sàng.",
+    reminder: "Máy này chưa sẵn sàng: còn {count} bước",
+    open: "Mở hướng dẫn Bắt đầu",
+    manageAgents: "Thêm gói và quản lý đăng nhập",
+    enableIntake: "Bật nhận việc",
+  },
   cleanup: {
     errors: {
       expired: "Máy không báo tiến độ trong 15 phút.",
