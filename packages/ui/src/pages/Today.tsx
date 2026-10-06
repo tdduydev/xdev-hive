@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { visibleInterval } from "#ui/lib/visible-interval.ts";
 import { CircleCheck, Copy, Info, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
-import type { ChatAction, Memory, SdlcGateRecord } from "@xdev-hive/core";
+import { HUB_SCOPE, type ChatAction, type Memory, type SdlcGateRecord } from "@xdev-hive/core";
 import { approvalOf } from "#ui/lib/permissions.ts";
 import { Diff } from "#ui/components/Diff.tsx";
 import { requestErrorText } from "#ui/lib/runs.ts";
@@ -225,7 +225,7 @@ function longAgo(iso: string, now: number, t: TFunction): string {
 }
 
 function scopeText(item: InboxItem, t: TFunction): string {
-  return item.scope || t("inbox.shared");
+  return item.kind === "leader" && item.action.project === HUB_SCOPE ? t("chat.actionHub") : item.scope || t("inbox.shared");
 }
 
 export function TodayPage() {

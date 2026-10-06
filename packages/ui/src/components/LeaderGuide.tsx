@@ -2,7 +2,7 @@
 // of it, edited here by the project's managers. It is saved as the project's skill, so the Skills page shows it too,
 // and the leader reads it with skill_get before it answers.
 import { useState } from "react";
-import { CHAT_ACTION_ALWAYS_CONFIRM, CHAT_ACTION_KINDS, LEADER_COMMAND, MAX_LEADER_COMMANDS, skillDocKey, type ChatActionKind } from "@xdev-hive/core";
+import { CHAT_ACTION_ALWAYS_CONFIRM, CHAT_ACTION_KINDS, HUB_SCOPE, LEADER_COMMAND, MAX_LEADER_COMMANDS, skillDocKey, type ChatActionKind } from "@xdev-hive/core";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Input } from "@xdev-hive/ui/components/ui/input";
@@ -13,8 +13,8 @@ import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { buildSkill, LEADER_SKILL, leaderGuide } from "#ui/lib/skills.ts";
-import { canEditChatSettings } from "#ui/lib/permission-controls.ts";
-import { Badge, ErrorNote, Notice } from "./common.tsx";
+import { canEditChatSettings, canUseHubChat } from "#ui/lib/permission-controls.ts";
+import { Badge, ErrorNote, Notice } from "#ui/components/common.tsx";
 
 export function LeaderGuideSheet({
   projects,
@@ -46,22 +46,27 @@ export function LeaderGuideSheet({
 /** The guide, the commands and the autonomy of one project's leader: in Chat's sheet, and a tab of Cài đặt dự án (49b). */
 export function LeaderGuidePanel({ projects, defaultProject }: { projects: string[]; defaultProject: string | null }) {
   const t = useT();
-  const [project, setProject] = useState(defaultProject && projects.includes(defaultProject) ? defaultProject : (projects[0] ?? ""));
+  const { me } = useHive();
+  projects = projects.filter((p) => p !== HUB_SCOPE || canUseHubChat(me));
+  const [chosenProject, setProject] = useState(defaultProject && projects.includes(defaultProject) ? defaultProject : (projects[0] ?? ""));
+  const project = projects.includes(chosenProject) ? chosenProject : defaultProject && projects.includes(defaultProject) ? defaultProject : (projects[0] ?? "");
   return (
     <>
       {projects.length > 1 ? (
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="guide-project">{t("chat.project")}</Label>
+          <Label htmlFor="guide-project">{t(projects.includes(HUB_SCOPE) ? "chat.scope" : "chat.project")}</Label>
           <NativeSelect id="guide-project" size="sm" className="w-full sm:w-64" value={project} onChange={(e) => setProject(e.target.value)}>
             {projects.map((p) => (
               <NativeSelectOption key={p} value={p}>
-                {p}
+                {p === HUB_SCOPE ? t("chat.hubScope") : p}
               </NativeSelectOption>
             ))}
           </NativeSelect>
         </div>
       ) : null}
-      {project ? <GuideEditor key={project} project={project} /> : null}
+      {project === HUB_SCOPE ? (
+        <Notice tone="info"><span>{t("chat.hubGuide")} <a className="font-medium text-primary underline underline-offset-2 max-md:inline-flex max-md:min-h-(--control-h-touch) max-md:items-center" href="#/skills">{t("chat.guideSkills")}</a></span></Notice>
+      ) : project ? <GuideEditor key={project} project={project} /> : null}
       {project ? <CommandsEditor key={`commands-${project}`} project={project} /> : null}
       {project ? <AutonomyEditor key={`auto-${project}`} project={project} /> : null}
     </>
@@ -219,9 +224,9 @@ function CommandsEditor({ project }: { project: string }) {
       {editable ? (
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" type="submit" disabled={action.busy || bad.length > 0 || tooMany}>
-            {t("chat.commandsSave", { project })}
+            {t("chat.commandsSave", { project: project === HUB_SCOPE ? t("chat.hubScope") : project })}
           </Button>
-          {saved ? <span className="text-xs text-success">{lines.length ? t("chat.commandsSaved", { project }) : t("chat.commandsNone", { project })}</span> : null}
+          {saved ? <span className="text-xs text-success">{lines.length ? t("chat.commandsSaved", { project: project === HUB_SCOPE ? t("chat.hubScope") : project }) : t("chat.commandsNone", { project: project === HUB_SCOPE ? t("chat.hubScope") : project })}</span> : null}
         </div>
       ) : null}
       <ErrorNote error={action.error} />
@@ -264,13 +269,13 @@ function AutonomyEditor({ project }: { project: string }) {
     >
       <div className="flex flex-col gap-0.5">
         <Label>{t("chat.autoTitle")}</Label>
-        <p className="text-xs text-muted-foreground">{t("chat.autoHint")}</p>
+        <p className="text-xs text-muted-foreground">{t(project === HUB_SCOPE ? "chat.hubAutoHint" : "chat.autoHint")}</p>
       </div>
       <div className="grid gap-1.5 sm:grid-cols-2">
         {CHAT_ACTION_KINDS.map((k) => {
           const never = CHAT_ACTION_ALWAYS_CONFIRM.includes(k);
           return (
-            <label key={k} className="flex items-center gap-2 text-xs" title={never ? t("chat.autoAlways") : undefined}>
+            <label key={k} className="flex items-center gap-2 text-xs max-md:min-h-(--control-h-touch)" title={never ? t("chat.autoAlways") : undefined}>
               <Checkbox checked={!never && kinds.includes(k)} disabled={never || !editable} onCheckedChange={(v) => toggle(k, v === true)} />
               <span className={never ? "text-muted-foreground" : ""}>
                 {/* "task.create" → task_create: a dot in a message key reads as one more level. */}
@@ -284,9 +289,9 @@ function AutonomyEditor({ project }: { project: string }) {
       {editable ? (
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" type="submit" disabled={action.busy || picked === undefined}>
-            {t("chat.autoSave", { project })}
+            {t("chat.autoSave", { project: project === HUB_SCOPE ? t("chat.hubScope") : project })}
           </Button>
-          {saved ? <span className="text-xs text-success">{kinds.length ? t("chat.autoSaved", { project, count: kinds.length }) : t("chat.autoNone", { project })}</span> : null}
+          {saved ? <span className="text-xs text-success">{kinds.length ? t("chat.autoSaved", { project: project === HUB_SCOPE ? t("chat.hubScope") : project, count: kinds.length }) : t("chat.autoNone", { project: project === HUB_SCOPE ? t("chat.hubScope") : project })}</span> : null}
         </div>
       ) : null}
       <ErrorNote error={action.error} />

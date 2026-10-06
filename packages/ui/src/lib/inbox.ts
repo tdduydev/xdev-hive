@@ -1,6 +1,6 @@
 // "Hôm nay": what needs the person, gathered from what the hub and this machine already know. Each source becomes
 // items with a stable key, so "seen" and "done" survive reloads (kept in localStorage, per device).
-import type { ImplementationPlan, MemoryCleanupProposal, AgentRun, ChatAction, HubAlert, MachineCommand, Memory, Permission, ProjectRole, Proposal, RunRecord, SdlcGateRecord, SetupItem, Task } from "@xdev-hive/core";
+import { HUB_SCOPE, type ImplementationPlan, type MemoryCleanupProposal, type AgentRun, type ChatAction, type HubAlert, type MachineCommand, type Memory, type Permission, type ProjectRole, type Proposal, type RunRecord, type SdlcGateRecord, type SetupItem, type Task } from "@xdev-hive/core";
 import { approvalOf } from "#ui/lib/permissions.ts";
 import { waitingReason } from "#ui/lib/runs.ts";
 
@@ -216,7 +216,7 @@ export function inboxProject(item: InboxItem): string | null {
     case "gate":
       return item.gate.project;
     case "leader":
-      return item.action.project;
+      return item.action.project === HUB_SCOPE ? null : item.action.project;
     default:
       return null;
   }
