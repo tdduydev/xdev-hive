@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { AGENT_TEMPLATES, autonomyOf, autonomySource, NO_MODEL, OPEN_POLICY, profileAutonomy, type AgentPolicy, type AgentProfile } from "@xdev-hive/core";
-import { applyAutonomy, applyPolicy, buildCommand, codexMcpNames, effortOf, modelOf, policyBlocks, policyLine, ranOn } from "#desktop/main/runner/command.ts";
+import { AGENT_TEMPLATES, autonomyOf, autonomySource, NO_MODEL, OPEN_POLICY, profileAutonomy, type AgentPolicy, type AgentProfile, type ModelSelection } from "@xdev-hive/core";
+import { applyAutonomy, applyPolicy, buildCommand, codexMcpNames, effortOf, modelOf, policyBlocks, policyLine, ranOn, routeProfile } from "#desktop/main/runner/command.ts";
 
 const pol = (over: Partial<AgentPolicy>): AgentPolicy => ({ ...OPEN_POLICY, ...over });
 const boxed = (p: AgentProfile, container: Partial<NonNullable<AgentProfile["container"]>> = {}): AgentProfile => ({
@@ -223,16 +223,43 @@ describe("what a run ran on (roadmap 54a)", () => {
   });
 });
 
-describe("hub model routing", () => {
-  it("applies the selected model and effort after policy, preserving a pinned model", async () => {
-    const { routeProfile } = await import("#desktop/main/runner/command.ts");
-    const selection = { tier: "light" as const, models: { claude: { model: "sonnet", effort: "low" as const }, codex: null, antigravity: null }, reason: "docs/s" };
-    const base = AGENT_TEMPLATES.claude;
-    const routed = routeProfile(base, applyPolicy(base, OPEN_POLICY).profile, OPEN_POLICY, selection);
-    assert.equal(modelOf(routed.profile.args), "sonnet");
-    assert.equal(effortOf("claude", routed.profile.args), "low");
-    assert.equal(routed.profile.env.CLAUDE_CODE_SUBAGENT_MODEL, "sonnet");
-    const pinned = { ...base, args: [...base.args, "--model", "opus"] };
-    assert.equal(modelOf(routeProfile(pinned, applyPolicy(pinned, OPEN_POLICY).profile, OPEN_POLICY, selection).profile.args), "opus");
+describe("the hub's model choice on the command (roadmap 54c)", () => {
+  const light: ModelSelection = {
+    tier: "light",
+    models: { claude: { model: "sonnet", effort: "low" }, codex: { model: "gpt-6-luna", effort: "medium" }, antigravity: { model: "gemini-3.8-flash", effort: "low" } },
+    reason: "docs/s, balanced",
+  };
+  const route = (p: AgentProfile, policy: AgentPolicy = OPEN_POLICY, selection: ModelSelection | null = light) => routeProfile(p, applyPolicy(p, policy).profile, policy, selection);
+
+  it("adds each CLI's own flags, and Sonnet subagents on a cheap tier", () => {
+    const claude = route(AGENT_TEMPLATES.claude);
+    assert.deepEqual(ranOn(claude.profile), { model: "sonnet", effort: "low" });
+    assert.equal(claude.profile.env.CLAUDE_CODE_SUBAGENT_MODEL, "sonnet");
+    assert.equal(claude.note, "sonnet · effort low · tier light (docs/s, balanced)");
+    const codex = route(AGENT_TEMPLATES.codex).profile.args;
+    assert.deepEqual(codex.slice(0, 5), ["exec", "-m", "gpt-6-luna", "-c", "model_reasoning_effort=medium"], "after exec");
+    assert.deepEqual(ranOn(route(AGENT_TEMPLATES.antigravity).profile), { model: "gemini-3.8-flash", effort: "low" });
+    const strong = route(AGENT_TEMPLATES.claude, OPEN_POLICY, { ...light, tier: "strong", models: { claude: { model: "opus", effort: "medium" } } });
+    assert.equal(strong.profile.env.CLAUDE_CODE_SUBAGENT_MODEL, undefined);
+  });
+
+  it("leaves a model or effort the profile set, and changes nothing without a choice", () => {
+    const pinned = route({ ...AGENT_TEMPLATES.claude, args: [...AGENT_TEMPLATES.claude.args, "--model", "opus"] });
+    assert.deepEqual(ranOn(pinned.profile), { model: "opus", effort: null });
+    assert.match(pinned.note!, /^opus · pinned by the profile's args/);
+    const effort = route({ ...AGENT_TEMPLATES.claude, args: [...AGENT_TEMPLATES.claude.args, "--effort", "high"] });
+    assert.deepEqual(ranOn(effort.profile), { model: "sonnet", effort: "high" });
+    const env = route({ ...AGENT_TEMPLATES.claude, env: { CLAUDE_CODE_EFFORT_LEVEL: "high" } });
+    assert.equal(effortOf("claude", env.profile.args), null, "the env beats the flag in Claude Code");
+    const off = route(AGENT_TEMPLATES.claude, OPEN_POLICY, null);
+    assert.deepEqual([off.profile.args, off.note], [AGENT_TEMPLATES.claude.args, null]);
+  });
+
+  it("gives way to the agent policy (27a)", () => {
+    const opusOnly = pol({ models: { claude: ["opus", "haiku"] } });
+    const fit = route(AGENT_TEMPLATES.claude, opusOnly);
+    assert.equal(modelOf(fit.profile.args), "opus");
+    assert.equal(fit.profile.args.filter((a) => a === "--model").length, 1, "the policy's model replaced, not doubled");
+    assert.match(fit.note!, /sonnet not allowed by the policy$/);
   });
 });

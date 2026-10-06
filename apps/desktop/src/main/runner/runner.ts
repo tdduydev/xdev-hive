@@ -655,6 +655,7 @@ export class Runner {
           bestOf: { group, n: i + 1, of: count, from, pick: null, reason: null },
           preferKind: req.preferKind ?? null,
           requestedBy,
+          selection: req.selection ?? null,
         },
         now,
       ),
@@ -2145,7 +2146,8 @@ export class Runner {
           preferKind: run.preferKind,
           baseSha: done.baseSha,
           requestedBy: run.requestedBy,
-          selection: run.selection,
+          // The review row's choice, not the implementer's: reviewing a big feature needs less than writing it.
+          selection: run.selection?.review ?? null,
         },
         this.#iso(),
       );

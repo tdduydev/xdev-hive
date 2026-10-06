@@ -549,24 +549,33 @@ export function ranOn(profile: AgentProfile): { model: string | null; effort: st
   return { model: modelOf(profile.args), effort: effortOf(profile.kind, profile.args) };
 }
 
-/** Apply the hub choice only after policy fitting, while preserving a model pinned in the profile. */
-export function routeProfile(original: AgentProfile, fitted: AgentProfile, policy: AgentPolicy, selection: ModelSelection | null | undefined, failureStep = 0): { profile: AgentProfile; note: string | null } {
-  if (!selection || !["claude", "codex", "antigravity"].includes(fitted.kind)) return { profile: fitted, note: null };
-  const kind = fitted.kind as "claude" | "codex" | "antigravity";
-  if (modelOf(original.args)) return { profile: fitted, note: `profile args pinned ${modelOf(original.args)}` };
-  const preferred = selection.models[kind];
-  if (!preferred) return { profile: fitted, note: `no ${kind} model at ${selection.tier}` };
-  const allowed = modelsFor(policy, kind);
-  const model = !allowed || allowed.includes(preferred.model) ? preferred.model : allowed[0];
-  if (!model) return { profile: fitted, note: `policy has no ${kind} model` };
-  let args = withoutFlags(fitted.args, ["--model", "-m"], []);
-  args = insertFlags(kind, args, [kind === "codex" ? "-m" : "--model", model]);
-  if (!effortOf(kind, original.args) && preferred.effort) {
-    const levels = ["low", "medium", "high", "xhigh"];
-    const effort = levels[Math.min(3, Math.max(0, levels.indexOf(preferred.effort) + failureStep))]!;
-    args = insertFlags(kind, args, kind === "codex" ? ["-c", `model_reasoning_effort=${effort}`] : ["--effort", effort]);
-  }
-  return { profile: { ...fitted, args, env: kind === "claude" && ["light", "standard"].includes(selection.tier) ? { ...fitted.env, CLAUDE_CODE_SUBAGENT_MODEL: "sonnet" } : fitted.env }, note: `${model} · ${effortOf(kind, args) ?? "default"} · tier ${selection.tier} (${selection.reason})${model !== preferred.model ? " · policy fallback" : ""}` };
+/**
+ * The profile with the hub's model choice (roadmap 54c), applied to what applyPolicy fitted. `own` is the profile as
+ * the user saved it: a model there is the user's pin and stays, an effort there too. The policy (27a) still wins: a
+ * model it does not allow gives way to its first allowed one. `note` is the run log's `# model:` line (null: no choice).
+ */
+export function routeProfile(own: AgentProfile, fitted: AgentProfile, pol: AgentPolicy, selection: ModelSelection | null | undefined): { profile: AgentProfile; note: string | null } {
+  const kind = fitted.kind;
+  if (!selection || (kind !== "claude" && kind !== "codex" && kind !== "antigravity")) return { profile: fitted, note: null };
+  const where = `tier ${selection.tier} (${selection.reason})`;
+  const pinned = modelOf(own.args);
+  if (pinned) return { profile: fitted, note: `${pinned} · pinned by the profile's args, ${where} not applied` };
+  const wanted = selection.models[kind];
+  if (!wanted) return { profile: fitted, note: `no ${kind} model at ${where}` };
+  const allowed = modelsFor(pol, kind);
+  const model = !allowed || allowed.includes(wanted.model) ? wanted.model : allowed[0];
+  // policyBlocks already refused a policy with no model left, so this is only a guard.
+  if (!model) return { profile: fitted, note: null };
+  // CLAUDE_CODE_EFFORT_LEVEL beats --effort in Claude Code, so a profile that sets it has chosen its effort too.
+  const ownEffort = effortOf(kind, own.args) ?? (kind === "claude" ? (own.env.CLAUDE_CODE_EFFORT_LEVEL ?? null) : null);
+  const flags = [kind === "codex" ? "-m" : "--model", model];
+  if (!ownEffort && wanted.effort) flags.push(...(kind === "codex" ? ["-c", `model_reasoning_effort=${wanted.effort}`] : ["--effort", wanted.effort]));
+  const args = insertFlags(kind, withoutFlags(fitted.args, ["--model", "-m"], []), flags);
+  // Explore and other subagents run Opus by default on a plan: on a cheap tier that would spend more than the run itself.
+  const env = kind === "claude" && (selection.tier === "light" || selection.tier === "standard") && !own.env.CLAUDE_CODE_SUBAGENT_MODEL ? { ...fitted.env, CLAUDE_CODE_SUBAGENT_MODEL: "sonnet" } : fitted.env;
+  const effort = ownEffort ?? wanted.effort ?? "default";
+  const fallback = model !== wanted.model ? ` · ${wanted.model} not allowed by the policy` : "";
+  return { profile: { ...fitted, args, env }, note: `${model} · effort ${effort} · ${where}${fallback}` };
 }
 
 /**
