@@ -81,7 +81,7 @@ describe("lifecycle gates (roadmap 34a)", () => {
     const hive = new SqliteHive(":memory:");
     await hive.call("tasks.create", { id: "NEW-1", project: "new", title: "New project" }, admin);
     const view = await hive.call("sdlc.get", {}, admin);
-    assert.deepEqual(view.projects.new?.effective, { spec: "auto", plan: "auto", tasks: "auto", dispatch: "auto", review: "auto", fix: "auto", merge: "ai" });
+    assert.deepEqual(view.projects.new?.effective, { spec: "auto", plan: "auto", tasks: "auto", dispatch: "auto", review: "auto", fix: "auto", test: "auto", merge: "ai" });
     await hive.call("sdlc.setCeiling", { ceiling: { merge: "human", review: "ai" } }, admin);
     const held = await hive.call("sdlc.get", {}, admin);
     assert.deepEqual([held.projects.new?.effective.merge, held.projects.new?.effective.review], ["human", "ai"]);
@@ -89,7 +89,7 @@ describe("lifecycle gates (roadmap 34a)", () => {
     assert.equal((await hive.call("sdlc.get", {}, admin)).projects.new?.effective.spec, "human");
   });
   it("leaves every gate to a person until a project opens one, and never past the hub's ceiling", () => {
-    assert.deepEqual(effectiveGates(EMPTY_SDLC_POLICY, "app"), { spec: "human", plan: "human", tasks: "human", dispatch: "human", review: "human", fix: "human", merge: "human" });
+    assert.deepEqual(effectiveGates(EMPTY_SDLC_POLICY, "app"), { spec: "human", plan: "human", tasks: "human", dispatch: "human", review: "human", fix: "human", test: "auto", merge: "human" });
     const policy = { ...EMPTY_SDLC_POLICY, ceiling: { merge: "ai" as const, fix: "human" as const }, projects: { app: { gates: { spec: "auto" as const, merge: "auto" as const, fix: "auto" as const } } } };
     const app = effectiveGates(policy, "app");
     assert.deepEqual([app.spec, app.merge, app.fix, app.plan], ["auto", "ai", "human", "human"]);

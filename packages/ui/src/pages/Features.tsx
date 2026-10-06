@@ -434,8 +434,8 @@ function GateDecision({ gate: g, task, item, onDone }: { gate: SdlcGateRecord; t
   const needsNote = noteRequired(g);
   const gate = t(`sdlc.gate.${g.gate}`);
   // Passing a fix gate queues the fix and passing merge merges: their own words, so nobody passes one by mistake.
-  const passLabel = g.gate === "fix" || g.gate === "merge" ? t(`flow.taskPass.${g.gate}`) : t("features.decide.pass");
-  const changesLabel = g.gate === "fix" || g.gate === "merge" ? t(`flow.taskChanges.${g.gate}`) : t("features.decide.changes");
+  const passLabel = g.gate === "fix" || g.gate === "merge" || g.gate === "test" ? t(`flow.taskPass.${g.gate}`) : t("features.decide.pass");
+  const changesLabel = g.gate === "fix" || g.gate === "merge" || g.gate === "test" ? t(`flow.taskChanges.${g.gate}`) : t("features.decide.changes");
   const passWhat = g.gate === "review" ? t("flow.taskPass.review") : g.gate === "tasks" || g.gate === "dispatch" ? t(`flow.pass.${g.gate}`) : g.gate === "spec" || g.gate === "plan" ? t("flow.pass.next") : passLabel;
   const run = item.tasks.find((x) => x.taskId === task)?.runId ?? null;
   const decide = (decision: "pass" | "changes") =>
@@ -487,8 +487,8 @@ function GateDecision({ gate: g, task, item, onDone }: { gate: SdlcGateRecord; t
 }
 
 /**
- * Kiểm thử: the criteria and scenarios of spec.md, each ticked when tried. Kept in this browser (localStorage), the
- * lightest place there is: a shared record needs a hub method, which waits for the QA role spec 49 left for later.
+ * Kiểm thử: the criteria and scenarios of spec.md, each ticked when tried. Marks remain browser-local as specified
+ * for 49d; qaVerify controls who can change them and decide the separate test gate.
  */
 function Checks({ item, spec, canVerify }: { item: FeatureItem; spec: string | null | undefined; canVerify: boolean }) {
   const t = useT();

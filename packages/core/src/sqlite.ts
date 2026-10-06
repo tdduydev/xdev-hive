@@ -4517,7 +4517,7 @@ export class SqliteHive implements HiveBackend {
       this.#setTask(r.taskId, { machine_id: machineId, run_id: r.runId });
       if (modes.review === "auto") {
         this.#taskGate(ft, "review", "auto", "passed", { runId: r.runId }, { by: "auto" });
-        this.#setTask(r.taskId, { stage: "merge", gate_id: null });
+        this.#toTest(this.#flowTaskRow(r.taskId)!);
       } else this.#setTask(r.taskId, { stage: "review" });
       return;
     }
@@ -4532,7 +4532,7 @@ export class SqliteHive implements HiveBackend {
         this.#setTask(r.taskId, { stage: "gate", gate_id: gateId, note: report });
       } else if (verdict === "approve") {
         this.#taskGate(ft, "review", "ai", "passed", { review }, { by, note: report });
-        this.#setTask(r.taskId, { stage: "merge", gate_id: null, note: null });
+        this.#toTest(this.#flowTaskRow(r.taskId)!);
       } else if (verdict === "changes") {
         this.#taskGate(ft, "review", "ai", "rejected", { review }, { by, note: report });
         this.#toFix(this.#flowTaskRow(r.taskId)!, review, "");
