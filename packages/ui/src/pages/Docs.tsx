@@ -1200,7 +1200,9 @@ function DocView({
         ) : null}
         <details className="relative ml-auto md:hidden">
           <summary className="flex min-h-10 cursor-pointer items-center rounded-sm border border-line-default px-3 text-sm font-medium text-fg-strong">{t("docs.modes")}</summary>
-          <div onClick={(event) => { if ((event.target as HTMLElement).closest("button, a")) event.currentTarget.closest("details")?.removeAttribute("open"); }} className="absolute right-0 z-30 mt-1 flex w-[min(290px,calc(100vw-32px))] flex-col gap-1 rounded-md border border-line-default bg-raised p-2 shadow-e3">
+          <div onClick={(event) => { if ((event.target as HTMLElement).closest("button, a")) event.currentTarget.closest("details")?.removeAttribute("open"); }} className="absolute right-0 z-30 mt-1 flex w-[min(290px,calc(100vw-32px))] max-h-[calc(100dvh-160px)] flex-col gap-1 overflow-y-auto rounded-md border border-line-default bg-raised p-2 shadow-e3">
+            {/* Save first: with phone-sized rows the menu outgrows the screen, and a toast covered a save at its end. */}
+            {writer && (dirty || (!current && draft)) ? <Button className="min-h-10" onClick={(event) => { void save(); event.currentTarget.closest("details")?.removeAttribute("open"); }} disabled={action.busy}>{canEdit ? t("docs.saveAs", { version: (current?.version ?? 0) + 1 }) : t("docs.propose")}</Button> : null}
             {writer ? (["view", "edit", "markdown"] as const).map((m) => <Button key={m} role="radio" aria-checked={mode === m} variant={mode === m ? "secondary" : "ghost"} className="min-h-10 justify-start" onClick={(event) => { setMode(m); setCompare(null); event.currentTarget.closest("details")?.removeAttribute("open"); }}>{m === "view" ? t("docs.modeView") : m === "edit" ? t("docs.modeEdit") : t("docs.modeMarkdown")}</Button>) : null}
             {current ? <Button variant="ghost" className="min-h-10 justify-start" asChild><a href={docHref(docKey, "read")}>{t("docs.reader")}</a></Button> : null}
             {writer ? <Button variant="ghost" className="min-h-10 justify-start" onClick={() => setPanel((p) => p === "assist" ? null : "assist")}>{t("docs.assist.button")}</Button> : null}
@@ -1208,7 +1210,6 @@ function DocView({
             {current ? <Button variant="ghost" className="min-h-10 justify-start" onClick={() => setPanel((p) => p === "history" ? null : "history")}>{t("docs.history")}</Button> : null}
             {dirty && current ? <Button variant="ghost" className="min-h-10 justify-start" onClick={() => setShowDiff((v) => !v)}>{showDiff ? t("docs.hideChanges") : t("docs.showChanges")}</Button> : null}
             {dirty || (!current && draft) ? <Button variant="ghost" className="min-h-10 justify-start" onClick={() => { setDraft(null); setShowDiff(false); }}>{t("docs.discard")}</Button> : null}
-            {writer && (dirty || (!current && draft)) ? <Button className="min-h-10" onClick={(event) => { void save(); event.currentTarget.closest("details")?.removeAttribute("open"); }} disabled={action.busy}>{canEdit ? t("docs.saveAs", { version: (current?.version ?? 0) + 1 }) : t("docs.propose")}</Button> : null}
           </div>
         </details>
         <div className="hidden flex-wrap items-center gap-2 md:flex">
