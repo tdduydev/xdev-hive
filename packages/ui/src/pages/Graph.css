@@ -77,6 +77,38 @@
 .graph-page .react-flow__attribution { background: transparent; color: var(--text-muted); }
 .graph-page .react-flow__attribution a { color: inherit; }
 
+.graph-hint { margin: 0; color: var(--text-secondary); font-size: 12px; }
+.graph-picker textarea { min-height: 88px; padding: 8px; border: 1px solid var(--border-default); border-radius: 7px; background: var(--bg-surface); color: var(--text-primary); font-size: 16px; }
+
+/* SDLC: a flow's card then its steps; the border says where each step stands, with the same status tokens as tasks. */
+.graph-flow { width: 100%; height: 100%; text-decoration: none; border-color: var(--border-strong); }
+.graph-step { display: flex; width: 100%; height: 100%; flex-direction: column; gap: 6px; padding: 8px 10px; border: 2px solid var(--status-neutral-border); border-radius: 9px; background: var(--bg-surface); box-shadow: var(--shadow-1); color: var(--text-primary); font-size: 12px; }
+.graph-step-open { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 3px; color: inherit; text-decoration: none; }
+.graph-step-open strong { color: var(--text-strong); font-size: 13px; }
+.graph-step-state { font-weight: 700; }
+.graph-step-who { overflow: hidden; color: var(--text-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.graph-step-todo { opacity: .75; }
+.graph-step-running { border-color: var(--status-running-border); }
+.graph-step-gate { border-color: var(--status-warning-border); background: var(--status-warning-bg); }
+.graph-step-gate .graph-step-state { color: var(--status-warning-fg); }
+.graph-step-changes { border-color: var(--status-danger-border); border-style: dashed; }
+.graph-step-stopped { border-color: var(--status-danger-border); }
+.graph-step-stopped .graph-step-state, .graph-step-changes .graph-step-state { color: var(--status-danger-fg); }
+.graph-step-done { border-color: var(--status-success-border); }
+.graph-step-actions { display: flex; gap: 4px; }
+.graph-step-actions button { flex: 1; min-width: 0; min-height: 32px; padding: 2px 4px; border: 1px solid var(--border-default); border-radius: 6px; background: var(--bg-surface); color: var(--text-primary); font-size: 11px; font-weight: 600; cursor: pointer; }
+.graph-step-actions button:first-child { border-color: var(--border-selected); background: var(--state-selected-bg); color: var(--state-selected-fg); }
+.graph-step-actions button:disabled { border-color: var(--state-disabled-border); background: var(--state-disabled-bg); color: var(--state-disabled-fg); cursor: not-allowed; }
+.graph-step :is(a, button):focus-visible, .graph-flow:focus-visible, .graph-service:focus-visible { outline: 2px solid var(--focus-color); outline-offset: 2px; }
+
+/* Hệ thống: a node per service, the edge label is how many cross-service dependencies are still open. */
+.graph-service { display: flex; width: 100%; height: 100%; flex-direction: column; justify-content: center; gap: 4px; padding: 10px 12px; border: 1px solid var(--border-default); border-radius: 9px; background: var(--bg-surface); box-shadow: var(--shadow-1); color: var(--text-secondary); font-size: 12px; text-align: left; cursor: pointer; }
+.graph-service:hover { border-color: var(--border-selected); }
+.graph-service-name { display: flex; align-items: center; gap: 6px; padding-right: 22px; color: var(--text-strong); font-family: var(--font-mono); font-size: 13px; font-weight: 700; }
+.graph-service-agents { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.graph-page .react-flow__edge-textbg { fill: var(--bg-surface); }
+.graph-page .react-flow__edge-text { fill: var(--text-primary); font-size: 12px; font-weight: 700; }
+
 .graph-pick { padding: 24px; }
 .graph-pick > div { display: flex; flex-wrap: wrap; gap: 8px; }
 .graph-pick button { min-height: 44px; padding: 10px; border: 1px solid var(--border-default); border-radius: 7px; background: var(--bg-surface); color: var(--text-primary); }
@@ -94,6 +126,7 @@
   .graph-unassigned-list { flex-direction: row; }
   .graph-unassigned-list button { min-width: 160px; }
   .graph-drag-handle { width: 28px; height: 28px; line-height: 28px; }
+  .graph-step-actions button { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .graph-page * { animation-duration: 0ms !important; transition-duration: 0ms !important; }

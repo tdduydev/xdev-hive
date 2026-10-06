@@ -122,7 +122,7 @@ class Tab {
         const el = txt == null ? all[0] : (all.find((e) => label(e) === txt) ?? all.find((e) => label(e).startsWith(txt)));
         if (!el || el.disabled) return null;
         // Scrolling a transformed React Flow node changes the pane under the pointer.
-        if (!sel.startsWith("[data-graph-task")) el.scrollIntoView({ block: "center", inline: "center" });
+        if (!el.closest(".react-flow")) el.scrollIntoView({ block: "center", inline: "center" });
         const r = el.getBoundingClientRect();
         return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
       },
@@ -1502,6 +1502,73 @@ async function main() {
     if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
     await tab.go("tasks?task=DEMO-2");
     await tab.waitFor("DEMO-2 waiting for payment/PAY-1", () => document.body.innerText.includes("Trang đơn hàng") && document.body.innerText.includes("payment/PAY-1"));
+  });
+
+  // Roadmap 51c: with All projects the graph is one node per project and the 19d dependency between them; a node opens
+  // its project, whose SDLC layer lets Lan pass a flow's spec gate on the step itself; a system shows its services.
+  await step("graph-sdlc-system", async () => {
+    const machineRpc = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" }, body: JSON.stringify({ method, input }) });
+      const body = await r.json();
+      if (body.error) throw new Error(`${method}: ${body.error.message}`);
+      return body.result;
+    };
+    const lanRpc = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}` }, body: JSON.stringify({ method, input }) });
+      const body = await r.json();
+      if (body.error) throw new Error(`${method}: ${body.error.message}`);
+      return body.result;
+    };
+    // The same profiles sdlc-flow left, so the steps after this one find the machine as they did.
+    const profile = (id, kind) => ({ id, label: id, kind, enabled: true, account: null, installed: true, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, maxConcurrent: 1 });
+    const beat = () => machineRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", version: "0.115.0", projects: ["payment"], acceptsRuns: true, profiles: [profile("claude-1", "claude"), profile("codex-1", "codex")], runs: [] });
+    await beat();
+    // A flow at payment's spec gate (a person's, as seed.mjs pins it), the way sdlc-flow gets there.
+    await lanRpc("specs.runStep", { project: "payment", step: "specify", taskId: "SPEC-GRAPH", title: "Spec: sơ đồ", input: "Sơ đồ luồng.", machineId: "runner.lan-mbp@lan-e2e" });
+    const [specify] = (await beat()).runRequests.filter((r) => r.taskId === "SPEC-GRAPH");
+    await machineRpc("runs.requestResult", { id: specify.id, status: "accepted", runId: "R-graph1" });
+    const at = new Date().toISOString();
+    const run = { runId: "R-graph1", project: "payment", taskId: "SPEC-GRAPH", taskTitle: "Spec: sơ đồ", role: "implement", profileId: "claude-1", createdAt: at };
+    await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ ...run, status: "running" }] });
+    await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ ...run, status: "succeeded", finishedAt: at }] });
+    await machineRpc("specs.push", { project: "payment", features: [{ dir: "002-so-do", branch: "ai/SPEC-GRAPH", commit: "abc1240", files: { spec: "# Sơ đồ\n", plan: null, tasks: null } }] });
+
+    // cross-service-task left Lan on All projects.
+    const tab = (current = tabs.lan);
+    await tab.go("graph");
+    await tab.waitFor("a node per project and the cross-service edge", () => !!document.querySelector('[data-graph-service="payment"]') && !!document.querySelector('[data-graph-service="demo"]') && !!document.querySelector('.react-flow__edge[data-id="system:payment->system:demo"]'));
+    expect(!!(await tab.eval(() => document.querySelector('[data-graph-layer="system"]')?.getAttribute("aria-pressed") === "true" && document.querySelector('[data-graph-layer="task"]')?.disabled)), "All projects shows only the system layer");
+    const demo = await tab.eval(() => document.querySelector('[data-graph-service="demo"]')?.getAttribute("aria-label") ?? "");
+    expect(/task mở/.test(demo) && /run đang chạy/.test(demo), `service node label: ${demo}`);
+    await tab.shot("graph-system-all");
+    await tab.click('[data-graph-service="payment"]');
+    await tab.waitFor("the payment project's task layer", () => document.querySelector('[data-graph-layer="task"]')?.getAttribute("aria-pressed") === "true" && !!document.querySelector('[data-graph-task="PAY-1"]'));
+
+    await tab.click('[data-graph-layer="sdlc"]');
+    await tab.waitFor("the flow's spec step waiting for a person", () => document.querySelector('[data-graph-step="SPEC-GRAPH:spec"]')?.getAttribute("data-graph-step-state") === "gate" && !!document.querySelector('[data-graph-step="SPEC-GRAPH:spec"] [data-graph-pass]'));
+    const label = await tab.eval(() => document.querySelector('[data-graph-step="SPEC-GRAPH:spec"] a')?.getAttribute("aria-label") ?? "");
+    expect(label.includes("Chờ chốt") && label.includes("giao run"), `step label: ${label}`);
+    await tab.shot("graph-sdlc-layer");
+    await tab.click('[data-graph-step="SPEC-GRAPH:spec"] [data-graph-pass]');
+    await tab.waitFor("the spec step passed and plan next", () => document.querySelector('[data-graph-step="SPEC-GRAPH:spec"]')?.getAttribute("data-graph-step-state") === "done" && document.querySelector('[data-graph-step="SPEC-GRAPH:plan"]')?.getAttribute("data-graph-step-state") === "running");
+    const gates = await rpc("sdlc.gates", { taskId: "SPEC-GRAPH" });
+    expect(gates[0]?.gate === "spec" && gates[0]?.status === "passed" && gates[0]?.decidedBy?.startsWith("lan"), `gate: ${JSON.stringify(gates[0])}`);
+    // Leave the hub as the other steps expect it: no plan step waiting for lan-mbp.
+    const [plan] = (await beat()).runRequests.filter((r) => r.taskId === "SPEC-GRAPH");
+    if (plan) await rpc("runs.cancelRequest", { id: plan.id });
+
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('input[aria-label="Tìm dự án hoặc hệ thống…"]');
+    await tab.type("ban-hang");
+    await tab.click('[role="option"]', "ban-hang");
+    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
+    await tab.click('[data-graph-layer="system"]');
+    // Only the services Lan sees: ledger may not be one of them.
+    await tab.waitFor("the system's services", () => ["payment", "demo"].every((p) => !!document.querySelector(`[data-graph-service="${p}"]`)));
+    await tab.shot("graph-system-layer");
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('[role="option"]', "Tất cả dự án");
+    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
   });
 
   // Roadmap 41a: a new handover does not erase the one before it — the panel lists them and diffs two neighbours.
