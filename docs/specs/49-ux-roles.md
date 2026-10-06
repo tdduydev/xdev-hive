@@ -178,7 +178,8 @@ Agent là "người làm" trong hệ thống, không phải người dùng web. 
 |---|---|---|---|
 | — | **Hôm nay** | Hôm nay | mọi người |
 | — | **Chat** | Chat | `chatUse` |
-| Làm việc | **Tính năng** | Spec, phần luồng và chốt của Task | `view` |
+| Làm việc | **Sơ đồ** | mới (roadmap 51, React Flow) | `view` |
+| | **Tính năng** | Spec, phần luồng và chốt của Task | `view` |
 | | **Task** | Task | `view` |
 | | **Agent đang chạy** | Lượt chạy, Đợt chạy (thành bộ lọc) | `view` |
 | Kiến thức | **Tài liệu** | Tài liệu, đề xuất tài liệu (tab *Chờ duyệt*) | `view` |
@@ -191,8 +192,8 @@ Agent là "người làm" trong hệ thống, không phải người dùng web. 
 *Token* và *Đổi mật khẩu* chuyển vào menu tài khoản (ảnh đại diện).
 
 Kết quả:
-- admin hub còn **11 mục**, thay vì 27;
-- thành viên còn 9.
+- admin hub còn **12 mục** (gồm *Sơ đồ* của 51), thay vì 27;
+- thành viên còn 10.
 
 Địa chỉ cũ chuyển hướng như 35b đã làm (`lib/route.ts`).
 
@@ -277,8 +278,10 @@ Làm lần lượt. Mỗi mục là một task R-49x, chạy qua Hive. Mỗi m�
 | **49e. runs-review** | *Agent đang chạy*: trạng thái *Chờ người*, trang run đọc bàn giao trước, form giao run gập *Tuỳ chọn* | 49b |
 | **49f. knowledge** | Tab *Chờ duyệt* trong Tài liệu và Skill, bỏ trang Đề xuất; skill hiện phạm vi và lúc áp dụng; việc dọn memory định kỳ (tạo đề xuất) | 49b |
 | **49g. today-roles** | *Hôm nay* nhóm theo việc, thứ tự theo vai | 49d, 49e |
+| **49h. mobile-pass** | Rà mọi trang web ở 390×844 bằng skill `ui-ux-pro-max` (vùng chạm, cỡ chữ ô nhập ≥ 16px, tương phản, focus, `prefers-reduced-motion`, nhãn), bảng phát hiện trong ghi chú task, sửa; ảnh e2e:mobile trước/sau | MOBILE-42-land, SKILL-uiux |
 
 **Cách làm chung cho mọi mục:**
+- Mỗi mục (49, 50, 51) phải qua `npm run e2e:mobile -w @xdev-hive/web` (390×844, không tràn ngang), và người làm tự rà trang đã đổi theo checklist của skill `ui-ux-pro-max`, ghi kết quả vào ghi chú.
 - Agent đọc skill `ui-ux-pro-max` (sau khi SKILL-uiux vào main) để kiểm accessibility và bố cục từng trang đổi. Không đổi token, màu hay font.
 - Chữ giao diện viết vào `vi.ts` trước, rồi `en.ts`.
 - Chạy `npm run typecheck`, `npm test`, e2e web. Đổi giao diện desktop dùng chung (`packages/ui`) thì chạy thêm build và smoke desktop.
