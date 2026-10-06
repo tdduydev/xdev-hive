@@ -1090,6 +1090,7 @@ async function main() {
         await tab.waitFor("Merge cannot exceed the ceiling", () => document.querySelector('[data-pipeline-editor] [data-pipeline-mode="auto"]')?.disabled && document.querySelector('[data-pipeline-editor] [data-pipeline-mode="ai"]')?.disabled);
         await tab.shot(`${String(n).padStart(2, "0")}-pipeline-ceiling`);
         await tab.key("Escape");
+        await tab.waitFor("merge editor closed", () => !document.querySelector("[data-pipeline-editor]"));
         await tab.click('[data-pipeline-preset="fast"]');
         await tab.waitFor("fast path preview", () => document.querySelectorAll("[data-pipeline-fast-kind]").length === 3);
         await tab.click('[data-pipeline-fast-kind="test"]');
