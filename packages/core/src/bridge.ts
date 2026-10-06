@@ -1,3 +1,4 @@
+import type { ModelSelection } from "./model-router.ts";
 // Contracts between the shared UI and its hosts (web hub, desktop main process). Types only.
 import type { Access, Grant } from "./access.ts";
 import type { ProfileAutonomy } from "./agent-policy.ts";
@@ -369,6 +370,7 @@ export interface AgentRun {
    * What it ran on (roadmap 54a), read from the args once the policy fitted the profile: the profile's kind, and the
    * model and effort the args set (null: the CLI's default). Left out or null before it started.
    */
+  selection?: ModelSelection | null;
   agentKind?: AgentKind | null;
   model?: string | null;
   effort?: string | null;
@@ -417,6 +419,7 @@ export interface StartRunRequest {
   reviewAfter?: boolean;
   /** Implement 2–4 times on different subscriptions and keep the best (judged by another vendor); default 1. */
   candidates?: number;
+  selection?: ModelSelection | null;
 }
 
 export interface ProfileCheck {

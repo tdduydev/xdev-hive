@@ -15,6 +15,8 @@ export interface ProfileLoad {
   overLimit?: boolean;
   /** Plan left before a stop threshold, in points (see usageHeadroom); null or missing: not known. */
   headroom?: number | null;
+  /** Session usage in percent, when known. */
+  sessionPercent?: number | null;
   /** ISO time the limit that stops the profile first resets (see limitResetAt); null or missing: not known. */
   resetAt?: string | null;
 }
@@ -36,6 +38,7 @@ export interface RunNeeds {
    * run once free, and goes to another kind only when every one of them is off, signed out, over its threshold or resting.
    */
   preferKind?: AgentKind | null;
+  pressure?: boolean;
 }
 
 /**
@@ -124,6 +127,7 @@ export function pickWithReason(loads: ProfileLoad[], needs: RunNeeds, now: Date)
     (a, b) =>
       Number(avoid.includes(a.profile.id)) - Number(avoid.includes(b.profile.id)) ||
       Number(needs.avoidKinds.includes(a.profile.kind)) - Number(needs.avoidKinds.includes(b.profile.kind)) ||
+      (needs.pressure ? Number((a.sessionPercent ?? 0) > 70) - Number((b.sessionPercent ?? 0) > 70) : 0) ||
       soonest(resetKey(a), resetKey(b)) ||
       (b.headroom ?? -1) - (a.headroom ?? -1) ||
       a.profile.priority - b.profile.priority ||

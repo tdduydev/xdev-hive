@@ -222,3 +222,17 @@ describe("what a run ran on (roadmap 54a)", () => {
     assert.deepEqual(ranOn({ ...AGENT_TEMPLATES.claude, kind: "custom", args: ["--model", "x", "--effort", "low"] }), { model: null, effort: null });
   });
 });
+
+describe("hub model routing", () => {
+  it("applies the selected model and effort after policy, preserving a pinned model", async () => {
+    const { routeProfile } = await import("#desktop/main/runner/command.ts");
+    const selection = { tier: "light" as const, models: { claude: { model: "sonnet", effort: "low" as const }, codex: null, antigravity: null }, reason: "docs/s" };
+    const base = AGENT_TEMPLATES.claude;
+    const routed = routeProfile(base, applyPolicy(base, OPEN_POLICY).profile, OPEN_POLICY, selection);
+    assert.equal(modelOf(routed.profile.args), "sonnet");
+    assert.equal(effortOf("claude", routed.profile.args), "low");
+    assert.equal(routed.profile.env.CLAUDE_CODE_SUBAGENT_MODEL, "sonnet");
+    const pinned = { ...base, args: [...base.args, "--model", "opus"] };
+    assert.equal(modelOf(routeProfile(pinned, applyPolicy(pinned, OPEN_POLICY).profile, OPEN_POLICY, selection).profile.args), "opus");
+  });
+});

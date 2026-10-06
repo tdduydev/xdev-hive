@@ -25,6 +25,7 @@ export * from "./source.ts";
 export * from "./speckit.ts";
 export * from "./sync.ts";
 export * from "./task-classify.ts";
+export * from "./model-router.ts";
 export * from "./tools.ts";
 export * from "./transfer.ts";
 export * from "./types.ts";

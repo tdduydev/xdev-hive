@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { AgentKind, AgentRole, PreferKind, AgentRun, BestOf, CiFix, MrState, MrStatus, PipelineStatus, RunCompression, RunStatus, RunTokens } from "@xdev-hive/core";
+import type { AgentKind, AgentRole, PreferKind, AgentRun, BestOf, CiFix, MrState, MrStatus, PipelineStatus, RunCompression, RunStatus, RunTokens, ModelSelection } from "@xdev-hive/core";
 import { tr } from "#desktop/main/i18n.ts";
 import type { UsageSample } from "./usage.ts";
 
@@ -63,10 +63,11 @@ const ADDED_COLUMNS: Array<[name: string, ddl: string]> = [
   ["agent_kind", "TEXT"],
   ["model", "TEXT"],
   ["effort", "TEXT"],
+  ["selection", "TEXT"],
 ];
 
 type Row = Record<string, unknown>;
-const JSON_FIELDS = new Set(["avoidKinds", "excludedProfiles", "ciFix", "bestOf", "compression"]);
+const JSON_FIELDS = new Set(["avoidKinds", "excludedProfiles", "ciFix", "bestOf", "compression", "selection"]);
 const BOOL_FIELDS = new Set(["reviewAfter", "mrDraft"]);
 const column = (field: string) => field.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 
@@ -121,6 +122,7 @@ function toRun(r: Row): AgentRun {
     agentKind: s(r.agent_kind) as AgentKind | null,
     model: s(r.model),
     effort: s(r.effort),
+    selection: r.selection == null ? null : JSON.parse(String(r.selection)) as ModelSelection,
   };
 }
 
@@ -128,7 +130,7 @@ const encode = (field: string, value: unknown) =>
   JSON_FIELDS.has(field) ? JSON.stringify(value) : BOOL_FIELDS.has(field) ? (value ? 1 : 0) : (value ?? null);
 
 export type NewRun = Pick<AgentRun, "project" | "taskId" | "taskTitle" | "role" | "attempt" | "maxAttempts"> &
-  Partial<Pick<AgentRun, "preferredProfile" | "preferKind" | "avoidKinds" | "excludedProfiles" | "parentRunId" | "worktree" | "branch" | "baseSha" | "instructions" | "reviewAfter" | "ciFix" | "bestOf" | "requestedBy">>;
+  Partial<Pick<AgentRun, "preferredProfile" | "preferKind" | "avoidKinds" | "excludedProfiles" | "parentRunId" | "worktree" | "branch" | "baseSha" | "instructions" | "reviewAfter" | "ciFix" | "bestOf" | "requestedBy" | "selection">>;
 
 export const ACTIVE: RunStatus[] = ["queued", "running"];
 

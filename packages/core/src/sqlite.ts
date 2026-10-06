@@ -57,6 +57,7 @@ import { assertNoSecret, findSecret, redactLines } from "./secrets.ts";
 import { isAgentActor, MR_WATCHER, parseSource, principalOf, type WriteSource } from "./source.ts";
 import { SEED_DOCS, SEED_VERSION } from "./seed.ts";
 import { planSpecTasks, specStage, specStepInstructions, specTaskPrefix, specTasks, specTitle, type SpecFeature, type SpecFeatureDetail, type SpecFiles, type SpecStep } from "./speckit.ts";
+import { DEFAULT_MODEL_ROUTER, selectModel, type ModelRouterSettings } from "./model-router.ts";
 import { parseVerdict, type Verdict } from "./verdict.ts";
 import { parseParts, partInstructions, reduceInstructions, splitInstructions, type MapPhase } from "./mapreduce.ts";
 import { toolEffective, toolProblem, toolSetupItems } from "./tools.ts";
@@ -1889,6 +1890,12 @@ export class SqliteHive implements HiveBackend {
         if (row) this.#need(actor, str(row.project), "runDispatch", `Flow ${i.taskId}`);
         return;
       }
+      case "modelRouter.set":
+        if (i.project === null) {
+          if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Only a hub admin sets model tiers.");
+          return;
+        }
+        return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
       case "agentPolicy.set":
         // The default binds every project, so only someone over all of them: a hub admin (no per-project grants).
         if (i.project === null) {
@@ -2119,6 +2126,11 @@ export class SqliteHive implements HiveBackend {
       case "policy.get": {
         const policy = out as TeamPolicy;
         return { ...policy, projects: Object.fromEntries(Object.entries(policy.projects).filter(([p]) => visible(p))) } as MethodOutput[M];
+      }
+      case "modelRouter.get":
+      case "modelRouter.set": {
+        const view = out as ModelRouterSettings;
+        return { ...view, projects: Object.fromEntries(Object.entries(view.projects).filter(([p]) => visible(p))) } as MethodOutput[M];
       }
       case "agentPolicy.get":
       case "sdlc.get":
@@ -2925,6 +2937,13 @@ export class SqliteHive implements HiveBackend {
     if (!row) return EMPTY_AGENT_POLICY;
     const stored = JSON.parse(str(row.value)) as AgentPolicySettings;
     return { ...EMPTY_AGENT_POLICY, ...stored, hub: { ...OPEN_POLICY, ...stored.hub } };
+  }
+
+  #modelRouter(): ModelRouterSettings {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'modelRouter'").get() as Row | undefined;
+    if (!row) return DEFAULT_MODEL_ROUTER;
+    const saved = JSON.parse(str(row.value)) as ModelRouterSettings;
+    return { tiers: saved.tiers ?? DEFAULT_MODEL_ROUTER.tiers, cells: saved.cells ?? DEFAULT_MODEL_ROUTER.cells, projects: saved.projects ?? {} };
   }
 
   #sdlcPolicy(): SdlcPolicySettings {
@@ -4959,7 +4978,11 @@ export class SqliteHive implements HiveBackend {
   #runRequest(id: number): RunRequest {
     const row = this.db.prepare("SELECT * FROM run_requests WHERE id = ?").get(id) as Row | undefined;
     if (!row) throw new HiveError("not_found", `Run request #${id} not found.`, { key: "errors.runRequestNotFound", vars: { id } });
-    return toRunRequest(row);
+    const request = toRunRequest(row);
+    if (request.role === "classify") return request;
+    const task = this.#getTask(request.taskId);
+    const failures = num((this.db.prepare("SELECT COUNT(*) AS n FROM run_records WHERE project = ? AND task_id = ? AND (status = 'failed' OR verdict = 'changes')").get(request.project, request.taskId) as Row).n);
+    return { ...request, selection: selectModel(this.#modelRouter(), request.project, task?.kind ?? null, task?.size ?? null, task?.risk ?? null, Math.min(2, failures)) };
   }
 
   #command(id: number): MachineCommand {
@@ -7542,6 +7565,15 @@ export class SqliteHive implements HiveBackend {
         ).map((r) => this.#flow(str(r.task_id))!);
       },
 
+      "modelRouter.get": () => this.#modelRouter(),
+      "modelRouter.set": (input) => {
+        const prev = this.#modelRouter();
+        const next = input.project === null
+          ? { ...prev, tiers: input.tiers, cells: input.cells }
+          : { ...prev, projects: { ...prev.projects, [input.project]: input.setting } };
+        db.prepare("INSERT INTO settings(key, value) VALUES ('modelRouter', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(next));
+        return next;
+      },
       "agentPolicy.get": () => agentPolicyView(this.#agentPolicy()),
 
       "agentPolicy.set": (input, actor) => {
