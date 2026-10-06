@@ -14,6 +14,7 @@ import {
   ensureClaudeImport,
   HiveError,
   MANAGED_START,
+  parseSkill,
   planProjectSync,
   RULES_DIR,
   SKILLS_DIR,
@@ -126,11 +127,134 @@ export function planContext(project: string, docs: Doc[], dir: string): ContextP
   return { files, skipped, contextFile };
 }
 
+export interface WorktreeSkill {
+  name: string;
+  description: string;
+  path: string;
+}
+
+export interface WorktreeRule {
+  globs: string[];
+  path: string;
+}
+
+/** Parses path globs from a Claude Code rule's YAML frontmatter (paths: [...] or indented list). */
+export function parseRulePaths(frontmatter: string): string[] {
+  const globs: string[] = [];
+  const lines = frontmatter.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const m = /^[ \t]*paths:[ \t]*(.*)$/.exec(line);
+    if (!m) continue;
+    const rest = m[1]!.trim();
+    if (rest.startsWith("[") && rest.endsWith("]")) {
+      const items = rest.slice(1, -1).match(/(?:[^\s,"']+|"[^"]*"|'[^']*')+/g) ?? [];
+      for (const item of items) {
+        const clean = item.replace(/^["']|["']$/g, "").trim();
+        if (clean) globs.push(clean);
+      }
+    } else if (rest && !rest.startsWith("#")) {
+      const clean = rest.replace(/^["']|["']$/g, "").trim();
+      if (clean) globs.push(clean);
+    } else {
+      while (i + 1 < lines.length && /^[ \t]+-[ \t]+/.test(lines[i + 1]!)) {
+        i++;
+        const item = lines[i]!.replace(/^[ \t]+-[ \t]+/, "").trim();
+        const clean = item.replace(/^["']|["']$/g, "").trim();
+        if (clean) globs.push(clean);
+      }
+    }
+  }
+  return globs;
+}
+
+/**
+ * Reads skills available in `dir` (.claude/skills/<name>/SKILL.md), both Hive's and the repo's own.
+ * Runs cannot rely on Claude Code loading them because --setting-sources user leaves project skills out.
+ */
+export function loadWorktreeSkills(dir: string): WorktreeSkill[] {
+  if (!dir || !existsSync(dir)) return [];
+  const skillsDir = path.join(dir, SKILLS_DIR);
+  if (!existsSync(skillsDir)) return [];
+  const out: WorktreeSkill[] = [];
+  try {
+    for (const e of readdirSync(skillsDir, { withFileTypes: true })) {
+      if (!e.isDirectory()) continue;
+      const file = path.join(skillsDir, e.name, "SKILL.md");
+      if (!existsSync(file)) continue;
+      const content = read(file);
+      if (!content) continue;
+      let name = e.name;
+      let description = "";
+      try {
+        const meta = parseSkill(content);
+        name = meta.name || e.name;
+        description = meta.description.replace(/\s+/g, " ");
+      } catch {
+        const front = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(content);
+        if (front) {
+          const mName = /^[ \t]*name:[ \t]*(.*)$/m.exec(front[1]!);
+          if (mName) name = mName[1]!.replace(/^["']|["']$/g, "").trim() || e.name;
+          const mDesc = /^[ \t]*description:[ \t]*(.*)$/m.exec(front[1]!);
+          if (mDesc) description = mDesc[1]!.replace(/^["']|["']$/g, "").trim().replace(/\s+/g, " ");
+        }
+      }
+      out.push({
+        name,
+        description,
+        path: `${SKILLS_DIR}/${e.name}/SKILL.md`,
+      });
+    }
+  } catch {
+    return [];
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Reads rules in `dir` (.claude/rules/**\/*.md), extracting their path globs from frontmatter.
+ * Claude Code with --setting-sources user does not load repo rules; the prompt lists them so agents read them.
+ */
+export function loadWorktreeRules(dir: string): WorktreeRule[] {
+  if (!dir || !existsSync(dir)) return [];
+  const baseRules = path.join(dir, ".claude/rules");
+  if (!existsSync(baseRules)) return [];
+  const out: WorktreeRule[] = [];
+  const walk = (d: string) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const full = path.join(d, e.name);
+      if (e.isDirectory()) {
+        walk(full);
+      } else if (e.isFile() && e.name.endsWith(".md")) {
+        const content = read(full);
+        if (!content) continue;
+        const front = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(content);
+        const globs = front ? parseRulePaths(front[1]!) : [];
+        const rel = path.relative(dir, full).replace(/\\/g, "/");
+        out.push({
+          globs: globs.length ? globs : ["*"],
+          path: rel,
+        });
+      }
+    }
+  };
+  try {
+    walk(baseRules);
+  } catch {
+    return [];
+  }
+  return out.sort((a, b) => a.path.localeCompare(b.path));
+}
+
 export interface ContextRender extends ContextPlan {
   /** Repo-relative files Hive owns in `dir` now: they must stay out of the branch. */
   owned: string[];
   /** Of those, the ones this call had to write; the rest were already right. */
   written: string[];
+  /** Skills present in `dir` (.claude/skills), to be named in the run prompt (roadmap 38i). */
+  skills: WorktreeSkill[];
+  /** Rules present in `dir` (.claude/rules), to be named in the run prompt (roadmap 38i). */
+  rules: WorktreeRule[];
 }
 
 /** A run must not wait on a slow hub: past this it goes on with the files the branch has. */
@@ -168,7 +292,9 @@ export async function renderContext(
     writeFileSync(abs, f.content);
     written.push(f.path);
   }
-  return { ...plan, owned: plan.files.map((f) => f.path), written };
+  const skills = loadWorktreeSkills(dir);
+  const rules = loadWorktreeRules(dir);
+  return { ...plan, owned: plan.files.map((f) => f.path), written, skills, rules };
 }
 
 const defaultAgentsDoc = (project: string) => `# ${project}

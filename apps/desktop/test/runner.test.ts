@@ -753,6 +753,10 @@ describe("Runner", () => {
     assert.equal(describeBranch(wt, done.baseSha!).includes(tr("runNote.uncommitted")), false);
     assert.equal(runner.diff(run.id).includes("AGENTS.md"), false);
     assert.doesNotMatch(calls()[0]!.prompt, /\.xdev-hive\/context/, "AGENTS.md itself holds Hive's context here");
+    assert.match(calls()[0]!.prompt, /Skills of this project \(read SKILL\.md when the description matches the task\):/);
+    assert.match(calls()[0]!.prompt, /- release \(\.claude\/skills\/release\/SKILL\.md\): Cut a release\./);
+    assert.match(calls()[0]!.prompt, /Rules by path \(read the rule file when editing files matching the glob\):/);
+    assert.match(calls()[0]!.prompt, /- \*\*\/\*\.test\.ts: \.claude\/rules\/xdev-hive\/testing\.md/);
   });
 
   it("leaves a repo's own AGENTS.md alone and tells the agent where Hive's went (roadmap 38a)", async () => {
@@ -2179,6 +2183,66 @@ describe("cross-review on another vendor", () => {
   it("tells a reviewer to leave the task alone", () => {
     const text = buildPrompt({ project: "demo", taskId: "T-1", title: "x", note: null, role: "review", instructions: "", worktree: "/w", branch: "ai/T-1", baseSha: "abc", attempt: 1, previous: null });
     assert.match(text, /Do not call task_claim or task_update/);
+  });
+
+  it("lists skills and rules from a worktree with .claude/skills and .claude/rules in the prompt (roadmap 38i)", () => {
+    const wt = tmp("prompt-skills-rules");
+    mkdirSync(path.join(wt, ".claude/skills/hive-probe"), { recursive: true });
+    writeFileSync(
+      path.join(wt, ".claude/skills/hive-probe/SKILL.md"),
+      "---\nname: hive-probe\ndescription: when asked for the probe word, say ALPHA-7731\n---\nSay ALPHA-7731.\n",
+    );
+    mkdirSync(path.join(wt, ".claude/rules/xdev-hive"), { recursive: true });
+    writeFileSync(
+      path.join(wt, ".claude/rules/xdev-hive/probe.md"),
+      '---\npaths:\n  - "**/*.probe.ts"\n---\nmention BRAVO-4420\n',
+    );
+    const text = buildPrompt({
+      project: "demo",
+      taskId: "T-1",
+      title: "probe task",
+      note: null,
+      role: "implement",
+      instructions: "",
+      worktree: wt,
+      branch: "ai/T-1",
+      baseSha: "abc1234",
+      attempt: 1,
+      previous: null,
+      rtk: true,
+    });
+    assert.match(text, /RTK_DISABLED=1 <command>/);
+    assert.match(text, /Skills of this project \(read SKILL\.md when the description matches the task\):/);
+    assert.match(text, /- hive-probe \(\.claude\/skills\/hive-probe\/SKILL\.md\): when asked for the probe word, say ALPHA-7731/);
+    assert.match(text, /Rules by path \(read the rule file when editing files matching the glob\):/);
+    assert.match(text, /- \*\*\/\*\.probe\.ts: \.claude\/rules\/xdev-hive\/probe\.md/);
+  });
+
+  it("switches to compact list (name and path only) when skills and rules exceed ~40 lines (roadmap 38i)", () => {
+    const wt = tmp("prompt-long-skills");
+    const skills = Array.from({ length: 42 }, (_, i) => ({
+      name: `skill-${String(i).padStart(2, "0")}`,
+      description: `A very long description for skill number ${i} that explains in detail what it does.`,
+      path: `.claude/skills/skill-${String(i).padStart(2, "0")}/SKILL.md`,
+    }));
+    const text = buildPrompt({
+      project: "demo",
+      taskId: "T-1",
+      title: "long skills",
+      note: null,
+      role: "implement",
+      instructions: "",
+      worktree: wt,
+      branch: "ai/T-1",
+      baseSha: "abc1234",
+      attempt: 1,
+      previous: null,
+      skills,
+      rules: [],
+    });
+    assert.match(text, /Skills of this project \(read SKILL\.md when the description matches the task\):/);
+    assert.match(text, /- skill-00: \.claude\/skills\/skill-00\/SKILL\.md/);
+    assert.doesNotMatch(text, /A very long description/);
   });
 });
 

@@ -462,6 +462,8 @@ describe("Hive context in a working copy (roadmap 38a)", () => {
     assert.deepEqual(out.written, out.owned, "nothing was there yet");
     assert.deepEqual(out.skipped, []);
     assert.equal(out.contextFile, null);
+    assert.deepEqual(out.skills, [{ name: "release", description: "Cut a release.", path: ".claude/skills/release/SKILL.md" }]);
+    assert.deepEqual(out.rules, [{ globs: ["**/*.test.ts"], path: ".claude/rules/xdev-hive/testing.md" }]);
     assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Hive project key: `demo`[\s\S]*Chạy npm test\./);
     assert.equal(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), "@AGENTS.md\n");
     assert.match(readFileSync(path.join(dir, ".claude/rules/xdev-hive/testing.md"), "utf8"), /^---\npaths:\n {2}- "\*\*\/\*\.test\.ts"\n---\n/);
@@ -491,6 +493,10 @@ describe("Hive context in a working copy (roadmap 38a)", () => {
     assert.equal(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), own, "the repo's own file is never overwritten");
     assert.equal(readFileSync(path.join(dir, "apps/web/AGENTS.md"), "utf8"), "# Web\nOwn notes.\n");
     assert.match(readFileSync(path.join(dir, ".claude/skills/deploy/SKILL.md"), "utf8"), /The repo's own deploy steps/);
+    assert.deepEqual(out.skills, [
+      { name: "deploy", description: "The repo's own deploy steps.", path: ".claude/skills/deploy/SKILL.md" },
+      { name: "release", description: "Cut a release.", path: ".claude/skills/release/SKILL.md" },
+    ]);
     assert.deepEqual(out.skipped.map((s) => s.file), ["AGENTS.md", "apps/web/AGENTS.md", ".claude/skills/deploy/SKILL.md"]);
     assert.match(out.skipped[0]!.note, /^repo có AGENTS\.md riêng, giữ nguyên; phần của Hive ghi vào \.xdev-hive\/context\/AGENTS\.md$/);
     // Hive's goes beside it, and CLAUDE.md imports both: Claude Code reads it, and the prompt names it for the rest.
