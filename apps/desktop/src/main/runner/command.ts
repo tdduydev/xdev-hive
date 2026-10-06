@@ -2,7 +2,7 @@
 import { accessSync, constants, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ARTIFACT_DIR, AUTONOMY_ARGS, AUTONOMY_FLAGS, autonomyOf, flagValue, lowerAutonomy, modelsFor, policySummary, type AgentKind, type AgentPolicy, type AgentProfile, type AgentRole, type Autonomy, type CiFix, type ToolEntry } from "@xdev-hive/core";
+import { ARTIFACT_DIR, AUTONOMY_ARGS, AUTONOMY_FLAGS, autonomyOf, flagValue, lowerAutonomy, modelsFor, policySummary, type AgentKind, type AgentPolicy, type AgentProfile, type AgentRole, type Autonomy, type CiFix, type ToolEntry, type ModelSelection } from "@xdev-hive/core";
 import { fence } from "#desktop/main/gitlab/describe.ts";
 import { tr } from "#desktop/main/i18n.ts";
 import { MCP_NAME, NO_FEATURES, runMcpServers, type RepoFeatures } from "#desktop/main/installer.ts";
@@ -547,6 +547,35 @@ export function effortOf(kind: AgentKind, args: string[]): string | null {
 export function ranOn(profile: AgentProfile): { model: string | null; effort: string | null } {
   if (profile.kind === "custom") return { model: null, effort: null };
   return { model: modelOf(profile.args), effort: effortOf(profile.kind, profile.args) };
+}
+
+/**
+ * The profile with the hub's model choice (roadmap 54c), applied to what applyPolicy fitted. `own` is the profile as
+ * the user saved it: a model there is the user's pin and stays, an effort there too. The policy (27a) still wins: a
+ * model it does not allow gives way to its first allowed one. `note` is the run log's `# model:` line (null: no choice).
+ */
+export function routeProfile(own: AgentProfile, fitted: AgentProfile, pol: AgentPolicy, selection: ModelSelection | null | undefined): { profile: AgentProfile; note: string | null } {
+  const kind = fitted.kind;
+  if (!selection || (kind !== "claude" && kind !== "codex" && kind !== "antigravity")) return { profile: fitted, note: null };
+  const where = `tier ${selection.tier} (${selection.reason})`;
+  const pinned = modelOf(own.args);
+  if (pinned) return { profile: fitted, note: `${pinned} · pinned by the profile's args, ${where} not applied` };
+  const wanted = selection.models[kind];
+  if (!wanted) return { profile: fitted, note: `no ${kind} model at ${where}` };
+  const allowed = modelsFor(pol, kind);
+  const model = !allowed || allowed.includes(wanted.model) ? wanted.model : allowed[0];
+  // policyBlocks already refused a policy with no model left, so this is only a guard.
+  if (!model) return { profile: fitted, note: null };
+  // CLAUDE_CODE_EFFORT_LEVEL beats --effort in Claude Code, so a profile that sets it has chosen its effort too.
+  const ownEffort = effortOf(kind, own.args) ?? (kind === "claude" ? (own.env.CLAUDE_CODE_EFFORT_LEVEL ?? null) : null);
+  const flags = [kind === "codex" ? "-m" : "--model", model];
+  if (!ownEffort && wanted.effort) flags.push(...(kind === "codex" ? ["-c", `model_reasoning_effort=${wanted.effort}`] : ["--effort", wanted.effort]));
+  const args = insertFlags(kind, withoutFlags(fitted.args, ["--model", "-m"], []), flags);
+  // Explore and other subagents run Opus by default on a plan: on a cheap tier that would spend more than the run itself.
+  const env = kind === "claude" && (selection.tier === "light" || selection.tier === "standard") && !own.env.CLAUDE_CODE_SUBAGENT_MODEL ? { ...fitted.env, CLAUDE_CODE_SUBAGENT_MODEL: "sonnet" } : fitted.env;
+  const effort = ownEffort ?? wanted.effort ?? "default";
+  const fallback = model !== wanted.model ? ` · ${wanted.model} not allowed by the policy` : "";
+  return { profile: { ...fitted, args, env }, note: `${model} · effort ${effort} · ${where}${fallback}` };
 }
 
 /**
