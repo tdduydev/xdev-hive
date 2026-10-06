@@ -99,9 +99,12 @@ describe("run steering", () => {
     t.after(() => rmSync(dir, { recursive: true, force: true }));
     const file = path.join(dir, "hub.db");
     const before = migrationIndex("CREATE TABLE run_messages");
-    const hive = new SqliteHive(file, { migrateTo: before });
-    assert.equal(hive.db.prepare("SELECT name FROM sqlite_master WHERE name = 'run_messages'").get(), undefined);
+    // Today's code reads columns of later migrations, so the run is pushed on a full schema, then the hub is taken
+    // back to just before this migration: its table gone and the version pointing at it.
+    const hive = new SqliteHive(file);
     await hive.call("runs.push", { machine: "mac", runs: [run] }, machine);
+    hive.db.exec(`DROP TABLE run_messages; PRAGMA user_version = ${before}`);
+    assert.equal(hive.db.prepare("SELECT name FROM sqlite_master WHERE name = 'run_messages'").get(), undefined);
     hive.close();
     const current = new SqliteHive(file, { migrateTo: before + 1 });
     assert.ok(current.db.prepare("SELECT name FROM sqlite_master WHERE name = 'run_messages'").get());
