@@ -2,6 +2,16 @@
 import type { KeyPaths, Translation } from "#ui/i18n/types.ts";
 
 export const vi = {
+  diffReview: {
+    unavailable: "Chưa có tóm tắt AI. Các cờ dưới đây được rà theo luật, cần người kiểm lại.",
+    metadata: "Chỉ đổi thông tin file (đổi tên hoặc quyền), không có hunk văn bản.",
+    risks: "Cờ rủi ro", request: "Yêu cầu sửa", note: "Ghi chú cho hunk này", send: "Xếp lượt sửa ({count} ghi chú)",
+    sent: "Đã xếp lượt sửa cùng task, có review sau khi sửa.", tooLong: "Ghi chú quá dài. Rút gọn trước khi gửi.",
+    fixBrief: "Sửa các hunk theo ghi chú của người review dưới đây. Giữ các thay đổi khác của task.",
+    level: { high: "Cao", medium: "Vừa", low: "Thấp" },
+    kind: { migration: "Migration", permissions: "Quyền", security: "Bảo mật", deletion: "Xoá dữ liệu", large: "File lớn" },
+  },
+
   start: {
     connectHint: "Kết nối với nhóm qua hub, hoặc dùng một mình trên máy này.",
     disabled: "Đang tắt",

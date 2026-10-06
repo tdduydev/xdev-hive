@@ -1153,6 +1153,40 @@ async function main() {
     await tab.waitFor("merged from Hive, no Merge button", () => document.body.innerText.includes("Đã merge từ Hive") && ![...document.querySelectorAll("button")].some((b) => b.textContent.trim() === "Merge"));
   });
 
+  await step("diff-review-hunks", async () => {
+    const tab = (current = tabs.admin);
+    await rpc("tasks.create", { id: "PAY-57C", project: "payment", title: "Review grouped diff", kind: "small-fix", size: "s" });
+    const machineRpc = async (method, input) => {
+      const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" }, body: JSON.stringify({ method, input }) });
+      const result = await response.json();
+      if (result.error) throw new Error(`${method}: ${result.error.message}`);
+      return result.result;
+    };
+    const now = new Date().toISOString();
+    const patch = "diff --git a/db.ts b/db.ts\n@@ -1 +1 @@\n-old\n+ALTER TABLE users ADD COLUMN role TEXT;\n@@ -8 +8 @@\n-safe\n+DELETE FROM users;\ndiff --git a/ui.ts b/ui.ts\n@@ -1 +1 @@\n-before\n+after\n";
+    await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ runId: "R-e2e57c", project: "payment", taskId: "PAY-57C", taskTitle: "Review grouped diff", role: "implement", status: "succeeded", profileId: "claude-1", createdAt: now, finishedAt: now, patch,
+      diffReview: { groups: [{ title: "Đổi quyền người dùng", explanation: "Thêm vai và cập nhật giao diện.", files: ["db.ts", "ui.ts"] }], risks: [{ path: "db.ts", hunk: 1, level: "high", kind: "deletion", explanation: "Xoá dữ liệu người dùng." }] } }] });
+    await tab.go("runs?run=R-e2e57c");
+    await tab.waitFor("diff groups", () => document.body.innerText.includes("Thêm vai và cập nhật giao diện."));
+    await tab.click('[data-run-tab="diff"]');
+    await tab.click('nav[aria-label="Cờ rủi ro"] a', "Xoá dữ liệu");
+    expect(await tab.eval(() => document.activeElement?.textContent.includes("@@ -8 +8 @@") && location.hash.includes("R-e2e57c")), "risk flag must focus the exact hunk without leaving the run");
+    await tab.click("section:focus button", "Yêu cầu sửa");
+    await tab.waitFor("hunk note", () => !!document.querySelector("textarea"));
+    await tab.click("textarea");
+    await tab.type("Giữ dữ liệu người dùng.");
+    if (mobile) {
+      const layout = await tab.eval(() => ({ overflow: document.documentElement.scrollWidth > innerWidth + 1, targets: [...document.querySelectorAll('nav[aria-label="Cờ rủi ro"] a')].map(e => e.getBoundingClientRect().height), font: getComputedStyle(document.querySelector("textarea")).fontSize }));
+      expect(!layout.overflow && layout.targets.every(h => h >= 44) && Number.parseFloat(layout.font) >= 16, `diff mobile layout: ${JSON.stringify(layout)}`);
+    }
+    await tab.shot(`${String(n).padStart(2, "0")}-diff-review-hunks`);
+    await tab.click("button", "Xếp lượt sửa (1 ghi chú)");
+    await tab.waitFor("fix sent", () => document.body.innerText.includes("Đã xếp lượt sửa cùng task"));
+    const requests = await rpc("runs.requests", { project: "payment" });
+    const fix = requests.find(r => r.taskId === "PAY-57C" && r.role === "implement");
+    expect(fix?.instructions.includes("db.ts\n@@ -8 +8 @@\nGiữ dữ liệu người dùng.") && fix.reviewAfter, "fix instructions must keep the exact file and hunk");
+  });
+
   await step("runs-review", async () => {
     const tab = (current = tabs.admin);
     const machineRpc = async (method, input) => {

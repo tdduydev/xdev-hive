@@ -112,6 +112,8 @@ describe("model router on the hub", () => {
     const req = await hive.call("runs.dispatch", { machineId: machine.name, project: "app", taskId: "T-1", reviewAfter: true }, lead);
     assert.deepEqual([req.selection?.tier, req.selection?.models.claude?.model, req.selection?.reason], ["light", "sonnet", "docs/s, balanced"]);
     assert.equal(req.selection?.review?.reason, "review/s, balanced");
+    assert.equal(req.selection?.diffReview?.tier, "light");
+    assert.equal(req.selection?.diffReview?.models.codex?.model, DEFAULT_MODEL_ROUTER.tiers.light.codex?.model);
     const [sent] = (await beat()).runRequests;
     assert.deepEqual(sent!.selection, req.selection, "fixed at the request, not worked out again");
     hive.close();

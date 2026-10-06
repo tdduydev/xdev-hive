@@ -1,6 +1,15 @@
 import type { Catalog } from "./vi.ts";
 
 export const en: Catalog = {
+  diffReview: {
+    unavailable: "AI summary is not available. Flags below come from rules and need human review.",
+    metadata: "File metadata changed (rename or permissions); no text hunk.",
+    risks: "Risk flags", request: "Request changes", note: "Note for this hunk", send: "Queue fix ({count} notes)",
+    sent: "Fix queued for the same task, with a review afterward.", tooLong: "Notes are too long. Shorten them before sending.",
+    fixBrief: "Fix the hunks following the reviewer notes below. Preserve the task's other changes.",
+    level: { high: "High", medium: "Medium", low: "Low" },
+    kind: { migration: "Migration", permissions: "Permissions", security: "Security", deletion: "Data deletion", large: "Large file" },
+  },
   start: {
     connectHint: "Connect to your team’s hub, or work on this machine on your own.",
     disabled: "Disabled",
