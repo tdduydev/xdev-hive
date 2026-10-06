@@ -123,6 +123,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
   // Tasks always belong to one project: the shared scope has none of its own, so it shows every project's.
   const scoped = scopeProject(scope);
   const [linkedProject] = useHashParam("project");
+  const [linkedIds] = useHashParam("ids");
   const [linkedKind] = useHashParam("kind");
   useEffect(() => {
     if (linkedProject && projects.includes(linkedProject) && linkedProject !== scoped) setScope({ kind: "project", project: linkedProject });
@@ -187,7 +188,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
   const [agentFilter, setAgentFilter] = useState("");
   const machines = useQuery(async () => hub ? client.call("machines.list", {}) : [], [client, hub, poll]);
   const lanes = agentLanes(machines.data ?? [], list.data ?? [], t("assignment.any"), t("assignment.unassigned"));
-  const visible = filterAgent(list.data ?? [], agentFilter).filter((task) => linkedKind !== "fast" || (task.status !== "done" && ["docs", "small-fix", "test"].includes(task.kind ?? "")));
+  const visible = filterAgent(list.data ?? [], agentFilter).filter((task) => (linkedIds === null || linkedIds.split(",").includes(task.id))).filter((task) => !linkedKind || (task.status !== "done" && (linkedKind === "fast" ? ["docs", "small-fix", "test"] : linkedKind.split(",")).includes(task.kind ?? "")));
   return (
     <Page wide={view !== "list"}>
       <PageHeader title={t("tasks.title")} subtitle={t("tasks.subtitle")} />

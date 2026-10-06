@@ -1358,6 +1358,8 @@ export const vi = {
     gateStatus: { waiting: "chờ người", checking: "AI đang kiểm", passed: "qua", rejected: "yêu cầu sửa", escalated: "chuyển người" },
   },
   pipeline: {
+    noGate: "Bước này không có chốt riêng. Chọn chốt ở bước liền kề để cấu hình.",
+    passed: "Đã qua", fastSelect: "Loại task đi theo lối nhanh",
     title: "Quy trình", intro: "Luồng AI SDLC của dự án. Bấm bước hoặc chốt để xem và sửa.", project: "Dự án", noProject: "Chọn một dự án để xem quy trình.", presets: "Bộ cài sẵn", feature: "Tính năng", allFeatures: "Tất cả tính năng", count: "{count} đang có · Xem", wait: "Chờ trung vị 30 ngày", firstPass: "Qua ngay 30 ngày", defaultModel: "Model: mặc định của gói", ceiling: "Trần hub: {mode}", approver: "Người có quyền duyệt: {role}", automaticStep: "Tự động", reviewer: "Reviewer", manager: "Quản lý dự án", preview: "Xem trước các chốt sẽ thay đổi trước khi lưu.", apply: "Lưu bộ cài sẵn", fastKinds: "Lối nhanh dành cho: {kinds}",
     preset: { cautious: "Thận trọng", balanced: "Cân bằng", maximum: "Tự động tối đa", fast: "Lối nhanh" },
     step: { idea: "Ý tưởng", spec: "Spec", plan: "Plan", tasks: "Tasks", dispatch: "Giao việc", build: "Làm (agent)", review: "Review", fix: "Sửa", merge: "Merge", done: "Xong" },

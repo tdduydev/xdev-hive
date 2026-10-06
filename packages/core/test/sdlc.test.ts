@@ -48,6 +48,35 @@ describe("lifecycle gates (roadmap 34a)", () => {
       upgraded.close();
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
+  it("pages all dated gate history and detects retries before the reporting window", async () => {
+    const hive = await hub();
+    const insert = hive.db.prepare(`INSERT INTO sdlc_gates(project, task_id, gate, mode, status, subject, created_at, decided_at)
+      VALUES ('app', ?, 'spec', 'human', 'passed', '{}', ?, ?)`);
+    insert.run("RETRY", "2026-08-01T00:00:00.000Z", "2026-08-01T01:00:00.000Z");
+    insert.run("RETRY", "2026-10-01T00:00:00.000Z", "2026-10-01T01:00:00.000Z");
+    for (let n = 0; n < 205; n++) insert.run(`T-${n}`, "2026-10-01T00:00:00.000Z", "2026-10-01T01:00:00.000Z");
+    const first = await hive.call("sdlc.gates", { project: "app", since: "2026-09-06T00:00:00.000Z", limit: 200 }, admin);
+    const next = await hive.call("sdlc.gates", { project: "app", since: "2026-09-06T00:00:00.000Z", beforeId: first.at(-1)!.id, limit: 200 }, admin);
+    assert.equal(first.length + next.length, 206);
+    assert.equal(new Set([...first, ...next].map((g) => g.id)).size, 206);
+    assert.equal(next.find((g) => g.taskId === "RETRY")?.firstAttempt, false);
+    assert.equal(first[0]?.firstAttempt, true);
+    assert.ok((await hive.call("sdlc.gates", { project: "app", limit: 1 }, admin))[0]?.firstAttempt === undefined);
+    hive.close();
+  });
+
+  it("pages flows in a stable order even when updated times match", async () => {
+    const hive = await hub();
+    const insert = hive.db.prepare(`INSERT INTO sdlc_flows(task_id, project, step, state, machine_id, created_by, created_at, updated_at)
+      VALUES (?, 'app', 'dispatch', 'done', 'm', 'duy', '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z')`);
+    for (let n = 0; n < 205; n++) insert.run(`F-${n}`);
+    const first = await hive.call("sdlc.flows", { project: "app", limit: 200 }, admin);
+    const next = await hive.call("sdlc.flows", { project: "app", limit: 200, offset: 200 }, admin);
+    assert.equal(first.length + next.length, 205);
+    assert.equal(new Set([...first, ...next].map((flow) => flow.taskId)).size, 205);
+    hive.close();
+  });
+
   it("starts a new project at maximum automation within the hub ceiling", async () => {
     const hive = new SqliteHive(":memory:");
     await hive.call("tasks.create", { id: "NEW-1", project: "new", title: "New project" }, admin);

@@ -1232,6 +1232,7 @@ const toGate = (r: Row): SdlcGateRecord => ({
   note: strOrNull(r.note),
   createdAt: str(r.created_at),
   decidedAt: strOrNull(r.decided_at),
+  ...(r.first_attempt == null ? {} : { firstAttempt: num(r.first_attempt) === 1 }),
 });
 /** "spec: ai, merge: auto": the gates left to agents; "—" when every one waits for a person. */
 const gateSummary = (gates: Partial<GateModes>) =>
@@ -3695,7 +3696,7 @@ export class SqliteHive implements HiveBackend {
         if (task.kind === null && this.#queueClassify(task, this.#machineByRef(machineId), actor)) continue;
         const fresh = this.#getTask(task.id)!;
         const machine = this.#assertDispatchable({ machineId, project, task: fresh, role, profileId, candidates, instructions }, actor);
-        this.#insertRequest(machine, project, fresh, { role, profileId, preferKind, reviewAfter, candidates, instructions }, actor);
+        this.#dispatchDirect(machine, project, fresh, { role, profileId, preferKind, reviewAfter, candidates, instructions }, actor);
         drop.run(task.id);
       } catch (err) {
         if (!(err instanceof HiveError)) throw err;
@@ -4543,6 +4544,25 @@ export class SqliteHive implements HiveBackend {
         }
       }
     }
+  }
+
+  /** A manually dispatched small task joins the existing review/fix/merge lifecycle without Spec Kit. */
+  #dispatchDirect(m: Machine, project: string, task: Task, r: { role: AgentRole; profileId: string | null; preferKind?: PreferKind | null; reviewAfter: boolean; candidates: number; instructions: string }, actor: Actor): RunRequest {
+    const fast = r.role === "implement" && r.candidates === 1 && !this.#flowRow(task.id) && !this.#flowTaskRow(task.id)
+      && this.#sdlcPolicy().projects[project]?.fastLaneKinds?.some((kind) => kind === task.kind);
+    const request = this.#insertRequest(m, project, task, fast ? { ...r, reviewAfter: effectiveGates(this.#sdlcPolicy(), project).review !== "auto" } : r, actor);
+    if (fast) {
+      const now = this.#now();
+      this.db.prepare(`INSERT INTO sdlc_flows(task_id, project, step, state, machine_id, profile_id, created_by, on_behalf, created_at, updated_at)
+        VALUES (?, ?, 'dispatch', 'done', ?, ?, ?, ?, ?, ?)`)
+        .run(task.id, project, m.id, r.profileId, actor.name, actor.onBehalf ?? null, now, now);
+      this.db.prepare(`INSERT INTO sdlc_flow_tasks(task_id, flow_task, project, stage, request_id, created_by, on_behalf, updated_at)
+        VALUES (?, ?, ?, 'build', ?, ?, ?, ?)`)
+        .run(task.id, task.id, project, request.id, actor.name, actor.onBehalf ?? null, now);
+      // The authorized dispatch itself is the person's approval, even under a human hub ceiling.
+      this.#addGate({ project, task_id: task.id }, "dispatch", "human", "passed", { requestId: request.id, fastLane: true }, { by: actor.name });
+    }
+    return request;
   }
 
   #insertRequest(
@@ -6562,7 +6582,7 @@ export class SqliteHive implements HiveBackend {
             const pending = db.prepare("SELECT request_id FROM task_classify_runs WHERE task_id = ?").get(taskId) as Row;
             return this.#runRequest(num(pending.request_id));
           }
-          return this.#insertRequest(m, project, task, { role, profileId, preferKind, reviewAfter, candidates, instructions }, actor);
+          return this.#dispatchDirect(m, project, task, { role, profileId, preferKind, reviewAfter, candidates, instructions }, actor);
         }),
 
       "runs.dispatchMany": ({ project, title, items, maxParallel, reviewAfter, instructions }, actor) =>
@@ -7442,22 +7462,26 @@ export class SqliteHive implements HiveBackend {
             gates,
             ...(settings.maxFixRounds !== undefined ? { maxFixRounds: settings.maxFixRounds } : {}),
             ...(settings.maxParallel ? { maxParallel: settings.maxParallel } : {}),
-            ...(settings.fastLaneKinds ? { fastLaneKinds: [...new Set(settings.fastLaneKinds)] } : {}),
+            ...((settings.fastLaneKinds ?? current.projects[project]?.fastLaneKinds) ? { fastLaneKinds: [...new Set(settings.fastLaneKinds ?? current.projects[project]!.fastLaneKinds)] } : {}),
           };
         }
         this.#saveSdlc({ ...current, projects }, actor);
         return this.#sdlcView();
       },
 
-      "sdlc.gates": ({ project, projects, taskId, status, limit }) =>
+      "sdlc.gates": ({ project, projects, taskId, status, limit, beforeId, since }) =>
         (
           db
             .prepare(
-              `SELECT * FROM sdlc_gates WHERE (?1 IS NULL OR project = ?1) AND (?2 IS NULL OR status = ?2)
+              `SELECT *, CASE WHEN ?7 IS NULL THEN NULL ELSE NOT EXISTS (
+                 SELECT 1 FROM sdlc_gates earlier WHERE earlier.project = sdlc_gates.project
+                   AND earlier.task_id = sdlc_gates.task_id AND earlier.gate = sdlc_gates.gate AND earlier.id < sdlc_gates.id
+               ) END AS first_attempt FROM sdlc_gates WHERE (?1 IS NULL OR project = ?1) AND (?2 IS NULL OR status = ?2)
                  AND (?4 IS NULL OR project IN (SELECT value FROM json_each(?4))) AND (?5 IS NULL OR task_id = ?5)
-               ORDER BY CASE status WHEN 'waiting' THEN 0 WHEN 'escalated' THEN 0 ELSE 1 END, id DESC LIMIT ?3`,
+               AND (?6 IS NULL OR id < ?6) AND (?7 IS NULL OR created_at >= ?7)
+               ORDER BY CASE WHEN ?7 IS NULL THEN CASE status WHEN 'waiting' THEN 0 WHEN 'escalated' THEN 0 ELSE 1 END ELSE 1 END, id DESC LIMIT ?3`,
             )
-            .all(project ?? null, status ?? null, limit, listParam(projects), taskId ?? null) as Row[]
+            .all(project ?? null, status ?? null, limit, listParam(projects), taskId ?? null, beforeId ?? null, since ?? null) as Row[]
         ).map(toGate),
 
       "specs.runStep": ({ project, step, taskId, title, dir, input, machineId, profileId }, actor) =>
@@ -7554,12 +7578,12 @@ export class SqliteHive implements HiveBackend {
         ).map((r) => this.#toFlowTask(r));
       },
 
-      "sdlc.flows": ({ project, projects, limit }) => {
+      "sdlc.flows": ({ project, projects, limit, offset }) => {
         this.#tx(() => this.#releaseFlows());
         return (
           db
-            .prepare(`SELECT task_id FROM sdlc_flows WHERE (?1 IS NULL OR project = ?1) AND (?3 IS NULL OR project IN (SELECT value FROM json_each(?3))) ORDER BY updated_at DESC LIMIT ?2`)
-            .all(project ?? null, limit, listParam(projects)) as Row[]
+            .prepare(`SELECT task_id FROM sdlc_flows WHERE (?1 IS NULL OR project = ?1) AND (?3 IS NULL OR project IN (SELECT value FROM json_each(?3))) ORDER BY updated_at DESC, task_id DESC LIMIT ?2 OFFSET ?4`)
+            .all(project ?? null, limit, listParam(projects), offset) as Row[]
         ).map((r) => this.#flow(str(r.task_id))!);
       },
 

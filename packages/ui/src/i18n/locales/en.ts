@@ -1355,6 +1355,8 @@ export const en: Catalog = {
     gateStatus: { waiting: "waiting", checking: "AI checking", passed: "passed", rejected: "changes asked", escalated: "to a person" },
   },
   pipeline: {
+    noGate: "This step has no separate gate. Select a neighbouring gate to configure it.",
+    passed: "Passed", fastSelect: "Task kinds taking the fast path",
     title: "Pipeline", intro: "The project's AI SDLC. Select a step or gate to inspect and edit it.", project: "Project", noProject: "Select a project to view its pipeline.", presets: "Presets", feature: "Feature", allFeatures: "All features", count: "{count} here · View", wait: "Median wait, 30 days", firstPass: "First pass, 30 days", defaultModel: "Model: plan default", ceiling: "Hub ceiling: {mode}", approver: "Approval permission: {role}", automaticStep: "Automatic", reviewer: "Reviewer", manager: "Project manager", preview: "Preview gate changes before saving.", apply: "Save preset", fastKinds: "Fast path for: {kinds}",
     preset: { cautious: "Cautious", balanced: "Balanced", maximum: "Maximum automation", fast: "Fast path" },
     step: { idea: "Idea", spec: "Spec", plan: "Plan", tasks: "Tasks", dispatch: "Dispatch", build: "Build (agent)", review: "Review", fix: "Fix", merge: "Merge", done: "Done" },
