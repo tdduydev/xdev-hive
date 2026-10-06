@@ -41,7 +41,7 @@ export const vi = {
   },
   graph: {
     layers: "Lớp sơ đồ", system: "Hệ thống", soon: "Sắp có", completed: "đã xong", running: "Đang chạy",
-    hideOldDone: "Ẩn task xong quá 7 ngày", mine: "Task của tôi", byAgent: "Lọc theo agent", allAgents: "Mọi agent",
+    hideOldDone: "Ẩn task xong quá 7 ngày", openOnly: "Chỉ task chưa xong", minimap: "Bản đồ nhỏ", mine: "Task của tôi", byAgent: "Lọc theo agent", allAgents: "Mọi agent",
     fit: "Vừa màn hình", reset: "Xếp lại", list: "Danh sách", pickProject: "Chọn một dự án để xem lớp Task.",
   },
   nav: {

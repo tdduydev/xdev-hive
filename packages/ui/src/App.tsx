@@ -23,6 +23,7 @@ import {
   ListOrdered,
   ListTodo,
   MessageSquare,
+  Network,
   Package,
   ScrollText,
   Send,
@@ -134,7 +135,7 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
   memory: { label: "nav.memory", sub: "navSub.memory", icon: Brain, render: () => <MemoryPage /> },
   // The desktop app opens it on the Board of this machine (roadmap 39f); the web keeps the shared Kanban.
   tasks: { label: "nav.tasks", sub: "navSub.tasks", icon: ListTodo, render: () => <TaskWorkPage /> },
-  graph: { label: "nav.graph", sub: "navSub.graph", icon: Workflow, render: () => <Suspense fallback={null}><GraphPage /></Suspense> },
+  graph: { label: "nav.graph", sub: "navSub.graph", icon: Network, render: () => <Suspense fallback={null}><GraphPage /></Suspense> },
   agents: { label: "nav.agents", sub: "navSub.agents", icon: Bot, render: () => <AgentsPage /> },
   machines: { label: "nav.machines", sub: "navSub.machines", icon: Server, render: () => <MachinesPage /> },
   setup: { label: "nav.setup", sub: "navSub.setup", icon: Terminal, render: () => <SetupPage /> },
