@@ -1206,6 +1206,8 @@ export interface AuditEntry {
   /** The detail as a message key of the UI catalogue (entries from before keys existed have none). */
   detailKey?: string;
   detailVars?: Record<string, string | number>;
+  /** Where the write came from; absent on older hubs, null for historical entries. */
+  source?: WriteSource | null;
   /** Set when an agent did it (roadmap 27c): its label, the account it acted for and its run. */
   agent: string | null;
   onBehalf: string | null;

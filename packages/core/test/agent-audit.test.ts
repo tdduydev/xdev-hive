@@ -86,7 +86,8 @@ describe("agent audit log (roadmap 27c)", () => {
       ],
     );
     assert.equal(agents[0]!.actor, claude.name);
-    assert.equal(agents[0]!.detailKey, "audit.taskStatus");
+    assert.deepEqual(agents[0]!.source, claude.source);
+    assert.equal(agents[0]!.detailKey, "audit.taskStatusNote");
     assert.equal(log.filter((e) => e.action === "memory.write").length, 1, "Lan's own memory is not an agent's");
     // A person's admin action keeps empty agent columns.
     const save = log.find((e) => e.action === "docs.save")!;

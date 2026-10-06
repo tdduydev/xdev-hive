@@ -3298,6 +3298,7 @@ export const en: Catalog = {
     taskClaimed: "claimed the task",
     taskNotClaimed: "not claimed: someone else holds it",
     taskStatus: "→ {status}",
+    taskStatusNote: "→ {status} · note updated",
     taskAssign: "assigned to agent {agent}",
     taskUnassign: "unassigned",
     memoryWrite: "{kind} · {content}",

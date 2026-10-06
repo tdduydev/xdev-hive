@@ -590,6 +590,7 @@ const MIGRATIONS: string[] = [
     from_key TEXT PRIMARY KEY, to_key TEXT NOT NULL, moved_by TEXT NOT NULL, moved_at TEXT NOT NULL);
   CREATE INDEX doc_redirects_to ON doc_redirects(to_key);
   `,
+  `ALTER TABLE audit ADD COLUMN source TEXT;`,
 ];
 
 /**
@@ -922,6 +923,11 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
   "memory.approve": (i, o) => ({ target: `${o.project ?? "org"} #${i.id}` }),
   "memory.remove": (i) => ({ target: `memory #${i.id}` }),
   "tasks.create": (i) => ({ target: i.id, detail: i.dependsOn?.length ? `${i.title} · ← ${i.dependsOn.join(", ")}` : i.title }),
+  "tasks.update": (i, o: Task) => ({
+    target: o.id,
+    detail: `→ ${o.status}${i.note !== undefined ? " · cập nhật ghi chú" : ""}`,
+    text: { key: i.note !== undefined ? "audit.taskStatusNote" : "audit.taskStatus", vars: { status: o.status } },
+  }),
   "tasks.setDeps": (i) => ({ target: i.id, detail: i.dependsOn.length ? `← ${i.dependsOn.join(", ")}` : "—" }),
   "tasks.assign": (i, o: Task) => {
     const agent = o.agent ? `${o.agent.machine}${o.agent.profileId ? `/${o.agent.profileId}` : ""}` : "—";
@@ -1084,7 +1090,6 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
  */
 const AGENT_AUDITED: Partial<Record<Method, (input: any, output: any) => { target: string; detail?: string; text?: ErrorText }>> = {
   "tasks.claim": (i, o: { claimed: boolean }) => ({ target: i.id, detail: o.claimed ? "nhận task" : "chưa nhận được: người khác đang giữ", text: { key: o.claimed ? "audit.taskClaimed" : "audit.taskNotClaimed" } }),
-  "tasks.update": (i, o: Task) => ({ target: o.id, detail: `→ ${o.status}`, text: { key: "audit.taskStatus", vars: { status: o.status } } }),
   "proposals.create": (_i, o: Proposal) => ({ target: o.docKey, detail: `đề xuất #${o.id}`, text: { key: "audit.proposal", vars: { id: o.id } } }),
   "memory.write": (_i, o: Memory) => ({ target: `${o.project ?? "org"} #${o.id}`, detail: `${o.kind} · ${o.content}`, text: { key: "audit.memoryWrite", vars: { kind: o.kind, content: clipDetail(o.content) } } }),
   "memory.resolve": (i) => ({ target: `memory #${i.id}`, detail: `#${i.other} · ${i.keep}` }),
@@ -1534,6 +1539,7 @@ const toAudit = (r: Row): AuditEntry => ({
   agent: strOrNull(r.agent),
   onBehalf: strOrNull(r.on_behalf),
   run: strOrNull(r.run),
+  source: sourceOf(r.source),
 });
 
 /** FTS5 query from free text: every word becomes a quoted prefix term, OR-ed together. */
@@ -2218,8 +2224,9 @@ export class SqliteHive implements HiveBackend {
   audit(actor: Actor, action: string, target: string, detail = "", text?: ErrorText): void {
     // The desktop window sends a label too ("desktop"): only an agent's goes in the agent column.
     const agent = isAgentActor(actor) ? (actor.agent ?? actor.name) : null;
+    // Source-less writes also seed historical schemas in migration tests, before the source column exists.
     this.db
-      .prepare("INSERT INTO audit(at, actor, action, target, detail, detail_key, detail_vars, agent, on_behalf, run) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .prepare(`INSERT INTO audit(at, actor, action, target, detail, detail_key, detail_vars, agent, on_behalf, run${actor.source ? ", source" : ""}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?${actor.source ? ", ?" : ""})`)
       .run(
         this.#now(),
         actor.name,
@@ -2231,6 +2238,7 @@ export class SqliteHive implements HiveBackend {
         agent,
         actor.onBehalf ?? null,
         actor.run ?? actor.source?.run ?? null,
+        ...(actor.source ? [JSON.stringify(actor.source)] : []),
       );
   }
 
