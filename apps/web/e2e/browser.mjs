@@ -999,6 +999,33 @@ async function main() {
     await tab.go("tasks?task=SPEC-E2E");
     await tab.waitFor("the flow waiting at its spec gate", () => document.querySelector('[data-flow="SPEC-E2E"]')?.getAttribute("data-flow-state") === "gate");
     await tab.shot(`${String(n).padStart(2, "0")}-sdlc-flow-gate`);
+    await step("pipeline", async () => {
+      await tab.go("settings?tab=sdlc&project=payment");
+      await tab.waitFor("legacy SDLC link redirected to pipeline", () => location.hash.startsWith("#/pipeline?") && !!document.querySelector('[data-pipeline-step="spec"]'));
+      const count = await tab.eval(() => document.querySelector('[data-pipeline-count="spec"]')?.textContent);
+      expect(/\b1\b/.test(count ?? ""), `Spec does not show one active flow: ${count}`);
+      const gateCount = await tab.eval(() => document.querySelectorAll("[data-pipeline-gate]").length);
+      expect(gateCount === 7, `pipeline gates: ${gateCount}`);
+      await tab.shot(`${String(n).padStart(2, "0")}-pipeline-open`);
+      await tab.click('[data-pipeline-gate="review"]');
+      await tab.waitFor("Review gate editor", () => !!document.querySelector('[data-pipeline-editor] [data-pipeline-mode="ai"]'));
+      await tab.shot(`${String(n).padStart(2, "0")}-pipeline-editor`);
+      await tab.click('[data-pipeline-editor] [data-pipeline-mode="ai"]');
+      await tab.click('[data-pipeline-save]');
+      await until("Review changed to AI check", async () => (await rpc("sdlc.get", {})).projects.payment?.effective.review === "ai");
+      await tab.click('[data-pipeline-preset="cautious"]');
+      await tab.waitFor("cautious preview", () => document.querySelectorAll('[data-pipeline-preview] [data-pipeline-change]').length === 7);
+      await tab.shot(`${String(n).padStart(2, "0")}-pipeline-preview`);
+      await tab.click('[data-pipeline-apply]');
+      await until("cautious preset saved", async () => {
+        const p = (await rpc("sdlc.get", {})).projects.payment;
+        return p?.effective.spec === "human" && p?.effective.review === "human" && p?.effective.merge === "human";
+      });
+      await tab.shot(`${String(n).padStart(2, "0")}-pipeline-saved`);
+      await rpc("sdlc.setProject", { project: "payment", settings: null });
+      await tab.go("tasks?task=SPEC-E2E");
+      await tab.waitFor("the flow on Task after pipeline", () => !!document.querySelector('[data-flow="SPEC-E2E"]'));
+    });
     await tab.click('[data-flow="SPEC-E2E"] [data-gate-pass]');
     await tab.waitFor("the plan step running", () => document.querySelector('[data-flow="SPEC-E2E"]')?.getAttribute("data-flow-state") === "running");
     const [plan] = (await beat()).runRequests.filter((r) => r.taskId === "SPEC-E2E");

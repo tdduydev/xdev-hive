@@ -81,6 +81,10 @@ export interface Resolved {
  */
 export function resolveHash(raw: string, opts: { local: boolean; web?: boolean; isPage: (id: string) => boolean }): Resolved {
   const path = raw.replace(/^#\/?/, "");
+  if (opts.web && /^settings\?/.test(path) && new URLSearchParams(path.split("?")[1]).get("tab") === "sdlc") {
+    const params = new URLSearchParams(path.split("?")[1]); params.delete("tab");
+    return { id: "pipeline", hash: `#/pipeline${params.size ? `?${params}` : ""}` };
+  }
   const id = path.split("?")[0]!;
   const query = path.includes("?") ? path.slice(path.indexOf("?") + 1) : "";
   // A redirect keeps the query: #/board?task=T-1 opens that task on Task, #/batches?group=3 that group on its tab.

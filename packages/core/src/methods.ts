@@ -15,7 +15,7 @@ import type { SkillSummary } from "./skills.ts";
 import { SPEC_DIR, SPEC_FEATURES_MAX, SPEC_FILE_MAX, SPEC_STEPS, type SpecFeature, type SpecFeatureDetail, type SpecTaskPlan } from "./speckit.ts";
 import { toolEntrySchema } from "./tools.ts";
 import { TASK_KINDS, TASK_RISKS, TASK_SIZES } from "./task-classify.ts";
-import { GATE_STATUSES, gateModesSchema, MAX_FIX_ROUNDS, type SdlcFlow, type SdlcFlowTask, type SdlcGateRecord, type SdlcPolicyView } from "./sdlc.ts";
+import { FAST_LANE_KINDS, GATE_STATUSES, gateModesSchema, MAX_FIX_ROUNDS, type SdlcFlow, type SdlcFlowTask, type SdlcGateRecord, type SdlcPolicyView } from "./sdlc.ts";
 import {
   MEMORY_KINDS,
   MEMORY_STATUSES,
@@ -909,6 +909,7 @@ export const schemas = {
         gates: gateModesSchema,
         maxFixRounds: z.number().int().min(0).max(MAX_FIX_ROUNDS).optional(),
         maxParallel: z.number().int().min(1).max(20).nullable().optional(),
+        fastLaneKinds: z.array(z.enum(FAST_LANE_KINDS)).max(FAST_LANE_KINDS.length).optional(),
       })
       .nullable(),
   }),

@@ -116,12 +116,17 @@ export function TaskWorkPage() {
 
 /** `view` and `switcher` are set by TaskWorkPage when the Board is the other view; alone, the page owns both. */
 export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: ReactNode }) {
-  const { client, scope, projects, me } = useHive();
+  const { client, scope, projects, me, setScope } = useHive();
   const t = useT();
   const allow = useCan();
   // A system's new tasks go to one of its projects.
   // Tasks always belong to one project: the shared scope has none of its own, so it shows every project's.
   const scoped = scopeProject(scope);
+  const [linkedProject] = useHashParam("project");
+  const [linkedKind] = useHashParam("kind");
+  useEffect(() => {
+    if (linkedProject && projects.includes(linkedProject) && linkedProject !== scoped) setScope({ kind: "project", project: linkedProject });
+  }, [linkedProject, projects, scoped, setScope]);
   const key = scopeKey(scope);
   const [own, setViewState] = useState<View>(readView);
   const chosen = fixed ?? own;
@@ -182,7 +187,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
   const [agentFilter, setAgentFilter] = useState("");
   const machines = useQuery(async () => hub ? client.call("machines.list", {}) : [], [client, hub, poll]);
   const lanes = agentLanes(machines.data ?? [], list.data ?? [], t("assignment.any"), t("assignment.unassigned"));
-  const visible = filterAgent(list.data ?? [], agentFilter);
+  const visible = filterAgent(list.data ?? [], agentFilter).filter((task) => linkedKind !== "fast" || (task.status !== "done" && ["docs", "small-fix", "test"].includes(task.kind ?? "")));
   return (
     <Page wide={view !== "list"}>
       <PageHeader title={t("tasks.title")} subtitle={t("tasks.subtitle")} />
