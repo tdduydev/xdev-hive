@@ -97,7 +97,7 @@ import { AssistWorker } from "./assist.ts";
 import { ChatWorker } from "./chat.ts";
 import { killTree } from "./kill.ts";
 import { ClaudeStream, CodexStream, lineStamper } from "./stream.ts";
-import { limitResetAt, parseClaudeResult, type RunUsage } from "./usage.ts";
+import { limitResetAt, parseClaudeResult, withResetsAt, type RunUsage } from "./usage.ts";
 import { pickWithReason, waitingReason, type ProfileLoad, type RunNeeds } from "./schedule.ts";
 import { ACTIVE, RunStore } from "./store.ts";
 import {
@@ -764,7 +764,7 @@ export class Runner {
         cooldownFrom: resting?.from ?? null,
         cliPath: resolveBin(expandHome(profile.bin), pathEnv),
         login: this.#host.login?.(profile.id) ?? null,
-        usage: this.#host.usage?.(profile.id) ?? null,
+        usage: withResetsAt(this.#host.usage?.(profile.id), now),
         hasToken: Boolean(this.#host.token?.(profile.id)),
         // The policy of the last heartbeat, as tick() and #start apply it: the card shows what a run would get.
         autonomy: profileAutonomy(profile.kind, profile.args, this.#agentPolicy),
@@ -781,6 +781,14 @@ export class Runner {
       await this.#host.backend().call("cooldowns.clear", { account }, this.#runnerActor());
     }
     void this.tick();
+  }
+
+  /** Counts the profile's runs from now on (roadmap 52); its runs and their history stay as they are. */
+  resetStats(profileId: string): void {
+    if (!this.#host.profiles().some((p) => p.id === profileId)) {
+      throw new HiveError("not_found", `Không có profile ${profileId}.`, { key: "errors.profileNotFound", vars: { id: profileId } });
+    }
+    this.store.resetStats(profileId, this.#opts.now().toISOString());
   }
 
   /** Reports queued and running runs to the hub and refreshes the shared quota cooldowns. No-op in local mode. */

@@ -80,7 +80,7 @@ import { installAgents, installCodexConfig, installShim, repoFeatures, shimTarge
 import { windowsUserPath } from "./winpath.ts";
 import { toolViews } from "./runner/tools.ts";
 import { expandEnv, expandHome, resolveBin } from "./runner/command.ts";
-import { LOGIN_DIR_ENV, LoginMonitor, loginParts, readLoginHow } from "./runner/login.ts";
+import { LOGIN_DIR_ENV, LoginMonitor, loginParts, readLoginHow, usageRefresher } from "./runner/login.ts";
 import { platformKey, Updater, type UpdateStatus } from "./updater.ts";
 import { Runner, type HubUpdate, type RunnerEvent } from "./runner/runner.ts";
 import { agentPath } from "./runner/shell-path.ts";
@@ -606,6 +606,13 @@ async function recheckLogins() {
   return runner.profileStatuses();
 }
 
+/** Đọc lại quota on the Agent page (roadmap 52), for one profile or every enabled one. */
+const refreshUsage = usageRefresher(
+  (ids) => logins.refresh(ids),
+  () => runner.tick(),
+  () => runner.profileStatuses(),
+);
+
 /** `--version`, then the sign-in check (which the runner and the hub see too). */
 async function checkProfile(id: string): Promise<ProfileCheck> {
   const profile = config.agents.find((a) => a.id === id);
@@ -750,6 +757,7 @@ const reportedProfiles = (): ReportedProfile[] =>
     cooldownUntil: p.cooldownUntil,
     runs: p.stats.runs,
     rateLimited: p.stats.rateLimited,
+    statsSince: p.stats.since,
     priority: p.priority,
     // The hub counts free places with it when it picks a machine for a run group (roadmap 31a).
     maxConcurrent: p.maxConcurrent,
@@ -1184,6 +1192,8 @@ function registerIpc(): void {
   handle("desktop:saveProfile", saveProfile);
   handle("desktop:removeProfile", removeProfile);
   handle("desktop:resetCooldown", async (id: string) => (await runner.resetCooldown(id), runner.profileStatuses()));
+  handle("desktop:refreshUsage", (ids?: string[]) => refreshUsage(Array.isArray(ids) ? ids.filter((x) => typeof x === "string") : undefined));
+  handle("desktop:resetStats", (id: string) => (runner.resetStats(id), runner.profileStatuses()));
   handle("desktop:checkProfile", checkProfile);
   handle("desktop:openLogin", openLogin);
   handle("desktop:addAccount", addAccount);

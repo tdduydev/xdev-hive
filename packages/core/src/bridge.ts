@@ -273,8 +273,11 @@ export interface AgentProfileStatus extends AgentProfile {
   /** A long-lived token is saved for container runs (the token itself stays in the main process). */
   hasToken: boolean;
   lastUsedAt: string | null;
-  /** costUsd: sum of the runs' API-price estimates (Claude Code runs only). */
-  stats: { runs: number; succeeded: number; failed: number; rateLimited: number; costUsd: number };
+  /**
+   * costUsd: sum of the runs' API-price estimates (Claude Code runs only). since: when the person last reset the
+   * counter (roadmap 52); every count is from then on, null: from the first run.
+   */
+  stats: { runs: number; succeeded: number; failed: number; rateLimited: number; costUsd: number; since: string | null };
   /** Its runs' tokens and cache over 24 hours, 7 and 30 days, from this machine's runs.db (roadmap 46). */
   tokens: TokenWindows;
   /** Its own flags' autonomy and what runs get under the agent policy the machine last heard from the hub. */
@@ -470,6 +473,10 @@ export interface DesktopBridge {
   saveProfile(profile: AgentProfile, previousId?: string): Promise<AgentProfileStatus[]>;
   removeProfile(id: string): Promise<AgentProfileStatus[]>;
   resetCooldown(id: string): Promise<AgentProfileStatus[]>;
+  /** Reads the sign-in and plan usage again (roadmap 52): the given profiles, or every enabled one. One read at a time. */
+  refreshUsage(ids?: string[]): Promise<AgentProfileStatus[]>;
+  /** Counts the profile's runs from now on; its run history stays (roadmap 52). */
+  resetStats(id: string): Promise<AgentProfileStatus[]>;
   checkProfile(id: string): Promise<ProfileCheck>;
   /** Opens a terminal running the profile's sign-in command (Claude Code, Codex). */
   openLogin(id: string, how?: LoginHow): Promise<{ opened: boolean }>;

@@ -20,6 +20,8 @@ CREATE INDEX IF NOT EXISTS runs_status ON runs(status, created_at);
 CREATE INDEX IF NOT EXISTS runs_task ON runs(project, task_id);
 CREATE TABLE IF NOT EXISTS profile_cooldowns(
   profile_id TEXT PRIMARY KEY, until TEXT NOT NULL, reason TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS profile_stats_since(
+  profile_id TEXT PRIMARY KEY, since TEXT NOT NULL);
 `;
 
 /** Columns added after the first release; created on open when missing. */
@@ -292,23 +294,49 @@ export class RunStore {
     return Number(row.n);
   }
 
+  /**
+   * A profile's run counts since its counter was last reset (roadmap 52), or since its first run. Running and last
+   * used stay over every run: the scheduler needs them whatever the person chose to count from.
+   */
   profileStats(profileId: string) {
+    const since = this.statsSince(profileId);
+    // A run counts by when it ended: one that hit the limit right after the reset belongs to the new count.
+    const counted = "(?2 IS NULL OR COALESCE(finished_at, started_at, created_at) >= ?2)";
     const rows = this.db
-      .prepare("SELECT status, COUNT(*) AS n, MAX(started_at) AS last, SUM(cost_usd) AS cost FROM runs WHERE profile_id = ? GROUP BY status")
-      .all(profileId) as Row[];
-    const by = (s: RunStatus) => Number(rows.find((r) => r.status === s)?.n ?? 0);
+      .prepare(
+        `SELECT status, COUNT(*) AS n, MAX(started_at) AS last, SUM(CASE WHEN ${counted} THEN 1 ELSE 0 END) AS counted,
+           SUM(CASE WHEN ${counted} THEN cost_usd END) AS cost
+         FROM runs WHERE profile_id = ?1 GROUP BY status`,
+      )
+      .all(profileId, since) as Row[];
+    const row = (s: RunStatus) => rows.find((r) => r.status === s);
+    const by = (s: RunStatus) => Number(row(s)?.counted ?? 0);
     const last = rows.map((r) => (r.last == null ? "" : String(r.last))).sort().at(-1) || null;
     return {
-      running: by("running"),
+      running: Number(row("running")?.n ?? 0),
       lastUsedAt: last,
       stats: {
-        runs: rows.reduce((n, r) => n + Number(r.n), 0),
+        runs: rows.reduce((n, r) => n + Number(r.counted ?? 0), 0),
         succeeded: by("succeeded"),
         failed: by("failed"),
         rateLimited: by("rate_limited"),
         costUsd: rows.reduce((n, r) => n + Number(r.cost ?? 0), 0),
+        since,
       },
     };
+  }
+
+  /** When the profile's counter was last reset; null: it counts every run. */
+  statsSince(profileId: string): string | null {
+    const row = this.db.prepare("SELECT since FROM profile_stats_since WHERE profile_id = ?").get(profileId) as Row | undefined;
+    return row ? String(row.since) : null;
+  }
+
+  /** Counts the profile's runs from `since` on; the runs themselves stay. */
+  resetStats(profileId: string, since: string): void {
+    this.db
+      .prepare("INSERT INTO profile_stats_since(profile_id, since) VALUES (?, ?) ON CONFLICT(profile_id) DO UPDATE SET since = excluded.since")
+      .run(profileId, since);
   }
 
   /** A profile's runs that finished since `since`, with their tokens only (roadmap 46). */

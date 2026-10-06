@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { tokenWindows, type AgentProfileStatus, type PlanUsage } from "@xdev-hive/core";
-import { hasUsage, needsHand, profileRows, profileState } from "#ui/lib/agents.ts";
+import { countdown, meterTone, needsHand, profileRows, profileState, quotaView, rowFix } from "#ui/lib/agents.ts";
+import { translate } from "#ui/i18n/translate.ts";
 
 const usage = (session: number | null, week: number | null): PlanUsage => ({
   session: session === null ? null : { percent: session, resets: null },
@@ -36,7 +37,7 @@ const profile = (over: Partial<AgentProfileStatus> = {}): AgentProfileStatus => 
   usage: null,
   hasToken: false,
   lastUsedAt: null,
-  stats: { runs: 0, succeeded: 0, failed: 0, rateLimited: 0, costUsd: 0 },
+  stats: { runs: 0, succeeded: 0, failed: 0, rateLimited: 0, costUsd: 0, since: null },
   tokens: tokenWindows([], new Date()),
   autonomy: { own: "full", flag: null, hub: null, projects: [] },
   ...over,
@@ -76,10 +77,74 @@ describe("agent rows (roadmap 39c)", () => {
     assert.deepEqual(rows.off.map((p) => p.id), ["claude-box"]);
   });
 
-  it("asks for the one footnote under the table only while a row has no numbers to show", () => {
-    assert.equal(profileRows([profile({ usage: usage(41, 83) })]).someWithoutUsage, false);
-    assert.equal(profileRows([profile({ usage: usage(41, null) })]).someWithoutUsage, false, "a session alone is still numbers");
-    assert.equal(profileRows([profile({ usage: usage(41, 83) }), profile({ id: "codex-plus", kind: "codex" })]).someWithoutUsage, true);
-    assert.equal(hasUsage(profile({ usage: usage(null, null) })), false, "a check that found neither limit");
+});
+
+describe("quota block (roadmap 52)", () => {
+  // A fake clock: 14:00 in Hà Nội on 6/10.
+  const now = Date.parse("2026-10-06T07:00:00Z");
+  const limit = (percent: number, resetsAt: string | null) => ({ percent, resets: resetsAt ? "Oct 8 at 5:59pm (Asia/Saigon)" : null, resetsAt });
+  const plan = (session: ReturnType<typeof limit> | null, week: ReturnType<typeof limit> | null): PlanUsage => ({ session, week, others: [], checkedAt: "2026-10-06T06:50:00Z" });
+  const stats = { runs: 14, succeeded: 11, failed: 1, rateLimited: 2, costUsd: 3.2, since: null };
+
+  it("has all four parts on every row: both limits, the counts, the rest and the read", () => {
+    const view = quotaView(
+      profile({ usage: plan(limit(41, "2026-10-06T09:15:00Z"), limit(83, "2026-10-09T07:00:00Z")), stats, cooldownUntil: "2026-10-06T09:40:00Z", cooldownReason: "usage limit" }),
+      now,
+    );
+    assert.deepEqual(view.session, { known: true, percent: 41, stop: 95, tone: "ok", resets: "Oct 8 at 5:59pm (Asia/Saigon)", resetsAt: "2026-10-06T09:15:00Z", left: { days: 0, hours: 2, minutes: 15 } });
+    assert.equal(view.week.known && view.week.tone, "near", "83% is within 10 points of the week's 90% stop");
+    assert.deepEqual(view.counts, { hitLimit: 2, runs: 14, done: 11, failed: 1, since: null });
+    assert.deepEqual(view.rest, { until: "2026-10-06T09:40:00Z", reason: "usage limit" });
+    assert.equal(view.canRead, true);
+    assert.equal(quotaView(profile({ enabled: false }), now).canRead, false, "the main process does not check an off profile");
+  });
+
+  it("counts down to the reset with the clock, in whole minutes rounded up", () => {
+    assert.deepEqual(countdown("2026-10-06T09:15:00Z", now), { days: 0, hours: 2, minutes: 15 });
+    assert.deepEqual(countdown("2026-10-09T07:00:00Z", now), { days: 3, hours: 0, minutes: 0 });
+    assert.deepEqual(countdown("2026-10-06T07:00:20Z", now), { days: 0, hours: 0, minutes: 1 }, "seconds left are not 0 minutes");
+    // A minute later the page shows a minute less.
+    assert.deepEqual(countdown("2026-10-06T09:15:00Z", now + 60_000), { days: 0, hours: 2, minutes: 14 });
+    assert.equal(countdown("2026-10-06T06:59:00Z", now), null, "past");
+    assert.equal(countdown(null, now), null);
+    assert.equal(countdown("Oct 8 at 5:59pm (Asia/Saigon)", now), null, "the CLI's text is not an instant");
+  });
+
+  it("says why a limit is not known", () => {
+    const signedOut = { loggedIn: false, method: null, loginCommand: "codex login", checkedAt: "" };
+    const signedIn = { ...signedOut, loggedIn: true };
+    const why = (over: Partial<AgentProfileStatus>) => {
+      const v = quotaView(profile(over), now).week;
+      return v.known ? null : v.why;
+    };
+    assert.equal(why({ kind: "codex", login: signedOut }), "signedOut");
+    assert.equal(why({ kind: "codex", login: signedIn }), "noSession");
+    assert.equal(why({ kind: "claude", login: null }), "notChecked");
+    assert.equal(why({ kind: "gemini", login: signedIn }), "noReport");
+    assert.equal(why({ login: signedIn, usage: plan(limit(41, null), null) }), "noReport", "a session alone: the week is still unknown");
+  });
+
+  it("colours the bar from the profile's own stop threshold", () => {
+    assert.deepEqual([meterTone(40, 95), meterTone(85, 95), meterTone(95, 95), meterTone(100, 100)], ["ok", "near", "over", "over"]);
+  });
+
+  it("shows Bỏ nghỉ whenever the profile rests, even next to another button of the row", () => {
+    const signedOut = { loggedIn: false, method: null, loginCommand: "claude auth login", checkedAt: "" };
+    const p = profile({ login: signedOut, cooldownUntil: "2026-10-06T09:40:00Z" });
+    assert.equal(rowFix(p), "login");
+    assert.ok(quotaView(p, now).rest, "the rest has its own button");
+    assert.equal(rowFix(profile({ cliPath: null, cooldownUntil: "2026-10-06T09:40:00Z" })), "installCli");
+    assert.ok(quotaView(profile({ cliPath: null, cooldownUntil: "2026-10-06T09:40:00Z" }), now).rest);
+    assert.equal(quotaView(profile(), now).rest, null);
+  });
+
+  it("writes the counts from the reset date once the counter was reset", () => {
+    const since = (p: AgentProfileStatus) => {
+      const c = quotaView(p, now).counts;
+      return c.since ? translate("agents.quota.since", { date: c.since.slice(0, 10) }, "vi") : translate("agents.quota.sinceStart", undefined, "vi");
+    };
+    assert.equal(since(profile({ stats })), "từ đầu");
+    assert.equal(since(profile({ stats: { ...stats, runs: 0, succeeded: 0, failed: 0, rateLimited: 0, since: "2026-10-06T07:00:00Z" } })), "từ 2026-10-06");
+    assert.equal(translate("agents.quota.hitLimit", { count: 2 }, "en"), "Hit the limit 2 times");
   });
 });

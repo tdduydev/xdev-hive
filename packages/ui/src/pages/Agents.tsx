@@ -1,7 +1,7 @@
 import { ResponsiveGridRow, ResponsiveTableFrame } from "#ui/components/ResponsiveTable.tsx";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "cn";
-import { ChevronRight, CircleHelp, MoreHorizontal, Plus } from "lucide-react";
+import { ChevronRight, CircleHelp, MoreHorizontal, Plus, RefreshCw } from "lucide-react";
 import {
   AGENT_KINDS,
   AGENT_ROLES,
@@ -42,9 +42,9 @@ import { Badge, Empty, ErrorNote, Notice, PageHeader } from "#ui/components/comm
 import { canOpenCli } from "#ui/components/OpenCli.tsx";
 import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { useToast } from "#ui/shell/toast.tsx";
-import { errorMessage, formatCount, formatTime, formatUsd, useAction, useHive, useQuery } from "#ui/hooks.ts";
+import { errorMessage, formatCount, formatDay, formatTime, formatUsd, useAction, useHive, useQuery } from "#ui/hooks.ts";
 import { activeIntl, rich, useT } from "#ui/i18n/index.tsx";
-import { profileRows, profileState, usageAsOf, type ProfileState } from "#ui/lib/agents.ts";
+import { profileRows, profileState, quotaView, rowFix, usageAsOf, type ProfileState, type QuotaLimit } from "#ui/lib/agents.ts";
 import { hasNewer } from "#ui/lib/setup.ts";
 
 /** Env var that points each CLI at a separate login, so two subscriptions of one vendor can rotate. */
@@ -79,6 +79,23 @@ export function AgentsPage() {
   // Profiles whose sign-in was opened from here: checked every few seconds until signed in (at most 5 minutes).
   const [waiting, setWaiting] = useState<Record<string, number>>({});
   const refresh = () => setTick((t) => t + 1);
+  const now = useMinute();
+  // The read going on (roadmap 52): one profile's id, "all", or none. The main process runs one read at a time anyway.
+  const [reading, setReading] = useState<string | null>(null);
+  const readUsage = (id?: string) => {
+    if (reading) return;
+    setReading(id ?? "all");
+    void desktop
+      .refreshUsage(id ? [id] : undefined)
+      .then(refresh, (err: unknown) => toast(errorMessage(err)))
+      .finally(() => setReading(null));
+  };
+  // The newest check of the enabled profiles: the 10-minute one or a read from here.
+  const checkedAt = (profiles.data ?? [])
+    .filter((p) => p.enabled)
+    .map((p) => p.login?.checkedAt ?? "")
+    .sort()
+    .at(-1);
   const waitFor = (id: string) => setWaiting((w) => ({ ...w, [id]: Date.now() }));
   useEffect(() => {
     const ids = Object.keys(waiting);
@@ -153,12 +170,36 @@ export function AgentsPage() {
         onEdit={(p) => edit(p, p.id)}
         onChanged={refresh}
         onLoginOpened={waitFor}
+        now={now}
+        reading={reading}
+        onRead={readUsage}
       />
       <ErrorNote error={profiles.error} />
       {profiles.data?.length === 0 ? <Empty>{t("agents.none")}</Empty> : null}
       {profiles.data?.length ? <TokenStats profiles={profiles.data} /> : null}
       <div ref={manage} className="flex flex-col gap-4 pt-2">
-        <h2 className="m-0 text-[13px]/[18px] font-semibold text-fg-strong">{t("agents.manage")}</h2>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <h2 className="m-0 text-[13px]/[18px] font-semibold text-fg-strong">{t("agents.manage")}</h2>
+          <span className="ml-auto flex items-center gap-2">
+            {checkedAt ? (
+              <span data-usage-checked className="text-xs/4 text-fg-muted">
+                {t("agents.quota.updatedAt", { time: clock(checkedAt, now) })}
+              </span>
+            ) : null}
+            <Button
+              size="sm"
+              variant="outline"
+              data-read-usage-all
+              title={t("agents.quota.readAllHint")}
+              aria-busy={reading === "all"}
+              disabled={reading !== null || !profiles.data?.some((p) => p.enabled)}
+              onClick={() => readUsage()}
+            >
+              <RefreshCw className={cn(reading === "all" && "motion-safe:animate-spin")} aria-hidden />
+              {reading === "all" ? t("agents.quota.readingAll") : t("agents.quota.readAll")}
+            </Button>
+          </span>
+        </div>
         <p className="m-0 -mt-2 max-w-3xl text-xs/[18px] text-fg-muted">{t("agents.subtitle")}</p>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-muted-foreground">{t("agents.addAccount")}</span>
@@ -369,6 +410,9 @@ function ProfileTable({
   onEdit,
   onChanged,
   onLoginOpened,
+  now,
+  reading,
+  onRead,
 }: {
   profiles: AgentProfileStatus[];
   /** This machine's projects, where a subscription's CLI can be opened. */
@@ -384,9 +428,14 @@ function ProfileTable({
   onEdit: (p: AgentProfileStatus) => void;
   onChanged: () => void;
   onLoginOpened: (id: string) => void;
+  /** The page's clock, moved each minute, for the countdowns. */
+  now: number;
+  /** The profile whose quota is being read, "all", or null. */
+  reading: string | null;
+  onRead: (id: string) => void;
 }) {
   const t = useT();
-  const { on, off, someWithoutUsage } = profileRows(profiles);
+  const { on, off } = profileRows(profiles);
   if (!profiles.length) return null;
   const row = (p: AgentProfileStatus) => (
     <ProfileRow
@@ -400,6 +449,10 @@ function ProfileTable({
       onEdit={() => onEdit(p)}
       onChanged={onChanged}
       onLoginOpened={() => onLoginOpened(p.id)}
+      now={now}
+      reading={reading === p.id || (reading === "all" && p.enabled)}
+      readBusy={reading !== null}
+      onRead={() => onRead(p.id)}
     />
   );
   return (
@@ -433,7 +486,6 @@ function ProfileTable({
           {showOff ? off.map(row) : null}
         </div>
       </ResponsiveTableFrame>
-      {someWithoutUsage ? <p className="m-0 text-xs/[18px] text-fg-muted">{t("agents.noUsageNote")}</p> : null}
     </div>
   );
 }
@@ -560,6 +612,10 @@ function ProfileRow({
   onEdit,
   onChanged,
   onLoginOpened,
+  now,
+  reading,
+  readBusy,
+  onRead,
 }: {
   profile: AgentProfileStatus;
   projects: string[];
@@ -570,9 +626,16 @@ function ProfileRow({
   onEdit: () => void;
   onChanged: () => void;
   onLoginOpened: () => void;
+  now: number;
+  /** This profile's quota is being read. */
+  reading: boolean;
+  /** A read is going on, this profile's or another's. */
+  readBusy: boolean;
+  onRead: () => void;
 }) {
   const { client } = useHive();
   const t = useT();
+  const toast = useToast();
   const desktop = client.desktop!;
   const action = useAction();
   const [check, setCheck] = useState<ProfileCheck | null>(null);
@@ -580,6 +643,8 @@ function ProfileRow({
   const [openedCli, setOpenedCli] = useState<{ profile: string; project: string } | null>(null);
   const [token, setToken] = useState("");
   const state = profileState(p);
+  const fix = rowFix(p);
+  const quota = quotaView(p, now);
   // What the machine works out itself stays out: saveProfile takes the profile as the config holds it.
   const { cooldownUntil: _c, cooldownReason: _r, cooldownFrom: _f, cliPath: _p, running: _n, lastUsedAt: _l, stats: _s, ...plain } = p;
   const stop = state === "overLimit" ? usageStop(p, p.usage) : null;
@@ -608,27 +673,26 @@ function ProfileRow({
           </span>
         </span>
         <span title={p.cooldownReason ?? undefined}>
+          {/* Until when is on the quota line under the row, next to Bỏ nghỉ. */}
           <Chip kind={STATE_TONE[state]} title={p.cooldownUntil ? formatTime(p.cooldownUntil) : undefined}>
-            {state === "resting" && p.cooldownUntil
-              ? `${t("agents.state.resting")} · ${new Date(p.cooldownUntil).toLocaleTimeString(activeIntl(), { hour: "2-digit", minute: "2-digit" })}`
-              : t(`agents.state.${state}`)}
+            {t(`agents.state.${state}`)}
           </Chip>
         </span>
-        {/* No numbers from the CLI: a dash, and the one footnote under the table says why. */}
         {(["session", "week"] as const).map((which) => {
-          const limit = p.usage?.[which];
-          return limit ? (
+          const limit = quota[which];
+          return limit.known ? (
             <Meter
               key={which}
-              percent={limit.percent}
-              resets={limit.resets}
-              stop={which === "session" ? p.stopAtSession : p.stopAtWeek}
+              which={which}
+              limit={limit}
+              now={now}
               // Once per row: both numbers come from the same check.
-              asOf={which === "session" || !p.usage?.session ? usageAsOf(p.usage?.checkedAt) : null}
+              asOf={which === "session" || !quota.session.known ? usageAsOf(p.usage?.checkedAt, now) : null}
             />
           ) : (
-            <span key={which} className="text-xs text-fg-muted">
-              —
+            <span key={which} data-usage-unknown={which} className="flex flex-col gap-[5px] text-[11px]/none text-fg-muted">
+              <span className="text-xs/none font-medium text-fg-secondary">{t("agents.quota.unknown")}</span>
+              <span className="truncate">{t(`agents.quota.why.${limit.why}`)}</span>
             </span>
           );
         })}
@@ -636,12 +700,13 @@ function ProfileRow({
           {p.stats.costUsd ? `~${formatUsd(p.stats.costUsd)}` : "—"}
         </span>
         <span className="flex items-center justify-end gap-1.5">
-          {/* One button for what the row reports; the states exclude each other, so there is never a second. */}
-          {state === "noCli" ? (
+          {/* One button for what the row reports; the states exclude each other, so there is never a second. Bỏ nghỉ is
+              not one of them: a rest can go with any state, so it has its place on the quota line. */}
+          {fix === "installCli" ? (
             <Button asChild size="sm" variant="outline">
               <a href="#/setup">{t("agents.installCli")}</a>
             </Button>
-          ) : state === "signedOut" && p.login?.loginCommand ? (
+          ) : fix === "login" ? (
             <Button
               size="sm"
               data-login={p.id}
@@ -649,10 +714,6 @@ function ProfileRow({
               onClick={() => void action.run(async () => (await desktop.openLogin(p.id), setLoginOpened(true), onLoginOpened()))}
             >
               {t("agents.login")}
-            </Button>
-          ) : state === "resting" ? (
-            <Button size="sm" variant="outline" disabled={action.busy} onClick={() => void action.run(async () => (await desktop.resetCooldown(p.id), onChanged()))}>
-              {t("machines.clear")}
             </Button>
           ) : null}
           {upgrade ? (
@@ -708,6 +769,64 @@ function ProfileRow({
           </DropdownMenu>
         </span>
       </ResponsiveGridRow>
+      {/* Always shown, off rows too (roadmap 52): the counts and the rest are what a person checks the page for. */}
+      <div data-quota={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 pb-3 text-xs/4 text-fg-muted md:pl-10">
+        {quota.rest ? (
+          <span data-resting={p.id} className="flex items-center gap-2" title={quota.rest.reason ?? undefined}>
+            <Chip kind="warning">{t("agents.quota.restingUntil", { time: clock(quota.rest.until, now) })}</Chip>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8"
+              data-end-rest={p.id}
+              aria-label={t("agents.quota.endRestLabel", { label: p.label })}
+              disabled={action.busy}
+              onClick={() => void action.run(async () => (await desktop.resetCooldown(p.id), onChanged()))}
+            >
+              {t("agents.quota.endRest")}
+            </Button>
+          </span>
+        ) : null}
+        <span data-stat-line={p.id}>
+          <span className={quota.counts.hitLimit ? "font-medium text-warning" : undefined}>{t("agents.quota.hitLimit", { count: quota.counts.hitLimit })}</span>
+          {" · "}
+          {t("agents.quota.runs", { count: quota.counts.runs })} · {t("agents.quota.done", { count: quota.counts.done })} ·{" "}
+          {t("agents.quota.failed", { count: quota.counts.failed })}
+          {" · "}
+          <span data-stats-since={quota.counts.since ?? ""}>
+            {quota.counts.since ? t("agents.quota.since", { date: formatDay(quota.counts.since) }) : t("agents.quota.sinceStart")}
+          </span>
+        </span>
+        <span className="ml-auto flex items-center gap-2">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-8"
+            data-read-usage={p.id}
+            aria-label={t(reading ? "agents.quota.reading" : "agents.quota.read", { label: p.label })}
+            title={t("agents.quota.read", { label: p.label })}
+            aria-busy={reading}
+            disabled={readBusy || !quota.canRead}
+            onClick={onRead}
+          >
+            <RefreshCw className={cn(reading && "motion-safe:animate-spin")} aria-hidden />
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8"
+            data-reset-stats={p.id}
+            aria-label={t("agents.quota.resetStatsLabel", { label: p.label })}
+            disabled={action.busy}
+            onClick={() => {
+              if (window.confirm(t("agents.quota.confirmResetStats", { id: p.id })))
+                void action.run(async () => (await desktop.resetStats(p.id), toast(t("agents.quota.statsReset", { id: p.id })), onChanged()));
+            }}
+          >
+            {t("agents.quota.resetStats")}
+          </Button>
+        </span>
+      </div>
       {open ? (
         <div className="flex flex-col gap-3 border-t border-line-subtle bg-subtle px-4 py-3 text-sm">
           {state === "noCli" ? (
@@ -756,15 +875,12 @@ function ProfileRow({
             </span>
           </div>
           <div className="flex flex-wrap gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-            <span>{t("agents.statRuns", { count: p.stats.runs })}</span>
-            <span>· {t("agents.statDone", { count: p.stats.succeeded })}</span>
-            <span>· {t("agents.statQuota", { count: p.stats.rateLimited })}</span>
-            <span>· {t("agents.statFailed", { count: p.stats.failed })}</span>
-            {p.stats.costUsd > 0 ? <span>· {t("agents.statCost", { cost: formatUsd(p.stats.costUsd) })}</span> : null}
-            {p.lastUsedAt ? <span>· {t("agents.lastUsed", { time: formatTime(p.lastUsedAt) })}</span> : null}
+            {/* The counts are on the quota line under the row. */}
+            {p.stats.costUsd > 0 ? <span>{t("agents.statCost", { cost: formatUsd(p.stats.costUsd) })}</span> : null}
+            {p.lastUsedAt ? <span>{t("agents.lastUsed", { time: formatTime(p.lastUsedAt) })}</span> : null}
             {p.login?.loggedIn ? (
               <span>
-                · {p.login.method ? t("agents.signedIn", { method: p.login.method }) : t("agents.signedInPlain")}
+                {p.login.method ? t("agents.signedIn", { method: p.login.method }) : t("agents.signedInPlain")}
                 {p.login.account ? ` · ${p.login.account}` : ""}
               </span>
             ) : null}
@@ -1228,24 +1344,70 @@ function IntakeCard({ runner, hub, onSaved }: { runner: RunnerSettings; hub: boo
   );
 }
 
-function Meter({ percent, resets, stop, asOf }: { percent: number; resets: string | null; stop: number; asOf: string | null }) {
+/** The time, moved on each minute: the countdowns change no faster, and the page renders no more often than that. */
+function useMinute(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  return now;
+}
+
+/** "14:05" today, "Th 5 09:00" within the week (a week's reset is never further), the date beyond that. */
+function clock(iso: string, now: number): string {
+  const at = new Date(iso);
+  const sameDay = at.toDateString() === new Date(now).toDateString();
+  const inWeek = Math.abs(at.getTime() - now) < 6 * 86_400_000;
+  const opts: Intl.DateTimeFormatOptions = sameDay
+    ? { hour: "2-digit", minute: "2-digit" }
+    : inWeek
+      ? { weekday: "short", hour: "2-digit", minute: "2-digit" }
+      : { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" };
+  return at.toLocaleString(activeIntl(), opts);
+}
+
+const TONE = { ok: "bg-primary", near: "bg-warning-solid", over: "bg-danger-solid" } as const;
+
+function Meter({ which, limit, now, asOf }: { which: "session" | "week"; limit: Extract<QuotaLimit, { known: true }>; now: number; asOf: string | null }) {
   const t = useT();
-  const pct = Math.max(0, Math.min(100, Math.round(percent)));
+  const { percent: pct, stop, resets, resetsAt, left } = limit;
   return (
-    <span className="flex flex-col gap-[5px]">
+    <span className="flex min-w-0 flex-col gap-[5px]" data-meter={which}>
       <span className="flex text-[11px]/none text-fg-muted">
         <span className="font-mono text-xs/none font-semibold text-fg-strong">{pct}%</span>
-        {/* Claude Code prints the reset as text ("Oct 3, 9am"), not a timestamp: shown as it came. */}
-        {resets ? (
-          <span className="ml-auto truncate pl-2" title={resets}>
-            {t("agents.resets", { time: Number.isNaN(Date.parse(resets)) ? resets : formatTime(resets) })}
+        {/* Re-rendered each minute: aria-live off so a screen reader does not read it out every time. */}
+        {left ? (
+          <span data-reset-left className="ml-auto truncate pl-2 font-medium text-fg-secondary" aria-live="off">
+            {left.days
+              ? t(left.hours ? "agents.quota.left.daysHours" : "agents.quota.left.days", left)
+              : left.hours
+                ? t("agents.quota.left.hours", left)
+                : t("agents.quota.left.minutes", left)}
           </span>
         ) : null}
       </span>
-      <span role="meter" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} className="relative h-1.5 rounded-[3px] bg-sunken">
-        <span className={cn("absolute inset-y-0 left-0 rounded-[3px]", pct >= 85 ? "bg-warning-solid" : "bg-primary")} style={{ width: `${pct}%` }} />
+      <span
+        role="meter"
+        aria-label={t(which === "session" ? "agents.colSession" : "agents.colWeek")}
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        className="relative h-1.5 rounded-[3px] bg-sunken"
+      >
+        <span className={cn("absolute inset-y-0 left-0 rounded-[3px]", TONE[limit.tone])} style={{ width: `${pct}%` }} />
         <span title={t("agents.stopMark", { percent: stop })} className="absolute -top-[3px] -bottom-[3px] w-0.5 bg-fg-muted" style={{ left: `${Math.min(100, stop)}%` }} />
       </span>
+      {/* The reset in this machine's time; the CLI's own text ("Oct 8 at 5:59pm (Asia/Saigon)") when it could not be read. */}
+      {resetsAt || resets ? (
+        <span data-reset-at className="truncate text-[11px]/none text-fg-muted" title={resets ?? undefined}>
+          {resetsAt
+            ? left
+              ? t("agents.quota.resetAt", { time: clock(resetsAt, now) })
+              : t("agents.quota.resetPast")
+            : t("agents.quota.resetAt", { time: resets! })}
+        </span>
+      ) : null}
       {/* Codex reports its share only when it runs: old numbers say how old they are. */}
       {asOf ? (
         <span data-usage-as-of className="truncate text-[11px]/none text-fg-muted">
