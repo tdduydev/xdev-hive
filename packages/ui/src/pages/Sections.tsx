@@ -11,7 +11,6 @@ import {
   isHubAdmin,
   machineTabs,
   pickTab,
-  RUNS_TABS,
   settingsTabs,
   webCaps,
   type AdminTab,
@@ -142,18 +141,12 @@ export function AdminPage() {
 }
 
 /**
- * Agent đang chạy on the web: runs, and run groups as a tab until 49e makes them a filter. The desktop app lists
+ * Agent đang chạy on the web: runs with a group filter. Old tab links still open the group management page. The desktop app lists
  * this machine's runs alone (35a), with no groups, so it keeps the page as it was.
  */
 export function RunsWorkPage() {
   const { client } = useHive();
-  const t = useT();
   const [wanted] = useHashParam("tab");
   if (client.desktop) return <RunsPage />;
-  const tab = pickTab(RUNS_TABS, wanted) ?? "runs";
-  return (
-    <PageTabs page="runs" tabs={RUNS_TABS} current={tab} label={t("sections.tabs")} name={(id) => t(`sections.runs.${id}`)}>
-      {tab === "batches" ? <BatchesPage /> : <RunsPage />}
-    </PageTabs>
-  );
+  return wanted === "batches" ? <BatchesPage /> : <RunsPage />;
 }

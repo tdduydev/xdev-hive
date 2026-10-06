@@ -1,9 +1,22 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { setActiveLocale } from "#ui/i18n/translate.ts";
-import { fixInstructions, isLive, latestReviews, mrLabel, runDuration, runGroup, runLabel, runOutcome } from "#ui/lib/runs.ts";
+import { fixInstructions, handoffSections, isLive, latestReviews, mrLabel, runDuration, runGroup, runLabel, runOutcome, waitingReason } from "#ui/lib/runs.ts";
 
 describe("run helpers", () => {
+  it("shows waiting only for a reported quota, failed CI or an explicit question", () => {
+    assert.equal(waitingReason({ status: "rate_limited" }), "quota");
+    assert.equal(waitingReason({ status: "succeeded", mr: { pipeline: "failed" } }), "ci");
+    assert.equal(waitingReason({ status: "succeeded", summary: "Cần bạn xác nhận cách xử lý." }), "question");
+    assert.equal(waitingReason({ status: "failed", error: "TypeError: boom" }), null);
+  });
+
+  it("reads a structured handoff in its specified order", () => {
+    assert.deepEqual(handoffSections("ĐÃ LÀM: Sửa form\nCHƯA LÀM: Không\nCÁCH KIỂM: npm test\nRỦI RO: Máy cũ"), [
+      { id: "done", text: "Sửa form" }, { id: "left", text: "Không" }, { id: "verify", text: "npm test" }, { id: "risk", text: "Máy cũ" },
+    ]);
+    assert.deepEqual(handoffSections("Completed the task."), []);
+  });
   it("measures a run from its start, to its end or to now", () => {
     const now = new Date("2026-09-29T10:05:00Z");
     assert.equal(runDuration({ startedAt: null, finishedAt: null }, now), "");

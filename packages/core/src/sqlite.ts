@@ -5620,7 +5620,8 @@ export class SqliteHive implements HiveBackend {
           if (flow && ["running", "check", "checking", "next"].includes(str(flow.state))) {
             throw new HiveError("conflict", `Task ${taskId} is in a flow that is going on.`, { key: "errors.taskInFlow", vars: { id: taskId } });
           }
-          const m = this.#assertDispatchable({ machineId, project, task, role, profileId, candidates, instructions }, actor);
+          // Pick at dispatch time, when the hub knows which plans and machines still have room.
+          const m = this.#assertDispatchable({ machineId: machineId ?? this.#mapMachine(project, null, profileId).id, project, task, role, profileId, candidates, instructions }, actor);
           // Its group would run it again once this run ended.
           this.#assertNotInGroup(taskId);
           return this.#insertRequest(m, project, task, { role, profileId, preferKind, reviewAfter, candidates, instructions }, actor);

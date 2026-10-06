@@ -62,7 +62,7 @@ export const WEB_ALIASES: Record<string, string> = {
   members: "settings?tab=members",
   systems: "settings?tab=systems",
   tools: "settings?tab=tools",
-  batches: "runs?tab=batches",
+  batches: "runs",
 };
 
 export interface Resolved {

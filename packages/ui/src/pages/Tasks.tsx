@@ -544,7 +544,7 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
   const machines = useQuery(() => client.call("machines.list", {}), [client]);
   const fit = (machines.data ?? []).filter((m) => takesRunsOf(m, task.project));
   const [machineId, setMachineId] = useState("");
-  const machine = fit.find((m) => m.id === machineId) ?? fit[0] ?? null;
+  const machine = fit.find((m) => m.id === machineId) ?? null;
   const [role, setRole] = useState<AgentRole>(task.status === "review" ? "review" : "implement");
   const [profileId, setProfileId] = useState("");
   const [preferKind, setPreferKind] = useState<PreferKind | "">("");
@@ -566,14 +566,14 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
       {machines.data && !fit.length ? <Notice tone="info">{t("tasks.dispatchNoMachine", { project: task.project })}</Notice> : null}
       {waiting.length ? <Notice tone="warn">{t("board.waitingOn", { tasks: waiting.join(", ") })}</Notice> : null}
       {pending ? <Notice tone="info">{t("tasks.waitingMachine", { machine: pending.machine })}</Notice> : null}
-      {machine && !waiting.length && !pending ? (
+      {fit.length > 0 && !waiting.length && !pending ? (
         <form
           className="flex flex-col gap-3"
           onSubmit={(e) => {
             e.preventDefault();
             void action.run(async () => {
               await client.call("runs.dispatch", {
-                machineId: machine.id,
+                machineId: machine?.id ?? null,
                 project: task.project,
                 taskId: task.id,
                 role,
@@ -588,11 +588,15 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
             });
           }}
         >
-          <div className="grid gap-3 sm:grid-cols-2">
-            <MachineSelect id={`machine-${task.id}`} machines={fit} value={machine.id} onChange={(id) => (setMachineId(id), setProfileId(""))} />
+          <div className="flex flex-col gap-1.5">
+            <MachineSelect id={`machine-${task.id}`} machines={fit} value={machineId} any onChange={(id) => (setMachineId(id), setProfileId(""))} />
+          </div>
+          <details className="rounded-md border border-line-default p-3">
+            <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium focus-visible:focus-ring md:min-h-0">{t("tasks.dispatchOptions")}</summary>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor={`role-${task.id}`}>{t("board.role")}</Label>
-              <NativeSelect id={`role-${task.id}`} size="sm" className="w-full" value={role} onChange={(e) => setRole(e.target.value as AgentRole)}>
+              <NativeSelect id={`role-${task.id}`} size="sm" className="w-full max-md:h-11 max-md:text-base" value={role} onChange={(e) => setRole(e.target.value as AgentRole)}>
                 {AGENT_ROLES.map((r) => (
                   <NativeSelectOption key={r} value={r}>
                     {t(`agentRole.${r}`)}
@@ -608,7 +612,7 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
                 <NativeSelect
                   id={`candidates-${task.id}`}
                   size="sm"
-                  className="w-full"
+                  className="w-full max-md:h-11 max-md:text-base"
                   value={String(candidates)}
                   onChange={(e) => setCandidates(Number(e.target.value))}
                   title={t("board.candidatesHint")}
@@ -621,22 +625,24 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
                 </NativeSelect>
               </div>
             ) : null}
-          </div>
-          {several && candidates > 1 ? <p className="text-xs text-muted-foreground">{t("board.candidatesHint")}</p> : null}
-          <Textarea
-            placeholder={t("board.instructionsPlaceholder")}
-            value={instructions}
-            onChange={(e) => setInstructions(e.target.value)}
-            aria-label={t("board.instructions")}
-          />
-          {role !== "review" ? (
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={reviewAfter} onCheckedChange={(v) => setReviewAfter(v === true)} />
-              {t("board.reviewAfter")}
-            </label>
-          ) : null}
+            </div>
+            {several && candidates > 1 ? <p className="text-xs text-muted-foreground">{t("board.candidatesHint")}</p> : null}
+            <Textarea
+              placeholder={t("board.instructionsPlaceholder")}
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              aria-label={t("board.instructions")}
+              className="mt-3 max-md:text-base"
+            />
+            {role !== "review" ? (
+              <label className="mt-3 flex items-center gap-2 text-sm">
+                <Checkbox checked={reviewAfter} onCheckedChange={(v) => setReviewAfter(v === true)} />
+                {t("board.reviewAfter")}
+              </label>
+            ) : null}
+          </details>
           <div>
-            <Button size="sm" type="submit" disabled={action.busy}>
+            <Button size="sm" type="submit" disabled={action.busy} className="max-md:min-h-11">
               {t("tasks.dispatchSend")}
             </Button>
           </div>
