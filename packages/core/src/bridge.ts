@@ -1,3 +1,4 @@
+import type { DiffReview } from "#core/diff-review.ts";
 // Contracts between the shared UI and its hosts (web hub, desktop main process). Types only.
 import type { Access, Grant } from "./access.ts";
 import type { ProfileAutonomy } from "./agent-policy.ts";
@@ -313,6 +314,9 @@ export interface AgentProfileStatus extends AgentProfile {
 
 export interface AgentRun {
   plan?: import("#core/plan-approval.ts").RunPlan | null;
+  diffReview?: DiffReview | null;
+  diffSummaryFor?: string | null;
+  diffPatch?: string | null;
   id: string;
   project: string;
   taskId: string;

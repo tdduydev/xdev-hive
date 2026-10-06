@@ -48,6 +48,7 @@ export interface ModelSelection {
   reason: string;
   /** The choice for the review the machine runs after this implement run (reviewAfter), which is not the hub's request. */
   review?: Omit<ModelSelection, "review"> | null;
+  diffReview?: Omit<ModelSelection, "review" | "diffReview"> | null;
   /** One tier below the cell, so the learning (54d) sees whether the cheaper tier would do. */
   trial?: boolean;
 }

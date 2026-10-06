@@ -1,7 +1,9 @@
+import { RunDiff, type DiffFixTarget } from "#ui/components/RunDiff.tsx";
+import type { DiffReview } from "@xdev-hive/core";
 // Lượt chạy (docs/design/2026-09-redesign, xDev Hive Client; roadmap 39e): one line per run, the task's title first and
 // what came of it in words under it. The app lists this machine's runs only (roadmap 35a); the web lists every machine's
 // (runs.push). The detail opens on the summary — the agent's last words, its steps, the MR — and keeps the log in a tab.
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { ModelRunChip } from "#ui/components/ModelChip.tsx";
 import { Wrench, X } from "lucide-react";
 import { cn } from "cn";
@@ -321,19 +323,30 @@ function Head({ run, machine, actions }: { run: AgentRun | RunRecord; machine: s
 }
 
 /** Tóm tắt / Log / Thay đổi. Plain buttons: the screenshot harness clicks them, and a tab is the whole of the pane. */
-function TabBar({ tabs, tab, onTab, right }: { tabs: Array<[string, string]>; tab: string; onTab: (k: string) => void; right?: ReactNode }) {
+function TabBar({ tabs, tab, onTab, right, panelId }: { tabs: Array<[string, string]>; tab: string; onTab: (k: string) => void; right?: ReactNode; panelId?: string }) {
   return (
-    <div role="tablist" className="flex h-[34px] shrink-0 items-center gap-0.5 border-b border-line-subtle bg-subtle pr-2 pl-3">
+    <div role="tablist" className="flex h-[34px] max-md:h-11 shrink-0 items-center gap-0.5 border-b border-line-subtle bg-subtle pr-2 pl-3">
       {tabs.map(([k, label]) => (
         <button
           key={k}
           type="button"
           role="tab"
           data-run-tab={k}
+          id={panelId ? `${panelId}-${k}` : undefined}
+          aria-controls={panelId}
           aria-selected={tab === k}
+          tabIndex={tab === k ? 0 : -1}
+          onKeyDown={event => {
+            const at = tabs.findIndex(([key]) => key === k);
+            const next = event.key === "ArrowRight" ? (at + 1) % tabs.length : event.key === "ArrowLeft" ? (at + tabs.length - 1) % tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : null;
+            if (next === null) return;
+            event.preventDefault();
+            onTab(tabs[next]![0]);
+            (event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next])?.focus();
+          }}
           onClick={() => onTab(k)}
           className={cn(
-            "h-[34px] cursor-pointer border-b-2 px-2.5 text-xs/none font-semibold outline-none focus-visible:focus-ring",
+            "h-[34px] max-md:h-11 cursor-pointer border-b-2 px-2.5 text-xs/none font-semibold outline-none focus-visible:focus-ring",
             tab === k ? "border-primary text-fg-strong" : "border-transparent text-fg-muted",
           )}
         >
@@ -493,38 +506,12 @@ function Steps({ run, log }: { run: AgentRun | RunRecord; log: string }) {
   );
 }
 
-function DiffView({ files, error }: { files: DiffFile[] | null; error: string | null }) {
+function DiffView({ files, error, review, fix }: { files: DiffFile[] | null; error: string | null; review?: DiffReview | null; fix?: DiffFixTarget }) {
   const t = useT();
   if (error) return <div className="p-3.5 text-[13px] text-danger">{error}</div>;
   if (!files) return null;
   if (!files.length) return <div className="p-3.5 text-[13px] text-fg-muted">{t("runs.noDiff")}</div>;
-  return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto px-3.5 py-3">
-      {files.map((f) => (
-        <div key={f.path} className="flex gap-2.5 font-mono text-xs/5 text-code-fg">
-          <span className="min-w-0 flex-1 truncate">{f.path}</span>
-          {f.binary ? <span className="text-fg-muted">{t("runs.binary")}</span> : null}
-          <span className="text-success">+{f.adds}</span>
-          <span className="text-danger">−{f.dels}</span>
-        </div>
-      ))}
-      {files
-        .filter((f) => f.lines.length)
-        .map((f) => (
-          <div key={`d-${f.path}`} className="overflow-hidden rounded-md border border-line-subtle bg-surface font-mono text-xs/5">
-            <div className="flex h-7 items-center border-b border-line-subtle bg-subtle px-3 text-[11px]/none font-medium text-fg-muted">{f.path}</div>
-            {f.lines.map((l, i) => (
-              <div key={i} className={cn("flex text-code-fg", l.kind === "add" ? "bg-diff-add" : l.kind === "del" ? "bg-diff-del" : l.kind === "hunk" ? "bg-diff-hunk text-diff-hunk-fg" : "")}>
-                <span className={cn("w-[26px] shrink-0 text-center text-fg-muted", l.kind === "add" ? "bg-diff-add-gutter" : l.kind === "del" ? "bg-diff-del-gutter" : "")}>
-                  {l.kind === "add" ? "+" : l.kind === "del" ? "−" : ""}
-                </span>
-                <span className="min-w-0 px-2.5 whitespace-pre">{l.text}</span>
-              </div>
-            ))}
-          </div>
-        ))}
-    </div>
-  );
+  return <div className="min-h-0 flex-1 overflow-auto bg-surface"><RunDiff files={files} review={review} fix={fix} /></div>;
 }
 
 /**
@@ -540,6 +527,8 @@ function RunPanes({
   notes,
   diff,
   diffError,
+  diffReview,
+  diffFix,
   onDiffTab,
   vertical = false,
   footer,
@@ -553,6 +542,8 @@ function RunPanes({
   notes: ReactNode;
   diff?: DiffFile[] | null;
   diffError?: string | null;
+  diffReview?: DiffReview | null;
+  diffFix?: DiffFixTarget;
   onDiffTab?: () => void;
   vertical?: boolean;
   footer?: ReactNode;
@@ -560,19 +551,23 @@ function RunPanes({
   const t = useT();
   const toast = useToast();
   const [tab, setTab] = useState("summary");
+  const panelId = useId();
   const [wrap, setWrap] = useState(true);
   const head = useMemo(() => logHeader(parseLog(log)), [log]);
   if (vertical) return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-surface max-md:[&_button]:min-h-11 max-md:[&_summary]:min-h-11 max-md:[&_summary]:flex max-md:[&_summary]:items-center" data-run-review>
-      <div className="max-w-[900px]">
-        <SummaryPane summary={summary} live={live} head={head}>{steps}<div className="flex flex-col gap-2">{notes}</div></SummaryPane>
-        <section aria-label={t("runs.tabLog")} className="border-t border-line-subtle">
-          <h3 className="m-0 px-5 py-3 text-sm font-semibold text-fg-strong">{t("runs.tabLog")}</h3>
-          <div className="flex max-h-[440px] min-h-32 flex-col overflow-auto bg-code"><LogView text={log} live={live} wrap empty={live ? t("board.waitingOutput") : (logEmpty ?? t("board.noLog"))} /></div>
-        </section>
+      {onDiffTab ? <TabBar panelId={panelId} tabs={[["summary", t("runs.tabSummary")], ["diff", t("runs.tabDiff", { count: diff?.length ?? "…" })]]} tab={tab} onTab={key => { setTab(key); if (key === "diff") onDiffTab(); }} /> : null}
+      <div className="max-w-[900px]" role="tabpanel" id={panelId} aria-labelledby={onDiffTab ? `${panelId}-${tab}` : undefined}>
+        <div hidden={tab === "diff"}>
+          <SummaryPane summary={summary} live={live} head={head}>{steps}<div className="flex flex-col gap-2">{notes}</div></SummaryPane>
+          <section aria-label={t("runs.tabLog")} className="border-t border-line-subtle">
+            <h3 className="m-0 px-5 py-3 text-sm font-semibold text-fg-strong">{t("runs.tabLog")}</h3>
+            <div className="flex max-h-[440px] min-h-32 flex-col overflow-auto bg-code"><LogView text={log} live={live} wrap empty={live ? t("board.waitingOutput") : (logEmpty ?? t("board.noLog"))} /></div>
+          </section>
+        </div>
         <section aria-label={t("runs.changes")} className="border-t border-line-subtle">
           <h3 className="m-0 px-5 py-3 text-sm font-semibold text-fg-strong">{t("runs.changes")}</h3>
-          <DiffView files={diff ?? null} error={diffError ?? null} />
+          <DiffView files={diff ?? null} error={diffError ?? null} review={diffReview} fix={diffFix} />
         </section>
         {footer ? <div className="flex flex-col gap-3 border-t border-line-subtle px-5 py-4">{footer}</div> : null}
       </div>
@@ -622,7 +617,7 @@ function RunPanes({
       ) : tab === "log" ? (
         <LogView text={log} live={live} wrap={wrap} empty={live ? t("board.waitingOutput") : (logEmpty ?? t("board.noLog"))} />
       ) : (
-        <DiffView files={diff ?? null} error={diffError ?? null} />
+        <DiffView files={diff ?? null} error={diffError ?? null} review={diffReview} fix={diffFix} />
       )}
     </div>
   );
@@ -828,6 +823,7 @@ function LocalDetail({ run, machine, gitlabReady, group, onChanged }: { run: Age
         steps={<Steps run={run} log={log.data ?? ""} />}
         notes={notes}
         diff={diff}
+        diffReview={run.diffReview}
         diffError={diffError}
         onDiffTab={loadDiff}
       />
@@ -911,6 +907,8 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
       {/* What it changed, as its machine sent it; a hub older than 22l has no patches (no tab). */}
       <RunPanes
         vertical
+        diffReview={full.data?.diffReview}
+        diffFix={!live && run.status === "succeeded" && run.role === "implement" && manage ? { machineId: run.machineId, project: run.project, taskId: run.taskId } : undefined}
         footer={<>{run.mrUrl ? <MrMerge run={run} onChanged={onChanged} /> : null}{verdict === "changes" && latestReview && manage ? <FixRun run={run} /> : null}</>}
         summary={run.summary}
         live={live}

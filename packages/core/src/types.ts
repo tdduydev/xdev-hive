@@ -1,3 +1,4 @@
+import type { DiffReview } from "#core/diff-review.ts";
 import type { ModelSelection } from "./model-router.ts";
 import type { Access } from "./access.ts";
 import type { AgentPolicy } from "./agent-policy.ts";
@@ -799,6 +800,7 @@ export interface FeedEvent {
  */
 export interface RunRecord {
   plan?: import("#core/plan-approval.ts").RunPlan | null;
+  diffReview?: DiffReview | null;
   /** The machine's hub actor, which with runId names the run. */
   machineId: string;
   machine: string;
