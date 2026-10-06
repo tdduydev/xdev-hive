@@ -5,6 +5,7 @@
 import { app, BrowserWindow } from "electron";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
+import { tableCardsChecks } from "./table-cards.mjs";
 
 const base = process.env.HIVE_E2E_BASE;
 const out = process.env.HIVE_E2E_OUT;
@@ -57,7 +58,7 @@ class Tab {
   errors = [];
 
   static async open(name) {
-    const win = new BrowserWindow({ show: false, width, height, webPreferences: { partition: `e2e-${name}` } });
+    const win = new BrowserWindow({ show: false, useContentSize: true, width, height, webPreferences: { partition: `e2e-${name}` } });
     const tab = new Tab(win, name);
     win.webContents.on("console-message", (e) => {
       if (e.level === "error" && /Uncaught|TypeError|ReferenceError/.test(e.message)) tab.errors.push(e.message.slice(0, 300));
@@ -268,6 +269,39 @@ async function main() {
     if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
   });
 
+  if (mobile) await step("mobile-kanban-forms-dialog", async () => {
+    const tab = (current = tabs.admin);
+    await tab.go("tasks");
+    await tab.click('[data-task-view="kanban"]');
+    await tab.waitFor("five phone columns", () => document.querySelector('[data-board-fit="mobile"]')?.querySelectorAll('[data-column]').length === 5);
+    expect(await tab.eval(() => document.querySelectorAll('[role="tablist"] [role="tab"]').length === 5), "five status tabs");
+    await tab.click('[role="tab"]', "Xong");
+    await tab.waitFor("Done tab selected", () => document.querySelector('[role="tab"][aria-selected="true"]')?.textContent.includes("Xong"));
+    await tab.click('[role="tab"]', "Chưa làm");
+    await tab.click('[data-column="todo"] [data-task]');
+    await tab.waitFor("task status control", () => !!document.querySelector('[data-slot="sheet-content"] select[aria-label^="Trạng thái"]'));
+    const sheet = await tab.eval(() => {
+      const r = document.querySelector('[data-slot="sheet-content"]').getBoundingClientRect();
+      return { width: r.width, left: r.left, viewport: innerWidth, scroll: document.documentElement.scrollWidth };
+    });
+    expect(sheet.width <= sheet.viewport + 1 && sheet.left >= -1 && sheet.scroll <= sheet.viewport + 1, `task panel overflow: ${JSON.stringify(sheet)}`);
+    await tab.key("Escape");
+    await tab.click("[data-create-task-toggle]");
+    await tab.waitFor("create task form expanded", () => document.querySelector("[data-create-task-toggle]")?.getAttribute("aria-expanded") === "true");
+    await tab.click("[data-create-task-toggle]");
+    await tab.click('header button[title="Task mới (⌘N)"]');
+    await tab.waitFor("phone dialog", () => document.querySelector('[data-slot="dialog-content"]')?.getBoundingClientRect().height >= innerHeight - 1);
+    const dialog = await tab.eval(() => {
+      const r = document.querySelector('[data-slot="dialog-content"]').getBoundingClientRect();
+      return { width: r.width, left: r.left, viewport: innerWidth, scroll: document.documentElement.scrollWidth };
+    });
+    expect(dialog.width <= dialog.viewport + 1 && dialog.left >= -1 && dialog.scroll <= dialog.viewport + 1, `dialog overflow: ${JSON.stringify(dialog)}`);
+    await tab.shot(`${String(n).padStart(2, "0")}-mobile-dialog`);
+    await tab.key("Escape");
+    await sleep(300);
+    await tab.shot(`${String(n).padStart(2, "0")}-mobile-kanban-after`);
+  });
+
   // Roadmap 40c: in a system's scope the Docs tree has the system's pages first, then a group per service, and a new page
   // goes to system/<name>/ unless another place is picked.
   await step("docs-system-default", async () => {
@@ -317,6 +351,7 @@ async function main() {
     const tab = (current = tabs.hoa);
     await tab.go("proposals");
     await tab.waitFor("the guide's proposal", () => document.body.innerText.includes("Thêm bước cài"));
+    if (mobile) await tab.click("button", `#${proposals.payGuide}`);
     // The context proposal (AGENTS.md of payment) has no Duyệt for a reviewer: only the guide's can be approved.
     const approvable = await tab.eval(() => [...document.querySelectorAll("button")].filter((b) => b.textContent.trim() === "Duyệt" && !b.disabled).length);
     expect(approvable === 1, `${approvable} proposals Hoa can approve, expected 1 (the guide)`);
@@ -366,6 +401,7 @@ async function main() {
   await step("docs-rich-editor", async () => {
     const tab = (current = tabs.admin);
     await tab.go(`admin/docs?doc=${encodeURIComponent("project/demo/huong-dan")}`);
+    if (mobile) await tab.click("summary", "Chế độ");
     await tab.click('[role="radio"]', "Sửa");
     await tab.click(".ProseMirror p");
     await tab.key("End");
@@ -383,6 +419,12 @@ async function main() {
     await tab.key("Enter");
     await tab.find(".ProseMirror table");
     await tab.type("Cột A");
+    if (mobile) {
+      const toolsFit = await tab.eval(() => [...document.querySelectorAll('[role="toolbar"] button')].filter((el) => el.getBoundingClientRect().height > 0).every((el) => { const r = el.getBoundingClientRect(); return r.width >= 40 && r.height >= 40; }));
+      expect(toolsFit, "editor toolbar keeps 40px touch targets");
+      await tab.shot("mobile-docs-edit");
+      await tab.click("summary", "Chế độ");
+    }
     await tab.click("button", "Lưu thành v2");
     const doc = await until("version 2", async () => {
       const d = await rpc("docs.get", { key: "project/demo/huong-dan" });
@@ -395,6 +437,7 @@ async function main() {
 
   await step("docs-markdown", async () => {
     const tab = (current = tabs.admin);
+    if (mobile) await tab.click("summary", "Chế độ");
     await tab.click('[role="radio"]', "Markdown");
     if (mobile) await tab.eval(() => document.querySelector('textarea[aria-label^="Nội dung"]')?.focus());
     else await tab.click('textarea[aria-label^="Nội dung"]');
@@ -823,10 +866,19 @@ async function main() {
     expect(pushed.stored === 2, `specs.push: ${JSON.stringify(pushed)}`);
     const tab = (current = tabs.hoa);
     await tab.go("specs?project=payment&dir=001-thanh-toan-qr&branch=");
+    if (mobile) {
+      await tab.click('[role="tab"]', "Spec");
+      await tab.waitFor("linked spec detail", () => document.body.innerText.includes("Người dùng quét mã"));
+      await tab.click("button", "Quay lại danh sách");
+    }
     await tab.waitFor("both features, with their stages", () => {
       const text = document.body.innerText;
       return text.includes("Thanh toán QR") && text.includes("Hoàn tiền") && text.includes("Đang làm") && text.includes("Viết spec") && text.includes("ai/PAY-2");
     });
+    if (mobile) {
+      await tab.click('[role="option"]', "Thanh toán QR");
+      await tab.waitFor("selected spec in address", () => location.hash.includes("feature="));
+    }
     await tab.click('[role="tab"]', "Spec");
     await tab.waitFor("spec.md", () => document.body.innerText.includes("Người dùng quét mã"));
     await tab.click('[role="tab"]', "Tasks");
@@ -1104,6 +1156,14 @@ async function main() {
       return line?.effective === true && line.required === true;
     });
     await tab.waitFor("the card done, confirmed by Lan", () => document.body.innerText.includes("Đã làm") && document.body.innerText.includes("lan-e2e xác nhận lúc"));
+    if (mobile) {
+      await tab.click('button[aria-label="Các cuộc chat"]');
+      await tab.click('nav[aria-label="Các cuộc chat"] button', "Bật Spec Kit cho payment");
+      await tab.waitFor("thread in address", () => location.hash.includes("thread="));
+      await tab.eval(() => history.back());
+      await tab.waitFor("browser Back to thread list", () => !!document.querySelector('nav[aria-label="Các cuộc chat"] button'));
+      await tab.click('nav[aria-label="Các cuộc chat"] button', "Bật Spec Kit cho payment");
+    }
   });
 
   await step("hub-page", async () => {
@@ -1248,6 +1308,7 @@ async function main() {
       const [gate] = await rpc("sdlc.gates", { taskId: "SPEC-TODAY" });
       return gate?.status === "passed" && gate.decidedBy?.startsWith("lan");
     });
+    if (mobile) await tab.click("button", "Quay lại danh sách");
     await tab.click(`[data-inbox-key="leader:${proposed.id}"]`);
     await tab.waitFor("the leader's card", () => document.body.innerText.includes("Không dùng nữa"));
     await tab.click("button", "Xác nhận");
@@ -1302,6 +1363,80 @@ async function main() {
     await tab.waitFor("the Task page with the two agents", () => location.hash.startsWith("#/tasks") && document.body.innerText.includes("Đã chọn 2 agent trên Bản đồ agent"));
   });
 
+  if (mobile) {
+    current = tabs.admin;
+    await tableCardsChecks({ tab: current, rpc, step, expect });
+    await rpc("docs.save", { key: "project/payment/skills/mobile-check", title: "Mobile check", content: "---\nname: mobile-check\ndescription: Check phone navigation\n---\n\nCheck the selected pane.", baseVersion: 0 });
+    await rpc("memory.write", { project: "payment", kind: "gotcha", content: "Mobile navigation fixture" }, people.minh.token);
+    const guide = await rpc("docs.get", { key: "project/payment/huong-dan" });
+    await rpc("proposals.create", { docKey: guide.key, baseVersion: guide.version, content: guide.content + "\nPhone check.", reason: "Mobile navigation fixture" }, people.minh.token);
+    const cases = [
+      ["today", "item", "main [data-inbox-key]", null],
+      ["docs", "doc", 'main [role="treeitem"]:not([aria-expanded])', null],
+      ["runs", "run", 'main [role="option"]', null],
+      ["chat", "thread", 'nav[aria-label="Các cuộc chat"] button', null],
+      ["skills", "skill", 'main [role="option"]', null],
+      ["memory", "memory", 'main [role="option"]', null],
+      ["proposals", "proposal", "main [data-mobile-proposal]", null],
+      ["specs", "feature", 'main [role="option"]', null],
+    ];
+    for (const [route, param, selector, text] of cases) {
+      await step(`mobile-detail-${route}`, async () => {
+        const tab = (current = tabs.lan);
+        await tab.go(route);
+        await tab.reload();
+        await tab.waitFor("visible list", (selector) => [...document.querySelectorAll(selector)].some((el) => el.getBoundingClientRect().width > 0), selector);
+        await tab.shot(`mobile-${route}-list`);
+        await tab.click(selector, text);
+        await tab.waitFor("selection in address", (param) => new URLSearchParams(location.hash.split("?")[1]).has(param), param);
+        const selectedHash = await tab.eval(() => location.hash);
+        const assertPane = async (detail) => {
+          const state = await tab.eval((selector) => {
+            const main = document.querySelector("main");
+            return { listVisible: [...document.querySelectorAll(selector)].some((el) => el.getBoundingClientRect().width > 0), width: innerWidth, height: innerHeight, page: document.documentElement.scrollWidth, main: main.clientWidth, content: main.scrollWidth };
+          }, selector);
+          expect(state.listVisible === !detail, `list visibility in ${route}: ${JSON.stringify(state)}`);
+          expect(state.width === 390 && state.height === 844, `viewport: ${JSON.stringify(state)}`);
+          expect(state.page <= state.width + 1 && state.content <= state.main + 1, `overflow in ${route}: ${JSON.stringify(state)}`);
+        };
+        await assertPane(true);
+        await tab.shot(`mobile-${route}-detail`);
+        await tab.reload();
+        await tab.waitFor("detail restored after reload", () => [...document.querySelectorAll("main button")].some((el) => el.getBoundingClientRect().width > 0 && (el.textContent.includes("Quay lại danh sách") || el.getAttribute("aria-label") === "Các cuộc chat")));
+        await assertPane(true);
+        await tab.eval(() => history.back());
+        await tab.waitFor("Back restores list", (route) => location.hash === `#/${route}`, route);
+        await assertPane(false);
+        await tab.eval(() => history.forward());
+        await tab.waitFor("Forward restores detail", (hash) => location.hash === hash, selectedHash);
+        await assertPane(true);
+        if (route === "docs") {
+          await tab.waitFor("loaded document actions", () => document.querySelector('main button[aria-label="Lịch sử"]'));
+          await tab.click("summary", "Chế độ");
+          await tab.click("details[open] button", "Lịch sử");
+          await tab.waitFor("history menu closes", () => !document.querySelector("details[open]") && document.querySelector('aside[aria-label="Phiên bản"] button'));
+          await tab.click('aside[aria-label="Phiên bản"] button');
+          await tab.waitFor("version content replaces history pane", () => !document.querySelector('aside[aria-label="Phiên bản"]') && document.body.innerText.includes("Đóng so sánh"));
+          await assertPane(true);
+          await tab.click("button", "Danh sách tài liệu");
+          await tab.waitFor("document tree drawer", (selector) => [...document.querySelectorAll(selector)].some((el) => el.getBoundingClientRect().width > 0), selector);
+          await tab.shot("mobile-docs-tree-drawer");
+          await tab.click(selector);
+          await tab.waitFor("selecting a page closes tree drawer", (selector) => ![...document.querySelectorAll(selector)].some((el) => el.getBoundingClientRect().width > 0), selector);
+          await assertPane(true);
+        }
+        if (route === "memory") {
+          tab.win.setContentSize(767, 844);
+          await tab.waitFor("767px keeps list hidden", () => innerWidth === 767 && ![...document.querySelectorAll('main [role="option"]')].some((el) => el.getBoundingClientRect().width > 0));
+          tab.win.setContentSize(768, 844);
+          await tab.waitFor("768px restores both panes", () => innerWidth === 768 && [...document.querySelectorAll('main [role="option"]')].some((el) => el.getBoundingClientRect().width > 0) && ![...document.querySelectorAll("main button")].some((el) => el.textContent.includes("Quay lại danh sách") && el.getBoundingClientRect().width > 0));
+          tab.win.setContentSize(390, 844);
+          await tab.waitFor("phone pane restored", () => innerWidth === 390 && ![...document.querySelectorAll('main [role="option"]')].some((el) => el.getBoundingClientRect().width > 0));
+        }
+      });
+    }
+  }
+
   const errors = Object.values(tabs).flatMap((t) => t.errors.map((e) => `${t.name}: ${e}`));
   if (errors.length) console.log(`page errors:\n  ${errors.join("\n  ")}`);
   const failed = results.filter((r) => !r.ok);
@@ -1311,5 +1446,8 @@ async function main() {
     console.log(`content wider than pane: ${contentOverflows.length} steps${contentOverflows.length ? `; ${contentOverflows.map((o) => o.step).join(", ")}` : ""}`);
   }
   console.log(`${results.length - failed.length}/${results.length} steps passed${failed.length ? `; failed: ${failed.map((f) => f.name).join(", ")}` : ""}`);
-  app.exit(failed.length || errors.length ? 1 : 0);
+  const exitCode = failed.length || errors.length ? 1 : 0;
+  writeFileSync(path.join(out, "result.json"), JSON.stringify({ results, errors, exitCode }, null, 2));
+  // Not app.exit: Electron can retain a hidden BrowserWindow after history navigation on macOS and never quit.
+  process.exit(exitCode);
 }

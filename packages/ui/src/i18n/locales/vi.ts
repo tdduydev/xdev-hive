@@ -13,6 +13,7 @@ export const vi = {
     loading: "Đang tải…",
     showMore: "Xem thêm",
     showLess: "Thu gọn",
+    backToList: "Quay lại danh sách",
   },
   language: {
     label: "Ngôn ngữ",
@@ -334,6 +335,11 @@ export const vi = {
     group2: "Nhóm",
   },
   table: {
+    severity: "Mức độ",
+    sort: "Sắp xếp",
+    defaultOrder: "Thứ tự ban đầu",
+    ascending: "Tăng dần",
+    descending: "Giảm dần",
     search: "Tìm trong {count} {noun}…",
     clear: "Xoá",
     all: "Tất cả",

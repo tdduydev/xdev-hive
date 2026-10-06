@@ -148,10 +148,10 @@ export function OpsVersions() {
           </div>
         </section>
       ) : null}
-      {machines.length ? <DataTable rows={machines} columns={columns} rowKey={(m) => m.machineId} noun={t("ops.versions.noun")} searchText={(m) => `${m.machine} ${m.current}`} maxHeight="52vh" /> : null}
+      {machines.length ? <DataTable responsive rows={machines} columns={columns} rowKey={(m) => m.machineId} noun={t("ops.versions.noun")} searchText={(m) => `${m.machine} ${m.current}`} maxHeight="52vh" /> : null}
       <h2 className="m-0 mt-1 text-sm font-semibold text-fg-strong">{t("ops.versions.releases")}</h2>
       {data.data && !releases.length ? <Empty>{t("ops.versions.noReleases")}</Empty> : null}
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] items-start gap-3">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,340px),1fr))] items-start gap-3">
         {releases.map((r) => (
           <section key={r.version} className="flex flex-col gap-2.5 rounded-xl border border-line-default bg-surface p-4">
             <div className="flex flex-wrap items-center gap-2">

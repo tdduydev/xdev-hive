@@ -43,6 +43,16 @@ export function BoardColumns({
   const [width, setWidth] = useState(0);
   const [opened, setOpened] = useState<TaskStatus[]>([]);
   const [over, setOver] = useState<TaskStatus | null>(null);
+  const [mobile, setMobile] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches);
+  const [active, setActive] = useState<TaskStatus>(TASK_STATUSES[0]);
+  const scroller = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const update = () => setMobile(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
   useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
@@ -57,14 +67,37 @@ export function BoardColumns({
     if (!dragging) setOver(null);
   }, [dragging]);
 
-  const folded = foldedColumns(width, count, new Set(opened));
+  const folded = mobile ? new Set<TaskStatus>() : foldedColumns(width, count, new Set(opened));
   const narrow = !fitsEveryColumn(width);
   // Narrow: the open columns share what is left, so the grid can never be wider than the board.
   const columns = TASK_STATUSES.map((status) => (folded.has(status) ? `${RAIL_WIDTH}px` : narrow ? "minmax(0,1fr)" : `minmax(${COLUMN_MIN}px,1fr)`)).join(" ");
 
   return (
-    <div ref={box} className={cn("min-h-full", className)}>
-      <div className="grid min-h-full gap-2.5" style={{ gridTemplateColumns: columns }} data-board-fit={narrow ? "narrow" : "wide"}>
+    <div ref={box} className={cn("min-h-full min-w-0", className)}>
+      {mobile ? (
+        <div role="tablist" aria-label={t("board.board")} className="mb-2 flex gap-1 overflow-x-auto pb-1">
+          {TASK_STATUSES.map((status) => (
+            <button key={status} type="button" role="tab" aria-selected={active === status}
+              onClick={() => {
+                setActive(status);
+                scroller.current?.querySelector(`[data-column="${status}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "start" });
+              }}
+              className={cn("min-h-10 shrink-0 rounded-md px-3 text-xs font-semibold outline-none focus-visible:focus-ring", active === status ? "bg-selected text-fg-strong" : "bg-subtle text-fg-secondary")}
+            >{t(`taskStatus.${status}`)} · {count(status)}</button>
+          ))}
+        </div>
+      ) : null}
+      <div ref={scroller} className={cn("min-h-full gap-2.5", mobile ? "flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain pb-2" : "grid")}
+        style={mobile ? undefined : { gridTemplateColumns: columns }} data-board-fit={mobile ? "mobile" : narrow ? "narrow" : "wide"}
+        onScroll={mobile ? (e) => {
+          const left = e.currentTarget.scrollLeft;
+          const nearest = TASK_STATUSES.reduce((best, status) => {
+            const el = e.currentTarget.querySelector<HTMLElement>(`[data-column="${status}"]`);
+            const distance = Math.abs((el?.offsetLeft ?? 0) - left - e.currentTarget.offsetLeft);
+            return distance < best.distance ? { status, distance } : best;
+          }, { status: active, distance: Infinity });
+          if (nearest.status !== active) setActive(nearest.status);
+        } : undefined}>
         {TASK_STATUSES.map((status) => {
           const [Icon, iconCls] = COLUMN_ICON[status];
           const n = count(status);
@@ -95,6 +128,7 @@ export function BoardColumns({
               }}
               className={cn(
                 "flex min-h-40 min-w-0 flex-col gap-1.5 rounded-[10px] border border-dashed",
+                mobile && "w-[85vw] max-w-[85%] shrink-0 snap-start",
                 rail ? "p-1" : "p-2",
                 over === status ? "border-line-selected bg-selected" : "border-transparent bg-subtle",
               )}

@@ -1,3 +1,4 @@
+import { ResponsiveTableFrame } from "#ui/components/ResponsiveTable.tsx";
 // Admin → Webhooks: chat webhooks (Teams Workflows, Slack) for hub events. The hub keeps the URLs;
 // the page only ever sees a hint of them.
 import { useState } from "react";
@@ -59,7 +60,8 @@ function WebhookCard({ webhook: w, onEdit, onChanged }: { webhook: WebhookInfo; 
   const hooks = client.webhooks!;
   return (
     <Card className="py-4">
-      <CardContent className="flex flex-col gap-2 px-4">
+      <CardContent className="px-4">
+      <ResponsiveTableFrame className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <b className="min-w-0 break-words">{w.name}</b>
           <Badge tone="accent">{t(`webhooks.kind.${w.kind}`)}</Badge>
@@ -96,6 +98,7 @@ function WebhookCard({ webhook: w, onEdit, onChanged }: { webhook: WebhookInfo; 
         </div>
         {tested ? <Notice tone={tested.ok ? "ok" : "error"} title={tested.ok ? t("webhooks.testOk") : t("webhooks.testFailed", { error: tested.error ?? "?" })} /> : null}
         <ErrorNote error={action.error} />
+      </ResponsiveTableFrame>
       </CardContent>
     </Card>
   );

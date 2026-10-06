@@ -1,3 +1,4 @@
+import { ResponsiveGridRow, ResponsiveTableFrame } from "#ui/components/ResponsiveTable.tsx";
 // Trần chi tiêu (roadmap 27b) on the Costs page: one row per cap with what its day or month used, and for a hub admin
 // the way to add, change or remove one. budgets.set replaces the whole list, so every save sends all of them.
 import { useState } from "react";
@@ -53,7 +54,7 @@ function UsedBar({ used, limit, label }: { used: number; limit: number; label: s
   const pct = Math.max(0, Math.round((used / limit) * 100));
   return (
     <span className="flex items-center gap-2">
-      <span className="relative h-[6px] min-w-24 flex-1 rounded-full bg-sunken">
+      <span className="relative h-[6px] min-w-0 md:min-w-24 flex-1 rounded-full bg-sunken">
         <span
           className={cn("absolute inset-y-0 left-0 rounded-full", pct >= 100 ? "bg-danger-solid" : pct >= 70 ? "bg-warning-solid" : "bg-primary")}
           style={{ width: `${Math.min(100, pct)}%` }}
@@ -153,7 +154,7 @@ export function BudgetsCard({ tick }: { tick: number }) {
   );
 
   return (
-    <section className="flex min-w-0 flex-col gap-3 rounded-[14px] border border-line-default bg-surface p-4">
+    <ResponsiveTableFrame className="flex min-w-0 flex-col gap-3 rounded-[14px] border border-line-default bg-surface p-4">
       <div className="flex flex-wrap items-baseline gap-2">
         <h2 className="m-0 text-sm/5 font-semibold text-fg-strong">{t("budgets.title")}</h2>
         <span className="text-xs text-fg-muted">{t("budgets.hint")}</span>
@@ -169,7 +170,7 @@ export function BudgetsCard({ tick }: { tick: number }) {
         editing === b.id ? (
           <div key={b.id}>{form(b.id)}</div>
         ) : (
-          <div key={b.id} className="grid grid-cols-[minmax(140px,1fr)_minmax(200px,2fr)_auto] items-center gap-3 border-b border-line-default pb-2.5 last:border-b-0 last:pb-0">
+          <ResponsiveGridRow labels={[t("budgets.scopeLabel"), t("budgets.title"), null]} key={b.id} className="grid grid-cols-[minmax(140px,1fr)_minmax(200px,2fr)_auto] items-center gap-3 border-b border-line-default pb-2.5 last:border-b-0 last:pb-0">
             <div className="flex min-w-0 flex-col">
               <span className="truncate text-[13px] font-medium text-fg-strong">{scopeLabel(t, b)}</span>
               <span className="text-xs text-fg-muted">{t(`budgets.period.${b.period}`)}</span>
@@ -198,10 +199,10 @@ export function BudgetsCard({ tick }: { tick: number }) {
             ) : (
               <span />
             )}
-          </div>
+          </ResponsiveGridRow>
         ),
       )}
       {editing === "new" ? form("new") : null}
-    </section>
+    </ResponsiveTableFrame>
   );
 }
