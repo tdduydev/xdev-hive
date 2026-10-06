@@ -10,6 +10,7 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { compareVersions, HiveError, type InstallWhen, type UpdateOffer, type UpdateReport } from "@xdev-hive/core";
+import { markStartHidden, START_HIDDEN } from "./applog.ts";
 
 const run = promisify(execFile);
 
@@ -35,6 +36,8 @@ export interface UpdaterHost {
   onChange?: (status: UpdateStatus) => void;
   /** Starts the install helper (default: node's spawn). Tests pass their own, so no helper ever swaps a real app. */
   spawn?: (command: string, args: string[], options: SpawnOptions) => { unref(): void };
+  /** Each step (offer, download, install) for main.log: an update that went wrong is otherwise invisible. */
+  log?: (line: string) => void;
 }
 
 /** The hub's name for this platform. */
@@ -64,6 +67,10 @@ export class Updater {
     return { ...this.#state };
   }
 
+  #log(line: string): void {
+    this.#host.log?.(`updater: ${line}`);
+  }
+
   #set(next: Partial<UpdateReport>): void {
     this.#state = { ...this.#state, ...next };
     this.#host.onChange?.(this.status());
@@ -77,6 +84,10 @@ export class Updater {
       return;
     }
     const changed = this.#offer?.version !== offer.version || this.#offer?.file.sha256 !== offer.file.sha256;
+    // Every heartbeat repeats the offer: only a new one (or a changed rollout) is worth a line.
+    if (changed || this.#offer?.installWhen !== offer.installWhen || this.#offer?.autoDownload !== offer.autoDownload) {
+      this.#log(`offer ${offer.version} (installWhen ${offer.installWhen}, autoDownload ${offer.autoDownload}${this.#supported ? "" : ", this app cannot update itself"})`);
+    }
     this.#offer = offer;
     if (!this.#supported) return;
     if (changed && this.#state.state !== "downloading") {
@@ -98,6 +109,7 @@ export class Updater {
       const target = path.join(dir, path.basename(offer.file.name));
       const part = `${target}.part`;
       try {
+        this.#log(`download ${offer.version} ${offer.file.name}`);
         this.#set({ state: "downloading", version: offer.version, percent: 0, error: null });
         const res = await fetch(`${hub.url.replace(/\/+$/, "")}${offer.url}`, { headers: { authorization: `Bearer ${hub.token}` } });
         if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
@@ -125,9 +137,11 @@ export class Updater {
         for (const f of readdirSync(dir)) if (f !== path.basename(target) && !f.startsWith("stage")) rmSync(path.join(dir, f), { recursive: true, force: true });
         this.#file = target;
         this.#set({ state: "ready", percent: 100, error: null });
+        this.#log(`ready ${offer.version} (SHA-256 checked)`);
       } catch (err) {
         rmSync(part, { force: true });
         this.#set({ state: "failed", error: (err instanceof Error ? err.message : String(err)).slice(0, 300) });
+        this.#log(`download failed: ${this.#state.error}`);
       } finally {
         this.#downloading = null;
       }
@@ -142,16 +156,22 @@ export class Updater {
 
   /**
    * Prepares the swap and starts the helper that performs it once this process has exited. The caller quits the app
-   * right after (a restart relaunches it; an install at quit does not).
+   * right after. relaunch: the helper starts the new build (a restart always; an install at quit when
+   * relaunchAfterQuitInstall says so). hidden: that start stays in the tray, through the start-hidden marker.
    */
-  async install({ relaunch }: { relaunch: boolean }): Promise<void> {
+  async install({ relaunch, hidden = false }: { relaunch: boolean; hidden?: boolean }): Promise<void> {
     const file = this.#file;
-    if (this.#state.state !== "ready" || !file || !existsSync(file)) throw new HiveError("conflict", "No update is ready to install.", { key: "errors.updateNotReady" });
+    if (this.#state.state !== "ready" || !file || !existsSync(file)) {
+      this.#log(`install skipped: nothing ready (state ${this.#state.state})`);
+      throw new HiveError("conflict", "No update is ready to install.", { key: "errors.updateNotReady" });
+    }
+    this.#log(`install ${this.#state.version} (relaunch ${relaunch}${relaunch && hidden ? ", hidden" : ""})`);
     this.#set({ state: "installing" });
     const start = this.#host.spawn ?? spawn;
     try {
       const dir = path.dirname(file);
       const pid = String(process.pid);
+      if (relaunch && hidden) markStartHidden(dir);
       if (this.#host.platform === "darwin") {
         // …/xDev Hive.app/Contents/MacOS/xDev Hive → …/xDev Hive.app
         const app = path.resolve(this.#host.execPath, "..", "..", "..");
@@ -197,8 +217,12 @@ export class Updater {
         );
         start("/bin/sh", [script], { detached: true, stdio: "ignore", env: { PATH: "/usr/bin:/bin", PID: pid, IMAGE: image, NEW: file, RELAUNCH: relaunch ? "1" : "0" } }).unref();
       }
+      this.#log("install helper started: it swaps the build once this process has exited");
     } catch (err) {
+      // Nothing will start the new build, so the marker must not hide the window of the next start by hand.
+      rmSync(path.join(path.dirname(file), START_HIDDEN), { force: true });
       this.#set({ state: "failed", error: (err instanceof Error ? err.message : String(err)).slice(0, 300) });
+      this.#log(`install failed: ${this.#state.error}`);
       throw new HiveError("bad_request", `Could not install the update: ${this.#state.error}`, { key: "errors.updateInstall", vars: { reason: this.#state.error ?? "" } });
     }
   }

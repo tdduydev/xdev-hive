@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, protocol, shell, Tray, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, powerMonitor, protocol, shell, Tray, type IpcMainInvokeEvent } from "electron";
 import {
   AGENT_TEMPLATES,
   agentProfileSchema,
@@ -70,6 +70,7 @@ import { gitClone, importRepos, planImport } from "./gitlab/import.ts";
 import { findGitRepos, isGitRepo } from "./git.ts";
 import { addRepos, planLocalImport } from "./local-import.ts";
 import { appendCrashLog, crashLogPath, ReloadGuard } from "./crashlog.ts";
+import { MainLog, mainLogDir, QuitReasons, relaunchAfterQuitInstall, takeStartHidden } from "./applog.ts";
 import { mainLocale, setMainLocale, tr } from "./i18n.ts";
 import { MergeRequester, mrLabel, type MrHost } from "./gitlab/mr.ts";
 import { branchFor } from "#desktop/main/runner/worktree.ts";
@@ -136,8 +137,17 @@ let alertHub = "";
 // Electron's network stack: honours system proxy settings and the macOS keychain's certificates.
 const gitlabFetch = (url: string, init: RequestInit) => net.fetch(url, init);
 let quitting = false;
-// Started by the computer at sign-in ("Mở cùng máy" on Windows): the window waits in the tray until asked for.
-const startHidden = process.argv.includes("--hidden");
+// Started by the computer at sign-in ("Mở cùng máy" on Windows), or again by the updater after an install at quit
+// (takeStartHidden, read once this instance holds the lock): the window waits in the tray until asked for.
+let startHidden = process.argv.includes("--hidden");
+// A screenshot run logs into its own temp profile: its starts and quits are not the real app's.
+const mainLog = new MainLog(path.join(smokeShot ? app.getPath("userData") : mainLogDir(process.platform, process.env, os.homedir()), "main.log"));
+const quitReasons = new QuitReasons();
+/** The tray's or the menu's Quit: the person wants the app closed, so an install at quit does not start it again. */
+function quitByUser(via: string): void {
+  quitReasons.mark("user", via);
+  app.quit();
+}
 let trayHintShown = false;
 
 const actor = (): Actor => {
@@ -760,6 +770,7 @@ function onUpdateChange(status: UpdateStatus): void {
 /** Restarts into the downloaded build: the runner stops its agents first (before-quit), then the helper swaps the app. */
 async function installAndRestart(): Promise<void> {
   await updater.install({ relaunch: true });
+  quitReasons.mark("update", "restart into the new build");
   app.quit();
 }
 
@@ -1245,9 +1256,18 @@ function createWindow(): void {
   const reloads = new ReloadGuard();
   win.webContents.on("render-process-gone", (_e, details) => {
     appendCrashLog(crashLog, `render-process-gone: ${details.reason} (exit ${details.exitCode})`);
+    mainLog.write(`render-process-gone: ${details.reason} (exit ${details.exitCode})`);
     if (details.reason !== "clean-exit" && reloads.allow()) win?.webContents.reload();
   });
-  win.webContents.on("unresponsive", () => appendCrashLog(crashLog, "unresponsive"));
+  win.webContents.on("unresponsive", () => {
+    appendCrashLog(crashLog, "unresponsive");
+    mainLog.write("window unresponsive");
+  });
+  // Windows signs out or shuts down (powerMonitor's "shutdown" is macOS and Linux only).
+  win.on("session-end", () => {
+    mainLog.write("system: session-end");
+    quitReasons.mark("shutdown", "session-end");
+  });
   win.webContents.on("did-fail-load", (_e, code, description, url, isMainFrame) => {
     // -3 is a load another navigation replaced, not a failure.
     if (!isMainFrame || code === -3) return;
@@ -1415,7 +1435,37 @@ function buildTrayMenu(): void {
             },
             { type: "separator" as const },
           ]),
-      { label: tr("desktop.trayQuit"), role: "quit" },
+      { label: tr("desktop.trayQuit"), click: () => quitByUser("tray") },
+    ]),
+  );
+}
+
+/**
+ * macOS: Electron's default menu, but with a Quit (Cmd+Q) of our own, so a quit the person asked for is told apart
+ * from one the system or a signal started. Windows and Linux keep their default menu (quitting is the tray's).
+ */
+function buildAppMenu(): void {
+  if (process.platform !== "darwin") return;
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      {
+        label: app.name,
+        submenu: [
+          { role: "about" },
+          { type: "separator" },
+          { role: "services" },
+          { type: "separator" },
+          { role: "hide" },
+          { role: "hideOthers" },
+          { role: "unhide" },
+          { type: "separator" },
+          { label: tr("desktop.trayQuit"), accelerator: "Command+Q", click: () => quitByUser("menu") },
+        ],
+      },
+      { role: "fileMenu" },
+      { role: "editMenu" },
+      { role: "viewMenu" },
+      { role: "windowMenu" },
     ]),
   );
 }
@@ -1426,6 +1476,7 @@ function setLocale(locale: unknown): void {
   config = { ...config, locale };
   saveConfig(config);
   buildTrayMenu();
+  buildAppMenu();
   void refreshTray();
   // Machine setup items carry their labels: check again so they come back in the new language.
   void refreshSetup().catch(() => undefined);
@@ -1448,25 +1499,67 @@ function createTray(): void {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
+  const afterUpdate = !smokeShot && takeStartHidden(path.join(path.dirname(configPath()), "updates"));
+  if (afterUpdate) startHidden = true;
+  mainLog.write(`start ${app.getVersion()} pid ${process.pid} ${process.platform}/${process.arch}${startHidden ? " hidden" : ""}${afterUpdate ? " (started again by the updater)" : ""}`);
   app.on("second-instance", showWindow);
   let stopped = false;
   app.on("before-quit", (e) => {
     quitting = true;
-    if (stopped || !runner) return;
+    if (stopped) return;
+    if (!runner) return mainLog.write(`${quitReasons.describe()} before the app was ready`);
     // Stop agents and let the runner commit their work and update Hive before exiting.
     e.preventDefault();
     stopped = true;
+    const reason = quitReasons.reason;
+    // Read before the runner stops, which ends the runs it would be asked about.
+    const active = runner.store.active().length;
+    const takesWork = config.runner.acceptHubRuns || active > 0;
+    mainLog.write(`${quitReasons.describe()}; runs ${active}, acceptHubRuns ${config.runner.acceptHubRuns}`);
     void runner
       .stop()
-      // The rollout says "install when the app quits": the helper swaps the build once this process is gone.
-      .then(() => (updater.installsOn("quit") ? updater.install({ relaunch: false }).catch(() => undefined) : undefined))
+      .then(() => {
+        mainLog.write("runner stopped");
+        // The rollout says "install when the app quits": the helper swaps the build once this process is gone, and
+        // starts it again (hidden) only when relaunchAfterQuitInstall says so: a machine taking work that the person
+        // did not quit on purpose. "now"/"restart"/"idle" installs go through installAndRestart, unchanged.
+        if (!updater.installsOn("quit")) return;
+        const relaunch = relaunchAfterQuitInstall(reason, takesWork);
+        return updater.install({ relaunch, hidden: relaunch }).catch(() => undefined);
+      })
+      .catch((err) => mainLog.write(`runner stop failed: ${toErrorPayload(err).message}`))
       .finally(() => app.quit());
   });
+  app.on("will-quit", () => mainLog.write("will-quit"));
+  app.on("quit", (_e, code) => mainLog.write(`exit ${code}`));
+  // The GPU process, a utility process or a helper dying: the window may go blank, the app may follow.
+  app.on("child-process-gone", (_e, d) => mainLog.write(`child-process-gone: ${d.type}${d.name ? ` ${d.name}` : ""} ${d.reason} (exit ${d.exitCode})`));
+  // Electron quits on these itself; listening keeps that (app.quit, so the runner still stops its agents first) and
+  // says which one it was. once: a second Ctrl+C or kill falls back to the default and ends a quit that hangs.
+  if (process.platform !== "win32" && !smokeShot) {
+    for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"] as const) {
+      process.once(sig, () => {
+        mainLog.write(`signal ${sig}`);
+        quitReasons.mark("signal", sig);
+        app.quit();
+      });
+    }
+  }
   app.on("activate", showWindow);
   app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") app.quit();
+    if (process.platform === "darwin") return;
+    mainLog.write("window-all-closed");
+    quitReasons.mark("unknown", "all windows closed");
+    app.quit();
   });
   void app.whenReady().then(() => {
+    // The heartbeat stops while the computer sleeps: say when, so a gap on the hub can be matched with it.
+    powerMonitor.on("suspend", () => mainLog.write("system: suspend"));
+    powerMonitor.on("resume", () => mainLog.write("system: resume"));
+    powerMonitor.on("shutdown", () => {
+      mainLog.write("system: shutdown");
+      quitReasons.mark("shutdown", "powerMonitor");
+    });
     try {
       reload();
     } catch (err) {
@@ -1502,6 +1595,7 @@ if (!app.requestSingleInstanceLock()) {
       execPath: process.execPath,
       appImage: process.env.APPIMAGE,
       onChange: onUpdateChange,
+      log: (line) => mainLog.write(line),
     });
     runner = new Runner(
       {
@@ -1572,6 +1666,7 @@ if (!app.requestSingleInstanceLock()) {
     registerIpc();
     serveChatFiles();
     createWindow();
+    buildAppMenu();
     if (!smokeShot) createTray();
   });
 }

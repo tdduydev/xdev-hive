@@ -207,6 +207,40 @@ describe("app updater: install", () => {
     }
   });
 
+  it("logs each step and leaves the start-hidden marker only for a hidden relaunch (BUG-update-relaunch)", async () => {
+    for (const [relaunch, hidden, marker] of [
+      [true, true, true],
+      [false, true, false],
+      [true, false, false],
+    ] as const) {
+      const lines: string[] = [];
+      const { u, dataDir } = updater(true, { platform: "win32", log: (l) => lines.push(l) });
+      const o = served(Buffer.from(`setup hidden ${relaunch} ${hidden}`), "xdev-hive-0.80.0-win-x64.exe");
+      u.offer({ ...o, installWhen: "quit" });
+      u.offer({ ...o, installWhen: "quit" });
+      await u.download();
+      await u.install({ relaunch, hidden });
+      assert.equal(existsSync(path.join(dataDir, "updates", "start-hidden")), marker, `relaunch ${relaunch}, hidden ${hidden}`);
+      assert.deepEqual(lines, [
+        "updater: offer 0.80.0 (installWhen quit, autoDownload false)",
+        "updater: download 0.80.0 xdev-hive-0.80.0-win-x64.exe",
+        "updater: ready 0.80.0 (SHA-256 checked)",
+        `updater: install 0.80.0 (relaunch ${relaunch}${marker ? ", hidden" : ""})`,
+        "updater: install helper started: it swaps the build once this process has exited",
+      ], "a repeated offer (every heartbeat) is not logged again");
+    }
+  });
+
+  it("removes the start-hidden marker and logs it when the install fails", async () => {
+    const lines: string[] = [];
+    const { u, dataDir } = updater(true, { platform: "linux", appImage: "/nonexistent-dir/xDev-Hive.AppImage", log: (l) => lines.push(l) });
+    u.offer(served(Buffer.from("appimage hidden"), "xdev-hive-0.80.0-linux-x64.AppImage"));
+    await u.download();
+    await assert.rejects(() => u.install({ relaunch: true, hidden: true }));
+    assert.equal(existsSync(path.join(dataDir, "updates", "start-hidden")), false);
+    assert.match(lines.at(-1) ?? "", /^updater: install failed: /);
+  });
+
   it("fails on Linux when the app no longer runs from an AppImage", async () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "hive-appimage-"));
     const { u, host, spawned } = updater(true, { platform: "linux", appImage: path.join(dir, "xDev-Hive.AppImage") });
