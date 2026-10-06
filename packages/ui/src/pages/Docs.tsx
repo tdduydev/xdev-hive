@@ -634,8 +634,11 @@ function DocView({
   const writer = canEdit || canPropose;
   const [mode, setMode] = useState<Mode>("view");
   const [props, setProps] = useState(false);
-  // A page made just now opens with the assistant beside it.
-  const [panel, setPanel] = useState<Panel>(() => (draft && draft.baseVersion === 0 && !draft.content.trim() ? "assist" : null));
+  // A page made just now opens with the assistant beside it, but not on a phone: there a panel takes the editor's place,
+  // so the new page would open with nowhere to write (the assistant stays one tap away in the modes menu).
+  const [panel, setPanel] = useState<Panel>(() =>
+    draft && draft.baseVersion === 0 && !draft.content.trim() && !window.matchMedia("(max-width: 767px)").matches ? "assist" : null,
+  );
   const [compare, setCompare] = useState<number | null>(null);
   const [showDiff, setShowDiff] = useState(false);
   const [picker, setPicker] = useState(false);
