@@ -1,13 +1,20 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { appendCrashLog, crashLogPath, ReloadGuard } from "#desktop/main/crashlog.ts";
+
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
 
 describe("crash log (white window, asked 2/10)", () => {
   it("appends timestamped entries under logs/ and moves a full file aside", () => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), "hive-crashlog-"));
+    const dir = testTmpDir(path.join(os.tmpdir(), "hive-crashlog-"));
     const file = crashLogPath(dir);
     appendCrashLog(file, "renderer: TypeError: x is undefined", new Date("2026-10-02T05:00:00Z"));
     assert.match(readFileSync(file, "utf8"), /^\[2026-10-02T05:00:00.000Z\] renderer: TypeError: x is undefined\n/);
@@ -28,4 +35,8 @@ describe("crash log (white window, asked 2/10)", () => {
     assert.deepEqual([guard.allow(t0), guard.allow(t0 + 1000), guard.allow(t0 + 2000), guard.allow(t0 + 3000)], [true, true, true, false]);
     assert.equal(guard.allow(t0 + 5 * 60_000 + 1), true, "the first fell out of the window");
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
@@ -17,10 +17,17 @@ import { cleanupMerged } from "#desktop/main/runner/worktree.ts";
 import { syncProject } from "#desktop/main/sync.ts";
 import { startMockGitLab, type MockGitLab } from "./fixtures/mock-gitlab.ts";
 
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
+
 const FAKE = path.join(import.meta.dirname, "fixtures", "fake-agent.mjs");
 const TOKEN = "mock-gitlab-token";
 const admin: Actor = { name: "duy", role: "admin" };
-const tmp = (p: string) => mkdtempSync(path.join(os.tmpdir(), `hive-${p}-`));
+const tmp = (p: string) => testTmpDir(path.join(os.tmpdir(), `hive-${p}-`));
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 
 let gl: MockGitLab;
@@ -757,4 +764,8 @@ describe("docs sync as a merge request", () => {
     assert.ok(existsSync(path.join(repo, "AGENTS.md")));
     assert.deepEqual(gl.mrs, []);
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

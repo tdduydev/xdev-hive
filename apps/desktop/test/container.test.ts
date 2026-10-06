@@ -1,18 +1,25 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, rmSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { AGENT_TEMPLATES, type Actor, type AgentProfile, type HiveBackend } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { containerCommand, containerName } from "#desktop/main/runner/container.ts";
 import { claudeMcpServers, codexMcpArgs, hubMcpEnv } from "#desktop/main/runner/container-mcp.ts";
 import { Runner, type RunnerHost } from "#desktop/main/runner/runner.ts";
 
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
+
 const admin: Actor = { name: "duy", role: "admin" };
 const FIXTURES = path.join(import.meta.dirname, "fixtures");
-const tmp = (p: string) => mkdtempSync(path.join(os.tmpdir(), `hive-${p}-`));
+const tmp = (p: string) => testTmpDir(path.join(os.tmpdir(), `hive-${p}-`));
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 
 describe("container command", () => {
@@ -299,4 +306,8 @@ describe("a container run with a limited network", () => {
     assert.ok(!docker().some((a) => a[0] === "run" && a[1] === "--rm"), "the agent never started");
     assert.ok(docker().some((a) => a[0] === "rm" && a[1] === "-f"), "teardown tried");
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

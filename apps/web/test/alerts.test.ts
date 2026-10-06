@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import type { Actor, HubAlert } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { AlertStore } from "#web/alerts.ts";
@@ -11,6 +11,13 @@ import { createHubApp } from "#web/app.ts";
 import { TokenStore } from "#web/tokens.ts";
 import { UserStore } from "#web/users.ts";
 import { WebhookStore } from "#web/webhooks.ts";
+
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
 
 const runner: Actor = { name: "runner.duy-mbp@duy-mbp", role: "agent" };
 const profile = (id: string, over: Record<string, unknown> = {}) => ({
@@ -118,7 +125,7 @@ describe("hub alerts", () => {
   });
 
   it("finds a backup older than its interval, and not on a hub that just started", async () => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), "hive-backups-"));
+    const dir = testTmpDir(path.join(os.tmpdir(), "hive-backups-"));
     const { alerts, later } = setup({ dir, hours: 24 });
     await alerts.check();
     assert.deepEqual(await open(alerts), []);
@@ -208,4 +215,8 @@ describe("hub alerts", () => {
       server.close();
     }
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

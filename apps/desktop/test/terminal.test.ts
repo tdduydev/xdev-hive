@@ -1,14 +1,21 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { AGENT_TEMPLATES } from "@xdev-hive/core";
 import { LoginMonitor, loginParts, parseLogin, readLoginHow } from "#desktop/main/runner/login.ts";
 import { openInTerminal, terminalScript, type TerminalCommand } from "#desktop/main/terminal.ts";
 import { cliCommand } from "#desktop/main/cli-open.ts";
 
-const tmp = () => mkdtempSync(path.join(os.tmpdir(), "hive-term-"));
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
+
+const tmp = () => testTmpDir(path.join(os.tmpdir(), "hive-term-"));
 const command: TerminalCommand = {
   title: "xDev Hive: sign in claude-2",
   bin: "/Users/duy/.local/bin/claude",
@@ -166,4 +173,8 @@ describe("sign-in terminal", () => {
     await logins.refresh();
     assert.deepEqual(logins.signedOut(), ["claude-1"]);
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });
