@@ -35,6 +35,7 @@ import { SdlcGatesCard } from "./admin/SdlcGates.tsx";
 import { ClassifySettingsCard } from "./admin/ClassifySettings.tsx";
 import { OpsVersions } from "./admin/Versions.tsx";
 import { BatchesPage } from "./Batches.tsx";
+import { QuotaPage } from "#ui/pages/Quota.tsx";
 import { MachinesPage } from "./Machines.tsx";
 import { MembersPage } from "./Members.tsx";
 import { RunsPage } from "./Runs.tsx";
@@ -99,6 +100,7 @@ export function MachinesAgentsPage() {
   const tab = pickTab(tabs, wanted) ?? "map";
   const body: Record<MachineTab, () => ReactNode> = {
     map: () => <MachinesPage />,
+    quota: () => <QuotaPage />,
     fleet: () => (
       <OpsPage>
         <OpsFleet />

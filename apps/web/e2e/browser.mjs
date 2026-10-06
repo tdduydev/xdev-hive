@@ -712,6 +712,46 @@ async function main() {
     await tab.waitFor("claude-1 off, nothing waiting", () => document.querySelector('[aria-label="Bật gói claude-1"]')?.getAttribute("aria-checked") === "false" && !document.body.innerText.includes("chờ máy áp dụng"));
   });
 
+  await step("quota-outlook", async () => {
+    const stamp = new Date().toISOString();
+    const sessionAt = new Date(Date.now() + 5 * 3600000).toISOString();
+    const weekAt = new Date(Date.now() + 6 * 86400000).toISOString();
+    for (const machine of ["quota-one", "quota-two"]) {
+      const response = await fetch(`${base}/api/rpc`, {
+        method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": `runner.${machine}` },
+        body: JSON.stringify({ method: "machines.heartbeat", input: { machine, instance: "quota001", version: "0.136.0", projects: ["payment"], acceptsRuns: true,
+          profiles: [{ id: "quota-codex", label: "Quota Codex", kind: "codex", account: "quota-shared", enabled: true, installed: true, loggedIn: true, maxConcurrent: 2, cooldownUntil: null, runs: 0, rateLimited: 0,
+            sessionPercent: 40, weekPercent: 20, sessionResetsAt: sessionAt, weekResetsAt: weekAt, usageCheckedAt: stamp, resetsLeft: 23, fullSessionsLeft: 9, weekPerSession: 8, planType: "plus", credits: { balance: 0, hasCredits: false, unlimited: false } }] } }),
+      });
+      const result = await response.json();
+      expect(!result.error, `quota heartbeat: ${JSON.stringify(result.error)}`);
+    }
+    const tab = current = tabs.lan;
+    await tab.eval(() => localStorage.removeItem("xdev-hive.scope"));
+    await tab.reload();
+    await tab.go("machines?tab=quota");
+    await tab.waitFor("shared quota account", () => document.querySelector('[data-quota-account="quota-shared"]'));
+    expect(await tab.eval(() => document.querySelectorAll('[data-quota-account="quota-shared"]').length === 1), "shared account counted twice");
+    expect(await tab.eval(() => {
+      const row = document.querySelector('[data-quota-account="quota-shared"]');
+      return row.innerText.includes("quota-one") && row.innerText.includes("quota-two") && row.innerText.includes("ước tính") && row.innerText.includes("credits 0");
+    }), "missing machines, estimate or credits");
+    expect(await tab.eval(() => document.querySelector('[data-quota-total="codex"]')?.getAttribute("data-quota-slots") === "4"), "shared capacity total differs");
+    if (mobile) {
+      expect(await tab.eval(() => getComputedStyle(document.querySelector('[data-quota-account="quota-shared"]')).display !== "table-row"), "quota table did not become cards");
+      expect(await tab.eval(() => [...document.querySelectorAll("[data-quota-kind], [data-quota-machine], [data-quota-available]")].every(el => (el.tagName === "INPUT" ? el.closest("label") : el).getBoundingClientRect().height >= 44)), "quota controls smaller than 44px");
+      expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "quota page overflows phone");
+    }
+    await tab.eval(() => {
+      const select = document.querySelector("[data-quota-machine]");
+      const option = [...select.options].find(o => o.textContent === "quota-one");
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, option.value);
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await tab.waitFor("capacity follows machine filter", () => document.querySelector('[data-quota-total="codex"]')?.getAttribute("data-quota-slots") === "2");
+
+  });
+
   // Roadmap 32b: Lan, payment's lead, prompts an agent from the Tasks page with one of her machine's profiles; the hub
   // makes task P-<n> and the request, and the machine gets it at its heartbeat.
   await step("web-prompt", async () => {

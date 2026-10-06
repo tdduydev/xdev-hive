@@ -128,6 +128,9 @@ const setupReport = z.object({
   projects: z.array(z.object({ project, repo: z.string().max(500), items: z.array(setupItem).max(10) })).max(50),
 });
 const reportedProfile = z.object({
+  sessionResetsAt: z.string().nullable().optional(),
+  weekResetsAt: z.string().nullable().optional(),
+  running: z.number().int().nonnegative().optional(),
   id: z.string().max(40),
   label: z.string().max(80),
   kind: z.string().max(20),
