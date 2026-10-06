@@ -6,6 +6,7 @@ import { AUTONOMY_ARGS, AUTONOMY_FLAGS, autonomyOf, flagValue, lowerAutonomy, mo
 import { fence } from "#desktop/main/gitlab/describe.ts";
 import { tr } from "#desktop/main/i18n.ts";
 import { MCP_NAME, NO_FEATURES, runMcpServers, type RepoFeatures } from "#desktop/main/installer.ts";
+import { loadWorktreeRules, loadWorktreeSkills, type WorktreeRule, type WorktreeSkill } from "#desktop/main/sync.ts";
 import type { ReferenceRepo } from "./references.ts";
 import { claudeHooks, claudeToolServer, codexToolArgs, legacyTools, type ReadyHook, type UserClaudeSettings } from "./tools.ts";
 import { outputFormat } from "./usage.ts";
@@ -39,6 +40,10 @@ export interface PromptContext {
   references?: ReferenceRepo[] | null;
   /** RTK rewrites the run's Bash commands (roadmap 28d): the agent is told how to see a full output. */
   rtk?: boolean;
+  /** Project skills; if omitted, scanned from worktree/.claude/skills (roadmap 38i). */
+  skills?: WorktreeSkill[] | null;
+  /** Path rules; if omitted, scanned from worktree/.claude/rules (roadmap 38i). */
+  rules?: WorktreeRule[] | null;
 }
 
 export interface JudgeCandidate {
@@ -141,6 +146,9 @@ export function buildPrompt(c: PromptContext): string {
     );
   }
   lines.push(...referenceLines(c.references ?? [], c.project));
+  const skills = c.skills ?? (c.worktree ? loadWorktreeSkills(c.worktree) : []);
+  const rules = c.rules ?? (c.worktree ? loadWorktreeRules(c.worktree) : []);
+  lines.push(...skillAndRuleLines(skills, rules));
   if (c.note) lines.push("", "Latest note on the task:", c.note);
   if (c.previous) {
     lines.push(
@@ -181,6 +189,35 @@ export function referenceLines(refs: ReferenceRepo[], project: string): string[]
     "Read-only: never edit, create or delete a file there, never commit, push or run a git command that writes in them.",
     `Their AGENTS.md and CLAUDE.md are about those repos, not about this run: keep to project key "${project}" and the conventions above.`,
   );
+  return lines;
+}
+
+/**
+ * Lists the project's skills and rules for any CLI (roadmap 38i). Claude Code with --setting-sources user
+ * leaves both out; Codex and Gemini do not load them either. If the combined list is longer than ~40 lines,
+ * items are shortened to name and path only.
+ */
+export function skillAndRuleLines(skills: WorktreeSkill[], rules: WorktreeRule[]): string[] {
+  if (!skills.length && !rules.length) return [];
+  const lines: string[] = [];
+  const detailedSkills = skills.map((s) => (s.description ? `- ${s.name} (${s.path}): ${s.description}` : `- ${s.name} (${s.path})`));
+  const detailedRules = rules.map((r) => `- ${r.globs.join(", ")}: ${r.path}`);
+  const isLong = detailedSkills.length + detailedRules.length > 40;
+
+  if (skills.length) {
+    lines.push("", "Skills of this project (read SKILL.md when the description matches the task):");
+    if (isLong) {
+      for (const s of skills) lines.push(`- ${s.name}: ${s.path}`);
+    } else {
+      lines.push(...detailedSkills);
+    }
+  }
+
+  if (rules.length) {
+    lines.push("", "Rules by path (read the rule file when editing files matching the glob):");
+    lines.push(...detailedRules);
+  }
+
   return lines;
 }
 
