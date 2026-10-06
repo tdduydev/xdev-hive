@@ -129,7 +129,8 @@ describe("Setup: this machine", () => {
     setMainLocale("en");
     try {
       const r = await machine({ npm: false }).setup.status();
-      assert.equal(find(r, "shim").label, "hive-mcp command");
+      // 39b names items by what they do, not by the file or command.
+      assert.equal(find(r, "shim").label, "Connect agents to Hive");
       assert.match(find(r, "cli:gemini").detail, /^Not installed\. npm is missing on this machine/);
     } finally {
       setMainLocale("vi");

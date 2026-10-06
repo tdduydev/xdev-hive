@@ -84,15 +84,15 @@ describe("task note history (roadmap 41a)", () => {
 
   /**
    * The notes already on a board become version 1, so the newest version is the task's note for old tasks too.
-   * The replay rolls back the last migration: this entry is the last one on main (3/10). If 41b or 41c is merged
-   * before this, point the rollback at this entry's own index instead.
+   * The replay rolls back the last two migrations: 41a's, then 41c's (artifacts) after it, as on main since 6/10.
    */
   it("keeps the notes a board already had when the table is added", async () => {
     const file = path.join(mkdtempSync(path.join(tmpdir(), "hive-notes-")), "hive.db");
     const hive = await board(file);
     await hive.call("tasks.update", { id: "web-1", status: "review", note: "Bàn giao cũ." }, claude);
     const version = Number((hive.db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version);
-    hive.db.exec(`DROP TABLE task_notes; PRAGMA user_version = ${version - 1}`);
+    // 41c (artifacts) landed after 41a on 6/10, so roll back both entries and replay them in order.
+    hive.db.exec(`DROP TABLE artifacts; DROP TABLE task_notes; PRAGMA user_version = ${version - 2}`);
     hive.close();
 
     let again: SqliteHive;
