@@ -559,7 +559,7 @@ export function OpsAudit() {
     ["chat", t("nav.chat")],
     ["accounts", t("ops.nav.users")],
     ["machines", t("nav.machines")],
-    ["projects", t("ops.nav.projects")],
+    ["projects", t("nav.systems")],
     ["connections", t("ops.nav.webhooks")],
   ];
   const columns: Array<Column<AuditEntry>> = [
