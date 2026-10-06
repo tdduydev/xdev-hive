@@ -10,7 +10,7 @@ import { MemoryCleanupWorker } from "#desktop/main/runner/memory-cleanup.ts";
 // another vendor ──"Winner: c<n>"──▶ that branch becomes ai/<task> ──▶ review / MR as after one implement run.
 //
 // No Electron imports: the desktop main process provides a RunnerHost, tests provide a fake one.
-import { installAntigravityMcp } from "#desktop/main/installer.ts";
+import { installAntigravityMcp, SHIM_NAME } from "#desktop/main/installer.ts";
 import { agyError, AGY_LIMIT_PATTERN } from "./antigravity.ts";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -1645,7 +1645,7 @@ export class Runner {
         // Only a hub keeps what the run makes; on a local hive the folder would fill up for nothing.
         artifacts: this.#host.mode() === "hub",
       });
-      const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id, repo: project.repo, references: references.repos };
+      const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id, repo: project.repo, references: references.repos, hiveMcp: resolveBin(SHIM_NAME, base.PATH ?? "") ?? SHIM_NAME };
       wt.toolDirs = toolDirs(tools.prepare);
       const cmd = buildCommand(profile, vars, this.#tools && !profile.container ? tools.tools : features, mcpFile ?? undefined, fit.mcp, hooks);
       const bin = resolveBin(profile.container ? "docker" : cmd.bin, base.PATH ?? "");
@@ -2051,8 +2051,15 @@ export class Runner {
         const shareError = await this.#shareCooldown(profile, until, hit.reason);
         if (shareError) error = `${error} · ${shareError}`;
       } else {
-        const lastErr = (agyFailure ?? outcome.usage?.text ?? outcome.all).trim().split("\n").at(-1) ?? "";
-        error = `${tr("runNote.exited", { code: outcome.code ?? "?" })}${lastErr ? `: ${clip(lastErr, 200)}` : ""}`;
+        const all = agyFailure ?? outcome.usage?.text ?? outcome.all;
+        const codexConfigError = profile.kind === "codex" && /invalid transport|error loading config\.toml|failed to (?:read|parse).*config\.toml/i.test(all);
+        if (codexConfigError) {
+          const home = profile.env.CODEX_HOME ? expandHome(profile.env.CODEX_HOME) : path.join(os.homedir(), ".codex");
+          error = tr("runNote.codexConfigInvalid", { file: path.join(home, "config.toml") });
+        } else {
+          const lastErr = all.trim().split("\n").at(-1) ?? "";
+          error = `${tr("runNote.exited", { code: outcome.code ?? "?" })}${lastErr ? `: ${clip(lastErr, 200)}` : ""}`;
+        }
       }
       if (status !== "succeeded" && outcome.blocked?.length) {
         error = [error, tr("runNote.networkBlocked", { hosts: outcome.blocked.slice(0, 5).join(", ") })].filter(Boolean).join(" · ");

@@ -196,16 +196,22 @@ describe("Hive and sign-in for CLIs in a container", () => {
   const r = { agent: "codex-1.duy-mbp", machine: "duy-mbp", project: "demo", task: "T-1", run: "R-1", readOnly: true };
 
   it("turns the shim off for Codex and points it at the hub, with the token left in the environment", () => {
-    assert.deepEqual(codexMcpArgs(null, r), ["-c", "mcp_servers.xdev-hive.enabled=false"]);
+    assert.deepEqual(codexMcpArgs(null, r), [
+      "-c", 'mcp_servers.xdev-hive.command="hive-mcp"',
+      "-c", "mcp_servers.xdev-hive.args=[]",
+      "-c", "mcp_servers.xdev-hive.enabled=false",
+    ]);
     const args = codexMcpArgs(hub, r);
-    assert.deepEqual(args.slice(0, 6), [
+    assert.deepEqual(args.slice(0, 10), [
+      "-c", 'mcp_servers.xdev-hive.command="hive-mcp"',
+      "-c", "mcp_servers.xdev-hive.args=[]",
       "-c", "mcp_servers.xdev-hive.enabled=false",
       "-c", 'mcp_servers.hive.url="https://hive.example.test/mcp"',
       "-c", 'mcp_servers.hive.bearer_token_env_var="HIVE_HUB_TOKEN"',
     ]);
     const source = JSON.stringify(JSON.stringify({ via: "mcp", machine: "duy-mbp", run: "R-1", task: "T-1" }));
-    assert.equal(args[7], `mcp_servers.hive.http_headers={"x-hive-agent"="codex-1.duy-mbp","x-hive-project"="demo","x-hive-source"=${source},"x-hive-run"="R-1","x-hive-readonly"="1"}`);
-    assert.deepEqual(args.slice(8), ["-c", 'mcp_servers.hive.default_tools_approval_mode="approve"'], "headless: Hive's tools run without asking");
+    assert.ok(args.includes(`mcp_servers.hive.http_headers={"x-hive-agent"="codex-1.duy-mbp","x-hive-project"="demo","x-hive-source"=${source},"x-hive-run"="R-1","x-hive-readonly"="1"}`));
+    assert.deepEqual(args.slice(-2), ["-c", 'mcp_servers.hive.default_tools_approval_mode="approve"'], "headless: Hive's tools run without asking");
     assert.ok(!args.join(" ").includes("hive_machine"));
     assert.deepEqual(hubMcpEnv(hub, r, "codex"), { HIVE_HUB_TOKEN: "hive_machine" });
   });
@@ -234,7 +240,7 @@ describe("Hive and sign-in for CLIs in a container", () => {
     assert.equal(runner.store.get(run.id)!.status, "succeeded", runner.store.get(run.id)!.error ?? "");
     const args = docker()[0]!;
     const image = args.indexOf("xdev-hive-agent");
-    assert.deepEqual(args.slice(image + 1, image + 4), ["codex", "-c", "mcp_servers.xdev-hive.enabled=false"], "overrides before the subcommand");
+    assert.deepEqual(args.slice(image + 1, image + 8), ["codex", "-c", 'mcp_servers.xdev-hive.command="hive-mcp"', "-c", "mcp_servers.xdev-hive.args=[]", "-c", "mcp_servers.xdev-hive.enabled=false"], "overrides before the subcommand");
     assert.ok(args.includes("HIVE_HUB_TOKEN"));
     assert.ok(!args.some((a) => a.includes("hive_test_machine_token")));
     assert.equal(calls()[0].hubToken, "set");
