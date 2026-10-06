@@ -60,8 +60,13 @@ export function featureItems(flows: SdlcFlow[], specs: SpecFeature[], flowTasks:
   const used = new Set<string>();
   const items: FeatureItem[] = [];
   for (const flow of flows) {
-    const mine = flow.dir ? specs.filter((s) => s.project === flow.project && s.dir === flow.dir) : [];
-    const spec = mine.find((s) => s.branch === `ai/${flow.taskId}`) ?? mine.find((s) => s.branch === "") ?? null;
+    const branch = `ai/${flow.taskId}`;
+    // The hub sets flow.dir only once the specify gate passes (#releaseFlows): until then the folder is the one
+    // pushed on the flow's branch, found the same way (exactly one), or the person at the spec gate sees no spec.md.
+    const onBranch = flow.dir ? [] : specs.filter((s) => s.project === flow.project && s.branch === branch);
+    const dir = flow.dir ?? (onBranch.length === 1 ? onBranch[0]!.dir : null);
+    const mine = dir ? specs.filter((s) => s.project === flow.project && s.dir === dir) : [];
+    const spec = mine.find((s) => s.branch === branch) ?? mine.find((s) => s.branch === "") ?? null;
     if (spec) used.add(specKey(spec));
     const own = flowTasks.filter((x) => x.project === flow.project && x.flowTask === flow.taskId);
     const waiting = [...(flow.state === "gate" && isWaiting(flow.gate) ? [flow.gate] : []), ...own.flatMap((x) => (x.stage === "gate" && isWaiting(x.gate) ? [x.gate] : []))];
