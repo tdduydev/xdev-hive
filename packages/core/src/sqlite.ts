@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { isContextDoc, may, sees, systemOf, systemOwner, withSystemGrants, type Permission } from "./access.ts";
-import type { AgentRole, PreferKind } from "./agents.ts";
+import type { AgentKind, AgentRole, PreferKind } from "./agents.ts";
 import type { BlobStore } from "./blobs.ts";
 import { HiveError, type ErrorText } from "./errors.ts";
 import { agentsDocKey, decisionsDocKey, parseDocKey, titleFromSlug, type ParsedDocKey } from "./keys.ts";
@@ -55,7 +55,7 @@ import { assertNoSecret, findSecret, redactLines } from "./secrets.ts";
 import { isAgentActor, MR_WATCHER, parseSource, principalOf, type WriteSource } from "./source.ts";
 import { SEED_DOCS, SEED_VERSION } from "./seed.ts";
 import { planSpecTasks, specStage, specStepInstructions, specTaskPrefix, specTasks, specTitle, type SpecFeature, type SpecFeatureDetail, type SpecFiles, type SpecStep } from "./speckit.ts";
-import { parseVerdict } from "./verdict.ts";
+import { parseVerdict, type Verdict } from "./verdict.ts";
 import { parseParts, partInstructions, reduceInstructions, splitInstructions, type MapPhase } from "./mapreduce.ts";
 import { toolEffective, toolProblem, toolSetupItems } from "./tools.ts";
 import type {
@@ -77,6 +77,7 @@ import type {
   CommandKind,
   CommandStatus,
   CompressionCompare,
+  ModelUse,
   CompressionSide,
   CostTotals,
   Doc,
@@ -501,6 +502,21 @@ const MIGRATIONS: string[] = [
   ALTER TABLE run_records ADD COLUMN compression TEXT;
   ${rtkSeedSql()}
   `,
+  // What a run ran on (roadmap 54a), the data the model router learns from: the profile's kind, the model and effort
+  // its final args set (null: the CLI's default), the router's tier (null until 54c), which attempt it was and the run
+  // it follows, and a review's verdict as parsed once, so the learning does not read summaries again. Runs from
+  // before stay null: their args are gone. The index: costs.summary reads 30 days of ended runs from a table whose
+  // rows are no longer deleted (41b).
+  `
+  ALTER TABLE run_records ADD COLUMN kind TEXT;
+  ALTER TABLE run_records ADD COLUMN model TEXT;
+  ALTER TABLE run_records ADD COLUMN effort TEXT;
+  ALTER TABLE run_records ADD COLUMN tier TEXT;
+  ALTER TABLE run_records ADD COLUMN attempt INTEGER;
+  ALTER TABLE run_records ADD COLUMN parent_run TEXT;
+  ALTER TABLE run_records ADD COLUMN verdict TEXT;
+  CREATE INDEX run_records_finished ON run_records(finished_at);
+  `,
 ];
 
 /**
@@ -727,6 +743,13 @@ function toRunRecord(r: Row, withLog: boolean): RunRecord {
             finishedAt: s(r.merge_done_at),
           },
     logPrunedAt: s(r.log_pruned_at),
+    kind: s(r.kind) as AgentKind | null,
+    model: s(r.model),
+    effort: s(r.effort),
+    tier: s(r.tier),
+    attempt: numOrNull(r.attempt),
+    parentRun: s(r.parent_run),
+    verdict: s(r.verdict) as Verdict | null,
     ...(withLog ? { log: str(r.log), patch: r.patch == null ? null : str(r.patch) } : {}),
   };
 }
@@ -5422,6 +5445,8 @@ export class SqliteHive implements HiveBackend {
           const patchPut = db.prepare("UPDATE run_records SET patch = ? WHERE machine_id = ? AND run_id = ?");
           const mrPut = db.prepare("UPDATE run_records SET mr = ? WHERE machine_id = ? AND run_id = ?");
           const compressionPut = db.prepare("UPDATE run_records SET compression = ? WHERE machine_id = ? AND run_id = ?");
+          // One statement per set of fields sent: the column names come from the fixed list below, never from the push.
+          const ranOnPut = new Map<string, ReturnType<typeof db.prepare>>();
           const ownerPut = db.prepare(
             `UPDATE run_records SET requested_by = COALESCE(
                (SELECT COALESCE(on_behalf, requested_by) FROM run_requests WHERE machine_id = ?1 AND run_id = ?2 AND status = 'accepted'), ?3)
@@ -5444,6 +5469,24 @@ export class SqliteHive implements HiveBackend {
               mrPut.run(mr ? JSON.stringify(mr) : null, actor.name, r.runId);
             }
             if (r.compression !== undefined) compressionPut.run(r.compression ? JSON.stringify(r.compression) : null, actor.name, r.runId);
+            // An older app sends no verdict: a review's is read here from the summary, which it clipped, so a verdict
+            // past its end reads as unknown. The app reads the whole report.
+            const verdict = r.verdict !== undefined ? r.verdict : r.role === "review" && r.status === "succeeded" ? parseVerdict(clean(r.summary)) : undefined;
+            const ranOn: Array<[string, unknown]> = [
+              ["kind", r.kind],
+              ["model", r.model],
+              ["effort", r.effort],
+              ["tier", r.tier],
+              ["attempt", r.attempt],
+              ["parent_run", r.parentRun],
+              ["verdict", verdict],
+            ];
+            const sent = ranOn.filter(([, v]) => v !== undefined);
+            if (sent.length) {
+              const sql = `UPDATE run_records SET ${sent.map(([c]) => `${c} = ?`).join(", ")} WHERE machine_id = ? AND run_id = ?`;
+              const stmt = ranOnPut.get(sql) ?? ranOnPut.set(sql, db.prepare(sql)).get(sql)!;
+              stmt.run(...sent.map(([, v]) => v as string | number | null), actor.name, r.runId);
+            }
             // Whose run it is, set once: whoever asked for it from the web, else the person whose token the machine has
             // (a run started from its Board). A machine takes a request (runs.requestResult) before it pushes the run.
             ownerPut.run(actor.name, r.runId, principalOf(actor));
@@ -6281,7 +6324,48 @@ export class SqliteHive implements HiveBackend {
           };
           compare.set(key, row);
         }
+        // Every ended run, priced or not (Codex reports tokens without a price): the run is what the router learns from.
+        const models = (
+          db
+            .prepare(
+              `SELECT r.project, r.role, r.kind, r.model, r.effort, COUNT(*) AS runs,
+                 SUM(CASE WHEN r.status = 'failed' THEN 1 ELSE 0 END) AS failed,
+                 SUM(CASE WHEN r.attempt > 1 THEN 1 ELSE 0 END) AS retries,
+                 SUM(CASE WHEN r.verdict = 'approve' THEN 1 ELSE 0 END) AS approved,
+                 SUM(CASE WHEN r.verdict = 'changes' THEN 1 ELSE 0 END) AS changes,
+                 AVG(c.cost_usd) AS cost_avg, AVG(c.output_tokens) AS output_avg
+               FROM run_records r LEFT JOIN run_costs c ON c.machine_id = r.machine_id AND c.run_id = r.run_id
+               WHERE r.finished_at >= ?1 AND r.status IN ('succeeded', 'failed')
+               GROUP BY r.project, r.role, r.kind, r.model, r.effort`,
+            )
+            .all(since(30)) as Row[]
+        )
+          .filter((r) => sees(actor, str(r.project)))
+          .map(
+            (r): ModelUse => ({
+              project: str(r.project),
+              role: str(r.role),
+              kind: strOrNull(r.kind) as AgentKind | null,
+              model: strOrNull(r.model),
+              effort: strOrNull(r.effort),
+              runs: num(r.runs),
+              failed: num(r.failed),
+              retries: num(r.retries),
+              approved: num(r.approved),
+              changes: num(r.changes),
+              costAvg: numOrNull(r.cost_avg),
+              outputAvg: numOrNull(r.output_avg),
+            }),
+          )
+          .sort(
+            (a, b) =>
+              a.project.localeCompare(b.project) ||
+              a.role.localeCompare(b.role) ||
+              b.runs - a.runs ||
+              `${a.kind ?? ""}\u0000${a.model ?? ""}\u0000${a.effort ?? ""}`.localeCompare(`${b.kind ?? ""}\u0000${b.model ?? ""}\u0000${b.effort ?? ""}`),
+          );
         return {
+          models,
           compression: [...compare.values()]
             .filter((c) => c.rtk.runs > 0)
             .sort((a, b) => a.project.localeCompare(b.project) || a.role.localeCompare(b.role)),

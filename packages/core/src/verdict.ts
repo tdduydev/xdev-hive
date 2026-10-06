@@ -1,7 +1,8 @@
 // A review run's verdict, read from its report: the MR a machine opens and the web's Runs page both use it.
 // Browser-safe.
 
-export type Verdict = "approve" | "changes" | "unknown" | "none";
+export const VERDICTS = ["approve", "changes", "unknown", "none"] as const;
+export type Verdict = (typeof VERDICTS)[number];
 
 /** Reads the verdict the review prompt asks for ("verdict (approve / changes needed)"). */
 export function parseVerdict(summary: string | null | undefined): Verdict {

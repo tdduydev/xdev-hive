@@ -54,6 +54,10 @@ const ADDED_COLUMNS: Array<[name: string, ddl: string]> = [
   ["prefer_kind", "TEXT"],
   /** JSON: what RTK left out of the run's Bash output (roadmap 28d); null: no RTK, or no numbers. */
   ["compression", "TEXT"],
+  /** What it ran on (roadmap 54a): the profile's kind, and the model and effort its final args set. */
+  ["agent_kind", "TEXT"],
+  ["model", "TEXT"],
+  ["effort", "TEXT"],
 ];
 
 type Row = Record<string, unknown>;
@@ -109,6 +113,9 @@ function toRun(r: Row): AgentRun {
     ciFix: r.ci_fix == null ? null : (JSON.parse(String(r.ci_fix)) as CiFix | null),
     bestOf: r.best_of == null ? null : (JSON.parse(String(r.best_of)) as BestOf | null),
     requestedBy: s(r.requested_by),
+    agentKind: s(r.agent_kind) as AgentKind | null,
+    model: s(r.model),
+    effort: s(r.effort),
   };
 }
 

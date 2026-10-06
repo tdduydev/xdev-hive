@@ -478,6 +478,30 @@ export function modelOf(args: string[]): string | null {
 }
 
 /**
+ * The reasoning effort the args set, or null for the CLI's default: `--effort X` (Claude Code, agy), and Codex's
+ * `-c model_reasoning_effort=X` / `--config …` (the last one wins, as in the CLI; TOML quotes taken off).
+ */
+export function effortOf(kind: AgentKind, args: string[]): string | null {
+  if (kind !== "codex") return kind === "claude" || kind === "antigravity" ? flagValue(args, ["--effort"]) : null;
+  let effort: string | null = null;
+  args.forEach((a, i) => {
+    const value = a === "-c" || a === "--config" ? args[i + 1] : a.startsWith("--config=") ? a.slice("--config=".length) : undefined;
+    const m = value && /^\s*model_reasoning_effort\s*=\s*["']?([\w-]+)["']?\s*$/.exec(value);
+    if (m) effort = m[1]!;
+  });
+  return effort;
+}
+
+/**
+ * The model and effort a run gets from its final args (after applyPolicy), what runs.push tells the hub (roadmap 54a).
+ * A custom CLI's flags are its own: nothing is read from them.
+ */
+export function ranOn(profile: AgentProfile): { model: string | null; effort: string | null } {
+  if (profile.kind === "custom") return { model: null, effort: null };
+  return { model: modelOf(profile.args), effort: effortOf(profile.kind, profile.args) };
+}
+
+/**
  * Why the policy rules the profile out for a run, or null when it may run (applyPolicy then fits it). The runner
  * skips a blocked profile as one out of quota.
  */

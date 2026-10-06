@@ -2292,6 +2292,20 @@ describe("runner: agent policy (roadmap 27a)", () => {
     assert.match(runner.log(run.id), /# policy skipped claude-a: .*opus/);
   });
 
+  it("records the model the policy put in and the profile's effort, and the hub gets them (roadmap 54a)", async () => {
+    const { runner, hive } = await withPolicy([profile("claude-b", "claude", 20, "ok", { args: [FAKE, "{prompt}", "--effort", "high"] })], { models: { claude: ["sonnet"] } });
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const done = runner.store.get(run.id)!;
+    assert.deepEqual([done.agentKind, done.model, done.effort], ["claude", "sonnet", "high"]);
+    await runner.pushRuns();
+    const record = (await hive.call("runs.list", {}, admin)).find((r) => r.runId === run.id)!;
+    assert.deepEqual(
+      [record.kind, record.model, record.effort, record.tier, record.attempt, record.parentRun, record.verdict],
+      ["claude", "sonnet", "high", null, 1, null, null],
+    );
+  });
+
   it("fails the run with errors.policyNoProfile when no profile is left", async () => {
     setMainLocale("en");
     try {
