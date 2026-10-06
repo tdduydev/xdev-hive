@@ -40,7 +40,7 @@ export const en: Catalog = {
   },
   graph: {
     layers: "Graph layers", system: "System", soon: "Coming soon", completed: "completed", running: "Running",
-    hideOldDone: "Hide tasks done over 7 days ago", mine: "My tasks", byAgent: "Filter by agent", allAgents: "All agents",
+    hideOldDone: "Hide tasks done over 7 days ago", openOnly: "Unfinished only", minimap: "Mini map", mine: "My tasks", byAgent: "Filter by agent", allAgents: "All agents",
     fit: "Fit view", reset: "Reset layout", list: "List", pickProject: "Select a project to view its task graph.",
   },
   nav: {

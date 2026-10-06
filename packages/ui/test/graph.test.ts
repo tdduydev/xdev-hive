@@ -1,39 +1,80 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Task } from "@xdev-hive/core";
-import { taskGraph, layoutGraph } from "#ui/lib/graph.ts";
+import { taskGraph, layoutGraph, type GraphNode } from "#ui/lib/graph.ts";
 const task = (id: string, patch: Partial<Task> = {}): Task => ({ id, project: "shop", title: id, status: "todo", owner: null, leaseUntil: null, note: null, updatedAt: "2026-10-06T00:00:00Z", dependsOn: [], waitingOn: [], ...patch });
+const NOW = Date.parse("2026-10-06T12:00:00Z");
+// Absolute position: a child of a group is placed relative to it, as React Flow draws it.
+const abs = (nodes: GraphNode[], node: GraphNode) => {
+  const parent = node.parentId ? nodes.find((other) => other.id === node.parentId) : undefined;
+  return { x: node.position.x + (parent?.position.x ?? 0), y: node.position.y + (parent?.position.y ?? 0) };
+};
 
 describe("task graph", () => {
   it("draws task dependencies in the right direction, with completed edges muted", () => {
-    const graph = taskGraph([task("A", { status: "done" }), task("B", { status: "doing", dependsOn: ["A"], waitingOn: [] }), task("C", { status: "blocked", dependsOn: ["B"], waitingOn: ["B"] }), task("D", { status: "review" }), task("E")], [], false);
+    const graph = taskGraph([task("A", { status: "done" }), task("B", { status: "doing", dependsOn: ["A"], waitingOn: [] }), task("C", { status: "blocked", dependsOn: ["B"], waitingOn: ["B"] }), task("D", { status: "review" }), task("E")], [], false, NOW);
     assert.deepEqual(graph.edges.map(({ source, target, complete }) => [source, target, complete]), [["shop:A", "shop:B", true], ["shop:B", "shop:C", false]]);
     assert.equal(graph.nodes.find((node) => node.id === "shop:C")?.task?.status, "blocked");
     assert.deepEqual(new Set(graph.nodes.filter((node) => node.task).map((node) => node.task!.status)), new Set(["todo", "doing", "review", "done", "blocked"]));
   });
+  it("hides tasks done more than 7 days ago by default, without leaving a stray node for them", () => {
+    const graph = taskGraph([task("OLD", { status: "done", updatedAt: "2026-09-01T00:00:00Z" }), task("NEW", { dependsOn: ["OLD"] })], [], true, NOW);
+    assert.deepEqual(graph.nodes.map((node) => node.id), ["shop:NEW"]);
+    assert.deepEqual(graph.edges, []);
+  });
   it("groups a feature's tasks under its specs directory", () => {
-    const graph = taskGraph([task("S001-T001", { note: "Spec Kit · specs/001-cart/tasks.md" })]);
+    const graph = taskGraph([task("S001-T001", { note: "Spec Kit · specs/001-cart/tasks.md" }), task("LOOSE")], [], true, NOW);
     assert.equal(graph.nodes.find((node) => node.id === "shop:S001-T001")?.parentId, "group:shop:001-cart");
     assert.equal(graph.nodes.find((node) => node.id === "group:shop:001-cart")?.label, "001-cart");
+    assert.equal(graph.nodes.find((node) => node.id === "shop:LOOSE")?.parentId, undefined);
+    // React Flow needs a parent before its children.
+    assert.equal(graph.nodes[0]?.kind, "group");
   });
-  it("shows a cross-project dependency with its project", () => {
-    const graph = taskGraph([task("B", { depProjects: { EXT: "api" }, dependsOn: ["EXT"], waitingOn: ["EXT"] })]);
-    assert.equal(graph.nodes.find((node) => node.id === "api:EXT")?.project, "api");
-    assert.equal(graph.edges[0]?.source, "api:EXT");
+  it("shows a cross-project dependency as a faded node with its project", () => {
+    const graph = taskGraph([task("B", { depProjects: { EXT: "api" }, dependsOn: ["EXT"], waitingOn: ["EXT"] })], [], true, NOW);
+    const ext = graph.nodes.find((node) => node.id === "api:EXT");
+    assert.equal(ext?.kind, "foreign");
+    assert.equal(ext?.project, "api");
+    assert.deepEqual(graph.edges.map(({ source, target, complete }) => [source, target, complete]), [["api:EXT", "shop:B", false]]);
   });
-  it("collapses completed tasks by feature above 300", () => {
-    const tasks = Array.from({ length: 302 }, (_, i) => task(`T-${i}`, { status: "done", note: "specs/cart/tasks.md" }));
-    const graph = taskGraph(tasks, [], false);
-    assert.equal(graph.nodes.find((node) => node.kind === "count")?.count, 302);
-    assert.equal(graph.nodes.filter((node) => node.kind === "task").length, 0);
+  it("connects a service's task to the real node when both services are in scope (system)", () => {
+    const graph = taskGraph([task("EXT", { project: "api" }), task("B", { depProjects: { EXT: "api" }, dependsOn: ["EXT"], waitingOn: ["EXT"] })], [], true, NOW);
+    assert.equal(graph.nodes.find((node) => node.id === "api:EXT")?.kind, "task");
+    assert.equal(graph.nodes.filter((node) => node.kind === "foreign").length, 0);
   });
-  it("lays out separate nodes without overlap and retains dragged positions after an update", () => {
+  it("collapses completed tasks per feature above 300, and points a done dependency at the count", () => {
+    const tasks = [...Array.from({ length: 302 }, (_, i) => task(`T-${i}`, { status: "done", note: "specs/cart/tasks.md" })), task("NEXT", { note: "specs/cart/tasks.md", dependsOn: ["T-1"] })];
+    const graph = taskGraph(tasks, [], false, NOW);
+    const count = graph.nodes.find((node) => node.kind === "count");
+    assert.equal(count?.count, 302);
+    assert.equal(count?.parentId, "group:shop:cart");
+    assert.deepEqual(graph.nodes.filter((node) => node.kind === "task").map((node) => node.id), ["shop:NEXT"]);
+    assert.deepEqual(graph.edges.map(({ source, target }) => [source, target]), [["count:group:shop:cart", "shop:NEXT"]]);
+  });
+  it("lays out with dagre left to right without overlapping nodes, across groups and loose tasks", () => {
+    const tasks = [
+      task("A"), task("B", { dependsOn: ["A"] }), task("C", { dependsOn: ["A"] }), task("D", { dependsOn: ["B", "C"] }),
+      task("F1", { note: "specs/001-x/tasks.md" }), task("F2", { note: "specs/001-x/tasks.md", dependsOn: ["F1"] }), task("F3", { note: "specs/001-x/tasks.md", dependsOn: ["F1"] }),
+    ];
+    const { nodes } = layoutGraph(taskGraph(tasks, [], true, NOW));
+    const cards = nodes.filter((node) => node.kind !== "group").map((node) => ({ id: node.id, ...abs(nodes, node), width: node.width, height: node.height }));
+    for (const [i, a] of cards.entries()) for (const b of cards.slice(i + 1)) {
+      const apart = a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y;
+      assert.ok(apart, `${a.id} overlaps ${b.id}`);
+    }
+    const at = (id: string) => cards.find((card) => card.id === id)!;
+    assert.ok(at("shop:A").x + at("shop:A").width <= at("shop:B").x, "a dependency sits left of the task that needs it");
+    assert.ok(at("shop:B").x + at("shop:B").width <= at("shop:D").x);
+  });
+  it("keeps positions already on the canvas when data changes, and lays out only the new node", () => {
     const tasks = [task("A"), task("B", { dependsOn: ["A"], waitingOn: ["A"] })];
-    const first = layoutGraph(taskGraph(tasks));
-    const a = first.nodes.find((node) => node.id === "shop:A")!;
-    const b = first.nodes.find((node) => node.id === "shop:B")!;
-    assert.ok(a.position.x + a.width <= b.position.x);
-    const next = layoutGraph(taskGraph([...tasks, task("C")]), { "shop:A": { x: 700, y: 200 } });
+    const first = layoutGraph(taskGraph(tasks, [], true, NOW));
+    const placed = Object.fromEntries(first.nodes.map((node) => [node.id, node.position]));
+    placed["shop:A"] = { x: 700, y: 200 };
+    const next = layoutGraph(taskGraph([...tasks, task("C")], [], true, NOW), placed);
     assert.deepEqual(next.nodes.find((node) => node.id === "shop:A")?.position, { x: 700, y: 200 });
+    assert.deepEqual(next.nodes.find((node) => node.id === "shop:B")?.position, first.nodes.find((node) => node.id === "shop:B")?.position);
+    const c = next.nodes.find((node) => node.id === "shop:C")!;
+    assert.ok(Number.isFinite(c.position.x) && Number.isFinite(c.position.y));
   });
 });

@@ -1,5 +1,74 @@
-.graph-page{display:flex;flex-direction:column;min-height:0;height:calc(100dvh - 126px);padding:16px 24px;gap:12px;color:var(--text-primary)}
-.graph-toolbar,.graph-layers,.graph-filters,.graph-actions{display:flex;align-items:center;gap:8px}.graph-toolbar{flex-wrap:wrap}.graph-layers{max-width:100%;overflow-x:auto}.graph-toolbar button,.graph-toolbar a,.graph-toolbar select{min-height:36px;padding:6px 10px;border:1px solid var(--border-default);border-radius:7px;background:var(--bg-surface);color:var(--text-primary);white-space:nowrap;font-size:12px;font-weight:600}.graph-toolbar button[aria-pressed=true]{border-color:var(--border-selected);background:var(--state-selected-bg);color:var(--state-selected-fg)}.graph-toolbar button:disabled{opacity:.62;cursor:not-allowed}.graph-toolbar button:not(:disabled),.graph-toolbar a{cursor:pointer}.graph-toolbar :is(button,a,select,input):focus-visible,.graph-task:focus-visible{outline:2px solid var(--focus-color);outline-offset:2px}.graph-filters label{display:flex;align-items:center;gap:5px;white-space:nowrap;font-size:12px}.graph-actions{margin-left:auto}.graph-canvas{flex:1;min-height:300px;border:1px solid var(--border-default);border-radius:10px;overflow:hidden;background:var(--bg-sunken)}.graph-page .react-flow__node{border:0;background:transparent}.graph-page .react-flow__node-group{border:1px dashed var(--border-strong);border-radius:10px;background:color-mix(in srgb,var(--bg-surface) 48%,transparent)}.graph-group-title{padding:10px 14px;color:var(--text-secondary);font-weight:700;font-size:12px}.graph-task{display:flex;width:228px;height:94px;flex-direction:column;align-items:stretch;gap:4px;padding:9px 11px;border:2px solid var(--status-neutral-border);border-radius:9px;background:var(--bg-surface);box-shadow:var(--shadow-1);color:var(--text-primary);text-align:left;cursor:pointer}.graph-task:hover{box-shadow:var(--shadow-2)}.graph-doing{border-color:var(--status-running-border)}.graph-review{border-color:var(--status-warning-border)}.graph-done{border-color:var(--status-success-border)}.graph-blocked{border-color:var(--status-danger-border)}.graph-foreign{opacity:.7}.graph-task-top{display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:11px;color:var(--text-secondary)}.graph-task-title{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;font-size:12px;font-weight:700;line-height:1.3;color:var(--text-strong)}.graph-task-meta{display:flex;gap:5px;align-items:center;overflow:hidden;font-size:10px;color:var(--text-secondary)}.graph-task-meta>*{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.graph-agent{border:1px solid var(--border-default);border-radius:4px;padding:0 4px}.graph-running{width:8px;height:8px;border-radius:50%;background:var(--status-running-fg)}.graph-count{padding:18px;border:1px solid var(--status-success-border);border-radius:8px;background:var(--status-success-bg);color:var(--status-success-fg);font-weight:700;text-align:center}.graph-page .react-flow__edge-path{stroke:var(--status-warning-fg);stroke-width:2}.graph-page .graph-edge-complete .react-flow__edge-path{stroke:var(--border-strong);opacity:.45;stroke-dasharray:5 5}.graph-page .react-flow__controls button{width:44px;height:44px;background:var(--bg-surface);border-color:var(--border-default);color:var(--text-primary);fill:var(--text-primary)}.graph-pick{padding:24px}.graph-pick>div{display:flex;flex-wrap:wrap;gap:8px}.graph-pick button{padding:10px;border:1px solid var(--border-default);border-radius:7px;background:var(--bg-surface)}
-@media(max-width:767px){.graph-page{height:calc(100dvh - 70px);padding:8px;gap:6px}.graph-toolbar{gap:6px}.graph-toolbar button,.graph-toolbar a,.graph-toolbar select{min-height:44px}.graph-layers{flex-basis:100%}.graph-filters{max-width:100%;overflow-x:auto}.graph-actions{margin-left:0}.graph-canvas{min-height:0}.graph-page .react-flow__controls{left:auto;right:8px;bottom:8px}}
-@media(prefers-reduced-motion:reduce){.graph-page *{animation-duration:0ms!important;transition-duration:0ms!important}}
-.graph-drag-handle{position:absolute;top:3px;right:4px;z-index:2;width:22px;height:22px;border-radius:4px;background:var(--bg-sunken);color:var(--text-muted);font-size:12px;line-height:22px;text-align:center;cursor:grab}.graph-drag-handle:active{cursor:grabbing}
+/* Spec 51: React Flow brings only its base.css; every colour here is a token so dark mode follows the rest of the app. */
+.graph-page { display: flex; flex-direction: column; min-height: 0; height: calc(100dvh - 126px); padding: 16px 24px; gap: 12px; color: var(--text-primary); }
+.graph-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.graph-layers, .graph-tools, .graph-filters, .graph-actions { display: flex; align-items: center; gap: 8px; }
+.graph-layers { max-width: 100%; overflow-x: auto; }
+.graph-tools { flex: 1; flex-wrap: wrap; }
+.graph-actions { margin-left: auto; }
+.graph-toolbar button, .graph-toolbar a, .graph-toolbar select {
+  min-height: 36px; padding: 6px 10px; border: 1px solid var(--border-default); border-radius: 7px;
+  background: var(--bg-surface); color: var(--text-primary); white-space: nowrap; font-size: 12px; font-weight: 600;
+}
+.graph-toolbar a { display: inline-flex; align-items: center; text-decoration: none; }
+.graph-toolbar button[aria-pressed="true"] { border-color: var(--border-selected); background: var(--state-selected-bg); color: var(--state-selected-fg); }
+/* The disabled tokens keep the "Sắp có" chips readable; opacity alone dropped them under 4.5:1. */
+.graph-toolbar button:disabled { border-color: var(--state-disabled-border); background: var(--state-disabled-bg); color: var(--state-disabled-fg); cursor: not-allowed; }
+.graph-toolbar button:not(:disabled), .graph-toolbar a { cursor: pointer; }
+.graph-toolbar :is(button, a, select, input):focus-visible, .graph-task:focus-visible { outline: 2px solid var(--focus-color); outline-offset: 2px; }
+.graph-filters label { display: flex; align-items: center; gap: 5px; white-space: nowrap; font-size: 12px; }
+.graph-canvas { flex: 1; min-height: 300px; border: 1px solid var(--border-default); border-radius: 10px; overflow: hidden; background: var(--bg-sunken); }
+
+.graph-page .react-flow__node { border: 0; background: transparent; }
+.graph-page .react-flow__node-group { border: 1px dashed var(--border-strong); border-radius: 10px; background: color-mix(in srgb, var(--bg-surface) 48%, transparent); }
+.graph-group-title { padding: 10px 14px; color: var(--text-secondary); font-weight: 700; font-size: 12px; }
+.graph-task {
+  display: flex; width: 228px; height: 94px; flex-direction: column; align-items: stretch; gap: 4px; padding: 9px 11px;
+  border: 2px solid var(--status-neutral-border); border-radius: 9px; background: var(--bg-surface); box-shadow: var(--shadow-1);
+  color: var(--text-primary); text-align: left; cursor: pointer;
+}
+.graph-task:hover:not(:disabled) { box-shadow: var(--shadow-2); }
+.graph-task:disabled { cursor: default; }
+.graph-doing { border-color: var(--status-running-border); }
+.graph-review { border-color: var(--status-warning-border); }
+.graph-done { border-color: var(--status-success-border); }
+.graph-blocked { border-color: var(--status-danger-border); }
+.graph-foreign { border-style: dashed; opacity: .7; }
+.graph-task-top { display: flex; justify-content: space-between; padding-right: 22px; font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
+.graph-task-title { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: 12px; font-weight: 700; line-height: 1.3; color: var(--text-strong); }
+.graph-task-meta { display: flex; gap: 5px; align-items: center; overflow: hidden; font-size: 10px; color: var(--text-secondary); }
+.graph-task-meta > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.graph-agent { border: 1px solid var(--border-default); border-radius: 4px; padding: 0 4px; }
+.graph-running { width: 8px; height: 8px; border-radius: 50%; background: var(--status-running-fg); }
+.graph-count { padding: 18px; border: 1px solid var(--status-success-border); border-radius: 8px; background: var(--status-success-bg); color: var(--status-success-fg); font-weight: 700; text-align: center; }
+.graph-drag-handle { position: absolute; top: 3px; right: 4px; z-index: 2; width: 22px; height: 22px; border-radius: 4px; background: var(--bg-sunken); color: var(--text-muted); font-size: 12px; line-height: 22px; text-align: center; cursor: grab; }
+.graph-drag-handle:active { cursor: grabbing; }
+.graph-page .react-flow__handle { background: var(--border-strong); border-color: var(--bg-surface); }
+
+/* Unfinished dependencies are the ones that hold work back, so they get the solid, coloured line. */
+.graph-page .react-flow__edge-path { stroke: var(--status-warning-fg); stroke-width: 2; }
+.graph-page .graph-edge-complete .react-flow__edge-path { stroke: var(--border-strong); opacity: .45; stroke-dasharray: 5 5; }
+
+.graph-page .react-flow__controls { box-shadow: var(--shadow-1); }
+.graph-page .react-flow__controls button { width: 44px; height: 44px; background: var(--bg-surface); border-color: var(--border-default); color: var(--text-primary); fill: var(--text-primary); }
+.graph-page .react-flow__controls button:hover { background: var(--state-hover); }
+.graph-page .react-flow__minimap { border: 1px solid var(--border-default); border-radius: 8px; background: var(--bg-surface); }
+.graph-page .react-flow__attribution { background: transparent; color: var(--text-muted); }
+.graph-page .react-flow__attribution a { color: inherit; }
+
+.graph-pick { padding: 24px; }
+.graph-pick > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.graph-pick button { min-height: 44px; padding: 10px; border: 1px solid var(--border-default); border-radius: 7px; background: var(--bg-surface); color: var(--text-primary); }
+
+@media (max-width: 767px) {
+  /* The graph takes the screen: the toolbar is two rows that scroll sideways instead of wrapping over the canvas. */
+  .graph-page { height: calc(100dvh - 70px); padding: 8px; gap: 6px; }
+  .graph-toolbar { flex-wrap: nowrap; flex-direction: column; align-items: stretch; gap: 6px; }
+  .graph-tools { flex-wrap: nowrap; overflow-x: auto; }
+  .graph-actions { margin-left: 0; }
+  .graph-toolbar button, .graph-toolbar a, .graph-toolbar select, .graph-filters label { min-height: 44px; flex-shrink: 0; }
+  .graph-canvas { min-height: 0; }
+  .graph-drag-handle { width: 28px; height: 28px; line-height: 28px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .graph-page * { animation-duration: 0ms !important; transition-duration: 0ms !important; }
+}

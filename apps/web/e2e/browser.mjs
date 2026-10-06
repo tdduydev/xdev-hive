@@ -281,6 +281,15 @@ async function main() {
     await tab.waitFor("task nodes and dependency edge", () => document.querySelector('[data-graph-task="PAY-1"]') && document.querySelector('[data-graph-task="PAY-GRAPH"]') && document.querySelector(".graph-edge-open .react-flow__edge-path"));
     await tab.shot("graph-task-layer");
     expect(!!(await tab.eval(() => document.querySelector('[data-graph-layer="task"]')?.getAttribute("aria-pressed") === "true")), "Task layer is active");
+    const locked = await tab.eval(() => [...document.querySelectorAll('[aria-label="Lớp sơ đồ"] button:disabled')].length);
+    expect(locked === 3, `Agent, SDLC and System layers are shown but locked: ${locked}`);
+    const label = await tab.eval(() => document.querySelector('[data-graph-task="PAY-GRAPH"]')?.getAttribute("aria-label") ?? "");
+    expect(label.includes("PAY-GRAPH") && label.includes("Kiểm tra sơ đồ"), `node label for screen readers: ${label}`);
+    // Spec 51, Mobile: no minimap on a phone, and the zoom controls stay big enough to touch.
+    const minimap = await tab.eval(() => !!document.querySelector(".react-flow__minimap"));
+    expect(minimap === !mobile, `minimap shown: ${minimap}`);
+    const control = await tab.eval(() => document.querySelector(".react-flow__controls button")?.getBoundingClientRect().height ?? 0);
+    expect(control >= 44, `zoom control height: ${control}`);
     await tab.click('[data-graph-task="PAY-GRAPH"]');
     const openedHash = await tab.eval(() => location.hash);
     expect(openedHash.startsWith("#/tasks?task=PAY-GRAPH") || openedHash === "#/tasks", `graph click route: ${openedHash}`);
