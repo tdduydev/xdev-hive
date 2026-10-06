@@ -15,6 +15,7 @@ import {
   type GitHubSettings,
   type GitLabSettings,
   type HiveBackend,
+  type SyncMr,
   type Task,
 } from "@xdev-hive/core";
 import { git, gitAsync, gitErrorText } from "#desktop/main/git.ts";
@@ -89,6 +90,20 @@ interface MrPlan {
   commits: string[];
 }
 
+/**
+ * Title and description of the docs merge request (roadmap 38c). Like the text of a task's MR, they are read on
+ * the forge by whoever reviews them, so they stay Vietnamese: they are team data, not the app's interface.
+ */
+const contextMrTitle = (project: string) => `docs(xdev-hive): đồng bộ tài liệu của ${project}`;
+
+const contextMrDescription = (project: string, branch: string) =>
+  [
+    `Tài liệu dùng chung của dự án \`${project}\` trên xDev Hive, render lại vào repo: \`AGENTS.md\`, \`CLAUDE.md\`, \`docs/decisions.md\`, các \`AGENTS.md\` lồng, \`.claude/rules/xdev-hive/\` và \`.claude/skills/\`.`,
+    `Nhánh \`${branch}\` được dựng lại trên nhánh đích ở mỗi lần đồng bộ, nên MR này luôn chỉ chứa phần tài liệu.`,
+    "Sửa nội dung ở Hive (trang tài liệu của dự án) rồi đồng bộ lại, đừng sửa trong MR: lần đồng bộ sau sẽ ghi đè.",
+    "---\n_Tạo tự động bởi xDev Hive._",
+  ].join("\n\n");
+
 /** "PR #7" for a GitHub pull request link, "MR !7" for a GitLab merge request. */
 export const mrLabel = (run: Pick<AgentRun, "mrUrl" | "mrIid">): string =>
   /\/pull\/\d+$/.test(run.mrUrl ?? "") ? `PR #${run.mrIid ?? "?"}` : `MR !${run.mrIid ?? "?"}`;
@@ -154,6 +169,131 @@ export class MergeRequester {
     } catch {
       throw new HiveError("bad_request", `Repo ${project.name} không có remote "${name}".`, { key: "errors.noRemote", vars: { project: project.name, remote: name } });
     }
+  }
+
+  /**
+   * Whether a sync may put this project's docs in a merge request instead of committing into the checkout
+   * (roadmap 38c): there has to be a remote on a forge this app can name the project on (its host, or the
+   * project/repo filled in by hand) and a token for it. Anything else keeps the old commit mode.
+   */
+  canOpenContext(project: DesktopProject): boolean {
+    let remote: RemoteInfo | null = null;
+    try {
+      remote = parseRemoteUrl(git(project.repo, ["remote", "get-url", this.#host.gitlab().mr.remote]));
+    } catch {
+      return false;
+    }
+    if (this.#forge(project) === "github") {
+      const gh = this.#host.github?.();
+      return Boolean(gh?.token && (project.githubRepo || remote?.host === new GitHubClient(gh.url, gh.token, this.#host.fetch).host));
+    }
+    const s = this.#host.gitlab();
+    return Boolean(s.url && s.token && (project.gitlabProject || remote?.host === new GitLabClient(s.url, s.token, this.#host.fetch).host));
+  }
+
+  /**
+   * The merge request a sync in MR mode fills (roadmap 38c): `branch` has just been rebuilt on the target branch,
+   * so it is pushed over whatever was there, and its MR is opened or, when one is already open, updated. No run
+   * and no task behind it: nothing to write on a task, and never a draft — these docs come from Hive, not an agent.
+   */
+  async openContext(project: DesktopProject, branch: string): Promise<SyncMr> {
+    const forge = this.#forge(project);
+    if (forge === "github") return this.#contextPull(project, branch);
+    const s = this.#host.gitlab();
+    if (!s.url || !s.token) {
+      throw new HiveError("bad_request", "Chưa cấu hình GitLab (URL + token) ở trang Dự án & cài đặt.", { key: "errors.gitlabNotSet" });
+    }
+    const client = new GitLabClient(s.url, s.token, this.#host.fetch);
+    const { remoteUrl, remote } = this.#remote(project, s.mr.remote);
+    const projectPath = project.gitlabProject || (remote && remote.host === client.host ? remote.path : null);
+    if (!projectPath) {
+      throw new HiveError(
+        "bad_request",
+        `Remote "${s.mr.remote}" không trỏ tới ${client.host}. Điền GitLab project (group/project) cho dự án ${project.name}.`,
+        { key: "errors.remoteElsewhere", vars: { remote: s.mr.remote, host: client.host, project: project.name } },
+      );
+    }
+    const env = pushEnv(remoteUrl, remote, client.host, { user: "oauth2", token: s.token });
+    await this.#pushContext(project.repo, branch, s.mr.remote, env, s.token);
+
+    const gp = await client.project(projectPath);
+    const target = project.targetBranch || gp.default_branch;
+    if (!target) {
+      throw new HiveError("bad_request", `GitLab project ${gp.path_with_namespace} chưa có default branch. Điền target branch cho dự án.`, {
+        key: "errors.noDefaultBranch",
+        vars: { project: gp.path_with_namespace },
+      });
+    }
+    const title = contextMrTitle(project.name);
+    const description = contextMrDescription(project.name, branch);
+    const existing = (await client.openMergeRequests(gp.id, branch))[0];
+    const mr: GitLabMr = existing
+      ? // Keep the target and labels people may have changed in GitLab; only add ours.
+        await client.updateMergeRequest(gp.id, existing.iid, { title, description, add_labels: s.mr.labels.join(",") } as never)
+      : await client.createMergeRequest(gp.id, {
+          source_branch: branch,
+          target_branch: target,
+          title,
+          description,
+          labels: s.mr.labels.join(","),
+          remove_source_branch: s.mr.removeSourceBranch,
+        });
+    return { url: mr.web_url, iid: mr.iid, branch, state: existing ? "updated" : "created" };
+  }
+
+  /** The same on GitHub: the docs branch as a pull request. */
+  async #contextPull(project: DesktopProject, branch: string): Promise<SyncMr> {
+    const s = this.#host.gitlab();
+    const gh = this.#host.github?.();
+    if (!gh?.token) throw new HiveError("bad_request", "Chưa có GitHub token ở trang Dự án & cài đặt.", { key: "errors.githubNotSet" });
+    const client = new GitHubClient(gh.url, gh.token, this.#host.fetch);
+    const { remoteUrl, remote } = this.#remote(project, s.mr.remote);
+    const repoPath = project.githubRepo || (remote && remote.host === client.host ? remote.path : null);
+    if (!repoPath) {
+      throw new HiveError("bad_request", `Không biết repo GitHub của dự án ${project.name}: điền owner/repo.`, { key: "errors.githubRepoUnknown", vars: { project: project.name } });
+    }
+    const env = pushEnv(remoteUrl, remote, client.host, { user: "x-access-token", token: gh.token });
+    await this.#pushContext(project.repo, branch, s.mr.remote, env, gh.token);
+
+    const repo = await client.repo(repoPath);
+    const target = project.targetBranch || repo.default_branch;
+    if (!target) {
+      throw new HiveError("bad_request", `GitHub repo ${repo.full_name} chưa có default branch. Điền target branch cho dự án.`, {
+        key: "errors.noDefaultBranch",
+        vars: { project: repo.full_name },
+      });
+    }
+    const title = contextMrTitle(project.name);
+    const body = contextMrDescription(project.name, branch);
+    const existing = (await client.openPulls(repoPath, repo.owner.login, branch))[0];
+    const pr = existing
+      ? await client.updatePull(repoPath, existing.number, { title, body })
+      : await client.createPull(repoPath, { title, body, head: branch, base: target });
+    if (s.mr.labels.length) {
+      try {
+        await client.addLabels(repoPath, pr.number, s.mr.labels);
+      } catch {
+        // Labels are not what the merge request is for; the sync report says nothing about them.
+      }
+    }
+    return { url: pr.html_url, iid: pr.number, branch, state: existing ? "updated" : "created" };
+  }
+
+  /**
+   * Pushes the docs branch over the one on the remote: each sync rebuilds it on the target branch, so it never
+   * fast-forwards. --force-with-lease reads the remote-tracking ref, which git calls stale unless it was just
+   * fetched; without the branch there yet, a plain push creates it (and a rejected one beats a blind force).
+   */
+  async #pushContext(repo: string, branch: string, remoteName: string, env: Record<string, string>, secret: string): Promise<void> {
+    const ref = `refs/remotes/${remoteName}/${branch}`;
+    let lease: string | null = null;
+    try {
+      await gitAsync(repo, ["fetch", "--no-tags", remoteName, `+refs/heads/${branch}:${ref}`], env, 120_000);
+      lease = git(repo, ["rev-parse", `${ref}^{commit}`]);
+    } catch {
+      // No such branch on the remote (first sync), or it could not be read: push without a lease to take.
+    }
+    await this.#push(repo, branch, remoteName, env, secret, lease);
   }
 
   #forge(project: DesktopProject): Forge {
@@ -347,9 +487,11 @@ export class MergeRequester {
     return { mrUrl: pr.html_url, mrIid: pr.number, mrState: existing ? "updated" : "created", mrDraft: draft, mrNote: notes.join(" · ") || null };
   }
 
-  async #push(repo: string, branch: string, remoteName: string, env: Record<string, string>, secret: string): Promise<void> {
+  /** `lease`: the remote's commit this push may replace (roadmap 38c); without one the push must fast-forward. */
+  async #push(repo: string, branch: string, remoteName: string, env: Record<string, string>, secret: string, lease?: string | null): Promise<void> {
+    const force = lease ? [`--force-with-lease=refs/heads/${branch}:${lease}`] : [];
     try {
-      await gitAsync(repo, ["push", remoteName, `refs/heads/${branch}:refs/heads/${branch}`], env, 120_000);
+      await gitAsync(repo, ["push", ...force, remoteName, `refs/heads/${branch}:refs/heads/${branch}`], env, 120_000);
     } catch (err) {
       const text = gitErrorText(err).replaceAll(secret, "***");
       throw new HiveError("bad_request", `git push ${remoteName} ${branch} thất bại: ${text}`, { key: "errors.pushFailed", vars: { remote: remoteName, branch, reason: text } });

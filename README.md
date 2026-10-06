@@ -92,7 +92,9 @@ Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, 
     - Các task đó xong thì task tự mở khoá, không cần ai chuyển trạng thái.
   - **Task sẵn sàng tiếp theo** (`task_next` / `tasks.next`): task *Chưa làm*, không chờ task nào, không ai giữ. Task mở khoá được nhiều task khác nhất xếp đầu.
     - Trang Task hiện 3 task đầu, Board gắn nhãn *Tiếp theo*.
-- **Đồng bộ vào repo**: render `AGENTS.md` (khối chung + phần riêng của dự án), `CLAUDE.md` (`@AGENTS.md`), `docs/decisions.md`. Chỉ commit các file này, không push.
+- **Đồng bộ vào repo**: render `AGENTS.md` (khối chung + phần riêng của dự án), `CLAUDE.md` (`@AGENTS.md`), `docs/decisions.md`. Chỉ đụng các file này.
+  - **Qua MR** (mặc định khi repo có remote GitLab/GitHub app mở được MR trên đó): app fetch nhánh đích (`targetBranch` của dự án, không có thì nhánh mặc định của remote), dựng lại nhánh `chore/xdev-hive-context` trên nhánh đích đó trong worktree riêng `<thư mục worktree>/<dự án>/_hive-context`, render, commit, push `--force-with-lease` rồi tạo MR — hoặc cập nhật MR cũ nếu còn mở. Checkout chính giữ nguyên nhánh và file đang làm dở: app không ghi, không commit gì vào đó. Phần nhập lần đầu (`AGENTS.md`, `docs/decisions.md` của repo lên Hive) cũng đọc bản trên nhánh đích. Không khác nhánh đích thì dừng: không push, không MR. Báo cáo đồng bộ (và thẻ *Đồng bộ trên các máy* ở hub) có link MR.
+  - **Commit thẳng** như trước: repo không có remote nào app mở MR được, hoặc tắt *Tự commit khi đồng bộ tài liệu*. Khi đó file được ghi vào checkout đang mở và commit tại chỗ, không push.
   - **Không đè `AGENTS.md` repo tự viết**: file không có khối của Hive mà nội dung khác trang `agents` trên hub là của repo, giữ nguyên; báo đồng bộ ghi *bỏ qua* kèm lý do. Phần của Hive ghi vào `.xdev-hive/context/AGENTS.md`, `CLAUDE.md` import thêm file đó — đúng như worktree của run. Nút *Đề xuất nhập vào Hive* ở báo cáo đồng bộ gửi nội dung file thành đề xuất sửa trang `agents` (`baseVersion` của trang lúc gửi) cho người có quyền Context agent duyệt. Trang khớp lại với file thì lần đồng bộ sau ghi thẳng `AGENTS.md` và gỡ bản bên cạnh.
 - **Chặn sửa tay**: hook `PreToolUse` của Claude Code và `pre-commit` của git (áp dụng cho mọi agent), kể cả `.xdev-hive/context/`. Run của runner không chạy hook nào; runner tự để các file này ngoài commit.
 - **Board + runner** (desktop): giao task cho agent chạy headless (`claude -p`, `codex exec`, `gemini -p`…). Mỗi task có worktree riêng. Hết quota thì tự chuyển gói sub, xong thì review chéo bằng vendor khác. Task khó thì chạy 2–4 bản trên các gói khác nhau, một giám khảo vendor khác giữ bản tốt nhất.
@@ -405,9 +407,9 @@ implement (không review, chế độ "ngay khi làm xong") ──────�
 Hợp cho microservice: mỗi service một repo, cả hệ thống nằm trong một group. Thẻ **Nhập từ group GitLab** ở *Dự án & cài đặt* hiện khi máy đã có URL và token GitLab.
 
 - Điền group (`company/team`, sẵn group của dự án đầu tiên) và thư mục gốc (sẵn thư mục chứa dự án đó), chọn clone qua SSH hay HTTPS, bấm *Liệt kê repo*. Danh sách lấy mọi repo của group và group con, bỏ repo đã archive.
-- Mỗi repo có project key (tên repo, trùng thì thêm group, vẫn trùng thì thêm số; sửa được) và thư mục `<thư mục gốc>/<tên repo>` (hai repo cùng tên thì repo sau dùng project key làm tên thư mục).
-- Trạng thái: *sẽ clone*, *dùng thư mục có sẵn* (thư mục đã có thì không clone lại), *đã là dự án* (dự án có cùng GitLab project, không chọn được).
-- *Nhập N repo* chạy lần lượt: clone, thêm dự án, gắn GitLab project để MR vào đúng chỗ. Repo lỗi (không clone được, key trùng) được báo riêng, các repo khác vẫn nhập.
+- Mỗi repo có project key (tên repo, trùng thì thêm group, vẫn trùng thì thêm số; sửa được). Repo mới được clone vào `<thư mục gốc>/<đường dẫn group con>/<tên repo>`.
+- Trạng thái: *sẽ clone*, *dùng clone có sẵn* (remote trùng URL SSH hoặc HTTPS GitLab trả về, kể cả clone ở chỗ khác), *đã là dự án* (cùng GitLab project hoặc clone đã thuộc dự án), *thư mục xung đột* (đích chứa repo khác hoặc không phải repo, không chọn được).
+- *Nhập N repo* chạy lần lượt: clone hoặc dùng lại clone, thêm dự án với default branch từ GitLab, gắn GitLab project để MR vào đúng chỗ. Repo lỗi (không clone được, key trùng) được báo riêng, các repo khác vẫn nhập.
 - *Gom vào hệ thống* (bật sẵn, tên mặc định là tên group): các repo đã nhập và repo đã là dự án vào cùng một hệ thống, thêm vào hệ thống cùng tên nếu đã có.
 - Clone không chờ nhập mật khẩu hay xác nhận host key. Qua HTTPS tới host GitLab, token đi bằng header trong env như lúc push, không ghi vào `.git/config`. Địa chỉ clone lấy lại từ GitLab lúc nhập, không lấy từ trang.
 
