@@ -966,6 +966,12 @@ export const en: Catalog = {
     },
   },
   skills: {
+    runs30d: "Runs using skill in 30 days",
+    lastUsed: "Last used",
+    unused: "Unused skills",
+    neverUsed: "Not recorded",
+    weekly: "Runs per week (8 weeks, UTC)",
+    usageHint: "Only recorded skill loads in projects you can view count; older runs may have no data.",
     projectChip: "Project",
     search: "Find a skill",
     edit: "Edit skill",
