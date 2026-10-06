@@ -9,6 +9,9 @@ import {
   HiveError,
   POLICY_REPO_PARTS,
   toolArgv,
+  toolEnv,
+  versionIn,
+  versionMatches,
   type AgentKind,
   type DesktopProject,
   type FileAction,
@@ -283,14 +286,15 @@ export class Setup {
 
   /**
    * The hub tools that are the machine's own tool:<id> items: no code of their own in the app (a seed keeps its old
-   * items), a check to tell whether they are there, and on for one of this machine's projects. Hooks wait for 28d.
+   * items), a check to tell whether they are there, and on for one of this machine's projects. Hooks too (28d): their
+   * item also says whether the version is the one the catalog pins, which a run needs to use them.
    */
   #catalogTools(): ToolEntry[] {
     const catalog = this.#host.tools?.() ?? null;
     if (!catalog) return [];
     const projects = this.#host.projects();
     // No repo features: they only turn a seed on the old way, and seeds are left out here.
-    return catalog.entries.filter((e) => !e.handler && e.check && e.kind !== "hook" && projects.some((p) => toolOn(e, catalog.projects[p.name], NO_FEATURES)));
+    return catalog.entries.filter((e) => !e.handler && e.check && projects.some((p) => toolOn(e, catalog.projects[p.name], NO_FEATURES)));
   }
 
   /** tool:<id>, unless it is a repo item of a project named "tool" (tool:agents…), which was there first. */
@@ -306,9 +310,9 @@ export class Setup {
     return e;
   }
 
-  /** The tool's fixed variables, never over the PATH the app found for it. */
+  /** The tool's fixed variables (no run here, so none that needs {runDir}), never over the PATH the app found for it. */
   #toolEnv(e: ToolEntry, pathEnv: string): NodeJS.ProcessEnv {
-    return { ...this.#host.env(), ...e.env, PATH: pathEnv };
+    return { ...this.#host.env(), ...toolEnv(e), PATH: pathEnv };
   }
 
   /** None of the tool's commands runs, not even its check, until this machine's user allowed them as they are now. */
@@ -330,6 +334,10 @@ export class Setup {
     if (!bin) return missing;
     const started = Date.now();
     const r = await this.#run(bin, check.slice(1), { env: this.#toolEnv(e, pathEnv), timeoutMs: TOOL_CHECK_MS });
+    // A hook rewrites what the agent runs: only the version the hub approved counts (brew installs whatever it has).
+    if (r.ok && e.kind === "hook" && e.package && !versionMatches(r.output, e.package.version)) {
+      return { ...base, state: "outdated", detail: tr("setupItem.toolOutdated", { found: versionIn(r.output) ?? (firstLine(r.output) || "?"), version: e.package.version }), action: null };
+    }
     if (r.ok) return { ...base, state: "installed", detail: `${firstLine(r.output) || check.join(" ")} · ${bin}`, action: null };
     // Killed by the timeout says nothing about whether the tool is there: the person looks.
     if (Date.now() - started >= TOOL_CHECK_MS) return { ...base, state: "manual", detail: tr("setupItem.toolCheckSlow", { command: check.join(" ") }), action: null };

@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Wrench, X } from "lucide-react";
 import { cn } from "cn";
-import { cacheReadShare, parseVerdict, type AgentRun, type RunRecord, type RunRequest, type RunTokens } from "@xdev-hive/core";
+import { cacheReadShare, parseVerdict, type AgentRun, type RunCompression, type RunRecord, type RunRequest, type RunTokens } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
@@ -682,6 +682,7 @@ function LocalDetail({ run, machine, gitlabReady, group, onChanged }: { run: Age
         </NoteLine>
       ) : null}
       {run.outputTokens !== null ? <TokensLine tokens={run} /> : null}
+      {run.compression ? <CompressionLine compression={run.compression} /> : null}
       {b ? (
         <NoteLine>
           {b.n === 0 ? t("board.judgeDetail", { of: b.of }) : t("board.bestOfDetail", { n: b.n, of: b.of })}
@@ -787,6 +788,7 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
         </NoteLine>
       ) : null}
       {run.tokens ? <TokensLine tokens={run.tokens} /> : null}
+      {run.compression ? <CompressionLine compression={run.compression} /> : null}
       {run.mrUrl ? <MrMerge run={run} onChanged={onChanged} /> : null}
       {live && run.cancelRequestedBy ? <Notice tone="warn">{t("runs.cancelRequested", { who: run.cancelRequestedBy, time: formatTime(run.cancelRequestedAt) })}</Notice> : null}
       {run.error ? <Notice tone={run.status === "queued" ? "info" : "warn"} className="[overflow-wrap:anywhere]">{run.error}</Notice> : null}
@@ -835,6 +837,13 @@ function TokensLine({ tokens: k }: { tokens: RunTokens }) {
         : t("runs.tokens", { input: n(k.inputTokens), write: n(k.cacheWriteTokens), read: n(k.cacheReadTokens), output: n(k.outputTokens), share: share === null ? "—" : `${Math.round(share * 100)}%` })}
     </NoteLine>
   );
+}
+
+/** What RTK says it left out of the run's Bash output (roadmap 28d): its own estimate, said so. */
+function CompressionLine({ compression: c }: { compression: RunCompression }) {
+  const t = useT();
+  const saved = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(c.saved);
+  return <NoteLine>{t("runs.compression", { commands: formatCount(c.commands), saved })}</NoteLine>;
 }
 
 const PIPELINE_KIND: Partial<Record<string, ChipKind>> = { success: "success", failed: "danger", running: "running", pending: "running", canceled: "neutral", skipped: "neutral", manual: "info" };
