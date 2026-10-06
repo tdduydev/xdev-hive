@@ -486,8 +486,25 @@ export const vi = {
     ago: { now: "vừa xong", m: "{n} ph", h: "{n} giờ", d: "{n} ngày" },
     agoLong: "{when} trước",
     shared: "Chung",
+    group: { decide: "Cần bạn quyết", review: "Cần bạn review", agent: "Agent đang chờ bạn", watch: "Theo dõi" },
+    orderBy: "Xếp theo vai {role}",
+    waitingRun: {
+      title: "{id} · {title}",
+      reason: { question: "agent hỏi bạn", ci: "CI lỗi", quota: "hết hạn mức" },
+      body: {
+        question: "Agent dừng lại để hỏi bạn. Đọc câu hỏi rồi trả lời trong task hoặc giao run tiếp.",
+        ci: "Pipeline của merge request lỗi sau run này. Xem log rồi sửa hoặc giao run sửa.",
+        quota: "Gói của agent hết hạn mức giữa chừng. Đổi gói hoặc chờ hạn mức rồi chạy lại.",
+      },
+      summary: "Agent viết",
+      error: "Lỗi",
+      task: "Task",
+      machine: "Máy",
+      run: "Run",
+      open: "Mở run",
+    },
     tag: {
-      cleanup: "Dọn memory", agentHold: "Agent tạm ngừng", ci: "CI lỗi", proposal: "Đề xuất", review: "Chờ review", memory: "Memory", conflict: "Mâu thuẫn", machine: "Máy này", request: "Yêu cầu cài", alert: "Cảnh báo", gate: "Chốt SDLC", leader: "Leader đề xuất" },
+      cleanup: "Dọn memory", agentHold: "Agent tạm ngừng", ci: "CI lỗi", waitingRun: "Chờ người", proposal: "Đề xuất", review: "Chờ review", memory: "Memory", conflict: "Mâu thuẫn", machine: "Máy này", request: "Yêu cầu cài", alert: "Cảnh báo", gate: "Chốt SDLC", leader: "Leader đề xuất" },
     ci: {
       title: "{mr} · pipeline lỗi ở {jobs}",
       titleNoJobs: "{mr} · pipeline lỗi",
