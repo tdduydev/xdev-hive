@@ -231,8 +231,9 @@ describe("a flow's tasks on their way to main (roadmap 34c, 34d)", () => {
     await beat();
     assert.equal((await hive.call("sdlc.flowTasks", { taskId: "S001-T001" }, admin))[0]!.stage, "done");
 
+    // The Test gate (57e) sits between review and merge and passes by itself when it is not set to a person.
     const gates = (await hive.call("sdlc.gates", { taskId: "S001-T001" }, admin)).map((g) => `${g.gate}:${g.status}`).reverse();
-    assert.deepEqual(gates, ["review:rejected", "fix:passed", "review:passed", "merge:passed"]);
+    assert.deepEqual(gates, ["review:rejected", "fix:passed", "review:passed", "test:passed", "merge:passed"]);
   });
 
   it("asks a person when the fix rounds run out, and keeps a review or a merge from whoever asked for the work", async () => {

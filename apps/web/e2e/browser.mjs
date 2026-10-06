@@ -2181,7 +2181,9 @@ async function main() {
       await tab.waitFor("assignment form", (id) => document.querySelector(`[data-assign-machine] option[value="${id}"]`), machine.id);
       await tab.select("[data-assign-machine]", machine.id);
       await tab.select("[data-assign-profile]", profile.id);
-      await tab.click("[data-assign-save]");
+      // Not a pointer click: the sheet's scroller shifts the button ~90px after scrollIntoView, so the mouse lands on a model chip above it. Enter on the focused button is what a keyboard user does.
+      await tab.eval(() => document.querySelector("[data-assign-save]").focus());
+      await tab.key("Enter");
       await until("saved assignment", async () => (await taskNow(task.id))?.agent?.profileId === profile.id);
       await tab.key("Escape");
     }
