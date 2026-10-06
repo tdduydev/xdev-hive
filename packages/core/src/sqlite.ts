@@ -125,6 +125,8 @@ import type {
   Task,
   TaskAgent,
   TaskAgentQueueItem,
+  TaskNote,
+  TaskStatus,
   TeamPolicy,
   ToolEntry,
   ToolProjectSetting,
@@ -529,6 +531,16 @@ const MIGRATIONS: string[] = [
   CREATE TABLE task_classify_config(project TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1);
   CREATE TABLE task_classify_runs(task_id TEXT PRIMARY KEY, request_id INTEGER NOT NULL, requested_at TEXT NOT NULL);
   CREATE TABLE task_classify_dispatches(task_id TEXT PRIMARY KEY, project TEXT NOT NULL, request TEXT NOT NULL, requested_by TEXT NOT NULL, on_behalf TEXT);
+  `,
+  // Handover notes as they were written (roadmap 41a): tasks.note stays the latest, these keep the ones before it.
+  // The notes already on the board become version 1, written by "hub": they were kept before versions existed, so
+  // nobody is named for them, and the newest version is the task's note for every task, old ones included.
+  `
+  CREATE TABLE task_notes(
+    task_id TEXT NOT NULL, version INTEGER NOT NULL, note TEXT NOT NULL, status TEXT NOT NULL,
+    author TEXT NOT NULL, on_behalf TEXT, source TEXT, created_at TEXT NOT NULL, PRIMARY KEY(task_id, version));
+  INSERT INTO task_notes(task_id, version, note, status, author, created_at)
+    SELECT id, 1, note, status, 'hub', updated_at FROM tasks WHERE note IS NOT NULL AND note != '';
   `,
 ];
 
@@ -1287,6 +1299,18 @@ function toTaskAgent(r: Row, machines: Map<string, string>): TaskAgent | null {
     hold: r.agent_hold ? (JSON.parse(str(r.agent_hold)) as RunRequestError) : null,
   };
 }
+
+const toTaskNote = (r: Row): TaskNote => ({
+  taskId: str(r.task_id),
+  version: num(r.version),
+  note: str(r.note),
+  status: str(r.status) as TaskStatus,
+  author: str(r.author),
+  onBehalf: strOrNull(r.on_behalf),
+  source: sourceOf(r.source),
+  createdAt: str(r.created_at),
+});
+
 /** What a task waits for, in words: `api/API-1, WEB-0, +1` (another service's with its project, hidden ones counted). */
 const waitingLabelsFor = (t: Task): string =>
   [...t.waitingOn.map((d) => (t.depProjects?.[d] ? `${t.depProjects[d]}/${d}` : d)), ...(t.waitingHidden ? [`+${t.waitingHidden}`] : [])].join(", ");
@@ -1861,6 +1885,12 @@ export class SqliteHive implements HiveBackend {
         if (task) this.#need(actor, task.project, "runDispatch", `Task ${i.id}`);
         return;
       }
+      // The notes are the task's: whoever may see the project reads them (roadmap 41a).
+      case "tasks.notes": {
+        const task = this.#getTask(i.id);
+        if (task) this.#need(actor, task.project, "view", `Task ${i.id}`);
+        return;
+      }
       case "tasks.claim":
       case "tasks.update": {
         const task = this.#getTask(i.id);
@@ -2418,6 +2448,28 @@ export class SqliteHive implements HiveBackend {
     const req = this.#insertRequest(machine, task.project, task, { role: "classify", profileId: null, reviewAfter: false, candidates: 1, instructions: "" }, actor);
     this.db.prepare("INSERT INTO task_classify_runs(task_id, request_id, requested_at) VALUES (?, ?, ?)").run(task.id, req.id, this.#now());
     return true;
+  }
+
+  /**
+   * A handover note as the board keeps it (roadmap 41a): hidden characters are refused and lines that look like a
+   * secret are replaced, once, so `tasks.note` and the version kept beside it are the same text.
+   */
+  static #cleanNote(note: string): string {
+    assertNoHidden(note, "Note");
+    return redactLines(note);
+  }
+
+  /**
+   * Keeps a note as its own version, so a later handover never erases this one. Called by every write of
+   * `tasks.note` with the status the task has right after it. The same text as the note already on the task adds
+   * nothing, so it is not kept twice (a caller that resends its note has not written a new handover).
+   */
+  #keepNote(taskId: string, note: string, status: TaskStatus, actor: Actor, at: string): void {
+    const last = this.db.prepare("SELECT version, note FROM task_notes WHERE task_id = ? ORDER BY version DESC LIMIT 1").get(taskId) as Row | undefined;
+    if (last && str(last.note) === note) return;
+    this.db
+      .prepare("INSERT INTO task_notes(task_id, version, note, status, author, on_behalf, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(taskId, (last ? num(last.version) : 0) + 1, note, status, actor.name, actor.onBehalf ?? null, sourceJson(actor.source), at);
   }
 
   /** Task rows with what they depend on, in one query. */
@@ -3597,7 +3649,9 @@ export class SqliteHive implements HiveBackend {
       const fresh = tasks.filter((x) => !x.exists);
       // All first, then what they wait for: a line may name one further down ("depends on T020").
       for (const t of fresh) {
-        db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)").run(t.id, project, t.title, note(t.phase), this.#now());
+        const at = this.#now();
+        db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)").run(t.id, project, t.title, note(t.phase), at);
+        this.#keepNote(t.id, note(t.phase), "todo", actor, at);
         // Work a spec planned, not a spec step: "Spec Kit" in the note would read as one.
         this.#applyTaskRule(t.id, { titleOnly: true });
         created.push(t.id);
@@ -5421,17 +5475,21 @@ export class SqliteHive implements HiveBackend {
             });
           }
           const doing = status === "doing";
+          // A status change with no note leaves the note (and its history) alone: the audit log already has the move.
+          const kept = note === undefined ? null : SqliteHive.#cleanNote(note);
           db.prepare(
             "UPDATE tasks SET status = ?, owner = ?, lease_until = ?, note = COALESCE(?, note), updated_at = ? WHERE id = ?",
           ).run(
             status,
             doing ? actor.name : null,
             doing ? (task.owner === actor.name ? task.leaseUntil : this.#now(120)) : null,
-            note ?? null,
+            kept,
             now,
             id,
           );
           if (note !== undefined) this.#applyTaskRule(id);
+          // An empty note clears the task's note as it always did, but is no handover to keep.
+          if (kept !== null && kept.trim()) this.#keepNote(id, kept, status, actor, now);
           return this.#getTask(id)!;
         }),
       "tasks.classify": ({ id, kind, size, risk }, actor) =>
@@ -5516,6 +5574,12 @@ export class SqliteHive implements HiveBackend {
           return places.get(key)!;
         };
         return this.#tasks(rows).map((task): TaskAgentQueueItem => ({ task, waiting: this.#agentWait(task, m, freeFor(task.project, task.agent!.profileId)) }));
+      },
+
+      // Newest first: the one at the top is what tasks.list shows as the task's note.
+      "tasks.notes": ({ id, limit }) => {
+        if (!this.#getTask(id)) throw new HiveError("not_found", `Task ${id} not found.`, { key: "errors.taskNotFound", vars: { id } });
+        return (db.prepare("SELECT * FROM task_notes WHERE task_id = ? ORDER BY version DESC LIMIT ?").all(id, limit) as Row[]).map(toTaskNote);
       },
 
       // Keyed by the hub actor (`runner.<machine>@<token>`): the same key as the leases that machine takes.
@@ -6001,10 +6065,12 @@ export class SqliteHive implements HiveBackend {
           const note = prompt.slice(0, 2000);
           const put = db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)");
           put.run(parent, project, heading, note, now);
+          this.#keepNote(parent, note, "todo", actor, now);
           // Where each one runs, in its title: "any" machine or profile is the hub's or the machine's pick.
           targets.forEach((t, i) => {
             const where = `${t.machineId ? names.get(t.machineId) : "*"}/${t.profileId ?? "*"}`;
             put.run(children[i]!, project, `${heading.slice(0, 100)} · ${where}`.slice(0, 300), note, now);
+            this.#keepNote(children[i]!, note, "todo", actor, now);
           });
           for (const id of [parent, ...children]) this.#applyTaskRule(id);
           // Nobody runs the prompt's own task: it waits for its agents until one is picked.
@@ -6025,7 +6091,7 @@ export class SqliteHive implements HiveBackend {
           return this.#group(groupId);
         }),
 
-      "runs.pickWinner": ({ groupId, taskId }) =>
+      "runs.pickWinner": ({ groupId, taskId }, actor) =>
         this.#tx(() => {
           const g = this.#group(groupId);
           if (g.kind !== "fanout" || !g.parentTask) throw new HiveError("bad_request", `Run group #${groupId} is not one prompt for several agents.`, { key: "errors.notFanout", vars: { id: groupId } });
@@ -6037,10 +6103,15 @@ export class SqliteHive implements HiveBackend {
           }
           const now = this.#now();
           const close = db.prepare("UPDATE tasks SET status = 'done', owner = NULL, lease_until = NULL, note = ?, updated_at = ? WHERE id = ?");
+          // The line that closes a candidate goes over its agent's handover, so that handover is kept as a version first.
+          const closeNote = (id: string, text: string) => {
+            close.run(text, now, id);
+            this.#keepNote(id, text, "done", actor, now);
+          };
           for (const i of g.items) {
-            if (i.taskId !== taskId) close.run(`Không chọn trong ${g.parentTask} (chọn ${taskId}).`, now, i.taskId);
+            if (i.taskId !== taskId) closeNote(i.taskId, `Không chọn trong ${g.parentTask} (chọn ${taskId}).`);
           }
-          close.run(`Chọn ${taskId}.`, now, g.parentTask);
+          closeNote(g.parentTask, `Chọn ${taskId}.`);
           db.prepare("UPDATE run_groups SET winner_task = ?, closed_at = COALESCE(closed_at, ?) WHERE id = ?").run(taskId, now, groupId);
           return this.#group(groupId);
         }),
@@ -6059,6 +6130,7 @@ export class SqliteHive implements HiveBackend {
           const now = this.#now();
           db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)").run(parent, project, heading, prompt.slice(0, 2000), now);
           this.#applyTaskRule(parent);
+          this.#keepNote(parent, prompt.slice(0, 2000), "todo", actor, now);
           const task = this.#getTask(parent)!;
           // The job is the task's note; past the note's 2000 characters the instructions carry all of it.
           const instructions = [splitInstructions(), prompt.length > 2000 ? `The job, in full:\n${prompt}` : ""].filter(Boolean).join("\n\n");
@@ -6102,9 +6174,16 @@ export class SqliteHive implements HiveBackend {
           const put = db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)");
           // The split run handed the job's task in for review: it waits for its parts now.
           if (split) db.prepare("UPDATE tasks SET status = 'todo', owner = NULL, lease_until = NULL, updated_at = ? WHERE id = ?").run(now, parent);
-          else put.run(parent, project, heading, job.slice(0, 2000), now);
+          else {
+            put.run(parent, project, heading, job.slice(0, 2000), now);
+            this.#keepNote(parent, job.slice(0, 2000), "todo", actor, now);
+          }
           // Each part's note says what it is part of; the job itself reaches its run as instructions.
-          parts.forEach((part, i) => put.run(children[i]!, project, part.split(/\r?\n/, 1)[0]!.slice(0, 300), `Phần ${i + 1}/${parts.length} của ${parent}: ${heading}\n\n${part}`.slice(0, 2000), now));
+          parts.forEach((part, i) => {
+            const note = `Phần ${i + 1}/${parts.length} của ${parent}: ${heading}\n\n${part}`.slice(0, 2000);
+            put.run(children[i]!, project, part.split(/\r?\n/, 1)[0]!.slice(0, 300), note, now);
+            this.#keepNote(children[i]!, note, "todo", actor, now);
+          });
           for (const id of split ? children : [parent, ...children]) this.#applyTaskRule(id);
           // Nobody runs the job's task while its parts run: the merge run does, after them.
           this.#setDeps(parent, children);
@@ -6192,7 +6271,9 @@ export class SqliteHive implements HiveBackend {
           assertNoHidden(heading, "Title");
           assertNoSecret(heading, "Title");
           const id = this.#nextPromptTaskId();
-          db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)").run(id, project, heading, prompt.slice(0, 2000), this.#now());
+          const at = this.#now();
+          db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)").run(id, project, heading, prompt.slice(0, 2000), at);
+          this.#keepNote(id, prompt.slice(0, 2000), "todo", actor, at);
           // Rules only: a prompt is someone waiting at the screen, and a classify run first would only make them wait.
           this.#applyTaskRule(id);
           const task = this.#getTask(id)!;
