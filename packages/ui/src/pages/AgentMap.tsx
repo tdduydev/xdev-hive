@@ -9,6 +9,7 @@ import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Sheet } from "@xdev-hive/ui/components/ui/sheet";
 import { Switch } from "@xdev-hive/ui/components/ui/switch";
+import { AssignedQueue } from "#ui/components/AgentAssignment.tsx";
 import { PromptSheet } from "#ui/components/AgentSheets.tsx";
 import { ErrorNote } from "#ui/components/common.tsx";
 import { Chip, type ChipKind } from "#ui/components/panes.tsx";
@@ -188,6 +189,7 @@ function MachineColumn({
       {cards.map((c) => {
         const target = { machineId: m.id, profileId: c.profile.id };
         return (
+          <div key={c.profile.id} className="flex min-w-0 flex-col gap-2">
           <ProfileCardView
             key={c.profile.id}
             card={c}
@@ -196,8 +198,11 @@ function MachineColumn({
             now={now}
             pick={canPick && takesWork(m, c) ? { on: picked(target), toggle: () => onToggle(target) } : null}
           />
+          <AssignedQueue machineId={m.id} profileId={c.profile.id} />
+          </div>
         );
       })}
+      <AssignedQueue machineId={m.id} profileId={null} />
       {queue.length || queued.length ? (
         <div className="flex flex-col gap-1 rounded-lg border border-dashed border-line-default p-2">
           <span className="text-xs font-medium text-fg-secondary">{t("agentMap.queue", { count: queue.length + queued.length })}</span>
