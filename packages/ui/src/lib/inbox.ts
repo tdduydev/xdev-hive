@@ -1,9 +1,10 @@
 // "Hôm nay": what needs the person, gathered from what the hub and this machine already know. Each source becomes
 // items with a stable key, so "seen" and "done" survive reloads (kept in localStorage, per device).
-import type { MemoryCleanupProposal, AgentRun, ChatAction, HubAlert, MachineCommand, Memory, Permission, Proposal, SdlcGateRecord, SetupItem, Task } from "@xdev-hive/core";
+import type { MemoryCleanupProposal, AgentRun, ChatAction, HubAlert, MachineCommand, Memory, Permission, ProjectRole, Proposal, RunRecord, SdlcGateRecord, SetupItem, Task } from "@xdev-hive/core";
 import { approvalOf } from "#ui/lib/permissions.ts";
+import { waitingReason } from "#ui/lib/runs.ts";
 
-export type InboxKind = "cleanup" | "agentHold" | "ci" | "proposal" | "review" | "memory" | "conflict" | "machine" | "request" | "alert" | "gate" | "leader";
+export type InboxKind = "cleanup" | "agentHold" | "ci" | "waitingRun" | "proposal" | "review" | "memory" | "conflict" | "machine" | "request" | "alert" | "gate" | "leader";
 export type InboxTone = "danger" | "warning" | "info";
 
 interface Base {
@@ -20,6 +21,7 @@ export type InboxItem = Base &
     | { kind: "cleanup"; proposal: MemoryCleanupProposal }
     | { kind: "agentHold"; task: Task }
     | { kind: "ci"; run: AgentRun }
+    | { kind: "waitingRun"; run: RunRecord; reason: "question" | "ci" | "quota" }
     | { kind: "proposal"; proposal: Proposal }
     | { kind: "review"; task: Task; run: AgentRun | null }
     | { kind: "memory"; memory: Memory }
@@ -41,6 +43,8 @@ export interface InboxSources {
   memory?: Memory[];
   /** This machine's runs (desktop). */
   runs?: AgentRun[];
+  /** The runs machines sent the hub: a task's newest one that waits for a person ("Chờ người", roadmap 49e) is listed. */
+  hubRuns?: RunRecord[];
   /** This machine's own setup (desktop): the CLIs and the hive-mcp command. */
   setup?: SetupItem[];
   /** Install requests an admin sent this machine (desktop, hub mode). */
@@ -66,6 +70,7 @@ const TONE: Record<InboxKind, InboxTone> = {
   cleanup: "info",
   agentHold: "warning",
   ci: "danger",
+  waitingRun: "warning",
   proposal: "info",
   review: "warning",
   memory: "warning",
@@ -100,6 +105,19 @@ export function buildInbox(src: InboxSources): InboxItem[] {
   for (const r of byMr.values()) {
     if (r.pipelineStatus !== "failed") continue;
     items.push({ kind: "ci", key: `ci:${r.mrUrl}:${r.pipelineUrl ?? r.mrCheckedAt ?? ""}`, tone: TONE.ci, at: r.mrCheckedAt ?? r.finishedAt ?? r.createdAt, scope: r.project, run: r });
+  }
+
+  // Only a task's newest run: an older one that asked something was answered by the run after it.
+  const newest = new Map<string, RunRecord>();
+  for (const r of src.hubRuns ?? []) {
+    const k = `${r.project}/${r.taskId}`;
+    const cur = newest.get(k);
+    if (!cur || r.createdAt > cur.createdAt) newest.set(k, r);
+  }
+  for (const r of newest.values()) {
+    const reason = waitingReason(r);
+    if (!reason || !can(r.project, "runDispatch")) continue;
+    items.push({ kind: "waitingRun", key: `waitingRun:${r.machineId}/${r.runId}:${reason}:${r.updatedAt}`, tone: TONE.waitingRun, at: r.updatedAt, scope: r.project, run: r, reason });
   }
 
   for (const p of src.proposals ?? []) {
@@ -174,6 +192,7 @@ export function buildInbox(src: InboxSources): InboxItem[] {
 export function inboxProject(item: InboxItem): string | null {
   switch (item.kind) {
     case "ci":
+    case "waitingRun":
       return item.run.project;
     case "proposal":
       return docProject(item.proposal.docKey);
@@ -193,6 +212,64 @@ export function inboxProject(item: InboxItem): string | null {
     default:
       return null;
   }
+}
+
+/** Hôm nay's groups (roadmap 49g): by what the person does with the item, whatever its source. */
+export const INBOX_GROUPS = ["decide", "review", "agent", "watch"] as const;
+export type InboxGroup = (typeof INBOX_GROUPS)[number];
+
+export function inboxGroup(item: InboxItem): InboxGroup {
+  switch (item.kind) {
+    case "review":
+      return "review";
+    case "gate":
+      return gatePermission(item.gate) === "codeReview" ? "review" : "decide";
+    case "waitingRun":
+    case "agentHold":
+    case "ci":
+      return "agent";
+    case "alert":
+    case "machine":
+      return "watch";
+    default:
+      return "decide";
+  }
+}
+
+/**
+ * Which group comes first for the person's highest role in the scope: a lead decides, a reviewer reviews, a member
+ * unblocks the agents working for them. What only needs watching comes last for anyone who can act.
+ */
+const GROUP_ORDER: Record<ProjectRole, readonly InboxGroup[]> = {
+  lead: ["decide", "agent", "review", "watch"],
+  reviewer: ["review", "decide", "agent", "watch"],
+  member: ["agent", "review", "decide", "watch"],
+  viewer: ["watch", "agent", "review", "decide"],
+};
+
+/** The items in their groups, the groups in the role's order; empty groups left out, each group keeps the items' order. */
+export function groupInbox(items: InboxItem[], role: ProjectRole): Array<{ group: InboxGroup; items: InboxItem[] }> {
+  return GROUP_ORDER[role].map((group) => ({ group, items: items.filter((i) => inboxGroup(i) === group) })).filter((g) => g.items.length);
+}
+
+/** The role a set of permissions amounts to; a custom grant counts as the highest role whose own permission it has. */
+export function roleOfPermissions(has: ReadonlySet<Permission>): ProjectRole {
+  if (has.has("projectSettings") || has.has("membersManage")) return "lead";
+  if (has.has("codeReview") || has.has("docApprove") || has.has("memoryApprove") || has.has("chatApprove")) return "reviewer";
+  if (has.has("taskWork")) return "member";
+  return "viewer";
+}
+
+const RANK: Record<ProjectRole, number> = { viewer: 0, member: 1, reviewer: 2, lead: 3 };
+
+/** The highest role among the permission sets the person has on what the scope covers (null: cannot see); viewer when none. */
+export function highestRole(perms: Array<ReadonlySet<Permission> | null>): ProjectRole {
+  let best: ProjectRole = "viewer";
+  for (const p of perms) {
+    const r = p ? roleOfPermissions(p) : "viewer";
+    if (RANK[r] > RANK[best]) best = r;
+  }
+  return best;
 }
 
 /** What was done with an item, kept after it left its source (approved, merged…) so "Đã xử lý" can list it. */
