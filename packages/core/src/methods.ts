@@ -11,6 +11,7 @@ import { MAX_MAP_PART, MAX_MAP_PARTS, MAX_MAP_PROMPT } from "./mapreduce.ts";
 import type { SkillSummary } from "./skills.ts";
 import { SPEC_DIR, SPEC_FEATURES_MAX, SPEC_FILE_MAX, SPEC_STEPS, type SpecFeature, type SpecFeatureDetail, type SpecTaskPlan } from "./speckit.ts";
 import { toolEntrySchema } from "./tools.ts";
+import { TASK_KINDS, TASK_RISKS, TASK_SIZES } from "./task-classify.ts";
 import { GATE_STATUSES, gateModesSchema, MAX_FIX_ROUNDS, type SdlcFlow, type SdlcFlowTask, type SdlcGateRecord, type SdlcPolicyView } from "./sdlc.ts";
 import {
   MEMORY_KINDS,
@@ -184,6 +185,7 @@ const chatAction = z.discriminatedUnion("kind", [
     dependsOn: z.array(taskId).max(20).default([]),
   }),
   z.object({ kind: z.literal("task.update"), id: taskId, status: z.enum(TASK_STATUSES), note: z.string().max(2000).optional() }),
+  z.object({ kind: z.literal("task.classify"), id: taskId, taskKind: z.enum(TASK_KINDS).optional(), size: z.enum(TASK_SIZES).optional(), risk: z.enum(TASK_RISKS).optional() }),
   /** Gives a task to an agent (roadmap 50); the machine is named by hub id or name, like the kinds below. */
   z.object({ kind: z.literal("task.assign"), taskId, machine: machineRef, profileId: z.string().max(40).nullable().default(null) }),
   z.object({
@@ -375,6 +377,9 @@ export const schemas = {
     status: z.enum(TASK_STATUSES),
     note: z.string().max(2000).optional(),
   }),
+  "tasks.classify": z.object({ id: taskId, kind: z.enum(TASK_KINDS).optional(), size: z.enum(TASK_SIZES).optional(), risk: z.enum(TASK_RISKS).optional() }).refine((v) => v.kind !== undefined || v.size !== undefined || v.risk !== undefined),
+  "tasks.classifyConfig": z.object({ project }),
+  "tasks.setClassifyConfig": z.object({ project, enabled: z.boolean() }),
   /**
    * Gives a task to one agent (roadmap 50): the hub queues the run itself as soon as that machine has a free place and
    * the task waits for nothing. `before`: the task it goes in front of in the machine's queue; left out it keeps its
@@ -940,6 +945,9 @@ export interface MethodOutput {
   "tasks.next": Task[];
   "tasks.claim": { claimed: boolean; task: Task | null };
   "tasks.update": Task;
+  "tasks.classify": Task;
+  "tasks.classifyConfig": { project: string; enabled: boolean };
+  "tasks.setClassifyConfig": { project: string; enabled: boolean };
   "tasks.assign": Task;
   "tasks.unassign": Task;
   "tasks.agentQueue": TaskAgentQueueItem[];
@@ -1123,6 +1131,9 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "tasks.next": "viewer",
   "tasks.claim": "agent",
   "tasks.update": "agent",
+  "tasks.classify": "agent",
+  "tasks.classifyConfig": "viewer",
+  "tasks.setClassifyConfig": "agent",
   // Also "runDispatch" on the project: giving a task to an agent is queueing its run, only without a time.
   "tasks.assign": "agent",
   "tasks.unassign": "agent",

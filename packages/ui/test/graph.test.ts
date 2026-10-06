@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Task } from "@xdev-hive/core";
 import { taskGraph, layoutGraph, type GraphNode } from "#ui/lib/graph.ts";
-const task = (id: string, patch: Partial<Task> = {}): Task => ({ id, project: "shop", title: id, status: "todo", owner: null, leaseUntil: null, note: null, updatedAt: "2026-10-06T00:00:00Z", dependsOn: [], waitingOn: [], agent: null, ...patch });
+const task = (id: string, patch: Partial<Task> = {}): Task => ({ id, project: "shop", title: id, kind: null, size: null, risk: null, classifiedBy: null, classifiedAt: null, status: "todo", owner: null, leaseUntil: null, note: null, updatedAt: "2026-10-06T00:00:00Z", dependsOn: [], waitingOn: [], agent: null, ...patch });
 const NOW = Date.parse("2026-10-06T12:00:00Z");
 // Absolute position: a child of a group is placed relative to it, as React Flow draws it.
 const abs = (nodes: GraphNode[], node: GraphNode) => {

@@ -15,6 +15,7 @@ const profile = (id: string, kind: string, priority = 10) => ({ id, label: id, k
 async function hub() {
   const clock = { at: Date.parse("2026-10-02T08:00:00.000Z") };
   const hive = new SqliteHive(":memory:", { now: () => new Date(clock.at) });
+  await hive.call("tasks.setClassifyConfig", { project: "app", enabled: false }, admin);
   await hive.call("tasks.create", { id: "T-0", project: "app", title: "Other work" }, admin);
   const tick = () => (clock.at += 1000);
   const beat = async () => (tick(), (await hive.call("machines.heartbeat", { machine: "duy-mbp", instance: "a1b2c3d4", profiles: [profile("claude-1", "claude"), profile("codex-1", "codex", 20)], projects: ["app"], acceptsRuns: true, runs: [] }, mbp)).runRequests);

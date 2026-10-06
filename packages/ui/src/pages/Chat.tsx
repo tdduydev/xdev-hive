@@ -900,6 +900,8 @@ export function ActionItem({ action: a, taskIds, manage, onDecided }: { action: 
             <>
               {t("chat.actionMove")} {taskLink} → {t(`taskStatus.${String(input.status)}` as never)}
             </>
+          ) : a.kind === "task.classify" ? (
+            <>{t("chat.actionClassify")} {taskLink} · {[input.taskKind, input.size, input.risk].filter(Boolean).join(" / ")}</>
           ) : a.kind === "run.dispatch" ? (
             <>
               {t("chat.actionRun", { role: runLabel("agentRole", String(input.role ?? "implement")) })} {taskLink} · {machine}

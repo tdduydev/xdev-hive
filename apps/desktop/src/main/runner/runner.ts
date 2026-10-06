@@ -77,6 +77,7 @@ import { NO_FEATURES, repoFeatures } from "#desktop/main/installer.ts";
 import { renderContext } from "#desktop/main/sync.ts";
 import { hookEnv, legacyPick, NO_TOOLS, prepareTool, readyHooks, rtkGain, runTools, toolDirs, userClaudeSettings, type ToolPick } from "./tools.ts";
 import { containerCommand } from "./container.ts";
+import { classifierCommand, classifierResult, classifyPrompt } from "./classify.ts";
 import { claudeMcpServers, codexMcpArgs, hubMcpEnv, type McpRun } from "./container-mcp.ts";
 import { deniedHosts, egressAllow, egressPlan, type Egress } from "./egress.ts";
 import {
@@ -1451,6 +1452,7 @@ export class Runner {
   }
 
   async #execute(run: AgentRun, chosen: AgentProfile): Promise<void> {
+    if (run.role === "classify") return this.#executeClassify(run, chosen);
     // Fitted before the first await, under the same policy tick() checked the profile against.
     const pol = this.#policyOf(run.project);
     const fit = applyPolicy(chosen, pol, chosen.kind === "codex" && pol.mcp !== null ? this.#codexServers(chosen) : []);
@@ -1782,6 +1784,39 @@ export class Runner {
       // A step can fail when setup stopped half-way: try them all.
       if (egress) for (const step of egress.plan.teardown) await dockerRun(egress.docker, step, egress.env).catch(() => undefined);
     }
+  }
+
+  /** A classifier has no worktree, Hive token, MCP config or repo context. */
+  async #executeClassify(run: AgentRun, profile: AgentProfile): Promise<void> {
+    let status: RunStatus = "failed";
+    let summary: string | null = null;
+    let error: string | null = null;
+    try {
+      const task = await this.#task(this.#host.backend(), this.#actor(profile), run);
+      const prompt = classifyPrompt(task);
+      const cmd = prompt && classifierCommand(profile, prompt);
+      if (!cmd) throw new Error(prompt ? "No supported classifier profile." : "Classifier input exceeds 20k tokens.");
+      const bin = resolveBin(cmd.bin, this.#host.env().PATH ?? "");
+      if (!bin) throw new Error(`CLI ${cmd.bin} unavailable.`);
+      const child = spawn(bin, cmd.args, { cwd: this.#project(run.project).repo, env: { ...this.#host.env(), ...expandEnv(profile.env) }, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+      const live: Live = { child, cancelled: false, timedOut: false };
+      this.#live.set(run.id, live);
+      let output = "";
+      let stderr = "";
+      child.stdout?.on("data", (b: Buffer) => { output = keepTail(output + b.toString(), 100_000); });
+      child.stderr?.on("data", (b: Buffer) => { stderr = keepTail(stderr + b.toString(), 2000); });
+      child.stdin?.end(cmd.stdin);
+      const timer = setTimeout(() => { live.timedOut = true; stopLive(live); }, Math.min(profile.timeoutMinutes, 3) * 60_000);
+      const code = await new Promise<number | null>((resolve) => { child.once("error", () => resolve(null)); child.once("close", resolve); });
+      clearTimeout(timer);
+      this.#live.delete(run.id);
+      const parsed = code === 0 && !live.cancelled && !live.timedOut ? classifierResult(output) : null;
+      if (parsed) { status = "succeeded"; summary = JSON.stringify(parsed); }
+      else error = live.cancelled ? "Cancelled" : live.timedOut ? "Classifier timed out" : code === 0 ? "Invalid classifier JSON" : `Classifier exited ${code}: ${stderr.slice(0, 200)}`;
+    } catch (err) { error = (err as Error).message; }
+    this.store.update(run.id, { status, summary, error, finishedAt: this.#iso() });
+    this.#opts.onEvent?.({ type: "finished", run: this.store.get(run.id)! });
+    void this.tick();
   }
 
   /** Where an agent in a container reaches Hive: the hub (hub mode only; see container-mcp.ts). */
@@ -2148,6 +2183,7 @@ export class Runner {
 
   /** Moves the Hive task on, unless the agent already did it through MCP. */
   async #report(run: AgentRun, profile: AgentProfile): Promise<void> {
+    if (run.role === "classify") return;
     // A best-of-n group reports once, for the kept candidate (#keep) or for all of them.
     if (!TERMINAL.includes(run.status) || run.bestOf) return;
     const backend = this.#host.backend();
