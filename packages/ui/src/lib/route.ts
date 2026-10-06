@@ -100,6 +100,11 @@ export function resolveHash(raw: string, opts: { local: boolean; web?: boolean; 
   if (opts.web && id === "admin") return { id: opts.isPage(id) ? id : null, hash: null };
   const named = id === "admin" || id.startsWith("admin/") ? (ADMIN_ALIASES[id.slice("admin/".length)] ?? "ops") : id;
   const alias = (opts.local ? LOCAL_ALIASES[named] : opts.web ? WEB_ALIASES[named] : undefined) ?? ALIASES[named];
+  if (opts.web && named === "proposals") {
+    const params = new URLSearchParams(query);
+    const key = params.get("doc") ?? params.get("docKey") ?? "";
+    return to(`${/^(org|project\/[^/]+)\/skills\//.test(key) || params.get("kind") === "skills" ? "skills" : "docs"}?tab=pending`);
+  }
   if (alias) return to(alias);
   if (named !== id) return to(named);
   return { id: opts.isPage(id) ? id : null, hash: null };

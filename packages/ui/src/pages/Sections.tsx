@@ -19,6 +19,11 @@ import {
 } from "#ui/lib/nav.ts";
 import { canEditChatSettings } from "#ui/lib/permission-controls.ts";
 import { scopeProject } from "#ui/lib/scope.ts";
+import { MemoryCleanupSettings, MemoryCleanupProposals } from "#ui/components/MemoryCleanup.tsx";
+import { MemoryPage } from "#ui/pages/Memory.tsx";
+import { DocsPage } from "#ui/pages/Docs.tsx";
+import { SkillsPage } from "#ui/pages/Skills.tsx";
+import { ProposalsPage } from "#ui/pages/Proposals.tsx";
 import { PolicyTab } from "./Admin.tsx";
 import { AgentPolicyCard } from "./admin/AgentPolicy.tsx";
 import { BudgetsCard } from "./admin/Budgets.tsx";
@@ -54,9 +59,11 @@ export function SettingsPage() {
         <OpsPage>
           <PolicyTab />
           <ClassifySettingsCard projects={projects} />
+          <MemoryCleanupSettings />
         </OpsPage>
       ) : (
         <Page>
+          <MemoryCleanupSettings />
           <AgentPolicyCard editableOnly />
           <SdlcGatesCard editableOnly />
           <ClassifySettingsCard projects={projects.filter((p) => canEditChatSettings(me, p))} />
@@ -152,4 +159,27 @@ export function RunsWorkPage() {
   const [wanted] = useHashParam("tab");
   if (client.desktop) return <RunsPage />;
   return wanted === "batches" ? <BatchesPage /> : <RunsPage />;
+}
+
+/** Keeping proposals beside their content avoids a separate approval page and preserves its permission checks. */
+export function KnowledgePage({ page }: { page: "docs" | "skills" | "memory" }) {
+  const t = useT();
+  const [wanted] = useHashParam("tab");
+  const tab = wanted === "pending" ? "pending" : "content";
+  let body: ReactNode;
+  if (page === "memory") {
+    body = tab === "pending" ? (
+      <div className="min-h-0 flex-1 overflow-auto">
+        <MemoryCleanupProposals />
+        <div className="h-[36rem]"><MemoryPage pendingOnly /></div>
+      </div>
+    ) : <MemoryPage />;
+  } else {
+    body = tab === "pending" ? <ProposalsPage kind={page} /> : page === "docs" ? <DocsPage /> : <SkillsPage />;
+  }
+  return (
+    <PageTabs page={page} tabs={["content", "pending"]} current={tab} label={t("sections.tabs")} name={(id) => t(`knowledge.${id}`)}>
+      <div className="flex min-h-0 flex-1 flex-col" data-knowledge-page={page}>{body}</div>
+    </PageTabs>
+  );
 }

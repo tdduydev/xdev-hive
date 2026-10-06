@@ -20,7 +20,7 @@ export function PageTabs<T extends string>({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 flex-col">
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
       {/* A single tab is no choice: the page alone then. */}
       {tabs.length > 1 ? (
         <nav aria-label={label} className="mx-auto w-full max-w-7xl px-4 pt-3 md:px-6">

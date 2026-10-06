@@ -17,6 +17,13 @@ describe("addresses", () => {
     assert.deepEqual(local("#/today"), { id: "today", hash: null });
   });
 
+  it("moves proposal links to the correct knowledge pending tab, keeping queries and desktop addresses", () => {
+    assert.deepEqual(web("#/proposals"), { id: "docs", hash: "#/docs?tab=pending" });
+    assert.deepEqual(web("#/admin/review?kind=skills&proposal=7"), { id: "skills", hash: "#/skills?tab=pending&kind=skills&proposal=7" });
+    assert.deepEqual(web("#/proposals?doc=project%2Fapp%2Fskills%2Fdeploy"), { id: "skills", hash: "#/skills?tab=pending&doc=project%2Fapp%2Fskills%2Fdeploy" });
+    assert.deepEqual(desk("#/proposals"), { id: "proposals", hash: null });
+  });
+
   it("has no page for an address of its own", () => {
     assert.deepEqual(web("#/nope"), { id: null, hash: null });
     assert.deepEqual(web("#/"), { id: null, hash: null });
@@ -68,7 +75,7 @@ describe("addresses", () => {
   });
 
   it("leaves the pages the new menu kept, and Token, where they are", () => {
-    for (const id of ["runs", "machines", "proposals", "tokens"]) assert.deepEqual(web(`#/${id}`), { id, hash: null }, id);
+    for (const id of ["runs", "machines", "tokens"]) assert.deepEqual(web(`#/${id}`), { id, hash: null }, id);
   });
 
   it("opens a Spec page link on Tính năng on the web, and leaves the app's Spec page (roadmap 49d)", () => {

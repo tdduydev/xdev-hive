@@ -138,7 +138,7 @@ export function eventMessage(event: HiveEvent, locale: string): { text: string; 
     case "proposal.created":
       return {
         text: tr("webhook.proposal", { doc: event.proposal.docKey, project: where(event.project), author: event.proposal.author, reason: clip(event.proposal.reason) }),
-        page: "#/proposals",
+        page: `#/proposals?doc=${encodeURIComponent(event.proposal.docKey)}`,
       };
     case "memory.pending":
       return {

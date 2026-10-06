@@ -60,6 +60,7 @@ export function buildSkill(parts: SkillParts): string {
 export interface ListedSkill extends SkillSummary {
   /** Project view: a project skill that replaces the team's skill of the same name. */
   overrides: boolean;
+  overridesBy: string[];
   /** Project view: a team skill this project does not use, because it has its own of the same name. */
   overridden: boolean;
 }
@@ -69,13 +70,14 @@ export interface ListedSkill extends SkillSummary {
  * skills and the team's — with the team skills its own replace kept, marked, so the page can say why they are unused.
  */
 export function skillsFor(all: SkillSummary[], project: string | null): ListedSkill[] {
-  const plain = (s: SkillSummary): ListedSkill => ({ ...s, overrides: false, overridden: false });
-  if (project === null) return all.map(plain);
+  const team = new Set(all.filter((s) => s.project === null).map((s) => s.name));
+  const overridesBy = (s: SkillSummary) => s.project === null ? all.filter((own) => own.project !== null && own.name === s.name).map((own) => own.project!) : [];
+  if (project === null) return all.map((s) => ({ ...s, overrides: s.project !== null && team.has(s.name), overridden: false, overridesBy: overridesBy(s) }));
   const own = new Set(all.filter((s) => s.project === project).map((s) => s.name));
   const shared = new Set(all.filter((s) => s.project === null).map((s) => s.name));
   return all
     .filter((s) => s.project === project || s.project === null)
-    .map((s) => ({ ...s, overrides: s.project === project && shared.has(s.name), overridden: s.project === null && own.has(s.name) }))
+    .map((s) => ({ ...s, overridesBy: overridesBy(s).filter((p) => p === project), overrides: s.project === project && shared.has(s.name), overridden: s.project === null && own.has(s.name) }))
     .sort((a, b) => a.name.localeCompare(b.name) || Number(a.overridden) - Number(b.overridden));
 }
 
