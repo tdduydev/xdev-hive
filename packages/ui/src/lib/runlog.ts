@@ -1,7 +1,7 @@
 // Reading a run's log and diff for the Lượt chạy page: the runner writes a readable log (▶ tool calls, ✓ ✗ results,
 // the agent's words, # notes, ## sections) and the diff is `git diff` output.
 
-export type LogLevel = "tool" | "ok" | "error" | "agent" | "meta" | "section";
+export type LogLevel = "human" | "tool" | "ok" | "error" | "agent" | "meta" | "section";
 
 export interface LogLine {
   level: LogLevel;
@@ -34,7 +34,7 @@ export function parseLog(text: string): LogLine[] {
       if (out.length && out[out.length - 1]!.level === "agent") out.push({ level: "agent", text: "", section, at: null });
       continue;
     }
-    const level: LogLevel = trimmed.startsWith("▶")
+    const level: LogLevel = trimmed.startsWith("» ") ? "human" : trimmed.startsWith("▶")
       ? "tool"
       : trimmed.startsWith("✓")
         ? "ok"
@@ -43,7 +43,7 @@ export function parseLog(text: string): LogLine[] {
           : trimmed.startsWith("# ") || trimmed.startsWith("$ ")
             ? "meta"
             : "agent";
-    const body = level === "tool" || level === "ok" || level === "error" ? trimmed.slice(1).trimStart() : level === "meta" ? trimmed : line;
+    const body = level === "human" ? trimmed.slice(2) : level === "tool" || level === "ok" || level === "error" ? trimmed.slice(1).trimStart() : level === "meta" ? trimmed : line;
     out.push({ level, text: body, section, at });
   }
   // A trailing blank agent line adds nothing.

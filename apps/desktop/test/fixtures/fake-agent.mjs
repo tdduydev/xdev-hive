@@ -2,6 +2,45 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+// Bidirectional Claude fixture: one result for each user turn, staying open until the runner sends EOF.
+if (process.env.FAKE_MODE === "steer-stream") {
+  if (process.argv.includes("--help")) { console.log("--input-format text|stream-json"); process.exit(0); }
+  const { createInterface } = await import("node:readline");
+  let work = Promise.resolve();
+  const input = createInterface({ input: process.stdin });
+  for await (const line of input) {
+    const user = JSON.parse(line);
+    work = work.then(async () => {
+      if (process.env.FAKE_RECORD) appendFileSync(process.env.FAKE_RECORD, JSON.stringify({ agent: process.env.HIVE_AGENT, prompt: user.message.content, cwd: process.cwd(), args: process.argv.slice(2) }) + "\n");
+      console.log(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "working on " + user.message.content }] } }));
+      await new Promise((r) => setTimeout(r, 400));
+      console.log(JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "Done", total_cost_usd: 0.01, usage: { input_tokens: 2, output_tokens: 3 } }));
+    });
+  }
+  await work;
+  process.exit(0);
+}
+
+if (process.env.FAKE_MODE === "steer-resume") {
+  if (process.argv.includes("--help")) { console.log("Usage: codex exec resume [SESSION_ID] [PROMPT]"); process.exit(0); }
+  const args = process.argv.slice(2);
+  const resume = args.includes("resume");
+  const prompt = args.at(-1);
+  if (process.env.FAKE_RECORD) appendFileSync(process.env.FAKE_RECORD, JSON.stringify({ agent: process.env.HIVE_AGENT, prompt, cwd: process.cwd(), args }) + "\n");
+  console.log(JSON.stringify({ type: "thread.started", thread_id: "fake-thread-57a" }));
+  console.log(JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "working on task" } }));
+  await new Promise((r) => setTimeout(r, 400));
+  if (resume) writeFileSync("work-steered.txt", readFileSync(".xdev-hive/steer.md", "utf8"));
+  console.log(JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: resume ? "Applied additional instructions" : "First turn done" } }));
+  console.log(JSON.stringify({ type: "turn.completed", usage: { input_tokens: 10, cached_input_tokens: 2, output_tokens: 3 } }));
+  process.exit(0);
+}
+
+if (process.argv.includes("--help")) {
+  console.log("--output-format text|json|stream-json");
+  process.exit(0);
+}
+
 // Sign-in checks (claude auth status, codex login status). FAKE_LOGIN=out plays a signed-out CLI.
 const [first, second] = process.argv.slice(2);
 if ((first === "auth" || first === "login") && second === "status") {

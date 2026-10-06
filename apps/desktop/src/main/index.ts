@@ -1239,8 +1239,10 @@ function registerIpc(): void {
   handle("desktop:openCli", openCli);
   handle("desktop:startRun", (req: StartRunRequest) => runner.enqueue(req));
   handle("desktop:runs", (filter?: { project?: string; limit?: number }) => runner.list(filter));
+  handle("desktop:runMessages", (id: string) => runner.messages(id));
   handle("desktop:runLog", (id: string) => runner.log(id));
   handle("desktop:runDiff", (id: string) => runner.diff(id));
+  handle("desktop:steerRun", (id: string, text: string) => runner.steer(id, text));
   handle("desktop:cancelRun", (id: string): AgentRun => runner.cancel(id));
   handle("desktop:removeWorktree", (id: string) => runner.removeWorktree(id));
   handle("desktop:pickCandidate", (id: string) => runner.pick(id));

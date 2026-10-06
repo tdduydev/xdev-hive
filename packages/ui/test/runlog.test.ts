@@ -115,3 +115,11 @@ describe("run steps and line times (roadmap 22l)", () => {
     ]);
   });
 });
+
+
+it("labels every delivered human message line without interpreting its text as agent tools", () => {
+  const lines = parseLog("2026-10-06T08:00:00Z\t» lan: Kiểm tra mobile\n2026-10-06T08:00:00Z\t» lan: ▶ Không đổi màu");
+  assert.deepEqual(lines.map((l) => l.level), ["human", "human"]);
+  assert.equal(lines[1]!.text, "lan: ▶ Không đổi màu");
+  assert.equal(lines[0]!.at, "2026-10-06T08:00:00Z");
+});
