@@ -155,6 +155,34 @@ describe("mcp tools", () => {
     assert.match(text(missing), /^not_found: Task T-9/);
   });
 
+  it("says whose task each one is, and keeps another machine's agent off it (roadmap 50)", async () => {
+    const hive = new SqliteHive(":memory:");
+    const admin = { name: "duy", role: "admin" as const };
+    const mbp = { name: "runner.duy-mbp@duy-mbp", role: "agent" as const };
+    const mini = { name: "runner.lan-mini@lan-mini", role: "agent" as const };
+    const plan = { id: "claude-1", label: "Claude", kind: "claude", enabled: true, account: null, installed: true, cooldownUntil: null, runs: 0, rateLimited: 0 };
+    for (const m of [mbp, mini]) {
+      await hive.call("machines.heartbeat", { machine: m.name.split("@")[1]!, instance: "a1b2c3d4", projects: ["app"], acceptsRuns: true, profiles: [plan] }, m);
+    }
+    for (const n of [1, 2]) await hive.call("tasks.create", { id: `T-${n}`, project: "app", title: `Task ${n}` }, admin);
+    await hive.call("tasks.assign", { id: "T-1", machineId: mbp.name, profileId: "claude-1" }, admin);
+    await hive.call("tasks.assign", { id: "T-2", machineId: mini.name }, admin);
+
+    // An agent run by the CLI on duy-mbp: its write source says which machine it sits on.
+    const onMbp = await connectAs(hive, { name: "claude-1.duy-mbp@duy", role: "agent", agent: "claude-1.duy-mbp", source: { via: "mcp", machine: "duy-mbp" } });
+    const listed = JSON.parse(text(await onMbp.callTool({ name: "task_list", arguments: {} }))) as Array<{ id: string; agent?: string }>;
+    assert.deepEqual(listed.map((t) => [t.id, t.agent]).sort(), [["T-1", "duy-mbp/claude-1"], ["T-2", "lan-mini"]], "machine/plan, or the machine alone");
+    const one = JSON.parse(text(await onMbp.callTool({ name: "task_get", arguments: { id: "T-1" } })));
+    assert.deepEqual([one.agent.machine, one.agent.profileId, one.agent.by, one.agent.hold], ["duy-mbp", "claude-1", "duy", null], "the whole thing for one task");
+
+    const next = JSON.parse(text(await onMbp.callTool({ name: "task_next", arguments: {} }))) as Array<{ id: string }>;
+    assert.deepEqual(next.map((t) => t.id), ["T-1"], "lan-mini's task is not this machine's to take");
+    const refused = await onMbp.callTool({ name: "task_claim", arguments: { id: "T-2" } });
+    assert.equal(refused.isError, true);
+    assert.match(text(refused), /lan-mini/);
+    assert.equal(JSON.parse(text(await onMbp.callTool({ name: "task_claim", arguments: { id: "T-1" } }))).claimed, true);
+  });
+
   it("gives agents the memory fields they act on, eight at a time (roadmap 28f)", async () => {
     const hive = new SqliteHive(":memory:");
     const agent = { name: "claude@duy", role: "agent" as const };
@@ -405,7 +433,7 @@ describe("mcp tools", () => {
     const leader = new Client({ name: "test", version: "0" });
     await leader.connect(b);
 
-    const added = ["propose_cancel_run", "propose_install", "propose_merge", "propose_policy", "propose_profile", "propose_resume_agents", "propose_stop_agents", "propose_tool"];
+    const added = ["propose_cancel_run", "propose_install", "propose_merge", "propose_policy", "propose_profile", "propose_resume_agents", "propose_stop_agents", "propose_task_agent", "propose_tool"];
     const tools = (await leader.listTools()).tools.map((t) => t.name);
     for (const name of added) assert.ok(tools.includes(name), name);
     for (const name of added) assert.match(leader.getInstructions() ?? "", new RegExp(name));
@@ -432,6 +460,10 @@ describe("mcp tools", () => {
     const unknown = await leader.callTool({ name: "propose_tool", arguments: { id: "nope", enabled: true, reason: "x" } });
     assert.ok(unknown.isError);
     assert.match(text(unknown), /^not_found/);
+    // Roadmap 50: "give it to duy-mbp" is an assignment, which the hub then starts by itself.
+    await hive.call("tasks.create", { id: "T-2", project: "app", title: "Lockout" }, admin);
+    const assign = JSON.parse(text(await leader.callTool({ name: "propose_task_agent", arguments: { taskId: "T-2", machine: "duy-mbp", reason: "Its repo is there" } })));
+    assert.deepEqual([assign.kind, assign.status, assign.input.id, assign.input.machineId, assign.input.profileId], ["task.assign", "proposed", "T-2", mbp.name, null]);
   });
 
   it("reads the catalog, where its tools stand and what runs used, for the project only (roadmap 28e)", async () => {

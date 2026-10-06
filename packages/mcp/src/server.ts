@@ -45,7 +45,7 @@ Put anything worth sharing (decisions, gotchas, the handoff) in your final messa
 // A chat leader (the hub's token for one reply) changes nothing on the board itself: it proposes, a project manager confirms.
 const LEADER_INSTRUCTIONS = `
 You are the project's leader in the Hive chat: read skill_get hive-leader first. You cannot create or move tasks or queue runs yourself: propose them with
-propose_task, propose_task_status and propose_run, and say in your reply what you proposed. A project manager confirms or
+propose_task, propose_task_status, propose_task_agent (give a task to one agent, which the hub then starts by itself) and propose_run, and say in your reply what you proposed. A project manager confirms or
 sets aside each one in the chat, and it runs with their rights; a kind the project lets you run on your own runs at once,
 as the person who wrote to you (the answer says done or failed): say which ran and which wait. The same for the rest of the project's operations, always on the chat's project: propose_cancel_run (stop a queued or running run),
 propose_merge (merge a run's MR/PR), propose_profile (turn a machine's plan on or off, or change its priority),
@@ -77,8 +77,18 @@ const compactMemory = (m: Memory) => ({
 
 /** Roadmap 28f: notes are over half of a board's bytes, and a list is read to pick a task, not to work it (task_get then reads the one). */
 const NOTE_IN_LIST = 200;
-const shortNote = (t: Task): Task & { noteTruncated?: true } =>
-  t.note && t.note.length > NOTE_IN_LIST ? { ...t, note: t.note.slice(0, NOTE_IN_LIST), noteTruncated: true } : t;
+/**
+ * A task as a list gives it: its note cut, and the agent it belongs to as one string (roadmap 50) rather than the
+ * object task_get returns — an agent reading the board only needs to know whose task it is.
+ */
+const shortTask = (t: Task): Omit<Task, "agent"> & { noteTruncated?: true; agent?: string } => {
+  const { agent, ...rest } = t;
+  return {
+    ...rest,
+    ...(t.note && t.note.length > NOTE_IN_LIST ? { note: t.note.slice(0, NOTE_IN_LIST), noteTruncated: true as const } : {}),
+    ...(agent ? { agent: agent.profileId ? `${agent.machine}/${agent.profileId}` : agent.machine } : {}),
+  };
+};
 
 const project = z.string().optional().describe('Hive project key (see "Hive project key" in AGENTS.md)');
 const reason = z.string().min(1).max(500).describe("One line for the person confirming it: why");
@@ -315,6 +325,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       title: "List tasks",
       description:
         "List tasks on the shared board for a project, optionally filtered by status. dependsOn: tasks that must be done first; waitingOn: those still open. " +
+        "agent: the agent the task is for, as machine/plan — the hub starts it there by itself, and nobody else takes it. " +
         `The whole board is long: for what to work on next use task_next, and for one part of it status ("todo", "doing", "review"). ` +
         `Each note is cut to ${NOTE_IN_LIST} characters (noteTruncated: true when it was): task_get reads one task with its whole note, full: true the whole board with every note.`,
       inputSchema: { project, status: z.enum(TASK_STATUSES).optional(), full: z.boolean().optional().describe("Whole notes, not cut") },
@@ -323,7 +334,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     withProject(async ({ project: p, status, full }) => {
       try {
         const tasks = await backend.call("tasks.list", { project: p, status }, actor);
-        return json(full ? tasks : tasks.map(shortNote));
+        return json(full ? tasks : tasks.map(shortTask));
       } catch (err) {
         return failed(err);
       }
@@ -335,7 +346,9 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     "task_get",
     {
       title: "Read one task",
-      description: "One task of the board with its whole note (what another agent left: done / not done / how to verify / risks), its dependencies and who holds it.",
+      description:
+        "One task of the board with its whole note (what another agent left: done / not done / how to verify / risks), its dependencies, who holds it, " +
+        "and agent: the machine and plan it is assigned to, with hold (why the hub stopped sending it) when there is one.",
       inputSchema: { id: z.string(), project },
       annotations: readOnly,
     },
@@ -355,7 +368,8 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     {
       title: "Next ready tasks",
       description:
-        "Tasks ready to start in a project: to do, nothing they depend on is open, nobody holds them. The ones that unlock the most other tasks come first.",
+        "Tasks ready to start in a project: to do, nothing they depend on is open, nobody holds them. The ones that unlock the most other tasks come first. " +
+        "On a machine: the tasks assigned to this machine's agents come first, and tasks assigned to another machine are left out.",
       inputSchema: { project, limit: z.number().int().min(1).max(20).optional() },
       annotations: readOnly,
     },
@@ -591,7 +605,8 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       {
         title: "Claim a task",
         description:
-          "Take a lease on a task before working on it. Returns claimed=false if another agent holds a live lease. Fails while a task it depends on is not done.",
+          "Take a lease on a task before working on it. Returns claimed=false if another agent holds a live lease. Fails while a task it depends on is not done, " +
+          "and when the task is assigned to another machine's agent (task_list shows it as agent).",
         inputSchema: { id: z.string(), leaseMinutes: z.number().int().min(5).max(1440).optional() },
       },
       async ({ id, leaseMinutes }) => run("tasks.claim", { id, leaseMinutes }),
@@ -671,6 +686,20 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     );
     const machine = z.string().describe("The machine's hub id or name (machine_list)");
     const runId = z.string().describe("The run's id, e.g. R-1a2b3c (run_list)");
+    server.registerTool(
+      "propose_task_agent",
+      {
+        title: "Propose giving a task to an agent",
+        description:
+          "Propose that a task of the chat's project belongs to one agent: the hub queues its run on that machine by itself as soon as the agent is free and " +
+          "the task waits for nothing, and no other agent takes it. profileId pins a plan (machine_list); left out, any plan of that machine. " +
+          'Use this for "give X to <machine>", and for work that should wait for a machine busy now; propose_run is for a run to start at once.' +
+          confirm,
+        inputSchema: { taskId: z.string(), machine, profileId: z.string().optional(), reason },
+      },
+      async ({ taskId, machine: m, profileId, reason: why }) =>
+        run("chat.propose", { action: { kind: "task.assign", taskId, machine: m, profileId: profileId ?? null }, reason: why } as MethodInput<"chat.propose">),
+    );
     server.registerTool(
       "propose_cancel_run",
       {
