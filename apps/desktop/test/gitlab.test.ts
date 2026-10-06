@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
-import { AGENT_TEMPLATES, gitlabSettingsSchema, HiveError, mrSettingsSchema, type Actor, type AgentProfile, type AgentRun, type CiFix, type GitLabSettings, type HiveBackend, type MrSettings } from "@xdev-hive/core";
+import { AGENT_TEMPLATES, gitlabSettingsSchema, HiveError, mrSettingsSchema, type Actor, type AgentProfile, type AgentRun, type CiFix, type DesktopProject, type GitLabSettings, type HiveBackend, type MrSettings } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { CiFixer, cleanLog } from "#desktop/main/gitlab/ci-fix.ts";
 import { fence, mrDescription, parseVerdict } from "#desktop/main/gitlab/describe.ts";
@@ -14,6 +14,7 @@ import { mrPollDelay, MrWatcher, mrRef, NEEDS_REVIEW_LINE } from "#desktop/main/
 import { ciFixLines } from "#desktop/main/runner/command.ts";
 import { Runner } from "#desktop/main/runner/runner.ts";
 import { cleanupMerged } from "#desktop/main/runner/worktree.ts";
+import { syncProject } from "#desktop/main/sync.ts";
 import { startMockGitLab, type MockGitLab } from "./fixtures/mock-gitlab.ts";
 
 const FAKE = path.join(import.meta.dirname, "fixtures", "fake-agent.mjs");
@@ -640,5 +641,120 @@ describe("CI fix", () => {
     assert.equal(c!.pipeline.to, "failed");
     assert.equal(c!.fix, null);
     assert.equal(runner.list().filter((r) => r.ciFix).length, 0);
+  });
+});
+
+// ── Fixture: the same repo and mock GitLab, but a docs sync instead of a run (roadmap 38c) ─
+async function contextSetup() {
+  gl.reset();
+  const origin = tmp("origin");
+  git(origin, "init", "-q", "--bare", "-b", "main");
+  const repo = tmp("repo");
+  git(repo, "init", "-q", "-b", "main");
+  git(repo, "config", "user.email", "t@example.com");
+  git(repo, "config", "user.name", "Test");
+  writeFileSync(path.join(repo, "README.md"), "# demo\n");
+  git(repo, "add", ".");
+  git(repo, "commit", "-qm", "init");
+  git(repo, "remote", "add", "origin", origin);
+  git(repo, "push", "-q", "origin", "main");
+
+  const hive = new SqliteHive(":memory:");
+  hive.seed();
+  const settings: GitLabSettings = gitlabSettingsSchema.parse({ url: gl.base, token: TOKEN, mr: { enabled: true } });
+  const project: DesktopProject = { name: "demo", repo, gitlabProject: "group/demo" };
+  const requester = new MergeRequester({
+    gitlab: () => settings,
+    projects: () => [project],
+    backend: () => hive,
+    mode: () => "local",
+    // A docs merge request has no run behind it, so nothing on this path reads the run store.
+    store: () => null as never,
+    user: "duy",
+  });
+  const worktreeRoot = tmp("worktrees");
+  const sync = () => syncProject(hive, admin, project, { autoCommit: true, mr: { worktreeRoot, open: (p, b) => requester.openContext(p, b) } });
+  return { origin, repo, hive, project, requester, sync, worktreeRoot };
+}
+
+describe("docs sync as a merge request", () => {
+  it("renders on a branch of its own and leaves the checkout's branch and unfinished work alone", async () => {
+    const { origin, repo, requester, project, sync, worktreeRoot } = await contextSetup();
+    assert.equal(requester.canOpenContext(project), true, "a GitLab project with a token syncs through a merge request");
+    // The user is in the middle of something else: another branch, with work not committed.
+    git(repo, "checkout", "-q", "-b", "feature/x");
+    writeFileSync(path.join(repo, "WIP.txt"), "unfinished\n");
+    const head = git(repo, "rev-parse", "HEAD");
+
+    const report = await sync();
+
+    assert.equal(git(repo, "rev-parse", "--abbrev-ref", "HEAD"), "feature/x", "the checkout keeps its branch");
+    assert.equal(git(repo, "rev-parse", "HEAD"), head, "and gets no commit");
+    assert.equal(git(repo, "status", "--porcelain"), "?? WIP.txt", "and keeps its unfinished work");
+    assert.ok(!existsSync(path.join(repo, "AGENTS.md")), "nothing was rendered into the checkout");
+
+    assert.equal(gl.mrs.length, 1);
+    const mr = gl.mrs[0]!;
+    assert.equal(mr.source_branch, "chore/xdev-hive-context");
+    assert.equal(mr.target_branch, "main");
+    assert.deepEqual(report.mr, { url: mr.web_url, iid: mr.iid, branch: "chore/xdev-hive-context", state: "created" });
+    assert.ok(report.commit, report.note);
+    // The branch on the remote has the docs and nothing else, on top of the target branch.
+    const files = git(origin, "show", "--name-only", "--format=", "chore/xdev-hive-context").split("\n").filter(Boolean).sort();
+    assert.deepEqual(files, ["AGENTS.md", "CLAUDE.md"]);
+    assert.equal(git(origin, "rev-parse", "chore/xdev-hive-context~1"), git(origin, "rev-parse", "main"), "started at origin/main");
+    assert.equal(git(path.join(worktreeRoot, "demo", "_hive-context"), "rev-parse", "--abbrev-ref", "HEAD"), "chore/xdev-hive-context");
+  });
+
+  it("updates the merge request it already opened instead of a second one", async () => {
+    const { origin, hive, sync } = await contextSetup();
+    await sync();
+    const first = git(origin, "rev-parse", "chore/xdev-hive-context");
+    await hive.call("docs.save", { key: "project/demo/agents", content: "# demo\nChạy npm test." }, admin);
+
+    const report = await sync();
+
+    assert.equal(gl.mrs.length, 1, "the same merge request");
+    assert.equal(report.mr?.state, "updated");
+    assert.equal(report.mr?.iid, 1);
+    assert.equal(gl.calls.filter((c) => c.method === "POST" && c.path.endsWith("/merge_requests")).length, 1, "created once");
+    assert.ok(gl.calls.some((c) => c.method === "PUT" && c.path.endsWith("/merge_requests/1")));
+    assert.notEqual(git(origin, "rev-parse", "chore/xdev-hive-context"), first, "the branch was pushed again");
+    assert.match(git(origin, "show", "chore/xdev-hive-context:AGENTS.md"), /Chạy npm test\./);
+  });
+
+  it("pushes nothing and opens nothing when the target branch already has the docs", async () => {
+    const { origin, sync } = await contextSetup();
+    await sync();
+    const pushed = git(origin, "rev-parse", "chore/xdev-hive-context");
+    // The merge request was merged: the target branch now holds exactly what a sync renders.
+    git(origin, "branch", "-f", "main", "chore/xdev-hive-context");
+    gl.reset();
+
+    const report = await sync();
+
+    assert.equal(report.mr, undefined);
+    assert.equal(report.commit, null);
+    assert.ok(
+      report.files.every((f) => f.action === "unchanged"),
+      JSON.stringify(report.files),
+    );
+    assert.deepEqual(gl.mrs, [], "no merge request");
+    assert.equal(gl.calls.length, 0, "the forge was not even asked");
+    assert.equal(git(origin, "rev-parse", "chore/xdev-hive-context"), pushed, "nothing pushed");
+    assert.match(report.note ?? "", /origin\/main/);
+  });
+
+  it("keeps a repo with no forge on the old way: a commit in the checkout", async () => {
+    const { repo, project, requester, hive } = await contextSetup();
+    git(repo, "remote", "remove", "origin");
+    assert.equal(requester.canOpenContext(project), false);
+
+    const report = await syncProject(hive, admin, project, { autoCommit: true });
+
+    assert.ok(report.commit, report.note);
+    assert.equal(report.mr, undefined);
+    assert.ok(existsSync(path.join(repo, "AGENTS.md")));
+    assert.deepEqual(gl.mrs, []);
   });
 });

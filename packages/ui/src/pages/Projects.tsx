@@ -906,6 +906,8 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
       extra: [
         r.imported.length ? t("projects.imported", { keys: r.imported.join(", ") }) : "",
         r.commit ? t("projects.commit", { sha: r.commit }) : "",
+        // In MR mode the docs are on their own branch, so the link matters more than the commit (roadmap 38c).
+        r.mr ? t(r.mr.state === "created" ? "projects.syncMrCreated" : "projects.syncMrUpdated", { branch: r.mr.branch, url: r.mr.url }) : "",
         r.mirror?.commit
           ? t("projects.mirrored", { changed: r.mirror.changed.length, unchanged: r.mirror.unchanged, commit: r.mirror.commit })
           : "",
