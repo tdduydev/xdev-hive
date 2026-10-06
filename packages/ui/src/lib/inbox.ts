@@ -257,8 +257,8 @@ export function groupInbox(items: InboxItem[], role: ProjectRole): Array<{ group
 /** The role a set of permissions amounts to; a custom grant counts as the highest role whose own permission it has. */
 export function roleOfPermissions(has: ReadonlySet<Permission>): ProjectRole {
   if (has.has("projectSettings") || has.has("membersManage")) return "lead";
-  if (has.has("codeReview") || has.has("docApprove") || has.has("memoryApprove") || has.has("chatApprove")) return "reviewer";
   if (has.has("qaVerify")) return "qa";
+  if (has.has("codeReview") || has.has("docApprove") || has.has("memoryApprove") || has.has("chatApprove")) return "reviewer";
   if (has.has("taskWork")) return "member";
   return "viewer";
 }
