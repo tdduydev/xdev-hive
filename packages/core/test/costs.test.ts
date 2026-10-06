@@ -163,3 +163,121 @@ describe("runs with RTK and without (roadmap 28d)", () => {
     assert.deepEqual((await hive.call("costs.summary", {}, lead)).compression?.map((r) => r.project), ["web"]);
   });
 });
+
+describe("what a run ran on (roadmap 54a)", () => {
+  const record = (runId: string, extra: Record<string, unknown> = {}) => ({
+    runId,
+    project: "app",
+    taskId: "T-1",
+    taskTitle: "Login page",
+    role: "implement" as const,
+    status: "succeeded" as const,
+    profileId: "claude-1",
+    createdAt: "2026-09-27T08:00:00.000Z",
+    finishedAt: "2026-09-27T09:00:00.000Z",
+    ...extra,
+  });
+  const ran = { kind: "claude", model: "sonnet", effort: "low", tier: null, attempt: 1, parentRun: null };
+  const pick = (r: Record<string, unknown>) => Object.fromEntries(["kind", "model", "effort", "tier", "attempt", "parentRun", "verdict"].map((k) => [k, r[k]]));
+
+  it("keeps kind, model, effort, attempt, parent and verdict, and what it had when a push leaves them out", async () => {
+    const hive = new SqliteHive(":memory:");
+    await hive.call(
+      "runs.push",
+      {
+        machine: "duy-mbp",
+        runs: [
+          record("R-1", ran),
+          record("R-2", { ...ran, kind: "codex", model: null, effort: "high", attempt: 2, parentRun: "R-1", role: "review", summary: "Long report", verdict: "changes" }),
+        ],
+      },
+      mbp,
+    );
+    const get = async (id: string) => (await hive.call("runs.list", {}, admin)).find((r) => r.runId === id)!;
+    assert.deepEqual(pick(await get("R-1")), { ...ran, verdict: null });
+    assert.deepEqual(pick(await get("R-2")), { kind: "codex", model: null, effort: "high", tier: null, attempt: 2, parentRun: "R-1", verdict: "changes" }, "the machine's verdict wins over the summary");
+    assert.equal((await hive.call("runs.get", { machineId: mbp.name, runId: "R-1" }, admin))?.model, "sonnet");
+
+    await hive.call("runs.push", { machine: "duy-mbp", runs: [record("R-1", { summary: "done" })] }, mbp);
+    assert.deepEqual(pick(await get("R-1")), { ...ran, verdict: null }, "an older app's push keeps them");
+    await hive.call("runs.push", { machine: "duy-mbp", runs: [record("R-1", { model: null })] }, mbp);
+    assert.equal((await get("R-1")).model, null, "null is the CLI's default, kept as sent");
+  });
+
+  it("reads a review's verdict from the summary when an older app sends none", async () => {
+    const hive = new SqliteHive(":memory:");
+    await hive.call(
+      "runs.push",
+      {
+        machine: "duy-mbp",
+        runs: [
+          record("R-1", { role: "review", summary: "All good.\nVerdict: approve" }),
+          record("R-2", { role: "review", summary: "Verdict: changes needed" }),
+          record("R-3", { role: "review", status: "running", summary: "Verdict: approve" }),
+          record("R-4", { summary: "Verdict: approve" }),
+        ],
+      },
+      mbp,
+    );
+    const runs = await hive.call("runs.list", {}, admin);
+    const verdict = (id: string) => runs.find((r) => r.runId === id)!.verdict;
+    assert.deepEqual(["R-1", "R-2", "R-3", "R-4"].map(verdict), ["approve", "changes", null, null], "only a succeeded review has one");
+    assert.deepEqual(pick(runs.find((r) => r.runId === "R-1")!), { kind: null, model: null, effort: null, tier: null, attempt: null, parentRun: null, verdict: "approve" });
+  });
+
+  it("refuses a kind or verdict it does not know", async () => {
+    const hive = new SqliteHive(":memory:");
+    await assert.rejects(hive.call("runs.push", { machine: "duy-mbp", runs: [record("R-1", { kind: "gpt" })] }, mbp));
+    await assert.rejects(hive.call("runs.push", { machine: "duy-mbp", runs: [record("R-1", { verdict: "maybe" })] }, mbp));
+    await assert.rejects(hive.call("runs.push", { machine: "duy-mbp", runs: [record("R-1", { parentRun: "../x" })] }, mbp));
+  });
+
+  it("sums ended runs of 30 days by project, role, kind, model and effort", async () => {
+    const c = clock();
+    const hive = new SqliteHive(":memory:", { now: c.now });
+    const at = (days: number) => ({ createdAt: c.ago(days + 0.1), finishedAt: c.ago(days) });
+    await hive.call(
+      "runs.push",
+      {
+        machine: "duy-mbp",
+        runs: [
+          record("R-1", { ...ran, ...at(1) }),
+          record("R-2", { ...ran, ...at(2), status: "failed", attempt: 1 }),
+          record("R-3", { ...ran, ...at(1), attempt: 2, parentRun: "R-2" }),
+          record("R-4", { ...ran, ...at(1), model: "opus", effort: null }),
+          record("R-5", { ...ran, ...at(1), role: "review", verdict: "approve" }),
+          record("R-6", { ...ran, ...at(1), role: "review", verdict: "changes" }),
+          record("R-7", { ...ran, ...at(40) }),
+          record("R-8", { ...ran, ...at(1), status: "running", finishedAt: null }),
+          record("R-9", { ...ran, ...at(1), project: "web" }),
+          record("R-10", { ...at(1) }),
+        ],
+      },
+      mbp,
+    );
+    await beat(hive, mbp, [cost("R-1", c.ago(1), { costUsd: 1, outputTokens: 100 }), cost("R-3", c.ago(1), { costUsd: 3, outputTokens: 300 })]);
+    const s = await hive.call("costs.summary", {}, admin);
+    const row = (kind: string | null, model: string | null, effort: string | null, extra: Record<string, unknown>) => ({
+      kind,
+      model,
+      effort,
+      runs: 1,
+      failed: 0,
+      retries: 0,
+      approved: 0,
+      changes: 0,
+      costAvg: null,
+      outputAvg: null,
+      ...extra,
+    });
+    assert.deepEqual(s.models, [
+      { project: "app", role: "implement", ...row("claude", "sonnet", "low", { runs: 3, failed: 1, retries: 1, costAvg: 2, outputAvg: 200 }) },
+      { project: "app", role: "implement", ...row(null, null, null, {}) },
+      { project: "app", role: "implement", ...row("claude", "opus", null, {}) },
+      { project: "app", role: "review", ...row("claude", "sonnet", "low", { runs: 2, approved: 1, changes: 1 }) },
+      { project: "web", role: "implement", ...row("claude", "sonnet", "low", {}) },
+    ]);
+    const lead: Actor = { name: "lan", role: "member", access: { projects: { web: "lead" } } };
+    assert.deepEqual((await hive.call("costs.summary", {}, lead)).models?.map((r) => r.project), ["web"]);
+  });
+});

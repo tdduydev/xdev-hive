@@ -268,6 +268,7 @@ function Head({ run, machine, actions }: { run: AgentRun | RunRecord; machine: s
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className={cn("inline-flex h-5 items-center rounded-xs px-[7px] text-[11px]/none font-semibold whitespace-nowrap", CHIP[kind])}>{stateLabel(run, t)}</span>
+            <ModelChip run={run} />
             <span className="text-xs/none text-fg-muted">
               {[run.profileId ?? t("board.waitingProfile"), runLabel("agentRole", run.role), run.branch ? t("runs.worktree", { branch: run.branch }) : null].filter(Boolean).join(" · ")}
             </span>
@@ -280,6 +281,25 @@ function Head({ run, machine, actions }: { run: AgentRun | RunRecord; machine: s
         <div className="flex flex-wrap justify-end gap-1.5">{actions}</div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The model and effort the run's args set (roadmap 54a). Once its app knows the kind, no model means the CLI's own
+ * default, said so; a run from an older app knows nothing of it and shows no chip.
+ */
+function ModelChip({ run }: { run: AgentRun | RunRecord }) {
+  const t = useT();
+  const kind = "agentKind" in run ? run.agentKind : "runId" in run ? run.kind : null;
+  const model = run.model ?? null;
+  const effort = run.effort ?? null;
+  if (!kind && !model && !effort) return null;
+  return (
+    <span className="inline-flex" data-run-model={model ?? ""}>
+      <Chip kind="neutral" small title={t("runs.modelNote")}>
+        {[model ?? t("runs.modelDefault"), effort].filter(Boolean).join(" · ")}
+      </Chip>
+    </span>
   );
 }
 
@@ -739,7 +759,8 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
   const action = useAction();
   const live = isLive(run);
   // What a finished review concluded, as its report says (the same reading as the MR a machine opens).
-  const verdict = run.role === "review" && run.status === "succeeded" ? parseVerdict(run.summary) : "none";
+  // The stored one was read from the whole report (54a); a run from an older app has only the clipped summary.
+  const verdict = run.role === "review" && run.status === "succeeded" ? (run.verdict ?? parseVerdict(run.summary)) : "none";
   const tick = useRefresh(live);
   const full = useQuery(() => client.call("runs.get", { machineId: run.machineId, runId: run.runId }), [client, run.machineId, run.runId, tick]);
   const manage = allow(run.project, "runDispatch");

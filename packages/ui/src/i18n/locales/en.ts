@@ -1598,6 +1598,8 @@ export const en: Catalog = {
     tokens: "Tokens: {input} fresh in · {write} cache write · {read} cache read · {output} out · {share} of input from the cache",
     tokensOld: "Tokens: {input} in · {output} out",
     compression: "RTK: {commands} commands, ~{saved} tokens left out (RTK's estimate)",
+    modelDefault: "default model",
+    modelNote: "The model and effort the run's command set. Left out, the CLI uses its own default.",
     merge: "Merge",
     mergeHint: "{machine} merges with its own GitLab/GitHub token at its next heartbeat (about 30 seconds). The task moves to Done once the machine sees the MR merged.",
     mergeConfirm: "The CI of {mr} has not finished ({status}). Merge anyway?",
