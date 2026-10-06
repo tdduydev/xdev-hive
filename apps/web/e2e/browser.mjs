@@ -1906,7 +1906,7 @@ async function main() {
     for (const [project, id] of [["payment", "HUB-PAY-37B"], ["demo", "HUB-DEMO-37B"]]) {
       await machineRpc("chat.propose", { action: { kind: "task.create", project, id, title: `Việc toàn hub cho ${project}`, dependsOn: [] }, reason: "Admin giao điều phối toàn hub" }, request.grant);
     }
-    await machineRpc("chat.propose", { action: { kind: "machine.profile", machineId, profileId: "claude-hub", enabled: true }, reason: "Gói cho leader toàn hub" }, request.grant);
+    await machineRpc("chat.propose", { action: { kind: "machine.profile", machine: "hub-leader-e2e", profileId: "claude-hub", enabled: true }, reason: "Gói cho leader toàn hub" }, request.grant);
     await machineRpc("chat.finish", { replyId: reply.id, status: "done", text: "Đề xuất theo service và máy." });
     await tab.waitFor("all service and hub proposal labels", () => ["payment", "demo", "*"].every((p) => document.querySelector(`[data-action-project="${p}"]`)));
     const labels = await tab.eval(() => [...document.querySelectorAll("[data-action-project]")].map((el) => el.textContent));
