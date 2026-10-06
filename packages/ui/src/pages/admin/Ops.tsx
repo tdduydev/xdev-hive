@@ -167,10 +167,10 @@ export function OpsOverview({ lead }: { lead?: ReactNode } = {}) {
       <ErrorNote error={runs.error ?? machines.error} />
       <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-2.5">
         <Kpi href="#/runs" label={t("ops.kpi.running")} value={live.length} sub={t("ops.kpi.runningSub", { count: new Set(live.map((r) => r.machineId)).size })} />
-        <Kpi href="#/queue" label={t("ops.kpi.queue")} value={waiting} sub={t("ops.kpi.queueSub")} />
+        <Kpi href="#/machines?tab=queue" label={t("ops.kpi.queue")} value={waiting} sub={t("ops.kpi.queueSub")} />
         <Kpi label={`${t("ops.kpi.success")} ${t(`ops.range.${range}`)}`} value={rate === null ? "—" : `${rate}%`} sub={t("ops.kpi.successSub", { done, failed, quota })} />
-        <Kpi href="#/fleet" label={t("ops.kpi.online")} value={`${fleet.filter((m) => m.online).length}/${fleet.length}`} sub={t("ops.kpi.onlineSub", { count: fleet.filter((m) => !m.online).length })} />
-        <Kpi href="#/costs" label={t("ops.kpi.cost", { range: t(`ops.range.${range}`) })} value={cost === null ? "—" : formatUsd(cost)} sub={t("ops.kpi.costSub")} />
+        <Kpi href="#/machines?tab=fleet" label={t("ops.kpi.online")} value={`${fleet.filter((m) => m.online).length}/${fleet.length}`} sub={t("ops.kpi.onlineSub", { count: fleet.filter((m) => !m.online).length })} />
+        <Kpi href="#/machines?tab=costs" label={t("ops.kpi.cost", { range: t(`ops.range.${range}`) })} value={cost === null ? "—" : formatUsd(cost)} sub={t("ops.kpi.costSub")} />
         <Kpi
           href="#/today"
           label={t("ops.kpi.pending")}
@@ -277,7 +277,7 @@ export function OpsOverview({ lead }: { lead?: ReactNode } = {}) {
             {fleet.map((m) => {
               const k = machineKind(m, lacking.has(m.id));
               const color = { neutral: "bg-neutral-solid", warning: "bg-warning-solid", running: "bg-info-solid", success: "bg-success-solid", danger: "bg-danger-solid", info: "bg-info-solid" }[k.kind];
-              return <a key={m.id} href="#/fleet" title={`${m.machine} · ${t(k.label)}`} className={cn("size-[13px] rounded-[3px]", color)} />;
+              return <a key={m.id} href="#/machines?tab=fleet" title={`${m.machine} · ${t(k.label)}`} className={cn("size-[13px] rounded-[3px]", color)} />;
             })}
           </div>
           <div className="flex flex-wrap gap-3 text-xs text-fg-muted">
@@ -501,13 +501,14 @@ export function OpsFleet() {
 
 // ── Chi phí ──
 
-export function OpsCosts() {
+/** `budgets`: the budgets card above the costs; Máy & agent leaves it to Quản trị › Ngân sách (roadmap 49b). */
+export function OpsCosts({ budgets = true }: { budgets?: boolean } = {}) {
   const { client } = useHive();
   const tick = useTick();
   const costs = useQuery(() => client.call("costs.summary", {}), [client, tick]);
   return (
     <div className="flex flex-col gap-4">
-      <BudgetsCard tick={tick} />
+      {budgets ? <BudgetsCard tick={tick} /> : null}
       <ErrorNote error={costs.error} />
       {costs.data ? <Costs summary={costs.data} /> : null}
     </div>

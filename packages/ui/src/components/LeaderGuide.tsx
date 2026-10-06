@@ -28,7 +28,6 @@ export function LeaderGuideSheet({
   onOpenChange: (open: boolean) => void;
 }) {
   const t = useT();
-  const [project, setProject] = useState(defaultProject && projects.includes(defaultProject) ? defaultProject : (projects[0] ?? ""));
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full gap-0 sm:max-w-2xl">
@@ -37,24 +36,35 @@ export function LeaderGuideSheet({
           <SheetDescription>{t("chat.guideHint")}</SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-          {projects.length > 1 ? (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="guide-project">{t("chat.project")}</Label>
-              <NativeSelect id="guide-project" size="sm" className="w-full sm:w-64" value={project} onChange={(e) => setProject(e.target.value)}>
-                {projects.map((p) => (
-                  <NativeSelectOption key={p} value={p}>
-                    {p}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </div>
-          ) : null}
-          {project ? <GuideEditor key={project} project={project} /> : null}
-          {project ? <CommandsEditor key={`commands-${project}`} project={project} /> : null}
-          {project ? <AutonomyEditor key={`auto-${project}`} project={project} /> : null}
+          <LeaderGuidePanel projects={projects} defaultProject={defaultProject} />
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+/** The guide, the commands and the autonomy of one project's leader: in Chat's sheet, and a tab of Cài đặt dự án (49b). */
+export function LeaderGuidePanel({ projects, defaultProject }: { projects: string[]; defaultProject: string | null }) {
+  const t = useT();
+  const [project, setProject] = useState(defaultProject && projects.includes(defaultProject) ? defaultProject : (projects[0] ?? ""));
+  return (
+    <>
+      {projects.length > 1 ? (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="guide-project">{t("chat.project")}</Label>
+          <NativeSelect id="guide-project" size="sm" className="w-full sm:w-64" value={project} onChange={(e) => setProject(e.target.value)}>
+            {projects.map((p) => (
+              <NativeSelectOption key={p} value={p}>
+                {p}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        </div>
+      ) : null}
+      {project ? <GuideEditor key={project} project={project} /> : null}
+      {project ? <CommandsEditor key={`commands-${project}`} project={project} /> : null}
+      {project ? <AutonomyEditor key={`auto-${project}`} project={project} /> : null}
+    </>
   );
 }
 

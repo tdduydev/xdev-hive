@@ -247,12 +247,16 @@ async function main() {
     await tab.click('button[type="submit"]');
     // The web opens on Hôm nay for everyone (roadmap 35b), hub admins included.
     await tab.waitFor("the admin's Hôm nay", () => document.querySelector('nav [aria-current="page"]')?.textContent.includes("Hôm nay"));
-    // Roadmap 35b: one web shell; a hub admin's menu has Vận hành and Quản trị next to the work.
-    const nav = await tab.waitFor("the admin's menu", () => document.querySelector("nav")?.innerText.includes("Hàng đợi") && document.querySelector("nav").innerText);
-    for (const label of ["Vận hành", "Chính sách & chốt", "Nhật ký", "Task"]) expect(nav.includes(label), `no ${label} in the admin's menu:\n${nav}`);
-    // The Web Admin's old addresses open the same page in the one shell.
+    // Roadmap 49b: one web shell, its menu by job; a hub admin's has Cài đặt dự án, Máy & agent and Quản trị after the work.
+    const nav = await tab.waitFor("the admin's menu", () => document.querySelector("nav")?.innerText.includes("Máy & agent") && document.querySelector("nav").innerText);
+    for (const label of ["Làm việc", "Task", "Cài đặt dự án", "Quản trị"]) expect(nav.includes(label), `no ${label} in the admin's menu:\n${nav}`);
+    // The Web Admin's old addresses open the tab that holds the page now.
     await tab.go("admin/queue");
-    await tab.waitFor("#/admin/queue on Hàng đợi", () => location.hash === "#/queue" && document.querySelector('nav [aria-current="page"]')?.textContent.includes("Hàng đợi"));
+    await tab.waitFor("#/admin/queue on Máy & agent › Hàng đợi", () =>
+      location.hash === "#/machines?tab=queue" &&
+      document.querySelector('nav [aria-current="page"]')?.textContent.includes("Máy & agent") &&
+      document.querySelector('[data-page-tab="queue"]')?.getAttribute("aria-current") === "page",
+    );
   });
 
   await step("scope-search-tasks", async () => {
@@ -376,9 +380,41 @@ async function main() {
     await tab.type(people.hoa.password);
     await tab.key("Enter");
     await tab.waitFor("Hoa signed in", () => !document.querySelector("#username") && document.body.innerText.includes("@hoa"));
-    // A member's menu has no hub operations or administration (Máy & run, the team's machines, stays).
+    // A member's menu has no project settings or hub administration (Máy & agent, the team's machines, stays).
     const nav = await tab.eval(() => document.querySelector("nav")?.innerText ?? "");
-    for (const label of ["Đội máy", "Hàng đợi", "Chính sách & chốt", "Nhật ký"]) expect(!nav.includes(label), `${label} in Hoa's menu:\n${nav}`);
+    for (const label of ["Cài đặt dự án", "Quản trị", "Đội máy", "Hàng đợi", "Nhật ký"]) expect(!nav.includes(label), `${label} in Hoa's menu:\n${nav}`);
+  });
+
+  // Roadmap 49b: the menu by job, for a hub admin and for a project member (Hoa reviews payment). Token and the
+  // password are in the account menu; old addresses land on their tab.
+  await step("nav-by-job", async () => {
+    const menus = [
+      ["admin", tabs.admin, ["Hôm nay", "Chat", "Sơ đồ", "Tính năng", "Task", "Agent đang chạy", "Tài liệu", "Skill", "Memory", "Đề xuất", "Cài đặt dự án", "Máy & agent", "Quản trị"]],
+      ["member", tabs.hoa, ["Hôm nay", "Sơ đồ", "Tính năng", "Task", "Agent đang chạy", "Tài liệu", "Skill", "Memory", "Đề xuất", "Máy & agent"]],
+    ];
+    for (const [who, tab, want] of menus) {
+      current = tab;
+      await tab.go("today");
+      if (mobile) await tab.click(`button[aria-label="Ẩn hoặc hiện thanh bên"]`);
+      const items = await tab.waitFor(`${who}'s menu`, () => {
+        // The label is the link's first span; a count may follow it.
+        const links = [...document.querySelectorAll("nav [data-nav-list] a")].map((a) => a.querySelector("span")?.textContent.trim());
+        return links.length > 0 && links;
+      });
+      expect(JSON.stringify(items) === JSON.stringify(want), `${who}'s menu: ${JSON.stringify(items)}`);
+      await tab.shot(`${String(n).padStart(2, "0")}-nav-${who}`);
+      // Token sits in the account menu now.
+      await tab.click('nav button[aria-label="Tài khoản"]');
+      await tab.waitFor("Token in the account menu", () => !!document.querySelector("[data-account-tokens]"));
+      await tab.shot(`${String(n).padStart(2, "0")}-nav-${who}-account`);
+      await tab.click("[data-account-tokens]");
+      await tab.waitFor("the Token page", () => location.hash === "#/tokens" && !document.querySelector('[role="menu"]'));
+      if (mobile) await tab.waitFor("the drawer closed after the account menu", () => document.querySelector("nav[aria-label='Điều hướng']")?.getBoundingClientRect().right <= 0);
+    }
+    // A member following an admin's old link lands on Hôm nay, not on a page they may not open.
+    current = tabs.hoa;
+    await tabs.hoa.go("users");
+    await tabs.hoa.waitFor("Hôm nay for Hoa", () => document.querySelector('nav [aria-current="page"]')?.textContent.includes("Hôm nay"));
   });
 
   await step("reviewer-approves-a-guide-not-context", async () => {
@@ -776,7 +812,8 @@ async function main() {
 
     tab = current = tabs.lan;
     await tab.reload();
-    await tab.go("systems");
+    // Roadmap 49b: a lead's gate rows are on Cài đặt dự án › Chốt & chính sách.
+    await tab.go("settings?tab=policy");
     await tab.waitFor("payment's gate row", () => !!document.querySelector('[data-sdlc-row="payment"] [data-sdlc-gate="spec"]'));
     expect(!(await tab.eval(() => !!document.querySelector('[data-sdlc-row="hub"]'))), "a project manager got the hub's row");
     const autoMerge = await tab.eval(() => document.querySelector('[data-sdlc-row="payment"] [data-sdlc-gate="merge"] option[value="auto"]')?.disabled);
@@ -1071,7 +1108,8 @@ async function main() {
   // Roadmap 27b: a cap of one run on payment (this month); one run's cost fills it, and the hub holds the next.
   await step("budget", async () => {
     const tab = (current = tabs.admin);
-    await tab.go("admin/costs");
+    // Roadmap 49b: budgets are set on Quản trị › Ngân sách.
+    await tab.go("admin?tab=budgets");
     await tab.click("button", "Thêm trần");
     const pick = (values, value) =>
       tab.eval(
@@ -1108,7 +1146,7 @@ async function main() {
     );
     expect(refused !== null && !refused.includes("paused"), `runs.dispatch on a full cap: ${refused ?? "accepted"}`);
     await tab.reload();
-    await tab.go("admin/costs");
+    await tab.go("admin?tab=budgets");
     await tab.waitFor("the full cap on the card", () => document.body.innerText.includes("Đã hết trần"));
     await tab.shot(`${String(n).padStart(2, "0")}-budget-full`);
     // Leave the hub as the other steps expect it.

@@ -17,7 +17,8 @@ import { nameMatches, outsideSystems, projectScope, systemScope } from "#ui/lib/
 import { AgentPolicyCard } from "#ui/pages/admin/AgentPolicy.tsx";
 import { SdlcGatesCard } from "#ui/pages/admin/SdlcGates.tsx";
 
-export function SystemsPage() {
+/** `policy`: a lead's policy rows at the end; Cài đặt dự án has them on a tab of their own (roadmap 49b). */
+export function SystemsPage({ policy = true }: { policy?: boolean } = {}) {
   const { systems, setScope, me, projects } = useHive();
   const t = useT();
   const allow = useCan();
@@ -118,7 +119,7 @@ export function SystemsPage() {
       {/* Archiving and deleting a project (roadmap 47) is a hub admin's; the desktop sends them to the hub's web. */}
       {me.mode === "hub" && me.role === "admin" && !me.access ? <ProjectsCard query={query} /> : null}
       {/* A project manager has no Web Admin: their project's agent policy row lives here, with its other settings. */}
-      {me.mode === "hub" && !(me.role === "admin" && !me.access) && projects.some((p) => allow(p, "projectSettings")) ? (
+      {policy && me.mode === "hub" && !(me.role === "admin" && !me.access) && projects.some((p) => allow(p, "projectSettings")) ? (
         <>
           <AgentPolicyCard editableOnly />
           <SdlcGatesCard editableOnly />
