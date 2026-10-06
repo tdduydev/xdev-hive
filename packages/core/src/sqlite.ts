@@ -130,6 +130,7 @@ import type {
   ToolStatus,
   ToolView,
   HiveSystem,
+  RetiredProject,
 } from "./types.ts";
 
 const MIGRATIONS: string[] = [
@@ -517,6 +518,20 @@ const MIGRATIONS: string[] = [
   ALTER TABLE run_records ADD COLUMN verdict TEXT;
   CREATE INDEX run_records_finished ON run_records(finished_at);
   `,
+  // Removing and moving pages (roadmap 38g). removed_at: the page is out of every list, of AGENTS.md and of the next
+  // sync, but its versions stay. removed_op numbers the removal (two in the same millisecond share a time but not a
+  // number), so a restore puts back exactly what one removal took. doc_redirects: a key a page used to have, so links
+  // from before a move still find it.
+  `
+  ALTER TABLE docs ADD COLUMN removed_at TEXT;
+  ALTER TABLE docs ADD COLUMN removed_by TEXT;
+  ALTER TABLE docs ADD COLUMN removed_note TEXT;
+  ALTER TABLE docs ADD COLUMN removed_op INTEGER;
+  CREATE INDEX docs_removed ON docs(removed_at);
+  CREATE TABLE doc_redirects(
+    from_key TEXT PRIMARY KEY, to_key TEXT NOT NULL, moved_by TEXT NOT NULL, moved_at TEXT NOT NULL);
+  CREATE INDEX doc_redirects_to ON doc_redirects(to_key);
+  `,
 ];
 
 /**
@@ -820,7 +835,9 @@ const clipDetail = (s: string) => (s.length > 300 ? `${s.slice(0, 299)}…` : s)
  */
 const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: string; detail?: string; text?: ErrorText }>> = {
   "docs.save": (i, o) => ({ target: i.key, detail: `v${o.version}${i.note ? ` · ${i.note}` : ""}` }),
-  "docs.move": (i) => ({ target: i.key, detail: `→ ${i.parent ?? "/"}` }),
+  "docs.move": (i, o) => ({ target: i.key, detail: i.to ? `→ ${i.to}${o.moved.length > 1 ? ` (+${o.moved.length - 1})` : ""}` : `→ ${i.parent ?? "/"}` }),
+  "docs.remove": (i, o) => ({ target: i.key, detail: `− ${o.keys.length}${i.note ? ` · ${i.note}` : ""}` }),
+  "docs.restore": (i, o) => ({ target: i.key, detail: `+ ${o.keys.length}` }),
   "docs.assetPut": (i, o) => ({ target: i.key, detail: `+ ${o.name}` }),
   "docs.assetRemove": (i, o) => (o.removed ? { target: i.key, detail: `− ${i.name}` } : { target: i.key, detail: `− ${i.name} (—)` }),
   "proposals.approve": (i, o) => ({ target: o.docKey, detail: `đề xuất #${i.id}`, text: { key: "audit.proposal", vars: { id: i.id } } }),
@@ -853,6 +870,8 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
     const rows = Object.values(o.rows).reduce((n, v) => n + v, 0);
     return { target: i.project, detail: `xoá hẳn · ${rows} dòng · backup ${o.backup}`, text: { key: "audit.projectDeleted", vars: { rows, backup: o.backup } } };
   },
+  "projects.retire": (i) => ({ target: i.project, detail: i.note ?? undefined }),
+  "projects.resume": (i) => ({ target: i.project }),
   "policy.set": (_i, o: TeamPolicy) => ({
     target: "policy",
     detail: `CLI: ${o.requiredClis.join(", ") || "—"} · shim: ${o.requireShim ? "có" : "không"} · ${Object.keys(o.projects).length} dự án · ${o.profileTemplates.length} mẫu profile`,
@@ -1135,6 +1154,9 @@ const toSummary = (r: Row): DocSummary => ({
   parent: strOrNull(r.parent),
   folder: num(r.folder ?? 0) === 1,
   mirror: r.mirror ? (JSON.parse(str(r.mirror)) as DocMirror) : null,
+  removedAt: strOrNull(r.removed_at),
+  removedBy: strOrNull(r.removed_by),
+  removedNote: strOrNull(r.removed_note),
   updatedBy: str(r.updated_by),
   updatedAt: str(r.updated_at),
 });
@@ -1568,8 +1590,24 @@ export class SqliteHive implements HiveBackend {
         return this.#need(actor, owner(i.key), "view", `Doc ${i.key}`);
       case "docs.save":
         return this.#need(actor, owner(i.key), this.#docPermission(i.key, { paths: i.paths, includeInAgents: i.includeInAgents }), `Doc ${i.key}`);
-      case "docs.move":
+      case "docs.move": {
+        // The key it gets counts too: moving a page onto project/<p>/agents makes it a page agents read.
+        const level = i.to && this.#docPermission(i.to) === "contextEdit" ? "contextEdit" : this.#docPermission(i.key);
+        this.#need(actor, owner(i.key), level, `Doc ${i.key}`);
+        // Giving the page another space puts it in someone else's hands: the new space has to be the actor's too.
+        if (i.to && i.to !== i.key) this.#need(actor, owner(i.to), level, `Doc ${i.to}`);
+        return;
+      }
+      case "docs.remove":
+      case "docs.restore":
         return this.#need(actor, owner(i.key), this.#docPermission(i.key), `Doc ${i.key}`);
+      case "docs.removed":
+        if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
+        return;
+      case "projects.retire":
+      case "projects.resume":
+        if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Only a hub admin lets a project key rest.", { key: "errors.hubAdminOnly" });
+        return;
       // Those who propose attach files to it; removing someone else's file takes docEdit (see the handler).
       case "docs.assetPut":
       case "docs.assetRemove":
@@ -1866,7 +1904,10 @@ export class SqliteHive implements HiveBackend {
     const out = output as unknown;
     switch (method as Method) {
       case "docs.list":
+      case "docs.removed":
         return (out as DocSummary[]).filter((d) => visible(d.project)) as MethodOutput[M];
+      case "projects.retired":
+        return (out as RetiredProject[]).filter((r) => visible(r.project)) as MethodOutput[M];
       case "skills.list":
         return (out as SkillSummary[]).filter((s) => visible(s.project)) as MethodOutput[M];
       case "runs.list":
@@ -2237,6 +2278,13 @@ export class SqliteHive implements HiveBackend {
     if (meta.title) assertNoHidden(meta.title, "Title");
     if (meta.note) assertNoHidden(meta.note, "Note");
     const existing = this.#getDoc(key);
+    // Writing over a removed page would bring it back by the side door, with no sign of the removal: restore it first.
+    if (existing?.removedAt) {
+      throw new HiveError("conflict", `${key} was removed on ${existing.removedAt}. Restore it before writing to it.`, {
+        key: "errors.docRemoved",
+        vars: { key, at: existing.removedAt },
+      });
+    }
     const version = (existing?.version ?? 0) + 1;
     const now = this.#now();
     const title = meta.title ?? existing?.title ?? titleFromSlug(parsed.slug);
@@ -2272,13 +2320,101 @@ export class SqliteHive implements HiveBackend {
     for (let depth = 1; at; depth++) {
       if (at === key) throw bad("docParentCycle", `${parent} is under ${key}: a page cannot go under its own pages.`);
       if (depth >= DOC_TREE_DEPTH) throw bad("docParentDepth", `Pages nest at most ${DOC_TREE_DEPTH} deep.`);
-      const row = this.db.prepare("SELECT parent FROM docs WHERE key = ?").get(at) as Row | undefined;
+      // A removed page holds nothing: putting a page under one reads as there being no such page (roadmap 38g).
+      const row = this.db.prepare("SELECT parent FROM docs WHERE key = ? AND removed_at IS NULL").get(at) as Row | undefined;
       if (!row) {
         if (at === parent) throw bad("docParentMissing", `There is no page ${parent} to put ${key} under.`);
         break;
       }
       at = strOrNull(row.parent);
     }
+  }
+
+  /**
+   * The pages under `key`, a level at a time, keeping only those `keep` accepts; a page it turns down stops that
+   * branch, so one removal and the restore that undoes it walk the same tree.
+   */
+  #under(key: string, keep: (page: { key: string; removedAt: string | null; removedOp: number | null }) => boolean): string[] {
+    const out: string[] = [];
+    let edge = [key];
+    for (let depth = 0; edge.length && depth < DOC_TREE_DEPTH; depth++) {
+      const next: string[] = [];
+      for (const parent of edge) {
+        for (const r of this.db.prepare("SELECT key, removed_at, removed_op FROM docs WHERE parent = ?").all(parent) as Row[]) {
+          const page = { key: str(r.key), removedAt: strOrNull(r.removed_at), removedOp: r.removed_op == null ? null : num(r.removed_op) };
+          if (!keep(page)) continue;
+          out.push(page.key);
+          next.push(page.key);
+        }
+      }
+      edge = next;
+    }
+    return out;
+  }
+
+  /** Where a key a page used to have leads now (roadmap 38g); chains are collapsed as pages move, so one hop is enough. */
+  #redirects(): Map<string, string> {
+    return new Map((this.db.prepare("SELECT from_key, to_key FROM doc_redirects").all() as Row[]).map((r) => [str(r.from_key), str(r.to_key)]));
+  }
+
+  /** The key of a page in `to`'s space keeping its own slug: what a page under a moved one becomes. */
+  static #keyIn(key: string, space: ParsedDocKey): string {
+    const { slug, skill } = parseDocKey(key);
+    const tail = `${skill ? "skills/" : ""}${slug}`;
+    return space.scope === "org" ? `org/${tail}` : space.scope === "system" ? `system/${systemOf(space.project)!}/${tail}` : `project/${space.project}/${tail}`;
+  }
+
+  /**
+   * Gives each page a new key, in one transaction: its row, its versions, its files, its asks, the proposals waiting on
+   * it and the pages under it follow, and the old key is kept pointing at the new one so links from before still work.
+   */
+  #rekey(pairs: Array<{ from: string; to: string }>, actor: Actor, now: string): void {
+    const db = this.db;
+    for (const { to } of pairs) {
+      if (db.prepare("SELECT 1 FROM docs WHERE key = ?").get(to)) {
+        throw new HiveError("conflict", `There is already a page ${to}.`, { key: "errors.docKeyTaken", vars: { key: to } });
+      }
+    }
+    for (const { from, to } of pairs) {
+      const parsed = parseDocKey(to);
+      db.prepare("UPDATE docs SET key = ?, scope = ?, project = ? WHERE key = ?").run(to, parsed.scope, parsed.project, from);
+      db.prepare("UPDATE docs SET parent = ? WHERE parent = ?").run(to, from);
+      db.prepare("UPDATE doc_versions SET key = ? WHERE key = ?").run(to, from);
+      db.prepare("UPDATE doc_assets SET doc_key = ? WHERE doc_key = ?").run(to, from);
+      db.prepare("UPDATE doc_assists SET doc_key = ? WHERE doc_key = ?").run(to, from);
+      db.prepare("UPDATE proposals SET doc_key = ? WHERE doc_key = ?").run(to, from);
+      // A page living at the new key again leaves no redirect of its own behind.
+      db.prepare("DELETE FROM doc_redirects WHERE from_key = ?").run(to);
+      db.prepare(
+        `INSERT INTO doc_redirects(from_key, to_key, moved_by, moved_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(from_key) DO UPDATE SET to_key = excluded.to_key, moved_by = excluded.moved_by, moved_at = excluded.moved_at`,
+      ).run(from, to, actor.name, now);
+      // The page moved twice: the keys it had before point straight at where it is now.
+      db.prepare("UPDATE doc_redirects SET to_key = ? WHERE to_key = ? AND from_key <> ?").run(to, from, from);
+    }
+  }
+
+  /** Project keys put to rest (roadmap 38g), settings key `retiredProjects`. */
+  #retired(): Record<string, { at: string; by: string; note: string | null }> {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'retiredProjects'").get() as Row | undefined;
+    return row ? (JSON.parse(str(row.value)) as Record<string, { at: string; by: string; note: string | null }>) : {};
+  }
+
+  #saveRetired(value: Record<string, { at: string; by: string; note: string | null }>): void {
+    this.db
+      .prepare("INSERT INTO settings(key, value) VALUES ('retiredProjects', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+      .run(JSON.stringify(value));
+  }
+
+  /** A resting key with what is left on it: the lists only hide it once no machine, page or open task is on it. */
+  #retiredView(project: string, entry: { at: string; by: string; note: string | null }): RetiredProject {
+    const one = (sql: string) => num((this.db.prepare(sql).get(project) as Row).n);
+    const left = {
+      machines: this.#machinesWith(project).length,
+      docs: one("SELECT COUNT(*) AS n FROM docs WHERE project = ? AND removed_at IS NULL"),
+      openTasks: one("SELECT COUNT(*) AS n FROM tasks WHERE project = ? AND status != 'done'"),
+    };
+    return { project, ...entry, left, hidden: left.machines === 0 && left.docs === 0 && left.openTasks === 0 };
   }
 
   /** A skill's SKILL.md must name the folder it is loaded from: the key's last part. */
@@ -2583,7 +2719,10 @@ export class SqliteHive implements HiveBackend {
     const out = output as unknown;
     switch (method as Method) {
       case "docs.list":
+      case "docs.removed":
         return (out as DocSummary[]).filter((d) => shown(d.project)) as MethodOutput[M];
+      case "projects.retired":
+        return (out as RetiredProject[]).filter((r) => shown(r.project)) as MethodOutput[M];
       case "skills.list":
         return (out as SkillSummary[]).filter((s) => shown(s.project)) as MethodOutput[M];
       case "memory.search":
@@ -4473,20 +4612,27 @@ export class SqliteHive implements HiveBackend {
         const rows = db
           .prepare(
             `SELECT key, scope, project, title, version, include_in_agents, paths, parent, folder, updated_by, updated_at FROM docs
-             WHERE (?1 IS NULL OR scope = ?1) AND (?2 IS NULL OR scope = 'org' OR project = ?2 OR project IN (SELECT value FROM json_each(?3)))
+             WHERE removed_at IS NULL AND (?1 IS NULL OR scope = ?1) AND (?2 IS NULL OR scope = 'org' OR project = ?2 OR project IN (SELECT value FROM json_each(?3)))
              ORDER BY scope, project, key`,
           )
           .all(scope ?? null, project ?? null, JSON.stringify(this.#systemOwnersOf([project]))) as Row[];
         return rows.map(toSummary);
       },
 
-      "docs.get": ({ key }) => this.#getDoc(key),
+      // A key a page used to have leads to where it is now (roadmap 38g), but only for someone who may see it there.
+      "docs.get": ({ key }, actor) => {
+        const doc = this.#getDoc(key);
+        if (doc) return doc;
+        const moved = this.#redirects().get(key);
+        const at = moved ? this.#getDoc(moved) : null;
+        return at && sees(actor, at.project) ? at : null;
+      },
 
       "skills.list": ({ project }) => {
         const rows = db
           .prepare(
             `SELECT key, scope, project, content, version, updated_by, updated_at FROM docs
-             WHERE key LIKE '%/skills/%' AND (?1 IS NULL OR scope = 'org' OR project = ?1)
+             WHERE key LIKE '%/skills/%' AND removed_at IS NULL AND (?1 IS NULL OR scope = 'org' OR project = ?1)
              ORDER BY scope, project, key`,
           )
           .all(project ?? null) as Row[];
@@ -4531,26 +4677,112 @@ export class SqliteHive implements HiveBackend {
           return this.#writeDoc(input.key, input.content, input, actor.name, actor.source);
         }),
 
-      "docs.move": ({ key, parent }) =>
+      "docs.move": ({ key, parent, to }, actor) =>
         this.#tx(() => {
-          if (!this.#getDoc(key)) throw new HiveError("not_found", `Doc ${key} not found.`, { key: "errors.notFound" });
-          if (parent) this.#checkParent(key, parent);
-          db.prepare("UPDATE docs SET parent = ? WHERE key = ?").run(parent, key);
-          const { content: _content, ...summary } = this.#getDoc(key)!;
-          return summary;
+          const doc = this.#getDoc(key);
+          if (!doc || doc.removedAt) throw new HiveError("not_found", `Doc ${key} not found.`, { key: "errors.notFound" });
+          const moved: Array<{ from: string; to: string }> = [];
+          if (to && to !== key) {
+            const space = parseDocKey(to);
+            this.#assertSystem(space.project);
+            // A mirrored page is written from its repo: moved here, the next mirror would only make it again at the old key.
+            if (doc.mirror) {
+              throw new HiveError("bad_request", `${key} is mirrored from ${doc.mirror.from}: move it in the repo it comes from.`, {
+                key: "errors.docMirrorMove",
+                vars: { key, from: doc.mirror.from },
+              });
+            }
+            // A page does not become a skill (or stop being one) by being given another key: skills are checked on save.
+            if (parseDocKey(key).skill !== space.skill) {
+              throw new HiveError("bad_request", "Skills stay in the skills folder: a page does not become one by moving.", { key: "errors.docMoveSkill", vars: { key, to } });
+            }
+            // The tree goes as one: a page may only sit under a page of its own space, so what is under it moves too.
+            // Removed pages under it come along as well, keeping their removal, so restoring one later still lands right.
+            const under = this.#under(key, () => true).map((k) => ({ from: k, to: SqliteHive.#keyIn(k, space) }));
+            // A rename inside one space leaves the pages under it where they are: their own key does not change.
+            moved.push({ from: key, to }, ...under.filter((p) => p.from !== p.to));
+            this.#rekey(moved, actor, this.#now());
+            // Out of the space it left: a page keeps no parent there.
+            if (space.project !== doc.project && parent === undefined) db.prepare("UPDATE docs SET parent = NULL WHERE key = ?").run(to);
+          }
+          const at = to ?? key;
+          if (parent !== undefined) {
+            if (parent) this.#checkParent(at, parent);
+            db.prepare("UPDATE docs SET parent = ? WHERE key = ?").run(parent, at);
+          }
+          const { content: _content, ...summary } = this.#getDoc(at)!;
+          return { ...summary, moved };
         }),
 
+      "docs.remove": ({ key, note }, actor) =>
+        this.#tx(() => {
+          const doc = this.#getDoc(key);
+          if (!doc || doc.removedAt) throw new HiveError("not_found", `Doc ${key} not found.`, { key: "errors.notFound" });
+          const keys = [key, ...this.#under(key, (p) => !p.removedAt)];
+          // A mirrored page is written from its repo: removing it here would only have the next mirror write it again.
+          for (const k of keys) {
+            const mirror = this.#getDoc(k)?.mirror;
+            if (mirror) {
+              throw new HiveError("bad_request", `${k} is mirrored from ${mirror.from}: remove it in the repo it comes from.`, {
+                key: "errors.docMirrorRemove",
+                vars: { key: k, from: mirror.from },
+              });
+            }
+          }
+          // One number for the whole removal, so a restore can put back exactly what this call took.
+          const now = this.#now();
+          const op = num((db.prepare("SELECT COALESCE(MAX(removed_op), 0) + 1 AS n FROM docs").get() as Row).n);
+          const mark = db.prepare("UPDATE docs SET removed_at = ?, removed_by = ?, removed_note = ?, removed_op = ? WHERE key = ?");
+          for (const k of keys) mark.run(now, actor.name, note ?? null, op, k);
+          return { keys };
+        }),
+
+      "docs.restore": ({ key }) =>
+        this.#tx(() => {
+          const doc = this.#getDoc(key);
+          if (!doc) throw new HiveError("not_found", `Doc ${key} not found.`, { key: "errors.notFound" });
+          if (!doc.removedAt) throw new HiveError("conflict", `${key} is not removed.`, { key: "errors.docNotRemoved", vars: { key } });
+          // Its system may have been removed while the page was gone: it would come back where no one can see it.
+          this.#assertSystem(doc.project);
+          // Under a page that is still removed it would be out of reach: that one comes back first.
+          if (doc.parent && this.#getDoc(doc.parent)?.removedAt) {
+            throw new HiveError("conflict", `${doc.parent} is removed too: restore it first.`, { key: "errors.docParentRemoved", vars: { key, parent: doc.parent } });
+          }
+          const op = num((db.prepare("SELECT removed_op AS n FROM docs WHERE key = ?").get(key) as Row).n);
+          const keys = [key, ...this.#under(key, (p) => p.removedOp === op)];
+          const back = db.prepare("UPDATE docs SET removed_at = NULL, removed_by = NULL, removed_note = NULL, removed_op = NULL WHERE key = ?");
+          for (const k of keys) back.run(k);
+          return { keys };
+        }),
+
+      "docs.removed": ({ project }) =>
+        (
+          db
+            .prepare(
+              `SELECT key, scope, project, title, version, include_in_agents, paths, parent, folder, mirror,
+                      removed_at, removed_by, removed_note, updated_by, updated_at FROM docs
+               WHERE removed_at IS NOT NULL AND (?1 IS NULL OR project = ?1)
+               ORDER BY removed_at DESC, key`,
+            )
+            .all(project ?? null) as Row[]
+        ).map(toSummary),
+
       "docs.links": ({ key }, actor) => {
-        const rows = db.prepare("SELECT key, title, content FROM docs").all() as Row[];
+        const rows = db.prepare("SELECT key, title, content FROM docs WHERE removed_at IS NULL").all() as Row[];
         const titles = new Map(rows.map((r) => [str(r.key), str(r.title)]));
-        const exists = (k: string) => titles.has(k);
+        // A key a page used to have counts as a link that works: it leads to where the page is now (roadmap 38g).
+        const where = this.#redirects();
+        const at = (k: string) => (titles.has(k) ? k : (where.get(k) ?? k));
+        const exists = (k: string) => titles.has(at(k));
         const seen = (k: string) => sees(actor, SqliteHive.#docOwner(k));
         const doc = rows.find((r) => str(r.key) === key);
         const out: DocLinks["out"] = [];
         for (const ref of docLinkRefs(doc ? str(doc.content) : "")) {
           const hit = resolveDocLink(ref.target, key, exists);
-          if (!hit || (hit.exists && !seen(hit.key)) || out.some((o) => o.key === hit.key)) continue;
-          out.push({ target: ref.target, key: hit.key, title: hit.exists ? titles.get(hit.key)! : null, exists: hit.exists });
+          if (!hit) continue;
+          const target = hit.exists ? at(hit.key) : hit.key;
+          if ((hit.exists && !seen(target)) || out.some((o) => o.key === target)) continue;
+          out.push({ target: ref.target, key: target, title: hit.exists ? titles.get(target)! : null, exists: hit.exists });
         }
         const back: DocLinks["back"] = [];
         for (const r of rows) {
@@ -4558,8 +4790,8 @@ export class SqliteHive implements HiveBackend {
           if (from === key || !seen(from)) continue;
           const text = str(r.content);
           if (!text.includes("[[")) continue;
-          if (docLinkRefs(text).some((ref) => resolveDocLink(ref.target, from, exists)?.key === key)) {
-            back.push({ key: from, title: str(r.title), snippet: linkSnippet(text, from, key, exists, (k) => titles.get(k)) });
+          if (docLinkRefs(text).some((ref) => at(resolveDocLink(ref.target, from, exists)?.key ?? "") === key)) {
+            back.push({ key: from, title: str(r.title), snippet: linkSnippet(text, from, key, exists, (k) => titles.get(k), at) });
           }
         }
         // Memory that names the page by its key (current entries only).
@@ -4689,7 +4921,7 @@ export class SqliteHive implements HiveBackend {
       "docs.context": ({ project }) => {
         // As docs.list gives a project's sync: its own, the team's and its systems' (roadmap 19c).
         const docs = (
-          db.prepare("SELECT * FROM docs WHERE project IS NULL OR project = ? OR project IN (SELECT value FROM json_each(?))").all(project, JSON.stringify(this.#systemOwnersOf([project]))) as Row[]
+          db.prepare("SELECT * FROM docs WHERE removed_at IS NULL AND (project IS NULL OR project = ? OR project IN (SELECT value FROM json_each(?)))").all(project, JSON.stringify(this.#systemOwnersOf([project]))) as Row[]
         ).map(toDoc);
         const staleBefore = this.#staleBefore();
         const count = (p: string, status: string, stale?: boolean) =>
@@ -6803,7 +7035,7 @@ export class SqliteHive implements HiveBackend {
       "systems.remove": ({ name }) => {
         // Its docs and memory would be left with no one able to see them: moved or deleted first.
         const owner = systemOwner(name);
-        const docs = num((db.prepare("SELECT COUNT(*) AS n FROM docs WHERE project = ?").get(owner) as Row).n);
+        const docs = num((db.prepare("SELECT COUNT(*) AS n FROM docs WHERE project = ? AND removed_at IS NULL").get(owner) as Row).n);
         const memory = num((db.prepare("SELECT COUNT(*) AS n FROM memory WHERE project = ?").get(owner) as Row).n);
         if (docs || memory) throw new HiveError("conflict", `System ${name} still has ${docs} docs and ${memory} memory entries.`, { key: "errors.systemHasData", vars: { system: name, docs, memory } });
         return { removed: Number(db.prepare("DELETE FROM systems WHERE name = ?").run(name).changes) > 0 };
@@ -6857,6 +7089,28 @@ export class SqliteHive implements HiveBackend {
         return { project, backup: path.basename(snapshot.file), rows, files: { removed, failed } };
       },
 
+      "projects.retired": () =>
+        Object.entries(this.#retired())
+          .map(([project, entry]) => this.#retiredView(project, entry))
+          .sort((a, b) => b.at.localeCompare(a.at)),
+
+      "projects.retire": ({ project, note }, actor) =>
+        this.#tx(() => {
+          const all = this.#retired();
+          // Resting again would only move the date: the first one is the one that counts.
+          const entry = all[project] ?? { at: this.#now(), by: actor.name, note: note ?? null };
+          this.#saveRetired({ ...all, [project]: entry });
+          return this.#retiredView(project, entry);
+        }),
+
+      "projects.resume": ({ project }) =>
+        this.#tx(() => {
+          const all = this.#retired();
+          if (!(project in all)) return { removed: false };
+          delete all[project];
+          this.#saveRetired(all);
+          return { removed: true };
+        }),
       "admin.machines": () => {
         this.#expireCommands();
         return (db.prepare("SELECT * FROM machines ORDER BY last_seen DESC").all() as Row[]).map(

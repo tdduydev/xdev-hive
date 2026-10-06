@@ -96,15 +96,26 @@ export function replaceDocLinks(md: string, to: (target: string, label: string |
   return outsideCode(md, (text) => text.replace(LINK, (_all, target: string, label?: string) => to(target.trim(), label?.trim() || null)));
 }
 
-/** A line of `md` around the first link to `key` from page `from`: what a backlink shows (links as their titles). */
-export function linkSnippet(md: string, from: string, key: string, exists: (key: string) => boolean, title?: (key: string) => string | undefined): string {
+/**
+ * A line of `md` around the first link to `key` from page `from`: what a backlink shows (links as their titles).
+ * `at` maps a resolved key to where that page is now, so a link written before a move still counts (roadmap 38g).
+ */
+export function linkSnippet(
+  md: string,
+  from: string,
+  key: string,
+  exists: (key: string) => boolean,
+  title?: (key: string) => string | undefined,
+  at: (key: string) => string = (k) => k,
+): string {
   for (const line of md.split("\n")) {
     for (const m of line.matchAll(LINK)) {
-      if (resolveDocLink(m[1]!, from, exists)?.key !== key) continue;
+      const hit = resolveDocLink(m[1]!, from, exists);
+      if (!hit || at(hit.key) !== key) continue;
       const plain = line
         .replace(LINK, (_a, t: string, l?: string) => {
-          const hit = resolveDocLink(t, from, exists);
-          return l?.trim() || (hit?.exists ? title?.(hit.key) : undefined) || t.trim();
+          const link = resolveDocLink(t, from, exists);
+          return l?.trim() || (link?.exists ? title?.(at(link.key)) : undefined) || t.trim();
         })
         .replace(/^[#>\-*\s]+/, "")
         .trim();
