@@ -40,8 +40,14 @@ export const vi = {
     denied: "Đã từ chối.",
     badLink: "Liên kết đăng nhập này không hợp lệ. Bấm đăng nhập qua trình duyệt trong app để mở lại.",
   },
+  graph: {
+    layers: "Lớp sơ đồ", system: "Hệ thống", soon: "Sắp có", completed: "đã xong", running: "Đang chạy",
+    hideOldDone: "Ẩn task xong quá 7 ngày", openOnly: "Chỉ task chưa xong", minimap: "Bản đồ nhỏ", mine: "Task của tôi", byAgent: "Lọc theo agent", allAgents: "Mọi agent",
+    fit: "Vừa màn hình", reset: "Xếp lại", list: "Danh sách", pickProject: "Chọn một dự án để xem lớp Task.",
+  },
   nav: {
     today: "Hôm nay",
+    graph: "Sơ đồ",
     overview: "Tổng quan",
     chat: "Chat",
     docs: "Tài liệu",
@@ -73,6 +79,7 @@ export const vi = {
   /** One line under the page title in the top bar. */
   navSub: {
     today: "Việc cần bạn hôm nay",
+    graph: "Task và phụ thuộc theo phạm vi đang chọn",
     overview: "Dự án, tài liệu và memory theo phạm vi đang chọn",
     chat: "Trò chuyện với agent leader của dự án",
     runs: "Run của các máy trong nhóm",
