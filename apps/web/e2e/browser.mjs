@@ -306,6 +306,10 @@ async function main() {
 
   await step("graph", async () => {
     await rpc("tasks.create", { id: "PAY-GRAPH", project: "payment", title: "Kiểm tra sơ đồ", dependsOn: ["PAY-1"] });
+    const heartbeat = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" }, body: JSON.stringify({ method: "machines.heartbeat", input: { machine: "lan-mbp", instance: "e2e00001", version: "0.135.0", projects: ["payment"], acceptsRuns: true, profiles: [{ id: "graph-plan", label: "Graph plan", kind: "codex", enabled: true, installed: true, loggedIn: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, maxConcurrent: 2, sessionPercent: 25, weekPercent: 40 }], runs: [] } }) });
+    const beat = await heartbeat.json();
+    if (beat.error) throw new Error(`graph heartbeat: ${beat.error.message}`);
+    const graphMachine = (await rpc("machines.list")).find((m) => m.machine === "lan-mbp");
     const tab = (current = tabs.admin);
     await tab.click("[data-project-picker-trigger]");
     await tab.click('input[aria-label="Tìm dự án hoặc hệ thống…"]');
@@ -328,7 +332,7 @@ async function main() {
     await tab.shot("graph-task-layer");
     expect(!!(await tab.eval(() => document.querySelector('[data-graph-layer="task"]')?.getAttribute("aria-pressed") === "true")), "Task layer is active");
     const locked = await tab.eval(() => [...document.querySelectorAll('[aria-label="Lớp sơ đồ"] button:disabled')].length);
-    expect(locked === 3, `Agent, SDLC and System layers are shown but locked: ${locked}`);
+    expect(locked === 2, `SDLC and System layers are shown but locked: ${locked}`);
     const label = await tab.eval(() => document.querySelector('[data-graph-task="PAY-GRAPH"]')?.getAttribute("aria-label") ?? "");
     expect(label.includes("PAY-GRAPH") && label.includes("Kiểm tra sơ đồ"), `node label for screen readers: ${label}`);
     // Spec 51, Mobile: no minimap on a phone, and the zoom controls stay big enough to touch.
@@ -341,6 +345,31 @@ async function main() {
     expect(openedHash.startsWith("#/tasks?task=PAY-GRAPH") || openedHash === "#/tasks", `graph click route: ${openedHash}`);
     await tab.waitFor("existing task sheet", () => document.querySelector('[role="dialog"]')?.textContent.includes("Kiểm tra sơ đồ"));
     await tab.key("Escape");
+    await tab.go("graph");
+    await tab.click('[data-graph-layer="agent"]');
+    await tab.waitFor("agent graph profile", (id) => !!document.querySelector(`[data-graph-profile="${id}:graph-plan"]`) && !!document.querySelector('[data-graph-unassigned="PAY-GRAPH"]'), graphMachine.id);
+    const profileText = await tab.text(`[data-graph-profile="${graphMachine.id}:graph-plan"]`);
+    expect(profileText.includes("25%") && profileText.includes("40%") && profileText.includes("chỗ trống"), `profile status and quota: ${profileText}`);
+    if (mobile) {
+      await tab.click('[data-graph-unassigned="PAY-GRAPH"]');
+      await tab.select("[data-graph-agent-select]", JSON.stringify([graphMachine.id, "graph-plan"]));
+      await tab.click("[data-graph-assign]");
+    } else {
+      const dropped = await tab.eval((id) => {
+        const source = document.querySelector('[data-graph-unassigned="PAY-GRAPH"]');
+        const destination = document.querySelector(`[data-graph-profile="${id}:graph-plan"]`);
+        if (!source || !destination) return false;
+        const dataTransfer = new DataTransfer();
+        source.dispatchEvent(new DragEvent("dragstart", { bubbles: true, dataTransfer }));
+        destination.dispatchEvent(new DragEvent("dragover", { bubbles: true, dataTransfer }));
+        destination.dispatchEvent(new DragEvent("drop", { bubbles: true, dataTransfer }));
+        return true;
+      }, graphMachine.id);
+      expect(dropped, "desktop graph drag source and target exist");
+    }
+    await until("graph assigned the task", async () => (await rpc("tasks.list", { project: "payment" })).find((task) => task.id === "PAY-GRAPH")?.agent?.profileId === "graph-plan");
+    await tab.waitFor("assigned task on agent graph", () => !!document.querySelector('[data-graph-agent-task="PAY-GRAPH"]'));
+    await tab.shot("graph-agent-layer");
     await tab.click("[data-project-picker-trigger]");
     await tab.click('[role="option"]', "Tất cả dự án");
     if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');

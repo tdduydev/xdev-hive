@@ -52,6 +52,9 @@ export const vi = {
     layers: "Lớp sơ đồ", system: "Hệ thống", soon: "Sắp có", completed: "đã xong", running: "Đang chạy",
     hideOldDone: "Ẩn task xong quá 7 ngày", openOnly: "Chỉ task chưa xong", minimap: "Bản đồ nhỏ", mine: "Task của tôi", byAgent: "Lọc theo agent", allAgents: "Mọi agent",
     fit: "Vừa màn hình", reset: "Xếp lại", list: "Danh sách", pickProject: "Chọn một dự án để xem lớp Task.",
+    online: "Trực tuyến", offline: "Ngoại tuyến", unassigned: "Chưa gán", dragHint: "Kéo task vào gói để gán agent.", tapHint: "Bấm task để chọn agent.", chooseAgent: "Chọn agent", cancel: "Hủy", assign: "Gán",
+    quota: "5 giờ {session} · Tuần {week}", places: "{count} chỗ trống",
+    state: { ready: "Rảnh", running: "Bận", overLimit: "Hết quota", resting: "Nghỉ", signedOut: "Đăng xuất", off: "Đã tắt", offline: "Ngoại tuyến", noCli: "Thiếu CLI" },
   },
   nav: {
     today: "Hôm nay",

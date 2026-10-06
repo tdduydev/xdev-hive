@@ -17,6 +17,28 @@
 .graph-toolbar :is(button, a, select, input):focus-visible, .graph-task:focus-visible { outline: 2px solid var(--focus-color); outline-offset: 2px; }
 .graph-filters label { display: flex; align-items: center; gap: 5px; white-space: nowrap; font-size: 12px; }
 .graph-canvas { flex: 1; min-height: 300px; border: 1px solid var(--border-default); border-radius: 10px; overflow: hidden; background: var(--bg-sunken); }
+.graph-workspace { display: flex; flex: 1; min-height: 0; gap: 10px; }
+.graph-unassigned { display: flex; flex-direction: column; width: 225px; min-width: 0; padding: 10px; gap: 7px; border: 1px solid var(--border-default); border-radius: 10px; background: var(--bg-surface); }
+.graph-unassigned h2 { margin: 0; font-size: 14px; }
+.graph-unassigned p { margin: 0; color: var(--text-secondary); font-size: 12px; }
+.graph-unassigned-list { display: flex; flex-direction: column; gap: 5px; overflow: auto; }
+.graph-unassigned-list button { display: flex; flex-direction: column; min-height: 44px; padding: 6px; border: 1px solid var(--border-default); border-radius: 6px; background: var(--bg-sunken); color: var(--text-primary); text-align: left; cursor: grab; }
+.graph-unassigned-list span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.graph-machine, .graph-profile { display: flex; width: 100%; height: 100%; flex-direction: column; justify-content: center; gap: 6px; padding: 12px; border: 1px solid var(--border-default); border-radius: 9px; background: var(--bg-surface); box-shadow: var(--shadow-1); font-size: 12px; }
+.graph-machine { font-family: var(--font-mono); font-weight: 700; }
+.graph-machine small { color: var(--text-secondary); font-family: var(--font-body); }
+.graph-profile strong { color: var(--text-strong); font-size: 13px; }
+.graph-profile > span:not(.react-flow__handle) { color: var(--text-secondary); }
+.graph-profile-state { font-weight: 700; }
+.graph-profile:focus-within, .graph-profile:hover { border-color: var(--border-selected); }
+.graph-offline { width: 8px; height: 8px; border-radius: 50%; background: var(--border-strong); }
+.graph-page .graph-edge-agent .react-flow__edge-path { stroke: var(--border-strong); }
+.graph-page .graph-edge-running .react-flow__edge-path { stroke: var(--status-running-fg); stroke-dasharray: 8 5; animation: graph-flow 1.2s linear infinite; }
+@keyframes graph-flow { to { stroke-dashoffset: -13; } }
+.graph-picker { position: fixed; z-index: 40; inset: auto 8px 8px; display: flex; flex-direction: column; gap: 14px; padding: 16px; border: 1px solid var(--border-default); border-radius: 12px; background: var(--bg-surface); box-shadow: var(--shadow-2); }
+.graph-picker label { display: flex; flex-direction: column; gap: 7px; font-size: 14px; }
+.graph-picker select, .graph-picker button { min-height: 44px; padding: 8px; border: 1px solid var(--border-default); border-radius: 7px; background: var(--bg-surface); color: var(--text-primary); font-size: 16px; }
+.graph-picker > div { display: flex; justify-content: flex-end; gap: 8px; }
 
 .graph-page .react-flow__node { border: 0; background: transparent; }
 .graph-page .react-flow__node-group { border: 1px dashed var(--border-strong); border-radius: 10px; background: color-mix(in srgb, var(--bg-surface) 48%, transparent); }
@@ -67,6 +89,10 @@
   .graph-actions { margin-left: 0; }
   .graph-toolbar button, .graph-toolbar a, .graph-toolbar select, .graph-filters label { min-height: 44px; flex-shrink: 0; }
   .graph-canvas { min-height: 0; }
+  .graph-workspace { flex-direction: column; }
+  .graph-unassigned { width: 100%; max-height: 160px; }
+  .graph-unassigned-list { flex-direction: row; }
+  .graph-unassigned-list button { min-width: 160px; }
   .graph-drag-handle { width: 28px; height: 28px; line-height: 28px; }
 }
 @media (prefers-reduced-motion: reduce) {

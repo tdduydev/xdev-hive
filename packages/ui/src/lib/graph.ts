@@ -1,12 +1,50 @@
 import dagre from "@dagrejs/dagre";
-import type { SdlcFlow, Task } from "@xdev-hive/core";
+import type { Machine, MachineRun, SdlcFlow, Task, TaskAgentQueueItem } from "@xdev-hive/core";
 
 export type Point = { x: number; y: number };
 export type GraphNode = { id: string; kind: "task" | "foreign" | "count" | "group"; task?: Task; label: string; project?: string; count?: number; position: Point; width: number; height: number; parentId?: string };
 export type GraphEdge = { id: string; source: string; target: string; complete: boolean };
 export type GraphModel = { nodes: GraphNode[]; edges: GraphEdge[] };
+export type AgentGraphNode = { id: string; kind: "machine" | "profile" | "agentTask"; label: string; position: Point; width: number; height: number; machine?: Machine; profileId?: string | null; task?: Task; run?: MachineRun };
+export type AgentGraphEdge = { id: string; source: string; target: string; running: boolean };
+export type AgentGraphModel = { nodes: AgentGraphNode[]; edges: AgentGraphEdge[] };
 const SIZE = { width: 228, height: 94 };
 const key = (project: string, id: string) => `${project}:${id}`;
+
+/** The queue response supplies hub order; active runs lead each profile and appear only once. */
+export function agentGraph(machines: Machine[], queues: Record<string, TaskAgentQueueItem[]>, tasks: Task[], previous: Record<string, Point> = {}): AgentGraphModel {
+  const nodes: AgentGraphNode[] = [];
+  const edges: AgentGraphEdge[] = [];
+  const known = new Map(tasks.map((task) => [key(task.project, task.id), task]));
+  let top = 24;
+  for (const machine of machines) {
+    const machineId = `machine:${machine.id}`;
+    nodes.push({ id: machineId, kind: "machine", label: machine.machine, machine, position: previous[machineId] ?? { x: 24, y: top }, width: 190, height: 72 });
+    const profiles = [...machine.profiles.map((profile) => ({ id: profile.id, label: profile.label })), { id: null, label: "" }];
+    let row = top;
+    for (const profile of profiles) {
+      const assigned = (queues[machine.id] ?? []).filter(({ task }) => known.has(key(task.project, task.id)) && task.agent?.profileId === profile.id && task.status !== "done");
+      const runs = machine.runs.filter((run) => run.profileId === profile.id && known.has(key(run.project, run.taskId)));
+      if (profile.id === null && !assigned.length && !runs.length) continue;
+      const profileId = `profile:${machine.id}:${profile.id ?? "any"}`;
+      nodes.push({ id: profileId, kind: "profile", label: profile.label, machine, profileId: profile.id, position: previous[profileId] ?? { x: 284, y: row }, width: 236, height: 116 });
+      edges.push({ id: `${machineId}->${profileId}`, source: machineId, target: profileId, running: false });
+      const shown = new Set<string>();
+      const lines = [
+        ...runs.map((run) => ({ task: known.get(key(run.project, run.taskId))!, run })),
+        ...assigned.map(({ task }) => ({ task, run: undefined })),
+      ].filter(({ task }) => { const id = key(task.project, task.id); if (shown.has(id)) return false; shown.add(id); return true; }).slice(0, 3);
+      lines.forEach(({ task, run }, index) => {
+        const id = `agent-task:${machine.id}:${profile.id ?? "any"}:${key(task.project, task.id)}`;
+        nodes.push({ id, kind: "agentTask", label: task.title, task, run, position: previous[id] ?? { x: 590, y: row + index * 104 }, width: 228, height: 94 });
+        edges.push({ id: `${profileId}->${id}`, source: profileId, target: id, running: run?.status === "running" });
+      });
+      row += Math.max(142, lines.length * 104 + 24);
+    }
+    top = Math.max(top + 142, row + 36);
+  }
+  return { nodes, edges };
+}
 
 /** Build before layout so dependencies from another visible service connect to the real task. */
 export function taskGraph(tasks: Task[], flows: SdlcFlow[] = [], hideOldDone = true, now = Date.now()): GraphModel {
