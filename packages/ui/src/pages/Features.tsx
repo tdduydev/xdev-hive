@@ -58,6 +58,8 @@ export function FeaturesPage() {
   const [linkFlow] = useHashParam("flow");
   const [linkDir] = useHashParam("dir");
   const [linkBranch] = useHashParam("branch");
+  // + Mới's "Tính năng mới" (roadmap 49c) lands here with ?newWork=<key>, a new key per opening.
+  const [newWork] = useHashParam("newWork");
   const linked = !!linkProject && (!!linkFlow || linkDir !== null);
   // A link to another project's feature moves the scope there, as the Spec page did.
   useEffect(() => {
@@ -101,7 +103,7 @@ export function FeaturesPage() {
   }
   // Roadmap 20d: a new feature's spec written by an agent, in a project's scope (the run needs one repo).
   const newProject = scope.kind === "project" && allow(scope.project, "taskManage") && allow(scope.project, "runDispatch") ? scope.project : null;
-  return <Board items={items} loaded={!!data.data} error={data.error} shared={shared} manyProjects={manyProjects} newProject={newProject} />;
+  return <Board items={items} loaded={!!data.data} error={data.error} shared={shared} manyProjects={manyProjects} newProject={newProject} newWork={newWork} />;
 }
 
 /** Back to the board, at every width: the board and a feature are two pages of one entry. */
@@ -123,12 +125,16 @@ function useMine() {
   return (item: FeatureItem) => item.waiting.some((g) => mayDecide(allow, g));
 }
 
-function Board({ items, loaded, error, shared, manyProjects, newProject }: { items: FeatureItem[]; loaded: boolean; error: string | null; shared: boolean; manyProjects: boolean; newProject: string | null }) {
+function Board({ items, loaded, error, shared, manyProjects, newProject, newWork }: { items: FeatureItem[]; loaded: boolean; error: string | null; shared: boolean; manyProjects: boolean; newProject: string | null; newWork: string | null }) {
   const t = useT();
   const mine = useMine();
   const [q, setQ] = useState("");
   const [onlyMine, setOnlyMine] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(!!newWork);
+  // The board stays mounted when + Mới opens another feature: its new key opens the form again.
+  useEffect(() => {
+    if (newWork) setCreating(true);
+  }, [newWork]);
   const needle = fold(q.trim());
   const mineCount = items.filter(mine).length;
   const shown = items.filter((x) => (!needle || fold(`${x.title} ${x.project} ${x.flow?.taskId ?? ""} ${x.spec?.dir ?? ""} ${x.spec?.branch ?? ""}`).includes(needle)) && (!onlyMine || mine(x)));
@@ -160,8 +166,9 @@ function Board({ items, loaded, error, shared, manyProjects, newProject }: { ite
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 md:px-6">
         {creating && newProject ? (
-          <div className="max-w-[760px]">
-            <SpecRun project={newProject} step="specify" feature={null} onSent={() => setCreating(false)} />
+          <div className="max-w-[760px]" data-feature-new={newProject}>
+            {/* Keyed by the opening, so a second + Mới starts from an empty draft rather than the previous one's. */}
+            <SpecRun key={`${newWork ?? "draft"}:${newProject}`} project={newProject} step="specify" feature={null} onSent={() => setCreating(false)} />
           </div>
         ) : null}
         <ErrorNote error={error} />

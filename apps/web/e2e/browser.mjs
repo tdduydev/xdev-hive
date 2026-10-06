@@ -705,15 +705,17 @@ async function main() {
     await tab.click('[data-new-work-path="feature"]');
     await tab.select("#new-work-project", "payment");
     await tab.click("[data-new-work-submit]");
-    await tab.waitFor("full Spec form", () => location.hash.startsWith("#/specs") && document.body.innerText.includes("Viết spec"));
+    // Roadmap 49d: on the web the new feature's form is on Tính năng, above its board.
+    await tab.waitFor("full feature form on Tính năng", () => location.hash.startsWith("#/features?") && document.querySelector('[data-feature-new="payment"] textarea') && document.body.innerText.includes("Viết spec"));
     await tab.shot(`${String(n).padStart(2, "0")}-new-work-spec`);
-    await tab.click("textarea");
+    await tab.click('[data-feature-new="payment"] textarea');
     await tab.type("Bản nháp tính năng trước đó");
+    await tab.waitFor("draft typed", () => document.querySelector('[data-feature-new="payment"] textarea')?.value === "Bản nháp tính năng trước đó");
     await tab.click("[data-new-work-open]");
     await tab.click('[data-new-work-path="feature"]');
     await tab.select("#new-work-project", "payment");
     await tab.click("[data-new-work-submit]");
-    await tab.waitFor("fresh feature draft while Specs stays mounted", () => location.hash.startsWith("#/specs") && document.querySelector("textarea")?.value === "");
+    await tab.waitFor("fresh feature draft while Tính năng stays mounted", () => location.hash.startsWith("#/features?") && document.querySelector('[data-feature-new="payment"] textarea')?.value === "");
     await tab.click("[data-new-work-open]");
     await tab.click('[data-new-work-path="quick"]');
     await tab.select("#new-work-project", "payment");
@@ -1035,7 +1037,7 @@ async function main() {
     // Neither folder came from a flow: each sits in the column of its stage.
     await tab.waitFor("both features, in the columns of their stages", () => {
       const column = (dir) => document.querySelector(`[data-feature-card="${dir}"]`)?.closest("[data-feature-column]")?.getAttribute("data-feature-column");
-      return location.hash === "#/features" && column("001-thanh-toan-qr") === "doing" && column("002-hoan-tien") === "spec" && document.querySelector('[data-feature-card="002-hoan-tien"]').textContent.includes("ai/PAY-2");
+      return location.hash === "#/features" && column("001-thanh-toan-qr") === "doing" && column("002-hoan-tien") === "spec" && document.querySelector('[data-feature-card="002-hoan-tien"]').textContent.includes("ai/PAY-SPEC");
     });
   });
 

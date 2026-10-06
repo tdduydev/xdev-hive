@@ -59,7 +59,8 @@ export function NewWorkDialog({ open, onOpenChange }: { open: boolean; onOpenCha
       navigate(`#/chat?thread=new&newWork=${draftKey()}`);
       return;
     }
-    if (path === "feature") { navigate(`#/specs?feature=new&newWork=${draftKey()}`); return; }
+    // Web only (the desktop app keeps New task): on the web Tính năng (roadmap 49d) holds the new feature's form.
+    if (path === "feature") { navigate(`#/features?newWork=${draftKey()}`); return; }
     let id = created;
     if (!id) {
       // Task ids are global, even when the suggested prefix comes from this project's tasks.
