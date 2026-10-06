@@ -10,9 +10,10 @@ import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@xdev-hive/ui/components/ui/sheet";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
-import { useAction, useHive, useQuery } from "#ui/hooks.ts";
+import { useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { buildSkill, LEADER_SKILL, leaderGuide } from "#ui/lib/skills.ts";
+import { canEditChatSettings } from "#ui/lib/permission-controls.ts";
 import { Badge, ErrorNote, Notice } from "./common.tsx";
 
 export function LeaderGuideSheet({
@@ -100,6 +101,7 @@ function GuideForm({
   onSaved: () => void;
 }) {
   const { client } = useHive();
+  const editable = useCan()(project, "contextEdit");
   const t = useT();
   const action = useAction();
   const [description, setDescription] = useState(guide.parts.description);
@@ -110,6 +112,7 @@ function GuideForm({
       className="flex flex-col gap-3"
       onSubmit={(e) => {
         e.preventDefault();
+        if (!editable) return;
         void action.run(async () => {
           await client.call("docs.save", {
             key: skillDocKey(LEADER_SKILL, project),
@@ -137,18 +140,20 @@ function GuideForm({
       {guide.from !== "project" ? <Notice tone="info">{t("chat.guideFromTeam", { project })}</Notice> : null}
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="guide-description">{t("skills.description")}</Label>
-        <Input id="guide-description" maxLength={1024} value={description} onChange={(e) => (setDescription(e.target.value), onEdit())} />
+        <Input id="guide-description" maxLength={1024} value={description} readOnly={!editable} onChange={(e) => (setDescription(e.target.value), onEdit())} />
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="guide-body">{t("chat.guideBody")}</Label>
-        <Textarea id="guide-body" rows={18} className="font-mono text-xs" value={body} onChange={(e) => (setBody(e.target.value), onEdit())} />
+        <Textarea id="guide-body" rows={18} className="font-mono text-xs" value={body} readOnly={!editable} onChange={(e) => (setBody(e.target.value), onEdit())} />
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" type="submit" disabled={action.busy || !description.trim() || !body.trim() || (!changed && guide.from === "project")}>
-          {t("chat.guideSave", { project })}
-        </Button>
-        {saved ? <span className="text-xs text-success">{t("chat.guideSaved", { project })}</span> : null}
-      </div>
+      {editable ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" type="submit" disabled={action.busy || !description.trim() || !body.trim() || (!changed && guide.from === "project")}>
+            {t("chat.guideSave", { project })}
+          </Button>
+          {saved ? <span className="text-xs text-success">{t("chat.guideSaved", { project })}</span> : null}
+        </div>
+      ) : null}
       <ErrorNote error={action.error} />
     </form>
   );
@@ -159,7 +164,8 @@ function GuideForm({
  * arguments; anything else, a chained command included, stays refused. An empty list runs none.
  */
 function CommandsEditor({ project }: { project: string }) {
-  const { client } = useHive();
+  const { client, me } = useHive();
+  const editable = canEditChatSettings(me, project);
   const t = useT();
   const action = useAction();
   const defaults = useQuery(() => client.call("chat.defaults", { project }), [client, project]);
@@ -176,6 +182,7 @@ function CommandsEditor({ project }: { project: string }) {
       className="flex flex-col gap-2 border-t pt-4"
       onSubmit={(e) => {
         e.preventDefault();
+        if (!editable) return;
         void action.run(async () => {
           const next = await client.call("chat.setCommands", { project, commands: lines });
           setText(next.commands.join("\n"));
@@ -193,17 +200,20 @@ function CommandsEditor({ project }: { project: string }) {
         className="font-mono text-xs"
         placeholder={"git status\ngit log"}
         value={value}
+        readOnly={!editable}
         onChange={(e) => (setText(e.target.value), setSaved(false))}
       />
       {bad.length ? <p className="text-xs text-destructive wrap-anywhere">{t("chat.commandsBad", { commands: bad.join(", ") })}</p> : null}
       {tooMany ? <p className="text-xs text-destructive">{t("chat.commandsTooMany", { max: MAX_LEADER_COMMANDS })}</p> : null}
       <Notice tone="warn">{t("chat.commandsWarn")}</Notice>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" type="submit" disabled={action.busy || bad.length > 0 || tooMany}>
-          {t("chat.commandsSave", { project })}
-        </Button>
-        {saved ? <span className="text-xs text-success">{lines.length ? t("chat.commandsSaved", { project }) : t("chat.commandsNone", { project })}</span> : null}
-      </div>
+      {editable ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" type="submit" disabled={action.busy || bad.length > 0 || tooMany}>
+            {t("chat.commandsSave", { project })}
+          </Button>
+          {saved ? <span className="text-xs text-success">{lines.length ? t("chat.commandsSaved", { project }) : t("chat.commandsNone", { project })}</span> : null}
+        </div>
+      ) : null}
       <ErrorNote error={action.error} />
     </form>
   );
@@ -215,7 +225,8 @@ function CommandsEditor({ project }: { project: string }) {
  * after a stop always wait: the leader does not loosen its own limits.
  */
 function AutonomyEditor({ project }: { project: string }) {
-  const { client } = useHive();
+  const { client, me } = useHive();
+  const editable = canEditChatSettings(me, project);
   const t = useT();
   const action = useAction();
   const defaults = useQuery(() => client.call("chat.defaults", { project }), [client, project]);
@@ -233,6 +244,7 @@ function AutonomyEditor({ project }: { project: string }) {
       className="flex flex-col gap-2 border-t pt-4"
       onSubmit={(e) => {
         e.preventDefault();
+        if (!editable) return;
         void action.run(async () => {
           const next = await client.call("chat.setAutonomy", { project, kinds });
           setPicked(next.autoKinds);
@@ -249,7 +261,7 @@ function AutonomyEditor({ project }: { project: string }) {
           const never = CHAT_ACTION_ALWAYS_CONFIRM.includes(k);
           return (
             <label key={k} className="flex items-center gap-2 text-xs" title={never ? t("chat.autoAlways") : undefined}>
-              <Checkbox checked={!never && kinds.includes(k)} disabled={never} onCheckedChange={(v) => toggle(k, v === true)} />
+              <Checkbox checked={!never && kinds.includes(k)} disabled={never || !editable} onCheckedChange={(v) => toggle(k, v === true)} />
               <span className={never ? "text-muted-foreground" : ""}>
                 {/* "task.create" → task_create: a dot in a message key reads as one more level. */}
                 {t(`chat.autoKind.${k.replace(".", "_") as "task_create"}`)}
@@ -259,12 +271,14 @@ function AutonomyEditor({ project }: { project: string }) {
           );
         })}
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" type="submit" disabled={action.busy || picked === undefined}>
-          {t("chat.autoSave", { project })}
-        </Button>
-        {saved ? <span className="text-xs text-success">{kinds.length ? t("chat.autoSaved", { project, count: kinds.length }) : t("chat.autoNone", { project })}</span> : null}
-      </div>
+      {editable ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" type="submit" disabled={action.busy || picked === undefined}>
+            {t("chat.autoSave", { project })}
+          </Button>
+          {saved ? <span className="text-xs text-success">{kinds.length ? t("chat.autoSaved", { project, count: kinds.length }) : t("chat.autoNone", { project })}</span> : null}
+        </div>
+      ) : null}
       <ErrorNote error={action.error} />
     </form>
   );

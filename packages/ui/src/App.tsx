@@ -47,6 +47,7 @@ import { CrashCard, ErrorBoundary, PageBoundary } from "./components/ErrorBounda
 import { HiveContext, useProjectList, useQuery, usePoll } from "./hooks.ts";
 import { activeIntl, useT, type MessageKey } from "./i18n/index.tsx";
 import { resolveHash } from "./lib/route.ts";
+import { contextProjects } from "./lib/permission-controls.ts";
 import { readScope, resolveScope, writeScope, type Scope } from "./lib/scope.ts";
 import { useSystemTheme } from "./lib/theme.ts";
 import { ClientShell, type NavEntry, type NavGroup } from "./shell/ClientShell.tsx";
@@ -332,6 +333,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
       // Vận hành › Tổng quan is the same picture for every project; the members' one stays for the others.
       ids.delete("overview");
     }
+    if (me.mode === "hub" && !client.desktop && contextProjects(me, projects).length) ids.add("context");
     if (hubAdmin && client.users) ids.add("users");
     // Thành viên (roadmap 25): a project lead sets roles in their project; hub admins have Người dùng & quyền too.
     if (me.mode === "hub" && client.members && (hubAdmin || may(me, null, "membersManage") || projects.some((p) => may(me, p, "membersManage")))) ids.add("members");

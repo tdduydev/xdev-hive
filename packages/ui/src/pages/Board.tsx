@@ -25,6 +25,7 @@ import { PausedNotice } from "#ui/components/StopAgents.tsx";
 import { errorMessage, formatTime, hashParam, useAction, useCan, useHive, useProjects, useQuery } from "#ui/hooks.ts";
 import { rich, useT, type TFunction } from "#ui/i18n/index.tsx";
 import { boardProjects, profileState, profileSummary } from "#ui/lib/board.ts";
+import { canCloseTask } from "#ui/lib/permission-controls.ts";
 import { runDuration } from "#ui/lib/runs.ts";
 import { projectScope, scopeProject } from "#ui/lib/scope.ts";
 import { BoardColumns } from "#ui/components/BoardColumns.tsx";
@@ -164,6 +165,10 @@ export function BoardPage({ switcher }: { switcher?: ReactNode }) {
   const move = (task: Task, status: TaskStatus) => {
     const from = task.status;
     if (from === status) return;
+    if (status === "done" && !canCloseTask(me, task.project)) {
+      setMoveError(t("tasks.doneNeedsReview"));
+      return;
+    }
     setMoved((m) => ({ ...m, [task.id]: status }));
     setMoveError(null);
     client.call("tasks.update", { id: task.id, status }).then(
@@ -468,13 +473,16 @@ function Inspector({
     [
       t("board.propStatus"),
       canMove ? (
-        <NativeSelect size="sm" value={task.status} onChange={(e) => onMove(e.target.value as TaskStatus)} aria-label={t("board.propStatus")}>
-          {TASK_STATUSES.map((s) => (
-            <NativeSelectOption key={s} value={s}>
-              {t(`taskStatus.${s}`)}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
+        <div className="flex flex-col gap-1">
+          <NativeSelect size="sm" value={task.status} onChange={(e) => onMove(e.target.value as TaskStatus)} aria-label={t("board.propStatus")}>
+            {TASK_STATUSES.map((s) => (
+              <NativeSelectOption key={s} value={s} disabled={s === "done" && task.status !== "done" && !canCloseTask(me, task.project)}>
+                {t(`taskStatus.${s}`)}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+          {task.status !== "done" && !canCloseTask(me, task.project) ? <span className="text-xs text-muted-foreground">{t("tasks.doneNeedsReview")}</span> : null}
+        </div>
       ) : (
         t(`taskStatus.${task.status}`)
       ),
