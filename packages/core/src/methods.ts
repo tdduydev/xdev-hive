@@ -15,6 +15,7 @@ import type { SkillSummary } from "./skills.ts";
 import { SPEC_DIR, SPEC_FEATURES_MAX, SPEC_FILE_MAX, SPEC_STEPS, type SpecFeature, type SpecFeatureDetail, type SpecTaskPlan } from "./speckit.ts";
 import { toolEntrySchema } from "./tools.ts";
 import { modelCellsSchema, modelProjectSchema, modelTableSchema, type ModelRouterSettings } from "./model-router.ts";
+import { modelLearningSetSchema, type ModelLearningView } from "./model-learning.ts";
 import { TASK_KINDS, TASK_RISKS, TASK_SIZES } from "./task-classify.ts";
 import { FAST_LANE_KINDS, GATE_STATUSES, gateModesSchema, MAX_FIX_ROUNDS, type SdlcFlow, type SdlcFlowTask, type SdlcGateRecord, type SdlcPolicyView } from "./sdlc.ts";
 import {
@@ -951,6 +952,10 @@ export const schemas = {
   }),
   "modelRouter.get": z.object({}),
   "modelRouter.set": z.union([z.object({ project: z.null(), tiers: modelTableSchema, cells: modelCellsSchema }), z.object({ project, setting: modelProjectSchema })]),
+  /** The router's learning table of a project (54d): 30 days of finished tasks per cell, proposals, locks, its log. */
+  "modelLearning.get": z.object({ project }),
+  /** Learning on or off, a cell locked or unlocked, a proposal applied; each part left out stays as it is. */
+  "modelLearning.set": modelLearningSetSchema.extend({ project }),
   "agentPolicy.get": z.object({}),
   /**
    * project null: the hub's default (a hub admin; a field left out is open). A project: its own part, which only
@@ -1196,6 +1201,8 @@ export interface MethodOutput {
   "sdlc.flowTasks": SdlcFlowTask[];
   "modelRouter.get": ModelRouterSettings;
   "modelRouter.set": ModelRouterSettings;
+  "modelLearning.get": ModelLearningView;
+  "modelLearning.set": ModelLearningView;
   "agentPolicy.get": AgentPolicyView;
   "agentPolicy.set": AgentPolicyView;
   "tools.list": ToolView[];
@@ -1375,6 +1382,9 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "sdlc.flowTasks": "viewer",
   "modelRouter.get": "viewer",
   "modelRouter.set": "agent",
+  "modelLearning.get": "viewer",
+  // Also projectSettings on the project, like the project's part of modelRouter.set.
+  "modelLearning.set": "agent",
   "agentPolicy.get": "viewer",
   // Also a hub admin for the hub's default, or projectSettings on the project: a person, never an agent token.
   "agentPolicy.set": "agent",

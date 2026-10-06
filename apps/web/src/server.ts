@@ -85,6 +85,17 @@ const cleanupRound = () => {
 };
 cleanupRound();
 setInterval(cleanupRound, 60_000).unref();
+// The model router's nightly learning (54d): checked every minute, done once a night; a hub down at night catches up.
+const learnRound = () => {
+  try {
+    const changed = hive.learnModels();
+    if (changed) console.log(`[xdev-hive] model learning: ${changed} cells changed`);
+  } catch (err) {
+    console.error(`[xdev-hive] model learning failed: ${(err as Error).message}`);
+  }
+};
+learnRound();
+setInterval(learnRound, 60_000).unref();
 
 const tokens = new TokenStore(hive.db);
 const users = new UserStore(hive.db);

@@ -58,11 +58,24 @@ import { assertNoSecret, findSecret, redactLines } from "./secrets.ts";
 import { isAgentActor, MR_WATCHER, parseSource, principalOf, type WriteSource } from "./source.ts";
 import { SEED_DOCS, SEED_VERSION } from "./seed.ts";
 import { planSpecTasks, specStage, specStepInstructions, specTaskPrefix, specTasks, specTitle, type SpecFeature, type SpecFeatureDetail, type SpecFiles, type SpecStep } from "./speckit.ts";
-import { DEFAULT_MODEL_ROUTER, selectModel, type ModelRouterSettings, type ModelSelection } from "./model-router.ts";
+import { DEFAULT_MODEL_CELLS, DEFAULT_MODEL_ROUTER, selectModel, type ModelProject, type ModelRouterSettings, type ModelSelection, type ModelTier } from "./model-router.ts";
+import {
+  isTrialTask,
+  LEARN_DAYS,
+  LEARNED_KINDS,
+  learnedTasks,
+  learningDue,
+  learningStats,
+  proposeTier,
+  type LearningChange,
+  type LearningRun,
+  type ModelLearningCell,
+  type ModelLearningView,
+} from "./model-learning.ts";
 import { parseVerdict, type Verdict } from "./verdict.ts";
 import { parseParts, partInstructions, reduceInstructions, splitInstructions, type MapPhase } from "./mapreduce.ts";
 import { toolEffective, toolProblem, toolSetupItems } from "./tools.ts";
-import { classifyTaskRule, DEFAULT_TASK_CLASS, parseTaskClass, type TaskClass } from "./task-classify.ts";
+import { classifyTaskRule, DEFAULT_TASK_CLASS, parseTaskClass, TASK_SIZES, type TaskClass, type TaskKind, type TaskSize } from "./task-classify.ts";
 import type {
   Actor,
   AgentsPaused,
@@ -608,6 +621,15 @@ const MIGRATIONS: string[] = [
       UNION SELECT value AS project FROM systems, json_each(systems.projects)
     ) WHERE project IS NOT NULL AND project != '' AND project NOT LIKE 'sys:%';
   `,
+  // The router's learning (54d), per project; no row: learning on, no cell locked. locked: ["feature/m", …], cells the
+  // nightly round leaves alone. The log keeps every change it or a person made to them, the cell's tier before and after.
+  `
+  CREATE TABLE model_learning(project TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1, locked TEXT NOT NULL DEFAULT '[]');
+  CREATE TABLE model_learning_log(
+    id INTEGER PRIMARY KEY, project TEXT NOT NULL, change TEXT NOT NULL, task_kind TEXT, task_size TEXT,
+    from_tier TEXT, to_tier TEXT, tasks INTEGER, clean_rate REAL, changed_by TEXT NOT NULL, at TEXT NOT NULL);
+  CREATE INDEX model_learning_log_project ON model_learning_log(project, id);
+  `,
 ];
 
 /**
@@ -996,6 +1018,16 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
     i.project === null
       ? { target: "hub", detail: "bảng cấp và bảng loại × cỡ" }
       : { target: i.project, detail: i.setting!.enabled ? `chọn model: ${i.setting!.profile}` : "tắt chọn model" },
+  "modelLearning.set": (i: { project: string; enabled?: boolean; lock?: { kind: string; size: string; locked: boolean }; apply?: { kind: string; size: string } }) => ({
+    target: i.project,
+    detail: [
+      i.enabled === undefined ? null : i.enabled ? "bật tự học" : "tắt tự học",
+      i.lock ? `${i.lock.locked ? "khoá" : "mở khoá"} ô ${i.lock.kind}/${i.lock.size}` : null,
+      i.apply ? `áp dụng đề xuất ${i.apply.kind}/${i.apply.size}` : null,
+    ]
+      .filter(Boolean)
+      .join(", "),
+  }),
   "tools.save": (i: { baseVersion?: number }, o: ToolView) => {
     const pkg = o.package ? `${o.package.name}@${o.package.version}` : "—";
     return { target: o.id, detail: `v${o.version} · ${pkg}`, text: { key: i.baseVersion === undefined ? "audit.toolAdded" : "audit.toolSaved", vars: { pkg, version: o.version } } };
@@ -1162,6 +1194,7 @@ const PROJECT_WRITES: Partial<Record<Method, "project" | "task" | "thread" | "do
   "tools.setProject": "project",
   "agentPolicy.set": "project",
   "modelRouter.set": "project",
+  "modelLearning.set": "project",
 };
 
 /** The event a successful call is worth telling people about, if any. */
@@ -1780,6 +1813,7 @@ export class SqliteHive implements HiveBackend {
       case "docs.syncStatus":
       case "machines.setupMissing":
       case "tools.status":
+      case "modelLearning.get":
         return this.#need(actor, i.project, "view", `Project ${i.project}`);
       // Whoever may change what agents read may have the machines write it now.
       case "docs.syncRequest":
@@ -1920,6 +1954,9 @@ export class SqliteHive implements HiveBackend {
           if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Only a hub admin sets the model tiers.", { key: "errors.hubAdminOnly" });
           return;
         }
+        return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
+      // Its cells are the project's part of the router: the same right as setting them by hand.
+      case "modelLearning.set":
         return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
       case "agentPolicy.set":
         // The default binds every project, so only someone over all of them: a hub admin (no per-project grants).
@@ -2969,6 +3006,131 @@ export class SqliteHive implements HiveBackend {
     if (!row) return DEFAULT_MODEL_ROUTER;
     const saved = JSON.parse(str(row.value)) as ModelRouterSettings;
     return { tiers: saved.tiers ?? DEFAULT_MODEL_ROUTER.tiers, cells: saved.cells ?? DEFAULT_MODEL_ROUTER.cells, projects: saved.projects ?? {} };
+  }
+
+  #saveModelRouter(next: ModelRouterSettings): void {
+    this.db.prepare("INSERT INTO settings(key, value) VALUES ('modelRouter', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(next));
+  }
+
+  /** The project's own cell, as a person would set it in its part of modelRouter: the hub's table stays as it is. */
+  #setModelCell(project: string, kind: TaskKind, size: TaskSize, tier: ModelTier): void {
+    const router = this.#modelRouter();
+    const own: ModelProject = router.projects[project] ?? { enabled: true, profile: "balanced", cells: {} };
+    const cells = { ...own.cells, [kind]: { ...own.cells[kind], [size]: tier } };
+    this.#saveModelRouter({ ...router, projects: { ...router.projects, [project]: { ...own, cells } } });
+  }
+
+  #learningOn(project: string): boolean {
+    const row = this.db.prepare("SELECT enabled FROM model_learning WHERE project = ?").get(project) as Row | undefined;
+    return !row || num(row.enabled) === 1;
+  }
+
+  /** "kind/size" of the cells a person keeps by hand. */
+  #lockedCells(project: string): Set<string> {
+    const row = this.db.prepare("SELECT locked FROM model_learning WHERE project = ?").get(project) as Row | undefined;
+    return new Set(row ? (JSON.parse(str(row.locked)) as string[]) : []);
+  }
+
+  #logLearning(project: string, change: LearningChange, by: string, cell?: { kind: TaskKind; size: TaskSize; from?: ModelTier; to?: ModelTier; tasks?: number; cleanRate?: number }): void {
+    this.db
+      .prepare(
+        `INSERT INTO model_learning_log(project, change, task_kind, task_size, from_tier, to_tier, tasks, clean_rate, changed_by, at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(project, change, cell?.kind ?? null, cell?.size ?? null, cell?.from ?? null, cell?.to ?? null, cell?.tasks ?? null, cell?.cleanRate ?? null, by, this.#now());
+  }
+
+  /**
+   * Every run of the project's tasks that are done, finished (their last run) in the last 30 days, classified and not
+   * high risk: a high-risk task starts a tier up, so it says nothing of its cell. Classify runs are not a try of the task.
+   */
+  #learningRuns(project: string): LearningRun[] {
+    const since = new Date(this.#opts.now().getTime() - LEARN_DAYS * 86_400_000).toISOString();
+    const rows = this.db
+      .prepare(
+        `SELECT r.task_id, r.role, r.status, r.verdict, r.tier, r.kind AS plan, r.created_at, json_extract(r.mr, '$.pipeline') AS pipeline,
+           t.kind AS task_kind, t.size AS task_size, c.cost_usd, c.priced, c.input_tokens, c.cache_write_tokens, c.cache_read_tokens, c.output_tokens
+         FROM run_records r
+         JOIN tasks t ON t.id = r.task_id AND t.project = r.project
+         LEFT JOIN run_costs c ON c.machine_id = r.machine_id AND c.run_id = r.run_id
+         WHERE r.project = ?1 AND r.role != 'classify' AND t.status = 'done' AND t.kind IS NOT NULL AND t.size IS NOT NULL
+           AND COALESCE(t.risk, 'normal') != 'high'
+           AND (SELECT MAX(x.finished_at) FROM run_records x WHERE x.project = r.project AND x.task_id = r.task_id) >= ?2`,
+      )
+      .all(project, since) as Row[];
+    return rows
+      .filter((r) => (LEARNED_KINDS as readonly string[]).includes(str(r.task_kind)))
+      .map((r) => {
+        const parts = [r.input_tokens, r.cache_write_tokens, r.cache_read_tokens, r.output_tokens].filter((v) => v != null).map(Number);
+        return {
+          taskId: str(r.task_id),
+          taskKind: str(r.task_kind) as TaskKind,
+          taskSize: str(r.task_size) as TaskSize,
+          role: str(r.role),
+          status: str(r.status),
+          verdict: strOrNull(r.verdict),
+          tier: strOrNull(r.tier),
+          plan: strOrNull(r.plan),
+          pipelineFailed: r.pipeline === "failed",
+          createdAt: str(r.created_at),
+          tokens: parts.length ? parts.reduce((a, b) => a + b, 0) : null,
+          // A run with no price is kept at 0 (priced 0): it is unknown, not free.
+          costUsd: r.cost_usd == null || num(r.priced) !== 1 ? null : Number(r.cost_usd),
+        };
+      });
+  }
+
+  #learningView(project: string): ModelLearningView {
+    const router = this.#modelRouter();
+    const own = router.projects[project];
+    const profile = own?.profile ?? "balanced";
+    const stats = learningStats(learnedTasks(this.#learningRuns(project)));
+    const locked = this.#lockedCells(project);
+    const cells: ModelLearningCell[] = LEARNED_KINDS.flatMap((kind) =>
+      TASK_SIZES.map((size) => {
+        const current = own?.cells[kind]?.[size] ?? router.cells[kind]?.[size] ?? DEFAULT_MODEL_CELLS[kind][size];
+        return { kind, size, current, locked: locked.has(`${kind}/${size}`), proposal: proposeTier(stats, kind, size, current, profile) };
+      }),
+    );
+    const at = this.db.prepare("SELECT value FROM hive_meta WHERE key = 'model_learning_at'").get() as Row | undefined;
+    const log = (this.db.prepare("SELECT * FROM model_learning_log WHERE project = ? ORDER BY id DESC LIMIT 100").all(project) as Row[]).map((r) => ({
+      id: num(r.id),
+      change: str(r.change) as LearningChange,
+      kind: strOrNull(r.task_kind) as TaskKind | null,
+      size: strOrNull(r.task_size) as TaskSize | null,
+      fromTier: strOrNull(r.from_tier) as ModelTier | null,
+      toTier: strOrNull(r.to_tier) as ModelTier | null,
+      tasks: numOrNull(r.tasks),
+      cleanRate: numOrNull(r.clean_rate),
+      by: str(r.changed_by),
+      at: str(r.at),
+    }));
+    return { project, enabled: this.#learningOn(project), routing: own?.enabled !== false, learnedAt: at ? str(at.value) : null, stats, cells, log };
+  }
+
+  /**
+   * The nightly round (54d): every unlocked cell of a project that learns takes its proposal, and the log says so. The
+   * hub calls this every minute; it does the work once a night (learningDue). force: now, whatever the time (tests).
+   * Returns the cells it changed.
+   */
+  learnModels(force = false): number {
+    return this.#tx(() => {
+      const at = this.db.prepare("SELECT value FROM hive_meta WHERE key = 'model_learning_at'").get() as Row | undefined;
+      if (!force && !learningDue(at ? str(at.value) : null, this.#opts.now())) return 0;
+      this.db.prepare("INSERT INTO hive_meta(key, value) VALUES ('model_learning_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(this.#now());
+      let changed = 0;
+      for (const project of this.#projectNames()) {
+        // Routing off: its runs carry no tier, and a cell set now would surprise whoever turns it back on.
+        if (this.#modelRouter().projects[project]?.enabled === false || !this.#learningOn(project) || this.#projectState(project) !== null) continue;
+        for (const cell of this.#learningView(project).cells) {
+          if (cell.locked || !cell.proposal) continue;
+          this.#setModelCell(project, cell.kind, cell.size, cell.proposal.tier);
+          this.#logLearning(project, "auto", "hub", { kind: cell.kind, size: cell.size, from: cell.current, to: cell.proposal.tier, tasks: cell.proposal.tasks, cleanRate: cell.proposal.cleanRate });
+          changed++;
+        }
+      }
+      return changed;
+    });
   }
 
   #sdlcPolicy(): SdlcPolicySettings {
@@ -5050,7 +5212,12 @@ export class SqliteHive implements HiveBackend {
       ).n,
     );
     const router = this.#modelRouter();
-    const selection = selectModel(router, project, { kind: task.kind, size: task.size, risk: task.risk, role, failures });
+    // Only a classified task tries the tier below: the learning counts tasks by their kind and size (54d). The review
+    // row also routes every review run, so it is not one the learning moves.
+    const trial =
+      task.kind !== null && task.size !== null && task.risk !== "high" && LEARNED_KINDS.includes(task.kind) && isTrialTask(project, task.id) &&
+      this.#learningOn(project) && !this.#lockedCells(project).has(`${task.kind}/${task.size}`);
+    const selection = selectModel(router, project, { kind: task.kind, size: task.size, risk: task.risk, role, failures, trial });
     if (!selection || role !== "implement") return selection;
     return { ...selection, review: selectModel(router, project, { kind: task.kind, size: task.size, risk: task.risk, role: "review" }) };
   }
@@ -7650,6 +7817,33 @@ export class SqliteHive implements HiveBackend {
         db.prepare("INSERT INTO settings(key, value) VALUES ('modelRouter', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(next));
         return next;
       },
+      "modelLearning.get": ({ project }) => this.#learningView(project),
+      "modelLearning.set": ({ project, enabled, lock, apply }, actor) =>
+        this.#tx(() => {
+          const row = db.prepare("SELECT enabled, locked FROM model_learning WHERE project = ?").get(project) as Row | undefined;
+          const wasOn = !row || num(row.enabled) === 1;
+          const locked = new Set(row ? (JSON.parse(str(row.locked)) as string[]) : []);
+          const on = enabled ?? wasOn;
+          if (on !== wasOn) this.#logLearning(project, on ? "on" : "off", actor.name);
+          if (lock) {
+            const key = `${lock.kind}/${lock.size}`;
+            if (lock.locked !== locked.has(key)) {
+              if (lock.locked) locked.add(key);
+              else locked.delete(key);
+              this.#logLearning(project, lock.locked ? "lock" : "unlock", actor.name, { kind: lock.kind, size: lock.size });
+            }
+          }
+          db.prepare("INSERT INTO model_learning(project, enabled, locked) VALUES (?, ?, ?) ON CONFLICT(project) DO UPDATE SET enabled = excluded.enabled, locked = excluded.locked")
+            .run(project, on ? 1 : 0, JSON.stringify([...locked].sort()));
+          // A person applies what the table shows now, locked cell or not: the lock only keeps the nightly round off it.
+          if (apply) {
+            const cell = this.#learningView(project).cells.find((c) => c.kind === apply.kind && c.size === apply.size)!;
+            if (!cell.proposal) throw new HiveError("conflict", `No proposal for ${apply.kind}/${apply.size}.`, { key: "errors.noModelProposal", vars: { cell: `${apply.kind}/${apply.size}` } });
+            this.#setModelCell(project, cell.kind, cell.size, cell.proposal.tier);
+            this.#logLearning(project, "apply", actor.name, { kind: cell.kind, size: cell.size, from: cell.current, to: cell.proposal.tier, tasks: cell.proposal.tasks, cleanRate: cell.proposal.cleanRate });
+          }
+          return this.#learningView(project);
+        }),
       "agentPolicy.get": () => agentPolicyView(this.#agentPolicy()),
 
       "agentPolicy.set": (input, actor) => {

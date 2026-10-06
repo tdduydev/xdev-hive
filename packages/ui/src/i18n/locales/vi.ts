@@ -2737,6 +2737,7 @@ export const vi = {
     updateNotReady: "Chưa có bản cập nhật nào tải xong.",
     updateInstall: "Không cài được bản cập nhật: {reason}",
     hubAdminOnly: "Chỉ admin của hub làm được việc này.",
+    noModelProposal: "Ô {cell} chưa có đề xuất: chưa cấp nào xong ≥ 80% trên ít nhất 10 task, hoặc ô đã ở cấp đó.",
     agentsPaused: "Agent của {project} đang tạm ngưng (bởi {by}): chưa xếp run hay chat được cho đến khi có người cho agent chạy lại.",
     selfApprove: "Không tự duyệt được kết quả của chính mình (kể cả agent chạy bằng token của bạn): cần người khác duyệt.",
     budgetExceeded: "Hết trần chi tiêu của {name}: đã dùng {used} trên {limit} từ {from}.",
