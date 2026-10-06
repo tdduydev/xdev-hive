@@ -113,3 +113,9 @@ export function profileRows(profiles: AgentProfileStatus[]): ProfileRows {
   on.sort((a, b) => rank(a) - rank(b));
   return { on, off };
 }
+
+export function machineQuota(profiles: AgentProfileStatus[], now: number) {
+  const available = profiles.filter((p) => p.enabled && p.cliPath !== null && p.login?.loggedIn !== false && !usageStop(p, p.usage) && (!p.cooldownUntil || Date.parse(p.cooldownUntil) <= now) && p.running < p.maxConcurrent);
+  const resets = profiles.filter((p) => p.enabled).flatMap((p) => [p.usage?.session?.resetsAt, p.usage?.week?.resetsAt].filter((at): at is string => !!at && Date.parse(at) > now).map((at) => ({ at, label: p.label }))).sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  return { count: available.length, slots: available.reduce((sum, p) => sum + Math.max(0, p.maxConcurrent - p.running), 0), reset: resets[0]?.at ?? null, label: resets[0]?.label ?? null };
+}

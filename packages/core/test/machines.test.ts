@@ -206,3 +206,14 @@ describe("profiles changed from the web (roadmap 18d)", () => {
     await assert.rejects(hive.call("machines.setProfile", { machineId: machine.name, profileId: "claude-1" } as never, duy), (e: unknown) => e instanceof HiveError && e.code === "bad_request");
   });
 });
+
+describe("quota outlook heartbeat", () => {
+  it("keeps machine estimates and Codex metadata through validation and storage", async () => {
+    const hive = new SqliteHive(":memory:");
+    const outlook = { resetsLeft: 23, fullSessionsLeft: 9.5, weekPerSession: 8, credits: { balance: "0", hasCredits: false, unlimited: false }, planType: "plus", spendControlReached: true };
+    await hive.call("machines.heartbeat", { machine: "duy-mbp", instance: "aaaaaaaa", version: "0.1.0", profiles: [{ id: "codex", label: "Codex", kind: "codex", enabled: true, account: null, installed: true, cooldownUntil: null, runs: 0, rateLimited: 0, ...outlook }] }, mbp);
+    const profile = (await hive.call("machines.list", {}, viewer))[0]!.profiles[0]!;
+    for (const key of Object.keys(outlook) as Array<keyof typeof outlook>) assert.deepEqual(profile[key], outlook[key]);
+    hive.close();
+  });
+});

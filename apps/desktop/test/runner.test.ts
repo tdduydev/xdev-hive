@@ -484,10 +484,11 @@ describe("Codex plan usage from its session files (roadmap 45)", () => {
 
   it("reads the latest codex limits of the newest session file, from its end", () => {
     assert.deepEqual(readCodexUsage(home(), now, "Asia/Saigon"), {
-      session: { percent: 98, resets: "Oct 5 at 4:00pm (Asia/Saigon)" },
-      week: { percent: 81, resets: "Oct 9 at 7:00am (Asia/Saigon)" },
+      session: { percent: 98, resets: "Oct 5 at 4:00pm (Asia/Saigon)", resetsAt: "2026-10-05T09:00:00.000Z" },
+      week: { percent: 81, resets: "Oct 9 at 7:00am (Asia/Saigon)", resetsAt: "2026-10-09T00:00:00.000Z" },
       others: [],
       checkedAt: "2026-10-05T05:00:00.000Z",
+      credits: null, planType: "plus", spendControlReached: null,
     });
   });
 
@@ -536,13 +537,17 @@ describe("Codex plan usage from its session files (roadmap 45)", () => {
     const run = async (_bin: string, args: string[]) => ({ code: 0, output: args[0] === "login" ? "Logged in using ChatGPT" : "" });
     // The fixture's 5-hour window resets at 09:00 UTC: a real clock past it would read 0 instead of 98.
     let clock = now;
-    const logins = new LoginMonitor(() => [p], () => ({ PATH: path.dirname(process.execPath) }), run, () => clock);
+    const observed: PlanUsage[] = [];
+    const logins = new LoginMonitor(() => [p], () => ({ PATH: path.dirname(process.execPath) }), run, () => clock, (_id, usage) => observed.push(usage));
     await logins.refresh();
     assert.equal(usageStop(p, logins.usage(p.id)), "session");
     assert.equal(usageHeadroom(p, logins.usage(p.id)), 0);
     write(h, "2026/10/05", "d", [limits("2026-10-05T06:30:00Z", "codex", window(5, 300, "2026-10-05T11:30:00Z"), window(81, 10080, "2026-10-09T00:00:00Z"))], "2026-10-05T06:30:00Z");
     clock = new Date("2026-10-05T06:31:00Z");
     logins.rereadUsage(p.id);
+    assert.equal(observed.length, 2);
+    assert.equal(observed[1]!.checkedAt, "2026-10-05T06:30:00.000Z");
+    assert.equal(observed[1]!.session!.resetsAt, "2026-10-05T11:30:00.000Z");
     assert.equal(logins.usage(p.id)?.session?.percent, 5);
     assert.equal(usageStop(p, logins.usage(p.id)), null);
     assert.equal(usageHeadroom(p, logins.usage(p.id)), 9);
@@ -891,7 +896,7 @@ describe("Runner", () => {
     const usage = (id: string) => (id === "claude-a" ? high : undefined);
     const { runner } = await setup([profile("claude-a", "claude", 1, "ok"), profile("claude-b", "claude", 10, "ok")], {}, "local", { usage });
     // "6:20pm" names no zone, so the page gets no instant to count down to (roadmap 52).
-    const shown = { ...high, session: { ...high.session!, resetsAt: null }, week: { ...high.week!, resetsAt: null } };
+    const shown = { ...high, resetsLeft: null, weekPerSession: 4000 / 97, fullSessionsLeft: 60 / (4000 / 97), session: { ...high.session!, resetsAt: null }, week: { ...high.week!, resetsAt: null } };
     assert.deepEqual(runner.profileStatuses().find((p) => p.id === "claude-a")!.usage, shown);
     const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
     await runner.settle();

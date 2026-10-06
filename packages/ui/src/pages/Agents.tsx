@@ -45,7 +45,7 @@ import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { useToast } from "#ui/shell/toast.tsx";
 import { errorMessage, formatCount, formatDay, formatTime, formatUsd, useAction, useHive, useQuery } from "#ui/hooks.ts";
 import { activeIntl, rich, useT } from "#ui/i18n/index.tsx";
-import { profileRows, profileState, quotaView, rowFix, usageAsOf, type ProfileState, type QuotaLimit } from "#ui/lib/agents.ts";
+import { machineQuota, profileRows, profileState, quotaView, rowFix, usageAsOf, type ProfileState, type QuotaLimit } from "#ui/lib/agents.ts";
 import { hasNewer } from "#ui/lib/setup.ts";
 
 /** Env var that points each CLI at a separate login, so two subscriptions of one vendor can rotate. */
@@ -161,6 +161,7 @@ export function AgentsPage() {
           </Button>
         }
       />
+      <MachineQuota profiles={profiles.data ?? []} now={now} />
       {settings.data ? <IntakeCard runner={settings.data.runner} hub={settings.data.mode === "hub"} onSaved={settings.reload} /> : null}
       <ProfileTable
         profiles={profiles.data ?? []}
@@ -670,7 +671,10 @@ function ProfileRow({
             <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
           </button>
           <span className="flex min-w-0 flex-col gap-0.5">
-            <span className="truncate text-[13px]/[18px] font-semibold text-fg-strong">{p.label}</span>
+            <span className="flex min-w-0 items-center gap-1 text-[13px]/[18px] font-semibold text-fg-strong">
+              <span className="truncate">{p.label}</span>
+              {p.usage?.planType ? <span className="shrink-0 text-xs/4 font-normal text-fg-muted">· {p.usage.planType}</span> : null}
+            </span>
             <span className="truncate text-xs/4 text-fg-muted" data-cli-version={cli?.id}>
               {cli?.version ? t("agents.cliVersion", { cli: cliName, version: cli.version }) : cliName} · <span className="font-mono">{p.id}</span>
             </span>
@@ -781,6 +785,7 @@ function ProfileRow({
       ) : null}
       {/* Always shown, off rows too (roadmap 52): the counts and the rest are what a person checks the page for. */}
       <div data-quota={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 pb-3 text-xs/4 text-fg-muted md:pl-10">
+        <QuotaOutlookLine p={p} now={now} />
         {quota.rest ? (
           <span data-resting={p.id} className="flex items-center gap-2" title={quota.rest.reason ?? undefined}>
             <Chip kind="warning">{t("agents.quota.restingUntil", { time: clock(quota.rest.until, now) })}</Chip>
@@ -1439,3 +1444,24 @@ function Meter({ which, limit, now, asOf }: { which: "session" | "week"; limit: 
   );
 }
 
+
+function MachineQuota({ profiles, now }: { profiles: AgentProfileStatus[]; now: number }) {
+  const t = useT();
+  const summary = machineQuota(profiles, now);
+  return <p data-machine-quota className="text-xs/5 text-fg-muted">{t("agents.quota.machineQuota", { count: summary.count, slots: summary.slots, reset: summary.reset ? `${summary.label} · ${clock(summary.reset, now)}` : t("agents.quota.unknown") })}</p>;
+}
+
+function QuotaOutlookLine({ p, now }: { p: AgentProfileStatus; now: number }) {
+  const t = useT();
+  const u = p.usage;
+  const resets = u?.resetsLeft ?? null;
+  const full = u?.fullSessionsLeft ?? null;
+  return <div data-quota-outlook={p.id} data-resets-left={resets ?? undefined} data-full-sessions-left={full ?? undefined} className="w-full text-xs/5 wrap-anywhere" title={t("agents.quota.outlookHint")}>
+    <span>{resets === null ? t("agents.quota.outlookUnknown") : t("agents.quota.outlookResets", { count: resets, time: u?.week?.resetsAt ? clock(u.week.resetsAt, now) : "?" })}</span>
+    {" · "}<span>{full === null ? t("agents.quota.outlookInsufficient") : t("agents.quota.outlookSessions", { count: Math.round(Math.min(resets ?? full, full) * 10) / 10 })}</span>
+    {" · "}<span>{u?.credits ? u.credits.unlimited ? t("agents.quota.outlookUnlimited") : t("agents.quota.outlookCredits", { balance: u.credits.balance ?? "?" }) : t("agents.quota.outlookNoCredits")}</span>
+    {full !== null && resets !== null && full < resets ? <span className="block">{t("agents.quota.outlookCeiling")}</span> : null}
+    <details className="mt-1"><summary className="min-h-11 cursor-pointer content-center md:min-h-0">{t("agents.quota.outlookHow")}</summary><p>{t("agents.quota.outlookHint")}</p></details>
+    {u?.spendControlReached ? <span className="block text-warning">{t("agents.quota.outlookSpend")}</span> : null}
+  </div>;
+}

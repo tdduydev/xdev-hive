@@ -760,6 +760,12 @@ const reportedProfiles = (): ReportedProfile[] =>
     sessionResets: p.usage?.session?.resets ?? null,
     weekResets: p.usage?.week?.resets ?? null,
     usageCheckedAt: p.usage?.checkedAt ?? null,
+    resetsLeft: p.usage?.resetsLeft ?? null,
+    fullSessionsLeft: p.usage?.fullSessionsLeft ?? null,
+    weekPerSession: p.usage?.weekPerSession ?? null,
+    credits: p.usage?.credits ?? null,
+    planType: p.usage?.planType ?? null,
+    spendControlReached: p.usage?.spendControlReached ?? null,
     overLimit: usageStop(p, p.usage) !== null,
     cooldownUntil: p.cooldownUntil,
     runs: p.stats.runs,
@@ -1596,7 +1602,9 @@ if (!app.requestSingleInstanceLock()) {
     };
     mergeRequester = new MergeRequester(mrHostRef);
     mrWatcher = new MrWatcher(mrHostRef, new CiFixer({ ...mrHostRef, enqueue: (req, extra) => runner.enqueue(req, extra) }));
-    logins = new LoginMonitor(() => config.agents, agentEnv);
+    logins = new LoginMonitor(() => config.agents, agentEnv, undefined, undefined, (id, usage) => {
+      if (usage.session && usage.week) runner.store.recordUsage(id, { at: usage.checkedAt, session: usage.session.percent, week: usage.week.percent, sessionResetsAt: usage.session.resetsAt ?? null }, new Date());
+    });
     alertWatch = new AlertWatch({
       me: () => me(),
       list: () => fetchAlerts({ url: config.hub.url, token: config.hub.token }, gitlabFetch),
