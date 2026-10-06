@@ -13,6 +13,9 @@ import { scopeProject } from "#ui/lib/scope.ts";
 import { nextTaskId } from "#ui/lib/tasks.ts";
 
 type Path = "ask" | "quick" | "feature";
+// This is only a navigation key; LAN HTTP pages also need to open fresh drafts.
+let draftSequence = 0;
+const draftKey = () => `${Date.now()}-${++draftSequence}`;
 export function NewWorkDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { client, projects, scope, setScope, bump } = useHive();
   const allow = useCan();
@@ -53,10 +56,10 @@ export function NewWorkDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     if (!path || !writable.includes(project)) return;
     if (path === "ask") {
       sessionStorage.setItem("hive-new-work-question", title.trim());
-      navigate("#/chat?thread=new");
+      navigate(`#/chat?thread=new&newWork=${draftKey()}`);
       return;
     }
-    if (path === "feature") { navigate("#/specs?feature=new"); return; }
+    if (path === "feature") { navigate(`#/specs?feature=new&newWork=${draftKey()}`); return; }
     let id = created;
     if (!id) {
       // Task ids are global, even when the suggested prefix comes from this project's tasks.
@@ -82,7 +85,7 @@ export function NewWorkDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   });
   const ready = !!project && writable.includes(project) && (path === "feature" || !!title.trim()) && !action.busy;
   return <Dialog open={open} onOpenChange={(v) => { if (!action.busy) onOpenChange(v); }}>
-    <DialogContent data-new-work className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-[560px] max-md:[&_button]:min-h-11 max-md:[&_input]:min-h-11 max-md:[&_select]:min-h-11 max-md:[&_button[data-slot=dialog-close]]:size-11">
+    <DialogContent data-new-work className="md:max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-[560px] max-md:[&_button]:min-h-11 max-md:[&_button[data-slot=button]]:min-h-11 max-md:[&_input]:min-h-11 max-md:[&_select]:min-h-11 max-md:[&_button[data-slot=dialog-close]]:size-11">
       <DialogHeader><DialogTitle>{t("newWork.title")}</DialogTitle><DialogDescription>{t("newWork.hint")}</DialogDescription></DialogHeader>
       <div className="flex flex-col gap-2">
         {(["ask", "quick", "feature"] as const).filter((kind) => eligible(kind).length).map((kind) => <Button key={kind} data-new-work-path={kind} type="button" variant={path === kind ? "secondary" : "outline"} aria-pressed={path === kind} disabled={!!created || action.busy} className="h-auto min-h-11 flex-col items-start whitespace-normal px-3 py-2 text-left" onClick={() => choose(kind)}>

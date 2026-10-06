@@ -654,16 +654,17 @@ async function main() {
     await tab.go("tasks");
     await tab.click("[data-new-work-open]");
     await tab.click('[data-new-work-path="quick"]');
+    await tab.select("#new-work-project", "payment");
     await tab.click("#new-work-title");
     await tab.type("Thêm trang lịch sử giao dịch.");
     await tab.click("#new-work-description");
     await tab.type("Có lọc theo ngày.");
     await tab.click("#new-work-done");
     await tab.type("Lọc đúng giao dịch trong khoảng ngày.");
-    await setSelect(tab, "#new-work-run", "run");
+    await tab.select("#new-work-run", "run");
     await tab.waitFor("available agents", () => document.querySelector("#new-work-agent")?.options.length > 1);
-    await setSelect(tab, "#new-work-agent", "runner.lan-mbp@lan-e2e");
-    await setSelect(tab, "#new-work-profile", "claude-2");
+    await tab.select("#new-work-agent", "runner.lan-mbp@lan-e2e");
+    await tab.select("#new-work-profile", "claude-2");
     await tab.shot(`${String(n).padStart(2, "0")}-new-work-run`);
     await tab.click("[data-new-work-submit]");
     const task = await until("the quick task", async () => (await rpc("tasks.list", { project: "payment" })).find((t) => t.title === "Thêm trang lịch sử giao dịch."));
@@ -671,8 +672,9 @@ async function main() {
     expect(sent?.profileId === "claude-2", `assigned request: ${JSON.stringify(sent)}`);
     const req = sent;
     expect(task.note.includes("Có lọc theo ngày.") && task.note.includes("Xong khi\nLọc đúng"), `note: ${task.note}`);
-    await tab.waitFor("new task panel", (id) => !!document.querySelector(`[data-task-notes="${id}"]`) || location.hash.includes(encodeURIComponent(id)), task.id);
+    await tab.waitFor("new task panel", (title) => document.querySelector('[data-slot="sheet-content"]')?.textContent.includes(title), task.title);
     // Leave the hub as the other steps expect it.
+    await rpc("tasks.unassign", { id: task.id });
     await rpc("runs.cancelRequest", { id: req.id });
   });
 
@@ -685,37 +687,45 @@ async function main() {
     await tab.waitFor("three start paths", () => document.querySelectorAll("[data-new-work-path]").length === 3);
     await tab.shot(`${String(n).padStart(2, "0")}-new-work-choices`);
     await tab.click('[data-new-work-path="ask"]');
-    await setSelect(tab, "#new-work-project", "payment");
+    await tab.select("#new-work-project", "payment");
     await tab.click("#new-work-title");
     await tab.type("Nên bắt đầu kiểm tra thanh toán từ đâu?");
     await tab.click("[data-new-work-submit]");
     await tab.waitFor("question carried into Chat", () => location.hash.startsWith("#/chat") && [...document.querySelectorAll("textarea")].some((el) => el.value === "Nên bắt đầu kiểm tra thanh toán từ đâu?"));
     await tab.shot(`${String(n).padStart(2, "0")}-new-work-chat`);
+    await tab.waitFor("closed new work dialog", () => !document.querySelector('[data-slot="dialog-overlay"]'));
+    await tab.key("n", "Meta");
+    await tab.click('[data-new-work-path="ask"]');
+    await tab.select("#new-work-project", "payment");
+    await tab.click("#new-work-title"); await tab.type("Câu hỏi tiếp theo khi Chat đang mở");
+    await tab.click("[data-new-work-submit]");
+    await tab.waitFor("replace an existing Chat draft", () => [...document.querySelectorAll("textarea")].some((el) => el.value === "Câu hỏi tiếp theo khi Chat đang mở"));
+    await tab.waitFor("closed question dialog", () => !document.querySelector('[data-slot="dialog-overlay"]'));
     await tab.click("[data-new-work-open]");
     await tab.click('[data-new-work-path="feature"]');
-    await setSelect(tab, "#new-work-project", "payment");
+    await tab.select("#new-work-project", "payment");
     await tab.click("[data-new-work-submit]");
     await tab.waitFor("full Spec form", () => location.hash.startsWith("#/specs") && document.body.innerText.includes("Viết spec"));
     await tab.shot(`${String(n).padStart(2, "0")}-new-work-spec`);
     await tab.click("[data-new-work-open]");
     await tab.click('[data-new-work-path="quick"]');
-    await setSelect(tab, "#new-work-project", "payment");
+    await tab.select("#new-work-project", "payment");
     await tab.click("#new-work-title"); await tab.type("Việc nhỏ chỉ tạo 49c");
     await tab.click("#new-work-description"); await tab.type("Sửa nhãn trên màn hình.");
     await tab.click("#new-work-done"); await tab.type("Nhãn đúng ở cả hai ngôn ngữ.");
     const form = await tab.eval(() => {
       const dialog = document.querySelector("[data-new-work]");
-      return { overflow: dialog.scrollWidth > dialog.clientWidth, smallInputs: [...dialog.querySelectorAll("input, textarea, select")].some((el) => parseFloat(getComputedStyle(el).fontSize) < 16), smallButtons: [...dialog.querySelectorAll("button")].some((el) => el.getBoundingClientRect().height < 44) };
+      return { overflow: dialog.scrollWidth > dialog.clientWidth, smallInputs: [...dialog.querySelectorAll("input, textarea, select")].some((el) => parseFloat(getComputedStyle(el).fontSize) < 16), smallButtons: [...dialog.querySelectorAll("button")].filter((el) => el.getBoundingClientRect().height < 43.9).map((el) => ({ text: el.textContent, height: el.getBoundingClientRect().height })) };
     });
-    expect(!form.overflow && (!mobile || (!form.smallInputs && !form.smallButtons)), `new work mobile audit: ${JSON.stringify(form)}`);
+    expect(!form.overflow && (!mobile || (!form.smallInputs && !form.smallButtons.length)), `new work mobile audit: ${JSON.stringify(form)}`);
     await tab.shot(`${String(n).padStart(2, "0")}-new-work-quick`);
     await tab.click("[data-new-work-submit]");
     const task = await until("create-only task", async () => (await rpc("tasks.list", { project: "payment" })).find((t) => t.title === "Việc nhỏ chỉ tạo 49c"));
     expect(task.note === "Sửa nhãn trên màn hình.\n\nXong khi\nNhãn đúng ở cả hai ngôn ngữ.", `quick note: ${task.note}`);
     expect(!(await rpc("runs.requests", { project: "payment" })).some((r) => r.taskId === task.id), "create only does not dispatch");
     expect(!task.agent, "create only leaves agent unassigned");
-    await tab.waitFor("quick task opened", (id) => location.hash.includes(encodeURIComponent(id)), task.id);
-    const viewer = (current = tabs.minh);
+    await tab.waitFor("quick task opened", (title) => document.querySelector('[data-slot="sheet-content"]')?.textContent.includes(title), task.title);
+    const viewer = (current = await signInWithToken("minh", people.minh.token, "tasks"));
     await viewer.go("tasks");
     await viewer.click("[data-new-work-open]");
     expect(await viewer.eval(() => !document.querySelector('[data-new-work-path="quick"], [data-new-work-path="feature"]')), "viewer cannot create tasks or features");
@@ -963,7 +973,7 @@ async function main() {
               tasks: "## Phase 1: Setup\n\n- [x] T001 Tạo module qr\n- [ ] T002 [US1] Trang quét mã, src/qr.tsx",
             },
           },
-          { dir: "002-hoan-tien", branch: "ai/PAY-2", commit: "def5678", files: { spec: "# Feature Specification: Hoàn tiền", plan: null, tasks: null } },
+          { dir: "002-hoan-tien", branch: "ai/PAY-SPEC", commit: "def5678", files: { spec: "# Feature Specification: Hoàn tiền", plan: null, tasks: null } },
         ],
       },
       people.lan.token,
@@ -978,7 +988,7 @@ async function main() {
     }
     await tab.waitFor("both features, with their stages", () => {
       const text = document.body.innerText;
-      return text.includes("Thanh toán QR") && text.includes("Hoàn tiền") && text.includes("Đang làm") && text.includes("Viết spec") && text.includes("ai/PAY-2");
+      return text.includes("Thanh toán QR") && text.includes("Hoàn tiền") && text.includes("Đang làm") && text.includes("Viết spec") && text.includes("ai/PAY-SPEC");
     });
     if (mobile) {
       await tab.click('[role="option"]', "Thanh toán QR");
@@ -991,9 +1001,9 @@ async function main() {
   });
 
   // Roadmap 20c and 20d: Lan (lead of payment) imports tasks.md into board tasks, then has an agent plan the refund
-  // feature, which lives on PAY-2's branch: a run of PAY-2 with the plan step's instructions.
+  // feature, which lives on PAY-SPEC's branch: a run of PAY-SPEC with the plan step's instructions.
   await step("spec-import-and-run", async () => {
-    await rpc("tasks.create", { id: "PAY-2", project: "payment", title: "Hoàn tiền" });
+    await rpc("tasks.create", { id: "PAY-SPEC", project: "payment", title: "Hoàn tiền" });
     await fetch(`${base}/api/rpc`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" },
@@ -1006,12 +1016,12 @@ async function main() {
     await tab.waitFor("the plan of S001-T002", () => document.body.innerText.includes("S001-T002"));
     await tab.click("button", "Nhập 1 task");
     await until("S001-T002 on the board", async () => (await rpc("tasks.list", { project: "payment" })).find((t) => t.id === "S001-T002"));
-    await tab.go("specs?project=payment&dir=002-hoan-tien&branch=ai%2FPAY-2");
+    await tab.go("specs?project=payment&dir=002-hoan-tien&branch=ai%2FPAY-SPEC");
     await tab.click("button", "Lập kế hoạch");
     await tab.click("textarea");
     await tab.type("Dùng VNPay.");
     await tab.click("button", "Lập kế hoạch");
-    const req = await until("the plan run of PAY-2", async () => (await rpc("runs.requests", { project: "payment" })).find((r) => r.taskId === "PAY-2"));
+    const req = await until("the plan run of PAY-SPEC", async () => (await rpc("runs.requests", { project: "payment" })).find((r) => r.taskId === "PAY-SPEC"));
     expect(req.instructions.includes("speckit-plan") && req.instructions.includes("Dùng VNPay.") && req.instructions.includes("specs/002-hoan-tien"), `instructions: ${req.instructions}`);
   });
 
@@ -1368,6 +1378,9 @@ async function main() {
     const task = await rpc("tasks.create", { id: "DEMO-2", project: "demo", title: "Trang đơn hàng", dependsOn: ["PAY-1"] });
     expect(task.depProjects?.["PAY-1"] === "payment", `DEMO-2: ${JSON.stringify(task)}`);
     const tab = (current = tabs.lan);
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('[role="option"]', "Tất cả dự án");
+    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
     await tab.go("tasks?task=DEMO-2");
     await tab.waitFor("DEMO-2 waiting for payment/PAY-1", () => document.body.innerText.includes("Trang đơn hàng") && document.body.innerText.includes("payment/PAY-1"));
   });

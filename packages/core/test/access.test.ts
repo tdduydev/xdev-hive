@@ -25,6 +25,17 @@ async function hub() {
 const list = (actor: Actor, owner: string | null) => [...(permissionsOn(actor, owner) ?? [])].sort();
 
 describe("permissions per project (roadmap 25)", () => {
+  it("creates the initial brief with taskManage alone and validates it atomically", async () => {
+    const hive = await hub();
+    const manager: Actor = { name: "po", role: "member", access: { projects: { web: { permissions: ["view", "taskManage"] } } } };
+    const task = await hive.call("tasks.create", { id: "brief-1", project: "web", title: "Fix label", note: "Update label.\n\nXong khi\nBoth languages match." }, manager);
+    assert.equal(task.note, "Update label.\n\nXong khi\nBoth languages match.");
+    assert.equal(task.status, "todo");
+    await assert.rejects(hive.call("tasks.create", { id: "brief-2", project: "web", title: "Invalid", note: "hidden\u200btext" }, manager));
+    assert.ok(!(await hive.call("tasks.list", { project: "web" }, manager)).some((t) => t.id === "brief-2"));
+    hive.close();
+  });
+
   it("read old levels as roles, so grants saved before keep what they allowed", () => {
     assert.equal(readGrant("view"), "viewer");
     assert.equal(readGrant("contribute"), "member");

@@ -165,6 +165,7 @@ export const vi = {
     hint: "↑↓ chọn · ↵ mở · Esc đóng",
   },
   newWork: {
+    button: "Mới",
     title: "+ Mới",
     hint: "Chọn lối phù hợp với việc bạn muốn bắt đầu.",
     ask: "Hỏi leader",

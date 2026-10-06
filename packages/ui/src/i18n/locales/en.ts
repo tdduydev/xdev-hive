@@ -163,6 +163,7 @@ export const en: Catalog = {
     hint: "↑↓ select · ↵ open · Esc close",
   },
   newWork: {
+    button: "New",
     title: "+ New",
     hint: "Choose how to start your work.",
     ask: "Ask the leader",
