@@ -1,0 +1,13 @@
+0 verbose cli /Users/admin/.nvm/versions/node/v26.10.0/bin/node /Users/admin/.nvm/versions/node/v26.10.0/bin/npm
+1 info using npm@11.19.1
+2 info using node@v26.10.0
+3 silly config load:file:/Users/admin/.nvm/versions/node/v26.10.0/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/admin/.xdev-hive/worktrees/xdev-hive/R-51b/.npmrc
+5 silly config load:file:/Users/admin/.xdev-hive/worktrees/xdev-hive/R-51b/.tmp-smoke-home/.npmrc
+6 silly config load:file:/Users/admin/.nvm/versions/node/v26.10.0/etc/npmrc
+7 verbose title npm run smoke /Users/admin/.xdev-hive/worktrees/xdev-hive/R-51b/.artifacts/graph-smoke
+8 verbose argv "run" "smoke" "--workspace" "@xdev-hive/desktop" "--" "/Users/admin/.xdev-hive/worktrees/xdev-hive/R-51b/.artifacts/graph-smoke"
+9 verbose logfile logs-max:10 dir:/Users/admin/.xdev-hive/worktrees/xdev-hive/R-51b/.tmp-smoke-home/.npm/_logs/2026-10-06T08_24_01_722Z-
+10 verbose logfile /Users/admin/.xdev-hive/worktrees/xdev-hive/R-51b/.tmp-smoke-home/.npm/_logs/2026-10-06T08_24_01_722Z-debug-0.log
+11 silly logfile done cleaning log files
+12 http fetch GET 200 https://registry.npmjs.org/npm 1107ms

@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { Task } from "@xdev-hive/core";
-import { taskGraph, layoutGraph, type GraphNode } from "#ui/lib/graph.ts";
+import type { Machine, Task } from "@xdev-hive/core";
+import { agentGraph, taskGraph, layoutGraph, type GraphNode } from "#ui/lib/graph.ts";
 const task = (id: string, patch: Partial<Task> = {}): Task => ({ id, project: "shop", title: id, status: "todo", owner: null, leaseUntil: null, note: null, updatedAt: "2026-10-06T00:00:00Z", dependsOn: [], waitingOn: [], agent: null, ...patch });
 const NOW = Date.parse("2026-10-06T12:00:00Z");
+const machine = { id: "runner.m", machine: "m", online: true, acceptsRuns: true, projects: ["shop"], profiles: [{ id: "p", label: "Plan", kind: "codex", enabled: true, installed: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, maxConcurrent: 2 }], runs: [{ runId: "R1", project: "shop", taskId: "B", taskTitle: "B", role: "implement", status: "running", profileId: "p", since: "2026-10-06T10:00:00Z" }] } as Machine;
 // Absolute position: a child of a group is placed relative to it, as React Flow draws it.
 const abs = (nodes: GraphNode[], node: GraphNode) => {
   const parent = node.parentId ? nodes.find((other) => other.id === node.parentId) : undefined;
@@ -76,5 +77,15 @@ describe("task graph", () => {
     assert.deepEqual(next.nodes.find((node) => node.id === "shop:B")?.position, first.nodes.find((node) => node.id === "shop:B")?.position);
     const c = next.nodes.find((node) => node.id === "shop:C")!;
     assert.ok(Number.isFinite(c.position.x) && Number.isFinite(c.position.y));
+  });
+});
+
+describe("agent graph", () => {
+  it("connects machine, profile, active run and the first three queued tasks in hub order", () => {
+    const tasks = ["A", "B", "C", "D", "E"].map((id, index) => task(id, { agent: { machineId: machine.id, machine: machine.machine, profileId: "p", order: index, by: "admin", at: "2026-10-06T00:00:00Z", hold: null } }));
+    const model = agentGraph([machine], { [machine.id]: tasks.map((item) => ({ task: item, waiting: null })) }, tasks);
+    assert.deepEqual(model.nodes.filter((node) => node.kind === "agentTask").map((node) => node.task?.id), ["B", "A", "C"]);
+    assert.equal(model.edges.filter((edge) => edge.running).length, 1);
+    assert.equal(model.edges.filter((edge) => edge.source.startsWith("machine:")).length, 1);
   });
 });
