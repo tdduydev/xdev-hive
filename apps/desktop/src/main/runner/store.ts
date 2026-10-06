@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { AgentKind, AgentRole, PreferKind, AgentRun, BestOf, CiFix, MrState, MrStatus, PipelineStatus, RunStatus, RunTokens } from "@xdev-hive/core";
+import type { AgentKind, AgentRole, PreferKind, AgentRun, BestOf, CiFix, MrState, MrStatus, PipelineStatus, RunCompression, RunStatus, RunTokens } from "@xdev-hive/core";
 import { tr } from "#desktop/main/i18n.ts";
 
 const SCHEMA = `
@@ -50,10 +50,12 @@ const ADDED_COLUMNS: Array<[name: string, ddl: string]> = [
   ["cache_read_tokens", "INTEGER"],
   /** The kind the run prefers (roadmap 24c); null: any. */
   ["prefer_kind", "TEXT"],
+  /** JSON: what RTK left out of the run's Bash output (roadmap 28d); null: no RTK, or no numbers. */
+  ["compression", "TEXT"],
 ];
 
 type Row = Record<string, unknown>;
-const JSON_FIELDS = new Set(["avoidKinds", "excludedProfiles", "ciFix", "bestOf"]);
+const JSON_FIELDS = new Set(["avoidKinds", "excludedProfiles", "ciFix", "bestOf", "compression"]);
 const BOOL_FIELDS = new Set(["reviewAfter", "mrDraft"]);
 const column = (field: string) => field.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 
@@ -94,6 +96,7 @@ function toRun(r: Row): AgentRun {
     cacheWriteTokens: r.cache_write_tokens == null ? null : Number(r.cache_write_tokens),
     cacheReadTokens: r.cache_read_tokens == null ? null : Number(r.cache_read_tokens),
     outputTokens: r.output_tokens == null ? null : Number(r.output_tokens),
+    compression: r.compression == null ? null : (JSON.parse(String(r.compression)) as RunCompression | null),
     mrState: s(r.mr_state) as MrState | null,
     mrDraft: Number(r.mr_draft) === 1,
     mrNote: s(r.mr_note),

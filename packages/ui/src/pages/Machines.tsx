@@ -1,6 +1,6 @@
 import { ResponsiveTable as Table, ResponsiveTableRow as TableRow } from "#ui/components/ResponsiveTable.tsx";
 import { useEffect, useMemo, useState } from "react";
-import { cacheReadShare, type CostSummary, type CostTotals, type QuotaCooldown, type RunTokens } from "@xdev-hive/core";
+import { cacheReadShare, type CompressionCompare, type CompressionSide, type CostSummary, type CostTotals, type QuotaCooldown, type RunTokens } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { TableBody, TableCell, TableHead, TableHeader } from "@xdev-hive/ui/components/ui/table";
 import { Empty, ErrorNote, Notice, Page, PageHeader } from "#ui/components/common.tsx";
@@ -193,6 +193,70 @@ export function Costs({ summary: s }: { summary: CostSummary }) {
             </TableBody>
           </Table>
         </div>
+      </div>
+      {s.compression?.length ? <CompressionTable rows={s.compression} /> : null}
+    </div>
+  );
+}
+
+/**
+ * Runs with RTK beside those without (roadmap 28d), by project and role over 30 days: what the admin reads before
+ * turning RTK on by default. Shown once some run had RTK.
+ */
+function CompressionTable({ rows }: { rows: CompressionCompare[] }) {
+  const t = useT();
+  const n = (v: number | null) => (v === null ? "—" : formatCount(Math.round(v)));
+  const side = (c: CompressionSide) => (
+    <>
+      <TableCell className="text-right tabular-nums">{`${formatCount(c.runs)} (${formatCount(c.failed)})`}</TableCell>
+      <TableCell className="text-right tabular-nums">{n(c.inputAvg)}</TableCell>
+      <TableCell className="text-right tabular-nums">{n(c.outputAvg)}</TableCell>
+      <TableCell className="text-right tabular-nums">{c.cacheShare === null ? "—" : `${Math.round(c.cacheShare * 100)}%`}</TableCell>
+      <TableCell className="text-right tabular-nums">{c.costAvg === null ? "—" : formatUsd(c.costAvg)}</TableCell>
+    </>
+  );
+  const heads = (
+    <>
+      <TableHead className="text-right">{t("machines.rtkRuns")}</TableHead>
+      <TableHead className="text-right">{t("machines.rtkInput")}</TableHead>
+      <TableHead className="text-right">{t("machines.rtkOutput")}</TableHead>
+      <TableHead className="text-right">{t("machines.colCache")}</TableHead>
+      <TableHead className="text-right">{t("machines.rtkCost")}</TableHead>
+    </>
+  );
+  return (
+    <div className="flex flex-col gap-2" data-testid="rtk-compare">
+      <p className="text-sm font-medium">{t("machines.rtkTitle")}</p>
+      <p className="text-xs text-muted-foreground">{t("machines.rtkHint")}</p>
+      <div className="overflow-x-auto rounded-lg border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead rowSpan={2}>{t("machines.colProject")}</TableHead>
+              <TableHead rowSpan={2}>{t("machines.rtkRole")}</TableHead>
+              <TableHead colSpan={5} className="text-center">
+                {t("machines.rtkWith")}
+              </TableHead>
+              <TableHead colSpan={5} className="text-center">
+                {t("machines.rtkWithout")}
+              </TableHead>
+            </TableRow>
+            <TableRow>
+              {heads}
+              {heads}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((r) => (
+              <TableRow key={`${r.project}/${r.role}`}>
+                <TableCell className="font-mono text-xs">{r.project}</TableCell>
+                <TableCell className="text-xs">{r.role}</TableCell>
+                {side(r.rtk)}
+                {side(r.plain)}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
-import { expandPackage, HiveError, packageSpec, sha256Hex, toolArgv, toolHash, toolProblem, type Actor, type HiveEvent, type ToolEntry } from "#core/index.ts";
+import { expandPackage, HiveError, packageSpec, sha256Hex, toolArgv, toolEnv, toolHash, toolProblem, versionIn, versionMatches, type Actor, type HiveEvent, type ToolEntry } from "#core/index.ts";
 import { SqliteHive } from "#core/node.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
@@ -23,8 +23,9 @@ async function refusal(call: Promise<unknown>): Promise<string | undefined> {
 }
 
 /** A valid MCP entry to break one field of at a time. */
+/** An MCP stand-in: "rtk" itself is the 28d migration's hook entry. */
 const rtk = (over: Partial<ToolEntry> = {}): ToolEntry => ({
-  id: "rtk",
+  id: "rtk-mcp",
   name: "RTK",
   description: "Shorter command output for agents.",
   kind: "mcp",
@@ -48,7 +49,8 @@ const rtk = (over: Partial<ToolEntry> = {}): ToolEntry => ({
 describe("tool catalog (roadmap 28a)", () => {
   it("seeds codegraph, superpowers and Spec Kit as machines ran them on 2/10", async () => {
     const hive = new SqliteHive(":memory:");
-    const list = await hive.call("tools.list", {}, admin);
+    // RTK (28d) comes in later, as an entry an admin could have added: not built in.
+    const list = (await hive.call("tools.list", {}, admin)).filter((t) => t.builtin);
     assert.deepEqual(list.map((t) => t.id).sort(), ["codegraph", "speckit", "superpowers"]);
     for (const t of list) {
       assert.equal(t.builtin, true);
@@ -145,7 +147,7 @@ describe("tool catalog (roadmap 28a)", () => {
     assert.equal(changed.version, 2);
     assert.equal(changed.package?.version, "0.5.0");
     assert.equal(await refusal(hive.call("tools.save", { entry: rtk({ name: "stale" }), baseVersion: 1 }, admin)), "errors.toolVersion");
-    assert.equal((await hive.call("tools.list", {}, admin)).find((t) => t.id === "rtk")?.name, "RTK 2");
+    assert.equal((await hive.call("tools.list", {}, admin)).find((t) => t.id === "rtk-mcp")?.name, "RTK 2");
   });
 
   it("lets a seed change but not its id, kind or handler, and never removes it", async () => {
@@ -161,9 +163,9 @@ describe("tool catalog (roadmap 28a)", () => {
     assert.equal(await refusal(hive.call("tools.remove", { id: "codegraph" }, admin)), "errors.toolBuiltin");
 
     await hive.call("tools.save", { entry: rtk() }, admin);
-    await hive.call("tools.setProject", { id: "rtk", project: "app", enabled: true, required: false }, admin);
-    assert.deepEqual(await hive.call("tools.remove", { id: "rtk" }, admin), { removed: true });
-    assert.deepEqual(await hive.call("tools.remove", { id: "rtk" }, admin), { removed: false });
+    await hive.call("tools.setProject", { id: "rtk-mcp", project: "app", enabled: true, required: false }, admin);
+    assert.deepEqual(await hive.call("tools.remove", { id: "rtk-mcp" }, admin), { removed: true });
+    assert.deepEqual(await hive.call("tools.remove", { id: "rtk-mcp" }, admin), { removed: false });
     // Its projects' settings went with it: an entry of the same id starts clean.
     const again = await hive.call("tools.save", { entry: rtk() }, admin);
     assert.deepEqual(again.projects, []);
@@ -212,7 +214,7 @@ describe("tool catalog (roadmap 28a)", () => {
     const hive = new SqliteHive(":memory:");
     for (const project of ["app", "web", "billing"]) await hive.call("tools.setProject", { id: "codegraph", project, enabled: true, required: false }, admin);
     const theirs = await hive.call("tools.list", {}, webViewer);
-    assert.equal(theirs.length, 3, "every entry");
+    assert.equal(theirs.length, 4, "every entry");
     assert.deepEqual(theirs.find((t) => t.id === "codegraph")!.projects.map((p) => p.project), ["web"]);
     assert.deepEqual((await hive.call("tools.list", {}, admin)).find((t) => t.id === "codegraph")!.projects.map((p) => p.project), ["app", "billing", "web"]);
     assert.equal(await refusal(hive.call("tools.list", { project: "billing" }, webViewer)), "errors.notFound");
@@ -224,25 +226,25 @@ describe("tool catalog (roadmap 28a)", () => {
     const events: HiveEvent[] = [];
     const hive = new SqliteHive(":memory:", { onEvent: (e) => events.push(e) });
     await hive.call("tools.save", { entry: rtk() }, admin);
-    await hive.call("tools.setProject", { id: "rtk", project: "app", enabled: false, required: true }, lead);
-    await hive.call("tools.remove", { id: "rtk" }, admin);
+    await hive.call("tools.setProject", { id: "rtk-mcp", project: "app", enabled: false, required: true }, lead);
+    await hive.call("tools.remove", { id: "rtk-mcp" }, admin);
 
     const saved = await hive.call("admin.audit", { action: "tools.save" }, admin);
     assert.equal(saved.length, 1);
-    assert.equal(saved[0]!.target, "rtk");
+    assert.equal(saved[0]!.target, "rtk-mcp");
     assert.match(saved[0]!.detail ?? "", /rtk-mcp@0\.4\.1/);
     const set = await hive.call("admin.audit", { action: "tools.setProject" }, admin);
     assert.equal(set.length, 1);
-    assert.equal(set[0]!.target, "app/rtk");
+    assert.equal(set[0]!.target, "app/rtk-mcp");
     assert.equal(set[0]!.detailKey, "audit.toolProject.offRequired");
     assert.equal((await hive.call("admin.audit", { action: "tools.remove" }, admin)).length, 1);
 
     assert.deepEqual(
       events.filter((e) => e.type === "tool.changed").map((e) => (e.type === "tool.changed" ? [e.tool, e.project, e.by, e.removed] : null)),
       [
-        ["rtk", null, "duy", false],
-        ["rtk", "app", "lan", false],
-        ["rtk", null, "duy", true],
+        ["rtk-mcp", null, "duy", false],
+        ["rtk-mcp", "app", "lan", false],
+        ["rtk-mcp", null, "duy", true],
       ],
     );
   });
@@ -307,20 +309,20 @@ describe("tool catalog on machines (roadmap 28b)", () => {
     await hive.call("tools.save", { entry: rtk({ id: "elsewhere" }) }, admin);
     await hive.call("tools.save", { entry: rtk({ id: "everywhere", enabledByDefault: true }) }, admin);
     await hive.call("tools.save", { entry: rtk({ id: "unused" }) }, admin);
-    await hive.call("tools.setProject", { id: "rtk", project: "app", enabled: true, required: true }, admin);
+    await hive.call("tools.setProject", { id: "rtk-mcp", project: "app", enabled: true, required: true }, admin);
     await hive.call("tools.setProject", { id: "elsewhere", project: "billing", enabled: true, required: false }, admin);
     await hive.call("tools.setProject", { id: "codegraph", project: "web", enabled: false, required: false }, admin);
     // A lead's machine: it says it has billing too, which its token does not see.
     const beat = await hive.call("machines.heartbeat", { machine: "lan-mbp", instance: "a1b2c3d4", projects: ["app", "web", "billing"] }, leadAgent);
     const ids = beat.tools.entries.map((e) => e.id);
-    assert.deepEqual(ids, ["codegraph", "everywhere", "rtk", "speckit", "superpowers"], "set by its projects, on by default, or the app's own");
+    assert.deepEqual(ids, ["codegraph", "everywhere", "rtk-mcp", "speckit", "superpowers"], "set by its projects, on by default, or the app's own");
     assert.deepEqual(Object.keys(beat.tools.projects).sort(), ["app", "web"]);
-    const rtkEntry = beat.tools.entries.find((e) => e.id === "rtk")!;
+    const rtkEntry = beat.tools.entries.find((e) => e.id === "rtk-mcp")!;
     assert.deepEqual(rtkEntry.mcp, { command: "npx", args: ["-y", "{package}"] }, "placeholders left for the machine");
     assert.deepEqual(rtkEntry.secretEnv, ["RTK_API_KEY"], "names only");
     const of = (project: string, id: string) => beat.tools.projects[project]!.find((s) => s.id === id);
-    assert.deepEqual(of("app", "rtk"), { id: "rtk", enabled: true, effective: true, required: true });
-    assert.deepEqual(of("web", "rtk"), { id: "rtk", enabled: null, effective: false, required: false });
+    assert.deepEqual(of("app", "rtk-mcp"), { id: "rtk-mcp", enabled: true, effective: true, required: true });
+    assert.deepEqual(of("web", "rtk-mcp"), { id: "rtk-mcp", enabled: null, effective: false, required: false });
     assert.deepEqual(of("web", "codegraph"), { id: "codegraph", enabled: false, effective: false, required: false });
     assert.deepEqual(of("app", "codegraph"), { id: "codegraph", enabled: null, effective: false, required: false });
     assert.deepEqual(of("app", "everywhere"), { id: "everywhere", enabled: null, effective: true, required: false });
@@ -329,5 +331,56 @@ describe("tool catalog on machines (roadmap 28b)", () => {
     const bare = await hive.call("machines.heartbeat", { machine: "new-mbp", instance: "b1b2c3d4" }, { name: "runner.new@duy", role: "agent" });
     assert.deepEqual(bare.tools.entries.map((e) => e.id), ["codegraph", "everywhere", "speckit", "superpowers"]);
     assert.deepEqual(bare.tools.projects, {});
+  });
+});
+
+describe("RTK and hooks of the catalog (roadmap 28d)", () => {
+  it("comes in with the migration, off by default, not built in, and passes its own checks", async () => {
+    const hive = new SqliteHive(":memory:");
+    const entry = (await hive.call("tools.list", {}, admin)).find((t) => t.id === "rtk")!;
+    assert.equal(entry.kind, "hook");
+    assert.equal(entry.builtin, false);
+    assert.equal(entry.enabledByDefault, false);
+    assert.equal(entry.handler, null);
+    assert.deepEqual(entry.package, { registry: "brew", name: "rtk", version: "0.50.0" });
+    assert.deepEqual(entry.hooks, [{ event: "PreToolUse", matcher: "Bash", command: ["rtk", "hook", "claude"] }]);
+    assert.deepEqual(entry.agents, ["claude"]);
+    assert.equal(entry.env.RTK_DB_PATH, "{runDir}/rtk.db");
+    assert.equal(toolProblem(entry, false), null);
+    assert.deepEqual(toolArgv(entry.install!, entry), ["brew", "install", "rtk"]);
+  });
+
+  it("takes {runDir} only in a hook entry's env values", () => {
+    const hook = rtk({ kind: "hook", mcp: null, secretEnv: [], hooks: [{ event: "PreToolUse", matcher: "Bash", command: ["rtk", "hook", "claude"] }], env: { RTK_DB_PATH: "{runDir}/rtk.db" } });
+    assert.equal(toolProblem(hook, false), null);
+    const key = (e: ToolEntry) => {
+      const p = toolProblem(e, false);
+      return p && [p.key, p.vars?.field, p.vars?.placeholder];
+    };
+    assert.deepEqual(key(rtk({ env: { RTK_DB_PATH: "{runDir}/rtk.db" } })), ["errors.toolRunDir", "env", "{runDir}"], "an MCP entry has no run folder of its own");
+    assert.deepEqual(key({ ...hook, hooks: [{ event: "PreToolUse", matcher: "Bash", command: ["rtk", "--db", "{runDir}/x"] }] }), ["errors.toolRunDir", "hooks.0", "{runDir}"]);
+    assert.deepEqual(key({ ...hook, check: ["rtk", "{runDir}"] }), ["errors.toolRunDir", "check", "{runDir}"]);
+    assert.deepEqual(key({ ...hook, hooks: [{ event: "PreToolUse", matcher: "{runDir}", command: ["rtk"] }] }), ["errors.toolRunDir", "hooks.0", "{runDir}"]);
+    assert.equal(key({ ...hook, description: "keeps its history in {runDir}" }), null, "words a person reads may name it");
+  });
+
+  it("fills {runDir} in env, and leaves out what needs it when there is no run", () => {
+    const e = { env: { A: "1", RTK_DB_PATH: "{runDir}/rtk.db" } };
+    assert.deepEqual(toolEnv(e, "/data/runs/R-1"), { A: "1", RTK_DB_PATH: "/data/runs/R-1/rtk.db" });
+    assert.deepEqual(toolEnv(e), { A: "1" });
+  });
+
+  it("reads the version a check printed and matches it with the pin, v or not", () => {
+    assert.equal(versionIn("rtk 0.50.0"), "0.50.0");
+    assert.equal(versionIn("rtk v0.50.0 (1d87b8e)"), "0.50.0");
+    assert.equal(versionIn("tool 2.0.0-rc.1\n"), "2.0.0-rc.1");
+    assert.equal(versionIn("no version here"), null);
+    assert.equal(versionMatches("rtk 0.50.0", "0.50.0"), true);
+    assert.equal(versionMatches("rtk 0.50.0", "v0.50.0"), true);
+    assert.equal(versionMatches("rtk v0.50.0", "0.50.0"), true);
+    assert.equal(versionMatches("rtk 0.51.0", "0.50.0"), false);
+    assert.equal(versionMatches("rtk 0.50.01", "0.50.0"), false);
+    assert.equal(versionMatches("rtk 10.50.0", "0.50.0"), false);
+    assert.equal(versionMatches("", "0.50.0"), false);
   });
 });

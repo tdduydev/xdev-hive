@@ -87,3 +87,79 @@ describe("run costs on the hub", () => {
     await assert.rejects(beat(hive, mbp, [cost("../etc", new Date().toISOString())]));
   });
 });
+
+describe("runs with RTK and without (roadmap 28d)", () => {
+  const record = (runId: string, extra: Record<string, unknown> = {}) => ({
+    runId,
+    project: "app",
+    taskId: "T-1",
+    taskTitle: "Login page",
+    role: "implement" as const,
+    status: "succeeded" as const,
+    profileId: "claude-1",
+    createdAt: "2026-09-27T08:00:00.000Z",
+    finishedAt: "2026-09-27T09:00:00.000Z",
+    ...extra,
+  });
+  const gain = { tool: "rtk", commands: 42, input: 50_000, output: 8_000, saved: 42_000 };
+
+  it("keeps a run's compression, and what it had when a push leaves it out", async () => {
+    const hive = new SqliteHive(":memory:");
+    await hive.call("runs.push", { machine: "duy-mbp", runs: [record("R-1", { compression: gain }), record("R-2")] }, mbp);
+    const get = async (id: string) => (await hive.call("runs.list", {}, admin)).find((r) => r.runId === id)!;
+    assert.deepEqual((await get("R-1")).compression, gain);
+    assert.equal((await get("R-2")).compression, null);
+    await hive.call("runs.push", { machine: "duy-mbp", runs: [record("R-1", { summary: "done" })] }, mbp);
+    assert.deepEqual((await get("R-1")).compression, gain, "an older app's push keeps it");
+    await hive.call("runs.push", { machine: "duy-mbp", runs: [record("R-1", { compression: null })] }, mbp);
+    assert.equal((await get("R-1")).compression, null);
+  });
+
+  it("compares priced runs of 30 days by project and role, two columns", async () => {
+    const c = clock();
+    const hive = new SqliteHive(":memory:", { now: c.now });
+    await hive.call(
+      "runs.push",
+      {
+        machine: "duy-mbp",
+        runs: [
+          record("R-1", { compression: gain }),
+          record("R-2", { compression: gain, status: "failed" }),
+          record("R-3"),
+          record("R-4", { role: "review" }),
+          record("R-5"),
+          record("R-6", { compression: gain }),
+          record("R-7", { compression: gain, project: "web" }),
+        ],
+      },
+      mbp,
+    );
+    await beat(hive, mbp, [
+      cost("R-1", c.ago(1), { inputTokens: 100, cacheWriteTokens: 100, cacheReadTokens: 800, outputTokens: 50, costUsd: 0.5 }),
+      cost("R-2", c.ago(2), { inputTokens: 300, cacheWriteTokens: 100, cacheReadTokens: 600, outputTokens: 150, costUsd: 1.5 }),
+      cost("R-3", c.ago(1), { inputTokens: 1000, cacheWriteTokens: 500, cacheReadTokens: 2500, outputTokens: 300, costUsd: 3 }),
+      cost("R-4", c.ago(1), { inputTokens: 10, outputTokens: 10 }),
+      // Codex (no price) never counts as a run without RTK; one older than 30 days neither.
+      cost("R-5", c.ago(1), { costUsd: null, inputTokens: 9999, outputTokens: 9999 }),
+      cost("R-6", c.ago(40), { inputTokens: 9999, outputTokens: 9999 }),
+      cost("R-7", c.ago(1), { project: "web" }),
+    ]);
+    const s = await hive.call("costs.summary", {}, admin);
+    assert.deepEqual(s.compression, [
+      {
+        project: "app",
+        role: "implement",
+        rtk: { runs: 2, failed: 1, inputAvg: 1000, outputAvg: 100, cacheShare: 0.7, costAvg: 1 },
+        plain: { runs: 1, failed: 0, inputAvg: 4000, outputAvg: 300, cacheShare: 0.625, costAvg: 3 },
+      },
+      {
+        project: "web",
+        role: "implement",
+        rtk: { runs: 1, failed: 0, inputAvg: 1000, outputAvg: 100, cacheShare: null, costAvg: 1 },
+        plain: { runs: 0, failed: 0, inputAvg: null, outputAvg: null, cacheShare: null, costAvg: null },
+      },
+    ], "a project and role with no RTK run is left out");
+    const lead: Actor = { name: "lan", role: "member", access: { projects: { web: "lead" } } };
+    assert.deepEqual((await hive.call("costs.summary", {}, lead)).compression?.map((r) => r.project), ["web"]);
+  });
+});

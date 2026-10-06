@@ -2297,8 +2297,9 @@ describe("runner: agent policy (roadmap 27a)", () => {
 
 describe("runner: the hub's tool catalog (roadmap 28b)", () => {
   /** An MCP tool for Claude and Codex, not on anywhere until a test turns it on. */
+  /** An MCP stand-in: "rtk" itself is the 28d migration's hook entry. */
   const rtk = (over: Partial<ToolEntry> = {}): ToolEntry => ({
-    id: "rtk",
+    id: "rtk-mcp",
     name: "RTK",
     description: "",
     kind: "mcp",
@@ -2416,21 +2417,21 @@ describe("runner: the hub's tool catalog (roadmap 28b)", () => {
     const entry = rtk({ secretEnv: ["RTK_API_KEY"] });
     const catalog = async (hive: SqliteHive) => {
       await hive.call("tools.save", { entry }, admin);
-      await turnOn(hive, "rtk");
+      await turnOn(hive, "rtk-mcp");
     };
-    const trust = () => ({ rtk: toolHash(entry) });
+    const trust = () => ({ "rtk-mcp": toolHash(entry) });
     const without = await onHub(catalog, [profile("claude-a", "claude", 10, "ok")], { toolTrust: trust });
     const missing = await runOnce(without);
-    assert.equal(servers(without.calls()[0]!.args).rtk, undefined);
-    assert.match(missing.log, /^# tool rtk: thiếu RTK_API_KEY$/m);
+    assert.equal(servers(without.calls()[0]!.args)["rtk-mcp"], undefined);
+    assert.match(missing.log, /^# tool rtk-mcp: thiếu RTK_API_KEY$/m);
 
     const value = "value-of-the-key-0042";
     const withKey = await onHub(catalog, [profile("claude-a", "claude", 10, "ok", { env: { FAKE_MODE: "ok", RTK_API_KEY: value } })], { toolTrust: trust });
     const ran = await runOnce(withKey);
     const { args } = withKey.calls()[0]!;
     // Claude Code fills the reference in from the run's environment, where the profile's variables are.
-    assert.deepEqual(servers(args).rtk, { type: "stdio", command: "npx", args: ["-y", "rtk-mcp@0.4.1"], env: { RTK_TELEMETRY: "0", RTK_API_KEY: "${RTK_API_KEY}" } });
-    assert.ok(settingsOf(args).permissions.allow.includes("mcp__rtk"));
+    assert.deepEqual(servers(args)["rtk-mcp"], { type: "stdio", command: "npx", args: ["-y", "rtk-mcp@0.4.1"], env: { RTK_TELEMETRY: "0", RTK_API_KEY: "${RTK_API_KEY}" } });
+    assert.ok(settingsOf(args).permissions.allow.includes("mcp__rtk-mcp"));
     assert.equal(args.join(" ").includes(value), false, "not on the command line");
     assert.equal(ran.log.includes(value), false, "not in the run log");
   });
@@ -2440,26 +2441,145 @@ describe("runner: the hub's tool catalog (roadmap 28b)", () => {
     const s = await onHub(
       async (hive) => {
         await hive.call("tools.save", { entry }, admin);
-        await turnOn(hive, "rtk");
+        await turnOn(hive, "rtk-mcp");
         await turnOn(hive, "codegraph");
       },
       [profile("codex-a", "codex", 10, "ok", { bin: fakeCodex(), args: ["exec", "--sandbox", "workspace-write", "{prompt}"] })],
-      { toolTrust: () => ({ rtk: toolHash(entry) }) },
+      { toolTrust: () => ({ "rtk-mcp": toolHash(entry) }) },
     );
     const { run } = await runOnce(s);
     assert.equal(run.status, "succeeded", run.error ?? "");
     const { args } = s.calls()[0]!;
     for (const override of [
-      'mcp_servers.rtk.command="npx"',
-      'mcp_servers.rtk.args=["-y","rtk-mcp@0.4.1"]',
-      'mcp_servers.rtk.env={RTK_TELEMETRY="0"}',
-      'mcp_servers.rtk.default_tools_approval_mode="approve"',
+      'mcp_servers.rtk-mcp.command="npx"',
+      'mcp_servers.rtk-mcp.args=["-y","rtk-mcp@0.4.1"]',
+      'mcp_servers.rtk-mcp.env={RTK_TELEMETRY="0"}',
+      'mcp_servers.rtk-mcp.default_tools_approval_mode="approve"',
     ]) {
       assert.equal(args[args.indexOf(override) - 1], "-c", override);
     }
     assert.equal(args.some((a) => a.startsWith("mcp_servers.codegraph.")), false, "codegraph's entry is for Claude only");
     // Its index is built all the same, for a Codex whose own config.toml starts codegraph (as before the catalog).
     assert.deepEqual(s.npx.calls(), [`-y ${CODEGRAPH_MCP.args[1]} init ${run.worktree} telemetry=0`]);
+  });
+
+  // ── catalog hooks (roadmap 28d): RTK as the migration put it, a fake rtk on the PATH ──
+  const fakeRtkIn = (dir: string, version = "0.50.0", gain = true) => {
+    const log = path.join(dir, "rtk.log");
+    const out = gain ? `echo '{"summary":{"total_commands":42,"total_input":50000,"total_output":8000,"total_saved":42000}}'` : "exit 1";
+    writeFileSync(path.join(dir, "rtk"), `#!/bin/sh\necho "$*|$RTK_DB_PATH" >> "${log}"\ncase "$1" in\n  --version) echo "rtk ${version}";;\n  gain) ${out};;\nesac\n`, { mode: 0o755 });
+    return () => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n") : []);
+  };
+  /** The hub's RTK entry turned on for demo, and allowed by this machine's user as it is. */
+  const withRtk = async (profiles: AgentProfile[], over: { trusted?: boolean } = {}) => {
+    let hash = "";
+    const s = await onHub(
+      async (hive) => {
+        await turnOn(hive, "rtk");
+        hash = toolHash((await hive.call("tools.list", {}, admin)).find((t) => t.id === "rtk")!);
+      },
+      profiles,
+      { toolTrust: (): Record<string, string> => (over.trusted === false ? {} : { rtk: hash }) },
+    );
+    return s;
+  };
+  const RTK_LINE = "Bash commands run through RTK, which prints a compact output.";
+  /** A 24b account folder, so the run reads no settings.json of the machine running the tests. */
+  const account = (settings?: unknown) => {
+    const dir = tmp("account");
+    if (settings !== undefined) writeFileSync(path.join(dir, "settings.json"), typeof settings === "string" ? settings : JSON.stringify(settings));
+    return dir;
+  };
+  const full = (env: Record<string, string> = {}) =>
+    profile("claude-a", "claude", 10, "ok", { args: [FAKE, "{prompt}", "--permission-mode", "bypassPermissions"], env: { FAKE_MODE: "ok", ...env } });
+
+  it("RTK at autonomy full: no setting source, its hook by full path, its env, the prompt line and its numbers", async () => {
+    const secret = "user-env-value-0042";
+    const dir = account({
+      permissions: { allow: ["Bash(npm test:*)"], deny: ["Read(./.env)"] },
+      env: { USER_FLAG: secret },
+      model: "opus",
+      hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "touch /tmp/user-hook-ran" }] }] },
+      statusLine: { type: "command", command: "x" },
+      enabledPlugins: { "other@market": true },
+    });
+    const s = await withRtk([full({ CLAUDE_CONFIG_DIR: dir })]);
+    const rtkCalls = fakeRtkIn(s.npx.bin);
+    const { run, log } = await runOnce(s);
+    assert.equal(run.status, "succeeded", run.error ?? "");
+    const { args, prompt } = s.calls()[0]!;
+    assert.equal(args[args.indexOf("--setting-sources") + 1], "");
+    const settings = JSON.parse(args[args.indexOf("--settings") + 1]!);
+    assert.deepEqual(settings, {
+      model: "opus",
+      permissions: { allow: ["Bash(npm test:*)", "mcp__xdev-hive"], deny: ["Read(./.env)"] },
+      hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: `${path.join(s.npx.bin, "rtk")} hook claude`, timeout: 10 }] }] },
+    });
+    assert.ok(prompt.includes(RTK_LINE), "the agent is told how to see a full output");
+    assert.match(log, /^# rtk: hook PreToolUse Bash$/m);
+    assert.match(log, /^# rtk: 42 commands · ~42000 tokens left out \(RTK's estimate\)$/m);
+    assert.equal(args.join(" ").includes(secret) || log.includes(secret), false, "the user's env is never on the command line or in the log");
+    assert.deepEqual(run.compression, { tool: "rtk", commands: 42, input: 50000, output: 8000, saved: 42000 });
+    // The check, then the numbers of this run's own history, whose folder goes with the run.
+    const runDir = path.join(s.dataDir, "runs", run.id);
+    assert.deepEqual(rtkCalls(), ["--version|", `gain --format json|${runDir}/rtk.db`]);
+    assert.equal(existsSync(runDir), false);
+    // The hub gets them with the run.
+    await s.runner.pushRuns();
+    assert.deepEqual((await s.hive.call("runs.list", {}, admin)).find((r) => r.runId === run.id)!.compression, run.compression);
+  });
+
+  it("RTK whose numbers cannot be read: the run goes on, compression null", async () => {
+    const s = await withRtk([full({ CLAUDE_CONFIG_DIR: account() })]);
+    fakeRtkIn(s.npx.bin, "0.50.0", false);
+    const { run, log } = await runOnce(s);
+    assert.equal(run.status, "succeeded", run.error ?? "");
+    assert.equal(run.compression, null);
+    assert.doesNotMatch(log, /commands · ~/);
+  });
+
+  it("RTK left out, flags as before: autonomy below full, another version, not allowed, a settings file that does not parse", async () => {
+    const before = (args: string[]) => {
+      assert.equal(args[args.indexOf("--setting-sources") + 1], "user");
+      assert.deepEqual(settingsOf(args), { disableAllHooks: true, permissions: { allow: ["mcp__xdev-hive"] } });
+    };
+    const edit = await withRtk([profile("claude-a", "claude", 10, "ok", { env: { FAKE_MODE: "ok", CLAUDE_CONFIG_DIR: account() } })]);
+    fakeRtkIn(edit.npx.bin);
+    const a = await runOnce(edit);
+    before(edit.calls()[0]!.args);
+    assert.match(a.log, /^# tool rtk: chỉ chạy với autonomy full$/m);
+    assert.equal(edit.calls()[0]!.prompt.includes(RTK_LINE), false);
+
+    const newer = await withRtk([full({ CLAUDE_CONFIG_DIR: account() })]);
+    fakeRtkIn(newer.npx.bin, "0.51.0");
+    const b = await runOnce(newer);
+    before(newer.calls()[0]!.args);
+    assert.match(b.log, /^# tool rtk: máy có 0\.51\.0, danh mục duyệt 0\.50\.0, run không dùng hook$/m);
+
+    const untrusted = await withRtk([full({ CLAUDE_CONFIG_DIR: account() })], { trusted: false });
+    const calls = fakeRtkIn(untrusted.npx.bin);
+    const c = await runOnce(untrusted);
+    before(untrusted.calls()[0]!.args);
+    assert.match(c.log, /^# tool rtk: chờ người dùng máy cho phép \(Cài đặt máy\)$/m);
+    assert.deepEqual(calls(), [], "nothing of it runs, not even its check");
+
+    const broken = await withRtk([full({ CLAUDE_CONFIG_DIR: account("{ broken") })]);
+    fakeRtkIn(broken.npx.bin);
+    const d = await runOnce(broken);
+    assert.equal(d.run.status, "succeeded", d.run.error ?? "");
+    const args = broken.calls()[0]!.args;
+    assert.equal(args[args.indexOf("--setting-sources") + 1], "", "the hook still runs");
+    assert.deepEqual(settingsOf(args).permissions, { allow: ["mcp__xdev-hive"] });
+    assert.match(d.log, /^# không đọc được .*settings\.json \(.+\): run không chép gì từ cài đặt Claude Code của người dùng$/m);
+  });
+
+  it("RTK is never a Codex run's", async () => {
+    const s = await withRtk([profile("codex-a", "codex", 10, "ok", { bin: fakeCodex(), args: ["exec", "--sandbox", "danger-full-access", "{prompt}"] })]);
+    const calls = fakeRtkIn(s.npx.bin);
+    const { run, log } = await runOnce(s);
+    assert.equal(run.status, "succeeded", run.error ?? "");
+    assert.doesNotMatch(log, /rtk/);
+    assert.deepEqual(calls(), []);
   });
 
   it("a hub that sends no catalog: the run is as before", async () => {

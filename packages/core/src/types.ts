@@ -764,6 +764,8 @@ export interface RunRecord {
   merge: RunMerge | null;
   /** What the run used, once its machine reported it (roadmap 28c); null before, or for a run the CLI gave none. */
   tokens: RunTokens | null;
+  /** What RTK left out of the run's Bash output (roadmap 28d); null: no RTK, or its numbers could not be read. */
+  compression: RunCompression | null;
   /**
    * When the hub dropped the run's log and patch to keep only what it did (roadmap 41b); null: it still has them.
    * An empty log means nothing on its own — a queued run has none either.
@@ -1269,11 +1271,45 @@ export interface RunTokens {
   outputTokens: number | null;
 }
 
+/**
+ * What a run's Bash output compressor said it left out (roadmap 28d), from `rtk gain`: commands it rewrote, the
+ * characters' tokens before and after, and what that saved. The tool's own estimate, not tokens an API billed.
+ */
+export interface RunCompression {
+  tool: string;
+  commands: number;
+  input: number;
+  output: number;
+  saved: number;
+}
+
+/** One side of the RTK comparison on Chi phí (roadmap 28d): averages per run, over runs that reported their tokens. */
+export interface CompressionSide {
+  runs: number;
+  failed: number;
+  /** Fresh input, written to the cache and read from it, added up. */
+  inputAvg: number | null;
+  outputAvg: number | null;
+  /** Read from the cache out of all input (28c), over the runs that split their input. */
+  cacheShare: number | null;
+  costAvg: number | null;
+}
+
+/** Runs of a project and role in the last 30 days, with RTK and without (roadmap 28d). */
+export interface CompressionCompare {
+  project: string;
+  role: string;
+  rtk: CompressionSide;
+  plain: CompressionSide;
+}
+
 /** What finished runs cost, as the machines reported it (Claude Code runs only), for the projects the reader sees. */
 export interface CostSummary {
   total: CostTotals;
   projects: Array<CostTotals & { project: string }>;
   profiles: Array<CostTotals & { machine: string; profileId: string; account: string | null }>;
+  /** Priced runs with and without RTK (roadmap 28d); left out by older hubs. */
+  compression?: CompressionCompare[];
 }
 
 /** A subscription account resting after a rate limit, shared by every machine logged into it. */
