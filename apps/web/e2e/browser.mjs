@@ -1886,7 +1886,8 @@ async function main() {
     await tab.click("button", "Lưu việc tự chạy cho Toàn hub");
     await until("hub autonomy saved", async () => (await rpc("chat.defaults", { project: "*" })).autoKinds.includes("task.update"));
     await tab.click("#guide-commands");
-    await tab.key("a", "Meta");
+    // Select the defaults so typing replaces them; a Meta+A key event does not select in this Electron page.
+    await tab.eval(() => document.querySelector("#guide-commands").select());
     await tab.type("git status\ngit log");
     await tab.click("button", "Lưu lệnh cho Toàn hub");
     await until("hub commands saved", async () => (await rpc("chat.defaults", { project: "*" })).commands.length === 2);
