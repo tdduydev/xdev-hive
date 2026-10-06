@@ -27,7 +27,7 @@ describe("web menu by job (roadmap 49b)", () => {
     assert.ok(menu(account({ app: { permissions: ["view", "chatUse"] } })).includes("chat"), "a grant with chatUse shows Chat");
   });
 
-  it("adds Chat and Cài đặt dự án for a project lead, still no Quản trị", () => {
+  it("adds Chat and Cài đặt service for a project lead, still no Quản trị", () => {
     assert.deepEqual(menu(lead), ["today", "chat", "graph", "features", "tasks", "runs", "docs", "skills", "memory", "pipeline", "settings", "machines"]);
   });
 
@@ -37,7 +37,7 @@ describe("web menu by job (roadmap 49b)", () => {
     assert.equal(all.filter((id) => id !== "proposals").length, 13);
   });
 
-  it("shows Cài đặt dự án to whoever manages members alone, with only what they may do", () => {
+  it("shows Cài đặt service to whoever manages members alone, with only what they may do", () => {
     const manager = account({ app: { permissions: ["view", "membersManage"] } });
     assert.ok(menu(manager).includes("settings"));
     assert.deepEqual(settingsTabs(manager, projects, caps), ["members", "systems"]);

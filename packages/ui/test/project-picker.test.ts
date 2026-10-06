@@ -30,7 +30,7 @@ describe("project picker choices", () => {
   });
 
   it("finds all and shared by their shown labels, accents folded", () => {
-    const labels = { all: "Tất cả dự án", shared: "Chung" };
+    const labels = { all: "Tất cả service", shared: "Chung" };
     const ids = (mode: "scope" | "project", query: string) => pickerGroups(projects, systems, mode, query, [], true, labels).flatMap((group) => group.items.map(scopeId));
     assert.deepEqual(ids("scope", "chung"), ["shared"]);
     assert.deepEqual(ids("scope", "tat ca"), ["all"]);
@@ -57,7 +57,7 @@ describe("project picker choices", () => {
 describe("scope picker: systems first", () => {
   const shop = [system("ban-hang", ["payment", "demo", "secret"])];
   const permitted = ["payment", "demo", "kho"];
-  const rows = (query: string, expanded: string[] = [], recent: string[] = []) => scopeRows(permitted, shop, query, recent, new Set(expanded), { all: "Tất cả dự án", shared: "Chung" });
+  const rows = (query: string, expanded: string[] = [], recent: string[] = []) => scopeRows(permitted, shop, query, recent, new Set(expanded), { all: "Tất cả service", shared: "Chung" });
   const shown = (list: ScopeRow[]) => list.map((row) => `${row.section}:${row.depth}:${scopeId(row.scope)}`);
 
   it("builds real systems with the permitted services and a virtual one per repo in no system, by name", () => {
