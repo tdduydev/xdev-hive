@@ -297,6 +297,7 @@ export interface AgentProfileStatus extends AgentProfile {
 }
 
 export interface AgentRun {
+  plan?: import("#core/plan-approval.ts").RunPlan | null;
   id: string;
   project: string;
   taskId: string;

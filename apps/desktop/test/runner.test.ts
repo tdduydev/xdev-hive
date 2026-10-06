@@ -21,6 +21,7 @@ import { assistSettings, globRegExp, parseAssist, readRepoFiles } from "#desktop
 import { setMainLocale, tr } from "#desktop/main/i18n.ts";
 import { describeBranch, hasBranch, remoteStart } from "#desktop/main/runner/worktree.ts";
 import { pickProfile, pickWithReason, waitingReason, type ProfileLoad } from "#desktop/main/runner/schedule.ts";
+import { planningProfile } from "#desktop/main/runner/plan-approval.ts";
 import { canClassify, CLASSIFY_INPUT_TOKENS, classifierCommand, classifierResult, classifyPrompt } from "#desktop/main/runner/classify.ts";
 import { syncProject } from "#desktop/main/sync.ts";
 import { readSyncOutcome } from "@xdev-hive/core";
@@ -2940,5 +2941,68 @@ describe("classify runs", () => {
     assert.ok(run.error);
     const t = await a.task();
     assert.deepEqual([t.kind, t.size, t.risk, t.classifiedBy], ["feature", "m", "normal", "ai"]);
+  });
+});
+
+
+describe("implement planning phase (57b)", () => {
+  it("captures Codex's final Markdown from exec JSON in read-only mode", async () => {
+    const bin = path.join(tmp("plan-codex"), "codex");
+    writeFileSync(bin, `#!/bin/sh\nexec "${process.execPath}" "${FAKE}" "$@"\n`, { mode: 0o755 });
+    const p = profile("codex-a", "codex", 10, "plan-approval", { bin, args: ["exec", "--sandbox", "danger-full-access", "{prompt}"] });
+    const s = await setup([p], { acceptHubRuns: true }, "hub", { report: () => ({ profiles: [{ id: p.id, label: p.label, kind: p.kind, enabled: true, installed: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, planApproval: true }] }) });
+    await s.hive.call("sdlc.setProject", { project: "demo", settings: { gates: {}, planApproval: { mode: "all", timeoutMinutes: null } } }, admin);
+    await s.runner.heartbeat();
+    const run = await s.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await s.runner.settle(); await s.runner.pushRuns();
+    const done = s.runner.store.get(run.id)!;
+    assert.equal(done.status, "succeeded", done.error ?? "");
+    assert.ok(done.plan?.text?.startsWith("## Work")); assert.equal(done.commits, 0);
+    assert.equal(s.calls()[0]?.readOnly, "1");
+    assert.equal(s.calls()[0]?.args.includes("danger-full-access"), false);
+    assert.ok(s.calls()[0]?.args.includes("read-only"));
+    assert.equal((await s.hive.call("runs.plans", { project: "demo" }, admin))[0]?.text, done.plan?.text);
+    await s.runner.stop(); s.hive.close();
+  });
+
+  it("forces Claude plan permissions and Codex read-only over unsafe profile flags", () => {
+    const claude = planningProfile({ ...AGENT_TEMPLATES.claude, args: ["-p", "{prompt}", "--dangerously-skip-permissions", "--permission-mode=bypassPermissions"] });
+    assert.equal(claude.readOnly, true);
+    assert.deepEqual(claude.args, ["-p", "{prompt}", "--permission-mode", "plan"]);
+    const codex = planningProfile({ ...AGENT_TEMPLATES.codex, args: ["exec", "--full-auto", "--yolo", "--sandbox=danger-full-access", "-c", 'sandbox_mode="danger-full-access"', "-c", "model_reasoning_effort=high", "-"] });
+    assert.deepEqual(codex.args, ["exec", "-c", "model_reasoning_effort=high", "-", "-s", "read-only"]);
+  });
+  it("saves the full plan, leaves task and code alone, then implements the approved revision on the same branch", async () => {
+    let mrCalls = 0;
+    const profiles = [profile("claude-a", "claude", 10, "plan-approval")];
+    const s = await setup(profiles, { acceptHubRuns: true }, "hub", { report: () => ({ profiles: profiles.map((p) => ({ id: p.id, label: p.label, kind: p.kind, enabled: true, installed: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, planApproval: true })) }), afterFinish: async () => { mrCalls++; return {}; } });
+    await s.hive.call("tasks.classify", { id: "T-1", kind: "feature", size: "m" }, admin);
+    await s.hive.call("sdlc.setProject", { project: "demo", settings: { gates: {}, planApproval: { mode: "all", timeoutMinutes: null } } }, admin);
+    await s.runner.heartbeat();
+    const planRun = await s.runner.enqueue({ project: "demo", taskId: "T-1", reviewAfter: true });
+    await s.runner.settle(); await s.runner.pushRuns();
+    const done = s.runner.store.get(planRun.id)!;
+    assert.equal(done.status, "succeeded");
+    assert.equal(done.plan?.phase, "plan"); assert.ok(done.plan.text!.length > 1500);
+    assert.equal(readFileSync(path.join(s.dataDir, "runs", `${done.id}.plan.md`), "utf8"), done.plan.text);
+    assert.equal(done.commits, 0); assert.equal(mrCalls, 0);
+    assert.equal(existsSync(path.join(done.worktree!, "work-claude-a.txt")), false);
+    assert.equal((await s.task()).status, "todo");
+    assert.equal(s.calls()[0]?.readOnly, "1"); assert.ok(s.calls()[0]?.prompt.includes("Only plan"));
+    let plan = (await s.hive.call("runs.plans", { project: "demo", status: "waiting" }, admin))[0]!;
+    assert.equal(plan.text, done.plan.text);
+    await s.hive.call("runs.decidePlan", { id: plan.id, revision: plan.revision, decision: "changes", note: "Check mobile layout" }, admin);
+    await s.runner.heartbeat(); await s.runner.settle(); await s.runner.pushRuns();
+    plan = (await s.hive.call("runs.plans", { project: "demo", status: "waiting" }, admin))[0]!;
+    assert.equal(plan.revision, 2); assert.ok(s.calls()[1]?.prompt.includes("Check mobile layout"));
+    await s.hive.call("runs.decidePlan", { id: plan.id, revision: plan.revision, decision: "approve", note: "Use this scope" }, admin);
+    await s.runner.heartbeat(); await s.runner.settle(); await s.runner.pushRuns();
+    const builds = s.runner.list().filter((r) => r.plan?.phase === "implement");
+    assert.equal(builds.length, 1); assert.equal(builds[0]?.status, "succeeded");
+    assert.equal(builds[0]?.branch, done.branch); assert.ok(builds[0]!.commits > 0);
+    assert.ok(s.calls()[2]?.prompt.includes(plan.text!)); assert.ok(s.calls()[2]?.prompt.includes("Use this scope"));
+    assert.equal(s.calls()[2]?.readOnly, null); assert.equal(mrCalls, 2);
+    assert.equal(s.runner.list().filter((r) => r.role === "review").length, 1);
+    await s.runner.stop(); s.hive.close();
   });
 });

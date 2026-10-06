@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { may, permissionsOn, type Actor, type AgentRun, type ChatAction, type HubAlert, type Memory, type Permission, type Proposal, type RunRecord, type SdlcGateRecord, type Task } from "@xdev-hive/core";
+import { may, permissionsOn, type ImplementationPlan, type Actor, type AgentRun, type ChatAction, type HubAlert, type Memory, type Permission, type Proposal, type RunRecord, type SdlcGateRecord, type Task } from "@xdev-hive/core";
 import { buildInbox, groupInbox, highestRole, inboxGroup, inboxProject, roleOfPermissions, shortAgo } from "#ui/lib/inbox.ts";
 
 const run = (over: Partial<AgentRun>): AgentRun => ({ id: "R-1", project: "demo", taskId: "T-1", createdAt: "2026-09-30T10:00:00Z", mrUrl: null, pipelineStatus: null, ...over }) as AgentRun;
@@ -166,5 +166,17 @@ describe("inbox", () => {
     assert.equal(on("gone"), "viewer");
     assert.equal(roleOfPermissions(new Set<Permission>(["view", "projectSettings"])), "lead");
     assert.equal(highestRole([permissionsOn({ name: "admin", role: "admin" }, null)]), "lead");
+  });
+});
+
+
+describe("plan approval inbox", () => {
+  it("shows only waiting plans to people allowed to dispatch; revisions have new keys", () => {
+    const plan: ImplementationPlan = { id: 7, project: "demo", taskId: "T-1", taskTitle: "Settings", machineId: "runner", requestId: 1, runId: "R-plan", status: "waiting", text: "Plan", note: null, revision: 1, createdAt: "2026-10-06T08:00:00Z", readyAt: "2026-10-06T08:01:00Z", deadline: null, decidedAt: null, decidedBy: null };
+    const [item] = buildInbox({ plans: [plan] });
+    assert.equal(item?.kind, "plan"); assert.equal(inboxProject(item!), "demo"); assert.equal(inboxGroup(item!), "decide");
+    assert.notEqual(buildInbox({ plans: [{ ...plan, revision: 2 }] })[0]?.key, item?.key);
+    assert.deepEqual(buildInbox({ plans: [plan], can: (_, permission) => permission === "view" }), []);
+    assert.deepEqual(buildInbox({ plans: [{ ...plan, status: "approved" }] }), []);
   });
 });

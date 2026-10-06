@@ -797,6 +797,7 @@ const reportedProfiles = (): ReportedProfile[] =>
     maxConcurrent: p.maxConcurrent,
     // Only then does the hub put a classify run before a task with no kind on this machine (roadmap 54b).
     classify: canClassify(p),
+    planApproval: ["claude", "codex"].includes(p.kind) && p.roles.includes("implement"),
   }));
 
 let updater: Updater;

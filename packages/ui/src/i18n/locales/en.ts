@@ -1,6 +1,18 @@
 import type { Catalog } from "./vi.ts";
 
 export const en: Catalog = {
+  planApproval: {
+    title: "Approve the plan before coding", tab: "Plan", detail: "Details",
+    intro: "The agent plans in read-only mode and waits for approval before implementing.",
+    mode: { off: "Off", "medium-large": "Medium / large tasks", all: "Every task" },
+    timeout: "Auto-approve after (minutes)", timeoutHint: "Leave empty to always wait for a person. Time starts when the plan is ready.",
+    waiting: "Awaiting plan approval", inboxTitle: "Awaiting plan approval · {id} · {title}",
+    approve: "Approve", changes: "Revise plan", cancel: "Cancel", note: "Plan revision notes",
+    noteRequired: "Add notes for the agent to revise the plan.", approved: "Plan approved", sentBack: "Plan revision requested",
+    revision: "Revision {n}", empty: "This task has no plan yet.", deadline: "Auto-approve at {time}",
+    state: { planning: "Planning", waiting: "Awaiting approval", approved: "Approved", changes: "Revision requested", failed: "Planning failed", cancelled: "Cancelled" },
+  },
+
   start: {
     connectHint: "Connect to your team’s hub, or work on this machine on your own.",
     disabled: "Disabled",
@@ -525,6 +537,7 @@ export const en: Catalog = {
       open: "Open run",
     },
     tag: {
+      plan: "Plan",
       cleanup: "Memory cleanup", agentHold: "Agent paused", ci: "CI failed", waitingRun: "Waiting on a person", proposal: "Proposal", review: "Needs review", memory: "Memory", conflict: "Conflict", machine: "This machine", request: "Install request", alert: "Alert", gate: "SDLC gate", leader: "Leader proposal" },
     ci: {
       title: "{mr} · pipeline failed in {jobs}",
@@ -2727,6 +2740,10 @@ export const en: Catalog = {
     },
   },
   errors: {
+    planRunnerRequired: "This machine needs an updated Claude or Codex runner for plan approval.",
+    planPending: "The task is waiting for plan approval.",
+    planChanged: "The plan has changed. Please reload.",
+    planNoteRequired: "Add notes to revise the plan.",
     releaseVersion: "The version must look like 1.2.3.",
     releaseFile: "Unknown build: platform mac|win|linux, arch arm64|x64, kind zip|dmg|exe|AppImage.",
     releaseNotFound: "This hub has no such release.",
@@ -3214,6 +3231,7 @@ export const en: Catalog = {
     longAgents: "AGENTS.md has {lines} lines (better under {max}): move what only one folder or kind of file needs into docs with paths",
   },
   runNote: {
+    planEmpty: "The agent returned no plan.",
     dockerNotFound: "The profile runs in a container, but this machine has no docker command on its PATH (install Docker and check again).",
     egressFailed: "The container's limited network could not be set up: {reason}",
     networkBlocked: "the limited network blocked {hosts} (add them to the profile's extra hosts if needed)",
