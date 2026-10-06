@@ -1508,6 +1508,7 @@ export const vi = {
     history: "Các chốt đã qua ({count})",
     gateStatus: { waiting: "chờ người", checking: "AI đang kiểm", passed: "qua", rejected: "yêu cầu sửa", escalated: "chuyển người" },
   },
+  models: {"title": "Model", "description": "Bảng cấp của hub và model từng gói báo hỗ trợ. Máy sẽ chọn model cùng họ hoặc dùng mặc định CLI khi không hỗ trợ.", "default": "mặc định", "nearestTier": "Dùng cấp gần nhất", "unavailable": "Chưa có gói sẵn sàng nào báo hỗ trợ {model}. Kiểm tra danh sách bên dưới; máy có thể chọn model thay thế.", "profiles": "Model theo gói", "noProfiles": "Chưa có gói nào trong phạm vi này.", "online": "Trực tuyến", "offline": "Ngoại tuyến · dữ liệu lần cuối", "enabled": "Đã bật nhận run", "disabled": "Chưa sẵn sàng nhận run", "unknown": "Chưa biết (chưa dò được hoặc ứng dụng cũ)", "empty": "Không có model được liệt kê"},
   pipeline: {
     noGate: "Bước này không có chốt riêng. Chọn chốt ở bước liền kề để cấu hình.",
     passed: "Đã qua", fastSelect: "Loại task đi theo lối nhanh",

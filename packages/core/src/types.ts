@@ -377,6 +377,8 @@ export interface MachineSetupMissing {
 /** A subscription profile as a machine reports it to the hub: no command line, no env. */
 export interface ReportedProfile extends QuotaOutlook {
   planApproval?: boolean;
+  /** null/absent: discovery unavailable, not evidence of support. */
+  supportedModels?: string[] | null;
   /** Instants supplied by newer apps; reset text remains the older-app fallback. */
   sessionResetsAt?: string | null;
   weekResetsAt?: string | null;

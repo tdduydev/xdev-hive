@@ -10,6 +10,7 @@ import { MCP_NAME, NO_FEATURES, SHIM_NAME, mcpLaunch, runMcpServers, shimBinDir,
 import { loadWorktreeRules, loadWorktreeSkills, type WorktreeRule, type WorktreeSkill } from "#desktop/main/sync.ts";
 import type { ReferenceRepo } from "./references.ts";
 import { claudeHooks, claudeToolServer, codexToolArgs, legacyTools, type ReadyHook, type UserClaudeSettings } from "./tools.ts";
+import { nearestModel } from "#desktop/main/runner/models.ts";
 import { outputFormat } from "./usage.ts";
 
 export interface PromptContext {
@@ -560,12 +561,28 @@ export function ranOn(profile: AgentProfile): { model: string | null; effort: st
   return { model: modelOf(profile.args), effort: effortOf(profile.kind, profile.args) };
 }
 
+/** Model-specific effort may itself be invalid for the CLI default on the recovery attempt. */
+export function withoutModel(profile: AgentProfile): AgentProfile {
+  const args = withoutFlags(profile.args, ["--model", "-m", "--effort"], []);
+  const clean: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if ((arg === "-c" || arg === "--config") && /^\s*(model|model_reasoning_effort)\s*=/.test(args[i + 1] ?? "")) { i++; continue; }
+    if (/^(?:--config=|-c)\s*(model|model_reasoning_effort)\s*=/.test(arg)) continue;
+    clean.push(arg);
+  }
+  const env = { ...profile.env };
+  delete env.CLAUDE_CODE_EFFORT_LEVEL;
+  delete env.ANTHROPIC_MODEL;
+  return { ...profile, args: clean, env };
+}
+
 /**
  * The profile with the hub's model choice (roadmap 54c), applied to what applyPolicy fitted. `own` is the profile as
  * the user saved it: a model there is the user's pin and stays, an effort there too. The policy (27a) still wins: a
  * model it does not allow gives way to its first allowed one. `note` is the run log's `# model:` line (null: no choice).
  */
-export function routeProfile(own: AgentProfile, fitted: AgentProfile, pol: AgentPolicy, selection: ModelSelection | null | undefined): { profile: AgentProfile; note: string | null } {
+export function routeProfile(own: AgentProfile, fitted: AgentProfile, pol: AgentPolicy, selection: ModelSelection | null | undefined, supported?: string[] | null): { profile: AgentProfile; note: string | null } {
   const kind = fitted.kind;
   if (!selection || (kind !== "claude" && kind !== "codex" && kind !== "antigravity")) return { profile: fitted, note: null };
   const where = `tier ${selection.tier} (${selection.reason})`;
@@ -574,7 +591,19 @@ export function routeProfile(own: AgentProfile, fitted: AgentProfile, pol: Agent
   const wanted = selection.models[kind];
   if (!wanted) return { profile: fitted, note: `no ${kind} model at ${where}` };
   const allowed = modelsFor(pol, kind);
-  const model = !allowed || allowed.includes(wanted.model) ? wanted.model : allowed[0];
+  let model = !allowed || allowed.includes(wanted.model) ? wanted.model : allowed[0];
+  let supportNote = "";
+  if (supported !== undefined) {
+    const available = (supported ?? []).filter((m) => !allowed || allowed.includes(m));
+    const resolved = (model ? nearestModel(model, available) : null) ?? (allowed && !allowed.includes(wanted.model) ? available[0] : null);
+    if (!resolved) {
+      // A default cannot be verified against a whitelist. Keep policy enforcement fail-closed.
+      if (allowed) throw new Error(`No supported model allowed by the policy for ${kind}`);
+      return { profile: { ...fitted, args: withoutFlags(fitted.args, ["--model", "-m"], []) }, note: `CLI default · ${wanted.model} ${supported === null ? "support unknown" : "not supported; no same-family model available"} · ${where}` };
+    }
+    if (resolved !== model) supportNote = ` · ${model} not supported; supported replacement`;
+    model = resolved;
+  }
   // policyBlocks already refused a policy with no model left, so this is only a guard.
   if (!model) return { profile: fitted, note: null };
   // CLAUDE_CODE_EFFORT_LEVEL beats --effort in Claude Code, so a profile that sets it has chosen its effort too.
@@ -585,8 +614,8 @@ export function routeProfile(own: AgentProfile, fitted: AgentProfile, pol: Agent
   // Explore and other subagents run Opus by default on a plan: on a cheap tier that would spend more than the run itself.
   const env = kind === "claude" && (selection.tier === "light" || selection.tier === "standard") && !own.env.CLAUDE_CODE_SUBAGENT_MODEL ? { ...fitted.env, CLAUDE_CODE_SUBAGENT_MODEL: "sonnet" } : fitted.env;
   const effort = ownEffort ?? wanted.effort ?? "default";
-  const fallback = model !== wanted.model ? ` · ${wanted.model} not allowed by the policy` : "";
-  return { profile: { ...fitted, args, env }, note: `${model} · effort ${effort} · ${where}${fallback}` };
+  const fallback = allowed && !allowed.includes(wanted.model) ? ` · ${wanted.model} not allowed by the policy` : "";
+  return { profile: { ...fitted, args, env }, note: `${model} · effort ${effort} · ${where}${fallback}${supportNote}` };
 }
 
 /**
