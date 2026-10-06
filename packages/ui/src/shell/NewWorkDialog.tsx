@@ -109,7 +109,7 @@ export function NewWorkDialog({ open, onOpenChange }: { open: boolean; onOpenCha
           {created ? <p role="status" className="text-sm">{t("newWork.partial", { id: created })} <a href={`#/tasks?task=${encodeURIComponent(created)}`} onClick={() => onOpenChange(false)} className="underline">{t("tasks.title")}</a></p> : null}
         </> : null}
         <ErrorNote error={action.error} />
-        <div className="flex flex-wrap justify-end gap-2"><Button type="button" variant="outline" disabled={action.busy} onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button><Button data-new-work-submit type="submit" disabled={!ready}>{action.busy ? t("common.loading") : t(path === "ask" ? "newWork.openChat" : path === "feature" ? "newWork.openFeature" : run ? "newWork.createRun" : "newWork.createOnly")}</Button></div>
+        <div className="flex flex-wrap justify-end gap-2"><Button type="button" variant="outline" className="max-md:min-h-11" disabled={action.busy} onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button><Button data-new-work-submit type="submit" className="max-md:min-h-11" disabled={!ready}>{action.busy ? t("common.loading") : t(path === "ask" ? "newWork.openChat" : path === "feature" ? "newWork.openFeature" : run ? "newWork.createRun" : "newWork.createOnly")}</Button></div>
       </form> : null}
     </DialogContent>
   </Dialog>;
