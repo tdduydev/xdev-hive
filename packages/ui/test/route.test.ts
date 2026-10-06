@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { resolveHash, WEB_ALIASES } from "#ui/lib/route.ts";
 
 /** The pages of the app, as App.tsx has them: enough of them to tell a redirect from a page that exists. */
-const PAGES = ["today", "tasks", "runs", "docs", "setup", "machines", "settings", "admin", "systems", "proposals", "specs", "features", "tokens"];
+const PAGES = ["today", "tasks", "runs", "docs", "setup", "machines", "settings", "pipeline", "admin", "systems", "proposals", "specs", "features", "tokens"];
 const isPage = (id: string) => PAGES.includes(id);
 const web = (hash: string) => resolveHash(hash, { local: false, web: true, isPage });
 /** The desktop app connected to a hub: neither the web's tabs nor the local mode's redirects. */
@@ -11,6 +11,11 @@ const desk = (hash: string) => resolveHash(hash, { local: false, isPage });
 const local = (hash: string) => resolveHash(hash, { local: true, isPage });
 
 describe("addresses", () => {
+  it("redirects the legacy SDLC settings link while preserving project and feature", () => {
+    assert.deepEqual(web("#/settings?tab=sdlc&project=app&flow=F-1"), { id: "pipeline", hash: "#/pipeline?project=app&flow=F-1" });
+    assert.deepEqual(desk("#/settings?tab=sdlc&project=app"), { id: "settings", hash: null });
+  });
+
   it("leaves a page that exists alone", () => {
     assert.deepEqual(web("#/runs"), { id: "runs", hash: null });
     assert.deepEqual(web("#/runs?run=R-1"), { id: "runs", hash: null });

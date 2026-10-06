@@ -98,6 +98,8 @@ export interface SdlcGateRecord {
   note: string | null;
   createdAt: string;
   decidedAt: string | null;
+  /** Included when querying dated history; false if this task reached the same gate before. */
+  firstAttempt?: boolean;
 }
 
 // ── flows (roadmap 34b) ──────────────────────────────────────────────────────

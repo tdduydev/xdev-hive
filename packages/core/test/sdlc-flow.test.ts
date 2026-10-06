@@ -138,9 +138,33 @@ describe("a Spec Kit flow through the gates (roadmap 34b)", () => {
     assert.match(retried!.instructions, /Spec Kit step "plan"/);
   });
 
-  it("leaves every gate to a person when the project set nothing, as before", async () => {
+  it("takes only selected kinds directly into build and keeps review and merge gates", async () => {
+    const { hive, beat, run } = await hub();
+    await beat();
+    await hive.call("sdlc.setProject", { project: "app", settings: { gates: { review: "human", merge: "human" }, fastLaneKinds: ["docs"] } }, lead);
+    await hive.call("sdlc.setProject", { project: "app", settings: { gates: { review: "human", merge: "human" } } }, lead);
+    assert.deepEqual((await hive.call("sdlc.get", {}, admin)).projects.app?.fastLaneKinds, ["docs"]);
+    await hive.call("tasks.create", { id: "DOC-1", project: "app", title: "Update docs", kind: "docs" }, admin);
+    await hive.call("tasks.create", { id: "TEST-1", project: "app", title: "Add tests", kind: "test" }, admin);
+    const request = await hive.call("runs.dispatch", { project: "app", taskId: "DOC-1", machineId: mbp.name }, lead);
+    assert.equal(request.role, "implement");
+    assert.equal(request.reviewAfter, true);
+    const [fast] = await hive.call("sdlc.flowTasks", { taskId: "DOC-1" }, admin);
+    assert.equal(fast?.stage, "build");
+    const [flow] = await hive.call("sdlc.flows", { project: "app" }, admin);
+    assert.equal(flow?.step, "dispatch");
+    const [dispatch] = await hive.call("sdlc.gates", { taskId: "DOC-1" }, admin);
+    assert.deepEqual([dispatch?.gate, dispatch?.status, dispatch?.decidedBy], ["dispatch", "passed", lead.name]);
+    await run(request, "succeeded");
+    assert.equal((await hive.call("sdlc.flowTasks", { taskId: "DOC-1" }, admin))[0]?.stage, "review");
+    await hive.call("runs.dispatch", { project: "app", taskId: "TEST-1", machineId: mbp.name }, lead);
+    assert.deepEqual(await hive.call("sdlc.flowTasks", { taskId: "TEST-1" }, admin), []);
+  });
+
+  it("leaves every gate to a person when the project explicitly resets its policy", async () => {
     const { hive, beat, run, flow } = await hub();
     await beat();
+    await hive.call("sdlc.setProject", { project: "app", settings: null }, admin);
     await hive.call("specs.runStep", { project: "app", step: "specify", taskId: "SPEC-3", title: "Spec: audit", input: "Audit log", machineId: mbp.name }, admin);
     const [specify] = await beat();
     await run(specify!, "succeeded");
