@@ -81,6 +81,11 @@ describe("task graph", () => {
 });
 
 describe("agent graph", () => {
+  it("keeps other projects in a machine queue outside the selected scope", () => {
+    const foreign = task("OTHER", { project: "other", agent: { machineId: machine.id, machine: machine.machine, profileId: "p", order: 0, by: "admin", at: "2026-10-06T00:00:00Z", hold: null } });
+    const model = agentGraph([machine], { [machine.id]: [{ task: foreign, waiting: null }] }, []);
+    assert.equal(model.nodes.filter((node) => node.kind === "agentTask").length, 0);
+  });
   it("connects machine, profile, active run and the first three queued tasks in hub order", () => {
     const tasks = ["A", "B", "C", "D", "E"].map((id, index) => task(id, { agent: { machineId: machine.id, machine: machine.machine, profileId: "p", order: index, by: "admin", at: "2026-10-06T00:00:00Z", hold: null } }));
     const model = agentGraph([machine], { [machine.id]: tasks.map((item) => ({ task: item, waiting: null })) }, tasks);

@@ -23,7 +23,7 @@ export function agentGraph(machines: Machine[], queues: Record<string, TaskAgent
     const profiles = [...machine.profiles.map((profile) => ({ id: profile.id, label: profile.label })), { id: null, label: "" }];
     let row = top;
     for (const profile of profiles) {
-      const assigned = (queues[machine.id] ?? []).filter(({ task }) => task.agent?.profileId === profile.id && task.status !== "done");
+      const assigned = (queues[machine.id] ?? []).filter(({ task }) => known.has(key(task.project, task.id)) && task.agent?.profileId === profile.id && task.status !== "done");
       const runs = machine.runs.filter((run) => run.profileId === profile.id && known.has(key(run.project, run.taskId)));
       if (profile.id === null && !assigned.length && !runs.length) continue;
       const profileId = `profile:${machine.id}:${profile.id ?? "any"}`;
