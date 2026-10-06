@@ -1,4 +1,4 @@
-import type { Machine, Task } from "@xdev-hive/core";
+import type { Machine, ReportedProfile, RunRequest, Task } from "@xdev-hive/core";
 
 export type AssignmentTarget = { machineId: string; profileId: string | null };
 export const agentKey = (a: AssignmentTarget | null): string => a ? JSON.stringify([a.machineId, a.profileId]) : "unassigned";
@@ -25,6 +25,38 @@ export function agentLanes(machines: Machine[], tasks: Task[], any: string, unas
     lanes.set(key, { key, label: agentLabel(task.agent, any), target });
   }
   return [...lanes.values()];
+}
+
+/** What one choice of the picker says about itself, so a person sees the wait before they pick it. */
+export interface AgentStatus {
+  state: "offline" | "busy" | "free";
+  /** The worst of the profiles in play, as text; "—" when none of them reports a number. */
+  session: string;
+  week: string;
+  queued: number;
+}
+
+/**
+ * The same places `#freeMachine` counts, from what the web already holds: the machine's own runs plus the requests
+ * nobody has taken. `profile` null is *Gói nào cũng được*, which may land on any enabled profile of the machine.
+ */
+export function agentStatus(machine: Machine, profile: ReportedProfile | null, src: { tasks: Task[]; requests: RunRequest[] }): AgentStatus {
+  const profiles = profile ? [profile] : machine.profiles.filter((p) => p.enabled);
+  const running = machine.runs.filter((r) => r.status === "running" && (!profile || r.profileId === profile.id)).length;
+  // An unpinned request can still come down on this profile, so it takes a place from every one of them.
+  const pending = src.requests.filter((r) => r.machineId === machine.id && r.status === "pending" && (!profile || !r.profileId || r.profileId === profile.id)).length;
+  const places = profiles.reduce((n, p) => n + (p.maxConcurrent ?? 1), 0);
+  const pct = (key: "sessionPercent" | "weekPercent") => {
+    const values = profiles.map((p) => p[key]).filter((v): v is number => v != null);
+    return values.length ? `${Math.round(Math.max(...values))}%` : "—";
+  };
+  return {
+    state: !machine.online ? "offline" : running + pending >= places ? "busy" : "free",
+    session: pct("sessionPercent"),
+    week: pct("weekPercent"),
+    // A done task keeps its agent for the record; it is not waiting for anybody.
+    queued: src.tasks.filter((t) => t.status !== "done" && t.agent?.machineId === machine.id && (!profile || t.agent.profileId === profile.id)).length,
+  };
 }
 
 /** Preserve click order even for tasks already on this machine: the hub keeps their old order without `before`. */

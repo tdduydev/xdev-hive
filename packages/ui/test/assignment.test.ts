@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { Machine, Task } from "@xdev-hive/core";
-import { agentKey, agentLabel, agentLanes, agentTasks, assignableMachines, assignmentInput, assignInOrder, filterAgent } from "#ui/lib/assignment.ts";
+import type { Machine, ReportedProfile, RunRequest, Task } from "@xdev-hive/core";
+import { agentKey, agentLabel, agentLanes, agentStatus, agentTasks, assignableMachines, assignmentInput, assignInOrder, filterAgent } from "#ui/lib/assignment.ts";
 import { buildInbox } from "#ui/lib/inbox.ts";
 import { requestErrorText } from "#ui/lib/runs.ts";
 import { setActiveLocale } from "#ui/i18n/translate.ts";
@@ -16,6 +16,26 @@ describe("agent assignment UI model", () => {
     assert.deepEqual(assignableMachines([m], ["app"]), [m]);
     assert.deepEqual(assignableMachines([m], ["app", "other"]), []);
     assert.deepEqual(assignableMachines([machine({ acceptsRuns: false })], ["app"]), []);
+  });
+  it("tells each choice of the agent box apart: free or not, its worst quota, and what is already queued for it", () => {
+    const plan = (id: string, over: Partial<ReportedProfile> = {}): ReportedProfile =>
+      ({ id, label: id, enabled: true, maxConcurrent: 1, sessionPercent: null, weekPercent: null, ...over }) as ReportedProfile;
+    const busy = machine({
+      online: true,
+      profiles: [plan("claude-1", { sessionPercent: 23.6, weekPercent: 12 }), plan("claude-2", { maxConcurrent: 2, sessionPercent: 70 }), plan("codex-1", { enabled: false, sessionPercent: 99 })],
+      runs: [{ profileId: "claude-1", status: "running" }],
+    } as Partial<Machine>);
+    // Unpinned: the hub may put it on any plan, so it takes a place from each of them.
+    const src = { tasks: [task("A", 1), task("B", 2), { ...task("C", 3), status: "done" as const }], requests: [{ machineId: "runner.mac", status: "pending", profileId: null }] as RunRequest[] };
+    const pinned = busy.profiles[0]!;
+    assert.deepEqual(agentStatus(busy, pinned, src), { state: "busy", session: "24%", week: "12%", queued: 2 });
+    // Two places, one run and one request: still room for a third.
+    assert.equal(agentStatus(busy, busy.profiles[1]!, src).state, "free");
+    assert.equal(agentStatus(busy, busy.profiles[1]!, src).queued, 0);
+    // "Gói nào cũng được" adds up the enabled plans only, and shows the worst number any of them reports.
+    assert.deepEqual(agentStatus(busy, null, src), { state: "free", session: "70%", week: "12%", queued: 2 });
+    assert.equal(agentStatus(machine({ ...busy, online: false } as Partial<Machine>), null, src).state, "offline");
+    assert.equal(agentStatus(machine({ online: true, profiles: [plan("x")], runs: [] } as Partial<Machine>), null, { tasks: [], requests: [] }).session, "—");
   });
   it("filters unassigned and exact machine/profile, including rotating assignments", () => {
     const a = task("A", 2), b = task("B", 1), c = task("C", 0, false);
