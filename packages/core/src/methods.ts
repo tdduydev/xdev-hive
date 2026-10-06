@@ -14,6 +14,7 @@ import { MAX_MAP_PART, MAX_MAP_PARTS, MAX_MAP_PROMPT } from "./mapreduce.ts";
 import type { SkillSummary } from "./skills.ts";
 import { SPEC_DIR, SPEC_FEATURES_MAX, SPEC_FILE_MAX, SPEC_STEPS, type SpecFeature, type SpecFeatureDetail, type SpecTaskPlan } from "./speckit.ts";
 import { toolEntrySchema } from "./tools.ts";
+import { modelCellsSchema, modelProjectSchema, modelTableSchema, type ModelRouterSettings } from "./model-router.ts";
 import { TASK_KINDS, TASK_RISKS, TASK_SIZES } from "./task-classify.ts";
 import { GATE_STATUSES, gateModesSchema, MAX_FIX_ROUNDS, type SdlcFlow, type SdlcFlowTask, type SdlcGateRecord, type SdlcPolicyView } from "./sdlc.ts";
 import {
@@ -945,6 +946,8 @@ export const schemas = {
     status: z.enum(GATE_STATUSES).optional(),
     limit: z.number().int().min(1).max(200).default(50),
   }),
+  "modelRouter.get": z.object({}),
+  "modelRouter.set": z.union([z.object({ project: z.null(), tiers: modelTableSchema, cells: modelCellsSchema }), z.object({ project, setting: modelProjectSchema })]),
   "agentPolicy.get": z.object({}),
   /**
    * project null: the hub's default (a hub admin; a field left out is open). A project: its own part, which only
@@ -1188,6 +1191,8 @@ export interface MethodOutput {
   "sdlc.retry": SdlcFlow;
   "sdlc.flows": SdlcFlow[];
   "sdlc.flowTasks": SdlcFlowTask[];
+  "modelRouter.get": ModelRouterSettings;
+  "modelRouter.set": ModelRouterSettings;
   "agentPolicy.get": AgentPolicyView;
   "agentPolicy.set": AgentPolicyView;
   "tools.list": ToolView[];
@@ -1365,6 +1370,8 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "sdlc.retry": "agent",
   "sdlc.flows": "viewer",
   "sdlc.flowTasks": "viewer",
+  "modelRouter.get": "viewer",
+  "modelRouter.set": "agent",
   "agentPolicy.get": "viewer",
   // Also a hub admin for the hub's default, or projectSettings on the project: a person, never an agent token.
   "agentPolicy.set": "agent",

@@ -326,11 +326,14 @@ function ModelChip({ run }: { run: AgentRun | RunRecord }) {
   const kind = "agentKind" in run ? run.agentKind : "runId" in run ? run.kind : null;
   const model = run.model ?? null;
   const effort = run.effort ?? null;
+  // The hub keeps only the tier (54a); the machine's own run still has the router's reason for the tooltip.
+  const tier = "runId" in run ? (run.tier ?? null) : (run.selection?.tier ?? null);
+  const reason = "runId" in run ? null : (run.selection?.reason ?? null);
   if (!kind && !model && !effort) return null;
   return (
     <span className="inline-flex" data-run-model={model ?? ""}>
-      <Chip kind="neutral" small title={t("runs.modelNote")}>
-        {[model ?? t("runs.modelDefault"), effort].filter(Boolean).join(" · ")}
+      <Chip kind="neutral" small title={reason ? `${t("runs.modelNote")} · ${reason}` : t("runs.modelNote")}>
+        {[model ?? t("runs.modelDefault"), effort, tier ? t("runs.modelTier", { tier }) : null].filter(Boolean).join(" · ")}
       </Chip>
     </span>
   );

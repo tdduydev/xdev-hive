@@ -1,3 +1,4 @@
+import type { ModelSelection } from "./model-router.ts";
 import type { Access } from "./access.ts";
 import type { AgentPolicy } from "./agent-policy.ts";
 import type { AgentKind, AgentProfile, AgentRole, PreferKind, QuotaOutlook } from "./agents.ts";
@@ -913,6 +914,8 @@ export interface RunRequest {
   taskId: string;
   taskTitle: string;
   role: AgentRole;
+  /** Hub model selection, absent on older hubs or when routing is off. */
+  selection?: ModelSelection | null;
   /** Pinned profile; null: the machine rotates its profiles. */
   profileId: string | null;
   /** Unpinned: the kind to wait for while one of its profiles could take the run (roadmap 24c); null: any. */
