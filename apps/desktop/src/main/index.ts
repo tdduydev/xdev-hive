@@ -142,6 +142,7 @@ let quitting = false;
 // Started by the computer at sign-in ("Mở cùng máy" on Windows), or again by the updater after an install at quit
 // (takeStartHidden, read once this instance holds the lock): the window waits in the tray until asked for.
 let startHidden = process.argv.includes("--hidden");
+let lastWindowHash = "";
 // A screenshot run logs into its own temp profile: its starts and quits are not the real app's.
 const mainLog = new MainLog(path.join(smokeShot ? app.getPath("userData") : mainLogDir(process.platform, process.env, os.homedir()), "main.log"));
 const quitReasons = new QuitReasons();
@@ -1287,12 +1288,16 @@ function createWindow(): void {
   win.on("close", (e) => {
     if (quitting || smokeShot) return;
     e.preventDefault();
-    win?.hide();
+    // No person can see this page while the app is in the tray; dispose its polling UI and keep only the runner.
+    const currentUrl = win?.webContents.getURL();
+    if (currentUrl) lastWindowHash = new URL(currentUrl).hash.slice(1);
+    win?.destroy();
     if (process.platform !== "darwin" && !trayHintShown) {
       trayHintShown = true;
       showNotice(tr("desktop.trayHintTitle"), tr("desktop.trayHint"));
     }
   });
+  win.on("closed", () => { win = null; });
   win.once("ready-to-show", () => {
     if (!smokeShot && !startHidden) win?.show();
   });
@@ -1321,7 +1326,7 @@ function createWindow(): void {
     if (reloads.allow()) setTimeout(() => win?.webContents.reload(), 2000);
   });
 
-  const hash = process.env.HIVE_SMOKE_HASH;
+  const hash = process.env.HIVE_SMOKE_HASH ?? lastWindowHash;
   if (devUrl) void win.loadURL(hash ? `${devUrl}#${hash}` : devUrl);
   else void win.loadFile(path.join(import.meta.dirname, "../renderer/index.html"), hash ? { hash } : undefined);
 
@@ -1423,7 +1428,11 @@ function createWindow(): void {
 }
 
 function showWindow(): void {
-  if (!win || win.isDestroyed()) createWindow();
+  startHidden = false;
+  if (!win || win.isDestroyed()) {
+    createWindow();
+    return;
+  }
   win!.show();
   win!.focus();
 }
@@ -1592,12 +1601,8 @@ if (!app.requestSingleInstanceLock()) {
     }
   }
   app.on("activate", showWindow);
-  app.on("window-all-closed", () => {
-    if (process.platform === "darwin") return;
-    mainLog.write("window-all-closed");
-    quitReasons.mark("unknown", "all windows closed");
-    app.quit();
-  });
+  // Electron otherwise quits on Windows and Linux when the last window is destroyed; the tray owns app lifetime.
+  app.on("window-all-closed", () => {});
   void app.whenReady().then(() => {
     // The heartbeat stops while the computer sleeps: say when, so a gap on the hub can be matched with it.
     powerMonitor.on("suspend", () => mainLog.write("system: suspend"));
@@ -1714,7 +1719,7 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(appIcon());
     registerIpc();
     serveChatFiles();
-    createWindow();
+    if (!startHidden || smokeShot) createWindow();
     buildAppMenu();
     if (!smokeShot) createTray();
   });
