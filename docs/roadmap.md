@@ -292,6 +292,11 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **55a. outlook-app**: máy tính và gửi số liệu, lịch sử 14 ngày, dòng mới trong khối quota, tổng của máy.
   - [ ] **55b. outlook-web**: tab *Quota* của *Máy & agent*, gộp tài khoản, dòng tổng cả nhóm.
 
+- **56. sdlc-pipeline** (hỏi 6/10: "tối ưu model chưa thấy trên giao diện; cài đặt dự án khó cấu hình; chỗ nào overview AI SDLC full quy trình, cấu hình điểm chặn"; chọn: làm ngay theo spec, dự án mới mặc định *Tự động tối đa*): trang *Quy trình* là sơ đồ các bước Ý tưởng → Spec → Plan → Tasks → Giao việc → Làm → Review → Sửa → Merge với chốt là biểu tượng giữa các bước (người / AI / tự động, khoá theo trần), mỗi bước hiện số đang có, thời gian chờ, tỉ lệ qua, model; bấm mở khung sửa; bộ cài sẵn Thận trọng / Cân bằng / Tự động tối đa / Lối nhanh có xem trước. *Cài đặt dự án* thành tab tóm tắt + khung sửa, model bằng chip, hiệu lực hiện thẳng, trần hub về *Quản trị*. Chọn model (54c/d) hiện trong *Quy trình*. Spec: [docs/specs/56-sdlc-pipeline.md](specs/56-sdlc-pipeline.md). Tách:
+  - [ ] **56a. pipeline-page**: trang *Quy trình*, chốt, số liệu, bộ cài sẵn, lối nhanh, xem theo tính năng, mobile.
+  - [ ] **56b. settings-tidy**: *Cài đặt dự án* gọn: tab, tóm tắt, chip model, hiệu lực, trần hub sang *Quản trị*.
+  - [ ] **56c. models-in-pipeline**: model từng bước, tab *Model theo loại task*, chip model ở run và task (giao diện của 54c/54d).
+
 ## Sửa lỗi
 
 - [x] **stale-base** (5/10, BUG-stale-base): run R-43 trên máy .52 gặp lỗi fetch tạm thời, và runner lặng lẽ tạo branch `ai/<task>` từ HEAD của checkout chính, tức code cũ 3 ngày (0.107.0 trong khi main đã 0.126.0). Giờ fetch lỗi thì thử lại sau 5 giây rồi 20 giây. Vẫn lỗi thì run của task chưa có branch quay về hàng đợi, kèm lý do hiện trên Board và Lượt chạy, thử lại ở các tick sau; quá 5 lần thì *failed* với lỗi dịch được. Không còn tạo branch từ HEAD cũ. Branch đã có (run sửa, review) chạy như cũ. Hỏi best-of-n thì báo lỗi ngay. Repo không có remote nào thì giữ cách cũ. Do claude-1 trên máy .52 làm.
