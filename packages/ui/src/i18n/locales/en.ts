@@ -38,8 +38,14 @@ export const en: Catalog = {
     denied: "Denied.",
     badLink: "This sign-in link is not valid. Press sign-in through the browser in the app to open it again.",
   },
+  graph: {
+    layers: "Graph layers", system: "System", soon: "Coming soon", completed: "completed", running: "Running",
+    hideOldDone: "Hide tasks done over 7 days ago", mine: "My tasks", byAgent: "Filter by agent", allAgents: "All agents",
+    fit: "Fit view", reset: "Reset layout", list: "List", pickProject: "Select a project to view its task graph.",
+  },
   nav: {
     today: "Today",
+    graph: "Graph",
     overview: "Overview",
     chat: "Chat",
     docs: "Docs",
@@ -70,6 +76,7 @@ export const en: Catalog = {
   },
   navSub: {
     today: "What needs you today",
+    graph: "Tasks and dependencies in the selected scope",
     overview: "Projects, docs and memory in the chosen scope",
     chat: "Talk to the project's leader agent",
     runs: "Runs from the team's machines",

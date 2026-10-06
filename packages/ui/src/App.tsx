@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import {
   Activity,
   BellRing,
@@ -80,6 +80,7 @@ import { OpsVersions } from "./pages/admin/Versions.tsx";
 import { OpsAlerts } from "./pages/admin/Alerts.tsx";
 import { OpsContext, OpsHub } from "./pages/admin/HubOps.tsx";
 import { DocReaderPage } from "./pages/DocReader.tsx";
+const GraphPage = lazy(() => import("./pages/Graph.tsx").then((module) => ({ default: module.GraphPage })));
 
 type PageId =
   | "today"
@@ -94,6 +95,7 @@ type PageId =
   | "proposals"
   | "memory"
   | "tasks"
+  | "graph"
   | "agents"
   | "machines"
   | "ops"
@@ -132,6 +134,7 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
   memory: { label: "nav.memory", sub: "navSub.memory", icon: Brain, render: () => <MemoryPage /> },
   // The desktop app opens it on the Board of this machine (roadmap 39f); the web keeps the shared Kanban.
   tasks: { label: "nav.tasks", sub: "navSub.tasks", icon: ListTodo, render: () => <TaskWorkPage /> },
+  graph: { label: "nav.graph", sub: "navSub.graph", icon: Workflow, render: () => <Suspense fallback={null}><GraphPage /></Suspense> },
   agents: { label: "nav.agents", sub: "navSub.agents", icon: Bot, render: () => <AgentsPage /> },
   machines: { label: "nav.machines", sub: "navSub.machines", icon: Server, render: () => <MachinesPage /> },
   setup: { label: "nav.setup", sub: "navSub.setup", icon: Terminal, render: () => <SetupPage /> },
@@ -176,7 +179,7 @@ const LOCAL_GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
  * every member; operations and administration for those who run projects or the hub.
  */
 const WEB_GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
-  { label: null, ids: ["today", "chat"] },
+  { label: null, ids: ["today", "graph", "chat"] },
   { label: "nav.groupWork", ids: ["tasks", "specs", "batches", "runs"] },
   { label: "nav.groupKnowledge", ids: ["docs", "skills", "memory", "proposals"] },
   { label: "ops.group.ops", ids: ["ops", "machines", "fleet", "queue", "costs", "alerts"] },
@@ -315,6 +318,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     if (deskHub) return new Set<PageId>([...DESK_PAGES].filter((id) => id !== "device" || (client.device && me.user)));
     // Tool: the catalog is the hub's, and project managers on the web turn tools on for their project there too.
     const ids = new Set<PageId>(["today", "overview", "docs", "read", "specs", "skills", "proposals", "memory", "tasks", "systems", "tools"]);
+    if (!client.desktop && (me.role === "admin" || projects.some((project) => may(me, project, "view")))) ids.add("graph");
     if (client.desktop) for (const id of ["agents", "setup", "projects"] as const) ids.add(id);
     // Machines only report to a hub (and push their runs to it); a local database never has any. The leader chat
     // runs on a machine the hub hands it to.
