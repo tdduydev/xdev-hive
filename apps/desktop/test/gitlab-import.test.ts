@@ -6,7 +6,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { suggestProjectKey, type DesktopProject, type GitLabGroupRepo } from "@xdev-hive/core";
 import { GitLabClient } from "#desktop/main/gitlab/client.ts";
-import { importRepos, planImport } from "#desktop/main/gitlab/import.ts";
+import { importRepos, planImport, subgroupPath } from "#desktop/main/gitlab/import.ts";
 
 const tmp = (name: string) => mkdtempSync(path.join(os.tmpdir(), `hive-import-${name}-`));
 const repo = (pathWithNamespace: string, id = 1): GitLabGroupRepo => ({
@@ -51,19 +51,57 @@ describe("importing a GitLab group", () => {
       { name: "web", repo: "/work/web", gitlabProject: "fis/ehealth/web" },
       { name: "auth", repo: "/work/auth" },
     ];
-    const plan = planImport([repo("fis/ehealth/web"), repo("fis/ehealth/auth"), repo("fis/ehealth/gateway"), repo("fis/billing/auth")], base, projects);
+    const plan = planImport([repo("fis/ehealth/web"), repo("fis/ehealth/auth"), repo("fis/ehealth/gateway"), repo("fis/billing/auth")], base, projects, "fis/ehealth", []);
     assert.deepEqual(
       plan.map((c) => [c.repo.pathWithNamespace, c.key, path.relative(base, c.dir) || c.dir, c.state]),
       [
         ["fis/billing/auth", "billing-auth", "auth", "new"],
         ["fis/ehealth/auth", "ehealth-auth", "ehealth-auth", "new"],
-        ["fis/ehealth/gateway", "gateway", "gateway", "folder"],
+        ["fis/ehealth/gateway", "gateway", "gateway", "conflict"],
         ["fis/ehealth/web", "web", path.relative(base, "/work/web"), "added"],
       ],
     );
   });
 
-  it("clones what is new, uses a folder that is there, and goes on when one fails", async () => {
+  it("keeps subgroup paths and reuses an HTTPS clone behind a GitLab URL prefix", () => {
+    const base = tmp("prefixed");
+    const nested = path.join(base, "services", "app");
+    const project = { ...repo("team/services/app"), httpUrl: "https://gitlab.example.test/gitlab/team/services/app.git" };
+    assert.equal(subgroupPath(project, "team"), "services/app");
+    const plan = planImport([project], base, [], "team", [{ dir: nested, remote: "https://gitlab.example.test/gitlab/team/services/app.git" }]);
+    assert.deepEqual([plan[0]?.state, plan[0]?.dir], ["folder", nested]);
+  });
+
+  it("prefers the matching clone already registered as a project", () => {
+    const base = tmp("duplicates");
+    const project = repo("team/app");
+    const unregistered = path.join(base, "a");
+    const registered = path.join(base, "z");
+    const plan = planImport([project], base, [{ name: "my-app", repo: registered }], "team", [
+      { dir: unregistered, remote: project.sshUrl },
+      { dir: registered, remote: project.httpUrl },
+    ]);
+    assert.deepEqual([plan[0]?.state, plan[0]?.key, plan[0]?.dir], ["added", "my-app", registered]);
+  });
+
+  it("accepts an existing prefixed HTTPS clone during import", async () => {
+    const base = tmp("prefixed-import");
+    const dir = path.join(base, "app");
+    mkdirSync(dir);
+    const project = { ...repo("team/app"), httpUrl: "https://gitlab.example.test/gitlab/team/app.git" };
+    const added: DesktopProject[] = [];
+    const results = await importRepos([{
+      key: "app", pathWithNamespace: project.pathWithNamespace, dir, url: project.sshUrl,
+      sshUrl: project.sshUrl, httpUrl: project.httpUrl, targetBranch: "main",
+    }], {
+      check: () => {}, clone: async () => { throw new Error("should not clone"); },
+      remote: () => project.httpUrl, add: (item) => void added.push(item),
+    });
+    assert.deepEqual(results.map((r) => [r.ok, r.cloned]), [[true, false]]);
+    assert.deepEqual(added.map((p) => [p.repo, p.targetBranch]), [[dir, "main"]]);
+  });
+
+  it("clones new repositories, rejects an unrelated folder, and goes on when one fails", async () => {
     // A real repository to clone from.
     const source = tmp("source");
     execFileSync("git", ["init", "-q", "-b", "main", source]);
@@ -83,25 +121,26 @@ describe("importing a GitLab group", () => {
       });
     const results = await importRepos(
       [
-        { key: "auth", pathWithNamespace: "fis/auth", dir: path.join(base, "auth"), url: source },
-        { key: "gone", pathWithNamespace: "fis/gone", dir: path.join(base, "gone"), url: path.join(base, "no-such-repo") },
-        { key: "gateway", pathWithNamespace: "fis/gateway", dir: path.join(base, "gateway"), url: "unused" },
+        { key: "auth", pathWithNamespace: "fis/auth", dir: path.join(base, "auth"), url: source, sshUrl: "git@gitlab.example.test:fis/auth.git", httpUrl: "https://gitlab.example.test/fis/auth.git", targetBranch: "main" },
+        { key: "gone", pathWithNamespace: "fis/gone", dir: path.join(base, "gone"), url: path.join(base, "no-such-repo"), sshUrl: "git@gitlab.example.test:fis/gone.git", httpUrl: "https://gitlab.example.test/fis/gone.git", targetBranch: "main" },
+        { key: "gateway", pathWithNamespace: "fis/gateway", dir: path.join(base, "gateway"), url: "unused", sshUrl: "git@gitlab.example.test:fis/gateway.git", httpUrl: "https://gitlab.example.test/fis/gateway.git", targetBranch: "main" },
         // Taken by the first one: refused before it is cloned, so no folder is left behind.
-        { key: "auth", pathWithNamespace: "fis/auth-2", dir: path.join(base, "auth-2"), url: source },
+        { key: "auth", pathWithNamespace: "fis/auth-2", dir: path.join(base, "auth-2"), url: source, sshUrl: "git@gitlab.example.test:fis/auth-2.git", httpUrl: "https://gitlab.example.test/fis/auth-2.git", targetBranch: "main" },
       ],
       {
         check: (key) => {
           if (added.some((p) => p.name === key)) throw new Error(`${key} is taken`);
         },
         clone,
+        remote: () => null,
         add: (p) => void added.push(p),
       },
     );
-    assert.deepEqual(results.map((r) => [r.key, r.ok, r.cloned]), [["auth", true, true], ["gone", false, false], ["gateway", true, false], ["auth", false, false]]);
+    assert.deepEqual(results.map((r) => [r.key, r.ok, r.cloned]), [["auth", true, true], ["gone", false, false], ["gateway", false, false], ["auth", false, false]]);
     assert.equal(results[3]!.error, "auth is taken");
     assert.equal(existsSync(path.join(base, "auth-2")), false);
     assert.ok(results[1]!.error, "why it failed");
-    assert.deepEqual(added.map((p) => [p.name, p.gitlabProject]), [["auth", "fis/auth"], ["gateway", "fis/gateway"]], "with its GitLab path for the MRs");
+    assert.deepEqual(added.map((p) => [p.name, p.gitlabProject, p.targetBranch]), [["auth", "fis/auth", "main"]], "with its GitLab path and default branch");
     assert.equal(execFileSync("git", ["-C", path.join(base, "auth"), "rev-parse", "--is-inside-work-tree"]).toString().trim(), "true");
   });
 });

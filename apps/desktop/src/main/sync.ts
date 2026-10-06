@@ -1,5 +1,9 @@
 // Renders Hive docs into a repo (AGENTS.md, CLAUDE.md, docs/decisions.md, the docs for some paths:
 // nested AGENTS.md, .claude/rules/xdev-hive/, and skills: .claude/skills/<name>/SKILL.md) and commits only those files.
+//
+// Two ways in (roadmap 38c), both from the same render:
+//   commit mode: writes into the checkout and commits there (a repo with no forge to open an MR on)
+//   mr mode:     writes into a worktree of its own, started at origin/<target branch>, and opens a merge request
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
@@ -21,8 +25,10 @@ import {
   type FileAction,
   type HiveBackend,
   type Proposal,
+  type SyncMr,
   type SyncReport,
 } from "@xdev-hive/core";
+import { contextWorktree, remoteStart } from "#desktop/main/runner/worktree.ts";
 import { git, gitErrorText, isGitRepo } from "./git.ts";
 import { tr } from "./i18n.ts";
 
@@ -170,15 +176,24 @@ const defaultAgentsDoc = (project: string) => `# ${project}
 Mô tả ngắn dự án, lệnh build/test/lint, cấu trúc thư mục và quy ước riêng của repo này.
 `;
 
-export async function syncProject(
-  backend: HiveBackend,
-  actor: Actor,
-  project: DesktopProject,
-  opts: { autoCommit: boolean },
-): Promise<SyncReport> {
-  const { name, repo } = project;
-  if (!existsSync(repo)) throw new HiveError("not_found", `Không thấy thư mục repo: ${repo}`, { key: "errors.noFolder", vars: { path: repo } });
-  const gitRepo = isGitRepo(repo);
+interface Applied {
+  files: FileAction[];
+  /** Repo-relative paths written or removed, for the commit. */
+  changed: string[];
+  imported: string[];
+  notes: string[];
+  ownAgents: boolean;
+}
+
+/**
+ * Renders the project's pages into `dir` and says what it did there; the caller commits. `dir` is the user's
+ * checkout in commit mode and the docs worktree in MR mode (roadmap 38c), so the first import reads whichever of
+ * the two the sync works on: in MR mode that is origin/<target branch>, never a checkout someone is working in.
+ * `keepHandEdits`: leave a file someone edited since the last sync alone — only true of a checkout, since the
+ * docs worktree is restarted from the remote and has no hand edits to lose.
+ */
+async function applySync(backend: HiveBackend, actor: Actor, name: string, dir: string, opts: { keepHandEdits: boolean }): Promise<Applied> {
+  const gitRepo = isGitRepo(dir);
   const notes: string[] = [];
   const imported: string[] = [];
 
@@ -189,7 +204,7 @@ export async function syncProject(
   ];
   for (const [key, file] of seeds) {
     if (await backend.call("docs.get", { key }, actor)) continue;
-    const existing = read(path.join(repo, file));
+    const existing = read(path.join(dir, file));
     const content = existing ? stripManaged(existing).trim() : file === "AGENTS.md" ? defaultAgentsDoc(name) : null;
     if (!content) continue;
     try {
@@ -203,24 +218,24 @@ export async function syncProject(
 
   const docs = await loadDocs(backend, actor, name);
   const agentsDoc = docs.find((d) => d.key === agentsDocKey(name)) ?? null;
-  const planned = planProjectSync(name, docs).map((f) => (f.block ? { ...f, content: withManagedBlock(read(path.join(repo, f.path)), f.content) } : f));
+  const planned = planProjectSync(name, docs).map((f) => (f.block ? { ...f, content: withManagedBlock(read(path.join(dir, f.path)), f.content) } : f));
   // planProjectSync always puts AGENTS.md first; after it come the nested AGENTS.md, the rules and the skills.
   const hiveAgents = planned[0]!;
   // The repo wrote its own AGENTS.md (roadmap 38f): it stays, and Hive's part goes beside it with CLAUDE.md
   // importing both, exactly as a run's worktree gets it, so an agent still reads the team's conventions.
-  const ownAgents = ownAgentsNote(read(path.join(repo, "AGENTS.md")), agentsDoc);
+  const ownAgents = ownAgentsNote(read(path.join(dir, "AGENTS.md")), agentsDoc);
   const files: Array<{ path: string; content: string | null }> = [
     ownAgents ? { path: CONTEXT_AGENTS_FILE, content: hiveAgents.content } : hiveAgents,
     ...planned.slice(1),
-    { path: "CLAUDE.md", content: ensureClaudeImport(read(path.join(repo, "CLAUDE.md")), ownAgents ? [CONTEXT_AGENTS_FILE] : []) },
+    { path: "CLAUDE.md", content: ensureClaudeImport(read(path.join(dir, "CLAUDE.md")), ownAgents ? [CONTEXT_AGENTS_FILE] : []) },
   ];
   // The repo gave up its own AGENTS.md: the copy beside it is stale and CLAUDE.md no longer imports it.
-  if (!ownAgents && existsSync(path.join(repo, CONTEXT_AGENTS_FILE))) files.push({ path: CONTEXT_AGENTS_FILE, content: null });
+  if (!ownAgents && existsSync(path.join(dir, CONTEXT_AGENTS_FILE))) files.push({ path: CONTEXT_AGENTS_FILE, content: null });
   // A doc whose paths changed or went away: take our block out of the file (the rest stays), or remove the file.
   const wanted = new Set(files.map((f) => f.path));
-  for (const f of managedFiles(repo, gitRepo)) {
+  for (const f of managedFiles(dir, gitRepo)) {
     if (wanted.has(f)) continue;
-    const rest = f.startsWith(`${RULES_DIR}/`) || isSkillFile(f) ? "" : stripManaged(read(path.join(repo, f)) ?? "").trim();
+    const rest = f.startsWith(`${RULES_DIR}/`) || isSkillFile(f) ? "" : stripManaged(read(path.join(dir, f)) ?? "").trim();
     files.push({ path: f, content: rest ? `${rest}\n` : null });
   }
   const agentsLines = hiveAgents.content.split("\n").length;
@@ -230,7 +245,7 @@ export async function syncProject(
   const changed: string[] = [];
   if (ownAgents) actions.push({ file: "AGENTS.md", action: "skipped", note: ownAgents });
   for (const f of files) {
-    const abs = path.join(repo, f.path);
+    const abs = path.join(dir, f.path);
     const before = read(abs);
     if (before === f.content) {
       actions.push({ file: f.path, action: "unchanged" });
@@ -242,13 +257,13 @@ export async function syncProject(
       continue;
     }
     // With auto-commit, every earlier sync was committed, so a dirty file means someone edited it by hand.
-    if (opts.autoCommit && gitRepo && before !== null && /^(.M|M)/.test(git(repo, ["status", "--porcelain", "--", f.path]))) {
+    if (opts.keepHandEdits && gitRepo && before !== null && /^(.M|M)/.test(git(dir, ["status", "--porcelain", "--", f.path]))) {
       actions.push({ file: f.path, action: "skipped", note: tr("fileNote.uncommitted") });
       continue;
     }
     if (f.content === null) {
       // Only a tracked file's removal can be committed; an untracked one just goes.
-      if (gitRepo && git(repo, ["ls-files", "--", f.path])) changed.push(f.path);
+      if (gitRepo && git(dir, ["ls-files", "--", f.path])) changed.push(f.path);
       rmSync(abs, { force: true });
       // The skill's folder too, when nothing else is in it.
       if (isSkillFile(f.path)) {
@@ -267,22 +282,89 @@ export async function syncProject(
     changed.push(f.path);
   }
 
-  let commit: string | null = null;
-  if (changed.length && opts.autoCommit) {
-    if (!gitRepo) {
-      notes.push(tr("syncNote.notGitRepo"));
-    } else {
-      try {
-        git(repo, ["add", "--", ...changed]);
-        git(repo, ["commit", "-m", "docs(xdev-hive): sync shared docs", "--", ...changed], { HIVE_ADMIN: "1" });
-        commit = git(repo, ["rev-parse", "--short", "HEAD"]);
-      } catch (err) {
-        notes.push(tr("syncNote.commitFailed", { reason: gitErrorText(err) }));
-      }
-    }
-  }
+  return { files: actions, changed, imported, notes, ownAgents: ownAgents !== null };
+}
 
-  return { project: name, files: actions, imported, commit, ownAgents: ownAgents !== null, note: notes.join(" · ") || undefined };
+const SYNC_MESSAGE = "docs(xdev-hive): sync shared docs";
+
+/** The branch and the worktree a sync in MR mode uses, one per project (roadmap 38c). */
+export const CONTEXT_BRANCH = "chore/xdev-hive-context";
+export const CONTEXT_WORKTREE = "_hive-context";
+
+/** Commits what the sync wrote in `dir`, on its own; the agent's work, if any, is not ours to commit. */
+function commitSync(dir: string, changed: string[], notes: string[]): string | null {
+  try {
+    git(dir, ["add", "--", ...changed]);
+    git(dir, ["commit", "-m", SYNC_MESSAGE, "--", ...changed], { HIVE_ADMIN: "1" });
+    return git(dir, ["rev-parse", "--short", "HEAD"]);
+  } catch (err) {
+    notes.push(tr("syncNote.commitFailed", { reason: gitErrorText(err) }));
+    return null;
+  }
+}
+
+/** Pushes the docs branch and opens or updates its merge request; the desktop passes MergeRequester.openContext. */
+export type ContextMrOpener = (project: DesktopProject, branch: string) => Promise<SyncMr>;
+
+export interface SyncOptions {
+  autoCommit: boolean;
+  /**
+   * MR mode (roadmap 38c): the folder the docs worktree goes under, and how its branch becomes a merge request.
+   * Left out for a project with no forge to open one on, which then syncs into the checkout as before.
+   */
+  mr?: { worktreeRoot: string; open: ContextMrOpener };
+}
+
+export async function syncProject(backend: HiveBackend, actor: Actor, project: DesktopProject, opts: SyncOptions): Promise<SyncReport> {
+  const { name, repo } = project;
+  if (!existsSync(repo)) throw new HiveError("not_found", `Không thấy thư mục repo: ${repo}`, { key: "errors.noFolder", vars: { path: repo } });
+  if (opts.mr) return syncViaMr(backend, actor, project, opts.mr);
+
+  const gitRepo = isGitRepo(repo);
+  const applied = await applySync(backend, actor, name, repo, { keepHandEdits: opts.autoCommit && gitRepo });
+  const notes = applied.notes;
+  let commit: string | null = null;
+  if (applied.changed.length && opts.autoCommit) {
+    if (gitRepo) commit = commitSync(repo, applied.changed, notes);
+    else notes.push(tr("syncNote.notGitRepo"));
+  }
+  return { project: name, files: applied.files, imported: applied.imported, commit, ownAgents: applied.ownAgents, note: notes.join(" · ") || undefined };
+}
+
+/**
+ * The same sync as a merge request (roadmap 38c): the docs are rendered in a worktree of this project's own,
+ * started at the target branch as the remote has it now, so the checkout the user works in keeps its branch and
+ * its unfinished files — and so a run, which reads its context from the target branch, gets the docs once the MR
+ * is merged. Nothing different from that branch means nothing to review: no push and no merge request then.
+ */
+async function syncViaMr(backend: HiveBackend, actor: Actor, project: DesktopProject, mr: { worktreeRoot: string; open: ContextMrOpener }): Promise<SyncReport> {
+  const { name, repo } = project;
+  const start = await remoteStart(repo, project.targetBranch ?? undefined);
+  if (!start.ref) {
+    // Without the target branch the sync would build on a checkout that may be days behind: it stops instead.
+    const reason = start.error ?? tr("syncNote.notGitRepo");
+    throw new HiveError("bad_request", `Không lấy được nhánh đích của ${name}: ${reason}`, { key: "errors.contextFetch", vars: { project: name, reason } });
+  }
+  const dir = path.join(mr.worktreeRoot, name, CONTEXT_WORKTREE);
+  contextWorktree(repo, dir, CONTEXT_BRANCH, start.ref);
+
+  const applied = await applySync(backend, actor, name, dir, { keepHandEdits: false });
+  const notes = applied.notes;
+  const report: SyncReport = {
+    project: name,
+    files: applied.files,
+    imported: applied.imported,
+    commit: null,
+    ownAgents: applied.ownAgents,
+  };
+  if (!applied.changed.length) {
+    notes.push(tr("syncNote.mrUpToDate", { branch: start.ref.replace("refs/remotes/", "") }));
+    return { ...report, note: notes.join(" · ") || undefined };
+  }
+  report.commit = commitSync(dir, applied.changed, notes);
+  // A commit that failed left nothing to push: say so instead of opening an empty merge request.
+  if (report.commit) report.mr = await mr.open(project, CONTEXT_BRANCH);
+  return { ...report, note: notes.join(" · ") || undefined };
 }
 
 /**

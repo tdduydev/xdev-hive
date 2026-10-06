@@ -69,7 +69,7 @@ import {
 import { GitHubClient } from "./github/client.ts";
 import { GitLabClient } from "./gitlab/client.ts";
 import { gitClone, importRepos, planImport } from "./gitlab/import.ts";
-import { findGitRepos, isGitRepo } from "./git.ts";
+import { findGitRepos, isGitRepo, isRepoRoot, remoteUrl } from "./git.ts";
 import { addRepos, planLocalImport } from "./local-import.ts";
 import { appendCrashLog, crashLogPath, ReloadGuard } from "./crashlog.ts";
 import { MainLog, mainLogDir, QuitReasons, relaunchAfterQuitInstall, takeStartHidden } from "./applog.ts";
@@ -89,7 +89,7 @@ import { agentPath } from "./runner/shell-path.ts";
 import { landingPage, signInThroughBrowser } from "./hub-browser.ts";
 import { Setup } from "./setup.ts";
 import { checkCitations } from "./citations.ts";
-import { proposeAgents, syncProject } from "./sync.ts";
+import { proposeAgents, syncProject, type SyncOptions } from "./sync.ts";
 import { mirrorDocs, mirrors } from "./mirror.ts";
 import { pushSpecs } from "./specs.ts";
 import { cliCommand } from "./cli-open.ts";
@@ -307,7 +307,10 @@ async function gitlabGroup(input: { group: string; baseDir: string }): Promise<G
   const group = String(input?.group ?? "").trim().replace(/^\/+|\/+$/g, "");
   if (!/^[\w.-]+(\/[\w.-]+)*$/.test(group)) throw new HiveError("bad_request", "A group path like company/team.", { key: "errors.gitlabGroup" });
   const baseDir = path.resolve(expandHome(String(input?.baseDir ?? "")));
-  return planImport(await importClient().groupProjects(group), baseDir, config.projects);
+  const repos = await importClient().groupProjects(group);
+  const depth = Math.max(3, ...repos.map((repo) => repo.pathWithNamespace.split("/").length - group.split("/").length));
+  const local = findGitRepos(baseDir, depth).map((dir) => ({ dir, remote: remoteUrl(dir) }));
+  return planImport(repos, baseDir, config.projects, group, local);
 }
 
 async function importGitlab(input: {
@@ -320,7 +323,7 @@ async function importGitlab(input: {
   const repos = new Map((await client.groupProjects(String(input.group))).map((r) => [r.pathWithNamespace, r]));
   const items = (input.items ?? []).flatMap((i) => {
     const repo = repos.get(i.pathWithNamespace);
-    return repo ? [{ key: i.key, pathWithNamespace: i.pathWithNamespace, dir: path.resolve(expandHome(i.dir)), url: input.protocol === "https" ? repo.httpUrl : repo.sshUrl }] : [];
+    return repo ? [{ key: i.key, pathWithNamespace: i.pathWithNamespace, dir: path.resolve(expandHome(i.dir)), url: input.protocol === "https" ? repo.httpUrl : repo.sshUrl, sshUrl: repo.sshUrl, httpUrl: repo.httpUrl, targetBranch: repo.defaultBranch }] : [];
   });
   const results = await importRepos(items, {
     check: (key) => {
@@ -328,8 +331,9 @@ async function importGitlab(input: {
       if (config.projects.some((x) => x.name === key)) throw new HiveError("conflict", `Đã có dự án ${key}.`, { key: "errors.projectExists", vars: { project: key } });
     },
     clone: gitClone(client, config.gitlab.token),
+    remote: (dir) => isRepoRoot(dir) ? remoteUrl(dir) : null,
     add: (p) => {
-      addProject({ name: p.name, repo: p.repo });
+      addProject({ name: p.name, repo: p.repo, targetBranch: p.targetBranch });
       updateProject(p.name, { gitlabProject: p.gitlabProject ?? null });
     },
   });
@@ -510,9 +514,20 @@ async function checkAllCitations(): Promise<void> {
   }
 }
 
-/** Đồng bộ of the Projects page, and what a sync request from the hub runs (roadmap 22n). */
+/**
+ * How a project's docs get into its repo: as a merge request when the repo is on a forge this app can open one on
+ * (roadmap 38c), so the checkout the user works in keeps its branch and its unfinished files; by a commit into the
+ * checkout otherwise, as before. Auto-commit off means the app writes no git history at all, so no MR either.
+ */
+function syncMr(p: DesktopProject): SyncOptions["mr"] {
+  if (!config.sync.autoCommit || !mergeRequester.canOpenContext(p)) return undefined;
+  const worktreeRoot = config.runner.worktreeRoot ?? path.join(path.dirname(configPath()), "worktrees");
+  return { worktreeRoot, open: (target, branch) => mergeRequester.openContext(target, branch) };
+}
+
+/** Đồng bộ of the Projects page, and what a sync request from the hub runs (roadmap 22n), the same way for both. */
 async function syncAndMirror(name: string): Promise<SyncReport> {
-  const report = await syncProject(backend, actor(), project(name), { autoCommit: config.sync.autoCommit });
+  const report = await syncProject(backend, actor(), project(name), { autoCommit: config.sync.autoCommit, mr: syncMr(project(name)) });
   // The other way too (roadmap 26): the repo's docs into Hive, when the repo says which.
   if (!mirrors(project(name).repo)) return report;
   const mirror = await mirrorDocs(backend, actor(), project(name));
@@ -1699,4 +1714,3 @@ if (!app.requestSingleInstanceLock()) {
     if (!smokeShot) createTray();
   });
 }
-

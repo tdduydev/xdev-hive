@@ -235,6 +235,7 @@ export function syncOutcome(report: SyncReport): SyncOutcome {
     changed: report.files.filter((f) => f.action !== "unchanged" && f.action !== "skipped").map((f) => f.file),
     skipped: report.files.filter((f) => f.action === "skipped").map((f) => f.file),
     commit: report.commit,
+    mr: report.mr?.url ?? null,
     mirrored: report.mirror ? report.mirror.changed.length : null,
     note: report.note ?? null,
   };
@@ -246,7 +247,7 @@ export function readSyncOutcome(output: string | null): SyncOutcome | null {
   try {
     const o = JSON.parse(output) as Partial<SyncOutcome>;
     return Array.isArray(o.changed) && Array.isArray(o.skipped)
-      ? { changed: o.changed, skipped: o.skipped, commit: o.commit ?? null, mirrored: o.mirrored ?? null, note: o.note ?? null }
+      ? { changed: o.changed, skipped: o.skipped, commit: o.commit ?? null, mr: o.mr ?? null, mirrored: o.mirrored ?? null, note: o.note ?? null }
       : null;
   } catch {
     return null;

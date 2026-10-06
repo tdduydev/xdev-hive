@@ -81,6 +81,15 @@ export function defaultBranch(repo: string): string | null {
   }
 }
 
+/** The origin URL, when a repository has one. */
+export function remoteUrl(repo: string): string | null {
+  try {
+    return git(repo, ["remote", "get-url", "origin"]);
+  } catch {
+    return null;
+  }
+}
+
 export function gitErrorText(err: unknown): string {
   const e = err as { stderr?: string; message?: string };
   return (e.stderr || e.message || String(err)).trim().split("\n").slice(-3).join(" ");
