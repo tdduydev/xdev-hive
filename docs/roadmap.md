@@ -283,10 +283,14 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 - [x] **53. antigravity** (hỏi 6/10: "login sso antigravity nữa nhé"): loại gói mới `antigravity` chạy Antigravity CLI `agy -p` (thay Gemini CLI cho tài khoản Google cá nhân từ 18/6/2026); nút *+ Tài khoản Google (Antigravity)* mở `agy` để tự đăng nhập Google hay SSO Workspace (tuỳ chọn Google Cloud project cho doanh nghiệp); hạn mức 5 giờ / tuần đọc bằng `agy -p /usage` (≥ 1.1.11, không tốn lượt); Hive không bao giờ đụng token OAuth (điều khoản của Google). Nhiều tài khoản: Linux tách `HOME` (thử nghiệm), macOS/Windows một tài khoản mỗi người dùng máy. Spec: [docs/specs/53-antigravity.md](specs/53-antigravity.md).
 
 - **54. model-router** (hỏi 6/10: "tuỳ theo tác vụ thì chọn model nào tối ưu task, token nhất… codex nhiều mode, claude cũng vậy"; chọn: cân bằng, luật + AI phân loại, tự học có giới hạn): run hôm nay không chọn model hay mức suy nghĩ theo task. Task có loại / cỡ / rủi ro (luật, run `classify` bằng model rẻ khi chưa rõ); bảng cấp `light` / `standard` / `strong` / `max` ánh xạ sang model + effort của Claude (`--model`, `--effort`), Codex (`-m`, `model_reasoning_effort`), agy; bảng loại × cỡ → cấp theo dự án, ba hồ sơ Tiết kiệm / Cân bằng / Chất lượng; lỗi thì nâng mức suy nghĩ rồi một cấp (tối đa 2); tự học: cấp rẻ nhất có tỉ lệ xong ≥ 80%, thử rẻ hơn 10%, khoá ô được. Không bao giờ tự dùng fast mode, `max`, Fable. Spec: [docs/specs/54-model-router.md](specs/54-model-router.md). Tách:
-  - [ ] **54a. run-data**: run ghi model, effort, loại gói, lần thử, run cha, kết luận review.
+  - [x] **54a. run-data**: run ghi model, effort, loại gói, lần thử, run cha, kết luận review.
   - [ ] **54b. task-kind**: loại / cỡ / rủi ro của task, luật và AI phân loại, ô trong khung task.
   - [ ] **54c. router**: bảng cấp, bảng loại × cỡ, hồ sơ, hub gửi lựa chọn, runner thêm cờ, nâng cấp khi lỗi, áp lực hạn mức, trang *Chọn model*.
   - [ ] **54d. learning**: thống kê, đề xuất hằng đêm, thử rẻ hơn, khoá ô.
+
+- **55. quota-outlook** (hỏi 6/10: "thiếu các phần liên quan đến số lần reset còn sử dụng được"; chọn cả ba): không CLI nào báo sẵn số lần reset còn lại (đã kiểm `claude /usage` 2.1.291, `rate_limits` của codex 0.160.1), Hive tự tính: số lần reset 5 giờ còn tới khi tuần làm mới, số phiên đầy còn dùng được (ước tính theo lịch sử % tuần tốn mỗi phiên), credits của Codex (`balance`, `plan_type`, trần chi tiêu); app hiện mỗi gói và tổng của máy; web *Máy & agent* có tab *Quota* gộp theo tài khoản và dòng tổng "có thể giao thêm N agent ngay". Spec: [docs/specs/55-quota-outlook.md](specs/55-quota-outlook.md). Tách:
+  - [ ] **55a. outlook-app**: máy tính và gửi số liệu, lịch sử 14 ngày, dòng mới trong khối quota, tổng của máy.
+  - [ ] **55b. outlook-web**: tab *Quota* của *Máy & agent*, gộp tài khoản, dòng tổng cả nhóm.
 
 ## Sửa lỗi
 
