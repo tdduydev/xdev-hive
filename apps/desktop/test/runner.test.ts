@@ -20,6 +20,7 @@ import { assistSettings, globRegExp, parseAssist, readRepoFiles } from "#desktop
 import { setMainLocale, tr } from "#desktop/main/i18n.ts";
 import { describeBranch, hasBranch, remoteStart } from "#desktop/main/runner/worktree.ts";
 import { pickProfile, pickWithReason, waitingReason, type ProfileLoad } from "#desktop/main/runner/schedule.ts";
+import { canClassify, CLASSIFY_INPUT_TOKENS, classifierCommand, classifierResult, classifyPrompt } from "#desktop/main/runner/classify.ts";
 import { syncProject } from "#desktop/main/sync.ts";
 import { readSyncOutcome } from "@xdev-hive/core";
 
@@ -2746,5 +2747,100 @@ describe("quota on the Agent page (roadmap 52)", () => {
     assert.equal(shown.session!.resets, "6:20pm (Asia/Saigon)", "the CLI's text stays for the tooltip");
     assert.equal(withResetsAt({ ...usage, week: { percent: 3, resets: "soon" } }, now)!.week!.resetsAt, null);
     assert.equal(withResetsAt(undefined, now), null);
+  });
+});
+
+// Roadmap 54b: the hub's classify run, before a task with no kind starts. A cheap model, no tools, JSON out.
+describe("classify runs", () => {
+  const reply = (kind: string, size: string, risk: string) => JSON.stringify({ kind, size, risk, reason: "One settings page" });
+  const reported = { id: "claude-1", label: "claude-1", kind: "claude", enabled: true, account: null, installed: true, cooldownUntil: null, runs: 0, rateLimited: 0, classify: true };
+
+  it("calls the cheapest model with no tools, MCP server or session, and reads both CLIs' answers", () => {
+    const claude = classifierCommand({ kind: "claude", bin: "claude" }, "Classify this task.")!;
+    assert.deepEqual(claude.args.slice(0, 5), ["-p", "--model", "haiku", "--effort", "low"]);
+    assert.equal(claude.args[claude.args.indexOf("--tools") + 1], "");
+    for (const flag of ["--strict-mcp-config", "--no-session-persistence", "--system-prompt"]) assert.ok(claude.args.includes(flag), flag);
+    assert.equal(claude.stdin, "Classify this task.");
+    const codex = classifierCommand({ kind: "codex", bin: "codex" }, "Classify this task.")!;
+    assert.deepEqual(codex.args.slice(-5), ["-m", "gpt-6-luna", "-c", "model_reasoning_effort=low", "-"]);
+    assert.ok(codex.args.includes("read-only"));
+    assert.match(codex.stdin, /Answer with one JSON object[\s\S]*Classify this task\.$/);
+    assert.equal(classifierCommand({ kind: "gemini", bin: "gemini" }, "x"), null);
+    assert.equal(canClassify({ kind: "claude", roles: ["implement"] }), true);
+    assert.equal(canClassify({ kind: "codex", roles: ["plan", "implement", "review"] }), true);
+    assert.equal(canClassify({ kind: "claude", roles: ["review"] }), false, "a review-only plan does no work of its own");
+    assert.equal(canClassify({ kind: "antigravity", roles: ["implement"] }), false);
+
+    // Claude: one JSON document, the answer in result (here in a code fence), tokens in usage.
+    const fenced = JSON.stringify({ type: "result", result: "```json\n" + reply("ui", "s", "normal") + "\n```", usage: { input_tokens: 900, cache_read_input_tokens: 300 } });
+    assert.deepEqual(classifierResult(fenced), { value: { kind: "ui", size: "s", risk: "normal", reason: "One settings page" } });
+    const over = JSON.stringify({ type: "result", result: reply("ui", "s", "normal"), usage: { input_tokens: CLASSIFY_INPUT_TOKENS + 1 } });
+    assert.ok("error" in classifierResult(over), "over the cap: the default rather than an answer that cost too much");
+    // Codex: events, one per line.
+    const events = [
+      JSON.stringify({ type: "thread.started" }),
+      JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: reply("debug", "m", "high") } }),
+      JSON.stringify({ type: "turn.completed", usage: { input_tokens: 4000, output_tokens: 40 } }),
+    ].join("\n");
+    assert.deepEqual(classifierResult(events), { value: { kind: "debug", size: "m", risk: "high", reason: "One settings page" } });
+    assert.ok("error" in classifierResult(JSON.stringify({ type: "result", result: "It looks like a feature." })));
+    assert.ok("error" in classifierResult(JSON.stringify({ type: "result", result: reply("frontend", "s", "normal") })));
+
+    const prompt = classifyPrompt({ title: "Fix packages/core/src/sqlite.ts", note: "See apps/web/src/server.ts and packages/core/src/sqlite.ts" })!;
+    assert.deepEqual(JSON.parse(prompt.slice(prompt.indexOf("{"))).files, ["packages/core/src/sqlite.ts", "apps/web/src/server.ts"]);
+    assert.equal(classifyPrompt({ title: "Big", note: "x".repeat(40_000) }), null);
+  });
+
+  it("does the classify run a hub asks for with a fake CLI, and the hub then queues the task's own run", async () => {
+    const bin = tmp("classify");
+    const rec = path.join(bin, "rec");
+    const cli = path.join(bin, "claude");
+    writeFileSync(cli, `#!/bin/sh\nprintf '%s\\n' "$@" > "${rec}.args"\ncat > "${rec}.stdin"\npwd > "${rec}.cwd"\nprintf '%s' "$FAKE_OUT"\n`, { mode: 0o755 });
+    const out = JSON.stringify({ type: "result", result: reply("ui", "s", "normal"), usage: { input_tokens: 1200 } });
+    const p = profile("claude-1", "claude", 10, "ok", { bin: cli, args: [], env: { FAKE_OUT: out } });
+    const a = await setup([p], { acceptHubRuns: true }, "hub", { report: () => ({ profiles: [reported] }) });
+    await a.runner.heartbeat();
+    await a.hive.call("tasks.assign", { id: "T-1", machineId: "runner.duy-mbp@duy-macbook" }, admin);
+    await a.runner.heartbeat();
+    await a.runner.settle();
+
+    const t = await a.task();
+    assert.deepEqual([t.kind, t.size, t.risk, t.classifiedBy], ["ui", "s", "normal", "ai"]);
+    const run = a.runner.store.list({ limit: 10 }).find((r) => r.role === "classify")!;
+    assert.equal(run.status, "succeeded");
+    assert.deepEqual(JSON.parse(run.summary!), { kind: "ui", size: "s", risk: "normal", reason: "One settings page" });
+    const args = readFileSync(`${rec}.args`, "utf8").split("\n");
+    assert.deepEqual(args.slice(0, 5), ["-p", "--model", "haiku", "--effort", "low"]);
+    // The task as data on stdin, run from an empty folder rather than the repo, so no CLAUDE.md is read in.
+    assert.match(readFileSync(`${rec}.stdin`, "utf8"), /Thêm trang cài đặt/);
+    const cwd = readFileSync(`${rec}.cwd`, "utf8").trim();
+    assert.notEqual(cwd, realpathSync(a.repo));
+    assert.ok(!existsSync(cwd), "the folder goes with the run");
+    // Its answer is in: the task's own run waits for this machine at the hub.
+    const requests = await a.hive.call("runs.requests", {}, admin);
+    assert.deepEqual(
+      requests.map((r) => [r.role, r.status]),
+      [
+        ["implement", "pending"],
+        ["classify", "accepted"],
+      ],
+    );
+  });
+
+  it("fails a classify run whose CLI answers nonsense, and the hub gives the default class", async () => {
+    const bin = tmp("classify");
+    const cli = path.join(bin, "claude");
+    writeFileSync(cli, `#!/bin/sh\ncat > /dev/null\necho '{"type":"result","result":"no idea"}'\n`, { mode: 0o755 });
+    const p = profile("claude-1", "claude", 10, "ok", { bin: cli, args: [] });
+    const a = await setup([p], { acceptHubRuns: true }, "hub", { report: () => ({ profiles: [reported] }) });
+    await a.runner.heartbeat();
+    await a.hive.call("tasks.assign", { id: "T-1", machineId: "runner.duy-mbp@duy-macbook" }, admin);
+    await a.runner.heartbeat();
+    await a.runner.settle();
+    const run = a.runner.store.list({ limit: 10 }).find((r) => r.role === "classify")!;
+    assert.equal(run.status, "failed");
+    assert.ok(run.error);
+    const t = await a.task();
+    assert.deepEqual([t.kind, t.size, t.risk, t.classifiedBy], ["feature", "m", "normal", "ai"]);
   });
 });

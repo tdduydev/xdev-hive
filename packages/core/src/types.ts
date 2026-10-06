@@ -5,6 +5,7 @@ import type { Verdict } from "./verdict.ts";
 import type { MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { WriteSource } from "./source.ts";
 import type { MapPhase } from "./mapreduce.ts";
+import type { TaskKind, TaskRisk, TaskSize } from "./task-classify.ts";
 
 /** member: a person's hub account (what it may do comes from its per-project grants). */
 export type Role = "viewer" | "agent" | "member" | "admin";
@@ -284,6 +285,11 @@ export interface Task {
   id: string;
   project: string;
   title: string;
+  kind: TaskKind | null;
+  size: TaskSize | null;
+  risk: TaskRisk | null;
+  classifiedBy: string | null;
+  classifiedAt: string | null;
   status: TaskStatus;
   owner: string | null;
   leaseUntil: string | null;
@@ -368,6 +374,11 @@ export interface ReportedProfile extends QuotaOutlook {
   priority?: number;
   /** Runs it takes at once (AgentProfile.maxConcurrent); absent from apps older than 0.110, counted as 1. */
   maxConcurrent?: number;
+  /**
+   * It can do the hub's classify run (roadmap 54b): a Claude or Codex profile that takes implement runs, on an app that
+   * knows the role. Absent from older apps, so the hub never sends them a run they would refuse.
+   */
+  classify?: boolean;
 }
 
 /**
@@ -1033,6 +1044,7 @@ export interface ChatFile {
 export const CHAT_ACTION_KINDS = [
   "task.create",
   "task.update",
+  "task.classify",
   "task.assign",
   "run.dispatch",
   "run.cancel",
@@ -1162,7 +1174,7 @@ export interface MachineRun {
   project: string;
   taskId: string;
   taskTitle: string;
-  role: "plan" | "implement" | "review";
+  role: "plan" | "implement" | "review" | "classify";
   status: "queued" | "running";
   profileId: string | null;
   since: string;

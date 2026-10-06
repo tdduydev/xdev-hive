@@ -38,6 +38,15 @@ export interface RunNeeds {
   preferKind?: AgentKind | null;
 }
 
+/**
+ * Whether a profile takes runs of this role. A classify run (roadmap 54b) is a few seconds of a cheap model: any Claude
+ * or Codex profile that does the work itself takes it, rather than one more role to tick on every profile.
+ */
+export function takesRole(profile: Pick<AgentProfile, "kind" | "roles">, role: AgentRole): boolean {
+  if (role === "classify") return (profile.kind === "claude" || profile.kind === "codex") && profile.roles.includes("implement");
+  return profile.roles.includes(role);
+}
+
 /** Could take a run once a slot is free: on, installed, signed in, under its plan threshold and not resting. */
 function usable(p: ProfileLoad, now: Date): boolean {
   return (
@@ -89,7 +98,7 @@ export function pickWithReason(loads: ProfileLoad[], needs: RunNeeds, now: Date)
     const pinned = loads.find((l) => l.profile.id === needs.preferredProfile);
     return pinned && isAvailable(pinned, now) ? { load: pinned, reason: tr("runNote.pickPinned", { profile: pinned.profile.id }) } : null;
   }
-  const fits = (l: ProfileLoad) => l.profile.roles.includes(needs.role) && !needs.excludedProfiles.includes(l.profile.id);
+  const fits = (l: ProfileLoad) => takesRole(l.profile, needs.role) && !needs.excludedProfiles.includes(l.profile.id);
   let candidates = loads.filter((l) => isAvailable(l, now) && fits(l));
   if (needs.strictKinds && needs.avoidKinds.length) {
     const other = (l: ProfileLoad) => !needs.avoidKinds.includes(l.profile.kind);
@@ -139,7 +148,7 @@ export function waitingReason(loads: ProfileLoad[], needs: RunNeeds, now: Date):
   const eligible = loads.filter(
     (l) =>
       l.profile.enabled &&
-      (needs.preferredProfile ? l.profile.id === needs.preferredProfile : l.profile.roles.includes(needs.role)) &&
+      (needs.preferredProfile ? l.profile.id === needs.preferredProfile : takesRole(l.profile, needs.role)) &&
       !needs.excludedProfiles.includes(l.profile.id),
   );
   if (!eligible.length) return tr("runNote.noProfile");

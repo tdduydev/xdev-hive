@@ -907,6 +907,20 @@ export function ActionItem({ action: a, taskIds, manage, onDecided }: { action: 
             <>
               {t("chat.actionMove")} {taskLink} → {t(`taskStatus.${String(input.status)}` as never)}
             </>
+          ) : a.kind === "task.classify" ? (
+            <>
+              {t("chat.actionClassify")} {taskLink} ·{" "}
+              {(
+                [
+                  ["kind", input.taskKind],
+                  ["size", input.size],
+                  ["risk", input.risk],
+                ] as const
+              )
+                .filter(([, v]) => typeof v === "string")
+                .map(([field, v]) => `${t(`taskClass.${field}`)}: ${t(`taskClass.${field}Values.${String(v)}` as never)}`)
+                .join(" · ")}
+            </>
           ) : a.kind === "run.dispatch" ? (
             <>
               {t("chat.actionRun", { role: runLabel("agentRole", String(input.role ?? "implement")) })} {taskLink} · {machine}

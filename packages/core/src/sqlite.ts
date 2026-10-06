@@ -58,6 +58,7 @@ import { planSpecTasks, specStage, specStepInstructions, specTaskPrefix, specTas
 import { parseVerdict, type Verdict } from "./verdict.ts";
 import { parseParts, partInstructions, reduceInstructions, splitInstructions, type MapPhase } from "./mapreduce.ts";
 import { toolEffective, toolProblem, toolSetupItems } from "./tools.ts";
+import { classifyTaskRule, DEFAULT_TASK_CLASS, parseTaskClass, type TaskClass } from "./task-classify.ts";
 import type {
   Actor,
   AgentsPaused,
@@ -517,6 +518,18 @@ const MIGRATIONS: string[] = [
   ALTER TABLE run_records ADD COLUMN verdict TEXT;
   CREATE INDEX run_records_finished ON run_records(finished_at);
   `,
+  // What a task is (roadmap 54b), and who said so: 'rule', 'ai' or a person's name. The classify run a task waits for,
+  // the runs.dispatch calls waiting behind one, and the projects that turned the run off (no row: on).
+  `
+  ALTER TABLE tasks ADD COLUMN kind TEXT;
+  ALTER TABLE tasks ADD COLUMN size TEXT;
+  ALTER TABLE tasks ADD COLUMN risk TEXT;
+  ALTER TABLE tasks ADD COLUMN classified_by TEXT;
+  ALTER TABLE tasks ADD COLUMN classified_at TEXT;
+  CREATE TABLE task_classify_config(project TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1);
+  CREATE TABLE task_classify_runs(task_id TEXT PRIMARY KEY, request_id INTEGER NOT NULL, requested_at TEXT NOT NULL);
+  CREATE TABLE task_classify_dispatches(task_id TEXT PRIMARY KEY, project TEXT NOT NULL, request TEXT NOT NULL, requested_by TEXT NOT NULL, on_behalf TEXT);
+  `,
 ];
 
 /**
@@ -621,6 +634,12 @@ function rtkSeedSql(): string {
 const CHAT_ACTIONS_PER_REPLY = 20;
 
 /**
+ * How long a task waits for its classify run (roadmap 54b) before it starts with the default class anyway: the run
+ * itself takes seconds, so this only covers a machine that took the request and then went quiet.
+ */
+const CLASSIFY_WAIT_MINUTES = 10;
+
+/**
  * What confirming each kind of chat action calls, as the person confirming (roadmap 29b): the method, the input it gets
  * from the stored one, and what the card keeps of its answer. One row per kind, so a new kind (28e, 29c) is one line.
  */
@@ -630,8 +649,10 @@ interface ChatCall {
   result?: (output: unknown) => NonNullable<ChatAction["result"]>;
 }
 const CHAT_ACTION_CALLS: Record<ChatActionKind, ChatCall> = {
-  "task.create": { method: "tasks.create", result: (o) => ({ taskId: (o as Task).id }) },
+  // The card's `taskKind` is the task's `kind`: in the action, `kind` already names the action.
+  "task.create": { method: "tasks.create", input: ({ taskKind, ...rest }) => ({ ...rest, kind: taskKind }), result: (o) => ({ taskId: (o as Task).id }) },
   "task.update": { method: "tasks.update", result: (o) => ({ taskId: (o as Task).id }) },
+  "task.classify": { method: "tasks.classify", input: ({ id, taskKind, size, risk }) => ({ id, kind: taskKind, size, risk }), result: (o) => ({ taskId: (o as Task).id }) },
   // `machine` is only the name the card shows; tasks.assign takes the hub id.
   "task.assign": { method: "tasks.assign", input: ({ id, machineId, profileId }) => ({ id, machineId, profileId }), result: (o) => ({ taskId: (o as Task).id }) },
   "run.dispatch": { method: "runs.dispatch", result: (o) => ({ requestId: (o as RunRequest).id }) },
@@ -654,6 +675,8 @@ const CHAT_ACTION_CALLS: Record<ChatActionKind, ChatCall> = {
 const CHAT_DECIDE_ORDER: Record<ChatActionKind, number> = {
   "task.create": 0,
   "task.update": 1,
+  // Before task.assign: a task given to an agent with no kind yet gets a classify run first.
+  "task.classify": 1,
   // After the task exists and has its status; the hub starts it by itself from there (roadmap 50).
   "task.assign": 2,
   "agent.policy": 3,
@@ -848,6 +871,11 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
   "systems.remove": (i) => ({ target: i.name }),
   "projects.archive": (i) => ({ target: i.project, detail: "lưu trữ", text: { key: "audit.projectArchived" } }),
   "projects.restore": (i) => ({ target: i.project, detail: "khôi phục", text: { key: "audit.projectRestored" } }),
+  "tasks.setClassifyConfig": (i: { project: string; enabled: boolean }) => ({
+    target: i.project,
+    detail: i.enabled ? "bật AI phân loại task" : "tắt AI phân loại task",
+    text: { key: i.enabled ? "audit.classifyOn" : "audit.classifyOff" },
+  }),
   // The row count is the only record of what a deletion took: nothing is left in the tables to look at afterwards.
   "projects.delete": (i, o: ProjectDeleted) => {
     const rows = Object.values(o.rows).reduce((n, v) => n + v, 0);
@@ -1019,6 +1047,8 @@ const PROJECT_WRITES: Partial<Record<Method, "project" | "task" | "thread" | "do
   "tasks.setDeps": "task",
   "tasks.claim": "task",
   "tasks.update": "task",
+  "tasks.classify": "task",
+  "tasks.setClassifyConfig": "project",
   "tasks.assign": "task",
   "tasks.unassign": "task",
   "specs.push": "project",
@@ -1228,6 +1258,11 @@ const toTask = (
   id: str(r.id),
   project: str(r.project),
   title: str(r.title),
+  kind: strOrNull(r.kind) as Task["kind"],
+  size: strOrNull(r.size) as Task["size"],
+  risk: strOrNull(r.risk) as Task["risk"],
+  classifiedBy: strOrNull(r.classified_by),
+  classifiedAt: strOrNull(r.classified_at),
   status: str(r.status) as Task["status"],
   owner: strOrNull(r.owner),
   leaseUntil: strOrNull(r.lease_until),
@@ -1811,6 +1846,14 @@ export class SqliteHive implements HiveBackend {
         if (task) this.#need(actor, task.project, "taskManage", `Task ${i.id}`);
         return;
       }
+      case "tasks.classify": {
+        const task = this.#getTask(i.id);
+        if (task) this.#need(actor, task.project, "taskManage", `Task ${i.id}`);
+        return;
+      }
+      // tasks.classifyConfig answers for the projects the caller sees, so it needs nothing more here.
+      case "tasks.setClassifyConfig":
+        return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
       // Giving a task to an agent is queueing its run, only without saying when: the same right as runs.dispatch.
       case "tasks.assign":
       case "tasks.unassign": {
@@ -2317,6 +2360,66 @@ export class SqliteHive implements HiveBackend {
     return row ? this.#tasks([row])[0]! : null;
   }
 
+  /**
+   * The hub's rules (roadmap 54b) on a task nobody classified by hand: they only fill what is still empty, so a
+   * person's or the classifier's answer is never undone by a later note. `title only`: a note the hub wrote itself
+   * ("Spec Kit · specs/…") would read as a keyword.
+   */
+  #applyTaskRule(id: string, opts: { role?: AgentRole; specStep?: string; titleOnly?: boolean } = {}): void {
+    const task = this.#getTask(id);
+    if (!task || (task.classifiedBy !== null && task.classifiedBy !== "rule")) return;
+    const found = classifyTaskRule(task.title, opts.titleOnly ? null : task.note, opts.role, opts.specStep);
+    if ((!found.kind || task.kind) && (!found.risk || task.risk)) return;
+    this.db
+      .prepare("UPDATE tasks SET kind = COALESCE(kind, ?), risk = COALESCE(risk, ?), classified_by = 'rule', classified_at = ? WHERE id = ?")
+      .run(found.kind ?? null, found.risk ?? null, this.#now(), id);
+  }
+
+  #classifyEnabled(project: string): boolean {
+    const row = this.db.prepare("SELECT enabled FROM task_classify_config WHERE project = ?").get(project) as Row | undefined;
+    return row ? num(row.enabled) === 1 : true;
+  }
+
+  /**
+   * The classifier's answer, or the default (null: it failed). It fills what is empty: a size or risk a person gave
+   * while it ran stays, and so does a high risk the rules found.
+   */
+  #finishClassify(taskId: string, result: TaskClass | null): void {
+    const picked = result ?? DEFAULT_TASK_CLASS;
+    this.db
+      .prepare(
+        `UPDATE tasks SET kind = ?, size = COALESCE(size, ?),
+           risk = CASE WHEN risk = 'high' OR (risk IS NOT NULL AND classified_by <> 'rule') THEN risk ELSE ? END,
+           classified_by = 'ai', classified_at = ? WHERE id = ? AND kind IS NULL`,
+      )
+      .run(picked.kind, picked.size, picked.risk, this.#now(), taskId);
+    this.db.prepare("DELETE FROM task_classify_runs WHERE task_id = ?").run(taskId);
+  }
+
+  /**
+   * Before a task with no kind starts its run, a short classify run on the same machine (roadmap 54b). True while that
+   * run must end first: the caller leaves the task for a later release. Off for the project, no Claude/Codex profile
+   * on the machine, or a classifier that never answered: the task goes on (with the default when one was tried).
+   */
+  #queueClassify(task: Task, machine: Machine, actor: Actor): boolean {
+    if (this.#getTask(task.id)?.kind !== null || !this.#classifyEnabled(task.project)) return false;
+    const prior = this.db.prepare("SELECT request_id, requested_at FROM task_classify_runs WHERE task_id = ?").get(task.id) as Row | undefined;
+    if (prior) {
+      const req = this.#runRequest(num(prior.request_id));
+      if (["rejected", "cancelled", "expired"].includes(req.status) || str(prior.requested_at) < this.#now(-CLASSIFY_WAIT_MINUTES)) {
+        this.#finishClassify(task.id, null);
+        return false;
+      }
+      return true;
+    }
+    // Only a profile the machine says can classify (an app that knows the role, a Claude or Codex plan): otherwise the
+    // task stays unclassified rather than waiting for a run nobody there would take.
+    if (!machine.profiles.some((p) => p.enabled && p.classify === true)) return false;
+    const req = this.#insertRequest(machine, task.project, task, { role: "classify", profileId: null, reviewAfter: false, candidates: 1, instructions: "" }, actor);
+    this.db.prepare("INSERT INTO task_classify_runs(task_id, request_id, requested_at) VALUES (?, ?, ?)").run(task.id, req.id, this.#now());
+    return true;
+  }
+
   /** Task rows with what they depend on, in one query. */
   #tasks(rows: Row[]): Task[] {
     if (!rows.length) return [];
@@ -2715,6 +2818,7 @@ export class SqliteHive implements HiveBackend {
     }
     // Both ways round: a task of another project may be waiting on one of these (roadmap 19d cross-service deps).
     if (taskIds.length) run("task_deps", `DELETE FROM task_deps WHERE task_id IN (${holes(taskIds)}) OR depends_on IN (${holes(taskIds)})`, ...taskIds, ...taskIds);
+    if (taskIds.length) run("task_classify_runs", `DELETE FROM task_classify_runs WHERE task_id IN (${holes(taskIds)})`, ...taskIds);
     // Items hang off their group by id, with no project column of their own and no cascade to carry them.
     run("run_group_items", "DELETE FROM run_group_items WHERE group_id IN (SELECT id FROM run_groups WHERE project = ?)", project);
 
@@ -3102,10 +3206,16 @@ export class SqliteHive implements HiveBackend {
         if (!machineId) continue;
         try {
           const instructions = [g.instructions, item.instructions].filter(Boolean).join("\n\n");
+          // Its classify run (roadmap 54b) still going: the item waits. Asked before #assertDispatchable, which would
+          // see that run as the task's and refuse.
+          if (item.role === "implement" && db.prepare("SELECT 1 FROM task_classify_runs WHERE task_id = ?").get(task.id)) {
+            if (this.#queueClassify(task, this.#machineByRef(machineId), actor)) continue;
+          }
           const m = this.#assertDispatchable(
             { machineId, project: g.project, task, role: item.role, profileId, candidates: 1, instructions },
             actor,
           );
+          if (item.role === "implement" && this.#queueClassify(task, m, actor)) continue;
           // A job's parts get no review of their own: the merged result does (roadmap 31c).
           const reviewAfter = g.kind === "mapreduce" ? false : g.reviewAfter;
           const req = this.#insertRequest(m, g.project, task, { role: item.role, profileId, preferKind: item.preferKind, reviewAfter, candidates: 1, instructions }, actor);
@@ -3177,8 +3287,39 @@ export class SqliteHive implements HiveBackend {
    * tasks each agent was given (roadmap 50). The groups first, so a task that is in one is started by its group alone.
    */
   #release(): void {
+    this.#releaseClassifyDispatches();
     this.#releaseGroups();
     this.#releaseAssigned();
+  }
+
+  /** The runs.dispatch calls that waited for their task's classify run (roadmap 54b), sent once it ended. */
+  #releaseClassifyDispatches(): void {
+    const drop = this.db.prepare("DELETE FROM task_classify_dispatches WHERE task_id = ?");
+    for (const row of this.db.prepare("SELECT * FROM task_classify_dispatches").all() as Row[]) {
+      const task = this.#getTask(str(row.task_id));
+      if (!task || task.status === "done") {
+        drop.run(str(row.task_id));
+        continue;
+      }
+      const wanted = JSON.parse(str(row.request)) as ParsedInput<"runs.dispatch">;
+      const actor: Actor = { name: str(row.requested_by), role: "member", ...(row.on_behalf ? { onBehalf: str(row.on_behalf) } : {}) };
+      try {
+        // Still no kind: the classify run is going, or it went quiet and #queueClassify gives the default now.
+        // runs.dispatch may leave the machine to the hub (49e): pick it as runs.dispatch does.
+        const { project, role, profileId, preferKind, reviewAfter, candidates, instructions } = wanted;
+        const machineId = wanted.machineId ?? this.#mapMachine(project, null, profileId).id;
+        if (task.kind === null && this.#queueClassify(task, this.#machineByRef(machineId), actor)) continue;
+        const fresh = this.#getTask(task.id)!;
+        const machine = this.#assertDispatchable({ machineId, project, task: fresh, role, profileId, candidates, instructions }, actor);
+        this.#insertRequest(machine, project, fresh, { role, profileId, preferKind, reviewAfter, candidates, instructions }, actor);
+        drop.run(task.id);
+      } catch (err) {
+        if (!(err instanceof HiveError)) throw err;
+        // Busy or offline right after the classify run: the next heartbeat tries again. One that will not pass is
+        // dropped, as a group drops its item, rather than tried every thirty seconds.
+        if (groupFails(err.key)) drop.run(task.id);
+      }
+    }
   }
 
   /**
@@ -3225,6 +3366,10 @@ export class SqliteHive implements HiveBackend {
     for (const task of this.#tasks(rows)) {
       const agent = task.agent!;
       const m = machineOf(agent.machineId);
+      // Its classify run (roadmap 54b) still going: wait for it here, before #agentWait counts it as the task's run.
+      if (m && db.prepare("SELECT 1 FROM task_classify_runs WHERE task_id = ?").get(task.id)) {
+        if (this.#queueClassify(task, m, { name: agent.by, role: "member" })) continue;
+      }
       // A machine the hub no longer has: no places to count, and #agentWait says so before it looks at them.
       const free = m ? this.#freePlaces(m, task.project, agent.profileId, waiting) - this.#unreportedRequests(m) : 0;
       const why = this.#agentWait(task, m, free);
@@ -3237,6 +3382,10 @@ export class SqliteHive implements HiveBackend {
       try {
         const r = { machineId: agent.machineId, project: task.project, task, role: "implement" as AgentRole, profileId: agent.profileId, candidates: 1, instructions: "" };
         const machine = this.#assertDispatchable(r, actor);
+        if (this.#queueClassify(task, machine, actor)) {
+          waiting.set(agent.machineId, (waiting.get(agent.machineId) ?? 0) + 1);
+          continue;
+        }
         // The project's review gate decides the cross-review, as it does for the tasks a flow hands out (roadmap 34c).
         const reviewAfter = effectiveGates(this.#sdlcPolicy(), task.project).review !== "auto";
         const req = this.#insertRequest(machine, task.project, task, { role: "implement", profileId: agent.profileId, reviewAfter, candidates: 1, instructions: "" }, actor);
@@ -3449,6 +3598,8 @@ export class SqliteHive implements HiveBackend {
       // All first, then what they wait for: a line may name one further down ("depends on T020").
       for (const t of fresh) {
         db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)").run(t.id, project, t.title, note(t.phase), this.#now());
+        // Work a spec planned, not a spec step: "Spec Kit" in the note would read as one.
+        this.#applyTaskRule(t.id, { titleOnly: true });
         created.push(t.id);
       }
       for (const t of fresh) this.#setDeps(t.id, this.#checkDeps(t.id, project, t.dependsOn.filter((d) => exists(d)), actor));
@@ -3685,6 +3836,8 @@ export class SqliteHive implements HiveBackend {
         this.#dispatchFlowTasks(this.#flowRow(taskId)!);
         continue;
       }
+      // A Spec Kit step is a spec by rule: no classify run before it.
+      this.#applyTaskRule(taskId, { specStep: step });
       const task = this.#getTask(taskId);
       if (!task) {
         this.#setFlow(taskId, { state: "stopped", note: `Task ${taskId} is gone.` });
@@ -4156,12 +4309,32 @@ export class SqliteHive implements HiveBackend {
               if (target !== project && (!this.#sameSystem(target, project) || !sees(actor, target))) {
                 throw new HiveError("bad_request", `${target} is not a service of a system with ${project}.`, { key: "errors.chatProjectOutside", vars: { project: target, home: project } });
               }
-              input = { id: action.id, project: target, title: action.title, dependsOn: action.dependsOn };
+              input = {
+                id: action.id,
+                project: target,
+                title: action.title,
+                dependsOn: action.dependsOn,
+                ...(action.taskKind ? { taskKind: action.taskKind } : {}),
+                ...(action.size ? { size: action.size } : {}),
+                ...(action.risk ? { risk: action.risk } : {}),
+              };
               break;
             }
             case "task.update":
               if (!known(action.id)) throw missing(action.id);
               input = { id: action.id, status: action.status, ...(action.note === undefined ? {} : { note: action.note }) };
+              break;
+            case "task.classify":
+              if (!known(action.id)) throw missing(action.id);
+              if (action.taskKind === undefined && action.size === undefined && action.risk === undefined) {
+                throw new HiveError("bad_request", "A classification needs a kind, size or risk.", { key: "errors.classifyEmpty" });
+              }
+              input = {
+                id: action.id,
+                ...(action.taskKind ? { taskKind: action.taskKind } : {}),
+                ...(action.size ? { size: action.size } : {}),
+                ...(action.risk ? { risk: action.risk } : {}),
+              };
               break;
             case "task.assign": {
               if (!known(action.taskId)) throw missing(action.taskId);
@@ -4315,7 +4488,7 @@ export class SqliteHive implements HiveBackend {
     if (CHAT_ACTION_ALWAYS_CONFIRM.includes(action.kind) || !this.#chatDefaults(action.project).autoKinds.includes(action.kind)) return action;
     // A run or a move of a task this reply proposes to create waits until someone confirms the task.
     const taskId =
-      action.kind === "run.dispatch" ? action.input.taskId : action.kind === "task.update" || action.kind === "task.assign" ? action.input.id : null;
+      action.kind === "run.dispatch" ? action.input.taskId : action.kind === "task.update" || action.kind === "task.classify" || action.kind === "task.assign" ? action.input.id : null;
     if (typeof taskId === "string" && !this.#getTask(taskId)) return action;
     const row = this.db.prepare("SELECT sender FROM chat_messages WHERE id = ?").get(action.replyId) as Row | undefined;
     if (row?.sender == null) return action;
@@ -5153,6 +5326,18 @@ export class SqliteHive implements HiveBackend {
             input.note === undefined ? null : clean(input.note),
             this.#now(),
           );
+          // Whoever creates it may say what it is (a leader's task.create): theirs, and the rules leave it alone.
+          if (input.kind || input.size || input.risk) {
+            db.prepare("UPDATE tasks SET kind = ?, size = ?, risk = ?, classified_by = ?, classified_at = ? WHERE id = ?").run(
+              input.kind ?? null,
+              input.size ?? null,
+              input.risk ?? null,
+              actor.name,
+              this.#now(),
+              input.id,
+            );
+          }
+          this.#applyTaskRule(input.id);
           this.#setDeps(input.id, deps);
           return this.#getTask(input.id)!;
         }),
@@ -5246,7 +5431,37 @@ export class SqliteHive implements HiveBackend {
             now,
             id,
           );
+          if (note !== undefined) this.#applyTaskRule(id);
           return this.#getTask(id)!;
+        }),
+      "tasks.classify": ({ id, kind, size, risk }, actor) =>
+        this.#tx(() => {
+          const task = this.#getTask(id);
+          if (!task) throw new HiveError("not_found", `Task ${id} not found.`, { key: "errors.taskNotFound", vars: { id } });
+          const now = this.#now();
+          db.prepare("UPDATE tasks SET kind = ?, size = ?, risk = ?, classified_by = ?, classified_at = ?, updated_at = ? WHERE id = ?").run(
+            kind ?? task.kind,
+            size ?? task.size,
+            risk ?? task.risk,
+            actor.name,
+            now,
+            now,
+            id,
+          );
+          return this.#getTask(id)!;
+        }),
+      // Only the projects that differ from the default (on), as a list the settings card reads in one call.
+      "tasks.classifyConfig": (_input, actor) =>
+        (db.prepare("SELECT project, enabled FROM task_classify_config ORDER BY project").all() as Row[])
+          .filter((r) => sees(actor, str(r.project)))
+          .map((r) => ({ project: str(r.project), enabled: num(r.enabled) === 1 })),
+      "tasks.setClassifyConfig": ({ project, enabled }) =>
+        this.#tx(() => {
+          db.prepare("INSERT INTO task_classify_config(project, enabled) VALUES (?, ?) ON CONFLICT(project) DO UPDATE SET enabled = excluded.enabled").run(
+            project,
+            enabled ? 1 : 0,
+          );
+          return { project, enabled };
         }),
 
       "tasks.assign": ({ id, machineId, profileId, before }, actor) =>
@@ -5505,6 +5720,23 @@ export class SqliteHive implements HiveBackend {
           // Flows (roadmap 34b) move on the step or check that just ended, then queue what comes next.
           for (const r of ended) {
             const run = { ...r, summary: clean(r.summary) ?? null, error: clean(r.error) ?? null };
+            // A classify run (roadmap 54b) is not the task's work: it only fills the task's kind, then the release below
+            // queues the task's own run.
+            if (run.role === "classify") {
+              const row = db
+                .prepare("SELECT c.task_id FROM task_classify_runs c JOIN run_requests q ON q.id = c.request_id WHERE q.machine_id = ? AND q.run_id = ?")
+                .get(actor.name, run.runId) as Row | undefined;
+              if (row) {
+                let result: TaskClass | null = null;
+                try {
+                  result = run.status === "succeeded" && run.summary ? parseTaskClass(JSON.parse(run.summary)) : null;
+                } catch {
+                  // Not JSON: the default below, as for a failed run.
+                }
+                this.#finishClassify(str(row.task_id), result);
+              }
+              continue;
+            }
             this.#flowRunEnded(actor.name, run);
             this.#taskRunEnded(actor.name, run);
             // A run that failed stops its agent at that task (roadmap 50) before the release below looks at the queue.
@@ -5670,6 +5902,24 @@ export class SqliteHive implements HiveBackend {
           const m = this.#assertDispatchable({ machineId: machineId ?? this.#mapMachine(project, null, profileId).id, project, task, role, profileId, candidates, instructions }, actor);
           // Its group would run it again once this run ended.
           this.#assertNotInGroup(taskId);
+          // A task only ever reviewed is a review (roadmap 54b rules); it only fills an empty kind.
+          if (role === "review") this.#applyTaskRule(taskId, { role });
+          // No kind yet: the classify run goes first and this run waits in task_classify_dispatches until it ends
+          // (#releaseClassifyDispatches). The answer is the classify request, so the caller sees something queued.
+          if (role === "implement" && this.#queueClassify(task, m, actor)) {
+            db.prepare(
+              `INSERT INTO task_classify_dispatches(task_id, project, request, requested_by, on_behalf) VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(task_id) DO UPDATE SET request = excluded.request, requested_by = excluded.requested_by, on_behalf = excluded.on_behalf`,
+            ).run(
+              taskId,
+              project,
+              JSON.stringify({ machineId, project, taskId, role, profileId, preferKind, reviewAfter, candidates, instructions }),
+              actor.name,
+              actor.onBehalf ?? null,
+            );
+            const pending = db.prepare("SELECT request_id FROM task_classify_runs WHERE task_id = ?").get(taskId) as Row;
+            return this.#runRequest(num(pending.request_id));
+          }
           return this.#insertRequest(m, project, task, { role, profileId, preferKind, reviewAfter, candidates, instructions }, actor);
         }),
 
@@ -5756,6 +6006,7 @@ export class SqliteHive implements HiveBackend {
             const where = `${t.machineId ? names.get(t.machineId) : "*"}/${t.profileId ?? "*"}`;
             put.run(children[i]!, project, `${heading.slice(0, 100)} · ${where}`.slice(0, 300), note, now);
           });
+          for (const id of [parent, ...children]) this.#applyTaskRule(id);
           // Nobody runs the prompt's own task: it waits for its agents until one is picked.
           this.#setDeps(parent, children);
           const res = db
@@ -5807,6 +6058,7 @@ export class SqliteHive implements HiveBackend {
           const parent = this.#nextPromptTaskId();
           const now = this.#now();
           db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)").run(parent, project, heading, prompt.slice(0, 2000), now);
+          this.#applyTaskRule(parent);
           const task = this.#getTask(parent)!;
           // The job is the task's note; past the note's 2000 characters the instructions carry all of it.
           const instructions = [splitInstructions(), prompt.length > 2000 ? `The job, in full:\n${prompt}` : ""].filter(Boolean).join("\n\n");
@@ -5853,6 +6105,7 @@ export class SqliteHive implements HiveBackend {
           else put.run(parent, project, heading, job.slice(0, 2000), now);
           // Each part's note says what it is part of; the job itself reaches its run as instructions.
           parts.forEach((part, i) => put.run(children[i]!, project, part.split(/\r?\n/, 1)[0]!.slice(0, 300), `Phần ${i + 1}/${parts.length} của ${parent}: ${heading}\n\n${part}`.slice(0, 2000), now));
+          for (const id of split ? children : [parent, ...children]) this.#applyTaskRule(id);
           // Nobody runs the job's task while its parts run: the merge run does, after them.
           this.#setDeps(parent, children);
           let id = split?.id;
@@ -5940,6 +6193,8 @@ export class SqliteHive implements HiveBackend {
           assertNoSecret(heading, "Title");
           const id = this.#nextPromptTaskId();
           db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)").run(id, project, heading, prompt.slice(0, 2000), this.#now());
+          // Rules only: a prompt is someone waiting at the screen, and a classify run first would only make them wait.
+          this.#applyTaskRule(id);
           const task = this.#getTask(id)!;
           // The runner hands the agent the task's note as well as the instructions: the prompt goes once, as the note,
           // and in full as the instructions only when the note had to cut it.
@@ -6560,6 +6815,9 @@ export class SqliteHive implements HiveBackend {
           } else if (task.project !== project) {
             throw new HiveError("not_found", `No task ${taskId} in ${project}.`, { key: "errors.taskNotInProject", vars: { id: taskId, project } });
           }
+          // A Spec Kit step is a spec by rule: no classify run before it.
+          this.#applyTaskRule(taskId, { specStep: step });
+          task = this.#getTask(taskId)!;
           const instructions = specStepInstructions(step, { ...(dir ? { dir } : {}), input });
           const m = this.#assertDispatchable({ machineId, project, task, role: "implement", profileId, candidates: 1, instructions }, actor);
           this.#assertNotInGroup(taskId);

@@ -7,7 +7,7 @@ import { requestErrorText } from "#ui/lib/runs.ts";
 import { setActiveLocale } from "#ui/i18n/translate.ts";
 
 const target = { machineId: "runner.mac", profileId: "claude-1" };
-const task = (id: string, order: number, assigned = true): Task => ({ id, project: "app", title: id, status: "todo", owner: null, leaseUntil: null, note: null, updatedAt: "2026-10-06", dependsOn: [], waitingOn: [], agent: assigned ? { ...target, machine: "Mac", order, by: "lan", at: "2026-10-06", hold: null } : null });
+const task = (id: string, order: number, assigned = true): Task => ({ id, project: "app", title: id, kind: null, size: null, risk: null, classifiedBy: null, classifiedAt: null, status: "todo", owner: null, leaseUntil: null, note: null, updatedAt: "2026-10-06", dependsOn: [], waitingOn: [], agent: assigned ? { ...target, machine: "Mac", order, by: "lan", at: "2026-10-06", hold: null } : null });
 const machine = (over: Partial<Machine> = {}): Machine => ({ id: "runner.mac", machine: "Mac", online: false, acceptsRuns: true, projects: ["app"], profiles: [{ id: "claude-1", enabled: true }], ...over }) as Machine;
 
 describe("agent assignment UI model", () => {

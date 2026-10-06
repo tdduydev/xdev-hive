@@ -4,7 +4,7 @@ import { cn } from "cn";
 import { ChevronRight, CircleHelp, MoreHorizontal, Plus, RefreshCw } from "lucide-react";
 import {
   AGENT_KINDS,
-  AGENT_ROLES,
+  WORK_ROLES,
   AGENT_TEMPLATES,
   agentProfileSchema,
   AUTONOMY,
@@ -18,7 +18,7 @@ import {
   type AgentKind,
   type AgentProfile,
   type AgentProfileStatus,
-  type AgentRole,
+  type WorkRole,
   type Autonomy,
   type LoginHow,
   type NewAccount,
@@ -1130,11 +1130,11 @@ function ProfileForm({
             <span className={HINT}>{t("agents.accountHint")}</span>
             <Label>{t("agents.roles")}</Label>
             <div className="flex flex-wrap items-center gap-4">
-              {AGENT_ROLES.map((r) => (
+              {WORK_ROLES.map((r) => (
                 <label key={r} className="flex items-center gap-2 text-sm">
                   <Checkbox
                     checked={p.roles.includes(r)}
-                    onCheckedChange={(v) => set("roles", v === true ? [...p.roles, r] : p.roles.filter((x: AgentRole) => x !== r))}
+                    onCheckedChange={(v) => set("roles", v === true ? [...p.roles, r] : p.roles.filter((x: WorkRole) => x !== r))}
                   />
                   {t(`agentRole.${r}`)}
                 </label>
