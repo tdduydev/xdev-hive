@@ -729,7 +729,7 @@ async function main() {
     });
     const next = (await beat()).runRequests.find((r) => r.taskId === held.taskId);
     expect(next, "the second task was not sent after the first run ended");
-    await tab.go(`batches?group=${group.id}`);
+    await tab.go(`runs?tab=batches&group=${group.id}`);
     await tab.waitFor("the group on Đợt chạy", (id) => document.querySelector(`[data-group] [data-item-task="${id}"]`)?.getAttribute("data-item-state") === "succeeded", now.taskId);
     await tab.shot(`${String(n).padStart(2, "0")}-batch-page`);
     // Leave the hub as the other steps expect it.
@@ -795,7 +795,7 @@ async function main() {
         runs: [{ runId: `R-fan-${r.taskId.slice(-1)}`, project: "payment", taskId: r.taskId, taskTitle: r.taskTitle, role: "implement", status: "succeeded", profileId: r.profileId, createdAt: at, finishedAt: at }],
       });
     }
-    await tab.go(`batches?group=${group.id}`);
+    await tab.go(`runs?tab=batches&group=${group.id}`);
     await tab.waitFor("Chọn bản này for b", (id) => document.querySelector(`[data-pick-winner="${id}"]`)?.disabled === false, b.taskId);
     await tab.shot(`${String(n).padStart(2, "0")}-fanout-compare`);
     await tab.click(`[data-pick-winner="${b.taskId}"]`);
@@ -926,6 +926,43 @@ async function main() {
     await tab.reload();
     await tab.go("runs?run=R-e2emr1");
     await tab.waitFor("merged from Hive, no Merge button", () => document.body.innerText.includes("Đã merge từ Hive") && ![...document.querySelectorAll("button")].some((b) => b.textContent.trim() === "Merge"));
+  });
+
+  await step("runs-review", async () => {
+    const tab = (current = tabs.admin);
+    const machineRpc = async (method, input) => {
+      const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" }, body: JSON.stringify({ method, input }) });
+      const result = await response.json();
+      if (result.error) throw new Error(`${method}: ${result.error.message}`);
+      return result.result;
+    };
+    const now = new Date().toISOString();
+    await machineRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", version: "0.135.0", projects: ["payment"], acceptsRuns: true,
+      profiles: [{ id: "claude-1", label: "Claude", kind: "claude", enabled: true, installed: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, maxConcurrent: 8 },
+        { id: "codex-review", label: "Codex", kind: "codex", enabled: true, installed: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, maxConcurrent: 8 }] });
+    await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ runId: "R-e2ereview", project: "payment", taskId: "PAY-1", taskTitle: "Việc đầu tiên của payment", role: "implement", status: "succeeded", profileId: "claude-1", createdAt: now, finishedAt: now,
+      summary: "ĐÃ LÀM: Sửa luồng thanh toán\nCHƯA LÀM: Cần bạn xác nhận cách xử lý\nCÁCH KIỂM: npm test\nRỦI RO: CI đang lỗi", log: "[AGENT] Bàn giao", patch: "diff --git a/pay.ts b/pay.ts\n--- a/pay.ts\n+++ b/pay.ts\n@@ -1 +1 @@\n-old\n+new", mrUrl: "https://gitlab.example/team/payment/-/merge_requests/49", mr: { iid: 49, status: "opened", draft: false, pipeline: "failed", pipelineUrl: null, checkedAt: now } }] });
+    await tab.go("batches");
+    await tab.waitFor("old batch route in runs", () => location.hash === "#/runs");
+    if (mobile) await tab.go("runs?run=R-e2ereview");
+    await tab.waitFor("run needs a person", () => document.querySelector('[data-run-review]')?.textContent.includes("ĐÃ LÀM") && document.body.innerText.includes("Chờ người"));
+    const order = await tab.eval(() => { const body = document.querySelector('[data-run-review]')?.innerText ?? ""; return ["ĐÃ LÀM", "Log", "Thay đổi / MR", "MR !49"].map((s) => body.indexOf(s)); });
+    expect(order.every((n) => n >= 0) && order.every((n, i) => i === 0 || n > order[i - 1]), `run review order: ${order}`);
+    await tab.shot(`${String(n).padStart(2, "0")}-runs-review-detail`);
+    if (mobile) await tab.go("runs");
+    await tab.select('select[aria-label="Lọc theo máy"]', "runner.lan-mbp@lan-e2e");
+    await tab.select('select[aria-label="Lọc theo task"]', "PAY-1");
+    await rpc("tasks.create", { id: "PAY-49E", project: "payment", title: "Giao run gọn" });
+    await tab.go("tasks?task=PAY-49E");
+    await tab.waitFor("compact run form", () => document.querySelector('select[id="machine-PAY-49E"]') && document.body.innerText.includes("Tuỳ chọn"));
+    const compact = await tab.eval(() => ({ machine: document.querySelector('select[id="machine-PAY-49E"]')?.value, closed: ![...document.querySelectorAll("details")].find((d) => d.textContent.includes("Tuỳ chọn"))?.open }));
+    expect(compact.machine === "" && compact.closed, `run form defaults: ${JSON.stringify(compact)}`);
+    await tab.click('button[type="submit"]', "Chạy");
+    const requests = await until("auto-dispatched run", async () => {
+      const list = await rpc("runs.requests", { project: "payment" });
+      return list.some((r) => r.taskId === "PAY-49E") ? list : null;
+    });
+    expect(requests.some((r) => r.taskId === "PAY-49E" && r.machineId), `auto-selected machine did not receive the run: ${JSON.stringify(requests.filter((r) => r.taskId === "PAY-49E"))}`);
   });
 
   // Roadmap 20b: Lan's machine pushes payment's Spec Kit features; Hoa reads one on Spec.

@@ -66,6 +66,14 @@ async function refusal(call: Promise<unknown>): Promise<string | undefined> {
 const states = (g: RunGroup) => g.items.map((i) => `${i.taskId}:${i.status}${i.request ? `/${i.request.status}` : ""}`);
 
 describe("run groups (roadmap 31a)", () => {
+  it("dispatches a single run to a free machine when none is selected", async () => {
+    const { hive, beat } = await hub();
+    await beat(mbp);
+    const sent = await hive.call("runs.dispatch", { project: "app", taskId: "T-1", machineId: null }, lead);
+    assert.equal(sent.machineId, mbp.name);
+    assert.equal((await beat(mbp)).runRequests[0]?.taskId, "T-1");
+  });
+
   it("sends at most maxParallel at a time and the next when a run ends", async () => {
     const { hive, beat, push, take } = await hub();
     await beat(mbp);

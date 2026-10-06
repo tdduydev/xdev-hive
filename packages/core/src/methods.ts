@@ -571,7 +571,7 @@ export const schemas = {
    * heartbeat. Only a machine that is online, accepts runs from the hub and has the project's repo.
    */
   "runs.dispatch": z.object({
-    machineId: machineRef,
+    machineId: machineRef.nullable().default(null),
     project,
     taskId,
     role: z.enum(AGENT_ROLES).default("implement"),

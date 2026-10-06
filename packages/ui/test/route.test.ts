@@ -54,7 +54,7 @@ describe("addresses", () => {
       ["members", "#/settings?tab=members"],
       ["systems", "#/settings?tab=systems"],
       ["tools", "#/settings?tab=tools"],
-      ["batches", "#/runs?tab=batches"],
+      ["batches", "#/runs"],
       ["specs", "#/features"],
     ];
     for (const [old, to] of tabs) assert.deepEqual(web(`#/${old}`), { id: to.slice(2).split("?")[0], hash: to }, old);
@@ -62,7 +62,7 @@ describe("addresses", () => {
   });
 
   it("keeps a link's own query when it moves to a tab, the target's tab first", () => {
-    assert.deepEqual(web("#/batches?group=3"), { id: "runs", hash: "#/runs?tab=batches&group=3" });
+    assert.deepEqual(web("#/batches?group=3"), { id: "runs", hash: "#/runs?group=3" });
     assert.deepEqual(web("#/members?project=app"), { id: "settings", hash: "#/settings?tab=members&project=app" });
     assert.deepEqual(web("#/fleet?tab=map"), { id: "machines", hash: "#/machines?tab=fleet" });
   });
@@ -101,6 +101,6 @@ describe("addresses", () => {
     assert.deepEqual(local("#/admin/tools"), { id: "setup", hash: "#/setup" }, "the Web Admin's Tool, then Dự án & công cụ");
     assert.deepEqual(web("#/admin/tools"), { id: "settings", hash: "#/settings?tab=tools" }, "on the web, Cài đặt dự án");
     assert.deepEqual(local("#/admin/batches"), { id: "runs", hash: "#/runs" });
-    assert.deepEqual(web("#/admin/batches"), { id: "runs", hash: "#/runs?tab=batches" });
+    assert.deepEqual(web("#/admin/batches"), { id: "runs", hash: "#/runs" });
   });
 });

@@ -7,13 +7,14 @@ import { cn } from "cn";
 import { cacheReadShare, parseVerdict, type AgentRun, type RunCompression, type RunRecord, type RunRequest, type RunTokens } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
+import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
 import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { Chip, FilterChips, ListPane, type ChipKind } from "#ui/components/panes.tsx";
 import { errorMessage, formatCount, formatTime, formatUsd, useAction, useCan, useHashParam, useHive, useQuery } from "#ui/hooks.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
-import { fixInstructions, isLive, latestReviews, mrLabel, requestErrorText, runDuration, runGroup, runLabel, runOutcome } from "#ui/lib/runs.ts";
+import { fixInstructions, handoffSections, isLive, latestReviews, mrLabel, requestErrorText, runDuration, runGroup, runLabel, runOutcome, waitingReason } from "#ui/lib/runs.ts";
 import { logHeader, parseLog, parsePatch, runSteps, type DiffFile, type LogLevel } from "#ui/lib/runlog.ts";
 import { activeIntl } from "#ui/i18n/translate.ts";
 import { scopeFilter, scopeKey } from "#ui/lib/scope.ts";
@@ -62,8 +63,8 @@ const MARK: Record<string, [string, string]> = {
   cancelled: ["–", "text-fg-muted"],
 };
 
-type Filter = "all" | "live" | "bad" | "done";
-const FILTERS: Filter[] = ["all", "live", "bad", "done"];
+type Filter = "focus" | "all" | "live" | "waiting" | "bad" | "done";
+const FILTERS: Filter[] = ["focus", "all", "live", "waiting", "bad", "done"];
 
 export function RunsPage() {
   const { client, me, scope } = useHive();
@@ -74,11 +75,19 @@ export function RunsPage() {
   // which is why the page's subtitle here reads "Run trên máy này".
   const teamRuns = hubMode && !desktop;
   const [active, setActive] = useState(false);
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Filter>(teamRuns ? "focus" : "all");
+  const [taskFilter, setTaskFilter] = useState("");
+  const [machineFilter, setMachineFilter] = useState("");
+  const [groupFilter, setGroupFilter] = useState("");
+  const [linkedGroup, clearLinkedGroup] = useHashParam("group");
+  useEffect(() => {
+    if (linkedGroup) { setGroupFilter(linkedGroup); setFilter("all"); clearLinkedGroup(); }
+  }, [linkedGroup, clearLinkedGroup]);
   const tick = useRefresh(active);
   const key = scopeKey(scope);
   const local = useQuery(async () => (desktop ? desktop.runs({ ...scopeFilter(scope), limit: 100 }) : []), [desktop, key, tick]);
   const hub = useQuery(async () => (teamRuns ? client.call("runs.list", { ...scopeFilter(scope), limit: 100 }) : []), [client, teamRuns, key, tick]);
+  const groups = useQuery(async () => (teamRuns ? client.call("runs.groups", { ...scopeFilter(scope), limit: 30 }) : []), [client, teamRuns, key, tick]);
   const settings = useQuery(async () => (desktop ? desktop.settings() : null), [desktop]);
   const machine = settings.data?.machine ?? null;
 
@@ -126,17 +135,30 @@ export function RunsPage() {
   const latest = latestReviews((hub.data ?? []) as RunRecord[]);
   const loaded = !local.loading && !hub.loading;
   const counts = useMemo(() => {
-    const n: Record<Filter, number> = { all: all.length, live: 0, bad: 0, done: 0 };
-    for (const r of all) n[runGroup(r.run.status)]++;
+    const n: Record<Filter, number> = { focus: 0, all: all.length, live: 0, waiting: 0, bad: 0, done: 0 };
+    for (const r of all) {
+      n[runGroup(r.run.status)]++;
+      if (waitingReason(r.run)) n.waiting++;
+      if (isLive(r.run) || waitingReason(r.run)) n.focus++;
+    }
     return n;
   }, [all]);
   const kept = useMemo(() => {
-    const keep = (list: Row[]) => (filter === "all" ? list : list.filter((r) => runGroup(r.run.status) === filter));
+    const group = (groups.data ?? []).find((g) => String(g.id) === groupFilter);
+    const ids = group ? new Set(group.items.map((i) => i.run?.runId).filter(Boolean)) : null;
+    const keep = (list: Row[]) => list.filter((r) => {
+      if (taskFilter && r.run.taskId !== taskFilter) return false;
+      if (machineFilter && (r.src === "hub" ? r.run.machineId : machine) !== machineFilter) return false;
+      if (groupFilter && (!ids || !ids.has(rowId(r)))) return false;
+      if (filter === "focus") return isLive(r.run) || Boolean(waitingReason(r.run));
+      if (filter === "waiting") return Boolean(waitingReason(r.run));
+      return filter === "all" || runGroup(r.run.status) === filter;
+    });
     return { here: keep(rows.here), other: keep(rows.other), recent: keep(rows.recent) };
-  }, [rows, filter]);
+  }, [rows, filter, taskFilter, machineFilter, groupFilter, groups.data, machine]);
   const shown = [...kept.here, ...kept.other, ...kept.recent];
   // A filter narrows the list, never what a link or a click may open: #run=… still finds a run the filter leaves out.
-  const current = all.find((r) => r.key === (mobileDetail.mobile ? mobileDetail.value : selected) || (mobileDetail.mobile && rowId(r) === mobileDetail.value)) ?? (mobileDetail.mobile ? null : shown[0] ?? all[0] ?? null);
+  const current = all.find((r) => r.key === (mobileDetail.mobile ? mobileDetail.value : selected) || (mobileDetail.mobile && rowId(r) === mobileDetail.value)) ?? (mobileDetail.mobile ? null : shown[0] ?? (filter === "all" ? all[0] : null) ?? null);
 
   let index = 0;
   const group = (label: string | null, list: Row[]) =>
@@ -156,7 +178,13 @@ export function RunsPage() {
         label={t("nav.runs")}
         head={
           <>
-            <FilterChips value={filter} options={FILTERS.map((id) => ({ id, label: t(`runs.filter.${id}`), count: counts[id] }))} onChange={setFilter} />
+            <div className="max-md:[&_button]:min-h-11 max-md:[&_button]:text-xs"><FilterChips value={filter} options={FILTERS.map((id) => ({ id, label: t(`runs.filter.${id}`), count: counts[id] }))} onChange={setFilter} /></div>
+            {teamRuns ? <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 md:grid-cols-1">
+              <NativeSelect wrapperClassName="w-full min-w-0" className="w-full max-md:h-11 max-md:text-base" aria-label={t("runs.groupFilter")} value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)}><NativeSelectOption value="">{t("runs.allGroups")}</NativeSelectOption>{(groups.data ?? []).map((g) => <NativeSelectOption key={g.id} value={String(g.id)}>{g.title || `#${g.id}`}</NativeSelectOption>)}</NativeSelect>
+              <NativeSelect wrapperClassName="w-full min-w-0" className="w-full max-md:h-11 max-md:text-base" aria-label={t("runs.taskFilter")} value={taskFilter} onChange={(e) => setTaskFilter(e.target.value)}><NativeSelectOption value="">{t("runs.allTasks")}</NativeSelectOption>{[...new Map(all.map((r) => [r.run.taskId, r.run.taskTitle])).entries()].map(([id, title]) => <NativeSelectOption key={id} value={id}>{id} · {title}</NativeSelectOption>)}</NativeSelect>
+              <NativeSelect wrapperClassName="w-full min-w-0" className="w-full max-md:h-11 max-md:text-base" aria-label={t("runs.machineFilter")} value={machineFilter} onChange={(e) => setMachineFilter(e.target.value)}><NativeSelectOption value="">{t("runs.allMachines")}</NativeSelectOption>{[...new Map((hub.data ?? []).map((r) => [r.machineId, r.machine])).entries()].map(([id, name]) => <NativeSelectOption key={id} value={id}>{name}</NativeSelectOption>)}</NativeSelect>
+            </div> : null}
+            {groupFilter ? <a className="text-xs text-fg-link underline underline-offset-2" href={`#/runs?tab=batches&group=${encodeURIComponent(groupFilter)}`}>{t("runs.manageGroup")}</a> : null}
             {profile ? (
               <button
                 type="button"
@@ -211,6 +239,7 @@ function RunRow({ row, index, on, machine, onPick }: { row: Row; index: number; 
   const r = row.run;
   const [mark, markCls] = MARK[r.status] ?? ["•", "text-fg-muted"];
   const live = isLive(r);
+  const waiting = waitingReason(r);
   const where = row.src === "hub" ? row.run.machine : machine;
   return (
     <div
@@ -232,10 +261,11 @@ function RunRow({ row, index, on, machine, onPick }: { row: Row; index: number; 
           {mark}
         </span>
         <span className="min-w-0 flex-1 truncate text-[13px]/[18px] font-semibold text-fg-strong">{r.taskTitle}</span>
+        {waiting ? <Chip kind="warning" small>{t("runs.waiting")}</Chip> : null}
         <span className="shrink-0 text-[11px]/none text-fg-muted tabular-nums">{live ? runDuration(r) : formatTime(rowTime(row))}</span>
       </div>
       <span className="line-clamp-2 text-xs/[17px] text-fg-secondary">{runOutcome(r)}</span>
-      <span className="truncate text-[11px]/[14px] text-fg-muted">
+      <span className="truncate text-xs/[17px] text-fg-muted md:text-[11px]/[14px]">
         {[r.profileId, runLabel("agentRole", r.role), row.src === "hub" && where ? where : null, row.src === "local" ? bestOfText(row.run, t) : null].filter(Boolean).join(" · ")}
         <span className="font-mono text-fg-disabled">
           {" · "}
@@ -262,6 +292,7 @@ function Head({ run, machine, actions }: { run: AgentRun | RunRecord; machine: s
   const t = useT();
   const id = "id" in run ? run.id : run.runId;
   const kind = STATE[run.status] ?? "neutral";
+  const waiting = waitingReason(run);
   return (
     <div className="flex shrink-0 flex-col gap-2.5 border-b border-line-subtle px-5 pt-3.5 pb-3">
       <div className="flex items-start gap-3">
@@ -269,6 +300,7 @@ function Head({ run, machine, actions }: { run: AgentRun | RunRecord; machine: s
           <div className="flex flex-wrap items-center gap-2">
             <span className={cn("inline-flex h-5 items-center rounded-xs px-[7px] text-[11px]/none font-semibold whitespace-nowrap", CHIP[kind])}>{stateLabel(run, t)}</span>
             <ModelChip run={run} />
+            {waiting ? <Chip kind="warning">{t("runs.waiting")}</Chip> : null}
             <span className="text-xs/none text-fg-muted">
               {[run.profileId ?? t("board.waitingProfile"), runLabel("agentRole", run.role), run.branch ? t("runs.worktree", { branch: run.branch }) : null].filter(Boolean).join(" · ")}
             </span>
@@ -332,12 +364,20 @@ function TabBar({ tabs, tab, onTab, right }: { tabs: Array<[string, string]>; ta
 /** The tab the detail opens on: what the agent answered, where the run got to, the MR, then the rest. */
 function SummaryPane({ summary, live, head, children }: { summary: string | null; live: boolean; head: string[]; children: ReactNode }) {
   const t = useT();
+  const handoff = handoffSections(summary);
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="flex max-w-[760px] flex-col gap-3 px-5 pt-4 pb-6">
         <div className="flex flex-col gap-1">
           <span className="text-xs font-medium text-fg-muted">{t("runs.summary")}</span>
-          {summary ? (
+          {handoff.length ? (
+            <div className="grid gap-2" data-run-handoff>
+              {handoff.map((part) => <section key={part.id} className="rounded-md border border-line-subtle bg-subtle p-3">
+                <h3 className="m-0 text-xs font-semibold text-fg-strong">{t(`runs.handoff.${part.id}`)}</h3>
+                <p className="mt-1 mb-0 text-[13px]/5 whitespace-pre-wrap text-fg-primary [overflow-wrap:anywhere]">{part.text || "—"}</p>
+              </section>)}
+            </div>
+          ) : summary ? (
             <p className="m-0 text-[13px]/5 whitespace-pre-wrap text-fg-primary [overflow-wrap:anywhere]">{summary}</p>
           ) : (
             <p className="m-0 text-[13px]/5 text-fg-muted">{live ? t("runs.summaryLive") : t("runs.summaryNone")}</p>
@@ -515,6 +555,8 @@ function RunPanes({
   diff,
   diffError,
   onDiffTab,
+  vertical = false,
+  footer,
 }: {
   summary: string | null;
   live: boolean;
@@ -526,12 +568,30 @@ function RunPanes({
   diff?: DiffFile[] | null;
   diffError?: string | null;
   onDiffTab?: () => void;
+  vertical?: boolean;
+  footer?: ReactNode;
 }) {
   const t = useT();
   const toast = useToast();
   const [tab, setTab] = useState("summary");
   const [wrap, setWrap] = useState(true);
   const head = useMemo(() => logHeader(parseLog(log)), [log]);
+  if (vertical) return (
+    <div className="min-h-0 flex-1 overflow-y-auto bg-surface max-md:[&_button]:min-h-11 max-md:[&_summary]:min-h-11 max-md:[&_summary]:flex max-md:[&_summary]:items-center" data-run-review>
+      <div className="max-w-[900px]">
+        <SummaryPane summary={summary} live={live} head={head}>{steps}<div className="flex flex-col gap-2">{notes}</div></SummaryPane>
+        <section aria-label={t("runs.tabLog")} className="border-t border-line-subtle">
+          <h3 className="m-0 px-5 py-3 text-sm font-semibold text-fg-strong">{t("runs.tabLog")}</h3>
+          <div className="flex max-h-[440px] min-h-32 flex-col overflow-auto bg-code"><LogView text={log} live={live} wrap empty={live ? t("board.waitingOutput") : (logEmpty ?? t("board.noLog"))} /></div>
+        </section>
+        <section aria-label={t("runs.changes")} className="border-t border-line-subtle">
+          <h3 className="m-0 px-5 py-3 text-sm font-semibold text-fg-strong">{t("runs.changes")}</h3>
+          <DiffView files={diff ?? null} error={diffError ?? null} />
+        </section>
+        {footer ? <div className="flex flex-col gap-3 border-t border-line-subtle px-5 py-4">{footer}</div> : null}
+      </div>
+    </div>
+  );
   const tabs: Array<[string, string]> = [
     ["summary", t("runs.tabSummary")],
     ["log", t("runs.tabLog")],
@@ -810,10 +870,8 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
       ) : null}
       {run.tokens ? <TokensLine tokens={run.tokens} /> : null}
       {run.compression ? <CompressionLine compression={run.compression} /> : null}
-      {run.mrUrl ? <MrMerge run={run} onChanged={onChanged} /> : null}
       {live && run.cancelRequestedBy ? <Notice tone="warn">{t("runs.cancelRequested", { who: run.cancelRequestedBy, time: formatTime(run.cancelRequestedAt) })}</Notice> : null}
       {run.error ? <Notice tone={run.status === "queued" ? "info" : "warn"} className="[overflow-wrap:anywhere]">{run.error}</Notice> : null}
-      {verdict === "changes" && latestReview && manage ? <FixRun run={run} /> : null}
       <ErrorNote error={action.error ?? full.error} />
       <NoteLine>{pruned ?? t("runs.logNote", { time: formatTime(run.updatedAt) })}</NoteLine>
     </>
@@ -824,7 +882,9 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
       <Head run={run} machine={run.machine} actions={actions} />
       {/* What it changed, as its machine sent it; a hub older than 22l has no patches (no tab). */}
       <RunPanes
-        summary={live ? null : run.summary}
+        vertical
+        footer={<>{run.mrUrl ? <MrMerge run={run} onChanged={onChanged} /> : null}{verdict === "changes" && latestReview && manage ? <FixRun run={run} /> : null}</>}
+        summary={run.summary}
         live={live}
         log={full.data?.log ?? ""}
         logEmpty={pruned}

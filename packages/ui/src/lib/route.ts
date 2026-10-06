@@ -62,7 +62,7 @@ export const WEB_ALIASES: Record<string, string> = {
   members: "settings?tab=members",
   systems: "settings?tab=systems",
   tools: "settings?tab=tools",
-  batches: "runs?tab=batches",
+  batches: "runs",
   // Roadmap 49d: Tính năng took the Spec page's place; a feature's link (?project=&dir=&branch=) opens it there.
   specs: "features",
 };
