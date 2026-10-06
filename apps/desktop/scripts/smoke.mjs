@@ -15,6 +15,7 @@ import electron from "electron";
 import { HubBackend } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { RunStore } from "../src/main/runner/store.ts";
+import { resetText } from "../src/main/runner/usage.ts";
 import { startMockGitLab } from "../test/fixtures/mock-gitlab.ts";
 
 const appDir = path.resolve(import.meta.dirname, "..");
@@ -45,6 +46,23 @@ const fake = path.join(appDir, "test", "fixtures", "fake-agent.mjs");
 // A wrapper as the CLI, so sign-in checks (`<bin> auth status --json`) reach the fake agent as well.
 const cli = path.join(work, "fake-cli");
 writeFileSync(cli, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(fake)} "$@"\n`, { mode: 0o755 });
+// Quota with resets ahead of the smoke's own clock (roadmap 52): /usage's text for Claude, and a Codex session file as
+// Codex writes it, so codex-plus shows these numbers and not this machine's real ~/.codex.
+const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const inMinutes = (m) => new Date(Date.now() + m * 60_000);
+const claudeResets = `${resetText(inMinutes(2 * 60 + 15), zone)}|${resetText(inMinutes(3 * 1440 + 5 * 60), zone)}`;
+const codexHome = path.join(work, "codex-plus");
+{
+  const day = new Date();
+  const dir = path.join(codexHome, "sessions", String(day.getFullYear()), String(day.getMonth() + 1).padStart(2, "0"), String(day.getDate()).padStart(2, "0"));
+  mkdirSync(dir, { recursive: true });
+  const limit = (used_percent, minutes, resetIn) => ({ used_percent, window_minutes: minutes, resets_at: Math.floor(inMinutes(resetIn).getTime() / 1000) });
+  const rate_limits = { limit_id: "codex", primary: limit(37, 300, 3 * 60 + 40), secondary: limit(62, 10080, 4 * 1440 + 9 * 60), plan_type: "plus" };
+  writeFileSync(
+    path.join(dir, "rollout-smoke.jsonl"),
+    `${JSON.stringify({ timestamp: new Date().toISOString(), type: "event_msg", payload: { type: "token_count", info: null, rate_limits } })}\n`,
+  );
+}
 const agent = (id, kind, priority, mode, label, extra = {}) => ({
   id, label, kind, bin: cli, args: ["{prompt}"], env: { FAKE_MODE: mode },
   enabled: true, priority, roles: ["plan", "implement", "review"], maxConcurrent: 1, cooldownMinutes: 60, timeoutMinutes: 5,
@@ -62,10 +80,10 @@ writeFileSync(
       // Claude in a container (roadmap 11b): first so the Agents shot shows its token box; off, so no run picks it.
       agent("claude-box", "claude", 98, "ok", "Claude (container)", { container: { image: "xdev-hive-agent" }, enabled: false }),
       // Plan usage (roadmap 3c): the week is high but under the 90% threshold, so the runner still uses it.
-      agent("claude-max-1", "claude", 10, "limit", "Claude Max (gói 1)", { env: { FAKE_MODE: "limit", FAKE_USAGE: "41,83" } }),
+      agent("claude-max-1", "claude", 10, "limit", "Claude Max (gói 1)", { env: { FAKE_MODE: "limit", FAKE_USAGE: "41,83", FAKE_USAGE_RESETS: claudeResets } }),
       // Signed out (roadmap 2d): shown on its card, never picked. Lowest priority so it cannot win the first tick.
       agent("claude-max-2", "claude", 40, "ok", "Claude Max (gói 2)", { env: { FAKE_MODE: "ok", FAKE_LOGIN: "out", CLAUDE_CONFIG_DIR: "~/.claude-2" } }),
-      agent("codex-plus", "codex", 20, "ok", "Codex (ChatGPT Plus)"),
+      agent("codex-plus", "codex", 20, "ok", "Codex (ChatGPT Plus)", { env: { FAKE_MODE: "ok", CODEX_HOME: codexHome } }),
       // A second Codex subscription: the other best-of-n candidate (roadmap 12).
       agent("codex-team", "codex", 25, "ok", "Codex (ChatGPT Team)"),
       // The reviewer only reads Hive (roadmap 2c), and judges the candidates.
@@ -207,6 +225,12 @@ await shoot("local-task-list", "tasks", 3000, { HIVE_SMOKE_VIEW: "list", HIVE_SM
     const r = store.insert({ project: "demo", taskId: "T-900", taskTitle: "Token mẫu", role: "implement", attempt: 1, maxAttempts: 1 }, hoursAgo(hours + 1));
     store.update(r.id, { status: "succeeded", profileId, startedAt: hoursAgo(hours + 1), finishedAt: hoursAgo(hours), inputTokens, cacheWriteTokens, cacheReadTokens, outputTokens, costReported: 1 });
   }
+  // The quota line (roadmap 52): codex-plus hit its limit once since its counter was reset yesterday, and
+  // claude-max-1 rests (the board's rotation gave it a rest already; this one ends at a known time).
+  const limited = store.insert({ project: "demo", taskId: "T-900", taskTitle: "Token mẫu", role: "implement", attempt: 1, maxAttempts: 1 }, hoursAgo(4));
+  store.update(limited.id, { status: "rate_limited", profileId: "codex-plus", startedAt: hoursAgo(4), finishedAt: hoursAgo(3.5), costReported: 1 });
+  store.resetStats("codex-plus", hoursAgo(30));
+  store.setCooldown("claude-max-1", new Date(Date.now() + 100 * 60_000).toISOString(), "You've hit your usage limit");
   store.db.close();
 }
 await shoot("agents-tokens", "agents", 2500, {
@@ -224,6 +248,21 @@ await shoot("agents-tokens-runs", "agents", 2500, {
 // on the subscription whose CLI reports usage. The expect waits for the sign-in check, which lands after first paint.
 const agentsTable = '[data-profile="claude-max-2"][data-state="signedOut"] && [data-off-group] && [data-profile="claude-max-1"] [role="meter"]';
 await shoot("agents", "agents", 2500, { HIVE_SMOKE_EXPECT: agentsTable });
+// Every row's quota (roadmap 52): claude-max-1 resting with Bỏ nghỉ next to its countdowns, codex-plus with the
+// numbers of its session file, a reset counter ("từ <ngày>") and a limit hit, and Đọc lại quota above Quản lý gói.
+await shoot("agents-quota", "agents", 3000, {
+  HIVE_SMOKE_EXPECT: [
+    '[data-profile="claude-max-1"] [data-resting] [data-end-rest]',
+    '[data-profile="claude-max-1"] [data-meter="session"] [data-reset-left]',
+    '[data-profile="claude-max-1"] [data-meter="week"] [data-reset-left]',
+    '[data-profile="claude-max-1"] [data-stat-line] .text-warning',
+    '[data-profile="codex-plus"] [data-meter="session"] [data-reset-left]',
+    '[data-profile="codex-plus"] [data-meter="week"] [data-reset-at]',
+    '[data-profile="codex-plus"] [data-stats-since]:not([data-stats-since=""])',
+    '[data-profile="codex-plus"] [data-read-usage]',
+    "[data-read-usage-all]",
+  ].join(" && "),
+});
 // The off subscriptions unfolded, then the Chi tiết of one: its container token box, command and autonomy.
 await shoot("agents-off", "agents", 2500, { HIVE_SMOKE_CLICK: "[data-off-group]", HIVE_SMOKE_EXPECT: '[data-profile="claude-box"][data-state="off"]' });
 await shoot("agents-detail", "agents", 2500, {

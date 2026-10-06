@@ -361,6 +361,8 @@ export interface ReportedProfile {
   cooldownUntil: string | null;
   runs: number;
   rateLimited: number;
+  /** Runs and rateLimited are counted from here, when the machine's user reset the counter (roadmap 52); null: all. */
+  statsSince?: string | null;
   /** Lower runs first (AgentProfile.priority). Absent from apps older than 0.95, which cannot take changes from the hub. */
   priority?: number;
   /** Runs it takes at once (AgentProfile.maxConcurrent); absent from apps older than 0.110, counted as 1. */
