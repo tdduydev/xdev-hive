@@ -49,7 +49,7 @@ import { useToast } from "#ui/shell/toast.tsx";
 import { ImportTasks, Progress, SpecRun, STAGE_CHIP } from "./Specs.tsx";
 
 /** The right sdlc.decide asks for at a gate, named for the person who lacks it. */
-const gateRight = (g: Pick<SdlcGateRecord, "gate">): "codeReview" | "taskManage" | "runDispatch" => (g.gate === "review" || g.gate === "merge" ? "codeReview" : g.gate === "tasks" ? "taskManage" : "runDispatch");
+const gateRight = (g: Pick<SdlcGateRecord, "gate">): "codeReview" | "qaVerify" | "taskManage" | "runDispatch" => (g.gate === "test" ? "qaVerify" : g.gate === "review" || g.gate === "merge" ? "codeReview" : g.gate === "tasks" ? "taskManage" : "runDispatch");
 
 export function FeaturesPage() {
   const { client, scope, setScope } = useHive();
@@ -411,7 +411,7 @@ function FeatureView({ item, manyProjects, onChanged }: { item: FeatureItem; man
             ) : null}
           </>
         ) : shown === "checks" ? (
-          <Checks item={item} spec={files ? files.spec : spec ? undefined : null} />
+          <Checks item={item} spec={files ? files.spec : spec ? undefined : null} canVerify={allow(item.project, "qaVerify")} />
         ) : shown === "runs" ? (
           <FeatureRuns item={item} />
         ) : (
@@ -490,7 +490,7 @@ function GateDecision({ gate: g, task, item, onDone }: { gate: SdlcGateRecord; t
  * Kiểm thử: the criteria and scenarios of spec.md, each ticked when tried. Kept in this browser (localStorage), the
  * lightest place there is: a shared record needs a hub method, which waits for the QA role spec 49 left for later.
  */
-function Checks({ item, spec }: { item: FeatureItem; spec: string | null | undefined }) {
+function Checks({ item, spec, canVerify }: { item: FeatureItem; spec: string | null | undefined; canVerify: boolean }) {
   const t = useT();
   const list = useMemo(() => featureChecks(spec ?? null), [spec]);
   const key = item.spec ? checksKey(item.project, item.spec.dir) : null;
@@ -502,10 +502,12 @@ function Checks({ item, spec }: { item: FeatureItem; spec: string | null | undef
     const next = { ...marks };
     if (on) next[id] = new Date().toISOString();
     else delete next[id];
+    if (!canVerify) return;
     setMarks(next);
     if (key) writeChecks(key, next);
   };
   const clear = () => {
+    if (!canVerify) return;
     setMarks({});
     if (key) writeChecks(key, {});
   };
@@ -515,12 +517,13 @@ function Checks({ item, spec }: { item: FeatureItem; spec: string | null | undef
         <span className="text-[13px] font-semibold text-fg-strong" data-checks-progress>
           {t("features.checks.progress", { done: checkedCount(list, marks), total: list.length })}
         </span>
-        {Object.keys(marks).length ? (
+        {Object.keys(marks).length && canVerify ? (
           <Button size="sm" variant="ghost" className="max-md:min-h-11" onClick={clear}>
             {t("features.checks.reset")}
           </Button>
         ) : null}
         <span className="w-full text-xs text-fg-muted">{t("features.checks.stored")}</span>
+        {!canVerify ? <span className="w-full text-xs text-fg-muted">{t("features.checks.noRight")}</span> : null}
       </div>
       {(["done", "check"] as const).map((group) => {
         const rows = list.filter((x) => x.group === group);
@@ -530,7 +533,7 @@ function Checks({ item, spec }: { item: FeatureItem; spec: string | null | undef
             <legend className="mb-1 p-0 text-[13px] font-semibold text-fg-strong">{t(`features.checks.${group}`)}</legend>
             <p className="m-0 mb-1 text-xs text-fg-muted">{t(`features.checks.${group}Hint`)}</p>
             {rows.map((x) => (
-              <CheckRow key={x.id} item={x} at={marks[x.id]} onChange={(on) => toggle(x.id, on)} />
+              <CheckRow key={x.id} item={x} at={marks[x.id]} canVerify={canVerify} onChange={(on) => toggle(x.id, on)} />
             ))}
           </fieldset>
         );
@@ -539,13 +542,13 @@ function Checks({ item, spec }: { item: FeatureItem; spec: string | null | undef
   );
 }
 
-function CheckRow({ item: x, at, onChange }: { item: CheckItem; at: string | undefined; onChange: (on: boolean) => void }) {
+function CheckRow({ item: x, at, canVerify, onChange }: { item: CheckItem; at: string | undefined; canVerify: boolean; onChange: (on: boolean) => void }) {
   const t = useT();
   const id = `check-${x.id}`;
   const on = x.inFile || !!at;
   return (
     <div className="flex min-h-11 items-start gap-2.5 rounded-sm px-1 py-1.5 hover:bg-hover md:min-h-8" data-check={x.id} data-checked={on ? "" : undefined}>
-      <Checkbox id={id} className="mt-0.5" checked={on} disabled={x.inFile} onCheckedChange={(v) => onChange(v === true)} />
+      <Checkbox id={id} className="mt-0.5" checked={on} disabled={x.inFile || !canVerify} onCheckedChange={(v) => onChange(v === true)} />
       <label htmlFor={id} className="flex min-w-0 flex-1 cursor-pointer flex-col gap-0.5 text-[13px]/5 text-fg-primary [overflow-wrap:anywhere]">
         <span className={on ? "text-fg-secondary" : undefined}>{x.text}</span>
         {x.under || x.inFile || at ? (

@@ -1941,6 +1941,7 @@ export class SqliteHive implements HiveBackend {
         if (str(row.gate) === "tasks" && i.decision === "pass") this.#need(actor, str(row.project), "taskManage", `Gate #${i.gateId}`);
         // A task's review and its merge are a code reviewer's, as merging from the web is (18c).
         if (str(row.gate) === "review" || str(row.gate) === "merge") return this.#need(actor, str(row.project), "codeReview", `Gate #${i.gateId}`);
+        if (str(row.gate) === "test") return this.#need(actor, str(row.project), "qaVerify", `Gate #${i.gateId}`);
         return this.#need(actor, str(row.project), "runDispatch", `Gate #${i.gateId}`);
       }
       case "sdlc.retry": {
@@ -4610,6 +4611,9 @@ export class SqliteHive implements HiveBackend {
     const taskId = str(ft.task_id);
     switch (str(gate.gate) as SdlcGate) {
       case "review":
+        this.#toTest(ft);
+        break;
+      case "test":
         this.#setTask(taskId, { stage: "merge", gate_id: null, note: null });
         break;
       case "fix":
@@ -4621,6 +4625,18 @@ export class SqliteHive implements HiveBackend {
       default:
         break;
     }
+  }
+
+  /** QA is an independent gate between code review and the existing MR/merge checks. */
+  #toTest(ft: Row): void {
+    const mode = effectiveGates(this.#sdlcPolicy(), str(ft.project)).test;
+    if (mode === "auto") {
+      this.#taskGate(ft, "test", mode, "passed", { runId: str(ft.run_id) }, { by: "auto" });
+      this.#setTask(str(ft.task_id), { stage: "merge", gate_id: null, note: null });
+      return;
+    }
+    const gateId = this.#taskGate(ft, "test", mode, mode === "ai" ? "checking" : "waiting", { runId: str(ft.run_id) }, null);
+    this.#setTask(str(ft.task_id), { stage: mode === "ai" ? "check" : "gate", gate_id: gateId });
   }
 
   /** The hub asks the machine of the task's run to merge its MR, as runs.merge does for a person (merge_by "sdlc"). */
