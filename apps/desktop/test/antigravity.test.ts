@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { it } from "node:test";
@@ -8,21 +8,42 @@ import { AGENT_TEMPLATES, OPEN_POLICY } from "@xdev-hive/core";
 import { agyError, antigravityHome, supportsAgyUsage, parseAgyUsage } from "#desktop/main/runner/antigravity.ts";
 import { checkLogin, checkUsage, loginParts, type RunCli } from "#desktop/main/runner/login.ts";
 import { policyBlocks } from "#desktop/main/runner/command.ts";
+import { parseResetAt } from "#desktop/main/runner/usage.ts";
 import { AntigravityStream } from "#desktop/main/runner/stream.ts";
 
 const now = new Date("2026-10-06T06:00:00Z");
 const profile = AGENT_TEMPLATES.antigravity;
-const sample = { pools: { gemini: { session: { percent: 23 }, week: { percent: 46 } }, claude_gpt: { five_hour: { used_percent: 37 }, weekly: { usedPercent: 62 } } } };
+const sample = readFileSync(path.join(import.meta.dirname, "fixtures", "agy-usage-1.3.0.json"), "utf8");
 
-it("reads both provisional pools, chooses Claude/GPT by model, leaves unknown windows unknown", () => {
-  const usage = parseAgyUsage(JSON.stringify(sample), [], now)!;
-  assert.equal(usage.session?.percent, 23);
-  assert.equal(usage.week?.percent, 46);
-  assert.deepEqual(usage.others.map((w) => w.percent), [37, 62]);
-  assert.equal(parseAgyUsage(JSON.stringify(sample), ["--model=gpt-5"], now)?.session?.percent, 37);
-  assert.equal(parseAgyUsage('{"gemini":{"session":{"percent":200},"week":{"percent":null}}}', [], now), null);
-  assert.equal(parseAgyUsage("new format", [], now), null);
-  assert.equal(parseAgyUsage('{"gemini":{"session":{"percent":0}}}', [], now)?.week, null);
+it("reads the real agy 1.3.0 quota, rounding used fractions and preserving resets", () => {
+  const usage = parseAgyUsage(sample, [], now)!;
+  assert.equal(usage.session?.percent, 0);
+  assert.equal(usage.week?.percent, 1);
+  assert.deepEqual(usage.others.map((w) => w.percent), [0, 0]);
+  assert.equal(usage.checkedAt, now.toISOString());
+  assert.equal(parseResetAt(usage.week?.resets, now)?.toISOString(), "2026-10-09T14:14:00.000Z");
+  assert.equal(parseResetAt(usage.session?.resets, now)?.toISOString(), "2026-10-06T12:44:00.000Z");
+  for (const model of ["--model=gpt-5", "--model=claude-sonnet"]) {
+    const alternate = parseAgyUsage(sample, [model], now)!;
+    assert.equal(alternate.week?.percent, 0);
+    assert.deepEqual(alternate.others.map((w) => w.percent), [0, 1]);
+    assert.equal(parseResetAt(alternate.week?.resets, now)?.toISOString(), "2026-10-13T07:44:00.000Z");
+  }
+});
+
+it("uses bucket IDs or group names and windows, leaving invalid or missing quotas unknown", () => {
+  const payload = (buckets: unknown[], name = "Gemini Models") => JSON.stringify({ command: { data: { groups: [{ name, buckets }] } } });
+  assert.equal(parseAgyUsage(payload([{ id: "gemini-5h", remaining_fraction: 0.77 }], "renamed"), [], now)?.session?.percent, 23);
+  const fallback = parseAgyUsage(payload([{ window: "weekly", remaining_fraction: 0, reset_time: "invalid" }]), [], now)!;
+  assert.equal(fallback.week?.percent, 100);
+  assert.equal(fallback.week?.resets, null);
+  assert.equal(fallback.session, null);
+  for (const remaining_fraction of [-1, 1.1, null, "1"]) {
+    assert.equal(parseAgyUsage(payload([{ id: "gemini-5h", remaining_fraction }]), [], now), null);
+  }
+  for (const output of ["new format", "{}", '{"command":{"data":{"groups":[null,{}]}}}', '{"gemini":{"session":{"percent":0}}}']) {
+    assert.equal(parseAgyUsage(output, [], now), null);
+  }
 });
 
 it("never invokes /usage on old or unknown agy versions, including sign-in checks", async () => {
