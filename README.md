@@ -14,6 +14,11 @@ Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, 
 ```
 
 - **Tài liệu**: bản gốc của `AGENTS.md`, quy chuẩn chung (`org/*`), nhật ký quyết định. Có version, lịch sử và diff.
+- **Xoá và chuyển trang** (roadmap 38g, cần quyền như khi sửa chính trang đó):
+  - *Xoá trang* trên trang *Tài liệu* là xoá mềm: trang và các trang con rời khỏi danh sách, `AGENTS.md` và lần đồng bộ sau (file đã render bị gỡ), nhưng lịch sử phiên bản vẫn còn. Mục *Đã xoá* ở cuối cây trang có nút *Khôi phục*, đưa lại đúng những trang mà lần xoá đó lấy đi. Ghi vào nhật ký. Trang mang dấu `mirror` bị từ chối: xoá ở repo nguồn.
+  - Ô *Không gian* chuyển trang sang không gian khác, kể cả `project/<dự án>/x` → `system/<hệ thống>/x`. Lịch sử, tệp đính kèm, đề xuất đang chờ và các trang con đi theo; khoá cũ vẫn trỏ sang khoá mới nên `doc_get` và liên kết `[[...]]` cũ không gãy.
+  - Agent gọi `doc_get` vào trang đã xoá nhận `not_found`.
+- **Dự án nghỉ** (roadmap 38g, admin hub, trang *Quản trị · Chính sách & chốt*): cho một project key nghỉ khi việc của nó đã xong. Key biến khỏi ô phạm vi và các danh sách chọn dự án khi không còn máy nào khai, không còn trang hay task mở; còn thì vẫn hiện kèm số còn lại. Không xoá dữ liệu, có nhật ký, và *Mở lại* đảo ngược.
 - **Tài liệu theo đường dẫn**: tài liệu có ô *Áp dụng cho* (glob, vd. `apps/web/**`, `**/*.test.ts`) không nằm trong `AGENTS.md` chính, để file này ngắn.
   - Glob có thư mục: ghi vào `AGENTS.md` lồng trong thư mục đó (vd. `apps/web/AGENTS.md`), trong một block có marker. Phần repo tự viết ngoài block vẫn giữ.
     - Codex đọc `AGENTS.md` lồng. Claude Code (từ 2.1.277) đọc nó khi mở file trong thư mục đó.

@@ -142,6 +142,19 @@ export function useProjects(): string[] {
   return useHive().projects;
 }
 
+/**
+ * Project keys that are at rest and have nothing left on them (roadmap 38g): the shell leaves them out of the scope
+ * picker and of every project list. A hub from before has no such method, so there are none then.
+ */
+export function useRetiredProjects(client: HiveClient, tick: number): Set<string> {
+  const { data } = useQuery(async () => {
+    const retired = await client.call("projects.retired", {}).catch(() => []);
+    return new Set(retired.filter((r) => r.hidden).map((r) => r.project));
+  }, [client, tick]);
+  return data ?? EMPTY_SET;
+}
+const EMPTY_SET: Set<string> = new Set();
+
 /** Loads the project list for the shell: docs, tasks, memory and this machine's repos. */
 export function useProjectList(client: HiveClient, tick: number): string[] {
   const { data } = useQuery(async () => {

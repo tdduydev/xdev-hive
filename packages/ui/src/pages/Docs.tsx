@@ -24,6 +24,7 @@ import {
   Quote,
   Sparkles,
   Table,
+  Trash2,
   X,
 } from "lucide-react";
 import { cn } from "cn";
@@ -177,6 +178,10 @@ export function DocsPage() {
   const allow = useCan();
   const toast = useToast();
   const list = useQuery(() => client.call("docs.list", {}), [client]);
+  // Removed pages (roadmap 38g) are out of the list: the space's own are offered back here.
+  const removed = useQuery(() => client.call("docs.removed", {}).catch(() => []), [client]);
+  const restore = useAction();
+  const [showRemoved, setShowRemoved] = useState(false);
   const spaces = useMemo(() => spacesFor(list.data ?? [], scope, t, systems, (owner) => allow(owner, "view")), [list.data, scope, t, systems, allow]);
   const titles = useMemo(() => new Map((list.data ?? []).map((d) => [d.key, d.title])), [list.data]);
   const [spaceId, setSpaceId] = useState<string | null>(null);
@@ -218,21 +223,53 @@ export function DocsPage() {
 
   // #/docs?doc=<key> (command palette, links): open that doc, moving to its scope when it is outside this one.
   const linked = mobileDetail.value;
+  const lookedAgain = useRef<string | null>(null);
+  // A folder just made, or a page the second look found, is selected before the list has it.
+  const justMade = useRef<string | null>(null);
+  const { data: listed, reload: reloadList } = list;
   useEffect(() => {
-    if (!linked || !list.data) return;
-    if (list.data.some((d) => d.key === linked) || drafts[linked]) {
-      const owner = docOwner(linked);
+    if (!linked || !listed) return;
+    const open = (key: string) => {
+      const owner = docOwner(key);
       const system = systemOf(owner);
       // A system's page outside this scope opens in the system's scope, where its space is.
-      if (!inScope(scope, owner) && !(system !== null && spacesFor(list.data, scope, t, systems, () => true).some((s) => s.owner === owner))) {
+      if (!inScope(scope, owner) && !(system !== null && spacesFor(listed, scope, t, systems, () => true).some((s) => s.owner === owner))) {
         setScope(owner === null ? SHARED : system !== null ? systemScope(system, systems.find((s) => s.name === system)?.projects ?? []) : projectScope(owner));
       }
-      setSpaceId(spaceIdOf(linked));
-      setSelected(linked);
+      setSpaceId(spaceIdOf(key));
+      setSelected(key);
       setQ("");
-    }
-    if (!mobileDetail.mobile) mobileDetail.navigate(null, true);
-  }, [linked, list.data, drafts, scope, setScope, t, systems, mobileDetail.mobile, mobileDetail.navigate]);
+      if (!mobileDetail.mobile) mobileDetail.navigate(null, true);
+    };
+    if (listed.some((d) => d.key === linked) || drafts[linked]) return open(linked);
+    // The second look below is on its way and opens or drops the link itself: renders before it answers (this
+    // page re-renders often) must not drop it first.
+    if (lookedAgain.current === linked) return;
+    // A page this list has not seen (made since it loaded): look once more, and follow the key a page had before it
+    // moved, so a link or a bookmark from before still opens it (roadmap 38g).
+    lookedAgain.current = linked;
+    void client.call("docs.get", { key: linked }).then(
+      (doc) => {
+        if (lookedAgain.current !== linked) return;
+        lookedAgain.current = null;
+        if (!doc) {
+          if (!mobileDetail.mobile) mobileDetail.navigate(null, true);
+          return;
+        }
+        if (doc.key !== linked) {
+          mobileDetail.navigate(doc.key, true);
+          return;
+        }
+        justMade.current = linked;
+        reloadList();
+        open(linked);
+      },
+      () => {
+        if (lookedAgain.current === linked) lookedAgain.current = null;
+        if (!mobileDetail.mobile) mobileDetail.navigate(null, true);
+      },
+    );
+  }, [linked, listed, reloadList, drafts, scope, setScope, client, t, systems, mobileDetail.mobile, mobileDetail.navigate]);
 
   const owners = useMemo(() => spaceOwners(space), [space]);
   const prefixes = useMemo(() => owners.map(docPrefix), [owners]);
@@ -257,9 +294,8 @@ export function DocsPage() {
     );
   }, [space, unsaved, t]);
   const nodes = useMemo(() => flatten(tree), [tree]);
+  const removedHere = useMemo(() => (removed.data ?? []).filter((d) => docOwner(d.key) === (space?.owner ?? null)), [removed.data, space]);
 
-  // A folder just made is selected before the list has it.
-  const justMade = useRef<string | null>(null);
   // Keep the selection inside the space: the first page of the space when it falls out.
   useEffect(() => {
     if (!list.data || linked || !space) return;
@@ -540,6 +576,48 @@ export function DocsPage() {
         </div>
         <div className="flex shrink-0 flex-col gap-1.5 border-t border-line-subtle px-3 py-2">
           <span className="text-[11px] text-fg-muted">{t("docs.pageCount", { count: space?.docs.length ?? 0 })}</span>
+          {removedHere.length ? (
+            <div className="flex flex-col gap-1" data-docs-removed>
+              <button
+                type="button"
+                data-docs-removed-toggle
+                aria-expanded={showRemoved}
+                onClick={() => setShowRemoved((v) => !v)}
+                className="flex cursor-pointer items-center gap-1 text-[11px] text-fg-muted outline-none hover:text-fg-strong focus-visible:focus-ring"
+              >
+                {showRemoved ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+                {t("docs.removedCount", { count: removedHere.length })}
+              </button>
+              {showRemoved
+                ? removedHere.map((d) => (
+                    <div key={d.key} className="flex items-center gap-1.5 pl-4">
+                      <span title={`${d.key} · ${d.removedBy ?? ""}`} className="min-w-0 flex-1 truncate text-[11px] text-fg-muted line-through">
+                        {d.title}
+                      </span>
+                      {allow(docOwner(d.key), isContextDoc(d.key, d) ? "contextEdit" : "docEdit") ? (
+                        <button
+                          type="button"
+                          data-doc-restore={d.key}
+                          disabled={restore.busy}
+                          onClick={() =>
+                            void restore.run(async () => {
+                              await client.call("docs.restore", { key: d.key });
+                              toast(t("docs.restored", { doc: d.title }));
+                              removed.reload();
+                              list.reload();
+                            })
+                          }
+                          className="shrink-0 cursor-pointer text-[11px] text-fg-link outline-none hover:underline focus-visible:focus-ring disabled:cursor-default"
+                        >
+                          {t("docs.restore")}
+                        </button>
+                      ) : null}
+                    </div>
+                  ))
+                : null}
+              <ErrorNote error={restore.error} />
+            </div>
+          ) : null}
         </div>
       </div>
       <div className={cn("min-w-0 flex-1 flex-col", mobileDetail.mobile && !mobileDetail.showingDetail ? "hidden md:flex" : "flex")}>
@@ -558,6 +636,22 @@ export function DocsPage() {
             spaceLabel={ownerName(docOwner(active), t("inbox.shared"))}
             onPick={pick}
             onNew={(parent) => startCreate("page", parent)}
+            spaces={spaces}
+            onMoved={(key) => {
+              // The list has not caught up with the new key yet: keep it selected until it does, as for a new folder.
+              justMade.current = key;
+              setSpaceId(spaceIdOf(key));
+              setSelected(key);
+              if (mobileDetail.mobile) mobileDetail.navigate(key);
+              list.reload();
+            }}
+            onRemoved={() => {
+              setSelected(null);
+              if (mobileDetail.mobile) mobileDetail.navigate(null);
+              setShowRemoved(true);
+              removed.reload();
+              list.reload();
+            }}
           />
         ) : (
           <div className="grid flex-1 place-items-center p-6">
@@ -613,6 +707,9 @@ function DocView({
   spaceLabel,
   onPick,
   onNew,
+  spaces,
+  onMoved,
+  onRemoved,
 }: {
   docKey: string;
   canEdit: boolean;
@@ -625,6 +722,10 @@ function DocView({
   spaceLabel: string;
   onPick: (key: string) => void;
   onNew: (parent: string) => void;
+  /** The spaces this scope shows: where the page may be sent (roadmap 38g). */
+  spaces: Space[];
+  onMoved: (key: string) => void;
+  onRemoved: () => void;
 }) {
   const { client } = useHive();
   const t = useT();
@@ -642,6 +743,8 @@ function DocView({
   const [compare, setCompare] = useState<number | null>(null);
   const [showDiff, setShowDiff] = useState(false);
   const [picker, setPicker] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const allow = useCan();
   const action = useAction();
   const upload = useAction();
   const area = useRef<HTMLTextAreaElement>(null);
@@ -731,6 +834,28 @@ function DocView({
       onSaved();
     });
   };
+
+  // Spaces of this scope the page may be sent to, and that the person may write in.
+  const otherSpaces = spaces.filter((s) => s.id !== spaceIdOf(docKey) && allow(s.owner, isContextDoc(docKey, current) ? "contextEdit" : "docEdit"));
+
+  // To another space (roadmap 38g): the page keeps its slug and its versions, and the pages under it come along.
+  const moveToSpace = (space: Space) => {
+    if (!current) return;
+    const to = docPrefix(space.owner) + docKey.split("/").slice(docKey.startsWith("org/") ? 1 : 2).join("/");
+    void action.run(async () => {
+      const result = await client.call("docs.move", { key: docKey, to });
+      toast(t("docs.movedSpace", { doc: current.title, space: space.label, count: result.moved.length }));
+      onMoved(result.key);
+    });
+  };
+
+  const remove = () =>
+    void action.run(async () => {
+      const { keys } = await client.call("docs.remove", { key: docKey, note: work.note.trim() || undefined });
+      toast(t("docs.removedToast", { doc: current?.title ?? docKey, count: keys.length }));
+      setDraft(null);
+      onRemoved();
+    });
 
   // ⌘S saves (or proposes) the draft.
   useEffect(() => {
@@ -861,6 +986,33 @@ function DocView({
                           <NativeSelectOption key={n.key} value={n.key}>
                             {"  ".repeat(n.path.length)}
                             {n.title}
+                          </NativeSelectOption>
+                        ))}
+                      </NativeSelect>
+                    </>
+                  ) : null}
+                  {/* A page whose home is a repo moves there, not here. */}
+                  {canEdit && current && !current.mirror && otherSpaces.length ? (
+                    <>
+                      <label htmlFor="doc-space" className="text-xs text-fg-muted" title={t("docs.spaceHint")}>
+                        {t("docs.space")}
+                      </label>
+                      <NativeSelect
+                        id="doc-space"
+                        data-doc-space
+                        size="sm"
+                        wrapperClassName="w-full"
+                        value={spaceIdOf(docKey)}
+                        disabled={action.busy}
+                        onChange={(e) => {
+                          const next = otherSpaces.find((s) => s.id === e.target.value);
+                          if (next) moveToSpace(next);
+                        }}
+                      >
+                        <NativeSelectOption value={spaceIdOf(docKey)}>{spaceLabel}</NativeSelectOption>
+                        {otherSpaces.map((s) => (
+                          <NativeSelectOption key={s.id} value={s.id}>
+                            {t("docs.spaceMoveTo", { space: s.label })}
                           </NativeSelectOption>
                         ))}
                       </NativeSelect>
@@ -1026,6 +1178,26 @@ function DocView({
           </a>
         ) : null}
         <span className="flex-1" />
+        {/* Removing is a two-click action, like removing a system: nothing goes on one stray click. */}
+        {canEdit && current && !current.mirror ? (
+          confirmRemove ? (
+            <Button size="sm" variant="destructive" data-doc-remove-confirm disabled={action.busy} onClick={remove} className="md:hidden">
+              {t("docs.removeConfirm")}
+            </Button>
+          ) : (
+            <Button
+              size="icon-sm"
+              variant="outline"
+              data-doc-remove
+              aria-label={t("docs.remove")}
+              title={t("docs.removeHint")}
+              className="text-danger md:hidden"
+              onClick={() => setConfirmRemove(true)}
+            >
+              <Trash2 />
+            </Button>
+          )
+        ) : null}
         <details className="relative ml-auto md:hidden">
           <summary className="flex min-h-10 cursor-pointer items-center rounded-sm border border-line-default px-3 text-sm font-medium text-fg-strong">{t("docs.modes")}</summary>
           <div onClick={(event) => { if ((event.target as HTMLElement).closest("button, a")) event.currentTarget.closest("details")?.removeAttribute("open"); }} className="absolute right-0 z-30 mt-1 flex w-[min(290px,calc(100vw-32px))] flex-col gap-1 rounded-md border border-line-default bg-raised p-2 shadow-e3">
@@ -1099,6 +1271,26 @@ function DocView({
           >
             <History />
           </Button>
+        ) : null}
+        {/* Removing is a two-click action, like removing a system: nothing goes on one stray click. */}
+        {canEdit && current && !current.mirror ? (
+          confirmRemove ? (
+            <Button size="sm" variant="destructive" data-doc-remove-confirm disabled={action.busy} onClick={remove}>
+              {t("docs.removeConfirm")}
+            </Button>
+          ) : (
+            <Button
+              size="icon-sm"
+              variant="outline"
+              data-doc-remove
+              aria-label={t("docs.remove")}
+              title={t("docs.removeHint")}
+              className="text-danger"
+              onClick={() => setConfirmRemove(true)}
+            >
+              <Trash2 />
+            </Button>
+          )
         ) : null}
         {dirty || (!current && draft) ? (
           <>
