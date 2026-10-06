@@ -1214,7 +1214,7 @@ async function main() {
       if (body.error) throw new Error(`${method}: ${body.error.message}`);
       return body.result;
     };
-    const profile = (id, kind) => ({ id, label: id, kind, enabled: true, account: null, installed: true, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, maxConcurrent: 1, planApproval: true });
+    const profile = (id, kind) => ({ id, label: id, kind, enabled: true, account: null, installed: true, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, maxConcurrent: 1, planApproval: true, supportedModels: kind === "codex" ? ["gpt-6-luna"] : ["sonnet", "haiku"] });
     const beat = () => machineRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", version: "0.115.0", projects: ["payment"], acceptsRuns: true, profiles: [profile("claude-1", "claude"), profile("codex-1", "codex")], runs: [] });
     await beat();
     const lanRpc = async (method, input) => {
@@ -1370,6 +1370,7 @@ async function main() {
         await tab.waitFor("step editor closed", () => !document.querySelector("[data-pipeline-editor]"));
         await tab.click('[data-model-tab="models"]');
         await tab.waitFor("task cell table", () => document.querySelectorAll('[data-model-row]').length === 11);
+        await tab.waitFor("supported profile models alongside routing", () => !!document.querySelector("[data-supported-models] h2") && document.querySelector('[data-supported-profile="codex-1"]')?.textContent.includes("gpt-6-luna"));
         expect(await tab.eval(() => !document.querySelector('[data-hub-model-save]')), "project manager cannot edit hub tiers");
         await tab.click('[data-model-profile="economy"]');
         await tab.eval(() => { const el = document.querySelector('[data-model-row="docs"] [data-model-tier]'); el.value = "standard"; el.dispatchEvent(new Event("change", { bubbles: true })); });
