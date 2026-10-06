@@ -855,6 +855,20 @@ export interface RunRecord {
   log?: string;
   /** What it changed (git diff from its base), as its machine last sent it; null: not sent (yet). runs.get only. */
   patch?: string | null;
+  /** Steering history, returned by runs.get only. */
+  messages?: RunMessage[];
+}
+
+/** Additional instructions for a run, with transport delivery tracked separately from the agent reading them. */
+export interface RunMessage {
+  id: number;
+  machineId: string;
+  runId: string;
+  text: string;
+  by: string;
+  at: string;
+  /** Delivery to the process or worktree, not an acknowledgement that the agent read it. */
+  deliveredAt: string | null;
 }
 
 /** A run's merge request (GitLab) or pull request (GitHub) as its machine's MR watcher last saw it. */

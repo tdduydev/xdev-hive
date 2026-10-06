@@ -2261,6 +2261,51 @@ async function main() {
     expect(log.some((e) => e.detail.includes("do-duoc.md")), `the removal is not in the audit log: ${JSON.stringify(log)}`);
   });
 
+  await step("run-steer", async () => {
+    const machineRpc = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" }, body: JSON.stringify({ method, input }) });
+      const body = await r.json();
+      if (body.error) throw new Error(`${method}: ${body.error.message}`);
+      return body.result;
+    };
+    const beat = (extra = {}) => machineRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", projects: ["payment"], acceptsRuns: true, ...extra });
+    await beat();
+    const runId = "R-steer1";
+    const at = new Date().toISOString();
+    const run = { runId, project: "payment", taskId: "PAY-1", taskTitle: "Nhắn thêm cho agent", role: "implement", status: "running", profileId: "claude-1", createdAt: at, startedAt: at, log: "## Output\nAgent đang làm\n" };
+    await machineRpc("runs.push", { machine: "lan-mbp", runs: [run] });
+    const tab = (current = tabs.lan);
+    await tab.go(`runs?run=${runId}`);
+    await tab.waitFor("message composer", () => !!document.querySelector("[data-run-steer] textarea"));
+    expect(await tab.eval(() => document.querySelector("[data-run-steer] button").disabled), "empty message can be sent");
+    await tab.click("[data-run-steer] textarea");
+    await tab.type("Kiểm tra mobile, giữ màu hiện có");
+    if (mobile) {
+      const sizes = await tab.eval(() => { const button = document.querySelector("[data-run-steer] button"); const input = document.querySelector("[data-run-steer] textarea"); return { height: button.getBoundingClientRect().height, width: button.getBoundingClientRect().width, font: parseFloat(getComputedStyle(input).fontSize) }; });
+      expect(sizes.height >= 44 && sizes.width >= 44 && sizes.font >= 16, `message touch targets: ${JSON.stringify(sizes)}`);
+    }
+    await tab.click("[data-run-steer] button");
+    await tab.waitFor("saved message and cleared composer", () => document.querySelector("[data-run-messages]")?.textContent.includes("Kiểm tra mobile") && document.querySelector("[data-run-steer] textarea")?.value === "");
+    await tab.shot("run-steer-pending");
+    const pending = (await beat()).runMessages.filter((m) => m.runId === runId);
+    expect(pending.length === 1 && pending[0].deliveredAt === null, "message was not queued at heartbeat");
+    const reader = (current = tabs.hoa);
+    await reader.go(`runs?run=${runId}`);
+    await reader.waitFor("running history without dispatch controls", () => !!document.querySelector("[data-run-messages]") && !document.querySelector("[data-run-steer]"));
+    current = tab;
+    await beat({ deliveredMessages: pending.map((m) => m.id) });
+    await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ ...run, log: run.log + "2026-10-06T08:00:00Z\t» lan: Kiểm tra mobile, giữ màu hiện có\n" }] });
+    await tab.waitFor("delivery status", () => document.querySelector("[data-run-messages]")?.textContent.includes("Đã giao cho run"));
+    await tab.waitFor("human line in log", () => document.querySelector('[role="log"]')?.textContent.includes("Người nhắn"));
+    await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ ...run, status: "succeeded", finishedAt: new Date().toISOString() }] });
+    await tab.go("tasks");
+    await tab.go(`runs?run=${runId}`);
+    await tab.waitFor("history after completion", () => !!document.querySelector("[data-run-messages]") && !document.querySelector("[data-run-steer]"));
+    const viewer = (current = tabs.hoa);
+    await viewer.go(`runs?run=${runId}`);
+    await viewer.waitFor("history for viewer", () => !!document.querySelector("[data-run-messages]") && !document.querySelector("[data-run-steer]"));
+  });
+
   const errors = Object.values(tabs).flatMap((t) => t.errors.map((e) => `${t.name}: ${e}`));
   if (errors.length) console.log(`page errors:\n  ${errors.join("\n  ")}`);
   const failed = results.filter((r) => !r.ok);

@@ -1,3 +1,4 @@
+import { STEER_FILE } from "#desktop/main/runner/steer.ts";
 // One git worktree + branch per task (ai/<task-id>), so agents never share a working copy.
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
@@ -221,7 +222,7 @@ export const AGENT_CLI_DIRS = [".codex", ".agents", ".codegraph"];
  * working copy, because a run's worktree gets files the branch does not have (roadmap 38a).
  */
 export function renderedPaths(dir: string): string[] {
-  const out = [...RENDERED_FILES, RULES_DIR, CONTEXT_DIR, ARTIFACT_DIR];
+  const out = [...RENDERED_FILES, RULES_DIR, CONTEXT_DIR, ARTIFACT_DIR, STEER_FILE];
   const listed = (tryGit(dir, ["ls-files", "-co", "--exclude-standard", "--", ":(glob)**/AGENTS.md", ":(glob).claude/skills/*/SKILL.md"]) ?? "")
     .split("\n")
     .filter((f) => f && !RENDERED_FILES.includes(f));
@@ -259,7 +260,9 @@ export function commitAll(dir: string, message: string, exclude: string[], toolD
     // -f") when an exclude names one, so nothing would be committed (.codegraph/ in xdev-mindmap-ai, 2/10).
     // CONTEXT_DIR as well as RULES_DIR: since roadmap 38f a repo that keeps its own AGENTS.md tracks Hive's copy
     // there, so it must stay out even on a run whose context render failed (then `exclude` does not name it).
-    const keepOut = [...exclude, ...RENDERED_FILES, RULES_DIR, CONTEXT_DIR, ARTIFACT_DIR, ...nested, ...cliDirs].filter((f) => tryGit(dir, ["check-ignore", "-q", "--", f]) === null);
+    const keepOut = [...exclude, ...RENDERED_FILES, RULES_DIR, CONTEXT_DIR, ARTIFACT_DIR, STEER_FILE, ...nested, ...cliDirs].filter((f) => tryGit(dir, ["check-ignore", "-q", "--", f]) === null);
+    // A CLI may already have staged its inbox; it is transport data, never part of the task commit.
+    git(dir, ["reset", "-q", "HEAD", "--", STEER_FILE]);
     git(dir, ["add", "-A", "--", ".", ...keepOut.map((f) => `:(exclude)${f}`)]);
     if (!git(dir, ["diff", "--cached", "--name-only"])) return { sha: null, error: null };
     git(dir, ["-c", `core.hooksPath=${os.devNull}`, "commit", "-m", message]);

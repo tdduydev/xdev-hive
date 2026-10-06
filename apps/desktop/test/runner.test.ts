@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, realpathSync, renameSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, realpathSync, symlinkSync, renameSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { RunStore } from "#desktop/main/runner/store.ts";
+import { writeSteer } from "#desktop/main/runner/steer.ts";
 import { after, describe, it } from "node:test";
 import { AGENT_TEMPLATES, ARTIFACT_DIR, HiveError, toolHash, type Actor, type AgentProfile, type HiveBackend, type RunnerSettings, type ToolEntry } from "@xdev-hive/core";
 import { CODEGRAPH_MCP, CODEGRAPH_RUN_MCP, SHIM_NAME, SUPERPOWERS_PLUGIN, mcpLaunch, shimBinDir } from "#desktop/main/installer.ts";
@@ -2973,6 +2975,137 @@ describe("classify runs", () => {
     assert.ok(run.error);
     const t = await a.task();
     assert.deepEqual([t.kind, t.size, t.risk, t.classifiedBy], ["feature", "m", "normal", "ai"]);
+  });
+});
+
+
+describe("steering a live run", () => {
+  const ready = async (runner: Runner, id: string) => {
+    for (let n = 0; n < 200; n++) {
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\t(?:thinking…|working on)/m.test(runner.log(id))) return;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    throw new Error("fake agent did not start");
+  };
+
+  for (const kind of ["claude", "codex"] as const) it(`${kind} file fallback delivers in order, deduplicates hub retries, and excludes steer.md from diff`, async () => {
+    let loseAckResponse = true;
+    const { runner, hive, dataDir } = await setup([profile("p1", kind, 10, "sleep")], { acceptHubRuns: true }, "hub", {
+      wrap: (backend) => ({ call: async (method, input, actor) => {
+        const result = await backend.call(method, input, actor);
+        if (method === "machines.heartbeat" && (input as { deliveredMessages?: number[] }).deliveredMessages?.length && loseAckResponse) {
+          loseAckResponse = false;
+          throw new Error("lost acknowledgement response");
+        }
+        return result;
+      } }),
+    });
+    try {
+      const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+      await ready(runner, run.id);
+      await runner.pushRuns();
+      await runner.heartbeat();
+      const record = (await hive.call("runs.list", {}, admin))[0]!;
+      const send = (text: string) => hive.call("runs.steer", { machineId: record.machineId, runId: run.id, text }, admin);
+      const first = await send("Kiểm tra mobile\nKhông đổi màu");
+      const second = await send("Không push");
+      await runner.heartbeat();
+      const active = runner.store.get(run.id)!;
+      const file = readFileSync(path.join(active.worktree!, ".xdev-hive/steer.md"), "utf8");
+      assert.match(file, /Kiểm tra mobile\nKhông đổi màu/);
+      assert.ok(file.indexOf("Kiểm tra mobile") < file.indexOf("Không push"));
+      await Promise.all([runner.steer(run.id, first.text, first), runner.steer(run.id, first.text, first)]);
+      assert.equal(runner.store.steering(run.id).length, 2);
+      assert.deepEqual(runner.store.steeringAcks(), [first.id, second.id]);
+      await assert.rejects(runner.heartbeat(), /lost acknowledgement response/);
+      const reopened = new RunStore(path.join(dataDir, "runs.db"));
+      assert.deepEqual(reopened.steeringAcks(), [first.id, second.id]);
+      assert.equal(reopened.steering(run.id).length, 2);
+      reopened.db.close();
+      await runner.heartbeat();
+      assert.deepEqual(runner.store.steeringAcks(), []);
+      assert.ok((await hive.call("runs.get", { machineId: record.machineId, runId: run.id }, admin))!.messages!.every((m) => m.deliveredAt));
+      assert.match(unstamp(runner.log(run.id)), /» duy: Không push/);
+      assert.doesNotMatch(runner.diff(run.id), /steer.md/);
+      writeFileSync(path.join(active.worktree!, "work.txt"), "agent work\n");
+      git(active.worktree!, "add", "--", ".xdev-hive/steer.md");
+      runner.cancel(run.id);
+      await runner.settle();
+      assert.equal(git(active.worktree!, "ls-files", ".xdev-hive/steer.md"), "");
+      assert.equal(git(active.worktree!, "ls-files", "work.txt"), "work.txt");
+      await assert.rejects(runner.steer(run.id, "late"));
+    } finally { await runner.stop(); hive.close(); }
+  });
+
+  it("falls back to the file when the Claude executable does not advertise stream input", async () => {
+    const bin = path.join(tmp("steer-legacy"), "claude");
+    const quote = (s: string) => "'" + s.replaceAll("'", "'\"'\"'") + "'";
+    writeFileSync(bin, `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(FAKE)} "$@"\n`, { mode: 0o755 });
+    const { runner, hive, calls } = await setup([profile("p1", "claude", 10, "sleep", { bin, args: ["-p", "{prompt}"] })]);
+    try {
+      const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+      await ready(runner, run.id);
+      await runner.steer(run.id, "Giữ màu");
+      assert.ok(!calls()[0]!.args.includes("--input-format"));
+      assert.match(readFileSync(path.join(runner.store.get(run.id)!.worktree!, ".xdev-hive/steer.md"), "utf8"), /Giữ màu/);
+      runner.cancel(run.id);
+      await runner.settle();
+    } finally { await runner.stop(); hive.close(); }
+  });
+
+  it("keeps Claude stdin open for additional user turns and closes after all results", async () => {
+    const bin = path.join(tmp("steer-cli"), "claude");
+    const quote = (s: string) => "'" + s.replaceAll("'", "'\"'\"'") + "'";
+    writeFileSync(bin, `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(FAKE)} "$@"\n`, { mode: 0o755 });
+    const p = profile("p1", "claude", 10, "steer-stream", { bin, args: ["-p", "{prompt}"] });
+    const { runner, hive, calls } = await setup([p]);
+    try {
+      const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+      await ready(runner, run.id);
+      await runner.steer(run.id, "Nhắn giữa lượt");
+      await runner.steer(run.id, "Chỉ dẫn thứ hai");
+      await runner.settle();
+      assert.equal(runner.store.get(run.id)!.status, "succeeded");
+      assert.deepEqual(calls().slice(1).map((c) => c.prompt), ["Nhắn giữa lượt", "Chỉ dẫn thứ hai"]);
+      assert.ok(calls()[0]!.args.includes("--input-format"));
+      assert.match(runner.log(run.id), /» duy: Nhắn giữa lượt/);
+    } finally { await runner.stop(); hive.close(); }
+  });
+
+  it("resumes only the same Codex thread when instructions arrived, preserving policy and counting both turns", async () => {
+    const bin = path.join(tmp("steer-codex"), "codex");
+    const quote = (s: string) => "'" + s.replaceAll("'", "'\"'\"'") + "'";
+    writeFileSync(bin, `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(FAKE)} "$@"\n`, { mode: 0o755 });
+    const p = profile("p1", "codex", 10, "steer-resume", { bin, args: ["exec", "--sandbox", "workspace-write", "{prompt}"] });
+    const { runner, hive, calls } = await setup([p]);
+    try {
+      const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+      await ready(runner, run.id);
+      await runner.steer(run.id, "Kiểm tra mobile");
+      await runner.settle();
+      const done = runner.store.get(run.id)!;
+      assert.equal(done.status, "succeeded");
+      assert.equal(calls().length, 2);
+      const resume = calls()[1]!.args;
+      assert.ok(resume.includes("resume"));
+      assert.ok(resume.includes("fake-thread-57a"));
+      assert.ok(resume.includes("--sandbox"));
+      assert.ok(resume.includes("workspace-write"));
+      assert.ok(!resume.includes("--last"));
+      assert.equal(done.inputTokens, 16);
+      assert.equal(done.cacheReadTokens, 4);
+      assert.equal(done.outputTokens, 6);
+      assert.match(readFileSync(path.join(done.worktree!, "work-steered.txt"), "utf8"), /Kiểm tra mobile/);
+      assert.equal(git(done.worktree!, "ls-files", ".xdev-hive/steer.md"), "");
+    } finally { await runner.stop(); hive.close(); }
+  });
+
+  it("never follows a symlinked steering directory outside the worktree", () => {
+    const dir = tmp("steer-safe");
+    const elsewhere = tmp("steer-other");
+    symlinkSync(elsewhere, path.join(dir, ".xdev-hive"));
+    assert.throws(() => writeSteer(dir, "R-1", []), /symlink/);
+    assert.equal(existsSync(path.join(elsewhere, "steer.md")), false);
   });
 });
 
