@@ -317,6 +317,17 @@ async function main() {
     if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
     await tab.go("graph");
     await tab.waitFor("task nodes and dependency edge", () => document.querySelector('[data-graph-task="PAY-1"]') && document.querySelector('[data-graph-task="PAY-GRAPH"]') && document.querySelector(".graph-edge-open .react-flow__edge-path"));
+    // Waiting for the changed card proves a fresh response reached the graph before checking its edge again.
+    await rpc("tasks.update", { id: "PAY-GRAPH", status: "review" });
+    await tab.waitFor("graph reflects the updated task", () => document.querySelector('[data-graph-task="PAY-GRAPH"]')?.getAttribute("aria-label")?.includes("Chờ review"));
+    await tab.waitFor("dependency edge survives a graph refresh", () => {
+      const edge = document.querySelector('.graph-edge-open[data-id="payment:PAY-1->payment:PAY-GRAPH"] .react-flow__edge-path');
+      if (!edge) return false;
+      const box = edge.getBoundingClientRect();
+      const canvas = document.querySelector("[data-graph-canvas]").getBoundingClientRect();
+      const style = getComputedStyle(edge);
+      return edge.getTotalLength() > 0 && box.width > 0 && box.right > canvas.left && box.left < canvas.right && box.bottom > canvas.top && box.top < canvas.bottom && style.visibility === "visible" && style.stroke !== "none" && Number(style.strokeWidth.replace("px", "")) > 0 && Number(style.opacity) > 0;
+    });
     await tab.shot("graph-task-layer");
     expect(!!(await tab.eval(() => document.querySelector('[data-graph-layer="task"]')?.getAttribute("aria-pressed") === "true")), "Task layer is active");
     const locked = await tab.eval(() => [...document.querySelectorAll('[aria-label="Lớp sơ đồ"] button:disabled')].length);
@@ -1038,7 +1049,7 @@ async function main() {
     await tab.go("admin/tools");
     await tab.click("button[data-tool-add]");
     await tab.click("#tool-form-new-id");
-    await tab.type("rtk");
+    await tab.type("rtk-mcp");
     await tab.click("#tool-form-new-name");
     await tab.type("RTK");
     await tab.click("#tool-form-new-pkg-name");
@@ -1052,12 +1063,13 @@ async function main() {
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await tab.click("button[data-tool-save]");
-    const saved = await until("rtk in the catalog", async () => (await rpc("tools.list", {})).find((t) => t.id === "rtk"));
-    expect(saved.kind === "mcp" && saved.package?.version === "0.4.1" && saved.mcp?.args.includes("{package}"), `rtk: ${JSON.stringify(saved)}`);
-    await tab.click('[data-tool="rtk"] button[data-tool-remove]');
-    await tab.click('[data-tool="rtk"] button[data-tool-remove-confirm]');
-    await until("rtk gone", async () => !(await rpc("tools.list", {})).some((t) => t.id === "rtk"));
+    const saved = await until("rtk-mcp in the catalog", async () => (await rpc("tools.list", {})).find((t) => t.id === "rtk-mcp"));
+    expect(saved.kind === "mcp" && saved.package?.version === "0.4.1" && saved.mcp?.args.includes("{package}"), `rtk-mcp: ${JSON.stringify(saved)}`);
+    await tab.click('[data-tool="rtk-mcp"] button[data-tool-remove]');
+    await tab.click('[data-tool="rtk-mcp"] button[data-tool-remove-confirm]');
+    await until("rtk-mcp gone", async () => !(await rpc("tools.list", {})).some((t) => t.id === "rtk-mcp"));
     const seeds = await rpc("tools.list", {});
+    expect(seeds.some((t) => t.id === "rtk" && t.kind === "hook"), "the migrated RTK hook stays");
     expect(["codegraph", "speckit", "superpowers"].every((id) => seeds.some((t) => t.id === id && t.builtin)), "the seeds stay");
   });
 
@@ -1298,7 +1310,7 @@ async function main() {
     await rpc("docs.save", { key: "project/throwaway/arch", title: "Kiến trúc", content: "# Kiến trúc cũ\n" });
     const tab = (current = tabs.admin);
     await tab.reload();
-    await tab.go("systems");
+    await tab.go("settings?tab=systems");
     await tab.click("[data-systems-search]");
     await tab.type("throwaway");
     await tab.waitFor("throwaway in the admin's project table", () => !!document.querySelector('[data-project-row="throwaway"]'));
