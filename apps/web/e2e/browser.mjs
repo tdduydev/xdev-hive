@@ -952,24 +952,19 @@ async function main() {
     );
     expect(pushed.stored === 2, `specs.push: ${JSON.stringify(pushed)}`);
     const tab = (current = tabs.hoa);
+    // Roadmap 49d: on the web the Spec page's link opens the feature on Tính năng.
     await tab.go("specs?project=payment&dir=001-thanh-toan-qr&branch=");
-    if (mobile) {
-      await tab.click('[role="tab"]', "Spec");
-      await tab.waitFor("linked spec detail", () => document.body.innerText.includes("Người dùng quét mã"));
-      await tab.click("button", "Quay lại danh sách");
-    }
-    await tab.waitFor("both features, with their stages", () => {
-      const text = document.body.innerText;
-      return text.includes("Thanh toán QR") && text.includes("Hoàn tiền") && text.includes("Đang làm") && text.includes("Viết spec") && text.includes("ai/PAY-2");
-    });
-    if (mobile) {
-      await tab.click('[role="option"]', "Thanh toán QR");
-      await tab.waitFor("selected spec in address", () => location.hash.includes("feature="));
-    }
+    await tab.waitFor("the feature on Tính năng", () => location.hash.startsWith("#/features?") && document.querySelector("[data-feature-title]")?.getAttribute("data-feature-title") === "Thanh toán QR");
     await tab.click('[role="tab"]', "Spec");
     await tab.waitFor("spec.md", () => document.body.innerText.includes("Người dùng quét mã"));
     await tab.click('[role="tab"]', "Tasks");
     await tab.waitFor("the tasks of tasks.md", () => document.body.innerText.includes("Trang quét mã") && document.body.innerText.includes("1/2"));
+    await tab.click("button", "Quay lại danh sách");
+    // Neither folder came from a flow: each sits in the column of its stage.
+    await tab.waitFor("both features, in the columns of their stages", () => {
+      const column = (dir) => document.querySelector(`[data-feature-card="${dir}"]`)?.closest("[data-feature-column]")?.getAttribute("data-feature-column");
+      return location.hash === "#/features" && column("001-thanh-toan-qr") === "doing" && column("002-hoan-tien") === "spec" && document.querySelector('[data-feature-card="002-hoan-tien"]').textContent.includes("ai/PAY-2");
+    });
   });
 
   // Roadmap 20c and 20d: Lan (lead of payment) imports tasks.md into board tasks, then has an agent plan the refund
@@ -1406,6 +1401,110 @@ async function main() {
     for (const r of (await beat()).runRequests.filter((x) => x.taskId === "SPEC-TODAY")) await rpc("runs.cancelRequest", { id: r.id });
   });
 
+  // Roadmap 49d: Tính năng, a board by step. A flow at its spec gate waits for Lan (lead), and only at a gate for Hoa
+  // (reviewer: no run dispatch). Lan ticks a test item on Kiểm thử, passes the gate beside spec.md, then finds it in
+  // Lịch sử chốt and the spec step's run in Lượt chạy.
+  await step("features-page", async () => {
+    const machineRpc = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" },
+        body: JSON.stringify({ method, input }),
+      });
+      const body = await r.json();
+      if (body.error) throw new Error(`${method}: ${body.error.message}`);
+      return body.result;
+    };
+    const profile = (id, kind) => ({ id, label: id, kind, enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, maxConcurrent: 1 });
+    const beat = () => machineRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", version: "0.134.0", projects: ["payment"], acceptsRuns: true, profiles: [profile("claude-1", "claude"), profile("codex-1", "codex")], runs: [] });
+    await beat();
+    await rpc("specs.runStep", { project: "payment", step: "specify", taskId: "SPEC-FEAT", title: "Spec: xuất hoá đơn", input: "Xuất hoá đơn điện tử.", machineId: "runner.lan-mbp@lan-e2e" }, people.lan.token);
+    const [specify] = (await beat()).runRequests.filter((r) => r.taskId === "SPEC-FEAT");
+    await machineRpc("runs.requestResult", { id: specify.id, status: "accepted", runId: "R-feat1" });
+    const at = new Date().toISOString();
+    const run = { runId: "R-feat1", project: "payment", taskId: "SPEC-FEAT", taskTitle: "Spec: xuất hoá đơn", role: "implement", profileId: "claude-1", createdAt: at };
+    await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ ...run, status: "running" }] });
+    await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ ...run, status: "succeeded", finishedAt: at }] });
+    const spec = [
+      "# Feature Specification: Xuất hoá đơn",
+      "",
+      "## User Scenarios & Testing *(mandatory)*",
+      "",
+      "### User Story 1 - Kế toán xuất hoá đơn (Priority: P1)",
+      "",
+      "**Acceptance Scenarios**:",
+      "",
+      "1. **Given** một đơn đã trả, **When** kế toán bấm Xuất, **Then** hoá đơn có mã tra cứu",
+      "2. **Given** một đơn chưa trả, **When** kế toán bấm Xuất, **Then** nút bị khoá",
+      "",
+      "## Success Criteria *(mandatory)*",
+      "",
+      "### Measurable Outcomes",
+      "",
+      "- **SC-001**: Hoá đơn xuất xong trong dưới 5 giây",
+    ].join("\n");
+    await machineRpc("specs.push", { project: "payment", features: [{ dir: "003-hoa-don", branch: "ai/SPEC-FEAT", commit: "abc1250", files: { spec, plan: null, tasks: null } }] });
+    const gate = await until("the spec gate waiting", async () => (await rpc("sdlc.gates", { taskId: "SPEC-FEAT" })).find((g) => g.status === "waiting"));
+
+    let tab = (current = tabs.hoa);
+    await tab.go("features");
+    await tab.reload();
+    await tab.waitFor("Hoa's card in Spec", () => document.querySelector('[data-feature-card="SPEC-FEAT"]')?.closest("[data-feature-column]")?.getAttribute("data-feature-column") === "spec");
+    const hoa = await tab.eval(() => {
+      const card = document.querySelector('[data-feature-card="SPEC-FEAT"]');
+      return { mine: card.hasAttribute("data-feature-mine"), text: card.textContent };
+    });
+    expect(!hoa.mine && hoa.text.includes("Chờ chốt") && !hoa.text.includes("Chờ bạn"), `Hoa's card: ${JSON.stringify(hoa)}`);
+
+    tab = current = tabs.lan;
+    await tab.go("features");
+    await tab.reload();
+    await tab.waitFor("Lan's card waiting for her", () => document.querySelector('[data-feature-card="SPEC-FEAT"][data-feature-mine]')?.textContent.includes("Chờ bạn"));
+    const columns = await tab.eval(() => [...document.querySelectorAll("[data-feature-column]")].map((c) => c.getAttribute("data-feature-column")));
+    expect(JSON.stringify(columns) === JSON.stringify(["spec", "plan", "tasks", "doing", "review", "done"]), `columns: ${columns}`);
+    await tab.click("[data-features-mine]");
+    await tab.waitFor("only what waits for Lan", () => {
+      const cards = [...document.querySelectorAll("[data-feature-card]")];
+      return cards.length > 0 && cards.every((c) => c.hasAttribute("data-feature-mine"));
+    });
+    await tab.shot(`${String(n).padStart(2, "0")}-features-board`);
+    await tab.click('[data-feature-card="SPEC-FEAT"]');
+    await tab.waitFor("the feature on Spec, its gate beside spec.md", (id) =>
+      location.hash.includes("flow=SPEC-FEAT") &&
+      document.querySelector('[data-feature-tab="spec"]')?.getAttribute("data-state") === "active" &&
+      document.querySelector(`[data-gate-decision="${id}"]`) &&
+      document.body.innerText.includes("Kế toán xuất hoá đơn"),
+      gate.id,
+    );
+    await tab.shot(`${String(n).padStart(2, "0")}-features-gate`);
+
+    // Kiểm thử: SC-001 is Xong khi, the two scenarios the checklist; a mark stays after a reload (this browser's).
+    await tab.click('[data-feature-tab="checks"]');
+    await tab.waitFor("three items to check", () => document.querySelectorAll("[data-check]").length === 3 && document.querySelector("[data-checks-progress]")?.textContent.includes("0/3"));
+    await tab.click('[data-check="SC-001"] [role="checkbox"]');
+    await tab.waitFor("one checked", () => document.querySelector("[data-checks-progress]")?.textContent.includes("1/3"));
+    await tab.reload();
+    await tab.waitFor("the mark kept, on the same tab", () => document.querySelector('[data-check="SC-001"]')?.hasAttribute("data-checked") && document.querySelector("[data-checks-progress]")?.textContent.includes("1/3"));
+    await tab.shot(`${String(n).padStart(2, "0")}-features-checks`);
+
+    await tab.click('[data-feature-tab="spec"]');
+    await tab.click(`[data-feature-pass="${gate.id}"]`);
+    await until("the spec gate passed from Tính năng", async () => {
+      const [g] = await rpc("sdlc.gates", { taskId: "SPEC-FEAT" });
+      return g?.status === "passed" && g.decidedBy?.startsWith("lan");
+    });
+    await tab.waitFor("no gate left to decide", () => !document.querySelector("[data-gate-decision]"));
+    await tab.click('[data-feature-tab="gates"]');
+    await tab.waitFor("the passed gate in Lịch sử chốt", (id) => document.querySelector(`[data-feature-gate="${id}"]`)?.getAttribute("data-gate-status") === "passed", gate.id);
+    await tab.click('[data-feature-tab="runs"]');
+    await tab.waitFor("the spec step's run in Lượt chạy", () => !!document.querySelector('[data-feature-run="R-feat1"]'));
+    // The Spec page's old link lands on the same feature.
+    await tab.go("specs?project=payment&dir=003-hoa-don&branch=ai%2FSPEC-FEAT");
+    await tab.waitFor("#/specs on Tính năng", () => location.hash.startsWith("#/features?") && document.querySelector("[data-feature-title]")?.getAttribute("data-feature-title") === "Xuất hoá đơn");
+    // Leave the hub as it was: the plan step's request is not for this test.
+    for (const r of (await beat()).runRequests.filter((x) => x.taskId === "SPEC-FEAT")) await rpc("runs.cancelRequest", { id: r.id });
+  });
+
   // Roadmap 31b: the agent map shows each machine's subscriptions; two picked open one prompt for both, or the Task page.
   await step("agent-map", async () => {
     const beat = async (machine, profiles) => {
@@ -1467,7 +1566,7 @@ async function main() {
       ["skills", "skill", 'main [role="option"]', null],
       ["memory", "memory", 'main [role="option"]', null],
       ["proposals", "proposal", "main [data-mobile-proposal]", null],
-      ["specs", "feature", 'main [role="option"]', null],
+      ["features", "project", "main [data-feature-card]", null],
     ];
     for (const [route, param, selector, text] of cases) {
       await step(`mobile-detail-${route}`, async () => {

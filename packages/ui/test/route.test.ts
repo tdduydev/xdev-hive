@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { resolveHash, WEB_ALIASES } from "#ui/lib/route.ts";
 
 /** The pages of the app, as App.tsx has them: enough of them to tell a redirect from a page that exists. */
-const PAGES = ["today", "tasks", "runs", "docs", "setup", "machines", "settings", "admin", "systems", "proposals", "specs", "tokens"];
+const PAGES = ["today", "tasks", "runs", "docs", "setup", "machines", "settings", "admin", "systems", "proposals", "specs", "features", "tokens"];
 const isPage = (id: string) => PAGES.includes(id);
 const web = (hash: string) => resolveHash(hash, { local: false, web: true, isPage });
 /** The desktop app connected to a hub: neither the web's tabs nor the local mode's redirects. */
@@ -55,6 +55,7 @@ describe("addresses", () => {
       ["systems", "#/settings?tab=systems"],
       ["tools", "#/settings?tab=tools"],
       ["batches", "#/runs?tab=batches"],
+      ["specs", "#/features"],
     ];
     for (const [old, to] of tabs) assert.deepEqual(web(`#/${old}`), { id: to.slice(2).split("?")[0], hash: to }, old);
     assert.equal(Object.keys(WEB_ALIASES).length, tabs.length, "every alias is tested");
@@ -67,7 +68,14 @@ describe("addresses", () => {
   });
 
   it("leaves the pages the new menu kept, and Token, where they are", () => {
-    for (const id of ["specs", "runs", "machines", "proposals", "tokens"]) assert.deepEqual(web(`#/${id}`), { id, hash: null }, id);
+    for (const id of ["runs", "machines", "proposals", "tokens"]) assert.deepEqual(web(`#/${id}`), { id, hash: null }, id);
+  });
+
+  it("opens a Spec page link on Tính năng on the web, and leaves the app's Spec page (roadmap 49d)", () => {
+    assert.deepEqual(web("#/specs?project=app&dir=001-qr&branch="), { id: "features", hash: "#/features?project=app&dir=001-qr&branch=" });
+    assert.deepEqual(web("#/admin/specs"), { id: "features", hash: "#/features" });
+    assert.deepEqual(desk("#/specs"), { id: "specs", hash: null });
+    assert.deepEqual(local("#/specs?project=app"), { id: "specs", hash: null });
   });
 
   it("leaves the desktop app's addresses as they were (35a/44, 39f)", () => {
