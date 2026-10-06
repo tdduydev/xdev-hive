@@ -231,7 +231,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
     - Xong 5/10 (claude-1 trên hc-duytd20-linux, run R-1587c0): panel Skill hiện đủ SKILL.md (smoke chờ `[data-skill-doc]`), phụ đề Tài liệu/Spec/Skill/Memory/Đề xuất bằng lời người dùng, trạng thái trống có việc nên làm (`emptyState`, `PaneEmpty`), nút chính cùng một chỗ.
 
 - **40. system-first** (hỏi 3/10: "nên hệ thống → dự án chứ nhỉ? hiện tại dự án nhìn vô nhiều thứ quá; hệ thống có thể nhiều service dạng microservices"; chọn hướng gọn): hệ thống là cấp chính, dự án là *service* bên trong; repo lẻ là hệ thống một service (ảo). Task, run, máy giữ ở cấp service; tài liệu và memory mặc định ở cấp hệ thống. Spec: [docs/specs/40-system-first.md](specs/40-system-first.md). Tách:
-  - [ ] **40a. scope-system-first**: ô phạm vi lấy hệ thống làm gốc (cả hệ thống ảo của repo lẻ), service mở rộng bên trong; menu và tiêu đề ghi `hệ thống › service`.
+  - [x] **40a. scope-system-first**: ô phạm vi lấy hệ thống làm gốc (cả hệ thống ảo của repo lẻ), service mở rộng bên trong; menu và tiêu đề ghi `hệ thống › service`.
   - [ ] **40b. service-naming**: chữ giao diện vi/en "dự án" (nghĩa là một repo) → "service"; README giải thích hệ thống / service; RPC, DB, MCP giữ `project`.
   - [x] **40c. docs-system-default**: *Tài liệu* hiện tài liệu hệ thống trước rồi từng service; trang mới và memory trên web mặc định ở cấp hệ thống.
   - [ ] **40d. overview-by-system**: *Tổng quan* / *Hôm nay* mỗi hệ thống một thẻ; bảng Task và Lượt chạy có cột và bộ lọc *Service*.
@@ -241,7 +241,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **41b. run-archive**: sau 30 ngày chỉ dọn log và diff của run; tóm tắt, kết luận review, các bước, MR, chi phí giữ mãi.
     - Xong 5/10 (claude-1 trên hc-duytd20-linux, run R-d8f6bf): hub không xoá run nữa; sau `RUN_LOG_DAYS` (mặc định 30) chỉ dọn log và patch (`log_pruned_at`), tóm tắt, MR, chi phí, các bước giữ mãi; trang Lượt chạy và `run_get` ghi rõ log đã dọn.
   - [x] **41c. artifact-store**: agent lưu file vào `.xdev-hive/artifacts/`, runner đẩy lên hub (SeaweedFS) gắn với run và task; chữ được che secret và chặn ký tự ẩn; xem trên web, đọc lại qua MCP `artifact_list` / `artifact_get`.
-  - [ ] **41d. task-journal**: task xong thì hub ghi một mục vào nhật ký tháng của hệ thống (`system/<hệ thống>/nhat-ky-<YYYY-MM>`; repo lẻ ghi vào dự án): đã làm, rủi ro, MR, run, artifact.
+  - [x] **41d. task-journal**: task xong thì hub ghi một mục vào nhật ký tháng của hệ thống (`system/<hệ thống>/nhat-ky-<YYYY-MM>`; repo lẻ ghi vào dự án): đã làm, rủi ro, MR, run, artifact.
 
 - **42. mobile-web** (hỏi 4/10: "hệ thống này giao diện mobile không sử dụng được, xem tối ưu đi"; Codex làm, hết quota thì theo 24c). Ở 390×844: bố cục nhiều cột không xếp chồng, bảng ép chữ thành từng ký tự, cả trang tràn ngang, Kanban bị cắt. Spec: [docs/specs/42-mobile-web.md](specs/42-mobile-web.md). Tách:
   - [x] **42a. mobile-shell**: e2e chạy được ở cỡ điện thoại (`e2e:mobile`, kiểm không tràn ngang mỗi bước); khung dưới 768px: menu là ngăn kéo, topbar gọn, thanh trạng thái thu gọn, nội dung không tràn ngang; đoạn giới thiệu đầu trang gập.
@@ -267,7 +267,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **49e. runs-review**: *Agent đang chạy* thay *Lượt chạy* và *Đợt chạy*, trạng thái *Chờ người*, trang run đọc bàn giao trước, form giao run gập *Tuỳ chọn*.
   - [x] **49f. knowledge**: tab *Chờ duyệt* trong Tài liệu và Skill thay trang *Đề xuất*, phạm vi của skill, dọn memory định kỳ bằng đề xuất.
   - [x] **49g. today-roles**: *Hôm nay* nhóm theo việc, thứ tự theo vai.
-  - [ ] **49h. mobile-pass** (hỏi 6/10: "dùng skill ux-ui-pro-max để thiết kế giao diện trên mobile trên web cho dễ sử dụng hơn"): rà mọi trang web ở 390×844 bằng skill `ui-ux-pro-max`, sửa, ảnh trước/sau. Cần MOBILE-42-land (42b/42c/42d đã làm từ 5/10 nhưng chưa gộp vào main) và SKILL-uiux. Từ nay mọi mục 49–51 phải qua `e2e:mobile`.
+  - [x] **49h. mobile-pass** (hỏi 6/10: "dùng skill ux-ui-pro-max để thiết kế giao diện trên mobile trên web cho dễ sử dụng hơn"): rà mọi trang web ở 390×844 bằng skill `ui-ux-pro-max`, sửa, ảnh trước/sau. Cần MOBILE-42-land (42b/42c/42d đã làm từ 5/10 nhưng chưa gộp vào main) và SKILL-uiux. Từ nay mọi mục 49–51 phải qua `e2e:mobile`.
 
 - **50. agent-assign** (hỏi 6/10: "cho phép giao cho từng agent làm task"; chọn: gán rồi tự chạy khi rảnh): task có *Agent phụ trách* (máy + gói, hàng có thứ tự); hub tự giao run khi agent rảnh và task hết phụ thuộc (cạnh đợt chạy 31a, qua chính sách và ngân sách); run lỗi thì tạm ngừng chờ người; `task_next` của máy khác bỏ qua; leader đề xuất `taskAssign`; Board chế độ *Theo agent* kéo thả. Spec: [docs/specs/50-agent-assign.md](specs/50-agent-assign.md). Tách:
   - [x] **50a. assign-core**: cột `agent_*` của `tasks`, `tasks.assign` / `unassign` / `agentQueue`, `#releaseAssigned`, MCP, `taskAssign`.
@@ -276,7 +276,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 - **51. project-flow** (hỏi 6/10: "overview theo từng dự án bằng React Flow"; chọn: cả bốn lớp): trang *Sơ đồ* (`@xyflow/react` + dagre, tải lười, màu theo token): lớp Task và phụ thuộc, Agent đang làm gì (kéo task vào agent để gán), luồng SDLC có nút chốt, Hệ thống nhiều service; dùng được trên điện thoại. Spec: [docs/specs/51-project-flow.md](specs/51-project-flow.md). Tách:
   - [x] **51a. graph-tasks**: trang, khung React Flow, lớp Task.
   - [x] **51b. graph-agents**: lớp Agent, kéo thả để gán (cần 50a).
-  - [ ] **51c. graph-sdlc-system**: lớp SDLC và Hệ thống.
+  - [x] **51c. graph-sdlc-system**: lớp SDLC và Hệ thống.
 
 - [x] **52. app-quota** (hỏi 6/10: "control quota, chưa thấy chỗ hiển thị số lần reset, hiển thị đi, và bấm reset trên giao diện client được"; chọn cả bốn): trang *Agent và quota* của app có khối quota luôn hiện cho mỗi gói: thanh 5 giờ / tuần với giờ reset và còn bao lâu, số lần chạm giới hạn và số run từ mốc đếm (nút *Đặt lại bộ đếm*), chip đang nghỉ và nút *Bỏ nghỉ* luôn hiện, nút *Đọc lại quota* cho từng gói và cho cả máy. Spec: [docs/specs/52-app-quota.md](specs/52-app-quota.md).
 
@@ -294,8 +294,8 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 
 - **56. sdlc-pipeline** (hỏi 6/10: "tối ưu model chưa thấy trên giao diện; cài đặt dự án khó cấu hình; chỗ nào overview AI SDLC full quy trình, cấu hình điểm chặn"; chọn: làm ngay theo spec, dự án mới mặc định *Tự động tối đa*): trang *Quy trình* là sơ đồ các bước Ý tưởng → Spec → Plan → Tasks → Giao việc → Làm → Review → Sửa → Merge với chốt là biểu tượng giữa các bước (người / AI / tự động, khoá theo trần), mỗi bước hiện số đang có, thời gian chờ, tỉ lệ qua, model; bấm mở khung sửa; bộ cài sẵn Thận trọng / Cân bằng / Tự động tối đa / Lối nhanh có xem trước. *Cài đặt dự án* thành tab tóm tắt + khung sửa, model bằng chip, hiệu lực hiện thẳng, trần hub về *Quản trị*. Chọn model (54c/d) hiện trong *Quy trình*. Spec: [docs/specs/56-sdlc-pipeline.md](specs/56-sdlc-pipeline.md). Tách:
   - [x] **56a. pipeline-page**: trang *Quy trình*, chốt, số liệu, bộ cài sẵn, lối nhanh, xem theo tính năng, mobile.
-  - [ ] **56b. settings-tidy**: *Cài đặt dự án* gọn: tab, tóm tắt, chip model, hiệu lực, trần hub sang *Quản trị*.
-  - [ ] **56c. models-in-pipeline**: model từng bước, tab *Model theo loại task*, chip model ở run và task (giao diện của 54c/54d).
+  - [x] **56b. settings-tidy**: *Cài đặt dự án* gọn: tab, tóm tắt, chip model, hiệu lực, trần hub sang *Quản trị*.
+  - [x] **56c. models-in-pipeline**: model từng bước, tab *Model theo loại task*, chip model ở run và task (giao diện của 54c/54d).
 
 - **57. agent-collab** (hỏi 6/10: thêm việc cho các gói Codex; chọn cả bốn): làm việc cùng agent. Spec: [docs/specs/57-agent-collab.md](specs/57-agent-collab.md). Tách:
   - [ ] **57a. run-steer**: nhắn thêm chỉ dẫn cho run đang chạy (`runs.steer`, Claude qua stdin stream-json hoặc file steer, Codex qua file steer).
