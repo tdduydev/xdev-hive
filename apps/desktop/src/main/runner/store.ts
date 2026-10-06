@@ -8,6 +8,9 @@ import { tr } from "#desktop/main/i18n.ts";
 import type { UsageSample } from "./usage.ts";
 
 const SCHEMA = `
+CREATE TABLE IF NOT EXISTS steer_messages(
+  key TEXT PRIMARY KEY, run_id TEXT NOT NULL, text TEXT NOT NULL, by TEXT NOT NULL, at TEXT NOT NULL,
+  delivered_at TEXT NOT NULL, hub_id INTEGER, acked INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS profile_usage_history(
   profile_id TEXT NOT NULL, at TEXT NOT NULL, session REAL NOT NULL, week REAL NOT NULL,
   session_resets_at TEXT, PRIMARY KEY(profile_id, at));
@@ -156,6 +159,27 @@ export class RunStore {
     this.db.exec(SCHEMA);
     const have = new Set((this.db.prepare("PRAGMA table_info(runs)").all() as Row[]).map((c) => String(c.name)));
     for (const [name, ddl] of ADDED_COLUMNS) if (!have.has(name)) this.db.exec(`ALTER TABLE runs ADD COLUMN ${name} ${ddl}`);
+  }
+
+  steering(runId: string): Array<{ id: number; text: string; by: string; at: string; deliveredAt: string }> {
+    return this.db.prepare("SELECT rowid AS id, text, by, at, delivered_at AS deliveredAt FROM steer_messages WHERE run_id = ? ORDER BY rowid").all(runId) as unknown as Array<{ id: number; text: string; by: string; at: string; deliveredAt: string }>;
+  }
+
+  hasSteering(key: string): boolean {
+    return !!this.db.prepare("SELECT 1 FROM steer_messages WHERE key = ?").get(key);
+  }
+
+  saveSteering(key: string, runId: string, text: string, by: string, at: string, hubId: number | null, deliveredAt: string): void {
+    this.db.prepare("INSERT OR IGNORE INTO steer_messages(key, run_id, text, by, at, hub_id, delivered_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(key, runId, text, by, at, hubId, deliveredAt);
+  }
+
+  steeringAcks(): number[] {
+    return (this.db.prepare("SELECT hub_id FROM steer_messages WHERE hub_id IS NOT NULL AND acked = 0 LIMIT 100").all() as Array<{ hub_id: number }>).map((r) => r.hub_id);
+  }
+
+  ackSteering(ids: number[]): void {
+    const put = this.db.prepare("UPDATE steer_messages SET acked = 1 WHERE hub_id = ?");
+    for (const id of ids) put.run(id);
   }
 
   insert(run: NewRun, now: string): AgentRun {

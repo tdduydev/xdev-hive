@@ -34,6 +34,7 @@ import {
   type RunNotice,
   type RunCancel,
   type RunRecord,
+  type RunMessage,
   type RunGroup,
   type RunRequest,
   CHAT_ACTION_KINDS,
@@ -529,6 +530,7 @@ export const schemas = {
       .default([]),
     /** Finished runs not reported yet; the hub keeps the first report of each run. */
     costs: z.array(runCost).max(100).default([]),
+    deliveredMessages: z.array(z.number().int().positive()).max(100).default([]),
   }),
   "machines.list": z.object({}),
   /** What the project's machines still lack to run its agents (roadmap 29a): any reader of the project, unlike admin.machines. */
@@ -663,6 +665,7 @@ export const schemas = {
    * A project manager stops a run that waits or runs on a machine taking runs from the hub: the machine hears it at
    * its next heartbeat, stops the agent and reports the run as cancelled.
    */
+  "runs.steer": z.object({ machineId: z.string().min(1).max(200), runId, text: z.string().trim().min(1).max(8000) }),
   "runs.cancel": z.object({ machineId: z.string().min(1).max(200), runId }),
   /**
    * Merges the run's open MR or PR (roadmap 18c): someone with Code review on the project, not the one who asked for the
@@ -1128,6 +1131,7 @@ export interface MethodOutput {
     chatRequests: ChatRequest[];
     /** Its runs a project manager asked to stop; same condition. */
     cancelRuns: RunCancel[];
+    runMessages: RunMessage[];
     /**
      * Stop-all (roadmap 27d), whether or not it accepts runs: it stops the scope's runs and starts none, Board runs
      * too. Only the projects its token sees.
@@ -1164,6 +1168,7 @@ export interface MethodOutput {
   "runs.list": RunRecord[];
   "runs.get": RunRecord | null;
   "runs.cancel": RunRecord;
+  "runs.steer": RunMessage;
   "runs.merge": RunRecord;
   "runs.mergeResult": RunRecord;
   "runs.dispatch": RunRequest;
@@ -1335,6 +1340,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "runs.list": "viewer",
   "runs.get": "viewer",
   "runs.cancel": "agent",
+  "runs.steer": "agent",
   "runs.merge": "agent",
   "runs.mergeResult": "agent",
   // Also "manage" on the project: a project manager, never an agent token.

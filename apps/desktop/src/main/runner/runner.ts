@@ -1,3 +1,4 @@
+import { claudeUserMessage, STEER_RESUME_PROMPT, writeSteer } from "#desktop/main/runner/steer.ts";
 import { MemoryCleanupWorker } from "#desktop/main/runner/memory-cleanup.ts";
 // Runs coding-agent CLIs headless against Hive tasks and rotates subscriptions when one runs out of quota.
 //
@@ -20,6 +21,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   cacheReadShare,
+  assertNoSecret,
   AGENT_ROLES,
   PREFER_KINDS,
   agentActorName,
@@ -64,6 +66,7 @@ import {
   type QuotaCooldown,
   type ReportedProfile,
   type RunCancel,
+  type RunMessage,
   type RunRequest,
   type RunRequestError,
   type SetupReport,
@@ -244,6 +247,8 @@ interface Live {
   child: ChildProcess;
   cancelled: boolean;
   timedOut: boolean;
+  steer?: (text: string) => Promise<void>;
+  log?: WriteStream;
   /** A container run: killing the docker client does not stop the container. */
   container?: { docker: string; name: string; env: NodeJS.ProcessEnv };
 }
@@ -362,6 +367,10 @@ export class Runner {
   readonly #waiting = new Map<string, string>();
   /** Runs between their end and the last of their bookkeeping (see AgentRun.finishing). */
   readonly #finishing = new Set<string>();
+  /** CLI support is checked once per app start, without starting a model session. */
+  readonly #steerSupport = new Map<string, Promise<boolean>>();
+  readonly #resumeSupport = new Map<string, Promise<boolean>>();
+  readonly #steering = new Map<string, Promise<void>>();
   /** Why a run was stopped, when not from the Board here (a project manager on the web). */
   readonly #cancelNotes = new Map<string, string>();
   /** Runs cancelled while #execute was still setting them up, before there was a process to kill. */
@@ -677,6 +686,64 @@ export class Runner {
     return this.store.active().filter((r) => r.status === "running" && r.profileId !== null && kinds.get(r.profileId) === kind).length;
   }
 
+  #supportsSteering(bin: string, env: NodeJS.ProcessEnv): Promise<boolean> {
+    let check = this.#steerSupport.get(bin);
+    if (!check) {
+      check = new Promise<boolean>((resolve) => {
+        execFile(bin, ["--help"], { env, timeout: 5000, maxBuffer: 256 * 1024, windowsHide: true }, (err, stdout) => {
+          resolve(!err && /--input-format/.test(stdout) && /stream-json/.test(stdout));
+        });
+      });
+      this.#steerSupport.set(bin, check);
+    }
+    return check;
+  }
+
+  #supportsResume(bin: string, env: NodeJS.ProcessEnv): Promise<boolean> {
+    let check = this.#resumeSupport.get(bin);
+    if (!check) {
+      check = new Promise<boolean>((resolve) => {
+        execFile(bin, ["exec", "resume", "--help"], { env, timeout: 5000, maxBuffer: 256 * 1024, windowsHide: true }, (err, stdout) => {
+          resolve(!err && /resume/.test(stdout) && /SESSION_ID/i.test(stdout));
+        });
+      });
+      this.#resumeSupport.set(bin, check);
+    }
+    return check;
+  }
+
+  steer(id: string, text: string, message?: RunMessage): Promise<void> {
+    // Heartbeats can overlap; serialize each run so retries and file rewrites cannot race.
+    const previous = this.#steering.get(id) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(() => this.#deliverSteer(id, text, message));
+    this.#steering.set(id, next);
+    const done = () => { if (this.#steering.get(id) === next) this.#steering.delete(id); };
+    void next.then(done, done);
+    return next;
+  }
+
+  async #deliverSteer(id: string, text: string, message?: RunMessage): Promise<void> {
+    const key = message ? `${message.machineId}:${message.runId}:${message.id}` : `local:${randomBytes(8).toString("hex")}`;
+    // A lost heartbeat response must not deliver the same user message twice, even after a restart.
+    if (this.store.hasSteering(key)) return;
+    const run = this.store.get(id);
+    const live = this.#live.get(id);
+    if (!run || run.status !== "running" || !run.worktree || !live || live.cancelled || live.timedOut || live.child.exitCode !== null) {
+      throw new HiveError("conflict", `Run ${id} is not running.`, { key: "errors.runNotRunning", vars: { id } });
+    }
+    text = text.trim();
+    if (!text || text.length > 8000) throw new HiveError("bad_request", "A message must contain 1–8000 characters.", { key: "errors.steerText" });
+    assertNoSecret(text, "text");
+    const by = message?.by ?? this.#opts.user;
+    const at = message?.at ?? this.#iso();
+    if (live.steer) await live.steer(text);
+    else writeSteer(run.worktree, id, [...this.store.steering(id), { text, by, at }]);
+    this.store.saveSteering(key, id, text, by, at, message?.id ?? null, this.#iso());
+    const stamp = this.#iso().replace(/\.\d{3}Z$/, "Z");
+    const entry = text.split("\n").map((line) => `${stamp}\t» ${by}: ${line}\n`).join("");
+    if (live.log) await new Promise<void>((resolve) => live.log!.write(entry, () => resolve()));
+  }
+
   cancel(id: string, note?: string): AgentRun {
     const run = this.store.get(id);
     if (!run) throw new HiveError("not_found", `Không có run ${id}.`, { key: "errors.runNotFound", vars: { id } });
@@ -700,6 +767,10 @@ export class Runner {
       this.#stopping.add(id);
     }
     return run;
+  }
+
+  messages(id: string): RunMessage[] {
+    return this.store.steering(id).map((m) => ({ ...m, runId: id, machineId: this.#host.machine() }));
   }
 
   list(filter: { project?: string; projects?: string[]; limit?: number } = {}): AgentRun[] {
@@ -860,6 +931,7 @@ export class Runner {
       finishedAt: r.finishedAt!,
       requestedBy: r.requestedBy,
     }));
+    const deliveredMessages = this.store.steeringAcks();
     const res = await this.#host
       .backend()
       .call(
@@ -870,6 +942,7 @@ export class Runner {
           version: this.#opts.version,
           runs,
           costs,
+          deliveredMessages,
           projects: this.#host.projects().map((p) => p.name),
           acceptsRuns: this.#host.settings().acceptHubRuns,
           ...this.#host.report?.(),
@@ -877,6 +950,7 @@ export class Runner {
         this.#runnerActor(),
       );
     // Only after the hub answered: a failed heartbeat sends the same costs next time.
+    this.store.ackSteering(deliveredMessages);
     this.store.markCostsReported(finished.map((r) => r.id));
     const next = new Map(res.cooldowns.map((c) => [c.account, c]));
     // Cleared on the hub before it ended (someone pressed "Hết nghỉ"): end the local rest it came from too.
@@ -915,6 +989,12 @@ export class Runner {
     this.#takeSyncs(update.syncCommands);
     // A hub older than runs.dispatch sends none.
     await this.#takeRequests(res.runRequests ?? []);
+    if (this.#host.settings().acceptHubRuns) {
+      for (const message of res.runMessages ?? []) {
+        try { await this.steer(message.runId, message.text, message); }
+        catch { /* Keep it pending on the hub if the worktree or process is not available. */ }
+      }
+    }
     if (this.#host.settings().acceptHubRuns) this.#cancelFromHub(res.cancelRuns ?? []);
     if (this.#host.settings().acceptHubRuns) this.#chats.take(res.chatRequests ?? []);
     this.#applyPause(res.paused ?? null);
@@ -1645,6 +1725,7 @@ export class Runner {
         // Only a hub keeps what the run makes; on a local hive the folder would fill up for nothing.
         artifacts: this.#host.mode() === "hub",
       });
+      writeSteer(wt.path, run.id, []);
       const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id, repo: project.repo, references: references.repos, hiveMcp: resolveBin(SHIM_NAME, base.PATH ?? "") ?? undefined };
       wt.toolDirs = toolDirs(tools.prepare);
       const cmd = buildCommand(profile, vars, this.#tools && !profile.container ? tools.tools : features, mcpFile ?? undefined, fit.mcp, hooks);
@@ -1737,9 +1818,6 @@ export class Runner {
             ...(egress ? { network: { args: egress.plan.runArgs, env: egress.plan.env } } : {}),
           })
         : null;
-      log.write(
-        `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image} · ${egress ? `network limited (${egress.env.HIVE_EGRESS_ALLOW})` : "network open"}\n` : ""}${startNote ? `# ${startNote}\n` : ""}# hive context: ${context.note}\n${referenceLine ? `${referenceLine}\n` : ""}${toolLines}# cwd ${wt.path}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n${pickNote ? `# ${pickNote}\n` : ""}${policyLine(pol, fit)}\n${routed.note ? `# model: ${routed.note}\n` : ""}${skipped}\n## Prompt\n${prompt}\n\n## Output\n`,
-      );
 
       // Cancelled while this run was being set up: stop here rather than start an agent nobody waits for.
       if (this.#stopping.delete(run.id)) {
@@ -1750,70 +1828,125 @@ export class Runner {
         return;
       }
       const env: NodeJS.ProcessEnv = box ? { ...hostEnv, ...box.env } : { ...hostEnv, ...agentEnv };
-      const child = spawn(bin, box ? box.args : cmd.args, {
-        cwd: wt.path,
-        env,
-        detached: process.platform !== "win32",
-        stdio: [cmd.stdin === null ? "ignore" : "pipe", "pipe", "pipe"],
-        windowsHide: true,
-      });
-      const live: Live = { child, cancelled: false, timedOut: false, ...(box ? { container: { docker: bin, name: box.name, env } } : {}) };
-      this.#live.set(run.id, live);
-      const timer = setTimeout(() => {
-        live.timedOut = true;
-        stopLive(live);
-      }, profile.timeoutMinutes * 60_000);
-      if (cmd.stdin !== null) child.stdin?.end(cmd.stdin);
-
-      let stdout = "";
+      // Custom commands and containers may use a different CLI: retain the file protocol unless support is verified.
+      const streamInput = !box && profile.kind === "claude" && cmd.claudeStream &&
+        /^(claude)(\.(exe|cmd))?$/.test(path.basename(cmd.bin)) &&
+        (cmd.args.includes("-p") || cmd.args.includes("--print")) &&
+        !cmd.args.some((a) => a.startsWith("--input-format")) &&
+        (profile.args.includes("{prompt}") || !profile.args.some((a) => a.includes("{prompt}"))) &&
+        await this.#supportsSteering(bin, env);
+      if (this.#stopping.delete(run.id)) {
+        await new Promise<void>((r) => log!.end(r));
+        log = null;
+        await this.#complete(run, profile, wt, { kind: "exit", code: null, stdout: "", all: "", cancelled: true, timedOut: false });
+        return;
+      }
+      if (streamInput) {
+        cmd.args = cmd.args.filter((a) => a !== prompt && !(a === "-" && cmd.stdin !== null));
+        cmd.args.push("--input-format", "stream-json");
+        cmd.stdin = claudeUserMessage(prompt);
+      }
+      log.write(
+        `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image} · ${egress ? `network limited (${egress.env.HIVE_EGRESS_ALLOW})` : "network open"}\n` : ""}${startNote ? `# ${startNote}\n` : ""}# hive context: ${context.note}\n${referenceLine ? `${referenceLine}\n` : ""}${toolLines}# cwd ${wt.path}\n# ${tr(streamInput ? "runNote.steerStream" : "runNote.steerFile")}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}\n${pickNote ? `# ${pickNote}\n` : ""}${policyLine(pol, fit)}\n${routed.note ? `# model: ${routed.note}\n` : ""}${skipped}\n## Prompt\n${prompt}\n\n## Output\n`,
+      );
+      const resumeInput = !box && profile.kind === "codex" && cmd.codexJson &&
+        /^codex(\.(exe|cmd))?$/.test(path.basename(cmd.bin)) && !cmd.args.includes("--ephemeral") &&
+        (profile.args.includes("{prompt}") || !profile.args.some((a) => a.includes("{prompt}"))) &&
+        await this.#supportsResume(bin, env);
+      const initialArgs = [...cmd.args];
+      let handledMessages = 0;
+      const deadline = Date.now() + profile.timeoutMinutes * 60_000;
+      let outcome: Outcome;
       let all = "";
-      let agyStderr = "";
-      let agyFailure: string | null = null;
       const out = log;
       // What the agent writes carries the time of each line; the header above and the result below do not.
       const stamp = lineStamper(this.#opts.now);
       // Claude Code's events become a log to follow while it runs; other CLIs write text as they go, and
       // their last line is what they are doing now.
       const stream = cmd.claudeStream ? new ClaudeStream(wt.path) : cmd.codexJson ? new CodexStream(wt.path) : cmd.antigravityStream ? new AntigravityStream() : null;
-      const decode = { out: new StringDecoder("utf8"), err: new StringDecoder("utf8") };
-      const lastLine = (text: string) => {
-        const line = text.split("\n").map((l) => l.trim()).filter(Boolean).at(-1);
-        if (line) this.#activity.set(run.id, line.length > 160 ? `${line.slice(0, 159)}…` : line);
-      };
-      child.stdout?.on("data", (b: Buffer) => {
-        const text = decode.out.write(b);
-        if (stream) {
-          out.write(stamp(stream.push(text)));
-          if (stream.state.activity) this.#activity.set(run.id, stream.state.activity);
-        } else {
-          out.write(stamp(text));
-          lastLine(text);
-        }
-        stdout = keepTail(stdout + text, cmd.claudeJson || stream ? JSON_BYTES : TAIL_BYTES);
-        all = keepTail(all + text);
-      });
-      child.stderr?.on("data", (b: Buffer) => {
-        const text = decode.err.write(b);
-        if (profile.kind === "antigravity") {
-          agyStderr = keepTail(agyStderr + text);
-          // Once reported, an error stays an error even when later stdout scrolls it out of the combined tail.
-          agyFailure = agyError(agyStderr) ?? agyFailure;
-        }
-        out.write(stamp(text));
-        if (!stream) lastLine(text);
-        all = keepTail(all + text);
-      });
+      if (this.#stopping.delete(run.id)) {
+        outcome = { kind: "exit", code: null, stdout: "", all: "", cancelled: true, timedOut: false };
+      } else {
+        for (;;) {
+          let stdout = "";
+          let agyStderr = "";
+          let agyFailure: string | null = null;
+          const child = spawn(bin, box ? box.args : cmd.args, {
+            cwd: wt.path,
+            env,
+            detached: process.platform !== "win32",
+            stdio: [cmd.stdin === null ? "ignore" : "pipe", "pipe", "pipe"],
+            windowsHide: true,
+          });
+          const live: Live = { child, log, cancelled: false, timedOut: false, ...(box ? { container: { docker: bin, name: box.name, env } } : {}) };
+          this.#live.set(run.id, live);
+          const timer = setTimeout(() => {
+            live.timedOut = true;
+            stopLive(live);
+          }, Math.max(1, deadline - Date.now()));
+          let sentTurns = 1;
+          if (streamInput) {
+            child.stdin?.on("error", () => undefined);
+            live.steer = (text) => new Promise<void>((resolve, reject) => {
+              if (!child.stdin || child.stdin.destroyed || child.stdin.writableEnded) { reject(new Error(tr("errors.runNotRunning", { id: run.id }))); return; }
+              sentTurns++;
+              child.stdin.write(claudeUserMessage(text), (err) => err ? reject(err) : resolve());
+            });
+            child.stdin?.write(cmd.stdin!);
+          } else if (cmd.stdin !== null) child.stdin?.end(cmd.stdin);
 
-      const outcome = await new Promise<Outcome>((resolve) => {
-        child.once("error", (err) => resolve({ kind: "error", reason: tr("runNote.spawnFailed", { bin: cmd.bin, reason: err.message }) }));
-        child.once("close", (code) =>
-          resolve({ kind: "exit", code, stdout, all, agyFailure, cancelled: live.cancelled, timedOut: live.timedOut }),
-        );
-      });
-      clearTimeout(timer);
-      this.#live.delete(run.id);
-      this.#activity.delete(run.id);
-      if (stream) out.write(stamp(stream.end()));
+          const decode = { out: new StringDecoder("utf8"), err: new StringDecoder("utf8") };
+          const lastLine = (text: string) => {
+            const line = text.split("\n").map((l) => l.trim()).filter(Boolean).at(-1);
+            if (line) this.#activity.set(run.id, line.length > 160 ? `${line.slice(0, 159)}…` : line);
+          };
+          child.stdout?.on("data", (b: Buffer) => {
+            const text = decode.out.write(b);
+            if (stream) {
+              out.write(stamp(stream.push(text)));
+              // EOF after every queued user turn completed: an idle stream must not keep a finished run alive forever.
+              if (streamInput && stream instanceof ClaudeStream && stream.results >= sentTurns) child.stdin?.end();
+              if (stream.state.activity) this.#activity.set(run.id, stream.state.activity);
+            } else {
+              out.write(stamp(text));
+              lastLine(text);
+            }
+            stdout = keepTail(stdout + text, cmd.claudeJson || stream ? JSON_BYTES : TAIL_BYTES);
+            all = keepTail(all + text);
+          });
+          child.stderr?.on("data", (b: Buffer) => {
+            const text = decode.err.write(b);
+            if (profile.kind === "antigravity") {
+              agyStderr = keepTail(agyStderr + text);
+              // Once reported, an error stays an error even when later stdout scrolls it out of the combined tail.
+              agyFailure = agyError(agyStderr) ?? agyFailure;
+            }
+            out.write(stamp(text));
+            if (!stream) lastLine(text);
+            all = keepTail(all + text);
+          });
+
+          outcome = await new Promise<Outcome>((resolve) => {
+            child.once("error", (err) => resolve({ kind: "error", reason: tr("runNote.spawnFailed", { bin: cmd.bin, reason: err.message }) }));
+            child.once("close", (code) =>
+              resolve({ kind: "exit", code, stdout, all, agyFailure, cancelled: live.cancelled, timedOut: live.timedOut }),
+            );
+          });
+          clearTimeout(timer);
+          this.#live.delete(run.id);
+          this.#activity.delete(run.id);
+          if (stream) out.write(stamp(stream.end()));
+          const messages = this.store.steering(run.id).length;
+          if (!resumeInput || !(stream instanceof CodexStream) || !stream.threadId ||
+              outcome.kind !== "exit" || outcome.code !== 0 || outcome.cancelled || outcome.timedOut ||
+              this.#stopping.delete(run.id) || messages <= handledMessages || Date.now() >= deadline) break;
+          handledMessages = messages;
+          // Resume this run's exact thread with the same policy/config flags, never the machine's latest session.
+          cmd.args = [...initialArgs.filter((a) => a !== prompt), "resume", stream.threadId, STEER_RESUME_PROMPT];
+          cmd.stdin = null;
+          out.write(`# ${tr("runNote.steerResume")}\n`);
+        }
+      }
       if (outcome.kind === "exit" && (cmd.claudeJson || stream)) {
         outcome.usage =
           stream instanceof CodexStream
