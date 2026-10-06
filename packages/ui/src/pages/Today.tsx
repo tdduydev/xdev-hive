@@ -147,6 +147,7 @@ const firstLine = (s: string, max = 90) => {
 
 function titleOf(item: InboxItem, t: TFunction): string {
   switch (item.kind) {
+    case "plan": return t("planApproval.inboxTitle", { id: item.plan.taskId, title: item.plan.taskTitle });
     case "agentHold": return t("assignment.stopped", { id: item.task.id });
     case "ci": {
       const mr = item.run.mrIid ? t("inbox.ci.mr", { iid: item.run.mrIid }) : "MR";
@@ -178,6 +179,7 @@ function titleOf(item: InboxItem, t: TFunction): string {
 
 function metaOf(item: InboxItem, t: TFunction): string {
   switch (item.kind) {
+    case "plan": return t("planApproval.revision", { n: item.plan.revision });
     case "agentHold": return requestErrorText(item.task.agent!.hold!);
     case "ci": {
       const f = item.run.ciFix;
@@ -759,6 +761,17 @@ function Detail({
         },
         { label: t("inbox.alert.open"), kind: "secondary", run: go("#/admin?tab=alerts") },
       ];
+      break;
+    }
+    case "plan": {
+      const p = item.plan;
+      body = <><P>{t("planApproval.intro")}</P>{p.text ? <CodeBlock lang="plan.md" text={p.text} /> : null}{p.deadline ? <P>{t("planApproval.deadline", { time: formatTime(p.deadline) })}</P> : null}<label className="space-y-1 text-sm"><span>{t("planApproval.note")}</span><Textarea className="text-base" rows={3} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} data-plan-note /></label></>;
+      const decide = (decision: "approve" | "changes") => act(async () => {
+        if (decision === "changes" && !note.trim()) throw new Error(t("planApproval.noteRequired"));
+        await client.call("runs.decidePlan", { id: p.id, revision: p.revision, decision, note });
+        return t(decision === "approve" ? "planApproval.approved" : "planApproval.sentBack");
+      });
+      actions = [{ label: t("planApproval.approve"), kind: "primary", run: decide("approve") }, { label: t("planApproval.changes"), kind: "secondary", run: decide("changes") }, { label: t("inbox.gate.openTask"), kind: "ghost", run: go(`#/tasks?task=${encodeURIComponent(p.taskId)}`) }];
       break;
     }
     case "gate": {

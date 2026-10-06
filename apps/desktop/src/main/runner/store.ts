@@ -64,16 +64,18 @@ const ADDED_COLUMNS: Array<[name: string, ddl: string]> = [
   ["model", "TEXT"],
   ["effort", "TEXT"],
   ["selection", "TEXT"],
+  ["plan", "TEXT"],
 ];
 
 type Row = Record<string, unknown>;
-const JSON_FIELDS = new Set(["avoidKinds", "excludedProfiles", "ciFix", "bestOf", "compression", "selection"]);
+const JSON_FIELDS = new Set(["avoidKinds", "excludedProfiles", "ciFix", "bestOf", "compression", "selection", "plan"]);
 const BOOL_FIELDS = new Set(["reviewAfter", "mrDraft"]);
 const column = (field: string) => field.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 
 function toRun(r: Row): AgentRun {
   const s = (v: unknown) => (v == null ? null : String(v));
   return {
+    plan: r.plan == null ? null : JSON.parse(String(r.plan)),
     id: String(r.id),
     project: String(r.project),
     taskId: String(r.task_id),
@@ -130,7 +132,7 @@ const encode = (field: string, value: unknown) =>
   JSON_FIELDS.has(field) ? JSON.stringify(value) : BOOL_FIELDS.has(field) ? (value ? 1 : 0) : (value ?? null);
 
 export type NewRun = Pick<AgentRun, "project" | "taskId" | "taskTitle" | "role" | "attempt" | "maxAttempts"> &
-  Partial<Pick<AgentRun, "preferredProfile" | "preferKind" | "avoidKinds" | "excludedProfiles" | "parentRunId" | "worktree" | "branch" | "baseSha" | "instructions" | "reviewAfter" | "ciFix" | "bestOf" | "requestedBy" | "selection">>;
+  Partial<Pick<AgentRun, "preferredProfile" | "preferKind" | "avoidKinds" | "excludedProfiles" | "parentRunId" | "worktree" | "branch" | "baseSha" | "instructions" | "reviewAfter" | "ciFix" | "bestOf" | "requestedBy" | "selection" | "plan">>;
 
 export const ACTIVE: RunStatus[] = ["queued", "running"];
 

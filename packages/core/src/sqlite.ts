@@ -1,4 +1,5 @@
 import { memoryCleanupBaseline, type MemoryCleanupRun, type MemoryCleanupProposal } from "#core/memory-cleanup.ts";
+import { needsPlanApproval, type ImplementationPlan, type RunPlan } from "#core/plan-approval.ts";
 import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -630,6 +631,18 @@ const MIGRATIONS: string[] = [
     from_tier TEXT, to_tier TEXT, tasks INTEGER, clean_rate REAL, changed_by TEXT NOT NULL, at TEXT NOT NULL);
   CREATE INDEX model_learning_log_project ON model_learning_log(project, id);
   `,
+  // Implementation planning is a separate read-only run; revisions remain readable after approval.
+  `
+  ALTER TABLE run_requests ADD COLUMN plan TEXT;
+  ALTER TABLE run_records ADD COLUMN plan TEXT;
+  CREATE TABLE implementation_plans(
+    id INTEGER PRIMARY KEY, project TEXT NOT NULL, task_id TEXT NOT NULL, machine_id TEXT NOT NULL,
+    request_id INTEGER NOT NULL, run_id TEXT, status TEXT NOT NULL DEFAULT 'planning', text TEXT, note TEXT,
+    revision INTEGER NOT NULL DEFAULT 1, timeout_minutes INTEGER,
+    created_at TEXT NOT NULL, ready_at TEXT, deadline TEXT, decided_at TEXT, decided_by TEXT);
+  CREATE INDEX implementation_plans_task ON implementation_plans(project, task_id, id);
+  CREATE INDEX implementation_plans_waiting ON implementation_plans(status, deadline);
+  `,
 ];
 
 /**
@@ -826,6 +839,7 @@ function toSpecFeature(r: Row): SpecFeatureDetail {
 function toRunRecord(r: Row, withLog: boolean): RunRecord {
   const s = (v: unknown) => (v == null ? null : String(v));
   return {
+    plan: r.plan == null ? null : JSON.parse(str(r.plan)) as RunPlan,
     machineId: str(r.machine_id),
     machine: str(r.machine),
     runId: str(r.run_id),
@@ -1179,6 +1193,7 @@ const PROJECT_WRITES: Partial<Record<Method, "project" | "task" | "thread" | "do
   "specs.push": "project",
   "specs.importTasks": "project",
   "specs.runStep": "project",
+  "runs.preparePlan": "project",
   "runs.dispatch": "project",
   "runs.prompt": "project",
   "runs.dispatchMany": "project",
@@ -1508,6 +1523,7 @@ const toSystem = (r: Row): HiveSystem => ({
 const listParam = (projects: string[] | undefined) => (projects ? JSON.stringify(projects) : null);
 
 const toRunRequest = (r: Row): RunRequest => ({
+  plan: r.plan == null ? null : JSON.parse(str(r.plan)) as RunPlan,
   id: num(r.id),
   machineId: str(r.machine_id),
   machine: str(r.machine),
@@ -1923,6 +1939,16 @@ export class SqliteHive implements HiveBackend {
       case "sdlc.setCeiling":
         if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Only a hub admin sets how far gates may go.", { key: "errors.hubAdminOnly" });
         return;
+      case "runs.preparePlan":
+        return this.#need(actor, i.project, "taskWork", `Project ${i.project}`);
+      case "runs.plans":
+        if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
+        return;
+      case "runs.decidePlan": {
+        const row = this.db.prepare("SELECT project FROM implementation_plans WHERE id = ?").get(i.id) as Row | undefined;
+        if (row) this.#need(actor, str(row.project), "runDispatch", `Plan #${i.id}`);
+        return;
+      }
       case "sdlc.setProject":
         return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
       case "sdlc.gates":
@@ -3044,11 +3070,12 @@ export class SqliteHive implements HiveBackend {
    * Every run of the project's tasks that are done, finished (their last run) in the last 30 days, classified and not
    * high risk: a high-risk task starts a tier up, so it says nothing of its cell. Classify runs are not a try of the task.
    */
+  // Plans contribute to the task cost, but their tier and errors must not become implementation attempts.
   #learningRuns(project: string): LearningRun[] {
     const since = new Date(this.#opts.now().getTime() - LEARN_DAYS * 86_400_000).toISOString();
     const rows = this.db
       .prepare(
-        `SELECT r.task_id, r.role, r.status, r.verdict, r.tier, r.kind AS plan, r.created_at, json_extract(r.mr, '$.pipeline') AS pipeline,
+        `SELECT r.task_id, CASE WHEN json_extract(r.plan, '$.phase') = 'plan' THEN 'plan' ELSE r.role END AS role, r.status, r.verdict, r.tier, r.kind AS plan, r.created_at, json_extract(r.mr, '$.pipeline') AS pipeline,
            t.kind AS task_kind, t.size AS task_size, c.cost_usd, c.priced, c.input_tokens, c.cache_write_tokens, c.cache_read_tokens, c.output_tokens
          FROM run_records r
          JOIN tasks t ON t.id = r.task_id AND t.project = r.project
@@ -3222,6 +3249,10 @@ export class SqliteHive implements HiveBackend {
       const row = this.db.prepare(`SELECT project FROM ${table} WHERE id = ?`).get((input as { id: number }).id) as Row | undefined;
       if (row && this.#projectState(str(row.project)) !== null) throw this.#projectGone(str(row.project));
     }
+    if (method === "runs.decidePlan") {
+      const row = this.db.prepare("SELECT project FROM implementation_plans WHERE id = ?").get((input as { id: number }).id) as Row | undefined;
+      if (row && this.#projectState(str(row.project))) throw this.#projectGone(str(row.project));
+    }
     const where = PROJECT_WRITES[method];
     if (!where) return;
     const i = input as Record<string, any>;
@@ -3276,6 +3307,8 @@ export class SqliteHive implements HiveBackend {
         return (out as TaskAgentQueueItem[]).filter((q) => shown(q.task.project)) as MethodOutput[M];
       case "specs.list":
         return (out as SpecFeature[]).filter((f) => shown(f.project)) as MethodOutput[M];
+      case "runs.plans":
+        return (out as ImplementationPlan[]).filter((r) => shown(r.project)) as MethodOutput[M];
       case "runs.list":
         return (out as RunRecord[]).filter((r) => shown(r.project)) as MethodOutput[M];
       case "runs.requests":
@@ -3548,6 +3581,7 @@ export class SqliteHive implements HiveBackend {
     if (candidates > 1 && profileId) throw new HiveError("bad_request", "Candidates rotate profiles; do not pin one.", { key: "errors.candidatesPinned" });
     if (task) {
       const taskId = task.id;
+      if (db.prepare("SELECT 1 FROM implementation_plans WHERE task_id = ? AND status IN ('planning', 'waiting')").get(taskId)) throw new HiveError("conflict", "Task waits for plan approval.", { key: "errors.planPending" });
       // One request at a time per task, and none while a machine runs it.
       const open = db.prepare("SELECT id, machine FROM run_requests WHERE project = ? AND task_id = ? AND status = 'pending'").get(project, taskId) as Row | undefined;
       if (open) {
@@ -3612,7 +3646,7 @@ export class SqliteHive implements HiveBackend {
       machineId: str(r.machine_id),
       runId: str(r.run_id),
       machine: str(r.machine),
-      status: str(r.status),
+      status: req.plan?.phase === "plan" ? (req.status === "cancelled" ? "cancelled" : this.#planActive(req.plan.id) ? "running" : str(r.status)) : str(r.status),
       profileId: strOrNull(r.profile_id),
       startedAt: strOrNull(r.started_at),
       finishedAt: strOrNull(r.finished_at),
@@ -3628,6 +3662,7 @@ export class SqliteHive implements HiveBackend {
     if (status !== "sent" || !req) return false;
     if (req.status === "pending") return true;
     if (req.status !== "accepted") return false;
+    if (req.plan?.phase === "plan" && this.#planActive(req.plan.id)) return true;
     if (run) return run.status === "queued" || run.status === "running";
     return req.updatedAt > this.#now(-GROUP_UNREPORTED_MINUTES);
   }
@@ -4036,6 +4071,7 @@ export class SqliteHive implements HiveBackend {
    * running elsewhere — started by hand, by a flow, by an earlier assignment — would be handed out a second time.
    */
   #taskRunOpen(task: Task): boolean {
+    if (this.db.prepare("SELECT 1 FROM implementation_plans WHERE task_id = ? AND status IN ('planning', 'waiting')").get(task.id)) return true;
     const rows = this.db
       .prepare(
         `SELECT q.updated_at, r.status AS run_status FROM run_requests q
@@ -4766,6 +4802,10 @@ export class SqliteHive implements HiveBackend {
     actor: Actor,
   ): RunRequest {
     const now = this.#now();
+    const planning = r.role === "implement" && needsPlanApproval(this.#sdlcPolicy().projects[project]?.planApproval, task.size);
+    if (planning && !m.profiles.some((p) => p.enabled && p.installed && p.planApproval && (!r.profileId || p.id === r.profileId) && ["claude", "codex"].includes(p.kind))) {
+      throw new HiveError("bad_request", "This machine needs an updated Claude or Codex runner for plan approval.", { key: "errors.planRunnerRequired" });
+    }
     const selection = this.#selection(project, task, r.role);
     const res = this.db
       .prepare(
@@ -4774,7 +4814,69 @@ export class SqliteHive implements HiveBackend {
       )
       // A pinned profile is the run's whatever its kind, so the preference would mean nothing.
       .run(m.id, m.machine, project, task.id, task.title, r.role, r.profileId, r.profileId ? null : (r.preferKind ?? null), r.reviewAfter ? 1 : 0, r.candidates, r.instructions, actor.name, actor.onBehalf ?? null, now, now, selection ? JSON.stringify(selection) : null);
-    return this.#runRequest(num(res.lastInsertRowid));
+    const requestId = num(res.lastInsertRowid);
+    if (planning) {
+      const row = this.db.prepare(`INSERT INTO implementation_plans(project, task_id, machine_id, request_id, timeout_minutes, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
+        .run(project, task.id, m.id, requestId, this.#sdlcPolicy().projects[project]?.planApproval?.timeoutMinutes ?? null, now);
+      const plan: RunPlan = { id: num(row.lastInsertRowid), phase: "plan", text: null, note: null };
+      this.db.prepare("UPDATE run_requests SET plan = ? WHERE id = ?").run(JSON.stringify(plan), requestId);
+    }
+    return this.#runRequest(requestId);
+  }
+
+  #toPlan(r: Row): ImplementationPlan {
+    return { id: num(r.id), project: str(r.project), taskId: str(r.task_id), taskTitle: this.#getTask(str(r.task_id))?.title ?? str(r.task_id), machineId: str(r.machine_id), requestId: num(r.request_id), runId: strOrNull(r.run_id),
+      status: str(r.status) as ImplementationPlan["status"], text: strOrNull(r.text), note: strOrNull(r.note), revision: num(r.revision), createdAt: str(r.created_at), readyAt: strOrNull(r.ready_at), deadline: strOrNull(r.deadline), decidedAt: strOrNull(r.decided_at), decidedBy: strOrNull(r.decided_by) };
+  }
+
+  #planActive(id: number): boolean {
+    return !!this.db.prepare("SELECT 1 FROM implementation_plans WHERE id = ? AND status IN ('planning', 'waiting')").get(id);
+  }
+
+  #decidePlan(row: Row, decision: "approve" | "changes" | "cancel", note: string, by: string): void {
+    const old = this.#runRequest(num(row.request_id));
+    const task = this.#getTask(old.taskId);
+    if (!task || task.status === "done") throw new HiveError("conflict", "Task is already done.", { key: "errors.taskDone", vars: { id: old.taskId } });
+    const now = this.#now();
+    if (decision === "cancel") {
+      this.db.prepare("UPDATE implementation_plans SET status = 'cancelled', decided_at = ?, decided_by = ?, note = ? WHERE id = ?").run(now, by, note, num(row.id));
+      this.db.prepare("UPDATE run_requests SET status = 'cancelled', updated_at = ? WHERE id = ?").run(now, old.id);
+      this.#agentRunEnded({ runId: old.runId ?? `plan-${row.id}`, taskId: old.taskId, project: old.project, role: old.role, status: "cancelled", error: null });
+      return;
+    }
+    // Copy the authorized request, including its budget owner and model choice. Do not dispatch through the policy
+    // again: that would require a second plan and lose the group's/flow's original place.
+    const result = this.db.prepare(`INSERT INTO run_requests(machine_id, machine, project, task_id, task_title, role, profile_id, prefer_kind, review_after, candidates,
+      instructions, requested_by, on_behalf, requested_at, updated_at, selection)
+      SELECT machine_id, machine, project, task_id, task_title, role, profile_id, prefer_kind, review_after, candidates,
+      instructions, requested_by, on_behalf, ?, ?, selection FROM run_requests WHERE id = ?`).run(now, now, old.id);
+    const requestId = num(result.lastInsertRowid);
+    let planId = num(row.id);
+    if (decision === "changes") {
+      const next = this.db.prepare(`INSERT INTO implementation_plans(project, task_id, machine_id, request_id, revision, note, timeout_minutes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(old.project, old.taskId, old.machineId, requestId, num(row.revision) + 1, note, row.timeout_minutes as number | null, now);
+      planId = num(next.lastInsertRowid);
+    }
+    this.db.prepare("UPDATE implementation_plans SET status = ?, decided_at = ?, decided_by = ?, note = ? WHERE id = ?")
+      .run(decision === "approve" ? "approved" : "changes", now, by, note, num(row.id));
+    const plan: RunPlan = { id: planId, phase: decision === "approve" ? "implement" : "plan", text: strOrNull(row.text), note };
+    this.db.prepare("UPDATE run_requests SET plan = ? WHERE id = ?").run(JSON.stringify(plan), requestId);
+    for (const [table, column] of [["sdlc_flows", "request_id"], ["sdlc_flow_tasks", "request_id"], ["run_group_items", "request_id"], ["run_groups", "phase_request"], ["tasks", "agent_request"]]) {
+      this.db.prepare(`UPDATE ${table} SET ${column} = ? WHERE ${column} = ?`).run(requestId, old.id);
+    }
+  }
+
+  #approveTimedPlans(): void {
+    this.db.prepare(`UPDATE implementation_plans SET status = 'cancelled' WHERE status IN ('planning', 'waiting') AND (
+      request_id IN (SELECT request_id FROM run_group_items WHERE status = 'cancelled') OR
+      task_id IN (SELECT id FROM tasks WHERE status = 'done') OR task_id NOT IN (SELECT id FROM tasks))`).run();
+    const rows = this.db.prepare("SELECT * FROM implementation_plans WHERE status = 'waiting' AND deadline IS NOT NULL AND deadline <= ?").all(this.#now()) as Row[];
+    for (const row of rows) {
+      // A pause or archive also pauses automatic approval; the normal runner still enforces budgets and policy.
+      if (this.#projectState(str(row.project)) || !this.#getTask(str(row.task_id)) || this.#getTask(str(row.task_id))?.status === "done") continue;
+      try { this.#assertNotPaused(str(row.project)); } catch { continue; }
+      this.#decidePlan(row, "approve", "", "auto");
+    }
   }
 
   /** Task ids are the hub's, not a project's: prompts count up across every project, past any P-<n> someone made by hand. */
@@ -4788,7 +4890,8 @@ export class SqliteHive implements HiveBackend {
     this.db
       .prepare("UPDATE run_requests SET status = 'expired', updated_at = ?1 WHERE status = 'pending' AND requested_at < ?2")
       .run(this.#now(), this.#now(-RUN_REQUEST_TTL_MINUTES));
-    this.db.prepare("DELETE FROM run_requests WHERE status <> 'pending' AND updated_at < ?").run(this.#now(-RUN_REQUEST_DAYS * 24 * 60));
+    this.db.prepare("UPDATE implementation_plans SET status = 'cancelled' WHERE status = 'planning' AND request_id IN (SELECT id FROM run_requests WHERE status IN ('cancelled', 'expired', 'rejected'))").run();
+    this.db.prepare("DELETE FROM run_requests WHERE status <> 'pending' AND updated_at < ? AND id NOT IN (SELECT request_id FROM implementation_plans WHERE status IN ('planning', 'waiting'))").run(this.#now(-RUN_REQUEST_DAYS * 24 * 60));
   }
 
   /** Chat replies nobody started in time expire; one gone silent has failed; old threads are dropped. */
@@ -5206,6 +5309,7 @@ export class SqliteHive implements HiveBackend {
         this.db
           .prepare(
             `SELECT COUNT(*) AS n FROM run_records WHERE project = ? AND task_id = ?
+               AND COALESCE(json_extract(plan, '$.phase'), '') != 'plan'
                AND (verdict = 'changes' OR (role = 'implement' AND (status = 'failed' OR json_extract(mr, '$.pipeline') = 'failed')))`,
           )
           .get(project, task.id) as Row
@@ -6479,6 +6583,7 @@ export class SqliteHive implements HiveBackend {
             ).run(JSON.stringify(error), now, now, actor.name);
           }
           // With this beat's runs in, so a run that ended leaves its place to the next of its group, sent in this answer.
+          this.#approveTimedPlans();
           this.#release();
           this.#releaseFlows();
           // Held back rather than rejected for an archived project: restoring it lets the work go on, and anything
@@ -6557,7 +6662,7 @@ export class SqliteHive implements HiveBackend {
           const ended: typeof runs = [];
           for (const r of runs) {
             const before = (prior.get(actor.name, r.runId) as Row | undefined)?.status;
-            if (["succeeded", "failed", "cancelled"].includes(r.status) && (before === undefined || ["queued", "running"].includes(str(before)))) ended.push(r);
+            if ((["succeeded", "failed", "cancelled"].includes(r.status) || (r.status === "rate_limited" && db.prepare("SELECT 1 FROM run_requests WHERE machine_id = ? AND run_id = ? AND json_extract(plan, '$.phase') = 'plan'").get(actor.name, r.runId))) && (before === undefined || ["queued", "running"].includes(str(before)))) ended.push(r);
             // The machine already hid secret-looking lines; this is the hub's own check of what it keeps.
             put.run(
               actor.name, r.runId, machine, r.project, r.taskId, stripHidden(r.taskTitle), r.role, r.status, r.profileId,
@@ -6588,6 +6693,16 @@ export class SqliteHive implements HiveBackend {
               const stmt = ranOnPut.get(sql) ?? ranOnPut.set(sql, db.prepare(sql)).get(sql)!;
               stmt.run(...sent.map(([, v]) => v as string | number | null), actor.name, r.runId);
             }
+            const req = db.prepare("SELECT plan FROM run_requests WHERE machine_id = ? AND run_id = ? AND status = 'accepted'").get(actor.name, r.runId) as Row | undefined;
+            if (req?.plan) {
+              db.prepare("UPDATE run_records SET plan = ? WHERE machine_id = ? AND run_id = ?").run(str(req.plan), actor.name, r.runId);
+              const plan = JSON.parse(str(req.plan)) as RunPlan;
+              if (plan.phase === "plan") {
+                const saved = db.prepare("SELECT status FROM implementation_plans WHERE id = ?").get(plan.id) as Row | undefined;
+                // A terminal plan is immutable even when a machine replays its original succeeded/empty result.
+                if (saved?.status === "failed" || saved?.status === "cancelled") db.prepare("UPDATE run_records SET status = ? WHERE machine_id = ? AND run_id = ?").run(str(saved.status), actor.name, r.runId);
+              }
+            }
             // Whose run it is, set once: whoever asked for it from the web, else the person whose token the machine has
             // (a run started from its Board). A machine takes a request (runs.requestResult) before it pushes the run.
             ownerPut.run(actor.name, r.runId, principalOf(actor));
@@ -6617,6 +6732,28 @@ export class SqliteHive implements HiveBackend {
                   // Not JSON: the default below, as for a failed run.
                 }
                 this.#finishClassify(str(row.task_id), result);
+              }
+              continue;
+            }
+            const planRequest = db.prepare("SELECT * FROM run_requests WHERE machine_id = ? AND run_id = ? AND plan IS NOT NULL").get(actor.name, run.runId) as Row | undefined;
+            const plan = planRequest?.plan ? JSON.parse(str(planRequest.plan)) as RunPlan : null;
+            if (plan?.phase === "plan") {
+              const text = clean(run.planText ?? null)?.trim() ?? "";
+              const pending = db.prepare("SELECT * FROM implementation_plans WHERE id = ? AND status = 'planning'").get(plan.id) as Row | undefined;
+              if (pending) {
+                const ok = run.status === "succeeded" && text.length > 0;
+                db.prepare("UPDATE implementation_plans SET status = ?, text = ?, run_id = ?, ready_at = ?, deadline = ? WHERE id = ?")
+                  .run(ok ? "waiting" : run.status === "cancelled" ? "cancelled" : "failed", ok ? text : null, run.runId, now, ok && pending.timeout_minutes != null ? this.#now(num(pending.timeout_minutes)) : null, plan.id);
+                const snapshot = JSON.stringify({ ...plan, text: ok ? text : null });
+                db.prepare("UPDATE run_records SET plan = ? WHERE machine_id = ? AND run_id = ?").run(snapshot, actor.name, run.runId);
+                db.prepare("UPDATE run_requests SET plan = ? WHERE id = ?").run(snapshot, num(planRequest!.id));
+                if (!ok) {
+                  const failed = { ...run, status: run.status === "cancelled" ? "cancelled" : "failed", error: run.error ?? "Plan phase failed or returned no plan." };
+                  db.prepare("UPDATE run_records SET status = ?, error = ? WHERE machine_id = ? AND run_id = ?").run(failed.status, failed.error, actor.name, run.runId);
+                  this.#flowRunEnded(actor.name, failed);
+                  this.#taskRunEnded(actor.name, failed);
+                  this.#agentRunEnded(failed);
+                }
               }
               continue;
             }
@@ -7064,7 +7201,7 @@ export class SqliteHive implements HiveBackend {
         return ids.map((r) => this.#group(num(r.id)));
       },
 
-      "runs.cancelGroup": ({ id }) =>
+      "runs.cancelGroup": ({ id }, actor) =>
         this.#tx(() => {
           const g = this.#group(id);
           if (g.closedAt) throw new HiveError("conflict", `Run group #${id} is over.`, { key: "errors.runGroupClosed", vars: { id } });
@@ -7075,6 +7212,10 @@ export class SqliteHive implements HiveBackend {
           ).run(now, id);
           // A job's split or merge request too; the group stops where it was (runs.resumeGroup goes on from there).
           db.prepare("UPDATE run_requests SET status = 'cancelled', updated_at = ? WHERE status = 'pending' AND id = (SELECT phase_request FROM run_groups WHERE id = ?)").run(now, id);
+          db.prepare(`UPDATE implementation_plans SET status = 'cancelled', decided_at = ?, decided_by = ?
+            WHERE status IN ('planning', 'waiting') AND request_id IN (
+              SELECT request_id FROM run_group_items WHERE group_id = ? UNION SELECT phase_request FROM run_groups WHERE id = ?)`)
+            .run(now, actor.name, id, id);
           db.prepare(
             "UPDATE run_groups SET closed_at = ?, phase = CASE WHEN phase IS NULL OR phase = 'done' THEN phase ELSE 'stopped' END, phase_error = CASE WHEN phase IS NULL OR phase = 'done' THEN phase_error ELSE ? END WHERE id = ?",
           ).run(now, JSON.stringify({ message: "Cancelled.", key: "errors.mapCancelled" }), id);
@@ -7112,6 +7253,29 @@ export class SqliteHive implements HiveBackend {
         ).map(toRunRequest);
       },
 
+      "runs.preparePlan": ({ project, taskId, profileId, preferKind, reviewAfter, candidates, instructions }, actor) => this.#tx(() => {
+        const task = this.#getTask(taskId);
+        if (!task || task.project !== project) throw new HiveError("not_found", "Task not found.");
+        if (!needsPlanApproval(this.#sdlcPolicy().projects[project]?.planApproval, task.size)) throw new HiveError("conflict", "This task does not require plan approval.");
+        const m = this.#assertDispatchable({ machineId: actor.name, project, task, role: "implement", profileId, candidates, instructions }, actor);
+        this.#assertNotInGroup(taskId);
+        const flow = this.#flowRow(taskId);
+        if (flow && ["running", "check", "checking", "next"].includes(str(flow.state))) throw new HiveError("conflict", "Task has an active flow.", { key: "errors.taskInFlow", vars: { id: taskId } });
+        return this.#dispatchDirect(m, project, task, { role: "implement", profileId, preferKind, reviewAfter, candidates, instructions }, actor);
+      }),
+      "runs.plans": ({ project, projects, taskId, status, limit }, actor) =>
+        (db.prepare(`SELECT * FROM implementation_plans WHERE (?1 IS NULL OR project = ?1) AND (?2 IS NULL OR task_id = ?2)
+          AND (?3 IS NULL OR status = ?3) AND (?4 IS NULL OR project IN (SELECT value FROM json_each(?4))) ORDER BY id DESC LIMIT ?5`)
+          .all(project ?? null, taskId ?? null, status ?? null, listParam(projects), limit) as Row[]).filter((r) => sees(actor, str(r.project))).map((r) => this.#toPlan(r)),
+      "runs.decidePlan": ({ id, revision, decision, note }, actor) => this.#tx(() => {
+        const row = db.prepare("SELECT * FROM implementation_plans WHERE id = ?").get(id) as Row | undefined;
+        if (!row) throw new HiveError("not_found", "Plan not found.");
+        if (str(row.status) !== "waiting" || num(row.revision) !== revision) throw new HiveError("conflict", "This plan has already changed.", { key: "errors.planChanged" });
+        if (decision === "changes" && !note.trim()) throw new HiveError("bad_request", "Please describe the plan changes.", { key: "errors.planNoteRequired" });
+        this.#decidePlan(row, decision, clean(note) ?? "", actor.name);
+        return this.#toPlan(db.prepare("SELECT * FROM implementation_plans WHERE id = ?").get(id) as Row);
+      }),
+
       "runs.cancelRequest": ({ id }) =>
         this.#tx(() => {
           this.#expireRequests();
@@ -7135,6 +7299,7 @@ export class SqliteHive implements HiveBackend {
             this.#now(),
             id,
           );
+          if (status === "rejected" && req.plan?.phase === "plan") db.prepare("UPDATE implementation_plans SET status = 'failed' WHERE id = ? AND status = 'planning'").run(req.plan.id);
           // A refusal frees its group's place at once, and stops a flow's step.
           this.#release();
           this.#releaseFlows();
@@ -7681,6 +7846,7 @@ export class SqliteHive implements HiveBackend {
           const gates = Object.fromEntries(Object.entries(settings.gates).filter(([, m]) => m !== "human")) as Partial<GateModes>;
           projects[project] = {
             gates,
+            planApproval: settings.planApproval ?? current.projects[project]?.planApproval,
             ...(settings.maxFixRounds !== undefined ? { maxFixRounds: settings.maxFixRounds } : {}),
             ...(settings.maxParallel ? { maxParallel: settings.maxParallel } : {}),
             ...((settings.fastLaneKinds ?? current.projects[project]?.fastLaneKinds) ? { fastLaneKinds: [...new Set(settings.fastLaneKinds ?? current.projects[project]!.fastLaneKinds)] } : {}),

@@ -2,6 +2,18 @@
 import type { KeyPaths, Translation } from "#ui/i18n/types.ts";
 
 export const vi = {
+  planApproval: {
+    title: "Duyệt kế hoạch trước khi code", tab: "Kế hoạch", detail: "Chi tiết",
+    intro: "Agent lập kế hoạch chỉ đọc, chờ duyệt rồi mới làm.",
+    mode: { off: "Không", "medium-large": "Task cỡ m/l", all: "Mọi task" },
+    timeout: "Tự duyệt sau (phút)", timeoutHint: "Để trống để luôn chờ người duyệt. Thời gian tính từ khi kế hoạch sẵn sàng.",
+    waiting: "Chờ duyệt kế hoạch", inboxTitle: "Chờ duyệt kế hoạch · {id} · {title}",
+    approve: "Duyệt", changes: "Sửa kế hoạch", cancel: "Huỷ", note: "Ghi chú sửa kế hoạch",
+    noteRequired: "Nhập ghi chú để agent lập lại kế hoạch.", approved: "Đã duyệt kế hoạch", sentBack: "Đã gửi ghi chú sửa kế hoạch",
+    revision: "Bản {n}", empty: "Task chưa có kế hoạch.", deadline: "Tự duyệt lúc {time}",
+    state: { planning: "Đang lập kế hoạch", waiting: "Chờ duyệt", approved: "Đã duyệt", changes: "Đã yêu cầu sửa", failed: "Lập kế hoạch thất bại", cancelled: "Đã huỷ" },
+  },
+
   start: {
     connectHint: "Kết nối với nhóm qua hub, hoặc dùng một mình trên máy này.",
     disabled: "Đang tắt",
@@ -527,6 +539,7 @@ export const vi = {
       open: "Mở run",
     },
     tag: {
+      plan: "Kế hoạch",
       cleanup: "Dọn memory", agentHold: "Agent tạm ngừng", ci: "CI lỗi", waitingRun: "Chờ người", proposal: "Đề xuất", review: "Chờ review", memory: "Memory", conflict: "Mâu thuẫn", machine: "Máy này", request: "Yêu cầu cài", alert: "Cảnh báo", gate: "Chốt SDLC", leader: "Leader đề xuất" },
     ci: {
       title: "{mr} · pipeline lỗi ở {jobs}",
@@ -2730,6 +2743,10 @@ export const vi = {
     },
   },
   errors: {
+    planRunnerRequired: "Máy cần runner Claude hoặc Codex mới để duyệt kế hoạch.",
+    planPending: "Task đang chờ duyệt kế hoạch.",
+    planChanged: "Kế hoạch đã thay đổi. Hãy tải lại.",
+    planNoteRequired: "Nhập ghi chú để sửa kế hoạch.",
     releaseVersion: "Phiên bản phải có dạng 1.2.3.",
     releaseFile: "Bản build không hợp lệ: nền tảng mac|win|linux, kiến trúc arm64|x64, loại zip|dmg|exe|AppImage.",
     releaseNotFound: "Hub không có bản phát hành này.",
@@ -3217,6 +3234,7 @@ export const vi = {
     longAgents: "AGENTS.md dài {lines} dòng (nên dưới {max}): chuyển bớt phần chỉ dùng cho một thư mục hay loại file sang tài liệu có đường dẫn",
   },
   runNote: {
+    planEmpty: "Agent không trả kế hoạch.",
     dockerNotFound: "Profile chạy trong container nhưng máy không có lệnh docker trên PATH (cài Docker rồi kiểm tra lại).",
     egressFailed: "Không dựng được mạng giới hạn cho container: {reason}",
     networkBlocked: "mạng giới hạn đã chặn {hosts} (thêm vào 'Cho phép thêm' của profile nếu cần)",

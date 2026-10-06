@@ -54,6 +54,7 @@ export function useInboxState(client: HiveClient, me: Me, scope: Scope, tick: nu
   const review = useQuery(async () => (team ? client.call("tasks.list", { ...scopeFilter(scope), ...(hub ? {} : { status: "review" as const }) }) : []), deps);
   const memory = useQuery(async () => (team ? client.call("memory.list", { ...memoryFilter(scope), limit: 500 }) : []), deps);
   // Gates and leaders' proposals are the hub's; one from before them has neither method.
+  const plans = useQuery(async () => (hub ? client.call("runs.plans", { ...scopeFilter(scope), status: "waiting", limit: 200 }) : []), deps);
   const gates = useQuery(async () => (hub ? client.call("sdlc.gates", { ...scopeFilter(scope), limit: 100 }).catch(() => []) : []), deps);
   const leader = useQuery(async () => (hub ? client.call("chat.pending", { ...scopeFilter(scope) }).catch(() => []) : []), deps);
   const runs = useQuery(async () => (desktop ? desktop.runs({ limit: 200 }) : []), deps);
@@ -89,13 +90,14 @@ export function useInboxState(client: HiveClient, me: Me, scope: Scope, tick: nu
       commands: requests.data?.commands,
       machine: settings.data?.machine,
       alerts: alerts.data ?? undefined,
+      plans: plans.data,
       gates: gates.data,
       leader: leader.data,
       can: (owner, permission) => may(me, owner, permission),
     });
     const handled = new Set(done.map((d) => d.key));
     return all.filter((i) => !handled.has(i.key) && inScope(scope, inboxProject(i)));
-  }, [cleanup.data, hubRuns.data, proposals.data, review.data, memory.data, runs.data, setup.data, requests.data, settings.data, alerts.data, gates.data, leader.data, me, done, scope, hub]);
+  }, [plans.data, cleanup.data, hubRuns.data, proposals.data, review.data, memory.data, runs.data, setup.data, requests.data, settings.data, alerts.data, gates.data, leader.data, me, done, scope, hub]);
 
   const markRead = useCallback((key: string) => {
     setRead((cur) => {
@@ -121,7 +123,7 @@ export function useInboxState(client: HiveClient, me: Me, scope: Scope, tick: nu
   }, []);
   const reload = useCallback(() => setLocal((n) => n + 1), []);
 
-  const first = [proposals, review, memory].find((q) => q.error);
+  const first = [plans, proposals, review, memory].find((q) => q.error);
   return {
     items,
     done,

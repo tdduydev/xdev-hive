@@ -1,10 +1,10 @@
 // "Hôm nay": what needs the person, gathered from what the hub and this machine already know. Each source becomes
 // items with a stable key, so "seen" and "done" survive reloads (kept in localStorage, per device).
-import type { MemoryCleanupProposal, AgentRun, ChatAction, HubAlert, MachineCommand, Memory, Permission, ProjectRole, Proposal, RunRecord, SdlcGateRecord, SetupItem, Task } from "@xdev-hive/core";
+import type { ImplementationPlan, MemoryCleanupProposal, AgentRun, ChatAction, HubAlert, MachineCommand, Memory, Permission, ProjectRole, Proposal, RunRecord, SdlcGateRecord, SetupItem, Task } from "@xdev-hive/core";
 import { approvalOf } from "#ui/lib/permissions.ts";
 import { waitingReason } from "#ui/lib/runs.ts";
 
-export type InboxKind = "cleanup" | "agentHold" | "ci" | "waitingRun" | "proposal" | "review" | "memory" | "conflict" | "machine" | "request" | "alert" | "gate" | "leader";
+export type InboxKind = "plan" | "cleanup" | "agentHold" | "ci" | "waitingRun" | "proposal" | "review" | "memory" | "conflict" | "machine" | "request" | "alert" | "gate" | "leader";
 export type InboxTone = "danger" | "warning" | "info";
 
 interface Base {
@@ -18,6 +18,7 @@ interface Base {
 
 export type InboxItem = Base &
   (
+    | { kind: "plan"; plan: ImplementationPlan }
     | { kind: "cleanup"; proposal: MemoryCleanupProposal }
     | { kind: "agentHold"; task: Task }
     | { kind: "ci"; run: AgentRun }
@@ -34,6 +35,7 @@ export type InboxItem = Base &
   );
 
 export interface InboxSources {
+  plans?: ImplementationPlan[];
   proposals?: Proposal[];
   cleanup?: MemoryCleanupProposal[];
   reviewTasks?: Task[];
@@ -67,6 +69,7 @@ export interface InboxSources {
 const OPTIONAL_TOOLS = new Set(["cli:specify"]);
 
 const TONE: Record<InboxKind, InboxTone> = {
+  plan: "warning",
   cleanup: "info",
   agentHold: "warning",
   ci: "danger",
@@ -95,6 +98,8 @@ export function buildInbox(src: InboxSources): InboxItem[] {
   const runs = src.runs ?? [];
   const can = src.can ?? (() => true);
 
+  for (const plan of src.plans ?? []) if (plan.status === "waiting" && can(plan.project, "runDispatch")) items.push({ kind: "plan", key: `plan:${plan.id}:${plan.revision}`, tone: TONE.plan, at: plan.readyAt ?? plan.createdAt, scope: plan.project, plan });
+
   // CI: the newest run of each merge request whose pipeline failed (a fix run, if any, is that newest run).
   const byMr = new Map<string, AgentRun>();
   for (const r of runs) {
@@ -115,6 +120,7 @@ export function buildInbox(src: InboxSources): InboxItem[] {
     if (!cur || r.createdAt > cur.createdAt) newest.set(k, r);
   }
   for (const r of newest.values()) {
+    if (r.plan?.phase === "plan") continue;
     const reason = waitingReason(r);
     if (!reason || !can(r.project, "runDispatch")) continue;
     items.push({ kind: "waitingRun", key: `waitingRun:${r.machineId}/${r.runId}:${reason}:${r.updatedAt}`, tone: TONE.waitingRun, at: r.updatedAt, scope: r.project, run: r, reason });
@@ -191,6 +197,7 @@ export function buildInbox(src: InboxSources): InboxItem[] {
 /** The project an item belongs to (null: shared data or this machine), for the scope filter. */
 export function inboxProject(item: InboxItem): string | null {
   switch (item.kind) {
+    case "plan": return item.plan.project;
     case "ci":
     case "waitingRun":
       return item.run.project;
