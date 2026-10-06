@@ -87,6 +87,7 @@ Tài liệu, memory và task dùng chung cho nhiều coding agent (Claude Code, 
   - **Leader ở mức hệ thống**: chat của một service mà nằm trong hệ thống thì leader được báo hệ thống và các service của nó. Một tính năng chạm nhiều service, leader đề xuất mỗi service một task (`propose_task` có `project`) nối bằng `dependsOn`, và xếp run cho task của service khác trên máy có repo đó. Người xác nhận vẫn phải có quyền ở từng dự án.
   - Lúc nhập group GitLab, ô *Gom vào hệ thống* (mặc định tên group) đưa luôn các repo đã nhập và repo đã là dự án vào một hệ thống.
 - **Task**: `task_claim` giữ task theo lease, hai agent không nhận trùng. `task_update` kèm ghi chú bàn giao.
+  - **Lịch sử ghi chú** (roadmap 41a): mỗi lần `task_update` kèm ghi chú, Hive giữ thêm một phiên bản (ai ghi, trạng thái lúc đó, nguồn, lúc nào) nên bàn giao cũ không bị ghi đè; ghi chú của task vẫn là bản mới nhất. Agent đọc vài bản gần nhất bằng `task_notes` (`tasks.notes`), panel task trên web có mục *Lịch sử ghi chú* xem được thay đổi giữa hai bản liền nhau. Chuyển trạng thái mà không kèm ghi chú thì không tạo bản mới.
   - **Phụ thuộc**: task có thể phụ thuộc task khác cùng dự án. Đặt khi tạo, hoặc bấm *Sửa* ở cột *Phụ thuộc* trang Task (`tasks.setDeps`). Hive từ chối task tự phụ thuộc chính nó, task của dự án khác và vòng lặp.
     - Còn task phụ thuộc chưa *Xong* thì không `task_claim` được và app không chạy agent cho nó. Board để nó ở cột *Bị chặn* với nhãn *Chờ T-1*.
     - Các task đó xong thì task tự mở khoá, không cần ai chuyển trạng thái.
@@ -801,7 +802,7 @@ Trang này có trên hub web và trên app desktop ở chế độ hub, chỉ hi
 
 Agent không có app desktop (CI, cloud) gọi thẳng MCP qua HTTP: `POST https://<hub>/mcp`, header `Authorization: Bearer <token agent>`, tuỳ chọn `x-hive-agent: <tên>`.
 
-**Agent chỉ đọc**: tạo token vai trò `viewer` cho agent chỉ cần tra cứu, ví dụ bot review hoặc CI đọc quy chuẩn. Với token này, MCP chỉ có các tool đọc: `memory_search`, `doc_list`, `doc_get`, `skill_list`, `skill_get`, `task_list`, `task_next`, `run_list`, `run_get`, `run_requests`, `machine_list`, `setup_missing`, `cost_summary`, `policy_get`. Tool ghi không có trong danh sách, và hub cũng từ chối lệnh ghi.
+**Agent chỉ đọc**: tạo token vai trò `viewer` cho agent chỉ cần tra cứu, ví dụ bot review hoặc CI đọc quy chuẩn. Với token này, MCP chỉ có các tool đọc: `memory_search`, `doc_list`, `doc_get`, `skill_list`, `skill_get`, `task_list`, `task_notes`, `task_next`, `run_list`, `run_get`, `run_requests`, `machine_list`, `setup_missing`, `cost_summary`, `policy_get`. Tool ghi không có trong danh sách, và hub cũng từ chối lệnh ghi.
 
 Trên app desktop, profile có tuỳ chọn *Chỉ đọc Hive*:
 - Runner đặt `HIVE_READONLY=1` cho run của profile đó; `hive-mcp` thấy biến này thì chỉ mở tool đọc.

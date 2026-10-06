@@ -2,7 +2,7 @@ import { ResponsiveTable as Table, ResponsiveTableRow as TableRow } from "#ui/co
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "cn";
 import { Sparkles } from "lucide-react";
-import { AGENT_ROLES, MAX_CANDIDATES, TASK_STATUSES, type AgentRole, type PreferKind, type RunRequest, type Task, type TaskStatus } from "@xdev-hive/core";
+import { AGENT_ROLES, MAX_CANDIDATES, TASK_STATUSES, type AgentRole, type PreferKind, type RunRequest, type Task, type TaskNote, type TaskStatus } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
@@ -15,6 +15,7 @@ import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "#ui/components/common.tsx";
 import { BatchSheet, PromptSheet } from "#ui/components/AgentSheets.tsx";
 import { BoardPage } from "#ui/pages/Board.tsx";
+import { Diff } from "#ui/components/Diff.tsx";
 import { FlowList, FlowTaskPanel } from "#ui/components/FlowCard.tsx";
 import { MachineSelect, PreferKindSelect, ProfileSelect, takesRunsOf } from "#ui/components/MachinePicker.tsx";
 import { AgentAssignment } from "#ui/components/AgentAssignment.tsx";
@@ -531,8 +532,63 @@ function TaskDetail({ task, requests, hub, onChanged }: { task: Task; requests: 
             <p className="text-xs text-muted-foreground">{t("tasks.noNote")}</p>
           )}
         </section>
+        <NoteHistory task={task} />
       </div>
     </SheetContent>
+  );
+}
+
+/** The handovers kept beside the latest (roadmap 41a): each one as it was written, and what it changed. */
+function NoteHistory({ task }: { task: Task }) {
+  const { client } = useHive();
+  const t = useT();
+  // A note is written with a status change, so the task's updatedAt is enough to know the history may have grown.
+  // An older hub (or a machine's own database) that does not know the method shows no history rather than an error.
+  const notes = useQuery(() => client.call("tasks.notes", { id: task.id, limit: 20 }).catch(() => [] as TaskNote[]), [client, task.id, task.updatedAt]);
+  const [diffOf, setDiffOf] = useState<number | null>(null);
+  const list = notes.data ?? [];
+  if (!list.length) return null;
+  return (
+    <section className="flex flex-col gap-2" data-task-notes>
+      <h3 className="text-xs font-medium text-muted-foreground">{t("tasks.noteHistory")}</h3>
+      <ul className="flex flex-col gap-2">
+        {list.map((n, i) => {
+          // Newest first, so the one before it is the next in the list; the oldest has nothing to compare with.
+          const before = list[i + 1] ?? null;
+          const open = diffOf === n.version;
+          return (
+            <li key={n.version} className="flex flex-col gap-1 rounded-md border p-2 text-xs" data-task-note={n.version}>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-muted-foreground">v{n.version}</span>
+                <Badge tone={STATUS_TONE[n.status]}>{t(`taskStatus.${n.status}`)}</Badge>
+                <span className="text-muted-foreground">
+                  {t("tasks.noteBy", { who: n.onBehalf ? `${n.author} (${n.onBehalf})` : n.author, time: formatTime(n.createdAt) })}
+                </span>
+              </div>
+              <div className="max-h-40 overflow-y-auto leading-relaxed whitespace-pre-wrap wrap-anywhere">{n.note}</div>
+              {before ? (
+                <div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-1.5 text-xs"
+                    aria-pressed={open}
+                    onClick={() => setDiffOf(open ? null : n.version)}
+                  >
+                    {open ? t("tasks.noteHideDiff") : t("tasks.noteDiff", { version: before.version })}
+                  </Button>
+                </div>
+              ) : null}
+              {before && open ? (
+                <div data-task-note-diff={n.version}>
+                  <Diff before={before.note} after={n.note} />
+                </div>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 

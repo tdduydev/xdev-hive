@@ -1857,7 +1857,9 @@ export class Runner {
     } else {
       exitCode = outcome.code;
       const text = (outcome.usage?.text ?? outcome.stdout).trim();
-      summary = text ? clip(text, 1500) : null;
+      // The summary becomes the task's handover note, and the hub refuses hidden characters there (roadmap 41a):
+      // the agent's own text goes without them rather than losing the handover to a character nobody can see.
+      summary = text ? clip(stripHidden(text), 1500) : null;
       if (outcome.usage) {
         const u = outcome.usage;
         usage = { costUsd: u.costUsd, inputTokens: u.inputTokens, cacheWriteTokens: u.cacheWriteTokens, cacheReadTokens: u.cacheReadTokens, outputTokens: u.outputTokens };

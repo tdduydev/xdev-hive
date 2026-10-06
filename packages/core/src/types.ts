@@ -308,6 +308,26 @@ export interface TaskAgentQueueItem {
   waiting: RunRequestError | null;
 }
 
+/**
+ * One handover note as it was written (roadmap 41a). `tasks.note` keeps the latest; these keep the ones before it,
+ * so a new handover never erases the one an agent left yesterday.
+ */
+export interface TaskNote {
+  taskId: string;
+  /** 1 upwards, in the order they were written. */
+  version: number;
+  note: string;
+  /** The task's status right after the note was written. */
+  status: TaskStatus;
+  /** Who wrote it; "hub" for the notes kept by the migration, which were written before versions existed. */
+  author: string;
+  /** The account an agent wrote on behalf of (roadmap 27c), when it was an agent. */
+  onBehalf: string | null;
+  /** Where the write came from (roadmap 2b); null for the notes the migration kept. */
+  source: WriteSource | null;
+  createdAt: string;
+}
+
 /** installed: nothing to do · missing: the app can install it · outdated: installed for another build · manual: needs a hand edit. */
 export type SetupState = "installed" | "missing" | "outdated" | "manual";
 
