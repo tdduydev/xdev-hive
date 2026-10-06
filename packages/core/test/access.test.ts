@@ -44,6 +44,8 @@ describe("permissions per project (roadmap 25)", () => {
     assert.deepEqual(readGrant({ permissions: ["docApprove"] }), { permissions: ["view", "docApprove"] }, "seeing the project comes with any permission");
     assert.equal(readGrant({ permissions: ["docApprove", "fly"] }), null);
     assert.equal(grantRole({ permissions: [...ROLE_PERMISSIONS.reviewer] }), "reviewer");
+    assert.equal(grantRole({ permissions: [...ROLE_PERMISSIONS.qa] }), "qa");
+    assert.deepEqual([...ROLE_PERMISSIONS.qa].sort(), ["codeReview", "qaVerify", "view"]);
     assert.equal(grantRole({ permissions: ["view", "docApprove"] }), "custom");
   });
 

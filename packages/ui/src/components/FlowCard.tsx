@@ -185,7 +185,7 @@ export function FlowTaskPanel({ project, taskId }: { project: string; taskId: st
   useEffect(() => setMoving(!!x && !["gate", "done", "stopped"].includes(x.stage)), [x]);
   if (!x) return null;
   const gate = x.stage === "gate" && x.gate && (x.gate.status === "waiting" || x.gate.status === "escalated") ? x.gate : null;
-  const may = gate ? allow(project, gate.gate === "review" || gate.gate === "merge" ? "codeReview" : "runDispatch") : false;
+  const may = gate ? allow(project, gate.gate === "test" ? "qaVerify" : gate.gate === "review" || gate.gate === "merge" ? "codeReview" : "runDispatch") : false;
   const decide = (decision: "pass" | "changes") =>
     void action.run(async () => {
       await client.call("sdlc.decide", { gateId: gate!.id, decision, note });
@@ -215,10 +215,10 @@ export function FlowTaskPanel({ project, taskId }: { project: string; taskId: st
               <Textarea rows={2} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} placeholder={t(gate.gate === "review" ? "flow.taskNoteReview" : "flow.taskNoteOther")} aria-label={t("flow.note")} />
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" disabled={action.busy} onClick={() => decide("pass")} data-task-gate-pass={gate.id}>
-                  {t(`flow.taskPass.${gate.gate === "fix" ? "fix" : gate.gate === "merge" ? "merge" : "review"}`)}
+                  {t(`flow.taskPass.${gate.gate === "fix" ? "fix" : gate.gate === "merge" ? "merge" : gate.gate === "test" ? "test" : "review"}`)}
                 </Button>
                 <Button size="sm" variant="outline" disabled={action.busy || (gate.gate === "review" && !note.trim())} onClick={() => decide("changes")}>
-                  {t(`flow.taskChanges.${gate.gate === "fix" ? "fix" : gate.gate === "merge" ? "merge" : "review"}`)}
+                  {t(`flow.taskChanges.${gate.gate === "fix" ? "fix" : gate.gate === "merge" ? "merge" : gate.gate === "test" ? "test" : "review"}`)}
                 </Button>
               </div>
             </>

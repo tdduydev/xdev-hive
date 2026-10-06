@@ -83,13 +83,14 @@ export function featureItems(flows: SdlcFlow[], specs: SpecFeature[], flowTasks:
 
 /** Whether the person may decide at a gate, as the hub checks sdlc.decide (packages/core/src/sqlite.ts). */
 export function mayDecide(allow: (project: string, need: Permission) => boolean, gate: Pick<SdlcGateRecord, "project" | "gate">): boolean {
+  if (gate.gate === "test") return allow(gate.project, "qaVerify");
   if (gate.gate === "review" || gate.gate === "merge") return allow(gate.project, "codeReview");
   if (gate.gate === "tasks") return allow(gate.project, "runDispatch") && allow(gate.project, "taskManage");
   return allow(gate.project, "runDispatch");
 }
 
 /** The tab whose content a gate decides on, so its buttons sit next to what is read. */
-export const gateTab = (gate: Pick<SdlcGateRecord, "gate">): FeatureTab => (gate.gate === "spec" ? "spec" : gate.gate === "plan" ? "plan" : "tasks");
+export const gateTab = (gate: Pick<SdlcGateRecord, "gate">): FeatureTab => gate.gate === "test" ? "checks" : gate.gate === "spec" ? "spec" : gate.gate === "plan" ? "plan" : "tasks";
 
 /** Whether a person's note is needed to ask for changes: the agent does the step again by it. */
 export const noteRequired = (gate: Pick<SdlcGateRecord, "gate">): boolean => gate.gate !== "fix" && gate.gate !== "merge";

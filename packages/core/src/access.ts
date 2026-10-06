@@ -37,6 +37,8 @@ export const PERMISSIONS = [
   "memoryApprove",
   /** Review code: move a task out of review to done. */
   "codeReview",
+  /** Verify the test checklist and pass the QA gate. */
+  "qaVerify",
   /** The project's systems, its chat defaults and the leader's commands. */
   "projectSettings",
   /** Add accounts to the project and set their role (never above one's own). */
@@ -44,13 +46,14 @@ export const PERMISSIONS = [
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
-export const PROJECT_ROLES = ["viewer", "member", "reviewer", "lead"] as const;
+export const PROJECT_ROLES = ["viewer", "member", "qa", "reviewer", "lead"] as const;
 export type ProjectRole = (typeof PROJECT_ROLES)[number];
 
 const MEMBER: Permission[] = ["view", "taskWork", "docPropose", "memoryWrite"];
 export const ROLE_PERMISSIONS: Record<ProjectRole, readonly Permission[]> = {
   viewer: ["view"],
   member: MEMBER,
+  qa: ["view", "qaVerify", "codeReview"],
   reviewer: [...MEMBER, "docApprove", "memoryApprove", "chatApprove", "codeReview"],
   lead: PERMISSIONS,
 };
