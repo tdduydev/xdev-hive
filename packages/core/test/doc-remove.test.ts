@@ -203,6 +203,9 @@ describe("letting a project key rest (roadmap 38g)", () => {
 
     await h.call("docs.remove", { key: "project/app/arch" }, admin);
     await h.call("tasks.update", { id: "A-1", status: "done" }, admin);
+    const [withJournal] = await h.call("projects.retired", {}, admin);
+    assert.equal(withJournal?.hidden, false, "completion kept a journal page on the project");
+    await h.call("docs.remove", { key: "project/app/nhat-ky" }, admin);
     const [now] = await h.call("projects.retired", {}, admin);
     assert.equal(now?.hidden, true, "no machine, page or open task left");
     assert.equal(now?.by, "duy");
