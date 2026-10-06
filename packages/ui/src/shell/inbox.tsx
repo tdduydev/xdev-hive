@@ -1,10 +1,10 @@
 // Loads what "Hôm nay" lists, once for the whole app: the sidebar shows the count, the page the items.
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
-import { may, type Me } from "@xdev-hive/core";
+import { may, permissionsOn, type Me, type ProjectRole } from "@xdev-hive/core";
 import type { HiveClient } from "#ui/client.ts";
 import { usePoll, useQuery } from "#ui/hooks.ts";
-import { buildInbox, inboxProject, readDone, readRead, writeDone, writeRead, type InboxDone, type InboxItem } from "#ui/lib/inbox.ts";
-import { inScope, scopeFilter, scopeKey, type Scope } from "#ui/lib/scope.ts";
+import { buildInbox, highestRole, inboxProject, readDone, readRead, writeDone, writeRead, type InboxDone, type InboxItem } from "#ui/lib/inbox.ts";
+import { inScope, scopeFilter, scopeKey, scopeProjects, type Scope } from "#ui/lib/scope.ts";
 
 export interface InboxState {
   /** Open items in the scope, newest first. */
@@ -12,6 +12,8 @@ export interface InboxState {
   /** Handled on this device, newest first. */
   done: InboxDone[];
   read: Set<string>;
+  /** The person's highest role in the scope: it orders Hôm nay's groups (roadmap 49g). */
+  role: ProjectRole;
   loading: boolean;
   error: string | null;
   markRead: (key: string) => void;
@@ -55,12 +57,20 @@ export function useInboxState(client: HiveClient, me: Me, scope: Scope, tick: nu
   const gates = useQuery(async () => (hub ? client.call("sdlc.gates", { ...scopeFilter(scope), limit: 100 }).catch(() => []) : []), deps);
   const leader = useQuery(async () => (hub ? client.call("chat.pending", { ...scopeFilter(scope) }).catch(() => []) : []), deps);
   const runs = useQuery(async () => (desktop ? desktop.runs({ limit: 200 }) : []), deps);
+  // Runs that wait for a person (roadmap 49e) are the hub's: every machine sends its runs there.
+  const hubRuns = useQuery(async () => (hub ? client.call("runs.list", { ...scopeFilter(scope), limit: 200 }).catch(() => []) : []), deps);
   const setup = useQuery(async () => (desktop ? desktop.setupStatus() : null), [desktop, tick, local]);
   const requests = useQuery(async () => (desktop && me.mode === "hub" ? desktop.hubRequests() : null), deps);
   const settings = useQuery(async () => (desktop ? desktop.settings() : null), [desktop]);
   // Hub admins on the web: the hub's alerts that no admin has seen yet.
   const hubAdmin = me.mode === "hub" && me.role === "admin" && !me.access;
   const alerts = useQuery(async () => (team && hubAdmin && client.alerts ? (await client.alerts.list().catch(() => null))?.open ?? null : null), deps);
+
+  // Every project counts when the scope is all of them; the shared data has a grant of its own.
+  const role = useMemo(() => {
+    const owners: Array<string | null> = scope.kind === "shared" ? [null] : (scopeProjects(scope) ?? Object.keys(me.access?.projects ?? {}));
+    return highestRole((owners.length ? owners : [null]).map((o) => permissionsOn(me, o)));
+  }, [me, scope]);
 
   const [done, setDone] = useState<InboxDone[]>(readDone);
   const [read, setRead] = useState<Set<string>>(() => new Set(readRead()));
@@ -74,6 +84,7 @@ export function useInboxState(client: HiveClient, me: Me, scope: Scope, tick: nu
       principal: me.name,
       memory: memory.data,
       runs: runs.data,
+      hubRuns: hubRuns.data,
       setup: setup.data?.machine,
       commands: requests.data?.commands,
       machine: settings.data?.machine,
@@ -84,7 +95,7 @@ export function useInboxState(client: HiveClient, me: Me, scope: Scope, tick: nu
     });
     const handled = new Set(done.map((d) => d.key));
     return all.filter((i) => !handled.has(i.key) && inScope(scope, inboxProject(i)));
-  }, [cleanup.data, proposals.data, review.data, memory.data, runs.data, setup.data, requests.data, settings.data, alerts.data, gates.data, leader.data, me, done, scope, hub]);
+  }, [cleanup.data, hubRuns.data, proposals.data, review.data, memory.data, runs.data, setup.data, requests.data, settings.data, alerts.data, gates.data, leader.data, me, done, scope, hub]);
 
   const markRead = useCallback((key: string) => {
     setRead((cur) => {
@@ -115,6 +126,7 @@ export function useInboxState(client: HiveClient, me: Me, scope: Scope, tick: nu
     items,
     done,
     read,
+    role,
     loading: proposals.loading && !proposals.data,
     error: first?.error ?? null,
     markRead,

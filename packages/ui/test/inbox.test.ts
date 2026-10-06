@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { may, type Actor, type AgentRun, type ChatAction, type Memory, type Proposal, type SdlcGateRecord, type Task } from "@xdev-hive/core";
-import { buildInbox, inboxProject, shortAgo } from "#ui/lib/inbox.ts";
+import { may, permissionsOn, type Actor, type AgentRun, type ChatAction, type HubAlert, type Memory, type Permission, type Proposal, type RunRecord, type SdlcGateRecord, type Task } from "@xdev-hive/core";
+import { buildInbox, groupInbox, highestRole, inboxGroup, inboxProject, roleOfPermissions, shortAgo } from "#ui/lib/inbox.ts";
 
 const run = (over: Partial<AgentRun>): AgentRun => ({ id: "R-1", project: "demo", taskId: "T-1", createdAt: "2026-09-30T10:00:00Z", mrUrl: null, pipelineStatus: null, ...over }) as AgentRun;
 const memory = (over: Partial<Memory>): Memory => ({ id: 1, project: "demo", kind: "decision", content: "x", author: "a", status: "approved", createdAt: "2026-09-30T09:00:00Z", conflictsWith: [], ...over }) as Memory;
@@ -116,5 +116,55 @@ describe("inbox", () => {
       leader: [{ id: 9, project: "pay", status: "proposed", createdAt: "2026-10-02T09:00:00Z" } as ChatAction, { id: 10, project: "app", status: "proposed", createdAt: "2026-10-02T09:00:00Z" } as ChatAction],
     });
     assert.deepEqual(items.map((i) => i.key).sort(), ["gate:7", "leader:9", "memory:1", "proposal:1", "review:pay:T-pay:2026-10-02T09:00:00Z"]);
+  });
+
+  it("lists a task's newest hub run when it waits for a person, for whoever may dispatch runs (roadmap 49g)", () => {
+    const hub = (over: Partial<RunRecord>): RunRecord =>
+      ({ machineId: "m1", machine: "mbp", runId: "R-1", project: "pay", taskId: "T-1", taskTitle: "Đổi trả", role: "implement", status: "succeeded", summary: null, error: null, mr: null, createdAt: "2026-10-06T08:00:00Z", updatedAt: "2026-10-06T08:10:00Z", ...over }) as RunRecord;
+    const runs = [
+      // T-1 asked, then a newer run answered: nothing waits any more.
+      hub({ runId: "R-1", summary: "Cần bạn xác nhận cách làm" }),
+      hub({ runId: "R-2", createdAt: "2026-10-06T09:00:00Z", summary: "ĐÃ LÀM: xong" }),
+      hub({ runId: "R-3", taskId: "T-2", status: "rate_limited", updatedAt: "2026-10-06T09:30:00Z" }),
+      hub({ runId: "R-4", taskId: "T-3", project: "app", summary: "need your input" }),
+    ];
+    const lan: Actor = { name: "lan", role: "member", access: { projects: { pay: "lead", app: "reviewer" } } };
+    const items = buildInbox({ hubRuns: runs, can: (owner, p) => may(lan, owner, p) });
+    assert.deepEqual(items.map((i) => i.kind === "waitingRun" && [i.run.runId, i.reason]), [["R-3", "quota"]]);
+    assert.equal(inboxProject(items[0]!), "pay");
+    assert.equal(inboxGroup(items[0]!), "agent");
+  });
+
+  it("groups by what the person does, in the order of their highest role in the scope (roadmap 49g)", () => {
+    const items = buildInbox({
+      reviewTasks: [{ id: "T-1", project: "pay", title: "x", status: "review", updatedAt: "2026-10-06T09:00:00Z" } as Task],
+      gates: [
+        { id: 1, project: "pay", taskId: "S1", gate: "spec", mode: "human", status: "waiting", createdAt: "2026-10-06T08:00:00Z" } as SdlcGateRecord,
+        { id: 2, project: "pay", taskId: "S1-T1", gate: "merge", mode: "human", status: "waiting", createdAt: "2026-10-06T07:00:00Z" } as SdlcGateRecord,
+      ],
+      assignedTasks: [{ id: "T-9", project: "pay", title: "y", status: "todo", updatedAt: "2026-10-06T06:00:00Z", agent: { machineId: "m", profileId: "p", by: "lan", at: "x", hold: { code: "offline" } } } as unknown as Task],
+      alerts: [{ id: 3, project: "pay", severity: "low", openedAt: "2026-10-06T05:00:00Z", resolvedAt: null, ackedBy: null } as HubAlert],
+    });
+    const shape = (role: Parameters<typeof groupInbox>[1]) => groupInbox(items, role).map((g) => [g.group, g.items.map((i) => i.key.split(":").slice(0, 2).join(":"))]);
+    assert.deepEqual(shape("lead"), [
+      ["decide", ["gate:1"]],
+      ["agent", ["agentHold:T-9"]],
+      ["review", ["review:pay", "gate:2"]],
+      ["watch", ["alert:3"]],
+    ]);
+    assert.deepEqual(shape("reviewer").map(([g]) => g), ["review", "decide", "agent", "watch"]);
+    assert.deepEqual(shape("member").map(([g]) => g), ["agent", "review", "decide", "watch"]);
+    assert.deepEqual(groupInbox([], "lead"), [], "no empty group");
+  });
+
+  it("takes the highest role across the scope's projects, a custom grant by what it allows", () => {
+    const hoa: Actor = { name: "hoa", role: "member", access: { projects: { pay: "reviewer", app: "viewer", ops: { permissions: ["view", "taskWork"] } } } };
+    const on = (...owners: Array<string | null>) => highestRole(owners.map((o) => permissionsOn(hoa, o)));
+    assert.equal(on("pay", "app"), "reviewer");
+    assert.equal(on("app"), "viewer");
+    assert.equal(on("ops"), "member");
+    assert.equal(on("gone"), "viewer");
+    assert.equal(roleOfPermissions(new Set<Permission>(["view", "projectSettings"])), "lead");
+    assert.equal(highestRole([permissionsOn({ name: "admin", role: "admin" }, null)]), "lead");
   });
 });
