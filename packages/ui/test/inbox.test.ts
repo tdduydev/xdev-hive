@@ -7,6 +7,11 @@ const run = (over: Partial<AgentRun>): AgentRun => ({ id: "R-1", project: "demo"
 const memory = (over: Partial<Memory>): Memory => ({ id: 1, project: "demo", kind: "decision", content: "x", author: "a", status: "approved", createdAt: "2026-09-30T09:00:00Z", conflictsWith: [], ...over }) as Memory;
 
 describe("inbox", () => {
+  it("keeps service proposals in their service and hub-only proposals in the shared scope", () => {
+    const action = (project: string): ChatAction => ({ id: project === "*" ? 1 : 2, project, threadId: 4, status: "proposed", createdAt: "2026-10-07T00:00:00Z" }) as ChatAction;
+    const items = buildInbox({ leader: [action("*"), action("pay")] });
+    assert.deepEqual(items.map((item) => inboxProject(item)), [null, "pay"]);
+  });
   it("lists a failed pipeline once per merge request, from its newest run", () => {
     const items = buildInbox({
       runs: [

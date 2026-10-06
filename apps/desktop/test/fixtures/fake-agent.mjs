@@ -231,7 +231,7 @@ switch (process.env.FAKE_MODE ?? "ok") {
       // The files it was given to read, as it finds them while it runs.
       const at = process.argv.indexOf("--add-dir");
       const dir = at >= 0 ? process.argv[at + 1] : null;
-      const files = dir && existsSync(dir) ? Object.fromEntries(readdirSync(dir).map((n) => [n, readFileSync(join(dir, n), "utf8")])) : null;
+      const files = dir && existsSync(dir) ? Object.fromEntries(readdirSync(dir, { withFileTypes: true }).filter((entry) => entry.isFile()).map((entry) => [entry.name, readFileSync(join(dir, entry.name), "utf8")])) : null;
       if (process.env.FAKE_RECORD) {
         appendFileSync(
           process.env.FAKE_RECORD,

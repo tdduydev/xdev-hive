@@ -1,13 +1,13 @@
 // Small helpers of the Chat page: which machines can hold a thread, following a reply being written, and a
 // leader's reply turned into text with links to the tasks and runs it names.
-import type { ChatAction, ChatMessage, Machine, ReportedProfile } from "@xdev-hive/core";
+import { HUB_SCOPE, type ChatAction, type ChatMessage, type Machine, type ReportedProfile } from "@xdev-hive/core";
 
 /** A Claude profile that can write a reply now: the hub asks the same (chat.send). */
 export const chatProfile = (p: ReportedProfile): boolean => p.kind === "claude" && p.enabled && p.loggedIn !== false;
 
 /** Machines a new thread of `project` can run on: online, taking runs from the hub, with its repo and a Claude plan. */
 export function chatMachines(machines: Machine[], project: string): Machine[] {
-  return machines.filter((m) => m.online && m.acceptsRuns && m.projects.includes(project) && m.profiles.some(chatProfile));
+  return machines.filter((m) => m.online && m.acceptsRuns && (project === HUB_SCOPE || m.projects.includes(project)) && m.profiles.some(chatProfile));
 }
 
 /**

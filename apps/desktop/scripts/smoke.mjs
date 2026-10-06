@@ -677,9 +677,27 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
     });
     await shoot("hub-chat-new", "chat", 3000, {
       HIVE_SMOKE_CLICK: "[data-chat-new]",
-      HIVE_SMOKE_EXPECT: '[data-open-web] && [data-chat-here="off"] button && a[href="#/agents"]',
+      HIVE_SMOKE_EXPECT: '[data-open-web] && [data-chat-here="off"] button && a[href="#/agents"] && #chat-project option[value="*"]',
       HIVE_SMOKE_ABSENT: absent,
     });
+    // Roadmap 37b: the app reads the hub-wide thread too; RPC substitutes for the machine's leader.
+    if (box) {
+      const sent = await api.call("chat.send", { project: "*", machineId: box.id, text: "Điều phối mọi service" }, seeder);
+      const boxActor = { name: "runner.box", role: "agent" };
+      const request = (await api.call("chat.poll", {}, boxActor)).find((r) => r.replyId === sent.reply.id);
+      if (!request?.grant) failures.push("hub-wide chat: no reply grant");
+      else {
+        const leader = new HubBackend(`http://127.0.0.1:${port}`, request.grant);
+        await leader.call("chat.propose", { action: { kind: "task.create", project: "demo", id: "HUB-37B", title: "Việc từ leader toàn hub", dependsOn: [] }, reason: "Điều phối service" }, boxActor);
+        await leader.call("chat.propose", { action: { kind: "machine.profile", machineId: box.id, profileId: "claude-1", enabled: true }, reason: "Gói của máy" }, boxActor);
+        await api.call("chat.finish", { replyId: sent.reply.id, status: "done", text: "Đề xuất theo service và máy." }, boxActor);
+        for (const phone of [false, true]) await shoot(`hub-chat-all${phone ? "-mobile" : ""}`, `chat?thread=${sent.thread.id}`, 3000, {
+          ...(phone ? { HIVE_SMOKE_SIZE: "390x844" } : {}),
+          HIVE_SMOKE_EXPECT: `[data-chat-thread="${sent.thread.id}"] [data-action-project="demo"] && [data-action-project="*"]`,
+          HIVE_SMOKE_ASSERT: '/Toàn hub|Whole hub/.test(document.body.innerText) && document.documentElement.scrollWidth <= window.innerWidth',
+        });
+      }
+    }
     // A machine with no project: the Board says where to add one.
     writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), projects: [] }, null, 2));
     await shoot("hub-board-empty", "tasks", 3000, { HIVE_SMOKE_EXPECT: '[data-board-empty] a[href="#/setup"]' });

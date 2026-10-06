@@ -2,13 +2,22 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { may, type Me } from "@xdev-hive/core";
 import { hasKey, translate } from "#ui/i18n/translate.ts";
-import { canClearCooldown, canCloseTask, canEditChatSettings, canEditDependencies, contextProjects } from "#ui/lib/permission-controls.ts";
+import { canClearCooldown, canCloseTask, canEditChatSettings, canUseHubChat, canEditDependencies, contextProjects } from "#ui/lib/permission-controls.ts";
 
 const account = (projects: NonNullable<Me["access"]>["projects"], role: Me["role"] = "member"): Me => ({
   name: "person", role, mode: "hub", access: { projects },
 });
 
 describe("hub permission controls", () => {
+  it("shows whole-hub chat and its settings only to unrestricted hub admins", () => {
+    const admin: Me = { name: "admin", role: "admin", mode: "hub" };
+    assert.equal(canUseHubChat(admin), true);
+    assert.equal(canEditChatSettings(admin, "*"), true);
+    for (const person of [account({ app: "lead" }), account({ app: "lead" }, "admin"), { ...admin, role: "member" as const }, { ...admin, mode: "local" as const }]) {
+      assert.equal(canUseHubChat(person), false);
+      assert.equal(canEditChatSettings(person, "*"), false);
+    }
+  });
   it("1. lets task managers edit dependencies even without run dispatch, but not dispatchers without task management", () => {
     assert.equal(canEditDependencies(account({ app: { permissions: ["view", "taskManage"] } }), "app"), true);
     assert.equal(canEditDependencies(account({ app: { permissions: ["view", "runDispatch"] } }), "app"), false);
