@@ -258,6 +258,27 @@ export interface MemoryReview {
 export const TASK_STATUSES = ["todo", "doing", "review", "done", "blocked"] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
+/**
+ * The agent a task is *for* (roadmap 50), apart from `owner`, which says who took it: the hub queues the run itself as
+ * soon as that machine has a free place and the task waits for nothing.
+ */
+export interface TaskAgent {
+  /** The machine's hub id (`runner.<machine>@<account>`), as machines.list gives it. */
+  machineId: string;
+  machine: string;
+  /** null: any plan of that machine, picked when the run goes out, as "Gửi cho máy" does. */
+  profileId: string | null;
+  /** Place in that machine's queue; the smallest goes first. A fraction keeps a dragged task between two others. */
+  order: number;
+  by: string;
+  at: string;
+  /**
+   * Why the hub stopped giving this task to its agent (a run of it failed, a plan it was pinned to is gone). While it
+   * is set nothing goes out; assigning the task again clears it (the *Chạy lại* button).
+   */
+  hold: RunRequestError | null;
+}
+
 export interface Task {
   id: string;
   project: string;
@@ -275,6 +296,15 @@ export interface Task {
   depProjects?: Record<string, string>;
   /** Open dependencies in projects the reader cannot see: left out of the lists above, counted here. */
   waitingHidden?: number;
+  /** The agent it is assigned to (roadmap 50); null: nobody, and the task behaves exactly as before. */
+  agent: TaskAgent | null;
+}
+
+/** One line of an agent's queue (tasks.agentQueue): the task and why the hub has not sent it out yet. */
+export interface TaskAgentQueueItem {
+  task: Task;
+  /** null: nothing holds it back, it only waits its turn (or just went out). */
+  waiting: RunRequestError | null;
 }
 
 /** installed: nothing to do · missing: the app can install it · outdated: installed for another build · manual: needs a hand edit. */
@@ -984,6 +1014,7 @@ export interface ChatFile {
 export const CHAT_ACTION_KINDS = [
   "task.create",
   "task.update",
+  "task.assign",
   "run.dispatch",
   "run.cancel",
   "run.merge",
