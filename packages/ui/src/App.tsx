@@ -44,12 +44,13 @@ import { DevicePage } from "./pages/Device.tsx";
 import { DocsPage } from "./pages/Docs.tsx";
 import { FeaturesPage } from "./pages/Features.tsx";
 import { MemoryPage } from "./pages/Memory.tsx";
+import { KnowledgePage } from "#ui/pages/Sections.tsx";
 import { OverviewPage } from "./pages/Overview.tsx";
 import { ProjectsPage } from "./pages/Projects.tsx";
 import { ProposalsPage } from "./pages/Proposals.tsx";
 import { AdminPage, MachinesAgentsPage, RunsWorkPage, SettingsPage } from "./pages/Sections.tsx";
 import { SetupPage } from "./pages/Setup.tsx";
-import { SkillsPage } from "./pages/Skills.tsx";
+
 import { SpecsPage } from "./pages/Specs.tsx";
 import { SystemsPage } from "./pages/Systems.tsx";
 import { TaskWorkPage } from "./pages/Tasks.tsx";
@@ -89,15 +90,15 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
   chat: { label: "nav.chat", sub: "navSub.chat", icon: MessageSquare, render: () => <ChatPage /> },
   // On the web with Đợt chạy as a tab (roadmap 49b); the desktop app's own runs as they were.
   runs: { label: "nav.runs", sub: "navSub.runs", icon: Activity, render: () => <RunsWorkPage /> },
-  docs: { label: "nav.docs", sub: "navSub.docs", icon: FileText, render: () => <DocsPage /> },
+  docs: { label: "nav.docs", sub: "navSub.docs", icon: FileText, render: () => <KnowledgePage page="docs" /> },
   // Not in the sidebar: a doc's reading view (#/read?doc=…), under Tài liệu.
   read: { label: "nav.read", sub: "navSub.read", icon: BookOpen, render: () => <DocReaderPage /> },
   // The desktop app's Spec page; on the web Tính năng took its place (roadmap 49d) and #/specs goes there.
   specs: { label: "nav.specs", sub: "navSub.specs", icon: ListChecks, render: () => <SpecsPage /> },
   features: { label: "nav.features", sub: "navSub.features", icon: ListChecks, render: () => <FeaturesPage /> },
-  skills: { label: "nav.skills", sub: "navSub.skills", icon: WandSparkles, render: () => <SkillsPage /> },
+  skills: { label: "nav.skills", sub: "navSub.skills", icon: WandSparkles, render: () => <KnowledgePage page="skills" /> },
   proposals: { label: "nav.proposals", sub: "navSub.proposals", icon: GitPullRequestArrow, render: () => <ProposalsPage /> },
-  memory: { label: "nav.memory", sub: "navSub.memory", icon: Brain, render: () => <MemoryPage /> },
+  memory: { label: "nav.memory", sub: "navSub.memory", icon: Brain, render: () => <KnowledgePage page="memory" /> },
   // The desktop app opens it on the Board of this machine (roadmap 39f); the web keeps the shared Kanban.
   tasks: { label: "nav.tasks", sub: "navSub.tasks", icon: ListTodo, render: () => <TaskWorkPage /> },
   graph: { label: "nav.graph", sub: "navSub.graph", icon: Network, render: () => <Suspense fallback={null}><GraphPage /></Suspense> },

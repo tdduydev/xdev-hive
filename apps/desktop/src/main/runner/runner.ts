@@ -1,3 +1,4 @@
+import { MemoryCleanupWorker } from "#desktop/main/runner/memory-cleanup.ts";
 // Runs coding-agent CLIs headless against Hive tasks and rotates subscriptions when one runs out of quota.
 //
 //   queued ──pick profile──▶ running ──exit 0──▶ succeeded ──(reviewAfter)──▶ review run on another vendor
@@ -384,6 +385,7 @@ export class Runner {
   readonly #chats: ChatWorker;
   /** Writes the Docs writing assistant's asks (see assist.ts). */
   readonly #assists: AssistWorker;
+  readonly #memoryCleanup: MemoryCleanupWorker;
   #assistTimer: NodeJS.Timeout | undefined;
   /** The hub does not know chat.poll yet: heartbeats bring the chat replies instead. */
   #chatPollOff = false;
@@ -473,6 +475,22 @@ export class Runner {
       },
       { dataDir: opts.dataDir, progressMs: this.#opts.chatProgressMs },
     );
+    this.#memoryCleanup = new MemoryCleanupWorker(
+      {
+        backend: () => this.#host.backend(),
+        actor: () => this.#runnerActor(),
+        profiles: () => this.#host.profiles(),
+        projects: () => this.#host.projects(),
+        machine: () => this.#host.machine(),
+        env: () => this.#host.env(),
+        unavailable: (id) => {
+          const p = this.profileStatuses().find((x) => x.id === id);
+          const profile = this.#host.profiles().find((x) => x.id === id);
+          return !p || p.cliPath === null || this.#assists.busy || this.store.running() >= this.#host.settings().maxParallel || (!!profile && p.running >= profile.maxConcurrent) || p.login?.loggedIn === false || (p.cooldownUntil !== null && p.cooldownUntil > this.#iso()) || (!!profile && usageStop(profile, p.usage) !== null);
+        },
+      },
+      opts.dataDir,
+    );
     mkdirSync(path.join(opts.dataDir, "runs"), { recursive: true });
   }
 
@@ -529,7 +547,8 @@ export class Runner {
     for (const id of this.#live.keys()) this.cancel(id);
     this.#chats.stop();
     this.#assists.stop();
-    await Promise.allSettled([...this.#inflight, this.#chats.settle(), this.#assists.settle(), this.settleSyncs()]);
+    this.#memoryCleanup.stop();
+    await Promise.allSettled([...this.#inflight, this.#chats.settle(), this.#assists.settle(), this.#memoryCleanup.settle(), this.settleSyncs()]);
   }
 
   /** Resolves once nothing is running and no queued run can start. For tests and graceful quit. */
@@ -765,7 +784,7 @@ export class Runner {
       const resting = cd && new Date(cd.until) > now ? cd : null;
       return {
         ...profile,
-        running: s.running,
+        running: s.running + (this.#memoryCleanup?.profileId === profile.id ? 1 : 0),
         lastUsedAt: s.lastUsedAt,
         stats: s.stats,
         tokens: tokenWindows(this.store.profileTokens(profile.id, new Date(now.getTime() - 30 * 86_400_000).toISOString()), now),
@@ -998,9 +1017,11 @@ export class Runner {
    * Takes an ask of the Docs writing assistant: from the hub while the user lets it take runs, else from this app's own
    * database. True when it took one.
    */
-  pollAssists(): Promise<boolean> {
+  async pollAssists(): Promise<boolean> {
     if (this.#host.mode() === "hub" && !this.#host.settings().acceptHubRuns) return Promise.resolve(false);
-    return this.#assists.poll();
+    const took = this.#memoryCleanup.profileId ? false : await this.#assists.poll();
+    if (this.#host.mode() === "hub") await this.#memoryCleanup.poll().catch(() => false);
+    return took;
   }
 
   /** Resolves once the ask being written has ended. For tests. */
@@ -1248,7 +1269,7 @@ export class Runner {
             this.#waiting.set(run.id, capped);
             continue;
           }
-          if (this.store.running() >= this.#host.settings().maxParallel) {
+          if (this.store.running() + (this.#memoryCleanup.profileId ? 1 : 0) >= this.#host.settings().maxParallel) {
             this.#waiting.set(run.id, tr("runNote.waitingParallel"));
             continue;
           }
@@ -1418,7 +1439,7 @@ export class Runner {
       const s = this.store.profileStats(profile.id);
       return {
         profile,
-        running: s.running,
+        running: s.running + (this.#memoryCleanup?.profileId === profile.id ? 1 : 0),
         lastUsedAt: s.lastUsedAt,
         cooldownUntil: this.#cooldownOf(profile)?.until ?? null,
         installed: !this.#held.has(profile.kind) && resolveBin(expandHome(profile.bin), pathEnv) !== null,

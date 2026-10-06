@@ -62,5 +62,6 @@ export async function seed(base, admin) {
     body: JSON.stringify({ method: "memory.write", input: { project: "demo", kind: "convention", content: "Chạy npm ci trước khi test.", files: [] } }),
   });
   if (!asAgent.ok) throw new Error(`seed agent memory: ${asAgent.status}`);
+  await rpc(admin, "memory.setCleanup", { project: "payment", enabled: true });
   return { people, proposals, memory };
 }

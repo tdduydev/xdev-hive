@@ -1,3 +1,4 @@
+import { knowledgeHref } from "#ui/lib/knowledge.ts";
 // Hôm nay (docs/design/2026-09-redesign, xDev Hive Client): a list of what needs the person on the left, the
 // selected item with its actions on the right. J / K move, ↵ runs the first button, E marks it seen.
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -151,6 +152,7 @@ function titleOf(item: InboxItem, t: TFunction): string {
       const jobs = item.run.ciFix?.jobs.map((j) => j.name).join(", ");
       return jobs ? t("inbox.ci.title", { mr, jobs }) : t("inbox.ci.titleNoJobs", { mr });
     }
+    case "cleanup": return firstLine(item.proposal.reason);
     case "proposal":
       return firstLine(item.proposal.reason) || item.proposal.docKey;
     case "review":
@@ -181,6 +183,7 @@ function metaOf(item: InboxItem, t: TFunction): string {
       const live = item.run.status === "running" || item.run.status === "queued";
       return live ? t("inbox.ci.fixing", { profile: item.run.profileId ?? "agent", n: f.n, max: f.max }) : t("inbox.ci.fixed", { n: f.n, max: f.max });
     }
+    case "cleanup": return t("cleanup.source", { id: item.proposal.runId });
     case "proposal":
       return t("inbox.proposal.meta", { author: item.proposal.author, from: item.proposal.baseVersion, to: item.proposal.baseVersion + 1 });
     case "review": {
@@ -531,6 +534,11 @@ function Detail({
       ];
       break;
     }
+    case "cleanup": {
+      body = <><P>{item.proposal.reason}</P><P>{t("cleanup.reviewHint")}</P></>;
+      actions = [{ label: t("knowledge.pending"), kind: "primary", run: go("#/memory?tab=pending") }, seenAction()];
+      break;
+    }
     case "proposal": {
       const p = item.proposal;
       const manage = allow(docOwner(p.docKey), approvalOf(p.docKey));
@@ -554,7 +562,7 @@ function Detail({
                 return t("inbox.proposal.approved", { doc: p.docKey, version: p.baseVersion + 1 });
               }),
             },
-            { label: t("inbox.proposal.openDoc"), kind: "secondary", run: go(`#/docs?doc=${encodeURIComponent(p.docKey)}`) },
+            { label: t("inbox.proposal.openDoc"), kind: "secondary", run: go(knowledgeHref(p.docKey)) },
             {
               label: t("inbox.proposal.reject"),
               kind: "ghost",
@@ -564,7 +572,7 @@ function Detail({
               }),
             },
           ]
-        : [{ label: t("inbox.proposal.openDoc"), kind: "secondary", run: go(`#/docs?doc=${encodeURIComponent(p.docKey)}`) }, seenAction()];
+        : [{ label: t("inbox.proposal.openDoc"), kind: "secondary", run: go(knowledgeHref(p.docKey)) }, seenAction()];
       break;
     }
     case "review": {

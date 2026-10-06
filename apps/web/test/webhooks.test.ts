@@ -69,7 +69,7 @@ describe("webhook messages", () => {
       project: "app",
       proposal: { id: 1, docKey: "project/app/agents", baseVersion: 1, content: "", reason: "Thêm lệnh test", author: "claude@duy", status: "pending", reviewer: null, reviewNote: null, decidedAt: null, source: null, createdAt: "" },
     };
-    assert.deepEqual(eventMessage(event, "vi"), { text: "Đề xuất sửa project/app/agents (app) từ claude@duy: Thêm lệnh test", page: "#/proposals" });
+    assert.deepEqual(eventMessage(event, "vi"), { text: "Đề xuất sửa project/app/agents (app) từ claude@duy: Thêm lệnh test", page: "#/proposals?doc=project%2Fapp%2Fagents" });
     assert.match(eventMessage(event, "en").text, /^Proposed change to project\/app\/agents/);
     const link = { title: "Open", url: "https://hive.example.com/#/proposals" };
     assert.deepEqual(webhookPayload("slack", "hi", link), { text: "hi\n<https://hive.example.com/#/proposals|Open>" });
@@ -114,7 +114,7 @@ describe("webhook dispatch", () => {
     await settle();
 
     assert.deepEqual(received.map((r) => r.path), ["/all", "/all"]);
-    assert.match(received[0]!.body.text, /^Đề xuất sửa project\/app\/agents \(app\) từ claude@duy: Thêm\n<https:\/\/hive\.example\.com\/#\/proposals\|Mở trong hub>$/);
+    assert.match(received[0]!.body.text, /^Đề xuất sửa project\/app\/agents \(app\) từ claude@duy: Thêm\n<https:\/\/hive\.example\.com\/#\/proposals\?doc=project%2Fapp%2Fagents\|Mở trong hub>$/);
     assert.match(received[1]!.body.text, /^Memory chờ duyệt \(app\) từ claude@duy: Node 26/);
     assert.equal(store.list().find((w) => w.id === all.id)!.lastError, null);
   });

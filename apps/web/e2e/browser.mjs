@@ -1728,6 +1728,65 @@ async function main() {
     await tab.click('[data-task-view="kanban"]');
   });
 
+  await step("knowledge-pending", async () => {
+    const tab = (current = tabs.admin);
+    const teamKey = "org/skills/knowledge-check";
+    const ownKey = "project/payment/skills/knowledge-check";
+    const skill = (description) => `---\nname: knowledge-check\ndescription: ${description}\n---\n\nReview knowledge.`;
+    await rpc("docs.save", { key: teamKey, content: skill("When reviewing team knowledge"), baseVersion: 0 });
+    await rpc("docs.save", { key: ownKey, content: skill("When reviewing payment knowledge"), baseVersion: 0 });
+    const skillProposal = await rpc("proposals.create", { docKey: ownKey, baseVersion: 1, content: skill("When reviewing updated payment knowledge"), reason: "Knowledge skill proposal" }, people.minh.token);
+    const doc = await rpc("docs.get", { key: "project/payment/huong-dan" });
+    const docProposal = await rpc("proposals.create", { docKey: doc.key, baseVersion: doc.version, content: doc.content + "\nKnowledge update.", reason: "Knowledge document proposal" }, people.minh.token);
+    await tab.go("docs?tab=pending");
+    await tab.waitFor("document pending tab", () => document.body.innerText.includes("Knowledge document proposal"));
+    expect(!await tab.eval(() => document.body.innerText.includes("Knowledge skill proposal")), "docs pending excludes skills");
+    if (mobile) await tab.click(`[data-mobile-proposal="${docProposal.id}"]`);
+    await tab.click(`[data-proposal-card="${docProposal.id}"] button`, "Duyệt");
+    await until("document approved", async () => (await rpc("proposals.list", {})).find((p) => p.id === docProposal.id)?.status === "approved");
+    await tab.go(`proposals?doc=${encodeURIComponent(ownKey)}`);
+    await tab.waitFor("legacy skill redirect", () => location.hash.startsWith("#/skills?tab=pending") && document.body.innerText.includes("Knowledge skill proposal"));
+    expect(!await tab.eval(() => document.body.innerText.includes("Knowledge document proposal")), "skills pending excludes documents");
+    if (mobile) await tab.click(`[data-mobile-proposal="${skillProposal.id}"]`);
+    await tab.click(`[data-proposal-card="${skillProposal.id}"] button`, "Từ chối");
+    await until("skill rejected", async () => (await rpc("proposals.list", {})).find((p) => p.id === skillProposal.id)?.status === "rejected");
+    await tab.go("skills");
+    await tab.click('[role="option"]', "knowledge-check");
+    await tab.waitFor("skill application and modification metadata", () => document.body.innerText.includes("Lúc áp dụng") && document.body.innerText.includes("Lần sửa cuối"));
+    await tab.shot(`${String(n).padStart(2, "0")}-knowledge-skill`);
+
+    const a = await rpc("memory.write", { project: "payment", kind: "convention", content: "Knowledge fixture: use package aliases" });
+    const b = await rpc("memory.write", { project: "payment", kind: "convention", content: "Knowledge fixture: use aliases for imports" });
+    const machineRpc = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.knowledge-check" }, body: JSON.stringify({ method, input }) });
+      const j = await r.json(); if (j.error) throw new Error(j.error.message); return j.result;
+    };
+    await machineRpc("machines.heartbeat", { machine: "knowledge-check", instance: "49f49f49", projects: ["payment"], acceptsRuns: true });
+    let run = null;
+    const deadline = Date.now() + 65_000;
+    while (!run && Date.now() < deadline) { run = await machineRpc("memory.cleanupTake", { projects: ["payment"] }); if (!run) await sleep(500); }
+    expect(run, "weekly hub scheduler queued a cleanup run");
+    const read = await machineRpc("memory.cleanupRead", { id: run.id });
+    expect(read.entries.every((m) => m.project === "payment"), "cleanup MCP snapshot contains only project memory");
+    await machineRpc("memory.cleanupFinish", { id: run.id, suggestions: [{ kind: "merge", ids: [a.id, b.id], content: "Knowledge fixture: use package aliases for imports", reason: "Knowledge memory merge" }] });
+    await tab.go("today");
+    await tab.waitFor("cleanup gathered in Today", () => document.body.innerText.includes("Knowledge memory merge"));
+    await tab.go("memory?tab=pending");
+    await tab.waitFor("memory cleanup proposal", () => document.body.innerText.includes("Knowledge memory merge"));
+    await tab.shot(`${String(n).padStart(2, "0")}-knowledge-memory-pending`);
+    await tab.click("[data-cleanup-approve]");
+    await until("merge approved", async () => (await rpc("memory.cleanupProposals", { project: "payment" })).find((p) => p.reason === "Knowledge memory merge")?.status === "approved");
+    const entries = await rpc("memory.list", { project: "payment", limit: 500 });
+    expect(entries.find((m) => m.id === a.id)?.supersededBy === entries.find((m) => m.id === b.id)?.supersededBy, "original facts point to one merged fact");
+    await tab.go("settings?tab=policy");
+    await tab.waitFor("project cleanup setting", () => document.querySelector('[data-cleanup-project="payment"]'));
+    await tab.click('[data-cleanup-project="payment"]');
+    await until("cleanup disabled", async () => (await rpc("memory.cleanupSettings", { project: "payment" }))[0]?.enabled === false);
+    await tab.shot(`${String(n).padStart(2, "0")}-knowledge-cleanup-settings`);
+    const layout = await tab.eval(() => ({ width: innerWidth, page: document.documentElement.scrollWidth, main: document.querySelector("main").clientWidth, content: document.querySelector("main").scrollWidth }));
+    expect(layout.page <= layout.width + 1 && layout.content <= layout.main + 1, `knowledge layout overflow: ${JSON.stringify(layout)}`);
+  });
+
   if (mobile) {
     current = tabs.admin;
     await tableCardsChecks({ tab: current, rpc, step, expect });
