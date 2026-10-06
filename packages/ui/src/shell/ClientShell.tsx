@@ -306,7 +306,7 @@ function ClientFrame({
         </div>
       ) : null}
       <div className={cn("flex shrink-0 items-center gap-1 border-t border-line-subtle px-2 py-2", noDrag)}>
-        <AccountMenu client={client} me={me} onSignOut={onSignOut} subtitle={account} />
+        <AccountMenu client={client} me={me} onSignOut={onSignOut} subtitle={account} onNavigate={() => narrow && setSidebar(false)} />
         <button
           type="button"
           onClick={() => toggleTheme(theme)}
