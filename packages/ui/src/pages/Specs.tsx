@@ -46,6 +46,7 @@ export function SpecsPage() {
   const { client, scope, setScope } = useHive();
   const t = useT();
   const mobileDetail = useMobileDetail("feature");
+  const newWork = useMobileDetail("newWork").value;
   // Features are a project's: the team-wide scope has none.
   const list = useQuery(async () => (scope.kind === "shared" ? [] : client.call("specs.list", scopeFilter(scope))), [client, scopeKey(scope)]);
   const [linkProject, clearLink] = useHashParam("project");
@@ -75,13 +76,13 @@ export function SpecsPage() {
   // Roadmap 20d: a new feature's spec written by an agent, in a project's scope (the run needs one repo).
   const allow = useCan();
   const newProject = scope.kind === "project" && allow(scope.project, "taskManage") && allow(scope.project, "runDispatch") ? scope.project : null;
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(() => new URLSearchParams(window.location.hash.split("?")[1]).get("feature") === "new");
   const empty = emptyState({ loaded: Boolean(list.data), total: features.length, shown: shown.length, query: needle });
   // A feature belongs to one repo, so the team-wide scope can never have any: say that instead of offering to write one.
   const noScope = scope.kind === "shared";
   useEffect(() => {
-    if (mobileDetail.mobile) setCreating(mobileDetail.value === "new");
-  }, [mobileDetail.mobile, mobileDetail.value]);
+    setCreating(mobileDetail.value === "new");
+  }, [mobileDetail.mobile, mobileDetail.value, newWork]);
 
   const pick = (f: SpecFeature) => {
     setCreating(false);
@@ -147,7 +148,7 @@ export function SpecsPage() {
           <>
             <DetailHeader scope={newProject} title={t("specs.run.newTitle")} />
             <DetailBody>
-              <SpecRun project={newProject} step="specify" feature={null} onSent={() => setCreating(false)} />
+              <SpecRun key={`${newWork ?? "draft"}:${newProject}`} project={newProject} step="specify" feature={null} onSent={() => setCreating(false)} />
               {/* New features have no folder until the specify run pushed one: their flows show here meanwhile. */}
               <FlowList project={newProject} openOnly />
             </DetailBody>

@@ -84,6 +84,7 @@ export function ChatPage() {
   useEffect(() => setBusy((threads.data ?? []).some((th) => th.busy)), [threads.data]);
   // The open thread is in the address (#/chat?thread=12): a link to it opens it, and so does coming back to the page.
   const mobileDetail = useMobileDetail("thread");
+  const newWork = useMobileDetail("newWork").value;
   const [open, setOpenState] = useState<Open>(() => threadOf(mobileDetail.value));
   const setOpen = useCallback((next: Open) => {
     if (mobileDetail.mobile) mobileDetail.navigate(next?.kind === "thread" ? String(next.id) : next?.kind === "new" ? "new" : null);
@@ -99,6 +100,10 @@ export function ChatPage() {
   useEffect(() => {
     if (shownBefore.current !== shown) (shownBefore.current = shown), setOpen(null);
   }, [shown, setOpen]);
+  // A fresh question must replace an already open draft, including when Chat stays mounted.
+  useEffect(() => {
+    if (newWork) setOpenState({ kind: "new" });
+  }, [newWork, shown]);
   // A system's chats are each with one of its projects' leaders.
   const managed = (project ? [project] : scope.kind === "system" ? scope.projects : projects).filter((p) => allow(p, "chatUse"));
   const [guideOpen, setGuideOpen] = useState(false);
@@ -143,6 +148,7 @@ export function ChatPage() {
         <div className={cn("min-w-0", !open && "hidden lg:block")}>
           {open?.kind === "new" ? (
             <NewThread
+              key={`${newWork ?? "draft"}:${project}`}
               projects={managed}
               defaultProject={project}
               onBack={() => setOpen(null)}
@@ -215,7 +221,8 @@ function NewThread({ projects, defaultProject, onBack, onStarted }: { projects: 
   const [touched, setTouched] = useState(false);
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState<ChatEffort | "">("");
-  const [text, setText] = useState("");
+  const [text, setText] = useState(() => sessionStorage.getItem("hive-new-work-question") ?? "");
+  useEffect(() => { sessionStorage.removeItem("hive-new-work-question"); }, []);
   const action = useAction();
   const saving = useAction();
   const enabling = useAction();

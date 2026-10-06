@@ -5144,10 +5144,13 @@ export class SqliteHive implements HiveBackend {
         this.#tx(() => {
           if (this.#getTask(input.id)) throw new HiveError("conflict", `Task ${input.id} already exists.`, { key: "errors.taskExists", vars: { id: input.id } });
           const deps = this.#checkDeps(input.id, input.project, input.dependsOn, actor);
-          db.prepare("INSERT INTO tasks(id, project, title, updated_at) VALUES (?, ?, ?, ?)").run(
+          // Save the initial brief with creation: a task manager need not have taskWork to describe new work.
+          if (input.note) assertNoHidden(input.note, "Note");
+          db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)").run(
             input.id,
             input.project,
             input.title,
+            input.note === undefined ? null : clean(input.note),
             this.#now(),
           );
           this.#setDeps(input.id, deps);
