@@ -215,7 +215,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **38i. run-skills-rules** (từ phần đo của 38a, 3/10: với `--setting-sources user`, Claude Code không nạp `.claude/skills` và `.claude/rules` của worktree, chỉ nạp CLAUDE.md và các file nó import): prompt của run liệt kê skill của dự án và rules theo đường dẫn, lấy từ `renderContext`, cho mọi CLI; vẫn không nạp settings của repo.
 
 - **39. client-ux** (hỏi 3/10: "client làm giao diện lại dễ sử dụng hơn đi"; chọn: sửa các màn hiện có và thêm luồng *Bắt đầu*, giữ thiết kế của 22; làm cả cài máy và dự án mới, Agent và quota, Cài đặt kết nối, Lượt chạy; làm cả chế độ cục bộ). Mỗi bước phát hành kèm ảnh trước và sau. Spec: [docs/specs/39-client-ux.md](specs/39-client-ux.md). Tách:
-  - [ ] **39a. setup-guide**: trang *Bắt đầu* cho máy mới (kết nối bằng trình duyệt, cài công cụ còn thiếu, thêm dự án và cài hết, đăng nhập gói, bật nhận việc); *Hôm nay* nhắc "còn n bước" tới khi xong.
+  - [x] **39a. setup-guide**: trang *Bắt đầu* cho máy mới (kết nối bằng trình duyệt, cài công cụ còn thiếu, thêm dự án và cài hết, đăng nhập gói, bật nhận việc); *Hôm nay* nhắc "còn n bước" tới khi xong.
   - [x] **39b. projects-cards**: *Dự án & công cụ* gom theo hệ thống → dự án, mỗi dự án một thẻ gập "Sẵn sàng / Thiếu n mục" có *Cài hết*; công cụ đã sẵn sàng gộp một dòng; tên file và lệnh vào *Chi tiết*.
   - [x] **39c. agents-inline**: *Agent và quota* mỗi gói một dòng có nút ngay tại chỗ (Đăng nhập, Bật/Tắt, Nâng cấp CLI, …); câu "chưa có số liệu" chỉ một chú thích; gói tắt gập lại; *Thêm gói* lên đầu.
     - Xong 3/10 (claude-1 trên hc-duytd20-linux, run R-a494ff): mỗi gói một dòng với trạng thái gộp (`profileState`) và nút ngay trong dòng (Đăng nhập, Bật/Tắt, Nâng cấp CLI, Hết nghỉ, menu …: Sửa, Mở CLI, Xoá); gói tắt gập vào "n gói đang tắt"; câu "chưa có số liệu" thành một chú thích; giải thích ngưỡng vào (?) ở cột; *Thêm gói* lên đầu. Smoke: `agents`, `agents-off`, `agents-detail`, `agents-login`.
@@ -266,7 +266,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **49d. features-page**: trang *Tính năng* thay *Spec*: bảng theo bước, tab Kiểm thử và Lịch sử chốt, nút chốt cạnh nội dung.
   - [x] **49e. runs-review**: *Agent đang chạy* thay *Lượt chạy* và *Đợt chạy*, trạng thái *Chờ người*, trang run đọc bàn giao trước, form giao run gập *Tuỳ chọn*.
   - [x] **49f. knowledge**: tab *Chờ duyệt* trong Tài liệu và Skill thay trang *Đề xuất*, phạm vi của skill, dọn memory định kỳ bằng đề xuất.
-  - [ ] **49g. today-roles**: *Hôm nay* nhóm theo việc, thứ tự theo vai.
+  - [x] **49g. today-roles**: *Hôm nay* nhóm theo việc, thứ tự theo vai.
   - [ ] **49h. mobile-pass** (hỏi 6/10: "dùng skill ux-ui-pro-max để thiết kế giao diện trên mobile trên web cho dễ sử dụng hơn"): rà mọi trang web ở 390×844 bằng skill `ui-ux-pro-max`, sửa, ảnh trước/sau. Cần MOBILE-42-land (42b/42c/42d đã làm từ 5/10 nhưng chưa gộp vào main) và SKILL-uiux. Từ nay mọi mục 49–51 phải qua `e2e:mobile`.
 
 - **50. agent-assign** (hỏi 6/10: "cho phép giao cho từng agent làm task"; chọn: gán rồi tự chạy khi rảnh): task có *Agent phụ trách* (máy + gói, hàng có thứ tự); hub tự giao run khi agent rảnh và task hết phụ thuộc (cạnh đợt chạy 31a, qua chính sách và ngân sách); run lỗi thì tạm ngừng chờ người; `task_next` của máy khác bỏ qua; leader đề xuất `taskAssign`; Board chế độ *Theo agent* kéo thả. Spec: [docs/specs/50-agent-assign.md](specs/50-agent-assign.md). Tách:
@@ -285,15 +285,15 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 - **54. model-router** (hỏi 6/10: "tuỳ theo tác vụ thì chọn model nào tối ưu task, token nhất… codex nhiều mode, claude cũng vậy"; chọn: cân bằng, luật + AI phân loại, tự học có giới hạn): run hôm nay không chọn model hay mức suy nghĩ theo task. Task có loại / cỡ / rủi ro (luật, run `classify` bằng model rẻ khi chưa rõ); bảng cấp `light` / `standard` / `strong` / `max` ánh xạ sang model + effort của Claude (`--model`, `--effort`), Codex (`-m`, `model_reasoning_effort`), agy; bảng loại × cỡ → cấp theo dự án, ba hồ sơ Tiết kiệm / Cân bằng / Chất lượng; lỗi thì nâng mức suy nghĩ rồi một cấp (tối đa 2); tự học: cấp rẻ nhất có tỉ lệ xong ≥ 80%, thử rẻ hơn 10%, khoá ô được. Không bao giờ tự dùng fast mode, `max`, Fable. Spec: [docs/specs/54-model-router.md](specs/54-model-router.md). Tách:
   - [x] **54a. run-data**: run ghi model, effort, loại gói, lần thử, run cha, kết luận review.
   - [x] **54b. task-kind**: loại / cỡ / rủi ro của task, luật và AI phân loại, ô trong khung task.
-  - [ ] **54c. router**: bảng cấp, bảng loại × cỡ, hồ sơ, hub gửi lựa chọn, runner thêm cờ, nâng cấp khi lỗi, áp lực hạn mức, trang *Chọn model*.
-  - [ ] **54d. learning**: thống kê, đề xuất hằng đêm, thử rẻ hơn, khoá ô.
+  - [x] **54c. router**: bảng cấp, bảng loại × cỡ, hồ sơ, hub gửi lựa chọn, runner thêm cờ, nâng cấp khi lỗi, áp lực hạn mức, trang *Chọn model*.
+  - [x] **54d. learning**: thống kê, đề xuất hằng đêm, thử rẻ hơn, khoá ô.
 
 - **55. quota-outlook** (hỏi 6/10: "thiếu các phần liên quan đến số lần reset còn sử dụng được"; chọn cả ba): không CLI nào báo sẵn số lần reset còn lại (đã kiểm `claude /usage` 2.1.291, `rate_limits` của codex 0.160.1), Hive tự tính: số lần reset 5 giờ còn tới khi tuần làm mới, số phiên đầy còn dùng được (ước tính theo lịch sử % tuần tốn mỗi phiên), credits của Codex (`balance`, `plan_type`, trần chi tiêu); app hiện mỗi gói và tổng của máy; web *Máy & agent* có tab *Quota* gộp theo tài khoản và dòng tổng "có thể giao thêm N agent ngay". Spec: [docs/specs/55-quota-outlook.md](specs/55-quota-outlook.md). Tách:
   - [x] **55a. outlook-app**: máy tính và gửi số liệu, lịch sử 14 ngày, dòng mới trong khối quota, tổng của máy.
-  - [ ] **55b. outlook-web**: tab *Quota* của *Máy & agent*, gộp tài khoản, dòng tổng cả nhóm.
+  - [x] **55b. outlook-web**: tab *Quota* của *Máy & agent*, gộp tài khoản, dòng tổng cả nhóm.
 
 - **56. sdlc-pipeline** (hỏi 6/10: "tối ưu model chưa thấy trên giao diện; cài đặt dự án khó cấu hình; chỗ nào overview AI SDLC full quy trình, cấu hình điểm chặn"; chọn: làm ngay theo spec, dự án mới mặc định *Tự động tối đa*): trang *Quy trình* là sơ đồ các bước Ý tưởng → Spec → Plan → Tasks → Giao việc → Làm → Review → Sửa → Merge với chốt là biểu tượng giữa các bước (người / AI / tự động, khoá theo trần), mỗi bước hiện số đang có, thời gian chờ, tỉ lệ qua, model; bấm mở khung sửa; bộ cài sẵn Thận trọng / Cân bằng / Tự động tối đa / Lối nhanh có xem trước. *Cài đặt dự án* thành tab tóm tắt + khung sửa, model bằng chip, hiệu lực hiện thẳng, trần hub về *Quản trị*. Chọn model (54c/d) hiện trong *Quy trình*. Spec: [docs/specs/56-sdlc-pipeline.md](specs/56-sdlc-pipeline.md). Tách:
-  - [ ] **56a. pipeline-page**: trang *Quy trình*, chốt, số liệu, bộ cài sẵn, lối nhanh, xem theo tính năng, mobile.
+  - [x] **56a. pipeline-page**: trang *Quy trình*, chốt, số liệu, bộ cài sẵn, lối nhanh, xem theo tính năng, mobile.
   - [ ] **56b. settings-tidy**: *Cài đặt dự án* gọn: tab, tóm tắt, chip model, hiệu lực, trần hub sang *Quản trị*.
   - [ ] **56c. models-in-pipeline**: model từng bước, tab *Model theo loại task*, chip model ở run và task (giao diện của 54c/54d).
 
