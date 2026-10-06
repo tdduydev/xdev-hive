@@ -78,6 +78,7 @@ import {
 import { tr } from "#desktop/main/i18n.ts";
 import { git, isGitRepo } from "#desktop/main/git.ts";
 import { NO_FEATURES, repoFeatures } from "#desktop/main/installer.ts";
+import { codexHome } from "./login.ts";
 import { renderContext, type WorktreeRule, type WorktreeSkill } from "#desktop/main/sync.ts";
 import { hookEnv, legacyPick, NO_TOOLS, prepareTool, readyHooks, rtkGain, runTools, toolDirs, userClaudeSettings, type ToolPick } from "./tools.ts";
 import { collectArtifacts } from "./artifacts.ts";
@@ -124,6 +125,12 @@ import {
   resetTo,
   type Worktree,
 } from "./worktree.ts";
+
+export function codexConfigFailure(profile: AgentProfile, output: string): string | null {
+  return profile.kind === "codex" && /(?:invalid transport|error loading config\.toml|failed to parse.*config\.toml)/i.test(output)
+    ? tr("runNote.codexConfigInvalid", { file: path.join(codexHome(profile), "config.toml") })
+    : null;
+}
 
 export interface RunnerHost {
   backend(): HiveBackend;
@@ -1647,7 +1654,7 @@ export class Runner {
       });
       const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id, repo: project.repo, references: references.repos };
       wt.toolDirs = toolDirs(tools.prepare);
-      const cmd = buildCommand(profile, vars, this.#tools && !profile.container ? tools.tools : features, mcpFile ?? undefined, fit.mcp, hooks);
+      const cmd = buildCommand(profile, { ...vars, hiveMcpBin: resolveBin("hive-mcp", base.PATH ?? "") ?? "hive-mcp" }, this.#tools && !profile.container ? tools.tools : features, mcpFile ?? undefined, fit.mcp, hooks);
       const bin = resolveBin(profile.container ? "docker" : cmd.bin, base.PATH ?? "");
       if (!bin) {
         const reason = profile.container ? tr("runNote.dockerNotFound") : tr("runNote.binNotFound", { bin: cmd.bin });
@@ -2052,7 +2059,7 @@ export class Runner {
         if (shareError) error = `${error} · ${shareError}`;
       } else {
         const lastErr = (agyFailure ?? outcome.usage?.text ?? outcome.all).trim().split("\n").at(-1) ?? "";
-        error = `${tr("runNote.exited", { code: outcome.code ?? "?" })}${lastErr ? `: ${clip(lastErr, 200)}` : ""}`;
+        error = codexConfigFailure(profile, outcome.all) ?? `${tr("runNote.exited", { code: outcome.code ?? "?" })}${lastErr ? `: ${clip(lastErr, 200)}` : ""}`;
       }
       if (status !== "succeeded" && outcome.blocked?.length) {
         error = [error, tr("runNote.networkBlocked", { hosts: outcome.blocked.slice(0, 5).join(", ") })].filter(Boolean).join(" · ");
