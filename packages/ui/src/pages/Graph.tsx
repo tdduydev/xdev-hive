@@ -17,6 +17,16 @@ type TaskData = Record<string, unknown> & { graph: GraphNode; running: boolean; 
 const OPEN_RUN = new Set(["queued", "running"]);
 // Above 1 a two-node project fills the screen with oversized cards.
 const FIT = { padding: 0.15, maxZoom: 1, duration: 0 };
+// Every poll builds new node objects. Without `measured` React Flow drops the handle positions it measured and waits for a
+// ResizeObserver callback that, for a card whose size never changes, can be missed: the edge then stays gone. Giving
+// the size and the handles up front (base.css draws a 6px handle centred on the side) lets edges be drawn from data.
+const HANDLE = 6;
+function fixedSize(width: number, height: number, sides: ("target" | "source")[] = ["target", "source"]) {
+  return {
+    measured: { width, height },
+    handles: sides.map((type) => ({ type, position: type === "target" ? Position.Left : Position.Right, x: (type === "target" ? 0 : width) - HANDLE / 2, y: height / 2 - HANDLE / 2, width: HANDLE, height: HANDLE })),
+  };
+}
 
 function TaskNode({ data }: NodeProps<Node<TaskData>>) {
   const { graph, running, open } = data;
@@ -106,17 +116,22 @@ function GraphBody() {
   const all = tasks.data ?? [];
   const agents = useMemo(() => [...new Set(all.map((task) => task.owner ? ownerLabel(task.owner).who : "").filter(Boolean))].sort(), [all]);
   const filtered = useMemo(() => all.filter((task) => (!onlyOpen || task.status !== "done") && (!mine || !!me.user && !!task.owner && ownerLabel(task.owner).who === me.user.username) && (!agent || !!task.owner && ownerLabel(task.owner).who === agent)), [all, onlyOpen, mine, me.user, agent]);
+  // Laying out before the flows arrive would fix loose positions for tasks that then move into a spec group, where
+  // the same coordinates are read relative to the group: which query answered first decided the picture.
+  const taskReady = !!tasks.data && !!flows.data;
   const graph = useMemo(() => {
+    if (layer === "task" && !taskReady) return { nodes: [], edges: [] };
     const laid = layer === "task" ? layoutGraph(taskGraph(filtered, flows.data ?? [], oldDone), placed.current) : agentGraph((machines.data ?? []).filter((m) => scope.kind !== "project" || m.projects.includes(scope.project)), queues.data ?? {}, all, placed.current);
     for (const node of laid.nodes) placed.current[node.id] ??= node.position;
     return laid;
   // `saved` re-runs the layout after a reset or a scope change; a drag alone never does.
-  }, [layer, filtered, flows.data, oldDone, machines.data, queues.data, all, scope, saved]);
+  }, [layer, taskReady, filtered, flows.data, oldDone, machines.data, queues.data, all, scope, saved]);
   const running = useMemo(() => new Set((runs.data ?? []).filter((run) => OPEN_RUN.has(run.status) && run.taskId).map((run) => `${run.project}:${run.taskId}`)), [runs.data]);
   const openTask = useCallback((task: Task) => { window.location.hash = `#/tasks?task=${encodeURIComponent(task.id)}`; }, []);
   const taskNodes: Node<TaskData>[] = useMemo(() => layer === "task" ? (graph as ReturnType<typeof taskGraph>).nodes.map((node) => ({
     id: node.id, type: node.kind === "group" ? "group" : "task", position: dragging[node.id] ?? node.position, width: node.width, height: node.height, parentId: node.parentId,
     dragHandle: ".graph-drag-handle", draggable: node.kind !== "count" && node.kind !== "group", selectable: false, style: { width: node.width, height: node.height },
+    ...fixedSize(node.width, node.height, node.kind === "count" || node.kind === "group" ? [] : undefined),
     data: { graph: node, running: running.has(node.id), open: openTask },
   })) : [], [layer, graph, dragging, running, openTask]);
   const canAssign = useCallback((task: Task, machine: Machine) => task.status !== "done" && allow(task.project, "runDispatch") && machine.acceptsRuns && machine.projects.includes(task.project), [allow]);
@@ -127,14 +142,19 @@ function GraphBody() {
   }), [action, canAssign, client, tasks, queues, machines]);
   const agentNodes: Node<AgentData>[] = useMemo(() => layer === "agent" ? (graph as ReturnType<typeof agentGraph>).nodes.map((node) => ({
     id: node.id, type: node.kind, position: dragging[node.id] ?? node.position, width: node.width, height: node.height, draggable: node.kind === "agentTask" && !phone && !!node.task && allow(node.task.project, "runDispatch"), dragHandle: ".graph-drag-handle", selectable: false, style: { width: node.width, height: node.height },
+    ...fixedSize(node.width, node.height, node.kind === "machine" ? ["source"] : undefined),
     data: { graph: node, cooldowns: cooldowns.data ?? [], requests: requests.data ?? [], tasks: all, assign, canAssign, mayAssign: !!node.task && allow(node.task.project, "runDispatch"), open: openTask, pick: setPicked, phone, any: t("assignment.any") },
   })) : [], [layer, graph, dragging, cooldowns.data, requests.data, all, assign, canAssign, allow, openTask, phone, t]);
+  // The `fitView` prop fits only the first nodes React Flow sees; fit again once a layer's whole picture is in, since
+  // onlyRenderVisibleElements leaves a node outside the view (and its edges) out of the page.
+  const shown = layer === "task" ? taskNodes.length : agentNodes.length;
+  const ready = layer === "task" ? taskReady : !!queues.data;
   useEffect(() => {
     const key = `${scopeId}:${layer}`;
-    if (layer !== "agent" || !queues.data || !agentNodes.length || fitted.current === key) return;
+    if (!ready || !shown || fitted.current === key) return;
     fitted.current = key;
     requestAnimationFrame(() => void reactFlow.fitView(FIT));
-  }, [agentNodes.length, layer, queues.data, reactFlow, scopeId]);
+  }, [shown, layer, ready, reactFlow, scopeId]);
   const edges: Edge[] = useMemo(() => layer === "task" ? (graph as ReturnType<typeof taskGraph>).edges.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, type: "smoothstep", className: edge.complete ? "graph-edge-complete" : "graph-edge-open" })) : (graph as ReturnType<typeof agentGraph>).edges.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, type: "smoothstep", className: edge.running ? "graph-edge-running" : "graph-edge-agent" })), [layer, graph]);
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     const moved = changes.filter((change): change is Extract<NodeChange, { type: "position" }> => change.type === "position" && !!change.position);
