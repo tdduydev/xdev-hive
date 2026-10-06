@@ -15,8 +15,10 @@ import { FAST_KINDS, PIPELINE_PRESETS, PIPELINE_STEPS, PIPELINE_STEP_GATES as ST
 
 type StepData = Record<string, unknown> & { step: PipelineStep; count: number; median: number | null; pass: number | null; active: boolean; onOpen: (step: PipelineStep) => void; onCount: (step: PipelineStep) => void; label: string; countLabel: string; waitLabel: string; passLabel: string; modelLabel: string; roleLabel: string };
 type GateData = Record<string, unknown> & { gate: SdlcGate; mode: GateMode; locked: boolean; passed: boolean; onOpen: (gate: SdlcGate) => void; label: string };
+// React Flow gives a node that is neither draggable nor selectable pointer-events: none, so a mouse click on its
+// buttons would land on the pane behind it; pointer-events-auto takes the clicks back.
 function StepNode({ data }: NodeProps<Node<StepData>>) {
-  return <><Handle type="target" position={Position.Left} isConnectable={false} /><div className={`rounded-xl border bg-card p-3 shadow-sm ${data.active ? "border-primary ring-2 ring-primary/30" : "border-border"}`} data-pipeline-step={data.step} data-active={data.active}>
+  return <><Handle type="target" position={Position.Left} isConnectable={false} /><div className={`pointer-events-auto rounded-xl border bg-card p-3 shadow-sm ${data.active ? "border-primary ring-2 ring-primary/30" : "border-border"}`} data-pipeline-step={data.step} data-active={data.active}>
     <button className="nodrag min-h-(--control-h-touch) w-full text-left font-semibold text-fg-strong" onClick={() => data.onOpen(data.step)}>{data.label}</button><div className="text-xs text-muted-foreground">{data.roleLabel}</div>
     <a className="nodrag block min-h-(--control-h-touch) text-sm text-fg-link underline underline-offset-2" href="#" onClick={(e) => { e.preventDefault(); data.onCount(data.step); }} data-pipeline-count={data.step}>{data.countLabel.replace("{count}", String(data.count))}</a>
     <div className="space-y-1 text-xs text-muted-foreground"><div>{data.waitLabel}: {data.median === null ? "—" : `${Math.round(data.median * 10) / 10}h`}</div><div>{data.passLabel}: {data.pass === null ? "—" : `${data.pass}%`}</div><div>{data.modelLabel}</div></div>
@@ -25,7 +27,7 @@ function StepNode({ data }: NodeProps<Node<StepData>>) {
 const MODE_ICON = { human: UserRound, ai: Bot, auto: ArrowRight };
 function GateNode({ data }: NodeProps<Node<GateData>>) {
   const Icon = MODE_ICON[data.mode];
-  return <><Handle type="target" position={Position.Left} isConnectable={false} /><button className="nodrag flex h-(--control-h-touch) w-(--control-h-touch) items-center justify-center rounded-full border border-border bg-card text-fg-strong shadow-sm" aria-label={data.label} title={data.label} onClick={() => data.onOpen(data.gate)} data-pipeline-gate={data.gate} data-passed={data.passed}><Icon aria-hidden="true" className="size-4" />{data.passed ? <Check aria-hidden="true" className="size-3 text-success" /> : null}{data.locked ? <LockKeyhole aria-hidden="true" className="ml-0.5 size-3 text-warning" /> : null}</button><Handle type="source" position={Position.Right} isConnectable={false} /></>;
+  return <><Handle type="target" position={Position.Left} isConnectable={false} /><button className="nodrag pointer-events-auto flex h-(--control-h-touch) w-(--control-h-touch) items-center justify-center rounded-full border border-border bg-card text-fg-strong shadow-sm" aria-label={data.label} title={data.label} onClick={() => data.onOpen(data.gate)} data-pipeline-gate={data.gate} data-passed={data.passed}><Icon aria-hidden="true" className="size-4" />{data.passed ? <Check aria-hidden="true" className="size-3 text-success" /> : null}{data.locked ? <LockKeyhole aria-hidden="true" className="ml-0.5 size-3 text-warning" /> : null}</button><Handle type="source" position={Position.Right} isConnectable={false} /></>;
 }
 const NODE_TYPES = { step: StepNode, gate: GateNode };
 

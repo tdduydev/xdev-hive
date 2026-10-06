@@ -431,8 +431,9 @@ async function main() {
   // password are in the account menu; old addresses land on their tab.
   await step("nav-by-job", async () => {
     const menus = [
-      ["admin", tabs.admin, ["Hôm nay", "Chat", "Sơ đồ", "Tính năng", "Task", "Agent đang chạy", "Tài liệu", "Skill", "Memory", "Cài đặt dự án", "Máy & agent", "Quản trị"]],
-      ["member", tabs.hoa, ["Hôm nay", "Sơ đồ", "Tính năng", "Task", "Agent đang chạy", "Tài liệu", "Skill", "Memory", "Máy & agent"]],
+      // Quy trình (56a) is for whoever may view a project: Hoa views payment, so she reads it without Cài đặt dự án.
+      ["admin", tabs.admin, ["Hôm nay", "Chat", "Sơ đồ", "Tính năng", "Task", "Agent đang chạy", "Tài liệu", "Skill", "Memory", "Quy trình", "Cài đặt dự án", "Máy & agent", "Quản trị"]],
+      ["member", tabs.hoa, ["Hôm nay", "Sơ đồ", "Tính năng", "Task", "Agent đang chạy", "Tài liệu", "Skill", "Memory", "Quy trình", "Máy & agent"]],
     ];
     for (const [who, tab, want] of menus) {
       current = tab;
@@ -716,10 +717,11 @@ async function main() {
     const stamp = new Date().toISOString();
     const sessionAt = new Date(Date.now() + 5 * 3600000).toISOString();
     const weekAt = new Date(Date.now() + 6 * 86400000).toISOString();
-    for (const machine of ["quota-one", "quota-two"]) {
+    // The hub takes a runner instance as hex only, one per machine.
+    for (const [machine, instance] of [["quota-one", "c0a10001"], ["quota-two", "c0a10002"]]) {
       const response = await fetch(`${base}/api/rpc`, {
         method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": `runner.${machine}` },
-        body: JSON.stringify({ method: "machines.heartbeat", input: { machine, instance: "quota001", version: "0.136.0", projects: ["payment"], acceptsRuns: true,
+        body: JSON.stringify({ method: "machines.heartbeat", input: { machine, instance, version: "0.136.0", projects: ["payment"], acceptsRuns: true,
           profiles: [{ id: "quota-codex", label: "Quota Codex", kind: "codex", account: "quota-shared", enabled: true, installed: true, loggedIn: true, maxConcurrent: 2, cooldownUntil: null, runs: 0, rateLimited: 0,
             sessionPercent: 40, weekPercent: 20, sessionResetsAt: sessionAt, weekResetsAt: weekAt, usageCheckedAt: stamp, resetsLeft: 23, fullSessionsLeft: 9, weekPerSession: 8, planType: "plus", credits: { balance: 0, hasCredits: false, unlimited: false } }] } }),
       });
@@ -1040,63 +1042,68 @@ async function main() {
     await tab.waitFor("the flow waiting at its spec gate", () => document.querySelector('[data-flow="SPEC-E2E"]')?.getAttribute("data-flow-state") === "gate");
     await tab.shot(`${String(n).padStart(2, "0")}-sdlc-flow-gate`);
     await step("pipeline", async () => {
-      await tab.go("settings?tab=sdlc&project=payment");
-      await tab.waitFor("legacy SDLC link redirected to pipeline", () => location.hash.startsWith("#/pipeline?") && !!document.querySelector('[data-pipeline-step="spec"]'));
-      const count = await tab.eval(() => document.querySelector('[data-pipeline-count="spec"]')?.textContent);
-      expect(/\b1\b/.test(count ?? ""), `Spec does not show one active flow: ${count}`);
-      const stepCount = await tab.eval(() => document.querySelectorAll("[data-pipeline-step]").length);
-      expect(stepCount === 10, `pipeline stages: ${stepCount}`);
-      if (mobile) {
-        const layout = await tab.eval(() => ({ vertical: !!document.querySelector("[data-pipeline-mobile]"), overflow: document.documentElement.scrollWidth > innerWidth }));
-        expect(layout.vertical && !layout.overflow, `pipeline mobile layout: ${JSON.stringify(layout)}`);
+      try {
+        await tab.go("settings?tab=sdlc&project=payment");
+        await tab.waitFor("legacy SDLC link redirected to pipeline", () => location.hash.startsWith("#/pipeline?") && !!document.querySelector('[data-pipeline-step="spec"]'));
+        const count = await tab.eval(() => document.querySelector('[data-pipeline-count="spec"]')?.textContent);
+        expect(/\b1\b/.test(count ?? ""), `Spec does not show one active flow: ${count}`);
+        const stepCount = await tab.eval(() => document.querySelectorAll("[data-pipeline-step]").length);
+        expect(stepCount === 10, `pipeline stages: ${stepCount}`);
+        if (mobile) {
+          const layout = await tab.eval(() => ({ vertical: !!document.querySelector("[data-pipeline-mobile]"), overflow: document.documentElement.scrollWidth > innerWidth }));
+          expect(layout.vertical && !layout.overflow, `pipeline mobile layout: ${JSON.stringify(layout)}`);
+        }
+        const gateCount = await tab.eval(() => document.querySelectorAll("[data-pipeline-gate]").length);
+        expect(gateCount === 7, `pipeline gates: ${gateCount}`);
+        await tab.shot(`${String(n).padStart(2, "0")}-pipeline-open`);
+        await tab.click('[data-pipeline-gate="review"]');
+        await tab.waitFor("Review gate editor", () => !!document.querySelector('[data-pipeline-editor] [data-pipeline-mode="ai"]'));
+        if (mobile) {
+          const targets = await tab.eval(() => [...document.querySelectorAll('[data-pipeline-editor] button')].filter((el) => el.getBoundingClientRect().width > 0).map((el) => ({ width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height })));
+          expect(targets.every((r) => r.width >= 44 && r.height >= 44), `pipeline editor touch targets: ${JSON.stringify(targets)}`);
+        }
+        await tab.shot(`${String(n).padStart(2, "0")}-pipeline-editor`);
+        await tab.click('[data-pipeline-editor] [data-pipeline-mode="ai"]');
+        await tab.click('[data-pipeline-save]');
+        await until("Review changed to AI check", async () => (await rpc("sdlc.get", {})).projects.payment?.effective.review === "ai");
+        await tab.click('[data-pipeline-preset="cautious"]');
+        await tab.waitFor("cautious preview", () => document.querySelectorAll('[data-pipeline-preview] [data-pipeline-change]').length === 7);
+        await tab.shot(`${String(n).padStart(2, "0")}-pipeline-preview`);
+        await tab.click('[data-pipeline-apply]');
+        await until("cautious preset saved", async () => {
+          const p = (await rpc("sdlc.get", {})).projects.payment;
+          return p?.effective.spec === "human" && p?.effective.review === "human" && p?.effective.merge === "human";
+        });
+        await tab.shot(`${String(n).padStart(2, "0")}-pipeline-saved`);
+        await tab.eval(() => { const picker = document.querySelector("[data-pipeline-feature]"); picker.value = "SPEC-E2E"; picker.dispatchEvent(new Event("change", { bubbles: true })); });
+        await tab.waitFor("feature highlighted at Spec", () => document.querySelector('[data-pipeline-step="spec"]')?.getAttribute("data-active") === "true");
+        await tab.click('[data-pipeline-count="spec"]');
+        await tab.waitFor("Spec count opens filtered features", () => location.hash.includes("pipelineStep=spec") && !!document.querySelector('[data-feature-column="spec"]'));
+        await tab.go("pipeline?project=payment");
+        await rpc("sdlc.setCeiling", { ceiling: { merge: "human" } });
+        // Reload policy on the page: the ceiling is edited separately by the hub admin.
+        await tab.go("tasks");
+        await tab.go("pipeline?project=payment");
+        await tab.click('[data-pipeline-gate="merge"]');
+        await tab.waitFor("Merge cannot exceed the ceiling", () => document.querySelector('[data-pipeline-editor] [data-pipeline-mode="auto"]')?.disabled && document.querySelector('[data-pipeline-editor] [data-pipeline-mode="ai"]')?.disabled);
+        await tab.shot(`${String(n).padStart(2, "0")}-pipeline-ceiling`);
+        await tab.key("Escape");
+        await tab.click('[data-pipeline-preset="fast"]');
+        await tab.waitFor("fast path preview", () => document.querySelectorAll("[data-pipeline-fast-kind]").length === 3);
+        await tab.click('[data-pipeline-fast-kind="test"]');
+        await tab.click('[data-pipeline-apply]');
+        await until("only chosen fast kinds saved", async () => {
+          const kinds = (await rpc("sdlc.get", {})).projects.payment?.fastLaneKinds ?? [];
+          return kinds.length === 2 && kinds.includes("docs") && kinds.includes("small-fix") && !kinds.includes("test");
+        });
+        await tab.shot(`${String(n).padStart(2, "0")}-pipeline-fast`);
+      } finally {
+        // The flow below waits at a person's spec gate on the Task page: put both back even when a check above failed,
+        // so a pipeline failure is reported once and not again as sdlc-flow's.
+        await rpc("sdlc.setCeiling", { ceiling: {} });
+        await rpc("sdlc.setProject", { project: "payment", settings: null });
+        await tab.go("tasks?task=SPEC-E2E");
       }
-      const gateCount = await tab.eval(() => document.querySelectorAll("[data-pipeline-gate]").length);
-      expect(gateCount === 7, `pipeline gates: ${gateCount}`);
-      await tab.shot(`${String(n).padStart(2, "0")}-pipeline-open`);
-      await tab.click('[data-pipeline-gate="review"]');
-      await tab.waitFor("Review gate editor", () => !!document.querySelector('[data-pipeline-editor] [data-pipeline-mode="ai"]'));
-      if (mobile) {
-        const targets = await tab.eval(() => [...document.querySelectorAll('[data-pipeline-editor] button')].filter((el) => el.getBoundingClientRect().width > 0).map((el) => ({ width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height })));
-        expect(targets.every((r) => r.width >= 44 && r.height >= 44), `pipeline editor touch targets: ${JSON.stringify(targets)}`);
-      }
-      await tab.shot(`${String(n).padStart(2, "0")}-pipeline-editor`);
-      await tab.click('[data-pipeline-editor] [data-pipeline-mode="ai"]');
-      await tab.click('[data-pipeline-save]');
-      await until("Review changed to AI check", async () => (await rpc("sdlc.get", {})).projects.payment?.effective.review === "ai");
-      await tab.click('[data-pipeline-preset="cautious"]');
-      await tab.waitFor("cautious preview", () => document.querySelectorAll('[data-pipeline-preview] [data-pipeline-change]').length === 7);
-      await tab.shot(`${String(n).padStart(2, "0")}-pipeline-preview`);
-      await tab.click('[data-pipeline-apply]');
-      await until("cautious preset saved", async () => {
-        const p = (await rpc("sdlc.get", {})).projects.payment;
-        return p?.effective.spec === "human" && p?.effective.review === "human" && p?.effective.merge === "human";
-      });
-      await tab.shot(`${String(n).padStart(2, "0")}-pipeline-saved`);
-      await tab.eval(() => { const picker = document.querySelector("[data-pipeline-feature]"); picker.value = "SPEC-E2E"; picker.dispatchEvent(new Event("change", { bubbles: true })); });
-      await tab.waitFor("feature highlighted at Spec", () => document.querySelector('[data-pipeline-step="spec"]')?.getAttribute("data-active") === "true");
-      await tab.click('[data-pipeline-count="spec"]');
-      await tab.waitFor("Spec count opens filtered features", () => location.hash.includes("pipelineStep=spec") && !!document.querySelector('[data-feature-column="spec"]'));
-      await tab.go("pipeline?project=payment");
-      await rpc("sdlc.setCeiling", { ceiling: { merge: "human" } });
-      // Reload policy on the page: the ceiling is edited separately by the hub admin.
-      await tab.go("tasks");
-      await tab.go("pipeline?project=payment");
-      await tab.click('[data-pipeline-gate="merge"]');
-      await tab.waitFor("Merge cannot exceed the ceiling", () => document.querySelector('[data-pipeline-editor] [data-pipeline-mode="auto"]')?.disabled && document.querySelector('[data-pipeline-editor] [data-pipeline-mode="ai"]')?.disabled);
-      await tab.shot(`${String(n).padStart(2, "0")}-pipeline-ceiling`);
-      await tab.key("Escape");
-      await tab.click('[data-pipeline-preset="fast"]');
-      await tab.waitFor("fast path preview", () => document.querySelectorAll("[data-pipeline-fast-kind]").length === 3);
-      await tab.click('[data-pipeline-fast-kind="test"]');
-      await tab.click('[data-pipeline-apply]');
-      await until("only chosen fast kinds saved", async () => {
-        const kinds = (await rpc("sdlc.get", {})).projects.payment?.fastLaneKinds ?? [];
-        return kinds.length === 2 && kinds.includes("docs") && kinds.includes("small-fix") && !kinds.includes("test");
-      });
-      await tab.shot(`${String(n).padStart(2, "0")}-pipeline-fast`);
-      await rpc("sdlc.setCeiling", { ceiling: {} });
-      await rpc("sdlc.setProject", { project: "payment", settings: null });
-      await tab.go("tasks?task=SPEC-E2E");
       await tab.waitFor("the flow on Task after pipeline", () => !!document.querySelector('[data-flow="SPEC-E2E"]'));
     });
     await tab.click('[data-flow="SPEC-E2E"] [data-gate-pass]');
