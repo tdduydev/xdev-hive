@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { CONTEXT_DIR, HiveError, MANAGED_START, RULES_DIR } from "@xdev-hive/core";
+import { ARTIFACT_DIR, CONTEXT_DIR, HiveError, MANAGED_START, RULES_DIR } from "@xdev-hive/core";
 import { git, gitAsync, gitErrorText, isGitRepo } from "#desktop/main/git.ts";
 import { tr } from "#desktop/main/i18n.ts";
 import { RENDERED_FILES } from "#desktop/main/installer.ts";
@@ -214,13 +214,14 @@ export function ensureWorktree(
 export const AGENT_CLI_DIRS = [".codex", ".agents", ".codegraph"];
 
 /**
- * What the app renders from Hive in a working copy, by the same rule as the pre-commit guard: the fixed files, our
- * rules and context folders, and a nested AGENTS.md or skill that carries the managed block. Never the agent's work,
- * so it stays out of commits, out of the run's diff and out of what counts as dirty. Read from the working copy,
- * because a run's worktree gets files the branch does not have (roadmap 38a).
+ * What is in a working copy but is never a commit of the agent's work: what the app renders from Hive, by the same
+ * rule as the pre-commit guard (the fixed files, our rules and context folders, and a nested AGENTS.md or skill that
+ * carries the managed block), and the folder the agent puts its artifacts in (roadmap 41c), which goes to the hub
+ * instead. All of it stays out of commits, out of the run's diff and out of what counts as dirty. Read from the
+ * working copy, because a run's worktree gets files the branch does not have (roadmap 38a).
  */
 export function renderedPaths(dir: string): string[] {
-  const out = [...RENDERED_FILES, RULES_DIR, CONTEXT_DIR];
+  const out = [...RENDERED_FILES, RULES_DIR, CONTEXT_DIR, ARTIFACT_DIR];
   const listed = (tryGit(dir, ["ls-files", "-co", "--exclude-standard", "--", ":(glob)**/AGENTS.md", ":(glob).claude/skills/*/SKILL.md"]) ?? "")
     .split("\n")
     .filter((f) => f && !RENDERED_FILES.includes(f));
@@ -258,7 +259,7 @@ export function commitAll(dir: string, message: string, exclude: string[], toolD
     // -f") when an exclude names one, so nothing would be committed (.codegraph/ in xdev-mindmap-ai, 2/10).
     // CONTEXT_DIR as well as RULES_DIR: since roadmap 38f a repo that keeps its own AGENTS.md tracks Hive's copy
     // there, so it must stay out even on a run whose context render failed (then `exclude` does not name it).
-    const keepOut = [...exclude, ...RENDERED_FILES, RULES_DIR, CONTEXT_DIR, ...nested, ...cliDirs].filter((f) => tryGit(dir, ["check-ignore", "-q", "--", f]) === null);
+    const keepOut = [...exclude, ...RENDERED_FILES, RULES_DIR, CONTEXT_DIR, ARTIFACT_DIR, ...nested, ...cliDirs].filter((f) => tryGit(dir, ["check-ignore", "-q", "--", f]) === null);
     git(dir, ["add", "-A", "--", ".", ...keepOut.map((f) => `:(exclude)${f}`)]);
     if (!git(dir, ["diff", "--cached", "--name-only"])) return { sha: null, error: null };
     git(dir, ["-c", `core.hooksPath=${os.devNull}`, "commit", "-m", message]);

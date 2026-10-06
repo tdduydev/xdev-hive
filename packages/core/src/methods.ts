@@ -4,6 +4,7 @@ import { agentPolicyPartSchema, agentPolicySchema, type AgentPolicy, type AgentP
 import { BUDGET_USER, budgetSchema, type BudgetBlock, type BudgetUsage } from "./budgets.ts";
 import { ACCOUNT_ID, AGENT_KINDS, AGENT_ROLES, PREFER_KINDS, agentProfileSchema, MAX_CANDIDATES, RUN_STATUSES, WORK_ROLES } from "./agents.ts";
 import { VERDICTS } from "./verdict.ts";
+import { ARTIFACT_MAX_BYTES, type Artifact } from "./artifacts.ts";
 import { CHAT_FILES_PER_MESSAGE } from "./chatfiles.ts";
 import { DOC_ASSET_MAX_BYTES } from "./doclinks.ts";
 import { MR_STATUSES, PIPELINE_STATUSES } from "./gitlab.ts";
@@ -273,6 +274,35 @@ export const schemas = {
   /** The file's bytes in base64; a file of the same name on the page is replaced. */
   "docs.assetPut": z.object({ key: docKey, name: z.string().min(1).max(200), data: z.string().min(1).max(Math.ceil((DOC_ASSET_MAX_BYTES * 4) / 3) + 8) }),
   "docs.assetRemove": z.object({ key: docKey, name: z.string().min(1).max(200) }),
+  /**
+   * One file an agent made during a run (roadmap 41c), in base64, from the machine that ran it. One per call: 20
+   * files of 5 MB in one request would be far over what the hub takes. The same name from the same run replaces it.
+   */
+  "artifacts.put": z.object({
+    project,
+    taskId,
+    runId,
+    profileId: z.string().max(40).nullable().default(null),
+    /** Relative to .xdev-hive/artifacts/, e.g. "shots/board.png". */
+    name: z.string().min(1).max(300),
+    data: z.string().min(1).max(Math.ceil((ARTIFACT_MAX_BYTES * 4) / 3) + 8),
+  }),
+  /** The files of a project, of one task or of one run; newest first, no bytes. */
+  "artifacts.list": z.object({
+    project,
+    taskId: taskId.optional(),
+    runId: runId.optional(),
+    /**
+     * With runId, when two machines happen to use the same run id. The run's machineId as runs.list gives it (the
+     * machine's hub actor, e.g. "runner.mac-mini-1"), not the machine's short name: hence runs.get's rule, not MACHINE_ID.
+     */
+    machineId: z.string().min(1).max(200).optional(),
+    limit: z.number().int().min(1).max(200).default(100),
+  }),
+  /** One file with its bytes in base64. */
+  "artifacts.get": z.object({ id }),
+  /** A project manager removes one (it is written in the audit log); nothing else ever deletes an artifact. */
+  "artifacts.remove": z.object({ id }),
   /**
    * Asks the writing assistant (roadmap 22k): the page as it is being edited, other pages of its space or the team's,
    * memory entries, and repo files (paths or globs, read on the machine that writes it).
@@ -960,6 +990,11 @@ export interface MethodOutput {
   "docs.assetGet": { asset: DocAsset; data: string } | null;
   "docs.assetPut": DocAsset;
   "docs.assetRemove": { removed: boolean };
+  "artifacts.put": Artifact;
+  "artifacts.list": Artifact[];
+  "artifacts.get": { artifact: Artifact; data: string } | null;
+  /** project and name say what went, for the audit log; both null when there was nothing to remove. */
+  "artifacts.remove": { removed: boolean; project: string | null; name: string | null };
   "docs.assist": DocAssist;
   "docs.assists": DocAssist[];
   "docs.assistCancel": DocAssist;
@@ -1147,6 +1182,11 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "docs.assetGet": "viewer",
   "docs.assetPut": "agent",
   "docs.assetRemove": "agent",
+  "artifacts.put": "agent",
+  "artifacts.list": "viewer",
+  "artifacts.get": "viewer",
+  // Also projectSettings on the project, which no agent token has: only a person who manages it removes an artifact.
+  "artifacts.remove": "member",
   "docs.assist": "agent",
   "docs.assists": "viewer",
   "docs.assistCancel": "agent",

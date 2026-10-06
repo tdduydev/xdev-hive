@@ -2,7 +2,7 @@
 import { accessSync, constants, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { AUTONOMY_ARGS, AUTONOMY_FLAGS, autonomyOf, flagValue, lowerAutonomy, modelsFor, policySummary, type AgentKind, type AgentPolicy, type AgentProfile, type AgentRole, type Autonomy, type CiFix, type ToolEntry } from "@xdev-hive/core";
+import { ARTIFACT_DIR, AUTONOMY_ARGS, AUTONOMY_FLAGS, autonomyOf, flagValue, lowerAutonomy, modelsFor, policySummary, type AgentKind, type AgentPolicy, type AgentProfile, type AgentRole, type Autonomy, type CiFix, type ToolEntry } from "@xdev-hive/core";
 import { fence } from "#desktop/main/gitlab/describe.ts";
 import { tr } from "#desktop/main/i18n.ts";
 import { MCP_NAME, NO_FEATURES, runMcpServers, type RepoFeatures } from "#desktop/main/installer.ts";
@@ -44,6 +44,8 @@ export interface PromptContext {
   skills?: WorktreeSkill[] | null;
   /** Path rules; if omitted, scanned from worktree/.claude/rules (roadmap 38i). */
   rules?: WorktreeRule[] | null;
+  /** Hub mode: files the agent leaves in ARTIFACT_DIR go to the hub when the run ends (roadmap 41c). */
+  artifacts?: boolean;
 }
 
 export interface JudgeCandidate {
@@ -149,6 +151,15 @@ export function buildPrompt(c: PromptContext): string {
   const skills = c.skills ?? (c.worktree ? loadWorktreeSkills(c.worktree) : []);
   const rules = c.rules ?? (c.worktree ? loadWorktreeRules(c.worktree) : []);
   lines.push(...skillAndRuleLines(skills, rules));
+  // The judge keeps nothing: the branch it picks is the work.
+  if (c.artifacts && !c.judge) {
+    lines.push(
+      "",
+      `A file worth keeping that is not code (a screenshot, a report, a measurement${c.role === "plan" ? ", the plan" : ""}): write it in ${ARTIFACT_DIR}/ of the working copy.`,
+      `That folder stays out of the commit; when this run ends the files go to xDev Hive, beside this run and task ${c.taskId}, and other agents read them with artifact_list and artifact_get.`,
+      "At most 20 files, 5 MB each; png, jpg, webp and pdf, or text as md, txt, json and log. Never put a secret in one.",
+    );
+  }
   if (c.note) lines.push("", "Latest note on the task:", c.note);
   if (c.previous) {
     lines.push(

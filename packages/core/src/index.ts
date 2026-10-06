@@ -2,6 +2,7 @@
 export * from "./access.ts";
 export * from "./agent-policy.ts";
 export * from "./agents.ts";
+export * from "./artifacts.ts";
 export * from "./blobs.ts";
 export * from "./budgets.ts";
 export * from "./chatfiles.ts";

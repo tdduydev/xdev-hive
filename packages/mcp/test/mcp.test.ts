@@ -22,6 +22,8 @@ describe("mcp tools", () => {
     const client = await connect(new SqliteHive(":memory:"));
     const names = (await client.listTools()).tools.map((t) => t.name).sort();
     assert.deepEqual(names, [
+      "artifact_get",
+      "artifact_list",
       "cost_summary",
       "doc_asset",
       "doc_get",
@@ -54,6 +56,8 @@ describe("mcp tools", () => {
     const hive = new SqliteHive(":memory:");
     for (const client of [await connect(hive, "claude@duy", { readOnly: true }), await connect(hive, "ci", { role: "viewer" })]) {
       assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), [
+        "artifact_get",
+        "artifact_list",
         "cost_summary",
         "doc_asset",
         "doc_get",
@@ -275,6 +279,28 @@ describe("mcp tools", () => {
     const list = JSON.parse(text(await client.callTool({ name: "doc_asset", arguments: { key: "org/arch" } }))) as Array<{ name: string }>;
     assert.deepEqual(list.map((a) => a.name), ["notes.md", "overview.png"]);
     assert.equal((await client.callTool({ name: "doc_asset", arguments: { key: "org/arch", name: "x.png" } })).isError, true);
+  });
+
+  // Roadmap 41c: what earlier runs made is there for the next agent, the pictures as pictures.
+  it("lists and reads the files runs made", async () => {
+    const hive = new SqliteHive(":memory:");
+    const admin = { name: "duy", role: "admin" } as const;
+    const machine = { name: "runner.mac-mini-1", role: "agent" } as const;
+    await hive.call("tasks.create", { id: "APP-1", project: "app", title: "Việc đầu" }, admin);
+    await hive.call("tasks.create", { id: "APP-2", project: "app", title: "Việc sau" }, admin);
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 7]).toString("base64");
+    const shot = await hive.call("artifacts.put", { project: "app", taskId: "APP-1", runId: "R-1", name: "shots/board.png", data: png }, machine);
+    const report = await hive.call("artifacts.put", { project: "app", taskId: "APP-1", runId: "R-1", name: "report.md", data: Buffer.from("# Đo được").toString("base64") }, machine);
+    await hive.call("artifacts.put", { project: "app", taskId: "APP-2", runId: "R-2", name: "other.md", data: Buffer.from("# Việc khác").toString("base64") }, machine);
+
+    const client = await connect(hive);
+    const all = JSON.parse(text(await client.callTool({ name: "artifact_list", arguments: {} }))) as Array<{ name: string }>;
+    assert.deepEqual(all.map((a) => a.name).sort(), ["other.md", "report.md", "shots/board.png"]);
+    const mine = JSON.parse(text(await client.callTool({ name: "artifact_list", arguments: { taskId: "APP-1" } }))) as Array<{ id: number; name: string }>;
+    assert.deepEqual(mine.map((a) => a.name).sort(), ["report.md", "shots/board.png"]);
+    assert.deepEqual((await client.callTool({ name: "artifact_get", arguments: { id: shot.id } })).content, [{ type: "image", data: png, mimeType: "image/png" }]);
+    assert.equal(text(await client.callTool({ name: "artifact_get", arguments: { id: report.id } })), "# Đo được");
+    assert.equal((await client.callTool({ name: "artifact_get", arguments: { id: 999 } })).isError, true);
   });
 
   it("lets agents propose but not overwrite docs", async () => {

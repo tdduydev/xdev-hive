@@ -206,6 +206,8 @@ describe("hub as a backend", () => {
     const client = new Client({ name: "test", version: "0" });
     await client.connect(transport);
     assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), [
+      "artifact_get",
+      "artifact_list",
       "cost_summary",
       "doc_asset",
       "doc_get",
@@ -238,6 +240,8 @@ describe("hub as a backend", () => {
     };
     const ro = await connect({ "x-hive-readonly": "1", "x-hive-project": "app" });
     assert.deepEqual((await ro.listTools()).tools.map((t) => t.name).sort(), [
+      "artifact_get",
+      "artifact_list",
       "cost_summary",
       "doc_asset",
       "doc_get",
