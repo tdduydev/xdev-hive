@@ -138,6 +138,13 @@ import type {
   RetiredProject,
 } from "./types.ts";
 
+/** Tests only: the index of the first migration whose SQL contains `fragment` (see SqliteHiveOptions.migrateTo). */
+export function migrationIndex(fragment: string): number {
+  const i = MIGRATIONS.findIndex((m) => m.includes(fragment));
+  if (i < 0) throw new Error(`No migration contains ${fragment}`);
+  return i;
+}
+
 const MIGRATIONS: string[] = [
   `
   CREATE TABLE docs(
@@ -1537,6 +1544,11 @@ function ftsQuery(text: string): string | null {
 }
 
 export interface SqliteHiveOptions {
+  /**
+   * Tests only: stop the schema at this many migrations, to replay an upgrade from the schema a hub had before one.
+   * Several items land in one batch, so "the last migration" is not a stable place to roll back to.
+   */
+  migrateTo?: number;
   /** When true, memory written by non-admins stays `pending` (hidden from search) until an admin approves it. */
   memoryRequiresApproval?: boolean;
   /** Memory no agent searched up (nor anyone wrote or kept) for this many days is stale. 0: never. Default 90. */
@@ -1604,6 +1616,7 @@ export class SqliteHive implements HiveBackend {
       local: false,
       blobs: null,
       backup: null,
+      migrateTo: Number.POSITIVE_INFINITY,
       ...opts,
     };
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;");
@@ -2336,7 +2349,8 @@ export class SqliteHive implements HiveBackend {
 
   #migrate(): void {
     const current = num((this.db.prepare("PRAGMA user_version").get() as Row).user_version);
-    for (let v = current; v < MIGRATIONS.length; v++) {
+    const end = Math.min(this.#opts.migrateTo, MIGRATIONS.length);
+    for (let v = current; v < end; v++) {
       this.#tx(() => {
         this.db.exec(MIGRATIONS[v]!);
         this.db.exec(`PRAGMA user_version = ${v + 1}`);

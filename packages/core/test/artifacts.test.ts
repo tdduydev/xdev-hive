@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { ARTIFACTS_PER_RUN, artifactName, HiveError, type Actor, type BlobStore } from "#core/index.ts";
-import { SqliteHive } from "#core/node.ts";
+import { SqliteHive, migrationIndex } from "#core/node.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
 /** The machine's token, as the runner calls with it. */
@@ -49,16 +49,14 @@ describe("the artifact store (roadmap 41c)", () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "hive-artifacts-migration-"));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
     const file = path.join(dir, "hive.db");
-    const before = new SqliteHive(file);
+    // The schema a hub had before 41c: every migration up to (not including) the artifacts one.
+    const before = new SqliteHive(file, { migrateTo: migrationIndex("CREATE TABLE artifacts(") });
     before.seed("hub");
     await before.call("tasks.create", { id: "APP-1", project: "app", title: "Existing task" }, admin);
-    const version = Number(before.db.prepare("PRAGMA user_version").get()?.user_version);
-    // The artifact migration is last; removing only it leaves the schema shipped on main.
-    before.db.exec(`DROP TABLE artifacts; PRAGMA user_version = ${version - 1}`);
     before.close();
     const after = new SqliteHive(file);
     t.after(() => after.close());
-    assert.equal(after.db.prepare("PRAGMA user_version").get()?.user_version, version);
+    assert.ok(Number(after.db.prepare("PRAGMA user_version").get()?.user_version) > migrationIndex("CREATE TABLE artifacts("));
     assert.equal((await after.call("tasks.list", { project: "app" }, admin)).find((task) => task.id === "APP-1")?.title, "Existing task");
     const columns = after.db.prepare("PRAGMA table_info(run_records)").all().map((r) => r.name);
     for (const column of ["log_pruned_at", "compression", "kind", "model", "verdict"]) assert.ok(columns.includes(column));

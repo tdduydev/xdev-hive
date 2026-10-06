@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { HiveError, type Actor } from "#core/index.ts";
-import { SqliteHive } from "#core/node.ts";
+import { SqliteHive, migrationIndex } from "#core/node.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
 /** An agent on Lan's token, as the hub reads it from an MCP call (roadmap 27c, 2b). */
@@ -20,8 +20,8 @@ const claude: Actor = {
 const other: Actor = { name: "minh", role: "member", access: { projects: { app: "lead" } } };
 const key = (k: string) => (e: unknown) => e instanceof HiveError && e.key === k;
 
-async function board(file = ":memory:") {
-  const hive = new SqliteHive(file);
+async function board(file = ":memory:", migrateTo?: number) {
+  const hive = new SqliteHive(file, migrateTo === undefined ? {} : { migrateTo });
   await hive.call("tasks.create", { id: "web-1", project: "web", title: "Trang chủ" }, admin);
   return hive;
 }
@@ -84,22 +84,20 @@ describe("task note history (roadmap 41a)", () => {
 
   /**
    * The notes already on a board become version 1, so the newest version is the task's note for old tasks too.
-   * The replay rolls back the last two migrations: 41a's, then 41c's (artifacts) after it, as on main since 6/10.
+   * The board starts at the schema before 41a's migration; the note is written as a hub of then wrote it.
    */
   it("keeps the notes a board already had when the table is added", async () => {
     const file = path.join(mkdtempSync(path.join(tmpdir(), "hive-notes-")), "hive.db");
-    const hive = await board(file);
-    await hive.call("tasks.update", { id: "web-1", status: "review", note: "Bàn giao cũ." }, claude);
-    const version = Number((hive.db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version);
-    // 41c (artifacts) landed after 41a on 6/10, so roll back both entries and replay them in order.
-    hive.db.exec(`DROP TABLE artifacts; DROP TABLE task_notes; PRAGMA user_version = ${version - 2}`);
+    const hive = await board(file, migrationIndex("CREATE TABLE task_notes("));
+    // Straight into the row: today's tasks.update would also keep a version, in a table this schema does not have.
+    hive.db.prepare("UPDATE tasks SET note = ?, status = 'review' WHERE id = 'web-1'").run("Bàn giao cũ.");
     hive.close();
 
     let again: SqliteHive;
     try {
       again = new SqliteHive(file);
     } catch (err) {
-      throw new Error(`41a's migration is no longer the last entry: roll back to its own index instead. (${String(err)})`);
+      throw new Error(`upgrading from the schema before 41a failed (${String(err)})`);
     }
     const notes = await again.call("tasks.notes", { id: "web-1" }, admin);
     assert.deepEqual(notes.map((n) => [n.version, n.note, n.status, n.author]), [[1, "Bàn giao cũ.", "review", "hub"]]);
