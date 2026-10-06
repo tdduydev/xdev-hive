@@ -5,7 +5,7 @@
 // Linux without a display: run it under xvfb-run.
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -67,12 +67,30 @@ if (!up) {
 }
 
 const seeded = await seed(base, admin);
+const resultFile = path.join(out, "result.json");
+rmSync(resultFile, { force: true });
 const browser = spawn(electron, [path.join(import.meta.dirname, "browser.mjs")], {
   stdio: "inherit",
   env: { ...process.env, HIVE_E2E_BASE: base, HIVE_E2E_OUT: out, HIVE_E2E_SEED: JSON.stringify({ admin, ...seeded }), ELECTRON_ENABLE_LOGGING: "" },
 });
 const timer = setTimeout(() => browser.kill("SIGKILL"), 5 * 60_000);
-const code = await new Promise((resolve) => browser.once("exit", (c) => resolve(c ?? 1)));
+const code = await new Promise((resolve) => {
+  let settled = false;
+  const finish = (value) => {
+    if (settled) return;
+    settled = true;
+    clearInterval(check);
+    resolve(value);
+  };
+  const check = setInterval(() => {
+    if (!existsSync(resultFile)) return;
+    let result;
+    try { result = JSON.parse(readFileSync(resultFile, "utf8")); } catch { return; }
+    browser.kill("SIGKILL");
+    finish(result.code);
+  }, 200);
+  browser.once("exit", (value) => finish(value ?? 1));
+});
 clearTimeout(timer);
 stop();
 if (code !== 0) console.error(`\nhub log:\n${hubLog.split("\n").slice(-40).join("\n")}`);

@@ -1311,5 +1311,8 @@ async function main() {
     console.log(`content wider than pane: ${contentOverflows.length} steps${contentOverflows.length ? `; ${contentOverflows.map((o) => o.step).join(", ")}` : ""}`);
   }
   console.log(`${results.length - failed.length}/${results.length} steps passed${failed.length ? `; failed: ${failed.map((f) => f.name).join(", ")}` : ""}`);
-  app.exit(failed.length || errors.length ? 1 : 0);
+  const code = failed.length || errors.length ? 1 : 0;
+  // A completed Electron run can stay alive on macOS; the runner uses this verdict after every check and screenshot.
+  writeFileSync(path.join(out, "result.json"), JSON.stringify({ code }));
+  app.exit(code);
 }
