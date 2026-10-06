@@ -8,7 +8,14 @@ export type AgentKind = (typeof AGENT_KINDS)[number];
 export const PREFER_KINDS = ["claude", "codex", "gemini", "antigravity"] as const;
 export type PreferKind = (typeof PREFER_KINDS)[number];
 
-export const AGENT_ROLES = ["plan", "implement", "review", "classify"] as const;
+/**
+ * Roles a person (or a leader) asks for and a profile takes. `classify` is not one: only the hub queues it, before a
+ * task with no kind starts (roadmap 54b), and it runs on any Claude or Codex profile that takes `implement`.
+ */
+export const WORK_ROLES = ["plan", "implement", "review"] as const;
+export type WorkRole = (typeof WORK_ROLES)[number];
+/** Every role a run may have, as machines report them. */
+export const AGENT_ROLES = [...WORK_ROLES, "classify"] as const;
 export type AgentRole = (typeof AGENT_ROLES)[number];
 
 /** Best-of-n: at most this many candidates of one implement run. */
@@ -64,7 +71,7 @@ export const agentProfileSchema = z.object({
     .default(null),
   /** After the quota left (see usageHeadroom), lower runs first; equal priority rotates least-recently-used. */
   priority: z.number().int().min(0).max(100).default(10),
-  roles: z.array(z.enum(AGENT_ROLES)).min(1).default(["plan", "implement", "review"]),
+  roles: z.array(z.enum(WORK_ROLES)).min(1).default(["plan", "implement", "review"]),
   maxConcurrent: z.number().int().min(1).max(8).default(1),
   /** Used when a rate-limit message has no reset time. */
   cooldownMinutes: z.number().int().min(1).max(24 * 60).default(60),

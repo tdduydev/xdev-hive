@@ -25,7 +25,6 @@ const profile = (id: string, enabled = true) => ({
 async function hub() {
   const clock = { at: Date.parse("2026-09-29T08:00:00.000Z") };
   const hive = new SqliteHive(":memory:", { now: () => new Date(clock.at) });
-  for (const project of ["app", "site"]) await hive.call("tasks.setClassifyConfig", { project, enabled: false }, admin);
   await hive.call("tasks.create", { id: "T-1", project: "app", title: "Login page" }, admin);
   await hive.call("tasks.create", { id: "T-2", project: "app", title: "Logout", dependsOn: ["T-1"] }, admin);
   await hive.call("tasks.create", { id: "S-1", project: "site", title: "Landing" }, admin);

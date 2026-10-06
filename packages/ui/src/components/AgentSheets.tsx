@@ -2,7 +2,7 @@
 // for several at once. The Task page and the agent map (31b) open them.
 import { useState } from "react";
 import { Plus, Send } from "lucide-react";
-import { AGENT_ROLES, type AgentRole, type PreferKind, type Task } from "@xdev-hive/core";
+import { WORK_ROLES, type WorkRole, type PreferKind, type Task } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Input } from "@xdev-hive/ui/components/ui/input";
@@ -192,7 +192,7 @@ export function BatchSheet({ tasks, targets = [], onSent }: { tasks: Task[]; tar
   const fit = (machines.data ?? []).filter((m) => takesRunsOf(m, project));
   // Agents picked on the map take the tasks in turn, the first task the first agent.
   const [rows, setRows] = useState(() =>
-    tasks.map((task, i) => ({ taskId: task.id, ...(targets.length ? targets[i % targets.length]! : { machineId: "", profileId: "" }), role: (task.status === "review" ? "review" : "implement") as AgentRole })),
+    tasks.map((task, i) => ({ taskId: task.id, ...(targets.length ? targets[i % targets.length]! : { machineId: "", profileId: "" }), role: (task.status === "review" ? "review" : "implement") as WorkRole })),
   );
   const [title, setTitle] = useState("");
   const [parallel, setParallel] = useState("");
@@ -240,8 +240,8 @@ export function BatchSheet({ tasks, targets = [], onSent }: { tasks: Task[]; tar
                 </div>
                 <MachineSelect id={`batch-machine-${i}`} machines={fit} value={row.machineId} any label={false} onChange={(id) => set(i, { machineId: id, profileId: "" })} />
                 <ProfileSelect id={`batch-profile-${i}`} machine={machine} value={row.profileId} label={false} onChange={(id) => set(i, { profileId: id })} />
-                <NativeSelect size="sm" className="w-full" value={row.role} onChange={(e) => set(i, { role: e.target.value as AgentRole })} aria-label={t("board.role")}>
-                  {AGENT_ROLES.map((r) => (
+                <NativeSelect size="sm" className="w-full" value={row.role} onChange={(e) => set(i, { role: e.target.value as WorkRole })} aria-label={t("board.role")}>
+                  {WORK_ROLES.map((r) => (
                     <NativeSelectOption key={r} value={r}>
                       {t(`agentRole.${r}`)}
                     </NativeSelectOption>

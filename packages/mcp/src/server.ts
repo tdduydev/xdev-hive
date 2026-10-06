@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
-  AGENT_ROLES,
+  WORK_ROLES,
   cacheReadShare,
   effectivePolicy,
   agentPolicyPartSchema,
@@ -642,18 +642,25 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
         title: "Propose a task",
         description:
           "Propose a new task on the chat's project board (id like the project's others, e.g. T-12; dependsOn: tasks to be done first). " +
-          "project: another service of a system the chat's project is in, for a feature split across services; dependsOn may then name tasks of the other services." +
+          "project: another service of a system the chat's project is in, for a feature split across services; dependsOn may then name tasks of the other services. " +
+          "taskKind, size, risk: what the task is, when you know (see propose_task_classify); left out, the hub's rules and a cheap classify run fill them." +
           confirm,
         inputSchema: {
           id: z.string(),
           title: z.string(),
           project: z.string().optional().describe("Another service of the chat project's system; left out: the chat's project"),
           dependsOn: z.array(z.string()).max(20).optional(),
+          taskKind: z.enum(TASK_KINDS).optional(),
+          size: z.enum(TASK_SIZES).optional(),
+          risk: z.enum(TASK_RISKS).optional(),
           reason,
         },
       },
-      async ({ id, title, project: p, dependsOn, reason: why }) =>
-        run("chat.propose", { action: { kind: "task.create", id, title, ...(p ? { project: p } : {}), dependsOn: dependsOn ?? [] }, reason: why }),
+      async ({ id, title, project: p, dependsOn, taskKind, size, risk, reason: why }) =>
+        run("chat.propose", {
+          action: { kind: "task.create", id, title, ...(p ? { project: p } : {}), dependsOn: dependsOn ?? [], ...(taskKind ? { taskKind } : {}), ...(size ? { size } : {}), ...(risk ? { risk } : {}) },
+          reason: why,
+        }),
     );
     server.registerTool(
       "propose_task_status",
@@ -668,7 +675,10 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       "propose_task_classify",
       {
         title: "Propose a task classification",
-        description: "Propose the kind, size or risk of a task. Give at least one field; a project manager confirms it." + confirm,
+        description:
+          "Propose what a task is, so its runs start on a fitting model: taskKind (docs, test, small-fix, feature, ui, refactor, debug, spec, review, merge, ops), " +
+          "size (s, m, l), risk (high: a migration, security, permissions or several core packages). At least one of the three." +
+          confirm,
         inputSchema: { id: z.string(), taskKind: z.enum(TASK_KINDS).optional(), size: z.enum(TASK_SIZES).optional(), risk: z.enum(TASK_RISKS).optional(), reason },
       },
       async ({ id, taskKind, size, risk, reason: why }) => run("chat.propose", { action: { kind: "task.classify", id, taskKind, size, risk }, reason: why }),
@@ -683,7 +693,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
           confirm,
         inputSchema: {
           taskId: z.string(),
-          role: z.enum(AGENT_ROLES).optional(),
+          role: z.enum(WORK_ROLES).optional(),
           machine: z.string().optional(),
           profileId: z.string().optional(),
           candidates: z.number().int().min(1).max(MAX_CANDIDATES).optional(),
