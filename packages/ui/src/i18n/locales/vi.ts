@@ -1601,6 +1601,8 @@ export const vi = {
     tokens: "Token: {input} vào mới · {write} ghi cache · {read} đọc cache · {output} ra · {share} input đọc từ cache",
     tokensOld: "Token: {input} vào · {output} ra",
     compression: "RTK: {commands} lệnh, ~{saved} token đã bỏ (RTK ước tính)",
+    modelDefault: "model mặc định",
+    modelNote: "Model và mức suy nghĩ mà lệnh chạy đặt. Không ghi thì CLI dùng mặc định của nó.",
     merge: "Merge",
     mergeHint: "Máy {machine} merge bằng token GitLab/GitHub của nó ở heartbeat kế tiếp (khoảng 30 giây). Task sang Xong khi máy thấy MR đã merge.",
     mergeConfirm: "CI của {mr} chưa xong ({status}). Vẫn merge?",

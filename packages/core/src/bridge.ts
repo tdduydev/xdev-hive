@@ -354,6 +354,13 @@ export interface AgentRun {
   outputTokens: number | null;
   /** What RTK left out of its Bash output (roadmap 28d); null or left out: no RTK, or no numbers. */
   compression?: RunCompression | null;
+  /**
+   * What it ran on (roadmap 54a), read from the args once the policy fitted the profile: the profile's kind, and the
+   * model and effort the args set (null: the CLI's default). Left out or null before it started.
+   */
+  agentKind?: AgentKind | null;
+  model?: string | null;
+  effort?: string | null;
 }
 
 /** A run queued because the pipeline of a merge request failed. */

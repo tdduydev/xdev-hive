@@ -1,6 +1,7 @@
 import type { Access } from "./access.ts";
 import type { AgentPolicy } from "./agent-policy.ts";
-import type { AgentProfile, AgentRole, PreferKind } from "./agents.ts";
+import type { AgentKind, AgentProfile, AgentRole, PreferKind } from "./agents.ts";
+import type { Verdict } from "./verdict.ts";
 import type { MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { WriteSource } from "./source.ts";
 import type { MapPhase } from "./mapreduce.ts";
@@ -773,6 +774,20 @@ export interface RunRecord {
    * An empty log means nothing on its own — a queued run has none either.
    */
   logPrunedAt: string | null;
+  /**
+   * What the run ran on (roadmap 54a), as its machine read the final args: the profile's kind, and the model and effort
+   * the args set. null: an older app, or (model, effort) the CLI's own default.
+   */
+  kind: AgentKind | null;
+  model: string | null;
+  effort: string | null;
+  /** The router's tier (roadmap 54c); null until then, and for a run it did not pick. */
+  tier: string | null;
+  /** Which try at the task it was (1 the first) and the run it follows; null from an older app. */
+  attempt: number | null;
+  parentRun: string | null;
+  /** A succeeded review's verdict, read once from its whole report; null for other runs. */
+  verdict: Verdict | null;
   /** The end of the run's readable log, lines that looked like secrets hidden: runs.get only. */
   log?: string;
   /** What it changed (git diff from its base), as its machine last sent it; null: not sent (yet). runs.get only. */
@@ -1312,6 +1327,30 @@ export interface CostSummary {
   profiles: Array<CostTotals & { machine: string; profileId: string; account: string | null }>;
   /** Priced runs with and without RTK (roadmap 28d); left out by older hubs. */
   compression?: CompressionCompare[];
+  /** Ended runs of the last 30 days by what they ran on (roadmap 54a); left out by older hubs. */
+  models?: ModelUse[];
+}
+
+/**
+ * Ended runs of one project and role on one kind, model and effort (roadmap 54a). model / effort null: the CLI's
+ * default, or an app from before 54a (kind null too then). The model router (54c/54d) learns from these.
+ */
+export interface ModelUse {
+  project: string;
+  role: string;
+  kind: AgentKind | null;
+  model: string | null;
+  effort: string | null;
+  runs: number;
+  failed: number;
+  /** Runs after the first attempt at their task. */
+  retries: number;
+  /** Succeeded reviews by verdict. */
+  approved: number;
+  changes: number;
+  /** Over the runs whose machine reported them; null: none did. */
+  costAvg: number | null;
+  outputAvg: number | null;
 }
 
 /** A subscription account resting after a rate limit, shared by every machine logged into it. */
