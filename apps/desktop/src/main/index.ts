@@ -740,7 +740,9 @@ async function transferHub(direction: unknown): Promise<TransferReport> {
 
 /** Re-checks this machine's setup; the next heartbeat carries it to the hub. */
 async function refreshSetup(): Promise<SetupReport> {
-  const report = await setup.status();
+  const report = smokeShot && process.env.HIVE_SMOKE_SETUP_REPORT
+    ? JSON.parse(readFileSync(process.env.HIVE_SMOKE_SETUP_REPORT, "utf8")) as SetupReport
+    : await setup.status();
   setupCache = { checkedAt: new Date().toISOString(), report };
   return report;
 }
