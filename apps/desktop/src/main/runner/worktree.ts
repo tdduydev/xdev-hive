@@ -9,7 +9,7 @@ import { tr } from "#desktop/main/i18n.ts";
 import { RENDERED_FILES } from "#desktop/main/installer.ts";
 
 /** Agent config that may exist in the repo but not be committed yet; copied into new worktrees. */
-export const AGENT_CONFIG_FILES = [".mcp.json", ".gemini/settings.json", ".claude/settings.json", ".xdev-hive/guard-docs.sh"];
+export const AGENT_CONFIG_FILES = [".agents/mcp_config.json", ".mcp.json", ".gemini/settings.json", ".claude/settings.json", ".xdev-hive/guard-docs.sh"];
 
 export interface Worktree {
   path: string;

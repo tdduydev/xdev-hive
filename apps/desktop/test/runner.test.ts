@@ -953,6 +953,43 @@ describe("Runner", () => {
     assert.equal(events.filter((e) => e.type === "run.failed").length, 0);
   });
 
+  it("rotates Antigravity on AGY_ERROR quota even with an unrecognised payload code", async () => {
+    const { runner } = await setup([profile("agy-a", "antigravity", 10, "agy-limit"), profile("codex-a", "codex", 20, "ok")]);
+    const first = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    assert.equal(runner.store.get(first.id)!.status, "rate_limited");
+    assert.match(runner.store.get(first.id)!.error!, /QUOTA_EXHAUSTED/);
+    assert.equal(runner.list().find((r) => r.parentRunId === first.id)?.status, "succeeded");
+  });
+
+  it("fails Antigravity on exit 3 or AGY_ERROR despite exit zero", async () => {
+    for (const mode of ["fail", "agy-error-zero", "agy-error-overflow"]) {
+      const { runner } = await setup([profile("agy-a", "antigravity", 10, mode)], { maxAttempts: 1 });
+      const first = await runner.enqueue({ project: "demo", taskId: "T-1" });
+      await runner.settle();
+      assert.equal(runner.store.get(first.id)!.status, "failed");
+      assert.match(runner.store.get(first.id)!.error!, mode === "fail" ? /boom/ : /authentication required/);
+    }
+  });
+
+  it("runs Antigravity template args and keeps the streamed final answer", async () => {
+    const { runner, calls } = await setup([profile("agy-a", "antigravity", 10, "ok", {
+      args: [FAKE, ...AGENT_TEMPLATES.antigravity.args], timeoutMinutes: 7,
+    })]);
+    const first = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const run = runner.store.get(first.id)!;
+    assert.equal(run.status, "succeeded");
+    assert.match(run.summary!, /Implemented T-1/);
+    assert.ok(calls()[0]!.args.includes("7m"));
+    assert.ok(calls()[0]!.args.includes("stream-json"));
+    assert.match(runner.log(run.id), /"type":"system"/);
+    const mcp = JSON.parse(readFileSync(path.join(run.worktree!, ".agents", "mcp_config.json"), "utf8"));
+    assert.equal(mcp.mcpServers["xdev-hive"].env.HIVE_AGENT, "agy-a");
+    assert.equal(mcp.mcpServers["xdev-hive"].env.HIVE_TASK, "T-1");
+    assert.equal(git(run.worktree!, "ls-tree", "--name-only", "HEAD", ".agents/mcp_config.json"), "");
+  });
+
   it("rotates to the next subscription when one hits its quota, continuing on the same branch", async () => {
     const { runner, calls, task, repo } = await setup([profile("claude-a", "claude", 10, "limit"), profile("codex-a", "codex", 20, "ok")]);
     const first = await runner.enqueue({ project: "demo", taskId: "T-1" });

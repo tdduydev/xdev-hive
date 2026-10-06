@@ -382,7 +382,7 @@ export interface ProfileChange {
   requestedAt: string;
 }
 
-export const POLICY_CLIS = ["claude", "codex", "gemini"] as const;
+export const POLICY_CLIS = ["claude", "codex", "gemini", "antigravity"] as const;
 export const POLICY_REPO_PARTS = ["agents", "codegraph-mcp", "codegraph-index", "superpowers", "speckit"] as const;
 /**
  * admins: a hub admin may approve their own work, since on a hub of one person their agents run on their token too.
@@ -408,7 +408,7 @@ export interface TeamPolicy {
 
 /** The tool catalog (roadmap 28a): what machines may set up for runs, kept on the hub instead of in the app's code. */
 export const TOOL_KINDS = ["mcp", "plugin", "hook", "cli"] as const;
-export const TOOL_AGENTS = ["claude", "codex", "gemini"] as const;
+export const TOOL_AGENTS = ["claude", "codex", "gemini", "antigravity"] as const;
 export const TOOL_REGISTRIES = ["npm", "pypi", "brew", "git", "claude-plugin"] as const;
 /**
  * Tools the app already has its own code for: from 28b the machine runs that code to install, prepare and check them,

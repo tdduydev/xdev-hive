@@ -42,7 +42,7 @@ const COMMAND_TONE: Record<CommandStatus, string> = {
   cancelled: "neutral",
   expired: "neutral",
 };
-const CLI_LABEL: Record<(typeof POLICY_CLIS)[number], string> = { claude: "Claude Code", codex: "Codex CLI", gemini: "Gemini CLI" };
+const CLI_LABEL: Record<(typeof POLICY_CLIS)[number], string> = { claude: "Claude Code", codex: "Codex CLI", gemini: "Gemini CLI", antigravity: "Antigravity CLI" };
 /** Audit actions by the name the hub records (keys of the catalogue cannot contain dots). */
 export const ACTION_LABEL: Record<string, MessageKey> = {
   "docs.save": "auditAction.docsSave",
