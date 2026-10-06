@@ -824,6 +824,12 @@ function toSpecFeature(r: Row): SpecFeatureDetail {
   };
 }
 
+// Read the original request rather than recomputing a reason from settings that may have changed since dispatch.
+const RUN_SELECTION_COLUMN = `(SELECT CASE WHEN q.run_id = r.run_id THEN q.selection ELSE json_extract(q.selection, '$.review') END
+  FROM run_requests q WHERE q.project = r.project AND q.machine_id = r.machine_id AND q.status = 'accepted'
+  AND (q.run_id = r.run_id OR (r.role = 'review' AND q.run_id = r.parent_run))
+  ORDER BY q.run_id = r.run_id DESC, q.id DESC LIMIT 1) AS router_selection`;
+
 function toRunRecord(r: Row, withLog: boolean): RunRecord {
   const s = (v: unknown) => (v == null ? null : String(v));
   return {
@@ -871,6 +877,7 @@ function toRunRecord(r: Row, withLog: boolean): RunRecord {
     model: s(r.model),
     effort: s(r.effort),
     tier: s(r.tier),
+    selection: r.router_selection == null ? null : (JSON.parse(str(r.router_selection)) as ModelSelection),
     attempt: numOrNull(r.attempt),
     parentRun: s(r.parent_run),
     verdict: s(r.verdict) as Verdict | null,
@@ -6765,7 +6772,7 @@ export class SqliteHive implements HiveBackend {
         (
           db
             .prepare(
-              `SELECT r.*, ${RUN_TOKEN_COLUMNS} FROM run_records r LEFT JOIN run_costs c ON c.machine_id = r.machine_id AND c.run_id = r.run_id
+              `SELECT r.*, ${RUN_TOKEN_COLUMNS}, ${RUN_SELECTION_COLUMN} FROM run_records r LEFT JOIN run_costs c ON c.machine_id = r.machine_id AND c.run_id = r.run_id
                WHERE (?1 IS NULL OR r.project = ?1) AND (?3 IS NULL OR r.project IN (SELECT value FROM json_each(?3))) ORDER BY r.created_at DESC, r.run_id DESC LIMIT ?2`,
             )
             .all(project ?? null, limit, listParam(projects)) as Row[]
@@ -6773,7 +6780,7 @@ export class SqliteHive implements HiveBackend {
 
       "runs.get": ({ machineId, runId }, actor) => {
         const row = db
-          .prepare(`SELECT r.*, ${RUN_TOKEN_COLUMNS} FROM run_records r LEFT JOIN run_costs c ON c.machine_id = r.machine_id AND c.run_id = r.run_id WHERE r.machine_id = ? AND r.run_id = ?`)
+          .prepare(`SELECT r.*, ${RUN_TOKEN_COLUMNS}, ${RUN_SELECTION_COLUMN} FROM run_records r LEFT JOIN run_costs c ON c.machine_id = r.machine_id AND c.run_id = r.run_id WHERE r.machine_id = ? AND r.run_id = ?`)
           .get(machineId, runId) as Row | undefined;
         // A run of a project the caller does not see answers like a missing one.
         return row && sees(actor, str(row.project)) ? toRunRecord(row, true) : null;

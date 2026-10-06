@@ -844,6 +844,8 @@ export interface RunRecord {
   effort: string | null;
   /** The router's tier (roadmap 54c); null until then, and for a run it did not pick. */
   tier: string | null;
+  /** Original hub choice from its accepted request; absent for older and locally started runs. */
+  selection?: ModelSelection | null;
   /** Which try at the task it was (1 the first) and the run it follows; null from an older app. */
   attempt: number | null;
   parentRun: string | null;

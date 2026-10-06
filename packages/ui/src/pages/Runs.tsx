@@ -2,6 +2,7 @@
 // what came of it in words under it. The app lists this machine's runs only (roadmap 35a); the web lists every machine's
 // (runs.push). The detail opens on the summary — the agent's last words, its steps, the MR — and keeps the log in a tab.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ModelRunChip } from "#ui/components/ModelChip.tsx";
 import { Wrench, X } from "lucide-react";
 import { cn } from "cn";
 import { cacheReadShare, parseVerdict, type AgentRun, type RunCompression, type RunRecord, type RunRequest, type RunTokens } from "@xdev-hive/core";
@@ -266,6 +267,7 @@ function RunRow({ row, index, on, machine, onPick }: { row: Row; index: number; 
         <span className="shrink-0 text-[11px]/none text-fg-muted tabular-nums">{live ? runDuration(r) : formatTime(rowTime(row))}</span>
       </div>
       <span className="line-clamp-2 text-xs/[17px] text-fg-secondary">{runOutcome(r)}</span>
+      <ModelRunChip run={r} />
       <span className="truncate text-xs/[17px] text-fg-muted md:text-[11px]/[14px]">
         {[r.profileId, runLabel("agentRole", r.role), row.src === "hub" && where ? where : null, row.src === "local" ? bestOfText(row.run, t) : null].filter(Boolean).join(" · ")}
         <span className="font-mono text-fg-disabled">
@@ -300,7 +302,7 @@ function Head({ run, machine, actions }: { run: AgentRun | RunRecord; machine: s
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className={cn("inline-flex h-5 items-center rounded-xs px-[7px] text-[11px]/none font-semibold whitespace-nowrap", CHIP[kind])}>{stateLabel(run, t)}</span>
-            <ModelChip run={run} />
+            <ModelRunChip run={run} />
             {waiting ? <Chip kind="warning">{t("runs.waiting")}</Chip> : null}
             <span className="text-xs/none text-fg-muted">
               {[run.profileId ?? t("board.waitingProfile"), runLabel("agentRole", run.role), run.branch ? t("runs.worktree", { branch: run.branch }) : null].filter(Boolean).join(" · ")}
@@ -314,28 +316,6 @@ function Head({ run, machine, actions }: { run: AgentRun | RunRecord; machine: s
         <div className="flex flex-wrap justify-end gap-1.5">{actions}</div>
       </div>
     </div>
-  );
-}
-
-/**
- * The model and effort the run's args set (roadmap 54a). Once its app knows the kind, no model means the CLI's own
- * default, said so; a run from an older app knows nothing of it and shows no chip.
- */
-function ModelChip({ run }: { run: AgentRun | RunRecord }) {
-  const t = useT();
-  const kind = "agentKind" in run ? run.agentKind : "runId" in run ? run.kind : null;
-  const model = run.model ?? null;
-  const effort = run.effort ?? null;
-  // The hub keeps only the tier (54a); the machine's own run still has the router's reason for the tooltip.
-  const tier = "runId" in run ? (run.tier ?? null) : (run.selection?.tier ?? null);
-  const reason = "runId" in run ? null : (run.selection?.reason ?? null);
-  if (!kind && !model && !effort) return null;
-  return (
-    <span className="inline-flex" data-run-model={model ?? ""}>
-      <Chip kind="neutral" small title={reason ? `${t("runs.modelNote")} · ${reason}` : t("runs.modelNote")}>
-        {[model ?? t("runs.modelDefault"), effort, tier ? t("runs.modelTier", { tier }) : null].filter(Boolean).join(" · ")}
-      </Chip>
-    </span>
   );
 }
 

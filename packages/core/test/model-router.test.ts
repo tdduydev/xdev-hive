@@ -117,6 +117,23 @@ describe("model router on the hub", () => {
     hive.close();
   });
 
+  it("returns the original request reason in run lists and details even after settings change", async () => {
+    const { hive } = await hub();
+    const req = await hive.call("runs.dispatch", { machineId: machine.name, project: "app", taskId: "T-1", reviewAfter: true }, lead);
+    await hive.call("runs.requestResult", { id: req.id, status: "accepted", runId: "R-model1" }, machine);
+    const run = { runId: "R-model1", project: "app", taskId: "T-1", taskTitle: "Guide", role: "implement" as const, status: "running" as const, profileId: "claude-1", createdAt: new Date().toISOString(), kind: "claude" as const, model: "opus", effort: "high", tier: "light" };
+    await hive.call("runs.push", { machine: "duy-mbp", runs: [run, { ...run, runId: "R-review1", role: "review", parentRun: "R-model1" }, { ...run, runId: "R-local1" }] }, machine);
+    await hive.call("modelRouter.set", { project: "app", setting: { enabled: false, profile: "quality", cells: {} } }, lead);
+    const rows = await hive.call("runs.list", { project: "app" }, lead);
+    assert.deepEqual(rows.find((r) => r.runId === "R-model1")?.selection, req.selection);
+    assert.deepEqual(rows.find((r) => r.runId === "R-review1")?.selection, req.selection?.review);
+    assert.equal(rows.find((r) => r.runId === "R-local1")?.selection, null);
+    const detail = await hive.call("runs.get", { machineId: machine.name, runId: "R-model1" }, lead);
+    assert.equal(detail?.model, "opus", "actual args can override the routed model");
+    assert.equal(detail?.selection?.reason, "docs/s, balanced", "never recompute from current settings");
+    hive.close();
+  });
+
   it("keeps runs as before for a project that turned it off; the tiers are a hub admin's", async () => {
     const { hive } = await hub();
     await hive.call("modelRouter.set", { project: "app", setting: { enabled: false, profile: "balanced", cells: {} } }, lead);

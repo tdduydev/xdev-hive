@@ -1,4 +1,5 @@
 import { ResponsiveTable as Table, ResponsiveTableRow as TableRow } from "#ui/components/ResponsiveTable.tsx";
+import { TaskModelChips } from "#ui/components/ModelChip.tsx";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { cn } from "cn";
 import { WORK_ROLES, MAX_CANDIDATES, TASK_STATUSES, type WorkRole, type PreferKind, type RunRequest, type Task, type TaskNote, type TaskStatus } from "@xdev-hive/core";
@@ -491,6 +492,7 @@ function TaskDetail({ task, requests, hub, onChanged }: { task: Task; requests: 
             <Owner task={task} />
           </div>
         </section>
+        {hub ? <TaskModelChips key={task.id} task={task} requests={requests} /> : null}
         {/* A task the hub drives through the project's gates (roadmap 34b). */}
         {hub ? <FlowList project={task.project} taskId={task.id} /> : null}
         {hub ? <FlowTaskPanel project={task.project} taskId={task.id} /> : null}
