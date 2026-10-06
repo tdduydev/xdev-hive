@@ -6,6 +6,7 @@ import { cn } from "cn";
 import type { ChatAction, Memory, SdlcGateRecord } from "@xdev-hive/core";
 import { approvalOf } from "#ui/lib/permissions.ts";
 import { Diff } from "#ui/components/Diff.tsx";
+import { requestErrorText } from "#ui/lib/runs.ts";
 import { ErrorNote } from "#ui/components/common.tsx";
 import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { errorMessage, formatTime, useCan, useHive, useQuery } from "#ui/hooks.ts";
@@ -144,6 +145,7 @@ const firstLine = (s: string, max = 90) => {
 
 function titleOf(item: InboxItem, t: TFunction): string {
   switch (item.kind) {
+    case "agentHold": return t("assignment.stopped", { id: item.task.id });
     case "ci": {
       const mr = item.run.mrIid ? t("inbox.ci.mr", { iid: item.run.mrIid }) : "MR";
       const jobs = item.run.ciFix?.jobs.map((j) => j.name).join(", ");
@@ -172,6 +174,7 @@ function titleOf(item: InboxItem, t: TFunction): string {
 
 function metaOf(item: InboxItem, t: TFunction): string {
   switch (item.kind) {
+    case "agentHold": return requestErrorText(item.task.agent!.hold!);
     case "ci": {
       const f = item.run.ciFix;
       if (!f) return t("inbox.ci.noFix");
@@ -422,7 +425,7 @@ function Footer({ actions, foot, busy }: { actions: Action[]; foot: string; busy
           disabled={busy}
           onClick={() => void a.run()}
           className={cn(
-            "inline-flex h-[30px] cursor-pointer items-center gap-1.5 rounded-sm px-3 text-xs/none font-semibold whitespace-nowrap outline-none focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-60",
+            "inline-flex h-[30px] max-md:min-h-11 cursor-pointer items-center gap-1.5 rounded-sm px-3 text-xs/none font-semibold whitespace-nowrap outline-none focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-60",
             BTN[a.kind],
           )}
         >
@@ -498,6 +501,18 @@ function Detail({
   let body: ReactNode = null;
   let actions: Action[] = [];
   switch (item.kind) {
+    case "agentHold": {
+      const { task } = item;
+      body = <P>{requestErrorText(task.agent!.hold!)}</P>;
+      actions = [
+        ...(allow(task.project, "runDispatch") ? [{ label: t("assignment.retry"), kind: "primary" as const, run: act(async () => {
+          await client.call("tasks.assign", { id: task.id, machineId: task.agent!.machineId, profileId: task.agent!.profileId });
+          return t("assignment.selected", { n: 1 });
+        }) }] : []),
+        { label: t("assignment.change"), kind: "secondary", run: go(`#/tasks?task=${encodeURIComponent(task.id)}`) },
+      ];
+      break;
+    }
     case "ci": {
       const r = item.run;
       body = (

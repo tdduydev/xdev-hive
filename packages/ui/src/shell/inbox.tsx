@@ -46,7 +46,9 @@ export function useInboxState(client: HiveClient, me: Me, scope: Scope, tick: nu
   const hub = team && me.mode === "hub";
 
   const proposals = useQuery(async () => (team ? client.call("proposals.list", { status: "pending" }) : []), deps);
-  const review = useQuery(async () => (team ? client.call("tasks.list", { status: "review", ...scopeFilter(scope) }) : []), deps);
+  // A task the hub stopped at (roadmap 50b) can be in any status, and tasks.list cannot filter by agent, so the hub
+  // reads the whole board; everywhere else the inbox still asks only for what waits to be reviewed.
+  const review = useQuery(async () => (team ? client.call("tasks.list", { ...scopeFilter(scope), ...(hub ? {} : { status: "review" as const }) }) : []), deps);
   const memory = useQuery(async () => (team ? client.call("memory.list", { ...memoryFilter(scope), limit: 500 }) : []), deps);
   // Gates and leaders' proposals are the hub's; one from before them has neither method.
   const gates = useQuery(async () => (hub ? client.call("sdlc.gates", { ...scopeFilter(scope), limit: 100 }).catch(() => []) : []), deps);
@@ -66,6 +68,8 @@ export function useInboxState(client: HiveClient, me: Me, scope: Scope, tick: nu
     const all = buildInbox({
       proposals: proposals.data,
       reviewTasks: review.data,
+      assignedTasks: hub ? review.data : [],
+      principal: me.name,
       memory: memory.data,
       runs: runs.data,
       setup: setup.data?.machine,
@@ -78,7 +82,7 @@ export function useInboxState(client: HiveClient, me: Me, scope: Scope, tick: nu
     });
     const handled = new Set(done.map((d) => d.key));
     return all.filter((i) => !handled.has(i.key) && inScope(scope, inboxProject(i)));
-  }, [proposals.data, review.data, memory.data, runs.data, setup.data, requests.data, settings.data, alerts.data, gates.data, leader.data, me, done, scope]);
+  }, [proposals.data, review.data, memory.data, runs.data, setup.data, requests.data, settings.data, alerts.data, gates.data, leader.data, me, done, scope, hub]);
 
   const markRead = useCallback((key: string) => {
     setRead((cur) => {
