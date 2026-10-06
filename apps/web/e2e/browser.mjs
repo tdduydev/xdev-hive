@@ -343,6 +343,7 @@ async function main() {
     await tab.click('input[aria-label="Tìm dự án hoặc hệ thống…"]');
     await tab.type("ban-hang");
     await tab.click('[role="option"]', "ban-hang");
+    // Otherwise the drawer's scrim takes the click on "+ Trang" and no form opens (the "new page's key" timeout).
     if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
     await tab.go("docs");
     await tab.waitFor("the system's page before the service groups", () => {
@@ -359,13 +360,17 @@ async function main() {
     expect(["sys:ban-hang", "demo", "ledger", "payment"].every((o) => places.includes(o)), `places to put it: ${places}`);
     await tab.key("Enter");
     await tab.waitFor("the new page picked in the tree", () => document.querySelector('[role="treeitem"][aria-selected="true"]')?.getAttribute("title") === "system/ban-hang/quy-uoc-chung");
-    if (mobile) await tab.click("button", "Trợ lý");
+    // On a phone too the new page opens on its editor (only shown ones are clicked), not behind the assistant.
     await tab.click(".ProseMirror");
     await tab.type("Mọi service dùng chung.");
+    // On a phone saving sits in the modes menu (roadmap 42b), as in docs-rich-editor.
+    if (mobile) await tab.click("summary", "Chế độ");
     await tab.click("button", "Lưu thành v1");
     await until("the page saved in the system", async () => (await rpc("docs.get", { key: "system/ban-hang/quy-uoc-chung" }))?.version === 1);
     await tab.click("[data-project-picker-trigger]");
     await tab.click('[role="option"]', "Tất cả dự án");
+    // Picking a scope leaves the phone drawer open; its scrim would take admin-grants-a-role's clicks.
+    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
   });
 
   await step("login-password", async () => {
