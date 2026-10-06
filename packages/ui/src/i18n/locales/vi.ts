@@ -594,6 +594,8 @@ export const vi = {
     searchProjects: "Tìm dự án hoặc hệ thống…",
     selectProject: "Chọn dự án hoặc phạm vi",
     noMatches: "Không tìm thấy dự án hoặc hệ thống.",
+    expand: "Mở các service của {system}",
+    collapse: "Thu gọn {system}",
   },
   login: {
     tagline: "Tài liệu, memory và task dùng chung cho các coding agent của team.",
