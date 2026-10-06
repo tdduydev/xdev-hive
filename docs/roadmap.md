@@ -173,8 +173,8 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **31a. batch-run**: đợt chạy (`run_groups`, `run_group_items`): chọn nhiều task trên trang *Task*, mỗi task một máy (hoặc *máy rảnh*, hub tự chọn lúc thả) và gói; *chạy song song tối đa* giữ mục chưa thả ở hub, thả tiếp khi run xong. `runs.dispatchMany`, `runs.groups`, `runs.cancelGroup`; heartbeat báo `maxConcurrent`; trang *Đợt chạy*.
   - [x] **31e. fan-out**: một prompt cho 2–8 agent: task cha `P-<n>` và task con `P-<n>-a…`, mỗi agent một task chạy song song; so sánh trên thẻ đợt, *Chọn bản này* (`runs.pickWinner`) đóng các bản còn lại.
   - [x] **31b. agent-map**: trang *Bản đồ agent* (thay bảng của *Máy & run*, cùng `#/machines`, chỉ trên web): máy → gói (trạng thái, % phiên/tuần, *đang chạy n/max*) → run và việc agent đang làm, hàng đợi, đợt chạy đang mở; chọn gói để prompt, chọn nhiều gói để fan-out hay giao task.
-  - [ ] **31c. map-reduce** (cần xác nhận cách hiểu): việc lớn + danh sách việc con → task con chạy song song (map), xong thì một run gộp các branch con vào branch cha rồi review (reduce).
-  - [ ] **31d. multi-role** (cần xác nhận cách hiểu): chuỗi vai trên cùng task và branch (viết code → viết test → review), mỗi vai một gói, chạy lần lượt.
+  - [ ] **31c. map-reduce** (người dùng chọn làm 6/10; phần hub đã có, làm nốt giao diện và e2e): việc lớn + danh sách việc con → task con chạy song song (map), xong thì một run gộp các branch con vào branch cha rồi review (reduce).
+  - [ ] **31d. multi-role** (người dùng chọn làm 6/10): chuỗi vai trên cùng task và branch (viết code → viết test → review), mỗi vai một gói, chạy lần lượt.
 
 - **32. open-cli-web-prompt** (hỏi 2/10: client mở Claude Code bằng gói claude-1, claude-2… để tự code, web admin chọn gói để prompt; chọn: CLI mở trong repo dự án, web là prompt tự do thành run. Phần "agent map, một lần chạy nhiều agent" hỏi cùng lúc thuộc roadmap 31). Spec: [docs/specs/32-open-cli-web-prompt.md](specs/32-open-cli-web-prompt.md). Tách:
   - [x] **32a. open-cli**: nút *Mở Claude Code* / *Mở Codex* trên thẻ gói (*Gói sub*) và hàng dự án (*Dự án*): terminal chạy CLI tương tác của gói trong repo dự án, env đăng nhập của gói, MCP xdev-hive với `HIVE_AGENT` = id gói. Phiên của người dùng: không áp chính sách 27a, không tính trần 27b.
@@ -296,6 +296,13 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **56a. pipeline-page**: trang *Quy trình*, chốt, số liệu, bộ cài sẵn, lối nhanh, xem theo tính năng, mobile.
   - [ ] **56b. settings-tidy**: *Cài đặt dự án* gọn: tab, tóm tắt, chip model, hiệu lực, trần hub sang *Quản trị*.
   - [ ] **56c. models-in-pipeline**: model từng bước, tab *Model theo loại task*, chip model ở run và task (giao diện của 54c/54d).
+
+- **57. agent-collab** (hỏi 6/10: thêm việc cho các gói Codex; chọn cả bốn): làm việc cùng agent. Spec: [docs/specs/57-agent-collab.md](specs/57-agent-collab.md). Tách:
+  - [ ] **57a. run-steer**: nhắn thêm chỉ dẫn cho run đang chạy (`runs.steer`, Claude qua stdin stream-json hoặc file steer, Codex qua file steer).
+  - [ ] **57b. plan-approval**: pha kế hoạch chỉ đọc, *Chờ duyệt kế hoạch* ở *Hôm nay*, duyệt / sửa / tự duyệt sau thời hạn; chế độ theo dự án ở *Quy trình*.
+  - [ ] **57c. diff-review**: tab *Diff* ở trang run, nhóm theo ý có giải thích (model rẻ), cờ rủi ro, yêu cầu sửa theo hunk.
+  - [ ] **57d. skill-stats**: run ghi skill đã nạp; trang Skill có số run dùng 30 ngày, lần dùng cuối, lọc skill không ai dùng.
+  - [ ] **57e. qa-role**: quyền `qaVerify`, vai QA, chốt *Kiểm thử* trước Merge (mặc định tự động), Hôm nay của QA.
 
 ## Sửa lỗi
 
