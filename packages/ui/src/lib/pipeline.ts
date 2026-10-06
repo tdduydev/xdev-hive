@@ -1,8 +1,8 @@
 import type { HiveClient } from "#ui/client.ts";
 import { GATE_MODES, SDLC_GATES, type GateMode, type GateModes, type SdlcFlow, type SdlcFlowTask, type SdlcGate, type SdlcGateRecord, FAST_LANE_KINDS } from "@xdev-hive/core";
 
-export const PIPELINE_STEPS = ["idea", "spec", "plan", "tasks", "dispatch", "build", "review", "fix", "merge", "done"] as const;
-export const PIPELINE_STEP_GATES: Partial<Record<(typeof PIPELINE_STEPS)[number], SdlcGate>> = { spec: "spec", plan: "plan", tasks: "tasks", dispatch: "dispatch", review: "review", fix: "fix", merge: "merge" };
+export const PIPELINE_STEPS = ["idea", "spec", "plan", "tasks", "dispatch", "build", "review", "fix", "test", "merge", "done"] as const;
+export const PIPELINE_STEP_GATES: Partial<Record<(typeof PIPELINE_STEPS)[number], SdlcGate>> = { spec: "spec", plan: "plan", tasks: "tasks", dispatch: "dispatch", review: "review", fix: "fix", test: "test", merge: "merge" };
 export type PipelineStep = (typeof PIPELINE_STEPS)[number];
 export type PipelinePreset = "cautious" | "balanced" | "maximum" | "fast";
 export const PIPELINE_PRESETS: PipelinePreset[] = ["cautious", "balanced", "maximum", "fast"];
@@ -10,7 +10,7 @@ export const FAST_KINDS = FAST_LANE_KINDS;
 
 const modes = (values: Partial<GateModes>): GateModes => Object.fromEntries(SDLC_GATES.map((gate) => [gate, values[gate] ?? "auto"])) as GateModes;
 export function presetGates(preset: PipelinePreset, ceiling: GateModes, current?: GateModes): GateModes {
-  const wanted = preset === "cautious" ? modes({ spec: "human", plan: "human", review: "human", merge: "human" })
+  const wanted = preset === "cautious" ? modes({ spec: "human", plan: "human", review: "human", test: "human", merge: "human" })
     : preset === "balanced" ? modes({ spec: "human", plan: "ai", tasks: "ai", review: "ai", merge: "human" })
     : preset === "fast" && current ? current
     : modes({ merge: "ai" });
@@ -44,7 +44,7 @@ export function flowStep(flow: SdlcFlow): PipelineStep {
 export function taskStep(task: SdlcFlowTask): PipelineStep {
   if (task.stage === "done") return "done";
   if (task.stage === "queued") return "dispatch";
-  if (task.gate && ["gate", "check", "checking"].includes(task.stage)) return task.gate.gate === "dispatch" ? "dispatch" : task.gate.gate === "fix" ? "fix" : task.gate.gate === "merge" ? "merge" : "review";
+  if (task.gate && ["gate", "check", "checking"].includes(task.stage)) return task.gate.gate === "dispatch" ? "dispatch" : task.gate.gate === "fix" ? "fix" : task.gate.gate === "test" ? "test" : task.gate.gate === "merge" ? "merge" : "review";
   if (["review", "check", "checking", "gate"].includes(task.stage)) return "review";
   if (["fix", "fixnext"].includes(task.stage)) return "fix";
   if (["merge", "merging"].includes(task.stage)) return "merge";

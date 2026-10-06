@@ -4,8 +4,8 @@
 import { z } from "zod";
 
 /** In flow order. spec/plan/tasks: after each Spec Kit step; dispatch: before a flow task runs; review: after it ran;
- * fix: when its review asks for changes; merge: when its MR is green. */
-export const SDLC_GATES = ["spec", "plan", "tasks", "dispatch", "review", "fix", "merge"] as const;
+ * fix: when its review asks for changes; test: QA verification before merge; merge: when its MR is green. */
+export const SDLC_GATES = ["spec", "plan", "tasks", "dispatch", "review", "fix", "test", "merge"] as const;
 export type SdlcGate = (typeof SDLC_GATES)[number];
 
 /** From least to most left to the agents: a person decides; an agent checks, then passes or asks a person; it goes on. */
@@ -55,7 +55,7 @@ export const fullCeiling = (ceiling: Partial<GateModes>): GateModes =>
 export function effectiveGates(policy: SdlcPolicySettings, project: string): GateModes {
   const ceiling = fullCeiling(policy.ceiling);
   const own = policy.projects[project]?.gates ?? {};
-  return Object.fromEntries(SDLC_GATES.map((g) => [g, lowerMode(own[g] ?? "human", ceiling[g])])) as GateModes;
+  return Object.fromEntries(SDLC_GATES.map((g) => [g, lowerMode(own[g] ?? (g === "test" ? "auto" : "human"), ceiling[g])])) as GateModes;
 }
 
 /** The settings as the pages read them: the ceiling filled in, and each project's choice next to what applies. */

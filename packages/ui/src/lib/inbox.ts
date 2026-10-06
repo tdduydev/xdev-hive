@@ -84,6 +84,7 @@ const TONE: Record<InboxKind, InboxTone> = {
 
 /** Who decides at a gate, as the hub checks it: a task's review and merge are code review, the rest running agents. */
 export function gatePermission(g: Pick<SdlcGateRecord, "gate">): Permission {
+  if (g.gate === "test") return "qaVerify";
   return g.gate === "review" || g.gate === "merge" ? "codeReview" : "runDispatch";
 }
 
@@ -215,7 +216,7 @@ export function inboxProject(item: InboxItem): string | null {
 }
 
 /** Hôm nay's groups (roadmap 49g): by what the person does with the item, whatever its source. */
-export const INBOX_GROUPS = ["decide", "review", "agent", "watch"] as const;
+export const INBOX_GROUPS = ["decide", "review", "qa", "agent", "watch"] as const;
 export type InboxGroup = (typeof INBOX_GROUPS)[number];
 
 export function inboxGroup(item: InboxItem): InboxGroup {
@@ -223,7 +224,7 @@ export function inboxGroup(item: InboxItem): InboxGroup {
     case "review":
       return "review";
     case "gate":
-      return gatePermission(item.gate) === "codeReview" ? "review" : "decide";
+      return item.gate.gate === "test" ? "qa" : gatePermission(item.gate) === "codeReview" ? "review" : "decide";
     case "waitingRun":
     case "agentHold":
     case "ci":
@@ -241,10 +242,11 @@ export function inboxGroup(item: InboxItem): InboxGroup {
  * unblocks the agents working for them. What only needs watching comes last for anyone who can act.
  */
 const GROUP_ORDER: Record<ProjectRole, readonly InboxGroup[]> = {
-  lead: ["decide", "agent", "review", "watch"],
-  reviewer: ["review", "decide", "agent", "watch"],
-  member: ["agent", "review", "decide", "watch"],
-  viewer: ["watch", "agent", "review", "decide"],
+  lead: ["decide", "agent", "review", "qa", "watch"],
+  reviewer: ["review", "decide", "agent", "qa", "watch"],
+  qa: ["qa", "review", "decide", "agent", "watch"],
+  member: ["agent", "review", "decide", "qa", "watch"],
+  viewer: ["watch", "agent", "review", "qa", "decide"],
 };
 
 /** The items in their groups, the groups in the role's order; empty groups left out, each group keeps the items' order. */
@@ -256,11 +258,12 @@ export function groupInbox(items: InboxItem[], role: ProjectRole): Array<{ group
 export function roleOfPermissions(has: ReadonlySet<Permission>): ProjectRole {
   if (has.has("projectSettings") || has.has("membersManage")) return "lead";
   if (has.has("codeReview") || has.has("docApprove") || has.has("memoryApprove") || has.has("chatApprove")) return "reviewer";
+  if (has.has("qaVerify")) return "qa";
   if (has.has("taskWork")) return "member";
   return "viewer";
 }
 
-const RANK: Record<ProjectRole, number> = { viewer: 0, member: 1, reviewer: 2, lead: 3 };
+const RANK: Record<ProjectRole, number> = { viewer: 0, member: 1, qa: 2, reviewer: 3, lead: 4 };
 
 /** The highest role among the permission sets the person has on what the scope covers (null: cannot see); viewer when none. */
 export function highestRole(perms: Array<ReadonlySet<Permission> | null>): ProjectRole {
