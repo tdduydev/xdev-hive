@@ -1,3 +1,4 @@
+import { visibleInterval } from "#ui/lib/visible-interval.ts";
 import { ResponsiveGridRow, ResponsiveTableFrame } from "#ui/components/ResponsiveTable.tsx";
 import { ConfigIssues } from "#ui/components/ConfigIssues.tsx";
 import { useEffect, useRef, useState } from "react";
@@ -105,7 +106,7 @@ export function AgentsPage() {
   useEffect(() => {
     const ids = Object.keys(waiting);
     if (!ids.length) return;
-    const timer = setInterval(() => {
+    return visibleInterval(4000, () => {
       void desktop.recheckLogins().then(
         (list) => {
           refresh();
@@ -123,8 +124,7 @@ export function AgentsPage() {
         },
         () => undefined,
       );
-    }, 4000);
-    return () => clearInterval(timer);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [desktop, Object.keys(waiting).join(",")]);
 
@@ -1376,8 +1376,7 @@ function IntakeCard({ runner, hub, onSaved }: { runner: RunnerSettings; hub: boo
 function useMinute(): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(timer);
+    return visibleInterval(60_000, () => setNow(Date.now()));
   }, []);
   return now;
 }

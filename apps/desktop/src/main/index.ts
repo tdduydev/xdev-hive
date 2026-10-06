@@ -71,7 +71,7 @@ import { GitLabClient } from "./gitlab/client.ts";
 import { gitClone, importRepos, planImport } from "./gitlab/import.ts";
 import { findGitRepos, isGitRepo, isRepoRoot, remoteUrl } from "./git.ts";
 import { addRepos, planLocalImport } from "./local-import.ts";
-import { appendCrashLog, crashLogPath, ReloadGuard } from "./crashlog.ts";
+import { appendCrashLog, crashLogPath, ReloadGuard, rendererGoneText, type RendererMemorySample } from "./crashlog.ts";
 import { readDesktopConfig } from "./config-read.ts";
 import { MainLog, mainLogDir, QuitReasons, relaunchAfterQuitInstall, takeStartHidden } from "./applog.ts";
 import { mainLocale, setMainLocale, tr } from "./i18n.ts";
@@ -145,6 +145,9 @@ let quitting = false;
 // Started by the computer at sign-in ("Mở cùng máy" on Windows), or again by the updater after an install at quit
 // (takeStartHidden, read once this instance holds the lock): the window waits in the tray until asked for.
 let startHidden = process.argv.includes("--hidden");
+let lastWindowHash = "";
+// OOM every ~315 seconds evades a five-minute rolling limit. Keep a budget across windows for this app session.
+const rendererReloads = new ReloadGuard(3, 5 * 60_000, 3);
 // A screenshot run logs into its own temp profile: its starts and quits are not the real app's.
 const mainLog = new MainLog(path.join(smokeShot ? app.getPath("userData") : mainLogDir(process.platform, process.env, os.homedir()), "main.log"));
 const quitReasons = new QuitReasons();
@@ -850,8 +853,7 @@ function onHub(update: HubUpdate): void {
       body: tr("desktop.installRequestBody", { who: cmd.requestedBy, label: cmd.label }),
     });
     n.on("click", () => {
-      showWindow();
-      win?.webContents.executeJavaScript('location.hash = "#/setup"').catch(() => undefined);
+      showPage("/setup");
     });
     n.show();
   }
@@ -872,8 +874,7 @@ function takeProfileChanges(changes: ProfileChange[]): void {
     const what = change.enabled === null ? "desktop.profileChangedPriority" : profile.enabled ? "desktop.profileChangedOn" : "desktop.profileChangedOff";
     const n = new Notification({ title: tr("desktop.profileChangedTitle"), body: tr(what, { who: change.requestedBy, profile: profile.id, priority: profile.priority }) });
     n.on("click", () => {
-      showWindow();
-      win?.webContents.executeJavaScript('location.hash = "#/agents"').catch(() => undefined);
+      showPage("/agents");
     });
     n.show();
   }
@@ -1021,8 +1022,7 @@ async function onChatEnded(req: ChatRequest, status: "done" | "failed"): Promise
   if (!notice) return;
   const n = new Notification(notice);
   n.on("click", () => {
-    showWindow();
-    win?.webContents.executeJavaScript(`location.hash = ${JSON.stringify(`#/chat?thread=${req.threadId}`)}`).catch(() => undefined);
+    showPage(`/chat?thread=${req.threadId}`);
   });
   n.show();
 }
@@ -1037,9 +1037,7 @@ function onRunnerEvent(event: RunnerEvent): void {
   if (event.type === "dispatched") {
     const n = new Notification({ title: tr("desktop.hubRunTitle"), body: tr("desktop.hubRunBody", { who: event.by, task: r.taskId, role: tr(`agentRole.${r.role}`) }) });
     n.on("click", () => {
-      showWindow();
-      // Task opens on the board of this machine since roadmap 39f, so that is where a run's notification lands.
-      win?.webContents.executeJavaScript('location.hash = "#/tasks"').catch(() => undefined);
+      showPage("/tasks");
     });
     n.show();
     return;
@@ -1069,8 +1067,7 @@ function onRunnerEvent(event: RunnerEvent): void {
                 : `${tr(`runStatus.${r.status}`)}: ${r.error ?? ""}`;
   const n = new Notification({ title, body: body + mr });
   n.on("click", () => {
-    showWindow();
-    win?.webContents.executeJavaScript('location.hash = "#/tasks"').catch(() => undefined);
+    showPage("/tasks");
   });
   n.show();
 }
@@ -1138,8 +1135,7 @@ function onMrChanges(changes: MrChange[]): void {
     const cleanup = c.cleanup ? cleanupNote(c.cleanup, branchFor(c.run.taskId)) : null;
     const n = new Notification({ title: `${c.run.taskId} · ${mr}`, body: cleanup ? `${body} ${cleanup}.` : body });
     n.on("click", () => {
-      showWindow();
-      win?.webContents.executeJavaScript('location.hash = "#/tasks"').catch(() => undefined);
+      showPage("/tasks");
     });
     n.show();
   }
@@ -1267,7 +1263,7 @@ function registerIpc(): void {
 }
 
 function createWindow(): void {
-  win = new BrowserWindow({
+  const window = new BrowserWindow({
     width: smokeSize ? Number(smokeSize[1]) : 1240,
     height: smokeSize ? Number(smokeSize[2]) : 820,
     // The asked-for size is what the page gets, frame and title bar apart: the shot proves that width.
@@ -1286,58 +1282,90 @@ function createWindow(): void {
       nodeIntegration: false,
     },
   });
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  win = window;
+  window.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//.test(url)) void shell.openExternal(url);
     // A chat file (an image opened full size): the system's viewer, not a window of the app.
     else if (chatFileId(url) !== null) void openChatFile(url).catch(() => undefined);
     return { action: "deny" };
   });
-  win.webContents.on("will-navigate", (e, url) => {
+  window.webContents.on("will-navigate", (e, url) => {
     if (!(devUrl && url.startsWith(devUrl))) e.preventDefault();
     if (chatFileId(url) !== null) void openChatFile(url).catch(() => undefined);
   });
   // Closing the window keeps the app (and the runner taking work) going: in the menu bar on macOS, in the tray on
   // Windows and Linux. Quitting is the tray's Thoát (or Cmd+Q).
-  win.on("close", (e) => {
+  window.on("close", (e) => {
     if (quitting || smokeShot) return;
     e.preventDefault();
-    win?.hide();
+    // No person can see this page while the app is in the tray; dispose its polling UI and keep only the runner.
+    const currentUrl = window.webContents.getURL();
+    if (currentUrl) lastWindowHash = new URL(currentUrl).hash.slice(1);
+    window.destroy();
     if (process.platform !== "darwin" && !trayHintShown) {
       trayHintShown = true;
       showNotice(tr("desktop.trayHintTitle"), tr("desktop.trayHint"));
     }
   });
-  win.once("ready-to-show", () => {
-    if (!smokeShot && !startHidden) win?.show();
+  window.on("closed", () => { if (win === window) win = null; });
+  window.once("ready-to-show", () => {
+    if (!smokeShot && !startHidden) window.show();
   });
   // A renderer that died (out of memory, a GPU crash) or a page that failed to load leaves the window blank: say so in
   // the log and load it again.
   const crashLog = crashLogPath(path.dirname(configPath()));
-  const reloads = new ReloadGuard();
-  win.webContents.on("render-process-gone", (_e, details) => {
-    appendCrashLog(crashLog, `render-process-gone: ${details.reason} (exit ${details.exitCode})`);
-    mainLog.write(`render-process-gone: ${details.reason} (exit ${details.exitCode})`);
-    if (details.reason !== "clean-exit" && reloads.allow()) win?.webContents.reload();
+  let lastMemory: RendererMemorySample | null = null;
+  const sampleMemory = () => {
+    if (window.isDestroyed()) return;
+    const pid = window.webContents.getOSProcessId();
+    const metric = app.getAppMetrics().find((m) => m.pid === pid);
+    if (metric) lastMemory = { at: Date.now(), pid, workingSetKB: metric.memory.workingSetSize, peakWorkingSetKB: metric.memory.peakWorkingSetSize, privateBytesKB: metric.memory.privateBytes };
+  };
+  window.webContents.on("did-finish-load", sampleMemory);
+  const memoryTimer = setInterval(sampleMemory, 30_000);
+  memoryTimer.unref();
+  let reloadTimer: ReturnType<typeof setTimeout> | undefined;
+  const scheduleReload = () => {
+    // Navigation failures and a process crash may arrive together. A queued retry belongs only to this window.
+    if (reloadTimer !== undefined) return "already-scheduled";
+    if (quitting || window.isDestroyed()) return "closed";
+    if (!rendererReloads.allow()) return "limit-reached";
+    reloadTimer = setTimeout(() => {
+      reloadTimer = undefined;
+      if (!quitting && !window.isDestroyed()) window.webContents.reload();
+    }, 2000);
+    return "reload-scheduled";
+  };
+  window.on("closed", () => {
+    clearInterval(memoryTimer);
+    if (reloadTimer !== undefined) clearTimeout(reloadTimer);
   });
-  win.webContents.on("unresponsive", () => {
+  window.webContents.on("render-process-gone", (_e, details) => {
+    const recovery = details.reason === "clean-exit" ? "clean-exit" : scheduleReload();
+    const text = rendererGoneText(details, lastMemory, process.memoryUsage().rss, recovery);
+    appendCrashLog(crashLog, text);
+    mainLog.write(text);
+  });
+  window.webContents.on("unresponsive", () => {
     appendCrashLog(crashLog, "unresponsive");
     mainLog.write("window unresponsive");
   });
   // Windows signs out or shuts down (powerMonitor's "shutdown" is macOS and Linux only).
-  win.on("session-end", () => {
+  window.on("session-end", () => {
     mainLog.write("system: session-end");
     quitReasons.mark("shutdown", "session-end");
   });
-  win.webContents.on("did-fail-load", (_e, code, description, url, isMainFrame) => {
+  window.webContents.on("did-fail-load", (_e, code, description, url, isMainFrame) => {
     // -3 is a load another navigation replaced, not a failure.
     if (!isMainFrame || code === -3) return;
-    appendCrashLog(crashLog, `did-fail-load: ${code} ${description} ${url}`);
-    if (reloads.allow()) setTimeout(() => win?.webContents.reload(), 2000);
+    const text = `did-fail-load: ${code} ${description} ${url}; recovery=${scheduleReload()}`;
+    appendCrashLog(crashLog, text);
+    mainLog.write(text);
   });
 
-  const hash = process.env.HIVE_SMOKE_HASH;
-  if (devUrl) void win.loadURL(hash ? `${devUrl}#${hash}` : devUrl);
-  else void win.loadFile(path.join(import.meta.dirname, "../renderer/index.html"), hash ? { hash } : undefined);
+  const hash = process.env.HIVE_SMOKE_HASH ?? lastWindowHash;
+  if (devUrl) void window.loadURL(hash ? `${devUrl}#${hash}` : devUrl);
+  else void window.loadFile(path.join(import.meta.dirname, "../renderer/index.html"), hash ? { hash } : undefined);
 
   if (smokeShot) {
     const capture = () => {
@@ -1350,11 +1378,11 @@ function createWindow(): void {
         for (const sel of click ? click.split(" && ") : []) {
           // A page that loads more after its first paint (the CLI versions on Agent) may show the target late.
           for (let i = 0; i < 40; i++) {
-            if (await win!.webContents.executeJavaScript(`Boolean(document.querySelector(${JSON.stringify(sel)}))`)) break;
+            if (await window.webContents.executeJavaScript(`Boolean(document.querySelector(${JSON.stringify(sel)}))`)) break;
             await pause(200);
           }
           // A radix menu (the … of an Agent row) opens on pointerdown, so a click alone would leave it shut.
-          await win!.webContents
+          await window.webContents
             .executeJavaScript(
               `(() => {
                  const el = document.querySelector(${JSON.stringify(sel)});
@@ -1366,7 +1394,7 @@ function createWindow(): void {
             .then(() => pause(700));
         }
         if (scroll) {
-          await win!.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(scroll)})?.scrollIntoView({ block: "start" })`).then(() => pause(300));
+          await window.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(scroll)})?.scrollIntoView({ block: "start" })`).then(() => pause(300));
         }
         // HIVE_SMOKE_EXPECT: selectors (joined by " && ") that must be on the page within 8 s, or the shot fails:
         // a check of what rendered, not only a picture of it.
@@ -1375,7 +1403,7 @@ function createWindow(): void {
         for (const sel of expect ? expect.split(" && ") : []) {
           let found = false;
           for (let i = 0; i < 40 && !found; i++) {
-            found = await win!.webContents.executeJavaScript(`Boolean(document.querySelector(${JSON.stringify(sel)}))`);
+            found = await window.webContents.executeJavaScript(`Boolean(document.querySelector(${JSON.stringify(sel)}))`);
             if (!found) await pause(200);
           }
           if (!found) {
@@ -1387,7 +1415,7 @@ function createWindow(): void {
         const absent = process.env.HIVE_SMOKE_ABSENT;
         let present: string | null = null;
         for (const sel of absent ? absent.split(" && ") : []) {
-          if (await win!.webContents.executeJavaScript(`Boolean(document.querySelector(${JSON.stringify(sel)}))`)) {
+          if (await window.webContents.executeJavaScript(`Boolean(document.querySelector(${JSON.stringify(sel)}))`)) {
             present = sel;
             break;
           }
@@ -1399,7 +1427,7 @@ function createWindow(): void {
         for (const expr of asserts ? asserts.split(" && ") : []) {
           let ok = false;
           for (let i = 0; i < 40 && !ok; i++) {
-            ok = await win!.webContents.executeJavaScript(`Boolean(${expr})`).catch(() => false);
+            ok = await window.webContents.executeJavaScript(`Boolean(${expr})`).catch(() => false);
             if (!ok) await pause(200);
           }
           if (!ok) {
@@ -1407,7 +1435,7 @@ function createWindow(): void {
             break;
           }
         }
-        const image = await win!.webContents.capturePage();
+        const image = await window.webContents.capturePage();
         writeFileSync(smokeShot, image.toPNG());
         console.log(`[xdev-hive] smoke screenshot ${smokeShot}`);
         if (missing) console.error(`[xdev-hive] smoke expected ${missing} on the page`);
@@ -1425,21 +1453,36 @@ function createWindow(): void {
       "hive-tasks-view": process.env.HIVE_SMOKE_VIEW,
       "hive-sidebar": process.env.HIVE_SMOKE_SIDEBAR,
     }).filter((e): e is [string, string] => Boolean(e[1]));
-    win.webContents.once("did-finish-load", () => {
+    window.webContents.once("did-finish-load", () => {
       if (!stored.length) return capture();
       const js = stored.map(([k, v]) => `localStorage.setItem(${JSON.stringify(k)}, ${JSON.stringify(v)});`).join("");
-      void win!.webContents.executeJavaScript(js).then(() => {
-        win!.webContents.once("did-finish-load", capture);
-        win!.webContents.reload();
+      void window.webContents.executeJavaScript(js).then(() => {
+        window.webContents.once("did-finish-load", capture);
+        window.webContents.reload();
       });
     });
   }
 }
 
 function showWindow(): void {
-  if (!win || win.isDestroyed()) createWindow();
-  win!.show();
-  win!.focus();
+  startHidden = false;
+  if (!win || win.isDestroyed()) {
+    createWindow();
+    return;
+  }
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+/** Opens the window on a page ("/tasks"): one made now loads straight there, as the closed one has no renderer left. */
+function showPage(hash: string): void {
+  if (win && !win.isDestroyed()) {
+    win.webContents.executeJavaScript(`location.hash = ${JSON.stringify(`#${hash}`)}`).catch(() => undefined);
+  } else {
+    lastWindowHash = hash;
+  }
+  showWindow();
 }
 
 let lastPending = 0;
@@ -1452,8 +1495,7 @@ async function refreshTray(): Promise<void> {
     if (pending > lastPending && Notification.isSupported()) {
       const n = new Notification({ title: "xDev Hive", body: tr("desktop.pendingProposalsBody", { count: pending }) });
       n.on("click", () => {
-        showWindow();
-        win?.webContents.executeJavaScript('location.hash = "#/proposals"').catch(() => undefined);
+        showPage("/proposals");
       });
       n.show();
     }
@@ -1478,7 +1520,7 @@ function buildTrayMenu(): void {
   tray?.setContextMenu(
     Menu.buildFromTemplate([
       { label: tr("desktop.trayOpen"), click: showWindow },
-      { label: tr("desktop.trayProposals"), click: () => (showWindow(), win?.webContents.executeJavaScript('location.hash = "#/proposals"')) },
+      { label: tr("desktop.trayProposals"), click: () => showPage("/proposals") },
       { type: "separator" },
       ...(atLogin === null
         ? []
@@ -1606,12 +1648,8 @@ if (!app.requestSingleInstanceLock()) {
     }
   }
   app.on("activate", showWindow);
-  app.on("window-all-closed", () => {
-    if (process.platform === "darwin") return;
-    mainLog.write("window-all-closed");
-    quitReasons.mark("unknown", "all windows closed");
-    app.quit();
-  });
+  // Electron otherwise quits on Windows and Linux when the last window is destroyed; the tray owns app lifetime.
+  app.on("window-all-closed", () => {});
   void app.whenReady().then(() => {
     // The heartbeat stops while the computer sleeps: say when, so a gap on the hub can be matched with it.
     powerMonitor.on("suspend", () => mainLog.write("system: suspend"));
@@ -1734,7 +1772,7 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(appIcon());
     registerIpc();
     serveChatFiles();
-    createWindow();
+    if (!startHidden || smokeShot) createWindow();
     buildAppMenu();
     if (!smokeShot) createTray();
   });

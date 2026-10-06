@@ -1,3 +1,4 @@
+import { visibleInterval } from "#ui/lib/visible-interval.ts";
 // Trợ lý viết (docs/design/2026-09-redesign, xDev Hive Client: Tài liệu → Trợ lý; roadmap 22k): ask Claude, on a
 // machine that has the project, to write or check the page from sources picked here (this page, related pages,
 // memory, repo files). Its answer comes as a diff to apply to the draft, or drop; nothing is saved until the person
@@ -61,8 +62,7 @@ export function DocAssistant({
   const live = (asks.data ?? []).some((a) => a.status === "pending" || a.status === "running");
   useEffect(() => {
     if (!live) return;
-    const id = setInterval(() => setTick((n) => n + 1), 2000);
-    return () => clearInterval(id);
+    return visibleInterval(2000, () => setTick((n) => n + 1));
   }, [live]);
 
   // Memory that names the page's words: offered, not all taken.

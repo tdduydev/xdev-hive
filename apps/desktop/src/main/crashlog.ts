@@ -18,20 +18,40 @@ export function appendCrashLog(file: string, text: string, now = new Date()): vo
   }
 }
 
-/** Reloads a dead renderer, but at most `max` times in `windowMs`: a page that crashes as it loads would loop. */
+/** Limits fast crash loops with `max/windowMs`, and recurring OOMs with a lifetime `maxTotal` budget. */
 export class ReloadGuard {
   #times: number[] = [];
   readonly #max: number;
   readonly #windowMs: number;
-  constructor(max = 3, windowMs = 5 * 60_000) {
+  readonly #maxTotal: number;
+  #total = 0;
+  constructor(max = 3, windowMs = 5 * 60_000, maxTotal = Infinity) {
     this.#max = max;
     this.#windowMs = windowMs;
+    this.#maxTotal = maxTotal;
   }
 
   allow(now = Date.now()): boolean {
     this.#times = this.#times.filter((t) => now - t < this.#windowMs);
-    if (this.#times.length >= this.#max) return false;
+    if (this.#times.length >= this.#max || this.#total >= this.#maxTotal) return false;
     this.#times.push(now);
+    this.#total++;
     return true;
   }
+}
+
+export interface RendererMemorySample {
+  at: number;
+  pid: number;
+  workingSetKB: number;
+  peakWorkingSetKB: number;
+  privateBytesKB?: number;
+}
+
+/** The process is already gone at crash time, so label the last live sample and its age explicitly. */
+export function rendererGoneText(details: { reason: string; exitCode: number }, memory: RendererMemorySample | null, mainRSSBytes: number, recovery: string, now = Date.now()): string {
+  const sample = memory
+    ? `pid=${memory.pid} sampleAgeMs=${Math.max(0, now - memory.at)} workingSetKB=${memory.workingSetKB} peakWorkingSetKB=${memory.peakWorkingSetKB}${memory.privateBytesKB === undefined ? "" : ` privateBytesKB=${memory.privateBytesKB}`}`
+    : "lastRendererMemory=unavailable";
+  return `render-process-gone: ${details.reason} (exit ${details.exitCode}); ${sample}; mainRSSBytes=${mainRSSBytes}; recovery=${recovery}`;
 }

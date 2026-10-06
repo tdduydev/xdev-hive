@@ -1,3 +1,4 @@
+import { visibleInterval } from "#ui/lib/visible-interval.ts";
 // Board (docs/design/2026-09-redesign, xDev Hive Client): a project's tasks in five columns; drag a card to change
 // its status, click it for the inspector (details, the latest run, and the form that starts an agent on this
 // machine). The runs themselves are on Lượt chạy.
@@ -38,8 +39,7 @@ function usePulse(active: boolean, ms = 2000): number {
   const [n, setN] = useState(0);
   useEffect(() => {
     if (!active) return;
-    const t = setInterval(() => setN((x) => x + 1), ms);
-    return () => clearInterval(t);
+    return visibleInterval(ms, () => setN((x) => x + 1));
   }, [active, ms]);
   return n;
 }

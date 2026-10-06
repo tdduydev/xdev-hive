@@ -3,7 +3,8 @@ import { StartReminder } from "#ui/pages/Start.tsx";
 import { knowledgeHref } from "#ui/lib/knowledge.ts";
 // Hôm nay (docs/design/2026-09-redesign, xDev Hive Client): a list of what needs the person on the left, the
 // selected item with its actions on the right. J / K move, ↵ runs the first button, E marks it seen.
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { visibleInterval } from "#ui/lib/visible-interval.ts";
 import { CircleCheck, Copy, Info, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
 import type { ChatAction, Memory, SdlcGateRecord } from "@xdev-hive/core";
@@ -240,8 +241,7 @@ export function TodayPage() {
   };
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(timer);
+    return visibleInterval(60_000, () => setNow(Date.now()));
   }, []);
 
   const groups = useMemo(() => groupInbox(inbox.items, inbox.role), [inbox.items, inbox.role]);
@@ -261,7 +261,9 @@ export function TodayPage() {
   }, [current, inbox]);
 
   // The action buttons of the item on screen, so ↵ can run the first one.
-  const [actions, setActions] = useState<Action[]>([]);
+  // Detail builds fresh closures each render. Publishing them into state feeds an endless parent/child render loop.
+  const actions = useRef<Action[]>([]);
+  const setActions = useCallback((next: Action[]) => { actions.current = next; }, []);
   const keys = useMemo(() => (tab === "open" ? list.map((i) => i.key) : inbox.done.map((d) => d.key)), [tab, list, inbox.done]);
   const selKey = current?.key ?? doneCurrent?.key ?? null;
 
@@ -282,9 +284,9 @@ export function TodayPage() {
       } else if (k === "e" && current) {
         e.preventDefault();
         seen(current);
-      } else if (e.key === "Enter" && actions[0]) {
+      } else if (e.key === "Enter" && current && actions.current[0]) {
         e.preventDefault();
-        void actions[0].run();
+        void actions.current[0].run();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -871,7 +873,8 @@ function Detail({
   }
 
   useEffect(() => {
-    onActions(actions);
+    onActions(busy ? [] : actions);
+    return () => onActions([]);
   });
 
   return (
