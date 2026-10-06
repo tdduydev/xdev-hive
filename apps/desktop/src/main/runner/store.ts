@@ -5,8 +5,13 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { AgentKind, AgentRole, PreferKind, AgentRun, BestOf, CiFix, MrState, MrStatus, PipelineStatus, RunCompression, RunStatus, RunTokens } from "@xdev-hive/core";
 import { tr } from "#desktop/main/i18n.ts";
+import type { UsageSample } from "./usage.ts";
 
 const SCHEMA = `
+CREATE TABLE IF NOT EXISTS profile_usage_history(
+  profile_id TEXT NOT NULL, at TEXT NOT NULL, session REAL NOT NULL, week REAL NOT NULL,
+  session_resets_at TEXT, PRIMARY KEY(profile_id, at));
+CREATE INDEX IF NOT EXISTS profile_usage_at ON profile_usage_history(at);
 CREATE TABLE IF NOT EXISTS runs(
   id TEXT PRIMARY KEY, project TEXT NOT NULL, task_id TEXT NOT NULL, task_title TEXT NOT NULL,
   role TEXT NOT NULL, status TEXT NOT NULL, profile_id TEXT, preferred_profile TEXT,
@@ -129,6 +134,18 @@ export const ACTIVE: RunStatus[] = ["queued", "running"];
 
 export class RunStore {
   readonly db: DatabaseSync;
+
+  recordUsage(profileId: string, sample: UsageSample, now: Date): void {
+    const cutoff = new Date(+now - 14 * 86400_000).toISOString();
+    this.db.prepare("DELETE FROM profile_usage_history WHERE at < ?").run(cutoff);
+    if (sample.at < cutoff || sample.at > now.toISOString()) return;
+    this.db.prepare("INSERT OR IGNORE INTO profile_usage_history VALUES (?, ?, ?, ?, ?)").run(profileId, sample.at, sample.session, sample.week, sample.sessionResetsAt);
+  }
+
+  usageHistory(profileId: string, now: Date): UsageSample[] {
+    this.db.prepare("DELETE FROM profile_usage_history WHERE at < ?").run(new Date(+now - 14 * 86400_000).toISOString());
+    return this.db.prepare("SELECT at, session, week, session_resets_at AS sessionResetsAt FROM profile_usage_history WHERE profile_id = ? AND at >= ? ORDER BY at").all(profileId, new Date(+now - 14 * 86400_000).toISOString()) as unknown as UsageSample[];
+  }
 
   constructor(file: string) {
     if (file !== ":memory:") mkdirSync(path.dirname(file), { recursive: true });

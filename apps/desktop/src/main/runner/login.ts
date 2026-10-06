@@ -6,7 +6,7 @@ import path from "node:path";
 import { HiveError, type AgentKind, type AgentProfile, type LoginHow, type LoginStatus, type PlanUsage } from "@xdev-hive/core";
 import { expandEnv, expandHome, resolveBin } from "./command.ts";
 import { supportsAgyUsage, parseAgyUsage, AGY_USAGE_ARGS } from "./antigravity.ts";
-import { parseClaudeResult, parsePlanUsage, readCodexUsage } from "./usage.ts";
+import { parseClaudeResult, parsePlanUsage, readCodexUsage, withResetsAt } from "./usage.ts";
 
 /** Status and sign-in subcommands of the CLIs that have them. Gemini and custom CLIs have none. */
 const COMMANDS: Partial<Record<AgentKind, { status: string[]; login: string[] }>> = {
@@ -185,6 +185,7 @@ export function usageRefresher<T>(refresh: (ids?: string[]) => Promise<void>, ti
 }
 
 export class LoginMonitor {
+  readonly onUsage?: (id: string, usage: PlanUsage) => void;
   readonly #checks = new Map<string, LoginStatus>();
   readonly #usage = new Map<string, PlanUsage>();
   readonly #profiles: () => AgentProfile[];
@@ -193,7 +194,8 @@ export class LoginMonitor {
   // Codex's numbers turn to 0 once their reset is past, so a test pins the clock instead of depending on when it runs.
   readonly #now: () => Date;
 
-  constructor(profiles: () => AgentProfile[], env: () => NodeJS.ProcessEnv, run: RunCli = runCli, now: () => Date = () => new Date()) {
+  constructor(profiles: () => AgentProfile[], env: () => NodeJS.ProcessEnv, run: RunCli = runCli, now: () => Date = () => new Date(), onUsage?: (id: string, usage: PlanUsage) => void) {
+    this.onUsage = onUsage;
     this.#profiles = profiles;
     this.#env = env;
     this.#run = run;
@@ -225,7 +227,10 @@ export class LoginMonitor {
     const p = this.#profiles().find((x) => x.id === profileId && x.enabled);
     if (p?.kind !== "codex" || this.#checks.get(p.id)?.loggedIn === false) return;
     const usage = readCodexUsage(codexHome(p), this.#now());
-    if (usage) this.#usage.set(p.id, usage);
+    if (usage) {
+      this.#usage.set(p.id, usage);
+      this.onUsage?.(p.id, withResetsAt(usage, this.#now())!);
+    }
   }
 
   /** Profiles last seen signed out: the ones worth checking again when the user comes back to the app. */
@@ -241,7 +246,10 @@ export class LoginMonitor {
       this.#checks.set(p.id, login);
       // Codex's numbers come from files, not from its sign-in: only a profile known to be signed out goes without.
       const usage = login.loggedIn || (p.kind === "codex" && login.loggedIn !== false) ? await checkUsage(p, this.#env(), this.#now(), this.#run) : null;
-      if (usage) this.#usage.set(p.id, usage);
+      if (usage) {
+        this.#usage.set(p.id, usage);
+        this.onUsage?.(p.id, withResetsAt(usage, this.#now())!);
+      }
       else this.#usage.delete(p.id);
     }
     // The profiles as they are now: one added while this check ran keeps what is known of it.

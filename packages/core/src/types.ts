@@ -1,6 +1,6 @@
 import type { Access } from "./access.ts";
 import type { AgentPolicy } from "./agent-policy.ts";
-import type { AgentKind, AgentProfile, AgentRole, PreferKind } from "./agents.ts";
+import type { AgentKind, AgentProfile, AgentRole, PreferKind, QuotaOutlook } from "./agents.ts";
 import type { Verdict } from "./verdict.ts";
 import type { MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { WriteSource } from "./source.ts";
@@ -339,7 +339,7 @@ export interface MachineSetupMissing {
 }
 
 /** A subscription profile as a machine reports it to the hub: no command line, no env. */
-export interface ReportedProfile {
+export interface ReportedProfile extends QuotaOutlook {
   id: string;
   label: string;
   kind: string;

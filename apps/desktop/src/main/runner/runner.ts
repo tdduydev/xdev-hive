@@ -102,7 +102,7 @@ import { AssistWorker } from "./assist.ts";
 import { ChatWorker } from "./chat.ts";
 import { killTree } from "./kill.ts";
 import { AntigravityStream, ClaudeStream, CodexStream, lineStamper } from "./stream.ts";
-import { limitResetAt, parseClaudeResult, withResetsAt, type RunUsage } from "./usage.ts";
+import { limitResetAt, parseClaudeResult, withResetsAt, quotaOutlook, type RunUsage } from "./usage.ts";
 import { pickWithReason, waitingReason, type ProfileLoad, type RunNeeds } from "./schedule.ts";
 import { ACTIVE, RunStore } from "./store.ts";
 import {
@@ -770,7 +770,7 @@ export class Runner {
         cooldownFrom: resting?.from ?? null,
         cliPath: resolveBin(expandHome(profile.bin), pathEnv),
         login: this.#host.login?.(profile.id) ?? null,
-        usage: withResetsAt(this.#host.usage?.(profile.id), now),
+        usage: quotaOutlook(withResetsAt(this.#host.usage?.(profile.id), now), this.store.usageHistory(profile.id, now), now),
         hasToken: Boolean(this.#host.token?.(profile.id)),
         // The policy of the last heartbeat, as tick() and #start apply it: the card shows what a run would get.
         autonomy: profileAutonomy(profile.kind, profile.args, this.#agentPolicy),
