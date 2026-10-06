@@ -9,7 +9,7 @@ export type Autonomy = (typeof AUTONOMY)[number];
 export const NETWORK = ["off", "allowlist", "open"] as const; // tăng dần
 export type NetworkMode = (typeof NETWORK)[number];
 /** The kinds a policy names models for: a custom CLI has no model flag the runner knows. */
-export const POLICY_AGENT_KINDS = ["claude", "codex", "gemini"] as const satisfies readonly AgentKind[];
+export const POLICY_AGENT_KINDS = ["claude", "codex", "gemini", "antigravity"] as const satisfies readonly AgentKind[];
 
 export interface AgentPolicy {
   /** Model được dùng theo loại agent (claude, codex, gemini). Không có hoặc []: model nào cũng được. */
@@ -109,12 +109,15 @@ export function effectivePolicy(hub: AgentPolicy, project: Partial<AgentPolicy> 
 /** The flags that set how much a CLI may do on its own, by kind: those taking a value, and switches. */
 export const AUTONOMY_FLAGS: Partial<Record<AgentKind, { valued: string[]; switches: string[] }>> = {
   claude: { valued: ["--permission-mode"], switches: ["--dangerously-skip-permissions", "--allow-dangerously-skip-permissions"] },
+  antigravity: { valued: [], switches: ["--dangerously-skip-permissions"] },
   codex: { valued: ["--sandbox", "-s"], switches: ["--full-auto", "--dangerously-bypass-approvals-and-sandbox"] },
   gemini: { valued: ["--approval-mode"], switches: ["-y", "--yolo"] },
 };
 
 /** The flags the runner puts in for a level (the profile's own come out first). */
-export const AUTONOMY_ARGS: Record<"claude" | "codex" | "gemini", Record<Autonomy, string[]>> = {
+export const AUTONOMY_ARGS: Record<"claude" | "codex" | "gemini" | "antigravity", Record<Autonomy, string[]>> = {
+  // Lowering flags are unverified: the runner refuses restrictive agy policies instead of fabricating flags.
+  antigravity: { read: [], propose: [], edit: [], full: ["--dangerously-skip-permissions"] },
   claude: {
     read: ["--permission-mode", "plan"],
     propose: ["--permission-mode", "plan"],
@@ -232,7 +235,7 @@ export function policySummary(p: Partial<AgentPolicy>): string {
 const modelList = z.array(z.string().regex(/^[\w.:/-]{1,80}$/, "model: 1–80 chữ, số, . _ : / -")).max(20);
 const policyFields = {
   // Only the kinds that have models; an unknown kind is a typo, not a policy.
-  models: z.object({ claude: modelList.optional(), codex: modelList.optional(), gemini: modelList.optional() }).strict(),
+  models: z.object({ claude: modelList.optional(), codex: modelList.optional(), gemini: modelList.optional(), antigravity: modelList.optional() }).strict(),
   autonomy: z.enum(AUTONOMY),
   network: z.object({
     mode: z.enum(NETWORK),

@@ -50,6 +50,7 @@ import {
   type TransferReport,
   type TransferSide,
 } from "@xdev-hive/core";
+import { antigravityHome } from "#desktop/main/runner/antigravity.ts";
 import {
   configPath,
   configSchema,
@@ -364,6 +365,12 @@ const agentEnv = (): NodeJS.ProcessEnv => ({ ...process.env, PATH: agentPath() }
 
 function saveProfile(input: AgentProfile, previousId?: string) {
   const profile = agentProfileSchema.parse(input);
+  if (profile.kind === "antigravity" && process.platform === "linux" && !profile.env.HOME &&
+      !config.agents.some((a) => a.id === (previousId ?? profile.id) && a.kind === "antigravity") && config.agents.some((a) => a.kind === "antigravity")) {
+    const home = antigravityHome(profile.id, process.platform, os.homedir(), true)!;
+    mkdirSync(home, { recursive: true, mode: 0o700 });
+    profile.env.HOME = home;
+  }
   const replacing = previousId ?? profile.id;
   if (previousId && previousId !== profile.id && runner.store.running(previousId)) {
     throw new HiveError("conflict", `Profile ${previousId} đang chạy, không đổi id được.`, { key: "errors.profileRunningRename", vars: { id: previousId } });
@@ -559,7 +566,7 @@ function openLogin(id: string, how?: LoginHow): { opened: boolean } {
  */
 function addAccount(input: NewAccount): { id: string; opened: boolean; profiles: ReturnType<typeof runner.profileStatuses> } {
   const kind = input?.kind;
-  if (kind !== "claude" && kind !== "codex") throw new HiveError("bad_request", `No accounts for ${String(kind)}.`, { key: "errors.noLoginCommand", vars: { kind: String(kind) } });
+  if (kind !== "claude" && kind !== "codex" && kind !== "antigravity") throw new HiveError("bad_request", `No accounts for ${String(kind)}.`, { key: "errors.noLoginCommand", vars: { kind: String(kind) } });
   const template = AGENT_TEMPLATES[kind];
   const pathEnv = agentEnv().PATH ?? "";
   if (!resolveBin(expandHome(template.bin), pathEnv)) throw new HiveError("not_found", tr("desktop.cliNotFound", { bin: template.bin }), { key: "desktop.cliNotFound", vars: { bin: template.bin } });
@@ -570,15 +577,15 @@ function addAccount(input: NewAccount): { id: string; opened: boolean; profiles:
   const id = `${kind}-${n}`;
   const usualTaken = config.agents.some((a) => a.kind === kind && !a.env[dirEnv]);
   const env: Record<string, string> = {};
-  if (usualTaken) {
-    const dir = path.join(path.dirname(configPath()), "accounts", id);
+  if (usualTaken && (kind !== "antigravity" || process.platform === "linux")) {
+    const dir = kind === "antigravity" ? path.join(os.homedir(), ".xdev-hive", "antigravity", id) : path.join(path.dirname(configPath()), "accounts", id);
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     if (kind === "codex") installCodexConfig(path.join(dir, "config.toml"), shimPath());
     env[dirEnv] = dir.startsWith(os.homedir() + path.sep) ? `~${dir.slice(os.homedir().length)}` : dir;
   }
   // Named by how many of the kind there are with it ("Claude 2" next to the one already there), not by its id.
   const nth = config.agents.filter((a) => a.kind === kind).length + 1;
-  const label = String(input.label ?? "").trim().slice(0, 80) || `${kind === "claude" ? "Claude" : "ChatGPT (Codex)"} ${nth}`;
+  const label = String(input.label ?? "").trim().slice(0, 80) || `${kind === "claude" ? "Claude" : kind === "antigravity" ? "Antigravity (Google)" : "ChatGPT (Codex)"} ${nth}`;
   const profile = { ...template, id, label, env };
   // Before it is saved, in the same turn: the run the save starts must not take an account nobody signed in yet.
   logins.expectSignedOut(profile);
@@ -1201,7 +1208,7 @@ function createWindow(): void {
     height: smokeSize ? Number(smokeSize[2]) : 820,
     // The asked-for size is what the page gets, frame and title bar apart: the shot proves that width.
     ...(smokeSize ? { useContentSize: true } : {}),
-    minWidth: 820,
+    minWidth: smokeSize ? Math.min(820, Number(smokeSize[1])) : 820,
     minHeight: 560,
     title: "xDev Hive",
     show: false,
@@ -1540,6 +1547,7 @@ if (!app.requestSingleInstanceLock()) {
       },
     );
     setup = new Setup({
+      ...(smokeShot ? { latest: async () => null } : {}),
       pathEnv: (refresh) => agentPath(refresh),
       env: agentEnv,
       projects: () => config.projects,

@@ -252,7 +252,7 @@ export interface LoginHow {
 
 /** One more subscription on this machine: a profile with a sign-in folder of its own, signed in right away. */
 export interface NewAccount {
-  kind: "claude" | "codex";
+  kind: "claude" | "codex" | "antigravity";
   label?: string;
   how?: LoginHow;
 }

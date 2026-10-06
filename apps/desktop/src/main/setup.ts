@@ -32,6 +32,7 @@ import {
 import { addToUserPath, pathHasDir, type UserPath } from "./winpath.ts";
 import { tr } from "./i18n.ts";
 import { resolveBin } from "./runner/command.ts";
+import { supportsAgyUsage } from "#desktop/main/runner/antigravity.ts";
 import { APP_TOOLS, toolOn, trustOf } from "./runner/tools.ts";
 
 export interface RunResult {
@@ -104,6 +105,13 @@ const LATEST_RETRY_MS = 30 * 60_000;
 
 /** `npm view` follows the machine's own registry and proxy (.npmrc); without npm, the public registry. */
 async function npmLatest(run: Run, pkg: string, npm: string | null, env: NodeJS.ProcessEnv): Promise<string | null> {
+  if (pkg === "google-antigravity/antigravity-cli") {
+    try {
+      const res = await fetch("https://api.github.com/repos/google-antigravity/antigravity-cli/releases/latest", { signal: AbortSignal.timeout(10_000) });
+      const json = res.ok ? await res.json() as { tag_name?: unknown } : null;
+      return typeof json?.tag_name === "string" ? parseCliVersion(json.tag_name.replace(/^v/, "")) : null;
+    } catch { return null; }
+  }
   if (npm) {
     const r = await run(npm, ["view", pkg, "version"], { env, timeoutMs: 20_000 });
     return r.ok ? parseCliVersion(r.output) : null;
@@ -121,6 +129,7 @@ async function npmLatest(run: Run, pkg: string, npm: string | null, env: NodeJS.
 export const AGENT_CLIS: Array<{ kind: Exclude<AgentKind, "custom">; bin: string; label: string; pkg: string }> = [
   { kind: "claude", bin: "claude", label: "Claude Code", pkg: "@anthropic-ai/claude-code" },
   { kind: "codex", bin: "codex", label: "Codex CLI", pkg: "@openai/codex" },
+  { kind: "antigravity", bin: "agy", label: "Antigravity CLI", pkg: "google-antigravity/antigravity-cli" },
   { kind: "gemini", bin: "gemini", label: "Gemini CLI", pkg: "@google/gemini-cli" },
 ];
 
@@ -231,6 +240,8 @@ export class Setup {
       output = await this.#runOrThrow(bin, argv, { env, timeoutMs: 15 * 60_000 });
     } else if (this.#isTool(id)) {
       output = await this.#toolInstall(this.#catalogTool(id), pathEnv);
+    } else if (cli?.kind === "antigravity") {
+      throw new HiveError("bad_request", tr("setupItem.agyInstallManual"), { key: "setupItem.agyInstallManual" });
     } else if (cli && resolveBin(cli.bin, pathEnv)) {
       output = await this.#upgrade(cli, pathEnv, env);
     } else if (cli) {
@@ -366,6 +377,7 @@ export class Setup {
   async #cli(cli: (typeof AGENT_CLIS)[number], pathEnv: string): Promise<SetupItem> {
     const base = { id: `cli:${cli.kind}`, label: cli.label };
     const bin = resolveBin(cli.bin, pathEnv);
+    if (!bin && cli.kind === "antigravity") return { ...base, state: "missing", detail: tr("setupItem.agyInstallManual"), action: null };
     if (!bin) {
       const npm = resolveBin("npm", pathEnv);
       return {
@@ -380,6 +392,10 @@ export class Setup {
     if (!v.ok) return { ...base, state: "installed", detail: tr("setupItem.versionFailed", { bin, output: firstLine(v.output) }), action: null, version: null, latest: null };
     const version = parseCliVersion(v.output);
     const latest = await this.#latestOf(cli.pkg, pathEnv, env);
+    if (cli.kind === "antigravity") return {
+      ...base, state: "installed", version, latest, action: null,
+      detail: `${firstLine(v.output)} · ${bin} · ${!supportsAgyUsage(v.output) ? tr("setupItem.agyUsageOld") : ""} ${tr("setupItem.agyInstallManual")}`.trim(),
+    };
     // A CLI behind the registry still runs: it stays "installed", so a required one is not reported missing.
     if (!version || !latest || compareVersions(latest, version) <= 0) {
       return { ...base, state: "installed", detail: `${firstLine(v.output) || "?"} · ${bin}`, action: null, version, latest };
