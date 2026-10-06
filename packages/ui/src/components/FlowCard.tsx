@@ -9,7 +9,7 @@ import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { formatTime, useAction, useCan, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 
-const STATE_CHIP: Record<SdlcFlow["state"], ChipKind> = {
+export const STATE_CHIP: Record<SdlcFlow["state"], ChipKind> = {
   running: "running",
   check: "info",
   checking: "info",
@@ -19,7 +19,7 @@ const STATE_CHIP: Record<SdlcFlow["state"], ChipKind> = {
   done: "success",
 };
 /** States that change by themselves, so the card looks again. */
-const MOVING = new Set<SdlcFlow["state"]>(["running", "check", "checking", "next"]);
+export const MOVING = new Set<SdlcFlow["state"]>(["running", "check", "checking", "next"]);
 
 /** The flows of a project (all, or the one of a task), newest first; nothing when there is none. */
 export function FlowList({ project, taskId, openOnly = false }: { project: string; taskId?: string; openOnly?: boolean }) {
@@ -133,7 +133,7 @@ function GateLine({ gate: g }: { gate: SdlcGateRecord }) {
   );
 }
 
-const STAGE_CHIP: Record<TaskStage, ChipKind> = {
+export const STAGE_CHIP: Record<TaskStage, ChipKind> = {
   queued: "neutral",
   build: "running",
   review: "info",
@@ -149,7 +149,7 @@ const STAGE_CHIP: Record<TaskStage, ChipKind> = {
 };
 
 /** The tasks a flow gave to agents (34c), each with where it is on its way to main. */
-function FlowTasks({ project, flowTask }: { project: string; flowTask: string }) {
+export function FlowTasks({ project, flowTask }: { project: string; flowTask: string }) {
   const { client } = useHive();
   const t = useT();
   const tasks = useQuery(() => client.call("sdlc.flowTasks", { project, flowTask }), [client, flowTask]);

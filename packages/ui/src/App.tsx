@@ -42,6 +42,7 @@ import { AgentsPage } from "./pages/Agents.tsx";
 import { ChatPage } from "./pages/Chat.tsx";
 import { DevicePage } from "./pages/Device.tsx";
 import { DocsPage } from "./pages/Docs.tsx";
+import { FeaturesPage } from "./pages/Features.tsx";
 import { MemoryPage } from "./pages/Memory.tsx";
 import { OverviewPage } from "./pages/Overview.tsx";
 import { ProjectsPage } from "./pages/Projects.tsx";
@@ -65,6 +66,7 @@ type PageId =
   | "docs"
   | "read"
   | "specs"
+  | "features"
   | "skills"
   | "proposals"
   | "memory"
@@ -90,7 +92,9 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
   docs: { label: "nav.docs", sub: "navSub.docs", icon: FileText, render: () => <DocsPage /> },
   // Not in the sidebar: a doc's reading view (#/read?doc=…), under Tài liệu.
   read: { label: "nav.read", sub: "navSub.read", icon: BookOpen, render: () => <DocReaderPage /> },
+  // The desktop app's Spec page; on the web Tính năng took its place (roadmap 49d) and #/specs goes there.
   specs: { label: "nav.specs", sub: "navSub.specs", icon: ListChecks, render: () => <SpecsPage /> },
+  features: { label: "nav.features", sub: "navSub.features", icon: ListChecks, render: () => <FeaturesPage /> },
   skills: { label: "nav.skills", sub: "navSub.skills", icon: WandSparkles, render: () => <SkillsPage /> },
   proposals: { label: "nav.proposals", sub: "navSub.proposals", icon: GitPullRequestArrow, render: () => <ProposalsPage /> },
   memory: { label: "nav.memory", sub: "navSub.memory", icon: Brain, render: () => <MemoryPage /> },
@@ -348,9 +352,9 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   const strong = (id: PageId) => id === "today" || (id === "admin" && openAlerts.some((a) => a.severity === "high"));
   const shortcuts = local ? LOCAL_SHORTCUTS : deskHub ? DESK_SHORTCUTS : SHORTCUTS;
   // There Task is the Board alone, over this machine's projects, so it says so. The web names two entries by the job
-  // they are for (roadmap 49b) until 49d and 49e give them pages of their own; the app keeps Spec and Lượt chạy.
-  const label = (id: PageId): MessageKey =>
-    deskHub && id === "tasks" ? "nav.board" : web && id === "runs" ? "nav.running" : web && id === "specs" ? "nav.features" : PAGES[id].label;
+  // they are for (roadmap 49b) until 49e gives Agent đang chạy a page of its own (49d did Tính năng); the app keeps
+  // Lượt chạy.
+  const label = (id: PageId): MessageKey => (deskHub && id === "tasks" ? "nav.board" : web && id === "runs" ? "nav.running" : PAGES[id].label);
   const groups: NavGroup[] = (deskHub ? DESK_GROUPS : local ? LOCAL_GROUPS : WEB_GROUPS)
     .map((g) => ({
       label: g.label ? t(g.label) : null,
@@ -379,9 +383,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
             ? t("navSub.boardOn")
             : web && current === "runs"
               ? t("navSub.running")
-              : web && current === "specs"
-                ? t("navSub.features")
-                : t(PAGES[current].sub);
+              : t(PAGES[current].sub);
   const frame = (
     <InboxProvider value={inbox}>
       <ClientShell
