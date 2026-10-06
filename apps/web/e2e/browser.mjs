@@ -1850,7 +1850,7 @@ async function main() {
       ["chat", "thread", 'nav[aria-label="Các cuộc chat"] button', null],
       ["skills", "skill", 'main [role="option"]', null],
       ["memory", "memory", 'main [role="option"]', null],
-      ["proposals", "proposal", "main [data-mobile-proposal]", null],
+      // Đề xuất is a Chờ duyệt tab of Tài liệu and Skill since 49f (#/proposals redirects): the knowledge-pending step covers it.
       ["features", "project", "main [data-feature-card]", null],
     ];
     for (const [route, param, selector, text] of cases) {
@@ -1942,11 +1942,11 @@ async function main() {
     await tab.go(`runs?run=${runId}`);
     await tab.waitFor("the run's artifacts", () => document.querySelector('[data-artifact="shots/board.png"]') && document.querySelector('[data-artifact="do-duoc.md"]'));
     if (mobile) {
-      const targets = await tab.eval(() => [...document.querySelectorAll('[data-artifacts] button')].every((el) => {
+      const small = await tab.eval(() => [...document.querySelectorAll('[data-artifacts] button')].map((el) => {
         const box = el.getBoundingClientRect();
-        return box.width >= 44 && box.height >= 44;
-      }));
-      expect(targets, "artifact controls have 44px phone targets");
+        return { label: el.getAttribute("aria-label") ?? el.textContent, width: Math.round(box.width), height: Math.round(box.height), minHeight: getComputedStyle(el).minHeight, cls: el.className };
+      }).filter((b) => b.width < 44 || b.height < 44));
+      expect(!small.length, `artifact controls have 44px phone targets: ${JSON.stringify(small)}`);
     }
     await tab.click('[data-artifact="shots/board.png"] button');
     await tab.waitFor("the screenshot itself", () => document.querySelector('[data-artifacts] img[alt="shots/board.png"]'));

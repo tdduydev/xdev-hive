@@ -64,9 +64,13 @@
   --sidebar-ring: var(--focus-color);
 }
 
-@media (max-width: 767px) {
-  input, textarea, select { font-size: 16px; }
-  button:not([data-slot="switch"]) { min-height: 40px; }
+/* Phones: inputs at 16px so iOS does not zoom, and touch targets at the token's 44px. In the base layer, so a
+   component's own min-h-* still wins (unlayered, this rule used to beat every utility and pin buttons at 40px). */
+@layer base {
+  @media (max-width: 767px) {
+    input, textarea, select { font-size: 16px; }
+    button:not([data-slot="switch"]) { min-height: var(--control-h-touch); }
+  }
 }
 
 @theme inline {
@@ -347,9 +351,11 @@
   }
 }
 
+/* In the base layer for the same reason as the phone rule above: a component's own min-h-* must still win. */
+@layer base {
 @media (max-width: 767px) {
   .mobile-master-detail button:not([role="checkbox"]):not([role="switch"]),
-  .mobile-master-detail [role="treeitem"] { min-height: 40px; }
+  .mobile-master-detail [role="treeitem"] { min-height: var(--control-h-touch); }
   .mobile-master-detail input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
   .mobile-master-detail textarea,
   .mobile-master-detail select { font-size: 16px; }
@@ -357,6 +363,7 @@
   /* Enlarge the tap area without stretching the checkbox drawn by the design system. */
   .mobile-master-detail [role="checkbox"] { position: relative; }
   .mobile-master-detail [role="checkbox"]::before { content: ""; position: absolute; inset: -12px; }
+}
 }
 
 /* The Docs rich editor (roadmap 23a): the same reading type as DocMarkdown, on ProseMirror's own elements. */
