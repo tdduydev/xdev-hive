@@ -1,19 +1,26 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import type { Actor, HiveBackend } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { collectSpecs, pushSpecs } from "#desktop/main/specs.ts";
+
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
 
 const machine: Actor = { name: "runner.duy-mbp@duy-mbp", role: "agent" };
 const admin: Actor = { name: "duy", role: "admin" };
 const git = (repo: string, ...args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
 
 function repo() {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "hive-specs-"));
+  const dir = testTmpDir(path.join(os.tmpdir(), "hive-specs-"));
   git(dir, "init", "-q", "-b", "main");
   git(dir, "config", "user.email", "t@example.com");
   git(dir, "config", "user.name", "Test");
@@ -90,4 +97,8 @@ describe("Spec Kit features to the hub (roadmap 20b)", () => {
     const later = Date.now() + 31 * 86_400_000;
     assert.deepEqual((await collectSpecs(dir, "main", later)).map((f) => f.dir), ["001-a"]);
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { toolHash, type DesktopProject, type MachineTools, type SetupReport, type ToolEntry } from "@xdev-hive/core";
 import { setMainLocale } from "#desktop/main/i18n.ts";
 import { CODEGRAPH_PACKAGE } from "#desktop/main/installer.ts";
@@ -11,7 +11,14 @@ import { APP_TOOLS } from "#desktop/main/runner/tools.ts";
 import { AGENT_CLIS, cliUpgrade, parseCliVersion, Setup, type SetupHost } from "#desktop/main/setup.ts";
 import { expandVars, pathHasDir, pathWithDir, type UserPath } from "#desktop/main/winpath.ts";
 
-const tmp = (p: string) => mkdtempSync(path.join(os.tmpdir(), `hive-setup-${p}-`));
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
+
+const tmp = (p: string) => testTmpDir(path.join(os.tmpdir(), `hive-setup-${p}-`));
 
 /** A fake CLI: records its args (and CODEGRAPH_TELEMETRY) and runs an optional shell snippet. */
 function fakeBin(dir: string, name: string, body = "") {
@@ -572,4 +579,8 @@ describe("Antigravity setup without a real CLI or network", () => {
     assert.equal(old.action, null, "no guessed installer command");
     assert.ok(!calls(m.bin).some((line) => line.includes("/usage")));
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

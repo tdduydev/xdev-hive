@@ -1,12 +1,19 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import type { DesktopProject } from "@xdev-hive/core";
 import { defaultBranch, findGitRepos } from "#desktop/main/git.ts";
 import { addRepos, planLocalImport } from "#desktop/main/local-import.ts";
+
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
 
 const sh = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
 
@@ -25,7 +32,7 @@ function repoAt(root: string, rel: string): string {
 
 /** The layout of roadmap 38d: a folder that is no repository, with repositories one to three levels down. */
 function nested(): string {
-  const root = mkdtempSync(path.join(os.tmpdir(), "hive-scan-"));
+  const root = testTmpDir(path.join(os.tmpdir(), "hive-scan-"));
   repoAt(root, path.join("app", "backend", "billing"));
   repoAt(root, path.join("app", "frontend", "portal"));
   repoAt(root, "iam");
@@ -42,14 +49,14 @@ describe("findGitRepos (roadmap 38d)", () => {
   });
 
   it("stops at maxDepth: a repository four levels down is not offered", () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "hive-deep-"));
+    const root = testTmpDir(path.join(os.tmpdir(), "hive-deep-"));
     repoAt(root, path.join("a", "b", "c", "deep"));
     assert.deepEqual(findGitRepos(root), []);
     assert.deepEqual(findGitRepos(root, 4).map((d) => path.basename(d)), ["deep"]);
   });
 
   it("does not look inside a repository it found, nor into node_modules or hidden folders", () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "hive-skip-"));
+    const root = testTmpDir(path.join(os.tmpdir(), "hive-skip-"));
     const outer = repoAt(root, "outer");
     repoAt(outer, "vendor"); // a repository inside a repository (submodule, or a clone left there)
     repoAt(root, path.join("node_modules", "dep"));
@@ -58,7 +65,7 @@ describe("findGitRepos (roadmap 38d)", () => {
   });
 
   it("is the folder itself when that is a repository", () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "hive-one-"));
+    const root = testTmpDir(path.join(os.tmpdir(), "hive-one-"));
     const repo = repoAt(root, "solo");
     repoAt(repo, "inner");
     assert.deepEqual(findGitRepos(repo), [repo]);
@@ -67,7 +74,7 @@ describe("findGitRepos (roadmap 38d)", () => {
 
 describe("defaultBranch", () => {
   it("reads origin/HEAD, and is null without a remote", () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "hive-branch-"));
+    const root = testTmpDir(path.join(os.tmpdir(), "hive-branch-"));
     const repo = repoAt(root, "repo");
     assert.equal(defaultBranch(repo), null);
     sh(repo, ["remote", "add", "origin", "https://gitlab.example.com/group/repo.git"]);
@@ -100,7 +107,7 @@ describe("planLocalImport", () => {
   });
 
   it("keeps two candidates from taking the same key", () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "hive-dupe-"));
+    const root = testTmpDir(path.join(os.tmpdir(), "hive-dupe-"));
     const repos = [repoAt(root, path.join("app", "portal")), repoAt(root, path.join("iam", "portal"))];
     assert.deepEqual(planLocalImport(root, repos, []).map((c) => c.key), ["portal", "iam-portal"]);
   });
@@ -129,4 +136,8 @@ describe("addRepos", () => {
     ]);
     assert.deepEqual(added.map((p) => [p.name, p.targetBranch]), [["billing", "dev"], ["iam", undefined]]);
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

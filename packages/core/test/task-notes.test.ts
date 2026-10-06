@@ -1,10 +1,17 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { HiveError, type Actor } from "#core/index.ts";
 import { SqliteHive, migrationIndex } from "#core/node.ts";
+
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
 
 const admin: Actor = { name: "duy", role: "admin" };
 /** An agent on Lan's token, as the hub reads it from an MCP call (roadmap 27c, 2b). */
@@ -87,7 +94,7 @@ describe("task note history (roadmap 41a)", () => {
    * The board starts at the schema before 41a's migration; the note is written as a hub of then wrote it.
    */
   it("keeps the notes a board already had when the table is added", async () => {
-    const file = path.join(mkdtempSync(path.join(tmpdir(), "hive-notes-")), "hive.db");
+    const file = path.join(testTmpDir(path.join(tmpdir(), "hive-notes-")), "hive.db");
     const hive = await board(file, migrationIndex("CREATE TABLE task_notes("));
     // Straight into the row: today's tasks.update would also keep a version, in a table this schema does not have.
     hive.db.prepare("UPDATE tasks SET note = ?, status = 'review' WHERE id = 'web-1'").run("Bàn giao cũ.");
@@ -107,4 +114,8 @@ describe("task note history (roadmap 41a)", () => {
     assert.deepEqual((await again.call("tasks.notes", { id: "web-1" }, admin)).map((n) => n.version), [2, 1]);
     again.close();
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

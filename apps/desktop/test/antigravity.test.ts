@@ -1,15 +1,22 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { it } from "node:test";
+import { after, it } from "node:test";
 import { AGENT_TEMPLATES, OPEN_POLICY } from "@xdev-hive/core";
 import { agyError, antigravityHome, supportsAgyUsage, parseAgyUsage } from "#desktop/main/runner/antigravity.ts";
 import { checkLogin, checkUsage, loginParts, type RunCli } from "#desktop/main/runner/login.ts";
 import { policyBlocks } from "#desktop/main/runner/command.ts";
 import { parseResetAt } from "#desktop/main/runner/usage.ts";
 import { AntigravityStream } from "#desktop/main/runner/stream.ts";
+
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
 
 const now = new Date("2026-10-06T06:00:00Z");
 const profile = AGENT_TEMPLATES.antigravity;
@@ -47,7 +54,7 @@ it("uses bucket IDs or group names and windows, leaving invalid or missing quota
 });
 
 it("never invokes /usage on old or unknown agy versions, including sign-in checks", async () => {
-  const bin = mkdtempSync(path.join(os.tmpdir(), "hive-agy-version-"));
+  const bin = testTmpDir(path.join(os.tmpdir(), "hive-agy-version-"));
   const agy = path.join(bin, "agy");
   writeFileSync(agy, "#!/bin/sh\nexit 0\n"); chmodSync(agy, 0o755);
   for (const version of ["agy 1.1.10", "not a version", "1.1.11-beta.1"]) {
@@ -62,7 +69,7 @@ it("never invokes /usage on old or unknown agy versions, including sign-in check
 });
 
 it("uses a fake agy binary for signed in, signed out and quota checks with profile env", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "hive-agy-login-"));
+  const dir = testTmpDir(path.join(os.tmpdir(), "hive-agy-login-"));
   const file = path.join(dir, "agy");
   const fixture = path.join(import.meta.dirname, "fixtures", "fake-agent.mjs");
   writeFileSync(file, `#!/bin/sh\nexec '${process.execPath}' '${fixture}' "$@"\n`); chmodSync(file, 0o755);
@@ -100,4 +107,8 @@ it("keeps the last AGY_ERROR payload, including an empty error marker", () => {
   assert.equal(agyError('AGY_ERROR: {"message":"earlier"}\nAGY_ERROR: {"message":"quota exhausted"}\n'), '{"message":"quota exhausted"}');
   assert.equal(agyError("AGY_ERROR:\n"), "");
   assert.equal(agyError("success"), null);
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

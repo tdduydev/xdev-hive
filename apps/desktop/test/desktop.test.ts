@@ -1,17 +1,24 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, readFileSync, statSync, writeFileSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { MANAGED_START, type Actor, type HiveBackend } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { CODEGRAPH_MCP, installAgents, installCodexConfig, installShim } from "#desktop/main/installer.ts";
 import { commitAll, ensureWorktree, remoteStart } from "#desktop/main/runner/worktree.ts";
 import { proposeAgents, renderContext, syncProject } from "#desktop/main/sync.ts";
 
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
+
 const admin: Actor = { name: "duy", role: "admin" };
-const tmp = (p: string) => mkdtempSync(path.join(os.tmpdir(), `hive-${p}-`));
+const tmp = (p: string) => testTmpDir(path.join(os.tmpdir(), `hive-${p}-`));
 const sh = (cwd: string, cmd: string, args: string[], env: Record<string, string> = {}) =>
   execFileSync(cmd, args, { cwd, encoding: "utf8", env: { ...process.env, ...env }, stdio: ["pipe", "pipe", "pipe"] });
 
@@ -644,4 +651,8 @@ describe("where a new task branch starts", () => {
     assert.notEqual(failed.note, none.note, "says the fetch failed, not that there is no remote");
     assert.match(failed.note, /origin/);
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

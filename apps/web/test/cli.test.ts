@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
@@ -14,10 +14,17 @@ import { filesDir } from "#web/backup.ts";
 import { TokenStore } from "#web/tokens.ts";
 import { UserStore } from "#web/users.ts";
 
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
+
 const admin: Actor = { name: "duy", role: "admin" };
 const cli = path.join(import.meta.dirname, "..", "src", "cli.ts");
 const hex = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
-const tmp = () => mkdtempSync(path.join(os.tmpdir(), "hive-cli-"));
+const tmp = () => testTmpDir(path.join(os.tmpdir(), "hive-cli-"));
 // The shell running the tests may carry a real hub's settings (HIVE_SEAWEEDFS_URL, HIVE_BACKUP_DIR…): the CLI must see only the test's.
 const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("HIVE_")));
 
@@ -130,4 +137,8 @@ describe("hub CLI (node src/cli.ts)", () => {
       hive.close();
     }
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });
