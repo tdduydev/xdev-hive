@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
@@ -8,13 +8,20 @@ import path from "node:path";
 import { after, describe, it } from "node:test";
 import { describeBuild, uploadToHub } from "#desktop/scripts/hub-upload.mjs";
 
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
+
 const version = "0.90.0";
 const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 
 // Big enough that the body comes in several chunks, so "cut" really breaks it off part-way.
 const macBytes = Buffer.alloc(1_000_000, "m");
 const winBytes = Buffer.from("the windows build");
-const dir = mkdtempSync(path.join(os.tmpdir(), "hive-hub-upload-"));
+const dir = testTmpDir(path.join(os.tmpdir(), "hive-hub-upload-"));
 const mac = path.join(dir, `xdev-hive-${version}-mac-arm64.zip`);
 const win = path.join(dir, `xdev-hive-${version}-win-x64-setup.exe`);
 const other = path.join(dir, `xdev-hive-${version}.zip`);
@@ -170,4 +177,8 @@ describe("release upload to the hub", () => {
     assert.equal(hub.attempts.length, 1);
     assert.deepEqual(waits, []);
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

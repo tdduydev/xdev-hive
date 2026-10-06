@@ -1,18 +1,25 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import type { Actor } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { mirrorDocs, mirrors } from "#desktop/main/mirror.ts";
+
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
 
 const admin: Actor = { name: "duy", role: "admin" };
 const git = (repo: string, ...args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
 
 function repoWith(files: Record<string, string>) {
-  const repo = mkdtempSync(path.join(os.tmpdir(), "hive-mirror-"));
+  const repo = testTmpDir(path.join(os.tmpdir(), "hive-mirror-"));
   git(repo, "init", "-q", "-b", "main");
   git(repo, "config", "user.email", "t@example.com");
   git(repo, "config", "user.name", "Test");
@@ -67,4 +74,8 @@ describe("mirroring the repo's docs into Hive (roadmap 26)", () => {
     const gone = repoWith({ ".xdev-hive/docs.json": JSON.stringify({ docs: [{ file: "docs/gone.md", key: "gone" }] }), "README.md": "# Demo\n" });
     assert.deepEqual((await mirrorDocs(new SqliteHive(":memory:"), admin, { name: "demo", repo: gone.repo }, { fetch: false })).missing, ["docs/gone.md"]);
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

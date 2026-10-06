@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
@@ -12,6 +12,13 @@ import { SqliteHive } from "@xdev-hive/core/node";
 import { createHubApp } from "#web/app.ts";
 import { TokenStore } from "#web/tokens.ts";
 import { UserStore } from "#web/users.ts";
+
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
 
 let base = "";
 let close: () => void;
@@ -287,7 +294,7 @@ describe("hub as a backend", () => {
 
 describe("hub UI", () => {
   it("serves the SPA from an install path with a dot directory (~/.local, .claude/worktrees…)", async () => {
-    const dir = path.join(mkdtempSync(path.join(os.tmpdir(), "hive-ui-")), ".local", "client");
+    const dir = path.join(testTmpDir(path.join(os.tmpdir(), "hive-ui-")), ".local", "client");
     mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(dir, "index.html"), "<!doctype html><title>xDev Hive</title>");
     const hive = new SqliteHive(":memory:");
@@ -305,4 +312,8 @@ describe("hub UI", () => {
       hive.close();
     }
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

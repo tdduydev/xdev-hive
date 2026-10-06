@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -11,6 +11,13 @@ import { createHubApp } from "#web/app.ts";
 import { bucket, ReleaseStore } from "#web/releases.ts";
 import { TokenStore } from "#web/tokens.ts";
 import { UserStore } from "#web/users.ts";
+
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
 
 let base = "";
 let close: () => void;
@@ -23,7 +30,7 @@ before(async () => {
   const tokens = new TokenStore(hive.db);
   tok.admin = tokens.create("duy", "admin").token;
   tok.machine = tokens.create("duy-mbp", "agent").token;
-  store = new ReleaseStore(hive.db, path.join(mkdtempSync(path.join(os.tmpdir(), "hive-releases-")), "releases"));
+  store = new ReleaseStore(hive.db, path.join(testTmpDir(path.join(os.tmpdir(), "hive-releases-")), "releases"));
   const app = createHubApp({ hive, tokens, users: new UserStore(hive.db), allowedHosts: ["127.0.0.1"], releases: store });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
@@ -138,4 +145,8 @@ describe("app releases", () => {
     assert.equal(res.body.error?.key, "errors.machineTooOld");
     await rpc(tok.admin, "releases.setRollout", { minVersion: null });
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

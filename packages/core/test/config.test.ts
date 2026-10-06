@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { agentActorName, configSchema, loadConfig, machineIdFrom, pinMachine } from "#core/node.ts";
+
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
 
 describe("machine name", () => {
   it("derives a short id from the hostname", () => {
@@ -29,7 +36,7 @@ describe("machine name", () => {
   });
 
   it("pins the hostname default into an existing config.json, once", () => {
-    const file = path.join(mkdtempSync(path.join(os.tmpdir(), "hive-config-")), "config.json");
+    const file = path.join(testTmpDir(path.join(os.tmpdir(), "hive-config-")), "config.json");
     pinMachine(loadConfig(file), file);
     assert.throws(() => readFileSync(file), /ENOENT/, "no config.json is created");
 
@@ -43,4 +50,8 @@ describe("machine name", () => {
     assert.equal(JSON.parse(readFileSync(file, "utf8")).machine, "ci-runner-2");
     assert.equal(JSON.parse(readFileSync(file, "utf8")).hub, undefined, "a pinned file is not rewritten");
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

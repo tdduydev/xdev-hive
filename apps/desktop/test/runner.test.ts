@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, realpathSync, renameSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { AGENT_TEMPLATES, ARTIFACT_DIR, HiveError, toolHash, type Actor, type AgentProfile, type HiveBackend, type RunnerSettings, type ToolEntry } from "@xdev-hive/core";
 import { CODEGRAPH_MCP, CODEGRAPH_RUN_MCP, SUPERPOWERS_PLUGIN } from "#desktop/main/installer.ts";
 import { collectArtifacts } from "#desktop/main/runner/artifacts.ts";
@@ -25,9 +25,16 @@ import { canClassify, CLASSIFY_INPUT_TOKENS, classifierCommand, classifierResult
 import { syncProject } from "#desktop/main/sync.ts";
 import { readSyncOutcome } from "@xdev-hive/core";
 
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
+
 const FAKE = path.join(import.meta.dirname, "fixtures", "fake-agent.mjs");
 const admin: Actor = { name: "duy", role: "admin" };
-const tmp = (p: string) => mkdtempSync(path.join(os.tmpdir(), `hive-${p}-`));
+const tmp = (p: string) => testTmpDir(path.join(os.tmpdir(), `hive-${p}-`));
 /** A task note as a person writes it: what a run that ends badly must leave behind (BUG-note-wipe). */
 const BRIEF = "Làm trang cài đặt.\nXong khi:\n- có nút Lưu\n- test xanh";
 /** The log without the time the runner puts before each line the agent wrote (roadmap 22l). */
@@ -695,7 +702,7 @@ describe("Runner", () => {
 
   it("runs Codex with --json and keeps its tokens apart, cached input out of input (roadmap 28c)", async () => {
     // `codex exec …` as the profile has it: a wrapper stands in for the codex binary.
-    const bin = mkdtempSync(path.join(os.tmpdir(), "hive-codex-"));
+    const bin = testTmpDir(path.join(os.tmpdir(), "hive-codex-"));
     const codex = path.join(bin, "codex");
     writeFileSync(codex, `#!/bin/sh\nexec "${process.execPath}" "${FAKE}" "$@"\n`);
     chmodSync(codex, 0o755);
@@ -1208,9 +1215,10 @@ describe("Runner", () => {
     assert.ok(existsSync(path.join(done.worktree!, "merged.txt")));
   });
 
-  it("fails a run, with a reason in the user's language, when the remote stays out of reach", async () => {
+  it("fails a run, with a reason in the user's language, when the remote stays out of reach", async (t) => {
     const { repo, runner, dataDir } = await setup([profile("claude-1", "claude", 10, "ok")]);
     const { origin } = teamAhead(repo);
+    t.after(() => rmSync(`${origin}.off`, { recursive: true, force: true }));
     renameSync(origin, `${origin}.off`);
 
     const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
@@ -1222,9 +1230,10 @@ describe("Runner", () => {
     assert.equal(existsSync(path.join(dataDir, "worktrees", "demo", "T-1")), false);
   });
 
-  it("goes on from an existing task branch when the remote is out of reach", async () => {
+  it("goes on from an existing task branch when the remote is out of reach", async (t) => {
     const { repo, runner } = await setup([profile("claude-1", "claude", 10, "ok")]);
     const { origin } = teamAhead(repo);
+    t.after(() => rmSync(`${origin}.off`, { recursive: true, force: true }));
     // A follow-up or review of a task that already has a branch: nothing to fetch, so a broken remote changes nothing.
     const first = await runner.enqueue({ project: "demo", taskId: "T-1" });
     await runner.settle();
@@ -2941,4 +2950,8 @@ describe("classify runs", () => {
     const t = await a.task();
     assert.deepEqual([t.kind, t.size, t.risk, t.classifiedBy], ["feature", "m", "normal", "ai"]);
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

@@ -3,16 +3,23 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import type { Actor } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { checkCitations, objectIds, resolveRef } from "#desktop/main/citations.ts";
+
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
 
 const admin: Actor = { name: "duy", role: "admin" };
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 
 function repo() {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "hive-cite-"));
+  const dir = testTmpDir(path.join(os.tmpdir(), "hive-cite-"));
   git(dir, "init", "-q", "-b", "main");
   git(dir, "config", "user.email", "t@example.com");
   git(dir, "config", "user.name", "Test");
@@ -62,4 +69,8 @@ describe("citation check on a real repo", () => {
     assert.equal(await checkCitations(hive, admin, { name: "demo", repo: dir, targetBranch: "release" }), null);
     assert.equal(await checkCitations(hive, admin, { name: "demo", repo: path.join(dir, "missing") }), null);
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

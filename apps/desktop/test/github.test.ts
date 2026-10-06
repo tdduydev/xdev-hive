@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
@@ -28,10 +28,17 @@ import { Runner } from "#desktop/main/runner/runner.ts";
 import { syncProject } from "#desktop/main/sync.ts";
 import { startMockGitHub, type MockGitHub } from "./fixtures/mock-github.ts";
 
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
+
 const FAKE = path.join(import.meta.dirname, "fixtures", "fake-agent.mjs");
 const TOKEN = "mock-github-token";
 const admin: Actor = { name: "duy", role: "admin" };
-const tmp = (p: string) => mkdtempSync(path.join(os.tmpdir(), `hive-${p}-`));
+const tmp = (p: string) => testTmpDir(path.join(os.tmpdir(), `hive-${p}-`));
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 
 let gh: MockGitHub;
@@ -482,4 +489,8 @@ describe("GitHub CI fix", () => {
     assert.equal(second.mr?.state, "updated");
     assert.match(git(s.origin, "show", "chore/xdev-hive-context:AGENTS.md"), /Chạy npm test\./);
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });

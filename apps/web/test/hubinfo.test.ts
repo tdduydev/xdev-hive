@@ -1,17 +1,24 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readdirSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, readdirSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { createHubApp } from "#web/app.ts";
 import { HubInfoSource } from "#web/hubinfo.ts";
 import { TokenStore } from "#web/tokens.ts";
 import { UserStore } from "#web/users.ts";
 
+const testTmpDirs = new Set<string>();
+function testTmpDir(prefix: string): string {
+  const dir = mkdtempSync(prefix);
+  testTmpDirs.add(dir);
+  return dir;
+}
+
 async function serve(backup: { dir: string; hours: number; keep: number } | null) {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "hive-hubinfo-"));
+  const dir = testTmpDir(path.join(os.tmpdir(), "hive-hubinfo-"));
   const dbPath = path.join(dir, "hub.db");
   const hive = new SqliteHive(dbPath);
   hive.seed("hub", { hub: true });
@@ -33,7 +40,7 @@ async function serve(backup: { dir: string; hours: number; keep: number } | null
 
 describe("the Hub page", () => {
   it("tells hub admins what the hub is, and makes a backup on request", async () => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), "hive-backups-"));
+    const dir = testTmpDir(path.join(os.tmpdir(), "hive-backups-"));
     const s = await serve({ dir, hours: 24, keep: 2 });
     try {
       const info = (await s.rpc(s.admin, "hub.info")).body.result;
@@ -70,4 +77,8 @@ describe("the Hub page", () => {
       s.close();
     }
   });
+});
+
+after(() => {
+  for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });
