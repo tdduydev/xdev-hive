@@ -573,6 +573,10 @@ function openLogin(id: string, how?: LoginHow): { opened: boolean } {
   if (!profile) throw new HiveError("not_found", `Không có profile ${id}.`, { key: "errors.profileNotFound", vars: { id } });
   const parts = loginParts(profile, readLoginHow(how));
   if (!parts) throw new HiveError("bad_request", `${profile.kind} không có lệnh đăng nhập.`, { key: "errors.noLoginCommand", vars: { kind: profile.kind } });
+  if (profile.kind === "codex") {
+    const home = profile.env.CODEX_HOME ? expandHome(profile.env.CODEX_HOME) : path.join(os.homedir(), ".codex");
+    installCodexConfig(path.join(home, "config.toml"), shimPath());
+  }
   const pathEnv = agentEnv().PATH ?? "";
   const bin = resolveBin(expandHome(profile.bin), pathEnv);
   if (!bin) throw new HiveError("not_found", tr("desktop.cliNotFound", { bin: profile.bin }), { key: "desktop.cliNotFound", vars: { bin: profile.bin } });

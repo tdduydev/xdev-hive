@@ -3232,6 +3232,7 @@ export const vi = {
     hub: "cả hub",
     timedOut: "Quá thời gian {minutes} phút",
     exited: "Thoát với mã {code}",
+    codexConfigInvalid: "Cấu hình MCP của Codex bị lỗi trong {file}. Hãy sửa hoặc tạo lại mục MCP xdev-hive rồi chạy lại.",
     binNotFound: "Không tìm thấy lệnh \"{bin}\" trong PATH",
     spawnFailed: "Không chạy được {bin}: {reason}",
     toolUntrusted: "tool {id}: chờ người dùng máy cho phép (Cài đặt máy)",

@@ -275,7 +275,7 @@ export interface BuiltCommand {
 
 export function buildCommand(
   profile: AgentProfile,
-  vars: { prompt: string; worktree: string; task: string; project: string; branch: string; run?: string; repo?: string; references?: ReferenceRepo[] },
+  vars: { prompt: string; worktree: string; task: string; project: string; branch: string; run?: string; repo?: string; references?: ReferenceRepo[]; hiveMcpBin?: string },
   /**
    * The run's tools from the hub's catalog (runTools), or what the repo's setup turned on (no catalog): Claude Code
    * gets the app's own entries for those, as before the catalog.
@@ -317,7 +317,7 @@ export function buildCommand(
     // to the working copy, and the one config that would name another folder (sandbox_workspace_write.writable_roots)
     // would grant writing in it. Codex learns about them from the prompt only.
     // Codex had no tools of the app's before the catalog: its own config.toml starts what the user set up.
-    args = codexArgs(args, { agent: profile.id, project: vars.project, task: vars.task, run: vars.run, readOnly: profile.readOnly }, catalog ? tools : [], ctx);
+    args = codexArgs(args, { agent: profile.id, project: vars.project, task: vars.task, run: vars.run, readOnly: profile.readOnly }, catalog ? tools : [], { ...ctx, hiveMcpBin: vars.hiveMcpBin });
     // Events instead of text, for the tokens of each turn (roadmap 28c); only `codex exec`, which has --json.
     if (args[0] === "exec") {
       if (!args.includes("--json")) args = ["exec", "--json", ...args.slice(1)];
@@ -376,14 +376,18 @@ export function codexArgs(
   run?: { agent: string; project: string; task: string; run?: string; readOnly?: boolean },
   /** The run's MCP tools of the catalog (roadmap 28b). */
   tools: ToolEntry[] = [],
-  ctx: { worktree?: string; repo?: string } = {},
+  ctx: { worktree?: string; repo?: string; hiveMcpBin?: string } = {},
 ): string[] {
   const sandbox = args.some((a) => a === "--sandbox" || a === "-s" || a.startsWith("--sandbox="));
   const fixed = args.flatMap((a) => (a === "--full-auto" ? (sandbox ? [] : ["--sandbox", "workspace-write"]) : [a]));
   // Only for `codex exec …`, whose options are known; older versions ignore unknown keys.
   if (fixed[0] !== "exec") return fixed;
   // Codex 0.15x refuses MCP writes (task_claim, memory_write) it cannot ask about: Hive's own tools go through.
-  const overrides = ["-c", 'mcp_servers.xdev-hive.default_tools_approval_mode="approve"'];
+  const overrides = [
+    "-c", `mcp_servers.xdev-hive.command=${JSON.stringify(ctx.hiveMcpBin ?? "hive-mcp")}`,
+    "-c", "mcp_servers.xdev-hive.args=[]",
+    "-c", 'mcp_servers.xdev-hive.default_tools_approval_mode="approve"',
+  ];
   if (run) {
     // The shim's identity is the profile's, as for Claude Code: ~/.codex/config.toml says "codex", which would claim
     // the task as someone else than the runner, and hold it against the next run.

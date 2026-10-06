@@ -15,7 +15,7 @@ import { usageHeadroom, usageStop, type HiveEvent, type PlanUsage } from "@xdev-
 import { checkLogin, checkUsage, LoginMonitor, loginCommand, parseLogin, USAGE_ARGS, usageRefresher } from "#desktop/main/runner/login.ts";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { parseResetTime, detectRateLimit } from "#desktop/main/runner/rate-limit.ts";
-import { Runner, type HubUpdate, type RunnerEvent, type RunnerHost, type RunnerOptions } from "#desktop/main/runner/runner.ts";
+import { codexConfigFailure, Runner, type HubUpdate, type RunnerEvent, type RunnerHost, type RunnerOptions } from "#desktop/main/runner/runner.ts";
 import { chatArgs, leaderBrief, leaderSettings } from "#desktop/main/runner/chat.ts";
 import { assistSettings, globRegExp, parseAssist, readRepoFiles } from "#desktop/main/runner/assist.ts";
 import { setMainLocale, tr } from "#desktop/main/i18n.ts";
@@ -632,6 +632,8 @@ describe("buildCommand", () => {
     // Codex asks before an MCP write, and a headless run has nobody to answer: Hive's own tools are approved.
     // The shim gets the profile's name (the runner's lease is under it) and the run's project and task.
     const approve = [
+      "-c", 'mcp_servers.xdev-hive.command="hive-mcp"',
+      "-c", "mcp_servers.xdev-hive.args=[]",
       "-c",
       'mcp_servers.xdev-hive.default_tools_approval_mode="approve"',
       "-c",
@@ -650,8 +652,22 @@ describe("buildCommand", () => {
     );
     assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.codex, args: ["/opt/wrap.sh", "{prompt}"] }, vars).args, ["/opt/wrap.sh", "Do T-1"], "an unknown command line stays as it is");
     const ro = buildCommand({ ...AGENT_TEMPLATES.codex, id: "codex-ro", readOnly: true }, { ...vars, run: "R-1" }).args;
-    assert.equal(ro[5], 'mcp_servers.xdev-hive.env={HIVE_AGENT="codex-ro",HIVE_PROJECT="demo",HIVE_TASK="T-1",HIVE_RUN="R-1",HIVE_READONLY="1"}');
+    assert.ok(ro.includes('-c', ro.indexOf('mcp_servers.xdev-hive.default_tools_approval_mode="approve"')));
+    assert.ok(ro.includes('mcp_servers.xdev-hive.env={HIVE_AGENT="codex-ro",HIVE_PROJECT="demo",HIVE_TASK="T-1",HIVE_RUN="R-1",HIVE_READONLY="1"}'));
+    assert.equal(buildCommand(AGENT_TEMPLATES.codex, { ...vars, hiveMcpBin: "/opt/hive-mcp" }).args[3], 'mcp_servers.xdev-hive.command="/opt/hive-mcp"');
     assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.claude, kind: "custom" }, vars).args, ["-p", "Do T-1", "--permission-mode", "acceptEdits"]);
+  });
+});
+
+describe("Codex config failures", () => {
+  it("points to the profile config in the localized run error", () => {
+    const profile = { ...AGENT_TEMPLATES.codex, env: { CODEX_HOME: "/tmp/codex-profile" } };
+    setMainLocale("en");
+    assert.equal(codexConfigFailure(profile, "Error loading config.toml: invalid transport in `mcp_servers.xdev-hive`"),
+      "Codex MCP configuration is invalid in /tmp/codex-profile/config.toml. Repair or recreate the xdev-hive MCP entry, then retry.");
+    setMainLocale("vi");
+    assert.match(codexConfigFailure(profile, "Error loading config.toml: invalid transport" )!, /Cấu hình MCP.*\/tmp\/codex-profile\/config.toml/);
+    assert.equal(codexConfigFailure(profile, "unrelated failure"), null);
   });
 });
 
