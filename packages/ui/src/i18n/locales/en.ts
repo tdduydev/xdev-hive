@@ -3330,7 +3330,7 @@ export const en: Catalog = {
     hub: "the whole hub",
     timedOut: "Timed out after {minutes} minutes",
     exited: "Exited with code {code}",
-    codexConfigInvalid: "The Codex profile's MCP configuration is invalid. Check {file} ([mcp_servers.xdev-hive]).",
+    codexConfigInvalid: "Codex MCP configuration is invalid in {file}. Repair or recreate the xdev-hive MCP entry, then retry.",
     binNotFound: "Command \"{bin}\" not found in PATH",
     spawnFailed: "Cannot run {bin}: {reason}",
     toolUntrusted: "tool {id}: waiting for this machine's user to allow it (Machine setup)",

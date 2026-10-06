@@ -83,6 +83,7 @@ import {
 import { tr } from "#desktop/main/i18n.ts";
 import { git, isGitRepo } from "#desktop/main/git.ts";
 import { NO_FEATURES, repoFeatures } from "#desktop/main/installer.ts";
+import { codexHome } from "./login.ts";
 import { renderContext, type WorktreeRule, type WorktreeSkill } from "#desktop/main/sync.ts";
 import { hookEnv, legacyPick, NO_TOOLS, prepareTool, readyHooks, rtkGain, runTools, toolDirs, userClaudeSettings, type ToolPick } from "./tools.ts";
 import { collectArtifacts } from "./artifacts.ts";
@@ -131,6 +132,12 @@ import {
   resetTo,
   type Worktree,
 } from "./worktree.ts";
+
+export function codexConfigFailure(profile: AgentProfile, output: string): string | null {
+  return profile.kind === "codex" && /(?:invalid transport|error loading config\.toml|failed to parse.*config\.toml)/i.test(output)
+    ? tr("runNote.codexConfigInvalid", { file: path.join(codexHome(profile), "config.toml") })
+    : null;
+}
 
 export interface RunnerHost {
   backend(): HiveBackend;
@@ -2236,14 +2243,8 @@ export class Runner {
         if (shareError) error = `${error} · ${shareError}`;
       } else {
         const all = agyFailure ?? outcome.usage?.text ?? outcome.all;
-        const codexConfigError = profile.kind === "codex" && /invalid transport|error loading config\.toml|failed to (?:read|parse).*config\.toml/i.test(all);
-        if (codexConfigError) {
-          const home = profile.env.CODEX_HOME ? expandHome(profile.env.CODEX_HOME) : path.join(os.homedir(), ".codex");
-          error = tr("runNote.codexConfigInvalid", { file: path.join(home, "config.toml") });
-        } else {
-          const lastErr = all.trim().split("\n").at(-1) ?? "";
-          error = `${tr("runNote.exited", { code: outcome.code ?? "?" })}${lastErr ? `: ${clip(lastErr, 200)}` : ""}`;
-        }
+        const lastErr = all.trim().split("\n").at(-1) ?? "";
+        error = codexConfigFailure(profile, all) ?? `${tr("runNote.exited", { code: outcome.code ?? "?" })}${lastErr ? `: ${clip(lastErr, 200)}` : ""}`;
       }
       if (status !== "succeeded" && outcome.blocked?.length) {
         error = [error, tr("runNote.networkBlocked", { hosts: outcome.blocked.slice(0, 5).join(", ") })].filter(Boolean).join(" · ");

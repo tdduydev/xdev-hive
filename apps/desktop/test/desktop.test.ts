@@ -121,6 +121,7 @@ describe("installAgents", () => {
     assert.match(text, /^# my settings\nmodel = "gpt-5"\n/);
     assert.equal(text.match(/\[mcp_servers\.xdev-hive\]/g)?.length, 1);
     assert.match(text, new RegExp(`command = "${SHIM}"`), "the shim by full path, not looked up on PATH");
+    assert.match(text, /args = \[\]/, "Codex stdio MCP entries always declare args");
     assert.match(text, /\[mcp_servers\.xdev-hive\][\s\S]*default_tools_approval_mode = "approve"/, "Hive's tools need no approval in headless runs");
   });
 
