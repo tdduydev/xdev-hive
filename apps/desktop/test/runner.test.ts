@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { RunStore } from "#desktop/main/runner/store.ts";
 import { writeSteer } from "#desktop/main/runner/steer.ts";
-import { after, describe, it } from "node:test";
+import { after, describe, it, mock } from "node:test";
 import { AGENT_TEMPLATES, ARTIFACT_DIR, HiveError, toolHash, type Actor, type AgentProfile, type HiveBackend, type DesktopProject, type RunnerSettings, type ToolEntry } from "@xdev-hive/core";
 import { CODEGRAPH_MCP, CODEGRAPH_RUN_MCP, SHIM_NAME, SUPERPOWERS_PLUGIN, mcpLaunch, shimBinDir } from "#desktop/main/installer.ts";
 import { collectArtifacts } from "#desktop/main/runner/artifacts.ts";
@@ -38,6 +38,20 @@ function testTmpDir(prefix: string): string {
 
 const FAKE = path.join(import.meta.dirname, "fixtures", "fake-agent.mjs");
 const admin: Actor = { name: "duy", role: "admin" };
+const credentialRequests: Array<{ method: string; input: { run: string; minutes?: number; readOnly?: boolean } }> = [];
+// Hub-mode fixtures exercise the credential exchange without reaching a real service.
+mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
+  assert.ok(String(url).endsWith("/api/run-credentials"), `Unexpected fixture request: ${url}`);
+  const input = JSON.parse(String(init.body));
+  credentialRequests.push({ method: init.method!, input });
+  if (init.method === "POST") {
+    assert.ok(Number.isInteger(input.minutes), "fractional test timeouts still mint an integer TTL");
+    assert.ok(input.minutes >= 5 && input.minutes <= 1440);
+    return Response.json({ result: { token: `hiverun_fixture_${input.run}` } });
+  }
+  assert.equal(init.method, "DELETE");
+  return Response.json({ result: { revoked: true } });
+});
 const tmp = (p: string) => testTmpDir(path.join(os.tmpdir(), `hive-${p}-`));
 /** A task note as a person writes it: what a run that ends badly must leave behind (BUG-note-wipe). */
 const BRIEF = "Làm trang cài đặt.\nXong khi:\n- có nút Lưu\n- test xanh";
@@ -88,6 +102,7 @@ async function setup(
     /** Wraps the hub as this machine reaches it (to make some calls fail). */
     wrap?: (backend: HiveBackend) => HiveBackend;
     hub?: RunnerHost["hub"];
+    env?: NodeJS.ProcessEnv;
     download?: RunnerHost["download"];
     sync?: RunnerOptions["sync"];
     /** Put first on the PATH the runner sees (fake tools such as npx). */
@@ -114,15 +129,15 @@ async function setup(
   const host: RunnerHost = {
     backend: () => (mode === "hub" ? (machine.wrap?.(hubLike) ?? hubLike) : hive),
     profiles: () => profiles.map((p) => ({ ...p, env: { ...p.env, FAKE_RECORD: record } })),
-    settings: () => ({ worktreeRoot: null, maxParallel: 2, maxAttempts: 3, acceptHubRuns: false, ...settings }),
+    settings: () => ({ worktreeRoot: null, maxParallel: 2, maxAttempts: 3, acceptHubRuns: false, gateRunner: false, ...settings }),
     projects: () => machine.projects?.(repo) ?? [{ name: "demo", repo }],
     mode: () => mode,
     machine: () => machine.name ?? "duy-mbp",
-    env: () => ({ PATH: pathEnv, HOME: home }),
+    env: () => ({ PATH: pathEnv, HOME: home, ...machine.env }),
     report: machine.report,
     login: machine.login,
     usage: machine.usage,
-    hub: machine.hub,
+    hub: machine.hub ?? (() => ({ url: "https://runner-fixture.test", token: "hive_machine_fixture" })),
     ...(machine.download ? { download: machine.download } : {}),
     ...(machine.toolTrust ? { toolTrust: machine.toolTrust } : {}),
   };
@@ -147,12 +162,14 @@ async function setup(
     fetchRetryMs: [],
   });
   if (!machine.hive) await hive.call("tasks.create", { id: "T-1", project: "demo", title: "Thêm trang cài đặt" }, admin);
+  // Polling a live agent can catch its append midway through the last JSON line.
   const calls = () =>
     existsSync(record)
       ? readFileSync(record, "utf8")
-          .trim()
           .split("\n")
-          .map((l) => JSON.parse(l) as { agent: string; prompt: string; cwd: string; args: string[]; readOnly: string | null })
+          .slice(0, -1)
+          .filter(Boolean)
+          .map((l) => JSON.parse(l) as { agent: string; prompt: string; cwd: string; args: string[]; readOnly: string | null; runToken?: string | null })
       : [];
   const task = async () => (await hive.call("tasks.list", { project: "demo" }, admin)).find((t) => t.id === "T-1")!;
   return { repo, hive, runner, dataDir, calls, task, hubUpdates, record };
@@ -372,7 +389,7 @@ describe("sign-in checks", () => {
     const second = { ...AGENT_TEMPLATES.claude, env: { CLAUDE_CONFIG_DIR: "~/.claude-2", ANTHROPIC_API_KEY: "never-shown" } };
     assert.equal(loginCommand(second), "CLAUDE_CONFIG_DIR=~/.claude-2 claude auth login");
     assert.equal(loginCommand({ ...AGENT_TEMPLATES.codex, env: { CODEX_HOME: "~/.codex-2" } }), "CODEX_HOME=~/.codex-2 codex login");
-    assert.equal(loginCommand(AGENT_TEMPLATES.gemini), null);
+    assert.equal(loginCommand(AGENT_TEMPLATES.gemini), "gemini");
   });
 
   it("keeps the last check of each enabled profile and forgets removed ones", async () => {
@@ -400,7 +417,7 @@ describe("sign-in checks", () => {
     assert.equal((await checkLogin(p, env, now, run)).loggedIn, false);
     assert.deepEqual(seen, [{ args: ["auth", "status", "--json"], dir: "/tmp/claude-2" }]);
     assert.equal((await checkLogin({ ...p, bin: "/nonexistent/claude" }, env, now, run)).loggedIn, null);
-    assert.equal((await checkLogin({ ...AGENT_TEMPLATES.gemini, bin: process.execPath }, env, now, run)).loggedIn, null);
+    assert.equal((await checkLogin({ ...AGENT_TEMPLATES.gemini, bin: process.execPath, env: { GEMINI_CLI_HOME: tmp("gemini-login") } }, env, now, run)).loggedIn, false);
     assert.equal(seen.length, 1);
   });
 });
@@ -658,6 +675,8 @@ describe("buildCommand", () => {
       "-c",
       'mcp_servers.xdev-hive.default_tools_approval_mode="approve"',
       "-c",
+      'mcp_servers.xdev-hive.env_vars=["HIVE_RUN_TOKEN"]',
+      "-c",
       'mcp_servers.xdev-hive.env={HIVE_AGENT="codex-1",HIVE_PROJECT="demo",HIVE_TASK="T-1"}',
     ];
     // `--json` for each turn's tokens (roadmap 28c), once.
@@ -697,6 +716,65 @@ describe("Codex config failures", () => {
 });
 
 describe("Runner", () => {
+  it("runs Copilot JSONL through a fake CLI and treats an in-stream error as failure", async () => {
+    const first = await setup([{ ...AGENT_TEMPLATES.copilot, bin: process.execPath, args: [FAKE, "-p", "{prompt}", "--output-format", "json"], env: { FAKE_MODE: "copilot-ok" } }]);
+    const run = await first.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await first.runner.settle();
+    const done = first.runner.store.get(run.id)!;
+    assert.equal(done.status, "succeeded", done.error ?? "");
+    assert.equal(done.summary, "Copilot fixture complete");
+    assert.deepEqual([done.costUsd, done.inputTokens, done.cacheWriteTokens, done.cacheReadTokens, done.outputTokens], [null, 18, 2, 5, 7]);
+    assert.match(unstamp(first.runner.log(run.id)), /▶ write[\s\S]*Copilot fixture complete/);
+    assert.equal((await first.task()).status, "review");
+
+    const second = await setup([{ ...AGENT_TEMPLATES.copilot, bin: process.execPath, args: [FAKE, "-p", "{prompt}", "--output-format", "json"], env: { FAKE_MODE: "copilot-event-error" } }]);
+    const bad = await second.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await second.runner.settle();
+    assert.equal(second.runner.store.get(bad.id)!.status, "failed");
+    assert.match(second.runner.store.get(bad.id)!.error ?? "", /fixture authentication failed/);
+  });
+
+  it("runs native OpenCode events with isolated configuration, identity and usage", async () => {
+    const cliDir = tmp("opencode-cli");
+    const cli = path.join(cliDir, "opencode");
+    writeFileSync(cli, `#!/bin/sh\nexec '${process.execPath}' '${FAKE}' "$@"\n`, { mode: 0o755 });
+    const p = { ...AGENT_TEMPLATES.opencode, enabled: true, bin: cli, opencode: { model: "test/model" }, env: { FAKE_MODE: "opencode-ok" } };
+    const { runner, calls, task } = await setup([p]);
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const done = runner.store.get(run.id)!;
+    assert.equal(done.status, "succeeded", done.error ?? "");
+    assert.equal(done.model, "test/model");
+    assert.equal(done.inputTokens, 12);
+    assert.equal(done.cacheReadTokens, 30);
+    assert.equal(done.cacheWriteTokens, 8);
+    assert.equal(done.outputTokens, 5);
+    assert.equal(done.costUsd, 0.002);
+    assert.equal(done.summary, "Implemented OpenCode task. Tests pass.");
+    assert.equal(done.commits, 1);
+    assert.equal((await task()).status, "review");
+    const call = calls()[0] as any;
+    assert.equal(call.config.small_model, "test/model");
+    assert.equal(call.config.mcp["xdev-hive"].environment.HIVE_RUN, run.id);
+    assert.equal(call.config.permission.bash, "deny");
+    assert.equal(call.config.permission.edit, "allow");
+    assert.ok(call.dirs.slice(1).every((dir: string) => dir.includes("hive-home-")));
+    assert.ok(call.dirs[0].includes(run.id));
+    assert.match(runner.log(run.id), /Implemented OpenCode task/);
+    assert.doesNotMatch(done.summary!, /step_finish|sessionID/);
+  });
+
+  for (const [mode, status] of [["opencode-zero-error", "failed"], ["opencode-no-newline-error", "failed"], ["opencode-limit", "rate_limited"]] as const) it(`keeps OpenCode ${status} errors despite exit zero and tail overflow`, async () => {
+    const cli = path.join(tmp("opencode-error"), "opencode");
+    writeFileSync(cli, `#!/bin/sh\nexec '${process.execPath}' '${FAKE}' "$@"\n`, { mode: 0o755 });
+    const { runner } = await setup([{ ...AGENT_TEMPLATES.opencode, enabled: true, bin: cli, opencode: { model: "test/model" }, env: { FAKE_MODE: mode } }], { maxAttempts: 1 });
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const done = runner.store.get(run.id)!;
+    assert.equal(done.status, status, done.error ?? "");
+    assert.match(done.error!, mode === "opencode-limit" ? /429/ : /401/);
+  });
+
   it("runs an agent in its own worktree, commits leftovers and moves the task to review", async () => {
     const { repo, runner, calls, task, dataDir } = await setup([profile("claude-a", "claude", 10, "ok")]);
     const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
@@ -1024,6 +1102,120 @@ describe("Runner", () => {
     }
   });
 
+  it("runs native Vibe streaming and JSON without exposing raw history or committing session metadata", async () => {
+    for (const format of ["streaming", "json"]) {
+      const p = profile("vibe-a", "vibe", 10, "vibe", { env: { FAKE_MODE: "vibe", FAKE_VIBE_STAGE: "1" }, args: [FAKE, ...AGENT_TEMPLATES.vibe.args.map((a) => a === "streaming" ? format : a)] });
+      const { runner, calls, hive } = await setup([p]);
+      try {
+        const first = await runner.enqueue({ project: "demo", taskId: "T-1" });
+        await runner.settle();
+        const run = runner.store.get(first.id)!;
+        assert.equal(run.status, "succeeded", run.error ?? "");
+        assert.equal(run.summary, "Implemented T-1.");
+        assert.equal(run.inputTokens, 70);
+        assert.equal(run.cacheReadTokens, 30);
+        assert.equal(run.outputTokens, 12);
+        assert.equal(run.costUsd, null);
+        assert.equal((calls()[0] as any).mcp.env.HIVE_AGENT, "vibe-a");
+        assert.equal((calls()[0] as any).mcp.env.HIVE_TASK, "T-1");
+        assert.equal(git(run.worktree!, "ls-tree", "--name-only", "HEAD", ".xdev-hive/vibe"), "");
+        assert.doesNotMatch(runner.log(run.id), /generationStatus/);
+      } finally { await runner.stop(); hive.close(); }
+    }
+  });
+
+  it("keeps Vibe usage unknown when missing and fails native errors even with exit zero", async () => {
+    for (const mode of ["vibe-no-stats", "vibe-error", "vibe-limit"]) {
+      const { runner, hive } = await setup([profile("vibe-a", "vibe", 10, mode, { args: [FAKE, ...AGENT_TEMPLATES.vibe.args] })], { maxAttempts: 1 });
+      try {
+        const first = await runner.enqueue({ project: "demo", taskId: "T-1" });
+        await runner.settle();
+        const run = runner.store.get(first.id)!;
+        assert.equal(run.status, mode === "vibe-no-stats" ? "succeeded" : mode === "vibe-limit" ? "rate_limited" : "failed");
+        if (mode === "vibe-no-stats") assert.deepEqual([run.inputTokens, run.outputTokens, run.costUsd], [null, null, null]);
+        else assert.match(run.error!, mode === "vibe-limit" ? /quota exceeded/ : /authentication required/);
+      } finally { await runner.stop(); hive.close(); }
+    }
+  });
+
+  it("refuses a Vibe builtin agent overridden by the project before starting the provider", async () => {
+    const s = await setup([profile("vibe-a", "vibe", 10, "vibe", { args: [FAKE, ...AGENT_TEMPLATES.vibe.args] })], { maxAttempts: 1 });
+    try {
+      mkdirSync(path.join(s.repo, ".vibe", "agents"), { recursive: true });
+      writeFileSync(path.join(s.repo, ".vibe", "agents", "accept-edits.toml"), 'bypass_tool_permissions = true');
+      git(s.repo, "add", "."); git(s.repo, "commit", "-qm", "agent override fixture");
+      const first = await s.runner.enqueue({ project: "demo", taskId: "T-1" });
+      await s.runner.settle();
+      assert.equal(s.runner.store.get(first.id)!.status, "failed");
+      assert.equal(s.calls().length, 0);
+    } finally { await s.runner.stop(); s.hive.close(); }
+  });
+
+  it("isolates Vibe accounts from a shell API key while retaining an explicit profile key", async () => {
+    for (const explicit of [false, true]) {
+      const p = profile("vibe-a", "vibe", 10, "vibe", { args: [FAKE, ...AGENT_TEMPLATES.vibe.args], env: { FAKE_MODE: "vibe", VIBE_HOME: tmp("vibe-account"), ...(explicit ? { MISTRAL_API_KEY: "fixture-profile-key" } : {}) } });
+      const s = await setup([p], {}, "local", { env: { MISTRAL_API_KEY: "fixture-shell-key" } });
+      try {
+        const first = await s.runner.enqueue({ project: "demo", taskId: "T-1" });
+        await s.runner.settle();
+        assert.equal(s.runner.store.get(first.id)!.status, "succeeded");
+        assert.equal((s.calls()[0] as any).key, explicit ? "set" : null);
+        assert.doesNotMatch(s.runner.log(first.id), /fixture-profile-key|fixture-shell-key/);
+      } finally { await s.runner.stop(); s.hive.close(); }
+    }
+  });
+
+  function fakeKilo(mode: string, extra: Partial<AgentProfile> = {}): AgentProfile {
+    const dir = tmp("kilo-bin");
+    const bin = path.join(dir, "kilo");
+    writeFileSync(bin, `#!${process.execPath}\nimport ${JSON.stringify(FAKE)};\n`, { mode: 0o755 });
+    return { ...AGENT_TEMPLATES.kilo, bin, env: { FAKE_MODE: mode }, ...extra };
+  }
+
+  it("runs Kilo native JSON with usage, commits work and cleans its isolated config", async () => {
+    const { runner, calls, dataDir, repo } = await setup([fakeKilo("kilo-ok")], { maxAttempts: 1 });
+    const first = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const run = runner.store.get(first.id)!;
+    assert.equal(run.status, "succeeded");
+    assert.equal(run.summary, "Implemented Kilo task. Tests pass.");
+    assert.equal(run.model, "kilo/kilo-auto/free");
+    assert.equal(run.costUsd, 0.01);
+    assert.equal(run.inputTokens, 100);
+    assert.equal(run.cacheReadTokens, 50);
+    assert.equal(run.cacheWriteTokens, 10);
+    assert.equal(run.outputTokens, 20);
+    assert.equal(calls().length, 1);
+    assert.ok(calls()[0]!.args.includes("--pure"));
+    assert.equal(calls()[0]!.args.at(-2), "--");
+    assert.match(runner.log(run.id), /Edit kilo-work.txt/);
+    assert.match(runner.log(run.id), /Implemented Kilo task/);
+    assert.equal(existsSync(path.join(dataDir, "runs", run.id)), false);
+    assert.equal(git(repo, "show", "ai/T-1:kilo-work.txt"), "done");
+  });
+
+  it("fails Kilo JSON errors despite exit zero, preserves rate limit across long output and never retries a paid default", async () => {
+    for (const mode of ["kilo-error", "kilo-limit", "kilo-unsupported"]) {
+      const { runner, calls } = await setup([fakeKilo(mode)], { maxAttempts: 1 });
+      const first = await runner.enqueue({ project: "demo", taskId: "T-1" });
+      await runner.settle();
+      const run = runner.store.get(first.id)!;
+      assert.equal(run.status, mode === "kilo-limit" ? "rate_limited" : "failed");
+      assert.equal(calls().length, 1);
+      assert.match(runner.log(run.id), mode === "kilo-error" ? /authentication required/ : mode === "kilo-limit" ? /429 rate limit/ : /unknown model/);
+    }
+  });
+
+  it("times out Kilo, keeps its last message and cleans config while committing unfinished work", async () => {
+    const { runner, dataDir } = await setup([fakeKilo("kilo-timeout", { timeoutMinutes: 0.01 })], { maxAttempts: 1 });
+    const first = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const run = runner.store.get(first.id)!;
+    assert.equal(run.status, "failed");
+    assert.match(run.summary!, /Checking Kilo timeout work/);
+    assert.equal(existsSync(path.join(dataDir, "runs", run.id)), false);
+  });
+
   it("runs Antigravity template args and keeps the streamed final answer", async () => {
     const { runner, calls } = await setup([profile("agy-a", "antigravity", 10, "ok", {
       args: [FAKE, ...AGENT_TEMPLATES.antigravity.args], timeoutMinutes: 7,
@@ -1281,7 +1473,7 @@ describe("Runner", () => {
   });
 
   it("reports back to a hub that renames actors", async () => {
-    const { runner, task } = await setup([profile("claude-a", "claude", 10, "ok")], {}, "hub");
+    const { runner, task, calls } = await setup([profile("claude-a", "claude", 10, "ok")], {}, "hub");
     const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
     await runner.settle();
     const t = await task();
@@ -1289,6 +1481,9 @@ describe("Runner", () => {
     assert.match(t.note ?? "", /Implemented T-1/);
     // The run's own agent name may read the project's pages on a hub: without that every run loses its context.
     assert.match(unstamp(runner.log(run.id)), /^# hive context: \d+ file \(\d+ ghi mới\), bỏ qua 0$/m);
+    assert.equal(calls()[0]?.runToken, `hiverun_fixture_${run.id}`, "only the run credential reaches the CLI");
+    assert.deepEqual(credentialRequests.filter((r) => r.input.run === run.id).map((r) => r.method), ["POST", "DELETE"], "revoked when the run finishes");
+    assert.ok(!runner.log(run.id).includes(`hiverun_fixture_${run.id}`), "the credential stays out of the log");
   });
 
   it("keeps two machines on one hub token from taking the same task", async () => {
@@ -1816,6 +2011,11 @@ describe("Runner", () => {
       assert.ok(!some.deny.includes("Bash"), "a Bash deny would win over every allow");
       assert.match(leaderBrief("demo", "lan", ["git log", "git diff"]), /only commands you may run are these.*git log, git diff/);
       assert.match(leaderBrief("demo", "lan", []), /You cannot run commands\./);
+      assert.match(leaderBrief("demo", "lan", []), /propose_plan.*project\/<service>\/<slug>/, "a request to build becomes a plan (roadmap 60d)");
+      const brief = leaderBrief("demo", "lan", []);
+      for (const command of ["assign", "research", "status", "release", "cancel", "retry"]) assert.ok(brief.includes(`/${command}`));
+      assert.match(brief, /live status card with verified counters/);
+      assert.match(brief, /Never cancel, redispatch, merge or release directly/);
     });
 
     it("asks Claude Code for the thread's model and effort, and leaves them to the profile when unset", () => {
@@ -1948,11 +2148,17 @@ describe("Runner", () => {
 
   it("shares a quota cooldown with every machine on the same account, and ends it everywhere", async () => {
     const account = { account: "claude-max-duy" };
-    const a = await setup([profile("claude-1", "claude", 10, "limit", account), profile("codex-1", "codex", 20, "ok")], {}, "hub", { name: "duy-mbp" });
+    const report = (id: string): RunnerHost["report"] => () => ({ profiles: [{
+      id, label: id, kind: "claude", ...account, enabled: true, installed: true, cooldownUntil: null, runs: 0, rateLimited: 0,
+    }] });
+    const a = await setup([profile("claude-1", "claude", 10, "limit", account), profile("codex-1", "codex", 20, "ok")], {}, "hub", { name: "duy-mbp", report: report("claude-1") });
     const b = await setup([profile("claude-2", "claude", 10, "ok", account), profile("codex-2", "codex", 20, "ok")], {}, "hub", {
       name: "duy-imac",
       hive: a.hive,
+      report: report("claude-2"),
     });
+    // The hub authorizes a shared cooldown from the machine's reported subscription accounts.
+    await a.runner.heartbeat();
     await a.runner.enqueue({ project: "demo", taskId: "T-1" });
     await a.runner.settle();
     const shared = await a.hive.call("cooldowns.list", {}, admin);
@@ -2333,7 +2539,7 @@ describe("runs on the hub", () => {
     assert.equal(full.patch, runner.diff(run.id));
     assert.match(full.log ?? "", /\(line hidden: it looked like a GitLab token\)/);
     assert.doesNotMatch(full.log ?? "", /glpat-/, "the token never left the machine");
-    assert.match(runner.log(run.id), /glpat-/, "this machine's own log keeps everything");
+    assert.doesNotMatch(runner.log(run.id), /glpat-/, "this machine's log also redacts credentials");
     assert.equal(await runner.pushRuns(), 0, "nothing changed since");
   });
 
@@ -3398,6 +3604,29 @@ describe("steering a live run", () => {
     } finally { await runner.stop(); hive.close(); }
   });
 
+  it("resumes only the same Vibe session on new steering and keeps cumulative root-session usage", async () => {
+    const bin = path.join(tmp("steer-vibe"), "vibe");
+    const quote = (s: string) => "'" + s.replaceAll("'", "'\"'\"'") + "'";
+    writeFileSync(bin, `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(FAKE)} "$@"\n`, { mode: 0o755 });
+    const p = profile("vibe-a", "vibe", 10, "vibe-steer", { bin, args: AGENT_TEMPLATES.vibe.args });
+    const { runner, hive, calls } = await setup([p]);
+    try {
+      const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+      await ready(runner, run.id);
+      await runner.steer(run.id, "Check mobile");
+      await runner.settle();
+      const done = runner.store.get(run.id)!;
+      assert.equal(done.status, "succeeded", done.error ?? "");
+      assert.equal(calls().length, 2);
+      const args = calls()[1]!.args;
+      assert.equal(args[args.indexOf("--resume") + 1], "fake-vibe-session");
+      assert.equal(args.filter((a) => a === "--prompt").length, 1);
+      assert.equal(done.inputTokens, 140);
+      assert.equal(done.summary, "Applied additional instructions");
+      assert.match(readFileSync(path.join(done.worktree!, "work-vibe.txt"), "utf8"), /Check mobile/);
+    } finally { await runner.stop(); hive.close(); }
+  });
+
   it("resumes only the same Codex thread when instructions arrived, preserving policy and counting both turns", async () => {
     const bin = path.join(tmp("steer-codex"), "codex");
     const quote = (s: string) => "'" + s.replaceAll("'", "'\"'\"'") + "'";
@@ -3785,5 +4014,110 @@ describe("redispatch branch choice", () => {
     assert.equal(s.runner.store.get(run.id)!.status, "failed");
     assert.match(s.runner.store.get(run.id)!.error!, /ai\/T-1\+missing/);
     assert.equal(s.calls().length, 0);
+  });
+});
+
+// The research worker shares cancellation, sandboxing and usage reporting with normal runs, but no task/commit/MR.
+describe("research runs", () => {
+  for (const kind of ["claude", "codex"] as const) it(`${kind}: reads only, stores report and draft, never commits or opens an MR`, async () => {
+    let mrCalls = 0;
+    const cli = path.join(tmp("research-cli"), "agent");
+    writeFileSync(cli, `#!/bin/sh\nexec '${process.execPath}' '${FAKE}' "$@"\n`, { mode: 0o755 });
+    const p = profile(`${kind}-research`, kind, 10, "research", kind === "codex" ? { bin: cli, args: ["exec", "{prompt}"] } : {});
+    const a = await setup([p], { acceptHubRuns: true }, "hub", {
+      report: () => ({ profiles: [{ id: p.id, label: p.id, kind, enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0, research: true }] }),
+      afterFinish: async () => { mrCalls++; },
+    });
+    await a.hive.call("agentPolicy.set", { project: "demo", policy: { network: { mode: "off" } } }, admin);
+    await a.runner.heartbeat();
+    const request = await a.hive.call("research.start", { project: "demo", machineId: "runner.duy-mbp@duy-macbook", topic: "Storage options", questions: ["What should we use?"], sources: ["repo", "hive", "web"] }, admin);
+    await a.runner.heartbeat();
+    await a.runner.settle();
+    const run = a.runner.list({ limit: 10 }).find(r => r.role === "research")!;
+    assert.equal(run.status, "succeeded", run.error ?? "");
+    assert.equal(run.commits, 0);
+    assert.equal(run.branch, `research/${run.id}`);
+    assert.equal(git(run.worktree!, "rev-list", "--count", "HEAD") , "1");
+    assert.equal(mrCalls, 0);
+    assert.equal((await a.task()).status, "todo", "no task lease or status update");
+    assert.equal(a.calls()[0]!.readOnly, "1");
+    assert.match([a.calls()[0]!.prompt, ...a.calls()[0]!.args].join("\n"), /read-only research run/);
+    const args = a.calls()[0]!.args;
+    if (kind === "claude") {
+      assert.ok(args.includes("plan"));
+      const settings = JSON.parse(args[args.lastIndexOf("--settings") + 1]!);
+      assert.ok(settings.permissions.deny.includes("Bash"));
+      assert.ok(settings.disableAllHooks);
+      assert.ok(!args[args.indexOf("--tools") + 1]!.includes("WebSearch"));
+    } else {
+      assert.ok(args.includes("read-only"));
+      assert.ok(args.includes('web_search="disabled"'));
+    }
+    const done = await a.hive.call("research.get", { id: request.id }, admin);
+    assert.equal(done.status, "done");
+    assert.deepEqual(done.sources, ["README.md"]);
+    assert.match(done.recommendations, /acceptance/);
+    const file = await a.hive.call("artifacts.get", { id: done.artifactId! }, admin);
+    assert.equal(file!.artifact.name, "report.md");
+    assert.match(Buffer.from(file!.data, "base64").toString(), /SQLite/);
+    assert.ok(existsSync(path.join(a.dataDir, "runs", run.id, "report.md")));
+    assert.equal(await a.hive.call("docs.get", { key: done.docKey }, admin), null);
+    await a.runner.stop();
+  });
+
+  it("rejects malformed output and retains no commits or draft", async () => {
+    const p = profile("claude-research", "claude", 10, "research-bad");
+    const a = await setup([p], { acceptHubRuns: true }, "hub", { report: () => ({ profiles: [{ id: p.id, label: p.id, kind: p.kind, enabled: true, account: null, installed: true, cooldownUntil: null, runs: 0, rateLimited: 0, research: true }] }) });
+    await a.runner.heartbeat();
+    const request = await a.hive.call("research.start", { project: "demo", machineId: "runner.duy-mbp@duy-macbook", topic: "Storage", questions: ["Which?"], sources: ["repo"] }, admin);
+    await a.runner.heartbeat();
+    await a.runner.settle();
+    const run = a.runner.list({ limit: 10 }).find(r => r.role === "research")!;
+    assert.equal(run.status, "failed");
+    assert.equal(run.commits, 0);
+    assert.equal((await a.hive.call("research.get", { id: request.id }, admin)).proposalId, null);
+    await a.runner.stop();
+  });
+});
+
+describe("Gemini native runner", () => {
+  const fakeGemini = (mode: string) => {
+    const bin = path.join(tmp("gemini-cli"), "gemini");
+    const quote = (s: string) => "'" + s.replaceAll("'", "'\"'\"'") + "'";
+    writeFileSync(bin, `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(FAKE)} "$@"\n`, { mode: 0o755 });
+    return { ...AGENT_TEMPLATES.gemini, id: "gemini-test", bin, env: { FAKE_GEMINI: "1", FAKE_MODE: mode } };
+  };
+  it("records native final response and tokens and resumes the exact session with policy flags", async () => {
+    const { runner, hive, calls } = await setup([fakeGemini("gemini-steer")]);
+    try {
+      const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+      await until(() => calls().length === 1);
+      await runner.steer(run.id, "new instruction");
+      await runner.settle();
+      const done = runner.store.get(run.id)!;
+      assert.equal(done.status, "succeeded", done.error ?? "");
+      assert.equal(calls().length, 2);
+      assert.ok(calls()[1]!.args.includes("--resume"));
+      assert.ok(calls()[1]!.args.includes("aabbccdd-0000-4000-8000-000000000001"));
+      assert.ok(calls()[1]!.args.includes("auto_edit"));
+      assert.ok(!calls()[1]!.args.includes("latest"));
+      assert.match(done.summary!, /Implemented T-1/);
+      assert.deepEqual([done.inputTokens, done.cacheReadTokens, done.outputTokens, done.costUsd], [2000, 8000, 600, null]);
+      assert.match(runner.log(run.id), /▶ run_shell_command/);
+      const mcp = JSON.parse(readFileSync(path.join(done.worktree!, ".gemini/settings.json"), "utf8"));
+      assert.equal(mcp.mcpServers["xdev-hive"].env.HIVE_RUN, run.id);
+      assert.equal(git(done.worktree!, "ls-files", ".gemini/settings.json"), "");
+    } finally { await runner.stop(); hive.close(); }
+  });
+  it("treats a result error as a quota failure even when the CLI exits zero", async () => {
+    const { runner, hive } = await setup([fakeGemini("gemini-error-zero")], { maxAttempts: 1 });
+    try {
+      const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+      await runner.settle();
+      const done = runner.store.get(run.id)!;
+      assert.equal(done.status, "rate_limited");
+      assert.match(done.error!, /QUOTA_EXHAUSTED/);
+      assert.equal(done.exitCode, 0);
+    } finally { await runner.stop(); hive.close(); }
   });
 });

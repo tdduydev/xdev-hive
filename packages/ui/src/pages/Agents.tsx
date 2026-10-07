@@ -54,6 +54,10 @@ import { hasNewer } from "#ui/lib/setup.ts";
 const ACCOUNT_ENV_HINT: Partial<Record<AgentKind, string>> = {
   claude: "CLAUDE_CONFIG_DIR=~/.claude-2",
   codex: "CODEX_HOME=~/.codex-2",
+  gemini: "GEMINI_CLI_HOME=~/.xdev-hive/accounts/gemini-2",
+  vibe: "VIBE_HOME=~/.vibe-2",
+  opencode: "XDG_CONFIG_HOME=~/.xdev-hive/accounts/opencode-2/config\nXDG_DATA_HOME=~/.xdev-hive/accounts/opencode-2/data\nXDG_CACHE_HOME=~/.xdev-hive/accounts/opencode-2/cache\nXDG_STATE_HOME=~/.xdev-hive/accounts/opencode-2/state",
+  kilo: "XDG_CONFIG_HOME=~/.xdev-hive/accounts/kilo-2/config\nXDG_DATA_HOME=~/.xdev-hive/accounts/kilo-2/data\nXDG_CACHE_HOME=~/.xdev-hive/accounts/kilo-2/cache\nXDG_STATE_HOME=~/.xdev-hive/accounts/kilo-2/state",
 };
 
 const AGY_CONTROL = "min-h-11 text-base md:min-h-0 md:text-[13px]";
@@ -210,8 +214,8 @@ export function AgentsPage() {
         <p className="m-0 -mt-2 max-w-3xl text-xs/[18px] text-fg-muted">{t("agents.subtitle")}</p>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-muted-foreground">{t("agents.addAccount")}</span>
-          {(["claude", "codex", "antigravity"] as const).map((k) => (
-            <Button key={k} size="sm" className={k === "antigravity" ? AGY_BUTTON : undefined} data-add-account={k} onClick={() => setAdding(k)}>
+          {(["claude", "codex", "antigravity", "gemini", "vibe", "opencode", "kilo", "copilot"] as const).map((k) => (
+            <Button key={k} size="sm" className={(k === "antigravity" || k === "gemini") ? AGY_BUTTON : undefined} data-add-account={k} disabled={k === "copilot" && (profiles.data ?? []).some((p) => p.kind === "copilot")} onClick={() => setAdding(k)}>
               + {t(`agents.accountKind.${k}`)}
             </Button>
           ))}
@@ -222,7 +226,7 @@ export function AgentsPage() {
             onCancel={() => setAdding(null)}
             onAdded={(id) => {
               setAdding(null);
-              waitFor(id);
+              if (adding !== "copilot") waitFor(id);
               refresh();
             }}
           />
@@ -260,6 +264,7 @@ export function AgentsPage() {
             key={editing.previousId ?? editing.profile.id}
             initial={editing.profile}
             previousId={editing.previousId}
+            supportedModels={(profiles.data ?? []).find((row) => row.id === editing.profile.id)?.supportedModels ?? null}
             onDone={() => {
               setEditing(null);
               refresh();
@@ -342,7 +347,7 @@ function AccountForm({ kind, onAdded, onCancel }: { kind: NewAccount["kind"]; on
   const [label, setLabel] = useState("");
   const [way, setWay] = useState(kind === "claude" ? "plan" : "browser");
   const [email, setEmail] = useState("");
-  const ways = kind === "antigravity" ? (["browser"] as const) : kind === "claude" ? (["plan", "sso", "console"] as const) : (["browser", "device"] as const);
+  const ways = kind === "opencode" ? (["provider"] as const) : (kind === "antigravity" || kind === "gemini" || kind === "vibe" || kind === "kilo") ? (["browser"] as const) : kind === "claude" ? (["plan", "sso", "console"] as const) : (["browser", "device"] as const);
   const how: LoginHow = { sso: way === "sso", console: way === "console", device: way === "device", ...(kind === "claude" && email.trim() ? { email: email.trim() } : {}) };
   return (
     <Card className="gap-3 py-4">
@@ -356,12 +361,12 @@ function AccountForm({ kind, onAdded, onCancel }: { kind: NewAccount["kind"]; on
           }}
         >
           <Label htmlFor="acc-label">{t("agents.accountLabel")}</Label>
-          <Input id="acc-label" className={kind === "antigravity" ? AGY_CONTROL : undefined} value={label} placeholder={t(kind === "antigravity" ? "agents.agyLabelHint" : "agents.accountLabelHint")} onChange={(e) => setLabel(e.target.value)} />
+          <Input id="acc-label" className={(kind === "antigravity" || kind === "gemini") ? AGY_CONTROL : undefined} value={label} placeholder={t(kind === "kilo" ? "agents.kiloLabelHint" : kind === "antigravity" ? "agents.agyLabelHint" : kind === "gemini" ? "agents.geminiLabelHint" : "agents.accountLabelHint")} onChange={(e) => setLabel(e.target.value)} />
           <Label htmlFor="acc-way">{t("agents.loginWay")}</Label>
-          <NativeSelect id="acc-way" className={kind === "antigravity" ? AGY_CONTROL : undefined} value={way} onChange={(e) => setWay(e.target.value)} wrapperClassName="w-full">
+          <NativeSelect id="acc-way" className={(kind === "antigravity" || kind === "gemini") ? AGY_CONTROL : undefined} value={way} onChange={(e) => setWay(e.target.value)} wrapperClassName="w-full">
             {ways.map((w) => (
               <NativeSelectOption key={w} value={w}>
-                {kind === "antigravity" ? t("agents.agyWay") : t(`agents.way.${w}`)}
+                {kind === "kilo" ? t("agents.kiloWay") : kind === "vibe" ? t("agents.vibeWay") : kind === "antigravity" ? t("agents.agyWay") : t(`agents.way.${w}`)}
               </NativeSelectOption>
             ))}
           </NativeSelect>
@@ -371,18 +376,19 @@ function AccountForm({ kind, onAdded, onCancel }: { kind: NewAccount["kind"]; on
               <Input id="acc-email" type="email" value={email} placeholder="ten@congty.vn" onChange={(e) => setEmail(e.target.value)} />
             </>
           ) : null}
-          <span className={HINT}>{kind === "antigravity" ? t("agents.agyLogin") : t(`agents.wayHint.${way}` as never)}</span>
+          <span className={HINT}>{kind === "kilo" ? t("agents.kiloLogin") : kind === "opencode" ? t("agents.opencodeLogin") : kind === "antigravity" ? t("agents.agyLogin") : kind === "vibe" ? t("agents.vibeLogin") : kind === "gemini" ? t("agents.geminiLogin") : kind === "copilot" ? t(way === "device" ? "agents.copilotDevice" : "agents.copilotBrowser") : t(`agents.wayHint.${way}` as never)}</span>
           <div className="flex gap-2 sm:col-start-2">
-            <Button type="submit" size="sm" className={kind === "antigravity" ? AGY_BUTTON : undefined} disabled={action.busy}>
+            <Button type="submit" size="sm" className={(kind === "antigravity" || kind === "gemini") ? AGY_BUTTON : undefined} disabled={action.busy}>
               {t("agents.addAndSignIn")}
             </Button>
-            <Button type="button" size="sm" className={kind === "antigravity" ? AGY_BUTTON : undefined} variant="ghost" onClick={onCancel}>
+            <Button type="button" size="sm" className={(kind === "antigravity" || kind === "gemini") ? AGY_BUTTON : undefined} variant="ghost" onClick={onCancel}>
               {t("common.cancel")}
             </Button>
           </div>
         </form>
+        {kind === "vibe" ? <VibeNotice /> : null}
         <ErrorNote error={action.error} />
-        <p className="m-0 text-xs/[18px] text-fg-muted">{kind === "antigravity" ? t("agents.agyAccounts") : t("agents.accountNote")}</p>
+        <p className="m-0 text-xs/[18px] text-fg-muted">{kind === "kilo" ? t("agents.kiloAccounts") : kind === "opencode" ? t("agents.opencodeAccounts") : kind === "antigravity" ? t("agents.agyAccounts") : kind === "gemini" ? t("agents.geminiAccounts") : kind === "copilot" ? t("agents.copilotAccounts") : t("agents.accountNote")}</p>
       </CardContent>
     </Card>
   );
@@ -455,7 +461,7 @@ function ProfileTable({
       onToggle={() => onToggle(p.id)}
       onEdit={() => onEdit(p)}
       onChanged={onChanged}
-      onLoginOpened={() => onLoginOpened(p.id)}
+      onLoginOpened={() => { if (p.kind !== "copilot") onLoginOpened(p.id); }}
       now={now}
       reading={reading === p.id || (reading === "all" && p.enabled)}
       readBusy={reading !== null}
@@ -726,6 +732,11 @@ function ProfileRow({
               {t("agents.login")}
             </Button>
           ) : null}
+          {p.kind === "copilot" && p.cliPath !== null && fix !== "login" ? (
+            <Button size="sm" variant="outline" data-login={p.id} disabled={action.busy} onClick={() => void action.run(async () => (await desktop.openLogin(p.id), setLoginOpened(true), onLoginOpened()))}>
+              {t("agents.login")}
+            </Button>
+          ) : null}
           {upgrade ? (
             <Button
               size="sm"
@@ -779,6 +790,10 @@ function ProfileRow({
           </DropdownMenu>
         </span>
       </ResponsiveGridRow>
+      {p.kind === "gemini" ? <GeminiInfo /> : null}
+      {p.kind === "vibe" ? <div className="px-4 pb-3"><VibeNotice /></div> : null}
+      {p.kind === "opencode" ? <div className="px-4 pb-3"><OpenCodeNotice /></div> : null}
+      {p.kind === "kilo" ? <div className="px-4 pb-3"><KiloInfo /></div> : null}
       {p.kind === "antigravity" ? (
         <div data-agy-pools className="flex flex-wrap gap-x-3 gap-y-1 px-4 pb-2 text-xs text-fg-muted">
           <span>{t("agents.agyPoolSelected", { pool: /claude|gpt/i.test(flagValue(p.args, ["--model"]) ?? "") ? "Claude/GPT" : "Gemini" })}</span>
@@ -895,7 +910,7 @@ function ProfileRow({
             {/* The counts are on the quota line under the row. */}
             {p.stats.costUsd > 0 ? <span>{t("agents.statCost", { cost: formatUsd(p.stats.costUsd) })}</span> : null}
             {p.lastUsedAt ? <span>{t("agents.lastUsed", { time: formatTime(p.lastUsedAt) })}</span> : null}
-            {p.login?.loggedIn ? (
+            {p.kind === "kilo" && p.login?.loggedIn ? <span>{t("agents.kiloCredential")}</span> : p.login?.loggedIn ? (
               <span>
                 {p.login.method ? t("agents.signedIn", { method: p.login.method }) : t("agents.signedInPlain")}
                 {p.login.account ? ` · ${p.login.account}` : ""}
@@ -909,10 +924,18 @@ function ProfileRow({
             {p.bin} {p.args.join(" ")}
           </code>
           <AutonomyNote profile={p} />
+          {p.kind === "copilot" ? (
+            <Notice tone="warn"><div className="space-y-2 text-xs">
+              <p>{t("agents.copilotLimits")} <a className="underline underline-offset-2" href="https://docs.github.com/en/copilot/concepts/billing-and-usage/individuals/billing" target="_blank" rel="noreferrer">{t("agents.copilotSource")}</a></p>
+              <p>{t("agents.copilotAccounts")} <a className="underline underline-offset-2" href="https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli" target="_blank" rel="noreferrer">{t("agents.copilotSource")}</a></p>
+              <p>{t("agents.copilotPermissions")} <a className="underline underline-offset-2" href="https://docs.github.com/en/copilot/how-tos/cloud-and-local-sandboxes/configuring-local-sandbox-settings" target="_blank" rel="noreferrer">{t("agents.copilotSource")}</a></p>
+            </div></Notice>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" disabled={action.busy} onClick={() => void action.run(async () => setCheck(await desktop.checkProfile(p.id)))}>
               {t("agents.checkCli")}
             </Button>
+            {p.kind === "kilo" && p.cliPath && p.login?.loginCommand ? <Button size="sm" className={AGY_BUTTON} variant="outline" disabled={action.busy} onClick={() => void action.run(async () => (await desktop.openLogin(p.id), setLoginOpened(true), onLoginOpened()))}>{t("agents.login")}</Button> : null}
             {state === "signedOut" && p.login?.loginCommand && p.kind === "claude" ? (
               <Button
                 size="sm"
@@ -978,9 +1001,10 @@ function ProfileRow({
         </div>
       ) : null}
       {/* Answers to what the row's own buttons did: shown whether or not Chi tiết is open. */}
-      {((loginOpened || waiting) && state === "signedOut") || openedCli || action.error ? (
+      {((loginOpened || waiting) && state === "signedOut") || (loginOpened && p.kind === "copilot") || openedCli || action.error ? (
         <div className="flex flex-col gap-2 px-4 pb-3">
           {(loginOpened || waiting) && state === "signedOut" ? <Notice tone="info">{t(waiting ? "agents.loginWaiting" : "agents.loginOpened")}</Notice> : null}
+          {loginOpened && p.kind === "copilot" ? <Notice tone="info">{t("agents.copilotLoginUnknown")}</Notice> : null}
           {openedCli ? <Notice tone="info">{t("openCli.opened", openedCli)}</Notice> : null}
           <ErrorNote error={action.error} />
         </div>
@@ -1008,11 +1032,13 @@ const textToEnv = (text: string) =>
 function ProfileForm({
   initial,
   previousId,
+  supportedModels,
   onDone,
   onCancel,
 }: {
   initial: AgentProfile;
   previousId?: string;
+  supportedModels: string[] | null;
   onDone: () => void;
   onCancel: () => void;
 }) {
@@ -1049,6 +1075,7 @@ function ProfileForm({
 
   return (
     <form
+      className={p.kind === "gemini" ? "[&_input:not([type=checkbox])]:min-h-11 [&_input:not([type=checkbox])]:text-base [&_select]:min-h-11 [&_select]:text-base [&_textarea]:text-base md:[&_input:not([type=checkbox])]:min-h-0 md:[&_input:not([type=checkbox])]:text-[13px] md:[&_select]:min-h-0 md:[&_select]:text-[13px] md:[&_textarea]:text-[13px]" : undefined}
       onSubmit={(e) => {
         e.preventDefault();
         submit();
@@ -1067,7 +1094,7 @@ function ProfileForm({
             <Label htmlFor="pf-label">{t("agents.name")}</Label>
             <Input id="pf-label" value={p.label} onChange={(e) => set("label", e.target.value)} />
             <Label htmlFor="pf-kind">{t("agents.kind")}</Label>
-            <NativeSelect id="pf-kind" value={p.kind} onChange={(e) => set("kind", e.target.value as AgentKind)}>
+            <NativeSelect id="pf-kind" value={p.kind} onChange={(e) => { const kind = e.target.value as AgentKind; setP({ ...p, kind, container: kind === "copilot" ? null : p.container }); }}>
               {AGENT_KINDS.map((k) => (
                 <NativeSelectOption key={k} value={k}>
                   {t(`agentKind.${k}`)}
@@ -1093,6 +1120,18 @@ function ProfileForm({
                 help: <code className={CODE}>--help</code>,
               })}
             </span>
+            {p.kind === "gemini" ? <div className="sm:col-span-2"><GeminiInfo login /></div> : null}
+            {p.kind === "opencode" ? <>
+              <Label htmlFor="pf-opencode-model">{t("agents.opencodeModel")}</Label>
+              <Input id="pf-opencode-model" className="font-mono" list="pf-opencode-models" aria-describedby="pf-opencode-model-hint" value={p.opencode?.model ?? ""} onChange={(e) => set("opencode", { ...p.opencode, model: e.target.value || undefined })} placeholder="provider/model" />
+              <datalist id="pf-opencode-models">{supportedModels?.map((model) => <option key={model} value={model} />)}</datalist>
+              <span id="pf-opencode-model-hint" className={HINT}>{t("agents.opencodeModelHint")}</span>
+              <Label htmlFor="pf-opencode-small">{t("agents.opencodeSmallModel")}</Label>
+              <Input id="pf-opencode-small" className="font-mono" list="pf-opencode-models" aria-describedby="pf-opencode-small-hint" value={p.opencode?.smallModel ?? ""} onChange={(e) => set("opencode", { ...p.opencode, smallModel: e.target.value || undefined })} />
+              <span id="pf-opencode-small-hint" className={HINT}>{t("agents.opencodeSmallHint")}</span>
+              <OpenCodeNotice />
+            </> : null}
+            {p.kind === "kilo" ? <div className="sm:col-start-2"><KiloInfo /></div> : null}
             {p.kind === "antigravity" ? <>
               <Label htmlFor="pf-agy-project">{t("agents.agyProject")}</Label>
               <Input id="pf-agy-project" className={AGY_CONTROL} aria-describedby="pf-agy-project-hint" value={textToEnv(envText).GOOGLE_CLOUD_QUOTA_PROJECT ?? ""} onChange={(e) => {
@@ -1104,12 +1143,13 @@ function ProfileForm({
               <span id="pf-agy-project-hint" className={HINT}>{t("agents.agyProjectHint")}</span>
               <span className={HINT}>{t("agents.agyAccounts")}</span>
             </> : null}
+            {p.kind === "copilot" ? <span className={HINT}>{t("agents.copilotAccounts")} {t("agents.copilotPermissions")}</span> : null}
             <Label htmlFor="pf-env" className="leading-snug sm:self-start sm:pt-2.5">
               {t("agents.env")}
             </Label>
             <Textarea
               id="pf-env"
-              className="font-mono"
+              className={p.kind === "gemini" ? "font-mono text-base md:text-[13px]" : "font-mono"}
               placeholder={ACCOUNT_ENV_HINT[p.kind] ?? "KEY=value"}
               value={envText}
               onChange={(e) => setEnvText(e.target.value)}
@@ -1119,6 +1159,7 @@ function ProfileForm({
                 ? rich(t("agents.envHintExample"), { example: <code className={CODE}>{ACCOUNT_ENV_HINT[p.kind]}</code> })
                 : t("agents.envHint")}
             </span>
+            {p.kind === "vibe" ? <div className={HINT}><VibeNotice /></div> : null}
             <Label htmlFor="pf-account" className="leading-snug">
               {t("agents.account")}
             </Label>
@@ -1226,12 +1267,14 @@ function ProfileForm({
             <label className="flex items-center gap-2 text-sm">
               <Checkbox
                 checked={p.container !== null}
+                disabled={p.kind === "copilot"}
                 onCheckedChange={(v) =>
                   set("container", v === true ? (p.container ?? { image: "xdev-hive-agent", network: "restricted", allow: [] }) : null)
                 }
               />
               {t("agents.container")}
             </label>
+            {p.kind === "copilot" ? <span className={HINT}>{t("agents.copilotContainer")}</span> : null}
             {p.container ? (
               <div className="flex flex-col gap-2 pl-6">
                 <Input
@@ -1270,10 +1313,10 @@ function ProfileForm({
           <ErrorNote error={error} />
           <ErrorNote error={action.error} />
           <div className="flex flex-wrap gap-2">
-            <Button type="submit" className={p.kind === "antigravity" ? AGY_BUTTON : undefined} disabled={action.busy}>
+            <Button type="submit" className={(p.kind === "antigravity" || p.kind === "gemini") ? AGY_BUTTON : undefined} disabled={action.busy}>
               {t("agents.save")}
             </Button>
-            <Button variant="ghost" type="button" className={p.kind === "antigravity" ? AGY_BUTTON : undefined} onClick={onCancel}>
+            <Button variant="ghost" type="button" className={(p.kind === "antigravity" || p.kind === "gemini") ? AGY_BUTTON : undefined} onClick={onCancel}>
               {t("common.cancel")}
             </Button>
           </div>
@@ -1376,6 +1419,10 @@ function IntakeCard({ runner, hub, onSaved }: { runner: RunnerSettings; hub: boo
         </div>
         {hub ? <Switch checked={runner.acceptHubRuns} disabled={action.busy} onCheckedChange={(v) => save({ acceptHubRuns: v })} aria-label={t("agents.runnerHubRuns")} /> : null}
       </div>
+      {hub ? <label className="flex min-h-11 items-center gap-3 text-sm">
+        <Switch className="relative before:absolute before:-inset-3 md:before:hidden" checked={runner.gateRunner ?? false} disabled={action.busy} onCheckedChange={v => save({ gateRunner: v })} aria-label={t("mergeQueue.role")} />
+        <span>{t("mergeQueue.role")}<span className="block text-xs text-muted-foreground">{t("mergeQueue.roleHint")}</span></span>
+      </label> : null}
       <label htmlFor="auto-update-idle" className="flex min-h-11 cursor-pointer items-center gap-4 border-t border-line-subtle pt-2">
         <span className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="text-sm/5 font-semibold text-fg-strong">{t("agents.autoUpdateIdle")}</span>
@@ -1488,5 +1535,58 @@ function QuotaOutlookLine({ p, now }: { p: AgentProfileStatus; now: number }) {
     {full !== null && resets !== null && full < resets ? <span className="block">{t("agents.quota.outlookCeiling")}</span> : null}
     <details className="mt-1"><summary className="min-h-11 cursor-pointer content-center md:min-h-0">{t("agents.quota.outlookHow")}</summary><p>{t("agents.quota.outlookHint")}</p></details>
     {u?.spendControlReached ? <span className="block text-warning">{t("agents.quota.outlookSpend")}</span> : null}
+  </div>;
+}
+
+function GeminiInfo({ login = false }: { login?: boolean }) {
+  const t = useT();
+  return <div data-gemini-info className="space-y-2 px-4 pb-3 text-xs/5 text-fg-muted wrap-anywhere">
+    {login ? <><p>{t("agents.geminiLogin")}</p><p>{t("agents.geminiAccounts")}</p></> : null}
+    <p>{t("agents.geminiStatus")}</p><p>{t("agents.geminiFree")}</p><p>{t("agents.geminiModels")}</p>
+    <div className="flex flex-wrap gap-x-4 gap-y-2">{([
+      ["geminiAuthSource", "get-started/authentication"], ["geminiQuotaSource", "resources/quota-and-pricing"],
+      ["geminiTermsSource", "resources/tos-privacy"], ["geminiModelSource", "cli/model"],
+    ] as const).map(([key, slug]) => <a key={key} className="inline-flex min-h-11 items-center underline underline-offset-2 focus-visible:outline-2 md:min-h-0" href={`https://geminicli.com/docs/${slug}/`} target="_blank" rel="noreferrer">{t(`agents.${key}`)}</a>)}</div>
+  </div>;
+}
+
+function VibeNotice() {
+  const t = useT();
+  return <div data-vibe-notice className="space-y-2 text-xs/5 text-fg-muted">
+    <p>{t("agents.vibeNotice")}</p>
+    <div className="flex flex-wrap gap-x-3 gap-y-1">
+      <a className="inline-flex min-h-11 items-center underline md:min-h-0" href="https://mistral.ai/pricing/" target="_blank" rel="noreferrer">{t("agents.vibeSources")}</a>
+      <a className="inline-flex min-h-11 items-center underline md:min-h-0" href="https://docs.mistral.ai/vibe/code/cli/api-keys-profiles" target="_blank" rel="noreferrer">{t("agents.vibeSetupSource")}</a>
+      <a className="inline-flex min-h-11 items-center underline md:min-h-0" href="https://legal.mistral.ai/terms" target="_blank" rel="noreferrer">{t("agents.vibeTermsSource")}</a>
+    </div>
+  </div>;
+}
+
+function OpenCodeNotice() {
+  const t = useT();
+  return <div className={`${HINT} space-y-1`} data-opencode-notice>
+    <p className="m-0">{t("agents.opencodeQuota")}</p>
+    <p className="m-0">{t("agents.opencodeFree")} <a className="inline-flex min-h-11 items-center underline md:min-h-0" href="https://opencode.ai/docs/zen/" target="_blank" rel="noreferrer">OpenCode Zen</a></p>
+    <p className="m-0">{t("agents.opencodePolicy")} <a className="inline-flex min-h-11 items-center underline md:min-h-0" href="https://opencode.ai/docs/permissions/" target="_blank" rel="noreferrer">{t("agents.opencodePermissions")}</a></p>
+    <p className="m-0">{t("agents.opencodeAccounts")} <a className="inline-flex min-h-11 items-center underline md:min-h-0" href="https://opencode.ai/docs/providers/" target="_blank" rel="noreferrer">{t("agents.opencodeProviders")}</a></p>
+  </div>;
+}
+
+function KiloInfo() {
+  const t = useT();
+  return <div data-kilo-info className="min-w-0 space-y-2 text-xs/[18px] text-fg-muted wrap-anywhere">
+    <p>{t("agents.kiloQuota")}</p>
+    <details>
+      <summary className="min-h-11 cursor-pointer md:min-h-0">Kilo Code CLI</summary>
+      <div className="space-y-2 pt-2">
+        <p>{t("agents.kiloFree")}</p><p>{t("agents.kiloData")}</p>
+        <p>{t("agents.kiloPermissions")}</p><p>{t("agents.kiloAccounts")}</p>
+        <div className="flex flex-wrap gap-x-3 gap-y-2">
+          <a className="inline-flex min-h-11 items-center underline md:min-h-0" href="https://kilo.ai/docs/getting-started/using-kilo-for-free" target="_blank" rel="noreferrer">{t("agents.kiloFreeLink")}</a>
+          <a className="inline-flex min-h-11 items-center underline md:min-h-0" href="https://kilo.ai/docs/gateway/authentication" target="_blank" rel="noreferrer">{t("agents.kiloAuthLink")}</a>
+          <a className="inline-flex min-h-11 items-center underline md:min-h-0" href="https://kilo.ai/terms" target="_blank" rel="noreferrer">{t("agents.kiloTermsLink")}</a>
+        </div>
+      </div>
+    </details>
   </div>;
 }

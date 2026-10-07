@@ -103,7 +103,7 @@ export function legacyTools(features: RepoFeatures): ToolEntry[] {
 /** Without a catalog: Claude gets the repo's tools, every CLI the codegraph index (unless the policy leaves it out). */
 export function legacyPick(features: RepoFeatures, kind: AgentKind, mcp: string[] | null): ToolPick {
   const codegraph = features.codegraph && (mcp === null || mcp.includes("codegraph"));
-  return { tools: kind === "claude" ? legacyTools(features) : [], prepare: codegraph ? [APP_TOOLS.codegraph] : [], notes: [] };
+  return { tools: (kind === "claude" || kind === "gemini") ? legacyTools(features) : [], prepare: codegraph ? [APP_TOOLS.codegraph] : [], notes: [] };
 }
 
 /** Whether a project has the tool on: its setting, else the tool's default or, for a seed, the repo's own setup. */

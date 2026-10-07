@@ -196,9 +196,9 @@ export class MergeRequester {
    * so it is pushed over whatever was there, and its MR is opened or, when one is already open, updated. No run
    * and no task behind it: nothing to write on a task, and never a draft — these docs come from Hive, not an agent.
    */
-  async openContext(project: DesktopProject, branch: string): Promise<SyncMr> {
+  async openContext(project: DesktopProject, branch: string, text?: { title: string; body: string }): Promise<SyncMr> {
     const forge = this.#forge(project);
-    if (forge === "github") return this.#contextPull(project, branch);
+    if (forge === "github") return this.#contextPull(project, branch, text);
     const s = this.#host.gitlab();
     if (!s.url || !s.token) {
       throw new HiveError("bad_request", "Chưa cấu hình GitLab (URL + token) ở trang Dự án & cài đặt.", { key: "errors.gitlabNotSet" });
@@ -214,7 +214,8 @@ export class MergeRequester {
       );
     }
     const env = pushEnv(remoteUrl, remote, client.host, { user: "oauth2", token: s.token });
-    await this.#pushContext(project.repo, branch, s.mr.remote, env, s.token);
+    if (text) await this.#push(project.repo, branch, s.mr.remote, env, s.token);
+    else await this.#pushContext(project.repo, branch, s.mr.remote, env, s.token);
 
     const gp = await client.project(projectPath);
     const target = project.targetBranch || gp.default_branch;
@@ -224,8 +225,8 @@ export class MergeRequester {
         vars: { project: gp.path_with_namespace },
       });
     }
-    const title = contextMrTitle(project.name);
-    const description = contextMrDescription(project.name, branch);
+    const title = text?.title ?? contextMrTitle(project.name);
+    const description = text?.body ?? contextMrDescription(project.name, branch);
     const existing = (await client.openMergeRequests(gp.id, branch))[0];
     const mr: GitLabMr = existing
       ? // Keep the target and labels people may have changed in GitLab; only add ours.
@@ -242,7 +243,7 @@ export class MergeRequester {
   }
 
   /** The same on GitHub: the docs branch as a pull request. */
-  async #contextPull(project: DesktopProject, branch: string): Promise<SyncMr> {
+  async #contextPull(project: DesktopProject, branch: string, text?: { title: string; body: string }): Promise<SyncMr> {
     const s = this.#host.gitlab();
     const gh = this.#host.github?.();
     if (!gh?.token) throw new HiveError("bad_request", "Chưa có GitHub token ở trang Dự án & cài đặt.", { key: "errors.githubNotSet" });
@@ -253,7 +254,8 @@ export class MergeRequester {
       throw new HiveError("bad_request", `Không biết repo GitHub của dự án ${project.name}: điền owner/repo.`, { key: "errors.githubRepoUnknown", vars: { project: project.name } });
     }
     const env = pushEnv(remoteUrl, remote, client.host, { user: "x-access-token", token: gh.token });
-    await this.#pushContext(project.repo, branch, s.mr.remote, env, gh.token);
+    if (text) await this.#push(project.repo, branch, s.mr.remote, env, gh.token);
+    else await this.#pushContext(project.repo, branch, s.mr.remote, env, gh.token);
 
     const repo = await client.repo(repoPath);
     const target = project.targetBranch || repo.default_branch;
@@ -263,8 +265,8 @@ export class MergeRequester {
         vars: { project: repo.full_name },
       });
     }
-    const title = contextMrTitle(project.name);
-    const body = contextMrDescription(project.name, branch);
+    const title = text?.title ?? contextMrTitle(project.name);
+    const body = text?.body ?? contextMrDescription(project.name, branch);
     const existing = (await client.openPulls(repoPath, repo.owner.login, branch))[0];
     const pr = existing
       ? await client.updatePull(repoPath, existing.number, { title, body })
