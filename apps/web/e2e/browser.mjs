@@ -3361,6 +3361,9 @@ async function main() {
     await open(tabs.admin);
     expect(await tabs.admin.eval(() => !document.querySelector('[data-worktree="WT-active"] [data-delete-worktree]')), "active task cannot be deleted");
     if (mobile) {
+      // The dialog zooms in from 95%: measured mid-animation a 44px button reads 43.7.
+      await tabs.admin.waitFor("worktree dialog settled", () => (document.querySelector('[data-slot="dialog-content"]')?.getAnimations({ subtree: true }) ?? [])
+        .every(a => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity));
       const bounds = await tabs.admin.eval(() => {
         const button = document.querySelector('[data-worktree="WT-clean"] [data-delete-worktree]').getBoundingClientRect();
         return { height: button.height, width: button.width, overflow: document.documentElement.scrollWidth > innerWidth };
