@@ -34,6 +34,8 @@ import { WebhookDispatcher, WebhookStore } from "./webhooks.ts";
 import { AlertStore } from "./alerts.ts";
 import { HubInfoSource } from "./hubinfo.ts";
 
+import { deployLog, hubLog } from "#web/deploy-log.ts";
+
 const root = path.resolve(import.meta.dirname, "..");
 const port = Number(process.env.HIVE_PORT ?? 7788);
 const host = process.env.HIVE_HOST ?? "127.0.0.1";
@@ -44,9 +46,11 @@ const backup = backupSettings(process.env);
 const logBackup = (when: string, take: () => BackupResult | null) => {
   try {
     const r = take();
+    if (when === "start") deployLog.backup = r ? "ok" : "skipped";
     if (r) console.log(`[xdev-hive] backup (${when}) ${r.file}${r.removed.length ? `, removed ${r.removed.length} old` : ""}`);
   } catch (err) {
-    console.error(`[xdev-hive] backup (${when}) failed: ${(err as Error).message}`);
+    if (when === "start") deployLog.backup = "error";
+    hubLog.error(`[xdev-hive] backup (${when}) failed: ${(err as Error).message}`);
   }
 };
 // Before opening the hub: the snapshot predates any schema migration this version runs.
@@ -81,7 +85,7 @@ const hive = new SqliteHive(dbPath, {
 hive.seed("hub", { hub: true });
 const cleanupRound = () => {
   try { hive.queueMemoryCleanup(); }
-  catch (err) { console.error(`[xdev-hive] memory cleanup scheduling failed: ${(err as Error).message}`); }
+  catch (err) { hubLog.error(`[xdev-hive] memory cleanup scheduling failed: ${(err as Error).message}`); }
 };
 cleanupRound();
 setInterval(cleanupRound, 60_000).unref();
@@ -91,7 +95,7 @@ const learnRound = () => {
     const changed = hive.learnModels();
     if (changed) console.log(`[xdev-hive] model learning: ${changed} cells changed`);
   } catch (err) {
-    console.error(`[xdev-hive] model learning failed: ${(err as Error).message}`);
+    hubLog.error(`[xdev-hive] model learning failed: ${(err as Error).message}`);
   }
 };
 learnRound();
@@ -120,6 +124,7 @@ if (sso) console.log(`[xdev-hive] SSO: ${sso.name} (${sso.issuer}), redirect URI
 // Cảnh báo (roadmap 22m): rules checked every minute; an alert that opens goes to the webhooks that want it.
 const alerts = new AlertStore(hive, {
   webhooks: webhookStore,
+  deployLog,
   backup,
   onOpen: (alert) => void dispatcher.notify({ type: "alert.opened", project: alert.project, alert }),
 });
@@ -127,7 +132,7 @@ onEvent = (event) => {
   alerts.onEvent(event);
   void dispatcher.notify(event);
 };
-setInterval(() => void alerts.check().catch((err) => console.error(`[xdev-hive] alert check failed: ${(err as Error).message}`)), 60_000).unref();
+setInterval(() => void alerts.check().catch((err) => hubLog.error(`[xdev-hive] alert check failed: ${(err as Error).message}`)), 60_000).unref();
 
 // The doc files in the store, copied after each snapshot: only the ones the backup does not have yet.
 const logFiles = async (when: string) => {
@@ -138,7 +143,7 @@ const logFiles = async (when: string) => {
       console.log(`[xdev-hive] backup files (${when}): ${r.copied} copied, ${r.removed} removed, ${r.kept} kept${r.missing.length ? `, ${r.missing.length} missing from ${blobs.name}` : ""}`);
     }
   } catch (err) {
-    console.error(`[xdev-hive] backup files (${when}) failed: ${(err as Error).message}`);
+    hubLog.error(`[xdev-hive] backup files (${when}) failed: ${(err as Error).message}`);
   }
 };
 if (backup) {
@@ -156,7 +161,7 @@ if (blobs) {
     let total = 0;
     for (let n = await hive.moveFilesToStore(); n > 0; n = await hive.moveFilesToStore()) total += n;
     const { lastError, inDb } = hive.filesInfo();
-    if (lastError !== reported) console.error(lastError ? `[xdev-hive] files (${blobs.name}, ${blobs.where}): ${lastError}` : `[xdev-hive] files (${blobs.name}) working again`);
+    if (lastError !== reported) (lastError ? hubLog.error : hubLog.log)(lastError ? `[xdev-hive] files (${blobs.name}, ${blobs.where}): ${lastError}` : `[xdev-hive] files (${blobs.name}) working again`);
     reported = lastError;
     if (total) {
       console.log(`[xdev-hive] files: ${total} moved to ${blobs.name}${inDb ? `, ${inDb} still in the database` : ""}`);
@@ -178,7 +183,7 @@ if (embedder) {
     let total = 0;
     for (let n = await hive.indexMemory(); n > 0; n = await hive.indexMemory()) total += n;
     const { lastError } = await hive.call("memory.searchInfo", {}, { name: "hub", role: "admin" });
-    if (lastError !== reported) console.error(lastError ? `[xdev-hive] embeddings (${embedder.model}): ${lastError}` : `[xdev-hive] embeddings (${embedder.model}) working again`);
+    if (lastError !== reported) (lastError ? hubLog.error : hubLog.log)(lastError ? `[xdev-hive] embeddings (${embedder.model}): ${lastError}` : `[xdev-hive] embeddings (${embedder.model}) working again`);
     reported = lastError;
     if (total) console.log(`[xdev-hive] embeddings (${embedder.model}): ${total} memory entries indexed`);
   };
@@ -217,6 +222,7 @@ httpServer.on(
     alerts,
     hub: (hubInfo = new HubInfoSource({
       hive,
+      deployLog,
       dbPath,
       users,
       backup,
@@ -234,7 +240,7 @@ httpServer.on(
 );
 httpServer.listen(port, host, () => {
   console.log(`[xdev-hive] hub on http://${host}:${port} (${production ? "production" : "dev"}), db ${dbPath}`);
-  if (!allowedHosts) console.warn("[xdev-hive] HIVE_ALLOWED_HOSTS not set: Host header is not validated.");
+  if (!allowedHosts) hubLog.warn("[xdev-hive] HIVE_ALLOWED_HOSTS not set: Host header is not validated.");
 });
 
 // Close keep-alive and HMR sockets too, otherwise `node --watch` restarts hang.

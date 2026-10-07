@@ -487,6 +487,7 @@ HIVE_HOST=0.0.0.0 HIVE_ALLOWED_HOSTS=hive.example.com HIVE_DB=/data/hub.db HIVE_
 | `HIVE_TRUST_PROXY` | tắt (compose: `1`) | Hub đứng sau proxy TLS: cookie phiên có `Secure`, giới hạn đăng nhập sai theo IP thật từ `X-Forwarded-For`. Chỉ bật khi mọi request đi qua proxy |
 | `HIVE_BOOTSTRAP_TOKEN` | – | Token admin cố định (≥ 32 ký tự) cho deploy tự động |
 | `HIVE_BACKUP_DIR` | tắt (image: `/data/backups`) | Bật backup: một bản khi khởi động (trước khi migrate schema) và định kỳ |
+| `HIVE_LOG_REPEAT_THRESHOLD` | `10` | Sau mỗi lần khởi động, gom lỗi/cảnh báo `[xdev-hive]` đã che secret, giữ tối đa 24 giờ (50.000 dòng). Cùng lỗi lặp quá ngưỡng trong 1 giờ mở cảnh báo; xem Quản trị › Vận hành. Dữ liệu log được đặt lại khi hub khởi động lại |
 | `HIVE_BACKUP_HOURS` / `HIVE_BACKUP_KEEP` | `24` / `7` | Chu kỳ backup và số bản giữ lại |
 | `HIVE_EMBED_URL` | tắt | Endpoint `/embeddings` kiểu OpenAI để `memory_search` tìm cả theo nghĩa, vd. `http://ollama:11434/v1` (xem dưới) |
 | `HIVE_EMBED_MODEL` / `HIVE_EMBED_KEY` | `bge-m3` / – | Model embedding; key Bearer khi dùng API ngoài (Ollama không cần) |
