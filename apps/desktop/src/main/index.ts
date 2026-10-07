@@ -66,6 +66,7 @@ import {
   runnerSettingsSchema,
   saveConfig,
   SqliteHive,
+  projectSchema,
   type HiveConfig,
 } from "@xdev-hive/core/node";
 import { GitHubClient } from "./github/client.ts";
@@ -697,7 +698,7 @@ function references(name: string, patch: string[] | null | undefined, keep: stri
   return list.length ? list : undefined;
 }
 
-function updateProject(name: string, patch: { gitlabProject?: string | null; githubRepo?: string | null; targetBranch?: string | null; references?: string[] | null }) {
+function updateProject(name: string, patch: { autoRelease?: DesktopProject["autoRelease"] | null; gitlabProject?: string | null; githubRepo?: string | null; targetBranch?: string | null; references?: string[] | null }) {
   const current = project(name);
   const clean = (v: string | null | undefined, keep: string | undefined) =>
     v === undefined ? keep : v === null || !v.trim() ? undefined : v.trim();
@@ -711,6 +712,7 @@ function updateProject(name: string, patch: { gitlabProject?: string | null; git
     githubRepo,
     targetBranch: clean(patch?.targetBranch, current.targetBranch),
     references: references(name, patch?.references, current.references),
+    autoRelease: patch.autoRelease === undefined ? current.autoRelease : patch.autoRelease === null ? undefined : projectSchema.parse({ ...current, autoRelease: patch.autoRelease }).autoRelease,
   };
   return persist({ ...config, projects: config.projects.map((p) => (p.name === name ? next : p)) });
 }
@@ -1300,6 +1302,8 @@ function createWindow(): void {
     trafficLightPosition: { x: 14, y: 14 },
     ...(process.platform === "darwin" ? {} : { icon: appIcon() }),
     webPreferences: {
+      // Screenshot fixtures stay hidden; their polling timers must follow the harness's wall clock.
+      ...(smokeShot ? { backgroundThrottling: false } : {}),
       preload: path.join(import.meta.dirname, "../preload/index.cjs"),
       contextIsolation: true,
       sandbox: true,
@@ -1333,7 +1337,9 @@ function createWindow(): void {
   });
   window.on("closed", () => { if (win === window) win = null; });
   window.once("ready-to-show", () => {
-    if (!smokeShot && !startHidden) window.show();
+    // macOS can defer painting a hidden fixture; an inactive window makes capturePage reliable.
+    if (smokeShot) window.showInactive();
+    else if (!startHidden) window.show();
   });
   // A renderer that died (out of memory, a GPU crash) or a page that failed to load leaves the window blank: say so in
   // the log and load it again.
@@ -1402,7 +1408,7 @@ function createWindow(): void {
         for (const sel of click ? click.split(" && ") : []) {
           // A page that loads more after its first paint (the CLI versions on Agent) may show the target late.
           for (let i = 0; i < 40; i++) {
-            if (await window.webContents.executeJavaScript(`Boolean(document.querySelector(${JSON.stringify(sel)}))`)) break;
+            if (await window.webContents.executeJavaScript(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); return el && !el.matches(':disabled'); })()`)) break;
             await pause(200);
           }
           // A radix menu (the … of an Agent row) opens on pointerdown, so a click alone would leave it shut.
@@ -1465,7 +1471,9 @@ function createWindow(): void {
         if (missing) console.error(`[xdev-hive] smoke expected ${missing} on the page`);
         if (present) console.error(`[xdev-hive] smoke did not expect ${present} on the page`);
         if (untrue) console.error(`[xdev-hive] smoke expected ${untrue} to be true on the page`);
-        app.exit(missing || present || untrue ? 3 : 0);
+        const exitCode = missing || present || untrue ? 3 : 0;
+        if (process.env.HIVE_SMOKE_RESULT) writeFileSync(process.env.HIVE_SMOKE_RESULT, JSON.stringify({ exitCode }));
+        app.exit(exitCode);
       }, delay);
     };
     // HIVE_SMOKE_LOCALE=en / HIVE_SMOKE_THEME=dark / HIVE_SMOKE_VIEW / HIVE_SMOKE_SIDEBAR: the language, the theme,
@@ -1478,6 +1486,7 @@ function createWindow(): void {
       "hive-sidebar": process.env.HIVE_SMOKE_SIDEBAR,
     }).filter((e): e is [string, string] => Boolean(e[1]));
     window.webContents.once("did-finish-load", () => {
+      console.log(`[xdev-hive] smoke renderer loaded ${smokeShot}`);
       if (!stored.length) return capture();
       const js = stored.map(([k, v]) => `localStorage.setItem(${JSON.stringify(k)}, ${JSON.stringify(v)});`).join("");
       void window.webContents.executeJavaScript(js).then(() => {
@@ -1676,6 +1685,7 @@ if (!app.requestSingleInstanceLock()) {
   // Electron otherwise quits on Windows and Linux when the last window is destroyed; the tray owns app lifetime.
   app.on("window-all-closed", () => {});
   void app.whenReady().then(() => {
+    if (smokeShot) console.log(`[xdev-hive] smoke app ready ${smokeShot}`);
     // The heartbeat stops while the computer sleeps: say when, so a gap on the hub can be matched with it.
     powerMonitor.on("suspend", () => mainLog.write("system: suspend"));
     powerMonitor.on("resume", () => mainLog.write("system: resume"));
@@ -1732,6 +1742,8 @@ if (!app.requestSingleInstanceLock()) {
     runner = new Runner(
       {
         backend: () => backend,
+        mergeRemote: () => config.gitlab.mr.remote,
+        openMergeBatch: async (project, branch) => (await mergeRequester.openContext(project, branch, { title: `Merge queue: ${branch}`, body: `Service ${project.name}: gate checks passed for ${branch}. Merge without squash to preserve checked commit evidence.` })).url,
         profiles: () => config.agents,
         settings: () => config.runner,
         projects: () => config.projects,

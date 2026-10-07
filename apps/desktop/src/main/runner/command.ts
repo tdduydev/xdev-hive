@@ -400,6 +400,8 @@ export function codexArgs(
   // which enables network access broadly in workspace-write, not just loopback.
   if (run?.codexLocalhost) overrides.push("-c", "sandbox_workspace_write.network_access=true");
   if (run) {
+    // Codex filters the parent environment before spawning stdio MCP servers; pass the secret by name only.
+    overrides.push("-c", 'mcp_servers.xdev-hive.env_vars=["HIVE_RUN_TOKEN"]');
     // The shim's identity is the profile's, as for Claude Code: ~/.codex/config.toml says "codex", which would claim
     // the task as someone else than the runner, and hold it against the next run.
     const env = {

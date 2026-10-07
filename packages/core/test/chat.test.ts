@@ -290,6 +290,136 @@ describe("what a chat leader proposes", () => {
     return { hive, later, sent, leader };
   }
 
+  const taskOf = async (hive: SqliteHive, id: string, actor: Actor) => (await hive.call("tasks.list", {}, actor)).find((t) => t.id === id) ?? null;
+
+  const plan = () => ({
+    kind: "plan.create" as const,
+    spec: { key: "project/app/reset-plan", title: "Reset password", content: "# Reset password\nSend a single-use link." },
+    // Deliberately reversed: dependencies, not array order, determine creation order.
+    tasks: [
+      { id: "PLAN-2", title: "Reset UI", acceptance: "Expired links show a useful error", dependsOn: ["PLAN-1"] },
+      { id: "PLAN-1", title: "Reset API", acceptance: "A link can be used only once", dependsOn: ["T-1"] },
+    ],
+    batches: [{ title: "API", taskIds: ["PLAN-1"] }, { title: "UI", taskIds: ["PLAN-2"] }],
+  });
+
+  it("creates an entire plan once, with its spec, acceptance criteria and dependency order", async () => {
+    const { hive, leader } = await leading();
+    const a = await hive.call("chat.propose", { action: plan(), reason: "Requested reset" }, leader);
+    assert.equal(a.status, "proposed");
+    assert.equal(await taskOf(hive, "PLAN-1", lead), null);
+    const done = await hive.call("chat.decide", { actionId: a.id, accept: true }, lead);
+    assert.equal(done.status, "done", JSON.stringify(done.error));
+    const policy = (await hive.call("sdlc.get", {}, lead)).projects.app;
+    assert.equal(policy?.autoDispatch, true);
+    const stored = JSON.parse(String(hive.db.prepare("SELECT value FROM settings WHERE key = 'sdlcPolicy'").get()?.value));
+    assert.equal(stored.projects.app.autoDispatchBy, lead.name);
+    assert.deepEqual(done.result, { specKey: plan().spec.key, taskIds: ["PLAN-2", "PLAN-1"] });
+    assert.equal((await hive.call("docs.get", { key: plan().spec.key }, lead))?.content, plan().spec.content);
+    const task = await taskOf(hive, "PLAN-2", lead);
+    assert.deepEqual(task?.dependsOn, ["PLAN-1"]);
+    assert.match(task?.note ?? "", /Expired links/);
+    assert.match(task?.note ?? "", /project\/app\/reset-plan/);
+    assert.equal(await refusal(hive.call("chat.decide", { actionId: a.id, accept: true }, lead)), "errors.chatActionDecided");
+    hive.close();
+  });
+
+  it("validates cyclic dependencies, duplicate ids, batch order and spec scope before proposing", async () => {
+    const { hive, leader } = await leading();
+    const invalid = [
+      { ...plan(), spec: { ...plan().spec, key: "org/reset-plan" } },
+      { ...plan(), spec: { ...plan().spec, key: "project/site/reset-plan" } },
+      { ...plan(), tasks: [plan().tasks[0]!, plan().tasks[0]!] },
+      { ...plan(), batches: [...plan().batches].reverse() },
+      { ...plan(), tasks: plan().tasks.map((t) => ({ ...t, dependsOn: [t.id === "PLAN-1" ? "PLAN-2" : "PLAN-1"] })), batches: [{ title: "All", taskIds: ["PLAN-1", "PLAN-2"] }] },
+      { ...plan(), tasks: [{ ...plan().tasks[0]!, acceptance: "" }] },
+    ];
+    for (const action of invalid) await assert.rejects(hive.call("chat.propose", { action, reason: "Invalid" }, leader));
+    assert.equal(await hive.call("docs.get", { key: plan().spec.key }, lead), null);
+    hive.close();
+  });
+
+  it("allows a reviewed plan without enabling auto-dispatch", async () => {
+    const { hive, leader } = await leading();
+    try {
+      const a = await hive.call("chat.propose", { action: plan(), reason: "Requested" }, leader);
+      const done = await hive.call("chat.decide", { actionId: a.id, accept: true, autoDispatch: false }, lead);
+      assert.equal(done.status, "done");
+      assert.equal((await hive.call("sdlc.get", {}, lead)).projects.app?.autoDispatch, false);
+    } finally { hive.close(); }
+  });
+
+  it("keeps the plan's auto-dispatch choice when accepting all reply actions", async () => {
+    const { hive, leader } = await leading();
+    try {
+      const a = await hive.call("chat.propose", { action: plan(), reason: "Requested" }, leader);
+      const done = await hive.call("chat.decideAll", { replyId: leader.chatReply!, accept: true, autoDispatch: { [a.id]: false } }, lead);
+      assert.equal(done.find(action => action.id === a.id)?.status, "done");
+      assert.equal((await hive.call("sdlc.get", {}, lead)).projects.app?.autoDispatch, false);
+    } finally { hive.close(); }
+  });
+
+  it("rechecks conflicts when accepted and leaves no partial plan", async () => {
+    const { hive, leader } = await leading();
+    const a = await hive.call("chat.propose", { action: plan(), reason: "Requested reset" }, leader);
+    await hive.call("tasks.create", { project: "app", id: "PLAN-2", title: "Already taken" }, lead);
+    const failed = await hive.call("chat.decide", { actionId: a.id, accept: true }, lead);
+    assert.equal(failed.status, "failed");
+    assert.equal(await hive.call("docs.get", { key: plan().spec.key }, lead), null);
+    assert.equal(await taskOf(hive, "PLAN-1", lead), null);
+    hive.close();
+  });
+
+  it("runs plans only under configured autonomy, and dismissal writes nothing", async () => {
+    const first = await leading();
+    const a = await first.hive.call("chat.propose", { action: plan(), reason: "Requested" }, first.leader);
+    assert.equal((await first.hive.call("chat.decide", { actionId: a.id, accept: false }, lead)).status, "dismissed");
+    assert.equal(await first.hive.call("docs.get", { key: plan().spec.key }, lead), null);
+    first.hive.close();
+    const { hive, leader } = await leading();
+    await hive.call("chat.setAutonomy", { project: "app", kinds: ["plan.create"] }, admin);
+    const done = await hive.call("chat.propose", { action: plan(), reason: "Requested" }, leader);
+    assert.equal(done.status, "done", JSON.stringify(done.error));
+    assert.equal(done.auto, true);
+    assert.equal(done.decidedBy, lead.name);
+    hive.close();
+  });
+
+  it("keeps a cross-service system plan atomic when the approver lacks rights to a service", async () => {
+    const { hive, leader } = await leading();
+    await hive.call("systems.save", { name: "product", projects: ["app", "site"] }, admin);
+    const action = { ...plan(), spec: { ...plan().spec, key: "system/product/reset-plan" }, tasks: plan().tasks.map((t) => ({ ...t, project: t.id === "PLAN-2" ? "site" : "app" })) };
+    const wideLeader = { ...leader, access: { projects: { app: "contribute" as const, site: "contribute" as const } } };
+    const a = await hive.call("chat.propose", { action, reason: "Across services" }, wideLeader);
+    const failed = await hive.call("chat.decide", { actionId: a.id, accept: true }, lead);
+    assert.equal(failed.status, "failed");
+    assert.equal(await hive.call("docs.get", { key: action.spec.key }, admin), null);
+    assert.equal(await taskOf(hive, "PLAN-1", admin), null);
+    const b = await hive.call("chat.propose", { action, reason: "Across services" }, wideLeader);
+    assert.equal((await hive.call("chat.decide", { actionId: b.id, accept: true }, admin)).status, "done");
+    hive.close();
+  });
+
+  it("keeps a plan's task ids apart from the reply's other proposals, and logs what it made as tasks.create does", async () => {
+    const { hive, leader } = await leading();
+    await hive.call("chat.propose", { action: { kind: "task.create", id: "PLAN-1", title: "Taken" }, reason: "First" }, leader);
+    assert.equal(await refusal(hive.call("chat.propose", { action: plan(), reason: "Requested" }, leader)), "errors.taskExists");
+    const { hive: other, leader: second } = await leading();
+    const a = await other.call("chat.propose", { action: plan(), reason: "Requested" }, second);
+    assert.equal(await refusal(other.call("chat.propose", { action: { kind: "task.create", id: "PLAN-2", title: "Again" }, reason: "Twice" }, second)), "errors.taskExists");
+    // A move of a task the plan makes is known before the plan runs, as for a task.create of the same reply.
+    assert.equal((await other.call("chat.propose", { action: { kind: "task.update", id: "PLAN-1", status: "doing" }, reason: "Start" }, second)).status, "proposed");
+    await other.call("chat.decide", { actionId: a.id, accept: true }, lead);
+    const log = await other.call("admin.audit", { limit: 30 }, admin);
+    assert.equal(log.find((e) => e.action === "tasks.create" && e.target === "PLAN-2")?.detail, "Reset UI · ← PLAN-1");
+    assert.equal(log.find((e) => e.action === "docs.save" && e.target === plan().spec.key)?.detail, "v1");
+    // A spec someone wrote in the meantime: the plan does not overwrite it.
+    const b = await other.call("chat.propose", { action: { ...plan(), tasks: [{ ...plan().tasks[1]!, id: "PLAN-3" }], batches: [{ title: "API", taskIds: ["PLAN-3"] }] }, reason: "Again" }, second).catch((e: HiveError) => e.key);
+    assert.equal(b, "errors.chatPlanSpecExists");
+    hive.close();
+    other.close();
+  });
+
   it("does nothing until a project manager confirms, then runs it as that manager", async () => {
     const { hive, sent, leader } = await leading();
     assert.equal(await refusal(hive.call("tasks.create", { id: "T-2", project: "app", title: "Reset" }, leader)), "errors.need.taskManage", "it cannot itself");
@@ -775,6 +905,24 @@ describe("the hub-wide chat (roadmap 37)", () => {
     const stop = await propose({ kind: "agents.stop" });
     assert.equal((await hive.call("chat.decide", { actionId: stop.id, accept: true }, admin)).status, "done");
     assert.equal((await hive.call("agents.paused", {}, admin)).hub, true, "no project named: the whole hub");
+  });
+
+  it("plans for a project it names, and across a system with a system spec", async () => {
+    const { hive, propose } = await hubChat();
+    await hive.call("systems.save", { name: "shop", projects: ["app", "site"] }, admin);
+    const tasks = [
+      { id: "P-1", title: "API", acceptance: "Returns the cart", project: "app" },
+      { id: "P-2", title: "Page", acceptance: "Shows the cart", project: "site", dependsOn: ["P-1", "S-1"] },
+    ];
+    const action = { kind: "plan.create", spec: { key: "system/shop/cart", title: "Cart", content: "# Cart" }, tasks, batches: [{ title: "All", taskIds: ["P-1", "P-2"] }] };
+    assert.equal(await refusal(propose(action)), "errors.chatProjectRequired");
+    const a = await propose({ ...action, project: "app" });
+    assert.equal(a.project, "app");
+    const done = await hive.call("chat.decide", { actionId: a.id, accept: true }, admin);
+    assert.equal(done.status, "done", JSON.stringify(done.error));
+    const made = await hive.call("tasks.list", {}, admin);
+    assert.deepEqual(made.find((t) => t.id === "P-2")?.project, "site");
+    assert.deepEqual(made.find((t) => t.id === "P-2")?.dependsOn, ["P-1", "S-1"]);
   });
 
   it("runs on its own only what chat_defaults[\"*\"] allows, and never what always waits", async () => {

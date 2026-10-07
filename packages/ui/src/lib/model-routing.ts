@@ -3,7 +3,7 @@ import type { PipelineStep } from "#ui/lib/pipeline.ts";
 
 /** The router stores task cells, so steps sharing a kind edit the same cell rather than an imaginary step override. */
 export function stepModelKind(step: PipelineStep, kind: TaskKind = "feature"): TaskKind | null {
-  if (["idea", "done"].includes(step)) return null;
+  if (["idea", "release", "done"].includes(step)) return null;
   if (["spec", "plan", "tasks"].includes(step)) return "spec";
   if (step === "review") return "review";
   if (step === "merge") return "merge";

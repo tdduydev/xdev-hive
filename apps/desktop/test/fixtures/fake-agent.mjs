@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 // Combine a rejected startup with the existing steering and planning protocols.
 if (process.env.FAKE_REJECT_MODEL === "1" && !process.argv.includes("--help") &&
     process.argv.some((a) => a === "-m" || a === "--model" || a.startsWith("--model="))) {
-  if (process.env.FAKE_RECORD) appendFileSync(process.env.FAKE_RECORD, JSON.stringify({ agent: process.env.HIVE_AGENT, prompt: process.argv.at(-1), cwd: process.cwd(), args: process.argv.slice(2), readOnly: process.env.HIVE_READONLY ?? null }) + "\n");
+  if (process.env.FAKE_RECORD) appendFileSync(process.env.FAKE_RECORD, JSON.stringify({ agent: process.env.HIVE_AGENT, prompt: process.argv.at(-1), cwd: process.cwd(), args: process.argv.slice(2), readOnly: process.env.HIVE_READONLY ?? null, runToken: process.env.HIVE_RUN_TOKEN ?? null }) + "\n");
   console.error("unknown model: requested");
   process.exit(1);
 }
@@ -97,7 +97,7 @@ const prompt = process.argv[2] ?? "";
 if (process.env.FAKE_RECORD) {
   appendFileSync(
     process.env.FAKE_RECORD,
-    `${JSON.stringify({ agent: process.env.HIVE_AGENT, task: process.env.HIVE_TASK, project: process.env.HIVE_PROJECT, cwd: process.cwd(), prompt, args: process.argv.slice(3), readOnly: process.env.HIVE_READONLY ?? null, hostOnly: process.env.HIVE_TEST_HOST_ONLY ?? null, oauth: process.env.CLAUDE_CODE_OAUTH_TOKEN ? "set" : null, hubToken: process.env.HIVE_HUB_TOKEN ? "set" : null, proxy: process.env.HTTPS_PROXY ?? null })}\n`,
+    `${JSON.stringify({ agent: process.env.HIVE_AGENT, task: process.env.HIVE_TASK, project: process.env.HIVE_PROJECT, cwd: process.cwd(), prompt, args: process.argv.slice(3), readOnly: process.env.HIVE_READONLY ?? null, runToken: process.env.HIVE_RUN_TOKEN ?? null, hostOnly: process.env.HIVE_TEST_HOST_ONLY ?? null, oauth: process.env.CLAUDE_CODE_OAUTH_TOKEN ? "set" : null, hubToken: process.env.HIVE_HUB_TOKEN ? "set" : null, proxy: process.env.HTTPS_PROXY ?? null })}\n`,
   );
 }
 

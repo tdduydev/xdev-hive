@@ -3,7 +3,7 @@
 // person picked; repo files are read here, in the project's checkout, which Claude may read but not change. No MCP, no
 // commands. The answer is a short reply and the whole page as proposed, which the person applies to a draft or drops.
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { closeSync, constants, fstatSync, mkdirSync, openSync, readSync, realpathSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { toErrorPayload, type Actor, type AgentProfile, type DesktopProject, type DocAssistJob, type HiveBackend, type RunRequestError } from "@xdev-hive/core";
@@ -94,20 +94,56 @@ export function readRepoFiles(repo: string, wanted: string[]): { files: Array<{ 
     return listed;
   };
   let room = FILES_CHARS;
-  const root = path.resolve(repo);
+  let byteRoom = FILES_CHARS * 4;
+  let reads = 0;
+  let root: string;
+  try {
+    root = realpathSync(repo);
+  } catch {
+    return { files, missing: [...wanted] };
+  }
+  const inside = (abs: string) => {
+    const rel = path.relative(root, abs);
+    return rel !== "" && rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
+  };
   const take = (rel: string) => {
-    if (files.length >= FILES_MAX || room <= 0 || files.some((f) => f.path === rel)) return;
+    if (reads >= FILES_MAX || room <= 0 || byteRoom <= 0 || files.some((f) => f.path === rel)) return;
     const abs = path.resolve(root, rel);
-    if (!abs.startsWith(root + path.sep)) return;
+    let fd: number | undefined;
     try {
-      if (!statSync(abs).isFile()) return;
-      const raw = readFileSync(abs);
-      if (raw.includes(0)) return;
-      const text = raw.toString("utf8").slice(0, Math.min(FILE_CHARS, room));
+      if (!inside(abs)) throw new Error("Outside repository");
+      const resolved = realpathSync(abs);
+      if (!inside(resolved)) throw new Error("Outside repository");
+      const before = statSync(resolved);
+      if (!before.isFile()) throw new Error("Not a regular file");
+      reads++;
+      // NOFOLLOW closes the final-component race; NONBLOCK avoids hanging if it becomes a FIFO.
+      fd = openSync(resolved, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+      const opened = fstatSync(fd);
+      if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) throw new Error("File changed");
+      // Linux exposes the opened target, so a swapped parent symlink cannot bypass containment.
+      // Elsewhere recheck the path and identity before reading from the already opened descriptor.
+      const target = realpathSync(process.platform === "linux" ? `/proc/self/fd/${fd}` : resolved);
+      const current = statSync(target);
+      if (!inside(target) || current.dev !== opened.dev || current.ino !== opened.ino) throw new Error("File changed");
+      // UTF-8 needs at most four bytes per character. Never load the full file just to truncate it.
+      const raw = Buffer.alloc(Math.min(opened.size, Math.min(FILE_CHARS, room) * 4, byteRoom));
+      let length = 0;
+      while (length < raw.length) {
+        const n = readSync(fd, raw, length, raw.length - length, null);
+        if (!n) break;
+        length += n;
+      }
+      byteRoom -= length;
+      const bytes = raw.subarray(0, length);
+      if (bytes.includes(0)) return;
+      const text = bytes.toString("utf8").slice(0, Math.min(FILE_CHARS, room));
       room -= text.length;
       files.push({ path: rel, text });
     } catch {
       missing.push(rel);
+    } finally {
+      if (fd !== undefined) closeSync(fd);
     }
   };
   for (const w of wanted) {
@@ -116,8 +152,7 @@ export function readRepoFiles(repo: string, wanted: string[]): { files: Array<{ 
       const hits = tracked().filter((f) => re.test(f));
       if (!hits.length) missing.push(w);
       for (const f of hits) take(f);
-    } else if (existsSync(path.join(repo, w))) take(w);
-    else missing.push(w);
+    } else take(w);
   }
   return { files, missing };
 }

@@ -163,6 +163,15 @@ npm run e2e -w @xdev-hive/web -- <thư mục ảnh>     # thêm --no-build để
 npm run e2e -w @xdev-hive/web -- --only a,b --repeat 3   # chỉ bước a, b (kèm bước chúng cần; NEEDS trong browser.mjs); lặp 3 lần, mỗi lần hub mới, in số lần lỗi từng bước
 ```
 
+Linux không có màn hình (cần `xvfb-run`; Electron dùng hub và DB tạm):
+
+```bash
+ELECTRON_DISABLE_SANDBOX=1 xvfb-run -a -s "-screen 0 1440x900x24" npm run e2e -w @xdev-hive/web -- <thư mục ảnh> --repeat 2
+ELECTRON_DISABLE_SANDBOX=1 xvfb-run -a -s "-screen 0 1440x900x24" npm run e2e:mobile -w @xdev-hive/web -- <thư mục ảnh điện thoại> --repeat 2
+```
+
+Có thể thêm `--only <bước>[,<bước>…]` để kiểm nhanh. Helper dùng Control trên Linux/Windows và Meta trên macOS cho phím tắt. Trên Linux, cửa sổ Electron được hiển thị trong màn hình ảo Xvfb và đưa lên trước khi thao tác để compositor chạy frame cho editor trả focus và các khung chuyển động; các tab nền cũng không bị throttle.
+
 Lệnh này làm các bước sau:
 
 - build client;
@@ -182,7 +191,7 @@ Lệnh này làm các bước sau:
   - trần chi tiêu: chi phí của một run làm đầy trần của service, hub giữ run tiếp theo;
   - trang Hub.
 
-Mỗi bước kiểm lại dữ liệu trên hub qua RPC và chụp một ảnh. Có bước hỏng thì ảnh mang đuôi `-FAIL` và lệnh thoát khác 0. Giao diện được kiểm bằng tiếng Việt. Trên Linux không có màn hình thì chạy qua `xvfb-run`.
+Mỗi bước kiểm lại dữ liệu trên hub qua RPC và chụp một ảnh. Có bước hỏng thì ảnh mang đuôi `-FAIL` và lệnh thoát khác 0. Giao diện được kiểm bằng tiếng Việt.
 
 App desktop:
 

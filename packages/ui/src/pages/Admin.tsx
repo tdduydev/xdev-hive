@@ -1,3 +1,4 @@
+import { MergeQueue } from "#ui/components/MergeQueue.tsx";
 import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, Plus } from "lucide-react";
 import {
@@ -352,6 +353,7 @@ export function PolicyTab() {
   return (
     <>
       <RunTimeoutsCard />
+      <MergeQueue />
       <Card>
         <CardHeader>
           <CardTitle>{t("admin.everyMachine")}</CardTitle>

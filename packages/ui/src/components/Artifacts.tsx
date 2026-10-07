@@ -1,155 +1,140 @@
-// What the agents made and the hub kept (roadmap 41c): the files of one task, or of one run. Images open in place,
-// anything else downloads. Bytes travel in base64 over the same call as the rest of the app, like a doc's files.
-import { useEffect, useState } from "react";
-import { Download, ImageIcon, Trash2 } from "lucide-react";
-import { cn } from "cn";
-import { isImage, type Artifact } from "@xdev-hive/core";
-import type { HiveClient } from "#ui/client.ts";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Download, Trash2 } from "lucide-react";
+import { isImage, isArtifactText, type Artifact } from "@xdev-hive/core";
+import { Button } from "@xdev-hive/ui/components/ui/button";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@xdev-hive/ui/components/ui/dialog";
+import { Input } from "@xdev-hive/ui/components/ui/input";
+import { DocMarkdown } from "#ui/components/DocMarkdown.tsx";
+import { ErrorNote } from "#ui/components/common.tsx";
 import { errorMessage, formatTime, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
+import { artifactParts, textMatches } from "#ui/lib/artifacts.ts";
 import { fileSize } from "#ui/lib/chat.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
-const cache = new Map<number, Promise<string>>();
-const toBlob = (data: string, type: string) => new Blob([Uint8Array.from(atob(data), (c) => c.charCodeAt(0))], { type });
+const PREVIEW_BYTES = 128 * 1024;
+const MAX_HIGHLIGHTS = 500;
+const bytes = (data: string) => Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
+export const ArtifactContext = createContext<readonly Artifact[]>([]);
 
-/** An object URL for the file, fetched once per page view. */
-function artifactUrl(client: HiveClient, id: number): Promise<string> {
-  let hit = cache.get(id);
-  if (!hit) {
-    hit = client.call("artifacts.get", { id }).then((got) => {
-      if (!got) throw new Error(String(id));
-      return URL.createObjectURL(toBlob(got.data, got.artifact.type));
-    });
-    // A failure is not remembered: the next view asks again.
-    hit.catch(() => cache.delete(id));
-    cache.set(id, hit);
-  }
-  return hit;
-}
-
-async function download(client: HiveClient, a: Artifact): Promise<void> {
-  const url = await artifactUrl(client, a.id);
-  const link = document.createElement("a");
-  link.href = url;
-  // A name with folders in it ("shots/board.png") would be a path the browser refuses: keep the last part.
-  link.download = a.name.split("/").pop() ?? a.name;
-  link.click();
-}
-
-/** The picture itself, once someone asks to see it: a list of twenty would otherwise fetch twenty files. */
-function Preview({ artifact }: { artifact: Artifact }) {
-  const { client } = useHive();
-  const t = useT();
-  const [state, setState] = useState<{ url: string | null; error: string | null }>({ url: null, error: null });
-  useEffect(() => {
-    let live = true;
-    artifactUrl(client, artifact.id).then(
-      (url) => live && setState({ url, error: null }),
-      (err) => live && setState({ url: null, error: errorMessage(err) }),
-    );
-    return () => {
-      live = false;
-    };
-  }, [client, artifact.id]);
-  if (state.error) return <span className="px-1.5 text-xs text-danger">{state.error}</span>;
-  if (!state.url) return <span className="px-1.5 text-xs text-fg-muted">{t("artifacts.loading")}</span>;
-  return <img src={state.url} alt={artifact.name} className="max-h-[420px] max-w-full self-start rounded-md border border-line-subtle bg-subtle object-contain" />;
-}
-
-const ext = (name: string) => /\.([a-z0-9]+)$/i.exec(name)?.[1]?.toUpperCase().slice(0, 4) ?? "FILE";
-
-/**
- * The files of a task or of a run. `runId` without `taskId` is one run's; `taskId` alone is every run's of that task.
- * A project manager removes one (it goes in the audit log); nothing else ever deletes an artifact.
- */
-export function ArtifactList({ project, taskId, runId, machineId }: { project: string; taskId?: string; runId?: string; machineId?: string }) {
-  const { client } = useHive();
-  const t = useT();
-  const toast = useToast();
-  const allow = useCan();
-  // A hub older than 41c does not know artifacts: an empty section, not an error on the panel. Any other error shows,
-  // or a refused query looks exactly like a run that made nothing.
-  const files = useQuery(
-    () =>
-      client.call("artifacts.list", { project, taskId, runId, machineId }).catch((err: unknown) => {
+/** All metadata for a task/run, including older files beyond the API's first page. */
+export function useArtifacts(project: string, taskId?: string, runId?: string, machineId?: string, revision?: string) {
+  const { client, me } = useHive();
+  const key = `${project}:${taskId ?? ""}:${runId ?? ""}:${machineId ?? ""}`;
+  const query = useQuery(async () => {
+    if (me.mode !== "hub") return { key, files: [] as Artifact[] };
+    const all: Artifact[] = [];
+    for (let offset = 0; ; offset += 200) {
+      const page = await client.call("artifacts.list", { project, taskId, runId, machineId, offset, limit: 200 }).catch((err: unknown) => {
         if (/Unknown method/.test(errorMessage(err))) return [] as Artifact[];
         throw err;
-      }),
-    [client, project, taskId, runId, machineId],
-  );
-  const [open, setOpen] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const list = files.data ?? [];
-  const remove = async (a: Artifact) => {
-    try {
-      await client.call("artifacts.remove", { id: a.id });
-      cache.delete(a.id);
-      toast(t("artifacts.removed", { name: a.name }));
-      files.reload();
-    } catch (err) {
-      setError(errorMessage(err));
+      });
+      // Older hubs ignore offset: stop when a page repeats instead of looping forever.
+      const known = new Set(all.map((a) => a.id));
+      const added = page.filter((a) => !known.has(a.id));
+      all.push(...added);
+      if (page.length < 200 || !added.length) return { key, files: all };
     }
+  }, [client, me.mode, project, taskId, runId, machineId, revision]);
+  return { ...query, data: query.data?.key === key ? query.data.files : undefined };
+}
+
+export function ArtifactPreview({ artifact, onClose }: { artifact: Artifact | null; onClose: () => void }) {
+  const t = useT();
+  const returnFocus = useRef<HTMLElement | null>(null);
+  return <Dialog open={!!artifact} onOpenChange={(open) => { if (!open) onClose(); }}>
+    {artifact ? <DialogContent className="flex max-h-[90dvh] flex-col sm:max-w-4xl max-md:!max-h-dvh max-md:[&_button]:min-h-11 max-md:[&_input]:min-h-11" showCloseButton={false} onOpenAutoFocus={() => { returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; }} onCloseAutoFocus={(event) => { if (returnFocus.current?.isConnected) { event.preventDefault(); returnFocus.current.focus(); } }} data-artifact-preview>
+      <DialogHeader className="shrink-0 text-left">
+        <div className="flex items-start justify-between gap-3"><DialogTitle className="min-w-0 break-all">{artifact.name}</DialogTitle><DialogClose asChild><Button variant="outline" className="min-h-11 shrink-0">{t("common.close")}</Button></DialogClose></div>
+        <DialogDescription className="break-words">{artifact.project} · {artifact.taskId} · {artifact.runId} · {fileSize(artifact.size)}</DialogDescription>
+      </DialogHeader>
+      <PreviewBody key={`${artifact.id}:${artifact.sha256}`} artifact={artifact} />
+    </DialogContent> : null}
+  </Dialog>;
+}
+
+function PreviewBody({ artifact }: { artifact: Artifact }) {
+  const { client } = useHive();
+  const t = useT();
+  const [find, setFind] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const file = useQuery(async () => artifact.type === "application/pdf" ? null : client.call("artifacts.get", { id: artifact.id, maxBytes: PREVIEW_BYTES }), [client, artifact.id]);
+  const data = file.data;
+  useEffect(() => {
+    if (!data || !isImage(artifact.type)) return;
+    const object = URL.createObjectURL(new Blob([bytes(data.data)], { type: artifact.type }));
+    setUrl(object);
+    return () => URL.revokeObjectURL(object);
+  }, [data, artifact.type]);
+  const text = useMemo(() => data && isArtifactText(artifact.type) ? new TextDecoder().decode(bytes(data.data)) : "", [data, artifact.type]);
+  const parts = useMemo(() => textMatches(text, find), [text, find]);
+  const download = async () => {
+    setBusy(true); setError(null);
+    try {
+      const full = await client.call("artifacts.get", { id: artifact.id });
+      if (!full) throw new Error(t("errors.notFound"));
+      const object = URL.createObjectURL(new Blob([bytes(full.data)], { type: artifact.type }));
+      const a = document.createElement("a");
+      a.href = object; a.download = artifact.name.split("/").pop()!;
+      document.body.append(a); a.click(); a.remove();
+      // The browser needs time to start saving before the temporary URL is released.
+      window.setTimeout(() => URL.revokeObjectURL(object), 1000);
+    } catch (err) { setError(errorMessage(err)); }
+    finally { setBusy(false); }
   };
-  if (files.error) return <span className="px-1.5 text-xs text-danger">{t("artifacts.title")}: {files.error}</span>;
-  if (!list.length && !files.loading) return null;
-  return (
-    <section aria-label={t("artifacts.title")} className="flex flex-col gap-1.5" data-artifacts={runId ?? taskId ?? project}>
-      <div className="flex items-center gap-2">
-        <h3 className="text-xs font-medium text-muted-foreground">{t("artifacts.title")}</h3>
-        <span className="font-mono text-xs md:text-[11px] text-fg-muted">{list.length}</span>
-      </div>
-      {list.map((a) => (
-        <div key={a.id} className="flex flex-col gap-1.5">
-          <div className="group flex items-center gap-2 rounded-sm px-1.5 py-1 hover:bg-hover" data-artifact={a.name}>
-            <span className={cn("grid h-6 w-9 shrink-0 place-items-center rounded-xs font-mono text-[10px] font-semibold", isImage(a.type) ? "bg-running-soft text-running" : "bg-sunken text-fg-secondary")}>
-              {isImage(a.type) ? <ImageIcon className="size-3.5" /> : ext(a.name)}
-            </span>
-            <span className="flex min-w-0 flex-1 flex-col">
-              {isImage(a.type) ? (
-                <button
-                  type="button"
-                  onClick={() => setOpen((id) => (id === a.id ? null : a.id))}
-                  aria-expanded={open === a.id}
-                  className="min-h-11 cursor-pointer truncate text-left outline-none focus-visible:focus-ring md:min-h-0 text-xs font-medium text-fg-link underline underline-offset-2 hover:text-fg-link-hover"
-                  title={a.name}
-                >
-                  {a.name}
-                </button>
-              ) : (
-                <span className="truncate text-xs font-medium text-fg-strong" title={a.name}>
-                  {a.name}
-                </span>
-              )}
-              <span className="truncate text-xs md:text-[11px] text-fg-muted">
-                {fileSize(a.size)} · {a.runId} · {formatTime(a.createdAt)}
-              </span>
-            </span>
-            <button
-              type="button"
-              aria-label={t("artifacts.download", { name: a.name })}
-              title={t("artifacts.download", { name: a.name })}
-              onClick={() => void download(client, a).catch((err: unknown) => setError(errorMessage(err)))}
-              className="grid size-11 shrink-0 cursor-pointer md:size-6 place-items-center rounded-xs text-fg-muted outline-none hover:text-fg-strong focus-visible:focus-ring"
-            >
-              <Download className="size-3.5" />
-            </button>
-            {allow(a.project, "projectSettings") ? (
-              <button
-                type="button"
-                aria-label={t("artifacts.remove", { name: a.name })}
-                title={t("artifacts.remove", { name: a.name })}
-                onClick={() => void remove(a)}
-                className="grid size-11 shrink-0 cursor-pointer md:size-6 place-items-center rounded-xs text-fg-muted outline-none hover:text-danger focus-visible:focus-ring"
-              >
-                <Trash2 className="size-3.5" />
-              </button>
-            ) : null}
-          </div>
-          {open === a.id ? <Preview artifact={a} /> : null}
-        </div>
-      ))}
-      {error ? <span className="px-1.5 text-xs text-danger">{error}</span> : null}
-    </section>
-  );
+  return <>
+    <div className="flex shrink-0 flex-wrap items-center gap-2">
+      <Button variant="outline" disabled={busy} className="min-h-11 max-w-full whitespace-normal break-all" onClick={() => void download()} aria-label={t("artifacts.download", { name: artifact.name })}><Download aria-hidden="true" />{t("artifacts.download", { name: artifact.name })}</Button>
+      {data?.truncated ? <p className="text-xs text-fg-secondary" data-artifact-clipped>{t("artifacts.clipped", { size: fileSize(PREVIEW_BYTES) })}</p> : null}
+    </div>
+    <ErrorNote error={error ?? file.error} />
+    {file.loading ? <p role="status" className="text-sm">{t("artifacts.loading")}</p> : null}
+    {!file.loading && file.data === null && artifact.type !== "application/pdf" ? <ErrorNote error={t("errors.notFound")} /> : null}
+    {isArtifactText(artifact.type) ? <label className="flex shrink-0 flex-col gap-1 text-sm"><span>{t("artifacts.find")}</span><Input value={find} onChange={(e) => setFind(e.target.value)} className="min-h-11 text-base md:text-sm" data-artifact-find />{find ? <span role="status" className="text-xs">{t("artifacts.matches", { n: Math.floor(parts.length / 2) })}</span> : null}</label> : null}
+    {Math.floor(parts.length / 2) > MAX_HIGHLIGHTS ? <p className="text-xs text-fg-secondary">{t("artifacts.highlightLimited", { n: MAX_HIGHLIGHTS })}</p> : null}
+    <div tabIndex={0} className="min-h-0 overflow-y-auto overscroll-contain outline-none focus-visible:focus-ring" data-artifact-content>
+      {url ? <img src={url} alt={artifact.name} className="max-h-[65dvh] max-w-full rounded-md object-contain" /> : null}
+      {artifact.type === "text/markdown" && !find ? <DocMarkdown text={text} /> : isArtifactText(artifact.type) ? <pre className="rounded-md border border-line-subtle bg-code p-3 font-mono text-xs/5 whitespace-pre-wrap break-all text-code-fg">{parts.slice(0, MAX_HIGHLIGHTS * 2 + 1).map((part, i) => i % 2 ? <mark key={i} className="bg-warning-soft text-fg-strong">{part}</mark> : part)}{parts.slice(MAX_HIGHLIGHTS * 2 + 1).join("")}</pre> : null}
+      {artifact.type === "application/pdf" ? <p className="text-sm">{t("artifacts.downloadOnly")}</p> : null}
+    </div>
+  </>;
+}
+
+export function ArtifactText({ text, files }: { text: string; files?: readonly Artifact[] }) {
+  const context = useContext(ArtifactContext);
+  const [open, setOpen] = useState<Artifact | null>(null);
+  return <>{artifactParts(text, files ?? context).map((part, i) => part.artifact ? <a key={i} href={`#/artifacts?artifact=${part.artifact.id}`} onClick={(e) => { if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) { e.preventDefault(); setOpen(part.artifact!); } }} className="inline-flex min-h-11 min-w-11 max-w-full cursor-pointer items-center break-all text-left text-fg-link underline underline-offset-2 outline-none hover:text-fg-link-hover focus-visible:focus-ring md:min-h-0" data-artifact-link={part.artifact.name}>{part.text}</a> : part.text)}<ArtifactPreview artifact={open} onClose={() => setOpen(null)} /></>;
+}
+
+export function ArtifactRows({ files, error, loading, onChanged, context }: { files: readonly Artifact[]; error?: string | null; loading?: boolean; onChanged?: () => void; context?: string }) {
+  const { client } = useHive();
+  const t = useT(); const toast = useToast(); const allow = useCan();
+  const [open, setOpen] = useState<Artifact | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<number | null>(null);
+  return <section aria-label={t("artifacts.title")} className="flex flex-col gap-2" data-artifacts={context}>
+    <h3 className="text-sm font-medium text-fg-secondary">{t("artifacts.title")} <span className="font-mono">({files.length})</span></h3>
+    <ErrorNote error={failure ?? error} />
+    {loading ? <p role="status" className="text-sm">{t("artifacts.loading")}</p> : !files.length ? <p className="text-xs text-fg-muted">{t("artifacts.empty")}</p> : null}
+    {files.map((a) => <div key={a.id} className="flex items-center gap-2 rounded-md border border-line-subtle p-2" data-artifact={a.name}>
+      <div className="min-w-0 flex-1"><button type="button" onClick={() => setOpen(a)} className="min-h-11 w-full cursor-pointer break-all text-left text-sm text-fg-link underline outline-none hover:text-fg-link-hover focus-visible:focus-ring md:min-h-0">{a.name}</button><p className="break-words text-xs text-fg-muted">{fileSize(a.size)} · {a.runId} · {formatTime(a.createdAt)}</p></div>
+      {allow(a.project, "projectSettings") ? <button type="button" disabled={removing !== null} aria-label={t("artifacts.remove", { name: a.name })} className="grid size-11 shrink-0 cursor-pointer place-items-center rounded-md text-fg-muted outline-none hover:text-danger focus-visible:focus-ring md:size-6" onClick={() => void (async () => {
+        setRemoving(a.id); setFailure(null);
+        try { await client.call("artifacts.remove", { id: a.id }); toast(t("artifacts.removed", { name: a.name })); onChanged?.(); }
+        catch (err) { setFailure(errorMessage(err)); } finally { setRemoving(null); }
+      })()}><Trash2 aria-hidden="true" className="size-4" /></button> : null}
+    </div>)}
+    <ArtifactPreview artifact={open} onClose={() => setOpen(null)} />
+  </section>;
+}
+
+export function ReviewArtifacts({ project, taskId, note }: { project: string; taskId: string; note: string }) {
+  const files = useArtifacts(project, taskId);
+  const t = useT();
+  const [open, setOpen] = useState<Artifact | null>(null);
+  return <><ErrorNote error={files.error} /><div className="text-sm leading-relaxed whitespace-pre-wrap break-words"><ArtifactText text={note} files={files.data} /></div>
+    {(files.data ?? []).some((a) => a.type === "text/markdown") ? <section aria-label={t("artifacts.reports")} className="flex flex-col gap-1" data-review-reports><h3 className="text-sm font-semibold">{t("artifacts.reports")}</h3>{files.data!.filter((a) => a.type === "text/markdown").map((a) => <button key={a.id} type="button" onClick={() => setOpen(a)} className="min-h-11 cursor-pointer break-all text-left text-sm text-fg-link underline outline-none focus-visible:focus-ring">{a.name}</button>)}</section> : null}
+    <ArtifactPreview artifact={open} onClose={() => setOpen(null)} /></>;
 }

@@ -47,7 +47,21 @@ export class TokenStore {
     if (!this.#db.prepare("SELECT 1 FROM hub_tokens WHERE hash = ?").get(sha256(token))) this.#insert(token, name, role, null);
   }
 
-  verify(token: string): { name: string; role: Role; ownerId: string | null } | null {
+  verify(token: string): { name: string; role: Role; ownerId: string | null; run?: { project: string; task: string; run: string; machine: string; readOnly: boolean }; mcp?: { project: string | null } } | null {
+    const scoped = this.#db.prepare(`SELECT r.*, p.name, p.owner_id FROM run_credentials r
+      JOIN hub_tokens p ON p.id = r.parent_id WHERE r.hash = ? AND r.expires_at > ?`).get(sha256(token), new Date().toISOString()) as Row | undefined;
+    if (scoped) return {
+      name: String(scoped.name), role: scoped.read_only ? "viewer" : "agent",
+      ownerId: scoped.owner_id == null ? null : String(scoped.owner_id),
+      run: { project: String(scoped.project), task: String(scoped.task), run: String(scoped.run), machine: String(scoped.machine), readOnly: Boolean(scoped.read_only) },
+    };
+    const mcp = this.#db.prepare(`SELECT m.*, p.name, p.owner_id, p.role FROM mcp_credentials m
+      JOIN hub_tokens p ON p.id = m.parent_id WHERE m.hash = ? AND m.expires_at > ?`).get(sha256(token), new Date().toISOString()) as Row | undefined;
+    if (mcp) return {
+      name: String(mcp.name), role: mcp.read_only || mcp.role === "viewer" ? "viewer" : "agent",
+      ownerId: mcp.owner_id == null ? null : String(mcp.owner_id),
+      mcp: { project: mcp.project == null ? null : String(mcp.project) },
+    };
     const row = this.#db.prepare("SELECT * FROM hub_tokens WHERE hash = ?").get(sha256(token)) as Row | undefined;
     if (!row) return null;
     const now = new Date();
@@ -56,6 +70,40 @@ export class TokenStore {
       this.#db.prepare("UPDATE hub_tokens SET last_used_at = ? WHERE id = ?").run(now.toISOString(), String(row.id));
     }
     return { name: String(row.name), role: row.role as Role, ownerId: row.owner_id == null ? null : String(row.owner_id) };
+  }
+
+  /** Interactive MCP sessions also exchange the machine token, rather than use it for agent RPCs. */
+  issueMcp(parentToken: string, project: string | null, readOnly: boolean): string {
+    const parent = this.#db.prepare("SELECT id, role FROM hub_tokens WHERE hash = ?").get(sha256(parentToken)) as Row | undefined;
+    if (!parent) throw new HiveError("forbidden", "A machine credential is required.");
+    const token = `hivemcp_${randomBytes(32).toString("base64url")}`;
+    this.#db.prepare("DELETE FROM mcp_credentials WHERE expires_at <= ?").run(new Date().toISOString());
+    this.#db.prepare("INSERT INTO mcp_credentials(hash, parent_id, project, expires_at, read_only) VALUES (?, ?, ?, ?, ?)")
+      .run(sha256(token), String(parent.id), project, new Date(Date.now() + 60 * 60_000).toISOString(), readOnly || parent.role === "viewer" ? 1 : 0);
+    return token;
+  }
+
+  /** A new credential replaces an older one for this run; no plaintext is stored. */
+  issueRun(parentToken: string, input: { machine: string; project: string; task: string; run: string; minutes: number; readOnly: boolean }): string {
+    const parent = this.#db.prepare("SELECT id FROM hub_tokens WHERE hash = ?").get(sha256(parentToken)) as Row | undefined;
+    if (!parent) throw new HiveError("forbidden", "Only a machine credential can issue run credentials.");
+    const token = `hiverun_${randomBytes(32).toString("base64url")}`;
+    this.#db.exec("BEGIN IMMEDIATE");
+    try {
+      this.#db.prepare("DELETE FROM run_credentials WHERE expires_at <= ?").run(new Date().toISOString());
+      this.#db.prepare("DELETE FROM run_credentials WHERE parent_id = ? AND machine = ? AND run = ?").run(String(parent.id), input.machine, input.run);
+      this.#db.prepare(`INSERT INTO run_credentials(hash, parent_id, machine, project, task, run, expires_at, read_only)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(sha256(token), String(parent.id), input.machine, input.project, input.task,
+          input.run, new Date(Date.now() + input.minutes * 60_000).toISOString(), input.readOnly ? 1 : 0);
+      this.#db.exec("COMMIT");
+    } catch (err) { this.#db.exec("ROLLBACK"); throw err; }
+    return token;
+  }
+
+  revokeRun(parentToken: string, machine: string, run: string): void {
+    const parent = this.#db.prepare("SELECT id FROM hub_tokens WHERE hash = ?").get(sha256(parentToken)) as Row | undefined;
+    if (!parent) throw new HiveError("forbidden", "Only a machine credential can revoke run credentials.");
+    this.#db.prepare("DELETE FROM run_credentials WHERE parent_id = ? AND machine = ? AND run = ?").run(String(parent.id), machine, run);
   }
 
   /** All tokens, or only those of one account. */

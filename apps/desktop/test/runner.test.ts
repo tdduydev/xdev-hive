@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { RunStore } from "#desktop/main/runner/store.ts";
 import { writeSteer } from "#desktop/main/runner/steer.ts";
-import { after, describe, it } from "node:test";
+import { after, describe, it, mock } from "node:test";
 import { AGENT_TEMPLATES, ARTIFACT_DIR, HiveError, toolHash, type Actor, type AgentProfile, type HiveBackend, type DesktopProject, type RunnerSettings, type ToolEntry } from "@xdev-hive/core";
 import { CODEGRAPH_MCP, CODEGRAPH_RUN_MCP, SHIM_NAME, SUPERPOWERS_PLUGIN, mcpLaunch, shimBinDir } from "#desktop/main/installer.ts";
 import { collectArtifacts } from "#desktop/main/runner/artifacts.ts";
@@ -38,6 +38,20 @@ function testTmpDir(prefix: string): string {
 
 const FAKE = path.join(import.meta.dirname, "fixtures", "fake-agent.mjs");
 const admin: Actor = { name: "duy", role: "admin" };
+const credentialRequests: Array<{ method: string; input: { run: string; minutes?: number; readOnly?: boolean } }> = [];
+// Hub-mode fixtures exercise the credential exchange without reaching a real service.
+mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
+  assert.ok(String(url).endsWith("/api/run-credentials"), `Unexpected fixture request: ${url}`);
+  const input = JSON.parse(String(init.body));
+  credentialRequests.push({ method: init.method!, input });
+  if (init.method === "POST") {
+    assert.ok(Number.isInteger(input.minutes), "fractional test timeouts still mint an integer TTL");
+    assert.ok(input.minutes >= 5 && input.minutes <= 1440);
+    return Response.json({ result: { token: `hiverun_fixture_${input.run}` } });
+  }
+  assert.equal(init.method, "DELETE");
+  return Response.json({ result: { revoked: true } });
+});
 const tmp = (p: string) => testTmpDir(path.join(os.tmpdir(), `hive-${p}-`));
 /** A task note as a person writes it: what a run that ends badly must leave behind (BUG-note-wipe). */
 const BRIEF = "Làm trang cài đặt.\nXong khi:\n- có nút Lưu\n- test xanh";
@@ -114,7 +128,7 @@ async function setup(
   const host: RunnerHost = {
     backend: () => (mode === "hub" ? (machine.wrap?.(hubLike) ?? hubLike) : hive),
     profiles: () => profiles.map((p) => ({ ...p, env: { ...p.env, FAKE_RECORD: record } })),
-    settings: () => ({ worktreeRoot: null, maxParallel: 2, maxAttempts: 3, acceptHubRuns: false, ...settings }),
+    settings: () => ({ worktreeRoot: null, maxParallel: 2, maxAttempts: 3, acceptHubRuns: false, gateRunner: false, ...settings }),
     projects: () => machine.projects?.(repo) ?? [{ name: "demo", repo }],
     mode: () => mode,
     machine: () => machine.name ?? "duy-mbp",
@@ -122,7 +136,7 @@ async function setup(
     report: machine.report,
     login: machine.login,
     usage: machine.usage,
-    hub: machine.hub,
+    hub: machine.hub ?? (() => ({ url: "https://runner-fixture.test", token: "hive_machine_fixture" })),
     ...(machine.download ? { download: machine.download } : {}),
     ...(machine.toolTrust ? { toolTrust: machine.toolTrust } : {}),
   };
@@ -152,7 +166,7 @@ async function setup(
       ? readFileSync(record, "utf8")
           .trim()
           .split("\n")
-          .map((l) => JSON.parse(l) as { agent: string; prompt: string; cwd: string; args: string[]; readOnly: string | null })
+          .map((l) => JSON.parse(l) as { agent: string; prompt: string; cwd: string; args: string[]; readOnly: string | null; runToken?: string | null })
       : [];
   const task = async () => (await hive.call("tasks.list", { project: "demo" }, admin)).find((t) => t.id === "T-1")!;
   return { repo, hive, runner, dataDir, calls, task, hubUpdates, record };
@@ -657,6 +671,8 @@ describe("buildCommand", () => {
       `mcp_servers.xdev-hive.args=${JSON.stringify(launch.args)}`,
       "-c",
       'mcp_servers.xdev-hive.default_tools_approval_mode="approve"',
+      "-c",
+      'mcp_servers.xdev-hive.env_vars=["HIVE_RUN_TOKEN"]',
       "-c",
       'mcp_servers.xdev-hive.env={HIVE_AGENT="codex-1",HIVE_PROJECT="demo",HIVE_TASK="T-1"}',
     ];
@@ -1281,7 +1297,7 @@ describe("Runner", () => {
   });
 
   it("reports back to a hub that renames actors", async () => {
-    const { runner, task } = await setup([profile("claude-a", "claude", 10, "ok")], {}, "hub");
+    const { runner, task, calls } = await setup([profile("claude-a", "claude", 10, "ok")], {}, "hub");
     const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
     await runner.settle();
     const t = await task();
@@ -1289,6 +1305,9 @@ describe("Runner", () => {
     assert.match(t.note ?? "", /Implemented T-1/);
     // The run's own agent name may read the project's pages on a hub: without that every run loses its context.
     assert.match(unstamp(runner.log(run.id)), /^# hive context: \d+ file \(\d+ ghi mới\), bỏ qua 0$/m);
+    assert.equal(calls()[0]?.runToken, `hiverun_fixture_${run.id}`, "only the run credential reaches the CLI");
+    assert.deepEqual(credentialRequests.filter((r) => r.input.run === run.id).map((r) => r.method), ["POST", "DELETE"], "revoked when the run finishes");
+    assert.ok(!runner.log(run.id).includes(`hiverun_fixture_${run.id}`), "the credential stays out of the log");
   });
 
   it("keeps two machines on one hub token from taking the same task", async () => {
@@ -1816,6 +1835,7 @@ describe("Runner", () => {
       assert.ok(!some.deny.includes("Bash"), "a Bash deny would win over every allow");
       assert.match(leaderBrief("demo", "lan", ["git log", "git diff"]), /only commands you may run are these.*git log, git diff/);
       assert.match(leaderBrief("demo", "lan", []), /You cannot run commands\./);
+      assert.match(leaderBrief("demo", "lan", []), /propose_plan.*project\/<service>\/<slug>/, "a request to build becomes a plan (roadmap 60d)");
     });
 
     it("asks Claude Code for the thread's model and effort, and leaves them to the profile when unset", () => {
@@ -1948,11 +1968,17 @@ describe("Runner", () => {
 
   it("shares a quota cooldown with every machine on the same account, and ends it everywhere", async () => {
     const account = { account: "claude-max-duy" };
-    const a = await setup([profile("claude-1", "claude", 10, "limit", account), profile("codex-1", "codex", 20, "ok")], {}, "hub", { name: "duy-mbp" });
+    const report = (id: string): RunnerHost["report"] => () => ({ profiles: [{
+      id, label: id, kind: "claude", ...account, enabled: true, installed: true, cooldownUntil: null, runs: 0, rateLimited: 0,
+    }] });
+    const a = await setup([profile("claude-1", "claude", 10, "limit", account), profile("codex-1", "codex", 20, "ok")], {}, "hub", { name: "duy-mbp", report: report("claude-1") });
     const b = await setup([profile("claude-2", "claude", 10, "ok", account), profile("codex-2", "codex", 20, "ok")], {}, "hub", {
       name: "duy-imac",
       hive: a.hive,
+      report: report("claude-2"),
     });
+    // The hub authorizes a shared cooldown from the machine's reported subscription accounts.
+    await a.runner.heartbeat();
     await a.runner.enqueue({ project: "demo", taskId: "T-1" });
     await a.runner.settle();
     const shared = await a.hive.call("cooldowns.list", {}, admin);
@@ -2333,7 +2359,7 @@ describe("runs on the hub", () => {
     assert.equal(full.patch, runner.diff(run.id));
     assert.match(full.log ?? "", /\(line hidden: it looked like a GitLab token\)/);
     assert.doesNotMatch(full.log ?? "", /glpat-/, "the token never left the machine");
-    assert.match(runner.log(run.id), /glpat-/, "this machine's own log keeps everything");
+    assert.doesNotMatch(runner.log(run.id), /glpat-/, "this machine's log also redacts credentials");
     assert.equal(await runner.pushRuns(), 0, "nothing changed since");
   });
 

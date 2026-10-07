@@ -155,6 +155,8 @@ export interface ShimReport {
 }
 
 export interface DesktopProject {
+  /** Local commands only: never included in heartbeat or hub settings. prepare bumps version/roadmap. */
+  autoRelease?: { appRollout: boolean; prepare: string[]; release: string[]; deploy?: string[]; checkLogs?: string[]; timeoutMinutes: number };
   name: string;
   repo: string;
   gitlabProject?: string;
@@ -559,7 +561,7 @@ export interface DesktopBridge {
 
   updateProject(
     name: string,
-    patch: { gitlabProject?: string | null; githubRepo?: string | null; targetBranch?: string | null; references?: string[] | null },
+    patch: { autoRelease?: DesktopProject["autoRelease"] | null; gitlabProject?: string | null; githubRepo?: string | null; targetBranch?: string | null; references?: string[] | null },
   ): Promise<DesktopSettings>;
   checkGitLab(): Promise<GitLabCheck>;
   /** Who the GitHub token belongs to (same shape as the GitLab check). */
