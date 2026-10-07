@@ -101,6 +101,25 @@ it("isolates conflicts, runs gate on accepted branches and publishes once; user 
     s.close();
   }
 });
+it("pushes this machine's unpublished branch before fetching, and names the cause for another machine's", async () => {
+  const s = fixture();
+  try {
+    const remote = path.join(s.root, "remote.git");
+    execFileSync("git", ["init", "-q", "--bare", "-b", "main", remote]);
+    s.git("remote", "add", "origin", remote);
+    s.git("push", "-q", "origin", "main");
+    const opts = { ...s.options, local: false, publish: async () => {} };
+    const r = await runMergeBatch({ ...s.batch, items: [s.batch.items[2]!] }, opts);
+    assert.equal(r.status, "landed");
+    assert.match(execFileSync("git", ["--git-dir", remote, "branch", "--list", "ai/T-3"], { encoding: "utf8" }), /ai\/T-3/);
+    const other = { ...s.batch, id: 2, items: [{ ...s.batch.items[0]!, machineId: "other" }] };
+    const r2 = await runMergeBatch(other, opts);
+    assert.equal(r2.status, "failed");
+    assert.match(r2.outcomes[0]!.reason, /not on remote origin[\s\S]*máy đó push/);
+  } finally {
+    s.close();
+  }
+});
 it("retries a red gate exactly once, stops subsequent gates and never publishes", async () => {
   const s = fixture(["echo attempted >> attempts; false", "touch should-not-run"]);
   try {

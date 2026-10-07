@@ -8,6 +8,7 @@ import os from "node:os";
 import { redactLines, validMergeRef } from "@xdev-hive/core";
 import type { MergeBatch, MergeResult, HiveBackend, Actor, DesktopProject } from "@xdev-hive/core";
 const exec = promisify(execFile);
+const missingRemote = (branch: string, remote: string) => `Branch ${branch} is not on remote ${remote} (nhánh chưa có trên remote ${remote}).`;
 const errorText = (e: unknown) => redactLines(String((e as {
   stderr?: string;
 }).stderr || (e as Error).message || e)).slice(-16000);
@@ -140,9 +141,15 @@ export async function runMergeBatch(batch: MergeBatch, opts: GateOptions): Promi
             ref = `refs/hive-merge/${batch.id}/source-${n}`;
             await git(opts.repo, ["fetch", "--no-tags", "--no-write-fetch-head", remote, `+refs/heads/${item.branch}:${ref}`]);
           } catch (e) {
-            // A branch produced on this machine may not have been pushed yet; another machine's stale local ref is not evidence.
-            if (item.machineId !== batch.machineId) throw e;
-            ref = `refs/heads/${item.branch}`;
+            // Another machine's stale local ref is not evidence, so only this machine's own branch may be published.
+            if (item.machineId !== batch.machineId) throw new Error(`${missingRemote(item.branch, remote)} Branch của máy khác (${item.machineId}): nhờ máy đó push nhánh rồi đưa lại vào hàng chờ.\n${errorText(e)}`);
+            // The runner only pushes through MR/PR flows, so a machine without them never published the branch; push it here so the batch can fetch it.
+            try {
+              await git(opts.repo, ["push", remote, `refs/heads/${item.branch}:refs/heads/${item.branch}`]);
+              await git(opts.repo, ["fetch", "--no-tags", "--no-write-fetch-head", remote, `+refs/heads/${item.branch}:${ref}`]);
+            } catch (e2) {
+              throw new Error(`${missingRemote(item.branch, remote)} Máy này không push được nhánh: ${errorText(e2)}`);
+            }
           }
         }
         outcome.sha = await git(opts.repo, ["rev-parse", `${ref}^{commit}`]);
