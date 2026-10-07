@@ -1,15 +1,14 @@
 import { ResponsiveTable as Table, ResponsiveTableRow as TableRow } from "#ui/components/ResponsiveTable.tsx";
 import { useEffect, useMemo, useState } from "react";
-import { cacheReadShare, type CompressionCompare, type CompressionSide, type CostSummary, type CostTotals, type QuotaCooldown, type RunTokens } from "@xdev-hive/core";
-import { Button } from "@xdev-hive/ui/components/ui/button";
+import { cacheReadShare, type CompressionCompare, type CompressionSide, type CostSummary, type CostTotals, type RunTokens } from "@xdev-hive/core";
 import { TableBody, TableCell, TableHead, TableHeader } from "@xdev-hive/ui/components/ui/table";
 import { Empty, ErrorNote, Notice, Page, PageHeader } from "#ui/components/common.tsx";
-import { formatCount, formatTime, formatUsd, useAction, useHive, usePoll, useQuery } from "#ui/hooks.ts";
+import { formatCount, formatTime, formatUsd, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { rich, useT } from "#ui/i18n/index.tsx";
 import { mapMachines } from "#ui/lib/agentmap.ts";
-import { canClearCooldown } from "#ui/lib/permission-controls.ts";
 import { scopeFilter, scopeKey } from "#ui/lib/scope.ts";
-import { AgentMap } from "./AgentMap.tsx";
+import { Skeleton } from "#ui/components/ui/skeleton.tsx";
+import { AgentMap } from "#ui/pages/AgentMap.tsx";
 
 /** How often the map asks the hub again while it is on screen (machines report every 30 s, runs as they go). */
 const MAP_REFRESH_MS = 5000;
@@ -42,16 +41,17 @@ export function MachinesPage() {
   const requests = useQuery(() => client.call("runs.requests", { ...scopeFilter(scope), limit: 200 }), deps);
   // A hub from before batches (31a) has no such method: none then.
   const groups = useQuery(() => client.call("runs.groups", { ...scopeFilter(scope), limit: 30 }).catch(() => []), deps);
-  const costs = useQuery(() => client.call("costs.summary", {}), [client, tick]);
+
   const reload = () => setTick((n) => n + 1);
   const shown = useMemo(() => mapMachines(machines.data ?? [], scope), [machines.data, scope]);
 
   return (
     <Page wide>
-      <PageHeader title={t("nav.machines")} subtitle={t("machines.subtitle")} />
+      <PageHeader title={t("nav.machines")} subtitle={t("dashboardAgents.mapHint")} />
 
       <section className="flex flex-col gap-3">
-        <ErrorNote error={machines.error ?? runs.error ?? requests.error} />
+        <ErrorNote error={machines.error ?? runs.error ?? requests.error ?? cooldowns.error} />
+        {!machines.data && machines.loading ? <div role="status" aria-label={t("common.loading")} className="grid gap-3 md:grid-cols-3">{[0, 1, 2].map(i => <Skeleton key={i} className="h-48 rounded-xl" />)}</div> : null}
         {machines.data?.length === 0 ? <Empty>{t("machines.none")}</Empty> : null}
         {machines.data?.length && !shown.length ? <Empty>{t("agentMap.noneInScope")}</Empty> : null}
         {machines.data?.some((m) => m.duplicate) ? (
@@ -69,40 +69,6 @@ export function MachinesPage() {
         ) : null}
       </section>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold tracking-tight">{t("machines.cooldowns")}</h2>
-        <ErrorNote error={cooldowns.error} />
-        {cooldowns.data?.length === 0 ? <Empty>{t("machines.noCooldowns")}</Empty> : null}
-        {cooldowns.data?.length ? (
-          <div className="overflow-x-auto rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t("machines.colAccount")}</TableHead>
-                  <TableHead>{t("machines.colUntil")}</TableHead>
-                  <TableHead>{t("machines.colReason")}</TableHead>
-                  <TableHead>{t("machines.colReportedBy")}</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {cooldowns.data.map((c) => (
-                  <CooldownRow key={c.account} cooldown={c} onChanged={reload} />
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        ) : null}
-      </section>
-
-      <section className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-lg font-semibold tracking-tight">{t("machines.costs")}</h2>
-          <p className="text-sm text-muted-foreground">{t("machines.costsHint")}</p>
-        </div>
-        <ErrorNote error={costs.error} />
-        {costs.data ? <Costs summary={costs.data} /> : null}
-      </section>
     </Page>
   );
 }
@@ -263,39 +229,3 @@ function CompressionTable({ rows }: { rows: CompressionCompare[] }) {
 }
 
 
-function CooldownRow({ cooldown: c, onChanged }: { cooldown: QuotaCooldown; onChanged: () => void }) {
-  const { client, me } = useHive();
-  const t = useT();
-  const action = useAction();
-  return (
-    <TableRow>
-      <TableCell className="align-top font-mono text-xs">{c.account}</TableCell>
-      <TableCell className="align-top text-muted-foreground">{formatTime(c.until)}</TableCell>
-      <TableCell className="align-top whitespace-normal">
-        <div className="flex max-w-80 min-w-48 flex-col gap-2">
-          <span className="whitespace-pre-wrap wrap-anywhere">{c.reason || <span className="text-muted-foreground">—</span>}</span>
-          <ErrorNote error={action.error} />
-        </div>
-      </TableCell>
-      <TableCell className="align-top font-mono text-xs text-muted-foreground">{c.reportedBy}</TableCell>
-      <TableCell className="text-right align-top">
-        {canClearCooldown(me) ? (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={action.busy}
-            title={t("machines.clearHint")}
-            onClick={() =>
-              void action.run(async () => {
-                await client.call("cooldowns.clear", { account: c.account });
-                onChanged();
-              })
-            }
-          >
-            {t("machines.clear")}
-          </Button>
-        ) : null}
-      </TableCell>
-    </TableRow>
-  );
-}

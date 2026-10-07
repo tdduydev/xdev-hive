@@ -1111,6 +1111,7 @@ async function main() {
     tab = current = tabs.lan;
     await tab.go("machines");
     // On the agent map (31b) the switches are under each machine's column.
+    await tab.click('[data-map-manage="lan-mbp"]');
     await tab.click("summary", "Bật/tắt và ưu tiên gói");
     await tab.click('[aria-label="Bật gói claude-1"]');
     await tab.waitFor("the change waiting on the page", () => document.body.innerText.includes("chờ máy áp dụng"));
@@ -1120,6 +1121,7 @@ async function main() {
     expect(after.profileChanges.length === 0, `still sent: ${JSON.stringify(after.profileChanges)}`);
     await tab.reload();
     await tab.go("machines");
+    await tab.click('[data-map-manage="lan-mbp"]');
     await tab.click("summary", "Bật/tắt và ưu tiên gói");
     await tab.waitFor("claude-1 off, nothing waiting", () => document.querySelector('[aria-label="Bật gói claude-1"]')?.getAttribute("aria-checked") === "false" && !document.body.innerText.includes("chờ máy áp dụng"));
   });
@@ -1155,6 +1157,15 @@ async function main() {
       expect(await tab.eval(() => [...document.querySelectorAll("[data-quota-kind], [data-quota-machine], [data-quota-available]")].every(el => (el.tagName === "INPUT" ? el.closest("label") : el).getBoundingClientRect().height >= 44)), "quota controls smaller than 44px");
       expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "quota page overflows phone");
     }
+    expect(await tab.eval(() => document.querySelector('[data-quota-table] thead tr').children.length === 5), "quota needs five columns");
+    const heights = await tab.eval(() => [...document.querySelectorAll('[data-quota-missing]')].map(row => row.getBoundingClientRect().height));
+    if (!mobile) expect(heights.every(h => h <= 72), `missing quota rows taller than 72px: ${heights}`);
+    expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "quota overflows viewport");
+    for (const theme of ["light", "dark"]) {
+      await tab.eval(theme => document.documentElement.dataset.theme = theme, theme);
+      await tab.shot(`${String(n).padStart(2, "0")}-quota-outlook-${theme}`);
+    }
+    await tab.eval(() => document.documentElement.dataset.theme = "light");
     await tab.eval(() => {
       const select = document.querySelector("[data-quota-machine]");
       const option = [...select.options].find(o => o.textContent === "quota-one");
@@ -3420,6 +3431,13 @@ async function main() {
     expect(pickable !== "checkbox", "a signed-out subscription cannot be picked");
     const codexLine = await tab.eval(() => document.querySelector('[data-map-profile="lan-mini/codex-2"] [data-usage-resets]')?.textContent ?? "");
     expect(codexLine.includes("phiên làm mới Oct 5 at 4:00pm") && codexLine.includes("tuần làm mới Oct 9") && codexLine.includes("cập nhật lúc"), `codex-2: ${codexLine}`);
+    expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth && [...document.querySelectorAll('[data-map-machine]')].every(el => el.getBoundingClientRect().right <= innerWidth)), "machine grid overflows viewport");
+    expect(await tab.eval(() => !!document.querySelector('[data-attention]') && document.querySelectorAll('[data-summary]').length === 4), "missing attention or summary");
+    for (const theme of ["light", "dark"]) {
+      await tab.eval(theme => document.documentElement.dataset.theme = theme, theme);
+      await tab.shot(`${String(n).padStart(2, "0")}-agent-map-${theme}`);
+    }
+    await tab.eval(() => document.documentElement.dataset.theme = "light");
     await tab.shot(`${String(n).padStart(2, "0")}-agent-map-codex`);
     await tab.click('[data-map-profile="lan-mbp/claude-1"]');
     await tab.click('[data-map-profile="lan-mini/claude-2"]');
@@ -3459,6 +3477,7 @@ async function main() {
       current = tab;
       await tab.reload();
       await tab.go("machines");
+      if (await tab.eval(name => !!document.querySelector(`[data-map-manage="${name}"]`), machineName)) await tab.click(`[data-map-manage="${machineName}"]`);
       await tab.waitFor("tool section", (selector) => document.querySelector(selector), panel);
       await tab.click(`${panel} summary`);
       await tab.waitFor("tool commands", (selector) => document.querySelector(`${selector} pre`)?.textContent.includes("web-approval-fixture@1.2.3"), row);
