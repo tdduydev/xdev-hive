@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import {
   SqliteHive, TerminalStore, TerminalRedactor, TerminalRecorder, TerminalRecorderError, TerminalRecordingStore, TerminalTranscriptTampered,
   loadTerminalKey, purgeTerminalSpools, readTerminalTranscript, terminalRecorderReady, terminalRecordingChunks, terminalRecordingChunkSchema,
-  type Actor, type TerminalCapability, type RecorderIo,
+  type Actor, type TerminalCapability, type TerminalMachineIdentity, type RecorderIo,
 } from "#core/node.ts";
 
 // Synthetic canaries only (spec §8): built at run time so no scanner mistakes this file for a leak.
@@ -42,9 +42,22 @@ describe("69d transcript redactor", () => {
   });
 
   it("hides the profile's own secret values and keeps split UTF-8 intact", () => {
-    const r = new TerminalRedactor([PROFILE, "short"]);
-    const out = byteByByte(r, `Tiếng Việt có dấu ✓\nexport X=${PROFILE}\nshort is fine\n`);
-    assert.equal(out, "Tiếng Việt có dấu ✓\n(line hidden: it looked like a known secret)\nshort is fine\n");
+    const r = new TerminalRedactor([PROFILE]);
+    const out = byteByByte(r, `Tiếng Việt có dấu ✓\nexport X=${PROFILE}\nall fine\n`);
+    assert.equal(out, "Tiếng Việt có dấu ✓\n(line hidden: it looked like a known secret)\nall fine\n");
+  });
+
+  it("hides known values of any length, and each line of one with line breaks", () => {
+    const note = "(line hidden: it looked like a known secret)\n";
+    const short = new TerminalRedactor(["q7", "", "  "]);
+    assert.equal(byteByByte(short, "pin q7 ok\nnothing here\n"), `${note}nothing here\n`, "short values are hidden too; blank ones match nothing");
+    const multi = new TerminalRedactor(["first-half-of-it\r\nsecond-half-of-it"]);
+    assert.equal(byteByByte(multi, "a first-half-of-it\nb second-half-of-it\nc\n"), `${note}${note}c\n`);
+    // Longer than the tail kept of a long line: it must still be seen whole before any of it is let out.
+    const long = "L0ng" + "abcdef0123456789".repeat(130);
+    const out = byteByByte(new TerminalRedactor([long]), `${"a".repeat(9000)}${long}${"b".repeat(9000)}\nafter\n`);
+    assert.ok(!out.includes(long.slice(0, 40)) && !out.includes("abcdef0123456789"), "no part of it leaves");
+    assert.ok(out.includes(note) && out.endsWith("after\n"));
   });
 
   it("drops OSC strings (clipboard writes, titles) whole", () => {
@@ -56,6 +69,16 @@ describe("69d transcript redactor", () => {
     const out = byteByByte(new TerminalRedactor(), "before\n-----BEGIN OPENSSH PRIVATE KEY-----\nAAAAsecretbody\n-----END OPENSSH PRIVATE KEY-----\nafter\n");
     assert.ok(!out.includes("AAAAsecretbody"));
     assert.match(out, /^before\n(\(line hidden: it looked like a private key\)\n){3}after\n$/);
+  });
+
+  it("keeps hiding a private key whose BEGIN line was too long to hold", () => {
+    const begin = "-----BEGIN RSA PRIVATE KEY-----";
+    const rest = "\nKEYBODYsecret1\nKEYBODYsecret2\n-----END RSA PRIVATE KEY-----\nafter\n";
+    for (const line of [`${"x".repeat(8000)}${begin}${"y".repeat(500)}`, `${begin}${"z".repeat(9000)}`]) {
+      const out = byteByByte(new TerminalRedactor(), line + rest);
+      assert.ok(!out.includes("KEYBODY"), out.slice(-300));
+      assert.ok(out.endsWith("(line hidden: it looked like a private key)\nafter\n"));
+    }
   });
 
   it("bounds a line that never ends and still hides a secret in it", () => {
@@ -175,6 +198,21 @@ describe("69d encrypted spool", () => {
     done();
   });
 
+  it("writes the close event at the quota even when a long unfinished line is held back", () => {
+    const { root, master, done } = setup();
+    const id = sid();
+    const rec = TerminalRecorder.open({ root, sessionId: id, master, quotaBytes: 4096 + 20_000 });
+    rec.spawn(80, 24);
+    // No newline: the redactor holds it, and at close it is bigger than the whole reserve.
+    rec.output(bytes("h".repeat(4500)));
+    assert.throws(() => { for (;;) rec.input(1); }, (e: TerminalRecorderError) => e.failure === "quota");
+    rec.close("auditFailed");
+    const events = readTerminalTranscript(root, id, master).events;
+    const last = events.at(-1);
+    assert.equal(last?.type === "close" && last.reason, "auditFailed");
+    done();
+  });
+
   it("refuses to open when the spool, the key or the session id is not right", () => {
     const { dir, root, master, done } = setup();
     assert.equal(terminalRecorderReady(root, master), null);
@@ -224,6 +262,14 @@ describe("69d hub recording store", () => {
   const person = (account: string, extra: Partial<Actor> = {}): Actor =>
     ({ name: account, role: "member", account, source: web, humanSession: `s-${account}`, access: { projects: { app: "member" } }, ...extra });
   const runner: Actor = { name: "runner.mini@mini", role: "agent", account: "owner" };
+  /**
+   * SEC-machine-identity as the hub will give it: holding the paired token (here: being that very actor object, as a
+   * token id would be) and the owner pinned with it, whatever a later heartbeat wrote into machines.owner.
+   */
+  const identity: TerminalMachineIdentity = {
+    isMachineActor: (machineId, actor) => machineId === runner.name && actor === runner,
+    pinnedOwner: (machineId) => (machineId === runner.name ? "owner" : null),
+  };
 
   async function hub() {
     const dir = temp();
@@ -233,7 +279,7 @@ describe("69d hub recording store", () => {
     const sessions = new TerminalStore(h.db, () => now);
     const s = sessions.create({ project: "app", machineId: runner.name, creator: "alice", browserSession: "b", checkoutRef: "repo", reason: "", idempotencyKey: sid() });
     const master = loadTerminalKey(path.join(dir, "recording.key"));
-    const store = new TerminalRecordingStore(h.db, path.join(dir, "recordings"), master, () => now);
+    const store = new TerminalRecordingStore(h.db, path.join(dir, "recordings"), master, () => now, identity);
     return { dir, h, s, sessions, store, master, tick: (days: number) => { now = new Date(now.getTime() + days * 86_400_000); },
       done: () => { h.close(); rmSync(dir, { recursive: true, force: true }); } };
   }
@@ -297,11 +343,79 @@ describe("69d hub recording store", () => {
     assert.equal(audit.length, 8);
     assert.deepEqual(audit.filter((a) => a.detail === "denied").map((a) => a.actor), ["alice", "mallory", "alice", "alice", "runner.mini@mini"]);
 
-    const file = path.join(dir, "recordings", s.id, "1.bin");
+    const ref = (h.db.prepare("SELECT storage_ref FROM terminal_audit_chunks WHERE session_id = ?").get(s.id) as { storage_ref: string }).storage_ref;
+    const file = path.join(dir, "recordings", ref);
     const bad = readFileSync(file);
     bad[bad.length - 1]! ^= 1;
     writeFileSync(file, bad);
     assert.throws(() => read(person("alice")), { code: "conflict" });
+    rmSync(file);
+    assert.throws(() => read(person("alice")), { code: "conflict" }, "a missing file is reported the same way");
+    const failed = h.db.prepare("SELECT actor, detail FROM audit WHERE action = 'terminal.recording.view' AND detail LIKE 'failed%'").all();
+    assert.deepEqual(failed.map((a) => ({ ...a })), [{ actor: "alice", detail: "failed cursor=0" }, { actor: "alice", detail: "failed cursor=0" }],
+      "an allowed read that fails is audited too");
+    done();
+  });
+
+  it("trusts the machine's pinned credential, not its name or the owner a heartbeat wrote", async () => {
+    const { h, s, store, dir, master, done } = await hub();
+    const [a] = terminalRecordingChunks(machineChunks(s.id, ["one"]));
+    // Another account heartbeats under the same machine name: the row's owner becomes theirs.
+    h.db.prepare("UPDATE machines SET owner = 'mallory' WHERE id = ?").run(runner.name);
+    assert.throws(() => store.put({ ...runner, account: "mallory" }, s.id, a), { code: "forbidden" }, "the same name, another account");
+    assert.throws(() => store.put({ ...runner }, s.id, a), { code: "forbidden" }, "the same name and account, not the paired token");
+    assert.equal(store.put(runner, s.id, a), "stored");
+    const read = (st: TerminalRecordingStore, actor: Actor) => st.read(actor, { project: "app", sessionId: s.id, hubEnabled: true, stepUp: true });
+    assert.throws(() => read(store, person("mallory")), { code: "forbidden" }, "the heartbeat's owner reads nothing");
+    assert.ok(read(store, person("owner")).events.length, "the pinned owner does");
+
+    // A hub without the pinned identity: nothing is uploaded and the machine's owner gets no reads, creator and admins do.
+    const bare = new TerminalRecordingStore(h.db, path.join(dir, "recordings"), master, () => new Date());
+    assert.throws(() => bare.put(runner, s.id, a), { code: "forbidden" });
+    assert.throws(() => read(bare, person("owner")), { code: "forbidden" });
+    assert.ok(read(bare, person("alice")).events.length);
+    done();
+  });
+
+  it("filters the session as one stream: a secret split across events or chunks is still hidden", async () => {
+    const { s, store, done } = await hub();
+    const at = "2026-10-08T00:00:00.000Z";
+    const out = (seq: number, text: string) => ({ seq, at, type: "output" as const, text });
+    // What an old or broken app might upload: nothing filtered, events cut anywhere.
+    const [a] = terminalRecordingChunks([out(1, `token ${GH.slice(0, 12)}`), out(2, `${GH.slice(12)} end\n-----BEGIN RSA PRIVATE KEY-----\n`)]);
+    const [b] = terminalRecordingChunks([
+      out(3, "KEYBODYsecret1\n"), out(4, "KEYBODYsecret2\n-----END RSA PRIVATE KEY-----\nvisible "),
+      { seq: 5, at, type: "close", reason: "exited", exitCode: 0 },
+    ], { seq: 1, hash: a!.hash });
+    store.put(runner, s.id, a);
+    store.put(runner, s.id, b);
+    const page = store.read(person("alice"), { project: "app", sessionId: s.id, hubEnabled: true, stepUp: true });
+    const text = page.events.flatMap((e) => (e.type === "output" ? [e.text] : [])).join("");
+    assert.ok(!text.includes(GH.slice(4, 16)) && !text.includes("KEYBODY"), text);
+    assert.equal(text, "(line hidden: it looked like a GitHub token)\n" + "(line hidden: it looked like a private key)\n".repeat(4) + "visible ");
+    assert.equal(page.events.at(-1)?.type, "close");
+    assert.equal(page.hubRedacted, 5);
+    done();
+  });
+
+  it("leaves no file behind when an upload fails, and purges by directory", async () => {
+    const { h, s, sessions, store, dir, tick, done } = await hub();
+    const recordings = path.join(dir, "recordings");
+    const [a] = terminalRecordingChunks(machineChunks(s.id, ["one"]));
+    h.db.exec("CREATE TRIGGER chunk_fails BEFORE INSERT ON terminal_audit_chunks BEGIN SELECT RAISE(ABORT, 'row not written'); END");
+    assert.throws(() => store.put(runner, s.id, a));
+    assert.deepEqual(readdirSync(path.join(recordings, s.id)), [], "the file of a chunk without a row is removed");
+    h.db.exec("DROP TRIGGER chunk_fails");
+    // A crash between file and row, and the directory of a session the hub no longer has.
+    writeFileSync(path.join(recordings, s.id, "1-crashed.bin"), "x");
+    const gone = sid();
+    mkdirSync(path.join(recordings, gone));
+    mkdirSync(path.join(recordings, "not-a-session"));
+    assert.deepEqual(store.purge(), [gone], "a live session keeps its files");
+    sessions.transition(s.id, s.version, "closed", "userClosed");
+    tick(31);
+    assert.deepEqual(store.purge(), [s.id], "no row needed to find what to delete");
+    assert.deepEqual(readdirSync(recordings), ["not-a-session"]);
     done();
   });
 

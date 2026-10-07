@@ -35,7 +35,8 @@ const LEN_BYTES = 4;
 /** Room kept under the quota so the close event of a session that hit it can still be written. */
 const CLOSE_RESERVE = 4096;
 export const GENESIS_HASH = "0".repeat(64);
-const SESSION_DIR = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** A session id, the only name a spool or recording directory may have: anything else under the root is left alone. */
+export const SESSION_DIR = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 // ── key ──────────────────────────────────────────────────────────────────────
 
@@ -212,7 +213,16 @@ export class TerminalRecorder {
       // cipher failure nothing more is written.
       if (!this.#failed || this.#failed === "quota") {
         const rest = this.#redactor.end();
-        if (rest) this.#write(this.#transcript, { seq: ++this.#seq, at: this.#now().toISOString(), type: "output", text: rest }, true, true);
+        // The held line can be as long as the reserve itself, so it gets only what is left outside it: when it does
+        // not fit it is lost from the transcript (the archive has the raw bytes) and the close event still is written.
+        if (rest) {
+          try {
+            this.#write(this.#transcript, { seq: this.#seq + 1, at: this.#now().toISOString(), type: "output", text: rest }, true);
+            this.#seq++;
+          } catch (e) {
+            if (!(e instanceof TerminalRecorderError && e.failure === "quota")) throw e;
+          }
+        }
         this.#event({ type: "close", reason, exitCode }, { type: "close", reason, exitCode }, true, true);
       }
     } finally {
