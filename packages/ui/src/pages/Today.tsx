@@ -245,7 +245,7 @@ export function TodayPage() {
   }, []);
   // The inbox lives in the shell and polls every 30 s; opening Hôm nay must not show what it fetched up to 30 s ago.
   const reloadInbox = inbox.reload;
-  useEffect(() => reloadInbox(), [reloadInbox]);
+  useEffect(() => { reloadInbox(); }, [reloadInbox]);
 
   const groups = useMemo(() => groupInbox(inbox.items, inbox.role), [inbox.items, inbox.role]);
   // J / K and the first item follow the groups as shown, not the newest-first order they came in.
