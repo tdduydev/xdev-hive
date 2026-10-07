@@ -284,14 +284,15 @@ export function DataTable<T>({
         </div>
       ) : null}
       <div data-card-scroll className="min-h-40 overflow-auto rounded-lg border border-line-default bg-surface" style={{ maxHeight }}>
-        <div data-card-body style={{ minWidth }}>
+        <div data-card-body role="table" aria-label={noun} aria-rowcount={Math.max(matching.length, 1) + 1} aria-colcount={columns.length + (bulk?.length ? 1 : 0)} style={{ minWidth }}>
           <div
             data-card-header
             role="row"
+            aria-rowindex={1}
             className="sticky top-0 z-2 grid h-9 items-center gap-2.5 border-b border-line-subtle bg-sunken px-3.5 type-overline text-fg-muted uppercase"
             style={{ gridTemplateColumns: tracks }}
           >
-            {bulk?.length ? box(pagePicked === 0 ? false : pagePicked === pageKeys.length ? true : "mixed", t("table.selectPage"), () => {
+            {bulk?.length ? <div role="columnheader" aria-label={t("table.selectPage")} className={responsive ? "max-md:[&_button]:hidden" : undefined}>{box(pagePicked === 0 ? false : pagePicked === pageKeys.length ? true : "mixed", t("table.selectPage"), () => {
               setAllMatching(false);
               setPicked((cur) => {
                 const next = new Set(cur);
@@ -299,23 +300,27 @@ export function DataTable<T>({
                 else pageKeys.forEach((k) => next.add(k));
                 return next;
               });
-            }) : null}
+            })}</div> : null}
             {columns.map((c) => (
-              <button
+              <div
                 key={c.key}
-                type="button"
-                disabled={!c.sortValue}
-                onClick={() => toggleSort(c)}
+                role="columnheader"
                 aria-sort={sort?.key === c.key ? (sort.dir === 1 ? "ascending" : "descending") : undefined}
-                title={c.sortValue ? t("table.sortBy", { column: c.label }) : undefined}
-                className={cn("truncate text-left uppercase outline-none", c.align === "right" && "text-right", c.sortValue && "cursor-pointer hover:text-fg-strong", sort?.key === c.key && "text-fg-strong")}
+                className={cn("min-w-0 truncate", c.align === "right" && "text-right", sort?.key === c.key && "text-fg-strong")}
               >
-                {c.label}
-                {sort?.key === c.key ? (sort.dir === 1 ? " ▲" : " ▼") : ""}
-              </button>
+                {c.sortValue ? (
+                  <>
+                    {responsive ? <span className="md:hidden">{c.label}</span> : null}
+                    <button type="button" onClick={() => toggleSort(c)} title={t("table.sortBy", { column: c.label })} className={cn("max-w-full cursor-pointer truncate rounded-xs uppercase outline-none hover:text-fg-strong focus-visible:focus-ring", responsive && "max-md:hidden")}>
+                      {c.label}
+                      <span aria-hidden="true">{sort?.key === c.key ? (sort.dir === 1 ? " ▲" : " ▼") : ""}</span>
+                    </button>
+                  </>
+                ) : c.label}
+              </div>
             ))}
           </div>
-          {visible.map((r) => {
+          {visible.map((r, index) => {
             const k = rowKey(r);
             const on = picked.has(k) || allMatching;
             return (
@@ -324,20 +329,21 @@ export function DataTable<T>({
                 data-card-row
                 data-card-selected={k === selectedKey || on || undefined}
                 role="row"
+                aria-rowindex={current * size + index + 2}
                 tabIndex={onRowClick ? 0 : undefined}
                 onKeyDown={onRowClick ? (e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onRowClick(r); } } : undefined}
                 onClick={onRowClick ? () => onRowClick(r) : undefined}
                 className={cn(
                   "grid items-center gap-2.5 border-b border-line-subtle px-3.5 last:border-b-0",
                   compact ? "min-h-[34px] py-1" : "min-h-12 py-[7px]",
-                  onRowClick && "cursor-pointer",
+                  onRowClick && "cursor-pointer outline-none focus-visible:focus-ring",
                   k === selectedKey ? "bg-selected" : on ? "bg-selected/60" : "hover:bg-sunken",
                   dim?.(r) && "opacity-70",
                 )}
                 style={{ gridTemplateColumns: tracks }}
               >
                 {bulk?.length
-                  ? box(on, t("table.selectRow"), () => {
+                  ? <div role="cell">{box(on, t("table.selectRow"), () => {
                       setAllMatching(false);
                       setPicked((cur) => {
                         const next = new Set(cur);
@@ -345,11 +351,11 @@ export function DataTable<T>({
                         else next.add(k);
                         return next;
                       });
-                    })
+                    })}</div>
                   : null}
                 {columns.map((c) => (
-                  <div data-card-cell data-card-primary={c.key === (columns.find((col) => col.strong)?.key ?? columns[0]?.key) || undefined} data-card-actions={!c.label || undefined} key={c.key} title={c.title?.(r)} className={cn("flex min-w-0 flex-col gap-0.5", c.align === "right" && "items-end text-right")}>
-                    <ResponsiveCellLabel>{c.label}</ResponsiveCellLabel>
+                  <div role="cell" data-card-cell data-card-primary={c.key === (columns.find((col) => col.strong)?.key ?? columns[0]?.key) || undefined} data-card-actions={!c.label || undefined} key={c.key} title={c.title?.(r)} className={cn("flex min-w-0 flex-col gap-0.5", c.align === "right" && "items-end text-right")}>
+                    <ResponsiveCellLabel ariaHidden>{c.label}</ResponsiveCellLabel>
                     <div data-card-value>
                     <div className={cn("w-full truncate text-[13px]/5 text-fg-primary", c.mono && "font-mono text-xs/5", c.strong && "font-semibold text-fg-strong", c.align === "right" && "tabular-nums")}>{c.render(r)}</div>
                     {c.sub ? <div className={cn("w-full truncate text-[11px]/4 text-fg-muted", compact && (responsive ? "md:hidden" : "hidden"))}>{c.sub(r)}</div> : null}
@@ -359,7 +365,7 @@ export function DataTable<T>({
               </div>
             );
           })}
-          {matching.length === 0 ? <div className="p-8 text-center text-[13px] text-fg-muted">{t("table.empty")}</div> : null}
+          {matching.length === 0 ? <div role="row" aria-rowindex={2}><div role="cell" aria-colspan={columns.length + (bulk?.length ? 1 : 0)} className="p-8 text-center text-[13px] text-fg-muted">{t("table.empty")}</div></div> : null}
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-3 text-xs text-fg-muted">

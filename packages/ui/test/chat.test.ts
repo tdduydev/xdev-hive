@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { HUB_SCOPE, type ChatAction, type ChatMessage, type Machine, type ReportedProfile } from "@xdev-hive/core";
 import { createElement } from "react";
+import { type HiveClient } from "#ui/client.ts";
 import { renderToStaticMarkup } from "react-dom/server";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { actionTask, chatMachines, chatTarget, isLiveReply, linkIds, machineName, mergeMessages, pollAfter, remarkHiveLinks, REPLY_MARKDOWN, stepCount, withAction } from "#ui/lib/chat.ts";
+import { actionTask, chatMachines, chatTarget, isLiveReply, linkIds, machineName, mergeMessages, pollAfter, remarkHiveLinks, REPLY_MARKDOWN, sendResearchPlan, stepCount, withAction } from "#ui/lib/chat.ts";
 
 const profile = (over: Partial<ReportedProfile> = {}): ReportedProfile => ({
   id: "claude-1",
@@ -75,6 +76,28 @@ const action = (id: number, over: Partial<ChatAction> = {}): ChatAction => ({
 });
 
 describe("chat helpers", () => {
+  it("returns research recommendations to the same hub conversation for a plan proposal", async () => {
+    const calls: Array<[string, unknown]> = [];
+    const client = { call: async (method: string, input: unknown) => {
+      calls.push([method, input]);
+      return method === "chat.get" ? { thread: { project: HUB_SCOPE } } : {};
+    } } as unknown as HiveClient;
+    const prompt = "Nghiên cứu service app: dùng propose_plan (plan.create). Đề xuất: thêm test quyền.";
+    await sendResearchPlan(client, 7, prompt, "Đã xóa");
+    assert.deepEqual(calls, [["chat.get", { threadId: 7 }], ["chat.send", { project: HUB_SCOPE, threadId: 7, text: prompt }]]);
+    assert.ok(calls.every(([method]) => !["plans.create", "tasks.create", "runs.dispatch"].includes(method)), "the plan still needs the leader's proposal and user confirmation");
+  });
+
+  it("does not report a conversion as sent when the thread disappeared or is busy", async () => {
+    const gone = { call: async () => null } as unknown as HiveClient;
+    await assert.rejects(sendResearchPlan(gone, 7, "Plan", "Đã xóa"), /Đã xóa/);
+    const busy = { call: async (method: string) => {
+      if (method === "chat.get") return { thread: { project: "app" } };
+      throw new Error("Chat busy");
+    } } as unknown as HiveClient;
+    await assert.rejects(sendResearchPlan(busy, 7, "Plan", "Đã xóa"), /Chat busy/);
+  });
+
   it("offers only machines that can hold the project's thread, as the hub checks them", () => {
     const list = [
       machine("mbp"),
@@ -86,9 +109,9 @@ describe("chat helpers", () => {
       // Not checked yet (older app, no status command): the hub lets it try.
       machine("unknown", { profiles: [profile({ loggedIn: null })] }),
     ];
-    assert.deepEqual(chatMachines(list, "app").map((m) => m.machine), ["mbp", "unknown"]);
+    assert.deepEqual(chatMachines(list, "app").map((m) => m.machine), ["mbp", "codex", "unknown"]);
     assert.deepEqual(chatMachines(list, "other").map((m) => m.machine), ["norepo"]);
-    assert.deepEqual(chatMachines([...list, machine("empty", { projects: [] })], HUB_SCOPE).map((m) => m.machine), ["mbp", "norepo", "unknown", "empty"], "a hub-wide leader needs no local repo, but still needs an online machine accepting runs with Claude");
+    assert.deepEqual(chatMachines([...list, machine("empty", { projects: [] })], HUB_SCOPE).map((m) => m.machine), ["mbp", "norepo", "codex", "unknown", "empty"], "a hub-wide leader needs no local repo, but still needs an online machine accepting runs with Claude or Codex");
   });
 
   it("starts a new thread in the app on this machine and its Claude plan, else on what the project saved (roadmap 48)", () => {
@@ -105,14 +128,14 @@ describe("chat helpers", () => {
     const saved = { machineId: "runner.mbp@team", profileId: "claude-1" };
     // This machine's first plan by priority that can write now: not over its limit, not resting, signed in.
     assert.deepEqual(chatTarget(fit, { here: "mini", defaults: saved, now }), { machineId: "runner.mini@team", profileId: "claude-2" });
-    // The project saved this machine and a plan of it: that plan, even one resting (the person chose it).
-    assert.deepEqual(chatTarget(fit, { here: "mini", defaults: { machineId: "runner.mini@team", profileId: "claude-3" }, now }), { machineId: "runner.mini@team", profileId: "claude-3" });
+    // A saved plan without quota yields to the next available plan.
+    assert.deepEqual(chatTarget(fit, { here: "mini", defaults: { machineId: "runner.mini@team", profileId: "claude-3" }, now }), { machineId: "runner.mini@team", profileId: "claude-2" });
     // Every plan busy: the machine picks when the reply starts.
     const tired = machine("mini", { profiles: [profile({ overLimit: true })] });
     assert.deepEqual(chatTarget([tired], { here: "mini", defaults: null, now }), { machineId: "runner.mini@team", profileId: "" });
-    // This machine cannot hold it (or the web): the project's saved machine and plan, else the first that can.
+    // This machine cannot hold it (or the web): the project's saved machine and plan, else the first available plan by priority.
     assert.deepEqual(chatTarget([machine("mbp"), machine("box")], { here: "mini", defaults: saved, now }), { machineId: "runner.mbp@team", profileId: "claude-1" });
-    assert.deepEqual(chatTarget([machine("box"), machine("mbp")], { here: null, defaults: { machineId: "runner.gone@team", profileId: "claude-9" }, now }), { machineId: "runner.box@team", profileId: "" });
+    assert.deepEqual(chatTarget([machine("box"), machine("mbp")], { here: null, defaults: { machineId: "runner.gone@team", profileId: "claude-9" }, now }), { machineId: "runner.box@team", profileId: "claude-1" });
     assert.deepEqual(chatTarget([], { here: "mini", defaults: saved, now }), { machineId: "", profileId: "" });
   });
 

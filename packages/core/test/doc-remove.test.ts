@@ -227,3 +227,40 @@ describe("letting a project key rest (roadmap 38g)", () => {
     assert.equal(log[0]?.detail, "xong");
   });
 });
+
+it("checks every affected descendant before removing, moving or restoring a tree", async () => {
+  const h = await hive();
+  const editor: Actor = { name: "editor", role: "member", access: { projects: { app: { permissions: ["view", "docEdit"] }, web: { permissions: ["view", "docEdit"] } } } };
+  try {
+    await h.call("docs.save", { key: "project/app/arch-db", content: "context", includeInAgents: true }, admin);
+    await assert.rejects(h.call("docs.remove", { key: "project/app/arch" }, editor), code("forbidden", "errors.need.contextEdit"));
+    assert.equal((await h.call("docs.get", { key: "project/app/arch-sys" }, admin))?.removedAt, null);
+    await assert.rejects(h.call("docs.move", { key: "project/app/arch", to: "project/web/arch" }, editor), code("forbidden", "errors.need.contextEdit"));
+    assert.ok(await h.call("docs.get", { key: "project/app/arch-db" }, admin));
+    assert.equal(await h.call("docs.get", { key: "project/web/arch" }, admin), null);
+    await h.call("docs.remove", { key: "project/app/arch" }, admin);
+    await assert.rejects(h.call("docs.restore", { key: "project/app/arch" }, editor), code("forbidden", "errors.need.contextEdit"));
+    assert.ok((await h.call("docs.get", { key: "project/app/arch" }, admin))?.removedAt);
+    await h.call("docs.restore", { key: "project/app/arch" }, admin);
+    await h.call("docs.move", { key: "project/app/arch", to: "project/web/arch" }, admin);
+    assert.ok(await h.call("docs.get", { key: "project/web/arch-db" }, admin));
+  } finally { h.close(); }
+});
+
+it("checks removed descendants and the destination context grant when moving", async () => {
+  const h = await hive();
+  const sourceOnly: Actor = { name: "source", role: "member", access: { projects: { app: { permissions: ["view", "docEdit", "contextEdit"] }, web: { permissions: ["view", "docEdit"] } } } };
+  const editor: Actor = { name: "editor", role: "member", access: { projects: { app: { permissions: ["view", "docEdit"] }, web: { permissions: ["view", "docEdit"] } } } };
+  try {
+    await h.call("docs.save", { key: "project/app/arch-db", content: "context by path", paths: ["src/**"] }, admin);
+    await h.call("docs.remove", { key: "project/app/arch-db" }, admin);
+    for (const actor of [sourceOnly, editor]) {
+      await assert.rejects(h.call("docs.move", { key: "project/app/arch", to: "project/web/arch" }, actor), code("forbidden", "errors.need.contextEdit"));
+      assert.ok((await h.call("docs.get", { key: "project/app/arch-db" }, admin))?.removedAt);
+      assert.equal(await h.call("docs.get", { key: "project/web/arch" }, admin), null);
+    }
+    await h.call("docs.move", { key: "project/app/arch-sys", parent: null }, sourceOnly);
+    await h.call("docs.remove", { key: "project/app/arch" }, editor);
+    await h.call("docs.restore", { key: "project/app/arch" }, editor);
+  } finally { h.close(); }
+});

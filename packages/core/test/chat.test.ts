@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { HiveError, type Actor } from "#core/index.ts";
-import { SqliteHive } from "#core/node.ts";
+import { SqliteHive, migrationIndex } from "#core/node.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
 const mbp: Actor = { name: "runner.duy-mbp@duy-mbp", role: "agent" };
@@ -58,6 +61,72 @@ async function refusal(call: Promise<unknown>): Promise<string | undefined> {
 }
 
 describe("chat with a project's leader", () => {
+  it("chooses an available Codex leader by priority, saves defaults and resumes its own profile", async () => {
+    const { hive, beat } = await hub();
+    await beat(mbp, { profiles: [profile("claude-1", { priority: 1, overLimit: true }), profile("codex-1", { priority: 5 }), profile("codex-2", { priority: 10 })] });
+    await hive.call("chat.setDefaults", { project: "app", machineId: mbp.name, profileId: null, model: null, effort: null }, lead);
+    const first = await hive.call("chat.send", { project: "app", text: "Read app" }, lead);
+    assert.equal(first.thread.profileId, "codex-1");
+    await hive.call("chat.finish", { replyId: first.reply.id, status: "done", sessionId: "codex-thread", profileId: "codex-1", tokens: { inputTokens: 8, cacheReadTokens: 2, outputTokens: 3 } }, mbp);
+    await beat(mbp, { profiles: [profile("claude-1", { priority: 1 }), profile("codex-1", { priority: 20 })] });
+    await hive.call("chat.send", { project: "app", threadId: first.thread.id, text: "Continue" }, lead);
+    const [req] = await hive.call("chat.poll", {}, mbp);
+    assert.deepEqual([req!.profileId, req!.sessionId], ["codex-1", "codex-thread"], "the next turn never resumes on a higher priority account");
+    hive.close();
+  });
+
+  it("keeps a Claude quota failure until the next send and refuses fallback when no Codex quota is available", async () => {
+    const { hive, beat } = await hub();
+    await beat(mbp);
+    const first = await hive.call("chat.send", { project: "app", machineId: mbp.name, text: "Read app" }, lead);
+    await hive.call("chat.finish", { replyId: first.reply.id, status: "failed", sessionId: "claude-session", rateLimited: true, error: { message: "Usage limit reached" } }, mbp);
+    await beat(mbp, { profiles: [profile("claude-1"), profile("codex-1", { overLimit: true })] });
+    assert.equal(await refusal(hive.call("chat.send", { project: "app", threadId: first.thread.id, text: "Continue" }, lead)), "errors.chatNoProfile");
+    assert.equal((await hive.call("chat.get", { threadId: first.thread.id }, lead))!.messages.length, 2, "failed send creates no half turn");
+    await beat(mbp);
+    const next = await hive.call("chat.send", { project: "app", threadId: first.thread.id, text: "Continue" }, lead);
+    assert.equal(next.reply.switchedFrom, "claude-1");
+    assert.equal((await hive.call("chat.poll", {}, mbp))[0]!.sessionId, null);
+    hive.close();
+  });
+
+  it("does not let a late cancelled Claude finish overwrite the next Codex turn's session", async () => {
+    const { hive, beat } = await hub();
+    await beat(mbp);
+    const first = await hive.call("chat.send", { project: "app", machineId: mbp.name, text: "First" }, lead);
+    await hive.call("chat.cancel", { replyId: first.reply.id }, lead);
+    await beat(mbp, { profiles: [profile("claude-1", { overLimit: true }), profile("codex-1")] });
+    const next = await hive.call("chat.send", { project: "app", threadId: first.thread.id, text: "Next" }, lead);
+    await hive.call("chat.finish", { replyId: first.reply.id, status: "done", sessionId: "late-claude-session", profileId: "claude-1" }, mbp);
+    const [req] = await hive.call("chat.poll", {}, mbp);
+    assert.deepEqual([req!.profileId, req!.sessionId], ["codex-1", null]);
+    await hive.call("chat.finish", { replyId: next.reply.id, status: "done", sessionId: "new-codex-session", profileId: "codex-1" }, mbp);
+    assert.equal((await hive.call("chat.get", { threadId: first.thread.id }, lead))!.thread.profileId, "codex-1");
+    hive.close();
+  });
+
+  it("upgrades existing chats without losing their session or messages", async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "hive-chat-codex-migration-"));
+    const file = path.join(dir, "hive.db");
+    try {
+      const hive = new SqliteHive(file);
+      await hive.call("machines.heartbeat", { machine: "test", instance: "1234abcd", projects: ["app"], acceptsRuns: true, profiles: [profile("claude-1")] }, mbp);
+      const first = await hive.call("chat.send", { project: "app", machineId: mbp.name, text: "Old message" }, lead);
+      await hive.call("chat.finish", { replyId: first.reply.id, status: "done", text: "Old answer", sessionId: "old-session", costUsd: 0.01 }, mbp);
+      // Recreate the pre-chat-upgrade schema, including the later research table, before replaying migrations.
+      hive.db.exec(`DROP TABLE research_runs; ALTER TABLE chat_messages DROP COLUMN tokens; ALTER TABLE chat_messages DROP COLUMN switched_from; ALTER TABLE chat_messages DROP COLUMN rate_limited; PRAGMA user_version = ${migrationIndex("ALTER TABLE chat_messages ADD COLUMN tokens")}`);
+      hive.close();
+      const upgraded = new SqliteHive(file);
+      try {
+        const chat = (await upgraded.call("chat.get", { threadId: first.thread.id }, lead))!;
+        assert.deepEqual(chat.messages.map((m) => m.text), ["Old message", "Old answer"]);
+        assert.equal(chat.messages[1]!.tokens, null);
+        assert.equal(chat.messages[1]!.costUsd, 0.01);
+        await upgraded.call("chat.send", { project: "app", threadId: first.thread.id, text: "Next" }, lead);
+        assert.equal((await upgraded.call("chat.poll", {}, mbp))[0]!.sessionId, "old-session");
+      } finally { upgraded.close(); }
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
   it("starts a thread on one machine, hands it the reply, and resumes the session for the next message", async () => {
     const { hive, beat } = await hub();
     await beat(mbp);
@@ -65,7 +134,7 @@ describe("chat with a project's leader", () => {
     const first = await hive.call("chat.send", { project: "app", machineId: mbp.name, text: "Plan AUTH-13\nwith tests" }, lead);
     assert.deepEqual([first.thread.title, first.thread.machine, first.thread.busy, first.thread.createdBy], ["Plan AUTH-13", "duy-mbp", true, "lan"]);
     assert.deepEqual([first.message.role, first.message.author, first.message.text], ["user", "lan", "Plan AUTH-13\nwith tests"]);
-    assert.deepEqual([first.reply.role, first.reply.status, first.reply.author], ["assistant", "pending", "claude@duy-mbp"]);
+    assert.deepEqual([first.reply.role, first.reply.status, first.reply.author], ["assistant", "pending", "claude-1@duy-mbp"]);
 
     assert.deepEqual((await beat(mini)).chatRequests, [], "only the thread's machine");
     // Between heartbeats the machine asks for the same, every few seconds.
@@ -107,13 +176,13 @@ describe("chat with a project's leader", () => {
     assert.equal(await ask({}, outsider), "errors.notFound");
     assert.equal(await ask({ machineId: undefined }), "errors.chatMachine");
     assert.equal(await ask({ machineId: "runner.nobody@x" }), "errors.machineNotFound");
-    assert.equal(await ask({ profileId: "codex-1" }), "errors.chatNoClaude", "the leader runs on Claude Code");
+    assert.equal(await ask({ profileId: "gemini-1" }), "errors.chatNoProfile", "only Claude and Codex leaders");
     assert.equal(await ask({ text: "use ​this" }), "errors.hidden.zeroWidth");
     const site = await hive.call("chat.send", { project: "site", machineId: mbp.name, text: "hi" }, admin);
     assert.equal(await ask({ threadId: site.thread.id }), "errors.chatNotFound", "a thread of another project");
 
     await beat(mbp, { profiles: [profile("claude-1", { loggedIn: false }), profile("codex-1")] });
-    assert.equal(await ask({}), "errors.chatNoClaude", "signed out");
+    assert.equal(await ask({ profileId: "claude-1" }), "errors.chatNoProfile", "the pinned profile is signed out");
     await beat(mbp, { projects: ["site"] });
     assert.equal(await ask({}), "errors.machineNoRepo");
     await beat(mbp, { acceptsRuns: false });
@@ -230,7 +299,7 @@ describe("chat with a project's leader", () => {
     assert.deepEqual([request!.model, request!.effort], ["opus", "high"], "the machine hears them");
     // Picked: kept, even "the profile's own" (null).
     const own = await hive.call("chat.send", { project: "app", machineId: mbp.name, profileId: null, model: null, effort: "low", text: "Quick one" }, lead);
-    assert.deepEqual([own.thread.machineId, own.thread.profileId, own.thread.model, own.thread.effort], [mbp.name, null, null, "low"]);
+    assert.deepEqual([own.thread.machineId, own.thread.profileId, own.thread.model, own.thread.effort], [mbp.name, "claude-1", null, "low"]);
 
     const changed = await hive.call("chat.configure", { threadId: plain.thread.id, model: "sonnet", effort: null }, lead);
     assert.deepEqual([changed.model, changed.effort], ["sonnet", null]);
@@ -289,6 +358,137 @@ describe("what a chat leader proposes", () => {
     const leader: Actor = { name: "claude-1.duy-mbp@chat-lan", role: "agent", access: { projects: { app: "contribute" } }, chatReply: sent.reply.id };
     return { hive, later, sent, leader };
   }
+
+  const taskOf = async (hive: SqliteHive, id: string, actor: Actor) => (await hive.call("tasks.list", {}, actor)).find((t) => t.id === id) ?? null;
+
+  const plan = () => ({
+    kind: "plan.create" as const,
+    spec: { key: "project/app/reset-plan", title: "Reset password", content: "# Reset password\nSend a single-use link." },
+    // Deliberately reversed: dependencies, not array order, determine creation order.
+    tasks: [
+      { id: "PLAN-2", title: "Reset UI", acceptance: "Expired links show a useful error", dependsOn: ["PLAN-1"] },
+      { id: "PLAN-1", title: "Reset API", acceptance: "A link can be used only once", dependsOn: ["T-1"] },
+    ],
+    batches: [{ title: "API", taskIds: ["PLAN-1"] }, { title: "UI", taskIds: ["PLAN-2"] }],
+  });
+
+  it("creates an entire plan once, with its spec, acceptance criteria and dependency order", async () => {
+    const { hive, leader } = await leading();
+    const a = await hive.call("chat.propose", { action: plan(), reason: "Requested reset" }, leader);
+    assert.equal(a.status, "proposed");
+    assert.equal(await taskOf(hive, "PLAN-1", lead), null);
+    const done = await hive.call("chat.decide", { actionId: a.id, accept: true }, lead);
+    assert.equal(done.status, "done", JSON.stringify(done.error));
+    const policy = (await hive.call("sdlc.get", {}, lead)).projects.app;
+    assert.equal(policy?.autoDispatch, true);
+    const stored = JSON.parse(String(hive.db.prepare("SELECT value FROM settings WHERE key = 'sdlcPolicy'").get()?.value));
+    assert.equal(stored.projects.app.autoDispatchBy, lead.name);
+    assert.deepEqual(done.result, { specKey: plan().spec.key, taskIds: ["PLAN-2", "PLAN-1"] });
+    assert.equal((await hive.call("docs.get", { key: plan().spec.key }, lead))?.content, plan().spec.content);
+    const task = await taskOf(hive, "PLAN-2", lead);
+    assert.deepEqual(task?.dependsOn, ["PLAN-1"]);
+    assert.match(task?.note ?? "", /Expired links/);
+    assert.match(task?.note ?? "", /project\/app\/reset-plan/);
+    assert.equal(await refusal(hive.call("chat.decide", { actionId: a.id, accept: true }, lead)), "errors.chatActionDecided");
+    hive.close();
+  });
+
+  it("validates cyclic dependencies, duplicate ids, batch order and spec scope before proposing", async () => {
+    const { hive, leader } = await leading();
+    const invalid = [
+      { ...plan(), spec: { ...plan().spec, key: "org/reset-plan" } },
+      { ...plan(), spec: { ...plan().spec, key: "project/site/reset-plan" } },
+      { ...plan(), tasks: [plan().tasks[0]!, plan().tasks[0]!] },
+      { ...plan(), batches: [...plan().batches].reverse() },
+      { ...plan(), tasks: plan().tasks.map((t) => ({ ...t, dependsOn: [t.id === "PLAN-1" ? "PLAN-2" : "PLAN-1"] })), batches: [{ title: "All", taskIds: ["PLAN-1", "PLAN-2"] }] },
+      { ...plan(), tasks: [{ ...plan().tasks[0]!, acceptance: "" }] },
+    ];
+    for (const action of invalid) await assert.rejects(hive.call("chat.propose", { action, reason: "Invalid" }, leader));
+    assert.equal(await hive.call("docs.get", { key: plan().spec.key }, lead), null);
+    hive.close();
+  });
+
+  it("allows a reviewed plan without enabling auto-dispatch", async () => {
+    const { hive, leader } = await leading();
+    try {
+      const a = await hive.call("chat.propose", { action: plan(), reason: "Requested" }, leader);
+      const done = await hive.call("chat.decide", { actionId: a.id, accept: true, autoDispatch: false }, lead);
+      assert.equal(done.status, "done");
+      assert.equal((await hive.call("sdlc.get", {}, lead)).projects.app?.autoDispatch, false);
+    } finally { hive.close(); }
+  });
+
+  it("keeps the plan's auto-dispatch choice when accepting all reply actions", async () => {
+    const { hive, leader } = await leading();
+    try {
+      const a = await hive.call("chat.propose", { action: plan(), reason: "Requested" }, leader);
+      const done = await hive.call("chat.decideAll", { replyId: leader.chatReply!, accept: true, autoDispatch: { [a.id]: false } }, lead);
+      assert.equal(done.find(action => action.id === a.id)?.status, "done");
+      assert.equal((await hive.call("sdlc.get", {}, lead)).projects.app?.autoDispatch, false);
+    } finally { hive.close(); }
+  });
+
+  it("rechecks conflicts when accepted and leaves no partial plan", async () => {
+    const { hive, leader } = await leading();
+    const a = await hive.call("chat.propose", { action: plan(), reason: "Requested reset" }, leader);
+    await hive.call("tasks.create", { project: "app", id: "PLAN-2", title: "Already taken" }, lead);
+    const failed = await hive.call("chat.decide", { actionId: a.id, accept: true }, lead);
+    assert.equal(failed.status, "failed");
+    assert.equal(await hive.call("docs.get", { key: plan().spec.key }, lead), null);
+    assert.equal(await taskOf(hive, "PLAN-1", lead), null);
+    hive.close();
+  });
+
+  it("runs plans only under configured autonomy, and dismissal writes nothing", async () => {
+    const first = await leading();
+    const a = await first.hive.call("chat.propose", { action: plan(), reason: "Requested" }, first.leader);
+    assert.equal((await first.hive.call("chat.decide", { actionId: a.id, accept: false }, lead)).status, "dismissed");
+    assert.equal(await first.hive.call("docs.get", { key: plan().spec.key }, lead), null);
+    first.hive.close();
+    const { hive, leader } = await leading();
+    await hive.call("chat.setAutonomy", { project: "app", kinds: ["plan.create"] }, admin);
+    const done = await hive.call("chat.propose", { action: plan(), reason: "Requested" }, leader);
+    assert.equal(done.status, "done", JSON.stringify(done.error));
+    assert.equal(done.auto, true);
+    assert.equal(done.decidedBy, lead.name);
+    assert.notEqual((await hive.call("sdlc.get", {}, admin)).projects.app?.autoDispatch, true, "a plan the leader ran alone leaves auto-dispatch off");
+    hive.close();
+  });
+
+  it("keeps a cross-service system plan atomic when the approver lacks rights to a service", async () => {
+    const { hive, leader } = await leading();
+    await hive.call("systems.save", { name: "product", projects: ["app", "site"] }, admin);
+    const action = { ...plan(), spec: { ...plan().spec, key: "system/product/reset-plan" }, tasks: plan().tasks.map((t) => ({ ...t, project: t.id === "PLAN-2" ? "site" : "app" })) };
+    const wideLeader = { ...leader, access: { projects: { app: "contribute" as const, site: "contribute" as const } } };
+    const a = await hive.call("chat.propose", { action, reason: "Across services" }, wideLeader);
+    const failed = await hive.call("chat.decide", { actionId: a.id, accept: true }, lead);
+    assert.equal(failed.status, "failed");
+    assert.equal(await hive.call("docs.get", { key: action.spec.key }, admin), null);
+    assert.equal(await taskOf(hive, "PLAN-1", admin), null);
+    const b = await hive.call("chat.propose", { action, reason: "Across services" }, wideLeader);
+    assert.equal((await hive.call("chat.decide", { actionId: b.id, accept: true }, admin)).status, "done");
+    hive.close();
+  });
+
+  it("keeps a plan's task ids apart from the reply's other proposals, and logs what it made as tasks.create does", async () => {
+    const { hive, leader } = await leading();
+    await hive.call("chat.propose", { action: { kind: "task.create", id: "PLAN-1", title: "Taken" }, reason: "First" }, leader);
+    assert.equal(await refusal(hive.call("chat.propose", { action: plan(), reason: "Requested" }, leader)), "errors.taskExists");
+    const { hive: other, leader: second } = await leading();
+    const a = await other.call("chat.propose", { action: plan(), reason: "Requested" }, second);
+    assert.equal(await refusal(other.call("chat.propose", { action: { kind: "task.create", id: "PLAN-2", title: "Again" }, reason: "Twice" }, second)), "errors.taskExists");
+    // A move of a task the plan makes is known before the plan runs, as for a task.create of the same reply.
+    assert.equal((await other.call("chat.propose", { action: { kind: "task.update", id: "PLAN-1", status: "doing" }, reason: "Start" }, second)).status, "proposed");
+    await other.call("chat.decide", { actionId: a.id, accept: true }, lead);
+    const log = await other.call("admin.audit", { limit: 30 }, admin);
+    assert.equal(log.find((e) => e.action === "tasks.create" && e.target === "PLAN-2")?.detail, "Reset UI · ← PLAN-1");
+    assert.equal(log.find((e) => e.action === "docs.save" && e.target === plan().spec.key)?.detail, "v1");
+    // A spec someone wrote in the meantime: the plan does not overwrite it.
+    const b = await other.call("chat.propose", { action: { ...plan(), tasks: [{ ...plan().tasks[1]!, id: "PLAN-3" }], batches: [{ title: "API", taskIds: ["PLAN-3"] }] }, reason: "Again" }, second).catch((e: HiveError) => e.key);
+    assert.equal(b, "errors.chatPlanSpecExists");
+    hive.close();
+    other.close();
+  });
 
   it("does nothing until a project manager confirms, then runs it as that manager", async () => {
     const { hive, sent, leader } = await leading();
@@ -775,6 +975,24 @@ describe("the hub-wide chat (roadmap 37)", () => {
     const stop = await propose({ kind: "agents.stop" });
     assert.equal((await hive.call("chat.decide", { actionId: stop.id, accept: true }, admin)).status, "done");
     assert.equal((await hive.call("agents.paused", {}, admin)).hub, true, "no project named: the whole hub");
+  });
+
+  it("plans for a project it names, and across a system with a system spec", async () => {
+    const { hive, propose } = await hubChat();
+    await hive.call("systems.save", { name: "shop", projects: ["app", "site"] }, admin);
+    const tasks = [
+      { id: "P-1", title: "API", acceptance: "Returns the cart", project: "app" },
+      { id: "P-2", title: "Page", acceptance: "Shows the cart", project: "site", dependsOn: ["P-1", "S-1"] },
+    ];
+    const action = { kind: "plan.create", spec: { key: "system/shop/cart", title: "Cart", content: "# Cart" }, tasks, batches: [{ title: "All", taskIds: ["P-1", "P-2"] }] };
+    assert.equal(await refusal(propose(action)), "errors.chatProjectRequired");
+    const a = await propose({ ...action, project: "app" });
+    assert.equal(a.project, "app");
+    const done = await hive.call("chat.decide", { actionId: a.id, accept: true }, admin);
+    assert.equal(done.status, "done", JSON.stringify(done.error));
+    const made = await hive.call("tasks.list", {}, admin);
+    assert.deepEqual(made.find((t) => t.id === "P-2")?.project, "site");
+    assert.deepEqual(made.find((t) => t.id === "P-2")?.dependsOn, ["P-1", "S-1"]);
   });
 
   it("runs on its own only what chat_defaults[\"*\"] allows, and never what always waits", async () => {

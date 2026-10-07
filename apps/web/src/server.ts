@@ -235,6 +235,7 @@ httpServer.on(
     })),
     oidc,
     // Desktop builds sit next to the database (the data volume in Docker).
+    autoReleaseProject: process.env.HIVE_AUTO_RELEASE_PROJECT,
     releases: new ReleaseStore(hive.db, path.join(path.dirname(dbPath), "releases")),
   }),
 );

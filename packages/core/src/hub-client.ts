@@ -93,6 +93,44 @@ export class HubBackend implements HiveBackend {
   }
 }
 
+/** The machine retains its credential; only this short-lived credential reaches a run's MCP process. */
+export async function issueRunCredential(
+  hub: { url: string; token: string },
+  machine: string,
+  input: { project: string; task: string; run: string; minutes: number; readOnly: boolean },
+): Promise<string> {
+  const url = hub.url.replace(/\/+$/, "");
+  const res = await reach(url, `${url}/api/run-credentials`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${hub.token}`, "x-hive-agent": `runner.${machine}` },
+    body: JSON.stringify({ ...input, machine }),
+  });
+  const body = (await res.json().catch(() => null)) as { result?: { token?: string }; error?: { code?: string; message?: string } } | null;
+  if (!res.ok || !body?.result?.token) throw new HiveError(CODES[res.status] ?? "bad_request", body?.error?.message ?? `Hub responded ${res.status}`);
+  return body.result.token;
+}
+
+export async function revokeRunCredential(hub: { url: string; token: string }, machine: string, run: string): Promise<void> {
+  const url = hub.url.replace(/\/+$/, "");
+  await reach(url, `${url}/api/run-credentials`, {
+    method: "DELETE",
+    headers: { "content-type": "application/json", authorization: `Bearer ${hub.token}`, "x-hive-agent": `runner.${machine}` },
+    body: JSON.stringify({ machine, run }),
+  });
+}
+
+export async function issueMcpCredential(hub: { url: string; token: string }, project: string | undefined, readOnly: boolean): Promise<string> {
+  const url = hub.url.replace(/\/+$/, "");
+  const res = await reach(url, `${url}/api/mcp-credentials`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${hub.token}` },
+    body: JSON.stringify({ project, readOnly }),
+  });
+  const body = (await res.json().catch(() => null)) as { result?: { token?: string }; error?: { message?: string } } | null;
+  if (!res.ok || !body?.result?.token) throw new HiveError(CODES[res.status] ?? "bad_request", body?.error?.message ?? `Hub responded ${res.status}`);
+  return body.result.token;
+}
+
 /**
  * fetch, with a hub that cannot be reached (refused, DNS, offline, TLS) as HiveError "unavailable": the desktop
  * shows it as a lost connection and keeps drafts to send later, instead of as a failed request.

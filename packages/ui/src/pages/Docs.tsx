@@ -368,23 +368,24 @@ export function DocsPage() {
       <div key={n.key} data-service-group={isServiceGroup(n) ? n.title : undefined} className="group relative flex items-center" style={{ paddingLeft: depth * 14 }}>
         <button
           type="button"
-          tabIndex={-1}
+          tabIndex={kids ? 0 : -1}
           aria-hidden={!kids}
+          aria-expanded={kids ? expanded : undefined}
           aria-label={expanded ? t("docs.collapse", { title: n.title }) : t("docs.expand", { title: n.title })}
           onClick={() => setOpen((o) => ({ ...o, [n.key]: !expanded }))}
-          className={cn("grid size-5 shrink-0 cursor-pointer place-items-center rounded-xs text-fg-muted hover:text-fg-strong", !kids && "invisible")}
+          className={cn("grid size-6 max-md:size-11 shrink-0 cursor-pointer place-items-center rounded-xs text-fg-muted hover:text-fg-strong outline-none focus-visible:focus-ring", !kids && "invisible")}
         >
           {expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
         </button>
         <button
           type="button"
-          role="treeitem"
-          aria-selected={on}
-          aria-expanded={kids ? expanded : undefined}
+          data-doc-item
+          aria-current={on ? "page" : undefined}
+          aria-expanded={!openable && kids ? expanded : undefined}
           onClick={() => (openable ? pick(n.key) : setOpen((o) => ({ ...o, [n.key]: !expanded })))}
           title={n.key}
           className={cn(
-            "flex h-[30px] min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-sm pr-2 pl-1 text-left text-[13px]/none outline-none focus-visible:focus-ring",
+            "flex h-[30px] max-md:min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-sm pr-2 pl-1 text-left text-[13px]/none outline-none focus-visible:focus-ring",
             on ? "bg-surface font-semibold text-fg-strong shadow-e1" : "text-fg-primary hover:bg-hover",
             n.folder && !on && "font-semibold text-fg-secondary",
           )}
@@ -403,7 +404,7 @@ export function DocsPage() {
             aria-label={t("docs.addUnder", { title: n.title })}
             title={t("docs.addUnder", { title: n.title })}
             onClick={() => startCreate("page", n.key)}
-            className="absolute right-1 hidden size-6 cursor-pointer place-items-center rounded-xs bg-surface text-fg-muted shadow-e1 outline-none group-hover:grid hover:text-fg-strong focus-visible:grid focus-visible:focus-ring"
+            className="md:absolute right-1 hidden size-6 max-md:static max-md:grid max-md:size-11 cursor-pointer place-items-center rounded-xs bg-surface text-fg-muted shadow-e1 outline-none group-hover:grid hover:text-fg-strong focus-visible:grid focus-visible:focus-ring group-focus-within:grid"
           >
             <Plus className="size-3.5" />
           </button>
@@ -411,29 +412,28 @@ export function DocsPage() {
       </div>
     );
   };
-  const branch = (list: TreeNode[], depth: number): ReactNode[] =>
-    list.flatMap((n) => {
-      const out: ReactNode[] = [row(n, depth)];
-      if (n.children.length && isOpen(n, depth)) {
+  // Native disclosure lists allow row actions without the composite tree keyboard contract.
+  const branch = (list: TreeNode[], depth: number): ReactNode => list.length ? (
+    <ul role="list" className="m-0 flex list-none flex-col gap-px p-0">
+      {list.map((n) => {
+        const expanded = n.children.length > 0 && isOpen(n, depth);
         const all = more[n.key] || n.children.length <= FOLDER_PAGE + 2;
-        out.push(...branch(all ? n.children : n.children.slice(0, FOLDER_PAGE), depth + 1));
-        if (!all) {
-          out.push(
-            <button
-              key={`${n.key}-more`}
-              type="button"
-              onClick={() => setMore((m) => ({ ...m, [n.key]: true }))}
-              style={{ paddingLeft: (depth + 1) * 14 + 26 }}
-              className="flex h-7 cursor-pointer items-center gap-1.5 rounded-sm text-left text-xs font-medium text-fg-link outline-none hover:bg-hover focus-visible:focus-ring"
-            >
-              <Plus className="size-3" />
-              {t("docs.showMore", { count: n.children.length - FOLDER_PAGE })}
-            </button>,
-          );
-        }
-      }
-      return out;
-    });
+        return (
+          <li key={n.key}>
+            {row(n, depth)}
+            {expanded ? <>
+              {branch(all ? n.children : n.children.slice(0, FOLDER_PAGE), depth + 1)}
+              {!all ? <button type="button" onClick={() => setMore((m) => ({ ...m, [n.key]: true }))}
+                style={{ paddingLeft: (depth + 1) * 14 + 26 }}
+                className="flex h-7 max-md:min-h-11 cursor-pointer items-center gap-1.5 rounded-sm text-left text-xs font-medium text-fg-link outline-none hover:bg-hover focus-visible:focus-ring">
+                <Plus className="size-3" />{t("docs.showMore", { count: n.children.length - FOLDER_PAGE })}
+              </button> : null}
+            </> : null}
+          </li>
+        );
+      })}
+    </ul>
+  ) : null;
 
   const parentTitle = creating?.parent ? (nodes.find((n) => n.key === creating.parent)?.title ?? creating.parent) : null;
   const active = mobileDetail.mobile ? mobileDetail.value : selected;
@@ -568,9 +568,9 @@ export function DocsPage() {
             </div>
           ) : null}
         </div>
-        <div role="tree" aria-label={t("docs.list")} className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-1.5">
+        <div role="region" data-doc-list aria-label={t("docs.list")} className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-1.5">
           <ErrorNote error={list.error} />
-          {needle ? hits.map((n) => row(n, 0, n.path.join(" / ") || undefined)) : branch(tree, 0)}
+          {needle ? hits.length ? <ul role="list" className="m-0 list-none p-0">{hits.map((n) => <li key={n.key}>{row(n, 0, n.path.join(" / ") || undefined)}</li>)}</ul> : null : branch(tree, 0)}
           {/* The button for an empty space sits in the wide pane on the right, so the narrow tree keeps the sentence alone. */}
           {empty ? <PaneEmpty>{t(empty === "none" ? "docs.none" : "docs.noMatch")}</PaneEmpty> : null}
         </div>

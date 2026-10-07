@@ -1,5 +1,8 @@
 // Whether each profile's CLI is signed in, asked from the CLI itself with the profile's env, so a
 // second login dir (CLAUDE_CONFIG_DIR, CODEX_HOME) is checked on its own. No Electron imports.
+import { geminiLogin } from "#desktop/main/runner/gemini.ts";
+import { opencodeEnv, opencodeLogin, OPENCODE_XDG } from "#desktop/main/runner/opencode.ts";
+import { kiloLogin, KILO_XDG_DIRS } from "#desktop/main/runner/kilo.ts";
 import { execFile } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
@@ -8,15 +11,21 @@ import { expandEnv, expandHome, resolveBin } from "./command.ts";
 import { supportsAgyUsage, parseAgyUsage, AGY_USAGE_ARGS } from "./antigravity.ts";
 import { parseClaudeResult, parsePlanUsage, readCodexUsage, withResetsAt } from "./usage.ts";
 
-/** Status and sign-in subcommands of the CLIs that have them. Gemini and custom CLIs have none. */
+/** Status and sign-in subcommands of the CLIs that have them. Gemini opens its native interactive authentication menu. */
 const COMMANDS: Partial<Record<AgentKind, { status: string[]; login: string[] }>> = {
+  vibe: { status: [], login: ["--setup"] },
   claude: { status: ["auth", "status", "--json"], login: ["auth", "login"] },
   antigravity: { status: AGY_USAGE_ARGS, login: [] },
+  gemini: { status: [], login: [] },
+  opencode: { status: ["auth", "list"], login: ["auth", "login"] },
+  kilo: { status: [], login: ["auth", "login"] },
   codex: { status: ["login", "status"], login: ["login"] },
+  // Copilot has a documented login flow but no documented non-interactive account-status command.
+  copilot: { status: [], login: ["login"] },
 };
 
 /** Env that picks a login dir: shown in the sign-in command. Other env (keys, tokens) never is. */
-const LOGIN_DIRS = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "HOME"];
+const LOGIN_DIRS = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "COPILOT_HOME", "GEMINI_CLI_HOME", "VIBE_HOME", "HOME", ...KILO_XDG_DIRS];
 
 const UNKNOWN = { loggedIn: null, method: null } as const;
 
@@ -62,30 +71,32 @@ export function loginFlags(kind: AgentKind, how: LoginHow = {}): string[] {
     return [...(how.console ? ["--console"] : []), ...(how.sso ? ["--sso"] : []), ...(email ? ["--email", email] : [])];
   }
   if (kind === "codex") return how.device ? ["--device-auth"] : [];
+  if (kind === "copilot") return how.device ? ["--device-code"] : ["--web-flow"];
   return [];
 }
 
 /** The login-dir env of a profile, expanded: what a terminal script may hold (keys and tokens never go in a file). */
 export function loginDirEnv(profile: AgentProfile): Record<string, string> {
-  const allowed = profile.kind === "antigravity" ? ["HOME", "AGY_ADC_AUTH", "GOOGLE_CLOUD_QUOTA_PROJECT"] : ["CLAUDE_CONFIG_DIR", "CODEX_HOME"];
+  if (profile.kind === "opencode") return { ...opencodeEnv(profile), ...expandEnv(Object.fromEntries(Object.entries(profile.env).filter(([k]) => ["OPENCODE_CONFIG", "OPENCODE_CONFIG_DIR"].includes(k)))) };
+  const allowed = profile.kind === "kilo" ? [...KILO_XDG_DIRS] : profile.kind === "vibe" ? ["VIBE_HOME"] : profile.kind === "gemini" ? ["GEMINI_CLI_HOME", "GOOGLE_CLOUD_PROJECT"] : profile.kind === "antigravity" ? ["HOME", "AGY_ADC_AUTH", "GOOGLE_CLOUD_QUOTA_PROJECT"] : ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "COPILOT_HOME"];
   return expandEnv(Object.fromEntries(Object.entries(profile.env).filter(([k]) => allowed.includes(k))));
 }
 
 /** Sign-in args and the login-dir env (expanded) of a profile, for a terminal to run; null when the CLI has none. */
-export function loginParts(profile: AgentProfile, how: LoginHow = {}): { args: string[]; env: Record<string, string> } | null {
+export function loginParts(profile: AgentProfile, how: LoginHow = {}): { args: string[]; env: Record<string, string>; unsetEnv?: string[] } | null {
   const commands = COMMANDS[profile.kind];
   if (!commands) return null;
-  return { args: [...commands.login, ...loginFlags(profile.kind, how)], env: loginDirEnv(profile) };
+  return { args: [...commands.login, ...loginFlags(profile.kind, how)], env: { ...loginDirEnv(profile), ...(profile.kind === "vibe" ? { VIBE_CLI: "python" } : {}) }, ...(profile.kind === "vibe" && profile.env.VIBE_HOME ? { unsetEnv: ["MISTRAL_API_KEY"] } : {}) };
 }
 
 /** The env var that points a CLI at a sign-in folder, for the kinds that have one. */
-export const LOGIN_DIR_ENV: Partial<Record<AgentKind, string>> = { claude: "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME", antigravity: "HOME" };
+export const LOGIN_DIR_ENV: Partial<Record<AgentKind, string>> = { claude: "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME", antigravity: "HOME", copilot: "COPILOT_HOME", gemini: "GEMINI_CLI_HOME", vibe: "VIBE_HOME", opencode: "XDG_DATA_HOME", kilo: "XDG_DATA_HOME" };
 
 export function loginCommand(profile: AgentProfile): string | null {
   const commands = COMMANDS[profile.kind];
   if (!commands) return null;
-  const dirs = Object.entries(profile.env)
-    .filter(([k]) => LOGIN_DIRS.includes(k) && (k !== "HOME" || profile.kind === "antigravity"))
+  const dirs = Object.entries(profile.kind === "opencode" ? loginDirEnv(profile) : profile.env)
+    .filter(([k]) => (LOGIN_DIRS.includes(k) || (profile.kind === "opencode" && OPENCODE_XDG.includes(k as typeof OPENCODE_XDG[number]))) && (k !== "HOME" || profile.kind === "antigravity"))
     .map(([k, v]) => `${k}=${v} `)
     .join("");
   return `${dirs}${profile.bin}${commands.login.length ? ` ${commands.login.join(" ")}` : ""}`;
@@ -105,9 +116,15 @@ const runCli: RunCli = (bin, args, env) =>
 export async function checkLogin(profile: AgentProfile, baseEnv: NodeJS.ProcessEnv, now: Date, run: RunCli = runCli): Promise<LoginStatus> {
   const commands = COMMANDS[profile.kind];
   const base = { loginCommand: loginCommand(profile), checkedAt: now.toISOString() };
+  // Vibe has setup but no non-inference status command. A key on disk is not proof of a valid login.
+  if (profile.kind === "vibe") return { ...UNKNOWN, ...base };
+  if (profile.kind === "opencode") return { ...opencodeLogin(profile), ...base };
   const bin = commands ? resolveBin(expandHome(profile.bin), baseEnv.PATH ?? "") : null;
   if (!commands || !bin) return { ...UNKNOWN, ...base };
   const env = { ...baseEnv, ...expandEnv(profile.env) };
+  if (profile.kind === "gemini") return { ...geminiLogin(env), ...base };
+  if (profile.kind === "kilo") return { ...kiloLogin({ ...env, KILO_AUTH_CONTENT: profile.env.KILO_AUTH_CONTENT ?? "", KILO_API_KEY: profile.env.KILO_API_KEY ?? "" }), ...base };
+  if (!commands.status.length) return { ...UNKNOWN, ...base };
   if (profile.kind === "antigravity") {
     const version = await run(bin, ["--version"], env);
     if (version.code !== 0 || !supportsAgyUsage(version.output)) return { ...UNKNOWN, ...base };

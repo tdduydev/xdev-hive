@@ -55,7 +55,7 @@ export function ListPane({ head, children, label, className }: { head: ReactNode
   return (
     <div className={cn("flex min-w-0 flex-1 flex-col border-r border-line-subtle bg-subtle md:min-w-[260px] md:flex-none md:shrink md:basis-[320px]", className)}>
       <div className="flex shrink-0 flex-col gap-2 border-b border-line-subtle px-3 py-2.5">{head}</div>
-      <div role="listbox" aria-label={label} className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-1.5">
+      <div role="region" aria-label={label} className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-1.5">
         {children}
       </div>
     </div>
@@ -85,35 +85,27 @@ export function ListItem({
   onClick: () => void;
 }) {
   return (
-    <div
-      role="option"
-      tabIndex={0}
-      aria-selected={selected}
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      className={cn(
-        "flex shrink-0 cursor-pointer flex-col gap-[3px] rounded-sm px-2.5 py-2 outline-none focus-visible:focus-ring",
-        selected ? "bg-surface shadow-e1" : "hover:bg-hover",
-        dim && "opacity-70",
-      )}
-    >
-      <div className="flex min-w-0 items-center gap-1.5">
-        {pick ? (
-          <span className="flex" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-            {pick}
-          </span>
-        ) : null}
-        <span className={cn("min-w-0 flex-1 truncate text-[13px]/[18px] font-semibold text-fg-strong", mono && "font-mono")}>{title}</span>
-        {chip}
-      </div>
-      {sub ? <span className="line-clamp-2 text-xs/[17px] text-fg-secondary">{sub}</span> : null}
-      {meta ? <span className="truncate font-mono text-[11px]/[14px] text-fg-muted">{meta}</span> : null}
-    </div>
+    <li className="flex shrink-0 items-center gap-1">
+      {pick ? <span className="flex shrink-0 items-center justify-center max-md:min-h-11 max-md:min-w-11">{pick}</span> : null}
+      <button
+        type="button"
+        data-pane-item
+        aria-current={selected ? "true" : undefined}
+        onClick={onClick}
+        className={cn(
+          "flex min-w-0 flex-1 cursor-pointer flex-col gap-[3px] rounded-sm px-2.5 py-2 text-left outline-none focus-visible:focus-ring max-md:min-h-11",
+          selected ? "bg-surface shadow-e1" : "hover:bg-hover",
+          dim && "opacity-70",
+        )}
+      >
+        <span className="flex w-full min-w-0 items-center gap-1.5">
+          <span className={cn("min-w-0 flex-1 truncate text-[13px]/[18px] font-semibold text-fg-strong", mono && "font-mono")}>{title}</span>
+          {chip}
+        </span>
+        {sub ? <span className="line-clamp-2 text-xs/[17px] text-fg-secondary">{sub}</span> : null}
+        {meta ? <span className="truncate font-mono text-[11px]/[14px] text-fg-muted">{meta}</span> : null}
+      </button>
+    </li>
   );
 }
 

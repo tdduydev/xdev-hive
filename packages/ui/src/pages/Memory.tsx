@@ -186,38 +186,41 @@ export function MemoryPage({ pendingOnly = false }: { pendingOnly?: boolean }) {
       >
         <ErrorNote error={list.error} />
         <ErrorNote error={bulk.error} />
-        {shown.map((m) => {
-          const st = stateOf(m, t);
-          const pickable = m.status === "pending" && allow(m.project, "memoryApprove");
-          return (
-            <ListItem
-              key={m.id}
-              pick={
-                pickable ? (
-                  <Checkbox
-                    checked={picked.has(m.id)}
-                    aria-label={t("bulk.pickItem", { id: m.id })}
-                    onCheckedChange={(v) =>
-                      setPicked((cur) => {
-                        const next = new Set(cur);
-                        if (v === true) next.add(m.id);
-                        else next.delete(m.id);
-                        return next;
-                      })
-                    }
-                  />
-                ) : null
-              }
-              selected={m.id === current?.id}
-              onClick={() => pick(m.id)}
-              title={t("memory.itemTitle", { id: m.id, kind: t(`memoryKind.${m.kind}`) })}
-              chip={st ? <Chip kind={st.kind} small>{st.label}</Chip> : null}
-              sub={<span className={cn(m.supersededBy !== null && "line-through")}>{m.content}</span>}
-              meta={`${ownerName(m.project, t("inbox.shared"))} · ${m.author}`}
-              dim={m.stale || m.supersededBy !== null}
-            />
-          );
-        })}
+        {shown.length ? <ul role="list" className="m-0 flex list-none flex-col gap-px p-0">
+          {shown.map((m) => {
+            const st = stateOf(m, t);
+            const pickable = m.status === "pending" && allow(m.project, "memoryApprove");
+            return (
+              <ListItem
+                key={m.id}
+                pick={
+                  pickable ? (
+                    <Checkbox
+                      className="size-6"
+                      checked={picked.has(m.id)}
+                      aria-label={t("bulk.pickItem", { id: m.id })}
+                      onCheckedChange={(v) =>
+                        setPicked((cur) => {
+                          const next = new Set(cur);
+                          if (v === true) next.add(m.id);
+                          else next.delete(m.id);
+                          return next;
+                        })
+                      }
+                    />
+                  ) : null
+                }
+                selected={m.id === current?.id}
+                onClick={() => pick(m.id)}
+                title={t("memory.itemTitle", { id: m.id, kind: t(`memoryKind.${m.kind}`) })}
+                chip={st ? <Chip kind={st.kind} small>{st.label}</Chip> : null}
+                sub={<span className={cn(m.supersededBy !== null && "line-through")}>{m.content}</span>}
+                meta={`${ownerName(m.project, t("inbox.shared"))} · ${m.author}`}
+                dim={m.stale || m.supersededBy !== null}
+              />
+            );
+          })}
+        </ul> : null}
         {/* The button for an empty list sits in the wide pane on the right, so the narrow list keeps the sentence alone. */}
         {empty ? <PaneEmpty>{t(`memory.${empty}`)}</PaneEmpty> : null}
       </ListPane>

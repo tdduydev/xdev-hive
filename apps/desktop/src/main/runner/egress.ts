@@ -19,6 +19,16 @@ export const DEFAULT_EGRESS = [
   // Gemini CLI
   ".googleapis.com",
   "accounts.google.com",
+  // Mistral Vibe
+  "api.mistral.ai",
+  "console.mistral.ai",
+  "auth.mistral.ai",
+  // OpenCode Zen and its public model catalog; other backend hosts belong to the profile allowlist.
+  "opencode.ai",
+  ".opencode.ai",
+  "models.dev",
+  // Kilo gateway and catalog
+  "kilo.ai", ".kilo.ai",
   // Packages the agent may install while it tests (asked 28/9)
   "registry.npmjs.org",
   "pypi.org",
@@ -84,6 +94,8 @@ export function egressPlan(runId: string, image: string, allow: string[]): Egres
       HTTP_PROXY: url,
       https_proxy: url,
       http_proxy: url,
+      // Chrome ignores HTTP_PROXY; Playwright MCP must configure the browser's proxy explicitly.
+      PLAYWRIGHT_MCP_PROXY_SERVER: url,
       NO_PROXY: "localhost,127.0.0.1",
       no_proxy: "localhost,127.0.0.1",
       // Node's own fetch uses the variables above only with this (checked with Node 22.23 in the image).

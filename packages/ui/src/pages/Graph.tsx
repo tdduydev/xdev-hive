@@ -243,6 +243,7 @@ function GraphBody() {
   const openProject = useCallback((project: string) => { setScope({ kind: "project", project }); setLayer("task"); }, [setScope]);
   const systemNodes: Node<SystemData>[] = useMemo(() => layer === "system" ? (graph as ReturnType<typeof systemGraph>).nodes.map((node) => ({
     id: node.id, type: "service", position: dragging[node.id] ?? node.position, width: node.width, height: node.height, dragHandle: ".graph-drag-handle", selectable: false, style: { width: node.width, height: node.height },
+    ...fixedSize(node.width, node.height),
     data: { graph: node, open: openProject },
   })) : [], [layer, graph, dragging, openProject]);
   const onPositionChange = useCallback((changes: NodeChange[]) => {
