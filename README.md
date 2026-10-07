@@ -625,13 +625,13 @@ Hub nhận mọi nhà cung cấp OpenID Connect: GitLab, Microsoft Entra, Google
 - Backup dùng `VACUUM INTO`, nên an toàn khi hub đang chạy. Không nên copy thẳng `hub.db`, vì bản copy thiếu phần còn nằm trong file `-wal`. Tên file dạng `hub-2026-09-27T09-00-00-000Z.db`. Khi xoay vòng, hub chỉ xoá file có đúng dạng tên này.
 - Backup ngay (ví dụ trước khi làm việc rủi ro): `npm run backup -w @xdev-hive/web -- [thư mục] [số bản giữ]`. Lệnh này chỉ đọc file, không migrate.
 - Mặc định, compose để backup trên volume `hive-backups`, cùng đĩa với database. Để backup còn nguyên khi mất đĩa, trỏ `HIVE_BACKUP_PATH=/mnt/backup/hive` sang đĩa khác (thư mục phải cho uid 1000 ghi), hoặc đồng bộ thư mục backup ra ngoài.
-- Tệp trong SeaweedFS được chép vào `<thư mục backup>/files/<sha256>` sau mỗi lần backup (cả *Backup ngay*): chỉ chép tệp mới, và chỉ xoá tệp mà cả database lẫn các bản backup còn giữ đều không dùng. Một bản backup `hub-….db` cùng thư mục `files/` là đủ để khôi phục cả tệp.
+- Backup gồm database và mọi tệp đã chuyển sang SeaweedFS mà các bảng `doc_assets` (ảnh/tệp của tài liệu) và `artifacts` (tệp của run) tham chiếu. Chúng được chép theo SHA-256 vào `<thư mục backup>/files/<sha256>` sau mỗi lần backup (cả *Backup ngay*): nội dung trùng chỉ có một bản, chỉ chép tệp mới, và chỉ xoá tệp mà database lẫn các snapshot còn giữ đều không dùng. Tệp còn nằm trực tiếp trong database đã được chứa trong snapshot. Tệp đính kèm chat và ảnh bàn giao chỉ được backup nếu được ghi vào một trong hai bảng trên; hiện kho dùng hai bảng đó.
 - **Khôi phục**: dừng hub, chép bản backup đè lên `hub.db`, xoá `hub.db-wal` và `hub.db-shm` nếu có, rồi khởi động lại. Mất cả dữ liệu SeaweedFS thì đưa tệp từ backup vào lại: `HIVE_SEAWEEDFS_URL=http://seaweedfs:8888 npm run files -w @xdev-hive/web -- restore [thư mục backup]` (trong container hub: `docker compose -p xdev-hive -f deploy/compose.yaml exec hub npm run files -w @xdev-hive/web -- restore`).
 - **Diễn tập khôi phục**: `bash deploy/restore-drill.sh` trên server, sau `deploy/update.sh`. Script làm từ đầu tới cuối mà không đụng vào hub đang chạy:
   - lấy bản backup mới nhất và `backups/files`;
   - đưa tệp vào một SeaweedFS mới bằng `files restore`;
   - mở một hub riêng trên database đó;
-  - đọc lại từng tệp của tài liệu và so với SHA-256 của nó.
+  - đọc lại từng tệp tài liệu và artifact của run mà database tham chiếu, so với SHA-256 và in số lượng theo loại.
 
   Container, network và thư mục của buổi diễn tập bị xoá khi xong, không dùng prune. Lần chạy ngày 1/10 trên hub thật mất 6 giây: 169 tài liệu và 3 tệp, cả 3 tệp đọc lại đúng. Volume backup khác `xdev-hive_hive-backups` (ví dụ đặt `HIVE_BACKUP_PATH` là một thư mục) thì truyền `HIVE_BACKUPS_VOLUME=<volume hoặc thư mục>`.
 - **Nâng cấp**: trên server chạy `bash deploy/update.sh` (sau Cloudflare Tunnel: `HIVE_TUNNEL=1 bash deploy/update.sh`; có cổng LAN thì thêm `HIVE_LAN=1`): lấy `origin/main`, build lại, chờ hub healthy. Hub tự backup trước khi chạy migration mới. Cờ nào bật khi deploy thì lần sau cũng phải bật lại, vì nó quyết định file compose nào được tính đến.
