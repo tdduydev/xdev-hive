@@ -304,6 +304,13 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **57d. skill-stats**: run ghi skill đã nạp; trang Skill có số run dùng 30 ngày, lần dùng cuối, lọc skill không ai dùng.
   - [x] **57e. qa-role**: quyền `qaVerify`, vai QA, chốt *Kiểm thử* trước Merge (mặc định tự động), Hôm nay của QA.
 
+- **58. agent-speed** (hỏi 7/10: "cho làm nhiều task để tăng tốc đi, và nhớ test RTK xem hoạt động chưa"; RTK đã kiểm, 52% output lệnh bớt trên run Claude): agent nhanh hơn, ít token hơn. Spec: [docs/specs/58-agent-speed.md](specs/58-agent-speed.md). Tách:
+  - [ ] **58a. codex-rtk**: run Codex nén output lệnh bằng RTK (hook của Codex hoặc wrapper trên PATH của run), ghi `compression` như Claude.
+  - [ ] **58b. tool-approve-web**: cho phép lệnh của tool từ hub trên một máy ngay từ web (*Máy & agent* › máy › *Tool*), cho cả máy chạy ẩn.
+  - [ ] **58c. run-timeout**: `timeoutMinutes` khi giao run (trong trần hub), mặc định theo loại task (INT/LAND 120 phút), note *Tiếp từ đâu* khi hết giờ.
+  - [ ] **58d. e2e-step**: `--only <bước>` và `--repeat N` cho e2e, in thời gian từng bước.
+  - [ ] **58e. codex-localhost**: tuỳ chọn profile Codex mở được cổng 127.0.0.1 để chạy e2e.
+
 ## Sửa lỗi
 
 - [x] **stale-base** (5/10, BUG-stale-base): run R-43 trên máy .52 gặp lỗi fetch tạm thời, và runner lặng lẽ tạo branch `ai/<task>` từ HEAD của checkout chính, tức code cũ 3 ngày (0.107.0 trong khi main đã 0.126.0). Giờ fetch lỗi thì thử lại sau 5 giây rồi 20 giây. Vẫn lỗi thì run của task chưa có branch quay về hàng đợi, kèm lý do hiện trên Board và Lượt chạy, thử lại ở các tick sau; quá 5 lần thì *failed* với lỗi dịch được. Không còn tạo branch từ HEAD cũ. Branch đã có (run sửa, review) chạy như cũ. Hỏi best-of-n thì báo lỗi ngay. Repo không có remote nào thì giữ cách cũ. Do claude-1 trên máy .52 làm.
