@@ -1,3 +1,4 @@
+import type { DeployLog } from "#web/deploy-log.ts";
 // Cảnh báo (docs/design/2026-09-redesign, xDev Hive Web Admin; roadmap 22m): rules a hub admin turns on or off, checked
 // every minute against what the hub knows (runs machines pushed, heartbeats, webhooks, backups). A rule that holds opens
 // an alert, sent to the webhooks that want alert.opened; it resolves by itself once the rule no longer holds. Also the
@@ -23,6 +24,7 @@ import type { SqliteHive } from "@xdev-hive/core/node";
 import type { WebhookStore } from "./webhooks.ts";
 
 export const RULE_SEVERITY: Record<AlertRule, AlertSeverity> = {
+  hub_log_repeat: "high",
   run_fail_streak: "high",
   ci_fix_exhausted: "high",
   machine_offline: "medium",
@@ -48,6 +50,7 @@ const CI_LIMIT_DAYS = 7;
 const BUDGET_STEPS = [0.9, 0.7];
 
 export interface AlertOptions {
+  deployLog?: DeployLog;
   webhooks?: WebhookStore;
   /** HIVE_BACKUP_DIR and how often it runs: backup_overdue only checks a hub that makes backups. */
   backup?: { dir: string; hours: number } | null;
@@ -183,6 +186,12 @@ export class AlertStore {
     if (on.has("backup_overdue")) found.push(...this.#backup());
     if (on.has("budget_near") || on.has("budget_exceeded")) found.push(...(await this.#budgets(on)));
 
+    if (on.has("hub_log_repeat") && this.#opts.deployLog) {
+      const log = this.#opts.deployLog.info();
+      for (const g of log.groups) if (g.level === "error" && g.hourCount > log.threshold) {
+        found.push({ rule: "hub_log_repeat", key: g.key, project: null, vars: { count: g.hourCount, threshold: log.threshold, message: g.message } });
+      }
+    }
     const now = this.#iso();
     const open = (this.#db.prepare("SELECT * FROM hub_alerts WHERE resolved_at IS NULL").all() as Row[]).map(toAlert);
     const seen = new Set<string>();

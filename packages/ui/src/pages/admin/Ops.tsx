@@ -124,6 +124,7 @@ export function OpsOverview({ lead }: { lead?: ReactNode } = {}) {
   const proposals = useQuery(() => client.call("proposals.list", { status: "pending" }), [client, tick]);
   const memory = useQuery(() => client.call("memory.list", { status: "pending", limit: 500 }), [client, tick]);
   const tools = useHubTools();
+  const hub = useQuery(async () => client.hub ? client.hub.info() : null, [client, tick]);
 
   const list = runs.data ?? [];
   const fleet = machines.data ?? [];
@@ -179,6 +180,29 @@ export function OpsOverview({ lead }: { lead?: ReactNode } = {}) {
           warn={Boolean((proposals.data?.length ?? 0) + (memory.data?.length ?? 0))}
         />
       </div>
+      {client.hub ? (
+        <Card title={t("deployLog.title")} sub={hub.data?.deployLog ? t("deployLog.since", { time: formatTime(hub.data.deployLog.startedAt) }) : undefined}>
+          <ErrorNote error={hub.error} />
+          {hub.data?.deployLog ? <>
+            <p className="m-0 text-sm text-fg-strong">{t("deployLog.counts", { errors: hub.data.deployLog.errors, warnings: hub.data.deployLog.warnings })}</p>
+            <p className="m-0 text-xs text-fg-muted">{t("deployLog.retention", { threshold: hub.data.deployLog.threshold })}</p>
+            {hub.data.deployLog.dropped ? <p className="m-0 text-xs text-warning">{t("deployLog.dropped", { count: hub.data.deployLog.dropped })}</p> : null}
+            <dl className="m-0 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 text-xs">
+              <dt className="text-fg-muted">{t("deployLog.backup")}</dt><dd className="m-0 text-fg-strong">{t(`deployLog.backupState.${hub.data.deployLog.backup}`)}</dd>
+              <dt className="text-fg-muted">SeaweedFS</dt><dd className="m-0 text-fg-strong">{t(!hub.data.files.store ? "hub.off" : hub.data.files.lastError ? "hub.error" : hub.data.files.inDb ? "hub.moving" : "hub.ok")}</dd>
+              <dt className="text-fg-muted">{t("hub.search")}</dt><dd className="m-0 text-fg-strong">{t(hub.data.search.mode !== "hybrid" ? "hub.off" : hub.data.search.lastError ? "hub.error" : hub.data.search.indexed < hub.data.search.total ? "hub.indexing" : "hub.ok")}</dd>
+            </dl>
+            <h3 className="m-0 text-xs font-semibold text-fg-strong">{t("deployLog.top")}</h3>
+            <ul className="m-0 flex list-none flex-col gap-2 p-0">
+              {hub.data.deployLog.groups.filter((g) => g.level === "error").slice(0, 5).map((g) => <li key={g.key} className="flex min-w-0 items-start gap-2 text-xs">
+                <span className="shrink-0 font-mono text-danger">{t("deployLog.times", { count: g.count })}</span>
+                <span className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere] text-fg-secondary">{g.message}</span>
+              </li>)}
+            </ul>
+            {hub.data.deployLog.errors === 0 ? <p className="m-0 text-xs text-fg-muted">{t("deployLog.none")}</p> : null}
+          </> : <p className="m-0 text-xs text-fg-muted">{t(hub.loading ? "common.loading" : "deployLog.unavailable")}</p>}
+        </Card>
+      ) : null}
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,460px),1fr))] gap-3">
         <Card title={t("ops.runsByHour")} sub={t("ops.runsByHourSub", { count: list.length })}>
           <div className="flex h-[150px] items-end gap-[3px] border-b border-dashed border-line-default">
