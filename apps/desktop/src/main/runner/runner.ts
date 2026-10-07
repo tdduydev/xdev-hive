@@ -265,6 +265,7 @@ export interface RunnerOptions {
 }
 
 interface Live {
+  deadline: number;
   child: ChildProcess;
   cancelled: boolean;
   timedOut: boolean;
@@ -406,6 +407,9 @@ export class Runner {
   #budgetBlocked: BudgetBlock[] = [];
   /** Tells the hub this app apart from another one running under the same machine name. */
   readonly #instance = randomBytes(8).toString("hex");
+  #supportsUpdateDrain = false;
+  #updateDrain = false;
+  #intakePending = 0;
   #ticking = false;
   #again = false;
   #interval: NodeJS.Timeout | undefined;
@@ -569,8 +573,35 @@ export class Runner {
     }
   }
 
+  get updateDraining(): boolean { return this.#updateDrain; }
+
+  /** Keep heartbeats/reporting alive while the downloaded app waits for current work. */
+  drainForUpdate(value: boolean): void {
+    if (this.#updateDrain === value) return;
+    this.#updateDrain = value;
+    if (!value) void this.tick();
+  }
+
+  updateWork(): { busy: boolean; deadline: number } {
+    const now = this.#opts.now().getTime();
+    const running = this.store.active().filter((r) => r.status === "running");
+    const deadlines = running.map((r) => {
+      const actual = this.#live.get(r.id)?.deadline;
+      if (actual !== undefined) return actual;
+      const profile = this.#host.profiles().find((p) => p.id === r.profileId);
+      return Date.parse(r.startedAt ?? r.createdAt) + (r.timeoutMinutes ?? profile?.timeoutMinutes ?? 60) * 60_000;
+    });
+    const auxiliary = this.#chats.active > 0 || this.#assists.busy || this.#memoryCleanup.profileId !== null || this.#syncs.size > 0 || this.#intakePending > 0;
+    return {
+      busy: running.length > 0 || this.#inflight.size > 0 || auxiliary,
+      // The chat has a 20-minute limit; final commit/report and sync get a bounded grace when no run remains.
+      deadline: Math.max(...deadlines, auxiliary ? now + 20 * 60_000 : running.length ? 0 : now + 60_000),
+    };
+  }
+
   /** Cancels running agents and waits for their bookkeeping (commit, Hive update) to finish. */
   async stop(): Promise<void> {
+    this.#updateDrain = true;
     clearInterval(this.#interval);
     clearInterval(this.#heartbeatTimer);
     clearInterval(this.#pushTimer);
@@ -597,6 +628,14 @@ export class Runner {
    * `extra.requestedBy`: who asked for it on the web (a hub run request).
    */
   async enqueue(req: StartRunRequest, extra: { ciFix?: CiFix; requestedBy?: string; plan?: RunPlan | null; fromHub?: boolean } = {}): Promise<AgentRun> {
+    if (this.#updateDrain) throw new HiveError("conflict", "App is waiting to update.", { key: "errors.updateDraining" });
+    this.#intakePending++;
+    try {
+      return await this.#enqueue(req, extra);
+    } finally { this.#intakePending--; }
+  }
+
+  async #enqueue(req: StartRunRequest, extra: { ciFix?: CiFix; requestedBy?: string; plan?: RunPlan | null; fromHub?: boolean }): Promise<AgentRun> {
     const project = this.#host.projects().find((p) => p.name === req.project);
     if (!project) throw new HiveError("not_found", `Dự án ${req.project} chưa được thêm vào app.`, { key: "errors.projectNotAdded", vars: { project: req.project } });
     if (!/^[A-Za-z0-9._-]{1,100}$/.test(req.taskId)) throw new HiveError("bad_request", "Task id không hợp lệ.", { key: "errors.badTaskId" });
@@ -994,11 +1033,14 @@ export class Runner {
           appliedToolApprovals,
           toolStates: (this.#tools?.entries ?? []).map((e) => ({ id: e.id, hash: toolHash(e), trust: trustOf(e, this.#host.toolTrust?.() ?? {}) })),
           projects: this.#host.projects().map((p) => p.name),
-          acceptsRuns: this.#host.settings().acceptHubRuns,
+          // Older hubs reject pending work when intake goes off; hold it locally until they understand this flag.
+          acceptsRuns: this.#host.settings().acceptHubRuns && (!this.#updateDrain || !this.#supportsUpdateDrain),
+          updateDraining: this.#updateDrain && this.#host.settings().acceptHubRuns,
           ...this.#host.report?.(),
         },
         this.#runnerActor(),
       );
+    this.#supportsUpdateDrain = res.supportsUpdateDrain === true;
     // Only after the hub answered: a failed heartbeat sends the same costs next time.
     this.store.ackSteering(deliveredMessages);
     this.store.ackToolApprovals(appliedToolApprovals);
@@ -1030,7 +1072,7 @@ export class Runner {
       toolApprovals: res.toolApprovals ?? [],
       profileChanges: res.profileChanges ?? [],
       // The user let project managers drive this machine from the web; without that a merge waits until it expires.
-      mergeRuns: this.#host.settings().acceptHubRuns ? (res.mergeRuns ?? []) : [],
+      mergeRuns: this.#host.settings().acceptHubRuns && !this.#updateDrain ? (res.mergeRuns ?? []) : [],
       archivedProjects: res.archivedProjects ?? [],
     };
     // Before the requests below are taken, so their runs start under the policy the hub just sent.
@@ -1046,7 +1088,7 @@ export class Runner {
     }
     this.#archivedProjects = update.archivedProjects ?? [];
     this.#opts.onHub?.(update);
-    this.#takeSyncs(update.syncCommands);
+    if (!this.#updateDrain) this.#takeSyncs(update.syncCommands);
     // A hub older than runs.dispatch sends none.
     await this.#takeRequests(res.runRequests ?? []);
     if (this.#host.settings().acceptHubRuns) {
@@ -1056,7 +1098,7 @@ export class Runner {
       }
     }
     if (this.#host.settings().acceptHubRuns) this.#cancelFromHub(res.cancelRuns ?? []);
-    if (this.#host.settings().acceptHubRuns) this.#chats.take(res.chatRequests ?? []);
+    if (this.#host.settings().acceptHubRuns && !this.#updateDrain) this.#chats.take(res.chatRequests ?? []);
     this.#applyPause(res.paused ?? null);
     return update;
   }
@@ -1145,9 +1187,10 @@ export class Runner {
    */
   async pollChats(): Promise<number> {
     const hub = this.#host.mode() === "hub";
-    if ((hub && !this.#host.settings().acceptHubRuns) || this.#chatPollOff) return 0;
+    if (this.#updateDrain || (hub && !this.#host.settings().acceptHubRuns) || this.#chatPollOff) return 0;
     try {
       const requests = await this.#host.backend().call("chat.poll", {}, this.#runnerActor());
+      if (this.#updateDrain) return 0;
       this.#chats.take(requests);
       return requests.length;
     } catch (err) {
@@ -1161,10 +1204,13 @@ export class Runner {
    * database. True when it took one.
    */
   async pollAssists(): Promise<boolean> {
-    if (this.#host.mode() === "hub" && !this.#host.settings().acceptHubRuns) return Promise.resolve(false);
-    const took = this.#memoryCleanup.profileId ? false : await this.#assists.poll();
-    if (this.#host.mode() === "hub") await this.#memoryCleanup.poll().catch(() => false);
-    return took;
+    if (this.#updateDrain || (this.#host.mode() === "hub" && !this.#host.settings().acceptHubRuns)) return false;
+    this.#intakePending++;
+    try {
+      const took = this.#memoryCleanup.profileId ? false : await this.#assists.poll();
+      if (!this.#updateDrain && this.#host.mode() === "hub") await this.#memoryCleanup.poll().catch(() => false);
+      return took;
+    } finally { this.#intakePending--; }
   }
 
   /** Resolves once the ask being written has ended. For tests. */
@@ -1188,7 +1234,7 @@ export class Runner {
       runs: [],
       profiles: this.#host.report?.().profiles ?? [],
       projects: this.#host.projects().map((p) => p.name),
-      acceptsRuns: true,
+      acceptsRuns: !this.#updateDrain,
       owner: null,
       profileChanges: [],
     };
@@ -1205,6 +1251,7 @@ export class Runner {
    */
   async #takeRequests(requests: RunRequest[]): Promise<void> {
     for (const req of requests) {
+      if (this.#updateDrain && !this.#answers.has(req.id)) continue;
       if (this.#taking.has(req.id)) continue;
       this.#taking.add(req.id);
       try {
@@ -1402,6 +1449,10 @@ export class Runner {
         this.#again = false;
         const now = this.#opts.now();
         for (const run of this.store.queued()) {
+          if (this.#updateDrain) {
+            this.#waiting.set(run.id, tr("runNote.waitingUpdate"));
+            continue;
+          }
           const pause = this.#pauseOf(run.project);
           if (pause) {
             this.#waiting.set(run.id, tr("runNote.waitingPaused", pause));
@@ -1974,7 +2025,7 @@ export class Runner {
               stdio: [cmd.stdin === null ? "ignore" : "pipe", "pipe", "pipe"],
               windowsHide: true,
             });
-            const live: Live = { child, log, cancelled: false, timedOut: false, ...(box ? { container: { docker: bin, name: box.name, env } } : {}) };
+            const live: Live = { child, log, deadline, cancelled: false, timedOut: false, ...(box ? { container: { docker: bin, name: box.name, env } } : {}) };
             this.#live.set(run.id, live);
             const timer = setTimeout(() => {
               live.timedOut = true;
@@ -2185,7 +2236,7 @@ export class Runner {
       const classifyEnv = { ...hostEnv, ...expandEnv(run.diffSummaryFor ? routed.env : profile.env) };
       for (let modelRetry = 0; ; modelRetry++) {
         const child = spawn(bin, cmd.args, { cwd: dir, env: classifyEnv, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
-        const live: Live = { child, cancelled: false, timedOut: false };
+        const live: Live = { child, deadline: Date.now() + CLASSIFY_TIMEOUT_MS, cancelled: false, timedOut: false };
         this.#live.set(run.id, live);
         let output = "";
         let stderr = "";
