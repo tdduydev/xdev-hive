@@ -204,6 +204,19 @@ describe("a task given to one agent (roadmap 50)", () => {
     assert.deepEqual(await sent(mbp), []);
   });
 
+  it("counts the turn by the attempt the runner started after a rate limit, not by the rate-limited one", async () => {
+    const { hive, beat, sent } = await hub();
+    await beat(mbp);
+    await hive.call("tasks.assign", { id: "T-1", machineId: mbp.name }, lead);
+    const out = await sent(mbp);
+    await hive.call("runs.requestResult", { id: out[0]!.id, status: "accepted", runId: "R-1" }, mbp);
+    await report(hive, "R-1", "implement", "rate_limited");
+    await report(hive, "R-1b", "implement", "succeeded", { parentRun: "R-1", attempt: 2 });
+    const queue = await hive.call("tasks.agentQueue", { machineId: mbp.name }, lead);
+    assert.equal(queue[0]!.waiting?.key, "errors.agentTurnOver", "the next attempt used the turn");
+    assert.deepEqual(await sent(mbp), []);
+  });
+
   it("gives back a task its cut-short run had claimed, so the next turn is handed out", async () => {
     const { hive, beat, sent, task } = await hub();
     await beat(mbp);
