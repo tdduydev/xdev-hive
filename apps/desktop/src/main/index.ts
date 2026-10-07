@@ -1655,7 +1655,9 @@ function createTray(): void {
 // The app plays no video. On Linux hosts without a VA-API driver Chromium still probes it and prints
 // "vaInitialize failed" on every start, which reads as a crash to whoever launched the AppImage.
 if (process.platform === "linux") {
-  const sandboxFallback = linuxSandboxFallback(process.execPath);
+  // The .deb installs an AppArmor profile and its own chrome-sandbox, so the sandbox works there although the host
+  // restricts user namespaces for everything else: only AppImage and unpacked builds fall back.
+  const sandboxFallback = isDebInstall(process.execPath) ? null : linuxSandboxFallback(process.execPath);
   if (sandboxFallback) {
     app.commandLine.appendSwitch("no-sandbox");
     mainLog.write(`Chromium sandbox disabled: ${sandboxFallback}`);
