@@ -28,6 +28,7 @@ import { ProfileStates } from "#ui/components/ProfileStates.tsx";
 import { formatTime, useAction, useHive, useProjects, useQuery } from "#ui/hooks.ts";
 import { rich, useT, type MessageKey } from "#ui/i18n/index.tsx";
 import { hasNewer } from "#ui/lib/setup.ts";
+import { RunTimeoutsCard } from "#ui/pages/admin/RunTimeouts.tsx";
 import { RetiredProjectsCard } from "#ui/pages/admin/RetiredProjects.tsx";
 
 
@@ -54,6 +55,7 @@ export const ACTION_LABEL: Record<string, MessageKey> = {
   "machines.remove": "auditAction.machinesRemove",
   "machines.setProfile": "auditAction.machinesSetProfile",
   "runs.merge": "auditAction.runsMerge",
+  "runs.setTimeoutSettings": "audit.runTimeoutSettings",
   "chat.setAutonomy": "auditAction.chatSetAutonomy",
   "specs.importTasks": "auditAction.specsImportTasks",
   "cooldowns.clear": "auditAction.cooldownsClear",
@@ -348,6 +350,7 @@ export function PolicyTab() {
 
   return (
     <>
+      <RunTimeoutsCard />
       <Card>
         <CardHeader>
           <CardTitle>{t("admin.everyMachine")}</CardTitle>

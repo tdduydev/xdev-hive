@@ -2,6 +2,11 @@
 import type { KeyPaths, Translation } from "#ui/i18n/types.ts";
 
 export const vi = {
+  runTimeout: {
+    title: "Thời hạn run", hint: "Thời hạn tính từ lúc agent bắt đầu chạy; luôn giữ trong trần của gói và hub.",
+    max: "Thời hạn run tối đa (phút)", duration: "Thời hạn (phút)", automatic: "Tự động: {minutes} phút",
+    defaults: "Mặc định theo loại task", integration: "Integration (INT-*)", land: "Land (LAND-*)", otherTasks: "Task khác", profile: "Theo thời hạn của gói", save: "Lưu thời hạn", saved: "Đã lưu thời hạn run.",
+  },
   planApproval: {
     title: "Duyệt kế hoạch trước khi code", tab: "Kế hoạch", detail: "Chi tiết",
     intro: "Agent lập kế hoạch chỉ đọc, chờ duyệt rồi mới làm.",
@@ -2894,6 +2899,7 @@ export const vi = {
     },
   },
   errors: {
+    runTimeoutCeiling: "Thời hạn không được vượt quá {minutes} phút (trần của gói và hub).",
     steerText: "Tin nhắn cần từ 1 đến 8.000 ký tự.",
     runNotRunning: "Run {id} không còn đang chạy.",
     planRunnerRequired: "Máy cần runner Claude hoặc Codex mới để duyệt kế hoạch.",
@@ -3393,6 +3399,7 @@ export const vi = {
     longAgents: "AGENTS.md dài {lines} dòng (nên dưới {max}): chuyển bớt phần chỉ dùng cho một thư mục hay loại file sang tài liệu có đường dẫn",
   },
   runNote: {
+    continueFrom: "Tiếp từ đâu: branch {branch}; commit WIP {commit}; bước đang làm: {activity}.",
     steerResume: "Có chỉ dẫn mới: tiếp tục đúng phiên Codex của run.",
     steerStream: "Nhận chỉ dẫn qua stdin stream-json.",
     steerFile: "Nhận chỉ dẫn qua .xdev-hive/steer.md sau mỗi bước.",
@@ -3510,6 +3517,7 @@ export const vi = {
     keptFailed: "git lỗi: {reason}",
   },
   audit: {
+    runTimeoutSettings: "Đổi thời hạn run",
     memberSet: "{project}: {user} là {role}",
     memberRemoved: "{project}: gỡ {user}",
     ssoCreated: "tạo khi đăng nhập qua {provider}, chưa có quyền service nào",

@@ -16,7 +16,7 @@ async function setup(mode: PlanApprovalMode = "all", timeoutMinutes: number | nu
   await beat();
   await hive.call("sdlc.setProject", { project: "app", settings: { gates: {}, planApproval: { mode, timeoutMinutes } } }, admin);
   const create = (id: string, size: "s" | "m" | "l" = "m") => hive.call("tasks.create", { id, project: "app", title: `Build ${id}`, kind: "feature", size }, admin);
-  const dispatch = (taskId: string) => hive.call("runs.dispatch", { project: "app", taskId, machineId: machine.name }, admin);
+  const dispatch = (taskId: string, timeoutMinutes?: number) => hive.call("runs.dispatch", { project: "app", taskId, machineId: machine.name, timeoutMinutes }, admin);
   const finish = async (req: RunRequest, runId: string, text: string | null = "## Work\nChange app.ts\n## Verify\nnpm test\n## Risks\nNone", status: "succeeded" | "failed" | "rate_limited" = "succeeded") => {
     await hive.call("runs.requestResult", { id: req.id, status: "accepted", runId }, machine);
     const push = () => hive.call("runs.push", { machine: "test", runs: [{ runId, project: req.project, taskId: req.taskId, taskTitle: req.taskTitle, role: "implement", status, profileId: "claude-1", planText: text, summary: "finished", createdAt: new Date(at).toISOString(), finishedAt: new Date(at).toISOString() }] }, machine);
@@ -47,7 +47,7 @@ describe("implementation plan approval", () => {
   it("waits without review or duplicate dispatch; revises, then approves exactly once with full text", async () => {
     const s = await setup();
     await s.create("T-1");
-    const first = await s.dispatch("T-1");
+    const first = await s.dispatch("T-1", 30);
     assert.equal(first.plan?.phase, "plan");
     const replay = await s.finish(first, "plan-1");
     await replay();
@@ -60,6 +60,7 @@ describe("implementation plan approval", () => {
     await assert.rejects(s.hive.call("runs.decidePlan", { id: plan.id, revision: 1, decision: "changes" }, admin));
     await s.hive.call("runs.decidePlan", { id: plan.id, revision: 1, decision: "changes", note: "Add regression tests" }, admin);
     const second = (await s.beat()).runRequests[0]!;
+    assert.equal(second.timeoutMinutes, 30);
     assert.equal(second.plan?.phase, "plan");
     assert.equal(second.plan?.note, "Add regression tests");
     assert.equal(second.plan?.text, plan.text);
@@ -69,6 +70,7 @@ describe("implementation plan approval", () => {
     await s.hive.call("runs.decidePlan", { id: plan.id, revision: 2, decision: "approve" }, admin);
     await assert.rejects(s.hive.call("runs.decidePlan", { id: plan.id, revision: 2, decision: "approve" }, admin));
     const build = (await s.beat()).runRequests[0]!;
+    assert.equal(build.timeoutMinutes, 30);
     assert.equal(build.plan?.phase, "implement");
     assert.equal(build.plan?.text, "Revised plan with regression tests");
     assert.equal((await s.hive.call("tasks.list", { project: "app" }, admin))[0]!.status, "todo");
@@ -109,6 +111,7 @@ describe("implementation plan approval", () => {
     const plan = (await s.plans())[0]!;
     await s.hive.call("runs.decidePlan", { id: plan.id, revision: 1, decision: "approve" }, admin);
     const build = (await s.beat()).runRequests[0]!;
+    assert.equal(build.timeoutMinutes, req.timeoutMinutes);
     assert.equal(build.plan?.phase, "implement");
     assert.equal((await s.hive.call("runs.groups", {}, admin))[0]?.items[0]?.request?.id, build.id);
     s.hive.close();
