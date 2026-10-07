@@ -27,6 +27,7 @@ import {
   usageStop,
   type Actor,
   type AgentProfile,
+  type AgentProfileStatus,
   type AgentRun,
   type DesktopProject,
   type DesktopSettings,
@@ -668,6 +669,16 @@ const refreshUsage = usageRefresher(
   () => runner.profileStatuses(),
 );
 
+/** Dùng tiếp: the threshold is weighed against fresh numbers, and the name kept is the person signed in here. */
+async function resumeProfile(id: string): Promise<AgentProfileStatus[]> {
+  if (typeof id !== "string") throw new HiveError("bad_request", "Profile id must be a string");
+  await refreshUsage([id]);
+  const who = (await me()).name;
+  await runner.resumeProfile(id, who);
+  mainLog.write(`resume ${id} by ${who}`);
+  return runner.profileStatuses();
+}
+
 /** `--version`, then the sign-in check (which the runner and the hub see too). */
 async function checkProfile(id: string): Promise<ProfileCheck> {
   const profile = config.agents.find((a) => a.id === id);
@@ -1281,6 +1292,7 @@ function registerIpc(): void {
   handle("desktop:saveProfile", saveProfile);
   handle("desktop:removeProfile", removeProfile);
   handle("desktop:resetCooldown", async (id: string) => (await runner.resetCooldown(id), runner.profileStatuses()));
+  handle("desktop:resumeProfile", resumeProfile);
   handle("desktop:refreshUsage", (ids?: string[]) => refreshUsage(Array.isArray(ids) ? ids.filter((x) => typeof x === "string") : undefined));
   handle("desktop:resetStats", (id: string) => (runner.resetStats(id), runner.profileStatuses()));
   handle("desktop:checkProfile", checkProfile);

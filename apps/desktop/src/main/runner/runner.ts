@@ -557,13 +557,13 @@ export class Runner {
         quotaUnavailable: (id) => {
           const p = this.profileStatuses().find((x) => x.id === id);
           const profile = this.#host.profiles().find((x) => x.id === id);
-          return !!p && ((p.cooldownUntil !== null && p.cooldownUntil > this.#iso()) || (!!profile && usageStop(profile, p.usage) !== null));
+          return !!p && ((p.cooldownUntil !== null && p.cooldownUntil > this.#iso()) || (!!profile && usageStop(p, p.usage, +this.#opts.now()) !== null));
         },
         // As the Board would see it: signed out, resting (here or on the hub), or at its plan's stop threshold.
         unavailable: (id) => {
           const p = this.profileStatuses().find((x) => x.id === id);
           const profile = this.#host.profiles().find((x) => x.id === id);
-          return !p || p.login?.loggedIn === false || (p.cooldownUntil !== null && p.cooldownUntil > this.#iso()) || (!!profile && usageStop(profile, p.usage) !== null);
+          return !p || p.login?.loggedIn === false || (p.cooldownUntil !== null && p.cooldownUntil > this.#iso()) || (!!profile && usageStop(p, p.usage, +this.#opts.now()) !== null);
         },
       },
       { dataDir: opts.dataDir, progressMs: this.#opts.chatProgressMs },
@@ -579,7 +579,7 @@ export class Runner {
         unavailable: (id) => {
           const p = this.profileStatuses().find((x) => x.id === id);
           const profile = this.#host.profiles().find((x) => x.id === id);
-          return !p || p.login?.loggedIn === false || (p.cooldownUntil !== null && p.cooldownUntil > this.#iso()) || (!!profile && usageStop(profile, p.usage) !== null);
+          return !p || p.login?.loggedIn === false || (p.cooldownUntil !== null && p.cooldownUntil > this.#iso()) || (!!profile && usageStop(p, p.usage, +this.#opts.now()) !== null);
         },
       },
       { dataDir: opts.dataDir, progressMs: this.#opts.chatProgressMs },
@@ -595,7 +595,7 @@ export class Runner {
         unavailable: (id) => {
           const p = this.profileStatuses().find((x) => x.id === id);
           const profile = this.#host.profiles().find((x) => x.id === id);
-          return !p || p.cliPath === null || this.#assists.busy || this.store.running() >= this.#host.settings().maxParallel || (!!profile && p.running >= profile.maxConcurrent) || p.login?.loggedIn === false || (p.cooldownUntil !== null && p.cooldownUntil > this.#iso()) || (!!profile && usageStop(profile, p.usage) !== null);
+          return !p || p.cliPath === null || this.#assists.busy || this.store.running() >= this.#host.settings().maxParallel || (!!profile && p.running >= profile.maxConcurrent) || p.login?.loggedIn === false || (p.cooldownUntil !== null && p.cooldownUntil > this.#iso()) || (!!profile && usageStop(p, p.usage, +this.#opts.now()) !== null);
         },
       },
       opts.dataDir,
@@ -1059,6 +1059,7 @@ export class Runner {
         cooldownUntil: resting?.until ?? null,
         cooldownReason: resting?.reason ?? null,
         cooldownFrom: resting?.from ?? null,
+        resumed: this.store.resume(profile.id),
         cliPath: resolveBin(expandHome(profile.bin), pathEnv),
         login: this.#host.login?.(profile.id) ?? null,
         usage: quotaOutlook(withResetsAt(this.#host.usage?.(profile.id), now), this.store.usageHistory(profile.id, now), now),
@@ -1077,6 +1078,29 @@ export class Runner {
       this.#shared.delete(account);
       await this.#host.backend().call("cooldowns.clear", { account }, this.#runnerActor());
     }
+    void this.tick();
+  }
+
+  /**
+   * Dùng tiếp, after the quota was read again: when the numbers still pass a stop threshold, the thresholds are off
+   * until the limits that pass them reset (5 hours when the reset is not known); then the rest ends and the hub hears
+   * of it in a heartbeat right away, instead of at the next interval, so it can hand the profile runs.
+   */
+  async resumeProfile(profileId: string, by: string): Promise<void> {
+    const profile = this.#host.profiles().find((p) => p.id === profileId);
+    if (!profile) throw new HiveError("not_found", `Không có profile ${profileId}.`, { key: "errors.profileNotFound", vars: { id: profileId } });
+    const now = this.#opts.now();
+    const usage = withResetsAt(this.#host.usage?.(profileId), now);
+    const over = [
+      usage?.session && usage.session.percent >= profile.stopAtSession ? usage.session : null,
+      usage?.week && usage.week.percent >= profile.stopAtWeek ? usage.week : null,
+    ].filter((l) => l !== null);
+    const ends = over.map((l) => Date.parse(l.resetsAt ?? "")).map((at) => (Number.isFinite(at) && at > +now ? at : +now + 5 * 3600_000));
+    // With nothing over, the record still says who asked; its time is now, so it holds nothing back.
+    const until = new Date(ends.length ? Math.max(...ends) : +now).toISOString();
+    this.store.setResume(profileId, { until, at: now.toISOString(), by });
+    await this.resetCooldown(profileId);
+    await this.beat();
     void this.tick();
   }
 
@@ -1935,7 +1959,7 @@ export class Runner {
         cooldownUntil: this.#cooldownOf(profile)?.until ?? null,
         installed: !this.#held.has(profile.kind) && resolveBin(expandHome(profile.bin), pathEnv) !== null,
         loggedIn: this.#host.login?.(profile.id)?.loggedIn !== false,
-        overLimit: usageStop(profile, this.#host.usage?.(profile.id)) !== null,
+        overLimit: usageStop({ ...profile, resumed: this.store.resume(profile.id) }, this.#host.usage?.(profile.id), +now) !== null,
         headroom: usageHeadroom(profile, this.#host.usage?.(profile.id)),
         sessionPercent: this.#host.usage?.(profile.id)?.session?.percent ?? null,
         resetAt: limitResetAt(profile, this.#host.usage?.(profile.id), now)?.toISOString() ?? null,

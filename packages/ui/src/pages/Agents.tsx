@@ -657,6 +657,7 @@ function ProfileRow({
   const [loginOpened, setLoginOpened] = useState(false);
   const [openedCli, setOpenedCli] = useState<{ profile: string; project: string } | null>(null);
   const [token, setToken] = useState("");
+  const [resuming, setResuming] = useState(false);
   const state = profileState(p);
   const fix = rowFix(p);
   const quota = quotaView(p, now);
@@ -805,20 +806,38 @@ function ProfileRow({
       {/* Always shown, off rows too (roadmap 52): the counts and the rest are what a person checks the page for. */}
       <div data-quota={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 pb-3 text-xs/4 text-fg-muted md:pl-10">
         <QuotaOutlookLine p={p} now={now} />
-        {quota.rest ? (
-          <span data-resting={p.id} className="flex items-center gap-2" title={quota.rest.reason ?? undefined}>
-            <Chip kind="warning">{t("agents.quota.restingUntil", { time: clock(quota.rest.until, now) })}</Chip>
+        {quota.rest || quota.canResume ? (
+          <span data-resting={quota.rest ? p.id : undefined} className="flex items-center gap-2" title={quota.rest?.reason ?? undefined}>
+            {quota.rest ? <Chip kind="warning">{t("agents.quota.restingUntil", { time: clock(quota.rest.until, now) })}</Chip> : null}
             <Button
               size="sm"
               variant="outline"
               className="h-8"
-              data-end-rest={p.id}
-              aria-label={t("agents.quota.endRestLabel", { label: p.label })}
-              disabled={action.busy}
-              onClick={() => void action.run(async () => (await desktop.resetCooldown(p.id), onChanged()))}
+              data-resume={p.id}
+              aria-label={t("agents.quota.resumeLabel", { label: p.label })}
+              title={t("agents.quota.resumeHint")}
+              disabled={action.busy || readBusy}
+              onClick={() => {
+                if (window.confirm(t("agents.quota.confirmResume", { id: p.id })))
+                  void action.run(async () => {
+                    setResuming(true);
+                    try {
+                      await desktop.resumeProfile(p.id);
+                      toast(t("agents.quota.resumed", { id: p.id }));
+                      onChanged();
+                    } finally {
+                      setResuming(false);
+                    }
+                  });
+              }}
             >
-              {t("agents.quota.endRest")}
+              {resuming ? t("agents.quota.resuming") : t("agents.quota.resume")}
             </Button>
+          </span>
+        ) : null}
+        {quota.resumed ? (
+          <span data-resumed={p.id} className="text-fg-secondary" title={formatTime(quota.resumed.at)}>
+            {t("agents.quota.resumedBy", { who: quota.resumed.by, time: clock(quota.resumed.until, now) })}
           </span>
         ) : null}
         <span data-stat-line={p.id}>

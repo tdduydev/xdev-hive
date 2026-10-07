@@ -1034,6 +1034,27 @@ describe("Runner", () => {
     none.runner.cancel(waiting.id);
   });
 
+  it("runs on a subscription held back by its threshold and its rest once a person chooses Dùng tiếp", async () => {
+    const high: PlanUsage = { session: { percent: 97, resets: "6:20pm" }, week: { percent: 40, resets: null }, others: [], checkedAt: "" };
+    const { runner } = await setup([profile("claude-a", "claude", 1, "ok")], {}, "local", { usage: () => high });
+    runner.store.setCooldown("claude-a", "2099-01-01T00:00:00.000Z", "usage limit");
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    assert.equal(runner.store.get(run.id)!.status, "queued");
+
+    const before = Date.now();
+    await runner.resumeProfile("claude-a", "an");
+    await runner.settle();
+    assert.equal(runner.store.get(run.id)!.profileId, "claude-a");
+    const status = runner.profileStatuses().find((p) => p.id === "claude-a")!;
+    assert.equal(status.cooldownUntil, null);
+    assert.equal(status.resumed?.by, "an");
+    // "6:20pm" names no zone: the threshold stays off for a session's length.
+    const until = Date.parse(status.resumed!.until);
+    assert.ok(until >= before + 5 * 3600_000 - 1000 && until <= Date.now() + 5 * 3600_000, status.resumed!.until);
+    await assert.rejects(runner.resumeProfile("nope", "an"), /nope/);
+  });
+
   it("tells the hub about a run that failed for good, not about one that rotated to another subscription", async () => {
     const events: HiveEvent[] = [];
     const hive = new SqliteHive(":memory:", { onEvent: (e) => events.push(e) });
