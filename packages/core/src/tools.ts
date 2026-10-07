@@ -71,7 +71,7 @@ export function expandPackage(args: readonly string[], p: ToolEntry["package"]):
 }
 
 /** Every command of an entry with the field it is in, the program first. */
-function commands(e: ToolEntry): Array<[field: string, argv: readonly string[]]> {
+export function toolCommands(e: ToolEntry): Array<[field: string, argv: readonly string[]]> {
   const out: Array<[string, readonly string[]]> = [];
   if (e.mcp) out.push(["mcp", [e.mcp.command, ...e.mcp.args]]);
   e.hooks.forEach((h, i) => out.push([`hooks.${i}`, h.command]));
@@ -102,7 +102,7 @@ export function toolProblem(e: ToolEntry, builtin: boolean): ErrorText | null {
   if (e.kind === "hook" && !e.hooks.length) return at("hooks", "errors.toolKindField", { kind: e.kind });
   if (e.kind === "cli" && !e.check) return at("check", "errors.toolKindField", { kind: e.kind });
   if (e.package && !TOOL_VERSION.test(e.package.version)) return at("package.version", "errors.toolVersionPin", { version: e.package.version });
-  for (const [field, args] of commands(e)) {
+  for (const [field, args] of toolCommands(e)) {
     if (args.some((a) => a.includes(RUN_DIR_PLACEHOLDER))) return at(field, "errors.toolRunDir", { placeholder: RUN_DIR_PLACEHOLDER });
     const loose = args.find(unpinned);
     if (loose !== undefined) return at(field, "errors.toolUnpinned", { arg: loose });
@@ -145,7 +145,7 @@ function textFields(e: ToolEntry): Array<[field: string, text: string]> {
   if (e.homepage) out.push(["homepage", e.homepage]);
   if (e.prepare) out.push(["prepare.marker", e.prepare.marker]);
   e.hooks.forEach((h, i) => out.push([`hooks.${i}`, h.matcher]));
-  for (const [field, args] of commands(e)) out.push([field, args.join(" ")]);
+  for (const [field, args] of toolCommands(e)) out.push([field, args.join(" ")]);
   return out;
 }
 

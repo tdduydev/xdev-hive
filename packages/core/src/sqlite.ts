@@ -2,7 +2,7 @@ import { diffReviewSelection, validDiffReview, patchHunks } from "#core/diff-rev
 import { memoryCleanupBaseline, type MemoryCleanupRun, type MemoryCleanupProposal } from "#core/memory-cleanup.ts";
 import { needsPlanApproval, type ImplementationPlan, type RunPlan } from "#core/plan-approval.ts";
 import { DatabaseSync } from "node:sqlite";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { isContextDoc, may, sees, systemOf, systemOwner, withSystemGrants, type Permission } from "./access.ts";
@@ -77,7 +77,7 @@ import {
 import { parseVerdict, type Verdict } from "./verdict.ts";
 import { parseParts, partInstructions, reduceInstructions, splitInstructions, type MapPhase } from "./mapreduce.ts";
 import { ROLE_STEP_RUN, stepInstructions, type RoleStep } from "./roles.ts";
-import { toolEffective, toolProblem, toolSetupItems } from "./tools.ts";
+import { toolEffective, toolProblem, toolSetupItems, toolHash } from "./tools.ts";
 import { classifyTaskRule, DEFAULT_TASK_CLASS, parseTaskClass, TASK_SIZES, type TaskClass, type TaskKind, type TaskSize } from "./task-classify.ts";
 import type {
   Actor,
@@ -152,6 +152,9 @@ import type {
   ToolEntry,
   ToolProjectSetting,
   ToolStatus,
+  MachineToolState,
+  MachineToolAccess,
+  ToolApproval,
   ToolView,
   HiveSystem,
   RetiredProject,
@@ -662,6 +665,15 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE run_group_items ADD COLUMN step TEXT;
   `,
+  // Approvals are commands pinned by hash, acknowledged independently of local trust so revocation stays local.
+  `
+  ALTER TABLE machines ADD COLUMN tool_states TEXT;
+  CREATE TABLE machine_tool_approvals(
+    id TEXT PRIMARY KEY, machine_id TEXT NOT NULL REFERENCES machines(id) ON DELETE CASCADE,
+    tool_id TEXT NOT NULL REFERENCES tools(id) ON DELETE CASCADE, hash TEXT NOT NULL,
+    approved_by TEXT NOT NULL, approved_at TEXT NOT NULL, applied_at TEXT,
+    UNIQUE(machine_id, tool_id));
+  `,
 ];
 
 /**
@@ -1021,6 +1033,7 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
   },
   "tasks.unassign": (i) => ({ target: i.id, detail: "bỏ gán agent", text: { key: "audit.taskUnassign" } }),
   "machines.remove": (i) => ({ target: i.id }),
+  "machines.approveTool": (i, o: ToolApproval) => ({ target: `${i.machineId}/${o.toolId}`, detail: o.hash, text: { key: "audit.toolApproved", vars: { tool: o.toolId, hash: o.hash } } }),
   "machines.setProfile": (i, o: Machine) => {
     const key = i.enabled === undefined ? "audit.profilePriority" : i.priority === undefined ? (i.enabled ? "audit.profileOn" : "audit.profileOff") : i.enabled ? "audit.profileOnPriority" : "audit.profileOffPriority";
     const parts = [i.enabled === undefined ? "" : i.enabled ? "bật" : "tắt", i.priority === undefined ? "" : `ưu tiên ${i.priority}`].filter(Boolean).join(", ");
@@ -5656,6 +5669,30 @@ export class SqliteHive implements HiveBackend {
     };
   }
 
+  #mayApproveTool(actor: Actor, owner: string | null): boolean {
+    return actor.role !== "agent" && !isAgentActor(actor) &&
+      ((actor.role === "admin" && !actor.access) || (!!actor.account && actor.account === owner));
+  }
+
+  #toolApproval(r: Row): ToolApproval & { appliedAt: string | null } {
+    return { id: str(r.id), toolId: str(r.tool_id), hash: str(r.hash), approvedBy: str(r.approved_by), approvedAt: str(r.approved_at), appliedAt: strOrNull(r.applied_at) };
+  }
+
+  #machineToolAccess(machineId: string, actor: Actor): MachineToolAccess {
+    const r = this.db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row | undefined;
+    if (!r) throw new HiveError("not_found", `No machine ${machineId}.`, { key: "errors.machineNotFound", vars: { machine: machineId } });
+    const states = JSON.parse(str(r.tool_states ?? "[]")) as MachineToolState[];
+    const approvals = (this.db.prepare("SELECT * FROM machine_tool_approvals WHERE machine_id = ?").all(machineId) as Row[]).map((a) => this.#toolApproval(a));
+    const tools = states.flatMap((state) => {
+      const row = this.db.prepare("SELECT * FROM tools WHERE id = ?").get(state.id) as Row | undefined;
+      if (!row) return [];
+      const entry = { id: state.id, ...JSON.parse(str(row.entry)) } as ToolEntry;
+      const hash = toolHash(entry);
+      return [{ ...state, hash, trust: state.hash === hash ? state.trust : "changed" as const, entry, approval: approvals.find((a) => a.toolId === state.id && a.hash === hash) ?? null }];
+    });
+    return { supported: r.tool_states != null, canApprove: this.#mayApproveTool(actor, strOrNull(r.owner)), tools };
+  }
+
   #profileChanges(machineId: string): ProfileChange[] {
     return (this.db.prepare("SELECT * FROM machine_profile_changes WHERE machine_id = ? ORDER BY profile_id").all(machineId) as Row[]).map(toProfileChange);
   }
@@ -6832,7 +6869,7 @@ export class SqliteHive implements HiveBackend {
       },
 
       // Keyed by the hub actor (`runner.<machine>@<token>`): the same key as the leases that machine takes.
-      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, projects, acceptsRuns, costs, deliveredMessages }, actor) =>
+      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, projects, acceptsRuns, costs, deliveredMessages, toolStates, appliedToolApprovals }, actor) =>
         this.#tx(() => {
           const ack = db.prepare("UPDATE run_messages SET delivered_at = COALESCE(delivered_at, ?) WHERE machine_id = ? AND id = ?");
           for (const id of deliveredMessages) ack.run(this.#now(), actor.name, id);
@@ -6856,6 +6893,8 @@ export class SqliteHive implements HiveBackend {
           ).run(actor.name, machine, instance, prev, version, JSON.stringify(runs), now, duplicateAt);
           if (setup) db.prepare("UPDATE machines SET setup = ?, setup_at = ? WHERE id = ?").run(JSON.stringify(setup.report), setup.checkedAt, actor.name);
           if (profiles) db.prepare("UPDATE machines SET profiles = ? WHERE id = ?").run(JSON.stringify(profiles), actor.name);
+          if (toolStates) db.prepare("UPDATE machines SET tool_states = ? WHERE id = ?").run(JSON.stringify(toolStates), actor.name);
+          for (const id of appliedToolApprovals) db.prepare("UPDATE machine_tool_approvals SET applied_at = COALESCE(applied_at, ?) WHERE id = ? AND machine_id = ?").run(now, id, actor.name);
           // An archived or deleted project is not stored as a repo this machine has (roadmap 47): a machine that still
           // has the folder must not put the name back into the lists, nor bring a deleted one back from its headstone.
           const hidden = new Set(this.#projectStates().keys());
@@ -6940,12 +6979,16 @@ export class SqliteHive implements HiveBackend {
                   .all(actor.name) as Row[]
               ).map((r) => ({ runId: str(r.run_id), requestedBy: str(r.cancel_by) }))
             : [];
+          const tools = this.#machineTools(actor);
           return {
             duplicate: duplicateAt !== null && duplicateAt > this.#now(-DUPLICATE_MINUTES),
             cooldowns: this.#cooldowns(),
             policy: this.#policy(),
             agentPolicy: this.#machineAgentPolicy(actor),
-            tools: this.#machineTools(actor),
+            tools,
+            toolApprovals: (db.prepare("SELECT a.* FROM machine_tool_approvals a JOIN tools t ON t.id = a.tool_id WHERE a.machine_id = ? AND a.applied_at IS NULL").all(actor.name) as Row[])
+              .map((a) => { const { appliedAt: _appliedAt, ...approval } = this.#toolApproval(a); return approval; })
+              .filter((a) => tools.entries.some((e) => e.id === a.toolId && toolHash(e) === a.hash)),
             commands,
             syncCommands,
             runRequests,
@@ -8182,6 +8225,27 @@ export class SqliteHive implements HiveBackend {
         return out;
       },
 
+      "machines.tools": ({ machineId }, actor) => this.#machineToolAccess(machineId, actor),
+      "machines.approveTool": ({ machineId, toolId, hash }, actor) => this.#tx(() => {
+        const access = this.#machineToolAccess(machineId, actor);
+        if (!access.canApprove) throw new HiveError("forbidden", "Only a person owning the machine or a hub admin approves tools.", { key: "errors.machineToolForbidden" });
+        if (!access.supported) throw new HiveError("bad_request", "Update this machine to approve tools from the web.", { key: "errors.machineAppTooOld", vars: { machine: machineId } });
+        const tool = access.tools.find((t) => t.id === toolId);
+        if (!tool) throw new HiveError("not_found", `No tool ${toolId} on machine.`, { key: "errors.toolNotFound", vars: { id: toolId } });
+        if (tool.hash !== hash) throw new HiveError("conflict", "The tool commands changed. Read them again.", { key: "errors.machineToolChanged" });
+        const problem = toolProblem(tool.entry, !!tool.entry.handler);
+        if (problem) throw new HiveError("bad_request", "Invalid tool commands.", problem);
+        if (tool.approval && !tool.approval.appliedAt) {
+          const { appliedAt: _appliedAt, ...approval } = tool.approval;
+          return approval;
+        }
+        const approval: ToolApproval = { id: randomUUID(), toolId, hash, approvedBy: actor.account ?? actor.name, approvedAt: this.#now() };
+        db.prepare(`INSERT INTO machine_tool_approvals(id, machine_id, tool_id, hash, approved_by, approved_at) VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT(machine_id, tool_id) DO UPDATE SET id = excluded.id, hash = excluded.hash, approved_by = excluded.approved_by, approved_at = excluded.approved_at, applied_at = NULL`)
+          .run(approval.id, machineId, toolId, hash, approval.approvedBy, approval.approvedAt);
+        return approval;
+      }),
+
       "machines.remove": ({ id }) => ({ removed: num(db.prepare("DELETE FROM machines WHERE id = ?").run(id).changes) === 1 }),
 
       // A subscription is a person's own account: only its machine's owner and hub admins change it (asked 2/10).
@@ -8497,6 +8561,8 @@ export class SqliteHive implements HiveBackend {
           }
           const problem = toolProblem(entry, builtin);
           if (problem) throw new HiveError("bad_request", `Tool ${entry.id}: ${problem.key} (${problem.vars?.field ?? ""}).`, problem);
+          // Even reverting to earlier commands needs a fresh decision; an old pending approval cannot revive.
+          db.prepare("DELETE FROM machine_tool_approvals WHERE tool_id = ? AND hash != ?").run(entry.id, toolHash(entry));
           const { id, ...rest } = entry;
           const now = this.#now();
           db.prepare(

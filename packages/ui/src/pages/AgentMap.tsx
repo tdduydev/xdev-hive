@@ -4,6 +4,7 @@
 import { useState, type KeyboardEvent } from "react";
 import { ListChecks } from "lucide-react";
 import { cn } from "cn";
+import { expandPackage, toolCommands } from "@xdev-hive/core";
 import type { Machine, QuotaCooldown, ReportedProfile, RunGroup, RunRecord, RunRequest } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Input } from "@xdev-hive/ui/components/ui/input";
@@ -11,7 +12,7 @@ import { Switch } from "@xdev-hive/ui/components/ui/switch";
 import { AssignedQueue } from "#ui/components/AgentAssignment.tsx";
 import { ErrorNote } from "#ui/components/common.tsx";
 import { Chip, type ChipKind } from "#ui/components/panes.tsx";
-import { formatTime, useAction, useCan, useHive } from "#ui/hooks.ts";
+import { formatTime, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { usageAsOf } from "#ui/lib/agents.ts";
 import { encodeTargets, machineCards, type AgentTarget, type ProfileCard, type ProfileState } from "#ui/lib/agentmap.ts";
@@ -184,6 +185,7 @@ function MachineColumn({
           ))}
         </div>
       ) : null}
+      <MachineTools machine={m} />
       {mayManage(me, m) && m.profiles.length ? (
         <details className="px-1 text-xs">
           <summary className="cursor-pointer text-fg-muted select-none">{t("agentMap.manage")}</summary>
@@ -319,6 +321,51 @@ function Quota({ label, percent }: { label: string; percent: number | null | und
       </span>
       <span className="text-right font-mono">{percent != null ? `${Math.round(pct)}%` : "—"}</span>
     </>
+  );
+}
+
+function MachineTools({ machine: m }: { machine: Machine }) {
+  const { client } = useHive();
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [tick, setTick] = useState(0);
+  const query = useQuery(() => open ? client.call("machines.tools", { machineId: m.id }) : Promise.resolve(null), [client, m.id, m.lastSeen, open, tick]);
+  const action = useAction();
+  const access = query.data;
+  return (
+    <details data-machine-tools={m.machine} className="min-w-0 px-1 text-xs" onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary className="flex min-h-11 cursor-pointer items-center text-fg-secondary select-none md:min-h-7">{t("machines.toolsTitle")}</summary>
+      <div aria-busy={query.loading || action.busy} className="flex min-w-0 flex-col gap-2 pt-2">
+        <p className="m-0 text-xs/5 text-fg-muted">{t("machines.toolsHint")}</p>
+        {query.loading ? <p role="status">{t("common.loading")}</p> : null}
+        {access && !access.supported ? <p>{t("machines.toolsOldApp")}</p> : null}
+        {access?.supported && !access.tools.length ? <p>{t("machines.toolsNone")}</p> : null}
+        {access?.tools.map((tool) => {
+          const pending = tool.approval && !tool.approval.appliedAt;
+          const needsApproval = tool.trust === "new" || tool.trust === "changed";
+          return (
+            <div key={tool.id} data-machine-tool={tool.id} className="flex min-w-0 flex-col gap-2 rounded-md border border-line-default bg-surface p-2">
+              <span className="break-words font-medium">{tool.entry.name} · {tool.entry.package?.version ?? tool.id}</span>
+              <Chip kind={needsApproval ? "warning" : "success"}>{t(`setup.toolTrust.${tool.trust}`)}</Chip>
+              <pre className="m-0 whitespace-pre-wrap break-all rounded-md bg-code p-2 font-mono text-xs/5 text-code-fg">
+                {toolCommands(tool.entry).map(([field, argv]) => `${field}: ${JSON.stringify(expandPackage(argv, tool.entry.package))}`).join("\n")}
+                {tool.entry.plugin ? `\nplugin: ${tool.entry.plugin}` : ""}
+              </pre>
+              {Object.keys(tool.entry.env).length ? <p className="m-0 break-all text-fg-muted">{t("setup.toolEnv")}: {JSON.stringify(tool.entry.env)}</p> : null}
+              {tool.entry.secretEnv.length ? <p className="m-0 break-words text-fg-muted">{t("setup.toolSecretEnv", { names: tool.entry.secretEnv.join(", ") })}</p> : null}
+              {tool.approval ? <p role="status" className="m-0 text-xs/5 text-fg-muted">{t(pending ? "machines.toolApprovalPending" : "machines.toolApproved", { who: tool.approval.approvedBy, time: formatTime(tool.approval.approvedAt) })}</p> : null}
+              {access.canApprove && needsApproval && !pending ? (
+                <Button size="sm" variant="outline" className="min-h-11 whitespace-normal md:min-h-7" data-approve-tool disabled={action.busy} onClick={() => void action.run(async () => {
+                  await client.call("machines.approveTool", { machineId: m.id, toolId: tool.id, hash: tool.hash });
+                  setTick((v) => v + 1);
+                })}>{t(action.busy ? "machines.toolApproving" : "machines.toolAllow")}</Button>
+              ) : null}
+            </div>
+          );
+        })}
+        <ErrorNote error={query.error ?? action.error} />
+      </div>
+    </details>
   );
 }
 

@@ -81,6 +81,8 @@ import {
   type TaskNote,
   type TeamPolicy,
   type ToolStatus,
+  type MachineToolAccess,
+  type ToolApproval,
   type ToolView,
 } from "./types.ts";
 
@@ -513,6 +515,8 @@ export const schemas = {
     /** The machine's Setup page result; sent after each check, kept by the hub until the next one. */
     setup: z.object({ checkedAt: z.iso.datetime(), report: setupReport }).optional(),
     profiles: z.array(reportedProfile).max(50).optional(),
+    toolStates: z.array(z.object({ id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/), hash: z.string().regex(/^[0-9a-f]{64}$/), trust: z.enum(["app", "trusted", "new", "changed"]) })).max(500).optional(),
+    appliedToolApprovals: z.array(z.uuid()).max(100).default([]),
     /** Projects the app has a repo for: the web offers only these machines for a project's runs. */
     projects: z.array(project).max(200).optional(),
     /** The user lets project managers queue runs on this machine from the web. */
@@ -537,6 +541,9 @@ export const schemas = {
     deliveredMessages: z.array(z.number().int().positive()).max(100).default([]),
   }),
   "machines.list": z.object({}),
+  "machines.tools": z.object({ machineId: machineRef }),
+  /** Human hub admin or machine owner only; hash is the commands shown before approval. */
+  "machines.approveTool": z.object({ machineId: machineRef, toolId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/), hash: z.string().regex(/^[0-9a-f]{64}$/) }),
   /** What the project's machines still lack to run its agents (roadmap 29a): any reader of the project, unlike admin.machines. */
   "machines.setupMissing": z.object({ project }),
   /**
@@ -1154,6 +1161,7 @@ export interface MethodOutput {
      * set by one of them, or with the app's own code (whose old per-repo setup still counts). Older apps ignore it.
      */
     tools: MachineTools;
+    toolApprovals: ToolApproval[];
     /** Install requests waiting for the machine's user. */
     commands: MachineCommand[];
     /**
@@ -1190,6 +1198,8 @@ export interface MethodOutput {
     archivedProjects: string[];
   };
   "machines.list": Machine[];
+  "machines.tools": MachineToolAccess;
+  "machines.approveTool": ToolApproval;
   "machines.setupMissing": MachineSetupMissing[];
   "machines.setProfile": Machine;
   "costs.summary": CostSummary;
@@ -1364,6 +1374,8 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "tasks.notes": "viewer",
   "machines.heartbeat": "agent",
   "machines.list": "viewer",
+  "machines.tools": "viewer",
+  "machines.approveTool": "viewer",
   "machines.setupMissing": "viewer",
   // Not a project right: the hub checks for a hub admin or the machine's owner, and refuses agents.
   "machines.setProfile": "agent",

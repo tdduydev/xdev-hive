@@ -522,6 +522,33 @@ export interface ToolView extends ToolEntry {
   projects: ToolProjectSetting[];
 }
 
+/** The commands a machine last saw, and whether its local config allows them. */
+export interface MachineToolState {
+  id: string;
+  hash: string;
+  trust: "app" | "trusted" | "new" | "changed";
+}
+
+/** A person's approval of exactly one catalog command hash on one machine. */
+export interface ToolApproval {
+  id: string;
+  toolId: string;
+  hash: string;
+  approvedBy: string;
+  approvedAt: string;
+}
+
+export interface MachineToolStatus extends MachineToolState {
+  entry: ToolEntry;
+  approval: (ToolApproval & { appliedAt: string | null }) | null;
+}
+
+export interface MachineToolAccess {
+  supported: boolean;
+  canApprove: boolean;
+  tools: MachineToolStatus[];
+}
+
 /** A project's setting for one tool, as a heartbeat carries it (roadmap 28b). */
 export interface MachineToolSetting {
   id: string;
