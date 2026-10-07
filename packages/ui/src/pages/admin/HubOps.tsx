@@ -82,6 +82,21 @@ export function OpsHub() {
       )
       .finally(() => setBusy(false));
   };
+  const cleanup = () => {
+    setBusy(true);
+    void client
+      .hub!.cleanup()
+      .then(
+        (r) => {
+          const freed = (r.releases?.bytes ?? 0) + r.artifacts.bytes + Math.max(0, r.db.before - r.db.after);
+          toast(t("hub.cleaned", { size: fileSize(freed), builds: r.releases?.versions.length ?? 0, artifacts: r.artifacts.removed }));
+          setTick((n) => n + 1);
+        },
+        (err: unknown) => toast(errorMessage(err), { tone: "error" }),
+      )
+      .finally(() => setBusy(false));
+  };
+  const s = h?.storage;
   return (
     <ResponsiveTableFrame className="flex flex-col gap-3">
       <ErrorNote error={info.error} />
@@ -135,6 +150,24 @@ export function OpsHub() {
               ) : undefined
             }
           />
+          {s ? (
+            <HubCard
+              title={t("hub.storage")}
+              state={t("hub.ok")}
+              tone="ok"
+              value={fileSize((s.releases?.bytes ?? 0) + s.artifacts.bytes + h.db.bytes + h.db.walBytes)}
+              detail={[
+                s.releases ? t("hub.storageBuilds", { count: s.releases.versions, size: fileSize(s.releases.bytes), keep: s.releases.keep }) : null,
+                t("hub.storageArtifacts", { count: s.artifacts.count, size: fileSize(s.artifacts.bytes), days: s.artifacts.days }),
+                t("hub.storageLogs", { days: s.runLogDays }),
+              ].filter(Boolean).join(" · ")}
+              action={
+                <Button size="sm" variant="outline" disabled={busy} onClick={cleanup} data-hub-cleanup>
+                  {busy ? t("hub.cleaning") : t("hub.cleanup")}
+                </Button>
+              }
+            />
+          ) : null}
           <HubCard
             title={t("hub.search")}
             state={

@@ -83,8 +83,9 @@ it("binds run credentials to one task and rejects every human decision even with
       ["tasks.update", { id: "SEC-1", status: "done" }],
       ["machines.heartbeat", { machine: "test", instance: "forged", projects: ["app"] }],
       ["hub.backup", {}],
+      ["hub.cleanup", {}],
     ];
-    for (const [method] of decisions) assert.ok(isMethod(method) || ["tokens.create", "tokens.revoke", "hub.backup"].includes(method), `Known sensitive method: ${method}`);
+    for (const [method] of decisions) assert.ok(isMethod(method) || ["tokens.create", "tokens.revoke", "hub.backup", "hub.cleanup"].includes(method), `Known sensitive method: ${method}`);
     const exchanged = await invoke("/api/mcp-credentials", "post", machineToken.token, { project: "app", readOnly: false });
     assert.equal(exchanged.status, 200);
     const mcpToken = exchanged.answer.result.token as string;

@@ -7,6 +7,8 @@
 //   HIVE_MEMORY_STALE_DAYS=90           (memory no agent used for this long is left out of agents' searches; 0 = never)
 //   HIVE_RUN_LOG_DAYS=30                (a run's log and diff are dropped this long after its last update, the rest of
 //     the run — summary, MR, cost — stays for good; 0 = keep logs too)
+//   HIVE_ARTIFACT_DAYS=30               (a done task's run artifacts are dropped this long after they were sent; 0 = keep)
+//   HIVE_RELEASE_KEEP=3                 (app releases whose builds stay on disk; the rollout target always stays)
 //   HIVE_PUBLIC_URL=https://hive.xdev.asia (links in webhook messages; default: https:// + the first allowed host)
 //   HIVE_BOOTSTRAP_TOKEN=...            (fixed admin token for automated deploys)
 //   HIVE_ADMIN_USER=admin              (name of the first admin account, created with a temporary password)
@@ -29,7 +31,7 @@ import { seaweedFromEnv } from "./seaweed.ts";
 import { OidcClient, oidcSettings } from "./oidc.ts";
 import { TokenStore } from "./tokens.ts";
 import { UserStore } from "./users.ts";
-import { ReleaseStore } from "./releases.ts";
+import { DEFAULT_RELEASE_KEEP, ReleaseStore } from "./releases.ts";
 import { WebhookDispatcher, WebhookStore } from "./webhooks.ts";
 import { AlertStore } from "./alerts.ts";
 import { HubInfoSource } from "./hubinfo.ts";
@@ -58,6 +60,8 @@ if (backup) logBackup("start", () => backupFile(dbPath, backup));
 
 const staleDays = Number(process.env.HIVE_MEMORY_STALE_DAYS ?? 90);
 const runLogDays = Number(process.env.HIVE_RUN_LOG_DAYS ?? 30);
+const artifactDays = Number(process.env.HIVE_ARTIFACT_DAYS ?? 30);
+const releaseKeep = Number(process.env.HIVE_RELEASE_KEEP ?? DEFAULT_RELEASE_KEEP);
 const embedder = process.env.HIVE_EMBED_URL
   ? openAiEmbedder({ url: process.env.HIVE_EMBED_URL, model: process.env.HIVE_EMBED_MODEL || "bge-m3", key: process.env.HIVE_EMBED_KEY || undefined })
   : null;
@@ -71,6 +75,7 @@ const hive = new SqliteHive(dbPath, {
   memoryRequiresApproval: process.env.HIVE_MEMORY_APPROVAL !== "off",
   memoryStaleDays: Number.isFinite(staleDays) && staleDays >= 0 ? staleDays : 90,
   runLogDays: Number.isFinite(runLogDays) && runLogDays >= 0 ? runLogDays : 30,
+  artifactDays: Number.isFinite(artifactDays) && artifactDays >= 0 ? artifactDays : 30,
   onEvent: (event) => onEvent(event),
   embedder,
   embedMinScore: Number.isFinite(minScore) ? minScore : 0.5,
@@ -83,9 +88,14 @@ const hive = new SqliteHive(dbPath, {
   },
 });
 hive.seed("hub", { hub: true });
+let artifactsPrunedAt = 0;
 const cleanupRound = () => {
   try { hive.queueMemoryCleanup(); }
   catch (err) { hubLog.error(`[xdev-hive] memory cleanup scheduling failed: ${(err as Error).message}`); }
+  // Hourly is plenty for a 30-day retention, and keeps the join off every minute.
+  if (Date.now() - artifactsPrunedAt < 60 * 60_000) return;
+  artifactsPrunedAt = Date.now();
+  void hive.pruneArtifacts().catch((err) => hubLog.error(`[xdev-hive] artifact cleanup failed: ${(err as Error).message}`));
 };
 cleanupRound();
 setInterval(cleanupRound, 60_000).unref();
@@ -191,6 +201,8 @@ if (embedder) {
   setInterval(() => void index().catch(() => undefined), 20_000).unref();
 }
 
+// Desktop builds sit next to the database (the data volume in Docker).
+const releases = new ReleaseStore(hive.db, path.join(path.dirname(dbPath), "releases"), undefined, Number.isFinite(releaseKeep) && releaseKeep >= 1 ? releaseKeep : DEFAULT_RELEASE_KEEP);
 const httpServer = createServer();
 let ui: HubAppOptions["ui"];
 let closeVite: (() => Promise<void>) | undefined;
@@ -222,6 +234,7 @@ httpServer.on(
     alerts,
     hub: (hubInfo = new HubInfoSource({
       hive,
+      releases,
       deployLog,
       dbPath,
       users,
@@ -234,9 +247,8 @@ httpServer.on(
       commit: process.env.HIVE_COMMIT || null,
     })),
     oidc,
-    // Desktop builds sit next to the database (the data volume in Docker).
     autoReleaseProject: process.env.HIVE_AUTO_RELEASE_PROJECT,
-    releases: new ReleaseStore(hive.db, path.join(path.dirname(dbPath), "releases")),
+    releases,
   }),
 );
 httpServer.listen(port, host, () => {

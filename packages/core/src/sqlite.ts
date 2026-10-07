@@ -585,7 +585,7 @@ const MIGRATIONS: string[] = [
   `,
   // Files an agent made during a run (roadmap 41c). Like doc_assets: the row says what the file is, the store keeps
   // its bytes by SHA-256 (stored = the store's name, data then empty), null while they are in this row. One name per
-  // run, so a run sent twice replaces instead of doubling. Nothing deletes a row on its own.
+  // run, so a run sent twice replaces instead of doubling. Since DATA-cleanup-hub, pruneArtifacts drops old ones of done tasks.
   `
   CREATE TABLE artifacts(
     id INTEGER PRIMARY KEY, project TEXT NOT NULL, task_id TEXT NOT NULL, run_id TEXT NOT NULL, machine_id TEXT NOT NULL,
@@ -935,6 +935,8 @@ const CHAT_DECIDE_ORDER: Record<ChatActionKind, number> = {
  * error, branch, MR, merge, cost, who asked — stays for good, so what an agent concluded is never lost (roadmap 41b).
  */
 const RUN_LOG_DAYS = 30;
+/** Screenshots and reports of a finished task are evidence for its review; a month later nobody opens them. */
+const ARTIFACT_DAYS = 30;
 
 /** A run's tokens beside its record (run_costs joined as c), as toRunRecord reads them. */
 const RUN_TOKEN_COLUMNS = "c.input_tokens AS tok_input, c.cache_write_tokens AS tok_cache_write, c.cache_read_tokens AS tok_cache_read, c.output_tokens AS tok_output";
@@ -1810,6 +1812,8 @@ export interface SqliteHiveOptions {
   memoryStaleDays?: number;
   /** A run's log and patch go this many days after its last update; the rest of the record stays. 0: keep them. Default 30. */
   runLogDays?: number;
+  /** A done task's run artifacts go this many days after they were sent (pruneArtifacts). 0: keep them. Default 30. */
+  artifactDays?: number;
   /** Called after a change people may want to hear about (the hub sends webhooks); errors are ignored. */
   onEvent?: (event: HiveEvent) => void;
   /** Embeddings for memory search (the hub: Ollama or an API). Without one, search matches words only. */
@@ -1873,6 +1877,7 @@ export class SqliteHive implements HiveBackend {
       memoryRequiresApproval: false,
       memoryStaleDays: 90,
       runLogDays: RUN_LOG_DAYS,
+      artifactDays: ARTIFACT_DAYS,
       now: () => new Date(),
       onEvent: () => undefined,
       embedder: null,
@@ -2842,6 +2847,36 @@ export class SqliteHive implements HiveBackend {
    * The bytes of a file no row points at any more leave the store; a failure only leaves them there. Both tables are
    * asked: the same bytes are kept once, so a doc's file and a run's artifact can be the very same blob.
    */
+  /**
+   * Drops the artifacts of done tasks sent more than artifactDays ago, and their bytes once nothing points at them. An
+   * open task keeps its evidence however old; so does a task that is gone, as there is nothing left to tell.
+   */
+  async pruneArtifacts(): Promise<{ removed: number; bytes: number }> {
+    if (!(this.#opts.artifactDays > 0)) return { removed: 0, bytes: 0 };
+    const rows = this.db
+      .prepare(
+        `SELECT a.id, a.size, a.sha256, a.stored FROM artifacts a JOIN tasks t ON t.project = a.project AND t.id = a.task_id
+         WHERE t.status = 'done' AND a.created_at < ?`,
+      )
+      .all(this.#now(-this.#opts.artifactDays * 24 * 60)) as Row[];
+    if (!rows.length) return { removed: 0, bytes: 0 };
+    const del = this.db.prepare("DELETE FROM artifacts WHERE id = ?");
+    this.#tx(() => { for (const r of rows) del.run(r.id as number); });
+    for (const sha of new Set(rows.filter((r) => r.stored).map((r) => str(r.sha256)))) await this.#dropBlob(sha);
+    return { removed: rows.length, bytes: rows.reduce((n, r) => n + Number(r.size), 0) };
+  }
+
+  /** Artifacts on the hub and how long a done task keeps them, for the Hub page. */
+  artifactsInfo(): { count: number; bytes: number; days: number; runLogDays: number } {
+    const r = this.db.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(size), 0) AS b FROM artifacts").get() as Row;
+    return { count: Number(r.n), bytes: Number(r.b), days: this.#opts.artifactDays, runLogDays: this.#opts.runLogDays };
+  }
+
+  /** Gives the pages freed by deletes back to the disk; the WAL is checkpointed first so the file can shrink. */
+  vacuum(): void {
+    this.db.exec("PRAGMA wal_checkpoint(TRUNCATE); VACUUM;");
+  }
+
   async #dropBlob(sha: string): Promise<void> {
     const blobs = this.#opts.blobs;
     if (!blobs) return;

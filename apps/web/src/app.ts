@@ -658,11 +658,16 @@ export function createHubApp({
       }
 
       // Trang Hub (roadmap 22n): hub admins only.
-      if (method === "hub.info" || method === "hub.backup") {
+      if (method === "hub.info" || method === "hub.backup" || method === "hub.cleanup") {
         requireHubAdmin(res);
         if (!hub) throw new HiveError("bad_request", `Unknown method ${method}`);
         if (method === "hub.info") res.json({ result: await hub.info() });
-        else {
+        else if (method === "hub.cleanup") {
+          const r = await hub.cleanup();
+          const freed = (r.releases?.bytes ?? 0) + r.artifacts.bytes + Math.max(0, r.db.before - r.db.after);
+          hive.audit(actor, "hub.cleanup", `${(freed / 1e6).toFixed(0)} MB`, `${r.releases?.versions.length ?? 0} builds · ${r.artifacts.removed} artifacts`);
+          res.json({ result: r });
+        } else {
           const r = await hub.backup();
           hive.audit(actor, "hub.backup", path.basename(r.file), r.removed.length ? `− ${r.removed.length}` : "");
           res.json({ result: { file: path.basename(r.file), removed: r.removed.length, files: r.files?.copied ?? null } });

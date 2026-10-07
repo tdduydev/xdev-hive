@@ -71,6 +71,11 @@ describe("the Hub page", () => {
       assert.ok(after.backup.last);
       assert.equal((await s.rpc(s.agent, "hub.info")).status, 403);
       assert.equal((await s.rpc(s.agent, "hub.backup")).status, 403);
+      assert.deepEqual(after.storage, { releases: null, artifacts: { count: 0, bytes: 0, days: 30 }, runLogDays: 30 });
+      const cleaned = (await s.rpc(s.admin, "hub.cleanup")).body.result;
+      assert.deepEqual([cleaned.releases, cleaned.artifacts], [null, { removed: 0, bytes: 0 }]);
+      assert.ok(cleaned.db.after > 0 && cleaned.db.after <= cleaned.db.before, `VACUUM leaves a working database: ${JSON.stringify(cleaned.db)}`);
+      assert.equal((await s.rpc(s.agent, "hub.cleanup")).status, 403);
     } finally {
       s.close();
     }

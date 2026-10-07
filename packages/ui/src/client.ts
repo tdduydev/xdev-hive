@@ -20,6 +20,7 @@ import {
   type AlertRuleState,
   type FeedEvent,
   type HubAlert,
+  type HubCleanup,
   type HubInfo,
 } from "@xdev-hive/core";
 
@@ -90,6 +91,8 @@ export interface HiveClient {
   hub?: {
     info(): Promise<HubInfo>;
     backup(): Promise<{ file: string; removed: number }>;
+    /** "Dọn dữ liệu": old app builds, old artifacts of done tasks, then VACUUM. */
+    cleanup(): Promise<HubCleanup>;
   };
   /** Desktop only: local projects, sync and agent installers. */
   desktop?: DesktopBridge;
@@ -201,6 +204,7 @@ export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpCl
     hub: {
       info: () => rpc<HubInfo>("hub.info"),
       backup: () => rpc<{ file: string; removed: number; files: number | null }>("hub.backup"),
+      cleanup: () => rpc<HubCleanup>("hub.cleanup"),
     },
     alerts: {
       list: () => rpc<{ open: HubAlert[]; recent: HubAlert[]; rules: AlertRuleState[] }>("alerts.list"),
