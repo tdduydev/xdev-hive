@@ -248,6 +248,14 @@ describe("pickProfile", () => {
   const b = profile("claude-b", "claude", 10, "ok");
   const c = profile("codex-a", "codex", 20, "ok");
 
+  it("keeps unpinned runs within service kinds and skips signed-out or exhausted profiles", () => {
+    const copilot = profile("copilot-1", "copilot", 1, "ok");
+    const allowed = { ...needs, allowedAgentKinds: ["claude", "codex"] as Array<"claude" | "codex"> };
+    assert.equal(pickProfile([load(copilot, { headroom: 100 }), load(a, { loggedIn: false }), load(c, { headroom: 20 })], allowed, now)?.profile.id, "codex-a");
+    assert.equal(pickProfile([load(copilot), load(a, { loggedIn: false }), load(c, { overLimit: true })], allowed, now), null);
+    assert.equal(pickProfile([load(copilot)], { ...allowed, preferredProfile: "copilot-1" }, now), null);
+  });
+
   it("runs where the most plan is left, before priority, and where usage is known first (roadmap 24a)", () => {
     const low = profile("claude-low", "claude", 30, "ok");
     // a has 10 points left, low 60: low runs although its priority number is higher.
@@ -1762,6 +1770,20 @@ describe("Runner", () => {
       [[run.id, "duy"]],
     );
     await a.runner.settle();
+  });
+
+  it("applies service kinds to an unpinned run started from the desktop Board", async () => {
+    const a = await setup([
+      profile("copilot-1", "copilot", 1, "ok"),
+      profile("codex-1", "codex", 20, "ok"),
+    ], {}, "hub");
+    await a.hive.call("sdlc.setProject", { project: "demo", settings: { gates: {}, allowedAgentKinds: ["claude", "codex"] } }, admin);
+
+    const queued = await a.runner.enqueue({ project: "demo", taskId: "T-1" });
+    assert.deepEqual(queued.allowedAgentKinds, ["claude", "codex"]);
+    await a.runner.settle();
+    assert.equal(a.runner.store.get(queued.id)!.profileId, "codex-1");
+    assert.equal(a.calls()[0]?.agent, "codex-1");
   });
 
   it("refuses a run request its Board would refuse, and says why", async () => {
@@ -3508,6 +3530,22 @@ describe("diff summary runs", () => {
       assert.equal(child.selection?.tier, "light");
       writeFileSync(path.join(done.worktree!, "later.txt"), "later changes\n");
       assert.equal(a.runner.diff(run.id), done.diffPatch);
+    } finally { await a.runner.stop(); a.hive.close(); }
+  });
+  it("keeps the service's allowed kinds on an automatic diff summary", async () => {
+    const a = await setup([
+      profile("copilot-1", "copilot", 1, "ok"),
+      profile("claude-1", "claude", 10, "ok"),
+    ], {}, "hub", { diffReview: true });
+    try {
+      await a.hive.call("sdlc.setProject", { project: "demo", settings: { gates: {}, allowedAgentKinds: ["claude"] } }, admin);
+      const run = await a.runner.enqueue({ project: "demo", taskId: "T-1" });
+      await a.runner.settle();
+      const summary = a.runner.store.list().find(r => r.diffSummaryFor === run.id);
+      assert.ok(summary);
+      assert.deepEqual(summary.allowedAgentKinds, ["claude"]);
+      assert.equal(summary.profileId, "claude-1");
+      assert.equal(a.calls().some(call => call.agent === "copilot-1"), false);
     } finally { await a.runner.stop(); a.hive.close(); }
   });
 });

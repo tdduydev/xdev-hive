@@ -320,6 +320,7 @@ export interface AgentProfileStatus extends AgentProfile {
 }
 
 export interface AgentRun {
+  allowedAgentKinds?: AgentKind[] | null;
   timeoutMinutes?: number | null;
   /** Resume hint saved after a timeout, including the last activity and committed branch tip. */
   continuation?: string | null;
@@ -440,6 +441,7 @@ export interface BestOf {
 }
 
 export interface StartRunRequest {
+  allowedAgentKinds?: AgentKind[] | null;
   timeoutMinutes?: number | null;
   project: string;
   taskId: string;

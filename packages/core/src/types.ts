@@ -1039,6 +1039,7 @@ export interface RunRequest {
   selection?: ModelSelection | null;
   /** Pinned profile; null: the machine rotates its profiles. */
   profileId: string | null;
+  allowedAgentKinds?: AgentKind[];
   /** Unpinned: the kind to wait for while one of its profiles could take the run (roadmap 24c); null: any. */
   preferKind: PreferKind | null;
   reviewAfter: boolean;

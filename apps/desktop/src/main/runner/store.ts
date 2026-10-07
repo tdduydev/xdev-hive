@@ -68,6 +68,7 @@ const ADDED_COLUMNS: Array<[name: string, ddl: string]> = [
   ["cache_read_tokens", "INTEGER"],
   /** The kind the run prefers (roadmap 24c); null: any. */
   ["prefer_kind", "TEXT"],
+  ["allowed_agent_kinds", "TEXT"],
   /** JSON: what RTK left out of the run's Bash output (roadmap 28d); null: no RTK, or no numbers. */
   ["skills", "TEXT"],
   ["compression", "TEXT"],
@@ -86,7 +87,7 @@ const ADDED_COLUMNS: Array<[name: string, ddl: string]> = [
 ];
 
 type Row = Record<string, unknown>;
-const JSON_FIELDS = new Set(["skills", "avoidKinds", "excludedProfiles", "ciFix", "bestOf", "compression", "selection", "plan", "diffReview", "redispatch"]);
+const JSON_FIELDS = new Set(["skills", "avoidKinds", "allowedAgentKinds", "excludedProfiles", "ciFix", "bestOf", "compression", "selection", "plan", "diffReview", "redispatch"]);
 const BOOL_FIELDS = new Set(["reviewAfter", "mrDraft"]);
 const column = (field: string) => field.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 
@@ -106,6 +107,7 @@ function toRun(r: Row): AgentRun {
     profileId: s(r.profile_id),
     preferredProfile: s(r.preferred_profile),
     preferKind: s(r.prefer_kind) as PreferKind | null,
+    allowedAgentKinds: r.allowed_agent_kinds == null ? null : JSON.parse(String(r.allowed_agent_kinds)) as AgentKind[],
     avoidKinds: JSON.parse(String(r.avoid_kinds)) as AgentKind[],
     excludedProfiles: JSON.parse(String(r.excluded_profiles)) as string[],
     attempt: Number(r.attempt),
@@ -157,7 +159,7 @@ const encode = (field: string, value: unknown) =>
   JSON_FIELDS.has(field) ? JSON.stringify(value) : BOOL_FIELDS.has(field) ? (value ? 1 : 0) : (value ?? null);
 
 export type NewRun = Pick<AgentRun, "project" | "taskId" | "taskTitle" | "role" | "attempt" | "maxAttempts"> &
-  Partial<Pick<AgentRun, "preferredProfile" | "preferKind" | "avoidKinds" | "excludedProfiles" | "parentRunId" | "worktree" | "branch" | "baseSha" | "instructions" | "reviewAfter" | "ciFix" | "bestOf" | "requestedBy" | "selection" | "plan" | "diffSummaryFor" | "timeoutMinutes" | "redispatch">>;
+  Partial<Pick<AgentRun, "preferredProfile" | "preferKind" | "allowedAgentKinds" | "avoidKinds" | "excludedProfiles" | "parentRunId" | "worktree" | "branch" | "baseSha" | "instructions" | "reviewAfter" | "ciFix" | "bestOf" | "requestedBy" | "selection" | "plan" | "diffSummaryFor" | "timeoutMinutes" | "redispatch">>;
 
 export const ACTIVE: RunStatus[] = ["queued", "running"];
 

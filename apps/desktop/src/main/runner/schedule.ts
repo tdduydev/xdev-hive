@@ -24,6 +24,7 @@ export interface ProfileLoad {
 export interface RunNeeds {
   role: AgentRole;
   preferredProfile: string | null;
+  allowedAgentKinds?: AgentKind[] | null;
   avoidKinds: AgentKind[];
   excludedProfiles: string[];
   /** Profiles to avoid when another will do: those the other best-of-n candidates run on. */
@@ -106,11 +107,12 @@ export function pickProfile(loads: ProfileLoad[], needs: RunNeeds, now: Date): P
 
 /** The profile pickProfile takes and why, for the run's log (roadmap 24c). */
 export function pickWithReason(loads: ProfileLoad[], needs: RunNeeds, now: Date): { load: ProfileLoad; reason: string } | null {
+  const allowed = (l: ProfileLoad) => needs.allowedAgentKinds == null || needs.allowedAgentKinds.includes(l.profile.kind);
   if (needs.preferredProfile) {
     const pinned = loads.find((l) => l.profile.id === needs.preferredProfile);
-    return pinned && isAvailable(pinned, now) ? { load: pinned, reason: tr("runNote.pickPinned", { profile: pinned.profile.id }) } : null;
+    return pinned && allowed(pinned) && isAvailable(pinned, now) ? { load: pinned, reason: tr("runNote.pickPinned", { profile: pinned.profile.id }) } : null;
   }
-  const fits = (l: ProfileLoad) => takesRole(l.profile, needs.role) && !needs.excludedProfiles.includes(l.profile.id);
+  const fits = (l: ProfileLoad) => allowed(l) && takesRole(l.profile, needs.role) && !needs.excludedProfiles.includes(l.profile.id);
   let candidates = loads.filter((l) => isAvailable(l, now) && fits(l));
   if (needs.strictKinds && needs.avoidKinds.length) {
     const other = (l: ProfileLoad) => !needs.avoidKinds.includes(l.profile.kind);
@@ -161,6 +163,7 @@ export function waitingReason(loads: ProfileLoad[], needs: RunNeeds, now: Date):
   const eligible = loads.filter(
     (l) =>
       l.profile.enabled &&
+      (needs.allowedAgentKinds == null || needs.allowedAgentKinds.includes(l.profile.kind)) &&
       (needs.preferredProfile ? l.profile.id === needs.preferredProfile : takesRole(l.profile, needs.role)) &&
       !needs.excludedProfiles.includes(l.profile.id),
   );
