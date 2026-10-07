@@ -2,6 +2,11 @@
 import type { KeyPaths, Translation } from "#ui/i18n/types.ts";
 
 export const vi = {
+  dashboardAgents: {
+    mapHint: "Gói nào sẵn sàng, gói nào cần xử lý?",
+    help: "Cách xử lý", loginHelp: "Mở app trên {machine} → Agent và quota → gói {profile} → Đăng nhập.", cliHelp: "Mở app trên {machine} → Bắt đầu để cài hoặc kiểm tra CLI của gói {profile}.", offlineHelp: "Mở app trên {machine} và kiểm tra kết nối hub. Máy phải trực tuyến để nhận việc.",
+    summary: "Tóm tắt agent", attention: "Cần xử lý", ready: "Gói sẵn sàng", running: "Đang chạy", queue: "Hàng đợi", all: "Tất cả gói", manage: "Quản lý máy {machine}", manageHint: "Tool, worktree và cấu hình gói trên máy này.", quota: "Xem quota", machine: "Xem máy", today: "Tất cả ở Hôm nay", batches: "{count} đợt chạy đang mở", dispatch: "Giao thêm ngay", slots: "Chỗ trống", full: "Phiên đầy còn", reset: "Reset sớm nhất", missing: "Chưa đọc quota", readHint: "Mở app trên {machine} → Agent và quota → Đọc quota.", resetEstimate: "Reset & ước tính", usage: "Phiên / Tuần", cooldowns: "Đang nghỉ", updated: "Cập nhật lúc {time}",
+  },
   worktrees: {
     title: "Worktree", hint: "Worktree của run trên máy này. Xoá giữ lại branch; mở lại task sẽ tạo worktree từ branch.",
     none: "Không có worktree của run.", oldApp: "Cập nhật app trên máy để xem và quản trị worktree.",

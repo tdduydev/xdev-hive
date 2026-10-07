@@ -1,6 +1,11 @@
 import type { Catalog } from "./vi.ts";
 
 export const en: Catalog = {
+  dashboardAgents: {
+    mapHint: "Which profiles are ready, and which need attention?",
+    help: "How to resolve", loginHelp: "Open the app on {machine} → Agents and quota → profile {profile} → Sign in.", cliHelp: "Open the app on {machine} → Get started to install or check the CLI for profile {profile}.", offlineHelp: "Open the app on {machine} and check the hub connection. The machine must be online to take work.",
+    summary: "Agent summary", attention: "Needs attention", ready: "Ready profiles", running: "Running", queue: "Queued", all: "All profiles", manage: "Manage machine {machine}", manageHint: "Tools, worktrees and profile settings for this machine.", quota: "View quota", machine: "View machine", today: "All in Today", batches: "{count} open batches", dispatch: "Dispatch now", slots: "Free slots", full: "Full sessions left", reset: "Earliest reset", missing: "Quota not checked", readHint: "Open the app on {machine} → Agents and quota → Read quota.", resetEstimate: "Reset & estimate", usage: "Session / Week", cooldowns: "Resting", updated: "Updated at {time}",
+  },
   worktrees: {
     title: "Worktrees", hint: "Run worktrees on this machine. Deletion keeps the branch; reopening a task recreates its worktree from that branch.",
     none: "No run worktrees.", oldApp: "Update the app on this machine to view and manage worktrees.",
