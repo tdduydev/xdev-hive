@@ -19,3 +19,8 @@ export function startSteps(settings: DesktopSettings, report: SetupReport, profi
   };
 }
 export const remainingSteps = (steps: Record<StartStep, StepState>): number => Object.values(steps).filter((s) => s === "todo").length;
+
+/** Today's automatic item selection must not turn an initial landing into an explicit deep link. */
+export function shouldOpenStartGuide(initialHash: string, currentHash: string): boolean {
+  return (!initialHash || initialHash === "#/today") && (!currentHash || /^#\/today(?:\?|$)/.test(currentHash));
+}

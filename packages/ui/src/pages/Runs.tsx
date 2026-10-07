@@ -1,3 +1,4 @@
+import { MergeQueue } from "#ui/components/MergeQueue.tsx";
 import { RunRedispatch } from "#ui/components/RunRedispatch.tsx";
 import { RunDiff, type DiffFixTarget } from "#ui/components/RunDiff.tsx";
 import type { DiffReview } from "@xdev-hive/core";
@@ -16,7 +17,7 @@ import { Sheet } from "@xdev-hive/ui/components/ui/sheet";
 import { RolesSheet } from "#ui/components/AgentSheets.tsx";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
-import { ArtifactList } from "#ui/components/Artifacts.tsx";
+import { ArtifactContext, ArtifactRows, ArtifactText, useArtifacts } from "#ui/components/Artifacts.tsx";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
 import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { Chip, FilterChips, ListPane, type ChipKind } from "#ui/components/panes.tsx";
@@ -183,9 +184,9 @@ export function RunsPage() {
     list.length ? (
       <>
         {label ? <div className="px-2 pt-2.5 pb-1 text-[11px]/4 font-semibold text-fg-muted">{label}</div> : null}
-        {list.map((r) => (
+        <ul role="list" aria-label={label ?? t("nav.runs")} className="m-0 flex list-none flex-col gap-px p-0">{list.map((r) => (
           <RunRow key={r.key} row={r} index={index++} on={r.key === current?.key} machine={machine} onPick={() => pick(r.key)} />
-        ))}
+        ))}</ul>
       </>
     ) : null;
 
@@ -197,6 +198,7 @@ export function RunsPage() {
         head={
           <>
             <ServiceFilter scope={scope} value={service} onChange={setService} />
+            {hubMode ? <div className="max-h-[40dvh] overflow-y-auto"><MergeQueue project={service} /></div> : null}
             <div className="max-md:[&_button]:min-h-11 max-md:[&_button]:text-xs"><FilterChips value={filter} options={FILTERS.map((id) => ({ id, label: t(`runs.filter.${id}`), count: counts[id] }))} onChange={setFilter} /></div>
             {teamRuns ? <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 md:grid-cols-1">
               <NativeSelect wrapperClassName="w-full min-w-0" className="w-full max-md:h-11 max-md:text-base" aria-label={t("runs.groupFilter")} value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)}><NativeSelectOption value="">{t("runs.allGroups")}</NativeSelectOption>{(groups.data ?? []).map((g) => <NativeSelectOption key={g.id} value={String(g.id)}>{g.title || `#${g.id}`}</NativeSelectOption>)}</NativeSelect>
@@ -261,44 +263,45 @@ function RunRow({ row, index, on, machine, onPick }: { row: Row; index: number; 
   const waiting = waitingReason(r);
   const where = row.src === "hub" ? row.run.machine : machine;
   return (
-    <div
-      role="option"
-      tabIndex={0}
-      aria-selected={on}
-      data-run-index={index}
-      data-run-status={r.status}
-      data-best={row.src === "local" && row.run.bestOf ? (row.run.bestOf.n === 0 ? "judge" : row.run.bestOf.pick === row.run.bestOf.n ? "kept" : "candidate") : undefined}
-      onClick={onPick}
-      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onPick())}
-      className={cn(
-        "flex shrink-0 cursor-pointer flex-col gap-[3px] rounded-sm px-2.5 py-2 outline-none focus-visible:focus-ring",
-        on ? "bg-surface shadow-e1" : "hover:bg-hover",
-      )}
-    >
-      <div className="flex min-w-0 items-center gap-1.5">
-        <span className={cn("shrink-0 text-[11px]/none", markCls)} aria-hidden="true">
-          {mark}
+    <li className="flex flex-col">
+      <button
+        type="button"
+        data-pane-item
+        aria-current={on ? "true" : undefined}
+        data-run-index={index}
+        data-run-status={r.status}
+        data-best={row.src === "local" && row.run.bestOf ? (row.run.bestOf.n === 0 ? "judge" : row.run.bestOf.pick === row.run.bestOf.n ? "kept" : "candidate") : undefined}
+        onClick={onPick}
+        className={cn(
+          "flex shrink-0 cursor-pointer flex-col gap-[3px] rounded-sm px-2.5 py-2 text-left outline-none focus-visible:focus-ring max-md:min-h-11",
+          on ? "bg-surface shadow-e1" : "hover:bg-hover",
+        )}
+      >
+        <span className="flex w-full min-w-0 items-center gap-1.5">
+          <span className={cn("shrink-0 text-[11px]/none", markCls)} aria-hidden="true">
+            {mark}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-[13px]/[18px] font-semibold text-fg-strong">{r.taskTitle}</span>
+          {waiting ? <Chip kind="warning" small>{t("runs.waiting")}</Chip> : null}
+          <span className="shrink-0 text-[11px]/none text-fg-muted tabular-nums">{live ? runDuration(r) : formatTime(rowTime(row))}</span>
         </span>
-        <span className="min-w-0 flex-1 truncate text-[13px]/[18px] font-semibold text-fg-strong">{r.taskTitle}</span>
-        {waiting ? <Chip kind="warning" small>{t("runs.waiting")}</Chip> : null}
-        <span className="shrink-0 text-[11px]/none text-fg-muted tabular-nums">{live ? runDuration(r) : formatTime(rowTime(row))}</span>
-      </div>
-      <span data-run-service={r.project} className="text-xs text-fg-secondary wrap-anywhere">{t("systemOverview.service")}: <span className="font-mono">{r.project}</span></span>
-      <span className="line-clamp-2 text-xs/[17px] text-fg-secondary">{runOutcome(r)}</span>
-      <ModelRunChip run={r} />
-      <span className="truncate text-xs/[17px] text-fg-muted md:text-[11px]/[14px]">
-        {[r.profileId, runLabel("agentRole", r.role), row.src === "hub" && where ? where : null, row.src === "local" ? bestOfText(row.run, t) : null].filter(Boolean).join(" · ")}
-        <span className="font-mono text-fg-muted">
-          {" · "}
-          {rowId(row)} · {r.taskId}
+        <span data-run-service={r.project} className="text-xs text-fg-secondary wrap-anywhere">{t("systemOverview.service")}: <span className="font-mono">{r.project}</span></span>
+        <span className="line-clamp-2 text-xs/[17px] text-fg-secondary">{runOutcome(r)}</span>
+        <ModelRunChip run={r} focusable={false} />
+        <span className="truncate text-xs/[17px] text-fg-muted md:text-[11px]/[14px]">
+          {[r.profileId, runLabel("agentRole", r.role), row.src === "hub" && where ? where : null, row.src === "local" ? bestOfText(row.run, t) : null].filter(Boolean).join(" · ")}
+          <span className="font-mono text-fg-muted">
+            {" · "}
+            {rowId(row)} · {r.taskId}
+          </span>
         </span>
-      </span>
-      {r.status === "running" ? (
-        <span className="relative mt-0.5 h-[3px] overflow-hidden rounded-full bg-sunken" aria-hidden="true">
-          <span className="absolute inset-y-0 left-0 w-2/5 animate-[xd-indeterminate_1.6s_var(--ease-standard)_infinite] rounded-full bg-brand-gradient-h motion-reduce:animate-none" />
-        </span>
-      ) : null}
-    </div>
+        {r.status === "running" ? (
+          <span className="relative mt-0.5 h-[3px] overflow-hidden rounded-full bg-sunken" aria-hidden="true">
+            <span className="absolute inset-y-0 left-0 w-2/5 animate-[xd-indeterminate_1.6s_var(--ease-standard)_infinite] rounded-full bg-brand-gradient-h motion-reduce:animate-none" />
+          </span>
+        ) : null}
+      </button>
+    </li>
   );
 }
 
@@ -394,11 +397,11 @@ function SummaryPane({ summary, live, head, children }: { summary: string | null
             <div className="grid gap-2" data-run-handoff>
               {handoff.map((part) => <section key={part.id} className="rounded-md border border-line-subtle bg-subtle p-3">
                 <h3 className="m-0 text-xs font-semibold text-fg-strong">{t(`runs.handoff.${part.id}`)}</h3>
-                <p className="mt-1 mb-0 text-[13px]/5 whitespace-pre-wrap text-fg-primary [overflow-wrap:anywhere]">{part.text || "—"}</p>
+                <p className="mt-1 mb-0 text-[13px]/5 whitespace-pre-wrap text-fg-primary [overflow-wrap:anywhere]"><ArtifactText text={part.text || "—"} /></p>
               </section>)}
             </div>
           ) : summary ? (
-            <p className="m-0 text-[13px]/5 whitespace-pre-wrap text-fg-primary [overflow-wrap:anywhere]">{summary}</p>
+            <p className="m-0 text-[13px]/5 whitespace-pre-wrap text-fg-primary [overflow-wrap:anywhere]"><ArtifactText text={summary} /></p>
           ) : (
             <p className="m-0 text-[13px]/5 text-fg-muted">{live ? t("runs.summaryLive") : t("runs.summaryNone")}</p>
           )}
@@ -579,6 +582,7 @@ function DiffView({ files, error, review, fix }: { files: DiffFile[] | null; err
  */
 function RunPanes({
   summary,
+  artifacts,
   live,
   log,
   logEmpty,
@@ -593,6 +597,7 @@ function RunPanes({
   footer,
 }: {
   summary: string | null;
+  artifacts?: ReactNode;
   live: boolean;
   log: string;
   /** Why there is no log, when it is not "the machine sent none": an old run the hub cleaned up (roadmap 41b). */
@@ -615,6 +620,7 @@ function RunPanes({
   const head = useMemo(() => logHeader(parseLog(log)), [log]);
   if (vertical) return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-surface max-md:[&_button]:min-h-11 max-md:[&_summary]:min-h-11 max-md:[&_summary]:flex max-md:[&_summary]:items-center" data-run-review>
+      {artifacts ? <div className="border-b border-line-subtle px-5 py-3">{artifacts}</div> : null}
       {onDiffTab ? <TabBar panelId={panelId} tabs={[["summary", t("runs.tabSummary")], ["diff", t("runs.tabDiff", { count: diff?.length ?? "…" })]]} tab={tab} onTab={key => { setTab(key); if (key === "diff") onDiffTab(); }} /> : null}
       <div className="max-w-[900px]" role="tabpanel" id={panelId} aria-labelledby={onDiffTab ? `${panelId}-${tab}` : undefined}>
         <div hidden={tab === "diff"}>
@@ -902,6 +908,7 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
   const verdict = run.role === "review" && run.status === "succeeded" ? (run.verdict ?? parseVerdict(run.summary)) : "none";
   const tick = useRefresh(live);
   const full = useQuery(() => client.call("runs.get", { machineId: run.machineId, runId: run.runId }), [client, run.machineId, run.runId, tick]);
+  const files = useArtifacts(run.project, undefined, run.runId, run.machineId, run.updatedAt);
   const manage = allow(run.project, "runDispatch");
   const patchFiles = useMemo(() => (full.data?.patch ? parsePatch(full.data.patch) : []), [full.data?.patch]);
   // An old run the hub cleaned up (roadmap 41b): the log and the diff are gone, what it concluded is not.
@@ -952,8 +959,6 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
       {run.compression ? <CompressionLine compression={run.compression} /> : null}
       {live && run.cancelRequestedBy ? <Notice tone="warn">{t("runs.cancelRequested", { who: run.cancelRequestedBy, time: formatTime(run.cancelRequestedAt) })}</Notice> : null}
       {run.error ? <Notice tone={run.status === "queued" ? "info" : "warn"} className="[overflow-wrap:anywhere]">{run.error}</Notice> : null}
-      {/* What this run made and sent to the hub (roadmap 41c): the branch may be gone, these stay. */}
-      <ArtifactList project={run.project} runId={run.runId} machineId={run.machineId} />
       <SteerHistory messages={full.data?.messages ?? []} ended={!live} />
       {run.status === "running" && manage ? <SteerForm key={`${run.machineId}:${run.runId}`} send={(text) => client.call("runs.steer", { machineId: run.machineId, runId: run.runId, text })} onChanged={() => { full.reload(); onChanged(); }} /> : null}
       <ErrorNote error={action.error ?? full.error} />
@@ -962,11 +967,13 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
   );
 
   return (
+    <ArtifactContext.Provider value={files.data ?? []}>
     <div className="flex min-h-0 flex-1 flex-col">
       <Head run={run} machine={run.machine} actions={actions} />
       {/* What it changed, as its machine sent it; a hub older than 22l has no patches (no tab). */}
       <RunPanes
         vertical
+        artifacts={<ArtifactRows files={files.data ?? []} error={files.error} loading={files.loading} onChanged={files.reload} context={run.runId} />}
         diffReview={full.data?.diffReview}
         diffFix={!live && run.status === "succeeded" && run.role === "implement" && manage ? { machineId: run.machineId, project: run.project, taskId: run.taskId } : undefined}
         footer={<>{run.mrUrl ? <MrMerge run={run} onChanged={onChanged} /> : null}{verdict === "changes" && latestReview && manage ? <FixRun run={run} /> : null}</>}
@@ -986,6 +993,7 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
           : {})}
       />
     </div>
+    </ArtifactContext.Provider>
   );
 }
 

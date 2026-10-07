@@ -1,3 +1,5 @@
+
+export * from "#core/auto-release.ts";
 // Browser-safe entry: no Node built-ins. Node-only pieces live in "@xdev-hive/core/node".
 export * from "./access.ts";
 export * from "./agent-policy.ts";
@@ -34,8 +36,11 @@ export * from "./tools.ts";
 export * from "./transfer.ts";
 export * from "./types.ts";
 export * from "./verdict.ts";
-export { HubBackend, requestDeviceToken } from "./hub-client.ts";
+export { HubBackend, requestDeviceToken, issueRunCredential, revokeRunCredential, issueMcpCredential } from "./hub-client.ts";
 
 export * from "#core/memory-cleanup.ts";
 
 export * from "#core/diff-review.ts";
+
+export * from "./merge-queue.ts";
+export * from "#core/inbox.ts";

@@ -1,3 +1,6 @@
+import { AutoReleaseStore } from "#core/auto-release-store.ts";
+import { HIVE_GATE_COMMANDS, mergeQueueConfigSchema, type MergeQueueView, type MergeBatch, type MergeResult } from "#core/merge-queue.ts";
+import { waitingReason } from "#core/inbox.ts";
 import { DEFAULT_RUN_TIMEOUT, runTimeoutMinutes, type RunTimeoutSettings } from "#core/run-timeout.ts";
 import { diffReviewSelection, validDiffReview, patchHunks } from "#core/diff-review.ts";
 import { memoryCleanupBaseline, type MemoryCleanupRun, type MemoryCleanupProposal } from "#core/memory-cleanup.ts";
@@ -48,6 +51,8 @@ import {
 } from "./sdlc.ts";
 import {
   authorize,
+  chatPlanSchema,
+  type ChatPlan,
   parseInput,
   type HiveBackend,
   type Method,
@@ -696,6 +701,38 @@ const MIGRATIONS: string[] = [
   CREATE INDEX run_requests_pending_at ON run_requests(requested_at) WHERE status = 'pending';
   CREATE INDEX run_requests_retention_at ON run_requests(updated_at) WHERE status <> 'pending';
   `,
+  // Existing tasks retain insertion order within the default priority.
+  `ALTER TABLE tasks ADD COLUMN priority INTEGER NOT NULL DEFAULT 50;
+   ALTER TABLE machines ADD COLUMN max_parallel INTEGER;
+   ALTER TABLE tasks ADD COLUMN agent_auto INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE tasks ADD COLUMN agent_retries INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE tasks ADD COLUMN agent_retry_source TEXT;`,
+  `ALTER TABLE machines ADD COLUMN gate_runner INTEGER NOT NULL DEFAULT 0;
+   CREATE TABLE merge_batches(id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, machine_id TEXT NOT NULL, status TEXT NOT NULL, body TEXT NOT NULL);
+   CREATE UNIQUE INDEX merge_batches_active ON merge_batches(project) WHERE status IN ('running','awaiting');
+   CREATE TABLE merge_batch_items(batch_id INTEGER NOT NULL REFERENCES merge_batches(id), task_id TEXT NOT NULL, machine_id TEXT NOT NULL, run_id TEXT NOT NULL, UNIQUE(task_id,machine_id,run_id));
+   CREATE TABLE merge_repairs(project TEXT NOT NULL, repair_task TEXT NOT NULL, task_id TEXT NOT NULL, machine_id TEXT NOT NULL, run_id TEXT NOT NULL, PRIMARY KEY(repair_task,task_id));`,
+  `CREATE TABLE auto_releases(project TEXT NOT NULL, batch_id TEXT NOT NULL, record TEXT NOT NULL, UNIQUE(project, batch_id));
+   CREATE TABLE auto_release_pauses(project TEXT PRIMARY KEY);`,
+  // Run credentials are separate from machine credentials; expiry and parent revocation are checked on every call.
+  // Local databases also run this migration: a foreign key's parent must exist before project cleanup can delete rows.
+  `
+  CREATE TABLE IF NOT EXISTS hub_tokens(
+    id TEXT PRIMARY KEY, hash TEXT NOT NULL UNIQUE, name TEXT NOT NULL, role TEXT NOT NULL,
+    created_at TEXT NOT NULL, last_used_at TEXT, owner_id TEXT);
+  CREATE TABLE run_credentials(
+    hash TEXT PRIMARY KEY, parent_id TEXT NOT NULL REFERENCES hub_tokens(id) ON DELETE CASCADE,
+    machine TEXT NOT NULL, project TEXT NOT NULL, task TEXT NOT NULL, run TEXT NOT NULL,
+    expires_at TEXT NOT NULL, read_only INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(parent_id, machine, run));
+  CREATE INDEX run_credentials_expiry ON run_credentials(expires_at);
+  CREATE TABLE mcp_credentials(
+    hash TEXT PRIMARY KEY, parent_id TEXT NOT NULL REFERENCES hub_tokens(id) ON DELETE CASCADE,
+    project TEXT, expires_at TEXT NOT NULL, read_only INTEGER NOT NULL DEFAULT 0);
+  CREATE INDEX mcp_credentials_expiry ON mcp_credentials(expires_at);
+  `,
+  // Inbox needs the newest run per task before it tests whether that run waits for a person.
+  `CREATE INDEX run_records_task_latest ON run_records(project, task_id, created_at DESC, run_id DESC, machine_id DESC);`,
 ];
 
 /**
@@ -816,7 +853,7 @@ interface ChatCall {
   input?: (stored: Record<string, unknown>) => Record<string, unknown>;
   result?: (output: unknown) => NonNullable<ChatAction["result"]>;
 }
-const CHAT_ACTION_CALLS: Record<ChatActionKind, ChatCall> = {
+const CHAT_ACTION_CALLS: Record<Exclude<ChatActionKind, "plan.create">, ChatCall> = {
   // The card's `taskKind` is the task's `kind`: in the action, `kind` already names the action.
   "task.create": { method: "tasks.create", input: ({ taskKind, ...rest }) => ({ ...rest, kind: taskKind }), result: (o) => ({ taskId: (o as Task).id }) },
   "task.update": { method: "tasks.update", result: (o) => ({ taskId: (o as Task).id }) },
@@ -841,6 +878,7 @@ const CHAT_ACTION_CALLS: Record<ChatActionKind, ChatCall> = {
  * last, so a reply that also says "stop everything" does not block what was confirmed with it.
  */
 const CHAT_DECIDE_ORDER: Record<ChatActionKind, number> = {
+  "plan.create": 0,
   "task.create": 0,
   "task.update": 1,
   // Before task.assign: a task given to an agent with no kind yet gets a classify run first.
@@ -1096,6 +1134,11 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
       vars: { clis: o.requiredClis.join(", ") || "—", projects: Object.keys(o.projects).length, templates: o.profileTemplates.length },
     },
   }),
+  "autoRelease.green": (i, o) => ({ target: `${i.project}/${i.batchId}`, detail: `${i.version} · ${o.state}` }),
+  "autoRelease.result": (i) => ({ target: `${i.project}/${i.batchId}`, detail: `${i.step} · ${i.success ? "success" : "failed"}${i.warning ? " · warning" : ""}` }),
+  "autoRelease.decide": (i) => ({ target: `${i.project}/${i.batchId}`, detail: i.pass ? "approved" : "rejected" }),
+  "autoRelease.reconcile": (i) => ({ target: `${i.project}/${i.batchId}`, detail: "reconciled: failed" }),
+  "autoRelease.resume": (i) => ({ target: i.project, detail: "release queue resumed" }),
   "sdlc.setCeiling": (i: { ceiling: Partial<GateModes> }) => {
     const summary = gateSummary(fullCeiling(i.ceiling));
     return { target: "hub", detail: `trần: ${summary}`, text: { key: "audit.sdlcCeiling", vars: { summary } } };
@@ -1260,6 +1303,14 @@ const AGENT_AUDITED: Partial<Record<Method, (input: any, output: any) => { targe
  * docs.assistFinish…), and clearing up (cancelling, removing memory, deleting a thread).
  */
 const PROJECT_WRITES: Partial<Record<Method, "project" | "task" | "thread" | "doc" | "proposal">> = {
+  "autoRelease.green": "project",
+  "autoRelease.take": "project",
+  "autoRelease.decide": "project",
+  "autoRelease.rollout": "project",
+  "autoRelease.resume": "project",
+
+  "mergeQueue.configure": "project",
+  "mergeQueue.take": "project",
   "docs.save": "doc",
   "docs.move": "doc",
   "docs.assetPut": "doc",
@@ -1511,6 +1562,7 @@ const toTask = (
   id: str(r.id),
   project: str(r.project),
   title: str(r.title),
+  priority: num(r.priority ?? 50),
   kind: strOrNull(r.kind) as Task["kind"],
   size: strOrNull(r.size) as Task["size"],
   risk: strOrNull(r.risk) as Task["risk"],
@@ -1758,6 +1810,15 @@ const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest(
 
 type Handlers = { [M in Method]: (input: ParsedInput<M>, actor: Actor) => MethodOutput[M] | Promise<MethodOutput[M]> };
 
+/** Agent credentials must never inherit machine reporting or human decisions, including future RPCs. */
+const AGENT_METHODS = new Set<Method>([
+  "agentPolicy.get", "agents.paused", "artifacts.get", "artifacts.list", "budgets.list", "costs.summary",
+  "docs.assetGet", "docs.assets", "docs.get", "docs.list", "machines.list", "machines.setupMissing",
+  "memory.search", "memory.write", "policy.get", "projects.list", "proposals.create", "runs.get",
+  "runs.list", "runs.requests", "skills.list", "systems.list", "tasks.claim", "tasks.list",
+  "tasks.next", "tasks.notes", "tasks.update", "tools.list", "tools.status",
+]);
+
 export class SqliteHive implements HiveBackend {
   readonly db: DatabaseSync;
   readonly #opts: Required<SqliteHiveOptions>;
@@ -1787,11 +1848,19 @@ export class SqliteHive implements HiveBackend {
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;");
     // Case folding SQLite's LIKE leaves out beyond ASCII (Đ and đ): searches compare hive_fold of both sides.
     this.db.function("hive_fold", { deterministic: true }, (v) => (typeof v === "string" ? v.normalize("NFC").toLocaleLowerCase("vi") : v));
+    this.db.function("hive_waiting_reason", { deterministic: true }, (status, summary, error, pipeline) => waitingReason({
+      status: str(status), summary: strOrNull(summary), error: strOrNull(error), mr: { pipeline: strOrNull(pipeline) },
+    }));
     this.#migrate();
     this.#handlers = this.#buildHandlers();
   }
 
   async call<M extends Method>(method: M, input: MethodInput<M>, caller: Actor): Promise<MethodOutput[M]> {
+    if (caller.runCredential || caller.mcpCredential) {
+      if (!AGENT_METHODS.has(method)) throw new HiveError("forbidden", "An agent credential cannot call this method.");
+      if (caller.runCredential && (method === "tasks.claim" || method === "tasks.update") && (input as { id?: string }).id !== caller.runCredential.task)
+        throw new HiveError("forbidden", "A run credential can work only on its task.");
+    }
     authorize(method, caller);
     const actor = this.#withSystems(caller);
     const parsed = parseInput(method, input);
@@ -1799,6 +1868,12 @@ export class SqliteHive implements HiveBackend {
     this.#check(method, parsed as ParsedInput<Method>, actor);
     this.#assertProjectOpen(method, parsed as ParsedInput<Method>);
     const output = this.#hideArchived(method, parsed as ParsedInput<Method>, this.#filter(method, await handler(parsed, actor), actor));
+    this.#report(method, parsed, output, actor);
+    return output;
+  }
+
+  /** The audit line and event of a write, as `call` makes them: also for writes a chat plan makes inside one transaction. */
+  #report<M extends Method>(method: M, parsed: ParsedInput<M>, output: MethodOutput[M], actor: Actor): void {
     const audited = AUDITED[method] ?? (isAgentActor(actor) ? AGENT_AUDITED[method] : undefined);
     if (audited) {
       const { target, detail, text } = audited(parsed, output);
@@ -1812,7 +1887,6 @@ export class SqliteHive implements HiveBackend {
         // a listener must never fail the call
       }
     }
-    return output;
   }
 
   // ── per-project access (access.ts) ─────────────────────────────────────────
@@ -1905,6 +1979,12 @@ export class SqliteHive implements HiveBackend {
     const i = input as Record<string, any>;
     const owner = SqliteHive.#docOwner;
     switch (method) {
+      case "mergeQueue.get":
+        return this.#need(actor, i.project, "view", `Project ${i.project}`);
+      case "mergeQueue.configure":
+        return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
+      case "mergeQueue.take":
+        return this.#need(actor, i.project, "taskWork", `Project ${i.project}`);
       case "docs.get":
       case "docs.history":
       case "docs.links":
@@ -1915,7 +1995,8 @@ export class SqliteHive implements HiveBackend {
       case "artifacts.put":
         return this.#need(actor, i.project, "taskWork", `Project ${i.project}`);
       case "artifacts.list":
-        return this.#need(actor, i.project, "view", `Project ${i.project}`);
+        if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
+        return;
       case "artifacts.get":
       case "artifacts.remove": {
         const row = this.db.prepare("SELECT project FROM artifacts WHERE id = ?").get(i.id) as Row | undefined;
@@ -1976,6 +2057,8 @@ export class SqliteHive implements HiveBackend {
       case "memory.search":
       case "skills.list":
       case "runs.list":
+      case "inbox.source":
+      case "sdlc.dispatch":
       case "runs.requests":
         if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
         return;
@@ -2091,7 +2174,24 @@ export class SqliteHive implements HiveBackend {
         if (row) this.#need(actor, str(row.project), "runDispatch", `Plan #${i.id}`);
         return;
       }
+      case "autoRelease.list":
+        return this.#need(actor, i.project, "view", `Project ${i.project}`);
+      case "autoRelease.decide":
+      case "autoRelease.reconcile":
+      case "autoRelease.resume":
+        return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
+      case "autoRelease.green":
+      case "autoRelease.take":
+      case "autoRelease.result":
+      case "autoRelease.progress":
+      case "autoRelease.rollout": {
+        this.#need(actor, i.project, "taskWork", `Project ${i.project}`);
+        const machine = method === "autoRelease.result" ? new AutoReleaseStore(this.db, () => this.#now()).get(i.project, i.batchId)?.machine : this.#sdlcPolicy().projects[i.project]?.releaseMachine;
+        if (!machine || actor.name !== machine) throw new HiveError("forbidden", "Only the configured Gate machine may report or take a release.");
+        return;
+      }
       case "sdlc.setProject":
+        if (i.settings?.autoDispatch) this.#need(actor, i.project, "runDispatch", `Project ${i.project}`);
         return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
       case "sdlc.gates":
       case "sdlc.flows":
@@ -2195,6 +2295,17 @@ export class SqliteHive implements HiveBackend {
       case "runs.push":
         for (const r of i.runs as Array<{ project: string }>) this.#need(actor, r.project, "taskWork", `Project ${r.project}`);
         return;
+      case "cooldowns.set":
+      case "cooldowns.clear": {
+        if (this.#isHubAdmin(actor)) return;
+        // Subscription accounts can be shared: every reporting machine owns its cooldown, as does its human owner.
+        const machines = this.db.prepare(`SELECT id, owner FROM machines WHERE EXISTS (
+          SELECT 1 FROM json_each(machines.profiles) p WHERE json_extract(p.value, '$.account') = ?
+        )`).all(i.account) as Row[];
+        const human = actor.role !== "agent" && !isAgentActor(actor) && actor.account !== undefined;
+        if (machines.some((m) => str(m.id) === actor.name || (human && actor.account === strOrNull(m.owner)))) return;
+        throw new HiveError("forbidden", "Only a reporting machine, its owner or a hub admin changes this subscription's cooldown.", { key: "errors.cooldownForbidden" });
+      }
       case "specs.push":
         return this.#need(actor, i.project, "taskWork", `Project ${i.project}`);
       case "specs.list":
@@ -3085,6 +3196,16 @@ export class SqliteHive implements HiveBackend {
       .run(taskId, (last ? num(last.version) : 0) + 1, note, status, actor.name, actor.onBehalf ?? null, sourceJson(actor.source), at);
   }
 
+  /** Source pagination must not spend its limit on hidden or archived projects. */
+  #sourceProjects(input: { project?: string; projects?: string[] }, actor: Actor): string[] {
+    const hidden = this.#projectStates();
+    const projects = input.project ? [input.project] : input.projects ?? (actor.access ? Object.keys(actor.access.projects)
+      : (this.db.prepare("SELECT project FROM tasks UNION SELECT project FROM run_records").all() as Row[]).map((r) => str(r.project)));
+    return projects.filter((p) =>
+      (!input.project || input.project === p) && (!input.projects || input.projects.includes(p)) &&
+      sees(actor, p) && (input.project === p || !hidden.has(p)));
+  }
+
   /** Task rows with what they depend on, in one query. */
   #tasks(rows: Row[]): Task[] {
     if (!rows.length) return [];
@@ -3651,6 +3772,8 @@ export class SqliteHive implements HiveBackend {
     if (taskIds.length) run("task_classify_runs", `DELETE FROM task_classify_runs WHERE task_id IN (${holes(taskIds)})`, ...taskIds);
     // Items hang off their group by id, with no project column of their own and no cascade to carry them.
     run("run_group_items", "DELETE FROM run_group_items WHERE group_id IN (SELECT id FROM run_groups WHERE project = ?)", project);
+    run("merge_batch_items", "DELETE FROM merge_batch_items WHERE batch_id IN (SELECT id FROM merge_batches WHERE project = ?)", project);
+    run("settings", "DELETE FROM settings WHERE key = ?", `mergeQueue:${project}`);
 
     for (const table of this.#projectTables()) run(table, `DELETE FROM "${table}" WHERE project = ?`, project);
 
@@ -4002,7 +4125,11 @@ export class SqliteHive implements HiveBackend {
     const places = usable.reduce((n, p) => n + (p.maxConcurrent ?? 1), 0);
     // A queued run with no profile yet may take any of them.
     const busy = m.runs.filter((r) => r.profileId === null || ids.has(r.profileId)).length;
-    return places - busy - (waiting.get(m.id) ?? 0);
+    // A pinned request only reserves its own plan; an unpinned one may take any plan.
+    const pending = profileId === null ? (waiting.get(m.id) ?? 0) : num((this.db.prepare(
+      "SELECT COUNT(*) AS n FROM run_requests WHERE machine_id = ? AND status = 'pending' AND (profile_id IS NULL OR profile_id = ?)",
+    ).get(m.id, profileId) as Row).n);
+    return places - busy - pending;
   }
 
   /**
@@ -4169,6 +4296,85 @@ export class SqliteHive implements HiveBackend {
     this.#releaseClassifyDispatches();
     this.#releaseGroups();
     this.#releaseAssigned();
+    this.#autoDispatch();
+  }
+
+  /** Count each live run once, including the gap between acceptance and the first push. */
+  #projectOccupancy(project: string): number {
+    const keys = new Set<string>();
+    for (const row of this.db.prepare("SELECT * FROM machines").all() as Row[]) {
+      const m = this.#toMachine(row);
+      for (const r of m.runs) if (r.project === project) keys.add(`${m.id}/${r.runId}`);
+    }
+    const rows = this.db.prepare(`SELECT q.*, r.status AS run_status FROM run_requests q
+      LEFT JOIN run_records r ON r.machine_id = q.machine_id AND r.run_id = q.run_id
+      WHERE q.project = ? AND q.status IN ('pending', 'accepted')`).all(project) as Row[];
+    for (const r of rows) {
+      if (r.status === "pending" || r.run_status === "queued" || r.run_status === "running" ||
+          (r.run_status == null && str(r.updated_at) > this.#now(-GROUP_UNREPORTED_MINUTES))) {
+        keys.add(r.run_id == null ? `request/${r.id}` : `${r.machine_id}/${r.run_id}`);
+      }
+    }
+    // A plan waiting for approval still reserves the task's project slot.
+    const plans = this.db.prepare("SELECT machine_id, run_id, request_id FROM implementation_plans WHERE project = ? AND status IN ('planning', 'waiting')").all(project) as Row[];
+    for (const r of plans) keys.add(r.run_id == null ? `request/${r.request_id}` : `${r.machine_id}/${r.run_id}`);
+    return keys.size;
+  }
+
+  /** Retry selection must use the same routing and shared quota rules as the first assignment. */
+  #autoProfileAllowed(task: Task, profile: ReportedProfile, machines: Machine[]): boolean {
+    const own = this.#sdlcPolicy().projects[task.project];
+    if (!(own?.allowedAgentKinds ?? ["claude", "codex", "antigravity"]).includes(profile.kind)) return false;
+    if (needsPlanApproval(own?.planApproval, task.size) && (!profile.planApproval || !["claude", "codex"].includes(profile.kind))) return false;
+    const selection = this.#selection(task.project, task, "implement");
+    const model = selection?.models[profile.kind as keyof NonNullable<typeof selection>["models"]];
+    // The runner resolves account-specific model versions within the chosen family (59c).
+    if (selection && (!model || /fable/i.test(model.model))) return false;
+    // Reports of one subscription share quota even when the retry moves to another machine.
+    const account = profile.account?.trim();
+    const latest = account ? machines.flatMap(machine => machine.profiles)
+      .filter(other => other.kind === profile.kind && other.account?.trim() === account)
+      .sort((a, b) => (b.usageCheckedAt ?? "").localeCompare(a.usageCheckedAt ?? ""))[0] : profile;
+    return !latest?.overLimit;
+  }
+
+  /** Explicit opt-in: old automatic gates alone must never start a service's backlog. */
+  #autoDispatch(): void {
+    const policy = this.#sdlcPolicy();
+    if (!Object.values(policy.projects).some((p) => p.autoDispatch)) return;
+    const rows = this.db.prepare(`SELECT t.*,
+      (SELECT COUNT(*) FROM task_deps d JOIN tasks o ON o.id = d.task_id
+       WHERE d.depends_on = t.id AND o.status != 'done') AS unlocks
+      FROM tasks t WHERE t.status = 'todo' AND t.agent_machine IS NULL
+      ORDER BY t.priority, unlocks DESC, t.rowid`).all() as Row[];
+    for (const task of this.#tasks(rows)) {
+      const own = policy.projects[task.project];
+      if (!own?.autoDispatch || !own.autoDispatchBy || this.#projectState(task.project) !== null) continue;
+      if (own.maxParallel && this.#projectOccupancy(task.project) >= own.maxParallel) continue;
+      const actor: Actor = { name: own.autoDispatchBy, role: "member" };
+      const machines = (this.db.prepare("SELECT * FROM machines ORDER BY machine, id").all() as Row[]).map((r) => this.#toMachine(r));
+      const waiting = this.#waitingRequests();
+      const candidates = machines.flatMap((m) => {
+        const free = (m.maxParallel ?? 1) - m.runs.length - (waiting.get(m.id) ?? 0) - this.#unreportedRequests(m);
+        if (free <= 0) return [];
+        return m.profiles.filter((p) => {
+          return this.#freePlaces(m, task.project, p.id, waiting) - this.#unreportedRequests(m, p.id) > 0 && this.#autoProfileAllowed(task, p, machines);
+        }).map((p) => ({ m, p, free }));
+      }).sort((a, b) => (a.p.priority ?? 50) - (b.p.priority ?? 50) || b.free - a.free || a.m.id.localeCompare(b.m.id) || a.p.id.localeCompare(b.p.id));
+      for (const { m, p } of candidates) {
+        const preview: Task = { ...task, agent: { machineId: m.id, machine: m.machine, profileId: p.id, order: 0, by: actor.name, at: this.#now(), hold: null } };
+        if (this.#agentWait(preview, m, 1)) continue;
+        try {
+          this.#assertDispatchable({ machineId: m.id, project: task.project, task, role: "implement", profileId: p.id, candidates: 1, instructions: "" }, actor);
+          this.#assignTask({ id: task.id, machineId: m.id, profileId: p.id }, actor, true);
+          this.audit(actor, "tasks.autoAssign", task.id, `${m.machine}/${p.id}`, { key: "audit.autoAssign", vars: { task: task.id, machine: m.machine, profile: p.id } });
+          break;
+        } catch (err) {
+          if (!(err instanceof HiveError)) throw err;
+          // A changed budget or unavailable runner is retried at the next heartbeat.
+        }
+      }
+    }
   }
 
   /** The runs.dispatch calls that waited for their task's classify run (roadmap 54b), sent once it ended. */
@@ -4242,7 +4448,28 @@ export class SqliteHive implements HiveBackend {
       }
       return machines.get(id)!;
     };
-    for (const task of this.#tasks(rows)) {
+    for (const originalTask of this.#tasks(rows)) {
+      let task = originalTask;
+      const retryRow = db.prepare("SELECT agent_retry_source FROM tasks WHERE id = ?").get(task.id) as Row;
+      const source = retryRow.agent_retry_source ? JSON.parse(str(retryRow.agent_retry_source)) as NonNullable<ParsedInput<"runs.dispatch">["redispatch"]> : null;
+      if (source) {
+        const own = this.#sdlcPolicy().projects[task.project];
+        if (!own?.autoDispatch) continue;
+        const prior = db.prepare("SELECT profile_id FROM run_records WHERE machine_id = ? AND run_id = ?").get(source.machineId, source.runId) as Row | undefined;
+        const retryMachines = (db.prepare("SELECT * FROM machines ORDER BY machine, id").all() as Row[]).map(row => this.#toMachine(row));
+        const choices = retryMachines.flatMap(machine => machine.profiles
+          .filter(profile => profile.redispatch && this.#autoProfileAllowed(task, profile, retryMachines) && (machine.id !== source.machineId || profile.id !== prior?.profile_id) && this.#freePlaces(machine, task.project, profile.id, waiting) - this.#unreportedRequests(machine, profile.id) > 0)
+          .map(profile => ({ machine, profile })))
+          .sort((a, b) => (a.profile.priority ?? 50) - (b.profile.priority ?? 50));
+        const choice = choices.find(({ machine, profile }) => {
+          const preview = { ...task, agent: { ...task.agent!, machineId: machine.id, machine: machine.machine, profileId: profile.id } };
+          return !this.#agentWait(preview, machine, 1);
+        });
+        if (!choice) continue;
+        db.prepare("UPDATE tasks SET agent_machine = ?, agent_profile = ? WHERE id = ?").run(choice.machine.id, choice.profile.id, task.id);
+        machines.set(choice.machine.id, choice.machine);
+        task = this.#getTask(task.id)!;
+      }
       const agent = task.agent!;
       const m = machineOf(agent.machineId);
       // Its classify run (roadmap 54b) still going: wait for it here, before #agentWait counts it as the task's run.
@@ -4250,7 +4477,7 @@ export class SqliteHive implements HiveBackend {
         if (this.#queueClassify(task, m, { name: agent.by, role: "member" })) continue;
       }
       // A machine the hub no longer has: no places to count, and #agentWait says so before it looks at them.
-      const free = m ? this.#freePlaces(m, task.project, agent.profileId, waiting) - this.#unreportedRequests(m) : 0;
+      const free = m ? this.#freePlaces(m, task.project, agent.profileId, waiting) - this.#unreportedRequests(m, agent.profileId) : 0;
       const why = this.#agentWait(task, m, free);
       if (why) {
         if (groupFails(why.key)) this.#holdAgent(task.id, why);
@@ -4267,9 +4494,12 @@ export class SqliteHive implements HiveBackend {
         }
         // The project's review gate decides the cross-review, as it does for the tasks a flow hands out (roadmap 34c).
         const reviewAfter = effectiveGates(this.#sdlcPolicy(), task.project).review !== "auto";
-        const req = this.#insertRequest(machine, task.project, task, { role: "implement", profileId: agent.profileId, reviewAfter, candidates: 1, instructions: "" }, actor);
+        const redispatch = source ? this.#redispatch(source, task) : null;
+        const original = source ? db.prepare("SELECT instructions FROM run_records WHERE machine_id = ? AND run_id = ?").get(source.machineId, source.runId) as Row | undefined : null;
+        const req = this.#insertRequest(machine, task.project, task, { role: "implement", profileId: agent.profileId, reviewAfter, candidates: 1, instructions: str(original?.instructions ?? ""), redispatch }, actor);
         // This turn's run: the task is not handed over again until a person assigns it afresh.
-        db.prepare("UPDATE tasks SET agent_request = ? WHERE id = ?").run(req.id, task.id);
+        db.prepare("UPDATE tasks SET agent_request = ?, agent_retry_source = NULL, agent_retries = agent_retries + ? WHERE id = ?").run(req.id, source ? 1 : 0, task.id);
+        if (source) this.audit(actor, "tasks.autoAssign", task.id, `Retry ${source.runId}: ${machine.machine}/${agent.profileId}`, { key: "audit.autoAssign", vars: { task: task.id, machine: machine.machine, profile: agent.profileId ?? "" } });
         // The place it just took, so the next task of the same machine sees one fewer.
         waiting.set(agent.machineId, (waiting.get(agent.machineId) ?? 0) + 1);
       } catch (err) {
@@ -4326,6 +4556,9 @@ export class SqliteHive implements HiveBackend {
     if (turn === "going") return { message: `Task ${id} has a run going.`, key: "errors.agentTaskBusy", vars: { id, status: "running" } };
     // It already had its turn and nobody moved it on: a second one would only repeat the same run for ever.
     if (turn === "over") return { message: `The agent already ran task ${id} once.`, key: "errors.agentTurnOver", vars: { id } };
+    const parallel = this.#sdlcPolicy().projects[task.project]?.maxParallel;
+    if (parallel && this.#projectOccupancy(task.project) >= parallel) free = 0;
+    if (m.maxParallel !== undefined && m.runs.length + (this.#waitingRequests().get(m.id) ?? 0) + this.#unreportedRequests(m) >= m.maxParallel) free = 0;
     if (free <= 0) return { message: `${m.machine} has no free place now.`, key: "errors.agentBusy", vars: { machine: m.machine } };
     return null;
   }
@@ -4380,16 +4613,17 @@ export class SqliteHive implements HiveBackend {
    * run it has not pushed yet. Without this an assignment goes out twice in the window between runs.requestResult and
    * the first push, when the task looks free to #assertDispatchable and the place looks free to #freePlaces.
    */
-  #unreportedRequests(m: Machine): number {
+  #unreportedRequests(m: Machine, profileId: string | null = null): number {
     const have = new Set(m.runs.map((r) => r.runId));
     const rows = this.db
       .prepare(
-        `SELECT q.run_id, r.status AS run_status FROM run_requests q
+        `SELECT q.run_id, q.profile_id, r.status AS run_status FROM run_requests q
          LEFT JOIN run_records r ON r.machine_id = q.machine_id AND r.run_id = q.run_id
          WHERE q.machine_id = ? AND q.status = 'accepted' AND q.updated_at > ?`,
       )
       .all(m.id, this.#now(-GROUP_UNREPORTED_MINUTES)) as Row[];
     return rows.filter((r) => {
+      if (profileId !== null && r.profile_id != null && r.profile_id !== profileId) return false;
       const runId = strOrNull(r.run_id);
       // The heartbeat already counts it among the machine's runs.
       if (runId !== null && have.has(runId)) return false;
@@ -4403,19 +4637,65 @@ export class SqliteHive implements HiveBackend {
   }
 
   /**
-   * A run of an assigned task ended (runs.push). Failed or cancelled: the agent stops here and the task says why, so it
-   * does not take a broken task again and again; a person presses *Chạy lại* (assigns it again) or gives it to another.
+   * An automatic assignment may continue its recorded branch once on another plan. Holding manual failures and
+   * blocking a second automatic failure prevents repeated dispatch of a broken task; cancellation always holds.
    */
-  #agentRunEnded(r: { runId: string; taskId: string; project: string; role: string; status: string; error: string | null }): void {
+  #agentRunEnded(r: { runId: string; taskId: string; project: string; role: string; status: string; error: string | null }, machineId?: string): void {
     if (r.role !== "implement" || r.status === "succeeded") return;
-    const row = this.db.prepare("SELECT agent_machine, agent_hold FROM tasks WHERE id = ? AND project = ?").get(r.taskId, r.project) as Row | undefined;
+    const row = this.db.prepare("SELECT t.*, q.run_id AS assigned_run, q.machine_id AS assigned_machine FROM tasks t LEFT JOIN run_requests q ON q.id = t.agent_request WHERE t.id = ? AND t.project = ?").get(r.taskId, r.project) as Row | undefined;
     if (!row || row.agent_machine == null || row.agent_hold != null) return;
+    // A delayed report from the first attempt must not stop or retry its replacement.
+    if (machineId && (row.assigned_run !== r.runId || row.assigned_machine !== machineId)) return;
+    if (num(row.agent_auto) === 1 && this.#sdlcPolicy().projects[r.project]?.autoDispatch && ["failed", "rate_limited"].includes(r.status) && ["todo", "doing"].includes(str(row.status))) {
+      if (num(row.agent_retries) === 0 && machineId) {
+        const source = { machineId, runId: r.runId, continueBranch: true };
+        try {
+          this.#redispatch(source, this.#getTask(r.taskId)!);
+          this.db.prepare("UPDATE tasks SET status = 'todo', owner = NULL, lease_until = NULL, agent_request = NULL, agent_retry_source = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(source), this.#now(), r.taskId);
+          return;
+        } catch (err) {
+          if (!(err instanceof HiveError)) throw err;
+          // Keep the existing hold when a runner cannot safely continue the task branch.
+        }
+      } else if (num(row.agent_retries) > 0) {
+        const note = `Automatic retry failed: ${r.runId}. ${r.error ?? r.status}`.slice(0, 2000);
+        this.db.prepare("UPDATE tasks SET status = 'blocked', note = ?, owner = NULL, lease_until = NULL, updated_at = ? WHERE id = ?").run(note, this.#now(), r.taskId);
+        this.#keepNote(r.taskId, note, "blocked", { name: str(row.agent_by), role: "member" }, this.#now());
+      }
+    }
     this.#holdAgent(
       r.taskId,
       r.status === "cancelled"
         ? { message: `Run ${r.runId} was cancelled.`, key: "errors.agentRunCancelled", vars: { run: r.runId } }
         : { message: r.error ?? `Run ${r.runId} ${r.status}.`, key: "errors.agentRunFailed", vars: { run: r.runId, error: clipDetail(r.error ?? r.status) } },
     );
+  }
+
+  /** Shared by manual assignment and the hub, inside their existing transaction. */
+  #assignTask({ id, machineId, profileId, before }: ParsedInput<"tasks.assign">, actor: Actor, automatic = false): Task {
+    const db = this.db;
+    const task = this.#getTask(id);
+    if (!task) throw new HiveError("not_found", `Task ${id} not found.`, { key: "errors.taskNotFound", vars: { id } });
+    if (task.status === "done") throw new HiveError("bad_request", `Task ${id} is done.`, { key: "errors.taskDone", vars: { id } });
+    const m = this.#machineByRef(machineId);
+    const name = { machine: m.machine };
+    // What the hub would need the moment it gives the task out: said now, not left to a hold nobody expected.
+    if (!m.acceptsRuns) throw new HiveError("bad_request", `${m.machine} does not take runs from the hub.`, { key: "errors.machineNoHubRuns", vars: name });
+    if (!m.projects.includes(task.project)) {
+      throw new HiveError("bad_request", `${m.machine} has no repo for ${task.project}.`, { key: "errors.machineNoRepo", vars: { ...name, project: task.project } });
+    }
+    if (profileId && !m.profiles.some((p) => p.id === profileId && p.enabled)) {
+      throw new HiveError("bad_request", `${m.machine} has no enabled profile ${profileId}.`, { key: "errors.profileNotOnMachine", vars: { ...name, id: profileId } });
+    }
+    const now = this.#now();
+    db.prepare(
+      `UPDATE tasks SET agent_machine = ?, agent_profile = ?, agent_order = ?, agent_by = ?, agent_at = ?,
+         agent_request = NULL, agent_hold = NULL, updated_at = ? WHERE id = ?`,
+    ).run(m.id, profileId, this.#agentOrder(task, m.id, before), principalOf(actor), now, now, id);
+    db.prepare("UPDATE tasks SET agent_auto = ?, agent_retries = 0, agent_retry_source = NULL WHERE id = ?").run(automatic ? 1 : 0, id);
+    // A fresh turn: it may start at once, whatever run the task had under the assignment before this one.
+    this.#releaseAssigned();
+    return this.#getTask(id)!;
   }
 
   /**
@@ -5297,10 +5577,17 @@ export class SqliteHive implements HiveBackend {
             assertNoSecret(text, what);
           }
           const task = (id: string) => db.prepare("SELECT project FROM tasks WHERE id = ?").get(id) as Row | undefined;
+          // A plan (roadmap 60d) proposes its tasks too: each one already has its project when the plan is stored. One
+          // set aside or failed makes nothing, so the leader may propose it again in the same reply.
           const plannedRow = (id: string) =>
-            db.prepare("SELECT json_extract(input, '$.project') AS project FROM chat_actions WHERE reply_id = ? AND kind = 'task.create' AND json_extract(input, '$.id') = ?").get(replyId, id) as
-              | Row
-              | undefined;
+            db
+              .prepare(
+                `SELECT json_extract(input, '$.project') AS project FROM chat_actions WHERE reply_id = ? AND kind = 'task.create' AND json_extract(input, '$.id') = ?
+                 UNION ALL
+                 SELECT json_extract(j.value, '$.project') FROM chat_actions a, json_each(a.input, '$.tasks') j
+                 WHERE a.reply_id = ? AND a.kind = 'plan.create' AND a.status IN ('proposed', 'done') AND json_extract(j.value, '$.id') = ?`,
+              )
+              .get(replyId, id, replyId, id) as Row | undefined;
           const planned = (id: string) => plannedRow(id) !== undefined;
           // The project a task is in, or will be in once this reply's proposal to create it is confirmed.
           const projectOf = (id: string): string | null => strOrNull(task(id)?.project) ?? strOrNull(plannedRow(id)?.project);
@@ -5354,6 +5641,16 @@ export class SqliteHive implements HiveBackend {
            */
           let scope = project;
           switch (action.kind) {
+            case "plan.create": {
+              const target = aimed();
+              const plan = { ...action, project: target, tasks: action.tasks.map((t) => ({ ...t, project: t.project ?? target })) };
+              this.#validateChatPlan(plan, actor, hub ? null : project);
+              const taken = plan.tasks.find((t) => planned(t.id));
+              if (taken) throw new HiveError("conflict", `Task ${taken.id} already exists.`, { key: "errors.taskExists", vars: { id: taken.id } });
+              input = plan;
+              scope = target;
+              break;
+            }
             case "task.create": {
               if (task(action.id) || planned(action.id)) throw new HiveError("conflict", `Task ${action.id} already exists.`, { key: "errors.taskExists", vars: { id: action.id } });
               // A leader of one service plans a feature across its system: a task for another service of it (roadmap 19d).
@@ -5531,11 +5828,140 @@ export class SqliteHive implements HiveBackend {
     });
   }
 
+  #createTask(input: ParsedInput<"tasks.create">, actor: Actor): Task {
+    const db = this.db;
+    if (this.#getTask(input.id)) throw new HiveError("conflict", `Task ${input.id} already exists.`, { key: "errors.taskExists", vars: { id: input.id } });
+    const deps = this.#checkDeps(input.id, input.project, input.dependsOn, actor);
+    // Save the initial brief with creation: a task manager need not have taskWork to describe new work.
+    if (input.note) assertNoHidden(input.note, "Note");
+    db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+      input.id,
+      input.project,
+      input.title,
+      input.note === undefined ? null : clean(input.note),
+      this.#now(),
+    );
+    // Whoever creates it may say what it is (a leader's task.create): theirs, and the rules leave it alone.
+    if (input.kind || input.size || input.risk) {
+      db.prepare("UPDATE tasks SET kind = ?, size = ?, risk = ?, classified_by = ?, classified_at = ? WHERE id = ?").run(
+        input.kind ?? null,
+        input.size ?? null,
+        input.risk ?? null,
+        actor.name,
+        this.#now(),
+        input.id,
+      );
+    }
+    if (input.priority !== undefined) db.prepare("UPDATE tasks SET priority = ? WHERE id = ?").run(input.priority, input.id);
+    this.#applyTaskRule(input.id);
+    this.#setDeps(input.id, deps);
+    return this.#getTask(input.id)!;
+  }
+
+  /** Validate all scopes and the dependency graph before a plan can become a card or write anything. */
+  #validateChatPlan(plan: ChatPlan, actor: Actor, home: string | null): void {
+    const fail = (message: string): never => { throw new HiveError("bad_request", message); };
+    const projects = new Set(this.#projectNames());
+    const doc = parseDocKey(plan.spec.key);
+    const targets = new Set(plan.tasks.map((t) => t.project ?? plan.project!));
+    targets.add(plan.project!);
+    for (const target of targets) {
+      if (!projects.has(target) || !sees(actor, target)) fail(`Unknown service: ${target}`);
+      if (home && target !== home && !this.#sameSystem(target, home)) {
+        throw new HiveError("bad_request", `${target} is not a service of a system with ${home}.`, { key: "errors.chatProjectOutside", vars: { project: target, home } });
+      }
+    }
+    if (doc.scope === "project") {
+      if (targets.size !== 1 || doc.project !== plan.project) fail("A service spec must belong to the plan's service; use a system spec for multiple services.");
+    } else if (doc.scope === "system") {
+      const system = this.#systemList().find((s) => systemOwner(s.name) === doc.project);
+      if (!system || [...targets].some((p) => !system.projects.includes(p))) fail("The spec's system must contain every service in the plan.");
+    } else fail("A plan spec belongs to a service or a system.");
+    if (doc.skill || isContextDoc(plan.spec.key)) fail("A plan must create a spec, not agent instructions.");
+    // Checked again when it runs: someone may have written that page or made one of the tasks in the meantime.
+    if (this.#getDoc(plan.spec.key)) throw new HiveError("conflict", `${plan.spec.key} already exists.`, { key: "errors.chatPlanSpecExists", vars: { key: plan.spec.key } });
+    const ids = new Set(plan.tasks.map((t) => t.id));
+    if (ids.size !== plan.tasks.length) fail("Duplicate task ids in plan.");
+    const batchOf = new Map<string, number>();
+    plan.batches.forEach((batch, index) => {
+      for (const id of batch.taskIds) {
+        if (!ids.has(id) || batchOf.has(id)) fail("Each planned task must appear in exactly one batch.");
+        batchOf.set(id, index);
+      }
+    });
+    if (batchOf.size !== ids.size) fail("Every planned task needs a batch.");
+    for (const task of plan.tasks) {
+      if (this.#getTask(task.id)) throw new HiveError("conflict", `Task ${task.id} already exists.`, { key: "errors.taskExists", vars: { id: task.id } });
+      for (const dep of task.dependsOn) {
+        if (dep === task.id) fail("A task cannot depend on itself.");
+        if (ids.has(dep)) {
+          if (batchOf.get(dep)! > batchOf.get(task.id)!) fail("A dependency cannot be in a later batch.");
+        } else {
+          const existing = this.#getTask(dep);
+          const target = task.project ?? plan.project!;
+          if (!existing || !sees(actor, existing.project) || (existing.project !== target && !this.#sameSystem(existing.project, target))) fail(`Unknown dependency: ${dep}`);
+        }
+      }
+    }
+    const visiting = new Set<string>(), visited = new Set<string>();
+    const visit = (id: string) => {
+      if (visiting.has(id)) fail("Cyclic plan dependencies.");
+      if (visited.has(id)) return;
+      visiting.add(id);
+      for (const dep of plan.tasks.find((t) => t.id === id)!.dependsOn) if (ids.has(dep)) visit(dep);
+      visiting.delete(id); visited.add(id);
+    };
+    for (const id of ids) visit(id);
+    for (const text of [plan.spec.title, plan.spec.content, ...plan.tasks.flatMap((t) => [t.title, t.acceptance]), ...plan.batches.map((b) => b.title)]) {
+      assertNoHidden(text, "Plan"); assertNoSecret(text, "Plan");
+    }
+  }
+
+  #createChatPlan(plan: ChatPlan, caller: Actor, autoDispatch = true): NonNullable<ChatAction["result"]> {
+    const actor = this.#withSystems(caller);
+    const { spec, doc, tasks, made, automation } = this.#tx(() => {
+      this.#validateChatPlan(plan, actor, null);
+      const spec = parseInput("docs.save", { ...plan.spec, includeInAgents: false, baseVersion: 0 });
+      const tasks = plan.tasks.map(({ taskKind, acceptance, ...task }) => parseInput("tasks.create", {
+        ...task, project: task.project ?? plan.project!, kind: taskKind,
+        note: `${acceptance}\n\nSpec: [[${plan.spec.key}]]`,
+      }));
+      // Apply exactly the underlying methods' permissions, including system document rights and archived services.
+      authorize("docs.save", actor); this.#check("docs.save", spec, actor); this.#assertProjectOpen("docs.save", spec);
+      for (const task of tasks) {
+        authorize("tasks.create", actor); this.#check("tasks.create", task, actor); this.#assertProjectOpen("tasks.create", task);
+      }
+      const automation = autoDispatch ? [...new Set(tasks.map(t => t.project))].map(project => {
+        const current = this.#sdlcPolicy().projects[project];
+        const input = parseInput("sdlc.setProject", { project, settings: { ...current, gates: current?.gates ?? {}, autoDispatch: true } });
+        authorize("sdlc.setProject", actor); this.#check("sdlc.setProject", input, actor); this.#assertProjectOpen("sdlc.setProject", input);
+        return input;
+      }) : [];
+      const doc = this.#writeDoc(spec.key, spec.content, spec, actor.name, actor.source);
+      const made: Task[] = [];
+      // Dependencies first, whatever order the leader listed them in: #checkDeps wants each one to exist.
+      const pending = [...tasks];
+      while (pending.length) {
+        const index = pending.findIndex((t) => t.dependsOn.every((dep) => !pending.some((other) => other.id === dep)));
+        const [task] = pending.splice(index, 1);
+        made.push(this.#createTask(task!, actor));
+      }
+      // The reviewed plan and its opt-in commit together; missing dispatch rights leave neither behind.
+      for (const input of automation) this.#handlers["sdlc.setProject"](input, actor);
+      return { spec, doc, tasks, made, automation };
+    });
+    // After the commit, as `call` does: nobody hears of a write that was rolled back.
+    this.#report("docs.save", spec, doc, actor);
+    tasks.forEach((task) => this.#report("tasks.create", task, made.find((t) => t.id === task.id)!, actor));
+    automation.forEach(input => this.#report("sdlc.setProject", input, this.#sdlcView(), actor));
+    return { specKey: spec.key, taskIds: tasks.map((t) => t.id) };
+  }
+
   /**
    * Runs a proposal as `actor`'s own call, or sets it aside: a person confirming it (chat.decide), or the leader running
    * it as the person who sent the message (auto, roadmap 29c).
    */
-  async #decideChat(actionId: number, accept: boolean, actor: Actor, auto: boolean): Promise<ChatAction> {
+  async #decideChat(actionId: number, accept: boolean, actor: Actor, auto: boolean, autoDispatch = true): Promise<ChatAction> {
     const db = this.db;
         const action = this.#chatAction(actionId);
         const decided = () => new HiveError("conflict", `Chat action #${actionId} was already decided.`, { key: "errors.chatActionDecided", vars: { id: actionId } });
@@ -5548,6 +5974,11 @@ export class SqliteHive implements HiveBackend {
         if (!accept) return this.#chatAction(actionId);
         try {
           // this.call, not the handler: the method's own role, rights (#check), audit and events, as on the web.
+          if (action.kind === "plan.create") {
+            const result = this.#createChatPlan(chatPlanSchema.parse(action.input), actor, autoDispatch);
+            db.prepare("UPDATE chat_actions SET result = ? WHERE id = ?").run(JSON.stringify(result), actionId);
+            return this.#chatAction(actionId);
+          }
           const call = CHAT_ACTION_CALLS[action.kind];
           const output = await this.call(call.method, (call.input ? call.input(action.input) : action.input) as MethodInput<Method>, actor);
           if (call.result) db.prepare("UPDATE chat_actions SET result = ? WHERE id = ?").run(JSON.stringify(call.result(output)), actionId);
@@ -5728,6 +6159,55 @@ export class SqliteHive implements HiveBackend {
       .run(JSON.stringify(error), this.#now(), this.#now(-MERGE_TTL_MINUTES));
   }
 
+  #mergeQueue(project: string): MergeQueueView {
+    const setting = this.db.prepare('SELECT value FROM settings WHERE key=?').get(`mergeQueue:${project}`) as Row | undefined;
+    const config = mergeQueueConfigSchema.parse(setting ? JSON.parse(str(setting.value)) : project === "xdev-hive" ? { commands: HIVE_GATE_COMMANDS } : {});
+    const batches = (this.db.prepare('SELECT body FROM merge_batches WHERE project=? ORDER BY id DESC LIMIT 50').all(project) as Row[]).map(r => JSON.parse(str(r.body)) as MergeBatch);
+    const waiting = (this.db.prepare(`SELECT t.id, r.branch, r.run_id, r.machine_id, COALESCE(r.finished_at,t.updated_at) AS ready_at
+      FROM tasks t JOIN run_records r ON r.task_id=t.id AND r.project=t.project
+      WHERE t.project=? AND t.status='review' AND r.status='succeeded' AND r.branch IS NOT NULL AND r.branch!=''
+      AND r.rowid=(SELECT r2.rowid FROM run_records r2 WHERE r2.task_id=t.id AND r2.project=t.project ORDER BY r2.created_at DESC,r2.rowid DESC LIMIT 1)
+      AND NOT EXISTS (SELECT 1 FROM merge_batch_items i WHERE i.task_id=t.id AND i.machine_id=r.machine_id AND i.run_id=r.run_id)
+      ORDER BY ready_at,t.id`).all(project) as Row[]).map(r => ({taskId: str(r.id), branch: str(r.branch), runId: str(r.run_id), machineId: str(r.machine_id), readyAt: str(r.ready_at)}));
+    return { config, waiting, batches };
+  }
+
+  /** Repair branches carry the excluded work; landing one also closes its unchanged source tasks. */
+  #landMergeRepairs(repairTask: string, project: string, note: string, actor: Actor, now: string): void {
+    const pending = [repairTask];
+    const seen = new Set<string>();
+    while (pending.length) {
+      const repair = pending.shift()!;
+      if (seen.has(repair)) continue;
+      seen.add(repair);
+      const sources = this.db.prepare("SELECT * FROM merge_repairs WHERE project=? AND repair_task=?").all(project, repair) as Row[];
+      for (const source of sources) {
+        const taskId = str(source.task_id);
+        const task = this.#getTask(taskId);
+        if (task?.status !== "blocked" || !task.note?.includes(repair)) continue;
+        const latest = this.db.prepare("SELECT machine_id,run_id FROM run_records WHERE project=? AND task_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1").get(project, taskId) as Row | undefined;
+        if (latest?.machine_id !== source.machine_id || latest?.run_id !== source.run_id) continue;
+        this.db.prepare("UPDATE tasks SET status='done',note=?,owner=NULL,lease_until=NULL,updated_at=? WHERE id=?").run(note, now, taskId);
+        this.#keepNote(taskId, note, "done", actor, now);
+        this.#journalTask(taskId);
+        pending.push(taskId);
+      }
+    }
+  }
+
+  #saveMergeBatch(batch: MergeBatch): void {
+    this.db.prepare('UPDATE merge_batches SET status=?,body=? WHERE id=?').run(batch.status, JSON.stringify(batch), batch.id);
+  }
+
+  #ownedMergeBatch(id: number, instance: string, actor: Actor): MergeBatch {
+    const row = this.db.prepare('SELECT body FROM merge_batches WHERE id=?').get(id) as Row | undefined;
+    if (!row) throw new HiveError('not_found', 'No merge batch.');
+    const batch = JSON.parse(str(row.body)) as MergeBatch;
+    this.#need(actor, batch.project, 'taskWork', 'Merge batch');
+    if (batch.machineId !== actor.name || batch.instance !== instance) throw new HiveError('forbidden', 'Only the gate instance holding this batch may report it.');
+    return batch;
+  }
+
   #toMachine(r: Row): Machine {
     const dup = strOrNull(r.duplicate_at);
     return {
@@ -5741,6 +6221,8 @@ export class SqliteHive implements HiveBackend {
       profiles: JSON.parse(str(r.profiles ?? "[]")) as ReportedProfile[],
       projects: JSON.parse(str(r.projects ?? "[]")) as string[],
       acceptsRuns: num(r.accepts_runs ?? 0) === 1,
+      gateRunner: num(r.gate_runner ?? 0) === 1,
+      maxParallel: r.max_parallel == null ? undefined : num(r.max_parallel),
       owner: strOrNull(r.owner),
       profileChanges: this.#profileChanges(str(r.id)),
     };
@@ -5885,6 +6367,10 @@ export class SqliteHive implements HiveBackend {
         this.#tx(() => {
           const doc = this.#getDoc(key);
           if (!doc || doc.removedAt) throw new HiveError("not_found", `Doc ${key} not found.`, { key: "errors.notFound" });
+          // A tree operation must be authorized in full before any page is changed.
+          for (const k of [key, ...this.#under(key, () => true)]) {
+            this.#need(actor, SqliteHive.#docOwner(k), this.#docPermission(k), `Doc ${k}`);
+          }
           const moved: Array<{ from: string; to: string }> = [];
           if (to && to !== key) {
             const space = parseDocKey(to);
@@ -5905,6 +6391,11 @@ export class SqliteHive implements HiveBackend {
             const under = this.#under(key, () => true).map((k) => ({ from: k, to: SqliteHive.#keyIn(k, space) }));
             // A rename inside one space leaves the pages under it where they are: their own key does not change.
             moved.push({ from: key, to }, ...under.filter((p) => p.from !== p.to));
+            for (const { from, to: target } of moved) {
+              const level = this.#docPermission(from) === "contextEdit" || this.#docPermission(target, this.#getDoc(from)!) === "contextEdit" ? "contextEdit" : "docEdit";
+              this.#need(actor, SqliteHive.#docOwner(from), level, `Doc ${from}`);
+              this.#need(actor, SqliteHive.#docOwner(target), level, `Doc ${target}`);
+            }
             this.#rekey(moved, actor, this.#now());
             // Out of the space it left: a page keeps no parent there.
             if (space.project !== doc.project && parent === undefined) db.prepare("UPDATE docs SET parent = NULL WHERE key = ?").run(to);
@@ -5923,6 +6414,7 @@ export class SqliteHive implements HiveBackend {
           const doc = this.#getDoc(key);
           if (!doc || doc.removedAt) throw new HiveError("not_found", `Doc ${key} not found.`, { key: "errors.notFound" });
           const keys = [key, ...this.#under(key, (p) => !p.removedAt)];
+          for (const k of keys) this.#need(actor, SqliteHive.#docOwner(k), this.#docPermission(k), `Doc ${k}`);
           // A mirrored page is written from its repo: removing it here would only have the next mirror write it again.
           for (const k of keys) {
             const mirror = this.#getDoc(k)?.mirror;
@@ -5941,7 +6433,7 @@ export class SqliteHive implements HiveBackend {
           return { keys };
         }),
 
-      "docs.restore": ({ key }) =>
+      "docs.restore": ({ key }, actor) =>
         this.#tx(() => {
           const doc = this.#getDoc(key);
           if (!doc) throw new HiveError("not_found", `Doc ${key} not found.`, { key: "errors.notFound" });
@@ -5954,6 +6446,7 @@ export class SqliteHive implements HiveBackend {
           }
           const op = num((db.prepare("SELECT removed_op AS n FROM docs WHERE key = ?").get(key) as Row).n);
           const keys = [key, ...this.#under(key, (p) => p.removedOp === op)];
+          for (const k of keys) this.#need(actor, SqliteHive.#docOwner(k), this.#docPermission(k), `Doc ${k}`);
           const back = db.prepare("UPDATE docs SET removed_at = NULL, removed_by = NULL, removed_note = NULL, removed_op = NULL WHERE key = ?");
           for (const k of keys) back.run(k);
           return { keys };
@@ -6292,21 +6785,39 @@ export class SqliteHive implements HiveBackend {
         return artifact;
       },
 
-      "artifacts.list": ({ project, taskId, runId, machineId, limit }) =>
-        (
-          db
-            .prepare(
-              `SELECT ${ARTIFACT_FIELDS} FROM artifacts WHERE project = ?1 AND (?2 IS NULL OR task_id = ?2) AND (?3 IS NULL OR run_id = ?3)
-               AND (?4 IS NULL OR machine_id = ?4) ORDER BY id DESC LIMIT ?5`,
-            )
-            .all(project, taskId ?? null, runId ?? null, machineId ?? null, limit) as Row[]
-        ).map(toArtifact),
+      "artifacts.list": ({ project, projects, taskId, runId, machineId, limit, offset, name, kind }, actor) => {
+        // Filter grants and archives before LIMIT/OFFSET: hidden files must never consume a visible page.
+        const archived = this.#projectStates();
+        const allowed = (db.prepare("SELECT DISTINCT project FROM artifacts").all() as Row[])
+          .map((r) => str(r.project))
+          .filter((p) => may(actor, p, "view") && (p === project || !archived.has(p)));
+        return (db.prepare(
+          `SELECT ${ARTIFACT_FIELDS} FROM artifacts WHERE project IN (SELECT value FROM json_each(?1))
+           AND (?2 IS NULL OR project = ?2) AND (?3 IS NULL OR project IN (SELECT value FROM json_each(?3)))
+           AND (?4 IS NULL OR task_id = ?4) AND (?5 IS NULL OR run_id = ?5) AND (?6 IS NULL OR machine_id = ?6)
+           AND (?7 IS NULL OR instr(hive_fold(name), hive_fold(?7)) > 0)
+           AND (?8 IS NULL OR
+             (?8 = 'markdown' AND type = 'text/markdown') OR
+             (?8 = 'log' AND lower(name) LIKE '%.log') OR
+             (?8 = 'json' AND type = 'application/json') OR
+             (?8 = 'image' AND type LIKE 'image/%') OR
+             (?8 = 'text' AND type = 'text/plain' AND lower(name) NOT LIKE '%.log') OR
+             (?8 = 'pdf' AND type = 'application/pdf'))
+           ORDER BY created_at DESC, id DESC LIMIT ?9 OFFSET ?10`
+        ).all(JSON.stringify(allowed), project ?? null, listParam(projects), taskId ?? null, runId ?? null,
+          machineId ?? null, name?.trim() || null, kind ?? null, limit, offset) as Row[]).map(toArtifact);
+      },
 
-      "artifacts.get": async ({ id }) => {
+      "artifacts.get": async ({ id, maxBytes, metadataOnly }) => {
         const row = db.prepare("SELECT * FROM artifacts WHERE id = ?").get(id) as Row | undefined;
         if (!row) return null;
+        if (metadataOnly) return { artifact: toArtifact(row), data: "" };
         const bytes = row.stored === null || row.stored === undefined ? (row.data as Uint8Array) : await this.#fromStore(row);
-        return { artifact: toArtifact(row), data: Buffer.from(bytes).toString("base64") };
+        const truncated = maxBytes !== undefined && isArtifactText(str(row.type)) && bytes.length > maxBytes;
+        let end = truncated ? maxBytes! : bytes.length;
+        // Never end a preview midway through a UTF-8 character.
+        if (truncated) while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end--;
+        return { artifact: toArtifact(row), data: Buffer.from(bytes.subarray(0, end)).toString("base64"), ...(maxBytes === undefined ? {} : { truncated }) };
       },
 
       "artifacts.remove": async ({ id }) => {
@@ -6721,6 +7232,59 @@ export class SqliteHive implements HiveBackend {
       // A removed replacement brings the entry it replaced back; conflicts with it are dropped.
       "memory.remove": ({ id }) => this.#tx(() => this.#removeMemory(id)),
 
+      "inbox.source": (input, actor) => {
+        const projects = this.#sourceProjects(input, actor);
+        if (input.source === "tasks") {
+          const review = JSON.stringify(projects.filter((p) => may(actor, p, "codeReview")));
+          const dispatch = JSON.stringify(projects.filter((p) => may(actor, p, "runDispatch")));
+          const settings = JSON.stringify(projects.filter((p) => may(actor, p, "projectSettings")));
+          const where = `project IN (SELECT value FROM json_each(?1)) AND (
+            (status = 'review' AND project IN (SELECT value FROM json_each(?2))) OR
+            (status <> 'done' AND agent_machine IS NOT NULL AND agent_hold IS NOT NULL AND
+              (project IN (SELECT value FROM json_each(?3)) OR agent_by = ?4)) OR
+            (status <> 'done' AND id GLOB 'OPS-release-*' AND project IN (SELECT value FROM json_each(?5))))`;
+          const args = [JSON.stringify(projects), review, dispatch, principalOf(actor), settings];
+          const total = num((db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE ${where}`).get(...args) as Row).n);
+          const rows = db.prepare(`SELECT * FROM tasks WHERE ${where} ORDER BY updated_at DESC, id DESC LIMIT ?6 OFFSET ?7`).all(...args, input.limit, input.offset) as Row[];
+          return { total, tasks: this.#tasks(rows).map((t) => hideDeps(t, (p) => sees(actor, p))), runs: [] };
+        }
+        const allowed = JSON.stringify(projects.filter((p) => may(actor, p, "runDispatch")));
+        // Rank before testing signals: a newer answered run supersedes an older question, even across machines.
+        const latest = `WITH ranked AS (
+          SELECT machine_id, run_id, created_at,
+            ROW_NUMBER() OVER (PARTITION BY project, task_id ORDER BY created_at DESC, run_id DESC, machine_id DESC) AS rank
+          FROM run_records WHERE project IN (SELECT value FROM json_each(?1))
+        ), waiting AS (SELECT r.machine_id, r.run_id, r.created_at FROM ranked n
+          JOIN run_records r ON r.machine_id = n.machine_id AND r.run_id = n.run_id WHERE n.rank = 1
+          AND COALESCE(json_extract(r.plan, '$.phase'), '') <> 'plan'
+          AND hive_waiting_reason(r.status, r.summary, r.error, json_extract(r.mr, '$.pipeline')) IS NOT NULL)`;
+        const rows = db.prepare(`${latest} SELECT r.*, ${RUN_TOKEN_COLUMNS}, w.source_total
+          FROM (SELECT *, COUNT(*) OVER () AS source_total FROM waiting ORDER BY created_at DESC, run_id DESC, machine_id DESC LIMIT ?2 OFFSET ?3) w
+          JOIN run_records r ON r.machine_id = w.machine_id AND r.run_id = w.run_id
+          LEFT JOIN run_costs c ON c.machine_id = r.machine_id AND c.run_id = r.run_id
+          ORDER BY r.created_at DESC, r.run_id DESC, r.machine_id DESC`).all(allowed, input.limit, input.offset) as Row[];
+        const total = rows.length ? num(rows[0]!.source_total) : num((db.prepare(`${latest} SELECT COUNT(*) AS n FROM waiting`).get(allowed) as Row).n);
+        return { total, tasks: [], runs: rows.map((r) => toRunRecord(r, false)) };
+      },
+
+      "sdlc.dispatch": (input, actor) => {
+        this.#tx(() => this.#releaseFlows());
+        const projects = this.#sourceProjects(input, actor);
+        const settings = this.#sdlcPolicy();
+        const fast = JSON.stringify(projects.flatMap((p) => (settings.projects[p]?.fastLaneKinds ?? []).map((kind) => ({ project: p, kind }))));
+        const where = `t.project IN (SELECT value FROM json_each(?1)) AND (
+          EXISTS (SELECT 1 FROM sdlc_flow_tasks ft LEFT JOIN sdlc_gates g ON g.id = ft.gate_id
+            WHERE ft.task_id = t.id AND (ft.stage = 'queued' OR (ft.stage IN ('gate', 'check', 'checking') AND g.gate = 'dispatch'))) OR
+          EXISTS (SELECT 1 FROM sdlc_flows f WHERE f.task_id = t.id AND f.step = 'import' AND f.state <> 'done') OR
+          (t.status = 'todo' AND EXISTS (SELECT 1 FROM json_each(?2) k WHERE json_extract(k.value, '$.project') = t.project AND json_extract(k.value, '$.kind') = t.kind)
+            AND NOT EXISTS (SELECT 1 FROM sdlc_flows f WHERE f.task_id = t.id)
+            AND NOT EXISTS (SELECT 1 FROM sdlc_flow_tasks ft WHERE ft.task_id = t.id)))`;
+        const args = [JSON.stringify(projects), fast];
+        const total = num((db.prepare(`SELECT COUNT(*) AS n FROM tasks t WHERE ${where}`).get(...args) as Row).n);
+        const rows = db.prepare(`SELECT t.* FROM tasks t WHERE ${where} ORDER BY t.updated_at DESC, t.id DESC LIMIT ?3 OFFSET ?4`).all(...args, input.limit, input.offset) as Row[];
+        return { total, tasks: this.#tasks(rows).map((t) => hideDeps(t, (p) => sees(actor, p))) };
+      },
+
       "tasks.list": ({ project, projects, status }) =>
         this.#tasks(
           db
@@ -6731,34 +7295,7 @@ export class SqliteHive implements HiveBackend {
             .all(project ?? null, status ?? null, listParam(projects)) as Row[],
         ),
 
-      "tasks.create": (input, actor) =>
-        this.#tx(() => {
-          if (this.#getTask(input.id)) throw new HiveError("conflict", `Task ${input.id} already exists.`, { key: "errors.taskExists", vars: { id: input.id } });
-          const deps = this.#checkDeps(input.id, input.project, input.dependsOn, actor);
-          // Save the initial brief with creation: a task manager need not have taskWork to describe new work.
-          if (input.note) assertNoHidden(input.note, "Note");
-          db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)").run(
-            input.id,
-            input.project,
-            input.title,
-            input.note === undefined ? null : clean(input.note),
-            this.#now(),
-          );
-          // Whoever creates it may say what it is (a leader's task.create): theirs, and the rules leave it alone.
-          if (input.kind || input.size || input.risk) {
-            db.prepare("UPDATE tasks SET kind = ?, size = ?, risk = ?, classified_by = ?, classified_at = ? WHERE id = ?").run(
-              input.kind ?? null,
-              input.size ?? null,
-              input.risk ?? null,
-              actor.name,
-              this.#now(),
-              input.id,
-            );
-          }
-          this.#applyTaskRule(input.id);
-          this.#setDeps(input.id, deps);
-          return this.#getTask(input.id)!;
-        }),
+      "tasks.create": (input, actor) => this.#tx(() => this.#createTask(input, actor)),
 
       "tasks.setDeps": ({ id, dependsOn }, actor) =>
         this.#tx(() => {
@@ -6788,7 +7325,7 @@ export class SqliteHive implements HiveBackend {
                  AND (t.owner IS NULL OR t.lease_until IS NULL OR t.lease_until < ?2)
                  AND (?6 = 0 OR t.agent_machine IS NULL OR t.agent_machine IN (SELECT value FROM json_each(?5)))
                  AND NOT EXISTS (SELECT 1 FROM task_deps d JOIN tasks p ON p.id = d.depends_on WHERE d.task_id = t.id AND p.status != 'done')
-               ORDER BY assigned_to_me DESC, CASE WHEN assigned_to_me THEN t.agent_order END, unlocks DESC, t.rowid
+               ORDER BY assigned_to_me DESC, CASE WHEN assigned_to_me THEN t.agent_order END, t.priority, unlocks DESC, t.rowid
                LIMIT ?3`,
             )
             .all(project ?? null, this.#now(), limit, listParam(projects), JSON.stringify(mine), mine.length ? 1 : 0) as Row[],
@@ -6825,7 +7362,7 @@ export class SqliteHive implements HiveBackend {
         return { claimed: num(res.changes) === 1, task: this.#getTask(id) };
       },
 
-      "tasks.update": ({ id, status, note }, actor) =>
+      "tasks.update": ({ id, status, note, priority }, actor) =>
         this.#tx(() => {
           const task = this.#getTask(id);
           if (!task) throw new HiveError("not_found", `Task ${id} not found.`, { key: "errors.taskNotFound", vars: { id } });
@@ -6851,6 +7388,7 @@ export class SqliteHive implements HiveBackend {
             now,
             id,
           );
+          if (priority !== undefined) db.prepare("UPDATE tasks SET priority = ? WHERE id = ?").run(priority, id);
           if (note !== undefined) this.#applyTaskRule(id);
           // An empty note clears the task's note as it always did, but is no handover to keep.
           if (kept !== null && kept.trim()) this.#keepNote(id, kept, status, actor, now);
@@ -6889,27 +7427,7 @@ export class SqliteHive implements HiveBackend {
 
       "tasks.assign": ({ id, machineId, profileId, before }, actor) =>
         this.#tx(() => {
-          const task = this.#getTask(id);
-          if (!task) throw new HiveError("not_found", `Task ${id} not found.`, { key: "errors.taskNotFound", vars: { id } });
-          if (task.status === "done") throw new HiveError("bad_request", `Task ${id} is done.`, { key: "errors.taskDone", vars: { id } });
-          const m = this.#machineByRef(machineId);
-          const name = { machine: m.machine };
-          // What the hub would need the moment it gives the task out: said now, not left to a hold nobody expected.
-          if (!m.acceptsRuns) throw new HiveError("bad_request", `${m.machine} does not take runs from the hub.`, { key: "errors.machineNoHubRuns", vars: name });
-          if (!m.projects.includes(task.project)) {
-            throw new HiveError("bad_request", `${m.machine} has no repo for ${task.project}.`, { key: "errors.machineNoRepo", vars: { ...name, project: task.project } });
-          }
-          if (profileId && !m.profiles.some((p) => p.id === profileId && p.enabled)) {
-            throw new HiveError("bad_request", `${m.machine} has no enabled profile ${profileId}.`, { key: "errors.profileNotOnMachine", vars: { ...name, id: profileId } });
-          }
-          const now = this.#now();
-          db.prepare(
-            `UPDATE tasks SET agent_machine = ?, agent_profile = ?, agent_order = ?, agent_by = ?, agent_at = ?,
-               agent_request = NULL, agent_hold = NULL, updated_at = ? WHERE id = ?`,
-          ).run(m.id, profileId, this.#agentOrder(task, m.id, before), principalOf(actor), now, now, id);
-          // A fresh turn: it may start at once, whatever run the task had under the assignment before this one.
-          this.#releaseAssigned();
-          return this.#getTask(id)!;
+          return this.#assignTask({ id, machineId, profileId, before }, actor);
         }),
 
       "tasks.unassign": ({ id }) =>
@@ -6930,12 +7448,11 @@ export class SqliteHive implements HiveBackend {
           .prepare("SELECT * FROM tasks WHERE agent_machine = ? AND (?2 IS NULL OR agent_profile = ?2) ORDER BY agent_order, rowid")
           .all(m.id, profileId) as Row[];
         const waiting = this.#waitingRequests();
-        const taken = this.#unreportedRequests(m);
         // The same count the release loop works from, so the queue says "busy" exactly when the hub would hold a task.
         const places = new Map<string, number>();
         const freeFor = (project: string, plan: string | null): number => {
           const key = `${project}\u0000${plan ?? ""}`;
-          if (!places.has(key)) places.set(key, this.#freePlaces(m, project, plan, waiting) - taken);
+          if (!places.has(key)) places.set(key, this.#freePlaces(m, project, plan, waiting) - this.#unreportedRequests(m, plan));
           return places.get(key)!;
         };
         return this.#tasks(rows).map((task): TaskAgentQueueItem => ({ task, waiting: this.#agentWait(task, m, freeFor(task.project, task.agent!.profileId)) }));
@@ -6948,12 +7465,124 @@ export class SqliteHive implements HiveBackend {
       },
 
       // Keyed by the hub actor (`runner.<machine>@<token>`): the same key as the leases that machine takes.
-      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, projects, acceptsRuns, updateDraining, costs, deliveredMessages, toolStates, appliedToolApprovals }, actor) =>
+      "mergeQueue.get": ({ project }) => this.#mergeQueue(project),
+      "mergeQueue.configure": ({ project, config }, actor) => this.#tx(() => {
+        const active = this.#mergeQueue(project).batches.find(b => b.status === 'running' || b.status === 'awaiting');
+        if (active && config.machineId !== active.machineId) throw new HiveError('conflict', 'Finish the active batch before choosing another gate machine.');
+        if (config.enabled && (!config.machineId || !config.commands.length)) throw new HiveError('bad_request', 'Choose a gate machine and at least one gate command.');
+        if (config.machineId) {
+          const machine = this.#machineByRef(config.machineId);
+          if (!machine.projects.includes(project)) throw new HiveError('bad_request', 'The gate machine needs this service.');
+        }
+        assertNoSecret(config.commands.join('\n'), 'Gate commands');
+        db.prepare("INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(`mergeQueue:${project}`, JSON.stringify(config));
+        this.audit(actor, 'mergeQueue.configure', project, 'Merge queue configuration updated');
+        return this.#mergeQueue(project);
+      }),
+      "mergeQueue.take": ({ project, instance }, actor) => this.#tx(() => {
+        const view = this.#mergeQueue(project);
+        const machine = this.#machineFor(actor.name);
+        const row = db.prepare('SELECT instance, update_draining FROM machines WHERE id=?').get(actor.name) as Row | undefined;
+        if (!machine?.gateRunner || !machine.online || machine.duplicate || num(row?.update_draining ?? 0) === 1 || !machine.projects.includes(project) || row?.instance !== instance || view.config.machineId !== actor.name) return null;
+        if (!view.config.enabled || this.#isPaused(project)) return null;
+        if (new AutoReleaseStore(db, () => this.#now()).view(project).paused) return null;
+        const active = view.batches.find(b => b.status === 'running' || b.status === 'awaiting');
+        // Never transfer a live batch after a timeout: the old process may still be publishing it.
+        if (active) return active.machineId === actor.name ? active : null;
+        if (!view.waiting.length || (view.waiting.length < view.config.maxBranches && view.waiting[0]!.readyAt > this.#now(-view.config.waitMinutes))) return null;
+        // A gate machine handles only one service at a time, even if two heartbeats overlap.
+        if (db.prepare("SELECT 1 FROM merge_batches WHERE machine_id=? AND status='running'").get(actor.name)) return null;
+        const items = view.waiting.slice(0, view.config.maxBranches);
+        const batch: MergeBatch = { id: 0, project, machineId: actor.name, instance, config: view.config, items, status: 'running', step: 'prepare', log: '', result: null, createdAt: this.#now() };
+        batch.id = Number(db.prepare("INSERT INTO merge_batches(project,machine_id,status,body) VALUES (?,?,'running',?)").run(project, actor.name, JSON.stringify(batch)).lastInsertRowid);
+        this.#saveMergeBatch(batch);
+        const put = db.prepare('INSERT INTO merge_batch_items(batch_id,task_id,machine_id,run_id) VALUES (?,?,?,?)');
+        for (const item of items) put.run(batch.id, item.taskId, item.machineId, item.runId);
+        this.audit(actor, 'mergeQueue.take', project, `Batch ${batch.id}: ${items.map(i => i.taskId).join(', ')}`);
+        return batch;
+      }),
+      "mergeQueue.progress": ({ id, instance, step, log }, actor) => this.#tx(() => {
+        const batch = this.#ownedMergeBatch(id, instance, actor);
+        if (batch.status !== 'running') return batch;
+        if (this.#isPaused(batch.project) || this.#projectState(batch.project) || this.#machineFor(actor.name)?.duplicate || !this.#machineFor(actor.name)?.gateRunner || !this.#mergeQueue(batch.project).config.enabled || this.#mergeQueue(batch.project).config.machineId !== actor.name) throw new HiveError('conflict', 'Merge queue is paused.');
+        if (new AutoReleaseStore(db, () => this.#now()).view(batch.project).paused) throw new HiveError('conflict', 'Release queue is paused.');
+        batch.step = stripHidden(step); batch.log = redactLines(stripHidden(log));
+        this.#saveMergeBatch(batch);
+        return batch;
+      }),
+      "mergeQueue.finish": ({ id, instance, result }, actor) => this.#tx(() => {
+        const batch = this.#ownedMergeBatch(id, instance, actor);
+        if (batch.status === 'landed' || batch.status === 'failed') return batch;
+        if (result.outcomes.length !== batch.items.length || new Set(result.outcomes.map(o => o.taskId)).size !== batch.items.length || result.outcomes.some(o => !batch.items.some(i => i.taskId === o.taskId))) throw new HiveError('bad_request', 'A result must account for every branch exactly once.');
+        if (result.status !== 'failed' && (!result.sha || !result.outcomes.some(o => o.status === 'included') || result.outcomes.some(o => o.status === 'included' && !o.sha))) throw new HiveError('bad_request', 'A green batch needs commit evidence.');
+        if (result.status === 'awaiting' && (batch.config.mode !== 'mr' || !result.url)) throw new HiveError('bad_request', 'An MR batch needs its URL.');
+        if (batch.status === 'awaiting' && (result.sha !== batch.result?.sha || result.version !== batch.result?.version || JSON.stringify(result.outcomes) !== JSON.stringify(batch.result?.outcomes))) throw new HiveError('conflict', 'The MR must land the checked batch.');
+        const clean: MergeResult = { ...result, step: redactLines(stripHidden(result.step)), log: redactLines(stripHidden(result.log)), outcomes: result.outcomes.map(o => ({ ...o, reason: redactLines(stripHidden(o.reason)) })) };
+        batch.status = clean.status; batch.step = clean.step; batch.log = clean.log; batch.result = clean;
+        this.#saveMergeBatch(batch);
+        if (this.#projectState(batch.project)) return batch;
+        const now = this.#now();
+        const repair = (wanted: string, title: string, note: string) => {
+          const base = wanted.length <= 80 ? wanted : `${wanted.slice(0, 67)}-${createHash("sha256").update(wanted).digest("hex").slice(0, 12)}`;
+          let taskId = base;
+          const existing = this.#getTask(taskId);
+          if (existing) taskId = `${base}-${id}`;
+          if (!this.#getTask(taskId)) {
+            db.prepare("INSERT INTO tasks(id,project,title,status,note,updated_at,kind,risk) VALUES (?,?,?,'todo',?,?,'merge','high')").run(taskId, batch.project, title.slice(0,300), `Artifacts: project ${batch.project}, run MERGE-${id}.\n${note}`.slice(0,2000), now);
+            this.#keepNote(taskId, `Artifacts: project ${batch.project}, run MERGE-${id}.\n${note}`.slice(0,2000), 'todo', actor, now);
+          }
+          return taskId;
+        };
+        let integration: string | null = null;
+        if (clean.status === 'failed' && clean.outcomes.some(o => o.status === 'included')) integration = repair(`INT-${id}`, `Cổng kiểm lô ${id}: ${clean.step}`, `Lô ${id}, service ${batch.project}, nhánh đích ${batch.config.target}.\nGhép và sửa các nhánh: ${batch.items.filter(i => clean.outcomes.some(o => o.taskId === i.taskId && o.status === 'included')).map(i => i.branch).join(', ')}.\nBước lỗi: ${clean.step}\n${clean.log}`);
+        for (const outcome of clean.outcomes) {
+          const item = batch.items.find(i => i.taskId === outcome.taskId)!;
+          const task = this.#getTask(item.taskId);
+          // A newer run or an administrator's change must not be completed by an old batch.
+          const newer = db.prepare('SELECT machine_id,run_id FROM run_records WHERE task_id=? AND project=? ORDER BY created_at DESC, rowid DESC LIMIT 1').get(item.taskId, batch.project) as Row | undefined;
+          if (!task || task.status !== 'review' || newer?.run_id !== item.runId || newer?.machine_id !== item.machineId) continue;
+          let note: string | null = null;
+          let status: TaskStatus = 'blocked';
+          if (outcome.status === 'conflict') {
+            const land = repair(`LAND-${item.taskId}`, `Ghép ${item.taskId} (lô ${id})`, `Nhánh ${item.branch}, đích ${batch.config.target}, lô ${id}.\n${outcome.reason}`);
+            db.prepare('INSERT OR IGNORE INTO merge_repairs(project,repair_task,task_id,machine_id,run_id) VALUES (?,?,?,?,?)').run(batch.project, land, item.taskId, item.machineId, item.runId);
+            note = `Lô ${id}: ${land}\n${outcome.reason}`;
+          } else if (clean.status === 'failed') {
+            db.prepare('INSERT OR IGNORE INTO merge_repairs(project,repair_task,task_id,machine_id,run_id) VALUES (?,?,?,?,?)').run(batch.project, integration!, item.taskId, item.machineId, item.runId);
+            note = `Cổng kiểm đỏ ở ${clean.step}: ${integration}\n${clean.log}`;
+          }
+          else if (clean.status === 'landed') { status = 'done'; note = `Đã vào ${batch.config.target} ở ${clean.sha}`; }
+          if (note !== null) {
+            note = note.slice(0,2000);
+            db.prepare('UPDATE tasks SET status=?,note=?,owner=NULL,lease_until=NULL,updated_at=? WHERE id=?').run(status, note, now, item.taskId);
+            this.#keepNote(item.taskId, note, status, actor, now);
+            if (status === 'done') {
+              this.#journalTask(item.taskId);
+              this.#landMergeRepairs(item.taskId, batch.project, note, actor, now);
+            }
+          }
+        }
+        const releaseMachine = this.#sdlcPolicy().projects[batch.project]?.releaseMachine;
+        if (clean.status === 'landed' && releaseMachine && clean.version) {
+          const taskIds = clean.outcomes.filter(o => o.status === 'included' && this.#getTask(o.taskId)?.status === 'done').map(o => o.taskId);
+          if (taskIds.length) new AutoReleaseStore(db, () => this.#now()).green({
+            project: batch.project, batchId: `merge-${id}`, sha: clean.sha!, version: clean.version, targetBranch: batch.config.target,
+            taskIds, checks: batch.config.commands.map((name, index) => ({ name: `${index + 1}: ${name}`.slice(0, 100), passed: true as const })), landed: true,
+          }, releaseMachine, effectiveGates(this.#sdlcPolicy(), batch.project).release);
+        }
+        this.audit(actor, 'mergeQueue.finish', batch.project, `Batch ${id}: ${clean.status} (${clean.step})`);
+        return batch;
+      }),
+
+      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, projects, acceptsRuns, maxParallel, updateDraining, gateRunner, costs, deliveredMessages, toolStates, appliedToolApprovals }, actor) =>
         this.#tx(() => {
+          // Drop out-of-scope reports without taking the whole machine offline; grants can change between beats.
+          runs = runs.filter((r) => may(actor, r.project, "taskWork"));
+          costs = costs.filter((c) => may(actor, c.project, "taskWork"));
           const ack = db.prepare("UPDATE run_messages SET delivered_at = COALESCE(delivered_at, ?) WHERE machine_id = ? AND id = ?");
           for (const id of deliveredMessages) ack.run(this.#now(), actor.name, id);
           const now = this.#now();
-          const row = db.prepare("SELECT instance, prev_instance, last_seen, duplicate_at FROM machines WHERE id = ?").get(actor.name) as
+          const row = db.prepare("SELECT instance, prev_instance, last_seen, duplicate_at, projects FROM machines WHERE id = ?").get(actor.name) as
             | Row
             | undefined;
           let prev = strOrNull(row?.prev_instance);
@@ -6977,8 +7606,12 @@ export class SqliteHive implements HiveBackend {
           // An archived or deleted project is not stored as a repo this machine has (roadmap 47): a machine that still
           // has the folder must not put the name back into the lists, nor bring a deleted one back from its headstone.
           const hidden = new Set(this.#projectStates().keys());
-          const archivedProjects = (projects ?? []).filter((p) => hidden.has(p));
-          if (projects) db.prepare("UPDATE machines SET projects = ? WHERE id = ?").run(JSON.stringify(projects.filter((p) => !hidden.has(p))), actor.name);
+          const reportedProjects = projects ?? (row ? JSON.parse(str(row.projects)) as string[] : []);
+          const allowedProjects = reportedProjects.filter((p) => sees(actor, p));
+          const archivedProjects = allowedProjects.filter((p) => hidden.has(p));
+          db.prepare("UPDATE machines SET projects = ? WHERE id = ?").run(JSON.stringify(allowedProjects.filter((p) => !hidden.has(p))), actor.name);
+          db.prepare("UPDATE machines SET gate_runner = ? WHERE id = ?").run(gateRunner ? 1 : 0, actor.name);
+          if (maxParallel !== undefined) db.prepare("UPDATE machines SET max_parallel = ? WHERE id = ?").run(maxParallel, actor.name);
           if (acceptsRuns !== undefined) db.prepare("UPDATE machines SET accepts_runs = ? WHERE id = ?").run(acceptsRuns ? 1 : 0, actor.name);
           // Missing on older clients and cleared on the first heartbeat after a restart.
           db.prepare("UPDATE machines SET update_draining = ? WHERE id = ?").run(updateDraining ? 1 : 0, actor.name);
@@ -7229,7 +7862,7 @@ export class SqliteHive implements HiveBackend {
                   db.prepare("UPDATE run_records SET status = ?, error = ? WHERE machine_id = ? AND run_id = ?").run(failed.status, failed.error, actor.name, run.runId);
                   this.#flowRunEnded(actor.name, failed);
                   this.#taskRunEnded(actor.name, failed);
-                  this.#agentRunEnded(failed);
+                  this.#agentRunEnded(failed, actor.name);
                 }
               }
               continue;
@@ -7237,7 +7870,7 @@ export class SqliteHive implements HiveBackend {
             this.#flowRunEnded(actor.name, run);
             this.#taskRunEnded(actor.name, run);
             // A run that failed stops its agent at that task (roadmap 50) before the release below looks at the queue.
-            this.#agentRunEnded(run);
+            this.#agentRunEnded(run, actor.name);
           }
           // An MR that turned green, or merged, moves a flow task on as well.
           this.#releaseFlows();
@@ -8077,14 +8710,14 @@ export class SqliteHive implements HiveBackend {
       // Only the leader writing a reply, through that reply's token; nothing runs until a project manager confirms it.
       "chat.propose": async ({ action, reason }, actor) => this.#autoRun(this.#proposeChat(action, reason, actor), actor),
 
-      "chat.decide": async ({ actionId, accept }, actor) => this.#decideChat(actionId, accept, actor, false),
+      "chat.decide": async ({ actionId, accept, autoDispatch }, actor) => this.#decideChat(actionId, accept, actor, false, autoDispatch),
 
 
       // Confirmed, the action is the manager's own call, checked and recorded like any other; set aside, nothing runs.
 
       // In CHAT_DECIDE_ORDER, each kind in the order proposed: a run may be for a task the reply also creates. The first
       // that fails stops the rest, which wait for a person to look.
-      "chat.decideAll": async ({ replyId, accept }, actor) => {
+      "chat.decideAll": async ({ replyId, accept, autoDispatch }, actor) => {
         if (!db.prepare("SELECT 1 FROM chat_messages WHERE id = ? AND role = 'assistant'").get(replyId)) {
           throw new HiveError("not_found", `Chat reply #${replyId} not found.`, { key: "errors.chatReplyNotFound", vars: { id: replyId } });
         }
@@ -8094,7 +8727,7 @@ export class SqliteHive implements HiveBackend {
           .sort((a, b) => CHAT_DECIDE_ORDER[a.kind] - CHAT_DECIDE_ORDER[b.kind] || a.id - b.id);
         for (const a of waiting) {
           try {
-            const done = await this.#handlers["chat.decide"]({ actionId: a.id, accept }, actor);
+            const done = await this.#handlers["chat.decide"]({ actionId: a.id, accept, autoDispatch: autoDispatch?.[String(a.id)] }, actor);
             if (done.status === "failed") break;
           } catch (err) {
             // Another manager decided it meanwhile: theirs stands.
@@ -8428,6 +9061,38 @@ export class SqliteHive implements HiveBackend {
         return this.#policy();
       },
 
+      "autoRelease.green": (batch, actor) => this.#tx(() => {
+        this.#assertNotPaused(batch.project);
+        assertNoSecret(JSON.stringify(batch), "Green batch"); assertNoHidden(JSON.stringify(batch), "Green batch");
+        return new AutoReleaseStore(db, () => this.#now()).green(batch, actor.name, effectiveGates(this.#sdlcPolicy(), batch.project).release);
+      }),
+      "autoRelease.list": ({ project }) => new AutoReleaseStore(db, () => this.#now()).view(project),
+      "autoRelease.take": ({ project }, actor) => this.#tx(() => { this.#assertNotPaused(project); const machine = db.prepare("SELECT update_draining FROM machines WHERE id = ?").get(actor.name) as Row | undefined; if (num(machine?.update_draining ?? 0) === 1) return null; return new AutoReleaseStore(db, () => this.#now()).take(project, actor.name, effectiveGates(this.#sdlcPolicy(), project).release); }),
+      "autoRelease.result": ({ project, batchId, success, step, warning }, actor) => this.#tx(() => new AutoReleaseStore(db, () => this.#now()).result(project, batchId, actor.name, success, step, warning)),
+      "autoRelease.progress": ({ project, batchId, step }, actor) => this.#tx(() => {
+        this.#assertNotPaused(project);
+        const store = new AutoReleaseStore(db, () => this.#now());
+        const r = store.require(project, batchId);
+        if (r.machine !== actor.name || r.state !== "running") throw new HiveError("conflict", "Release is no longer running on this machine.");
+        const gate = db.prepare("SELECT decided_by FROM sdlc_gates WHERE id = ?").get(r.gateId) as Row;
+        if (effectiveGates(this.#sdlcPolicy(), project).release !== "auto" && gate.decided_by === "auto") throw new HiveError("forbidden", "Release ceiling changed; a person must reconcile it.");
+        const order = ["prepare", "release", "deploy", "rollout", "checkLogs"];
+        if ((!r.step && step !== "prepare") || (r.step && order.indexOf(step) <= order.indexOf(r.step))) throw new HiveError("conflict", "Release steps must advance once in order.");
+        r.step = step; return store.save(r);
+      }),
+      "autoRelease.rollout": ({ project, batchId }, actor) => {
+        this.#assertNotPaused(project);
+        const r = new AutoReleaseStore(db, () => this.#now()).require(project, batchId);
+        if (r.machine !== actor.name || r.state !== "running" || r.step !== "rollout") throw new HiveError("forbidden", "Rollout requires the rollout step of a running release on its Gate machine.");
+        return r;
+      },
+      "autoRelease.decide": ({ project, batchId, pass }, actor) => this.#tx(() => new AutoReleaseStore(db, () => this.#now()).decide(project, batchId, pass, actor.name)),
+      "autoRelease.reconcile": ({ project, batchId }) => this.#tx(() => {
+        const store = new AutoReleaseStore(db, () => this.#now());
+        const r = store.require(project, batchId);
+        return store.save({ ...store.result(project, batchId, r.machine, false, r.step ?? "prepare", false), reconciled: true });
+      }),
+      "autoRelease.resume": ({ project }) => this.#tx(() => new AutoReleaseStore(db, () => this.#now()).resume(project)),
       "sdlc.get": () => this.#sdlcView(),
 
       "sdlc.setCeiling": ({ ceiling }, actor) => {
@@ -8454,9 +9119,13 @@ export class SqliteHive implements HiveBackend {
           const gates = Object.fromEntries(Object.entries(settings.gates).filter(([, m]) => m !== "human")) as Partial<GateModes>;
           projects[project] = {
             gates,
+            releaseMachine: settings.releaseMachine === null ? undefined : settings.releaseMachine ?? current.projects[project]?.releaseMachine,
+            autoDispatch: settings.autoDispatch ?? current.projects[project]?.autoDispatch ?? false,
+            autoDispatchBy: settings.autoDispatch === true ? principalOf(actor) : current.projects[project]?.autoDispatchBy,
+            allowedAgentKinds: settings.allowedAgentKinds ?? current.projects[project]?.allowedAgentKinds,
             planApproval: settings.planApproval ?? current.projects[project]?.planApproval,
             ...(settings.maxFixRounds !== undefined ? { maxFixRounds: settings.maxFixRounds } : {}),
-            ...(settings.maxParallel ? { maxParallel: settings.maxParallel } : {}),
+            ...((settings.maxParallel === undefined ? current.projects[project]?.maxParallel : settings.maxParallel) ? { maxParallel: settings.maxParallel ?? current.projects[project]!.maxParallel } : {}),
             ...((settings.fastLaneKinds ?? current.projects[project]?.fastLaneKinds) ? { fastLaneKinds: [...new Set(settings.fastLaneKinds ?? current.projects[project]!.fastLaneKinds)] } : {}),
           };
         }

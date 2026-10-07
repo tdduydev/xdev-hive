@@ -90,7 +90,7 @@ export function SdlcGatesCard({ editableOnly = false, hubOnly = false }: { edita
                 data-sdlc-gate={g}
                 onChange={(e) => edit(key, { gates: { ...d.gates, [g]: e.target.value as GateMode } })}
               >
-                {GATE_MODES.map((m) => (
+                {GATE_MODES.filter(m => g !== "release" || m !== "ai").map((m) => (
                   <NativeSelectOption key={m} value={m} disabled={!isHub && rank(m) > rank(ceiling[g])}>
                     {t(`sdlc.mode.${m}`)}
                   </NativeSelectOption>

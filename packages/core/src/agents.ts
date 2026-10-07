@@ -220,6 +220,7 @@ export const runnerSettingsSchema = z.object({
   maxAttempts: z.number().int().min(1).max(6).default(3),
   /** Hub mode: start the runs a project manager queues for this machine on the web (runs.dispatch). Off until the user turns it on. */
   acceptHubRuns: z.boolean().default(false),
+  gateRunner: z.boolean().default(false),
   /** Unset follows acceptHubRuns; an explicit choice survives turning hub intake on/off. */
   autoUpdateIdle: z.boolean().optional(),
 });

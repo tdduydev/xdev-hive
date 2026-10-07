@@ -8,7 +8,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import electron from "electron";
@@ -119,6 +119,8 @@ hive.close();
 
 async function shoot(name, page, delay, extra = {}) {
   const shot = path.join(out, `${name}.png`);
+  const resultFile = path.join(work, `${name}.result.json`);
+  rmSync(resultFile, { force: true });
   // Async spawn: the mock GitLab in this process must keep answering while the app runs.
   // The throwaway dir as cwd, as a packaged app has none in the repo: what the app starts without a cwd of its own
   // (a CLI's --version) writes there, not into apps/desktop.
@@ -132,13 +134,28 @@ async function shoot(name, page, delay, extra = {}) {
       HOME: smokeHome,
       HIVE_CONFIG: path.join(work, "config.json"),
       HIVE_SMOKE_SCREENSHOT: shot,
+      HIVE_SMOKE_RESULT: resultFile,
       HIVE_SMOKE_HASH: `/${page}`,
       HIVE_SMOKE_DELAY_MS: String(delay),
       ...extra,
     },
   });
+  // Chromium can hang during macOS teardown; only a completed set of assertions can shorten that wait.
+  let completedCode;
+  let teardownTimer;
+  const completion = setInterval(() => {
+    if (completedCode !== undefined || !existsSync(resultFile)) return;
+    try {
+      const result = JSON.parse(readFileSync(resultFile, "utf8"));
+      if (![0, 3].includes(result.exitCode)) return;
+      completedCode = result.exitCode;
+      teardownTimer = setTimeout(() => child.kill("SIGKILL"), 5000);
+    } catch { /* The app may still be writing its result. */ }
+  }, 100);
   const timer = setTimeout(() => child.kill("SIGKILL"), 60_000);
-  const { code, signal } = await new Promise((resolve) => child.once("exit", (code, signal) => resolve({ code, signal })));
+  const { code, signal } = await new Promise((resolve) => child.once("exit", (code, signal) => resolve({ code: code ?? completedCode, signal })));
+  clearInterval(completion);
+  clearTimeout(teardownTimer);
   clearTimeout(timer);
   if (code !== 0 || !existsSync(shot)) {
     console.error(`smoke failed on ${name}`, signal ?? code, existsSync(shot) ? "" : "(no screenshot)");

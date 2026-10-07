@@ -115,29 +115,31 @@ export function SpecsPage() {
         }
       >
         <ErrorNote error={list.error} />
-        {shown.map((f) => (
-          <ListItem
-            key={idOf(f)}
-            selected={idOf(f) === selected}
-            onClick={() => pick(f)}
-            title={f.title}
-            chip={
-              <Chip kind={STAGE_CHIP[f.stage]} small>
-                {t(`specs.stage.${f.stage}`)}
-              </Chip>
-            }
-            sub={
-              <span className="flex flex-col gap-1">
-                <span className="font-mono">
-                  {manyProjects ? `${f.project} · ` : ""}
-                  {f.dir} · {f.branch || t("specs.targetBranch")}
+        {shown.length ? <ul role="list" className="m-0 flex list-none flex-col gap-px p-0">
+          {shown.map((f) => (
+            <ListItem
+              key={idOf(f)}
+              selected={idOf(f) === selected}
+              onClick={() => pick(f)}
+              title={f.title}
+              chip={
+                <Chip kind={STAGE_CHIP[f.stage]} small>
+                  {t(`specs.stage.${f.stage}`)}
+                </Chip>
+              }
+              sub={
+                <span className="flex flex-col gap-1">
+                  <span className="font-mono">
+                    {manyProjects ? `${f.project} · ` : ""}
+                    {f.dir} · {f.branch || t("specs.targetBranch")}
+                  </span>
+                  {f.tasksTotal ? <Progress done={f.tasksDone} total={f.tasksTotal} /> : null}
                 </span>
-                {f.tasksTotal ? <Progress done={f.tasksDone} total={f.tasksTotal} /> : null}
-              </span>
-            }
-            meta={`${f.machine} · ${formatTime(f.pushedAt)} · ${f.commit}`}
-          />
-        ))}
+              }
+              meta={`${f.machine} · ${formatTime(f.pushedAt)} · ${f.commit}`}
+            />
+          ))}
+        </ul> : null}
         {/* The button for an empty list sits in the wide pane on the right, so the narrow list keeps the sentence alone. */}
         {empty ? <PaneEmpty>{t(empty === "noMatch" ? "specs.noMatch" : noScope ? "specs.sharedScope" : "specs.empty")}</PaneEmpty> : null}
       </ListPane>
