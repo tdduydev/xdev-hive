@@ -3421,6 +3421,7 @@ export const vi = {
     toolHookWindows: "tool {id}: hook chưa chạy trên Windows",
     toolHookMissing: "tool {id}: không tìm thấy {bin}, run không dùng hook",
     toolHookVersion: "tool {id}: máy có {found}, danh mục duyệt {version}, run không dùng hook",
+    toolCodexRtkWrapper: "rtk: wrapper trên PATH riêng của run (giữ nguyên cấu hình hook của tài khoản)",
     userSettingsUnread: "không đọc được {file} ({reason}): run không chép gì từ cài đặt Claude Code của người dùng",
     taskHeld: "Task đang do {owner} giữ đến {until}.",
     quotaNotShared: "không báo được quota lên hub: {reason}",
