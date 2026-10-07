@@ -92,6 +92,7 @@ import { LOGIN_DIR_ENV, LoginMonitor, loginParts, readLoginHow, usageRefresher }
 import { isDebInstall, platformKey, Updater, type UpdateStatus } from "#desktop/main/updater.ts";
 import { linuxLayout, pruneLinuxVersions } from "#desktop/main/linux-update.ts";
 import { IdleUpdate } from "#desktop/main/idle-update.ts";
+import { QuitLifecycle } from "#desktop/main/quit.ts";
 import { Runner, type HubUpdate, type RunnerEvent } from "./runner/runner.ts";
 import { agentPath } from "./runner/shell-path.ts";
 import { landingPage, signInThroughBrowser } from "./hub-browser.ts";
@@ -1198,6 +1199,7 @@ function isTrusted(event: IpcMainInvokeEvent): boolean {
 
 function handle(channel: string, fn: (...args: any[]) => unknown): void {
   ipcMain.handle(channel, async (event, ...args: unknown[]) => {
+    if (quitting) return { ok: false, error: { code: "conflict", message: "App is quitting" } };
     if (!isTrusted(event)) return { ok: false, error: { code: "forbidden", message: "Untrusted sender" } };
     try {
       return { ok: true, value: await fn(...args) };
@@ -1519,6 +1521,7 @@ function createWindow(): void {
 }
 
 function showWindow(): void {
+  if (quitting) return;
   startHidden = false;
   if (!win || win.isDestroyed()) {
     createWindow();
@@ -1674,23 +1677,25 @@ if (!app.requestSingleInstanceLock()) {
   if (afterUpdate) startHidden = true;
   mainLog.write(`start ${app.getVersion()} pid ${process.pid} ${process.platform}/${process.arch}${startHidden ? " hidden" : ""}${afterUpdate ? " (started again by the updater)" : ""}`);
   app.on("second-instance", showWindow);
-  let stopped = false;
+  const quit = new QuitLifecycle();
   app.on("before-quit", (e) => {
     quitting = true;
     idleUpdate?.stop();
-    if (stopped) return;
+    if (quit.ready) return;
     if (!runner) return mainLog.write(`${quitReasons.describe()} before the app was ready`);
     // Stop agents and let the runner commit their work and update Hive before exiting.
     e.preventDefault();
-    stopped = true;
+    if (quit.started) return;
+    // The window must not keep accepting settings while its runner is going offline. destroy() also avoids
+    // renderer beforeunload vetoes after we have already committed to stopping the runner.
+    for (const window of BrowserWindow.getAllWindows()) window.destroy();
     const reason = quitReasons.reason;
     // Read before the runner stops, which ends the runs it would be asked about.
     const active = runner.store.active().length;
     const takesWork = config.runner.acceptHubRuns || active > 0;
     mainLog.write(`${quitReasons.describe()}; runs ${active}, acceptHubRuns ${config.runner.acceptHubRuns}`);
-    void runner
-      .stop()
-      .then(() => {
+    void quit.start(async () => {
+        await runner.stop();
         mainLog.write("runner stopped");
         // The rollout says "install when the app quits": the helper swaps the build once this process is gone, and
         // starts it again (hidden) only when relaunchAfterQuitInstall says so: a machine taking work that the person
@@ -1698,12 +1703,23 @@ if (!app.requestSingleInstanceLock()) {
         if (!updater.installsOn("quit")) return;
         const relaunch = relaunchAfterQuitInstall(reason, takesWork);
         return updater.install({ relaunch, hidden: relaunch }).catch(() => undefined);
-      })
-      .catch((err) => mainLog.write(`runner stop failed: ${toErrorPayload(err).message}`))
-      .finally(() => app.quit());
+      }, () => {
+        // Chromium can hang in native shutdown even after the runner has finished. Only bypass Electron after
+        // bookkeeping and the update helper have settled; never impose a deadline on committing agent work.
+        setTimeout(() => {
+          mainLog.write("quit fallback: Electron did not exit within 5s after cleanup");
+          (process as NodeJS.Process & { reallyExit(code: number): never }).reallyExit(0);
+        }, 5000);
+        app.quit();
+      }, (err) => mainLog.write(`runner stop failed: ${toErrorPayload(err).message}`));
   });
   app.on("will-quit", () => mainLog.write("will-quit"));
-  app.on("quit", (_e, code) => mainLog.write(`exit ${code}`));
+  app.on("quit", (_e, code) => {
+    mainLog.write(`exit ${code}`);
+    // Electron's native thread-pool teardown can hang after the quit event, when JS timers no longer run.
+    // At this point windows are destroyed and our runner/update cleanup has finished, so Node can exit directly.
+    if (quit.ready) (process as NodeJS.Process & { reallyExit(code: number): never }).reallyExit(code);
+  });
   // The GPU process, a utility process or a helper dying: the window may go blank, the app may follow.
   app.on("child-process-gone", (_e, d) => mainLog.write(`child-process-gone: ${d.type}${d.name ? ` ${d.name}` : ""} ${d.reason} (exit ${d.exitCode})`));
   // Electron quits on these itself; listening keeps that (app.quit, so the runner still stops its agents first) and
