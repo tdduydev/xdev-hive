@@ -7,6 +7,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tableCardsChecks } from "./table-cards.mjs";
 import { mobileAudit } from "./mobile-audit.mjs";
+import { accessibilityAudit, keyboardMenu, keyboardOverlays, keyboardTable, runContrast } from "./accessibility.mjs";
 
 const base = process.env.HIVE_E2E_BASE;
 const out = process.env.HIVE_E2E_OUT;
@@ -195,6 +196,11 @@ class Tab {
 const NEEDS = {
   "login-token": [],
   "login-password": [],
+  "a11y-pages": ["login-token"],
+  "a11y-menu": ["login-token"],
+  "a11y-overlays": ["login-token"],
+  "a11y-table": ["login-token"],
+  "a11y-run-status": ["login-token"],
   "lead-sees-members": [],
   "run-steer": ["login-token", "login-password", "lead-sees-members"],
 };
@@ -283,7 +289,46 @@ async function main() {
     );
   });
 
-  if (mobile) await mobileAudit({ tab: tabs.admin, out, step, expect });
+  if (mobile && tabs.admin) await mobileAudit({ tab: tabs.admin, out, step, expect });
+
+  // The full WCAG audit also reports existing issues needing design work; opt in with --only a11y-pages.
+  if (only.length) {
+    await step("a11y-pages", async () => {
+      const tab = (current = tabs.admin);
+      await accessibilityAudit({ tab, out, expect });
+    });
+  }
+  await step("a11y-menu", async () => {
+    const tab = (current = tabs.admin);
+    await keyboardMenu({ tab, mobile, expect, out });
+  });
+  await step("a11y-overlays", async () => {
+    const tab = (current = tabs.admin);
+    await keyboardOverlays({ tab, expect });
+  });
+  await step("a11y-table", async () => {
+    const tab = (current = tabs.admin);
+    await keyboardTable({ tab, expect });
+  });
+  await step("a11y-run-status", async () => {
+    const tab = (current = tabs.admin);
+    const machineRpc = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.a11y" }, body: JSON.stringify({ method, input }) });
+      const j = await r.json();
+      if (j.error) throw new Error(j.error.message);
+      return j.result;
+    };
+    const at = new Date().toISOString();
+    await machineRpc("machines.heartbeat", { machine: "a11y", instance: "a1100001", version: "0.142.0", projects: ["payment"] });
+    const run = { runId: "R-a11y", project: "payment", taskId: "PAY-1", taskTitle: "Kiểm trạng thái run", role: "implement", profileId: null, status: "running", createdAt: at, startedAt: at };
+    await machineRpc("runs.push", { machine: "a11y", runs: [run] });
+    await tab.go("runs?run=R-a11y");
+    await tab.waitFor("selected live run", () => document.querySelector("main h2")?.textContent === "Kiểm trạng thái run");
+    await tab.waitFor("live run announcement", () => document.querySelector('[data-run-state][role="status"]')?.textContent.includes("Đang chạy"));
+    await machineRpc("runs.push", { machine: "a11y", runs: [{ ...run, status: "succeeded", finishedAt: new Date().toISOString() }] });
+    await tab.waitFor("completed run announcement", () => document.querySelector('[data-run-state][role="status"]')?.textContent.includes("Xong"));
+    await runContrast({ tab, expect });
+  });
 
   await step("scope-search-tasks", async () => {
     const tab = (current = tabs.admin);
@@ -454,7 +499,7 @@ async function main() {
     for (const label of ["Cài đặt service", "Quản trị", "Đội máy", "Hàng đợi", "Nhật ký"]) expect(!nav.includes(label), `${label} in Hoa's menu:\n${nav}`);
   });
 
-  if (mobile) await mobileAudit({ tab: tabs.hoa, out, step, expect,
+  if (mobile && tabs.hoa) await mobileAudit({ tab: tabs.hoa, out, step, expect,
     pages: ["overview", `device?port=12345&state=${"s".repeat(16)}&challenge=${"c".repeat(43)}`],
     reportName: "mobile-audit-member.json" });
 

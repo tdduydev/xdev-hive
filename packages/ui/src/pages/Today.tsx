@@ -274,7 +274,8 @@ export function TodayPage() {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const el = e.target as HTMLElement | null;
-      if (el && (el.isContentEditable || /^(input|textarea|select)$/i.test(el.tagName))) return;
+      // Global inbox shortcuts must not swallow Enter on links or activate actions behind a dialog.
+      if (el && (el.isContentEditable || el.closest('a, button, input, textarea, select, summary, nav, [role="dialog"], [role="menu"]'))) return;
       if (document.querySelector('[role="dialog"]')) return;
       const i = selKey ? keys.indexOf(selKey) : -1;
       const k = e.key.toLowerCase();
@@ -374,9 +375,9 @@ export function TodayPage() {
                         <div className="flex min-w-0 items-center gap-1.5">
                           <Chip kind={item.tone}>{t(`inbox.tag.${item.kind}`)}</Chip>
                           <span className="min-w-0 flex-1 truncate text-[13px]/[18px] font-semibold text-fg-strong">{titleOf(item, t)}</span>
-                          <span className="shrink-0 text-[11px]/none text-fg-muted">{shortAgo(item.at, now, t)}</span>
+                          <span className={cn("shrink-0 text-[11px]/none", on ? "text-fg-secondary" : "text-fg-muted")}>{shortAgo(item.at, now, t)}</span>
                         </div>
-                        <span className="truncate text-xs/4 text-fg-muted">
+                        <span className={cn("truncate text-xs/4", on ? "text-fg-secondary" : "text-fg-muted")}>
                           <span className="font-mono">{scopeText(item, t)}</span>
                           {metaOf(item, t) ? ` · ${metaOf(item, t)}` : ""}
                         </span>
@@ -399,9 +400,9 @@ export function TodayPage() {
                   <div className="flex min-w-0 items-center gap-1.5">
                     <Chip kind={d.tone}>{t(`inbox.tag.${d.kind}`)}</Chip>
                     <span className="min-w-0 flex-1 truncate text-[13px]/[18px] font-semibold text-fg-strong">{d.title}</span>
-                    <span className="shrink-0 text-[11px]/none text-fg-muted">{shortAgo(d.at, now, t)}</span>
+                    <span className={cn("shrink-0 text-[11px]/none", d.key === doneCurrent?.key ? "text-fg-secondary" : "text-fg-muted")}>{shortAgo(d.at, now, t)}</span>
                   </div>
-                  <span className="truncate text-xs/4 text-fg-muted">
+                  <span className={cn("truncate text-xs/4", d.key === doneCurrent?.key ? "text-fg-secondary" : "text-fg-muted")}>
                     <span className="font-mono">{d.scope}</span> · {d.note}
                   </span>
                 </div>

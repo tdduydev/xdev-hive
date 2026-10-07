@@ -1,7 +1,7 @@
 // The app frame of the redesign (docs/design/2026-09-redesign, "xDev Hive Client"): a 236px sidebar (logo, scope,
 // grouped pages, this machine's running agents, account), a 52px top bar (title, ⌘K search, Task mới) and a 26px
 // status bar (hub, runs, quota, version). Used by the desktop app and by people who are not hub admins on the web.
-import { useCallback, useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { Download, ExternalLink, Moon, PanelLeft, Plus, Search, Sun, X } from "lucide-react";
 import { cn } from "cn";
 import type { AgentRun, Me } from "@xdev-hive/core";
@@ -114,6 +114,7 @@ function ClientFrame({
   const { theme } = useTheme();
   const narrow = useMedia("(max-width: 767px)");
   const [sidebar, setSidebarState] = useState(readSidebar);
+  const sidebarTrigger = useRef<HTMLButtonElement>(null);
   const [palette, setPalette] = useState(false);
   const [newTask, setNewTask] = useState(false);
   useEffect(() => {
@@ -130,6 +131,17 @@ function ClientFrame({
       return next;
     });
   }, []);
+
+  useEffect(() => {
+    if (!narrow || !sidebar) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      setSidebar(false);
+      sidebarTrigger.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [narrow, sidebar, setSidebar]);
 
   const desktop = client.desktop;
   const info = useQuery(async () => (desktop ? desktop.appInfo() : null), [desktop]);
@@ -235,6 +247,8 @@ function ClientFrame({
 
   const nav = (
     <nav
+      id="hive-navigation"
+      inert={narrow && !sidebar}
       aria-label={t("shell.nav")}
       className={cn(
         "flex w-[236px] shrink-0 flex-col border-r border-line-subtle bg-subtle",
@@ -356,9 +370,12 @@ function ClientFrame({
           <div className="relative flex min-w-0 flex-1 flex-col">
             <header className={cn("flex h-[52px] min-w-0 shrink-0 items-center gap-0.5 border-b border-line-subtle bg-surface px-3", drag, mac && !sidebar && !narrow && "pl-[78px]")}>
               <button
+                ref={sidebarTrigger}
                 type="button"
                 onClick={() => setSidebar((s) => !s)}
                 aria-label={t("shell.toggleSidebar")}
+                aria-expanded={sidebar}
+                aria-controls="hive-navigation"
                 title={t("shell.sidebarShortcut")}
                 className={cn(
                   "grid size-[30px] max-md:size-10 shrink-0 cursor-pointer place-items-center rounded-sm text-fg-secondary outline-none hover:bg-hover hover:text-fg-strong focus-visible:focus-ring",
