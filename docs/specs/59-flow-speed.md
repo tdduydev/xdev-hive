@@ -67,3 +67,21 @@ App tự cài bản mới khi máy rảnh.
 - `--gate` chạy cổng kiểm theo thứ tự (`&&`), log từng bước. `--only` truyền xuống e2e (58d).
 - Script không push và không phát hành.
 - Test với repo git tạm.
+
+## 59h. release-notes
+
+`npm run release` tự soạn phần *Có gì mới* cho GitHub Release và trang *Phiên bản app*.
+
+- Phần này lấy các mục roadmap chuyển sang [x] giữa tag trước và HEAD (so `docs/roadmap.md`), nhóm theo mục cha, kèm tiêu đề các commit `fix:` trong khoảng đó.
+- Bản nháp ghi ra `apps/desktop/release/WHATSNEW.md`. Có `--whatsnew <file>` thì dùng file đó thay cho bản nháp.
+- Đầu ra đi vào `gh release edit --notes-file` và `releases.notes`, như người phát hành đang làm tay.
+- Test với repo git tạm có 2 tag.
+
+## 59i. deploy-log-check
+
+Sau mỗi lần deploy, hub tự xem log (thay cho OPS-3 làm tay).
+
+- Hub đếm dòng lỗi và cảnh báo từ lúc khởi động, gom các dòng giống nhau (bỏ số và id), giữ 24 giờ.
+- *Quản trị › Vận hành* có thẻ *Sau lần khởi động này*: số lỗi, lỗi lặp nhiều nhất, trạng thái backup lúc khởi động, SeaweedFS, embeddings.
+- Một lỗi lặp quá N lần trong một giờ thì tạo cảnh báo (`alert_list`).
+- Không ghi secret: các dòng đi qua bộ lọc che secret đang có.

@@ -319,6 +319,8 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **59e. run-redispatch**: nút *Giao lại* cho run lỗi, hết giờ, huỷ: đổi máy/gói/thời hạn, làm tiếp trên branch.
   - [ ] **59f. auto-update-idle**: app tự cài bản mới khi không có run, cả bản Linux đã giải nén.
   - [ ] **59g. batch-tool**: `scripts/review-batch.mjs` ghép một lô, báo xung đột, chạy cổng kiểm.
+  - [ ] **59h. release-notes**: `npm run release` soạn *Có gì mới* từ mục roadmap vừa xong và commit `fix:`.
+  - [ ] **59i. deploy-log-check**: hub gom lỗi trong log từ lúc khởi động, thẻ ở *Quản trị › Vận hành*, cảnh báo khi lỗi lặp nhiều.
 
 ## Sửa lỗi
 
