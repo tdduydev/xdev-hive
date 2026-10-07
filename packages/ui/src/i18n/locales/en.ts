@@ -2940,7 +2940,7 @@ export const en: Catalog = {
     planChanged: "The plan has changed. Please reload.",
     planNoteRequired: "Add notes to revise the plan.",
     releaseVersion: "The version must look like 1.2.3.",
-    releaseFile: "Unknown build: platform mac|win|linux, arch arm64|x64, kind zip|dmg|exe|AppImage.",
+    releaseFile: "Unknown build: platform mac|win|linux, arch arm64|x64, kind zip|dmg|exe|AppImage|deb.",
     releaseNotFound: "This hub has no such release.",
     machineTooOld: "{machine} runs {version}; the hub needs {min} or newer to hand it runs.",
     updateNotReady: "No update has finished downloading.",

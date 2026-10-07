@@ -690,11 +690,11 @@ export function createHubApp({
       if (method === "machines.heartbeat") {
         const out = await hive.call(method, input as never, actor);
         // App updates live on the hub, not in core: the machine's platform and update state ride along in the input.
-        const beat = (input ?? {}) as { machine?: string; version?: string; platform?: string; arch?: string; update?: UpdateReport | null };
+        const beat = (input ?? {}) as { machine?: string; version?: string; platform?: string; arch?: string; updateKind?: string; update?: UpdateReport | null };
         let update = null;
         if (releases && typeof beat.version === "string") {
           releases.report(actor.name, String(beat.machine ?? actor.name), beat.version, beat.update ?? null);
-          update = releases.offerFor(actor.name, beat.version, String(beat.platform ?? ""), String(beat.arch ?? ""));
+          update = releases.offerFor(actor.name, beat.version, String(beat.platform ?? ""), String(beat.arch ?? ""), beat.updateKind);
         }
         res.json({ result: { ...out, chatRequests: withGrants(out.chatRequests), update } });
         return;
