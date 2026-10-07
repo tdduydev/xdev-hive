@@ -27,7 +27,11 @@ export interface OidcIdentity {
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
 /** Error keys the callback can send back to the page (?sso_error=…); the page shows only these. */
-export const SSO_ERRORS = ["errors.ssoState", "errors.ssoProvider", "errors.ssoToken", "errors.ssoClaims", "errors.ssoDisabled", "errors.ssoLinkedElsewhere"] as const;
+export const SSO_ERRORS = [
+  "errors.ssoState", "errors.ssoProvider", "errors.ssoToken", "errors.ssoClaims", "errors.ssoDisabled", "errors.ssoLinkedElsewhere",
+  // A terminal step-up through the provider (69c).
+  "errors.terminal.stepUpStale", "errors.terminal.stepUpWrongAccount", "errors.terminal.stepUpRequired",
+] as const;
 export type SsoError = (typeof SSO_ERRORS)[number];
 
 const fail = (key: SsoError, message: string, code: HiveErrorCode = "unauthorized") => new HiveError(code, message, { key });
@@ -61,13 +65,25 @@ interface Discovery {
   token_endpoint_auth_methods_supported?: string[];
 }
 
+/**
+ * A signed-in person proving themselves again (the remote terminal's step-up, 69c) instead of signing in: the
+ * provider is asked for a fresh login, and the callback gets back what the hub put here.
+ */
+export interface OidcReauth<T = unknown> {
+  userId: string;
+  context: T;
+}
+
 interface Pending {
   nonce: string;
   verifier: string;
   /** Linking the provider account to this signed-in user instead of signing in. */
   linkUserId: string | null;
+  reauth: OidcReauth | null;
   /** Hub path to land on afterwards (the desktop's sign-in page). */
   returnTo: string;
+  /** When the hub sent the person to the provider: a reauthentication must have happened after it. */
+  startedAt: number;
   expires: number;
 }
 
@@ -116,7 +132,7 @@ export class OidcClient {
   }
 
   /** Where to send the browser, and the state its cookie must carry back. */
-  async start(opts: { linkUserId?: string; returnTo?: string } = {}): Promise<{ url: string; state: string }> {
+  async start(opts: { linkUserId?: string; returnTo?: string; reauth?: OidcReauth } = {}): Promise<{ url: string; state: string }> {
     const d = await this.#discover();
     const now = this.#now();
     for (const [k, p] of this.#pending) if (p.expires < now) this.#pending.delete(k);
@@ -124,7 +140,10 @@ export class OidcClient {
     const state = b64url(randomBytes(24));
     const nonce = b64url(randomBytes(24));
     const verifier = b64url(randomBytes(32));
-    this.#pending.set(state, { nonce, verifier, linkUserId: opts.linkUserId ?? null, returnTo: safeReturn(opts.returnTo), expires: now + PENDING_MS });
+    this.#pending.set(state, {
+      nonce, verifier, linkUserId: opts.linkUserId ?? null, reauth: opts.reauth ?? null, returnTo: safeReturn(opts.returnTo), startedAt: now,
+      expires: now + PENDING_MS,
+    });
     const url = new URL(d.authorization_endpoint);
     url.search = new URLSearchParams({
       response_type: "code",
@@ -135,12 +154,18 @@ export class OidcClient {
       nonce,
       code_challenge: b64url(createHash("sha256").update(verifier).digest()),
       code_challenge_method: "S256",
+      // A step-up must not ride on the provider's own session (a silent SSO redirect): ask for a login now, and for
+      // auth_time to tell when it happened (OIDC Core 3.1.2.1 makes auth_time required with max_age).
+      ...(opts.reauth ? { prompt: "login", max_age: "0" } : {}),
     }).toString();
     return { url: url.toString(), state };
   }
 
-  /** Exchanges the code; each state works once. */
-  async finish(state: string, code: string): Promise<{ identity: OidcIdentity; linkUserId: string | null; returnTo: string }> {
+  /**
+   * Exchanges the code; each state works once. For a reauthentication, a provider that does not prove the person
+   * signed in after the hub sent them (no auth_time, or an older one) fails it: there is no fallback.
+   */
+  async finish(state: string, code: string): Promise<{ identity: OidcIdentity; linkUserId: string | null; reauth: OidcReauth | null; authTime: number | null; returnTo: string }> {
     const pending = this.#pending.get(state);
     this.#pending.delete(state);
     if (!pending || pending.expires < this.#now()) throw fail("errors.ssoState", "Unknown or expired sign-in attempt");
@@ -165,10 +190,13 @@ export class OidcClient {
       throw fail("errors.ssoToken", `Token exchange failed: ${(err as Error).message}`);
     }
     if (typeof tokens.id_token !== "string") throw fail("errors.ssoToken", "The provider sent no ID token (is the openid scope allowed?)");
-    return { identity: this.#claims(tokens.id_token, d.issuer, pending.nonce), linkUserId: pending.linkUserId, returnTo: pending.returnTo };
+    const { identity, authTime } = this.#claims(tokens.id_token, d.issuer, pending.nonce);
+    if (pending.reauth && (authTime === null || authTime < pending.startedAt / 1000 - SKEW_S))
+      throw new HiveError("unauthorized", "The provider did not confirm a fresh sign-in (auth_time)", { key: "errors.terminal.stepUpStale" });
+    return { identity, linkUserId: pending.linkUserId, reauth: pending.reauth, authTime, returnTo: pending.returnTo };
   }
 
-  #claims(idToken: string, issuer: string, nonce: string): OidcIdentity {
+  #claims(idToken: string, issuer: string, nonce: string): { identity: OidcIdentity; authTime: number | null } {
     let c: Record<string, unknown>;
     try {
       c = JSON.parse(Buffer.from(idToken.split(".")[1] ?? "", "base64url").toString("utf8")) as Record<string, unknown>;
@@ -196,12 +224,15 @@ export class OidcClient {
     if (problem) throw fail("errors.ssoClaims", `ID token failed the ${problem} check`);
     const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
     return {
-      issuer,
-      subject: c.sub as string,
-      // An address the provider did not verify is only a label here: nothing is matched on it.
-      email: c.email_verified === false ? null : text(c.email),
-      username: text(c.preferred_username) ?? text(c.nickname),
-      name: text(c.name),
+      identity: {
+        issuer,
+        subject: c.sub as string,
+        // An address the provider did not verify is only a label here: nothing is matched on it.
+        email: c.email_verified === false ? null : text(c.email),
+        username: text(c.preferred_username) ?? text(c.nickname),
+        name: text(c.name),
+      },
+      authTime: typeof c.auth_time === "number" && Number.isFinite(c.auth_time) ? c.auth_time : null,
     };
   }
 }

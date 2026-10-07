@@ -292,6 +292,14 @@ export class UserStore {
     return user && !user.disabled ? user : null;
   }
 
+  /** Whether the browser session with this stored hash (Actor.humanSession) is still signed in to an enabled account. */
+  sessionAlive(hash: string): boolean {
+    const row = this.#db.prepare("SELECT user_id, expires_at FROM hub_sessions WHERE hash = ?").get(hash) as Row | undefined;
+    if (!row || String(row.expires_at) < new Date().toISOString()) return false;
+    const user = this.get(String(row.user_id));
+    return !!user && !user.disabled;
+  }
+
   endSession(token: string): void {
     this.#db.prepare("DELETE FROM hub_sessions WHERE hash = ?").run(sha256(token));
   }
