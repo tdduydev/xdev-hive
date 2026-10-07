@@ -61,6 +61,14 @@ describe("container command", () => {
     assert.ok(!c.args.some((a) => a.includes("=")) || c.args.every((a) => !/^[A-Z_]+=/.test(a)), "no value on the command line");
   });
 
+  it("mounts browser run data writable and passes test credentials by name", () => {
+    const c = containerCommand({ profile: profile(), args: [], stdin: null, runId: "R-browser", worktree: "/w", gitDir: "/g",
+      writable: ["/data/runs/R-browser"], env: { TEST_PASSWORD: "synthetic-only" }, exists: () => true, user: null });
+    assert.ok(c.args.includes("/data/runs/R-browser:/data/runs/R-browser"));
+    assert.ok(c.args.includes("TEST_PASSWORD"));
+    assert.ok(!c.args.join(" ").includes("synthetic-only"));
+  });
+
   it("follows the profile's login folder, keeps stdin open when the prompt goes there, and knows no host path of the CLI", () => {
     const c = containerCommand({
       profile: profile({ kind: "codex", bin: "/opt/homebrew/bin/codex", env: { CODEX_HOME: "~/.codex-2" } }),
@@ -128,7 +136,7 @@ async function setup(profiles: AgentProfile[], opts: { docker?: boolean; mode?: 
   };
   const runner = new Runner(host, { dataDir, user: "duy", tickMs: 60_000 });
   const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : []);
-  return { dir, runner, dataDir, calls: () => read(record), docker: () => read(dockerRecord) as string[][] };
+  return { hive, dir, runner, dataDir, calls: () => read(record), docker: () => read(dockerRecord) as string[][] };
 }
 
 const boxed = (id: string, mode = "ok", over: Partial<AgentProfile> = {}): AgentProfile => ({
@@ -173,6 +181,24 @@ describe("runs in a container", () => {
     assert.ok(!args.some((a) => a.includes("hive_test_machine_token")), "the token is not on the command line");
     assert.ok(!existsSync(file), "removed after the run");
     assert.deepEqual(readdirSync(path.join(dataDir, "runs")).filter((f) => f.endsWith(".mcp.json")), []);
+  });
+
+  it("selects the browser catalog in containers for Claude and Codex", async () => {
+    for (const kind of ["claude", "codex"] as const) {
+      const s = await setup([boxed(`${kind}-browser`, kind === "claude" ? "browser-artifact" : "ok", { kind, bin: kind, args: kind === "codex" ? ["exec", "{prompt}"] : ["{prompt}"] })], { mode: "hub" });
+      await s.hive.call("tools.setProject", { project: "demo", id: "browser", enabled: true, required: false }, admin);
+      await s.runner.heartbeat();
+      const run = await s.runner.enqueue({ project: "demo", taskId: "T-1" });
+      await s.runner.settle();
+      assert.equal(s.runner.store.get(run.id)!.status, "succeeded", s.runner.log(run.id));
+      const args = s.docker()[0]!;
+      const runDir = path.join(s.dataDir, "runs", run.id);
+      assert.ok(args.includes(`${runDir}:${runDir}`));
+      assert.equal(existsSync(runDir), false);
+      assert.equal(s.calls()[0].browserServerProxy, null, "open network keeps the browser config's proxy unchanged");
+      if (kind === "codex") assert.ok(args.includes('mcp_servers.browser.args=["-y","@playwright/mcp@0.0.83","--headless"]'));
+      else assert.deepEqual((await s.hive.call("artifacts.list", { project: "demo", taskId: "T-1" }, admin)).map((a) => a.name), ["browser/page.png"]);
+    }
   });
 
   it("moves on to another subscription when the machine has no docker", async () => {
@@ -292,7 +318,25 @@ describe("a container run with a limited network", () => {
     assert.ok(agent.includes("--network") && agent[agent.indexOf("--network") + 1] === net);
     assert.ok(agent.includes("HTTPS_PROXY"));
     assert.equal(calls()[0].proxy, "http://egress:3128");
+    assert.equal(calls()[0].browserProxy, "http://egress:3128");
     assert.match(runner.log(run.id), /network limited \([^)]*corp\.example/);
+  });
+
+  it("configures the browser MCP proxy for Claude and Codex after catalog trust checks", async () => {
+    for (const kind of ["claude", "codex"] as const) {
+      const p = { ...limited(`${kind}-browser-net`), kind, bin: kind, args: kind === "codex" ? ["exec", "{prompt}"] : ["{prompt}"] };
+      const s = await setup([p], { mode: "hub" });
+      await s.hive.call("tools.setProject", { project: "demo", id: "browser", enabled: true, required: false }, admin);
+      await s.runner.heartbeat();
+      const run = await s.runner.enqueue({ project: "demo", taskId: "T-1" });
+      await s.runner.settle();
+      assert.equal(s.runner.store.get(run.id)!.status, "succeeded", s.runner.log(run.id));
+      const args = s.docker().find((a) => a[0] === "run" && a[1] === "--rm")!;
+      assert.equal(s.calls()[0].browserProxy, "http://egress:3128");
+      if (kind === "claude") assert.equal(s.calls()[0].browserServerProxy, "http://egress:3128");
+      else assert.ok(args.some((a) => a.startsWith("mcp_servers.browser.env=") && a.includes('PLAYWRIGHT_MCP_PROXY_SERVER="http://egress:3128"')), "Codex passes the proxy explicitly to MCP despite its env filter");
+      assert.equal((await s.hive.call("tools.list", {}, admin)).find((e) => e.id === "browser")!.env.PLAYWRIGHT_MCP_PROXY_SERVER, undefined, "the runtime override leaves catalog/trust hashes intact");
+    }
   });
 
   it("names what it blocked when the run fails", async () => {

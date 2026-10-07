@@ -88,7 +88,7 @@ import { git, gitAsync, isGitRepo } from "#desktop/main/git.ts";
 import { NO_FEATURES, repoFeatures } from "#desktop/main/installer.ts";
 import { codexHome } from "./login.ts";
 import { renderContext, type WorktreeRule, type WorktreeSkill } from "#desktop/main/sync.ts";
-import { hookEnv, legacyPick, NO_TOOLS, prepareTool, readyHooks, rtkGain, runTools, trustOf, toolDirs, userClaudeSettings, type ToolPick } from "./tools.ts";
+import { claudeToolServer, readyBrowserSecrets, hookEnv, legacyPick, prepareTool, readyHooks, rtkGain, runTools, trustOf, toolDirs, userClaudeSettings, type ToolPick } from "./tools.ts";
 import { readyCodexRtk, type CodexRtkRun } from "#desktop/main/runner/codex-rtk.ts";
 import { collectArtifacts } from "./artifacts.ts";
 import { containerCommand } from "./container.ts";
@@ -1819,11 +1819,32 @@ export class Runner {
       const features = profile.container ? NO_FEATURES : repoFeatures(project.repo);
       // The variables the run has (the machine's, then the profile's), for a tool's secrets: named, never logged.
       const runEnv: Record<string, string | undefined> = { ...base, ...expandEnv(profile.env) };
-      const tools: ToolPick = profile.container
-        ? NO_TOOLS
-        : this.#tools
-          ? runTools(this.#tools, run.project, features, profile.kind, pol, this.#host.toolTrust?.() ?? {}, runEnv)
-          : legacyPick(features, profile.kind, fit.mcp);
+      const networkAllow = profile.container && profile.container.network !== "open"
+        ? egressAllow(profile, { hub: this.#host.hub?.()?.url, gitlab: this.#host.gitlab?.() })
+        : null;
+      const networkPlan = networkAllow ? egressPlan(run.id, profile.container!.image, networkAllow) : null;
+      // Other catalog tools keep their existing host-only behavior; browser data is explicitly mounted below.
+      const catalog = profile.container && this.#tools
+        ? { ...this.#tools, entries: this.#tools.entries.filter((e) => e.handler === "browser") }
+        : this.#tools;
+      const tools: ToolPick = catalog
+        ? runTools(catalog, run.project, features, profile.kind, pol, this.#host.toolTrust?.() ?? {}, runEnv)
+        : legacyPick(features, profile.kind, fit.mcp);
+      // Codex filters inherited MCP variables, so put Chrome's proxy in both CLIs' server config after trust checks.
+      if (networkPlan) tools.tools = tools.tools.map((e) => e.handler === "browser"
+        ? { ...e, env: { ...e.env, PLAYWRIGHT_MCP_PROXY_SERVER: networkPlan.env.PLAYWRIGHT_MCP_PROXY_SERVER! } }
+        : e);
+      if (tools.tools.some((e) => e.kind === "mcp" && Object.values(e.env).some((v) => v.includes("{runDir}")))) {
+        runDir = path.join(this.#opts.dataDir, "runs", run.id);
+        mkdirSync(runDir, { recursive: true });
+      }
+      const browser = tools.tools.find((e) => e.handler === "browser");
+      if (browser && runDir) readyBrowserSecrets(browser, runDir, runEnv);
+      if (profile.container && mcpFile) {
+        writeFileSync(mcpFile, JSON.stringify({ mcpServers: { ...this.#containerMcp(profile, run),
+          ...Object.fromEntries(tools.tools.filter((e) => e.mcp).map((e) => [e.id, claudeToolServer(e, { worktree: wt!.path, repo: project.repo, runDir: runDir ?? undefined })])),
+        } }), { mode: 0o600 });
+      }
       // Catalog hooks (roadmap 28d), before the prompt, which tells the agent about RTK when it is on.
       const hookLines: string[] = [];
       let hooks: ClaudeHookRun | null = null;
@@ -1874,9 +1895,9 @@ export class Runner {
         artifacts: this.#host.mode() === "hub",
       });
       writeSteer(wt.path, run.id, []);
-      const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id, repo: project.repo, references: references.repos, hiveMcp: resolveBin(SHIM_NAME, base.PATH ?? "") ?? undefined };
+      const vars = { prompt, runDir: runDir ?? undefined, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id, repo: project.repo, references: references.repos, hiveMcp: resolveBin(SHIM_NAME, base.PATH ?? "") ?? undefined };
       wt.toolDirs = toolDirs(tools.prepare);
-      let cmd = buildCommand(profile, vars, this.#tools && !profile.container ? tools.tools : features, mcpFile ?? undefined, fit.mcp, hooks);
+      let cmd = buildCommand(profile, vars, this.#tools ? tools.tools : features, mcpFile ?? undefined, fit.mcp, hooks);
       // RTK for Codex (roadmap 58a): wrappers on the run's own PATH and their config, again after a model retry rebuilds cmd.
       const withCodexRtk = () => {
         if (!codexRtk) return;
@@ -1921,6 +1942,7 @@ export class Runner {
       }
       const toolLines = [...[...tools.notes, ...hookLines].map((n) => `# ${n}`), ...prepared].map((l) => `${l}\n`).join("");
       const agentEnv: Record<string, string> = {
+        ...Object.fromEntries(tools.tools.flatMap((e) => e.secretEnv).filter((n) => runEnv[n] !== undefined).map((n) => [n, runEnv[n]!])),
         ...expandEnv(profile.env),
         HIVE_AGENT: profile.id,
         HIVE_PROJECT: run.project,
@@ -1939,9 +1961,8 @@ export class Runner {
         if (!wt.copied.includes(configured.file)) wt.copied.push(configured.file);
       }
       // A restricted container: its own network and proxy, set up before the agent starts.
-      if (profile.container && profile.container.network !== "open") {
-        const allow = egressAllow(profile, { hub: this.#host.hub?.()?.url, gitlab: this.#host.gitlab?.() });
-        egress = { plan: egressPlan(run.id, profile.container.image, allow), docker: bin, env: { ...hostEnv, HIVE_EGRESS_ALLOW: allow.join(",") } };
+      if (networkPlan) {
+        egress = { plan: networkPlan, docker: bin, env: { ...hostEnv, HIVE_EGRESS_ALLOW: networkAllow!.join(",") } };
         try {
           for (const step of egress.plan.setup) await dockerRun(egress.docker, step, egress.env);
         } catch (err) {
@@ -1964,6 +1985,7 @@ export class Runner {
               stdin: cmd.stdin,
               runId: run.id,
               worktree: wt.path,
+              writable: runDir ? [runDir] : [],
               gitDir: git(wt.path, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
               env: {
                 ...agentEnv,
@@ -2162,7 +2184,7 @@ export class Runner {
           } else {
             out.write(`\n# model: ${ranOn(profile).model} rejected by CLI; retry once on ${profile.id} with CLI default\n`);
             profile = withoutModel(profile);
-            cmd = buildCommand(profile, vars, this.#tools && !profile.container ? tools.tools : features, mcpFile ?? undefined, fit.mcp, hooks);
+            cmd = buildCommand(profile, vars, this.#tools ? tools.tools : features, mcpFile ?? undefined, fit.mcp, hooks);
             withCodexRtk();
             delete agentEnv.CLAUDE_CODE_EFFORT_LEVEL;
             delete agentEnv.ANTHROPIC_MODEL;
@@ -2199,8 +2221,11 @@ export class Runner {
       this.#stopping.delete(run.id);
       // It carries the hub token: gone with the run.
       if (mcpFile) rmSync(mcpFile, { force: true });
-      // RTK's history of the run: its numbers went into the run record.
-      if (runDir) rmSync(runDir, { recursive: true, force: true });
+      // Browser output must reach the hub before its profile and secrets are removed.
+      if (runDir) {
+        await this.#pushArtifacts(this.store.get(run.id) ?? run, runDir).catch(() => undefined);
+        rmSync(runDir, { recursive: true, force: true });
+      }
       // A step can fail when setup stopped half-way: try them all.
       if (egress) for (const step of egress.plan.teardown) await dockerRun(egress.docker, step, egress.env).catch(() => undefined);
     }

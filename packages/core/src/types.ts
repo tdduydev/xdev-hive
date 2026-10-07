@@ -481,7 +481,7 @@ export const TOOL_REGISTRIES = ["npm", "pypi", "brew", "git", "claude-plugin"] a
  * Tools the app already has its own code for: from 28b the machine runs that code to install, prepare and check them,
  * and the catalog decides whether they are on, their version and policy.
  */
-export const TOOL_HANDLERS = ["codegraph", "superpowers", "speckit"] as const;
+export const TOOL_HANDLERS = ["codegraph", "superpowers", "speckit", "browser"] as const;
 export const TOOL_HOOK_EVENTS = ["PreToolUse", "PostToolUse", "SessionStart", "Stop"] as const;
 export type ToolKind = (typeof TOOL_KINDS)[number];
 export type ToolAgent = (typeof TOOL_AGENTS)[number];

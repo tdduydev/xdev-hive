@@ -27,6 +27,7 @@ describe("allowed hosts and the run's network", () => {
     assert.deepEqual(plan.teardown, [["rm", "-f", "hive-R-ab12-egress"], ["network", "rm", "hive-R-ab12-net"]]);
     assert.deepEqual(plan.runArgs, ["--network", "hive-R-ab12-net"]);
     assert.equal(plan.env.HTTPS_PROXY, "http://egress:3128");
+    assert.equal(plan.env.PLAYWRIGHT_MCP_PROXY_SERVER, "http://egress:3128");
     assert.equal(plan.env.no_proxy, "localhost,127.0.0.1");
   });
 
