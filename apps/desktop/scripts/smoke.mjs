@@ -689,7 +689,7 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
       else {
         const leader = new HubBackend(`http://127.0.0.1:${port}`, request.grant);
         await leader.call("chat.propose", { action: { kind: "task.create", project: "demo", id: "HUB-37B", title: "Việc từ leader toàn hub", dependsOn: [] }, reason: "Điều phối service" }, boxActor);
-        await leader.call("chat.propose", { action: { kind: "machine.profile", machineId: box.id, profileId: "claude-1", enabled: true }, reason: "Gói của máy" }, boxActor);
+        await leader.call("chat.propose", { action: { kind: "machine.profile", machine: box.machine, profileId: "claude-1", enabled: true }, reason: "Gói của máy" }, boxActor);
         await api.call("chat.finish", { replyId: sent.reply.id, status: "done", text: "Đề xuất theo service và máy." }, boxActor);
         for (const phone of [false, true]) await shoot(`hub-chat-all${phone ? "-mobile" : ""}`, `chat?thread=${sent.thread.id}`, 3000, {
           ...(phone ? { HIVE_SMOKE_SIZE: "390x844" } : {}),
