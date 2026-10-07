@@ -329,22 +329,25 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **60d. chat-to-plan**: leader biến yêu cầu trong chat thành spec, task và *Kế hoạch*; bấm *Làm* một lần hoặc tự chạy.
 
 - **62. chat-control** (hỏi 7/10: "phần chat trên giao diện client để giao task, nghiên cứu… cho dễ quản trị trên Hive"): chat là chỗ quản trị chính. Spec: [docs/specs/62-chat-control.md](specs/62-chat-control.md). Tách:
-  - [ ] **62a. codex-leader**: leader chạy bằng gói Codex (phiên resume, MCP, propose), tự sang Codex khi Claude hết quota.
-  - [ ] **62b. research-from-chat**: đề xuất `research.start` → run nghiên cứu chỉ đọc, báo cáo làm artifact và tài liệu nháp, nút *Biến thành Kế hoạch*.
-  - [ ] **62c. chat-shortcuts**: lệnh tiếng Anh có gợi ý khi gõ `/`: `/assign`, `/research`, `/status`, `/release`, `/cancel`, `/retry`, hàng chip trên ô chat.
-  - [ ] **62d. chat-everywhere**: khung *Hỏi leader* mở từ mọi trang, mang ngữ cảnh trang đang xem.
+  - [x] **62a. codex-leader**: leader chạy bằng gói Codex (phiên resume, MCP, propose), tự sang Codex khi Claude hết quota.
+  - [x] **62b. research-from-chat**: đề xuất `research.start` → run nghiên cứu chỉ đọc, báo cáo làm artifact và tài liệu nháp, nút *Biến thành Kế hoạch*.
+  - [x] **62c. chat-shortcuts**: lệnh tiếng Anh có gợi ý khi gõ `/`: `/assign`, `/research`, `/status`, `/release`, `/cancel`, `/retry`, hàng chip trên ô chat.
+  - [x] **62d. chat-everywhere**: khung *Hỏi leader* mở từ mọi trang, mang ngữ cảnh trang đang xem.
 
 - **63. providers-worktrees** (hỏi 7/10: "add nhiều provider coding hơn, cái nào miễn phí", "WF chưa có phần quản trị, merge xong xoá cho đỡ đầy bộ nhớ"): thêm gói lập trình theo nghiên cứu RES-providers, và quản trị worktree. Spec: [docs/specs/63-providers-worktrees.md](specs/63-providers-worktrees.md). Tách:
-  - [ ] **63a. provider-gemini**: Gemini CLI đủ như claude/codex (headless, stream, quota, login, MCP, 54c).
-  - [ ] **63b. provider-copilot**: GitHub Copilot CLI.
-  - [ ] **63c. provider-vibe**: Mistral Vibe.
-  - [ ] **63d. provider-opencode**: OpenCode.
-  - [ ] **63e. provider-kilo**: Kilo Code CLI.
-  - [ ] **63f. worktree-admin**: trang Worktree của máy (dung lượng, trạng thái, xoá), tự dọn sau khi task done và branch vào main.
+  - [x] **63a. provider-gemini**: Gemini CLI đủ như claude/codex (headless, stream, quota, login, MCP, 54c).
+  - [x] **63b. provider-copilot**: GitHub Copilot CLI.
+  - [x] **63c. provider-vibe**: Mistral Vibe.
+  - [x] **63d. provider-opencode**: OpenCode.
+  - [x] **63e. provider-kilo**: Kilo Code CLI.
+  - [x] **63f. worktree-admin**: trang Worktree của máy (dung lượng, trạng thái, xoá), tự dọn sau khi task done và branch vào main.
 
 - **64. chat-redesign** (hỏi 7/10: "phần chat tự thiết kế như Hermes chat đi, cho tối ưu"): thiết kế lại trang Chat và khung *Hỏi leader* theo cách các chat agent tốt (Hermes Agent của NousResearch và các bản khác) hiện việc agent đang làm, trên nền 62a–62d. Tách:
-  - [ ] **64a. chat-design**: nghiên cứu có nguồn (Hermes Agent chat/TUI/web, và 2–3 chat agent khác), rồi viết `docs/design/chat-2026-10.md`: bố cục, luồng, thành phần, trạng thái, điện thoại, khả năng truy cập, kèm mockup HTML tĩnh.
-  - [ ] **64b. chat-build**: làm theo 64a trong `Chat.tsx` và khung *Hỏi leader*, có test và bước e2e (desktop, điện thoại).
+  - [x] **64a. chat-design**: nghiên cứu có nguồn (Hermes Agent chat/TUI/web, và 2–3 chat agent khác), rồi viết `docs/design/chat-2026-10.md`: bố cục, luồng, thành phần, trạng thái, điện thoại, khả năng truy cập, kèm mockup HTML tĩnh.
+  - [x] **64b. chat-build**: làm theo 64a trong `Chat.tsx` và khung *Hỏi leader*, có test và bước e2e (desktop, điện thoại).
+
+- **65. browser** (65a, R-65a). Spec: [docs/specs/65-browser.md](specs/65-browser.md).
+  - [x] **65a. browser-tool**: Playwright MCP trong danh mục tool, agent lướt/test web có tài khoản test qua `secretEnv`.
 
 ## Sửa lỗi
 
