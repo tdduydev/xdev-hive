@@ -11,7 +11,7 @@ function setup(legacy = false, unowned = false) {
   let hive = new SqliteHive(":memory:", legacy ? { migrateTo: migrationIndex("ALTER TABLE machines ADD COLUMN token_id") } : {});
   const tokens = new TokenStore(hive.db);
   const users = new UserStore(hive.db);
-  const owner = users.create({ username: "owner" }).user;
+  const { user: owner, password: ownerPassword } = users.create({ username: "owner" });
   const other = users.create({ username: "other" }).user;
   users.setGrants(owner.id, { app: "lead" });
   users.setGrants(other.id, { app: "lead" });
@@ -45,7 +45,16 @@ function setup(legacy = false, unowned = false) {
   const beat = (credential = paired.token, extra = {}) => rpc(credential, "machines.heartbeat", { machine: "test", instance: "aaaaaaaa", projects: ["app"], acceptsRuns: true, ...extra });
   const issue = (credential = paired.token) => invoke(credential, "/api/run-credentials", { machine: "test", project: "app", task: "SEC-1", run: "R-test", minutes: 30, readOnly: false });
   const row = () => hive.db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId);
-  return { hive, tokens, owner, other, paired, attacker, human, stranger, admin, machineId, rpc, invoke, beat, issue, row };
+  // The desktop's password sign-in; body parsing is skipped like the bearer routes above.
+  const signIn = async (username: string, password: string, name = "device") => {
+    const route = routes.find((layer) => layer.route?.path === "/api/device-token" && layer.route.methods.post)!.route!;
+    const req = { method: "POST", path: "/api/device-token", body: { username, password, name }, get: () => undefined, socket: { remoteAddress: "127.0.0.1" } };
+    let status = 200, answer: any;
+    const res = { locals: {}, status: (code: number) => { status = code; return res; }, json: (value: unknown) => { answer = value; return res; } };
+    await route.stack.at(-1)!.handle(req as unknown as Request, res as unknown as Response, () => {});
+    return { status, answer };
+  };
+  return { hive, tokens, users, owner, ownerPassword, other, paired, attacker, human, stranger, admin, machineId, rpc, invoke, beat, issue, row, signIn };
 }
 
 it("pins the verified token and refuses namesakes without changing any machine state or reporting rights", async () => {
@@ -128,6 +137,28 @@ it("requires an explicit human re-pair for rotation or ambiguous legacy tokens a
     assert.equal((await s.beat(s.attacker.token)).status, 200);
     assert.equal(s.row()?.owner, "other");
     assert.equal(s.hive.db.prepare("SELECT COUNT(*) AS n FROM audit WHERE action = 'machines.repair'").get()?.n, 3);
+  } finally { s.hive.close(); }
+});
+
+it("moves the machine to the new token when its owner signs the desktop in again", async () => {
+  const s = setup();
+  try {
+    assert.equal((await s.beat()).status, 200);
+    const issued = await s.issue();
+    assert.equal(issued.status, 200);
+    s.users.changePassword(s.owner.id, s.ownerPassword, "a-long-new-secret-9");
+    const signed = await s.signIn("owner", "a-long-new-secret-9");
+    assert.equal(signed.status, 200);
+    const fresh = signed.answer.result as { token: string; info: { id: string } };
+    assert.equal(s.row()?.token_id, fresh.info.id);
+    assert.equal(s.row()?.owner, "owner");
+    assert.equal(s.tokens.verify(s.paired.token), null);
+    assert.equal(s.tokens.verify(issued.answer.result.token), null, "agents of the old token stop with it");
+    assert.equal((await s.beat(fresh.token)).status, 200);
+    assert.equal((await s.issue(fresh.token)).status, 200);
+    assert.equal((await s.beat(s.attacker.token)).status, 403, "another account's sign-in token is still a namesake");
+    assert.equal(s.row()?.owner, "owner");
+    assert.equal(s.hive.db.prepare("SELECT COUNT(*) AS n FROM audit WHERE action = 'machines.repair'").get()?.n, 1);
   } finally { s.hive.close(); }
 });
 

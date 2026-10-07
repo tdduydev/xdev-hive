@@ -450,8 +450,12 @@ export function createHubApp({
   const machineToken = (user: UserInfo, rawName: unknown) => {
     const name = String(rawName ?? "").trim();
     const created = tokens.create(name, user.admin ? "admin" : "member", user.id);
-    for (const old of tokens.list(user.id)) if (old.name === created.info.name && old.id !== created.info.id) tokens.revoke(old.id);
-    hive.audit({ name: user.username, role: user.admin ? "admin" : "member" }, "tokens.create", created.info.name, `${created.info.role} · máy`, {
+    const person: Actor = { name: user.username, role: user.admin ? "admin" : "member", account: user.username };
+    for (const old of tokens.list(user.id)) if (old.name === created.info.name && old.id !== created.info.id) {
+      tokens.revoke(old.id);
+      hive.rebindMachineToken(old.id, created.info.id, person);
+    }
+    hive.audit(person, "tokens.create", created.info.name, `${created.info.role} · máy`, {
       key: "audit.machineToken",
       vars: { role: created.info.role },
     });
