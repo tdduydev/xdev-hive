@@ -1,5 +1,5 @@
 // Small building blocks every page uses, on top of shadcn/ui.
-import { useState, type ReactNode } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
 import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
 import { Alert, AlertDescription, AlertTitle } from "@xdev-hive/ui/components/ui/alert";
@@ -54,10 +54,10 @@ const NOTICE = {
 } as const;
 
 /** A tinted message box (saved, warning, hint). Errors from actions use ErrorNote. */
-export function Notice({ tone = "info", title, className, children }: { tone?: keyof typeof NOTICE; title?: ReactNode; className?: string; children?: ReactNode }) {
+export function Notice({ tone = "info", title, className, children, ...props }: Omit<ComponentProps<"div">, "title"> & { tone?: keyof typeof NOTICE; title?: ReactNode }) {
   const { icon: Icon, className: toneClass } = NOTICE[tone];
   return (
-    <Alert className={cn(toneClass, className)}>
+    <Alert {...props} className={cn(toneClass, className)}>
       <Icon />
       {title ? <AlertTitle className="text-fg-strong">{title}</AlertTitle> : null}
       {children ? <AlertDescription className="text-fg-strong">{children}</AlertDescription> : null}
