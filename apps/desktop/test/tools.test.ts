@@ -251,14 +251,16 @@ describe("hooks of the catalog (roadmap 28d)", () => {
   const pick = (c: MachineTools, kind: "claude" | "codex" = "claude", trust: Record<string, string> = { rtk: toolHash(RTK) }) =>
     runTools(c, "demo", NO_FEATURES, kind, { ...OPEN_POLICY }, trust, {});
 
-  it("picks a hook on for the project and allowed, for Claude Code runs only", () => {
+  it("picks approved RTK for Claude and Codex, with no other Claude hooks translated", () => {
     const c = catalog([RTK], [on("rtk")]);
     const got = pick(c);
     assert.deepEqual([got.tools, got.prepare, got.hooks?.map((e) => e.id)], [[], [], ["rtk"]]);
-    assert.equal(pick(c, "codex").hooks, undefined, "Codex runs keep no hooks");
+    assert.deepEqual(pick(c, "codex").hooks, [RTK]);
+    assert.equal(pick(catalog([{ ...RTK, id: "other-hook" }], [on("other-hook")]), "codex").hooks, undefined);
     assert.equal(pick(catalog([RTK], [on("rtk", null)])).hooks, undefined, "off by default");
     const untrusted = pick(c, "claude", {});
     assert.deepEqual([untrusted.hooks, untrusted.notes], [undefined, ["tool rtk: chờ người dùng máy cho phép (Cài đặt máy)"]]);
+    assert.deepEqual(pick(c, "codex", {}).notes, untrusted.notes);
   });
 
   it("lists a hook on the Setup card with its commands, so it can be allowed", () => {

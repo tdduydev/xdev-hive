@@ -86,6 +86,7 @@ import { NO_FEATURES, repoFeatures } from "#desktop/main/installer.ts";
 import { codexHome } from "./login.ts";
 import { renderContext, type WorktreeRule, type WorktreeSkill } from "#desktop/main/sync.ts";
 import { hookEnv, legacyPick, NO_TOOLS, prepareTool, readyHooks, rtkGain, runTools, toolDirs, userClaudeSettings, type ToolPick } from "./tools.ts";
+import { readyCodexRtk, type CodexRtkRun } from "#desktop/main/runner/codex-rtk.ts";
 import { collectArtifacts } from "./artifacts.ts";
 import { containerCommand } from "./container.ts";
 import { needsPlanApproval, PLAN_MAX, type RunPlan } from "@xdev-hive/core";
@@ -1720,17 +1721,24 @@ export class Runner {
       // Catalog hooks (roadmap 28d), before the prompt, which tells the agent about RTK when it is on.
       const hookLines: string[] = [];
       let hooks: ClaudeHookRun | null = null;
+      let codexRtk: CodexRtkRun | null = null;
       if (tools.hooks?.length && run.plan?.phase !== "plan") {
-        const found = await readyHooks(tools.hooks, { autonomy: fit.autonomy, resolve: (b) => resolveBin(b, base.PATH ?? ""), env: { ...base, ...expandEnv(profile.env) } });
+        // The Codex wrapper never approves a tool or bypasses the sandbox, so edit runs may use it too.
+        const found = await readyHooks(tools.hooks, { autonomy: profile.kind === "codex" && fit.autonomy === "edit" ? "full" : fit.autonomy, resolve: (b) => resolveBin(b, runEnv.PATH ?? ""), env: runEnv });
         hookLines.push(...found.notes);
         if (found.ready.length) {
-          const user = userClaudeSettings(runEnv);
-          if (user.note) hookLines.push(user.note);
           // RTK's history (RTK_DB_PATH) for this run alone: what `rtk gain` reads after it.
           runDir = path.join(this.#opts.dataDir, "runs", run.id);
           mkdirSync(runDir, { recursive: true });
-          hooks = { ready: found.ready, env: hookEnv(found.ready, runDir), user: user.settings };
-          for (const r of found.ready) hookLines.push(`${r.entry.id}: hook ${r.hooks.map((h) => `${h.event}${h.matcher ? ` ${h.matcher}` : ""}`).join(", ")}`);
+          if (profile.kind === "codex" && profile.args[0] === "exec") {
+            codexRtk = readyCodexRtk({ ready: found.ready, runDir, env: runEnv });
+            hookLines.push(codexRtk.note);
+          } else if (profile.kind === "claude") {
+            const user = userClaudeSettings(runEnv);
+            if (user.note) hookLines.push(user.note);
+            hooks = { ready: found.ready, env: hookEnv(found.ready, runDir), user: user.settings };
+            for (const r of found.ready) hookLines.push(`${r.entry.id}: hook ${r.hooks.map((h) => `${h.event}${h.matcher ? ` ${h.matcher}` : ""}`).join(", ")}`);
+          }
         }
       }
 
@@ -1753,7 +1761,7 @@ export class Runner {
         judge: run.bestOf?.n === 0 ? this.#judgeInput(run.bestOf) : null,
         contextFile: context.file,
         references: references.repos,
-        rtk: hooks?.ready.some((r) => r.entry.id === "rtk") ?? false,
+        rtk: !!codexRtk || (hooks?.ready.some((r) => r.entry.id === "rtk") ?? false),
         skills: context.skills,
         rules: context.rules,
         // Only a hub keeps what the run makes; on a local hive the folder would fill up for nothing.
@@ -1763,6 +1771,10 @@ export class Runner {
       const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id, repo: project.repo, references: references.repos, hiveMcp: resolveBin(SHIM_NAME, base.PATH ?? "") ?? undefined };
       wt.toolDirs = toolDirs(tools.prepare);
       const cmd = buildCommand(profile, vars, this.#tools && !profile.container ? tools.tools : features, mcpFile ?? undefined, fit.mcp, hooks);
+      if (codexRtk) {
+        cmd.args.push(...codexRtk.args);
+        cmd.env = { ...cmd.env, ...codexRtk.env };
+      }
       const bin = resolveBin(profile.container ? "docker" : cmd.bin, base.PATH ?? "");
       if (!bin) {
         const reason = profile.container ? tr("runNote.dockerNotFound") : tr("runNote.binNotFound", { bin: cmd.bin });
@@ -2019,9 +2031,9 @@ export class Runner {
           );
         }
       }
-      if (hooks) {
+      if (hooks || codexRtk) {
         // RTK's own count of what it left out, from this run's history only; null when it cannot tell (roadmap 28d).
-        const compression = await rtkGain(hooks.ready, env);
+        const compression = await rtkGain((codexRtk ?? hooks)!.ready, env);
         if (compression) {
           out.write(`# ${compression.tool}: ${compression.commands} commands · ~${compression.saved} tokens left out (RTK's estimate)\n`);
           this.store.update(run.id, { compression });
