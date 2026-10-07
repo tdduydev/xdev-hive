@@ -260,19 +260,23 @@ export const TERMINAL_DENIALS = [
 export type TerminalDenial = (typeof TERMINAL_DENIALS)[number];
 
 /**
- * Everything the decision needs, looked up server-side: the machine's owner is the account of its token (machines.owner,
- * set by the hub at heartbeat), never a label or owner the client sent. `stepUp` is true only after the hub consumed a
- * fresh one-time proof bound to this user, browser session, machine, project and operation (69c).
+ * Everything the decision needs, looked up server-side (TerminalStore.machine): the machine's owner is the account of
+ * its token (machines.owner, set by the hub at heartbeat), never a label or owner the client sent. `machine` is null
+ * when the row is gone: a deleted machine's sessions stay as audit (no foreign key), readable by their creator and
+ * admins. `stepUp` is true only after the hub consumed a fresh one-time proof bound to this user, browser session,
+ * machine, project and operation (69c).
  */
 export interface TerminalCheck {
   op: TerminalOp;
   actor: Actor;
   hubEnabled: boolean;
   project: string;
-  machine: { id: string; owner: string | null; capability: unknown } | null;
+  machine: TerminalMachine | null;
   session?: Pick<TerminalSession, "creator" | "machineId" | "project" | "state">;
   stepUp?: boolean;
 }
+
+export interface TerminalMachine { id: string; owner: string | null; capability: unknown }
 
 export type TerminalDecision = { ok: true } | { ok: false; denial: TerminalDenial };
 
@@ -285,7 +289,8 @@ export function isTerminalHuman(actor: Actor): boolean {
     !actor.runCredential && !actor.mcpCredential && actor.chatReply === undefined && !isAgentActor(actor);
 }
 
-const isHubAdmin = (a: Actor): boolean => a.role === "admin" && !a.access;
+/** A hub admin, not an account that is admin of some projects only: the one who sees every session of a project. */
+export const isTerminalAdmin = (a: Actor): boolean => a.role === "admin" && !a.access;
 
 const deny = (denial: TerminalDenial): TerminalDecision => ({ ok: false, denial });
 
@@ -297,10 +302,13 @@ const deny = (denial: TerminalDenial): TerminalDecision => ({ ok: false, denial 
 export function terminalDecision(c: TerminalCheck): TerminalDecision {
   const { op, actor } = c;
   if (op === "machineReport") {
-    // Only the machine the session runs on reports it; a person or agent knowing the id does not.
-    if (actor.humanSession || actor.runCredential || actor.mcpCredential || actor.chatReply !== undefined) return deny("notMachine");
+    // Only the machine the session runs on reports it; a person or agent knowing the id does not. Token names are
+    // chosen by people and not unique (and x-hive-agent prefixes them), so the name alone proves nothing: the caller
+    // must also be the account the hub recorded as the machine's owner, as /api/run-credentials checks.
+    if (actor.humanSession || actor.runCredential || actor.mcpCredential || actor.chatReply !== undefined || isAgentActor(actor) ||
+        actor.role === "viewer") return deny("notMachine");
     if (!c.session || !c.machine) return deny("notFound");
-    if (actor.name !== c.machine.id || c.session.machineId !== c.machine.id) return deny("notMachine");
+    if (actor.name !== c.machine.id || c.session.machineId !== c.machine.id || c.machine.owner !== (actor.account ?? null)) return deny("notMachine");
     return { ok: true };
   }
   if (!isTerminalHuman(actor)) return deny("notHuman");
@@ -309,9 +317,11 @@ export function terminalDecision(c: TerminalCheck): TerminalDecision {
   if (!c.hubEnabled && (op === "capabilities" || op === "create" || op === "attach")) return deny("hubDisabled");
   if (!sees(actor, c.project)) return deny("notFound");
   if (c.session && c.session.project !== c.project) return deny("wrongProject");
-  if (!c.machine || (c.session && c.session.machineId !== c.machine.id)) return deny("notFound");
-  const admin = isHubAdmin(actor);
-  const owner = c.machine.owner !== null && c.machine.owner === actor.account;
+  // Reaching a machine needs its row; reading or stopping a session does not, so deleting a machine never hides its audit.
+  if (!c.machine && (op === "capabilities" || op === "create" || op === "attach")) return deny("notFound");
+  if (c.machine && c.session && c.session.machineId !== c.machine.id) return deny("notFound");
+  const admin = isTerminalAdmin(actor);
+  const owner = !!c.machine && c.machine.owner !== null && c.machine.owner === actor.account;
   const creator = !!c.session && c.session.creator === actor.account;
   const live = !!c.session && !isTerminalFinal(c.session.state);
 
@@ -319,7 +329,7 @@ export function terminalDecision(c: TerminalCheck): TerminalDecision {
     case "capabilities":
       return admin || owner ? { ok: true } : deny("notOwnerOrAdmin");
     case "list":
-      // Admins and machine owners see every session of the machine; anyone else only the ones they opened.
+      // What each one sees is TerminalStore.list's filter: admins the project, others their own sessions and their machines'.
       return { ok: true };
     case "get":
     case "terminate":
@@ -336,7 +346,7 @@ export function terminalDecision(c: TerminalCheck): TerminalDecision {
       // A shell can change the project's code: it takes the right to work on tasks, not just to read them.
       if (!may(actor, c.project, "taskWork")) return deny("noProjectAccess");
       // An admin is not above the machine's own opt-in.
-      const unavailable = terminalUnavailable(c.machine.capability, c.project);
+      const unavailable = terminalUnavailable(c.machine!.capability, c.project);
       if (unavailable) return deny(unavailable);
       if (op === "attach") {
         if (!c.session) return deny("notFound");
