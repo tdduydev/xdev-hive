@@ -2,6 +2,7 @@
 //   npm run release -w @xdev-hive/desktop            (version from package.json, tag v<version>)
 //   npm run release -w @xdev-hive/desktop -- --dry   (build and list the files, publish nothing)
 //   npm run release -w @xdev-hive/desktop -- --hub-only   (skip GitHub: upload the built files to the hub again)
+//   npm run release -w @xdev-hive/desktop -- --whatsnew <file>   (use edited release notes)
 // Needs: a clean checkout of origin/main, `gh` signed in with push access. macOS builds are ad-hoc
 // signed (no Developer ID yet); Windows installers are unsigned.
 // With HIVE_RELEASE_HUB (https://hive.example) and HIVE_RELEASE_TOKEN (a hub admin's token) the builds also go to the
@@ -10,13 +11,16 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { uploadToHub } from "./hub-upload.mjs";
+import { uploadToHub } from "#desktop/scripts/hub-upload.mjs";
+import { generateWhatsNew, readWhatsNewOverride } from "#desktop/scripts/whatsnew.mjs";
 
 const desktop = path.resolve(import.meta.dirname, "..");
 const repoRoot = path.resolve(desktop, "..", "..");
 const release = path.join(desktop, "release");
 const dry = process.argv.includes("--dry");
 const hubOnly = process.argv.includes("--hub-only");
+// Read before cleaning release/, since the supplied draft may live there.
+const whatsNewOverride = readWhatsNewOverride(process.argv.slice(2), readFileSync);
 const { version } = JSON.parse(readFileSync(path.join(desktop, "package.json"), "utf8"));
 const tag = `v${version}`;
 
@@ -51,6 +55,9 @@ const sumsFile = path.join(release, "SHA256SUMS.txt");
 writeFileSync(sumsFile, `${sums}\n`);
 for (const f of assets) console.log(`${(statSync(f).size / 1e6).toFixed(0).padStart(5)} MB  ${path.basename(f)}`);
 
+const whatsNewDraft = whatsNewOverride ?? generateWhatsNew(repoRoot, tag);
+writeFileSync(path.join(release, "WHATSNEW.md"), whatsNewDraft);
+
 if (dry) {
   console.log(`\n--dry: nothing published (${tag}).`);
   process.exit(0);
@@ -67,13 +74,7 @@ async function toHub(notes) {
   await uploadToHub({ hub, token, version, assets, notes });
 }
 
-// The tag before this one (a --hub-only run comes after this version's tag exists).
-const previous = out("git", ["tag", "--list", "v*", "--sort=-v:refname"]).split("\n").filter((t) => t && t !== tag)[0];
-const changes = out("git", ["log", "--first-parent", "--format=- %s", previous ? `${previous}..HEAD` : "HEAD", "--", "."])
-  .split("\n")
-  .filter((l) => l && !l.startsWith("- Merge branch"))
-  .slice(0, 40)
-  .join("\n");
+const whatsNew = whatsNewDraft;
 const notes = `## Tải về
 
 | Máy | File |
@@ -92,11 +93,11 @@ Bản build chưa có chứng chỉ ký của Apple/Microsoft:
 
 Kiểm tra file: \`SHA256SUMS.txt\`.
 
-## Thay đổi
-${changes || "- (không có)"}
+${whatsNew}
 `;
 const notesFile = path.join(release, "NOTES.md");
 writeFileSync(notesFile, notes);
 // The commit that was built, not main as it is by now: another session may have pushed while this one built.
 if (!hubOnly) run("gh", ["release", "create", tag, ...assets, sumsFile, "--target", out("git", ["rev-parse", "HEAD"]), "--title", `xDev Hive ${tag}`, "--notes-file", notesFile], { cwd: repoRoot });
+if (!hubOnly) run("gh", ["release", "edit", tag, "--notes-file", notesFile], { cwd: repoRoot });
 await toHub(notes);
