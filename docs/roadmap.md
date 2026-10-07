@@ -342,6 +342,10 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **63e. provider-kilo**: Kilo Code CLI.
   - [ ] **63f. worktree-admin**: trang Worktree của máy (dung lượng, trạng thái, xoá), tự dọn sau khi task done và branch vào main.
 
+- **64. chat-redesign** (hỏi 7/10: "phần chat tự thiết kế như Hermes chat đi, cho tối ưu"): thiết kế lại trang Chat và khung *Hỏi leader* theo cách các chat agent tốt (Hermes Agent của NousResearch và các bản khác) hiện việc agent đang làm, trên nền 62a–62d. Tách:
+  - [ ] **64a. chat-design**: nghiên cứu có nguồn (Hermes Agent chat/TUI/web, và 2–3 chat agent khác), rồi viết `docs/design/chat-2026-10.md`: bố cục, luồng, thành phần, trạng thái, điện thoại, khả năng truy cập, kèm mockup HTML tĩnh.
+  - [ ] **64b. chat-build**: làm theo 64a trong `Chat.tsx` và khung *Hỏi leader*, có test và bước e2e (desktop, điện thoại).
+
 ## Sửa lỗi
 
 - [x] **stale-base** (5/10, BUG-stale-base): run R-43 trên máy .52 gặp lỗi fetch tạm thời, và runner lặng lẽ tạo branch `ai/<task>` từ HEAD của checkout chính, tức code cũ 3 ngày (0.107.0 trong khi main đã 0.126.0). Giờ fetch lỗi thì thử lại sau 5 giây rồi 20 giây. Vẫn lỗi thì run của task chưa có branch quay về hàng đợi, kèm lý do hiện trên Board và Lượt chạy, thử lại ở các tick sau; quá 5 lần thì *failed* với lỗi dịch được. Không còn tạo branch từ HEAD cũ. Branch đã có (run sửa, review) chạy như cũ. Hỏi best-of-n thì báo lỗi ngay. Repo không có remote nào thì giữ cách cũ. Do claude-1 trên máy .52 làm.
