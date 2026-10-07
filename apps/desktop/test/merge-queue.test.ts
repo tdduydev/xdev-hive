@@ -272,7 +272,7 @@ it("runner polls the hub once, uploads the batch report, and finishes tasks thro
       status: "review"
     }, admin);
     const at = new Date().toISOString();
-    hive.db.prepare(`INSERT INTO run_records(machine_id,run_id,machine,project,task_id,task_title,role,status,branch,created_at,finished_at,updated_at) VALUES (?,'run-driver','gate','demo','T-driver','Driver','implement','succeeded','ai/T-driver',?,?,?)`).run(actor.name, at, at, at);
+    hive.db.prepare(`INSERT INTO run_records(machine_id,run_id,machine,project,task_id,task_title,role,status,verdict,branch,created_at,finished_at,updated_at) VALUES (?,'run-driver','gate','demo','T-driver','Driver','review','succeeded','approve','ai/T-driver',?,?,?)`).run(actor.name, at, at, at);
     await hive.call("mergeQueue.configure", {
       project: "demo",
       config: mergeQueueConfigSchema.parse({

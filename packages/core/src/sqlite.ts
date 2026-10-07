@@ -6292,6 +6292,8 @@ export class SqliteHive implements HiveBackend {
       FROM tasks t JOIN run_records r ON r.task_id=t.id AND r.project=t.project
       WHERE t.project=? AND t.status='review' AND r.status='succeeded' AND r.branch IS NOT NULL AND r.branch!=''
       AND r.rowid=(SELECT r2.rowid FROM run_records r2 WHERE r2.task_id=t.id AND r2.project=t.project ORDER BY r2.created_at DESC,r2.rowid DESC LIMIT 1)
+      -- The latest run itself must be an approving review: an older approval does not cover work pushed after it.
+      AND r.role='review' AND r.verdict='approve'
       AND NOT EXISTS (SELECT 1 FROM merge_batch_items i WHERE i.task_id=t.id AND i.machine_id=r.machine_id AND i.run_id=r.run_id)
       ORDER BY ready_at,t.id`).all(project) as Row[]).map(r => ({taskId: str(r.id), branch: str(r.branch), runId: str(r.run_id), machineId: str(r.machine_id), readyAt: str(r.ready_at)}));
     return { config, waiting, batches };
