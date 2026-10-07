@@ -1989,6 +1989,7 @@ export const en: Catalog = {
     noneHere: "No runs yet.",
     pick: "Pick a run to see what came of it.",
     stateTime: "{state} · {time}",
+    stateAnnouncement: "{task}: {state}",
     tabSummary: "Summary",
     tabLog: "Log",
     tabDiff: "Changes · {count}",

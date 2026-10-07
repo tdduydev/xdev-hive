@@ -369,7 +369,7 @@ function SkillEditor({ skill, proposals, onSaved }: { skill: ListedSkill; propos
             {doc.data ? (
               <div data-skill-doc className="overflow-hidden rounded-md border border-line-subtle bg-code">
                 <div className="flex h-7 items-center border-b border-line-subtle px-3 font-mono text-[11px]/none font-medium text-fg-muted">SKILL.md</div>
-                <pre className="m-0 max-h-[60vh] overflow-auto px-3 py-2.5 font-mono text-xs/[19px] whitespace-pre-wrap text-code-fg [overflow-wrap:anywhere]">{stored || "—"}</pre>
+                <pre tabIndex={0} className="m-0 max-h-[60vh] overflow-auto px-3 py-2.5 font-mono text-xs/[19px] whitespace-pre-wrap text-code-fg outline-none focus-visible:focus-ring [overflow-wrap:anywhere]">{stored || "—"}</pre>
               </div>
             ) : null}
           </>
