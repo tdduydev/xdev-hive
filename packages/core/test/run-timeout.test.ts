@@ -73,16 +73,19 @@ describe("run timeout", () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "hive-timeout-"));
     const file = path.join(dir, "hive.db");
     try {
-      const hive = new SqliteHive(file);
-      await hive.call("tasks.create", { id: "T-1", project: "demo", title: "Task", kind: "feature" }, admin);
-      await hive.call("machines.heartbeat", { machine: "test", instance: "aabbccdd", projects: ["demo"], acceptsRuns: true, profiles: [profile("old")] }, runner);
-      const req = await hive.call("runs.dispatch", { project: "demo", taskId: "T-1", machineId: runner.name }, admin);
       const before = migrationIndex("ALTER TABLE run_requests ADD COLUMN timeout_minutes");
-      hive.db.exec(`ALTER TABLE run_requests DROP COLUMN timeout_minutes; PRAGMA user_version = ${before}`);
-      hive.close();
+      // Start from the historical schema: rewinding user_version on today's schema replays later migrations too.
+      const hive = new SqliteHive(file, { migrateTo: before });
+      let requestId: number;
+      try {
+        const at = new Date().toISOString();
+        const inserted = hive.db.prepare(`INSERT INTO run_requests(machine_id, machine, project, task_id, task_title,
+          role, requested_by, requested_at, updated_at) VALUES (?, 'test', 'demo', 'T-1', 'Task', 'implement', 'admin', ?, ?)`).run(runner.name, at, at);
+        requestId = Number(inserted.lastInsertRowid);
+      } finally { hive.close(); }
       const upgraded = new SqliteHive(file);
       try {
-        assert.equal((await upgraded.call("runs.requests", { project: "demo" }, admin)).find((r) => r.id === req.id)?.timeoutMinutes, null);
+        assert.equal((await upgraded.call("runs.requests", { project: "demo" }, admin)).find((r) => r.id === requestId)?.timeoutMinutes, null);
       } finally { upgraded.close(); }
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });

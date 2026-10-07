@@ -676,6 +676,14 @@ const MIGRATIONS: string[] = [
     UNIQUE(machine_id, tool_id));
   `,
   `ALTER TABLE run_requests ADD COLUMN timeout_minutes INTEGER;`,
+  // Large boards must stop at the list limit without sorting their entire history. Request housekeeping also runs
+  // on every list read, so index its time windows rather than visiting every retained request.
+  `
+  CREATE INDEX tasks_list_at ON tasks(updated_at DESC);
+  CREATE INDEX run_records_created ON run_records(created_at DESC, run_id DESC);
+  CREATE INDEX run_requests_pending_at ON run_requests(requested_at) WHERE status = 'pending';
+  CREATE INDEX run_requests_retention_at ON run_requests(updated_at) WHERE status <> 'pending';
+  `,
 ];
 
 /**
@@ -3074,7 +3082,8 @@ export class SqliteHive implements HiveBackend {
       if (other !== null && other !== projectOf.get(str(d.task_id))) entry.depProjects = { ...entry.depProjects, [str(d.depends_on)]: other };
       by.set(str(d.task_id), entry);
     }
-    return rows.map((r) => toTask(r, by.get(str(r.id)), this.#machineNames()));
+    const machines = this.#machineNames();
+    return rows.map((r) => toTask(r, by.get(str(r.id)), machines));
   }
 
   /** Machine names by hub id; machines are few and the map is read once per task list. */
