@@ -4794,8 +4794,9 @@ export class SqliteHive implements HiveBackend {
    * machine that holds its branch (up to maxFixRounds), as a flow task's fix does. Without it the task sat in review
    * and #agentTurn refused it, since the agent had "already run it once".
    */
-  #agentFixTurn(r: { runId: string; taskId: string; project: string; role: string; status: string; summary: string | null }): void {
-    if (r.role !== "review" || r.status !== "succeeded" || parseVerdict(r.summary) !== "changes") return;
+  #agentFixTurn(r: { runId: string; taskId: string; project: string; role: string; status: string; summary: string | null; verdict?: Verdict | null }): void {
+    // The runner reads the full report; its pushed summary may end before the verdict line.
+    if (r.role !== "review" || r.status !== "succeeded" || (r.verdict ?? parseVerdict(r.summary)) !== "changes") return;
     const row = this.db.prepare("SELECT t.*, q.run_id AS assigned_run, q.machine_id AS assigned_machine FROM tasks t LEFT JOIN run_requests q ON q.id = t.agent_request WHERE t.id = ? AND t.project = ?").get(r.taskId, r.project) as Row | undefined;
     if (!row || row.agent_machine == null || row.agent_hold != null || row.assigned_run == null || str(row.status) === "done") return;
     if (this.#flowRow(r.taskId) || this.#flowTaskRow(r.taskId)) return;

@@ -204,6 +204,19 @@ describe("a task given to one agent (roadmap 50)", () => {
     assert.deepEqual(await sent(mbp), []);
   });
 
+  it("uses the full report's verdict when the pushed review summary is clipped", async () => {
+    const { hive, beat, sent } = await hub();
+    await hive.call("sdlc.setProject", { project: "app", settings: { gates: { fix: "ai" } } }, admin);
+    await beat(mbp);
+    await hive.call("tasks.assign", { id: "T-1", machineId: mbp.name }, lead);
+    const first = await sent(mbp);
+    await hive.call("runs.requestResult", { id: first[0]!.id, status: "accepted", runId: "R-1" }, mbp);
+    await report(hive, "R-1", "implement", "succeeded");
+    await hive.call("tasks.update", { id: "T-1", status: "review" }, admin);
+    await report(hive, "R-1r", "review", "succeeded", { parentRun: "R-1", summary: "Review findings clipped before the verdict line", verdict: "changes" });
+    assert.deepEqual((await sent(mbp)).map((r) => [r.taskId, r.role]), [["T-1", "implement"]]);
+  });
+
   it("gives a task the review asked changes of a new turn on its own machine, within maxFixRounds", async () => {
     const { hive, beat, sent, task } = await hub();
     await hive.call("sdlc.setProject", { project: "app", settings: { gates: { fix: "ai" }, maxFixRounds: 1 } }, admin);
