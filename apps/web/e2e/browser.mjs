@@ -321,6 +321,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "leader-autonomy": ["lead-sees-members"],
   "leader-tool-proposal": ["lead-sees-members"],
   "hub-page": ["login-token"],
+  "backup-late-today": [],
   "hub-leader-chat": ["login-token", "lead-sees-members"],
   "system-docs": ["login-password"],
   "systems-outside": ["login-token", "system-docs"], // system-docs saves the system shop
@@ -2909,6 +2910,16 @@ async function main() {
     if (mobile) expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "startup log card overflows phone");
     await tab.go("admin/hub");
     await tab.waitFor("the hub's cards", () => ["Tệp tài liệu", "Backup"].every((t) => document.body.innerText.includes(t)));
+  });
+
+  await step("backup-late-today", async () => {
+    const tab = (current = tabs.admin);
+    await tab.go("today");
+    const alert = await until("the overdue backup alert", async () => (await rpc("alerts.list", {})).open.find((a) => a.rule === "backup_overdue"));
+    await tab.waitFor("the overdue backup in Hôm nay", () => {
+      const row = document.querySelector(`[data-inbox-key="alert:${alert.id}"]`);
+      return row?.innerText.includes("Backup quá hạn") && row;
+    });
   });
 
   // Roadmap 19c: a system's docs and memory, shared by its services. Hoa reviews in payment only: she reads the shop

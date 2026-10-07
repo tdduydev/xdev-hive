@@ -536,6 +536,7 @@ export const en: Catalog = {
   },
   inbox: {
     alert: { open: "Open Alerts" },
+    hubIssue: { files: { title: "Document storage error · {detail}" }, search: { title: "Memory search error · {detail}" }, deploy: { title: "Hub error · {detail}" }, open: "Open Hub" },
     gate: {
       title: "{gate} gate · {task}",
       meta: "waiting for you ({mode})",
@@ -593,7 +594,7 @@ export const en: Catalog = {
     },
     tag: {
       plan: "Plan",
-      releaseFailure: "Release failed", cleanup: "Memory cleanup", agentHold: "Agent paused", ci: "CI failed", waitingRun: "Waiting on a person", proposal: "Proposal", review: "Needs review", memory: "Memory", conflict: "Conflict", machine: "This machine", request: "Install request", alert: "Alert", gate: "SDLC gate", leader: "Leader proposal" },
+      releaseFailure: "Release failed", cleanup: "Memory cleanup", agentHold: "Agent paused", ci: "CI failed", waitingRun: "Waiting on a person", proposal: "Proposal", review: "Needs review", memory: "Memory", conflict: "Conflict", machine: "This machine", request: "Install request", alert: "Alert", hubIssue: "Hub needs attention", gate: "SDLC gate", leader: "Leader proposal" },
     ci: {
       title: "{mr} · pipeline failed in {jobs}",
       titleNoJobs: "{mr} · pipeline failed",

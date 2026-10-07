@@ -6,7 +6,7 @@
 // Linux without a display: run it under xvfb-run.
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -49,6 +49,12 @@ async function runOnce(out) {
   });
   const base = `http://127.0.0.1:${port}`;
   const admin = `e2e-${randomBytes(16).toString("hex")}`;
+  const backups = path.join(work, "backups");
+  mkdirSync(backups, { recursive: true });
+  const oldBackup = path.join(backups, "hub-e2e.db");
+  writeFileSync(oldBackup, "stale backup fixture");
+  const stale = new Date(Date.now() - 10 * 3_600_000);
+  utimesSync(oldBackup, stale, stale);
   const hub = spawn(process.execPath, ["src/server.ts"], {
     cwd: webDir,
     stdio: ["ignore", "pipe", "pipe"],
@@ -61,7 +67,7 @@ async function runOnce(out) {
       HIVE_BOOTSTRAP_TOKEN: admin,
       HIVE_ADMIN_USER: "duy",
       HIVE_COMMIT: "e2e",
-      HIVE_BACKUP_DIR: path.join(work, "backups"),
+      HIVE_BACKUP_DIR: backups,
     },
   });
   let hubLog = "";
