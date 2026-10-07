@@ -328,6 +328,12 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **60c. auto-release**: chốt *Phát hành* trong *Quy trình*; tự động thì version, release, deploy, rollout sau mỗi lô xanh.
   - [ ] **60d. chat-to-plan**: leader biến yêu cầu trong chat thành spec, task và *Kế hoạch*; bấm *Làm* một lần hoặc tự chạy.
 
+- **62. chat-control** (hỏi 7/10: "phần chat trên giao diện client để giao task, nghiên cứu… cho dễ quản trị trên Hive"): chat là chỗ quản trị chính. Spec: [docs/specs/62-chat-control.md](specs/62-chat-control.md). Tách:
+  - [ ] **62a. codex-leader**: leader chạy bằng gói Codex (phiên resume, MCP, propose), tự sang Codex khi Claude hết quota.
+  - [ ] **62b. research-from-chat**: đề xuất `research.start` → run nghiên cứu chỉ đọc, báo cáo làm artifact và tài liệu nháp, nút *Biến thành Kế hoạch*.
+  - [ ] **62c. chat-shortcuts**: lệnh tiếng Anh có gợi ý khi gõ `/`: `/assign`, `/research`, `/status`, `/release`, `/cancel`, `/retry`, hàng chip trên ô chat.
+  - [ ] **62d. chat-everywhere**: khung *Hỏi leader* mở từ mọi trang, mang ngữ cảnh trang đang xem.
+
 ## Sửa lỗi
 
 - [x] **stale-base** (5/10, BUG-stale-base): run R-43 trên máy .52 gặp lỗi fetch tạm thời, và runner lặng lẽ tạo branch `ai/<task>` từ HEAD của checkout chính, tức code cũ 3 ngày (0.107.0 trong khi main đã 0.126.0). Giờ fetch lỗi thì thử lại sau 5 giây rồi 20 giây. Vẫn lỗi thì run của task chưa có branch quay về hàng đợi, kèm lý do hiện trên Board và Lượt chạy, thử lại ở các tick sau; quá 5 lần thì *failed* với lỗi dịch được. Không còn tạo branch từ HEAD cũ. Branch đã có (run sửa, review) chạy như cũ. Hỏi best-of-n thì báo lỗi ngay. Repo không có remote nào thì giữ cách cũ. Do claude-1 trên máy .52 làm.
