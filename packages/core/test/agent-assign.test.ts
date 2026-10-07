@@ -152,6 +152,16 @@ describe("a task given to one agent (roadmap 50)", () => {
     assert.equal(queue.find((q) => q.task.id === "T-1")!.waiting?.key, "errors.agentTaskBusy");
   });
 
+  it("keeps a hand dispatch on the plan the task is pinned to", async () => {
+    const { hive, beat } = await hub();
+    await beat(mbp, { profiles: [profile("claude-1"), profile("codex-1")] });
+    await hive.call("tasks.assign", { id: "T-1", machineId: mbp.name, profileId: "claude-1" }, lead);
+    const pinned = await hive.call("runs.dispatch", { project: "app", taskId: "T-1", role: "implement" }, lead);
+    assert.equal(pinned.profileId, "claude-1", "no plan named: the pin still holds");
+    const other = await hive.call("runs.dispatch", { project: "app", taskId: "T-2", role: "implement" }, lead);
+    assert.equal(other.profileId, null, "an unpinned task is still free to land anywhere");
+  });
+
   it("stops at a task whose run failed until someone starts it again", async () => {
     const { hive, beat, push, sent, take, task } = await hub();
     await beat(mbp);
