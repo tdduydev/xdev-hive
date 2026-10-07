@@ -1,6 +1,7 @@
 // Stand-in for claude / codex / gemini in tests. Behaviour comes from FAKE_MODE.
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
 
 // Combine a rejected startup with the existing steering and planning protocols.
 if (process.env.FAKE_REJECT_MODEL === "1" && !process.argv.includes("--help") &&
@@ -117,6 +118,11 @@ const stream = format !== -1 && process.argv[format + 1] === "stream-json";
 const event = (e) => console.log(JSON.stringify(e));
 // `codex exec --json` (roadmap 28c): thread, a command, the agent's message at the end, then the turn's tokens.
 const codexJson = process.argv[2] === "exec" && process.argv.includes("--json");
+if (process.env.FAKE_MODE === "codex-rtk") {
+  const command = "git status";
+  const output = execFileSync("/bin/sh", ["-c", command], { encoding: "utf8" });
+  writeFileSync("rtk-output.txt", output);
+}
 if (codexJson) {
   event({ type: "thread.started", thread_id: "fake-thread" });
   event({ type: "turn.started" });
@@ -171,6 +177,7 @@ switch (process.env.FAKE_MODE ?? "ok") {
     else { appendFileSync(`work-${process.env.HIVE_AGENT}.txt`, "implemented after approval\n"); say("Implemented the approved plan."); }
     finish();
     break;
+  case "codex-rtk":
   case "ok":
     // Appends, so a second run on the same branch (a CI fix) has something to commit too.
     appendFileSync(`work-${process.env.HIVE_AGENT}.txt`, "done\n");

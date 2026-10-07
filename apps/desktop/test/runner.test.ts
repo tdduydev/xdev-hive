@@ -2764,7 +2764,7 @@ describe("runner: the hub's tool catalog (roadmap 28b)", () => {
   const fakeRtkIn = (dir: string, version = "0.50.0", gain = true) => {
     const log = path.join(dir, "rtk.log");
     const out = gain ? `echo '{"summary":{"total_commands":42,"total_input":50000,"total_output":8000,"total_saved":42000}}'` : "exit 1";
-    writeFileSync(path.join(dir, "rtk"), `#!/bin/sh\necho "$*|$RTK_DB_PATH" >> "${log}"\ncase "$1" in\n  --version) echo "rtk ${version}";;\n  gain) ${out};;\nesac\n`, { mode: 0o755 });
+    writeFileSync(path.join(dir, "rtk"), `#!/bin/sh\necho "$*|$RTK_DB_PATH" >> "${log}"\ncase "$1" in\n  --version) echo "rtk ${version}";;\n  hook) cat >/dev/null; echo '{"hookSpecificOutput":{"updatedInput":{"command":"rtk git status"}}}';;\n  git) echo 'RTK compact status';;\n  gain) ${out};;\nesac\n`, { mode: 0o755 });
     return () => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n") : []);
   };
   /** The hub's RTK entry turned on for demo, and allowed by this machine's user as it is. */
@@ -2870,13 +2870,47 @@ describe("runner: the hub's tool catalog (roadmap 28b)", () => {
     assert.match(d.log, /^# không đọc được .*settings\.json \(.+\): run không chép gì từ cài đặt Claude Code của người dùng$/m);
   });
 
-  it("RTK is never a Codex run's", async () => {
-    const s = await withRtk([profile("codex-a", "codex", 10, "ok", { bin: fakeCodex(), args: ["exec", "--sandbox", "danger-full-access", "{prompt}"] })]);
+  it("Codex compresses a command through run PATH wrappers", async () => {
+    const s = await withRtk([profile("codex-a", "codex", 10, "codex-rtk", {
+      bin: fakeCodex(), args: ["exec", "--sandbox", "workspace-write", "{prompt}"],
+      env: { FAKE_MODE: "codex-rtk", CODEX_HOME: account() },
+    })]);
     const calls = fakeRtkIn(s.npx.bin);
     const { run, log } = await runOnce(s);
     assert.equal(run.status, "succeeded", run.error ?? "");
-    assert.doesNotMatch(log, /rtk/);
-    assert.deepEqual(calls(), []);
+    assert.equal(readFileSync(path.join(run.worktree!, "rtk-output.txt"), "utf8"), "RTK compact status\n");
+    assert.deepEqual(run.compression, { tool: "rtk", commands: 42, input: 50000, output: 8000, saved: 42000 });
+    const dir = path.join(s.dataDir, "runs", run.id);
+    assert.deepEqual(calls(), ["--version|", `hook claude|${dir}/rtk.db`, `git status|${dir}/rtk.db`, `gain --format json|${dir}/rtk.db`]);
+    assert.equal(existsSync(dir), false);
+    assert.match(log, /^# rtk: 42 commands · ~42000 tokens left out/m);
+    const args = s.calls()[0]!.args;
+    assert.ok(args.some((a) => a.includes(RTK_LINE)));
+    assert.ok(args.includes("shell_environment_policy.set.RTK_DB_PATH=" + JSON.stringify(`${dir}/rtk.db`)));
+    assert.equal(args.includes("--dangerously-bypass-hook-trust"), false);
+    assert.equal(args.some((a) => a.startsWith("hooks.PreToolUse=")), false);
+    assert.deepEqual(git(s.repo, "show", "--name-only", "--format=", "ai/T-1").split("\n").sort(), ["rtk-output.txt", "work-codex-a.txt"]);
+    await s.runner.pushRuns();
+    assert.deepEqual((await s.hive.call("runs.list", {}, admin)).find((r) => r.runId === run.id)!.compression, run.compression);
+  });
+
+  it("Codex finishes with a reason and no RTK when it is untrusted, missing, or the pin differs", async () => {
+    for (const condition of ["untrusted", "missing", "version", "read"] as const) {
+      const p = profile("codex-a", "codex", 10, "ok", {
+        bin: fakeCodex(), args: ["exec", "--sandbox", condition === "read" ? "read-only" : "workspace-write", "{prompt}"],
+        env: { FAKE_MODE: "ok", CODEX_HOME: account() },
+      });
+      const s = await withRtk([p], { trusted: condition !== "untrusted" });
+      // Do not let a missing-tool test pick up RTK from the machine running this suite.
+      p.env.PATH = `${s.npx.bin}${path.delimiter}/usr/bin${path.delimiter}/bin`;
+      const calls = condition === "missing" ? null : fakeRtkIn(s.npx.bin, condition === "version" ? "0.51.0" : "0.50.0");
+      const { run, log } = await runOnce(s);
+      assert.equal(run.status, "succeeded", run.error ?? "");
+      assert.equal(run.compression, null);
+      assert.match(log, /^# tool rtk:/m);
+      assert.equal(s.calls()[0]!.args.some((a) => a.startsWith("shell_environment_policy.set.")), false);
+      if (condition === "untrusted" || condition === "read") assert.deepEqual(calls!(), []);
+    }
   });
 
   it("a hub that sends no catalog: the run is as before", async () => {
