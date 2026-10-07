@@ -196,7 +196,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 
 - **37. hub-leader** (hỏi 2/10: trên web ra prompt cho một agent "control toàn bộ" các agent; chọn: chỉ admin hub, phạm vi cả hub, việc tự chạy là cài đặt riêng của leader cấp hub). Leader của *Chat* hiện gắn một dự án (19d mở tới các service cùng hệ thống). Spec: [docs/specs/37-hub-leader.md](specs/37-hub-leader.md). Tách:
   - [x] **37a. hub-leader-core**: thread phạm vi hub (`project = "*"`, chỉ admin hub thấy và dùng), mọi loại đề xuất nêu dự án nhắm tới (hoặc cả hub với việc của máy và hub), duyệt bằng quyền admin hub qua method của web, tự chạy theo `chat_defaults["*"]`; MCP không có dự án mặc định, thêm `project_list`, tool đọc trả toàn hub.
-  - [ ] **37b. hub-leader-ui**: máy chạy leader cấp hub trong thư mục riêng với `--add-dir` mọi repo nó có; *Chat mới* có *Toàn hub* cho admin hub, thẻ đề xuất có nhãn dự án, cài đặt và *Leader tự chạy* riêng cho *Toàn hub*; skill `hive-leader` có mục phạm vi hub.
+  - [x] **37b. hub-leader-ui**: máy chạy leader cấp hub trong thư mục riêng với `--add-dir` mọi repo nó có; *Chat mới* có *Toàn hub* cho admin hub, thẻ đề xuất có nhãn dự án, cài đặt và *Leader tự chạy* riêng cho *Toàn hub*; skill `hive-leader` có mục phạm vi hub.
 
 - **38. customer-onboarding** (báo 3/10: nối dự án khách hàng, 8 repo GitLab lồng nhau trên Windows `win-runner`, gom vào hệ thống `customer-ai`, phải đi vòng qua 8 chỗ thiếu; chọn: A và B làm trước; `customer` và `customer-ai` là một, tên chung là hệ thống `customer-ai`). Tách:
   - [x] **38a. context-in-worktree**: trước mỗi run (implement, review, giám khảo, sửa CI), runner render context Hive vào worktree như nút *Đồng bộ*: AGENTS.md chính và lồng, `CLAUDE.md` kèm `@AGENTS.md`, rules, skill; không vào commit, không hiện là *chưa commit*; không đè AGENTS.md hay skill riêng của repo.
@@ -305,11 +305,11 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **57e. qa-role**: quyền `qaVerify`, vai QA, chốt *Kiểm thử* trước Merge (mặc định tự động), Hôm nay của QA.
 
 - **58. agent-speed** (hỏi 7/10: "cho làm nhiều task để tăng tốc đi, và nhớ test RTK xem hoạt động chưa"; RTK đã kiểm, 52% output lệnh bớt trên run Claude): agent nhanh hơn, ít token hơn. Spec: [docs/specs/58-agent-speed.md](specs/58-agent-speed.md). Tách:
-  - [ ] **58a. codex-rtk**: run Codex nén output lệnh bằng RTK (hook của Codex hoặc wrapper trên PATH của run), ghi `compression` như Claude.
-  - [ ] **58b. tool-approve-web**: cho phép lệnh của tool từ hub trên một máy ngay từ web (*Máy & agent* › máy › *Tool*), cho cả máy chạy ẩn.
-  - [ ] **58c. run-timeout**: `timeoutMinutes` khi giao run (trong trần hub), mặc định theo loại task (INT/LAND 120 phút), note *Tiếp từ đâu* khi hết giờ.
-  - [ ] **58d. e2e-step**: `--only <bước>` và `--repeat N` cho e2e, in thời gian từng bước.
-  - [ ] **58e. codex-localhost**: tuỳ chọn profile Codex mở được cổng 127.0.0.1 để chạy e2e.
+  - [x] **58a. codex-rtk**: run Codex nén output lệnh bằng RTK (hook của Codex hoặc wrapper trên PATH của run), ghi `compression` như Claude.
+  - [x] **58b. tool-approve-web**: cho phép lệnh của tool từ hub trên một máy ngay từ web (*Máy & agent* › máy › *Tool*), cho cả máy chạy ẩn.
+  - [x] **58c. run-timeout**: `timeoutMinutes` khi giao run (trong trần hub), mặc định theo loại task (INT/LAND 120 phút), note *Tiếp từ đâu* khi hết giờ.
+  - [x] **58d. e2e-step**: `--only <bước>` và `--repeat N` cho e2e, in thời gian từng bước.
+  - [x] **58e. codex-localhost**: tuỳ chọn profile Codex mở được cổng 127.0.0.1 để chạy e2e.
 
 - **59. flow-speed** (hỏi 7/10: "giao nhiều việc, nhiều task á"): từ lúc giao tới lúc phát hành nhanh hơn: thêm máy làm cổng kiểm, e2e bớt lỗi chập chờn, giao lại run, tự cập nhật, ghép lô bằng script. Spec: [docs/specs/59-flow-speed.md](specs/59-flow-speed.md). Tách:
   - [ ] **59a. e2e-linux**: e2e desktop và điện thoại xanh trên Linux (xvfb), phím tắt theo hệ điều hành.
