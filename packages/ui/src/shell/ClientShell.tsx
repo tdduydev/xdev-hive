@@ -9,10 +9,11 @@ import type { HiveClient } from "#ui/client.ts";
 import { AccountMenu } from "#ui/components/Account.tsx";
 import { HiveWordmark } from "#ui/components/Brand.tsx";
 import { ScopeSwitcher } from "#ui/components/ScopeSwitcher.tsx";
+import { scopeId } from "#ui/lib/scope.ts";
 import { Sheet, SheetContent, SheetTitle } from "#ui/components/ui/sheet.tsx";
 import { ChatSessionProvider, useChatSession } from "#ui/components/ChatSession.tsx";
 import { LeaderChatPanel } from "#ui/shell/LeaderChatPanel.tsx";
-import { usePoll, useQuery } from "#ui/hooks.ts";
+import { useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { toggleTheme, useTheme } from "#ui/lib/theme.ts";
 import { CommandPalette, type PaletteCommand } from "./CommandPalette.tsx";
@@ -115,6 +116,7 @@ function ClientFrame({
 }) {
   const t = useT();
   const chat = useChatSession();
+  const { scope } = useHive();
   const { theme } = useTheme();
   const narrow = useMedia("(max-width: 767px)");
   const [sidebar, setSidebarState] = useState(() => narrow ? false : readSidebar());
@@ -226,10 +228,12 @@ function ClientFrame({
       webUrl
         ? { id: "open-web", label: t("shell.openWeb"), icon: ExternalLink, run: () => void window.open(`${webUrl}/#/today`, "_blank") }
         : { id: "new-task", label: t(client.desktop ? "palette.newTask" : "newWork.title"), icon: Plus, hint: "⌘N", run: () => setNewTask(true) },
+      { id: "chat-new", label: t("chat.new"), icon: MessageSquare, run: () => { chat.select(scopeId(scope), { kind: "new" }); go("chat?thread=new"); } },
+      ...(current === "chat" || chat.panelOpen ? [{ id: "chat-find", label: t("chat.findLoaded"), icon: Search, run: () => { const id = chat.selections[scopeId(scope)]; if (id?.kind === "thread") { const key = `searchOpen:${id.id}`; chat.drafts.values.set(key, true); for (const listener of chat.drafts.listeners.get(key) ?? []) listener(); } } }] : []),
       { id: "ask-leader", label: t("chat.askLeader"), icon: MessageSquare, hint: "⌘⇧L", run: () => chat.setPanelOpen(true) },
       { id: "theme", label: t("palette.toggleTheme"), icon: theme === "dark" ? Sun : Moon, run: () => toggleTheme(theme) },
     ],
-    [t, theme, webUrl, chat.setPanelOpen],
+    [t, theme, webUrl, chat, scope, current, go],
   );
   const pages = useMemo<PaletteCommand[]>(
     () =>
