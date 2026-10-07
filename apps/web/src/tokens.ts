@@ -47,18 +47,20 @@ export class TokenStore {
     if (!this.#db.prepare("SELECT 1 FROM hub_tokens WHERE hash = ?").get(sha256(token))) this.#insert(token, name, role, null);
   }
 
-  verify(token: string): { name: string; role: Role; ownerId: string | null; run?: { project: string; task: string; run: string; machine: string; readOnly: boolean }; mcp?: { project: string | null } } | null {
+  verify(token: string): { id: string; name: string; role: Role; ownerId: string | null; run?: { project: string; task: string; run: string; machine: string; readOnly: boolean }; mcp?: { project: string | null } } | null {
     const scoped = this.#db.prepare(`SELECT r.*, p.name, p.owner_id FROM run_credentials r
-      JOIN hub_tokens p ON p.id = r.parent_id WHERE r.hash = ? AND r.expires_at > ?`).get(sha256(token), new Date().toISOString()) as Row | undefined;
+      JOIN hub_tokens p ON p.id = r.parent_id
+      JOIN machines m ON m.id = 'runner.' || r.machine || '@' || p.name AND m.token_id = p.id
+      WHERE r.hash = ? AND r.expires_at > ?`).get(sha256(token), new Date().toISOString()) as Row | undefined;
     if (scoped) return {
-      name: String(scoped.name), role: scoped.read_only ? "viewer" : "agent",
+      id: String(scoped.parent_id), name: String(scoped.name), role: scoped.read_only ? "viewer" : "agent",
       ownerId: scoped.owner_id == null ? null : String(scoped.owner_id),
       run: { project: String(scoped.project), task: String(scoped.task), run: String(scoped.run), machine: String(scoped.machine), readOnly: Boolean(scoped.read_only) },
     };
     const mcp = this.#db.prepare(`SELECT m.*, p.name, p.owner_id, p.role FROM mcp_credentials m
       JOIN hub_tokens p ON p.id = m.parent_id WHERE m.hash = ? AND m.expires_at > ?`).get(sha256(token), new Date().toISOString()) as Row | undefined;
     if (mcp) return {
-      name: String(mcp.name), role: mcp.read_only || mcp.role === "viewer" ? "viewer" : "agent",
+      id: String(mcp.parent_id), name: String(mcp.name), role: mcp.read_only || mcp.role === "viewer" ? "viewer" : "agent",
       ownerId: mcp.owner_id == null ? null : String(mcp.owner_id),
       mcp: { project: mcp.project == null ? null : String(mcp.project) },
     };
@@ -69,7 +71,7 @@ export class TokenStore {
     if (now.getTime() - last > 60_000) {
       this.#db.prepare("UPDATE hub_tokens SET last_used_at = ? WHERE id = ?").run(now.toISOString(), String(row.id));
     }
-    return { name: String(row.name), role: row.role as Role, ownerId: row.owner_id == null ? null : String(row.owner_id) };
+    return { id: String(row.id), name: String(row.name), role: row.role as Role, ownerId: row.owner_id == null ? null : String(row.owner_id) };
   }
 
   /** Interactive MCP sessions also exchange the machine token, rather than use it for agent RPCs. */
@@ -85,11 +87,14 @@ export class TokenStore {
 
   /** A new credential replaces an older one for this run; no plaintext is stored. */
   issueRun(parentToken: string, input: { machine: string; project: string; task: string; run: string; minutes: number; readOnly: boolean }): string {
-    const parent = this.#db.prepare("SELECT id FROM hub_tokens WHERE hash = ?").get(sha256(parentToken)) as Row | undefined;
+    const parent = this.#db.prepare("SELECT id, name, role FROM hub_tokens WHERE hash = ?").get(sha256(parentToken)) as Row | undefined;
     if (!parent) throw new HiveError("forbidden", "Only a machine credential can issue run credentials.");
     const token = `hiverun_${randomBytes(32).toString("base64url")}`;
     this.#db.exec("BEGIN IMMEDIATE");
     try {
+      if (parent.role === "viewer" || !this.#db.prepare("SELECT 1 FROM machines WHERE id = ? AND token_id = ?")
+        .get(`runner.${input.machine}@${String(parent.name)}`, String(parent.id)))
+        throw new HiveError("forbidden", "Only the paired machine token may issue run credentials.");
       this.#db.prepare("DELETE FROM run_credentials WHERE expires_at <= ?").run(new Date().toISOString());
       this.#db.prepare("DELETE FROM run_credentials WHERE parent_id = ? AND machine = ? AND run = ?").run(String(parent.id), input.machine, input.run);
       this.#db.prepare(`INSERT INTO run_credentials(hash, parent_id, machine, project, task, run, expires_at, read_only)

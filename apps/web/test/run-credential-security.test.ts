@@ -41,6 +41,9 @@ it("binds run credentials to one task and rejects every human decision even with
     assert.equal((await invoke("/api/rpc", "post", machineToken.token, {
       method: "docs.save", input: { key: "project/app/agents", content: "Human context", baseVersion: 0 },
     })).status, 200, "the owner's human credential still edits context");
+    assert.equal((await invoke("/api/rpc", "post", machineToken.token, {
+      method: "machines.heartbeat", input: { machine: "test", instance: "aaaaaaaa", projects: ["app"] },
+    })).status, 200);
     const issued = await invoke("/api/run-credentials", "post", machineToken.token,
       { machine: "test", project: "app", task: "SEC-1", run: "R-test", minutes: 30, readOnly: false });
     assert.equal(issued.status, 200);
@@ -58,6 +61,7 @@ it("binds run credentials to one task and rejects every human decision even with
     assert.equal((await invoke("/api/rpc", "post", runToken, { method: "tasks.update", input: { id: "SEC-2", status: "review" } })).status, 403);
     const decisions: Array<[string, unknown]> = [
       ["machines.approveTool", { machineId: "runner.test@machine", toolId: "tool", hash: "hash" }],
+      ["machines.repair", { machineId: "runner.test@machine", tokenId: machineToken.info.id }],
       ["docs.save", { key: "project/app/agents", content: "changed", baseVersion: 0 }],
       ["docs.move", { key: "project/app/agents", to: "project/app/other" }],
       ["docs.remove", { key: "project/app/agents" }],
