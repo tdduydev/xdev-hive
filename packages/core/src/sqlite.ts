@@ -4759,7 +4759,7 @@ export class SqliteHive implements HiveBackend {
   #agentTurn(task: Task): "going" | "over" | null {
     const r = this.db
       .prepare(
-        `SELECT q.status, q.updated_at, r.status AS run_status, r.error AS run_error FROM run_requests q
+        `SELECT q.status, q.updated_at, q.machine_id, q.run_id, r.status AS run_status, r.error AS run_error FROM run_requests q
          LEFT JOIN run_records r ON r.machine_id = q.machine_id AND r.run_id = q.run_id
          WHERE q.id = (SELECT agent_request FROM tasks WHERE id = ?)`,
       )
@@ -4767,6 +4767,15 @@ export class SqliteHive implements HiveBackend {
     if (!r) return null;
     if (str(r.status) === "pending") return "going";
     if (str(r.status) !== "accepted") return null;
+    // The runner takes a rate-limited run up again on another profile, as a new run whose parent_run is the last one:
+    // the turn is that last attempt's, or a rate limit would free a turn whose next attempt went on and did the work.
+    for (let n = 0; strOrNull(r.run_status) === "rate_limited" && n < 10; n++) {
+      const next = this.db
+        .prepare("SELECT run_id, status, error FROM run_records WHERE machine_id = ? AND parent_run = ? AND parent_machine_id IS NULL AND role = 'implement' ORDER BY created_at DESC LIMIT 1")
+        .get(str(r.machine_id), str(r.run_id)) as Row | undefined;
+      if (!next) break;
+      Object.assign(r, { run_id: next.run_id, run_status: next.status, run_error: next.error });
+    }
     const status = strOrNull(r.run_status);
     if (status === "queued" || status === "running") return "going";
     // A run cut short (rate limit, app closed) is not a turn the agent used; but a task that is cut short again and
