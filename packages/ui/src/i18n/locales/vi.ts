@@ -5,7 +5,7 @@ export const vi = {
   worktrees: {
     title: "Worktree", hint: "Worktree của run trên máy này. Xoá giữ lại branch; mở lại task sẽ tạo worktree từ branch.",
     none: "Không có worktree của run.", oldApp: "Cập nhật app trên máy để xem và quản trị worktree.",
-    total: "Tổng: {size} · Ổ còn trống: {free}", measured: "Đo lúc {time}", refresh: "Làm mới",
+    total: "Tổng: {size} · Ổ còn trống: {free}", measured: "Đo lúc {time}", refresh: "Làm mới", sweep: "Dọn ngay ({count} · {size})",
     task: "Task", branch: "Branch", size: "Dung lượng", modified: "Sửa lần cuối", changes: "Chưa commit", merged: "Đã vào main", active: "Đang có run",
     expired: "Lệnh đã hết hạn sau 24 giờ. Gửi lại khi máy trực tuyến.",
     yes: "Có", no: "Không", unknown: "Chưa rõ", remove: "Xoá", select: "Chọn {task}", selectAll: "Chọn tất cả dòng có thể xoá", removeSelected: "Xoá đã chọn ({count})",

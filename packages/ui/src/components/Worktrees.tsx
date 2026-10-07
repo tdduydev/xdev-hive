@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { worktreeCleanupSchema, type Machine, type WorktreeCleanup, type WorktreeEntry } from "@xdev-hive/core";
+import { cleanupReason, worktreeCleanupSchema, type Machine, type WorktreeCleanup, type WorktreeEntry } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { TableBody, TableCell, TableHead, TableHeader } from "@xdev-hive/ui/components/ui/table";
@@ -42,6 +42,9 @@ function WorktreePanel({ machine }: { machine?: Machine }) {
   const pending = new Set(access?.commands.filter(c => !c.completedAt && !expired(c)).flatMap(c => c.targets.map(e => e.path)) ?? []);
   const deletable = (e: WorktreeEntry) => !e.active && !pending.has(e.path);
   const ask = (entries: WorktreeEntry[]) => { setAck(false); setConfirm(entries); };
+  // Dọn ngay: what automatic cleanup would remove, now, even while it is switched off.
+  const now = new Date();
+  const sweep = report?.entries.filter(e => deletable(e) && cleanupReason(e, report.cleanup, now, { now: true })) ?? [];
   const risky = confirm.some(e => e.dirty || e.merged !== true);
   const reload = () => setTick(v => v + 1);
   const remove = () => void action.run(async () => {
@@ -72,6 +75,7 @@ function WorktreePanel({ machine }: { machine?: Machine }) {
     {report ? <>
       <div className="flex flex-wrap items-center gap-2">
         <p className="min-w-0 flex-1 text-sm font-medium">{t("worktrees.total", { size: size(report.totalBytes), free: size(report.freeBytes) })}<span className="block text-xs font-normal text-fg-muted">{t("worktrees.measured", { time: formatTime(report.measuredAt) })}</span></p>
+        {access?.canManage ? <Button size="sm" className={CONTROL} disabled={action.busy || !sweep.length} onClick={() => ask(sweep)} data-worktree-sweep>{t("worktrees.sweep", { count: sweep.length, size: size(sweep.reduce((n, e) => n + (e.bytes ?? 0), 0)) })}</Button> : null}
         <Button variant="outline" size="sm" className={CONTROL} disabled={action.busy} onClick={reload}>{t("worktrees.refresh")}</Button>
       </div>
       {report.errors.length ? <Notice tone="warn"><p>{t("worktrees.partial")}</p><ul className="break-all">{report.errors.map((error, i) => <li key={i}>{error}</li>)}</ul></Notice> : null}

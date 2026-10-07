@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { lstat, readdir, realpath, statfs } from "node:fs/promises";
 import path from "node:path";
-import { HiveError, type DesktopProject, type Task, type WorktreeEntry, type WorktreeCleanup } from "@xdev-hive/core";
+import { HiveError, type DesktopProject, type Task, type WorktreeEntry } from "@xdev-hive/core";
 import { AGENT_CONFIG_FILES, AGENT_CLI_DIRS, renderedPaths } from "#desktop/main/runner/worktree.ts";
 
 // Git's successful stderr can contain platform diagnostics; it is never part of a ref or status record.
@@ -81,7 +81,7 @@ export async function inspectWorktree(project: DesktopProject, item: { path: str
   const remote = await gitAsync(project.repo, ["rev-parse", "--verify", `refs/remotes/origin/${target}^{commit}`]).catch(() => null);
   const ref = remote ?? await gitAsync(project.repo, ["rev-parse", "--verify", `refs/heads/${target}^{commit}`]).catch(() => null);
   const targetRef = mergeRef === undefined ? ref : mergeRef;
-  const merged = targetRef ? await gitAsync(project.repo, ["merge-base", "--is-ancestor", head, targetRef]).then(() => true, () => false) : null;
+  const merged = targetRef ? await landed(project.repo, head, targetRef) : null;
   return {
     ...item, project: project.name, head, fingerprint: hash(JSON.stringify([dir, item.branch, head, status, modifiedMs])),
     bytes, modifiedAt: new Date(modifiedMs).toISOString(), dirty: !!status, merged, active,
@@ -90,10 +90,18 @@ export async function inspectWorktree(project: DesktopProject, item: { path: str
   };
 }
 
-export function cleanupReason(entry: WorktreeEntry, cleanup: WorktreeCleanup, now: Date): "merged" | "retention" | null {
-  if (!cleanup.enabled || entry.active || entry.dirty || entry.taskStatus !== "done") return null;
-  if (entry.merged === true) return "merged";
-  return entry.taskUpdatedAt && +now - Date.parse(entry.taskUpdatedAt) >= cleanup.retentionDays * 86400_000 ? "retention" : null;
+/**
+ * The branch's work is in the target: as an ancestor, or, for an ai/* branch that landed squashed or re-applied on an
+ * integration branch, because merging it into the target would change nothing. A conflict or an old git (no
+ * merge-tree --write-tree, before 2.38) answers false, so such a worktree waits for retention as before.
+ */
+async function landed(repo: string, head: string, target: string): Promise<boolean> {
+  if (await gitAsync(repo, ["merge-base", "--is-ancestor", head, target]).then(() => true, () => false)) return true;
+  const [targetTree, mergedTree] = await Promise.all([
+    gitAsync(repo, ["rev-parse", `${target}^{tree}`]).catch(() => null),
+    gitAsync(repo, ["merge-tree", "--write-tree", target, head]).then((out) => out.split("\n")[0]!.trim()).catch(() => null),
+  ]);
+  return !!targetTree && targetTree === mergedTree;
 }
 
 export async function deleteWorktree(project: DesktopProject, root: string, expected: WorktreeEntry, force: boolean, isActive: () => boolean = () => false): Promise<void> {

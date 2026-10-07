@@ -90,6 +90,7 @@ import { opencodeEnv } from "#desktop/main/runner/opencode.ts";
 import { kiloAccountEnv } from "#desktop/main/runner/kilo.ts";
 import { LOGIN_DIR_ENV, LoginMonitor, loginParts, readLoginHow, usageRefresher } from "./runner/login.ts";
 import { isDebInstall, platformKey, Updater, type UpdateStatus } from "#desktop/main/updater.ts";
+import { linuxLayout, pruneLinuxVersions } from "#desktop/main/linux-update.ts";
 import { IdleUpdate } from "#desktop/main/idle-update.ts";
 import { Runner, type HubUpdate, type RunnerEvent } from "./runner/runner.ts";
 import { agentPath } from "./runner/shell-path.ts";
@@ -1770,6 +1771,14 @@ if (!app.requestSingleInstanceLock()) {
       log: (line) => mainLog.write(line),
       logFile: mainLog.file,
     });
+    // An update left the previous app-<version> folders behind (DATA-cleanup-machine); a packaged build only.
+    const runtime = app.isPackaged && process.platform === "linux" ? linuxLayout(process.execPath) : null;
+    if (runtime) {
+      try {
+        const removed = pruneLinuxVersions(runtime);
+        if (removed.length) mainLog.write(`runtime: removed ${removed.join(", ")}`);
+      } catch (err) { mainLog.write(`runtime: cleanup failed: ${(err as Error).message}`); }
+    }
     runner = new Runner(
       {
         backend: () => backend,
