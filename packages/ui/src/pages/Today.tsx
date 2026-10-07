@@ -1,6 +1,5 @@
 import { ReviewArtifacts } from "#ui/components/Artifacts.tsx";
 import { useChatPageContext } from "#ui/components/ChatSession.tsx";
-import { SystemOverview } from "#ui/components/SystemOverview.tsx";
 import { StartReminder } from "#ui/pages/Start.tsx";
 import { knowledgeHref } from "#ui/lib/knowledge.ts";
 // Hôm nay (docs/design/2026-09-redesign, xDev Hive Client): a list of what needs the person on the left, the
@@ -233,7 +232,6 @@ function scopeText(item: InboxItem, t: TFunction): string {
 }
 
 export function TodayPage() {
-  const { scope } = useHive();
   const inbox = useInbox();
   const t = useT();
   const [tab, setTab] = useState<"open" | "done">("open");
@@ -323,8 +321,10 @@ export function TodayPage() {
   return (
     <div className="mobile-master-detail flex h-full min-h-0 w-full bg-surface">
       <div className={cn("min-w-0 flex-1 flex-col border-r border-line-subtle md:flex md:min-w-[280px] md:flex-none md:shrink md:basis-[360px]", mobileDetail.showingDetail ? "hidden" : "flex")}>
-        <StartReminder />
-        <DesktopConfigIssues className="border-b border-line-subtle p-3" />
+        <div data-today-reminders className="flex shrink-0 flex-col gap-3 border-b border-line-subtle p-3 [&:not(:has(>*))]:hidden">
+          <StartReminder className="" />
+          <DesktopConfigIssues />
+        </div>
         <div className="flex shrink-0 items-center gap-2 border-b border-line-subtle px-3 py-[9px]">
           <div role="tablist" className="flex gap-0.5 rounded-[7px] bg-sunken p-0.5">
             {(
@@ -358,7 +358,6 @@ export function TodayPage() {
           ) : null}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {scope.kind === "all" ? <div className="p-3"><SystemOverview compact /></div> : null}
         <div role="listbox" aria-label={t("inbox.listLabel")}>
           {tab === "open"
             ? groups.map(({ group, items }) => (
@@ -423,7 +422,7 @@ export function TodayPage() {
           ) : null}
         </div>
         </div>
-        <div className="flex shrink-0 gap-3.5 border-t border-line-subtle px-3.5 py-[7px] text-[11px]/4 text-fg-muted">
+        <div data-today-shortcuts className="hidden shrink-0 gap-3.5 border-t border-line-subtle px-3.5 py-[7px] text-[11px]/4 text-fg-muted md:flex">
           <span>{t("inbox.keySelect")}</span>
           <span>{t("inbox.keyMain")}</span>
           <span>{t("inbox.keySeen")}</span>
@@ -465,7 +464,7 @@ function Header({ chips, scope, when, title }: { chips: ReactNode; scope: string
 
 function Footer({ actions, foot, busy }: { actions: Action[]; foot: string; busy: boolean }) {
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-line-subtle bg-subtle px-6 py-[11px]">
+    <div data-today-actions className="flex shrink-0 flex-wrap items-center gap-2 border-t border-line-subtle bg-subtle p-3">
       {actions.map((a) => (
         <button
           key={a.label}
@@ -480,7 +479,7 @@ function Footer({ actions, foot, busy }: { actions: Action[]; foot: string; busy
           {a.label}
         </button>
       ))}
-      <span className="ml-auto min-w-0 text-xs/4 text-fg-muted">{foot}</span>
+      <span className="ml-auto hidden min-w-0 text-xs/4 text-fg-muted md:block">{foot}</span>
     </div>
   );
 }
@@ -493,9 +492,9 @@ function DoneDetail({ entry, now, onReopen }: { entry: InboxDone; now: number; o
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex max-w-[760px] flex-col gap-3 px-6 pt-[18px] pb-6">
           <P>{t("inbox.doneNote", { note: entry.note })}</P>
+          <Footer actions={[{ label: t("inbox.reopen"), kind: "secondary", run: onReopen }]} foot={t("inbox.doneNote", { note: entry.note })} busy={false} />
         </div>
       </div>
-      <Footer actions={[{ label: t("inbox.reopen"), kind: "secondary", run: onReopen }]} foot={t("inbox.doneNote", { note: entry.note })} busy={false} />
     </div>
   );
 }
@@ -909,9 +908,9 @@ function Detail({
         <div className="flex max-w-[760px] flex-col gap-3 px-6 pt-[18px] pb-6">
           {body}
           <ErrorNote error={error} />
+          <Footer actions={actions} foot={t("inbox.enterHint")} busy={busy} />
         </div>
       </div>
-      <Footer actions={actions} foot={t("inbox.enterHint")} busy={busy} />
     </div>
   );
 }
