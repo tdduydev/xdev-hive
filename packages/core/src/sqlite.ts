@@ -1921,8 +1921,9 @@ export class SqliteHive implements HiveBackend {
     const machine = this.#machineIdentityReady ? this.db.prepare("SELECT token_id FROM machines WHERE id = ?").get(caller.name) as Row | undefined : undefined;
     if (machine?.token_id != null && !caller.runCredential && !caller.mcpCredential && !this.isMachineActor(caller.name, caller))
       throw new HiveError("forbidden", "This token is not paired with the machine.", { key: "errors.machineIdentityForbidden" });
-    // A legacy machine gets its identity only at heartbeat, before it can take work or report results.
-    if (MACHINE_METHODS.has(method) && method !== "machines.heartbeat" && caller.tokenId && !this.isMachineActor(caller.name, caller))
+    // A legacy machine gets its identity only at heartbeat, before it can take work or report results. Callers that are no
+    // machine row (the desktop app's own `desktop@<token>` calls) keep working: no machine's records are reachable by name.
+    if (machine && machine.token_id == null && MACHINE_METHODS.has(method) && method !== "machines.heartbeat" && caller.tokenId)
       throw new HiveError("forbidden", "Heartbeat with the paired machine token first.", { key: "errors.machineIdentityForbidden" });
     const actor = this.#withSystems(caller);
     const parsed = parseInput(method, input);
