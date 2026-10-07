@@ -892,15 +892,16 @@ Trên app desktop, profile có tuỳ chọn *Chỉ đọc Hive*:
 
 ## Làm việc trên repo này với Claude Code
 
-Repo có sẵn cấu hình cho ba công cụ. Mỗi công cụ cần mỗi người **đồng ý một lần trên máy của mình** khi Claude Code hỏi lúc mở repo.
+Hive có danh mục tool theo dự án; browser là seed tắt mặc định. Repo còn có sẵn cấu hình cho codegraph, superpowers và shadcn: mỗi công cụ cần mỗi người **đồng ý một lần trên máy của mình** khi Claude Code hỏi lúc mở repo.
 
+- **[Playwright MCP](https://github.com/microsoft/playwright-mcp)** (`browser`, seed trong danh mục tool): duyệt/test web cho Claude và Codex, bản ghim `0.0.83`, headless, tắt mặc định. Bật theo dự án; policy MCP cần cho phép `browser`. Profile và output nằm trong `{runDir}`, ảnh tự đặt tên được gửi thành artifact của run. Tài khoản test khai báo **tên** biến trong `secretEnv` và đặt giá trị ở env profile/máy; agent điền form bằng tên `TEST_USER`/`TEST_PASSWORD`, không đọc hay đưa giá trị vào prompt. Sửa secretEnv cần máy tin cậy lại hash. Container cần image có Chrome/Node/npm và egress cho `registry.npmjs.org`, host trang/API/CDN/IdP được test. Xem [cấu hình và kiểm tra browser](docs/specs/65-browser.md).
 - **[codegraph](https://github.com/colbymchenry/codegraph)** (MCP, khai báo trong `.mcp.json`): đồ thị symbol của code, lưu trong SQLite ngay trên máy, không cần API key. Tool chính là `codegraph_explore`, trả về mã nguồn liên quan kèm đường gọi hàm trong một lần gọi. Chạy qua `npx` với phiên bản ghim `1.6.0`. Lần đầu, npm tải gói cho đúng nền tảng (bản macOS arm64 khoảng 290 MB sau khi giải nén, vì có kèm runtime Node riêng).
   - Tạo index một lần trên mỗi máy: `npm run codegraph:init`. Index nằm ở `.codegraph/` (đã gitignore). Sau đó MCP server (có một daemon nền cho mỗi project) tự cập nhật khi file đổi. Chưa có index thì tool chỉ trả về hướng dẫn, không báo lỗi.
   - Codegraph mặc định gửi thống kê sử dụng ẩn danh ([TELEMETRY.md](https://github.com/colbymchenry/codegraph/blob/main/TELEMETRY.md)). Vì vậy `codegraph:init` chạy `codegraph telemetry off` trên máy trước (bật lại bằng `telemetry on`), và `.mcp.json` đặt `CODEGRAPH_TELEMETRY=0` cùng `CODEGRAPH_NO_UPDATE_CHECK=1`. Phiên bản đã ghim nên không cần kiểm tra bản mới.
 - **[superpowers](https://github.com/obra/superpowers)** (plugin, khai báo trong `.claude/settings.json` → `enabledPlugins`): bộ skill cho TDD, debug, lập kế hoạch… cùng hook lúc bắt đầu phiên. Plugin lấy từ marketplace chính thức `claude-plugins-official`. Nếu Claude Code báo plugin đã bật nhưng chưa cài, chạy `/plugin install superpowers@claude-plugins-official`.
 - **[shadcn](https://ui.shadcn.com/docs/mcp)** (MCP, trong `.mcp.json`): tìm, xem ví dụ và lấy lệnh thêm component shadcn/ui từ registry. Chạy `npx shadcn@4.21.0 mcp --cwd packages/ui`, vì `components.json` nằm ở `packages/ui`. Thêm component bằng tay: `cd packages/ui && npx shadcn@4.21.0 add <tên>`; component được đặt vào `src/components/ui/`.
 
-Cấu hình này chỉ áp dụng cho Claude Code. Codex và Gemini dùng được codegraph qua `codegraph install` (lệnh này ghi vào cấu hình toàn cục của từng agent trên máy).
+Các cấu hình trong `.mcp.json` và `.claude/settings.json` nói trên áp dụng cho Claude Code. Browser của danh mục tool được runner cấu hình cho cả Claude và Codex. Codex và Gemini dùng được codegraph qua `codegraph install` (lệnh này ghi vào cấu hình toàn cục của từng agent trên máy).
 
 ## Ngôn ngữ giao diện
 

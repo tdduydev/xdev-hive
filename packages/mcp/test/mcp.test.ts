@@ -561,7 +561,7 @@ describe("mcp tools", () => {
     const list = JSON.parse(text(await lan.callTool({ name: "tool_list", arguments: {} })));
     assert.deepEqual(
       list.map((t: { id: string; projects: Array<{ project: string; effective: boolean }> }) => [t.id, t.projects.map((p) => [p.project, p.effective])]),
-      [["codegraph", [["app", true]]], ["speckit", [["app", false]]], ["superpowers", [["app", false]]], ["kilo-cli", [["app", false]]], ["rtk", [["app", false]]]],
+      [["browser", [["app", false]]], ["codegraph", [["app", true]]], ["speckit", [["app", false]]], ["superpowers", [["app", false]]], ["kilo-cli", [["app", false]]], ["rtk", [["app", false]]]],
       "app's line alone: site turned speckit on, which is not app's to read",
     );
     const status = JSON.parse(text(await lan.callTool({ name: "tool_status", arguments: {} })));

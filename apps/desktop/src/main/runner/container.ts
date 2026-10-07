@@ -46,6 +46,7 @@ export interface ContainerRun {
   env: Record<string, string>;
   /** More files and folders of the machine the container reads (mounted read-only), e.g. the MCP config, reference repos. */
   readOnly?: string[];
+  writable?: string[];
   /** A restricted network (egress.ts): its docker arguments and the proxy variables. */
   network?: { args: string[]; env: Record<string, string> };
   home?: string;
@@ -82,7 +83,7 @@ export function containerCommand(run: ContainerRun): ContainerCommand {
     GIT_CONFIG_KEY_0: "safe.directory",
     GIT_CONFIG_VALUE_0: "*",
   };
-  const mounts = [...new Set([run.worktree, run.gitDir, ...loginPaths(run.profile.kind === "kilo" ? { ...run.profile, env: run.env } : run.profile, home), path.join(home, ".gitconfig")])].filter(
+  const mounts = [...new Set([run.worktree, run.gitDir, ...(run.writable ?? []), ...loginPaths(run.profile.kind === "kilo" ? { ...run.profile, env: run.env } : run.profile, home), path.join(home, ".gitconfig")])].filter(
     (p, i) => i < 2 || exists(p),
   );
   // Docker refuses the same destination twice, so a path already mounted (writable) is not mounted again read-only.
