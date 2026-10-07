@@ -5,7 +5,7 @@ import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Page } from "#ui/components/common.tsx";
 import { LeaderGuidePanel } from "#ui/components/LeaderGuide.tsx";
 import { PageTabs } from "#ui/components/PageTabs.tsx";
-import { useHashParam, useHive, usePoll } from "#ui/hooks.ts";
+import { hashParam, useHashParam, useHive, usePoll } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import {
   adminTabs,
@@ -43,6 +43,7 @@ import { SystemsPage } from "./Systems.tsx";
 import { ToolsPage } from "./Tools.tsx";
 import { UsersPage } from "./Users.tsx";
 import { WebhooksTab } from "./Webhooks.tsx";
+import { DashboardComponentsFixture } from "./DashboardComponentsFixture.tsx";
 
 /** Cài đặt dự án: what a lead sets for their projects, once scattered over six pages (spec 49, "Tech lead"). */
 export function SettingsPage() {
@@ -117,6 +118,10 @@ export function MachinesAgentsPage() {
 
 /** Quản trị: the hub admin's one entry, a tab per job. */
 export function AdminPage() {
+  return hashParam("e2e") === "dashboard-components" ? <DashboardComponentsFixture /> : <AdminTabs />;
+}
+
+function AdminTabs() {
   const { client } = useHive();
   const t = useT();
   const [wanted] = useHashParam("tab");

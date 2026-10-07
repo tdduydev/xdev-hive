@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { register } from "tsx/esm/api";
 import { capSummary, sortAttention } from "#ui/lib/summary.ts";
+
+register({ tsconfig: new URL("../tsconfig.json", import.meta.url).pathname });
+const { AttentionList } = await import("#ui/components/AttentionList.tsx");
+const { SummaryStrip } = await import("#ui/components/SummaryStrip.tsx");
 
 describe("dashboard shared rules", () => {
   it("caps the summary strip at 4 numbers", () => {
@@ -15,5 +22,35 @@ describe("dashboard shared rules", () => {
       { id: "d", level: "danger" as const },
     ]);
     assert.deepEqual(out.map((i) => i.id), ["b", "d", "c", "a"]);
+  });
+
+  it("renders each summary number as its filter link and keeps the four-item cap", () => {
+    const html = renderToStaticMarkup(createElement(SummaryStrip, {
+      label: "Tóm tắt",
+      items: ["running", "queued", "review", "blocked", "done"].map((id, index) => ({
+        id,
+        label: id,
+        value: index + 1,
+        href: `#/tasks?status=${id}`,
+      })),
+    }));
+    assert.match(html, /<nav aria-label="Tóm tắt"/);
+    assert.match(html, /href="#\/tasks\?status=running" data-summary="running"/);
+    assert.match(html, /href="#\/tasks\?status=blocked" data-summary="blocked"/);
+    assert.doesNotMatch(html, /data-summary="done"/);
+    assert.equal((html.match(/data-summary=/g) ?? []).length, 4);
+  });
+
+  it("renders row actions beside their attention text, including disabled actions", () => {
+    const html = renderToStaticMarkup(createElement(AttentionList, {
+      label: "Cần chú ý",
+      items: [
+        { id: "backup", level: "danger", levelLabel: "Lỗi", text: "Backup thất bại", action: createElement("button", { type: "button" }, "Thử lại") },
+        { id: "offline", level: "warning", levelLabel: "Chú ý", text: "Máy đang offline", action: createElement("button", { type: "button", disabled: true }, "Đang kiểm tra") },
+      ],
+    }));
+    assert.match(html, /<ul aria-label="Cần chú ý"/);
+    assert.match(html, /data-attention="backup"[^>]*>[\s\S]*Backup thất bại[\s\S]*<button type="button">Thử lại<\/button>/);
+    assert.match(html, /data-attention="offline"[^>]*>[\s\S]*Máy đang offline[\s\S]*<button type="button" disabled="">Đang kiểm tra<\/button>/);
   });
 });

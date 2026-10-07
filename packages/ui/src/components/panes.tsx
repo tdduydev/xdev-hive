@@ -1,6 +1,6 @@
 // The design's knowledge layout (docs/design/2026-09-redesign, xDev Hive Client: Skill, Memory): a 320px list on the
 // left, the selected item on the right with a header, a body and a bar of actions.
-import type { ReactNode } from "react";
+import React, { type ReactNode } from "react";
 import { cn } from "cn";
 
 export type ChipKind = "danger" | "warning" | "info" | "success" | "neutral" | "running";
