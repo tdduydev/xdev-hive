@@ -3,6 +3,7 @@ import { useT } from "#ui/i18n/index.tsx"
 import { cn } from "cn"
 import { XIcon } from "lucide-react"
 import { Dialog as DialogPrimitive } from "radix-ui"
+import { useOverlayFocus } from "#ui/lib/overlay-focus.ts"
 
 import { Button } from "@xdev-hive/ui/components/ui/button"
 
@@ -50,11 +51,14 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  onOpenAutoFocus,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
 }) {
   const t = useT()
+  const focus = useOverlayFocus({ onOpenAutoFocus, onCloseAutoFocus })
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
@@ -65,6 +69,7 @@ function DialogContent({
           className
         )}
         {...props}
+        {...focus}
       >
         {children}
         {showCloseButton && (

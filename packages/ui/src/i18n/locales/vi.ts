@@ -1991,6 +1991,7 @@ export const vi = {
     noneHere: "Chưa có run nào.",
     pick: "Chọn một run để xem kết quả.",
     stateTime: "{state} · {time}",
+    stateAnnouncement: "{task}: {state}",
     tabSummary: "Tóm tắt",
     tabLog: "Log",
     tabDiff: "Thay đổi · {count}",

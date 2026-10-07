@@ -132,7 +132,7 @@ export function DetailHeader({ chips, scope, when, title, mono }: { chips?: Reac
 
 export function DetailBody({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
+    <div tabIndex={0} className="min-h-0 flex-1 overflow-y-auto outline-none focus-visible:focus-ring">
       <div className="flex max-w-[760px] flex-col gap-3 px-6 pt-[18px] pb-6">{children}</div>
     </div>
   );
