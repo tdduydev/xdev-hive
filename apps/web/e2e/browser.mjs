@@ -312,6 +312,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "spec-import-and-run": ["lead-sees-members", "spec-page"], // spec-page's imported feature
   "agent-policy": ["lead-sees-members"],
   "tools": ["login-token", "lead-sees-members"],
+  "machine-runner-settings": ["login-token", "login-password", "lead-sees-members"],
   "worktree-admin": ["login-token", "login-password", "lead-sees-members"],
   "tool-approve-web": ["login-token", "login-password", "lead-sees-members"],
   "stop-all": ["login-token"],
@@ -3492,6 +3493,58 @@ async function main() {
     });
     expect(changed.approvedBy === "lan", "the owner is recorded as approver");
     await rpc("tools.remove", { id: toolId });
+  });
+
+  await step("machine-runner-settings", async () => {
+    const machineName = "runner-settings";
+    let runnerSettings = { maxParallel: 2, mrEnabled: false, mrWhen: "after_review" };
+    let profile = { id: "claude-remote", label: "Claude remote", kind: "claude", enabled: true, installed: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, stopAtSession: 95, stopAtWeek: 90 };
+    const beat = async () => {
+      const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": `runner.${machineName}` }, body: JSON.stringify({ method: "machines.heartbeat", input: { machine: machineName, instance: "feed1234", projects: ["payment"], acceptsRuns: false, runnerSettings, profiles: [profile] } }) });
+      const body = await response.json(); if (body.error) throw new Error(body.error.message); return body.result;
+    };
+    await beat();
+    const machine = (await rpc("machines.list")).find(m => m.machine === machineName);
+    const root = `[data-map-machine="${machineName}"]`;
+    current = tabs.hoa; await tabs.hoa.reload(); await tabs.hoa.go("machines");
+    await tabs.hoa.waitFor("other member sees machine", name => document.querySelector(`[data-map-machine="${name}"]`), machineName);
+    expect(await tabs.hoa.eval(name => !document.querySelector(`[data-map-machine="${name}"] [data-runner-controls]`), machineName), "non-owner cannot edit runner");
+    const open = async tab => {
+      current = tab; await tab.reload(); await tab.go("machines");
+      await tab.waitFor("runner controls", name => document.querySelector(`[data-map-machine="${name}"] [data-runner-controls]`), machineName);
+      await tab.click(`${root} [data-runner-controls] summary`);
+    };
+    await open(tabs.admin);
+    const fill = async (selector, value) => { await current.click(selector); await current.shortcut("a"); await current.type(value); };
+    await fill(`${root} [data-runner-parallel]`, "9");
+    expect(await current.eval(name => document.querySelector(`[data-map-machine="${name}"] [data-runner-save]`).disabled, machineName), "out-of-range runner limit blocked");
+    await fill(`${root} [data-runner-parallel]`, "4");
+    await current.click(`${root} [data-runner-mr]`);
+    await current.select(`${root} [data-runner-when]`, "after_review");
+    await current.click(`${root} [data-runner-save]`);
+    await until("runner settings queued", async () => (await rpc("machines.list")).find(m => m.id === machine.id)?.runnerChange?.settings.maxParallel === 4);
+    expect((await beat()).runnerChange?.settings.mrEnabled === true, "heartbeat carries MR toggle while intake is off");
+    await current.click(`${root} details:not([data-runner-controls]) summary`, "Bật/tắt");
+    await fill(`${root} [data-stop-session]`, "70");
+    await fill(`${root} [data-stop-week]`, "60");
+    await current.click(`${root} [data-threshold-save]`);
+    await until("thresholds queued", async () => (await rpc("machines.list")).find(m => m.id === machine.id)?.profileChanges[0]?.stopAtWeek === 60);
+    if (mobile) {
+      const sizes = await current.eval(name => [...document.querySelectorAll(`[data-map-machine="${name}"] [data-runner-form] input:not([type=checkbox]), [data-map-machine="${name}"] [data-runner-form] select, [data-map-machine="${name}"] [data-runner-form] button, [data-map-machine="${name}"] [data-profile-thresholds] input, [data-map-machine="${name}"] [data-profile-thresholds] button`)].map(el => ({ h: el.getBoundingClientRect().height, font: parseFloat(getComputedStyle(el).fontSize), tag: el.tagName })), machineName);
+      expect(sizes.every(v => v.h >= 44 && (v.tag === "BUTTON" || v.font >= 16)), "runner controls meet mobile size and input font rules");
+      expect(await current.eval(() => document.documentElement.scrollWidth <= innerWidth), "runner settings do not overflow on mobile");
+    }
+    await current.shot("machine-runner-settings");
+    runnerSettings = { ...runnerSettings, maxParallel: 4, mrEnabled: true }; profile = { ...profile, stopAtSession: 70, stopAtWeek: 60 };
+    const ack = await beat(); expect(!ack.runnerChange && ack.profileChanges.length === 0, "machine report acknowledges settings");
+    await open(tabs.lan);
+    await fill(`${root} [data-runner-parallel]`, "1");
+    await current.select(`${root} [data-runner-when]`, "after_success");
+    await current.click(`${root} [data-runner-save]`);
+    await until("owner runner change", async () => (await rpc("machines.list")).find(m => m.id === machine.id)?.runnerChange?.requestedBy === "lan");
+    const audit = await rpc("admin.audit", { limit: 30 });
+    expect(audit.filter(e => e.action === "machines.setRunner" && e.target === machine.id).length === 2, "runner changes audited");
+    await rpc("machines.remove", { id: machine.id });
   });
 
   await step("worktree-admin", async () => {

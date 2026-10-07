@@ -103,7 +103,7 @@ import { pushSpecs } from "./specs.ts";
 import { cliCommand } from "./cli-open.ts";
 import { openInTerminal } from "./terminal.ts";
 import { AlertWatch, fetchAlerts, noticeText, type AlertNotice } from "./alert-notify.ts";
-import { applyProfileChanges } from "./profile-changes.ts";
+import { applyProfileChanges, applyRunnerChange } from "./profile-changes.ts";
 import { mergeMr } from "./gitlab/merge.ts";
 import { chatFileId, chatNotice, hubChatUpload, servedName } from "./chat.ts";
 import { linuxSandboxFallback } from "#desktop/main/linux-sandbox.ts";
@@ -826,6 +826,8 @@ const reportedProfiles = (): ReportedProfile[] =>
     rateLimited: p.stats.rateLimited,
     statsSince: p.stats.since,
     priority: p.priority,
+    stopAtSession: p.stopAtSession,
+    stopAtWeek: p.stopAtWeek,
     // The hub counts free places with it when it picks a machine for a run group (roadmap 31a).
     maxConcurrent: p.maxConcurrent,
     // Only then does the hub put a classify run before a task with no kind on this machine (roadmap 54b).
@@ -883,7 +885,15 @@ function onHub(update: HubUpdate): void {
   if (JSON.stringify(update.tools ?? null) !== catalogBefore || update.toolApprovals?.length) void refreshSetup().catch(() => undefined);
   if (update.toolApprovals?.length) void runner.tick();
   if (!smokeShot) void watchAlerts();
+  if (update.runnerChange) {
+    const next = applyRunnerChange(config, update.runnerChange);
+    if (JSON.stringify(next.runner) !== JSON.stringify(config.runner) || JSON.stringify(next.gitlab.mr) !== JSON.stringify(config.gitlab.mr)) {
+      persist(next);
+    }
+  }
   if (update.profileChanges?.length) takeProfileChanges(update.profileChanges);
+  // Apply both limits and profile thresholds before waking queued runs.
+  if (update.runnerChange) void runner.tick();
   updater.offer(update.update);
   void idleUpdate?.tick();
   if (update.mergeRuns?.length && !runner.updateDraining) void takeMerges(update.mergeRuns);
@@ -913,7 +923,7 @@ function takeProfileChanges(changes: ProfileChange[]): void {
   void runner.tick();
   if (!Notification.isSupported()) return;
   for (const { change, profile } of applied) {
-    const what = change.enabled === null ? "desktop.profileChangedPriority" : profile.enabled ? "desktop.profileChangedOn" : "desktop.profileChangedOff";
+    const what = change.stopAtSession != null || change.stopAtWeek != null ? "desktop.profileChangedThresholds" : change.enabled === null ? "desktop.profileChangedPriority" : profile.enabled ? "desktop.profileChangedOn" : "desktop.profileChangedOff";
     const n = new Notification({ title: tr("desktop.profileChangedTitle"), body: tr(what, { who: change.requestedBy, profile: profile.id, priority: profile.priority }) });
     n.on("click", () => {
       showPage("/agents");
@@ -1799,7 +1809,7 @@ if (!app.requestSingleInstanceLock()) {
         machine: () => config.machine,
         env: agentEnv,
         // platform, arch and update are read by the hub itself (app updates, roadmap 22i); core ignores them.
-        report: () => ({ setup: setupCache ?? undefined, profiles: reportedProfiles(), platform: platformKey(process.platform), arch: process.arch, updateKind: updater.updateKind, update: updater.report() }),
+        report: () => ({ setup: setupCache ?? undefined, profiles: reportedProfiles(), runnerSettings: { maxParallel: config.runner.maxParallel, mrEnabled: config.gitlab.mr.enabled, mrWhen: config.gitlab.mr.when }, platform: platformKey(process.platform), arch: process.arch, updateKind: updater.updateKind, update: updater.report() }),
         login: (id) => logins.get(id),
         usage: (id) => logins.usage(id),
         hub: () => (config.mode === "hub" && config.hub.url && config.hub.token ? { url: config.hub.url, token: config.hub.token } : null),
