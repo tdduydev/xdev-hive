@@ -3437,6 +3437,7 @@ export const en: Catalog = {
     toolHookWindows: "tool {id}: hooks do not run on Windows yet",
     toolHookMissing: "tool {id}: {bin} not found, the run goes without the hook",
     toolHookVersion: "tool {id}: this machine has {found}, the catalog approved {version}, the run goes without the hook",
+    toolCodexRtkWrapper: "rtk: wrappers on this run's PATH (account hook configuration preserved)",
     userSettingsUnread: "could not read {file} ({reason}): the run takes nothing from the user's Claude Code settings",
     taskHeld: "The task is held by {owner} until {until}.",
     quotaNotShared: "could not report the quota to the hub: {reason}",

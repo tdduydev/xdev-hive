@@ -86,7 +86,7 @@ export interface ToolPick {
   /** Readied in the worktree first, whatever the CLI: another CLI's own config may start the server (as before 28b). */
   prepare: ToolEntry[];
   notes: string[];
-  /** Claude Code hooks (roadmap 28d), still to be checked on this machine (readyHooks); left out when none. */
+  /** Catalog hooks, still to be checked on this machine; left out when none. */
   hooks?: ToolEntry[];
 }
 
@@ -159,11 +159,11 @@ export function runTools(
 ): ToolPick {
   const pick: ToolPick = { tools: [], prepare: [], notes: [] };
   for (const e of catalog.entries) {
-    // A CLI tool changes nothing in a run. Hooks run in Claude Code's runs only (28d): Codex's would need a file in the
-    // worktree, which the agent can edit.
+    // Codex adapts the approved RTK Claude hook; other catalog hooks keep their CLI restrictions.
     if (e.kind === "cli" && !e.prepare) continue;
-    if (e.kind === "hook" && (kind !== "claude" || !e.agents.includes("claude"))) continue;
-    const forCli = (e.agents as string[]).includes(kind);
+    const codexRtk = kind === "codex" && isRtkHook(e);
+    if (e.kind === "hook" && !codexRtk && (kind !== "claude" || !e.agents.includes("claude"))) continue;
+    const forCli = codexRtk || (e.agents as string[]).includes(kind);
     if (!forCli && !e.prepare) continue;
     if (!toolOn(e, catalog.projects[project], features)) continue;
     if (e.kind === "mcp" && pol.mcp !== null && !pol.mcp.includes(e.id)) continue;
@@ -333,6 +333,13 @@ export function toolViews(catalog: MachineTools | null, projects: Array<{ name: 
 export interface ReadyHook {
   entry: ToolEntry;
   hooks: Array<{ event: ToolEntry["hooks"][number]["event"]; matcher: string; argv: string[] }>;
+}
+
+/** Only this known RTK entry has a Codex adapter; arbitrary Claude hooks cannot be translated safely. */
+export function isRtkHook(e: ToolEntry): boolean {
+  return e.id === "rtk" && e.kind === "hook" && e.hooks.length === 1 &&
+    e.hooks[0]!.event === "PreToolUse" && e.hooks[0]!.matcher === "Bash" &&
+    JSON.stringify(e.hooks[0]!.command) === JSON.stringify(["rtk", "hook", "claude"]);
 }
 
 /** Long enough for a CLI's --version; a check slower than this says nothing either way, and the run goes on without. */
