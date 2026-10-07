@@ -245,6 +245,7 @@ export const en: Catalog = {
   },
   shell: {
     updateReady: "Restart to update to v{version}",
+    updateReadyDeb: "Install v{version} (needs admin rights)",
     updateDownloading: "Downloading v{version} · {percent}%",
     updateReadyShort: "v{version} ready",
     updateWaiting: "Waiting for runs to update to v{version}",
@@ -3527,6 +3528,7 @@ export const en: Catalog = {
   desktop: {
     updateReadyTitle: "Version {version} is downloaded",
     updateReadyBody: "Restart xDev Hive to update.",
+    updateReadyBodyDeb: "Open xDev Hive and click Install to install the .deb package with admin rights, then reopen the app.",
     trayOpen: "Open xDev Hive",
     trayProposals: "Pending proposals",
     trayQuit: "Quit",

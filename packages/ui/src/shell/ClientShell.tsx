@@ -166,7 +166,8 @@ function ClientFrame({
   const install = () => {
     if (!desktop) return;
     setInstalling(true);
-    void desktop.installUpdate().catch(() => setInstalling(false));
+    // Other kinds quit and relaunch; a deb only opens the system installer, which the person may also cancel.
+    void desktop.installUpdate().then(() => { if (up?.updateKind === "deb") setInstalling(false); }, () => setInstalling(false));
   };
 
   const quota = useMemo(() => {
@@ -419,7 +420,7 @@ function ClientFrame({
                   )}
                 >
                   <Download className="size-3.5" />
-                  {installing ? t("shell.updateInstalling", { version: up.version }) : up.idleState === "waiting" ? t("shell.updateWaiting", { version: up.version }) : t("shell.updateReady", { version: up.version })}
+                  {installing ? t("shell.updateInstalling", { version: up.version }) : up.idleState === "waiting" ? t("shell.updateWaiting", { version: up.version }) : t(up.updateKind === "deb" ? "shell.updateReadyDeb" : "shell.updateReady", { version: up.version })}
                 </button>
               ) : null}
               <button
