@@ -4794,7 +4794,7 @@ export class SqliteHive implements HiveBackend {
    * machine that holds its branch (up to maxFixRounds), as a flow task's fix does. Without it the task sat in review
    * and #agentTurn refused it, since the agent had "already run it once".
    */
-  #agentFixTurn(r: { runId: string; taskId: string; project: string; role: string; status: string; summary: string | null; verdict?: Verdict | null }): void {
+  #agentFixTurn(r: { runId: string; taskId: string; project: string; role: string; status: string; summary: string | null; verdict?: Verdict | null }, machineId: string): void {
     // The runner reads the full report; its pushed summary may end before the verdict line.
     if (r.role !== "review" || r.status !== "succeeded" || (r.verdict ?? parseVerdict(r.summary)) !== "changes") return;
     const row = this.db.prepare("SELECT t.*, q.run_id AS assigned_run, q.machine_id AS assigned_machine FROM tasks t LEFT JOIN run_requests q ON q.id = t.agent_request WHERE t.id = ? AND t.project = ?").get(r.taskId, r.project) as Row | undefined;
@@ -4803,6 +4803,10 @@ export class SqliteHive implements HiveBackend {
     if (effectiveGates(this.#sdlcPolicy(), r.project).fix === "human") return;
     const impl = this.db.prepare("SELECT status FROM run_records WHERE machine_id = ? AND run_id = ?").get(str(row.assigned_machine), str(row.assigned_run)) as Row | undefined;
     if (str(impl?.status ?? "") !== "succeeded") return;
+    // Only a review of this turn's own run: a late report of an older review (an earlier round, another machine's run)
+    // carries findings about code the agent has since changed, and would send it back to fix what is already fixed.
+    const mine = this.db.prepare("SELECT parent_run, parent_machine_id FROM run_records WHERE machine_id = ? AND run_id = ?").get(machineId, r.runId) as Row | undefined;
+    if (!mine || mine.parent_run !== row.assigned_run || (mine.parent_machine_id ?? machineId) !== row.assigned_machine) return;
     const max = this.#sdlcPolicy().projects[r.project]?.maxFixRounds ?? DEFAULT_MAX_FIX_ROUNDS;
     // Each fix round is one more implement run after the first, so the rounds so far are those runs.
     const rounds = num((this.db.prepare("SELECT COUNT(*) AS n FROM run_records WHERE project = ? AND task_id = ? AND role = 'implement' AND status = 'succeeded' AND created_at >= ?").get(r.project, r.taskId, str(row.agent_at ?? "")) as Row).n) - 1;
@@ -4850,6 +4854,7 @@ export class SqliteHive implements HiveBackend {
     if (!row || row.agent_machine == null || row.agent_hold != null) return;
     // A delayed report from the first attempt must not stop or retry its replacement.
     if (machineId && (row.assigned_run !== r.runId || row.assigned_machine !== machineId)) return;
+    const cut = r.status === "rate_limited" || (r.status === "failed" && APP_CLOSED_ERRORS.includes(r.error ?? ""));
     if (num(row.agent_auto) === 1 && this.#sdlcPolicy().projects[r.project]?.autoDispatch && ["failed", "rate_limited"].includes(r.status) && ["todo", "doing"].includes(str(row.status))) {
       if (num(row.agent_retries) === 0 && machineId) {
         const source = { machineId, runId: r.runId, continueBranch: true };
@@ -4861,14 +4866,19 @@ export class SqliteHive implements HiveBackend {
           if (!(err instanceof HiveError)) throw err;
           // Keep the existing hold when a runner cannot safely continue the task branch.
         }
-      } else if (num(row.agent_retries) > 0) {
+      } else if (num(row.agent_retries) > 0 && !cut) {
         const note = `Automatic retry failed: ${r.runId}. ${r.error ?? r.status}`.slice(0, 2000);
         this.db.prepare("UPDATE tasks SET status = 'blocked', note = ?, owner = NULL, lease_until = NULL, updated_at = ? WHERE id = ?").run(note, this.#now(), r.taskId);
         this.#keepNote(r.taskId, note, "blocked", { name: str(row.agent_by), role: "member" }, this.#now());
       }
     }
     // Cut short, not failed: the turn is free again (#agentTurn) and the task waits in its queue for the next place.
-    if (r.status === "rate_limited" || (r.status === "failed" && APP_CLOSED_ERRORS.includes(r.error ?? ""))) return;
+    // The run had claimed the task and #agentWait only hands out a todo one, so give it back: its lease may not run out
+    // for a long while, or ever when the app that held it is gone.
+    if (cut) {
+      if (str(row.status) === "doing") this.db.prepare("UPDATE tasks SET status = 'todo', owner = NULL, lease_until = NULL, updated_at = ? WHERE id = ?").run(this.#now(), r.taskId);
+      return;
+    }
     this.#holdAgent(
       r.taskId,
       r.status === "cancelled"
@@ -8155,7 +8165,7 @@ export class SqliteHive implements HiveBackend {
             this.#taskRunEnded(actor.name, run);
             // A run that failed stops its agent at that task (roadmap 50) before the release below looks at the queue.
             this.#agentRunEnded(run, actor.name);
-            this.#agentFixTurn(run);
+            this.#agentFixTurn(run, actor.name);
           }
           // An MR that turned green, or merged, moves a flow task on as well.
           this.#releaseFlows();

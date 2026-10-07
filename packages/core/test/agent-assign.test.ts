@@ -204,6 +204,19 @@ describe("a task given to one agent (roadmap 50)", () => {
     assert.deepEqual(await sent(mbp), []);
   });
 
+  it("gives back a task its cut-short run had claimed, so the next turn is handed out", async () => {
+    const { hive, beat, sent, task } = await hub();
+    await beat(mbp);
+    await hive.call("tasks.assign", { id: "T-1", machineId: mbp.name }, lead);
+    const out = await sent(mbp);
+    await hive.call("runs.requestResult", { id: out[0]!.id, status: "accepted", runId: "R-1" }, mbp);
+    await hive.call("tasks.claim", { id: "T-1" }, onMbp);
+    assert.equal((await task("T-1")).status, "doing");
+    await report(hive, "R-1", "implement", "failed", { error: "The app closed while the run was going" });
+    assert.equal((await task("T-1")).status, "todo", "not left in doing until a lease that may never run out");
+    assert.deepEqual((await sent(mbp)).map((r) => r.taskId), ["T-1"]);
+  });
+
   it("uses the full report's verdict when the pushed review summary is clipped", async () => {
     const { hive, beat, sent } = await hub();
     await hive.call("sdlc.setProject", { project: "app", settings: { gates: { fix: "ai" } } }, admin);
@@ -226,13 +239,16 @@ describe("a task given to one agent (roadmap 50)", () => {
     await hive.call("runs.requestResult", { id: first[0]!.id, status: "accepted", runId: "R-1" }, mbp);
     await report(hive, "R-1", "implement", "succeeded");
     await hive.call("tasks.update", { id: "T-1", status: "review" }, admin);
-    await report(hive, "R-1r", "review", "succeeded", { summary: "Verdict: changes needed" });
+    // A review of some other run (a late report of an older one) does not give the agent a turn.
+    await report(hive, "R-0r", "review", "succeeded", { parentRun: "R-0", summary: "Verdict: changes needed" });
+    assert.deepEqual(await sent(mbp), []);
+    await report(hive, "R-1r", "review", "succeeded", { parentRun: "R-1", summary: "Verdict: changes needed" });
     const fix = await sent(mbp);
     assert.deepEqual(fix.map((r) => [r.taskId, r.role]), [["T-1", "implement"]], "the fix round runs without anyone pressing anything");
     assert.match(fix[0]!.instructions, /\S/);
     await hive.call("runs.requestResult", { id: fix[0]!.id, status: "accepted", runId: "R-2" }, mbp);
     await report(hive, "R-2", "implement", "succeeded");
-    await report(hive, "R-2r", "review", "succeeded", { summary: "Verdict: changes needed" });
+    await report(hive, "R-2r", "review", "succeeded", { parentRun: "R-2", summary: "Verdict: changes needed" });
     assert.deepEqual(await sent(mbp), [], "maxFixRounds is 1: a second fix is for a person");
     assert.equal((await task("T-1")).agent?.hold, null);
   });
