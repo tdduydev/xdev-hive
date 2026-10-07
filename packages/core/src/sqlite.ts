@@ -676,6 +676,8 @@ const MIGRATIONS: string[] = [
     UNIQUE(machine_id, tool_id));
   `,
   `ALTER TABLE run_requests ADD COLUMN timeout_minutes INTEGER;`,
+  // An update holds new work without revoking consent to cancel or steer the work already running.
+  `ALTER TABLE machines ADD COLUMN update_draining INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 /**
@@ -6893,7 +6895,7 @@ export class SqliteHive implements HiveBackend {
       },
 
       // Keyed by the hub actor (`runner.<machine>@<token>`): the same key as the leases that machine takes.
-      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, projects, acceptsRuns, costs, deliveredMessages, toolStates, appliedToolApprovals }, actor) =>
+      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, projects, acceptsRuns, updateDraining, costs, deliveredMessages, toolStates, appliedToolApprovals }, actor) =>
         this.#tx(() => {
           const ack = db.prepare("UPDATE run_messages SET delivered_at = COALESCE(delivered_at, ?) WHERE machine_id = ? AND id = ?");
           for (const id of deliveredMessages) ack.run(this.#now(), actor.name, id);
@@ -6925,6 +6927,8 @@ export class SqliteHive implements HiveBackend {
           const archivedProjects = (projects ?? []).filter((p) => hidden.has(p));
           if (projects) db.prepare("UPDATE machines SET projects = ? WHERE id = ?").run(JSON.stringify(projects.filter((p) => !hidden.has(p))), actor.name);
           if (acceptsRuns !== undefined) db.prepare("UPDATE machines SET accepts_runs = ? WHERE id = ?").run(acceptsRuns ? 1 : 0, actor.name);
+          // Missing on older clients and cleared on the first heartbeat after a restart.
+          db.prepare("UPDATE machines SET update_draining = ? WHERE id = ?").run(updateDraining ? 1 : 0, actor.name);
           db.prepare("UPDATE machines SET owner = ? WHERE id = ?").run(actor.account ?? null, actor.name);
           db.prepare("DELETE FROM machine_profile_changes WHERE requested_at < ?").run(this.#now(-PROFILE_CHANGE_HOURS * 60));
           if (profiles) {
@@ -6961,7 +6965,7 @@ export class SqliteHive implements HiveBackend {
           const accepts = num((db.prepare("SELECT accepts_runs FROM machines WHERE id = ?").get(actor.name) as Row).accepts_runs) === 1;
           // The user turned it off after a manager queued something: say so on the web instead of letting it expire.
           this.#expireChats();
-          if (!accepts) {
+          if (!accepts && !updateDraining) {
             const error: RunRequestError = { message: `${machine} does not take runs from the hub.`, key: "errors.machineNoHubRuns", vars: { machine } };
             db.prepare("UPDATE run_requests SET status = 'rejected', error = ?, updated_at = ? WHERE machine_id = ? AND status = 'pending'").run(
               JSON.stringify(error),
@@ -6996,7 +7000,7 @@ export class SqliteHive implements HiveBackend {
               ).map((r) => ({ runId: str(r.run_id), mrUrl: str(r.mr_url), requestedBy: str(r.merge_by) }))
             : [];
           // Until the machine pushes the run as ended.
-          const cancelRuns = accepts
+          const cancelRuns = accepts || updateDraining
             ? (
                 db
                   .prepare("SELECT run_id, cancel_by FROM run_records WHERE machine_id = ? AND cancel_by IS NOT NULL AND status IN ('queued', 'running') ORDER BY cancel_at")
@@ -7005,6 +7009,7 @@ export class SqliteHive implements HiveBackend {
             : [];
           const tools = this.#machineTools(actor);
           return {
+            supportsUpdateDrain: true,
             duplicate: duplicateAt !== null && duplicateAt > this.#now(-DUPLICATE_MINUTES),
             cooldowns: this.#cooldowns(),
             policy: this.#policy(),
@@ -7018,7 +7023,7 @@ export class SqliteHive implements HiveBackend {
             runRequests,
             chatRequests,
             cancelRuns,
-            runMessages: accepts ? (db.prepare(`SELECT m.*, r.project FROM run_messages m JOIN run_records r
+            runMessages: accepts || updateDraining ? (db.prepare(`SELECT m.*, r.project FROM run_messages m JOIN run_records r
               ON r.machine_id = m.machine_id AND r.run_id = m.run_id
               WHERE m.machine_id = ? AND m.delivered_at IS NULL AND r.status = 'running'
               ORDER BY m.id`).all(actor.name) as Row[])
@@ -7262,8 +7267,8 @@ export class SqliteHive implements HiveBackend {
         if (!row) throw new HiveError("not_found", `No run ${runId}.`, { key: "errors.runNotFound", vars: { id: runId } });
         if (this.#projectState(str(row.project)) !== null) throw this.#projectGone(str(row.project));
         if (str(row.status) !== "running") throw new HiveError("conflict", `Run ${runId} is not running.`, { key: "errors.runNotRunning", vars: { id: runId } });
-        const machine = db.prepare("SELECT accepts_runs FROM machines WHERE id = ?").get(machineId) as Row | undefined;
-        if (!machine || num(machine.accepts_runs) !== 1) throw new HiveError("bad_request", "Machine does not accept hub runs.", { key: "errors.machineNoHubRuns", vars: { machine: str(row.machine) } });
+        const machine = db.prepare("SELECT accepts_runs, update_draining FROM machines WHERE id = ?").get(machineId) as Row | undefined;
+        if (!machine || (num(machine.accepts_runs) !== 1 && num(machine.update_draining) !== 1)) throw new HiveError("bad_request", "Machine does not accept hub runs.", { key: "errors.machineNoHubRuns", vars: { machine: str(row.machine) } });
         assertNoHidden(text, "text");
         assertNoSecret(text, "text");
         const result = db.prepare("INSERT INTO run_messages(run_id, machine_id, text, by, at) VALUES (?, ?, ?, ?, ?)").run(runId, machineId, text, actor.name, this.#now());
@@ -7279,8 +7284,8 @@ export class SqliteHive implements HiveBackend {
           if (status !== "queued" && status !== "running") {
             throw new HiveError("conflict", `Run ${runId} has ended (${status}).`, { key: "errors.runEnded", vars: { id: runId } });
           }
-          const machine = db.prepare("SELECT accepts_runs FROM machines WHERE id = ?").get(machineId) as Row | undefined;
-          if (!machine || num(machine.accepts_runs) !== 1) {
+          const machine = db.prepare("SELECT accepts_runs, update_draining FROM machines WHERE id = ?").get(machineId) as Row | undefined;
+          if (!machine || (num(machine.accepts_runs) !== 1 && num(machine.update_draining) !== 1)) {
             throw new HiveError("bad_request", `${str(row.machine)} does not take runs from the hub.`, { key: "errors.machineNoHubRuns", vars: { machine: str(row.machine) } });
           }
           // Asked once: a second click keeps who asked first.

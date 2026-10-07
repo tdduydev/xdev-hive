@@ -258,6 +258,7 @@ describe("cancelling a run from the web", () => {
     const [record] = (await hive.call("runs.list", { project: "app" }, admin)).filter((r) => r.runId === "R-aaaaaa");
     assert.deepEqual([record!.status, record!.cancelRequestedBy], ["cancelled", "lan"]);
     assert.equal(await refusal(hive.call("runs.cancel", { machineId: mbp.name, runId: "R-aaaaaa" }, lead)), "errors.runEnded");
+    assert.deepEqual((await beat(mbp, { acceptsRuns: false, updateDraining: true })).cancelRuns, [{ runId: "R-bbbbbb", requestedBy: "duy" }], "update holds intake, not previously requested cancellations");
     // Nothing while it takes no runs from the hub: its user did not let the web drive it.
     assert.deepEqual((await beat(mbp, { acceptsRuns: false })).cancelRuns, []);
   });

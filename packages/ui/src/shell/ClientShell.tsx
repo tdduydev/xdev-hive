@@ -154,7 +154,7 @@ function ClientFrame({
   // The app's own update (roadmap 22i): the hub offers a build, the main process downloads it.
   const updateTick = usePoll(desktop ? 5000 : null);
   const update = useQuery(async () => (desktop ? desktop.updateStatus().catch(() => null) : null), [desktop, updateTick]);
-  const up = update.data?.supported ? update.data : null;
+  const up = update.data;
   const [installing, setInstalling] = useState(false);
   const install = () => {
     if (!desktop) return;
@@ -395,7 +395,7 @@ function ClientFrame({
                 <button
                   type="button"
                   onClick={install}
-                  disabled={installing}
+                  disabled={installing || up.idleState === "waiting"}
                   title={up.notes ?? undefined}
                   className={cn(
                     "mr-1.5 flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-success-line bg-success-soft px-2.5 text-xs/none font-semibold whitespace-nowrap text-success outline-none focus-visible:focus-ring disabled:opacity-70",
@@ -403,7 +403,7 @@ function ClientFrame({
                   )}
                 >
                   <Download className="size-3.5" />
-                  {installing ? t("shell.updateInstalling", { version: up.version }) : t("shell.updateReady", { version: up.version })}
+                  {installing ? t("shell.updateInstalling", { version: up.version }) : up.idleState === "waiting" ? t("shell.updateWaiting", { version: up.version }) : t("shell.updateReady", { version: up.version })}
                 </button>
               ) : null}
               {webUrl ? (
@@ -488,7 +488,7 @@ function ClientFrame({
           {up?.state === "downloading" && up.version
             ? statusItem("version", t("shell.updateDownloading", { version: up.version, percent: up.percent ?? 0 }), null, { title: t("shell.version"), mono: true })
             : up?.state === "ready" && up.version
-              ? statusItem("version", t("shell.updateReadyShort", { version: up.version }), "bg-success-solid", { title: up.notes ?? t("shell.version"), mono: true })
+              ? statusItem("version", t(up.idleState === "waiting" ? "shell.updateWaiting" : up.idleState === "retry" ? "shell.updateRetry" : "shell.updateReadyShort", { version: up.version }), "bg-success-solid", { title: up.notes ?? t("shell.version"), mono: true })
               : up?.state === "failed"
                 ? statusItem("version", `v${version ?? "?"} · ${t("shell.updateFailed")}`, "bg-danger-solid", { title: up.error ?? undefined, mono: true })
                 : version

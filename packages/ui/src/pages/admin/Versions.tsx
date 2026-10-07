@@ -82,7 +82,7 @@ export function OpsVersions() {
     { key: "machine", label: t("ops.versions.col.machine"), width: "minmax(180px,1fr)", mono: true, strong: true, render: (m) => m.machine, sortValue: (m) => m.machine },
     { key: "current", label: t("ops.versions.col.current"), width: "110px", mono: true, render: (m) => m.current, sortValue: (m) => m.current },
     { key: "target", label: t("ops.versions.col.target"), width: "110px", mono: true, render: () => target ?? "—" },
-    { key: "state", label: t("ops.versions.col.state"), width: "160px", render: (m) => <Chip kind={stateOf(m).kind}>{stateOf(m).label}</Chip>, title: (m) => m.error ?? undefined },
+    { key: "state", label: t("ops.versions.col.state"), width: "160px", render: (m) => <div className="flex min-w-0 flex-col gap-1"><Chip kind={stateOf(m).kind}>{stateOf(m).label}</Chip>{m.error ? <span className="whitespace-normal break-words text-xs/4 text-danger" role="status">{m.error}</span> : null}</div>, title: (m) => m.error ?? undefined },
     { key: "seen", label: t("ops.versions.col.seen"), width: "130px", align: "right", render: (m) => formatTime(m.updatedAt), sortValue: (m) => m.updatedAt },
   ];
 
