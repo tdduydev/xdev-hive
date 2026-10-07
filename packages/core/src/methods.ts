@@ -3,6 +3,7 @@ import { greenBatchSchema, RELEASE_STEPS, type AutoReleaseRecord, type AutoRelea
 import { mergeQueueConfigSchema, mergeResultSchema, type MergeQueueView, type MergeBatch } from "#core/merge-queue.ts";
 import { runTimeoutSettingsSchema, type RunTimeoutSettings } from "#core/run-timeout.ts";
 import { diffReviewSchema } from "#core/diff-review.ts";
+import { terminalCapabilitySchema } from "#core/terminal.ts";
 import { cleanupSuggestionSchema, MEMORY_CLEANUP_ERRORS, type MemoryCleanupSetting, type MemoryCleanupRun, type MemoryCleanupProposal } from "#core/memory-cleanup.ts";
 import { z } from "zod";
 import { PLAN_APPROVAL_MODES, PLAN_MAX, type ImplementationPlan } from "#core/plan-approval.ts";
@@ -566,6 +567,8 @@ export const schemas = {
     worktreeResults: z.array(z.object({ id: z.uuid(), results: z.array(z.object({ path: z.string().max(2000), ok: z.boolean(), error: z.string().max(1000).nullable() })).max(100) })).max(100).default([]),
     toolStates: z.array(z.object({ id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/), hash: z.string().regex(/^[0-9a-f]{64}$/), trust: z.enum(["app", "trusted", "new", "changed"]) })).max(500).optional(),
     appliedToolApprovals: z.array(z.uuid()).max(100).default([]),
+    /** Remote terminal opt-in (spec 69). Absent (older app) or malformed reads as none, never as the last one sent. */
+    terminal: terminalCapabilitySchema.nullable().default(null).catch(null),
     /** Projects the app has a repo for: the web offers only these machines for a project's runs. */
     projects: z.array(project).max(200).optional(),
     /** The user lets project managers queue runs on this machine from the web. */

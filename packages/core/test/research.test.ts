@@ -93,7 +93,8 @@ describe("research from chat", () => {
       const current = new SqliteHive(file);
       await current.call("tasks.create", { id: "KEEP", project: "app", title: "Keep" }, admin);
       const version = migrationIndex("CREATE TABLE research_runs(");
-      current.db.exec(`DROP TABLE research_runs; PRAGMA user_version = ${version}`);
+      // The terminal migration (spec 69) came later and replays too.
+      current.db.exec(`DROP TABLE research_runs; DROP TABLE terminal_audit_chunks; DROP TABLE terminal_stepups; DROP TABLE terminal_tickets; DROP TABLE terminal_sessions; ALTER TABLE machines DROP COLUMN terminal_capability; PRAGMA user_version = ${version}`);
       current.close();
       const upgraded = new SqliteHive(file);
       try {

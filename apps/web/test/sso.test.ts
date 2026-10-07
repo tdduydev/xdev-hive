@@ -54,6 +54,7 @@ const provider = createServer((req, res) => {
 let base = "";
 let hub: ReturnType<ReturnType<typeof createHubApp>["listen"]>;
 let users: UserStore;
+let tokens: TokenStore;
 let hive: SqliteHive;
 
 before(async () => {
@@ -64,7 +65,9 @@ before(async () => {
   users = new UserStore(hive.db);
   // The redirect URI does not matter to the fake provider; the hub's own address is set once it listens.
   const settings = oidcSettings({ HIVE_OIDC_ISSUER: issuer, HIVE_OIDC_CLIENT_ID: CLIENT_ID, HIVE_OIDC_CLIENT_SECRET: CLIENT_SECRET, HIVE_OIDC_NAME: "GitLab" }, "http://hub.test")!;
-  const app = createHubApp({ hive, tokens: new TokenStore(hive.db), users, allowedHosts: ["127.0.0.1", "localhost"], oidc: new OidcClient(settings) });
+  tokens = new TokenStore(hive.db);
+  // The remote terminal's step-up (69c) goes through the same provider; the flag changes nothing for signing in.
+  const app = createHubApp({ hive, tokens, users, allowedHosts: ["127.0.0.1", "localhost"], oidc: new OidcClient(settings), remoteTerminal: true });
   hub = app.listen(0, "127.0.0.1");
   await new Promise((r) => hub.once("listening", r));
   base = `http://127.0.0.1:${(hub.address() as AddressInfo).port}`;
@@ -222,6 +225,81 @@ describe("SSO (OpenID Connect)", () => {
       redirectUri: "https://hive.example.com/api/auth/oidc/callback",
     });
     assert.throws(() => oidcSettings({ HIVE_OIDC_ISSUER: "http://gitlab.example.com", HIVE_OIDC_CLIENT_ID: "id", HIVE_OIDC_CLIENT_SECRET: "s" }, "https://x"), /https/);
+  });
+});
+
+describe("terminal step-up through the provider (69c)", () => {
+  const cap = { protocol: 1, enabled: true, projects: ["app"], platforms: ["linux"], auditReady: true, guiReady: true };
+  let session = "";
+  const json = (cookie: string) => ({ cookie: `hive_session=${cookie}`, "x-hive-csrf": "1", origin: base, "content-type": "application/json" });
+  const create = async (cookie: string, stepUpId: string) => {
+    const input = { project: "app", machineId: "tbox", checkoutRef: "repo", mode: "shell", stepUpId, reason: "", idempotencyKey: crypto.randomUUID() };
+    const res = await fetch(`${base}/api/rpc`, { method: "POST", headers: json(cookie), body: JSON.stringify({ method: "terminal.create", input }) });
+    const body = (await res.json()) as { result?: unknown; error?: { key: string } };
+    return body.error?.key ?? "ok";
+  };
+  /** Asks for a step-up, "reauthenticates" at the provider with these claims, comes back. */
+  async function viaProvider(
+    cookie: string, claims: (p: { nonce: string }) => Record<string, unknown>, beforeReturn?: (stepUpId: string) => Promise<void>,
+  ): Promise<{ error?: string; stepUpId?: string; location?: string | null; signedIn?: string | null }> {
+    const res = await fetch(`${base}/api/terminal/step-up`, {
+      method: "POST", headers: json(cookie), body: JSON.stringify({ method: "oidc", operation: "create", project: "app", machineId: "tbox", returnTo: "/#/terminal" }),
+    });
+    const body = (await res.json()) as { result?: { url: string; stepUpId: string }; error?: { key: string } };
+    if (!body.result) return { error: body.error!.key };
+    const to = new URL(body.result.url);
+    // No silent SSO: the provider is asked for a login now, and to say when it happened.
+    assert.equal(to.searchParams.get("prompt"), "login");
+    assert.equal(to.searchParams.get("max_age"), "0");
+    const state = cookieOf(res, "hive_oidc")!;
+    await beforeReturn?.(body.result.stepUpId);
+    const code = randomBytes(6).toString("hex");
+    grants.set(code, { claims: claims({ nonce: to.searchParams.get("nonce")! }), challenge: to.searchParams.get("code_challenge")! });
+    const back = await fetch(`${base}/api/auth/oidc/callback?code=${code}&state=${state}`, { redirect: "manual", headers: { cookie: `hive_oidc=${state}` } });
+    return { stepUpId: body.result.stepUpId, location: back.headers.get("location"), signedIn: cookieOf(back, "hive_session") };
+  }
+
+  before(async () => {
+    session = (await roundTrip(good("u-term", { preferred_username: "term" }))).session!;
+    const id = (await me(session)).result.user.id as string;
+    users.setGrants(id, { app: "member" });
+    const machine = tokens.create("tbox", "member", id).token;
+    const beat = await fetch(`${base}/api/rpc`, {
+      method: "POST", headers: { authorization: `Bearer ${machine}`, "content-type": "application/json" },
+      body: JSON.stringify({ method: "machines.heartbeat", input: { machine: "tbox", instance: "cccccccc", projects: ["app"], terminal: cap } }),
+    });
+    assert.equal(beat.status, 200);
+  });
+
+  it("refuses a provider that does not prove a fresh login, or proves someone else", async () => {
+    for (const [why, extra] of [["no auth_time", {}], ["an old login", { auth_time: now() - 3600 }]] as const) {
+      const r = await viaProvider(session, good("u-term", extra));
+      assert.equal(r.location, "/?sso_error=errors.terminal.stepUpStale", why);
+      assert.equal(await create(session, r.stepUpId!), "errors.terminal.stepUpRequired", `${why}: no proof was born`);
+    }
+    const accounts = users.list().length;
+    const stranger = await viaProvider(session, good("u-stranger", { auth_time: now() }));
+    assert.equal(stranger.location, "/?sso_error=errors.terminal.stepUpWrongAccount");
+    assert.equal(await create(session, stranger.stepUpId!), "errors.terminal.stepUpRequired");
+    assert.equal(users.list().length, accounts, "nor a new account");
+  });
+
+  it("gives a proof after a fresh login of the same account, never a sign-in", async () => {
+    const r = await viaProvider(session, good("u-term", { auth_time: now() }), async (stepUpId) => {
+      assert.equal(await create(session, stepUpId), "errors.terminal.stepUpRequired", "not before the provider confirmed");
+    });
+    assert.equal(r.location, "/#/terminal");
+    assert.equal(r.signedIn, null);
+    assert.equal(await create(session, r.stepUpId!), "ok");
+    assert.equal(await create(session, r.stepUpId!), "errors.terminal.stepUpRequired", "once");
+  });
+
+  it("is not offered to an account the provider is not linked to", async () => {
+    const temp = `pw-${randomBytes(8).toString("hex")}`;
+    const { user } = users.create({ username: "padmin", admin: true, password: temp });
+    users.changePassword(user.id, temp, `pw-${randomBytes(8).toString("hex")}`);
+    const r = await viaProvider(users.startSession(user.id).token, good("u-term", { auth_time: now() }));
+    assert.equal(r.error, "errors.terminal.stepUpUnavailable");
   });
 });
 

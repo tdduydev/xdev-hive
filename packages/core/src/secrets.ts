@@ -9,7 +9,8 @@ const PATTERNS: Array<[label: string, pattern: RegExp]> = [
   ["Slack token", /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/],
   ["API key", /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}\b/],
   ["Google API key", /\bAIza[0-9A-Za-z_-]{35}\b/],
-  ["xDev Hive token", /\bhive(?:chat|run|mcp)?_[A-Za-z0-9_-]{30,}\b/],
+  // step and tkt: the remote terminal's one-time step-up proofs and socket tickets (69c).
+  ["xDev Hive token", /\bhive(?:chat|run|mcp|step|tkt)?_[A-Za-z0-9_-]{30,}\b/],
   ["JWT", /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/],
 ];
 
