@@ -28,11 +28,18 @@ Giao việc nghiên cứu từ chat.
 
 ## 62c. chat-shortcuts
 
-Lối tắt trong ô chat.
+Lối tắt trong ô chat. Tên lệnh bằng tiếng Anh, luôn có gợi ý (người dùng chọn ngày 7/10).
 
-- Gõ `/` hiện danh sách lệnh: `/giao` (mô tả việc → leader đề xuất *Kế hoạch*), `/nghiencuu` (→ 62b), `/tinhtrang` (leader tóm tắt: xong, đang chạy, chờ review, bị chặn, quota), `/phathanh` (tình trạng hàng chờ merge và phát hành, 60b/60c), `/huy <run>`, `/giaolai <run>`. Mỗi lệnh điền khung gợi ý để người dùng sửa trước khi gửi.
+- Gõ `/` là hiện ngay danh sách gợi ý: tên lệnh, mô tả ngắn theo ngôn ngữ giao diện, ví dụ. Danh sách lọc theo chữ đang gõ; chọn bằng mũi tên rồi Enter/Tab, hoặc chạm.
+- Các lệnh:
+  - `/assign`: mô tả việc, leader đề xuất *Kế hoạch*.
+  - `/research`: giao việc nghiên cứu (62b).
+  - `/status`: tình trạng (xong, đang chạy, chờ review, bị chặn, quota).
+  - `/release`: hàng chờ merge và phát hành (60b, 60c).
+  - `/cancel <run>`, `/retry <run>`.
+- Lệnh có tham số thì gợi ý tiếp: `/cancel` gợi ý các run đang chạy, `/retry` gợi ý run lỗi gần đây, `/assign` và `/research` gợi ý service trong phạm vi.
 - Hàng chip trên ô chat cho 4 lệnh hay dùng nhất. Trên điện thoại, chip cuộn ngang và có vùng chạm 44px.
-- Leader biết các lệnh này (lời dặn đầu phiên, skill hive-leader): `/tinhtrang` trả về một thẻ tình trạng có số liệu và link, không chỉ chữ.
+- Leader hiểu các lệnh này (qua lời dặn đầu phiên và skill hive-leader). `/status` trả về một thẻ tình trạng có số liệu và link, không chỉ chữ.
 
 ## 62d. chat-everywhere
 
