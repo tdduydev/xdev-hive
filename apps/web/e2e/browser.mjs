@@ -3,7 +3,7 @@
 // would: Radix menus and the Tiptap editor react to real events, not to element.click().
 // Each step checks what the hub now holds through its RPC, not only what the page shows.
 import { app, BrowserWindow } from "electron";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tableCardsChecks } from "./table-cards.mjs";
 import { mobileAudit } from "./mobile-audit.mjs";
@@ -190,21 +190,44 @@ class Tab {
   }
 }
 
+// --only: a step names the steps it needs (their tabs and rows); one not listed needs every step before it.
+// A step's tabs live in `tabs`, so list the step that opens a tab for every step that uses it.
+const NEEDS = {
+  "login-token": [],
+  "login-password": [],
+  "lead-sees-members": [],
+  "run-steer": ["login-token", "login-password", "lead-sees-members"],
+};
+const order = [...readFileSync(import.meta.filename, "utf8").matchAll(/^\s*(?:if \(mobile\) )?await step\("([^"]+)"/gm)].map((m) => m[1]);
+const only = (process.env.HIVE_E2E_ONLY ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+const unknown = only.filter((s) => !order.includes(s));
+if (unknown.length) {
+  console.error(`unknown step: ${unknown.join(", ")}\nsteps: ${order.join(", ")}`);
+  process.exit(2);
+}
+const wanted = new Set();
+const want = (name) => {
+  if (wanted.has(name)) return;
+  wanted.add(name);
+  for (const dep of NEEDS[name] ?? order.slice(0, order.indexOf(name))) want(dep);
+};
+only.forEach(want);
 const results = [];
 const overflows = [];
 const contentOverflows = [];
 let current = null;
 let n = 0;
 async function step(name, fn) {
+  if (only.length && !wanted.has(name)) return;
   const t0 = Date.now();
   const id = String(++n).padStart(2, "0");
   try {
     await fn();
     await current?.shot(`${id}-${name}`);
-    results.push({ name, ok: true });
+    results.push({ name, ok: true, ms: Date.now() - t0 });
     console.log(`  ✓ ${name} (${Date.now() - t0} ms)`);
   } catch (err) {
-    results.push({ name, ok: false, error: err.message });
+    results.push({ name, ok: false, error: err.message, ms: Date.now() - t0 });
     console.log(`  ✗ ${name}: ${err.message}`);
     await current?.shot(`${id}-${name}-FAIL`).catch(() => undefined);
   } finally {
@@ -2674,6 +2697,9 @@ async function main() {
     console.log(`mobile overflow: ${overflows.length} steps${overflows.length ? `; ${overflows.map((o) => o.step).join(", ")}` : ""}`);
     console.log(`content wider than pane: ${contentOverflows.length} steps${contentOverflows.length ? `; ${contentOverflows.map((o) => o.step).join(", ")}` : ""}`);
   }
+  const total = results.reduce((sum, r) => sum + r.ms, 0);
+  console.log(`step times, slowest first (total ${total} ms):`);
+  for (const r of [...results].sort((a, b) => b.ms - a.ms)) console.log(`  ${String(r.ms).padStart(7)} ms  ${r.ok ? "✓" : "✗"} ${r.name}`);
   console.log(`${results.length - failed.length}/${results.length} steps passed${failed.length ? `; failed: ${failed.map((f) => f.name).join(", ")}` : ""}`);
   const exitCode = failed.length || errors.length ? 1 : 0;
   writeFileSync(path.join(out, "result.json"), JSON.stringify({ results, errors, exitCode }, null, 2));
