@@ -7724,6 +7724,13 @@ export class SqliteHive implements HiveBackend {
           // Drop out-of-scope reports without taking the whole machine offline; grants can change between beats.
           runs = runs.filter((r) => may(actor, r.project, "taskWork"));
           costs = costs.filter((c) => may(actor, c.project, "taskWork"));
+          if (worktrees) {
+            // Same scope as the projects list: a revoked project leaves no paths or branches on the hub, while a
+            // member turned viewer still sees the worktrees left on the machine and may clean them up.
+            const entries = worktrees.entries.filter((e) => sees(actor, e.project));
+            worktrees = { ...worktrees, entries, totalBytes: entries.reduce((n, e) => n + (e.bytes ?? 0), 0),
+              logs: worktrees.logs.filter((l) => sees(actor, l.project)), errors: worktrees.errors.filter((e) => sees(actor, e.split(":")[0]!)) };
+          }
           const ack = db.prepare("UPDATE run_messages SET delivered_at = COALESCE(delivered_at, ?) WHERE machine_id = ? AND id = ?");
           for (const id of deliveredMessages) ack.run(this.#now(), actor.name, id);
           const now = this.#now();
