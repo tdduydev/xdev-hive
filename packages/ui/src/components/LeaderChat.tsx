@@ -1001,7 +1001,6 @@ function ResearchCard({ action: a, manage, onChanged }: { action: ChatAction; ma
   );
 }
 
-/** One thing the leader asked to do: what, why, and for a project manager Confirm (runs with their rights) or Set aside. */
 /** One action a leader proposed: what it does, why, and (for a manager, while proposed) confirm or set aside. */
 export function ActionItem({ action: a, taskIds, manage, onDecided, autoDispatch: controlledDispatch, onAutoDispatch }: { action: ChatAction; taskIds: string[]; manage: boolean; onDecided: (action: ChatAction) => void; autoDispatch?: boolean; onAutoDispatch?: (value: boolean) => void }) {
   const { client } = useHive();

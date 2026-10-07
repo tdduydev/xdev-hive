@@ -604,7 +604,8 @@ async function main() {
     await tab.click('[data-merge-queue] button[type="submit"]');
     await until("saved queue", async () => (await rpc("mergeQueue.get", { project })).config.enabled === true);
     if (mobile) {
-      const layout = await tab.eval(() => ({ overflow: document.documentElement.scrollWidth > innerWidth, fonts: [...document.querySelectorAll("[data-merge-queue] input, [data-merge-queue] select, [data-merge-queue] textarea")].filter(e => e.getBoundingClientRect().width).map(e => parseFloat(getComputedStyle(e).fontSize)) }));
+      // Radix Switch adds an aria-hidden, unfocusable checkbox inside a form; only fields a person types in can zoom iOS.
+      const layout = await tab.eval(() => ({ overflow: document.documentElement.scrollWidth > innerWidth, fonts: [...document.querySelectorAll("[data-merge-queue] input, [data-merge-queue] select, [data-merge-queue] textarea")].filter(e => e.getBoundingClientRect().width && !e.closest('[aria-hidden="true"]')).map(e => parseFloat(getComputedStyle(e).fontSize)) }));
       expect(!layout.overflow && layout.fonts.every(size => size >= 16), `merge form on phone: ${JSON.stringify(layout)}`);
     }
     await tab.shot("merge-queue-settings");
@@ -2586,8 +2587,14 @@ async function main() {
     await machineRpc("chat.propose", { action: { kind: "plan.create", spec: { key: "project/payment/research-storage-plan", title: "Lưu trạng thái hoàn tiền", content: "# Lưu trạng thái\nTheo nghiên cứu, dùng SQLite." }, tasks: [{ id: "PAY-RS1", title: "Lưu trạng thái", acceptance: "Test khôi phục xanh", dependsOn: [] }], batches: [{ title: "Lưu trữ", taskIds: ["PAY-RS1"] }] }, reason: "Từ báo cáo nghiên cứu" }, planReply.grant);
     await machineRpc("chat.finish", { replyId: planReply.replyId, status: "done", text: "Mình đề xuất Kế hoạch từ nghiên cứu." });
     await tab.waitFor("plan from research", () => !!document.querySelector('[data-plan="project/payment/research-storage-plan"]'));
-    await tab.click('[data-action-status="proposed"] button', "Làm");
-    await until("research plan task created", async () => (await rpc("tasks.list", { project: "payment" })).find(t => t.id === "PAY-RS1"));
+    // Starting the plan opts payment into auto-dispatch; put it back so later steps (agent-assign) own the free places.
+    const previousPolicy = (await rpc("sdlc.get")).projects.payment;
+    try {
+      await tab.click('[data-action-status="proposed"] button', "Làm");
+      await until("research plan task created", async () => (await rpc("tasks.list", { project: "payment" })).find(t => t.id === "PAY-RS1"));
+    } finally {
+      await rpc("sdlc.setProject", { project: "payment", settings: { ...previousPolicy, gates: previousPolicy?.gates ?? {}, autoDispatch: previousPolicy?.autoDispatch ?? false } });
+    }
   });
 
   // Roadmap 37b: the UI opens a hub thread; heartbeat/RPC stand in for a leader, with no real CLI or hub.
@@ -3338,7 +3345,8 @@ async function main() {
       current = tab; await tab.reload(); await tab.go("machines");
       await tab.waitFor("worktree button", name => document.querySelector(`[data-worktrees="${name}"]`), machineName);
       await tab.click(`[data-worktrees="${machineName}"]`);
-      await tab.waitFor("worktree inventory", () => document.querySelector('[data-worktree="WT-dirty"]'));
+      // WT-clean stays in every report; WT-dirty is gone once the first delete lands.
+      await tab.waitFor("worktree inventory", () => document.querySelector('[data-worktree="WT-clean"]'));
     };
     await open(tabs.admin);
     expect(await tabs.admin.eval(() => !document.querySelector('[data-worktree="WT-active"] [data-delete-worktree]')), "active task cannot be deleted");
@@ -3628,11 +3636,14 @@ async function main() {
     };
     await tab.reload();
     await tab.go("artifacts");
+    // Earlier steps (leader-research) leave files of their own: the second page holds whatever is past the first 50.
+    const total = (await rpc("artifacts.list", { limit: 200 })).length;
     await tab.waitFor("the files page", () => document.querySelectorAll('[data-artifact-row]').length === 50);
     await tab.click('[data-artifacts-page] button', "Trang sau");
-    await tab.waitFor("second page", () => document.querySelectorAll('[data-artifact-row]').length === 7);
+    await tab.waitFor("second page", rest => document.querySelectorAll('[data-artifact-row]').length === rest, total - 50);
     await fill('[data-artifact-filter="search"]', "report");
-    await tab.waitFor("name filter resets page", () => document.querySelectorAll('[data-artifact-row]').length === 1 && document.querySelector('[data-artifact-row="report.md"]'));
+    const reports = (await rpc("artifacts.list", { name: "report", limit: 200 })).length;
+    await tab.waitFor("name filter resets page", count => document.querySelectorAll('[data-artifact-row]').length === count && document.querySelector('[data-artifact-row="report.md"]'), reports);
     if (mobile) {
       const small = await tab.eval(() => [...document.querySelectorAll('[data-artifacts-page] button, [data-artifacts-page] input, [data-artifacts-page] select, [data-artifacts-page] a')].filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && (r.width < 44 || r.height < 44); }).map((el) => el.outerHTML));
       expect(!small.length, `44px page controls: ${small.join("\n")}`);
@@ -3734,7 +3745,9 @@ async function main() {
     await tab.click('[data-artifact-preview] button', "Đóng");
     await tab.click('[data-task-artifacts-tab]');
     await tab.waitFor("all task files", () => document.querySelectorAll('[data-artifact]').length === 56);
-    await tab.go(`runs?run=${encodeURIComponent(`runner.artifacts-e2e/${runId}`)}`);
+    // The hub names the machine after the header and the token ("runner.artifacts-e2e@…"): take it from the run.
+    const runMachine = (await rpc("runs.list", { project: "payment", limit: 200 })).find(r => r.runId === runId).machineId;
+    await tab.go(`runs?run=${encodeURIComponent(`${runMachine}/${runId}`)}`);
     await tab.waitFor("run files before summary", () => document.querySelector('[data-artifact="report.md"]') && document.querySelector('[data-artifact-link="report.md"]'));
     await tab.click('[data-artifact-link="report.md"]');
     await tab.waitFor("summary opens report", () => document.querySelector('[data-artifact-content] h1'));

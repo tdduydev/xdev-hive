@@ -750,7 +750,7 @@ export class Runner {
       const job = JSON.parse(req.instructions ?? "") as ResearchJob;
       researchSchema.parse(job);
       if (!Number.isInteger(job.id) || req.taskId !== `research-${job.id}` || job.project !== req.project) throw new HiveError("bad_request", "Invalid research job.");
-      if (req.profileId && !["claude", "codex"].includes(this.#host.profiles().find(p => p.id === req.profileId)!.kind)) throw new HiveError("bad_request", "Research requires Claude or Codex.");
+      if (req.profileId && !["claude", "codex"].includes(this.#host.profiles().find(p => p.id === req.profileId)?.kind ?? "")) throw new HiveError("bad_request", "Research requires Claude or Codex.");
       const run = this.store.insert({ project: req.project, taskId: req.taskId, taskTitle: job.topic, role, attempt: 1, maxAttempts: 1,
         preferredProfile: req.profileId ?? null, instructions: JSON.stringify(job), reviewAfter: false, requestedBy: extra.requestedBy ?? null,
         selection: req.selection ?? null, timeoutMinutes: req.timeoutMinutes ?? null }, this.#iso());

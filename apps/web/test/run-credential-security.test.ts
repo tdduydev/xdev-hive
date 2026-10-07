@@ -120,6 +120,19 @@ it("binds run credentials to one task and rejects every human decision even with
     }
     assert.equal((await invoke("/api/run-credentials", "post", machineToken.token,
       { machine: "test", project: "app", task: "SEC-2", run: "R-invalid", minutes: 30, readOnly: false })).status, 403);
+    // Research runs (roadmap 62b) have no task row; only the machine the request went to gets a credential.
+    const request = (machineId: string) => Number(hive.db.prepare(`INSERT INTO run_requests(machine_id, machine, project, task_id, task_title, role,
+      requested_by, requested_at, updated_at) VALUES (?, 'test', 'app', 'research-0', 'Topic', 'research', 'admin', ?, ?)`).run(machineId, now, now).lastInsertRowid);
+    const research = (id: number, requestId: number) => hive.db.prepare(`INSERT INTO research_runs(id, project, input, projects, request_id, doc_key)
+      VALUES (?, 'app', '{}', '["app"]', ?, 'project/app/research/x')`).run(id, requestId);
+    research(7, request("runner.test@machine"));
+    research(8, request("runner.other@machine"));
+    assert.equal((await invoke("/api/run-credentials", "post", machineToken.token,
+      { machine: "test", project: "app", task: "research-7", run: "R-research", minutes: 30, readOnly: true })).status, 200);
+    assert.equal((await invoke("/api/run-credentials", "post", machineToken.token,
+      { machine: "test", project: "app", task: "research-8", run: "R-research", minutes: 30, readOnly: true })).status, 403);
+    assert.equal((await invoke("/api/run-credentials", "post", machineToken.token,
+      { machine: "test", project: "hidden", task: "research-7", run: "R-research", minutes: 30, readOnly: true })).status, 403);
     const replacement = await invoke("/api/run-credentials", "post", machineToken.token,
       { machine: "test", project: "app", task: "SEC-1", run: "R-test", minutes: 30, readOnly: false });
     assert.equal(replacement.status, 200);

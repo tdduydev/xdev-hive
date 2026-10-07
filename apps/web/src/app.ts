@@ -349,7 +349,11 @@ export function createHubApp({
         throw new HiveError("bad_request", "Invalid run credential request.");
       if (!may(actor, project, "taskWork")) throw new HiveError("forbidden", "No task work grant for this project.");
       const machine = hive.db.prepare("SELECT id FROM machines WHERE id = ? AND owner IS ?").get(actor.name, actor.account ?? null);
-      const row = hive.db.prepare("SELECT project FROM tasks WHERE id = ?").get(task) as { project: string } | undefined;
+      // A research run has no task row (research-<id> lives only in research_runs): bind it to the request sent to this machine.
+      const research = /^research-(\d+)$/.exec(task);
+      const row = (research
+        ? hive.db.prepare("SELECT r.project FROM research_runs r JOIN run_requests q ON q.id = r.request_id WHERE r.id = ? AND q.machine_id = ?").get(Number(research[1]), actor.name)
+        : hive.db.prepare("SELECT project FROM tasks WHERE id = ?").get(task)) as { project: string } | undefined;
       if (!machine || row?.project !== project) throw new HiveError("forbidden", "Unknown machine or task.");
       const bearer = /^Bearer\s+(\S+)$/i.exec(req.get("authorization") ?? "")!;
       const token = tokens.issueRun(bearer[1]!, { machine: machineName, project, task, run, minutes, readOnly });

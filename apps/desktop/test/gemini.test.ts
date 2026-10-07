@@ -96,6 +96,10 @@ it("routes Gemini aliases without effort, honours pins and forces native plan pe
   const cmd = buildCommand({ ...p, args, readOnly: true }, { prompt: "line1\nline2".repeat(2000), worktree: "/tmp/work", task: "T", project: "demo", branch: "ai/T" });
   assert.equal(cmd.stdin?.length, 22000); assert.ok(!cmd.args.includes(cmd.stdin!)); assert.ok(cmd.geminiStream);
   assert.ok(cmd.args.includes("plan")); assert.ok(!cmd.args.includes("yolo")); assert.ok(!cmd.args.includes("--yolo=true"));
+  // A flag dropped before the prompt must not shift which argument is emptied.
+  const shifted = buildCommand({ ...p, args: ["-y", "-p", "{prompt}"], readOnly: true }, { prompt: "do it", worktree: "/tmp/work", task: "T", project: "demo", branch: "ai/T" });
+  assert.equal(shifted.stdin, "do it"); assert.ok(!shifted.args.includes("do it"));
+  assert.deepEqual(shifted.args.slice(shifted.args.indexOf("--approval-mode"), shifted.args.indexOf("--approval-mode") + 2), ["--approval-mode", "plan"]);
   assert.ok(planningProfile(p).readOnly);
 });
 

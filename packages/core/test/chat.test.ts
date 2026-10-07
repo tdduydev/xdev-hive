@@ -451,6 +451,7 @@ describe("what a chat leader proposes", () => {
     assert.equal(done.status, "done", JSON.stringify(done.error));
     assert.equal(done.auto, true);
     assert.equal(done.decidedBy, lead.name);
+    assert.notEqual((await hive.call("sdlc.get", {}, admin)).projects.app?.autoDispatch, true, "a plan the leader ran alone leaves auto-dispatch off");
     hive.close();
   });
 
