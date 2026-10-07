@@ -2973,7 +2973,7 @@ export const vi = {
     toolNotFound: "Không có tool {id}.",
     toolVersion: "Tool {id} vừa được người khác sửa (giờ là bản {version}). Tải lại rồi sửa tiếp.",
     toolPlaceholder: "Lệnh của tool {id} có {placeholder} mà ở đây không có gì để thay vào.",
-    toolRunDir: "{placeholder} chỉ dùng được trong giá trị env của mục kind hook.",
+    toolRunDir: "{placeholder} chỉ dùng được trong giá trị env của mục kind hook hoặc mcp.",
     machineToolForbidden: "Chỉ admin hub hoặc chủ máy được cho phép tool trên máy này.",
     machineToolChanged: "Lệnh hoặc phiên bản tool đã đổi. Mở lại mục Tool và xem lệnh mới trước khi cho phép.",
     toolTrustBad: "Không cho phép được tool {id}: mã lệnh không hợp lệ.",
