@@ -25,7 +25,7 @@ const PAGE_CHUNKS = 8;
 export const terminalRecordingChunkSchema = z.strictObject({
   seq: z.number().int().min(1),
   prevHash: hash,
-  /** chainHash(prevHash, JSON.stringify(events)): the next chunk must start from it. */
+  /** chainHash(prevHash, JSON.stringify(events)), the events as this schema parses them: the next chunk must start from it. */
   hash,
   events: z.array(transcriptEventSchema).min(1).max(10_000),
 });
@@ -46,7 +46,9 @@ export function terminalRecordingChunks(events: readonly TranscriptEvent[], from
     page = [];
     size = 2;
   };
-  for (const e of events) {
+  for (const raw of events) {
+    // put() hashes what the schema parsed, which orders the keys its own way: hash the same object, not the caller's.
+    const e = transcriptEventSchema.parse(raw);
     const n = JSON.stringify(e).length + 1;
     if (page.length && size + n > TERMINAL_CHUNK_MAX_BYTES) flush();
     page.push(e);

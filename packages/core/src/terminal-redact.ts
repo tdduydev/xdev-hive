@@ -6,8 +6,9 @@ import { findSecret } from "./secrets.ts";
 /** A line longer than this is checked and emitted in parts, so a TUI that never prints "\n" cannot grow memory. */
 const MAX_LINE = 8 * 1024;
 /**
- * Kept back when a long line is emitted in parts. Longer than the minimal match of every pattern in secrets.ts, so a
- * secret that starts in the emitted part is always seen whole before it leaves. A longer known value raises it.
+ * Kept back at least when a long line is emitted in parts, so a known value or a private key marker (both may hold
+ * spaces) that starts in the emitted part is seen whole before it leaves. A longer known value raises it. The patterns
+ * of secrets.ts have no spaces: #overflow keeps their whole run instead.
  */
 const TAIL = 1024;
 
@@ -112,20 +113,27 @@ export class TerminalRedactor {
     return hit ? this.#note(hit) : line + "\n";
   }
 
-  /** A line too long to hold: hide all of it if anything in it matches, else let out all but the tail. */
+  /**
+   * A line too long to hold: hide all of it if anything in it matches, else let out all but the tail, never cutting
+   * a run of non-space text. A pattern needs the end of its run (a JWT's signature after a long payload, the "\b" after
+   * a token), so a run cut in two would be judged by halves that each match nothing. A run too long to hold whole is
+   * hidden unread: that costs a base64 blob or a very long URL, never a leak.
+   */
   #overflow(): string {
     const inKey = this.#privateKey;
     const marked = this.#pem(this.#line);
     if (this.#hiding) { this.#line = this.#line.slice(-this.#tail); return ""; }
     const hit = inKey || marked ? "private key" : this.#hit(this.#line);
-    if (hit) {
+    let cut = this.#line.length - this.#tail;
+    if (!hit && !/\s/.test(this.#line[cut]!)) while (cut > 0 && !/\s/.test(this.#line[cut - 1]!)) cut--;
+    if (hit || cut === 0) {
       // The tail may hold the rest of the secret: drop everything up to the next newline.
       this.#hiding = true;
       this.#line = this.#line.slice(-this.#tail);
-      return this.#note(hit);
+      return this.#note(hit ?? "long token");
     }
-    const out = this.#line.slice(0, -this.#tail);
-    this.#line = this.#line.slice(-this.#tail);
+    const out = this.#line.slice(0, cut);
+    this.#line = this.#line.slice(cut);
     return out;
   }
 
