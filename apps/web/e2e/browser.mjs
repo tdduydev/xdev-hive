@@ -3263,7 +3263,17 @@ async function main() {
       const [gate] = await rpc("sdlc.gates", { taskId: "SPEC-TODAY" });
       return gate?.status === "passed" && gate.decidedBy?.startsWith("lan");
     });
-    if (mobile) await tab.click("button", "Quay lại danh sách");
+    if (mobile) {
+      // A toast (the approval's) must not sit over the way back: the button under its own centre is itself.
+      await tab.waitFor("Quay lại danh sách not covered", () => {
+        const back = [...document.querySelectorAll("button")].find((x) => x.innerText.includes("Quay lại danh sách"));
+        if (!back) return false;
+        const r = back.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return !!hit && back.contains(hit);
+      });
+      await tab.click("button", "Quay lại danh sách");
+    }
     await tab.click(`[data-inbox-key="leader:${proposed.id}"]`);
     await tab.waitFor("the leader's card", () => document.body.innerText.includes("Không dùng nữa"));
     await tab.click("button", "Xác nhận");
