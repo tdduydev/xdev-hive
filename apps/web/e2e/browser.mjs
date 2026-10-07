@@ -221,6 +221,9 @@ class Tab {
 
   /** A native <select>: sets the value as React expects (through the prototype's setter) and fires change. */
   async select(selector, value) {
+    // New-chat configuration is progressive disclosure; open it with a real click before choosing.
+    const folded = await this.eval((sel) => !!document.querySelector(sel)?.closest("[data-chat-setup]:not([open])"), selector);
+    if (folded) await this.click("[data-chat-setup] summary");
     await this.find(selector);
     const ok = await this.eval(
       (sel, v) => {
@@ -260,6 +263,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "login-token": [],
   "artifacts-page": ["login-token"],
   "chat-everywhere": ["login-token"],
+  "chat-design": ["login-token"],
   "a11y-pages": ["login-token"],
   "a11y-list-tree": ["login-token"],
   "a11y-components": ["login-token"],
@@ -2357,6 +2361,141 @@ async function main() {
     await tab.reload();
   });
 
+  // 64b: realistic streaming, draft recovery and reuse with a throwaway runner and account.
+  await step("chat-design", async () => {
+    const machineRpc = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.chat-design" }, body: JSON.stringify({ method, input }) });
+      const j = await r.json();
+      if (j.error) throw new Error(`${method}: ${j.error.message}`);
+      return j.result;
+    };
+    const profile = { id: "claude-design", label: "Claude", kind: "claude", enabled: true, installed: true, loggedIn: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0 };
+    await machineRpc("machines.heartbeat", { machine: "chat-design", instance: "cd0064b1", projects: ["payment"], acceptsRuns: true, profiles: [profile] });
+    const machineId = (await rpc("machines.list")).find(m => m.machine === "chat-design").id;
+    const sent = await rpc("chat.send", { project: "payment", machineId, text: "Thiết kế Chat 64b" }, people.lan.token);
+    const longReply = Array.from({ length: 35 }, (_, i) => `Đoạn ${i}: Nội dung đang đọc, kế hoạch và kiểm tra.\n\n`).join("");
+    await machineRpc("chat.progress", { replyId: sent.reply.id, text: longReply, activity: "Đọc thiết kế Chat", steps: "▶ Đọc thiết kế\n✓ Đã đọc" });
+    const tab = current = await Tab.open("chat-design-lan");
+    tab.win.showInactive();
+    await tab.click("#username"); await tab.type("lan");
+    await tab.click("#password"); await tab.type(people.lan.password); await tab.key("Enter");
+    await tab.waitFor("signed in", () => !document.querySelector("#username"));
+    await tab.go(`chat?thread=${sent.thread.id}`);
+    await tab.waitFor("streaming transcript", () => document.querySelector('[data-chat-thread]')?.textContent.includes("Đọc thiết kế Chat"));
+    expect(await tab.eval(() => !document.querySelector('[data-chat-steps]').open), "agent log starts collapsed while running");
+    expect(await tab.eval(() => !document.querySelector('[data-chat-thread] ol[aria-live]')), "streamed Markdown is not a live region");
+    await tab.click('[data-chat-steps] summary');
+    await machineRpc("chat.progress", { replyId: sent.reply.id, text: longReply, activity: "Kiểm tra layout", steps: "▶ Đọc thiết kế\n✓ Đã đọc\n▶ Kiểm tra layout" });
+    await tab.waitFor("poll keeps opened log", () => document.querySelector('[data-chat-steps]').open && document.querySelector('[data-chat-steps]').textContent.includes("Kiểm tra layout"));
+    await tab.click('[data-chat-steps] summary');
+    const replace = async text => {
+      await tab.click('[data-chat-commands] textarea');
+      await tab.eval(() => document.querySelector('[data-chat-commands] textarea').select());
+      await tab.key("Backspace"); if (text) await tab.type(text);
+    };
+    await replace("Bản nháp giữ khi busy");
+    expect(await tab.eval(() => document.querySelector('[data-chat-thread] button[type="submit"]').disabled), "busy disables send while input stays enabled");
+    await tab.eval(() => { const list = document.querySelector('[data-chat-transcript]'); list.scrollTop = 0; list.dispatchEvent(new Event('scroll', { bubbles: true })); });
+    await machineRpc("chat.progress", { replyId: sent.reply.id, text: longReply + "Phần mới ở cuối.", activity: "Đang xác minh", steps: "▶ Đọc thiết kế\n✓ Đã đọc\n▶ Kiểm tra layout\n✓ Hoàn tất" });
+    await tab.waitFor("new content without pulling the reader down", () => !!document.querySelector('[data-chat-new-content]') && document.querySelector('[data-chat-transcript]').scrollTop < 10);
+    await tab.click('[data-chat-new-content]');
+    await machineRpc("chat.finish", { replyId: sent.reply.id, status: "done", text: longReply + "Hoàn tất.", steps: "▶ Đọc thiết kế\n✓ Đã đọc\n▶ Kiểm tra layout\n✓ Hoàn tất", tokens: { inputTokens: 100, cacheReadTokens: 50, outputTokens: 25 } });
+    await tab.waitFor("terminal reply keeps the draft", () => !document.querySelector('[data-chat-thread] button[type="submit"]').disabled && document.querySelector('[data-chat-commands] textarea').value === "Bản nháp giữ khi busy");
+    expect((await rpc("chat.get", { threadId: sent.thread.id }, people.lan.token)).messages.filter(m => m.role === 'user').length === 1, "busy ending does not auto-send");
+    expect(await tab.eval(() => !document.querySelector('[data-chat-steps]').open), "closed log does not reopen at completion");
+    expect(await tab.eval(() => document.querySelector('[data-chat-session]').textContent.includes('175') && document.querySelector('[data-chat-session]').textContent.includes('Chưa có dữ liệu')), "session distinguishes measured tokens from unknown quota");
+    await tab.key("f", process.platform === "darwin" ? "Meta" : "Control", "Shift");
+    await tab.waitFor("search shortcut focuses its input", () => document.activeElement === document.querySelector('[data-chat-search] input'));
+    await tab.type("kế hoạch");
+    await tab.waitFor("safe search highlight", () => document.querySelector('[data-chat-search-excerpt] mark')?.textContent === "kế hoạch");
+    await tab.key("Escape");
+    await tab.click('[data-chat-message] button', "Dùng lại tin nhắn");
+    await tab.waitFor("reuse offers a choice", () => !!document.querySelector('[data-chat-reuse]'));
+    await tab.click('[data-chat-reuse] button', "Giữ bản nháp hiện tại");
+    expect(await tab.eval(() => document.querySelector('[data-chat-commands] textarea').value === "Bản nháp giữ khi busy"), "reuse does not silently replace draft");
+    await replace("Tin nhắn IME");
+    await tab.eval(() => document.querySelector('[data-chat-commands] textarea').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 229, isComposing: true, bubbles: true })));
+    expect((await rpc("chat.get", { threadId: sent.thread.id }, people.lan.token)).messages.filter(m => m.role === 'user').length === 1, "IME Enter never sends");
+    if (mobile) {
+      await tab.key("Enter");
+      expect((await rpc("chat.get", { threadId: sent.thread.id }, people.lan.token)).messages.filter(m => m.role === 'user').length === 1, "phone Enter adds a line");
+    }
+    // Attach a real file, send it, then reuse after failure. The API requires a new upload id.
+    await tab.eval(() => {
+      const input = document.querySelector('input[type="file"]');
+      const files = new DataTransfer(); files.items.add(new File(["64b attachment"], "reuse.txt", { type: "text/plain" }));
+      input.files = files.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await tab.waitFor("attachment uploaded", () => document.querySelector('[data-chat-thread]').textContent.includes('reuse.txt') && !document.querySelector('[data-chat-thread]').textContent.includes('Đang tải lên'));
+    await tab.click('[data-chat-thread] button[type="submit"]', "Gửi");
+    let thread = await until("message with file", async () => {
+      const got = await rpc('chat.get', { threadId: sent.thread.id }, people.lan.token);
+      return got.messages.filter(m => m.role === 'user').length === 2 && got;
+    });
+    const fileId = thread.messages.findLast(m => m.role === 'user').files[0].id;
+    await machineRpc('chat.finish', { replyId: thread.messages.at(-1).id, status: 'failed', text: 'Có lỗi tạm thời' });
+    await tab.waitFor("retry draft action", () => document.querySelector('[data-chat-thread]').textContent.includes('Thử lại trong bản nháp'));
+    await tab.click('[data-chat-thread] button', 'Thử lại trong bản nháp');
+    // Replacing a full draft must free its attachment slots before restoring the sent file.
+    await replace("Bản nháp bốn tệp");
+    await tab.eval(() => {
+      const input = document.querySelector('input[type="file"]');
+      const files = new DataTransfer();
+      for (let i = 0; i < 4; i++) files.items.add(new File(["draft"], `draft-${i}.txt`, { type: "text/plain" }));
+      input.files = files.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await tab.waitFor("full draft uploaded", () => document.querySelector('[data-chat-thread]').textContent.includes('draft-3.txt') && !document.querySelector('[data-chat-thread] button[type="submit"]').disabled);
+    await tab.click('[data-chat-reuse] button', 'Thay bản nháp');
+    await tab.waitFor("file reuploaded for retry", () => document.querySelector('[data-chat-commands] textarea').value.startsWith('Tin nhắn IME') && !document.querySelector('[data-chat-thread] button[type="submit"]').disabled);
+    await tab.click('[data-chat-thread] button[type="submit"]', 'Gửi');
+    thread = await until("retry has a new file id", async () => {
+      const got = await rpc('chat.get', { threadId: sent.thread.id }, people.lan.token);
+      const users = got.messages.filter(m => m.role === 'user');
+      return users.length === 3 && users.at(-1).files.length === 1 && got;
+    });
+    expect(thread.messages.findLast(m => m.role === 'user').files[0].id !== fileId, 'retry preserved file by creating an authorized new upload');
+    await machineRpc('chat.finish', { replyId: thread.messages.at(-1).id, status: 'done', text: 'Đã thử lại cùng tệp.' });
+    await tab.waitFor('retry finished', () => document.querySelector('[data-chat-thread]').textContent.includes('Đã thử lại cùng tệp.'));
+    const metrics = await tab.eval(() => {
+      const input = document.querySelector('[data-chat-commands] textarea').getBoundingClientRect();
+      return { overflow: document.documentElement.scrollWidth > innerWidth, inputBottom: input.bottom, height: innerHeight, font: parseFloat(getComputedStyle(document.querySelector('[data-chat-commands] textarea')).fontSize) };
+    });
+    expect(!metrics.overflow && metrics.inputBottom <= metrics.height, `composer stays in viewport: ${JSON.stringify(metrics)}`);
+    if (mobile) {
+      expect(metrics.font >= 16, 'phone composer text >=16px');
+      await tab.cdp('Emulation.setDeviceMetricsOverride', { width: 320, height: 844, deviceScaleFactor: 1, mobile: false });
+      const small = await tab.eval(() => ({ overflow: document.documentElement.scrollWidth > innerWidth, targets: [...document.querySelectorAll('[data-leader-chat] button')].filter(el => el.getBoundingClientRect().width).filter(el => el.getBoundingClientRect().width < 44 || el.getBoundingClientRect().height < 44).map(el => el.textContent) }));
+      expect(!small.overflow && !small.targets.length, `320px layout and touch targets: ${JSON.stringify(small)}`);
+      await tab.shot(`${String(n).padStart(2, '0')}-chat-design-320`);
+      await tab.cdp('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+    } else {
+      tab.win.webContents.setZoomFactor(2);
+      await sleep(150);
+      expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), '200% zoom does not overflow the page');
+      tab.win.webContents.setZoomFactor(1);
+    }
+    await tab.shot(`${String(n).padStart(2, '0')}-chat-design`);
+    await tab.cdp('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }, { name: 'prefers-color-scheme', value: 'dark' }] });
+    await tab.waitFor("Chat dark theme", () => document.documentElement.dataset.theme === "dark");
+    await tab.shot(`${String(n).padStart(2, '0')}-chat-design-dark`);
+    await tab.cdp('Emulation.setEmulatedMedia', { features: [] });
+    await tab.go('today');
+    expect(await tab.eval(() => !document.querySelector('[data-leader-panel]')), 'closed Chat leaves Today approval area clear');
+    await tab.click('[data-ask-leader]'); await sleep(450);
+    await tab.waitFor('modal panel', () => !!document.querySelector('[data-leader-panel][role="dialog"]'));
+    expect(await tab.eval(() => document.querySelector('[data-leader-panel]').contains(document.activeElement)), 'focus enters the requested modal');
+    await tab.click('[data-chat-panel-close]');
+    await tab.waitFor('Today clear and focus restored', () => !document.querySelector('[data-leader-panel]') && document.activeElement?.hasAttribute('data-ask-leader'));
+    const reader = current = await Tab.open("chat-design-member");
+    await reader.click("#username"); await reader.type("minh");
+    await reader.click("#password"); await reader.type(people.minh.password); await reader.key("Enter");
+    await reader.waitFor("member signed in", () => !document.querySelector("#username"));
+    await reader.go(`chat?thread=${sent.thread.id}`);
+    // Chat is a menu page only with chatUse (webPages): a view-only member who opens the link lands elsewhere, never on a composer.
+    await reader.waitFor("member lands outside Chat", () => !!document.querySelector("nav, aside, [data-shell-title]") && !document.querySelector('[data-chat-thread]'));
+    expect(await reader.eval(() => !document.querySelector('[data-chat-thread] textarea') && !document.querySelector('[data-chat-new]') && !document.querySelector('a[href$="/chat"]')), "member without chatUse has no Chat page, composer or new-chat control");
+  });
+
   // Roadmap 62d: the shell and Chat share drafts and threads; RPC stands in for the leader.
   await step("chat-everywhere", async () => {
     const machineRpc = async (method, input) => {
@@ -2393,6 +2532,11 @@ async function main() {
     await sleep(450);
     await tab.waitFor("new chat in payment scope", () => document.querySelector('[data-leader-panel] #chat-project')?.value === "payment");
     expect(await tab.eval(() => ![...document.querySelector('[data-leader-panel] #chat-project').options].some((o) => o.value === "*")), "service lead must not see whole-hub chat");
+    expect(await tab.eval(() => !document.querySelector('[data-chat-setup]').open), "new chat keeps configuration folded");
+    if (mobile) expect(await tab.eval(() => {
+      const r = document.querySelector('[data-leader-panel] textarea').getBoundingClientRect();
+      return r.height > 0 && r.top >= 0 && r.bottom <= innerHeight;
+    }), "phone new-chat composer is visible before opening advanced choices");
     await tab.select('[data-leader-panel] #chat-new-model', 'opus');
     await tab.select('[data-leader-panel] #chat-new-effort', 'high');
     await tab.click('[data-leader-panel] textarea');

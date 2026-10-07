@@ -31,7 +31,6 @@ import {
   mergeMessages,
   pollAfter,
   REPLY_TONE,
-  stepCount,
   withAction,
 } from "#ui/lib/chat.ts";
 import { CHAT_SHORTCUTS, chatStatusCounts, isStatusCommand, matchingShortcuts, shortcutDraft, shortcutArgument, fillShortcutArgument, shortcutRuns, type ChatShortcut } from "#ui/lib/chat-shortcuts.ts";
@@ -40,6 +39,10 @@ import { requestErrorText, runLabel } from "#ui/lib/runs.ts";
 import { canEditChatSettings, canUseHubChat } from "#ui/lib/permission-controls.ts";
 import { scopeFilter, scopeId, scopeKey, scopeProject } from "#ui/lib/scope.ts";
 import { useChatDraft, useChatSession, type ChatOpen, type ChatPageContext } from "#ui/components/ChatSession.tsx";
+import { AgentSteps } from "#ui/components/chat/AgentSteps.tsx";
+import { ThreadSearch } from "#ui/components/chat/ThreadSearch.tsx";
+import { ChatSessionBar } from "#ui/components/chat/ChatSessionBar.tsx";
+import { chatSubmitKey, turnSeconds } from "#ui/lib/chat-presentation.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 
 /** Machines report a reply being written every 2 s: followed that closely; otherwise a slow check for news. */
@@ -79,7 +82,7 @@ export function LeaderChat({ panel = false, context = null }: { panel?: boolean;
   const [busy, setBusy] = useState(false);
   const poll = usePoll(busy ? LIVE_MS : IDLE_MS);
   // Typed words are looked up once the typing pauses.
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useChatDraft(`threadListSearch:${scopeId(scope)}`, "");
   const [query, setQuery] = useState("");
   useEffect(() => {
     const timer = setTimeout(() => setQuery(search.trim()), 300);
@@ -127,12 +130,24 @@ export function LeaderChat({ panel = false, context = null }: { panel?: boolean;
   }, [shown, panel, open, setOpen]);
   const [guideOpen, setGuideOpen] = useState(false);
   const local = useLocalChat();
+  const surface = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (document.activeElement !== document.body && !surface.current?.contains(document.activeElement)) return;
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "n" && managed.length) {
+        event.preventDefault();
+        setOpen({ kind: "new" });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [managed.length, setOpen]);
 
   return (
-    <div data-leader-chat className={cn(panel ? "flex min-h-0 flex-1 flex-col gap-3 p-4" : "mobile-master-detail mx-auto flex w-full max-w-7xl flex-col gap-5 p-4 md:px-6 md:py-5", "max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11 max-md:[&_input]:min-h-11 max-md:[&_select]:min-h-11 max-md:[&_textarea]:text-base")}>
+    <div ref={surface} data-leader-chat className={cn(panel ? "flex min-h-0 flex-1 flex-col gap-3 p-4" : "mobile-master-detail mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col gap-3 p-4 md:px-6 md:py-4", "max-md:[&_summary]:min-h-11 max-md:[&_a]:min-h-11 max-md:[&_a]:inline-flex max-md:[&_input]:text-base max-md:[&_select]:text-base max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11 max-md:[&_input]:min-h-11 max-md:[&_select]:min-h-11 max-md:[&_textarea]:text-base")}>
       <PageHeader
         title={t("nav.chat")}
-        subtitle={panel ? undefined : t(local ? "chat.subtitleLocal" : "chat.subtitle")}
+        subtitle={panel ? undefined : t("chat.workspaceHint")}
         actions={
           managed.length ? (
             <>
@@ -150,9 +165,9 @@ export function LeaderChat({ panel = false, context = null }: { panel?: boolean;
       />
       {managed.length ? <LeaderGuideSheet key={shown} projects={managed} defaultProject={project} open={guideOpen} onOpenChange={setGuideOpen} /> : null}
       <ErrorNote error={threads.error} />
-      <div className={cn("grid min-h-0 min-w-0 gap-4", panel ? "flex-1 grid-rows-[minmax(0,1fr)]" : "items-start lg:grid-cols-[19rem_minmax(0,1fr)]")}>
+      <div className={cn("grid min-h-0 min-w-0 gap-4", panel ? "flex-1 grid-rows-[minmax(0,1fr)]" : "flex-1 grid-rows-[minmax(0,1fr)] lg:grid-cols-[15rem_minmax(0,1fr)]")}>
         {/* On a phone the list and the open chat take turns. */}
-        <nav className={cn("flex min-w-0 flex-col gap-2", open && (panel ? "hidden" : "hidden lg:flex"))} aria-label={t("chat.threads")}>
+        <nav className={cn("flex min-h-0 min-w-0 flex-col gap-2 overflow-y-auto", open && (panel ? "hidden" : "hidden lg:flex"))} aria-label={t("chat.threads")}>
           <div className="relative">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
             <Input className="pl-8" type="search" placeholder={t("chat.search")} aria-label={t("chat.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -164,7 +179,7 @@ export function LeaderChat({ panel = false, context = null }: { panel?: boolean;
             ))}
           </ul>
         </nav>
-        <div className={cn("min-h-0 min-w-0", panel && "flex flex-col overflow-y-auto", !open && (panel ? "hidden" : "hidden lg:block"))}>
+        <div className={cn("flex min-h-0 min-w-0 flex-col overflow-y-auto", !open && (panel ? "hidden" : "hidden lg:block"))}>
           {open?.kind === "new" ? (
             <NewThread
               key={draftKey}
@@ -212,7 +227,7 @@ function ThreadItem({ thread: th, showProject, selected, onOpen }: { thread: Cha
           <span className="line-clamp-2 min-w-0 flex-1 text-sm font-medium wrap-anywhere">{th.title}</span>
           {th.busy ? (
             <span className="mt-1.5" title={t("chat.answering")}>
-              <StatusDot tone="info" className="animate-pulse" />
+              <StatusDot tone="info" className="animate-pulse motion-reduce:animate-none" /><span className="sr-only">{t("chat.answering")}</span>
             </span>
           ) : null}
         </span>
@@ -229,6 +244,7 @@ function ThreadItem({ thread: th, showProject, selected, onOpen }: { thread: Cha
 function NewThread({ projects, defaultProject, onBack, onStarted, draftKey, context, panel }: { projects: string[]; defaultProject: string | null; onBack: () => void; onStarted: (id: number) => void; draftKey: string; context: ChatPageContext | null; panel: boolean }) {
   const { client, me } = useHive();
   const t = useT();
+  const [setupOpen, setSetupOpen] = useChatDraft(`${draftKey}:setup`, false);
   const [chosenProject, setProject] = useChatDraft(`${draftKey}:project`, defaultProject && projects.includes(defaultProject) ? defaultProject : (projects[0] ?? ""));
   const project = projects.includes(chosenProject) ? chosenProject : defaultProject && projects.includes(defaultProject) ? defaultProject : (projects[0] ?? "");
   const local = useLocalChat();
@@ -294,7 +310,7 @@ function NewThread({ projects, defaultProject, onBack, onStarted, draftKey, cont
       setBumped((n) => n + 1);
     });
   const send = () => {
-    if (!machine || !text.trim() || withContext(text, context).length > MAX_TEXT || action.busy || att.uploading) return;
+    if (!machine || !text.trim() || withContext(text, context).length > MAX_TEXT || action.busy || (att.uploading || att.failed)) return;
     void action.run(async () => {
       const sent = await client.call("chat.send", {
         project,
@@ -331,71 +347,76 @@ function NewThread({ projects, defaultProject, onBack, onStarted, draftKey, cont
           send();
         }}
       >
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="chat-project">{t(projects.includes(HUB_SCOPE) ? "chat.scope" : "chat.project")}</Label>
-            <NativeSelect id="chat-project" size="sm" className="w-full min-h-11 data-[size=sm]:text-base md:min-h-0 md:data-[size=sm]:text-sm" value={project} onChange={(e) => (setProject(e.target.value), setTouched(false))}>
-              {projects.map((p) => (
-                <NativeSelectOption key={p} value={p}>
-                  {p === HUB_SCOPE ? t("chat.hubScope") : p}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="chat-machine">{t("chat.machine")}</Label>
-            <NativeSelect id="chat-machine" size="sm" className="w-full min-h-11 data-[size=sm]:text-base md:min-h-0 md:data-[size=sm]:text-sm" value={machine?.id ?? ""} disabled={!machine || local} onChange={(e) => pick({ machineId: e.target.value, profileId: "" })}>
-              {fit.map((m) => (
-                <NativeSelectOption key={m.id} value={m.id}>
-                  {m.machine}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="chat-plan">{t("chat.plan")}</Label>
-            <NativeSelect id="chat-plan" size="sm" className="w-full min-h-11 data-[size=sm]:text-base md:min-h-0 md:data-[size=sm]:text-sm" value={profileId} disabled={!machine} onChange={(e) => pick({ profileId: e.target.value })}>
-              <NativeSelectOption value="">{t("chat.anyPlan")}</NativeSelectOption>
-              {(machine?.profiles ?? []).filter(chatProfile).map((p) => (
-                <NativeSelectOption key={p.id} value={p.id}>
-                  {p.label} · {p.kind === "codex" ? "Codex" : "Claude"}
-                  {p.overLimit ? ` (${t("board.profileOverLimit")})` : p.cooldownUntil && p.cooldownUntil > new Date().toISOString() ? ` (${t("board.resting")})` : ""}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </div>
-        </div>
-        {project === HUB_SCOPE ? <Notice tone="info">{t("chat.hubHint")}</Notice> : null}
-        <div className="grid gap-3 sm:grid-cols-3">
-          <ModelFields model={model} effort={effort} onModel={(v) => (setModel(v), setSaved(false))} onEffort={(v) => (setEffort(v), setSaved(false))} idPrefix="chat-new" kind={machine?.profiles.find((p) => p.id === profileId)?.kind} supportedModels={machine?.profiles.find((p) => p.id === profileId)?.supportedModels} />
-          {canEditChatSettings(me, project) ? (
-            <div className="flex items-end">
-              <Button
-                size="sm"
-                variant="outline"
-                type="button"
-                disabled={saving.busy}
-                title={t("chat.saveDefaultsHint", { project: projectLabel })}
-                onClick={() =>
-                  void saving.run(async () => {
-                    await client.call("chat.setDefaults", {
-                      project,
-                      machineId: machine?.id ?? null,
-                      profileId: profileId || null,
-                      model: model || null,
-                      effort: effort || null,
-                    });
-                    setSaved(true);
-                  })
-                }
-              >
-                {t("chat.saveDefaults")}
-              </Button>
+        <details data-chat-setup open={setupOpen} onToggle={(e) => setSetupOpen(e.currentTarget.open)} className="rounded-md border p-3">
+          <summary className="min-h-11 cursor-pointer text-xs wrap-anywhere md:min-h-0">{t("chat.setup")} · {projectLabel} · {machine?.machine ?? t("chat.usageUnknown")} · {profileId || t("chat.anyPlan")}</summary>
+          <div className="flex flex-col gap-3 pt-3">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="chat-project">{t(projects.includes(HUB_SCOPE) ? "chat.scope" : "chat.project")}</Label>
+                <NativeSelect id="chat-project" size="sm" className="w-full min-h-11 data-[size=sm]:text-base md:min-h-0 md:data-[size=sm]:text-sm" value={project} onChange={(e) => (setProject(e.target.value), setTouched(false))}>
+                  {projects.map((p) => (
+                    <NativeSelectOption key={p} value={p}>
+                      {p === HUB_SCOPE ? t("chat.hubScope") : p}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="chat-machine">{t("chat.machine")}</Label>
+                <NativeSelect id="chat-machine" size="sm" className="w-full min-h-11 data-[size=sm]:text-base md:min-h-0 md:data-[size=sm]:text-sm" value={machine?.id ?? ""} disabled={!machine || local} onChange={(e) => pick({ machineId: e.target.value, profileId: "" })}>
+                  {fit.map((m) => (
+                    <NativeSelectOption key={m.id} value={m.id}>
+                      {m.machine}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="chat-plan">{t("chat.plan")}</Label>
+                <NativeSelect id="chat-plan" size="sm" className="w-full min-h-11 data-[size=sm]:text-base md:min-h-0 md:data-[size=sm]:text-sm" value={profileId} disabled={!machine} onChange={(e) => pick({ profileId: e.target.value })}>
+                  <NativeSelectOption value="">{t("chat.anyPlan")}</NativeSelectOption>
+                  {(machine?.profiles ?? []).filter(chatProfile).map((p) => (
+                    <NativeSelectOption key={p.id} value={p.id}>
+                      {p.label} · {p.kind === "codex" ? "Codex" : "Claude"}
+                      {p.overLimit ? ` (${t("board.profileOverLimit")})` : p.cooldownUntil && p.cooldownUntil > new Date().toISOString() ? ` (${t("board.resting")})` : ""}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </div>
             </div>
-          ) : null}
-        </div>
-        {saved ? <Notice tone="ok">{t("chat.defaultsSaved", { project: projectLabel })}</Notice> : null}
-        <ErrorNote error={saving.error} />
+            {project === HUB_SCOPE ? <Notice tone="info">{t("chat.hubHint")}</Notice> : null}
+            <div className="grid gap-3 sm:grid-cols-3">
+              <ModelFields model={model} effort={effort} onModel={(v) => (setModel(v), setSaved(false))} onEffort={(v) => (setEffort(v), setSaved(false))} idPrefix="chat-new" kind={machine?.profiles.find((p) => p.id === profileId)?.kind} supportedModels={machine?.profiles.find((p) => p.id === profileId)?.supportedModels} />
+              {canEditChatSettings(me, project) ? (
+                <div className="flex items-end">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    type="button"
+                    disabled={saving.busy}
+                    title={t("chat.saveDefaultsHint", { project: projectLabel })}
+                    onClick={() =>
+                      void saving.run(async () => {
+                        await client.call("chat.setDefaults", {
+                          project,
+                          machineId: machine?.id ?? null,
+                          profileId: profileId || null,
+                          model: model || null,
+                          effort: effort || null,
+                        });
+                        setSaved(true);
+                      })
+                    }
+                  >
+                    {t("chat.saveDefaults")}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+            {saved ? <Notice tone="ok">{t("chat.defaultsSaved", { project: projectLabel })}</Notice> : null}
+            <ErrorNote error={saving.error} />
+          </div>
+        </details>
         <ErrorNote error={machines.error} />
         {hubOff && here ? (
           <Notice tone="warn">
@@ -417,7 +438,7 @@ function NewThread({ projects, defaultProject, onBack, onStarted, draftKey, cont
           <Notice tone="info">{t(project === HUB_SCOPE ? "chat.hubHereNotFit" : "chat.hereNotFit", { machine: here, project })}</Notice>
         ) : null}
         {machines.data && !fit.length ? <Notice tone="info">{t(local ? "chat.noMachineLocal" : project === HUB_SCOPE ? "chat.hubNoMachine" : "chat.noMachine", { project })}</Notice> : null}
-        <CommandInput project={project} text={text} onText={setText} onSend={send} onPaste={att.onPaste} rows={4} maxLength={Math.max(0, MAX_TEXT - contextPrefix(context).length)} />
+        <CommandInput project={project} text={text} onText={setText} onSend={send} onPaste={att.onPaste} maxLength={Math.max(0, MAX_TEXT - contextPrefix(context).length)} rows={4} />
         {withContext(text, context).length > MAX_TEXT ? <Notice tone="warn">{t("chat.messageTooLong")}</Notice> : null}
         <AttachmentBar att={att} />
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -425,7 +446,7 @@ function NewThread({ projects, defaultProject, onBack, onStarted, draftKey, cont
             <AttachButton att={att} />
             {t("chat.sendHint")}
           </span>
-          <Button size="sm" type="submit" disabled={!machine || !text.trim() || withContext(text, context).length > MAX_TEXT || action.busy || att.uploading}>
+          <Button size="sm" type="submit" disabled={!machine || !text.trim() || withContext(text, context).length > MAX_TEXT || action.busy || (att.uploading || att.failed)}>
             <SendHorizontal />
             {t("chat.start")}
           </Button>
@@ -486,10 +507,29 @@ function Conversation({ threadId, onBack, onChanged, onDeleted, panel, context }
     thread && manage && !thread.busy && last?.role === "assistant" && ["failed", "expired", "cancelled"].includes(last.status ?? "")
       ? messages.findLast((m) => m.role === "user" && m.id < last.id)
       : undefined;
-  const resend = retry && thread ? async () => (await client.call("chat.send", { project: thread.project, threadId: thread.id, text: retry.text }), refresh()) : undefined;
+  const [, setReuse] = useChatDraft<ChatMessage | null>(`thread:${threadId}:reuse`, null);
+  const resend = retry ? async () => { setReuse(retry); } : undefined;
+  const [newContent, setNewContent] = useState(false);
+  const [, setSearchOpen] = useChatDraft(`searchOpen:${threadId}`, false);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const root = list.current?.closest("[data-chat-thread]");
+      if (document.activeElement !== document.body && !root?.contains(document.activeElement)) return;
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        setSearchOpen(true);
+        requestAnimationFrame(() => root?.querySelector<HTMLInputElement>("[data-chat-search] input")?.focus());
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setSearchOpen]);
+  const waiting = messages.flatMap((m) => m.actions).filter((a) => a.status === "proposed").length;
+  const activeReply = messages.findLast(isLiveReply);
   useEffect(() => {
     const el = list.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
+    else if (el) setNewContent(true);
   }, [messages.length, last?.text, last?.steps, last?.status]);
   useEffect(() => {
     const el = list.current;
@@ -515,8 +555,8 @@ function Conversation({ threadId, onBack, onChanged, onDeleted, panel, context }
   }
 
   return (
-    <Card className={cn("flex flex-col gap-0 py-0", panel ? "min-h-0 flex-1 overflow-hidden" : "h-[calc(100svh-9rem)] min-h-[28rem] lg:h-[calc(100svh-13rem)]")} data-chat-thread={threadId}>
-      <header className="flex items-start gap-2 border-b px-4 py-3">
+    <Card className={cn("flex flex-col gap-0 py-0", "h-full min-h-0 flex-1 overflow-hidden")} data-chat-thread={threadId}>
+      <header className="shrink-0 flex flex-wrap items-start gap-2 border-b px-4 py-3">
         <Button size="icon-sm" variant="ghost" className={panel ? undefined : "lg:hidden"} onClick={onBack} aria-label={t("chat.threads")}>
           <ArrowLeft />
         </Button>
@@ -528,28 +568,34 @@ function Conversation({ threadId, onBack, onChanged, onDeleted, panel, context }
           )}
           {thread ? (
             <p className="text-xs text-muted-foreground wrap-anywhere">
-              <span className="font-mono">{thread.project === HUB_SCOPE ? t("chat.hubScope") : thread.project}</span> · <span className="font-mono">{thread.machine}</span> · {thread.profileId ?? t("chat.anyPlan")} ·{" "}
-              {thread.model ?? t("chat.modelDefault")}
-              {thread.effort ? ` (${t(`effort.${thread.effort}`)})` : ""} ·{" "}
-              {t("chat.startedBy", { who: thread.createdBy, time: formatTime(thread.createdAt) })}
+              <span className="font-mono">{thread.project === HUB_SCOPE ? t("chat.hubScope") : thread.project}</span> · {t("chat.startedBy", { who: thread.createdBy, time: formatTime(thread.createdAt) })}
             </p>
           ) : null}
         </div>
         {thread && manage ? <ThreadSettings thread={thread} onChanged={(th) => (setThread(th), onChanged())} /> : null}
       </header>
+      <ThreadSearch threadId={threadId} messages={messages} onMatch={(id) => {
+        stick.current = false;
+        const el = list.current;
+        const message = el?.querySelector<HTMLElement>(`[data-chat-message="${id}"]`);
+        if (el && message) el.scrollTop += message.getBoundingClientRect().top - el.getBoundingClientRect().top;
+      }} />
+      <p role="status" aria-atomic="true" className="sr-only">{waiting ? t("chat.waitingActions", { count: waiting }) : activeReply ? t(activeReply.status === "pending" ? "chat.answering" : "chat.writing") : messages.length ? t("chat.replyReady") : ""}</p>
       <div
+        data-chat-transcript
         ref={list}
         className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
         onScroll={(e) => {
           const el = e.currentTarget;
           stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+          if (stick.current) setNewContent(false);
         }}
       >
         <ErrorNote error={error} />
-        <ol className="flex flex-col gap-4" aria-live="polite">
+        <ol className="mx-auto flex w-full max-w-(--reading-max) flex-col gap-6" aria-label={t("chat.transcript")}>
           {messages.map((m, index) =>
             m.role === "user" ? (
-              <UserMessage key={m.id} message={m} />
+              <UserMessage key={m.id} message={m} onReuse={manage ? () => setReuse(m) : undefined} />
             ) : (
               <Reply
                 key={m.id}
@@ -568,10 +614,12 @@ function Conversation({ threadId, onBack, onChanged, onDeleted, panel, context }
           )}
         </ol>
       </div>
-      <footer className="flex flex-col gap-2 border-t px-4 py-3">
+      {newContent ? <Button variant="outline" size="sm" className="mx-auto mb-2" data-chat-new-content onClick={() => { stick.current = true; setNewContent(false); if (list.current) list.current.scrollTop = list.current.scrollHeight; }}>{t("chat.newContent")}</Button> : null}
+      <footer className="max-h-[60%] shrink-0 flex flex-col gap-2 overflow-y-auto border-t px-4 py-3">
         {thread && machines.data && (!machine?.online || !machine.acceptsRuns) ? <Notice tone="warn">{t("chat.machineGone", { machine: thread.machine })}</Notice> : null}
         {thread && manage ? <Composer thread={thread} onSent={refresh} context={context} /> : thread ? <p className="text-xs text-muted-foreground">{t("chat.readOnly")}</p> : null}
       </footer>
+      {thread ? <ChatSessionBar thread={thread} messages={messages} machine={machine} /> : null}
     </Card>
   );
 }
@@ -736,13 +784,15 @@ function ThreadTitle({ thread, onRenamed, onDeleted }: { thread: ChatThread; onR
   );
 }
 
-function UserMessage({ message: m }: { message: ChatMessage }) {
+function UserMessage({ message: m, onReuse }: { message: ChatMessage; onReuse?: () => void }) {
+  const t = useT();
   return (
-    <li className="flex flex-col items-end gap-1">
+    <li data-chat-message={m.id} className="flex flex-col items-end gap-1">
       <MessageFiles files={m.files} />
-      <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-brand-soft px-3 py-2 text-sm whitespace-pre-wrap text-brand-soft-foreground wrap-anywhere">{m.text}</div>
+      <div className="max-w-[92%] rounded-2xl rounded-br-sm bg-brand-soft px-3 py-2 text-sm whitespace-pre-wrap text-brand-soft-foreground wrap-anywhere">{m.text}</div>
       <span className="text-xs text-muted-foreground">
         {m.author} · {formatTime(m.createdAt)}
+        {onReuse ? <Button size="sm" variant="ghost" onClick={onReuse}>{t("chat.reuseMessage")}</Button> : null}
       </span>
     </li>
   );
@@ -777,16 +827,17 @@ function Reply({
   const t = useT();
   const action = useAction();
   const live = isLiveReply(m);
-  const steps = stepCount(m.steps);
+  usePoll(live ? LIVE_MS : null);
+  const elapsed = turnSeconds(m.createdAt, m.finishedAt ?? Date.now());
   return (
-    <li className="flex flex-col items-start gap-1">
-      <div className="flex w-full max-w-[92%] flex-col gap-2 rounded-2xl rounded-bl-sm border bg-card px-3 py-2 text-sm">
+    <li data-chat-message={m.id} className="flex flex-col items-start gap-2">
+      <div className="flex w-full min-w-0 flex-col gap-3 text-sm">
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Bot className="size-3.5" aria-hidden />
           <span className="font-mono">{m.author}</span>
           {m.status ? <Badge tone={REPLY_TONE[m.status] ?? "neutral"}>{t(`replyStatus.${m.status}`)}</Badge> : null}
           {m.costUsd !== null ? <span>{t("board.cost", { cost: formatUsd(m.costUsd) })}</span> : null}
-          {m.tokens ? <span>{t("chat.tokens", { input: m.tokens.inputTokens, cached: m.tokens.cacheReadTokens, output: m.tokens.outputTokens })}</span> : null}
+          {live ? <span>{t("chat.turnElapsed", { seconds: elapsed })}</span> : null}
           {m.text && !live ? <CopyButton text={m.text} label={t("chat.copy")} className="ml-auto" /> : null}
         </div>
         {m.switchedFrom ? <Notice tone="info">{t("chat.switched", { from: m.switchedFrom, to: m.author.split("@")[0]! })}</Notice> : null}
@@ -794,23 +845,18 @@ function Reply({
         {m.text ? <ReplyMarkdown text={m.text} taskIds={taskIds} /> : live ? <p className="text-muted-foreground">{m.status === "pending" ? t("chat.waitingMachine", { machine }) : t("chat.writing")}</p> : null}
         {live && m.activity ? (
           <div className="flex items-center gap-2 text-xs text-info">
-            <span className="size-2 shrink-0 animate-pulse rounded-full bg-info" aria-hidden />
+            <span className="size-2 shrink-0 animate-pulse rounded-full bg-info motion-reduce:animate-none" aria-hidden />
             <span className="wrap-anywhere">{m.activity}</span>
           </div>
         ) : null}
-        {m.steps ? (
-          <details className="text-xs" open={live}>
-            <summary className="cursor-pointer text-muted-foreground select-none">{t("chat.steps", { count: steps })}</summary>
-            <pre className="mt-1 max-h-64 overflow-auto rounded-md border bg-muted/50 p-2 font-mono whitespace-pre-wrap wrap-anywhere">{m.steps}</pre>
-          </details>
-        ) : null}
+        <AgentSteps replyId={m.id} steps={m.steps} />
         {m.actions.length ? <ActionList reply={m} taskIds={taskIds} manage={approve} onDecided={onDecided} onDecidedAll={onDecidedAll} /> : null}
         {m.error ? <div className="text-xs text-destructive wrap-anywhere">{requestErrorText(m.error)}</div> : null}
         {onResend ? (
           <div>
             <Button size="sm" variant="outline" className="h-7" disabled={action.busy} onClick={() => void action.run(onResend)}>
               <RotateCcw />
-              {t("chat.resend")}
+              {t("chat.retryDraft")}
             </Button>
           </div>
         ) : null}
@@ -917,7 +963,7 @@ function PlanCard({ plan, action: a, taskIds }: { plan: ChatPlan; action: ChatAc
           <span className="font-mono text-[0.9em] text-muted-foreground">{plan.spec.key}</span>
         )}
       </div>
-      <details open={a.status === "proposed"} className="rounded-md bg-background/60 p-2">
+      <details className="rounded-md bg-background/60 p-2">
         <summary className="flex min-h-11 cursor-pointer items-center font-medium md:min-h-0">{plan.spec.title}</summary>
         <ReplyMarkdown text={plan.spec.content} taskIds={taskIds} />
       </details>
@@ -948,6 +994,7 @@ function PlanCard({ plan, action: a, taskIds }: { plan: ChatPlan; action: ChatAc
         })}
       </ul>
       <div className="font-medium">{t("chat.planBatches")}</div>
+      <p className="text-muted-foreground">{t("chat.planCreateHint")}</p>
       <ol className="flex list-inside list-decimal flex-col gap-0.5">
         {plan.batches.map((batch, i) => (
           <li key={i}>
@@ -972,10 +1019,20 @@ function ResearchCard({ action: a, manage, onChanged }: { action: ChatAction; ma
   useEffect(() => { setTerminal(!!research && ["done", "failed", "cancelled"].includes(research.status)); }, [research?.status]);
   const [preview, setPreview] = useState(false);
   const [sent, setSent] = useState(false);
+  const [drafted, setDrafted] = useState(false);
+  const [, setReuse] = useChatDraft<Pick<ChatMessage, "text" | "files"> | null>(`thread:${a.threadId}:reuse`, null);
   const file = useQuery(() => preview && research?.artifactId ? client.call("artifacts.get", { id: research.artifactId, maxBytes: 1 }).then(got => { if (!got) throw new Error(t("chat.gone")); return got.artifact; }) : Promise.resolve(null), [client, preview, research?.artifactId]);
   const convert = () => void act.run(async () => {
     if (!research) return;
-    await sendResearchPlan(client, a.threadId, t("chat.researchPlanPrompt", { topic: input.topic, doc: research.docKey, recommendations: research.recommendations }), t("chat.gone"));
+    const prompt = t("chat.researchPlanPrompt", { topic: input.topic, doc: research.docKey, recommendations: research.recommendations });
+    const current = await client.call("chat.get", { threadId: a.threadId });
+    if (!current) throw new Error(t("chat.gone"));
+    if (current.thread.busy) {
+      setReuse({ text: prompt, files: [] });
+      setDrafted(true);
+      return;
+    }
+    await sendResearchPlan(client, a.threadId, prompt, t("chat.gone"));
     setSent(true);
     onChanged();
   });
@@ -994,8 +1051,10 @@ function ResearchCard({ action: a, manage, onChanged }: { action: ChatAction; ma
       {preview && file.data ? <ArtifactPreview artifact={file.data} onClose={() => setPreview(false)} /> : null}
       {research?.sources.length ? <div><div className="font-medium">{t("chat.researchSources")}</div><ul className="list-inside list-disc">{research.sources.map((s, i) => <li key={i}>{s}</li>)}</ul></div> : null}
       {research?.proposalId ? <a className={cn(LINK, "inline-flex min-h-11 items-center md:min-h-0")} href={`#/proposals?proposal=${research.proposalId}`}>{t("chat.researchDraft")} · {research.docKey}</a> : null}
+      {research ? <a className={cn(LINK, "inline-flex min-h-11 items-center md:min-h-0")} href={`#/runs?run=${encodeURIComponent(`${research.machineId}/${research.runId}`)}`}>{t("nav.runs")} · {research.runId}</a> : null}
       {research?.status === "done" && research.recommendations.trim() && manage ? <Button size="sm" className="min-h-11 md:min-h-0" disabled={act.busy || sent} onClick={convert}>{t("chat.researchConvert")}</Button> : null}
       {sent ? <p role="status">{t("chat.researchConverted")}</p> : null}
+      {drafted ? <p role="status">{t("chat.busy")}</p> : null}
       <ErrorNote error={query.error ?? file.error ?? act.error ?? research?.error} />
     </div>
   );
@@ -1006,6 +1065,7 @@ export function ActionItem({ action: a, taskIds, manage, onDecided, autoDispatch
   const { client } = useHive();
   const t = useT();
   const act = useAction();
+  const [, setReuse] = useChatDraft<Pick<ChatMessage, "text" | "files"> | null>(`thread:${a.threadId}:reuse`, null);
   const task = actionTask(a);
   const plan = a.kind === "plan.create" ? (a.input as unknown as ChatPlan) : null;
   const [localDispatch, setLocalDispatch] = useState(true);
@@ -1127,6 +1187,7 @@ export function ActionItem({ action: a, taskIds, manage, onDecided, autoDispatch
             <Check />
             {t(plan ? "chat.planDo" : "chat.confirm")}
           </Button>
+          {plan ? <Button size="sm" variant="outline" disabled={act.busy} onClick={() => setReuse({ text: t("chat.revisePlan", { key: plan.spec.key }), files: [] })}>{t("chat.requestChanges")}</Button> : null}
           <Button size="sm" variant="ghost" className="min-h-11 min-w-11 md:h-7 md:min-h-0" disabled={act.busy} onClick={() => decide(false)}>
             <X />
             {t("chat.dismiss")}
@@ -1183,8 +1244,16 @@ function Composer({ thread, onSent, context }: { thread: ChatThread; onSent: () 
   const [text, setText] = useChatDraft(`thread:${thread.id}:text`, "");
   const action = useAction();
   const att = useAttachments(thread.project, `thread:${thread.id}:files`);
+  const [reuse, setReuse] = useChatDraft<Pick<ChatMessage, "text" | "files"> | null>(`thread:${thread.id}:reuse`, null);
+  const applyReuse = (append: boolean) => {
+    if (!reuse) return;
+    setText(append && text ? `${text}\n\n${reuse.text}` : reuse.text);
+    if (!append) att.clear();
+    att.reuse(reuse.files);
+    setReuse(null);
+  };
   const send = () => {
-    if (!text.trim() || withContext(text, context).length > MAX_TEXT || thread.busy || action.busy || att.uploading) return;
+    if (!text.trim() || withContext(text, context).length > MAX_TEXT || thread.busy || action.busy || (att.uploading || att.failed)) return;
     void action.run(async () => {
       await client.call("chat.send", { project: thread.project, threadId: thread.id, text: withContext(text, context), files: att.ids });
       setText("");
@@ -1202,15 +1271,26 @@ function Composer({ thread, onSent, context }: { thread: ChatThread; onSent: () 
         send();
       }}
     >
-      <CommandInput project={thread.project} text={text} onText={setText} onSend={send} onPaste={att.onPaste} rows={2} maxLength={Math.max(0, MAX_TEXT - contextPrefix(context).length)} />
-        {withContext(text, context).length > MAX_TEXT ? <Notice tone="warn">{t("chat.messageTooLong")}</Notice> : null}
+      {reuse ? <section data-chat-reuse className="flex flex-col gap-2 rounded-md border bg-muted/30 p-3 text-xs" aria-label={t("chat.reuseTitle")}>
+        <p className="font-medium">{t("chat.reuseTitle")}</p>
+        <p>{t("chat.reuseHint")}</p>
+        <p className="line-clamp-3 whitespace-pre-wrap wrap-anywhere">{reuse.text}</p>
+        <MessageFiles files={reuse.files} />
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" onClick={() => applyReuse(false)}>{t("chat.replaceDraft")}</Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => applyReuse(true)}>{t("chat.appendDraft")}</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => setReuse(null)}>{t("chat.keepDraft")}</Button>
+        </div>
+      </section> : null}
+      <CommandInput project={thread.project} text={text} onText={setText} onSend={send} onPaste={att.onPaste} maxLength={Math.max(0, MAX_TEXT - contextPrefix(context).length)} rows={2} />
+      {withContext(text, context).length > MAX_TEXT ? <Notice tone="warn">{t("chat.messageTooLong")}</Notice> : null}
       <AttachmentBar att={att} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="flex items-center gap-1 text-xs text-muted-foreground">
           <AttachButton att={att} />
-          {thread.busy ? t("chat.busy") : t("chat.sendHint")}
+          <span id={`chat-send-hint-${thread.id}`}>{thread.busy ? t("chat.busy") : t("chat.sendHint")}</span>
         </span>
-        <Button size="sm" type="submit" disabled={!text.trim() || withContext(text, context).length > MAX_TEXT || thread.busy || action.busy || att.uploading}>
+        <Button size="sm" type="submit" aria-describedby={`chat-send-hint-${thread.id}`} disabled={!text.trim() || withContext(text, context).length > MAX_TEXT || thread.busy || action.busy || (att.uploading || att.failed)}>
           <SendHorizontal />
           {t("chat.send")}
         </Button>
@@ -1220,6 +1300,8 @@ function Composer({ thread, onSent, context }: { thread: ChatThread; onSent: () 
   );
 }
 
+
+/** One composer for new and existing threads: selecting a shortcut never sends it. */
 function CommandInput({ project, text, onText, onSend, onPaste, rows, maxLength = MAX_TEXT }: {
   project: string;
   text: string;
@@ -1230,6 +1312,7 @@ function CommandInput({ project, text, onText, onSend, onPaste, rows, maxLength 
   maxLength?: number;
 }) {
   const { client, projects } = useHive();
+  const mobile = useMobileDetail("thread").mobile;
   const allow = useCan();
   const t = useT();
   const id = useId();
@@ -1261,7 +1344,7 @@ function CommandInput({ project, text, onText, onSend, onPaste, rows, maxLength 
   });
   const selectCommand = (command: ChatShortcut) => {
     const draft = shortcutDraft(t(`chat.shortcuts.template.${command}`), text);
-    if (draft.length > maxLength) return setDraftError(t("chat.shortcuts.tooLong", { max: maxLength }));
+    if (draft.length > maxLength) return setDraftError(t("chat.shortcuts.tooLong", { max: MAX_TEXT }));
     setDraftError(null);
     onText(draft);
     setActive(0);
@@ -1271,7 +1354,7 @@ function CommandInput({ project, text, onText, onSend, onPaste, rows, maxLength 
   const selectOption = (value: string) => {
     if (commands.length) return selectCommand(value as ChatShortcut);
     const draft = fillShortcutArgument(text, value);
-    if (draft.length > maxLength) return setDraftError(t("chat.shortcuts.tooLong", { max: maxLength }));
+    if (draft.length > maxLength) return setDraftError(t("chat.shortcuts.tooLong", { max: MAX_TEXT }));
     setDraftError(null);
     onText(draft);
     setDismissed(true);
@@ -1287,9 +1370,11 @@ function CommandInput({ project, text, onText, onSend, onPaste, rows, maxLength 
   }, [id, chosen, options.length]);
   return <div className="flex min-w-0 flex-col gap-2" data-chat-commands>
     <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label={t("chat.shortcuts.title")} data-chat-chips>
+      <Button type="button" size="sm" variant="ghost" className="shrink-0" onClick={() => { onText(text || "/"); setDismissed(false); input.current?.focus(); }}>{t("chat.commandsOpen")}</Button>
       {CHAT_SHORTCUTS.slice(0, 4).map(command => <Button key={command} type="button" size="sm" variant="outline" className="shrink-0 max-md:min-h-(--control-h-touch)" data-chat-command={command} onClick={() => selectCommand(command)}>/{command}<span>{t(`chat.shortcuts.${command}`)}</span></Button>)}
     </div>
-    <p id={`${id}-hint`} className="text-xs text-muted-foreground">{t("chat.shortcuts.hint")}</p>
+    <Label htmlFor={`${id}-input`}>{t("chat.message")}</Label>
+    <p id={`${id}-hint`} className="text-xs text-muted-foreground">{t(mobile ? "chat.sendMobileHint" : "chat.shortcuts.hint")}</p>
     <div className="relative">
     {options.length || argument || commandQuery ? <div className="absolute bottom-full z-20 mb-2 w-full space-y-1 rounded-md border bg-card p-1 shadow-md" data-chat-command-menu>
       {options.length ? <div id={`${id}-menu`} role="listbox" aria-label={t(argument ? "chat.shortcuts.arguments" : "chat.shortcuts.title")} className="max-h-48 overflow-y-auto">
@@ -1299,18 +1384,19 @@ function CommandInput({ project, text, onText, onSend, onPaste, rows, maxLength 
       </div> : <p className="p-2 text-xs" role="status">{t(commandQuery ? "chat.shortcuts.noCommands" : runCommand && runs.loading ? "chat.shortcuts.loading" : "chat.shortcuts.noArguments")}</p>}
       {runCommand ? <ErrorNote error={runs.error} /> : null}
     </div> : null}
-    <Textarea ref={input} rows={rows} maxLength={maxLength} className="max-h-48 max-md:text-base" placeholder={t("chat.placeholder")} aria-label={t("chat.message")} aria-describedby={`${id}-hint`} aria-autocomplete="list" aria-controls={options.length ? `${id}-menu` : undefined} aria-activedescendant={options.length ? `${id}-option-${chosen}` : undefined} value={text}
+    <Textarea id={`${id}-input`} ref={input} rows={rows} maxLength={maxLength} className="max-h-48 max-md:text-base" placeholder={t("chat.placeholder")} aria-label={t("chat.message")} aria-describedby={`${id}-hint`} role="combobox" aria-expanded={options.length > 0} aria-autocomplete="list" aria-controls={options.length ? `${id}-menu` : undefined} aria-activedescendant={options.length ? `${id}-option-${chosen}` : undefined} value={text}
       onChange={e => { onText(e.target.value); setDraftError(null); setCaret(e.target.selectionStart); setActive(0); setDismissed(false); }} onSelect={e => setCaret(e.currentTarget.selectionStart)} onPaste={onPaste}
       onKeyDown={e => {
-        if (e.nativeEvent.isComposing) return;
+        if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
         if (options.length || argument || commandQuery) {
-          if (e.key === "Escape") { e.preventDefault(); setDismissed(true); return; }
+          if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setDismissed(true); return; }
           if (options.length && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); setActive((chosen + (e.key === "ArrowDown" ? 1 : -1) + options.length) % options.length); return; }
           if (options.length && (e.key === "Enter" || e.key === "Tab") && !e.shiftKey) { e.preventDefault(); selectOption(options[chosen]!.value); return; }
         }
-        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSend(); }
+        if (chatSubmitKey({ ...e, composing: e.nativeEvent.isComposing }, mobile)) { e.preventDefault(); onSend(); }
       }} />
     </div>
+    {text.length > maxLength - 500 ? <p className="text-xs text-muted-foreground">{t("chat.textCount", { count: text.length, max: maxLength })}</p> : null}
     <ErrorNote error={draftError} />
   </div>;
 }
