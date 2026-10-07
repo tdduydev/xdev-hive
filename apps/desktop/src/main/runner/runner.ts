@@ -63,6 +63,8 @@ import {
   type Machine,
   type MachineCommand,
   type MachineTools,
+  type ToolApproval,
+  toolHash,
   type ProfileChange,
   type RunMergeOrder,
   type RunMr,
@@ -86,7 +88,7 @@ import { git, isGitRepo } from "#desktop/main/git.ts";
 import { NO_FEATURES, repoFeatures } from "#desktop/main/installer.ts";
 import { codexHome } from "./login.ts";
 import { renderContext, type WorktreeRule, type WorktreeSkill } from "#desktop/main/sync.ts";
-import { hookEnv, legacyPick, NO_TOOLS, prepareTool, readyHooks, rtkGain, runTools, toolDirs, userClaudeSettings, type ToolPick } from "./tools.ts";
+import { hookEnv, legacyPick, NO_TOOLS, prepareTool, readyHooks, rtkGain, runTools, trustOf, toolDirs, userClaudeSettings, type ToolPick } from "./tools.ts";
 import { collectArtifacts } from "./artifacts.ts";
 import { containerCommand } from "./container.ts";
 import { needsPlanApproval, PLAN_MAX, type RunPlan } from "@xdev-hive/core";
@@ -167,6 +169,8 @@ export interface RunnerHost {
   gitlab?(): string | null;
   /** The hub tools this machine's user allowed, by id: the toolHash they allowed (config.toolTrust). */
   toolTrust?(): Record<string, string>;
+  /** Persist a web approval before the runner records its receipt or starts work with it. */
+  applyToolTrust?(trust: Record<string, string>): void;
 }
 
 /** What the hub sent back on the last heartbeat. */
@@ -183,6 +187,7 @@ export interface HubUpdate {
   agentPolicy?: HubAgentPolicy | null;
   /** The tool catalog for this machine's projects (roadmap 28b); a hub older than it sends none. */
   tools?: MachineTools | null;
+  toolApprovals?: ToolApproval[];
   /** Profile changes asked for on the web (roadmap 18d); a hub older than them sends none. */
   profileChanges?: ProfileChange[];
   /** Merges asked for on the web (roadmap 18c), while this machine takes runs from the hub. */
@@ -968,6 +973,7 @@ export class Runner {
       requestedBy: r.requestedBy,
     }));
     const deliveredMessages = this.store.steeringAcks();
+    const appliedToolApprovals = this.store.toolApprovalAcks();
     const res = await this.#host
       .backend()
       .call(
@@ -979,6 +985,8 @@ export class Runner {
           runs,
           costs,
           deliveredMessages,
+          appliedToolApprovals,
+          toolStates: (this.#tools?.entries ?? []).map((e) => ({ id: e.id, hash: toolHash(e), trust: trustOf(e, this.#host.toolTrust?.() ?? {}) })),
           projects: this.#host.projects().map((p) => p.name),
           acceptsRuns: this.#host.settings().acceptHubRuns,
           ...this.#host.report?.(),
@@ -987,6 +995,7 @@ export class Runner {
       );
     // Only after the hub answered: a failed heartbeat sends the same costs next time.
     this.store.ackSteering(deliveredMessages);
+    this.store.ackToolApprovals(appliedToolApprovals);
     this.store.markCostsReported(finished.map((r) => r.id));
     const next = new Map(res.cooldowns.map((c) => [c.account, c]));
     // Cleared on the hub before it ended (someone pressed "Hết nghỉ"): end the local rest it came from too.
@@ -1012,6 +1021,7 @@ export class Runner {
       update: (res as { update?: UpdateOffer | null }).update ?? null,
       agentPolicy: res.agentPolicy ?? null,
       tools: res.tools ?? null,
+      toolApprovals: res.toolApprovals ?? [],
       profileChanges: res.profileChanges ?? [],
       // The user let project managers drive this machine from the web; without that a merge waits until it expires.
       mergeRuns: this.#host.settings().acceptHubRuns ? (res.mergeRuns ?? []) : [],
@@ -1020,6 +1030,14 @@ export class Runner {
     // Before the requests below are taken, so their runs start under the policy the hub just sent.
     this.#agentPolicy = update.agentPolicy ?? null;
     this.#tools = update.tools ?? null;
+    for (const approval of update.toolApprovals ?? []) {
+      if (this.store.toolApprovalApplied(approval.id)) continue;
+      const entry = this.#tools?.entries.find((e) => e.id === approval.toolId);
+      // A delayed response must never allow commands different from what the person reviewed.
+      if (!entry || toolHash(entry) !== approval.hash || !this.#host.applyToolTrust) continue;
+      this.#host.applyToolTrust({ ...this.#host.toolTrust?.(), [approval.toolId]: approval.hash });
+      this.store.recordToolApproval(approval.id);
+    }
     this.#archivedProjects = update.archivedProjects ?? [];
     this.#opts.onHub?.(update);
     this.#takeSyncs(update.syncCommands);
