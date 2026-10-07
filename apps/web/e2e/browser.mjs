@@ -124,7 +124,7 @@ class Tab {
         const el = txt == null ? all[0] : (all.find((e) => label(e) === txt) ?? all.find((e) => label(e).startsWith(txt)));
         if (!el || el.disabled) return null;
         // Scrolling a node of the Graph page's canvas changes the pane under the pointer; the Pipeline canvas is a wide scroller whose gates must be scrolled into view like a user would.
-        if (!el.closest("[data-graph-canvas]")) el.scrollIntoView({ block: "center", inline: "center" });
+        if (!el.closest("[data-graph-canvas]")) el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
         const r = el.getBoundingClientRect();
         return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
       },
@@ -3044,16 +3044,22 @@ async function main() {
     expect(request?.machineId === target.id && request.profileId === "codex-two" && request.instructions === old.instructions && request.timeoutMinutes === 15 && request.redispatch?.runId === old.runId && request.redispatch.continueBranch, "wrong redispatch input");
     await machineRpc("redispatch-two", "runs.requestResult", { id: request.id, status: "accepted", runId: "R-rd-next" });
     await machineRpc("redispatch-two", "runs.push", { machine: "redispatch-two", runs: [{ ...old, runId: "R-rd-next", status: "failed", createdAt: new Date().toISOString(), parentRun: null }] });
-    await tab.go(`tasks?task=${taskId}`);
-    await tab.waitFor("task chain includes both machines", () => document.querySelectorAll("[data-task-chain-run]").length === 2 && document.querySelector("[data-task-run-chain]").textContent.includes("Tiếp từ R-rd-old"));
-    await tab.click('[data-task-chain-run="R-rd-next"] [data-run-redispatch]');
-    await tab.waitFor("task redispatch form", () => document.querySelector("[data-redispatch-form]"));
-    await tab.click("[data-redispatch-continue]");
-    await tab.click("[data-redispatch-send]");
+    const taskTab = current = tabs.redispatchTask = await signInWithToken("redispatch-task", people.lan.token, "tasks");
+    await taskTab.eval((id) => document.querySelector(`[data-task="${id}"]`)?.click(), taskId);
+    await taskTab.waitFor("task chain includes both machines", () => document.querySelectorAll("[data-task-chain-run]").length === 2 && document.querySelector("[data-task-run-chain]").textContent.includes("Tiếp từ R-rd-old"));
+    await taskTab.waitFor("task detail sheet opened", () => {
+      const left = document.querySelector('[data-slot="sheet-content"]')?.getBoundingClientRect().left;
+      return left != null && left <= innerWidth - 390;
+    });
+    await taskTab.eval(() => document.querySelector('[data-task-chain-run="R-rd-next"] [data-run-redispatch]')?.click());
+    await taskTab.waitFor("task redispatch form", () => !!document.querySelector('[data-task-chain-run="R-rd-next"] [data-redispatch-form]'));
+    await taskTab.eval(() => document.querySelector("[data-redispatch-continue]")?.click());
+    expect(await taskTab.eval(() => document.querySelector("[data-redispatch-continue]")?.getAttribute("aria-checked")) === "false", "task retry branch option did not toggle off");
+    await taskTab.eval(() => document.querySelector("[data-redispatch-send]")?.click());
     const fresh = await until("fresh request", async () => (await rpc("runs.requests", { project: "payment" })).find(r => r.taskId === taskId && r.status === "pending"));
-    expect(fresh.redispatch?.runId === "R-rd-next" && !fresh.redispatch.continueBranch && fresh.redispatch.branch === null, "task retry did not request a fresh branch");
+    expect(fresh.redispatch?.runId === "R-rd-next" && !fresh.redispatch.continueBranch && fresh.redispatch.branch === null, `task retry did not request a fresh branch: ${JSON.stringify(fresh.redispatch)}`);
     await rpc("runs.cancelRequest", { id: fresh.id });
-    await tab.shot("redispatch-task-chain");
+    await taskTab.shot("redispatch-task-chain");
     const reader = current = tabs.redispatchReader = await signInWithToken("redispatch-reader", people.hoa.token, `runs?run=${encodeURIComponent(`${source.id}/${old.runId}`)}`);
     await reader.waitFor("reader sees run", () => !!document.querySelector("[data-run-review]"));
     expect(await reader.eval(() => !document.querySelector("[data-run-redispatch]")), "reader can redispatch");
