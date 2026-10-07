@@ -55,9 +55,31 @@ describe("69d transcript redactor", () => {
     assert.equal(byteByByte(multi, "a first-half-of-it\nb second-half-of-it\nc\n"), `${note}${note}c\n`);
     // Longer than the tail kept of a long line: it must still be seen whole before any of it is let out.
     const long = "L0ng" + "abcdef0123456789".repeat(130);
-    const out = byteByByte(new TerminalRedactor([long]), `${"a".repeat(9000)}${long}${"b".repeat(9000)}\nafter\n`);
+    const out = byteByByte(new TerminalRedactor([long]), `${"a ".repeat(4500)}${long}${" b".repeat(4500)}\nafter\n`);
     assert.ok(!out.includes(long.slice(0, 40)) && !out.includes("abcdef0123456789"), "no part of it leaves");
     assert.ok(out.includes(note) && out.endsWith("after\n"));
+    // The same inside a run of text too long to hold whole: the run is hidden unread.
+    const glued = byteByByte(new TerminalRedactor([long]), `${"a".repeat(9000)}${long}${"b".repeat(9000)}\nafter\n`);
+    assert.ok(!glued.includes("L0ng") && !glued.includes("abcdef0123456789"), "no part of it leaves");
+    assert.ok(glued.endsWith("after\n"));
+  });
+
+  it("holds a JWT with a long payload whole, through both filters", () => {
+    // Synthetic: its signature comes only after the payload, so no prefix of it matches the pattern.
+    const jwt = (payload: number) => "eyJ" + "hbGciOiJIUzI1NiJ9" + ".eyJ" + "p".repeat(payload) + ".SIGsig0123456789_-";
+    for (const payload of [3000, 9000, 20_000]) {
+      // Placed so the first cut of the long line falls inside the token while its end has not come yet.
+      const line = `${"word ".repeat(1200)}Authorization: Bearer ${jwt(payload)} trailing words\nafter\n`;
+      const machine = byteByByte(new TerminalRedactor(), line);
+      const hub = new TerminalRedactor();
+      const second = [...line].map((ch) => hub.writeText(ch)).join("") + hub.end();
+      for (const out of [machine, second]) {
+        assert.ok(!out.includes("eyJ") && !out.includes("pppppppp") && !out.includes("SIGsig"), `payload ${payload}: ${out.slice(-200)}`);
+        assert.ok(out.endsWith("after\n") && out.includes("(line hidden: it looked like a "));
+      }
+    }
+    // A run short enough to hold whole is still judged by the pattern, not just hidden for its length.
+    assert.match(byteByByte(new TerminalRedactor(), `${"word ".repeat(1200)}${jwt(3000)}\n`), /\(line hidden: it looked like a JWT\)\n$/);
   });
 
   it("drops OSC strings (clipboard writes, titles) whole", () => {
@@ -311,6 +333,31 @@ describe("69d hub recording store", () => {
     done();
   });
 
+  it("accepts chunks whose events were built with keys in any order", async () => {
+    const { s, store, done } = await hub();
+    const [a] = terminalRecordingChunks([
+      { type: "output" as const, text: "hello\n", seq: 1, at: "2026-10-08T00:00:00.000Z" },
+      { exitCode: 0, reason: "exited", type: "close" as const, at: "2026-10-08T00:00:01.000Z", seq: 2 },
+    ]);
+    assert.equal(store.put(runner, s.id, JSON.parse(JSON.stringify(a))), "stored", "as it arrives over the wire");
+    done();
+  });
+
+  it("hides a long JWT an old app let through, in what an authorized reader gets", async () => {
+    const { s, store, done } = await hub();
+    const jwt = "eyJ" + "hbGciOiJIUzI1NiJ9" + ".eyJ" + "p".repeat(9000) + ".SIGsig0123456789_-";
+    const at = "2026-10-08T00:00:00.000Z";
+    // Unfiltered and cut into small events, as a broken machine filter would upload it.
+    const text = `${"word ".repeat(1200)}${jwt} end\nafter\n`;
+    const events = Array.from({ length: Math.ceil(text.length / 500) }, (_, i) => ({ seq: i + 1, at, type: "output" as const, text: text.slice(i * 500, (i + 1) * 500) }));
+    for (const c of terminalRecordingChunks(events)) store.put(runner, s.id, c);
+    const page = store.read(person("alice"), { project: "app", sessionId: s.id, hubEnabled: true, stepUp: true });
+    const out = page.events.flatMap((e) => (e.type === "output" ? [e.text] : [])).join("");
+    assert.ok(!out.includes("eyJ") && !out.includes("pppppppp") && !out.includes("SIGsig"), out.slice(-200));
+    assert.ok(page.hubRedacted >= 1);
+    done();
+  });
+
   it("has no field for raw output", () => {
     const raw = { seq: 1, prevHash: "0".repeat(64), hash: "0".repeat(64), events: [{ seq: 1, at: "x", type: "output", data: "aGk=" }] };
     assert.equal(terminalRecordingChunkSchema.safeParse(raw).success, false);
@@ -421,7 +468,7 @@ describe("69d hub recording store", () => {
 
   it("pages long recordings and purges them after retention", async () => {
     const { h, s, sessions, store, dir, tick, done } = await hub();
-    const events = Array.from({ length: 40 }, (_, i) => ({ seq: i + 1, at: "t", type: "output" as const, text: "z".repeat(60_000) + "\n" }));
+    const events = Array.from({ length: 40 }, (_, i) => ({ seq: i + 1, at: "t", type: "output" as const, text: "z ".repeat(30_000) + "\n" }));
     const chunks = terminalRecordingChunks(events);
     assert.ok(chunks.length > 8);
     for (const c of chunks) store.put(runner, s.id, c);
