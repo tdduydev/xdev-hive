@@ -157,6 +157,7 @@ Kiểm giao diện web từ đầu tới cuối (chạy khi đổi trang web):
 
 ```bash
 npm run e2e -w @xdev-hive/web -- <thư mục ảnh>     # thêm --no-build để dùng bản build có sẵn
+npm run e2e -w @xdev-hive/web -- --only a,b --repeat 3   # chỉ bước a, b (kèm bước chúng cần; NEEDS trong browser.mjs); lặp 3 lần, mỗi lần hub mới, in số lần lỗi từng bước
 ```
 
 Lệnh này làm các bước sau:
