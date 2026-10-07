@@ -1945,6 +1945,23 @@ export class SqliteHive implements HiveBackend {
     return !!actor.tokenId && actor.tokenId === row.token_id && (actor.account ?? null) === strOrNull(row.owner);
   }
 
+  /**
+   * The desktop's password sign-in replaces its token with a new one of the same name and account: that is the owner
+   * re-pairing in person, so the machines of the old token follow the new one instead of being locked out.
+   */
+  rebindMachineToken(fromTokenId: string, toTokenId: string, actor: Actor): number {
+    if (!this.#machineIdentityReady) return 0;
+    return this.#tx(() => {
+      // Run credentials of the old token die with it: verify joins them to their parent hub_tokens row.
+      const rows = this.db.prepare("SELECT id FROM machines WHERE token_id = ?").all(fromTokenId) as Row[];
+      for (const row of rows) {
+        this.db.prepare("UPDATE machines SET token_id = ? WHERE id = ?").run(toTokenId, str(row.id));
+        this.audit(actor, "machines.repair", str(row.id), `${fromTokenId} → ${toTokenId} · sign-in`, { key: "audit.machineRepaired" });
+      }
+      return rows.length;
+    });
+  }
+
   #bindMachine(actor: Actor, machine: string): void {
     const row = this.db.prepare("SELECT token_id, owner FROM machines WHERE id = ?").get(actor.name) as Row | undefined;
     if (actor.tokenId) {
