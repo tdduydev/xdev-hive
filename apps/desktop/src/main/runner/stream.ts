@@ -342,3 +342,74 @@ export class AntigravityStream {
     return `${line}\n`;
   }
 }
+
+/** Copilot's --output-format json is JSONL. Event data fields follow the official streaming-event reference;
+ * an unauthenticated CLI probe cannot establish which optional events a particular account emits. */
+export class CopilotStream {
+  readonly state: StreamState = { activity: null };
+  readonly skills = new Set<string>();
+  lastText: string | null = null;
+  sessionId: string | null = null;
+  failure: string | null = null;
+  readonly tokens = { calls: 0, input: 0, cacheRead: 0, cacheWrite: 0, output: 0 };
+  #rest = "";
+
+  push(chunk: string): string {
+    const lines = (this.#rest + chunk).split("\n");
+    this.#rest = lines.pop() ?? "";
+    return lines.map((line) => this.#line(line)).join("");
+  }
+
+  end(): string {
+    const line = this.#rest;
+    this.#rest = "";
+    return line ? this.#line(line) : "";
+  }
+
+  #line(raw: string): string {
+    if (!raw.trim()) return "";
+    let e: Json;
+    try { e = JSON.parse(raw) as Json; }
+    catch { return `${raw}\n`; }
+    const data = (e.data && typeof e.data === "object" ? e.data : {}) as Json;
+    const id = e.sessionId ?? data.sessionId;
+    if (typeof id === "string" && id) this.sessionId = id;
+    let line: string | null = null;
+    switch (e.type) {
+      case "assistant.message": {
+        if (typeof data.content === "string" && data.content.trim()) {
+          this.lastText = data.content.trim();
+          line = this.lastText;
+        }
+        break;
+      }
+      case "session.task_complete":
+        if (typeof data.summary === "string" && data.summary.trim()) this.lastText = data.summary.trim();
+        break;
+      case "tool.execution_start":
+        this.state.activity = clipLine(`${String(data.toolName ?? "tool")}${data.mcpServerName ? ` (${String(data.mcpServerName)})` : ""}`, 160);
+        line = `▶ ${this.state.activity}`;
+        break;
+      case "tool.execution_complete":
+        if (data.success === false) line = `✗ ${clipLine(String(data.error ?? data.toolName ?? "tool failed"), 200)}`;
+        break;
+      case "session.error":
+        this.failure = clipLine(String(data.message ?? data.errorType ?? "Copilot session error"), 300);
+        line = `✗ ${this.failure}`;
+        break;
+      case "assistant.usage": {
+        const n = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0;
+        this.tokens.calls++;
+        this.tokens.input += n(data.inputTokens);
+        this.tokens.cacheRead += n(data.cacheReadTokens);
+        this.tokens.cacheWrite += n(data.cacheWriteTokens);
+        this.tokens.output += n(data.outputTokens);
+        break;
+      }
+      case "skill.invoked":
+        if (typeof data.name === "string" && this.skills.size < 256) this.skills.add(data.name);
+        break;
+    }
+    return line ? `${line}\n` : "";
+  }
+}

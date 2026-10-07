@@ -1,10 +1,11 @@
+import { allDispatchTasks } from "#ui/lib/inbox-source.ts";
 import { TaskRunChain } from "#ui/components/RunRedispatch.tsx";
 import { ImplementationPlans } from "#ui/components/ImplementationPlans.tsx";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@xdev-hive/ui/components/ui/tabs";
 import { ServiceFilter, useServiceFilter } from "#ui/components/ServiceFilter.tsx";
 import { ResponsiveTable as Table, ResponsiveTableRow as TableRow } from "#ui/components/ResponsiveTable.tsx";
 import { TaskModelChips } from "#ui/components/ModelChip.tsx";
-import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { Fragment, useContext, useEffect, useState, type ReactNode } from "react";
 import { cn } from "cn";
 import { DEFAULT_RUN_TIMEOUT, runTimeoutMinutes, WORK_ROLES, MAX_CANDIDATES, TASK_STATUSES, type WorkRole, type PreferKind, type RunRequest, type Task, type TaskNote, type TaskStatus } from "@xdev-hive/core";
 import { CLASS_FIELDS, CLASS_VALUES, classInput, classSource, type ClassField } from "#ui/lib/task-class.ts";
@@ -23,7 +24,7 @@ import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_T
 import { BatchSheet, PromptSheet, RolesSheet, SplitSheet } from "#ui/components/AgentSheets.tsx";
 import { BoardPage } from "#ui/pages/Board.tsx";
 import { Diff } from "#ui/components/Diff.tsx";
-import { ArtifactList } from "#ui/components/Artifacts.tsx";
+import { ArtifactContext, ArtifactRows, ArtifactText, useArtifacts } from "#ui/components/Artifacts.tsx";
 import { FlowList, FlowTaskPanel } from "#ui/components/FlowCard.tsx";
 import { MachineSelect, PreferKindSelect, ProfileSelect, takesRunsOf } from "#ui/components/MachinePicker.tsx";
 import { AgentAssignment } from "#ui/components/AgentAssignment.tsx";
@@ -100,6 +101,7 @@ function ViewSwitch({ value, onChange, board, agents = false }: { value: View; o
  */
 export function TaskWorkPage() {
   const { client, me } = useHive();
+  const [dispatchLink] = useHashParam("pipelineDispatch");
   const [view, setViewState] = useState<View>(readView);
   // A link to one task (#/tasks?task=…, from Hôm nay, a run or memory) opens the list: the task's panel is there.
   // Read from the address each time rather than useHashParam: the list takes the parameter out when it opens the
@@ -112,6 +114,8 @@ export function TaskWorkPage() {
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
+  // A pipeline total belongs to the scope, so its link must open the shared list even on a machine Board.
+  if (dispatchLink === "1") return <TasksPage view="list" />;
   if (!client.desktop) return <TasksPage />;
   // Connected to a hub the app has the Board of this machine's projects only (roadmap 44); the list is the web's.
   if (me.mode === "hub") return <BoardPage />;
@@ -133,6 +137,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
   const scoped = scopeProject(scope);
   const [linkedProject] = useHashParam("project");
   const [linkedIds] = useHashParam("ids");
+  const [linkedDispatch] = useHashParam("pipelineDispatch");
   const [linkedKind] = useHashParam("kind");
   useEffect(() => {
     if (linkedProject && projects.includes(linkedProject) && linkedProject !== scoped) setScope({ kind: "project", project: linkedProject });
@@ -151,8 +156,10 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
   const filter = view === "list" ? status : "";
   const taskPoll = usePoll(me.mode === "hub" ? 5000 : null);
   const list = useQuery(
-    () => client.call("tasks.list", { ...(service ? { project: service } : scopeFilter(scope)), status: filter || undefined }),
-    [client, key, service, filter, taskPoll],
+    async () => linkedDispatch === "1"
+      ? (await allDispatchTasks(client, { ...(linkedProject ? { project: linkedProject } : service ? { project: service } : scopeFilter(scope)) })).filter((task) => !filter || task.status === filter)
+      : client.call("tasks.list", { ...(service ? { project: service } : scopeFilter(scope)), status: filter || undefined }),
+    [client, key, service, filter, taskPoll, linkedDispatch, linkedProject],
   );
   const next = useQuery(() => client.call("tasks.next", { ...(service ? { project: service } : scopeFilter(scope)), limit: 3 }), [client, key, service, list.data]);
   // Runs queued on a machine from here (hub only): which machine a task waits for, and what became of it.
@@ -582,7 +589,9 @@ function StatusSelect({ task, onChanged }: { task: Task; onChanged: () => void }
 function TaskDetail({ task, requests, hub, onChanged, onRoles }: { task: Task; requests: RunRequest[]; hub: boolean; onChanged: () => void; onRoles: () => void }) {
   const t = useT();
   const allow = useCan();
+  const files = useArtifacts(task.project, task.id, undefined, undefined, task.updatedAt);
   return (
+    <ArtifactContext.Provider value={files.data ?? []}>
     <SheetContent className="w-full gap-0 sm:max-w-xl">
       <SheetHeader className="border-b pr-10">
         <SheetTitle className="flex flex-col gap-1">
@@ -599,7 +608,12 @@ function TaskDetail({ task, requests, hub, onChanged, onRoles }: { task: Task; r
         </SheetDescription>
       </SheetHeader>
       <Tabs defaultValue="details" className="min-h-0 flex-1 overflow-y-auto p-4">
-        <TabsList variant="line" className="shrink-0"><TabsTrigger value="details" className="min-h-(--control-h-touch)">{t("planApproval.detail")}</TabsTrigger>{hub ? <TabsTrigger value="plan" className="min-h-(--control-h-touch)" data-task-plan-tab>{t("planApproval.tab")}</TabsTrigger> : null}</TabsList>
+        <TabsList variant="line" className="shrink-0 flex-wrap">
+          <TabsTrigger value="details" className="min-h-(--control-h-touch)">{t("planApproval.detail")}</TabsTrigger>
+          {hub ? <TabsTrigger value="artifacts" className="min-h-(--control-h-touch)" data-task-artifacts-tab>{t("artifacts.title")} ({files.data?.length ?? "…"})</TabsTrigger> : null}
+          {hub ? <TabsTrigger value="plan" className="min-h-(--control-h-touch)" data-task-plan-tab>{t("planApproval.tab")}</TabsTrigger> : null}
+        </TabsList>
+        {hub ? <TabsContent value="artifacts"><ArtifactRows files={files.data ?? []} error={files.error} loading={files.loading} onChanged={files.reload} context={task.id} /></TabsContent> : null}
         {hub ? <TabsContent value="plan"><ImplementationPlans project={task.project} taskId={task.id} /></TabsContent> : null}
         <TabsContent value="details" className="flex flex-col gap-5">
         <section className="grid grid-cols-[auto_1fr] items-start gap-x-4 gap-y-3 text-sm">
@@ -636,16 +650,15 @@ function TaskDetail({ task, requests, hub, onChanged, onRoles }: { task: Task; r
         <section className="flex flex-col gap-1.5">
           <h3 className="text-xs font-medium text-muted-foreground">{t("tasks.colNote")}</h3>
           {task.note ? (
-            <div className="rounded-md border bg-muted/40 p-3 text-xs leading-relaxed whitespace-pre-wrap wrap-anywhere">{task.note}</div>
+            <div className="rounded-md border bg-muted/40 p-3 text-xs leading-relaxed whitespace-pre-wrap wrap-anywhere"><ArtifactText text={task.note} /></div>
           ) : (
             <p className="text-xs text-muted-foreground">{t("tasks.noNote")}</p>
           )}
         </section>
         <NoteHistory task={task} />
-        {/* What the task's runs made and the hub kept (roadmap 41c); only a hub has them. */}
-        {hub ? <ArtifactList project={task.project} taskId={task.id} /> : null}
       </TabsContent></Tabs>
     </SheetContent>
+    </ArtifactContext.Provider>
   );
 }
 
@@ -722,6 +735,7 @@ function TaskClassFields({ task, onChanged }: { task: Task; onChanged: () => voi
 
 /** The handovers kept beside the latest (roadmap 41a): each one as it was written, and what it changed. */
 function NoteHistory({ task }: { task: Task }) {
+  const artifacts = useContext(ArtifactContext);
   const { client } = useHive();
   const t = useT();
   // A note is written with a status change, so the task's updatedAt is enough to know the history may have grown.
@@ -747,7 +761,7 @@ function NoteHistory({ task }: { task: Task }) {
                   {t("tasks.noteBy", { who: n.onBehalf ? `${n.author} (${n.onBehalf})` : n.author, time: formatTime(n.createdAt) })}
                 </span>
               </div>
-              <div className="max-h-40 overflow-y-auto leading-relaxed whitespace-pre-wrap wrap-anywhere">{n.note}</div>
+              <div className="max-h-40 overflow-y-auto leading-relaxed whitespace-pre-wrap wrap-anywhere"><ArtifactText text={n.note} files={n.source?.run ? artifacts.filter((a) => a.runId === n.source!.run && (!n.source!.machine || !a.source?.machine || a.source.machine === n.source!.machine)) : artifacts} /></div>
               {before ? (
                 <div>
                   <Button

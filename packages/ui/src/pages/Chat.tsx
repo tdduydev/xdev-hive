@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, BookMarked, Bot, Check, CheckCheck, MessageSquarePlus, Pencil, RotateCcw, Search, SendHorizontal, Settings2, Square, Trash2, X } from "lucide-react";
 import { cn } from "cn";
-import { CHAT_EFFORTS, CHAT_MODEL_ALIASES, HUB_SCOPE, policySummary, type AgentPolicy, type ChatAction, type ChatEffort, type ChatMessage, type ChatThread } from "@xdev-hive/core";
+import { CHAT_EFFORTS, CHAT_MODEL_ALIASES, HUB_SCOPE, policySummary, type AgentPolicy, type ChatAction, type ChatPlan, type ChatEffort, type ChatMessage, type ChatThread } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card } from "@xdev-hive/ui/components/ui/card";
 import { Input } from "@xdev-hive/ui/components/ui/input";
@@ -814,10 +814,11 @@ function ActionList({
   const t = useT();
   const act = useAction();
   const [stopped, setStopped] = useState(false);
+  const [planDispatch, setPlanDispatch] = useState<Record<string, boolean>>({});
   const waiting = reply.actions.filter((a) => a.status === "proposed").length;
   const decideAll = (accept: boolean) =>
     void act.run(async () => {
-      const actions = await client.call("chat.decideAll", { replyId: reply.id, accept });
+      const actions = await client.call("chat.decideAll", { replyId: reply.id, accept, autoDispatch: planDispatch });
       // The hub stopped at one that failed: the rest still wait.
       setStopped(accept && actions.some((a) => a.status === "proposed"));
       onDecidedAll(reply.id, actions);
@@ -841,7 +842,7 @@ function ActionList({
       </div>
       <ul className="flex flex-col gap-2">
         {reply.actions.map((a) => (
-          <ActionItem key={a.id} action={a} taskIds={taskIds} manage={manage} onDecided={onDecided} />
+          <ActionItem key={a.id} action={a} taskIds={taskIds} manage={manage} onDecided={onDecided} autoDispatch={planDispatch[String(a.id)] ?? true} onAutoDispatch={value => setPlanDispatch(old => ({ ...old, [String(a.id)]: value }))} />
         ))}
       </ul>
       {stopped && waiting ? <Notice tone="warn">{t("chat.stoppedAll")}</Notice> : null}
@@ -850,17 +851,85 @@ function ActionList({
   );
 }
 
+/**
+ * Roadmap 60d: what a plan makes when someone presses Start, all read before it runs: the spec, each task with what
+ * "done" means and what it waits for, and the batches the work is expected to land in.
+ */
+function PlanCard({ plan, action: a, taskIds }: { plan: ChatPlan; action: ChatAction; taskIds: string[] }) {
+  const t = useT();
+  const made = a.status === "done";
+  // Wider tap targets on a phone only: on a desktop the links sit in the text.
+  const tap = "inline-flex min-h-11 items-center md:min-h-0";
+  return (
+    <div className="flex min-w-0 flex-col gap-2 wrap-anywhere" data-plan={plan.spec.key}>
+      {/* Where the spec goes, outside the fold: once made, the link to it is what the card is for. */}
+      <div>
+        {t("chat.planSpec")}:{" "}
+        {made && a.result?.specKey ? (
+          <a className={cn(LINK, tap, "font-mono text-[0.9em]")} href={`#/docs?doc=${encodeURIComponent(a.result.specKey)}`}>
+            {a.result.specKey}
+          </a>
+        ) : (
+          <span className="font-mono text-[0.9em] text-muted-foreground">{plan.spec.key}</span>
+        )}
+      </div>
+      <details open={a.status === "proposed"} className="rounded-md bg-background/60 p-2">
+        <summary className="flex min-h-11 cursor-pointer items-center font-medium md:min-h-0">{plan.spec.title}</summary>
+        <ReplyMarkdown text={plan.spec.content} taskIds={taskIds} />
+      </details>
+      <div className="font-medium">{t("chat.planTasks")}</div>
+      <ul className="flex flex-col gap-1.5">
+        {plan.tasks.map((item) => {
+          const service = item.project ?? plan.project ?? a.project;
+          const where = [
+            service !== a.project ? t("chat.actionService", { project: service }) : null,
+            item.dependsOn.length ? t("chat.actionDeps", { ids: item.dependsOn.join(", ") }) : null,
+          ].filter(Boolean);
+          return (
+            <li key={item.id} className="flex flex-col gap-0.5 rounded-md bg-background/60 p-2" data-plan-task={item.id}>
+              <div>
+                {made || taskIds.includes(item.id) ? (
+                  <a className={cn(LINK, tap, "font-mono text-[0.9em]")} href={`#/tasks?task=${encodeURIComponent(item.id)}`}>
+                    {item.id}
+                  </a>
+                ) : (
+                  <span className="font-mono text-[0.9em]">{item.id}</span>
+                )}
+                : <span className="font-medium">{item.title}</span>
+              </div>
+              {where.length ? <div className="text-muted-foreground">{where.join(" · ")}</div> : null}
+              <p className="whitespace-pre-wrap">{t("chat.planAcceptance", { text: item.acceptance })}</p>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="font-medium">{t("chat.planBatches")}</div>
+      <ol className="flex list-inside list-decimal flex-col gap-0.5">
+        {plan.batches.map((batch, i) => (
+          <li key={i}>
+            {batch.title}: <span className="font-mono text-[0.9em]">{batch.taskIds.join(", ")}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 /** One thing the leader asked to do: what, why, and for a project manager Confirm (runs with their rights) or Set aside. */
 /** One action a leader proposed: what it does, why, and (for a manager, while proposed) confirm or set aside. */
-export function ActionItem({ action: a, taskIds, manage, onDecided }: { action: ChatAction; taskIds: string[]; manage: boolean; onDecided: (action: ChatAction) => void }) {
+export function ActionItem({ action: a, taskIds, manage, onDecided, autoDispatch: controlledDispatch, onAutoDispatch }: { action: ChatAction; taskIds: string[]; manage: boolean; onDecided: (action: ChatAction) => void; autoDispatch?: boolean; onAutoDispatch?: (value: boolean) => void }) {
   const { client } = useHive();
   const t = useT();
   const act = useAction();
   const task = actionTask(a);
+  const plan = a.kind === "plan.create" ? (a.input as unknown as ChatPlan) : null;
+  const [localDispatch, setLocalDispatch] = useState(true);
+  const autoDispatch = controlledDispatch ?? localDispatch;
+  const setAutoDispatch = onAutoDispatch ?? setLocalDispatch;
   const input = a.input as Record<string, string | number | boolean | string[] | null | undefined>;
   const decide = (accept: boolean) =>
     void act.run(async () => {
-      onDecided(await client.call("chat.decide", { actionId: a.id, accept }));
+      onDecided(await client.call("chat.decide", { actionId: a.id, accept, ...(plan ? { autoDispatch } : {}) }));
     });
   const detail: string[] = [];
   // A task for another service of the system (roadmap 19d): which one, first.
@@ -904,7 +973,9 @@ export function ActionItem({ action: a, taskIds, manage, onDecided }: { action: 
         {/* Roadmap 29c: the project lets its leader run this kind alone, as whoever sent the message. */}
         {a.auto ? <Badge tone="info">{t("chat.autoRan", { who: a.decidedBy ?? "?" })}</Badge> : null}
         <span className="min-w-0 text-sm wrap-anywhere">
-          {a.kind === "task.create" ? (
+          {plan ? (
+            `${t("chat.planTitle")}: ${plan.spec.title}`
+          ) : a.kind === "task.create" ? (
             <>
               {t("chat.actionCreate")} {a.status === "done" || (task && taskIds.includes(task)) ? taskLink : <span className="font-mono text-[0.9em]">{task}</span>}: {String(input.title ?? "")}
             </>
@@ -952,6 +1023,7 @@ export function ActionItem({ action: a, taskIds, manage, onDecided }: { action: 
           )}
         </span>
       </div>
+      {plan ? <PlanCard plan={plan} action={a} taskIds={taskIds} /> : null}
       {detail.length ? <div className="text-muted-foreground">{detail.join(" · ")}</div> : null}
       {a.kind === "agent.policy" ? (
         <div className="flex flex-col gap-0.5 rounded-md bg-background/60 p-2 wrap-anywhere">
@@ -964,11 +1036,12 @@ export function ActionItem({ action: a, taskIds, manage, onDecided }: { action: 
       <div className="text-muted-foreground wrap-anywhere">{t("chat.actionReason", { reason: a.reason })}</div>
       {a.status === "proposed" && manage ? (
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" className="h-7" disabled={act.busy} onClick={() => decide(true)}>
+          {plan ? <label className="flex min-h-11 w-full items-center gap-2 text-sm"><input type="checkbox" checked={autoDispatch} onChange={e => setAutoDispatch(e.target.checked)} disabled={act.busy} data-plan-auto-dispatch />{t("chat.planAutoDispatch")}</label> : null}
+          <Button size="sm" className="min-h-11 min-w-11 md:h-7 md:min-h-0" disabled={act.busy} onClick={() => decide(true)}>
             <Check />
-            {t("chat.confirm")}
+            {t(plan ? "chat.planDo" : "chat.confirm")}
           </Button>
-          <Button size="sm" variant="ghost" className="h-7" disabled={act.busy} onClick={() => decide(false)}>
+          <Button size="sm" variant="ghost" className="min-h-11 min-w-11 md:h-7 md:min-h-0" disabled={act.busy} onClick={() => decide(false)}>
             <X />
             {t("chat.dismiss")}
           </Button>

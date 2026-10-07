@@ -3,7 +3,7 @@
 //   Claude Code  --mcp-config <file> (runner writes it 0600, mounts it read-only, removes it)
 //   Codex        -c overrides: the shim's server off, an HTTP one with the token from HIVE_HUB_TOKEN
 //   Gemini CLI   the image's /etc/gemini-cli/settings.json, filled from HIVE_HUB_URL, HIVE_HUB_TOKEN…
-// The headers only narrow what the machine's token may do (see the hub's /mcp). No Electron imports.
+// The runner supplies a credential bound to this run; headers are audit labels, never approval authority.
 import { agentSource } from "@xdev-hive/core";
 
 export interface HubMcp {

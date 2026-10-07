@@ -362,7 +362,7 @@ export interface MergedCleanup {
 }
 
 /**
- * After its MR was merged: removes a task's worktree and deletes its local branch, but only when both point at the
+ * After its MR was merged: removes a task's worktree and keeps its local branch, but only when both point at the
  * commit that was merged (`mergedSha`, the MR's head). A newer commit (pushed after, or a run that went on) or edits
  * not committed yet are work the merge does not hold, so then everything stays. Agent config the runner copied in
  * and the docs Hive renders do not count as edits: commitAll keeps them out of the branch too.
@@ -385,16 +385,8 @@ export function cleanupMerged(repo: string, dir: string | null, branch: string, 
       // Forced only for what the check above left out (copied config, ignored dependencies and builds).
       git(repo, ["worktree", "remove", "--force", wt]);
     }
-    if (head) {
-      try {
-        // -D: a squash or rebase merge leaves the branch out of the target's history, though its work is in.
-        git(repo, ["branch", "-D", branch]);
-      } catch (err) {
-        // Checked out in another working copy (the user's own, say): the worktree is gone, the branch stays.
-        return { worktree: wt !== null, branch: false, kept: "failed", reason: gitErrorText(err) };
-      }
-    }
-    return { worktree: wt !== null, branch: head !== null, kept: null, reason: null };
+    // Reopening a task recreates its worktree from this branch, including after squash or rebase merges.
+    return { worktree: wt !== null, branch: false, kept: null, reason: null };
   } catch (err) {
     return kept("failed", gitErrorText(err));
   }

@@ -9,7 +9,7 @@ export type Autonomy = (typeof AUTONOMY)[number];
 export const NETWORK = ["off", "allowlist", "open"] as const; // tăng dần
 export type NetworkMode = (typeof NETWORK)[number];
 /** The kinds a policy names models for: a custom CLI has no model flag the runner knows. */
-export const POLICY_AGENT_KINDS = ["claude", "codex", "gemini", "antigravity"] as const satisfies readonly AgentKind[];
+export const POLICY_AGENT_KINDS = ["claude", "codex", "gemini", "antigravity", "copilot"] as const satisfies readonly AgentKind[];
 
 export interface AgentPolicy {
   /** Model được dùng theo loại agent (claude, codex, gemini). Không có hoặc []: model nào cũng được. */
@@ -112,10 +112,11 @@ export const AUTONOMY_FLAGS: Partial<Record<AgentKind, { valued: string[]; switc
   antigravity: { valued: [], switches: ["--dangerously-skip-permissions"] },
   codex: { valued: ["--sandbox", "-s"], switches: ["--full-auto", "--dangerously-bypass-approvals-and-sandbox"] },
   gemini: { valued: ["--approval-mode"], switches: ["-y", "--yolo"] },
+  copilot: { valued: ["--mode"], switches: ["--allow-all-tools", "--allow-all", "--yolo", "--plan", "--autopilot"] },
 };
 
 /** The flags the runner puts in for a level (the profile's own come out first). */
-export const AUTONOMY_ARGS: Record<"claude" | "codex" | "gemini" | "antigravity", Record<Autonomy, string[]>> = {
+export const AUTONOMY_ARGS: Record<Exclude<AgentKind, "custom">, Record<Autonomy, string[]>> = {
   // Lowering flags are unverified: the runner refuses restrictive agy policies instead of fabricating flags.
   antigravity: { read: [], propose: [], edit: [], full: ["--dangerously-skip-permissions"] },
   claude: {
@@ -135,6 +136,12 @@ export const AUTONOMY_ARGS: Record<"claude" | "codex" | "gemini" | "antigravity"
     propose: ["--approval-mode", "plan"],
     edit: ["--approval-mode", "auto_edit"],
     full: ["--approval-mode", "yolo"],
+  },
+  copilot: {
+    read: ["--mode", "plan", "--deny-tool=write", "--deny-tool=shell"],
+    propose: ["--mode", "plan", "--deny-tool=write", "--deny-tool=shell"],
+    edit: ["--allow-tool=write", "--allow-tool=read", "--deny-tool=shell"],
+    full: ["--allow-all-tools"],
   },
 };
 
@@ -179,6 +186,7 @@ export function autonomyOf(kind: AgentKind, args: string[]): Autonomy {
 export function autonomySource(kind: AgentKind, args: string[]): { level: Autonomy; flag: string | null } {
   const flags = AUTONOMY_FLAGS[kind];
   if (!flags) return { level: "edit", flag: null };
+  if (kind === "copilot" && args.includes("--plan")) return { level: "read", flag: "--plan" };
   const full = args.find((a) => FULL_SWITCHES.includes(a) && flags.switches.includes(a));
   if (full) return { level: "full", flag: full };
   const use = flagUse(args, flags.valued);

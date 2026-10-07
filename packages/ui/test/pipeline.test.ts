@@ -25,9 +25,9 @@ describe("pipeline page", () => {
     assert.equal(metrics.spec.medianHours, 4);
     assert.equal(metrics.spec.firstPass, 50);
   });
-  it("has eleven fixed stages and exactly the eight policy gates", () => {
-    assert.equal(PIPELINE_STEPS.length, 11);
-    assert.deepEqual(Object.values(PIPELINE_STEP_GATES), ["spec", "plan", "tasks", "dispatch", "review", "fix", "test", "merge"]);
+  it("has twelve fixed stages and exactly the nine policy gates", () => {
+    assert.equal(PIPELINE_STEPS.length, 12);
+    assert.deepEqual(Object.values(PIPELINE_STEP_GATES), ["spec", "plan", "tasks", "dispatch", "review", "fix", "test", "merge", "release"]);
   });
   it("never counts approval after a rejection as first pass", () => {
     const metrics = gateMetrics([record({ id: 1, status: "rejected" }), record({ id: 2 }), record({ id: 3, taskId: "F-2" }), record({ id: 4, taskId: "F-3", firstAttempt: false })], Date.parse("2026-10-06T00:00:00Z"));

@@ -1,4 +1,4 @@
-// Stand-in for claude / codex / gemini in tests. Behaviour comes from FAKE_MODE.
+// Stand-in for claude / codex / gemini / copilot in tests. Behaviour comes from FAKE_MODE.
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 // Combine a rejected startup with the existing steering and planning protocols.
 if (process.env.FAKE_REJECT_MODEL === "1" && !process.argv.includes("--help") &&
     process.argv.some((a) => a === "-m" || a === "--model" || a.startsWith("--model="))) {
-  if (process.env.FAKE_RECORD) appendFileSync(process.env.FAKE_RECORD, JSON.stringify({ agent: process.env.HIVE_AGENT, prompt: process.argv.at(-1), cwd: process.cwd(), args: process.argv.slice(2), readOnly: process.env.HIVE_READONLY ?? null }) + "\n");
+  if (process.env.FAKE_RECORD) appendFileSync(process.env.FAKE_RECORD, JSON.stringify({ agent: process.env.HIVE_AGENT, prompt: process.argv.at(-1), cwd: process.cwd(), args: process.argv.slice(2), readOnly: process.env.HIVE_READONLY ?? null, runToken: process.env.HIVE_RUN_TOKEN ?? null }) + "\n");
   console.error("unknown model: requested");
   process.exit(1);
 }
@@ -42,6 +42,18 @@ if (process.env.FAKE_MODE === "steer-resume") {
   if (resume) writeFileSync("work-steered.txt", readFileSync(".xdev-hive/steer.md", "utf8"));
   console.log(JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: resume ? "Applied additional instructions" : "First turn done" } }));
   console.log(JSON.stringify({ type: "turn.completed", usage: { input_tokens: 10, cached_input_tokens: 2, output_tokens: 3 } }));
+  process.exit(0);
+}
+
+if (process.env.FAKE_MODE === "copilot-ok" || process.env.FAKE_MODE === "copilot-event-error") {
+  const args = process.argv.slice(2);
+  if (process.env.FAKE_RECORD) appendFileSync(process.env.FAKE_RECORD, JSON.stringify({ agent: process.env.HIVE_AGENT, prompt: args[args.indexOf("-p") + 1], cwd: process.cwd(), args }) + "\n");
+  console.log(JSON.stringify({ type: "session.start", sessionId: "fake-copilot-session", data: {} }));
+  console.log(JSON.stringify({ type: "tool.execution_start", data: { toolName: "write" } }));
+  if (process.env.FAKE_MODE === "copilot-ok") writeFileSync("work-copilot.txt", "copilot fixture\n");
+  console.log(JSON.stringify({ type: "assistant.message", data: { messageId: "m1", content: "Copilot fixture complete" } }));
+  console.log(JSON.stringify({ type: "assistant.usage", data: { model: "auto", inputTokens: 25, cacheReadTokens: 5, cacheWriteTokens: 2, outputTokens: 7, cost: 1 } }));
+  if (process.env.FAKE_MODE === "copilot-event-error") console.log(JSON.stringify({ type: "session.error", data: { errorType: "authentication", message: "fixture authentication failed" } }));
   process.exit(0);
 }
 
@@ -97,7 +109,7 @@ const prompt = process.argv[2] ?? "";
 if (process.env.FAKE_RECORD) {
   appendFileSync(
     process.env.FAKE_RECORD,
-    `${JSON.stringify({ agent: process.env.HIVE_AGENT, task: process.env.HIVE_TASK, project: process.env.HIVE_PROJECT, cwd: process.cwd(), prompt, args: process.argv.slice(3), readOnly: process.env.HIVE_READONLY ?? null, hostOnly: process.env.HIVE_TEST_HOST_ONLY ?? null, oauth: process.env.CLAUDE_CODE_OAUTH_TOKEN ? "set" : null, hubToken: process.env.HIVE_HUB_TOKEN ? "set" : null, proxy: process.env.HTTPS_PROXY ?? null })}\n`,
+    `${JSON.stringify({ agent: process.env.HIVE_AGENT, task: process.env.HIVE_TASK, project: process.env.HIVE_PROJECT, cwd: process.cwd(), prompt, args: process.argv.slice(3), readOnly: process.env.HIVE_READONLY ?? null, runToken: process.env.HIVE_RUN_TOKEN ?? null, hostOnly: process.env.HIVE_TEST_HOST_ONLY ?? null, oauth: process.env.CLAUDE_CODE_OAUTH_TOKEN ? "set" : null, hubToken: process.env.HIVE_HUB_TOKEN ? "set" : null, proxy: process.env.HTTPS_PROXY ?? null })}\n`,
   );
 }
 

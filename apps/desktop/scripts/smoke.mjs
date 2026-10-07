@@ -8,7 +8,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import electron from "electron";
@@ -40,7 +40,7 @@ execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin]);
 git("remote", "add", "origin", origin);
 git("push", "-q", "origin", "main");
 const token = "mock-gitlab-smoke-token";
-const gitlab = ["setup-guide", "run-steer", "idle-update"].includes(process.env.HIVE_SMOKE_ONLY)
+const gitlab = ["setup-guide", "run-steer", "idle-update", "worktrees"].includes(process.env.HIVE_SMOKE_ONLY)
   ? { base: "", close: async () => {} }
   : await startMockGitLab(token);
 
@@ -119,6 +119,8 @@ hive.close();
 
 async function shoot(name, page, delay, extra = {}) {
   const shot = path.join(out, `${name}.png`);
+  const resultFile = path.join(work, `${name}.result.json`);
+  rmSync(resultFile, { force: true });
   // Async spawn: the mock GitLab in this process must keep answering while the app runs.
   // The throwaway dir as cwd, as a packaged app has none in the repo: what the app starts without a cwd of its own
   // (a CLI's --version) writes there, not into apps/desktop.
@@ -132,13 +134,28 @@ async function shoot(name, page, delay, extra = {}) {
       HOME: smokeHome,
       HIVE_CONFIG: path.join(work, "config.json"),
       HIVE_SMOKE_SCREENSHOT: shot,
+      HIVE_SMOKE_RESULT: resultFile,
       HIVE_SMOKE_HASH: `/${page}`,
       HIVE_SMOKE_DELAY_MS: String(delay),
       ...extra,
     },
   });
+  // Chromium can hang during macOS teardown; only a completed set of assertions can shorten that wait.
+  let completedCode;
+  let teardownTimer;
+  const completion = setInterval(() => {
+    if (completedCode !== undefined || !existsSync(resultFile)) return;
+    try {
+      const result = JSON.parse(readFileSync(resultFile, "utf8"));
+      if (![0, 3].includes(result.exitCode)) return;
+      completedCode = result.exitCode;
+      teardownTimer = setTimeout(() => child.kill("SIGKILL"), 5000);
+    } catch { /* The app may still be writing its result. */ }
+  }, 100);
   const timer = setTimeout(() => child.kill("SIGKILL"), 60_000);
-  const { code, signal } = await new Promise((resolve) => child.once("exit", (code, signal) => resolve({ code, signal })));
+  const { code, signal } = await new Promise((resolve) => child.once("exit", (code, signal) => resolve({ code: code ?? completedCode, signal })));
+  clearInterval(completion);
+  clearTimeout(teardownTimer);
   clearTimeout(timer);
   if (code !== 0 || !existsSync(shot)) {
     console.error(`smoke failed on ${name}`, signal ?? code, existsSync(shot) ? "" : "(no screenshot)");
@@ -230,6 +247,22 @@ if (process.env.HIVE_SMOKE_ONLY === "run-steer") {
   }
   await gitlab.close();
   console.log(`run steering screenshots in ${out}`);
+  process.exit(0);
+}
+
+if (process.env.HIVE_SMOKE_ONLY === "worktrees") {
+  const wt = path.join(work, "worktrees", "demo", "T-001");
+  mkdirSync(path.dirname(wt), { recursive: true });
+  git("worktree", "add", "-b", "ai/T-001", wt);
+  writeFileSync(path.join(wt, "draft.txt"), "Uncommitted work\n");
+  for (const phone of [false, true]) await shoot(phone ? "worktrees-mobile" : "worktrees-desktop", "agents", 3500, {
+    ...(phone ? { HIVE_SMOKE_SIZE: "390x844" } : {}),
+    HIVE_SMOKE_CLICK: '[data-worktrees="local"]',
+    HIVE_SMOKE_EXPECT: '[data-worktree="T-001"] [data-delete-worktree]',
+    HIVE_SMOKE_ASSERT: 'document.querySelector("[data-worktree-panel]").textContent.includes("ai/T-001")' + (phone ? ' && document.documentElement.scrollWidth <= innerWidth && document.querySelector("[data-delete-worktree]").getBoundingClientRect().height >= 44' : ''),
+  });
+  await gitlab.close();
+  console.log(`worktree screenshots in ${out}`);
   process.exit(0);
 }
 

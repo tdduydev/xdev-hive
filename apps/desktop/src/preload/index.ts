@@ -1,3 +1,4 @@
+import type { WorktreeTarget } from "@xdev-hive/core";
 import { contextBridge, ipcRenderer } from "electron";
 
 type Result = { ok: true; value: unknown } | { ok: false; error: { code: string; message: string; key?: string; vars?: unknown } };
@@ -58,6 +59,8 @@ contextBridge.exposeInMainWorld("hive", {
     runDiff: (id: string) => invoke("desktop:runDiff", id),
     steerRun: (id: string, text: string) => invoke("desktop:steerRun", id, text),
     cancelRun: (id: string) => invoke("desktop:cancelRun", id),
+    worktrees: () => invoke("desktop:worktrees"),
+    manageWorktrees: (targets: WorktreeTarget[], force: boolean) => invoke("desktop:manageWorktrees", targets, force),
     removeWorktree: (id: string) => invoke("desktop:removeWorktree", id),
     pickCandidate: (id: string) => invoke("desktop:pickCandidate", id),
     updateProject: (name: string, patch: unknown) => invoke("desktop:updateProject", name, patch),

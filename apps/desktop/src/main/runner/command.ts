@@ -272,6 +272,8 @@ export interface BuiltCommand {
   claudeStream?: boolean;
   /** Codex `exec --json` (roadmap 28c): events on stdout, with each turn's tokens. */
   codexJson?: boolean;
+  /** Copilot's --output-format json emits JSONL, including messages and a terminal event. */
+  copilotJson?: boolean;
   antigravityStream?: boolean;
   /** Extra env the CLI needs for these args. */
   env?: Record<string, string>;
@@ -328,6 +330,17 @@ export function buildCommand(
       codexJson = true;
     }
   }
+  if (profile.kind === "copilot") {
+    const hive = runMcpServers(profile.id, vars.project, NO_FEATURES, { task: vars.task, id: vars.run, readOnly: profile.readOnly })[MCP_NAME] as Record<string, unknown>;
+    const servers: Record<string, unknown> = { [MCP_NAME]: { type: "local", ...hive, tools: ["*"] } };
+    // Copilot expands ${VAR} in MCP env values, so catalog credentials stay in the child environment, not argv/logs.
+    if (catalog) for (const e of tools) {
+      if (e.kind !== "mcp" || !e.mcp || (mcp !== null && !mcp.includes(e.id))) continue;
+      servers[e.id] = { ...claudeToolServer(e, ctx), type: "local", tools: ["*"] };
+      args.push(`--allow-tool=${e.id}`);
+    }
+    args.push("--additional-mcp-config", JSON.stringify({ mcpServers: servers }));
+  }
   return {
     bin: expandHome(profile.bin),
     args,
@@ -335,6 +348,7 @@ export function buildCommand(
     ...(claudeJson ? { claudeJson } : {}),
     ...(claudeStream ? { claudeStream } : {}),
     ...(codexJson ? { codexJson } : {}),
+    ...(profile.kind === "copilot" && outputFormat(args) === "json" ? { copilotJson: true } : {}),
     ...(profile.kind === "antigravity" && outputFormat(args) === "stream-json" ? { antigravityStream: true } : {}),
     ...(profile.kind === "claude" ? { env: hooks ? { ...userEnv(hooks.user.env), ...CLAUDE_RUN_ENV, ...hooks.env } : CLAUDE_RUN_ENV } : {}),
   };
@@ -400,6 +414,8 @@ export function codexArgs(
   // which enables network access broadly in workspace-write, not just loopback.
   if (run?.codexLocalhost) overrides.push("-c", "sandbox_workspace_write.network_access=true");
   if (run) {
+    // Codex filters the parent environment before spawning stdio MCP servers; pass the secret by name only.
+    overrides.push("-c", 'mcp_servers.xdev-hive.env_vars=["HIVE_RUN_TOKEN"]');
     // The shim's identity is the profile's, as for Claude Code: ~/.codex/config.toml says "codex", which would claim
     // the task as someone else than the runner, and hold it against the next run.
     const env = {
@@ -545,7 +561,7 @@ export function modelOf(args: string[]): string | null {
  * `-c model_reasoning_effort=X` / `--config …` (the last one wins, as in the CLI; TOML quotes taken off).
  */
 export function effortOf(kind: AgentKind, args: string[]): string | null {
-  if (kind !== "codex") return kind === "claude" || kind === "antigravity" ? flagValue(args, ["--effort"]) : null;
+  if (kind !== "codex") return kind === "claude" || kind === "antigravity" || kind === "copilot" ? flagValue(args, kind === "copilot" ? ["--reasoning-effort", "--effort"] : ["--effort"]) : null;
   let effort: string | null = null;
   args.forEach((a, i) => {
     const value = a === "-c" || a === "--config" ? args[i + 1] : a.startsWith("--config=") ? a.slice("--config=".length) : undefined;
@@ -566,7 +582,7 @@ export function ranOn(profile: AgentProfile): { model: string | null; effort: st
 
 /** Model-specific effort may itself be invalid for the CLI default on the recovery attempt. */
 export function withoutModel(profile: AgentProfile): AgentProfile {
-  const args = withoutFlags(profile.args, ["--model", "-m", "--effort"], []);
+  const args = withoutFlags(profile.args, ["--model", "-m", "--effort", "--reasoning-effort"], []);
   const clean: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -587,7 +603,7 @@ export function withoutModel(profile: AgentProfile): AgentProfile {
  */
 export function routeProfile(own: AgentProfile, fitted: AgentProfile, pol: AgentPolicy, selection: ModelSelection | null | undefined, supported?: string[] | null): { profile: AgentProfile; note: string | null } {
   const kind = fitted.kind;
-  if (!selection || (kind !== "claude" && kind !== "codex" && kind !== "antigravity")) return { profile: fitted, note: null };
+  if (!selection || (kind !== "claude" && kind !== "codex" && kind !== "antigravity" && kind !== "copilot")) return { profile: fitted, note: null };
   const where = `tier ${selection.tier} (${selection.reason})`;
   const pinned = modelOf(own.args);
   if (pinned) return { profile: fitted, note: `${pinned} · pinned by the profile's args, ${where} not applied` };
@@ -612,7 +628,7 @@ export function routeProfile(own: AgentProfile, fitted: AgentProfile, pol: Agent
   // CLAUDE_CODE_EFFORT_LEVEL beats --effort in Claude Code, so a profile that sets it has chosen its effort too.
   const ownEffort = effortOf(kind, own.args) ?? (kind === "claude" ? (own.env.CLAUDE_CODE_EFFORT_LEVEL ?? null) : null);
   const flags = [kind === "codex" ? "-m" : "--model", model];
-  if (!ownEffort && wanted.effort) flags.push(...(kind === "codex" ? ["-c", `model_reasoning_effort=${wanted.effort}`] : ["--effort", wanted.effort]));
+  if (!ownEffort && wanted.effort) flags.push(...(kind === "codex" ? ["-c", `model_reasoning_effort=${wanted.effort}`] : [kind === "copilot" ? "--reasoning-effort" : "--effort", wanted.effort]));
   const args = insertFlags(kind, withoutFlags(fitted.args, ["--model", "-m"], []), flags);
   // Explore and other subagents run Opus by default on a plan: on a cheap tier that would spend more than the run itself.
   const env = kind === "claude" && (selection.tier === "light" || selection.tier === "standard") && !own.env.CLAUDE_CODE_SUBAGENT_MODEL ? { ...fitted.env, CLAUDE_CODE_SUBAGENT_MODEL: "sonnet" } : fitted.env;
@@ -636,6 +652,7 @@ export function policyBlocks(profile: AgentProfile, pol: AgentPolicy): string | 
   if (profile.kind === "custom" && (pol.autonomy !== "full" || pol.mcp !== null)) return tr("runNote.policyCustom");
   // agy sandbox and MCP filter flags are not verified yet: do not silently run past a restrictive policy.
   if (profile.kind === "antigravity" && (pol.autonomy !== "full" || pol.mcp !== null)) return tr("runNote.policyAntigravity");
+  if (profile.kind === "copilot" && profile.container) return "Copilot CLI container MCP authentication is not configured";
   return null;
 }
 
@@ -675,6 +692,16 @@ export function applyPolicy(profile: AgentProfile, pol: AgentPolicy, codexServer
       args = insertFlags("codex", args, off.flatMap((n) => ["-c", `mcp_servers.${key(n)}.enabled=false`]));
     }
   }
+  if (profile.kind === "copilot" && (pol.mcp !== null || autonomy === "read" || autonomy === "propose")) {
+    // Copilot can load user and repo MCP servers outside Hive's per-run config. Restrict the visible tools, not just approvals.
+    const keep = ["xdev-hive", ...(pol.mcp ?? [])].filter((n, i, list) => list.indexOf(n) === i);
+    // --available-tools takes concrete tool names; read/write/shell are permission patterns for --allow-tool.
+    const reading = ["view", "glob", "grep", "rg", "skill"];
+    const editing = ["apply_patch", "create", "edit"];
+    const shell = ["bash", "powershell", "list_bash", "list_powershell", "read_bash", "read_powershell", "stop_bash", "stop_powershell", "write_bash", "write_powershell"];
+    const builtin = autonomy === "read" || autonomy === "propose" ? reading : [...reading, ...editing, ...(autonomy === "full" ? shell : [])];
+    args = [...withoutFlags(args, ["--available-tools"], []), `--available-tools=${[...builtin, ...keep].join(",")}`];
+  }
   const c = profile.container;
   // Not open: a restricted container, with the profile's extra hosts only as far as the policy allows them.
   const container =
@@ -683,7 +710,7 @@ export function applyPolicy(profile: AgentProfile, pol: AgentPolicy, codexServer
       : c;
   return {
     // Read means Hive read-only too; a profile set read-only stays so whatever the policy.
-    profile: { ...profile, args, container, env: limitEnv(profile, pol), readOnly: profile.readOnly || pol.autonomy === "read" },
+    profile: { ...profile, args, container, env: profile.kind === "copilot" ? Object.fromEntries(Object.entries(profile.env).filter(([k]) => k !== "COPILOT_ALLOW_ALL")) : limitEnv(profile, pol), readOnly: profile.readOnly || pol.autonomy === "read" },
     autonomy,
     model,
     mcp: pol.mcp === null ? null : pol.mcp.filter((n) => n !== MCP_NAME),

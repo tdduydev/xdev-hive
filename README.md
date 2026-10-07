@@ -163,6 +163,15 @@ npm run e2e -w @xdev-hive/web -- <thư mục ảnh>     # thêm --no-build để
 npm run e2e -w @xdev-hive/web -- --only a,b --repeat 3   # chỉ bước a, b (kèm bước chúng cần; NEEDS trong browser.mjs); lặp 3 lần, mỗi lần hub mới, in số lần lỗi từng bước
 ```
 
+Linux không có màn hình (cần `xvfb-run`; Electron dùng hub và DB tạm):
+
+```bash
+ELECTRON_DISABLE_SANDBOX=1 xvfb-run -a -s "-screen 0 1440x900x24" npm run e2e -w @xdev-hive/web -- <thư mục ảnh> --repeat 2
+ELECTRON_DISABLE_SANDBOX=1 xvfb-run -a -s "-screen 0 1440x900x24" npm run e2e:mobile -w @xdev-hive/web -- <thư mục ảnh điện thoại> --repeat 2
+```
+
+Có thể thêm `--only <bước>[,<bước>…]` để kiểm nhanh. Helper dùng Control trên Linux/Windows và Meta trên macOS cho phím tắt. Trên Linux, cửa sổ Electron được hiển thị trong màn hình ảo Xvfb và đưa lên trước khi thao tác để compositor chạy frame cho editor trả focus và các khung chuyển động; các tab nền cũng không bị throttle.
+
 Lệnh này làm các bước sau:
 
 - build client;
@@ -182,7 +191,7 @@ Lệnh này làm các bước sau:
   - trần chi tiêu: chi phí của một run làm đầy trần của service, hub giữ run tiếp theo;
   - trang Hub.
 
-Mỗi bước kiểm lại dữ liệu trên hub qua RPC và chụp một ảnh. Có bước hỏng thì ảnh mang đuôi `-FAIL` và lệnh thoát khác 0. Giao diện được kiểm bằng tiếng Việt. Trên Linux không có màn hình thì chạy qua `xvfb-run`.
+Mỗi bước kiểm lại dữ liệu trên hub qua RPC và chụp một ảnh. Có bước hỏng thì ảnh mang đuôi `-FAIL` và lệnh thoát khác 0. Giao diện được kiểm bằng tiếng Việt.
 
 App desktop:
 
@@ -267,6 +276,10 @@ queued ─chọn gói─▶ running ─exit 0──────▶ succeeded ─
   - Agent review được dặn không gọi `task_claim` / `task_update`: task vẫn thuộc run làm task.
 - **Hết quota**: nhận diện từ cuối output khi CLI thoát lỗi (`usage limit`, `429`, `RESOURCE_EXHAUSTED`…). Đọc giờ reset nếu có (`|<epoch>`, `try again in 2 hours 13 minutes`, `resets 3pm`, ISO), không có thì dùng thời gian nghỉ mặc định. Phần làm dở được commit `wip`, lần sau chạy tiếp trên cùng branch với prompt "tiếp tục từ lần trước".
 - **Worktree**: `~/.xdev-hive/worktrees/<dự án>/<task>` trên branch `ai/<task>`, không đụng checkout chính. Branch mới của task bắt đầu từ branch đích lấy mới từ remote (`targetBranch` của service, không có thì nhánh mặc định của remote), để task chạy ngay sau khi task nó phụ thuộc được merge trên GitHub/GitLab có code đó. Runner chỉ `git fetch`, không checkout hay reset checkout của bạn. Repo không có remote hoặc fetch lỗi thì bắt đầu từ HEAD của repo như trước, và log run ghi lại lý do. Branch đã có (run tiếp, review, bản được giữ của best-of-n) đi tiếp từ lịch sử của nó. Runner commit phần agent để lại và không push. Lúc commit, runner không chạy git hook nào, vì agent có thể đã ghi hook vào `.githooks` của worktree. `AGENTS.md`, `CLAUDE.md`, `docs/decisions.md`, `.claude/rules/xdev-hive/`, `.xdev-hive/context/`, `.xdev-hive/artifacts/` và các `AGENTS.md` lồng / skill có khối của Hive không được đưa vào commit này, không hiện ở mục chưa commit trong tóm tắt run, và không nằm trong diff *Xem thay đổi*. File config agent chưa commit được chép vào worktree nhưng không đưa vào branch. Thư mục `.codex/` và `.agents/` mà CLI agent tự ghi vào worktree cũng không vào commit, trừ khi branch đã có file trong thư mục đó (service cố ý giữ). Codex 0.157 chép thiết lập Claude Code của repo sang đó khi bật `external-agent-import-sync-enabled` trong `~/.codex/config.toml`; khoá này không tắt được cho từng run (`-c` bị bỏ qua).
+- **Quản trị worktree (63f)**: trên web, mở *Máy & agent* → máy → *Worktree* (chủ máy hoặc admin hub); trên desktop, mở *Agent* → *Worktree*. Danh sách theo service có trạng thái task, branch, dung lượng ổ đĩa, lần sửa cuối, thay đổi chưa commit và trạng thái đã vào nhánh đích. Xoá một hoặc nhiều worktree cần xác nhận; worktree có run queued/running hoặc đang hoàn tất không xoá được. Lệnh web ghim trạng thái đã xem, máy kiểm tra lại và báo kết quả qua heartbeat; lệnh hết hạn sau 24 giờ. Branch luôn giữ lại để runner tạo lại worktree từ branch khi mở lại task.
+  - Tự dọn mặc định bật: task `done`, không có run, không còn thay đổi chưa commit và branch đã vào nhánh đích, hoặc task done quá **30 ngày**. Có thể đổi thời gian giữ và ngưỡng ổ trống (mặc định **10 GiB**); ổ thiếu chỗ thì dọn worktree đủ điều kiện từ cũ nhất. Giữ 500 dòng nhật ký ở `runs.db`, gửi 50 dòng mới nhất cho hub. Dọn sau MR/PR merge cũng giữ branch và tuân theo bật/tắt tự dọn của máy.
+  - Đo mỗi phút, không đi theo symlink; chỉ quản trị worktree đã đăng ký với Git có branch `ai/<task>` trong thư mục worktree của runner. Branch đã vào main dựa trên ancestry sau fetch nhánh đích; fetch lỗi thì chưa rõ, merge squash có thể chờ thời gian giữ. Dung lượng là số byte ổ đĩa `du` đo, không gồm checkout được liên kết qua symlink. `node_modules` vẫn riêng theo worktree: chia sẻ bằng symlink với npm workspaces chưa được kiểm chứng an toàn.
+
 - **Context của Hive trong worktree**: trước mỗi run (làm task, review, sửa CI, giám khảo), runner ghi vào worktree bản mới nhất từ hub: `AGENTS.md` chính và lồng, `CLAUDE.md` (`@AGENTS.md`), `docs/decisions.md`, `.claude/rules/xdev-hive/` và `.claude/skills/<tên>/SKILL.md`. Nhờ vậy repo chưa merge MR context vẫn có quy ước cho agent. Log run ghi một dòng `# hive context: <n> file (<m> ghi mới), bỏ qua <k>`; hub lỗi hay quá 30 giây thì run chạy tiếp với file của nhánh và log ghi lý do.
   - **Không đè file của repo**: `AGENTS.md` chính, `AGENTS.md` lồng và skill đã có sẵn mà không chứa khối của Hive là của repo, giữ nguyên. Khi `AGENTS.md` chính được giữ, phần của Hive ghi vào `.xdev-hive/context/AGENTS.md`, `CLAUDE.md` import thêm file đó, và prompt nhắc agent đọc nó (Codex và Gemini không đọc import của `CLAUDE.md`).
 - **Repo tham chiếu (chỉ đọc)**: nút *Repo tham chiếu* ở mỗi service trong *Service & công cụ* chọn các service cùng hệ thống mà máy này có repo, ví dụ task của `his-service` cần đọc `his-service-old` (SQLMaps, ViewModel). Trước mỗi run, runner đọc nhánh và commit hiện tại của từng checkout chính đó và ghi vào log một dòng `# references (read-only): <dự án> <đường dẫn> (<nhánh> <commit>)`; service đã bị bỏ hay thư mục không còn là repo git thì bỏ qua và log ghi lý do, run vẫn chạy. Prompt liệt kê đường dẫn, nhánh, commit của từng repo, dặn không sửa gì trong đó, và nhắc `AGENTS.md` / `CLAUDE.md` của các repo đó là của service khác nên vẫn giữ project key của task.
@@ -298,7 +311,7 @@ queued ─chọn gói─▶ running ─exit 0──────▶ succeeded ─
   - Nút *Đăng nhập* (Claude Code, Codex) mở một cửa sổ terminal chạy sẵn lệnh đó: Terminal trên macOS, `cmd` trên Windows, hoặc terminal đầu tiên tìm thấy trên Linux (`x-terminal-emulator`, `gnome-terminal`, `konsole`, `xfce4-terminal`, `xterm`).
   - Lệnh nằm trong một script ở `~/.xdev-hive/login/<profile>/`, quyền `0700`. Script chỉ chứa biến thư mục đăng nhập (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`), không chứa key hay token.
   - Quay lại cửa sổ app thì app kiểm lại các gói chưa đăng nhập.
-  - Gemini và CLI tuỳ chỉnh không có lệnh xem trạng thái, nên để "chưa rõ" và runner vẫn dùng.
+  - Gemini, Copilot CLI và CLI tuỳ chỉnh không có lệnh xem trạng thái được app xác minh, nên để "chưa rõ" và runner vẫn dùng. Copilot có nút *Đăng nhập* riêng (`copilot login --web-flow` hoặc `--device-code`).
 - **Tự code bằng một gói** (roadmap 32a): nút *Mở Claude Code* / *Mở Codex* trên thẻ gói (*Agent và quota*, chọn service) và ở hàng service (*Service & công cụ*, chọn gói) mở terminal chạy CLI của gói đó trong repo service.
   - Đây là phiên của bạn, không phải run: không `-p`, không cờ của run, không theo chính sách agent và không tính vào trần chi tiêu. MCP, hook và cài đặt của bạn và của repo vẫn dùng như khi tự gõ `claude`.
   - Hive biết phiên là của gói nào: Claude Code nhận `--mcp-config` với server `xdev-hive` có `HIVE_AGENT` = id gói. Server này thay server cùng tên trong `.mcp.json` của repo (đã kiểm trên Claude Code 2.1.283). Codex nhận `-c mcp_servers.xdev-hive.command/env`.
@@ -326,6 +339,8 @@ queued ─chọn gói─▶ running ─exit 0──────▶ succeeded ─
 - **Trên hub**: heartbeat báo trạng thái đăng nhập, cài CLI và giờ nghỉ của từng gói. Trang *Bản đồ agent* (mọi người) và *Đội máy* (admin) hiện gói nào tắt, chưa có CLI, chưa đăng nhập, đang nghỉ đến giờ nào, hoặc sẵn sàng.
 
 Hai gói của cùng một vendor: tạo 2 profile, profile thứ hai trỏ CLI sang thư mục đăng nhập riêng, rồi đăng nhập một lần trong terminal với biến đó, ví dụ `CLAUDE_CONFIG_DIR=~/.claude-2` (Claude Code) hoặc `CODEX_HOME=~/.codex-2` (Codex). Tên biến và cờ headless mặc định lấy theo tài liệu CLI mình biết; hãy kiểm tra bằng `--help` của bản bạn đang cài.
+
+**GitHub Copilot CLI** (`copilot`, gói cài `@github/copilot`): profile mẫu chạy `-p`, `--no-ask-user`, `--output-format json` (JSONL), cho đọc/sửa file và từ chối shell tự động. Runner cấu hình MCP xdev-hive cho từng run; model router dùng `auto` cho mọi cấp để tài khoản Free/Student không bị chọn model ngoài quyền. Có thể ghim `--model` trong profile paid sau khi tự kiểm tra quyền. Parser lấy câu trả lời, lỗi và token nếu CLI phát các event tương ứng; quota tài khoản và giá USD chưa có nguồn CLI được app kiểm chứng, nên hiện *chưa rõ*. Một người dùng máy chỉ có một tài khoản Copilot do app quản lý: `COPILOT_HOME` tách config/session, nhưng OAuth còn có thể nằm trong OS keychain chung. App chưa kiểm chứng account isolation, sandbox tương đương `workspace-write` hay giới hạn AI credits thực nhận. Xem [billing](https://docs.github.com/en/copilot/concepts/billing-and-usage/individuals/billing), [đăng nhập](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli), [headless](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-programmatic-reference), [sandbox](https://docs.github.com/en/copilot/how-tos/cloud-and-local-sandboxes/configuring-local-sandbox-settings).
 
 Cờ mặc định là mức "cho sửa file" (`--permission-mode acceptEdits`, `--sandbox workspace-write`, `--approval-mode auto_edit`). Muốn agent tự chạy test hay lệnh shell thì mở rộng tham số của profile, và cân nhắc rủi ro vì lệnh chạy trên máy thật (worktree không phải sandbox), hoặc cho profile chạy trong container.
 
@@ -406,7 +421,7 @@ implement (không review, chế độ "ngay khi làm xong") ──────�
   - Board hiện trạng thái pipeline (*CI lỗi*, *CI qua*…, bấm để mở pipeline) và MR đã merge hay đóng.
   - MR merge thì task chuyển sang *Xong*, ghi chú task thêm dòng `MR !<iid> merged.`. Tắt được bằng ô *MR merge thì chuyển task sang Xong*.
   - MR bị đóng mà không merge thì task sang trạng thái chọn ở ô *MR đóng mà không merge*: *Bị chặn* (mặc định), *Chưa làm*, hoặc giữ nguyên. Ghi chú task thêm dòng `MR !<iid> closed without merging.` trong cả ba trường hợp. Task đã *Xong* thì không đổi gì. Chọn giữ nguyên mà task đang *Đang làm* thì cũng không đổi gì, vì ghi lại *Đang làm* sẽ lấy lease của người đang giữ task.
-  - MR merge thì app xoá worktree của task (`~/.xdev-hive/worktrees/<dự án>/<task>`) và branch `ai/<task>` ở máy, nếu đầu branch và worktree đúng là commit đã merge (head của MR). Giữ nguyên cả hai khi branch có commit mới hơn, worktree còn thay đổi chưa commit (file config agent app chép vào và tài liệu Hive render ra không tính), hoặc task đang có run chạy hay chờ. Branch đang được checkout ở chỗ khác thì chỉ xoá worktree. Kết quả và lý do giữ lại được ghi vào ghi chú MR của run trên Board và ở thông báo. Tắt được bằng ô *MR merge thì xoá worktree và branch `ai/<task>` ở máy* (bật sẵn). PR GitHub cũng vậy, theo commit đầu của PR.
+  - MR merge và task đã `done` thì app xoá worktree của task (`~/.xdev-hive/worktrees/<dự án>/<task>`), giữ branch `ai/<task>` để mở lại task. Chỉ dọn khi đầu branch và worktree đúng là commit đã merge (head của MR), không còn thay đổi chưa commit, và task không có run chạy, chờ hay đang hoàn tất. File config agent app chép vào và tài liệu Hive render ra không tính là thay đổi. Kết quả và lý do giữ lại được ghi vào ghi chú MR của run trên Board và ở thông báo. Tắt được bằng ô *MR merge và task done thì xoá worktree ở máy* hoặc cài đặt tự dọn của máy. PR GitHub cũng vậy, theo commit đầu của PR.
   - Có thông báo khi MR merge, bị đóng không merge, hoặc pipeline lỗi.
   - MR đã merge hay đóng thì thôi hỏi. Chỉ hỏi MR trên đúng GitLab đã cấu hình, nên token không đi nơi khác.
 - **Merge từ web** (roadmap 18c, hỏi 2/10): ở chế độ hub, máy đẩy trạng thái MR/PR của run lên hub (đang mở, draft, CI và link pipeline, lúc kiểm). Trang *Lượt chạy* hiện chúng và nút *Merge* cho người có quyền *Review code* của service.

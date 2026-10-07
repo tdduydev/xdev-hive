@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdtempSync, rmSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { after, describe, it } from "node:test";
+import { after, describe, it, mock } from "node:test";
 import { AGENT_TEMPLATES, type Actor, type AgentProfile, type HiveBackend } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { containerCommand, containerName } from "#desktop/main/runner/container.ts";
@@ -19,6 +19,12 @@ function testTmpDir(prefix: string): string {
 }
 
 const admin: Actor = { name: "duy", role: "admin" };
+mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
+  assert.equal(String(url), "https://hive.example.test/api/run-credentials");
+  assert.equal((init.headers as Record<string, string>).authorization, "Bearer hive_test_machine_token");
+  const input = JSON.parse(String(init.body));
+  return Response.json({ result: init.method === "POST" ? { token: `hiverun_fixture_${input.run}` } : { revoked: true } });
+});
 const FIXTURES = path.join(import.meta.dirname, "fixtures");
 const tmp = (p: string) => testTmpDir(path.join(os.tmpdir(), `hive-${p}-`));
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
@@ -117,7 +123,7 @@ async function setup(profiles: AgentProfile[], opts: { docker?: boolean; mode?: 
   const host: RunnerHost = {
     backend: () => (opts.mode === "hub" ? hubLike : hive),
     profiles: () => profiles.map((p) => ({ ...p, env: { ...p.env, FAKE_RECORD: record } })),
-    settings: () => ({ worktreeRoot: null, maxParallel: 2, maxAttempts: 3, acceptHubRuns: false }),
+    settings: () => ({ worktreeRoot: null, maxParallel: 2, maxAttempts: 3, acceptHubRuns: false, gateRunner: false }),
     projects: () => [{ name: "demo", repo: dir }],
     mode: () => opts.mode ?? "local",
     machine: () => "duy-mbp",

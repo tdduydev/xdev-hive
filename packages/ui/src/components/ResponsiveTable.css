@@ -13,14 +13,14 @@
   }
   [data-responsive-table] colgroup { display: none; }
   /* Keep native column headers available to assistive technology. */
-  [data-responsive-table] [data-slot="table-header"] {
+  [data-responsive-table] [data-slot="table-header"],
+  [data-responsive-table] [data-card-header] {
     position: absolute;
     width: 1px;
     height: 1px;
     overflow: hidden;
     clip-path: inset(50%);
   }
-  [data-responsive-table] [data-card-header] { display: none; }
   [data-responsive-table] [data-card-scroll] { max-height: none !important; overflow: visible; }
   [data-responsive-table] [data-slot="table-body"] > tr,
   [data-responsive-table] [data-card-row] {
