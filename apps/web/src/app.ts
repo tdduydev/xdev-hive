@@ -249,7 +249,7 @@ export function createHubApp({
       if (user) res.locals.user = user;
       return {
         name: label ? `${label}@${who.name}` : who.name, role: who.role, access,
-        source: { via: "mcp" }, mcpCredential: true, agent: label || "mcp", onBehalf: user?.username ?? who.name,
+        source: { via: "mcp" }, tokenId: who.id, mcpCredential: true, agent: label || "mcp", onBehalf: user?.username ?? who.name,
         ...(user ? { account: user.username } : {}),
       };
     }
@@ -266,20 +266,20 @@ export function createHubApp({
       return {
         name: label ? `${label}@${who.name}` : who.name, role: who.role, access,
         source: { via: "mcp", machine, run: runId, task }, run: runId,
-        runCredential: who.run, agent: label || "run", onBehalf: user?.username ?? who.name,
+        tokenId: who.id, runCredential: who.run, agent: label || "run", onBehalf: user?.username ?? who.name,
         ...(user ? { account: user.username } : {}),
       };
     }
     const name = label ? `${label}@${who.name}` : who.name;
     // A token of no account (CI, the CLI's) stands for itself.
-    if (!who.ownerId) return { name, role: who.role, source, ...trail(who.name) };
+    if (!who.ownerId) return { name, role: who.role, tokenId: who.id, source, ...trail(who.name) };
     const user = users.get(who.ownerId);
     if (!user || user.disabled) return null;
     res.locals.user = user;
     // An account that lost admin keeps its old admin tokens only as a member.
     const role: Role = who.role === "admin" && !user.admin ? "member" : who.role;
     // A machine's Board runs count against this person's spending cap (roadmap 27b), and their agents act for them (27c).
-    return { name, role, access: users.access(user), source, ...trail(user.username), account: user.username };
+    return { name, role, tokenId: who.id, access: users.access(user), source, ...trail(user.username), account: user.username };
   };
 
   /** Bearer token (agents, machines, CI) or the session cookie (people in the web hub). */
@@ -340,7 +340,7 @@ export function createHubApp({
   app.post("/api/run-credentials", authenticate({ cookie: false }), json, (req, res) => {
     try {
       const actor = actorOf(res);
-      if (actor.runCredential || actor.role === "viewer")
+      if (!hive.isMachineActor(actor.name, actor))
         throw new HiveError("forbidden", "Only a registered machine may issue a run credential.");
       const { machine: machineName, project, task, run, minutes, readOnly } = req.body ?? {};
       if (typeof machineName !== "string" || !MACHINE_ID.test(machineName) || !actor.name.startsWith(`runner.${machineName}@`) ||
@@ -348,13 +348,12 @@ export function createHubApp({
           !Number.isInteger(minutes) || minutes < 5 || minutes > 1440 || typeof readOnly !== "boolean")
         throw new HiveError("bad_request", "Invalid run credential request.");
       if (!may(actor, project, "taskWork")) throw new HiveError("forbidden", "No task work grant for this project.");
-      const machine = hive.db.prepare("SELECT id FROM machines WHERE id = ? AND owner IS ?").get(actor.name, actor.account ?? null);
       // A research run has no task row (research-<id> lives only in research_runs): bind it to the request sent to this machine.
       const research = /^research-(\d+)$/.exec(task);
       const row = (research
         ? hive.db.prepare("SELECT r.project FROM research_runs r JOIN run_requests q ON q.id = r.request_id WHERE r.id = ? AND q.machine_id = ?").get(Number(research[1]), actor.name)
         : hive.db.prepare("SELECT project FROM tasks WHERE id = ?").get(task)) as { project: string } | undefined;
-      if (!machine || row?.project !== project) throw new HiveError("forbidden", "Unknown machine or task.");
+      if (row?.project !== project) throw new HiveError("forbidden", "Unknown machine or task.");
       const bearer = /^Bearer\s+(\S+)$/i.exec(req.get("authorization") ?? "")!;
       const token = tokens.issueRun(bearer[1]!, { machine: machineName, project, task, run, minutes, readOnly });
       res.json({ result: { token } });
@@ -363,7 +362,7 @@ export function createHubApp({
   app.delete("/api/run-credentials", authenticate({ cookie: false }), json, (req, res) => {
     try {
       const actor = actorOf(res);
-      if (actor.runCredential) throw new HiveError("forbidden", "A run credential cannot revoke itself.");
+      if (!hive.isMachineActor(actor.name, actor)) throw new HiveError("forbidden", "Machine credential required.");
       const run = req.body?.run;
       const machine = req.body?.machine;
       if (typeof run !== "string" || !RUN_REF.test(run) || typeof machine !== "string" || !MACHINE_ID.test(machine) ||
@@ -800,6 +799,8 @@ export function createHubApp({
       const withGrants = (requests: ChatRequest[]) =>
         requests.map(({ sender, ...r }) => ({ ...r, ...(sender ? { grant: chatGrants.issue(r.replyId, sender, actor) } : {}) }));
       if (method === "machines.heartbeat") {
+        if (!actor.tokenId || actor.runCredential || actor.mcpCredential || actor.chatReply !== undefined)
+          throw new HiveError("forbidden", "A machine token is required.", { key: "errors.machineIdentityForbidden" });
         const out = await hive.call(method, input as never, actor);
         // App updates live on the hub, not in core: the machine's platform and update state ride along in the input.
         const beat = (input ?? {}) as { machine?: string; version?: string; platform?: string; arch?: string; updateKind?: string; update?: UpdateReport | null };

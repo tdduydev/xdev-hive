@@ -61,7 +61,7 @@ it("heartbeat stores only visible repos and writable runs/costs, including after
     assert.deepEqual((await rpc(admin, "machines.list", {})).body.result[0].projects, ["readonly"], "omitting projects still removes revoked repos");
     summary = (await rpc(admin, "costs.summary", {})).body.result;
     assert.equal(summary.total.usd30, 2, "old accepted costs stay; unauthorized replays add nothing");
-    assert.equal((await rpc(legacy, "machines.heartbeat", heartbeat({ costs: [cost("hidden", 3)], projects: ["hidden"] }), "runner.legacy")).status, 200);
+    assert.equal((await rpc(legacy, "machines.heartbeat", heartbeat({ machine: "legacy", costs: [cost("hidden", 3)], projects: ["hidden"] }), "runner.legacy")).status, 200);
     assert.equal((await rpc(admin, "costs.summary", {})).body.result.total.usd30, 5, "unrestricted legacy actors retain role permissions");
   } finally { hive.close(); }
 });
@@ -83,7 +83,7 @@ it("cooldown mutations require a reporting machine, its human owner or a hub adm
     assert.equal((await rpc(machine, "cooldowns.clear", { account: set.account }, "claude-1.test")).status, 403, "an agent sharing the owner credential is not the reporting machine");
     assert.equal((await rpc(human, "cooldowns.clear", { account: set.account })).status, 200);
     assert.equal((await rpc(human, "cooldowns.set", set)).status, 200);
-    await rpc(second, "machines.heartbeat", heartbeat({ profiles: [profile("shared-sub")] }), "runner.second");
+    await rpc(second, "machines.heartbeat", heartbeat({ machine: "second", profiles: [profile("shared-sub")] }), "runner.second");
     assert.equal((await rpc(second, "cooldowns.set", set, "runner.second")).status, 200, "both machines reporting the account own its cooldown");
     assert.equal((await rpc(otherHuman, "cooldowns.clear", { account: set.account })).status, 200, "each reporting machine's human owner can clear");
     assert.equal((await rpc(admin, "cooldowns.set", { ...set, account: "unreported-sub" })).status, 200);
