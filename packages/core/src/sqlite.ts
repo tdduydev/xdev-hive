@@ -1897,7 +1897,7 @@ const AGENT_METHODS = new Set<Method>([
 
 // Legacy names can be forged before their first migrated heartbeat; they must not authorize machine reports or work.
 const MACHINE_METHODS = new Set<Method>([
-  "machines.heartbeat", "machines.commandResult", "runs.push", "runs.requestResult", "runs.preparePlan", "runs.mergeResult",
+  "machines.heartbeat", "machines.commandResult", "runs.push", "runs.report", "runs.requestResult", "runs.preparePlan", "runs.mergeResult",
   "artifacts.put", "specs.push", "docs.assistTake", "docs.assistProgress", "docs.assistFinish",
   "memory.cleanupTake", "memory.cleanupRead", "memory.cleanupProgress", "memory.cleanupFinish",
   "chat.poll", "chat.progress", "chat.finish", "research.finish", "mergeQueue.take", "mergeQueue.progress", "mergeQueue.finish",
