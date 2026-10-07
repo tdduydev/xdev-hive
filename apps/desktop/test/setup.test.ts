@@ -10,6 +10,7 @@ import { CODEGRAPH_PACKAGE } from "#desktop/main/installer.ts";
 import { APP_TOOLS } from "#desktop/main/runner/tools.ts";
 import { AGENT_CLIS, cliUpgrade, parseCliVersion, Setup, type SetupHost } from "#desktop/main/setup.ts";
 import { expandVars, pathHasDir, pathWithDir, type UserPath } from "#desktop/main/winpath.ts";
+import { sysBin } from "#desktop/test/fixtures/sys-path.ts";
 
 const testTmpDirs = new Set<string>();
 function testTmpDir(prefix: string): string {
@@ -56,12 +57,12 @@ function machine(opts: { npm?: boolean; uv?: boolean; specify?: boolean } & Pick
   if (opts.specify) fakeBin(bin, "specify", SPECIFY);
   const projects: DesktopProject[] = [];
   // Windows is the case this task is about: the shim folder is not on PATH until the button writes it to the registry.
-  const pathEnv = [bin, ...(opts.platform === "win32" ? [] : [shimDir]), "/usr/bin", "/bin"].join(path.delimiter);
+  const pathEnv = [bin, ...(opts.platform === "win32" ? [] : [shimDir]), sysBin()].join(path.delimiter);
   // What the runner's last heartbeat carried, and what this machine's user allowed: tests change them in place.
   const hub: { tools: MachineTools | null; trust: Record<string, string> } = { tools: null, trust: {} };
   const setup = new Setup({
     pathEnv: () => pathEnv,
-    env: () => ({ PATH: pathEnv, HOME: process.env.HOME }),
+    env: () => ({ PATH: pathEnv, HOME: home }),
     projects: () => projects,
     shim: { electronPath: "/Applications/xDev Hive.app/Contents/MacOS/xDev Hive", entry: "/app/mcp/hive-mcp.mjs", binDir: shimDir, platform: opts.platform },
     home,
