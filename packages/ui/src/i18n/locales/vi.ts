@@ -93,7 +93,7 @@ export const vi = {
     byAgent: "Theo agent", machine: "Máy", profile: "Gói", choose: "Chọn máy", assign: "Gán cho agent", remove: "Bỏ gán", retry: "Chạy lại",
     position: "Vị trí {n} trong hàng của máy", waiting: "Chờ đến lượt", queued: "{n} task đang xếp", busy: "Bận", free: "Rảnh", offline: "Offline",
     quota: "5 giờ: {session} · Tuần: {week}", queue: "Task đã gán", allQueue: "Xem tất cả ({n})", before: "Xếp trước task", last: "Giữ vị trí hiện tại / xếp cuối nếu mới gán",
-    noMachines: "Chưa có máy nhận run có repo của các task này.", stopped: "Agent dừng ở task {id}", change: "Gán agent khác", noRight: "Bạn không có quyền gán agent.",
+    noMachines: "Chưa có máy nhận run có repo của các task này.", stopped: "Agent dừng ở task {id}", change: "Gán agent khác", noRight: "Bạn không có quyền gán agent.", releaseHold: "Gỡ giữ / thả task", holdReleased: "Đã gỡ giữ task.",
     hint: "Hub tự chạy khi agent rảnh và task hết phụ thuộc.", selected: "Đã gán {n} task.", empty: "Chưa có task trong làn này.",
   },
   common: {

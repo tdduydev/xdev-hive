@@ -545,6 +545,9 @@ function Detail({
         ...(allow(task.project, "runDispatch") ? [{ label: t("assignment.retry"), kind: "primary" as const, run: act(async () => {
           await client.call("tasks.assign", { id: task.id, machineId: task.agent!.machineId, profileId: task.agent!.profileId });
           return t("assignment.selected", { n: 1 });
+        }) }, { label: t("assignment.releaseHold"), kind: "secondary" as const, run: act(async () => {
+          await client.call("tasks.unassign", { id: task.id });
+          return t("assignment.holdReleased");
         }) }] : []),
         { label: t("assignment.change"), kind: "secondary", run: go(`#/tasks?task=${encodeURIComponent(task.id)}`) },
       ];
