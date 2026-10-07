@@ -1,6 +1,11 @@
 import type { Catalog } from "./vi.ts";
 
 export const en: Catalog = {
+  runTimeout: {
+    title: "Run timeout", hint: "Time starts when the agent runs; the profile and hub ceilings always apply.",
+    max: "Maximum run timeout (minutes)", duration: "Timeout (minutes)", automatic: "Automatic: {minutes} minutes",
+    defaults: "Defaults by task type", integration: "Integration (INT-*)", land: "Land (LAND-*)", otherTasks: "Other tasks", profile: "Use profile timeout", save: "Save timeouts", saved: "Run timeouts saved.",
+  },
   planApproval: {
     title: "Approve the plan before coding", tab: "Plan", detail: "Details",
     intro: "The agent plans in read-only mode and waits for approval before implementing.",
@@ -2890,6 +2895,7 @@ export const en: Catalog = {
     },
   },
   errors: {
+    runTimeoutCeiling: "Timeout cannot exceed {minutes} minutes (profile and hub ceilings).",
     steerText: "A message must contain 1–8,000 characters.",
     runNotRunning: "Run {id} is no longer running.",
     planRunnerRequired: "This machine needs an updated Claude or Codex runner for plan approval.",
@@ -3389,6 +3395,7 @@ export const en: Catalog = {
     longAgents: "AGENTS.md has {lines} lines (better under {max}): move what only one folder or kind of file needs into docs with paths",
   },
   runNote: {
+    continueFrom: "Continue from: branch {branch}; WIP commit {commit}; current step: {activity}.",
     steerResume: "New instructions: resuming this run’s Codex session.",
     steerStream: "Receiving instructions through stream-json stdin.",
     steerFile: "Receiving instructions through .xdev-hive/steer.md after each step.",
@@ -3506,6 +3513,7 @@ export const en: Catalog = {
     keptFailed: "git failed: {reason}",
   },
   audit: {
+    runTimeoutSettings: "Changed run timeouts",
     memberSet: "{project}: {user} is {role}",
     memberRemoved: "{project}: removed {user}",
     ssoCreated: "created at sign-in through {provider}, no service yet",
