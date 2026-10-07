@@ -94,11 +94,11 @@ h2{font:var(--type-heading-sm);color:var(--text-strong);margin:var(--space-6) 0 
 .grid{display:grid;gap:var(--space-3);align-items:start}
 .grid.full{grid-template-columns:repeat(auto-fill,minmax(min(100%,400px),1fr))}
 .grid.compact{grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))}
-svg.i{width:var(--icon-sm);height:var(--icon-sm);flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+svg.i{width:var(--icon-sm);height:var(--icon-sm);flex:none;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
 
 /* Card */
-.qc{container-type:inline-size;background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);box-shadow:var(--shadow-1);display:flex;flex-direction:column;min-width:0}
-.qc[data-state=off]{opacity:.72}
+.qc{container-type:inline-size;background:var(--bg-surface);border:1px solid var(--border-default);border-radius:var(--radius-lg);box-shadow:var(--shadow-0);display:flex;flex-direction:column;min-width:0}
+.qc[data-state=off]{background:var(--bg-subtle)}
 .qc>section{padding:var(--space-3) var(--space-4)}
 .qc>section+section{border-top:1px solid var(--border-subtle)}
 .hd{display:flex;align-items:flex-start;gap:var(--space-2)}
@@ -143,7 +143,7 @@ svg.i{width:var(--icon-sm);height:var(--icon-sm);flex:none;stroke:currentColor;f
 .bar i{position:absolute;inset:0 auto 0 0;border-radius:3px;background:var(--action-primary-bg)}
 .bar i.near{background:var(--status-warning-fg)}.bar i.over{background:var(--status-danger-fg)}
 .bar b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--text-muted);border-radius:1px}
-.lim .when{font:var(--type-caption);font-weight:400;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lim .when{font:var(--type-caption);font-weight:400;color:var(--text-muted);white-space:normal;overflow-wrap:anywhere}
 .lim .when em{font-style:normal;color:var(--text-secondary);font-weight:500}
 .unk{display:flex;flex-direction:column;gap:6px}
 .unk .bar{background:repeating-linear-gradient(135deg,var(--bg-sunken) 0 4px,transparent 4px 8px)}
@@ -179,14 +179,27 @@ svg.i{width:var(--icon-sm);height:var(--icon-sm);flex:none;stroke:currentColor;f
 .cline.danger .t{color:var(--status-danger-fg);font-weight:500}
 .offline{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2) var(--space-3);border:1px dashed var(--border-default);border-radius:var(--radius-lg);font:var(--type-caption);font-weight:400;color:var(--text-muted)}
 .note{font:var(--type-caption);font-weight:400;color:var(--text-muted);margin-top:var(--space-6)}
+
+/* Wrap identity before controls so translated status text never squeezes out the plan name. */
+.hd{flex-wrap:wrap;align-items:center}.who{flex-basis:180px}.name{flex-wrap:wrap}.name b{white-space:normal;overflow-wrap:anywhere}
+@container (max-width:439px){.hd>.who{flex-basis:100%}.outlook{grid-template-columns:1fr}.outlook>div{display:flex;justify-content:space-between;gap:var(--space-3)}.outlook dd{justify-content:flex-end;text-align:right}}
+button,summary{cursor:pointer;touch-action:manipulation}button:disabled{cursor:wait;opacity:.7}
+.ib:hover,.how:hover{background:var(--action-ghost-hover)}.ib:active,.how:active{background:var(--action-ghost-active)}
+.btn.primary:hover{background:var(--action-primary-hover)}.btn.primary:active{background:var(--action-primary-active)}
+.btn.secondary:hover{background:var(--action-secondary-hover)}.btn.secondary:active{background:var(--action-secondary-active)}
+.how{display:list-item;width:fit-content;padding:var(--space-2);margin-left:var(--space-4)}
+.explanation,.feedback{font:var(--type-caption);color:var(--text-secondary);line-height:1.6}.feedback:empty{display:none}.qc>.feedback{margin:0 var(--space-4) var(--space-3)}
+.toolbar{display:flex;flex-wrap:wrap;gap:var(--space-2);margin:var(--space-4) 0}.toolbar label{display:flex;align-items:center;gap:var(--space-2)}
+select{font:inherit;color:var(--text-primary);background:var(--bg-surface);border:1px solid var(--border-control);border-radius:var(--radius-sm);padding:var(--space-2);min-height:var(--control-h-touch)}
+@media(max-width:767px){select{font-size:16px}.btn,.how{min-width:var(--control-h-touch)}}
 </style>
 </head>
 <body>
 <main id="root"></main>
 <script>
 const q = new URLSearchParams(location.search);
-document.documentElement.dataset.theme = q.get("theme") || "light";
-const lang = q.get("lang") || "vi";
+document.documentElement.dataset.theme = q.get("theme") === "dark" ? "dark" : "light";
+const lang = q.get("lang") === "en" ? "en" : "vi";
 document.documentElement.lang = lang;
 const I = {
   ok:'<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
@@ -205,14 +218,18 @@ const ic = (k) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${I[k]}
 
 const T = {
   vi: {
+    result: "Kết quả mô phỏng", success: "Thành công", failure: "Lỗi kết nối", failed: "Không đọc được quota. Kiểm tra kết nối máy rồi thử lại. Giữ số đã biết và trạng thái chặn.", theme: "Giao diện", language: "Ngôn ngữ", light: "Sáng", dark: "Tối", refresh: "Đọc lại", stopAt: "Ngưỡng dừng {n}%",
+    formula: "Số lần reset là số cửa sổ 5 giờ còn lại trước khi tuần reset. Ước tính phiên = quota tuần còn lại / mức dùng tuần cho một phiên đầy, giới hạn bởi số lần reset. Mức dùng lấy từ lịch sử; thiếu lịch sử thì dùng tỷ lệ phiên/tuần hiện tại. Đây là dự báo, không phải số run được bảo đảm. Credits do CLI cung cấp, độc lập với quota %.",
+    busy: "Đang đọc lại quota…", resumed: "Mô phỏng: đã bỏ thời gian nghỉ/ngưỡng dừng tới kỳ reset. Quota nhà cung cấp vẫn áp dụng.", refreshed: "Mô phỏng: đã đọc lại; giữ số mẫu.", loginDemo: "Mô phỏng: mở đăng nhập trên máy sở hữu gói.", menuDemo: "Thao tác: sửa gói, bật/tắt, đặt lại bộ đếm, xoá gói. Khi tích hợp dùng menu hiện có.",
+    noCliLine: "Cài CLI trên máy sở hữu gói để nhận run.", offLine: "Bật gói trong phần thao tác để nhận run.", unknownCredits: "CLI không báo", override: "Đã dùng tiếp", overrideLine: "Bỏ qua ngưỡng Hive tới {time}; quota nhà cung cấp vẫn áp dụng.",
     title: "Thẻ gói · mockup UX-quota-card-design",
-    lead: "Một component, hai mật độ. Số liệu mẫu, giờ máy 13:18 thứ Tư 8/10.",
+    lead: "Một component, hai mật độ. Số liệu mẫu, giờ máy 13:18 thứ Tư 7/10/2026.",
     full: "Thẻ đầy đủ · trang Agents (app desktop), sheet chi tiết gói (web)",
     compact: "Thẻ gọn · Bản đồ agent (web), lưới máy",
     state: { ready: "Sẵn sàng", running: "Đang chạy {n}/{max}", near: "Gần ngưỡng", resting: "Đang nghỉ", threshold: "Chạm ngưỡng", spend: "Hết trần chi tiêu", signedOut: "Chưa đăng nhập", noCli: "Chưa có CLI", off: "Đã tắt", offline: "Máy ngoại tuyến" },
     noNew: "Không nhận run mới",
     resting: "Nghỉ tới {time} · còn {left}",
-    restCause: "Claude báo chạm giới hạn lúc 11:12, codex-2 trên lan-mini báo",
+    restCause: "Claude báo chạm giới hạn lúc 11:12 trên lan-mini. Dùng tiếp không bổ sung quota.",
     threshold: "Tuần đã dùng 91%, ngưỡng dừng 90% · reset {time}",
     thresholdCause: "Dùng tiếp: bỏ qua ngưỡng này tới khi tuần reset",
     spend: "Codex báo tài khoản đã chạm trần chi tiêu",
@@ -225,7 +242,7 @@ const T = {
     unknown: "Chưa biết", why: { signedOut: "chưa đăng nhập", noReport: "CLI không báo", noSession: "Codex chưa có phiên nào" },
     resetsLeft: "Lần reset còn", untilWeek: "tới {time}",
     fullLeft: "Phiên đầy còn", estimate: "ước tính", lack: "chưa đủ số liệu",
-    credits: "Credits", noCredits: "Claude không báo", unlimited: "không giới hạn", codexCredits: "Codex",
+    credits: "Credits", noCredits: "CLI không báo", unlimited: "không giới hạn", codexCredits: "Codex",
     ceiling: "Tuần chạm trần trước khi hết các lần reset",
     how: "Cách tính",
     counts: "{runs} run · {done} xong · {failed} lỗi · <span class=\"{hitCls}\">chạm giới hạn {hit} lần</span> · {since}",
@@ -238,17 +255,21 @@ const T = {
     offlineRow: "lan-old · ngoại tuyến từ 09:02 · 2 gói",
     read: "Đọc lại quota của {label}", menu: "Thao tác cho {label}",
     note: "Ảnh mockup: font hệ thống thay @fontsource. Thanh có vạch ngưỡng dừng; màu thanh luôn đi cùng số % và chip có icon.",
-    t1600: "16:00", left42: "42 phút", fri: "T6 05:00", left2d: "2 ngày 15 giờ", t1530: "15:30", left2h: "2 giờ 12 phút", d610: "6/10", t0940: "09:40", t1318: "13:18", sun: "CN 22:00", left4d: "4 ngày 8 giờ",
+    t1600: "16:00", left42: "2 giờ 42 phút", fri: "T6 05:00", left2d: "1 ngày 15 giờ 42 phút", t1530: "15:30", left2h: "2 giờ 12 phút", d610: "6/10", t0940: "09:40", t1318: "13:18", sun: "CN 22:00", left4d: "4 ngày 8 giờ 42 phút",
   },
   en: {
+    result: "Demo result", success: "Success", failure: "Connection error", failed: "Could not read quota. Check the machine connection and retry. Last known numbers and blocking state are retained.", theme: "Theme", language: "Language", light: "Light", dark: "Dark", refresh: "Read again", stopAt: "Stop limit {n}%",
+    formula: "Resets left counts 5-hour windows before the week resets. Estimated full sessions = remaining weekly quota / weekly use per full session, capped by resets left. Consumption comes from history, or the current session/week ratio when history is insufficient. This is a forecast, not guaranteed runs. CLI credits are separate from quota percentages.",
+    busy: "Reading quota again…", resumed: "Demo: rest/stop limit bypassed until reset. Provider quota still applies.", refreshed: "Demo: refreshed; sample numbers retained.", loginDemo: "Demo: open sign-in on the machine that owns this plan.", menuDemo: "Actions: edit, enable/disable, reset counters, delete. Integration uses the existing menu.",
+    noCliLine: "Install the CLI on the owning machine to accept runs.", offLine: "Enable the plan in its actions to accept runs.", unknownCredits: "Not reported by CLI", override: "Resumed", overrideLine: "Hive stop limit bypassed until {time}; provider quota still applies.",
     title: "Plan card · mockup UX-quota-card-design",
-    lead: "One component, two densities. Sample numbers, machine time 13:18 Wed 8 Oct.",
+    lead: "One component, two densities. Sample numbers, machine time 13:18 Wed 7 Oct 2026.",
     full: "Full card · Agents page (desktop app), plan detail sheet (web)",
     compact: "Compact card · Agent map (web), machine grid",
     state: { ready: "Ready", running: "Running {n}/{max}", near: "Near limit", resting: "Resting", threshold: "At stop limit", spend: "Spend cap hit", signedOut: "Signed out", noCli: "No CLI", off: "Off", offline: "Machine offline" },
     noNew: "Takes no new runs",
     resting: "Resting until {time} · {left} left",
-    restCause: "Claude reported its limit at 11:12, reported by codex-2 on lan-mini",
+    restCause: "Claude reported its limit at 11:12 on lan-mini. Resume does not replenish quota.",
     threshold: "Week at 91%, stop limit 90% · resets {time}",
     thresholdCause: "Resume: ignore this limit until the week resets",
     spend: "Codex reports the account's spend cap is reached",
@@ -261,7 +282,7 @@ const T = {
     unknown: "Unknown", why: { signedOut: "signed out", noReport: "the CLI does not report it", noSession: "no Codex session yet" },
     resetsLeft: "Resets left", untilWeek: "until {time}",
     fullLeft: "Full sessions left", estimate: "estimate", lack: "not enough data",
-    credits: "Credits", noCredits: "Claude does not report", unlimited: "unlimited", codexCredits: "Codex",
+    credits: "Credits", noCredits: "Not reported by CLI", unlimited: "unlimited", codexCredits: "Codex",
     ceiling: "The week runs out before the resets do",
     how: "How it is counted",
     counts: "{runs} runs · {done} done · {failed} failed · <span class=\"{hitCls}\">hit limit {hit}×</span> · {since}",
@@ -274,7 +295,7 @@ const T = {
     offlineRow: "lan-old · offline since 09:02 · 2 plans",
     read: "Read quota again for {label}", menu: "Actions for {label}",
     note: "Mockup: system font instead of @fontsource. Bars carry the stop-limit mark; bar colour always comes with the % number, chips carry an icon.",
-    t1600: "16:00", left42: "42 min", fri: "Fri 05:00", left2d: "2 d 15 h", t1530: "15:30", left2h: "2 h 12 min", d610: "6 Oct", t0940: "09:40", t1318: "13:18", sun: "Sun 22:00", left4d: "4 d 8 h",
+    t1600: "16:00", left42: "2 h 42 min", fri: "Fri 05:00", left2d: "1 d 15 h 42 min", t1530: "15:30", left2h: "2 h 12 min", d610: "6 Oct", t0940: "09:40", t1318: "13:18", sun: "Sun 22:00", left4d: "4 d 8 h 42 min",
   },
 }[lang];
 const f = (s, v = {}) => s.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? T[k] ?? `{${k}}`);
@@ -287,54 +308,54 @@ function limit(name, l) {
   if (!l.known) return `<div class="lim unk"><div class="top"><span class="lbl">${name}</span><span class="pct" style="font:var(--type-caption);color:var(--text-muted)">${T.unknown}</span></div><div class="bar"></div><span class="when">${T.why[l.why]}</span></div>`;
   const tn = tone(l.p, l.stop);
   return `<div class="lim"><div class="top"><span class="lbl">${name}</span><span class="pct ${tn}">${l.p}%</span></div>
-    <div class="bar" role="meter" aria-valuenow="${l.p}"><i class="${tn}" style="width:${l.p}%"></i><b style="left:calc(${l.stop}% - 1px)"></b></div>
-    <span class="when">${f(T.resets, { time: T[l.at], left: T[l.left] })}</span></div>`;
+    <div class="bar" role="meter" aria-label="${name}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${l.p}" aria-valuetext="${l.p}%, ${f(T.stopAt, { n: l.stop })}"><i class="${tn}" style="width:${l.p}%"></i><b style="left:calc(${l.stop}% - 1px)"></b></div>
+    <span class="when">${f(T.resets, { time: T[l.at], left: T[l.left] })}</span><span class="when">${f(T.stopAt, { n: l.stop })}</span></div>`;
 }
 
 function full(c) {
   const head = `<section class="hd"><div class="who"><span class="name"><b>${c.label}</b>${c.plan ? `<small>· ${c.plan}</small>` : ""}</span><span class="sub">${c.sub}</span></div>
-    ${chip(c.state, c.chipVars)}<button class="ib" aria-label="${f(T.read, c)}">${ic("refresh")}</button><button class="ib" aria-label="${f(T.menu, c)}">${ic("more")}</button></section>`;
-  const block = c.block
-    ? `<div class="block ${c.block.tone}"><div class="txt">${ic(c.block.icon)}<div><strong>${T.noNew}</strong><span>${c.block.line}</span><span class="cause">${c.block.cause}</span></div></div>${c.block.action ? `<button class="btn ${c.block.action === "resume" ? "primary" : "primary"}">${T[c.block.action]}</button>` : ""}</div>`
+    ${chip(c.state, c.chipVars)}<button class="ib" data-action="refresh" aria-label="${f(T.read, c)}">${ic("refresh")}</button><button class="ib" data-action="menu" aria-label="${f(T.menu, c)}">${ic("more")}</button></section>`;
+  const block = c.state === "override" ? `<div class="block warning">${ic("ok")}<span>${f(T.overrideLine, { time: T.sun })}</span></div>` : c.block
+    ? `<div class="block ${c.block.tone}"><div class="txt">${ic(c.block.icon)}<div><strong>${T.noNew}</strong><span>${c.block.line}</span><span class="cause">${c.block.cause}</span></div></div>${c.block.action ? `<button class="btn primary" data-action="${c.block.action}">${T[c.block.action]}</button>` : ""}</div>`
     : "";
   const lims = `<section><div class="limits">${limit(T.session, c.session)}${limit(T.week, c.week)}</div></section>`;
   const o = c.outlook;
   const out = `<section><dl class="outlook">
     <div><dt>${T.resetsLeft}</dt><dd>${o.resets == null ? `<b class="dim">—</b>` : `<b>${o.resets}</b>`}<small>${o.resets == null ? T.lack : f(T.untilWeek, { time: T[o.weekAt] })}</small></dd></div>
-    <div><dt>${T.fullLeft}</dt><dd>${o.full == null ? `<b class="dim">—</b><small>${T.lack}</small>` : `<b>~${o.full}</b><small>${T.estimate}</small>`}</dd></div>
+    <div><dt>${T.fullLeft}</dt><dd>${o.full == null ? `<b class="dim">—</b><small>${T.lack}</small>` : `<b>~${new Intl.NumberFormat(lang, { maximumFractionDigits: 1 }).format(Math.min(o.resets ?? o.full, o.full))}</b><small>${T.estimate}</small>`}</dd></div>
     <div><dt>${T.credits}</dt><dd>${o.credits === "none" ? `<b class="dim">—</b><small>${T.noCredits}</small>` : o.credits === "unlimited" ? `<b>∞</b><small>${T.unlimited}</small>` : `<b>${o.credits}</b><small>${T.codexCredits}</small>`}</dd></div>
-  </dl>${o.ceiling ? `<div class="ceiling">${ic("near")}<span>${T.ceiling}</span></div>` : ""}<button class="how">${T.how}</button></section>`;
+  </dl>${o.ceiling ? `<div class="ceiling">${ic("near")}<span>${T.ceiling}</span></div>` : ""}<details><summary class="how">${T.how}</summary><p class="explanation">${T.formula}</p></details></section>`;
   const k = c.counts;
   const foot = `<section class="ft"><span>${f(T.counts, { ...k, hitCls: k.hit ? "hit" : "", since: k.since ? f(T.since, { date: T[k.since] }) : T.sinceStart })}</span><span class="asof">${c.asOfRun ? f(T.asOfRun, { time: T[c.asOfRun] }) : f(T.asOf, { time: T.t1318 })}</span></section>`;
-  return `<article class="qc" data-quota-card="${c.id}" data-density="full" data-state="${c.state}">${head}${block}${lims}${o.hidden ? "" : out}${foot}</article>`;
+  return `<article class="qc" data-quota-card="${c.id}" data-density="full" data-state="${c.state}">${head}${block}${lims}${o.hidden ? "" : out}${foot}<p class="feedback" role="status" aria-atomic="true"></p></article>`;
 }
 
 function compact(c) {
   const row = (name, l) => !l.known
-    ? `<span>${name}</span><div class="bar" style="background:repeating-linear-gradient(135deg,var(--bg-sunken) 0 4px,transparent 4px 8px);box-shadow:inset 0 0 0 1px var(--border-default)"></div><span class="pct unk">—</span>`
-    : `<span>${name}</span><div class="bar"><i class="${tone(l.p, l.stop)}" style="width:${l.p}%"></i><b style="left:calc(${l.stop}% - 1px)"></b></div><span class="pct ${tone(l.p, l.stop)}">${l.p}%</span>`;
+    ? `<span>${name}</span><div class="bar" style="background:repeating-linear-gradient(135deg,var(--bg-sunken) 0 4px,transparent 4px 8px);box-shadow:inset 0 0 0 1px var(--border-default)"></div><span class="pct unk" aria-label="${T.unknown}">—</span>`
+    : `<span>${name}</span><div class="bar" role="meter" aria-label="${name}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${l.p}" aria-valuetext="${l.p}%, ${f(T.stopAt, { n: l.stop })}"><i class="${tone(l.p, l.stop)}" style="width:${l.p}%"></i><b style="left:calc(${l.stop}% - 1px)"></b></div><span class="pct ${tone(l.p, l.stop)}">${l.p}%</span>`;
   const line = c.line
-    ? `<div class="cline ${c.line.tone || ""}"><span class="t">${c.line.text}</span>${c.line.action ? `<button class="btn secondary">${T[c.line.action]}</button>` : ""}</div>`
+    ? `<div class="cline ${c.line.tone || ""}"><span class="t">${c.line.text}</span>${c.line.action ? `<button class="btn secondary" data-action="${c.line.action}">${T[c.line.action]}</button>` : ""}</div>`
     : "";
   return `<article class="qc c" data-quota-card="${c.id}" data-density="compact" data-state="${c.state}"><section>
     <div class="hd"><div class="who"><span class="name"><b>${c.label}</b>${c.plan ? `<small>· ${c.plan}</small>` : ""}</span><span class="sub">${c.sub}</span></div>${chip(c.state, c.chipVars)}</div>
-    <div class="cl">${row(T.s, c.session)}${row(T.w, c.week)}</div>${line}</section></article>`;
+    <div class="cl">${row(T.s, c.session)}${row(T.w, c.week)}</div>${line}<p class="feedback" role="status" aria-atomic="true"></p></section></article>`;
 }
 
 const FULL = [
   { id: "claude-3", label: "claude-3", plan: "max", sub: "Claude Code 2.1.291 · <code>claude-3</code>", state: "resting",
     block: { tone: "warning", icon: "pause", line: f(T.resting, { time: T.t1600, left: T.left42 }), cause: T.restCause, action: "resume" },
     session: { known: true, p: 100, stop: 95, at: "t1600", left: "left42" }, week: { known: true, p: 32, stop: 90, at: "fri", left: "left2d" },
-    outlook: { resets: 13, weekAt: "fri", full: 9, credits: "none" }, counts: { runs: 12, done: 10, failed: 2, hit: 1, since: "d610" } },
+    outlook: { resets: 8, weekAt: "fri", full: 6, credits: "none" }, counts: { runs: 12, done: 10, failed: 2, hit: 1, since: "d610" } },
   { id: "codex-2", label: "codex-2", plan: "plus", sub: "Codex 0.160.1 · <code>codex-2</code>", state: "threshold",
     block: { tone: "warning", icon: "gauge", line: f(T.threshold, { time: T.sun }), cause: T.thresholdCause, action: "resume" },
     session: { known: true, p: 12, stop: 95, at: "t1530", left: "left2h" }, week: { known: true, p: 91, stop: 90, at: "sun", left: "left4d" },
     outlook: { resets: 21, weekAt: "sun", full: 0.4, credits: "0", ceiling: true }, counts: { runs: 30, done: 27, failed: 3, hit: 0 }, asOfRun: "t0940" },
   { id: "claude-1", label: "claude-1", plan: "pro", sub: "Claude Code 2.1.291 · <code>claude-1</code>", state: "running", chipVars: { n: 1, max: 2 },
     session: { known: true, p: 86, stop: 95, at: "t1530", left: "left2h" }, week: { known: true, p: 47, stop: 90, at: "fri", left: "left2d" },
-    outlook: { resets: 13, weekAt: "fri", full: 7, credits: "none" }, counts: { runs: 41, done: 39, failed: 2, hit: 0 } },
+    outlook: { resets: 8, weekAt: "fri", full: 7, credits: "none" }, counts: { runs: 41, done: 39, failed: 2, hit: 0 } },
   { id: "codex-3", label: "codex-3", plan: "team", sub: "Codex 0.160.1 · <code>codex-3</code>", state: "spend",
-    block: { tone: "danger", icon: "ban", line: T.spend, cause: T.spendCause },
+    block: { tone: "danger", icon: "ban", line: T.spend, cause: T.spendCause, action: "refresh" },
     session: { known: true, p: 40, stop: 95, at: "t1530", left: "left2h" }, week: { known: true, p: 58, stop: 90, at: "sun", left: "left4d" },
     outlook: { resets: 21, weekAt: "sun", full: 3, credits: "0" }, counts: { runs: 8, done: 5, failed: 3, hit: 2, since: "d610" } },
   { id: "codex-1", label: "codex-1", plan: null, sub: "Codex 0.160.1 · <code>codex-1</code>", state: "signedOut",
@@ -342,13 +363,23 @@ const FULL = [
     session: { known: false, why: "signedOut" }, week: { known: false, why: "signedOut" },
     outlook: { resets: null, full: null, credits: "none", hidden: true }, counts: { runs: 0, done: 0, failed: 0, hit: 0 } },
 ];
+FULL.push(
+  { ...FULL[2], id: "codex-ready", label: "codex-ready", plan: "pro", sub: "Codex · workstation", state: "ready", session: { ...FULL[2].session, p: 18 }, outlook: { resets: 8, weekAt: "fri", full: null, credits: "unlimited" } },
+  { ...FULL[2], id: "claude-near", label: "claude-near", state: "near", outlook: { resets: 8, weekAt: "fri", full: 7, credits: "none" } },
+  { ...FULL[4], id: "gemini-no-report", label: "gemini-no-report", sub: "Gemini · workstation", state: "ready", block: null, session: { known: false, why: "noReport" }, week: { known: false, why: "noReport" }, outlook: { resets: null, full: null, credits: "none" } },
+  { ...FULL[4], id: "cli-missing", label: "cli-missing", sub: "workstation", state: "noCli", block: { tone: "danger", icon: "off", line: T.noCliLine, cause: "" }, session: { known: false, why: "noReport" }, week: { known: false, why: "noReport" } },
+  { ...FULL[2], id: "plan-off", label: "plan-off", state: "off", block: { tone: "warning", icon: "off", line: T.offLine, cause: "" } },
+  { ...FULL[1], id: "codex-resumed", label: "codex-resumed", state: "override", block: null, asOfRun: null }
+);
+CHIP.override = ["running", "ok"];
+T.state.override = T.override;
 const COMPACT = [
   { id: "lan-mini/claude-1", label: "claude-1", plan: "pro", sub: "lan-mini", state: "running", chipVars: { n: 1, max: 2 },
     session: { known: true, p: 86, stop: 95 }, week: { known: true, p: 47, stop: 90 }, line: { text: T.runningLine } },
   { id: "lan-mini/claude-3", label: "claude-3", plan: "max", sub: "lan-mini", state: "resting",
     session: { known: true, p: 100, stop: 95 }, week: { known: true, p: 32, stop: 90 }, line: { tone: "warning", text: f(T.restLine, { time: T.t1600 }), action: "resume" } },
   { id: "lan-mbp/codex-2", label: "codex-2", plan: "plus", sub: "lan-mbp", state: "threshold",
-    session: { known: true, p: 12, stop: 95 }, week: { known: true, p: 91, stop: 90 }, line: { tone: "warning", text: f(T.thresholdLine, { time: T.sun }) } },
+    session: { known: true, p: 12, stop: 95 }, week: { known: true, p: 91, stop: 90 }, line: { tone: "warning", text: f(T.thresholdLine, { time: T.sun }), action: "resume" } },
   { id: "lan-mbp/claude-2", label: "claude-2", plan: "pro", sub: "lan-mbp", state: "ready",
     session: { known: true, p: 8, stop: 95 }, week: { known: true, p: 21, stop: 90 }, line: { text: f(T.compactReset, { s: T.t1530, w: T.fri }) } },
   { id: "lan-mbp/codex-1", label: "codex-1", plan: null, sub: "lan-mbp", state: "signedOut",
@@ -359,10 +390,43 @@ const COMPACT = [
 
 document.title = T.title;
 document.getElementById("root").innerHTML = `<h1>${T.title}</h1><p class="lead">${T.lead}</p>
+  <div class="toolbar"><label>${T.theme}<select id="theme"><option value="light">${T.light}</option><option value="dark">${T.dark}</option></select></label><label>${T.language}<select id="language"><option value="vi">Tiếng Việt</option><option value="en">English</option></select></label><label>${T.result}<select id="result"><option value="success">${T.success}</option><option value="failure">${T.failure}</option></select></label></div>
   <h2>${T.full}</h2><div class="grid full">${FULL.map(full).join("")}</div>
   <h2>${T.compact}</h2><div class="grid compact">${COMPACT.map(compact).join("")}</div>
   <div class="offline" style="margin-top:var(--space-3)">${ic("wifi")}<span>${T.offlineRow}</span></div>
   <p class="note">${T.note}</p>`;
+document.getElementById("theme").value = document.documentElement.dataset.theme;
+document.getElementById("language").value = lang;
+document.getElementById("theme").onchange = (e) => { document.documentElement.dataset.theme = e.target.value; };
+document.getElementById("language").onchange = (e) => { q.set("lang", e.target.value); q.set("theme", document.documentElement.dataset.theme); location.search = q; };
+document.addEventListener("click", async (e) => {
+  const button = e.target.closest("button[data-action]");
+  if (!button) return;
+  const card = button.closest("article");
+  const feedback = card.querySelector(".feedback");
+  const action = button.dataset.action;
+  const fail = document.getElementById("result").value === "failure";
+  if (action === "login" || action === "menu") { feedback.textContent = T[action + "Demo"]; return; }
+  const controls = [...card.querySelectorAll("button")];
+  controls.forEach(b => b.disabled = true);
+  card.setAttribute("aria-busy", "true");
+  feedback.textContent = T.busy;
+  await new Promise(resolve => setTimeout(resolve, 700));
+  card.removeAttribute("aria-busy");
+  controls.forEach(b => b.disabled = false);
+  if (fail) { feedback.textContent = T.failed; return; }
+  feedback.textContent = action === "resume" ? T.resumed : T.refreshed;
+  if (action === "resume") {
+    card.dataset.state = "override";
+    card.querySelector(".chip").outerHTML = chip("override");
+    const block = card.querySelector(".block, .cline");
+    const until = card.dataset.quotaCard.endsWith("claude-3") ? T.t1600 : T.sun;
+    block.innerHTML = `<span>${f(T.overrideLine, { time: until })}</span>`;
+    // Keep keyboard focus visible after the action button leaves the card.
+    feedback.tabIndex = -1;
+    feedback.focus();
+  }
+});
 </script>
 </body>
 </html>
