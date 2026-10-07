@@ -6,7 +6,7 @@
 //   npm run user -w @xdev-hive/web -- reset <username>            (new temporary password, signs out everywhere)
 //   npm run user -w @xdev-hive/web -- list
 //   npm run backup -w @xdev-hive/web -- [dir] [keep]   (default HIVE_BACKUP_DIR, else data/backups; keep 7)
-//   npm run files -w @xdev-hive/web -- restore [dir]   (puts a backup's doc files, <dir>/files, back into HIVE_SEAWEEDFS_URL)
+//   npm run files -w @xdev-hive/web -- restore [dir]   (puts backed-up stored files, <dir>/files, back into HIVE_SEAWEEDFS_URL)
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -33,7 +33,7 @@ if (cmd === "backup") {
     process.exitCode = 1;
   }
 } else if (cmd === "files" && sub === "restore") {
-  // SeaweedFS lost its data: the files a backup copied go back, each checked against its name (its SHA-256).
+  // SeaweedFS lost its data: every stored file in the backup goes back, checked against its SHA-256 name.
   const dir = path.resolve(arg ?? process.env.HIVE_BACKUP_DIR ?? path.join(path.dirname(dbPath), "backups"));
   try {
     const store = seaweedFromEnv(process.env);

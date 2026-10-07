@@ -1,6 +1,6 @@
 #!/bin/bash
-# Restore drill (goals OPS-2): the hub's newest backup and its doc files, put back into a new, empty SeaweedFS and
-# opened by a hub of its own, then every doc file read back and checked against its SHA-256. Nothing of the running
+# Restore drill (goals OPS-2): the hub's newest backup and all stored files, put back into a new, empty SeaweedFS and
+# opened by a hub of its own, then every database-referenced file read back and checked against its SHA-256. Nothing of the running
 # hub is touched: its backups are only read, and the drill's containers (hive-drill-*), network and folder are removed
 # at the end, never with prune (the server may be shared).
 #   bash deploy/restore-drill.sh            on the server, after deploy/update.sh built the image
@@ -41,26 +41,35 @@ for i in $(seq 1 60); do
   sleep 1
 done
 
-step "5. every doc file reads back with the bytes its SHA-256 names"
+step "5. every database-referenced file reads back with the bytes its SHA-256 names"
 docker exec -e TOKEN=$TOKEN hive-drill-hub node -e '
 const { createHash } = require("node:crypto");
+const { DatabaseSync } = require("node:sqlite");
+const db = new DatabaseSync("/drill/hub.db", { readOnly: true });
 const rpc = async (method, input) => (await (await fetch("http://127.0.0.1:7788/api/rpc", { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + process.env.TOKEN }, body: JSON.stringify({ method, input }) })).json());
 (async () => {
-  const docs = (await rpc("docs.list", {})).result;
-  let files = 0, ok = 0, bad = [];
-  for (const d of docs) {
-    const assets = (await rpc("docs.assets", { key: d.key })).result ?? [];
-    for (const a of assets) {
-      files++;
-      const got = (await rpc("docs.assetGet", { key: d.key, name: a.name })).result;
-      const sha = got ? createHash("sha256").update(Buffer.from(got.data, "base64")).digest("hex") : null;
-      if (got && (!a.sha256 || sha === a.sha256)) ok++; else bad.push(`${d.key}/${a.name}`);
+  const groups = [
+    { kind: "document assets", rows: db.prepare("SELECT doc_key AS owner, name, sha256 FROM doc_assets WHERE sha256 IS NOT NULL").all(), method: "docs.assetGet", input: r => ({ key: r.owner, name: r.name }) },
+    { kind: "run artifacts", rows: db.prepare("SELECT id, name, sha256 FROM artifacts WHERE sha256 IS NOT NULL").all(), method: "artifacts.get", input: r => ({ id: r.id }) },
+  ];
+  let total = 0, intact = 0, bad = [];
+  for (const group of groups) {
+    let ok = 0;
+    for (const row of group.rows) {
+      total++;
+      const got = (await rpc(group.method, group.input(row))).result;
+      const bytes = got?.data ? Buffer.from(got.data, "base64") : null;
+      const sha = bytes ? createHash("sha256").update(bytes).digest("hex") : null;
+      if (sha && sha === row.sha256) { ok++; intact++; }
+      else bad.push(`${group.kind}/${row.name}`);
     }
+    console.log(`   ${group.kind}: ${group.rows.length} referenced, ${ok} read back intact`);
   }
-  console.log(`   ${docs.length} docs, ${files} files, ${ok} read back intact${bad.length ? ", BAD: " + bad.join(", ") : ""}`);
+  db.close();
   const info = (await rpc("hub.info", {})).result;
   console.log(`   hub ${info?.version ?? "?"} · files ${JSON.stringify(info?.files ?? null).slice(0, 160)}`);
-  process.exit(bad.length || !files ? 1 : 0);
+  console.log(`   total: ${total} referenced, ${intact} read back intact${bad.length ? ", BAD: " + bad.join(", ") : ""}`);
+  process.exit(bad.length || !total ? 1 : 0);
 })();'
 R=$?
 step "done (exit $R)"
