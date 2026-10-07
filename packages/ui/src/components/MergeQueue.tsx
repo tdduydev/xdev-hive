@@ -22,8 +22,8 @@ export function MergeQueue({
   const [chosen, setChosen] = useState("");
   const available = scope.kind === "system" ? scope.projects : scope.kind === "shared" ? [] : projects;
   const selected = project || (scope.kind === "project" ? scope.project : available.includes(chosen) ? chosen : "");
-  return <details className="rounded-lg border border-border bg-surface p-3 text-sm" data-merge-queue>
-    <summary className="min-h-11 cursor-pointer content-center font-medium focus-visible:focus-ring">{t("mergeQueue.title")}</summary>
+  return <details className="text-sm" data-merge-queue>
+    <summary className="min-h-11 cursor-pointer content-center rounded-sm text-xs font-medium text-fg-secondary outline-none focus-visible:focus-ring md:min-h-8">{t("mergeQueue.title")}</summary>
     {!project && scope.kind !== "project" ? <label className="my-2 flex flex-col gap-2">{t("mergeQueue.service")}
       <NativeSelect className="min-h-11 max-md:text-base" value={selected} onChange={e => setChosen(e.target.value)}>
         <NativeSelectOption value="">{t("mergeQueue.select")}</NativeSelectOption>
