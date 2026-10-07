@@ -311,6 +311,17 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **58d. e2e-step**: `--only <bước>` và `--repeat N` cho e2e, in thời gian từng bước.
   - [ ] **58e. codex-localhost**: tuỳ chọn profile Codex mở được cổng 127.0.0.1 để chạy e2e.
 
+- **59. flow-speed** (hỏi 7/10: "giao nhiều việc, nhiều task á"): từ lúc giao tới lúc phát hành nhanh hơn: thêm máy làm cổng kiểm, e2e bớt lỗi chập chờn, giao lại run, tự cập nhật, ghép lô bằng script. Spec: [docs/specs/59-flow-speed.md](specs/59-flow-speed.md). Tách:
+  - [ ] **59a. e2e-linux**: e2e desktop và điện thoại xanh trên Linux (xvfb), phím tắt theo hệ điều hành.
+  - [ ] **59b. tests-linux**: `npm test` xanh trên Linux, phần phụ thuộc máy sau lớp giả lập.
+  - [ ] **59c. e2e-needs**: khai báo `NEEDS` cho mọi bước, mỗi bước chạy riêng được bằng `--only`.
+  - [ ] **59d. e2e-click**: `tab.click` chờ phần tử đứng yên và không bị che, thay các bản vá rời (sau 59c).
+  - [ ] **59e. run-redispatch**: nút *Giao lại* cho run lỗi, hết giờ, huỷ: đổi máy/gói/thời hạn, làm tiếp trên branch.
+  - [ ] **59f. auto-update-idle**: app tự cài bản mới khi không có run, cả bản Linux đã giải nén.
+  - [ ] **59g. batch-tool**: `scripts/review-batch.mjs` ghép một lô, báo xung đột, chạy cổng kiểm.
+  - [ ] **59h. release-notes**: `npm run release` soạn *Có gì mới* từ mục roadmap vừa xong và commit `fix:`.
+  - [ ] **59i. deploy-log-check**: hub gom lỗi trong log từ lúc khởi động, thẻ ở *Quản trị › Vận hành*, cảnh báo khi lỗi lặp nhiều.
+
 ## Sửa lỗi
 
 - [x] **stale-base** (5/10, BUG-stale-base): run R-43 trên máy .52 gặp lỗi fetch tạm thời, và runner lặng lẽ tạo branch `ai/<task>` từ HEAD của checkout chính, tức code cũ 3 ngày (0.107.0 trong khi main đã 0.126.0). Giờ fetch lỗi thì thử lại sau 5 giây rồi 20 giây. Vẫn lỗi thì run của task chưa có branch quay về hàng đợi, kèm lý do hiện trên Board và Lượt chạy, thử lại ở các tick sau; quá 5 lần thì *failed* với lỗi dịch được. Không còn tạo branch từ HEAD cũ. Branch đã có (run sửa, review) chạy như cũ. Hỏi best-of-n thì báo lỗi ngay. Repo không có remote nào thì giữ cách cũ. Do claude-1 trên máy .52 làm.
