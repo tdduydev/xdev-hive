@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "node:test";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { mergeQueueConfigSchema, type MergeBatch } from "@xdev-hive/core";
@@ -116,6 +116,34 @@ it("pushes this machine's unpublished branch before fetching, and names the caus
     const r2 = await runMergeBatch(other, { ...opts, directory: path.join(s.root, "other-batch") });
     assert.equal(r2.status, "failed");
     assert.match(r2.outcomes[0]!.reason, /not on remote origin[\s\S]*máy đó push/);
+  } finally {
+    s.close();
+  }
+});
+it("does not publish an unpublished branch when its fetch failed for a network reason", async () => {
+  const s = fixture();
+  try {
+    const remote = path.join(s.root, "remote.git");
+    execFileSync("git", ["init", "-q", "--bare", "-b", "main", remote]);
+    s.git("remote", "add", "origin", remote);
+    s.git("push", "-q", "origin", "main");
+    const bin = path.join(s.root, "bin");
+    const wrapper = path.join(bin, "git");
+    const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
+    const sourceFetch = "refs/heads/ai/T-1:refs/hive-merge/1/source-0";
+    mkdirSync(bin);
+    writeFileSync(wrapper, `#!/bin/sh\ncase "$*" in *"${sourceFetch}"*) echo 'fatal: unable to access remote: connection refused' >&2; exit 128;; esac\nexec "${realGit}" "$@"\n`);
+    chmodSync(wrapper, 0o755);
+    const r = await runMergeBatch({ ...s.batch, items: [s.batch.items[0]!] }, {
+      ...s.options,
+      local: false,
+      env: { PATH: `${bin}:${process.env.PATH}` },
+      publish: async () => {}
+    });
+    assert.equal(r.status, "failed");
+    assert.match(r.outcomes[0]!.reason, /connection refused/);
+    assert.doesNotMatch(r.outcomes[0]!.reason, /not on remote origin/);
+    assert.doesNotMatch(execFileSync("git", ["--git-dir", remote, "branch", "--list", "ai/T-1"], { encoding: "utf8" }), /ai\/T-1/);
   } finally {
     s.close();
   }
