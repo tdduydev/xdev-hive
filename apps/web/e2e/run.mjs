@@ -100,7 +100,8 @@ async function runOnce(out) {
       teardownTimer = setTimeout(() => browser.kill("SIGKILL"), 5000);
     } catch { /* The browser may still be writing its result. */ }
   }, 100);
-  const timer = setTimeout(() => browser.kill("SIGKILL"), 5 * 60_000);
+  // Only a hang guard: the full phone run passed 5 minutes with the 0.145 steps (≈300 s of steps alone).
+  const timer = setTimeout(() => browser.kill("SIGKILL"), 15 * 60_000);
   const code = await new Promise((resolve) => browser.once("exit", (c) => resolve(c ?? completedCode ?? 1)));
   clearInterval(completion);
   clearTimeout(teardownTimer);
