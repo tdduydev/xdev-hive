@@ -114,7 +114,7 @@ describe("chat with a project's leader", () => {
       const first = await hive.call("chat.send", { project: "app", machineId: mbp.name, text: "Old message" }, lead);
       await hive.call("chat.finish", { replyId: first.reply.id, status: "done", text: "Old answer", sessionId: "old-session", costUsd: 0.01 }, mbp);
       // Recreate the pre-chat-upgrade schema, including the later research table, before replaying migrations.
-      hive.db.exec(`DROP TABLE research_runs; ALTER TABLE chat_messages DROP COLUMN tokens; ALTER TABLE chat_messages DROP COLUMN switched_from; ALTER TABLE chat_messages DROP COLUMN rate_limited; PRAGMA user_version = ${migrationIndex("ALTER TABLE chat_messages ADD COLUMN tokens")}`);
+      hive.db.exec(`DROP TABLE research_runs; ALTER TABLE machines DROP COLUMN runner_settings; ALTER TABLE machines DROP COLUMN runner_change; ALTER TABLE machine_profile_changes DROP COLUMN stop_at_session; ALTER TABLE machine_profile_changes DROP COLUMN stop_at_week; ALTER TABLE chat_messages DROP COLUMN tokens; ALTER TABLE chat_messages DROP COLUMN switched_from; ALTER TABLE chat_messages DROP COLUMN rate_limited; PRAGMA user_version = ${migrationIndex("ALTER TABLE chat_messages ADD COLUMN tokens")}`);
       hive.close();
       const upgraded = new SqliteHive(file);
       try {

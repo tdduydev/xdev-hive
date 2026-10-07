@@ -67,6 +67,7 @@ import {
   type RetiredProject,
   type Machine,
   type ProfileChange,
+  type RunnerChange,
   type RunMergeOrder,
   type MachineCommand,
   type MachineTools,
@@ -147,6 +148,11 @@ const setupReport = z.object({
   machine: z.array(setupItem).max(20),
   projects: z.array(z.object({ project, repo: z.string().max(500), items: z.array(setupItem).max(10) })).max(50),
 });
+const machineRunnerSettings = z.object({
+  maxParallel: z.number().int().min(1).max(8),
+  mrEnabled: z.boolean(),
+  mrWhen: z.enum(["after_review", "after_success"]),
+});
 const reportedProfile = z.object({
   supportedModels: z.array(z.string().max(200)).max(2000).nullable().optional(),
   timeoutMinutes: z.number().int().min(1).max(720).optional(),
@@ -177,6 +183,8 @@ const reportedProfile = z.object({
   rateLimited: z.number().int().min(0),
   statsSince: z.string().max(40).nullable().optional(),
   priority: z.number().int().min(0).max(100).optional(),
+  stopAtSession: z.number().int().min(1).max(100).optional(),
+  stopAtWeek: z.number().int().min(1).max(100).optional(),
   maxConcurrent: z.number().int().min(1).max(8).optional(),
   classify: z.boolean().optional(),
   research: z.boolean().optional(),
@@ -572,6 +580,7 @@ export const schemas = {
     acceptsRuns: z.boolean().optional(),
     gateRunner: z.boolean().optional(),
     maxParallel: z.number().int().min(1).max(20).optional(),
+    runnerSettings: machineRunnerSettings.optional(),
     /** Temporary intake hold for an app update; keep previously dispatched requests pending. */
     updateDraining: z.boolean().optional(),
     runs: z
@@ -606,8 +615,10 @@ export const schemas = {
   "machines.approveTool": z.object({ machineId: machineRef, toolId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/), hash: z.string().regex(/^[0-9a-f]{64}$/) }),
   /** What the project's machines still lack to run its agents (roadmap 29a): any reader of the project, unlike admin.machines. */
   "machines.setupMissing": z.object({ project }),
+  /** Public runner settings only, with the same human admin/owner permission as setProfile. */
+  "machines.setRunner": z.object({ machineId: machineRef, settings: machineRunnerSettings.partial().refine(s => Object.keys(s).length > 0, "at least one runner setting") }),
   /**
-   * Turns one of a machine's profiles on or off, or changes its priority (roadmap 18d): a hub admin, or the person whose
+   * Changes a profile's enabled state, priority or stop thresholds: a hub admin, or the person whose
    * account the machine's token belongs to. The machine applies it at its next heartbeat, no restart.
    */
   "machines.setProfile": z
@@ -616,8 +627,10 @@ export const schemas = {
       profileId: z.string().min(1).max(40),
       enabled: z.boolean().optional(),
       priority: z.number().int().min(0).max(100).optional(),
+      stopAtSession: z.number().int().min(1).max(100).optional(),
+      stopAtWeek: z.number().int().min(1).max(100).optional(),
     })
-    .refine((i) => i.enabled !== undefined || i.priority !== undefined, "enabled or priority"),
+    .refine((i) => [i.enabled, i.priority, i.stopAtSession, i.stopAtWeek].some(v => v !== undefined), "at least one profile setting"),
   /** A machine reports a run that failed for good or opened a merge request (for the hub's webhooks). */
   "runs.report": z.object({
     kind: z.enum(["failed", "mr", "ci_limit"]),
@@ -1286,6 +1299,7 @@ export interface MethodOutput {
     budgetBlocked: BudgetBlock[];
     /** Changes to this machine's profiles asked for on the web (roadmap 18d). Older apps ignore it; the hub drops them after a day. */
     profileChanges: ProfileChange[];
+    runnerChange?: RunnerChange | null;
     /** Merges asked for on the web (roadmap 18c); only while it accepts runs from the hub. Older apps ignore it. */
     mergeRuns: RunMergeOrder[];
     /**
@@ -1302,6 +1316,7 @@ export interface MethodOutput {
   "machines.approveTool": ToolApproval;
   "machines.setupMissing": MachineSetupMissing[];
   "machines.setProfile": Machine;
+  "machines.setRunner": Machine;
   "costs.summary": CostSummary;
   "budgets.list": BudgetUsage[];
   "budgets.set": BudgetUsage[];
@@ -1502,6 +1517,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "machines.setupMissing": "viewer",
   // Not a project right: the hub checks for a hub admin or the machine's owner, and refuses agents.
   "machines.setProfile": "agent",
+  "machines.setRunner": "agent",
   "costs.summary": "viewer",
   "budgets.list": "viewer",
   // Also no per-project grants (a hub admin), as for the hub's agent policy: a cap may bind every project.

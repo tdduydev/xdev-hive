@@ -125,6 +125,8 @@ import type {
   MachineDetail,
   MachineRun,
   ProfileChange,
+  RunnerChange,
+  MachineRunnerSettings,
   RunCompression,
   RunMr,
   MergeStatus,
@@ -759,6 +761,10 @@ const MIGRATIONS: string[] = [
     'kilo-cli', '${JSON.stringify({ id: "kilo-cli", name: "Kilo Code CLI", description: "CLI Kilo native headless JSON; free pool và điều khoản endpoint cần kiểm trước khi gửi dữ liệu.", kind: "cli", package: { registry: "npm", name: "@kilocode/cli", version: "7.8.3" }, agents: ["kilo"], check: ["kilo", "--version"], install: ["npm", "install", "-g", "{package}"], license: "MIT", homepage: "https://kilo.ai/docs/code-with-ai/platforms/cli", enabledByDefault: false, handler: null, mcp: null, plugin: null, hooks: [], prepare: null, env: {}, secretEnv: [] })}',
     0, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 'hive');`,
   browserSeedSql(),
+  `ALTER TABLE machines ADD COLUMN runner_settings TEXT;
+   ALTER TABLE machines ADD COLUMN runner_change TEXT;
+   ALTER TABLE machine_profile_changes ADD COLUMN stop_at_session INTEGER;
+   ALTER TABLE machine_profile_changes ADD COLUMN stop_at_week INTEGER;`,
 ];
 
 function browserSeedSql(): string {
@@ -1140,7 +1146,9 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
   "machines.remove": (i) => ({ target: i.id }),
   "machines.manageWorktrees": (i, o: WorktreeCommand) => ({ target: i.machineId, detail: JSON.stringify({ targets: o.targets.map(t => `${t.project}/${t.path}`), force: o.force, cleanup: o.cleanup }) }),
   "machines.approveTool": (i, o: ToolApproval) => ({ target: `${i.machineId}/${o.toolId}`, detail: o.hash, text: { key: "audit.toolApproved", vars: { tool: o.toolId, hash: o.hash } } }),
+  "machines.setRunner": (i) => ({ target: i.machineId, detail: JSON.stringify(i.settings) }),
   "machines.setProfile": (i, o: Machine) => {
+    if (i.stopAtSession !== undefined || i.stopAtWeek !== undefined) return { target: `${o.machine}/${i.profileId}`, detail: JSON.stringify({ enabled: i.enabled, priority: i.priority, stopAtSession: i.stopAtSession, stopAtWeek: i.stopAtWeek }) };
     const key = i.enabled === undefined ? "audit.profilePriority" : i.priority === undefined ? (i.enabled ? "audit.profileOn" : "audit.profileOff") : i.enabled ? "audit.profileOnPriority" : "audit.profileOffPriority";
     const parts = [i.enabled === undefined ? "" : i.enabled ? "bật" : "tắt", i.priority === undefined ? "" : `ưu tiên ${i.priority}`].filter(Boolean).join(", ");
     return { target: `${o.machine}/${i.profileId}`, detail: parts, text: { key, vars: { profile: i.profileId, priority: i.priority ?? "" } } };
@@ -1673,6 +1681,8 @@ const toProfileChange = (r: Row): ProfileChange => ({
   profileId: str(r.profile_id),
   enabled: r.enabled == null ? null : num(r.enabled) === 1,
   priority: r.priority == null ? null : num(r.priority),
+  stopAtSession: r.stop_at_session == null ? null : num(r.stop_at_session),
+  stopAtWeek: r.stop_at_week == null ? null : num(r.stop_at_week),
   requestedBy: str(r.requested_by),
   requestedAt: str(r.requested_at),
 });
@@ -6393,6 +6403,8 @@ export class SqliteHive implements HiveBackend {
       acceptsRuns: num(r.accepts_runs ?? 0) === 1,
       gateRunner: num(r.gate_runner ?? 0) === 1,
       maxParallel: r.max_parallel == null ? undefined : num(r.max_parallel),
+      runnerSettings: r.runner_settings == null ? undefined : JSON.parse(str(r.runner_settings)) as MachineRunnerSettings,
+      runnerChange: r.runner_change == null ? null : JSON.parse(str(r.runner_change)) as RunnerChange,
       owner: strOrNull(r.owner),
       profileChanges: this.#profileChanges(str(r.id)),
     };
@@ -7762,7 +7774,7 @@ export class SqliteHive implements HiveBackend {
         return batch;
       }),
 
-      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, projects, acceptsRuns, maxParallel, updateDraining, gateRunner, costs, deliveredMessages, toolStates, appliedToolApprovals, worktrees, worktreeResults }, actor) =>
+      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, projects, acceptsRuns, maxParallel, runnerSettings, updateDraining, gateRunner, costs, deliveredMessages, toolStates, appliedToolApprovals, worktrees, worktreeResults }, actor) =>
         this.#tx(() => {
           // Drop out-of-scope reports without taking the whole machine offline; grants can change between beats.
           runs = runs.filter((r) => may(actor, r.project, "taskWork"));
@@ -7810,7 +7822,15 @@ export class SqliteHive implements HiveBackend {
           const archivedProjects = allowedProjects.filter((p) => hidden.has(p));
           db.prepare("UPDATE machines SET projects = ? WHERE id = ?").run(JSON.stringify(allowedProjects.filter((p) => !hidden.has(p))), actor.name);
           db.prepare("UPDATE machines SET gate_runner = ? WHERE id = ?").run(gateRunner ? 1 : 0, actor.name);
-          if (maxParallel !== undefined) db.prepare("UPDATE machines SET max_parallel = ? WHERE id = ?").run(maxParallel, actor.name);
+          // A downgraded app must lose the capability too; a previous report cannot promise it still applies patches.
+          db.prepare("UPDATE machines SET runner_settings = ? WHERE id = ?").run(runnerSettings ? JSON.stringify(runnerSettings) : null, actor.name);
+          if (runnerSettings) db.prepare("UPDATE machines SET max_parallel = ? WHERE id = ?").run(runnerSettings.maxParallel, actor.name);
+          const pendingRunner = this.#toMachine(db.prepare("SELECT * FROM machines WHERE id = ?").get(actor.name) as Row).runnerChange;
+          if (pendingRunner && (pendingRunner.requestedAt < this.#now(-PROFILE_CHANGE_HOURS * 60) ||
+              (runnerSettings && Object.entries(pendingRunner.settings).every(([key, value]) => runnerSettings[key as keyof MachineRunnerSettings] === value)))) {
+            db.prepare("UPDATE machines SET runner_change = NULL WHERE id = ?").run(actor.name);
+          }
+          if (!runnerSettings && maxParallel !== undefined) db.prepare("UPDATE machines SET max_parallel = ? WHERE id = ?").run(maxParallel, actor.name);
           if (acceptsRuns !== undefined) db.prepare("UPDATE machines SET accepts_runs = ? WHERE id = ?").run(acceptsRuns ? 1 : 0, actor.name);
           // Missing on older clients and cleared on the first heartbeat after a restart.
           db.prepare("UPDATE machines SET update_draining = ? WHERE id = ?").run(updateDraining ? 1 : 0, actor.name);
@@ -7821,7 +7841,7 @@ export class SqliteHive implements HiveBackend {
             for (const c of this.#profileChanges(actor.name)) {
               const p = profiles.find((x) => x.id === c.profileId);
               // Gone from the machine, or reported as asked: nothing is left to send.
-              if (!p || ((c.enabled === null || p.enabled === c.enabled) && (c.priority === null || p.priority === c.priority))) drop.run(actor.name, c.profileId);
+              if (!p || ((c.enabled === null || p.enabled === c.enabled) && (c.priority === null || p.priority === c.priority) && (c.stopAtSession == null || p.stopAtSession === c.stopAtSession) && (c.stopAtWeek == null || p.stopAtWeek === c.stopAtWeek))) drop.run(actor.name, c.profileId);
             }
           }
           // A machine resends until the hub answers, so a run is kept as first reported.
@@ -7920,6 +7940,7 @@ export class SqliteHive implements HiveBackend {
             // After this beat's costs went in, so a run that just filled a cap holds the next one at once.
             budgetBlocked: this.#budgetBlocks(actor),
             profileChanges: this.#profileChanges(actor.name),
+            runnerChange: this.#toMachine(db.prepare("SELECT * FROM machines WHERE id = ?").get(actor.name) as Row).runnerChange,
             mergeRuns,
             archivedProjects,
           };
@@ -9266,7 +9287,19 @@ export class SqliteHive implements HiveBackend {
       "machines.remove": ({ id }) => ({ removed: num(db.prepare("DELETE FROM machines WHERE id = ?").run(id).changes) === 1 }),
 
       // A subscription is a person's own account: only its machine's owner and hub admins change it (asked 2/10).
-      "machines.setProfile": ({ machineId, profileId, enabled, priority }, actor) =>
+      "machines.setRunner": ({ machineId, settings }, actor) => this.#tx(() => {
+        const row = db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row | undefined;
+        if (!row) throw new HiveError("not_found", `No machine ${machineId}.`, { key: "errors.machineNotFound", vars: { machine: machineId } });
+        const m = this.#toMachine(row);
+        if (!this.#mayApproveTool(actor, m.owner)) throw new HiveError("forbidden", "Only a hub admin or machine owner changes runner settings.", { key: "errors.machineProfileForbidden", vars: { machine: m.machine } });
+        if (!m.runnerSettings) throw new HiveError("bad_request", "App too old for runner settings.", { key: "errors.machineAppTooOld", vars: { machine: m.machine } });
+        const next = { ...m.runnerChange?.settings, ...settings };
+        for (const key of Object.keys(next) as (keyof MachineRunnerSettings)[]) if (next[key] === m.runnerSettings[key]) delete next[key];
+        const change: RunnerChange | null = Object.keys(next).length ? { settings: next, requestedBy: actor.account ?? actor.name, requestedAt: this.#now() } : null;
+        db.prepare("UPDATE machines SET runner_change = ? WHERE id = ?").run(change ? JSON.stringify(change) : null, machineId);
+        return this.#toMachine(db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row);
+      }),
+      "machines.setProfile": ({ machineId, profileId, enabled, priority, stopAtSession, stopAtWeek }, actor) =>
         this.#tx(() => {
           const row = db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row | undefined;
           if (!row) throw new HiveError("not_found", `No machine ${machineId}.`, { key: "errors.machineNotFound", vars: { machine: machineId } });
@@ -9274,26 +9307,31 @@ export class SqliteHive implements HiveBackend {
           const hubAdmin = actor.role === "admin" && !actor.access;
           // Not an agent on the owner's token: a run should not turn subscriptions on for itself.
           const owner = !isAgentActor(actor) && actor.account !== undefined && actor.account === m.owner;
-          if (!hubAdmin && !owner) {
+          if (actor.role === "agent" || isAgentActor(actor) || (!hubAdmin && !owner)) {
             throw new HiveError("forbidden", `Only a hub admin or the owner of ${m.machine} changes its profiles.`, { key: "errors.machineProfileForbidden", vars: { machine: m.machine } });
           }
           const p = m.profiles.find((x) => x.id === profileId);
           if (!p) throw new HiveError("not_found", `${m.machine} has no profile ${profileId}.`, { key: "errors.machineProfileNotFound", vars: { machine: m.machine, profile: profileId } });
           // An app that does not report priorities does not take changes either: one would wait a day for nothing.
           if (p.priority === undefined) throw new HiveError("bad_request", `${m.machine} runs an app too old for profile changes.`, { key: "errors.machineAppTooOld", vars: { machine: m.machine } });
+          if ((stopAtSession !== undefined && p.stopAtSession === undefined) || (stopAtWeek !== undefined && p.stopAtWeek === undefined)) throw new HiveError("bad_request", "App too old for profile thresholds.", { key: "errors.machineAppTooOld", vars: { machine: m.machine } });
           const old = m.profileChanges.find((c) => c.profileId === profileId);
           let on = enabled ?? old?.enabled ?? null;
           let rank = priority ?? old?.priority ?? null;
           // What the machine already has needs no change: switching back cancels the waiting one.
           if (on === p.enabled) on = null;
           if (rank === p.priority) rank = null;
-          if (on === null && rank === null) db.prepare("DELETE FROM machine_profile_changes WHERE machine_id = ? AND profile_id = ?").run(machineId, profileId);
+          let session = stopAtSession ?? old?.stopAtSession ?? null;
+          let week = stopAtWeek ?? old?.stopAtWeek ?? null;
+          if (session === p.stopAtSession) session = null;
+          if (week === p.stopAtWeek) week = null;
+          if (on === null && rank === null && session === null && week === null) db.prepare("DELETE FROM machine_profile_changes WHERE machine_id = ? AND profile_id = ?").run(machineId, profileId);
           else {
             db.prepare(
-              `INSERT INTO machine_profile_changes(machine_id, profile_id, enabled, priority, requested_by, requested_at) VALUES (?, ?, ?, ?, ?, ?)
-               ON CONFLICT(machine_id, profile_id) DO UPDATE SET enabled = excluded.enabled, priority = excluded.priority,
+              `INSERT INTO machine_profile_changes(machine_id, profile_id, enabled, priority, requested_by, requested_at, stop_at_session, stop_at_week) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(machine_id, profile_id) DO UPDATE SET enabled = excluded.enabled, priority = excluded.priority, stop_at_session = excluded.stop_at_session, stop_at_week = excluded.stop_at_week,
                  requested_by = excluded.requested_by, requested_at = excluded.requested_at`,
-            ).run(machineId, profileId, on === null ? null : on ? 1 : 0, rank, actor.account ?? actor.name, this.#now());
+            ).run(machineId, profileId, on === null ? null : on ? 1 : 0, rank, actor.account ?? actor.name, this.#now(), session, week);
           }
           return this.#toMachine(db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row);
         }),

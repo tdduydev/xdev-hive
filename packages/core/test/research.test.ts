@@ -93,7 +93,7 @@ describe("research from chat", () => {
       const current = new SqliteHive(file);
       await current.call("tasks.create", { id: "KEEP", project: "app", title: "Keep" }, admin);
       const version = migrationIndex("CREATE TABLE research_runs(");
-      current.db.exec(`DROP TABLE research_runs; PRAGMA user_version = ${version}`);
+      current.db.exec(`DROP TABLE research_runs; ALTER TABLE machines DROP COLUMN runner_settings; ALTER TABLE machines DROP COLUMN runner_change; ALTER TABLE machine_profile_changes DROP COLUMN stop_at_session; ALTER TABLE machine_profile_changes DROP COLUMN stop_at_week; PRAGMA user_version = ${version}`);
       current.close();
       const upgraded = new SqliteHive(file);
       try {

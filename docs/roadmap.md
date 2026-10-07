@@ -390,3 +390,5 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 - [x] **codex-mcp-approve** (pilot xdev-auth ngày 29/9): Codex 0.157 từ chối mọi tool MCP có ghi khi chạy headless ("MCP tool call requires approval, but approval policy is never"), nên agent Codex không claim task hay ghi memory được và AUTH-4 dừng ngay. Run `codex exec` của Hive thêm `-c mcp_servers.xdev-hive.default_tools_approval_mode="approve"` (container: `hive`), block Hive trong `~/.codex/config.toml` có dòng đó; đã thử trên hive tạm: có khoá thì ghi được, không có thì bị chặn.
 
 - [x] **board-refresh**: Board ngừng làm mới ngay khi hết run chờ/chạy, trước lúc run vừa xong được ghi MR (push + mở MR/PR chạy sau khi lưu trạng thái), nên thẻ task thiếu badge MR. Runner giờ đánh dấu run `finishing` (trong `list()`) tới khi xong ghi chú Hive, MR và run tiếp theo; Board coi đó là còn hoạt động.
+
+- [x] **FEAT-machine-settings-remote**: admin hoặc chủ máy đổi số run song song (1–8), tự tạo MR/PR và thời điểm tạo, ngưỡng dừng phiên/tuần của gói từ trang Máy. Máy nhận ở heartbeat, lưu config và áp cho lượt mới không cần khởi động lại; hub retry đến khi máy báo đúng, audit và chặn app cũ.
