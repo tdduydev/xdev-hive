@@ -85,6 +85,7 @@ import { toolViews } from "./runner/tools.ts";
 import { expandEnv, expandHome, resolveBin } from "./runner/command.ts";
 import { LOGIN_DIR_ENV, LoginMonitor, loginParts, readLoginHow, usageRefresher } from "./runner/login.ts";
 import { platformKey, Updater, type UpdateStatus } from "./updater.ts";
+import { IdleUpdate } from "#desktop/main/idle-update.ts";
 import { Runner, type HubUpdate, type RunnerEvent } from "./runner/runner.ts";
 import { agentPath } from "./runner/shell-path.ts";
 import { landingPage, signInThroughBrowser } from "./hub-browser.ts";
@@ -817,10 +818,13 @@ const reportedProfiles = (): ReportedProfile[] =>
   }));
 
 let updater: Updater;
+let idleUpdate: IdleUpdate | undefined;
+let installingUpdate = false;
 let notifiedUpdate: string | null = null;
 
 /** A download finished: say so once per version (the top bar also shows it). */
 function onUpdateChange(status: UpdateStatus): void {
+  void idleUpdate?.tick();
   if (status.state !== "ready" || !status.version || notifiedUpdate === status.version || !Notification.isSupported()) return;
   notifiedUpdate = status.version;
   const n = new Notification({ title: tr("desktop.updateReadyTitle", { version: status.version }), body: tr("desktop.updateReadyBody") });
@@ -829,10 +833,22 @@ function onUpdateChange(status: UpdateStatus): void {
 }
 
 /** Restarts into the downloaded build: the runner stops its agents first (before-quit), then the helper swaps the app. */
-async function installAndRestart(): Promise<void> {
-  await updater.install({ relaunch: true });
-  quitReasons.mark("update", "restart into the new build");
-  app.quit();
+async function installAndRestart(hidden = false): Promise<void> {
+  if (quitting || installingUpdate) return;
+  installingUpdate = true;
+  runner.drainForUpdate(true);
+  try {
+    await updater.install({ relaunch: true, hidden, beforeHelper: () => {
+      if (quitting) throw new Error("App is already quitting; update deferred.");
+    } });
+    quitReasons.mark("update", "restart into the new build");
+    app.quit();
+  } catch (err) {
+    if (!quitting) runner.drainForUpdate(false);
+    throw err;
+  } finally {
+    installingUpdate = false;
+  }
 }
 
 function onHub(update: HubUpdate): void {
@@ -844,10 +860,9 @@ function onHub(update: HubUpdate): void {
   if (update.toolApprovals?.length) void runner.tick();
   if (!smokeShot) void watchAlerts();
   if (update.profileChanges?.length) takeProfileChanges(update.profileChanges);
-  if (update.mergeRuns?.length) void takeMerges(update.mergeRuns);
   updater.offer(update.update);
-  // "Once no run is going": nothing queued or running, the window may even be closed.
-  if (updater.installsOn("idle") && !runner.store.active().length) void installAndRestart();
+  void idleUpdate?.tick();
+  if (update.mergeRuns?.length && !runner.updateDraining) void takeMerges(update.mergeRuns);
   for (const cmd of update.commands) {
     if (notifiedCommands.has(cmd.id) || !Notification.isSupported()) continue;
     notifiedCommands.add(cmd.id);
@@ -1173,7 +1188,7 @@ function registerIpc(): void {
   handle("hive:me", me);
   handle("desktop:appInfo", () => ({ version: app.getVersion(), platform: process.platform }));
   handle("desktop:hubStatus", () => ({ mode: config.mode, url: config.hub.url, ...runner.hubState() }));
-  handle("desktop:updateStatus", () => updater.status());
+  handle("desktop:updateStatus", () => ({ ...updater.status(), ...idleUpdate?.status() }));
   handle("desktop:installUpdate", () => installAndRestart());
   handle("desktop:hubRetry", async () => {
     await runner.beat();
@@ -1611,6 +1626,7 @@ if (!app.requestSingleInstanceLock()) {
   let stopped = false;
   app.on("before-quit", (e) => {
     quitting = true;
+    idleUpdate?.stop();
     if (stopped) return;
     if (!runner) return mainLog.write(`${quitReasons.describe()} before the app was ready`);
     // Stop agents and let the runner commit their work and update Hive before exiting.
@@ -1705,6 +1721,7 @@ if (!app.requestSingleInstanceLock()) {
       appImage: process.env.APPIMAGE,
       onChange: onUpdateChange,
       log: (line) => mainLog.write(line),
+      logFile: mainLog.file,
     });
     runner = new Runner(
       {
@@ -1745,6 +1762,18 @@ if (!app.requestSingleInstanceLock()) {
         chatFile: (id) => (backend instanceof SqliteHive ? (backend.chatFile(id, { name: "runner", role: "agent" })?.bytes ?? null) : null),
       },
     );
+    idleUpdate = new IdleUpdate({
+      status: () => updater.status(),
+      enabled: () => config.runner.autoUpdateIdle ?? config.runner.acceptHubRuns,
+      drain: (value) => runner.drainForUpdate(value),
+      work: () => {
+        const work = runner.updateWork();
+        return { busy: work.busy || merging.size > 0, deadline: Math.max(work.deadline, merging.size ? Date.now() + 20 * 60_000 : 0) };
+      },
+      install: () => installAndRestart(true),
+      log: (line) => mainLog.write(line),
+    });
+    setInterval(() => void idleUpdate?.tick(), 1000).unref();
     setup = new Setup({
       ...(smokeShot ? { latest: async () => null } : {}),
       pathEnv: (refresh) => agentPath(refresh),

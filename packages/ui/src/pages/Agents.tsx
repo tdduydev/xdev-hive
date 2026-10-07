@@ -1376,6 +1376,21 @@ function IntakeCard({ runner, hub, onSaved }: { runner: RunnerSettings; hub: boo
         </div>
         {hub ? <Switch checked={runner.acceptHubRuns} disabled={action.busy} onCheckedChange={(v) => save({ acceptHubRuns: v })} aria-label={t("agents.runnerHubRuns")} /> : null}
       </div>
+      <label htmlFor="auto-update-idle" className="flex min-h-11 cursor-pointer items-center gap-4 border-t border-line-subtle pt-2">
+        <span className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className="text-sm/5 font-semibold text-fg-strong">{t("agents.autoUpdateIdle")}</span>
+          <span id="auto-update-idle-hint" className="text-xs/4 text-fg-muted">{t("agents.autoUpdateIdleHint")}</span>
+        </span>
+        <Switch
+          id="auto-update-idle"
+          checked={runner.autoUpdateIdle ?? runner.acceptHubRuns}
+          disabled={action.busy}
+          onCheckedChange={(v) => save({ autoUpdateIdle: v })}
+          aria-label={t("agents.autoUpdateIdle")}
+          aria-describedby="auto-update-idle-hint"
+          className="relative before:absolute before:-inset-3 md:before:hidden"
+        />
+      </label>
       <ErrorNote error={action.error} />
     </div>
   );

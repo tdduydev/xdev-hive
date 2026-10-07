@@ -2,15 +2,16 @@
 // downloads it with the machine's token, checks its SHA-256, and swaps it in when the person restarts (or at quit, or
 // once no run is going, as the rollout says). macOS: the .zip replaces the .app bundle; Windows: the NSIS installer
 // runs silently; Linux: the AppImage file is replaced. Builds are not code-signed, so no OS updater framework is used.
-import { execFile, spawn, type SpawnOptions } from "node:child_process";
+import { execFile, spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { createHash } from "node:crypto";
-import { accessSync, constants, createWriteStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { accessSync, constants, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { compareVersions, HiveError, type InstallWhen, type UpdateOffer, type UpdateReport } from "@xdev-hive/core";
-import { markStartHidden, START_HIDDEN } from "./applog.ts";
+import { markStartHidden, START_HIDDEN } from "#desktop/main/applog.ts";
+import { extractedInstallScript, extractLinuxUpdate, linuxLayout, linuxUpdateService, updateCommand, type UpdateCommand } from "#desktop/main/linux-update.ts";
 
 const run = promisify(execFile);
 
@@ -32,6 +33,13 @@ export interface UpdaterHost {
   execPath: string;
   /** process.env.APPIMAGE on Linux. */
   appImage?: string;
+  /** Extraction and systemd commands; tests confine execution to their temporary runtime. */
+  command?: UpdateCommand;
+  /** An injected transport keeps updater tests independent of localhost listeners. */
+  fetch?: typeof fetch;
+  /** Tests inject cgroup contents; production reads /proc/self/cgroup only on Linux. */
+  cgroup?: string;
+  logFile?: string;
   /** Something changed (progress, ready, failed): the window and tray may want to know. */
   onChange?: (status: UpdateStatus) => void;
   /** Starts the install helper (default: node's spawn). Tests pass their own, so no helper ever swaps a real app. */
@@ -52,10 +60,16 @@ export class Updater {
 
   constructor(host: UpdaterHost) {
     this.#host = host;
+    const error = path.join(host.dataDir, "updates", "install-error");
+    if (existsSync(error)) {
+      this.#state = { state: "failed", version: null, percent: null, error: readFileSync(error, "utf8").slice(0, 300) };
+      this.#log(`previous helper failed: ${this.#state.error}`);
+      rmSync(error, { force: true });
+    }
   }
 
   get #supported(): boolean {
-    return this.#host.packaged && platformKey(this.#host.platform) !== null && (this.#host.platform !== "linux" || Boolean(this.#host.appImage));
+    return this.#host.packaged && platformKey(this.#host.platform) !== null && (this.#host.platform !== "linux" || Boolean(this.#host.appImage) || linuxLayout(this.#host.execPath) !== null);
   }
 
   status(): UpdateStatus {
@@ -78,6 +92,7 @@ export class Updater {
 
   /** The heartbeat's offer (null: none). Starts the download when the rollout says to. */
   offer(offer: UpdateOffer | null | undefined): void {
+    if (this.#state.state === "installing") return;
     if (!offer || compareVersions(offer.version, this.#host.version) <= 0) {
       this.#offer = null;
       if (this.#state.state !== "idle") this.#set({ state: "idle", version: null, percent: null, error: null });
@@ -89,7 +104,10 @@ export class Updater {
       this.#log(`offer ${offer.version} (installWhen ${offer.installWhen}, autoDownload ${offer.autoDownload}${this.#supported ? "" : ", this app cannot update itself"})`);
     }
     this.#offer = offer;
-    if (!this.#supported) return;
+    if (!this.#supported) {
+      if (this.#host.packaged && this.#host.platform === "linux") this.#set({ state: "failed", version: offer.version, error: "Linux auto-update requires an AppImage or app-<version> selected by a current symlink with AppRun." });
+      return;
+    }
     if (changed && this.#state.state !== "downloading") {
       this.#file = null;
       this.#set({ state: "idle", version: offer.version, percent: null, error: null });
@@ -111,7 +129,7 @@ export class Updater {
       try {
         this.#log(`download ${offer.version} ${offer.file.name}`);
         this.#set({ state: "downloading", version: offer.version, percent: 0, error: null });
-        const res = await fetch(`${hub.url.replace(/\/+$/, "")}${offer.url}`, { headers: { authorization: `Bearer ${hub.token}` } });
+        const res = await (this.#host.fetch ?? fetch)(`${hub.url.replace(/\/+$/, "")}${offer.url}`, { headers: { authorization: `Bearer ${hub.token}` } });
         if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
         const total = Number(res.headers.get("content-length")) || offer.file.size;
         const hash = createHash("sha256");
@@ -135,18 +153,39 @@ export class Updater {
         renameSync(part, target);
         // Older downloads are of no use once this one is here.
         for (const f of readdirSync(dir)) if (f !== path.basename(target) && !f.startsWith("stage")) rmSync(path.join(dir, f), { recursive: true, force: true });
+        if (this.#offer?.version !== offer.version || this.#offer?.file.sha256 !== offer.file.sha256) {
+          this.#log(`discard withdrawn/replaced download ${offer.version}`);
+          rmSync(target, { force: true });
+          this.#set({ state: "idle", version: this.#offer?.version ?? null, percent: null, error: null });
+          return;
+        }
         this.#file = target;
         this.#set({ state: "ready", percent: 100, error: null });
         this.#log(`ready ${offer.version} (SHA-256 checked)`);
       } catch (err) {
         rmSync(part, { force: true });
+        if (this.#offer?.version !== offer.version || this.#offer?.file.sha256 !== offer.file.sha256) {
+          this.#log(`discard failure of withdrawn/replaced download ${offer.version}`);
+          this.#set({ state: "idle", version: this.#offer?.version ?? null, percent: null, error: null });
+          return;
+        }
         this.#set({ state: "failed", error: (err instanceof Error ? err.message : String(err)).slice(0, 300) });
         this.#log(`download failed: ${this.#state.error}`);
       } finally {
         this.#downloading = null;
+        if (this.#offer?.autoDownload && this.#state.state === "idle") queueMicrotask(() => void this.download());
       }
     })();
     return this.#downloading;
+  }
+
+  async #startHelper(command: string, args: string[], options: SpawnOptions): Promise<void> {
+    const child = (this.#host.spawn ?? spawn)(command, args, options);
+    // A failed spawn is reported before quitting; otherwise the runner could stop with no installer alive.
+    if (!this.#host.spawn) await new Promise<void>((resolve, reject) => {
+      (child as ChildProcess).once("spawn", resolve).once("error", reject);
+    });
+    child.unref();
   }
 
   /** Ready, and the rollout wants it installed without asking at this moment. */
@@ -159,7 +198,7 @@ export class Updater {
    * right after. relaunch: the helper starts the new build (a restart always; an install at quit when
    * relaunchAfterQuitInstall says so). hidden: that start stays in the tray, through the start-hidden marker.
    */
-  async install({ relaunch, hidden = false }: { relaunch: boolean; hidden?: boolean }): Promise<void> {
+  async install({ relaunch, hidden = false, beforeHelper }: { relaunch: boolean; hidden?: boolean; beforeHelper?: () => void }): Promise<void> {
     const file = this.#file;
     if (this.#state.state !== "ready" || !file || !existsSync(file)) {
       this.#log(`install skipped: nothing ready (state ${this.#state.state})`);
@@ -167,10 +206,10 @@ export class Updater {
     }
     this.#log(`install ${this.#state.version} (relaunch ${relaunch}${relaunch && hidden ? ", hidden" : ""})`);
     this.#set({ state: "installing" });
-    const start = this.#host.spawn ?? spawn;
     try {
       const dir = path.dirname(file);
       const pid = String(process.pid);
+      rmSync(path.join(dir, "install-error"), { force: true });
       if (relaunch && hidden) markStartHidden(dir);
       if (this.#host.platform === "darwin") {
         // …/xDev Hive.app/Contents/MacOS/xDev Hive → …/xDev Hive.app
@@ -196,10 +235,40 @@ export class Updater {
             "",
           ].join("\n"),
         );
-        start("/bin/sh", [script], { detached: true, stdio: "ignore", env: { PATH: "/usr/bin:/bin:/usr/sbin:/sbin", PID: pid, APP: app, NEW: path.join(stage, bundle), RELAUNCH: relaunch ? "1" : "0" } }).unref();
+        beforeHelper?.();
+        await this.#startHelper("/bin/sh", [script], { detached: true, stdio: "ignore", env: { PATH: "/usr/bin:/bin:/usr/sbin:/sbin", PID: pid, APP: app, NEW: path.join(stage, bundle), RELAUNCH: relaunch ? "1" : "0" } });
       } else if (this.#host.platform === "win32") {
         // The NSIS installer updates in place; --force-run starts the app when it is done.
-        start(file, relaunch ? ["/S", "--force-run"] : ["/S"], { detached: true, stdio: "ignore" }).unref();
+        beforeHelper?.();
+        await this.#startHelper(file, relaunch ? ["/S", "--force-run"] : ["/S"], { detached: true, stdio: "ignore" });
+      } else if (linuxLayout(this.#host.execPath)) {
+        const layout = linuxLayout(this.#host.execPath)!;
+        const command = this.#host.command ?? updateCommand;
+        const service = await linuxUpdateService(command, this.#host.cgroup, layout);
+        const target = await extractLinuxUpdate(layout, file, this.#state.version!, command);
+        const script = path.join(dir, "install.sh");
+        writeFileSync(script, extractedInstallScript);
+        const env = {
+          PATH: "/usr/local/bin:/usr/bin:/bin", PID: pid, NEW: target, OLD: layout.app, CURRENT: layout.current,
+          RELAUNCH: relaunch ? "1" : "0", UNIT: service?.unit ?? "", USER_MANAGER: service?.user ? "1" : "0",
+          LOG: this.#host.logFile ?? path.join(dir, "install.log"), ERROR: path.join(dir, "install-error"),
+        };
+        try {
+          beforeHelper?.();
+          if (service) {
+            this.#log(`install via systemd ${service.user ? "user" : "system"} service ${service.unit}`);
+            await command("systemd-run", [
+              ...(service.user ? ["--user"] : []), "--collect", `--unit=xdev-hive-update-${pid}`,
+              ...Object.entries(env).map(([k, v]) => `--setenv=${k}=${v}`), "/bin/sh", script,
+            ], { timeout: 10_000 });
+          } else {
+            await this.#startHelper("/bin/sh", [script], { detached: true, stdio: "ignore", env: { ...process.env, ...env } });
+          }
+        } catch (err) {
+          // A timed-out systemd-run may already have scheduled the helper; retain its prepared directory.
+          this.#log(`prepared Linux build retained at ${target}`);
+          throw err;
+        }
       } else {
         const image = this.#host.appImage;
         if (!image) throw new Error("Not running from an AppImage.");
@@ -215,7 +284,8 @@ export class Updater {
             "",
           ].join("\n"),
         );
-        start("/bin/sh", [script], { detached: true, stdio: "ignore", env: { PATH: "/usr/bin:/bin", PID: pid, IMAGE: image, NEW: file, RELAUNCH: relaunch ? "1" : "0" } }).unref();
+        beforeHelper?.();
+        await this.#startHelper("/bin/sh", [script], { detached: true, stdio: "ignore", env: { PATH: "/usr/bin:/bin", PID: pid, IMAGE: image, NEW: file, RELAUNCH: relaunch ? "1" : "0" } });
       }
       this.#log("install helper started: it swaps the build once this process has exited");
     } catch (err) {

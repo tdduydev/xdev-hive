@@ -24,7 +24,7 @@ import { setMainLocale, tr } from "#desktop/main/i18n.ts";
 import { describeBranch, hasBranch, remoteStart } from "#desktop/main/runner/worktree.ts";
 import { pickProfile, pickWithReason, waitingReason, type ProfileLoad } from "#desktop/main/runner/schedule.ts";
 import { planningProfile } from "#desktop/main/runner/plan-approval.ts";
-import { canClassify, CLASSIFY_INPUT_TOKENS, classifierCommand, classifierResult, classifyPrompt } from "#desktop/main/runner/classify.ts";
+import { canClassify, CLASSIFY_INPUT_TOKENS, CLASSIFY_TIMEOUT_MS, classifierCommand, classifierResult, classifyPrompt } from "#desktop/main/runner/classify.ts";
 import { syncProject } from "#desktop/main/sync.ts";
 import { readSyncOutcome } from "@xdev-hive/core";
 
@@ -1437,6 +1437,68 @@ describe("Runner", () => {
     assert.equal(failed!.last?.id, again!.id);
     assert.equal(failed!.last?.status, "failed");
     assert.match(failed!.last!.output ?? "", /Không thấy thư mục repo/);
+  });
+
+  it("drains for app update: keeps queued work, reports intake off, and resumes pending requests", async () => {
+    for (const oldHub of [false, true]) {
+    const profiles = [profile("claude-1", "claude", 10, "ok", { enabled: false })];
+    const a = await setup(profiles, { acceptHubRuns: true }, "hub", { wrap: oldHub ? (b) => ({ call: async (m, i, actor) => {
+      const reply = await b.call(m, i, actor);
+      if (m === "machines.heartbeat") delete (reply as { supportsUpdateDrain?: boolean }).supportsUpdateDrain;
+      return reply;
+    } }) : undefined });
+    const queued = await a.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await a.hive.call("tasks.create", { id: "T-2", project: "demo", title: "Next" }, admin);
+    await a.runner.heartbeat();
+    await a.hive.call("runs.dispatch", { machineId: "runner.duy-mbp@duy-macbook", project: "demo", taskId: "T-2" }, admin);
+    a.runner.drainForUpdate(true);
+    profiles[0]!.enabled = true;
+    await a.runner.tick();
+    await a.runner.heartbeat();
+    assert.equal(a.runner.store.get(queued.id)!.status, "queued");
+    assert.equal(a.runner.updateWork().busy, false, "queued work survives the app restart");
+    assert.equal((await a.hive.call("machines.list", {}, admin))[0]!.acceptsRuns, oldHub);
+    assert.equal((await a.hive.call("runs.requests", {}, admin))[0]!.status, "pending", "held request is not rejected");
+    await assert.rejects(() => a.runner.enqueue({ project: "demo", taskId: "T-2" }), (e: unknown) => e instanceof HiveError && e.key === "errors.updateDraining");
+    assert.equal(await a.runner.pollChats(), 0);
+    assert.equal(await a.runner.pollAssists(), false);
+    a.runner.drainForUpdate(false);
+    await a.runner.heartbeat();
+    await a.runner.settle();
+    assert.equal((await a.hive.call("runs.requests", {}, admin))[0]!.status, "accepted");
+    assert.equal(a.calls().length, 2);
+    }
+  });
+
+  it("uses the current run's actual deadline even when its profile settings change", async () => {
+    const profiles = [profile("claude-1", "claude", 10, "sleep", { timeoutMinutes: 1 })];
+    const a = await setup(profiles);
+    const run = await a.runner.enqueue({ project: "demo", taskId: "T-1" });
+    for (let i = 0; i < 400 && !a.calls().length; i++) await new Promise((r) => setTimeout(r, 10));
+    assert.equal(a.calls().length, 1);
+    const deadline = a.runner.updateWork().deadline;
+    profiles[0]!.timeoutMinutes = 720;
+    a.runner.drainForUpdate(true);
+    assert.equal(a.runner.updateWork().deadline, deadline);
+    assert.equal(a.runner.updateWork().busy, true);
+    a.runner.cancel(run.id);
+    await a.runner.settle();
+    assert.equal(a.runner.updateWork().busy, false);
+  });
+
+  it("waits for a run's commit and hub report after the CLI finishes", async () => {
+    let release!: () => void;
+    let finishing!: () => void;
+    const began = new Promise<void>((resolve) => { finishing = resolve; });
+    const wait = new Promise<void>((resolve) => { release = resolve; });
+    const a = await setup([profile("claude-1", "claude", 10, "ok")], {}, "local", { afterFinish: async () => { finishing(); await wait; return {}; } });
+    await a.runner.enqueue({ project: "demo", taskId: "T-1" });
+    a.runner.drainForUpdate(true);
+    await began;
+    assert.equal(a.runner.updateWork().busy, true);
+    release();
+    await a.runner.settle();
+    assert.equal(a.runner.updateWork().busy, false);
   });
 
   it("takes a manager's run request from the hub while the user allows it, as if started on the Board", async () => {
@@ -3379,7 +3441,12 @@ describe("unsupported model recovery", () => {
     try {
       const run = await a.runner.enqueue({ project: "demo", taskId: "T-1" });
       await until(() => a.calls().length === 2, 10_000);
+      const deadline = a.runner.updateWork().deadline;
+      a.runner.drainForUpdate(true);
+      p.timeoutMinutes = 720;
+      assert.equal(a.runner.updateWork().deadline, deadline, "model recovery keeps the active deadline during drain");
       await a.runner.steer(run.id, "Keep mobile layout");
+      assert.equal(a.runner.updateWork().busy, true);
       await a.runner.settle();
       const done = a.runner.store.get(run.id)!;
       assert.equal(done.status, "succeeded", done.error ?? "");
@@ -3433,7 +3500,8 @@ describe("unsupported model recovery", () => {
       const dir = tmp("recover-aux");
       const cli = path.join(dir, kind);
       const rec = path.join(dir, "calls");
-      writeFileSync(cli, `#!/bin/sh\nprintf 'CALL %s\\n' "$*" >> "${rec}"\nfor arg in "$@"; do case "$arg" in --model|-m) echo 'unknown model: requested' >&2; exit 1;; esac; done\ncat > /dev/null\nprintf '%s' "$FAKE_OUT"\n`, { mode: 0o755 });
+      const gate = path.join(dir, "release");
+      writeFileSync(cli, `#!/bin/sh\nprintf 'CALL %s\\n' "$*" >> "${rec}"\nfor arg in "$@"; do case "$arg" in --model|-m) echo 'unknown model: requested' >&2; exit 1;; esac; done\ncat > /dev/null\nwhile [ ! -f "${gate}" ]; do sleep 0.02; done\nprintf '%s' "$FAKE_OUT"\n`, { mode: 0o755 });
       const value = diff ? { groups: [{ title: "DB", explanation: "Deletes data", files: ["db.ts"] }], risks: [{ path: "db.ts", hunk: 0, kind: "deletion", level: "high", explanation: "Removes rows" }] } : { kind: "ui", size: "s", risk: "normal", reason: "One page" };
       const output = kind === "claude" ? JSON.stringify({ result: JSON.stringify(value), usage: { input_tokens: 700 } }) : JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify(value) } });
       const p = profile("summary", kind, 10, "ok", { bin: cli, args: [], env: { FAKE_OUT: output } });
@@ -3444,7 +3512,16 @@ describe("unsupported model recovery", () => {
         a.runner.store.update(parent.id, { status: "succeeded", finishedAt: new Date().toISOString() });
         const run = a.runner.store.insert({ project: "demo", taskId: "T-1", taskTitle: "Demo", role: diff ? "review" : "classify", attempt: 1, maxAttempts: 1,
           ...(diff ? { parentRunId: parent.id, diffSummaryFor: parent.id, instructions: "diff --git a/db.ts b/db.ts\n@@ -1 +1 @@\n-old\n+DROP TABLE users;\n", selection: { tier: "light" as const, models: { [kind]: { model: "rejected", effort: "low" as const } }, reason: "diff summary" } } : {}) }, new Date().toISOString());
-        await a.runner.tick(); await a.runner.settle();
+        await a.runner.tick();
+        await until(() => existsSync(rec) && readFileSync(rec, "utf8").trim().split(/^CALL /m).filter(Boolean).length === 2);
+        const deadline = a.runner.updateWork().deadline;
+        assert.ok(Math.abs(deadline - Date.now() - CLASSIFY_TIMEOUT_MS) < 10_000, "auxiliary retry reports its own three-minute limit");
+        a.runner.drainForUpdate(true);
+        p.timeoutMinutes = 720;
+        assert.equal(a.runner.updateWork().deadline, deadline);
+        assert.equal(a.runner.updateWork().busy, true);
+        writeFileSync(gate, "go");
+        await a.runner.settle();
         const done = a.runner.store.get(run.id)!;
         assert.equal(done.status, "succeeded", done.error ?? "");
         assert.deepEqual(JSON.parse(done.summary!), value);

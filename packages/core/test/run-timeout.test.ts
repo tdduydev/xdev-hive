@@ -80,7 +80,8 @@ describe("run timeout", () => {
       const before = migrationIndex("ALTER TABLE run_requests ADD COLUMN timeout_minutes");
       hive.db.exec(`ALTER TABLE run_requests DROP COLUMN timeout_minutes; PRAGMA user_version = ${before}`);
       hive.close();
-      const upgraded = new SqliteHive(file);
+      // Later migrations are already present in this complete DB; replay only the timeout step.
+      const upgraded = new SqliteHive(file, { migrateTo: before + 1 });
       try {
         assert.equal((await upgraded.call("runs.requests", { project: "demo" }, admin)).find((r) => r.id === req.id)?.timeoutMinutes, null);
       } finally { upgraded.close(); }
