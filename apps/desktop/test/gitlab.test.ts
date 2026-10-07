@@ -108,6 +108,9 @@ describe("remote & verdict parsing", () => {
     assert.equal(parseVerdict("Verdict: changes\nFindings: none block the review."), "changes");
     assert.equal(parseVerdict("**Verdict: changes needed.**\n\n**Findings**\n- Two pilot-blocking conflicts found."), "changes");
     assert.equal(parseVerdict("Findings: one blocker remains; must be fixed."), "changes");
+    assert.equal(parseVerdict("- **Verdict**: approve"), "approve");
+    assert.equal(parseVerdict("## Verdict: changes\nok"), "changes");
+    assert.equal(parseVerdict("Review đang bị chặn."), "changes");
     assert.equal(parseVerdict("Looked at the diff."), "unknown");
     assert.equal(parseVerdict(null), "unknown");
   });
