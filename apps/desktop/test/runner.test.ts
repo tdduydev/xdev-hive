@@ -659,6 +659,9 @@ describe("buildCommand", () => {
     // `--json` for each turn's tokens (roadmap 28c), once.
     const codex = buildCommand(AGENT_TEMPLATES.codex, vars);
     assert.deepEqual(codex.args, ["exec", "--json", ...approve, "--sandbox", "workspace-write", "Do T-1"]);
+    const localhost = buildCommand({ ...AGENT_TEMPLATES.codex, codexLocalhost: true }, vars).args;
+    assert.ok(localhost.includes("sandbox_workspace_write.network_access=true"));
+    assert.ok(localhost.includes("--sandbox") && localhost.includes("workspace-write"));
     assert.equal(codex.codexJson, true);
     assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.codex, args: ["exec", "--json", "{prompt}"] }, vars).args, ["exec", ...approve, "--json", "Do T-1"], "a profile's own --json is not doubled");
     assert.deepEqual(buildCommand({ ...AGENT_TEMPLATES.codex, args: ["exec", "--full-auto", "{prompt}"] }, vars).args, ["exec", "--json", ...approve, "--sandbox", "workspace-write", "Do T-1"]);
