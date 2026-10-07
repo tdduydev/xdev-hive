@@ -676,6 +676,16 @@ const MIGRATIONS: string[] = [
     UNIQUE(machine_id, tool_id));
   `,
   `ALTER TABLE run_requests ADD COLUMN timeout_minutes INTEGER;`,
+  // Keep retries traceable after their queue requests age out, including when they move machines.
+  `
+  ALTER TABLE run_requests ADD COLUMN redispatch TEXT;
+  ALTER TABLE run_records ADD COLUMN parent_machine_id TEXT;
+  ALTER TABLE run_records ADD COLUMN instructions TEXT;
+  ALTER TABLE run_records ADD COLUMN base_sha TEXT;
+  UPDATE run_records SET instructions = (SELECT q.instructions FROM run_requests q
+    WHERE q.machine_id = run_records.machine_id AND q.run_id = run_records.run_id AND q.status = 'accepted'
+    ORDER BY q.id DESC LIMIT 1);
+  `,
 ];
 
 /**
@@ -933,6 +943,9 @@ function toRunRecord(r: Row, withLog: boolean): RunRecord {
     selection: r.router_selection == null ? null : (JSON.parse(str(r.router_selection)) as ModelSelection),
     attempt: numOrNull(r.attempt),
     parentRun: s(r.parent_run),
+    parentMachineId: s(r.parent_machine_id) ?? (r.parent_run ? str(r.machine_id) : null),
+    baseSha: s(r.base_sha),
+    ...(withLog ? { instructions: s(r.instructions) ?? s(r.request_instructions) } : {}),
     verdict: s(r.verdict) as Verdict | null,
     ...(withLog ? { log: str(r.log), patch: r.patch == null ? null : str(r.patch), diffReview: r.diff_review == null ? null : JSON.parse(str(r.diff_review)) } : {}),
   };
@@ -1582,6 +1595,7 @@ const listParam = (projects: string[] | undefined) => (projects ? JSON.stringify
 
 const toRunRequest = (r: Row): RunRequest => ({
   timeoutMinutes: r.timeout_minutes == null ? null : num(r.timeout_minutes),
+  redispatch: r.redispatch == null ? null : JSON.parse(str(r.redispatch)),
   plan: r.plan == null ? null : JSON.parse(str(r.plan)) as RunPlan,
   id: num(r.id),
   machineId: str(r.machine_id),
@@ -4158,7 +4172,7 @@ export class SqliteHive implements HiveBackend {
         if (task.kind === null && this.#queueClassify(task, this.#machineByRef(machineId), actor)) continue;
         const fresh = this.#getTask(task.id)!;
         const machine = this.#assertDispatchable({ machineId, project, task: fresh, role, profileId, candidates, instructions }, actor);
-        this.#dispatchDirect(machine, project, fresh, { role, profileId, preferKind, reviewAfter, candidates, instructions, timeoutMinutes }, actor);
+        this.#dispatchDirect(machine, project, fresh, { role, profileId, preferKind, reviewAfter, candidates, instructions, timeoutMinutes, redispatch: this.#redispatch(wanted.redispatch, fresh) }, actor);
         drop.run(task.id);
       } catch (err) {
         if (!(err instanceof HiveError)) throw err;
@@ -5024,8 +5038,27 @@ export class SqliteHive implements HiveBackend {
     }
   }
 
+  #redispatch(source: ParsedInput<"runs.dispatch">["redispatch"], task: Task): RunRequest["redispatch"] {
+    if (!source) return null;
+    const row = this.db.prepare("SELECT * FROM run_records WHERE machine_id = ? AND run_id = ?").get(source.machineId, source.runId) as Row | undefined;
+    if (!row || row.project !== task.project || row.task_id !== task.id) throw new HiveError("not_found", `No run ${source.runId} for this task.`, { key: "errors.runNotFound", vars: { id: source.runId } });
+    if (!["failed", "cancelled", "rate_limited"].includes(str(row.status))) throw new HiveError("conflict", "Run cannot be redispatched in this state.", { key: "errors.redispatchState" });
+    const branch = strOrNull(row.branch);
+    // Only task branches are resumable; refs from a machine must never become shell or git options.
+    if (source.continueBranch && (!branch || !/^ai\/[A-Za-z0-9._+/-]+$/.test(branch) || branch.includes(".."))) throw new HiveError("bad_request", "No resumable task branch.", { key: "errors.redispatchBranch" });
+    return { ...source, branch: source.continueBranch ? branch : null, baseSha: source.continueBranch ? strOrNull(row.base_sha) : null };
+  }
+
+  #assertRedispatchRunner(m: Machine, profileId: string | null): void {
+    if (!m.profiles.some(p => p.enabled && p.installed && p.redispatch && (!profileId || p.id === profileId))) throw new HiveError("bad_request", "Update the runner before redispatching.", { key: "errors.redispatchRunnerRequired" });
+  }
+
+  #linkRedispatch(machineId: string, runId: string, retry: RunRequest["redispatch"]): void {
+    if (retry) this.db.prepare("UPDATE run_records SET parent_run = ?, parent_machine_id = ? WHERE machine_id = ? AND run_id = ?").run(retry.runId, retry.machineId, machineId, runId);
+  }
+
   /** A manually dispatched small task joins the existing review/fix/merge lifecycle without Spec Kit. */
-  #dispatchDirect(m: Machine, project: string, task: Task, r: { timeoutMinutes?: number | null; role: AgentRole; profileId: string | null; preferKind?: PreferKind | null; reviewAfter: boolean; candidates: number; instructions: string }, actor: Actor): RunRequest {
+  #dispatchDirect(m: Machine, project: string, task: Task, r: { timeoutMinutes?: number | null; role: AgentRole; profileId: string | null; preferKind?: PreferKind | null; reviewAfter: boolean; candidates: number; instructions: string; redispatch?: RunRequest["redispatch"] }, actor: Actor): RunRequest {
     const fast = r.role === "implement" && r.candidates === 1 && !this.#flowRow(task.id) && !this.#flowTaskRow(task.id)
       && this.#sdlcPolicy().projects[project]?.fastLaneKinds?.some((kind) => kind === task.kind);
     const request = this.#insertRequest(m, project, task, fast ? { ...r, reviewAfter: effectiveGates(this.#sdlcPolicy(), project).review !== "auto" } : r, actor);
@@ -5062,10 +5095,11 @@ export class SqliteHive implements HiveBackend {
     m: Machine,
     project: string,
     task: Task,
-    r: { timeoutMinutes?: number | null; role: AgentRole; profileId: string | null; preferKind?: PreferKind | null; reviewAfter: boolean; candidates: number; instructions: string },
+    r: { timeoutMinutes?: number | null; role: AgentRole; profileId: string | null; preferKind?: PreferKind | null; reviewAfter: boolean; candidates: number; instructions: string; redispatch?: RunRequest["redispatch"] },
     actor: Actor,
   ): RunRequest {
     const now = this.#now();
+    if (r.redispatch) this.#assertRedispatchRunner(m, r.profileId);
     const planning = r.role === "implement" && needsPlanApproval(this.#sdlcPolicy().projects[project]?.planApproval, task.size);
     if (planning && !m.profiles.some((p) => p.enabled && p.installed && p.planApproval && (!r.profileId || p.id === r.profileId) && ["claude", "codex"].includes(p.kind))) {
       throw new HiveError("bad_request", "This machine needs an updated Claude or Codex runner for plan approval.", { key: "errors.planRunnerRequired" });
@@ -5081,6 +5115,7 @@ export class SqliteHive implements HiveBackend {
       .run(m.id, m.machine, project, task.id, task.title, r.role, r.profileId, r.profileId ? null : (r.preferKind ?? null), r.reviewAfter ? 1 : 0, r.candidates, r.instructions, actor.name, actor.onBehalf ?? null, now, now, selection ? JSON.stringify(selection) : null);
     const requestId = num(res.lastInsertRowid);
     this.db.prepare("UPDATE run_requests SET timeout_minutes = ? WHERE id = ?").run(timeoutMinutes, requestId);
+    if (r.redispatch) this.db.prepare("UPDATE run_requests SET redispatch = ? WHERE id = ?").run(JSON.stringify(r.redispatch), requestId);
     if (planning) {
       const row = this.db.prepare(`INSERT INTO implementation_plans(project, task_id, machine_id, request_id, timeout_minutes, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
         .run(project, task.id, m.id, requestId, this.#sdlcPolicy().projects[project]?.planApproval?.timeoutMinutes ?? null, now);
@@ -5113,9 +5148,9 @@ export class SqliteHive implements HiveBackend {
     // Copy the authorized request, including its budget owner and model choice. Do not dispatch through the policy
     // again: that would require a second plan and lose the group's/flow's original place.
     const result = this.db.prepare(`INSERT INTO run_requests(machine_id, machine, project, task_id, task_title, role, profile_id, prefer_kind, review_after, candidates,
-      instructions, requested_by, on_behalf, requested_at, updated_at, selection, timeout_minutes)
+      instructions, requested_by, on_behalf, requested_at, updated_at, selection, timeout_minutes, redispatch)
       SELECT machine_id, machine, project, task_id, task_title, role, profile_id, prefer_kind, review_after, candidates,
-      instructions, requested_by, on_behalf, ?, ?, selection, timeout_minutes FROM run_requests WHERE id = ?`).run(now, now, old.id);
+      instructions, requested_by, on_behalf, ?, ?, selection, timeout_minutes, redispatch FROM run_requests WHERE id = ?`).run(now, now, old.id);
     const requestId = num(result.lastInsertRowid);
     let planId = num(row.id);
     if (decision === "changes") {
@@ -7099,7 +7134,9 @@ export class SqliteHive implements HiveBackend {
               ["effort", r.effort],
               ["tier", r.tier],
               ["attempt", r.attempt],
-              ["parent_run", r.parentRun],
+              ["parent_run", db.prepare("SELECT parent_machine_id FROM run_records WHERE machine_id = ? AND run_id = ?").get(actor.name, r.runId)?.parent_machine_id ? undefined : r.parentRun],
+              ["instructions", r.instructions === undefined ? undefined : clean(r.instructions)],
+              ["base_sha", r.baseSha],
               ["verdict", verdict],
             ];
             const sent = ranOn.filter(([, v]) => v !== undefined);
@@ -7108,7 +7145,9 @@ export class SqliteHive implements HiveBackend {
               const stmt = ranOnPut.get(sql) ?? ranOnPut.set(sql, db.prepare(sql)).get(sql)!;
               stmt.run(...sent.map(([, v]) => v as string | number | null), actor.name, r.runId);
             }
-            const req = db.prepare("SELECT plan FROM run_requests WHERE machine_id = ? AND run_id = ? AND status = 'accepted'").get(actor.name, r.runId) as Row | undefined;
+            const req = db.prepare("SELECT plan, redispatch, instructions FROM run_requests WHERE machine_id = ? AND run_id = ? AND status = 'accepted'").get(actor.name, r.runId) as Row | undefined;
+            if (req) db.prepare("UPDATE run_records SET instructions = COALESCE(instructions, ?) WHERE machine_id = ? AND run_id = ?").run(str(req.instructions), actor.name, r.runId);
+            if (req?.redispatch) this.#linkRedispatch(actor.name, r.runId, JSON.parse(str(req.redispatch)));
             if (req?.plan) {
               db.prepare("UPDATE run_records SET plan = ? WHERE machine_id = ? AND run_id = ?").run(str(req.plan), actor.name, r.runId);
               const plan = JSON.parse(str(req.plan)) as RunPlan;
@@ -7236,19 +7275,19 @@ export class SqliteHive implements HiveBackend {
         return row ? toSpecFeature(row) : null;
       },
 
-      "runs.list": ({ project, projects, limit }) =>
+      "runs.list": ({ project, projects, limit, taskId }) =>
         (
           db
             .prepare(
               `SELECT r.*, ${RUN_TOKEN_COLUMNS}, ${RUN_SELECTION_COLUMN} FROM run_records r LEFT JOIN run_costs c ON c.machine_id = r.machine_id AND c.run_id = r.run_id
-               WHERE (?1 IS NULL OR r.project = ?1) AND (?3 IS NULL OR r.project IN (SELECT value FROM json_each(?3))) ORDER BY r.created_at DESC, r.run_id DESC LIMIT ?2`,
+               WHERE (?1 IS NULL OR r.project = ?1) AND (?3 IS NULL OR r.project IN (SELECT value FROM json_each(?3))) AND (?4 IS NULL OR r.task_id = ?4) ORDER BY r.created_at DESC, r.run_id DESC LIMIT ?2`,
             )
-            .all(project ?? null, limit, listParam(projects)) as Row[]
+            .all(project ?? null, limit, listParam(projects), taskId ?? null) as Row[]
         ).map((r) => toRunRecord(r, false)),
 
       "runs.get": ({ machineId, runId }, actor) => {
         const row = db
-          .prepare(`SELECT r.*, ${RUN_TOKEN_COLUMNS}, ${RUN_SELECTION_COLUMN} FROM run_records r LEFT JOIN run_costs c ON c.machine_id = r.machine_id AND c.run_id = r.run_id WHERE r.machine_id = ? AND r.run_id = ?`)
+          .prepare(`SELECT r.*, ${RUN_TOKEN_COLUMNS}, ${RUN_SELECTION_COLUMN}, (SELECT q.instructions FROM run_requests q WHERE q.machine_id = r.machine_id AND q.run_id = r.run_id AND q.status = 'accepted' ORDER BY q.id DESC LIMIT 1) AS request_instructions FROM run_records r LEFT JOIN run_costs c ON c.machine_id = r.machine_id AND c.run_id = r.run_id WHERE r.machine_id = ? AND r.run_id = ?`)
           .get(machineId, runId) as Row | undefined;
         // A run of a project the caller does not see answers like a missing one.
         return row && sees(actor, str(row.project)) ? {
@@ -7343,12 +7382,14 @@ export class SqliteHive implements HiveBackend {
         db.prepare("INSERT INTO settings(key, value) VALUES ('runTimeout', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(settings));
         return this.#runTimeoutSettings();
       },
-      "runs.dispatch": ({ machineId, project, taskId, role, profileId, preferKind, reviewAfter, candidates, instructions, timeoutMinutes }, actor) =>
+      "runs.dispatch": ({ machineId, project, taskId, role, profileId, preferKind, reviewAfter, candidates, instructions, timeoutMinutes, redispatch: source }, actor) =>
         this.#tx(() => {
           const task = this.#getTask(taskId);
           if (!task || task.project !== project) {
             throw new HiveError("not_found", `No task ${taskId} in ${project}.`, { key: "errors.taskNotInProject", vars: { id: taskId, project } });
           }
+          const redispatch = this.#redispatch(source, task);
+          if (redispatch && candidates !== 1) throw new HiveError("bad_request", "Redispatch requires one run.", { key: "errors.redispatchOne" });
           // Its flow queues its steps itself, and would take this run for one of them.
           const flow = this.#flowRow(taskId);
           if (flow && ["running", "check", "checking", "next"].includes(str(flow.state))) {
@@ -7357,6 +7398,7 @@ export class SqliteHive implements HiveBackend {
           // Pick at dispatch time, when the hub knows which plans and machines still have room.
           const m = this.#assertDispatchable({ machineId: machineId ?? this.#mapMachine(project, null, profileId).id, project, task, role, profileId, candidates, instructions }, actor);
           this.#requestTimeout(m, task, profileId, timeoutMinutes);
+          if (redispatch) this.#assertRedispatchRunner(m, profileId);
           // Its group would run it again once this run ended.
           this.#assertNotInGroup(taskId);
           // A task only ever reviewed is a review (roadmap 54b rules); it only fills an empty kind.
@@ -7370,14 +7412,14 @@ export class SqliteHive implements HiveBackend {
             ).run(
               taskId,
               project,
-              JSON.stringify({ machineId, project, taskId, role, profileId, preferKind, reviewAfter, candidates, instructions, timeoutMinutes }),
+              JSON.stringify({ machineId, project, taskId, role, profileId, preferKind, reviewAfter, candidates, instructions, timeoutMinutes, redispatch: source }),
               actor.name,
               actor.onBehalf ?? null,
             );
             const pending = db.prepare("SELECT request_id FROM task_classify_runs WHERE task_id = ?").get(taskId) as Row;
             return this.#runRequest(num(pending.request_id));
           }
-          return this.#dispatchDirect(m, project, task, { role, profileId, preferKind, reviewAfter, candidates, instructions, timeoutMinutes }, actor);
+          return this.#dispatchDirect(m, project, task, { role, profileId, preferKind, reviewAfter, candidates, instructions, timeoutMinutes, redispatch }, actor);
         }),
 
       "runs.dispatchMany": ({ project, title, items, maxParallel, reviewAfter, instructions }, actor) =>
@@ -7812,6 +7854,10 @@ export class SqliteHive implements HiveBackend {
             this.#now(),
             id,
           );
+          if (status === "accepted" && runId) {
+            this.#linkRedispatch(actor.name, runId, req.redispatch);
+            db.prepare("UPDATE run_records SET instructions = COALESCE(instructions, ?) WHERE machine_id = ? AND run_id = ?").run(req.instructions, actor.name, runId);
+          }
           if (status === "rejected" && req.plan?.phase === "plan") db.prepare("UPDATE implementation_plans SET status = 'failed' WHERE id = ? AND status = 'planning'").run(req.plan.id);
           // A refusal frees its group's place at once, and stops a flow's step.
           this.#release();

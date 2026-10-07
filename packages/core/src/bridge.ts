@@ -340,6 +340,7 @@ export interface AgentRun {
   attempt: number;
   maxAttempts: number;
   parentRunId: string | null;
+  redispatch?: import("#core/types.ts").RunRedispatch & { crossMachine?: boolean } | null;
   worktree: string | null;
   branch: string | null;
   baseSha: string | null;

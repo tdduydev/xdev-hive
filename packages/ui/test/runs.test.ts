@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { setActiveLocale } from "#ui/i18n/translate.ts";
-import { fixInstructions, handoffSections, isLive, latestReviews, mrLabel, runDuration, runGroup, runLabel, runOutcome, waitingReason } from "#ui/lib/runs.ts";
+import { canRedispatch, fixInstructions, handoffSections, isLive, latestReviews, mrLabel, runDuration, runGroup, runLabel, runLink, runOutcome, waitingReason } from "#ui/lib/runs.ts";
 
 describe("run helpers", () => {
+  it("offers redispatch only for ended failures, cancellations and quota limits", () => {
+    for (const status of ["failed", "cancelled", "rate_limited"]) assert.equal(canRedispatch({ status }), true);
+    for (const status of ["queued", "running", "succeeded", "unknown"]) assert.equal(canRedispatch({ status }), false);
+  });
+  it("opens the exact machine's run from a task chain", () => {
+    assert.equal(runLink("runner@one", "R-1"), "#/runs?run=runner%40one%2FR-1");
+    assert.notEqual(runLink("runner@one", "R-1"), runLink("runner@two", "R-1"));
+  });
+
   it("shows waiting only for a reported quota, failed CI or an explicit question", () => {
     assert.equal(waitingReason({ status: "rate_limited" }), "quota");
     assert.equal(waitingReason({ status: "succeeded", mr: { pipeline: "failed" } }), "ci");

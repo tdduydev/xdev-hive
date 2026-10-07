@@ -76,10 +76,11 @@ const ADDED_COLUMNS: Array<[name: string, ddl: string]> = [
   ["diff_patch", "TEXT"],
   ["timeout_minutes", "REAL"],
   ["continuation", "TEXT"],
+  ["redispatch", "TEXT"],
 ];
 
 type Row = Record<string, unknown>;
-const JSON_FIELDS = new Set(["skills", "avoidKinds", "excludedProfiles", "ciFix", "bestOf", "compression", "selection", "plan", "diffReview"]);
+const JSON_FIELDS = new Set(["skills", "avoidKinds", "excludedProfiles", "ciFix", "bestOf", "compression", "selection", "plan", "diffReview", "redispatch"]);
 const BOOL_FIELDS = new Set(["reviewAfter", "mrDraft"]);
 const column = (field: string) => field.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 
@@ -88,6 +89,7 @@ function toRun(r: Row): AgentRun {
   return {
     timeoutMinutes: r.timeout_minutes == null ? null : Number(r.timeout_minutes),
     continuation: s(r.continuation),
+    redispatch: r.redispatch == null ? null : JSON.parse(String(r.redispatch)),
     plan: r.plan == null ? null : JSON.parse(String(r.plan)),
     id: String(r.id),
     project: String(r.project),
@@ -149,7 +151,7 @@ const encode = (field: string, value: unknown) =>
   JSON_FIELDS.has(field) ? JSON.stringify(value) : BOOL_FIELDS.has(field) ? (value ? 1 : 0) : (value ?? null);
 
 export type NewRun = Pick<AgentRun, "project" | "taskId" | "taskTitle" | "role" | "attempt" | "maxAttempts"> &
-  Partial<Pick<AgentRun, "preferredProfile" | "preferKind" | "avoidKinds" | "excludedProfiles" | "parentRunId" | "worktree" | "branch" | "baseSha" | "instructions" | "reviewAfter" | "ciFix" | "bestOf" | "requestedBy" | "selection" | "plan" | "diffSummaryFor" | "timeoutMinutes">>;
+  Partial<Pick<AgentRun, "preferredProfile" | "preferKind" | "avoidKinds" | "excludedProfiles" | "parentRunId" | "worktree" | "branch" | "baseSha" | "instructions" | "reviewAfter" | "ciFix" | "bestOf" | "requestedBy" | "selection" | "plan" | "diffSummaryFor" | "timeoutMinutes" | "redispatch">>;
 
 export const ACTIVE: RunStatus[] = ["queued", "running"];
 

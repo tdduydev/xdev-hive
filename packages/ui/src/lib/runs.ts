@@ -121,3 +121,9 @@ export function latestReviews(runs: Array<{ machineId: string; runId: string; pr
   }
   return latest;
 }
+
+/** Timeout is reported as failed by the runner. */
+export const canRedispatch = (run: { status: string }): boolean => ["failed", "cancelled", "rate_limited"].includes(run.status);
+
+/** Machine-qualified links also work when two machines reported the same run id. */
+export const runLink = (machineId: string, runId: string): string => `#/runs?run=${encodeURIComponent(`${machineId}/${runId}`)}`;
