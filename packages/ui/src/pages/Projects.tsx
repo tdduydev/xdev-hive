@@ -1080,7 +1080,7 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
           />
         ) : null}
         {result ? (
-          <div className="flex flex-col gap-3 rounded-lg bg-muted/50 p-3">
+          <div className="flex flex-col gap-3 rounded-lg bg-muted/50 p-3" data-project-result={result.project}>
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-medium">{result.title}</span>
               <span className="min-w-0 font-mono text-xs break-all">{result.project}</span>
