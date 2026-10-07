@@ -125,14 +125,16 @@ describe("run requests from the web", () => {
         id: req.id,
         status: "rejected",
         runId: "R-ignored",
-        error: { message: `git push failed\ntoken ${secret}`, key: "errors.projectNotAdded", vars: { project: "app" } },
+        error: { message: `git push failed\ntoken ${secret}`, key: "errors.projectNotAdded", vars: { project: "app", detail: secret, count: 2 } },
       },
       mbp,
     );
     assert.equal(refused.status, "rejected");
     assert.equal(refused.runId, null, "a refused request has no run");
     assert.equal(refused.error!.key, "errors.projectNotAdded");
-    assert.deepEqual(refused.error!.vars, { project: "app" });
+    assert.equal(refused.error!.vars!.project, "app");
+    assert.equal(refused.error!.vars!.count, 2);
+    assert.ok(!JSON.stringify(refused.error).includes(secret));
     assert.match(refused.error!.message, /^git push failed\n/);
     assert.ok(!refused.error!.message.includes(secret), "the secret-looking line is hidden");
   });

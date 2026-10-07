@@ -13,6 +13,17 @@ function testTmpDir(prefix: string): string {
 }
 
 describe("main.log (BUG-update-relaunch)", () => {
+  it("redacts multiline credentials before flattening and clipping an event", () => {
+    const dir = testTmpDir(path.join(os.tmpdir(), "hive-mainlog-secret-"));
+    const file = path.join(dir, "main.log");
+    const log = new MainLog(file);
+    const synthetic = "hivechat_" + "a".repeat(43);
+    log.write(`safe\n${synthetic}\n-----BEGIN PRIVATE KEY-----\nsynthetic-private-material\n-----END PRIVATE KEY-----\nend`);
+    const stored = readFileSync(file, "utf8");
+    assert.ok(!stored.includes(synthetic));
+    assert.ok(!stored.includes("synthetic-private-material"));
+    assert.match(stored, /safe.*end/);
+  });
   it("lives where each OS keeps logs", () => {
     assert.equal(mainLogDir("darwin", {}, "/Users/a"), "/Users/a/Library/Logs/xDev Hive");
     assert.equal(mainLogDir("win32", { APPDATA: "C:\\Users\\a\\AppData\\Roaming" }, "C:\\Users\\a"), path.join("C:\\Users\\a\\AppData\\Roaming", "xDev Hive", "logs"));

@@ -122,6 +122,32 @@ describe("roles in the hub (roadmap 25)", () => {
 });
 
 describe("per-project access in the hub", () => {
+  it("scopes vector-index counts to the reader's project and shared grants", async () => {
+    const hive = new SqliteHive(":memory:", { embedder: { model: "audit-fake", embed: async (texts) => texts.map(() => Float32Array.of(1)) } });
+    try {
+      for (const project of ["app", "hidden"]) await hive.call("memory.write", { project, kind: "context", content: "index sentinel" }, admin);
+      await hive.call("memory.write", { shared: true, kind: "context", content: "shared index sentinel" }, admin);
+      assert.equal(await hive.indexMemory(), 3);
+      const reader: Actor = { name: "reader", role: "viewer", access: { projects: { app: "viewer" }, shared: { permissions: [] } } };
+      const visible = await hive.call("memory.searchInfo", {}, reader);
+      assert.deepEqual([visible.total, visible.indexed], [1, 1]);
+      const withShared = await hive.call("memory.searchInfo", {}, { ...reader, access: { projects: { app: "viewer" } } });
+      assert.deepEqual([withShared.total, withShared.indexed], [2, 2]);
+    } finally { hive.close(); }
+  });
+  it("keeps denied shared context and memory counts out of project context and search info", async () => {
+    const hive = await hub();
+    try {
+      const restricted: Actor = { name: "reader", role: "member", access: { projects: { app: "viewer" }, shared: { permissions: [] } } };
+      await hive.call("docs.save", { key: "org/denied-context", content: "shared context sentinel", includeInAgents: true }, admin);
+      const context = await hive.call("docs.context", { project: "app" }, restricted);
+      assert.ok(!JSON.stringify(context).includes("shared context sentinel"));
+      assert.equal(context.memory.shared, 0);
+      assert.equal((await hive.call("memory.searchInfo", {}, restricted)).total, 1);
+      const all = await hive.call("memory.searchInfo", {}, admin);
+      assert.equal(all.total, 4, "unrestricted readers retain the global count");
+    } finally { hive.close(); }
+  });
   it("hides projects that were not granted from every list", async () => {
     const hive = await hub();
     const docs = (await hive.call("docs.list", {}, lan)).map((d) => d.key);

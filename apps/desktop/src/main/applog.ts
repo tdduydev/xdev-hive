@@ -3,6 +3,7 @@
 // wake, and every updater step go to a file the OS's usual place for logs, so the next report has something to read.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { redactLines } from "@xdev-hive/core";
 
 /**
  * Where main.log lives: ~/Library/Logs/<app> on macOS (Console.app shows it), %APPDATA%\<app>\logs on Windows, and on
@@ -34,7 +35,7 @@ export class MainLog {
     try {
       mkdirSync(path.dirname(this.file), { recursive: true });
       if ((statSync(this.file, { throwIfNoEntry: false })?.size ?? 0) > this.#maxBytes) this.#rotate();
-      appendFileSync(this.file, `[${this.#now().toISOString()}] ${text.replace(/\s*\n\s*/g, " ").slice(0, 4000)}\n`);
+      appendFileSync(this.file, `[${this.#now().toISOString()}] ${redactLines(text).replace(/\s*\n\s*/g, " ").slice(0, 4000)}\n`);
     } catch {
       // A log that cannot be written must not take the app down as well.
     }

@@ -852,6 +852,13 @@ const numOrNull = (v: unknown) => (v == null ? null : Number(v));
 /** A pushed text as the team may see it: no hidden characters, no line that looks like a secret. */
 const clean = (text: string | null) => (text === null ? null : redactLines(stripHidden(text)));
 
+// Error vars are rendered beside the message; cleaning the message alone still exposes a credential in a var.
+const cleanMachineError = (error: RunRequestError | null): RunRequestError | null => error === null ? null : {
+  ...error,
+  message: clean(error.message)!,
+  ...(error.vars ? { vars: Object.fromEntries(Object.entries(error.vars).map(([key, value]) => [key, typeof value === "string" ? clean(value)! : value])) } : {}),
+};
+
 /** Stage and progress come from the files, so the list does not have to send them. */
 function toSpecFeature(r: Row): SpecFeatureDetail {
   const files = JSON.parse(str(r.files)) as SpecFiles;
@@ -6058,22 +6065,22 @@ export class SqliteHive implements HiveBackend {
         if (str(row.status) !== "running") return { ok: false };
         db.prepare("UPDATE doc_assists SET status = ?, reply = ?, markdown = ?, profile = ?, cost_usd = ?, error = ?, updated_at = ? WHERE id = ?").run(
           status,
-          reply,
-          markdown,
+          clean(reply),
+          clean(markdown),
           profile,
           costUsd,
-          error ? JSON.stringify(error) : null,
+          error ? JSON.stringify(cleanMachineError(error)) : null,
           this.#now(),
           aid,
         );
         return { ok: true };
       },
 
-      "docs.context": ({ project }) => {
+      "docs.context": ({ project }, actor) => {
         // As docs.list gives a project's sync: its own, the team's and its systems' (roadmap 19c).
         const docs = (
           db.prepare("SELECT * FROM docs WHERE removed_at IS NULL AND (project IS NULL OR project = ? OR project IN (SELECT value FROM json_each(?)))").all(project, JSON.stringify(this.#systemOwnersOf([project]))) as Row[]
-        ).map(toDoc);
+        ).map(toDoc).filter((d) => sees(actor, d.project));
         const staleBefore = this.#staleBefore();
         const count = (p: string, status: string, stale?: boolean) =>
           (db.prepare("SELECT created_at, last_used_at FROM memory WHERE project = ? AND status = ? AND superseded_by IS NULL").all(p, status) as Row[]).filter(
@@ -6083,9 +6090,9 @@ export class SqliteHive implements HiveBackend {
           ...describeProjectContext(project, docs),
           memory: {
             project: count(project, "approved", false),
-            shared: count(SHARED, "approved", false),
-            stale: count(project, "approved", true) + count(SHARED, "approved", true),
-            pending: count(project, "pending") + count(SHARED, "pending"),
+            shared: sees(actor, null) ? count(SHARED, "approved", false) : 0,
+            stale: count(project, "approved", true) + (sees(actor, null) ? count(SHARED, "approved", true) : 0),
+            pending: count(project, "pending") + (sees(actor, null) ? count(SHARED, "pending") : 0),
           },
         };
       },
@@ -6488,16 +6495,18 @@ export class SqliteHive implements HiveBackend {
         return this.#cleanupProposal(id);
       }),
 
-      "memory.searchInfo": () => {
+      "memory.searchInfo": (_input, actor) => {
         const model = this.#opts.embedder?.model ?? null;
-        const count = (sql: string, ...args: string[]) => num((db.prepare(sql).get(...args) as Row).n);
+        const count = (sql: string, ...args: string[]) => (db.prepare(sql).all(...args) as Row[])
+          .filter((r) => sees(actor, str(r.project) === SHARED ? null : str(r.project)))
+          .reduce((sum, r) => sum + num(r.n), 0);
         return {
           mode: model ? "hybrid" : "keyword",
           model,
           indexed: model
-            ? count("SELECT COUNT(*) AS n FROM memory m JOIN memory_vectors v ON v.memory_id = m.id AND v.model = ? WHERE m.status = 'approved'", model)
+            ? count("SELECT m.project, COUNT(*) AS n FROM memory m JOIN memory_vectors v ON v.memory_id = m.id AND v.model = ? WHERE m.status = 'approved' GROUP BY m.project", model)
             : 0,
-          total: count("SELECT COUNT(*) AS n FROM memory WHERE status = 'approved'"),
+          total: count("SELECT project, COUNT(*) AS n FROM memory WHERE status = 'approved' GROUP BY project"),
           lastError: this.#embedError,
           lastIndexedAt: this.#indexedAt,
         } satisfies MemorySearchInfo;
@@ -7328,7 +7337,7 @@ export class SqliteHive implements HiveBackend {
           const merged = { ...(row.mr == null ? { iid: null, draft: false, pipeline: null, pipelineUrl: null } : (JSON.parse(String(row.mr)) as RunMr)), status: "merged", checkedAt: now };
           db.prepare("UPDATE run_records SET merge_status = ?, merge_error = ?, merge_done_at = ?, mr = CASE WHEN ? THEN ? ELSE mr END WHERE machine_id = ? AND run_id = ?").run(
             ok ? "merged" : "failed",
-            ok ? null : JSON.stringify(error ?? { message: "merge failed" }),
+            ok ? null : JSON.stringify(cleanMachineError(error ?? { message: "merge failed" })),
             now,
             ok ? 1 : 0,
             JSON.stringify(merged),
@@ -7804,7 +7813,7 @@ export class SqliteHive implements HiveBackend {
           if (req.machineId !== actor.name) throw new HiveError("forbidden", `Run request #${id} is for ${req.machineId}, not ${actor.name}.`);
           if (req.status !== "pending") throw new HiveError("conflict", `Run request #${id} is ${req.status}.`, { key: "errors.runRequestNotPending", vars: { id } });
           // The reason shows on the web: no hidden characters, no line that looks like a secret.
-          const why = error ? { ...error, message: clean(error.message)! } : null;
+          const why = cleanMachineError(error);
           db.prepare("UPDATE run_requests SET status = ?, run_id = ?, error = ?, updated_at = ? WHERE id = ?").run(
             status,
             status === "accepted" ? runId : null,
@@ -8077,7 +8086,7 @@ export class SqliteHive implements HiveBackend {
             throw new HiveError("conflict", `Chat reply #${replyId} has ended.`, { key: "errors.chatReplyEnded", vars: { id: replyId } });
           }
           const now = this.#now();
-          const why = error ? { ...error, message: clean(error.message)! } : null;
+          const why = cleanMachineError(error);
           db.prepare(
             "UPDATE chat_messages SET status = ?, text = ?, steps = ?, activity = NULL, error = ?, cost_usd = ?, updated_at = ?, finished_at = ? WHERE id = ?",
           ).run(was === "cancelled" ? "cancelled" : status, clean(text)!, clean(steps)!, why ? JSON.stringify(why) : null, costUsd, now, now, replyId);
@@ -8341,7 +8350,7 @@ export class SqliteHive implements HiveBackend {
           if (!COMMAND_MOVES[cmd.status].includes(status)) throw new HiveError("conflict", `Command #${id} is ${cmd.status}, cannot become ${status}.`);
           db.prepare("UPDATE machine_commands SET status = ?, output = COALESCE(?, output), updated_at = ? WHERE id = ?").run(
             status,
-            output ?? null,
+            clean(output ?? null),
             this.#now(),
             id,
           );
