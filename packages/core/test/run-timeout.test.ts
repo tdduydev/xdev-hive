@@ -73,17 +73,13 @@ describe("run timeout", () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "hive-timeout-"));
     const file = path.join(dir, "hive.db");
     try {
-      const hive = new SqliteHive(file);
-      await hive.call("tasks.create", { id: "T-1", project: "demo", title: "Task", kind: "feature" }, admin);
-      await hive.call("machines.heartbeat", { machine: "test", instance: "aabbccdd", projects: ["demo"], acceptsRuns: true, profiles: [profile("old")] }, runner);
-      const req = await hive.call("runs.dispatch", { project: "demo", taskId: "T-1", machineId: runner.name }, admin);
       const before = migrationIndex("ALTER TABLE run_requests ADD COLUMN timeout_minutes");
       hive.db.exec(`ALTER TABLE run_requests DROP COLUMN timeout_minutes; PRAGMA user_version = ${before}`);
       hive.close();
       // Later migrations are already present in this complete DB; replay only the timeout step.
       const upgraded = new SqliteHive(file, { migrateTo: before + 1 });
       try {
-        assert.equal((await upgraded.call("runs.requests", { project: "demo" }, admin)).find((r) => r.id === req.id)?.timeoutMinutes, null);
+        assert.equal((await upgraded.call("runs.requests", { project: "demo" }, admin)).find((r) => r.id === requestId)?.timeoutMinutes, null);
       } finally { upgraded.close(); }
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
