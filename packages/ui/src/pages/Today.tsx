@@ -1,3 +1,5 @@
+import { ReviewArtifacts } from "#ui/components/Artifacts.tsx";
+import { useChatPageContext } from "#ui/components/ChatSession.tsx";
 import { SystemOverview } from "#ui/components/SystemOverview.tsx";
 import { StartReminder } from "#ui/pages/Start.tsx";
 import { knowledgeHref } from "#ui/lib/knowledge.ts";
@@ -23,7 +25,7 @@ import { useInbox } from "#ui/shell/inbox.tsx";
 import { useToast } from "#ui/shell/toast.tsx";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { alertDetail, alertTitle } from "./admin/Alerts.tsx";
-import { ActionItem } from "./Chat.tsx";
+import { ActionItem } from "#ui/components/LeaderChat.tsx";
 
 type Kind = InboxTone | "success" | "neutral";
 
@@ -173,6 +175,7 @@ function titleOf(item: InboxItem, t: TFunction): string {
       return t("inbox.request.title", { who: item.command.requestedBy, label: item.command.label });
     case "alert":
       return alertTitle(t, item.alert);
+    case "releaseFailure": return `${t(item.task.id.startsWith("OPS-release-log-") ? "autoRelease.warning" : "autoRelease.failed")} · ${item.task.id}`;
     case "gate":
       return t("inbox.gate.title", { gate: t(`sdlc.gate.${item.gate.gate}`), task: item.gate.taskId });
     case "leader":
@@ -211,6 +214,7 @@ function metaOf(item: InboxItem, t: TFunction): string {
       return t("inbox.request.meta");
     case "alert":
       return alertDetail(t, item.alert);
+    case "releaseFailure": return firstLine(item.task.note ?? "", 80);
     case "gate":
       return item.gate.status === "escalated" ? t("inbox.gate.metaEscalated") : t("inbox.gate.meta", { mode: t(`sdlc.mode.${item.gate.mode}`) });
     case "leader":
@@ -252,6 +256,13 @@ export function TodayPage() {
   const list = useMemo(() => (tab === "open" ? groups.flatMap((g) => g.items) : []), [tab, groups]);
   const selected = mobileDetail.mobile ? mobileDetail.value : sel;
   const current = tab === "open" ? (list.find((i) => i.key === selected) ?? (mobileDetail.mobile ? null : list[0] ?? null)) : null;
+  const contextTask = current?.kind === "review" || current?.kind === "agentHold" ? current.task
+    : current?.kind === "plan" ? { id: current.plan.taskId, project: current.plan.project }
+    : current?.kind === "gate" ? { id: current.gate.taskId, project: current.gate.project } : null;
+  const contextRun = current?.kind === "ci" ? { id: current.run.id, project: current.run.project, link: current.run.id }
+    : current?.kind === "waitingRun" ? { id: current.run.runId, project: current.run.project, link: `${current.run.machineId}/${current.run.runId}` } : null;
+  useChatPageContext(contextRun ? { id: contextRun.id, project: contextRun.project, href: `#/runs?run=${encodeURIComponent(contextRun.link)}` }
+    : contextTask ? { id: contextTask.id, project: contextTask.project, href: `#/tasks?task=${encodeURIComponent(contextTask.id)}` } : null);
   const doneCurrent = tab === "done" ? (inbox.done.find((d) => d.key === selected) ?? (mobileDetail.mobile ? null : inbox.done[0] ?? null)) : null;
   useEffect(() => {
     if (!mobileDetail.mobile || !mobileDetail.value) return;
@@ -651,7 +662,7 @@ function Detail({
             </Li>
           ) : null}
           <h3 className="m-0 mt-1.5 text-[13px]/[18px] font-semibold text-fg-strong">{t("inbox.review.handoff")}</h3>
-          <P>{task.note?.trim() || t("inbox.review.noNote")}</P>
+          <ReviewArtifacts project={task.project} taskId={task.id} note={task.note?.trim() || t("inbox.review.noNote")} />
         </>
       );
       const canMove = allow(task.project, "codeReview");
@@ -787,8 +798,18 @@ function Detail({
       actions = [{ label: t("planApproval.approve"), kind: "primary", run: decide("approve") }, { label: t("planApproval.changes"), kind: "secondary", run: decide("changes") }, { label: t("inbox.gate.openTask"), kind: "ghost", run: go(`#/tasks?task=${encodeURIComponent(p.taskId)}`) }];
       break;
     }
+    case "releaseFailure": {
+      body = <P>{item.task.note}</P>;
+      actions = [{ label: t("autoRelease.title"), kind: "primary", run: go(`#/pipeline?project=${encodeURIComponent(item.task.project)}`) }, { label: t("inbox.gate.openTask"), kind: "secondary", run: go(`#/tasks?task=${encodeURIComponent(item.task.id)}`) }, seenAction()];
+      break;
+    }
     case "gate": {
       const g = item.gate;
+      if (g.gate === "release") {
+        body = <P>{t("sdlc.gateHint.release")}</P>;
+        actions = [{ label: t("autoRelease.title"), kind: "primary", run: go(`#/pipeline?project=${encodeURIComponent(g.project)}`) }];
+        break;
+      }
       const labels = gateLabels(g, t);
       const what = { gate: t(`sdlc.gate.${g.gate}`), task: g.taskId };
       const may = allow(g.project, g.gate === "test" ? "qaVerify" : g.gate === "review" || g.gate === "merge" ? "codeReview" : "runDispatch");

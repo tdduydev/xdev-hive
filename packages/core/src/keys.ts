@@ -4,9 +4,9 @@ import type { DocScope } from "./types.ts";
 export const PROJECT_NAME = /^[a-z0-9][a-z0-9._-]{0,99}$/;
 const SLUG = "[a-z0-9][a-z0-9-]{0,79}";
 const ORG_KEY = new RegExp(`^org/(skills/)?(${SLUG})$`);
-const PROJECT_KEY = new RegExp(`^project/([a-z0-9][a-z0-9._-]{0,99})/(skills/)?(${SLUG})$`);
+const PROJECT_KEY = new RegExp(`^project/([a-z0-9][a-z0-9._-]{0,99})/(skills/|research/)?(${SLUG})$`);
 /** A system's docs (roadmap 19c); skills are not kept per system yet. */
-const SYSTEM_KEY = new RegExp(`^system/([a-z0-9][a-z0-9._-]{0,99})/(${SLUG})$`);
+const SYSTEM_KEY = new RegExp(`^system/([a-z0-9][a-z0-9._-]{0,99})/(research/)?(${SLUG})$`);
 
 export interface ParsedDocKey {
   scope: DocScope;
@@ -18,16 +18,16 @@ export interface ParsedDocKey {
 
 /**
  * Doc keys are `org/<slug>` (shared by every project), `project/<project>/<slug>` or `system/<system>/<slug>` (shared by
- * a system's services, roadmap 19c); skills put `skills/` before the slug (not in a system).
+ * a system's services, roadmap 19c); skills put `skills/` before the slug (not in a system); research reports use `research/` in a project or system.
  */
 export function parseDocKey(key: string): ParsedDocKey {
   const org = ORG_KEY.exec(key);
   if (org) return { scope: "org", project: null, slug: org[2]!, skill: Boolean(org[1]) };
   const proj = PROJECT_KEY.exec(key);
-  if (proj) return { scope: "project", project: proj[1]!, slug: proj[3]!, skill: Boolean(proj[2]) };
+  if (proj) return { scope: "project", project: proj[1]!, slug: `${proj[2] === "research/" ? "research/" : ""}${proj[3]!}`, skill: proj[2] === "skills/" };
   const sys = SYSTEM_KEY.exec(key);
   // Owned by sys:<name> (access.ts systemOwner), which no project can be.
-  if (sys) return { scope: "system", project: `sys:${sys[1]!}`, slug: sys[2]!, skill: false };
+  if (sys) return { scope: "system", project: `sys:${sys[1]!}`, slug: `${sys[2] ?? ""}${sys[3]!}`, skill: false };
   throw new HiveError(
     "bad_request",
     `Invalid doc key "${key}". Use org/<slug>, project/<project>/<slug> or system/<system>/<slug>, with skills/ before the slug for a skill (lowercase, digits, "-").`,

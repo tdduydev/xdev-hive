@@ -5,8 +5,8 @@ import { z } from "zod";
 import { DEFAULT_PLAN_APPROVAL, type PlanApprovalSettings } from "#core/plan-approval.ts";
 
 /** In flow order. spec/plan/tasks: after each Spec Kit step; dispatch: before a flow task runs; review: after it ran;
- * fix: when its review asks for changes; test: QA verification before merge; merge: when its MR is green. */
-export const SDLC_GATES = ["spec", "plan", "tasks", "dispatch", "review", "fix", "test", "merge"] as const;
+ * fix: when its review asks for changes; test: QA verification before merge; merge: when its MR is green; release: after a fully green batch lands. */
+export const SDLC_GATES = ["spec", "plan", "tasks", "dispatch", "review", "fix", "test", "merge", "release"] as const;
 export type SdlcGate = (typeof SDLC_GATES)[number];
 
 /** From least to most left to the agents: a person decides; an agent checks, then passes or asks a person; it goes on. */
@@ -23,11 +23,15 @@ export const DEFAULT_MAX_FIX_ROUNDS = 2;
 export const MAX_FIX_ROUNDS = 5;
 
 export const gateModeSchema = z.enum(GATE_MODES);
-export const gateModesSchema = z.partialRecord(z.enum(SDLC_GATES), gateModeSchema);
+export const gateModesSchema = z.partialRecord(z.enum(SDLC_GATES), gateModeSchema).refine(gates => gates.release !== "ai", "Release supports human or auto approval");
 
 export interface SdlcProjectSettings {
   /** A gate left out is "human". */
   gates: Partial<GateModes>;
+  releaseMachine?: string;
+  autoDispatch?: boolean;
+  autoDispatchBy?: string;
+  allowedAgentKinds?: string[];
   planApproval?: PlanApprovalSettings;
   maxFixRounds?: number;
   /** Flow tasks running at once when dispatch is not "human"; left out: no limit. */
@@ -63,7 +67,7 @@ export function effectiveGates(policy: SdlcPolicySettings, project: string): Gat
 /** The settings as the pages read them: the ceiling filled in, and each project's choice next to what applies. */
 export interface SdlcPolicyView {
   ceiling: GateModes;
-  projects: Record<string, { gates: Partial<GateModes>; effective: GateModes; maxFixRounds: number; maxParallel: number | null; fastLaneKinds: Array<(typeof FAST_LANE_KINDS)[number]>; planApproval?: PlanApprovalSettings }>;
+  projects: Record<string, { gates: Partial<GateModes>; effective: GateModes; maxFixRounds: number; maxParallel: number | null; autoDispatch?: boolean; allowedAgentKinds?: string[]; fastLaneKinds: Array<(typeof FAST_LANE_KINDS)[number]>; releaseMachine?: string; planApproval?: PlanApprovalSettings }>;
   updatedAt: string | null;
   updatedBy: string | null;
 }
@@ -75,7 +79,7 @@ export function sdlcPolicyView(policy: SdlcPolicySettings, projects: string[]): 
     projects: Object.fromEntries(
       names.map((p) => {
         const own = policy.projects[p];
-        return [p, { gates: own?.gates ?? {}, effective: effectiveGates(policy, p), maxFixRounds: own?.maxFixRounds ?? DEFAULT_MAX_FIX_ROUNDS, maxParallel: own?.maxParallel ?? null, fastLaneKinds: own?.fastLaneKinds ?? [], planApproval: own?.planApproval ?? DEFAULT_PLAN_APPROVAL }];
+        return [p, { gates: own?.gates ?? {}, autoDispatch: own?.autoDispatch ?? false, allowedAgentKinds: own?.allowedAgentKinds ?? ["claude", "codex", "antigravity"], effective: effectiveGates(policy, p), maxFixRounds: own?.maxFixRounds ?? DEFAULT_MAX_FIX_ROUNDS, maxParallel: own?.maxParallel ?? null, fastLaneKinds: own?.fastLaneKinds ?? [], releaseMachine: own?.releaseMachine, planApproval: own?.planApproval ?? DEFAULT_PLAN_APPROVAL }];
       }),
     ),
     updatedAt: policy.updatedAt,

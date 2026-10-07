@@ -126,7 +126,7 @@ describe("sign-in terminal", () => {
     const parts = loginParts({ ...AGENT_TEMPLATES.claude, env: { CLAUDE_CONFIG_DIR: "~/.claude-2", ANTHROPIC_API_KEY: "never-in-a-script" } })!;
     assert.deepEqual(parts, { args: ["auth", "login"], env: { CLAUDE_CONFIG_DIR: path.join(os.homedir(), ".claude-2") } });
     assert.deepEqual(loginParts(AGENT_TEMPLATES.codex), { args: ["login"], env: {} });
-    assert.equal(loginParts(AGENT_TEMPLATES.gemini), null);
+    assert.deepEqual(loginParts(AGENT_TEMPLATES.gemini), { args: [], env: {} });
   });
 
   it("signs in the way the user picked, with the CLI's own options (roadmap 24b)", () => {

@@ -4,7 +4,7 @@ import { useT } from "#ui/i18n/index.tsx";
 import { choiceText } from "#ui/components/ModelRouting.tsx";
 
 /** Actual args stay visible even if a package fixed a different model than the router requested. */
-export function ModelRunChip({ run }: { run: AgentRun | RunRecord }) {
+export function ModelRunChip({ run, focusable = true }: { run: AgentRun | RunRecord; focusable?: boolean }) {
   const t = useT();
   const kind = "runId" in run ? run.kind : run.agentKind;
   const tier = "runId" in run ? run.tier ?? run.selection?.tier : run.selection?.tier;
@@ -12,7 +12,7 @@ export function ModelRunChip({ run }: { run: AgentRun | RunRecord }) {
   if (!kind && !run.model && !run.effort && !tier) return null;
   const cell = selection?.reason.split(",")[0];
   const reason = selection ? t("modelRouting.reason", { reason: selection.reason }) : t("runs.modelNote");
-  return <span className="inline-flex max-w-full rounded-md border border-border bg-muted px-2 py-1 text-xs text-fg-muted" tabIndex={0} title={reason} aria-label={`${choiceText(run.model ?? t("runs.modelDefault"), run.effort ?? null, t)} · ${reason}`} data-run-model={run.model ?? ""}>{choiceText(run.model ?? t("runs.modelDefault"), run.effort ?? null, t)}{tier ? ` · ${t("runs.modelTier", { tier })}${cell ? ` (${cell})` : ""}` : ""}</span>;
+  return <span className="inline-flex max-w-full rounded-md border border-border bg-muted px-2 py-1 text-xs text-fg-muted" tabIndex={focusable ? 0 : undefined} title={reason} aria-label={`${choiceText(run.model ?? t("runs.modelDefault"), run.effort ?? null, t)} · ${reason}`} data-run-model={run.model ?? ""}>{choiceText(run.model ?? t("runs.modelDefault"), run.effort ?? null, t)}{tier ? ` · ${t("runs.modelTier", { tier })}${cell ? ` (${cell})` : ""}` : ""}</span>;
 }
 
 export function TaskModelChips({ task, requests }: { task: Task; requests: RunRequest[] }) {

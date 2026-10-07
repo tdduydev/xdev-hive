@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="vi" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hive Chat · research · Mockup R-64a</title>
+<style>/* Snapshot token CSS từ 0695fc7b93. Offline dùng font fallback; app dùng @fontsource. */
+/* Semantic colors. Light = :root / [data-theme="light"], Dark = [data-theme="dark"]. Nested scopes re-theme a subtree. */
+:root,[data-theme="light"]{
+--bg-canvas:#F7F9FC;--bg-subtle:#F0F3F9;--bg-surface:#FFFFFF;--bg-raised:#FFFFFF;--bg-sunken:#F0F3F9;--bg-inverse:#142745;--bg-scrim:rgba(12,26,51,0.48);
+--text-strong:#22314F;--text-primary:#344568;--text-secondary:#4A5773;--text-muted:#5B6885;--text-disabled:#9AA5BD;--text-inverse:#E8ECF8;--text-link:#004CFF;--text-link-hover:#0038C2;--text-on-accent:#FFFFFF;--text-brand:#004CFF;
+--border-subtle:#E6EBF4;--border-default:#D5DCE9;--border-strong:#B8C2D6;--border-control:#7C89A5;--border-selected:#004CFF;
+--action-primary-bg:#004CFF;--action-primary-hover:#0038C2;--action-primary-active:#002A8F;--action-primary-fg:#FFFFFF;
+--action-secondary-bg:#FFFFFF;--action-secondary-hover:#F0F3F9;--action-secondary-active:#E6EBF4;--action-secondary-fg:#22314F;--action-secondary-border:#D5DCE9;
+--action-ghost-hover:rgba(52,69,104,0.06);--action-ghost-active:rgba(52,69,104,0.12);
+--action-danger-bg:#C62828;--action-danger-hover:#A51F1F;--action-danger-fg:#FFFFFF;
+--state-hover:rgba(52,69,104,0.06);--state-pressed:rgba(52,69,104,0.12);--state-selected-bg:#EAF1FF;--state-selected-fg:#0038C2;--state-selected-border:#9DBBFF;--state-disabled-bg:#EEF1F6;--state-disabled-fg:#9AA5BD;--state-disabled-border:#DDE3EC;
+--status-success-fg:#0F7A4A;--status-success-bg:#E6F6EE;--status-success-border:#9ED9BC;--status-success-solid:#1FA46A;
+--status-warning-fg:#9A5B00;--status-warning-bg:#FFF4DB;--status-warning-border:#F5C86B;--status-warning-solid:#F2A516;
+--status-danger-fg:#C62828;--status-danger-bg:#FDECEC;--status-danger-border:#F3B4B4;--status-danger-solid:#D93636;
+--status-info-fg:#0B5FD9;--status-info-bg:#EAF3FF;--status-info-border:#A9CCFF;--status-info-solid:#1E90FF;
+--status-running-fg:#004CFF;--status-running-bg:#EAF1FF;--status-running-border:#9DBBFF;
+--status-neutral-fg:#4A5773;--status-neutral-bg:#EEF1F6;--status-neutral-border:#D5DCE9;--status-neutral-solid:#8B97B1;
+--focus-color:#004CFF;
+--code-bg:#F3F6FB;--code-fg:#344568;--code-gutter:#5B6885;--code-line-hl:#E4EDFF;--code-selection:#CFE0FF;
+--syntax-keyword:#8A2BB0;--syntax-string:#0F7A4A;--syntax-number:#9A5B00;--syntax-function:#0B5FD9;--syntax-type:#0B7285;--syntax-comment:#5B6885;--syntax-punct:#4A5773;--syntax-variable:#344568;
+--diff-add-bg:#E6F6EE;--diff-add-word:#B7E6CD;--diff-add-gutter:#D2EEDF;--diff-del-bg:#FDECEC;--diff-del-word:#F7C5C5;--diff-del-gutter:#F8DADA;--diff-hunk-bg:#EEF3FB;--diff-hunk-fg:#4A5773;
+--chart-1:#1E90FF;--chart-2:#0F9D8E;--chart-3:#F2A516;--chart-4:#7B61FF;--chart-5:#E0567A;--chart-6:#7BD4FF;
+--shadow-0:none;--shadow-1:0 1px 2px rgba(20,39,69,0.06),0 1px 1px rgba(20,39,69,0.04);--shadow-2:0 4px 12px -2px rgba(20,39,69,0.10),0 2px 4px rgba(20,39,69,0.05);--shadow-3:0 12px 32px -8px rgba(20,39,69,0.18),0 4px 8px rgba(20,39,69,0.06);--shadow-4:0 24px 56px -12px rgba(20,39,69,0.28),0 8px 16px rgba(20,39,69,0.08);
+color-scheme:light;
+--brand-gradient:linear-gradient(135deg,#7BD4FF 0%,#1E90FF 45%,#004CFF 100%);--brand-gradient-h:linear-gradient(90deg,#7BD4FF 0%,#1E90FF 45%,#004CFF 100%);--brand-gradient-radial:radial-gradient(80% 80% at 50% 50%,#7BD4FF 0%,#1E90FF 40%,#004CFF 90%);
+--focus-ring:0 0 0 2px var(--bg-canvas),0 0 0 4px var(--focus-color);
+}
+[data-theme="dark"]{
+--bg-canvas:#142745;--bg-subtle:#0F203C;--bg-surface:#1A2F52;--bg-raised:#213762;--bg-sunken:#0F203C;--bg-inverse:#E8ECF8;--bg-scrim:rgba(5,12,26,0.64);
+--text-strong:#F4F6FC;--text-primary:#E8ECF8;--text-secondary:#B9C3DB;--text-muted:#9DAAC7;--text-disabled:#5F6F92;--text-inverse:#142745;--text-link:#7BD4FF;--text-link-hover:#A8E3FF;--text-on-accent:#FFFFFF;--text-brand:#7BD4FF;
+--border-subtle:#213762;--border-default:#2B4170;--border-strong:#3A5285;--border-control:#6E80A8;--border-selected:#4AAEFF;
+--action-primary-bg:#1463FF;--action-primary-hover:#0F57EE;--action-primary-active:#0A48CC;--action-primary-fg:#FFFFFF;
+--action-secondary-bg:#1A2F52;--action-secondary-hover:#213762;--action-secondary-active:#2B4170;--action-secondary-fg:#E8ECF8;--action-secondary-border:#3A5285;
+--action-ghost-hover:rgba(232,236,248,0.07);--action-ghost-active:rgba(232,236,248,0.12);
+--action-danger-bg:#D93636;--action-danger-hover:#C62828;--action-danger-fg:#FFFFFF;
+--state-hover:rgba(232,236,248,0.07);--state-pressed:rgba(232,236,248,0.12);--state-selected-bg:#1D3E78;--state-selected-fg:#A8E3FF;--state-selected-border:#4AAEFF;--state-disabled-bg:#1A2C4C;--state-disabled-fg:#5F6F92;--state-disabled-border:#26395F;
+--status-success-fg:#4ADE9B;--status-success-bg:#133D3A;--status-success-border:#1F6B55;--status-success-solid:#34C47F;
+--status-warning-fg:#FFC35C;--status-warning-bg:#3D3423;--status-warning-border:#7A5D22;--status-warning-solid:#F2A516;
+--status-danger-fg:#FF8A8A;--status-danger-bg:#45233A;--status-danger-border:#8A3A4A;--status-danger-solid:#FF5F5F;
+--status-info-fg:#7BD4FF;--status-info-bg:#173A66;--status-info-border:#2F5E99;--status-info-solid:#4AAEFF;
+--status-running-fg:#7BD4FF;--status-running-bg:#17336A;--status-running-border:#2F5BB3;
+--status-neutral-fg:#B9C3DB;--status-neutral-bg:#213762;--status-neutral-border:#3A5285;--status-neutral-solid:#6E80A8;
+--focus-color:#7BD4FF;
+--code-bg:#0F203C;--code-fg:#E8ECF8;--code-gutter:#8595B8;--code-line-hl:#1A3563;--code-selection:#24498A;
+--syntax-keyword:#D9A6FF;--syntax-string:#7EE2A8;--syntax-number:#FFC35C;--syntax-function:#7BD4FF;--syntax-type:#6FE3E0;--syntax-comment:#8A98B8;--syntax-punct:#B9C3DB;--syntax-variable:#E8ECF8;
+--diff-add-bg:#123A38;--diff-add-word:#1B5B4B;--diff-add-gutter:#15443F;--diff-del-bg:#3E2238;--diff-del-word:#6A2F45;--diff-del-gutter:#48273F;--diff-hunk-bg:#17305A;--diff-hunk-fg:#B9C3DB;
+--chart-1:#4AAEFF;--chart-2:#3CCFBE;--chart-3:#FFC35C;--chart-4:#A594FF;--chart-5:#FF7FA0;--chart-6:#7BD4FF;
+--shadow-0:none;--shadow-1:0 1px 2px rgba(0,0,0,0.35);--shadow-2:0 6px 16px -4px rgba(0,0,0,0.45),0 0 0 1px rgba(123,212,255,0.04);--shadow-3:0 16px 40px -8px rgba(0,0,0,0.55),0 0 0 1px rgba(123,212,255,0.06);--shadow-4:0 28px 64px -12px rgba(0,0,0,0.65),0 0 0 1px rgba(123,212,255,0.08);
+color-scheme:dark;
+--focus-ring:0 0 0 2px var(--bg-canvas),0 0 0 4px var(--focus-color);
+}
+
+/* Families are self-hosted (@fontsource in globals.css); the variable builds register "… Variable". */
+:root{
+--font-display:'Space Grotesk Variable','Space Grotesk','Be Vietnam Pro',system-ui,sans-serif;--font-sans:'Be Vietnam Pro',system-ui,-apple-system,'Segoe UI',sans-serif;--font-mono:'JetBrains Mono Variable','JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+--type-display-lg:600 32px/40px var(--font-display);--type-display-md:600 24px/32px var(--font-display);--type-numeric-lg:600 28px/36px var(--font-display);
+--type-heading-lg:600 20px/28px var(--font-sans);--type-heading-md:600 16px/24px var(--font-sans);--type-heading-sm:600 14px/20px var(--font-sans);
+--type-body-lg:400 16px/26px var(--font-sans);--type-body-md:400 14px/22px var(--font-sans);--type-body-sm:400 13px/20px var(--font-sans);
+--type-label:500 13px/20px var(--font-sans);--type-caption:500 12px/16px var(--font-sans);--type-overline:600 11px/16px var(--font-sans);
+--type-code-md:400 13px/20px var(--font-mono);--type-code-sm:400 12px/18px var(--font-mono);
+--tracking-tight:-0.02em;--tracking-normal:0;--tracking-wide:0.06em;
+--weight-regular:400;--weight-medium:500;--weight-semibold:600;--weight-bold:700;
+}
+
+/* 4/8 px grid */
+:root{
+--space-0:0;--space-px:1px;--space-0-5:2px;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--space-10:40px;--space-12:48px;--space-16:64px;--space-20:80px;
+--control-h-xs:24px;--control-h-sm:28px;--control-h-md:32px;--control-h-lg:40px;--control-h-touch:44px;
+--icon-sm:14px;--icon-md:16px;--icon-lg:20px;--row-h:40px;--row-h-compact:32px;
+--sidebar-w:240px;--sidebar-rail-w:64px;--topbar-h:56px;--content-max:1200px;--reading-max:72ch;--gutter:24px;--gutter-mobile:16px;
+--radius-none:0;--radius-xs:4px;--radius-sm:6px;--radius-md:8px;--radius-lg:12px;--radius-xl:16px;--radius-full:999px;
+--border-width:1px;--border-width-strong:2px;--focus-ring-width:2px;--focus-ring-offset:2px;
+--z-base:0;--z-sticky:10;--z-dropdown:100;--z-drawer:200;--z-dialog:300;--z-toast:400;--z-tooltip:500;
+--bp-sm:640px;--bp-md:768px;--bp-lg:1024px;--bp-xl:1280px;--bp-2xl:1536px;
+}
+[data-density="compact"]{--row-h:32px;--control-h-md:28px;--control-h-lg:36px;}
+
+:root{
+--duration-instant:80ms;--duration-fast:120ms;--duration-base:180ms;--duration-slow:240ms;--duration-slower:320ms;
+--ease-standard:cubic-bezier(0.2,0,0,1);--ease-enter:cubic-bezier(0,0,0.2,1);--ease-exit:cubic-bezier(0.4,0,1,1);--ease-emphasized:cubic-bezier(0.3,0,0,1);
+}
+@media (prefers-reduced-motion: reduce){:root{--duration-instant:0ms;--duration-fast:0ms;--duration-base:0ms;--duration-slow:0ms;--duration-slower:0ms}}
+@keyframes xd-spin{to{transform:rotate(360deg)}}
+@keyframes xd-pulse{0%,100%{opacity:1}50%{opacity:0.45}}
+@keyframes xd-shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+@keyframes xd-indeterminate{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
+@keyframes xd-ring{to{transform:rotate(360deg)}}
+@keyframes xd-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+
+*{box-sizing:border-box}body{margin:0;background:var(--bg-canvas);color:var(--text-primary);font:var(--type-body-md)}button,input,textarea,summary,a{touch-action:manipulation}button,input,textarea{font:inherit;color:inherit}button,a{transition:background var(--duration-fast) var(--ease-standard)}button{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);min-height:var(--control-h-touch);padding:var(--space-2) var(--space-3);border:var(--border-width) solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-surface);cursor:pointer}button:hover,a:hover{background:var(--state-hover)}button.primary{background:var(--action-primary-bg);color:var(--action-primary-fg);border-color:var(--action-primary-bg)}button.primary:hover{background:var(--action-primary-hover)}button:disabled{cursor:default;background:var(--state-disabled-bg);color:var(--text-secondary);border-color:var(--state-disabled-border)}button.ghost{background:transparent;border-color:transparent}button.icon{min-width:var(--control-h-touch);padding:var(--space-2)}:focus-visible{outline:var(--focus-ring-width) solid var(--focus-color);outline-offset:var(--focus-ring-offset)}svg{width:var(--icon-md);height:var(--icon-md);flex:none}h1,h2,h3,p{margin:0}h1{font:var(--type-display-md);color:var(--text-strong)}h2{font:var(--type-heading-md);color:var(--text-strong)}h3{font:var(--type-heading-sm);color:var(--text-strong)}p+p{margin-top:var(--space-2)}small,.small{font:var(--type-caption);color:var(--text-secondary)}.mono,code{font-family:var(--font-mono)}.muted{color:var(--text-muted)}a{display:inline-flex;align-items:center;min-height:var(--control-h-touch);color:var(--text-link);border-radius:var(--radius-sm);text-decoration:underline;text-underline-offset:var(--space-0-5)}.topbar{height:var(--topbar-h);display:flex;align-items:center;justify-content:space-between;padding:0 var(--space-6);border-bottom:var(--border-width) solid var(--border-default);background:var(--bg-surface);gap:var(--space-3)}.brand{font:var(--type-heading-md);color:var(--text-strong)}.app{display:grid;grid-template-columns:var(--sidebar-w) minmax(0,1fr);height:calc(100vh - var(--topbar-h));height:calc(100dvh - var(--topbar-h));min-height:0}.shell{padding:var(--space-6) var(--space-4);border-right:var(--border-width) solid var(--border-default);background:var(--bg-subtle);display:flex;flex-direction:column;gap:var(--space-3)}.shell button{justify-content:flex-start;border:0;background:transparent}.shell button.active{background:var(--state-selected-bg);color:var(--state-selected-fg)}.shell .spacer{flex:1}.chat-layout{display:grid;grid-template-columns:var(--sidebar-w) minmax(0,1fr);min-height:0}.threads{background:var(--bg-surface);border-right:var(--border-width) solid var(--border-default);padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-4);overflow:auto}.row{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}.between{justify-content:space-between}.threads label{display:block;font:var(--type-caption);margin-bottom:var(--space-2)}.threads input{width:100%;min-width:0;min-height:var(--control-h-touch);border:var(--border-width) solid var(--border-control);border-radius:var(--radius-md);padding:var(--space-2);background:var(--bg-canvas)}.thread{width:100%;flex-direction:column;align-items:flex-start;text-align:left;gap:var(--space-2);overflow-wrap:anywhere;padding:var(--space-3);background:transparent;border-color:transparent}.thread.selected{background:var(--state-selected-bg);color:var(--state-selected-fg);border-color:var(--border-selected)}.thread b{font:var(--type-heading-sm)}.conversation{display:grid;grid-template-rows:auto minmax(0,1fr) auto;min-width:0;min-height:0}.conversation-header{padding:var(--space-4) var(--space-6);background:var(--bg-surface);border-bottom:var(--border-width) solid var(--border-default);display:flex;align-items:center;justify-content:space-between;gap:var(--space-3)}.conversation-header>div{min-width:0}.conversation-header h2{overflow-wrap:anywhere}.transcript{overflow:auto;padding:var(--space-6);scroll-padding:var(--space-6)}.reading{max-width:var(--reading-max);margin:auto;display:flex;flex-direction:column;gap:var(--space-5);min-width:0;overflow-wrap:anywhere}.user{align-self:flex-end;background:var(--state-selected-bg);padding:var(--space-3) var(--space-4);border-radius:var(--radius-lg);max-width:92%}.turn{display:flex;flex-direction:column;gap:var(--space-3)}.agent-label{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;font:var(--type-label)}.agent-mark{width:var(--control-h-md);height:var(--control-h-md);display:grid;place-items:center;border:var(--border-width) solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-surface)}.badge{display:inline-flex;align-items:center;gap:var(--space-1);padding:var(--space-1) var(--space-2);border-radius:var(--radius-xs);font:var(--type-caption);background:var(--status-neutral-bg);color:var(--status-neutral-fg)}.badge.success{background:var(--status-success-bg);color:var(--status-success-fg)}.badge.warning{background:var(--status-warning-bg);color:var(--status-warning-fg)}.badge.running{background:var(--status-running-bg);color:var(--status-running-fg)}.activity{display:flex;align-items:center;gap:var(--space-2);color:var(--status-running-fg)}details{border:var(--border-width) solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-surface)}summary{cursor:pointer;min-height:var(--control-h-touch);padding:var(--space-3);color:var(--text-secondary)}details .detail{padding:0 var(--space-3) var(--space-3)}.card{background:var(--bg-surface);border:var(--border-width) solid var(--border-default);border-radius:var(--radius-lg);overflow:hidden}.card-head,.card-body,.card-foot{padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-3)}.card-head{border-bottom:var(--border-width) solid var(--border-subtle);gap:var(--space-2)}.card-foot{border-top:var(--border-width) solid var(--border-subtle);background:var(--bg-canvas)}.task-row{display:flex;align-items:flex-start;gap:var(--space-3)}.task-row code{color:var(--text-link);flex:none}.task-row div{min-width:0}.task-row p{font:var(--type-body-sm)}.footer-meta{font:var(--type-caption);color:var(--text-secondary)}.composer-wrap{background:var(--bg-surface);padding:var(--space-3) var(--space-6);border-top:var(--border-width) solid var(--border-default)}.composer{max-width:var(--reading-max);margin:auto;display:flex;flex-direction:column;gap:var(--space-2)}.commands{display:flex;gap:var(--space-2);overflow-x:auto}.commands button{font:var(--type-caption);white-space:nowrap;flex:none;min-width:var(--control-h-touch)}.draft{padding:var(--space-3);border:var(--border-width) solid var(--border-control);border-radius:var(--radius-lg);display:flex;flex-direction:column;gap:var(--space-2)}.draft label{font:var(--type-label);color:var(--text-strong)}textarea{width:100%;min-width:0;resize:vertical;min-height:var(--control-h-touch);max-height:calc(var(--space-12)*4);border:0;background:transparent;padding:0;font:var(--type-body-md);outline-offset:var(--space-1)}.session{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);flex-wrap:wrap}.session button{font:var(--type-caption)}.hint{font:var(--type-caption);color:var(--text-secondary)}.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-3)}.kpi{padding:var(--space-3);background:var(--bg-subtle);border-radius:var(--radius-md)}.kpi strong{display:block;font:var(--type-numeric-lg);color:var(--text-strong)}.mobile-only{display:none}.mock-label{font:var(--type-caption);color:var(--text-muted)}.notice{padding:var(--space-3);border:var(--border-width) solid var(--status-warning-border);border-radius:var(--radius-md);background:var(--status-warning-bg);color:var(--status-warning-fg)}
+@media(max-width:1023px){.app{grid-template-columns:var(--sidebar-rail-w) minmax(0,1fr)}.shell{padding:var(--space-3) var(--space-2)}.shell .shell-label,.shell small,.shell .brand{display:none}.shell button{justify-content:center}.chat-layout{grid-template-columns:minmax(0,1fr)}.threads{display:none}}
+@media(max-width:767px){body{font:var(--type-body-md)}.topbar{padding:0 var(--gutter-mobile)}.topbar .desktop-only{display:none}.app{display:block;height:calc(100vh - var(--topbar-h));height:calc(100dvh - var(--topbar-h))}.shell{display:none}.chat-layout{height:100%;display:block}.conversation{height:100%}.conversation-header{padding:var(--space-2) var(--gutter-mobile);gap:var(--space-2)}.conversation-header .desktop-only{display:none}.conversation-header h2{font:var(--type-heading-sm)}.mobile-only{display:inline-flex}.transcript{padding:var(--space-4) var(--gutter-mobile)}.reading{gap:var(--space-4)}.composer-wrap{padding:var(--space-2) var(--gutter-mobile);padding-bottom:max(var(--space-3),env(safe-area-inset-bottom))}textarea{font:var(--type-body-lg)}.card-head,.card-body,.card-foot{padding:var(--space-3)}.session .desktop-only{display:none}.session button{justify-content:flex-start}.kpis{gap:var(--space-2)}.kpi{padding:var(--space-2)}.kpi strong{font:var(--type-heading-lg)}.draft{padding:var(--space-2)}.composer .commands{gap:var(--space-2)}.topbar .brand{font:var(--type-heading-sm)}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header class="topbar">
+<span class="brand">xDev Hive <span class="muted">/ Chat</span>
+</span>
+<span class="mock-label desktop-only">Mockup thiết kế · dữ liệu minh hoạ · 07/10/2026</span>
+<button type="button" aria-label="Hỏi leader" class="ghost">
+<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="m22 2-7 20-4-9-9-4 20-7ZM22 2 11 13"/>
+</svg>Hỏi leader</button>
+</header>
+<div class="app">
+<nav class="shell" aria-label="Điều hướng Hive">
+<span class="brand">xDev Hive</span>
+<small>WORKSPACE</small>
+<h3 class="shell-label mono">xdev-hive</h3>
+<button type="button" aria-label="Hôm nay" class="">
+<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="12" cy="12" r="9"/>
+<path d="M12 7v5l3 2"/>
+</svg>
+<span class="shell-label">Hôm nay</span>
+</button>
+<button type="button" aria-label="Chat" class="active">
+<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="m22 2-7 20-4-9-9-4 20-7ZM22 2 11 13"/>
+</svg>
+<span class="shell-label">Chat</span>
+</button>
+<button type="button" aria-label="Task" class="">
+<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="m20 6-11 11-5-5"/>
+</svg>
+<span class="shell-label">Task</span>
+</button>
+<button type="button" aria-label="Agent đang chạy" class="">
+<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<rect x="6" y="6" width="12" height="12" rx="1"/>
+</svg>
+<span class="shell-label">Agent đang chạy</span>
+</button>
+<button type="button" aria-label="Tài liệu" class="">
+<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6ZM14 2v6h6M8 13h8M8 17h6"/>
+</svg>
+<span class="shell-label">Tài liệu</span>
+</button>
+<div class="spacer">
+</div>
+<small>Mockup · R-64a<br>Dữ liệu minh hoạ</small>
+<button type="button" aria-label="Cài đặt" class="">
+<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M4 6h16M4 12h16M4 18h16"/>
+</svg>
+<span class="shell-label">Cài đặt</span>
+</button>
+</nav>
+<main class="chat-layout">
+<aside class="threads" aria-label="Danh sách thread">
+<div class="row between">
+<h2>Chat</h2>
+<button type="button" class="icon" aria-label="Tạo thread mới">
+<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M12 5v14M5 12h14"/>
+</svg>
+</button>
+</div>
+<button type="button" aria-label="Chat mới" class="primary">
+<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M12 5v14M5 12h14"/>
+</svg>Chat mới</button>
+<div>
+<label for="thread-search">Tìm thread</label>
+<input id="thread-search" type="search" placeholder="Tên hoặc nội dung tin…">
+</div>
+<small>Hôm nay</small>
+<button type="button" class="thread selected" aria-current="true">
+<b>Thiết kế lại Chat</b>
+<small>xdev-hive · 17:10</small>
+</button>
+<button type="button" class="thread">
+<b>Nghiên cứu hàng chờ merge</b>
+<small>xdev-hive · 16:42</small>
+</button>
+<button type="button" class="thread">
+<b>Tình trạng các agent</b>
+<small>Toàn hub · 15:08</small>
+</button>
+<small>Trước đó</small>
+<button type="button" class="thread">
+<b>Kiểm tra phát hành desktop</b>
+<small>xdev-hive · Hôm qua</small>
+</button>
+</aside>
+<section class="conversation" aria-label="Hội thoại với leader">
+<header class="conversation-header">
+<button type="button" aria-label="Về danh sách thread" class="icon mobile-only">
+<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="m12 19-7-7 7-7M5 12h14"/>
+</svg>
+</button>
+<div>
+<h2>Nghiên cứu và tình trạng</h2>
+<small class="mono">xdev-hive · leader trên build-01</small>
+</div>
+<div class="row">
+<button type="button" aria-label="Tìm trong thread" class="desktop-only">
+<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="11" cy="11" r="8"/>
+<path d="m21 21-4.3-4.3"/>
+</svg>Tìm trong thread</button>
+<button type="button" class="icon" aria-label="Menu thread">
+<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M4 6h16M4 12h16M4 18h16"/>
+</svg>
+</button>
+</div>
+</header>
+<div class="transcript">
+<div class="reading">
+<div class="user">
+<p>/status xdev-hive và cho tôi xem báo cáo nghiên cứu Chat vừa xong.</p>
+</div>
+<article class="turn">
+<div class="agent-label">
+<span class="agent-mark">
+<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="m20 6-11 11-5-5"/>
+</svg>
+</span>Leader <span class="mono">Codex</span>
+<span class="badge success">Đã trả lời</span>
+</div>
+<section class="card" aria-label="Nghiên cứu">
+<div class="card-head">
+<div class="row between">
+<h2>Nghiên cứu giao diện chat</h2>
+<span class="badge success">Hoàn tất</span>
+</div>
+<small>xdev-hive · run research-08 · Nguồn: repo, Hive, web</small>
+</div>
+<div class="card-body">
+<p>Ưu tiên ô soạn cố định, hoạt động gọn và thẻ kết quả có hành động rõ.</p>
+<div class="row">
+<a href="#report-preview">
+<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6ZM14 2v6h6M8 13h8M8 17h6"/>
+</svg> report.md · 18 KB</a>
+<a href="#sources">3 nhóm nguồn đã đọc</a>
+<a href="#draft-proposal">Tài liệu nháp</a>
+</div>
+<details id="report-preview">
+<summary>Xem trước báo cáo</summary>
+<div class="detail">
+<p>Báo cáo minh hoạ: Hermes, Claude Code, Cursor. Chưa kiểm chứng trực tiếp các sản phẩm.</p>
+</div>
+</details>
+</div>
+<div class="card-foot">
+<div class="row">
+<button type="button" aria-label="Biến thành Kế hoạch" class="primary">
+<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M12 5v14M5 12h14"/>
+</svg>Biến thành Kế hoạch</button>
+<a href="#research-run">Mở run</a>
+</div>
+</div>
+</section>
+<section class="card" aria-label="Tình trạng hiện tại">
+<div class="card-head">
+<div class="row between">
+<h2>Tình trạng</h2>
+<span class="badge">Dữ liệu hiện tại</span>
+</div>
+<small>xdev-hive · cập nhật 17:12:30 · 07/10/2026</small>
+</div>
+<div class="card-body">
+<div class="kpis">
+<div class="kpi">
+<strong>3</strong>
+<small>Run đang chạy</small>
+</div>
+<div class="kpi">
+<strong>5</strong>
+<small>Task chờ review</small>
+</div>
+<div class="kpi">
+<strong>1</strong>
+<small>Task bị chặn</small>
+</div>
+</div>
+<p class="notice">Quota: thiếu dữ liệu của 1 gói. Số liệu đang hiển thị là ước tính.</p>
+<div class="row">
+<a href="#tasks">Mở task</a>
+<a href="#runs">Mở run</a>
+<a href="#quota">Xem quota</a>
+</div>
+</div>
+</section>
+</article>
+</div>
+</div>
+<footer class="composer-wrap">
+<div class="composer">
+<div class="commands" aria-label="Lệnh nhanh">
+<button type="button" aria-label="/assign" class="">/assign</button>
+<button type="button" aria-label="/research" class="">/research</button>
+<button type="button" aria-label="/status" class="">/status</button>
+<button type="button" aria-label="/release" class="">/release</button>
+</div>
+<div class="draft">
+<label for="message">Nhắn leader</label>
+<textarea id="message" rows="2" placeholder="Giao việc hoặc gõ / để chọn lệnh…">
+</textarea>
+<div class="row between">
+<button type="button" aria-label="Đính kèm" class="ghost">
+<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="m21.4 11.6-9.2 9.2a6 6 0 0 1-8.5-8.5L13 3a4 4 0 0 1 5.7 5.7L9.5 18a2 2 0 0 1-2.8-2.8l8.5-8.5"/>
+</svg>Đính kèm</button>
+<button type="button" aria-label="Gửi" class="primary">
+<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="m22 2-7 20-4-9-9-4 20-7ZM22 2 11 13"/>
+</svg>Gửi</button>
+</div>
+</div>
+<div class="session">
+<button type="button" aria-label="Xem gói, model và token phiên">
+<span class="mono">Codex · codex-team</span>
+<span class="desktop-only mono"> · model theo gói</span>
+</button>
+<small>Token lượt: 14.230</small>
+</div>
+<p class="hint" id="send-hint">Enter gửi · Shift+Enter xuống dòng</p>
+</div>
+</footer>
+</section>
+</main>
+</div>
+</body>
+</html>

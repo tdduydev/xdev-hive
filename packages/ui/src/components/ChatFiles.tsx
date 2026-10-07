@@ -8,6 +8,7 @@ import { Button } from "@xdev-hive/ui/components/ui/button";
 import type { HiveClient } from "#ui/client.ts";
 import { errorMessage, useHive } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
+import { useChatDraft, useChatPreviews } from "#ui/components/ChatSession.tsx";
 import { fileSize } from "#ui/lib/chat.ts";
 
 /**
@@ -37,22 +38,23 @@ interface Pending {
 const MB = CHAT_FILE_MAX_BYTES / 1024 / 1024;
 
 /** The files of the message being written, for one project (a file belongs to the chat of one project). */
-export function useAttachments(project: string) {
+export function useAttachments(project: string, draftKey?: string) {
   const { client } = useHive();
   const t = useT();
-  const [items, setItems] = useState<Pending[]>([]);
+  const [items, setItems] = useChatDraft<Pending[]>(draftKey, []);
+  const previews = useChatPreviews();
   const [notice, setNotice] = useState<string | null>(null);
   const known = useRef(items);
   known.current = items;
   const upload = chatFilesOf(client);
 
   const clear = useCallback(() => {
-    for (const p of known.current) if (p.preview) URL.revokeObjectURL(p.preview);
+    for (const p of known.current) if (p.preview) { URL.revokeObjectURL(p.preview); previews?.delete(p.preview); }
     setItems([]);
     setNotice(null);
-  }, []);
+  }, [setItems, previews]);
   // Uploads belong to the project they were made for.
-  useEffect(() => clear, [project, clear]);
+  useEffect(() => draftKey ? undefined : clear, [project, clear, draftKey]);
 
   const update = (key: string, patch: Partial<Pending>) => setItems((cur) => cur.map((p) => (p.key === key ? { ...p, ...patch } : p)));
   const add = (files: File[]) => {
@@ -65,6 +67,7 @@ export function useAttachments(project: string) {
       preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
       ...(file.size > CHAT_FILE_MAX_BYTES ? { status: "failed" as const, error: t("errors.chatFileTooBig", { name: file.name, mb: MB }) } : { status: "uploading" as const }),
     }));
+    for (const p of next) if (p.preview && draftKey) previews?.add(p.preview);
     setItems((cur) => [...cur, ...next]);
     for (const p of next) {
       if (p.status !== "uploading") continue;
@@ -77,7 +80,7 @@ export function useAttachments(project: string) {
   const remove = (key: string) =>
     setItems((cur) => {
       const gone = cur.find((p) => p.key === key);
-      if (gone?.preview) URL.revokeObjectURL(gone.preview);
+      if (gone?.preview) { URL.revokeObjectURL(gone.preview); previews?.delete(gone.preview); }
       return cur.filter((p) => p.key !== key);
     });
 

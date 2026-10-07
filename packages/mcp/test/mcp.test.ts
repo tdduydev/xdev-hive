@@ -463,7 +463,7 @@ describe("mcp tools", () => {
     const leader = new Client({ name: "test", version: "0" });
     await leader.connect(b);
 
-    const added = ["propose_cancel_run", "propose_install", "propose_merge", "propose_policy", "propose_profile", "propose_resume_agents", "propose_stop_agents", "propose_task_agent", "propose_tool"];
+    const added = ["propose_research", "propose_plan", "propose_cancel_run", "propose_install", "propose_merge", "propose_policy", "propose_profile", "propose_resume_agents", "propose_stop_agents", "propose_task_agent", "propose_tool"];
     const tools = (await leader.listTools()).tools.map((t) => t.name);
     for (const name of added) assert.ok(tools.includes(name), name);
     for (const name of added) assert.match(leader.getInstructions() ?? "", new RegExp(name));
@@ -494,6 +494,19 @@ describe("mcp tools", () => {
     await hive.call("tasks.create", { id: "T-2", project: "app", title: "Lockout" }, admin);
     const assign = JSON.parse(text(await leader.callTool({ name: "propose_task_agent", arguments: { taskId: "T-2", machine: "duy-mbp", reason: "Its repo is there" } })));
     assert.deepEqual([assign.kind, assign.status, assign.input.id, assign.input.machineId, assign.input.profileId], ["task.assign", "proposed", "T-2", mbp.name, null]);
+    // Roadmap 60d: a whole plan in one proposal, its tasks on the chat's project unless one names another.
+    const plan = JSON.parse(text(await leader.callTool({
+      name: "propose_plan",
+      arguments: {
+        spec: { key: "project/app/lockout", title: "Lockout", content: "# Lockout" },
+        tasks: [{ id: "T-3", title: "Unlock after an hour", acceptance: "A locked account signs in again after an hour", dependsOn: ["T-2"] }],
+        batches: [{ title: "One", taskIds: ["T-3"] }],
+        reason: "Asked to fix the lockout",
+      },
+    })));
+    assert.deepEqual([plan.kind, plan.status, plan.project, plan.input.tasks[0].project], ["plan.create", "proposed", "app", "app"]);
+    const research = JSON.parse(text(await leader.callTool({ name: "propose_research", arguments: { topic: "Storage", questions: ["Which option?"], sources: ["repo", "hive"], reason: "Read first" } })));
+    assert.deepEqual([research.kind, research.status, research.input.scope, research.input.format, research.input.machineId], ["research.start", "proposed", "service", "brief", mbp.name]);
     // Roadmap 54b: what a task is, proposed like the rest; confirming sets it as the person who confirmed.
     assert.ok(tools.includes("propose_task_classify"));
     assert.match(leader.getInstructions() ?? "", /propose_task_classify/);
@@ -548,7 +561,7 @@ describe("mcp tools", () => {
     const list = JSON.parse(text(await lan.callTool({ name: "tool_list", arguments: {} })));
     assert.deepEqual(
       list.map((t: { id: string; projects: Array<{ project: string; effective: boolean }> }) => [t.id, t.projects.map((p) => [p.project, p.effective])]),
-      [["codegraph", [["app", true]]], ["speckit", [["app", false]]], ["superpowers", [["app", false]]], ["rtk", [["app", false]]]],
+      [["codegraph", [["app", true]]], ["speckit", [["app", false]]], ["superpowers", [["app", false]]], ["kilo-cli", [["app", false]]], ["rtk", [["app", false]]]],
       "app's line alone: site turned speckit on, which is not app's to read",
     );
     const status = JSON.parse(text(await lan.callTool({ name: "tool_status", arguments: {} })));

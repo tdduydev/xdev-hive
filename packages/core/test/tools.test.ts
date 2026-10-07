@@ -214,7 +214,7 @@ describe("tool catalog (roadmap 28a)", () => {
     const hive = new SqliteHive(":memory:");
     for (const project of ["app", "web", "billing"]) await hive.call("tools.setProject", { id: "codegraph", project, enabled: true, required: false }, admin);
     const theirs = await hive.call("tools.list", {}, webViewer);
-    assert.equal(theirs.length, 4, "every entry");
+    assert.equal(theirs.length, 5, "every entry");
     assert.deepEqual(theirs.find((t) => t.id === "codegraph")!.projects.map((p) => p.project), ["web"]);
     assert.deepEqual((await hive.call("tools.list", {}, admin)).find((t) => t.id === "codegraph")!.projects.map((p) => p.project), ["app", "billing", "web"]);
     assert.equal(await refusal(hive.call("tools.list", { project: "billing" }, webViewer)), "errors.notFound");

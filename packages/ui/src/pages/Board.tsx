@@ -1,3 +1,4 @@
+import { useChatPageContext } from "#ui/components/ChatSession.tsx";
 import { visibleInterval } from "#ui/lib/visible-interval.ts";
 // Board (docs/design/2026-09-redesign, xDev Hive Client): a project's tasks in five columns; drag a card to change
 // its status, click it for the inspector (details, the latest run, and the form that starts an agent on this
@@ -197,6 +198,7 @@ export function BoardPage({ switcher }: { switcher?: ReactNode }) {
   };
 
   const inspected = list.find((x) => x.id === selected) ?? null;
+  useChatPageContext(inspected ? { id: inspected.id, href: `#/tasks?task=${encodeURIComponent(inspected.id)}`, project: inspected.project } : null);
   const problem = tasks.error ?? runs.error ?? moveProblem;
 
   return (

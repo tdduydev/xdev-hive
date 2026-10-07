@@ -12,8 +12,15 @@ RUN apt-get update \
 ARG CLAUDE_CODE=latest
 ARG CODEX=latest
 ARG GEMINI_CLI=latest
-RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE}" "@openai/codex@${CODEX}" "@google/gemini-cli@${GEMINI_CLI}" \
+ARG KILO_CLI=7.8.3
+RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE}" "@openai/codex@${CODEX}" "@google/gemini-cli@${GEMINI_CLI}" "@kilocode/cli@${KILO_CLI}" \
   && npm cache clean --force
+
+# Vibe needs Python >=3.12; uv manages that runtime and pins the adapter's verified CLI contract.
+COPY --from=ghcr.io/astral-sh/uv:0.11.23 /uv /uvx /usr/local/bin/
+ARG MISTRAL_VIBE=2.26.0
+RUN UV_TOOL_DIR=/opt/uv/tools UV_PYTHON_INSTALL_DIR=/opt/uv/python UV_TOOL_BIN_DIR=/usr/local/bin \
+    uv tool install --python 3.12 "mistral-vibe==${MISTRAL_VIBE}"
 
 # Gemini CLI reaches Hive through the hub's MCP, from variables the app sets (HIVE_HUB_URL, HIVE_HUB_TOKEN…):
 # system settings win over the repo's .gemini/settings.json, which points at the machine's hive-mcp shim.

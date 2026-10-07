@@ -74,7 +74,7 @@ async function setup(reviewMode: string, mr: Partial<MrSettings> = {}, token = T
     {
       backend: () => hive,
       profiles: () => profiles,
-      settings: () => ({ worktreeRoot: null, maxParallel: 2, maxAttempts: 3, acceptHubRuns: false }),
+      settings: () => ({ worktreeRoot: null, maxParallel: 2, maxAttempts: 3, acceptHubRuns: false, gateRunner: false }),
       projects: () => projects,
       mode: () => "local",
       machine: () => "duy-mbp",
@@ -411,7 +411,7 @@ describe("merge request watch", () => {
 
 describe("merged MR cleanup", () => {
   /** An open MR whose watcher knows the project's repo, so it can clean up; GitLab reports the branch head as the MR's. */
-  async function merged(mr: Partial<MrSettings> = {}) {
+  async function merged(mr: Partial<MrSettings> = {}, cleanupEnabled = true, worktreeBusy = false) {
     const s = await setup("review", mr);
     const run = await s.runner.enqueue({ project: "demo", taskId: "T-1", reviewAfter: true });
     await s.runner.settle();
@@ -424,6 +424,8 @@ describe("merged MR cleanup", () => {
       mode: () => "local",
       store: () => s.runner.store,
       user: "duy",
+      worktreeCleanupEnabled: () => cleanupEnabled,
+      worktreeActive: () => worktreeBusy,
     });
     const wt = review.worktree!;
     const head = git(s.repo, "rev-parse", "refs/heads/ai/T-1");
@@ -433,7 +435,7 @@ describe("merged MR cleanup", () => {
     return { ...s, review, watcher, wt, head, branchLeft };
   }
 
-  it("removes the worktree and the local branch when the branch head is the merged commit", async () => {
+  it("removes the worktree and keeps the local branch when the branch head is the merged commit", async () => {
     const m = await merged();
     assert.ok(existsSync(m.wt));
     // Agent config the runner copies in is never committed, so it does not count as an edit.
@@ -441,10 +443,10 @@ describe("merged MR cleanup", () => {
     const [c] = await m.watcher.check();
     assert.equal(c!.status.to, "merged");
     assert.equal(c!.taskDone, true);
-    assert.deepEqual(c!.cleanup, { worktree: true, branch: true, kept: null, reason: null });
+    assert.deepEqual(c!.cleanup, { worktree: true, branch: false, kept: null, reason: null });
     assert.equal(existsSync(m.wt), false);
-    assert.equal(m.branchLeft(), false);
-    assert.match(m.runner.store.get(m.review.id)!.mrNote ?? "", /Đã xoá worktree và branch ai\/T-1 ở máy/);
+    assert.equal(m.branchLeft(), true);
+    assert.match(m.runner.store.get(m.review.id)!.mrNote ?? "", /Đã xoá worktree/);
     assert.equal(c!.run.mrNote, m.runner.store.get(m.review.id)!.mrNote, "the change carries the run as it is now");
   });
 
@@ -491,6 +493,23 @@ describe("merged MR cleanup", () => {
     assert.equal(m.runner.store.get(m.review.id)!.mrNote, m.review.mrNote);
   });
 
+  it("honors the machine cleanup switch even when MR cleanup is on", async () => {
+    const m = await merged({}, false);
+    const [change] = await m.watcher.check();
+    assert.equal(change!.taskDone, true);
+    assert.equal(change!.cleanup, null);
+    assert.ok(existsSync(m.wt));
+    assert.equal(m.branchLeft(), true);
+  });
+
+  it("keeps the worktree while a completed run is still finishing", async () => {
+    const m = await merged({}, true, true);
+    const [change] = await m.watcher.check();
+    assert.equal(change!.cleanup?.kept, "active");
+    assert.ok(existsSync(m.wt));
+    assert.equal(m.branchLeft(), true);
+  });
+
   it("guesses nothing without the merged commit, and only removes the worktree of a branch checked out elsewhere", () => {
     const repo = tmp("clean");
     git(repo, "init", "-q", "-b", "main");
@@ -513,8 +532,8 @@ describe("merged MR cleanup", () => {
     const c = cleanupMerged(repo, wt, "ai/T-2", head.toUpperCase());
     assert.equal(c.worktree, true);
     assert.equal(c.branch, false);
-    assert.equal(c.kept, "failed");
-    assert.ok(c.reason);
+    assert.equal(c.kept, null);
+    assert.equal(c.reason, null);
     assert.equal(existsSync(wt), false);
     assert.ok(existsSync(other));
   });

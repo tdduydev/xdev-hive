@@ -54,6 +54,7 @@ const pressed = (l: ProfileLoad) => (l.sessionPercent ?? 0) > QUOTA_PRESSURE_PER
  * or Codex profile that does the work itself takes it, rather than one more role to tick on every profile.
  */
 export function takesRole(profile: Pick<AgentProfile, "kind" | "roles">, role: AgentRole): boolean {
+  if (role === "research") return (profile.kind === "claude" || profile.kind === "codex") && profile.roles.some(r => r === "plan" || r === "implement");
   if (role === "classify") return (profile.kind === "claude" || profile.kind === "codex") && profile.roles.includes("implement");
   return profile.roles.includes(role);
 }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AgentProfileStatus, DesktopSettings, SetupReport } from "@xdev-hive/core";
-import { remainingSteps, startSteps } from "#ui/lib/start.ts";
+import { remainingSteps, shouldOpenStartGuide, startSteps } from "#ui/lib/start.ts";
 const settings = (patch: Partial<DesktopSettings> = {}): DesktopSettings => ({ mode: "hub", hasHubToken: false, projects: [], runner: { acceptHubRuns: false }, ...patch } as DesktopSettings);
 const report: SetupReport = { machine: [{ id: "shim", label: "Hive", state: "installed", detail: "", action: null }], projects: [{ project: "demo", repo: "/demo", items: [] }] };
 const profile = (patch: Partial<AgentProfileStatus> = {}): AgentProfileStatus => ({ enabled: true, cliPath: "/bin/codex", login: { loggedIn: true }, ...patch } as AgentProfileStatus);
@@ -31,4 +31,12 @@ test("all configured repos must be checked and ready, manual items remain action
 });
 test("an installed CLI with an available update still counts as ready", () => {
   assert.equal(startSteps(settings(), { ...report, machine: [{ ...report.machine[0]!, version: "1.0.0", latest: "2.0.0" }] }, []).tools, "done");
+});
+test("startup still opens setup after Today selects an item, while deep links and navigation keep their destination", () => {
+  const selected = "#/today?inbox=machine%3Ashim";
+  assert.equal(shouldOpenStartGuide("", selected), true);
+  assert.equal(shouldOpenStartGuide("#/today", selected), true);
+  assert.equal(shouldOpenStartGuide(selected, selected), false);
+  assert.equal(shouldOpenStartGuide("#/runs?run=R-1", selected), false);
+  assert.equal(shouldOpenStartGuide("", "#/tasks"), false);
 });

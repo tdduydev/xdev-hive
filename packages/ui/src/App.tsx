@@ -39,6 +39,7 @@ import { readScope, resolveScope, scopeTitle, writeScope, type Scope } from "./l
 import { useSystemTheme } from "./lib/theme.ts";
 import { ClientShell, type NavEntry, type NavGroup } from "./shell/ClientShell.tsx";
 import { InboxProvider, useInboxState } from "./shell/inbox.tsx";
+import { ArtifactsPage } from "#ui/pages/Artifacts.tsx";
 import { AgentsPage } from "./pages/Agents.tsx";
 import { ChatPage } from "./pages/Chat.tsx";
 import { DevicePage } from "./pages/Device.tsx";
@@ -60,7 +61,7 @@ import { TodayPage } from "./pages/Today.tsx";
 import { TokensPage } from "./pages/Tokens.tsx";
 import { DocReaderPage } from "./pages/DocReader.tsx";
 import { StartPage } from "#ui/pages/Start.tsx";
-import { remainingSteps, startSteps } from "#ui/lib/start.ts";
+import { remainingSteps, shouldOpenStartGuide, startSteps } from "#ui/lib/start.ts";
 const GraphPage = lazy(() => import("./pages/Graph.tsx").then((module) => ({ default: module.GraphPage })));
 
 type PageId =
@@ -69,6 +70,7 @@ type PageId =
   | "overview"
   | "chat"
   | "runs"
+  | "artifacts"
   | "docs"
   | "read"
   | "specs"
@@ -97,6 +99,7 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
   chat: { label: "nav.chat", sub: "navSub.chat", icon: MessageSquare, render: () => <ChatPage /> },
   // On the web with Đợt chạy as a tab (roadmap 49b); the desktop app's own runs as they were.
   runs: { label: "nav.runs", sub: "navSub.runs", icon: Activity, render: () => <RunsWorkPage /> },
+  artifacts: { label: "artifacts.page", sub: "artifacts.sub", icon: FileText, render: () => <ArtifactsPage /> },
   docs: { label: "nav.docs", sub: "navSub.docs", icon: FileText, render: () => <KnowledgePage page="docs" /> },
   // Not in the sidebar: a doc's reading view (#/read?doc=…), under Tài liệu.
   read: { label: "nav.read", sub: "navSub.read", icon: BookOpen, render: () => <DocReaderPage /> },
@@ -234,6 +237,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   const local = !!client.desktop && me.mode !== "hub";
   // The hub's web, whose menu folded pages into tabs (roadmap 49b), so its old addresses lead to those tabs.
   const web = !client.desktop;
+  const initialHash = useRef(window.location.hash);
   const [route, setRoute] = useState<Route>(() => readHash(local, web) ?? HOME);
   const [tick, setTick] = useState(0);
   const bump = useCallback(() => setTick((t) => t + 1), []);
@@ -283,7 +287,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     if (initialStart.data === undefined || startChecked.current) return;
     startChecked.current = true;
     // Explicit deep links (including a browser connection callback) keep their destination.
-    if (initialStart.data && (!window.location.hash || window.location.hash === "#/today")) window.location.hash = "/start";
+    if (initialStart.data && shouldOpenStartGuide(initialHash.current, window.location.hash)) window.location.hash = "/start";
   }, [initialStart.data]);
 
   // The listener is set once, so the mode it reads an address in comes from a ref, as the one below does.

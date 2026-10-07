@@ -1,3 +1,6 @@
+import { worktreeReportSchema, worktreeTargetSchema, worktreeCleanupSchema, type WorktreeCommand, type MachineWorktrees } from "#core/worktrees.ts";
+import { greenBatchSchema, RELEASE_STEPS, type AutoReleaseRecord, type AutoReleaseView } from "#core/auto-release.ts";
+import { mergeQueueConfigSchema, mergeResultSchema, type MergeQueueView, type MergeBatch } from "#core/merge-queue.ts";
 import { runTimeoutSettingsSchema, type RunTimeoutSettings } from "#core/run-timeout.ts";
 import { diffReviewSchema } from "#core/diff-review.ts";
 import { cleanupSuggestionSchema, MEMORY_CLEANUP_ERRORS, type MemoryCleanupSetting, type MemoryCleanupRun, type MemoryCleanupProposal } from "#core/memory-cleanup.ts";
@@ -18,7 +21,7 @@ import { MAX_ROLE_INSTRUCTIONS, MAX_ROLE_STEPS, MIN_ROLE_STEPS, ROLE_STEPS } fro
 import type { SkillSummary } from "./skills.ts";
 import { SPEC_DIR, SPEC_FEATURES_MAX, SPEC_FILE_MAX, SPEC_STEPS, type SpecFeature, type SpecFeatureDetail, type SpecTaskPlan } from "./speckit.ts";
 import { toolEntrySchema } from "./tools.ts";
-import { modelCellsSchema, modelProjectSchema, modelTableSchema, type ModelRouterSettings } from "./model-router.ts";
+import { ROUTED_KINDS, modelCellsSchema, modelProjectSchema, modelTableSchema, type ModelRouterSettings } from "#core/model-router.ts";
 import { modelLearningSetSchema, type ModelLearningView } from "./model-learning.ts";
 import { TASK_KINDS, TASK_RISKS, TASK_SIZES } from "./task-classify.ts";
 import { FAST_LANE_KINDS, GATE_STATUSES, gateModesSchema, MAX_FIX_ROUNDS, type SdlcFlow, type SdlcFlowTask, type SdlcGateRecord, type SdlcPolicyView } from "./sdlc.ts";
@@ -87,6 +90,8 @@ import {
   type ToolView,
 } from "./types.ts";
 
+import { researchSchema, type Research } from "#core/research.ts";
+
 const docKey = z.string().min(1).max(200);
 const project = z.string().regex(PROJECT_NAME, "project must be lowercase letters, digits, . _ -");
 /** Only these projects (a system's, roadmap 19b); none listed: nothing. With `project` too, both must hold. */
@@ -143,7 +148,7 @@ const setupReport = z.object({
   projects: z.array(z.object({ project, repo: z.string().max(500), items: z.array(setupItem).max(10) })).max(50),
 });
 const reportedProfile = z.object({
-  supportedModels: z.array(z.string().max(100)).max(200).nullable().optional(),
+  supportedModels: z.array(z.string().max(200)).max(2000).nullable().optional(),
   timeoutMinutes: z.number().int().min(1).max(720).optional(),
   sessionResetsAt: z.string().nullable().optional(),
   weekResetsAt: z.string().nullable().optional(),
@@ -174,6 +179,7 @@ const reportedProfile = z.object({
   priority: z.number().int().min(0).max(100).optional(),
   maxConcurrent: z.number().int().min(1).max(8).optional(),
   classify: z.boolean().optional(),
+  research: z.boolean().optional(),
   planApproval: z.boolean().optional(),
   redispatch: z.boolean().optional(),
 });
@@ -216,7 +222,23 @@ const chatModel = z.string().regex(/^[a-z0-9][a-z0-9.\-]{1,63}$/, "model: an ali
  * the kinds that belong to a machine or to the hub itself: machine.profile, machine.install of a machine's own item,
  * and agents.stop / agents.resume / agent.policy meant for the whole hub.
  */
+/** One reviewable plan; task projects default to the plan's service. */
+export const chatPlanSchema = z.object({
+  project: project.optional(),
+  spec: z.object({ key: docKey, title: z.string().trim().min(1).max(200), content: z.string().trim().min(1).max(50000) }),
+  tasks: z.array(z.object({
+    id: taskId, project: project.optional(), title: z.string().trim().min(1).max(300),
+    acceptance: z.string().trim().min(1).max(1500),
+    dependsOn: z.array(taskId).max(20).default([]),
+    taskKind: z.enum(TASK_KINDS).optional(), size: z.enum(TASK_SIZES).optional(), risk: z.enum(TASK_RISKS).optional(),
+  })).min(1).max(50),
+  batches: z.array(z.object({ title: z.string().trim().min(1).max(200), taskIds: z.array(taskId).min(1).max(50) })).min(1).max(50),
+});
+export type ChatPlan = z.infer<typeof chatPlanSchema>;
+
 const chatAction = z.discriminatedUnion("kind", [
+  researchSchema.omit({ project: true, machineId: true }).extend({ kind: z.literal("research.start"), project: project.optional(), machine: machineRef.optional() }),
+  chatPlanSchema.extend({ kind: z.literal("plan.create") }),
   z.object({
     kind: z.literal("task.create"),
     id: taskId,
@@ -334,7 +356,11 @@ export const schemas = {
   }),
   /** The files of a project, of one task or of one run; newest first, no bytes. */
   "artifacts.list": z.object({
-    project,
+    project: project.optional(),
+    projects: z.array(project).max(500).optional(),
+    name: z.string().max(300).optional(),
+    kind: z.enum(["markdown", "log", "json", "image", "text", "pdf"]).optional(),
+    offset: z.number().int().min(0).default(0),
     taskId: taskId.optional(),
     runId: runId.optional(),
     /**
@@ -345,7 +371,7 @@ export const schemas = {
     limit: z.number().int().min(1).max(200).default(100),
   }),
   /** One file with its bytes in base64. */
-  "artifacts.get": z.object({ id }),
+  "artifacts.get": z.object({ id, metadataOnly: z.boolean().optional(), maxBytes: z.number().int().min(1).max(ARTIFACT_MAX_BYTES).optional() }),
   /** A project manager removes one (it is written in the audit log); nothing else ever deletes an artifact. */
   "artifacts.remove": z.object({ id }),
   /**
@@ -456,6 +482,16 @@ export const schemas = {
   }),
   "memory.remove": z.object({ id }),
 
+  /** Actionable task/run sources, filtered by scope and rights before pagination. */
+  "inbox.source": z.object({
+    source: z.enum(["tasks", "runs"]), project: project.optional(), projects: projectList,
+    offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(500).default(200),
+  }),
+  /** The complete dispatch set: queued lifecycle work and unowned fast-lane tasks. */
+  "sdlc.dispatch": z.object({
+    project: project.optional(), projects: projectList,
+    offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(500).default(200),
+  }),
   "tasks.list": z.object({
     project: project.optional(),
     projects: projectList,
@@ -465,6 +501,7 @@ export const schemas = {
     id: taskId,
     project,
     title: z.string().min(1).max(300),
+    priority: z.number().int().min(0).max(100).optional(),
     note: z.string().max(2000).optional(),
     dependsOn: z.array(taskId).max(20).default([]),
     /** What the task is (roadmap 54b); left out, the hub's rules and its classify run fill it. */
@@ -482,6 +519,7 @@ export const schemas = {
   }),
   "tasks.update": z.object({
     id: taskId,
+    priority: z.number().int().min(0).max(100).optional(),
     status: z.enum(TASK_STATUSES),
     note: z.string().max(2000).optional(),
   }),
@@ -511,6 +549,11 @@ export const schemas = {
   "tasks.notes": z.object({ id: taskId, limit: z.number().int().min(1).max(50).default(10) }),
 
   /** Desktop runners report every ~30 s; the reply carries the shared quota cooldowns. */
+  "mergeQueue.get": z.object({ project }),
+  "mergeQueue.configure": z.object({ project, config: mergeQueueConfigSchema }),
+  "mergeQueue.take": z.object({ project, instance: z.string().regex(/^[a-f0-9]{8,64}$/) }),
+  "mergeQueue.progress": z.object({ id: z.number().int().positive(), instance: z.string(), step: z.string().max(300), log: z.string().max(32000).default("") }),
+  "mergeQueue.finish": z.object({ id: z.number().int().positive(), instance: z.string(), result: mergeResultSchema }),
   "machines.heartbeat": z.object({
     machine: z.string().regex(MACHINE_ID),
     /** Random per app start, to tell two live instances apart from a restart. */
@@ -519,12 +562,16 @@ export const schemas = {
     /** The machine's Setup page result; sent after each check, kept by the hub until the next one. */
     setup: z.object({ checkedAt: z.iso.datetime(), report: setupReport }).optional(),
     profiles: z.array(reportedProfile).max(50).optional(),
+    worktrees: worktreeReportSchema.optional(),
+    worktreeResults: z.array(z.object({ id: z.uuid(), results: z.array(z.object({ path: z.string().max(2000), ok: z.boolean(), error: z.string().max(1000).nullable() })).max(100) })).max(100).default([]),
     toolStates: z.array(z.object({ id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/), hash: z.string().regex(/^[0-9a-f]{64}$/), trust: z.enum(["app", "trusted", "new", "changed"]) })).max(500).optional(),
     appliedToolApprovals: z.array(z.uuid()).max(100).default([]),
     /** Projects the app has a repo for: the web offers only these machines for a project's runs. */
     projects: z.array(project).max(200).optional(),
     /** The user lets project managers queue runs on this machine from the web. */
     acceptsRuns: z.boolean().optional(),
+    gateRunner: z.boolean().optional(),
+    maxParallel: z.number().int().min(1).max(20).optional(),
     /** Temporary intake hold for an app update; keep previously dispatched requests pending. */
     updateDraining: z.boolean().optional(),
     runs: z
@@ -547,6 +594,13 @@ export const schemas = {
     deliveredMessages: z.array(z.number().int().positive()).max(100).default([]),
   }),
   "machines.list": z.object({}),
+  "machines.worktrees": z.object({ machineId: machineRef }),
+  "machines.manageWorktrees": z.object({
+    machineId: machineRef,
+    targets: z.array(worktreeTargetSchema).min(1).max(100).optional(),
+    force: z.boolean().default(false),
+    cleanup: worktreeCleanupSchema.optional(),
+  }).refine(v => !!v.targets || !!v.cleanup, "targets or cleanup"),
   "machines.tools": z.object({ machineId: machineRef }),
   /** Human hub admin or machine owner only; hash is the commands shown before approval. */
   "machines.approveTool": z.object({ machineId: machineRef, toolId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/), hash: z.string().regex(/^[0-9a-f]{64}$/) }),
@@ -629,7 +683,7 @@ export const schemas = {
            * the hub keeps what it had; a review's verdict the hub then reads from the summary itself.
            */
           kind: z.enum(AGENT_KINDS).nullable().optional(),
-          model: z.string().max(100).nullable().optional(),
+          model: z.string().max(200).nullable().optional(),
           effort: z.string().max(40).nullable().optional(),
           tier: z.string().max(40).nullable().optional(),
           attempt: z.number().int().min(1).max(1000).nullable().optional(),
@@ -686,7 +740,7 @@ export const schemas = {
   "runs.preparePlan": z.object({ project, taskId, profileId: z.string().max(40).nullable().default(null), preferKind: z.enum(PREFER_KINDS).nullable().default(null), reviewAfter: z.boolean().default(false), candidates: z.number().int().min(1).max(MAX_CANDIDATES).default(1), instructions: z.string().max(4000).default("") }),
   "runs.plans": z.object({ project: project.optional(), projects: projectList, taskId: taskId.optional(), status: z.enum(["planning", "waiting", "approved", "changes", "failed", "cancelled"]).optional(), limit: z.number().int().min(1).max(200).default(100) }),
   "runs.decidePlan": z.object({ id, revision: z.number().int().min(1), decision: z.enum(["approve", "changes", "cancel"]), note: z.string().max(2000).default("") }),
-  "runs.list": z.object({ taskId: taskId.optional(), project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(200).default(50) }),
+  "runs.list": z.object({ taskId: taskId.optional(), project: project.optional(), projects: projectList, activeOnly: z.boolean().optional(), limit: z.number().int().min(1).max(200).default(50) }),
   /**
    * A project manager stops a run that waits or runs on a machine taking runs from the hub: the machine hears it at
    * its next heartbeat, stops the agent and reports the run as cancelled.
@@ -843,7 +897,7 @@ export const schemas = {
   /** Stops what a group has not started: its held items, and requests no machine took. Runs going on keep going. */
   "runs.cancelGroup": z.object({ id }),
   /** Run requests, the newest first: a project's, or every project the caller sees. */
-  "runs.requests": z.object({ project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(200).default(50) }),
+  "runs.requests": z.object({ project: project.optional(), projects: projectList, taskId: taskId.optional(), pendingOnly: z.boolean().optional(), limit: z.number().int().min(1).max(200).default(50) }),
   /** Withdraws a request no machine took yet. */
   "runs.cancelRequest": z.object({ id }),
   /** The machine a request is for says whether it queued the run (only for requests addressed to itself). */
@@ -857,6 +911,9 @@ export const schemas = {
    * A message to a project's leader: the first of a new thread (machineId required) or the next of one. project
    * HUB_SCOPE is the hub-wide leader (roadmap 37), a hub admin's alone.
    */
+  "research.start": researchSchema,
+  "research.get": z.object({ id }),
+  "research.finish": z.object({ id, artifactId: id, sources: z.array(z.string().min(1).max(500)).max(40), recommendations: z.string().max(6000) }),
   "chat.send": z.object({
     project: chatScope,
     threadId: id.optional(),
@@ -916,9 +973,9 @@ export const schemas = {
    */
   "chat.propose": z.object({ action: chatAction, reason: z.string().min(1).max(500) }),
   /** A project manager confirms a leader's action, which then runs with their own rights, or sets it aside. */
-  "chat.decide": z.object({ actionId: id, accept: z.boolean() }),
+  "chat.decide": z.object({ actionId: id, accept: z.boolean(), autoDispatch: z.boolean().optional() }),
   /** Every action of a reply still waiting, confirmed in the order they build on each other, or all set aside. */
-  "chat.decideAll": z.object({ replyId: id, accept: z.boolean() }),
+  "chat.decideAll": z.object({ replyId: id, accept: z.boolean(), autoDispatch: z.record(z.string().regex(/^\d+$/), z.boolean()).refine(choices => Object.keys(choices).length <= 100).optional() }),
   /** Stops a reply that is waiting or being written; the machine hears it at its next progress report. */
   "chat.cancel": z.object({ replyId: id }),
   /** The machine writing a reply says how far it got; the answer tells it whether someone cancelled it. */
@@ -933,9 +990,12 @@ export const schemas = {
     status: z.enum(["done", "failed"]),
     text: z.string().max(40_000).default(""),
     steps: z.string().max(40_000).default(""),
-    /** The Claude Code session the next reply of the thread resumes. */
+    /** The selected profile's CLI session the next reply resumes. */
     sessionId: z.string().regex(/^[\w-]{1,100}$/).nullable().default(null),
     costUsd: z.number().min(0).nullable().default(null),
+    profileId: z.string().min(1).max(100).optional(),
+    tokens: z.object({ inputTokens: z.number().int().min(0), cacheReadTokens: z.number().int().min(0), outputTokens: z.number().int().min(0) }).nullable().default(null),
+    rateLimited: z.boolean().default(false),
     error: machineError.nullable().default(null),
   }),
   "costs.summary": z.object({}),
@@ -982,6 +1042,15 @@ export const schemas = {
 
   /** The hub's agent policy and each visible project's part (roadmap 27a). */
   /** The lifecycle gates (roadmap 34): the hub's ceiling and each project's modes, what applies now. */
+  "autoRelease.green": greenBatchSchema,
+  "autoRelease.list": z.object({ project }),
+  "autoRelease.take": z.object({ project }),
+  "autoRelease.result": z.object({ project, batchId: z.string().max(80), success: z.boolean(), step: z.enum(RELEASE_STEPS), warning: z.boolean().default(false) }).refine(r => (!r.warning || (r.success && r.step === "checkLogs")) && (!r.success || r.step !== "prepare"), "Invalid terminal release result"),
+  "autoRelease.progress": z.object({ project, batchId: z.string().max(80), step: z.enum(RELEASE_STEPS) }),
+  "autoRelease.rollout": z.object({ project, batchId: z.string().max(80) }),
+  "autoRelease.decide": z.object({ project, batchId: z.string().max(80), pass: z.boolean() }),
+  "autoRelease.reconcile": z.object({ project, batchId: z.string().max(80) }),
+  "autoRelease.resume": z.object({ project }),
   "sdlc.get": z.object({}),
   /** The hub's ceiling: how far each gate may be left to agents. A hub admin's. */
   "sdlc.setCeiling": z.object({ ceiling: gateModesSchema }),
@@ -991,6 +1060,9 @@ export const schemas = {
     settings: z
       .object({
         gates: gateModesSchema,
+        releaseMachine: z.string().min(1).max(200).nullable().optional(),
+        autoDispatch: z.boolean().optional(),
+        allowedAgentKinds: z.array(z.enum(ROUTED_KINDS)).max(ROUTED_KINDS.length).optional(),
         maxFixRounds: z.number().int().min(0).max(MAX_FIX_ROUNDS).optional(),
         maxParallel: z.number().int().min(1).max(20).nullable().optional(),
         planApproval: z.object({ mode: z.enum(PLAN_APPROVAL_MODES), timeoutMinutes: z.number().int().min(1).max(10080).nullable() }).optional(),
@@ -1120,7 +1192,7 @@ export interface MethodOutput {
   "docs.assetRemove": { removed: boolean };
   "artifacts.put": Artifact;
   "artifacts.list": Artifact[];
-  "artifacts.get": { artifact: Artifact; data: string } | null;
+  "artifacts.get": { artifact: Artifact; data: string; truncated?: boolean } | null;
   /** project and name say what went, for the audit log; both null when there was nothing to remove. */
   "artifacts.remove": { removed: boolean; project: string | null; name: string | null };
   "docs.assist": DocAssist;
@@ -1153,6 +1225,8 @@ export interface MethodOutput {
   "memory.searchInfo": MemorySearchInfo;
   "memory.checkFiles": { flagged: number; baselined: number };
   "memory.remove": { removed: boolean };
+  "inbox.source": { tasks: Task[]; runs: RunRecord[]; total: number };
+  "sdlc.dispatch": { tasks: Task[]; total: number };
   "tasks.list": Task[];
   "tasks.create": Task;
   "tasks.setDeps": Task;
@@ -1166,6 +1240,11 @@ export interface MethodOutput {
   "tasks.unassign": Task;
   "tasks.agentQueue": TaskAgentQueueItem[];
   "tasks.notes": TaskNote[];
+  "mergeQueue.get": MergeQueueView;
+  "mergeQueue.configure": MergeQueueView;
+  "mergeQueue.take": MergeBatch | null;
+  "mergeQueue.progress": MergeBatch;
+  "mergeQueue.finish": MergeBatch;
   "machines.heartbeat": {
     /** Supports preserving pending work during a temporary app-update hold. */
     supportsUpdateDrain?: boolean;
@@ -1180,6 +1259,7 @@ export interface MethodOutput {
      */
     tools: MachineTools;
     toolApprovals: ToolApproval[];
+    worktreeCommands: WorktreeCommand[];
     /** Install requests waiting for the machine's user. */
     commands: MachineCommand[];
     /**
@@ -1216,6 +1296,8 @@ export interface MethodOutput {
     archivedProjects: string[];
   };
   "machines.list": Machine[];
+  "machines.worktrees": MachineWorktrees;
+  "machines.manageWorktrees": WorktreeCommand;
   "machines.tools": MachineToolAccess;
   "machines.approveTool": ToolApproval;
   "machines.setupMissing": MachineSetupMissing[];
@@ -1254,6 +1336,9 @@ export interface MethodOutput {
   "runs.requests": RunRequest[];
   "runs.cancelRequest": RunRequest;
   "runs.requestResult": RunRequest;
+  "research.start": Research;
+  "research.get": Research;
+  "research.finish": Research;
   "chat.send": { thread: ChatThread; message: ChatMessage; reply: ChatMessage };
   "chat.threads": ChatThread[];
   "chat.pending": ChatAction[];
@@ -1283,6 +1368,15 @@ export interface MethodOutput {
   "agents.paused": AgentsPaused;
   "policy.get": TeamPolicy;
   "policy.set": TeamPolicy;
+  "autoRelease.green": AutoReleaseRecord;
+  "autoRelease.list": AutoReleaseView;
+  "autoRelease.take": AutoReleaseRecord | null;
+  "autoRelease.result": AutoReleaseRecord;
+  "autoRelease.progress": AutoReleaseRecord;
+  "autoRelease.rollout": AutoReleaseRecord;
+  "autoRelease.decide": AutoReleaseRecord;
+  "autoRelease.reconcile": AutoReleaseRecord;
+  "autoRelease.resume": AutoReleaseView;
   "sdlc.get": SdlcPolicyView;
   "sdlc.setCeiling": SdlcPolicyView;
   "sdlc.setProject": SdlcPolicyView;
@@ -1378,6 +1472,8 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "memory.searchInfo": "viewer",
   "memory.checkFiles": "agent",
   "memory.remove": "agent",
+  "inbox.source": "viewer",
+  "sdlc.dispatch": "viewer",
   "tasks.list": "viewer",
   "tasks.create": "agent",
   "tasks.setDeps": "agent",
@@ -1392,10 +1488,17 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "tasks.unassign": "agent",
   "tasks.agentQueue": "viewer",
   "tasks.notes": "viewer",
+  "mergeQueue.get": "viewer",
+  "mergeQueue.configure": "member",
+  "mergeQueue.take": "agent",
+  "mergeQueue.progress": "agent",
+  "mergeQueue.finish": "agent",
   "machines.heartbeat": "agent",
   "machines.list": "viewer",
   "machines.tools": "viewer",
   "machines.approveTool": "viewer",
+  "machines.worktrees": "viewer",
+  "machines.manageWorktrees": "viewer",
   "machines.setupMissing": "viewer",
   // Not a project right: the hub checks for a hub admin or the machine's owner, and refuses agents.
   "machines.setProfile": "agent",
@@ -1440,6 +1543,9 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "runs.cancelRequest": "agent",
   "runs.requestResult": "agent",
   // Also "manage" on the project, like runs.dispatch.
+  "research.start": "agent",
+  "research.get": "viewer",
+  "research.finish": "agent",
   "chat.send": "agent",
   "chat.threads": "viewer",
   "chat.pending": "viewer",
@@ -1470,6 +1576,15 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "agents.paused": "viewer",
   "policy.get": "viewer",
   "policy.set": "admin",
+  "autoRelease.green": "agent",
+  "autoRelease.list": "viewer",
+  "autoRelease.take": "agent",
+  "autoRelease.result": "agent",
+  "autoRelease.progress": "agent",
+  "autoRelease.rollout": "agent",
+  "autoRelease.decide": "member",
+  "autoRelease.reconcile": "member",
+  "autoRelease.resume": "member",
   "sdlc.get": "viewer",
   // A hub admin's (no per-project grants), as the hub's agent policy.
   "sdlc.setCeiling": "admin",

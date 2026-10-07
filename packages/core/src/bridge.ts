@@ -1,3 +1,4 @@
+import type { WorktreeReport, WorktreeTarget, WorktreeCommand } from "#core/worktrees.ts";
 import type { DiffReview } from "#core/diff-review.ts";
 // Contracts between the shared UI and its hosts (web hub, desktop main process). Types only.
 import type { Access, Grant } from "./access.ts";
@@ -155,6 +156,8 @@ export interface ShimReport {
 }
 
 export interface DesktopProject {
+  /** Local commands only: never included in heartbeat or hub settings. prepare bumps version/roadmap. */
+  autoRelease?: { appRollout: boolean; prepare: string[]; release: string[]; deploy?: string[]; checkLogs?: string[]; timeoutMinutes: number };
   name: string;
   repo: string;
   gitlabProject?: string;
@@ -280,7 +283,7 @@ export interface LoginHow {
 
 /** One more subscription on this machine: a profile with a sign-in folder of its own, signed in right away. */
 export interface NewAccount {
-  kind: "claude" | "codex" | "antigravity";
+  kind: "claude" | "codex" | "antigravity" | "gemini" | "vibe" | "opencode" | "kilo" | "copilot";
   label?: string;
   how?: LoginHow;
 }
@@ -554,12 +557,14 @@ export interface DesktopBridge {
   cancelRun(id: string): Promise<AgentRun>;
   steerRun(id: string, text: string): Promise<void>;
   removeWorktree(id: string): Promise<AgentRun>;
+  worktrees(): Promise<WorktreeReport>;
+  manageWorktrees(targets: WorktreeTarget[], force: boolean): Promise<WorktreeCommand["results"]>;
   /** Keeps this candidate when the judge could not choose (best-of-n). */
   pickCandidate(id: string): Promise<AgentRun>;
 
   updateProject(
     name: string,
-    patch: { gitlabProject?: string | null; githubRepo?: string | null; targetBranch?: string | null; references?: string[] | null },
+    patch: { autoRelease?: DesktopProject["autoRelease"] | null; gitlabProject?: string | null; githubRepo?: string | null; targetBranch?: string | null; references?: string[] | null },
   ): Promise<DesktopSettings>;
   checkGitLab(): Promise<GitLabCheck>;
   /** Who the GitHub token belongs to (same shape as the GitLab check). */
