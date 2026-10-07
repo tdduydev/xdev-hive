@@ -1004,7 +1004,7 @@ const RUN_REQUEST_TTL_MINUTES = 15;
 /** A run its machine took but has not pushed yet keeps its group's place this long (roadmap 31a). */
 const GROUP_UNREPORTED_MINUTES = 10;
 /** What fails a group's item when it is released; anything else (offline, cap, pause, a run going) waits for later. */
-const GROUP_FAILS = new Set(["errors.machineNotFound", "errors.machineNoRepo", "errors.taskDone", "errors.taskNotInProject", "errors.profileNotOnMachine", "errors.secret"]);
+const GROUP_FAILS = new Set(["errors.machineNotFound", "errors.machineNoRepo", "errors.dispatchAssignedElsewhere", "errors.taskDone", "errors.taskNotInProject", "errors.profileNotOnMachine", "errors.secret"]);
 const groupFails = (key: string | undefined) => !!key && (GROUP_FAILS.has(key) || key.startsWith("errors.hidden."));
 /** A merge no machine reported on within this time failed: machines hear one within 30 s, and a merge takes seconds. */
 const MERGE_TTL_MINUTES = 15;
@@ -3778,6 +3778,11 @@ export class SqliteHive implements HiveBackend {
     if (!row) throw new HiveError("not_found", `No machine ${machineId}.`, { key: "errors.machineNotFound", vars: { machine: machineId } });
     const m = this.#toMachine(row);
     const name = { machine: m.machine };
+    if (task?.agent && task.agent.machineId !== m.id) {
+      throw new HiveError("conflict", `Task ${task.id} is assigned to ${task.agent.machine}. Unassign it before dispatching to another machine.`, {
+        key: "errors.dispatchAssignedElsewhere", vars: { id: task.id, machine: task.agent.machine },
+      });
+    }
     if (!m.online) throw new HiveError("conflict", `${m.machine} is offline.`, { key: "errors.machineOffline", vars: name });
     if (!m.acceptsRuns) throw new HiveError("bad_request", `${m.machine} does not take runs from the hub.`, { key: "errors.machineNoHubRuns", vars: name });
     if (!m.projects.includes(project)) {
@@ -4186,7 +4191,7 @@ export class SqliteHive implements HiveBackend {
         // Still no kind: the classify run is going, or it went quiet and #queueClassify gives the default now.
         // runs.dispatch may leave the machine to the hub (49e): pick it as runs.dispatch does.
         const { project, role, profileId, preferKind, reviewAfter, candidates, instructions, timeoutMinutes } = wanted;
-        const machineId = wanted.machineId ?? this.#mapMachine(project, null, profileId).id;
+        const machineId = wanted.machineId ?? task.agent?.machineId ?? this.#mapMachine(project, null, profileId).id;
         if (task.kind === null && this.#queueClassify(task, this.#machineByRef(machineId), actor)) continue;
         const fresh = this.#getTask(task.id)!;
         const machine = this.#assertDispatchable({ machineId, project, task: fresh, role, profileId, candidates, instructions }, actor);
@@ -4203,13 +4208,16 @@ export class SqliteHive implements HiveBackend {
 
   /**
    * The machines a call speaks for, or [] for a person: the runner's own token (its name is the machine's hub id), and
-   * an agent run on a machine, which says so in its write source. A hub may hold two rows for one machine name (two
+   * an agent run on a machine, which says so in its write source or profile.machine label. A hub may hold two rows for one machine name (two
    * accounts' tokens), and the agent's token tells them apart no better than its user does — so all of them count.
    */
   #callerMachines(actor: Actor): string[] {
     const own = this.db.prepare("SELECT id FROM machines WHERE id = ?").get(actor.name) as Row | undefined;
     if (own) return [str(own.id)];
-    const name = actor.source?.machine;
+    // Some CLI shims send only the profile.machine agent label, without x-hive-source.
+    // Match the whole machine suffix; token/account names are not machine identities.
+    const label = actor.agent ?? (actor.role === "agent" ? actor.name.split("@")[0] : undefined);
+    const name = actor.source?.machine ?? (label?.includes(".") ? label.slice(label.lastIndexOf(".") + 1) : undefined);
     if (!name) return [];
     return (this.db.prepare("SELECT id FROM machines WHERE machine = ?").all(name) as Row[]).map((r) => str(r.id));
   }
@@ -7419,7 +7427,7 @@ export class SqliteHive implements HiveBackend {
             throw new HiveError("conflict", `Task ${taskId} is in a flow that is going on.`, { key: "errors.taskInFlow", vars: { id: taskId } });
           }
           // Pick at dispatch time, when the hub knows which plans and machines still have room.
-          const m = this.#assertDispatchable({ machineId: machineId ?? this.#mapMachine(project, null, profileId).id, project, task, role, profileId, candidates, instructions }, actor);
+          const m = this.#assertDispatchable({ machineId: machineId ?? task.agent?.machineId ?? this.#mapMachine(project, null, profileId).id, project, task, role, profileId, candidates, instructions }, actor);
           this.#requestTimeout(m, task, profileId, timeoutMinutes);
           if (redispatch) this.#assertRedispatchRunner(m, profileId);
           // Its group would run it again once this run ended.
