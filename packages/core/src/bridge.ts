@@ -470,6 +470,8 @@ export interface AppUpdateStatus {
   installWhen: "ask" | "quit" | "idle" | null;
   notes: string | null;
   supported: boolean;
+  /** deb: installed through the system installer, with admin rights, instead of a restart. */
+  updateKind?: "deb";
   idleState?: "waiting" | "retry" | null;
   idleDeadline?: number | null;
 }

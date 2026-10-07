@@ -20,6 +20,8 @@ export interface UpdateStatus extends UpdateReport {
   notes: string | null;
   /** The running app can replace itself (packaged, and the platform is supported). */
   supported: boolean;
+  /** deb: the person installs through the system installer, with admin rights; nothing restarts on its own. */
+  updateKind?: "deb";
 }
 
 export interface UpdaterHost {
@@ -87,7 +89,7 @@ export class Updater {
   }
 
   status(): UpdateStatus {
-    return { ...this.#state, installWhen: this.#offer?.installWhen ?? null, notes: this.#offer?.notes ?? null, supported: this.#supported };
+    return { ...this.#state, installWhen: this.#offer?.installWhen ?? null, notes: this.#offer?.notes ?? null, supported: this.#supported, ...(this.updateKind ? { updateKind: this.updateKind } : {}) };
   }
 
   /** What the next heartbeat tells the hub. */

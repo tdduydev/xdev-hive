@@ -351,6 +351,8 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 
 ## Sửa lỗi
 
+- [x] **linux-deb** (7/10, BUG-linux-deb, 0.145.2): gói `.deb` (x64, arm64) cho Ubuntu bên cạnh AppImage; app cài từ deb nhận bản cập nhật deb và mở trình cài hệ thống (cần quyền quản trị), nút cập nhật không còn kẹt ở *Đang cài*.
+- [x] **linux-vaapi-log** (7/10, 0.145.2): app trên Linux không còn in `vaInitialize failed` mỗi lần mở (tắt VA-API, app không phát video).
 - [x] **allowed-kinds-default** (7/10, 0.145.1): service chưa chọn *Loại gói được phép* thì hub chỉ tự giao cho claude/codex/antigravity, trong khi màn *Quy trình* hiện cả 8 loại đang bật; Gemini, Vibe, OpenCode, Kilo, Copilot không bao giờ được tự giao. Giờ mặc định là mọi loại định tuyến (`DEFAULT_AGENT_KINDS`), khớp giao diện.
 - [x] **stale-base** (5/10, BUG-stale-base): run R-43 trên máy .52 gặp lỗi fetch tạm thời, và runner lặng lẽ tạo branch `ai/<task>` từ HEAD của checkout chính, tức code cũ 3 ngày (0.107.0 trong khi main đã 0.126.0). Giờ fetch lỗi thì thử lại sau 5 giây rồi 20 giây. Vẫn lỗi thì run của task chưa có branch quay về hàng đợi, kèm lý do hiện trên Board và Lượt chạy, thử lại ở các tick sau; quá 5 lần thì *failed* với lỗi dịch được. Không còn tạo branch từ HEAD cũ. Branch đã có (run sửa, review) chạy như cũ. Hỏi best-of-n thì báo lỗi ngay. Repo không có remote nào thì giữ cách cũ. Do claude-1 trên máy .52 làm.
 

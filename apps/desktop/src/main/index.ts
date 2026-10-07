@@ -845,7 +845,7 @@ function onUpdateChange(status: UpdateStatus): void {
   void idleUpdate?.tick();
   if (status.state !== "ready" || !status.version || notifiedUpdate === status.version || !Notification.isSupported()) return;
   notifiedUpdate = status.version;
-  const n = new Notification({ title: tr("desktop.updateReadyTitle", { version: status.version }), body: tr("desktop.updateReadyBody") });
+  const n = new Notification({ title: tr("desktop.updateReadyTitle", { version: status.version }), body: tr(updater.updateKind === "deb" ? "desktop.updateReadyBodyDeb" : "desktop.updateReadyBody") });
   n.on("click", showWindow);
   n.show();
 }
@@ -1648,6 +1648,14 @@ function createTray(): void {
   buildTrayMenu();
   void refreshTray();
   setInterval(() => void refreshTray(), 20_000).unref();
+}
+
+// The app plays no video. On Linux hosts without a VA-API driver Chromium still probes it and prints
+// "vaInitialize failed" on every start, which reads as a crash to whoever launched the AppImage.
+if (process.platform === "linux") {
+  app.commandLine.appendSwitch("disable-features", "VaapiVideoDecoder,VaapiVideoEncoder,VaapiVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxGL,AcceleratedVideoEncoder");
+  app.commandLine.appendSwitch("disable-accelerated-video-decode");
+  app.commandLine.appendSwitch("disable-accelerated-video-encode");
 }
 
 if (!app.requestSingleInstanceLock()) {
