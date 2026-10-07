@@ -47,7 +47,8 @@ export async function runMergeBatch(batch: MergeBatch, opts: GateOptions): Promi
   };
   const git = async (cwd: string, args: string[]) => (await exec("git", ["-c", `core.hooksPath=${os.devNull}`, ...args], {
     cwd,
-    env,
+    // isMissingRemoteRef matches Git's English message; a translated one would silently skip the push.
+    env: { ...env, LC_ALL: "C", LANGUAGE: "C" },
     timeout: 120_000,
     maxBuffer: 4 * 1024 * 1024,
     signal: opts.signal
