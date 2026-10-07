@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, statSync, existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { after, describe, it } from "node:test";
@@ -9,6 +9,8 @@ import { CODEGRAPH_MCP, CODEGRAPH_PACKAGE, NO_FEATURES, SUPERPOWERS_PLUGIN } fro
 import { claudeRunArgs, codexArgs, type ClaudeHookRun } from "#desktop/main/runner/command.ts";
 import {
   APP_TOOLS,
+  claudeToolServer,
+  readyBrowserSecrets,
   claudeHooks,
   codexToolArgs,
   hookEnv,
@@ -68,6 +70,32 @@ describe("the app's own tools (roadmap 28b)", () => {
     assert.equal(packageSpec(APP_TOOLS.codegraph.package!), CODEGRAPH_PACKAGE);
     assert.deepEqual(APP_TOOLS.codegraph.env, CODEGRAPH_MCP.env);
     assert.equal(APP_TOOLS.superpowers.plugin, SUPERPOWERS_PLUGIN);
+  });
+
+  it("pins the browser seed and gives both CLIs separate run paths and secret names", async () => {
+    const entry = APP_TOOLS.browser;
+    assert.equal(toolHash(entry), "18c77f067b491cc41c5c37465a2f3f157c05abdf283164e51692d717746dc62b");
+    assert.equal(entry.enabledByDefault, false);
+    assert.deepEqual(entry.agents, ["claude", "codex"]);
+    const browser = { ...entry, secretEnv: ["TEST_PASSWORD"] };
+    const runDir = testTmpDir(path.join(os.tmpdir(), "hive-browser-"));
+    const password = "test-only\n\"quoted\"\\value";
+    readyBrowserSecrets(browser, runDir, { TEST_PASSWORD: password });
+    assert.deepEqual(JSON.parse(readFileSync(path.join(runDir, "browser.json"), "utf8")), { secrets: { TEST_PASSWORD: password } });
+    if (process.platform !== "win32") assert.equal(statSync(path.join(runDir, "browser.json")).mode & 0o777, 0o600);
+    for (const kind of ["claude", "codex"] as const) {
+      const c = catalog([browser], [on("browser")]);
+      assert.equal(runTools(c, "demo", NO_FEATURES, kind, OPEN_POLICY, { browser: toolHash(browser) }, { TEST_PASSWORD: password }).tools.length, 1);
+    }
+    const server = claudeToolServer(browser, { runDir });
+    assert.match(JSON.stringify(server), /browser-profile/);
+    assert.doesNotMatch(JSON.stringify(server), /\{runDir\}/);
+    assert.equal((server.env as Record<string, string>).TEST_PASSWORD, "${TEST_PASSWORD}");
+    const args = codexToolArgs([browser], { runDir });
+    assert.ok(args.includes('mcp_servers.browser.env_vars=["TEST_PASSWORD"]'));
+    assert.ok(!args.join(" ").includes(password));
+    assert.ok(!JSON.stringify(server).includes(password));
+    assert.notDeepEqual(claudeToolServer(browser, { runDir: "/run-a" }), claudeToolServer(browser, { runDir: "/run-b" }));
   });
 
   it("asks again when a seed's commands change, and for any other entry until allowed as it is", () => {
@@ -363,7 +391,8 @@ describe("hooks of the catalog (roadmap 28d)", () => {
   it("reads RTK's numbers for the run, and null when it cannot tell", async () => {
     const ready = (bin: string) => [{ entry: RTK, hooks: [{ event: "PreToolUse" as const, matcher: "Bash", argv: [bin, "hook", "claude"] }] }];
     const ok = fakeRtk();
-    const env = { ...process.env, RTK_DB_PATH: "/data/runs/R-1/rtk.db" };
+    // An agent running this suite may already have telemetry disabled in its own environment.
+    const env = { ...process.env, RTK_TELEMETRY_DISABLED: "", RTK_DB_PATH: "/data/runs/R-1/rtk.db" };
     assert.deepEqual(await rtkGain(ready(ok.bin), env), { tool: "rtk", commands: 42, input: 50000, output: 8000, saved: 42000 });
     assert.deepEqual(ok.calls(), ["gain --format json|/data/runs/R-1/rtk.db|"]);
     assert.equal(await rtkGain(ready(fakeRtk("0.50.0", "fail").bin), env), null);

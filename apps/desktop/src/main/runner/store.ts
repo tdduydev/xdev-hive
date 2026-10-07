@@ -1,3 +1,4 @@
+import type { WorktreeLog, WorktreeCommand } from "@xdev-hive/core";
 // Local run history and per-profile cooldowns. Lives on the machine that runs the agents.
 import { randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -8,6 +9,9 @@ import { tr } from "#desktop/main/i18n.ts";
 import type { UsageSample } from "./usage.ts";
 
 const SCHEMA = `
+CREATE TABLE IF NOT EXISTS worktree_command_receipts(id TEXT PRIMARY KEY, results TEXT NOT NULL, acked INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS worktree_cleanup_log(id INTEGER PRIMARY KEY, entry TEXT NOT NULL);
+
 CREATE TABLE IF NOT EXISTS tool_approval_receipts(
   id TEXT PRIMARY KEY, acked INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS steer_messages(
@@ -177,6 +181,27 @@ export class RunStore {
     this.db.exec(SCHEMA);
     const have = new Set((this.db.prepare("PRAGMA table_info(runs)").all() as Row[]).map((c) => String(c.name)));
     for (const [name, ddl] of ADDED_COLUMNS) if (!have.has(name)) this.db.exec(`ALTER TABLE runs ADD COLUMN ${name} ${ddl}`);
+  }
+
+  worktreeResult(id: string): WorktreeCommand["results"] | null {
+    const r = this.db.prepare("SELECT results FROM worktree_command_receipts WHERE id = ?").get(id);
+    return r ? JSON.parse(String(r.results)) : null;
+  }
+  recordWorktreeResult(id: string, results: WorktreeCommand["results"]): void {
+    this.db.prepare("INSERT OR IGNORE INTO worktree_command_receipts(id, results) VALUES (?, ?)").run(id, JSON.stringify(results));
+  }
+  worktreeResults(): Array<{ id: string; results: WorktreeCommand["results"] }> {
+    return (this.db.prepare("SELECT id, results FROM worktree_command_receipts WHERE acked = 0 LIMIT 100").all() as { id: string; results: string }[]).map(r => ({ id: r.id, results: JSON.parse(r.results) }));
+  }
+  ackWorktreeResults(ids: string[]): void {
+    for (const id of ids) this.db.prepare("UPDATE worktree_command_receipts SET acked = 1 WHERE id = ?").run(id);
+  }
+  logWorktree(entry: WorktreeLog): void {
+    this.db.prepare("INSERT INTO worktree_cleanup_log(entry) VALUES (?)").run(JSON.stringify(entry));
+    this.db.exec("DELETE FROM worktree_cleanup_log WHERE id NOT IN (SELECT id FROM worktree_cleanup_log ORDER BY id DESC LIMIT 500)");
+  }
+  worktreeLogs(): WorktreeLog[] {
+    return this.db.prepare("SELECT entry FROM worktree_cleanup_log ORDER BY id DESC LIMIT 50").all().map(r => JSON.parse(String(r.entry)));
   }
 
   steering(runId: string): Array<{ id: number; text: string; by: string; at: string; deliveredAt: string }> {

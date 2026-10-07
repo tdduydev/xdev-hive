@@ -34,7 +34,9 @@ import {
 } from "./installer.ts";
 import { addToUserPath, pathHasDir, type UserPath } from "./winpath.ts";
 import { tr } from "./i18n.ts";
+import { geminiLaunch } from "#desktop/main/runner/gemini-launch.ts";
 import { resolveBin } from "./runner/command.ts";
+import { VIBE_VERSION } from "#desktop/main/runner/vibe.ts";
 import { supportsAgyUsage } from "#desktop/main/runner/antigravity.ts";
 import { APP_TOOLS, toolOn, trustOf } from "./runner/tools.ts";
 
@@ -97,6 +99,7 @@ export function cliUpgrade(cli: (typeof AGENT_CLIS)[number], real: string, own: 
   if (p.includes(`/node_modules/${cli.pkg}/`)) return { method: "npm", bin: "npm", args: ["install", "-g", `${cli.pkg}@latest`] };
   // Claude Code's native installer (~/.local/share/claude/versions/…) and its older local install (~/.claude/local).
   if (cli.kind === "claude" && (p.includes("/.local/share/claude/") || p.includes("/.claude/local/"))) return { method: "native", bin: own, args: ["update"] };
+  if (cli.kind === "opencode" && p.includes("/.opencode/bin/")) return { method: "native", bin: own, args: ["upgrade"] };
   const brew = /\/(Cellar|Caskroom)\/([^/]+)\//.exec(p);
   if (brew) return { method: "brew", bin: "brew", args: brew[1] === "Caskroom" ? ["upgrade", "--cask", brew[2]!] : ["upgrade", brew[2]!] };
   return null;
@@ -133,7 +136,11 @@ export const AGENT_CLIS: Array<{ kind: Exclude<AgentKind, "custom">; bin: string
   { kind: "claude", bin: "claude", label: "Claude Code", pkg: "@anthropic-ai/claude-code" },
   { kind: "codex", bin: "codex", label: "Codex CLI", pkg: "@openai/codex" },
   { kind: "antigravity", bin: "agy", label: "Antigravity CLI", pkg: "google-antigravity/antigravity-cli" },
+  { kind: "vibe", bin: "vibe", label: "Mistral Vibe", pkg: "mistral-vibe" },
+  { kind: "opencode", bin: "opencode", label: "OpenCode", pkg: "opencode-ai" },
+  { kind: "kilo", bin: "kilo", label: "Kilo Code CLI", pkg: "@kilocode/cli" },
   { kind: "gemini", bin: "gemini", label: "Gemini CLI", pkg: "@google/gemini-cli" },
+  { kind: "copilot", bin: "copilot", label: "GitHub Copilot CLI", pkg: "@github/copilot" },
 ];
 
 /** The integrations every repo gets: the commands for Claude Code (.claude/skills) and Codex (.agents/skills). */
@@ -168,7 +175,8 @@ const noNpm = () => tr("setupItem.noNpm");
 
 export const defaultRun: Run = (bin, args, { cwd, env, timeoutMs }) =>
   new Promise((resolve) => {
-    execFile(bin, args, { cwd, env, timeout: timeoutMs, maxBuffer: 50 * 1024 * 1024 }, (err, stdout, stderr) => {
+    const launch = geminiLaunch(bin, args, env);
+    execFile(launch.bin, launch.args, { cwd, env: launch.env, timeout: timeoutMs, maxBuffer: 50 * 1024 * 1024 }, (err, stdout, stderr) => {
       const output = `${stdout}${stderr}`.trim();
       resolve({ ok: !err, output: output || (err ? err.message : "") });
     });
@@ -243,6 +251,19 @@ export class Setup {
       output = await this.#runOrThrow(bin, argv, { env, timeoutMs: 15 * 60_000 });
     } else if (this.#isTool(id)) {
       output = await this.#toolInstall(this.#catalogTool(id), pathEnv);
+    } else if (cli?.kind === "vibe") {
+      const uv = resolveBin("uv", pathEnv);
+      if (!uv) throw this.#noInstaller("uv");
+      const installed = resolveBin("vibe", pathEnv);
+      if (installed && !this.#realpath(installed).replaceAll("\\", "/").includes("/uv/tools/mistral-vibe/")) {
+        throw new HiveError("bad_request", tr("setupItem.vibeManual"), { key: "setupItem.vibeManual" });
+      }
+      const busy = this.#host.cliBusy?.("vibe") ?? 0;
+      if (busy) throw new HiveError("conflict", tr("setupItem.cliBusy", { label: cli.label, count: busy }), { key: "setupItem.cliBusy", vars: { label: cli.label, count: busy } });
+      this.#host.holdCli?.("vibe", true);
+      try {
+        output = await this.#runOrThrow(uv, ["uv", "tool", "install", "--python", "3.12", ...(installed ? ["--force"] : []), `mistral-vibe==${VIBE_VERSION}`], { env, timeoutMs: 15 * 60_000 });
+      } finally { this.#host.holdCli?.("vibe", false); }
     } else if (cli?.kind === "antigravity") {
       throw new HiveError("bad_request", tr("setupItem.agyInstallManual"), { key: "setupItem.agyInstallManual" });
     } else if (cli && resolveBin(cli.bin, pathEnv)) {
@@ -250,7 +271,7 @@ export class Setup {
     } else if (cli) {
       const npm = resolveBin("npm", pathEnv);
       if (!npm) throw new HiveError("bad_request", noNpm(), { key: "setupItem.noNpm" });
-      const r = await this.#run(npm, ["install", "-g", cli.pkg], { env, timeoutMs: 15 * 60_000 });
+      const r = await this.#run(npm, ["install", "-g", cli.kind === "kilo" ? `${cli.pkg}@7.8.3` : cli.pkg], { env, timeoutMs: 15 * 60_000 });
       if (!r.ok) {
         const output = tail(r.output);
         throw new HiveError("bad_request", `npm install -g ${cli.pkg} lỗi:\n${output}`, { key: "errors.commandFailed", vars: { command: `npm install -g ${cli.pkg}`, output } });
@@ -385,13 +406,23 @@ export class Setup {
   async #cli(cli: (typeof AGENT_CLIS)[number], pathEnv: string): Promise<SetupItem> {
     const base = { id: `cli:${cli.kind}`, label: cli.label };
     const bin = resolveBin(cli.bin, pathEnv);
+    if (cli.kind === "vibe") {
+      const uv = resolveBin("uv", pathEnv);
+      if (!bin) return { ...base, state: "missing", detail: tr("setupItem.vibeInstall"), action: uv ? tr("setupItem.vibeInstallAction") : null };
+      const v = await this.#run(bin, ["--version"], { env: { ...this.#host.env(), PATH: pathEnv }, timeoutMs: 15_000 });
+      const version = v.ok ? parseCliVersion(v.output) : null;
+      const managed = this.#realpath(bin).replaceAll("\\", "/").includes("/uv/tools/mistral-vibe/");
+      return { ...base, state: "installed", version, latest: VIBE_VERSION,
+        detail: `${firstLine(v.output)} · ${bin} · ${tr("setupItem.vibeInstall")}`,
+        action: version && compareVersions(version, VIBE_VERSION) < 0 && uv && managed ? tr("setupItem.upgradeTo", { version: VIBE_VERSION }) : null };
+    }
     if (!bin && cli.kind === "antigravity") return { ...base, state: "missing", detail: tr("setupItem.agyInstallManual"), action: null };
     if (!bin) {
       const npm = resolveBin("npm", pathEnv);
       return {
         ...base,
         state: "missing",
-        detail: npm ? tr("setupItem.cliMissing", { pkg: cli.pkg }) : `${tr("setupItem.notInstalled")} ${noNpm()}`,
+        detail: (npm ? tr("setupItem.cliMissing", { pkg: cli.pkg }) : `${tr("setupItem.notInstalled")} ${noNpm()}`) + (cli.kind === "opencode" ? ` ${tr("setupItem.opencodeInstall")}` : ""),
         action: npm ? tr("setupItem.installNpm") : null,
       };
     }

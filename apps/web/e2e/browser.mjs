@@ -7,7 +7,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tableCardsChecks } from "./table-cards.mjs";
 import { mobileAudit } from "./mobile-audit.mjs";
-import { accessibilityAudit, keyboardMenu, keyboardOverlays, keyboardTable, runContrast } from "./accessibility.mjs";
+import { accessibilityAudit, keyboardMenu, keyboardOverlays, keyboardTable, runContrast, dataTableAccessibility, memoryAccessibility } from "./accessibility.mjs";
 
 const base = process.env.HIVE_E2E_BASE;
 const out = process.env.HIVE_E2E_OUT;
@@ -44,6 +44,7 @@ async function until(what, fn) {
 }
 
 const KEYS = {
+  " ": { code: "Space", keyCode: 32, text: " " },
   Enter: { code: "Enter", keyCode: 13, text: "\r" },
   Escape: { code: "Escape", keyCode: 27 },
   Tab: { code: "Tab", keyCode: 9 },
@@ -54,13 +55,15 @@ const KEYS = {
   s: { code: "KeyS", keyCode: 83 },
 };
 const MODIFIERS = { Alt: 1, Control: 2, Meta: 4, Shift: 8 };
+const PRIMARY_MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 
 /** One person's browser: its own storage partition, so two people are signed in side by side. */
 class Tab {
   errors = [];
 
   static async open(name) {
-    const win = new BrowserWindow({ show: false, useContentSize: true, width, height, webPreferences: { partition: `e2e-${name}` } });
+    // Under Xvfb, a mapped window is needed for compositor frames (editor focus and sheet transitions).
+    const win = new BrowserWindow({ show: process.platform === "linux", useContentSize: true, width, height, webPreferences: { partition: `e2e-${name}`, backgroundThrottling: false } });
     const tab = new Tab(win, name);
     win.webContents.on("console-message", (e) => {
       if (e.level === "error" && /Uncaught|TypeError|ReferenceError/.test(e.message)) tab.errors.push(e.message.slice(0, 300));
@@ -68,6 +71,8 @@ class Tab {
     win.webContents.on("render-process-gone", (_e, d) => tab.errors.push(`renderer gone: ${d.reason}`));
     win.webContents.debugger.attach("1.3");
     await win.loadURL(`${base}/`);
+    // Hidden Linux windows can retain an old compositor frame, making input tests hit stale layouts.
+    win.showInactive();
     return tab;
   }
 
@@ -76,12 +81,23 @@ class Tab {
     this.name = name;
   }
 
+  activate() {
+    // A later person's window can cover this one in Xvfb and stop its compositor again.
+    if (process.platform === "linux") {
+      this.win.moveTop();
+      this.win.focus();
+      this.win.webContents.focus();
+    }
+  }
+
   cdp(method, params) {
+    this.activate();
     return this.win.webContents.debugger.sendCommand(method, params);
   }
 
   /** Runs `fn` in the page with JSON arguments. */
   eval(fn, ...args) {
+    this.activate();
     return this.win.webContents.executeJavaScript(`(${fn.toString()})(...${JSON.stringify(args)})`, true);
   }
 
@@ -108,42 +124,75 @@ class Tab {
     await sleep(300);
   }
 
-  /** The centre of the first visible element matching `selector` (and whose text is or starts with `text`), scrolled into view. */
-  async find(selector, text, within) {
-    return this.waitFor(
-      `${selector}${text ? ` "${text}"` : ""}${within ? ` in ${within}` : ""}`,
-      (sel, txt, scope) => {
-        const root = scope ? [...document.querySelectorAll(scope)].at(-1) : document;
-        if (!root) return null;
-        const shown = (el) => {
-          const r = el.getBoundingClientRect();
-          return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== "hidden";
-        };
-        const all = [...root.querySelectorAll(sel)].filter(shown);
-        const label = (el) => (el.getAttribute("aria-label") ?? el.textContent ?? "").trim();
-        const el = txt == null ? all[0] : (all.find((e) => label(e) === txt) ?? all.find((e) => label(e).startsWith(txt)));
-        if (!el || el.disabled) return null;
-        // Scrolling a node of the Graph page's canvas changes the pane under the pointer; the Pipeline canvas is a wide scroller whose gates must be scrolled into view like a user would.
-        if (!el.closest("[data-graph-canvas]")) el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+  /** The first visible element matching `selector` (and whose text is or starts with `text`), scrolled into view. Returns its centre, or null; `settle` also waits one frame pair and reports what is wrong when it moves or something else sits on its centre. */
+  locate() {
+    return async (sel, txt, scope, settle) => {
+      const root = scope ? [...document.querySelectorAll(scope)].at(-1) : document;
+      if (!root) return null;
+      const shown = (el) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== "hidden";
+      };
+      const all = [...root.querySelectorAll(sel)].filter(shown);
+      const label = (el) => (el.getAttribute("aria-label") ?? el.textContent ?? "").trim();
+      const el = txt == null ? all[0] : (all.find((e) => label(e) === txt) ?? all.find((e) => label(e).startsWith(txt)));
+      if (!el || el.disabled) return null;
+      // Scrolling a node of the Graph page's canvas changes the pane under the pointer; the Pipeline canvas is a wide scroller whose gates must be scrolled into view like a user would.
+      if (!el.closest("[data-graph-canvas]")) el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+      const centre = () => {
         const r = el.getBoundingClientRect();
         return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
-      },
-      selector,
-      text ?? null,
-      within ?? null,
-    );
+      };
+      const first = centre();
+      // React Flow keeps its nodes in a transformed, animated layer: those are clicked as before.
+      if (!settle || el.closest(".react-flow")) return first;
+      // The timeout is for a window whose frames are throttled.
+      await new Promise((done) => {
+        requestAnimationFrame(() => requestAnimationFrame(done));
+        setTimeout(done, 150);
+      });
+      const at = centre();
+      if (at.x !== first.x || at.y !== first.y) return { why: `${sel} is still moving` };
+      const hit = document.elementFromPoint(at.x, at.y);
+      if (hit && (el === hit || el.contains(hit))) return at;
+      const name = hit ? `${hit.tagName.toLowerCase()}${hit.id ? `#${hit.id}` : ""}${[...hit.classList].slice(0, 3).map((c) => `.${c}`).join("")}${hit.dataset.slot ? `[data-slot=${hit.dataset.slot}]` : ""}` : "nothing";
+      return { why: `${sel} is covered by ${name} at ${at.x},${at.y}` };
+    };
   }
 
+  /** The centre of the element, as `locate` finds it. */
+  async find(selector, text, within, settle = false) {
+    const what = `${selector}${text ? ` "${text}"` : ""}${within ? ` in ${within}` : ""}`;
+    const fn = this.locate();
+    const until = Date.now() + 15_000;
+    let why = `no visible ${what}`;
+    for (;;) {
+      const v = await this.eval(fn, selector, text ?? null, within ?? null, settle).catch(() => null);
+      if (v?.why) why = v.why;
+      else if (v) return v;
+      if (Date.now() > until) throw new Error(`timed out waiting for ${what}: ${why}`);
+      await sleep(100);
+    }
+  }
+
+  /** Clicks like a person: waits for the element to stay put and for nothing (a scrim, a sheet that is opening or closing) to sit on it. */
   async click(selector, text, within) {
     if (mobile && selector === "[data-project-picker-trigger]") {
       const hidden = await this.eval(() => {
         const r = document.querySelector("[data-project-picker-trigger]")?.getBoundingClientRect();
-        return r && (r.right <= 0 || r.left >= innerWidth);
+        return !r || r.right <= 0 || r.left >= innerWidth;
       });
       if (hidden) await this.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
     }
-    const { x, y } = await this.find(selector, text, within);
-    await this.cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+    // Moving the pointer onto it can itself shift the page (a hover card, a lazy list above it), so the point is measured again over the element and pressed only when it held.
+    let { x, y } = await this.find(selector, text, within, true);
+    for (let tries = 0; ; tries++) {
+      await this.cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+      const again = await this.find(selector, text, within, true);
+      if (again.x === x && again.y === y) break;
+      if (tries >= 20) throw new Error(`${selector} keeps moving under the pointer (${x},${y} then ${again.x},${again.y})`);
+      ({ x, y } = again);
+    }
     await this.cdp("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
     await this.cdp("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
     await sleep(150);
@@ -157,14 +206,24 @@ class Tab {
   async key(name, ...mods) {
     const k = KEYS[name] ?? { code: `Key${name.toUpperCase()}`, keyCode: name.toUpperCase().charCodeAt(0) };
     const modifiers = mods.reduce((m, x) => m | MODIFIERS[x], 0);
-    const common = { key: name, code: k.code, windowsVirtualKeyCode: k.keyCode, nativeVirtualKeyCode: k.keyCode, modifiers };
-    await this.cdp("Input.dispatchKeyEvent", { type: k.text && !modifiers ? "keyDown" : "rawKeyDown", ...common, ...(k.text && !modifiers ? { text: k.text } : {}) });
+    // Native key codes differ across platforms; Chromium derives them from the portable code/key fields.
+    const common = { key: name, code: k.code, windowsVirtualKeyCode: k.keyCode, modifiers };
+    // CDP bypasses macOS's native Cmd+A binding; without the edit command Backspace removes only the last letter.
+    const commands = name.toLowerCase() === "a" && mods.includes(PRIMARY_MODIFIER) ? ["selectAll"] : undefined;
+    await this.cdp("Input.dispatchKeyEvent", { type: k.text && !modifiers ? "keyDown" : "rawKeyDown", ...common, ...(k.text && !modifiers ? { text: k.text } : {}), ...(commands ? { commands } : {}) });
     await this.cdp("Input.dispatchKeyEvent", { type: "keyUp", ...common });
     await sleep(80);
   }
 
+  shortcut(name) {
+    return this.key(name, PRIMARY_MODIFIER);
+  }
+
   /** A native <select>: sets the value as React expects (through the prototype's setter) and fires change. */
   async select(selector, value) {
+    // New-chat configuration is progressive disclosure; open it with a real click before choosing.
+    const folded = await this.eval((sel) => !!document.querySelector(sel)?.closest("[data-chat-setup]:not([open])"), selector);
+    if (folded) await this.click("[data-chat-setup] summary");
     await this.find(selector);
     const ok = await this.eval(
       (sel, v) => {
@@ -186,6 +245,7 @@ class Tab {
   }
 
   async shot(name) {
+    this.activate();
     const image = await this.win.webContents.capturePage();
     writeFileSync(path.join(out, `${name}.png`), image.toPNG());
   }
@@ -196,13 +256,23 @@ class Tab {
 // A step's tabs live in `tabs`, so list the step that opens a tab for every step that uses it.
 // HIVE_E2E_NEEDS (JSON) replaces the table: check-needs.mjs probes a smaller set with it before the table is changed.
 const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS) : {
+  "leader-plan": ["lead-sees-members"],
+  "auto-dispatch": ["login-token"],
+  "merge-queue": ["login-token"],
+  "auto-release": ["login-token"],
   "login-token": [],
+  "artifacts-page": ["login-token"],
+  "chat-everywhere": ["login-token"],
+  "chat-design": ["login-token"],
   "a11y-pages": ["login-token"],
+  "a11y-list-tree": ["login-token"],
+  "a11y-components": ["login-token"],
   "a11y-menu": ["login-token"],
   "a11y-overlays": ["login-token"],
   "a11y-table": ["login-token"],
   "a11y-run-status": ["login-token"],
   "run-redispatch": [],
+  "inbox-source-complete": [],
   "scope-search-tasks": ["login-token"],
   "mobile-kanban-forms-dialog": ["login-token"],
   "graph": ["login-token"],
@@ -242,6 +312,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "spec-import-and-run": ["lead-sees-members", "spec-page"], // spec-page's imported feature
   "agent-policy": ["lead-sees-members"],
   "tools": ["login-token", "lead-sees-members"],
+  "worktree-admin": ["login-token", "login-password", "lead-sees-members"],
   "tool-approve-web": ["login-token", "login-password", "lead-sees-members"],
   "stop-all": ["login-token"],
   "audit-agent": ["login-token"],
@@ -250,7 +321,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "leader-autonomy": ["lead-sees-members"],
   "leader-tool-proposal": ["lead-sees-members"],
   "hub-page": ["login-token"],
-  "hub-leader-chat": ["login-token"],
+  "hub-leader-chat": ["login-token", "lead-sees-members"],
   "system-docs": ["login-password"],
   "systems-outside": ["login-token", "system-docs"], // system-docs saves the system shop
   "project-archive-delete": ["login-token"],
@@ -267,6 +338,9 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "knowledge-pending": ["login-token", "lead-sees-members"],
   "artifacts": ["lead-sees-members"],
   "run-steer": ["login-password", "lead-sees-members"],
+  "codex-leader-chat": ["login-token"],
+  "leader-research": ["lead-sees-members"],
+  "chat-shortcuts": ["lead-sees-members"],
 };
 const order = [...readFileSync(import.meta.filename, "utf8").matchAll(/^\s*(?:if \(mobile\) )?await step\("([^"]+)"/gm)].map((m) => m[1]);
 const only = (process.env.HIVE_E2E_ONLY ?? "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -340,17 +414,19 @@ async function main() {
     await tab.type(admin);
     await tab.click('button[type="submit"]');
     // The web opens on Hôm nay for everyone (roadmap 35b), hub admins included.
-    await tab.waitFor("the admin's Hôm nay", () => document.querySelector('nav [aria-current="page"]')?.textContent.includes("Hôm nay"));
+    await tab.waitFor("the admin's Hôm nay", () => document.querySelector('[data-shell-title]')?.textContent.includes("Hôm nay"));
+    if (mobile) await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
     // Roadmap 49b: one web shell, its menu by job; a hub admin's has Cài đặt service, Máy & agent and Quản trị after the work.
-    const nav = await tab.waitFor("the admin's menu", () => document.querySelector("nav")?.innerText.includes("Máy & agent") && document.querySelector("nav").innerText);
+    const nav = await tab.waitFor("the admin's menu", () => document.querySelector("#hive-navigation")?.innerText.includes("Máy & agent") && document.querySelector("#hive-navigation").innerText);
     for (const label of ["Làm việc", "Task", "Cài đặt service", "Quản trị"]) expect(nav.includes(label), `no ${label} in the admin's menu:\n${nav}`);
     // The Web Admin's old addresses open the tab that holds the page now.
     await tab.go("admin/queue");
     await tab.waitFor("#/admin/queue on Máy & agent › Hàng đợi", () =>
       location.hash === "#/machines?tab=queue" &&
-      document.querySelector('nav [aria-current="page"]')?.textContent.includes("Máy & agent") &&
+      document.querySelector('#hive-navigation [aria-current="page"]')?.textContent.includes("Máy & agent") &&
       document.querySelector('[data-page-tab="queue"]')?.getAttribute("aria-current") === "page",
     );
+    if (mobile) await tab.click('button[aria-label="Đóng menu"]');
   });
 
   if (mobile && tabs.admin) await mobileAudit({ tab: tabs.admin, out, step, expect });
@@ -362,6 +438,60 @@ async function main() {
       await accessibilityAudit({ tab, out, expect });
     });
   }
+  await step("a11y-list-tree", async () => {
+    const tab = (current = tabs.admin);
+    await rpc("docs.save", { key: "org/skills/a11y-list", content: "---\nname: a11y-list\ndescription: Semantics fixture\n---\nSteps", baseVersion: 0 });
+    await rpc("docs.save", { key: "org/a11y-folder", title: "A11y folder", content: "", folder: true, baseVersion: 0 });
+    await rpc("docs.save", { key: "org/a11y-child", parent: "org/a11y-folder", title: "A11y child", content: "Child", baseVersion: 0 });
+    await tab.go("runs");
+    await tab.waitFor("empty runs loaded", () => document.body.innerText.includes("Chưa máy nào báo run") || document.body.innerText.includes("Chưa có run") || document.body.innerText.includes("Không có run"));
+    expect(await tab.eval(() => !document.querySelector('main [role="listbox"]')), "empty Runs is not a listbox missing options");
+    await accessibilityAudit({ tab, out, expect, routes: ["runs"], filename: "accessibility-runs-empty.json" });
+    const at = new Date().toISOString();
+    await rpc("runs.push", { machine: "fixture", runs: [{ runId: "R-list-tree", project: "payment", taskId: "PAY-1", taskTitle: "A11y run row", role: "implement", profileId: null, model: "fixture-model", status: "succeeded", createdAt: at, finishedAt: at }] });
+    await tab.go("skills");
+    await tab.waitFor("skill row", () => !!document.querySelector('main [data-pane-item]'));
+    await tab.eval(() => document.querySelector('main [data-pane-item]').focus());
+    await tab.key("Enter");
+    await tab.waitFor("skill selected", () => !!document.querySelector('main [data-pane-item][aria-current="true"]'));
+    if (mobile) await tab.click("button", "Quay lại");
+    await tab.click("label", "Skill không ai dùng");
+    expect(await tab.eval(() => !document.querySelector('main [role="listbox"] input')), "Skills filter remains outside composite list semantics");
+    await accessibilityAudit({ tab, out, expect, routes: ["skills"], filename: "accessibility-skills-filter.json" });
+    await tab.click('input[aria-label="Tìm skill"]');
+    await tab.type("a11y-no-matching-skill");
+    await tab.waitFor("empty filtered skills", () => document.body.innerText.includes("Không có skill nào khớp."));
+    await accessibilityAudit({ tab, out, expect, routes: ["skills"], filename: "accessibility-skills-empty.json" });
+    await tab.go("docs");
+    await tab.waitFor("nested docs list", () => !!document.querySelector('[data-doc-list] ul ul'));
+    if (mobile) expect(await tab.eval(() => [...document.querySelectorAll('[data-doc-list] button')].filter(el => el.getBoundingClientRect().width && getComputedStyle(el).visibility !== "hidden").every(el => {
+      const r = el.getBoundingClientRect();
+      return r.width >= 44 && r.height >= 44;
+    })), "Docs row and disclosure actions have 44px touch targets");
+    const toggle = '[data-doc-list] div:has(> [data-doc-item][title="org/a11y-folder"]) > button[aria-expanded="true"]';
+    await tab.eval(selector => document.querySelector(selector).focus(), toggle);
+    await tab.key("Enter");
+    expect(await tab.eval(() => document.activeElement?.getAttribute("aria-expanded") === "false"), "keyboard collapses folder");
+    await tab.key(" ");
+    expect(await tab.eval(() => document.activeElement?.getAttribute("aria-expanded") === "true"), "keyboard expands folder");
+    await tab.shot("a11y-docs");
+    await tab.eval(() => document.querySelector('[data-doc-item][title="org/a11y-folder"]').focus());
+    await tab.key("Tab");
+    expect(await tab.eval(() => document.activeElement?.getAttribute("aria-label") === "Thêm trang trong A11y folder"), "Tab reaches row add action");
+    await tab.key("Enter");
+    await tab.waitFor("add child form", () => !!document.querySelector('[data-new-doc-key]'));
+    await tab.click("button", "Huỷ");
+    await tab.go("memory");
+    await tab.click("button", "Chờ duyệt");
+    await tab.waitFor("bulk checkbox", () => !!document.querySelector('main li [role="checkbox"]'));
+    expect(await tab.eval(() => !document.querySelector('main [data-pane-item] [role="checkbox"]')), "bulk checkbox is a sibling of the row button");
+    const before = await tab.eval(() => document.querySelector('main [data-pane-item][aria-current]')?.textContent);
+    await tab.eval(() => document.querySelector('main li [role="checkbox"]').focus());
+    await tab.key(" ");
+    expect(await tab.eval(() => document.activeElement?.getAttribute("aria-checked") === "true"), "Space selects bulk checkbox");
+    expect(await tab.eval(() => document.querySelector('main [data-pane-item][aria-current]')?.textContent) === before, "bulk selection does not open another row");
+    await accessibilityAudit({ tab, out, expect, routes: ["runs", "docs", "skills"] });
+  });
   await step("a11y-menu", async () => {
     const tab = (current = tabs.admin);
     await keyboardMenu({ tab, mobile, expect, out });
@@ -374,6 +504,14 @@ async function main() {
     const tab = (current = tabs.admin);
     await keyboardTable({ tab, expect });
   });
+  if (only.length) {
+    await step("a11y-components", async () => {
+      const tab = (current = tabs.admin);
+      await dataTableAccessibility({ tab, mobile, expect });
+      await memoryAccessibility({ tab, mobile, expect, out });
+      await accessibilityAudit({ tab, out, expect, routes: ["memory", "machines?tab=fleet"], filename: "components-accessibility.json" });
+    });
+  }
   await step("a11y-run-status", async () => {
     const tab = (current = tabs.admin);
     const machineRpc = async (method, input) => {
@@ -392,6 +530,100 @@ async function main() {
     await machineRpc("runs.push", { machine: "a11y", runs: [{ ...run, status: "succeeded", finishedAt: new Date().toISOString() }] });
     await tab.waitFor("completed run announcement", () => document.querySelector('[data-run-state][role="status"]')?.textContent.includes("Xong"));
     await runContrast({ tab, expect });
+  });
+
+  await step("auto-release", async () => {
+    const previous = (await rpc("sdlc.get", {})).projects.payment;
+    const tab = current = tabs.admin;
+    const machineRpc = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.release-e2e" }, body: JSON.stringify({ method, input }) });
+      const j = await r.json(); if (j.error) throw new Error(`${method}: ${j.error.message}`); return j.result;
+    };
+    try {
+      await machineRpc("machines.heartbeat", { machine: "release-e2e", instance: "aa00bb11", projects: ["payment"], acceptsRuns: true });
+      const machine = (await rpc("machines.list", {})).find(m => m.machine === "release-e2e");
+      expect(!!machine, "fixture Gate machine exists");
+      await rpc("tasks.create", { project: "payment", id: "RELEASE-E2E", title: "Green batch fixture" });
+      await rpc("tasks.update", { id: "RELEASE-E2E", status: "done" });
+      await rpc("sdlc.setProject", { project: "payment", settings: { gates: { ...previous.gates, release: "human" }, releaseMachine: machine.id } });
+      await tab.go("pipeline?project=payment");
+      await tab.waitFor("release gate", () => !!document.querySelector('[data-pipeline-gate="release"]'));
+      await tab.click('[data-pipeline-gate="release"]');
+      await tab.waitFor("release editor excludes AI and shows machine", () => !!document.querySelector("[data-release-machine]") && !document.querySelector('[data-pipeline-editor] [data-pipeline-mode="ai"]'));
+      if (mobile) {
+        const bounds = await tab.eval(() => [...document.querySelectorAll('[data-pipeline-editor] button')].filter(e => e.getBoundingClientRect().width).map(e => ({ w: e.getBoundingClientRect().width, h: e.getBoundingClientRect().height })));
+        expect(bounds.every(r => r.w >= 44 && r.h >= 44), `release targets: ${JSON.stringify(bounds)}`);
+      }
+      await tab.shot("auto-release-gate");
+      await tab.key("Escape");
+      await tab.waitFor("release editor closed", () => !document.querySelector("[data-pipeline-editor]"));
+      await machineRpc("autoRelease.green", { project: "payment", batchId: "e2e-green", version: "9.0.1", sha: "a".repeat(40), taskIds: ["RELEASE-E2E"], checks: [{ name: "fixture full checks", passed: true }], landed: true });
+      await tab.reload();
+      await tab.waitFor("human release appears", () => document.querySelector("[data-release-queue]")?.textContent.includes("9.0.1"));
+      await tab.click("[data-release-queue] button", "Duyệt phát hành");
+      await until("release approved", async () => (await rpc("autoRelease.list", { project: "payment" })).releases[0]?.state === "queued");
+      await machineRpc("autoRelease.take", { project: "payment" });
+      await machineRpc("autoRelease.result", { project: "payment", batchId: "e2e-green", success: false, step: "deploy" });
+      await tab.reload();
+      await tab.waitFor("release queue paused", () => document.querySelector("[data-release-queue]")?.textContent.includes("Hàng chờ đã dừng"));
+      if (mobile) expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "release fits phone");
+      await tab.shot("auto-release-failed");
+      await tab.go("today");
+      await tab.waitFor("release failure in Today", () => document.body.textContent.includes("OPS-release-9.0.1"));
+      await tab.shot("auto-release-today");
+    } finally {
+      await rpc("sdlc.setProject", { project: "payment", settings: { gates: previous.gates, maxFixRounds: previous.maxFixRounds, maxParallel: previous.maxParallel, fastLaneKinds: previous.fastLaneKinds, planApproval: previous.planApproval, releaseMachine: previous.releaseMachine ?? null } });
+      await rpc("autoRelease.resume", { project: "payment" });
+      await rpc("tasks.update", { id: "OPS-release-9.0.1", status: "done" }).catch(() => null);
+    }
+  });
+  await step("merge-queue", async () => {
+    const project = "autopilot-fixture";
+    const instance = "60b060b0";
+    const machineRpc = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.merge-e2e" }, body: JSON.stringify({ method, input }) });
+      const j = await r.json(); if (j.error) throw new Error(`${method}: ${j.error.message}`); return j.result;
+    };
+    await machineRpc("machines.heartbeat", { machine: "merge-e2e", instance, projects: [project], gateRunner: true });
+    const machine = (await rpc("machines.list")).find(m => m.machine === "merge-e2e");
+    await rpc("tasks.create", { project, id: "MERGE-E2E", title: "Merge fixture", kind: "feature" });
+    await machineRpc("runs.push", { machine: "merge-e2e", runs: [{ runId: "R-merge-e2e", project, taskId: "MERGE-E2E", taskTitle: "Merge fixture", role: "review", status: "succeeded", verdict: "approve", branch: "ai/MERGE-E2E", profileId: null, createdAt: new Date().toISOString() }] });
+    await rpc("tasks.update", { id: "MERGE-E2E", status: "review" });
+    const tab = current = tabs.admin;
+    await tab.go("runs");
+    // This fixture creates a service after sign-in; refresh the shell's service inventory too.
+    await tab.reload();
+    await tab.waitFor("merge queue", () => !!document.querySelector("[data-merge-queue]"));
+    await tab.click("[data-merge-queue] > summary");
+    await tab.waitFor("merge fixture in the refreshed service list", (project) => [...document.querySelectorAll("[data-merge-queue] > label select option")].some((option) => option.value === project), project);
+    await tab.select("[data-merge-queue] > label select", project);
+    await tab.waitFor("waiting branch", () => document.querySelector("[data-merge-queue]")?.textContent.includes("ai/MERGE-E2E"));
+    await tab.click("[data-merge-queue] summary", "Cài đặt hàng chờ");
+    await tab.click('[data-merge-queue] button[role="switch"]');
+    await tab.select("[data-merge-machine]", machine.id);
+    for (const [selector, value] of [["[data-merge-max]", "1"], ["[data-merge-wait]", "0"], ["[data-merge-commands]", "true"]]) {
+      await tab.click(selector); await tab.shortcut("a"); await tab.type(value);
+    }
+    await tab.select("[data-merge-mode]", "push");
+    await tab.click('[data-merge-queue] button[type="submit"]');
+    await until("saved queue", async () => (await rpc("mergeQueue.get", { project })).config.enabled === true);
+    if (mobile) {
+      // Radix Switch adds an aria-hidden, unfocusable checkbox inside a form; only fields a person types in can zoom iOS.
+      const layout = await tab.eval(() => ({ overflow: document.documentElement.scrollWidth > innerWidth, fonts: [...document.querySelectorAll("[data-merge-queue] input, [data-merge-queue] select, [data-merge-queue] textarea")].filter(e => e.getBoundingClientRect().width && !e.closest('[aria-hidden="true"]')).map(e => parseFloat(getComputedStyle(e).fontSize)) }));
+      expect(!layout.overflow && layout.fonts.every(size => size >= 16), `merge form on phone: ${JSON.stringify(layout)}`);
+    }
+    await tab.shot("merge-queue-settings");
+    const batch = await machineRpc("mergeQueue.take", { project, instance });
+    expect(!!batch, "Gate takes the waiting branch");
+    await machineRpc("mergeQueue.finish", { id: batch.id, instance, result: { status: "landed", sha: "b".repeat(40), step: "landed", outcomes: [{ taskId: "MERGE-E2E", status: "included", sha: "a".repeat(40) }] } });
+    await tab.reload();
+    await tab.click("[data-merge-queue] > summary");
+    // The service picker is page state: after a reload it is empty again and no queue shows.
+    await tab.waitFor("merge fixture after reload", (project) => [...document.querySelectorAll("[data-merge-queue] > label select option")].some((option) => option.value === project), project);
+    await tab.select("[data-merge-queue] > label select", project);
+    await tab.waitFor("landed merge", () => document.querySelector("[data-merge-queue]")?.textContent.includes("Đã vào nhánh đích"));
+    expect((await rpc("tasks.list", { project })).find(t => t.id === "MERGE-E2E")?.status === "done", "landing completes the task");
+    await tab.shot("merge-queue-landed");
   });
 
   await step("scope-search-tasks", async () => {
@@ -437,6 +669,41 @@ async function main() {
     await tab.key("Escape");
     await sleep(300);
     await tab.shot(`${String(n).padStart(2, "0")}-mobile-kanban-after`);
+  });
+
+  await step("auto-dispatch", async () => {
+    const tab = (current = tabs.admin);
+    const original = (await rpc("sdlc.get")).projects.payment;
+    const router = await rpc("modelRouter.get");
+    try {
+      await tab.go("pipeline?project=payment");
+      await tab.click('[data-pipeline-preset="maximum"]');
+      await tab.waitFor("auto-dispatch preview", () => !!document.querySelector('[data-auto-dispatch-preview]'));
+      await tab.click('[data-pipeline-apply]');
+      await until("maximum enables auto-dispatch", async () => (await rpc("sdlc.get")).projects.payment?.autoDispatch === true);
+      await tab.waitFor("preset closed", () => !document.querySelector('[data-pipeline-preview]'));
+      await tab.click('[data-pipeline-gate="dispatch"]');
+      await tab.waitFor("auto-dispatch enabled", () => document.querySelector('[data-auto-dispatch]')?.checked === true);
+      const target = await tab.eval(() => document.querySelector('[data-auto-dispatch]').closest('label').getBoundingClientRect().height);
+      expect(target >= 44, `auto-dispatch touch target: ${target}`);
+      await tab.shot(`${String(n).padStart(2, "0")}-auto-dispatch`);
+      await tab.click('[data-auto-dispatch]');
+      await tab.click('[data-auto-kind="claude"]');
+      await tab.eval(() => document.querySelector('[data-pipeline-save]').focus());
+      await tab.key("Enter");
+      await until("auto-dispatch and allowed kinds saved", async () => {
+        const p = (await rpc("sdlc.get")).projects.payment;
+        return p?.autoDispatch === false && !p.allowedAgentKinds.includes("claude");
+      });
+      await tab.reload();
+      await tab.click('[data-pipeline-gate="dispatch"]');
+      await tab.waitFor("disabled state persisted", () => document.querySelector('[data-auto-dispatch]')?.checked === false);
+      expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth + 1), "auto-dispatch overflow");
+      await tab.key("Escape");
+    } finally {
+      await rpc("sdlc.setProject", { project: "payment", settings: original ?? null });
+      await rpc("modelRouter.set", { project: "payment", setting: router.projects.payment ?? { enabled: true, profile: "balanced", cells: {} } });
+    }
   });
 
   await step("graph", async () => {
@@ -514,7 +781,8 @@ async function main() {
   // Roadmap 40c: in a system's scope the Docs tree has the system's pages first, then a group per service, and a new page
   // goes to system/<name>/ unless another place is picked.
   await step("docs-system-default", async () => {
-    await rpc("docs.save", { key: "system/ban-hang/tong-quan", title: "Tổng quan", content: "# Tổng quan\n\nBa service.\n", baseVersion: 0 });
+    const overview = await rpc("docs.get", { key: "system/ban-hang/tong-quan" });
+    await rpc("docs.save", { key: "system/ban-hang/tong-quan", title: "Tổng quan", content: `${overview?.content ?? "# Tổng quan\n"}\nBa service.\n`, baseVersion: overview?.version ?? 0 });
     const tab = (current = tabs.admin);
     await tab.click("[data-project-picker-trigger]");
     await tab.click('input[aria-label="Tìm service hoặc hệ thống…"]');
@@ -524,10 +792,11 @@ async function main() {
     if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
     await tab.go("docs");
     await tab.waitFor("the system's page before the service groups", () => {
-      const rows = [...document.querySelectorAll('[role="tree"] > div')];
+      const rows = [...document.querySelectorAll('[data-doc-list] > ul > li > div')];
       const first = rows.findIndex((r) => r.querySelector('[title="system/ban-hang/tong-quan"]'));
       const groups = ["demo", "ledger", "payment"].map((p) => rows.findIndex((r) => r.dataset.serviceGroup === p));
-      return first === 0 && groups.every((g) => g > first);
+      // Earlier full-suite steps finish tasks and create the system journal before this page.
+      return first >= 0 && groups.every((g) => g > first);
     });
     await tab.click("button", "+ Trang");
     await tab.type("Quy ước chung");
@@ -536,7 +805,7 @@ async function main() {
     const places = await tab.eval(() => [...(document.querySelector("select[data-doc-owner]")?.options ?? [])].map((o) => o.value));
     expect(["sys:ban-hang", "demo", "ledger", "payment"].every((o) => places.includes(o)), `places to put it: ${places}`);
     await tab.key("Enter");
-    await tab.waitFor("the new page picked in the tree", () => document.querySelector('[role="treeitem"][aria-selected="true"]')?.getAttribute("title") === "system/ban-hang/quy-uoc-chung");
+    await tab.waitFor("the new page picked in the tree", () => document.querySelector('[data-doc-item][aria-current="page"]')?.getAttribute("title") === "system/ban-hang/quy-uoc-chung");
     // On a phone too the new page opens on its editor (only shown ones are clicked), not behind the assistant.
     await tab.click(".ProseMirror");
     await tab.type("Mọi service dùng chung.");
@@ -557,10 +826,16 @@ async function main() {
     await tab.click("#password");
     await tab.type(people.hoa.password);
     await tab.key("Enter");
+    if (mobile) {
+      // The phone menu is a Sheet, mounted only while open: the account line is inside it.
+      await tab.waitFor("Hoa signed in", () => !document.querySelector("#username") && !!document.querySelector('button[aria-label="Ẩn hoặc hiện thanh bên"]'));
+      await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
+    }
     await tab.waitFor("Hoa signed in", () => !document.querySelector("#username") && document.body.innerText.includes("@hoa"));
     // A member's menu has no project settings or hub administration (Máy & agent, the team's machines, stays).
     const nav = await tab.eval(() => document.querySelector("nav")?.innerText ?? "");
     for (const label of ["Cài đặt service", "Quản trị", "Đội máy", "Hàng đợi", "Nhật ký"]) expect(!nav.includes(label), `${label} in Hoa's menu:\n${nav}`);
+    if (mobile) await tab.click('button[aria-label="Đóng menu"]');
   });
 
   if (mobile && tabs.hoa) await mobileAudit({ tab: tabs.hoa, out, step, expect,
@@ -572,8 +847,8 @@ async function main() {
   await step("nav-by-job", async () => {
     const menus = [
       // Quy trình (56a) is for whoever may view a project: Hoa views payment, so she reads it without Cài đặt service.
-      ["admin", tabs.admin, ["Hôm nay", "Chat", "Sơ đồ", "Tính năng", "Task", "Agent đang chạy", "Tài liệu", "Skill", "Memory", "Quy trình", "Cài đặt service", "Máy & agent", "Quản trị"]],
-      ["member", tabs.hoa, ["Hôm nay", "Sơ đồ", "Tính năng", "Task", "Agent đang chạy", "Tài liệu", "Skill", "Memory", "Quy trình", "Máy & agent"]],
+      ["admin", tabs.admin, ["Hôm nay", "Chat", "Sơ đồ", "Tính năng", "Task", "Agent đang chạy", "Tài liệu", "Skill", "Memory", "Tệp của agent", "Quy trình", "Cài đặt service", "Máy & agent", "Quản trị"]],
+      ["member", tabs.hoa, ["Hôm nay", "Sơ đồ", "Tính năng", "Task", "Agent đang chạy", "Tài liệu", "Skill", "Memory", "Tệp của agent", "Quy trình", "Máy & agent"]],
     ];
     for (const [who, tab, want] of menus) {
       current = tab;
@@ -592,12 +867,12 @@ async function main() {
       await tab.shot(`${String(n).padStart(2, "0")}-nav-${who}-account`);
       await tab.click("[data-account-tokens]");
       await tab.waitFor("the Token page", () => location.hash === "#/tokens" && !document.querySelector('[role="menu"]'));
-      if (mobile) await tab.waitFor("the drawer closed after the account menu", () => document.querySelector("nav[aria-label='Điều hướng']")?.getBoundingClientRect().right <= 0);
+      if (mobile) await tab.waitFor("the drawer closed after the account menu", () => !document.querySelector("#hive-navigation"));
     }
     // A member following an admin's old link lands on Hôm nay, not on a page they may not open.
     current = tabs.hoa;
     await tabs.hoa.go("users");
-    await tabs.hoa.waitFor("Hôm nay for Hoa", () => document.querySelector('nav [aria-current="page"]')?.textContent.includes("Hôm nay"));
+    await tabs.hoa.waitFor("Hôm nay for Hoa", () => document.querySelector('[data-shell-title]')?.textContent.includes("Hôm nay"));
   });
 
   await step("reviewer-approves-a-guide-not-context", async () => {
@@ -625,25 +900,18 @@ async function main() {
     const tab = (current = tabs.admin);
     await tab.go("admin/users");
     await tab.waitFor("the users table", () => document.body.innerText.includes("@minh"));
-    const { x, y } = await tab.waitFor("Minh's Phân quyền", () => {
+    await tab.waitFor("Minh's Phân quyền", () => {
       const row = [...document.querySelectorAll("tr")].find((r) => r.textContent.includes("@minh"));
       const b = row && [...row.querySelectorAll("button")].find((x) => x.textContent.trim() === "Phân quyền");
-      if (!b) return null;
-      b.scrollIntoView({ block: "center", inline: "center" });
-      const r = b.getBoundingClientRect();
-      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      b?.setAttribute("data-e2e-target", "");
+      return !!b;
     });
-    await tab.cdp("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
-    await tab.cdp("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
+    await tab.click("[data-e2e-target]");
     await tab.find('[role="dialog"]');
     expect((await tab.text('[role="dialog"]')).includes("@minh"), "the grants dialog is not Minh's");
     await tab.select('[role="dialog"] select[aria-label="Quyền trên demo"]', "reviewer");
     await tab.waitFor("the reviewer grant selected", () => document.querySelector('[role="dialog"] select[aria-label="Quyền trên demo"]')?.value === "reviewer");
-    if (mobile) {
-      // The full-screen grant sheet belongs to 42d; keyboard activation keeps this flow covered meanwhile.
-      await tab.eval(() => [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent.trim() === "Lưu quyền")?.focus());
-      await tab.key("Enter");
-    } else await tab.click('[role="dialog"] button', "Lưu quyền");
+    await tab.click('[role="dialog"] button', "Lưu quyền");
     await tab.waitFor("the dialog to close", () => !document.querySelector('[role="dialog"]'));
     const minh = await until("Minh's reviewer grant", async () => {
       const user = (await rpc("users.list", {})).find((u) => u.username === "minh");
@@ -701,7 +969,7 @@ async function main() {
       area.setSelectionRange(area.value.length, area.value.length);
     });
     await tab.type("\nViết bằng Markdown.\n");
-    await tab.key("s", process.platform === "darwin" ? "Meta" : "Control");
+    await tab.shortcut("s");
     const doc = await until("version 3", async () => {
       const d = await rpc("docs.get", { key: "project/demo/huong-dan" });
       return d?.version >= 3 && d;
@@ -712,6 +980,7 @@ async function main() {
   await step("mermaid-draws", async () => {
     const tab = (current = tabs.admin);
     await tab.go(`admin/docs?doc=${encodeURIComponent("project/demo/so-do")}`);
+    if (mobile) await tab.click("summary", "Chế độ");
     await tab.click('[role="radio"]', "Xem");
     await tab.waitFor("the diagram", () => document.querySelector('[data-mermaid] [role="img"] svg'));
   });
@@ -729,7 +998,7 @@ async function main() {
     await tab.go(`admin/docs?doc=${encodeURIComponent("project/demo/tai-lieu-cu")}`);
     // A page the cached list has not seen opens only after another docs.get and a list reload; until then the
     // previous step's page is still open, and the Space select would move that one instead.
-    const picked = (key) => document.querySelector('[role="treeitem"][aria-selected="true"]')?.getAttribute("title") === key;
+    const picked = (key) => document.querySelector('[data-doc-item][aria-current="page"]')?.getAttribute("title") === key;
     await tab.waitFor("the new page open", picked, "project/demo/tai-lieu-cu");
     if (mobile) await tab.click("summary", "Chế độ");
     await tab.click('[role="radio"]', "Markdown");
@@ -955,14 +1224,14 @@ async function main() {
     await tab.click("[data-new-work-submit]");
     await tab.waitFor("question carried into Chat", () => location.hash.startsWith("#/chat") && [...document.querySelectorAll("textarea")].some((el) => el.value === "Nên bắt đầu kiểm tra thanh toán từ đâu?"));
     await tab.shot(`${String(n).padStart(2, "0")}-new-work-chat`);
+    // Keyboard shortcuts do not go through the click helper, so wait for the dialog overlay too.
     await tab.waitFor("closed new work dialog", () => !document.querySelector('[data-slot="dialog-overlay"]'));
-    await tab.key("n", "Meta");
+    await tab.shortcut("n");
     await tab.click('[data-new-work-path="ask"]');
     await tab.select("#new-work-project", "payment");
     await tab.click("#new-work-title"); await tab.type("Câu hỏi tiếp theo khi Chat đang mở");
     await tab.click("[data-new-work-submit]");
     await tab.waitFor("replace an existing Chat draft", () => [...document.querySelectorAll("textarea")].some((el) => el.value === "Câu hỏi tiếp theo khi Chat đang mở"));
-    await tab.waitFor("closed question dialog", () => !document.querySelector('[data-slot="dialog-overlay"]'));
     await tab.click("[data-new-work-open]");
     await tab.click('[data-new-work-path="feature"]');
     await tab.select("#new-work-project", "payment");
@@ -1310,7 +1579,12 @@ async function main() {
     await tab.go("admin?tab=policy");
     await tab.waitFor("the hub's gate row", () => !!document.querySelector('[data-sdlc-row="hub"] [data-sdlc-gate="merge"]'));
     await setSelect(tab, '[data-sdlc-row="hub"] [data-sdlc-gate="merge"]', "ai");
-    await tab.click('[data-sdlc-save="hub"]');
+    await tab.waitFor("edited ceiling ready to save", () => !document.querySelector('[data-sdlc-save="hub"]')?.disabled);
+    // A toast from the preceding page can cover this horizontally scrolled table on phones.
+    if (mobile) {
+      await tab.eval(() => document.querySelector('[data-sdlc-save="hub"]').focus());
+      await tab.key("Enter");
+    } else await tab.click('[data-sdlc-save="hub"]');
     await until("the ceiling on the hub", async () => (await rpc("sdlc.get", {})).ceiling.merge === "ai");
     await tab.shot(`${String(n).padStart(2, "0")}-sdlc-ceiling`);
 
@@ -1378,19 +1652,19 @@ async function main() {
         const count = await tab.eval(() => document.querySelector('[data-pipeline-count="spec"]')?.textContent);
         expect(/\b1\b/.test(count ?? ""), `Spec does not show one active flow: ${count}`);
         const stepCount = await tab.eval(() => document.querySelectorAll("[data-pipeline-step]").length);
-        expect(stepCount === 11, `pipeline stages: ${stepCount}`);
+        expect(stepCount === 12, `pipeline stages: ${stepCount}`);
         if (mobile) {
           const layout = await tab.eval(() => ({ vertical: !!document.querySelector("[data-pipeline-mobile]"), overflow: document.documentElement.scrollWidth > innerWidth }));
           expect(layout.vertical && !layout.overflow, `pipeline mobile layout: ${JSON.stringify(layout)}`);
         }
         const gateCount = await tab.eval(() => document.querySelectorAll("[data-pipeline-gate]").length);
-        expect(gateCount === 8, `pipeline gates: ${gateCount}`);
+        expect(gateCount === 9, `pipeline gates: ${gateCount}`);
         if (!mobile) {
           await tab.waitFor("Pipeline policy and models loaded", () => [...document.querySelectorAll('[data-pipeline-preset]')].some((button) => !button.disabled));
           await tab.eval(() => document.fonts.ready.then(() => true));
           await tab.waitFor("measured Pipeline nodes and edges", () => {
             const nodes = [...document.querySelectorAll('[data-pipeline-graph] .react-flow__node')];
-            return nodes.length === 19 && nodes.every((node) => getComputedStyle(node).visibility !== "hidden") && document.querySelectorAll('[data-pipeline-graph] .react-flow__edge-path').length === 18;
+            return nodes.length === 21 && nodes.every((node) => getComputedStyle(node).visibility !== "hidden") && document.querySelectorAll('[data-pipeline-graph] .react-flow__edge-path').length === 20;
           });
           // Unchanged card sizes do not trigger ResizeObserver again: exercise real poll rebuilds before clicking a gate.
           const canvases = await tab.eval(() => new Promise((resolve, reject) => {
@@ -1415,9 +1689,9 @@ async function main() {
             };
           }));
           for (const canvas of canvases) {
-            expect(canvas.nodes.length === 19 && canvas.nodes.every((node) => node.visible && node.width > 0 && node.height > 0), `Pipeline nodes after poll: ${JSON.stringify(canvas.nodes)}`);
+            expect(canvas.nodes.length === 21 && canvas.nodes.every((node) => node.visible && node.width > 0 && node.height > 0), `Pipeline nodes after poll: ${JSON.stringify(canvas.nodes)}`);
             expect(JSON.stringify(canvas.nodes) === JSON.stringify(canvases[0].nodes), "Pipeline dimensions changed after polling unchanged data");
-            expect(canvas.edges.length === 18 && canvas.edges.every((d) => d && !/NaN|Infinity/.test(d)), `Pipeline edges after poll: ${JSON.stringify(canvas.edges)}`);
+            expect(canvas.edges.length === 20 && canvas.edges.every((d) => d && !/NaN|Infinity/.test(d)), `Pipeline edges after poll: ${JSON.stringify(canvas.edges)}`);
           }
         }
         await tab.shot(`${String(n).padStart(2, "0")}-pipeline-open`);
@@ -1431,10 +1705,8 @@ async function main() {
         await tab.click('[data-pipeline-editor] [data-pipeline-mode="ai"]');
         await tab.click('[data-pipeline-save]');
         await until("Review changed to AI check", async () => (await rpc("sdlc.get", {})).projects.payment?.effective.review === "ai");
-        // The editor's sheet closes after the save; its overlay would take the next click.
-        await tab.waitFor("gate editor closed", () => !document.querySelector("[data-pipeline-editor]"));
         await tab.click('[data-pipeline-preset="cautious"]');
-        await tab.waitFor("cautious preview", () => document.querySelectorAll('[data-pipeline-preview] [data-pipeline-change]').length === 8);
+        await tab.waitFor("cautious preview", () => document.querySelectorAll('[data-pipeline-preview] [data-pipeline-change]').length === 9);
         await tab.shot(`${String(n).padStart(2, "0")}-pipeline-preview`);
         await tab.click('[data-pipeline-apply]');
         await until("cautious preset saved", async () => {
@@ -1444,12 +1716,7 @@ async function main() {
         await tab.shot(`${String(n).padStart(2, "0")}-pipeline-saved`);
         await tab.eval(() => { const picker = document.querySelector("[data-pipeline-feature]"); picker.value = "SPEC-E2E"; picker.dispatchEvent(new Event("change", { bubbles: true })); });
         await tab.waitFor("feature highlighted at Spec", () => document.querySelector('[data-pipeline-step="spec"]')?.getAttribute("data-active") === "true");
-        // On a phone, by keyboard: the step list (eleven steps since 57e) shifts after scrolling, so a pointer click at the
-        // scrolled position lands on the flow card below. The desktop canvas is React Flow, which keeps Enter for itself.
-        if (mobile) {
-          await tab.eval(() => document.querySelector('[data-pipeline-count="spec"]').focus());
-          await tab.key("Enter");
-        } else await tab.click('[data-pipeline-count="spec"]');
+        await tab.click('[data-pipeline-count="spec"]');
         await tab.waitFor("Spec count opens filtered features", () => location.hash.includes("pipelineStep=spec") && !!document.querySelector('[data-feature-column="spec"]'));
         await tab.go("pipeline?project=payment");
         await rpc("sdlc.setCeiling", { ceiling: { merge: "human" } });
@@ -1554,14 +1821,24 @@ async function main() {
         await adminTab.click('[data-model-tab="models"]');
         await adminTab.click('[data-model-routing] summary');
         await adminTab.waitFor("admin hub tier table", () => !!document.querySelector('[data-hub-model="light/claude"]'));
+        expect(await adminTab.eval(() => {
+          const light = document.querySelector('[data-hub-model="light/gemini"]');
+          const standard = document.querySelector('[data-hub-model="standard/gemini"]');
+          const strong = document.querySelector('[data-hub-model="strong/gemini"]');
+          return light?.value === "flash" && standard?.value === "auto" && strong?.value === "pro" && light.closest("label").parentElement.querySelector("select").disabled;
+        }), "Gemini tier aliases are editable with CLI-default effort only");
         await adminTab.eval(() => {
           const input = document.querySelector('[data-hub-model="light/claude"]');
           Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, "haiku");
           input.dispatchEvent(new Event("input", { bubbles: true }));
+          const opencode = document.querySelector('[data-hub-model="light/opencode"]');
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(opencode, "test/model");
+          opencode.dispatchEvent(new Event("input", { bubbles: true }));
         });
         await adminTab.waitFor("hub model draft", () => document.querySelector('[data-hub-model="light/claude"]')?.value === "haiku");
         await adminTab.click('[data-hub-model-save]');
         await until("hub model saved", async () => (await rpc("modelRouter.get", {})).tiers.light.claude?.model === "haiku");
+        await until("qualified OpenCode model saved", async () => (await rpc("modelRouter.get", {})).tiers.light.opencode?.model === "test/model");
         await adminTab.shot(`${String(n).padStart(2, "0")}-models-hub`);
         current = tab;
         await tab.go("tasks?task=SPEC-E2E");
@@ -2007,7 +2284,524 @@ async function main() {
     }
   });
 
+  // Roadmap 62c: a throwaway runner supplies suggestions and replies, never a real agent.
+  await step("chat-shortcuts", async () => {
+    const machineRpc = async (method, input) => {
+      const res = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.shortcuts" }, body: JSON.stringify({ method, input }) });
+      const body = await res.json();
+      if (body.error) throw new Error(`${method}: ${body.error.message}`);
+      return body.result;
+    };
+    const at = new Date().toISOString();
+    const liveRun = { runId: "R-shortcuts-live", project: "payment", taskId: "SHORT-LIVE", taskTitle: "Đang chạy", role: "implement", status: "running", profileId: "claude-1", since: at };
+    const beat = () => machineRpc("machines.heartbeat", { machine: "shortcuts", instance: "e2e0062c", projects: ["payment"], acceptsRuns: true, profiles: [{ id: "claude-1", label: "Claude", kind: "claude", enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0 }], runs: [liveRun] });
+    await beat();
+    const machineId = (await rpc("machines.list")).find(m => m.machine === "shortcuts").id;
+    await machineRpc("runs.push", { machine: "shortcuts", runs: [{ ...liveRun, createdAt: at }, { ...liveRun, runId: "R-shortcuts-failed", status: "failed", createdAt: at, finishedAt: at }] });
+    for (const status of ["done", "review", "blocked"]) {
+      await rpc("tasks.create", { id: `SHORT-${status}`, project: "payment", title: `Shortcut ${status}` });
+      await rpc("tasks.update", { id: `SHORT-${status}`, project: "payment", status });
+    }
+    const tab = (current = tabs.lan);
+    await tab.go("chat");
+    await tab.click("[data-chat-new]");
+    await tab.select("#chat-project", "payment");
+    await tab.select("#chat-machine", machineId);
+    const draft = () => tab.eval(() => document.querySelector('[data-chat-commands] textarea').value);
+    const replace = async text => { await tab.click('[data-chat-commands] textarea'); await tab.eval(() => document.querySelector("[data-chat-commands] textarea").select()); await tab.key("Backspace"); if (text) await tab.type(text); };
+    const before = (await rpc("chat.threads", { project: "payment" }, people.lan.token)).length;
+    await replace("/");
+    await tab.waitFor("six command suggestions with localized descriptions and examples", () => document.querySelectorAll('[data-chat-command-menu] [role="option"]').length === 6 && document.querySelector('[data-chat-command-menu]').textContent.includes("Kế hoạch"));
+    await tab.shot(`${String(n).padStart(2, "0")}-chat-shortcuts-menu`);
+    if (mobile) {
+      const layout = await tab.eval(() => ({ overflow: document.documentElement.scrollWidth > innerWidth, chips: document.querySelector('[data-chat-chips]').scrollWidth > document.querySelector('[data-chat-chips]').clientWidth, targets: [...document.querySelectorAll('[data-chat-chips] button, [data-chat-command-menu] button')].map(el => ({ w: el.getBoundingClientRect().width, h: el.getBoundingClientRect().height })), font: parseFloat(getComputedStyle(document.querySelector('[data-chat-commands] textarea')).fontSize) }));
+      expect(!layout.overflow && layout.chips && layout.font >= 16 && layout.targets.every(r => r.w >= 44 && r.h >= 44), `shortcut mobile layout: ${JSON.stringify(layout)}`);
+    }
+    await replace("/re");
+    await tab.waitFor("three filtered commands", () => document.querySelectorAll('[data-chat-command-menu] [role="option"]').length === 3);
+    await tab.key("ArrowDown"); await tab.key("Enter");
+    expect((await draft()).startsWith("/release\n"), "Enter fills release without sending");
+    expect((await rpc("chat.threads", { project: "payment" }, people.lan.token)).length === before, "selection did not send a message");
+    await replace("/"); await tab.key("Escape");
+    expect(await tab.eval(() => !document.querySelector('[data-chat-command-menu]')), "Escape dismisses suggestions");
+    await replace("Việc đã soạn"); await tab.click('[data-chat-command="assign"]');
+    await tab.waitFor("service suggestion for assign", () => !!document.querySelector('[data-chat-suggestion="payment"]'));
+    await tab.key("Tab");
+    expect((await draft()).startsWith("/assign payment\n") && (await draft()).includes("Việc đã soạn"), "Tab fills service and preserves draft");
+    await replace("/research "); await tab.key("Enter");
+    expect((await draft()) === "/research payment", "research suggests only the thread's service");
+    await replace("/cancel ");
+    await tab.waitFor("a running run suggestion", () => [...document.querySelectorAll('[data-chat-command-menu] button')].some(el => el.textContent.includes("R-shortcuts-live")));
+    await tab.key("Enter");
+    expect((await draft()) === `/cancel ${machineId}/R-shortcuts-live`, "cancel includes machine identity");
+    await replace("/retry ");
+    await tab.waitFor("a failed run suggestion", () => [...document.querySelectorAll('[data-chat-command-menu] button')].some(el => el.textContent.includes("R-shortcuts-failed")));
+    await tab.key("Tab");
+    expect((await draft()) === `/retry ${machineId}/R-shortcuts-failed`, "retry fills a failed run");
+    expect(!(await rpc("runs.list", { project: "payment" })).find(r => r.runId === "R-shortcuts-live").cancelRequestedAt, "draft commands never cancel a run");
+    await replace(""); await tab.click('[data-chat-command="status"]');
+    await tab.click('button[type="submit"]', "Bắt đầu");
+    const sent = await until("a status thread from the UI", async () => (await rpc("chat.threads", { project: "payment" }, people.lan.token)).find(th => th.title.startsWith("/status")));
+    const reply = (await rpc("chat.get", { threadId: sent.id }, people.lan.token)).messages.at(-1);
+    await machineRpc("chat.progress", { replyId: reply.id, text: "Kiểm tra tình trạng." });
+    await machineRpc("chat.finish", { replyId: reply.id, status: "done", text: "Cần xử lý task chờ review." });
+    await tab.waitFor("status counters and links", () => document.querySelector('[data-chat-status="payment"] [data-chat-status-count="done"]') && document.querySelector('[data-chat-status="payment"] a[href="#/pipeline?project=payment"]'));
+    const counts = await tab.eval(() => Object.fromEntries([...document.querySelectorAll('[data-chat-status-count]')].map(el => [el.dataset.chatStatusCount, Number(el.textContent)])));
+    const tasks = await rpc("tasks.list", { project: "payment" });
+    for (const key of ["done", "review", "blocked"]) expect(counts[key] === tasks.filter(task => task.status === key).length, `status ${key} uses hub tasks`);
+    expect(counts.running === 1, "status counts a live run");
+    await tab.waitFor("finished status reply", () => document.querySelector("[data-chat-thread]").textContent.includes("Cần xử lý task chờ review."));
+    await tab.eval(() => document.querySelector("[data-chat-status]").scrollIntoView({ block: "start" }));
+    await tab.shot(`${String(n).padStart(2, "0")}-chat-shortcuts-status`);
+    await replace("/can"); await tab.key("Enter");
+    expect((await draft()).startsWith("/cancel "), "existing-thread composer has shortcuts too");
+    await tab.eval(() => localStorage.setItem("xdev-hive.locale", "en"));
+    await tab.reload();
+    await replace("/");
+    await tab.waitFor("English descriptions with English command names", () => document.querySelector('[data-chat-command-menu]')?.textContent.includes("Describe work for the leader"));
+    await tab.eval(() => localStorage.setItem("xdev-hive.locale", "vi"));
+    await tab.reload();
+  });
+
+  // 64b: realistic streaming, draft recovery and reuse with a throwaway runner and account.
+  await step("chat-design", async () => {
+    const machineRpc = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.chat-design" }, body: JSON.stringify({ method, input }) });
+      const j = await r.json();
+      if (j.error) throw new Error(`${method}: ${j.error.message}`);
+      return j.result;
+    };
+    const profile = { id: "claude-design", label: "Claude", kind: "claude", enabled: true, installed: true, loggedIn: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0 };
+    await machineRpc("machines.heartbeat", { machine: "chat-design", instance: "cd0064b1", projects: ["payment"], acceptsRuns: true, profiles: [profile] });
+    const machineId = (await rpc("machines.list")).find(m => m.machine === "chat-design").id;
+    const sent = await rpc("chat.send", { project: "payment", machineId, text: "Thiết kế Chat 64b" }, people.lan.token);
+    const longReply = Array.from({ length: 35 }, (_, i) => `Đoạn ${i}: Nội dung đang đọc, kế hoạch và kiểm tra.\n\n`).join("");
+    await machineRpc("chat.progress", { replyId: sent.reply.id, text: longReply, activity: "Đọc thiết kế Chat", steps: "▶ Đọc thiết kế\n✓ Đã đọc" });
+    const tab = current = await Tab.open("chat-design-lan");
+    tab.win.showInactive();
+    await tab.click("#username"); await tab.type("lan");
+    await tab.click("#password"); await tab.type(people.lan.password); await tab.key("Enter");
+    await tab.waitFor("signed in", () => !document.querySelector("#username"));
+    await tab.go(`chat?thread=${sent.thread.id}`);
+    await tab.waitFor("streaming transcript", () => document.querySelector('[data-chat-thread]')?.textContent.includes("Đọc thiết kế Chat"));
+    expect(await tab.eval(() => !document.querySelector('[data-chat-steps]').open), "agent log starts collapsed while running");
+    expect(await tab.eval(() => !document.querySelector('[data-chat-thread] ol[aria-live]')), "streamed Markdown is not a live region");
+    await tab.click('[data-chat-steps] summary');
+    await machineRpc("chat.progress", { replyId: sent.reply.id, text: longReply, activity: "Kiểm tra layout", steps: "▶ Đọc thiết kế\n✓ Đã đọc\n▶ Kiểm tra layout" });
+    await tab.waitFor("poll keeps opened log", () => document.querySelector('[data-chat-steps]').open && document.querySelector('[data-chat-steps]').textContent.includes("Kiểm tra layout"));
+    await tab.click('[data-chat-steps] summary');
+    const replace = async text => {
+      await tab.click('[data-chat-commands] textarea');
+      await tab.eval(() => document.querySelector('[data-chat-commands] textarea').select());
+      await tab.key("Backspace"); if (text) await tab.type(text);
+    };
+    await replace("Bản nháp giữ khi busy");
+    expect(await tab.eval(() => document.querySelector('[data-chat-thread] button[type="submit"]').disabled), "busy disables send while input stays enabled");
+    await tab.eval(() => { const list = document.querySelector('[data-chat-transcript]'); list.scrollTop = 0; list.dispatchEvent(new Event('scroll', { bubbles: true })); });
+    await machineRpc("chat.progress", { replyId: sent.reply.id, text: longReply + "Phần mới ở cuối.", activity: "Đang xác minh", steps: "▶ Đọc thiết kế\n✓ Đã đọc\n▶ Kiểm tra layout\n✓ Hoàn tất" });
+    await tab.waitFor("new content without pulling the reader down", () => !!document.querySelector('[data-chat-new-content]') && document.querySelector('[data-chat-transcript]').scrollTop < 10);
+    await tab.click('[data-chat-new-content]');
+    await machineRpc("chat.finish", { replyId: sent.reply.id, status: "done", text: longReply + "Hoàn tất.", steps: "▶ Đọc thiết kế\n✓ Đã đọc\n▶ Kiểm tra layout\n✓ Hoàn tất", tokens: { inputTokens: 100, cacheReadTokens: 50, outputTokens: 25 } });
+    await tab.waitFor("terminal reply keeps the draft", () => !document.querySelector('[data-chat-thread] button[type="submit"]').disabled && document.querySelector('[data-chat-commands] textarea').value === "Bản nháp giữ khi busy");
+    expect((await rpc("chat.get", { threadId: sent.thread.id }, people.lan.token)).messages.filter(m => m.role === 'user').length === 1, "busy ending does not auto-send");
+    expect(await tab.eval(() => !document.querySelector('[data-chat-steps]').open), "closed log does not reopen at completion");
+    expect(await tab.eval(() => document.querySelector('[data-chat-session]').textContent.includes('175') && document.querySelector('[data-chat-session]').textContent.includes('Chưa có dữ liệu')), "session distinguishes measured tokens from unknown quota");
+    await tab.key("f", process.platform === "darwin" ? "Meta" : "Control", "Shift");
+    await tab.waitFor("search shortcut focuses its input", () => document.activeElement === document.querySelector('[data-chat-search] input'));
+    await tab.type("kế hoạch");
+    await tab.waitFor("safe search highlight", () => document.querySelector('[data-chat-search-excerpt] mark')?.textContent === "kế hoạch");
+    await tab.key("Escape");
+    await tab.click('[data-chat-message] button', "Dùng lại tin nhắn");
+    await tab.waitFor("reuse offers a choice", () => !!document.querySelector('[data-chat-reuse]'));
+    await tab.click('[data-chat-reuse] button', "Giữ bản nháp hiện tại");
+    expect(await tab.eval(() => document.querySelector('[data-chat-commands] textarea').value === "Bản nháp giữ khi busy"), "reuse does not silently replace draft");
+    await replace("Tin nhắn IME");
+    await tab.eval(() => document.querySelector('[data-chat-commands] textarea').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 229, isComposing: true, bubbles: true })));
+    expect((await rpc("chat.get", { threadId: sent.thread.id }, people.lan.token)).messages.filter(m => m.role === 'user').length === 1, "IME Enter never sends");
+    if (mobile) {
+      await tab.key("Enter");
+      expect((await rpc("chat.get", { threadId: sent.thread.id }, people.lan.token)).messages.filter(m => m.role === 'user').length === 1, "phone Enter adds a line");
+    }
+    // Attach a real file, send it, then reuse after failure. The API requires a new upload id.
+    await tab.eval(() => {
+      const input = document.querySelector('input[type="file"]');
+      const files = new DataTransfer(); files.items.add(new File(["64b attachment"], "reuse.txt", { type: "text/plain" }));
+      input.files = files.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await tab.waitFor("attachment uploaded", () => document.querySelector('[data-chat-thread]').textContent.includes('reuse.txt') && !document.querySelector('[data-chat-thread]').textContent.includes('Đang tải lên'));
+    await tab.click('[data-chat-thread] button[type="submit"]', "Gửi");
+    let thread = await until("message with file", async () => {
+      const got = await rpc('chat.get', { threadId: sent.thread.id }, people.lan.token);
+      return got.messages.filter(m => m.role === 'user').length === 2 && got;
+    });
+    const fileId = thread.messages.findLast(m => m.role === 'user').files[0].id;
+    await machineRpc('chat.finish', { replyId: thread.messages.at(-1).id, status: 'failed', text: 'Có lỗi tạm thời' });
+    await tab.waitFor("retry draft action", () => document.querySelector('[data-chat-thread]').textContent.includes('Thử lại trong bản nháp'));
+    await tab.click('[data-chat-thread] button', 'Thử lại trong bản nháp');
+    // Replacing a full draft must free its attachment slots before restoring the sent file.
+    await replace("Bản nháp bốn tệp");
+    await tab.eval(() => {
+      const input = document.querySelector('input[type="file"]');
+      const files = new DataTransfer();
+      for (let i = 0; i < 4; i++) files.items.add(new File(["draft"], `draft-${i}.txt`, { type: "text/plain" }));
+      input.files = files.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await tab.waitFor("full draft uploaded", () => document.querySelector('[data-chat-thread]').textContent.includes('draft-3.txt') && !document.querySelector('[data-chat-thread] button[type="submit"]').disabled);
+    await tab.click('[data-chat-reuse] button', 'Thay bản nháp');
+    await tab.waitFor("file reuploaded for retry", () => document.querySelector('[data-chat-commands] textarea').value.startsWith('Tin nhắn IME') && !document.querySelector('[data-chat-thread] button[type="submit"]').disabled);
+    await tab.click('[data-chat-thread] button[type="submit"]', 'Gửi');
+    thread = await until("retry has a new file id", async () => {
+      const got = await rpc('chat.get', { threadId: sent.thread.id }, people.lan.token);
+      const users = got.messages.filter(m => m.role === 'user');
+      return users.length === 3 && users.at(-1).files.length === 1 && got;
+    });
+    expect(thread.messages.findLast(m => m.role === 'user').files[0].id !== fileId, 'retry preserved file by creating an authorized new upload');
+    await machineRpc('chat.finish', { replyId: thread.messages.at(-1).id, status: 'done', text: 'Đã thử lại cùng tệp.' });
+    await tab.waitFor('retry finished', () => document.querySelector('[data-chat-thread]').textContent.includes('Đã thử lại cùng tệp.'));
+    const metrics = await tab.eval(() => {
+      const input = document.querySelector('[data-chat-commands] textarea').getBoundingClientRect();
+      return { overflow: document.documentElement.scrollWidth > innerWidth, inputBottom: input.bottom, height: innerHeight, font: parseFloat(getComputedStyle(document.querySelector('[data-chat-commands] textarea')).fontSize) };
+    });
+    expect(!metrics.overflow && metrics.inputBottom <= metrics.height, `composer stays in viewport: ${JSON.stringify(metrics)}`);
+    if (mobile) {
+      expect(metrics.font >= 16, 'phone composer text >=16px');
+      await tab.cdp('Emulation.setDeviceMetricsOverride', { width: 320, height: 844, deviceScaleFactor: 1, mobile: false });
+      const small = await tab.eval(() => ({ overflow: document.documentElement.scrollWidth > innerWidth, targets: [...document.querySelectorAll('[data-leader-chat] button')].filter(el => el.getBoundingClientRect().width).filter(el => el.getBoundingClientRect().width < 44 || el.getBoundingClientRect().height < 44).map(el => el.textContent) }));
+      expect(!small.overflow && !small.targets.length, `320px layout and touch targets: ${JSON.stringify(small)}`);
+      await tab.shot(`${String(n).padStart(2, '0')}-chat-design-320`);
+      await tab.cdp('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+    } else {
+      tab.win.webContents.setZoomFactor(2);
+      await sleep(150);
+      expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), '200% zoom does not overflow the page');
+      tab.win.webContents.setZoomFactor(1);
+    }
+    await tab.shot(`${String(n).padStart(2, '0')}-chat-design`);
+    await tab.cdp('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }, { name: 'prefers-color-scheme', value: 'dark' }] });
+    await tab.waitFor("Chat dark theme", () => document.documentElement.dataset.theme === "dark");
+    await tab.shot(`${String(n).padStart(2, '0')}-chat-design-dark`);
+    await tab.cdp('Emulation.setEmulatedMedia', { features: [] });
+    await tab.go('today');
+    expect(await tab.eval(() => !document.querySelector('[data-leader-panel]')), 'closed Chat leaves Today approval area clear');
+    await tab.click('[data-ask-leader]'); await sleep(450);
+    await tab.waitFor('modal panel', () => !!document.querySelector('[data-leader-panel][role="dialog"]'));
+    expect(await tab.eval(() => document.querySelector('[data-leader-panel]').contains(document.activeElement)), 'focus enters the requested modal');
+    await tab.click('[data-chat-panel-close]');
+    await tab.waitFor('Today clear and focus restored', () => !document.querySelector('[data-leader-panel]') && document.activeElement?.hasAttribute('data-ask-leader'));
+    const reader = current = await Tab.open("chat-design-member");
+    await reader.click("#username"); await reader.type("minh");
+    await reader.click("#password"); await reader.type(people.minh.password); await reader.key("Enter");
+    await reader.waitFor("member signed in", () => !document.querySelector("#username"));
+    await reader.go(`chat?thread=${sent.thread.id}`);
+    // Chat is a menu page only with chatUse (webPages): a view-only member who opens the link lands elsewhere, never on a composer.
+    await reader.waitFor("member lands outside Chat", () => !!document.querySelector("nav, aside, [data-shell-title]") && !document.querySelector('[data-chat-thread]'));
+    expect(await reader.eval(() => !document.querySelector('[data-chat-thread] textarea') && !document.querySelector('[data-chat-new]') && !document.querySelector('a[href$="/chat"]')), "member without chatUse has no Chat page, composer or new-chat control");
+  });
+
+  // Roadmap 62d: the shell and Chat share drafts and threads; RPC stands in for the leader.
+  await step("chat-everywhere", async () => {
+    const machineRpc = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.chat-everywhere" }, body: JSON.stringify({ method, input }) });
+      const j = await r.json();
+      if (j.error) throw new Error(`${method}: ${j.error.message}`);
+      return j.result;
+    };
+    const profile = { id: "claude-1", label: "Claude", kind: "claude", enabled: true, installed: true, loggedIn: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0 };
+    await machineRpc("machines.heartbeat", { machine: "chat-everywhere", instance: "ce000001", version: "0.143.0", projects: ["payment"], acceptsRuns: true, profiles: [profile] });
+    const machineId = (await rpc("machines.list")).find((m) => m.machine === "chat-everywhere").id;
+    const tab = current = await Tab.open("chat-everywhere-lan");
+    // Hidden Electron windows freeze the sheet's entrance animation off-screen.
+    tab.win.showInactive();
+    await tab.click("#username");
+    await tab.type("lan");
+    await tab.click("#password");
+    await tab.type(people.lan.password);
+    await tab.key("Enter");
+    if (mobile) {
+      // The phone menu is a Sheet, mounted only while open: the account line and the service picker are inside it.
+      await tab.waitFor("Lan signed in", () => !document.querySelector("#username") && !!document.querySelector('button[aria-label="Ẩn hoặc hiện thanh bên"]'));
+      await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
+    }
+    await tab.waitFor("Lan signed in", () => !document.querySelector("#username") && document.body.innerText.includes("@lan"));
+    await tab.go("today");
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('input[aria-label="Tìm service hoặc hệ thống…"]');
+    await tab.type("payment");
+    await tab.key("Enter");
+    await tab.key("Escape");
+    if (mobile) await tab.key("Escape");
+    await tab.click("[data-ask-leader]");
+    await sleep(450);
+    await tab.waitFor("new chat in payment scope", () => document.querySelector('[data-leader-panel] #chat-project')?.value === "payment");
+    expect(await tab.eval(() => ![...document.querySelector('[data-leader-panel] #chat-project').options].some((o) => o.value === "*")), "service lead must not see whole-hub chat");
+    expect(await tab.eval(() => !document.querySelector('[data-chat-setup]').open), "new chat keeps configuration folded");
+    if (mobile) expect(await tab.eval(() => {
+      const r = document.querySelector('[data-leader-panel] textarea').getBoundingClientRect();
+      return r.height > 0 && r.top >= 0 && r.bottom <= innerHeight;
+    }), "phone new-chat composer is visible before opening advanced choices");
+    await tab.select('[data-leader-panel] #chat-new-model', 'opus');
+    await tab.select('[data-leader-panel] #chat-new-effort', 'high');
+    await tab.click('[data-leader-panel] textarea');
+    await tab.type("Bản nháp từ mọi trang");
+    // A real upload also survives moving between the two surfaces.
+    await tab.eval(() => {
+      const input = document.querySelector('[data-leader-panel] input[type="file"]');
+      if (!input) throw new Error("no file input; panel=" + !!document.querySelector("[data-leader-panel]"));
+      const data = new DataTransfer();
+      data.items.add(new File(["draft attachment"], "draft.txt", { type: "text/plain" }));
+      input.files = data.files;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await tab.waitFor("uploaded attachment", () => document.querySelector('[data-leader-panel]')?.textContent.includes("draft.txt") && !document.querySelector('[data-leader-panel]')?.textContent.includes("Đang tải lên"));
+    await tab.click("[data-chat-panel-close]");
+    await tab.waitFor("focus restored to shell opener", () => document.activeElement?.hasAttribute("data-ask-leader"));
+    await tab.key("l", "Control", "Shift");
+    await sleep(450);
+    await tab.waitFor("draft on reopen", () => document.querySelector('[data-leader-panel] textarea')?.value === "Bản nháp từ mọi trang");
+    await tab.click("[data-chat-open-page]");
+    await tab.waitFor("draft on Chat page", () => !document.querySelector('[data-leader-panel]') && document.querySelector('main textarea')?.value === "Bản nháp từ mọi trang" && document.querySelector('main')?.textContent.includes("draft.txt") && document.querySelector("#chat-new-model")?.value === "opus" && document.querySelector("#chat-new-effort")?.value === "high");
+    await tab.click("[data-ask-leader]");
+    await sleep(450);
+    await tab.select('[data-leader-panel] #chat-machine', machineId);
+    await tab.click('[data-leader-panel] button[type="submit"]', "Bắt đầu");
+    const threadId = await tab.waitFor("started thread", () => Number(document.querySelector('[data-leader-panel] [data-chat-thread]')?.getAttribute("data-chat-thread")));
+    let thread = await rpc("chat.get", { threadId }, people.lan.token);
+    expect(thread.messages[0].text === "Bản nháp từ mọi trang" && thread.messages[0].files.length === 1, "the shared draft and attachment were sent once");
+    await machineRpc("chat.finish", { replyId: thread.messages.at(-1).id, status: "done", text: "Đã nhận yêu cầu." });
+    await tab.waitFor("completed reply", () => document.querySelector('[data-leader-panel]')?.textContent.includes("Đã nhận yêu cầu."));
+    await tab.click('[data-leader-panel] textarea');
+    await tab.type("Bản nháp trả lời");
+    await tab.click("[data-chat-open-page]");
+    await tab.waitFor("same thread and reply draft on Chat", (id) => document.querySelector('[data-chat-thread]')?.getAttribute('data-chat-thread') === String(id) && document.querySelector('main textarea')?.value === "Bản nháp trả lời", threadId);
+    await tab.go("tasks?task=PAY-1");
+    await tab.waitFor("task details", () => document.querySelector('[role="dialog"]')?.textContent.includes("PAY-1"));
+    await tab.key("l", "Control", "Shift");
+    await sleep(450);
+    await tab.waitFor("task context", () => document.querySelector('[data-chat-context] a')?.getAttribute('href') === "#/tasks?task=PAY-1");
+    await tab.eval(() => {
+      const input = document.querySelector('[data-leader-panel] textarea');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, 'x'.repeat(8000));
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await tab.waitFor("context included in message limit", () => document.querySelector('[data-leader-panel] button[type="submit"]')?.disabled && document.querySelector('[data-leader-panel]')?.textContent.includes("vượt quá 8.000 ký tự"));
+    await tab.eval(() => {
+      const input = document.querySelector('[data-leader-panel] textarea');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, 'Bản nháp trả lời');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await tab.click('[data-leader-panel] button[type="submit"]', "Gửi");
+    thread = await until("context in the sent message", async () => {
+      const th = await rpc("chat.get", { threadId }, people.lan.token);
+      return th.messages.find((m) => m.role === "user" && m.text.includes("[PAY-1](#/tasks?task=PAY-1)")) && th;
+    });
+    expect(thread.messages.filter((m) => m.role === "user").at(-1).text.endsWith("Bản nháp trả lời"), "task context accompanies the existing draft");
+    await machineRpc("chat.finish", { replyId: thread.messages.at(-1).id, status: "done", text: "Đã đọc task." });
+    await tab.shot(`${String(n).padStart(2, "0")}-chat-everywhere-task`);
+    if (mobile) {
+      const metrics = await tab.eval(() => {
+        const panel = document.querySelector('[data-leader-panel]').getBoundingClientRect();
+        const buttons = [...document.querySelectorAll('[data-leader-panel] button')].filter((b) => b.getBoundingClientRect().width);
+        return { width: panel.width, height: panel.height, viewport: [innerWidth, innerHeight], small: buttons.filter((b) => b.getBoundingClientRect().width < 44 || b.getBoundingClientRect().height < 44).map((b) => b.getAttribute('aria-label') ?? b.textContent) };
+      });
+      expect(metrics.width === metrics.viewport[0] && metrics.height === metrics.viewport[1], `full-screen phone panel: ${JSON.stringify(metrics)}`);
+      expect(!metrics.small.length, `phone touch targets: ${metrics.small.join(', ')}`);
+      expect(await tab.eval(() => parseFloat(getComputedStyle(document.querySelector('[data-leader-panel] textarea')).fontSize) >= 16), "phone input text is at least 16px");
+      await tab.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }, { name: "prefers-color-scheme", value: "dark" }] });
+      await tab.waitFor("dark theme tokens", () => document.documentElement.dataset.theme === "dark");
+      await sleep(150);
+      await tab.shot(`${String(n).padStart(2, "0")}-chat-everywhere-dark-mobile`);
+      await tab.cdp("Emulation.setEmulatedMedia", { features: [] });
+    }
+    await tab.key("Escape");
+    await tab.key("Escape");
+    const at = new Date().toISOString();
+    await machineRpc("runs.push", { machine: "chat-everywhere", runs: [{ runId: "R-chat-context", project: "payment", taskId: "PAY-1", taskTitle: "Run context", role: "implement", profileId: "claude-1", status: "succeeded", createdAt: at, finishedAt: at }] });
+    await tab.go(`runs?run=${encodeURIComponent(`${machineId}/R-chat-context`)}`);
+    await tab.waitFor("run detail", () => document.querySelector('main')?.textContent.includes("Run context"));
+    await tab.click("[data-ask-leader]");
+    await sleep(450);
+    await tab.waitFor("run context", () => document.querySelector('[data-chat-context] a')?.textContent === "R-chat-context");
+    await tab.key("Escape");
+    await machineRpc("specs.push", { project: "payment", features: [{ dir: "062-chat-context", branch: "ai/chat-context", commit: "abc1260", files: { spec: "# Ngữ cảnh tính năng\n", plan: null, tasks: null } }] });
+    await tab.go("features?project=payment&dir=062-chat-context&branch=ai%2Fchat-context");
+    await tab.waitFor("feature detail", () => document.querySelector('[data-feature-title]')?.getAttribute('data-feature-title'));
+    await tab.click("[data-ask-leader]");
+    await sleep(450);
+    await tab.waitFor("feature context", () => document.querySelector('[data-chat-context] a')?.textContent === "062-chat-context");
+    await tab.click('[data-leader-panel] button[aria-label="Bỏ ngữ cảnh"]');
+    expect(await tab.eval(() => !document.querySelector('[data-chat-context]')), "page context can be removed");
+    await tab.key("Escape");
+    const adminTab = current = tabs.admin;
+    adminTab.win.showInactive();
+    await adminTab.go("today");
+    await adminTab.click("[data-ask-leader]");
+    await adminTab.waitFor("admin can choose the whole hub", () => [...document.querySelector('[data-leader-panel] #chat-project')?.options ?? []].some((o) => o.value === "*"));
+    await adminTab.key("Escape");
+  });
+
+  // Roadmap 60d: payment's leader turns a request into a plan (spec, tasks, batches); Lan starts it with one click.
+  await step("leader-plan", async () => {
+    const previousPolicy = (await rpc("sdlc.get")).projects.payment;
+    try {
+    const lanRpc = async (method, input, token = people.lan.token) => {
+      const r = await fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "x-hive-agent": "runner.lan-mbp" },
+        body: JSON.stringify({ method, input }),
+      });
+      const j = await r.json();
+      if (j.error) throw new Error(`${method}: ${j.error.message}`);
+      return j.result;
+    };
+    const claude = { id: "claude-1", label: "Claude", kind: "claude", enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0 };
+    const beat = () => lanRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", version: "0.104.0", projects: ["payment"], acceptsRuns: true, profiles: [claude] });
+    await beat();
+    const machineId = (await rpc("machines.list")).find((m) => m.machine === "lan-mbp").id;
+    const sent = await rpc("chat.send", { project: "payment", machineId, text: "Làm trang hoàn tiền" }, people.lan.token);
+    const request = await until("the chat request at Lan's heartbeat", async () => (await beat()).chatRequests?.find((r) => r.replyId === sent.reply.id));
+    await lanRpc("chat.progress", { replyId: sent.reply.id, text: "Mình lên kế hoạch." });
+    const action = {
+      kind: "plan.create",
+      spec: { key: "project/payment/hoan-tien", title: "Hoàn tiền", content: "# Hoàn tiền\nNgười mua yêu cầu hoàn tiền trong 7 ngày." },
+      tasks: [
+        { id: "PAY-R1", title: "API hoàn tiền", acceptance: "Trả lỗi rõ khi quá 7 ngày", dependsOn: [] },
+        { id: "PAY-R2", title: "Trang hoàn tiền", acceptance: "Người mua thấy trạng thái yêu cầu", dependsOn: ["PAY-R1"] },
+      ],
+      batches: [{ title: "API", taskIds: ["PAY-R1"] }, { title: "Giao diện", taskIds: ["PAY-R2"] }],
+    };
+    const proposed = await lanRpc("chat.propose", { action, reason: "Yêu cầu trong chat" }, request.grant);
+    expect(proposed.status === "proposed", `a plan waits for Lan unless payment lets its leader run plans: ${JSON.stringify(proposed)}`);
+    await lanRpc("chat.finish", { replyId: sent.reply.id, status: "done", text: "Mình đề xuất Kế hoạch hoàn tiền." });
+    const tab = (current = tabs.lan);
+    await tab.go(`chat?thread=${sent.thread.id}`);
+    await tab.waitFor("the plan card", () => {
+      const text = document.body.innerText;
+      return text.includes("Kế hoạch: Hoàn tiền") && text.includes("Xong khi: Trả lỗi rõ khi quá 7 ngày") && text.includes("Lô dự kiến");
+    });
+    await tab.shot(`${String(n).padStart(2, "0")}-leader-plan-proposed`);
+    await tab.click('[data-action-status="proposed"] button', "Làm");
+    await until("the spec and both tasks made", async () => {
+      const tasks = await rpc("tasks.list", { project: "payment" });
+      const ui = tasks.find((t) => t.id === "PAY-R2");
+      return (await rpc("docs.get", { key: "project/payment/hoan-tien" })) && tasks.some((t) => t.id === "PAY-R1") && ui?.dependsOn.includes("PAY-R1");
+    });
+    expect((await rpc("sdlc.get")).projects.payment?.autoDispatch === true, "starting a plan opts the service into auto-dispatch");
+    await tab.waitFor("the plan done, its spec and task ids linked", () => {
+      const card = document.querySelector('[data-action-status="done"] [data-plan="project/payment/hoan-tien"]');
+      return !!card?.querySelector('a[href="#/tasks?task=PAY-R2"]') && !!card.querySelector('a[href="#/docs?doc=project%2Fpayment%2Fhoan-tien"]');
+    });
+    } finally {
+      await rpc("sdlc.setProject", { project: "payment", settings: { ...previousPolicy, gates: previousPolicy.gates, autoDispatch: previousPolicy.autoDispatch ?? false } });
+    }
+  });
+
+  // Research uses an isolated hub and machine RPCs; no paid agent or production hub is called.
+  await step("leader-research", async () => {
+    const machineRpc = async (method, input, token = people.lan.token) => {
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "x-hive-agent": "runner.lan-research" }, body: JSON.stringify({ method, input }) });
+      const j = await r.json();
+      if (j.error) throw new Error(`${method}: ${j.error.message}`);
+      return j.result;
+    };
+    const profile = { id: "claude-research", label: "Claude", kind: "claude", enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0, research: true };
+    const beat = () => machineRpc("machines.heartbeat", { machine: "lan-research", instance: "abcd0062", projects: ["payment"], acceptsRuns: true, profiles: [profile] });
+    await beat();
+    const machineId = (await rpc("machines.list")).find(m => m.machine === "lan-research").id;
+    const sent = await rpc("chat.send", { project: "payment", machineId, text: "Nghiên cứu lưu trữ trạng thái hoàn tiền" }, people.lan.token);
+    const reply = (await beat()).chatRequests.find(r => r.replyId === sent.reply.id);
+    const proposed = await machineRpc("chat.propose", { action: { kind: "research.start", topic: "Lưu trữ trạng thái hoàn tiền", questions: ["Phương án nào dễ kiểm tra và khôi phục?"], sources: ["repo", "hive"], format: "comparison" }, reason: "Đọc trước khi triển khai" }, reply.grant);
+    await machineRpc("chat.finish", { replyId: sent.reply.id, status: "done", text: "Mình đề xuất nghiên cứu trước khi lập kế hoạch." });
+    const tab = (current = tabs.lan);
+    await tab.go(`chat?thread=${sent.thread.id}`);
+    await tab.waitFor("research proposal", () => document.body.innerText.includes("Nghiên cứu: Lưu trữ trạng thái hoàn tiền") && !!document.querySelector('[data-research="proposed"]'));
+    await tab.click('[data-action-status="proposed"] button', "Xác nhận");
+    const research = await until("research queued", async () => {
+      const got = await rpc("chat.get", { threadId: sent.thread.id }, people.lan.token);
+      const action = got.messages.flatMap(m => m.actions).find(a => a.id === proposed.id);
+      return action?.result?.researchId ? rpc("research.get", { id: action.result.researchId }, people.lan.token) : null;
+    });
+    await machineRpc("runs.requestResult", { id: research.requestId, status: "accepted", runId: "R-research-e2e" });
+    await machineRpc("runs.push", { machine: "lan-research", runs: [{ runId: "R-research-e2e", project: "payment", taskId: `research-${research.id}`, taskTitle: "Lưu trữ trạng thái hoàn tiền", role: "research", status: "running", profileId: profile.id, createdAt: new Date().toISOString() }] });
+    await tab.waitFor("research in progress", () => document.body.innerText.includes("Đang nghiên cứu"));
+    const artifact = await machineRpc("artifacts.put", { project: "payment", taskId: `research-${research.id}`, runId: "R-research-e2e", name: "report.md", data: Buffer.from("# Báo cáo nghiên cứu\nChọn SQLite.\n\n## Nguồn\nREADME.md\n\n## Đề xuất\nPAY-RS1: Lưu trạng thái với test khôi phục.\n").toString("base64") });
+    await machineRpc("research.finish", { id: research.id, artifactId: artifact.id, sources: ["README.md", "project/payment/agents"], recommendations: "PAY-RS1: Lưu trạng thái; xong khi test khôi phục xanh." });
+    await tab.waitFor("report ready", () => document.body.innerText.includes("Có báo cáo") && document.body.innerText.includes("Nguồn đã đọc"));
+    await tab.click('[data-research] button', "Xem báo cáo");
+    await tab.waitFor("inline Markdown report", () => document.body.innerText.includes("Chọn SQLite.") && document.body.innerText.includes("Báo cáo nghiên cứu"));
+    await tab.click("[data-artifact-preview] button", "Đóng");
+    expect(!(await rpc("tasks.list", { project: "payment" })).some(t => t.id === "PAY-RS1"), "research alone creates no work task");
+    if (mobile) {
+      const targets = await tab.eval(() => [...document.querySelectorAll('[data-research] button, [data-research] a')].map(el => ({ w: el.getBoundingClientRect().width, h: el.getBoundingClientRect().height })));
+      expect(targets.every(r => r.h >= 44 && r.w >= 44), "research controls have 44px tap areas");
+      expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "research card fits the phone");
+    }
+    await tab.shot(`${String(n).padStart(2, "0")}-research-report`);
+    await tab.click('[data-research] button', "Biến thành Kế hoạch");
+    const planReply = await until("recommendations sent to same thread", async () => (await beat()).chatRequests?.find(r => r.threadId === sent.thread.id));
+    expect(planReply.text.includes("PAY-RS1") && planReply.text.includes("plan.create"), "recommendations go to the plan proposal flow");
+    await machineRpc("chat.propose", { action: { kind: "plan.create", spec: { key: "project/payment/research-storage-plan", title: "Lưu trạng thái hoàn tiền", content: "# Lưu trạng thái\nTheo nghiên cứu, dùng SQLite." }, tasks: [{ id: "PAY-RS1", title: "Lưu trạng thái", acceptance: "Test khôi phục xanh", dependsOn: [] }], batches: [{ title: "Lưu trữ", taskIds: ["PAY-RS1"] }] }, reason: "Từ báo cáo nghiên cứu" }, planReply.grant);
+    await machineRpc("chat.finish", { replyId: planReply.replyId, status: "done", text: "Mình đề xuất Kế hoạch từ nghiên cứu." });
+    await tab.waitFor("plan from research", () => !!document.querySelector('[data-plan="project/payment/research-storage-plan"]'));
+    // Starting the plan opts payment into auto-dispatch; put it back so later steps (agent-assign) own the free places.
+    const previousPolicy = (await rpc("sdlc.get")).projects.payment;
+    try {
+      await tab.click('[data-action-status="proposed"] button', "Làm");
+      await until("research plan task created", async () => (await rpc("tasks.list", { project: "payment" })).find(t => t.id === "PAY-RS1"));
+    } finally {
+      await rpc("sdlc.setProject", { project: "payment", settings: { ...previousPolicy, gates: previousPolicy?.gates ?? {}, autoDispatch: previousPolicy?.autoDispatch ?? false } });
+    }
+  });
+
   // Roadmap 37b: the UI opens a hub thread; heartbeat/RPC stand in for a leader, with no real CLI or hub.
+  await step("codex-leader-chat", async () => {
+    const machineRpc = async (method, input) => {
+      const response = await fetch(`${base}/api/rpc`, {
+        method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.codex-leader-e2e" },
+        body: JSON.stringify({ method, input }),
+      });
+      const body = await response.json();
+      if (body.error) throw new Error(`${method}: ${body.error.message}`);
+      return body.result;
+    };
+    const profile = (id, kind, priority, overLimit = false) => ({ id, label: id, kind, priority, overLimit, enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0, supportedModels: kind === "codex" ? ["gpt-test-leader"] : ["opus"] });
+    const beat = (tired = true) => machineRpc("machines.heartbeat", { machine: "codex-leader-e2e", instance: "ab000062", projects: ["payment"], acceptsRuns: true, profiles: [profile("claude-leader", "claude", 1, tired), profile("codex-leader", "codex", 2)] });
+    await beat();
+    const machineId = (await rpc("machines.list")).find((m) => m.machine === "codex-leader-e2e").id;
+    await rpc("chat.setDefaults", { project: "payment", machineId, profileId: null, model: null, effort: null });
+    const tab = (current = tabs.admin);
+    await tab.eval(() => localStorage.removeItem("xdev-hive.scope"));
+    await tab.reload(); await tab.go("chat"); await tab.click("[data-chat-new]");
+    await tab.select("#chat-project", "payment");
+    await tab.waitFor("available Codex plan chosen by default", (id) => document.querySelector("#chat-machine")?.value === id && document.querySelector("#chat-plan")?.value === "codex-leader", machineId);
+    await tab.select("#chat-new-model", "gpt-test-leader"); await tab.select("#chat-new-effort", "high");
+    if (mobile) {
+      const targets = await tab.eval(() => [...document.querySelectorAll('#chat-project, #chat-machine, #chat-plan, #chat-new-model, #chat-new-effort')].map((el) => ({ height: el.getBoundingClientRect().height, font: parseFloat(getComputedStyle(el).fontSize) })));
+      expect(targets.every((el) => el.height >= 44 && el.font >= 16), JSON.stringify(targets));
+    }
+    await tab.click("button", "Lưu làm mặc định");
+    await until("Codex defaults saved", async () => (await rpc("chat.defaults", { project: "payment" })).profileId === "codex-leader");
+    await tab.shot("codex-leader-picker");
+    await tab.click('textarea[aria-label="Tin nhắn"]'); await tab.type("Leader Codex 62a"); await tab.click("button", "Bắt đầu");
+    const thread = await until("Codex thread created", async () => (await rpc("chat.threads", { project: "payment" })).find((t) => t.title === "Leader Codex 62a"));
+    const request = (await beat()).chatRequests.find((r) => r.threadId === thread.id);
+    expect(request.profileId === "codex-leader" && request.model === "gpt-test-leader" && request.effort === "high", JSON.stringify(request));
+    await machineRpc("chat.finish", { replyId: request.replyId, status: "done", text: "Đã đọc service bằng Codex.", sessionId: "codex-e2e-thread", profileId: "codex-leader", tokens: { inputTokens: 80, cacheReadTokens: 20, outputTokens: 30 } });
+    // Since 64b the turn's total is in the session bar's summary; the in/cache/out split is inside the folded bar.
+    await tab.waitFor("Codex reply and tokens", () => document.body.innerText.includes("Đã đọc service bằng Codex") && document.querySelector("[data-chat-session] > summary")?.innerText.includes("Token lượt: 130"));
+    await tab.click("[data-chat-session] > summary");
+    await tab.waitFor("Codex token split", () => document.querySelector("[data-chat-session]")?.innerText.includes("Token: 80 vào · 20 cache · 30 ra"));
+    await beat(false);
+    const claude = await rpc("chat.send", { project: "payment", machineId, profileId: "claude-leader", model: "opus", text: "Claude hết quota 62a" });
+    await machineRpc("chat.finish", { replyId: claude.reply.id, status: "failed", text: "Câu trả lời dở dang", sessionId: "claude-e2e-thread", rateLimited: true, error: { message: "Usage limit reached" } });
+    const next = await rpc("chat.send", { project: "payment", threadId: claude.thread.id, text: "Tiếp tục bằng gói còn quota" });
+    const switched = (await beat(false)).chatRequests.find((r) => r.replyId === next.reply.id);
+    expect(switched.profileId === "codex-leader" && switched.sessionId === null && switched.model === null, JSON.stringify(switched));
+    await machineRpc("chat.finish", { replyId: next.reply.id, status: "done", text: "Tiếp tục bằng Codex.", profileId: "codex-leader", sessionId: "codex-fallback-thread", tokens: { inputTokens: 10, cacheReadTokens: 0, outputTokens: 5 } });
+    await tab.go(`chat?thread=${claude.thread.id}`);
+    await tab.waitFor("quota fallback notice in thread", () => document.body.innerText.includes("claude-leader hết quota") && document.body.innerText.includes("chuyển sang codex-leader") && document.body.innerText.includes("Tiếp tục bằng Codex."));
+    await tab.shot("codex-leader-fallback");
+  });
+
   await step("hub-leader-chat", async () => {
     const machineRpc = async (method, input, token = admin) => {
       const response = await fetch(`${base}/api/rpc`, {
@@ -2025,6 +2819,8 @@ async function main() {
     const machineId = (await rpc("machines.list")).find((m) => m.machine === "hub-leader-e2e").id;
     const beforePayment = await rpc("chat.defaults", { project: "payment" });
     const tab = (current = tabs.admin);
+    // Keep sheet animations running while exercising their controls.
+    tab.win.showInactive();
     await tab.eval(() => localStorage.removeItem("xdev-hive.scope"));
     await tab.reload();
     await tab.go("chat");
@@ -2062,8 +2858,6 @@ async function main() {
     await until("hub commands saved", async () => (await rpc("chat.defaults", { project: "*" })).commands.length === 2);
     expect(JSON.stringify(await rpc("chat.defaults", { project: "payment" })) === JSON.stringify(beforePayment), "hub settings did not change payment's defaults, commands or autonomy");
     await tab.key("Escape");
-    // The guide sheet's overlay takes the next click until it has closed.
-    await tab.waitFor("leader guide closed", () => !document.querySelector('[role="dialog"]'));
     await tab.click('textarea[aria-label="Tin nhắn"]');
     await tab.type("Điều phối toàn hub 37b");
     await tab.click("button", "Bắt đầu");
@@ -2300,7 +3094,8 @@ async function main() {
     expect(await tab.eval(() => [...document.querySelectorAll("th")].some((th) => th.textContent === "Service")), "task table has no Service column");
     await tab.select("[data-service-filter]", "ov-web");
     await tab.waitFor("tasks filtered by service", () => document.body.innerText.includes("Overview ov-web") && !document.body.innerText.includes("Overview ov-api"));
-    expect(await tab.eval(() => document.querySelector('[data-project-picker-trigger]')?.textContent.includes("ov-shop")), "filter changed sidebar scope");
+    // A closed phone menu (a Sheet) is not mounted; the shell title names the same scope.
+    expect(await tab.eval(() => (document.querySelector('[data-project-picker-trigger]') ?? document.querySelector("[data-shell-title]"))?.textContent.includes("ov-shop")), "filter changed sidebar scope");
     await tab.go("runs");
     await tab.waitFor("runs from both services", () => document.querySelector('[data-run-service="ov-api"]') && document.querySelector('[data-run-service="ov-web"]'));
     await tab.select("[data-service-filter]", "ov-api");
@@ -2360,6 +3155,9 @@ async function main() {
     const tab = (current = tabs.lan);
     await tab.go("graph");
     await tab.waitFor("a node per project and the cross-service edge", () => !!document.querySelector('[data-graph-service="payment"]') && !!document.querySelector('[data-graph-service="demo"]') && !!document.querySelector('.react-flow__edge[data-id="system:payment->system:demo"]'));
+    // Polling replaces the node objects; the service edge must keep its handle positions after that refresh.
+    await sleep(5500);
+    await tab.waitFor("cross-service edge after graph refresh", () => !!document.querySelector('.react-flow__edge[data-id="system:payment->system:demo"]'));
     expect(!!(await tab.eval(() => document.querySelector('[data-graph-layer="system"]')?.getAttribute("aria-pressed") === "true" && document.querySelector('[data-graph-layer="task"]')?.disabled)), "All projects shows only the system layer");
     const demo = await tab.eval(() => document.querySelector('[data-graph-service="demo"]')?.getAttribute("aria-label") ?? "");
     expect(/task mở/.test(demo) && /run đang chạy/.test(demo), `service node label: ${demo}`);
@@ -2452,7 +3250,7 @@ async function main() {
     // Lan leads payment: what she decides comes first, then the agents waiting on her, then what to review.
     const groups = await tab.waitFor("Hôm nay grouped for a lead", () => {
       const list = [...document.querySelectorAll("[data-inbox-group]")].map((g) => g.getAttribute("data-inbox-group"));
-      return document.querySelector("[data-inbox-role]")?.getAttribute("data-inbox-role") === "lead" && list.includes("agent") && list;
+      return document.querySelector("[data-inbox-role]")?.getAttribute("data-inbox-role") === "lead" && list.includes("agent") && list.includes("decide") && list;
     });
     expect(groups[0] === "decide" && groups.indexOf("agent") < (groups.includes("review") ? groups.indexOf("review") : Infinity), `groups: ${groups.join()}`);
     const askedKey = await tab.waitFor("the asking run in Agent đang chờ bạn", () =>
@@ -2470,7 +3268,17 @@ async function main() {
       const [gate] = await rpc("sdlc.gates", { taskId: "SPEC-TODAY" });
       return gate?.status === "passed" && gate.decidedBy?.startsWith("lan");
     });
-    if (mobile) await tab.click("button", "Quay lại danh sách");
+    if (mobile) {
+      // A toast (the approval's) must not sit over the way back: the button under its own centre is itself.
+      await tab.waitFor("Quay lại danh sách not covered", () => {
+        const back = [...document.querySelectorAll("button")].find((x) => x.innerText.includes("Quay lại danh sách"));
+        if (!back) return false;
+        const r = back.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return !!hit && back.contains(hit);
+      });
+      await tab.click("button", "Quay lại danh sách");
+    }
     await tab.click(`[data-inbox-key="leader:${proposed.id}"]`);
     await tab.waitFor("the leader's card", () => document.body.innerText.includes("Không dùng nữa"));
     await tab.click("button", "Xác nhận");
@@ -2686,6 +3494,68 @@ async function main() {
     await rpc("tools.remove", { id: toolId });
   });
 
+  await step("worktree-admin", async () => {
+    const machineName = "worktree-fixture";
+    const now = new Date().toISOString();
+    const entry = (taskId, changes = {}) => ({ project: "payment", taskId, taskStatus: "done", taskUpdatedAt: now,
+      path: `/fixture/worktrees/payment/${taskId}`, branch: `ai/${taskId}`, head: "a".repeat(40), fingerprint: "b".repeat(64),
+      bytes: 1024 ** 3, modifiedAt: now, dirty: false, merged: true, active: false, error: null, ...changes });
+    const report = { measuredAt: now, entries: [entry("WT-clean"), entry("WT-dirty", { dirty: true, merged: false }), entry("WT-active", { active: true })],
+      totalBytes: 3 * 1024 ** 3, freeBytes: 20 * 1024 ** 3, cleanup: { enabled: true, retentionDays: 30, minFreeGb: 10 }, logs: [], errors: [] };
+    const beat = async (extra = {}) => {
+      const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": `runner.${machineName}` }, body: JSON.stringify({ method: "machines.heartbeat", input: { machine: machineName, instance: "63f63f63f", projects: ["payment"], acceptsRuns: false, worktrees: report, ...extra } }) });
+      const body = await response.json(); if (body.error) throw new Error(body.error.message); return body.result;
+    };
+    await beat();
+    const machine = (await rpc("machines.list")).find(m => m.machine === machineName);
+    current = tabs.hoa; await tabs.hoa.reload(); await tabs.hoa.go("machines");
+    expect(await tabs.hoa.eval(name => !document.querySelector(`[data-worktrees="${name}"]`), machineName), "a project member cannot manage another person's worktrees");
+    const open = async tab => {
+      current = tab; await tab.reload(); await tab.go("machines");
+      await tab.waitFor("worktree button", name => document.querySelector(`[data-worktrees="${name}"]`), machineName);
+      await tab.click(`[data-worktrees="${machineName}"]`);
+      // WT-clean stays in every report; WT-dirty is gone once the first delete lands.
+      await tab.waitFor("worktree inventory", () => document.querySelector('[data-worktree="WT-clean"]'));
+    };
+    await open(tabs.admin);
+    expect(await tabs.admin.eval(() => !document.querySelector('[data-worktree="WT-active"] [data-delete-worktree]')), "active task cannot be deleted");
+    if (mobile) {
+      // The dialog zooms in from 95%: measured mid-animation a 44px button reads 43.7.
+      await tabs.admin.waitFor("worktree dialog settled", () => (document.querySelector('[data-slot="dialog-content"]')?.getAnimations({ subtree: true }) ?? [])
+        .every(a => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity));
+      const bounds = await tabs.admin.eval(() => {
+        const button = document.querySelector('[data-worktree="WT-clean"] [data-delete-worktree]').getBoundingClientRect();
+        return { height: button.height, width: button.width, overflow: document.documentElement.scrollWidth > innerWidth };
+      });
+      expect(bounds.height >= 44 && bounds.width >= 44 && !bounds.overflow, `worktree mobile bounds: ${JSON.stringify(bounds)}`);
+    }
+    await tabs.admin.click('[data-worktree="WT-dirty"] [data-delete-worktree]');
+    expect(await tabs.admin.eval(() => document.querySelector('[data-confirm-worktree-delete]').disabled), "dirty/unmerged work requires explicit acknowledgement");
+    await tabs.admin.click('[role="alertdialog"] input[type="checkbox"]');
+    await tabs.admin.shot(`${String(n).padStart(2, "0")}-worktree-confirm`);
+    await tabs.admin.click('[data-confirm-worktree-delete]');
+    const access = await until("worktree delete command", async () => {
+      const view = await rpc("machines.worktrees", { machineId: machine.id }); return view.commands.length ? view : null;
+    });
+    const command = access.commands[0]; expect(command.force && command.targets[0].path.endsWith("WT-dirty"), "the confirmed snapshot is sent to the machine");
+    expect((await beat()).worktreeCommands.some(c => c.id === command.id), "intake-off machine receives worktree commands");
+    report.entries = report.entries.filter(e => e.taskId !== "WT-dirty"); report.totalBytes -= 1024 ** 3;
+    await beat({ worktreeResults: [{ id: command.id, results: [{ path: command.targets[0].path, ok: true, error: null }] }] });
+    await open(tabs.lan);
+    // Delete both selected clean rows with one command. Add a second idle worktree to the next heartbeat.
+    report.entries.push(entry("WT-second")); report.totalBytes += 1024 ** 3;
+    await beat();
+    await tabs.lan.waitFor("second worktree from heartbeat", () => document.querySelector('[data-worktree="WT-second"]'));
+    await tabs.lan.click('input[aria-label="Chọn WT-clean"]');
+    await tabs.lan.click('input[aria-label="Chọn WT-second"]');
+    await tabs.lan.click("button", "Xoá đã chọn (2)");
+    await tabs.lan.click('[data-confirm-worktree-delete]');
+    const bulk = await until("bulk worktree command", async () => (await rpc("machines.worktrees", { machineId: machine.id })).commands.find(c => c.targets.length === 2));
+    expect(bulk.requestedBy === "lan" && !bulk.force, "owner's bulk delete is recorded without bypassing warnings");
+    await tabs.lan.shot(`${String(n).padStart(2, "0")}-worktree-owner-pending`);
+    await rpc("machines.remove", { id: machine.id });
+  });
+
   // Assignment uses a dedicated fake machine so open requests from earlier scenarios cannot occupy its only slot.
   await step("agent-assign", async () => {
     const machineName = "lan-assign";
@@ -2713,9 +3583,7 @@ async function main() {
       await tab.waitFor("assignment form", (id) => document.querySelector(`[data-assign-machine] option[value="${id}"]`), machine.id);
       await tab.select("[data-assign-machine]", machine.id);
       await tab.select("[data-assign-profile]", profile.id);
-      // Not a pointer click: the sheet's scroller shifts the button ~90px after scrollIntoView, so the mouse lands on a model chip above it. Enter on the focused button is what a keyboard user does.
-      await tab.eval(() => document.querySelector("[data-assign-save]").focus());
-      await tab.key("Enter");
+      await tab.click("[data-assign-save]");
       await until("saved assignment", async () => (await taskNow(task.id))?.agent?.profileId === profile.id);
       await tab.key("Escape");
     }
@@ -2762,13 +3630,13 @@ async function main() {
     await tab.click('input[aria-label="Tìm skill"]');
     await tab.type("stats-");
     await tab.waitFor("skill usage columns", () => document.body.innerText.includes("Số run dùng 30 ngày"));
-    await tab.click('main [role="option"]', "stats-used");
+    await tab.click('main [data-pane-item]', "stats-used");
     await tab.waitFor("weekly usage chart", () => document.querySelector("[data-skill-usage]")?.children.length === 8);
     expect(await tab.eval(() => [...document.querySelectorAll("[data-skill-usage] > div > span")].reduce((n, el) => n + Number(el.textContent), 0) === 1), "duplicate loads count once");
     await tab.shot(`${String(n).padStart(2, "0")}-skill-usage-chart`);
     if (mobile) await tab.click('button', "Quay lại");
     await tab.click('label', "Skill không ai dùng");
-    await tab.waitFor("unused skill filter", () => [...document.querySelectorAll('main [role="option"]')].some((e) => e.textContent.includes("stats-unused")) && ![...document.querySelectorAll('main [role="option"]')].some((e) => e.textContent.includes("stats-used")));
+    await tab.waitFor("unused skill filter", () => [...document.querySelectorAll('main [data-pane-item]')].some((e) => e.textContent.includes("stats-unused")) && ![...document.querySelectorAll('main [data-pane-item]')].some((e) => e.textContent.includes("stats-used")));
     if (mobile) expect(await tab.eval(() => [...document.querySelectorAll("label")].find((e) => e.textContent.includes("Skill không ai dùng"))?.getBoundingClientRect().height >= 44), "filter touch target");
     await tab.click('label', "Skill không ai dùng");
   });
@@ -2796,7 +3664,7 @@ async function main() {
     await tab.click(`[data-proposal-card="${skillProposal.id}"] button`, "Từ chối");
     await until("skill rejected", async () => (await rpc("proposals.list", {})).find((p) => p.id === skillProposal.id)?.status === "rejected");
     await tab.go("skills");
-    await tab.click('[role="option"]', "knowledge-check");
+    await tab.click('[data-pane-item]', "knowledge-check");
     await tab.waitFor("skill application and modification metadata", () => document.body.innerText.includes("Lúc áp dụng") && document.body.innerText.includes("Lần sửa cuối"));
     await tab.shot(`${String(n).padStart(2, "0")}-knowledge-skill`);
 
@@ -2833,7 +3701,7 @@ async function main() {
     expect(layout.page <= layout.width + 1 && layout.content <= layout.main + 1, `knowledge layout overflow: ${JSON.stringify(layout)}`);
   });
 
-  if (mobile) {
+  if (mobile && tabs.admin) {
     current = tabs.admin;
     await tableCardsChecks({ tab: current, rpc, step, expect });
     await rpc("docs.save", { key: "project/payment/skills/mobile-check", title: "Mobile check", content: "---\nname: mobile-check\ndescription: Check phone navigation\n---\n\nCheck the selected pane.", baseVersion: 0 });
@@ -2842,11 +3710,11 @@ async function main() {
     await rpc("proposals.create", { docKey: guide.key, baseVersion: guide.version, content: guide.content + "\nPhone check.", reason: "Mobile navigation fixture" }, people.minh.token);
     const cases = [
       ["today", "item", "main [data-inbox-key]", null],
-      ["docs", "doc", 'main [role="treeitem"]:not([aria-expanded])', null],
-      ["runs", "run", 'main [role="option"]', null],
+      ["docs", "doc", 'main [data-doc-item]:not([aria-expanded])', null],
+      ["runs", "run", 'main [data-pane-item]', null],
       ["chat", "thread", 'nav[aria-label="Các cuộc chat"] button', null],
-      ["skills", "skill", 'main [role="option"]', null],
-      ["memory", "memory", 'main [role="option"]', null],
+      ["skills", "skill", 'main [data-pane-item]', null],
+      ["memory", "memory", 'main [data-pane-item]', null],
       // Đề xuất is a Chờ duyệt tab of Tài liệu and Skill since 49f (#/proposals redirects): the knowledge-pending step covers it.
       ["features", "project", "main [data-feature-card]", null],
     ];
@@ -2861,6 +3729,9 @@ async function main() {
         await tab.waitFor("selection in address", (param) => new URLSearchParams(location.hash.split("?")[1]).has(param), param);
         const selectedHash = await tab.eval(() => location.hash);
         const assertPane = async (detail) => {
+          // The address changes before React and the reloaded list queries settle.
+          await tab.waitFor("pane visibility settled", (selector, detail) =>
+            [...document.querySelectorAll(selector)].some((el) => el.getBoundingClientRect().width > 0) === !detail, selector, detail);
           const state = await tab.eval((selector) => {
             const main = document.querySelector("main");
             return { listVisible: [...document.querySelectorAll(selector)].some((el) => el.getBoundingClientRect().width > 0), width: innerWidth, height: innerHeight, page: document.documentElement.scrollWidth, main: main.clientWidth, content: main.scrollWidth };
@@ -2897,17 +3768,172 @@ async function main() {
         }
         if (route === "memory") {
           tab.win.setContentSize(767, 844);
-          await tab.waitFor("767px keeps list hidden", () => innerWidth === 767 && ![...document.querySelectorAll('main [role="option"]')].some((el) => el.getBoundingClientRect().width > 0));
+          await tab.waitFor("767px keeps list hidden", () => innerWidth === 767 && ![...document.querySelectorAll('main [data-pane-item]')].some((el) => el.getBoundingClientRect().width > 0));
           tab.win.setContentSize(768, 844);
-          await tab.waitFor("768px restores both panes", () => innerWidth === 768 && [...document.querySelectorAll('main [role="option"]')].some((el) => el.getBoundingClientRect().width > 0) && ![...document.querySelectorAll("main button")].some((el) => el.textContent.includes("Quay lại danh sách") && el.getBoundingClientRect().width > 0));
+          await tab.waitFor("768px restores both panes", () => innerWidth === 768 && [...document.querySelectorAll('main [data-pane-item]')].some((el) => el.getBoundingClientRect().width > 0) && ![...document.querySelectorAll("main button")].some((el) => el.textContent.includes("Quay lại danh sách") && el.getBoundingClientRect().width > 0));
           tab.win.setContentSize(390, 844);
-          await tab.waitFor("phone pane restored", () => innerWidth === 390 && ![...document.querySelectorAll('main [role="option"]')].some((el) => el.getBoundingClientRect().width > 0));
+          await tab.waitFor("phone pane restored", () => innerWidth === 390 && ![...document.querySelectorAll('main [data-pane-item]')].some((el) => el.getBoundingClientRect().width > 0));
         }
       });
     }
   }
 
   // Roadmap 41c: what a run made is on the run and on its task, and the project manager can take it away.
+  await step("artifacts-page", async () => {
+    const machine = async (method, input) => {
+      const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.artifacts-e2e" }, body: JSON.stringify({ method, input }) });
+      const body = await response.json();
+      if (body.error) throw new Error(`${method}: ${body.error.message}`);
+      return body.result;
+    };
+    await rpc("tasks.create", { project: "payment", id: "ART-1", title: "Review tệp của agent" });
+    await rpc("tasks.create", { project: "ledger", id: "ART-2", title: "Tệp service khác" });
+    const runId = "R-artifacts-page";
+    await machine("runs.push", { machine: "artifacts-e2e", runs: [{ runId, project: "payment", taskId: "ART-1", taskTitle: "Review tệp của agent", status: "succeeded", role: "implement", profileId: "codex-1", summary: "Đã làm: report.md và check.log", log: "done", createdAt: new Date().toISOString(), finishedAt: new Date().toISOString() }] });
+    const b64 = (text) => Buffer.from(text).toString("base64");
+    const put = (name, data, project = "payment", taskId = "ART-1", run = runId) => machine("artifacts.put", { project, taskId, runId: run, profileId: "codex-1", name, data });
+    const report = await put("report.md", b64("# Báo cáo kiểm thử\n\nĐã xác minh **artifact**.\n"));
+    await put("check.log", b64("ok\n".repeat(45000) + "last line"));
+    await put("result.json", b64('{"success":true}'));
+    await put("shot.png", "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+    await put("other-service.md", b64("# Ledger"), "ledger", "ART-2");
+    for (let n = 0; n < 52; n++) await put(`file-${n}.txt`, b64(`file ${n}`), "payment", "ART-1", `R-art-page-${Math.floor(n / 20)}`);
+    await rpc("tasks.update", { id: "ART-1", status: "review", note: "ĐÃ LÀM: report.md; kiểm tra check.log." });
+    const tab = (current = tabs.admin);
+    const fill = async (selector, value) => {
+      await tab.click(selector);
+      await tab.key("a", process.platform === "darwin" ? "Meta" : "Control");
+      await tab.key("Backspace");
+      if (value) await tab.type(value);
+    };
+    await tab.reload();
+    await tab.go("artifacts");
+    // Earlier steps (leader-research) leave files of their own: the second page holds whatever is past the first 50.
+    const total = (await rpc("artifacts.list", { limit: 200 })).length;
+    await tab.waitFor("the files page", () => document.querySelectorAll('[data-artifact-row]').length === 50);
+    await tab.click('[data-artifacts-page] button', "Trang sau");
+    await tab.waitFor("second page", rest => document.querySelectorAll('[data-artifact-row]').length === rest, total - 50);
+    await fill('[data-artifact-filter="search"]', "report");
+    const reports = (await rpc("artifacts.list", { name: "report", limit: 200 })).length;
+    await tab.waitFor("name filter resets page", count => document.querySelectorAll('[data-artifact-row]').length === count && document.querySelector('[data-artifact-row="report.md"]'), reports);
+    if (mobile) {
+      const small = await tab.eval(() => [...document.querySelectorAll('[data-artifacts-page] button, [data-artifacts-page] input, [data-artifacts-page] select, [data-artifacts-page] a')].filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && (r.width < 44 || r.height < 44); }).map((el) => el.outerHTML));
+      expect(!small.length, `44px page controls: ${small.join("\n")}`);
+    }
+    await accessibilityAudit({ tab, out, expect, routes: ["artifacts"], filename: "artifacts-accessibility.json" });
+    const ax = await tab.cdp("Accessibility.getFullAXTree");
+    expect(ax.nodes.some(node => !node.ignored && node.role?.value === "table" && node.name?.value === "Tệp của agent"), "artifact table reaches the accessibility tree");
+    expect(ax.nodes.filter(node => !node.ignored && node.role?.value === "columnheader").length === 7, "all artifact headers remain available on desktop and phone");
+    for (const name of ["ART-1", runId]) expect(ax.nodes.some(node => !node.ignored && node.role?.value === "link" && node.name?.value === name), `${name} remains an accessible link inside its cell`);
+    await tab.click('[data-artifact-row="report.md"] button');
+    await tab.waitFor("markdown document", () => document.querySelector('[data-artifact-content] h1')?.textContent === "Báo cáo kiểm thử");
+    const auditPreview = async (filename) => {
+      const original = await tab.eval(() => document.documentElement.dataset.theme);
+      const report = [];
+      try {
+        for (const theme of ["light", "dark"]) {
+          await tab.eval(theme => document.documentElement.dataset.theme = theme, theme);
+          report.push(await tab.eval(async theme => {
+            const { violations } = await window.axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"] } });
+            return { theme, violations: violations.map(({ id, nodes }) => ({ id, nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })) })) };
+          }, theme));
+        }
+      } finally { await tab.eval(theme => document.documentElement.dataset.theme = theme, original); }
+      writeFileSync(path.join(out, filename), JSON.stringify(report, null, 2));
+      expect(report.every(r => !r.violations.length), `artifact preview axe: ${JSON.stringify(report)}`);
+    };
+    await auditPreview("artifacts-preview-accessibility.json");
+    await tab.shot("artifacts-report");
+    await tab.key("Escape");
+    await tab.waitFor("preview closes and returns keyboard focus", () => !document.querySelector("[data-artifact-preview]") && document.activeElement?.closest('[data-artifact-row="report.md"]'));
+    await fill('[data-artifact-filter="search"]', "");
+    await tab.select('[data-artifact-filter="kind"]', "log");
+    await tab.waitFor("log filter", () => document.querySelectorAll('[data-artifact-row]').length === 1 && document.querySelector('[data-artifact-row="check.log"]'));
+    await tab.click('[data-artifact-row="check.log"] button');
+    await tab.waitFor("bounded preview", () => document.querySelector('[data-artifact-clipped]') && document.querySelector('[data-artifact-content] pre'));
+    await fill('[data-artifact-find]', "ok");
+    await tab.waitFor("search highlights", () => document.querySelector('[data-artifact-content] mark'));
+    if (mobile) {
+      const small = await tab.eval(() => [...document.querySelectorAll('[data-artifact-preview] button, [data-artifact-preview] input')].filter((el) => { const r = el.getBoundingClientRect(); return r.width < 44 || r.height < 44; }).map((el) => el.outerHTML));
+      expect(!small.length, `44px preview controls: ${small.join("\n")}`);
+      expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "no phone horizontal overflow");
+    }
+    await auditPreview("artifacts-log-accessibility.json");
+    const downloadFile = path.join(out, "download-check.log");
+    const downloaded = new Promise((resolve, reject) => {
+      tab.win.webContents.session.once("will-download", (_event, item) => {
+        item.setSavePath(downloadFile);
+        item.once("done", (_event, state) => state === "completed" ? resolve() : reject(new Error(`download: ${state}`)));
+      });
+    });
+    await tab.click('[data-artifact-preview] button[aria-label="Tải check.log"]');
+    await Promise.race([downloaded, sleep(15_000).then(() => { throw new Error("download timeout"); })]);
+    expect(readFileSync(downloadFile, "utf8").endsWith("last line"), "download has the complete log after the clipped preview");
+    await tab.click('[data-artifact-preview] button', "Đóng");
+    await tab.select('[data-artifact-filter="kind"]', "image");
+    await tab.waitFor("image filter", () => document.querySelector('[data-artifact-row="shot.png"]'));
+    await tab.click('[data-artifact-row="shot.png"] button');
+    await tab.waitFor("image preview", () => document.querySelector('[data-artifact-preview] img')?.complete);
+    await tab.click('[data-artifact-preview] button', "Đóng");
+    await tab.select('[data-artifact-filter="kind"]', "json");
+    await tab.waitFor("json filter", () => document.querySelector('[data-artifact-row="result.json"]'));
+    await tab.click('[data-artifact-row="result.json"] button');
+    await tab.waitFor("json preview", () => document.querySelector('[data-artifact-content] pre')?.textContent.includes('"success":true'));
+    await tab.click('[data-artifact-preview] button', "Đóng");
+    await tab.select('[data-artifact-filter="kind"]', "");
+    await fill('[data-artifact-filter="task"]', "ART-2");
+    await tab.waitFor("task filter", () => document.querySelectorAll('[data-artifact-row]').length === 1 && document.querySelector('[data-artifact-row="other-service.md"]'));
+    await fill('[data-artifact-filter="task"]', "");
+    await fill('[data-artifact-filter="run"]', runId);
+    await tab.waitFor("run filter", () => document.querySelectorAll('[data-artifact-row]').length === 5);
+    await tab.shot("artifacts-page");
+    await fill('[data-artifact-filter="run"]', "");
+    await fill('[data-artifact-filter="search"]', "other-service");
+    await tab.waitFor("other service in all", () => document.querySelector('[data-artifact-row="other-service.md"]'));
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('input[aria-label="Tìm service hoặc hệ thống…"]');
+    await tab.type("payment");
+    await tab.key("Enter");
+    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
+    await tab.waitFor("service scope excludes other service", () => !document.querySelector('[data-artifact-row]') && document.querySelector('[data-artifacts-page]')?.textContent.includes("Không có tệp"));
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('input[aria-label="Tìm service hoặc hệ thống…"]');
+    await tab.type("ban-hang");
+    // Recent services also match the system name; select the system root explicitly.
+    await tab.click('[data-scope-row="root"][data-scope-root="ban-hang"] [role="option"]');
+    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
+    await tab.waitFor("system scope includes its services", () => document.querySelector('[data-artifact-row="other-service.md"]'));
+    await tab.click("[data-project-picker-trigger]");
+    await tab.click('[role="option"]', "Tất cả service");
+    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
+    await fill('[data-artifact-filter="search"]', "");
+    await tab.go(`artifacts?artifact=${report.id}`);
+    await tab.waitFor("deep preview link", () => document.querySelector('[data-artifact-content] h1')?.textContent === "Báo cáo kiểm thử");
+    await tab.click('[data-artifact-preview] button', "Đóng");
+    await tab.go("tasks?task=ART-1");
+    await tab.waitFor("linked handover", () => document.querySelector('[data-artifact-link="report.md"]'));
+    await tab.click('[data-artifact-link="report.md"]');
+    await tab.waitFor("handover opens report", () => document.querySelector('[data-artifact-content] h1'));
+    await tab.click('[data-artifact-preview] button', "Đóng");
+    await tab.click('[data-task-artifacts-tab]');
+    await tab.waitFor("all task files", () => document.querySelectorAll('[data-artifact]').length === 56);
+    // The hub names the machine after the header and the token ("runner.artifacts-e2e@…"): take it from the run.
+    const runMachine = (await rpc("runs.list", { project: "payment", limit: 200 })).find(r => r.runId === runId).machineId;
+    await tab.go(`runs?run=${encodeURIComponent(`${runMachine}/${runId}`)}`);
+    await tab.waitFor("run files before summary", () => document.querySelector('[data-artifact="report.md"]') && document.querySelector('[data-artifact-link="report.md"]'));
+    await tab.click('[data-artifact-link="report.md"]');
+    await tab.waitFor("summary opens report", () => document.querySelector('[data-artifact-content] h1'));
+    await tab.click('[data-artifact-preview] button', "Đóng");
+    await tab.go("today");
+    await tab.waitFor("review inbox", () => document.body.innerText.includes("Review tệp của agent"));
+    await tab.click('[data-inbox-key^="review:payment:ART-1:"]');
+    await tab.waitFor("review report shortcut", () => document.querySelector('[data-review-reports]'));
+    await tab.click('[data-review-reports] button', "report.md");
+    await tab.waitFor("review opens report", () => document.querySelector('[data-artifact-content] h1'));
+    await tab.shot("artifacts-review");
+    await tab.click('[data-artifact-preview] button', "Đóng");
+  });
+
   await step("artifacts", async () => {
     const asMachine = async (method, input) => {
       const r = await fetch(`${base}/api/rpc`, {
@@ -2946,10 +3972,12 @@ async function main() {
       expect(!small.length, `artifact controls have 44px phone targets: ${JSON.stringify(small)}`);
     }
     await tab.click('[data-artifact="shots/board.png"] button');
-    await tab.waitFor("the screenshot itself", () => document.querySelector('[data-artifacts] img[alt="shots/board.png"]'));
+    await tab.waitFor("the screenshot itself", () => document.querySelector('[data-artifact-preview] img[alt="shots/board.png"]'));
 
+    await tab.click('[data-artifact-preview] button', "Đóng");
     // The same files on the task's panel, whichever run made them.
     await tab.go("tasks?task=PAY-1");
+    await tab.click("[data-task-artifacts-tab]");
     await tab.waitFor("the task's artifacts", () => document.querySelector('[data-artifact="do-duoc.md"]'));
     // Lan manages payment: she may take one away, and the audit log says she did.
     await tab.click(`[aria-label="Xoá do-duoc.md"]`);
@@ -3028,6 +4056,7 @@ async function main() {
     const tab = current = tabs.redispatch = await signInWithToken("redispatch", people.lan.token, `runs?run=${encodeURIComponent(`${source.id}/${old.runId}`)}`);
     await tab.click("[data-run-redispatch]");
     await tab.waitFor("prefilled redispatch instructions", () => document.querySelector("[data-redispatch-instructions]")?.value === "Giữ chỉ dẫn cũ 59e");
+    await tab.waitFor("redispatch machine options loaded", (id) => [...document.querySelectorAll("[data-redispatch-form] select option")].some(option => option.value === id), target.id);
     await tab.select("[data-redispatch-form] select", target.id);
     const profileSelect = await tab.eval(() => document.querySelectorAll("[data-redispatch-form] select")[1]?.id);
     await tab.select(`[id="${profileSelect}"]`, "codex-two");
@@ -3052,7 +4081,10 @@ async function main() {
       return left != null && left <= innerWidth - 390;
     });
     await taskTab.eval(() => document.querySelector('[data-task-chain-run="R-rd-next"] [data-run-redispatch]')?.click());
-    await taskTab.waitFor("task redispatch form", () => !!document.querySelector('[data-task-chain-run="R-rd-next"] [data-redispatch-form]'));
+    await taskTab.waitFor("task redispatch form ready", () => {
+      const button = document.querySelector('[data-task-chain-run="R-rd-next"] [data-redispatch-send]');
+      return button && !button.disabled;
+    });
     await taskTab.eval(() => document.querySelector("[data-redispatch-continue]")?.click());
     expect(await taskTab.eval(() => document.querySelector("[data-redispatch-continue]")?.getAttribute("aria-checked")) === "false", "task retry branch option did not toggle off");
     await taskTab.eval(() => document.querySelector("[data-redispatch-send]")?.click());
@@ -3063,6 +4095,33 @@ async function main() {
     const reader = current = tabs.redispatchReader = await signInWithToken("redispatch-reader", people.hoa.token, `runs?run=${encodeURIComponent(`${source.id}/${old.runId}`)}`);
     await reader.waitFor("reader sees run", () => !!document.querySelector("[data-run-review]"));
     expect(await reader.eval(() => !document.querySelector("[data-run-redispatch]")), "reader can redispatch");
+  });
+
+  await step("inbox-source-complete", async () => {
+    const project = "inbox-source-e2e";
+    await rpc("tasks.setClassifyConfig", { project, enabled: false });
+    await rpc("sdlc.setProject", { project, settings: { gates: {}, fastLaneKinds: ["small-fix"] } });
+    // Both sets exceed tasks.list's historical 500-row cap; no real machine is attached to this synthetic project.
+    for (let i = 0; i < 501; i++) {
+      await rpc("tasks.create", { project, id: `SOURCE-FAST-${i}`, title: `Synthetic dispatch ${i}`, kind: "small-fix" });
+      await rpc("tasks.create", { project, id: `SOURCE-REVIEW-${i}`, title: `Synthetic review ${i}`, kind: "small-fix" });
+      await rpc("tasks.update", { id: `SOURCE-REVIEW-${i}`, status: "review" });
+    }
+    const total = (await rpc("sdlc.dispatch", { project, limit: 1 })).total;
+    expect(total === 501, `dispatch source total: ${total}`);
+    const tab = current = tabs.inboxSource = await signInWithToken("inbox-source", admin, `pipeline?project=${project}`);
+    await tab.waitFor("complete Dispatch count", () => /^501\b/.test(document.querySelector('[data-pipeline-count="dispatch"]')?.textContent.trim() ?? ""));
+    if (mobile) {
+      await tab.eval(() => document.querySelector('[data-pipeline-count="dispatch"]').focus());
+      await tab.key("Enter");
+    } else await tab.click('[data-pipeline-count="dispatch"]');
+    await tab.waitFor("Dispatch link includes both pages", () => location.hash.includes("pipelineDispatch=1") && document.querySelectorAll("[data-pick-task]").length === 501);
+    expect(await tab.eval(() => !!document.querySelector('[data-pick-task="SOURCE-FAST-0"]') && !!document.querySelector('[data-pick-task="SOURCE-FAST-500"]')), "dispatch dropped a page boundary task");
+    await tab.shot("source-dispatch-complete");
+    // The dispatch link selects the project in the shared scope; Today must load all of its review tasks too.
+    await tab.go("today");
+    await tab.waitFor("complete Today review list", () => document.querySelectorAll('[data-inbox-key^="review:inbox-source-e2e:"]').length === 501);
+    await tab.shot("source-today-complete");
   });
 
   const errors = Object.values(tabs).flatMap((t) => t.errors.map((e) => `${t.name}: ${e}`));

@@ -1,10 +1,10 @@
 // The hub's tool catalog on this machine (roadmap 28b): which tools a run gets, what Claude Code and Codex are told to
 // start, and the step that readies a tool in the worktree (codegraph's index) before the agent starts. Without a
 // catalog (local mode, a hub older than 28b) the app's own entries stand in for what the repo's setup turned on.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { toolArgv, toolEnv, toolHash, versionIn, versionMatches, type AgentKind, type Autonomy, type RunCompression, type AgentPolicy, type MachineToolSetting, type MachineTools, type MachineToolView, type ToolContext, type ToolEntry, type ToolHandler } from "@xdev-hive/core";
+import { BROWSER_TOOL, toolArgv, toolEnv, toolHash, versionIn, versionMatches, type AgentKind, type Autonomy, type RunCompression, type AgentPolicy, type MachineToolSetting, type MachineTools, type MachineToolView, type ToolContext, type ToolEntry, type ToolHandler } from "@xdev-hive/core";
 import { tr } from "#desktop/main/i18n.ts";
 import type { RepoFeatures } from "#desktop/main/installer.ts";
 import { defaultRun, type Run } from "#desktop/main/setup.ts";
@@ -15,6 +15,7 @@ import { defaultRun, type Run } from "#desktop/main/setup.ts";
  * the catalog keep running them without asking. A newer version on the hub is a change the user allows.
  */
 export const APP_TOOLS: Record<ToolHandler, ToolEntry> = {
+  browser: BROWSER_TOOL,
   codegraph: {
     id: "codegraph",
     name: "Codegraph",
@@ -103,7 +104,7 @@ export function legacyTools(features: RepoFeatures): ToolEntry[] {
 /** Without a catalog: Claude gets the repo's tools, every CLI the codegraph index (unless the policy leaves it out). */
 export function legacyPick(features: RepoFeatures, kind: AgentKind, mcp: string[] | null): ToolPick {
   const codegraph = features.codegraph && (mcp === null || mcp.includes("codegraph"));
-  return { tools: kind === "claude" ? legacyTools(features) : [], prepare: codegraph ? [APP_TOOLS.codegraph] : [], notes: [] };
+  return { tools: (kind === "claude" || kind === "gemini") ? legacyTools(features) : [], prepare: codegraph ? [APP_TOOLS.codegraph] : [], notes: [] };
 }
 
 /** Whether a project has the tool on: its setting, else the tool's default or, for a seed, the repo's own setup. */
@@ -193,8 +194,8 @@ export function runTools(
 }
 
 /** A server the run starts ends with its agent: codegraph would otherwise leave a daemon per worktree behind. */
-function serverEnv(e: ToolEntry): Record<string, string> {
-  return { ...e.env, ...(e.handler === "codegraph" ? { CODEGRAPH_NO_DAEMON: "1" } : {}) };
+function serverEnv(e: ToolEntry, ctx: ToolContext): Record<string, string> {
+  return { ...toolEnv(e, ctx.runDir ?? null), ...(e.handler === "codegraph" ? { CODEGRAPH_NO_DAEMON: "1" } : {}) };
 }
 
 /**
@@ -203,7 +204,7 @@ function serverEnv(e: ToolEntry): Record<string, string> {
  */
 export function claudeToolServer(e: ToolEntry, ctx: ToolContext): Record<string, unknown> {
   const [command, ...args] = toolArgv([e.mcp!.command, ...e.mcp!.args], e, ctx);
-  return { type: "stdio", command, args, env: { ...serverEnv(e), ...Object.fromEntries(e.secretEnv.map((n) => [n, `\${${n}}`])) } };
+  return { type: "stdio", command, args, env: { ...serverEnv(e, ctx), ...Object.fromEntries(e.secretEnv.map((n) => [n, `\${${n}}`])) } };
 }
 
 /** A TOML basic string (JSON's escapes are valid TOML ones). */
@@ -219,7 +220,7 @@ export function codexToolArgs(tools: ToolEntry[], ctx: ToolContext): string[] {
     .filter((e) => e.kind === "mcp" && e.mcp)
     .flatMap((e) => {
       const [command, ...args] = toolArgv([e.mcp!.command, ...e.mcp!.args], e, ctx);
-      const env = Object.entries(serverEnv(e));
+      const env = Object.entries(serverEnv(e, ctx));
       const key = `mcp_servers.${e.id}`;
       return [
         "-c",
@@ -498,4 +499,10 @@ export async function rtkGain(ready: ReadyHook[], env: NodeJS.ProcessEnv, run: R
   } catch {
     return null;
   }
+}
+
+/** JSON preserves arbitrary password characters; only names reach agent arguments and logs. */
+export function readyBrowserSecrets(entry: ToolEntry, runDir: string, env: Record<string, string | undefined>): void {
+  const secrets = Object.fromEntries(entry.secretEnv.filter((name) => env[name] !== undefined).map((name) => [name, env[name]]));
+  writeFileSync(path.join(runDir, "browser.json"), JSON.stringify({ secrets }), { mode: 0o600 });
 }

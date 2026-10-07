@@ -1,3 +1,10 @@
+import { opencodeEnv } from "#desktop/main/runner/opencode.ts";
+import { researchProfile, researchPrompt, researchResult, restrictResearchCommand } from "#desktop/main/runner/research.ts";
+import { researchSchema, type ResearchJob } from "@xdev-hive/core";
+import { cleanupReason, deleteWorktree, freeBytes, inspectWorktree, registeredWorktrees } from "#desktop/main/runner/worktree-admin.ts";
+import { worktreeCleanupSchema, type WorktreeCommand, type WorktreeReport, type WorktreeTarget, type WorktreeLog } from "@xdev-hive/core";
+import { AutoReleaseWorker } from "#desktop/main/runner/auto-release.ts";
+import { MergeQueueRunner } from "#desktop/main/runner/merge-queue.ts";
 import { ProfileModels, unsupportedModel } from "#desktop/main/runner/models.ts";
 import { claudeUserMessage, STEER_RESUME_PROMPT, writeSteer } from "#desktop/main/runner/steer.ts";
 import { diffReviewSelection, diffReviewPrompt, validDiffReview, patchHunks } from "@xdev-hive/core";
@@ -15,11 +22,13 @@ import { MemoryCleanupWorker } from "#desktop/main/runner/memory-cleanup.ts";
 //
 // No Electron imports: the desktop main process provides a RunnerHost, tests provide a fake one.
 import { installAntigravityMcp, SHIM_NAME } from "#desktop/main/installer.ts";
+import { kiloPaths, KiloStream } from "#desktop/main/runner/kilo.ts";
 import { agyError, AGY_LIMIT_PATTERN } from "./antigravity.ts";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { Writable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
-import { appendFileSync, closeSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync, type WriteStream } from "node:fs";
+import { appendFileSync, closeSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -31,6 +40,8 @@ import {
   ARTIFACT_DIR,
   effectivePolicy,
   HiveError,
+  issueRunCredential,
+  revokeRunCredential,
   MAX_CANDIDATES,
   modelsFor,
   OPEN_POLICY,
@@ -39,6 +50,7 @@ import {
   profileAutonomy,
   tokenWindows,
   redactLines,
+  SecretRedactor,
   stripHidden,
   syncOutcome,
   toErrorPayload,
@@ -88,7 +100,7 @@ import { git, gitAsync, isGitRepo } from "#desktop/main/git.ts";
 import { NO_FEATURES, repoFeatures } from "#desktop/main/installer.ts";
 import { codexHome } from "./login.ts";
 import { renderContext, type WorktreeRule, type WorktreeSkill } from "#desktop/main/sync.ts";
-import { hookEnv, legacyPick, NO_TOOLS, prepareTool, readyHooks, rtkGain, runTools, trustOf, toolDirs, userClaudeSettings, type ToolPick } from "./tools.ts";
+import { claudeToolServer, readyBrowserSecrets, hookEnv, legacyPick, NO_TOOLS, prepareTool, readyHooks, rtkGain, runTools, trustOf, toolDirs, userClaudeSettings, type ToolPick } from "./tools.ts";
 import { readyCodexRtk, type CodexRtkRun } from "#desktop/main/runner/codex-rtk.ts";
 import { collectArtifacts } from "./artifacts.ts";
 import { containerCommand } from "./container.ts";
@@ -110,6 +122,7 @@ import {
   policyLine,
   ranOn,
   routeProfile,
+  withoutFlags,
   withoutModel,
   resolveBin,
   type ClaudeHookRun,
@@ -120,7 +133,10 @@ import { detectRateLimit } from "./rate-limit.ts";
 import { AssistWorker } from "./assist.ts";
 import { ChatWorker } from "./chat.ts";
 import { killTree } from "./kill.ts";
-import { AntigravityStream, ClaudeStream, CodexStream, lineStamper } from "./stream.ts";
+import { VibeStream, readVibeSession, vibeAgentUnverified } from "#desktop/main/runner/vibe.ts";
+import { geminiLaunch } from "#desktop/main/runner/gemini-launch.ts";
+import { GeminiStream, geminiJson, prepareGeminiSettings } from "#desktop/main/runner/gemini.ts";
+import { AntigravityStream, ClaudeStream, CodexStream, OpenCodeStream, CopilotStream, lineStamper } from "./stream.ts";
 import { limitResetAt, parseClaudeResult, withResetsAt, quotaOutlook, type RunUsage } from "./usage.ts";
 import { pickWithReason, takesRole, waitingReason, type ProfileLoad, type RunNeeds } from "./schedule.ts";
 import { ACTIVE, RunStore } from "./store.ts";
@@ -146,6 +162,8 @@ export function codexConfigFailure(profile: AgentProfile, output: string): strin
 
 export interface RunnerHost {
   backend(): HiveBackend;
+  openMergeBatch?(project: DesktopProject, branch: string): Promise<string>;
+  mergeRemote?(): string;
   /** Reads a file of the hub with a token (chat attachments); fetch when left out. */
   download?(url: string, token: string): Promise<Uint8Array>;
   profiles(): AgentProfile[];
@@ -162,7 +180,7 @@ export interface RunnerHost {
   login?(profileId: string): LoginStatus | undefined;
   /** The profile's plan usage from the same check. */
   usage?(profileId: string): PlanUsage | undefined;
-  /** Hub mode: where a container run's agent reaches Hive (the hub's HTTP MCP) and with which token. */
+  /** Hub mode: the machine credential used to request a run credential. */
   hub?(): { url: string; token: string } | null;
   /** The profile's long-lived token for container runs (Claude Code), if one is saved. */
   token?(profileId: string): string | undefined;
@@ -172,6 +190,7 @@ export interface RunnerHost {
   toolTrust?(): Record<string, string>;
   /** Persist a web approval before the runner records its receipt or starts work with it. */
   applyToolTrust?(trust: Record<string, string>): void;
+  applyWorktreeCleanup?(cleanup: WorktreeReport["cleanup"]): void;
 }
 
 /** What the hub sent back on the last heartbeat. */
@@ -264,13 +283,37 @@ export interface RunnerOptions {
   sync?: (project: DesktopProject) => Promise<SyncReport>;
 }
 
+function appendRedactedRunLog(file: string, text: string): void {
+  appendFileSync(file, redactLines(stripHidden(text)));
+}
+
+/** The sink sees only complete, redacted lines, including the final unterminated line. */
+export function redactedRunLog(file: string): Writable {
+  const sink = createWriteStream(file, { flags: "a" });
+  const redactor = new SecretRedactor();
+  const decoder = new StringDecoder("utf8");
+  const writer = new Writable({
+    write(chunk, _encoding, callback) {
+      const text = redactor.write(decoder.write(chunk));
+      if (text) sink.write(text, callback);
+      else callback();
+    },
+    final(callback) {
+      sink.end(redactor.write(decoder.end()) + redactor.end(), callback);
+    },
+    destroy(error, callback) { sink.destroy(); callback(error); },
+  });
+  sink.on("error", (error) => writer.destroy(error));
+  return writer;
+}
+
 interface Live {
   deadline: number;
   child: ChildProcess;
   cancelled: boolean;
   timedOut: boolean;
   steer?: (text: string) => Promise<void>;
-  log?: WriteStream;
+  log?: Writable;
   /** A container run: killing the docker client does not stop the container. */
   container?: { docker: string; name: string; env: NodeJS.ProcessEnv };
 }
@@ -302,6 +345,10 @@ type Outcome =
       timedOut: boolean;
       usage?: RunUsage | null;
       agyFailure?: string | null;
+      copilotFailure?: string | null;
+      vibeFailure?: string | null;
+      opencodeFailure?: string | null;
+      kiloFailure?: string | null;
       /** Hosts the restricted network refused (from the proxy's log). */
       blocked?: string[];
     }
@@ -374,6 +421,8 @@ function tryGit(cwd: string, args: string[]): string | null {
 }
 
 
+const errorMessage = (err: unknown) => err instanceof Error ? err.message : String(err);
+
 export class Runner {
   readonly store: RunStore;
   readonly #host: RunnerHost;
@@ -410,9 +459,19 @@ export class Runner {
   #supportsUpdateDrain = false;
   #updateDrain = false;
   #intakePending = 0;
+  #worktreeReport: WorktreeReport | null = null;
+  #worktreeScan: Promise<WorktreeReport> | null = null;
+  #worktreeBusy = new Set<string>();
+  #worktreeMaintenance = 0;
+  #worktreeCommandQueue: Promise<void> = Promise.resolve();
+  #worktreeCommandsActive = 0;
+  #worktreeCleanupJob: Promise<void> | null = null;
+  #worktreeJobs = new Set<Promise<WorktreeCommand["results"]>>();
+  #worktreeTimer: NodeJS.Timeout | undefined;
   #ticking = false;
   #again = false;
   #interval: NodeJS.Timeout | undefined;
+  #mergeQueue = new MergeQueueRunner();
   #heartbeatTimer: NodeJS.Timeout | undefined;
   #pushTimer: NodeJS.Timeout | undefined;
   #chatTimer: NodeJS.Timeout | undefined;
@@ -421,6 +480,7 @@ export class Runner {
   /** Writes the Docs writing assistant's asks (see assist.ts). */
   readonly #assists: AssistWorker;
   readonly #memoryCleanup: MemoryCleanupWorker;
+  readonly #autoRelease: AutoReleaseWorker;
   #assistTimer: NodeJS.Timeout | undefined;
   /** The hub does not know chat.poll yet: heartbeats bring the chat replies instead. */
   #chatPollOff = false;
@@ -457,6 +517,7 @@ export class Runner {
 
   constructor(host: RunnerHost, opts: RunnerOptions) {
     this.#host = host;
+    this.#autoRelease = new AutoReleaseWorker({ backend: () => host.backend(), actor: () => this.#runnerActor(), projects: () => host.projects(), env: () => host.env(), allowed: (project) => host.mode() === "hub" && host.settings().acceptHubRuns && !this.#updateDrain && !this.#mergeQueue.busy && !this.#paused?.hub && (!project || !this.#paused?.projects.includes(project)) && this.store.active().length === 0 && !this.#chats.active && !this.#assists.busy && !this.#syncs.size }, path.join(opts.dataDir, "auto-release"));
     this.#opts = {
       diffReview: true,
       user: os.userInfo().username,
@@ -486,6 +547,16 @@ export class Runner {
         local: () => this.#host.mode() === "local",
         localFile: (id) => this.#opts.chatFile?.(id) ?? null,
         onFinished: (req, status) => this.#opts.onChat?.(req, status),
+        rateLimited: async (profile, hit) => {
+          const until = hit.resetAt && hit.resetAt > new Date() ? hit.resetAt.toISOString() : this.#iso(profile.cooldownMinutes);
+          this.store.setCooldown(profile.id, until, hit.reason);
+          await this.#shareCooldown(profile, until, hit.reason);
+        },
+        quotaUnavailable: (id) => {
+          const p = this.profileStatuses().find((x) => x.id === id);
+          const profile = this.#host.profiles().find((x) => x.id === id);
+          return !!p && ((p.cooldownUntil !== null && p.cooldownUntil > this.#iso()) || (!!profile && usageStop(profile, p.usage) !== null));
+        },
         // As the Board would see it: signed out, resting (here or on the hub), or at its plan's stop threshold.
         unavailable: (id) => {
           const p = this.profileStatuses().find((x) => x.id === id);
@@ -541,6 +612,10 @@ export class Runner {
     const beat = () => void this.beat();
     this.#heartbeatTimer = setInterval(beat, this.#opts.heartbeatMs);
     this.#heartbeatTimer.unref();
+    this.#worktreeTimer = setInterval(() => {
+      if (this.#host.mode() === "local") void this.cleanWorktrees().catch(() => undefined);
+    }, 60_000);
+    this.#worktreeTimer.unref();
     this.#pushTimer = setInterval(() => void this.pushRuns().catch(() => undefined), this.#opts.pushMs);
     this.#pushTimer.unref();
     if (this.#opts.chatPollMs > 0) {
@@ -591,7 +666,7 @@ export class Runner {
       const profile = this.#host.profiles().find((p) => p.id === r.profileId);
       return Date.parse(r.startedAt ?? r.createdAt) + (r.timeoutMinutes ?? profile?.timeoutMinutes ?? 60) * 60_000;
     });
-    const auxiliary = this.#chats.active > 0 || this.#assists.busy || this.#memoryCleanup.profileId !== null || this.#syncs.size > 0 || this.#intakePending > 0;
+    const auxiliary = this.#chats.active > 0 || this.#assists.busy || this.#memoryCleanup.profileId !== null || this.#syncs.size > 0 || this.#intakePending > 0 || this.#mergeQueue.busy || this.#autoRelease.busy || this.#worktreeBusy.size > 0 || this.#worktreeScan !== null || this.#worktreeCommandsActive > 0 || this.#worktreeCleanupJob !== null || this.#worktreeJobs.size > 0;
     return {
       busy: running.length > 0 || this.#inflight.size > 0 || auxiliary,
       // The chat has a 20-minute limit; final commit/report and sync get a bounded grace when no run remains.
@@ -601,9 +676,11 @@ export class Runner {
 
   /** Cancels running agents and waits for their bookkeeping (commit, Hive update) to finish. */
   async stop(): Promise<void> {
+    this.#mergeQueue.stop();
     this.#updateDrain = true;
     clearInterval(this.#interval);
     clearInterval(this.#heartbeatTimer);
+    clearInterval(this.#worktreeTimer);
     clearInterval(this.#pushTimer);
     clearInterval(this.#chatTimer);
     clearInterval(this.#assistTimer);
@@ -611,11 +688,13 @@ export class Runner {
     this.#chats.stop();
     this.#assists.stop();
     this.#memoryCleanup.stop();
-    await Promise.allSettled([...this.#inflight, this.#chats.settle(), this.#assists.settle(), this.#memoryCleanup.settle(), this.settleSyncs()]);
+    this.#autoRelease.stop();
+    await Promise.allSettled([...this.#inflight, this.#chats.settle(), this.#assists.settle(), this.#memoryCleanup.settle(), this.#mergeQueue.settle(), this.#autoRelease.settle(), this.settleSyncs(), this.#worktreeCommandQueue, ...this.#worktreeJobs, ...(this.#worktreeCleanupJob ? [this.#worktreeCleanupJob] : []), ...(this.#worktreeScan ? [this.#worktreeScan] : [])]);
   }
 
   /** Resolves once nothing is running and no queued run can start. For tests and graceful quit. */
   async settle(): Promise<void> {
+    await this.#autoRelease.settle();
     for (;;) {
       await this.tick();
       if (!this.#inflight.size) return;
@@ -667,6 +746,17 @@ export class Runner {
     }
     if (count > 1 && role !== "implement") throw new HiveError("bad_request", "Chỉ việc Làm mới chạy nhiều bản.", { key: "errors.candidatesImplementOnly" });
     if (count > 1 && req.profileId) throw new HiveError("bad_request", "Nhiều bản cần tự xoay gói sub, không ghim một gói.", { key: "errors.candidatesPinned" });
+    if (role === "research") {
+      const job = JSON.parse(req.instructions ?? "") as ResearchJob;
+      researchSchema.parse(job);
+      if (!Number.isInteger(job.id) || req.taskId !== `research-${job.id}` || job.project !== req.project) throw new HiveError("bad_request", "Invalid research job.");
+      if (req.profileId && !["claude", "codex"].includes(this.#host.profiles().find(p => p.id === req.profileId)?.kind ?? "")) throw new HiveError("bad_request", "Research requires Claude or Codex.");
+      const run = this.store.insert({ project: req.project, taskId: req.taskId, taskTitle: job.topic, role, attempt: 1, maxAttempts: 1,
+        preferredProfile: req.profileId ?? null, instructions: JSON.stringify(job), reviewAfter: false, requestedBy: extra.requestedBy ?? null,
+        selection: req.selection ?? null, timeoutMinutes: req.timeoutMinutes ?? null }, this.#iso());
+      void this.tick();
+      return run;
+    }
     const probe = this.#host.profiles().find((p) => p.id === req.profileId) ?? this.#host.profiles()[0];
     const actor: Actor = probe ? this.#actor(probe) : { name: "desktop", role: "agent" };
     const task = (await this.#host.backend().call("tasks.list", { project: req.project }, actor)).find((t) => t.id === req.taskId);
@@ -680,6 +770,7 @@ export class Runner {
         vars: { id: req.taskId, tasks: waiting.join(", ") },
       });
     }
+    if (this.#worktreeBusy.has(`${req.project}/${req.taskId}`)) throw new HiveError("conflict", "Worktree is being removed.", { key: "errors.worktreeBusy" });
     const active = this.store.activeForTask(req.project, req.taskId);
     if (active) throw new HiveError("conflict", `Task ${req.taskId} đang có run ${active.id} (${active.status}).`, { key: "errors.taskHasRun", vars: { id: req.taskId, run: active.id } });
     const previous = this.store.lastWithWorktree(req.project, req.taskId);
@@ -782,15 +873,17 @@ export class Runner {
     return check;
   }
 
-  #supportsResume(bin: string, env: NodeJS.ProcessEnv): Promise<boolean> {
-    let check = this.#resumeSupport.get(bin);
+  #supportsResume(bin: string, env: NodeJS.ProcessEnv, gemini = false): Promise<boolean> {
+    const key = `${gemini ? "gemini" : "codex"}:${bin}`;
+    let check = this.#resumeSupport.get(key);
     if (!check) {
       check = new Promise<boolean>((resolve) => {
-        execFile(bin, ["exec", "resume", "--help"], { env, timeout: 5000, maxBuffer: 256 * 1024, windowsHide: true }, (err, stdout) => {
-          resolve(!err && /resume/.test(stdout) && /SESSION_ID/i.test(stdout));
+        const probe = gemini ? geminiLaunch(bin, ["--help"], env) : { bin, args: ["exec", "resume", "--help"], env };
+        execFile(probe.bin, probe.args, { env: probe.env, timeout: 5000, maxBuffer: 256 * 1024, windowsHide: true }, (err, stdout) => {
+          resolve(!err && (gemini ? /--resume/.test(stdout) && /stream-json/.test(stdout) : /resume/.test(stdout) && /SESSION_ID/i.test(stdout)));
         });
       });
-      this.#resumeSupport.set(bin, check);
+      this.#resumeSupport.set(key, check);
     }
     return check;
   }
@@ -871,15 +964,25 @@ export class Runner {
     const file = this.#logPath(id);
     if (!existsSync(file)) return "";
     const size = statSync(file).size;
-    const start = Math.max(0, size - maxBytes);
-    const buf = Buffer.alloc(size - start);
+    const redactor = new SecretRedactor();
+    const decoder = new StringDecoder("utf8");
+    const buf = Buffer.alloc(64 * 1024);
+    const limit = Math.max(0, Math.floor(maxBytes));
+    let tail: Buffer = Buffer.alloc(0);
+    const keep = (text: string) => {
+      const bytes = Buffer.concat([tail, Buffer.from(text)]);
+      tail = limit ? bytes.subarray(Math.max(0, bytes.length - limit)) : Buffer.alloc(0);
+    };
     const fd = openSync(file, "r");
     try {
-      readSync(fd, buf, 0, buf.length, start);
+      // Scan from the start: a clipped tail can begin inside an old, raw PEM block.
+      let count: number;
+      while ((count = readSync(fd, buf, 0, buf.length, null)) > 0) keep(redactor.write(decoder.write(buf.subarray(0, count))));
+      keep(redactor.write(decoder.end()) + redactor.end());
     } finally {
       closeSync(fd);
     }
-    return (start > 0 ? `${tr("runNote.logClipped")}\n` : "") + buf.toString("utf8");
+    return (size > maxBytes ? `${tr("runNote.logClipped")}\n` : "") + tail.toString("utf8");
   }
 
   /** What the run changed, as a unified diff from its base ("" when nothing, or its worktree and branch are gone). */
@@ -983,6 +1086,148 @@ export class Runner {
     this.store.resetStats(profileId, this.#opts.now().toISOString());
   }
 
+  #worktreeRoot(): string {
+    return this.#host.settings().worktreeRoot ?? path.join(this.#opts.dataDir, "worktrees");
+  }
+
+  #worktreeActive(project: string, taskId: string): boolean {
+    return !!this.store.activeForTask(project, taskId) || [...this.#finishing].some(id => {
+      const r = this.store.get(id);
+      return r?.project === project && r.taskId === taskId;
+    });
+  }
+
+  worktreeActive(project: string, taskId: string): boolean {
+    return this.#worktreeBusy.has(`${project}/${taskId}`) || this.#worktreeActive(project, taskId);
+  }
+
+  async worktrees(refresh = false): Promise<WorktreeReport> {
+    if (this.#worktreeScan) return this.#worktreeScan;
+    const cached = this.#worktreeReport;
+    if (!refresh && cached && +this.#opts.now() - Date.parse(cached.measuredAt) < 60_000) {
+      return { ...cached, cleanup: worktreeCleanupSchema.parse(this.#host.settings().worktreeCleanup ?? {}), logs: this.store.worktreeLogs(), entries: cached.entries.map(e => ({ ...e, active: this.#worktreeActive(e.project, e.taskId) })) };
+    }
+    this.#worktreeScan = this.#scanWorktrees();
+    try { this.#worktreeReport = await this.#worktreeScan; return this.#worktreeReport; }
+    finally { this.#worktreeScan = null; }
+  }
+
+  async #scanWorktrees(): Promise<WorktreeReport> {
+    const entries: WorktreeReport["entries"] = [];
+    const errors: string[] = [];
+    const root = this.#worktreeRoot();
+    for (const project of this.#host.projects()) {
+      try {
+        const tasks = await this.#host.backend().call("tasks.list", { project: project.name }, this.#runnerActor());
+        const items = await registeredWorktrees(project, root);
+        const target = items.length ? await remoteStart(project.repo, project.targetBranch, { timeoutMs: 10_000, retryMs: [] }) : null;
+        if (target?.error) errors.push(`${project.name}: ${target.error}`.slice(0, 1000));
+        const mergeRef = target?.error ? null : target?.ref ?? undefined;
+        // Bound concurrent disk walks so a large runner does not launch hundreds of du processes at heartbeat.
+        for (let i = 0; i < items.length; i += 4) {
+          const batch = await Promise.allSettled(items.slice(i, i + 4).map(item => inspectWorktree(project, item, tasks.find(t => t.id === item.taskId), this.#worktreeActive(project.name, item.taskId), mergeRef)));
+          for (const result of batch) {
+            if (result.status === "fulfilled") entries.push(result.value);
+            else errors.push(`${project.name}: ${errorMessage(result.reason)}`.slice(0, 1000));
+          }
+        }
+      } catch (err) { errors.push(`${project.name}: ${errorMessage(err)}`.slice(0, 1000)); }
+    }
+    return { measuredAt: this.#iso(), entries: entries.slice(0, 2000), totalBytes: entries.reduce((n, e) => n + (e.bytes ?? 0), 0), freeBytes: await freeBytes(root), cleanup: worktreeCleanupSchema.parse(this.#host.settings().worktreeCleanup ?? {}), logs: this.store.worktreeLogs(), errors: errors.slice(0, 200) };
+  }
+
+  manageWorktrees(targets: WorktreeTarget[], force = false, reason: WorktreeLog["reason"] = "manual"): Promise<WorktreeCommand["results"]> {
+    const job = this.#manageWorktrees(targets, force, reason);
+    this.#worktreeJobs.add(job);
+    const finished = () => this.#worktreeJobs.delete(job);
+    void job.then(finished, finished);
+    return job;
+  }
+
+  async #manageWorktrees(targets: WorktreeTarget[], force: boolean, reason: WorktreeLog["reason"]): Promise<WorktreeCommand["results"]> {
+    const report = await this.worktrees();
+    const results: WorktreeCommand["results"] = [];
+    for (const target of targets) {
+      const entry = report.entries.find(e => e.project === target.project && e.path === target.path);
+      const key = entry ? `${entry.project}/${entry.taskId}` : "";
+      let error: string | null = null;
+      let locked = false;
+      try {
+        if (!entry || entry.fingerprint !== target.fingerprint) throw new HiveError("conflict", "Worktree changed.", { key: "errors.worktreeChanged" });
+        if (this.#worktreeBusy.has(key) || this.#worktreeActive(entry.project, entry.taskId)) throw new HiveError("conflict", "Task has an active run.", { key: "errors.worktreeActive" });
+        this.#worktreeBusy.add(key);
+        locked = true;
+        const project = this.#host.projects().find(p => p.name === entry.project)!;
+        // The hub may have queued a run since its last snapshot; local checks alone are insufficient.
+        if (this.#host.mode() === "hub") {
+          const [runs, requests] = await Promise.all([
+            this.#host.backend().call("runs.list", { project: entry.project, taskId: entry.taskId, activeOnly: true, limit: 1 }, this.#runnerActor()),
+            this.#host.backend().call("runs.requests", { project: entry.project, taskId: entry.taskId, pendingOnly: true, limit: 1 }, this.#runnerActor()),
+          ]);
+          if (runs.some(r => r.taskId === entry.taskId && (r.status === "queued" || r.status === "running")) || requests.some(r => r.taskId === entry.taskId && r.status === "pending")) throw new HiveError("conflict", "Task has an active run.", { key: "errors.worktreeActive" });
+        }
+        if (reason !== "manual") {
+          const task = (await this.#host.backend().call("tasks.list", { project: entry.project }, this.#runnerActor())).find(t => t.id === entry.taskId);
+          const cleanup = worktreeCleanupSchema.parse(this.#host.settings().worktreeCleanup ?? {});
+          if (!task || !cleanupReason({ ...entry, taskStatus: task.status, taskUpdatedAt: task.updatedAt }, cleanup, this.#opts.now())) throw new HiveError("conflict", "Worktree no longer eligible.", { key: "errors.worktreeChanged" });
+        }
+        if (this.#worktreeActive(entry.project, entry.taskId)) throw new HiveError("conflict", "Task has an active run.", { key: "errors.worktreeActive" });
+        await deleteWorktree(project, this.#worktreeRoot(), entry, force, () => this.#worktreeActive(entry.project, entry.taskId));
+      } catch (err) { error = err instanceof HiveError && err.key ? tr(err.key as Parameters<typeof tr>[0], err.vars) : errorMessage(err).slice(0, 1000); }
+      finally { if (locked) this.#worktreeBusy.delete(key); }
+      const result = { path: target.path, ok: error === null, error };
+      results.push(result);
+      this.store.logWorktree({ at: this.#iso(), project: target.project, taskId: entry?.taskId ?? "?", reason, ...result });
+    }
+    const removed = new Set(results.filter(r => r.ok).map(r => r.path));
+    const entries = report.entries.filter(e => !removed.has(e.path));
+    this.#worktreeReport = { ...report, entries, totalBytes: entries.reduce((n, e) => n + (e.bytes ?? 0), 0), freeBytes: await freeBytes(this.#worktreeRoot()), logs: this.store.worktreeLogs() };
+    return results;
+  }
+
+  async #applyWorktreeCommands(commands: WorktreeCommand[]): Promise<void> {
+    if (!commands.length) return;
+    this.#worktreeCommandsActive++;
+    const next = this.#worktreeCommandQueue.catch(() => undefined).then(async () => {
+      for (const command of commands) {
+        if (this.store.worktreeResult(command.id)) continue;
+        const results: WorktreeCommand["results"] = [];
+        if (command.cleanup) {
+          try {
+            if (!this.#host.applyWorktreeCleanup) throw new HiveError("bad_request", "Cannot persist cleanup settings.", { key: "errors.worktreeSettingsUnavailable" });
+            this.#host.applyWorktreeCleanup(command.cleanup);
+          } catch (err) { results.push({ path: "", ok: false, error: err instanceof HiveError && err.key ? tr(err.key as Parameters<typeof tr>[0]) : errorMessage(err).slice(0, 1000) }); }
+        }
+        results.push(...await this.manageWorktrees(command.targets, command.force));
+        this.store.recordWorktreeResult(command.id, results);
+      }
+    });
+    this.#worktreeCommandQueue = next;
+    try { await next; } finally { this.#worktreeCommandsActive--; }
+  }
+
+  async cleanWorktrees(): Promise<void> {
+    if (this.#updateDrain) return;
+    if (this.#worktreeCleanupJob) return this.#worktreeCleanupJob;
+    const job = this.#cleanWorktrees();
+    this.#worktreeCleanupJob = job;
+    try { await job; } finally { this.#worktreeCleanupJob = null; }
+  }
+
+  async #cleanWorktrees(): Promise<void> {
+    if (+this.#opts.now() - this.#worktreeMaintenance < 60_000) return;
+    this.#worktreeMaintenance = +this.#opts.now();
+    const report = await this.worktrees();
+    const eligible = report.entries.filter(e => cleanupReason(e, report.cleanup, this.#opts.now())).sort((a, b) => a.modifiedAt.localeCompare(b.modifiedAt));
+    let free = report.freeBytes;
+    for (const entry of eligible) {
+      const low = free !== null && free < report.cleanup.minFreeGb * 1024 ** 3;
+      const reason = low ? "lowDisk" : cleanupReason(entry, report.cleanup, this.#opts.now())!;
+      await this.manageWorktrees([entry], true, reason);
+      if (free !== null) free = await freeBytes(this.#worktreeRoot());
+    }
+  }
+
   /** Reports queued and running runs to the hub and refreshes the shared quota cooldowns. No-op in local mode. */
   async heartbeat(): Promise<HubUpdate | null> {
     await Promise.all(this.#host.profiles().map((p) => this.#models.refresh(p, this.#host.env())));
@@ -1021,6 +1266,9 @@ export class Runner {
       finishedAt: r.finishedAt!,
       requestedBy: r.requestedBy,
     }));
+    await this.cleanWorktrees();
+    const worktrees = await this.worktrees();
+    const worktreeResults = this.store.worktreeResults();
     const deliveredMessages = this.store.steeringAcks();
     const appliedToolApprovals = this.store.toolApprovalAcks();
     const res = await this.#host
@@ -1034,12 +1282,16 @@ export class Runner {
           runs,
           costs,
           deliveredMessages,
+          worktrees,
+          worktreeResults,
           appliedToolApprovals,
           toolStates: (this.#tools?.entries ?? []).map((e) => ({ id: e.id, hash: toolHash(e), trust: trustOf(e, this.#host.toolTrust?.() ?? {}) })),
           projects: this.#host.projects().map((p) => p.name),
           // Older hubs reject pending work when intake goes off; hold it locally until they understand this flag.
           acceptsRuns: this.#host.settings().acceptHubRuns && (!this.#updateDrain || !this.#supportsUpdateDrain),
           updateDraining: this.#updateDrain && this.#host.settings().acceptHubRuns,
+          maxParallel: this.#host.settings().maxParallel,
+          gateRunner: this.#host.settings().gateRunner,
           ...this.#host.report?.(),
         },
         this.#runnerActor(),
@@ -1048,6 +1300,7 @@ export class Runner {
     // Only after the hub answered: a failed heartbeat sends the same costs next time.
     this.store.ackSteering(deliveredMessages);
     this.store.ackToolApprovals(appliedToolApprovals);
+    this.store.ackWorktreeResults(worktreeResults.map(r => r.id));
     this.store.markCostsReported(finished.map((r) => r.id));
     const next = new Map(res.cooldowns.map((c) => [c.account, c]));
     // Cleared on the hub before it ended (someone pressed "Hết nghỉ"): end the local rest it came from too.
@@ -1090,6 +1343,7 @@ export class Runner {
       this.#host.applyToolTrust({ ...this.#host.toolTrust?.(), [approval.toolId]: approval.hash });
       this.store.recordToolApproval(approval.id);
     }
+    await this.#applyWorktreeCommands(res.worktreeCommands ?? []);
     this.#archivedProjects = update.archivedProjects ?? [];
     this.#opts.onHub?.(update);
     if (!this.#updateDrain) this.#takeSyncs(update.syncCommands);
@@ -1104,6 +1358,14 @@ export class Runner {
     if (this.#host.settings().acceptHubRuns) this.#cancelFromHub(res.cancelRuns ?? []);
     if (this.#host.settings().acceptHubRuns && !this.#updateDrain) this.#chats.take(res.chatRequests ?? []);
     this.#applyPause(res.paused ?? null);
+    if (!this.#updateDrain && !res.duplicate && !res.paused?.hub) await this.#autoRelease.poll().catch(() => undefined);
+    if (this.#host.settings().gateRunner && !this.#updateDrain && !this.#autoRelease.busy && !res.duplicate && !res.paused?.hub) {
+      void this.#mergeQueue.poll({ backend: this.#host.backend(), actor: this.#runnerActor(), instance: this.#instance,
+        projects: this.#host.projects().filter(p => !res.paused?.projects.includes(p.name)), dataDir: this.#opts.dataDir,
+        env: this.#host.env(), remote: this.#host.mergeRemote?.(), openMr: this.#host.openMergeBatch?.bind(this.#host),
+      }).catch(() => { /* The durable batch and local journal are retried at the next heartbeat. */ });
+    }
+
     return update;
   }
 
@@ -1423,7 +1685,7 @@ export class Runner {
     if (sent) notes.unshift(tr("runNote.artifactsSent", { count: sent }));
     if (!notes.length) return;
     try {
-      appendFileSync(this.#logPath(run.id), `${notes.map((n) => `# ${n}`).join("\n")}\n`);
+      appendRedactedRunLog(this.#logPath(run.id), `${notes.map((n) => `# ${n}`).join("\n")}\n`);
     } catch {
       // The log is the only place these notes go; there is nothing else to try.
     }
@@ -1444,7 +1706,10 @@ export class Runner {
       .call("machines.commandResult", { id, status: status as "running" | "done" | "failed" | "rejected", output: output?.slice(-8000) }, this.#runnerActor());
   }
 
+  get releaseBusy(): boolean { return this.#autoRelease.busy; }
+
   async tick(): Promise<void> {
+    if (this.#autoRelease.busy) return;
     if (this.#ticking) {
       this.#again = true;
       return;
@@ -1455,6 +1720,7 @@ export class Runner {
         this.#again = false;
         const now = this.#opts.now();
         for (const run of this.store.queued()) {
+          if (this.#worktreeBusy.has(`${run.project}/${run.taskId}`)) continue;
           if (this.#updateDrain) {
             this.#waiting.set(run.id, tr("runNote.waitingUpdate"));
             continue;
@@ -1482,8 +1748,8 @@ export class Runner {
           const all = this.#loads(now);
           const needs = this.#needs(run);
           // A profile the agent policy rules out is skipped like one out of quota.
-          const blocked = this.#policyBlocked(this.#policyOf(run.project));
-          const loads = all.filter((l) => !blocked.has(l.profile.id) && (run.plan?.phase !== "plan" || ["claude", "codex"].includes(l.profile.kind)));
+          const blocked = this.#policyBlocked(this.#policyOf(run.project), run.role === "research");
+          const loads = all.filter((l) => !blocked.has(l.profile.id) && (run.plan?.phase !== "plan" || ["claude", "codex", "gemini"].includes(l.profile.kind)));
           const picked = pickWithReason(loads, needs, now);
           const pick = picked?.load ?? null;
           if (!pick) {
@@ -1535,10 +1801,10 @@ export class Runner {
   }
 
   /** The profiles the policy rules out, with why. */
-  #policyBlocked(pol: AgentPolicy): Map<string, string> {
+  #policyBlocked(pol: AgentPolicy, readOnlyResearch = false): Map<string, string> {
     const out = new Map<string, string>();
     for (const p of this.#host.profiles()) {
-      const reason = policyBlocks(p, pol);
+      const reason = policyBlocks(p, pol, readOnlyResearch);
       if (reason) out.set(p.id, reason);
     }
     return out;
@@ -1548,7 +1814,7 @@ export class Runner {
   #failByPolicy(run: AgentRun, reasons: string[]): void {
     const error = tr("errors.policyNoProfile", { reasons: reasons.join("; ") });
     try {
-      appendFileSync(this.#logPath(run.id), `# ${error}\n`);
+      appendRedactedRunLog(this.#logPath(run.id), `# ${error}\n`);
     } catch {
       // The run's error says the same.
     }
@@ -1579,7 +1845,7 @@ export class Runner {
     }
     const note = tr("runNote.waitingFetch", { remote, reason, tries, max: FETCH_TRIES });
     try {
-      appendFileSync(this.#logPath(run.id), `# ${note}\n`);
+      appendRedactedRunLog(this.#logPath(run.id), `# ${note}\n`);
     } catch {
       // The run's note says the same.
     }
@@ -1695,6 +1961,7 @@ export class Runner {
   }
 
   async #task(backend: HiveBackend, actor: Actor, run: AgentRun): Promise<Task> {
+    if (run.role === "research") return { id: run.taskId, project: run.project, title: (JSON.parse(run.instructions) as ResearchJob).topic, note: null } as Task;
     const task = (await backend.call("tasks.list", { project: run.project }, actor)).find((t) => t.id === run.taskId);
     if (!task) throw new HiveError("not_found", `Không có task ${run.taskId} trong dự án ${run.project}.`, { key: "errors.taskNotInProject", vars: { id: run.taskId, project: run.project } });
     return task;
@@ -1741,21 +2008,25 @@ export class Runner {
   async #execute(run: AgentRun, chosen: AgentProfile): Promise<void> {
     if (run.role === "classify" || run.diffSummaryFor) return this.#executeClassify(run, chosen);
     // Fitted before the first await, under the same policy tick() checked the profile against.
-    const pol = this.#policyOf(run.project);
+    const ownPolicy = this.#policyOf(run.project);
+    const pol = run.role === "research" ? { ...ownPolicy, autonomy: "read" as const, mcp: [] } : ownPolicy;
     const fit = applyPolicy(chosen, pol, chosen.kind === "codex" && pol.mcp !== null ? this.#codexServers(chosen) : []);
     let profile = fit.profile;
-    const skipped =[...this.#policyBlocked(pol)].map(([id, reason]) => `# policy skipped ${id}: ${reason}\n`).join("");
+    const skipped =[...this.#policyBlocked(pol, run.role === "research")].map(([id, reason]) => `# policy skipped ${id}: ${reason}\n`).join("");
     let wt: Worktree | null = null;
     let mcpFile: string | null = null;
+    let runHub: { url: string; token: string } | null = null;
+    let parentHub: { url: string; token: string } | null = null;
     let runDir: string | null = null;
     let egress: { plan: Egress; docker: string; env: NodeJS.ProcessEnv } | null = null;
-    let log: WriteStream | null = null;
+    let log: Writable | null = null;
     try {
       await this.#models.refresh(chosen, this.#host.env());
       const routed = routeProfile(chosen, fit.profile, pol, run.selection, this.#models.snapshot(chosen, this.#host.env()));
-      const fitted = run.plan?.phase === "plan" ? planningProfile(routed.profile) : routed.profile;
+      const fitted = run.role === "research" ? researchProfile(routed.profile) : run.plan?.phase === "plan" ? planningProfile(routed.profile) : routed.profile;
       // The run's own time limit (roadmap 58c), never past the profile's.
       profile = { ...fitted, timeoutMinutes: Math.min(run.timeoutMinutes ?? fitted.timeoutMinutes, fitted.timeoutMinutes) };
+      if (profile.kind === "opencode") profile = { ...profile, env: { ...profile.env, ...opencodeEnv(profile, this.#host.env().HOME) } };
       run = this.store.update(run.id, { timeoutMinutes: profile.timeoutMinutes });
       // Report the model and effort actually passed to the CLI, including policy and planning overrides.
       run = this.store.update(run.id, { agentKind: profile.kind, ...ranOn(profile) });
@@ -1764,7 +2035,7 @@ export class Runner {
       // A candidate has its own; the judge reads the candidates' branches from the task's.
       const candidate = run.bestOf && run.bestOf.n > 0 ? run.bestOf : null;
       const branch = run.branch ?? branchFor(run.taskId);
-      const name = candidate ? candidateName(run.taskId, candidate.n) : branch.slice(3);
+      const name = run.role === "research" ? `research-${run.id}` : candidate ? candidateName(run.taskId, candidate.n) : branch.slice(3);
       // A task without its branch yet starts from the target branch as the remote has it now; an existing branch
       // (a follow-up, a review, the kept candidate) goes on from its own history.
       // Taken before the fetch below, which may end the attempt: a run that goes back to the queue gets a fresh
@@ -1774,7 +2045,7 @@ export class Runner {
       const pickNote = this.#pickNotes.get(run.id) ?? null;
       this.#pickNotes.delete(run.id);
       const resuming = !!run.branch && !run.branch.endsWith(`+${run.id}`);
-      const fresh = !candidate && (!hasBranch(project.repo, branch) || (run.redispatch?.continueBranch && run.redispatch.crossMachine)) ? await remoteStart(project.repo, resuming ? branch : project.targetBranch, { retryMs: this.#opts.fetchRetryMs }) : null;
+      const fresh = run.role !== "research" && !candidate && (!hasBranch(project.repo, branch) || (run.redispatch?.continueBranch && run.redispatch.crossMachine)) ? await remoteStart(project.repo, resuming ? branch : project.targetBranch, { retryMs: this.#opts.fetchRetryMs }) : null;
       if (resuming && fresh && !fresh.ref) throw new HiveError("conflict", `Cannot retrieve branch ${branch}. Commit WIP and push it on the previous machine first.`, { key: "errors.redispatchUnavailable", vars: { branch } });
       // The checkout here may be days behind the remote (BUG-stale-base): rather than let the agent work on code
       // that old, the run goes back to the queue and tries again at the next tick, then fails.
@@ -1788,7 +2059,7 @@ export class Runner {
         path.join(root, project.name, name),
         run.taskId,
         run.baseSha,
-        candidate ? { branch: branchFor(name), from: candidate.from } : { branch, start: fresh?.ref ?? undefined },
+        candidate ? { branch: branchFor(name), from: candidate.from } : run.role === "research" ? { branch: `research/${run.id}`, from: "HEAD" } : { branch, start: fresh?.ref ?? undefined },
       );
       // A local copy may lag behind the other machine's WIP. Fast-forward only: divergent work stays intact.
       if (run.redispatch?.crossMachine && run.redispatch.continueBranch && fresh?.ref) await gitAsync(wt.path, ["merge", "--ff-only", fresh.ref]);
@@ -1803,32 +2074,68 @@ export class Runner {
       const actor = this.#actor(profile);
       const task = await this.#task(backend, actor, run);
       run = this.store.update(run.id, { worktree: wt.path, branch: wt.branch, baseSha: wt.baseSha, taskTitle: task.title });
+      if (this.#host.mode() === "hub") {
+        parentHub = this.#containerHub();
+        if (!parentHub) throw new Error("Hub run needs a machine credential.");
+        const token = await issueRunCredential(parentHub, this.#host.machine(), {
+          project: run.project, task: run.taskId, run: run.id,
+          minutes: Math.ceil(Math.min(1440, profile.timeoutMinutes + 15)),
+          readOnly: profile.readOnly || run.plan?.phase === "plan",
+        });
+        runHub = { url: parentHub.url, token };
+      }
       // The branch may carry no Hive context at all (a repo whose context MR is not merged), and the prompt tells
       // every role to read AGENTS.md: put the current one in the worktree, outside the branch.
       const context = await this.#writeContext(backend, actor, run.project, wt);
       // Old code a task has to read (roadmap 38h): other checkouts of this machine, read-only for the run.
-      const references = resolveReferences(project.references, this.#host.projects());
+      const references = resolveReferences(run.role === "research" ? (JSON.parse(run.instructions) as ResearchJob).projects.filter(p => p !== run.project) : project.references, this.#host.projects());
       const referenceLine = describeReferences(references);
 
       // A container has neither the hive-mcp shim nor this machine's codegraph: Claude gets the hub's MCP through a file.
       if (profile.container) {
         mcpFile = path.join(this.#opts.dataDir, "runs", `${run.id}.mcp.json`);
-        writeFileSync(mcpFile, JSON.stringify({ mcpServers: this.#containerMcp(profile, run) }), { mode: 0o600 });
+        writeFileSync(mcpFile, JSON.stringify({ mcpServers: claudeMcpServers(runHub, this.#mcpRun(profile, run)) }), { mode: 0o600 });
       }
       const base = this.#host.env();
+      const profileBase = profile.kind === "copilot"
+        ? Object.fromEntries(Object.entries(base).filter(([k]) => !["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "COPILOT_HOME", "COPILOT_ALLOW_ALL"].includes(k)))
+        : base;
       const features = profile.container ? NO_FEATURES : repoFeatures(project.repo);
       // The variables the run has (the machine's, then the profile's), for a tool's secrets: named, never logged.
-      const runEnv: Record<string, string | undefined> = { ...base, ...expandEnv(profile.env) };
-      const tools: ToolPick = profile.container
+      const runEnv: Record<string, string | undefined> = { ...profileBase, ...expandEnv(profile.env) };
+      const networkAllow = profile.container && profile.container.network !== "open"
+        ? egressAllow(profile, { hub: this.#host.hub?.()?.url, gitlab: this.#host.gitlab?.() })
+        : null;
+      const networkPlan = networkAllow ? egressPlan(run.id, profile.container!.image, networkAllow) : null;
+      // Other catalog tools keep their existing host-only behavior; browser data is explicitly mounted below.
+      const catalog = profile.container && this.#tools
+        ? { ...this.#tools, entries: this.#tools.entries.filter((e) => e.handler === "browser") }
+        : this.#tools;
+      const tools: ToolPick = run.role === "research"
         ? NO_TOOLS
-        : this.#tools
-          ? runTools(this.#tools, run.project, features, profile.kind, pol, this.#host.toolTrust?.() ?? {}, runEnv)
+        : catalog
+          ? runTools(catalog, run.project, features, profile.kind, pol, this.#host.toolTrust?.() ?? {}, runEnv)
           : legacyPick(features, profile.kind, fit.mcp);
+      // Codex filters inherited MCP variables, so put Chrome's proxy in both CLIs' server config after trust checks.
+      if (networkPlan) tools.tools = tools.tools.map((e) => e.handler === "browser"
+        ? { ...e, env: { ...e.env, PLAYWRIGHT_MCP_PROXY_SERVER: networkPlan.env.PLAYWRIGHT_MCP_PROXY_SERVER! } }
+        : e);
+      if (tools.tools.some((e) => e.kind === "mcp" && Object.values(e.env).some((v) => v.includes("{runDir}")))) {
+        runDir = path.join(this.#opts.dataDir, "runs", run.id);
+        mkdirSync(runDir, { recursive: true });
+      }
+      const browser = tools.tools.find((e) => e.handler === "browser");
+      if (browser && runDir) readyBrowserSecrets(browser, runDir, runEnv);
+      if (profile.container && mcpFile) {
+        writeFileSync(mcpFile, JSON.stringify({ mcpServers: { ...claudeMcpServers(runHub, this.#mcpRun(profile, run)),
+          ...Object.fromEntries(tools.tools.filter((e) => e.mcp).map((e) => [e.id, claudeToolServer(e, { worktree: wt!.path, repo: project.repo, runDir: runDir ?? undefined })])),
+        } }), { mode: 0o600 });
+      }
       // Catalog hooks (roadmap 28d), before the prompt, which tells the agent about RTK when it is on.
       const hookLines: string[] = [];
       let hooks: ClaudeHookRun | null = null;
       let codexRtk: CodexRtkRun | null = null;
-      if (tools.hooks?.length && run.plan?.phase !== "plan") {
+      if (tools.hooks?.length && run.role !== "research" && run.plan?.phase !== "plan") {
         // The Codex wrapper never approves a tool or bypasses the sandbox, so edit runs may use it too.
         const found = await readyHooks(tools.hooks, { autonomy: profile.kind === "codex" && fit.autonomy === "edit" ? "full" : fit.autonomy, resolve: (b) => resolveBin(b, runEnv.PATH ?? ""), env: runEnv });
         hookLines.push(...found.notes);
@@ -1848,8 +2155,15 @@ export class Runner {
         }
       }
 
+      if (profile.kind === "gemini" && !profile.container) {
+        prepareGeminiSettings(wt.path, { agent: profile.id, project: run.project, task: run.taskId, id: run.id, readOnly: profile.readOnly }, tools.tools, fit.mcp, { repo: project.repo, hiveMcp: resolveBin(SHIM_NAME, base.PATH ?? "") ?? undefined });
+        if (!wt.copied.includes(".gemini/settings.json")) wt.copied.push(".gemini/settings.json");
+      }
+
       const parent = run.parentRunId ? this.store.get(run.parentRunId) : null;
-      const prompt = run.plan?.phase === "plan" ? planningPrompt({ project: run.project, taskId: run.taskId, title: task.title, note: task.note, instructions: run.instructions, worktree: wt.path, plan: run.plan }) : buildPrompt({
+      const research = run.role === "research" ? JSON.parse(run.instructions) as ResearchJob : null;
+      const web = !!research?.sources.includes("web") && pol.network.mode === "open";
+      const prompt = research ? researchPrompt(research, this.#host.projects(), web) : run.plan?.phase === "plan" ? planningPrompt({ project: run.project, taskId: run.taskId, title: task.title, note: task.note, instructions: run.instructions, worktree: wt.path, plan: run.plan }) : buildPrompt({
         project: run.project,
         taskId: run.taskId,
         title: task.title,
@@ -1874,9 +2188,23 @@ export class Runner {
         artifacts: this.#host.mode() === "hub",
       });
       writeSteer(wt.path, run.id, []);
-      const vars = { prompt, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id, repo: project.repo, references: references.repos, hiveMcp: resolveBin(SHIM_NAME, base.PATH ?? "") ?? undefined };
+      if (profile.kind === "opencode") {
+        runDir ??= path.join(this.#opts.dataDir, "runs", run.id);
+        for (const dir of Object.values(opencodeEnv(profile))) mkdirSync(dir, { recursive: true, mode: 0o700 });
+        mkdirSync(path.join(runDir, "opencode-config", "opencode"), { recursive: true, mode: 0o700 });
+      }
+      if (profile.kind === "kilo") {
+        runDir ??= path.join(this.#opts.dataDir, "runs", run.id);
+        mkdirSync(path.join(runDir, "kilo-config"), { recursive: true, mode: 0o700 });
+      }
+      const kiloMcp = profile.kind === "kilo" && profile.container
+        ? Object.fromEntries(Object.entries(claudeMcpServers(runHub, this.#mcpRun(profile, run))).map(([name, value]) => [name, {
+            ...(value as Record<string, unknown>), headers: { ...((value as { headers?: Record<string, string> }).headers ?? {}), authorization: "Bearer {env:HIVE_HUB_TOKEN}" },
+          }])) : undefined;
+      const vars = { ...(profile.kind === "opencode" ? { opencodeConfigDir: path.join(runDir!, "opencode-config") } : {}), kiloMcp, kiloConfigRoot: runDir ? path.join(runDir, "kilo-config") : undefined, prompt, runDir: runDir ?? undefined, worktree: wt.path, task: run.taskId, project: run.project, branch: wt.branch, run: run.id, repo: project.repo, references: references.repos, hiveMcp: resolveBin(SHIM_NAME, base.PATH ?? "") ?? undefined };
       wt.toolDirs = toolDirs(tools.prepare);
-      let cmd = buildCommand(profile, vars, this.#tools && !profile.container ? tools.tools : features, mcpFile ?? undefined, fit.mcp, hooks);
+      let cmd = buildCommand(profile, vars, this.#tools ? tools.tools : features, mcpFile ?? undefined, fit.mcp, hooks);
+      if (research) restrictResearchCommand(cmd, profile.kind, research, web);
       // RTK for Codex (roadmap 58a): wrappers on the run's own PATH and their config, again after a model retry rebuilds cmd.
       const withCodexRtk = () => {
         if (!codexRtk) return;
@@ -1891,7 +2219,7 @@ export class Runner {
         return;
       }
 
-      if (run.role !== "review" && run.plan?.phase !== "plan") {
+      if (run.role !== "research" && run.role !== "review" && run.plan?.phase !== "plan") {
         // Candidates share one lease, which the runner holds for the group (long enough for the slowest profile).
         const minutes = candidate ? Math.max(...this.#host.profiles().map((p) => p.timeoutMinutes)) : profile.timeoutMinutes;
         // Whole minutes: the hub takes an integer, and a run's limit may be a fraction of a minute in tests.
@@ -1905,9 +2233,10 @@ export class Runner {
         if (claim.task?.owner) this.#owners.set(candidate?.group ?? run.id, claim.task.owner);
       }
 
-      log = createWriteStream(this.#logPath(run.id), { flags: "a" });
+      log = redactedRunLog(this.#logPath(run.id));
       log.on("error", () => undefined); // a failing log file must not take the app down
-      const hostEnv = Object.fromEntries(Object.entries(base).filter(([k]) => !k.startsWith("ELECTRON_")));
+      // A login-shell token or permission override must not silently replace the account and grants of a Copilot profile.
+      const hostEnv = Object.fromEntries(Object.entries(profileBase).filter(([k]) => !k.startsWith("ELECTRON_")));
       // One after the other, before the agent: built for Claude, whose servers the runner lists, and for another CLI
       // whose own config starts the same server.
       const prepared: string[] = [];
@@ -1920,15 +2249,23 @@ export class Runner {
         prepared.push(await prepareTool(e, wt.path, { repo: project.repo }, (bin) => resolveBin(bin, base.PATH ?? ""), { ...hostEnv, ...secrets }));
       }
       const toolLines = [...[...tools.notes, ...hookLines].map((n) => `# ${n}`), ...prepared].map((l) => `${l}\n`).join("");
+      // A shell-wide key must not silently authenticate a separate Vibe account. Profile keys remain explicit.
+      if (profile.kind === "vibe" && profile.env.VIBE_HOME) delete hostEnv.MISTRAL_API_KEY;
       const agentEnv: Record<string, string> = {
+        ...Object.fromEntries(tools.tools.flatMap((e) => e.secretEnv).filter((n) => runEnv[n] !== undefined).map((n) => [n, runEnv[n]!])),
         ...expandEnv(profile.env),
         HIVE_AGENT: profile.id,
         HIVE_PROJECT: run.project,
         HIVE_TASK: run.taskId,
         HIVE_RUN: run.id,
         ...(profile.readOnly ? { HIVE_READONLY: "1" } : {}),
+        ...(profile.kind === "kilo" ? { KILO_AUTH_CONTENT: profile.env.KILO_AUTH_CONTENT ?? "", KILO_API_KEY: profile.env.KILO_API_KEY ?? "", ...Object.fromEntries(kiloPaths({ ...base, ...expandEnv(profile.env) }).map((p, i) => [["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"][i]!, path.dirname(p)])) } : {}),
         ...cmd.env,
+        ...(runHub ? { HIVE_RUN_TOKEN: runHub.token } : {}),
       };
+      if (profile.kind === "vibe" && vibeAgentUnverified(wt.path, { ...hostEnv, ...agentEnv }, cmd.args)) {
+        throw new HiveError("bad_request", tr("runNote.policyVibeAgent"), { key: "runNote.policyVibeAgent" });
+      }
       if (profile.kind === "antigravity" && !profile.container) {
         // The repo's setup identity must not override the profile holding this task's lease.
         const configured = installAntigravityMcp(wt.path, run.project, { env: {
@@ -1939,9 +2276,8 @@ export class Runner {
         if (!wt.copied.includes(configured.file)) wt.copied.push(configured.file);
       }
       // A restricted container: its own network and proxy, set up before the agent starts.
-      if (profile.container && profile.container.network !== "open") {
-        const allow = egressAllow(profile, { hub: this.#host.hub?.()?.url, gitlab: this.#host.gitlab?.() });
-        egress = { plan: egressPlan(run.id, profile.container.image, allow), docker: bin, env: { ...hostEnv, HIVE_EGRESS_ALLOW: allow.join(",") } };
+      if (networkPlan) {
+        egress = { plan: networkPlan, docker: bin, env: { ...hostEnv, HIVE_EGRESS_ALLOW: networkAllow!.join(",") } };
         try {
           for (const step of egress.plan.setup) await dockerRun(egress.docker, step, egress.env);
         } catch (err) {
@@ -1952,7 +2288,10 @@ export class Runner {
         }
       }
       // In a container the agent gets only its own variables; docker itself keeps the machine's (PATH, DOCKER_HOST).
-      const hub = this.#containerHub();
+      const hub = runHub;
+      if (profile.kind === "vibe" && profile.container && !hub) {
+        throw new HiveError("bad_request", tr("runNote.vibeContainerHub"), { key: "runNote.vibeContainerHub" });
+      }
       const token = profile.kind === "claude" ? this.#host.token?.(profile.id) : undefined;
       const deadline = Date.now() + profile.timeoutMinutes * 60_000;
       for (let modelRetry = 0; ; modelRetry++) {
@@ -1964,15 +2303,16 @@ export class Runner {
               stdin: cmd.stdin,
               runId: run.id,
               worktree: wt.path,
+              writable: runDir ? [runDir] : [],
               gitDir: git(wt.path, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
               env: {
                 ...agentEnv,
-                ...hubMcpEnv(hub, this.#mcpRun(profile, run), profile.kind),
+                ...hubMcpEnv(hub, this.#mcpRun(profile, run), profile.kind, cmd.env?.OPENCODE_CONFIG_CONTENT),
                 // The macOS Keychain stays outside: a saved long-lived token signs Claude Code in.
                 ...(token ? { CLAUDE_CODE_OAUTH_TOKEN: token } : {}),
               },
               // A reference repo is mounted read-only: in a container that is what stops a write, not a permission rule.
-              readOnly: [...(mcpFile ? [mcpFile] : []), ...references.repos.map((r) => r.path)],
+              readOnly: [...(mcpFile ? [mcpFile] : []), ...(profile.kind === "opencode" ? [vars.opencodeConfigDir!] : []), ...references.repos.map((r) => r.path)],
               ...(egress ? { network: { args: egress.plan.runArgs, env: egress.plan.env } } : {}),
             })
           : null;
@@ -2007,10 +2347,18 @@ export class Runner {
         log.write(
           `$ ${describeCommand(cmd)}\n${box ? `# container ${box.name} · image ${profile.container!.image} · ${egress ? `network limited (${egress.env.HIVE_EGRESS_ALLOW})` : "network open"}\n` : ""}${startNote ? `# ${startNote}\n` : ""}# hive context: ${context.note}\n${referenceLine ? `${referenceLine}\n` : ""}${toolLines}# cwd ${wt.path}\n# ${tr(streamInput ? "runNote.steerStream" : "runNote.steerFile")}\n# profile ${profile.id} · attempt ${run.attempt}/${run.maxAttempts} · role ${run.role}${profile.kind === "codex" && profile.codexLocalhost ? " · localhost network enabled (external network also allowed)" : ""}\n${pickNote ? `# ${pickNote}\n` : ""}${policyLine(pol, fit)}\n${modelRetry === 0 && routed.note ? `# model: ${routed.note}\n` : ""}${skipped}\n## Prompt\n${prompt}\n\n## Output\n`,
         );
-        const resumeInput = !box && profile.kind === "codex" && cmd.codexJson &&
-          /^codex(\.(exe|cmd))?$/.test(path.basename(cmd.bin)) && !cmd.args.includes("--ephemeral") &&
-          (profile.args.includes("{prompt}") || !profile.args.some((a) => a.includes("{prompt}"))) &&
-          await this.#supportsResume(bin, env);
+        const vibeResume = !box && !!cmd.vibeOutput && /^vibe(\.(exe|cmd))?$/.test(path.basename(cmd.bin));
+        const resumeInput = !box && (
+          profile.kind === "codex" && cmd.codexJson &&
+            /^codex(\.(exe|cmd))?$/.test(path.basename(cmd.bin)) && !cmd.args.includes("--ephemeral") &&
+            (profile.args.includes("{prompt}") || !profile.args.some((a) => a.includes("{prompt}"))) &&
+            await this.#supportsResume(bin, env) ||
+          profile.kind === "gemini" && cmd.geminiStream && /^gemini(\.(exe|cmd))?$/.test(path.basename(cmd.bin)) &&
+            (profile.args.includes("{prompt}") || !profile.args.some((a) => a.includes("{prompt}"))) &&
+            await this.#supportsResume(bin, env, true) ||
+          profile.kind === "copilot" && cmd.copilotJson &&
+            /^copilot(\.(exe|cmd))?$/.test(path.basename(cmd.bin)) && profile.args.includes("{prompt}") && cmd.args.includes(prompt)
+        );
         const initialArgs = [...cmd.args];
         let handledMessages = 0;
         let outcome: Outcome;
@@ -2021,11 +2369,11 @@ export class Runner {
         const stamp = lineStamper(this.#opts.now);
         // Claude Code's events become a log to follow while it runs; other CLIs write text as they go, and
         // their last line is what they are doing now.
-        const stream = cmd.claudeStream ? new ClaudeStream(wt.path) : cmd.codexJson ? new CodexStream(wt.path) : cmd.antigravityStream ? new AntigravityStream() : null;
-        if (stream instanceof ClaudeStream || stream instanceof CodexStream) for (const skill of run.skills ?? []) stream.skills.add(skill);
+        const stream = cmd.claudeStream ? new ClaudeStream(wt.path) : cmd.codexJson ? new CodexStream(wt.path) : cmd.copilotJson ? new CopilotStream() : cmd.antigravityStream ? new AntigravityStream() : cmd.geminiStream ? new GeminiStream() : cmd.vibeOutput ? new VibeStream(wt.path, cmd.vibeOutput) : cmd.opencodeStream ? new OpenCodeStream() : cmd.kiloStream ? new KiloStream() : null;
+        if (stream instanceof ClaudeStream || stream instanceof CodexStream || stream instanceof CopilotStream || stream instanceof GeminiStream || stream instanceof OpenCodeStream || stream instanceof KiloStream) for (const skill of run.skills ?? []) stream.skills.add(skill);
         let skillCount = run.skills?.length ?? 0;
         const saveSkills = () => {
-          if ((stream instanceof ClaudeStream || stream instanceof CodexStream) && stream.skills.size !== skillCount) {
+          if ((stream instanceof ClaudeStream || stream instanceof CodexStream || stream instanceof CopilotStream || stream instanceof GeminiStream || stream instanceof OpenCodeStream || stream instanceof KiloStream) && stream.skills.size !== skillCount) {
             skillCount = stream.skills.size;
             this.store.update(run.id, { skills: [...stream.skills] });
           }
@@ -2038,9 +2386,10 @@ export class Runner {
             let agyStderr = "";
             let agyFailure: string | null = null;
             let modelRejected = false;
-            const child = spawn(bin, box ? box.args : cmd.args, {
+            const launch = !box && profile.kind === "gemini" ? geminiLaunch(bin, cmd.args, env) : { bin, args: box ? box.args : cmd.args, env };
+            const child = spawn(launch.bin, launch.args, {
               cwd: wt.path,
-              env,
+              env: launch.env,
               detached: process.platform !== "win32",
               stdio: [cmd.stdin === null ? "ignore" : "pipe", "pipe", "pipe"],
               windowsHide: true,
@@ -2060,7 +2409,7 @@ export class Runner {
                 child.stdin.write(claudeUserMessage(text), (err) => err ? reject(err) : resolve());
               });
               child.stdin?.write(cmd.stdin!);
-            } else if (cmd.stdin !== null) child.stdin?.end(cmd.stdin);
+            } else if (cmd.stdin !== null) { child.stdin?.on("error", () => undefined); child.stdin?.end(cmd.stdin); }
 
             const decode = { out: new StringDecoder("utf8"), err: new StringDecoder("utf8") };
             const lastLine = (text: string) => {
@@ -2099,7 +2448,7 @@ export class Runner {
             outcome = await new Promise<Outcome>((resolve) => {
               child.once("error", (err) => resolve({ kind: "error", reason: tr("runNote.spawnFailed", { bin: cmd.bin, reason: err.message }) }));
               child.once("close", (code) =>
-                resolve({ kind: "exit", code, stdout, all, agyFailure, cancelled: live.cancelled, timedOut: live.timedOut }),
+                resolve({ kind: "exit", code, stdout, all, agyFailure, opencodeFailure: stream instanceof OpenCodeStream ? stream.failure : null, cancelled: live.cancelled, timedOut: live.timedOut }),
               );
             });
             clearTimeout(timer);
@@ -2110,25 +2459,52 @@ export class Runner {
             }
             this.#activity.delete(run.id);
             if (stream) out.write(stamp(stream.end()));
+            if (outcome.kind === "exit" && stream instanceof CopilotStream)
+              outcome.copilotFailure = stream.failure ?? (outcome.code === 0 && !stream.lastText ? "Copilot JSONL contained no final message" : null);
+            if (outcome.kind === "exit" && stream instanceof OpenCodeStream) outcome.opencodeFailure = stream.failure;
             saveSkills();
+            if (outcome.kind === "exit" && stream instanceof GeminiStream && stream.failure) { outcome.agyFailure = stream.failure; outcome.all += `\n${stream.failure}`; }
             rejected ||= modelRejected;
             // Model recovery precedes steering: a rejected startup has no thread to resume.
             if (outcome.kind === "exit" && !outcome.cancelled && !outcome.timedOut && modelRejected &&
                 (outcome.code !== 0 || outcome.agyFailure || (stream instanceof ClaudeStream && unsupportedModel(stream.result ?? "")))) break;
+            if (stream instanceof VibeStream) {
+              const saved = readVibeSession(cmd.env!.VIBE_SESSION_LOGGING__SAVE_DIR!, wt.path, stream.sessionId, stream.lastText);
+              if (saved) stream.sessionId = saved.sessionId;
+            }
             const messages = this.store.steering(run.id).length;
-            if (!resumeInput || !(stream instanceof CodexStream) || !stream.threadId ||
-                outcome.kind !== "exit" || outcome.code !== 0 || outcome.cancelled || outcome.timedOut ||
+            const session = stream instanceof CodexStream ? stream.threadId : stream instanceof GeminiStream || stream instanceof CopilotStream || stream instanceof VibeStream ? stream.sessionId : null;
+            if (!(resumeInput || vibeResume) || !session || (stream instanceof VibeStream && stream.failure) ||
+                outcome.kind !== "exit" || outcome.code !== 0 || outcome.agyFailure || outcome.cancelled || outcome.timedOut ||
                 this.#stopping.delete(run.id) || messages <= handledMessages || Date.now() >= deadline) break;
             handledMessages = messages;
             // Resume this run's exact thread with the same policy/config flags, never the machine's latest session.
-            cmd.args = [...initialArgs.filter((a) => a !== prompt), "resume", stream.threadId, STEER_RESUME_PROMPT];
-            cmd.stdin = null;
+            if (stream instanceof GeminiStream) {
+              cmd.args = [...withoutFlags(initialArgs.filter((a) => a !== prompt), ["--resume", "-r", "--session-id", "--session-file", "-p", "--prompt"], []), "--resume", session];
+              cmd.stdin = STEER_RESUME_PROMPT;
+            } else if (stream instanceof VibeStream) {
+              cmd.args = [...initialArgs.filter((a, i) => a !== "--prompt" && initialArgs[i - 1] !== "--prompt" && a !== prompt), "--resume", session, "--prompt", STEER_RESUME_PROMPT];
+              cmd.stdin = null;
+            } else if (stream instanceof CopilotStream) {
+              cmd.args = [...initialArgs.map((a) => a === prompt ? STEER_RESUME_PROMPT : a), `--resume=${session}`];
+              cmd.stdin = null;
+            } else {
+              cmd.args = [...initialArgs.filter((a) => a !== prompt), "resume", session, STEER_RESUME_PROMPT];
+              cmd.stdin = null;
+            }
             out.write(`# ${tr("runNote.steerResume")}\n`);
           }
         }
-        if (outcome.kind === "exit" && (cmd.claudeJson || stream)) {
+        if (outcome.kind === "exit" && stream instanceof KiloStream && stream.error) {
+          if (outcome.code === 0) outcome.code = 1;
+          outcome.kiloFailure = stream.error;
+        }
+        if (outcome.kind === "exit" && (cmd.claudeJson || cmd.geminiJson || stream)) {
+          const nativeJson = cmd.geminiJson ? geminiJson(outcome.stdout) : null;
+          if (nativeJson?.failure) { outcome.agyFailure = nativeJson.failure; outcome.all += `\n${nativeJson.failure}`; }
+          if (nativeJson?.text) outcome.stdout = nativeJson.text;
           outcome.usage =
-            stream instanceof CodexStream
+            stream instanceof GeminiStream ? stream.usage : cmd.geminiJson ? nativeJson?.usage ?? null : stream instanceof CodexStream
               ? stream.tokens.turns
                 ? {
                     text: stream.lastText,
@@ -2140,10 +2516,20 @@ export class Runner {
                     outputTokens: stream.tokens.output,
                   }
                 : null
-              : stream instanceof AntigravityStream ? null : parseClaudeResult((stream instanceof ClaudeStream ? stream.result : null) ?? outcome.stdout);
+              : stream instanceof CopilotStream ? stream.tokens.calls ? {
+                  text: stream.lastText,
+                  costUsd: null,
+                  inputTokens: Math.max(0, stream.tokens.input - stream.tokens.cacheRead - stream.tokens.cacheWrite),
+                  cacheWriteTokens: stream.tokens.cacheWrite,
+                  cacheReadTokens: stream.tokens.cacheRead,
+                  outputTokens: stream.tokens.output,
+                } : null
+              : stream instanceof VibeStream ? readVibeSession(cmd.env!.VIBE_SESSION_LOGGING__SAVE_DIR!, wt.path, stream.sessionId, stream.lastText)?.usage ?? null
+              : stream instanceof KiloStream ? stream.usage : stream instanceof OpenCodeStream ? stream.usage() : stream instanceof AntigravityStream ? null : parseClaudeResult((stream instanceof ClaudeStream ? stream.result : null) ?? outcome.stdout);
+          if (stream instanceof VibeStream) outcome.vibeFailure = stream.failure;
           // No result (killed, crashed): the summary is its last message, not the raw events.
           // A Codex that printed no events (one older than --json) keeps what it wrote.
-          if (stream && !outcome.usage) outcome.stdout = stream.lastText ?? (stream instanceof CodexStream || stream instanceof AntigravityStream ? outcome.stdout : "");
+          if (stream && !outcome.usage) outcome.stdout = stream.lastText ?? (stream instanceof CopilotStream ? "" : stream instanceof CodexStream || stream instanceof AntigravityStream || stream instanceof GeminiStream ? outcome.stdout : "");
           const u = outcome.usage;
           if (u?.text) out.write(`\n\n## Result\n${u.text}\n`);
           if (u && (u.costUsd !== null || u.outputTokens !== null)) {
@@ -2156,13 +2542,14 @@ export class Runner {
         }
         if (outcome.kind === "exit" && !outcome.cancelled && !outcome.timedOut &&
             (outcome.code !== 0 || outcome.agyFailure || (stream instanceof ClaudeStream && outcome.usage?.text && unsupportedModel(outcome.usage.text))) &&
-            rejected && modelRetry === 0 && ranOn(profile).model && Date.now() < deadline) {
+            profile.kind !== "kilo" && profile.kind !== "opencode" && rejected && modelRetry === 0 && ranOn(profile).model && Date.now() < deadline) {
           if (modelsFor(pol, profile.kind) !== null) {
             out.write("\n# model: cannot retry with CLI default under a model allowlist\n");
           } else {
             out.write(`\n# model: ${ranOn(profile).model} rejected by CLI; retry once on ${profile.id} with CLI default\n`);
             profile = withoutModel(profile);
-            cmd = buildCommand(profile, vars, this.#tools && !profile.container ? tools.tools : features, mcpFile ?? undefined, fit.mcp, hooks);
+            cmd = buildCommand(profile, vars, this.#tools ? tools.tools : features, mcpFile ?? undefined, fit.mcp, hooks);
+            if (research) restrictResearchCommand(cmd, profile.kind, research, web);
             withCodexRtk();
             delete agentEnv.CLAUDE_CODE_EFFORT_LEVEL;
             delete agentEnv.ANTHROPIC_MODEL;
@@ -2197,10 +2584,14 @@ export class Runner {
       await this.#complete(run, profile, wt, { kind: "error", reason: (err as Error).message ?? String(err) });
     } finally {
       this.#stopping.delete(run.id);
+      if (parentHub) await revokeRunCredential(parentHub, this.#host.machine(), run.id).catch(() => undefined);
       // It carries the hub token: gone with the run.
       if (mcpFile) rmSync(mcpFile, { force: true });
-      // RTK's history of the run: its numbers went into the run record.
-      if (runDir) rmSync(runDir, { recursive: true, force: true });
+      // Browser output must reach the hub before its profile and secrets are removed.
+      if (runDir) {
+        await this.#pushArtifacts(this.store.get(run.id) ?? run, runDir).catch(() => undefined);
+        rmSync(runDir, { recursive: true, force: true });
+      }
       // A step can fail when setup stopped half-way: try them all.
       if (egress) for (const step of egress.plan.teardown) await dockerRun(egress.docker, step, egress.env).catch(() => undefined);
     }
@@ -2218,7 +2609,7 @@ export class Runner {
     let error: string | null = null;
     const note = (line: string) => {
       try {
-        appendFileSync(this.#logPath(run.id), `# ${line}\n`);
+        appendRedactedRunLog(this.#logPath(run.id), `# ${line}\n`);
       } catch {
         // The run's summary and error say the same.
       }
@@ -2331,7 +2722,7 @@ export class Runner {
     void this.tick();
   }
 
-  /** Where an agent in a container reaches Hive: the hub (hub mode only; see container-mcp.ts). */
+  /** The machine's hub access, held in the app while a run gets its own credential. */
   #containerHub(): { url: string; token: string } | null {
     const hub = this.#host.mode() === "hub" ? this.#host.hub?.() : null;
     return hub?.url && hub.token ? hub : null;
@@ -2346,11 +2737,6 @@ export class Runner {
       run: run.id,
       readOnly: profile.readOnly || run.plan?.phase === "plan",
     };
-  }
-
-  /** Claude Code's MCP servers for a container run (the file the runner writes). */
-  #containerMcp(profile: AgentProfile, run: AgentRun): Record<string, unknown> {
-    return claudeMcpServers(this.#containerHub(), this.#mcpRun(profile, run));
   }
 
   /** The run's status is saved first; the MR and the Hive note come after, so list() says it is still finishing. */
@@ -2398,9 +2784,10 @@ export class Runner {
         const u = outcome.usage;
         usage = { costUsd: u.costUsd, inputTokens: u.inputTokens, cacheWriteTokens: u.cacheWriteTokens, cacheReadTokens: u.cacheReadTokens, outputTokens: u.outputTokens };
       }
-      const agyFailure = profile.kind === "antigravity" ? outcome.agyFailure ?? agyError(outcome.all) : null;
-      const failed = outcome.code !== 0 || agyFailure !== null;
-      const hit = failed && !outcome.cancelled ? detectRateLimit(agyFailure ?? outcome.all, now) ?? (agyFailure && AGY_LIMIT_PATTERN.test(agyFailure) ? { reason: agyFailure, resetAt: null } : null) : null;
+      const agyFailure = profile.kind === "antigravity" ? outcome.agyFailure ?? agyError(outcome.all) : profile.kind === "gemini" ? outcome.agyFailure ?? null : null;
+      const providerFailure = agyFailure ?? outcome.copilotFailure ?? outcome.vibeFailure ?? outcome.opencodeFailure ?? outcome.kiloFailure ?? null;
+      const failed = outcome.code !== 0 || providerFailure !== null;
+      const hit = failed && !outcome.cancelled ? detectRateLimit(providerFailure ?? outcome.all, now) ?? (agyFailure && AGY_LIMIT_PATTERN.test(agyFailure) ? { reason: agyFailure, resetAt: null } : null) : null;
       if (outcome.cancelled) {
         status = "cancelled";
         error = this.#cancelNotes.get(run.id) ?? tr("runNote.cancelled");
@@ -2418,7 +2805,7 @@ export class Runner {
         const shareError = await this.#shareCooldown(profile, until, hit.reason);
         if (shareError) error = `${error} · ${shareError}`;
       } else {
-        const all = agyFailure ?? outcome.usage?.text ?? outcome.all;
+        const all = providerFailure ?? (profile.kind === "vibe" ? outcome.all : outcome.usage?.text ?? outcome.all);
         const lastErr = all.trim().split("\n").at(-1) ?? "";
         error = codexConfigFailure(profile, all) ?? `${tr("runNote.exited", { code: outcome.code ?? "?" })}${lastErr ? `: ${clip(lastErr, 200)}` : ""}`;
       }
@@ -2427,6 +2814,27 @@ export class Runner {
       }
     }
 
+    if (run.role === "research") {
+      if (status === "succeeded" && outcome.kind === "exit") {
+        try {
+          const result = researchResult(redactLines(stripHidden(outcome.usage?.text ?? outcome.stdout)));
+          const job = JSON.parse(run.instructions) as ResearchJob;
+          const markdown = `${result.report}\n\n## Sources\n${result.sources.map(s => `- ${s}`).join("\n")}\n\n## Recommendations\n${result.recommendations}\n`;
+          const dir = path.join(this.#opts.dataDir, "runs", run.id);
+          mkdirSync(dir, { recursive: true });
+          writeFileSync(path.join(dir, "report.md"), markdown);
+          const backend = this.#host.backend();
+          const actor = this.#runnerActor();
+          const artifact = await backend.call("artifacts.put", { project: run.project, taskId: run.taskId, runId: run.id, profileId: profile.id, name: "report.md", data: Buffer.from(markdown).toString("base64") }, actor);
+          await backend.call("research.finish", { id: job.id, artifactId: artifact.id, sources: result.sources, recommendations: result.recommendations }, actor);
+          summary = clip(result.report, 1500);
+        } catch (err) { status = "failed"; error = toErrorPayload(err).message; }
+      }
+      const done = this.store.update(run.id, { status, error, exitCode, summary, ...usage, finishedAt: now.toISOString() });
+      this.#opts.onEvent?.({ type: "finished", run: done });
+      void this.tick();
+      return;
+    }
     if (run.plan?.phase === "plan") {
       const text = outcome.kind === "exit" ? redactLines(stripHidden((outcome.usage?.text ?? outcome.stdout).trim())).slice(0, PLAN_MAX) : "";
       if (status === "succeeded" && !text) { status = "failed"; error = tr("runNote.planEmpty"); }
@@ -2474,7 +2882,7 @@ export class Runner {
     if (wt) {
       await this.#pushArtifacts(done, wt.path).catch((err: unknown) => {
         try {
-          appendFileSync(this.#logPath(run.id), `# ${tr("runNote.artifactFailed", { name: ARTIFACT_DIR, reason: toErrorPayload(err).message })}\n`);
+          appendRedactedRunLog(this.#logPath(run.id), `# ${tr("runNote.artifactFailed", { name: ARTIFACT_DIR, reason: toErrorPayload(err).message })}\n`);
         } catch {
           // Nothing else to try: the run and its work are already safe.
         }

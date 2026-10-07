@@ -103,7 +103,7 @@ describe("tools.status (roadmap 28e)", () => {
 
     const status = await hive.call("tools.status", { project: "app" }, hoa);
     const byId = Object.fromEntries(status.map((s) => [s.id, s]));
-    assert.deepEqual(Object.keys(byId).sort(), ["codegraph", "rtk", "speckit", "superpowers"]);
+    assert.deepEqual(Object.keys(byId).sort(), ["browser", "codegraph", "kilo-cli", "rtk", "speckit", "superpowers"]);
     assert.deepEqual([byId.codegraph!.effective, byId.codegraph!.required, byId.codegraph!.items], [true, true, ["app:codegraph-mcp", "app:codegraph-index"]]);
     assert.deepEqual(
       byId.codegraph!.machines.map((m) => [m.machine, m.items.map((i) => [i.id, i.state])]),

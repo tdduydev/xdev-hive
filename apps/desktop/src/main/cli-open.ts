@@ -2,9 +2,11 @@
 // session, not a run: no -p, no run flags, no agent policy, and their own MCP servers, hooks and settings stay.
 // Only Hive's server is added, under the profile's name, so what they claim or remember shows as that profile.
 // No Electron imports.
+import { opencodeUserConfig } from "#desktop/main/runner/opencode.ts";
 import type { AgentProfile } from "@xdev-hive/core";
 import { MCP_NAME, hiveMcpServer, hiveMcpServerAt, mcpLaunch } from "./installer.ts";
 import { loginDirEnv } from "./runner/login.ts";
+import { VIBE_HIVE_TOOLS } from "#desktop/main/runner/vibe.ts";
 import type { TerminalCommand } from "./terminal.ts";
 
 export interface CliOpen {
@@ -27,13 +29,18 @@ export function cliCommand(
   const server = hiveMcpServer(profile.id, opts.project);
   // PATH so the CLI finds the hive-mcp shim (and node) the way runs do: Terminal on macOS starts from the login
   // profile, whose PATH may lack them.
-  const env = { ...loginDirEnv(profile), ...(opts.path ? { PATH: opts.path } : {}), ...server.env };
+  const env: Record<string, string> = { ...loginDirEnv(profile), ...(opts.path ? { PATH: opts.path } : {}), ...server.env };
   const base = { title: opts.title, bin: opts.bin, env, done: opts.done, cwd: opts.repo, name: "cli" };
   if (profile.kind === "claude") {
     // A file, not inline JSON: cmd.exe cannot carry the quotes of an inline value. The shim by full path, because a
     // terminal opened from the app does not always carry the PATH the app found (Windows: cmd.exe inherits its own).
     const entry = hiveMcpServerAt(opts.shim, profile.id, opts.project);
     return { command: { ...base, args: ["--mcp-config", opts.mcpFile] }, mcpConfig: `${JSON.stringify({ mcpServers: { [MCP_NAME]: entry } }, null, 2)}\n` };
+  }
+  if (profile.kind === "vibe") {
+    const launch = mcpLaunch(opts.shim, []);
+    return { command: { ...base, env: { ...env, VIBE_CLI: "python", VIBE_TOOLS: JSON.stringify(Object.fromEntries(VIBE_HIVE_TOOLS.map((name) => [`${MCP_NAME}_${name}`, { permission: "always" }]))), VIBE_MCP_SERVERS: JSON.stringify([{ name: MCP_NAME, transport: "stdio", command: [launch.command], args: launch.args, env: server.env }]) },
+      ...(profile.env.VIBE_HOME ? { unsetEnv: ["MISTRAL_API_KEY"] } : {}), args: [] }, mcpConfig: null };
   }
   if (profile.kind === "codex") {
     const vars = Object.entries(server.env).map(([k, v]) => `${k}=${tomlLiteral(v)}`).join(",");
@@ -48,6 +55,18 @@ export function cliCommand(
       `mcp_servers.${MCP_NAME}.env={${vars}}`,
     ];
     return { command: { ...base, args }, mcpConfig: null };
+  }
+  if (profile.kind === "opencode") {
+    const user = opencodeUserConfig(profile);
+    const launch = mcpLaunch(opts.shim, []);
+    const model = profile.opencode?.model;
+    return { command: { ...base, env: { ...env, OPENCODE_CONFIG: opts.mcpFile }, args: model ? ["--model", model] : [] },
+      mcpConfig: JSON.stringify({ ...user, ...(model ? { model, small_model: profile.opencode?.smallModel ?? model } : {}), mcp: { ...user.mcp, [MCP_NAME]: { type: "local", command: [launch.command, ...launch.args], environment: server.env, enabled: true } } }) };
+  }
+  if (profile.kind === "kilo") {
+    const launch = mcpLaunch(opts.shim, []);
+    env.KILO_CONFIG_CONTENT = JSON.stringify({ mcp: { [MCP_NAME]: { type: "local", command: [launch.command, ...launch.args], environment: server.env, enabled: true } } });
+    return { command: { ...base, args: [] }, mcpConfig: null };
   }
   // Gemini and custom CLIs read Hive's server from their own settings; HIVE_AGENT in the env names the profile.
   return { command: { ...base, args: [] }, mcpConfig: null };
