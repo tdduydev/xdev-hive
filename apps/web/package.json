@@ -16,7 +16,8 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p client/tsconfig.json",
     "user": "node src/cli.ts user",
     "e2e": "node e2e/run.mjs",
-    "e2e:mobile": "HIVE_E2E_W=390 HIVE_E2E_H=844 node e2e/run.mjs"
+    "e2e:mobile": "HIVE_E2E_W=390 HIVE_E2E_H=844 node e2e/run.mjs",
+    "e2e:needs": "node e2e/check-needs.mjs"
   },
   "dependencies": {
     "@xdev-hive/core": "*",

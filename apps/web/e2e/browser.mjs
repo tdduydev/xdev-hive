@@ -3,7 +3,7 @@
 // would: Radix menus and the Tiptap editor react to real events, not to element.click().
 // Each step checks what the hub now holds through its RPC, not only what the page shows.
 import { app, BrowserWindow } from "electron";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tableCardsChecks } from "./table-cards.mjs";
 import { mobileAudit } from "./mobile-audit.mjs";
@@ -190,21 +190,105 @@ class Tab {
   }
 }
 
+// --only: a step names the steps it needs (their tabs and rows); one not listed needs every step before it. Every step is listed:
+// `npm run e2e:needs -w @xdev-hive/web` runs each one alone (check-needs.mjs). Mobile-only steps appear in the list too.
+// A step's tabs live in `tabs`, so list the step that opens a tab for every step that uses it.
+// HIVE_E2E_NEEDS (JSON) replaces the table: check-needs.mjs probes a smaller set with it before the table is changed.
+const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS) : {
+  "login-token": [],
+  "scope-search-tasks": ["login-token"],
+  "mobile-kanban-forms-dialog": ["login-token"],
+  "graph": ["login-token"],
+  "docs-system-default": ["login-token"],
+  "login-password": [],
+  "nav-by-job": ["login-token", "login-password"],
+  "reviewer-approves-a-guide-not-context": ["login-password"],
+  "lead-sees-members": [],
+  "admin-grants-a-role": ["login-token"],
+  "docs-rich-editor": ["login-token"],
+  "docs-markdown": ["login-token", "docs-rich-editor"], // the editor docs-rich-editor left open on project/demo/huong-dan (version 2)
+  "mermaid-draws": ["login-token"],
+  "mermaid-error": ["login-token"],
+  "docs-move-space": ["login-token"],
+  "docs-remove-page": ["login-token", "docs-move-space"], // the page docs-move-space moved into the system's space, left open
+  "project-retire": ["login-token"],
+  "bulk-approve-proposals": ["login-token"],
+  "bulk-approve-memory": ["login-token"],
+  "sync-request": ["login-token"],
+  "machine-profiles": ["login-password", "lead-sees-members"],
+  "quota-outlook": ["lead-sees-members"],
+  "web-prompt": ["lead-sees-members"],
+  "new-work": ["lead-sees-members"],
+  "batch-run": ["lead-sees-members", "web-prompt"], // the task web-prompt created
+  "fanout": ["lead-sees-members"],
+  "map-reduce": ["lead-sees-members"],
+  "roles": ["lead-sees-members"],
+  "sdlc-gates": ["login-token", "lead-sees-members"],
+  "sdlc-flow": ["lead-sees-members", "sdlc-gates", "pipeline", "plan-approval", "models-in-pipeline"], // its nested steps run inside it and set up the plan approval its gate pass waits on
+  "pipeline": ["sdlc-flow"], // nested in sdlc-flow
+  "plan-approval": ["sdlc-flow"], // nested in sdlc-flow
+  "models-in-pipeline": ["sdlc-flow"], // nested in sdlc-flow
+  "merge-from-web": ["login-password"],
+  "diff-review-hunks": ["login-token", "merge-from-web"], // merge-from-web leaves the page and run state it builds on
+  "runs-review": ["login-token"],
+  "spec-page": ["login-password"],
+  "spec-import-and-run": ["lead-sees-members", "spec-page"], // spec-page's imported feature
+  "agent-policy": ["lead-sees-members"],
+  "tools": ["login-token", "lead-sees-members"],
+  "stop-all": ["login-token"],
+  "audit-agent": ["login-token"],
+  "budget": ["login-token"],
+  "token-metrics": ["login-token"],
+  "leader-autonomy": ["lead-sees-members"],
+  "leader-tool-proposal": ["lead-sees-members"],
+  "hub-page": ["login-token"],
+  "system-docs": ["login-password"],
+  "systems-outside": ["login-token", "system-docs"], // system-docs saves the system shop
+  "project-archive-delete": ["login-token"],
+  "scope-system-first": ["login-token"],
+  "overview-by-system": ["login-token"],
+  "cross-service-task": ["lead-sees-members"],
+  "graph-sdlc-system": ["lead-sees-members", "cross-service-task"], // cross-service-task's cross-service edge
+  "task-note-history": ["lead-sees-members"],
+  "today-web": ["lead-sees-members"],
+  "features-page": ["login-password", "lead-sees-members"],
+  "agent-map": ["lead-sees-members"],
+  "agent-assign": ["lead-sees-members"],
+  "skill-usage": ["login-token"],
+  "knowledge-pending": ["login-token", "lead-sees-members"],
+  "artifacts": ["lead-sees-members"],
+  "run-steer": ["login-password", "lead-sees-members"],
+};
+const order = [...readFileSync(import.meta.filename, "utf8").matchAll(/^\s*(?:if \(mobile\) )?await step\("([^"]+)"/gm)].map((m) => m[1]);
+const only = (process.env.HIVE_E2E_ONLY ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+const unknown = only.filter((s) => !order.includes(s));
+if (unknown.length) {
+  console.error(`unknown step: ${unknown.join(", ")}\nsteps: ${order.join(", ")}`);
+  process.exit(2);
+}
+const wanted = new Set();
+const want = (name) => {
+  if (wanted.has(name)) return;
+  wanted.add(name);
+  for (const dep of NEEDS[name] ?? order.slice(0, order.indexOf(name))) want(dep);
+};
+only.forEach(want);
 const results = [];
 const overflows = [];
 const contentOverflows = [];
 let current = null;
 let n = 0;
 async function step(name, fn) {
+  if (only.length && !wanted.has(name)) return;
   const t0 = Date.now();
   const id = String(++n).padStart(2, "0");
   try {
     await fn();
     await current?.shot(`${id}-${name}`);
-    results.push({ name, ok: true });
+    results.push({ name, ok: true, ms: Date.now() - t0 });
     console.log(`  ✓ ${name} (${Date.now() - t0} ms)`);
   } catch (err) {
-    results.push({ name, ok: false, error: err.message });
+    results.push({ name, ok: false, error: err.message, ms: Date.now() - t0 });
     console.log(`  ✗ ${name}: ${err.message}`);
     await current?.shot(`${id}-${name}-FAIL`).catch(() => undefined);
   } finally {
@@ -260,7 +344,8 @@ async function main() {
     );
   });
 
-  if (mobile) await mobileAudit({ tab: tabs.admin, out, step, expect });
+  // The audit needs its tab: a --only run that skipped the login has none.
+  if (mobile && tabs.admin) await mobileAudit({ tab: tabs.admin, out, step, expect });
 
   await step("scope-search-tasks", async () => {
     const tab = (current = tabs.admin);
@@ -431,7 +516,7 @@ async function main() {
     for (const label of ["Cài đặt service", "Quản trị", "Đội máy", "Hàng đợi", "Nhật ký"]) expect(!nav.includes(label), `${label} in Hoa's menu:\n${nav}`);
   });
 
-  if (mobile) await mobileAudit({ tab: tabs.hoa, out, step, expect,
+  if (mobile && tabs.hoa) await mobileAudit({ tab: tabs.hoa, out, step, expect,
     pages: ["overview", `device?port=12345&state=${"s".repeat(16)}&challenge=${"c".repeat(43)}`],
     reportName: "mobile-audit-member.json" });
 
@@ -2674,6 +2759,9 @@ async function main() {
     console.log(`mobile overflow: ${overflows.length} steps${overflows.length ? `; ${overflows.map((o) => o.step).join(", ")}` : ""}`);
     console.log(`content wider than pane: ${contentOverflows.length} steps${contentOverflows.length ? `; ${contentOverflows.map((o) => o.step).join(", ")}` : ""}`);
   }
+  const total = results.reduce((sum, r) => sum + r.ms, 0);
+  console.log(`step times, slowest first (total ${total} ms):`);
+  for (const r of [...results].sort((a, b) => b.ms - a.ms)) console.log(`  ${String(r.ms).padStart(7)} ms  ${r.ok ? "✓" : "✗"} ${r.name}`);
   console.log(`${results.length - failed.length}/${results.length} steps passed${failed.length ? `; failed: ${failed.map((f) => f.name).join(", ")}` : ""}`);
   const exitCode = failed.length || errors.length ? 1 : 0;
   writeFileSync(path.join(out, "result.json"), JSON.stringify({ results, errors, exitCode }, null, 2));
