@@ -618,6 +618,8 @@ async function main() {
     await machineRpc("mergeQueue.finish", { id: batch.id, instance, result: { status: "landed", sha: "b".repeat(40), step: "landed", outcomes: [{ taskId: "MERGE-E2E", status: "included", sha: "a".repeat(40) }] } });
     await tab.reload();
     await tab.click("[data-merge-queue] > summary");
+    // The service picker is page state: after a reload it is empty again and no queue shows.
+    await tab.waitFor("merge fixture after reload", (project) => [...document.querySelectorAll("[data-merge-queue] > label select option")].some((option) => option.value === project), project);
     await tab.select("[data-merge-queue] > label select", project);
     await tab.waitFor("landed merge", () => document.querySelector("[data-merge-queue]")?.textContent.includes("Đã vào nhánh đích"));
     expect((await rpc("tasks.list", { project })).find(t => t.id === "MERGE-E2E")?.status === "done", "landing completes the task");
