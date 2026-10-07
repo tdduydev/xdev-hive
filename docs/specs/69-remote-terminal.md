@@ -212,7 +212,7 @@ ID dưới đây là task đề xuất, chưa tạo trên board; dependsOn dùng
 | R-69j | Rà/cấu hình 60c trên máy release: pinned releaseMachine, local argv, credentials local, prepare SHA→metadata SHA, pause/reconcile/rollout pin; dry-run không production | RES-remote-terminal | ops | m | high |
 | OPS-69k-release-0145 | **Dùng terminal 69 để phát hành 0.145** theo §14, bằng chứng exact SHA/version và đối soát rollout | R-69g,R-69h2,R-69j | ops | m | high |
 
-Kind dùng enum hiện có của board (`feature/ui/spec/review/ops`); R-69j gồm kiểm/cấu hình vận hành và chỉ sửa code nếu gap được chứng minh. Không giả rằng các dependency nghiên cứu đã được duyệt khi task còn review. R-69h2 là gate executor, không cấp quyền release. R-69j có thể tiến hành trước terminal; tránh làm chậm sửa cấu hình auto-release đang có.
+Kind dùng enum hiện có của board (`feature/ui/spec/review/ops`); R-69j gồm kiểm/cấu hình vận hành và chỉ sửa code nếu gap được chứng minh. Không giả rằng các dependency nghiên cứu đã được duyệt khi task còn review. R-69h2 là gate executor, không cấp quyền release; contract của nó ở [69h1-gate-job-contract.md](69h1-gate-job-contract.md). R-69j có thể tiến hành trước terminal; tránh làm chậm sửa cấu hình auto-release đang có.
 
 ## 14. Pilot phát hành 0.145 qua tính năng mới
 
