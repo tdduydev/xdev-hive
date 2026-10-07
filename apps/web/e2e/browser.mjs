@@ -191,6 +191,7 @@ class Tab {
   }
 }
 
+<<<<<<< HEAD
 // --only: a step names the steps it needs (their tabs and rows); one not listed needs every step before it.
 // A step's tabs live in `tabs`, so list the step that opens a tab for every step that uses it.
 const NEEDS = {
@@ -204,6 +205,76 @@ const NEEDS = {
   "lead-sees-members": [],
   "run-steer": ["login-token", "login-password", "lead-sees-members"],
   "run-redispatch": [],
+=======
+// --only: a step names the steps it needs (their tabs and rows); one not listed needs every step before it. Every step is listed:
+// `npm run e2e:needs -w @xdev-hive/web` runs each one alone (check-needs.mjs). Mobile-only steps appear in the list too.
+// A step's tabs live in `tabs`, so list the step that opens a tab for every step that uses it.
+// HIVE_E2E_NEEDS (JSON) replaces the table: check-needs.mjs probes a smaller set with it before the table is changed.
+const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS) : {
+  "login-token": [],
+  "scope-search-tasks": ["login-token"],
+  "mobile-kanban-forms-dialog": ["login-token"],
+  "graph": ["login-token"],
+  "docs-system-default": ["login-token"],
+  "login-password": [],
+  "nav-by-job": ["login-token", "login-password"],
+  "reviewer-approves-a-guide-not-context": ["login-password"],
+  "lead-sees-members": [],
+  "admin-grants-a-role": ["login-token"],
+  "docs-rich-editor": ["login-token"],
+  "docs-markdown": ["login-token", "docs-rich-editor"], // the editor docs-rich-editor left open on project/demo/huong-dan (version 2)
+  "mermaid-draws": ["login-token"],
+  "mermaid-error": ["login-token"],
+  "docs-move-space": ["login-token"],
+  "docs-remove-page": ["login-token", "docs-move-space"], // the page docs-move-space moved into the system's space, left open
+  "project-retire": ["login-token"],
+  "bulk-approve-proposals": ["login-token"],
+  "bulk-approve-memory": ["login-token"],
+  "sync-request": ["login-token"],
+  "machine-profiles": ["login-password", "lead-sees-members"],
+  "quota-outlook": ["lead-sees-members"],
+  "web-prompt": ["lead-sees-members"],
+  "new-work": ["lead-sees-members"],
+  "batch-run": ["lead-sees-members", "web-prompt"], // the task web-prompt created
+  "fanout": ["lead-sees-members"],
+  "map-reduce": ["lead-sees-members"],
+  "roles": ["lead-sees-members"],
+  "sdlc-gates": ["login-token", "lead-sees-members"],
+  "sdlc-flow": ["lead-sees-members", "sdlc-gates", "pipeline", "plan-approval", "models-in-pipeline"], // its nested steps run inside it and set up the plan approval its gate pass waits on
+  "pipeline": ["sdlc-flow"], // nested in sdlc-flow
+  "plan-approval": ["sdlc-flow"], // nested in sdlc-flow
+  "models-in-pipeline": ["sdlc-flow"], // nested in sdlc-flow
+  "merge-from-web": ["login-password"],
+  "diff-review-hunks": ["login-token", "merge-from-web"], // merge-from-web leaves the page and run state it builds on
+  "runs-review": ["login-token"],
+  "spec-page": ["login-password"],
+  "spec-import-and-run": ["lead-sees-members", "spec-page"], // spec-page's imported feature
+  "agent-policy": ["lead-sees-members"],
+  "tools": ["login-token", "lead-sees-members"],
+  "stop-all": ["login-token"],
+  "audit-agent": ["login-token"],
+  "budget": ["login-token"],
+  "token-metrics": ["login-token"],
+  "leader-autonomy": ["lead-sees-members"],
+  "leader-tool-proposal": ["lead-sees-members"],
+  "hub-page": ["login-token"],
+  "system-docs": ["login-password"],
+  "systems-outside": ["login-token", "system-docs"], // system-docs saves the system shop
+  "project-archive-delete": ["login-token"],
+  "scope-system-first": ["login-token"],
+  "overview-by-system": ["login-token"],
+  "cross-service-task": ["lead-sees-members"],
+  "graph-sdlc-system": ["lead-sees-members", "cross-service-task"], // cross-service-task's cross-service edge
+  "task-note-history": ["lead-sees-members"],
+  "today-web": ["lead-sees-members"],
+  "features-page": ["login-password", "lead-sees-members"],
+  "agent-map": ["lead-sees-members"],
+  "agent-assign": ["lead-sees-members"],
+  "skill-usage": ["login-token"],
+  "knowledge-pending": ["login-token", "lead-sees-members"],
+  "artifacts": ["lead-sees-members"],
+  "run-steer": ["login-password", "lead-sees-members"],
+>>>>>>> ai/R-59c
 };
 const order = [...readFileSync(import.meta.filename, "utf8").matchAll(/^\s*(?:if \(mobile\) )?await step\("([^"]+)"/gm)].map((m) => m[1]);
 const only = (process.env.HIVE_E2E_ONLY ?? "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -290,6 +361,7 @@ async function main() {
     );
   });
 
+<<<<<<< HEAD
   if (mobile && tabs.admin) await mobileAudit({ tab: tabs.admin, out, step, expect });
 
   // The full WCAG audit also reports existing issues needing design work; opt in with --only a11y-pages.
@@ -330,6 +402,10 @@ async function main() {
     await tab.waitFor("completed run announcement", () => document.querySelector('[data-run-state][role="status"]')?.textContent.includes("Xong"));
     await runContrast({ tab, expect });
   });
+=======
+  // The audit needs its tab: a --only run that skipped the login has none.
+  if (mobile && tabs.admin) await mobileAudit({ tab: tabs.admin, out, step, expect });
+>>>>>>> ai/R-59c
 
   await step("scope-search-tasks", async () => {
     const tab = (current = tabs.admin);
