@@ -2376,6 +2376,11 @@ async function main() {
     await tab.click("#password");
     await tab.type(people.lan.password);
     await tab.key("Enter");
+    if (mobile) {
+      // The phone menu is a Sheet, mounted only while open: the account line and the service picker are inside it.
+      await tab.waitFor("Lan signed in", () => !document.querySelector("#username") && !!document.querySelector('button[aria-label="Ẩn hoặc hiện thanh bên"]'));
+      await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
+    }
     await tab.waitFor("Lan signed in", () => !document.querySelector("#username") && document.body.innerText.includes("@lan"));
     await tab.go("today");
     await tab.click("[data-project-picker-trigger]");
@@ -2940,7 +2945,8 @@ async function main() {
     expect(await tab.eval(() => [...document.querySelectorAll("th")].some((th) => th.textContent === "Service")), "task table has no Service column");
     await tab.select("[data-service-filter]", "ov-web");
     await tab.waitFor("tasks filtered by service", () => document.body.innerText.includes("Overview ov-web") && !document.body.innerText.includes("Overview ov-api"));
-    expect(await tab.eval(() => document.querySelector('[data-project-picker-trigger]')?.textContent.includes("ov-shop")), "filter changed sidebar scope");
+    // A closed phone menu (a Sheet) is not mounted; the shell title names the same scope.
+    expect(await tab.eval(() => (document.querySelector('[data-project-picker-trigger]') ?? document.querySelector("[data-shell-title]"))?.textContent.includes("ov-shop")), "filter changed sidebar scope");
     await tab.go("runs");
     await tab.waitFor("runs from both services", () => document.querySelector('[data-run-service="ov-api"]') && document.querySelector('[data-run-service="ov-web"]'));
     await tab.select("[data-service-filter]", "ov-api");
