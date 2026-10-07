@@ -508,7 +508,8 @@ export function createHubApp({
       if (method === "tokens.create") {
         const role = (i.role as Role | undefined) ?? "agent";
         const hubAdmin = actor.role === "admin" && !actor.access;
-        const allowed: Role[] = hubAdmin ? TOKEN_ROLES : ["viewer", "agent"];
+        // An account's grants do not let a read-only credential mint a credential with write access.
+        const allowed: Role[] = hubAdmin ? TOKEN_ROLES : actor.role === "viewer" ? ["viewer"] : ["viewer", "agent"];
         if (!allowed.includes(role)) throw new HiveError("forbidden", `Bạn chỉ tạo được token vai trò ${allowed.join(", ")}.`, { key: "errors.tokenRoleNotAllowed", vars: { roles: allowed.join(", ") } });
         if (!hubAdmin && !user) throw new HiveError("forbidden", "Token không thuộc tài khoản nào.", { key: "errors.tokenNoAccount" });
         const created = tokens.create(String(i.name ?? ""), role, user?.id ?? null);
@@ -517,6 +518,7 @@ export function createHubApp({
         return;
       }
       if (method === "tokens.revoke") {
+        if (actor.role === "viewer") throw new HiveError("forbidden", "Read-only credentials cannot revoke tokens.", { key: "errors.roleTooLow" });
         const info = tokens.get(String(i.id ?? ""));
         if (!info) throw new HiveError("not_found", "Token not found.", { key: "errors.tokenNotFound" });
         const hubAdmin = actor.role === "admin" && !actor.access;
@@ -766,8 +768,15 @@ export function createHubApp({
           upload = u;
         }
         const hash = upload?.hash ?? createHash("sha256");
+        let receivedBytes = 0;
         const tap = new Transform({
           transform(chunk: Buffer, _enc, done) {
+            // The advertised part limit must also bound streamed/chunked bodies, independent of Content-Length.
+            receivedBytes += chunk.length;
+            if (receivedBytes > UPLOAD_PART_BYTES) {
+              done(new HiveError("bad_request", `Upload parts are at most ${UPLOAD_PART_BYTES / 1024 / 1024} MB.`));
+              return;
+            }
             hash.update(chunk);
             done(null, chunk);
           },

@@ -36,6 +36,20 @@ async function beat(hive: SqliteHive, actor = mbp, extra: Record<string, unknown
 }
 
 describe("admin portal", () => {
+  it("cleans install output before it reaches command history", async () => {
+    const hive = new SqliteHive(":memory:");
+    try {
+      await beat(hive, mbp, { setup: { checkedAt: new Date().toISOString(), report } });
+      const cmd = await hive.call("admin.commandCreate", { machineId: mbp.name, itemId: "cli:codex" }, admin);
+      await hive.call("machines.commandResult", { id: cmd.id, status: "running" }, mbp);
+      const synthetic = "hivechat_" + "a".repeat(43);
+      const done = await hive.call("machines.commandResult", { id: cmd.id, status: "done", output: `safe\n${synthetic}` }, mbp);
+      assert.ok(!done.output!.includes(synthetic));
+      assert.match(done.output!, /safe/);
+      const history = await hive.call("admin.machines", {}, admin);
+      assert.ok(!JSON.stringify(history).includes(synthetic));
+    } finally { hive.close(); }
+  });
   it("keeps what each machine reported about its setup and profiles, for admins only", async () => {
     const hive = new SqliteHive(":memory:");
     await beat(hive, mbp, { setup: { checkedAt: "2026-09-27T07:59:00.000Z", report }, profiles: [profile] });

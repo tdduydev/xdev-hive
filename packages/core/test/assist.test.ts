@@ -22,6 +22,21 @@ async function setup(opts: { local?: boolean } = {}) {
 }
 
 describe("the writing assistant's asks", () => {
+  it("cleans generated text and structured error fields before storing an answer", async () => {
+    const { hive, beat } = await setup();
+    try {
+      await hive.call("docs.assist", { key: "project/app/deploy", kind: "free", prompt: "test", content: "" }, lan);
+      await beat();
+      const job = await hive.call("docs.assistTake", { projects: ["app"] }, runner);
+      const synthetic = "hivechat_" + "a".repeat(43);
+      await hive.call("docs.assistFinish", { id: job!.id, status: "failed", reply: `safe\n${synthetic}`, markdown: synthetic, error: { message: synthetic, key: "errors.test", vars: { detail: synthetic, count: 2 } } }, runner);
+      const [done] = await hive.call("docs.assists", { key: "project/app/deploy" }, lan);
+      assert.ok(!JSON.stringify(done).includes(synthetic));
+      assert.match(done!.reply, /safe/);
+      assert.equal(done!.error?.key, "errors.test");
+      assert.equal(done!.error?.vars?.count, 2);
+    } finally { hive.close(); }
+  });
   it("keeps the sources the person may see, of the page's space or the team's, and hands them to a machine that takes runs", async () => {
     const { hive, mem, beat } = await setup();
     const ask = await hive.call(

@@ -1542,6 +1542,8 @@ export class Runner {
   }
 
   #logPath(id: string): string {
+    // IPC accepts a renderer-supplied id: keep it a run name before joining it to the machine's log directory.
+    if (typeof id !== "string" || !/^[\w.-]{1,40}$/.test(id)) throw new HiveError("bad_request", "Invalid run id.");
     return path.join(this.#opts.dataDir, "runs", `${id}.log`);
   }
 

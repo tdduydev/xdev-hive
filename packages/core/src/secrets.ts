@@ -9,15 +9,22 @@ const PATTERNS: Array<[label: string, pattern: RegExp]> = [
   ["Slack token", /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/],
   ["API key", /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}\b/],
   ["Google API key", /\bAIza[0-9A-Za-z_-]{35}\b/],
-  ["xDev Hive token", /\bhive_[A-Za-z0-9_-]{30,}\b/],
+  ["xDev Hive token", /\bhive(?:chat)?_[A-Za-z0-9_-]{30,}\b/],
   ["JWT", /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/],
 ];
 
 /** Every line that looks like it holds a secret is replaced by a note saying so (logs, run output). */
 export function redactLines(text: string): string {
+  let privateKey = false;
   return text
     .split("\n")
     .map((line) => {
+      // Hiding only the PEM header leaves all of the key material recoverable from the following lines.
+      if (/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(line)) privateKey = true;
+      if (privateKey) {
+        if (/-----END [A-Z ]*PRIVATE KEY-----/.test(line)) privateKey = false;
+        return "(line hidden: it looked like a private key)";
+      }
       const hit = findSecret(line);
       return hit ? `(line hidden: it looked like a ${hit})` : line;
     })

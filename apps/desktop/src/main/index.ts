@@ -2,6 +2,8 @@ import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { trustedRendererUrl } from "#desktop/main/ipc-trust.ts";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, powerMonitor, protocol, shell, Tray, type IpcMainInvokeEvent } from "electron";
 import {
   AGENT_TEMPLATES,
@@ -1151,7 +1153,10 @@ async function me(): Promise<Me> {
 
 function isTrusted(event: IpcMainInvokeEvent): boolean {
   const url = event.senderFrame?.url ?? "";
-  return devUrl ? url.startsWith(devUrl) : url.startsWith("file://");
+  // A child frame or another window must never inherit the main renderer's machine-control IPC rights.
+  if (!win || win.isDestroyed() || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) return false;
+  const expected = devUrl ?? pathToFileURL(path.join(import.meta.dirname, "../renderer/index.html")).href;
+  return trustedRendererUrl(url, expected);
 }
 
 function handle(channel: string, fn: (...args: any[]) => unknown): void {
@@ -1293,7 +1298,7 @@ function createWindow(): void {
     return { action: "deny" };
   });
   window.webContents.on("will-navigate", (e, url) => {
-    if (!(devUrl && url.startsWith(devUrl))) e.preventDefault();
+    if (!(devUrl && trustedRendererUrl(url, devUrl))) e.preventDefault();
     if (chatFileId(url) !== null) void openChatFile(url).catch(() => undefined);
   });
   // Closing the window keeps the app (and the runner taking work) going: in the menu bar on macOS, in the tray on

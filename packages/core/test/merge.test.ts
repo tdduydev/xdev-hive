@@ -81,7 +81,9 @@ describe("merge from the web (roadmap 18c)", () => {
   it("keeps the forge's reason when the merge fails, and lets someone try again", async () => {
     const { hive, merge } = await setup();
     await merge(hoa);
-    const failed = await hive.call("runs.mergeResult", { runId: "R-abc123", ok: false, error: { message: "GitLab 405: Method Not Allowed" } }, machine);
+    const synthetic = "hivechat_" + "a".repeat(43);
+    const failed = await hive.call("runs.mergeResult", { runId: "R-abc123", ok: false, error: { message: "GitLab 405: Method Not Allowed", vars: { detail: synthetic } } }, machine);
+    assert.ok(!JSON.stringify(failed.merge?.error).includes(synthetic));
     assert.deepEqual([failed.merge?.status, failed.merge?.error?.message, failed.mr?.status], ["failed", "GitLab 405: Method Not Allowed", "opened"]);
     assert.equal((await merge(hoa)).merge?.status, "pending");
   });
