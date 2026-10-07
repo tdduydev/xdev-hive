@@ -84,7 +84,7 @@ import {
   type UpdateOffer,
 } from "@xdev-hive/core";
 import { tr } from "#desktop/main/i18n.ts";
-import { git, isGitRepo } from "#desktop/main/git.ts";
+import { git, gitAsync, isGitRepo } from "#desktop/main/git.ts";
 import { NO_FEATURES, repoFeatures } from "#desktop/main/installer.ts";
 import { codexHome } from "./login.ts";
 import { renderContext, type WorktreeRule, type WorktreeSkill } from "#desktop/main/sync.ts";
@@ -627,7 +627,7 @@ export class Runner {
    * `extra.ciFix`: the run fixes a failed MR pipeline (queued by the MR watcher, not by the interface).
    * `extra.requestedBy`: who asked for it on the web (a hub run request).
    */
-  async enqueue(req: StartRunRequest, extra: { ciFix?: CiFix; requestedBy?: string; plan?: RunPlan | null; fromHub?: boolean } = {}): Promise<AgentRun> {
+  async enqueue(req: StartRunRequest, extra: { ciFix?: CiFix; requestedBy?: string; plan?: RunPlan | null; fromHub?: boolean; redispatch?: AgentRun["redispatch"] } = {}): Promise<AgentRun> {
     if (this.#updateDrain) throw new HiveError("conflict", "App is waiting to update.", { key: "errors.updateDraining" });
     this.#intakePending++;
     try {
@@ -697,7 +697,10 @@ export class Runner {
         instructions: (req.instructions ?? "").slice(0, 4000),
         plan: extra.plan ?? null,
         reviewAfter: extra.plan?.phase === "plan" ? false : req.reviewAfter ?? false,
-        baseSha: previous?.baseSha ?? null,
+        // Ordinary dispatch keeps main's fresh-start behavior after a merged branch was cleaned up.
+        branch: !extra.redispatch && previous?.branch && hasBranch(project.repo, previous.branch) ? previous.branch : null,
+        redispatch: extra.redispatch ?? null,
+        baseSha: extra.redispatch ? extra.redispatch.baseSha : previous?.baseSha ?? null,
         ciFix: extra.ciFix ?? null,
         requestedBy: extra.requestedBy ?? null,
         selection: req.selection ?? null,
@@ -705,8 +708,9 @@ export class Runner {
       },
       this.#iso(),
     );
+    const queued = extra.redispatch ? this.store.update(run.id, { branch: extra.redispatch.continueBranch ? extra.redispatch.branch : `ai/${run.taskId}+${run.id}` }) : run;
     void this.tick();
-    return run;
+    return queued;
   }
 
   /** Candidates start together from the task branch (or HEAD), each on its own branch and worktree. */
@@ -1291,7 +1295,7 @@ export class Runner {
           selection: req.selection ?? null,
           timeoutMinutes: req.timeoutMinutes ?? null,
         },
-        { requestedBy: req.requestedBy, plan: req.plan ?? null, fromHub: true },
+        { requestedBy: req.requestedBy, plan: req.plan ?? null, fromHub: true, redispatch: req.redispatch ? { ...req.redispatch, crossMachine: req.redispatch.machineId !== req.machineId } : null },
       );
       this.#opts.onEvent?.({ type: "dispatched", run, by: req.requestedBy });
       return { status: "accepted", runId: run.id, error: null };
@@ -1355,6 +1359,8 @@ export class Runner {
             // A queued run's note is why it waits.
             error: clip(r.error, 2000),
             branch: r.branch,
+            baseSha: r.baseSha,
+            instructions: r.instructions,
             commits: r.commits,
             mrUrl: r.mrUrl,
             mr: mrOf(r),
@@ -1757,7 +1763,8 @@ export class Runner {
       const root = this.#host.settings().worktreeRoot ?? path.join(this.#opts.dataDir, "worktrees");
       // A candidate has its own; the judge reads the candidates' branches from the task's.
       const candidate = run.bestOf && run.bestOf.n > 0 ? run.bestOf : null;
-      const name = candidate ? candidateName(run.taskId, candidate.n) : run.taskId;
+      const branch = run.branch ?? branchFor(run.taskId);
+      const name = candidate ? candidateName(run.taskId, candidate.n) : branch.slice(3);
       // A task without its branch yet starts from the target branch as the remote has it now; an existing branch
       // (a follow-up, a review, the kept candidate) goes on from its own history.
       // Taken before the fetch below, which may end the attempt: a run that goes back to the queue gets a fresh
@@ -1766,7 +1773,9 @@ export class Runner {
       this.#startNotes.delete(run.id);
       const pickNote = this.#pickNotes.get(run.id) ?? null;
       this.#pickNotes.delete(run.id);
-      const fresh = !candidate && !hasBranch(project.repo, branchFor(run.taskId)) ? await remoteStart(project.repo, project.targetBranch, { retryMs: this.#opts.fetchRetryMs }) : null;
+      const resuming = !!run.branch && !run.branch.endsWith(`+${run.id}`);
+      const fresh = !candidate && (!hasBranch(project.repo, branch) || (run.redispatch?.continueBranch && run.redispatch.crossMachine)) ? await remoteStart(project.repo, resuming ? branch : project.targetBranch, { retryMs: this.#opts.fetchRetryMs }) : null;
+      if (resuming && fresh && !fresh.ref) throw new HiveError("conflict", `Cannot retrieve branch ${branch}. Commit WIP and push it on the previous machine first.`, { key: "errors.redispatchUnavailable", vars: { branch } });
       // The checkout here may be days behind the remote (BUG-stale-base): rather than let the agent work on code
       // that old, the run goes back to the queue and tries again at the next tick, then fails.
       if (fresh?.error) {
@@ -1779,8 +1788,17 @@ export class Runner {
         path.join(root, project.name, name),
         run.taskId,
         run.baseSha,
-        candidate ? { branch: branchFor(name), from: candidate.from } : { start: fresh?.ref ?? undefined },
+        candidate ? { branch: branchFor(name), from: candidate.from } : { branch, start: fresh?.ref ?? undefined },
       );
+      // A local copy may lag behind the other machine's WIP. Fast-forward only: divergent work stays intact.
+      if (run.redispatch?.crossMachine && run.redispatch.continueBranch && fresh?.ref) await gitAsync(wt.path, ["merge", "--ff-only", fresh.ref]);
+      // A branch fetched on another machine starts at its WIP tip, but the diff still starts at the old base.
+      if (resuming && run.baseSha) {
+        if (!tryGit(wt.path, ["rev-parse", "--verify", `${run.baseSha}^{commit}`])) throw new HiveError("conflict", `Cannot retrieve base for ${branch}.`, { key: "errors.redispatchUnavailable", vars: { branch } });
+        wt.baseSha = run.baseSha;
+      } else if (resuming) {
+        wt.baseSha = git(project.repo, ["merge-base", project.targetBranch ?? "HEAD", wt.branch]);
+      }
       const backend = this.#host.backend();
       const actor = this.#actor(profile);
       const task = await this.#task(backend, actor, run);
@@ -1837,7 +1855,7 @@ export class Runner {
         title: task.title,
         note: task.note,
         role: run.role,
-        instructions: [run.instructions, ...(run.plan?.phase === "implement" ? ["Approved implementation plan (follow this scope and verification):", run.plan.text ?? "", run.plan.note ?? ""] : [])].join("\n\n"),
+        instructions: [run.instructions, ...(resuming ? [`Continue the existing work: git diff ${wt.baseSha} ${wt.branch}`, "Preserve previous changes. Commit unfinished work as WIP before stopping."] : []), ...(run.plan?.phase === "implement" ? ["Approved implementation plan (follow this scope and verification):", run.plan.text ?? "", run.plan.note ?? ""] : [])].join("\n\n"),
         worktree: wt.path,
         branch: wt.branch,
         baseSha: wt.baseSha,
@@ -2492,6 +2510,7 @@ export class Runner {
           instructions: run.instructions,
           reviewAfter: run.reviewAfter,
           baseSha: done.baseSha,
+          branch: done.branch,
           ciFix: run.ciFix,
           bestOf: run.bestOf,
           requestedBy: run.requestedBy,
@@ -2524,6 +2543,7 @@ export class Runner {
           // The cross-review still needs another vendor; within that, the kind asked for.
           preferKind: run.preferKind,
           baseSha: done.baseSha,
+          branch: done.branch,
           requestedBy: run.requestedBy,
           // The review row's choice, not the implementer's: reviewing a big feature needs less than writing it.
           selection: run.selection?.review ?? null,

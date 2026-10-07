@@ -1936,6 +1936,13 @@ export const en: Catalog = {
     remove: "Remove {name}",
     removed: "{name} removed",
   },
+  redispatch: {
+    title: "Redispatch", send: "Redispatch run", hint: "Redispatch {run} for task {task}; choose another machine or subscription.",
+    continueBranch: "Continue on the existing branch", branchHint: "Keep the work on {branch}. When switching machines, commit WIP and push the branch on the previous machine first; the new machine must be able to retrieve it.",
+    freshHint: "The new run starts from the service's target branch on a separate branch.",
+    sent: "Redispatch request #{id} queued for {machine}.", noInstructions: "This older run has no saved instructions. Add instructions before redispatching.",
+    chain: "Task run chain", noRuns: "This task has no runs yet.", parent: "Continues from {run}",
+  },
   runs: {
     steerLabel: "Message agent",
     steerSend: "Send instructions",
@@ -2921,6 +2928,11 @@ export const en: Catalog = {
   },
   errors: {
     runTimeoutCeiling: "Timeout cannot exceed {minutes} minutes (profile and hub ceilings).",
+    redispatchRunnerRequired: "Update the app on the receiving machine before redispatching a run.",
+    redispatchOne: "Redispatch runs one candidate at a time.",
+    redispatchState: "Redispatch requires a failed, timed out, cancelled or quota-limited run.",
+    redispatchBranch: "This run has no branch to continue on.",
+    redispatchUnavailable: "Cannot retrieve branch {branch}. Commit WIP and push it on the previous machine first, or start a fresh run.",
     steerText: "A message must contain 1–8,000 characters.",
     runNotRunning: "Run {id} is no longer running.",
     planRunnerRequired: "This machine needs an updated Claude or Codex runner for plan approval.",
