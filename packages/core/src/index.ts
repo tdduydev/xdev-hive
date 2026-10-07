@@ -48,3 +48,4 @@ export * from "#core/inbox.ts";
 
 export * from "#core/worktrees.ts";
 export * from "#core/terminal.ts";
+export { TerminalRedactor, KNOWN_SECRET_MIN, KNOWN_SECRET_MAX } from "#core/terminal-redact.ts";
