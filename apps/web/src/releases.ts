@@ -32,8 +32,11 @@ const ARCHES: ReleaseArch[] = ["arm64", "x64"];
 const KINDS: ReleaseKind[] = ["zip", "dmg", "exe", "AppImage", "deb"];
 /** What a machine installs from, per platform (the dmg is for people). */
 const UPDATE_KIND: Record<ReleasePlatform, ReleaseKind> = { mac: "zip", win: "exe", linux: "AppImage" };
-/** Releases whose builds are kept on disk; older ones keep their row, not their files. */
-const KEEP_FILES = 5;
+/**
+ * Releases whose builds are kept on disk (HIVE_RELEASE_KEEP); older ones keep their row, not their files. Each release is
+ * about 1 GB for every platform, and machines only ever install the rollout target.
+ */
+export const DEFAULT_RELEASE_KEEP = 3;
 
 const toFile = (r: Row): AppReleaseFile => ({
   id: Number(r.id),
@@ -55,11 +58,13 @@ export class ReleaseStore {
   readonly #db: DatabaseSync;
   readonly #dir: string;
   readonly #now: () => Date;
+  readonly #keep: number;
 
-  constructor(db: DatabaseSync, dir: string, now: () => Date = () => new Date()) {
+  constructor(db: DatabaseSync, dir: string, now: () => Date = () => new Date(), keep = DEFAULT_RELEASE_KEEP) {
     this.#db = db;
     this.#dir = dir;
     this.#now = now;
+    this.#keep = Math.max(1, Math.floor(keep));
     db.exec(`CREATE TABLE IF NOT EXISTS app_releases(version TEXT PRIMARY KEY, channel TEXT NOT NULL DEFAULT 'stable', notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS app_release_files(id INTEGER PRIMARY KEY, version TEXT NOT NULL, platform TEXT NOT NULL, arch TEXT NOT NULL, kind TEXT NOT NULL,
         name TEXT NOT NULL, size INTEGER NOT NULL, sha256 TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(version, name));
@@ -111,7 +116,7 @@ export class ReleaseStore {
          ON CONFLICT(version, name) DO UPDATE SET platform = excluded.platform, arch = excluded.arch, kind = excluded.kind, size = excluded.size, sha256 = excluded.sha256`,
       )
       .run(version, platform, arch, kind, name, size, input.sha256, at);
-    this.#prune();
+    this.prune();
     return toFile(this.#db.prepare("SELECT * FROM app_release_files WHERE version = ? AND name = ?").get(version, name) as Row);
   }
 
@@ -120,14 +125,23 @@ export class ReleaseStore {
     if (!r.changes) throw new HiveError("not_found", "No such release.", { key: "errors.releaseNotFound" });
   }
 
-  /** Drops the builds of all but the newest releases (and never the target's). */
-  #prune(): void {
+  /** Drops the builds of all but the newest releases (and never the target's); says which went and how many bytes. */
+  prune(): { versions: string[]; bytes: number } {
     const target = this.rollout().target;
-    const versions = this.list().map((r) => r.version);
-    for (const v of versions.slice(KEEP_FILES)) {
-      if (v === target) continue;
-      rmSync(path.join(this.#dir, v), { recursive: true, force: true });
+    const out = { versions: [] as string[], bytes: 0 };
+    for (const r of this.list().slice(this.#keep)) {
+      if (r.version === target || !r.files.length) continue;
+      out.bytes += r.files.reduce((n, f) => n + f.size, 0);
+      out.versions.push(r.version);
+      rmSync(path.join(this.#dir, r.version), { recursive: true, force: true });
     }
+    return out;
+  }
+
+  /** What the builds take on disk, for the Hub page. */
+  storage(): { bytes: number; versions: number; keep: number } {
+    const kept = this.list().filter((r) => r.files.length);
+    return { bytes: kept.reduce((n, r) => n + r.files.reduce((m, f) => m + f.size, 0), 0), versions: kept.length, keep: this.#keep };
   }
 
   file(id: number): (AppReleaseFile & { path: string }) | null {

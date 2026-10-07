@@ -150,6 +150,14 @@ export interface DeployLogInfo {
 }
 
 /** The hub itself (hub.info): database, backups, diagnostics, search, sign-in and hosts. */
+/** What "Dọn dữ liệu" on the Hub page removed. */
+export interface HubCleanup {
+  releases: { versions: string[]; bytes: number } | null;
+  artifacts: { removed: number; bytes: number };
+  /** Database and WAL files before and after VACUUM. */
+  db: { before: number; after: number };
+}
+
 export interface HubInfo {
   /** The xDev Hive version the hub was built from (the app's version), and its commit when the deploy said. */
   version: string;
@@ -166,6 +174,12 @@ export interface HubInfo {
   /** Doc files (roadmap 23c): in the database, or in a store (SeaweedFS) with `inDb` still to move there. */
   files: { store: string | null; where: string | null; count: number; bytes: number; inDb: number; lastError: string | null };
   sso: { name: string; issuer: string; linked: number } | null;
+  /** What takes disk space and how long it is kept (DATA-cleanup-hub); releases is null on a hub without app builds. */
+  storage: {
+    releases: { bytes: number; versions: number; keep: number } | null;
+    artifacts: { count: number; bytes: number; days: number };
+    runLogDays: number;
+  };
   hosts: { allowed: string[] | null; publicUrl: string | null; trustProxy: boolean };
 }
 

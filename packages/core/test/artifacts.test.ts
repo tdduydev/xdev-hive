@@ -263,3 +263,38 @@ describe("the artifact store (roadmap 41c)", () => {
     assert.equal(artifactName(`${"d/".repeat(200)}x.md`), `${"d/".repeat(200)}x.md`.slice(-200));
   });
 });
+
+describe("artifact retention (DATA-cleanup-hub)", () => {
+  async function aged(opts: { artifactDays?: number } = {}) {
+    let t = Date.parse("2026-10-01T00:00:00Z");
+    const store = memoryStore();
+    const hive = new SqliteHive(":memory:", { blobs: store, now: () => new Date(t), ...opts });
+    hive.seed("hub");
+    for (const p of ["app", "web"]) await hive.call("tasks.create", { id: `${p.toUpperCase()}-1`, project: p, title: `${p} task` }, admin);
+    await put(hive, { name: "shot.png", data: png(1) });
+    await put(hive, { project: "web", taskId: "WEB-1", runId: "R-2", name: "shot.png", data: png(2) });
+    await hive.call("tasks.update", { id: "APP-1", status: "done" }, admin);
+    return { hive, store, advance: (days: number) => (t += days * 24 * 3_600_000) };
+  }
+
+  it("drops a done task's old artifacts and their bytes, and keeps an open task's however old", async () => {
+    const { hive, store, advance } = await aged();
+    assert.deepEqual(await hive.pruneArtifacts(), { removed: 0, bytes: 0 }, "nothing is old yet");
+    advance(31);
+    const r = await hive.pruneArtifacts();
+    assert.equal(r.removed, 1);
+    assert.equal(r.bytes, Buffer.from(png(1), "base64").length);
+    assert.deepEqual([...store.files.keys()], [sha(png(2))], "only the open task's bytes stay in the store");
+    assert.deepEqual(hive.artifactsInfo(), { count: 1, bytes: Buffer.from(png(2), "base64").length, days: 30, runLogDays: 30 });
+    hive.close();
+  });
+
+  it("keeps everything when retention is off", async () => {
+    const { hive, advance } = await aged({ artifactDays: 0 });
+    advance(400);
+    assert.deepEqual(await hive.pruneArtifacts(), { removed: 0, bytes: 0 });
+    assert.equal(hive.artifactsInfo().count, 2);
+    hive.vacuum();
+    hive.close();
+  });
+});

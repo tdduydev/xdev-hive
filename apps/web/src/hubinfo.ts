@@ -3,10 +3,11 @@ import type { DeployLog } from "#web/deploy-log.ts";
 // hub admins, and a backup made on request.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { HiveError, type HubInfo } from "@xdev-hive/core";
+import { HiveError, type HubCleanup, type HubInfo } from "@xdev-hive/core";
 import type { SqliteHive } from "@xdev-hive/core/node";
 import { backupDatabase, backupFiles, type BackupResult, type FilesBackupResult } from "./backup.ts";
 import type { UserStore } from "./users.ts";
+import type { ReleaseStore } from "./releases.ts";
 
 export interface HubInfoOptions {
   hive: SqliteHive;
@@ -14,6 +15,7 @@ export interface HubInfoOptions {
   dbPath: string;
   users?: UserStore;
   backup?: { dir: string; hours: number; keep: number } | null;
+  releases?: ReleaseStore;
   embedUrl?: string | null;
   sso?: { name: string; issuer: string } | null;
   allowedHosts?: string[] | null;
@@ -78,9 +80,22 @@ export class HubInfoSource {
       backup: o.backup ? { dir: o.backup.dir, hours: o.backup.hours, keep: o.backup.keep, last, count: snapshots } : null,
       search: { mode: search.mode, model: search.model, url: o.embedUrl ?? null, indexed: search.indexed, total: search.total, lastError: search.lastError },
       files: o.hive.filesInfo(),
+      storage: { releases: o.releases?.storage() ?? null, artifacts: (({ count, bytes, days }) => ({ count, bytes, days }))(o.hive.artifactsInfo()), runLogDays: o.hive.artifactsInfo().runLogDays },
       sso: o.sso ? { name: o.sso.name, issuer: o.sso.issuer, linked: o.users ? o.users.list().filter((u) => u.sso).length : 0 } : null,
       hosts: { allowed: o.allowedHosts ?? null, publicUrl: o.publicUrl ?? null, trustProxy: o.trustProxy ?? false },
     };
+  }
+
+  /** "Dọn dữ liệu": old app builds, old artifacts of done tasks, then the database file shrunk. */
+  async cleanup(): Promise<HubCleanup> {
+    const o = this.#o;
+    const releases = o.releases?.prune() ?? null;
+    const artifacts = await o.hive.pruneArtifacts();
+    // The WAL holds recent pages: counting the main file alone would show VACUUM growing the database.
+    const dbBytes = () => size(o.dbPath) + size(`${o.dbPath}-wal`);
+    const before = dbBytes();
+    o.hive.vacuum();
+    return { releases, artifacts, db: { before, after: dbBytes() } };
   }
 
   /** "Backup ngay": a snapshot now, the oldest beyond the kept number removed, and the doc files in the store. */
