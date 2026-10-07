@@ -50,6 +50,7 @@ import {
   type SdlcGateRecord,
   type SdlcPolicySettings,
   type SdlcPolicyView,
+  DEFAULT_AGENT_KINDS,
 } from "./sdlc.ts";
 import {
   authorize,
@@ -4412,7 +4413,7 @@ export class SqliteHive implements HiveBackend {
   /** Retry selection must use the same routing and shared quota rules as the first assignment. */
   #autoProfileAllowed(task: Task, profile: ReportedProfile, machines: Machine[]): boolean {
     const own = this.#sdlcPolicy().projects[task.project];
-    if (!(own?.allowedAgentKinds ?? ["claude", "codex", "antigravity"]).includes(profile.kind)) return false;
+    if (!(own?.allowedAgentKinds ?? DEFAULT_AGENT_KINDS).includes(profile.kind)) return false;
     if (needsPlanApproval(own?.planApproval, task.size) && (!profile.planApproval || !["claude", "codex"].includes(profile.kind))) return false;
     const selection = this.#selection(task.project, task, "implement");
     const model = selection?.models[profile.kind as keyof NonNullable<typeof selection>["models"]];
