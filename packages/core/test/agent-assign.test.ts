@@ -178,6 +178,52 @@ describe("a task given to one agent (roadmap 50)", () => {
     assert.deepEqual((await sent(mbp)).map((r) => r.taskId), ["T-1"], "and only the one started again goes out");
   });
 
+  /** A run of T-1 reported by mbp, with the fields the turn rules look at. */
+  const report = (hive: SqliteHive, runId: string, role: string, status: string, extra: Record<string, unknown> = {}) =>
+    hive.call(
+      "runs.push",
+      { machine: "duy-mbp", runs: [{ runId, project: "app", taskId: "T-1", taskTitle: "T-1", role: role as never, status: status as never, profileId: "claude-1", createdAt: "2026-10-06T08:00:00.000Z", ...extra }] },
+      mbp,
+    );
+
+  it("does not count a run the app closed, or a rate limit, as the agent's turn, but not for ever", async () => {
+    const { hive, beat, sent, task } = await hub();
+    await beat(mbp);
+    await hive.call("tasks.assign", { id: "T-1", machineId: mbp.name }, lead);
+    const closed = "The app closed while the run was going";
+    for (const [n, run] of [[1, { status: "failed", error: closed }], [2, { status: "rate_limited" }], [3, { status: "failed", error: closed }]] as const) {
+      const out = await sent(mbp);
+      assert.deepEqual(out.map((r) => r.taskId), ["T-1"], `turn ${n} is handed out again`);
+      await hive.call("runs.requestResult", { id: out[0]!.id, status: "accepted", runId: `R-${n}` }, mbp);
+      await report(hive, `R-${n}`, "implement", run.status, "error" in run ? { error: run.error } : {});
+      assert.equal((await task("T-1")).agent?.hold, null, "cut short is not a failure");
+    }
+    // Three cut-short runs in a row: the task would only be cut short again, so it stops like any task that ran.
+    const queue = await hive.call("tasks.agentQueue", { machineId: mbp.name }, lead);
+    assert.equal(queue[0]!.waiting?.key, "errors.agentTurnOver");
+    assert.deepEqual(await sent(mbp), []);
+  });
+
+  it("gives a task the review asked changes of a new turn on its own machine, within maxFixRounds", async () => {
+    const { hive, beat, sent, task } = await hub();
+    await hive.call("sdlc.setProject", { project: "app", settings: { gates: { fix: "ai" }, maxFixRounds: 1 } }, admin);
+    await beat(mbp);
+    await hive.call("tasks.assign", { id: "T-1", machineId: mbp.name }, lead);
+    const first = await sent(mbp);
+    await hive.call("runs.requestResult", { id: first[0]!.id, status: "accepted", runId: "R-1" }, mbp);
+    await report(hive, "R-1", "implement", "succeeded");
+    await hive.call("tasks.update", { id: "T-1", status: "review" }, admin);
+    await report(hive, "R-1r", "review", "succeeded", { summary: "Verdict: changes needed" });
+    const fix = await sent(mbp);
+    assert.deepEqual(fix.map((r) => [r.taskId, r.role]), [["T-1", "implement"]], "the fix round runs without anyone pressing anything");
+    assert.match(fix[0]!.instructions, /\S/);
+    await hive.call("runs.requestResult", { id: fix[0]!.id, status: "accepted", runId: "R-2" }, mbp);
+    await report(hive, "R-2", "implement", "succeeded");
+    await report(hive, "R-2r", "review", "succeeded", { summary: "Verdict: changes needed" });
+    assert.deepEqual(await sent(mbp), [], "maxFixRounds is 1: a second fix is for a person");
+    assert.equal((await task("T-1")).agent?.hold, null);
+  });
+
   it("leaves a task that is in a run group to its group, and lends the group its machine", async () => {
     const { hive, beat } = await hub();
     await beat(mbp);
