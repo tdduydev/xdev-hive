@@ -11,6 +11,7 @@ import { featureHref, mayDecide, noteRequired } from "#ui/lib/features.ts";
 import { profileCard } from "#ui/lib/agentmap.ts";
 import { scopeFilter, scopeKey } from "#ui/lib/scope.ts";
 import { ownerLabel } from "#ui/lib/tasks.ts";
+import { useMeasuredNodes } from "#ui/lib/useMeasuredNodes.ts";
 import "./Graph.css";
 
 type TaskData = Record<string, unknown> & { graph: GraphNode; running: boolean; open: (task: Task) => void };
@@ -244,7 +245,12 @@ function GraphBody() {
     id: node.id, type: "service", position: dragging[node.id] ?? node.position, width: node.width, height: node.height, dragHandle: ".graph-drag-handle", selectable: false, style: { width: node.width, height: node.height },
     data: { graph: node, open: openProject },
   })) : [], [layer, graph, dragging, openProject]);
-  const nodes = layer === "task" ? taskNodes : layer === "agent" ? agentNodes : layer === "sdlc" ? sdlcNodes : systemNodes;
+  const onPositionChange = useCallback((changes: NodeChange[]) => {
+    const moved = changes.filter((change): change is Extract<NodeChange, { type: "position" }> => change.type === "position" && !!change.position);
+    if (moved.length) setDragging((old) => ({ ...old, ...Object.fromEntries(moved.map((change) => [change.id, change.position!])) }));
+  }, []);
+  const { restoreMeasured, onNodesChange } = useMeasuredNodes(onPositionChange, `${scopeId}:${layer}`);
+  const nodes = restoreMeasured(layer === "task" ? taskNodes : layer === "agent" ? agentNodes : layer === "sdlc" ? sdlcNodes : systemNodes);
   useEffect(() => {
     const key = `${scopeId}:${layer}`;
     // onlyRenderVisibleElements leaves a node outside the view (and its edges) out of the page, so fitting matters.
@@ -261,10 +267,6 @@ function GraphBody() {
     if (layer === "system") return (graph as ReturnType<typeof systemGraph>).edges.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, type: "smoothstep", label: String(edge.open), ariaLabel: t("graph.openDeps", { count: edge.open }), className: edge.open ? "graph-edge-open" : "graph-edge-complete" }));
     return (graph as ReturnType<typeof agentGraph>).edges.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, type: "smoothstep", className: edge.running ? "graph-edge-running" : "graph-edge-agent" }));
   }, [layer, graph, t]);
-  const onNodesChange = useCallback((changes: NodeChange[]) => {
-    const moved = changes.filter((change): change is Extract<NodeChange, { type: "position" }> => change.type === "position" && !!change.position);
-    if (moved.length) setDragging((old) => ({ ...old, ...Object.fromEntries(moved.map((change) => [change.id, change.position!])) }));
-  }, []);
   const onDragStop = useCallback((_: unknown, node: Node) => {
     if (layer === "agent" && node.type === "agentTask") {
       const task = (node.data as AgentData).graph.task;
