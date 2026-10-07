@@ -322,6 +322,12 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **59h. release-notes**: `npm run release` soạn *Có gì mới* từ mục roadmap vừa xong và commit `fix:`.
   - [ ] **59i. deploy-log-check**: hub gom lỗi trong log từ lúc khởi động, thẻ ở *Quản trị › Vận hành*, cảnh báo khi lỗi lặp nhiều.
 
+- **60. autopilot** (hỏi 7/10: "sao mỗi lần làm task phải dí task, chứ không phải chỉ cần chat ra lệnh rồi tự làm"; chọn: cả vòng tự chạy của phiên lẫn autopilot trong Hive, xanh thì tự phát hành): chỉ chat ra lệnh, Hive tự giao, tự ghép, tự phát hành. Spec: [docs/specs/60-autopilot.md](specs/60-autopilot.md). Tách:
+  - [ ] **60a. auto-dispatch**: hub tự giao task sẵn sàng cho gói rảnh (bộ chọn model, quota, `maxParallel`), tự *Giao lại* một lần khi lỗi.
+  - [ ] **60b. merge-queue**: máy vai *Cổng kiểm* gom nhánh `review` thành lô, ghép thử, chạy cổng kiểm; xanh thì push, đỏ thì tạo INT/LAND.
+  - [ ] **60c. auto-release**: chốt *Phát hành* trong *Quy trình*; tự động thì version, release, deploy, rollout sau mỗi lô xanh.
+  - [ ] **60d. chat-to-plan**: leader biến yêu cầu trong chat thành spec, task và *Kế hoạch*; bấm *Làm* một lần hoặc tự chạy.
+
 ## Sửa lỗi
 
 - [x] **stale-base** (5/10, BUG-stale-base): run R-43 trên máy .52 gặp lỗi fetch tạm thời, và runner lặng lẽ tạo branch `ai/<task>` từ HEAD của checkout chính, tức code cũ 3 ngày (0.107.0 trong khi main đã 0.126.0). Giờ fetch lỗi thì thử lại sau 5 giây rồi 20 giây. Vẫn lỗi thì run của task chưa có branch quay về hàng đợi, kèm lý do hiện trên Board và Lượt chạy, thử lại ở các tick sau; quá 5 lần thì *failed* với lỗi dịch được. Không còn tạo branch từ HEAD cũ. Branch đã có (run sửa, review) chạy như cũ. Hỏi best-of-n thì báo lỗi ngay. Repo không có remote nào thì giữ cách cũ. Do claude-1 trên máy .52 làm.
