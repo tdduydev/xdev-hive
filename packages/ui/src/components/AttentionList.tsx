@@ -1,6 +1,6 @@
 // "Cần chú ý" for the page's own scope: a level, one sentence and the button, on the same row
 // (docs/design/dashboard-2026-10.md §8). It only draws; the items come from the inbox, alerts or hub.info.
-import type { ReactNode } from "react";
+import React, { type ReactNode } from "react";
 import { sortAttention } from "#ui/lib/summary.ts";
 import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 

@@ -1,6 +1,6 @@
 // One strip of at most 4 numbers at the top of a dashboard page; each number links to the list it counts
 // (docs/design/dashboard-2026-10.md §8). Only an abnormal number gets a tone, so a calm page stays calm.
-import type { ReactNode } from "react";
+import React, { type ReactNode } from "react";
 import { cn } from "cn";
 import { capSummary } from "#ui/lib/summary.ts";
 

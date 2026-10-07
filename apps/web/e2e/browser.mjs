@@ -509,7 +509,17 @@ async function main() {
       const tab = (current = tabs.admin);
       await dataTableAccessibility({ tab, mobile, expect });
       await memoryAccessibility({ tab, mobile, expect, out });
-      await accessibilityAudit({ tab, out, expect, routes: ["memory", "machines?tab=fleet"], filename: "components-accessibility.json" });
+      await tab.go("ops?e2e=dashboard-components");
+      await tab.waitFor("shared dashboard components", () => document.querySelectorAll("main [data-summary]").length === 3 && document.querySelectorAll("main [data-attention]").length === 2);
+      const shared = await tab.eval(() => ({
+        links: [...document.querySelectorAll("main [data-summary]")].map((el) => ({ id: el.dataset.summary, href: el.getAttribute("href") })),
+        actions: [...document.querySelectorAll("main [data-attention]")].map((row) => ({ id: row.dataset.attention, action: row.querySelector("button")?.textContent.trim(), disabled: row.querySelector("button")?.disabled })),
+      }));
+      expect(shared.links.every((link) => link.href?.startsWith("#/") && link.href.includes("?status=")), `summary items must link to filters: ${JSON.stringify(shared.links)}`);
+      const actions = Object.fromEntries(shared.actions.map((action) => [action.id, action]));
+      expect(actions.quota?.action === "Xem máy" && !actions.quota?.disabled, "attention action should be available on its row");
+      expect(actions.backup?.action === "Đang kiểm tra" && actions.backup?.disabled, "disabled attention action should stay disabled on its row");
+      await accessibilityAudit({ tab, out, expect, routes: ["memory", "machines?tab=fleet", "ops?e2e=dashboard-components"], filename: "components-accessibility.json" });
     });
   }
   await step("a11y-run-status", async () => {
