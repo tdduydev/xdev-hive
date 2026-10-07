@@ -91,7 +91,7 @@ export const en: Catalog = {
     byAgent: "By agent", machine: "Machine", profile: "Profile", choose: "Choose a machine", assign: "Assign to agent", remove: "Unassign", retry: "Retry",
     position: "Position {n} in machine queue", waiting: "Waiting for its turn", queued: "{n} queued tasks", busy: "Busy", free: "Available", offline: "Offline",
     quota: "5 hours: {session} · Week: {week}", queue: "Assigned tasks", allQueue: "View all ({n})", before: "Place before task", last: "Keep position / append if newly assigned",
-    noMachines: "No machine accepting hub runs has repositories for these tasks.", stopped: "Agent stopped at task {id}", change: "Assign another agent", noRight: "You cannot assign agents.",
+    noMachines: "No machine accepting hub runs has repositories for these tasks.", stopped: "Agent stopped at task {id}", change: "Assign another agent", noRight: "You cannot assign agents.", releaseHold: "Release hold / unassign task", holdReleased: "Task hold released.",
     hint: "The hub starts work when the agent is available and dependencies are complete.", selected: "Assigned {n} tasks.", empty: "No tasks in this lane.",
   },
   common: {
