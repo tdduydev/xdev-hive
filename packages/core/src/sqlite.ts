@@ -5513,7 +5513,6 @@ export class SqliteHive implements HiveBackend {
     if (retry) this.db.prepare("UPDATE run_records SET parent_run = ?, parent_machine_id = ? WHERE machine_id = ? AND run_id = ?").run(retry.runId, retry.machineId, machineId, runId);
   }
 
-  /** A manually dispatched small task joins the existing review/fix/merge lifecycle without Spec Kit. */
   // The plan a task is pinned to, unless the run is aimed at another machine, where that plan does not exist.
   #pinnedProfile(task: Task, machineId: string | null | undefined): string | null {
     const agent = task.agent;
@@ -5521,6 +5520,7 @@ export class SqliteHive implements HiveBackend {
     return !machineId || this.#machineByRef(machineId).id === agent.machineId ? agent.profileId : null;
   }
 
+  /** A manually dispatched small task joins the existing review/fix/merge lifecycle without Spec Kit. */
   #dispatchDirect(m: Machine, project: string, task: Task, r: { timeoutMinutes?: number | null; role: AgentRole; profileId: string | null; preferKind?: PreferKind | null; reviewAfter: boolean; candidates: number; instructions: string; redispatch?: RunRequest["redispatch"] }, actor: Actor): RunRequest {
     const fast = r.role === "implement" && r.candidates === 1 && !this.#flowRow(task.id) && !this.#flowTaskRow(task.id)
       && this.#sdlcPolicy().projects[project]?.fastLaneKinds?.some((kind) => kind === task.kind);
