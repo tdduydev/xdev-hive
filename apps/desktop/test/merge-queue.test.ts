@@ -113,7 +113,7 @@ it("pushes this machine's unpublished branch before fetching, and names the caus
     assert.equal(r.status, "landed");
     assert.match(execFileSync("git", ["--git-dir", remote, "branch", "--list", "ai/T-3"], { encoding: "utf8" }), /ai\/T-3/);
     const other = { ...s.batch, id: 2, items: [{ ...s.batch.items[0]!, machineId: "other" }] };
-    const r2 = await runMergeBatch(other, opts);
+    const r2 = await runMergeBatch(other, { ...opts, directory: path.join(s.root, "other-batch") });
     assert.equal(r2.status, "failed");
     assert.match(r2.outcomes[0]!.reason, /not on remote origin[\s\S]*máy đó push/);
   } finally {
