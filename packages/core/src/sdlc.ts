@@ -3,6 +3,13 @@
 // each gate may go (the ceiling); a project picks within it, never past it.
 import { z } from "zod";
 import { DEFAULT_PLAN_APPROVAL, type PlanApprovalSettings } from "#core/plan-approval.ts";
+import { ROUTED_KINDS } from "#core/model-router.ts";
+
+/**
+ * Plan kinds auto-dispatch may use while a service has not chosen any: every routed kind, as the dispatch editor shows
+ * them all ticked. Only plans a machine reports enabled and signed in are ever picked.
+ */
+export const DEFAULT_AGENT_KINDS: readonly string[] = ROUTED_KINDS;
 
 /** In flow order. spec/plan/tasks: after each Spec Kit step; dispatch: before a flow task runs; review: after it ran;
  * fix: when its review asks for changes; test: QA verification before merge; merge: when its MR is green; release: after a fully green batch lands. */
@@ -79,7 +86,7 @@ export function sdlcPolicyView(policy: SdlcPolicySettings, projects: string[]): 
     projects: Object.fromEntries(
       names.map((p) => {
         const own = policy.projects[p];
-        return [p, { gates: own?.gates ?? {}, autoDispatch: own?.autoDispatch ?? false, allowedAgentKinds: own?.allowedAgentKinds ?? ["claude", "codex", "antigravity"], effective: effectiveGates(policy, p), maxFixRounds: own?.maxFixRounds ?? DEFAULT_MAX_FIX_ROUNDS, maxParallel: own?.maxParallel ?? null, fastLaneKinds: own?.fastLaneKinds ?? [], releaseMachine: own?.releaseMachine, planApproval: own?.planApproval ?? DEFAULT_PLAN_APPROVAL }];
+        return [p, { gates: own?.gates ?? {}, autoDispatch: own?.autoDispatch ?? false, allowedAgentKinds: own?.allowedAgentKinds ?? [...DEFAULT_AGENT_KINDS], effective: effectiveGates(policy, p), maxFixRounds: own?.maxFixRounds ?? DEFAULT_MAX_FIX_ROUNDS, maxParallel: own?.maxParallel ?? null, fastLaneKinds: own?.fastLaneKinds ?? [], releaseMachine: own?.releaseMachine, planApproval: own?.planApproval ?? DEFAULT_PLAN_APPROVAL }];
       }),
     ),
     updatedAt: policy.updatedAt,

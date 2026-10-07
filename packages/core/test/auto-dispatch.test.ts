@@ -5,6 +5,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { type Actor } from "#core/index.ts";
+import { ROUTED_KINDS } from "#core/model-router.ts";
 import { SqliteHive, migrationIndex } from "#core/node.ts";
 
 const admin: Actor = { name: "manager", role: "admin" };
@@ -189,6 +190,16 @@ describe("auto-dispatch (60a)", () => {
       const run = await hive.call("runs.get", { machineId: "runner", runId: "R2" }, admin);
       assert.equal(run?.parentRun, "R1");
     } finally { hive.close(); }
+  });
+
+  it("uses every routed plan kind until the service picks some, as the dispatch editor shows", async () => {
+    const { hive, beat, create, enable } = fixture();
+    await create("T1");
+    const view = await enable();
+    assert.deepEqual(view.projects.app?.allowedAgentKinds, [...ROUTED_KINDS]);
+    const requests = (await beat({ profiles: [profile("gemini-1")] })).runRequests;
+    assert.deepEqual(requests.map((r) => r.profileId), ["gemini-1"]);
+    hive.close();
   });
 
   it("holds human cancellation without scheduling an automatic retry", async () => {
