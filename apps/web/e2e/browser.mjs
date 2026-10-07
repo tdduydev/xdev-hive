@@ -2786,7 +2786,10 @@ async function main() {
     const request = (await beat()).chatRequests.find((r) => r.threadId === thread.id);
     expect(request.profileId === "codex-leader" && request.model === "gpt-test-leader" && request.effort === "high", JSON.stringify(request));
     await machineRpc("chat.finish", { replyId: request.replyId, status: "done", text: "Đã đọc service bằng Codex.", sessionId: "codex-e2e-thread", profileId: "codex-leader", tokens: { inputTokens: 80, cacheReadTokens: 20, outputTokens: 30 } });
-    await tab.waitFor("Codex reply and tokens", () => document.body.innerText.includes("Đã đọc service bằng Codex") && document.body.innerText.includes("Token: 80 vào"));
+    // Since 64b the turn's total is in the session bar's summary; the in/cache/out split is inside the folded bar.
+    await tab.waitFor("Codex reply and tokens", () => document.body.innerText.includes("Đã đọc service bằng Codex") && document.querySelector("[data-chat-session] > summary")?.innerText.includes("Token lượt: 130"));
+    await tab.click("[data-chat-session] > summary");
+    await tab.waitFor("Codex token split", () => document.querySelector("[data-chat-session]")?.innerText.includes("Token: 80 vào · 20 cache · 30 ra"));
     await beat(false);
     const claude = await rpc("chat.send", { project: "payment", machineId, profileId: "claude-leader", model: "opus", text: "Claude hết quota 62a" });
     await machineRpc("chat.finish", { replyId: claude.reply.id, status: "failed", text: "Câu trả lời dở dang", sessionId: "claude-e2e-thread", rateLimited: true, error: { message: "Usage limit reached" } });
