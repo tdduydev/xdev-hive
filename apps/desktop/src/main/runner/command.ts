@@ -321,7 +321,7 @@ export function buildCommand(
     // to the working copy, and the one config that would name another folder (sandbox_workspace_write.writable_roots)
     // would grant writing in it. Codex learns about them from the prompt only.
     // Codex had no tools of the app's before the catalog: its own config.toml starts what the user set up.
-    args = codexArgs(args, { agent: profile.id, project: vars.project, task: vars.task, run: vars.run, readOnly: profile.readOnly }, catalog ? tools : [], ctx);
+    args = codexArgs(args, { agent: profile.id, project: vars.project, task: vars.task, run: vars.run, readOnly: profile.readOnly, codexLocalhost: profile.codexLocalhost }, catalog ? tools : [], ctx);
     // Events instead of text, for the tokens of each turn (roadmap 28c); only `codex exec`, which has --json.
     if (args[0] === "exec") {
       if (!args.includes("--json")) args = ["exec", "--json", ...args.slice(1)];
@@ -377,7 +377,7 @@ export const CLAUDE_RUN_ENV = { CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1
  */
 export function codexArgs(
   args: string[],
-  run?: { agent: string; project: string; task: string; run?: string; readOnly?: boolean },
+  run?: { agent: string; project: string; task: string; run?: string; readOnly?: boolean; codexLocalhost?: boolean },
   /** The run's MCP tools of the catalog (roadmap 28b). */
   tools: ToolEntry[] = [],
   ctx: { worktree?: string; repo?: string; hiveMcp?: string } = {},
@@ -396,6 +396,9 @@ export function codexArgs(
     // Codex 0.15x refuses MCP writes it cannot ask about in a headless run.
     "-c", 'mcp_servers.xdev-hive.default_tools_approval_mode="approve"',
   ];
+  // Codex CLI 0.160.1 (`codex --help`) accepts -c overrides; its config schema documents this key,
+  // which enables network access broadly in workspace-write, not just loopback.
+  if (run?.codexLocalhost) overrides.push("-c", "sandbox_workspace_write.network_access=true");
   if (run) {
     // The shim's identity is the profile's, as for Claude Code: ~/.codex/config.toml says "codex", which would claim
     // the task as someone else than the runner, and hold it against the next run.

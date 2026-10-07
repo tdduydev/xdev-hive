@@ -20,6 +20,7 @@ const profile = (over: Partial<AgentProfileStatus> = {}): AgentProfileStatus => 
   env: {},
   enabled: true,
   readOnly: false,
+  codexLocalhost: false,
   container: null,
   priority: 10,
   roles: ["plan", "implement", "review"],
