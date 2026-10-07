@@ -3570,3 +3570,140 @@ describe("run timeout handover", () => {
     }
   });
 });
+
+// Isolated repos and the fake agent verify that redispatch never drops or accidentally imports WIP.
+describe("redispatch branch choice", () => {
+  it("starts ordinary dispatch from the current main after its previous branch was removed", async () => {
+    const s = await setup([profile("p1", "custom", 1, "ok")]);
+    const first = await s.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await s.runner.settle();
+    const previous = s.runner.store.get(first.id)!;
+    git(s.repo, "worktree", "remove", "--force", previous.worktree!);
+    git(s.repo, "branch", "-D", previous.branch!);
+    writeFileSync(path.join(s.repo, "latest-main.txt"), "new main\n");
+    git(s.repo, "add", ".");
+    git(s.repo, "commit", "-qm", "advance main");
+    const base = git(s.repo, "rev-parse", "HEAD");
+    const next = await s.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await s.runner.settle();
+    const done = s.runner.store.get(next.id)!;
+    assert.equal(done.status, "succeeded", done.error ?? "");
+    assert.equal(done.baseSha, base);
+    assert.equal(readFileSync(path.join(done.worktree!, "latest-main.txt"), "utf8"), "new main\n");
+  });
+
+  it("keeps a fresh redispatch branch and WIP handover when its deadline ends", async () => {
+    const s = await setup([profile("p1", "custom", 1, "timeout-wip", { timeoutMinutes: 5 })]);
+    const run = await s.runner.enqueue({ project: "demo", taskId: "T-1", timeoutMinutes: 0.02 }, {
+      fromHub: true, redispatch: { machineId: "runner@old", runId: "R-old", continueBranch: false, branch: null, baseSha: null },
+    });
+    await s.runner.settle();
+    const done = s.runner.store.get(run.id)!;
+    assert.equal(done.status, "failed");
+    assert.equal(done.timeoutMinutes, 0.02);
+    assert.equal(done.branch, `ai/T-1+${run.id}`);
+    assert.equal(done.commits, 1);
+    assert.ok(done.continuation?.includes(done.headSha!));
+    const next = await s.runner.enqueue({ project: "demo", taskId: "T-1", timeoutMinutes: 0.02 });
+    await s.runner.settle();
+    assert.equal(s.runner.store.get(next.id)!.branch, done.branch);
+    assert.ok(s.calls().at(-1)?.prompt.includes(done.headSha!));
+    assert.match(git(done.worktree!, "show", `${done.headSha}:timeout-work.txt`), /unfinished work/);
+  });
+
+  it("rotates a fresh redispatch onto the same branch and timeout", async () => {
+    const s = await setup([profile("p1", "codex", 1, "limit"), profile("p2", "claude", 2, "ok")]);
+    const run = await s.runner.enqueue({ project: "demo", taskId: "T-1", timeoutMinutes: 1 }, {
+      fromHub: true, redispatch: { machineId: "runner@old", runId: "R-old", continueBranch: false, branch: null, baseSha: null },
+    });
+    await s.runner.settle();
+    const done = s.runner.store.get(run.id)!;
+    assert.equal(done.status, "rate_limited");
+    const next = s.runner.list().find(r => r.parentRunId === run.id)!;
+    assert.equal(next.status, "succeeded", next.error ?? "");
+    assert.equal(next.branch, `ai/T-1+${run.id}`);
+    assert.equal(next.baseSha, done.baseSha);
+    assert.equal(next.timeoutMinutes, 1);
+  });
+
+  it("continues WIP on the chosen branch, keeps its base and adds diff/commit instructions", async () => {
+    const s = await setup([profile("codex", "codex", 1, "ok")]);
+    const base = git(s.repo, "rev-parse", "HEAD");
+    git(s.repo, "checkout", "-qb", "ai/T-1+old");
+    writeFileSync(path.join(s.repo, "wip.txt"), "previous work\n");
+    git(s.repo, "add", "."); git(s.repo, "commit", "-qm", "WIP");
+    git(s.repo, "checkout", "main");
+    const run = await s.runner.enqueue({ project: "demo", taskId: "T-1", instructions: "Keep old URL." }, {
+      fromHub: true, redispatch: { machineId: "runner@old", runId: "R-old", continueBranch: true, branch: "ai/T-1+old", baseSha: base },
+    });
+    await s.runner.settle();
+    const done = s.runner.store.get(run.id)!;
+    assert.equal(done.status, "succeeded", done.error ?? "");
+    assert.equal(done.branch, "ai/T-1+old");
+    assert.equal(done.baseSha, base);
+    assert.equal(readFileSync(path.join(done.worktree!, "wip.txt"), "utf8"), "previous work\n");
+    assert.match(s.calls()[0]!.prompt, new RegExp(`git diff ${base} ai/T-1\\+old`));
+    assert.match(s.calls()[0]!.prompt, /Commit unfinished work as WIP/);
+  });
+
+  it("starts on a separate clean branch, then reviews that branch instead of the old task branch", async () => {
+    const s = await setup([profile("codex", "codex", 1, "ok"), profile("claude", "claude", 2, "ok")]);
+    git(s.repo, "checkout", "-qb", "ai/T-1");
+    writeFileSync(path.join(s.repo, "old.txt"), "old WIP\n");
+    git(s.repo, "add", "."); git(s.repo, "commit", "-qm", "WIP");
+    const oldHead = git(s.repo, "rev-parse", "HEAD");
+    git(s.repo, "checkout", "main");
+    const run = await s.runner.enqueue({ project: "demo", taskId: "T-1", reviewAfter: true }, {
+      fromHub: true, redispatch: { machineId: "runner@old", runId: "R-old", continueBranch: false, branch: null, baseSha: null },
+    });
+    await s.runner.settle();
+    const done = s.runner.store.get(run.id)!;
+    assert.equal(done.status, "succeeded", done.error ?? "");
+    assert.equal(done.branch, `ai/T-1+${run.id}`);
+    assert.ok(!existsSync(path.join(done.worktree!, "old.txt")));
+    assert.equal(git(s.repo, "rev-parse", "ai/T-1"), oldHead);
+    const review = s.runner.list().find(r => r.parentRunId === run.id && r.role === "review")!;
+    assert.equal(review.branch, done.branch);
+    assert.equal(review.status, "succeeded", review.error ?? "");
+  });
+
+  it("fast-forwards an existing local branch to another machine's pushed WIP and preserves the original base", async () => {
+    const s = await setup([profile("codex", "codex", 1, "ok")]);
+    const base = git(s.repo, "rev-parse", "HEAD");
+    const origin = tmp("redispatch-origin");
+    git(origin, "init", "-q", "--bare", "-b", "main");
+    git(s.repo, "remote", "add", "origin", origin);
+    git(s.repo, "push", "-q", "origin", "main");
+    git(s.repo, "checkout", "-qb", "ai/T-1");
+    writeFileSync(path.join(s.repo, "wip.txt"), "old WIP\n");
+    git(s.repo, "add", "."); git(s.repo, "commit", "-qm", "WIP one");
+    git(s.repo, "push", "-q", "origin", "ai/T-1");
+    git(s.repo, "checkout", "main");
+    const source = tmp("redispatch-source");
+    git(source, "clone", "-q", origin, ".");
+    git(source, "config", "user.email", "t@example.com"); git(source, "config", "user.name", "Test");
+    git(source, "checkout", "-q", "ai/T-1");
+    writeFileSync(path.join(source, "wip.txt"), "new WIP\n");
+    git(source, "add", "."); git(source, "commit", "-qm", "WIP two");
+    git(source, "push", "-q", "origin", "ai/T-1");
+    const run = await s.runner.enqueue({ project: "demo", taskId: "T-1" }, {
+      fromHub: true, redispatch: { machineId: "runner@old", runId: "R-old", continueBranch: true, branch: "ai/T-1", baseSha: base, crossMachine: true },
+    });
+    await s.runner.settle();
+    const done = s.runner.store.get(run.id)!;
+    assert.equal(done.status, "succeeded", done.error ?? "");
+    assert.equal(done.baseSha, base);
+    assert.equal(readFileSync(path.join(done.worktree!, "wip.txt"), "utf8"), "new WIP\n");
+  });
+
+  it("fails clearly when the requested old branch cannot be retrieved", async () => {
+    const s = await setup([profile("codex", "codex", 1, "ok")]);
+    const run = await s.runner.enqueue({ project: "demo", taskId: "T-1" }, {
+      fromHub: true, redispatch: { machineId: "runner@old", runId: "R-old", continueBranch: true, branch: "ai/T-1+missing", baseSha: null },
+    });
+    await s.runner.settle();
+    assert.equal(s.runner.store.get(run.id)!.status, "failed");
+    assert.match(s.runner.store.get(run.id)!.error!, /ai\/T-1\+missing/);
+    assert.equal(s.calls().length, 0);
+  });
+});

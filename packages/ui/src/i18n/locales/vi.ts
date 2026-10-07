@@ -1938,6 +1938,13 @@ export const vi = {
     remove: "Xoá {name}",
     removed: "Đã xoá {name}",
   },
+  redispatch: {
+    title: "Giao lại", send: "Giao lại run", hint: "Giao lại {run} của task {task}; có thể đổi máy và gói.",
+    continueBranch: "Làm tiếp trên branch hiện có", branchHint: "Giữ công việc trên {branch}. Khi đổi máy, commit WIP và đẩy branch ở máy cũ trước; máy mới phải lấy được branch này.",
+    freshHint: "Run mới bắt đầu từ branch đích của service, trên một branch riêng.",
+    sent: "Đã giao lại yêu cầu #{id} cho {machine}.", noInstructions: "Run cũ chưa lưu chỉ dẫn. Hãy bổ sung chỉ dẫn trước khi giao lại.",
+    chain: "Chuỗi run của task", noRuns: "Task chưa có run nào.", parent: "Tiếp từ {run}",
+  },
   runs: {
     steerLabel: "Nhắn agent",
     steerSend: "Gửi chỉ dẫn",
@@ -2920,6 +2927,11 @@ export const vi = {
   },
   errors: {
     runTimeoutCeiling: "Thời hạn không được vượt quá {minutes} phút (trần của gói và hub).",
+    redispatchRunnerRequired: "Cần cập nhật app trên máy nhận để giao lại run.",
+    redispatchOne: "Giao lại chỉ chạy một bản.",
+    redispatchState: "Chỉ giao lại run lỗi, hết giờ, bị huỷ hoặc vướng quota.",
+    redispatchBranch: "Run này chưa có branch để làm tiếp.",
+    redispatchUnavailable: "Không lấy được branch {branch}. Hãy commit WIP và đẩy branch ở máy cũ trước, hoặc giao lại từ đầu.",
     steerText: "Tin nhắn cần từ 1 đến 8.000 ký tự.",
     runNotRunning: "Run {id} không còn đang chạy.",
     planRunnerRequired: "Máy cần runner Claude hoặc Codex mới để duyệt kế hoạch.",

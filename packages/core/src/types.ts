@@ -381,6 +381,8 @@ export interface ReportedProfile extends QuotaOutlook {
   planApproval?: boolean;
   /** null/absent: discovery unavailable, not evidence of support. */
   supportedModels?: string[] | null;
+  /** Runner understands explicit continuation and fresh branches on redispatch. */
+  redispatch?: boolean;
   /** Instants supplied by newer apps; reset text remains the older-app fallback. */
   sessionResetsAt?: string | null;
   weekResetsAt?: string | null;
@@ -886,6 +888,10 @@ export interface RunRecord {
   /** Which try at the task it was (1 the first) and the run it follows; null from an older app. */
   attempt: number | null;
   parentRun: string | null;
+  parentMachineId?: string | null;
+  /** Kept for redispatch even after request retention expires. */
+  instructions?: string | null;
+  baseSha?: string | null;
   /** A succeeded review's verdict, read once from its whole report; null for other runs. */
   verdict: Verdict | null;
   /** The end of the run's readable log, lines that looked like secrets hidden: runs.get only. */
@@ -954,6 +960,15 @@ export interface RunRequestError {
   vars?: Record<string, string | number>;
 }
 
+/** A retry may move machines; run ids alone are only unique on their originating machine. */
+export interface RunRedispatch {
+  machineId: string;
+  runId: string;
+  continueBranch: boolean;
+  branch: string | null;
+  baseSha: string | null;
+}
+
 /**
  * A run a project manager asked one machine to start (runs.dispatch). The machine gets it in the answer to its next
  * heartbeat, queues it like a run started on its Board, and says whether it took it (runs.requestResult).
@@ -961,6 +976,7 @@ export interface RunRequestError {
 export interface RunRequest {
   /** Resolved hub deadline in minutes; absent on older hubs. The runner also applies its profile ceiling. */
   timeoutMinutes?: number | null;
+  redispatch?: RunRedispatch | null;
   plan?: import("#core/plan-approval.ts").RunPlan | null;
   id: number;
   /** The machine's hub actor. */

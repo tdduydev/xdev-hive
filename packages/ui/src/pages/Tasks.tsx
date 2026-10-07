@@ -1,3 +1,4 @@
+import { TaskRunChain } from "#ui/components/RunRedispatch.tsx";
 import { ImplementationPlans } from "#ui/components/ImplementationPlans.tsx";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@xdev-hive/ui/components/ui/tabs";
 import { ServiceFilter, useServiceFilter } from "#ui/components/ServiceFilter.tsx";
@@ -630,6 +631,7 @@ function TaskDetail({ task, requests, hub, onChanged, onRoles }: { task: Task; r
             </Button>
           </div>
         ) : null}
+        {hub ? <TaskRunChain key={`${task.project}/${task.id}`} project={task.project} taskId={task.id} /> : null}
         {hub && requests.length ? <RequestList requests={requests} onChanged={onChanged} /> : null}
         <section className="flex flex-col gap-1.5">
           <h3 className="text-xs font-medium text-muted-foreground">{t("tasks.colNote")}</h3>

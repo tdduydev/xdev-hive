@@ -1,3 +1,4 @@
+import { RunRedispatch } from "#ui/components/RunRedispatch.tsx";
 import { RunDiff, type DiffFixTarget } from "#ui/components/RunDiff.tsx";
 import type { DiffReview } from "@xdev-hive/core";
 import { ServiceFilter, useServiceFilter } from "#ui/components/ServiceFilter.tsx";
@@ -83,6 +84,13 @@ export function RunsPage() {
   // which is why the page's subtitle here reads "Run trên máy này".
   const teamRuns = hubMode && !desktop;
   const [active, setActive] = useState(false);
+  const mobileDetail = useMobileDetail("run");
+  const [linkedRun, setLinkedRun] = useState(mobileDetail.value);
+  useEffect(() => { if (mobileDetail.value) setLinkedRun(mobileDetail.value); }, [mobileDetail.value]);
+  const linked = useQuery(async () => {
+    const slash = linkedRun?.lastIndexOf("/") ?? -1;
+    return teamRuns && slash > 0 ? client.call("runs.get", { machineId: linkedRun!.slice(0, slash), runId: linkedRun!.slice(slash + 1) }) : null;
+  }, [client, teamRuns, linkedRun]);
   const [filter, setFilter] = useState<Filter>(teamRuns ? "focus" : "all");
   const [taskFilter, setTaskFilter] = useState("");
   const [machineFilter, setMachineFilter] = useState("");
@@ -113,7 +121,9 @@ export function RunsPage() {
     const mine = new Set((local.data ?? []).map((r) => r.id));
     const ofProfile = (r: Row) => profile === null || r.run.profileId === profile;
     const localRows: Row[] = (local.data ?? []).map((run): Row => ({ src: "local", key: `local/${run.id}`, run })).filter(ofProfile);
-    const hubRows: Row[] = (hub.data ?? [])
+    const remote = [...(hub.data ?? [])];
+    if (linked.data && !remote.some(run => run.machineId === linked.data!.machineId && run.runId === linked.data!.runId)) remote.push(linked.data);
+    const hubRows: Row[] = remote
       .filter((r) => !mine.has(r.runId))
       .map((run): Row => ({ src: "hub", key: `${run.machineId}/${run.runId}`, run }))
       .filter(ofProfile);
@@ -121,14 +131,13 @@ export function RunsPage() {
     return {
       here: localRows.filter((r) => isLive(r.run)).sort(newest),
       other: hubRows.filter((r) => isLive(r.run)).sort(newest),
-      recent: [...localRows, ...hubRows].filter((r) => !isLive(r.run)).sort(newest).slice(0, 60),
+      recent: [...localRows, ...hubRows].filter((r) => !isLive(r.run)).sort(newest).filter((r, i) => i < 60 || r.key === linkedRun),
     };
-  }, [local.data, hub.data, profile]);
+  }, [local.data, hub.data, linked.data, linkedRun, profile]);
   const all = useMemo(() => [...rows.here, ...rows.other, ...rows.recent], [rows]);
   useEffect(() => setActive(all.some((r) => isLive(r.run))), [all]);
 
   const [selected, setSelected] = useState<string | null>(null);
-  const mobileDetail = useMobileDetail("run");
   const pick = (id: string | null) => {
     setSelected(id);
     if (mobileDetail.mobile) mobileDetail.navigate(id);
@@ -207,7 +216,7 @@ export function RunsPage() {
                 <X className="size-3" aria-hidden="true" />
               </button>
             ) : null}
-            <ErrorNote error={local.error ?? hub.error} />
+            <ErrorNote error={local.error ?? hub.error ?? linked.error} />
           </>
         }
       >
@@ -926,6 +935,7 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
 
   const notes = (
     <>
+      <RunRedispatch key={`${run.machineId}/${run.runId}`} run={run} onSent={onChanged} />
       {verdict === "approve" || verdict === "changes" ? <NoteLine tone={verdict === "approve" ? "info" : "danger"}>{t(`runs.verdict.${verdict}`)}</NoteLine> : null}
       {run.activity ? <NoteLine tone="info">{t("board.activity", { activity: run.activity })}</NoteLine> : null}
       {run.branch || run.costUsd !== null ? (

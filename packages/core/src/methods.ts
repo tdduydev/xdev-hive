@@ -175,6 +175,7 @@ const reportedProfile = z.object({
   maxConcurrent: z.number().int().min(1).max(8).optional(),
   classify: z.boolean().optional(),
   planApproval: z.boolean().optional(),
+  redispatch: z.boolean().optional(),
 });
 /** A finished run's cost estimate, sent once by the machine that ran it. */
 const runCost = z.object({
@@ -631,6 +632,8 @@ export const schemas = {
           tier: z.string().max(40).nullable().optional(),
           attempt: z.number().int().min(1).max(1000).nullable().optional(),
           parentRun: z.string().regex(/^[\w.-]{1,40}$/).nullable().optional(),
+          instructions: z.string().max(4000).optional(),
+          baseSha: z.string().regex(/^[a-f0-9]{40,64}$/).nullable().optional(),
           verdict: z.enum(VERDICTS).nullable().optional(),
           log: z.string().max(60_000).default(""),
           /** What the run changed (git diff from its base), when it changed since the last push (roadmap 22l). */
@@ -681,7 +684,7 @@ export const schemas = {
   "runs.preparePlan": z.object({ project, taskId, profileId: z.string().max(40).nullable().default(null), preferKind: z.enum(PREFER_KINDS).nullable().default(null), reviewAfter: z.boolean().default(false), candidates: z.number().int().min(1).max(MAX_CANDIDATES).default(1), instructions: z.string().max(4000).default("") }),
   "runs.plans": z.object({ project: project.optional(), projects: projectList, taskId: taskId.optional(), status: z.enum(["planning", "waiting", "approved", "changes", "failed", "cancelled"]).optional(), limit: z.number().int().min(1).max(200).default(100) }),
   "runs.decidePlan": z.object({ id, revision: z.number().int().min(1), decision: z.enum(["approve", "changes", "cancel"]), note: z.string().max(2000).default("") }),
-  "runs.list": z.object({ project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(200).default(50) }),
+  "runs.list": z.object({ taskId: taskId.optional(), project: project.optional(), projects: projectList, limit: z.number().int().min(1).max(200).default(50) }),
   /**
    * A project manager stops a run that waits or runs on a machine taking runs from the hub: the machine hears it at
    * its next heartbeat, stops the agent and reports the run as cancelled.
@@ -716,6 +719,11 @@ export const schemas = {
     reviewAfter: z.boolean().default(false),
     candidates: z.number().int().min(1).max(MAX_CANDIDATES).default(1),
     instructions: z.string().max(4000).default(""),
+    redispatch: z.object({
+      machineId: machineRef,
+      runId: z.string().regex(/^[\w.-]{1,40}$/),
+      continueBranch: z.boolean().default(true),
+    }).nullable().default(null),
   }),
   /**
    * A free prompt from the web (roadmap 32b): a new task P-<n> of the project holds it, and one machine is asked to
