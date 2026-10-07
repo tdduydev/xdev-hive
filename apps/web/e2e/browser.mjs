@@ -1955,12 +1955,21 @@ async function main() {
     // The previous step left its run selected on the desktop list too, so pick this one by its link everywhere.
     await tab.go("runs?run=R-e2ereview");
     await tab.waitFor("run needs a person", () => document.querySelector('[data-run-review]')?.textContent.includes("ĐÃ LÀM") && document.body.innerText.includes("Chờ người"));
-    const order = await tab.eval(() => { const body = document.querySelector('[data-run-review]')?.innerText ?? ""; return ["ĐÃ LÀM", "Log", "Thay đổi / MR", "MR !49"].map((s) => body.indexOf(s)); });
-    expect(order.every((n) => n >= 0) && order.every((n, i) => i === 0 || n > order[i - 1]), `run review order: ${order}`);
+    await tab.waitFor("empty artifacts hidden", () => !document.querySelector('[data-run-review] [data-artifacts]'));
+    expect(await tab.eval(() => ![...document.querySelectorAll('[data-run-review] h3')].some(h => ["Log", "Thay đổi / MR"].includes(h.textContent))), "repeated headings hidden");
+    await tab.click('[data-run-tab="log"]');
+    await tab.waitFor("log tab content", () => document.querySelector('[role="tabpanel"]')?.textContent.includes("Bàn giao"));
+    expect(await tab.eval(() => !document.querySelector('[role="tabpanel"]')?.textContent.includes("ĐÃ LÀM")), "summary hidden in log tab");
+    await tab.click('[data-run-tab="diff"]');
+    await tab.waitFor("diff tab content", () => document.querySelector('[role="tabpanel"]')?.textContent.includes("pay.ts"));
+    await tab.click('[data-run-tab="summary"]');
     await tab.shot(`${String(n).padStart(2, "0")}-runs-review-detail`);
     if (mobile) await tab.go("runs");
+    await tab.click("[data-run-filters] summary");
     await tab.select('select[aria-label="Lọc theo máy"]', "runner.lan-mbp@lan-e2e");
     await tab.select('select[aria-label="Lọc theo task"]', "PAY-1");
+    await tab.click("[data-run-filters] summary");
+    expect(await tab.eval(() => !document.querySelector('[data-run-filters]').open && document.querySelector('[data-run-filters] summary').textContent.includes('(2)')), "active filter count survives collapse");
     await rpc("tasks.create", { id: "PAY-49E", project: "payment", title: "Giao run gọn" });
     await tab.go("tasks?task=PAY-49E");
     await tab.waitFor("compact run form", () => document.querySelector('select[id="machine-PAY-49E"]') && document.body.innerText.includes("Tuỳ chọn"));
