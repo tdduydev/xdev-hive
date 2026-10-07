@@ -65,6 +65,9 @@ describe("worktree administration (63f)", () => {
       await assert.rejects(hive.call("machines.manageWorktrees", { machineId: machine.name, cleanup: {} }, owner), isError("errors.machineAppTooOld"));
       const snapshot = report(); snapshot.entries.push({ ...snapshot.entries[0]!, project: "secret", path: "/private/secret" });
       await hive.call("machines.heartbeat", { machine: "mac", instance: "aaaaaaaa", worktrees: snapshot }, machine);
+      const stored = String((hive.db.prepare("SELECT worktrees FROM machines WHERE id = ?").get(machine.name) as { worktrees: string }).worktrees);
+      assert.ok(!stored.includes("/private/secret"), "the hub keeps no path of a project outside the machine's grant");
+      assert.equal(JSON.parse(stored).totalBytes, 4096);
       const access = await hive.call("machines.worktrees", { machineId: machine.name }, owner);
       assert.equal(access.report?.entries.length, 1);
       assert.equal(access.report?.totalBytes, 4096);
