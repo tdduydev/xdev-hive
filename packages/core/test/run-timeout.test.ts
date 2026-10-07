@@ -73,6 +73,10 @@ describe("run timeout", () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "hive-timeout-"));
     const file = path.join(dir, "hive.db");
     try {
+      const hive = new SqliteHive(file);
+      await hive.call("machines.heartbeat", { machine: "test", instance: "aabbccdd", projects: ["demo"], acceptsRuns: true, profiles: [profile("long", 240)] }, runner);
+      await hive.call("tasks.create", { id: "T-1", project: "demo", title: "Task", kind: "feature" }, admin);
+      const { id: requestId } = await hive.call("runs.dispatch", { project: "demo", taskId: "T-1", machineId: runner.name, profileId: "long" }, admin);
       const before = migrationIndex("ALTER TABLE run_requests ADD COLUMN timeout_minutes");
       hive.db.exec(`ALTER TABLE run_requests DROP COLUMN timeout_minutes; PRAGMA user_version = ${before}`);
       hive.close();

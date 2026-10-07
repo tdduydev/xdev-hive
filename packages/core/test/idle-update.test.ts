@@ -40,10 +40,10 @@ describe("hub intake during idle update", () => {
       await hive.call("runs.push", { machine: "mac", runs: [run] }, machine);
       const version = Number(hive.db.prepare("PRAGMA user_version").get()!.user_version);
       const index = migrationIndex("ALTER TABLE machines ADD COLUMN update_draining");
-      assert.equal(index, version - 1, "update drain is appended after main's migrations");
+      assert.ok(index < version, "update drain migration exists in the complete schema");
       hive.db.exec(`ALTER TABLE machines DROP COLUMN update_draining; PRAGMA user_version = ${index}`);
-      const upgraded = new SqliteHive(hive.db);
-      assert.equal(Number(upgraded.db.prepare("PRAGMA user_version").get()!.user_version), version);
+      const upgraded = new SqliteHive(hive.db, { migrateTo: index + 1 });
+      assert.equal(Number(upgraded.db.prepare("PRAGMA user_version").get()!.user_version), index + 1);
       assert.equal(upgraded.db.prepare("SELECT update_draining FROM machines").get()!.update_draining, 0);
       assert.equal((await upgraded.call("runs.get", { machineId: machine.name, runId: run.runId }, admin))!.status, "running");
       assert.equal((await beat(upgraded, { acceptsRuns: false, updateDraining: true })).supportsUpdateDrain, true);

@@ -191,27 +191,18 @@ class Tab {
   }
 }
 
-<<<<<<< HEAD
-// --only: a step names the steps it needs (their tabs and rows); one not listed needs every step before it.
-// A step's tabs live in `tabs`, so list the step that opens a tab for every step that uses it.
-const NEEDS = {
-  "login-token": [],
-  "login-password": [],
-  "a11y-pages": ["login-token"],
-  "a11y-menu": ["login-token"],
-  "a11y-overlays": ["login-token"],
-  "a11y-table": ["login-token"],
-  "a11y-run-status": ["login-token"],
-  "lead-sees-members": [],
-  "run-steer": ["login-token", "login-password", "lead-sees-members"],
-  "run-redispatch": [],
-=======
 // --only: a step names the steps it needs (their tabs and rows); one not listed needs every step before it. Every step is listed:
 // `npm run e2e:needs -w @xdev-hive/web` runs each one alone (check-needs.mjs). Mobile-only steps appear in the list too.
 // A step's tabs live in `tabs`, so list the step that opens a tab for every step that uses it.
 // HIVE_E2E_NEEDS (JSON) replaces the table: check-needs.mjs probes a smaller set with it before the table is changed.
 const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS) : {
   "login-token": [],
+  "a11y-pages": ["login-token"],
+  "a11y-menu": ["login-token"],
+  "a11y-overlays": ["login-token"],
+  "a11y-table": ["login-token"],
+  "a11y-run-status": ["login-token"],
+  "run-redispatch": [],
   "scope-search-tasks": ["login-token"],
   "mobile-kanban-forms-dialog": ["login-token"],
   "graph": ["login-token"],
@@ -251,6 +242,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "spec-import-and-run": ["lead-sees-members", "spec-page"], // spec-page's imported feature
   "agent-policy": ["lead-sees-members"],
   "tools": ["login-token", "lead-sees-members"],
+  "tool-approve-web": ["login-token", "login-password", "lead-sees-members"],
   "stop-all": ["login-token"],
   "audit-agent": ["login-token"],
   "budget": ["login-token"],
@@ -258,6 +250,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "leader-autonomy": ["lead-sees-members"],
   "leader-tool-proposal": ["lead-sees-members"],
   "hub-page": ["login-token"],
+  "hub-leader-chat": ["login-token"],
   "system-docs": ["login-password"],
   "systems-outside": ["login-token", "system-docs"], // system-docs saves the system shop
   "project-archive-delete": ["login-token"],
@@ -274,7 +267,6 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "knowledge-pending": ["login-token", "lead-sees-members"],
   "artifacts": ["lead-sees-members"],
   "run-steer": ["login-password", "lead-sees-members"],
->>>>>>> ai/R-59c
 };
 const order = [...readFileSync(import.meta.filename, "utf8").matchAll(/^\s*(?:if \(mobile\) )?await step\("([^"]+)"/gm)].map((m) => m[1]);
 const only = (process.env.HIVE_E2E_ONLY ?? "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -361,7 +353,6 @@ async function main() {
     );
   });
 
-<<<<<<< HEAD
   if (mobile && tabs.admin) await mobileAudit({ tab: tabs.admin, out, step, expect });
 
   // The full WCAG audit also reports existing issues needing design work; opt in with --only a11y-pages.
@@ -402,10 +393,6 @@ async function main() {
     await tab.waitFor("completed run announcement", () => document.querySelector('[data-run-state][role="status"]')?.textContent.includes("Xong"));
     await runContrast({ tab, expect });
   });
-=======
-  // The audit needs its tab: a --only run that skipped the login has none.
-  if (mobile && tabs.admin) await mobileAudit({ tab: tabs.admin, out, step, expect });
->>>>>>> ai/R-59c
 
   await step("scope-search-tasks", async () => {
     const tab = (current = tabs.admin);
