@@ -553,7 +553,8 @@ const soDo = `docs?doc=${encodeURIComponent("project/demo/so-do")}`;
 await shoot("docs-mermaid", soDo, 2500, { HIVE_SMOKE_EXPECT: '[data-mermaid] [role="img"] svg' });
 await shoot("docs-editor", soDo, 2500, { HIVE_SMOKE_CLICK: '[role="radio"][data-value="edit"]', HIVE_SMOKE_EXPECT: '.ProseMirror && .ProseMirror [data-mermaid] [role="img"] svg' });
 // Đồng bộ on the Projects page mirrors the README's sections into Hive (roadmap 26).
-await shoot("projects-mirror", "setup", 4000, { HIVE_SMOKE_CLICK: '[data-sync-project="demo"]', HIVE_SMOKE_SCROLL: '[data-sync-project="demo"]' });
+// Waits for the sync's own report: the sync takes about a second, and the DB check below must come after it.
+await shoot("projects-mirror", "setup", 4000, { HIVE_SMOKE_CLICK: '[data-sync-project="demo"]', HIVE_SMOKE_SCROLL: '[data-sync-project="demo"]', HIVE_SMOKE_EXPECT: '[data-project-result="demo"]' });
 {
   const local = new SqliteHive(path.join(work, "local.db"));
   const chay = await local.call("docs.get", { key: "project/demo/chay" }, admin);
