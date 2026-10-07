@@ -98,22 +98,32 @@ describe("SeaweedFS for doc files (roadmap 23c)", () => {
     const b = png(2);
     await hive.call("docs.assetPut", { key, name: "a.png", data: Buffer.from(a).toString("base64") }, admin);
     await hive.call("docs.assetPut", { key, name: "b.png", data: Buffer.from(b).toString("base64") }, admin);
-    assert.equal(filer.files.size, 2);
+    const artifact = png(3);
+    await hive.call("tasks.create", { id: "APP-1", project: "app", title: "Task" }, admin);
+    await hive.call("artifacts.put", {
+      project: "app", taskId: "APP-1", runId: "R-1", name: "run.png", data: Buffer.from(artifact).toString("base64"),
+    }, { name: "runner.test", role: "agent", source: { via: "api", machine: "test", run: "R-1", task: "APP-1" } });
+    assert.equal(filer.files.size, 3);
 
     const dir = path.join(root, "backups");
     backupDatabase(hive.db, { dir, keep: 1 });
     mkdirSync(filesDir(dir), { recursive: true });
     writeFileSync(path.join(filesDir(dir), "notes.txt"), "not a file of the hub");
-    assert.deepEqual(await backupFiles(hive, dir), { copied: 2, kept: 2, removed: 0, missing: [] });
+    assert.deepEqual(await backupFiles(hive, dir), { copied: 3, kept: 3, removed: 0, missing: [] });
     assert.deepEqual(new Uint8Array(readFileSync(path.join(filesDir(dir), hex(a)))), a);
-    assert.deepEqual(await backupFiles(hive, dir), { copied: 0, kept: 2, removed: 0, missing: [] }, "only what is new");
+    assert.deepEqual(await backupFiles(hive, dir), { copied: 0, kept: 3, removed: 0, missing: [] }, "only what is new");
+    assert.deepEqual(new Uint8Array(readFileSync(path.join(filesDir(dir), hex(artifact)))), artifact, "run artifacts are included");
+
+    // The snapshot still points at an artifact even after its row is removed from the live database.
+    await hive.call("artifacts.remove", { id: (await hive.call("artifacts.list", { project: "app", runId: "R-1" }, admin))[0]!.id }, admin);
+    assert.equal((await backupFiles(hive, dir)).removed, 0);
 
     // b removed: the snapshot still points at it, so the backup keeps it until that snapshot goes.
     await hive.call("docs.assetRemove", { key, name: "b.png" }, admin);
     assert.equal((await backupFiles(hive, dir)).removed, 0);
     await new Promise((r) => setTimeout(r, 5));
     backupDatabase(hive.db, { dir, keep: 1 });
-    assert.deepEqual(await backupFiles(hive, dir), { copied: 0, kept: 1, removed: 1, missing: [] });
+    assert.deepEqual(await backupFiles(hive, dir), { copied: 0, kept: 2, removed: 1, missing: [] });
     assert.equal(existsSync(path.join(filesDir(dir), hex(b))), false);
     assert.ok(readdirSync(filesDir(dir)).includes("notes.txt"), "leaves other files alone");
 

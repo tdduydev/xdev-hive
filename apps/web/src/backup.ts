@@ -56,7 +56,7 @@ export function backupSettings(env: NodeJS.ProcessEnv): { dir: string; hours: nu
   return { dir: path.resolve(env.HIVE_BACKUP_DIR), hours, keep };
 }
 
-/** What a backup of the doc files needs from the hub. */
+/** What a backup of the stored files needs from the hub. */
 export interface StoredFiles {
   storedFileIds(): string[];
   readStoredFile(sha: string): Promise<Uint8Array | null>;
@@ -71,7 +71,7 @@ export interface FilesBackupResult {
   missing: string[];
 }
 
-/** Folder of the doc files in a backup directory: files/<sha256>. */
+/** Folder of stored files in a backup directory: files/<sha256>. */
 export const filesDir = (dir: string) => path.join(dir, "files");
 
 /**
@@ -107,12 +107,16 @@ export async function backupFiles(source: StoredFiles, dir: string): Promise<Fil
   return { copied, kept: want.size, removed, missing };
 }
 
-/** The files a snapshot keeps in the store; none for a snapshot from before 23c (its files are inside it). */
+/** The files a snapshot keeps in the store; older schemas may not have every blob table. */
 function snapshotFileIds(file: string): string[] {
   let db: DatabaseSync | null = null;
   try {
     db = new DatabaseSync(file, { readOnly: true });
-    return (db.prepare("SELECT DISTINCT sha256 FROM doc_assets WHERE stored IS NOT NULL AND sha256 IS NOT NULL").all() as Array<{ sha256: string }>).map((r) => r.sha256);
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>;
+    const existing = new Set(tables.map((r) => r.name));
+    return (["doc_assets", "artifacts"] as const).filter((table) => existing.has(table)).flatMap((table) =>
+      (db!.prepare(`SELECT DISTINCT sha256 FROM ${table} WHERE stored IS NOT NULL AND sha256 IS NOT NULL`).all() as Array<{ sha256: string }>).map((r) => r.sha256),
+    );
   } catch {
     return [];
   } finally {
