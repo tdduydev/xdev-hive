@@ -781,7 +781,7 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
   const t = useT();
   const machines = useQuery(() => client.call("machines.list", {}), [client]);
   const fit = (machines.data ?? []).filter((m) => takesRunsOf(m, task.project));
-  const [machineId, setMachineId] = useState("");
+  const [machineId, setMachineId] = useState(task.agent?.machineId ?? "");
   const machine = fit.find((m) => m.id === machineId) ?? null;
   const [role, setRole] = useState<WorkRole>(task.status === "review" ? "review" : "implement");
   const [profileId, setProfileId] = useState("");
@@ -800,6 +800,7 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
   const several = role === "implement" && !profileId;
   const waiting = waitingLabels(task);
   const pending = requests.find((r) => r.status === "pending");
+  const assignedElsewhere = task.agent && machine && task.agent.machineId !== machine.id;
 
   return (
     <section className="flex flex-col gap-3 rounded-lg border p-3">
@@ -837,6 +838,13 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
           <div className="flex flex-col gap-1.5">
             <MachineSelect id={`machine-${task.id}`} machines={fit} value={machineId} any onChange={(id) => (setMachineId(id), setProfileId(""))} />
           </div>
+          {assignedElsewhere ? <Notice tone="warn">
+            <p role="alert">{t("errors.dispatchAssignedElsewhere", { id: task.id, machine: task.agent!.machine })}</p>
+            <Button type="button" variant="outline" className="mt-2 max-md:min-h-11" disabled={action.busy} onClick={() => void action.run(async () => {
+              await client.call("tasks.unassign", { id: task.id });
+              onSent();
+            })}>{t("assignment.remove")}</Button>
+          </Notice> : null}
           <details className="rounded-md border border-line-default p-3">
             <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium focus-visible:focus-ring md:min-h-0">{t("tasks.dispatchOptions")}</summary>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -895,7 +903,7 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
             ) : null}
           </details>
           <div>
-            <Button size="sm" type="submit" disabled={action.busy} className="max-md:min-h-11">
+            <Button size="sm" type="submit" disabled={action.busy || !!assignedElsewhere} className="max-md:min-h-11">
               {t("tasks.dispatchSend")}
             </Button>
           </div>

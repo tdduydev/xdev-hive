@@ -2745,8 +2745,23 @@ async function main() {
     await machineRpc("runs.push", { machine: machineName, runs: [{ runId: "R-assign1", project: "payment", taskId: first.id, taskTitle: first.title, role: "implement", status: "succeeded", profileId: profile.id, createdAt: at, finishedAt: at }] });
     const next = await until("second assignment released", async () => (await beat()).runRequests?.find((r) => r.taskId === second.id));
     expect(next, "second task starts after first finishes");
-    for (const task of [first, second]) await rpc("tasks.unassign", { id: task.id });
-    await rpc("runs.cancelRequest", { id: next.id });
+    await machineRpc("runs.requestResult", { id: next.id, status: "accepted", runId: "R-assign2" });
+    await machineRpc("runs.push", { machine: machineName, runs: [{ runId: "R-assign2", project: "payment", taskId: second.id, taskTitle: second.title, role: "implement", status: "failed", profileId: profile.id, createdAt: at, finishedAt: at }] });
+    expect((await taskNow(second.id)).agent?.hold, "failed assignment has a hold");
+    await tab.go(`tasks?task=${second.id}`);
+    await tab.waitFor("held assignment recovery", () => document.querySelector("[data-assign-remove]"));
+    const recovery = await tab.eval(() => {
+      const remove = document.querySelector("[data-assign-remove]");
+      const select = document.querySelector("[data-assign-machine]");
+      return { beforeFields: !!(remove.compareDocumentPosition(select) & Node.DOCUMENT_POSITION_FOLLOWING), height: remove.getBoundingClientRect().height };
+    });
+    expect(recovery.beforeFields && (!mobile || recovery.height >= 44), "unassign is before fields and has a mobile touch target");
+    await tab.shot(`${String(n).padStart(2, "0")}-agent-assign-hold`);
+    await tab.eval(() => document.querySelector("[data-assign-remove]").focus());
+    await tab.key("Enter");
+    await until("held assignment removed", async () => !(await taskNow(second.id)).agent);
+    await tab.key("Escape");
+    await rpc("tasks.unassign", { id: first.id });
     await tab.select("[data-agent-filter]", "");
     await tab.click('[data-task-view="kanban"]');
   });

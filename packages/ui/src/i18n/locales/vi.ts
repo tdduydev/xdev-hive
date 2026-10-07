@@ -3229,6 +3229,7 @@ export const vi = {
     taskRunning: "Task {id} đang chạy (run {run} trên máy {machine}).",
     runRequestNotFound: "Không có yêu cầu run #{id}.",
     runRequestNotPending: "Yêu cầu run #{id} không còn chờ.",
+    dispatchAssignedElsewhere: "Task {id} đã gán cho máy {machine}. Bỏ gán trước khi giao run tới máy khác.",
     taskAssignedElsewhere: "Task {id} đã giao cho agent của máy {machine}.",
     agentTaskBusy: "Task {id} đang ở trạng thái {status}.",
     agentTurnOver: "Agent đã chạy task {id} một lượt. Gán lại để chạy tiếp.",

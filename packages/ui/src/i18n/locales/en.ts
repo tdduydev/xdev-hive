@@ -3225,6 +3225,7 @@ export const en: Catalog = {
     taskRunning: "Task {id} is running (run {run} on {machine}).",
     runRequestNotFound: "No run request #{id}.",
     runRequestNotPending: "Run request #{id} is no longer pending.",
+    dispatchAssignedElsewhere: "Task {id} is assigned to {machine}. Unassign it before dispatching to another machine.",
     taskAssignedElsewhere: "Task {id} is assigned to {machine}'s agent.",
     agentTaskBusy: "Task {id} is {status}.",
     agentTurnOver: "The agent already ran task {id} once. Assign it again to run it further.",
