@@ -635,7 +635,7 @@ export class Runner {
     } finally { this.#intakePending--; }
   }
 
-  async #enqueue(req: StartRunRequest, extra: { ciFix?: CiFix; requestedBy?: string; plan?: RunPlan | null; fromHub?: boolean }): Promise<AgentRun> {
+  async #enqueue(req: StartRunRequest, extra: { ciFix?: CiFix; requestedBy?: string; plan?: RunPlan | null; fromHub?: boolean; redispatch?: AgentRun["redispatch"] }): Promise<AgentRun> {
     const project = this.#host.projects().find((p) => p.name === req.project);
     if (!project) throw new HiveError("not_found", `Dự án ${req.project} chưa được thêm vào app.`, { key: "errors.projectNotAdded", vars: { project: req.project } });
     if (!/^[A-Za-z0-9._-]{1,100}$/.test(req.taskId)) throw new HiveError("bad_request", "Task id không hợp lệ.", { key: "errors.badTaskId" });
