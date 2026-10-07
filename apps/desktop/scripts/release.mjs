@@ -92,7 +92,7 @@ Bản build chưa có chứng chỉ ký của Apple/Microsoft:
 - **macOS**: lần đầu mở, macOS chặn. Vào *System Settings → Privacy & Security* bấm *Open Anyway*, hoặc chạy \`xattr -dr com.apple.quarantine "/Applications/xDev Hive.app"\`.
 - **Windows**: SmartScreen hiện cảnh báo, bấm *More info → Run anyway*.
 - **Ubuntu/Debian**: \`sudo apt install ./xdev-hive-${version}-linux-amd64.deb\` (ARM64: đổi amd64 thành arm64). Cập nhật trong app tải và kiểm SHA-256, rồi mở trình cài của hệ thống; cần xác nhận quyền quản trị và mở lại app sau khi cài.
-- **Linux**: \`chmod +x xdev-hive-*.AppImage\` rồi chạy.
+- **Ubuntu 22.04–26.04 AppImage**: cần FUSE 2 để chạy; cài \`libfuse2\` (Ubuntu 22.04/23.10) hoặc \`libfuse2t64\` (Ubuntu 24.04 trở lên). Sau đó chạy \`chmod +x xdev-hive-*.AppImage\` rồi \`./xdev-hive-*.AppImage\`. Nếu không có FUSE, có thể giải nén bằng \`./xdev-hive-*.AppImage --appimage-extract\` rồi chạy \`./squashfs-root/AppRun\`.
 
 Kiểm tra file: \`SHA256SUMS.txt\`.
 

@@ -106,6 +106,7 @@ import { AlertWatch, fetchAlerts, noticeText, type AlertNotice } from "./alert-n
 import { applyProfileChanges } from "./profile-changes.ts";
 import { mergeMr } from "./gitlab/merge.ts";
 import { chatFileId, chatNotice, hubChatUpload, servedName } from "./chat.ts";
+import { linuxSandboxFallback } from "#desktop/main/linux-sandbox.ts";
 
 app.setName("xDev Hive");
 // Chat files (roadmap 48): the page shows them from hive-file://chat/<id>, which only the main process can answer.
@@ -1654,6 +1655,11 @@ function createTray(): void {
 // The app plays no video. On Linux hosts without a VA-API driver Chromium still probes it and prints
 // "vaInitialize failed" on every start, which reads as a crash to whoever launched the AppImage.
 if (process.platform === "linux") {
+  const sandboxFallback = linuxSandboxFallback(process.execPath);
+  if (sandboxFallback) {
+    app.commandLine.appendSwitch("no-sandbox");
+    mainLog.write(`Chromium sandbox disabled: ${sandboxFallback}`);
+  }
   app.commandLine.appendSwitch("disable-features", "VaapiVideoDecoder,VaapiVideoEncoder,VaapiVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxGL,AcceleratedVideoEncoder");
   app.commandLine.appendSwitch("disable-accelerated-video-decode");
   app.commandLine.appendSwitch("disable-accelerated-video-encode");
