@@ -1213,6 +1213,15 @@ function ProfileForm({
             </label>
             <span className={HINT}>{t("agents.readOnlyHint")}</span>
           </div>
+          {p.kind === "codex" ? (
+            <div className="flex flex-col gap-1">
+              <label className="flex min-h-11 items-center gap-2 text-sm">
+                <Checkbox checked={p.codexLocalhost} onCheckedChange={(v) => set("codexLocalhost", v === true)} />
+                {t("agents.codexLocalhost")}
+              </label>
+              <span className={HINT}>{t("agents.codexLocalhostHint")}</span>
+            </div>
+          ) : null}
           <div className="flex flex-col gap-1">
             <label className="flex items-center gap-2 text-sm">
               <Checkbox

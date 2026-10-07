@@ -2190,6 +2190,8 @@ export const en: Catalog = {
     readOnly: "Read-only Hive",
     readOnlyHint: "Runs of this subscription only get the read tools (memory_search, doc_get, doc_list, task_list): no memory writes, doc proposals or task updates; the runner still moves the task and records the summary. For reviews, or a CLI you trust less. It stops mistaken or prompt-injected writes; it is not a security boundary, since the agent can still read this machine's token.",
     readOnlyBadge: "Read-only",
+    codexLocalhost: "Let Codex open local ports (e2e)",
+    codexLocalhostHint: "Enables sandbox_workspace_write.network_access=true for workspace-write. Codex allows external network access too, not only 127.0.0.1. Off by default.",
     container: "Run in a container (Docker)",
     containerImage: "Docker image",
     containerBadge: "Container",

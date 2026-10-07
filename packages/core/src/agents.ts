@@ -55,6 +55,8 @@ export const agentProfileSchema = z.object({
    * or task updates. Stops mistaken or prompt-injected writes; the agent can still read this machine's token.
    */
   readOnly: z.boolean().default(false),
+  /** Codex workspace-write network access is broad (including the public network), used for localhost e2e servers. */
+  codexLocalhost: z.boolean().default(false),
   /**
    * Run the CLI inside a Docker container of this image (the machine needs Docker): it sees the task's
    * worktree, the repo's .git and the CLI's login folder, not the rest of the machine. null: run it here.
@@ -150,6 +152,7 @@ export const AGENT_TEMPLATES: Record<Exclude<AgentKind, "custom">, AgentProfile>
     env: {},
     enabled: true,
     readOnly: false,
+    codexLocalhost: false,
     container: null,
     priority: 10,
     roles: ["plan", "implement", "review"],
@@ -169,6 +172,7 @@ export const AGENT_TEMPLATES: Record<Exclude<AgentKind, "custom">, AgentProfile>
     env: {},
     enabled: true,
     readOnly: false,
+    codexLocalhost: false,
     container: null,
     priority: 20,
     roles: ["implement", "review"],
@@ -181,7 +185,7 @@ export const AGENT_TEMPLATES: Record<Exclude<AgentKind, "custom">, AgentProfile>
   antigravity: {
     id: "antigravity-1", label: "Antigravity (Google)", kind: "antigravity", bin: "agy",
     args: ["-p", "{prompt}", "--output-format", "stream-json", "--print-timeout", "{timeoutMinutes}m", "--dangerously-skip-permissions"],
-    env: {}, enabled: true, readOnly: false, container: null, priority: 35,
+    env: {}, enabled: true, readOnly: false, codexLocalhost: false, container: null, priority: 35,
     roles: ["plan", "implement", "review"], maxConcurrent: 1, cooldownMinutes: 60, timeoutMinutes: 60, stopAtSession: 95, stopAtWeek: 90,
   },
   gemini: {
@@ -193,6 +197,7 @@ export const AGENT_TEMPLATES: Record<Exclude<AgentKind, "custom">, AgentProfile>
     env: {},
     enabled: true,
     readOnly: false,
+    codexLocalhost: false,
     container: null,
     priority: 30,
     roles: ["plan", "implement", "review"],

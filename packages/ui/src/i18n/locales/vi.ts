@@ -2194,6 +2194,8 @@ export const vi = {
     readOnly: "Chỉ đọc Hive",
     readOnlyHint: "Run của gói này chỉ có tool đọc (memory_search, doc_get, doc_list, task_list): không ghi memory, không đề xuất tài liệu, không cập nhật task; runner vẫn chuyển task và ghi tóm tắt. Dùng cho review hoặc CLI bạn ít tin. Chặn ghi nhầm hay ghi do prompt injection, không phải ranh giới bảo mật: agent vẫn đọc được token của máy.",
     readOnlyBadge: "Chỉ đọc",
+    codexLocalhost: "Cho Codex mở cổng nội bộ (e2e)",
+    codexLocalhostHint: "Bật sandbox_workspace_write.network_access=true cho workspace-write. Codex cho phép cả kết nối mạng ngoài, không chỉ 127.0.0.1. Mặc định tắt.",
     container: "Chạy trong container (Docker)",
     containerImage: "Image Docker",
     containerBadge: "Container",
