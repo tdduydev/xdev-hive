@@ -6,6 +6,7 @@ import {
   isTerminalFinal,
   TERMINAL_LIMITS,
   TERMINAL_LIVE_STATES,
+  type TerminalMachine,
   type TerminalReason,
   type TerminalSession,
   type TerminalState,
@@ -39,11 +40,24 @@ export class TerminalStore {
     return r ? session(r) : null;
   }
 
-  /** Admins and machine owners see a project's sessions; anyone else only those they opened. */
-  list(project: string, viewer: { account: string; all: boolean }): TerminalSession[] {
-    const rows = viewer.all
+  /** The machine as terminalDecision needs it, from the hub's own row; null once the machine was deleted. */
+  machine(id: string): TerminalMachine | null {
+    const r = this.db.prepare("SELECT id, owner, terminal_capability FROM machines WHERE id = ?").get(id) as Row | undefined;
+    if (!r) return null;
+    let capability: unknown = null;
+    try { capability = r.terminal_capability == null ? null : JSON.parse(String(r.terminal_capability)); } catch { /* read as needsUpgrade */ }
+    return { id: String(r.id), owner: r.owner == null ? null : String(r.owner), capability };
+  }
+
+  /**
+   * A hub admin sees the project's sessions; anyone else those they opened and those on machines they own now. The
+   * filter is in SQL, before the limit, so another owner's sessions never take the places of one's own.
+   */
+  list(project: string, viewer: { account: string; admin: boolean }): TerminalSession[] {
+    const rows = viewer.admin
       ? this.db.prepare("SELECT * FROM terminal_sessions WHERE project = ? ORDER BY created_at DESC LIMIT 100").all(project)
-      : this.db.prepare("SELECT * FROM terminal_sessions WHERE project = ? AND creator = ? ORDER BY created_at DESC LIMIT 100").all(project, viewer.account);
+      : this.db.prepare(`SELECT * FROM terminal_sessions WHERE project = ? AND (creator = ? OR machine_id IN (SELECT id FROM machines WHERE owner = ?))
+          ORDER BY created_at DESC LIMIT 100`).all(project, viewer.account, viewer.account);
     return (rows as Row[]).map(session);
   }
 

@@ -153,6 +153,38 @@ describe("69a who may open a terminal (AC01)", () => {
     assert.equal(check({ ...machineBearer, name: "runner@other" }, "machineReport", { session }), "notMachine");
     assert.equal(check(admin, "machineReport", { session }), "notMachine");
     assert.equal(check({ ...machineBearer, runCredential: runCred.runCredential! }, "machineReport", { session }), "notMachine");
+    // The name is a label anyone can give a token: another account's token named like the machine is not it.
+    const table: Array<[string, Actor]> = [
+      ["another account, same name", { ...machineBearer, account: "mallory" }],
+      ["ownerless token, same name", { name: machine.id, role: "agent" }],
+      ["the owner's viewer token", { ...machineBearer, role: "viewer" }],
+      ["the owner's MCP credential", { ...machineBearer, mcpCredential: true }],
+      ["legacy MCP on the machine token", { ...machineBearer, source: { via: "mcp" }, agent: "claude-1" }],
+      ["agent label on the machine token", { ...machineBearer, source: { via: "api" }, agent: "claude-1" }],
+      ["chat leader", { ...machineBearer, chatReply: 3 }],
+      ["the owner's browser", { ...machineBearer, humanSession: "s-owner" }],
+    ];
+    for (const [who, actor] of table) assert.equal(check(actor, "machineReport", { session }), "notMachine", who);
+    assert.equal(check({ name: machine.id, role: "agent" }, "machineReport", { session, machine: { ...machine, owner: null } }), "ok",
+      "a machine on a token of no account, as /api/run-credentials accepts it");
+    assert.equal(check(machineBearer, "machineReport", { session, machine: null }), "notFound");
+  });
+
+  it("keeps a deleted machine's sessions readable by their creator and admins only", () => {
+    const session = { creator: "lead", machineId: machine.id, project: "app", state: "closed" as const };
+    const gone = { machine: null, session };
+    assert.equal(check(lead, "get", gone), "ok", "creator");
+    assert.equal(check(lead, "recording", gone), "ok");
+    assert.equal(check(lead, "recording", { ...gone, stepUp: false }), "stepUpRequired");
+    assert.equal(check(admin, "get", gone), "ok", "admin");
+    assert.equal(check(admin, "recording", gone), "ok");
+    assert.equal(check(owner, "get", gone), "notOwnerOrAdmin", "its old owner owns nothing now");
+    assert.equal(check(person("mallory", { access: { projects: { app: "lead" } } }), "recording", gone), "notOwnerOrAdmin");
+    assert.equal(check(person("lead", { access: { projects: { other: "lead" } } }), "get", gone), "notFound", "creator who lost the project");
+    assert.equal(check(admin, "get", { ...gone, session: { ...session, project: "other" } }), "wrongProject");
+    assert.equal(check(lead, "terminate", { ...gone, session: { ...session, state: "detached" } }), "ok", "a stray live row can still be closed");
+    assert.equal(check(lead, "list", { machine: null }), "ok");
+    for (const op of ["capabilities", "create", "attach"] as const) assert.equal(check(admin, op, gone), "notFound", op);
   });
 
   it("maps denials to the RPC error codes", () => {
@@ -209,8 +241,31 @@ describe("69a terminal schema", () => {
     assert.throws(() => store.create({ ...open(key), checkoutRef: "worktree:x" }), { code: "conflict" });
     assert.throws(() => store.create(open()), { code: "conflict" }, "maxSessions is 1");
     assert.throws(() => h.db.prepare("UPDATE terminal_sessions SET checkout_ref = 'worktree:x' WHERE id = ?").run(s.id), /immutable/);
-    assert.deepEqual(store.list("app", { account: "other", all: false }), []);
-    assert.equal(store.list("app", { account: "other", all: true }).length, 1);
+    assert.deepEqual(store.list("app", { account: "other", admin: false }), []);
+    assert.equal(store.list("app", { account: "other", admin: true }).length, 1);
+    h.close();
+  });
+
+  it("lists for an owner the sessions of their machines, not another owner's", async () => {
+    const h = new SqliteHive(":memory:");
+    const store = new TerminalStore(h.db, () => new Date("2026-10-07T00:00:00.000Z"));
+    await h.call("machines.heartbeat", { machine: "a", instance: "aaaaaaaa", terminal: cap } as never, { name: "runner.a@a", role: "agent", account: "alice" });
+    await h.call("machines.heartbeat", { machine: "b", instance: "bbbbbbbb" } as never, { name: "runner.b@b", role: "agent", account: "bob" });
+    const done = (s: { id: string; version: number }) => store.transition(s.id, s.version, "closed", "userClosed");
+    const rootOnA = done(store.create({ ...open(), machineId: "runner.a@a", creator: "root" }));
+    const bobOnB = done(store.create({ ...open(), machineId: "runner.b@b", creator: "bob" }));
+    const aliceOnB = store.create({ ...open(), machineId: "runner.b@b", creator: "alice" });
+    const ids = (account: string, admin = false) => store.list("app", { account, admin }).map((s) => s.id).sort();
+    assert.deepEqual(ids("alice"), [rootOnA.id, aliceOnB.id].sort(), "her machine's, opened by an admin, and her own elsewhere");
+    assert.deepEqual(ids("bob"), [bobOnB.id, aliceOnB.id].sort());
+    assert.deepEqual(ids("root", true), [rootOnA.id, bobOnB.id, aliceOnB.id].sort());
+    assert.deepEqual(ids("carol"), []);
+    assert.deepEqual(store.machine("runner.a@a"), { id: "runner.a@a", owner: "alice", capability: cap });
+    assert.equal(store.machine("runner.b@b")?.capability, null);
+    h.db.prepare("DELETE FROM machines WHERE id = ?").run("runner.a@a");
+    assert.equal(store.machine("runner.a@a"), null);
+    assert.deepEqual(ids("alice"), [aliceOnB.id], "a deleted machine's sessions go back to their creators");
+    assert.deepEqual(ids("root", true), [rootOnA.id, bobOnB.id, aliceOnB.id].sort(), "and stay for admins");
     h.close();
   });
 
