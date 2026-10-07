@@ -92,7 +92,8 @@ describe("web tool approvals (58b)", () => {
     // Build the complete DB first, then return only this migration's schema to its old state. No new handler runs
     // until the next constructor has finished all migrations.
     db.exec(`DROP TABLE machine_tool_approvals; ALTER TABLE machines DROP COLUMN tool_states; PRAGMA user_version = ${migrationIndex("CREATE TABLE machine_tool_approvals(")}`);
-    const upgraded = new SqliteHive(db);
+    // Only this migration runs again: later ones already shaped the DB.
+    const upgraded = new SqliteHive(db, { migrateTo: migrationIndex("CREATE TABLE machine_tool_approvals(") + 1 });
     try {
       assert.equal((await upgraded.call("machines.list", {}, admin))[0]?.machine, "hidden");
       assert.deepEqual(await upgraded.call("machines.tools", { machineId: machine.name }, owner), { supported: false, canApprove: true, tools: [] });

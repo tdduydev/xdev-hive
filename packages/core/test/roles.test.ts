@@ -75,7 +75,7 @@ describe("chain of roles (roadmap 31d)", () => {
     before.close();
     const after = new SqliteHive(file);
     t.after(() => after.close());
-    assert.equal(after.db.prepare("PRAGMA user_version").get()?.user_version, index + 1);
+    assert.ok(Number(after.db.prepare("PRAGMA user_version").get()?.user_version) > index, "the step migration ran");
     const group = (await after.call("runs.groups", { project: "app" }, admin)).find((g) => g.id === batch.id)!;
     assert.deepEqual([group.items[0]!.taskTitle, group.items[0]!.preferKind, group.items[0]!.step], ["Existing task", "codex", null]);
     assert.ok(after.db.prepare("PRAGMA table_info(run_records)").all().some((r) => r.name === "model"));

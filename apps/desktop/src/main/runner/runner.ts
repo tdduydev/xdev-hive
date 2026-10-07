@@ -1823,7 +1823,8 @@ export class Runner {
       if (run.role !== "review" && run.plan?.phase !== "plan") {
         // Candidates share one lease, which the runner holds for the group (long enough for the slowest profile).
         const minutes = candidate ? Math.max(...this.#host.profiles().map((p) => p.timeoutMinutes)) : profile.timeoutMinutes;
-        const lease = Math.min(minutes + 15, 24 * 60);
+        // Whole minutes: the hub takes an integer, and a run's limit may be a fraction of a minute in tests.
+        const lease = Math.ceil(Math.min(minutes + 15, 24 * 60));
         const claim = await backend.call("tasks.claim", { id: run.taskId, leaseMinutes: lease }, candidate ? this.#runnerActor() : actor);
         if (!claim.claimed) {
           const owner = claim.task?.owner ?? "?";
