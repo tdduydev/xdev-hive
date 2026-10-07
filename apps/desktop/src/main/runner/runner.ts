@@ -36,6 +36,7 @@ import {
   cacheReadShare,
   assertNoSecret,
   AGENT_ROLES,
+  ROUTED_KINDS,
   PREFER_KINDS,
   agentActorName,
   ARTIFACT_DIR,
@@ -752,8 +753,12 @@ export class Runner {
     if (req.preferKind != null && !PREFER_KINDS.includes(req.preferKind)) {
       throw new HiveError("bad_request", `Loại gói không hợp lệ: ${String(req.preferKind)}`, { key: "errors.badPreferKind", vars: { kind: String(req.preferKind) } });
     }
-    if (role === "implement" && !extra.fromHub && this.#host.mode() === "hub") {
-      const policy = await this.#host.backend().call("sdlc.get", {}, this.#runnerActor());
+    // Board and other direct desktop starts bypass the hub's enriched run requests.
+    const policy = !extra.fromHub && this.#host.mode() === "hub"
+      ? await this.#host.backend().call("sdlc.get", {}, this.#runnerActor())
+      : null;
+    if (policy) req = { ...req, allowedAgentKinds: (policy.projects[req.project]?.allowedAgentKinds ?? [...ROUTED_KINDS]) as AgentKind[] };
+    if (role === "implement" && policy) {
       const tasks = await this.#host.backend().call("tasks.list", { project: req.project }, this.#runnerActor());
       if (needsPlanApproval(policy.projects[req.project]?.planApproval, tasks.find((t) => t.id === req.taskId)?.size ?? null)) {
         const request = await this.#host.backend().call("runs.preparePlan", req, this.#runnerActor());
@@ -776,6 +781,7 @@ export class Runner {
       if (req.profileId && !["claude", "codex"].includes(this.#host.profiles().find(p => p.id === req.profileId)?.kind ?? "")) throw new HiveError("bad_request", "Research requires Claude or Codex.");
       const run = this.store.insert({ project: req.project, taskId: req.taskId, taskTitle: job.topic, role, attempt: 1, maxAttempts: 1,
         preferredProfile: req.profileId ?? null, instructions: JSON.stringify(job), reviewAfter: false, requestedBy: extra.requestedBy ?? null,
+        allowedAgentKinds: req.allowedAgentKinds ?? null,
         selection: req.selection ?? null, timeoutMinutes: req.timeoutMinutes ?? null }, this.#iso());
       void this.tick();
       return run;
@@ -808,6 +814,7 @@ export class Runner {
         maxAttempts: this.#host.settings().maxAttempts,
         preferredProfile: req.profileId ?? null,
         preferKind: req.profileId ? null : (req.preferKind ?? null),
+        allowedAgentKinds: req.allowedAgentKinds ?? null,
         instructions: (req.instructions ?? "").slice(0, 4000),
         plan: extra.plan ?? null,
         reviewAfter: extra.plan?.phase === "plan" ? false : req.reviewAfter ?? false,
@@ -859,6 +866,7 @@ export class Runner {
           bestOf: { group, n: i + 1, of: count, from, pick: null, reason: null },
           plan,
           preferKind: req.preferKind ?? null,
+          allowedAgentKinds: req.allowedAgentKinds ?? null,
           requestedBy,
           selection: req.selection ?? null,
           timeoutMinutes: req.timeoutMinutes ?? null,
@@ -1606,6 +1614,7 @@ export class Runner {
           profileId: req.profileId,
           // An older hub sends none.
           preferKind: req.preferKind ?? null,
+          allowedAgentKinds: req.allowedAgentKinds ?? null,
           reviewAfter: req.reviewAfter,
           candidates: req.candidates,
           instructions: req.instructions,
@@ -2004,6 +2013,7 @@ export class Runner {
       role: run.role,
       preferredProfile: run.preferredProfile,
       preferKind: run.preferKind,
+      allowedAgentKinds: run.allowedAgentKinds,
       pressure: run.selection?.tier === "light" || run.selection?.tier === "standard",
       avoidKinds: run.avoidKinds,
       excludedProfiles: run.diffSummaryFor ? [...run.excludedProfiles, ...this.#host.profiles().filter(p => p.kind !== "claude" && p.kind !== "codex").map(p => p.id)] : run.excludedProfiles,
@@ -2946,6 +2956,7 @@ export class Runner {
           project: run.project, taskId: run.taskId, taskTitle: run.taskTitle,
           role: "review", attempt: 1, maxAttempts: 1, parentRunId: run.id,
           diffSummaryFor: run.id, instructions: patch, reviewAfter: false, requestedBy: run.requestedBy,
+          allowedAgentKinds: run.allowedAgentKinds,
           selection,
         }, this.#iso());
       } catch { /* The patch remains readable even when a summary cannot be queued. */ }
@@ -2988,6 +2999,7 @@ export class Runner {
           avoidKinds: run.avoidKinds,
           excludedProfiles: [...new Set([...run.excludedProfiles, profile.id])],
           preferKind: run.preferKind,
+          allowedAgentKinds: run.allowedAgentKinds,
           instructions: run.instructions,
           reviewAfter: run.reviewAfter,
           baseSha: done.baseSha,
@@ -3023,6 +3035,7 @@ export class Runner {
           avoidKinds: [profile.kind],
           // The cross-review still needs another vendor; within that, the kind asked for.
           preferKind: run.preferKind,
+          allowedAgentKinds: run.allowedAgentKinds,
           baseSha: done.baseSha,
           branch: done.branch,
           requestedBy: run.requestedBy,
@@ -3081,6 +3094,7 @@ export class Runner {
         attempt: 1,
         maxAttempts: last.maxAttempts,
         avoidKinds: [...new Set(kinds)],
+        allowedAgentKinds: last.allowedAgentKinds,
         instructions: last.instructions,
         reviewAfter: last.reviewAfter,
         baseSha: last.baseSha,
@@ -3148,6 +3162,7 @@ export class Runner {
           maxAttempts: kept.maxAttempts,
           parentRunId: kept.id,
           avoidKinds: kind ? [kind] : [],
+          allowedAgentKinds: kept.allowedAgentKinds,
           baseSha: kept.baseSha,
           requestedBy: kept.requestedBy,
         },

@@ -6658,7 +6658,12 @@ export class SqliteHive implements HiveBackend {
   #runRequest(id: number): RunRequest {
     const row = this.db.prepare("SELECT * FROM run_requests WHERE id = ?").get(id) as Row | undefined;
     if (!row) throw new HiveError("not_found", `Run request #${id} not found.`, { key: "errors.runRequestNotFound", vars: { id } });
-    return toRunRequest(row);
+    return this.#withAllowedKinds(toRunRequest(row));
+  }
+
+  #withAllowedKinds(request: RunRequest): RunRequest {
+    const own = this.#sdlcPolicy().projects[request.project];
+    return { ...request, allowedAgentKinds: (own?.allowedAgentKinds ?? DEFAULT_AGENT_KINDS) as AgentKind[] };
   }
 
   /**
@@ -8277,7 +8282,7 @@ export class SqliteHive implements HiveBackend {
           // still waiting when the fifteen minutes are up expires on its own.
           const runRequests = accepts
             ? (db.prepare("SELECT * FROM run_requests WHERE machine_id = ? AND status = 'pending' ORDER BY id").all(actor.name) as Row[])
-                .map(toRunRequest)
+                .map((r) => this.#withAllowedKinds(toRunRequest(r)))
                 .filter((r) => !hidden.has(r.project))
             : [];
           // Sent again at every heartbeat until the machine reports progress on it.
@@ -9078,7 +9083,7 @@ export class SqliteHive implements HiveBackend {
           db
             .prepare(`SELECT * FROM run_requests WHERE (?1 IS NULL OR project = ?1) AND (?3 IS NULL OR project IN (SELECT value FROM json_each(?3))) AND (?4 IS NULL OR task_id = ?4) AND (?5 = 0 OR status = 'pending') ORDER BY id DESC LIMIT ?2`)
             .all(project ?? null, limit, listParam(projects), taskId ?? null, pendingOnly ? 1 : 0) as Row[]
-        ).map(toRunRequest);
+        ).map((r) => this.#withAllowedKinds(toRunRequest(r)));
       },
 
       "runs.preparePlan": ({ project, taskId, profileId, preferKind, reviewAfter, candidates, instructions }, actor) => this.#tx(() => {
