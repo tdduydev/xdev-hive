@@ -8,5 +8,6 @@ export {
   type TranscriptEvent, type TranscriptRead,
 } from "./terminal-recorder.ts";
 export {
-  TerminalRecordingStore, terminalRecordingChunks, terminalRecordingChunkSchema, type TerminalRecordingChunk, type TerminalRecordingPage,
+  TerminalRecordingStore, terminalRecordingChunks, terminalRecordingChunkSchema, type TerminalMachineIdentity, type TerminalRecordingChunk,
+  type TerminalRecordingPage,
 } from "./terminal-recording.ts";
