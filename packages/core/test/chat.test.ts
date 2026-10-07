@@ -186,8 +186,9 @@ describe("chat with a project's leader", () => {
     assert.equal(await refusal(hive.call("chat.get", { threadId: site.thread.id }, lead)), "errors.notFound");
 
     const secret = `ghp_${"a".repeat(36)}`;
-    const done = await hive.call("chat.finish", { replyId: app.reply.id, status: "done", text: `The key:\ntoken ${secret}\nend` }, mbp);
+    const done = await hive.call("chat.finish", { replyId: app.reply.id, status: "done", text: `The key:\ntoken ${secret}\nend`, error: { message: "safe", vars: { detail: secret } } }, mbp);
     assert.ok(!done.text.includes(secret), "a secret-looking line is hidden");
+    assert.ok(!JSON.stringify(done.error).includes(secret));
     assert.match(done.text, /^The key:\n.*\nend$/);
   });
 

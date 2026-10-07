@@ -13,6 +13,16 @@ function testTmpDir(prefix: string): string {
 }
 
 describe("crash log (white window, asked 2/10)", () => {
+  it("redacts credentials before clipping and writing renderer errors", () => {
+    const dir = testTmpDir(path.join(os.tmpdir(), "hive-crashlog-secret-"));
+    const file = crashLogPath(dir);
+    const synthetic = "hivechat_" + "a".repeat(43);
+    appendCrashLog(file, `safe\n${"x".repeat(19_980)} ${synthetic}\nend`);
+    const stored = readFileSync(file, "utf8");
+    assert.ok(!stored.includes("hivechat_"));
+    assert.match(stored, /line hidden/);
+    assert.match(stored, /safe/);
+  });
   it("appends timestamped entries under logs/ and moves a full file aside", () => {
     const dir = testTmpDir(path.join(os.tmpdir(), "hive-crashlog-"));
     const file = crashLogPath(dir);
