@@ -583,7 +583,7 @@ async function main() {
     await machineRpc("machines.heartbeat", { machine: "merge-e2e", instance, projects: [project], gateRunner: true });
     const machine = (await rpc("machines.list")).find(m => m.machine === "merge-e2e");
     await rpc("tasks.create", { project, id: "MERGE-E2E", title: "Merge fixture", kind: "feature" });
-    await machineRpc("runs.push", { machine: "merge-e2e", runs: [{ runId: "R-merge-e2e", project, taskId: "MERGE-E2E", taskTitle: "Merge fixture", role: "implement", status: "succeeded", branch: "ai/MERGE-E2E", profileId: null, createdAt: new Date().toISOString() }] });
+    await machineRpc("runs.push", { machine: "merge-e2e", runs: [{ runId: "R-merge-e2e", project, taskId: "MERGE-E2E", taskTitle: "Merge fixture", role: "review", status: "succeeded", verdict: "approve", branch: "ai/MERGE-E2E", profileId: null, createdAt: new Date().toISOString() }] });
     await rpc("tasks.update", { id: "MERGE-E2E", status: "review" });
     const tab = current = tabs.admin;
     await tab.go("runs");

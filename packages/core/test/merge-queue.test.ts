@@ -51,7 +51,8 @@ async function setup() {
       id,
       status: "review"
     }, admin);
-    hive.db.prepare(`INSERT INTO run_records(machine_id,run_id,machine,project,task_id,task_title,role,status,branch,created_at,finished_at,updated_at) VALUES (?,?,'gate','demo',?,?,'implement','succeeded',?,?,?,?)`).run(machine.name, runId, id, id, `ai/${id}`, at, at, at);
+    hive.db.prepare(`INSERT INTO run_records(machine_id,run_id,machine,project,task_id,task_title,role,status,branch,created_at,finished_at,updated_at) VALUES (?,?,'gate','demo',?,?,'review','succeeded',?,?,?,?)`).run(machine.name, runId, id, id, `ai/${id}`, at, at, at);
+    hive.db.prepare("UPDATE run_records SET verdict='approve' WHERE machine_id=? AND run_id=?").run(machine.name, runId);
   };
   const take = () => hive.call("mergeQueue.take", {
     project: "demo",
@@ -382,5 +383,37 @@ it("waits for MR landing before emitting its checked release identity", async ()
     assert.deepEqual((await s.hive.call("autoRelease.list", { project: "demo" }, admin)).releases, []);
     await s.finish(batch.id, { ...checked, status: "landed" });
     assert.equal((await s.hive.call("autoRelease.list", { project: "demo" }, admin)).releases[0]?.state, "waiting");
+  } finally { s.hive.close(); }
+});
+
+it("queues only tasks whose latest run is an approving review", async () => {
+  const s = await setup();
+  try {
+    await s.add("APPROVED");
+    await s.add("CHANGES");
+    await s.add("UNKNOWN");
+    await s.add("UNREVIEWED");
+    s.hive.db.prepare("UPDATE run_records SET verdict='changes' WHERE task_id='CHANGES'").run();
+    s.hive.db.prepare("UPDATE run_records SET verdict=NULL WHERE task_id='UNKNOWN'").run();
+    s.hive.db.prepare("UPDATE run_records SET role='implement',verdict=NULL WHERE task_id='UNREVIEWED'").run();
+    assert.deepEqual((await s.view()).waiting.map(item => item.taskId), ["APPROVED"]);
+    await s.advance();
+    const batch = (await s.take())!;
+    assert.deepEqual(batch.items.map(item => item.taskId), ["APPROVED"]);
+    await s.finish(batch.id, result(["APPROVED"]));
+
+    // Same timestamp: the later row wins, so a rejection recorded after an approval keeps the task out.
+    await s.add("CHANGES", "2026-10-07T08:06:00.000Z", "approved-review");
+    assert.deepEqual((await s.view()).waiting.map(item => item.taskId), ["CHANGES"]);
+    await s.add("CHANGES", "2026-10-07T08:06:00.000Z", "rejected-review");
+    s.hive.db.prepare("UPDATE run_records SET verdict='changes' WHERE run_id='rejected-review'").run();
+    assert.deepEqual((await s.view()).waiting, []);
+    assert.equal(await s.take(), null);
+
+    // New work after an approval needs its own review.
+    await s.add("REWORK", "2026-10-07T08:07:00.000Z", "rework-review");
+    await s.add("REWORK", "2026-10-07T08:08:00.000Z", "rework-implement");
+    s.hive.db.prepare("UPDATE run_records SET role='implement',verdict=NULL WHERE run_id='rework-implement'").run();
+    assert.deepEqual((await s.view()).waiting, []);
   } finally { s.hive.close(); }
 });
