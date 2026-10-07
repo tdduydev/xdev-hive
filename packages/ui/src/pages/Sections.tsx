@@ -118,7 +118,9 @@ export function MachinesAgentsPage() {
 
 /** Quản trị: the hub admin's one entry, a tab per job. */
 export function AdminPage() {
-  return hashParam("e2e") === "dashboard-components" ? <DashboardComponentsFixture /> : <AdminTabs />;
+  // Fixture with fake numbers: only when the e2e runner set the session flag, so a hand-typed ?e2e= never replaces the real page.
+  const fixture = hashParam("e2e") === "dashboard-components" && sessionStorage.getItem("hive-e2e-fixtures") === "1";
+  return fixture ? <DashboardComponentsFixture /> : <AdminTabs />;
 }
 
 function AdminTabs() {

@@ -509,6 +509,7 @@ async function main() {
       const tab = (current = tabs.admin);
       await dataTableAccessibility({ tab, mobile, expect });
       await memoryAccessibility({ tab, mobile, expect, out });
+      await tab.eval(() => sessionStorage.setItem("hive-e2e-fixtures", "1"));
       await tab.go("ops?e2e=dashboard-components");
       await tab.waitFor("shared dashboard components", () => document.querySelectorAll("main [data-summary]").length === 3 && document.querySelectorAll("main [data-attention]").length === 2);
       const shared = await tab.eval(() => ({
