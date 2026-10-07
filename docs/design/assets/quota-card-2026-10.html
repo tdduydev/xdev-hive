@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="vi" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Thẻ gói · mockup UX-quota-card-design</title>
+<!-- Mở với ?theme=light|dark&lang=vi|en. Token chép từ packages/ui/src/tokens (59b56481). -->
+<style>/* Snapshot token CSS từ 59b56481. Offline dùng font fallback; app dùng @fontsource. */
+/* Semantic colors. Light = :root / [data-theme="light"], Dark = [data-theme="dark"]. Nested scopes re-theme a subtree. */
+:root,[data-theme="light"]{
+--bg-canvas:#F7F9FC;--bg-subtle:#F0F3F9;--bg-surface:#FFFFFF;--bg-raised:#FFFFFF;--bg-sunken:#F0F3F9;--bg-inverse:#142745;--bg-scrim:rgba(12,26,51,0.48);
+--text-strong:#22314F;--text-primary:#344568;--text-secondary:#4A5773;--text-muted:#5B6885;--text-disabled:#9AA5BD;--text-inverse:#E8ECF8;--text-link:#004CFF;--text-link-hover:#0038C2;--text-on-accent:#FFFFFF;--text-brand:#004CFF;
+--border-subtle:#E6EBF4;--border-default:#D5DCE9;--border-strong:#B8C2D6;--border-control:#7C89A5;--border-selected:#004CFF;
+--action-primary-bg:#004CFF;--action-primary-hover:#0038C2;--action-primary-active:#002A8F;--action-primary-fg:#FFFFFF;
+--action-secondary-bg:#FFFFFF;--action-secondary-hover:#F0F3F9;--action-secondary-active:#E6EBF4;--action-secondary-fg:#22314F;--action-secondary-border:#D5DCE9;
+--action-ghost-hover:rgba(52,69,104,0.06);--action-ghost-active:rgba(52,69,104,0.12);
+--action-danger-bg:#C62828;--action-danger-hover:#A51F1F;--action-danger-fg:#FFFFFF;
+--state-hover:rgba(52,69,104,0.06);--state-pressed:rgba(52,69,104,0.12);--state-selected-bg:#EAF1FF;--state-selected-fg:#0038C2;--state-selected-border:#9DBBFF;--state-disabled-bg:#EEF1F6;--state-disabled-fg:#9AA5BD;--state-disabled-border:#DDE3EC;
+--status-success-fg:#0F7A4A;--status-success-bg:#E6F6EE;--status-success-border:#9ED9BC;--status-success-solid:#1FA46A;
+--status-warning-fg:#9A5B00;--status-warning-bg:#FFF4DB;--status-warning-border:#F5C86B;--status-warning-solid:#F2A516;
+--status-danger-fg:#C62828;--status-danger-bg:#FDECEC;--status-danger-border:#F3B4B4;--status-danger-solid:#D93636;
+--status-info-fg:#0B5FD9;--status-info-bg:#EAF3FF;--status-info-border:#A9CCFF;--status-info-solid:#1E90FF;
+--status-running-fg:#004CFF;--status-running-bg:#EAF1FF;--status-running-border:#9DBBFF;
+--status-neutral-fg:#4A5773;--status-neutral-bg:#EEF1F6;--status-neutral-border:#D5DCE9;--status-neutral-solid:#8B97B1;
+--focus-color:#004CFF;
+--code-bg:#F3F6FB;--code-fg:#344568;--code-gutter:#5B6885;--code-line-hl:#E4EDFF;--code-selection:#CFE0FF;
+--syntax-keyword:#8A2BB0;--syntax-string:#0F7A4A;--syntax-number:#9A5B00;--syntax-function:#0B5FD9;--syntax-type:#0B7285;--syntax-comment:#5B6885;--syntax-punct:#4A5773;--syntax-variable:#344568;
+--diff-add-bg:#E6F6EE;--diff-add-word:#B7E6CD;--diff-add-gutter:#D2EEDF;--diff-del-bg:#FDECEC;--diff-del-word:#F7C5C5;--diff-del-gutter:#F8DADA;--diff-hunk-bg:#EEF3FB;--diff-hunk-fg:#4A5773;
+--chart-1:#1E90FF;--chart-2:#0F9D8E;--chart-3:#F2A516;--chart-4:#7B61FF;--chart-5:#E0567A;--chart-6:#7BD4FF;
+--shadow-0:none;--shadow-1:0 1px 2px rgba(20,39,69,0.06),0 1px 1px rgba(20,39,69,0.04);--shadow-2:0 4px 12px -2px rgba(20,39,69,0.10),0 2px 4px rgba(20,39,69,0.05);--shadow-3:0 12px 32px -8px rgba(20,39,69,0.18),0 4px 8px rgba(20,39,69,0.06);--shadow-4:0 24px 56px -12px rgba(20,39,69,0.28),0 8px 16px rgba(20,39,69,0.08);
+color-scheme:light;
+--brand-gradient:linear-gradient(135deg,#7BD4FF 0%,#1E90FF 45%,#004CFF 100%);--brand-gradient-h:linear-gradient(90deg,#7BD4FF 0%,#1E90FF 45%,#004CFF 100%);--brand-gradient-radial:radial-gradient(80% 80% at 50% 50%,#7BD4FF 0%,#1E90FF 40%,#004CFF 90%);
+--focus-ring:0 0 0 2px var(--bg-canvas),0 0 0 4px var(--focus-color);
+}
+[data-theme="dark"]{
+--bg-canvas:#142745;--bg-subtle:#0F203C;--bg-surface:#1A2F52;--bg-raised:#213762;--bg-sunken:#0F203C;--bg-inverse:#E8ECF8;--bg-scrim:rgba(5,12,26,0.64);
+--text-strong:#F4F6FC;--text-primary:#E8ECF8;--text-secondary:#B9C3DB;--text-muted:#9DAAC7;--text-disabled:#5F6F92;--text-inverse:#142745;--text-link:#7BD4FF;--text-link-hover:#A8E3FF;--text-on-accent:#FFFFFF;--text-brand:#7BD4FF;
+--border-subtle:#213762;--border-default:#2B4170;--border-strong:#3A5285;--border-control:#6E80A8;--border-selected:#4AAEFF;
+--action-primary-bg:#1463FF;--action-primary-hover:#0F57EE;--action-primary-active:#0A48CC;--action-primary-fg:#FFFFFF;
+--action-secondary-bg:#1A2F52;--action-secondary-hover:#213762;--action-secondary-active:#2B4170;--action-secondary-fg:#E8ECF8;--action-secondary-border:#3A5285;
+--action-ghost-hover:rgba(232,236,248,0.07);--action-ghost-active:rgba(232,236,248,0.12);
+--action-danger-bg:#D93636;--action-danger-hover:#C62828;--action-danger-fg:#FFFFFF;
+--state-hover:rgba(232,236,248,0.07);--state-pressed:rgba(232,236,248,0.12);--state-selected-bg:#1D3E78;--state-selected-fg:#A8E3FF;--state-selected-border:#4AAEFF;--state-disabled-bg:#1A2C4C;--state-disabled-fg:#5F6F92;--state-disabled-border:#26395F;
+--status-success-fg:#4ADE9B;--status-success-bg:#133D3A;--status-success-border:#1F6B55;--status-success-solid:#34C47F;
+--status-warning-fg:#FFC35C;--status-warning-bg:#3D3423;--status-warning-border:#7A5D22;--status-warning-solid:#F2A516;
+--status-danger-fg:#FF8A8A;--status-danger-bg:#45233A;--status-danger-border:#8A3A4A;--status-danger-solid:#FF5F5F;
+--status-info-fg:#7BD4FF;--status-info-bg:#173A66;--status-info-border:#2F5E99;--status-info-solid:#4AAEFF;
+--status-running-fg:#7BD4FF;--status-running-bg:#17336A;--status-running-border:#2F5BB3;
+--status-neutral-fg:#B9C3DB;--status-neutral-bg:#213762;--status-neutral-border:#3A5285;--status-neutral-solid:#6E80A8;
+--focus-color:#7BD4FF;
+--code-bg:#0F203C;--code-fg:#E8ECF8;--code-gutter:#8595B8;--code-line-hl:#1A3563;--code-selection:#24498A;
+--syntax-keyword:#D9A6FF;--syntax-string:#7EE2A8;--syntax-number:#FFC35C;--syntax-function:#7BD4FF;--syntax-type:#6FE3E0;--syntax-comment:#8A98B8;--syntax-punct:#B9C3DB;--syntax-variable:#E8ECF8;
+--diff-add-bg:#123A38;--diff-add-word:#1B5B4B;--diff-add-gutter:#15443F;--diff-del-bg:#3E2238;--diff-del-word:#6A2F45;--diff-del-gutter:#48273F;--diff-hunk-bg:#17305A;--diff-hunk-fg:#B9C3DB;
+--chart-1:#4AAEFF;--chart-2:#3CCFBE;--chart-3:#FFC35C;--chart-4:#A594FF;--chart-5:#FF7FA0;--chart-6:#7BD4FF;
+--shadow-0:none;--shadow-1:0 1px 2px rgba(0,0,0,0.35);--shadow-2:0 6px 16px -4px rgba(0,0,0,0.45),0 0 0 1px rgba(123,212,255,0.04);--shadow-3:0 16px 40px -8px rgba(0,0,0,0.55),0 0 0 1px rgba(123,212,255,0.06);--shadow-4:0 28px 64px -12px rgba(0,0,0,0.65),0 0 0 1px rgba(123,212,255,0.08);
+color-scheme:dark;
+--focus-ring:0 0 0 2px var(--bg-canvas),0 0 0 4px var(--focus-color);
+}
+/* Families are self-hosted (@fontsource in globals.css); the variable builds register "… Variable". */
+:root{
+--font-display:'Space Grotesk Variable','Space Grotesk','Be Vietnam Pro',system-ui,sans-serif;--font-sans:'Be Vietnam Pro',system-ui,-apple-system,'Segoe UI',sans-serif;--font-mono:'JetBrains Mono Variable','JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+--type-display-lg:600 32px/40px var(--font-display);--type-display-md:600 24px/32px var(--font-display);--type-numeric-lg:600 28px/36px var(--font-display);
+--type-heading-lg:600 20px/28px var(--font-sans);--type-heading-md:600 16px/24px var(--font-sans);--type-heading-sm:600 14px/20px var(--font-sans);
+--type-body-lg:400 16px/26px var(--font-sans);--type-body-md:400 14px/22px var(--font-sans);--type-body-sm:400 13px/20px var(--font-sans);
+--type-label:500 13px/20px var(--font-sans);--type-caption:500 12px/16px var(--font-sans);--type-overline:600 11px/16px var(--font-sans);
+--type-code-md:400 13px/20px var(--font-mono);--type-code-sm:400 12px/18px var(--font-mono);
+--tracking-tight:-0.02em;--tracking-normal:0;--tracking-wide:0.06em;
+--weight-regular:400;--weight-medium:500;--weight-semibold:600;--weight-bold:700;
+}
+/* 4/8 px grid */
+:root{
+--space-0:0;--space-px:1px;--space-0-5:2px;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--space-10:40px;--space-12:48px;--space-16:64px;--space-20:80px;
+--control-h-xs:24px;--control-h-sm:28px;--control-h-md:32px;--control-h-lg:40px;--control-h-touch:44px;
+--icon-sm:14px;--icon-md:16px;--icon-lg:20px;--row-h:40px;--row-h-compact:32px;
+--sidebar-w:240px;--sidebar-rail-w:64px;--topbar-h:56px;--content-max:1200px;--reading-max:72ch;--gutter:24px;--gutter-mobile:16px;
+--radius-none:0;--radius-xs:4px;--radius-sm:6px;--radius-md:8px;--radius-lg:12px;--radius-xl:16px;--radius-full:999px;
+--border-width:1px;--border-width-strong:2px;--focus-ring-width:2px;--focus-ring-offset:2px;
+--z-base:0;--z-sticky:10;--z-dropdown:100;--z-drawer:200;--z-dialog:300;--z-toast:400;--z-tooltip:500;
+--bp-sm:640px;--bp-md:768px;--bp-lg:1024px;--bp-xl:1280px;--bp-2xl:1536px;
+}
+[data-density="compact"]{--row-h:32px;--control-h-md:28px;--control-h-lg:36px;}
+/* Accessibility baseline shared by every surface */
+:focus-visible{outline:var(--focus-ring-width) solid var(--focus-color);outline-offset:var(--focus-ring-offset)}
+::selection{background:var(--code-selection)}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important;scroll-behavior:auto!important}}
+/* ---- Mockup UX-quota-card-design. Chỉ dùng token ở trên; app dựng bằng Tailwind + components/ui. ---- */
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg-canvas);color:var(--text-primary);font:var(--type-body-sm);-webkit-font-smoothing:antialiased}
+main{max-width:var(--content-max);margin:0 auto;padding:var(--space-6) var(--gutter)}
+@media (max-width:767px){main{padding:var(--space-4) var(--gutter-mobile)}}
+h1{font:var(--type-heading-lg);color:var(--text-strong);margin:0 0 var(--space-1)}
+h2{font:var(--type-heading-sm);color:var(--text-strong);margin:var(--space-6) 0 var(--space-3)}
+.lead{color:var(--text-muted);margin:0 0 var(--space-2)}
+.grid{display:grid;gap:var(--space-3);align-items:start}
+.grid.full{grid-template-columns:repeat(auto-fill,minmax(min(100%,400px),1fr))}
+.grid.compact{grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))}
+svg.i{width:var(--icon-sm);height:var(--icon-sm);flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* Card */
+.qc{container-type:inline-size;background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);box-shadow:var(--shadow-1);display:flex;flex-direction:column;min-width:0}
+.qc[data-state=off]{opacity:.72}
+.qc>section{padding:var(--space-3) var(--space-4)}
+.qc>section+section{border-top:1px solid var(--border-subtle)}
+.hd{display:flex;align-items:flex-start;gap:var(--space-2)}
+.who{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.name{display:flex;align-items:baseline;gap:var(--space-1);min-width:0;font:var(--type-heading-sm);color:var(--text-strong)}
+.name b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.name small{font:var(--type-caption);font-weight:400;color:var(--text-muted);white-space:nowrap}
+.sub{font:var(--type-caption);font-weight:400;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sub code{font:var(--type-code-sm)}
+.chip{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:var(--radius-full);font:var(--type-caption);white-space:nowrap;flex:none}
+.chip.success{background:var(--status-success-bg);color:var(--status-success-fg)}
+.chip.warning{background:var(--status-warning-bg);color:var(--status-warning-fg)}
+.chip.danger{background:var(--status-danger-bg);color:var(--status-danger-fg)}
+.chip.running{background:var(--status-running-bg);color:var(--status-running-fg)}
+.chip.neutral{background:var(--status-neutral-bg);color:var(--status-neutral-fg)}
+.ib{display:inline-flex;align-items:center;justify-content:center;width:var(--control-h-sm);height:var(--control-h-sm);border-radius:var(--radius-sm);border:0;background:transparent;color:var(--text-muted);flex:none}
+.ib svg.i{width:var(--icon-md);height:var(--icon-md)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--control-h-sm);padding:0 12px;border-radius:var(--radius-sm);font:var(--type-label);white-space:nowrap;border:1px solid transparent;flex:none}
+.btn.primary{background:var(--action-primary-bg);color:var(--action-primary-fg)}
+.btn.secondary{background:var(--action-secondary-bg);color:var(--action-secondary-fg);border-color:var(--action-secondary-border)}
+@media (max-width:767px){.ib,.btn{min-height:var(--control-h-touch)}.ib{min-width:var(--control-h-touch)}}
+
+/* Block banner: the one thing a blocked card says first */
+.block{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2) var(--space-3);border-radius:var(--radius-md);padding:var(--space-2) var(--space-3);margin:0 var(--space-4) var(--space-3)}
+.block.warning{background:var(--status-warning-bg);color:var(--status-warning-fg)}
+.block.danger{background:var(--status-danger-bg);color:var(--status-danger-fg)}
+.block .txt{flex:1 1 200px;min-width:0;display:flex;gap:var(--space-2)}
+.block .txt svg.i{margin-top:3px}
+.block strong{display:block;font:var(--type-label);font-weight:600}
+.block span{display:block;font:var(--type-caption);font-weight:400}
+.block .cause{color:var(--text-secondary)}
+
+/* Limits */
+.limits{display:grid;gap:var(--space-3)}
+@container (min-width:440px){.limits{grid-template-columns:1fr 1fr;gap:var(--space-4)}}
+.lim{display:flex;flex-direction:column;gap:6px;min-width:0}
+.lim .top{display:flex;align-items:baseline;gap:var(--space-2)}
+.lim .lbl{font:var(--type-caption);color:var(--text-secondary)}
+.lim .pct{margin-left:auto;font:var(--type-code-md);font-weight:600;color:var(--text-strong)}
+.lim .pct.near{color:var(--status-warning-fg)}.lim .pct.over{color:var(--status-danger-fg)}
+.bar{position:relative;height:6px;border-radius:3px;background:var(--bg-sunken);box-shadow:inset 0 0 0 1px var(--border-default)}
+.bar i{position:absolute;inset:0 auto 0 0;border-radius:3px;background:var(--action-primary-bg)}
+.bar i.near{background:var(--status-warning-fg)}.bar i.over{background:var(--status-danger-fg)}
+.bar b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--text-muted);border-radius:1px}
+.lim .when{font:var(--type-caption);font-weight:400;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lim .when em{font-style:normal;color:var(--text-secondary);font-weight:500}
+.unk{display:flex;flex-direction:column;gap:6px}
+.unk .bar{background:repeating-linear-gradient(135deg,var(--bg-sunken) 0 4px,transparent 4px 8px)}
+
+/* Outlook */
+.outlook{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-3);margin:0}
+.outlook div{min-width:0}
+.outlook dt{font:var(--type-caption);font-weight:400;color:var(--text-muted)}
+.outlook dd{margin:2px 0 0;display:flex;align-items:baseline;gap:4px;flex-wrap:wrap}
+.outlook dd b{font:var(--type-heading-md);font-family:var(--font-display);color:var(--text-strong)}
+.outlook dd b.dim{color:var(--text-muted);font-weight:500}
+.outlook dd small{font:var(--type-caption);font-weight:400;color:var(--text-muted)}
+.ceiling{display:flex;gap:6px;align-items:flex-start;margin-top:var(--space-2);font:var(--type-caption);color:var(--status-warning-fg)}
+.ceiling svg.i{margin-top:1px}
+.how{margin-top:var(--space-2);font:var(--type-caption);font-weight:400;color:var(--text-link);background:none;border:0;padding:0;text-decoration:underline;text-underline-offset:2px}
+@media (max-width:767px){.how{min-height:var(--control-h-touch)}}
+
+/* Footer */
+.ft{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-3);font:var(--type-caption);font-weight:400;color:var(--text-muted)}
+.ft .asof{margin-left:auto}
+.ft .hit{color:var(--status-warning-fg);font-weight:500}
+
+/* Compact density */
+.qc.c>section{padding:var(--space-3)}
+.qc.c .hd{align-items:center}
+.cl{display:grid;grid-template-columns:auto minmax(0,1fr) 3.2em;align-items:center;gap:6px var(--space-2);margin-top:var(--space-2);font:var(--type-caption);font-weight:400;color:var(--text-secondary)}
+.cl .pct{text-align:right;font:var(--type-code-sm);font-weight:600;color:var(--text-strong)}
+.cl .pct.near{color:var(--status-warning-fg)}.cl .pct.over{color:var(--status-danger-fg)}
+.cl .pct.unk{color:var(--text-muted);font-weight:400}
+.cline{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);margin-top:var(--space-2);font:var(--type-caption);font-weight:400;color:var(--text-muted)}
+.cline .t{flex:1 1 140px;min-width:0}
+.cline.warning .t{color:var(--status-warning-fg);font-weight:500}
+.cline.danger .t{color:var(--status-danger-fg);font-weight:500}
+.offline{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2) var(--space-3);border:1px dashed var(--border-default);border-radius:var(--radius-lg);font:var(--type-caption);font-weight:400;color:var(--text-muted)}
+.note{font:var(--type-caption);font-weight:400;color:var(--text-muted);margin-top:var(--space-6)}
+</style>
+</head>
+<body>
+<main id="root"></main>
+<script>
+const q = new URLSearchParams(location.search);
+document.documentElement.dataset.theme = q.get("theme") || "light";
+const lang = q.get("lang") || "vi";
+document.documentElement.lang = lang;
+const I = {
+  ok:'<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+  run:'<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
+  pause:'<circle cx="12" cy="12" r="10"/><line x1="10" x2="10" y1="15" y2="9"/><line x1="14" x2="14" y1="15" y2="9"/>',
+  gauge:'<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
+  login:'<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" x2="3" y1="12" y2="12"/>',
+  ban:'<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
+  wifi:'<path d="M12 20h.01"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/><path d="M5 12.859a10 10 0 0 1 5.17-2.69"/><path d="M19 12.859a10 10 0 0 0-2.007-1.523"/><path d="M2 8.82a15 15 0 0 1 4.177-2.643"/><path d="M22 8.82a15 15 0 0 0-11.288-3.764"/><path d="m2 2 20 20"/>',
+  near:'<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  refresh:'<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+  more:'<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+  off:'<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>',
+};
+const ic = (k) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${I[k]}</svg>`;
+
+const T = {
+  vi: {
+    title: "Thẻ gói · mockup UX-quota-card-design",
+    lead: "Một component, hai mật độ. Số liệu mẫu, giờ máy 13:18 thứ Tư 8/10.",
+    full: "Thẻ đầy đủ · trang Agents (app desktop), sheet chi tiết gói (web)",
+    compact: "Thẻ gọn · Bản đồ agent (web), lưới máy",
+    state: { ready: "Sẵn sàng", running: "Đang chạy {n}/{max}", near: "Gần ngưỡng", resting: "Đang nghỉ", threshold: "Chạm ngưỡng", spend: "Hết trần chi tiêu", signedOut: "Chưa đăng nhập", noCli: "Chưa có CLI", off: "Đã tắt", offline: "Máy ngoại tuyến" },
+    noNew: "Không nhận run mới",
+    resting: "Nghỉ tới {time} · còn {left}",
+    restCause: "Claude báo chạm giới hạn lúc 11:12, codex-2 trên lan-mini báo",
+    threshold: "Tuần đã dùng 91%, ngưỡng dừng 90% · reset {time}",
+    thresholdCause: "Dùng tiếp: bỏ qua ngưỡng này tới khi tuần reset",
+    spend: "Codex báo tài khoản đã chạm trần chi tiêu",
+    spendCause: "Chủ tài khoản nâng trần trên trang OpenAI, rồi bấm Đọc lại",
+    signedOut: "CLI chưa đăng nhập trên máy này",
+    signedOutCause: "Mở cửa sổ đăng nhập; quota hiện lại sau lần đọc kế tiếp",
+    resume: "Dùng tiếp", login: "Đăng nhập",
+    session: "Phiên 5 giờ", week: "Tuần", s: "Phiên", w: "Tuần",
+    resets: "reset {time} · <em>còn {left}</em>",
+    unknown: "Chưa biết", why: { signedOut: "chưa đăng nhập", noReport: "CLI không báo", noSession: "Codex chưa có phiên nào" },
+    resetsLeft: "Lần reset còn", untilWeek: "tới {time}",
+    fullLeft: "Phiên đầy còn", estimate: "ước tính", lack: "chưa đủ số liệu",
+    credits: "Credits", noCredits: "Claude không báo", unlimited: "không giới hạn", codexCredits: "Codex",
+    ceiling: "Tuần chạm trần trước khi hết các lần reset",
+    how: "Cách tính",
+    counts: "{runs} run · {done} xong · {failed} lỗi · <span class=\"{hitCls}\">chạm giới hạn {hit} lần</span> · {since}",
+    since: "từ {date}", sinceStart: "từ đầu",
+    asOf: "cập nhật {time}", asOfRun: "số của lượt chạy lúc {time}",
+    compactReset: "reset phiên {s} · tuần {w}",
+    restLine: "Nghỉ tới {time}", thresholdLine: "Chạm ngưỡng tuần · reset {time}",
+    signedOutLine: "Chưa đăng nhập · không nhận run", unknownLine: "Chưa có số quota · {why}",
+    runningLine: "TASK-42 · Sửa lỗi đăng nhập SSO",
+    offlineRow: "lan-old · ngoại tuyến từ 09:02 · 2 gói",
+    read: "Đọc lại quota của {label}", menu: "Thao tác cho {label}",
+    note: "Ảnh mockup: font hệ thống thay @fontsource. Thanh có vạch ngưỡng dừng; màu thanh luôn đi cùng số % và chip có icon.",
+    t1600: "16:00", left42: "42 phút", fri: "T6 05:00", left2d: "2 ngày 15 giờ", t1530: "15:30", left2h: "2 giờ 12 phút", d610: "6/10", t0940: "09:40", t1318: "13:18", sun: "CN 22:00", left4d: "4 ngày 8 giờ",
+  },
+  en: {
+    title: "Plan card · mockup UX-quota-card-design",
+    lead: "One component, two densities. Sample numbers, machine time 13:18 Wed 8 Oct.",
+    full: "Full card · Agents page (desktop app), plan detail sheet (web)",
+    compact: "Compact card · Agent map (web), machine grid",
+    state: { ready: "Ready", running: "Running {n}/{max}", near: "Near limit", resting: "Resting", threshold: "At stop limit", spend: "Spend cap hit", signedOut: "Signed out", noCli: "No CLI", off: "Off", offline: "Machine offline" },
+    noNew: "Takes no new runs",
+    resting: "Resting until {time} · {left} left",
+    restCause: "Claude reported its limit at 11:12, reported by codex-2 on lan-mini",
+    threshold: "Week at 91%, stop limit 90% · resets {time}",
+    thresholdCause: "Resume: ignore this limit until the week resets",
+    spend: "Codex reports the account's spend cap is reached",
+    spendCause: "The account owner raises the cap on OpenAI, then press Read again",
+    signedOut: "The CLI is not signed in on this machine",
+    signedOutCause: "Open the sign-in window; quota shows again after the next read",
+    resume: "Resume", login: "Sign in",
+    session: "5-hour session", week: "Week", s: "Session", w: "Week",
+    resets: "resets {time} · <em>{left} left</em>",
+    unknown: "Unknown", why: { signedOut: "signed out", noReport: "the CLI does not report it", noSession: "no Codex session yet" },
+    resetsLeft: "Resets left", untilWeek: "until {time}",
+    fullLeft: "Full sessions left", estimate: "estimate", lack: "not enough data",
+    credits: "Credits", noCredits: "Claude does not report", unlimited: "unlimited", codexCredits: "Codex",
+    ceiling: "The week runs out before the resets do",
+    how: "How it is counted",
+    counts: "{runs} runs · {done} done · {failed} failed · <span class=\"{hitCls}\">hit limit {hit}×</span> · {since}",
+    since: "since {date}", sinceStart: "since the start",
+    asOf: "updated {time}", asOfRun: "from its run at {time}",
+    compactReset: "session resets {s} · week {w}",
+    restLine: "Resting until {time}", thresholdLine: "At week stop limit · resets {time}",
+    signedOutLine: "Signed out · takes no runs", unknownLine: "No quota numbers · {why}",
+    runningLine: "TASK-42 · Fix SSO sign-in",
+    offlineRow: "lan-old · offline since 09:02 · 2 plans",
+    read: "Read quota again for {label}", menu: "Actions for {label}",
+    note: "Mockup: system font instead of @fontsource. Bars carry the stop-limit mark; bar colour always comes with the % number, chips carry an icon.",
+    t1600: "16:00", left42: "42 min", fri: "Fri 05:00", left2d: "2 d 15 h", t1530: "15:30", left2h: "2 h 12 min", d610: "6 Oct", t0940: "09:40", t1318: "13:18", sun: "Sun 22:00", left4d: "4 d 8 h",
+  },
+}[lang];
+const f = (s, v = {}) => s.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? T[k] ?? `{${k}}`);
+
+const CHIP = { ready: ["success", "ok"], running: ["running", "run"], near: ["warning", "near"], resting: ["warning", "pause"], threshold: ["warning", "gauge"], spend: ["danger", "ban"], signedOut: ["danger", "login"], noCli: ["danger", "off"], off: ["neutral", "off"], offline: ["neutral", "wifi"] };
+const chip = (st, v) => `<span class="chip ${CHIP[st][0]}">${ic(CHIP[st][1])}${f(T.state[st], v)}</span>`;
+const tone = (p, stop) => (p >= stop ? "over" : p >= stop - 10 ? "near" : "ok");
+
+function limit(name, l) {
+  if (!l.known) return `<div class="lim unk"><div class="top"><span class="lbl">${name}</span><span class="pct" style="font:var(--type-caption);color:var(--text-muted)">${T.unknown}</span></div><div class="bar"></div><span class="when">${T.why[l.why]}</span></div>`;
+  const tn = tone(l.p, l.stop);
+  return `<div class="lim"><div class="top"><span class="lbl">${name}</span><span class="pct ${tn}">${l.p}%</span></div>
+    <div class="bar" role="meter" aria-valuenow="${l.p}"><i class="${tn}" style="width:${l.p}%"></i><b style="left:calc(${l.stop}% - 1px)"></b></div>
+    <span class="when">${f(T.resets, { time: T[l.at], left: T[l.left] })}</span></div>`;
+}
+
+function full(c) {
+  const head = `<section class="hd"><div class="who"><span class="name"><b>${c.label}</b>${c.plan ? `<small>· ${c.plan}</small>` : ""}</span><span class="sub">${c.sub}</span></div>
+    ${chip(c.state, c.chipVars)}<button class="ib" aria-label="${f(T.read, c)}">${ic("refresh")}</button><button class="ib" aria-label="${f(T.menu, c)}">${ic("more")}</button></section>`;
+  const block = c.block
+    ? `<div class="block ${c.block.tone}"><div class="txt">${ic(c.block.icon)}<div><strong>${T.noNew}</strong><span>${c.block.line}</span><span class="cause">${c.block.cause}</span></div></div>${c.block.action ? `<button class="btn ${c.block.action === "resume" ? "primary" : "primary"}">${T[c.block.action]}</button>` : ""}</div>`
+    : "";
+  const lims = `<section><div class="limits">${limit(T.session, c.session)}${limit(T.week, c.week)}</div></section>`;
+  const o = c.outlook;
+  const out = `<section><dl class="outlook">
+    <div><dt>${T.resetsLeft}</dt><dd>${o.resets == null ? `<b class="dim">—</b>` : `<b>${o.resets}</b>`}<small>${o.resets == null ? T.lack : f(T.untilWeek, { time: T[o.weekAt] })}</small></dd></div>
+    <div><dt>${T.fullLeft}</dt><dd>${o.full == null ? `<b class="dim">—</b><small>${T.lack}</small>` : `<b>~${o.full}</b><small>${T.estimate}</small>`}</dd></div>
+    <div><dt>${T.credits}</dt><dd>${o.credits === "none" ? `<b class="dim">—</b><small>${T.noCredits}</small>` : o.credits === "unlimited" ? `<b>∞</b><small>${T.unlimited}</small>` : `<b>${o.credits}</b><small>${T.codexCredits}</small>`}</dd></div>
+  </dl>${o.ceiling ? `<div class="ceiling">${ic("near")}<span>${T.ceiling}</span></div>` : ""}<button class="how">${T.how}</button></section>`;
+  const k = c.counts;
+  const foot = `<section class="ft"><span>${f(T.counts, { ...k, hitCls: k.hit ? "hit" : "", since: k.since ? f(T.since, { date: T[k.since] }) : T.sinceStart })}</span><span class="asof">${c.asOfRun ? f(T.asOfRun, { time: T[c.asOfRun] }) : f(T.asOf, { time: T.t1318 })}</span></section>`;
+  return `<article class="qc" data-quota-card="${c.id}" data-density="full" data-state="${c.state}">${head}${block}${lims}${o.hidden ? "" : out}${foot}</article>`;
+}
+
+function compact(c) {
+  const row = (name, l) => !l.known
+    ? `<span>${name}</span><div class="bar" style="background:repeating-linear-gradient(135deg,var(--bg-sunken) 0 4px,transparent 4px 8px);box-shadow:inset 0 0 0 1px var(--border-default)"></div><span class="pct unk">—</span>`
+    : `<span>${name}</span><div class="bar"><i class="${tone(l.p, l.stop)}" style="width:${l.p}%"></i><b style="left:calc(${l.stop}% - 1px)"></b></div><span class="pct ${tone(l.p, l.stop)}">${l.p}%</span>`;
+  const line = c.line
+    ? `<div class="cline ${c.line.tone || ""}"><span class="t">${c.line.text}</span>${c.line.action ? `<button class="btn secondary">${T[c.line.action]}</button>` : ""}</div>`
+    : "";
+  return `<article class="qc c" data-quota-card="${c.id}" data-density="compact" data-state="${c.state}"><section>
+    <div class="hd"><div class="who"><span class="name"><b>${c.label}</b>${c.plan ? `<small>· ${c.plan}</small>` : ""}</span><span class="sub">${c.sub}</span></div>${chip(c.state, c.chipVars)}</div>
+    <div class="cl">${row(T.s, c.session)}${row(T.w, c.week)}</div>${line}</section></article>`;
+}
+
+const FULL = [
+  { id: "claude-3", label: "claude-3", plan: "max", sub: "Claude Code 2.1.291 · <code>claude-3</code>", state: "resting",
+    block: { tone: "warning", icon: "pause", line: f(T.resting, { time: T.t1600, left: T.left42 }), cause: T.restCause, action: "resume" },
+    session: { known: true, p: 100, stop: 95, at: "t1600", left: "left42" }, week: { known: true, p: 32, stop: 90, at: "fri", left: "left2d" },
+    outlook: { resets: 13, weekAt: "fri", full: 9, credits: "none" }, counts: { runs: 12, done: 10, failed: 2, hit: 1, since: "d610" } },
+  { id: "codex-2", label: "codex-2", plan: "plus", sub: "Codex 0.160.1 · <code>codex-2</code>", state: "threshold",
+    block: { tone: "warning", icon: "gauge", line: f(T.threshold, { time: T.sun }), cause: T.thresholdCause, action: "resume" },
+    session: { known: true, p: 12, stop: 95, at: "t1530", left: "left2h" }, week: { known: true, p: 91, stop: 90, at: "sun", left: "left4d" },
+    outlook: { resets: 21, weekAt: "sun", full: 0.4, credits: "0", ceiling: true }, counts: { runs: 30, done: 27, failed: 3, hit: 0 }, asOfRun: "t0940" },
+  { id: "claude-1", label: "claude-1", plan: "pro", sub: "Claude Code 2.1.291 · <code>claude-1</code>", state: "running", chipVars: { n: 1, max: 2 },
+    session: { known: true, p: 86, stop: 95, at: "t1530", left: "left2h" }, week: { known: true, p: 47, stop: 90, at: "fri", left: "left2d" },
+    outlook: { resets: 13, weekAt: "fri", full: 7, credits: "none" }, counts: { runs: 41, done: 39, failed: 2, hit: 0 } },
+  { id: "codex-3", label: "codex-3", plan: "team", sub: "Codex 0.160.1 · <code>codex-3</code>", state: "spend",
+    block: { tone: "danger", icon: "ban", line: T.spend, cause: T.spendCause },
+    session: { known: true, p: 40, stop: 95, at: "t1530", left: "left2h" }, week: { known: true, p: 58, stop: 90, at: "sun", left: "left4d" },
+    outlook: { resets: 21, weekAt: "sun", full: 3, credits: "0" }, counts: { runs: 8, done: 5, failed: 3, hit: 2, since: "d610" } },
+  { id: "codex-1", label: "codex-1", plan: null, sub: "Codex 0.160.1 · <code>codex-1</code>", state: "signedOut",
+    block: { tone: "danger", icon: "login", line: T.signedOut, cause: T.signedOutCause, action: "login" },
+    session: { known: false, why: "signedOut" }, week: { known: false, why: "signedOut" },
+    outlook: { resets: null, full: null, credits: "none", hidden: true }, counts: { runs: 0, done: 0, failed: 0, hit: 0 } },
+];
+const COMPACT = [
+  { id: "lan-mini/claude-1", label: "claude-1", plan: "pro", sub: "lan-mini", state: "running", chipVars: { n: 1, max: 2 },
+    session: { known: true, p: 86, stop: 95 }, week: { known: true, p: 47, stop: 90 }, line: { text: T.runningLine } },
+  { id: "lan-mini/claude-3", label: "claude-3", plan: "max", sub: "lan-mini", state: "resting",
+    session: { known: true, p: 100, stop: 95 }, week: { known: true, p: 32, stop: 90 }, line: { tone: "warning", text: f(T.restLine, { time: T.t1600 }), action: "resume" } },
+  { id: "lan-mbp/codex-2", label: "codex-2", plan: "plus", sub: "lan-mbp", state: "threshold",
+    session: { known: true, p: 12, stop: 95 }, week: { known: true, p: 91, stop: 90 }, line: { tone: "warning", text: f(T.thresholdLine, { time: T.sun }) } },
+  { id: "lan-mbp/claude-2", label: "claude-2", plan: "pro", sub: "lan-mbp", state: "ready",
+    session: { known: true, p: 8, stop: 95 }, week: { known: true, p: 21, stop: 90 }, line: { text: f(T.compactReset, { s: T.t1530, w: T.fri }) } },
+  { id: "lan-mbp/codex-1", label: "codex-1", plan: null, sub: "lan-mbp", state: "signedOut",
+    session: { known: false }, week: { known: false }, line: { tone: "danger", text: T.signedOutLine, action: "login" } },
+  { id: "lan-mbp/agy-1", label: "agy-1", plan: null, sub: "lan-mbp", state: "ready",
+    session: { known: false }, week: { known: false }, line: { text: f(T.unknownLine, { why: T.why.noReport }) } },
+];
+
+document.title = T.title;
+document.getElementById("root").innerHTML = `<h1>${T.title}</h1><p class="lead">${T.lead}</p>
+  <h2>${T.full}</h2><div class="grid full">${FULL.map(full).join("")}</div>
+  <h2>${T.compact}</h2><div class="grid compact">${COMPACT.map(compact).join("")}</div>
+  <div class="offline" style="margin-top:var(--space-3)">${ic("wifi")}<span>${T.offlineRow}</span></div>
+  <p class="note">${T.note}</p>`;
+</script>
+</body>
+</html>
