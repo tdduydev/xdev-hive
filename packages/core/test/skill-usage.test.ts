@@ -37,8 +37,12 @@ it("counts distinct runs, 30-day boundaries and UTC weeks without exposing hidde
 it("adds skills to an existing hub without losing old records", async (t) => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "skill-migration-")); t.after(() => rmSync(dir, { recursive: true, force: true }));
   const file = path.join(dir, "hub.db");
-  const before = new SqliteHive(file, { migrateTo: migrationIndex("ALTER TABLE run_records ADD COLUMN skills") });
-  await before.call("runs.push", { machine: "machine", runs: [run("old", "app", now)] }, machine); before.close();
-  const after = new SqliteHive(file); t.after(() => after.close());
+  const before = new SqliteHive(file);
+  await before.call("runs.push", { machine: "machine", runs: [run("old", "app", now)] }, machine);
+  // Current handlers need later columns; roll back only the schema step being tested.
+  const index = migrationIndex("ALTER TABLE run_records ADD COLUMN skills");
+  before.db.exec(`ALTER TABLE run_records DROP COLUMN skills; PRAGMA user_version = ${index}`);
+  before.close();
+  const after = new SqliteHive(file, { migrateTo: index + 1 }); t.after(() => after.close());
   assert.deepEqual((await after.call("runs.get", { machineId: machine.name, runId: "old" }, admin))?.skills, []);
 });

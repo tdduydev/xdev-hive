@@ -203,6 +203,7 @@ const NEEDS = {
   "a11y-run-status": ["login-token"],
   "lead-sees-members": [],
   "run-steer": ["login-token", "login-password", "lead-sees-members"],
+  "run-redispatch": [],
 };
 const order = [...readFileSync(import.meta.filename, "utf8").matchAll(/^\s*(?:if \(mobile\) )?await step\("([^"]+)"/gm)].map((m) => m[1]);
 const only = (process.env.HIVE_E2E_ONLY ?? "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -2938,6 +2939,61 @@ async function main() {
     const viewer = (current = tabs.hoa);
     await viewer.go(`runs?run=${runId}`);
     await viewer.waitFor("history for viewer", () => !!document.querySelector("[data-run-messages]") && !document.querySelector("[data-run-steer]"));
+  });
+
+  // Independent fixture and signed-in tabs: this step needs only the seed, no earlier page state.
+  await step("run-redispatch", async () => {
+    const taskId = "RD-59E";
+    await rpc("tasks.create", { project: "payment", id: taskId, title: "Giao lại run 59e", kind: "feature" });
+    await rpc("sdlc.setProject", { project: "payment", settings: { gates: {}, planApproval: { mode: "off", timeoutMinutes: null } } });
+    const machineRpc = async (machine, method, input) => {
+      const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": `runner.${machine}` }, body: JSON.stringify({ method, input }) });
+      const result = await response.json();
+      if (result.error) throw new Error(`${method}: ${result.error.message}`);
+      return result.result;
+    };
+    const profile = id => ({ id, label: id, kind: "codex", enabled: true, installed: true, redispatch: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0 });
+    for (const [machine, instance] of [["redispatch-one", "59e00001"], ["redispatch-two", "59e00002"]]) {
+      await machineRpc(machine, "machines.heartbeat", { machine, instance, projects: ["payment"], acceptsRuns: true, profiles: [profile("codex-one"), profile("codex-two")] });
+    }
+    const machines = await rpc("machines.list");
+    const source = machines.find(m => m.machine === "redispatch-one");
+    const target = machines.find(m => m.machine === "redispatch-two");
+    const at = new Date().toISOString();
+    const old = { runId: "R-rd-old", project: "payment", taskId, taskTitle: "Giao lại run 59e", role: "implement", status: "rate_limited", profileId: "codex-one", branch: `ai/${taskId}`, baseSha: "a".repeat(40), instructions: "Giữ chỉ dẫn cũ 59e", createdAt: at, startedAt: at, finishedAt: at };
+    await machineRpc("redispatch-one", "runs.push", { machine: "redispatch-one", runs: [old] });
+    const tab = current = tabs.redispatch = await signInWithToken("redispatch", people.lan.token, `runs?run=${encodeURIComponent(`${source.id}/${old.runId}`)}`);
+    await tab.click("[data-run-redispatch]");
+    await tab.waitFor("prefilled redispatch instructions", () => document.querySelector("[data-redispatch-instructions]")?.value === "Giữ chỉ dẫn cũ 59e");
+    await tab.select("[data-redispatch-form] select", target.id);
+    const profileSelect = await tab.eval(() => document.querySelectorAll("[data-redispatch-form] select")[1]?.id);
+    await tab.select(`[id="${profileSelect}"]`, "codex-two");
+    await tab.click("[data-redispatch-timeout]");
+    await tab.type("15");
+    if (mobile) {
+      const sizes = await tab.eval(() => ({ height: document.querySelector("[data-redispatch-send]").getBoundingClientRect().height, font: parseFloat(getComputedStyle(document.querySelector("[data-redispatch-instructions]")).fontSize), width: document.documentElement.scrollWidth }));
+      expect(sizes.height >= 44 && sizes.font >= 16 && sizes.width <= width + 1, "redispatch mobile target or layout");
+    }
+    await tab.shot("redispatch-prefilled");
+    await tab.click("[data-redispatch-send]");
+    await tab.waitFor("redispatch queued", () => document.querySelector("[data-redispatch-sent]"));
+    const request = (await rpc("runs.requests", { project: "payment" })).find(r => r.taskId === taskId && r.status === "pending");
+    expect(request?.machineId === target.id && request.profileId === "codex-two" && request.instructions === old.instructions && request.timeoutMinutes === 15 && request.redispatch?.runId === old.runId && request.redispatch.continueBranch, "wrong redispatch input");
+    await machineRpc("redispatch-two", "runs.requestResult", { id: request.id, status: "accepted", runId: "R-rd-next" });
+    await machineRpc("redispatch-two", "runs.push", { machine: "redispatch-two", runs: [{ ...old, runId: "R-rd-next", status: "failed", createdAt: new Date().toISOString(), parentRun: null }] });
+    await tab.go(`tasks?task=${taskId}`);
+    await tab.waitFor("task chain includes both machines", () => document.querySelectorAll("[data-task-chain-run]").length === 2 && document.querySelector("[data-task-run-chain]").textContent.includes("Tiếp từ R-rd-old"));
+    await tab.click('[data-task-chain-run="R-rd-next"] [data-run-redispatch]');
+    await tab.waitFor("task redispatch form", () => document.querySelector("[data-redispatch-form]"));
+    await tab.click("[data-redispatch-continue]");
+    await tab.click("[data-redispatch-send]");
+    const fresh = await until("fresh request", async () => (await rpc("runs.requests", { project: "payment" })).find(r => r.taskId === taskId && r.status === "pending"));
+    expect(fresh.redispatch?.runId === "R-rd-next" && !fresh.redispatch.continueBranch && fresh.redispatch.branch === null, "task retry did not request a fresh branch");
+    await rpc("runs.cancelRequest", { id: fresh.id });
+    await tab.shot("redispatch-task-chain");
+    const reader = current = tabs.redispatchReader = await signInWithToken("redispatch-reader", people.hoa.token, `runs?run=${encodeURIComponent(`${source.id}/${old.runId}`)}`);
+    await reader.waitFor("reader sees run", () => !!document.querySelector("[data-run-review]"));
+    expect(await reader.eval(() => !document.querySelector("[data-run-redispatch]")), "reader can redispatch");
   });
 
   const errors = Object.values(tabs).flatMap((t) => t.errors.map((e) => `${t.name}: ${e}`));
