@@ -1851,7 +1851,7 @@ async function main() {
       if (body.error) throw new Error(`${method}: ${body.error.message}`);
       return body.result;
     };
-    const claude = { id: "claude-hub", label: "Claude hub", kind: "claude", enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0 };
+    const claude = { id: "claude-hub", label: "Claude hub", kind: "claude", enabled: true, priority: 1, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0 };
     const beat = () => machineRpc("machines.heartbeat", { machine: "hub-leader-e2e", instance: "ab000001", projects: [], acceptsRuns: true, profiles: [claude] });
     await beat();
     const machineId = (await rpc("machines.list")).find((m) => m.machine === "hub-leader-e2e").id;
