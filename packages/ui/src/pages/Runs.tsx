@@ -279,7 +279,7 @@ function RunRow({ row, index, on, machine, onPick }: { row: Row; index: number; 
       <ModelRunChip run={r} />
       <span className="truncate text-xs/[17px] text-fg-muted md:text-[11px]/[14px]">
         {[r.profileId, runLabel("agentRole", r.role), row.src === "hub" && where ? where : null, row.src === "local" ? bestOfText(row.run, t) : null].filter(Boolean).join(" · ")}
-        <span className="font-mono text-fg-disabled">
+        <span className="font-mono text-fg-muted">
           {" · "}
           {rowId(row)} · {r.taskId}
         </span>
@@ -310,7 +310,11 @@ function Head({ run, machine, actions }: { run: AgentRun | RunRecord; machine: s
       <div className="flex items-start gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={cn("inline-flex h-5 items-center rounded-xs px-[7px] text-[11px]/none font-semibold whitespace-nowrap", CHIP[kind])}>{stateLabel(run, t)}</span>
+            <span className={cn("inline-flex h-5 items-center rounded-xs px-[7px] text-[11px]/none font-semibold whitespace-nowrap", CHIP[kind])}>
+              <span aria-hidden="true">{stateLabel(run, t)}</span>
+              {/* Elapsed time changes on each poll; announce only the meaningful state transition. */}
+              <span data-run-state role="status" aria-atomic="true" className="sr-only">{t("runs.stateAnnouncement", { task: run.taskTitle, state: runLabel("runStatus", run.status) })}</span>
+            </span>
             <ModelRunChip run={run} />
             {waiting ? <Chip kind="warning">{t("runs.waiting")}</Chip> : null}
             <span className="text-xs/none text-fg-muted">
@@ -318,7 +322,7 @@ function Head({ run, machine, actions }: { run: AgentRun | RunRecord; machine: s
             </span>
           </div>
           <h2 className="m-0 font-display text-[17px]/6 font-semibold text-fg-strong">{run.taskTitle}</h2>
-          <span className="font-mono text-[11px]/4 text-fg-disabled">
+          <span className="font-mono text-[11px]/4 text-fg-muted">
             {id} · {run.project} · {run.taskId} · {machine}
           </span>
         </div>
@@ -496,7 +500,7 @@ function LogView({ text, live, wrap, empty }: { text: string; live: boolean; wra
         return (
           <div key={i} className={cn("flex gap-3 px-3.5", l.level === "error" && "bg-danger-soft")}>
             {timed ? (
-              <span title={l.at ?? undefined} className="w-[58px] shrink-0 text-fg-disabled tabular-nums">
+              <span title={l.at ?? undefined} className="w-[58px] shrink-0 text-fg-muted tabular-nums">
                 {l.at && (i === 0 || lines[i - 1]!.at !== l.at) ? clock(l.at) : ""}
               </span>
             ) : null}
