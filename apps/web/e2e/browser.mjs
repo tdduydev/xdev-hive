@@ -1265,6 +1265,7 @@ async function main() {
       try {
         await tab.go("settings?tab=sdlc&project=payment");
         await tab.waitFor("legacy SDLC link redirected to pipeline", () => location.hash.startsWith("#/pipeline?") && !!document.querySelector('[data-pipeline-step="spec"]'));
+        await tab.waitFor("Pipeline flow counts loaded", () => /\b1\b/.test(document.querySelector('[data-pipeline-count="spec"]')?.textContent ?? ""));
         const count = await tab.eval(() => document.querySelector('[data-pipeline-count="spec"]')?.textContent);
         expect(/\b1\b/.test(count ?? ""), `Spec does not show one active flow: ${count}`);
         const stepCount = await tab.eval(() => document.querySelectorAll("[data-pipeline-step]").length);
@@ -1275,6 +1276,41 @@ async function main() {
         }
         const gateCount = await tab.eval(() => document.querySelectorAll("[data-pipeline-gate]").length);
         expect(gateCount === 8, `pipeline gates: ${gateCount}`);
+        if (!mobile) {
+          await tab.waitFor("Pipeline policy and models loaded", () => [...document.querySelectorAll('[data-pipeline-preset]')].some((button) => !button.disabled));
+          await tab.eval(() => document.fonts.ready.then(() => true));
+          await tab.waitFor("measured Pipeline nodes and edges", () => {
+            const nodes = [...document.querySelectorAll('[data-pipeline-graph] .react-flow__node')];
+            return nodes.length === 19 && nodes.every((node) => getComputedStyle(node).visibility !== "hidden") && document.querySelectorAll('[data-pipeline-graph] .react-flow__edge-path').length === 18;
+          });
+          // Unchanged card sizes do not trigger ResizeObserver again: exercise real poll rebuilds before clicking a gate.
+          const canvases = await tab.eval(() => new Promise((resolve, reject) => {
+            const snapshot = () => ({
+              nodes: [...document.querySelectorAll('[data-pipeline-graph] .react-flow__node')].map((node) => ({ id: node.dataset.id, width: node.offsetWidth, height: node.offsetHeight, visible: getComputedStyle(node).visibility !== "hidden" })),
+              edges: [...document.querySelectorAll('[data-pipeline-graph] .react-flow__edge-path')].map((edge) => edge.getAttribute("d")),
+            });
+            const samples = [snapshot()];
+            const original = window.fetch;
+            const cleanup = () => { window.fetch = original; clearTimeout(timer); };
+            const timer = setTimeout(() => { cleanup(); reject(new Error("Pipeline did not complete two polls")); }, 40_000);
+            window.fetch = async (...args) => {
+              const response = await original(...args);
+              if (typeof args[1]?.body === "string" && JSON.parse(args[1].body).method === "sdlc.get" && response.ok) {
+                // Let useQuery consume the response and React Flow adopt the rebuilt nodes.
+                setTimeout(() => {
+                  samples.push(snapshot());
+                  if (samples.length === 3) { cleanup(); resolve(samples); }
+                }, 100);
+              }
+              return response;
+            };
+          }));
+          for (const canvas of canvases) {
+            expect(canvas.nodes.length === 19 && canvas.nodes.every((node) => node.visible && node.width > 0 && node.height > 0), `Pipeline nodes after poll: ${JSON.stringify(canvas.nodes)}`);
+            expect(JSON.stringify(canvas.nodes) === JSON.stringify(canvases[0].nodes), "Pipeline dimensions changed after polling unchanged data");
+            expect(canvas.edges.length === 18 && canvas.edges.every((d) => d && !/NaN|Infinity/.test(d)), `Pipeline edges after poll: ${JSON.stringify(canvas.edges)}`);
+          }
+        }
         await tab.shot(`${String(n).padStart(2, "0")}-pipeline-open`);
         await tab.click('[data-pipeline-gate="review"]');
         await tab.waitFor("Review gate editor", () => !!document.querySelector('[data-pipeline-editor] [data-pipeline-mode="ai"]'));
