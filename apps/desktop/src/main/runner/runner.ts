@@ -1878,11 +1878,20 @@ export class Runner {
 
   #actor(profile: AgentProfile): Actor {
     // Same naming as the hive-mcp shim, so the agent's own task_claim/task_update match the runner's lease.
-    return { name: agentActorName(profile.id, this.#host.mode(), this.#host.machine(), this.#opts.user), role: "agent" };
+    return this.#asMachine({ name: agentActorName(profile.id, this.#host.mode(), this.#host.machine(), this.#opts.user), role: "agent" });
+  }
+
+  /**
+   * The hub only knows a call speaks for this machine from its machine id (the runner's own name) or from the write
+   * source; a profile actor (`codex-1.<machine>@token`) is neither, so without this its claim of a task assigned to
+   * this very machine was refused as "assigned elsewhere".
+   */
+  #asMachine(actor: Actor): Actor {
+    return { ...actor, source: { via: "mcp", machine: this.#host.machine() } };
   }
 
   #runnerActor(): Actor {
-    return { name: agentActorName("runner", this.#host.mode(), this.#host.machine(), this.#opts.user), role: "agent" };
+    return this.#asMachine({ name: agentActorName("runner", this.#host.mode(), this.#host.machine(), this.#opts.user), role: "agent" });
   }
 
   /** The later of this machine's cooldown and the hub's one for the profile's account (`from` = who reported it). */
