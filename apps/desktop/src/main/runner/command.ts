@@ -319,8 +319,9 @@ export function buildCommand(
     if (profile.readOnly) args = [...withoutFlags(withoutArrayFlags(args, ["--allowed-tools"]), ["--approval-mode"], ["--yolo", "-y"]), "--approval-mode", "plan"];
     if (outputFormat(args) === null) args.push("--output-format", "stream-json");
     // The native -p value is appended to stdin. Empty it when the entire prompt is a standalone placeholder.
-    const at = profile.args.indexOf("{prompt}");
-    if (at > 0 && ["-p", "--prompt"].includes(profile.args[at - 1]!)) { args[at] = ""; stdin = vars.prompt; }
+    // Index into args, not profile.args: read-only mode may have dropped flags (-y) in front of the prompt.
+    const at = profile.args.includes("{prompt}") ? args.indexOf(vars.prompt) : -1;
+    if (at > 0 && ["-p", "--prompt"].includes(args[at - 1]!)) { args[at] = ""; stdin = vars.prompt; }
   }
   let claudeJson = false;
   let claudeStream = false;

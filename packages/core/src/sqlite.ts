@@ -6118,7 +6118,8 @@ export class SqliteHive implements HiveBackend {
       source: leader.source ?? { via: "mcp" },
     };
     if (!may(this.#withSystems(person), action.project, "chatApprove")) return action;
-    return this.#decideChat(action.id, true, person, true);
+    // Auto-dispatch starts a service's whole backlog: only a person's click on the plan opts in, never the leader alone.
+    return this.#decideChat(action.id, true, person, true, false);
   }
 
   #chatThread(id: number): ChatThread {

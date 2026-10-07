@@ -86,7 +86,8 @@ export function ProjectPicker(props: Props) {
         {props.trigger ?? <><span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{props.mode === "scope" ? scopeTitle(props.value, props.systems) : props.value ?? (props.includeShared ? t("common.sharedTeam") : t("scope.selectProject"))}</span><ChevronsUpDown className="size-3.5 shrink-0 text-fg-muted" /></>}
       </button>
     </PopoverTrigger>
-    <PopoverContent align="start" sideOffset={4} className="w-(--radix-popover-trigger-width) min-w-64 p-1" onOpenAutoFocus={(event) => { event.preventDefault(); input.current?.focus(); }}>
+    {/* On a phone the picker sits in the navigation Sheet (--z-drawer): a plain dropdown layer would open beneath it. */}
+    <PopoverContent align="start" sideOffset={4} className="z-(--z-dialog) w-(--radix-popover-trigger-width) min-w-64 p-1" onOpenAutoFocus={(event) => { event.preventDefault(); input.current?.focus(); }}>
       <div className="flex items-center gap-2 border-b border-line-default px-2 py-1">
         <Search className="size-4 shrink-0 text-fg-muted" />
         <input ref={input} value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={onKeyDown} aria-label={t("scope.searchProjects")} placeholder={t("scope.searchProjects")} className="h-8 min-w-0 flex-1 bg-transparent text-sm text-fg-strong outline-none placeholder:text-fg-muted" />
