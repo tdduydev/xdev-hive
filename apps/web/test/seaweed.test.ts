@@ -123,8 +123,10 @@ describe("SeaweedFS for doc files (roadmap 23c)", () => {
     assert.equal((await backupFiles(hive, dir)).removed, 0);
     await new Promise((r) => setTimeout(r, 5));
     backupDatabase(hive.db, { dir, keep: 1 });
-    assert.deepEqual(await backupFiles(hive, dir), { copied: 0, kept: 2, removed: 1, missing: [] });
+    // The new snapshot has neither b nor the removed artifact, and the old one is gone: both leave the backup.
+    assert.deepEqual(await backupFiles(hive, dir), { copied: 0, kept: 1, removed: 2, missing: [] });
     assert.equal(existsSync(path.join(filesDir(dir), hex(b))), false);
+    assert.equal(existsSync(path.join(filesDir(dir), hex(artifact))), false);
     assert.ok(readdirSync(filesDir(dir)).includes("notes.txt"), "leaves other files alone");
 
     // A file the store lost is reported, not copied.
