@@ -134,6 +134,7 @@ export const AGENT_CLIS: Array<{ kind: Exclude<AgentKind, "custom">; bin: string
   { kind: "codex", bin: "codex", label: "Codex CLI", pkg: "@openai/codex" },
   { kind: "antigravity", bin: "agy", label: "Antigravity CLI", pkg: "google-antigravity/antigravity-cli" },
   { kind: "gemini", bin: "gemini", label: "Gemini CLI", pkg: "@google/gemini-cli" },
+  { kind: "copilot", bin: "copilot", label: "GitHub Copilot CLI", pkg: "@github/copilot" },
 ];
 
 /** The integrations every repo gets: the commands for Claude Code (.claude/skills) and Codex (.agents/skills). */

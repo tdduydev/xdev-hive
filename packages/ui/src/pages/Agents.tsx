@@ -1,3 +1,4 @@
+import { WorktreeManager } from "#ui/components/Worktrees.tsx";
 import { visibleInterval } from "#ui/lib/visible-interval.ts";
 import { ResponsiveGridRow, ResponsiveTableFrame } from "#ui/components/ResponsiveTable.tsx";
 import { ConfigIssues } from "#ui/components/ConfigIssues.tsx";
@@ -210,8 +211,8 @@ export function AgentsPage() {
         <p className="m-0 -mt-2 max-w-3xl text-xs/[18px] text-fg-muted">{t("agents.subtitle")}</p>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-muted-foreground">{t("agents.addAccount")}</span>
-          {(["claude", "codex", "antigravity"] as const).map((k) => (
-            <Button key={k} size="sm" className={k === "antigravity" ? AGY_BUTTON : undefined} data-add-account={k} onClick={() => setAdding(k)}>
+          {(["claude", "codex", "antigravity", "copilot"] as const).map((k) => (
+            <Button key={k} size="sm" className={k === "antigravity" ? AGY_BUTTON : undefined} data-add-account={k} disabled={k === "copilot" && (profiles.data ?? []).some((p) => p.kind === "copilot")} onClick={() => setAdding(k)}>
               + {t(`agents.accountKind.${k}`)}
             </Button>
           ))}
@@ -222,7 +223,7 @@ export function AgentsPage() {
             onCancel={() => setAdding(null)}
             onAdded={(id) => {
               setAdding(null);
-              waitFor(id);
+              if (adding !== "copilot") waitFor(id);
               refresh();
             }}
           />
@@ -268,6 +269,7 @@ export function AgentsPage() {
           />
         ) : null}
       </div>
+      <div><WorktreeManager /></div>
       {settings.data ? <RunnerCard runner={settings.data.runner} /> : null}
     </div>
   );
@@ -371,7 +373,7 @@ function AccountForm({ kind, onAdded, onCancel }: { kind: NewAccount["kind"]; on
               <Input id="acc-email" type="email" value={email} placeholder="ten@congty.vn" onChange={(e) => setEmail(e.target.value)} />
             </>
           ) : null}
-          <span className={HINT}>{kind === "antigravity" ? t("agents.agyLogin") : t(`agents.wayHint.${way}` as never)}</span>
+          <span className={HINT}>{kind === "antigravity" ? t("agents.agyLogin") : kind === "copilot" ? t(way === "device" ? "agents.copilotDevice" : "agents.copilotBrowser") : t(`agents.wayHint.${way}` as never)}</span>
           <div className="flex gap-2 sm:col-start-2">
             <Button type="submit" size="sm" className={kind === "antigravity" ? AGY_BUTTON : undefined} disabled={action.busy}>
               {t("agents.addAndSignIn")}
@@ -382,7 +384,7 @@ function AccountForm({ kind, onAdded, onCancel }: { kind: NewAccount["kind"]; on
           </div>
         </form>
         <ErrorNote error={action.error} />
-        <p className="m-0 text-xs/[18px] text-fg-muted">{kind === "antigravity" ? t("agents.agyAccounts") : t("agents.accountNote")}</p>
+        <p className="m-0 text-xs/[18px] text-fg-muted">{kind === "antigravity" ? t("agents.agyAccounts") : kind === "copilot" ? t("agents.copilotAccounts") : t("agents.accountNote")}</p>
       </CardContent>
     </Card>
   );
@@ -455,7 +457,7 @@ function ProfileTable({
       onToggle={() => onToggle(p.id)}
       onEdit={() => onEdit(p)}
       onChanged={onChanged}
-      onLoginOpened={() => onLoginOpened(p.id)}
+      onLoginOpened={() => { if (p.kind !== "copilot") onLoginOpened(p.id); }}
       now={now}
       reading={reading === p.id || (reading === "all" && p.enabled)}
       readBusy={reading !== null}
@@ -726,6 +728,11 @@ function ProfileRow({
               {t("agents.login")}
             </Button>
           ) : null}
+          {p.kind === "copilot" && p.cliPath !== null && fix !== "login" ? (
+            <Button size="sm" variant="outline" data-login={p.id} disabled={action.busy} onClick={() => void action.run(async () => (await desktop.openLogin(p.id), setLoginOpened(true), onLoginOpened()))}>
+              {t("agents.login")}
+            </Button>
+          ) : null}
           {upgrade ? (
             <Button
               size="sm"
@@ -909,6 +916,13 @@ function ProfileRow({
             {p.bin} {p.args.join(" ")}
           </code>
           <AutonomyNote profile={p} />
+          {p.kind === "copilot" ? (
+            <Notice tone="warn"><div className="space-y-2 text-xs">
+              <p>{t("agents.copilotLimits")} <a className="underline underline-offset-2" href="https://docs.github.com/en/copilot/concepts/billing-and-usage/individuals/billing" target="_blank" rel="noreferrer">{t("agents.copilotSource")}</a></p>
+              <p>{t("agents.copilotAccounts")} <a className="underline underline-offset-2" href="https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli" target="_blank" rel="noreferrer">{t("agents.copilotSource")}</a></p>
+              <p>{t("agents.copilotPermissions")} <a className="underline underline-offset-2" href="https://docs.github.com/en/copilot/how-tos/cloud-and-local-sandboxes/configuring-local-sandbox-settings" target="_blank" rel="noreferrer">{t("agents.copilotSource")}</a></p>
+            </div></Notice>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" disabled={action.busy} onClick={() => void action.run(async () => setCheck(await desktop.checkProfile(p.id)))}>
               {t("agents.checkCli")}
@@ -978,9 +992,10 @@ function ProfileRow({
         </div>
       ) : null}
       {/* Answers to what the row's own buttons did: shown whether or not Chi tiết is open. */}
-      {((loginOpened || waiting) && state === "signedOut") || openedCli || action.error ? (
+      {((loginOpened || waiting) && state === "signedOut") || (loginOpened && p.kind === "copilot") || openedCli || action.error ? (
         <div className="flex flex-col gap-2 px-4 pb-3">
           {(loginOpened || waiting) && state === "signedOut" ? <Notice tone="info">{t(waiting ? "agents.loginWaiting" : "agents.loginOpened")}</Notice> : null}
+          {loginOpened && p.kind === "copilot" ? <Notice tone="info">{t("agents.copilotLoginUnknown")}</Notice> : null}
           {openedCli ? <Notice tone="info">{t("openCli.opened", openedCli)}</Notice> : null}
           <ErrorNote error={action.error} />
         </div>
@@ -1067,7 +1082,7 @@ function ProfileForm({
             <Label htmlFor="pf-label">{t("agents.name")}</Label>
             <Input id="pf-label" value={p.label} onChange={(e) => set("label", e.target.value)} />
             <Label htmlFor="pf-kind">{t("agents.kind")}</Label>
-            <NativeSelect id="pf-kind" value={p.kind} onChange={(e) => set("kind", e.target.value as AgentKind)}>
+            <NativeSelect id="pf-kind" value={p.kind} onChange={(e) => { const kind = e.target.value as AgentKind; setP({ ...p, kind, container: kind === "copilot" ? null : p.container }); }}>
               {AGENT_KINDS.map((k) => (
                 <NativeSelectOption key={k} value={k}>
                   {t(`agentKind.${k}`)}
@@ -1104,6 +1119,7 @@ function ProfileForm({
               <span id="pf-agy-project-hint" className={HINT}>{t("agents.agyProjectHint")}</span>
               <span className={HINT}>{t("agents.agyAccounts")}</span>
             </> : null}
+            {p.kind === "copilot" ? <span className={HINT}>{t("agents.copilotAccounts")} {t("agents.copilotPermissions")}</span> : null}
             <Label htmlFor="pf-env" className="leading-snug sm:self-start sm:pt-2.5">
               {t("agents.env")}
             </Label>
@@ -1226,12 +1242,14 @@ function ProfileForm({
             <label className="flex items-center gap-2 text-sm">
               <Checkbox
                 checked={p.container !== null}
+                disabled={p.kind === "copilot"}
                 onCheckedChange={(v) =>
                   set("container", v === true ? (p.container ?? { image: "xdev-hive-agent", network: "restricted", allow: [] }) : null)
                 }
               />
               {t("agents.container")}
             </label>
+            {p.kind === "copilot" ? <span className={HINT}>{t("agents.copilotContainer")}</span> : null}
             {p.container ? (
               <div className="flex flex-col gap-2 pl-6">
                 <Input
@@ -1376,6 +1394,10 @@ function IntakeCard({ runner, hub, onSaved }: { runner: RunnerSettings; hub: boo
         </div>
         {hub ? <Switch checked={runner.acceptHubRuns} disabled={action.busy} onCheckedChange={(v) => save({ acceptHubRuns: v })} aria-label={t("agents.runnerHubRuns")} /> : null}
       </div>
+      {hub ? <label className="flex min-h-11 items-center gap-3 text-sm">
+        <Switch className="relative before:absolute before:-inset-3 md:before:hidden" checked={runner.gateRunner ?? false} disabled={action.busy} onCheckedChange={v => save({ gateRunner: v })} aria-label={t("mergeQueue.role")} />
+        <span>{t("mergeQueue.role")}<span className="block text-xs text-muted-foreground">{t("mergeQueue.roleHint")}</span></span>
+      </label> : null}
       <label htmlFor="auto-update-idle" className="flex min-h-11 cursor-pointer items-center gap-4 border-t border-line-subtle pt-2">
         <span className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="text-sm/5 font-semibold text-fg-strong">{t("agents.autoUpdateIdle")}</span>

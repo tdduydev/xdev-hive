@@ -60,6 +60,8 @@ export class ProfileModels {
   snapshot(profile: AgentProfile, base: NodeJS.ProcessEnv): string[] | null {
     if (profile.container) return null;
     if (profile.kind === "claude") return [...CLAUDE_MODELS];
+    // Auto is the only model choice documented for Copilot Free/Student; paid models require an explicit profile pin.
+    if (profile.kind === "copilot") return ["auto"];
     if (profile.kind === "codex") {
       const env = { ...base, ...expandEnv(profile.env) };
       try { return codexModels(readFileSync(path.join(env.CODEX_HOME || path.join(env.HOME || os.homedir(), ".codex"), "models_cache.json"), "utf8")); }

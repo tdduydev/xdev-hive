@@ -40,6 +40,10 @@ export interface Actor {
    * never falls back to a token's name, so it can tell who owns a machine (roadmap 18d).
    */
   account?: string;
+  /** Set only after the hub verifies a credential issued for one run. Never derived from request headers. */
+  runCredential?: { project: string; task: string; run: string; machine: string; readOnly: boolean };
+  /** Verified MCP credential, including interactive sessions that have no assigned run. */
+  mcpCredential?: boolean;
 }
 
 export interface DocSummary {
@@ -305,6 +309,8 @@ export interface TaskAgent {
 }
 
 export interface Task {
+  /** Lower goes first; 50 when not specified. */
+  priority?: number;
   id: string;
   project: string;
   title: string;
@@ -449,7 +455,7 @@ export interface ProfileChange {
   requestedAt: string;
 }
 
-export const POLICY_CLIS = ["claude", "codex", "gemini", "antigravity"] as const;
+export const POLICY_CLIS = ["claude", "codex", "gemini", "antigravity", "copilot"] as const;
 export const POLICY_REPO_PARTS = ["agents", "codegraph-mcp", "codegraph-index", "superpowers", "speckit"] as const;
 /**
  * admins: a hub admin may approve their own work, since on a hub of one person their agents run on their token too.
@@ -475,7 +481,7 @@ export interface TeamPolicy {
 
 /** The tool catalog (roadmap 28a): what machines may set up for runs, kept on the hub instead of in the app's code. */
 export const TOOL_KINDS = ["mcp", "plugin", "hook", "cli"] as const;
-export const TOOL_AGENTS = ["claude", "codex", "gemini", "antigravity"] as const;
+export const TOOL_AGENTS = ["claude", "codex", "gemini", "antigravity", "copilot"] as const;
 export const TOOL_REGISTRIES = ["npm", "pypi", "brew", "git", "claude-plugin"] as const;
 /**
  * Tools the app already has its own code for: from 28b the machine runs that code to install, prepare and check them,
@@ -1194,6 +1200,7 @@ export interface ChatFile {
 }
 
 export const CHAT_ACTION_KINDS = [
+  "plan.create",
   "task.create",
   "task.update",
   "task.classify",
@@ -1241,7 +1248,7 @@ export interface ChatAction {
   reason: string;
   status: ChatActionStatus;
   /** What confirming it made: the task, the run request sent to the machine, or the install command. */
-  result: { taskId?: string; requestId?: number; commandId?: number } | null;
+  result: { taskId?: string; requestId?: number; commandId?: number; specKey?: string; taskIds?: string[] } | null;
   error: RunRequestError | null;
   decidedBy: string | null;
   decidedAt: string | null;
@@ -1362,6 +1369,9 @@ export interface Machine {
   projects: string[];
   /** Its user lets project managers queue runs on it from the web (runs.dispatch). */
   acceptsRuns: boolean;
+  gateRunner?: boolean;
+  /** Older apps do not report their runner limit; auto-dispatch assumes one. */
+  maxParallel?: number;
   /** The hub account its token belongs to: with hub admins, the only one who may change its profiles from the web. */
   owner: string | null;
   /** Profile changes asked for on the web that the machine has not reported yet (roadmap 18d). */

@@ -50,7 +50,10 @@ describe("large hub list reads", () => {
     let hive: SqliteHive | undefined;
     try {
       const version = migrationIndex("CREATE INDEX tasks_list_at");
-      hive = new SqliteHive(file, { now, migrateTo: version });
+      hive = new SqliteHive(file, { now });
+      // Keep later schema changes: only the list-index migration is rewound and replayed.
+      hive.db.exec(`DROP INDEX tasks_list_at; DROP INDEX run_records_created;
+        DROP INDEX run_requests_pending_at; DROP INDEX run_requests_retention_at; PRAGMA user_version = ${version}`);
       const addTask = hive.db.prepare("INSERT INTO tasks(id, project, title, status, updated_at) VALUES (?, ?, ?, ?, ?)");
       addTask.run("T-1", "app", "First", "todo", "2026-10-06T00:00:00.000Z");
       addTask.run("T-2", "other", "Other", "review", "2026-10-07T00:00:00.000Z");
@@ -62,7 +65,7 @@ describe("large hub list reads", () => {
       const beforeTasks = await hive.call("tasks.list", {}, admin);
       const beforeRuns = await hive.call("runs.list", {}, admin);
       hive.close();
-      hive = new SqliteHive(file, { now });
+      hive = new SqliteHive(file, { now, migrateTo: version + 1 });
       assert.ok(Number(hive.db.prepare("PRAGMA user_version").get()!.user_version) >= version + 1, "the audit migration has run");
       assert.deepEqual(await hive.call("tasks.list", {}, admin), beforeTasks);
       assert.deepEqual(await hive.call("runs.list", {}, admin), beforeRuns);

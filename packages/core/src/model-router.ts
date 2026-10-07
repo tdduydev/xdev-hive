@@ -9,7 +9,7 @@ export type ModelTier = (typeof MODEL_TIERS)[number];
 export const MODEL_PROFILES = ["economy", "balanced", "quality"] as const;
 export type ModelProfile = (typeof MODEL_PROFILES)[number];
 /** The kinds of plan the router speaks for: a custom CLI takes no flag the router could know. */
-export const ROUTED_KINDS = ["claude", "codex", "antigravity"] as const;
+export const ROUTED_KINDS = ["claude", "codex", "antigravity", "copilot"] as const;
 export type RoutedKind = (typeof ROUTED_KINDS)[number];
 
 /**
@@ -22,7 +22,7 @@ export type ModelEffort = (typeof MODEL_EFFORTS)[number];
 export const modelChoiceSchema = z.object({ model: z.string().regex(/^[A-Za-z0-9._:[\]-]{1,100}$/), effort: z.enum(MODEL_EFFORTS).nullable() });
 export type ModelChoice = z.infer<typeof modelChoiceSchema>;
 /** null: this kind of plan has no model at the tier, and the nearest tier that has one stands in. */
-export const modelTierRowSchema = z.object({ claude: modelChoiceSchema.nullable(), codex: modelChoiceSchema.nullable(), antigravity: modelChoiceSchema.nullable() });
+export const modelTierRowSchema = z.object({ claude: modelChoiceSchema.nullable(), codex: modelChoiceSchema.nullable(), antigravity: modelChoiceSchema.nullable(), copilot: modelChoiceSchema.nullable().default({ model: "auto", effort: null }) });
 export type ModelTierRow = z.infer<typeof modelTierRowSchema>;
 export const modelTableSchema = z.record(z.enum(MODEL_TIERS), modelTierRowSchema);
 export const modelCellsSchema = z.record(z.enum(TASK_KINDS), z.record(z.enum(TASK_SIZES), z.enum(MODEL_TIERS)));
@@ -56,11 +56,11 @@ export interface ModelSelection {
 const choice = (model: string, effort: ModelEffort | null): ModelChoice => ({ model, effort });
 
 export const DEFAULT_MODEL_TIERS: Record<ModelTier, ModelTierRow> = {
-  light: { claude: choice("sonnet", "low"), codex: choice("gpt-6-luna", "medium"), antigravity: choice("gemini-3.8-flash", "low") },
-  standard: { claude: choice("sonnet", "medium"), codex: choice("gpt-6.1-sol", "low"), antigravity: choice("gemini-3.8-pro", "medium") },
+  light: { claude: choice("sonnet", "low"), codex: choice("gpt-6-luna", "medium"), antigravity: choice("gemini-3.8-flash", "low"), copilot: choice("auto", null) },
+  standard: { claude: choice("sonnet", "medium"), codex: choice("gpt-6.1-sol", "low"), antigravity: choice("gemini-3.8-pro", "medium"), copilot: choice("auto", null) },
   // Antigravity's Claude/GPT pool has its own quota (53) the hub does not see, so strong and above stay on Gemini pro.
-  strong: { claude: choice("opus", "medium"), codex: choice("gpt-6.1-sol", "high"), antigravity: null },
-  max: { claude: choice("opus", "high"), codex: choice("gpt-6-astra", "medium"), antigravity: null },
+  strong: { claude: choice("opus", "medium"), codex: choice("gpt-6.1-sol", "high"), antigravity: null, copilot: choice("auto", null) },
+  max: { claude: choice("opus", "high"), codex: choice("gpt-6-astra", "medium"), antigravity: null, copilot: choice("auto", null) },
 };
 
 const sizes = (s: ModelTier, m: ModelTier, l: ModelTier): Record<TaskSize, ModelTier> => ({ s, m, l });

@@ -9,6 +9,7 @@ import type { HiveClient } from "#ui/client.ts";
 import { AccountMenu } from "#ui/components/Account.tsx";
 import { HiveWordmark } from "#ui/components/Brand.tsx";
 import { ScopeSwitcher } from "#ui/components/ScopeSwitcher.tsx";
+import { Sheet, SheetContent, SheetTitle } from "#ui/components/ui/sheet.tsx";
 import { usePoll, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { toggleTheme, useTheme } from "#ui/lib/theme.ts";
@@ -113,7 +114,7 @@ function ClientFrame({
   const t = useT();
   const { theme } = useTheme();
   const narrow = useMedia("(max-width: 767px)");
-  const [sidebar, setSidebarState] = useState(readSidebar);
+  const [sidebar, setSidebarState] = useState(() => narrow ? false : readSidebar());
   const sidebarTrigger = useRef<HTMLButtonElement>(null);
   const [palette, setPalette] = useState(false);
   const [newTask, setNewTask] = useState(false);
@@ -131,17 +132,6 @@ function ClientFrame({
       return next;
     });
   }, []);
-
-  useEffect(() => {
-    if (!narrow || !sidebar) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented) return;
-      setSidebar(false);
-      sidebarTrigger.current?.focus();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [narrow, sidebar, setSidebar]);
 
   const desktop = client.desktop;
   const info = useQuery(async () => (desktop ? desktop.appInfo() : null), [desktop]);
@@ -248,11 +238,10 @@ function ClientFrame({
   const nav = (
     <nav
       id="hive-navigation"
-      inert={narrow && !sidebar}
       aria-label={t("shell.nav")}
       className={cn(
         "flex w-[236px] shrink-0 flex-col border-r border-line-subtle bg-subtle",
-        narrow && cn("fixed inset-y-0 left-0 z-200 shadow-e3 transition-transform", !sidebar && "-translate-x-full"),
+        narrow && "h-full w-full border-r-0",
       )}
     >
       <div className={cn("flex h-[52px] shrink-0 items-center px-4", mac && "pl-[84px]", drag)}>
@@ -363,10 +352,9 @@ function ClientFrame({
 
   return (
     <>
-      <div className="fixed inset-0 flex flex-col bg-surface text-fg-primary">
+      <div inert={narrow && sidebar} className="fixed inset-0 flex flex-col bg-surface text-fg-primary">
         <div className="flex min-h-0 flex-1">
-          {sidebar || narrow ? nav : null}
-          {sidebar && narrow ? <div className="fixed inset-0 z-190 bg-scrim" onClick={() => setSidebar(false)} /> : null}
+          {sidebar && !narrow ? nav : null}
           <div className="relative flex min-w-0 flex-1 flex-col">
             <header className={cn("flex h-[52px] min-w-0 shrink-0 items-center gap-0.5 border-b border-line-subtle bg-surface px-3", drag, mac && !sidebar && !narrow && "pl-[78px]")}>
               <button
@@ -513,6 +501,23 @@ function ClientFrame({
                   : null}
         </footer>
       </div>
+      {narrow ? (
+        <Sheet open={sidebar} onOpenChange={setSidebar}>
+          <SheetContent
+            side="left"
+            showCloseButton={false}
+            aria-describedby={undefined}
+            className="w-[236px] gap-0 sm:w-[236px] sm:max-w-[236px]"
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              sidebarTrigger.current?.focus();
+            }}
+          >
+            <SheetTitle className="sr-only">{t("shell.nav")}</SheetTitle>
+            {nav}
+          </SheetContent>
+        </Sheet>
+      ) : null}
       <CommandPalette open={palette} onOpenChange={setPalette} commands={commands} pages={pages} />
       {client.desktop ? <NewTaskDialog open={newTask} onOpenChange={setNewTask} /> : newTask ? <NewWorkDialog open onOpenChange={setNewTask} /> : null}
     </>

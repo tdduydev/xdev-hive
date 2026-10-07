@@ -108,46 +108,48 @@ export function SkillsPage() {
             {t("skills.pendingNotice", { count: proposals.length })} {t("skills.openProposals")}
           </a>
         ) : null}
-        {shown.map((s) => {
-          const pending = proposals.filter((p) => p.docKey === s.key).length;
-          return (
-            <ListItem
-              key={s.key}
-              mono
-              selected={s.key === selected}
-              onClick={() => pick(s.key)}
-              title={s.name}
-              dim={s.overridden}
-              chip={
-                pending ? (
-                  <Chip kind="warning" small>
-                    {t("skills.pendingCount", { count: pending })}
-                  </Chip>
-                ) : s.overrides ? (
-                  <Chip kind="info" small>
-                    {t("skills.overrides")}
-                  </Chip>
-                ) : s.overridden ? (
-                  <Chip kind="neutral" small>
-                    {t("skills.overridden")}
-                  </Chip>
-                ) : s.project ? (
-                  <Chip kind="info" small>
-                    {t("skills.projectChip")}
-                  </Chip>
-                ) : null
-              }
-              sub={s.description || t("skills.noDescription")}
-              meta={<span className="flex flex-col gap-1">
-                <span>{s.project ?? t("common.sharedTeam")} · {formatTime(s.updatedAt)}</span>
-                <span className="grid grid-cols-2 gap-2 font-sans text-xs">
-                  <span>{t("skills.runs30d")}<br /><strong>{s.usage?.runs30d ?? "—"}</strong></span>
-                  <span>{t("skills.lastUsed")}<br />{s.usage?.lastUsedAt ? formatTime(s.usage.lastUsedAt) : t("skills.neverUsed")}</span>
-                </span>
-              </span>}
-            />
-          );
-        })}
+        {shown.length ? <ul role="list" className="m-0 flex list-none flex-col gap-px p-0">
+          {shown.map((s) => {
+            const pending = proposals.filter((p) => p.docKey === s.key).length;
+            return (
+              <ListItem
+                key={s.key}
+                mono
+                selected={s.key === selected}
+                onClick={() => pick(s.key)}
+                title={s.name}
+                dim={s.overridden}
+                chip={
+                  pending ? (
+                    <Chip kind="warning" small>
+                      {t("skills.pendingCount", { count: pending })}
+                    </Chip>
+                  ) : s.overrides ? (
+                    <Chip kind="info" small>
+                      {t("skills.overrides")}
+                    </Chip>
+                  ) : s.overridden ? (
+                    <Chip kind="neutral" small>
+                      {t("skills.overridden")}
+                    </Chip>
+                  ) : s.project ? (
+                    <Chip kind="info" small>
+                      {t("skills.projectChip")}
+                    </Chip>
+                  ) : null
+                }
+                sub={s.description || t("skills.noDescription")}
+                meta={<span className="flex flex-col gap-1">
+                  <span>{s.project ?? t("common.sharedTeam")} · {formatTime(s.updatedAt)}</span>
+                  <span className="grid grid-cols-2 gap-2 font-sans text-xs">
+                    <span>{t("skills.runs30d")}<br /><strong>{s.usage?.runs30d ?? "—"}</strong></span>
+                    <span>{t("skills.lastUsed")}<br />{s.usage?.lastUsedAt ? formatTime(s.usage.lastUsedAt) : t("skills.neverUsed")}</span>
+                  </span>
+                </span>}
+              />
+            );
+          })}
+        </ul> : null}
         {/* The button for an empty list sits in the wide pane on the right, so the narrow list keeps the sentence alone. */}
         {empty ? <PaneEmpty>{t(empty === "none" ? "skills.none" : "skills.noMatch")}</PaneEmpty> : null}
       </ListPane>

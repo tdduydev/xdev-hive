@@ -13,10 +13,12 @@ const COMMANDS: Partial<Record<AgentKind, { status: string[]; login: string[] }>
   claude: { status: ["auth", "status", "--json"], login: ["auth", "login"] },
   antigravity: { status: AGY_USAGE_ARGS, login: [] },
   codex: { status: ["login", "status"], login: ["login"] },
+  // Copilot has a documented login flow but no documented non-interactive account-status command.
+  copilot: { status: [], login: ["login"] },
 };
 
 /** Env that picks a login dir: shown in the sign-in command. Other env (keys, tokens) never is. */
-const LOGIN_DIRS = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "HOME"];
+const LOGIN_DIRS = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "COPILOT_HOME", "HOME"];
 
 const UNKNOWN = { loggedIn: null, method: null } as const;
 
@@ -62,12 +64,13 @@ export function loginFlags(kind: AgentKind, how: LoginHow = {}): string[] {
     return [...(how.console ? ["--console"] : []), ...(how.sso ? ["--sso"] : []), ...(email ? ["--email", email] : [])];
   }
   if (kind === "codex") return how.device ? ["--device-auth"] : [];
+  if (kind === "copilot") return how.device ? ["--device-code"] : ["--web-flow"];
   return [];
 }
 
 /** The login-dir env of a profile, expanded: what a terminal script may hold (keys and tokens never go in a file). */
 export function loginDirEnv(profile: AgentProfile): Record<string, string> {
-  const allowed = profile.kind === "antigravity" ? ["HOME", "AGY_ADC_AUTH", "GOOGLE_CLOUD_QUOTA_PROJECT"] : ["CLAUDE_CONFIG_DIR", "CODEX_HOME"];
+  const allowed = profile.kind === "antigravity" ? ["HOME", "AGY_ADC_AUTH", "GOOGLE_CLOUD_QUOTA_PROJECT"] : ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "COPILOT_HOME"];
   return expandEnv(Object.fromEntries(Object.entries(profile.env).filter(([k]) => allowed.includes(k))));
 }
 
@@ -79,7 +82,7 @@ export function loginParts(profile: AgentProfile, how: LoginHow = {}): { args: s
 }
 
 /** The env var that points a CLI at a sign-in folder, for the kinds that have one. */
-export const LOGIN_DIR_ENV: Partial<Record<AgentKind, string>> = { claude: "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME", antigravity: "HOME" };
+export const LOGIN_DIR_ENV: Partial<Record<AgentKind, string>> = { claude: "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME", antigravity: "HOME", copilot: "COPILOT_HOME" };
 
 export function loginCommand(profile: AgentProfile): string | null {
   const commands = COMMANDS[profile.kind];
@@ -107,6 +110,7 @@ export async function checkLogin(profile: AgentProfile, baseEnv: NodeJS.ProcessE
   const base = { loginCommand: loginCommand(profile), checkedAt: now.toISOString() };
   const bin = commands ? resolveBin(expandHome(profile.bin), baseEnv.PATH ?? "") : null;
   if (!commands || !bin) return { ...UNKNOWN, ...base };
+  if (!commands.status.length) return { ...UNKNOWN, ...base };
   const env = { ...baseEnv, ...expandEnv(profile.env) };
   if (profile.kind === "antigravity") {
     const version = await run(bin, ["--version"], env);

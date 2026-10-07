@@ -3,12 +3,20 @@
 // stdout is the MCP channel, so all logging goes to stderr.
 import os from "node:os";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { agentActorName, agentSource, configIssueText, readConfig, readRun, resolveBackend, type Actor } from "@xdev-hive/core/node";
+import { agentActorName, agentSource, configIssueText, HubBackend, readConfig, readRun, resolveBackend, type Actor } from "@xdev-hive/core/node";
 import { createHiveMcpServer } from "./server.ts";
+import { mcpHubBackend } from "#mcp/hub-backend.ts";
 
 const { config, issues } = readConfig();
 for (const issue of issues) console.error(`[xdev-hive] config.json ${configIssueText(issue)}`);
-const backend = resolveBackend(config);
+if (config.mode === "hub" && process.env.HIVE_RUN && !process.env.HIVE_RUN_TOKEN)
+  throw new Error("A hub run requires its own credential.");
+// The runner's credential takes precedence over the machine credential in config.json.
+const backend = config.mode === "hub"
+  ? process.env.HIVE_RUN_TOKEN
+    ? new HubBackend(config.hub.url, process.env.HIVE_RUN_TOKEN)
+    : mcpHubBackend(config.hub, process.env.HIVE_PROJECT, process.env.HIVE_READONLY === "1")
+  : resolveBackend(config);
 const agent = (process.env.HIVE_AGENT ?? "agent").replace(/[^\w.-]/g, "").slice(0, 40) || "agent";
 const name = agentActorName(agent, config.mode, config.machine, os.userInfo().username);
 

@@ -1,11 +1,12 @@
+import { worktreeCleanupSchema } from "#core/worktrees.ts";
 // Agent profiles: one per subscription/account (e.g. two Claude Max accounts = two profiles).
 // Browser-safe so the UI can validate forms with the same schema the desktop runner uses.
 import { z } from "zod";
 
-export const AGENT_KINDS = ["claude", "codex", "gemini", "antigravity", "custom"] as const;
+export const AGENT_KINDS = ["claude", "codex", "gemini", "antigravity", "copilot", "custom"] as const;
 export type AgentKind = (typeof AGENT_KINDS)[number];
 /** Kinds a run may prefer when it is given (roadmap 24c): the vendors with a subscription to rotate. */
-export const PREFER_KINDS = ["claude", "codex", "gemini", "antigravity"] as const;
+export const PREFER_KINDS = ["claude", "codex", "gemini", "antigravity", "copilot"] as const;
 export type PreferKind = (typeof PREFER_KINDS)[number];
 
 /**
@@ -207,6 +208,25 @@ export const AGENT_TEMPLATES: Record<Exclude<AgentKind, "custom">, AgentProfile>
     stopAtSession: 95,
     stopAtWeek: 90,
   },
+  copilot: {
+    id: "copilot-1",
+    label: "GitHub Copilot CLI",
+    kind: "copilot",
+    bin: "copilot",
+    args: ["-p", "{prompt}", "--no-ask-user", "--no-auto-update", "--output-format", "json", "--secret-env-vars=GH_TOKEN", "--allow-tool=write", "--allow-tool=read", "--allow-tool=xdev-hive", "--deny-tool=shell"],
+    env: {},
+    enabled: true,
+    readOnly: false,
+    codexLocalhost: false,
+    container: null,
+    priority: 40,
+    roles: ["plan", "implement", "review"],
+    maxConcurrent: 1,
+    cooldownMinutes: 60,
+    timeoutMinutes: 60,
+    stopAtSession: 95,
+    stopAtWeek: 90,
+  },
 };
 
 export const DEFAULT_AGENT_PROFILES: AgentProfile[] = Object.values(AGENT_TEMPLATES);
@@ -214,12 +234,14 @@ export const DEFAULT_AGENT_PROFILES: AgentProfile[] = Object.values(AGENT_TEMPLA
 export const runnerSettingsSchema = z.object({
   /** Where task worktrees go. Default: ~/.xdev-hive/worktrees/<project>/<task>. */
   worktreeRoot: z.string().nullable().default(null),
+  worktreeCleanup: worktreeCleanupSchema.optional(),
   /** Agents running at the same time across all profiles. */
   maxParallel: z.number().int().min(1).max(8).default(2),
   /** Attempts per run including rotations after rate limits. */
   maxAttempts: z.number().int().min(1).max(6).default(3),
   /** Hub mode: start the runs a project manager queues for this machine on the web (runs.dispatch). Off until the user turns it on. */
   acceptHubRuns: z.boolean().default(false),
+  gateRunner: z.boolean().default(false),
   /** Unset follows acceptHubRuns; an explicit choice survives turning hub intake on/off. */
   autoUpdateIdle: z.boolean().optional(),
 });

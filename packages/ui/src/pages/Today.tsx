@@ -1,3 +1,4 @@
+import { ReviewArtifacts } from "#ui/components/Artifacts.tsx";
 import { SystemOverview } from "#ui/components/SystemOverview.tsx";
 import { StartReminder } from "#ui/pages/Start.tsx";
 import { knowledgeHref } from "#ui/lib/knowledge.ts";
@@ -173,6 +174,7 @@ function titleOf(item: InboxItem, t: TFunction): string {
       return t("inbox.request.title", { who: item.command.requestedBy, label: item.command.label });
     case "alert":
       return alertTitle(t, item.alert);
+    case "releaseFailure": return `${t(item.task.id.startsWith("OPS-release-log-") ? "autoRelease.warning" : "autoRelease.failed")} · ${item.task.id}`;
     case "gate":
       return t("inbox.gate.title", { gate: t(`sdlc.gate.${item.gate.gate}`), task: item.gate.taskId });
     case "leader":
@@ -211,6 +213,7 @@ function metaOf(item: InboxItem, t: TFunction): string {
       return t("inbox.request.meta");
     case "alert":
       return alertDetail(t, item.alert);
+    case "releaseFailure": return firstLine(item.task.note ?? "", 80);
     case "gate":
       return item.gate.status === "escalated" ? t("inbox.gate.metaEscalated") : t("inbox.gate.meta", { mode: t(`sdlc.mode.${item.gate.mode}`) });
     case "leader":
@@ -651,7 +654,7 @@ function Detail({
             </Li>
           ) : null}
           <h3 className="m-0 mt-1.5 text-[13px]/[18px] font-semibold text-fg-strong">{t("inbox.review.handoff")}</h3>
-          <P>{task.note?.trim() || t("inbox.review.noNote")}</P>
+          <ReviewArtifacts project={task.project} taskId={task.id} note={task.note?.trim() || t("inbox.review.noNote")} />
         </>
       );
       const canMove = allow(task.project, "codeReview");
@@ -787,8 +790,18 @@ function Detail({
       actions = [{ label: t("planApproval.approve"), kind: "primary", run: decide("approve") }, { label: t("planApproval.changes"), kind: "secondary", run: decide("changes") }, { label: t("inbox.gate.openTask"), kind: "ghost", run: go(`#/tasks?task=${encodeURIComponent(p.taskId)}`) }];
       break;
     }
+    case "releaseFailure": {
+      body = <P>{item.task.note}</P>;
+      actions = [{ label: t("autoRelease.title"), kind: "primary", run: go(`#/pipeline?project=${encodeURIComponent(item.task.project)}`) }, { label: t("inbox.gate.openTask"), kind: "secondary", run: go(`#/tasks?task=${encodeURIComponent(item.task.id)}`) }, seenAction()];
+      break;
+    }
     case "gate": {
       const g = item.gate;
+      if (g.gate === "release") {
+        body = <P>{t("sdlc.gateHint.release")}</P>;
+        actions = [{ label: t("autoRelease.title"), kind: "primary", run: go(`#/pipeline?project=${encodeURIComponent(g.project)}`) }];
+        break;
+      }
       const labels = gateLabels(g, t);
       const what = { gate: t(`sdlc.gate.${g.gate}`), task: g.taskId };
       const may = allow(g.project, g.gate === "test" ? "qaVerify" : g.gate === "review" || g.gate === "merge" ? "codeReview" : "runDispatch");

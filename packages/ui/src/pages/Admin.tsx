@@ -1,3 +1,4 @@
+import { MergeQueue } from "#ui/components/MergeQueue.tsx";
 import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, Plus } from "lucide-react";
 import {
@@ -42,7 +43,7 @@ const COMMAND_TONE: Record<CommandStatus, string> = {
   cancelled: "neutral",
   expired: "neutral",
 };
-const CLI_LABEL: Record<(typeof POLICY_CLIS)[number], string> = { claude: "Claude Code", codex: "Codex CLI", gemini: "Gemini CLI", antigravity: "Antigravity CLI" };
+const CLI_LABEL: Record<(typeof POLICY_CLIS)[number], string> = { claude: "Claude Code", codex: "Codex CLI", gemini: "Gemini CLI", antigravity: "Antigravity CLI", copilot: "GitHub Copilot CLI" };
 /** Audit actions by the name the hub records (keys of the catalogue cannot contain dots). */
 export const ACTION_LABEL: Record<string, MessageKey> = {
   "docs.save": "auditAction.docsSave",
@@ -352,6 +353,7 @@ export function PolicyTab() {
   return (
     <>
       <RunTimeoutsCard />
+      <MergeQueue />
       <Card>
         <CardHeader>
           <CardTitle>{t("admin.everyMachine")}</CardTitle>

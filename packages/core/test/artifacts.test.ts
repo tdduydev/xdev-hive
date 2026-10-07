@@ -91,6 +91,45 @@ describe("the artifact store (roadmap 41c)", () => {
     assert.deepEqual(await hive.call("artifacts.list", { project: "app", runId: "R-1", machineId: "runner.other@other" }, admin), []);
   });
 
+  it("filters scope, names and kinds before paging, including access and archives", async () => {
+    const hive = await hub();
+    const report = await put(hive);
+    const log = await put(hive, { name: "run.log", data: text("ok") });
+    const hidden = await put(hive, { project: "web", taskId: "WEB-1", name: "hidden.json", data: text('{"ok":true}') });
+    const viewer: Actor = { name: "reader", role: "viewer", access: { projects: { app: "viewer" } } };
+    assert.deepEqual((await hive.call("artifacts.list", { limit: 1 }, viewer)).map((a) => a.id), [log.id]);
+    assert.deepEqual((await hive.call("artifacts.list", { limit: 1, offset: 1 }, viewer)).map((a) => a.id), [report.id]);
+    assert.deepEqual(await hive.call("artifacts.list", { projects: ["web"] }, viewer), []);
+    await assert.rejects(hive.call("artifacts.get", { id: hidden.id, metadataOnly: true }, viewer), code("not_found"));
+    assert.deepEqual((await hive.call("artifacts.list", { projects: ["app"], kind: "markdown", name: "REPORT" }, admin)).map((a) => a.id), [report.id]);
+    assert.deepEqual((await hive.call("artifacts.list", { kind: "log" }, admin)).map((a) => a.id), [log.id]);
+    assert.deepEqual((await hive.call("artifacts.list", { kind: "json", runId: "R-1", taskId: "WEB-1" }, admin)).map((a) => a.id), [hidden.id]);
+    assert.deepEqual(await hive.call("artifacts.list", { projects: [] }, admin), []);
+    // Search treats SQL wildcard characters literally.
+    assert.deepEqual(await hive.call("artifacts.list", { name: "%" }, admin), []);
+    hive.db.prepare("INSERT INTO project_states VALUES (?, ?, ?, ?)").run("web", "archived", new Date().toISOString(), "duy");
+    assert.deepEqual((await hive.call("artifacts.list", { limit: 1 }, admin)).map((a) => a.id), [log.id]);
+    assert.deepEqual((await hive.call("artifacts.list", { project: "web" }, admin)).map((a) => a.id), [hidden.id]);
+  });
+
+  it("searches Vietnamese names without case or normalization differences", async () => {
+    const hive = await hub();
+    const a = await put(hive, { name: "Đo-được.md" });
+    assert.deepEqual((await hive.call("artifacts.list", { name: "đo-được".normalize("NFD") }, admin)).map((a) => a.name), [a.name]);
+  });
+
+  it("previews bounded UTF-8 text, keeps full downloads and fetches metadata without blob bytes", async () => {
+    const store = memoryStore();
+    const hive = await hub(store);
+    const a = await put(hive, { data: text("ađã làm\n") });
+    const preview = await hive.call("artifacts.get", { id: a.id, maxBytes: 2 }, admin);
+    assert.equal(read(preview!.data), "a");
+    assert.equal(preview!.truncated, true);
+    assert.equal(read((await hive.call("artifacts.get", { id: a.id }, admin))!.data), "ađã làm\n");
+    store.files.clear();
+    assert.equal((await hive.call("artifacts.get", { id: a.id, metadataOnly: true }, admin))!.data, "");
+  });
+
   it("hides a line that looks like a secret, as a run's log does", async () => {
     const hive = await hub();
     const saved = await put(hive, { name: "measure.log", data: text("ok\nTOKEN=ghp_0123456789012345678901234567890123456\nthe rest\n") });

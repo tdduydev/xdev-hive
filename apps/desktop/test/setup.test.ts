@@ -112,6 +112,7 @@ describe("Setup: this machine", () => {
       ["cli:codex", "missing"],
       ["cli:antigravity", "missing"],
       ["cli:gemini", "missing"],
+      ["cli:copilot", "missing"],
       ["cli:specify", "manual"],
       ["shim", "missing"],
     ]);

@@ -1,7 +1,6 @@
 // Follows the merge requests the app opened: their state and pipeline on GitLab, and the same for GitHub pull
 // requests (state and checks). A merged one moves its task to done (unless turned off), a closed one to the
-// status chosen in the settings (blocked by default), and a merged one also takes its task's worktree and local
-// branch off the machine (unless turned off); a failed pipeline, or failed checks, on an open one goes to the CI
+// status chosen in the settings (blocked by default), and a merged one also takes its task's worktree off the machine (unless turned off); a failed pipeline, or failed checks, on an open one goes to the CI
 // fixer. Only links on the configured GitLab / GitHub, so each token goes nowhere else. No Electron imports.
 import { HiveError, PIPELINE_STATUSES, type AgentRun, type MrStatus, type PipelineStatus, type TaskStatus } from "@xdev-hive/core";
 import { failureId, githubJobs } from "#desktop/main/github/checks.ts";
@@ -173,8 +172,9 @@ export class MrWatcher {
             change.taskError = (err as Error).message;
           }
         }
-        if (status === "merged" && s.mr.cleanupOnMerge) {
-          change.cleanup = this.#cleanup(run, seen.headSha);
+        const done = status === "merged" && (await this.#host.backend().call("tasks.list", { project: run.project }, mrActor(this.#host))).some(t => t.id === run.taskId && t.status === "done");
+        if (done && s.mr.cleanupOnMerge && (this.#host.worktreeCleanupEnabled?.() ?? true)) {
+          change.cleanup = await this.#cleanup(run, seen.headSha);
           if (change.cleanup) change.run = store.get(run.id)!;
         }
         changes.push(change);
@@ -215,18 +215,24 @@ export class MrWatcher {
   }
 
   /**
-   * Takes the merged task's worktree and local branch off this machine (see cleanupMerged), but not while the task
+   * Takes the merged task's worktree off this machine and keeps its branch (see cleanupMerged), but not while the task
    * has a run queued or going: that run works in them. What happened goes on the run's MR note, so a kept worktree
    * says why on the Board. null: the project is not on this machine.
    */
-  #cleanup(run: AgentRun, headSha: string | null): MergedCleanup | null {
+  async #cleanup(run: AgentRun, headSha: string | null): Promise<MergedCleanup | null> {
     const project = this.#host.projects().find((p) => p.name === run.project);
     if (!project) return null;
     const store = this.#host.store();
     const branch = branchFor(run.taskId);
-    const result: MergedCleanup = store.activeForTask(run.project, run.taskId)
+    const pending = this.#host.mode() === "hub" ? await Promise.all([
+      this.#host.backend().call("runs.list", { project: run.project, taskId: run.taskId, activeOnly: true, limit: 1 }, mrActor(this.#host)),
+      this.#host.backend().call("runs.requests", { project: run.project, taskId: run.taskId, pendingOnly: true, limit: 1 }, mrActor(this.#host)),
+    ]) : null;
+    const activeElsewhere = pending && (pending[0].some(r => r.status === "queued" || r.status === "running") || pending[1].some(r => r.taskId === run.taskId && r.status === "pending"));
+    const result: MergedCleanup = store.activeForTask(run.project, run.taskId) || this.#host.worktreeActive?.(run.project, run.taskId) || activeElsewhere
       ? { worktree: false, branch: false, kept: "active", reason: null }
       : cleanupMerged(project.repo, run.worktree, branch, headSha);
+    if (run.worktree) store.logWorktree({ at: this.#now().toISOString(), project: run.project, taskId: run.taskId, path: run.worktree, reason: "merged", ok: result.worktree, error: result.kept ? cleanupNote(result, branch) : null });
     const line = cleanupNote(result, branch);
     const now = store.get(run.id)!;
     if (line) store.update(run.id, { mrNote: [now.mrNote, line].filter(Boolean).join(" · ") });

@@ -13,6 +13,7 @@ export type WebPage =
   | "features"
   | "tasks"
   | "runs"
+  | "artifacts"
   | "docs"
   | "skills"
   | "memory"
@@ -30,7 +31,7 @@ export type WebPage =
 export const WEB_MENU: Array<{ label: MessageKey | null; ids: WebPage[] }> = [
   { label: null, ids: ["today", "chat"] },
   { label: "nav.groupDoing", ids: ["graph", "features", "tasks", "runs"] },
-  { label: "nav.groupKnowledge", ids: ["docs", "skills", "memory"] },
+  { label: "nav.groupKnowledge", ids: ["docs", "skills", "memory", "artifacts"] },
   { label: "nav.groupProject", ids: ["pipeline", "settings"] },
   { label: "nav.groupMachines", ids: ["machines"] },
   { label: "nav.groupHubAdmin", ids: ["admin"] },
@@ -112,6 +113,7 @@ export function webPages(me: Me, projects: string[], caps: WebCaps): Set<WebPage
   if (viewer) ids.add("graph");
   if (me.mode === "hub") {
     ids.add("runs");
+    if (viewer) ids.add("artifacts");
     ids.add("machines");
     if (admin || anywhere(me, projects, "chatUse")) ids.add("chat");
   }

@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   WORK_ROLES,
+  chatPlanSchema,
   AGENT_ROLES,
   ARTIFACT_DIR,
   cacheReadShare,
@@ -55,7 +56,7 @@ Put anything worth sharing (decisions, gotchas, the handoff) in your final messa
 // A chat leader (the hub's token for one reply) changes nothing on the board itself: it proposes, a project manager confirms.
 const LEADER_INSTRUCTIONS = `
 You are the project's leader in the Hive chat: read skill_get hive-leader first. You cannot create or move tasks or queue runs yourself: propose them with
-propose_task, propose_task_status, propose_task_classify, propose_task_agent (give a task to one agent, which the hub then starts by itself) and propose_run, and say in your reply what you proposed. A project manager confirms or
+propose_plan (a short spec, tasks with acceptance criteria and dependencies, and expected batches), propose_task, propose_task_status, propose_task_classify, propose_task_agent (give a task to one agent, which the hub then starts by itself) and propose_run, and say in your reply what you proposed. A project manager confirms or
 sets aside each one in the chat, and it runs with their rights; a kind the project lets you run on your own runs at once,
 as the person who wrote to you (the answer says done or failed): say which ran and which wait. The same for the rest of the project's operations, always on the chat's project: propose_cancel_run (stop a queued or running run),
 propose_merge (merge a run's MR/PR), propose_profile (turn a machine's plan on or off, or change its priority),
@@ -787,6 +788,15 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       ? z.string().describe("Required here: the project this is for (project_list)")
       : z.string().optional().describe("Left out: the chat's project");
     const aimed = (p: string | undefined) => (p ? { project: p } : {});
+    server.registerTool(
+      "propose_plan",
+      {
+        title: "Propose a plan",
+        description: "Propose one complete plan: a NEW spec at project/<service>/<slug> or system/<system>/<slug>, tasks with acceptance criteria and dependsOn, and expected batches covering every task once. Tasks may name other services of the same system. Ask only for real decisions (design direction, dropping requirements, widening permissions or production changes). Report actual progress using task_list and run_list; never claim a batch shipped without evidence." + confirm,
+        inputSchema: { ...chatPlanSchema.shape, project: aim, reason },
+      },
+      async ({ reason: why, ...plan }) => run("chat.propose", { action: { ...plan, kind: "plan.create" }, reason: why }),
+    );
     server.registerTool(
       "propose_task",
       {
