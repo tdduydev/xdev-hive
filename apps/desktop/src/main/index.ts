@@ -839,7 +839,8 @@ function onHub(update: HubUpdate): void {
   hubState = update;
   // The catalog decides the machine's tool:<id> items and Spec Kit's version: check again when it changed, so admins
   // see a tool turned on or bumped without waiting for the 10-minute check.
-  if (JSON.stringify(update.tools ?? null) !== catalogBefore) void refreshSetup().catch(() => undefined);
+  if (JSON.stringify(update.tools ?? null) !== catalogBefore || update.toolApprovals?.length) void refreshSetup().catch(() => undefined);
+  if (update.toolApprovals?.length) void runner.tick();
   if (!smokeShot) void watchAlerts();
   if (update.profileChanges?.length) takeProfileChanges(update.profileChanges);
   if (update.mergeRuns?.length) void takeMerges(update.mergeRuns);
@@ -1721,6 +1722,9 @@ if (!app.requestSingleInstanceLock()) {
         token: (id) => config.agentTokens[id],
         gitlab: () => config.gitlab.url || null,
         toolTrust: () => config.toolTrust,
+        applyToolTrust: (toolTrust) => {
+          persist({ ...config, toolTrust });
+        },
       },
       {
         dataDir: path.dirname(configPath()),

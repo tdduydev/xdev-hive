@@ -2442,6 +2442,71 @@ async function main() {
     await tab.waitFor("the Task page with the two agents", () => location.hash.startsWith("#/tasks") && document.body.innerText.includes("Đã chọn 2 agent trên Bản đồ agent"));
   });
 
+  await step("tool-approve-web", async () => {
+    const machineName = "tool-approve-hidden";
+    const toolId = "web-approval";
+    const entry = {
+      id: toolId, name: "Web approval fixture", description: "", kind: "cli",
+      package: { registry: "npm", name: "web-approval-fixture", version: "1.2.3" },
+      mcp: null, plugin: null, hooks: [], agents: ["claude", "codex"],
+      check: ["web-approval-fixture", "--version"], install: ["npm", "install", "--global", "{package}"],
+      prepare: null, env: {}, secretEnv: [], license: "MIT", homepage: null, handler: null, enabledByDefault: true,
+    };
+    const saved = await rpc("tools.save", { entry });
+    const machineRpc = async (input) => {
+      const response = await fetch(`${base}/api/rpc`, {
+        method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": `runner.${machineName}` },
+        body: JSON.stringify({ method: "machines.heartbeat", input: { machine: machineName, instance: "58b58b58", projects: ["payment"], acceptsRuns: false, ...input } }),
+      });
+      const body = await response.json();
+      if (body.error) throw new Error(body.error.message);
+      return body.result;
+    };
+    await machineRpc({ toolStates: [{ id: toolId, hash: "0".repeat(64), trust: "new" }] });
+    const machine = (await rpc("machines.list")).find((m) => m.machine === machineName);
+    const tool = (await rpc("machines.tools", { machineId: machine.id })).tools[0];
+    await machineRpc({ toolStates: [{ id: toolId, hash: tool.hash, trust: "new" }] });
+    const panel = `[data-machine-tools="${machineName}"]`;
+    const row = `${panel} [data-machine-tool="${toolId}"]`;
+    const openTools = async (tab) => {
+      current = tab;
+      await tab.reload();
+      await tab.go("machines");
+      await tab.waitFor("tool section", (selector) => document.querySelector(selector), panel);
+      await tab.click(`${panel} summary`);
+      await tab.waitFor("tool commands", (selector) => document.querySelector(`${selector} pre`)?.textContent.includes("web-approval-fixture@1.2.3"), row);
+    };
+    await openTools(tabs.hoa);
+    expect(await tabs.hoa.eval((selector) => !document.querySelector(`${selector} [data-approve-tool]`), row), "a member sees commands and state without an approval button");
+    await openTools(tabs.admin);
+    if (mobile) {
+      const bounds = await tabs.admin.eval((selector) => {
+        const button = document.querySelector(`${selector} [data-approve-tool]`).getBoundingClientRect();
+        return { width: button.width, height: button.height, overflow: document.documentElement.scrollWidth > innerWidth };
+      }, row);
+      expect(bounds.height >= 44 && bounds.width >= 44 && !bounds.overflow, `tool approval mobile bounds: ${JSON.stringify(bounds)}`);
+    }
+    await tabs.admin.click(`${row} [data-approve-tool]`);
+    const approval = await until("tool approval", async () => (await rpc("machines.tools", { machineId: machine.id })).tools[0]?.approval);
+    await tabs.admin.waitFor("waiting for heartbeat", (selector) => document.querySelector(selector)?.textContent.includes("chờ máy nhận"), row);
+    await tabs.admin.shot(`${String(n).padStart(2, "0")}-tool-approve-pending`);
+    expect((await machineRpc({})).toolApprovals.some((a) => a.id === approval.id), "hidden machine receives the pinned decision");
+    await machineRpc({ appliedToolApprovals: [approval.id], toolStates: [{ id: toolId, hash: tool.hash, trust: "trusted" }] });
+    await openTools(tabs.admin);
+    await tabs.admin.waitFor("approval applied", (selector) => document.querySelector(selector)?.textContent.includes("Đã cho phép"), row);
+    expect(await tabs.admin.eval((selector) => !document.querySelector(`${selector} [data-approve-tool]`), row), "already allowed tool needs no approval");
+    await rpc("tools.save", { entry: { ...entry, check: ["web-approval-fixture", "--help"] }, baseVersion: saved.version });
+    await openTools(tabs.lan);
+    await tabs.lan.waitFor("owner can approve changed commands", (selector) => document.querySelector(`${selector} [data-approve-tool]`), row);
+    await tabs.lan.click(`${row} [data-approve-tool]`);
+    const changed = await until("owner's new decision", async () => {
+      const a = (await rpc("machines.tools", { machineId: machine.id })).tools[0]?.approval;
+      return a && a.hash !== approval.hash ? a : null;
+    });
+    expect(changed.approvedBy === "lan", "the owner is recorded as approver");
+    await rpc("tools.remove", { id: toolId });
+  });
+
   // Assignment uses a dedicated fake machine so open requests from earlier scenarios cannot occupy its only slot.
   await step("agent-assign", async () => {
     const machineName = "lan-assign";

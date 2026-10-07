@@ -8,6 +8,8 @@ import { tr } from "#desktop/main/i18n.ts";
 import type { UsageSample } from "./usage.ts";
 
 const SCHEMA = `
+CREATE TABLE IF NOT EXISTS tool_approval_receipts(
+  id TEXT PRIMARY KEY, acked INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS steer_messages(
   key TEXT PRIMARY KEY, run_id TEXT NOT NULL, text TEXT NOT NULL, by TEXT NOT NULL, at TEXT NOT NULL,
   delivered_at TEXT NOT NULL, hub_id INTEGER, acked INTEGER NOT NULL DEFAULT 0);
@@ -181,6 +183,22 @@ export class RunStore {
 
   saveSteering(key: string, runId: string, text: string, by: string, at: string, hubId: number | null, deliveredAt: string): void {
     this.db.prepare("INSERT OR IGNORE INTO steer_messages(key, run_id, text, by, at, hub_id, delivered_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(key, runId, text, by, at, hubId, deliveredAt);
+  }
+
+  toolApprovalApplied(id: string): boolean {
+    return !!this.db.prepare("SELECT id FROM tool_approval_receipts WHERE id = ?").get(id);
+  }
+
+  recordToolApproval(id: string): void {
+    this.db.prepare("INSERT OR IGNORE INTO tool_approval_receipts(id) VALUES (?)").run(id);
+  }
+
+  toolApprovalAcks(): string[] {
+    return (this.db.prepare("SELECT id FROM tool_approval_receipts WHERE acked = 0 LIMIT 100").all() as { id: string }[]).map((r) => r.id);
+  }
+
+  ackToolApprovals(ids: string[]): void {
+    for (const id of ids) this.db.prepare("UPDATE tool_approval_receipts SET acked = 1 WHERE id = ?").run(id);
   }
 
   steeringAcks(): number[] {
