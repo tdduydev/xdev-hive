@@ -3183,7 +3183,7 @@ export const vi = {
     planChanged: "Kế hoạch đã thay đổi. Hãy tải lại.",
     planNoteRequired: "Nhập ghi chú để sửa kế hoạch.",
     releaseVersion: "Phiên bản phải có dạng 1.2.3.",
-    releaseFile: "Bản build không hợp lệ: nền tảng mac|win|linux, kiến trúc arm64|x64, loại zip|dmg|exe|AppImage.",
+    releaseFile: "Bản build không hợp lệ: nền tảng mac|win|linux, kiến trúc arm64|x64, loại zip|dmg|exe|AppImage|deb.",
     releaseNotFound: "Hub không có bản phát hành này.",
     machineTooOld: "{machine} đang chạy {version}; hub cần bản {min} trở lên để giao run.",
     updateNotReady: "Chưa có bản cập nhật nào tải xong.",

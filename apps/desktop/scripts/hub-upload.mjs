@@ -6,8 +6,8 @@ import path from "node:path";
 
 /** platform, arch and kind from electron-builder's file names (see artifactName in electron-builder.yml). */
 export function describeBuild(name) {
-  const m = /-(mac|win|linux)-(arm64|x64|x86_64)(?:-setup)?\.(dmg|zip|exe|AppImage)$/.exec(name);
-  return m ? { platform: m[1], arch: m[2] === "x86_64" ? "x64" : m[2], kind: m[3] } : null;
+  const m = /-(mac|win|linux)-(arm64|x64|x86_64|amd64)(?:-setup)?\.(dmg|zip|exe|AppImage|deb)$/.exec(name);
+  return m ? { platform: m[1], arch: ["x86_64", "amd64"].includes(m[2]) ? "x64" : m[2], kind: m[3] } : null;
 }
 
 /** How many times one file goes before the release stops. */

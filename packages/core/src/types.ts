@@ -1565,7 +1565,7 @@ export const INSTALL_WHEN = ["ask", "quit", "idle"] as const;
 export type InstallWhen = (typeof INSTALL_WHEN)[number];
 export type ReleasePlatform = "mac" | "win" | "linux";
 export type ReleaseArch = "arm64" | "x64";
-export type ReleaseKind = "zip" | "dmg" | "exe" | "AppImage";
+export type ReleaseKind = "zip" | "dmg" | "exe" | "AppImage" | "deb";
 
 export interface AppReleaseFile {
   id: number;

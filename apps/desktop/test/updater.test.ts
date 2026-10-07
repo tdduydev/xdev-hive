@@ -47,7 +47,7 @@ let nextId = 100;
 function served(body: Buffer, name: string): UpdateOffer {
   const url = `/api/releases/files/${nextId++}`;
   files.set(url, body);
-  return offer({ name, size: body.length, sha256: sha256(body) }, url);
+  return offer({ ...(name.endsWith(".AppImage") ? { platform: "linux", kind: "AppImage" } : {}), name, size: body.length, sha256: sha256(body) }, url);
 }
 
 interface Spawned {
@@ -88,6 +88,40 @@ async function settled(u: Updater): Promise<void> {
 }
 
 describe("app updater", () => {
+  it("opens a verified deb for authorized system installation without automatic quit/idle installs", async () => {
+    const opened: string[] = [];
+    const { u, spawned } = updater(true, { platform: "linux", deb: true, openPackage: async (file) => { opened.push(file); return ""; } });
+    u.offer({ ...offer({ platform: "linux", kind: "deb", name: "xdev-hive-0.80.0-linux-amd64.deb" }), installWhen: "idle" });
+    await u.download();
+    assert.equal(u.updateKind, "deb");
+    assert.equal(u.status().state, "ready");
+    assert.equal(u.installsOn("idle"), false);
+    assert.equal(u.installsOn("quit"), false);
+    await u.install({ relaunch: true });
+    assert.equal(opened.length, 1);
+    assert.ok(opened[0]!.endsWith(".deb"));
+    assert.equal(spawned.length, 0);
+    u.offer(offer({ platform: "linux", kind: "AppImage" }));
+    assert.equal(u.status().state, "failed");
+    await u.download();
+    assert.equal(opened.length, 1);
+  });
+
+  it("never opens a corrupt deb and reports an unavailable system installer", async () => {
+    let opens = 0;
+    const { u } = updater(true, { platform: "linux", deb: true, openPackage: async () => { opens++; return "No package installer"; } });
+    const deb = offer({ platform: "linux", kind: "deb", name: "xdev-hive-0.80.0-linux-amd64.deb" });
+    u.offer({ ...deb, file: { ...deb.file, sha256: "0".repeat(64) } });
+    await u.download();
+    assert.equal(u.status().state, "failed");
+    assert.equal(opens, 0);
+    u.offer(deb);
+    await u.download();
+    await assert.rejects(() => u.install({ relaunch: false }), /No package installer/);
+    assert.equal(u.status().state, "failed");
+    assert.equal(opens, 1);
+  });
+
   it("names the platform the way the hub does", () => {
     assert.equal(platformKey("darwin"), "mac");
     assert.equal(platformKey("win32"), "win");
@@ -203,7 +237,7 @@ describe("app updater: extracted Linux", () => {
 
   it("reports an unmanaged Linux layout to the hub rather than silently ignoring it", () => {
     const { u } = updater(true, { platform: "linux", execPath: "/unmanaged/xdev-hive" });
-    u.offer(offer());
+    u.offer(offer({ platform: "linux", kind: "AppImage" }));
     assert.equal(u.report().state, "failed");
     assert.match(u.report().error!, /current symlink/);
   });
