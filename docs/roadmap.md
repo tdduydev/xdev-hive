@@ -331,7 +331,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 - **62. chat-control** (hỏi 7/10: "phần chat trên giao diện client để giao task, nghiên cứu… cho dễ quản trị trên Hive"): chat là chỗ quản trị chính. Spec: [docs/specs/62-chat-control.md](specs/62-chat-control.md). Tách:
   - [ ] **62a. codex-leader**: leader chạy bằng gói Codex (phiên resume, MCP, propose), tự sang Codex khi Claude hết quota.
   - [ ] **62b. research-from-chat**: đề xuất `research.start` → run nghiên cứu chỉ đọc, báo cáo làm artifact và tài liệu nháp, nút *Biến thành Kế hoạch*.
-  - [ ] **62c. chat-shortcuts**: lệnh `/giao`, `/nghiencuu`, `/tinhtrang`, `/phathanh`, `/huy`, `/giaolai`, hàng chip trên ô chat.
+  - [ ] **62c. chat-shortcuts**: lệnh tiếng Anh có gợi ý khi gõ `/`: `/assign`, `/research`, `/status`, `/release`, `/cancel`, `/retry`, hàng chip trên ô chat.
   - [ ] **62d. chat-everywhere**: khung *Hỏi leader* mở từ mọi trang, mang ngữ cảnh trang đang xem.
 
 ## Sửa lỗi
