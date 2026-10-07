@@ -687,6 +687,7 @@ const MIGRATIONS: string[] = [
   UPDATE run_records SET instructions = (SELECT q.instructions FROM run_requests q
     WHERE q.machine_id = run_records.machine_id AND q.run_id = run_records.run_id AND q.status = 'accepted'
     ORDER BY q.id DESC LIMIT 1);
+  `,
   // Large boards must stop at the list limit without sorting their entire history. Request housekeeping also runs
   // on every list read, so index its time windows rather than visiting every retained request.
   `
