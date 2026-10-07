@@ -159,7 +159,8 @@ export function AccountMenu({
             </span>
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="top" align="start" className="w-64">
+        {/* Opened from the phone navigation Sheet (--z-drawer) too: the default dropdown layer would sit beneath it. */}
+        <DropdownMenuContent side="top" align="start" className="z-(--z-dialog) w-64">
           <DropdownMenuLabel className="flex flex-col gap-1.5 pt-2 type-body-sm tracking-normal normal-case">
             <span className="flex items-center gap-2">
               <span className="min-w-0 flex-1 truncate font-semibold text-fg-strong normal-case tracking-normal">{name}</span>

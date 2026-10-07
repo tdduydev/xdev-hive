@@ -820,8 +820,12 @@ async function main() {
     await tab.click("#password");
     await tab.type(people.hoa.password);
     await tab.key("Enter");
+    if (mobile) {
+      // The phone menu is a Sheet, mounted only while open: the account line is inside it.
+      await tab.waitFor("Hoa signed in", () => !document.querySelector("#username") && !!document.querySelector('button[aria-label="Ẩn hoặc hiện thanh bên"]'));
+      await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
+    }
     await tab.waitFor("Hoa signed in", () => !document.querySelector("#username") && document.body.innerText.includes("@hoa"));
-    if (mobile) await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
     // A member's menu has no project settings or hub administration (Máy & agent, the team's machines, stays).
     const nav = await tab.eval(() => document.querySelector("nav")?.innerText ?? "");
     for (const label of ["Cài đặt service", "Quản trị", "Đội máy", "Hàng đợi", "Nhật ký"]) expect(!nav.includes(label), `${label} in Hoa's menu:\n${nav}`);
