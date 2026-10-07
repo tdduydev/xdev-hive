@@ -1,3 +1,4 @@
+import { runTimeoutSettingsSchema, type RunTimeoutSettings } from "#core/run-timeout.ts";
 import { diffReviewSchema } from "#core/diff-review.ts";
 import { cleanupSuggestionSchema, MEMORY_CLEANUP_ERRORS, type MemoryCleanupSetting, type MemoryCleanupRun, type MemoryCleanupProposal } from "#core/memory-cleanup.ts";
 import { z } from "zod";
@@ -143,6 +144,7 @@ const setupReport = z.object({
 });
 const reportedProfile = z.object({
   supportedModels: z.array(z.string().max(100)).max(200).nullable().optional(),
+  timeoutMinutes: z.number().int().min(1).max(720).optional(),
   sessionResetsAt: z.string().nullable().optional(),
   weekResetsAt: z.string().nullable().optional(),
   running: z.number().int().nonnegative().optional(),
@@ -699,7 +701,10 @@ export const schemas = {
    * A project manager asks one machine to start a run, as its Board would: the machine gets it with its next
    * heartbeat. Only a machine that is online, accepts runs from the hub and has the project's repo.
    */
+  "runs.timeoutSettings": z.object({}),
+  "runs.setTimeoutSettings": runTimeoutSettingsSchema,
   "runs.dispatch": z.object({
+    timeoutMinutes: z.number().int().min(1).max(720).nullable().default(null),
     machineId: machineRef.nullable().default(null),
     project,
     taskId,
@@ -1221,6 +1226,8 @@ export interface MethodOutput {
   "runs.steer": RunMessage;
   "runs.merge": RunRecord;
   "runs.mergeResult": RunRecord;
+  "runs.timeoutSettings": RunTimeoutSettings;
+  "runs.setTimeoutSettings": RunTimeoutSettings;
   "runs.dispatch": RunRequest;
   "runs.prompt": { task: Task; request: RunRequest };
   "runs.dispatchMany": RunGroup;
@@ -1400,6 +1407,8 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "runs.merge": "agent",
   "runs.mergeResult": "agent",
   // Also "manage" on the project: a project manager, never an agent token.
+  "runs.timeoutSettings": "viewer",
+  "runs.setTimeoutSettings": "admin",
   "runs.dispatch": "agent",
   // Also "manage" on the project as runs.dispatch, and creating its tasks.
   "runs.prompt": "agent",

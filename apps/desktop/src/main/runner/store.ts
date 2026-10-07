@@ -74,6 +74,8 @@ const ADDED_COLUMNS: Array<[name: string, ddl: string]> = [
   ["diff_review", "TEXT"],
   ["diff_summary_for", "TEXT"],
   ["diff_patch", "TEXT"],
+  ["timeout_minutes", "REAL"],
+  ["continuation", "TEXT"],
 ];
 
 type Row = Record<string, unknown>;
@@ -84,6 +86,8 @@ const column = (field: string) => field.replace(/[A-Z]/g, (c) => `_${c.toLowerCa
 function toRun(r: Row): AgentRun {
   const s = (v: unknown) => (v == null ? null : String(v));
   return {
+    timeoutMinutes: r.timeout_minutes == null ? null : Number(r.timeout_minutes),
+    continuation: s(r.continuation),
     plan: r.plan == null ? null : JSON.parse(String(r.plan)),
     id: String(r.id),
     project: String(r.project),
@@ -145,7 +149,7 @@ const encode = (field: string, value: unknown) =>
   JSON_FIELDS.has(field) ? JSON.stringify(value) : BOOL_FIELDS.has(field) ? (value ? 1 : 0) : (value ?? null);
 
 export type NewRun = Pick<AgentRun, "project" | "taskId" | "taskTitle" | "role" | "attempt" | "maxAttempts"> &
-  Partial<Pick<AgentRun, "preferredProfile" | "preferKind" | "avoidKinds" | "excludedProfiles" | "parentRunId" | "worktree" | "branch" | "baseSha" | "instructions" | "reviewAfter" | "ciFix" | "bestOf" | "requestedBy" | "selection" | "plan" | "diffSummaryFor">>;
+  Partial<Pick<AgentRun, "preferredProfile" | "preferKind" | "avoidKinds" | "excludedProfiles" | "parentRunId" | "worktree" | "branch" | "baseSha" | "instructions" | "reviewAfter" | "ciFix" | "bestOf" | "requestedBy" | "selection" | "plan" | "diffSummaryFor" | "timeoutMinutes">>;
 
 export const ACTIVE: RunStatus[] = ["queued", "running"];
 

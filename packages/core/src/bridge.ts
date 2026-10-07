@@ -315,6 +315,9 @@ export interface AgentProfileStatus extends AgentProfile {
 }
 
 export interface AgentRun {
+  timeoutMinutes?: number | null;
+  /** Resume hint saved after a timeout, including the last activity and committed branch tip. */
+  continuation?: string | null;
   plan?: import("#core/plan-approval.ts").RunPlan | null;
   diffReview?: DiffReview | null;
   diffSummaryFor?: string | null;
@@ -431,6 +434,7 @@ export interface BestOf {
 }
 
 export interface StartRunRequest {
+  timeoutMinutes?: number | null;
   project: string;
   taskId: string;
   role?: AgentRole;

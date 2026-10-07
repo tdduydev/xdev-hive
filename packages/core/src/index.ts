@@ -22,6 +22,7 @@ export * from "./mirror.ts";
 export * from "./policy.ts";
 export * from "./sdlc.ts";
 export * from "./plan-approval.ts";
+export * from "#core/run-timeout.ts";
 export * from "./secrets.ts";
 export * from "./source.ts";
 export * from "./speckit.ts";

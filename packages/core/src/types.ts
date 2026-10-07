@@ -376,6 +376,8 @@ export interface MachineSetupMissing {
 
 /** A subscription profile as a machine reports it to the hub: no command line, no env. */
 export interface ReportedProfile extends QuotaOutlook {
+  /** Older runners omit this and the hub uses the historical 60-minute default. */
+  timeoutMinutes?: number;
   planApproval?: boolean;
   /** null/absent: discovery unavailable, not evidence of support. */
   supportedModels?: string[] | null;
@@ -957,6 +959,8 @@ export interface RunRequestError {
  * heartbeat, queues it like a run started on its Board, and says whether it took it (runs.requestResult).
  */
 export interface RunRequest {
+  /** Resolved hub deadline in minutes; absent on older hubs. The runner also applies its profile ceiling. */
+  timeoutMinutes?: number | null;
   plan?: import("#core/plan-approval.ts").RunPlan | null;
   id: number;
   /** The machine's hub actor. */
