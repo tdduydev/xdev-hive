@@ -1840,6 +1840,17 @@ async function main() {
 
   await step("hub-page", async () => {
     const tab = (current = tabs.admin);
+    await tab.go("admin/overview");
+    await tab.waitFor("startup log card", () => document.body.innerText.includes("Sau lần khởi động này") && document.body.innerText.includes("Backup lúc khởi động"));
+    expect(await tab.eval(() => document.body.innerText.includes("Giữ log 24 giờ")), "log retention and alert threshold are explained");
+    await tab.eval(() => [...document.querySelectorAll("h2")].find((h) => h.textContent === "Sau lần khởi động này")?.closest("section")?.scrollIntoView({ block: "start", behavior: "instant" }));
+    await tab.waitFor("startup card in view", () => {
+      const card = [...document.querySelectorAll("h2")].find((h) => h.textContent === "Sau lần khởi động này")?.closest("section");
+      const rect = card?.getBoundingClientRect();
+      return rect && rect.top >= 0 && rect.top < innerHeight;
+    });
+    await tab.shot("startup-log-card");
+    if (mobile) expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "startup log card overflows phone");
     await tab.go("admin/hub");
     await tab.waitFor("the hub's cards", () => ["Tệp tài liệu", "Backup"].every((t) => document.body.innerText.includes(t)));
   });

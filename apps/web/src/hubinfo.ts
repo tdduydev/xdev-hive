@@ -1,3 +1,4 @@
+import type { DeployLog } from "#web/deploy-log.ts";
 // Trang Hub (docs/design/2026-09-redesign, xDev Hive Web Admin; roadmap 22n): what the hub is and how it is doing, for
 // hub admins, and a backup made on request.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -9,6 +10,7 @@ import type { UserStore } from "./users.ts";
 
 export interface HubInfoOptions {
   hive: SqliteHive;
+  deployLog?: DeployLog;
   dbPath: string;
   users?: UserStore;
   backup?: { dir: string; hours: number; keep: number } | null;
@@ -65,6 +67,7 @@ export class HubInfoSource {
       node: process.version,
       container: existsSync("/.dockerenv"),
       startedAt: this.#startedAt.toISOString(),
+      deployLog: o.deployLog?.info(),
       uptimeSeconds: Math.round((o.now().getTime() - this.#startedAt.getTime()) / 1000),
       db: {
         path: o.dbPath,

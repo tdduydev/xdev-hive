@@ -1,3 +1,4 @@
+import { hubLog } from "#web/deploy-log.ts";
 import { createHash, type Hash } from "node:crypto";
 import { createWriteStream, rmSync } from "node:fs";
 import path from "node:path";
@@ -121,7 +122,7 @@ function sendError(res: Response, err: unknown): void {
     res.status(HTTP_STATUS[err.code]).json({ error: toErrorPayload(err) });
     return;
   }
-  console.error("[xdev-hive]", err);
+  hubLog.error("[xdev-hive]", err);
   res.status(500).json({ error: { code: "internal", message: "Internal error" } });
 }
 
@@ -421,7 +422,7 @@ export function createHubApp({
 
   const ssoBack = (res: Response, err: unknown) => {
     const key = err instanceof HiveError && (SSO_ERRORS as readonly string[]).includes(err.key ?? "") ? err.key! : "errors.ssoProvider";
-    if (!(err instanceof HiveError)) console.error("[xdev-hive] SSO", err);
+    if (!(err instanceof HiveError)) hubLog.error("[xdev-hive] SSO", err);
     res.redirect(302, `/?sso_error=${encodeURIComponent(key)}`);
   };
 
@@ -883,7 +884,7 @@ export function createHubApp({
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
     } catch (err) {
-      console.error("[xdev-hive] mcp", err);
+      hubLog.error("[xdev-hive] mcp", err);
       if (!res.headersSent) res.status(500).json({ jsonrpc: "2.0", error: { code: -32603, message: "Internal error" }, id: null });
     }
   });

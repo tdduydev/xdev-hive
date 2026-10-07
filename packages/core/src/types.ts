@@ -133,7 +133,19 @@ export interface DocAssistJob extends DocAssist {
   code: string[];
 }
 
-/** The hub itself (hub.info, roadmap 22n): what runs, its database and backups, search, sign-in, hosts. */
+/** Redacted diagnostics retained by the current hub process for at most 24 hours. */
+export interface DeployLogInfo {
+  startedAt: string;
+  backup: "off" | "ok" | "skipped" | "error";
+  threshold: number;
+  /** Lines evicted by the memory safety limit; counts cover retained lines only. */
+  dropped: number;
+  errors: number;
+  warnings: number;
+  groups: Array<{ key: string; level: "error" | "warning"; message: string; count: number; hourCount: number; lastAt: string }>;
+}
+
+/** The hub itself (hub.info): database, backups, diagnostics, search, sign-in and hosts. */
 export interface HubInfo {
   /** The xDev Hive version the hub was built from (the app's version), and its commit when the deploy said. */
   version: string;
@@ -142,6 +154,7 @@ export interface HubInfo {
   container: boolean;
   startedAt: string;
   uptimeSeconds: number;
+  deployLog?: DeployLogInfo;
   db: { path: string; bytes: number; walBytes: number; counts: Record<"docs" | "memory" | "tasks" | "runs" | "machines" | "users", number> };
   /** null: HIVE_BACKUP_DIR is not set. */
   backup: { dir: string; hours: number; keep: number; last: string | null; count: number } | null;
@@ -751,6 +764,7 @@ export const ALERT_RULES = [
   "backup_overdue",
   "budget_near",
   "budget_exceeded",
+  "hub_log_repeat",
 ] as const;
 export type AlertRule = (typeof ALERT_RULES)[number];
 export type AlertSeverity = "high" | "medium" | "low";
