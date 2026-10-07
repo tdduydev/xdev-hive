@@ -9,6 +9,7 @@
   "type": "module",
   "imports": {
     "#desktop/scripts/*": "./scripts/*",
+    "#desktop/test/*": "./test/*",
     "#desktop/*": "./src/*"
   },
   "main": "out/main/index.js",
