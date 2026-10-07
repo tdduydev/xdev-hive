@@ -524,6 +524,8 @@ export const schemas = {
     projects: z.array(project).max(200).optional(),
     /** The user lets project managers queue runs on this machine from the web. */
     acceptsRuns: z.boolean().optional(),
+    /** Temporary intake hold for an app update; keep previously dispatched requests pending. */
+    updateDraining: z.boolean().optional(),
     runs: z
       .array(
         z.object({
@@ -1157,6 +1159,8 @@ export interface MethodOutput {
   "tasks.agentQueue": TaskAgentQueueItem[];
   "tasks.notes": TaskNote[];
   "machines.heartbeat": {
+    /** Supports preserving pending work during a temporary app-update hold. */
+    supportsUpdateDrain?: boolean;
     duplicate: boolean;
     cooldowns: QuotaCooldown[];
     policy: TeamPolicy;

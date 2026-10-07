@@ -466,6 +466,8 @@ export interface AppUpdateStatus {
   installWhen: "ask" | "quit" | "idle" | null;
   notes: string | null;
   supported: boolean;
+  idleState?: "waiting" | "retry" | null;
+  idleDeadline?: number | null;
 }
 
 /** Whether this machine's last heartbeat reached the hub (hub mode); ok null before the first one or in local mode. */

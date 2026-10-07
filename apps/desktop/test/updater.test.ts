@@ -1,14 +1,13 @@
 import assert from "node:assert/strict";
 import { execFile, type SpawnOptions } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
-import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { after, before, describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { promisify } from "node:util";
 import { HiveError, type UpdateOffer } from "@xdev-hive/core";
+import { updateCommand } from "#desktop/main/linux-update.ts";
 import { platformKey, Updater, type UpdaterHost, type UpdateStatus } from "#desktop/main/updater.ts";
 
 const testTmpDirs = new Set<string>();
@@ -22,24 +21,17 @@ const run = promisify(execFile);
 const sha256 = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 const bytes = Buffer.from("the 0.80.0 build");
 const sha = sha256(bytes);
-let hub = "";
-let close: () => void;
+const hub = "https://update-test.invalid";
 const seenTokens: string[] = [];
 /** What the fake hub serves, by URL: tests add builds of their own (a real .zip for the macOS install). */
 const files = new Map<string, Buffer>([["/api/releases/files/7", bytes]]);
 
-before(async () => {
-  const server = createServer((req, res) => {
-    seenTokens.push(String(req.headers.authorization ?? ""));
-    const body = files.get(req.url ?? "");
-    if (!body) return void res.writeHead(404).end();
-    res.writeHead(200, { "content-length": String(body.length) }).end(body);
-  });
-  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  hub = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  close = () => server.close();
-});
-after(() => close());
+// No listener is needed: the updater's transport still supplies real Web streams and checksums.
+const fetchBuild: typeof fetch = async (input, init) => {
+  seenTokens.push(new Headers(init?.headers).get("authorization") ?? "");
+  const body = files.get(new URL(String(input)).pathname);
+  return body ? new Response(new Uint8Array(body), { headers: { "content-length": String(body.length) } }) : new Response(null, { status: 404 });
+};
 
 const offer = (over: Partial<UpdateOffer["file"]> = {}, url = "/api/releases/files/7"): UpdateOffer => ({
   version: "0.80.0",
@@ -74,6 +66,7 @@ function updater(packaged = true, over: Partial<UpdaterHost> = {}) {
     dataDir,
     hub: () => ({ url: hub, token: "machine-token" }),
     packaged,
+    fetch: fetchBuild,
     platform: "darwin",
     execPath: "/Applications/xDev Hive.app/Contents/MacOS/xDev Hive",
     onChange: (s) => changes.push(s),
@@ -169,6 +162,75 @@ describe("app updater", () => {
     await dev.u.download();
     assert.equal(dev.u.status().supported, false);
     assert.notEqual(dev.u.status().state, "ready", "a dev build never replaces the app it runs from");
+  });
+});
+
+describe("app updater: extracted Linux", () => {
+  it("downloads, extracts and schedules a helper without touching current (plain or systemd)", async () => {
+    for (const service of [false, true]) {
+      const root = realpathSync(testTmpDir(path.join(os.tmpdir(), "hive-linux-runtime-")));
+      const old = path.join(root, "app-0.75.0");
+      mkdirSync(old);
+      writeFileSync(path.join(old, "xdev-hive"), "old");
+      writeFileSync(path.join(old, "AppRun"), "old launcher");
+      symlinkSync(old, path.join(root, "current"));
+      const commands: Array<{ file: string; args: string[] }> = [];
+      const { u, spawned } = updater(true, {
+        platform: "linux", execPath: path.join(old, "xdev-hive"), cgroup: service ? "0::/user.slice/hive.service" : "0::/",
+        command: async (file, args, options) => {
+          commands.push({ file, args });
+          if (file === "systemctl") return { stdout: args.includes("--property=ExecStart") ? `${root}/current/AppRun` : "/user.slice/hive.service" };
+          if (file === "systemd-run") return { stdout: "scheduled" };
+          return updateCommand(file, args, options);
+        },
+      });
+      const fixture = Buffer.from('#!/bin/sh\nmkdir squashfs-root\nprintf "#!/bin/sh\\nexit 0\\n" > squashfs-root/AppRun\nchmod +x squashfs-root/AppRun\n');
+      u.offer(served(fixture, "xdev-hive-0.80.0-linux-x64.AppImage"));
+      assert.equal(u.status().supported, true);
+      await u.download();
+      await u.install({ relaunch: true, hidden: true });
+      assert.equal(realpathSync(path.join(root, "current")), old);
+      assert.ok(existsSync(path.join(root, "app-0.80.0", "AppRun")));
+      assert.equal(spawned.length, service ? 0 : 1);
+      if (service) {
+        const call = commands.find((c) => c.file === "systemd-run")!;
+        assert.ok(call.args.includes("--user"));
+        assert.ok(call.args.includes("--collect"));
+        assert.ok(call.args.includes("--setenv=UNIT=hive.service"));
+      } else assert.equal(spawned[0]!.options.env!.CURRENT, path.join(root, "current"));
+    }
+  });
+
+  it("reports an unmanaged Linux layout to the hub rather than silently ignoring it", () => {
+    const { u } = updater(true, { platform: "linux", execPath: "/unmanaged/xdev-hive" });
+    u.offer(offer());
+    assert.equal(u.report().state, "failed");
+    assert.match(u.report().error!, /current symlink/);
+  });
+
+  it("continues with a replacement offer when the old download fails", async () => {
+    const { u } = updater();
+    u.offer(offer({}, "/api/releases/files/404"));
+    const downloading = u.download();
+    u.offer({ ...offer(), version: "0.81.0", autoDownload: true });
+    await downloading;
+    await settled(u);
+    assert.equal(u.status().state, "ready");
+    assert.equal(u.status().version, "0.81.0");
+  });
+
+  it("does not make a withdrawn or replaced in-flight download ready", async () => {
+    for (const withdraw of [true, false]) {
+      const { u } = updater();
+      u.offer(offer());
+      const downloading = u.download();
+      u.offer(withdraw ? null : { ...offer(), version: "0.81.0", file: { ...offer().file, sha256: "1".repeat(64) } });
+      await downloading;
+      assert.equal(u.status().state, "idle");
+      assert.equal(u.status().version, withdraw ? null : "0.81.0");
+      assert.equal(u.installsOn("idle"), false);
+      await assert.rejects(() => u.install({ relaunch: true }));
+    }
   });
 });
 

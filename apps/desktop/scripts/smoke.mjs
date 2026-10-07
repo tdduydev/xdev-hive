@@ -40,7 +40,7 @@ execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin]);
 git("remote", "add", "origin", origin);
 git("push", "-q", "origin", "main");
 const token = "mock-gitlab-smoke-token";
-const gitlab = ["setup-guide", "run-steer"].includes(process.env.HIVE_SMOKE_ONLY)
+const gitlab = ["setup-guide", "run-steer", "idle-update"].includes(process.env.HIVE_SMOKE_ONLY)
   ? { base: "", close: async () => {} }
   : await startMockGitLab(token);
 
@@ -230,6 +230,32 @@ if (process.env.HIVE_SMOKE_ONLY === "run-steer") {
   }
   await gitlab.close();
   console.log(`run steering screenshots in ${out}`);
+  process.exit(0);
+}
+
+if (process.env.HIVE_SMOKE_ONLY === "idle-update") {
+  const file = path.join(work, "config.json");
+  const original = JSON.parse(readFileSync(file, "utf8"));
+  const selector = "#auto-update-idle";
+  for (const intake of [false, true]) {
+    writeFileSync(file, JSON.stringify({ ...original, runner: { acceptHubRuns: intake } }));
+    await shoot(`idle-update-inherit-${intake ? "on" : "off"}`, "agents", 2500, {
+      HIVE_SMOKE_SCROLL: selector,
+      HIVE_SMOKE_EXPECT: `${selector}[aria-checked="${intake}"]`,
+    });
+  }
+  await shoot("idle-update-mobile-opt-out", "agents", 2500, {
+    HIVE_SMOKE_SIZE: "390x844",
+    HIVE_SMOKE_SCROLL: selector,
+    HIVE_SMOKE_CLICK: selector,
+    HIVE_SMOKE_EXPECT: `${selector}[aria-checked="false"]`,
+    HIVE_SMOKE_ASSERT: `(() => { const control = document.querySelector('${selector}'); const label = control.closest('label'); return document.documentElement.scrollWidth <= innerWidth && label.getBoundingClientRect().height >= 44 && control.getAttribute('aria-describedby') === 'auto-update-idle-hint'; })()`,
+  });
+  const saved = JSON.parse(readFileSync(file, "utf8")).runner;
+  if (saved.autoUpdateIdle !== false || saved.acceptHubRuns !== true) throw new Error("smoke: explicit idle-update opt-out did not persist independently of intake");
+  await shoot("idle-update-reloaded", "agents", 2500, { HIVE_SMOKE_SCROLL: selector, HIVE_SMOKE_EXPECT: `${selector}[aria-checked="false"]` });
+  await gitlab.close();
+  console.log(`idle update screenshots in ${out}`);
   process.exit(0);
 }
 

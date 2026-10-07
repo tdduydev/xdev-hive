@@ -136,6 +136,18 @@ describe("chat with a project's leader", () => {
     assert.equal(await refusal(hive.call("chat.cancel", { replyId: reply.id }, lead)), "errors.chatReplyEnded");
   });
 
+  it("holds a pending reply during an app update and delivers it when intake resumes", async () => {
+    const { hive, beat } = await hub();
+    await beat(mbp);
+    const sent = await hive.call("chat.send", { project: "app", machineId: mbp.name, text: "Wait for the update" }, lead);
+    const draining = await beat(mbp, { acceptsRuns: false, updateDraining: true });
+    assert.equal(draining.supportsUpdateDrain, true);
+    assert.deepEqual(draining.chatRequests, []);
+    const kept = await hive.call("chat.get", { threadId: sent.thread.id }, lead);
+    assert.equal(kept!.messages.find((m) => m.id === sent.reply.id)!.status, "pending");
+    assert.equal((await beat(mbp)).chatRequests[0]!.replyId, sent.reply.id);
+  });
+
   it("expires a reply nobody took, fails one gone silent, and fails waiting ones when the machine stops taking runs", async () => {
     const { hive, beat, later } = await hub();
     await beat(mbp);
