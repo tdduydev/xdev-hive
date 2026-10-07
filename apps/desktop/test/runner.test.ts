@@ -27,6 +27,7 @@ import { planningProfile } from "#desktop/main/runner/plan-approval.ts";
 import { canClassify, CLASSIFY_INPUT_TOKENS, CLASSIFY_TIMEOUT_MS, classifierCommand, classifierResult, classifyPrompt } from "#desktop/main/runner/classify.ts";
 import { syncProject } from "#desktop/main/sync.ts";
 import { readSyncOutcome } from "@xdev-hive/core";
+import { sysBin } from "#desktop/test/fixtures/sys-path.ts";
 
 const testTmpDirs = new Set<string>();
 function testTmpDir(prefix: string): string {
@@ -106,6 +107,8 @@ async function setup(
   git(repo, "commit", "-qm", "init");
   const hive = machine.hive ?? new SqliteHive(":memory:");
   const record = path.join(tmp("rec"), "calls.jsonl");
+  const home = tmp("home");
+  const pathEnv = [machine.bin, sysBin()].filter(Boolean).join(path.delimiter);
   // A hub names actors "<label>@<token name>"; mimic that to test hub mode without a server.
   const hubLike: HiveBackend = { call: (m, i, a) => hive.call(m, i, { ...a, name: `${a.name}@duy-macbook` }) };
   const host: RunnerHost = {
@@ -115,7 +118,7 @@ async function setup(
     projects: () => machine.projects?.(repo) ?? [{ name: "demo", repo }],
     mode: () => mode,
     machine: () => machine.name ?? "duy-mbp",
-    env: () => ({ ...process.env, ...(machine.bin ? { PATH: `${machine.bin}${path.delimiter}${process.env.PATH ?? ""}` } : {}) }),
+    env: () => ({ PATH: pathEnv, HOME: home }),
     report: machine.report,
     login: machine.login,
     usage: machine.usage,
