@@ -1,6 +1,6 @@
 // The design's knowledge layout (docs/design/2026-09-redesign, xDev Hive Client: Skill, Memory): a 320px list on the
 // left, the selected item on the right with a header, a body and a bar of actions.
-import type { ReactNode } from "react";
+import React, { type ReactNode } from "react";
 import { cn } from "cn";
 
 export type ChipKind = "danger" | "warning" | "info" | "success" | "neutral" | "running";
@@ -164,5 +164,34 @@ export function KvRows({ rows }: { rows: Array<[string, ReactNode, boolean?]> })
         </div>
       ))}
     </div>
+  );
+}
+
+const BTN = {
+  primary: "bg-primary text-primary-foreground hover:bg-primary-hover",
+  secondary: "border border-action-secondary-line bg-action-secondary text-action-secondary-fg hover:bg-action-secondary-hover",
+  ghost: "text-fg-secondary hover:bg-hover hover:text-fg-strong",
+  danger: "border border-danger-line text-danger hover:bg-danger-soft",
+};
+
+/** A detail footer made of buttons (the first one runs on ↵), with a hint pushed to the right. */
+export function DetailActions({ actions, foot, busy }: { actions: Array<{ label: string; kind: keyof typeof BTN; run: () => void | Promise<void> }>; foot?: string; busy: boolean }) {
+  return (
+    <DetailFooter foot={foot}>
+      {actions.map((a) => (
+        <button
+          key={a.label}
+          type="button"
+          disabled={busy}
+          onClick={() => void a.run()}
+          className={cn(
+            "inline-flex h-[30px] cursor-pointer items-center gap-1.5 rounded-sm px-3 text-xs/none font-semibold whitespace-nowrap outline-none focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-60 max-md:min-h-11",
+            BTN[a.kind],
+          )}
+        >
+          {a.label}
+        </button>
+      ))}
+    </DetailFooter>
   );
 }

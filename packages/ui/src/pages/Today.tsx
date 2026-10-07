@@ -13,12 +13,13 @@ import { HUB_SCOPE, type ChatAction, type Memory, type SdlcGateRecord } from "@x
 import { approvalOf } from "#ui/lib/permissions.ts";
 import { Diff } from "#ui/components/Diff.tsx";
 import { requestErrorText } from "#ui/lib/runs.ts";
+import { Chip, DetailActions, DetailHeader, KvRows } from "#ui/components/panes.tsx";
 import { ErrorNote } from "#ui/components/common.tsx";
 import { DesktopConfigIssues } from "#ui/components/ConfigIssues.tsx";
 import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { errorMessage, formatTime, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT, type MessageKey, type TFunction } from "#ui/i18n/index.tsx";
-import { groupInbox, shortAgo, type InboxDone, type InboxItem, type InboxTone } from "#ui/lib/inbox.ts";
+import { groupInbox, shortAgo, type InboxDone, type InboxItem } from "#ui/lib/inbox.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 import { docOwner } from "#ui/lib/scope.ts";
 import { useInbox } from "#ui/shell/inbox.tsx";
@@ -26,20 +27,6 @@ import { useToast } from "#ui/shell/toast.tsx";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { alertDetail, alertTitle } from "./admin/Alerts.tsx";
 import { ActionItem } from "#ui/components/LeaderChat.tsx";
-
-type Kind = InboxTone | "success" | "neutral";
-
-const CHIP: Record<Kind, string> = {
-  danger: "bg-danger-soft text-danger",
-  warning: "bg-warning-soft text-warning",
-  info: "bg-info-soft text-info",
-  success: "bg-success-soft text-success",
-  neutral: "bg-neutral-soft text-neutral",
-};
-
-function Chip({ kind, children }: { kind: Kind; children: ReactNode }) {
-  return <span className={cn("inline-flex h-5 shrink-0 items-center rounded-xs px-[7px] text-[11px]/none font-semibold whitespace-nowrap", CHIP[kind])}>{children}</span>;
-}
 
 // ── Detail blocks (the design's paragraph, list, code, note, pair and key/value blocks) ──
 
@@ -88,19 +75,6 @@ function Note({ tone, children }: { tone: "info" | "warning" | "danger"; childre
   );
 }
 
-function Kv({ rows }: { rows: Array<[string, ReactNode, boolean?]> }) {
-  return (
-    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px]/5">
-      {rows.map(([k, v, mono]) => (
-        <div key={k} className="contents">
-          <span className="text-fg-muted">{k}</span>
-          <span className={cn("text-fg-strong", mono && "font-mono text-xs/5")}>{v}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function MemoryCard({ m, t }: { m: Memory; t: TFunction }) {
   return (
     <div className="flex flex-col gap-1.5 rounded-md border border-line-default bg-surface p-3">
@@ -137,13 +111,6 @@ interface Action {
   kind: "primary" | "secondary" | "ghost" | "danger";
   run: () => void | Promise<void>;
 }
-
-const BTN: Record<Action["kind"], string> = {
-  primary: "bg-primary text-primary-foreground hover:bg-primary-hover",
-  secondary: "border border-action-secondary-line bg-action-secondary text-action-secondary-fg hover:bg-action-secondary-hover",
-  ghost: "text-fg-secondary hover:bg-hover hover:text-fg-strong",
-  danger: "border border-danger-line text-danger hover:bg-danger-soft",
-};
 
 const firstLine = (s: string, max = 90) => {
   const line = s.trim().split("\n")[0] ?? "";
@@ -450,52 +417,17 @@ export function TodayPage() {
   );
 }
 
-function Header({ chips, scope, when, title }: { chips: ReactNode; scope: string; when: string; title: string }) {
-  return (
-    <div className="flex shrink-0 flex-col gap-1.5 border-b border-line-subtle px-6 pt-4 pb-3.5">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {chips}
-        <span className="font-mono text-xs/none font-medium text-fg-muted">{scope}</span>
-        <span className="text-xs/none text-fg-muted">{when}</span>
-      </div>
-      <h2 className="m-0 font-display text-lg/[26px] font-semibold text-pretty text-fg-strong">{title}</h2>
-    </div>
-  );
-}
-
-function Footer({ actions, foot, busy }: { actions: Action[]; foot: string; busy: boolean }) {
-  return (
-    <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-line-subtle bg-subtle px-6 py-[11px]">
-      {actions.map((a) => (
-        <button
-          key={a.label}
-          type="button"
-          disabled={busy}
-          onClick={() => void a.run()}
-          className={cn(
-            "inline-flex h-[30px] max-md:min-h-11 cursor-pointer items-center gap-1.5 rounded-sm px-3 text-xs/none font-semibold whitespace-nowrap outline-none focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-60",
-            BTN[a.kind],
-          )}
-        >
-          {a.label}
-        </button>
-      ))}
-      <span className="ml-auto min-w-0 text-xs/4 text-fg-muted">{foot}</span>
-    </div>
-  );
-}
-
 function DoneDetail({ entry, now, onReopen }: { entry: InboxDone; now: number; onReopen: () => void }) {
   const t = useT();
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Header chips={<Chip kind={entry.tone}>{t(`inbox.tag.${entry.kind}`)}</Chip>} scope={entry.scope} when={longAgo(entry.at, now, t)} title={entry.title} />
+      <DetailHeader chips={<Chip kind={entry.tone}>{t(`inbox.tag.${entry.kind}`)}</Chip>} scope={entry.scope} when={longAgo(entry.at, now, t)} title={entry.title} />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex max-w-[760px] flex-col gap-3 px-6 pt-[18px] pb-6">
           <P>{t("inbox.doneNote", { note: entry.note })}</P>
         </div>
       </div>
-      <Footer actions={[{ label: t("inbox.reopen"), kind: "secondary", run: onReopen }]} foot={t("inbox.doneNote", { note: entry.note })} busy={false} />
+      <DetailActions actions={[{ label: t("inbox.reopen"), kind: "secondary", run: onReopen }]} foot={t("inbox.doneNote", { note: entry.note })} busy={false} />
     </div>
   );
 }
@@ -585,7 +517,7 @@ function Detail({
         <>
           <P>{t(`inbox.waitingRun.body.${item.reason}`)}</P>
           {item.reason === "quota" && r.error ? <CodeBlock lang={t("inbox.waitingRun.error")} text={r.error} /> : r.summary ? <CodeBlock lang={t("inbox.waitingRun.summary")} text={r.summary} /> : null}
-          <Kv
+          <KvRows
             rows={[
               [t("inbox.waitingRun.task"), r.taskId, true],
               [t("inbox.waitingRun.machine"), r.machine, true],
@@ -690,7 +622,7 @@ function Detail({
       body = (
         <>
           <P>{m.content}</P>
-          <Kv
+          <KvRows
             rows={[
               [t("inbox.memory.kind"), t(`memoryKind.${m.kind}`)],
               [t("inbox.memory.scope"), m.project ?? t("inbox.shared"), true],
@@ -771,7 +703,7 @@ function Detail({
       body = (
         <>
           <P>{alertDetail(t, a)}</P>
-          <Kv rows={[[t(`alerts.severity.${a.severity}`), formatTime(a.openedAt), false]]} />
+          <KvRows rows={[[t(`alerts.severity.${a.severity}`), formatTime(a.openedAt), false]]} />
         </>
       );
       actions = [
@@ -817,7 +749,7 @@ function Detail({
         <>
           <P>{t(g.status === "escalated" ? "flow.escalated" : "flow.waiting", { gate: what.gate, mode: t(`sdlc.mode.${g.mode}`) })}</P>
           {g.note ? <CodeBlock lang={t("inbox.gate.aiNote")} text={g.note} /> : null}
-          <Kv
+          <KvRows
             rows={[
               [t("inbox.gate.task"), g.taskId, true],
               [t("inbox.gate.mode"), t(`sdlc.mode.${g.mode}`)],
@@ -879,7 +811,7 @@ function Detail({
       body = (
         <>
           <P>{t("inbox.request.body", { label: c.label })}</P>
-          <Kv rows={[[c.itemId, formatTime(c.requestedAt), true]]} />
+          <KvRows rows={[[c.itemId, formatTime(c.requestedAt), true]]} />
         </>
       );
       const answer = (approve: boolean) =>
@@ -904,14 +836,14 @@ function Detail({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Header chips={<Chip kind={item.tone}>{t(`inbox.tag.${item.kind}`)}</Chip>} scope={scopeText(item, t)} when={longAgo(item.at, now, t)} title={titleOf(item, t)} />
+      <DetailHeader chips={<Chip kind={item.tone}>{t(`inbox.tag.${item.kind}`)}</Chip>} scope={scopeText(item, t)} when={longAgo(item.at, now, t)} title={titleOf(item, t)} />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex max-w-[760px] flex-col gap-3 px-6 pt-[18px] pb-6">
           {body}
           <ErrorNote error={error} />
         </div>
       </div>
-      <Footer actions={actions} foot={t("inbox.enterHint")} busy={busy} />
+      <DetailActions actions={actions} foot={t("inbox.enterHint")} busy={busy} />
     </div>
   );
 }
