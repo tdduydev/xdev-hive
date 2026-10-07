@@ -47,7 +47,7 @@ if (!hubOnly) {
 }
 
 const assets = readdirSync(release)
-  .filter((f) => /\.(dmg|zip|exe|AppImage)$/.test(f))
+  .filter((f) => /\.(dmg|zip|exe|AppImage|deb)$/.test(f))
   .sort()
   .map((f) => path.join(release, f));
 const sums = assets.map((f) => `${createHash("sha256").update(readFileSync(f)).digest("hex")}  ${path.basename(f)}`).join("\n");
@@ -83,12 +83,15 @@ const notes = `## Tải về
 | macOS Intel | \`xdev-hive-${version}-mac-x64.dmg\` |
 | Windows x64 | \`xdev-hive-${version}-win-x64-setup.exe\` |
 | Windows ARM | \`xdev-hive-${version}-win-arm64-setup.exe\` |
+| Ubuntu/Debian x64 | \`xdev-hive-${version}-linux-amd64.deb\` |
+| Ubuntu/Debian ARM64 | \`xdev-hive-${version}-linux-arm64.deb\` |
 | Linux x64 | \`xdev-hive-${version}-linux-x86_64.AppImage\` |
 | Linux ARM64 | \`xdev-hive-${version}-linux-arm64.AppImage\` |
 
 Bản build chưa có chứng chỉ ký của Apple/Microsoft:
 - **macOS**: lần đầu mở, macOS chặn. Vào *System Settings → Privacy & Security* bấm *Open Anyway*, hoặc chạy \`xattr -dr com.apple.quarantine "/Applications/xDev Hive.app"\`.
 - **Windows**: SmartScreen hiện cảnh báo, bấm *More info → Run anyway*.
+- **Ubuntu/Debian**: \`sudo apt install ./xdev-hive-${version}-linux-amd64.deb\` (ARM64: đổi amd64 thành arm64). Cập nhật trong app tải và kiểm SHA-256, rồi mở trình cài của hệ thống; cần xác nhận quyền quản trị và mở lại app sau khi cài.
 - **Linux**: \`chmod +x xdev-hive-*.AppImage\` rồi chạy.
 
 Kiểm tra file: \`SHA256SUMS.txt\`.

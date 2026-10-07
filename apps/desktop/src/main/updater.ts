@@ -1,8 +1,8 @@
 // App updates from the hub (roadmap 22i). The heartbeat reply may offer a newer build (the hub admin's rollout); this
 // downloads it with the machine's token, checks its SHA-256, and swaps it in when the person restarts (or at quit, or
 // once no run is going, as the rollout says). macOS: the .zip replaces the .app bundle; Windows: the NSIS installer
-// runs silently; Linux: the AppImage file is replaced. Builds are not code-signed, so no OS updater framework is used.
-import { execFile, spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
+// runs silently; Linux: AppImage is replaced, deb opens the system installer for user authorization. Builds are not code-signed, so no OS updater framework is used.
+import { execFile, execFileSync, spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { createHash } from "node:crypto";
 import { accessSync, constants, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -33,6 +33,9 @@ export interface UpdaterHost {
   execPath: string;
   /** process.env.APPIMAGE on Linux. */
   appImage?: string;
+  deb?: boolean;
+  /** Opens the verified package in the system installer; an empty result means success. */
+  openPackage?: (file: string) => Promise<string>;
   /** Extraction and systemd commands; tests confine execution to their temporary runtime. */
   command?: UpdateCommand;
   /** An injected transport keeps updater tests independent of localhost listeners. */
@@ -50,6 +53,13 @@ export interface UpdaterHost {
 
 /** The hub's name for this platform. */
 export const platformKey = (p: NodeJS.Platform): "mac" | "win" | "linux" | null => (p === "darwin" ? "mac" : p === "win32" ? "win" : p === "linux" ? "linux" : null);
+
+/** dpkg owns the executable only for a system-installed Debian package. */
+export function isDebInstall(execPath: string): boolean {
+  try {
+    return execFileSync("dpkg-query", ["-S", execPath], { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] }).split("\n").some((line) => /^xdev-hive(?::(?:amd64|arm64))?: /.test(line));
+  } catch { return false; }
+}
 
 export class Updater {
   readonly #host: UpdaterHost;
@@ -69,7 +79,11 @@ export class Updater {
   }
 
   get #supported(): boolean {
-    return this.#host.packaged && platformKey(this.#host.platform) !== null && (this.#host.platform !== "linux" || Boolean(this.#host.appImage) || linuxLayout(this.#host.execPath) !== null);
+    return this.#host.packaged && platformKey(this.#host.platform) !== null && (this.#host.platform !== "linux" || Boolean(this.#host.deb) || Boolean(this.#host.appImage) || linuxLayout(this.#host.execPath) !== null);
+  }
+
+  get updateKind(): "deb" | undefined {
+    return this.#host.platform === "linux" && this.#host.deb ? "deb" : undefined;
   }
 
   status(): UpdateStatus {
@@ -96,6 +110,12 @@ export class Updater {
     if (!offer || compareVersions(offer.version, this.#host.version) <= 0) {
       this.#offer = null;
       if (this.#state.state !== "idle") this.#set({ state: "idle", version: null, percent: null, error: null });
+      return;
+    }
+    if (this.#host.platform === "linux" && offer.file.kind !== (this.updateKind ?? "AppImage")) {
+      this.#offer = null;
+      this.#file = null;
+      this.#set({ state: "failed", version: offer.version, error: "Update package does not match this Linux installation." });
       return;
     }
     const changed = this.#offer?.version !== offer.version || this.#offer?.file.sha256 !== offer.file.sha256;
@@ -190,7 +210,7 @@ export class Updater {
 
   /** Ready, and the rollout wants it installed without asking at this moment. */
   installsOn(when: "quit" | "idle"): boolean {
-    return this.#state.state === "ready" && this.#offer?.installWhen === when;
+    return this.updateKind !== "deb" && this.#state.state === "ready" && this.#offer?.installWhen === when;
   }
 
   /**
@@ -203,6 +223,19 @@ export class Updater {
     if (this.#state.state !== "ready" || !file || !existsSync(file)) {
       this.#log(`install skipped: nothing ready (state ${this.#state.state})`);
       throw new HiveError("conflict", "No update is ready to install.", { key: "errors.updateNotReady" });
+    }
+    if (this.updateKind === "deb") {
+      // apt/dpkg must own system files; the desktop never replaces them as the current user.
+      try {
+        if (!this.#host.openPackage) throw new Error("System package installer is unavailable.");
+        const error = await this.#host.openPackage(file);
+        if (error) throw new Error(error);
+        this.#log(`opened Debian installer for ${file}; awaiting user authorization`);
+        return;
+      } catch (err) {
+        this.#set({ state: "failed", error: String(err).slice(0, 300) });
+        throw err;
+      }
     }
     this.#log(`install ${this.#state.version} (relaunch ${relaunch}${relaunch && hidden ? ", hidden" : ""})`);
     this.#set({ state: "installing" });
