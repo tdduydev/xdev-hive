@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
-import { accessSync, chmodSync, constants, existsSync, lstatSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync } from "node:fs";
+import { accessSync, chmodSync, constants, existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
+import { compareVersions } from "@xdev-hive/core";
 
 const exec = promisify(execFile);
 export type UpdateCommand = (file: string, args: string[], options: { cwd?: string; timeout: number }) => Promise<{ stdout: string }>;
@@ -24,6 +25,20 @@ export function linuxLayout(execPath: string): LinuxLayout | null {
     }
   } catch { /* An unmanaged/extracted app must report why it cannot update itself. */ }
   return null;
+}
+
+/**
+ * Every update extracts a new app-<version> next to the running one (about 250 MB each) and nothing removed the old
+ * ones. Keeps the running version and the newest one below it, which the install script can still fall back to.
+ */
+export function pruneLinuxVersions(layout: LinuxLayout): string[] {
+  const running = path.basename(layout.app);
+  const versions = readdirSync(layout.root).filter((n) => /^app-\d/.test(n) && n !== running && lstatSync(path.join(layout.root, n)).isDirectory())
+    .sort((a, b) => compareVersions(b.slice(4), a.slice(4)));
+  const previous = versions.find((n) => compareVersions(n.slice(4), running.slice(4)) < 0);
+  const removed = versions.filter((n) => n !== previous);
+  for (const n of removed) rmSync(path.join(layout.root, n), { recursive: true, force: true });
+  return removed;
 }
 
 export async function extractLinuxUpdate(layout: LinuxLayout, image: string, version: string, run: UpdateCommand): Promise<string> {

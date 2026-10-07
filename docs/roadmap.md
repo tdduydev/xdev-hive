@@ -351,6 +351,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 
 ## Sửa lỗi
 
+- [x] **data-cleanup** (8/10, DATA-cleanup-hub, DATA-cleanup-machine, 0.146.0): trang Hub có thẻ *Dữ liệu* (dung lượng bản build, artifacts, log) và nút *Dọn dữ liệu*; hub giữ bản build của 3 bản mới nhất (`HIVE_RELEASE_KEEP`), artifacts của task xong 30 ngày (`HIVE_ARTIFACT_DAYS`), VACUUM khi dọn. Trên máy: worktree của nhánh commit gộp đã vào main được coi là đã merge, nút *Dọn ngay*, log run cũ theo hạn giữ worktree, Linux chỉ giữ bản app đang chạy và một bản trước trong `~/hive-runtime`.
 - [x] **linux-deb** (7/10, BUG-linux-deb, 0.145.2): gói `.deb` (x64, arm64) cho Ubuntu bên cạnh AppImage; app cài từ deb nhận bản cập nhật deb và mở trình cài hệ thống (cần quyền quản trị), nút cập nhật không còn kẹt ở *Đang cài*.
 - [x] **linux-vaapi-log** (7/10, 0.145.2): app trên Linux không còn in `vaInitialize failed` mỗi lần mở (tắt VA-API, app không phát video).
 - [x] **allowed-kinds-default** (7/10, 0.145.1): service chưa chọn *Loại gói được phép* thì hub chỉ tự giao cho claude/codex/antigravity, trong khi màn *Quy trình* hiện cả 8 loại đang bật; Gemini, Vibe, OpenCode, Kilo, Copilot không bao giờ được tự giao. Giờ mặc định là mọi loại định tuyến (`DEFAULT_AGENT_KINDS`), khớp giao diện.

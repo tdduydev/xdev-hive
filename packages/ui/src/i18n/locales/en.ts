@@ -4,7 +4,7 @@ export const en: Catalog = {
   worktrees: {
     title: "Worktrees", hint: "Run worktrees on this machine. Deletion keeps the branch; reopening a task recreates its worktree from that branch.",
     none: "No run worktrees.", oldApp: "Update the app on this machine to view and manage worktrees.",
-    total: "Total: {size} · Disk free: {free}", measured: "Measured at {time}", refresh: "Refresh",
+    total: "Total: {size} · Disk free: {free}", measured: "Measured at {time}", refresh: "Refresh", sweep: "Clean up now ({count} · {size})",
     task: "Task", branch: "Branch", size: "Size", modified: "Last modified", changes: "Uncommitted", merged: "In main", active: "Active run",
     expired: "Command expired after 24 hours. Send it again when the machine is online.",
     yes: "Yes", no: "No", unknown: "Unknown", remove: "Delete", select: "Select {task}", selectAll: "Select all deletable rows", removeSelected: "Delete selected ({count})",

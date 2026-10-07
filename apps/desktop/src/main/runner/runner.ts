@@ -1,8 +1,9 @@
 import { opencodeEnv } from "#desktop/main/runner/opencode.ts";
 import { researchProfile, researchPrompt, researchResult, restrictResearchCommand } from "#desktop/main/runner/research.ts";
 import { researchSchema, type ResearchJob } from "@xdev-hive/core";
-import { cleanupReason, deleteWorktree, freeBytes, inspectWorktree, registeredWorktrees } from "#desktop/main/runner/worktree-admin.ts";
-import { worktreeCleanupSchema, type WorktreeCommand, type WorktreeReport, type WorktreeTarget, type WorktreeLog } from "@xdev-hive/core";
+import { deleteWorktree, freeBytes, inspectWorktree, registeredWorktrees } from "#desktop/main/runner/worktree-admin.ts";
+import { pruneRunLogs } from "#desktop/main/runner/run-logs.ts";
+import { cleanupReason, worktreeCleanupSchema, type WorktreeCommand, type WorktreeReport, type WorktreeTarget, type WorktreeLog } from "@xdev-hive/core";
 import { AutoReleaseWorker } from "#desktop/main/runner/auto-release.ts";
 import { MergeQueueRunner } from "#desktop/main/runner/merge-queue.ts";
 import { ProfileModels, unsupportedModel } from "#desktop/main/runner/models.ts";
@@ -463,6 +464,7 @@ export class Runner {
   #worktreeScan: Promise<WorktreeReport> | null = null;
   #worktreeBusy = new Set<string>();
   #worktreeMaintenance = 0;
+  #runLogsPrunedAt = 0;
   #worktreeCommandQueue: Promise<void> = Promise.resolve();
   #worktreeCommandsActive = 0;
   #worktreeCleanupJob: Promise<void> | null = null;
@@ -1217,6 +1219,12 @@ export class Runner {
   async #cleanWorktrees(): Promise<void> {
     if (+this.#opts.now() - this.#worktreeMaintenance < 60_000) return;
     this.#worktreeMaintenance = +this.#opts.now();
+    // Full run logs follow the worktree retention; once a day is enough for a rule counted in days.
+    if (+this.#opts.now() - this.#runLogsPrunedAt >= 86400_000) {
+      this.#runLogsPrunedAt = +this.#opts.now();
+      const days = worktreeCleanupSchema.parse(this.#host.settings().worktreeCleanup ?? {}).retentionDays;
+      pruneRunLogs(path.join(this.#opts.dataDir, "runs"), days, this.#opts.now(), new Set(this.store.active().map((r) => r.id)));
+    }
     const report = await this.worktrees();
     const eligible = report.entries.filter(e => cleanupReason(e, report.cleanup, this.#opts.now())).sort((a, b) => a.modifiedAt.localeCompare(b.modifiedAt));
     let free = report.freeBytes;

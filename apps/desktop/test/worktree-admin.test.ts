@@ -7,7 +7,8 @@ import { describe, it } from "node:test";
 import { AGENT_TEMPLATES, worktreeCleanupSchema, type Actor, type RunnerSettings } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { Runner, type RunnerHost } from "#desktop/main/runner/runner.ts";
-import { cleanupReason, deleteWorktree, registeredWorktrees } from "#desktop/main/runner/worktree-admin.ts";
+import { cleanupReason } from "@xdev-hive/core";
+import { deleteWorktree, registeredWorktrees } from "#desktop/main/runner/worktree-admin.ts";
 import { ensureWorktree, hasBranch } from "#desktop/main/runner/worktree.ts";
 
 const admin: Actor = { name: "admin", role: "admin" };
@@ -51,6 +52,22 @@ describe("runner worktree administration", () => {
       const recreated = ensureWorktree(f.repo, f.wt.path, "T-1", f.wt.baseSha);
       assert.equal(git(recreated.path, "rev-parse", "HEAD"), entry.head);
       assert.equal(existsSync(path.join(recreated.path, "draft.txt")), false);
+    } finally { f.close(); }
+  });
+
+  it("counts a squashed branch whose work is in main as merged, and one with work left as not (DATA-cleanup-machine)", async () => {
+    const f = await fixture();
+    try {
+      writeFileSync(path.join(f.wt.path, "feature.txt"), "done\n"); git(f.wt.path, "add", "."); git(f.wt.path, "commit", "-qm", "work");
+      assert.equal((await f.runner.worktrees(true)).entries[0]!.merged, false, "the work is not in main yet");
+      // Landed as a squash on main: same content, another commit, so the branch is no ancestor of main.
+      git(f.repo, "merge", "-q", "--squash", "ai/T-1"); git(f.repo, "commit", "-qm", "squash T-1");
+      assert.equal((await f.runner.worktrees(true)).entries[0]!.merged, true);
+      writeFileSync(path.join(f.wt.path, "more.txt"), "after landing\n"); git(f.wt.path, "add", "."); git(f.wt.path, "commit", "-qm", "more");
+      assert.equal((await f.runner.worktrees(true)).entries[0]!.merged, false, "work committed after landing keeps the worktree");
+      const entry = { ...(await f.runner.worktrees(true)).entries[0]!, taskStatus: "done" as const, merged: true };
+      assert.equal(cleanupReason(entry, worktreeCleanupSchema.parse({ enabled: false }), new Date()), null, "automatic cleanup off");
+      assert.equal(cleanupReason(entry, worktreeCleanupSchema.parse({ enabled: false }), new Date(), { now: true }), "merged", "Dọn ngay applies the rules anyway");
     } finally { f.close(); }
   });
 
