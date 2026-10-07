@@ -47,3 +47,4 @@ export * from "./merge-queue.ts";
 export * from "#core/inbox.ts";
 
 export * from "#core/worktrees.ts";
+export * from "#core/terminal.ts";

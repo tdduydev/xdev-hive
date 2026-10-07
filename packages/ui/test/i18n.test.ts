@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { isValidElement } from "react";
-import { HIDDEN_KINDS, PERMISSIONS, WEBHOOK_EVENTS, WEBHOOK_KINDS } from "@xdev-hive/core";
+import { HIDDEN_KINDS, PERMISSIONS, TERMINAL_DENIALS, WEBHOOK_EVENTS, WEBHOOK_KINDS } from "@xdev-hive/core";
 import { rich } from "#ui/i18n/rich.ts";
 import { hasKey, LOCALES, translate, type MessageKey } from "#ui/i18n/translate.ts";
 
@@ -54,6 +54,8 @@ describe("i18n", () => {
     for (const p of PERMISSIONS) keys.add(`errors.need.${p}`).add(`errors.needShared.${p}`);
     // Built from the kind: errors.hidden.<kind>.
     for (const kind of HIDDEN_KINDS) keys.add(`errors.hidden.${kind}`);
+    // Built from the denial: errors.terminal.<denial> (spec 69).
+    for (const denial of TERMINAL_DENIALS) keys.add(`errors.terminal.${denial}`);
     assert.ok(keys.size > 30, `found ${keys.size} keys`);
     assert.deepEqual([...keys].filter((k) => !hasKey(k)), []);
   });

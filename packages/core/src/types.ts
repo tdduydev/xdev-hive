@@ -44,6 +44,11 @@ export interface Actor {
   runCredential?: { project: string; task: string; run: string; machine: string; readOnly: boolean };
   /** Verified MCP credential, including interactive sessions that have no assigned run. */
   mcpCredential?: boolean;
+  /**
+   * Set only by the hub's cookie middleware: the id of the person's browser session (its stored hash, never the
+   * cookie). A remote terminal opens for this alone (spec 69), not for any bearer, whatever its role.
+   */
+  humanSession?: string;
 }
 
 export interface DocSummary {
