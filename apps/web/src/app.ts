@@ -317,7 +317,12 @@ export function createHubApp({
       }
       res.locals.user = user;
       res.locals.session = session;
-      res.locals.actor = { name: user.username, role: user.admin ? "admin" : "member", access: users.access(user), source: { via: "web" }, account: user.username } satisfies Actor;
+      // humanSession is the stored hash of the session, as hub_sessions keys it: the terminal (spec 69) binds proofs to
+      // it, and only this branch sets it, so no bearer can pass for a person.
+      res.locals.actor = {
+        name: user.username, role: user.admin ? "admin" : "member", access: users.access(user), source: { via: "web" }, account: user.username,
+        humanSession: createHash("sha256").update(session!).digest("hex"),
+      } satisfies Actor;
       next();
     };
   const auth = authenticate({ cookie: true });
@@ -415,7 +420,11 @@ export function createHubApp({
       setSession(req, res, session.token, session.maxAge);
       hive.audit({ name: user.username, role: user.admin ? "admin" : "member" }, "auth.login", user.username, clientIp(req));
       res.locals.user = user;
-      res.locals.actor = { name: user.username, role: user.admin ? "admin" : "member", access: users.access(user), source: { via: "web" }, account: user.username } satisfies Actor;
+      // The new session's id, as the cookie middleware sets it for the requests after this one.
+      res.locals.actor = {
+        name: user.username, role: user.admin ? "admin" : "member", access: users.access(user), source: { via: "web" }, account: user.username,
+        humanSession: createHash("sha256").update(session.token).digest("hex"),
+      } satisfies Actor;
       res.json({ result: me(res) });
     } catch (err) {
       sendError(res, err);

@@ -759,6 +759,38 @@ const MIGRATIONS: string[] = [
     'kilo-cli', '${JSON.stringify({ id: "kilo-cli", name: "Kilo Code CLI", description: "CLI Kilo native headless JSON; free pool và điều khoản endpoint cần kiểm trước khi gửi dữ liệu.", kind: "cli", package: { registry: "npm", name: "@kilocode/cli", version: "7.8.3" }, agents: ["kilo"], check: ["kilo", "--version"], install: ["npm", "install", "-g", "{package}"], license: "MIT", homepage: "https://kilo.ai/docs/code-with-ai/platforms/cli", enabledByDefault: false, handler: null, mcp: null, plugin: null, hooks: [], prepare: null, env: {}, secretEnv: [] })}',
     0, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 'hive');`,
   browserSeedSql(),
+  // Remote terminal (spec 69, 69a): metadata only, never terminal text. No foreign keys to accounts, projects or
+  // machines, so deleting one leaves these rows as its audit headstone until retention purges them. A session's scope
+  // never changes after create: the trigger refuses it even for code that forgets.
+  `
+  ALTER TABLE machines ADD COLUMN terminal_capability TEXT;
+  CREATE TABLE terminal_sessions(
+    id TEXT PRIMARY KEY, project TEXT NOT NULL, machine_id TEXT NOT NULL, creator TEXT NOT NULL,
+    browser_session TEXT NOT NULL, checkout_ref TEXT NOT NULL, mode TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '',
+    idempotency_key TEXT NOT NULL, policy_version INTEGER NOT NULL DEFAULT 1,
+    state TEXT NOT NULL, last_reason TEXT, version INTEGER NOT NULL DEFAULT 0, writer_epoch INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL, expires_at TEXT NOT NULL, closed_at TEXT, exit_code INTEGER,
+    cleanup_uncertain INTEGER NOT NULL DEFAULT 0, audit_seq INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(creator, idempotency_key));
+  CREATE INDEX terminal_sessions_machine ON terminal_sessions(machine_id, state);
+  CREATE INDEX terminal_sessions_project ON terminal_sessions(project, created_at);
+  CREATE TRIGGER terminal_sessions_scope BEFORE UPDATE OF id, project, machine_id, creator, checkout_ref, mode, reason, idempotency_key, created_at
+    ON terminal_sessions BEGIN SELECT RAISE(ABORT, 'terminal session scope is immutable'); END;
+  CREATE TABLE terminal_tickets(
+    hash TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES terminal_sessions(id) ON DELETE CASCADE,
+    account TEXT NOT NULL, browser_session TEXT NOT NULL, epoch INTEGER NOT NULL,
+    expires_at TEXT NOT NULL, used_at TEXT);
+  CREATE INDEX terminal_tickets_expiry ON terminal_tickets(expires_at);
+  CREATE TABLE terminal_stepups(
+    hash TEXT PRIMARY KEY, account TEXT NOT NULL, browser_session TEXT NOT NULL, machine_id TEXT NOT NULL,
+    project TEXT NOT NULL, operation TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, used_at TEXT);
+  CREATE INDEX terminal_stepups_expiry ON terminal_stepups(expires_at);
+  CREATE TABLE terminal_audit_chunks(
+    session_id TEXT NOT NULL REFERENCES terminal_sessions(id) ON DELETE CASCADE, seq INTEGER NOT NULL,
+    first_event INTEGER NOT NULL, last_event INTEGER NOT NULL, bytes INTEGER NOT NULL,
+    hash TEXT NOT NULL, prev_hash TEXT NOT NULL, storage_ref TEXT NOT NULL, created_at TEXT NOT NULL,
+    PRIMARY KEY(session_id, seq));
+  `,
 ];
 
 function browserSeedSql(): string {
@@ -7762,7 +7794,7 @@ export class SqliteHive implements HiveBackend {
         return batch;
       }),
 
-      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, projects, acceptsRuns, maxParallel, updateDraining, gateRunner, costs, deliveredMessages, toolStates, appliedToolApprovals, worktrees, worktreeResults }, actor) =>
+      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, projects, acceptsRuns, maxParallel, updateDraining, gateRunner, costs, deliveredMessages, toolStates, appliedToolApprovals, worktrees, worktreeResults, terminal }, actor) =>
         this.#tx(() => {
           // Drop out-of-scope reports without taking the whole machine offline; grants can change between beats.
           runs = runs.filter((r) => may(actor, r.project, "taskWork"));
@@ -7801,6 +7833,8 @@ export class SqliteHive implements HiveBackend {
             .run(now, JSON.stringify(result.results), result.id, actor.name);
           db.prepare("DELETE FROM machine_worktree_commands WHERE completed_at < ?").run(this.#now(-30 * 24 * 60));
           if (toolStates) db.prepare("UPDATE machines SET tool_states = ? WHERE id = ?").run(JSON.stringify(toolStates), actor.name);
+          // Written every beat: a machine that turned the terminal off, or went back to an app without it, is off now.
+          db.prepare("UPDATE machines SET terminal_capability = ? WHERE id = ?").run(terminal ? JSON.stringify(terminal) : null, actor.name);
           for (const id of appliedToolApprovals) db.prepare("UPDATE machine_tool_approvals SET applied_at = COALESCE(applied_at, ?) WHERE id = ? AND machine_id = ?").run(now, id, actor.name);
           // An archived or deleted project is not stored as a repo this machine has (roadmap 47): a machine that still
           // has the folder must not put the name back into the lists, nor bring a deleted one back from its headstone.
