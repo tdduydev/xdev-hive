@@ -2897,6 +2897,20 @@ describe("runner: the hub's tool catalog (roadmap 28b)", () => {
     return file;
   };
 
+  it("collects browser screenshots from runDir, excludes secrets/profile and removes the run folder", async () => {
+    const s = await onHub((hive) => turnOn(hive, "browser"), [profile("claude-a", "claude", 10, "browser-artifact")]);
+    const { run, log } = await runOnce(s);
+    assert.equal(run.status, "succeeded", run.error ?? log);
+    const server = servers(s.calls()[0]!.args).browser as { env: Record<string, string>; args: string[] };
+    assert.ok(server.args.includes("--headless"));
+    const runDir = path.join(s.dataDir, "runs", run.id);
+    assert.equal(server.env.PLAYWRIGHT_MCP_USER_DATA_DIR, path.join(runDir, "browser-profile"));
+    assert.equal(existsSync(runDir), false);
+    const kept = await s.hive.call("artifacts.list", { project: "demo", taskId: "T-1" }, admin);
+    assert.deepEqual(kept.map((a) => a.name), ["browser/page.png"]);
+    assert.equal(kept[0]!.runId, run.id);
+  });
+
   it("on for the project: Claude gets the server and its permission, the index is built and kept out of the commit", async () => {
     const s = await onHub((hive) => turnOn(hive, "codegraph"));
     assert.ok(s.hubUpdates[0]!.tools?.entries.some((e) => e.id === "codegraph"), "onHub hears the catalog");

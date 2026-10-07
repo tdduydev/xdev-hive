@@ -3209,7 +3209,7 @@ export const en: Catalog = {
     toolNotFound: "No tool {id}.",
     toolVersion: "Someone else just changed tool {id} (now version {version}). Reload, then edit again.",
     toolPlaceholder: "A command of tool {id} has {placeholder}, with nothing to put there here.",
-    toolRunDir: "{placeholder} is only allowed in the env values of a hook entry.",
+    toolRunDir: "{placeholder} is only allowed in the env values of a hook or MCP entry.",
     machineToolForbidden: "Only a hub admin or the machine owner can approve tools on this machine.",
     machineToolChanged: "The tool commands or version changed. Reopen Tools and review the new commands before approving.",
     toolTrustBad: "Cannot allow tool {id}: the command hash is not valid.",

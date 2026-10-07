@@ -217,9 +217,13 @@ if (gemini && process.env.FAKE_GEMINI === "1") {
   if (input) prompt = input;
 }
 if (process.env.FAKE_RECORD) {
+  const configAt = process.argv.indexOf("--mcp-config");
+  const configArg = configAt < 0 ? null : process.argv[configAt + 1];
+  const config = configArg ? JSON.parse(configArg.startsWith("{") ? configArg : readFileSync(configArg, "utf8")) : null;
+  const browserServerProxy = config?.mcpServers?.browser?.env?.PLAYWRIGHT_MCP_PROXY_SERVER ?? null;
   appendFileSync(
     process.env.FAKE_RECORD,
-    `${JSON.stringify({ agent: process.env.HIVE_AGENT, task: process.env.HIVE_TASK, project: process.env.HIVE_PROJECT, cwd: process.cwd(), prompt, args: process.argv.slice(3), readOnly: process.env.HIVE_READONLY ?? null, runToken: process.env.HIVE_RUN_TOKEN ?? null, hostOnly: process.env.HIVE_TEST_HOST_ONLY ?? null, oauth: process.env.CLAUDE_CODE_OAUTH_TOKEN ? "set" : null, hubToken: process.env.HIVE_HUB_TOKEN ? "set" : null, proxy: process.env.HTTPS_PROXY ?? null })}\n`,
+    `${JSON.stringify({ agent: process.env.HIVE_AGENT, task: process.env.HIVE_TASK, project: process.env.HIVE_PROJECT, cwd: process.cwd(), prompt, args: process.argv.slice(3), readOnly: process.env.HIVE_READONLY ?? null, runToken: process.env.HIVE_RUN_TOKEN ?? null, hostOnly: process.env.HIVE_TEST_HOST_ONLY ?? null, oauth: process.env.CLAUDE_CODE_OAUTH_TOKEN ? "set" : null, hubToken: process.env.HIVE_HUB_TOKEN ? "set" : null, proxy: process.env.HTTPS_PROXY ?? null, browserProxy: process.env.PLAYWRIGHT_MCP_PROXY_SERVER ?? null, browserServerProxy })}\n`,
   );
 }
 
@@ -371,6 +375,18 @@ switch (process.env.FAKE_MODE ?? "ok") {
     writeFileSync("work.txt", "done\n");
     finish();
     break;
+  case "browser-artifact": {
+    const raw = process.argv[process.argv.indexOf("--mcp-config") + 1];
+    const config = JSON.parse(raw.startsWith("{") ? raw : readFileSync(raw, "utf8"));
+    const env = config.mcpServers.browser.env;
+    mkdirSync(env.PLAYWRIGHT_MCP_OUTPUT_DIR, { recursive: true });
+    writeFileSync(join(env.PLAYWRIGHT_MCP_OUTPUT_DIR, "page.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]));
+    mkdirSync(env.PLAYWRIGHT_MCP_USER_DATA_DIR, { recursive: true });
+    writeFileSync(join(env.PLAYWRIGHT_MCP_USER_DATA_DIR, "cookies.json"), "private profile");
+    say("Browser screenshot saved.");
+    finish();
+    break;
+  }
   case "artifacts":
     // Leaves files for the hub (roadmap 41c): one it keeps, one over 5 MB and one of a kind it does not take.
     appendFileSync(`work-${process.env.HIVE_AGENT}.txt`, "done\n");

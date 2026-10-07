@@ -15,10 +15,36 @@ export const TOOL_ENV_NAME = /^[A-Z][A-Z0-9_]{0,63}$/;
 /** Stands for the pinned package in a command, so the version is written once (see packageSpec). */
 export const PACKAGE_PLACEHOLDER = "{package}";
 /**
- * A run's own folder, which the machine fills in (roadmap 28d): only in a hook's env values, so what a hook keeps (RTK's
- * history) is per run. Nowhere else: an install or a check has no run, and a command must not write outside the worktree.
+ * A run's own folder, which the machine fills in: only in hook or MCP env values, so browser profiles, output
+ * and hook history are per run. An install or check has no run.
  */
 export const RUN_DIR_PLACEHOLDER = "{runDir}";
+
+/** Frozen migration 65a seed: upgrades need a new migration or tools.save, so profiles stay isolated per run. */
+export const BROWSER_TOOL: ToolEntry = {
+  id: "browser",
+  name: "Playwright MCP",
+  description: "Duyệt và kiểm thử web bằng trình duyệt headless; profile và ảnh riêng cho từng run.",
+  kind: "mcp",
+  package: { registry: "npm", name: "@playwright/mcp", version: "0.0.83" },
+  mcp: { command: "npx", args: ["-y", "{package}", "--headless"] },
+  plugin: null,
+  hooks: [],
+  agents: ["claude", "codex"],
+  check: null,
+  install: null,
+  prepare: null,
+  env: {
+    PLAYWRIGHT_MCP_CONFIG: "{runDir}/browser.json",
+    PLAYWRIGHT_MCP_USER_DATA_DIR: "{runDir}/browser-profile",
+    PLAYWRIGHT_MCP_OUTPUT_DIR: "{runDir}/.xdev-hive/artifacts/browser",
+  },
+  secretEnv: [],
+  license: "Apache-2.0",
+  homepage: "https://github.com/microsoft/playwright-mcp",
+  handler: "browser",
+  enabledByDefault: false,
+};
 
 const argv = z.array(z.string().min(1).max(500)).max(40);
 
@@ -113,7 +139,7 @@ export function toolProblem(e: ToolEntry, builtin: boolean): ErrorText | null {
     if (!TOOL_ENV_NAME.test(name)) return at(name in e.env ? "env" : "secretEnv", "errors.toolEnvName", { name });
   }
   for (const [name, value] of Object.entries(e.env)) {
-    if (value.includes(RUN_DIR_PLACEHOLDER) && e.kind !== "hook") return at("env", "errors.toolRunDir", { placeholder: RUN_DIR_PLACEHOLDER });
+    if (value.includes(RUN_DIR_PLACEHOLDER) && e.kind !== "hook" && e.kind !== "mcp") return at("env", "errors.toolRunDir", { placeholder: RUN_DIR_PLACEHOLDER });
     const [hidden] = findHidden(value, 1);
     if (hidden) return at("env", "errors.toolHidden", { name, code: hidden.code });
     const secret = findSecret(value);
@@ -175,6 +201,7 @@ export function toolSetupItems(tool: Pick<ToolEntry, "id" | "handler">, project:
 export interface ToolContext {
   worktree?: string;
   repo?: string;
+  runDir?: string;
 }
 
 const PLACEHOLDERS = /\{(package|worktree|repo)\}/g;
@@ -196,7 +223,7 @@ export function toolArgv(argv: readonly string[], entry: Pick<ToolEntry, "id" | 
 }
 
 /**
- * The variables an entry's commands get. `runDir`: the run's own folder for `{runDir}` (a hook's, roadmap 28d); without
+ * The variables an entry's commands get. `runDir`: the run's own folder for `{runDir}` (hooks and MCP servers); without
  * one (a check, an install) the variables that need it are left out rather than pointing at a folder named "{runDir}".
  */
 export function toolEnv(e: Pick<ToolEntry, "env">, runDir: string | null = null): Record<string, string> {

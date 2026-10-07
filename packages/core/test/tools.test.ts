@@ -47,16 +47,16 @@ const rtk = (over: Partial<ToolEntry> = {}): ToolEntry => ({
 });
 
 describe("tool catalog (roadmap 28a)", () => {
-  it("seeds codegraph, superpowers and Spec Kit as machines ran them on 2/10", async () => {
+  it("seeds the app tools, including the opt-in browser", async () => {
     const hive = new SqliteHive(":memory:");
     // RTK (28d) comes in later, as an entry an admin could have added: not built in.
     const list = (await hive.call("tools.list", {}, admin)).filter((t) => t.builtin);
-    assert.deepEqual(list.map((t) => t.id).sort(), ["codegraph", "speckit", "superpowers"]);
+    assert.deepEqual(list.map((t) => t.id).sort(), ["browser", "codegraph", "speckit", "superpowers"]);
     for (const t of list) {
       assert.equal(t.builtin, true);
       assert.equal(t.version, 1);
       assert.equal(t.updatedBy, "hive");
-      assert.equal(t.license, "MIT");
+      assert.equal(t.license, t.id === "browser" ? "Apache-2.0" : "MIT");
       assert.equal(t.handler, t.id);
       assert.equal(t.enabledByDefault, false);
       assert.equal(toolProblem(t, true), null, `${t.id} passes its own checks`);
@@ -214,7 +214,7 @@ describe("tool catalog (roadmap 28a)", () => {
     const hive = new SqliteHive(":memory:");
     for (const project of ["app", "web", "billing"]) await hive.call("tools.setProject", { id: "codegraph", project, enabled: true, required: false }, admin);
     const theirs = await hive.call("tools.list", {}, webViewer);
-    assert.equal(theirs.length, 5, "every entry");
+    assert.equal(theirs.length, 6, "every entry");
     assert.deepEqual(theirs.find((t) => t.id === "codegraph")!.projects.map((p) => p.project), ["web"]);
     assert.deepEqual((await hive.call("tools.list", {}, admin)).find((t) => t.id === "codegraph")!.projects.map((p) => p.project), ["app", "billing", "web"]);
     assert.equal(await refusal(hive.call("tools.list", { project: "billing" }, webViewer)), "errors.notFound");
@@ -315,7 +315,7 @@ describe("tool catalog on machines (roadmap 28b)", () => {
     // A lead's machine: it says it has billing too, which its token does not see.
     const beat = await hive.call("machines.heartbeat", { machine: "lan-mbp", instance: "a1b2c3d4", projects: ["app", "web", "billing"] }, leadAgent);
     const ids = beat.tools.entries.map((e) => e.id);
-    assert.deepEqual(ids, ["codegraph", "everywhere", "rtk-mcp", "speckit", "superpowers"], "set by its projects, on by default, or the app's own");
+    assert.deepEqual(ids, ["browser", "codegraph", "everywhere", "rtk-mcp", "speckit", "superpowers"], "set by its projects, on by default, or the app's own");
     assert.deepEqual(Object.keys(beat.tools.projects).sort(), ["app", "web"]);
     const rtkEntry = beat.tools.entries.find((e) => e.id === "rtk-mcp")!;
     assert.deepEqual(rtkEntry.mcp, { command: "npx", args: ["-y", "{package}"] }, "placeholders left for the machine");
@@ -329,7 +329,7 @@ describe("tool catalog on machines (roadmap 28b)", () => {
 
     // A machine with no project yet hears only what is on by default and the app's own entries.
     const bare = await hive.call("machines.heartbeat", { machine: "new-mbp", instance: "b1b2c3d4" }, { name: "runner.new@duy", role: "agent" });
-    assert.deepEqual(bare.tools.entries.map((e) => e.id), ["codegraph", "everywhere", "speckit", "superpowers"]);
+    assert.deepEqual(bare.tools.entries.map((e) => e.id), ["browser", "codegraph", "everywhere", "speckit", "superpowers"]);
     assert.deepEqual(bare.tools.projects, {});
   });
 });
@@ -350,14 +350,14 @@ describe("RTK and hooks of the catalog (roadmap 28d)", () => {
     assert.deepEqual(toolArgv(entry.install!, entry), ["brew", "install", "rtk"]);
   });
 
-  it("takes {runDir} only in a hook entry's env values", () => {
+  it("takes {runDir} only in hook or MCP env values", () => {
     const hook = rtk({ kind: "hook", mcp: null, secretEnv: [], hooks: [{ event: "PreToolUse", matcher: "Bash", command: ["rtk", "hook", "claude"] }], env: { RTK_DB_PATH: "{runDir}/rtk.db" } });
     assert.equal(toolProblem(hook, false), null);
     const key = (e: ToolEntry) => {
       const p = toolProblem(e, false);
       return p && [p.key, p.vars?.field, p.vars?.placeholder];
     };
-    assert.deepEqual(key(rtk({ env: { RTK_DB_PATH: "{runDir}/rtk.db" } })), ["errors.toolRunDir", "env", "{runDir}"], "an MCP entry has no run folder of its own");
+    assert.equal(key(rtk({ env: { RTK_DB_PATH: "{runDir}/rtk.db" } })), null, "MCP output is per run too");
     assert.deepEqual(key({ ...hook, hooks: [{ event: "PreToolUse", matcher: "Bash", command: ["rtk", "--db", "{runDir}/x"] }] }), ["errors.toolRunDir", "hooks.0", "{runDir}"]);
     assert.deepEqual(key({ ...hook, check: ["rtk", "{runDir}"] }), ["errors.toolRunDir", "check", "{runDir}"]);
     assert.deepEqual(key({ ...hook, hooks: [{ event: "PreToolUse", matcher: "{runDir}", command: ["rtk"] }] }), ["errors.toolRunDir", "hooks.0", "{runDir}"]);

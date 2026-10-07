@@ -85,7 +85,7 @@ import {
 import { parseVerdict, type Verdict } from "./verdict.ts";
 import { parseParts, partInstructions, reduceInstructions, splitInstructions, type MapPhase } from "./mapreduce.ts";
 import { ROLE_STEP_RUN, stepInstructions, type RoleStep } from "./roles.ts";
-import { toolEffective, toolProblem, toolSetupItems, toolHash } from "./tools.ts";
+import { BROWSER_TOOL, toolEffective, toolProblem, toolSetupItems, toolHash } from "./tools.ts";
 import { classifyTaskRule, DEFAULT_TASK_CLASS, parseTaskClass, TASK_SIZES, type TaskClass, type TaskKind, type TaskSize } from "./task-classify.ts";
 import type {
   Actor,
@@ -757,7 +757,14 @@ const MIGRATIONS: string[] = [
   `INSERT OR IGNORE INTO tools(id, entry, builtin, version, updated_at, updated_by) VALUES (
     'kilo-cli', '${JSON.stringify({ id: "kilo-cli", name: "Kilo Code CLI", description: "CLI Kilo native headless JSON; free pool và điều khoản endpoint cần kiểm trước khi gửi dữ liệu.", kind: "cli", package: { registry: "npm", name: "@kilocode/cli", version: "7.8.3" }, agents: ["kilo"], check: ["kilo", "--version"], install: ["npm", "install", "-g", "{package}"], license: "MIT", homepage: "https://kilo.ai/docs/code-with-ai/platforms/cli", enabledByDefault: false, handler: null, mcp: null, plugin: null, hooks: [], prepare: null, env: {}, secretEnv: [] })}',
     0, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 'hive');`,
+  browserSeedSql(),
 ];
+
+function browserSeedSql(): string {
+  const { id, ...entry } = BROWSER_TOOL;
+  const json = JSON.stringify(entry).replaceAll("'", "''");
+  return `INSERT OR IGNORE INTO tools(id, entry, builtin, version, updated_at, updated_by) VALUES ('${id}', '${json}', 1, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 'hive');`;
+}
 
 /**
  * The seeds as the 28a migration wrote them, frozen: a migration must mean the same on every hub, whenever it runs.
