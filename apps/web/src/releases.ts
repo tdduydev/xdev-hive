@@ -29,7 +29,7 @@ type Row = Record<string, unknown>;
 const VERSION = /^\d+\.\d+\.\d+(-[\w.]+)?$/;
 const PLATFORMS: ReleasePlatform[] = ["mac", "win", "linux"];
 const ARCHES: ReleaseArch[] = ["arm64", "x64"];
-const KINDS: ReleaseKind[] = ["zip", "dmg", "exe", "AppImage"];
+const KINDS: ReleaseKind[] = ["zip", "dmg", "exe", "AppImage", "deb"];
 /** What a machine installs from, per platform (the dmg is for people). */
 const UPDATE_KIND: Record<ReleasePlatform, ReleaseKind> = { mac: "zip", win: "exe", linux: "AppImage" };
 /** Releases whose builds are kept on disk; older ones keep their row, not their files. */
@@ -97,7 +97,7 @@ export class ReleaseStore {
     const name = path.basename(input.name);
     if (!VERSION.test(version)) throw new HiveError("bad_request", "Version must look like 1.2.3.", { key: "errors.releaseVersion" });
     if (!PLATFORMS.includes(platform as ReleasePlatform) || !ARCHES.includes(arch as ReleaseArch) || !KINDS.includes(kind as ReleaseKind) || !name || name.startsWith(".")) {
-      throw new HiveError("bad_request", "Unknown build: platform mac|win|linux, arch arm64|x64, kind zip|dmg|exe|AppImage.", { key: "errors.releaseFile" });
+      throw new HiveError("bad_request", "Unknown build: platform mac|win|linux, arch arm64|x64, kind zip|dmg|exe|AppImage|deb.", { key: "errors.releaseFile" });
     }
     const target = this.#path({ version, name });
     mkdirSync(path.dirname(target), { recursive: true });
@@ -180,16 +180,16 @@ export class ReleaseStore {
    * The update a machine should take, if any: the rollout's target when it runs something older, is in the rollout's
    * share, and a build for its platform exists.
    */
-  offerFor(machineId: string, current: string, platform: string, arch: string): UpdateOffer | null {
+  offerFor(machineId: string, current: string, platform: string, arch: string, kind?: string): UpdateOffer | null {
     const r = this.rollout();
     if (!r.target || r.paused || !current || compareVersions(current, r.target) >= 0) return null;
     if (bucket(machineId) >= r.percent) return null;
     const plat = platform as ReleasePlatform;
     if (!PLATFORMS.includes(plat)) return null;
     const release = this.list().find((x) => x.version === r.target);
-    const file = release?.files.find((f) => f.platform === plat && f.arch === arch && f.kind === UPDATE_KIND[plat]);
+    const file = release?.files.find((f) => f.platform === plat && f.arch === arch && f.kind === (plat === "linux" && kind === "deb" ? "deb" : UPDATE_KIND[plat]));
     if (!release || !file) return null;
-    return { version: r.target, file, url: `/api/releases/files/${file.id}`, autoDownload: r.autoDownload, installWhen: r.installWhen, notes: release.notes };
+    return { version: r.target, file, url: `/api/releases/files/${file.id}`, autoDownload: r.autoDownload, installWhen: file.kind === "deb" ? "ask" : r.installWhen, notes: release.notes };
   }
 
   report(machineId: string, machine: string, current: string, report: UpdateReport | null): void {

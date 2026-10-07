@@ -89,7 +89,7 @@ import { expandEnv, expandHome, resolveBin } from "./runner/command.ts";
 import { opencodeEnv } from "#desktop/main/runner/opencode.ts";
 import { kiloAccountEnv } from "#desktop/main/runner/kilo.ts";
 import { LOGIN_DIR_ENV, LoginMonitor, loginParts, readLoginHow, usageRefresher } from "./runner/login.ts";
-import { platformKey, Updater, type UpdateStatus } from "./updater.ts";
+import { isDebInstall, platformKey, Updater, type UpdateStatus } from "#desktop/main/updater.ts";
 import { IdleUpdate } from "#desktop/main/idle-update.ts";
 import { Runner, type HubUpdate, type RunnerEvent } from "./runner/runner.ts";
 import { agentPath } from "./runner/shell-path.ts";
@@ -853,6 +853,10 @@ function onUpdateChange(status: UpdateStatus): void {
 /** Restarts into the downloaded build: the runner stops its agents first (before-quit), then the helper swaps the app. */
 async function installAndRestart(hidden = false): Promise<void> {
   if (quitting || installingUpdate) return;
+  if (updater.updateKind === "deb") {
+    await updater.install({ relaunch: false });
+    return;
+  }
   installingUpdate = true;
   runner.drainForUpdate(true);
   try {
@@ -1752,6 +1756,8 @@ if (!app.requestSingleInstanceLock()) {
       platform: process.platform,
       execPath: process.execPath,
       appImage: process.env.APPIMAGE,
+      deb: process.platform === "linux" && !process.env.APPIMAGE && isDebInstall(process.execPath),
+      openPackage: (file) => shell.openPath(file),
       onChange: onUpdateChange,
       log: (line) => mainLog.write(line),
       logFile: mainLog.file,
@@ -1768,7 +1774,7 @@ if (!app.requestSingleInstanceLock()) {
         machine: () => config.machine,
         env: agentEnv,
         // platform, arch and update are read by the hub itself (app updates, roadmap 22i); core ignores them.
-        report: () => ({ setup: setupCache ?? undefined, profiles: reportedProfiles(), platform: platformKey(process.platform), arch: process.arch, update: updater.report() }),
+        report: () => ({ setup: setupCache ?? undefined, profiles: reportedProfiles(), platform: platformKey(process.platform), arch: process.arch, updateKind: updater.updateKind, update: updater.report() }),
         login: (id) => logins.get(id),
         usage: (id) => logins.usage(id),
         hub: () => (config.mode === "hub" && config.hub.url && config.hub.token ? { url: config.hub.url, token: config.hub.token } : null),
@@ -1800,7 +1806,7 @@ if (!app.requestSingleInstanceLock()) {
     );
     idleUpdate = new IdleUpdate({
       status: () => updater.status(),
-      enabled: () => config.runner.autoUpdateIdle ?? config.runner.acceptHubRuns,
+      enabled: () => updater.updateKind !== "deb" && (config.runner.autoUpdateIdle ?? config.runner.acceptHubRuns),
       drain: (value) => runner.drainForUpdate(value),
       work: () => {
         const work = runner.updateWork();

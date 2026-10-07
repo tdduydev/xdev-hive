@@ -31,5 +31,21 @@ nsis:
 linux:
   # The default comes from the package name (@xdev-hive/desktop), which is not a valid file name.
   executableName: xdev-hive
-  target: AppImage
+  target:
+    - target: AppImage
+      arch: [x64, arm64]
+    - target: deb
+      arch: [x64, arm64]
   category: Development
+deb:
+  packageName: xdev-hive
+  artifactName: xdev-hive-${version}-linux-${arch}.deb
+  maintainer: xDev
+  description: xDev Hive desktop admin
+  depends:
+    - libnss3
+    - libgtk-3-0 | libgtk-3-0t64
+    - libxss1
+    - libasound2 | libasound2t64
+    - libgbm1
+    - xdg-utils

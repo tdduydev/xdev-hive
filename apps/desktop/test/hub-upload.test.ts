@@ -88,9 +88,36 @@ describe("release upload to the hub", () => {
   it("reads platform, arch and kind from electron-builder's file names", () => {
     assert.deepEqual(describeBuild(`xdev-hive-${version}-mac-arm64.dmg`), { platform: "mac", arch: "arm64", kind: "dmg" });
     assert.deepEqual(describeBuild(`xdev-hive-${version}-win-x64-setup.exe`), { platform: "win", arch: "x64", kind: "exe" });
+    assert.deepEqual(describeBuild(`xdev-hive-${version}-linux-amd64.deb`), { platform: "linux", arch: "x64", kind: "deb" });
+    assert.deepEqual(describeBuild(`xdev-hive-${version}-linux-arm64.deb`), { platform: "linux", arch: "arm64", kind: "deb" });
     assert.deepEqual(describeBuild(`xdev-hive-${version}-linux-x86_64.AppImage`), { platform: "linux", arch: "x64", kind: "AppImage" });
     assert.equal(describeBuild(`xdev-hive-${version}.zip`), null);
     assert.equal(describeBuild("SHA256SUMS.txt"), null);
+  });
+
+  it("uploads a deb with x64 metadata and its checksum", async () => {
+    const deb = path.join(dir, `xdev-hive-${version}-linux-amd64.deb`);
+    const bytes = Buffer.from("Debian package");
+    writeFileSync(deb, bytes);
+    const original = globalThis.fetch;
+    const uploads: URL[] = [];
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/api/releases/upload") {
+        uploads.push(url);
+        const chunks: Buffer[] = [];
+        for await (const chunk of init!.body as AsyncIterable<Buffer>) chunks.push(chunk);
+        assert.deepEqual(Buffer.concat(chunks), bytes);
+      }
+      return Response.json({ result: { releases: [] } });
+    };
+    try {
+      await run("https://hub.invalid", [deb]).done;
+      assert.equal(uploads.length, 1);
+      assert.equal(uploads[0]!.searchParams.get("kind"), "deb");
+      assert.equal(uploads[0]!.searchParams.get("arch"), "x64");
+      assert.equal(uploads[0]!.searchParams.get("sha256"), sha(bytes));
+    } finally { globalThis.fetch = original; }
   });
 
   it("sends every build once with its metadata, then the notes", async () => {
