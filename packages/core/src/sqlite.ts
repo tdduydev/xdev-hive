@@ -1,3 +1,4 @@
+import { DEFAULT_RUN_TIMEOUT, runTimeoutMinutes, type RunTimeoutSettings } from "#core/run-timeout.ts";
 import { diffReviewSelection, validDiffReview, patchHunks } from "#core/diff-review.ts";
 import { memoryCleanupBaseline, type MemoryCleanupRun, type MemoryCleanupProposal } from "#core/memory-cleanup.ts";
 import { needsPlanApproval, type ImplementationPlan, type RunPlan } from "#core/plan-approval.ts";
@@ -674,6 +675,7 @@ const MIGRATIONS: string[] = [
     approved_by TEXT NOT NULL, approved_at TEXT NOT NULL, applied_at TEXT,
     UNIQUE(machine_id, tool_id));
   `,
+  `ALTER TABLE run_requests ADD COLUMN timeout_minutes INTEGER;`,
 ];
 
 /**
@@ -1128,6 +1130,7 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
     detail: `yêu cầu đồng bộ trên ${o.length} máy`,
     text: { key: "audit.syncRequest", vars: { count: o.length } },
   }),
+  "runs.setTimeoutSettings": () => ({ target: "hub", detail: "run timeout settings", text: { key: "audit.runTimeoutSettings" } }),
   "runs.dispatch": (_i, o: RunRequest) => ({
     target: `${o.project}/${o.taskId}`,
     detail: `run ${o.role} trên ${o.machine} (#${o.id})`,
@@ -1578,6 +1581,7 @@ const toSystem = (r: Row): HiveSystem => ({
 const listParam = (projects: string[] | undefined) => (projects ? JSON.stringify(projects) : null);
 
 const toRunRequest = (r: Row): RunRequest => ({
+  timeoutMinutes: r.timeout_minutes == null ? null : num(r.timeout_minutes),
   plan: r.plan == null ? null : JSON.parse(str(r.plan)) as RunPlan,
   id: num(r.id),
   machineId: str(r.machine_id),
@@ -2092,6 +2096,9 @@ export class SqliteHive implements HiveBackend {
       // Its cells are the project's part of the router: the same right as setting them by hand.
       case "modelLearning.set":
         return this.#need(actor, i.project, "projectSettings", `Project ${i.project}`);
+      case "runs.setTimeoutSettings":
+        if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Only a hub admin sets run timeouts.", { key: "errors.hubAdminOnly" });
+        return;
       case "agentPolicy.set":
         // The default binds every project, so only someone over all of them: a hub admin (no per-project grants).
         if (i.project === null) {
@@ -4146,12 +4153,12 @@ export class SqliteHive implements HiveBackend {
       try {
         // Still no kind: the classify run is going, or it went quiet and #queueClassify gives the default now.
         // runs.dispatch may leave the machine to the hub (49e): pick it as runs.dispatch does.
-        const { project, role, profileId, preferKind, reviewAfter, candidates, instructions } = wanted;
+        const { project, role, profileId, preferKind, reviewAfter, candidates, instructions, timeoutMinutes } = wanted;
         const machineId = wanted.machineId ?? this.#mapMachine(project, null, profileId).id;
         if (task.kind === null && this.#queueClassify(task, this.#machineByRef(machineId), actor)) continue;
         const fresh = this.#getTask(task.id)!;
         const machine = this.#assertDispatchable({ machineId, project, task: fresh, role, profileId, candidates, instructions }, actor);
-        this.#dispatchDirect(machine, project, fresh, { role, profileId, preferKind, reviewAfter, candidates, instructions }, actor);
+        this.#dispatchDirect(machine, project, fresh, { role, profileId, preferKind, reviewAfter, candidates, instructions, timeoutMinutes }, actor);
         drop.run(task.id);
       } catch (err) {
         if (!(err instanceof HiveError)) throw err;
@@ -5018,7 +5025,7 @@ export class SqliteHive implements HiveBackend {
   }
 
   /** A manually dispatched small task joins the existing review/fix/merge lifecycle without Spec Kit. */
-  #dispatchDirect(m: Machine, project: string, task: Task, r: { role: AgentRole; profileId: string | null; preferKind?: PreferKind | null; reviewAfter: boolean; candidates: number; instructions: string }, actor: Actor): RunRequest {
+  #dispatchDirect(m: Machine, project: string, task: Task, r: { timeoutMinutes?: number | null; role: AgentRole; profileId: string | null; preferKind?: PreferKind | null; reviewAfter: boolean; candidates: number; instructions: string }, actor: Actor): RunRequest {
     const fast = r.role === "implement" && r.candidates === 1 && !this.#flowRow(task.id) && !this.#flowTaskRow(task.id)
       && this.#sdlcPolicy().projects[project]?.fastLaneKinds?.some((kind) => kind === task.kind);
     const request = this.#insertRequest(m, project, task, fast ? { ...r, reviewAfter: effectiveGates(this.#sdlcPolicy(), project).review !== "auto" } : r, actor);
@@ -5036,11 +5043,26 @@ export class SqliteHive implements HiveBackend {
     return request;
   }
 
+  #runTimeoutSettings(): RunTimeoutSettings {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'runTimeout'").get() as Row | undefined;
+    return row ? JSON.parse(str(row.value)) as RunTimeoutSettings : DEFAULT_RUN_TIMEOUT;
+  }
+
+  #requestTimeout(m: Machine, task: Task, profileId: string | null, requested?: number | null): number {
+    const settings = this.#runTimeoutSettings();
+    const profiles = m.profiles.filter((p) => p.enabled && p.installed && (!profileId || p.id === profileId));
+    const ceiling = Math.min(settings.maxMinutes, profiles.length ? Math.max(...profiles.map((p) => p.timeoutMinutes ?? 60)) : 60);
+    if (requested != null && requested > ceiling) {
+      throw new HiveError("bad_request", `Run timeout exceeds ${ceiling} minutes.`, { key: "errors.runTimeoutCeiling", vars: { minutes: ceiling } });
+    }
+    return runTimeoutMinutes(settings, ceiling, task.kind, task.id, requested);
+  }
+
   #insertRequest(
     m: Machine,
     project: string,
     task: Task,
-    r: { role: AgentRole; profileId: string | null; preferKind?: PreferKind | null; reviewAfter: boolean; candidates: number; instructions: string },
+    r: { timeoutMinutes?: number | null; role: AgentRole; profileId: string | null; preferKind?: PreferKind | null; reviewAfter: boolean; candidates: number; instructions: string },
     actor: Actor,
   ): RunRequest {
     const now = this.#now();
@@ -5048,6 +5070,7 @@ export class SqliteHive implements HiveBackend {
     if (planning && !m.profiles.some((p) => p.enabled && p.installed && p.planApproval && (!r.profileId || p.id === r.profileId) && ["claude", "codex"].includes(p.kind))) {
       throw new HiveError("bad_request", "This machine needs an updated Claude or Codex runner for plan approval.", { key: "errors.planRunnerRequired" });
     }
+    const timeoutMinutes = this.#requestTimeout(m, task, r.profileId, r.timeoutMinutes);
     const selection = this.#selection(project, task, r.role);
     const res = this.db
       .prepare(
@@ -5057,6 +5080,7 @@ export class SqliteHive implements HiveBackend {
       // A pinned profile is the run's whatever its kind, so the preference would mean nothing.
       .run(m.id, m.machine, project, task.id, task.title, r.role, r.profileId, r.profileId ? null : (r.preferKind ?? null), r.reviewAfter ? 1 : 0, r.candidates, r.instructions, actor.name, actor.onBehalf ?? null, now, now, selection ? JSON.stringify(selection) : null);
     const requestId = num(res.lastInsertRowid);
+    this.db.prepare("UPDATE run_requests SET timeout_minutes = ? WHERE id = ?").run(timeoutMinutes, requestId);
     if (planning) {
       const row = this.db.prepare(`INSERT INTO implementation_plans(project, task_id, machine_id, request_id, timeout_minutes, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
         .run(project, task.id, m.id, requestId, this.#sdlcPolicy().projects[project]?.planApproval?.timeoutMinutes ?? null, now);
@@ -5089,9 +5113,9 @@ export class SqliteHive implements HiveBackend {
     // Copy the authorized request, including its budget owner and model choice. Do not dispatch through the policy
     // again: that would require a second plan and lose the group's/flow's original place.
     const result = this.db.prepare(`INSERT INTO run_requests(machine_id, machine, project, task_id, task_title, role, profile_id, prefer_kind, review_after, candidates,
-      instructions, requested_by, on_behalf, requested_at, updated_at, selection)
+      instructions, requested_by, on_behalf, requested_at, updated_at, selection, timeout_minutes)
       SELECT machine_id, machine, project, task_id, task_title, role, profile_id, prefer_kind, review_after, candidates,
-      instructions, requested_by, on_behalf, ?, ?, selection FROM run_requests WHERE id = ?`).run(now, now, old.id);
+      instructions, requested_by, on_behalf, ?, ?, selection, timeout_minutes FROM run_requests WHERE id = ?`).run(now, now, old.id);
     const requestId = num(result.lastInsertRowid);
     let planId = num(row.id);
     if (decision === "changes") {
@@ -7314,7 +7338,12 @@ export class SqliteHive implements HiveBackend {
           return toRunRecord(db.prepare("SELECT * FROM run_records WHERE machine_id = ? AND run_id = ?").get(actor.name, runId) as Row, false);
         }),
 
-      "runs.dispatch": ({ machineId, project, taskId, role, profileId, preferKind, reviewAfter, candidates, instructions }, actor) =>
+      "runs.timeoutSettings": () => this.#runTimeoutSettings(),
+      "runs.setTimeoutSettings": (settings) => {
+        db.prepare("INSERT INTO settings(key, value) VALUES ('runTimeout', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(settings));
+        return this.#runTimeoutSettings();
+      },
+      "runs.dispatch": ({ machineId, project, taskId, role, profileId, preferKind, reviewAfter, candidates, instructions, timeoutMinutes }, actor) =>
         this.#tx(() => {
           const task = this.#getTask(taskId);
           if (!task || task.project !== project) {
@@ -7327,6 +7356,7 @@ export class SqliteHive implements HiveBackend {
           }
           // Pick at dispatch time, when the hub knows which plans and machines still have room.
           const m = this.#assertDispatchable({ machineId: machineId ?? this.#mapMachine(project, null, profileId).id, project, task, role, profileId, candidates, instructions }, actor);
+          this.#requestTimeout(m, task, profileId, timeoutMinutes);
           // Its group would run it again once this run ended.
           this.#assertNotInGroup(taskId);
           // A task only ever reviewed is a review (roadmap 54b rules); it only fills an empty kind.
@@ -7340,14 +7370,14 @@ export class SqliteHive implements HiveBackend {
             ).run(
               taskId,
               project,
-              JSON.stringify({ machineId, project, taskId, role, profileId, preferKind, reviewAfter, candidates, instructions }),
+              JSON.stringify({ machineId, project, taskId, role, profileId, preferKind, reviewAfter, candidates, instructions, timeoutMinutes }),
               actor.name,
               actor.onBehalf ?? null,
             );
             const pending = db.prepare("SELECT request_id FROM task_classify_runs WHERE task_id = ?").get(taskId) as Row;
             return this.#runRequest(num(pending.request_id));
           }
-          return this.#dispatchDirect(m, project, task, { role, profileId, preferKind, reviewAfter, candidates, instructions }, actor);
+          return this.#dispatchDirect(m, project, task, { role, profileId, preferKind, reviewAfter, candidates, instructions, timeoutMinutes }, actor);
         }),
 
       "runs.dispatchMany": ({ project, title, items, maxParallel, reviewAfter, instructions }, actor) =>

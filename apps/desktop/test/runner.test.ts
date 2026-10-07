@@ -3525,3 +3525,45 @@ describe("unsupported model recovery", () => {
 after(() => {
   for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
 });
+
+describe("run timeout handover", () => {
+  it("commits WIP at the run deadline and gives the next run the branch, SHA and last activity", async () => {
+    const s = await setup([profile("p1", "custom", 1, "timeout-wip", { timeoutMinutes: 5 })]);
+    const run = await s.runner.enqueue({ project: "demo", taskId: "T-1", timeoutMinutes: 0.02 });
+    try {
+      await s.runner.settle();
+      const done = s.runner.store.get(run.id)!;
+      assert.equal(done.status, "failed");
+      assert.equal(done.timeoutMinutes, 0.02);
+      assert.match(done.error ?? "", /0.02/);
+      assert.equal(done.commits, 1);
+      assert.match(git(done.worktree!, "log", "-1", "--format=%s"), /wip/);
+      const task = await s.task();
+      assert.equal(task.status, "todo");
+      assert.ok(task.note?.includes(`branch ${done.branch}`));
+      assert.ok(task.note?.includes(`commit WIP ${done.headSha}`));
+      assert.match(task.note ?? "", /Checking timeout work/);
+      assert.match(git(done.worktree!, "show", `${done.headSha}:timeout-work.txt`), /unfinished work/);
+      // A second run reads the task's note through the existing prompt path.
+      const next = await s.runner.enqueue({ project: "demo", taskId: "T-1", timeoutMinutes: 0.02 });
+      await s.runner.settle();
+      assert.ok(s.calls().at(-1)?.prompt.includes(done.headSha!));
+      assert.ok(s.calls().at(-1)?.prompt.includes("Checking timeout work"));
+      assert.equal(s.runner.store.get(next.id)!.status, "failed");
+    } finally { s.runner.cancel(run.id); }
+  });
+
+  it("takes the request timeout from heartbeat, then respects a lower current profile ceiling", async () => {
+    for (const [requested, effective] of [[1, 1], [3, 2]]) {
+      const p = profile("p1", "custom", 1, "sleep", { timeoutMinutes: 2 });
+      const s = await setup([p], { acceptHubRuns: true }, "hub", { report: () => ({ profiles: [{ id: p.id, label: p.label, kind: p.kind, enabled: true, installed: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, timeoutMinutes: 5 }] }) });
+      await s.runner.heartbeat();
+      const req = await s.hive.call("runs.dispatch", { project: "demo", taskId: "T-1", machineId: "runner.duy-mbp@duy-macbook", timeoutMinutes: requested }, admin);
+      await s.runner.heartbeat();
+      await until(() => s.runner.list().some((r) => r.status === "running" && r.timeoutMinutes === effective));
+      const active = s.runner.list().find((r) => r.status === "running")!;
+      try { assert.equal(req.timeoutMinutes, requested); assert.equal(active.timeoutMinutes, effective); }
+      finally { s.runner.cancel(active.id); await s.runner.settle(); }
+    }
+  });
+});

@@ -600,6 +600,9 @@ export class Runner {
     const project = this.#host.projects().find((p) => p.name === req.project);
     if (!project) throw new HiveError("not_found", `Dự án ${req.project} chưa được thêm vào app.`, { key: "errors.projectNotAdded", vars: { project: req.project } });
     if (!/^[A-Za-z0-9._-]{1,100}$/.test(req.taskId)) throw new HiveError("bad_request", "Task id không hợp lệ.", { key: "errors.badTaskId" });
+    if (req.timeoutMinutes != null && (!Number.isFinite(req.timeoutMinutes) || req.timeoutMinutes <= 0 || req.timeoutMinutes > 720)) {
+      throw new HiveError("bad_request", "Run timeout must be positive and at most 720 minutes.");
+    }
     const role = req.role ?? "implement";
     if (!AGENT_ROLES.includes(role)) throw new HiveError("bad_request", `Vai trò không hợp lệ: ${role}`, { key: "errors.badRole", vars: { role } });
     if (req.profileId && !this.#host.profiles().some((p) => p.id === req.profileId)) {
@@ -659,6 +662,7 @@ export class Runner {
         ciFix: extra.ciFix ?? null,
         requestedBy: extra.requestedBy ?? null,
         selection: req.selection ?? null,
+        timeoutMinutes: req.timeoutMinutes ?? null,
       },
       this.#iso(),
     );
@@ -700,6 +704,7 @@ export class Runner {
           preferKind: req.preferKind ?? null,
           requestedBy,
           selection: req.selection ?? null,
+          timeoutMinutes: req.timeoutMinutes ?? null,
         },
         now,
       ),
@@ -1237,6 +1242,7 @@ export class Runner {
           candidates: req.candidates,
           instructions: req.instructions,
           selection: req.selection ?? null,
+          timeoutMinutes: req.timeoutMinutes ?? null,
         },
         { requestedBy: req.requestedBy, plan: req.plan ?? null, fromHub: true },
       );
@@ -1688,7 +1694,10 @@ export class Runner {
     try {
       await this.#models.refresh(chosen, this.#host.env());
       const routed = routeProfile(chosen, fit.profile, pol, run.selection, this.#models.snapshot(chosen, this.#host.env()));
-      profile = run.plan?.phase === "plan" ? planningProfile(routed.profile) : routed.profile;
+      const fitted = run.plan?.phase === "plan" ? planningProfile(routed.profile) : routed.profile;
+      // The run's own time limit (roadmap 58c), never past the profile's.
+      profile = { ...fitted, timeoutMinutes: Math.min(run.timeoutMinutes ?? fitted.timeoutMinutes, fitted.timeoutMinutes) };
+      run = this.store.update(run.id, { timeoutMinutes: profile.timeoutMinutes });
       // Report the model and effort actually passed to the CLI, including policy and planning overrides.
       run = this.store.update(run.id, { agentKind: profile.kind, ...ranOn(profile) });
       const project = this.#project(run.project);
@@ -2023,6 +2032,10 @@ export class Runner {
             });
             clearTimeout(timer);
             this.#live.delete(run.id);
+            if (outcome.kind === "exit" && outcome.timedOut) {
+              // Persist before clearing the activity; finishing and reporting run after the child has exited (roadmap 58c).
+              run = this.store.update(run.id, { continuation: redactLines(stripHidden(this.#activity.get(run.id) ?? "—")).slice(0, 300) });
+            }
             this.#activity.delete(run.id);
             if (stream) out.write(stamp(stream.end()));
             saveSkills();
@@ -2367,7 +2380,9 @@ export class Runner {
       ({ commits, headSha } = branchState(wt.path, wt.baseSha));
     }
 
-    const done = this.store.update(run.id, { status, error, exitCode, summary, commits, headSha, ...usage, finishedAt: now.toISOString() });
+    const continuation = outcome.kind === "exit" && outcome.timedOut
+      ? tr("runNote.continueFrom", { branch: run.branch ?? "—", commit: headSha ?? "—", activity: run.continuation ?? "—" }) : null;
+    const done = this.store.update(run.id, { status, error, exitCode, summary, commits, headSha, continuation, ...usage, finishedAt: now.toISOString() });
     if (wt && run.role === "implement" && ["succeeded", "failed", "cancelled"].includes(status) && this.#opts.diffReview !== false) {
       try {
         const patch = redactLines(stripHidden(this.diff(done.id)));
@@ -2427,6 +2442,7 @@ export class Runner {
           bestOf: run.bestOf,
           requestedBy: run.requestedBy,
           selection: run.selection,
+          timeoutMinutes: run.timeoutMinutes,
           plan: run.plan,
         },
         this.#iso(),
@@ -2602,7 +2618,7 @@ export class Runner {
     if (task) {
       const list = done.map((c) => `c${c.bestOf!.n} (${c.profileId ?? "?"}, ${c.branch ?? "?"})`).join(", ");
       const block =
-        `${RUN_MARK}${judge.id} · ${judge.profileId ?? "?"} · ${judge.status}\n` +
+        `${RUN_MARK}${judge.id} · ${judge.profileId ?? "?"} · ${judge.status}\n${judge.continuation ? `${judge.continuation}\n` : ""}` +
         `Best-of-${b.of}: giám khảo ${judge.profileId ?? "?"} (run ${judge.id}) chưa chọn được bản nào: ${why}. Chọn tay một bản ở Board: ${list}.`;
       // Whoever picks a candidate next reads the task's own note here, not just the judge's verdict (BUG-note-wipe).
       await this.#host.backend().call("tasks.update", { id: judge.taskId, status: "review", note: taskNote(block, task.note) }, this.#runnerActor());
@@ -2619,7 +2635,7 @@ export class Runner {
     this.store.setPick(b.group, 0, "");
     const task = await this.#groupTask(last, b.group);
     if (task) {
-      const lines = finals.map((c) => `c${c.bestOf!.n} (${c.profileId ?? "?"}) ${c.status}: ${c.error ?? ""}`);
+      const lines = finals.map((c) => `c${c.bestOf!.n} (${c.profileId ?? "?"}) ${c.status}: ${c.error ?? ""}${c.continuation ? `\n${c.continuation}` : ""}`);
       const block = `${RUN_MARK}${last.id} · ${last.profileId ?? "?"} · ${last.status}\nBest-of-${b.of}: không bản nào chạy xong.\n${lines.join("\n")}`;
       // The task goes back to todo: the next run starts from this note, so its brief must still be there (BUG-note-wipe).
       await this.#host.backend().call("tasks.update", { id: last.taskId, status: "todo", note: taskNote(block, task.note) }, this.#runnerActor());
@@ -2664,6 +2680,10 @@ export class Runner {
     const sig = `Run ${run.id} · ${profile.id}`;
 
     if (run.role === "review") {
+      if (run.continuation && task.status !== "done") {
+        await backend.call("tasks.update", { id: run.taskId, status: task.status, note: taskNote(`${RUN_MARK}${run.id} · ${profile.id} · ${run.status}\n${run.continuation}`, task.note) }, actor);
+        return;
+      }
       if (run.status !== "succeeded" || !run.summary) return;
       const review = clipHead(`Review (${sig}):\n${run.summary}`, NOTE_MAX);
       const kept = (task.note ?? "").trim();
@@ -2675,7 +2695,13 @@ export class Runner {
     }
     const owner = this.#owners.get(run.id) ?? actor.name;
     this.#owners.delete(run.id);
-    if (task.status !== "doing" || task.owner !== owner) return;
+    if (task.status !== "doing" || task.owner !== owner) {
+      // An agent may already have handed off through MCP before its process hits the deadline.
+      if (run.continuation && task.status !== "done" && !task.owner) {
+        await backend.call("tasks.update", { id: run.taskId, status: task.status, note: taskNote(`${RUN_MARK}${run.id} · ${profile.id} · ${run.status}\n${run.continuation}`, task.note) }, actor);
+      }
+      return;
+    }
     const block =
       run.status === "succeeded"
         ? `${run.summary ?? "Agent kết thúc không để lại tóm tắt."}\n\n${branch}`
@@ -2683,7 +2709,7 @@ export class Runner {
           ? `${profile.id} hết quota (${run.error}). Hive chuyển sang gói khác. ${branch}`
           : `${run.error ?? ""} ${branch}`;
     // The task keeps what it said: the agent did not report, so the next run starts from this note (BUG-note-wipe).
-    const note = taskNote(`${RUN_MARK}${run.id} · ${profile.id} · ${run.status}\n${block.trim()}`, task.note);
+    const note = taskNote(`${RUN_MARK}${run.id} · ${profile.id} · ${run.status}\n${[run.continuation, block.trim()].filter(Boolean).join("\n")}`, task.note);
     await backend.call("tasks.update", { id: run.taskId, status: run.status === "succeeded" ? "review" : "todo", note }, actor);
   }
 }

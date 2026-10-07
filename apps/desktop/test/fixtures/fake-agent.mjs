@@ -208,6 +208,11 @@ switch (process.env.FAKE_MODE ?? "ok") {
     console.error("Error loading config.toml: invalid transport in `mcp_servers.xdev-hive`");
     finish(1);
     break;
+  case "timeout-wip":
+    writeFileSync("timeout-work.txt", "unfinished work\n");
+    console.log("Checking timeout work");
+    setTimeout(() => {}, 120_000);
+    break;
   case "sleep":
     // Streams even in JSON mode, so tests can wait for it.
     console.log("thinking…");

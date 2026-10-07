@@ -5,7 +5,7 @@ import { ResponsiveTable as Table, ResponsiveTableRow as TableRow } from "#ui/co
 import { TaskModelChips } from "#ui/components/ModelChip.tsx";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { cn } from "cn";
-import { WORK_ROLES, MAX_CANDIDATES, TASK_STATUSES, type WorkRole, type PreferKind, type RunRequest, type Task, type TaskNote, type TaskStatus } from "@xdev-hive/core";
+import { DEFAULT_RUN_TIMEOUT, runTimeoutMinutes, WORK_ROLES, MAX_CANDIDATES, TASK_STATUSES, type WorkRole, type PreferKind, type RunRequest, type Task, type TaskNote, type TaskStatus } from "@xdev-hive/core";
 import { CLASS_FIELDS, CLASS_VALUES, classInput, classSource, type ClassField } from "#ui/lib/task-class.ts";
 import { ListOrdered, Split, Sparkles } from "lucide-react";
 import { Button } from "@xdev-hive/ui/components/ui/button";
@@ -788,6 +788,13 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
   const [reviewAfter, setReviewAfter] = useState(true);
   const [candidates, setCandidates] = useState(1);
   const action = useAction();
+  const timeoutSettings = useQuery(() => client.call("runs.timeoutSettings", {}), [client]);
+  const [timeout, setTimeout] = useState("");
+  const settings = timeoutSettings.data ?? DEFAULT_RUN_TIMEOUT;
+  const profiles = (machine ? [machine] : fit).flatMap((m) => m.profiles).filter((p) => p.enabled && p.installed && (!profileId || p.id === profileId));
+  const ceiling = Math.min(settings.maxMinutes, profiles.length ? Math.max(...profiles.map((p) => p.timeoutMinutes ?? 60)) : 60);
+  const automaticTimes = new Set(profiles.map((p) => runTimeoutMinutes(settings, p.timeoutMinutes ?? 60, task.kind, task.id)));
+  const defaultMinutes = automaticTimes.size === 1 ? [...automaticTimes][0]! : null;
   const several = role === "implement" && !profileId;
   const waiting = waitingLabels(task);
   const pending = requests.find((r) => r.status === "pending");
@@ -817,6 +824,7 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
                 preferKind: (!profileId && preferKind) || null,
                 reviewAfter: role !== "review" && reviewAfter,
                 candidates: several ? candidates : 1,
+                timeoutMinutes: timeout ? Number(timeout) : null,
                 instructions,
               });
               setInstructions("");
@@ -841,6 +849,11 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
               </NativeSelect>
             </div>
             <ProfileSelect id={`profile-${task.id}`} machine={machine} value={profileId} onChange={setProfileId} />
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={`timeout-${task.id}`}>{t("runTimeout.duration")}</Label>
+              <Input id={`timeout-${task.id}`} data-dispatch-timeout type="number" min={1} max={ceiling} step={1} value={timeout} placeholder={defaultMinutes == null ? t("runTimeout.profile") : t("runTimeout.automatic", { minutes: defaultMinutes })} className="max-md:h-11 max-md:text-base" onChange={(e) => setTimeout(e.target.value)} aria-describedby={`timeout-hint-${task.id}`} />
+              <p id={`timeout-hint-${task.id}`} className="text-xs text-muted-foreground">{t("runTimeout.hint")}</p>
+            </div>
             {!profileId ? <PreferKindSelect id={`prefer-${task.id}`} machine={machine} value={preferKind} onChange={setPreferKind} /> : null}
             {several ? (
               <div className="flex flex-col gap-1.5">

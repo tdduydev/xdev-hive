@@ -161,14 +161,14 @@ describe("task classification on the hub", () => {
   it("holds a runs.dispatch call until its classify run ends, then sends it as asked", async () => {
     const { hive, sent, take, push, task } = await hub();
     await hive.call("tasks.create", { id: "T-6", project: "app", title: "Build account flow" }, admin);
-    const answered = await hive.call("runs.dispatch", { machineId: mbp.name, project: "app", taskId: "T-6", instructions: "Keep it small" }, admin);
+    const answered = await hive.call("runs.dispatch", { machineId: mbp.name, project: "app", taskId: "T-6", instructions: "Keep it small", timeoutMinutes: 30 }, admin);
     assert.equal(answered.role, "classify");
     const [req] = await sent();
     await take(req!.id, "C-6");
     await push("C-6", "T-6", "classify", "succeeded", answer("ui", "s", "normal"));
     assert.equal((await task("T-6")).kind, "ui");
     const [run] = await sent();
-    assert.deepEqual([run!.role, run!.instructions, run!.requestedBy], ["implement", "Keep it small", "duy"]);
+    assert.deepEqual([run!.role, run!.instructions, run!.requestedBy, run!.timeoutMinutes], ["implement", "Keep it small", "duy", 30]);
     // A review needs no classify run, and a task only reviewed is a review.
     await hive.call("tasks.create", { id: "T-7", project: "app", title: "Check account flow" }, admin);
     const review = await hive.call("runs.dispatch", { machineId: mbp.name, project: "app", taskId: "T-7", role: "review" }, admin);
