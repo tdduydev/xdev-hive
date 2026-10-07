@@ -101,12 +101,16 @@ it("migrates an old machine only on its owner's heartbeat and audits the binding
       assert.equal((await s.beat(s.attacker.token)).status, 403);
       assert.deepEqual(s.row(), before);
       assert.equal((await s.issue()).status, 403, "legacy rows cannot mint credentials before binding");
+      const notice = { kind: "failed", project: "app", taskId: "SEC-1", taskTitle: "Task", runId: "R-test", profileId: null, role: "implement" };
+      assert.equal((await s.rpc(s.attacker.token, "runs.report", notice)).status, 403, "a namesake cannot send the machine's webhook notice");
+      assert.equal((await s.rpc(s.paired.token, "runs.report", notice)).status, 403, "legacy machines heartbeat before reporting run notices");
       const first = await s.beat();
       assert.equal(first.status, 200);
       assert.equal(s.row()?.token_id, s.paired.info.id);
       assert.equal(s.row()?.owner, unowned ? null : "owner");
       assert.equal(s.hive.isMachineActor(s.machineId, first.actor), true);
       assert.equal((await s.issue()).status, 200);
+      assert.equal((await s.rpc(s.paired.token, "runs.report", notice)).status, 200);
       assert.equal((await s.beat()).status, 200);
       assert.equal(s.hive.db.prepare("SELECT COUNT(*) AS n FROM audit WHERE action = 'machines.bind'").get()?.n, 1);
     } finally { s.hive.close(); }
