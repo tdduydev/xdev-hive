@@ -145,6 +145,9 @@ npm test            # 396 test: core, mcp, hub (REST + MCP HTTP), desktop (insta
 npm run typecheck
 ```
 
+Ghép lô task vào worktree review riêng: `node scripts/review-batch.mjs --name <lô> ai/<task>…`.
+Thêm `--gate` để chạy cổng kiểm tuần tự; xem [cách dùng, nguồn từ máy khác và log](scripts/review-batch.md).
+
 Hub (dev, có HMR):
 
 ```bash
