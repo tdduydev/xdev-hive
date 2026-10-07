@@ -12,6 +12,14 @@ import type { HiveBackend } from "./methods.ts";
 import { SqliteHive } from "./sqlite.ts";
 
 export const projectSchema = z.object({
+  autoRelease: z.object({
+    appRollout: z.boolean().default(false),
+    prepare: z.array(z.string().min(1)).min(1).max(40),
+    release: z.array(z.string().min(1)).min(1).max(40),
+    deploy: z.array(z.string().min(1)).min(1).max(40).optional(),
+    checkLogs: z.array(z.string().min(1)).min(1).max(40).optional(),
+    timeoutMinutes: z.number().int().min(1).max(120).default(60),
+  }).optional(),
   name: z.string().regex(PROJECT_NAME),
   repo: z.string().min(1),
   /** GitLab project path (group/sub/project) when it cannot be read from the git remote. */

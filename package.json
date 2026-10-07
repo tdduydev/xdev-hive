@@ -4,6 +4,7 @@
   "private": true,
   "description": "xDev Hive — shared docs, memory and task coordination for multiple coding agents",
   "type": "module",
+  "imports": { "#scripts/*": "./scripts/*" },
   "workspaces": [
     "packages/*",
     "apps/*"

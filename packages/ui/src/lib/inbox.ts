@@ -4,7 +4,7 @@ import { HUB_SCOPE, type ImplementationPlan, type MemoryCleanupProposal, type Ag
 import { approvalOf } from "#ui/lib/permissions.ts";
 import { waitingReason } from "#ui/lib/runs.ts";
 
-export type InboxKind = "plan" | "cleanup" | "agentHold" | "ci" | "waitingRun" | "proposal" | "review" | "memory" | "conflict" | "machine" | "request" | "alert" | "gate" | "leader";
+export type InboxKind = "releaseFailure" | "plan" | "cleanup" | "agentHold" | "ci" | "waitingRun" | "proposal" | "review" | "memory" | "conflict" | "machine" | "request" | "alert" | "gate" | "leader";
 export type InboxTone = "danger" | "warning" | "info";
 
 interface Base {
@@ -18,6 +18,7 @@ interface Base {
 
 export type InboxItem = Base &
   (
+    | { kind: "releaseFailure"; task: Task }
     | { kind: "plan"; plan: ImplementationPlan }
     | { kind: "cleanup"; proposal: MemoryCleanupProposal }
     | { kind: "agentHold"; task: Task }
@@ -69,6 +70,7 @@ export interface InboxSources {
 const OPTIONAL_TOOLS = new Set(["cli:specify"]);
 
 const TONE: Record<InboxKind, InboxTone> = {
+  releaseFailure: "danger",
   plan: "warning",
   cleanup: "info",
   agentHold: "warning",
@@ -87,6 +89,7 @@ const TONE: Record<InboxKind, InboxTone> = {
 
 /** Who decides at a gate, as the hub checks it: a task's review and merge are code review, the rest running agents. */
 export function gatePermission(g: Pick<SdlcGateRecord, "gate">): Permission {
+  if (g.gate === "release") return "projectSettings";
   if (g.gate === "test") return "qaVerify";
   return g.gate === "review" || g.gate === "merge" ? "codeReview" : "runDispatch";
 }
@@ -144,6 +147,8 @@ export function buildInbox(src: InboxSources): InboxItem[] {
   }
 
   for (const task of src.assignedTasks ?? []) {
+    if (/^OPS-release-/.test(task.id) && task.status !== "done" && can(task.project, "projectSettings")) items.push({ kind: "releaseFailure", key: `releaseFailure:${task.id}:${task.updatedAt}`, tone: "danger", at: task.updatedAt, scope: task.project, task });
+
     if (!task.agent?.hold || task.status === "done" || (!can(task.project, "runDispatch") && task.agent.by !== src.principal)) continue;
     items.push({ kind: "agentHold", key: `agentHold:${task.id}:${task.agent.at}:${JSON.stringify(task.agent.hold)}`, tone: TONE.agentHold, at: task.updatedAt, scope: task.project, task });
   }
@@ -207,6 +212,7 @@ export function inboxProject(item: InboxItem): string | null {
     case "cleanup": return item.proposal.project;
     case "review":
     case "agentHold":
+    case "releaseFailure":
       return item.task.project;
     case "memory":
     case "conflict":
@@ -232,6 +238,7 @@ export function inboxGroup(item: InboxItem): InboxGroup {
       return "review";
     case "gate":
       return item.gate.gate === "test" ? "qa" : gatePermission(item.gate) === "codeReview" ? "review" : "decide";
+    case "releaseFailure": return "watch";
     case "waitingRun":
     case "agentHold":
     case "ci":

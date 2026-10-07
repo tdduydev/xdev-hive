@@ -1,3 +1,4 @@
+import { useChatPageContext } from "#ui/components/ChatSession.tsx";
 // Tính năng on the web (roadmap 49d, docs/specs/49-ux-roles.md "Trang Tính năng"), in place of the Spec page there:
 // a board by step (Spec → Plan → Tasks → Đang làm → Review → Xong), a card per 34b flow or per specs/ folder no flow
 // made, and a feature's own page with its files, a Kiểm thử checklist, its runs and its gates. A gate's buttons sit
@@ -89,6 +90,7 @@ export function FeaturesPage() {
   useEffect(() => setMoving((data.data ?? []).some((x) => x.flow && (MOVING.has(x.flow.state) || x.column === "doing"))), [data.data]);
   const current = linked ? findFeature(items, { project: linkProject, flow: linkFlow, dir: linkDir, branch: linkBranch }) : null;
   const manyProjects = scope.kind !== "project";
+  useChatPageContext(current ? { id: current.flow?.taskId ?? current.spec?.dir ?? current.key, href: featureHref(current), project: current.project } : null);
 
   if (linked) {
     return (

@@ -19,6 +19,16 @@ export const DEFAULT_EGRESS = [
   // Gemini CLI
   ".googleapis.com",
   "accounts.google.com",
+  // Mistral Vibe
+  "api.mistral.ai",
+  "console.mistral.ai",
+  "auth.mistral.ai",
+  // OpenCode Zen and its public model catalog; other backend hosts belong to the profile allowlist.
+  "opencode.ai",
+  ".opencode.ai",
+  "models.dev",
+  // Kilo gateway and catalog
+  "kilo.ai", ".kilo.ai",
   // Packages the agent may install while it tests (asked 28/9)
   "registry.npmjs.org",
   "pypi.org",

@@ -19,7 +19,7 @@ async function fixture(options: Pick<RunnerHost, "toolTrust" | "applyToolTrust">
   const runner = new Runner({
     backend: () => options.wrap?.(backend) ?? backend,
     profiles: () => [],
-    settings: () => ({ maxParallel: 2, maxAttempts: 3, worktreeRoot: null, acceptHubRuns: false }),
+    settings: () => ({ maxParallel: 2, maxAttempts: 3, worktreeRoot: null, acceptHubRuns: false, gateRunner: false }),
     projects: () => [{ name: "demo", repo: dataDir }],
     mode: () => "hub",
     machine: () => "test",

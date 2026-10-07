@@ -3,6 +3,8 @@
 // the prompt and git's worktree links still hold), the CLI's own login folder, and nothing else of the
 // home directory. Variables go to Docker by name only (`-e NAME`), so their values never show in the
 // process list. No Electron imports.
+import { opencodeEnv } from "#desktop/main/runner/opencode.ts";
+import { kiloPaths } from "#desktop/main/runner/kilo.ts";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -18,8 +20,14 @@ function loginPaths(profile: AgentProfile, home: string): string[] {
       return [at(env.CLAUDE_CONFIG_DIR, ".claude"), path.join(home, ".claude.json")];
     case "codex":
       return [at(env.CODEX_HOME, ".codex")];
+    case "vibe":
+      return [at(env.VIBE_HOME, ".vibe")];
+    case "opencode":
+      return Object.values(opencodeEnv(profile, home));
+    case "kilo":
+      return kiloPaths(env, home);
     case "gemini":
-      return [path.join(home, ".gemini")];
+      return [path.join(env.GEMINI_CLI_HOME ? expandHome(env.GEMINI_CLI_HOME) : home, ".gemini")];
     default:
       return [];
   }
@@ -74,7 +82,7 @@ export function containerCommand(run: ContainerRun): ContainerCommand {
     GIT_CONFIG_KEY_0: "safe.directory",
     GIT_CONFIG_VALUE_0: "*",
   };
-  const mounts = [...new Set([run.worktree, run.gitDir, ...loginPaths(run.profile, home), path.join(home, ".gitconfig")])].filter(
+  const mounts = [...new Set([run.worktree, run.gitDir, ...loginPaths(run.profile.kind === "kilo" ? { ...run.profile, env: run.env } : run.profile, home), path.join(home, ".gitconfig")])].filter(
     (p, i) => i < 2 || exists(p),
   );
   // Docker refuses the same destination twice, so a path already mounted (writable) is not mounted again read-only.

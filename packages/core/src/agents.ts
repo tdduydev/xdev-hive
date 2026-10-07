@@ -2,10 +2,10 @@
 // Browser-safe so the UI can validate forms with the same schema the desktop runner uses.
 import { z } from "zod";
 
-export const AGENT_KINDS = ["claude", "codex", "gemini", "antigravity", "custom"] as const;
+export const AGENT_KINDS = ["claude", "codex", "gemini", "antigravity", "vibe", "opencode", "kilo", "copilot", "custom"] as const;
 export type AgentKind = (typeof AGENT_KINDS)[number];
 /** Kinds a run may prefer when it is given (roadmap 24c): the vendors with a subscription to rotate. */
-export const PREFER_KINDS = ["claude", "codex", "gemini", "antigravity"] as const;
+export const PREFER_KINDS = ["claude", "codex", "gemini", "antigravity", "vibe", "opencode", "kilo", "copilot"] as const;
 export type PreferKind = (typeof PREFER_KINDS)[number];
 
 /**
@@ -15,7 +15,7 @@ export type PreferKind = (typeof PREFER_KINDS)[number];
 export const WORK_ROLES = ["plan", "implement", "review"] as const;
 export type WorkRole = (typeof WORK_ROLES)[number];
 /** Every role a run may have, as machines report them. */
-export const AGENT_ROLES = [...WORK_ROLES, "classify"] as const;
+export const AGENT_ROLES = [...WORK_ROLES, "classify", "research"] as const;
 export type AgentRole = (typeof AGENT_ROLES)[number];
 
 /** Best-of-n: at most this many candidates of one implement run. */
@@ -47,6 +47,11 @@ export const agentProfileSchema = z.object({
    * Also available: `{worktree}`, `{task}`, `{project}`, `{branch}`.
    */
   args: z.array(z.string().max(2000)).max(40),
+  /** OpenCode uses explicit backend/model IDs; auxiliary calls stay on that model unless chosen here. */
+  opencode: z.object({
+    model: z.string().regex(/^[A-Za-z0-9._-]+\/[A-Za-z0-9._:/-]+$/).max(200).optional(),
+    smallModel: z.string().regex(/^[A-Za-z0-9._-]+\/[A-Za-z0-9._:/-]+$/).max(200).optional(),
+  }).optional(),
   /** Extra env, e.g. CLAUDE_CONFIG_DIR=~/.claude-account-2 to use a second login. `~` is expanded. */
   env: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string().max(2000)).default({}),
   enabled: z.boolean().default(true),
@@ -188,18 +193,58 @@ export const AGENT_TEMPLATES: Record<Exclude<AgentKind, "custom">, AgentProfile>
     env: {}, enabled: true, readOnly: false, codexLocalhost: false, container: null, priority: 35,
     roles: ["plan", "implement", "review"], maxConcurrent: 1, cooldownMinutes: 60, timeoutMinutes: 60, stopAtSession: 95, stopAtWeek: 90,
   },
+  vibe: {
+    id: "vibe-1", label: "Mistral Vibe", kind: "vibe", bin: "vibe",
+    args: ["--prompt", "{prompt}", "--output", "streaming", "--agent", "accept-edits", "--trust"],
+    env: {}, enabled: true, readOnly: false, codexLocalhost: false, container: null, priority: 40,
+    roles: ["plan", "implement", "review"], maxConcurrent: 1, cooldownMinutes: 60, timeoutMinutes: 60, stopAtSession: 95, stopAtWeek: 90,
+  },
+  opencode: {
+    id: "opencode-1", label: "OpenCode", kind: "opencode", bin: "opencode",
+    // Headless rejects requests for shell approval; only full autonomy enables --auto.
+    args: ["run", "--format", "json", "{prompt}"],
+    env: {}, enabled: false, readOnly: false, codexLocalhost: false, container: null, priority: 40,
+    roles: ["plan", "implement", "review"], maxConcurrent: 1, cooldownMinutes: 60, timeoutMinutes: 60,
+    stopAtSession: 95, stopAtWeek: 90,
+  },
+  kilo: {
+    id: "kilo-1", label: "Kilo Code CLI", kind: "kilo", bin: "kilo",
+    // Edits are allowed explicitly by the runner; commands requiring approval fail closed in headless mode.
+    args: ["run", "--format", "json", "{prompt}"],
+    env: {}, enabled: true, readOnly: false, codexLocalhost: false, container: null, priority: 40,
+    roles: ["plan", "implement", "review"], maxConcurrent: 1, cooldownMinutes: 60, timeoutMinutes: 60, stopAtSession: 95, stopAtWeek: 90,
+  },
   gemini: {
     id: "gemini-1",
     label: "Gemini CLI",
     kind: "gemini",
     bin: "gemini",
-    args: ["-p", "{prompt}", "--approval-mode", "auto_edit"],
+    args: ["--output-format", "stream-json", "--approval-mode", "auto_edit"],
     env: {},
     enabled: true,
     readOnly: false,
     codexLocalhost: false,
     container: null,
     priority: 30,
+    roles: ["plan", "implement", "review"],
+    maxConcurrent: 1,
+    cooldownMinutes: 60,
+    timeoutMinutes: 60,
+    stopAtSession: 95,
+    stopAtWeek: 90,
+  },
+  copilot: {
+    id: "copilot-1",
+    label: "GitHub Copilot CLI",
+    kind: "copilot",
+    bin: "copilot",
+    args: ["-p", "{prompt}", "--no-ask-user", "--no-auto-update", "--output-format", "json", "--secret-env-vars=GH_TOKEN", "--allow-tool=write", "--allow-tool=read", "--allow-tool=xdev-hive", "--deny-tool=shell"],
+    env: {},
+    enabled: true,
+    readOnly: false,
+    codexLocalhost: false,
+    container: null,
+    priority: 40,
     roles: ["plan", "implement", "review"],
     maxConcurrent: 1,
     cooldownMinutes: 60,
@@ -220,6 +265,7 @@ export const runnerSettingsSchema = z.object({
   maxAttempts: z.number().int().min(1).max(6).default(3),
   /** Hub mode: start the runs a project manager queues for this machine on the web (runs.dispatch). Off until the user turns it on. */
   acceptHubRuns: z.boolean().default(false),
+  gateRunner: z.boolean().default(false),
   /** Unset follows acceptHubRuns; an explicit choice survives turning hub intake on/off. */
   autoUpdateIdle: z.boolean().optional(),
 });

@@ -1,15 +1,18 @@
+import { opencodeEnv, opencodePermissions, opencodeUserConfig } from "#desktop/main/runner/opencode.ts";
+import { kiloRunEnv } from "#desktop/main/runner/kilo.ts";
 import { STEER_PROMPT } from "#desktop/main/runner/steer.ts";
 // Builds the command line and prompt for one run.
 import { accessSync, constants, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ARTIFACT_DIR, AUTONOMY_ARGS, AUTONOMY_FLAGS, autonomyOf, flagValue, lowerAutonomy, modelsFor, policySummary, type AgentKind, type AgentPolicy, type AgentProfile, type AgentRole, type Autonomy, type CiFix, type ToolEntry, type ModelSelection } from "@xdev-hive/core";
+import { ARTIFACT_DIR, AUTONOMY_ARGS, AUTONOMY_FLAGS, autonomyOf, flagValue, lowerAutonomy, modelsFor, policySummary, type AgentKind, type AgentPolicy, type AgentProfile, type AgentRole, type Autonomy, type CiFix, toolArgv, type ToolEntry, type ModelSelection } from "@xdev-hive/core";
 import { fence } from "#desktop/main/gitlab/describe.ts";
 import { tr } from "#desktop/main/i18n.ts";
 import { MCP_NAME, NO_FEATURES, SHIM_NAME, mcpLaunch, runMcpServers, shimBinDir, type RepoFeatures } from "#desktop/main/installer.ts";
 import { loadWorktreeRules, loadWorktreeSkills, type WorktreeRule, type WorktreeSkill } from "#desktop/main/sync.ts";
 import type { ReferenceRepo } from "./references.ts";
 import { claudeHooks, claudeToolServer, codexToolArgs, legacyTools, type ReadyHook, type UserClaudeSettings } from "./tools.ts";
+import { VIBE_HIVE_TOOLS } from "#desktop/main/runner/vibe.ts";
 import { nearestModel } from "#desktop/main/runner/models.ts";
 import { outputFormat } from "./usage.ts";
 
@@ -272,14 +275,21 @@ export interface BuiltCommand {
   claudeStream?: boolean;
   /** Codex `exec --json` (roadmap 28c): events on stdout, with each turn's tokens. */
   codexJson?: boolean;
+  /** Copilot's --output-format json emits JSONL, including messages and a terminal event. */
+  copilotJson?: boolean;
   antigravityStream?: boolean;
+  geminiStream?: boolean;
+  geminiJson?: boolean;
+  vibeOutput?: "streaming" | "json";
+  opencodeStream?: boolean;
+  kiloStream?: boolean;
   /** Extra env the CLI needs for these args. */
   env?: Record<string, string>;
 }
 
 export function buildCommand(
   profile: AgentProfile,
-  vars: { prompt: string; worktree: string; task: string; project: string; branch: string; run?: string; repo?: string; references?: ReferenceRepo[]; hiveMcp?: string },
+  vars: { prompt: string; worktree: string; task: string; project: string; branch: string; run?: string; repo?: string; references?: ReferenceRepo[]; hiveMcp?: string; opencodeConfigDir?: string; kiloConfigRoot?: string; kiloMcp?: Record<string, Record<string, unknown>> },
   /**
    * The run's tools from the hub's catalog (runTools), or what the repo's setup turned on (no catalog): Claude Code
    * gets the app's own entries for those, as before the catalog.
@@ -304,6 +314,14 @@ export function buildCommand(
       .replaceAll("{branch}", vars.branch)
       .replaceAll("{timeoutMinutes}", String(profile.timeoutMinutes));
   let args = profile.args.map(fill);
+  let stdin = usesPrompt ? null : vars.prompt;
+  if (profile.kind === "gemini") {
+    if (profile.readOnly) args = [...withoutFlags(withoutArrayFlags(args, ["--allowed-tools"]), ["--approval-mode"], ["--yolo", "-y"]), "--approval-mode", "plan"];
+    if (outputFormat(args) === null) args.push("--output-format", "stream-json");
+    // The native -p value is appended to stdin. Empty it when the entire prompt is a standalone placeholder.
+    const at = profile.args.indexOf("{prompt}");
+    if (at > 0 && ["-p", "--prompt"].includes(profile.args[at - 1]!)) { args[at] = ""; stdin = vars.prompt; }
+  }
   let claudeJson = false;
   let claudeStream = false;
   if (profile.kind === "claude") {
@@ -328,13 +346,119 @@ export function buildCommand(
       codexJson = true;
     }
   }
+  if (profile.kind === "copilot") {
+    const hive = runMcpServers(profile.id, vars.project, NO_FEATURES, { task: vars.task, id: vars.run, readOnly: profile.readOnly })[MCP_NAME] as Record<string, unknown>;
+    const servers: Record<string, unknown> = { [MCP_NAME]: { type: "local", ...hive, tools: ["*"] } };
+    // Copilot expands ${VAR} in MCP env values, so catalog credentials stay in the child environment, not argv/logs.
+    if (catalog) for (const e of tools) {
+      if (e.kind !== "mcp" || !e.mcp || (mcp !== null && !mcp.includes(e.id))) continue;
+      servers[e.id] = { ...claudeToolServer(e, ctx), type: "local", tools: ["*"] };
+      args.push(`--allow-tool=${e.id}`);
+    }
+    args.push("--additional-mcp-config", JSON.stringify({ mcpServers: servers }));
+  }
+  let vibeOutput: "streaming" | "json" | undefined;
+  let vibeEnv: Record<string, string> | undefined;
+  if (profile.kind === "vibe") {
+    const output = flagValue(args, ["--output"]);
+    if (!output) args.push("--output", "streaming");
+    if (!output || output === "streaming" || output === "json") vibeOutput = output === "json" ? "json" : "streaming";
+    if (!flagValue(args, ["--agent"])) args.push("--agent", "accept-edits");
+    if (profile.readOnly) {
+      args = withoutFlags(args, ["--agent", "--enabled-tools"], ["--auto-approve", "--yolo", "--smart-approve"]);
+      args.push("--agent", "plan", ...["read_file", "grep", "xdev-hive_*"].flatMap((t) => ["--enabled-tools", t]));
+    }
+    const servers = runMcpServers(profile.id, vars.project, NO_FEATURES, { task: vars.task, id: vars.run, readOnly: profile.readOnly });
+    const hive = servers[MCP_NAME] as { command: string; args: string[]; env: Record<string, string> };
+    const launch = mcpLaunch(vars.hiveMcp ?? SHIM_NAME, []);
+    const entries = (catalog ? tools : legacyTools(tools)).filter((t) => t.kind === "mcp" && t.mcp && (mcp === null || mcp.includes(t.id))).map((t) => {
+      const [command, ...toolArgs] = toolArgv([t.mcp!.command, ...t.mcp!.args], t, ctx);
+      return { name: t.id, transport: "stdio", command: [command], args: toolArgs, env: { ...t.env, ...(t.handler === "codegraph" ? { CODEGRAPH_NO_DAEMON: "1" } : {}) } };
+    });
+    // JSON settings in env: credentials remain inherited by MCP processes, never copied into argv or files.
+    vibeEnv = {
+      VIBE_CLI: "python",
+      ...(autonomyOf(profile.kind, args) !== "full" ? { VIBE_BYPASS_TOOL_PERMISSIONS: "false" } : {}),
+      VIBE_TOOLS: JSON.stringify(Object.fromEntries(VIBE_HIVE_TOOLS.map((name) => [`${MCP_NAME}_${name}`, { permission: "always" }]))),
+      VIBE_MCP_SERVERS: JSON.stringify([{ name: MCP_NAME, transport: "stdio", command: [launch.command], args: launch.args, env: hive.env }, ...entries]),
+      VIBE_SESSION_LOGGING__SAVE_DIR: path.join(vars.worktree, ".xdev-hive", "vibe", vars.run ?? "run"),
+      VIBE_SESSION_LOGGING__GENERATE_TITLES: "false",
+    };
+  }
+  let openEnv: Record<string, string> | undefined;
+  if (profile.kind === "opencode") {
+    if (args[0] !== "run") throw new Error("OpenCode runner requires the run subcommand");
+    if (flagValue(args, ["--attach", "--command"]) !== null) throw new Error("OpenCode runner does not support --attach or --command");
+    const user = opencodeUserConfig(profile);
+    const model = modelOf(args) ?? profile.opencode?.model;
+    if (!model) throw new Error(tr("runNote.opencodeModelRequired"));
+    const launch = mcpLaunch(vars.hiveMcp ?? path.join(shimBinDir(), process.platform === "win32" ? `${SHIM_NAME}.cmd` : SHIM_NAME), []);
+    const servers: Record<string, any> = { ...user.mcp };
+    for (const e of (catalog ? tools : legacyTools(tools))) {
+      if (e.kind !== "mcp" || !e.mcp || (mcp !== null && !mcp.includes(e.id))) continue;
+      const entry = claudeToolServer(e, ctx) as any;
+      servers[e.id] = { type: "local", command: [entry.command, ...entry.args], environment: Object.fromEntries(Object.entries(entry.env ?? {}).map(([k, v]) => [k, typeof v === "string" ? v.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, "{env:$1}") : v])) };
+    }
+    servers[MCP_NAME] = { type: "local", command: [launch.command, ...launch.args], enabled: true, environment: {
+      HIVE_AGENT: profile.id, HIVE_PROJECT: vars.project, HIVE_TASK: vars.task,
+      ...(vars.run ? { HIVE_RUN: vars.run } : {}), ...(profile.readOnly ? { HIVE_READONLY: "1" } : {}),
+    } };
+    if (mcp !== null) for (const name of Object.keys(servers)) if (name !== MCP_NAME && !mcp.includes(name)) servers[name] = { enabled: false };
+    const permissions = opencodePermissions(autonomyOf(profile.kind, args), Object.keys(servers).filter((n) => servers[n].enabled !== false));
+    const config = { provider: user.provider, enabled_providers: user.enabled_providers, disabled_providers: user.disabled_providers,
+      model, small_model: profile.opencode?.smallModel ?? model, share: "disabled", mcp: servers,
+      permission: permissions, agent: { "hive-run": { mode: "primary", permission: permissions } }, plugin: [],
+    };
+    args = withoutFlags(args, ["--model", "-m", "--agent", "--format", "--dir"], []);
+    // Options precede the positional prompt, including one beginning with a dash.
+    const promptAt = args.indexOf(vars.prompt);
+    if (promptAt >= 0) args.splice(promptAt, 1);
+    args = [args[0] ?? "run", "--format", "json", "--model", model, "--agent", "hive-run", "--dir", vars.worktree, ...args.slice(1), ...(promptAt >= 0 ? ["--", vars.prompt] : [])];
+    openEnv = { ...opencodeEnv(profile), OPENCODE_CONFIG: "", OPENCODE_CONFIG_DIR: vars.opencodeConfigDir ?? "",
+      ...(vars.opencodeConfigDir ? { XDG_CONFIG_HOME: vars.opencodeConfigDir } : {}),
+      OPENCODE_CONFIG_CONTENT: JSON.stringify(config), OPENCODE_PERMISSION: JSON.stringify(permissions), OPENCODE_DISABLE_PROJECT_CONFIG: "true", OPENCODE_DISABLE_AUTOUPDATE: "true", OPENCODE_DISABLE_LSP_DOWNLOAD: "true",
+    };
+  }
+  let kiloEnv: Record<string, string> | undefined;
+  if (profile.kind === "kilo") {
+    if (args[0] !== "run") throw new Error("Kilo profiles must use the native run subcommand");
+    if (args.some((a) => /^(?:--attach|--command|--interactive|--share|--cloud-fork|--worktree)(?:=|$)/.test(a) || a === "-i")) throw new Error("Kilo run flags cannot bypass the runner's local session policy");
+    args = withoutFlags(args, [], ["--auto", "--yolo", "--dangerously-skip-permissions"]);
+    if (autonomyOf(profile.kind, profile.args) === "full" && !args.includes("--auto")) args.push("--auto");
+    // One parsed format, runner-owned; -- keeps prompts beginning with '-' positional.
+    args = withoutFlags(args, ["--format"], ["--pure"]);
+    const promptAt = usesPrompt ? args.findIndex((a) => a === vars.prompt) : -1;
+    if (promptAt >= 0) args.splice(promptAt, 1);
+    // Replace a template separator so runner-owned flags never become positional text.
+    args = args.filter((a) => a !== "--");
+    args = [...args, "--format", "json", "--pure", ...(usesPrompt ? ["--", vars.prompt] : [])];
+    if (!modelOf(args)) args.splice(1, 0, "--model", "kilo/kilo-auto/free");
+    const allowed = (name: string) => name !== MCP_NAME && (mcp === null || mcp.includes(name));
+    const servers = {
+      ...(vars.kiloMcp ?? runMcpServers(profile.id, vars.project, NO_FEATURES, { task: vars.task, id: vars.run, readOnly: profile.readOnly })),
+      ...Object.fromEntries((catalog ? tools : legacyTools(tools)).filter((e) => e.kind === "mcp" && e.mcp && allowed(e.id)).map((e) => {
+        const server = claudeToolServer(e, ctx);
+        // Kilo resolves {env:NAME}; Claude's ${NAME} substitution is a different contract.
+        server.env = Object.fromEntries(Object.entries(server.env as Record<string, string>).map(([key, value]) => [key, value.replace(/\$\{([A-Z][A-Z0-9_]*)\}/g, "{env:$1}")]));
+        return [e.id, server];
+      })),
+    };
+    kiloEnv = kiloRunEnv(profile, servers, vars.kiloConfigRoot ?? path.join(os.tmpdir(), "xdev-hive-kilo", vars.run ?? profile.id));
+  }
   return {
     bin: expandHome(profile.bin),
     args,
-    stdin: usesPrompt ? null : vars.prompt,
+    stdin,
+    ...(vibeOutput ? { vibeOutput } : {}),
+    ...(vibeEnv ? { env: vibeEnv } : {}),
+    ...(openEnv ? { env: openEnv, opencodeStream: true } : {}),
+    ...(kiloEnv ? { env: kiloEnv, kiloStream: true } : {}),
     ...(claudeJson ? { claudeJson } : {}),
     ...(claudeStream ? { claudeStream } : {}),
     ...(codexJson ? { codexJson } : {}),
+    ...(profile.kind === "copilot" && outputFormat(args) === "json" ? { copilotJson: true } : {}),
+    ...(profile.kind === "gemini" && outputFormat(args) === "stream-json" ? { geminiStream: true } : {}),
+    ...(profile.kind === "gemini" && outputFormat(args) === "json" ? { geminiJson: true } : {}),
     ...(profile.kind === "antigravity" && outputFormat(args) === "stream-json" ? { antigravityStream: true } : {}),
     ...(profile.kind === "claude" ? { env: hooks ? { ...userEnv(hooks.user.env), ...CLAUDE_RUN_ENV, ...hooks.env } : CLAUDE_RUN_ENV } : {}),
   };
@@ -400,6 +524,8 @@ export function codexArgs(
   // which enables network access broadly in workspace-write, not just loopback.
   if (run?.codexLocalhost) overrides.push("-c", "sandbox_workspace_write.network_access=true");
   if (run) {
+    // Codex filters the parent environment before spawning stdio MCP servers; pass the secret by name only.
+    overrides.push("-c", 'mcp_servers.xdev-hive.env_vars=["HIVE_RUN_TOKEN"]');
     // The shim's identity is the profile's, as for Claude Code: ~/.codex/config.toml says "codex", which would claim
     // the task as someone else than the runner, and hold it against the next run.
     const env = {
@@ -503,13 +629,25 @@ export function withoutFlags(args: string[], valued: string[], switches: string[
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
-    if (switches.includes(a)) continue;
+    if (switches.some((n) => a === n || a.startsWith(`${n}=`))) continue;
     if (valued.includes(a)) {
       i++;
       continue;
     }
     if (valued.some((n) => a.startsWith(`${n}=`))) continue;
     out.push(a);
+  }
+  return out;
+}
+
+/** Gemini's yargs list flags consume all following values until the next option. */
+export function withoutArrayFlags(args: string[], names: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (names.some((name) => a === name || a.startsWith(`${name}=`))) {
+      while (i + 1 < args.length && !args[i + 1]!.startsWith("-")) i++;
+    } else out.push(a);
   }
   return out;
 }
@@ -531,6 +669,7 @@ export function applyAutonomy(kind: AgentKind, args: string[], level: Autonomy):
   if (!flags) return args;
   const own = autonomyOf(kind, args);
   const used = lowerAutonomy(own, level);
+  if (kind === "gemini" && (used === "read" || used === "propose")) return [...withoutFlags(withoutArrayFlags(args, ["--allowed-tools"]), flags.valued, flags.switches), "--approval-mode", "plan"];
   if (used === own) return args;
   return insertFlags(kind, withoutFlags(args, flags.valued, flags.switches), AUTONOMY_ARGS[kind as Exclude<AgentKind, "custom">][used]);
 }
@@ -545,7 +684,8 @@ export function modelOf(args: string[]): string | null {
  * `-c model_reasoning_effort=X` / `--config …` (the last one wins, as in the CLI; TOML quotes taken off).
  */
 export function effortOf(kind: AgentKind, args: string[]): string | null {
-  if (kind !== "codex") return kind === "claude" || kind === "antigravity" ? flagValue(args, ["--effort"]) : null;
+  if (kind === "kilo") return flagValue(args, ["--variant"]);
+  if (kind !== "codex") return kind === "claude" || kind === "antigravity" || kind === "copilot" ? flagValue(args, kind === "copilot" ? ["--reasoning-effort", "--effort"] : ["--effort"]) : null;
   let effort: string | null = null;
   args.forEach((a, i) => {
     const value = a === "-c" || a === "--config" ? args[i + 1] : a.startsWith("--config=") ? a.slice("--config=".length) : undefined;
@@ -561,12 +701,12 @@ export function effortOf(kind: AgentKind, args: string[]): string | null {
  */
 export function ranOn(profile: AgentProfile): { model: string | null; effort: string | null } {
   if (profile.kind === "custom") return { model: null, effort: null };
-  return { model: modelOf(profile.args), effort: effortOf(profile.kind, profile.args) };
+  return { model: profile.kind === "vibe" ? profile.env.VIBE_ACTIVE_MODEL ?? null : modelOf(profile.args) ?? (profile.kind === "opencode" ? profile.opencode?.model ?? null : profile.kind === "kilo" ? "kilo/kilo-auto/free" : null), effort: effortOf(profile.kind, profile.args) };
 }
 
 /** Model-specific effort may itself be invalid for the CLI default on the recovery attempt. */
 export function withoutModel(profile: AgentProfile): AgentProfile {
-  const args = withoutFlags(profile.args, ["--model", "-m", "--effort"], []);
+  const args = withoutFlags(profile.args, ["--model", "-m", "--effort", "--reasoning-effort", "--variant"], []);
   const clean: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -577,6 +717,7 @@ export function withoutModel(profile: AgentProfile): AgentProfile {
   const env = { ...profile.env };
   delete env.CLAUDE_CODE_EFFORT_LEVEL;
   delete env.ANTHROPIC_MODEL;
+  if (profile.kind === "vibe") delete env.VIBE_ACTIVE_MODEL;
   return { ...profile, args: clean, env };
 }
 
@@ -587,19 +728,35 @@ export function withoutModel(profile: AgentProfile): AgentProfile {
  */
 export function routeProfile(own: AgentProfile, fitted: AgentProfile, pol: AgentPolicy, selection: ModelSelection | null | undefined, supported?: string[] | null): { profile: AgentProfile; note: string | null } {
   const kind = fitted.kind;
-  if (!selection || (kind !== "claude" && kind !== "codex" && kind !== "antigravity")) return { profile: fitted, note: null };
+  if (kind === "vibe") {
+    const where = selection ? `tier ${selection.tier} (${selection.reason})` : "policy";
+    const pinned = own.env.VIBE_ACTIVE_MODEL;
+    const wanted = fitted.env.VIBE_ACTIVE_MODEL ?? selection?.models.vibe?.model;
+    if (pinned) return { profile: fitted, note: `${pinned} · pinned by VIBE_ACTIVE_MODEL` };
+    if (!wanted) return { profile: fitted, note: null };
+    const allowed = modelsFor(pol, kind);
+    const chosen = !allowed || allowed.includes(wanted) ? wanted : allowed[0];
+    if (!chosen || (supported !== undefined && !supported?.includes(chosen))) {
+      if (allowed) throw new Error("No configured Vibe model allowed by the policy");
+      return { profile: fitted, note: `CLI default · ${wanted} support unknown · ${where}` };
+    }
+    return { profile: { ...fitted, env: { ...fitted.env, VIBE_ACTIVE_MODEL: chosen } }, note: `${chosen} · ${where}` };
+  }
+  if (!selection || (kind !== "claude" && kind !== "codex" && kind !== "antigravity" && kind !== "gemini" && kind !== "opencode" && kind !== "kilo" && kind !== "copilot")) return { profile: fitted, note: null };
   const where = `tier ${selection.tier} (${selection.reason})`;
-  const pinned = modelOf(own.args);
+  const pinned = modelOf(own.args) ?? (own.kind === "opencode" ? own.opencode?.model : null);
   if (pinned) return { profile: fitted, note: `${pinned} · pinned by the profile's args, ${where} not applied` };
   const wanted = selection.models[kind];
   if (!wanted) return { profile: fitted, note: `no ${kind} model at ${where}` };
   const allowed = modelsFor(pol, kind);
   let model = !allowed || allowed.includes(wanted.model) ? wanted.model : allowed[0];
   let supportNote = "";
-  if (supported !== undefined) {
+  if (supported !== undefined && !(kind === "kilo" && supported === null)) {
     const available = (supported ?? []).filter((m) => !allowed || allowed.includes(m));
-    const resolved = (model ? nearestModel(model, available) : null) ?? (allowed && !allowed.includes(wanted.model) ? available[0] : null);
+    const resolved = (kind === "opencode" ? (model && available.includes(model) ? model : null) : model ? nearestModel(model, available) : null) ?? (allowed && !allowed.includes(wanted.model) ? available[0] : null);
     if (!resolved) {
+      if (kind === "opencode") throw new Error(`OpenCode model ${wanted.model} is unavailable; automatic backend fallback is disabled`);
+      if (kind === "kilo") throw new Error(`Kilo model unavailable: ${model ?? wanted.model}`);
       // A default cannot be verified against a whitelist. Keep policy enforcement fail-closed.
       if (allowed) throw new Error(`No supported model allowed by the policy for ${kind}`);
       return { profile: { ...fitted, args: withoutFlags(fitted.args, ["--model", "-m"], []) }, note: `CLI default · ${wanted.model} ${supported === null ? "support unknown" : "not supported; no same-family model available"} · ${where}` };
@@ -612,11 +769,11 @@ export function routeProfile(own: AgentProfile, fitted: AgentProfile, pol: Agent
   // CLAUDE_CODE_EFFORT_LEVEL beats --effort in Claude Code, so a profile that sets it has chosen its effort too.
   const ownEffort = effortOf(kind, own.args) ?? (kind === "claude" ? (own.env.CLAUDE_CODE_EFFORT_LEVEL ?? null) : null);
   const flags = [kind === "codex" ? "-m" : "--model", model];
-  if (!ownEffort && wanted.effort) flags.push(...(kind === "codex" ? ["-c", `model_reasoning_effort=${wanted.effort}`] : ["--effort", wanted.effort]));
+  if (kind !== "gemini" && kind !== "opencode" && !ownEffort && wanted.effort) flags.push(...(kind === "codex" ? ["-c", `model_reasoning_effort=${wanted.effort}`] : [kind === "copilot" ? "--reasoning-effort" : kind === "kilo" ? "--variant" : "--effort", wanted.effort]));
   const args = insertFlags(kind, withoutFlags(fitted.args, ["--model", "-m"], []), flags);
   // Explore and other subagents run Opus by default on a plan: on a cheap tier that would spend more than the run itself.
   const env = kind === "claude" && (selection.tier === "light" || selection.tier === "standard") && !own.env.CLAUDE_CODE_SUBAGENT_MODEL ? { ...fitted.env, CLAUDE_CODE_SUBAGENT_MODEL: "sonnet" } : fitted.env;
-  const effort = ownEffort ?? wanted.effort ?? "default";
+  const effort = kind === "gemini" ? "default" : ownEffort ?? wanted.effort ?? "default";
   const fallback = allowed && !allowed.includes(wanted.model) ? ` · ${wanted.model} not allowed by the policy` : "";
   return { profile: { ...fitted, args, env }, note: `${model} · effort ${effort} · ${where}${fallback}${supportNote}` };
 }
@@ -625,17 +782,26 @@ export function routeProfile(own: AgentProfile, fitted: AgentProfile, pol: Agent
  * Why the policy rules the profile out for a run, or null when it may run (applyPolicy then fits it). The runner
  * skips a blocked profile as one out of quota.
  */
-export function policyBlocks(profile: AgentProfile, pol: AgentPolicy): string | null {
+export function policyBlocks(profile: AgentProfile, pol: AgentPolicy, readOnlyResearch = false): string | null {
   const models = modelsFor(pol, profile.kind);
   if (models && !models.length) return tr("runNote.policyNoModel", { kind: profile.kind });
-  const model = modelOf(profile.args);
+  const model = profile.kind === "vibe" ? profile.env.VIBE_ACTIVE_MODEL ?? null : modelOf(profile.args) ?? (profile.kind === "opencode" ? profile.opencode?.model ?? null : null);
+  if (profile.kind === "opencode" && models && profile.opencode?.smallModel && !models.includes(profile.opencode.smallModel)) return tr("runNote.policyModel", { model: profile.opencode.smallModel, models: models.join(", ") });
   if (models && model && !models.includes(model)) return tr("runNote.policyModel", { model, models: models.join(", ") });
   // Outside a container nothing stops the CLI from reaching any host.
-  if (pol.network.mode !== "open" && !profile.container) return tr("runNote.policyNetwork", { mode: pol.network.mode });
+  // Research disables web tools, shell network and extra MCP servers on a read-only host run.
+  const researchHost = readOnlyResearch && ["claude", "codex"].includes(profile.kind);
+  if (pol.network.mode !== "open" && !profile.container && !researchHost) return tr("runNote.policyNetwork", { mode: pol.network.mode });
   // A custom CLI's flags and MCP servers are its own: the runner cannot hold it to less than full.
   if (profile.kind === "custom" && (pol.autonomy !== "full" || pol.mcp !== null)) return tr("runNote.policyCustom");
+  if (profile.kind === "vibe" && pol.autonomy !== "full") {
+    const agent = flagValue(profile.args, ["--agent"]);
+    if (agent && !["ask", "plan", "accept-edits", "smart-approve", "auto-approve"].includes(agent)) return tr("runNote.policyVibeAgent");
+  }
+  if (profile.kind === "vibe" && pol.mcp !== null) return tr("runNote.policyVibeMcp");
   // agy sandbox and MCP filter flags are not verified yet: do not silently run past a restrictive policy.
   if (profile.kind === "antigravity" && (pol.autonomy !== "full" || pol.mcp !== null)) return tr("runNote.policyAntigravity");
+  if (profile.kind === "copilot" && profile.container) return "Copilot CLI container MCP authentication is not configured";
   return null;
 }
 
@@ -657,23 +823,35 @@ export interface PolicyFit {
 export function applyPolicy(profile: AgentProfile, pol: AgentPolicy, codexServers: string[] = []): PolicyFit {
   let args = profile.args;
   const models = modelsFor(pol, profile.kind);
-  let model = modelOf(args);
+  let model = profile.kind === "vibe" ? profile.env.VIBE_ACTIVE_MODEL ?? null : modelOf(args) ?? (profile.kind === "opencode" ? profile.opencode?.model ?? null : null);
+  let env = limitEnv(profile, pol);
   if (models?.length && !model) {
     model = models[0]!;
-    args = insertFlags(profile.kind, args, ["--model", model]);
+    if (profile.kind === "vibe") env = { ...env, VIBE_ACTIVE_MODEL: model };
+    else args = insertFlags(profile.kind, args, ["--model", model]);
   }
   const autonomy = lowerAutonomy(autonomyOf(profile.kind, args), pol.autonomy);
   args = applyAutonomy(profile.kind, args, pol.autonomy);
   if (pol.mcp !== null) {
     const keep = [MCP_NAME, ...pol.mcp.filter((n) => n !== MCP_NAME)];
     // One flag per name: a list option of yargs takes repeats, whether or not this version splits commas.
-    if (profile.kind === "gemini") args = [...args, ...keep.flatMap((n) => ["--allowed-mcp-server-names", n])];
+    if (profile.kind === "gemini") args = [...withoutArrayFlags(args, ["--allowed-mcp-server-names"]), ...keep.flatMap((n) => ["--allowed-mcp-server-names", n])];
     if (profile.kind === "codex") {
       const off = [...new Set(codexServers)].filter((n) => !keep.includes(n));
       // A TOML key with other characters than these needs its quotes.
       const key = (n: string) => (/^[\w-]+$/.test(n) ? n : JSON.stringify(n));
       args = insertFlags("codex", args, off.flatMap((n) => ["-c", `mcp_servers.${key(n)}.enabled=false`]));
     }
+  }
+  if (profile.kind === "copilot" && (pol.mcp !== null || autonomy === "read" || autonomy === "propose")) {
+    // Copilot can load user and repo MCP servers outside Hive's per-run config. Restrict the visible tools, not just approvals.
+    const keep = ["xdev-hive", ...(pol.mcp ?? [])].filter((n, i, list) => list.indexOf(n) === i);
+    // --available-tools takes concrete tool names; read/write/shell are permission patterns for --allow-tool.
+    const reading = ["view", "glob", "grep", "rg", "skill"];
+    const editing = ["apply_patch", "create", "edit"];
+    const shell = ["bash", "powershell", "list_bash", "list_powershell", "read_bash", "read_powershell", "stop_bash", "stop_powershell", "write_bash", "write_powershell"];
+    const builtin = autonomy === "read" || autonomy === "propose" ? reading : [...reading, ...editing, ...(autonomy === "full" ? shell : [])];
+    args = [...withoutFlags(args, ["--available-tools"], []), `--available-tools=${[...builtin, ...keep].join(",")}`];
   }
   const c = profile.container;
   // Not open: a restricted container, with the profile's extra hosts only as far as the policy allows them.
@@ -683,7 +861,7 @@ export function applyPolicy(profile: AgentProfile, pol: AgentPolicy, codexServer
       : c;
   return {
     // Read means Hive read-only too; a profile set read-only stays so whatever the policy.
-    profile: { ...profile, args, container, env: limitEnv(profile, pol), readOnly: profile.readOnly || pol.autonomy === "read" },
+    profile: { ...profile, args, container, env: profile.kind === "copilot" ? Object.fromEntries(Object.entries(env).filter(([k]) => k !== "COPILOT_ALLOW_ALL")) : env, readOnly: profile.readOnly || pol.autonomy === "read" || (profile.kind === "vibe" && (autonomy === "read" || autonomy === "propose")) },
     autonomy,
     model,
     mcp: pol.mcp === null ? null : pol.mcp.filter((n) => n !== MCP_NAME),
@@ -742,7 +920,7 @@ export function resolveBin(bin: string, pathEnv: string): string | null {
     }
   };
   if (bin.includes("/") || bin.includes("\\")) return isFile(bin) ? bin : null;
-  const exts = process.platform === "win32" ? ["", ".cmd", ".exe", ".bat"] : [""];
+  const exts = process.platform === "win32" ? bin === "gemini" ? [".exe", ".cmd", ".bat", ""] : ["", ".cmd", ".exe", ".bat"] : [""];
   for (const dir of pathEnv.split(path.delimiter).filter(Boolean)) {
     for (const ext of exts) {
       const candidate = path.join(dir, bin + ext);

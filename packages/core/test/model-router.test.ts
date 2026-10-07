@@ -10,7 +10,7 @@ describe("model router (roadmap 54c)", () => {
   it("starts from the kind × size cell, with the tier's model for each kind of plan", () => {
     const docs = selectModel(settings(), "app", task({ kind: "docs", size: "s" }))!;
     assert.equal(docs.tier, "light");
-    assert.deepEqual(docs.models, { claude: { model: "sonnet", effort: "low" }, codex: { model: "gpt-6-luna", effort: "medium" }, antigravity: { model: "gemini-3.8-flash", effort: "low" } });
+    assert.deepEqual(docs.models, { kilo: { model: "kilo/kilo-auto/free", effort: null }, opencode: null, vibe: { model: "mistral-medium-3.5", effort: null }, gemini: { model: "flash", effort: null }, claude: { model: "sonnet", effort: "low" }, codex: { model: "gpt-6-luna", effort: "medium" }, antigravity: { model: "gemini-3.8-flash", effort: "low" }, copilot: { model: "auto", effort: null } });
     assert.equal(docs.reason, "docs/s, balanced");
     assert.equal(selectModel(settings(), "app", task({ kind: "debug", size: "s" }))!.tier, "strong");
     // Unclassified: feature/m, as 54b's default.

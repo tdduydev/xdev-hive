@@ -15,6 +15,7 @@ export function ModelsPanel({ settings, project }: { settings: ModelRouterSettin
   return <section className="min-w-0 space-y-4 [overflow-wrap:anywhere]" aria-label={t("models.title")} data-supported-models>
     <h2 className="text-lg font-semibold">{t("models.title")}</h2>
     <p className="text-sm text-muted-foreground">{t("models.description")}</p>
+    <p className="text-sm text-muted-foreground">{t("agents.geminiModels")} <a className="underline" href="https://geminicli.com/docs/cli/model/" target="_blank" rel="noreferrer">{t("agents.geminiModelSource")}</a></p>
     <ErrorNote error={machines.error} />
     <div className="grid min-w-0 gap-4 md:grid-cols-2">
       {MODEL_TIERS.map((tier) => <Card key={tier}>

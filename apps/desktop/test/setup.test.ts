@@ -111,7 +111,11 @@ describe("Setup: this machine", () => {
       ["cli:claude", "installed"],
       ["cli:codex", "missing"],
       ["cli:antigravity", "missing"],
+      ["cli:vibe", "missing"],
+      ["cli:opencode", "missing"],
+      ["cli:kilo", "missing"],
       ["cli:gemini", "missing"],
+      ["cli:copilot", "missing"],
       ["cli:specify", "manual"],
       ["shim", "missing"],
     ]);
@@ -579,6 +583,39 @@ describe("Antigravity setup without a real CLI or network", () => {
     assert.match(old.detail, /1.1.11/);
     assert.equal(old.action, null, "no guessed installer command");
     assert.ok(!calls(m.bin).some((line) => line.includes("/usage")));
+  });
+});
+
+describe("Mistral Vibe setup without credentials or network", () => {
+  it("uses the pinned Python installer, never npm, and requires uv", async () => {
+    const missing = machine();
+    assert.equal((await missing.setup.item("cli:vibe")).action, null);
+    await assert.rejects(missing.setup.install("cli:vibe"), /Cần uv/);
+    const m = machine({ uv: true });
+    assert.ok((await m.setup.item("cli:vibe")).action);
+    fakeBin(m.bin, "uv", 'echo installed');
+    await m.setup.install("cli:vibe");
+    assert.ok(calls(m.bin).includes("uv tool install --python 3.12 mistral-vibe==2.26.0 telemetry="));
+    assert.ok(!calls(m.bin).some((c) => c.startsWith("npm")));
+  });
+
+  it("upgrades only an existing uv tool, holds new runs and refuses while busy", async () => {
+    const held: boolean[] = [];
+    let busy = 1;
+    const m = machine({ uv: true, realpath: () => "/home/user/.local/share/uv/tools/mistral-vibe/bin/vibe", cliBusy: () => busy, holdCli: (_, on) => void held.push(on) });
+    fakeBin(m.bin, "vibe", 'echo "vibe 2.25.0"');
+    assert.equal((await m.setup.item("cli:vibe")).latest, "2.26.0");
+    await assert.rejects(m.setup.install("cli:vibe"), (e: { key?: string }) => e.key === "setupItem.cliBusy");
+    assert.deepEqual(held, []);
+    busy = 0;
+    fakeBin(m.bin, "uv", 'echo installed');
+    await m.setup.install("cli:vibe");
+    assert.ok(calls(m.bin).includes("uv tool install --python 3.12 --force mistral-vibe==2.26.0 telemetry="));
+    assert.deepEqual(held, [true, false]);
+    const manual = machine({ uv: true, realpath: () => "/opt/custom/vibe" });
+    fakeBin(manual.bin, "vibe", 'echo "vibe 2.25.0"');
+    assert.equal((await manual.setup.item("cli:vibe")).action, null);
+    await assert.rejects(manual.setup.install("cli:vibe"), (e: { key?: string }) => e.key === "setupItem.vibeManual");
   });
 });
 

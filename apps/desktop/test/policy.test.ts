@@ -13,7 +13,7 @@ const vars = { prompt: "do it", worktree: "/tmp/wt", task: "T-1", project: "demo
 describe("applyAutonomy", () => {
   const claude = AGENT_TEMPLATES.claude.args; // -p {prompt} --permission-mode acceptEdits
   const codex = AGENT_TEMPLATES.codex.args; // exec --sandbox workspace-write {prompt}
-  const gemini = AGENT_TEMPLATES.gemini.args; // -p {prompt} --approval-mode auto_edit
+  const gemini = AGENT_TEMPLATES.gemini.args; // Native JSONL, edits approved
 
   it("reads a profile's own level from its flags", () => {
     assert.equal(autonomyOf("claude", ["-p", "x", "--permission-mode", "plan"]), "read");
@@ -78,8 +78,8 @@ describe("applyAutonomy", () => {
   });
 
   it("gemini: each level", () => {
-    assert.deepEqual(applyAutonomy("gemini", gemini, "read"), ["-p", "{prompt}", "--approval-mode", "plan"]);
-    assert.deepEqual(applyAutonomy("gemini", gemini, "propose"), ["-p", "{prompt}", "--approval-mode", "plan"]);
+    assert.deepEqual(applyAutonomy("gemini", gemini, "read"), ["--output-format", "stream-json", "--approval-mode", "plan"]);
+    assert.deepEqual(applyAutonomy("gemini", gemini, "propose"), ["--output-format", "stream-json", "--approval-mode", "plan"]);
     assert.deepEqual(applyAutonomy("gemini", gemini, "edit"), gemini);
     assert.deepEqual(applyAutonomy("gemini", gemini, "full"), gemini);
     assert.deepEqual(applyAutonomy("gemini", ["-p", "{prompt}", "-y"], "full"), ["-p", "{prompt}", "-y"]);

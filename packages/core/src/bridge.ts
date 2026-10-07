@@ -155,6 +155,8 @@ export interface ShimReport {
 }
 
 export interface DesktopProject {
+  /** Local commands only: never included in heartbeat or hub settings. prepare bumps version/roadmap. */
+  autoRelease?: { appRollout: boolean; prepare: string[]; release: string[]; deploy?: string[]; checkLogs?: string[]; timeoutMinutes: number };
   name: string;
   repo: string;
   gitlabProject?: string;
@@ -280,7 +282,7 @@ export interface LoginHow {
 
 /** One more subscription on this machine: a profile with a sign-in folder of its own, signed in right away. */
 export interface NewAccount {
-  kind: "claude" | "codex" | "antigravity";
+  kind: "claude" | "codex" | "antigravity" | "gemini" | "vibe" | "opencode" | "kilo" | "copilot";
   label?: string;
   how?: LoginHow;
 }
@@ -559,7 +561,7 @@ export interface DesktopBridge {
 
   updateProject(
     name: string,
-    patch: { gitlabProject?: string | null; githubRepo?: string | null; targetBranch?: string | null; references?: string[] | null },
+    patch: { autoRelease?: DesktopProject["autoRelease"] | null; gitlabProject?: string | null; githubRepo?: string | null; targetBranch?: string | null; references?: string[] | null },
   ): Promise<DesktopSettings>;
   checkGitLab(): Promise<GitLabCheck>;
   /** Who the GitHub token belongs to (same shape as the GitLab check). */

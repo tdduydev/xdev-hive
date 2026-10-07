@@ -1,3 +1,4 @@
+import { ProjectRelease } from "#ui/components/ProjectRelease.tsx";
 import { useEffect, useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 import {
@@ -411,10 +412,11 @@ function MachineSettings({ settings, onSaved }: { settings: DesktopSettings; onS
   const t = useT();
   const [approval, setApproval] = useState(settings.memoryRequiresApproval);
   const [autoCommit, setAutoCommit] = useState(settings.autoCommit);
+  const [gateRunner, setGateRunner] = useState(settings.runner.gateRunner ?? false);
   const action = useAction();
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => setSaved(false), [approval, autoCommit]);
+  useEffect(() => setSaved(false), [approval, autoCommit, gateRunner]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -437,12 +439,16 @@ function MachineSettings({ settings, onSaved }: { settings: DesktopSettings; onS
         <Checkbox checked={autoCommit} onCheckedChange={(v) => setAutoCommit(v === true)} />
         {t("projects.autoCommit")}
       </label>
+      {settings.mode === "hub" ? <label className="flex min-h-11 items-center gap-3 text-sm">
+        <Checkbox checked={gateRunner} onCheckedChange={v => setGateRunner(v === true)} />
+        <span>{t("mergeQueue.role")}<span className="block text-xs text-muted-foreground">{t("mergeQueue.roleHint")}</span></span>
+      </label> : null}
       <div className="flex flex-wrap items-center gap-2">
         <Button
           disabled={action.busy}
           onClick={() =>
             void action.run(async () => {
-              await client.desktop!.updateSettings({ memoryRequiresApproval: approval, autoCommit });
+              await client.desktop!.updateSettings({ memoryRequiresApproval: approval, autoCommit, runner: { gateRunner } });
               setSaved(true);
               onSaved();
             })
@@ -990,6 +996,7 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
                     </Button>
                   </div>
                 </div>
+                <ProjectRelease project={p} onSaved={onChanged} />
                 <OpenCli profiles={profiles.data ?? []} projects={[p.name]} />
                 {gitlabOpen === p.name ? (
                   <ProjectGitLab

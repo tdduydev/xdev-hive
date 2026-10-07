@@ -1,13 +1,14 @@
 // Files attached to chat messages (roadmap 17g): picked, pasted or dropped while writing, each uploaded at once, and
 // shown with the message they came with (images as pictures, the rest as downloads).
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from "react";
-import { FileText, Loader2, Paperclip, X } from "lucide-react";
+import { FileText, Loader2, Paperclip, RotateCcw, X } from "lucide-react";
 import { cn } from "cn";
 import { CHAT_FILE_ACCEPT, CHAT_FILE_MAX_BYTES, CHAT_FILES_PER_MESSAGE, chatFileUrl, isImage, type ChatFile } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import type { HiveClient } from "#ui/client.ts";
 import { errorMessage, useHive } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
+import { useChatDraft, useChatPreviews } from "#ui/components/ChatSession.tsx";
 import { fileSize } from "#ui/lib/chat.ts";
 
 /**
@@ -32,29 +33,49 @@ interface Pending {
   status: "uploading" | "ready" | "failed";
   meta?: ChatFile;
   error?: string;
+  source?: ChatFile;
 }
 
 const MB = CHAT_FILE_MAX_BYTES / 1024 / 1024;
 
 /** The files of the message being written, for one project (a file belongs to the chat of one project). */
-export function useAttachments(project: string) {
+export function useAttachments(project: string, draftKey?: string) {
   const { client } = useHive();
   const t = useT();
-  const [items, setItems] = useState<Pending[]>([]);
+  const [items, setItems] = useChatDraft<Pending[]>(draftKey, []);
+  const previews = useChatPreviews();
   const [notice, setNotice] = useState<string | null>(null);
   const known = useRef(items);
   known.current = items;
   const upload = chatFilesOf(client);
 
   const clear = useCallback(() => {
-    for (const p of known.current) if (p.preview) URL.revokeObjectURL(p.preview);
+    for (const p of known.current) if (p.preview) { URL.revokeObjectURL(p.preview); previews?.delete(p.preview); }
+    known.current = [];
     setItems([]);
     setNotice(null);
-  }, []);
+  }, [setItems, previews]);
   // Uploads belong to the project they were made for.
-  useEffect(() => clear, [project, clear]);
+  useEffect(() => draftKey ? undefined : clear, [project, clear, draftKey]);
 
   const update = (key: string, patch: Partial<Pending>) => setItems((cur) => cur.map((p) => (p.key === key ? { ...p, ...patch } : p)));
+  const uploadItem = async (p: Pending) => {
+    if (!upload) return;
+    update(p.key, { status: "uploading", error: undefined });
+    try {
+      let file = p.file;
+      if (p.source) {
+        // Sent file ids cannot be attached twice. Read with current permissions and create a new upload.
+        const response = await fetch(upload.href(p.source.id), { credentials: "same-origin" });
+        if (!response.ok) throw new Error(t("chat.fileUnavailable", { name: p.source.name }));
+        file = new File([await response.blob()], p.source.name, { type: p.source.type });
+      }
+      if (file.size > CHAT_FILE_MAX_BYTES) throw new Error(t("errors.chatFileTooBig", { name: file.name, mb: MB }));
+      update(p.key, { file });
+      const meta = await upload.upload(project, file);
+      update(p.key, { status: "ready", meta });
+    } catch (err) { update(p.key, { status: "failed", error: errorMessage(err) }); }
+  };
   const add = (files: File[]) => {
     if (!upload || !project || !files.length) return;
     const room = Math.max(0, CHAT_FILES_PER_MESSAGE - known.current.length);
@@ -65,19 +86,17 @@ export function useAttachments(project: string) {
       preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
       ...(file.size > CHAT_FILE_MAX_BYTES ? { status: "failed" as const, error: t("errors.chatFileTooBig", { name: file.name, mb: MB }) } : { status: "uploading" as const }),
     }));
+    for (const p of next) if (p.preview && draftKey) previews?.add(p.preview);
     setItems((cur) => [...cur, ...next]);
     for (const p of next) {
       if (p.status !== "uploading") continue;
-      upload.upload(project, p.file).then(
-        (meta) => update(p.key, { status: "ready", meta }),
-        (err: unknown) => update(p.key, { status: "failed", error: errorMessage(err) }),
-      );
+      void uploadItem(p);
     }
   };
   const remove = (key: string) =>
     setItems((cur) => {
       const gone = cur.find((p) => p.key === key);
-      if (gone?.preview) URL.revokeObjectURL(gone.preview);
+      if (gone?.preview) { URL.revokeObjectURL(gone.preview); previews?.delete(gone.preview); }
       return cur.filter((p) => p.key !== key);
     });
 
@@ -87,9 +106,19 @@ export function useAttachments(project: string) {
     items,
     notice,
     add,
+    reuse: (files: ChatFile[]) => {
+      if (!upload) { if (files.length) setNotice(t("chat.reattachFiles")); return; }
+      const room = Math.max(0, CHAT_FILES_PER_MESSAGE - known.current.length);
+      if (files.length > room) setNotice(t("chat.tooManyFiles", { max: CHAT_FILES_PER_MESSAGE }));
+      const next: Pending[] = files.slice(0, room).map((source, i) => ({ key: `reuse-${Date.now()}-${i}-${source.id}`, source, file: new File([], source.name, { type: source.type }), preview: null, status: "uploading" }));
+      setItems((cur) => [...cur, ...next]);
+      for (const p of next) void uploadItem(p);
+    },
+    retry: (key: string) => { const item = known.current.find((p) => p.key === key); if (item) void uploadItem(item); },
     remove,
     clear,
     uploading: items.some((p) => p.status === "uploading"),
+    failed: items.some((p) => p.status === "failed"),
     ids: items.flatMap((p) => (p.status === "ready" && p.meta ? [p.meta.id] : [])),
     /** A pasted screenshot is attached; pasted text is left to the text box. */
     onPaste: (e: ClipboardEvent) => {
@@ -160,7 +189,8 @@ export function AttachmentBar({ att }: { att: Attachments }) {
               </span>
             </span>
             {p.status === "uploading" ? <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-hidden /> : null}
-            <Button size="icon-sm" variant="ghost" type="button" className="size-6 shrink-0" aria-label={t("chat.removeFile", { name: p.file.name })} onClick={() => att.remove(p.key)}>
+            {p.status === "failed" ? <Button size="icon-sm" variant="ghost" type="button" aria-label={t("chat.retryFile", { name: p.file.name })} onClick={() => att.retry(p.key)}><RotateCcw /></Button> : null}
+            <Button size="icon-sm" variant="ghost" type="button" className="size-6 shrink-0 max-md:size-11" aria-label={t("chat.removeFile", { name: p.file.name })} onClick={() => att.remove(p.key)}>
               <X />
             </Button>
           </li>
