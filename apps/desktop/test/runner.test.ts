@@ -1068,6 +1068,21 @@ describe("Runner", () => {
     assert.equal(done.mrIid, 7, "the MR is on the run by the time it stops finishing");
   });
 
+  it("claims a task assigned to its own machine as the profile's actor (hub mode)", async () => {
+    const hive = new SqliteHive(":memory:");
+    await hive.call("tasks.create", { id: "T-1", project: "demo", title: "Thêm trang cài đặt" }, admin);
+    // The machine row is keyed by the runner's hub name; the profile's actor (claude-a.duy-mbp@…) is a different name.
+    const machineId = "runner.duy-mbp@duy-macbook";
+    await hive.call("machines.heartbeat", { machine: "duy-mbp", instance: "a1b2c3d4", acceptsRuns: true, projects: ["demo"] }, { name: machineId, role: "agent" });
+    await hive.call("tasks.assign", { id: "T-1", machineId }, admin);
+    const { runner } = await setup([profile("claude-a", "claude", 1, "ok")], {}, "hub", { hive });
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    assert.equal(runner.store.get(run.id)!.status, "succeeded", runner.store.get(run.id)!.error ?? "");
+    // Another machine's agent still cannot take it.
+    await assert.rejects(hive.call("tasks.claim", { id: "T-1" }, { name: "claude-a.other@duy-macbook", role: "agent", source: { via: "mcp", machine: "other" } }), /assigned to/);
+  });
+
   it("tells the hub about a merge request it opened", async () => {
     const events: HiveEvent[] = [];
     const hive = new SqliteHive(":memory:", { onEvent: (e) => events.push(e) });
