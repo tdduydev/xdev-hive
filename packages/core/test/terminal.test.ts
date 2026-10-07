@@ -204,7 +204,7 @@ describe("69a terminal schema", () => {
       await h.call("tasks.create", { project: "app", id: "KEEP", title: "Preserved" }, { name: "admin", role: "admin" });
       const at = migrationIndex("CREATE TABLE terminal_sessions");
       h.db.exec(`DROP TABLE terminal_audit_chunks; DROP TABLE terminal_stepups; DROP TABLE terminal_tickets; DROP TABLE terminal_sessions;
-        ALTER TABLE machines DROP COLUMN terminal_capability; PRAGMA user_version = ${at}`);
+        ALTER TABLE machines DROP COLUMN terminal_capability; ALTER TABLE machines DROP COLUMN token_id; PRAGMA user_version = ${at}`);
       h.close();
       const upgraded = new SqliteHive(file, { migrateTo: at + 1 });
       assert.equal((await upgraded.call("tasks.list", { project: "app" }, { name: "admin", role: "admin" })).length, 1);

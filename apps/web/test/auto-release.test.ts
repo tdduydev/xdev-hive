@@ -12,7 +12,7 @@ import { UserStore } from "#web/users.ts";
 
 it("allows the pinned Gate machine to roll out only the hub operator's app service", async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "hive-auto-rollout-")); const h = new SqliteHive(":memory:");
-  const tokens = new TokenStore(h.db); const token = tokens.create("gate", "agent").token; const adminToken = tokens.create("admin", "admin").token;
+  const tokens = new TokenStore(h.db); const { token, info } = tokens.create("gate", "agent"); const adminToken = tokens.create("admin", "admin").token;
   const store = new ReleaseStore(h.db, dir);
   const app = createHubApp({ hive: h, tokens, users: new UserStore(h.db), releases: store, autoReleaseProject: "app", allowedHosts: ["127.0.0.1"] });
   const server = app.listen(0, "127.0.0.1"); await new Promise(r => server.once("listening", r));
@@ -21,8 +21,10 @@ it("allows the pinned Gate machine to roll out only the hub operator's app servi
     const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "x-hive-agent": "runner.gate" }, body: JSON.stringify({ method, input }) });
     return { status: response.status, body: await response.json() };
   };
-  const admin = { name: "admin", role: "admin" as const }; const gate = { name: "runner.gate@gate", role: "agent" as const };
+  const admin = { name: "admin", role: "admin" as const }; const gate = { name: "runner.gate@gate", role: "agent" as const, tokenId: info.id };
   try {
+    // Machine-only methods need the token the machine is paired with, which its first heartbeat records.
+    assert.equal((await rpc("machines.heartbeat", { machine: "gate", instance: "aaaaaaaa", projects: ["app", "another"] })).status, 200);
     for (const project of ["app", "another"]) {
       await h.call("tasks.create", { id: `T-${project}`, project, title: "Green" }, admin);
       await h.call("tasks.update", { id: `T-${project}`, status: "done" }, admin);
