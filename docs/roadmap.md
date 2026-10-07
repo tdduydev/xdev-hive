@@ -334,6 +334,14 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **62c. chat-shortcuts**: lệnh tiếng Anh có gợi ý khi gõ `/`: `/assign`, `/research`, `/status`, `/release`, `/cancel`, `/retry`, hàng chip trên ô chat.
   - [ ] **62d. chat-everywhere**: khung *Hỏi leader* mở từ mọi trang, mang ngữ cảnh trang đang xem.
 
+- **63. providers-worktrees** (hỏi 7/10: "add nhiều provider coding hơn, cái nào miễn phí", "WF chưa có phần quản trị, merge xong xoá cho đỡ đầy bộ nhớ"): thêm gói lập trình theo nghiên cứu RES-providers, và quản trị worktree. Spec: [docs/specs/63-providers-worktrees.md](specs/63-providers-worktrees.md). Tách:
+  - [ ] **63a. provider-gemini**: Gemini CLI đủ như claude/codex (headless, stream, quota, login, MCP, 54c).
+  - [ ] **63b. provider-copilot**: GitHub Copilot CLI.
+  - [ ] **63c. provider-vibe**: Mistral Vibe.
+  - [ ] **63d. provider-opencode**: OpenCode.
+  - [ ] **63e. provider-kilo**: Kilo Code CLI.
+  - [ ] **63f. worktree-admin**: trang Worktree của máy (dung lượng, trạng thái, xoá), tự dọn sau khi task done và branch vào main.
+
 ## Sửa lỗi
 
 - [x] **stale-base** (5/10, BUG-stale-base): run R-43 trên máy .52 gặp lỗi fetch tạm thời, và runner lặng lẽ tạo branch `ai/<task>` từ HEAD của checkout chính, tức code cũ 3 ngày (0.107.0 trong khi main đã 0.126.0). Giờ fetch lỗi thì thử lại sau 5 giây rồi 20 giây. Vẫn lỗi thì run của task chưa có branch quay về hàng đợi, kèm lý do hiện trên Board và Lượt chạy, thử lại ở các tick sau; quá 5 lần thì *failed* với lỗi dịch được. Không còn tạo branch từ HEAD cũ. Branch đã có (run sửa, review) chạy như cũ. Hỏi best-of-n thì báo lỗi ngay. Repo không có remote nào thì giữ cách cũ. Do claude-1 trên máy .52 làm.
