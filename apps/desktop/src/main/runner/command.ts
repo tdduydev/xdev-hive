@@ -108,7 +108,7 @@ export function buildPrompt(c: PromptContext): string {
       "",
       "Read AGENTS.md in the working copy first for the project's conventions.",
       "Look for bugs, regressions, missing tests and risky changes. Do not rewrite the feature;",
-      "fix only small, obvious mistakes. End with a short report: verdict (approve / changes needed), then findings.",
+      "fix only small, obvious mistakes. End your report with exactly one standalone line: `Verdict: approve` if no findings block the review, or `Verdict: changes` if changes are needed. Put findings before that line.",
       c.readOnly
         ? "xDev Hive is read-only for this run: put reusable lessons in your report. Do not change the task status."
         : "Record reusable lessons with memory_write (xdev-hive MCP). Do not call task_claim or task_update: the task is not yours, the implementer's run keeps it.",
