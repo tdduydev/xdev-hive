@@ -76,9 +76,15 @@ describe("machines", () => {
 });
 
 describe("quota cooldowns", () => {
+  const report = (hive: SqliteHive, actor: Actor, account: string) => hive.call("machines.heartbeat", {
+    machine: "test", instance: "aaaaaaaa", profiles: [{ id: "test", label: "Test", kind: "claude", account, installed: true, enabled: true, cooldownUntil: null, runs: 0, rateLimited: 0 }],
+  }, actor);
+
   it("shares a cooldown per account until it ends, last report wins", async () => {
     const c = clock();
     const hive = new SqliteHive(":memory:", { now: c.now });
+    await report(hive, mbp, "claude-max-duy");
+    await report(hive, imac, "claude-max-duy");
     const set = await hive.call("cooldowns.set", { account: "claude-max-duy", until: "2026-09-27T10:13:00.000Z", reason: "usage limit" }, mbp);
     assert.equal(set?.reportedBy, mbp.name);
     await hive.call("cooldowns.set", { account: "claude-max-duy", until: "2026-09-27T09:00:00.000Z", reason: "resets 9am" }, imac);
@@ -92,6 +98,8 @@ describe("quota cooldowns", () => {
 
   it("clears on request and ignores a reset time already past", async () => {
     const hive = new SqliteHive(":memory:", { now: clock().now });
+    await report(hive, mbp, "codex-plus");
+    await report(hive, imac, "codex-plus");
     await hive.call("cooldowns.set", { account: "codex-plus", until: "2026-09-27T09:00:00.000Z", reason: "429" }, mbp);
     assert.deepEqual(await hive.call("cooldowns.clear", { account: "codex-plus" }, imac), { cleared: true });
     assert.equal(await hive.call("cooldowns.set", { account: "codex-plus", until: "2026-09-27T07:00:00.000Z", reason: "429" }, mbp), null);
@@ -100,6 +108,7 @@ describe("quota cooldowns", () => {
 
   it("refuses secrets and bad account names", async () => {
     const hive = new SqliteHive(":memory:", { now: clock().now });
+    await report(hive, mbp, "x");
     const until = "2026-09-27T09:00:00.000Z";
     await assert.rejects(hive.call("cooldowns.set", { account: "x", until, reason: `key sk-${"a".repeat(30)}` }, mbp), /secret|API key/i);
     await assert.rejects(hive.call("cooldowns.set", { account: "has space", until, reason: "" }, mbp), /account/);

@@ -1,5 +1,5 @@
 // The leader of a project's web chat (roadmap 17): this machine writes the replies the hub hands it, with one of its
-// Claude profiles, in the project's repo, resuming the thread's Claude Code session. The leader reaches Hive only
+// Claude or Codex profiles, in the project's repo, resuming the thread's own CLI session. The leader reaches Hive only
 // through the hub's MCP with the reply's own token (the sender's rights, never more than this machine's), may read
 // the repo but not change it, and reports as it goes so the web shows the reply while it is written.
 // In local mode (roadmap 48) the chat is this machine's own: its database hands the replies, and the leader reaches it
@@ -13,8 +13,10 @@ import { NO_FEATURES, runMcpServers } from "#desktop/main/installer.ts";
 import { expandEnv, resolveBin } from "./command.ts";
 import { claudeMcpServers } from "./container-mcp.ts";
 import { killTree } from "./kill.ts";
-import { detectRateLimit } from "./rate-limit.ts";
-import { ClaudeStream } from "./stream.ts";
+import { detectRateLimit, type RateLimitHit } from "./rate-limit.ts";
+import { ClaudeStream, CodexStream } from "./stream.ts";
+import { hubHeaders } from "./container-mcp.ts";
+import { leaderRepoScript } from "./leader-repo.ts";
 
 export interface ChatHost {
   backend(): HiveBackend;
@@ -27,6 +29,8 @@ export interface ChatHost {
   hubUrl(): string | null;
   /** A profile the runner would not start now (signed out, resting, over its plan's limit). */
   unavailable?(profileId: string): boolean;
+  quotaUnavailable?(profileId: string): boolean;
+  rateLimited?(profile: AgentProfile, hit: RateLimitHit): Promise<void>;
   /** Reads a file of the hub with a token (default: fetch); tests hand one of their own. */
   download?(url: string, token: string): Promise<Uint8Array>;
   /** The chat is this machine's own database's (local mode): no hub, no reply token. */
@@ -89,13 +93,19 @@ export const leaderBrief = (project: string, who: string, commands: string[] = [
     commands.length
       ? `The only commands you may run are these, with any arguments, one at a time and never chained: ${commands.join(", ")}.`
       : "You cannot run commands.",
+    // Roadmap 60d: a request to build something becomes one plan the person starts with a single click.
+    "For a request to build or change something, propose one plan (propose_plan): a short spec at a new key project/<service>/<slug> (or system/<system>/<slug> when it spans services), tasks each with what done means and dependsOn, and the batches you expect them to land in. " +
+      "Ask back only for a real decision: design direction, dropping a requirement, widening permissions or touching production. Otherwise report progress in this thread from task_list and run_list: which batch landed, which is being checked, which task is blocked.",
     `You change nothing yourself: tasks (propose_task, propose_task_status), runs, merges, machine plans and installs, the agent policy and stopping agents are proposals (the propose_* tools) ${project === HUB_SCOPE ? "a hub admin" : "a project manager"} confirms in the chat.`,
     // Roadmap 19d: a feature that spans services is split into a task per service, with dependencies across them.
     ...systems.map(
       (s) =>
         `${project} is a service of system ${s.name} (${s.projects.join(", ")}). Its docs and memory are shared by them: doc_list and memory_search include them. ` +
-        "For a feature that spans services, propose a task for each service (propose_task with project) and make one wait for another with dependsOn (service B waits for A's API).",
+        `For a feature that spans services, propose one plan with a spec at system/${s.name}/<slug> and a task for each service (its project), and make one wait for another with dependsOn (service B waits for A's API).`,
     ),
+    "For research, use propose_research: topic, questions, scope (service/system/hub), source categories (repo/hive/web), and format (brief/comparison/tasks). Research runs read-only and returns an artifact and a draft doc. Turn recommendations into work only through propose_plan after the person asks for a plan.",
+    "Chat shortcuts are editable requests, not authorization to execute: /assign asks for a Plan via propose_plan; /research asks for research (use propose_research for a research.start proposal only if supported; otherwise explain that research runs are unavailable); /release asks to inspect the merge queue and release readiness, then propose next steps; /cancel <run> asks to check and propose cancelling that run; /retry <run> asks to check the cause and propose redispatch. Resolve the exact run and service first; if ambiguous, ask. Never cancel, redispatch, merge or release directly.",
+    "For /status read current tasks, runs, pipeline and machine quota in the thread's scope. Summarize done, running, awaiting review, blocked and quota, with links to tasks, runs, pipeline and quota. The chat UI attaches a live status card with verified counters to your reply; complement that card with items needing attention. Do not invent numbers or claim an unavailable capability ran.",
     "Propose a merge only when someone asked for it. When a decision is needed, ask with a few options instead of guessing.",
     "Reply in the language of the message, briefly, and say what you looked at and what you proposed.",
   ].join(" ");
@@ -167,6 +177,24 @@ export function chatArgs(o: {
   ];
 }
 
+/** Full table overrides keep personal/repo MCP servers out of the leader, as Claude's strict config does. */
+export function codexChatArgs(o: {
+  sessionId: string | null; servers: Record<string, unknown>; brief: string; model?: string | null; effort?: string | null;
+}): string[] {
+  const toml = (v: unknown): string => Array.isArray(v) ? `[${v.map(toml).join(",")}]`
+    : v && typeof v === "object" ? `{${Object.entries(v).map(([k, value]) => `${JSON.stringify(k)}=${toml(value)}`).join(",")}}` : JSON.stringify(v);
+  return ["exec", "--json", "--sandbox", "read-only", "--skip-git-repo-check",
+    "-c", 'approval_policy="never"', "-c", "features.shell_tool=false", "-c", "features.unified_exec=false",
+    "-c", "features.js_repl=false", "-c", "features.collab=false", "-c", "features.multi_agent=false", "-c", "features.apps=false",
+    // hooks.json can load independently of the inline table; disable its feature as well.
+    "-c", "features.hooks=false", "-c", "features.codex_hooks=false",
+    "-c", "plugins={}", "-c", "hooks={}", "-c", 'web_search="disabled"',
+    "-c", `mcp_servers=${toml(o.servers)}`, "-c", `developer_instructions=${JSON.stringify(o.brief)}`,
+    ...(o.model ? ["--model", o.model] : []), ...(o.effort ? ["-c", `model_reasoning_effort=${JSON.stringify(o.effort)}`] : []),
+    ...(o.sessionId ? ["resume", o.sessionId] : []), "-",
+  ];
+}
+
 interface Finish {
   status: "done" | "failed";
   text: string;
@@ -174,6 +202,9 @@ interface Finish {
   sessionId: string | null;
   costUsd: number | null;
   error: RunRequestError | null;
+  profileId?: string;
+  tokens?: { inputTokens: number; cacheReadTokens: number; outputTokens: number } | null;
+  rateLimited?: boolean;
 }
 
 export class ChatWorker {
@@ -217,7 +248,7 @@ export class ChatWorker {
     return (
       this.#host
         .profiles()
-        .filter((p) => p.kind === "claude" && p.enabled && (!pinned || p.id === pinned) && !this.#host.unavailable?.(p.id))
+        .filter((p) => ["claude", "codex"].includes(p.kind) && p.enabled && (!pinned || p.id === pinned) && !this.#host.unavailable?.(p.id))
         .sort((a, b) => a.priority - b.priority)[0] ?? null
     );
   }
@@ -228,8 +259,12 @@ export class ChatWorker {
       await this.#finish(req.replyId, { status: "failed", text: "", steps: "", sessionId: null, costUsd: null, error: { message, ...(key ? { key } : {}), ...(vars ? { vars } : {}) } });
       this.#ended(req, "failed");
     };
-    const profile = this.#pick(req.profileId);
-    if (!profile) return refuse(`${machine} has no Claude profile it can start now.`, "errors.chatNoClaude", { machine, id: req.profileId ?? "claude" });
+    const pinned = this.#host.profiles().find((p) => p.id === req.profileId);
+    // Availability can change after the heartbeat. Only a subsequent reply may fall back; never retry this turn.
+    const profile = this.#pick(req.profileId) ?? (pinned?.kind === "claude" && this.#host.quotaUnavailable?.(pinned.id) ? this.#host.profiles().filter((p) => p.kind === "codex" && p.enabled && !this.#host.unavailable?.(p.id)).sort((a, b) => a.priority - b.priority)[0] : null);
+    if (!profile) return refuse(`${machine} has no Claude or Codex profile it can start now.`, "errors.chatNoProfile", { machine, id: req.profileId ?? "Claude / Codex" });
+    const codex = profile.kind === "codex";
+    const switched = !!req.profileId && profile.id !== req.profileId;
     const hubScope = req.project === HUB_SCOPE;
     const repos = this.#host.projects();
     const project = repos.find((p) => p.name === req.project);
@@ -252,44 +287,63 @@ export class ChatWorker {
     const mcpServers = hub && grant
       ? claudeMcpServers({ url: hub, token: grant }, run)
       : runMcpServers(profile.id, req.project, NO_FEATURES, { task: run.task, id: run.run, chatReply: req.replyId });
-    writeFileSync(mcpFile, JSON.stringify({ mcpServers }), { mode: 0o600 });
-
-    // The message's files, fetched with the reply's token (or read from this machine's database) into a folder of
-    // this reply, gone with it.
     const fileDir = req.files?.length ? path.join(dir, `chat-${req.replyId}-files`) : null;
-    const download = this.#host.download ?? fetchBytes;
-    const read = (f: ChatFile): Promise<Uint8Array> => {
-      if (hub && grant) return download(`${hub.replace(/\/+$/, "")}/api/chat/files/${f.id}`, grant);
-      const bytes = this.#host.localFile?.(f.id);
-      return bytes ? Promise.resolve(bytes) : Promise.reject(new Error(`No file #${f.id} in this machine's database.`));
-    };
-    const fetched = fileDir ? await this.#fetchFiles(req.files!, fileDir, read) : [];
-    const hostEnv = Object.fromEntries(Object.entries(base).filter(([k]) => !k.startsWith("ELECTRON_")));
-    const env = { ...hostEnv, ...expandEnv(profile.env), HIVE_AGENT: profile.id, HIVE_PROJECT: req.project };
-    const args = chatArgs({
-      project: req.project,
-      requestedBy: req.requestedBy || "a project manager",
-      mcpConfigFile: mcpFile,
-      sessionId: req.sessionId,
-      ...(fileDir ? { fileDir } : {}),
-      model: req.model ?? null,
-      effort: req.effort ?? null,
-      commands: req.commands ?? [],
-      systems: req.systems ?? [],
-      projects: req.projects,
-      ...(hubScope ? { repos } : {}),
-    });
-    const stream = new ClaudeStream(cwd);
-    let steps = "";
-    let stderr = "";
-    let cancelled = false;
-    let timedOut = false;
+    const repoScript = codex ? path.join(dir, `chat-${req.replyId}-repo.mjs`) : null;
     try {
+      if (!codex) writeFileSync(mcpFile, JSON.stringify({ mcpServers }), { mode: 0o600 });
+
+      // The message's files, fetched with the reply's token (or read from this machine's database) into a folder of
+      // this reply, gone with it.
+      const download = this.#host.download ?? fetchBytes;
+      const read = (f: ChatFile): Promise<Uint8Array> => {
+        if (hub && grant) return download(`${hub.replace(/\/+$/, "")}/api/chat/files/${f.id}`, grant);
+        const bytes = this.#host.localFile?.(f.id);
+        return bytes ? Promise.resolve(bytes) : Promise.reject(new Error(`No file #${f.id} in this machine's database.`));
+      };
+      const fetched = fileDir ? await this.#fetchFiles(req.files!, fileDir, read) : [];
+      const hostEnv = Object.fromEntries(Object.entries(base).filter(([k]) => !k.startsWith("ELECTRON_")));
+      const env = { ...hostEnv, ...expandEnv(profile.env), HIVE_AGENT: profile.id, HIVE_PROJECT: req.project, ...(codex && grant ? { HIVE_CHAT_TOKEN: grant } : {}) };
+      const sessionId = switched ? null : req.sessionId;
       if (hubScope) mkdirSync(cwd, { recursive: true });
+      if (repoScript) writeFileSync(repoScript, leaderRepoScript({ cwd, roots: [...(hubScope ? repos.map((p) => p.repo) : [cwd]), ...(fileDir ? [fileDir] : [])], commands: req.commands ?? [], ...(hubScope ? { repos: repos.map((p) => p.repo) } : {}) }), { mode: 0o600 });
+      const modelFlag = profile.args.findIndex((a) => a === "-m" || a === "--model");
+      const configString = (key: string) => {
+        const override = profile.args.find((a, i) => i > 0 && profile.args[i - 1] === "-c" && a.startsWith(`${key}=`))?.slice(key.length + 1);
+        if (!override) return null;
+        try { const value: unknown = JSON.parse(override); return typeof value === "string" ? value : null; } catch { return null; }
+      };
+      const profileModel = modelFlag >= 0 ? profile.args[modelFlag + 1] : profile.args.find((a) => a.startsWith("--model="))?.slice(8) ?? configString("model");
+      const model = (switched ? null : req.model) ?? profileModel;
+      const args = codex ? codexChatArgs({
+        sessionId, model, effort: (switched ? null : req.effort) ?? configString("model_reasoning_effort"),
+        brief: leaderBrief(req.project, req.requestedBy || "a project manager", leaderCommands(req.commands ?? [], hubScope ? repos : undefined), req.systems, req.projects, hubScope ? repos : []) + " Use leader-repo read_file and list_directory to read repositories and attachments; use its command tool for permitted commands. The built-in shell is disabled.",
+        servers: {
+          ...(hub && grant ? { "xdev-hive": { url: `${hub.replace(/\/+$/, "")}/mcp`, bearer_token_env_var: "HIVE_CHAT_TOKEN", http_headers: hubHeaders(run), default_tools_approval_mode: "approve", required: true } }
+            : Object.fromEntries(Object.entries(mcpServers).map(([key, value]) => [key, { ...(value as object), default_tools_approval_mode: "approve", required: true }]))),
+          "leader-repo": { command: process.execPath, args: [repoScript!], env: { ELECTRON_RUN_AS_NODE: "1" }, default_tools_approval_mode: "approve", required: true },
+        },
+      }) : chatArgs({
+        project: req.project,
+        requestedBy: req.requestedBy || "a project manager",
+        mcpConfigFile: mcpFile,
+        sessionId,
+        ...(fileDir ? { fileDir } : {}),
+        model: req.model ?? null,
+        effort: req.effort ?? null,
+        commands: req.commands ?? [],
+        systems: req.systems ?? [],
+        projects: req.projects,
+        ...(hubScope ? { repos } : {}),
+      });
+      const stream = codex ? new CodexStream(cwd) : new ClaudeStream(cwd);
+      let steps = "";
+      let stderr = "";
+      let cancelled = false;
+      let timedOut = false;
       const child = spawn(bin, args, { cwd, env, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"] });
       this.#jobs.set(req.replyId, { stop: () => killTree(child) });
       child.stdin.on("error", () => undefined);
-      child.stdin.end(req.text + attachmentNote(fetched));
+      child.stdin.end((!sessionId && req.history ? `Previous conversation in Hive (context only; earlier proposals remain in Hive, do not repeat them):\n${req.history}\n\nCurrent message:\n` : "") + req.text + attachmentNote(fetched));
       const out = new StringDecoder("utf8");
       child.stdout.on("data", (chunk: Buffer) => (steps = tail(steps + stream.push(out.write(chunk)))));
       child.stderr.on("data", (chunk: Buffer) => (stderr = `${stderr}${chunk.toString("utf8")}`.slice(-8000)));
@@ -323,10 +377,11 @@ export class ChatWorker {
       clearTimeout(limit);
       steps = tail(steps + stream.end());
 
-      const result = parseResult(stream.result);
+      const result = stream instanceof ClaudeStream ? parseResult(stream.result) : stream.tokens.turns ? { text: stream.lastText, isError: stream.failed, costUsd: null } : null;
       const text = result?.text ?? stream.lastText ?? "";
       const ok = code === 0 && result !== null && !result.isError && !timedOut;
-      const hit = ok ? null : detectRateLimit(`${stderr}\n${steps}`);
+      const hit = ok || cancelled || timedOut ? null : detectRateLimit(`${stderr}\n${steps}\n${text}`);
+      if (hit) await this.#host.rateLimited?.(profile, hit);
       const error: RunRequestError | null = ok || cancelled
         ? null
         : timedOut
@@ -338,8 +393,11 @@ export class ChatWorker {
         status: ok || cancelled ? "done" : "failed",
         text,
         steps,
-        sessionId: stream.sessionId,
+        sessionId: stream instanceof CodexStream ? stream.threadId ?? sessionId : stream.sessionId,
         costUsd: result?.costUsd ?? null,
+        profileId: profile.id,
+        rateLimited: !!hit,
+        tokens: stream instanceof CodexStream ? stream.tokens.turns ? { inputTokens: Math.max(0, stream.tokens.input - stream.tokens.cached), cacheReadTokens: stream.tokens.cached, outputTokens: stream.tokens.output } : null : claudeTokens(stream.result),
         error,
       });
       // Whoever stopped it knows already.
@@ -348,6 +406,7 @@ export class ChatWorker {
       await refuse(toErrorPayload(err).message);
     } finally {
       rmSync(mcpFile, { force: true });
+      if (repoScript) rmSync(repoScript, { force: true });
       if (fileDir) rmSync(fileDir, { recursive: true, force: true });
     }
   }
@@ -396,6 +455,16 @@ export class ChatWorker {
       }
     }
   }
+}
+
+function claudeTokens(line: string | null): Finish["tokens"] {
+  if (!line) return null;
+  try {
+    const u = JSON.parse(line).usage;
+    if (!u) return null;
+    const n = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
+    return { inputTokens: n(u.input_tokens), cacheReadTokens: n(u.cache_read_input_tokens), outputTokens: n(u.output_tokens) };
+  } catch { return null; }
 }
 
 /** Claude Code's result event: the answer, whether it is an error, and its cost. */

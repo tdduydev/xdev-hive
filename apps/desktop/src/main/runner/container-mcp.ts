@@ -3,7 +3,7 @@
 //   Claude Code  --mcp-config <file> (runner writes it 0600, mounts it read-only, removes it)
 //   Codex        -c overrides: the shim's server off, an HTTP one with the token from HIVE_HUB_TOKEN
 //   Gemini CLI   the image's /etc/gemini-cli/settings.json, filled from HIVE_HUB_URL, HIVE_HUB_TOKEN…
-// The headers only narrow what the machine's token may do (see the hub's /mcp). No Electron imports.
+// The runner supplies a credential bound to this run; headers are audit labels, never approval authority.
 import { agentSource } from "@xdev-hive/core";
 
 export interface HubMcp {
@@ -70,12 +70,16 @@ export function codexMcpArgs(hub: HubMcp | null, r: McpRun): string[] {
   ];
 }
 
-/** Variables the container gets for Codex and Gemini (passed by name, so the token is not on the command line). */
-export function hubMcpEnv(hub: HubMcp | null, r: McpRun, kind: string): Record<string, string> {
-  if (!hub || (kind !== "codex" && kind !== "gemini")) return {};
+/** Variables the container gets for Codex, Gemini and OpenCode (passed by name, so the token is not on the command line). */
+export function hubMcpEnv(hub: HubMcp | null, r: McpRun, kind: string, config?: string): Record<string, string> {
+  if (!hub || (kind !== "codex" && kind !== "gemini" && kind !== "vibe" && kind !== "kilo" && kind !== "opencode")) return {};
   const h = hubHeaders(r);
+  const openConfig = kind === "opencode" ? JSON.parse(config ?? "{}") : null;
   return {
     HIVE_HUB_TOKEN: hub.token,
+    ...(kind === "vibe" ? { VIBE_MCP_SERVERS: JSON.stringify([{ name: "xdev-hive", transport: "streamable-http", url: endpoint(hub),
+      auth: { type: "static", api_key_env: "HIVE_HUB_TOKEN", headers: h } }]) } : {}),
+    ...(kind === "opencode" ? { OPENCODE_CONFIG_CONTENT: JSON.stringify({ ...openConfig, mcp: { ...openConfig.mcp, "xdev-hive": { type: "remote", url: endpoint(hub), headers: { authorization: `Bearer {env:HIVE_HUB_TOKEN}`, ...hubHeaders(r) }, oauth: false, enabled: true } } }) } : {}),
     ...(kind === "gemini"
       ? { HIVE_HUB_URL: hub.url.replace(/\/+$/, ""), HIVE_MCP_AGENT: h["x-hive-agent"]!, HIVE_MCP_SOURCE: h["x-hive-source"]!, HIVE_MCP_READONLY: r.readOnly ? "1" : "" }
       : {}),

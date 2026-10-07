@@ -1,18 +1,26 @@
 // Small helpers of the Chat page: which machines can hold a thread, following a reply being written, and a
 // leader's reply turned into text with links to the tasks and runs it names.
 import { HUB_SCOPE, type ChatAction, type ChatMessage, type Machine, type ReportedProfile } from "@xdev-hive/core";
+import { type HiveClient } from "#ui/client.ts";
 
-/** A Claude profile that can write a reply now: the hub asks the same (chat.send). */
-export const chatProfile = (p: ReportedProfile): boolean => p.kind === "claude" && p.enabled && p.loggedIn !== false;
+/** A hub thread may research one service: return its recommendations to the original conversation. */
+export async function sendResearchPlan(client: HiveClient, threadId: number, text: string, gone: string): Promise<void> {
+  const chat = await client.call("chat.get", { threadId });
+  if (!chat) throw new Error(gone);
+  await client.call("chat.send", { project: chat.thread.project, threadId, text });
+}
 
-/** Machines a new thread of `project` can run on: online, taking runs from the hub, with its repo and a Claude plan. */
+/** A Claude or Codex profile that can write a reply now: the hub asks the same (chat.send). */
+export const chatProfile = (p: ReportedProfile): boolean => ["claude", "codex"].includes(p.kind) && p.enabled && p.loggedIn !== false;
+
+/** Machines a new thread of `project` can run on: online, taking runs from the hub, with its repo and a Claude or Codex plan. */
 export function chatMachines(machines: Machine[], project: string): Machine[] {
   return machines.filter((m) => m.online && m.acceptsRuns && (project === HUB_SCOPE || m.projects.includes(project)) && m.profiles.some(chatProfile));
 }
 
 /**
  * What a new thread starts on (roadmap 48). In the desktop app (`here`: this machine's name) this machine, when it can
- * hold the thread, with its Claude plan: the project's saved plan when the saved machine is this one, else the first
+ * hold the thread, with an available plan: the project's saved plan when the saved machine is this one, else the first
  * by priority that is neither over its limit nor resting (none: "" lets the machine pick). Elsewhere, or when this
  * machine cannot, what the project saved (chat.defaults), else the first machine that can.
  */
@@ -24,13 +32,15 @@ export function chatTarget(
   if (mine) {
     const plans = mine.profiles.filter(chatProfile);
     const savedPlan = o.defaults?.machineId === mine.id ? o.defaults.profileId : null;
-    if (savedPlan && plans.some((p) => p.id === savedPlan)) return { machineId: mine.id, profileId: savedPlan };
+    if (savedPlan && plans.some((p) => p.id === savedPlan && !p.overLimit && !(p.cooldownUntil && p.cooldownUntil > o.now))) return { machineId: mine.id, profileId: savedPlan };
     const ready = plans.filter((p) => !p.overLimit && !(p.cooldownUntil && p.cooldownUntil > o.now)).sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
     return { machineId: mine.id, profileId: ready[0]?.id ?? "" };
   }
   const saved = fit.find((m) => m.id === o.defaults?.machineId) ?? fit[0];
   if (!saved) return { machineId: "", profileId: "" };
-  return { machineId: saved.id, profileId: saved.id === o.defaults?.machineId ? (o.defaults?.profileId ?? "") : "" };
+  const ready = saved.profiles.filter(chatProfile).filter((p) => !p.overLimit && !(p.cooldownUntil && p.cooldownUntil > o.now)).sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
+  const pinned = saved.id === o.defaults?.machineId ? o.defaults?.profileId : null;
+  return { machineId: saved.id, profileId: ready.find((p) => p.id === pinned)?.id ?? ready[0]?.id ?? "" };
 }
 
 /** A reply that is still waiting for its machine or being written. */

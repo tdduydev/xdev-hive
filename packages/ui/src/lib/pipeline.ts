@@ -1,8 +1,8 @@
 import type { HiveClient } from "#ui/client.ts";
 import { GATE_MODES, SDLC_GATES, type GateMode, type GateModes, type SdlcFlow, type SdlcFlowTask, type SdlcGate, type SdlcGateRecord, FAST_LANE_KINDS } from "@xdev-hive/core";
 
-export const PIPELINE_STEPS = ["idea", "spec", "plan", "tasks", "dispatch", "build", "review", "fix", "test", "merge", "done"] as const;
-export const PIPELINE_STEP_GATES: Partial<Record<(typeof PIPELINE_STEPS)[number], SdlcGate>> = { spec: "spec", plan: "plan", tasks: "tasks", dispatch: "dispatch", review: "review", fix: "fix", test: "test", merge: "merge" };
+export const PIPELINE_STEPS = ["idea", "spec", "plan", "tasks", "dispatch", "build", "review", "fix", "test", "merge", "release", "done"] as const;
+export const PIPELINE_STEP_GATES: Partial<Record<(typeof PIPELINE_STEPS)[number], SdlcGate>> = { spec: "spec", plan: "plan", tasks: "tasks", dispatch: "dispatch", review: "review", fix: "fix", test: "test", merge: "merge", release: "release" };
 export type PipelineStep = (typeof PIPELINE_STEPS)[number];
 export type PipelinePreset = "cautious" | "balanced" | "maximum" | "fast";
 export const PIPELINE_PRESETS: PipelinePreset[] = ["cautious", "balanced", "maximum", "fast"];
@@ -10,8 +10,8 @@ export const FAST_KINDS = FAST_LANE_KINDS;
 
 const modes = (values: Partial<GateModes>): GateModes => Object.fromEntries(SDLC_GATES.map((gate) => [gate, values[gate] ?? "auto"])) as GateModes;
 export function presetGates(preset: PipelinePreset, ceiling: GateModes, current?: GateModes): GateModes {
-  const wanted = preset === "cautious" ? modes({ spec: "human", plan: "human", review: "human", test: "human", merge: "human" })
-    : preset === "balanced" ? modes({ spec: "human", plan: "ai", tasks: "ai", review: "ai", merge: "human" })
+  const wanted = preset === "cautious" ? modes({ spec: "human", plan: "human", review: "human", test: "human", merge: "human", release: "human" })
+    : preset === "balanced" ? modes({ spec: "human", plan: "ai", tasks: "ai", review: "ai", merge: "human", release: "human" })
     : preset === "fast" && current ? current
     : modes({ merge: "ai" });
   return Object.fromEntries(SDLC_GATES.map((gate) => [gate, GATE_MODES[Math.min(GATE_MODES.indexOf(wanted[gate]), GATE_MODES.indexOf(ceiling[gate]))]!])) as GateModes;

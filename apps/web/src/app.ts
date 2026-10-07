@@ -17,12 +17,15 @@ import {
   isImage,
   isMethod,
   may,
+  MACHINE_ID,
   permissionsOn,
   HUB_SCOPE,
   PROJECT_NAME,
   sees,
   readRun,
+  RUN_REF,
   readSourceHeader,
+  sharedPermissions,
   toErrorPayload,
   TOKEN_ROLES,
   type Actor,
@@ -65,6 +68,8 @@ export interface HubAppOptions {
   chatGrants?: ChatGrants;
   /** Desktop builds and their rollout (roadmap 22i). */
   releases?: ReleaseStore;
+  /** Hub operator pins which service may drive the global app rollout; absent: only manual admin rollout. */
+  autoReleaseProject?: string;
   /** Cảnh báo (roadmap 22m): rules, alerts, and the admin overview's feed. */
   alerts?: AlertStore;
   /** Trang Hub (roadmap 22n): what the hub is, and a backup on request. */
@@ -164,6 +169,7 @@ export function createHubApp({
   oidc = null,
   chatGrants = new ChatGrants(hive.db),
   releases,
+  autoReleaseProject,
   alerts,
   hub,
 }: HubAppOptions): express.Express {
@@ -231,6 +237,39 @@ export function createHubApp({
           }
         : null;
     }
+    if (who.mcp) {
+      const user = who.ownerId ? users.get(who.ownerId) : null;
+      if (who.ownerId && (!user || user.disabled)) return null;
+      const full = user ? users.access(user) : undefined;
+      const project = who.mcp.project;
+      if (project && full && !grantPermissions(full.projects[project]).has("view")) return null;
+      const access = project
+        ? { projects: { [project]: full?.projects[project] ?? "member" }, shared: full ? { permissions: [...sharedPermissions(full)] } : "member" } as Actor["access"]
+        : full;
+      if (user) res.locals.user = user;
+      return {
+        name: label ? `${label}@${who.name}` : who.name, role: who.role, access,
+        source: { via: "mcp" }, mcpCredential: true, agent: label || "mcp", onBehalf: user?.username ?? who.name,
+        ...(user ? { account: user.username } : {}),
+      };
+    }
+    if (who.run) {
+      const { project, task, run: runId, machine } = who.run;
+      const user = who.ownerId ? users.get(who.ownerId) : null;
+      if (who.ownerId && (!user || user.disabled)) return null;
+      const full = user ? users.access(user) : undefined;
+      if (full && !grantPermissions(full.projects[project]).has("taskWork")) return null;
+      const allowed = full ? grantPermissions(full.projects[project]) : new Set(["view", "taskWork", "docPropose", "memoryWrite"]);
+      const shared = full ? sharedPermissions(full) : new Set(["view", "docPropose", "memoryWrite"]);
+      const access = { projects: { [project]: { permissions: [...allowed] } }, shared: { permissions: [...shared] } } as Actor["access"];
+      if (user) res.locals.user = user;
+      return {
+        name: label ? `${label}@${who.name}` : who.name, role: who.role, access,
+        source: { via: "mcp", machine, run: runId, task }, run: runId,
+        runCredential: who.run, agent: label || "run", onBehalf: user?.username ?? who.name,
+        ...(user ? { account: user.username } : {}),
+      };
+    }
     const name = label ? `${label}@${who.name}` : who.name;
     // A token of no account (CI, the CLI's) stands for itself.
     if (!who.ownerId) return { name, role: who.role, source, ...trail(who.name) };
@@ -252,6 +291,10 @@ export function createHubApp({
         const actor = tokenActor(req, res, bearer[1]!);
         if (!actor) {
           res.status(401).json({ error: { code: "unauthorized", message: "Missing or invalid token.", key: "errors.invalidToken" } });
+          return;
+        }
+        if ((actor.runCredential || actor.mcpCredential) && !["/api/rpc", "/mcp", "/api/me"].includes(req.path)) {
+          res.status(403).json({ error: { code: "forbidden", message: "Agent credentials are limited to agent calls." } });
           return;
         }
         res.locals.actor = actor;
@@ -278,6 +321,55 @@ export function createHubApp({
       next();
     };
   const auth = authenticate({ cookie: true });
+
+  app.post("/api/mcp-credentials", authenticate({ cookie: false }), json, (req, res) => {
+    try {
+      const actor = actorOf(res);
+      if (actor.runCredential || actor.mcpCredential || actor.chatReply !== undefined)
+        throw new HiveError("forbidden", "A machine credential is required.");
+      const { project = null, readOnly } = req.body ?? {};
+      if ((project !== null && (typeof project !== "string" || !PROJECT_NAME.test(project))) || typeof readOnly !== "boolean")
+        throw new HiveError("bad_request", "Invalid MCP credential request.");
+      if (project && !sees(actor, project)) throw new HiveError("forbidden", "No access to this project.");
+      const bearer = /^Bearer\s+(\S+)$/i.exec(req.get("authorization") ?? "")!;
+      res.json({ result: { token: tokens.issueMcp(bearer[1]!, project, readOnly) } });
+    } catch (err) { sendError(res, err); }
+  });
+
+  // The runner calls this with its machine credential before starting a CLI. The returned secret is never persisted.
+  app.post("/api/run-credentials", authenticate({ cookie: false }), json, (req, res) => {
+    try {
+      const actor = actorOf(res);
+      if (actor.runCredential || actor.role === "viewer")
+        throw new HiveError("forbidden", "Only a registered machine may issue a run credential.");
+      const { machine: machineName, project, task, run, minutes, readOnly } = req.body ?? {};
+      if (typeof machineName !== "string" || !MACHINE_ID.test(machineName) || !actor.name.startsWith(`runner.${machineName}@`) ||
+          typeof project !== "string" || !PROJECT_NAME.test(project) || typeof task !== "string" || typeof run !== "string" || !RUN_REF.test(run) ||
+          !Number.isInteger(minutes) || minutes < 5 || minutes > 1440 || typeof readOnly !== "boolean")
+        throw new HiveError("bad_request", "Invalid run credential request.");
+      if (!may(actor, project, "taskWork")) throw new HiveError("forbidden", "No task work grant for this project.");
+      const machine = hive.db.prepare("SELECT id FROM machines WHERE id = ? AND owner IS ?").get(actor.name, actor.account ?? null);
+      const row = hive.db.prepare("SELECT project FROM tasks WHERE id = ?").get(task) as { project: string } | undefined;
+      if (!machine || row?.project !== project) throw new HiveError("forbidden", "Unknown machine or task.");
+      const bearer = /^Bearer\s+(\S+)$/i.exec(req.get("authorization") ?? "")!;
+      const token = tokens.issueRun(bearer[1]!, { machine: machineName, project, task, run, minutes, readOnly });
+      res.json({ result: { token } });
+    } catch (err) { sendError(res, err); }
+  });
+  app.delete("/api/run-credentials", authenticate({ cookie: false }), json, (req, res) => {
+    try {
+      const actor = actorOf(res);
+      if (actor.runCredential) throw new HiveError("forbidden", "A run credential cannot revoke itself.");
+      const run = req.body?.run;
+      const machine = req.body?.machine;
+      if (typeof run !== "string" || !RUN_REF.test(run) || typeof machine !== "string" || !MACHINE_ID.test(machine) ||
+          !actor.name.startsWith(`runner.${machine}@`)) throw new HiveError("bad_request", "Invalid run.");
+      const bearer = /^Bearer\s+(\S+)$/i.exec(req.get("authorization") ?? "");
+      if (!bearer) throw new HiveError("forbidden", "Machine credential required.");
+      tokens.revokeRun(bearer[1]!, machine, run);
+      res.json({ result: { revoked: true } });
+    } catch (err) { sendError(res, err); }
+  });
 
   const me = (res: Response): Me => {
     const { name, role, access } = actorOf(res);
@@ -495,6 +587,8 @@ export function createHubApp({
       const i = (input ?? {}) as Record<string, unknown>;
       const actor = actorOf(res);
       const user = userOf(res);
+      // Web-only RPCs (tokens, releases, account settings) do not pass through SqliteHive.call.
+      if ((actor.runCredential || actor.mcpCredential) && !isMethod(method)) throw new HiveError("forbidden", "An agent credential can call agent methods only.");
 
       // Tokens: admins see and manage all; a person their own (agent/viewer tokens for their machines and CI).
       if (method === "tokens.list") {
@@ -530,6 +624,15 @@ export function createHubApp({
         return;
       }
 
+      if (method === "autoRelease.rollout") {
+        const r = await hive.call("autoRelease.rollout", input as never, actor);
+        if (autoReleaseProject !== r.project) throw new HiveError("forbidden", "This service is not authorized by the hub operator to roll out the desktop app.");
+        if (!releases) throw new HiveError("bad_request", "This hub has no app release store.");
+        releases.setRollout({ target: r.batch.version, percent: 100, paused: false, autoDownload: true, installWhen: "idle" }, actor.name);
+        hive.audit(actor, "autoRelease.rollout", r.batch.version, "100% · idle");
+        res.json({ result: r });
+        return;
+      }
       // App builds and their rollout: hub admins only.
       if (typeof method === "string" && method.startsWith("releases.")) {
         requireHubAdmin(res);

@@ -1,3 +1,4 @@
+import { WorktreeManager } from "#ui/components/Worktrees.tsx";
 // Bản đồ agent (roadmap 31b): each machine a column of its profiles, each profile with the runs it has now and what
 // the agent is doing, the machine's queue under them, and the open batches on the right. Profiles picked here get one
 // prompt (one agent, or a fan-out) or the tasks picked next on the Task page.
@@ -186,6 +187,7 @@ function MachineColumn({
         </div>
       ) : null}
       <MachineTools machine={m} />
+      {mayManage(me, m) ? <WorktreeManager machine={m} /> : null}
       {mayManage(me, m) && m.profiles.length ? (
         <details className="px-1 text-xs">
           <summary className="cursor-pointer text-fg-muted select-none">{t("agentMap.manage")}</summary>

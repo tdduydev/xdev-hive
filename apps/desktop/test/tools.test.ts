@@ -363,7 +363,8 @@ describe("hooks of the catalog (roadmap 28d)", () => {
   it("reads RTK's numbers for the run, and null when it cannot tell", async () => {
     const ready = (bin: string) => [{ entry: RTK, hooks: [{ event: "PreToolUse" as const, matcher: "Bash", argv: [bin, "hook", "claude"] }] }];
     const ok = fakeRtk();
-    const env = { ...process.env, RTK_DB_PATH: "/data/runs/R-1/rtk.db" };
+    // An agent running this suite may already have telemetry disabled in its own environment.
+    const env = { ...process.env, RTK_TELEMETRY_DISABLED: "", RTK_DB_PATH: "/data/runs/R-1/rtk.db" };
     assert.deepEqual(await rtkGain(ready(ok.bin), env), { tool: "rtk", commands: 42, input: 50000, output: 8000, saved: 42000 });
     assert.deepEqual(ok.calls(), ["gain --format json|/data/runs/R-1/rtk.db|"]);
     assert.equal(await rtkGain(ready(fakeRtk("0.50.0", "fail").bin), env), null);

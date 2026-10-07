@@ -212,7 +212,9 @@ export function ensureWorktree(
  * `.agents/skills/`) when its external agent import sync is on; that setting cannot be turned off for one run.
  * `codegraph init` writes `.codegraph/.gitignore` beside the index the runner builds in each worktree.
  */
-export const AGENT_CLI_DIRS = [".codex", ".agents", ".codegraph"];
+export const AGENT_CLI_DIRS = [".codex", ".agents", ".codegraph", ".vibe"];
+// Session histories contain prompts and tool results; they stay private even if the agent staged them.
+const AGENT_RUN_DIRS = [".xdev-hive/vibe"];
 
 /**
  * What is in a working copy but is never a commit of the agent's work: what the app renders from Hive, by the same
@@ -222,7 +224,7 @@ export const AGENT_CLI_DIRS = [".codex", ".agents", ".codegraph"];
  * working copy, because a run's worktree gets files the branch does not have (roadmap 38a).
  */
 export function renderedPaths(dir: string): string[] {
-  const out = [...RENDERED_FILES, RULES_DIR, CONTEXT_DIR, ARTIFACT_DIR, STEER_FILE];
+  const out = [...RENDERED_FILES, RULES_DIR, CONTEXT_DIR, ARTIFACT_DIR, STEER_FILE, ...AGENT_RUN_DIRS];
   const listed = (tryGit(dir, ["ls-files", "-co", "--exclude-standard", "--", ":(glob)**/AGENTS.md", ":(glob).claude/skills/*/SKILL.md"]) ?? "")
     .split("\n")
     .filter((f) => f && !RENDERED_FILES.includes(f));
@@ -260,9 +262,9 @@ export function commitAll(dir: string, message: string, exclude: string[], toolD
     // -f") when an exclude names one, so nothing would be committed (.codegraph/ in xdev-mindmap-ai, 2/10).
     // CONTEXT_DIR as well as RULES_DIR: since roadmap 38f a repo that keeps its own AGENTS.md tracks Hive's copy
     // there, so it must stay out even on a run whose context render failed (then `exclude` does not name it).
-    const keepOut = [...exclude, ...RENDERED_FILES, RULES_DIR, CONTEXT_DIR, ARTIFACT_DIR, STEER_FILE, ...nested, ...cliDirs].filter((f) => tryGit(dir, ["check-ignore", "-q", "--", f]) === null);
+    const keepOut = [...exclude, ...RENDERED_FILES, RULES_DIR, CONTEXT_DIR, ARTIFACT_DIR, STEER_FILE, ...AGENT_RUN_DIRS, ...nested, ...cliDirs].filter((f) => tryGit(dir, ["check-ignore", "-q", "--", f]) === null);
     // A CLI may already have staged its inbox; it is transport data, never part of the task commit.
-    git(dir, ["reset", "-q", "HEAD", "--", STEER_FILE]);
+    git(dir, ["reset", "-q", "HEAD", "--", STEER_FILE, ...AGENT_RUN_DIRS]);
     git(dir, ["add", "-A", "--", ".", ...keepOut.map((f) => `:(exclude)${f}`)]);
     if (!git(dir, ["diff", "--cached", "--name-only"])) return { sha: null, error: null };
     git(dir, ["-c", `core.hooksPath=${os.devNull}`, "commit", "-m", message]);
@@ -362,7 +364,7 @@ export interface MergedCleanup {
 }
 
 /**
- * After its MR was merged: removes a task's worktree and deletes its local branch, but only when both point at the
+ * After its MR was merged: removes a task's worktree and keeps its local branch, but only when both point at the
  * commit that was merged (`mergedSha`, the MR's head). A newer commit (pushed after, or a run that went on) or edits
  * not committed yet are work the merge does not hold, so then everything stays. Agent config the runner copied in
  * and the docs Hive renders do not count as edits: commitAll keeps them out of the branch too.
@@ -380,21 +382,13 @@ export function cleanupMerged(repo: string, dir: string | null, branch: string, 
     if (head && head !== sha) return kept("newer");
     if (wt) {
       if (tryGit(wt, ["rev-parse", "HEAD"]) !== sha) return kept("newer");
-      const keepOut = [...AGENT_CONFIG_FILES, ...renderedPaths(wt), ...AGENT_CLI_DIRS];
+      const keepOut = [...AGENT_CONFIG_FILES, ...renderedPaths(wt), ...AGENT_CLI_DIRS, ...AGENT_RUN_DIRS];
       if (git(wt, ["status", "--porcelain", "--", ...exclude(keepOut)])) return kept("dirty");
       // Forced only for what the check above left out (copied config, ignored dependencies and builds).
       git(repo, ["worktree", "remove", "--force", wt]);
     }
-    if (head) {
-      try {
-        // -D: a squash or rebase merge leaves the branch out of the target's history, though its work is in.
-        git(repo, ["branch", "-D", branch]);
-      } catch (err) {
-        // Checked out in another working copy (the user's own, say): the worktree is gone, the branch stays.
-        return { worktree: wt !== null, branch: false, kept: "failed", reason: gitErrorText(err) };
-      }
-    }
-    return { worktree: wt !== null, branch: head !== null, kept: null, reason: null };
+    // Reopening a task recreates its worktree from this branch, including after squash or rebase merges.
+    return { worktree: wt !== null, branch: false, kept: null, reason: null };
   } catch (err) {
     return kept("failed", gitErrorText(err));
   }

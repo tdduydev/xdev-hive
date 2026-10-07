@@ -12,6 +12,8 @@ export interface TerminalCommand {
   args: string[];
   /** Only non-secret env (login dirs): it is written into the script file. */
   env: Record<string, string>;
+  /** Credential names cleared for a profile using a separate account directory. Never values. */
+  unsetEnv?: string[];
   /** Printed when the command ends, before the window waits. */
   done: string;
   /** Where the command runs; left out: wherever the terminal starts. */
@@ -32,8 +34,14 @@ export function terminalScript(platform: NodeJS.Platform, c: TerminalCommand): {
   if (platform === "win32") {
     const lines = [
       "@echo off",
+      "setlocal DisableDelayedExpansion",
       `title ${c.title.replace(/[^\w .:-]/g, "")}`,
-      ...Object.entries(c.env).map(([k, v]) => `set ${cmdq(`${k}=${v}`)}`),
+      ...(c.unsetEnv ?? []).map((k) => { if (!/^[A-Z_][A-Z0-9_]*$/.test(k)) throw new Error("Invalid env name"); return `set "${k}="`; }),
+      ...Object.entries(c.env).map(([k, v]) => {
+        // SET accepts JSON quotes; without expansion or command metacharacters they cannot run a command.
+        if (!/^[A-Z_][A-Z0-9_]*$/i.test(k) || /[%^&|<>\r\n]/.test(v)) throw new Error("Cannot pass env to cmd.exe safely");
+        return `set "${k}=${v}"`;
+      }),
       // /d: the repo may be on another drive than the terminal starts on.
       ...(c.cwd ? [`cd /d ${cmdq(c.cwd)} || exit /b 1`] : []),
       // `call` so a CLI that is itself a .cmd returns here.
@@ -47,6 +55,7 @@ export function terminalScript(platform: NodeJS.Platform, c: TerminalCommand): {
   const lines = [
     "#!/bin/sh",
     `# ${c.title.replace(/\n/g, " ")}`,
+    ...(c.unsetEnv ?? []).map((k) => { if (!/^[A-Z_][A-Z0-9_]*$/.test(k)) throw new Error("Invalid env name"); return `unset ${k}`; }),
     ...Object.entries(c.env).map(([k, v]) => `export ${k}=${shq(v)}`),
     // A repo that went away must not leave the CLI working in the home folder instead.
     ...(c.cwd ? [`cd ${shq(c.cwd)} || exit 1`] : []),

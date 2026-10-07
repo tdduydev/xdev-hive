@@ -40,6 +40,10 @@ export interface Actor {
    * never falls back to a token's name, so it can tell who owns a machine (roadmap 18d).
    */
   account?: string;
+  /** Set only after the hub verifies a credential issued for one run. Never derived from request headers. */
+  runCredential?: { project: string; task: string; run: string; machine: string; readOnly: boolean };
+  /** Verified MCP credential, including interactive sessions that have no assigned run. */
+  mcpCredential?: boolean;
 }
 
 export interface DocSummary {
@@ -305,6 +309,8 @@ export interface TaskAgent {
 }
 
 export interface Task {
+  /** Lower goes first; 50 when not specified. */
+  priority?: number;
   id: string;
   project: string;
   title: string;
@@ -434,6 +440,7 @@ export interface ReportedProfile extends QuotaOutlook {
    * knows the role. Absent from older apps, so the hub never sends them a run they would refuse.
    */
   classify?: boolean;
+  research?: boolean;
 }
 
 /**
@@ -449,7 +456,7 @@ export interface ProfileChange {
   requestedAt: string;
 }
 
-export const POLICY_CLIS = ["claude", "codex", "gemini", "antigravity"] as const;
+export const POLICY_CLIS = ["claude", "codex", "gemini", "antigravity", "vibe", "opencode", "kilo", "copilot"] as const;
 export const POLICY_REPO_PARTS = ["agents", "codegraph-mcp", "codegraph-index", "superpowers", "speckit"] as const;
 /**
  * admins: a hub admin may approve their own work, since on a hub of one person their agents run on their token too.
@@ -475,7 +482,7 @@ export interface TeamPolicy {
 
 /** The tool catalog (roadmap 28a): what machines may set up for runs, kept on the hub instead of in the app's code. */
 export const TOOL_KINDS = ["mcp", "plugin", "hook", "cli"] as const;
-export const TOOL_AGENTS = ["claude", "codex", "gemini", "antigravity"] as const;
+export const TOOL_AGENTS = ["claude", "codex", "gemini", "antigravity", "vibe", "opencode", "kilo", "copilot"] as const;
 export const TOOL_REGISTRIES = ["npm", "pypi", "brew", "git", "claude-plugin"] as const;
 /**
  * Tools the app already has its own code for: from 28b the machine runs that code to install, prepare and check them,
@@ -1139,7 +1146,7 @@ export interface ChatDefaults {
 export const CHAT_REPLY_STATUSES = ["pending", "running", "done", "failed", "cancelled", "expired"] as const;
 export type ChatReplyStatus = (typeof CHAT_REPLY_STATUSES)[number];
 
-/** A conversation with a project's leader agent, held on one machine whose Claude Code session each reply resumes. */
+/** A conversation with a project's leader agent, held on one machine, resuming its selected profile's session. */
 export interface ChatThread {
   id: number;
   project: string;
@@ -1147,7 +1154,7 @@ export interface ChatThread {
   /** The machine's hub actor: every reply of the thread is written there, in the same session. */
   machineId: string;
   machine: string;
-  /** A Claude profile of that machine; null: the machine picks one. */
+  /** A Claude or Codex profile of that machine; null: the machine picks one. */
   profileId: string | null;
   /** Claude Code's model for its replies (an alias like opus, or a full name); null: the profile's own. */
   model: string | null;
@@ -1174,6 +1181,10 @@ export interface ChatMessage {
   steps: string;
   error: RunRequestError | null;
   costUsd: number | null;
+  /** Usage of this reply; absent from older hubs. Cached input is excluded from inputTokens. */
+  tokens?: { inputTokens: number; cacheReadTokens: number; outputTokens: number } | null;
+  /** A quota fallback starts a new provider session and keeps the conversation in Hive. */
+  switchedFrom?: string | null;
   createdAt: string;
   updatedAt: string;
   finishedAt: string | null;
@@ -1194,6 +1205,8 @@ export interface ChatFile {
 }
 
 export const CHAT_ACTION_KINDS = [
+  "plan.create",
+  "research.start",
   "task.create",
   "task.update",
   "task.classify",
@@ -1241,7 +1254,7 @@ export interface ChatAction {
   reason: string;
   status: ChatActionStatus;
   /** What confirming it made: the task, the run request sent to the machine, or the install command. */
-  result: { taskId?: string; requestId?: number; commandId?: number } | null;
+  result: { taskId?: string; requestId?: number; commandId?: number; researchId?: number; specKey?: string; taskIds?: string[] } | null;
   error: RunRequestError | null;
   decidedBy: string | null;
   decidedAt: string | null;
@@ -1261,11 +1274,13 @@ export interface ChatSender {
 
 /** A reply a machine is asked to write (heartbeat): the person's message and the session to resume. */
 export interface ChatRequest {
+  /** Conversation to carry over when quota fallback starts a new CLI session (bounded by the hub). */
+  history?: string;
   replyId: number;
   threadId: number;
   project: string;
   profileId: string | null;
-  /** The thread's Claude Code session; null for its first reply. */
+  /** The selected profile's CLI session; null when starting a fresh session. */
   sessionId: string | null;
   /** The thread's model and effort; null (or missing, from an older hub): the profile's own. */
   model?: string | null;
@@ -1338,7 +1353,7 @@ export interface MachineRun {
   project: string;
   taskId: string;
   taskTitle: string;
-  role: "plan" | "implement" | "review" | "classify";
+  role: AgentRole;
   status: "queued" | "running";
   profileId: string | null;
   since: string;
@@ -1362,6 +1377,9 @@ export interface Machine {
   projects: string[];
   /** Its user lets project managers queue runs on it from the web (runs.dispatch). */
   acceptsRuns: boolean;
+  gateRunner?: boolean;
+  /** Older apps do not report their runner limit; auto-dispatch assumes one. */
+  maxParallel?: number;
   /** The hub account its token belongs to: with hub admins, the only one who may change its profiles from the web. */
   owner: string | null;
   /** Profile changes asked for on the web that the machine has not reported yet (roadmap 18d). */

@@ -9,7 +9,7 @@ export type ModelTier = (typeof MODEL_TIERS)[number];
 export const MODEL_PROFILES = ["economy", "balanced", "quality"] as const;
 export type ModelProfile = (typeof MODEL_PROFILES)[number];
 /** The kinds of plan the router speaks for: a custom CLI takes no flag the router could know. */
-export const ROUTED_KINDS = ["claude", "codex", "antigravity"] as const;
+export const ROUTED_KINDS = ["claude", "codex", "antigravity", "gemini", "vibe", "opencode", "kilo", "copilot"] as const;
 export type RoutedKind = (typeof ROUTED_KINDS)[number];
 
 /**
@@ -19,10 +19,10 @@ export type RoutedKind = (typeof ROUTED_KINDS)[number];
 export const MODEL_EFFORTS = ["low", "medium", "high", "xhigh"] as const;
 export type ModelEffort = (typeof MODEL_EFFORTS)[number];
 
-export const modelChoiceSchema = z.object({ model: z.string().regex(/^[A-Za-z0-9._:[\]-]{1,100}$/), effort: z.enum(MODEL_EFFORTS).nullable() });
+export const modelChoiceSchema = z.object({ model: z.string().regex(/^[A-Za-z0-9._:/[\]-]{1,200}$/), effort: z.enum(MODEL_EFFORTS).nullable() });
 export type ModelChoice = z.infer<typeof modelChoiceSchema>;
 /** null: this kind of plan has no model at the tier, and the nearest tier that has one stands in. */
-export const modelTierRowSchema = z.object({ claude: modelChoiceSchema.nullable(), codex: modelChoiceSchema.nullable(), antigravity: modelChoiceSchema.nullable() });
+export const modelTierRowSchema = z.object({ claude: modelChoiceSchema.nullable(), codex: modelChoiceSchema.nullable(), antigravity: modelChoiceSchema.nullable(), gemini: modelChoiceSchema.nullable().default(null), vibe: modelChoiceSchema.nullable().default(null), opencode: modelChoiceSchema.nullable().optional(), kilo: modelChoiceSchema.nullable().optional(), copilot: modelChoiceSchema.nullable().default({ model: "auto", effort: null }) });
 export type ModelTierRow = z.infer<typeof modelTierRowSchema>;
 export const modelTableSchema = z.record(z.enum(MODEL_TIERS), modelTierRowSchema);
 export const modelCellsSchema = z.record(z.enum(TASK_KINDS), z.record(z.enum(TASK_SIZES), z.enum(MODEL_TIERS)));
@@ -56,11 +56,11 @@ export interface ModelSelection {
 const choice = (model: string, effort: ModelEffort | null): ModelChoice => ({ model, effort });
 
 export const DEFAULT_MODEL_TIERS: Record<ModelTier, ModelTierRow> = {
-  light: { claude: choice("sonnet", "low"), codex: choice("gpt-6-luna", "medium"), antigravity: choice("gemini-3.8-flash", "low") },
-  standard: { claude: choice("sonnet", "medium"), codex: choice("gpt-6.1-sol", "low"), antigravity: choice("gemini-3.8-pro", "medium") },
+  light: { gemini: choice("flash", null), claude: choice("sonnet", "low"), codex: choice("gpt-6-luna", "medium"), antigravity: choice("gemini-3.8-flash", "low"), vibe: choice("mistral-medium-3.5", null), opencode: null, kilo: choice("kilo/kilo-auto/free", null), copilot: choice("auto", null) },
+  standard: { gemini: choice("auto", null), claude: choice("sonnet", "medium"), codex: choice("gpt-6.1-sol", "low"), antigravity: choice("gemini-3.8-pro", "medium"), vibe: choice("mistral-medium-3.5", null), opencode: null, kilo: choice("kilo/kilo-auto/free", null), copilot: choice("auto", null) },
   // Antigravity's Claude/GPT pool has its own quota (53) the hub does not see, so strong and above stay on Gemini pro.
-  strong: { claude: choice("opus", "medium"), codex: choice("gpt-6.1-sol", "high"), antigravity: null },
-  max: { claude: choice("opus", "high"), codex: choice("gpt-6-astra", "medium"), antigravity: null },
+  strong: { gemini: choice("pro", null), claude: choice("opus", "medium"), codex: choice("gpt-6.1-sol", "high"), antigravity: null, vibe: choice("mistral-medium-3.5", null), opencode: null, kilo: choice("kilo/kilo-auto/free", null), copilot: choice("auto", null) },
+  max: { gemini: choice("pro", null), claude: choice("opus", "high"), codex: choice("gpt-6-astra", "medium"), antigravity: null, vibe: null, opencode: null, kilo: choice("kilo/kilo-auto/free", null), copilot: choice("auto", null) },
 };
 
 const sizes = (s: ModelTier, m: ModelTier, l: ModelTier): Record<TaskSize, ModelTier> => ({ s, m, l });
@@ -89,7 +89,7 @@ export function shiftTier(tier: ModelTier, steps: number): ModelTier {
 
 /** One effort up; Antigravity's --effort stops at high. null stays null: the CLI's default is not a level we know. */
 export function raiseEffort(kind: RoutedKind, effort: ModelEffort | null): ModelEffort | null {
-  if (!effort) return null;
+  if (!effort || kind === "gemini" || kind === "vibe" || kind === "opencode") return null;
   const top = kind === "antigravity" ? MODEL_EFFORTS.indexOf("high") : MODEL_EFFORTS.length - 1;
   return MODEL_EFFORTS[Math.min(top, MODEL_EFFORTS.indexOf(effort) + 1)]!;
 }
@@ -98,7 +98,7 @@ export function raiseEffort(kind: RoutedKind, effort: ModelEffort | null): Model
 function modelsAt(tiers: Record<ModelTier, ModelTierRow>, tier: ModelTier): Record<RoutedKind, ModelChoice | null> {
   const at = MODEL_TIERS.indexOf(tier);
   const byDistance = [...MODEL_TIERS].sort((a, b) => Math.abs(MODEL_TIERS.indexOf(a) - at) - Math.abs(MODEL_TIERS.indexOf(b) - at) || MODEL_TIERS.indexOf(a) - MODEL_TIERS.indexOf(b));
-  return Object.fromEntries(ROUTED_KINDS.map((kind) => [kind, byDistance.map((t) => tiers[t]?.[kind] ?? null).find((c) => c !== null) ?? null])) as Record<RoutedKind, ModelChoice | null>;
+  return Object.fromEntries(ROUTED_KINDS.map((kind) => [kind, byDistance.map((t) => tiers[t]?.[kind] ?? (kind === "kilo" && tiers[t]?.kilo === undefined ? DEFAULT_MODEL_TIERS[t].kilo : null) ?? null).find((c) => c !== null) ?? null])) as Record<RoutedKind, ModelChoice | null>;
 }
 
 export interface RouteInput {

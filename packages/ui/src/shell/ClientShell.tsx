@@ -2,13 +2,16 @@
 // grouped pages, this machine's running agents, account), a 52px top bar (title, ⌘K search, Task mới) and a 26px
 // status bar (hub, runs, quota, version). Used by the desktop app and by people who are not hub admins on the web.
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
-import { Download, ExternalLink, Moon, PanelLeft, Plus, Search, Sun, X } from "lucide-react";
+import { Download, ExternalLink, MessageSquare, Moon, PanelLeft, Plus, Search, Sun, X } from "lucide-react";
 import { cn } from "cn";
 import type { AgentRun, Me } from "@xdev-hive/core";
 import type { HiveClient } from "#ui/client.ts";
 import { AccountMenu } from "#ui/components/Account.tsx";
 import { HiveWordmark } from "#ui/components/Brand.tsx";
 import { ScopeSwitcher } from "#ui/components/ScopeSwitcher.tsx";
+import { Sheet, SheetContent, SheetTitle } from "#ui/components/ui/sheet.tsx";
+import { ChatSessionProvider, useChatSession } from "#ui/components/ChatSession.tsx";
+import { LeaderChatPanel } from "#ui/shell/LeaderChatPanel.tsx";
 import { usePoll, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { toggleTheme, useTheme } from "#ui/lib/theme.ts";
@@ -77,7 +80,7 @@ const hostOf = (url: string) => {
 export function ClientShell(props: Parameters<typeof ClientFrame>[0]) {
   return (
     <ToastProvider>
-      <ClientFrame {...props} />
+      <ChatSessionProvider><ClientFrame {...props} /></ChatSessionProvider>
     </ToastProvider>
   );
 }
@@ -111,9 +114,10 @@ function ClientFrame({
   children: ReactNode;
 }) {
   const t = useT();
+  const chat = useChatSession();
   const { theme } = useTheme();
   const narrow = useMedia("(max-width: 767px)");
-  const [sidebar, setSidebarState] = useState(readSidebar);
+  const [sidebar, setSidebarState] = useState(() => narrow ? false : readSidebar());
   const sidebarTrigger = useRef<HTMLButtonElement>(null);
   const [palette, setPalette] = useState(false);
   const [newTask, setNewTask] = useState(false);
@@ -131,17 +135,6 @@ function ClientFrame({
       return next;
     });
   }, []);
-
-  useEffect(() => {
-    if (!narrow || !sidebar) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented) return;
-      setSidebar(false);
-      sidebarTrigger.current?.focus();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [narrow, sidebar, setSidebar]);
 
   const desktop = client.desktop;
   const info = useQuery(async () => (desktop ? desktop.appInfo() : null), [desktop]);
@@ -198,7 +191,7 @@ function ClientFrame({
     [narrow, setSidebar],
   );
 
-  // ⌘K palette · ⌘B sidebar · ⌘N new task · ⌘1–6 pages.
+  // ⌘K palette · ⌘⇧L leader · ⌘B sidebar · ⌘N new task · ⌘1–6 pages.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
@@ -206,6 +199,9 @@ function ClientFrame({
       if (k === "k") {
         e.preventDefault();
         setPalette((p) => !p);
+      } else if (k === "l" && e.shiftKey) {
+        e.preventDefault();
+        chat.setPanelOpen((was) => !was);
       } else if (k === "b") {
         e.preventDefault();
         setSidebar((s) => !s);
@@ -223,16 +219,17 @@ function ClientFrame({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [items, go, setSidebar, webUrl]);
+  }, [items, go, setSidebar, webUrl, chat.setPanelOpen]);
 
   const commands = useMemo<PaletteCommand[]>(
     () => [
       webUrl
         ? { id: "open-web", label: t("shell.openWeb"), icon: ExternalLink, run: () => void window.open(`${webUrl}/#/today`, "_blank") }
         : { id: "new-task", label: t(client.desktop ? "palette.newTask" : "newWork.title"), icon: Plus, hint: "⌘N", run: () => setNewTask(true) },
+      { id: "ask-leader", label: t("chat.askLeader"), icon: MessageSquare, hint: "⌘⇧L", run: () => chat.setPanelOpen(true) },
       { id: "theme", label: t("palette.toggleTheme"), icon: theme === "dark" ? Sun : Moon, run: () => toggleTheme(theme) },
     ],
-    [t, theme, webUrl],
+    [t, theme, webUrl, chat.setPanelOpen],
   );
   const pages = useMemo<PaletteCommand[]>(
     () =>
@@ -248,11 +245,10 @@ function ClientFrame({
   const nav = (
     <nav
       id="hive-navigation"
-      inert={narrow && !sidebar}
       aria-label={t("shell.nav")}
       className={cn(
         "flex w-[236px] shrink-0 flex-col border-r border-line-subtle bg-subtle",
-        narrow && cn("fixed inset-y-0 left-0 z-200 shadow-e3 transition-transform", !sidebar && "-translate-x-full"),
+        narrow && "h-full w-full border-r-0",
       )}
     >
       <div className={cn("flex h-[52px] shrink-0 items-center px-4", mac && "pl-[84px]", drag)}>
@@ -363,10 +359,9 @@ function ClientFrame({
 
   return (
     <>
-      <div className="fixed inset-0 flex flex-col bg-surface text-fg-primary">
+      <div inert={narrow && sidebar} className="fixed inset-0 flex flex-col bg-surface text-fg-primary">
         <div className="flex min-h-0 flex-1">
-          {sidebar || narrow ? nav : null}
-          {sidebar && narrow ? <div className="fixed inset-0 z-190 bg-scrim" onClick={() => setSidebar(false)} /> : null}
+          {sidebar && !narrow ? nav : null}
           <div className="relative flex min-w-0 flex-1 flex-col">
             <header className={cn("flex h-[52px] min-w-0 shrink-0 items-center gap-0.5 border-b border-line-subtle bg-surface px-3", drag, mac && !sidebar && !narrow && "pl-[78px]")}>
               <button
@@ -423,6 +418,17 @@ function ClientFrame({
                   {installing ? t("shell.updateInstalling", { version: up.version }) : up.idleState === "waiting" ? t("shell.updateWaiting", { version: up.version }) : t("shell.updateReady", { version: up.version })}
                 </button>
               ) : null}
+              <button
+                type="button"
+                data-ask-leader
+                aria-expanded={chat.panelOpen}
+                title={t("chat.askShortcut")}
+                onClick={() => chat.setPanelOpen(true)}
+                className={cn("mr-1 flex h-[30px] max-md:size-11 shrink-0 items-center gap-1.5 rounded-sm border border-line-default px-2.5 max-md:justify-center max-md:p-0 text-xs font-semibold text-fg-primary outline-none hover:bg-hover focus-visible:focus-ring", noDrag)}
+              >
+                <MessageSquare className="size-4" aria-hidden />
+                <span className="max-md:sr-only">{t("chat.askLeader")}</span>
+              </button>
               {webUrl ? (
                 <a
                   href={`${webUrl}/#/today`}
@@ -513,6 +519,24 @@ function ClientFrame({
                   : null}
         </footer>
       </div>
+      {narrow ? (
+        <Sheet open={sidebar} onOpenChange={setSidebar}>
+          <SheetContent
+            side="left"
+            showCloseButton={false}
+            aria-describedby={undefined}
+            className="w-[236px] gap-0 sm:w-[236px] sm:max-w-[236px]"
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              sidebarTrigger.current?.focus();
+            }}
+          >
+            <SheetTitle className="sr-only">{t("shell.nav")}</SheetTitle>
+            {nav}
+          </SheetContent>
+        </Sheet>
+      ) : null}
+      <LeaderChatPanel />
       <CommandPalette open={palette} onOpenChange={setPalette} commands={commands} pages={pages} />
       {client.desktop ? <NewTaskDialog open={newTask} onOpenChange={setNewTask} /> : newTask ? <NewWorkDialog open onOpenChange={setNewTask} /> : null}
     </>

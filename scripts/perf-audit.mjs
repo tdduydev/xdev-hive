@@ -8,6 +8,7 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { SqliteHive, migrationIndex } from "@xdev-hive/core/node";
 import { buildInbox } from "@xdev-hive/ui/lib/inbox";
+import { allInboxSources, allDispatchTasks } from "@xdev-hive/ui/lib/inbox-source";
 import { allPipelineFlows, stepCounts, FAST_KINDS } from "@xdev-hive/ui/lib/pipeline";
 
 const dir = mkdtempSync(path.join(tmpdir(), "hive-perf-"));
@@ -65,28 +66,28 @@ try {
     db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
     migration = { ms, beforeBytes, afterBytes: statSync(file).size };
   }
+  await call("sdlc.setProject", { project: "perf-0", settings: { gates: {}, fastLaneKinds: [...FAST_KINDS] } });
   const counts = Object.fromEntries(["tasks", "run_records", "run_requests", "memory", "docs", "machines", "task_deps", "sdlc_flows", "sdlc_flow_tasks"].map((t) => [t, db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n]));
   assert.deepEqual(counts, { tasks: 20_000, run_records: 50_000, run_requests: 50_000, memory: 5000, docs: 2000, machines: 200, task_deps: 19_990, sdlc_flows: 2000, sdlc_flow_tasks: 1000 });
 
   const inbox = async (filter = {}) => {
     // Same hub sources and limits as packages/ui/src/shell/inbox.tsx; alerts are outside SqliteHive.
-    const [proposals, cleanup, reviewTasks, memory, plans, gates, leader, hubRuns] = await Promise.all([
-      call("proposals.list", { status: "pending" }), call("memory.cleanupProposals"), call("tasks.list", filter),
+    const [proposals, cleanup, reviewTasks, memory, plans, gates, leader] = await Promise.all([
+      call("proposals.list", { status: "pending" }), call("memory.cleanupProposals"), allInboxSources({ call }, filter),
       call("memory.list", { limit: 500, ...filter, ...(Object.keys(filter).length ? { includeShared: true } : {}) }), call("runs.plans", { status: "waiting", limit: 200, ...filter }),
-      call("sdlc.gates", { limit: 100, ...filter }), call("chat.pending", filter), call("runs.list", { limit: 200, ...filter }),
+      call("sdlc.gates", { limit: 100, ...filter }), call("chat.pending", filter),
     ]);
-    const sources = { proposals, cleanup, reviewTasks, assignedTasks: reviewTasks, memory, plans, gates, leader, hubRuns, principal: actor.name };
+    const sources = { proposals, cleanup, reviewTasks: reviewTasks.tasks, assignedTasks: reviewTasks.tasks, memory, plans, gates, leader, hubRuns: reviewTasks.runs, principal: actor.name };
     return { sources, items: buildInbox(sources) };
   };
   const pipeline = async () => {
     const client = { call };
     const [flows, tasks, work, gates] = await Promise.all([
       allPipelineFlows(client, { project: "perf-0" }), call("sdlc.flowTasks", { project: "perf-0" }),
-      call("tasks.list", { project: "perf-0" }), call("sdlc.gates", { project: "perf-0", limit: 200 }),
+      call("sdlc.dispatch", { project: "perf-0", limit: 1 }), call("sdlc.gates", { project: "perf-0", limit: 200 }),
     ]);
     const counts = stepCounts(flows, tasks);
-    const owned = new Set([...flows.map((f) => f.taskId), ...tasks.map((t) => t.taskId)]);
-    counts.dispatch += work.filter((t) => !owned.has(t.id) && t.status === "todo" && FAST_KINDS.includes(t.kind)).length;
+    counts.dispatch = work.total;
     return { sources: { flows, tasks, work, gates }, counts };
   };
   const cases = [];
@@ -97,6 +98,7 @@ try {
     ["machines.list", () => call("machines.list")], ["docs.list/all", () => call("docs.list")], ["docs.list/project", () => call("docs.list", { project: "perf-0" })],
     ["memory.search/fts", () => call("memory.search", { project: "perf-0", query: "benchmark" })],
     ["memory.search/latest", () => call("memory.search", { project: "perf-0" })],
+    ["inbox.source/tasks-first-page", () => call("inbox.source", { source: "tasks", limit: 500 })], ["inbox.source/runs-first-page", () => call("inbox.source", { source: "runs", limit: 500 })],
     ["inbox/all", () => inbox()], ["inbox/project", () => inbox({ project: "perf-0" })], ["pipeline/perf-0", pipeline]);
 
   const measurements = [];
@@ -134,7 +136,7 @@ try {
     };
     try { await run(); } finally { db.prepare = prepare; }
     const slow = [...queries.entries()].sort((a, b) => b[1].ms - a[1].ms).slice(0, 8);
-    plans[name] = slow.map(([sql, info]) => ({ sql, count: info.count, totalMs: round(info.ms), plan: /^(SELECT|UPDATE|DELETE)/i.test(sql.trim()) ? db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...info.args) : [] }));
+    plans[name] = slow.map(([sql, info]) => ({ sql, count: info.count, totalMs: round(info.ms), plan: /^(WITH|SELECT|UPDATE|DELETE)/i.test(sql.trim()) ? db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...info.args) : [] }));
     samples.sort((a, b) => a - b);
     serialize.sort((a, b) => a - b);
     measurements.push({ name, medianMs: round(samples[2]), maxMs: round(samples[4]), jsonMedianMs: round(serialize[2]), bytes, sourceBytes, rows: Array.isArray(result) ? result.length : result.items?.length ?? result.counts, sqlCalls: [...queries.values()].reduce((n, q) => n + q.count, 0) });
@@ -151,6 +153,10 @@ try {
     pipelineDispatchInDb: db.prepare("SELECT COUNT(*) AS n FROM tasks t WHERE project = 'perf-0' AND status = 'todo' AND kind = 'small-fix' AND NOT EXISTS (SELECT 1 FROM sdlc_flows f WHERE f.task_id = t.id) AND NOT EXISTS (SELECT 1 FROM sdlc_flow_tasks ft WHERE ft.task_id = t.id)").get().n,
     pipelineDispatchShown: projectPipeline.counts.dispatch,
   };
+  assert.equal(correctness.reviewItemsInInbox, correctness.reviewTasksInDb);
+  assert.equal(correctness.waitingRunItemsInInbox, correctness.newestWaitingRunsInDb);
+  assert.equal(correctness.pipelineDispatchShown, correctness.pipelineDispatchInDb);
+  assert.equal((await allDispatchTasks({ call }, { project: "perf-0" })).length, correctness.pipelineDispatchShown);
   db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
   console.log(JSON.stringify({ environment: { node: process.version, sqlite: db.prepare("SELECT sqlite_version() AS v").get().v, cpu: cpus()[0]?.model, samples: 5, warmups: 1, actor: "unrestricted admin", embeddings: false, pipelineFastLaneKinds: FAST_KINDS, transport: "in-process (no HTTP, browser or network)" }, seedMs, migration, counts, dbBytes: statSync(file).size, measurements, correctness, plans }, null, 2));
 } finally {

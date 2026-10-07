@@ -8,7 +8,7 @@ type Json = Record<string, unknown>;
 function loadedSkill(name: unknown, input: unknown): string | null {
   if (!input || typeof input !== "object") return null;
   const args = input as Json;
-  const candidate = typeof name === "string" && /(?:^|__)skill_get$/.test(name) ? args.name
+  const candidate = typeof name === "string" && /(?:^|_)skill_get$/.test(name) ? args.name
     : name === "Read" && typeof args.file_path === "string" ? /(?:^|[\\/])([^\\/]+)[\\/]SKILL\.md$/.exec(args.file_path)?.[1] : null;
   return typeof candidate === "string" && /^[a-z0-9][a-z0-9-]{0,63}$/.test(candidate) ? candidate : null;
 }
@@ -213,6 +213,7 @@ export class CodexStream {
   /** The agent's last message: the run's summary. */
   lastText: string | null = null;
   threadId: string | null = null;
+  failed = false;
   /** Every turn's usage added up as the events pass, so a long run's early turns count even once the log is cut. */
   readonly tokens = { turns: 0, input: 0, cached: 0, output: 0 };
   #rest = "";
@@ -270,9 +271,14 @@ export class CodexStream {
         return `# tokens in ${String(u.input_tokens ?? "?")} (cached ${String(u.cached_input_tokens ?? "?")}) out ${String(u.output_tokens ?? "?")}`;
       }
       case "turn.failed":
+        this.failed = true;
         return `✗ ${clipLine(String((e.error as Json | undefined)?.message ?? "turn failed"), 300)}`;
       case "error":
+        this.failed = true;
         return `✗ ${clipLine(String(e.message ?? "error"), 300)}`;
+      case "item.updated":
+        if (item.type === "agent_message" && typeof item.text === "string") this.lastText = item.text;
+        return null;
       case "item.started":
         if (item.type === "command_execution") {
           const cmd = `Bash: ${clipLine(String(item.command ?? ""), 200)}`;
@@ -340,5 +346,133 @@ export class AntigravityStream {
       this.state.activity = clipLine(text || String(e.type ?? line), 160);
     } catch { this.state.activity = clipLine(line, 160); }
     return `${line}\n`;
+  }
+}
+
+/** Copilot's --output-format json is JSONL. Event data fields follow the official streaming-event reference;
+ * an unauthenticated CLI probe cannot establish which optional events a particular account emits. */
+export class CopilotStream {
+  readonly state: StreamState = { activity: null };
+  readonly skills = new Set<string>();
+  lastText: string | null = null;
+  sessionId: string | null = null;
+  failure: string | null = null;
+  readonly tokens = { calls: 0, input: 0, cacheRead: 0, cacheWrite: 0, output: 0 };
+  #rest = "";
+
+  push(chunk: string): string {
+    const lines = (this.#rest + chunk).split("\n");
+    this.#rest = lines.pop() ?? "";
+    return lines.map((line) => this.#line(line)).join("");
+  }
+
+  end(): string {
+    const line = this.#rest;
+    this.#rest = "";
+    return line ? this.#line(line) : "";
+  }
+
+  #line(raw: string): string {
+    if (!raw.trim()) return "";
+    let e: Json;
+    try { e = JSON.parse(raw) as Json; }
+    catch { return `${raw}\n`; }
+    const data = (e.data && typeof e.data === "object" ? e.data : {}) as Json;
+    const id = e.sessionId ?? data.sessionId;
+    if (typeof id === "string" && id) this.sessionId = id;
+    let line: string | null = null;
+    switch (e.type) {
+      case "assistant.message": {
+        if (typeof data.content === "string" && data.content.trim()) {
+          this.lastText = data.content.trim();
+          line = this.lastText;
+        }
+        break;
+      }
+      case "session.task_complete":
+        if (typeof data.summary === "string" && data.summary.trim()) this.lastText = data.summary.trim();
+        break;
+      case "tool.execution_start":
+        this.state.activity = clipLine(`${String(data.toolName ?? "tool")}${data.mcpServerName ? ` (${String(data.mcpServerName)})` : ""}`, 160);
+        line = `▶ ${this.state.activity}`;
+        break;
+      case "tool.execution_complete":
+        if (data.success === false) line = `✗ ${clipLine(String(data.error ?? data.toolName ?? "tool failed"), 200)}`;
+        break;
+      case "session.error":
+        this.failure = clipLine(String(data.message ?? data.errorType ?? "Copilot session error"), 300);
+        line = `✗ ${this.failure}`;
+        break;
+      case "assistant.usage": {
+        const n = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0;
+        this.tokens.calls++;
+        this.tokens.input += n(data.inputTokens);
+        this.tokens.cacheRead += n(data.cacheReadTokens);
+        this.tokens.cacheWrite += n(data.cacheWriteTokens);
+        this.tokens.output += n(data.outputTokens);
+        break;
+      }
+      case "skill.invoked":
+        if (typeof data.name === "string" && this.skills.size < 256) this.skills.add(data.name);
+        break;
+    }
+    return line ? `${line}\n` : "";
+  }
+}
+
+/** Native OpenCode 1.18.35 run events (upstream cli/cmd/run.ts); unknown records stay visible. */
+export class OpenCodeStream {
+  readonly state: StreamState = { activity: null };
+  readonly skills = new Set<string>();
+  lastText: string | null = null;
+  sessionId: string | null = null;
+  failure: string | null = null;
+  #rest = "";
+  #seen = new Set<string>();
+  #usage = { costUsd: null as number | null, inputTokens: null as number | null, cacheWriteTokens: null as number | null, cacheReadTokens: null as number | null, outputTokens: null as number | null };
+  push(chunk: string): string {
+    const lines = (this.#rest + chunk).split("\n");
+    this.#rest = lines.pop() ?? "";
+    return lines.map((line) => this.#line(line)).join("");
+  }
+  end(): string { const rest = this.#rest; this.#rest = ""; return rest ? this.#line(rest) : ""; }
+  usage(): import("./usage.ts").RunUsage { return { text: this.lastText, ...this.#usage }; }
+  #line(raw: string): string {
+    let e: any;
+    try { e = JSON.parse(raw); } catch { return `${raw}\n`; }
+    if (!e || typeof e !== "object") return `${raw}\n`;
+    if (typeof e.sessionID === "string") this.sessionId = e.sessionID;
+    const part = e.part;
+    if (part && typeof part.id === "string" && ["text", "step_finish", "tool_use"].includes(e.type)) {
+      const key = `${e.sessionID}:${e.type}:${part.id}`;
+      if (this.#seen.has(key)) return "";
+      this.#seen.add(key);
+    }
+    if (e.type === "text" && typeof part?.text === "string") { this.lastText = part.text.trim(); return `${part.text}\n`; }
+    if (e.type === "tool_use" && part?.state) {
+      const line = toolLine(String(part.tool ?? "?"), part.state.input ?? {}, "");
+      this.state.activity = line;
+      if (part.state.status === "completed") {
+        const skill = part.tool === "skill" ? loadedSkill("skill_get", part.state.input) : loadedSkill(part.tool, part.state.input);
+        if (skill && this.skills.size < 256) this.skills.add(skill);
+      }
+      return `▶ ${line}\n  ${part.state.status === "error" ? `✗ ${clipLine(String(part.state.error ?? "error"), 300)}` : "✓"}\n`;
+    }
+    if (e.type === "step_finish" && part) {
+      const values = { costUsd: part.cost, inputTokens: part.tokens?.input, cacheWriteTokens: part.tokens?.cache?.write, cacheReadTokens: part.tokens?.cache?.read, outputTokens: part.tokens?.output };
+      for (const [key, value] of Object.entries(values)) if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+        const k = key as "costUsd" | "inputTokens" | "cacheWriteTokens" | "cacheReadTokens" | "outputTokens";
+        this.#usage[k] = (this.#usage[k] ?? 0) + value;
+      }
+      return "";
+    }
+    if (e.type === "error") {
+      const message = typeof e.error === "string" ? e.error : e.error?.data?.message ?? e.error?.message ?? e.error?.name;
+      const status = e.error?.data?.statusCode;
+      this.failure = `${message ?? "OpenCode error"}${typeof status === "number" ? ` (${status})` : ""}`;
+      return `✗ ${this.failure}\n`;
+    }
+    if (e.type === "step_start" || e.type === "reasoning") return "";
+    return `${raw}\n`;
   }
 }

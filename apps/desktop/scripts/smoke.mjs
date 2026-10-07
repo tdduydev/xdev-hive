@@ -8,7 +8,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import electron from "electron";
@@ -40,7 +40,7 @@ execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin]);
 git("remote", "add", "origin", origin);
 git("push", "-q", "origin", "main");
 const token = "mock-gitlab-smoke-token";
-const gitlab = ["setup-guide", "run-steer", "idle-update"].includes(process.env.HIVE_SMOKE_ONLY)
+const gitlab = ["setup-guide", "run-steer", "idle-update", "worktrees", "chat-everywhere", "opencode", "vibe"].includes(process.env.HIVE_SMOKE_ONLY)
   ? { base: "", close: async () => {} }
   : await startMockGitLab(token);
 
@@ -69,10 +69,21 @@ const codexHome = path.join(work, "codex-plus");
 // CLI discovery checks HOME/.local/bin before PATH; keep newly added accounts off the host's real agy.
 const smokeHome = path.join(work, "home");
 mkdirSync(smokeHome, { recursive: true });
+mkdirSync(path.join(smokeHome, ".gemini"));
+writeFileSync(path.join(smokeHome, ".gemini/settings.json"), JSON.stringify({ security: { auth: { selectedType: "oauth-personal" } } }));
+writeFileSync(path.join(smokeHome, ".gemini/oauth_creds.json"), JSON.stringify({ refresh_token: "fake-fixture" }));
 const agyBin = path.join(work, "agy-bin");
 mkdirSync(agyBin, { recursive: true });
 writeFileSync(path.join(agyBin, "agy"), `#!/bin/sh
 export FAKE_AGY=1 FAKE_AGY_VERSION='agy 1.2.17' FAKE_LOGIN=out
+exec ${shellWord(process.execPath)} ${shellWord(fake)} "$@"
+`, { mode: 0o755 });
+writeFileSync(path.join(agyBin, "gemini"), `#!/bin/sh
+export FAKE_GEMINI=1
+exec ${shellWord(process.execPath)} ${shellWord(fake)} "$@"
+`, { mode: 0o755 });
+writeFileSync(path.join(agyBin, "kilo"), `#!/bin/sh
+export FAKE_MODE=kilo-ok
 exec ${shellWord(process.execPath)} ${shellWord(fake)} "$@"
 `, { mode: 0o755 });
 const agent = (id, kind, priority, mode, label, extra = {}) => ({
@@ -119,10 +130,12 @@ hive.close();
 
 async function shoot(name, page, delay, extra = {}) {
   const shot = path.join(out, `${name}.png`);
+  const resultFile = path.join(work, `${name}.result.json`);
+  rmSync(resultFile, { force: true });
   // Async spawn: the mock GitLab in this process must keep answering while the app runs.
   // The throwaway dir as cwd, as a packaged app has none in the repo: what the app starts without a cwd of its own
   // (a CLI's --version) writes there, not into apps/desktop.
-  const child = spawn(electron, [appDir], {
+  const child = spawn(electron, [...(process.platform === "linux" && process.env.ELECTRON_OZONE_PLATFORM_HINT === "x11" ? ["--ozone-platform=x11", "--disable-gpu"] : []), appDir], {
     cwd: work,
     stdio: "inherit",
     env: {
@@ -132,18 +145,61 @@ async function shoot(name, page, delay, extra = {}) {
       HOME: smokeHome,
       HIVE_CONFIG: path.join(work, "config.json"),
       HIVE_SMOKE_SCREENSHOT: shot,
+      HIVE_SMOKE_RESULT: resultFile,
       HIVE_SMOKE_HASH: `/${page}`,
       HIVE_SMOKE_DELAY_MS: String(delay),
       ...extra,
     },
   });
+  // Chromium can hang during macOS teardown; only a completed set of assertions can shorten that wait.
+  let completedCode;
+  let teardownTimer;
+  const completion = setInterval(() => {
+    if (completedCode !== undefined || !existsSync(resultFile)) return;
+    try {
+      const result = JSON.parse(readFileSync(resultFile, "utf8"));
+      if (![0, 3].includes(result.exitCode)) return;
+      completedCode = result.exitCode;
+      teardownTimer = setTimeout(() => child.kill("SIGKILL"), 5000);
+    } catch { /* The app may still be writing its result. */ }
+  }, 100);
   const timer = setTimeout(() => child.kill("SIGKILL"), 60_000);
-  const { code, signal } = await new Promise((resolve) => child.once("exit", (code, signal) => resolve({ code, signal })));
+  const { code, signal } = await new Promise((resolve) => child.once("exit", (code, signal) => resolve({ code: code ?? completedCode, signal })));
+  clearInterval(completion);
+  clearTimeout(teardownTimer);
   clearTimeout(timer);
   if (code !== 0 || !existsSync(shot)) {
     console.error(`smoke failed on ${name}`, signal ?? code, existsSync(shot) ? "" : "(no screenshot)");
     process.exit(1);
   }
+}
+
+// Roadmap 62d: exercise the shared shell chat in local mode without sending to an agent.
+if (process.env.HIVE_SMOKE_ONLY === "chat-everywhere") {
+  for (const phone of [false, true]) {
+    await shoot(phone ? "chat-everywhere-mobile" : "chat-everywhere-desktop", "today", 2500, {
+      ...(phone ? { HIVE_SMOKE_SIZE: "390x844" } : {}),
+      HIVE_SMOKE_CLICK: "[data-ask-leader]",
+      HIVE_SMOKE_EXPECT: "[data-leader-panel] textarea && [data-chat-panel-close]",
+      HIVE_SMOKE_ASSERT: `(() => {
+        const panel = document.querySelector('[data-leader-panel]');
+        const input = panel?.querySelector('textarea');
+        if (!input) return false;
+        if (!window.chatDraftSmoke) {
+          window.chatDraftSmoke = true;
+          Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, 'Giữ bản nháp local');
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          setTimeout(() => document.querySelector('[data-chat-panel-close]').click(), 100);
+          setTimeout(() => document.querySelector('[data-ask-leader]').click(), 900);
+          return false;
+        }
+        return [input.value === 'Giữ bản nháp local', getComputedStyle(panel).transform === 'none'].every(Boolean);
+      })()` + (phone ? ` && (() => { const panel = document.querySelector('[data-leader-panel]'); const rect = panel.getBoundingClientRect(); return [rect.width === innerWidth, rect.height === innerHeight, parseFloat(getComputedStyle(panel.querySelector('textarea')).fontSize) >= 16, [...panel.querySelectorAll('button')].filter(b => b.getBoundingClientRect().width).every(b => [b.getBoundingClientRect().height >= 44, b.getBoundingClientRect().width >= 44].every(Boolean))].every(Boolean); })()` : ""),
+    });
+  }
+  await gitlab.close();
+  console.log(`chat everywhere screenshots in ${out}`);
+  process.exit(0);
 }
 
 // Deterministic setup checks: no registry/install command runs for these presentation fixtures.
@@ -199,6 +255,26 @@ async function startGuideShots(prefix = "") {
   }
   writeFileSync(file, before);
 }
+if (process.env.HIVE_SMOKE_ONLY === "opencode") {
+  const file = path.join(work, "config.json");
+  const original = JSON.parse(readFileSync(file, "utf8"));
+  const env = { FAKE_MODE: "opencode-ok", ...Object.fromEntries(["CONFIG", "DATA", "CACHE", "STATE"].map((kind) => [`XDG_${kind}_HOME`, path.join(work, "opencode", kind.toLowerCase())])) };
+  writeFileSync(file, JSON.stringify({ ...original, agents: [agent("opencode-1", "opencode", 40, "opencode-ok", "OpenCode test", { env, args: ["run", "--format", "json", "{prompt}"], opencode: { model: "test/model" } })] }));
+  const fixture = path.join(work, "opencode-setup.json");
+  writeFileSync(fixture, JSON.stringify({ machine: [{ id: "cli:opencode", label: "OpenCode", state: "installed", detail: "1.18.35 (fake)", action: null }], projects: [] }));
+  for (const [suffix, size] of [["desktop", "1280x900"], ["mobile", "390x844"]]) {
+    await shoot(`opencode-${suffix}`, "agents", 2500, { HIVE_SMOKE_SIZE: size, HIVE_SMOKE_SETUP_REPORT: fixture,
+      HIVE_SMOKE_CLICK: '[data-row-menu="opencode-1"] && [data-edit-profile="opencode-1"]',
+      HIVE_SMOKE_SCROLL: '#pf-opencode-model',
+      HIVE_SMOKE_EXPECT: '#pf-opencode-model && #pf-opencode-small && [data-opencode-notice]',
+      HIVE_SMOKE_ASSERT: 'document.querySelector("#pf-opencode-model").value === "test/model" && document.querySelector("#pf-opencode-model").getAttribute("aria-describedby") === "pf-opencode-model-hint" && document.documentElement.scrollWidth <= innerWidth',
+    });
+  }
+  await gitlab.close();
+  console.log(`OpenCode screenshots in ${out}`);
+  process.exit(0);
+}
+
 if (process.env.HIVE_SMOKE_ONLY === "run-steer") {
   const file = path.join(work, "config.json");
   const before = JSON.parse(readFileSync(file, "utf8"));
@@ -230,6 +306,22 @@ if (process.env.HIVE_SMOKE_ONLY === "run-steer") {
   }
   await gitlab.close();
   console.log(`run steering screenshots in ${out}`);
+  process.exit(0);
+}
+
+if (process.env.HIVE_SMOKE_ONLY === "worktrees") {
+  const wt = path.join(work, "worktrees", "demo", "T-001");
+  mkdirSync(path.dirname(wt), { recursive: true });
+  git("worktree", "add", "-b", "ai/T-001", wt);
+  writeFileSync(path.join(wt, "draft.txt"), "Uncommitted work\n");
+  for (const phone of [false, true]) await shoot(phone ? "worktrees-mobile" : "worktrees-desktop", "agents", 3500, {
+    ...(phone ? { HIVE_SMOKE_SIZE: "390x844" } : {}),
+    HIVE_SMOKE_CLICK: '[data-worktrees="local"]',
+    HIVE_SMOKE_EXPECT: '[data-worktree="T-001"] [data-delete-worktree]',
+    HIVE_SMOKE_ASSERT: 'document.querySelector("[data-worktree-panel]").textContent.includes("ai/T-001")' + (phone ? ' && document.documentElement.scrollWidth <= innerWidth && document.querySelector("[data-delete-worktree]").getBoundingClientRect().height >= 44' : ''),
+  });
+  await gitlab.close();
+  console.log(`worktree screenshots in ${out}`);
   process.exit(0);
 }
 
@@ -275,6 +367,41 @@ if (process.env.HIVE_SMOKE_ONLY === "setup-cards") {
   process.exit(0);
 }
 
+if (process.env.HIVE_SMOKE_ONLY === "vibe") {
+  const file = path.join(work, "config.json");
+  const config = JSON.parse(readFileSync(file, "utf8"));
+  config.agents = [agent("vibe-1", "vibe", 40, "vibe", "Mistral Vibe", { enabled: false })];
+  writeFileSync(file, JSON.stringify(config));
+  await shoot("providers-account-mobile", "agents", 1500, {
+    HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: '[data-add-account="vibe"]',
+    HIVE_SMOKE_SCROLL: '#acc-label', HIVE_SMOKE_EXPECT: '[data-vibe-notice]',
+    HIVE_SMOKE_ASSERT: 'document.documentElement.scrollWidth <= innerWidth && ["claude", "codex", "gemini", "antigravity", "copilot", "vibe", "opencode", "kilo"].every(k => document.querySelectorAll(`[data-add-account="${k}"]`).length === 1) && [...document.querySelectorAll("[data-vibe-notice] a")].every(a => a.getBoundingClientRect().height >= 44) && document.querySelector("#acc-way").options.length === 1',
+  });
+  await shoot("vibe-settings-mobile", "agents", 1500, {
+    HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: '[data-off-group] && [data-row-menu="vibe-1"] && [data-edit-profile="vibe-1"]',
+    HIVE_SMOKE_SCROLL: 'form [data-vibe-notice]', HIVE_SMOKE_EXPECT: 'form [data-vibe-notice]',
+    HIVE_SMOKE_ASSERT: 'document.documentElement.scrollWidth <= innerWidth',
+  });
+  await gitlab.close();
+  console.log(`Vibe screenshots in ${out}`);
+  process.exit(0);
+}
+
+if (process.env.HIVE_SMOKE_ONLY === "gemini") {
+  await shoot("gemini-profile", "agents", 1800, { HIVE_SMOKE_SCROLL: '[data-profile="gemini-pro"]', HIVE_SMOKE_EXPECT: '[data-gemini-info] a[href*="quota-and-pricing"] && [data-add-account="gemini"]' });
+  await shoot("gemini-account-mobile", "agents", 1500, { HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: '[data-add-account="gemini"]', HIVE_SMOKE_SCROLL: '#acc-label', HIVE_SMOKE_EXPECT: '#acc-way', HIVE_SMOKE_ASSERT: 'document.documentElement.scrollWidth <= window.innerWidth && document.querySelectorAll("#acc-way option").length === 1' });
+  await shoot("gemini-settings-mobile", "agents", 1500, { HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: '[data-row-menu="gemini-pro"] && [data-edit-profile="gemini-pro"]', HIVE_SMOKE_SCROLL: 'form [data-gemini-info]', HIVE_SMOKE_EXPECT: '[data-gemini-info] a[href*="tos-privacy"]', HIVE_SMOKE_ASSERT: 'document.documentElement.scrollWidth <= window.innerWidth' });
+  await shoot("gemini-add-login", "agents", 1500, { HIVE_SMOKE_CLICK: '[data-add-account="gemini"] && form:has(#acc-label) button[type="submit"]', HIVE_SMOKE_EXPECT: '[data-profile="gemini-1"][data-state="signedOut"]' });
+  const added = JSON.parse(readFileSync(path.join(work, "config.json"), "utf8")).agents.find((p) => p.id === "gemini-1");
+  if (!added?.env.GEMINI_CLI_HOME) throw new Error("Additional Gemini account lacks an isolated root");
+  const dir = path.join(work, "login", "gemini-1");
+  const script = readdirSync(dir).map((name) => readFileSync(path.join(dir, name), "utf8")).join("\n");
+  if (!script.includes(path.join(agyBin, "gemini")) || !script.includes("GEMINI_CLI_HOME") || script.includes("GEMINI_API_KEY")) throw new Error("Gemini sign-in script must launch the fake CLI with only its account root");
+  await gitlab.close();
+  console.log(`Gemini screenshots in ${out}`);
+  process.exit(0);
+}
+
 async function antigravityShots() {
   await shoot("agents-antigravity", "agents", 2500, { HIVE_SMOKE_SCROLL: '[data-profile="antigravity-google"]', HIVE_SMOKE_EXPECT: '[data-profile="antigravity-google"] [role="meter"] && [data-add-account="antigravity"]' });
   await shoot("agents-antigravity-account", "agents", 1500, { HIVE_SMOKE_CLICK: '[data-add-account="antigravity"]', HIVE_SMOKE_SCROLL: '#acc-label', HIVE_SMOKE_EXPECT: '#acc-way' });
@@ -288,6 +415,24 @@ async function antigravityShots() {
   const script = readdirSync(scripts).map((name) => readFileSync(path.join(scripts, name), "utf8")).join("\n");
   if (!script.includes(path.join(agyBin, "agy"))) throw new Error("Antigravity login did not open the fake agy binary");
   if (process.platform !== "linux" && added.env.HOME) throw new Error("Antigravity must not claim separate OS keyring accounts on this platform");
+}
+
+if (process.env.HIVE_SMOKE_ONLY === "kilo") {
+  const file = path.join(work, "config.json");
+  const before = JSON.parse(readFileSync(file, "utf8"));
+  before.agents = [{ ...agent("kilo-1", "kilo", 40, "kilo-ok", "Kilo Code CLI"), args: ["run", "{prompt}"], enabled: false }];
+  writeFileSync(file, JSON.stringify(before));
+  await shoot("kilo-info", "agents", 2000, { HIVE_SMOKE_CLICK: '[data-off-group] && [data-kilo-info] summary', HIVE_SMOKE_EXPECT: '[data-kilo-info] a', HIVE_SMOKE_SCROLL: '[data-kilo-info]' });
+  await shoot("kilo-account-mobile", "agents", 1500, { HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: '[data-add-account="kilo"]', HIVE_SMOKE_SCROLL: '#acc-label', HIVE_SMOKE_EXPECT: '#acc-way', HIVE_SMOKE_ASSERT: 'document.documentElement.scrollWidth <= innerWidth && document.querySelector("#acc-label").getBoundingClientRect().height >= 44 && parseFloat(getComputedStyle(document.querySelector("#acc-label")).fontSize) >= 16' });
+  await shoot("kilo-form-mobile", "agents", 1500, { HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: '[data-off-group] && [data-row-menu="kilo-1"] && [data-edit-profile="kilo-1"]', HIVE_SMOKE_SCROLL: 'form [data-kilo-info]', HIVE_SMOKE_EXPECT: '#pf-kind', HIVE_SMOKE_ASSERT: 'document.documentElement.scrollWidth <= innerWidth && document.querySelector("[data-kilo-info]").innerText.includes("200")' });
+  await shoot("kilo-add-login", "agents", 2000, { HIVE_SMOKE_CLICK: '[data-add-account="kilo"] && form:has(#acc-label) button[type="submit"]', HIVE_SMOKE_EXPECT: '[data-profile="kilo-2"]' });
+  const added = JSON.parse(readFileSync(file, "utf8")).agents.find((p) => p.id === "kilo-2");
+  for (const key of ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"]) if (!added?.env[key]?.includes("accounts/kilo-2")) throw new Error("Kilo account missing isolated " + key);
+  const script = readdirSync(path.join(work, "login", "kilo-2")).map((name) => readFileSync(path.join(work, "login", "kilo-2", name), "utf8")).join("\n");
+  if (!script.includes(path.join(agyBin, "kilo")) || !script.includes("auth") || !script.includes("login")) throw new Error("Kilo login did not use the fake CLI");
+  await gitlab.close();
+  console.log(`Kilo screenshots in ${out}`);
+  process.exit(0);
 }
 
 // Repeat the new forms after a UI fix without rerunning the unrelated MR / chat scenarios.

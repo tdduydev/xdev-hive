@@ -1,8 +1,8 @@
 import { AUTONOMY_FLAGS, type AgentProfile, type RunPlan } from "@xdev-hive/core";
-import { withoutFlags } from "#desktop/main/runner/command.ts";
+import { withoutArrayFlags, withoutFlags } from "#desktop/main/runner/command.ts";
 
 export function planningProfile(profile: AgentProfile): AgentProfile {
-  if (!["claude", "codex"].includes(profile.kind)) throw new Error("Plan approval requires Claude or Codex.");
+  if (!["claude", "codex", "gemini"].includes(profile.kind)) throw new Error("Plan approval requires Claude, Codex or Gemini.");
   const flags = AUTONOMY_FLAGS[profile.kind]!;
   let args = withoutFlags(profile.args, flags.valued, [...flags.switches, ...(profile.kind === "codex" ? ["--yolo"] : [])]);
   if (profile.kind === "codex") {
@@ -14,7 +14,8 @@ export function planningProfile(profile: AgentProfile): AgentProfile {
       return !/^--config=\s*sandbox_mode\s*=/.test(a);
     });
     args = [...args, "-s", "read-only"];
-  } else args = [...args, "--permission-mode", "plan"];
+  } else if (profile.kind === "gemini") args = [...withoutArrayFlags(args, ["--allowed-tools"]), "--approval-mode", "plan"];
+  else args = [...args, "--permission-mode", "plan"];
   return { ...profile, args, readOnly: true };
 }
 export function planningPrompt(c: { project: string; taskId: string; title: string; note: string | null; instructions: string; worktree: string; plan: RunPlan }): string {

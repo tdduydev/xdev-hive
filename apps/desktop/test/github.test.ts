@@ -86,7 +86,7 @@ async function setup(reviewMode: string, mr: Partial<MrSettings> = {}, token = T
     {
       backend: () => hive,
       profiles: () => profiles,
-      settings: () => ({ worktreeRoot: null, maxParallel: 2, maxAttempts: 3, acceptHubRuns: false }),
+      settings: () => ({ worktreeRoot: null, maxParallel: 2, maxAttempts: 3, acceptHubRuns: false, gateRunner: false }),
       projects: () => projects,
       mode: () => "local",
       machine: () => "duy-mbp",
@@ -311,7 +311,7 @@ describe("GitHub pull request watch", () => {
     assert.deepEqual(await none.watcher.check(), []);
   });
 
-  it("removes the task's worktree and local branch when the PR's head commit was merged", async () => {
+  it("removes the task's worktree and keeps its local branch when the PR's head commit was merged", async () => {
     const { runner, repo, reviewed, watcher } = await setup("review");
     const { review } = await reviewed();
     const wt = review.worktree!;
@@ -320,10 +320,10 @@ describe("GitHub pull request watch", () => {
     gh.pulls[0]!.merged = true;
     const [c] = await watcher.check();
     assert.equal(c!.status.to, "merged");
-    assert.deepEqual(c!.cleanup, { worktree: true, branch: true, kept: null, reason: null });
+    assert.deepEqual(c!.cleanup, { worktree: true, branch: false, kept: null, reason: null });
     assert.equal(existsSync(wt), false);
-    assert.equal(git(repo, "branch", "--list", "ai/T-1"), "");
-    assert.match(runner.store.get(review.id)!.mrNote ?? "", /Đã xoá worktree và branch ai\/T-1 ở máy/);
+    assert.notEqual(git(repo, "branch", "--list", "ai/T-1"), "");
+    assert.match(runner.store.get(review.id)!.mrNote ?? "", /Đã xoá worktree/);
   });
 
   it("keeps the worktree and branch when the branch went on after the merged commit, or when turned off", async () => {
