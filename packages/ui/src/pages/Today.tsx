@@ -1,4 +1,5 @@
 import { ReviewArtifacts } from "#ui/components/Artifacts.tsx";
+import { confirmTaskClose } from "#ui/lib/task-close.ts";
 import { useChatPageContext } from "#ui/components/ChatSession.tsx";
 import { SystemOverview } from "#ui/components/SystemOverview.tsx";
 import { StartReminder } from "#ui/pages/Start.tsx";
@@ -456,11 +457,12 @@ function Detail({
   const docKey = item.kind === "proposal" ? item.proposal.docKey : null;
   const doc = useQuery(async () => (docKey ? client.call("docs.get", { key: docKey }) : null), [client, docKey]);
 
-  const act = (fn: () => Promise<string>): (() => Promise<void>) => async () => {
+  const act = (fn: () => Promise<string | null>): (() => Promise<void>) => async () => {
     setBusy(true);
     setError(null);
     try {
       const note = await fn();
+      if (note === null) return;
       bump();
       inbox.reload();
       finish(item, note);
@@ -607,6 +609,7 @@ function Detail({
                 label: t("inbox.review.toDone"),
                 kind: "secondary" as const,
                 run: act(async () => {
+                  if (!await confirmTaskClose(client, task, t)) return null;
                   await client.call("tasks.update", { id: task.id, status: "done" });
                   return t("inbox.review.movedDone", { id: task.id });
                 }),

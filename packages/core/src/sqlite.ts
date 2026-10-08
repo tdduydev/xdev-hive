@@ -1,7 +1,7 @@
 import { researchSchema, type Research, type ResearchInput, type ResearchJob } from "#core/research.ts";
 import type { WorktreeReport, WorktreeCommand, MachineWorktrees } from "#core/worktrees.ts";
 import { AutoReleaseStore } from "#core/auto-release-store.ts";
-import { HIVE_GATE_COMMANDS, mergeQueueConfigSchema, type MergeQueueView, type MergeBatch, type MergeResult } from "#core/merge-queue.ts";
+import { HIVE_GATE_COMMANDS, mergeQueueConfigSchema, type MergeQueueView, type MergeQueueItem, type MergeBatch, type MergeResult } from "#core/merge-queue.ts";
 import { waitingReason } from "#core/inbox.ts";
 import { DEFAULT_RUN_TIMEOUT, runTimeoutMinutes, type RunTimeoutSettings } from "#core/run-timeout.ts";
 import { diffReviewSelection, validDiffReview, patchHunks } from "#core/diff-review.ts";
@@ -6359,7 +6359,7 @@ export class SqliteHive implements HiveBackend {
       .run(JSON.stringify(error), this.#now(), this.#now(-MERGE_TTL_MINUTES));
   }
 
-  #mergeQueue(project: string): MergeQueueView {
+  #mergeQueue(project: string, landing?: Pick<MergeQueueItem, "taskId" | "branch" | "runId" | "machineId">): MergeQueueView {
     const setting = this.db.prepare('SELECT value FROM settings WHERE key=?').get(`mergeQueue:${project}`) as Row | undefined;
     const config = mergeQueueConfigSchema.parse(setting ? JSON.parse(str(setting.value)) : project === "xdev-hive" ? { commands: HIVE_GATE_COMMANDS } : {});
     const batches = (this.db.prepare('SELECT body FROM merge_batches WHERE project=? ORDER BY id DESC LIMIT 50').all(project) as Row[]).map(r => JSON.parse(str(r.body)) as MergeBatch);
@@ -6371,7 +6371,16 @@ export class SqliteHive implements HiveBackend {
       AND r.role='review' AND r.verdict='approve'
       AND NOT EXISTS (SELECT 1 FROM merge_batch_items i WHERE i.task_id=t.id AND i.machine_id=r.machine_id AND i.run_id=r.run_id)
       ORDER BY ready_at,t.id`).all(project) as Row[]).map(r => ({taskId: str(r.id), branch: str(r.branch), runId: str(r.run_id), machineId: str(r.machine_id), readyAt: str(r.ready_at)}));
-    return { config, waiting, batches };
+    // The visible batch history is capped; resolve close evidence against the indexed item regardless of age.
+    const landed = landing ? (() => {
+      const row = this.db.prepare(`SELECT b.body FROM merge_batch_items i JOIN merge_batches b ON b.id=i.batch_id
+        WHERE b.project=? AND i.task_id=? AND i.machine_id=? AND i.run_id=?`).get(project, landing.taskId, landing.machineId, landing.runId) as Row | undefined;
+      if (!row) return false;
+      const batch = JSON.parse(str(row.body)) as MergeBatch;
+      return batch.status === "landed" && batch.items.some(item => item.taskId === landing.taskId && item.branch === landing.branch && item.runId === landing.runId && item.machineId === landing.machineId)
+        && !!batch.result?.outcomes.some(outcome => outcome.taskId === landing.taskId && outcome.status === "included");
+    })() : undefined;
+    return { config, waiting, batches, ...(landing ? { landed } : {}) };
   }
 
   /** Repair branches carry the excluded work; landing one also closes its unchanged source tasks. */
@@ -7685,7 +7694,7 @@ export class SqliteHive implements HiveBackend {
       },
 
       // Keyed by the hub actor (`runner.<machine>@<token>`): the same key as the leases that machine takes.
-      "mergeQueue.get": ({ project }) => this.#mergeQueue(project),
+      "mergeQueue.get": ({ project, landing }) => this.#mergeQueue(project, landing),
       "mergeQueue.configure": ({ project, config }, actor) => this.#tx(() => {
         const active = this.#mergeQueue(project).batches.find(b => b.status === 'running' || b.status === 'awaiting');
         if (active && config.machineId !== active.machineId) throw new HiveError('conflict', 'Finish the active batch before choosing another gate machine.');
@@ -8170,7 +8179,7 @@ export class SqliteHive implements HiveBackend {
           db
             .prepare(
               `SELECT r.*, ${RUN_TOKEN_COLUMNS}, ${RUN_SELECTION_COLUMN} FROM run_records r LEFT JOIN run_costs c ON c.machine_id = r.machine_id AND c.run_id = r.run_id
-               WHERE (?1 IS NULL OR r.project = ?1) AND (?3 IS NULL OR r.project IN (SELECT value FROM json_each(?3))) AND (?4 IS NULL OR r.task_id = ?4) AND (?5 = 0 OR r.status IN ('queued', 'running')) ORDER BY r.created_at DESC, r.run_id DESC LIMIT ?2`,
+               WHERE (?1 IS NULL OR r.project = ?1) AND (?3 IS NULL OR r.project IN (SELECT value FROM json_each(?3))) AND (?4 IS NULL OR r.task_id = ?4) AND (?5 = 0 OR r.status IN ('queued', 'running')) ORDER BY r.created_at DESC, r.rowid DESC LIMIT ?2`,
             )
             .all(project ?? null, limit, listParam(projects), taskId ?? null, activeOnly ? 1 : 0) as Row[]
         ).map((r) => toRunRecord(r, false)),

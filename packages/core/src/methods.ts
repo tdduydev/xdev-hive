@@ -550,7 +550,7 @@ export const schemas = {
   "tasks.notes": z.object({ id: taskId, limit: z.number().int().min(1).max(50).default(10) }),
 
   /** Desktop runners report every ~30 s; the reply carries the shared quota cooldowns. */
-  "mergeQueue.get": z.object({ project }),
+  "mergeQueue.get": z.object({ project, landing: z.object({ taskId, branch: z.string(), runId: z.string(), machineId: z.string() }).optional() }),
   "mergeQueue.configure": z.object({ project, config: mergeQueueConfigSchema }),
   "mergeQueue.take": z.object({ project, instance: z.string().regex(/^[a-f0-9]{8,64}$/) }),
   "mergeQueue.progress": z.object({ id: z.number().int().positive(), instance: z.string(), step: z.string().max(300), log: z.string().max(32000).default("") }),
