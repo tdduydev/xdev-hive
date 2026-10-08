@@ -353,6 +353,11 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 
 - [x] **UX-70-HISTORY. Timeline và tìm kiếm lịch sử** (0.147.0): trang *Lịch sử* của hub tái dùng chat, run, chốt SDLC và audit; tìm nội dung tiếng Việt, lọc task/nguồn/ngày/phạm vi, phân trang sau khi lọc quyền, liên kết tới nguồn. Audit và chat toàn hub chỉ dành cho hub admin. Run hiện bản ghi mới nhất; không tạo bản sao nhật ký. Có unit test quyền, phân trang và tìm kiếm; e2e desktop/mobile thêm bước `history-page`, cần chạy lại trên máy mở được Electron (môi trường task SIGABRT trước khi mở trình duyệt).
 
+- **71. cli-leader** (hỏi 8/10: "sao các service khác khi chat trên claude, codex không tự hiểu là mình làm leader cho dự án? không call MCP của Hive để tạo task, phân task, tài liệu"; chọn: phiên CLI tương tác cũng làm leader). Spec: [docs/specs/71-cli-leader.md](specs/71-cli-leader.md). Tách:
+  - [ ] **71a. cli-leader-tools**: phiên MCP tương tác (không phải run, không phải Chat) có `task_create`, `task_set_deps`, `task_status`, `task_assign`/`run_dispatch`, `plan_create` theo quyền của người dùng trên dự án; merge, dừng agent, policy, cài đặt vẫn là đề xuất chờ xác nhận trên hub.
+  - [ ] **71b. leader-protocol**: `org/agent-protocol` có mục *Vai trò* (quản lý thì làm leader, làm task thì làm worker); skill `hive-leader` áp dụng cả cho Claude Code/Codex, có mục *Từ CLI*; README.
+  - [ ] **71c. cli-leader-e2e**: e2e trên hub demo: `lead` tạo task có phụ thuộc, giao run, đề xuất merge; `member` không thấy tool tạo task.
+
 ## Sửa lỗi
 
 - [x] **assigned-claim-linux** (8/10, BUG-assigned-claim-linux, 0.146.1): runner nhận task bằng tên gói mà không nói tên máy, nên hub từ chối task giao cho chính máy đó ("assigned to hc-duytd20-linux"); giờ runner gửi kèm máy.
