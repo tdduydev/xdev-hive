@@ -378,7 +378,7 @@ export class TerminalRelayHub {
         }
         return;
       case "inputAck":
-        if (l?.browser) this.#toBrowser(l.browser, { type: "inputAck", inputSeq: f.inputSeq });
+        if (l?.browser && l.browser.epoch === f.epoch) this.#toBrowser(l.browser, { type: "inputAck", inputSeq: f.inputSeq });
         return;
       case "inputReject":
         return this.#auditCount(s, "terminal.inputRejected", `machine · ${f.reason}`);

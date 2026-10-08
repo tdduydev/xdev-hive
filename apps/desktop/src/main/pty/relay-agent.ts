@@ -233,7 +233,7 @@ export class MachineTerminalAgent {
     if (s.ending || s.lease.expired()) return reject("notActive");
     const verdict = s.gate.check(f.epoch, f.inputSeq);
     // Written already, its ack lost: ack again, never write twice.
-    if (verdict === "duplicate") return void this.#out({ type: "inputAck", sessionId: s.id, inputSeq: f.inputSeq });
+    if (verdict === "duplicate") return void this.#out({ type: "inputAck", sessionId: s.id, epoch: f.epoch, inputSeq: f.inputSeq });
     if (verdict !== "write") return reject(verdict);
     const bytes = Buffer.from(f.data, "base64");
     if (!s.input.take(bytes.length)) return reject("rate");
@@ -245,7 +245,7 @@ export class MachineTerminalAgent {
       return this.#end(s, "failed", s.auditBroke ? "auditFailed" : "protocolError");
     }
     s.gate.written();
-    this.#out({ type: "inputAck", sessionId: s.id, inputSeq: f.inputSeq });
+    this.#out({ type: "inputAck", sessionId: s.id, epoch: f.epoch, inputSeq: f.inputSeq });
   }
 
   #output(s: Session, text: string): void {
