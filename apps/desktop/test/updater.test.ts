@@ -141,7 +141,12 @@ describe("app updater", () => {
     assert.equal(u.status().state, "installing");
     assert.equal(installed.length, 3);
     assert.ok(installed.every((f) => path.isAbsolute(f) && f.endsWith(".deb")));
-    assert.equal(spawned.length, 0, "apt replaces the files: no helper script for a deb");
+    // apt replaced the files: the only helper waits for this process to exit, then starts the installed app.
+    assert.equal(spawned.length, 1);
+    assert.equal(spawned[0]!.command, "/bin/sh");
+    assert.equal(spawned[0]!.options.env?.APP, "/Applications/xDev Hive.app/Contents/MacOS/xDev Hive");
+    assert.equal(spawned[0]!.options.env?.PID, String(process.pid));
+    assert.equal(spawned[0]!.unrefs, 1);
   });
 
   it("reports a failed apt install", async () => {
