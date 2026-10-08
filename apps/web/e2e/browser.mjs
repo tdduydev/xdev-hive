@@ -270,6 +270,8 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "a11y-list-tree": ["login-token"],
   "a11y-components": ["login-token"],
   "a11y-menu": ["login-token"],
+  "responsive-shell": ["login-token"],
+  "responsive-shell-pages": ["responsive-shell"],
   "a11y-overlays": ["login-token"],
   "a11y-table": ["login-token"],
   "a11y-run-status": ["login-token"],
@@ -429,6 +431,69 @@ async function main() {
       document.querySelector('[data-page-tab="queue"]')?.getAttribute("aria-current") === "page",
     );
     if (mobile) await tab.click('button[aria-label="Đóng menu"]');
+  });
+
+  await step("responsive-shell", async () => {
+    const tab = (current = tabs.admin);
+    await tab.go("today");
+    if (mobile) {
+      const layout = await tab.eval(() => {
+        const nav = document.querySelector(".hive-mobile-nav");
+        const main = document.querySelector("#hive-main");
+        return { count: nav?.children.length, bottom: main?.getBoundingClientRect().bottom, top: nav?.getBoundingClientRect().top };
+      });
+      expect(layout.count >= 2 && layout.count <= 5 && layout.bottom <= layout.top + 1, `quick navigation overlaps content: ${JSON.stringify(layout)}`);
+      await tab.click('.hive-mobile-nav button');
+      const drawer = await tab.waitFor("navigation drawer", () => {
+        const el = document.querySelector('.hive-navigation-drawer');
+        return el && { width: el.getBoundingClientRect().width, viewport: innerWidth };
+      });
+      expect(drawer.width <= drawer.viewport - 47, `drawer leaves no dismissal area: ${JSON.stringify(drawer)}`);
+      await tab.key("Escape");
+      await tab.waitFor("focus returns to menu", () => document.activeElement?.matches('.hive-mobile-nav button'));
+      await tab.click('.hive-mobile-nav a[href="#/tasks"]');
+      await tab.waitFor("tasks selected", () => location.hash === "#/tasks" && document.querySelector('.hive-mobile-nav a[href="#/tasks"]')?.getAttribute("aria-current") === "page");
+    } else {
+      await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
+      const width = await tab.waitFor("collapsed navigation rail", () => {
+        const nav = document.querySelector('.hive-sidebar-rail');
+        return nav?.getBoundingClientRect().width;
+      });
+      expect(width === 64, `unexpected navigation rail width ${width}`);
+      await tab.click('#hive-navigation a[href="#/tasks"]');
+      await tab.waitFor("rail navigates", () => location.hash === "#/tasks");
+      await tab.reload();
+      await tab.waitFor("rail preference survives reload", () => !!document.querySelector('.hive-sidebar-rail'));
+      await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
+    }
+    await tab.eval(() => document.querySelector('.hive-skip-link').focus());
+    await tab.key("Enter");
+    expect(await tab.eval(() => document.activeElement?.id === "hive-main" && location.hash === "#/tasks"), "skip link must focus content without changing the route");
+    await tab.go("today");
+  });
+
+  await step("responsive-shell-pages", async () => {
+    const tab = (current = tabs.admin);
+    for (const theme of ["light", "dark"]) {
+      await tab.eval(value => { document.documentElement.dataset.theme = value; }, theme);
+      if (mobile) {
+        await mobileAudit({ tab, out, expect, reportName: `shell-pages-${theme}.json`, step: async (name, check) => {
+          await check();
+          await tab.shot(`shell-${theme}-${name}`);
+        } });
+      } else {
+        for (const route of ["today", "tasks", "runs", "docs", "skills", "memory", "machines", "pipeline", "settings", "admin"]) {
+          await tab.go(route);
+          await tab.waitFor("page content loaded", () => !!document.querySelector("#hive-main") && !document.querySelector('main [aria-busy="true"]'));
+          expect(await tab.eval(() => {
+            const main = document.querySelector("#hive-main");
+            return main.getBoundingClientRect().width > 0 && document.documentElement.scrollWidth <= innerWidth;
+          }), `shell overflow on ${route}/${theme}`);
+          await tab.shot(`shell-${theme}-${route}`);
+        }
+      }
+    }
+    await tab.go("today");
   });
 
   if (mobile && tabs.admin) await mobileAudit({ tab: tabs.admin, out, step, expect });
