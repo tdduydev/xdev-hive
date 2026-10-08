@@ -76,4 +76,3 @@ export function featureChecks(spec: string | null): CheckItem[] {
   }
   return out;
 }
-
