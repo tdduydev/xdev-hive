@@ -638,7 +638,6 @@
   .hive-shell .hive-nav-item{min-height:44px;height:44px}
   .hive-shell .hive-topbar-chat{height:44px}
 }
-@media(min-width:768px){.hive-sidebar-toggle{display:none}}
 [data-workspace-web] .hive-sidebar:not(.hive-sidebar-rail) .hive-sidebar-list{gap:16px;margin:0 -6px;padding:0 6px}
 .hive-shell .hive-sidebar-rail{padding-inline:8px}
 .hive-shell .hive-sidebar-rail .hive-sidebar-scope{display:flex;justify-content:center}
