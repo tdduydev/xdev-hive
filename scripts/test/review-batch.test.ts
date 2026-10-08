@@ -4,6 +4,7 @@ import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, 
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { after, describe, it } from "node:test";
+import { reviewBatch } from "#scripts/review-batch.mjs";
 
 const script = resolve(import.meta.dirname, "..", "review-batch.mjs");
 const tmp = mkdtempSync(join(tmpdir(), "review-batch-test-"));
@@ -17,6 +18,7 @@ const args = process.argv.slice(2);
 appendFileSync(process.env.BATCH_CALLS, JSON.stringify({ args, cwd: process.cwd() }) + '\\n');
 if (args[0] === 'ci') mkdirSync('node_modules', { recursive: true });
 const name = args[0] === 'run' ? args[1] : args[0];
+if (name === process.env.BATCH_MUTATE) writeFileSync('shared.txt', 'gate changed tracked file');
 const once = process.env.BATCH_CALLS + '.once';
 const failOnce = name === process.env.BATCH_FAIL_ONCE && !existsSync(once);
 if (failOnce) writeFileSync(once, name);
@@ -313,6 +315,8 @@ child.on('exit', code => process.exit(code ?? 1));
     for (const args of [
       ["ai/good"], ["--name", "../bad", "ai/good"], ["--name", "x", "--base", "missing", "ai/good"],
       ["--name", "x", "--only", "login", "ai/good"], ["--name", "x", "--wat", "ai/good"],
+      ["--name", "x", "--preview", "ai/good"], ["--name", "x", "--gate", "--preview", "ai/good"],
+      ["--name", "x", "--preview-ttl", "0", "ai/good"],
       ["--name", "x", "--worktree", f.repo, "ai/good"], ["--name", "x", "--base"],
       ["--name", "x", "--worktree", join(f.repo, "..child"), "ai/good"],
     ]) assert.equal(f.run(args).code, 2, args.join(" "));
@@ -332,5 +336,49 @@ child.on('exit', code => process.exit(code ?? 1));
     assert.equal(f.run(["--name", "existing", "--worktree", existing, "ai/good"]).code, 2);
     assert.equal(readFileSync(join(existing, "keep.txt"), "utf8"), "keep\n");
     assert.equal(f.run(["--help"]).code, 0);
+  });
+
+  it("fails a green command sequence that changes the gated checkout", () => {
+    const f = fixture();
+    f.branch("ai/good", { "good.txt": "good\n" });
+    const result = f.run(["--name", "changed-gate", "--gate", "ai/good"], { BATCH_MUTATE: "test" });
+    assert.equal(result.code, 1, result.output);
+    const report = JSON.parse(readFileSync(join(f.root, "review-changed-gate", ".xdev-hive/artifacts/review-batch/report.json"), "utf8"));
+    assert.match(report.gateSha, /^[a-f0-9]{40}$/);
+    assert.equal(report.gate.at(-1).name, "unchanged-checkout");
+    assert.equal(report.gate.at(-1).status, "failed");
+    assert.equal(f.git("rev-parse", "main"), f.initial);
+  });
+
+  it("binds preview approval to the batch gate SHA and returns failure on rejection", async () => {
+    const f = fixture();
+    f.branch("ai/good", { "good.txt": "good\n" });
+    const values = { npm_execpath: fakeNpm, BATCH_CALLS: join(f.root, "preview-calls.jsonl"), DISPLAY: ":fake" };
+    const prior = Object.fromEntries(Object.keys(values).map(key => [key, process.env[key]]));
+    Object.assign(process.env, values);
+    try {
+      for (const status of ["approved", "rejected"]) {
+        let called = false;
+        const report = await reviewBatch({ repo: f.repo, name: `preview-${status}`, branches: ["ai/good"], gate: true, preview: true,
+          previewRunner: async (scope: any) => {
+            called = true;
+            assert.equal(scope.sourceRef, `review/preview-${status}`);
+            assert.equal(scope.gate.sha, f.git("rev-parse", scope.sourceRef));
+            assert.equal(scope.sha, scope.gate.sha);
+            assert.equal(scope.baseSha, f.initial);
+            assert.equal(scope.gate.checks.length, 6);
+            assert.ok(scope.gate.checks.every((check: any) => check.status === "passed"));
+            return { status, sha: scope.sha, gateSha: scope.gate.sha };
+          },
+        });
+        assert.equal(called, true);
+        assert.equal(report.exitCode, status === "approved" ? 0 : 1);
+        assert.equal(f.git("rev-parse", "main"), f.initial);
+      }
+    } finally {
+      for (const [key, value] of Object.entries(prior)) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+    }
   });
 });

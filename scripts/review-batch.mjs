@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, writeFileSync, writeSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { appPreview } from "#scripts/app-preview.mjs";
 
 const HELP = `Usage: node scripts/review-batch.mjs --name <batch> [options] ai/<task>…
 
@@ -11,6 +12,8 @@ const HELP = `Usage: node scripts/review-batch.mjs --name <batch> [options] ai/<
   --worktree <dir>   New worktree (default: sibling review-<batch>)
   --gate            Typecheck → unit tests → web e2e → mobile e2e → desktop build → smoke
   --only <steps>    Forward comma-separated step names to both e2e commands (requires --gate)
+  --preview         Inspect an isolated application at the gated SHA; requires --gate and a terminal
+  --preview-ttl <m>  Preview lifetime including build, 1–120 minutes (default: 30)
   --help            Show this help
 
 Sources: ai/<task> or host:path#branch (Git over SSH).
@@ -27,16 +30,20 @@ function parseArgs(argv) {
     const arg = argv[i];
     if (arg === "--help" || arg === "-h") return { help: true };
     if (arg === "--gate") options.gate = true;
-    else if (["--name", "--base", "--worktree", "--only"].includes(arg)) {
+    else if (arg === "--preview") options.preview = true;
+    else if (["--name", "--base", "--worktree", "--only", "--preview-ttl"].includes(arg)) {
       const value = argv[++i];
       if (!value || value.startsWith("--")) throw new Error(`Missing value for ${arg}`);
-      options[arg.slice(2)] = value;
+      if (arg === "--preview-ttl") options.previewTtl = Number(value);
+      else options[arg.slice(2)] = value;
     } else if (arg.startsWith("-")) throw new Error(`Unknown option: ${arg}`);
     else options.branches.push(arg);
   }
   if (!options.name) throw new Error("--name is required");
   if (!options.branches.length) throw new Error("Provide at least one ai/<task> source");
   if (options.only && !options.gate) throw new Error("--only requires --gate");
+  if (options.preview && !options.gate) throw new Error("--preview requires --gate");
+  if (options.previewTtl !== undefined && (!options.preview || !Number.isInteger(options.previewTtl) || options.previewTtl < 1 || options.previewTtl > 120)) throw new Error("--preview-ttl requires --preview and 1–120 minutes");
   if (options.only && !/^[\w-]+(?:,[\w-]+)*$/.test(options.only)) throw new Error("--only expects comma-separated step names");
   return options;
 }
@@ -169,6 +176,9 @@ function physicalPath(path) {
 export async function reviewBatch(options) {
   const repo = gitOK(resolve(options.repo ?? process.cwd()), "rev-parse", "--show-toplevel");
   const { name, branches, gate = false, only } = options;
+  if (options.preview && !gate) throw new Error("--preview requires --gate");
+  if (options.preview && !options.previewRunner && (!process.stdin.isTTY || !process.stdout.isTTY)) throw new Error("Preview approval requires an interactive terminal");
+  if (options.previewTtl !== undefined && (!options.preview || !Number.isInteger(options.previewTtl) || options.previewTtl < 1 || options.previewTtl > 120)) throw new Error("Preview TTL must be 1–120 minutes and requires --preview");
   const review = `review/${name}`;
   if (!name || /[\x00-\x1f\x7f]/.test(name) || git(repo, ["check-ref-format", `refs/heads/${review}`]).code) throw new Error("Invalid batch name");
   if (!branches?.length) throw new Error("Provide at least one source");
@@ -247,6 +257,7 @@ export async function reviewBatch(options) {
       row.reason = before === gitOK(worktree, "rev-parse", "HEAD") ? "already included; typecheck passed" : "typecheck passed";
     }
     if (gate) {
+      report.gateSha = gitOK(worktree, "rev-parse", "HEAD");
       const deps = await ensureDeps();
       if (deps) report.gate.push({ name: "install", status: "failed", code: deps });
       else for (const check of gateSteps(out, only)) {
@@ -255,8 +266,16 @@ export async function reviewBatch(options) {
         report.gate.push({ name: check.name, status: code ? "failed" : "passed", code, log });
         if (code) break;
       }
+      if (gitOK(worktree, "rev-parse", "HEAD") !== report.gateSha || gitOK(worktree, "status", "--porcelain", "--untracked-files=no")) {
+        report.gate.push({ name: "unchanged-checkout", status: "failed", code: 1 });
+      }
     }
     report.exitCode = report.branches.some((row) => row.status === "skipped") || report.gate.some((check) => check.status === "failed") ? 1 : 0;
+    if (options.preview && report.exitCode === 0) {
+      report.preview = await (options.previewRunner ?? appPreview)({ repo, sourceRef: review, sha: report.gateSha,
+        target: baseRef, baseSha: base, gate: { sha: report.gateSha, checks: report.gate }, ttlMinutes: options.previewTtl ?? 30 });
+      if (report.preview.status !== "approved" || report.preview.sha !== report.gateSha || report.preview.gateSha !== report.gateSha) report.exitCode = 1;
+    }
     return report;
   } catch (error) {
     report.error = error.message;
