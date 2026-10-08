@@ -1,9 +1,10 @@
 import { hubLog } from "#web/deploy-log.ts";
 import { createHash, type Hash } from "node:crypto";
 import { createWriteStream, rmSync } from "node:fs";
+import type { IncomingMessage } from "node:http";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
-import { Transform } from "node:stream";
+import { Transform, type Duplex } from "node:stream";
 import express, { type NextFunction, type Request, type RequestHandler, type Response } from "express";
 import { hostHeaderValidation } from "@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -22,6 +23,7 @@ import {
   HUB_SCOPE,
   PROJECT_NAME,
   sees,
+  TERMINAL_STEPUP_PATH,
   readRun,
   RUN_REF,
   readSourceHeader,
@@ -42,6 +44,7 @@ import { createHiveMcpServer } from "@xdev-hive/mcp";
 import { DEVICE_CHALLENGE, DEVICE_STATE, DeviceGrants, loopbackCallback } from "./device.ts";
 import { SSO_ERRORS, type OidcClient } from "./oidc.ts";
 import { ChatGrants } from "./grants.ts";
+import { TerminalHub, type TerminalRelay } from "./terminal.ts";
 import type { TokenStore } from "./tokens.ts";
 import { LoginThrottle, type UserInfo, type UserStore } from "./users.ts";
 import type { ReleaseStore } from "./releases.ts";
@@ -74,6 +77,10 @@ export interface HubAppOptions {
   alerts?: AlertStore;
   /** Trang Hub (roadmap 22n): what the hub is, and a backup on request. */
   hub?: HubInfoSource;
+  /** Remote terminal (spec 69): HIVE_REMOTE_TERMINAL=1. Off by default. */
+  remoteTerminal?: boolean;
+  /** The terminal relay (69e); without one, a socket that passed every check is closed. */
+  terminalRelay?: TerminalRelay;
 }
 
 const CSP = [
@@ -142,12 +149,19 @@ function requireHubAdmin(res: Response): void {
   if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Chỉ admin của hub.", { key: "errors.hubAdminOnly" });
 }
 
-function readCookie(req: Request, name: string): string | null {
-  for (const part of (req.get("cookie") ?? "").split(";")) {
+function cookieValue(header: string | undefined, name: string): string | null {
+  for (const part of (header ?? "").split(";")) {
     const [k, ...v] = part.trim().split("=");
     if (k === name) return decodeURIComponent(v.join("="));
   }
   return null;
+}
+const readCookie = (req: Request, name: string) => cookieValue(req.get("cookie"), name);
+
+/** The terminal's handler for the http server's upgrade event (server.ts): true when it took the request. */
+export function terminalUpgrade(app: express.Express): (req: IncomingMessage, socket: Duplex, head: Buffer) => boolean {
+  const terminal = app.locals.terminal as TerminalHub;
+  return (req, socket, head) => terminal.upgrade(req, socket, head);
 }
 
 function publicUser(u: UserInfo): NonNullable<Me["user"]> {
@@ -172,6 +186,8 @@ export function createHubApp({
   autoReleaseProject,
   alerts,
   hub,
+  remoteTerminal = false,
+  terminalRelay,
 }: HubAppOptions): express.Express {
   const app = express();
   app.disable("x-powered-by");
@@ -214,6 +230,15 @@ export function createHubApp({
       return false;
     }
   };
+
+  /**
+   * A person signed in on the hub's page. humanSession is the stored hash of the session, as hub_sessions keys it:
+   * the terminal (spec 69) binds proofs to it, and only a session cookie leads here, so no bearer passes for a person.
+   */
+  const humanActor = (user: UserInfo, session: string): Actor => ({
+    name: user.username, role: user.admin ? "admin" : "member", access: users.access(user), source: { via: "web" }, account: user.username,
+    humanSession: createHash("sha256").update(session).digest("hex"),
+  });
 
   const tokenActor = (req: Request, res: Response, raw: string): Actor | null => {
     const label = (req.get("x-hive-agent") ?? "").replace(/[^\w.-]/g, "").slice(0, 80);
@@ -317,15 +342,28 @@ export function createHubApp({
       }
       res.locals.user = user;
       res.locals.session = session;
-      // humanSession is the stored hash of the session, as hub_sessions keys it: the terminal (spec 69) binds proofs to
-      // it, and only this branch sets it, so no bearer can pass for a person.
-      res.locals.actor = {
-        name: user.username, role: user.admin ? "admin" : "member", access: users.access(user), source: { via: "web" }, account: user.username,
-        humanSession: createHash("sha256").update(session!).digest("hex"),
-      } satisfies Actor;
+      res.locals.actor = humanActor(user, session!);
       next();
     };
   const auth = authenticate({ cookie: true });
+
+  const terminal = new TerminalHub({
+    hive, users, oidc, throttle, enabled: remoteTerminal, allowedHosts, relay: terminalRelay,
+    cookieActor: (header) => {
+      const session = cookieValue(header, SESSION_COOKIE);
+      const user = session ? users.sessionUser(session) : null;
+      return user && session ? { user, actor: humanActor(user, session) } : null;
+    },
+    // tokenActor reads headers through req.get and keeps the account in res.locals: the upgrade has neither.
+    bearerActor: (req, raw) => {
+      const get = (name: string) => {
+        const v = req.headers[name.toLowerCase()];
+        return Array.isArray(v) ? v.join(", ") : v;
+      };
+      return tokenActor({ get } as unknown as Request, { locals: {} } as unknown as Response, raw);
+    },
+  });
+  app.locals.terminal = terminal;
 
   app.post("/api/mcp-credentials", authenticate({ cookie: false }), json, (req, res) => {
     try {
@@ -421,10 +459,7 @@ export function createHubApp({
       hive.audit({ name: user.username, role: user.admin ? "admin" : "member" }, "auth.login", user.username, clientIp(req));
       res.locals.user = user;
       // The new session's id, as the cookie middleware sets it for the requests after this one.
-      res.locals.actor = {
-        name: user.username, role: user.admin ? "admin" : "member", access: users.access(user), source: { via: "web" }, account: user.username,
-        humanSession: createHash("sha256").update(session.token).digest("hex"),
-      } satisfies Actor;
+      res.locals.actor = humanActor(user, session.token);
       res.json({ result: me(res) });
     } catch (err) {
       sendError(res, err);
@@ -433,7 +468,11 @@ export function createHubApp({
 
   app.post("/api/logout", (req, res) => {
     const session = readCookie(req, SESSION_COOKIE);
-    if (session && sameSite(req)) users.endSession(session);
+    if (session && sameSite(req)) {
+      users.endSession(session);
+      // Bound to this session, they would fail anyway; gone now, they cannot be spent on a session id reused later.
+      terminal.proofs.forgetBrowserSession(createHash("sha256").update(session).digest("hex"));
+    }
     clearSession(req, res);
     res.json({ result: { signedOut: true } });
   });
@@ -446,6 +485,8 @@ export function createHubApp({
       const updated = users.changePassword(user.id, String(current ?? ""), String(next ?? ""));
       // Other browsers signed in with the old password are signed out; this one gets a fresh session.
       users.endSessions(user.id);
+      // A terminal proof or ticket issued under the old password goes with the sessions it was bound to.
+      terminal.proofs.forgetAccount(user.username);
       const session = users.startSession(user.id);
       setSession(req, res, session.token, session.maxAge);
       hive.audit(actorOf(res), "users.password", user.username);
@@ -567,7 +608,12 @@ export function createHubApp({
       if (typeof req.query.error === "string") throw new HiveError("unauthorized", `Provider said: ${req.query.error}`, { key: "errors.ssoProvider" });
       // Same browser that started: a link forwarded to someone else cannot sign them in to this attempt.
       if (!state || !code || cookie !== state) throw new HiveError("unauthorized", "Sign-in attempt does not match this browser", { key: "errors.ssoState" });
-      const { identity, linkUserId, returnTo } = await oidc.finish(state, code);
+      const { identity, linkUserId, reauth, authTime, returnTo } = await oidc.finish(state, code);
+      // A terminal step-up (69c): a proof for the person who asked, never a sign-in, a new account or a link.
+      if (reauth) {
+        terminal.finishOidcStepUp(reauth, identity, authTime!);
+        return void res.redirect(302, returnTo);
+      }
       if (linkUserId) {
         const target = users.get(linkUserId);
         if (!target || target.disabled) throw new HiveError("forbidden", "Account disabled", { key: "errors.ssoDisabled" });
@@ -591,6 +637,22 @@ export function createHubApp({
       res.redirect(302, returnTo);
     } catch (err) {
       ssoBack(res, err);
+    }
+  });
+
+  // Remote terminal step-up (spec 69, 69c): a person at the hub's page proves themselves again for one operation.
+  app.post(TERMINAL_STEPUP_PATH, json, auth, async (req, res) => {
+    try {
+      // A browser always sends Origin on this POST: one without it is not the hub's page, whatever its CSRF header.
+      if (!req.get("origin")) throw new HiveError("forbidden", "Yêu cầu không đến từ trang của hub.", { key: "errors.crossSite" });
+      const user = userOf(res);
+      const actor = actorOf(res);
+      if (!user || !actor.humanSession) throw new HiveError("forbidden", "Terminal step-up: notHuman.", { key: "errors.terminal.notHuman" });
+      const { result, oidcState } = await terminal.stepUp({ user, actor, body: req.body, clientIp: clientIp(req) });
+      if (oidcState) setOidcState(req, res, oidcState);
+      res.json({ result });
+    } catch (err) {
+      sendError(res, err);
     }
   });
 
@@ -801,6 +863,12 @@ export function createHubApp({
         } else {
           throw new HiveError("bad_request", `Unknown method ${method}`);
         }
+        return;
+      }
+
+      // Remote terminal (69c): web-only, as it spends proofs bound to the browser session; who may is core's terminalDecision.
+      if (typeof method === "string" && method.startsWith("terminal.")) {
+        res.json({ result: await terminal.rpc(method, input, actor) });
         return;
       }
 

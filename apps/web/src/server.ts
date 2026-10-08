@@ -16,6 +16,7 @@
 //   HIVE_BACKUP_DIR=/data/backups       (snapshot on start and every HIVE_BACKUP_HOURS=24, keep HIVE_BACKUP_KEEP=7)
 //   HIVE_OIDC_ISSUER=https://gitlab.example.com HIVE_OIDC_CLIENT_ID=… HIVE_OIDC_CLIENT_SECRET=… HIVE_OIDC_NAME=GitLab
 //     (sign-in through an OpenID Connect provider; redirect URI: <HIVE_PUBLIC_URL>/api/auth/oidc/callback)
+//   HIVE_REMOTE_TERMINAL=1              (remote terminal, spec 69: off unless exactly 1; each machine still opts in locally)
 //   HIVE_EMBED_URL=http://ollama:11434/v1 (memory search by meaning too: an OpenAI-compatible /embeddings endpoint;
 //     HIVE_EMBED_MODEL=bge-m3, HIVE_EMBED_KEY for an API, HIVE_EMBED_MIN_SCORE=0.5 cosine for a match by meaning)
 //   HIVE_SEAWEEDFS_URL=http://seaweedfs:8888 (doc files in a SeaweedFS filer instead of the database; the ones already
@@ -23,9 +24,9 @@
 import { createServer } from "node:http";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { HiveError, openAiEmbedder, type HiveEvent } from "@xdev-hive/core";
+import { HiveError, openAiEmbedder, terminalHubEnabled, type HiveEvent } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
-import { allowedHostsFor, createHubApp, type HubAppOptions } from "./app.ts";
+import { allowedHostsFor, createHubApp, terminalUpgrade, type HubAppOptions } from "./app.ts";
 import { backupDatabase, backupFile, backupFiles, backupSettings, type BackupResult } from "./backup.ts";
 import { seaweedFromEnv } from "./seaweed.ts";
 import { OidcClient, oidcSettings } from "./oidc.ts";
@@ -221,36 +222,40 @@ if (production) {
   closeVite = () => vite.close();
 }
 
-httpServer.on(
-  "request",
-  createHubApp({
+const hubApp = createHubApp({
+  hive,
+  tokens,
+  users,
+  allowedHosts,
+  ui,
+  trustProxy: process.env.HIVE_TRUST_PROXY === "1",
+  webhooks: { store: webhookStore, dispatcher },
+  alerts,
+  hub: (hubInfo = new HubInfoSource({
     hive,
-    tokens,
-    users,
-    allowedHosts,
-    ui,
-    trustProxy: process.env.HIVE_TRUST_PROXY === "1",
-    webhooks: { store: webhookStore, dispatcher },
-    alerts,
-    hub: (hubInfo = new HubInfoSource({
-      hive,
-      releases,
-      deployLog,
-      dbPath,
-      users,
-      backup,
-      embedUrl: process.env.HIVE_EMBED_URL || null,
-      sso: sso ? { name: sso.name, issuer: sso.issuer } : null,
-      allowedHosts: allowedHosts ?? null,
-      publicUrl,
-      trustProxy: process.env.HIVE_TRUST_PROXY === "1",
-      commit: process.env.HIVE_COMMIT || null,
-    })),
-    oidc,
-    autoReleaseProject: process.env.HIVE_AUTO_RELEASE_PROJECT,
     releases,
-  }),
-);
+    deployLog,
+    dbPath,
+    users,
+    backup,
+    embedUrl: process.env.HIVE_EMBED_URL || null,
+    sso: sso ? { name: sso.name, issuer: sso.issuer } : null,
+    allowedHosts: allowedHosts ?? null,
+    publicUrl,
+    trustProxy: process.env.HIVE_TRUST_PROXY === "1",
+    commit: process.env.HIVE_COMMIT || null,
+  })),
+  oidc,
+  autoReleaseProject: process.env.HIVE_AUTO_RELEASE_PROJECT,
+  releases,
+  remoteTerminal: terminalHubEnabled(process.env),
+});
+httpServer.on("request", hubApp);
+const upgradeTerminal = terminalUpgrade(hubApp);
+// In dev, Vite's HMR listens for its own upgrades on this server; in production nobody else would answer one.
+httpServer.on("upgrade", (req, socket, head) => {
+  if (!upgradeTerminal(req, socket, head) && production) socket.destroy();
+});
 httpServer.listen(port, host, () => {
   console.log(`[xdev-hive] hub on http://${host}:${port} (${production ? "production" : "dev"}), db ${dbPath}`);
   if (!allowedHosts) hubLog.warn("[xdev-hive] HIVE_ALLOWED_HOSTS not set: Host header is not validated.");
