@@ -1,4 +1,6 @@
+import { BlockerCenter } from "#ui/components/BlockerCenter.tsx";
 import { allDispatchTasks } from "#ui/lib/inbox-source.ts";
+import { confirmTaskClose } from "#ui/lib/task-close.ts";
 import { useChatPageContext } from "#ui/components/ChatSession.tsx";
 import { TaskRunChain } from "#ui/components/RunRedispatch.tsx";
 import { ImplementationPlans } from "#ui/components/ImplementationPlans.tsx";
@@ -54,13 +56,13 @@ const PENDING_MS = 3000;
 /** An agent splitting a job lists its parts within minutes: look again this often, so they show to be checked. */
 const OPEN_GROUP_MS = 5000;
 
-type View = "kanban" | "list" | "agent";
+type View = "kanban" | "list" | "agent" | "blockers";
 // Each reader's own choice, in this browser only (roadmap 30a): Kanban unless they picked the list.
 const VIEW_KEY = "hive-tasks-view";
 const readView = (): View => {
   try {
     const saved = localStorage.getItem(VIEW_KEY);
-    return saved === "list" || saved === "agent" ? saved : "kanban";
+    return saved === "list" || saved === "agent" || saved === "blockers" ? saved : "kanban";
   } catch {
     return "kanban";
   }
@@ -78,7 +80,7 @@ function ViewSwitch({ value, onChange, board, agents = false }: { value: View; o
   const t = useT();
   return (
     <div role="radiogroup" aria-label={t("tasks.view")} className="ml-auto flex gap-0.5 rounded-[7px] bg-sunken p-0.5">
-      {(["kanban", "list", ...(agents ? ["agent" as const] : [])] as const).map((v) => (
+      {(["kanban", "list", ...(agents ? ["agent" as const, "blockers" as const] : [])] as const).map((v) => (
         <button
           key={v}
           type="button"
@@ -88,7 +90,7 @@ function ViewSwitch({ value, onChange, board, agents = false }: { value: View; o
           onClick={() => onChange(v)}
           className={cn("h-7 max-md:min-h-11 cursor-pointer rounded-[5px] px-2.5 text-xs/none font-semibold outline-none focus-visible:focus-ring", value === v ? "bg-surface text-fg-strong shadow-e1" : "text-fg-secondary")}
         >
-          {t(v === "agent" ? "assignment.byAgent" : v === "kanban" && board ? "tasks.view_board" : `tasks.view_${v}`)}
+          {t(v === "blockers" ? "blockers.title" : v === "agent" ? "assignment.byAgent" : v === "kanban" && board ? "tasks.view_board" : `tasks.view_${v}`)}
         </button>
       ))}
     </div>
@@ -148,7 +150,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
   const [own, setViewState] = useState<View>(readView);
   const [linkedStatus] = useHashParam("status");
   const chosen = fixed ?? (linkedStatus ? "list" : own);
-  const view = chosen === "agent" && me.mode !== "hub" ? "list" : chosen;
+  const view = (chosen === "agent" || chosen === "blockers") && me.mode !== "hub" ? "list" : chosen;
   const setView = (v: View) => {
     setViewState(v);
     writeView(v);
@@ -229,9 +231,9 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
 
 
   const [agentFilter, setAgentFilter] = useState("");
-  const machines = useQuery(async () => hub ? client.call("machines.list", {}) : [], [client, hub, poll]);
+  const machines = useQuery(async () => hub ? client.call("machines.list", {}) : [], [client, hub, poll, taskPoll]);
   const lanes = agentLanes(machines.data ?? [], list.data ?? [], t("assignment.any"), t("assignment.unassigned"));
-  const visible = filterAgent(list.data ?? [], agentFilter).filter((task) => (linkedIds === null || linkedIds.split(",").includes(task.id))).filter((task) => !linkedKind || (task.status !== "done" && (linkedKind === "fast" ? ["docs", "small-fix", "test"] : linkedKind.split(",")).includes(task.kind ?? "")));
+  const visible = filterAgent(list.data ?? [], view === "blockers" ? "" : agentFilter).filter((task) => (linkedIds === null || linkedIds.split(",").includes(task.id))).filter((task) => !linkedKind || (task.status !== "done" && (linkedKind === "fast" ? ["docs", "small-fix", "test"] : linkedKind.split(",")).includes(task.kind ?? "")));
   return (
     <Page wide={view !== "list"}>
       <PageHeader title={t("tasks.title")} subtitle={t("tasks.subtitle")} />
@@ -247,7 +249,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
             ))}
           </NativeSelect>
         ) : null}
-        {hub ? <NativeSelect data-agent-filter aria-label={t("assignment.agent")} wrapperClassName="max-w-full" className="max-md:min-h-11 max-md:text-base" value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)}>
+        {hub && view !== "blockers" ? <NativeSelect data-agent-filter aria-label={t("assignment.agent")} wrapperClassName="max-w-full" className="max-md:min-h-11 max-md:text-base" value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)}>
           <NativeSelectOption value="">{t("assignment.all")}</NativeSelectOption>
           {lanes.map((lane) => <NativeSelectOption key={lane.key} value={lane.key}>{lane.label}</NativeSelectOption>)}
         </NativeSelect> : null}
@@ -350,7 +352,8 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
           </button>
         </div>
       ) : null}
-      {list.data?.length === 0 ? <Empty>{t("tasks.none")}</Empty> : null}
+      {list.data?.length === 0 && view !== "blockers" ? <Empty>{t("tasks.none")}</Empty> : null}
+      {hub && view === "blockers" ? <BlockerCenter tasks={visible} machines={machines.data ?? []} project={service || scoped || undefined} onOpen={setOpenId} /> : null}
       {hub && view === "agent" ? <AgentBoard tasks={visible} machines={machines.data ?? []} onOpen={setOpenId} onChanged={reload} /> : null}
       {list.data?.length && view === "kanban" ? (
         <TaskKanban
@@ -572,7 +575,9 @@ function StatusSelect({ task, onChanged }: { task: Task; onChanged: () => void }
         aria-label={t("tasks.statusOf", { id: task.id })}
         onChange={(e) =>
           void action.run(async () => {
-            await client.call("tasks.update", { id: task.id, status: e.target.value as TaskStatus });
+            const next = e.target.value as TaskStatus;
+            if (next === "done" && !await confirmTaskClose(client, task, t)) return;
+            await client.call("tasks.update", { id: task.id, status: next });
             onChanged();
           })
         }
@@ -799,7 +804,7 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
   const t = useT();
   const machines = useQuery(() => client.call("machines.list", {}), [client]);
   const fit = (machines.data ?? []).filter((m) => takesRunsOf(m, task.project));
-  const [machineId, setMachineId] = useState("");
+  const [machineId, setMachineId] = useState(task.agent?.machineId ?? "");
   const machine = fit.find((m) => m.id === machineId) ?? null;
   const [role, setRole] = useState<WorkRole>(task.status === "review" ? "review" : "implement");
   const [profileId, setProfileId] = useState("");
@@ -818,6 +823,7 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
   const several = role === "implement" && !profileId;
   const waiting = waitingLabels(task);
   const pending = requests.find((r) => r.status === "pending");
+  const assignedElsewhere = task.agent && machine && task.agent.machineId !== machine.id;
 
   return (
     <section className="flex flex-col gap-3 rounded-lg border p-3">
@@ -855,6 +861,13 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
           <div className="flex flex-col gap-1.5">
             <MachineSelect id={`machine-${task.id}`} machines={fit} value={machineId} any onChange={(id) => (setMachineId(id), setProfileId(""))} />
           </div>
+          {assignedElsewhere ? <Notice tone="warn">
+            <p role="alert">{t("errors.dispatchAssignedElsewhere", { id: task.id, machine: task.agent!.machine })}</p>
+            <Button type="button" variant="outline" className="mt-2 max-md:min-h-11" disabled={action.busy} onClick={() => void action.run(async () => {
+              await client.call("tasks.unassign", { id: task.id });
+              onSent();
+            })}>{t("assignment.remove")}</Button>
+          </Notice> : null}
           <details className="rounded-md border border-line-default p-3">
             <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium focus-visible:focus-ring md:min-h-0">{t("tasks.dispatchOptions")}</summary>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -913,7 +926,7 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
             ) : null}
           </details>
           <div>
-            <Button size="sm" type="submit" disabled={action.busy} className="max-md:min-h-11">
+            <Button size="sm" type="submit" disabled={action.busy || !!assignedElsewhere} className="max-md:min-h-11">
               {t("tasks.dispatchSend")}
             </Button>
           </div>

@@ -13,6 +13,7 @@ export type WebPage =
   | "features"
   | "tasks"
   | "runs"
+  | "history"
   | "artifacts"
   | "docs"
   | "skills"
@@ -30,7 +31,7 @@ export type WebPage =
  */
 export const WEB_MENU: Array<{ label: MessageKey | null; ids: WebPage[] }> = [
   { label: "workspace.work", ids: ["today", "tasks", "chat", "pipeline", "features", "runs"] },
-  { label: "workspace.space", ids: ["docs", "memory", "skills", "artifacts", "graph"] },
+  { label: "workspace.space", ids: ["docs", "memory", "skills", "artifacts", "history", "graph"] },
   { label: "workspace.operations", ids: ["machines", "settings", "admin"] },
 ];
 
@@ -110,7 +111,7 @@ export function webPages(me: Me, projects: string[], caps: WebCaps): Set<WebPage
   if (viewer) ids.add("graph");
   if (me.mode === "hub") {
     ids.add("runs");
-    if (viewer) ids.add("artifacts");
+    if (viewer) { ids.add("artifacts"); ids.add("history"); }
     ids.add("machines");
     if (admin || anywhere(me, projects, "chatUse")) ids.add("chat");
   }

@@ -1,9 +1,10 @@
+import { MachineRunnerControls, ProfileThresholds } from "#ui/components/MachineRunnerControls.tsx";
 import { WorktreeManager } from "#ui/components/Worktrees.tsx";
 // Bản đồ agent (roadmap 31b): each machine a column of its profiles, each profile with the runs it has now and what
 // the agent is doing, the machine's queue under them, and the open batches on the right. Profiles picked here get one
 // prompt (one agent, or a fan-out) or the tasks picked next on the Task page.
 import { useState, type KeyboardEvent } from "react";
-import { ListChecks } from "lucide-react";
+import { ListChecks, Ellipsis } from "lucide-react";
 import { cn } from "cn";
 import { expandPackage, toolCommands } from "@xdev-hive/core";
 import type { Machine, QuotaCooldown, ReportedProfile, RunGroup, RunRecord, RunRequest } from "@xdev-hive/core";
@@ -20,6 +21,12 @@ import { encodeTargets, machineCards, type AgentTarget, type ProfileCard, type P
 import { shortAgo } from "#ui/lib/inbox.ts";
 import { TerminalEntry } from "#ui/components/RemoteTerminal.tsx";
 
+import { SummaryStrip } from "#ui/components/SummaryStrip.tsx";
+import { AttentionList, type AttentionItem } from "#ui/components/AttentionList.tsx";
+import { QuotaBars } from "#ui/components/QuotaBars.tsx";
+import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "#ui/components/ui/sheet.tsx";
+import { meterTone } from "#ui/lib/agents.ts";
+
 const STATE_KIND: Record<ProfileState, ChipKind> = {
   offline: "neutral",
   off: "neutral",
@@ -32,7 +39,7 @@ const STATE_KIND: Record<ProfileState, ChipKind> = {
 };
 
 /** A picked profile takes work only on a machine that is on, takes runs from the hub, and can start its CLI. */
-const takesWork = (m: Machine, c: ProfileCard) => m.online && m.acceptsRuns && !["off", "noCli", "signedOut"].includes(c.state);
+const takesWork = (m: Machine, c: ProfileCard) => m.online && m.acceptsRuns && !m.duplicate && !["off", "noCli", "signedOut"].includes(c.state);
 
 const targetKey = (x: AgentTarget) => `${x.machineId}|${x.profileId}`;
 
@@ -62,24 +69,51 @@ export function AgentMap({
   const toggle = (x: AgentTarget) => setPicks((all) => (picked(x) ? all.filter((p) => targetKey(p) !== targetKey(x)) : [...all, x]));
   const activity = new Map(runs.map((r) => [`${r.machineId}/${r.runId}`, r.activity]));
   const open = groups.filter((g) => !g.closedAt);
+  const [filter, setFilter] = useState(() => new URLSearchParams(location.hash.split("?")[1]).get("map") ?? "");
+  const entries = machines.flatMap(machine => machineCards(machine, cooldowns, now).cards.map(card => ({ machine, card })));
+  const needsHand = (c: ProfileCard) => ["noCli", "signedOut", "overLimit", "resting", "offline"].includes(c.state) || [c.profile.sessionPercent, c.profile.weekPercent].some(n => n != null && meterTone(n, 100) !== "ok");
+  const attention: AttentionItem[] = entries.filter(({ card }) => needsHand(card)).map(({ machine: m, card: c }) => ({
+    id: `${m.id}/${c.profile.id}`, level: ["noCli", "signedOut"].includes(c.state) ? "danger" : "warning",
+    levelLabel: t(["ready", "running"].includes(c.state) ? "dashboardAgents.attention" : `agentMap.state.${c.state}`, { n: c.running, max: c.max }),
+    text: `${c.profile.label} · ${m.machine}${c.restingUntil ? ` · ${formatTime(c.restingUntil)}` : ""}${c.profile.sessionPercent != null ? ` · ${c.profile.sessionPercent}%` : ""}`,
+    action: ["overLimit", "resting", "ready", "running"].includes(c.state)
+      ? <a className="inline-flex min-h-11 items-center text-sm underline md:min-h-7" href={`#/machines?tab=quota&machine=${encodeURIComponent(m.id)}&kind=${encodeURIComponent(c.profile.kind)}`}>{t("dashboardAgents.quota")}</a>
+      : <ProfileHelp machine={m} card={c} />,
+  }));
+  const matches = (m: Machine, c: ProfileCard) => !filter || (filter === "ready" ? c.state === "ready" && takesWork(m, c) : filter === "running" ? c.running > 0 : filter === "attention" ? needsHand(c) : true);
+  const visible = machines.filter(m => !filter || (filter === "queue"
+    ? machineCards(m, cooldowns, now).queue.length > 0 || requests.some(r => r.machineId === m.id && r.status === "pending")
+    : entries.some(e => e.machine.id === m.id && matches(m, e.card))));
+  const summaryHref = (value: string) => `#/machines?map=${value}`;
+
 
   return (
     <div className="flex flex-col gap-3">
+      {attention.length ? <section className="flex flex-col gap-2"><h2 className="text-sm font-semibold">{t("dashboardAgents.attention")}</h2><AttentionList items={attention} label={t("dashboardAgents.attention")} /><a className="min-h-11 content-center text-xs underline md:min-h-7" href="#/today">{t("dashboardAgents.today")}</a></section> : null}
+      <div onClick={e => { const link = (e.target as HTMLElement).closest<HTMLAnchorElement>("[data-summary]"); if (link && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) { e.preventDefault(); setFilter(link.dataset.summary ?? ""); } }}>
+        <SummaryStrip label={t("dashboardAgents.summary")} items={[
+          { id: "ready", label: t("dashboardAgents.ready"), value: `${entries.filter(e => e.card.state === "ready" && takesWork(e.machine, e.card)).length}/${entries.length}`, href: summaryHref("ready") },
+          { id: "running", label: t("dashboardAgents.running"), value: entries.reduce((n, e) => n + e.card.running, 0), href: summaryHref("running") },
+          { id: "queue", label: t("dashboardAgents.queue"), value: machines.reduce((n, m) => n + machineCards(m, cooldowns, now).queue.length, 0) + requests.filter(r => r.status === "pending").length, href: summaryHref("queue") },
+          { id: "attention", label: t("dashboardAgents.attention"), value: attention.length, href: summaryHref("attention"), tone: attention.length ? "warning" : undefined },
+        ]} />
+      </div>
+      {filter ? <Button variant="outline" className="self-start min-h-11 md:min-h-7" onClick={() => setFilter("")}>{t("dashboardAgents.all")}</Button> : null}
       {picks.length ? (
         <div role="toolbar" aria-label={t("agentMap.picked", { count: picks.length })} className="flex flex-wrap items-center gap-2 rounded-[10px] bg-inverse px-3 py-2 text-[13px] text-fg-inverse">
           <span className="font-semibold">{t("agentMap.picked", { count: picks.length })}</span>
           <span className="flex-1" />
-          <a href={`#/tasks?agents=${encodeURIComponent(encodeTargets(picks))}`} data-map-batch className="inline-flex h-10 md:h-7 items-center gap-1.5 rounded-sm border border-white/30 px-2.5 text-xs font-semibold outline-none hover:bg-white/10 focus-visible:focus-ring">
+          <a href={`#/tasks?agents=${encodeURIComponent(encodeTargets(picks))}`} data-map-batch className="inline-flex h-11 md:h-7 items-center gap-1.5 rounded-sm border border-white/30 px-2.5 text-xs font-semibold outline-none hover:bg-white/10 focus-visible:focus-ring">
             <ListChecks className="size-3.5" />
             {t("agentMap.giveTasks", { count: picks.length })}
           </a>
-          <button type="button" onClick={() => setPicks([])} className="h-10 md:h-7 cursor-pointer rounded-sm px-2 text-xs underline">
+          <button type="button" onClick={() => setPicks([])} className="h-11 md:h-7 cursor-pointer rounded-sm px-2 text-xs underline">
             {t("agentMap.clear")}
           </button>
         </div>
       ) : null}
-      <div className="flex flex-col items-stretch gap-3 pb-2 md:flex-row md:items-start md:overflow-x-auto">
-        {machines.map((m) => (
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] items-start gap-3 pb-2">
+        {visible.map((m) => (
           <MachineColumn
             key={m.id}
             machine={m}
@@ -88,31 +122,31 @@ export function AgentMap({
             queued={requests.filter((r) => r.machineId === m.id && r.status === "pending")}
             now={now}
             canPick={m.projects.some((p) => dispatchers.includes(p))}
+            showCard={c => matches(m, c)}
             picked={picked}
             onToggle={toggle}
             onChanged={onChanged}
           />
         ))}
-        <section className="flex w-full shrink-0 md:w-[280px] flex-col gap-2 rounded-xl border border-line-default bg-sunken p-2.5" aria-label={t("agentMap.batches")}>
-          <h3 className="m-0 px-1 text-[13px]/5 font-semibold text-fg-strong">{t("agentMap.batches")}</h3>
-          {open.length === 0 ? <p className="m-0 px-1 text-xs text-fg-muted">{t("agentMap.batchesNone")}</p> : null}
-          {open.map((g) => {
-            const held = g.items.filter((i) => i.status === "held");
-            return (
-              <a key={g.id} href={`#/runs?tab=batches&group=${g.id}`} className="flex flex-col gap-1 rounded-lg border border-line-default bg-surface p-2.5 outline-none hover:border-fg-secondary focus-visible:focus-ring">
-                <span className="truncate text-[13px] font-medium text-fg-strong">{g.title || t("agentMap.batchTitle", { id: g.id })}</span>
-                <span className="text-xs text-fg-muted">
-                  <span className="font-mono">{g.project}</span> · {t("agentMap.batchProgress", { active: g.items.filter((i) => i.active).length, held: held.length, total: g.items.length })}
-                </span>
-                {held.some((i) => !i.machineId) ? <span className="text-xs text-fg-muted">{t("agentMap.batchAnyMachine", { count: held.filter((i) => !i.machineId).length })}</span> : null}
-              </a>
-            );
-          })}
-        </section>
       </div>
+
+      <a href="#/runs?tab=batches" className="min-h-11 content-center text-sm underline md:min-h-7">{t("dashboardAgents.batches", { count: open.length })}</a>
+
 
     </div>
   );
+}
+
+function ProfileHelp({ machine: m, card: c }: { machine: Machine; card: ProfileCard }) {
+  const t = useT();
+  const key = c.state === "signedOut" ? "loginHelp" : c.state === "noCli" ? "cliHelp" : "offlineHelp";
+  return <Sheet>
+    <SheetTrigger asChild><Button variant="outline" className="min-h-11 md:min-h-7">{t("dashboardAgents.help")}</Button></SheetTrigger>
+    <SheetContent>
+      <SheetHeader><SheetTitle>{c.profile.label} · {m.machine}</SheetTitle><SheetDescription>{t(`agentMap.state.${c.state}`)}</SheetDescription></SheetHeader>
+      <p className="px-4 text-sm/6 wrap-anywhere">{t(`dashboardAgents.${key}`, { machine: m.machine, profile: c.profile.label })}</p>
+    </SheetContent>
+  </Sheet>;
 }
 
 function MachineColumn({
@@ -122,6 +156,7 @@ function MachineColumn({
   queued,
   now,
   canPick,
+  showCard,
   picked,
   onToggle,
   onChanged,
@@ -132,30 +167,31 @@ function MachineColumn({
   queued: RunRequest[];
   now: number;
   canPick: boolean;
+  showCard: (card: ProfileCard) => boolean;
   picked: (x: AgentTarget) => boolean;
   onToggle: (x: AgentTarget) => void;
   onChanged: () => void;
 }) {
-  const { client, me } = useHive();
+  const { me } = useHive();
   const t = useT();
-  const action = useAction();
   const { cards, queue } = machineCards(m, cooldowns, now);
   return (
-    <section className={cn("flex w-full shrink-0 md:w-[300px] flex-col gap-2 rounded-xl border border-line-default bg-sunken p-2.5", !m.online && "opacity-75")} aria-label={m.machine} data-map-machine={m.machine}>
+    <section className={cn("flex min-w-0 w-full flex-col gap-2 rounded-xl border border-line-default bg-sunken p-2.5", !m.online && "opacity-75", !m.profiles.length && "col-span-full")} aria-label={m.machine} data-map-machine={m.machine} data-map-machine-id={m.id}>
       <div className="flex flex-col gap-0.5 px-1">
         <div className="flex items-center gap-2">
           <span className={cn("size-2 shrink-0 rounded-full", m.duplicate ? "bg-danger-solid" : m.online ? "bg-success-solid" : "bg-neutral-solid")} />
           <span className="min-w-0 flex-1 truncate font-mono text-[13px] font-semibold text-fg-strong">{m.machine}</span>
-          {m.version ? <span className="font-mono text-[11px] text-fg-muted">v{m.version}</span> : null}
+          {m.version ? <span className="font-mono text-xs text-fg-muted">v{m.version}</span> : null}
+          <MachineManagement machine={m} onChanged={onChanged} />
         </div>
         <span className="text-xs text-fg-muted">
           {m.duplicate ? t("machineState.duplicate") : m.online ? t("machineState.online") : t("machines.lastSeen", { time: formatTime(m.lastSeen) })}
           {" · "}
-          {m.acceptsRuns ? t("machines.acceptsRuns") : t("agentMap.notAccepting")}
+          {m.profiles.length ? m.acceptsRuns ? t("machines.acceptsRuns") : t("agentMap.notAccepting") : t("agentMap.noProfiles")}
         </span>
       </div>
-      {cards.length === 0 ? <p className="m-0 px-1 text-xs text-fg-muted">{t("agentMap.noProfiles")}</p> : null}
-      {cards.map((c) => {
+
+      {cards.filter(showCard).map((c) => {
         const target = { machineId: m.id, profileId: c.profile.id };
         return (
           <div key={c.profile.id} className="flex min-w-0 flex-col gap-2">
@@ -187,12 +223,28 @@ function MachineColumn({
           ))}
         </div>
       ) : null}
+      {!mayManage(me, m) ? <MachineTools machine={m} /> : null}
+    </section>
+  );
+}
+
+function MachineManagement({ machine: m, onChanged }: { machine: Machine; onChanged: () => void }) {
+  const { client, me } = useHive();
+  const t = useT();
+  const action = useAction();
+  if (!mayManage(me, m)) return null;
+  return <Sheet>
+        <SheetTrigger asChild><Button data-map-manage={m.machine} variant="ghost" size="icon" className="size-11 shrink-0 md:size-8" title={t("dashboardAgents.manage", { machine: m.machine })} aria-label={t("dashboardAgents.manage", { machine: m.machine })}><Ellipsis aria-hidden="true" /></Button></SheetTrigger>
+        <SheetContent className="overflow-y-auto max-md:[&_button]:min-h-11 max-md:[&_input]:min-h-11">
+          <SheetHeader><SheetTitle>{t("dashboardAgents.manage", { machine: m.machine })}</SheetTitle><SheetDescription>{t("dashboardAgents.manageHint")}</SheetDescription></SheetHeader>
+          <div className="flex min-w-0 flex-col gap-3 px-4 pb-4">
       <MachineTools machine={m} />
       <TerminalEntry source="machine" machineId={m.id} project={m.projects.length === 1 ? m.projects[0] : undefined} />
       {mayManage(me, m) ? <WorktreeManager machine={m} /> : null}
+      {mayManage(me, m) ? <details className="px-1 text-xs" data-runner-controls><summary className="flex min-h-11 cursor-pointer items-center text-fg-muted select-none md:min-h-7">{t("machines.runnerTitle")}</summary><MachineRunnerControls machine={m} onChanged={onChanged} /></details> : null}
       {mayManage(me, m) && m.profiles.length ? (
         <details className="px-1 text-xs">
-          <summary className="cursor-pointer text-fg-muted select-none">{t("agentMap.manage")}</summary>
+          <summary className="min-h-11 cursor-pointer content-center text-fg-muted select-none md:min-h-7">{t("agentMap.manage")}</summary>
           <ProfileControls machine={m} onChanged={onChanged} />
         </details>
       ) : null}
@@ -213,9 +265,10 @@ function MachineColumn({
           </Button>
         </div>
       ) : null}
-      <ErrorNote error={action.error} />
-    </section>
-  );
+          <ErrorNote error={action.error} /></div>
+        </SheetContent>
+      </Sheet>;
+
 }
 
 function ProfileCardView({
@@ -269,20 +322,17 @@ function ProfileCardView({
           {label}
         </Chip>
       </div>
-      <span className="truncate font-mono text-[11px] text-fg-muted">
+      <span className="truncate font-mono text-xs text-fg-muted">
         {p.id} · {p.kind}
         {p.account ? ` · ${p.account}` : ""}
       </span>
       {/* A change asked on the web shows on the card until the machine reports it, the manage section closed or not. */}
-      {waiting ? <span className="text-[11px] text-warning">{t("machines.profileWaiting", { who: waiting.requestedBy, time: formatTime(waiting.requestedAt) })}</span> : null}
+      {waiting ? <span className="text-xs text-warning">{t("machines.profileWaiting", { who: waiting.requestedBy, time: formatTime(waiting.requestedAt) })}</span> : null}
       {p.sessionPercent != null || p.weekPercent != null ? (
-        <div className="grid grid-cols-[44px_1fr_32px] items-center gap-x-2 gap-y-1 text-[11px] text-fg-muted">
-          <Quota label={t("ops.session")} percent={p.sessionPercent} />
-          <Quota label={t("ops.week")} percent={p.weekPercent} />
-        </div>
+        <QuotaBars profile={p} />
       ) : null}
       {p.sessionResets || p.weekResets || usageAsOf(p.usageCheckedAt) ? (
-        <span data-usage-resets className="text-[11px]/4 text-fg-muted">
+        <span data-usage-resets className="text-xs/4 text-fg-muted">
           {[
             p.sessionResets ? t("machines.sessionResets", { time: p.sessionResets }) : null,
             p.weekResets ? t("machines.weekResets", { time: p.weekResets }) : null,
@@ -305,26 +355,13 @@ function ProfileCardView({
               <span className={cn("size-1.5 shrink-0 rounded-full", r.status === "running" ? "bg-running" : "bg-neutral-solid")} />
               <span className="font-mono text-fg-secondary">{r.taskId}</span>
               <span className="min-w-0 flex-1 truncate text-fg-strong">{r.taskTitle}</span>
-              <span className="shrink-0 text-[11px] text-fg-muted">{shortAgo(r.since, now, t)}</span>
+              <span className="shrink-0 text-xs text-fg-muted">{shortAgo(r.since, now, t)}</span>
             </span>
-            {doing ? <span className="line-clamp-2 text-[11px]/4 text-fg-muted">{doing}</span> : null}
+            {doing ? <span className="line-clamp-2 text-xs/4 text-fg-muted">{doing}</span> : null}
           </a>
         );
       })}
     </div>
-  );
-}
-
-function Quota({ label, percent }: { label: string; percent: number | null | undefined }) {
-  const pct = Math.max(0, Math.min(100, percent ?? 0));
-  return (
-    <>
-      <span>{label}</span>
-      <span className="relative h-1.5 overflow-hidden rounded-full bg-sunken">
-        {percent != null ? <span className={cn("absolute inset-y-0 left-0 rounded-full", pct >= 80 ? "bg-warning-solid" : "bg-primary")} style={{ width: `${pct}%` }} /> : null}
-      </span>
-      <span className="text-right font-mono">{percent != null ? `${Math.round(pct)}%` : "—"}</span>
-    </>
   );
 }
 
@@ -404,7 +441,8 @@ function ProfileControls({ machine: m, onChanged }: { machine: Machine; onChange
             ) : (
               <PriorityInput key={`${p.id}-${waiting?.priority ?? p.priority}`} value={waiting?.priority ?? p.priority!} busy={action.busy} label={t("machines.profilePriority")} onSave={(v) => set(p, { priority: v })} />
             )}
-            {waiting ? <span className="text-xs text-warning">{t("machines.profileWaiting", { who: waiting.requestedBy, time: formatTime(waiting.requestedAt) })}</span> : null}
+            {p.stopAtSession !== undefined && p.stopAtWeek !== undefined ? <ProfileThresholds key={`${p.id}-${waiting?.stopAtSession ?? p.stopAtSession}-${waiting?.stopAtWeek ?? p.stopAtWeek}`} machine={m} profile={p} onChanged={onChanged} /> : null}
+            {waiting ? <span role="status" className="text-xs text-warning">{t("machines.profileWaiting", { who: waiting.requestedBy, time: formatTime(waiting.requestedAt) })}</span> : null}
           </div>
         );
       })}
@@ -430,7 +468,7 @@ function PriorityInput({ value, busy, label, onSave }: { value: number; busy: bo
         max={100}
         value={draft}
         disabled={busy}
-        className="h-7 w-16 px-2 font-mono text-xs"
+        className="h-11 w-16 px-2 font-mono text-base md:h-7 md:text-xs"
         onChange={(e) => setDraft(e.target.value)}
         onBlur={save}
         onKeyDown={(e) => {

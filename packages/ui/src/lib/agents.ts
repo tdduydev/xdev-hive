@@ -75,8 +75,15 @@ export interface QuotaView {
   session: QuotaLimit;
   week: QuotaLimit;
   counts: { hitLimit: number; runs: number; done: number; failed: number; since: string | null };
-  /** Set whenever the profile rests, so Bỏ nghỉ shows next to any other button of the row. */
+  /** Set whenever the profile rests: the quota line says until when. */
   rest: { until: string; reason: string | null } | null;
+  /**
+   * Hive holds the profile back (its rest, a stop threshold): Dùng tiếp shows, next to any other button of the row,
+   * because Hive's own guess is what a person may want to overrule.
+   */
+  canResume: boolean;
+  /** A Dùng tiếp still in force: thresholds off until `until`, and who asked. */
+  resumed: { until: string; at: string; by: string } | null;
   /** The main process checks enabled profiles only. */
   canRead: boolean;
 }
@@ -94,11 +101,13 @@ export function quotaView(p: AgentProfileStatus, now: number): QuotaView {
     week: limit("week"),
     counts: { hitLimit: p.stats.rateLimited, runs: p.stats.runs, done: p.stats.succeeded, failed: p.stats.failed, since: p.stats.since },
     rest: p.cooldownUntil ? { until: p.cooldownUntil, reason: p.cooldownReason } : null,
+    canResume: !!p.cooldownUntil || usageStop(p, p.usage, now) !== null,
+    resumed: p.resumed && Date.parse(p.resumed.until) > now ? p.resumed : null,
     canRead: p.enabled,
   };
 }
 
-/** The one button the row's actions carry for its state; Bỏ nghỉ is not one of them (see QuotaView.rest). */
+/** The one button the row's actions carry for its state; Dùng tiếp is not one of them (see QuotaView.canResume). */
 export function rowFix(p: AgentProfileStatus): "installCli" | "login" | null {
   const state = profileState(p);
   return state === "noCli" ? "installCli" : state === "signedOut" && p.login?.loginCommand ? "login" : null;

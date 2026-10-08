@@ -1,6 +1,6 @@
 import { ReviewArtifacts } from "#ui/components/Artifacts.tsx";
+import { confirmTaskClose } from "#ui/lib/task-close.ts";
 import { useChatPageContext } from "#ui/components/ChatSession.tsx";
-import { SystemOverview } from "#ui/components/SystemOverview.tsx";
 import { StartReminder } from "#ui/pages/Start.tsx";
 import { knowledgeHref } from "#ui/lib/knowledge.ts";
 // Hôm nay (docs/design/2026-09-redesign, xDev Hive Client): a list of what needs the person on the left, the
@@ -142,6 +142,7 @@ function titleOf(item: InboxItem, t: TFunction): string {
       return t("inbox.request.title", { who: item.command.requestedBy, label: item.command.label });
     case "alert":
       return alertTitle(t, item.alert);
+    case "hubIssue": return t(`inbox.hubIssue.${item.issue}.title`, { detail: firstLine(item.detail, 80) });
     case "releaseFailure": return `${t(item.task.id.startsWith("OPS-release-log-") ? "autoRelease.warning" : "autoRelease.failed")} · ${item.task.id}`;
     case "gate":
       return t("inbox.gate.title", { gate: t(`sdlc.gate.${item.gate.gate}`), task: item.gate.taskId });
@@ -181,6 +182,7 @@ function metaOf(item: InboxItem, t: TFunction): string {
       return t("inbox.request.meta");
     case "alert":
       return alertDetail(t, item.alert);
+    case "hubIssue": return firstLine(item.detail, 80);
     case "releaseFailure": return firstLine(item.task.note ?? "", 80);
     case "gate":
       return item.gate.status === "escalated" ? t("inbox.gate.metaEscalated") : t("inbox.gate.meta", { mode: t(`sdlc.mode.${item.gate.mode}`) });
@@ -290,8 +292,10 @@ export function TodayInboxPage() {
   return (
     <div className="mobile-master-detail flex h-full min-h-0 w-full bg-surface">
       <div className={cn("min-w-0 flex-1 flex-col border-r border-line-subtle md:flex md:min-w-[280px] md:flex-none md:shrink md:basis-[360px]", mobileDetail.showingDetail ? "hidden" : "flex")}>
-        <StartReminder />
-        <DesktopConfigIssues className="border-b border-line-subtle p-3" />
+        <div data-today-reminders className="flex shrink-0 flex-col gap-3 border-b border-line-subtle p-3 [&:not(:has(>*))]:hidden">
+          <StartReminder className="" />
+          <DesktopConfigIssues />
+        </div>
         <div className="flex shrink-0 items-center gap-2 border-b border-line-subtle px-3 py-[9px]">
           <div role="tablist" className="flex gap-0.5 rounded-[7px] bg-sunken p-0.5">
             {(
@@ -325,7 +329,6 @@ export function TodayInboxPage() {
           ) : null}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {scope.kind === "all" ? <div className="p-3"><SystemOverview compact /></div> : null}
         <div role="listbox" aria-label={t("inbox.listLabel")}>
           {tab === "open"
             ? groups.map(({ group, items }) => (
@@ -390,7 +393,7 @@ export function TodayInboxPage() {
           ) : null}
         </div>
         </div>
-        <div className="flex shrink-0 gap-3.5 border-t border-line-subtle px-3.5 py-[7px] text-[11px]/4 text-fg-muted">
+        <div data-today-shortcuts className="hidden shrink-0 gap-3.5 border-t border-line-subtle px-3.5 py-[7px] text-[11px]/4 text-fg-muted md:flex">
           <span>{t("inbox.keySelect")}</span>
           <span>{t("inbox.keyMain")}</span>
           <span>{t("inbox.keySeen")}</span>
@@ -456,11 +459,12 @@ function Detail({
   const docKey = item.kind === "proposal" ? item.proposal.docKey : null;
   const doc = useQuery(async () => (docKey ? client.call("docs.get", { key: docKey }) : null), [client, docKey]);
 
-  const act = (fn: () => Promise<string>): (() => Promise<void>) => async () => {
+  const act = (fn: () => Promise<string | null>): (() => Promise<void>) => async () => {
     setBusy(true);
     setError(null);
     try {
       const note = await fn();
+      if (note === null) return;
       bump();
       inbox.reload();
       finish(item, note);
@@ -488,6 +492,9 @@ function Detail({
         ...(allow(task.project, "runDispatch") ? [{ label: t("assignment.retry"), kind: "primary" as const, run: act(async () => {
           await client.call("tasks.assign", { id: task.id, machineId: task.agent!.machineId, profileId: task.agent!.profileId });
           return t("assignment.selected", { n: 1 });
+        }) }, { label: t("assignment.releaseHold"), kind: "secondary" as const, run: act(async () => {
+          await client.call("tasks.unassign", { id: task.id });
+          return t("assignment.holdReleased");
         }) }] : []),
         { label: t("assignment.change"), kind: "secondary", run: go(`#/tasks?task=${encodeURIComponent(task.id)}`) },
       ];
@@ -607,6 +614,7 @@ function Detail({
                 label: t("inbox.review.toDone"),
                 kind: "secondary" as const,
                 run: act(async () => {
+                  if (!await confirmTaskClose(client, task, t)) return null;
                   await client.call("tasks.update", { id: task.id, status: "done" });
                   return t("inbox.review.movedDone", { id: task.id });
                 }),
@@ -717,6 +725,11 @@ function Detail({
         },
         { label: t("inbox.alert.open"), kind: "secondary", run: go("#/admin?tab=alerts") },
       ];
+      break;
+    }
+    case "hubIssue": {
+      body = <P>{item.detail}</P>;
+      actions = [{ label: t("inbox.hubIssue.open"), kind: "primary", run: go("#/admin/hub") }, seenAction()];
       break;
     }
     case "plan": {

@@ -126,9 +126,24 @@ export interface PlanUsage extends QuotaOutlook {
   checkedAt: string;
 }
 
-/** The limit that stops new runs on the profile, if one is reached. */
-export function usageStop(profile: Pick<AgentProfile, "stopAtSession" | "stopAtWeek">, usage: PlanUsage | null | undefined): "session" | "week" | null {
+/** A person chose Dùng tiếp on a subscription Hive held back: its stop thresholds do not count until `until`. */
+export interface ProfileResume {
+  until: string;
+  at: string;
+  by: string;
+}
+
+/**
+ * The limit that stops new runs on the profile, if one is reached. None while a Dùng tiếp holds: the person took the
+ * risk, and a real limit still comes back as a rate_limited run and its rest.
+ */
+export function usageStop(
+  profile: Pick<AgentProfile, "stopAtSession" | "stopAtWeek"> & { resumed?: Pick<ProfileResume, "until"> | null },
+  usage: PlanUsage | null | undefined,
+  now = Date.now(),
+): "session" | "week" | null {
   if (!usage) return null;
+  if (profile.resumed && Date.parse(profile.resumed.until) > now) return null;
   if (usage.session && usage.session.percent >= profile.stopAtSession) return "session";
   if (usage.week && usage.week.percent >= profile.stopAtWeek) return "week";
   return null;

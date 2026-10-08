@@ -1,6 +1,6 @@
 import { opencodeEnv } from "#desktop/main/runner/opencode.ts";
 import { researchProfile, researchPrompt, researchResult, restrictResearchCommand } from "#desktop/main/runner/research.ts";
-import { researchSchema, type ResearchJob } from "@xdev-hive/core";
+import { researchSchema, type GateHeartbeatReply, type ResearchJob } from "@xdev-hive/core";
 import { deleteWorktree, freeBytes, inspectWorktree, registeredWorktrees } from "#desktop/main/runner/worktree-admin.ts";
 import { pruneRunLogs } from "#desktop/main/runner/run-logs.ts";
 import { cleanupReason, worktreeCleanupSchema, type WorktreeCommand, type WorktreeReport, type WorktreeTarget, type WorktreeLog } from "@xdev-hive/core";
@@ -79,6 +79,8 @@ import {
   type ToolApproval,
   toolHash,
   type ProfileChange,
+  type RunnerChange,
+  type MachineRunnerSettings,
   type RunMergeOrder,
   type RunMr,
   type QuotaCooldown,
@@ -181,7 +183,7 @@ export interface RunnerHost {
   /** Base env for agent processes (login-shell PATH etc.). */
   env(): NodeJS.ProcessEnv;
   /** What the heartbeat tells the hub besides runs: the last setup check and this machine's profiles. */
-  report?(): { setup?: { checkedAt: string; report: SetupReport }; profiles?: ReportedProfile[] };
+  report?(): { setup?: { checkedAt: string; report: SetupReport }; profiles?: ReportedProfile[]; runnerSettings?: MachineRunnerSettings };
   /** The last sign-in check of a profile's CLI (see login.ts). */
   login?(profileId: string): LoginStatus | undefined;
   /** The profile's plan usage from the same check. */
@@ -216,10 +218,13 @@ export interface HubUpdate {
   toolApprovals?: ToolApproval[];
   /** Profile changes asked for on the web (roadmap 18d); a hub older than them sends none. */
   profileChanges?: ProfileChange[];
+  runnerChange?: RunnerChange | null;
   /** Merges asked for on the web (roadmap 18c), while this machine takes runs from the hub. */
   mergeRuns?: RunMergeOrder[];
   /** Repos of this machine the hub archived or deleted (roadmap 47); a hub older than it sends none. */
   archivedProjects?: string[];
+  /** The gate manifests the hub kept and the ones it lacks (spec 69h1 §3); a hub older than 69h2 sends none. */
+  gate?: GateHeartbeatReply;
 }
 
 /** What the MR watcher saw of a run's MR, as the hub keeps it (roadmap 18c); null without an MR. */
@@ -562,13 +567,13 @@ export class Runner {
         quotaUnavailable: (id) => {
           const p = this.profileStatuses().find((x) => x.id === id);
           const profile = this.#host.profiles().find((x) => x.id === id);
-          return !!p && ((p.cooldownUntil !== null && p.cooldownUntil > this.#iso()) || (!!profile && usageStop(profile, p.usage) !== null));
+          return !!p && ((p.cooldownUntil !== null && p.cooldownUntil > this.#iso()) || (!!profile && usageStop(p, p.usage, +this.#opts.now()) !== null));
         },
         // As the Board would see it: signed out, resting (here or on the hub), or at its plan's stop threshold.
         unavailable: (id) => {
           const p = this.profileStatuses().find((x) => x.id === id);
           const profile = this.#host.profiles().find((x) => x.id === id);
-          return !p || p.login?.loggedIn === false || (p.cooldownUntil !== null && p.cooldownUntil > this.#iso()) || (!!profile && usageStop(profile, p.usage) !== null);
+          return !p || p.login?.loggedIn === false || (p.cooldownUntil !== null && p.cooldownUntil > this.#iso()) || (!!profile && usageStop(p, p.usage, +this.#opts.now()) !== null);
         },
       },
       { dataDir: opts.dataDir, progressMs: this.#opts.chatProgressMs },
@@ -584,7 +589,7 @@ export class Runner {
         unavailable: (id) => {
           const p = this.profileStatuses().find((x) => x.id === id);
           const profile = this.#host.profiles().find((x) => x.id === id);
-          return !p || p.login?.loggedIn === false || (p.cooldownUntil !== null && p.cooldownUntil > this.#iso()) || (!!profile && usageStop(profile, p.usage) !== null);
+          return !p || p.login?.loggedIn === false || (p.cooldownUntil !== null && p.cooldownUntil > this.#iso()) || (!!profile && usageStop(p, p.usage, +this.#opts.now()) !== null);
         },
       },
       { dataDir: opts.dataDir, progressMs: this.#opts.chatProgressMs },
@@ -600,7 +605,7 @@ export class Runner {
         unavailable: (id) => {
           const p = this.profileStatuses().find((x) => x.id === id);
           const profile = this.#host.profiles().find((x) => x.id === id);
-          return !p || p.cliPath === null || this.#assists.busy || this.store.running() >= this.#host.settings().maxParallel || (!!profile && p.running >= profile.maxConcurrent) || p.login?.loggedIn === false || (p.cooldownUntil !== null && p.cooldownUntil > this.#iso()) || (!!profile && usageStop(profile, p.usage) !== null);
+          return !p || p.cliPath === null || this.#assists.busy || this.store.running() >= this.#host.settings().maxParallel || (!!profile && p.running >= profile.maxConcurrent) || p.login?.loggedIn === false || (p.cooldownUntil !== null && p.cooldownUntil > this.#iso()) || (!!profile && usageStop(p, p.usage, +this.#opts.now()) !== null);
         },
       },
       opts.dataDir,
@@ -1075,6 +1080,7 @@ export class Runner {
         cooldownUntil: resting?.until ?? null,
         cooldownReason: resting?.reason ?? null,
         cooldownFrom: resting?.from ?? null,
+        resumed: this.store.resume(profile.id),
         cliPath: resolveBin(expandHome(profile.bin), pathEnv),
         login: this.#host.login?.(profile.id) ?? null,
         usage: quotaOutlook(withResetsAt(this.#host.usage?.(profile.id), now), this.store.usageHistory(profile.id, now), now),
@@ -1093,6 +1099,29 @@ export class Runner {
       this.#shared.delete(account);
       await this.#host.backend().call("cooldowns.clear", { account }, this.#runnerActor());
     }
+    void this.tick();
+  }
+
+  /**
+   * Dùng tiếp, after the quota was read again: when the numbers still pass a stop threshold, the thresholds are off
+   * until the limits that pass them reset (5 hours when the reset is not known); then the rest ends and the hub hears
+   * of it in a heartbeat right away, instead of at the next interval, so it can hand the profile runs.
+   */
+  async resumeProfile(profileId: string, by: string): Promise<void> {
+    const profile = this.#host.profiles().find((p) => p.id === profileId);
+    if (!profile) throw new HiveError("not_found", `Không có profile ${profileId}.`, { key: "errors.profileNotFound", vars: { id: profileId } });
+    const now = this.#opts.now();
+    const usage = withResetsAt(this.#host.usage?.(profileId), now);
+    const over = [
+      usage?.session && usage.session.percent >= profile.stopAtSession ? usage.session : null,
+      usage?.week && usage.week.percent >= profile.stopAtWeek ? usage.week : null,
+    ].filter((l) => l !== null);
+    const ends = over.map((l) => Date.parse(l.resetsAt ?? "")).map((at) => (Number.isFinite(at) && at > +now ? at : +now + 5 * 3600_000));
+    // With nothing over, the record still says who asked; its time is now, so it holds nothing back.
+    const until = new Date(ends.length ? Math.max(...ends) : +now).toISOString();
+    this.store.setResume(profileId, { until, at: now.toISOString(), by });
+    await this.resetCooldown(profileId);
+    await this.beat();
     void this.tick();
   }
 
@@ -1352,9 +1381,11 @@ export class Runner {
       tools: res.tools ?? null,
       toolApprovals: res.toolApprovals ?? [],
       profileChanges: res.profileChanges ?? [],
+      runnerChange: res.runnerChange ?? null,
       // The user let project managers drive this machine from the web; without that a merge waits until it expires.
       mergeRuns: this.#host.settings().acceptHubRuns && !this.#updateDrain ? (res.mergeRuns ?? []) : [],
       archivedProjects: res.archivedProjects ?? [],
+      gate: res.gate,
     };
     // Before the requests below are taken, so their runs start under the policy the hub just sent.
     this.#agentPolicy = update.agentPolicy ?? null;
@@ -1646,6 +1677,8 @@ export class Runner {
             error: clip(r.error, 2000),
             branch: r.branch,
             baseSha: r.baseSha,
+            // Legacy local records may hold a short SHA; never present that as an exact evidence revision.
+            headSha: r.headSha && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(r.headSha) ? r.headSha : null,
             instructions: r.instructions,
             commits: r.commits,
             mrUrl: r.mrUrl,
@@ -1918,6 +1951,9 @@ export class Runner {
     return { ...actor, source: { via: "mcp", machine: this.#host.machine() } };
   }
 
+  /** Who this machine is to the hub; the gate executor (69h2) reports with it, like the merge queue and releases. */
+  hubActor(): Actor { return this.#runnerActor(); }
+
   #runnerActor(): Actor {
     return this.#asMachine({ name: agentActorName("runner", this.#host.mode(), this.#host.machine(), this.#opts.user), role: "agent" });
   }
@@ -1955,7 +1991,7 @@ export class Runner {
         cooldownUntil: this.#cooldownOf(profile)?.until ?? null,
         installed: !this.#held.has(profile.kind) && resolveBin(expandHome(profile.bin), pathEnv) !== null,
         loggedIn: this.#host.login?.(profile.id)?.loggedIn !== false,
-        overLimit: usageStop(profile, this.#host.usage?.(profile.id)) !== null,
+        overLimit: usageStop({ ...profile, resumed: this.store.resume(profile.id) }, this.#host.usage?.(profile.id), +now) !== null,
         headroom: usageHeadroom(profile, this.#host.usage?.(profile.id)),
         sessionPercent: this.#host.usage?.(profile.id)?.session?.percent ?? null,
         resetAt: limitResetAt(profile, this.#host.usage?.(profile.id), now)?.toISOString() ?? null,

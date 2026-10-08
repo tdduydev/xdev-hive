@@ -1,5 +1,6 @@
 import { useChatPageContext } from "#ui/components/ChatSession.tsx";
 import { visibleInterval } from "#ui/lib/visible-interval.ts";
+import { confirmTaskClose } from "#ui/lib/task-close.ts";
 // Board (docs/design/2026-09-redesign, xDev Hive Client): a project's tasks in five columns; drag a card to change
 // its status, click it for the inspector (details, the latest run, and the form that starts an agent on this
 // machine). The runs themselves are on Lượt chạy.
@@ -164,12 +165,20 @@ export function BoardPage({ switcher }: { switcher?: ReactNode }) {
   const isLocalProject = localProjects.includes(current);
   const canMove = allow(current || null, "taskWork");
 
-  const move = (task: Task, status: TaskStatus) => {
+  const move = async (task: Task, status: TaskStatus) => {
     const from = task.status;
     if (from === status) return;
     if (status === "done" && !canCloseTask(me, task.project)) {
       setMoveError(t("tasks.doneNeedsReview"));
       return;
+    }
+    if (status === "done") {
+      try {
+        if (!await confirmTaskClose(client, task, t)) return;
+      } catch (err) {
+        setMoveError(errorMessage(err));
+        return;
+      }
     }
     setMoved((m) => ({ ...m, [task.id]: status }));
     setMoveError(null);

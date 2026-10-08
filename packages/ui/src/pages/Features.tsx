@@ -11,10 +11,11 @@ import { SPEC_FILES, specNextStep, type RunRecord, type SdlcGateRecord, type Spe
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Input } from "@xdev-hive/ui/components/ui/input";
-import { Tabs, TabsList, TabsTrigger } from "@xdev-hive/ui/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@xdev-hive/ui/components/ui/tabs";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, ErrorNote, STATUS_TONE } from "#ui/components/common.tsx";
 import { DocMarkdown } from "#ui/components/DocMarkdown.tsx";
+import { AcceptanceEvidence } from "#ui/components/AcceptanceEvidence.tsx";
 import { FlowTasks, MOVING, STATE_CHIP } from "#ui/components/FlowCard.tsx";
 import { Chip, DetailBody, DetailHeader, PaneEmpty } from "#ui/components/panes.tsx";
 import { formatTime, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "#ui/hooks.ts";
@@ -333,7 +334,7 @@ function FeatureView({ item, manyProjects, onChanged }: { item: FeatureItem; man
   const retry = useAction();
   const canImport = !!spec && shown === "tasks" && files?.tasks != null && allow(spec.project, "taskManage");
   const next = spec ? specNextStep(spec.stage) : null;
-  const canRun = !!spec && !item.flow && next !== null && allow(spec.project, "runDispatch") && allow(spec.project, "taskManage");
+  const canRun = !!spec && ["spec", "plan", "tasks"].includes(shown) && !item.flow && next !== null && allow(spec.project, "runDispatch") && allow(spec.project, "taskManage");
   const decidingHere = item.waiting.filter((g) => gateTab(g) === shown);
   const fileOf = (tab: FeatureTab): SpecFile | null => (tab === "spec" || tab === "plan" || tab === "tasks" ? tab : null);
   const has = (f: SpecFile) => !!files && files[f] !== null;
@@ -346,7 +347,7 @@ function FeatureView({ item, manyProjects, onChanged }: { item: FeatureItem; man
   const text = file && files ? files[file] : null;
 
   return (
-    <>
+    <Tabs value={shown} onValueChange={(v) => pick(v as FeatureTab)} className="min-h-0 flex-1 gap-0">
       <DetailHeader
         chips={
           <>
@@ -357,11 +358,11 @@ function FeatureView({ item, manyProjects, onChanged }: { item: FeatureItem; man
           </>
         }
         scope={`${manyProjects ? `${item.project} · ` : ""}${spec ? `specs/${spec.dir}` : (item.flow?.taskId ?? "")}`}
-        when={spec ? `${spec.machine} · ${formatTime(spec.pushedAt)} · ${spec.commit}` : item.flow ? `${item.flow.machine} · ${formatTime(item.flow.updatedAt)}` : undefined}
+        when={spec ? `${spec.machine} · ${formatTime(spec.pushedAt)} · ${spec.commit.slice(0, 12)}` : item.flow ? `${item.flow.machine} · ${formatTime(item.flow.updatedAt)}` : undefined}
         title={item.title}
       />
       <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line-subtle px-4 py-2 md:px-6">
-        <Tabs value={shown} onValueChange={(v) => pick(v as FeatureTab)} className="min-w-0 max-w-full">
+        <div className="min-w-0 max-w-full">
           <div className="max-w-full overflow-x-auto [scrollbar-width:none]">
             <TabsList aria-label={t("features.tabsLabel")}>
               {FEATURE_TABS.map((tab) => (
@@ -371,7 +372,7 @@ function FeatureView({ item, manyProjects, onChanged }: { item: FeatureItem; man
               ))}
             </TabsList>
           </div>
-        </Tabs>
+        </div>
         {spec?.tasksTotal ? <Progress done={spec.tasksDone} total={spec.tasksTotal} /> : null}
         <span className="flex flex-wrap gap-1.5 md:ml-auto md:flex-nowrap">
           {item.flow?.state === "stopped" && allow(item.project, "runDispatch") ? (
@@ -391,7 +392,7 @@ function FeatureView({ item, manyProjects, onChanged }: { item: FeatureItem; man
           ) : null}
         </span>
       </div>
-      <DetailBody>
+      <TabsContent value={shown} className="flex min-h-0 flex-1 flex-col"><DetailBody>
         <ErrorNote error={detail.error ?? retry.error} />
         {/* Why the flow stopped, or what its last check said. */}
         {item.flow?.note && item.flow.state !== "gate" ? <p className="m-0 text-xs wrap-anywhere text-fg-muted">{item.flow.note}</p> : null}
@@ -413,14 +414,17 @@ function FeatureView({ item, manyProjects, onChanged }: { item: FeatureItem; man
             ) : null}
           </>
         ) : shown === "checks" ? (
-          <Checks item={item} spec={files ? files.spec : spec ? undefined : null} canVerify={allow(item.project, "qaVerify")} />
+          <>
+            <AcceptanceEvidence key={item.key} item={item} />
+            <details className="rounded-md border border-line-subtle p-3"><summary className="min-h-11 cursor-pointer text-sm font-medium">{t("evidence.personal")}</summary><Checks item={item} spec={files ? files.spec : spec ? undefined : null} canVerify={allow(item.project, "qaVerify")} /></details>
+          </>
         ) : shown === "runs" ? (
           <FeatureRuns item={item} />
         ) : (
           <GateHistory item={item} />
         )}
-      </DetailBody>
-    </>
+      </DetailBody></TabsContent>
+    </Tabs>
   );
 }
 

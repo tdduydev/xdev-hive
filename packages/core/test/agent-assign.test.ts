@@ -133,23 +133,35 @@ describe("a task given to one agent (roadmap 50)", () => {
     assert.deepEqual((await sent(mbp)).map((r) => r.taskId), ["T-2"], "the place is free again");
   });
 
-  it("leaves alone a task someone already started another way", async () => {
-    const { hive, beat, push, sent, take } = await hub();
+  it("does not dispatch an assigned task twice when a manual run is accepted but not reported", async () => {
+    const { hive, beat, push, sent, take, later } = await hub();
     await beat(mbp);
-    await beat(mini);
-    await hive.call("tasks.assign", { id: "T-2", machineId: mbp.name }, lead);
+    later(31);
     await hive.call("tasks.assign", { id: "T-1", machineId: mbp.name }, lead);
-    const first = await sent(mbp);
-    assert.deepEqual(first.map((r) => r.taskId), ["T-2"], "the one place went to the first of the queue");
-    // Meanwhile a person runs T-1 by hand on the other machine, which takes it but has not pushed the run yet.
-    const byHand = await hive.call("runs.dispatch", { machineId: mini.name, project: "app", taskId: "T-1" }, lead);
-    await take(mini, byHand.id, "T-1");
-    // duy-mbp's place comes free, and T-1 is next in its queue — but it is already running on lan-mini.
-    await take(mbp, first[0]!.id, "T-2");
-    await push(mbp, "R-T-2", "T-2", "succeeded");
-    assert.deepEqual(await sent(mbp), [], "never a second run of the same task");
-    const queue = await hive.call("tasks.agentQueue", { machineId: mbp.name }, lead);
-    assert.equal(queue.find((q) => q.task.id === "T-1")!.waiting?.key, "errors.agentTaskBusy");
+    hive.db.prepare("UPDATE tasks SET agent_hold = ? WHERE id = 'T-1'").run(JSON.stringify({ key: "errors.machineOffline", message: "Offline", vars: { machine: "duy-mbp" } }));
+    await beat(mbp);
+    const byHand = await hive.call("runs.dispatch", { machineId: mbp.name, project: "app", taskId: "T-1" }, lead);
+    await take(mbp, byHand.id, "T-1");
+    // Let the assignment scheduler try again, so the reservation (not the hold) prevents a duplicate.
+    hive.db.prepare("UPDATE tasks SET agent_hold = NULL WHERE id = 'T-1'").run();
+    assert.deepEqual(await sent(mbp), [], "accepted requests still reserve the task");
+    await push(mbp, "R-T-1", "T-1", "running");
+    assert.deepEqual(await sent(mbp), [], "reported runs also reserve it");
+  });
+
+  it("keeps a hand dispatch on the plan the task is pinned to", async () => {
+    const { hive, beat, take, push } = await hub();
+    await beat(mbp, { profiles: [profile("claude-1"), profile("codex-1")] });
+    await hive.call("tasks.assign", { id: "T-1", machineId: mbp.name, profileId: "claude-1" }, lead);
+    // Assignment already starts a run; a manual retry needs that run to release the pinned plan's slot.
+    const [first] = await hive.call("runs.requests", { project: "app" }, lead);
+    assert.equal(first!.profileId, "claude-1");
+    await take(mbp, first!.id, "T-1");
+    await push(mbp, "R-T-1", "T-1", "failed");
+    const pinned = await hive.call("runs.dispatch", { project: "app", taskId: "T-1", role: "implement" }, lead);
+    assert.equal(pinned.profileId, "claude-1", "no plan named: the pin still holds");
+    const other = await hive.call("runs.dispatch", { project: "app", taskId: "T-2", role: "implement" }, lead);
+    assert.equal(other.profileId, null, "an unpinned task is still free to land anywhere");
   });
 
   it("stops at a task whose run failed until someone starts it again", async () => {
@@ -176,6 +188,94 @@ describe("a task given to one agent (roadmap 50)", () => {
     await push(mbp, "R-T-2", "T-2", "cancelled");
     assert.equal((await task("T-2")).agent?.hold?.key, "errors.agentRunCancelled");
     assert.deepEqual((await sent(mbp)).map((r) => r.taskId), ["T-1"], "and only the one started again goes out");
+  });
+
+  /** A run of T-1 reported by mbp, with the fields the turn rules look at. */
+  const report = (hive: SqliteHive, runId: string, role: string, status: string, extra: Record<string, unknown> = {}) =>
+    hive.call(
+      "runs.push",
+      { machine: "duy-mbp", runs: [{ runId, project: "app", taskId: "T-1", taskTitle: "T-1", role: role as never, status: status as never, profileId: "claude-1", createdAt: "2026-10-06T08:00:00.000Z", ...extra }] },
+      mbp,
+    );
+
+  it("does not count a run the app closed, or a rate limit, as the agent's turn, but not for ever", async () => {
+    const { hive, beat, sent, task } = await hub();
+    await beat(mbp);
+    await hive.call("tasks.assign", { id: "T-1", machineId: mbp.name }, lead);
+    const closed = "The app closed while the run was going";
+    for (const [n, run] of [[1, { status: "failed", error: closed }], [2, { status: "rate_limited" }], [3, { status: "failed", error: closed }]] as const) {
+      const out = await sent(mbp);
+      assert.deepEqual(out.map((r) => r.taskId), ["T-1"], `turn ${n} is handed out again`);
+      await hive.call("runs.requestResult", { id: out[0]!.id, status: "accepted", runId: `R-${n}` }, mbp);
+      await report(hive, `R-${n}`, "implement", run.status, "error" in run ? { error: run.error } : {});
+      assert.equal((await task("T-1")).agent?.hold, null, "cut short is not a failure");
+    }
+    // Three cut-short runs in a row: the task would only be cut short again, so it stops like any task that ran.
+    const queue = await hive.call("tasks.agentQueue", { machineId: mbp.name }, lead);
+    assert.equal(queue[0]!.waiting?.key, "errors.agentTurnOver");
+    assert.deepEqual(await sent(mbp), []);
+  });
+
+  it("counts the turn by the attempt the runner started after a rate limit, not by the rate-limited one", async () => {
+    const { hive, beat, sent } = await hub();
+    await beat(mbp);
+    await hive.call("tasks.assign", { id: "T-1", machineId: mbp.name }, lead);
+    const out = await sent(mbp);
+    await hive.call("runs.requestResult", { id: out[0]!.id, status: "accepted", runId: "R-1" }, mbp);
+    await report(hive, "R-1", "implement", "rate_limited");
+    await report(hive, "R-1b", "implement", "succeeded", { parentRun: "R-1", attempt: 2 });
+    const queue = await hive.call("tasks.agentQueue", { machineId: mbp.name }, lead);
+    assert.equal(queue[0]!.waiting?.key, "errors.agentTurnOver", "the next attempt used the turn");
+    assert.deepEqual(await sent(mbp), []);
+  });
+
+  it("gives back a task its cut-short run had claimed, so the next turn is handed out", async () => {
+    const { hive, beat, sent, task } = await hub();
+    await beat(mbp);
+    await hive.call("tasks.assign", { id: "T-1", machineId: mbp.name }, lead);
+    const out = await sent(mbp);
+    await hive.call("runs.requestResult", { id: out[0]!.id, status: "accepted", runId: "R-1" }, mbp);
+    await hive.call("tasks.claim", { id: "T-1" }, onMbp);
+    assert.equal((await task("T-1")).status, "doing");
+    await report(hive, "R-1", "implement", "failed", { error: "The app closed while the run was going" });
+    assert.equal((await task("T-1")).status, "todo", "not left in doing until a lease that may never run out");
+    assert.deepEqual((await sent(mbp)).map((r) => r.taskId), ["T-1"]);
+  });
+
+  it("uses the full report's verdict when the pushed review summary is clipped", async () => {
+    const { hive, beat, sent } = await hub();
+    await hive.call("sdlc.setProject", { project: "app", settings: { gates: { fix: "ai" } } }, admin);
+    await beat(mbp);
+    await hive.call("tasks.assign", { id: "T-1", machineId: mbp.name }, lead);
+    const first = await sent(mbp);
+    await hive.call("runs.requestResult", { id: first[0]!.id, status: "accepted", runId: "R-1" }, mbp);
+    await report(hive, "R-1", "implement", "succeeded");
+    await hive.call("tasks.update", { id: "T-1", status: "review" }, admin);
+    await report(hive, "R-1r", "review", "succeeded", { parentRun: "R-1", summary: "Review findings clipped before the verdict line", verdict: "changes" });
+    assert.deepEqual((await sent(mbp)).map((r) => [r.taskId, r.role]), [["T-1", "implement"]]);
+  });
+
+  it("gives a task the review asked changes of a new turn on its own machine, within maxFixRounds", async () => {
+    const { hive, beat, sent, task } = await hub();
+    await hive.call("sdlc.setProject", { project: "app", settings: { gates: { fix: "ai" }, maxFixRounds: 1 } }, admin);
+    await beat(mbp);
+    await hive.call("tasks.assign", { id: "T-1", machineId: mbp.name }, lead);
+    const first = await sent(mbp);
+    await hive.call("runs.requestResult", { id: first[0]!.id, status: "accepted", runId: "R-1" }, mbp);
+    await report(hive, "R-1", "implement", "succeeded");
+    await hive.call("tasks.update", { id: "T-1", status: "review" }, admin);
+    // A review of some other run (a late report of an older one) does not give the agent a turn.
+    await report(hive, "R-0r", "review", "succeeded", { parentRun: "R-0", summary: "Verdict: changes needed" });
+    assert.deepEqual(await sent(mbp), []);
+    await report(hive, "R-1r", "review", "succeeded", { parentRun: "R-1", summary: "Verdict: changes needed" });
+    const fix = await sent(mbp);
+    assert.deepEqual(fix.map((r) => [r.taskId, r.role]), [["T-1", "implement"]], "the fix round runs without anyone pressing anything");
+    assert.match(fix[0]!.instructions, /\S/);
+    await hive.call("runs.requestResult", { id: fix[0]!.id, status: "accepted", runId: "R-2" }, mbp);
+    await report(hive, "R-2", "implement", "succeeded");
+    await report(hive, "R-2r", "review", "succeeded", { parentRun: "R-2", summary: "Verdict: changes needed" });
+    assert.deepEqual(await sent(mbp), [], "maxFixRounds is 1: a second fix is for a person");
+    assert.equal((await task("T-1")).agent?.hold, null);
   });
 
   it("leaves a task that is in a run group to its group, and lends the group its machine", async () => {
@@ -207,6 +307,36 @@ describe("a task given to one agent (roadmap 50)", () => {
     assert.equal((await hive.call("tasks.claim", { id: "T-1" }, onMbp)).claimed, true);
     // A hub admin may still take it, to unblock a task whose agent will never come back.
     assert.equal((await hive.call("tasks.claim", { id: "T-2" }, onMini)).claimed, true, "nobody's task is claimed as before");
+  });
+
+  it("claims a dispatched run with only the profile.machine label and rejects other machines", async () => {
+    const { hive, beat, take, later } = await hub();
+    await beat(mbp);
+    later(31);
+    await beat(mini);
+    await hive.call("tasks.assign", { id: "T-1", machineId: mbp.name }, lead);
+    hive.db.prepare("UPDATE tasks SET agent_hold = ? WHERE id = 'T-1'").run(JSON.stringify({ key: "errors.machineOffline", message: "Offline", vars: { machine: "duy-mbp" } }));
+    await beat(mbp);
+    const run = await hive.call("runs.dispatch", { project: "app", taskId: "T-1" }, lead);
+    assert.equal(run.machineId, mbp.name, "automatic selection respects the assignment");
+    await take(mbp, run.id, "T-1");
+    const withoutSource = (actor: Actor): Actor => ({ ...actor, source: { via: "mcp" }, run: "R-T-1" });
+    await assert.rejects(hive.call("tasks.claim", { id: "T-1" }, withoutSource(onMini)), fails("errors.taskAssignedElsewhere"));
+    await assert.rejects(hive.call("tasks.claim", { id: "T-1" }, { ...onMbp, source: onMini.source }), fails("errors.taskAssignedElsewhere"));
+    await assert.rejects(hive.call("tasks.claim", { id: "T-1" }, { ...withoutSource(onMbp), agent: "claude-1.duy-mbp-extra" }), fails("errors.taskAssignedElsewhere"));
+    assert.equal((await hive.call("tasks.claim", { id: "T-1" }, withoutSource(onMbp))).claimed, true);
+  });
+
+  it("refuses dispatch to a different machine before creating a request, with unassign as recovery", async () => {
+    const { hive, beat, later } = await hub();
+    await beat(mbp);
+    later(31);
+    await beat(mini);
+    await hive.call("tasks.assign", { id: "T-1", machineId: mbp.name }, lead);
+    await assert.rejects(hive.call("runs.dispatch", { project: "app", taskId: "T-1", machineId: mini.name }, admin), fails("errors.dispatchAssignedElsewhere"));
+    assert.equal((await hive.call("runs.requests", {}, admin)).length, 0);
+    await hive.call("tasks.unassign", { id: "T-1" }, lead);
+    assert.equal((await hive.call("runs.dispatch", { project: "app", taskId: "T-1", machineId: mini.name }, lead)).machineId, mini.name);
   });
 
   it("is what a leader proposes and a project manager confirms", async () => {

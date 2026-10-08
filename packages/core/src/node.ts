@@ -2,6 +2,8 @@ export * from "./index.ts";
 export * from "./config.ts";
 export { SqliteHive, migrationIndex, type DocFilesInfo, type SqliteHiveOptions } from "./sqlite.ts";
 export { TerminalStore, type TerminalOpen } from "./terminal-store.ts";
+export { gateManifestHash, gateTemplateHash } from "./gate-hash.ts";
+export { GateStore } from "./gate-store.ts";
 export {
   TerminalRecorder, TerminalRecorderError, TerminalTranscriptTampered, loadTerminalKey, terminalRecorderReady, readTerminalTranscript,
   purgeTerminalSpools, transcriptEventSchema, RECORDER_FAILURES, type RecorderFailure, type RecorderIo, type RecorderOptions,

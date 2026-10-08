@@ -7,7 +7,7 @@ import { after, describe, it } from "node:test";
 import { MANAGED_START, type Actor, type HiveBackend } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { CODEGRAPH_MCP, installAgents, installCodexConfig, installShim } from "#desktop/main/installer.ts";
-import { commitAll, ensureWorktree, remoteStart } from "#desktop/main/runner/worktree.ts";
+import { branchState, commitAll, ensureWorktree, remoteStart } from "#desktop/main/runner/worktree.ts";
 import { proposeAgents, renderContext, syncProject } from "#desktop/main/sync.ts";
 
 const testTmpDirs = new Set<string>();
@@ -35,6 +35,19 @@ function gitRepo(): string {
 
 const SHIM = "/home/duy/.local/bin/hive-mcp";
 const WIN_SHIM = String.raw`C:\Users\duy\.xdev-hive\bin\hive-mcp.cmd`;
+
+it("reports the full checkout SHA and commit count for evidence", () => {
+  const repo = gitRepo();
+  const base = sh(repo, "git", ["rev-parse", "HEAD"]).trim();
+  writeFileSync(path.join(repo, "verified.txt"), "verified revision\n");
+  sh(repo, "git", ["add", "."]);
+  sh(repo, "git", ["commit", "-qm", "implementation"]);
+  const headSha = sh(repo, "git", ["rev-parse", "HEAD"]).trim();
+  assert.match(headSha, /^[a-f0-9]{40}$/);
+  assert.deepEqual(branchState(repo, base), { commits: 1, headSha });
+  sh(repo, "git", ["checkout", "--detach", base]);
+  assert.deepEqual(branchState(repo, base), { commits: 0, headSha: base });
+});
 
 describe("installAgents", () => {
   it("wires Claude, Gemini, Codex and Antigravity and is idempotent", () => {

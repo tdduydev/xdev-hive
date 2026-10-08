@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, realpathSync, symlinkSync, renameSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { applyProfileChanges, applyRunnerChange } from "#desktop/main/profile-changes.ts";
 import { RunStore } from "#desktop/main/runner/store.ts";
 import { writeSteer } from "#desktop/main/runner/steer.ts";
 import { after, describe, it, mock } from "node:test";
@@ -99,6 +100,7 @@ async function setup(
     usage?: RunnerHost["usage"];
     afterFinish?: RunnerOptions["afterFinish"];
     onEvent?: RunnerOptions["onEvent"];
+    onHub?: RunnerOptions["onHub"];
     /** Wraps the hub as this machine reaches it (to make some calls fail). */
     wrap?: (backend: HiveBackend) => HiveBackend;
     hub?: RunnerHost["hub"];
@@ -151,7 +153,7 @@ async function setup(
     diffReview: machine.diffReview ?? false,
     user: "duy",
     tickMs: 60_000,
-    onHub: (u) => hubUpdates.push(u),
+    onHub: (u) => { hubUpdates.push(u); machine.onHub?.(u); },
     afterFinish: machine.afterFinish,
     onEvent: machine.onEvent,
     sync: machine.sync,
@@ -288,6 +290,10 @@ describe("pickProfile", () => {
   it("prefers another vendor for reviews and honours pins and roles", () => {
     assert.equal(pickProfile([load(a), load(c)], { ...needs, role: "review", avoidKinds: ["claude"] }, now)?.profile.id, "codex-a");
     assert.equal(pickProfile([load(a, { running: 1 }), load(c)], { ...needs, preferredProfile: "claude-a" }, now), null);
+    const pinned = { ...needs, preferredProfile: "claude-a" };
+    const waitingOnPinned = [load(a, { cooldownUntil: "2026-09-27T09:00:00Z" }), load(c)];
+    assert.equal(pickProfile(waitingOnPinned, pinned, now), null, "a free Codex profile cannot take a run pinned to Claude");
+    assert.match(waitingReason(waitingOnPinned, pinned, now), /quota/, "the wait explains the pinned profile's cooldown");
     const planOnly = { ...c, roles: ["plan" as const] };
     assert.equal(pickProfile([load(planOnly)], needs, now), null);
     assert.equal(pickProfile([load(a), load(b)], { ...needs, excludedProfiles: ["claude-a"] }, now)?.profile.id, "claude-b");
@@ -1034,6 +1040,27 @@ describe("Runner", () => {
     await none.runner.settle();
     assert.match(none.runner.list()[0]!.error ?? "", /chạm ngưỡng dùng của gói sub \(claude-a\)/);
     none.runner.cancel(waiting.id);
+  });
+
+  it("runs on a subscription held back by its threshold and its rest once a person chooses Dùng tiếp", async () => {
+    const high: PlanUsage = { session: { percent: 97, resets: "6:20pm" }, week: { percent: 40, resets: null }, others: [], checkedAt: "" };
+    const { runner } = await setup([profile("claude-a", "claude", 1, "ok")], {}, "local", { usage: () => high });
+    runner.store.setCooldown("claude-a", "2099-01-01T00:00:00.000Z", "usage limit");
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    assert.equal(runner.store.get(run.id)!.status, "queued");
+
+    const before = Date.now();
+    await runner.resumeProfile("claude-a", "an");
+    await runner.settle();
+    assert.equal(runner.store.get(run.id)!.profileId, "claude-a");
+    const status = runner.profileStatuses().find((p) => p.id === "claude-a")!;
+    assert.equal(status.cooldownUntil, null);
+    assert.equal(status.resumed?.by, "an");
+    // "6:20pm" names no zone: the threshold stays off for a session's length.
+    const until = Date.parse(status.resumed!.until);
+    assert.ok(until >= before + 5 * 3600_000 - 1000 && until <= Date.now() + 5 * 3600_000, status.resumed!.until);
+    await assert.rejects(runner.resumeProfile("nope", "an"), /nope/);
   });
 
   it("tells the hub about a run that failed for good, not about one that rotated to another subscription", async () => {
@@ -2550,6 +2577,10 @@ describe("runs on the hub", () => {
     assert.deepEqual([record!.runId, record!.status, record!.machine, record!.profileId, record!.commits], [run.id, "succeeded", "duy-mbp", "claude-a", 1]);
     assert.match(record!.summary ?? "", /Implemented T-1\./);
     const full = (await hive.call("runs.get", { machineId: record!.machineId, runId: run.id }, admin))!;
+    const local = runner.store.get(run.id)!;
+    assert.match(local.headSha!, /^[a-f0-9]{40}$/);
+    assert.equal(full.headSha, git(local.worktree!, "rev-parse", "HEAD"));
+    assert.equal(record!.headSha, full.headSha);
     assert.match(unstamp(full.log ?? ""), /▶ Bash: npm test\n  ✓ ok 1 - adds/);
     // What it changed goes with it, for the web's Changes tab.
     assert.match(full.patch ?? "", /^diff --git a\//m);
@@ -4174,4 +4205,34 @@ describe("runner and the remote terminal's checkout locks (spec 69 §11)", () =>
       assert.equal(runner.checkoutBusy("demo", "worktree:T-1"), null);
     } finally { await runner.stop(); hive.close(); }
   });
+});
+
+it("applies remote settings on a live runner before acknowledging the next heartbeat", async () => {
+  const agents = [profile("remote", "claude", 10, "ok")];
+  const settings = { maxParallel: 2, acceptHubRuns: false };
+  let config = { runner: settings, gitlab: { mr: { enabled: false, when: "after_review" as "after_review" | "after_success" } }, agents };
+  const s = await setup(agents, settings, "hub", {
+    report: () => ({ runnerSettings: { maxParallel: settings.maxParallel, mrEnabled: config.gitlab.mr.enabled, mrWhen: config.gitlab.mr.when },
+      profiles: agents.map(p => ({ id: p.id, label: p.label, kind: p.kind, enabled: p.enabled, installed: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, priority: p.priority, stopAtSession: p.stopAtSession, stopAtWeek: p.stopAtWeek })) }),
+    onHub: update => {
+      if (update.runnerChange) { config = applyRunnerChange(config, update.runnerChange); Object.assign(settings, config.runner); }
+      if (update.profileChanges) { const next = applyProfileChanges(agents, update.profileChanges); agents.splice(0, agents.length, ...next.agents); }
+    },
+  });
+  try {
+    await s.runner.heartbeat();
+    const machine = (await s.hive.call("machines.list", {}, admin))[0]!;
+    await s.hive.call("machines.setRunner", { machineId: machine.id, settings: { maxParallel: 1, mrEnabled: true, mrWhen: "after_success" } }, admin);
+    await s.hive.call("machines.setProfile", { machineId: machine.id, profileId: "remote", stopAtSession: 50, stopAtWeek: 40 }, admin);
+    await s.runner.heartbeat();
+    assert.equal(settings.maxParallel, 1);
+    assert.equal(config.gitlab.mr.enabled, true);
+    assert.equal(config.gitlab.mr.when, "after_success");
+    assert.equal(usageStop(agents[0]!, { session: { percent: 50, resets: null }, week: null, others: [], checkedAt: new Date().toISOString() }), "session");
+    await s.runner.heartbeat();
+    const ack = (await s.hive.call("machines.list", {}, admin))[0]!;
+    assert.equal(ack.runnerChange, null);
+    assert.deepEqual(ack.profileChanges, []);
+    assert.equal(ack.maxParallel, 1);
+  } finally { await s.runner.stop(); }
 });

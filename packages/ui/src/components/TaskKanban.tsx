@@ -11,6 +11,7 @@ import { errorMessage, useCan, useHive } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { columnOf, ownerLabel, waitingLabels } from "#ui/lib/tasks.ts";
 import { canCloseTask } from "#ui/lib/permission-controls.ts";
+import { confirmTaskClose } from "#ui/lib/task-close.ts";
 import { agentLabel } from "#ui/lib/assignment.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
@@ -56,12 +57,20 @@ export function TaskKanban({
   const list = useMemo(() => tasks.map((task) => (moved[task.id] ? { ...task, status: moved[task.id]!, waitingOn: moved[task.id] === "todo" ? task.waitingOn : [] } : task)), [tasks, moved]);
   const key = (task: Task) => `${task.project}/${task.id}`;
 
-  const move = (task: Task, status: TaskStatus) => {
+  const move = async (task: Task, status: TaskStatus) => {
     const from = task.status;
     if (from === status) return;
     if (status === "done" && !canCloseTask(me, task.project)) {
       setError(t("tasks.doneNeedsReview"));
       return;
+    }
+    if (status === "done") {
+      try {
+        if (!await confirmTaskClose(client, task, t)) return;
+      } catch (err) {
+        setError(errorMessage(err));
+        return;
+      }
     }
     setMoved((m) => ({ ...m, [task.id]: status }));
     setError(null);

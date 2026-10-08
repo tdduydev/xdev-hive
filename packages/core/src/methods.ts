@@ -1,9 +1,12 @@
+import { evidenceScopeSchema, evidenceSourceSchema, evidenceRecordSchema, type AcceptanceEvidence, type EvidenceContext } from "#core/evidence.ts";
+import type { HistoryEntry } from "#core/history.ts";
 import { worktreeReportSchema, worktreeTargetSchema, worktreeCleanupSchema, type WorktreeCommand, type MachineWorktrees } from "#core/worktrees.ts";
 import { greenBatchSchema, RELEASE_STEPS, type AutoReleaseRecord, type AutoReleaseView } from "#core/auto-release.ts";
 import { mergeQueueConfigSchema, mergeResultSchema, type MergeQueueView, type MergeBatch } from "#core/merge-queue.ts";
 import { runTimeoutSettingsSchema, type RunTimeoutSettings } from "#core/run-timeout.ts";
 import { diffReviewSchema } from "#core/diff-review.ts";
 import { terminalCapabilitySchema } from "#core/terminal.ts";
+import { gateInputs, type GateHeartbeatReply, type GateJob, type GateState, type GateTemplatesView } from "#core/gate.ts";
 import { cleanupSuggestionSchema, MEMORY_CLEANUP_ERRORS, type MemoryCleanupSetting, type MemoryCleanupRun, type MemoryCleanupProposal } from "#core/memory-cleanup.ts";
 import { z } from "zod";
 import { PLAN_APPROVAL_MODES, PLAN_MAX, type ImplementationPlan } from "#core/plan-approval.ts";
@@ -68,6 +71,7 @@ import {
   type RetiredProject,
   type Machine,
   type ProfileChange,
+  type RunnerChange,
   type RunMergeOrder,
   type MachineCommand,
   type MachineTools,
@@ -148,6 +152,11 @@ const setupReport = z.object({
   machine: z.array(setupItem).max(20),
   projects: z.array(z.object({ project, repo: z.string().max(500), items: z.array(setupItem).max(10) })).max(50),
 });
+const machineRunnerSettings = z.object({
+  maxParallel: z.number().int().min(1).max(8),
+  mrEnabled: z.boolean(),
+  mrWhen: z.enum(["after_review", "after_success"]),
+});
 const reportedProfile = z.object({
   supportedModels: z.array(z.string().max(200)).max(2000).nullable().optional(),
   timeoutMinutes: z.number().int().min(1).max(720).optional(),
@@ -178,6 +187,8 @@ const reportedProfile = z.object({
   rateLimited: z.number().int().min(0),
   statsSince: z.string().max(40).nullable().optional(),
   priority: z.number().int().min(0).max(100).optional(),
+  stopAtSession: z.number().int().min(1).max(100).optional(),
+  stopAtWeek: z.number().int().min(1).max(100).optional(),
   maxConcurrent: z.number().int().min(1).max(8).optional(),
   classify: z.boolean().optional(),
   research: z.boolean().optional(),
@@ -346,6 +357,10 @@ export const schemas = {
    * One file an agent made during a run (roadmap 41c), in base64, from the machine that ran it. One per call: 20
    * files of 5 MB in one request would be far over what the hub takes. The same name from the same run replaces it.
    */
+  "evidence.record": evidenceRecordSchema,
+  "evidence.context": evidenceSourceSchema.extend({ project, taskId }),
+  "evidence.tasks": evidenceSourceSchema.extend({ project }),
+  "evidence.list": evidenceScopeSchema.partial({ specHash: true, commitSha: true }).extend({ specDir: evidenceSourceSchema.shape.specDir.optional(), specBranch: evidenceSourceSchema.shape.specBranch.optional(), limit: z.number().int().min(1).max(200).default(100), offset: z.number().int().min(0).default(0) }),
   "artifacts.put": z.object({
     project,
     taskId,
@@ -550,7 +565,7 @@ export const schemas = {
   "tasks.notes": z.object({ id: taskId, limit: z.number().int().min(1).max(50).default(10) }),
 
   /** Desktop runners report every ~30 s; the reply carries the shared quota cooldowns. */
-  "mergeQueue.get": z.object({ project }),
+  "mergeQueue.get": z.object({ project, landing: z.object({ taskId, branch: z.string(), runId: z.string(), machineId: z.string() }).optional() }),
   "mergeQueue.configure": z.object({ project, config: mergeQueueConfigSchema }),
   "mergeQueue.take": z.object({ project, instance: z.string().regex(/^[a-f0-9]{8,64}$/) }),
   "mergeQueue.progress": z.object({ id: z.number().int().positive(), instance: z.string(), step: z.string().max(300), log: z.string().max(32000).default("") }),
@@ -569,12 +584,15 @@ export const schemas = {
     appliedToolApprovals: z.array(z.uuid()).max(100).default([]),
     /** Remote terminal opt-in (spec 69). Absent (older app) or malformed reads as none, never as the last one sent. */
     terminal: terminalCapabilitySchema.nullable().default(null).catch(null),
+    /** Gate jobs (spec 69h1 §3): checked by the hub piece by piece, so a bad manifest never fails the beat. */
+    gate: z.unknown().optional(),
     /** Projects the app has a repo for: the web offers only these machines for a project's runs. */
     projects: z.array(project).max(200).optional(),
     /** The user lets project managers queue runs on this machine from the web. */
     acceptsRuns: z.boolean().optional(),
     gateRunner: z.boolean().optional(),
     maxParallel: z.number().int().min(1).max(20).optional(),
+    runnerSettings: machineRunnerSettings.optional(),
     /** Temporary intake hold for an app update; keep previously dispatched requests pending. */
     updateDraining: z.boolean().optional(),
     runs: z
@@ -611,8 +629,10 @@ export const schemas = {
   "machines.approveTool": z.object({ machineId: machineRef, toolId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/), hash: z.string().regex(/^[0-9a-f]{64}$/) }),
   /** What the project's machines still lack to run its agents (roadmap 29a): any reader of the project, unlike admin.machines. */
   "machines.setupMissing": z.object({ project }),
+  /** Public runner settings only, with the same human admin/owner permission as setProfile. */
+  "machines.setRunner": z.object({ machineId: machineRef, settings: machineRunnerSettings.partial().refine(s => Object.keys(s).length > 0, "at least one runner setting") }),
   /**
-   * Turns one of a machine's profiles on or off, or changes its priority (roadmap 18d): a hub admin, or the person whose
+   * Changes a profile's enabled state, priority or stop thresholds: a hub admin, or the person whose
    * account the machine's token belongs to. The machine applies it at its next heartbeat, no restart.
    */
   "machines.setProfile": z
@@ -621,8 +641,10 @@ export const schemas = {
       profileId: z.string().min(1).max(40),
       enabled: z.boolean().optional(),
       priority: z.number().int().min(0).max(100).optional(),
+      stopAtSession: z.number().int().min(1).max(100).optional(),
+      stopAtWeek: z.number().int().min(1).max(100).optional(),
     })
-    .refine((i) => i.enabled !== undefined || i.priority !== undefined, "enabled or priority"),
+    .refine((i) => [i.enabled, i.priority, i.stopAtSession, i.stopAtWeek].some(v => v !== undefined), "at least one profile setting"),
   /** A machine reports a run that failed for good or opened a merge request (for the hub's webhooks). */
   "runs.report": z.object({
     kind: z.enum(["failed", "mr", "ci_limit"]),
@@ -695,6 +717,7 @@ export const schemas = {
           parentRun: z.string().regex(/^[\w.-]{1,40}$/).nullable().optional(),
           instructions: z.string().max(4000).optional(),
           baseSha: z.string().regex(/^[a-f0-9]{40,64}$/).nullable().optional(),
+          headSha: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/).nullable().optional(),
           verdict: z.enum(VERDICTS).nullable().optional(),
           log: z.string().max(60_000).default(""),
           /** What the run changed (git diff from its base), when it changed since the last push (roadmap 22l). */
@@ -1047,6 +1070,21 @@ export const schemas = {
 
   /** The hub's agent policy and each visible project's part (roadmap 27a). */
   /** The lifecycle gates (roadmap 34): the hub's ceiling and each project's modes, what applies now. */
+  /**
+   * Gate jobs (spec 69h1, 69h2). A person creates, approves, cancels and reconciles from the web (a session cookie,
+   * never a bearer); the machine the job names takes it and reports with the lease take gave it.
+   */
+  "gate.templates": gateInputs.templates,
+  "gate.create": gateInputs.create,
+  "gate.approve": gateInputs.approve,
+  "gate.cancel": gateInputs.cancel,
+  "gate.reconcile": gateInputs.reconcile,
+  "gate.take": gateInputs.take,
+  "gate.progress": gateInputs.progress,
+  "gate.artifact": gateInputs.artifact,
+  "gate.result": gateInputs.result,
+  "gate.list": gateInputs.list,
+  "gate.get": gateInputs.get,
   "autoRelease.green": greenBatchSchema,
   "autoRelease.list": z.object({ project }),
   "autoRelease.take": z.object({ project }),
@@ -1158,6 +1196,14 @@ export const schemas = {
   "admin.machines": z.object({}),
   "admin.commandCreate": z.object({ machineId: machineRef, itemId: setupItemId }),
   "admin.commandCancel": z.object({ id }),
+  "history.list": z.object({
+    project: project.optional(), projects: projectList,
+    query: z.string().max(200).optional(), taskId: taskId.optional(),
+    kind: z.enum(["run", "chat", "gate", "audit"]).optional(),
+    since: z.iso.datetime().optional(), until: z.iso.datetime().optional(),
+    offset: z.number().int().min(0).max(100000).default(0),
+    limit: z.number().int().min(1).max(100).default(50),
+  }),
   "admin.audit": z.object({
     limit: z.number().int().min(1).max(1000).default(200),
     action: z.string().max(60).optional(),
@@ -1176,6 +1222,7 @@ export type MethodInput<M extends Method> = z.input<(typeof schemas)[M]>;
 export type ParsedInput<M extends Method> = z.output<(typeof schemas)[M]>;
 
 export interface MethodOutput {
+  "history.list": { entries: HistoryEntry[]; hasMore: boolean };
   "docs.list": DocSummary[];
   "docs.get": Doc | null;
   "docs.history": DocVersion[];
@@ -1195,6 +1242,10 @@ export interface MethodOutput {
   "docs.assetGet": { asset: DocAsset; data: string } | null;
   "docs.assetPut": DocAsset;
   "docs.assetRemove": { removed: boolean };
+  "evidence.record": AcceptanceEvidence;
+  "evidence.context": EvidenceContext | null;
+  "evidence.tasks": Task[];
+  "evidence.list": AcceptanceEvidence[];
   "artifacts.put": Artifact;
   "artifacts.list": Artifact[];
   "artifacts.get": { artifact: Artifact; data: string; truncated?: boolean } | null;
@@ -1291,6 +1342,7 @@ export interface MethodOutput {
     budgetBlocked: BudgetBlock[];
     /** Changes to this machine's profiles asked for on the web (roadmap 18d). Older apps ignore it; the hub drops them after a day. */
     profileChanges: ProfileChange[];
+    runnerChange?: RunnerChange | null;
     /** Merges asked for on the web (roadmap 18c); only while it accepts runs from the hub. Older apps ignore it. */
     mergeRuns: RunMergeOrder[];
     /**
@@ -1299,6 +1351,8 @@ export interface MethodOutput {
      * One list for both states — the app shows one label, and a deleted project is just as gone. Older apps ignore it.
      */
     archivedProjects: string[];
+    /** What the hub kept of the gate manifests sent and which it still lacks (spec 69h1 §3). Absent: no gate sent. */
+    gate?: GateHeartbeatReply;
   };
   "machines.list": Machine[];
   "machines.repair": Machine;
@@ -1308,6 +1362,7 @@ export interface MethodOutput {
   "machines.approveTool": ToolApproval;
   "machines.setupMissing": MachineSetupMissing[];
   "machines.setProfile": Machine;
+  "machines.setRunner": Machine;
   "costs.summary": CostSummary;
   "budgets.list": BudgetUsage[];
   "budgets.set": BudgetUsage[];
@@ -1374,6 +1429,17 @@ export interface MethodOutput {
   "agents.paused": AgentsPaused;
   "policy.get": TeamPolicy;
   "policy.set": TeamPolicy;
+  "gate.templates": GateTemplatesView;
+  "gate.create": GateJob;
+  "gate.approve": GateJob;
+  "gate.cancel": GateJob;
+  "gate.reconcile": GateJob;
+  "gate.take": { job: GateJob; leaseToken: string } | null;
+  "gate.progress": { state: GateState; leaseUntil: string | null };
+  "gate.artifact": { name: string; sha256: string; bytes: number };
+  "gate.result": GateJob;
+  "gate.list": GateJob[];
+  "gate.get": GateJob;
   "autoRelease.green": AutoReleaseRecord;
   "autoRelease.list": AutoReleaseView;
   "autoRelease.take": AutoReleaseRecord | null;
@@ -1443,6 +1509,10 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "docs.assetGet": "viewer",
   "docs.assetPut": "agent",
   "docs.assetRemove": "agent",
+  "evidence.record": "member",
+  "evidence.context": "viewer",
+  "evidence.tasks": "viewer",
+  "evidence.list": "viewer",
   "artifacts.put": "agent",
   "artifacts.list": "viewer",
   "artifacts.get": "viewer",
@@ -1509,6 +1579,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "machines.setupMissing": "viewer",
   // Not a project right: the hub checks for a hub admin or the machine's owner, and refuses agents.
   "machines.setProfile": "agent",
+  "machines.setRunner": "agent",
   "costs.summary": "viewer",
   "budgets.list": "viewer",
   // Also no per-project grants (a hub admin), as for the hub's agent policy: a cap may bind every project.
@@ -1583,6 +1654,17 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "agents.paused": "viewer",
   "policy.get": "viewer",
   "policy.set": "admin",
+  "gate.templates": "viewer",
+  "gate.create": "member",
+  "gate.approve": "member",
+  "gate.cancel": "member",
+  "gate.reconcile": "member",
+  "gate.take": "agent",
+  "gate.progress": "agent",
+  "gate.artifact": "agent",
+  "gate.result": "agent",
+  "gate.list": "viewer",
+  "gate.get": "viewer",
   "autoRelease.green": "agent",
   "autoRelease.list": "viewer",
   "autoRelease.take": "agent",
@@ -1636,6 +1718,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "admin.machines": "admin",
   "admin.commandCreate": "admin",
   "admin.commandCancel": "admin",
+  "history.list": "viewer",
   "admin.audit": "admin",
 };
 

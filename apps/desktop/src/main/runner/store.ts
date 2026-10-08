@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { AgentKind, AgentRole, PreferKind, AgentRun, BestOf, CiFix, MrState, MrStatus, PipelineStatus, RunCompression, RunStatus, RunTokens, ModelSelection } from "@xdev-hive/core";
+import type { AgentKind, AgentRole, PreferKind, ProfileResume, AgentRun, BestOf, CiFix, MrState, MrStatus, PipelineStatus, RunCompression, RunStatus, RunTokens, ModelSelection } from "@xdev-hive/core";
 import { tr } from "#desktop/main/i18n.ts";
 import type { UsageSample } from "./usage.ts";
 
@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS profile_cooldowns(
   profile_id TEXT PRIMARY KEY, until TEXT NOT NULL, reason TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS profile_stats_since(
   profile_id TEXT PRIMARY KEY, since TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS profile_resumes(
+  profile_id TEXT PRIMARY KEY, until TEXT NOT NULL, at TEXT NOT NULL, by TEXT NOT NULL);
 `;
 
 /** Columns added after the first release; created on open when missing. */
@@ -449,6 +451,18 @@ export class RunStore {
     this.db
       .prepare("INSERT INTO profile_stats_since(profile_id, since) VALUES (?, ?) ON CONFLICT(profile_id) DO UPDATE SET since = excluded.since")
       .run(profileId, since);
+  }
+
+  /** The profile's last Dùng tiếp, kept after it ends so the card still says who asked. */
+  resume(profileId: string): ProfileResume | null {
+    const row = this.db.prepare("SELECT until, at, by FROM profile_resumes WHERE profile_id = ?").get(profileId) as Row | undefined;
+    return row ? { until: String(row.until), at: String(row.at), by: String(row.by) } : null;
+  }
+
+  setResume(profileId: string, resume: ProfileResume): void {
+    this.db
+      .prepare("INSERT INTO profile_resumes(profile_id, until, at, by) VALUES (?, ?, ?, ?) ON CONFLICT(profile_id) DO UPDATE SET until = excluded.until, at = excluded.at, by = excluded.by")
+      .run(profileId, resume.until, resume.at, resume.by.slice(0, 200));
   }
 
   /** A profile's runs that finished since `since`, with their tokens only (roadmap 46). */

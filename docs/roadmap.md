@@ -312,10 +312,10 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **58e. codex-localhost**: tuỳ chọn profile Codex mở được cổng 127.0.0.1 để chạy e2e.
 
 - **59. flow-speed** (hỏi 7/10: "giao nhiều việc, nhiều task á"): từ lúc giao tới lúc phát hành nhanh hơn: thêm máy làm cổng kiểm, e2e bớt lỗi chập chờn, giao lại run, tự cập nhật, ghép lô bằng script. Spec: [docs/specs/59-flow-speed.md](specs/59-flow-speed.md). Tách:
-  - [ ] **59a. e2e-linux**: e2e desktop và điện thoại xanh trên Linux (xvfb), phím tắt theo hệ điều hành.
+  - [x] **59a. e2e-linux**: e2e desktop và điện thoại xanh trên Linux (xvfb), phím tắt theo hệ điều hành.
   - [x] **59b. tests-linux**: `npm test` xanh trên Linux, phần phụ thuộc máy sau lớp giả lập.
   - [x] **59c. e2e-needs**: khai báo `NEEDS` cho mọi bước, mỗi bước chạy riêng được bằng `--only`.
-  - [ ] **59d. e2e-click**: `tab.click` chờ phần tử đứng yên và không bị che, thay các bản vá rời (sau 59c).
+  - [x] **59d. e2e-click**: `tab.click` chờ phần tử đứng yên và không bị che, thay các bản vá rời (sau 59c).
   - [x] **59e. run-redispatch**: nút *Giao lại* cho run lỗi, hết giờ, huỷ: đổi máy/gói/thời hạn, làm tiếp trên branch.
   - [x] **59f. auto-update-idle**: app tự cài bản mới khi không có run, cả bản Linux đã giải nén.
   - [x] **59g. batch-tool**: `scripts/review-batch.mjs` ghép một lô, báo xung đột, chạy cổng kiểm.
@@ -323,10 +323,10 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **59i. deploy-log-check**: hub gom lỗi trong log từ lúc khởi động, thẻ ở *Quản trị › Vận hành*, cảnh báo khi lỗi lặp nhiều.
 
 - **60. autopilot** (hỏi 7/10: "sao mỗi lần làm task phải dí task, chứ không phải chỉ cần chat ra lệnh rồi tự làm"; chọn: cả vòng tự chạy của phiên lẫn autopilot trong Hive, xanh thì tự phát hành): chỉ chat ra lệnh, Hive tự giao, tự ghép, tự phát hành. Spec: [docs/specs/60-autopilot.md](specs/60-autopilot.md). Tách:
-  - [ ] **60a. auto-dispatch**: hub tự giao task sẵn sàng cho gói rảnh (bộ chọn model, quota, `maxParallel`), tự *Giao lại* một lần khi lỗi.
-  - [ ] **60b. merge-queue**: máy vai *Cổng kiểm* gom nhánh `review` thành lô, ghép thử, chạy cổng kiểm; xanh thì push, đỏ thì tạo INT/LAND.
-  - [ ] **60c. auto-release**: chốt *Phát hành* trong *Quy trình*; tự động thì version, release, deploy, rollout sau mỗi lô xanh.
-  - [ ] **60d. chat-to-plan**: leader biến yêu cầu trong chat thành spec, task và *Kế hoạch*; bấm *Làm* một lần hoặc tự chạy.
+  - [x] **60a. auto-dispatch**: hub tự giao task sẵn sàng cho gói rảnh (bộ chọn model, quota, `maxParallel`), tự *Giao lại* một lần khi lỗi.
+  - [x] **60b. merge-queue**: máy vai *Cổng kiểm* gom nhánh `review` thành lô, ghép thử, chạy cổng kiểm; xanh thì push, đỏ thì tạo INT/LAND.
+  - [x] **60c. auto-release**: chốt *Phát hành* trong *Quy trình*; tự động thì version, release, deploy, rollout sau mỗi lô xanh.
+  - [x] **60d. chat-to-plan**: leader biến yêu cầu trong chat thành spec, task và *Kế hoạch*; bấm *Làm* một lần hoặc tự chạy.
 
 - **62. chat-control** (hỏi 7/10: "phần chat trên giao diện client để giao task, nghiên cứu… cho dễ quản trị trên Hive"): chat là chỗ quản trị chính. Spec: [docs/specs/62-chat-control.md](specs/62-chat-control.md). Tách:
   - [x] **62a. codex-leader**: leader chạy bằng gói Codex (phiên resume, MCP, propose), tự sang Codex khi Claude hết quota.
@@ -350,6 +350,8 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **65a. browser-tool**: Playwright MCP trong danh mục tool, agent lướt/test web có tài khoản test qua `secretEnv`.
 
 - [x] **69f. terminal-ui** (0.146.3): UI xterm dùng chung, vi/en, form từ Máy/Run/Chat và link chỉ điền scope; step-up người dùng cookie, thanh phím mobile, dán có xem trước, nhập IME fallback, reconnect không gửi lại input, detach/stop và chỉ mục audit. E2e dùng hub/WS thật với máy tổng hợp; production vẫn fail closed khi chưa có identity máy. Worktree, tải transcript và IME bàn phím thật thuộc phần nghiệm thu tiếp theo của 69.
+
+- [x] **UX-70-HISTORY. Timeline và tìm kiếm lịch sử** (0.147.0): trang *Lịch sử* của hub tái dùng chat, run, chốt SDLC và audit; tìm nội dung tiếng Việt, lọc task/nguồn/ngày/phạm vi, phân trang sau khi lọc quyền, liên kết tới nguồn. Audit và chat toàn hub chỉ dành cho hub admin. Run hiện bản ghi mới nhất; không tạo bản sao nhật ký. Có unit test quyền, phân trang và tìm kiếm; e2e desktop/mobile thêm bước `history-page`, cần chạy lại trên máy mở được Electron (môi trường task SIGABRT trước khi mở trình duyệt).
 
 ## Sửa lỗi
 
@@ -392,3 +394,8 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 - [x] **codex-mcp-approve** (pilot xdev-auth ngày 29/9): Codex 0.157 từ chối mọi tool MCP có ghi khi chạy headless ("MCP tool call requires approval, but approval policy is never"), nên agent Codex không claim task hay ghi memory được và AUTH-4 dừng ngay. Run `codex exec` của Hive thêm `-c mcp_servers.xdev-hive.default_tools_approval_mode="approve"` (container: `hive`), block Hive trong `~/.codex/config.toml` có dòng đó; đã thử trên hive tạm: có khoá thì ghi được, không có thì bị chặn.
 
 - [x] **board-refresh**: Board ngừng làm mới ngay khi hết run chờ/chạy, trước lúc run vừa xong được ghi MR (push + mở MR/PR chạy sau khi lưu trạng thái), nên thẻ task thiếu badge MR. Runner giờ đánh dấu run `finishing` (trong `list()`) tới khi xong ghi chú Hive, MR và run tiếp theo; Board coi đó là còn hoạt động.
+
+- [x] **UX-70-BLOCKERS. Trung tâm xử lý công việc bị kẹt** (8/10): chế độ *Bị kẹt* trong Công việc trên hub gom phụ thuộc (kể cả số lượng ngoài quyền xem), quota/chi tiêu, chính sách, duyệt, kiểm thử, xung đột, phát hành và máy offline. Hiện nguyên nhân có cấu trúc, bước tiếp theo, quyền xử lý và mở chi tiết dùng lại luồng thao tác hiện có. Không suy đoán nguyên nhân từ log tự do. Kiểm thử: `blockers.test.ts` và bước web/mobile e2e `blocker-center`.
+- [x] **UX-70-QUALITY. Đánh giá chất lượng agent/model**: thẻ Chọn model có cohort 30 ngày theo implement đầu tiên; mẫu số task, review/CI quan sát, retry không tính quota, trung vị thời gian/chi phí chỉ trên task đủ dữ liệu. Lọc theo nhóm; không tác động tự học hay xếp hạng model.
+- [x] **UX-70-ONBOARDING. Khởi tạo dự án đến task đầu tiên:** tái dùng Projects/Setup/Start; hướng dẫn repository, kết nối/agent, chính sách hiệu lực và task đầu tiên trên web/desktop. Tiến độ lấy từ dữ liệu thật, bản nháp tiếp tục trong phiên trình duyệt. E2E `project-onboarding` và smoke Start đã thêm; cần chạy lại kiểm thử giao diện ở môi trường Electron hoạt động (run hiện tại SIGABRT ngay từ `--version`).
+- [x] **FEAT-machine-settings-remote**: admin hoặc chủ máy đổi số run song song (1–8), tự tạo MR/PR và thời điểm tạo, ngưỡng dừng phiên/tuần của gói từ trang Máy. Máy nhận ở heartbeat, lưu config và áp cho lượt mới không cần khởi động lại; hub retry đến khi máy báo đúng, audit và chặn app cũ.

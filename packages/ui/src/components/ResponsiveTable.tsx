@@ -29,14 +29,19 @@ export function ResponsiveTable({ children, ...props }: ComponentProps<typeof Ta
 
 export function ResponsiveTableRow({ children, ...props }: ComponentProps<typeof TableRow>) {
   const labels = useContext(Labels);
+  let column = 0;
   return (
     <TableRow role="row" tabIndex={props.onClick ? 0 : undefined} onKeyDown={props.onClick ? (e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); e.currentTarget.click(); } } : undefined} {...props}>
-      {flatten(children).map((cell, index) => cell.type === TableCell && !cell.props.colSpan ? (
-        <TableCell role="cell" key={cell.key ?? index} {...cell.props} data-card-actions={!labels[index] || undefined}>
-          <ResponsiveCellLabel ariaHidden>{labels[index]}</ResponsiveCellLabel>
-          <div data-card-value>{cell.props.children}</div>
-        </TableCell>
-      ) : cell)}
+      {flatten(children).map((cell, index) => {
+        const label = labels[column];
+        column += cell.props.colSpan ?? 1;
+        return cell.type === TableCell && !cell.props.colSpan ? (
+          <TableCell role="cell" key={cell.key ?? index} {...cell.props} data-card-actions={!label || undefined}>
+            <ResponsiveCellLabel ariaHidden>{label}</ResponsiveCellLabel>
+            <div data-card-value>{cell.props.children}</div>
+          </TableCell>
+        ) : cell;
+      })}
     </TableRow>
   );
 }

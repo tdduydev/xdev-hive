@@ -113,8 +113,9 @@ describe("chat with a project's leader", () => {
       await hive.call("machines.heartbeat", { machine: "test", instance: "1234abcd", projects: ["app"], acceptsRuns: true, profiles: [profile("claude-1")] }, mbp);
       const first = await hive.call("chat.send", { project: "app", machineId: mbp.name, text: "Old message" }, lead);
       await hive.call("chat.finish", { replyId: first.reply.id, status: "done", text: "Old answer", sessionId: "old-session", costUsd: 0.01 }, mbp);
-      // Recreate the pre-chat-upgrade schema, including the later research/terminal tables and machine token pin, before replaying migrations.
-      hive.db.exec(`DROP TABLE research_runs; DROP TABLE terminal_audit_chunks; DROP TABLE terminal_stepups; DROP TABLE terminal_tickets; DROP TABLE terminal_sessions; ALTER TABLE machines DROP COLUMN terminal_capability; ALTER TABLE machines DROP COLUMN token_id; ALTER TABLE chat_messages DROP COLUMN tokens; ALTER TABLE chat_messages DROP COLUMN switched_from; ALTER TABLE chat_messages DROP COLUMN rate_limited; PRAGMA user_version = ${migrationIndex("ALTER TABLE chat_messages ADD COLUMN tokens")}`);
+      // Recreate the pre-chat-upgrade schema, including the later research/terminal/gate tables, runner settings and machine token pin, before replaying migrations.
+      hive.db.exec("DROP TABLE acceptance_evidence; ALTER TABLE run_records DROP COLUMN head_sha");
+      hive.db.exec(`ALTER TABLE machines DROP COLUMN runner_settings; ALTER TABLE machines DROP COLUMN runner_change; ALTER TABLE machine_profile_changes DROP COLUMN stop_at_session; ALTER TABLE machine_profile_changes DROP COLUMN stop_at_week; DROP TABLE gate_jobs; DROP TABLE gate_manifests; ALTER TABLE machines DROP COLUMN gate_capability; DROP TABLE research_runs; DROP TABLE terminal_audit_chunks; DROP TABLE terminal_stepups; DROP TABLE terminal_tickets; DROP TABLE terminal_sessions; ALTER TABLE machines DROP COLUMN terminal_capability; ALTER TABLE machines DROP COLUMN token_id; ALTER TABLE chat_messages DROP COLUMN tokens; ALTER TABLE chat_messages DROP COLUMN switched_from; ALTER TABLE chat_messages DROP COLUMN rate_limited; PRAGMA user_version = ${migrationIndex("ALTER TABLE chat_messages ADD COLUMN tokens")}`);
       hive.close();
       const upgraded = new SqliteHive(file);
       try {

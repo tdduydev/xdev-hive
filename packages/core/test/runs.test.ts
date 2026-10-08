@@ -24,6 +24,20 @@ const run = (over: Record<string, unknown> = {}) => ({
 });
 
 describe("run records", () => {
+  it("keeps an exact code revision across older-client pushes and isolates machines", async t => {
+    const hive = new SqliteHive(":memory:");
+    t.after(() => hive.close());
+    const headSha = "a".repeat(40);
+    await hive.call("runs.push", { machine: "duy-mbp", runs: [run({ headSha })] }, machineA);
+    await hive.call("runs.push", { machine: "duy-mbp", runs: [run({ status: "succeeded" })] }, machineA);
+    await hive.call("runs.push", { machine: "lan-mbp", runs: [run({ headSha: "b".repeat(64) })] }, machineB);
+    assert.equal((await hive.call("runs.get", { machineId: machineA.name, runId: "R-abc123" }, admin))?.headSha, headSha);
+    assert.equal((await hive.call("runs.list", { project: "app" }, admin)).find(r => r.machineId === machineB.name)?.headSha, "b".repeat(64));
+    await assert.rejects(hive.call("runs.push", { machine: "duy-mbp", runs: [run({ headSha: "abcdef1" })] }, machineA), e => e instanceof HiveError && e.code === "bad_request");
+    await hive.call("runs.push", { machine: "duy-mbp", runs: [run({ headSha: null })] }, machineA);
+    assert.equal((await hive.call("runs.get", { machineId: machineA.name, runId: "R-abc123" }, admin))?.headSha, null);
+  });
+
   it("keeps what a machine pushes, newest first, the log only for one run", async () => {
     const hive = new SqliteHive(":memory:");
     assert.deepEqual(await hive.call("runs.push", { machine: "duy-mbp", runs: [run()] }, machineA), { stored: 1 });

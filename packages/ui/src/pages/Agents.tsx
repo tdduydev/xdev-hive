@@ -1,8 +1,10 @@
 import { WorktreeManager } from "#ui/components/Worktrees.tsx";
 import { visibleInterval } from "#ui/lib/visible-interval.ts";
 import { ResponsiveGridRow, ResponsiveTableFrame } from "#ui/components/ResponsiveTable.tsx";
+import { AttentionList, type AttentionItem } from "#ui/components/AttentionList.tsx";
+import { SummaryStrip, type SummaryItem } from "#ui/components/SummaryStrip.tsx";
 import { ConfigIssues } from "#ui/components/ConfigIssues.tsx";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "cn";
 import { ChevronRight, CircleHelp, MoreHorizontal, Plus, RefreshCw } from "lucide-react";
 import {
@@ -40,6 +42,7 @@ import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@xdev-hive/ui/components/ui/popover";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@xdev-hive/ui/components/ui/sheet";
 import { Switch } from "@xdev-hive/ui/components/ui/switch";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@xdev-hive/ui/components/ui/toggle-group";
@@ -87,7 +90,6 @@ export function AgentsPage() {
   // Rows opened for their Chi tiết, and whether the off subscriptions are unfolded (roadmap 39c).
   const [openRows, setOpenRows] = useState<Record<string, boolean>>({});
   const [showOff, setShowOff] = useState(false);
-  const manage = useRef<HTMLDivElement>(null);
   // Profiles whose sign-in was opened from here: checked every few seconds until signed in (at most 5 minutes).
   const [waiting, setWaiting] = useState<Record<string, number>>({});
   const refresh = () => setTick((t) => t + 1);
@@ -150,29 +152,69 @@ export function AgentsPage() {
     while (taken.has(`${kind}-${n}`)) n++;
     setEditing({ profile: { ...base, id: `${kind}-${n}`, label: kind === "custom" ? base.label : t("agents.newLabel", { kind: t(`agentKind.${kind}`), n }), env: {} } });
   };
-  // Thêm gói and Sửa both work in Quản lý gói, where the forms are: the button at the top only brings the page there.
-  const goManage = () => manage.current?.scrollIntoView({ block: "start" });
-  const edit = (profile: AgentProfile, previousId?: string) => {
-    setEditing({ profile, previousId });
-    goManage();
+  // Thêm gói and Sửa share one sheet, so the forms no longer sit 16 buttons down the page.
+  const [addOpen, setAddOpen] = useState(false);
+  const sheetOpen = addOpen || adding !== null || editing !== null;
+  const closeSheet = () => {
+    setAddOpen(false);
+    setAdding(null);
+    setEditing(null);
   };
+  const edit = (profile: AgentProfile, previousId?: string) => {
+    setAddOpen(false);
+    setEditing({ profile, previousId });
+  };
+  const list = profiles.data ?? [];
+  const quotaNow = machineQuota(list, now);
+  const enabledCount = list.filter((p) => p.enabled).length;
+  const attention: AttentionItem[] = list.flatMap((p): AttentionItem[] => {
+    const state = profileState(p);
+    const text = state === "signedOut" ? t("agents.attentionSignedOut", { label: p.label }) : state === "noCli" ? t("agents.attentionNoCli", { label: p.label }) : state === "overLimit" ? t("agents.attentionOver", { label: p.label }) : null;
+    if (!text) return [];
+    const danger = state !== "overLimit";
+    return [{ id: p.id, level: danger ? "danger" : "warning", levelLabel: t(danger ? "agents.attentionLevelDanger" : "agents.attentionLevelWarning"), text }];
+  });
+  const summary: SummaryItem[] = [
+    { id: "ready", label: t("agents.summaryReady"), value: quotaNow.count, sub: t("agents.summaryReadySub", { total: enabledCount }), href: "#/agents", tone: enabledCount > 0 && quotaNow.count === 0 ? "warning" : undefined },
+    { id: "running", label: t("agents.summaryRunning"), value: list.reduce((n, p) => n + p.running, 0), sub: t("agents.summaryRunningSub"), href: "#/agents" },
+    { id: "slots", label: t("agents.summarySlots"), value: quotaNow.slots, sub: t("agents.summarySlotsSub", { reset: quotaNow.reset ? `${quotaNow.label} · ${clock(quotaNow.reset, now)}` : t("agents.quota.unknown") }), href: "#/agents" },
+  ];
 
   return (
-    <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 px-6 pt-5 pb-8">
+    <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 px-6 pt-5 pb-8 max-md:px-4">
       <PageHeader
         title={t("nav.agents")}
         actions={
-          <Button size="sm" data-add-profile onClick={goManage}>
+          <Button size="sm" data-add-profile onClick={() => setAddOpen(true)}>
             <Plus />
             {t("agents.addProfile")}
           </Button>
         }
       />
       <ConfigIssues issues={settings.data?.configIssues} configPath={settings.data?.configPath} />
-      <MachineQuota profiles={profiles.data ?? []} now={now} />
-      {settings.data ? <IntakeCard runner={settings.data.runner} hub={settings.data.mode === "hub"} onSaved={settings.reload} /> : null}
+      <AttentionList items={attention} label={t("agents.attentionLabel")} />
+      <SummaryStrip items={summary} label={t("agents.summaryLabel")} />
+      <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
+        {checkedAt ? (
+          <span data-usage-checked className="text-xs/4 text-fg-muted">
+            {t("agents.quota.updatedAt", { time: clock(checkedAt, now) })}
+          </span>
+        ) : null}
+        <Button
+          size="sm"
+          variant="outline"
+          data-read-usage-all
+          title={t("agents.quota.readAllHint")}
+          aria-busy={reading === "all"}
+          disabled={reading !== null || !list.some((p) => p.enabled)}
+          onClick={() => readUsage()}
+        >
+          <RefreshCw className={cn(reading === "all" && "motion-safe:animate-spin")} aria-hidden />
+          {reading === "all" ? t("agents.quota.readingAll") : t("agents.quota.readAll")}
+        </Button>
+      </div>
       <ProfileTable
-        profiles={profiles.data ?? []}
+        profiles={list}
         projects={settings.data?.projects.map((x) => x.name) ?? []}
         waiting={waiting}
         cliOf={cliOf}
@@ -189,94 +231,111 @@ export function AgentsPage() {
       />
       <ErrorNote error={profiles.error} />
       {profiles.data?.length === 0 ? <Empty>{t("agents.none")}</Empty> : null}
-      {profiles.data?.length ? <TokenStats profiles={profiles.data} /> : null}
-      <div ref={manage} className="flex flex-col gap-4 pt-2">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <h2 className="m-0 text-[13px]/[18px] font-semibold text-fg-strong">{t("agents.manage")}</h2>
-          <span className="ml-auto flex items-center gap-2">
-            {checkedAt ? (
-              <span data-usage-checked className="text-xs/4 text-fg-muted">
-                {t("agents.quota.updatedAt", { time: clock(checkedAt, now) })}
-              </span>
-            ) : null}
-            <Button
-              size="sm"
-              variant="outline"
-              data-read-usage-all
-              title={t("agents.quota.readAllHint")}
-              aria-busy={reading === "all"}
-              disabled={reading !== null || !profiles.data?.some((p) => p.enabled)}
-              onClick={() => readUsage()}
-            >
-              <RefreshCw className={cn(reading === "all" && "motion-safe:animate-spin")} aria-hidden />
-              {reading === "all" ? t("agents.quota.readingAll") : t("agents.quota.readAll")}
-            </Button>
-          </span>
-        </div>
-        <p className="m-0 -mt-2 max-w-3xl text-xs/[18px] text-fg-muted">{t("agents.subtitle")}</p>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-muted-foreground">{t("agents.addAccount")}</span>
-          {(["claude", "codex", "antigravity", "gemini", "vibe", "opencode", "kilo", "copilot"] as const).map((k) => (
-            <Button key={k} size="sm" className={(k === "antigravity" || k === "gemini") ? AGY_BUTTON : undefined} data-add-account={k} disabled={k === "copilot" && (profiles.data ?? []).some((p) => p.kind === "copilot")} onClick={() => setAdding(k)}>
-              + {t(`agents.accountKind.${k}`)}
-            </Button>
-          ))}
-        </div>
-        {adding ? (
-          <AccountForm
-            kind={adding}
-            onCancel={() => setAdding(null)}
-            onAdded={(id) => {
-              setAdding(null);
-              if (adding !== "copilot") waitFor(id);
-              refresh();
-            }}
-          />
-        ) : null}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-muted-foreground">{t("agents.add")}</span>
-          {AGENT_KINDS.map((k) => (
-            <Button key={k} size="sm" variant="outline" onClick={() => newProfile(k)}>
-              + {t(`agentKind.${k}`)}
-            </Button>
-          ))}
-        </div>
-        {templates.length ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-muted-foreground">{t("agents.templates")}</span>
-            {templates.map((tpl) => {
-              const exists = (profiles.data ?? []).some((p) => p.id === tpl.id);
-              return (
-                <Button
-                  key={tpl.id}
-                  size="sm"
-                  variant="outline"
-                  disabled={exists}
-                  title={exists ? t("agents.templateExists") : t("agents.templateHint")}
-                  onClick={() => setEditing({ profile: { ...tpl, env: {} } })}
-                >
-                  + {tpl.label}
-                </Button>
-              );
-            })}
+      {list.length ? (
+        <details data-token-details className="group rounded-[10px] border border-line-default bg-surface">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1 px-4 text-[13px]/[18px] font-semibold text-fg-strong outline-none focus-visible:focus-ring md:min-h-10 [&::-webkit-details-marker]:hidden">
+            <ChevronRight className="size-3.5 transition-transform group-open:rotate-90" aria-hidden />
+            {t("agents.tokensTitle")}
+          </summary>
+          <div className="px-4 pb-3">
+            <TokenStats profiles={list} />
           </div>
-        ) : null}
-        {editing ? (
-          <ProfileForm
-            key={editing.previousId ?? editing.profile.id}
-            initial={editing.profile}
-            previousId={editing.previousId}
-            supportedModels={(profiles.data ?? []).find((row) => row.id === editing.profile.id)?.supportedModels ?? null}
-            onDone={() => {
-              setEditing(null);
-              refresh();
-            }}
-            onCancel={() => setEditing(null)}
-          />
-        ) : null}
-      </div>
-      <div><WorktreeManager /></div>
-      {settings.data ? <RunnerCard runner={settings.data.runner} /> : null}
+        </details>
+      ) : null}
+      <details data-machine-settings className="group rounded-[10px] border border-line-default bg-surface">
+        <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-x-2 px-4 text-[13px]/[18px] font-semibold text-fg-strong outline-none focus-visible:focus-ring md:min-h-10 [&::-webkit-details-marker]:hidden">
+          <ChevronRight className="size-3.5 transition-transform group-open:rotate-90" aria-hidden />
+          {t("agents.machineSettings")}
+          <span className="text-xs/4 font-normal text-fg-muted">{t("agents.machineSettingsHint")}</span>
+        </summary>
+        <div className="flex flex-col gap-4 px-4 pb-4">
+          {settings.data ? <IntakeCard runner={settings.data.runner} hub={settings.data.mode === "hub"} onSaved={settings.reload} /> : null}
+          <div><WorktreeManager /></div>
+          {settings.data ? <RunnerCard runner={settings.data.runner} /> : null}
+        </div>
+      </details>
+      <Sheet open={sheetOpen} onOpenChange={(open) => !open && closeSheet()}>
+        <SheetContent data-add-sheet className="w-full max-md:!w-full overflow-y-auto sm:max-w-xl max-md:[&_button]:min-h-(--control-h-touch)">
+          <SheetHeader>
+            <SheetTitle>{t("agents.addProfile")}</SheetTitle>
+            <SheetDescription>{t("agents.addSheetHint")}</SheetDescription>
+          </SheetHeader>
+          <div className="flex flex-col gap-4 p-4">
+            {editing ? (
+              <ProfileForm
+                key={editing.previousId ?? editing.profile.id}
+                initial={editing.profile}
+                previousId={editing.previousId}
+                supportedModels={list.find((row) => row.id === editing.profile.id)?.supportedModels ?? null}
+                onDone={() => {
+                  closeSheet();
+                  refresh();
+                }}
+                onCancel={closeSheet}
+              />
+            ) : adding ? (
+              <AccountForm
+                kind={adding}
+                onCancel={() => setAdding(null)}
+                onAdded={(id) => {
+                  const kind = adding;
+                  closeSheet();
+                  if (kind !== "copilot") waitFor(id);
+                  refresh();
+                }}
+              />
+            ) : (
+              <>
+                <section className="flex flex-col gap-2">
+                  <h3 className="m-0 text-[13px]/[18px] font-semibold text-fg-strong">{t("agents.groupAccounts")}</h3>
+                  <p className="m-0 text-xs/[18px] text-fg-muted">{t("agents.addAccount")}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(["claude", "codex", "antigravity", "gemini", "vibe", "opencode", "kilo", "copilot"] as const).map((k) => (
+                      <Button key={k} size="sm" variant="outline" className={AGY_BUTTON} data-add-account={k} disabled={k === "copilot" && list.some((p) => p.kind === "copilot")} onClick={() => setAdding(k)}>
+                        {t(`agents.accountKind.${k}`)}
+                      </Button>
+                    ))}
+                  </div>
+                </section>
+                <section className="flex flex-col gap-2">
+                  <h3 className="m-0 text-[13px]/[18px] font-semibold text-fg-strong">{t("agents.groupKinds")}</h3>
+                  <p className="m-0 text-xs/[18px] text-fg-muted">{t("agents.add")}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {AGENT_KINDS.map((k) => (
+                      <Button key={k} size="sm" variant="outline" className={AGY_BUTTON} data-add-kind={k} onClick={() => { setAddOpen(false); newProfile(k); }}>
+                        {t(`agentKind.${k}`)}
+                      </Button>
+                    ))}
+                  </div>
+                </section>
+                {templates.length ? (
+                  <section className="flex flex-col gap-2">
+                    <h3 className="m-0 text-[13px]/[18px] font-semibold text-fg-strong">{t("agents.templates")}</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {templates.map((tpl) => {
+                        const exists = list.some((p) => p.id === tpl.id);
+                        return (
+                          <Button
+                            key={tpl.id}
+                            size="sm"
+                            variant="outline"
+                            className={AGY_BUTTON}
+                            disabled={exists}
+                            title={exists ? t("agents.templateExists") : t("agents.templateHint")}
+                            onClick={() => { setAddOpen(false); setEditing({ profile: { ...tpl, env: {} } }); }}
+                          >
+                            {tpl.label}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ) : null}
+              </>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -397,7 +456,8 @@ function AccountForm({ kind, onAdded, onCancel }: { kind: NewAccount["kind"]; on
   );
 }
 
-const COLS = "grid-cols-[minmax(170px,1.2fr)_118px_minmax(118px,1fr)_minmax(118px,1fr)_72px_minmax(188px,auto)]";
+// A card, not a 900px table: the cells wrap onto a second line when the window is narrow, so nothing scrolls sideways.
+const CARD = "flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3 max-md:flex-col max-md:items-stretch";
 
 const STATE_TONE: Record<ProfileState, ChipKind> = {
   off: "neutral",
@@ -473,34 +533,25 @@ function ProfileTable({
   );
   return (
     <div className="flex flex-col gap-2">
-      <ResponsiveTableFrame className="md:overflow-x-auto rounded-[10px] border border-line-default bg-surface">
-        <div className="md:min-w-[900px]">
-          <div data-card-header className={cn("grid h-[34px] items-center gap-3 border-b border-line-subtle bg-subtle px-4 text-[11px]/none font-semibold text-fg-muted", COLS)}>
-            <span>{t("agents.colProfile")}</span>
-            <span>{t("agents.colState")}</span>
-            <span className="flex items-center gap-1">
-              {t("agents.colSession")}
-              <Thresholds />
-            </span>
-            <span>{t("agents.colWeek")}</span>
-            <span title={t("agents.costHint")}>{t("agents.colCost")}</span>
-            <span className="sr-only">{t("agents.colActions")}</span>
-          </div>
-          {on.map(row)}
-          {off.length ? (
-            <button
-              type="button"
-              data-off-group
-              aria-expanded={showOff}
-              onClick={onShowOff}
-              className="flex h-9 w-full cursor-pointer items-center gap-1 border-b border-line-subtle px-4 text-left text-xs/none font-medium text-fg-secondary outline-none last:border-b-0 hover:bg-hover focus-visible:focus-ring"
-            >
-              <ChevronRight className={cn("size-3.5 transition-transform", showOff && "rotate-90")} />
-              {t("agents.offGroup", { count: off.length })}
-            </button>
-          ) : null}
-          {showOff ? off.map(row) : null}
-        </div>
+      <div className="flex items-center gap-1 text-[11px]/none font-semibold text-fg-muted">
+        {t("agents.colSession")} · {t("agents.colWeek")}
+        <Thresholds />
+      </div>
+      <ResponsiveTableFrame className="flex flex-col gap-2">
+        {on.map(row)}
+        {off.length ? (
+          <button
+            type="button"
+            data-off-group
+            aria-expanded={showOff}
+            onClick={onShowOff}
+            className="flex min-h-9 w-full cursor-pointer items-center gap-1 rounded-[10px] border border-line-default px-4 text-left text-xs/none font-medium text-fg-secondary outline-none hover:bg-hover focus-visible:focus-ring max-md:min-h-11"
+          >
+            <ChevronRight className={cn("size-3.5 transition-transform", showOff && "rotate-90")} />
+            {t("agents.offGroup", { count: off.length })}
+          </button>
+        ) : null}
+        {showOff ? off.map(row) : null}
       </ResponsiveTableFrame>
     </div>
   );
@@ -542,10 +593,9 @@ function TokenStats({ profiles }: { profiles: AgentProfileStatus[] }) {
   };
   const ROW = cn("grid min-h-10 items-center py-2 gap-3 border-b border-line-subtle px-4 text-xs/none last:border-b-0", TOKEN_COLS);
   return (
-    <section data-token-stats className="flex flex-col gap-2 pt-2">
+    <section data-token-stats className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-col gap-0.5">
-          <h2 className="m-0 text-[13px]/[18px] font-semibold text-fg-strong">{t("agents.tokensTitle")}</h2>
           <p className="m-0 max-w-3xl text-xs/[18px] text-fg-muted">{t("agents.tokensHint")}</p>
         </div>
         <ToggleGroup type="single" variant="outline" size="sm" value={win} onValueChange={(v) => v && setWin(v as TokenWindow)} aria-label={t("agents.tokensWindow")}>
@@ -658,6 +708,7 @@ function ProfileRow({
   const [loginOpened, setLoginOpened] = useState(false);
   const [openedCli, setOpenedCli] = useState<{ profile: string; project: string; bypass: boolean } | null>(null);
   const [token, setToken] = useState("");
+  const [resuming, setResuming] = useState(false);
   const state = profileState(p);
   const fix = rowFix(p);
   const quota = quotaView(p, now);
@@ -668,9 +719,9 @@ function ProfileRow({
   const upgrade = cli && hasNewer(cli) && cli.action ? cli : null;
 
   return (
-    <div data-profile={p.id} data-state={state} className={cn("border-b border-line-subtle last:border-b-0", p.enabled ? "" : "opacity-70")}>
-      <ResponsiveGridRow labels={[t("agents.colProfile"), t("agents.colState"), t("agents.colSession"), t("agents.colWeek"), t("agents.colCost"), null]} className={cn("grid items-center gap-3 px-4 py-3", COLS)}>
-        <span className="flex min-w-0 items-center gap-1">
+    <div data-profile={p.id} data-state={state} className={cn("rounded-[10px] border border-line-default bg-surface max-md:border-0 max-md:bg-transparent", p.enabled ? "" : "opacity-70")}>
+      <ResponsiveGridRow labels={[t("agents.colProfile"), t("agents.colState"), t("agents.colSession"), t("agents.colWeek"), t("agents.colCost"), null]} className={CARD}>
+        <span className="flex min-w-0 items-center gap-1 md:min-w-52 md:flex-[1.4]">
           <button
             type="button"
             data-profile-toggle={p.id}
@@ -709,7 +760,7 @@ function ProfileRow({
               asOf={which === "session" || !quota.session.known ? usageAsOf(p.usage?.checkedAt, now) : null}
             />
           ) : (
-            <span key={which} data-usage-unknown={which} className="flex flex-col gap-[5px] text-[11px]/none text-fg-muted">
+            <span key={which} data-usage-unknown={which} className="flex flex-col gap-[5px] text-[11px]/none text-fg-muted md:min-w-32 md:flex-1">
               <span className="text-xs/none font-medium text-fg-secondary">{t("agents.quota.unknown")}</span>
               <span className="truncate">{t(`agents.quota.why.${limit.why}`)}</span>
             </span>
@@ -718,7 +769,7 @@ function ProfileRow({
         <span className="font-mono text-xs/none text-fg-secondary" title={t("agents.costHint")}>
           {p.stats.costUsd ? `~${formatUsd(p.stats.costUsd)}` : "—"}
         </span>
-        <span className="flex items-center justify-end gap-1.5">
+        <span className="flex items-center justify-end gap-1.5 md:ml-auto">
           {/* One button for what the row reports; the states exclude each other, so there is never a second. Bỏ nghỉ is
               not one of them: a rest can go with any state, so it has its place on the quota line. */}
           {fix === "installCli" ? (
@@ -807,22 +858,40 @@ function ProfileRow({
         </div>
       ) : null}
       {/* Always shown, off rows too (roadmap 52): the counts and the rest are what a person checks the page for. */}
-      <div data-quota={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 pb-3 text-xs/4 text-fg-muted md:pl-10">
+      <div data-quota={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 pb-3 text-xs/4 text-fg-muted">
         <QuotaOutlookLine p={p} now={now} />
-        {quota.rest ? (
-          <span data-resting={p.id} className="flex items-center gap-2" title={quota.rest.reason ?? undefined}>
-            <Chip kind="warning">{t("agents.quota.restingUntil", { time: clock(quota.rest.until, now) })}</Chip>
+        {quota.rest || quota.canResume ? (
+          <span data-resting={quota.rest ? p.id : undefined} className="flex items-center gap-2" title={quota.rest?.reason ?? undefined}>
+            {quota.rest ? <Chip kind="warning">{t("agents.quota.restingUntil", { time: clock(quota.rest.until, now) })}</Chip> : null}
             <Button
               size="sm"
               variant="outline"
               className="h-8"
-              data-end-rest={p.id}
-              aria-label={t("agents.quota.endRestLabel", { label: p.label })}
-              disabled={action.busy}
-              onClick={() => void action.run(async () => (await desktop.resetCooldown(p.id), onChanged()))}
+              data-resume={p.id}
+              aria-label={t("agents.quota.resumeLabel", { label: p.label })}
+              title={t("agents.quota.resumeHint")}
+              disabled={action.busy || readBusy}
+              onClick={() => {
+                if (window.confirm(t("agents.quota.confirmResume", { id: p.id })))
+                  void action.run(async () => {
+                    setResuming(true);
+                    try {
+                      await desktop.resumeProfile(p.id);
+                      toast(t("agents.quota.resumed", { id: p.id }));
+                      onChanged();
+                    } finally {
+                      setResuming(false);
+                    }
+                  });
+              }}
             >
-              {t("agents.quota.endRest")}
+              {resuming ? t("agents.quota.resuming") : t("agents.quota.resume")}
             </Button>
+          </span>
+        ) : null}
+        {quota.resumed ? (
+          <span data-resumed={p.id} className="text-fg-secondary" title={formatTime(quota.resumed.at)}>
+            {t("agents.quota.resumedBy", { who: quota.resumed.by, time: clock(quota.resumed.until, now) })}
           </span>
         ) : null}
         <span data-stat-line={p.id}>
@@ -1477,7 +1546,7 @@ function Meter({ which, limit, now, asOf }: { which: "session" | "week"; limit: 
   const t = useT();
   const { percent: pct, stop, resets, resetsAt, left } = limit;
   return (
-    <span className="flex min-w-0 flex-col gap-[5px]" data-meter={which}>
+    <span className="flex min-w-0 flex-col gap-[5px] md:min-w-32 md:flex-1" data-meter={which}>
       <span className="flex text-[11px]/none text-fg-muted">
         <span className="font-mono text-xs/none font-semibold text-fg-strong">{pct}%</span>
         {/* Re-rendered each minute: aria-live off so a screen reader does not read it out every time. */}
@@ -1522,12 +1591,6 @@ function Meter({ which, limit, now, asOf }: { which: "session" | "week"; limit: 
   );
 }
 
-
-function MachineQuota({ profiles, now }: { profiles: AgentProfileStatus[]; now: number }) {
-  const t = useT();
-  const summary = machineQuota(profiles, now);
-  return <p data-machine-quota className="text-xs/5 text-fg-muted">{t("agents.quota.machineQuota", { count: summary.count, slots: summary.slots, reset: summary.reset ? `${summary.label} · ${clock(summary.reset, now)}` : t("agents.quota.unknown") })}</p>;
-}
 
 function QuotaOutlookLine({ p, now }: { p: AgentProfileStatus; now: number }) {
   const t = useT();

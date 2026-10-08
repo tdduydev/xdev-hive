@@ -61,7 +61,7 @@ describe("Spec Kit features to the hub (roadmap 20b)", () => {
         ["001-a", "ai/T-1", "# Feature Specification: A, sửa", null],
       ],
     );
-    assert.equal(features[0]!.commit, git(dir, "rev-parse", "--short", "main"));
+    assert.equal(features[0]!.commit, git(dir, "rev-parse", "main"));
 
     const hive = new SqliteHive(":memory:");
     let calls = 0;

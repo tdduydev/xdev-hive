@@ -1,7 +1,13 @@
+import type { AcceptanceEvidence, EvidenceArtifact } from "#core/evidence.ts";
+import { featureChecks } from "#core/acceptance-criteria.ts";
+import { historyRows } from "#core/history-store.ts";
+import type { HistoryEntry } from "#core/history.ts";
 import { researchSchema, type Research, type ResearchInput, type ResearchJob } from "#core/research.ts";
 import type { WorktreeReport, WorktreeCommand, MachineWorktrees } from "#core/worktrees.ts";
 import { AutoReleaseStore } from "#core/auto-release-store.ts";
-import { HIVE_GATE_COMMANDS, mergeQueueConfigSchema, type MergeQueueView, type MergeBatch, type MergeResult } from "#core/merge-queue.ts";
+import { GateStore } from "#core/gate-store.ts";
+import { isTerminalHuman } from "#core/terminal.ts";
+import { HIVE_GATE_COMMANDS, mergeQueueConfigSchema, type MergeQueueView, type MergeQueueItem, type MergeBatch, type MergeResult } from "#core/merge-queue.ts";
 import { waitingReason } from "#core/inbox.ts";
 import { DEFAULT_RUN_TIMEOUT, runTimeoutMinutes, type RunTimeoutSettings } from "#core/run-timeout.ts";
 import { diffReviewSelection, validDiffReview, patchHunks } from "#core/diff-review.ts";
@@ -77,6 +83,7 @@ import {
   learnedTasks,
   learningDue,
   learningStats,
+  qualityStats,
   proposeTier,
   type LearningChange,
   type LearningRun,
@@ -125,6 +132,8 @@ import type {
   MachineDetail,
   MachineRun,
   ProfileChange,
+  RunnerChange,
+  MachineRunnerSettings,
   RunCompression,
   RunMr,
   MergeStatus,
@@ -800,6 +809,37 @@ const MIGRATIONS: string[] = [
   `,
   // Keep the binding after token revocation: deleting a token must not reopen the machine for a namesake.
   `ALTER TABLE machines ADD COLUMN token_id TEXT;`,
+  // Append-only results keep who verified which criterion on which revision, including superseded attempts.
+  `CREATE TABLE acceptance_evidence(
+    id INTEGER PRIMARY KEY, project TEXT NOT NULL, task_id TEXT NOT NULL,
+    spec_hash TEXT NOT NULL, commit_sha TEXT NOT NULL, spec_dir TEXT NOT NULL, spec_branch TEXT NOT NULL, criterion_id TEXT NOT NULL,
+    criterion TEXT NOT NULL, outcome TEXT NOT NULL, note TEXT NOT NULL,
+    artifacts TEXT NOT NULL, recorded_by TEXT NOT NULL, created_at TEXT NOT NULL);
+  CREATE INDEX acceptance_evidence_scope ON acceptance_evidence(project, task_id, spec_hash, commit_sha, id);
+  CREATE TRIGGER acceptance_evidence_immutable BEFORE UPDATE ON acceptance_evidence
+    BEGIN SELECT RAISE(ABORT, 'acceptance evidence is immutable'); END;`,
+  `ALTER TABLE run_records ADD COLUMN head_sha TEXT;`,
+  // Gate jobs (spec 69h1, 69h2): a job's scope never changes after create, as for a terminal session. A manifest is
+  // written once per machine and hash: the approval screen shows what that hash ran, whatever the machine sends later.
+  `
+  ALTER TABLE machines ADD COLUMN gate_capability TEXT;
+  CREATE TABLE gate_manifests(machine_id TEXT NOT NULL, hash TEXT NOT NULL, manifest TEXT NOT NULL, first_seen TEXT NOT NULL, PRIMARY KEY(machine_id, hash));
+  CREATE TABLE gate_jobs(
+    id TEXT PRIMARY KEY, project TEXT NOT NULL, machine_id TEXT NOT NULL, template_id TEXT NOT NULL, template_hash TEXT NOT NULL,
+    timeout_minutes INTEGER NOT NULL, sha TEXT NOT NULL, ref TEXT NOT NULL, purpose TEXT NOT NULL, batch_id INTEGER,
+    requested_by TEXT NOT NULL, idempotency_key TEXT NOT NULL, state TEXT NOT NULL, reason TEXT, version INTEGER NOT NULL DEFAULT 0,
+    approval TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, claimed_at TEXT, lease_until TEXT, lease_hash TEXT, receipt TEXT,
+    UNIQUE(project, template_hash, sha, idempotency_key));
+  CREATE INDEX gate_jobs_machine ON gate_jobs(machine_id, state);
+  CREATE INDEX gate_jobs_sha ON gate_jobs(project, sha);
+  CREATE INDEX gate_jobs_batch ON gate_jobs(batch_id);
+  CREATE TRIGGER gate_jobs_scope BEFORE UPDATE OF id, project, machine_id, template_id, template_hash, timeout_minutes, sha, ref, purpose, batch_id, requested_by, idempotency_key, created_at, expires_at
+    ON gate_jobs BEGIN SELECT RAISE(ABORT, 'gate job scope is immutable'); END;
+  `,
+  `ALTER TABLE machines ADD COLUMN runner_settings TEXT;
+   ALTER TABLE machines ADD COLUMN runner_change TEXT;
+   ALTER TABLE machine_profile_changes ADD COLUMN stop_at_session INTEGER;
+   ALTER TABLE machine_profile_changes ADD COLUMN stop_at_week INTEGER;`,
 ];
 
 function browserSeedSql(): string {
@@ -1076,6 +1116,7 @@ function toRunRecord(r: Row, withLog: boolean): RunRecord {
     parentRun: s(r.parent_run),
     parentMachineId: s(r.parent_machine_id) ?? (r.parent_run ? str(r.machine_id) : null),
     baseSha: s(r.base_sha),
+    headSha: s(r.head_sha),
     ...(withLog ? { instructions: s(r.instructions) ?? s(r.request_instructions) } : {}),
     verdict: s(r.verdict) as Verdict | null,
     ...(withLog ? { log: str(r.log), patch: r.patch == null ? null : str(r.patch), diffReview: r.diff_review == null ? null : JSON.parse(str(r.diff_review)) } : {}),
@@ -1117,8 +1158,15 @@ const SYNC_TTL_MINUTES = 15;
 const RUN_REQUEST_TTL_MINUTES = 15;
 /** A run its machine took but has not pushed yet keeps its group's place this long (roadmap 31a). */
 const GROUP_UNREPORTED_MINUTES = 10;
+/** Runs of one assignment that may be cut short (rate limit, app closed) before the agent's turn counts as used. */
+const MAX_INTERRUPTED_TURNS = 3;
+/**
+ * What the desktop app writes as the error of a run it found still running at start (runNote.appClosed). The push
+ * carries no reason code, so the hub tells "the app closed" from a real failure by this text.
+ */
+const APP_CLOSED_ERRORS = ["The app closed while the run was going", "App đã đóng khi run đang chạy"];
 /** What fails a group's item when it is released; anything else (offline, cap, pause, a run going) waits for later. */
-const GROUP_FAILS = new Set(["errors.machineNotFound", "errors.machineNoRepo", "errors.taskDone", "errors.taskNotInProject", "errors.profileNotOnMachine", "errors.secret"]);
+const GROUP_FAILS = new Set(["errors.machineNotFound", "errors.machineNoRepo", "errors.dispatchAssignedElsewhere", "errors.taskDone", "errors.taskNotInProject", "errors.profileNotOnMachine", "errors.secret"]);
 const groupFails = (key: string | undefined) => !!key && (GROUP_FAILS.has(key) || key.startsWith("errors.hidden."));
 /** A merge no machine reported on within this time failed: machines hear one within 30 s, and a merge takes seconds. */
 const MERGE_TTL_MINUTES = 15;
@@ -1147,6 +1195,7 @@ const clipDetail = (s: string) => (s.length > 300 ? `${s.slice(0, 299)}…` : s)
  * `text` is the detail as a message key of the UI catalogue, so the log reads in each admin's language.
  */
 const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: string; detail?: string; text?: ErrorText }>> = {
+  "evidence.record": (i, o: AcceptanceEvidence) => ({ target: `${i.project} ${i.taskId} #${o.id}`, detail: `${i.criterionId}: ${i.outcome} @ ${i.commitSha}`, text: { key: "audit.evidenceRecorded", vars: { criterion: i.criterionId, outcome: i.outcome, sha: i.commitSha } } }),
   "docs.save": (i, o) => ({ target: i.key, detail: `v${o.version}${i.note ? ` · ${i.note}` : ""}` }),
   "docs.move": (i, o) => ({ target: i.key, detail: i.to ? `→ ${i.to}${o.moved.length > 1 ? ` (+${o.moved.length - 1})` : ""}` : `→ ${i.parent ?? "/"}` }),
   "docs.remove": (i, o) => ({ target: i.key, detail: `− ${o.keys.length}${i.note ? ` · ${i.note}` : ""}` }),
@@ -1181,7 +1230,9 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
   "machines.remove": (i) => ({ target: i.id }),
   "machines.manageWorktrees": (i, o: WorktreeCommand) => ({ target: i.machineId, detail: JSON.stringify({ targets: o.targets.map(t => `${t.project}/${t.path}`), force: o.force, cleanup: o.cleanup }) }),
   "machines.approveTool": (i, o: ToolApproval) => ({ target: `${i.machineId}/${o.toolId}`, detail: o.hash, text: { key: "audit.toolApproved", vars: { tool: o.toolId, hash: o.hash } } }),
+  "machines.setRunner": (i) => ({ target: i.machineId, detail: JSON.stringify(i.settings) }),
   "machines.setProfile": (i, o: Machine) => {
+    if (i.stopAtSession !== undefined || i.stopAtWeek !== undefined) return { target: `${o.machine}/${i.profileId}`, detail: JSON.stringify({ enabled: i.enabled, priority: i.priority, stopAtSession: i.stopAtSession, stopAtWeek: i.stopAtWeek }) };
     const key = i.enabled === undefined ? "audit.profilePriority" : i.priority === undefined ? (i.enabled ? "audit.profileOn" : "audit.profileOff") : i.enabled ? "audit.profileOnPriority" : "audit.profileOffPriority";
     const parts = [i.enabled === undefined ? "" : i.enabled ? "bật" : "tắt", i.priority === undefined ? "" : `ưu tiên ${i.priority}`].filter(Boolean).join(", ");
     return { target: `${o.machine}/${i.profileId}`, detail: parts, text: { key, vars: { profile: i.profileId, priority: i.priority ?? "" } } };
@@ -1381,6 +1432,7 @@ const AGENT_AUDITED: Partial<Record<Method, (input: any, output: any) => { targe
  * docs.assistFinish…), and clearing up (cancelling, removing memory, deleting a thread).
  */
 const PROJECT_WRITES: Partial<Record<Method, "project" | "task" | "thread" | "doc" | "proposal">> = {
+  "evidence.record": "project",
   "autoRelease.green": "project",
   "autoRelease.take": "project",
   "autoRelease.decide": "project",
@@ -1714,6 +1766,8 @@ const toProfileChange = (r: Row): ProfileChange => ({
   profileId: str(r.profile_id),
   enabled: r.enabled == null ? null : num(r.enabled) === 1,
   priority: r.priority == null ? null : num(r.priority),
+  stopAtSession: r.stop_at_session == null ? null : num(r.stop_at_session),
+  stopAtWeek: r.stop_at_week == null ? null : num(r.stop_at_week),
   requestedBy: str(r.requested_by),
   requestedAt: str(r.requested_at),
 });
@@ -1876,6 +1930,8 @@ export interface SqliteHiveOptions {
    * nobody can undo is not worth taking on trust.
    */
   backup?: (() => Promise<{ file: string }>) | null;
+  /** HIVE_GATE_JOBS=1 (spec 69h1 §9). Off: no gate job is created, approved or taken; reading and stopping still work. */
+  gateJobs?: boolean;
 }
 
 /** How a hub keeps doc files, for its Hub page. */
@@ -1896,7 +1952,7 @@ type Handlers = { [M in Method]: (input: ParsedInput<M>, actor: Actor) => Method
 /** Agent credentials must never inherit machine reporting or human decisions, including future RPCs. */
 const AGENT_METHODS = new Set<Method>([
   "agentPolicy.get", "agents.paused", "artifacts.get", "artifacts.list", "budgets.list", "costs.summary",
-  "docs.assetGet", "docs.assets", "docs.get", "docs.list", "machines.list", "machines.setupMissing",
+  "docs.assetGet", "docs.assets", "docs.get", "docs.list", "gate.get", "gate.list", "machines.list", "machines.setupMissing",
   "memory.search", "memory.write", "policy.get", "projects.list", "proposals.create", "runs.get",
   "runs.list", "runs.requests", "skills.list", "systems.list", "tasks.claim", "tasks.list",
   "tasks.next", "tasks.notes", "tasks.update", "tools.list", "tools.status",
@@ -1936,6 +1992,7 @@ export class SqliteHive implements HiveBackend {
       local: false,
       blobs: null,
       backup: null,
+      gateJobs: false,
       migrateTo: Number.POSITIVE_INFINITY,
       ...opts,
     };
@@ -2044,7 +2101,7 @@ export class SqliteHive implements HiveBackend {
     const event = eventOf(method, parsed, output, actor);
     if (event) {
       try {
-        this.#opts.onEvent(event);
+        this.#opts.onEvent(actor.agent === "automation" ? { ...event, automation: true } : event);
       } catch {
         // a listener must never fail the call
       }
@@ -2141,6 +2198,16 @@ export class SqliteHive implements HiveBackend {
     const i = input as Record<string, any>;
     const owner = SqliteHive.#docOwner;
     switch (method) {
+      case "evidence.tasks":
+        return this.#need(actor, i.project, "view", `Project ${i.project}`);
+      case "evidence.record":
+      case "evidence.context":
+      case "evidence.list": {
+        this.#need(actor, i.project, method === "evidence.record" ? "qaVerify" : "view", `Project ${i.project}`);
+        const task = this.db.prepare("SELECT project FROM tasks WHERE id = ?").get(i.taskId) as Row | undefined;
+        if (!task || task.project !== i.project) throw new HiveError("not_found", "Task not found.", { key: "errors.notFound" });
+        return;
+      }
       case "mergeQueue.get":
         return this.#need(actor, i.project, "view", `Project ${i.project}`);
       case "mergeQueue.configure":
@@ -2353,6 +2420,42 @@ export class SqliteHive implements HiveBackend {
       case "runs.decidePlan": {
         const row = this.db.prepare("SELECT project FROM implementation_plans WHERE id = ?").get(i.id) as Row | undefined;
         if (row) this.#need(actor, str(row.project), "runDispatch", `Plan #${i.id}`);
+        return;
+      }
+      case "gate.templates":
+      case "gate.list":
+        return this.#need(actor, i.project, "view", `Project ${i.project}`);
+      case "gate.get": {
+        const row = this.db.prepare("SELECT project FROM gate_jobs WHERE id = ?").get(i.id) as Row | undefined;
+        if (row) this.#need(actor, str(row.project), "view", `Gate job ${i.id}`);
+        return;
+      }
+      // A person at the web, never a bearer of any role (spec 69h1 §5): no run, MCP, chat leader or machine asks for code
+      // to be run outside a sandbox, nor says yes to it.
+      case "gate.create":
+      case "gate.approve":
+      case "gate.reconcile":
+      case "gate.cancel": {
+        if (!isTerminalHuman(actor)) throw new HiveError("forbidden", "Only a person signed in on the web decides gate jobs.");
+        const row = method === "gate.create" ? null : this.db.prepare("SELECT project, machine_id, requested_by FROM gate_jobs WHERE id = ?").get(i.id) as Row | null | undefined;
+        if (method !== "gate.create" && !row) return;
+        const project = row ? str(row.project) : i.project;
+        if (method === "gate.cancel" && row) {
+          // Stopping is open to whoever asked for it and to the machine's owner, as well as the project's manager.
+          const owner = this.db.prepare("SELECT owner FROM machines WHERE id = ?").get(str(row.machine_id)) as Row | undefined;
+          if (str(row.requested_by) === actor.account || (owner?.owner && str(owner.owner) === actor.account)) return this.#need(actor, project, "view", `Gate job ${i.id}`);
+        }
+        return this.#need(actor, project, "projectSettings", `Project ${project}`);
+      }
+      // The machine the job names; which one that is comes from its credential (actor.name), checked by the store.
+      case "gate.take":
+      case "gate.progress":
+      case "gate.artifact":
+      case "gate.result": {
+        if (actor.humanSession) throw new HiveError("forbidden", "Gate jobs are taken by a machine.");
+        if (method === "gate.take") return this.#need(actor, i.project, "taskWork", `Project ${i.project}`);
+        const row = this.db.prepare("SELECT project FROM gate_jobs WHERE id = ?").get(i.id) as Row | undefined;
+        if (row) this.#need(actor, str(row.project), "taskWork", `Project ${str(row.project)}`);
         return;
       }
       case "autoRelease.list":
@@ -2604,6 +2707,69 @@ export class SqliteHive implements HiveBackend {
   #researchForTask(project: string, taskId: string): Row | undefined {
     const match = /^research-(\d+)$/.exec(taskId);
     return match ? this.db.prepare("SELECT * FROM research_runs WHERE id = ? AND project = ?").get(Number(match[1]), project) as Row | undefined : undefined;
+  }
+
+  /** A run's file, or a gate job's (runId = its job id, no task): the same checks and the same store for both. */
+  async #putArtifact({ project, taskId, runId, profileId, name: raw, data }: { project: string; taskId: string; runId: string; profileId: string | null; name: string; data: string }, actor: Actor): Promise<Artifact> {
+    const name = artifactName(raw);
+    if (!name) throw new HiveError("bad_request", `${raw} is not a file name.`, { key: "errors.artifactName", vars: { name: raw } });
+    let bytes = new Uint8Array(Buffer.from(data, "base64"));
+    const type = checkArtifact(name, bytes);
+    if (isArtifactText(type)) {
+      const text = new TextDecoder().decode(bytes);
+      // Refused, not stripped: an artifact is read by people and by agents, like a doc (41c "Nguyên tắc chung").
+      assertNoHidden(text, name);
+      bytes = new TextEncoder().encode(redactLines(text));
+    }
+    // After redaction: the bytes the store gets are the bytes the row names, or artifacts.get would refuse them.
+    const sha = sha256(bytes);
+    const allowed = () => {
+      const has = this.db.prepare("SELECT id, sha256, project, task_id FROM artifacts WHERE machine_id = ? AND run_id = ? AND name = ?").get(actor.name, runId, name) as Row | undefined;
+      if (has) {
+        // A verifier's snapshot must keep pointing at the same bytes and scope after a rerun uploads files.
+        if (has.sha256 !== sha || has.project !== project || has.task_id !== taskId) this.#checkEvidenceArtifact(num(has.id));
+        return;
+      }
+      const count = num((this.db.prepare("SELECT COUNT(*) AS n FROM artifacts WHERE machine_id = ? AND run_id = ?").get(actor.name, runId) as Row).n);
+      if (count >= ARTIFACTS_PER_RUN) {
+        throw new HiveError("bad_request", `Run ${runId} already has ${ARTIFACTS_PER_RUN} files.`, { key: "errors.artifactsFull", vars: { run: runId, max: ARTIFACTS_PER_RUN } });
+      }
+    };
+    const blobs = this.#opts.blobs;
+    // Into the store first, the row after, as for a doc's file: a row never points at bytes the store lacks.
+    if (blobs) {
+      allowed();
+      await this.#toStore(blobs, sha, bytes, type);
+    }
+    const { artifact, dropped } = this.#tx(() => {
+      allowed();
+      const before = this.db.prepare("SELECT sha256, stored FROM artifacts WHERE machine_id = ? AND run_id = ? AND name = ?").get(actor.name, runId, name) as Row | undefined;
+      this.db.prepare(
+        `INSERT INTO artifacts(project, task_id, run_id, machine_id, name, type, size, sha256, stored, data, profile_id, uploaded_by, on_behalf, source, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(machine_id, run_id, name) DO UPDATE SET project = excluded.project, task_id = excluded.task_id,
+           type = excluded.type, size = excluded.size, sha256 = excluded.sha256, stored = excluded.stored, data = excluded.data,
+           profile_id = excluded.profile_id, uploaded_by = excluded.uploaded_by, on_behalf = excluded.on_behalf,
+           source = excluded.source, created_at = excluded.created_at`,
+      ).run(
+        project, taskId, runId, actor.name, name, type, bytes.length, sha, blobs ? blobs.name : null, blobs ? new Uint8Array(0) : bytes,
+        profileId, actor.name, actor.onBehalf ?? null, sourceJson(actor.source), this.#now(),
+      );
+      return {
+        artifact: toArtifact(this.db.prepare(`SELECT ${ARTIFACT_FIELDS} FROM artifacts WHERE machine_id = ? AND run_id = ? AND name = ?`).get(actor.name, runId, name) as Row),
+        dropped: before?.stored && before.sha256 !== sha ? str(before.sha256) : null,
+      };
+    });
+    if (dropped) await this.#dropBlob(dropped);
+    return artifact;
+  }
+
+  #gates(actor: Actor): GateStore {
+    return new GateStore(this.db, () => this.#opts.now(), (action, target, detail) => this.audit(actor, action, target, detail));
+  }
+
+  #gatesOn(): void {
+    if (!this.#opts.gateJobs) throw new HiveError("forbidden", "Gate jobs are off on this hub (HIVE_GATE_JOBS).");
   }
 
   #researchForArtifact(project: string, taskId: string, machineId: string, runId: string): Row | undefined {
@@ -2975,7 +3141,9 @@ export class SqliteHive implements HiveBackend {
     const rows = this.db
       .prepare(
         `SELECT a.id, a.size, a.sha256, a.stored FROM artifacts a JOIN tasks t ON t.project = a.project AND t.id = a.task_id
-         WHERE t.status = 'done' AND a.created_at < ?`,
+         WHERE t.status = 'done' AND a.created_at < ?
+         AND NOT EXISTS (SELECT 1 FROM acceptance_evidence e, json_each(e.artifacts) ref
+           WHERE json_extract(ref.value, '$.id') = a.id)`,
       )
       .all(this.#now(-this.#opts.artifactDays * 24 * 60)) as Row[];
     if (!rows.length) return { removed: 0, bytes: 0 };
@@ -2994,6 +3162,13 @@ export class SqliteHive implements HiveBackend {
   /** Gives the pages freed by deletes back to the disk; the WAL is checkpointed first so the file can shrink. */
   vacuum(): void {
     this.db.exec("PRAGMA wal_checkpoint(TRUNCATE); VACUUM;");
+  }
+
+  #checkEvidenceArtifact(id: number): void {
+    if (this.db.prepare(`SELECT 1 FROM acceptance_evidence e, json_each(e.artifacts) ref
+      WHERE json_extract(ref.value, '$.id') = ? LIMIT 1`).get(id)) {
+      throw new HiveError("bad_request", "This file is retained as acceptance evidence.", { key: "errors.evidenceArtifactPinned" });
+    }
   }
 
   async #dropBlob(sha: string): Promise<void> {
@@ -3650,26 +3825,29 @@ export class SqliteHive implements HiveBackend {
    * high risk: a high-risk task starts a tier up, so it says nothing of its cell. Classify runs are not a try of the task.
    */
   // Plans contribute to the task cost, but their tier and errors must not become implementation attempts.
-  #learningRuns(project: string): LearningRun[] {
+  #learningRuns(project: string, quality = false): LearningRun[] {
     const since = new Date(this.#opts.now().getTime() - LEARN_DAYS * 86_400_000).toISOString();
     const rows = this.db
       .prepare(
         `SELECT r.task_id, CASE WHEN json_extract(r.plan, '$.phase') = 'plan' THEN 'plan' ELSE r.role END AS role, r.status, r.verdict, r.tier, r.kind AS plan, r.created_at, json_extract(r.mr, '$.pipeline') AS pipeline,
-           t.kind AS task_kind, t.size AS task_size, c.cost_usd, c.priced, c.input_tokens, c.cache_write_tokens, c.cache_read_tokens, c.output_tokens
+           t.kind AS task_kind, t.size AS task_size, t.risk, t.status AS task_status, r.machine_id, r.profile_id, r.model, r.effort, r.started_at, r.finished_at, c.cost_usd, c.priced, c.input_tokens, c.cache_write_tokens, c.cache_read_tokens, c.output_tokens
          FROM run_records r
          JOIN tasks t ON t.id = r.task_id AND t.project = r.project
          LEFT JOIN run_costs c ON c.machine_id = r.machine_id AND c.run_id = r.run_id
-         WHERE r.project = ?1 AND r.role != 'classify' AND t.status = 'done' AND t.kind IS NOT NULL AND t.size IS NOT NULL
-           AND COALESCE(t.risk, 'normal') != 'high'
-           AND (SELECT MAX(x.finished_at) FROM run_records x WHERE x.project = r.project AND x.task_id = r.task_id) >= ?2`,
+         WHERE r.project = ?1 AND r.role != 'classify' ${quality ? '' : "AND t.status = 'done' AND t.kind IS NOT NULL AND t.size IS NOT NULL AND COALESCE(t.risk, 'normal') != 'high'"}
+           AND (SELECT MAX(x.finished_at) FROM run_records x WHERE x.project = r.project AND x.task_id = r.task_id ${quality ? "AND x.role = 'implement' AND COALESCE(json_extract(x.plan, '$.phase'), '') != 'plan'" : ''}) >= ?2`,
       )
       .all(project, since) as Row[];
     return rows
-      .filter((r) => (LEARNED_KINDS as readonly string[]).includes(str(r.task_kind)))
+      .filter((r) => quality || (LEARNED_KINDS as readonly string[]).includes(str(r.task_kind)))
       .map((r) => {
         const parts = [r.input_tokens, r.cache_write_tokens, r.cache_read_tokens, r.output_tokens].filter((v) => v != null).map(Number);
         return {
           taskId: str(r.task_id),
+          risk: strOrNull(r.risk), taskStatus: str(r.task_status),
+          machine: strOrNull(r.machine_id), profile: strOrNull(r.profile_id),
+          model: strOrNull(r.model), effort: strOrNull(r.effort), pipeline: strOrNull(r.pipeline),
+          startedAt: strOrNull(r.started_at), finishedAt: strOrNull(r.finished_at),
           taskKind: str(r.task_kind) as TaskKind,
           taskSize: str(r.task_size) as TaskSize,
           role: str(r.role),
@@ -3711,7 +3889,7 @@ export class SqliteHive implements HiveBackend {
       by: str(r.changed_by),
       at: str(r.at),
     }));
-    return { project, enabled: this.#learningOn(project), routing: own?.enabled !== false, learnedAt: at ? str(at.value) : null, stats, cells, log };
+    return { project, enabled: this.#learningOn(project), routing: own?.enabled !== false, learnedAt: at ? str(at.value) : null, stats, quality: qualityStats(this.#learningRuns(project, true)), cells, log };
   }
 
   /**
@@ -4144,6 +4322,11 @@ export class SqliteHive implements HiveBackend {
     if (!row) throw new HiveError("not_found", `No machine ${machineId}.`, { key: "errors.machineNotFound", vars: { machine: machineId } });
     const m = this.#toMachine(row);
     const name = { machine: m.machine };
+    if (task?.agent && task.agent.machineId !== m.id) {
+      throw new HiveError("conflict", `Task ${task.id} is assigned to ${task.agent.machine}. Unassign it before dispatching to another machine.`, {
+        key: "errors.dispatchAssignedElsewhere", vars: { id: task.id, machine: task.agent.machine },
+      });
+    }
     if (!m.online) throw new HiveError("conflict", `${m.machine} is offline.`, { key: "errors.machineOffline", vars: name });
     if (!m.acceptsRuns) throw new HiveError("bad_request", `${m.machine} does not take runs from the hub.`, { key: "errors.machineNoHubRuns", vars: name });
     if (!m.projects.includes(project)) {
@@ -4518,9 +4701,11 @@ export class SqliteHive implements HiveBackend {
     }
     const task = this.#getTask(parent.id)!;
     const instructions = reduceInstructions(parent.id, parts.map((t) => ({ taskId: t.id, title: t.title, note: t.note })));
+    // The job's own pin, as for any run of a pinned task.
+    const reducePin = this.#pinnedProfile(task, g.machineId);
     try {
-      const m = this.#assertDispatchable({ machineId: g.machineId!, project: g.project, task, role: "implement", profileId: null, candidates: 1, instructions }, actor);
-      const req = this.#insertRequest(m, g.project, task, { role: "implement", profileId: null, reviewAfter: g.reviewAfter, candidates: 1, instructions }, actor);
+      const m = this.#assertDispatchable({ machineId: g.machineId!, project: g.project, task, role: "implement", profileId: reducePin, candidates: 1, instructions }, actor);
+      const req = this.#insertRequest(m, g.project, task, { role: "implement", profileId: reducePin, reviewAfter: g.reviewAfter, candidates: 1, instructions }, actor);
       db.prepare("UPDATE run_groups SET phase = 'reduce', phase_request = ?, phase_error = NULL WHERE id = ?").run(req.id, g.id);
     } catch (err) {
       if (!(err instanceof HiveError)) throw err;
@@ -4635,7 +4820,7 @@ export class SqliteHive implements HiveBackend {
         // Still no kind: the classify run is going, or it went quiet and #queueClassify gives the default now.
         // runs.dispatch may leave the machine to the hub (49e): pick it as runs.dispatch does.
         const { project, role, profileId, preferKind, reviewAfter, candidates, instructions, timeoutMinutes } = wanted;
-        const machineId = wanted.machineId ?? this.#mapMachine(project, null, profileId).id;
+        const machineId = wanted.machineId ?? task.agent?.machineId ?? this.#mapMachine(project, null, profileId).id;
         if (task.kind === null && this.#queueClassify(task, this.#machineByRef(machineId), actor)) continue;
         const fresh = this.#getTask(task.id)!;
         const machine = this.#assertDispatchable({ machineId, project, task: fresh, role, profileId, candidates, instructions }, actor);
@@ -4650,12 +4835,19 @@ export class SqliteHive implements HiveBackend {
     }
   }
 
-  /** Bound rows require the verified parent token, even when a source header supplies the machine label. */
+  /**
+   * The machines a call speaks for, or [] for a person: the runner's own token (its name is the machine's hub id), and
+   * an agent run on a machine, which says so in its write source or profile.machine label. Bound rows require the
+   * verified parent token, even when a source header or label supplies the machine name.
+   */
   #callerMachines(actor: Actor): string[] {
     const owns = (r: Row) => r.token_id == null ? !actor.tokenId : actor.tokenId === r.token_id && (actor.account ?? null) === strOrNull(r.owner);
     const own = this.db.prepare("SELECT id, token_id, owner FROM machines WHERE id = ?").get(actor.name) as Row | undefined;
     if (own && owns(own)) return [str(own.id)];
-    const name = actor.source?.machine;
+    // Some CLI shims send only the profile.machine agent label, without x-hive-source.
+    // Match the whole machine suffix; token/account names are not machine identities.
+    const label = actor.agent ?? (actor.role === "agent" ? actor.name.split("@")[0] : undefined);
+    const name = actor.source?.machine ?? (label?.includes(".") ? label.slice(label.lastIndexOf(".") + 1) : undefined);
     if (!name) return [];
     return (this.db.prepare("SELECT id, token_id, owner FROM machines WHERE machine = ?").all(name) as Row[]).filter(owns).map((r) => str(r.id));
   }
@@ -4692,7 +4884,8 @@ export class SqliteHive implements HiveBackend {
       let task = originalTask;
       const retryRow = db.prepare("SELECT agent_retry_source FROM tasks WHERE id = ?").get(task.id) as Row;
       const source = retryRow.agent_retry_source ? JSON.parse(str(retryRow.agent_retry_source)) as NonNullable<ParsedInput<"runs.dispatch">["redispatch"]> : null;
-      if (source) {
+      const fix = source && (source as { fix?: boolean }).fix ? (source as unknown as { instructions: string }) : null;
+      if (source && !fix) {
         const own = this.#sdlcPolicy().projects[task.project];
         if (!own?.autoDispatch) continue;
         const prior = db.prepare("SELECT profile_id FROM run_records WHERE machine_id = ? AND run_id = ?").get(source.machineId, source.runId) as Row | undefined;
@@ -4734,12 +4927,13 @@ export class SqliteHive implements HiveBackend {
         }
         // The project's review gate decides the cross-review, as it does for the tasks a flow hands out (roadmap 34c).
         const reviewAfter = effectiveGates(this.#sdlcPolicy(), task.project).review !== "auto";
-        const redispatch = source ? this.#redispatch(source, task) : null;
-        const original = source ? db.prepare("SELECT instructions FROM run_records WHERE machine_id = ? AND run_id = ?").get(source.machineId, source.runId) as Row | undefined : null;
-        const req = this.#insertRequest(machine, task.project, task, { role: "implement", profileId: agent.profileId, reviewAfter, candidates: 1, instructions: str(original?.instructions ?? ""), redispatch }, actor);
+        const retry = fix ? null : source;
+        const redispatch = retry ? this.#redispatch(retry, task) : null;
+        const original = retry ? db.prepare("SELECT instructions FROM run_records WHERE machine_id = ? AND run_id = ?").get(retry.machineId, retry.runId) as Row | undefined : null;
+        const req = this.#insertRequest(machine, task.project, task, { role: "implement", profileId: agent.profileId, reviewAfter, candidates: 1, instructions: fix ? fix.instructions : str(original?.instructions ?? ""), redispatch }, actor);
         // This turn's run: the task is not handed over again until a person assigns it afresh.
-        db.prepare("UPDATE tasks SET agent_request = ?, agent_retry_source = NULL, agent_retries = agent_retries + ? WHERE id = ?").run(req.id, source ? 1 : 0, task.id);
-        if (source) this.audit(actor, "tasks.autoAssign", task.id, `Retry ${source.runId}: ${machine.machine}/${agent.profileId}`, { key: "audit.autoAssign", vars: { task: task.id, machine: machine.machine, profile: agent.profileId ?? "" } });
+        db.prepare("UPDATE tasks SET agent_request = ?, agent_retry_source = NULL, agent_retries = agent_retries + ? WHERE id = ?").run(req.id, retry ? 1 : 0, task.id);
+        if (retry && source) this.audit(actor, "tasks.autoAssign", task.id, `Retry ${source.runId}: ${machine.machine}/${agent.profileId}`, { key: "audit.autoAssign", vars: { task: task.id, machine: machine.machine, profile: agent.profileId ?? "" } });
         // The place it just took, so the next task of the same machine sees one fewer.
         waiting.set(agent.machineId, (waiting.get(agent.machineId) ?? 0) + 1);
       } catch (err) {
@@ -4834,7 +5028,7 @@ export class SqliteHive implements HiveBackend {
   #agentTurn(task: Task): "going" | "over" | null {
     const r = this.db
       .prepare(
-        `SELECT q.status, q.updated_at, r.status AS run_status FROM run_requests q
+        `SELECT q.status, q.updated_at, q.machine_id, q.run_id, r.status AS run_status, r.error AS run_error FROM run_requests q
          LEFT JOIN run_records r ON r.machine_id = q.machine_id AND r.run_id = q.run_id
          WHERE q.id = (SELECT agent_request FROM tasks WHERE id = ?)`,
       )
@@ -4842,10 +5036,62 @@ export class SqliteHive implements HiveBackend {
     if (!r) return null;
     if (str(r.status) === "pending") return "going";
     if (str(r.status) !== "accepted") return null;
+    // The runner takes a rate-limited run up again on another profile, as a new run whose parent_run is the last one:
+    // the turn is that last attempt's, or a rate limit would free a turn whose next attempt went on and did the work.
+    for (let n = 0; strOrNull(r.run_status) === "rate_limited" && n < 10; n++) {
+      const next = this.db
+        .prepare("SELECT run_id, status, error FROM run_records WHERE machine_id = ? AND parent_run = ? AND parent_machine_id IS NULL AND role = 'implement' ORDER BY created_at DESC LIMIT 1")
+        .get(str(r.machine_id), str(r.run_id)) as Row | undefined;
+      if (!next) break;
+      Object.assign(r, { run_id: next.run_id, run_status: next.status, run_error: next.error });
+    }
     const status = strOrNull(r.run_status);
     if (status === "queued" || status === "running") return "going";
-    if (status !== null) return "over";
+    // A run cut short (rate limit, app closed) is not a turn the agent used; but a task that is cut short again and
+    // again must still stop, or it would be handed out for ever.
+    if (status !== null) return this.#runInterrupted(r) && this.#interruptedTurns(task) < MAX_INTERRUPTED_TURNS ? null : "over";
     return str(r.updated_at) > this.#now(-GROUP_UNREPORTED_MINUTES) ? "going" : null;
+  }
+
+  /** rate_limited, or a run the app marked failed because it closed under it (runNote.appClosed, in either language). */
+  #runInterrupted(r: Row): boolean {
+    const status = strOrNull(r.run_status);
+    return status === "rate_limited" || (status === "failed" && APP_CLOSED_ERRORS.includes(strOrNull(r.run_error) ?? ""));
+  }
+
+  /** Runs of this assignment that were cut short. */
+  #interruptedTurns(task: Task): number {
+    return num((this.db.prepare(
+      `SELECT COUNT(*) AS n FROM run_records WHERE project = ? AND task_id = ? AND role = 'implement' AND created_at >= ?
+         AND (status = 'rate_limited' OR (status = 'failed' AND error IN (${APP_CLOSED_ERRORS.map(() => "?").join(", ")})))`,
+    ).get(task.project, task.id, task.agent?.at ?? "", ...APP_CLOSED_ERRORS) as Row).n);
+  }
+
+  /**
+   * A review of an assigned task asked for changes and the fix gate is not a person's: the task gets a new turn on the
+   * machine that holds its branch (up to maxFixRounds), as a flow task's fix does. Without it the task sat in review
+   * and #agentTurn refused it, since the agent had "already run it once".
+   */
+  #agentFixTurn(r: { runId: string; taskId: string; project: string; role: string; status: string; summary: string | null; verdict?: Verdict | null }, machineId: string): void {
+    // The runner reads the full report; its pushed summary may end before the verdict line.
+    if (r.role !== "review" || r.status !== "succeeded" || (r.verdict ?? parseVerdict(r.summary)) !== "changes") return;
+    const row = this.db.prepare("SELECT t.*, q.run_id AS assigned_run, q.machine_id AS assigned_machine FROM tasks t LEFT JOIN run_requests q ON q.id = t.agent_request WHERE t.id = ? AND t.project = ?").get(r.taskId, r.project) as Row | undefined;
+    if (!row || row.agent_machine == null || row.agent_hold != null || row.assigned_run == null || str(row.status) === "done") return;
+    if (this.#flowRow(r.taskId) || this.#flowTaskRow(r.taskId)) return;
+    if (effectiveGates(this.#sdlcPolicy(), r.project).fix === "human") return;
+    const impl = this.db.prepare("SELECT status FROM run_records WHERE machine_id = ? AND run_id = ?").get(str(row.assigned_machine), str(row.assigned_run)) as Row | undefined;
+    if (str(impl?.status ?? "") !== "succeeded") return;
+    // Only a review of this turn's own run: a late report of an older review (an earlier round, another machine's run)
+    // carries findings about code the agent has since changed, and would send it back to fix what is already fixed.
+    const mine = this.db.prepare("SELECT parent_run, parent_machine_id FROM run_records WHERE machine_id = ? AND run_id = ?").get(machineId, r.runId) as Row | undefined;
+    if (!mine || mine.parent_run !== row.assigned_run || (mine.parent_machine_id ?? machineId) !== row.assigned_machine) return;
+    const max = this.#sdlcPolicy().projects[r.project]?.maxFixRounds ?? DEFAULT_MAX_FIX_ROUNDS;
+    // Each fix round is one more implement run after the first, so the rounds so far are those runs.
+    const rounds = num((this.db.prepare("SELECT COUNT(*) AS n FROM run_records WHERE project = ? AND task_id = ? AND role = 'implement' AND status = 'succeeded' AND created_at >= ?").get(r.project, r.taskId, str(row.agent_at ?? "")) as Row).n) - 1;
+    if (rounds >= max) return;
+    const fix = { fix: true, instructions: fixInstructions({ runId: r.runId, profileId: null, summary: r.summary }, "") };
+    this.db.prepare("UPDATE tasks SET status = 'todo', owner = NULL, lease_until = NULL, agent_machine = ?, agent_request = NULL, agent_retry_source = ?, updated_at = ? WHERE id = ?")
+      .run(str(row.assigned_machine), JSON.stringify(fix), this.#now(), r.taskId);
   }
 
   /**
@@ -4886,6 +5132,7 @@ export class SqliteHive implements HiveBackend {
     if (!row || row.agent_machine == null || row.agent_hold != null) return;
     // A delayed report from the first attempt must not stop or retry its replacement.
     if (machineId && (row.assigned_run !== r.runId || row.assigned_machine !== machineId)) return;
+    const cut = r.status === "rate_limited" || (r.status === "failed" && APP_CLOSED_ERRORS.includes(r.error ?? ""));
     if (num(row.agent_auto) === 1 && this.#sdlcPolicy().projects[r.project]?.autoDispatch && ["failed", "rate_limited"].includes(r.status) && ["todo", "doing"].includes(str(row.status))) {
       if (num(row.agent_retries) === 0 && machineId) {
         const source = { machineId, runId: r.runId, continueBranch: true };
@@ -4897,11 +5144,18 @@ export class SqliteHive implements HiveBackend {
           if (!(err instanceof HiveError)) throw err;
           // Keep the existing hold when a runner cannot safely continue the task branch.
         }
-      } else if (num(row.agent_retries) > 0) {
+      } else if (num(row.agent_retries) > 0 && !cut) {
         const note = `Automatic retry failed: ${r.runId}. ${r.error ?? r.status}`.slice(0, 2000);
         this.db.prepare("UPDATE tasks SET status = 'blocked', note = ?, owner = NULL, lease_until = NULL, updated_at = ? WHERE id = ?").run(note, this.#now(), r.taskId);
         this.#keepNote(r.taskId, note, "blocked", { name: str(row.agent_by), role: "member" }, this.#now());
       }
+    }
+    // Cut short, not failed: the turn is free again (#agentTurn) and the task waits in its queue for the next place.
+    // The run had claimed the task and #agentWait only hands out a todo one, so give it back: its lease may not run out
+    // for a long while, or ever when the app that held it is gone.
+    if (cut) {
+      if (str(row.status) === "doing") this.db.prepare("UPDATE tasks SET status = 'todo', owner = NULL, lease_until = NULL, updated_at = ? WHERE id = ?").run(this.#now(), r.taskId);
+      return;
     }
     this.#holdAgent(
       r.taskId,
@@ -5593,6 +5847,13 @@ export class SqliteHive implements HiveBackend {
 
   #linkRedispatch(machineId: string, runId: string, retry: RunRequest["redispatch"]): void {
     if (retry) this.db.prepare("UPDATE run_records SET parent_run = ?, parent_machine_id = ? WHERE machine_id = ? AND run_id = ?").run(retry.runId, retry.machineId, machineId, runId);
+  }
+
+  // The plan a task is pinned to, unless the run is aimed at another machine, where that plan does not exist.
+  #pinnedProfile(task: Task, machineId: string | null | undefined): string | null {
+    const agent = task.agent;
+    if (!agent?.profileId) return null;
+    return !machineId || this.#machineByRef(machineId).id === agent.machineId ? agent.profileId : null;
   }
 
   /** A manually dispatched small task joins the existing review/fix/merge lifecycle without Spec Kit. */
@@ -6443,7 +6704,7 @@ export class SqliteHive implements HiveBackend {
       .run(JSON.stringify(error), this.#now(), this.#now(-MERGE_TTL_MINUTES));
   }
 
-  #mergeQueue(project: string): MergeQueueView {
+  #mergeQueue(project: string, landing?: Pick<MergeQueueItem, "taskId" | "branch" | "runId" | "machineId">): MergeQueueView {
     const setting = this.db.prepare('SELECT value FROM settings WHERE key=?').get(`mergeQueue:${project}`) as Row | undefined;
     const config = mergeQueueConfigSchema.parse(setting ? JSON.parse(str(setting.value)) : project === "xdev-hive" ? { commands: HIVE_GATE_COMMANDS } : {});
     const batches = (this.db.prepare('SELECT body FROM merge_batches WHERE project=? ORDER BY id DESC LIMIT 50').all(project) as Row[]).map(r => JSON.parse(str(r.body)) as MergeBatch);
@@ -6455,7 +6716,16 @@ export class SqliteHive implements HiveBackend {
       AND r.role='review' AND r.verdict='approve'
       AND NOT EXISTS (SELECT 1 FROM merge_batch_items i WHERE i.task_id=t.id AND i.machine_id=r.machine_id AND i.run_id=r.run_id)
       ORDER BY ready_at,t.id`).all(project) as Row[]).map(r => ({taskId: str(r.id), branch: str(r.branch), runId: str(r.run_id), machineId: str(r.machine_id), readyAt: str(r.ready_at)}));
-    return { config, waiting, batches };
+    // The visible batch history is capped; resolve close evidence against the indexed item regardless of age.
+    const landed = landing ? (() => {
+      const row = this.db.prepare(`SELECT b.body FROM merge_batch_items i JOIN merge_batches b ON b.id=i.batch_id
+        WHERE b.project=? AND i.task_id=? AND i.machine_id=? AND i.run_id=?`).get(project, landing.taskId, landing.machineId, landing.runId) as Row | undefined;
+      if (!row) return false;
+      const batch = JSON.parse(str(row.body)) as MergeBatch;
+      return batch.status === "landed" && batch.items.some(item => item.taskId === landing.taskId && item.branch === landing.branch && item.runId === landing.runId && item.machineId === landing.machineId)
+        && !!batch.result?.outcomes.some(outcome => outcome.taskId === landing.taskId && outcome.status === "included");
+    })() : undefined;
+    return { config, waiting, batches, ...(landing ? { landed } : {}) };
   }
 
   /** Repair branches carry the excluded work; landing one also closes its unchanged source tasks. */
@@ -6509,6 +6779,8 @@ export class SqliteHive implements HiveBackend {
       acceptsRuns: num(r.accepts_runs ?? 0) === 1,
       gateRunner: num(r.gate_runner ?? 0) === 1,
       maxParallel: r.max_parallel == null ? undefined : num(r.max_parallel),
+      runnerSettings: r.runner_settings == null ? undefined : JSON.parse(str(r.runner_settings)) as MachineRunnerSettings,
+      runnerChange: r.runner_change == null ? null : JSON.parse(str(r.runner_change)) as RunnerChange,
       owner: strOrNull(r.owner),
       profileChanges: this.#profileChanges(str(r.id)),
     };
@@ -7039,56 +7311,60 @@ export class SqliteHive implements HiveBackend {
 
       // A run's files (roadmap 41c), from the machine that ran it. Secrets and hidden characters are the hub's own
       // check of what it keeps, as for a run's log and patch: the machine already looked, this is the second look.
-      "artifacts.put": async ({ project, taskId, runId, profileId, name: raw, data }, actor) => {
-        const name = artifactName(raw);
-        if (!name) throw new HiveError("bad_request", `${raw} is not a file name.`, { key: "errors.artifactName", vars: { name: raw } });
-        let bytes = new Uint8Array(Buffer.from(data, "base64"));
-        const type = checkArtifact(name, bytes);
-        if (isArtifactText(type)) {
-          const text = new TextDecoder().decode(bytes);
-          // Refused, not stripped: an artifact is read by people and by agents, like a doc (41c "Nguyên tắc chung").
-          assertNoHidden(text, name);
-          bytes = new TextEncoder().encode(redactLines(text));
-        }
-        // After redaction: the bytes the store gets are the bytes the row names, or artifacts.get would refuse them.
-        const sha = sha256(bytes);
-        const allowed = () => {
-          const has = db.prepare("SELECT id FROM artifacts WHERE machine_id = ? AND run_id = ? AND name = ?").get(actor.name, runId, name);
-          if (has) return;
-          const count = num((db.prepare("SELECT COUNT(*) AS n FROM artifacts WHERE machine_id = ? AND run_id = ?").get(actor.name, runId) as Row).n);
-          if (count >= ARTIFACTS_PER_RUN) {
-            throw new HiveError("bad_request", `Run ${runId} already has ${ARTIFACTS_PER_RUN} files.`, { key: "errors.artifactsFull", vars: { run: runId, max: ARTIFACTS_PER_RUN } });
-          }
-        };
-        const blobs = this.#opts.blobs;
-        // Into the store first, the row after, as for a doc's file: a row never points at bytes the store lacks.
-        if (blobs) {
-          allowed();
-          await this.#toStore(blobs, sha, bytes, type);
-        }
-        const { artifact, dropped } = this.#tx(() => {
-          allowed();
-          const before = db.prepare("SELECT sha256, stored FROM artifacts WHERE machine_id = ? AND run_id = ? AND name = ?").get(actor.name, runId, name) as Row | undefined;
-          db.prepare(
-            `INSERT INTO artifacts(project, task_id, run_id, machine_id, name, type, size, sha256, stored, data, profile_id, uploaded_by, on_behalf, source, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT(machine_id, run_id, name) DO UPDATE SET project = excluded.project, task_id = excluded.task_id,
-               type = excluded.type, size = excluded.size, sha256 = excluded.sha256, stored = excluded.stored, data = excluded.data,
-               profile_id = excluded.profile_id, uploaded_by = excluded.uploaded_by, on_behalf = excluded.on_behalf,
-               source = excluded.source, created_at = excluded.created_at`,
-          ).run(
-            project, taskId, runId, actor.name, name, type, bytes.length, sha, blobs ? blobs.name : null, blobs ? new Uint8Array(0) : bytes,
-            profileId, actor.name, actor.onBehalf ?? null, sourceJson(actor.source), this.#now(),
-          );
-          return {
-            artifact: toArtifact(db.prepare(`SELECT ${ARTIFACT_FIELDS} FROM artifacts WHERE machine_id = ? AND run_id = ? AND name = ?`).get(actor.name, runId, name) as Row),
-            dropped: before?.stored && before.sha256 !== sha ? str(before.sha256) : null,
-          };
-        });
-        if (dropped) await this.#dropBlob(dropped);
-        return artifact;
-      },
+      "artifacts.put": (i, actor) => this.#putArtifact(i, actor),
 
+      "evidence.tasks": ({ project, specDir, specBranch }, actor) => {
+        const root = /^ai\/(.+)$/.exec(specBranch)?.[1] ?? null;
+        const prefix = `${specTaskPrefix(specDir)}-`;
+        // Filter before returning rows: older feature tasks must survive the general board's 500-row cap.
+        const rows = db.prepare(`SELECT t.* FROM tasks t WHERE t.project = ?1 AND (
+          t.id = ?2 OR substr(t.id, 1, length(?3)) = ?3 OR
+          EXISTS (SELECT 1 FROM sdlc_flows f WHERE f.project = ?1 AND f.task_id = t.id AND f.dir = ?4) OR
+          EXISTS (SELECT 1 FROM sdlc_flow_tasks ft JOIN sdlc_flows f ON f.task_id = ft.flow_task
+            WHERE ft.task_id = t.id AND f.project = ?1 AND (f.dir = ?4 OR f.task_id = ?2)))
+          ORDER BY t.updated_at DESC, t.id DESC`).all(project, root, prefix, specDir) as Row[];
+        return this.#tasks(rows).map(task => hideDeps(task, p => sees(actor, p)));
+      },
+      "evidence.context": ({ project, taskId, specDir, specBranch }) => {
+        const row = db.prepare("SELECT files, commit_sha FROM spec_features WHERE project = ? AND dir = ? AND branch = ?").get(project, specDir, specBranch) as Row | undefined;
+        const spec = row ? (JSON.parse(str(row.files)) as SpecFiles).spec : null;
+        if (!row || spec === null || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(str(row.commit_sha))) return null;
+        return { project, taskId, specDir, specBranch, specHash: sha256(new TextEncoder().encode(spec)), commitSha: str(row.commit_sha), specText: spec };
+      },
+      "evidence.record": (input, actor) => {
+        assertNoSecret(input.criterionId, "Acceptance criterion identifier");
+        const source = db.prepare("SELECT files, commit_sha FROM spec_features WHERE project = ? AND dir = ? AND branch = ?").get(input.project, input.specDir, input.specBranch) as Row | undefined;
+        const spec = source ? (JSON.parse(str(source.files)) as SpecFiles).spec : null;
+        if (!source || spec === null || source.commit_sha !== input.commitSha || sha256(new TextEncoder().encode(spec)) !== input.specHash) {
+          throw new HiveError("conflict", "The published specification or code revision has changed. Reload before verifying.", { key: "errors.evidenceRevisionChanged" });
+        }
+        if (!featureChecks(spec).some(criterion => criterion.id === input.criterionId && criterion.text === input.criterion)) {
+          throw new HiveError("bad_request", "This criterion is not in the published specification.", { key: "errors.evidenceCriterionMissing" });
+        }
+        assertNoSecret(input.note, "Acceptance note");
+        assertNoSecret(input.criterion, "Acceptance criterion");
+        const artifacts: EvidenceArtifact[] = input.artifactIds.map(id => {
+          const row = db.prepare("SELECT id, project, task_id, name, sha256, run_id, machine_id FROM artifacts WHERE id = ?").get(id) as Row | undefined;
+          if (!row || row.project !== input.project || row.task_id !== input.taskId) throw new HiveError("not_found", "Artifact not found in this task.", { key: "errors.notFound" });
+          return { id, name: str(row.name), sha256: str(row.sha256), runId: str(row.run_id), machineId: str(row.machine_id) };
+        });
+        const createdAt = this.#now();
+        const result = db.prepare(`INSERT INTO acceptance_evidence(project, task_id, spec_hash, commit_sha, spec_dir, spec_branch, criterion_id, criterion, outcome, note, artifacts, recorded_by, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          .run(input.project, input.taskId, input.specHash, input.commitSha, input.specDir, input.specBranch, input.criterionId, input.criterion, input.outcome, input.note, JSON.stringify(artifacts), actor.name, createdAt);
+        return { ...input, id: Number(result.lastInsertRowid), recordedBy: actor.name, createdAt, artifacts };
+      },
+      "evidence.list": ({ project, taskId, specHash, commitSha, specDir, specBranch, limit, offset }) => {
+        const rows = db.prepare(`SELECT * FROM acceptance_evidence WHERE project = ? AND task_id = ?
+          AND (? IS NULL OR spec_hash = ?) AND (? IS NULL OR commit_sha = ?)
+          AND (? IS NULL OR spec_dir = ?) AND (? IS NULL OR spec_branch = ?)
+          ORDER BY id DESC LIMIT ? OFFSET ?`)
+          .all(project, taskId, specHash ?? null, specHash ?? null, commitSha ?? null, commitSha ?? null, specDir ?? null, specDir ?? null, specBranch ?? null, specBranch ?? null, limit, offset) as Row[];
+        return rows.map(row => {
+          const artifacts = JSON.parse(str(row.artifacts)) as EvidenceArtifact[];
+          return { id: num(row.id), project, taskId, specHash: str(row.spec_hash), commitSha: str(row.commit_sha), specDir: str(row.spec_dir), specBranch: str(row.spec_branch), criterionId: str(row.criterion_id), criterion: str(row.criterion), outcome: str(row.outcome) as AcceptanceEvidence["outcome"], note: str(row.note), artifacts, artifactIds: artifacts.map(a => a.id), recordedBy: str(row.recorded_by), createdAt: str(row.created_at) };
+        });
+      },
       "artifacts.list": ({ project, projects, taskId, runId, machineId, limit, offset, name, kind }, actor) => {
         // Filter grants and archives before LIMIT/OFFSET: hidden files must never consume a visible page.
         const archived = this.#projectStates();
@@ -7127,6 +7403,7 @@ export class SqliteHive implements HiveBackend {
       "artifacts.remove": async ({ id }) => {
         const row = db.prepare("SELECT project, name, sha256, stored FROM artifacts WHERE id = ?").get(id) as Row | undefined;
         if (!row) return { removed: false, project: null, name: null };
+        this.#checkEvidenceArtifact(id);
         db.prepare("DELETE FROM artifacts WHERE id = ?").run(id);
         if (row.stored) await this.#dropBlob(str(row.sha256));
         return { removed: true, project: str(row.project), name: str(row.name) };
@@ -7769,7 +8046,7 @@ export class SqliteHive implements HiveBackend {
       },
 
       // Keyed by the hub actor (`runner.<machine>@<token>`): the same key as the leases that machine takes.
-      "mergeQueue.get": ({ project }) => this.#mergeQueue(project),
+      "mergeQueue.get": ({ project, landing }) => this.#mergeQueue(project, landing),
       "mergeQueue.configure": ({ project, config }, actor) => this.#tx(() => {
         const active = this.#mergeQueue(project).batches.find(b => b.status === 'running' || b.status === 'awaiting');
         if (active && config.machineId !== active.machineId) throw new HiveError('conflict', 'Finish the active batch before choosing another gate machine.');
@@ -7878,7 +8155,7 @@ export class SqliteHive implements HiveBackend {
         return batch;
       }),
 
-      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, projects, acceptsRuns, maxParallel, updateDraining, gateRunner, costs, deliveredMessages, toolStates, appliedToolApprovals, worktrees, worktreeResults, terminal }, actor) =>
+      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, projects, acceptsRuns, maxParallel, runnerSettings, updateDraining, gateRunner, costs, deliveredMessages, toolStates, appliedToolApprovals, worktrees, worktreeResults, terminal, gate }, actor) =>
         this.#tx(() => {
           this.#bindMachine(actor, machine);
           // Drop out-of-scope reports without taking the whole machine offline; grants can change between beats.
@@ -7920,6 +8197,8 @@ export class SqliteHive implements HiveBackend {
           if (toolStates) db.prepare("UPDATE machines SET tool_states = ? WHERE id = ?").run(JSON.stringify(toolStates), actor.name);
           // Written every beat: a machine that turned the terminal off, or went back to an app without it, is off now.
           db.prepare("UPDATE machines SET terminal_capability = ? WHERE id = ?").run(terminal ? JSON.stringify(terminal) : null, actor.name);
+          // Likewise every beat; only projects this machine's token works on, so no one sees templates of another.
+          const gateReply = this.#gates(actor).heartbeat(actor.name, gate, (p) => may(actor, p, "taskWork"));
           for (const id of appliedToolApprovals) db.prepare("UPDATE machine_tool_approvals SET applied_at = COALESCE(applied_at, ?) WHERE id = ? AND machine_id = ?").run(now, id, actor.name);
           // An archived or deleted project is not stored as a repo this machine has (roadmap 47): a machine that still
           // has the folder must not put the name back into the lists, nor bring a deleted one back from its headstone.
@@ -7929,7 +8208,15 @@ export class SqliteHive implements HiveBackend {
           const archivedProjects = allowedProjects.filter((p) => hidden.has(p));
           db.prepare("UPDATE machines SET projects = ? WHERE id = ?").run(JSON.stringify(allowedProjects.filter((p) => !hidden.has(p))), actor.name);
           db.prepare("UPDATE machines SET gate_runner = ? WHERE id = ?").run(gateRunner ? 1 : 0, actor.name);
-          if (maxParallel !== undefined) db.prepare("UPDATE machines SET max_parallel = ? WHERE id = ?").run(maxParallel, actor.name);
+          // A downgraded app must lose the capability too; a previous report cannot promise it still applies patches.
+          db.prepare("UPDATE machines SET runner_settings = ? WHERE id = ?").run(runnerSettings ? JSON.stringify(runnerSettings) : null, actor.name);
+          if (runnerSettings) db.prepare("UPDATE machines SET max_parallel = ? WHERE id = ?").run(runnerSettings.maxParallel, actor.name);
+          const pendingRunner = this.#toMachine(db.prepare("SELECT * FROM machines WHERE id = ?").get(actor.name) as Row).runnerChange;
+          if (pendingRunner && (pendingRunner.requestedAt < this.#now(-PROFILE_CHANGE_HOURS * 60) ||
+              (runnerSettings && Object.entries(pendingRunner.settings).every(([key, value]) => runnerSettings[key as keyof MachineRunnerSettings] === value)))) {
+            db.prepare("UPDATE machines SET runner_change = NULL WHERE id = ?").run(actor.name);
+          }
+          if (!runnerSettings && maxParallel !== undefined) db.prepare("UPDATE machines SET max_parallel = ? WHERE id = ?").run(maxParallel, actor.name);
           if (acceptsRuns !== undefined) db.prepare("UPDATE machines SET accepts_runs = ? WHERE id = ?").run(acceptsRuns ? 1 : 0, actor.name);
           // Missing on older clients and cleared on the first heartbeat after a restart.
           db.prepare("UPDATE machines SET update_draining = ? WHERE id = ?").run(updateDraining ? 1 : 0, actor.name);
@@ -7940,7 +8227,7 @@ export class SqliteHive implements HiveBackend {
             for (const c of this.#profileChanges(actor.name)) {
               const p = profiles.find((x) => x.id === c.profileId);
               // Gone from the machine, or reported as asked: nothing is left to send.
-              if (!p || ((c.enabled === null || p.enabled === c.enabled) && (c.priority === null || p.priority === c.priority))) drop.run(actor.name, c.profileId);
+              if (!p || ((c.enabled === null || p.enabled === c.enabled) && (c.priority === null || p.priority === c.priority) && (c.stopAtSession == null || p.stopAtSession === c.stopAtSession) && (c.stopAtWeek == null || p.stopAtWeek === c.stopAtWeek))) drop.run(actor.name, c.profileId);
             }
           }
           // A machine resends until the hub answers, so a run is kept as first reported.
@@ -8014,6 +8301,7 @@ export class SqliteHive implements HiveBackend {
             : [];
           const tools = this.#machineTools(actor);
           return {
+            ...(gateReply ? { gate: gateReply } : {}),
             supportsUpdateDrain: true,
             duplicate: duplicateAt !== null && duplicateAt > this.#now(-DUPLICATE_MINUTES),
             cooldowns: this.#cooldowns(),
@@ -8040,6 +8328,7 @@ export class SqliteHive implements HiveBackend {
             // After this beat's costs went in, so a run that just filled a cap holds the next one at once.
             budgetBlocked: this.#budgetBlocks(actor),
             profileChanges: this.#profileChanges(actor.name),
+            runnerChange: this.#toMachine(db.prepare("SELECT * FROM machines WHERE id = ?").get(actor.name) as Row).runnerChange,
             mergeRuns,
             archivedProjects,
           };
@@ -8113,6 +8402,7 @@ export class SqliteHive implements HiveBackend {
               ["parent_run", db.prepare("SELECT parent_machine_id FROM run_records WHERE machine_id = ? AND run_id = ?").get(actor.name, r.runId)?.parent_machine_id ? undefined : r.parentRun],
               ["instructions", r.instructions === undefined ? undefined : clean(r.instructions)],
               ["base_sha", r.baseSha],
+              ["head_sha", r.headSha],
               ["verdict", verdict],
             ];
             const sent = ranOn.filter(([, v]) => v !== undefined);
@@ -8191,6 +8481,7 @@ export class SqliteHive implements HiveBackend {
             this.#taskRunEnded(actor.name, run);
             // A run that failed stops its agent at that task (roadmap 50) before the release below looks at the queue.
             this.#agentRunEnded(run, actor.name);
+            this.#agentFixTurn(run, actor.name);
           }
           // An MR that turned green, or merged, moves a flow task on as well.
           this.#releaseFlows();
@@ -8256,7 +8547,7 @@ export class SqliteHive implements HiveBackend {
           db
             .prepare(
               `SELECT r.*, ${RUN_TOKEN_COLUMNS}, ${RUN_SELECTION_COLUMN} FROM run_records r LEFT JOIN run_costs c ON c.machine_id = r.machine_id AND c.run_id = r.run_id
-               WHERE (?1 IS NULL OR r.project = ?1) AND (?3 IS NULL OR r.project IN (SELECT value FROM json_each(?3))) AND (?4 IS NULL OR r.task_id = ?4) AND (?5 = 0 OR r.status IN ('queued', 'running')) ORDER BY r.created_at DESC, r.run_id DESC LIMIT ?2`,
+               WHERE (?1 IS NULL OR r.project = ?1) AND (?3 IS NULL OR r.project IN (SELECT value FROM json_each(?3))) AND (?4 IS NULL OR r.task_id = ?4) AND (?5 = 0 OR r.status IN ('queued', 'running')) ORDER BY r.created_at DESC, r.rowid DESC LIMIT ?2`,
             )
             .all(project ?? null, limit, listParam(projects), taskId ?? null, activeOnly ? 1 : 0) as Row[]
         ).map((r) => toRunRecord(r, false)),
@@ -8361,12 +8652,15 @@ export class SqliteHive implements HiveBackend {
         db.prepare("INSERT INTO settings(key, value) VALUES ('runTimeout', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(settings));
         return this.#runTimeoutSettings();
       },
-      "runs.dispatch": ({ machineId, project, taskId, role, profileId, preferKind, reviewAfter, candidates, instructions, timeoutMinutes, redispatch: source }, actor) =>
+      "runs.dispatch": ({ machineId, project, taskId, role, profileId: requestedProfile, preferKind, reviewAfter, candidates, instructions, timeoutMinutes, redispatch: source }, actor) =>
         this.#tx(() => {
           const task = this.#getTask(taskId);
           if (!task || task.project !== project) {
             throw new HiveError("not_found", `No task ${taskId} in ${project}.`, { key: "errors.taskNotInProject", vars: { id: taskId, project } });
           }
+          // A pinned task stays on its plan when the caller names none: a run quietly landing on another plan is the bug
+          // this guards. Only a plain implement run: a review wants another vendor, a redispatch another runner, candidates rotate.
+          const profileId = requestedProfile ?? (role === "implement" && candidates === 1 && !source ? this.#pinnedProfile(task, machineId) : null);
           const redispatch = this.#redispatch(source, task);
           if (redispatch && candidates !== 1) throw new HiveError("bad_request", "Redispatch requires one run.", { key: "errors.redispatchOne" });
           // Its flow queues its steps itself, and would take this run for one of them.
@@ -8375,7 +8669,7 @@ export class SqliteHive implements HiveBackend {
             throw new HiveError("conflict", `Task ${taskId} is in a flow that is going on.`, { key: "errors.taskInFlow", vars: { id: taskId } });
           }
           // Pick at dispatch time, when the hub knows which plans and machines still have room.
-          const m = this.#assertDispatchable({ machineId: machineId ?? this.#mapMachine(project, null, profileId).id, project, task, role, profileId, candidates, instructions }, actor);
+          const m = this.#assertDispatchable({ machineId: machineId ?? task.agent?.machineId ?? this.#mapMachine(project, null, profileId).id, project, task, role, profileId, candidates, instructions }, actor);
           this.#requestTimeout(m, task, profileId, timeoutMinutes);
           if (redispatch) this.#assertRedispatchRunner(m, profileId);
           // Its group would run it again once this run ended.
@@ -9404,7 +9698,19 @@ export class SqliteHive implements HiveBackend {
       "machines.remove": ({ id }) => ({ removed: num(db.prepare("DELETE FROM machines WHERE id = ?").run(id).changes) === 1 }),
 
       // A subscription is a person's own account: only its machine's owner and hub admins change it (asked 2/10).
-      "machines.setProfile": ({ machineId, profileId, enabled, priority }, actor) =>
+      "machines.setRunner": ({ machineId, settings }, actor) => this.#tx(() => {
+        const row = db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row | undefined;
+        if (!row) throw new HiveError("not_found", `No machine ${machineId}.`, { key: "errors.machineNotFound", vars: { machine: machineId } });
+        const m = this.#toMachine(row);
+        if (!this.#mayApproveTool(actor, m.owner)) throw new HiveError("forbidden", "Only a hub admin or machine owner changes runner settings.", { key: "errors.machineProfileForbidden", vars: { machine: m.machine } });
+        if (!m.runnerSettings) throw new HiveError("bad_request", "App too old for runner settings.", { key: "errors.machineAppTooOld", vars: { machine: m.machine } });
+        const next = { ...m.runnerChange?.settings, ...settings };
+        for (const key of Object.keys(next) as (keyof MachineRunnerSettings)[]) if (next[key] === m.runnerSettings[key]) delete next[key];
+        const change: RunnerChange | null = Object.keys(next).length ? { settings: next, requestedBy: actor.account ?? actor.name, requestedAt: this.#now() } : null;
+        db.prepare("UPDATE machines SET runner_change = ? WHERE id = ?").run(change ? JSON.stringify(change) : null, machineId);
+        return this.#toMachine(db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row);
+      }),
+      "machines.setProfile": ({ machineId, profileId, enabled, priority, stopAtSession, stopAtWeek }, actor) =>
         this.#tx(() => {
           const row = db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row | undefined;
           if (!row) throw new HiveError("not_found", `No machine ${machineId}.`, { key: "errors.machineNotFound", vars: { machine: machineId } });
@@ -9412,26 +9718,31 @@ export class SqliteHive implements HiveBackend {
           const hubAdmin = actor.role === "admin" && !actor.access;
           // Not an agent on the owner's token: a run should not turn subscriptions on for itself.
           const owner = !isAgentActor(actor) && actor.account !== undefined && actor.account === m.owner;
-          if (!hubAdmin && !owner) {
+          if (actor.role === "agent" || isAgentActor(actor) || (!hubAdmin && !owner)) {
             throw new HiveError("forbidden", `Only a hub admin or the owner of ${m.machine} changes its profiles.`, { key: "errors.machineProfileForbidden", vars: { machine: m.machine } });
           }
           const p = m.profiles.find((x) => x.id === profileId);
           if (!p) throw new HiveError("not_found", `${m.machine} has no profile ${profileId}.`, { key: "errors.machineProfileNotFound", vars: { machine: m.machine, profile: profileId } });
           // An app that does not report priorities does not take changes either: one would wait a day for nothing.
           if (p.priority === undefined) throw new HiveError("bad_request", `${m.machine} runs an app too old for profile changes.`, { key: "errors.machineAppTooOld", vars: { machine: m.machine } });
+          if ((stopAtSession !== undefined && p.stopAtSession === undefined) || (stopAtWeek !== undefined && p.stopAtWeek === undefined)) throw new HiveError("bad_request", "App too old for profile thresholds.", { key: "errors.machineAppTooOld", vars: { machine: m.machine } });
           const old = m.profileChanges.find((c) => c.profileId === profileId);
           let on = enabled ?? old?.enabled ?? null;
           let rank = priority ?? old?.priority ?? null;
           // What the machine already has needs no change: switching back cancels the waiting one.
           if (on === p.enabled) on = null;
           if (rank === p.priority) rank = null;
-          if (on === null && rank === null) db.prepare("DELETE FROM machine_profile_changes WHERE machine_id = ? AND profile_id = ?").run(machineId, profileId);
+          let session = stopAtSession ?? old?.stopAtSession ?? null;
+          let week = stopAtWeek ?? old?.stopAtWeek ?? null;
+          if (session === p.stopAtSession) session = null;
+          if (week === p.stopAtWeek) week = null;
+          if (on === null && rank === null && session === null && week === null) db.prepare("DELETE FROM machine_profile_changes WHERE machine_id = ? AND profile_id = ?").run(machineId, profileId);
           else {
             db.prepare(
-              `INSERT INTO machine_profile_changes(machine_id, profile_id, enabled, priority, requested_by, requested_at) VALUES (?, ?, ?, ?, ?, ?)
-               ON CONFLICT(machine_id, profile_id) DO UPDATE SET enabled = excluded.enabled, priority = excluded.priority,
+              `INSERT INTO machine_profile_changes(machine_id, profile_id, enabled, priority, requested_by, requested_at, stop_at_session, stop_at_week) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(machine_id, profile_id) DO UPDATE SET enabled = excluded.enabled, priority = excluded.priority, stop_at_session = excluded.stop_at_session, stop_at_week = excluded.stop_at_week,
                  requested_by = excluded.requested_by, requested_at = excluded.requested_at`,
-            ).run(machineId, profileId, on === null ? null : on ? 1 : 0, rank, actor.account ?? actor.name, this.#now());
+            ).run(machineId, profileId, on === null ? null : on ? 1 : 0, rank, actor.account ?? actor.name, this.#now(), session, week);
           }
           return this.#toMachine(db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row);
         }),
@@ -9484,6 +9795,39 @@ export class SqliteHive implements HiveBackend {
         return this.#policy();
       },
 
+      "gate.templates": ({ project }, actor) => this.#gates(actor).templates(project, may(actor, project, "projectSettings")),
+      "gate.list": ({ project, state, sha, limit }, actor) => this.#tx(() => this.#gates(actor).list(project, { state, sha, limit })),
+      "gate.get": ({ id }, actor) => this.#tx(() => this.#gates(actor).require(id)),
+      "gate.create": (i, actor) => this.#tx(() => {
+        this.#gatesOn();
+        return this.#gates(actor).create({ ...i, requestedBy: actor.account! });
+      }),
+      "gate.approve": ({ id, version, pass, reason }, actor) => this.#tx(() => {
+        if (pass) this.#gatesOn();
+        assertNoSecret(reason, "reason");
+        return this.#gates(actor).approve(id, version, pass, actor.account!, reason);
+      }),
+      "gate.cancel": ({ id, reason }, actor) => this.#tx(() => { assertNoSecret(reason, "reason"); return this.#gates(actor).cancel(id, reason); }),
+      "gate.reconcile": ({ id, outcome, note }, actor) => this.#tx(() => { assertNoSecret(note, "note"); return this.#gates(actor).reconcile(id, outcome, note); }),
+      "gate.take": ({ project }, actor) => this.#tx(() => {
+        if (!this.#opts.gateJobs) return null;
+        // Same holds as a merge batch: a machine draining for an update or running twice takes nothing new.
+        const m = db.prepare("SELECT update_draining, duplicate_at FROM machines WHERE id = ?").get(actor.name) as Row | undefined;
+        if (!m || num(m.update_draining) === 1 || (strOrNull(m.duplicate_at) ?? "") > this.#now(-DUPLICATE_MINUTES)) return null;
+        return this.#gates(actor).take(project, actor.name);
+      }),
+      "gate.progress": ({ id, leaseToken }, actor) => this.#tx(() => this.#gates(actor).progress(id, actor.name, leaseToken)),
+      "gate.artifact": async ({ id, leaseToken, name, data }, actor) => {
+        const job = this.#tx(() => this.#gates(actor).assertUploading(id, actor.name, leaseToken));
+        const a = await this.#putArtifact({ project: job.project, taskId: "", runId: job.id, profileId: null, name, data }, actor);
+        return { name: a.name, sha256: a.sha256, bytes: a.size };
+      },
+      "gate.result": ({ id, leaseToken, receipt }, actor) => this.#tx(() => {
+        // Diagnostics only, and filtered once more: the machine's filter is the first look, as for a run's log.
+        const clean = { ...receipt, logTail: redactLines(receipt.logTail), result: receipt.result && { ...receipt.result, summary: receipt.result.summary === undefined ? undefined : redactLines(receipt.result.summary) } };
+        const uploaded = db.prepare("SELECT sha256 FROM artifacts WHERE machine_id = ? AND run_id = ? AND name = ?");
+        return this.#gates(actor).result(id, actor.name, leaseToken, clean, (n) => strOrNull((uploaded.get(actor.name, id, n) as Row | undefined)?.sha256));
+      }),
       "autoRelease.green": (batch, actor) => this.#tx(() => {
         this.#assertNotPaused(batch.project);
         assertNoSecret(JSON.stringify(batch), "Green batch"); assertNoHidden(JSON.stringify(batch), "Green batch");
@@ -10000,6 +10344,21 @@ export class SqliteHive implements HiveBackend {
         }),
 
       // agent: `claude-1` also finds `claude-1.<machine>`. user: a person's own rows, and those of agents on their token.
+      "history.list": (input, actor) => {
+        const hidden = new Set(this.#projectStates().keys());
+        // Permission and research visibility must be applied before counting pages.
+        const visible = (entry: HistoryEntry) => {
+          if (entry.kind === "audit") return this.#isHubAdmin(actor) && !input.project && !input.projects && !input.taskId;
+          if (entry.project === HUB_SCOPE) return this.#isHubAdmin(actor);
+          if (!sees(actor, entry.project) || (hidden.has(entry.project!) && input.project !== entry.project)) return false;
+          if (entry.kind === "run") {
+            const research = this.#researchForTask(entry.project!, entry.taskId!);
+            if (research && !this.#researchVisible(research, actor)) return false;
+          }
+          return true;
+        };
+        return historyRows(db, input, visible);
+      },
       "admin.audit": ({ limit, action, agent, user, run }) =>
         (
           db
