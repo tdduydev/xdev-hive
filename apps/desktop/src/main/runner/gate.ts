@@ -357,7 +357,7 @@ export class GateExecutor {
   /** Known secrets of the hub, the profiles and the values of the env names this template got. */
   #redact(text: string, template: GateTemplate | undefined): string {
     const env = this.#host.env();
-    const values = [...this.#host.known(), ...(template?.env ?? []).map((n) => env[n] ?? "")].filter((v) => v.length >= 8);
+    const values = [...this.#host.known(), ...(template?.env ?? []).map((n) => env[n] ?? "")].filter((v) => v.length > 0);
     for (const v of values) text = text.split(v).join("[hidden]");
     return redactLines(text);
   }
