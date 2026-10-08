@@ -2051,7 +2051,7 @@ export class SqliteHive implements HiveBackend {
     const event = eventOf(method, parsed, output, actor);
     if (event) {
       try {
-        this.#opts.onEvent(event);
+        this.#opts.onEvent(actor.agent === "automation" ? { ...event, automation: true } : event);
       } catch {
         // a listener must never fail the call
       }
