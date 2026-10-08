@@ -93,6 +93,35 @@ const result = (tasks: string[], status: MergeResult["status"] = "landed"): Merg
     reason: ""
   }))
 });
+it("close evidence survives the visible batch limit and matches the exact landing identity", async () => {
+  const s = await setup();
+  try {
+    await s.hive.call("mergeQueue.configure", { project: "demo", config: { ...s.config, maxBranches: 1, waitMinutes: 0 } }, admin);
+    const landing = { taskId: "OLD", branch: "ai/OLD", runId: "run-OLD", machineId: machine.name };
+    const evidence = (identity = landing) => s.hive.call("mergeQueue.get", { project: "demo", landing: identity }, admin);
+    await s.add("OLD");
+    const first = (await s.take())!;
+    assert.equal((await evidence()).landed, false);
+    await s.finish(first.id, result(["OLD"]));
+    for (let i = 0; i < 50; i++) {
+      const id = `NEW-${i}`;
+      await s.add(id);
+      await s.finish((await s.take())!.id, result([id]));
+    }
+    const view = await evidence();
+    assert.equal(view.batches.length, 50);
+    assert.equal(view.batches.some(batch => batch.id === first.id), false);
+    assert.equal(view.landed, true);
+    for (const identity of [
+      { ...landing, branch: "ai/another" },
+      { ...landing, runId: "new-review" },
+      { ...landing, machineId: "runner.other" },
+      { ...landing, taskId: "OTHER" },
+    ]) assert.equal((await evidence(identity)).landed, false);
+  } finally {
+    s.hive.close();
+  }
+});
 it("FIFO starts at size or age, deduplicates takes/results, and journals done only after landing", async () => {
   const s = await setup();
   try {
