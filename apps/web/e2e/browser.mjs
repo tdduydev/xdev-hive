@@ -482,6 +482,12 @@ async function main() {
       await tab.click('.hive-mobile-nav a[href="#/tasks"]');
       await tab.waitFor("tasks selected", () => location.hash === "#/tasks" && document.querySelector('.hive-mobile-nav a[href="#/tasks"]')?.getAttribute("aria-current") === "page");
     } else {
+      const toggleVisible = await tab.eval(() => {
+        const button = document.querySelector('.hive-sidebar-toggle');
+        const rect = button?.getBoundingClientRect();
+        return !!rect && getComputedStyle(button).display !== 'none' && rect.width > 0 && rect.height > 0;
+      });
+      expect(toggleVisible, "expanded desktop sidebar has a visible collapse button");
       await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
       const width = await tab.waitFor("collapsed navigation rail", () => {
         const nav = document.querySelector('.hive-sidebar-rail');
@@ -492,6 +498,11 @@ async function main() {
       await tab.waitFor("rail navigates", () => location.hash === "#/tasks");
       await tab.reload();
       await tab.waitFor("rail preference survives reload", () => !!document.querySelector('.hive-sidebar-rail'));
+      expect(await tab.eval(() => {
+        const button = document.querySelector('.hive-sidebar-toggle');
+        const rect = button?.getBoundingClientRect();
+        return !!rect && getComputedStyle(button).display !== 'none' && rect.width > 0 && rect.height > 0;
+      }), "collapsed desktop sidebar has a visible expand button");
       await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
     }
     await tab.eval(() => document.querySelector('.hive-skip-link').focus());
