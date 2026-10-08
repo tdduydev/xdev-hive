@@ -53,10 +53,11 @@ const assets = readdirSync(release)
   .filter((f) => /\.(dmg|zip|exe|AppImage|deb)$/.test(f))
   .sort()
   .map((f) => path.join(release, f));
-const sums = assets.map((f) => `${createHash("sha256").update(readFileSync(f)).digest("hex")}  ${path.basename(f)}`).join("\n");
 // Ubuntu's self-updating install (no password on update): GitHub only, the hub hands out builds, not scripts.
 const installScript = path.join(release, "install-linux.sh");
 copyFileSync(path.join(desktop, "scripts", "install-linux.sh"), installScript);
+// The script runs as the person, so it is checked like any build before it is trusted.
+const sums = [...assets, installScript].map((f) => `${createHash("sha256").update(readFileSync(f)).digest("hex")}  ${path.basename(f)}`).join("\n");
 const sumsFile = path.join(release, "SHA256SUMS.txt");
 writeFileSync(sumsFile, `${sums}\n`);
 for (const f of assets) console.log(`${(statSync(f).size / 1e6).toFixed(0).padStart(5)} MB  ${path.basename(f)}`);
