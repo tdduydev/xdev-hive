@@ -362,10 +362,11 @@ export class TerminalRelayHub {
     if (f.type === "hello") return this.#hello(m, f.sessions);
     if (f.type === "pong") return;
     const s = this.#o.store.get(f.sessionId);
-    // A frame about a session of another machine is never relayed, whatever id it names.
+    // A frame about a session of another machine is never relayed, whatever id it names; sessions are never deleted,
+    // so an honest machine never sends one, and this one is cut off rather than allowed to fill the audit.
     if (!s || s.machineId !== m.id) {
       this.#o.hive.audit(SYSTEM, "terminal.frameRejected", `/${m.id}`, `machine · foreignSession`);
-      return;
+      return m.peer.close(TERMINAL_RELAY_CLOSE.protocol, "protocol");
     }
     const l = this.#live.get(s.id);
     switch (f.type) {
@@ -541,9 +542,10 @@ export class TerminalRelayHub {
         if (!l.killSent) this.#kill(l, s.lastReason ?? "userClosed");
         continue;
       }
-      if (l.browser && s.writerEpoch > l.browser.epoch) {
-        l.browser.peer.close(TERMINAL_RELAY_CLOSE.superseded, "superseded");
-        this.#browserGone(l, l.browser);
+      const tab = l.browser;
+      if (tab && s.writerEpoch > tab.epoch) {
+        tab.peer.close(TERMINAL_RELAY_CLOSE.superseded, "superseded");
+        this.#browserGone(l, tab);
       }
       if (s.state !== "requested" && now - l.lastLease >= this.#t.leaseRenewMs) this.#renew(l, s);
     }
