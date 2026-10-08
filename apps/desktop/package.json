@@ -1,7 +1,7 @@
 {
   "name": "@xdev-hive/desktop",
   "productName": "xDev Hive",
-  "version": "0.147.0",
+  "version": "0.147.1",
   "private": true,
   "description": "xDev Hive desktop admin",
   "author": "xDev",

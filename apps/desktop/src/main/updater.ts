@@ -1,7 +1,7 @@
 // App updates from the hub (roadmap 22i). The heartbeat reply may offer a newer build (the hub admin's rollout); this
 // downloads it with the machine's token, checks its SHA-256, and swaps it in when the person restarts (or at quit, or
 // once no run is going, as the rollout says). macOS: the .zip replaces the .app bundle; Windows: the NSIS installer
-// runs silently; Linux: AppImage is replaced, deb opens the system installer for user authorization. Builds are not code-signed, so no OS updater framework is used.
+// runs silently; Linux: AppImage is replaced, deb installs through pkexec (one password prompt) and the app reopens. Builds are not code-signed, so no OS updater framework is used.
 import { execFile, execFileSync, spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { createHash } from "node:crypto";
 import { accessSync, constants, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -11,7 +11,7 @@ import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { compareVersions, HiveError, type InstallWhen, type UpdateOffer, type UpdateReport } from "@xdev-hive/core";
 import { markStartHidden, START_HIDDEN } from "#desktop/main/applog.ts";
-import { extractedInstallScript, extractLinuxUpdate, linuxLayout, linuxUpdateService, updateCommand, type UpdateCommand } from "#desktop/main/linux-update.ts";
+import { extractedInstallScript, extractLinuxUpdate, linuxLayout, linuxUpdateService, updateCommand, type DebInstall, type UpdateCommand } from "#desktop/main/linux-update.ts";
 
 const run = promisify(execFile);
 
@@ -20,7 +20,7 @@ export interface UpdateStatus extends UpdateReport {
   notes: string | null;
   /** The running app can replace itself (packaged, and the platform is supported). */
   supported: boolean;
-  /** deb: the person installs through the system installer, with admin rights; nothing restarts on its own. */
+  /** deb: installing asks for the person's password (polkit), so it never happens on its own at quit or idle. */
   updateKind?: "deb";
 }
 
@@ -36,6 +36,8 @@ export interface UpdaterHost {
   /** process.env.APPIMAGE on Linux. */
   appImage?: string;
   deb?: boolean;
+  /** Installs the verified .deb with admin rights (pkexec); "unavailable" falls back to openPackage. */
+  installDeb?: (file: string) => Promise<DebInstall>;
   /** Opens the verified package in the system installer; an empty result means success. */
   openPackage?: (file: string) => Promise<string>;
   /** Extraction and systemd commands; tests confine execution to their temporary runtime. */
@@ -210,6 +212,46 @@ export class Updater {
     child.unref();
   }
 
+  /**
+   * apt/dpkg must own system files; the desktop never replaces them as the current user. restart: the package is in,
+   * so the caller relaunches into it. A dismissed password dialog leaves the download ready for another try.
+   */
+  async #installDeb(file: string): Promise<{ restart: boolean }> {
+    const fail = (err: unknown): never => {
+      this.#set({ state: "failed", error: (err instanceof Error ? err.message : String(err)).slice(0, 300) });
+      this.#log(`deb install failed: ${this.#state.error}`);
+      throw err;
+    };
+    if (this.#host.installDeb) {
+      this.#set({ state: "installing", error: null });
+      let result: DebInstall;
+      try {
+        result = await this.#host.installDeb(file);
+      } catch (err) {
+        return fail(err);
+      }
+      if (result === "installed") {
+        this.#log(`installed ${this.#state.version} with apt-get; relaunching`);
+        return { restart: true };
+      }
+      this.#set({ state: "ready" });
+      if (result === "cancelled") {
+        this.#log("deb install cancelled at the password prompt");
+        return { restart: false };
+      }
+      this.#log("pkexec unavailable: opening the system installer instead");
+    }
+    try {
+      if (!this.#host.openPackage) throw new Error("System package installer is unavailable.");
+      const error = await this.#host.openPackage(file);
+      if (error) throw new Error(error);
+      this.#log(`opened Debian installer for ${file}; awaiting user authorization`);
+      return { restart: false };
+    } catch (err) {
+      return fail(err);
+    }
+  }
+
   /** Ready, and the rollout wants it installed without asking at this moment. */
   installsOn(when: "quit" | "idle"): boolean {
     return this.updateKind !== "deb" && this.#state.state === "ready" && this.#offer?.installWhen === when;
@@ -220,25 +262,13 @@ export class Updater {
    * right after. relaunch: the helper starts the new build (a restart always; an install at quit when
    * relaunchAfterQuitInstall says so). hidden: that start stays in the tray, through the start-hidden marker.
    */
-  async install({ relaunch, hidden = false, beforeHelper }: { relaunch: boolean; hidden?: boolean; beforeHelper?: () => void }): Promise<void> {
+  async install({ relaunch, hidden = false, beforeHelper }: { relaunch: boolean; hidden?: boolean; beforeHelper?: () => void }): Promise<{ restart: boolean }> {
     const file = this.#file;
     if (this.#state.state !== "ready" || !file || !existsSync(file)) {
       this.#log(`install skipped: nothing ready (state ${this.#state.state})`);
       throw new HiveError("conflict", "No update is ready to install.", { key: "errors.updateNotReady" });
     }
-    if (this.updateKind === "deb") {
-      // apt/dpkg must own system files; the desktop never replaces them as the current user.
-      try {
-        if (!this.#host.openPackage) throw new Error("System package installer is unavailable.");
-        const error = await this.#host.openPackage(file);
-        if (error) throw new Error(error);
-        this.#log(`opened Debian installer for ${file}; awaiting user authorization`);
-        return;
-      } catch (err) {
-        this.#set({ state: "failed", error: String(err).slice(0, 300) });
-        throw err;
-      }
-    }
+    if (this.updateKind === "deb") return this.#installDeb(file);
     this.#log(`install ${this.#state.version} (relaunch ${relaunch}${relaunch && hidden ? ", hidden" : ""})`);
     this.#set({ state: "installing" });
     try {
@@ -323,6 +353,7 @@ export class Updater {
         await this.#startHelper("/bin/sh", [script], { detached: true, stdio: "ignore", env: { PATH: "/usr/bin:/bin", PID: pid, IMAGE: image, NEW: file, RELAUNCH: relaunch ? "1" : "0" } });
       }
       this.#log("install helper started: it swaps the build once this process has exited");
+      return { restart: true };
     } catch (err) {
       // Nothing will start the new build, so the marker must not hide the window of the next start by hand.
       rmSync(path.join(path.dirname(file), START_HIDDEN), { force: true });

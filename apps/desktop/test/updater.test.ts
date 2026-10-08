@@ -122,6 +122,36 @@ describe("app updater", () => {
     assert.equal(opens, 1);
   });
 
+  it("installs a deb through pkexec and asks for a restart; a dismissed prompt keeps it ready", async () => {
+    const answers: Array<"installed" | "cancelled" | "unavailable"> = ["cancelled", "unavailable", "installed"];
+    const installed: string[] = [];
+    let opened = 0;
+    const { u, spawned } = updater(true, {
+      platform: "linux", deb: true,
+      installDeb: async (file) => { installed.push(file); return answers.shift()!; },
+      openPackage: async () => { opened++; return ""; },
+    });
+    u.offer(offer({ platform: "linux", kind: "deb", name: "xdev-hive-0.80.0-linux-amd64.deb" }));
+    await u.download();
+    assert.deepEqual(await u.install({ relaunch: true }), { restart: false });
+    assert.equal(u.status().state, "ready", "cancelled at the password prompt: try again later");
+    assert.deepEqual(await u.install({ relaunch: true }), { restart: false });
+    assert.equal(opened, 1, "no pkexec: the system installer opens instead");
+    assert.deepEqual(await u.install({ relaunch: true }), { restart: true });
+    assert.equal(u.status().state, "installing");
+    assert.equal(installed.length, 3);
+    assert.ok(installed.every((f) => path.isAbsolute(f) && f.endsWith(".deb")));
+    assert.equal(spawned.length, 0, "apt replaces the files: no helper script for a deb");
+  });
+
+  it("reports a failed apt install", async () => {
+    const { u } = updater(true, { platform: "linux", deb: true, installDeb: async () => { throw new Error("E: Unable to locate package"); } });
+    u.offer(offer({ platform: "linux", kind: "deb", name: "xdev-hive-0.80.0-linux-amd64.deb" }));
+    await u.download();
+    await assert.rejects(() => u.install({ relaunch: true }), /Unable to locate/);
+    assert.equal(u.status().state, "failed");
+  });
+
   it("names the platform the way the hub does", () => {
     assert.equal(platformKey("darwin"), "mac");
     assert.equal(platformKey("win32"), "win");

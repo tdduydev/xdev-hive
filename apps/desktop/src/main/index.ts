@@ -93,7 +93,7 @@ import { opencodeEnv } from "#desktop/main/runner/opencode.ts";
 import { kiloAccountEnv } from "#desktop/main/runner/kilo.ts";
 import { LOGIN_DIR_ENV, LoginMonitor, loginParts, readLoginHow, usageRefresher } from "./runner/login.ts";
 import { isDebInstall, platformKey, Updater, type UpdateStatus } from "#desktop/main/updater.ts";
-import { linuxLayout, pruneLinuxVersions } from "#desktop/main/linux-update.ts";
+import { installDeb, linuxLayout, pruneLinuxVersions } from "#desktop/main/linux-update.ts";
 import { migrateProfiles, migrateRuntimeNode, runtimeRoots } from "#desktop/main/linux-tools.ts";
 import { IdleUpdate } from "#desktop/main/idle-update.ts";
 import { RemoteTerminal } from "#desktop/main/pty/remote-terminal.ts";
@@ -883,7 +883,25 @@ function onUpdateChange(status: UpdateStatus): void {
 async function installAndRestart(hidden = false): Promise<void> {
   if (quitting || installingUpdate) return;
   if (updater.updateKind === "deb") {
-    await updater.install({ relaunch: false });
+    installingUpdate = true;
+    // No new run starts while apt replaces the app's files under it; a cancelled prompt lets them start again.
+    runner.drainForUpdate(true);
+    try {
+      const { restart } = await updater.install({ relaunch: true });
+      if (!restart) {
+        runner.drainForUpdate(false);
+        return;
+      }
+      quitReasons.mark("update", "restart into the installed package");
+      // The package's files are already the new version: relaunch starts /opt/... again once this process is gone.
+      app.relaunch();
+      app.quit();
+    } catch (err) {
+      if (!quitting) runner.drainForUpdate(false);
+      throw err;
+    } finally {
+      installingUpdate = false;
+    }
     return;
   }
   installingUpdate = true;
@@ -1813,6 +1831,7 @@ if (!app.requestSingleInstanceLock()) {
       execPath: process.execPath,
       appImage: process.env.APPIMAGE,
       deb: process.platform === "linux" && !process.env.APPIMAGE && isDebInstall(process.execPath),
+      installDeb: (file) => installDeb(file),
       openPackage: (file) => shell.openPath(file),
       onChange: onUpdateChange,
       log: (line) => mainLog.write(line),
