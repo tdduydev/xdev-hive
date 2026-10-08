@@ -93,6 +93,7 @@ import { kiloAccountEnv } from "#desktop/main/runner/kilo.ts";
 import { LOGIN_DIR_ENV, LoginMonitor, loginParts, readLoginHow, usageRefresher } from "./runner/login.ts";
 import { isDebInstall, platformKey, Updater, type UpdateStatus } from "#desktop/main/updater.ts";
 import { linuxLayout, pruneLinuxVersions } from "#desktop/main/linux-update.ts";
+import { migrateProfiles, migrateRuntimeNode, runtimeRoots } from "#desktop/main/linux-tools.ts";
 import { IdleUpdate } from "#desktop/main/idle-update.ts";
 import { RemoteTerminal } from "#desktop/main/pty/remote-terminal.ts";
 import { ResourceLocks } from "#desktop/main/resource-locks.ts";
@@ -1795,6 +1796,19 @@ if (!app.requestSingleInstanceLock()) {
         if (removed.length) mainLog.write(`runtime: removed ${removed.join(", ")}`);
       } catch (err) { mainLog.write(`runtime: cleanup failed: ${(err as Error).message}`); }
     }
+    const linuxRoots = process.platform === "linux" ? runtimeRoots(os.homedir(), runtime?.root ?? null) : [];
+    // Node and CLIs found in the app's folder are copied out before the PATH is read, and profiles follow them.
+    const moveLinuxTools = async () => {
+      if (!linuxRoots.length) return;
+      try {
+        const moves = await migrateRuntimeNode(linuxRoots, os.homedir());
+        const profiles = migrateProfiles(config.agents, moves, os.homedir());
+        if (profiles) {
+          persist({ ...structuredClone(config), agents: profiles });
+          mainLog.write(`runtime: profiles now use ${moves.map((m) => m.to).join(", ")}`);
+        }
+      } catch (err) { mainLog.write(`runtime: moving CLIs out of the app folder failed: ${(err as Error).message}`); }
+    };
     runner = new Runner(
       {
         backend: () => backend,
@@ -1872,6 +1886,7 @@ if (!app.requestSingleInstanceLock()) {
     setup = new Setup({
       ...(smokeShot ? { latest: async () => null } : {}),
       pathEnv: (refresh) => (refresh ? refreshAgentPath() : agentPath()),
+      runtimeRoots: () => linuxRoots,
       env: agentEnv,
       projects: () => config.projects,
       shim: { electronPath: process.execPath, entry: mcpEntry() },
@@ -1883,7 +1898,7 @@ if (!app.requestSingleInstanceLock()) {
     });
     // The window comes first: the login shell that gives agents their PATH takes 0.4s to seconds, and asked
     // synchronously it held the window back and froze it. The runner and the sign-in checks wait for it instead.
-    const pathReady = refreshAgentPath().catch(() => agentPath());
+    const pathReady = moveLinuxTools().then(() => refreshAgentPath()).catch(() => agentPath());
     // Sign-ins change outside the app (a terminal login, an expired session): check at start, then every 10 minutes.
     const checkLogins = () => logins.refresh().then(() => runner.tick(), () => undefined);
     firstLoginCheck = pathReady.then(() => {
