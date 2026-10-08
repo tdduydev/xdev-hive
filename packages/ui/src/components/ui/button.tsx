@@ -60,6 +60,16 @@ function Button({
     asChild?: boolean
   }) {
   const Comp = asChild ? Slot.Root : "button"
+  const glassContent = (content: React.ReactNode) => <>
+    <span aria-hidden="true" className="cosmic-glass-overlay" />
+    <span className="cosmic-button-content">{content}</span>
+  </>
+  // Slot needs one child; decorate its contents so links get the same glass as buttons.
+  const content = variant !== "glass" ? children : asChild
+    ? React.isValidElement<{ children?: React.ReactNode }>(children)
+      ? React.cloneElement(children, {}, glassContent(children.props.children))
+      : children
+    : glassContent(children)
 
   return (
     <Comp
@@ -69,10 +79,7 @@ function Button({
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     >
-      {variant === "glass" && !asChild ? <>
-        <span aria-hidden="true" className="cosmic-glass-overlay" />
-        <span className="cosmic-button-content">{children}</span>
-      </> : children}
+      {content}
     </Comp>
   )
 }

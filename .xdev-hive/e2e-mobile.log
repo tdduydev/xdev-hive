@@ -1,9 +1,0 @@
-> HIVE_E2E_W=390 HIVE_E2E_H=844 node e2e/run.mjs /Users/admin/.xdev-hive/worktrees/xdev-hive/R-72a/.xdev-hive/artifacts/mobile --only cosmic-primitives --no-build
-the hub did not start:
-npm error Lifecycle script `e2e:mobile` failed with error:
-npm error code 1
-npm error path /Users/admin/.xdev-hive/worktrees/xdev-hive/R-72a/apps/web
-npm error workspace @xdev-hive/web@0.1.0
-npm error location /Users/admin/.xdev-hive/worktrees/xdev-hive/R-72a/apps/web
-npm error command failed
-npm error command sh -c HIVE_E2E_W=390 HIVE_E2E_H=844 node e2e/run.mjs /Users/admin/.xdev-hive/worktrees/xdev-hive/R-72a/.xdev-hive/artifacts/mobile --only cosmic-primitives --no-build

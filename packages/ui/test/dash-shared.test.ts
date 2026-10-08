@@ -91,4 +91,13 @@ describe("cosmic primitives", () => {
     assert.match(html, /disabled="" aria-pressed="false"/);
     assert.match(renderToStaticMarkup(createElement(Switch, { disabled: true, defaultChecked: true }, "Notify")), /role="switch" checked=""/);
   });
+  it("keeps a slotted glass link as one decorated anchor", async () => {
+    const { Button } = await import("#ui/components/ui/button.tsx");
+    const html = renderToStaticMarkup(createElement(Button, { variant: "glass", asChild: true }, createElement("a", { href: "#/tasks" }, "Open")));
+    assert.equal((html.match(/<a\b/g) ?? []).length, 1);
+    assert.doesNotMatch(html, /<button/);
+    assert.match(html, /href="#\/tasks"/);
+    assert.match(html, /aria-hidden="true" class="cosmic-glass-overlay"/);
+    assert.match(html, /class="cosmic-button-content">Open<\/span>/);
+  });
 });
