@@ -934,6 +934,8 @@ export interface RunRecord {
   /** Kept for redispatch even after request retention expires. */
   instructions?: string | null;
   baseSha?: string | null;
+  /** Exact checkout revision reported by the runner; null on older clients with abbreviated SHAs. */
+  headSha?: string | null;
   /** A succeeded review's verdict, read once from its whole report; null for other runs. */
   verdict: Verdict | null;
   /** The end of the run's readable log, lines that looked like secrets hidden: runs.get only. */
