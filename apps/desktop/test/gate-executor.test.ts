@@ -34,6 +34,11 @@ if (mode === "env") {
   result(true);
 }
 if (mode === "sleep") setTimeout(() => result(true), 60_000);
+if (mode === "shortenv") {
+  console.log("short " + process.env.GATE_VALUE);
+  fs.writeFileSync(path.join(out, "env.txt"), "short " + process.env.GATE_VALUE);
+  fs.writeFileSync(path.join(out, "result.json"), JSON.stringify({ ok: true, summary: process.env.GATE_VALUE, checks: [{ name: process.env.GATE_VALUE, ok: true }] }));
+}
 `;
 
 const template = (id: string, mode: string, over: Partial<GateTemplate> = {}): GateTemplate => ({
@@ -141,6 +146,24 @@ describe("gate executor (69h2)", () => {
     const onSide = await run(g, await job(g, "pass", { sha: offSha, ref: "side", key: "side" }));
     assert.equal(onSide.state, "passed", "the same SHA on its own branch is fine");
     assert.equal(ran().length, before + 1, "only the last one spawned anything");
+  });
+  it("redacts short env values in artifacts, result diagnostics and log tails", async () => {
+    policy = { ...policy, projects: { app: { autoApprove: false, templates: [...TEMPLATES, template("shortenv", "shortenv", { env: ["GATE_MARKER", "GATE_VALUE", "GATE_EMPTY"] })] } } };
+    writePolicy();
+    const g = executor({ env: () => ({ ...process.env, GATE_MARKER: marker, GATE_VALUE: "c4n4ry7", GATE_EMPTY: "" }) });
+    const done = await run(g, await job(g, "shortenv"));
+    assert.equal(done.state, "passed");
+    assert.equal(done.receipt?.result?.summary, "[hidden]");
+    assert.equal(done.receipt?.result?.checks?.[0]?.name, "[hidden]");
+    assert.ok(done.receipt?.logTail.includes("short [hidden]"));
+    const files = await hub.call("artifacts.list", { project: "app", runId: done.id }, person);
+    const artifact = files.find((f) => f.name === "env.txt")!;
+    const stored = await hub.call("artifacts.get", { id: artifact.id }, person);
+    assert.ok(stored);
+    const text = Buffer.from(stored.data, "base64").toString("utf8");
+    assert.equal(text, "short [hidden]");
+    policy = { ...policy, projects: { app: { autoApprove: false, templates: TEMPLATES } } };
+    writePolicy();
   });
   it("kills at the template's timeout and at a cancel from the hub (G06)", async () => {
     const g = executor();

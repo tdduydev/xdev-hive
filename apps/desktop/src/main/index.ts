@@ -1853,7 +1853,7 @@ if (!app.requestSingleInstanceLock()) {
       allowed: (project) => config.mode === "hub" && !!config.hub.url && !updateDraining && !runner.updateDraining && runner.checkoutBusy(project, "repo") === null,
       locks: resourceLocks,
       secretEnv: () => [...GATE_SECRET_ENV, ...config.agents.flatMap((a) => Object.keys(a.env))],
-      known: () => [config.hub.token, ...Object.values(config.agentTokens), ...config.agents.flatMap((a) => Object.values(a.env))].filter((t): t is string => typeof t === "string" && t.length >= 8),
+      known: () => [config.hub.token, ...Object.values(config.agentTokens), ...config.agents.flatMap((a) => Object.values(a.env))].filter((t): t is string => typeof t === "string" && t.length > 0),
       version: app.getVersion(),
       log: (line) => mainLog.write(line),
     }, path.dirname(configPath()));
